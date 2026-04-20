@@ -22,10 +22,60 @@ export interface AuthSourceDefaultsValue {
 REDACTED
 
 export type AuthSourceDefaultsState = Record<AuthSourceType, AuthSourceDefaultsValue>
+export type PaymentVisibleMethod = 'alipay' | 'wxpay'
+export type PaymentVisibleMethodSource =
+  | ''
+  | 'official_alipay'
+  | 'easypay_alipay'
+  | 'official_wxpay'
+  | 'easypay_wxpay'
+
+export interface PaymentVisibleMethodSourceOption {
+  value: PaymentVisibleMethodSource
+  labelZh: string
+  labelEn: string
+REDACTED
 
 const AUTH_SOURCE_TYPES: AuthSourceType[] = ['email', 'linuxdo', 'oidc', 'wechat']
 const AUTH_SOURCE_DEFAULT_BALANCE = 0
 const AUTH_SOURCE_DEFAULT_CONCURRENCY = 5
+const PAYMENT_VISIBLE_METHOD_SOURCE_OPTIONS: Record<
+  PaymentVisibleMethod,
+  PaymentVisibleMethodSourceOption[]
+> = {
+  alipay: [
+    { value: '', labelZh: '自动路由', labelEn: 'Automatic routing' REDACTED,
+    { value: 'official_alipay', labelZh: '支付宝官方', labelEn: 'Official Alipay' REDACTED,
+    { value: 'easypay_alipay', labelZh: '易支付支付宝', labelEn: 'EasyPay Alipay' REDACTED,
+  ],
+  wxpay: [
+    { value: '', labelZh: '自动路由', labelEn: 'Automatic routing' REDACTED,
+    { value: 'official_wxpay', labelZh: '微信官方', labelEn: 'Official WeChat Pay' REDACTED,
+    { value: 'easypay_wxpay', labelZh: '易支付微信', labelEn: 'EasyPay WeChat Pay' REDACTED,
+  ],
+REDACTED
+const PAYMENT_VISIBLE_METHOD_SOURCE_ALIASES: Record<
+  PaymentVisibleMethod,
+  Record<string, PaymentVisibleMethodSource>
+> = {
+  alipay: {
+    official_alipay: 'official_alipay',
+    alipay: 'official_alipay',
+    alipay_direct: 'official_alipay',
+    official: 'official_alipay',
+    easypay_alipay: 'easypay_alipay',
+    easypay: 'easypay_alipay',
+  REDACTED,
+  wxpay: {
+    official_wxpay: 'official_wxpay',
+    wxpay: 'official_wxpay',
+    wxpay_direct: 'official_wxpay',
+    wechat: 'official_wxpay',
+    official: 'official_wxpay',
+    easypay_wxpay: 'easypay_wxpay',
+    easypay: 'easypay_wxpay',
+  REDACTED,
+REDACTED
 
 export function normalizeDefaultSubscriptionSettings(
   subscriptions: DefaultSubscriptionSetting[] | null | undefined
@@ -84,6 +134,24 @@ export function appendAuthSourceDefaultsToUpdateRequest(
   REDACTED
 
   return payload
+REDACTED
+
+export function getPaymentVisibleMethodSourceOptions(
+  method: PaymentVisibleMethod
+): PaymentVisibleMethodSourceOption[] {
+  return PAYMENT_VISIBLE_METHOD_SOURCE_OPTIONS[method]
+REDACTED
+
+export function normalizePaymentVisibleMethodSource(
+  method: PaymentVisibleMethod,
+  source: unknown
+): PaymentVisibleMethodSource {
+  if (typeof source !== 'string') return ''
+
+  const normalized = source.trim().toLowerCase()
+  if (!normalized) return ''
+
+  return PAYMENT_VISIBLE_METHOD_SOURCE_ALIASES[method][normalized] ?? ''
 REDACTED
 
 /**

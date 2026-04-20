@@ -2717,20 +2717,19 @@
 
                   <div class="mt-4">
                     <label class="input-label">
-                      {{ localText('来源键', 'Source key') REDACTEDREDACTED
+                      {{ localText('支付来源', 'Payment source') REDACTEDREDACTED
                     </label>
-                    <input
-                      :value="getPaymentVisibleMethodSource(visibleMethod.key)"
-                      @input="setPaymentVisibleMethodSource(visibleMethod.key, ($event.target as HTMLInputElement).value)"
-                      type="text"
-                      class="input"
+                    <Select
+                      :model-value="getPaymentVisibleMethodSource(visibleMethod.key)"
+                      :options="getPaymentVisibleMethodSourceSelectOptions(visibleMethod.key)"
+                      @update:model-value="setPaymentVisibleMethodSource(visibleMethod.key, $event)"
                       :placeholder="visibleMethod.key"
                     />
                     <p class="mt-1.5 text-xs text-gray-400">
                       {{
                         localText(
-                          '留空表示由后端使用默认来源；可填 easypay、alipay、wxpay 等来源标识。',
-                          'Leave blank to let the backend decide. Typical values are easypay, alipay, or wxpay.'
+                          '留空表示自动路由；仅允许当前系统支持的官方或易支付来源。',
+                          'Leave blank for automatic routing. Only supported official or EasyPay sources are allowed.'
                         )
                       REDACTEDREDACTED
                     </p>
@@ -3117,11 +3116,14 @@ import { adminAPI REDACTED from '@/api'
 import {
   appendAuthSourceDefaultsToUpdateRequest,
   buildAuthSourceDefaultsState,
+  getPaymentVisibleMethodSourceOptions,
+  normalizePaymentVisibleMethodSource,
   normalizeDefaultSubscriptionSettings,
 REDACTED from '@/api/admin/settings'
 import type {
   AuthSourceDefaultsState,
   AuthSourceType,
+  PaymentVisibleMethod,
   SystemSettings,
   UpdateSettingsRequest,
   DefaultSubscriptionSetting,
@@ -3429,12 +3431,23 @@ function getPaymentVisibleMethodSource(method: 'alipay' | 'wxpay'): string {
     : form.payment_visible_method_wxpay_source
 REDACTED
 
-function setPaymentVisibleMethodSource(method: 'alipay' | 'wxpay', source: string) {
+function getPaymentVisibleMethodSourceSelectOptions(method: PaymentVisibleMethod) {
+  return getPaymentVisibleMethodSourceOptions(method).map((option) => ({
+    value: option.value,
+    label: localText(option.labelZh, option.labelEn),
+  REDACTED))
+REDACTED
+
+function setPaymentVisibleMethodSource(
+  method: 'alipay' | 'wxpay',
+  source: string | number | boolean | null
+) {
+  const normalized = normalizePaymentVisibleMethodSource(method, source)
   if (method === 'alipay') {
-    form.payment_visible_method_alipay_source = source
+    form.payment_visible_method_alipay_source = normalized
     return
   REDACTED
-  form.payment_visible_method_wxpay_source = source
+  form.payment_visible_method_wxpay_source = normalized
 REDACTED
 
 // Proxies for web search emulation ProxySelector
@@ -3805,6 +3818,14 @@ async function loadSettings() {
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings))
     form.backend_mode_enabled = settings.backend_mode_enabled
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(settings.default_subscriptions)
+    form.payment_visible_method_alipay_source = normalizePaymentVisibleMethodSource(
+      'alipay',
+      settings.payment_visible_method_alipay_source
+    )
+    form.payment_visible_method_wxpay_source = normalizePaymentVisibleMethodSource(
+      'wxpay',
+      settings.payment_visible_method_wxpay_source
+    )
     registrationEmailSuffixWhitelistTags.value = normalizeRegistrationEmailSuffixDomains(
       settings.registration_email_suffix_whitelist
     )
@@ -4070,8 +4091,14 @@ async function saveSettings() {
       payment_cancel_rate_limit_window: Number(form.payment_cancel_rate_limit_window) || 1,
       payment_cancel_rate_limit_unit: form.payment_cancel_rate_limit_unit,
       payment_cancel_rate_limit_window_mode: form.payment_cancel_rate_limit_window_mode,
-      payment_visible_method_alipay_source: form.payment_visible_method_alipay_source,
-      payment_visible_method_wxpay_source: form.payment_visible_method_wxpay_source,
+      payment_visible_method_alipay_source: normalizePaymentVisibleMethodSource(
+        'alipay',
+        form.payment_visible_method_alipay_source
+      ),
+      payment_visible_method_wxpay_source: normalizePaymentVisibleMethodSource(
+        'wxpay',
+        form.payment_visible_method_wxpay_source
+      ),
       payment_visible_method_alipay_enabled: form.payment_visible_method_alipay_enabled,
       payment_visible_method_wxpay_enabled: form.payment_visible_method_wxpay_enabled,
       openai_advanced_scheduler_enabled: form.openai_advanced_scheduler_enabled,
@@ -4092,6 +4119,14 @@ async function saveSettings() {
       REDACTED
     REDACTED
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(updated))
+    form.payment_visible_method_alipay_source = normalizePaymentVisibleMethodSource(
+      'alipay',
+      updated.payment_visible_method_alipay_source
+    )
+    form.payment_visible_method_wxpay_source = normalizePaymentVisibleMethodSource(
+      'wxpay',
+      updated.payment_visible_method_wxpay_source
+    )
     registrationEmailSuffixWhitelistTags.value = normalizeRegistrationEmailSuffixDomains(
       updated.registration_email_suffix_whitelist
     )
