@@ -88,6 +88,7 @@
             </button>
             <div v-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20">
               <p class="text-sm text-red-700 dark:text-red-400">{{ errorMessage REDACTEDREDACTED</p>
+              <p v-if="errorHintMessage" class="mt-2 text-xs text-red-600 dark:text-red-300">{{ errorHintMessage REDACTEDREDACTED</p>
             </div>
             </template>
           </template>
@@ -174,6 +175,7 @@
               <button class="btn btn-secondary w-full" @click="selectedPlan = null">{{ t('common.cancel') REDACTEDREDACTED</button>
               <div v-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20">
                 <p class="text-sm text-red-700 dark:text-red-400">{{ errorMessage REDACTEDREDACTED</p>
+                <p v-if="errorHintMessage" class="mt-2 text-xs text-red-600 dark:text-red-300">{{ errorHintMessage REDACTEDREDACTED</p>
               </div>
             </template>
             <!-- Plan list -->
@@ -281,6 +283,7 @@ import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { PaymentMethodOption REDACTED from '@/components/payment/PaymentMethodSelector.vue'
+import { describePaymentScenarioError REDACTED from './paymentUx'
 
 const { t REDACTED = useI18n()
 const route = useRoute()
@@ -301,6 +304,7 @@ REDACTED
 const loading = ref(true)
 const submitting = ref(false)
 const errorMessage = ref('')
+const errorHintMessage = ref('')
 const activeTab = ref<'recharge' | 'subscription'>('recharge')
 const amount = ref<number | null>(null)
 const selectedMethod = ref('')
@@ -619,6 +623,7 @@ REDACTED
 async function createOrder(orderAmount: number, orderType: OrderType, planId?: number, options: CreateOrderOptions = {REDACTED) {
   submitting.value = true
   errorMessage.value = ''
+  errorHintMessage.value = ''
   try {
     const requestType = normalizeVisibleMethod(options.paymentType || selectedMethod.value) || options.paymentType || selectedMethod.value
     const payload = buildCreateOrderPayload({
@@ -668,8 +673,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     REDACTED
 
     if (decision.kind === 'unhandled') {
-      errorMessage.value = t('payment.result.failed')
-      appStore.showError(errorMessage.value)
+      applyScenarioError({ reason: 'UNHANDLED_PAYMENT_SCENARIO' REDACTED, visibleMethod)
       return
     REDACTED
 
@@ -691,7 +695,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       if (errMsg.includes('cancel')) {
         appStore.showInfo(t('payment.qr.cancelled'))
       REDACTED else if (errMsg && !errMsg.includes('ok')) {
-        appStore.showError(t('payment.result.failed'))
+        applyScenarioError({ reason: 'WECHAT_JSAPI_FAILED', message: errMsg REDACTED, visibleMethod)
       REDACTED
       return
     REDACTED
@@ -707,15 +711,36 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     if (apiErr.reason === 'TOO_MANY_PENDING') {
       const metadata = apiErr.metadata as Record<string, unknown> | undefined
       errorMessage.value = t('payment.errors.tooManyPending', { max: metadata?.max || '' REDACTED)
+      errorHintMessage.value = ''
     REDACTED else if (apiErr.reason === 'CANCEL_RATE_LIMITED') {
       errorMessage.value = t('payment.errors.cancelRateLimited')
+      errorHintMessage.value = ''
     REDACTED else {
-      errorMessage.value = extractApiErrorMessage(err, t('payment.result.failed'))
+      applyScenarioError(err, normalizeVisibleMethod(options.paymentType || selectedMethod.value) || selectedMethod.value)
+      if (!errorMessage.value) {
+        errorMessage.value = extractApiErrorMessage(err, t('payment.result.failed'))
+        errorHintMessage.value = ''
+      REDACTED
     REDACTED
     appStore.showError(errorMessage.value)
   REDACTED finally {
     submitting.value = false
   REDACTED
+REDACTED
+
+function applyScenarioError(err: unknown, paymentMethod: string) {
+  const descriptor = describePaymentScenarioError(err, {
+    paymentMethod,
+    isMobile: isMobileDevice(),
+    isWechatBrowser: typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
+  REDACTED)
+  if (!descriptor) {
+    errorMessage.value = ''
+    errorHintMessage.value = ''
+    return
+  REDACTED
+  errorMessage.value = t(descriptor.messageKey)
+  errorHintMessage.value = descriptor.hintKey ? t(descriptor.hintKey) : ''
 REDACTED
 
 async function resumeWechatPaymentFromQuery() {

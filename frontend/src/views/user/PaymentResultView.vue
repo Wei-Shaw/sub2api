@@ -54,7 +54,7 @@
             </div>
             <div class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.paymentMethod') REDACTEDREDACTED</span>
-              <span class="font-medium text-gray-900 dark:text-white">{{ t('payment.methods.' + order.payment_type, order.payment_type) REDACTEDREDACTED</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{ t(paymentMethodI18nKey(order.payment_type), normalizedOrderPaymentType(order.payment_type)) REDACTEDREDACTED</span>
             </div>
             <div class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.status') REDACTEDREDACTED</span>
@@ -75,7 +75,7 @@
             </div>
             <div v-if="returnInfo.type" class="flex justify-between">
               <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.paymentMethod') REDACTEDREDACTED</span>
-              <span class="font-medium text-gray-900 dark:text-white">{{ t('payment.methods.' + returnInfo.type, returnInfo.type) REDACTEDREDACTED</span>
+              <span class="font-medium text-gray-900 dark:text-white">{{ t(paymentMethodI18nKey(returnInfo.type), normalizedOrderPaymentType(returnInfo.type)) REDACTEDREDACTED</span>
             </div>
           </div>
         </div>
@@ -98,6 +98,7 @@ import { PAYMENT_RECOVERY_STORAGE_KEY, readPaymentRecoverySnapshot REDACTED from
 import { usePaymentStore REDACTED from '@/stores/payment'
 import { paymentAPI REDACTED from '@/api/payment'
 import type { PaymentOrder REDACTED from '@/types/payment'
+import { normalizePaymentMethodForDisplay, paymentMethodI18nKey REDACTED from './paymentUx'
 
 const { t REDACTED = useI18n()
 const route = useRoute()
@@ -132,6 +133,10 @@ REDACTED)
 const isSuccess = computed(() => {
   return !!order.value && SUCCESS_STATUSES.has(order.value.status)
 REDACTED)
+
+function normalizedOrderPaymentType(paymentType: string): string {
+  return normalizePaymentMethodForDisplay(paymentType) || paymentType
+REDACTED
 
 onMounted(async () => {
   const resumeToken = typeof route.query.resume_token === 'string'

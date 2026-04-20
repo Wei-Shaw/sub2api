@@ -26,6 +26,18 @@ const (
 	alipayRefundSuffix     = "-refund"
 )
 
+var (
+	alipayTradeWapPay = func(client *alipay.Client, param alipay.TradeWapPay) (*url.URL, error) {
+		return client.TradeWapPay(param)
+REDACTED
+	alipayTradePagePay = func(client *alipay.Client, param alipay.TradePagePay) (*url.URL, error) {
+		return client.TradePagePay(param)
+REDACTED
+	alipayTradePreCreate = func(ctx context.Context, client *alipay.Client, param alipay.TradePreCreate) (*alipay.TradePreCreateRsp, error) {
+		return client.TradePreCreate(ctx, param)
+REDACTED
+)
+
 // Alipay implements payment.Provider and payment.CancelableProvider using the smartwalle/alipay SDK.
 type Alipay struct {
 	instanceID string
@@ -80,7 +92,7 @@ func (a *Alipay) SupportedTypes() []payment.PaymentType {
 REDACTED
 
 // CreatePayment creates an Alipay payment page URL.
-func (a *Alipay) CreatePayment(_ context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
+func (a *Alipay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	client, err := a.getClient()
 	if err != nil {
 		return nil, err
@@ -96,12 +108,12 @@ REDACTED
 REDACTED
 
 	if req.IsMobile {
-		return a.createTrade(client, req, notifyURL, returnURL, true)
+		return a.createTrade(ctx, client, req, notifyURL, returnURL, true)
 REDACTED
-	return a.createTrade(client, req, notifyURL, returnURL, false)
+	return a.createTrade(ctx, client, req, notifyURL, returnURL, false)
 REDACTED
 
-func (a *Alipay) createTrade(client *alipay.Client, req payment.CreatePaymentRequest, notifyURL, returnURL string, isMobile bool) (*payment.CreatePaymentResponse, error) {
+func (a *Alipay) createTrade(ctx context.Context, client *alipay.Client, req payment.CreatePaymentRequest, notifyURL, returnURL string, isMobile bool) (*payment.CreatePaymentResponse, error) {
 	if isMobile {
 		param := alipay.TradeWapPay{REDACTED
 		param.OutTradeNo = req.OrderID
@@ -111,7 +123,7 @@ func (a *Alipay) createTrade(client *alipay.Client, req payment.CreatePaymentReq
 		param.NotifyURL = notifyURL
 		param.ReturnURL = returnURL
 
-		payURL, err := client.TradeWapPay(param)
+		payURL, err := alipayTradeWapPay(client, param)
 		if err != nil {
 			return nil, fmt.Errorf("alipay TradeWapPay: %w", err)
 	REDACTED
@@ -121,22 +133,19 @@ func (a *Alipay) createTrade(client *alipay.Client, req payment.CreatePaymentReq
 	REDACTED, nil
 REDACTED
 
-	param := alipay.TradePagePay{REDACTED
+	param := alipay.TradePreCreate{REDACTED
 	param.OutTradeNo = req.OrderID
 	param.TotalAmount = req.Amount
 	param.Subject = req.Subject
-	param.ProductCode = alipayProductCodePagePay
 	param.NotifyURL = notifyURL
-	param.ReturnURL = returnURL
 
-	payURL, err := client.TradePagePay(param)
+	resp, err := alipayTradePreCreate(ctx, client, param)
 	if err != nil {
-		return nil, fmt.Errorf("alipay TradePagePay: %w", err)
+		return nil, fmt.Errorf("alipay TradePreCreate: %w", err)
 REDACTED
 	return &payment.CreatePaymentResponse{
 		TradeNo: req.OrderID,
-		PayURL:  payURL.String(),
-		QRCode:  payURL.String(),
+		QRCode:  strings.TrimSpace(resp.QRCode),
 REDACTED, nil
 REDACTED
 
