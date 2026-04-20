@@ -642,6 +642,60 @@ REDACTED
 	require.Zero(t, identityCount)
 REDACTED
 
+func TestCreateOIDCOAuthAccountExistingEmailNormalizesLegacySpacingAndCase(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandlerWithEmailVerification(t, false, "owner@example.com", "135790")
+	ctx := context.Background()
+
+	existingUser, err := client.User.Create().
+		SetEmail(" Owner@Example.com ").
+		SetUsername("owner-user").
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("existing-email-normalized-session-token").
+		SetIntent("login").
+		SetProviderType("oidc").
+		SetProviderKey("https://issuer.example").
+		SetProviderSubject("oidc-existing-normalized-123").
+		SetBrowserSessionKey("existing-email-normalized-browser-session-key").
+		SetUpstreamIdentityClaims(map[string]any{
+			"username":               "oidc_user",
+			"suggested_display_name": "Existing OIDC User",
+			"suggested_avatar_url":   "https://cdn.example/existing.png",
+	REDACTED).
+		SetRedirectTo("/dashboard").
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+REDACTED
+
+	body := bytes.NewBufferString(`{"email":"owner@example.com","verify_code":"135790","password":"secret-123"REDACTED`)
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/oidc/create-account", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)REDACTED)
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("existing-email-normalized-browser-session-key")REDACTED)
+	ginCtx.Request = req
+
+	handler.CreateOIDCOAuthAccount(ginCtx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
+	require.Equal(t, "adopt_existing_user_by_email", payload["intent"])
+
+	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
+REDACTED
+	require.NotNil(t, storedSession.TargetUserID)
+	require.Equal(t, existingUser.ID, *storedSession.TargetUserID)
+	require.Equal(t, "owner@example.com", storedSession.ResolvedEmail)
+REDACTED
+
 func TestBindOIDCOAuthLoginBindsExistingUserAndConsumesSession(t *testing.T) {
 	handler, client := newOAuthPendingFlowTestHandler(t, false)
 	ctx := context.Background()
@@ -882,6 +936,37 @@ REDACTED
 	require.Zero(t, storedUser.TotalRecharged)
 	require.Len(t, defaultSubAssigner.calls, 1)
 	require.Equal(t, 1, countProviderGrantRecords(t, client, existingUser.ID, "oidc", "first_bind"))
+REDACTED
+
+func TestResolvePendingOAuthTargetUserIDNormalizesLegacySpacingAndCase(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandler(t, false)
+	_ = handler
+	ctx := context.Background()
+
+	existingUser, err := client.User.Create().
+		SetEmail(" Owner@Example.com ").
+		SetUsername("owner-user").
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("resolve-target-session-token").
+		SetIntent("login").
+		SetProviderType("oidc").
+		SetProviderKey("https://issuer.example").
+		SetProviderSubject("oidc-target-123").
+		SetResolvedEmail("owner@example.com").
+		SetBrowserSessionKey("resolve-target-browser-session-key").
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+REDACTED
+
+	resolvedUserID, err := resolvePendingOAuthTargetUserID(ctx, client, session)
+REDACTED
+	require.Equal(t, existingUser.ID, resolvedUserID)
 REDACTED
 
 func TestBindOIDCOAuthLoginReturns2FAChallengeWhenUserHasTotp(t *testing.T) {
