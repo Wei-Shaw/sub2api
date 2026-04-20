@@ -57,7 +57,13 @@ func TestDialerAgainstCaptureServer(t *testing.T) {
 			profile: &Profile{
 				Name:         "default",
 				EnableGREASE: false,
-				// All empty → uses built-in defaults
+				// Pin to the plain (no ECH/padding) extension list to make
+				// this capture-based test deterministic. The production dialer's
+				// maybeEnrichExtensions() probabilistically appends 65037 (ECH)
+				// + 21 (padding); without pinning we'd alternate between the
+				// 13-extension plain variant and 15-extension rich variant.
+				// See dialer_integration_test.go:TestJA3Fingerprint for full WHY.
+				Extensions: []uint16{0, 23, 65281, 10, 11, 35, 16, 5, 13, 18, 51, 45, 43},
 			},
 		},
 		{
