@@ -40,8 +40,27 @@ func skipIfExternalServiceUnavailable(t *testing.T, err error) {
 
 // TestJA3Fingerprint verifies the JA3/JA4 fingerprint matches expected value.
 // This test uses tls.peet.ws to verify the fingerprint.
-// Expected JA3 hash: 048900f5ae64cc2a49a44389a5406191 (Claude Code 2.1.114 baseline)
-// Expected JA4 cipher hash: b262b3658495
+//
+// Expected JA3 hash: dc782a9d905fdcee1223a3d4e8108bc6
+//
+//	(Claude Code 2.1.114 "plain" variant — see dialer.go header comment)
+//
+// Expected JA4 cipher hash: 5b57614c22b0
+//
+//	(matches the 17-cipher defaultCipherSuites list in dialer.go)
+//
+// WHY explicit Extensions: the production dialer uses a probabilistic
+// maybeEnrichExtensions() that adds ECH (65037) + padding (21) on ~50% of
+// handshakes, producing the "rich" variant (JA3 50027c67d7d68e24c00d233bca146d88,
+// JA4 t13d1715h1). Without pinning Extensions here, this test would be flaky
+// — it asserts a single JA3 but real CC alternates between two variants.
+// We pin to the plain variant (the documented majority case) so CI is stable.
+// The probabilistic behavior itself is exercised by unit tests of
+// maybeEnrichExtensions, not by this end-to-end integration test.
+//
+// The previously baked-in expected hashes (048900f5..., b262b3658495) were
+// stale guesses from the 2026-04-19 realign commit that were never verified
+// against the new implementation's actual output.
 func TestJA3Fingerprint(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
@@ -50,6 +69,9 @@ func TestJA3Fingerprint(t *testing.T) {
 	profile := &Profile{
 		Name:         "Default Profile Test",
 		EnableGREASE: false,
+		// Pin to the plain (no ECH/padding) extension list to make this
+		// integration test deterministic — see function header for rationale.
+		Extensions: []uint16{0, 23, 65281, 10, 11, 35, 16, 5, 13, 18, 51, 45, 43},
 	}
 	dialer := NewDialer(profile, nil)
 
@@ -88,14 +110,19 @@ func TestJA3Fingerprint(t *testing.T) {
 	t.Logf("JA3 Hash: %s", fpResp.TLS.JA3Hash)
 	t.Logf("JA4: %s", fpResp.TLS.JA4)
 
-	expectedJA3Hash := "048900f5ae64cc2a49a44389a5406191"
+	// dc782a9d905fdcee1223a3d4e8108bc6 is the documented "plain" variant JA3
+	// for Claude Code 2.1.114 (see dialer.go line 70). We force the plain variant
+	// via explicit Extensions above to avoid flakiness from maybeEnrichExtensions.
+	expectedJA3Hash := "dc782a9d905fdcee1223a3d4e8108bc6"
 	if fpResp.TLS.JA3Hash == expectedJA3Hash {
 		t.Logf("✓ JA3 hash matches: %s", expectedJA3Hash)
 	} else {
 		t.Errorf("✗ JA3 hash mismatch: got %s, expected %s", fpResp.TLS.JA3Hash, expectedJA3Hash)
 	}
 
-	expectedJA4CipherHash := "_b262b3658495_"
+	// 5b57614c22b0 is the JA4 cipher hash for the 17-cipher defaultCipherSuites
+	// list in dialer.go. Matches the unit-test expectation in dialer_test.go.
+	expectedJA4CipherHash := "_5b57614c22b0_"
 	if strings.Contains(fpResp.TLS.JA4, expectedJA4CipherHash) {
 		t.Logf("✓ JA4 cipher hash matches: %s", expectedJA4CipherHash)
 	} else {
@@ -114,12 +141,23 @@ func TestAllProfiles(t *testing.T) {
 	// These profiles are from config.yaml gateway.tls_fingerprint.profiles
 	profiles := []TestProfileExpectation{
 		{
-			// Default profile (Node.js 24.x)
+			// Default profile (Node.js 24.x, Claude Code 2.1.114 plain variant).
+			//
+			// Extensions explicitly pinned to the plain (no ECH/padding) list so the
+			// resulting JA4 extension count is stable (t13d1713h1 = 13 extensions).
+			// Without this, maybeEnrichExtensions() rolls 50/50 per connection and
+			// would sometimes produce t13d1715h1 (15 extensions with ECH+padding),
+			// making this assertion flaky.
+			//
+			// JA4 cipher hash 5b57614c22b0 corresponds to the 17-cipher
+			// defaultCipherSuites list in dialer.go — not the previous
+			// b262b3658495 which was a stale pre-rewrite baseline.
 			Profile: &Profile{
 				Name:         "default_node_v24",
 				EnableGREASE: false,
+				Extensions:   []uint16{0, 23, 65281, 10, 11, 35, 16, 5, 13, 18, 51, 45, 43},
 			},
-			JA4CipherHash: "b262b3658495",
+			JA4CipherHash: "5b57614c22b0",
 		},
 		{
 			// Linux x64 Node.js v22.17.1 (explicit profile with v22 extensions)
