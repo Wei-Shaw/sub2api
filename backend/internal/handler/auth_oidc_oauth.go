@@ -326,7 +326,7 @@ REDACTED
 	)
 
 	// 传入空邀请码；如果需要邀请码，服务层返回 ErrOAuthInvitationRequired
-	tokenPair, _, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, "")
+	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, "")
 	if err != nil {
 		if errors.Is(err, service.ErrOAuthInvitationRequired) {
 			if err := h.createOAuthPendingSession(c, oauthPendingSessionPayload{
@@ -371,6 +371,7 @@ REDACTED
 			ProviderKey:     issuer,
 			ProviderSubject: subject,
 	REDACTED,
+		TargetUserID:      &user.ID,
 		ResolvedEmail:     email,
 		RedirectTo:        redirectTo,
 		BrowserSessionKey: browserSessionKey,
@@ -399,7 +400,9 @@ REDACTED
 REDACTED
 
 type completeOIDCOAuthRequest struct {
-	InvitationCode string `json:"invitation_code" binding:"required"`
+	InvitationCode   string `json:"invitation_code" binding:"required"`
+	AdoptDisplayName *bool  `json:"adopt_display_name,omitempty"`
+	AdoptAvatar      *bool  `json:"adopt_avatar,omitempty"`
 REDACTED
 
 // CompleteOIDCOAuthRegistration completes a pending OAuth registration by validating
@@ -447,9 +450,21 @@ REDACTED
 		return
 REDACTED
 
-	tokenPair, _, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode)
+	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode)
 	if err != nil {
 		response.ErrorFrom(c, err)
+		return
+REDACTED
+	decision, err := h.upsertPendingOAuthAdoptionDecision(c, session.ID, oauthAdoptionDecisionRequest{
+		AdoptDisplayName: req.AdoptDisplayName,
+		AdoptAvatar:      req.AdoptAvatar,
+REDACTED)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	if err := applyPendingOAuthAdoption(c.Request.Context(), h.entClient(), session, decision, &user.ID); err != nil {
+		response.ErrorFrom(c, infraerrors.InternalServer("PENDING_AUTH_ADOPTION_APPLY_FAILED", "failed to apply oauth profile adoption").WithCause(err))
 		return
 REDACTED
 	if _, err := pendingSvc.ConsumeBrowserSession(c.Request.Context(), sessionToken, browserSessionKey); err != nil {

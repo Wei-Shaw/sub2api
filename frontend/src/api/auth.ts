@@ -198,6 +198,26 @@ export interface PendingOAuthExchangeResponse {
   suggested_avatar_url?: string
 REDACTED
 
+export interface OAuthAdoptionDecision {
+  adoptDisplayName?: boolean
+  adoptAvatar?: boolean
+REDACTED
+
+function serializeOAuthAdoptionDecision(
+  decision?: OAuthAdoptionDecision
+): Record<string, boolean> {
+  const payload: Record<string, boolean> = {REDACTED
+
+  if (typeof decision?.adoptDisplayName === 'boolean') {
+    payload.adopt_display_name = decision.adoptDisplayName
+  REDACTED
+  if (typeof decision?.adoptAvatar === 'boolean') {
+    payload.adopt_avatar = decision.adoptAvatar
+  REDACTED
+
+  return payload
+REDACTED
+
 /**
  * Refresh the access token using the refresh token
  * @returns New token pair
@@ -353,7 +373,8 @@ REDACTED
  * @returns Token pair on success
  */
 export async function completeLinuxDoOAuthRegistration(
-  invitationCode: string
+  invitationCode: string,
+  decision?: OAuthAdoptionDecision
 ): Promise<{ access_token: string; refresh_token: string; expires_in: number; token_type: string REDACTED> {
   const { data REDACTED = await apiClient.post<{
     access_token: string
@@ -361,7 +382,8 @@ export async function completeLinuxDoOAuthRegistration(
     expires_in: number
     token_type: string
   REDACTED>('/auth/oauth/linuxdo/complete-registration', {
-    invitation_code: invitationCode
+    invitation_code: invitationCode,
+    ...serializeOAuthAdoptionDecision(decision)
   REDACTED)
   return data
 REDACTED
@@ -372,7 +394,8 @@ REDACTED
  * @returns Token pair on success
  */
 export async function completeOIDCOAuthRegistration(
-  invitationCode: string
+  invitationCode: string,
+  decision?: OAuthAdoptionDecision
 ): Promise<{ access_token: string; refresh_token: string; expires_in: number; token_type: string REDACTED> {
   const { data REDACTED = await apiClient.post<{
     access_token: string
@@ -380,13 +403,19 @@ export async function completeOIDCOAuthRegistration(
     expires_in: number
     token_type: string
   REDACTED>('/auth/oauth/oidc/complete-registration', {
-    invitation_code: invitationCode
+    invitation_code: invitationCode,
+    ...serializeOAuthAdoptionDecision(decision)
   REDACTED)
   return data
 REDACTED
 
-export async function exchangePendingOAuthCompletion(): Promise<PendingOAuthExchangeResponse> {
-  const { data REDACTED = await apiClient.post<PendingOAuthExchangeResponse>('/auth/oauth/pending/exchange', {REDACTED)
+export async function exchangePendingOAuthCompletion(
+  decision?: OAuthAdoptionDecision
+): Promise<PendingOAuthExchangeResponse> {
+  const { data REDACTED = await apiClient.post<PendingOAuthExchangeResponse>(
+    '/auth/oauth/pending/exchange',
+    serializeOAuthAdoptionDecision(decision)
+  )
   return data
 REDACTED
 

@@ -45,6 +45,12 @@ type User struct {
 	TotpEnabled bool `json:"totp_enabled,omitempty"`
 	// TotpEnabledAt holds the value of the "totp_enabled_at" field.
 	TotpEnabledAt *time.Time `json:"totp_enabled_at,omitempty"`
+	// SignupSource holds the value of the "signup_source" field.
+	SignupSource string `json:"signup_source,omitempty"`
+	// LastLoginAt holds the value of the "last_login_at" field.
+	LastLoginAt *time.Time `json:"last_login_at,omitempty"`
+	// LastActiveAt holds the value of the "last_active_at" field.
+	LastActiveAt *time.Time `json:"last_active_at,omitempty"`
 	// BalanceNotifyEnabled holds the value of the "balance_notify_enabled" field.
 	BalanceNotifyEnabled bool `json:"balance_notify_enabled,omitempty"`
 	// BalanceNotifyThresholdType holds the value of the "balance_notify_threshold_type" field.
@@ -83,11 +89,15 @@ type UserEdges struct {
 	PromoCodeUsages []*PromoCodeUsage `json:"promo_code_usages,omitempty"`
 	// PaymentOrders holds the value of the payment_orders edge.
 	PaymentOrders []*PaymentOrder `json:"payment_orders,omitempty"`
+	// AuthIdentities holds the value of the auth_identities edge.
+	AuthIdentities []*AuthIdentity `json:"auth_identities,omitempty"`
+	// PendingAuthSessions holds the value of the pending_auth_sessions edge.
+	PendingAuthSessions []*PendingAuthSession `json:"pending_auth_sessions,omitempty"`
 	// UserAllowedGroups holds the value of the user_allowed_groups edge.
 	UserAllowedGroups []*UserAllowedGroup `json:"user_allowed_groups,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [11]bool
+	loadedTypes [13]bool
 REDACTED
 
 // APIKeysOrErr returns the APIKeys value or an error if the edge
@@ -180,10 +190,28 @@ REDACTED
 	return nil, &NotLoadedError{edge: "payment_orders"REDACTED
 REDACTED
 
+// AuthIdentitiesOrErr returns the AuthIdentities value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) AuthIdentitiesOrErr() ([]*AuthIdentity, error) {
+	if e.loadedTypes[10] {
+		return e.AuthIdentities, nil
+REDACTED
+	return nil, &NotLoadedError{edge: "auth_identities"REDACTED
+REDACTED
+
+// PendingAuthSessionsOrErr returns the PendingAuthSessions value or an error if the edge
+// was not loaded in eager-loading.
+func (e UserEdges) PendingAuthSessionsOrErr() ([]*PendingAuthSession, error) {
+	if e.loadedTypes[11] {
+		return e.PendingAuthSessions, nil
+REDACTED
+	return nil, &NotLoadedError{edge: "pending_auth_sessions"REDACTED
+REDACTED
+
 // UserAllowedGroupsOrErr returns the UserAllowedGroups value or an error if the edge
 // was not loaded in eager-loading.
 func (e UserEdges) UserAllowedGroupsOrErr() ([]*UserAllowedGroup, error) {
-	if e.loadedTypes[10] {
+	if e.loadedTypes[12] {
 		return e.UserAllowedGroups, nil
 REDACTED
 	return nil, &NotLoadedError{edge: "user_allowed_groups"REDACTED
@@ -200,9 +228,9 @@ func (*User) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case user.FieldID, user.FieldConcurrency:
 			values[i] = new(sql.NullInt64)
-		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails:
+		case user.FieldEmail, user.FieldPasswordHash, user.FieldRole, user.FieldStatus, user.FieldUsername, user.FieldNotes, user.FieldTotpSecretEncrypted, user.FieldSignupSource, user.FieldBalanceNotifyThresholdType, user.FieldBalanceNotifyExtraEmails:
 			values[i] = new(sql.NullString)
-		case user.FieldCreatedAt, user.FieldUpdatedAt, user.FieldDeletedAt, user.FieldTotpEnabledAt:
+		case user.FieldCreatedAt, user.FieldUpdatedAt, user.FieldDeletedAt, user.FieldTotpEnabledAt, user.FieldLastLoginAt, user.FieldLastActiveAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -312,6 +340,26 @@ REDACTED
 				_m.TotpEnabledAt = new(time.Time)
 				*_m.TotpEnabledAt = value.Time
 		REDACTED
+		case user.FieldSignupSource:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field signup_source", values[i])
+		REDACTED else if value.Valid {
+				_m.SignupSource = value.String
+		REDACTED
+		case user.FieldLastLoginAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field last_login_at", values[i])
+		REDACTED else if value.Valid {
+				_m.LastLoginAt = new(time.Time)
+				*_m.LastLoginAt = value.Time
+		REDACTED
+		case user.FieldLastActiveAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field last_active_at", values[i])
+		REDACTED else if value.Valid {
+				_m.LastActiveAt = new(time.Time)
+				*_m.LastActiveAt = value.Time
+		REDACTED
 		case user.FieldBalanceNotifyEnabled:
 			if value, ok := values[i].(*sql.NullBool); !ok {
 				return fmt.Errorf("unexpected type %T for field balance_notify_enabled", values[i])
@@ -406,6 +454,16 @@ func (_m *User) QueryPaymentOrders() *PaymentOrderQuery {
 	return NewUserClient(_m.config).QueryPaymentOrders(_m)
 REDACTED
 
+// QueryAuthIdentities queries the "auth_identities" edge of the User entity.
+func (_m *User) QueryAuthIdentities() *AuthIdentityQuery {
+	return NewUserClient(_m.config).QueryAuthIdentities(_m)
+REDACTED
+
+// QueryPendingAuthSessions queries the "pending_auth_sessions" edge of the User entity.
+func (_m *User) QueryPendingAuthSessions() *PendingAuthSessionQuery {
+	return NewUserClient(_m.config).QueryPendingAuthSessions(_m)
+REDACTED
+
 // QueryUserAllowedGroups queries the "user_allowed_groups" edge of the User entity.
 func (_m *User) QueryUserAllowedGroups() *UserAllowedGroupQuery {
 	return NewUserClient(_m.config).QueryUserAllowedGroups(_m)
@@ -479,6 +537,19 @@ REDACTED
 	builder.WriteString(", ")
 	if v := _m.TotpEnabledAt; v != nil {
 		builder.WriteString("totp_enabled_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+REDACTED
+	builder.WriteString(", ")
+	builder.WriteString("signup_source=")
+	builder.WriteString(_m.SignupSource)
+	builder.WriteString(", ")
+	if v := _m.LastLoginAt; v != nil {
+		builder.WriteString("last_login_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+REDACTED
+	builder.WriteString(", ")
+	if v := _m.LastActiveAt; v != nil {
+		builder.WriteString("last_active_at=")
 		builder.WriteString(v.Format(time.ANSIC))
 REDACTED
 	builder.WriteString(", ")

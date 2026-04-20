@@ -1,10 +1,21 @@
 package handler
 
 import (
+	"bytes"
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/ent/authidentity"
+	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
+	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -109,4 +120,80 @@ REDACTED
 func TestSingleLineStripsWhitespace(t *testing.T) {
 	require.Equal(t, "hello world", singleLine("hello\r\nworld"))
 	require.Equal(t, "", singleLine("\n\t\r"))
+REDACTED
+
+func TestCompleteLinuxDoOAuthRegistrationAppliesPendingAdoptionDecision(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandler(t, false)
+	ctx := context.Background()
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("linuxdo-complete-session").
+		SetIntent("login").
+		SetProviderType("linuxdo").
+		SetProviderKey("linuxdo").
+		SetProviderSubject("linuxdo-subject-1").
+		SetResolvedEmail("linuxdo-subject-1@linuxdo-connect.invalid").
+		SetBrowserSessionKey("linuxdo-browser").
+		SetUpstreamIdentityClaims(map[string]any{
+			"username":               "linuxdo_user",
+			"suggested_display_name": "LinuxDo Display",
+			"suggested_avatar_url":   "https://cdn.example/linuxdo.png",
+	REDACTED).
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+REDACTED
+
+	_, err = service.NewAuthPendingIdentityService(client).UpsertAdoptionDecision(ctx, service.PendingIdentityAdoptionDecisionInput{
+		PendingAuthSessionID: session.ID,
+		AdoptAvatar:          true,
+REDACTED)
+REDACTED
+
+	body := bytes.NewBufferString(`{"invitation_code":"invite-1","adopt_display_name":trueREDACTED`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/linuxdo/complete-registration", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)REDACTED)
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("linuxdo-browser")REDACTED)
+	c.Request = req
+
+	handler.CompleteLinuxDoOAuthRegistration(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	responseData := decodeJSONBody(t, recorder)
+	require.NotEmpty(t, responseData["access_token"])
+
+	userEntity, err := client.User.Query().
+		Where(dbuser.EmailEQ(session.ResolvedEmail)).
+		Only(ctx)
+REDACTED
+	require.Equal(t, "LinuxDo Display", userEntity.Username)
+
+	identity, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ("linuxdo"),
+			authidentity.ProviderKeyEQ("linuxdo"),
+			authidentity.ProviderSubjectEQ("linuxdo-subject-1"),
+		).
+		Only(ctx)
+REDACTED
+	require.Equal(t, userEntity.ID, identity.UserID)
+	require.Equal(t, "LinuxDo Display", identity.Metadata["display_name"])
+	require.Equal(t, "https://cdn.example/linuxdo.png", identity.Metadata["avatar_url"])
+
+	decision, err := client.IdentityAdoptionDecision.Query().
+		Where(identityadoptiondecision.PendingAuthSessionIDEQ(session.ID)).
+		Only(ctx)
+REDACTED
+	require.NotNil(t, decision.IdentityID)
+	require.Equal(t, identity.ID, *decision.IdentityID)
+	require.True(t, decision.AdoptDisplayName)
+	require.True(t, decision.AdoptAvatar)
+
+	consumed, err := client.PendingAuthSession.Query().
+		Where(pendingauthsession.IDEQ(session.ID)).
+		Only(ctx)
+REDACTED
+	require.NotNil(t, consumed.ConsumedAt)
 REDACTED

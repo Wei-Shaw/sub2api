@@ -65,15 +65,17 @@ REDACTED
 REDACTED
 
 type CreateOrderRequest struct {
-	UserID      int64
-	Amount      float64
-	PaymentType string
-	ClientIP    string
-	IsMobile    bool
-	SrcHost     string
-	SrcURL      string
-	OrderType   string
-	PlanID      int64
+	UserID        int64
+	Amount        float64
+	PaymentType   string
+	ClientIP      string
+	IsMobile      bool
+	SrcHost       string
+	SrcURL        string
+	ReturnURL     string
+	PaymentSource string
+	OrderType     string
+	PlanID        int64
 REDACTED
 
 type CreateOrderResponse struct {
@@ -88,6 +90,7 @@ type CreateOrderResponse struct {
 	ClientSecret string    `json:"client_secret,omitempty"`
 	ExpiresAt    time.Time `json:"expires_at"`
 	PaymentMode  string    `json:"payment_mode,omitempty"`
+	ResumeToken  string    `json:"resume_token,omitempty"`
 REDACTED
 
 type OrderListParams struct {
@@ -165,10 +168,13 @@ type PaymentService struct {
 	configService   *PaymentConfigService
 	userRepo        UserRepository
 	groupRepo       GroupRepository
+	resumeService   *PaymentResumeService
 REDACTED
 
 func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository) *PaymentService {
-	return &PaymentService{entClient: entClient, registry: registry, loadBalancer: loadBalancer, redeemService: redeemService, subscriptionSvc: subscriptionSvc, configService: configService, userRepo: userRepo, groupRepo: groupRepoREDACTED
+	svc := &PaymentService{entClient: entClient, registry: registry, loadBalancer: newVisibleMethodLoadBalancer(loadBalancer, configService), redeemService: redeemService, subscriptionSvc: subscriptionSvc, configService: configService, userRepo: userRepo, groupRepo: groupRepoREDACTED
+	svc.resumeService = NewPaymentResumeService(psResumeSigningKey(configService))
+	return svc
 REDACTED
 
 // --- Provider Registry ---
@@ -260,6 +266,20 @@ func psNilIfEmpty(s string) *string {
 		return nil
 REDACTED
 	return &s
+REDACTED
+
+func (s *PaymentService) paymentResume() *PaymentResumeService {
+	if s.resumeService != nil {
+		return s.resumeService
+REDACTED
+	return NewPaymentResumeService(psResumeSigningKey(s.configService))
+REDACTED
+
+func psResumeSigningKey(configService *PaymentConfigService) []byte {
+	if configService == nil {
+		return nil
+REDACTED
+	return configService.encryptionKey
 REDACTED
 
 func psSliceContains(sl []string, s string) bool {

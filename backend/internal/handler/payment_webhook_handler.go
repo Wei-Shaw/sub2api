@@ -120,7 +120,7 @@ REDACTED
 // This allows looking up the correct provider instance before verification.
 func extractOutTradeNo(rawBody, providerKey string) string {
 	switch providerKey {
-	case payment.TypeEasyPay:
+	case payment.TypeEasyPay, payment.TypeAlipay:
 		values, err := url.ParseQuery(rawBody)
 		if err == nil {
 			return values.Get("out_trade_no")

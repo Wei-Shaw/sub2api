@@ -196,12 +196,25 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 		SettingHelpImageURL, SettingHelpText,
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
 		SettingCancelWindowSize, SettingCancelWindowUnit, SettingCancelWindowMode,
+		SettingPaymentVisibleMethodAlipayEnabled, SettingPaymentVisibleMethodAlipaySource,
+		SettingPaymentVisibleMethodWxpayEnabled, SettingPaymentVisibleMethodWxpaySource,
 REDACTED
 	vals, err := s.settingRepo.GetMultiple(ctx, keys)
 	if err != nil {
 		return nil, fmt.Errorf("get payment config settings: %w", err)
 REDACTED
 	cfg := s.parsePaymentConfig(vals)
+	if s.entClient != nil {
+		instances, err := s.entClient.PaymentProviderInstance.Query().
+			Where(paymentproviderinstance.EnabledEQ(true)).
+			All(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("list enabled provider instances: %w", err)
+	REDACTED
+		cfg.EnabledTypes = applyVisibleMethodRoutingToEnabledTypes(cfg.EnabledTypes, vals, buildVisibleMethodSourceAvailability(instances))
+REDACTED else {
+		cfg.EnabledTypes = applyVisibleMethodRoutingToEnabledTypes(cfg.EnabledTypes, vals, nil)
+REDACTED
 	// Load Stripe publishable key from the first enabled Stripe provider instance
 	cfg.StripePublishableKey = s.getStripePublishableKey(ctx)
 	return cfg, nil
@@ -234,18 +247,23 @@ REDACTED
 		cfg.LoadBalanceStrategy = payment.DefaultLoadBalanceStrategy
 REDACTED
 	if raw := vals[SettingEnabledPaymentTypes]; raw != "" {
+		types := make([]string, 0, len(strings.Split(raw, ",")))
 		for _, t := range strings.Split(raw, ",") {
 			t = strings.TrimSpace(t)
 			if t != "" {
-				cfg.EnabledTypes = append(cfg.EnabledTypes, t)
+				types = append(types, t)
 		REDACTED
 	REDACTED
+		cfg.EnabledTypes = NormalizeVisibleMethods(types)
 REDACTED
 	return cfg
 REDACTED
 
 // getStripePublishableKey finds the publishable key from the first enabled Stripe provider instance.
 func (s *PaymentConfigService) getStripePublishableKey(ctx context.Context) string {
+	if s.entClient == nil {
+		return ""
+REDACTED
 	instances, err := s.entClient.PaymentProviderInstance.Query().
 		Where(
 			paymentproviderinstance.EnabledEQ(true),
@@ -384,4 +402,80 @@ REDACTED
 		return defaultVal
 REDACTED
 	return v
+REDACTED
+
+func buildVisibleMethodSourceAvailability(instances []*dbent.PaymentProviderInstance) map[string]bool {
+	available := make(map[string]bool, 4)
+	for _, inst := range instances {
+		switch inst.ProviderKey {
+		case payment.TypeAlipay:
+			if inst.SupportedTypes == "" || payment.InstanceSupportsType(inst.SupportedTypes, payment.TypeAlipay) || payment.InstanceSupportsType(inst.SupportedTypes, payment.TypeAlipayDirect) {
+				available[VisibleMethodSourceOfficialAlipay] = true
+		REDACTED
+		case payment.TypeWxpay:
+			if inst.SupportedTypes == "" || payment.InstanceSupportsType(inst.SupportedTypes, payment.TypeWxpay) || payment.InstanceSupportsType(inst.SupportedTypes, payment.TypeWxpayDirect) {
+				available[VisibleMethodSourceOfficialWechat] = true
+		REDACTED
+		case payment.TypeEasyPay:
+			for _, supportedType := range splitTypes(inst.SupportedTypes) {
+				switch NormalizeVisibleMethod(supportedType) {
+				case payment.TypeAlipay:
+					available[VisibleMethodSourceEasyPayAlipay] = true
+				case payment.TypeWxpay:
+					available[VisibleMethodSourceEasyPayWechat] = true
+			REDACTED
+		REDACTED
+	REDACTED
+REDACTED
+	return available
+REDACTED
+
+func applyVisibleMethodRoutingToEnabledTypes(base []string, vals map[string]string, available map[string]bool) []string {
+	shouldExpose := map[string]bool{
+		payment.TypeAlipay: visibleMethodShouldBeExposed(payment.TypeAlipay, vals, available),
+		payment.TypeWxpay:  visibleMethodShouldBeExposed(payment.TypeWxpay, vals, available),
+REDACTED
+
+	seen := make(map[string]struct{REDACTED, len(base)+2)
+	out := make([]string, 0, len(base)+2)
+	appendType := func(paymentType string) {
+		paymentType = NormalizeVisibleMethod(paymentType)
+		if paymentType == "" {
+			return
+	REDACTED
+		if _, ok := seen[paymentType]; ok {
+			return
+	REDACTED
+		seen[paymentType] = struct{REDACTED{REDACTED
+		out = append(out, paymentType)
+REDACTED
+
+	for _, paymentType := range base {
+		visibleMethod := NormalizeVisibleMethod(paymentType)
+		switch visibleMethod {
+		case payment.TypeAlipay, payment.TypeWxpay:
+			if shouldExpose[visibleMethod] {
+				appendType(visibleMethod)
+		REDACTED
+		default:
+			appendType(visibleMethod)
+	REDACTED
+REDACTED
+
+	for _, visibleMethod := range []string{payment.TypeAlipay, payment.TypeWxpayREDACTED {
+		if shouldExpose[visibleMethod] {
+			appendType(visibleMethod)
+	REDACTED
+REDACTED
+	return out
+REDACTED
+
+func visibleMethodShouldBeExposed(method string, vals map[string]string, available map[string]bool) bool {
+	enabledKey := visibleMethodEnabledSettingKey(method)
+	sourceKey := visibleMethodSourceSettingKey(method)
+	if enabledKey == "" || sourceKey == "" || vals[enabledKey] != "true" {
+		return false
+REDACTED
+	source := NormalizeVisibleMethodSource(method, vals[sourceKey])
+	return source != "" && available[source]
 REDACTED

@@ -64,11 +64,25 @@ func RegisterAuthRoutes(
 	REDACTED), h.Auth.ResetPassword)
 		auth.GET("/oauth/linuxdo/start", h.Auth.LinuxDoOAuthStart)
 		auth.GET("/oauth/linuxdo/callback", h.Auth.LinuxDoOAuthCallback)
+		auth.GET("/oauth/wechat/start", h.Auth.WeChatOAuthStart)
+		auth.GET("/oauth/wechat/callback", h.Auth.WeChatOAuthCallback)
+		auth.POST("/oauth/pending/exchange",
+			rateLimiter.LimitWithOptions("oauth-pending-exchange", 20, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+		REDACTED),
+			h.Auth.ExchangePendingOAuthCompletion,
+		)
 		auth.POST("/oauth/linuxdo/complete-registration",
 			rateLimiter.LimitWithOptions("oauth-linuxdo-complete", 10, time.Minute, middleware.RateLimitOptions{
 				FailureMode: middleware.RateLimitFailClose,
 		REDACTED),
 			h.Auth.CompleteLinuxDoOAuthRegistration,
+		)
+		auth.POST("/oauth/wechat/complete-registration",
+			rateLimiter.LimitWithOptions("oauth-wechat-complete", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+		REDACTED),
+			h.Auth.CompleteWeChatOAuthRegistration,
 		)
 		auth.GET("/oauth/oidc/start", h.Auth.OIDCOAuthStart)
 		auth.GET("/oauth/oidc/callback", h.Auth.OIDCOAuthCallback)

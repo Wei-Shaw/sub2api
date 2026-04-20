@@ -125,6 +125,21 @@ func TotpEnabledAt(v time.Time) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldTotpEnabledAt, v))
 REDACTED
 
+// SignupSource applies equality check predicate on the "signup_source" field. It's identical to SignupSourceEQ.
+func SignupSource(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldSignupSource, v))
+REDACTED
+
+// LastLoginAt applies equality check predicate on the "last_login_at" field. It's identical to LastLoginAtEQ.
+func LastLoginAt(v time.Time) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldLastLoginAt, v))
+REDACTED
+
+// LastActiveAt applies equality check predicate on the "last_active_at" field. It's identical to LastActiveAtEQ.
+func LastActiveAt(v time.Time) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldLastActiveAt, v))
+REDACTED
+
 // BalanceNotifyEnabled applies equality check predicate on the "balance_notify_enabled" field. It's identical to BalanceNotifyEnabledEQ.
 func BalanceNotifyEnabled(v bool) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldBalanceNotifyEnabled, v))
@@ -885,6 +900,171 @@ func TotpEnabledAtNotNil() predicate.User {
 	return predicate.User(sql.FieldNotNull(FieldTotpEnabledAt))
 REDACTED
 
+// SignupSourceEQ applies the EQ predicate on the "signup_source" field.
+func SignupSourceEQ(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldSignupSource, v))
+REDACTED
+
+// SignupSourceNEQ applies the NEQ predicate on the "signup_source" field.
+func SignupSourceNEQ(v string) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldSignupSource, v))
+REDACTED
+
+// SignupSourceIn applies the In predicate on the "signup_source" field.
+func SignupSourceIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldIn(FieldSignupSource, vs...))
+REDACTED
+
+// SignupSourceNotIn applies the NotIn predicate on the "signup_source" field.
+func SignupSourceNotIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldSignupSource, vs...))
+REDACTED
+
+// SignupSourceGT applies the GT predicate on the "signup_source" field.
+func SignupSourceGT(v string) predicate.User {
+	return predicate.User(sql.FieldGT(FieldSignupSource, v))
+REDACTED
+
+// SignupSourceGTE applies the GTE predicate on the "signup_source" field.
+func SignupSourceGTE(v string) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldSignupSource, v))
+REDACTED
+
+// SignupSourceLT applies the LT predicate on the "signup_source" field.
+func SignupSourceLT(v string) predicate.User {
+	return predicate.User(sql.FieldLT(FieldSignupSource, v))
+REDACTED
+
+// SignupSourceLTE applies the LTE predicate on the "signup_source" field.
+func SignupSourceLTE(v string) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldSignupSource, v))
+REDACTED
+
+// SignupSourceContains applies the Contains predicate on the "signup_source" field.
+func SignupSourceContains(v string) predicate.User {
+	return predicate.User(sql.FieldContains(FieldSignupSource, v))
+REDACTED
+
+// SignupSourceHasPrefix applies the HasPrefix predicate on the "signup_source" field.
+func SignupSourceHasPrefix(v string) predicate.User {
+	return predicate.User(sql.FieldHasPrefix(FieldSignupSource, v))
+REDACTED
+
+// SignupSourceHasSuffix applies the HasSuffix predicate on the "signup_source" field.
+func SignupSourceHasSuffix(v string) predicate.User {
+	return predicate.User(sql.FieldHasSuffix(FieldSignupSource, v))
+REDACTED
+
+// SignupSourceEqualFold applies the EqualFold predicate on the "signup_source" field.
+func SignupSourceEqualFold(v string) predicate.User {
+	return predicate.User(sql.FieldEqualFold(FieldSignupSource, v))
+REDACTED
+
+// SignupSourceContainsFold applies the ContainsFold predicate on the "signup_source" field.
+func SignupSourceContainsFold(v string) predicate.User {
+	return predicate.User(sql.FieldContainsFold(FieldSignupSource, v))
+REDACTED
+
+// LastLoginAtEQ applies the EQ predicate on the "last_login_at" field.
+func LastLoginAtEQ(v time.Time) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldLastLoginAt, v))
+REDACTED
+
+// LastLoginAtNEQ applies the NEQ predicate on the "last_login_at" field.
+func LastLoginAtNEQ(v time.Time) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldLastLoginAt, v))
+REDACTED
+
+// LastLoginAtIn applies the In predicate on the "last_login_at" field.
+func LastLoginAtIn(vs ...time.Time) predicate.User {
+	return predicate.User(sql.FieldIn(FieldLastLoginAt, vs...))
+REDACTED
+
+// LastLoginAtNotIn applies the NotIn predicate on the "last_login_at" field.
+func LastLoginAtNotIn(vs ...time.Time) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldLastLoginAt, vs...))
+REDACTED
+
+// LastLoginAtGT applies the GT predicate on the "last_login_at" field.
+func LastLoginAtGT(v time.Time) predicate.User {
+	return predicate.User(sql.FieldGT(FieldLastLoginAt, v))
+REDACTED
+
+// LastLoginAtGTE applies the GTE predicate on the "last_login_at" field.
+func LastLoginAtGTE(v time.Time) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldLastLoginAt, v))
+REDACTED
+
+// LastLoginAtLT applies the LT predicate on the "last_login_at" field.
+func LastLoginAtLT(v time.Time) predicate.User {
+	return predicate.User(sql.FieldLT(FieldLastLoginAt, v))
+REDACTED
+
+// LastLoginAtLTE applies the LTE predicate on the "last_login_at" field.
+func LastLoginAtLTE(v time.Time) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldLastLoginAt, v))
+REDACTED
+
+// LastLoginAtIsNil applies the IsNil predicate on the "last_login_at" field.
+func LastLoginAtIsNil() predicate.User {
+	return predicate.User(sql.FieldIsNull(FieldLastLoginAt))
+REDACTED
+
+// LastLoginAtNotNil applies the NotNil predicate on the "last_login_at" field.
+func LastLoginAtNotNil() predicate.User {
+	return predicate.User(sql.FieldNotNull(FieldLastLoginAt))
+REDACTED
+
+// LastActiveAtEQ applies the EQ predicate on the "last_active_at" field.
+func LastActiveAtEQ(v time.Time) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldLastActiveAt, v))
+REDACTED
+
+// LastActiveAtNEQ applies the NEQ predicate on the "last_active_at" field.
+func LastActiveAtNEQ(v time.Time) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldLastActiveAt, v))
+REDACTED
+
+// LastActiveAtIn applies the In predicate on the "last_active_at" field.
+func LastActiveAtIn(vs ...time.Time) predicate.User {
+	return predicate.User(sql.FieldIn(FieldLastActiveAt, vs...))
+REDACTED
+
+// LastActiveAtNotIn applies the NotIn predicate on the "last_active_at" field.
+func LastActiveAtNotIn(vs ...time.Time) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldLastActiveAt, vs...))
+REDACTED
+
+// LastActiveAtGT applies the GT predicate on the "last_active_at" field.
+func LastActiveAtGT(v time.Time) predicate.User {
+	return predicate.User(sql.FieldGT(FieldLastActiveAt, v))
+REDACTED
+
+// LastActiveAtGTE applies the GTE predicate on the "last_active_at" field.
+func LastActiveAtGTE(v time.Time) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldLastActiveAt, v))
+REDACTED
+
+// LastActiveAtLT applies the LT predicate on the "last_active_at" field.
+func LastActiveAtLT(v time.Time) predicate.User {
+	return predicate.User(sql.FieldLT(FieldLastActiveAt, v))
+REDACTED
+
+// LastActiveAtLTE applies the LTE predicate on the "last_active_at" field.
+func LastActiveAtLTE(v time.Time) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldLastActiveAt, v))
+REDACTED
+
+// LastActiveAtIsNil applies the IsNil predicate on the "last_active_at" field.
+func LastActiveAtIsNil() predicate.User {
+	return predicate.User(sql.FieldIsNull(FieldLastActiveAt))
+REDACTED
+
+// LastActiveAtNotNil applies the NotNil predicate on the "last_active_at" field.
+func LastActiveAtNotNil() predicate.User {
+	return predicate.User(sql.FieldNotNull(FieldLastActiveAt))
+REDACTED
+
 // BalanceNotifyEnabledEQ applies the EQ predicate on the "balance_notify_enabled" field.
 func BalanceNotifyEnabledEQ(v bool) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldBalanceNotifyEnabled, v))
@@ -1337,6 +1517,52 @@ REDACTED
 func HasPaymentOrdersWith(preds ...predicate.PaymentOrder) predicate.User {
 	return predicate.User(func(s *sql.Selector) {
 		step := newPaymentOrdersStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+		REDACTED
+	REDACTED)
+REDACTED)
+REDACTED
+
+// HasAuthIdentities applies the HasEdge predicate on the "auth_identities" edge.
+func HasAuthIdentities() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, AuthIdentitiesTable, AuthIdentitiesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+REDACTED)
+REDACTED
+
+// HasAuthIdentitiesWith applies the HasEdge predicate on the "auth_identities" edge with a given conditions (other predicates).
+func HasAuthIdentitiesWith(preds ...predicate.AuthIdentity) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newAuthIdentitiesStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+		REDACTED
+	REDACTED)
+REDACTED)
+REDACTED
+
+// HasPendingAuthSessions applies the HasEdge predicate on the "pending_auth_sessions" edge.
+func HasPendingAuthSessions() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, PendingAuthSessionsTable, PendingAuthSessionsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+REDACTED)
+REDACTED
+
+// HasPendingAuthSessionsWith applies the HasEdge predicate on the "pending_auth_sessions" edge with a given conditions (other predicates).
+func HasPendingAuthSessionsWith(preds ...predicate.PendingAuthSession) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newPendingAuthSessionsStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

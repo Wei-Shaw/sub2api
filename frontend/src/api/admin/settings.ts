@@ -11,6 +11,81 @@ export interface DefaultSubscriptionSetting {
   validity_days: number
 REDACTED
 
+export type AuthSourceType = 'email' | 'linuxdo' | 'oidc' | 'wechat'
+
+export interface AuthSourceDefaultsValue {
+  balance: number
+  concurrency: number
+  subscriptions: DefaultSubscriptionSetting[]
+  grant_on_signup: boolean
+  grant_on_first_bind: boolean
+REDACTED
+
+export type AuthSourceDefaultsState = Record<AuthSourceType, AuthSourceDefaultsValue>
+
+const AUTH_SOURCE_TYPES: AuthSourceType[] = ['email', 'linuxdo', 'oidc', 'wechat']
+const AUTH_SOURCE_DEFAULT_BALANCE = 0
+const AUTH_SOURCE_DEFAULT_CONCURRENCY = 5
+
+export function normalizeDefaultSubscriptionSettings(
+  subscriptions: DefaultSubscriptionSetting[] | null | undefined
+): DefaultSubscriptionSetting[] {
+  if (!Array.isArray(subscriptions)) return []
+
+  return subscriptions
+    .filter((item) => item.group_id > 0 && item.validity_days > 0)
+    .map((item) => ({
+      group_id: Math.floor(item.group_id),
+      validity_days: Math.min(36500, Math.max(1, Math.floor(item.validity_days)))
+    REDACTED))
+REDACTED
+
+export function buildAuthSourceDefaultsState(
+  settings: Partial<SystemSettings>
+): AuthSourceDefaultsState {
+  const raw = settings as Record<string, unknown>
+
+  return AUTH_SOURCE_TYPES.reduce((acc, source) => {
+    const subscriptions = raw[`auth_source_default_${sourceREDACTED_subscriptions`]
+    acc[source] = {
+      balance: Number(raw[`auth_source_default_${sourceREDACTED_balance`] ?? AUTH_SOURCE_DEFAULT_BALANCE),
+      concurrency: Math.max(
+        1,
+        Number(raw[`auth_source_default_${sourceREDACTED_concurrency`] ?? AUTH_SOURCE_DEFAULT_CONCURRENCY)
+      ),
+      subscriptions: normalizeDefaultSubscriptionSettings(
+        Array.isArray(subscriptions) ? (subscriptions as DefaultSubscriptionSetting[]) : []
+      ),
+      grant_on_signup: raw[`auth_source_default_${sourceREDACTED_grant_on_signup`] !== false,
+      grant_on_first_bind: raw[`auth_source_default_${sourceREDACTED_grant_on_first_bind`] === true,
+    REDACTED
+    return acc
+  REDACTED, {REDACTED as AuthSourceDefaultsState)
+REDACTED
+
+export function appendAuthSourceDefaultsToUpdateRequest(
+  payload: UpdateSettingsRequest,
+  authSourceDefaults: AuthSourceDefaultsState
+): UpdateSettingsRequest {
+  const target = payload as Record<string, unknown>
+
+  for (const source of AUTH_SOURCE_TYPES) {
+    const current = authSourceDefaults[source]
+    target[`auth_source_default_${sourceREDACTED_balance`] = Number(current.balance) || 0
+    target[`auth_source_default_${sourceREDACTED_concurrency`] = Math.max(
+      1,
+      Math.floor(Number(current.concurrency) || AUTH_SOURCE_DEFAULT_CONCURRENCY)
+    )
+    target[`auth_source_default_${sourceREDACTED_subscriptions`] = normalizeDefaultSubscriptionSettings(
+      current.subscriptions
+    )
+    target[`auth_source_default_${sourceREDACTED_grant_on_signup`] = current.grant_on_signup
+    target[`auth_source_default_${sourceREDACTED_grant_on_first_bind`] = current.grant_on_first_bind
+  REDACTED
+
+  return payload
+REDACTED
+
 /**
  * System settings interface
  */
@@ -29,6 +104,27 @@ export interface SystemSettings {
   default_balance: number
   default_concurrency: number
   default_subscriptions: DefaultSubscriptionSetting[]
+  auth_source_default_email_balance?: number
+  auth_source_default_email_concurrency?: number
+  auth_source_default_email_subscriptions?: DefaultSubscriptionSetting[]
+  auth_source_default_email_grant_on_signup?: boolean
+  auth_source_default_email_grant_on_first_bind?: boolean
+  auth_source_default_linuxdo_balance?: number
+  auth_source_default_linuxdo_concurrency?: number
+  auth_source_default_linuxdo_subscriptions?: DefaultSubscriptionSetting[]
+  auth_source_default_linuxdo_grant_on_signup?: boolean
+  auth_source_default_linuxdo_grant_on_first_bind?: boolean
+  auth_source_default_oidc_balance?: number
+  auth_source_default_oidc_concurrency?: number
+  auth_source_default_oidc_subscriptions?: DefaultSubscriptionSetting[]
+  auth_source_default_oidc_grant_on_signup?: boolean
+  auth_source_default_oidc_grant_on_first_bind?: boolean
+  auth_source_default_wechat_balance?: number
+  auth_source_default_wechat_concurrency?: number
+  auth_source_default_wechat_subscriptions?: DefaultSubscriptionSetting[]
+  auth_source_default_wechat_grant_on_signup?: boolean
+  auth_source_default_wechat_grant_on_first_bind?: boolean
+  force_email_on_third_party_signup?: boolean
   // OEM settings
   site_name: string
   site_logo: string
@@ -137,6 +233,11 @@ export interface SystemSettings {
   payment_cancel_rate_limit_window: number
   payment_cancel_rate_limit_unit: string
   payment_cancel_rate_limit_window_mode: string
+  payment_visible_method_alipay_source?: string
+  payment_visible_method_wxpay_source?: string
+  payment_visible_method_alipay_enabled?: boolean
+  payment_visible_method_wxpay_enabled?: boolean
+  openai_advanced_scheduler_enabled?: boolean
 
   // Balance & quota notification
   balance_low_notify_enabled: boolean
@@ -158,6 +259,27 @@ export interface UpdateSettingsRequest {
   default_balance?: number
   default_concurrency?: number
   default_subscriptions?: DefaultSubscriptionSetting[]
+  auth_source_default_email_balance?: number
+  auth_source_default_email_concurrency?: number
+  auth_source_default_email_subscriptions?: DefaultSubscriptionSetting[]
+  auth_source_default_email_grant_on_signup?: boolean
+  auth_source_default_email_grant_on_first_bind?: boolean
+  auth_source_default_linuxdo_balance?: number
+  auth_source_default_linuxdo_concurrency?: number
+  auth_source_default_linuxdo_subscriptions?: DefaultSubscriptionSetting[]
+  auth_source_default_linuxdo_grant_on_signup?: boolean
+  auth_source_default_linuxdo_grant_on_first_bind?: boolean
+  auth_source_default_oidc_balance?: number
+  auth_source_default_oidc_concurrency?: number
+  auth_source_default_oidc_subscriptions?: DefaultSubscriptionSetting[]
+  auth_source_default_oidc_grant_on_signup?: boolean
+  auth_source_default_oidc_grant_on_first_bind?: boolean
+  auth_source_default_wechat_balance?: number
+  auth_source_default_wechat_concurrency?: number
+  auth_source_default_wechat_subscriptions?: DefaultSubscriptionSetting[]
+  auth_source_default_wechat_grant_on_signup?: boolean
+  auth_source_default_wechat_grant_on_first_bind?: boolean
+  force_email_on_third_party_signup?: boolean
   site_name?: string
   site_logo?: string
   site_subtitle?: string
@@ -245,6 +367,11 @@ export interface UpdateSettingsRequest {
   payment_cancel_rate_limit_window?: number
   payment_cancel_rate_limit_unit?: string
   payment_cancel_rate_limit_window_mode?: string
+  payment_visible_method_alipay_source?: string
+  payment_visible_method_wxpay_source?: string
+  payment_visible_method_alipay_enabled?: boolean
+  payment_visible_method_wxpay_enabled?: boolean
+  openai_advanced_scheduler_enabled?: boolean
   // Balance & quota notification
   balance_low_notify_enabled?: boolean
   balance_low_notify_threshold?: number

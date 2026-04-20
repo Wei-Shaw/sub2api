@@ -1586,6 +1586,221 @@
             </div>
           </div>
         </div>
+
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ localText('认证来源默认值', 'Auth Source Defaults') REDACTEDREDACTED
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{
+                localText(
+                  '按注册来源配置新用户默认余额、并发、订阅与授权策略。',
+                  'Configure per-source default balance, concurrency, subscriptions, and grant rules.'
+                )
+              REDACTEDREDACTED
+            </p>
+          </div>
+          <div class="space-y-6 p-6">
+            <div class="flex items-center justify-between rounded border border-gray-200 px-4 py-3 dark:border-dark-700">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">
+                  {{ localText('第三方注册强制补充邮箱', 'Require email on third-party signup') REDACTEDREDACTED
+                </label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{
+                    localText(
+                      '启用后，Linux DO、OIDC、微信注册缺少邮箱时必须先补充邮箱地址。',
+                      'When enabled, Linux DO, OIDC, and WeChat signups must provide an email before account creation.'
+                    )
+                  REDACTEDREDACTED
+                </p>
+              </div>
+              <Toggle v-model="form.force_email_on_third_party_signup" />
+            </div>
+
+            <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              <div
+                v-for="authSource in authSourceDefaultsMeta"
+                :key="authSource.source"
+                class="rounded-xl border border-gray-200 p-4 dark:border-dark-700"
+              >
+                <div class="mb-4">
+                  <div class="font-medium text-gray-900 dark:text-white">{{ authSource.title REDACTEDREDACTED</div>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ authSource.description REDACTEDREDACTED
+                  </p>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t('admin.settings.defaults.defaultBalance') REDACTEDREDACTED
+                    </label>
+                    <input
+                      v-model.number="authSourceDefaults[authSource.source].balance"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      class="input"
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {{ t('admin.settings.defaults.defaultConcurrency') REDACTEDREDACTED
+                    </label>
+                    <input
+                      v-model.number="authSourceDefaults[authSource.source].concurrency"
+                      type="number"
+                      min="1"
+                      class="input"
+                      placeholder="5"
+                    />
+                  </div>
+                </div>
+
+                <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div class="flex items-center justify-between rounded border border-gray-200 px-4 py-3 dark:border-dark-700">
+                    <div>
+                      <label class="font-medium text-gray-900 dark:text-white">
+                        {{ localText('注册即授权', 'Grant on signup') REDACTEDREDACTED
+                      </label>
+                      <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                        {{
+                          localText(
+                            '来源首次注册成功后立即发放默认权益。',
+                            'Grant default entitlements immediately after signup.'
+                          )
+                        REDACTEDREDACTED
+                      </p>
+                    </div>
+                    <Toggle v-model="authSourceDefaults[authSource.source].grant_on_signup" />
+                  </div>
+
+                  <div class="flex items-center justify-between rounded border border-gray-200 px-4 py-3 dark:border-dark-700">
+                    <div>
+                      <label class="font-medium text-gray-900 dark:text-white">
+                        {{ localText('首次绑定时授权', 'Grant on first bind') REDACTEDREDACTED
+                      </label>
+                      <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                        {{
+                          localText(
+                            '来源首次绑定到现有账号时发放默认权益。',
+                            'Grant default entitlements when the source is first bound to an existing user.'
+                          )
+                        REDACTEDREDACTED
+                      </p>
+                    </div>
+                    <Toggle v-model="authSourceDefaults[authSource.source].grant_on_first_bind" />
+                  </div>
+                </div>
+
+                <div class="mt-4 border-t border-gray-100 pt-4 dark:border-dark-700">
+                  <div class="mb-3 flex items-center justify-between">
+                    <div>
+                      <label class="font-medium text-gray-900 dark:text-white">
+                        {{ localText('默认订阅', 'Default subscriptions') REDACTEDREDACTED
+                      </label>
+                      <p class="text-sm text-gray-500 dark:text-gray-400">
+                        {{
+                          localText(
+                            '仅对当前认证来源生效，未配置时不追加来源专属订阅。',
+                            'Applies only to this auth source. Leave empty to skip source-specific subscriptions.'
+                          )
+                        REDACTEDREDACTED
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm"
+                      @click="addAuthSourceDefaultSubscription(authSource.source)"
+                      :disabled="subscriptionGroups.length === 0"
+                    >
+                      {{ t('admin.settings.defaults.addDefaultSubscription') REDACTEDREDACTED
+                    </button>
+                  </div>
+
+                  <div
+                    v-if="authSourceDefaults[authSource.source].subscriptions.length === 0"
+                    class="rounded border border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
+                  >
+                    {{
+                      localText(
+                        '当前来源未配置专属默认订阅。',
+                        'No source-specific default subscriptions configured.'
+                      )
+                    REDACTEDREDACTED
+                  </div>
+
+                  <div v-else class="space-y-3">
+                    <div
+                      v-for="(item, index) in authSourceDefaults[authSource.source].subscriptions"
+                      :key="`${authSource.sourceREDACTED-sub-${indexREDACTED`"
+                      class="grid grid-cols-1 gap-3 rounded border border-gray-200 p-3 md:grid-cols-[1fr_160px_auto] dark:border-dark-600"
+                    >
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                          {{ t('admin.settings.defaults.subscriptionGroup') REDACTEDREDACTED
+                        </label>
+                        <Select
+                          v-model="item.group_id"
+                          class="default-sub-group-select"
+                          :options="defaultSubscriptionGroupOptions"
+                          :placeholder="t('admin.settings.defaults.subscriptionGroup')"
+                        >
+                          <template #selected="{ option REDACTED">
+                            <GroupBadge
+                              v-if="option"
+                              :name="(option as unknown as DefaultSubscriptionGroupOption).label"
+                              :platform="(option as unknown as DefaultSubscriptionGroupOption).platform"
+                              :subscription-type="(option as unknown as DefaultSubscriptionGroupOption).subscriptionType"
+                              :rate-multiplier="(option as unknown as DefaultSubscriptionGroupOption).rate"
+                            />
+                            <span v-else class="text-gray-400">
+                              {{ t('admin.settings.defaults.subscriptionGroup') REDACTEDREDACTED
+                            </span>
+                          </template>
+                          <template #option="{ option, selected REDACTED">
+                            <GroupOptionItem
+                              :name="(option as unknown as DefaultSubscriptionGroupOption).label"
+                              :platform="(option as unknown as DefaultSubscriptionGroupOption).platform"
+                              :subscription-type="(option as unknown as DefaultSubscriptionGroupOption).subscriptionType"
+                              :rate-multiplier="(option as unknown as DefaultSubscriptionGroupOption).rate"
+                              :description="(option as unknown as DefaultSubscriptionGroupOption).description"
+                              :selected="selected"
+                            />
+                          </template>
+                        </Select>
+                      </div>
+                      <div>
+                        <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">
+                          {{ t('admin.settings.defaults.subscriptionValidityDays') REDACTEDREDACTED
+                        </label>
+                        <input
+                          v-model.number="item.validity_days"
+                          type="number"
+                          min="1"
+                          max="36500"
+                          class="input h-[42px]"
+                        />
+                      </div>
+                      <div class="flex items-end">
+                        <button
+                          type="button"
+                          class="btn btn-secondary w-full text-red-600 hover:text-red-700 dark:text-red-400"
+                          @click="removeAuthSourceDefaultSubscription(authSource.source, index)"
+                        >
+                          {{ t('common.delete') REDACTEDREDACTED
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
         </div><!-- /Tab: Users -->
 
         <!-- Tab: Gateway — Claude Code, Scheduling -->
@@ -1643,19 +1858,38 @@
             </p>
           </div>
           <div class="p-6">
-            <div class="flex items-center justify-between">
-              <div>
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('admin.settings.scheduling.allowUngroupedKey') REDACTEDREDACTED
+            <div class="space-y-4">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.scheduling.allowUngroupedKey') REDACTEDREDACTED
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.settings.scheduling.allowUngroupedKeyHint') REDACTEDREDACTED
+                  </p>
+                </div>
+                <label class="toggle">
+                  <input v-model="form.allow_ungrouped_key_scheduling" type="checkbox" />
+                  <span class="toggle-slider"></span>
                 </label>
-                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('admin.settings.scheduling.allowUngroupedKeyHint') REDACTEDREDACTED
-                </p>
               </div>
-              <label class="toggle">
-                <input v-model="form.allow_ungrouped_key_scheduling" type="checkbox" />
-                <span class="toggle-slider"></span>
-              </label>
+
+              <div class="flex items-center justify-between rounded border border-gray-200 px-4 py-3 dark:border-dark-700">
+                <div>
+                  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ localText('OpenAI 高级调度器', 'OpenAI advanced scheduler') REDACTEDREDACTED
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      localText(
+                        '切换 OpenAI 侧新增的高级调度开关，供当前分支实验性调度逻辑使用。',
+                        'Toggles the new OpenAI advanced scheduler flag for the experimental routing logic on this branch.'
+                      )
+                    REDACTEDREDACTED
+                  </p>
+                </div>
+                <Toggle v-model="form.openai_advanced_scheduler_enabled" />
+              </div>
             </div>
           </div>
         </div>
@@ -2450,6 +2684,59 @@
                   </a>
                 </p>
               </div>
+              <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                <div
+                  v-for="visibleMethod in paymentVisibleMethodCards"
+                  :key="visibleMethod.key"
+                  class="rounded-lg border border-gray-200 p-4 dark:border-dark-700"
+                >
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <label class="font-medium text-gray-900 dark:text-white">
+                        {{
+                          localText(
+                            `${visibleMethod.titleREDACTED 可见方式`,
+                            `${visibleMethod.titleREDACTED visible method`
+                          )
+                        REDACTEDREDACTED
+                      </label>
+                      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        {{
+                          localText(
+                            '控制前台结算页是否展示该方式，以及展示时使用的来源键。',
+                            'Controls whether checkout shows this method and which source key it exposes.'
+                          )
+                        REDACTEDREDACTED
+                      </p>
+                    </div>
+                    <Toggle
+                      :model-value="getPaymentVisibleMethodEnabled(visibleMethod.key)"
+                      @update:model-value="setPaymentVisibleMethodEnabled(visibleMethod.key, $event)"
+                    />
+                  </div>
+
+                  <div class="mt-4">
+                    <label class="input-label">
+                      {{ localText('来源键', 'Source key') REDACTEDREDACTED
+                    </label>
+                    <input
+                      :value="getPaymentVisibleMethodSource(visibleMethod.key)"
+                      @input="setPaymentVisibleMethodSource(visibleMethod.key, ($event.target as HTMLInputElement).value)"
+                      type="text"
+                      class="input"
+                      :placeholder="visibleMethod.key"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-400">
+                      {{
+                        localText(
+                          '留空表示由后端使用默认来源；可填 easypay、alipay、wxpay 等来源标识。',
+                          'Leave blank to let the backend decide. Typical values are easypay, alipay, or wxpay.'
+                        )
+                      REDACTEDREDACTED
+                    </p>
+                  </div>
+                </div>
+              </div>
               <!-- Row 5: Help image + text -->
               <div class="grid grid-cols-2 gap-3">
                 <div>
@@ -2827,7 +3114,14 @@
 import { ref, reactive, computed, onMounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { adminAPI REDACTED from '@/api'
+import {
+  appendAuthSourceDefaultsToUpdateRequest,
+  buildAuthSourceDefaultsState,
+  normalizeDefaultSubscriptionSettings,
+REDACTED from '@/api/admin/settings'
 import type {
+  AuthSourceDefaultsState,
+  AuthSourceType,
   SystemSettings,
   UpdateSettingsRequest,
   DefaultSubscriptionSetting,
@@ -2863,6 +3157,10 @@ REDACTED from '@/utils/registrationEmailPolicy'
 const { t, locale REDACTED = useI18n()
 const appStore = useAppStore()
 const adminSettingsStore = useAdminSettingsStore()
+
+function localText(zh: string, en: string): string {
+  return locale.value.startsWith('zh') ? zh : en
+REDACTED
 
 type SettingsTab = 'general' | 'security' | 'users' | 'gateway' | 'payment' | 'email' | 'backup'
 const activeTab = ref<SettingsTab>('general')
@@ -2960,6 +3258,12 @@ type SettingsForm = SystemSettings & {
   turnstile_secret_key: string
   linuxdo_connect_client_secret: string
   oidc_connect_client_secret: string
+  force_email_on_third_party_signup: boolean
+  payment_visible_method_alipay_source: string
+  payment_visible_method_wxpay_source: string
+  payment_visible_method_alipay_enabled: boolean
+  payment_visible_method_wxpay_enabled: boolean
+  openai_advanced_scheduler_enabled: boolean
 REDACTED
 
 const form = reactive<SettingsForm>({
@@ -2974,6 +3278,7 @@ const form = reactive<SettingsForm>({
   default_balance: 0,
   default_concurrency: 1,
   default_subscriptions: [],
+  force_email_on_third_party_signup: false,
   site_name: 'Sub2API',
   site_logo: '',
   site_subtitle: 'Subscription to API Conversion Platform',
@@ -2983,7 +3288,7 @@ const form = reactive<SettingsForm>({
   home_content: '',
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
-  payment_enabled: false,  payment_min_amount: 1,  payment_max_amount: 10000,  payment_daily_limit: 50000,  payment_max_pending_orders: 3,  payment_order_timeout_minutes: 30,  payment_balance_disabled: false,  payment_balance_recharge_multiplier: 1,  payment_recharge_fee_rate: 0,  payment_enabled_types: [],  payment_help_image_url: '',  payment_help_text: '',  payment_product_name_prefix: '',  payment_product_name_suffix: '',  payment_load_balance_strategy: 'round-robin',  payment_cancel_rate_limit_enabled: false,  payment_cancel_rate_limit_max: 10,  payment_cancel_rate_limit_window: 1,  payment_cancel_rate_limit_unit: 'day',  payment_cancel_rate_limit_window_mode: 'rolling',
+  payment_enabled: false,  payment_min_amount: 1,  payment_max_amount: 10000,  payment_daily_limit: 50000,  payment_max_pending_orders: 3,  payment_order_timeout_minutes: 30,  payment_balance_disabled: false,  payment_balance_recharge_multiplier: 1,  payment_recharge_fee_rate: 0,  payment_enabled_types: [],  payment_help_image_url: '',  payment_help_text: '',  payment_product_name_prefix: '',  payment_product_name_suffix: '',  payment_load_balance_strategy: 'round-robin',  payment_cancel_rate_limit_enabled: false,  payment_cancel_rate_limit_max: 10,  payment_cancel_rate_limit_window: 1,  payment_cancel_rate_limit_unit: 'day',  payment_cancel_rate_limit_window_mode: 'rolling',  payment_visible_method_alipay_source: '',  payment_visible_method_wxpay_source: '',  payment_visible_method_alipay_enabled: false,  payment_visible_method_wxpay_enabled: false,
   table_default_page_size: tablePageSizeDefault,
   table_page_size_options: [10, 20, 50, 100],
   custom_menu_items: [] as Array<{id: string; label: string; icon_svg: string; url: string; visibility: 'user' | 'admin'; sort_order: numberREDACTED>,
@@ -3051,6 +3356,7 @@ const form = reactive<SettingsForm>({
   max_claude_code_version: '',
   // 分组隔离
   allow_ungrouped_key_scheduling: false,
+  openai_advanced_scheduler_enabled: false,
   // Gateway forwarding behavior
   enable_fingerprint_unification: true,
   enable_metadata_passthrough: false,
@@ -3062,6 +3368,74 @@ const form = reactive<SettingsForm>({
   account_quota_notify_enabled: false,
   account_quota_notify_emails: [] as NotifyEmailEntry[]
 REDACTED)
+
+const authSourceDefaults = reactive<AuthSourceDefaultsState>(buildAuthSourceDefaultsState({REDACTED))
+
+const authSourceDefaultsMeta = computed(() => [
+  {
+    source: 'email' as AuthSourceType,
+    title: localText('邮箱注册', 'Email signup'),
+    description: localText('适用于邮箱密码注册的新用户默认配额。', 'Default quota grants for email-password signups.')
+  REDACTED,
+  {
+    source: 'linuxdo' as AuthSourceType,
+    title: localText('Linux DO 登录', 'Linux DO signup'),
+    description: localText('适用于 Linux DO 第三方注册的新用户默认配额。', 'Default quota grants for Linux DO signups.')
+  REDACTED,
+  {
+    source: 'oidc' as AuthSourceType,
+    title: localText('OIDC 登录', 'OIDC signup'),
+    description: localText('适用于 OIDC 第三方注册的新用户默认配额。', 'Default quota grants for OIDC signups.')
+  REDACTED,
+  {
+    source: 'wechat' as AuthSourceType,
+    title: localText('微信登录', 'WeChat signup'),
+    description: localText('适用于微信第三方注册的新用户默认配额。', 'Default quota grants for WeChat signups.')
+  REDACTED,
+])
+
+const paymentVisibleMethodCards = computed(() => [
+  {
+    key: 'alipay' as const,
+    title: t('payment.methods.alipay'),
+    enabledField: 'payment_visible_method_alipay_enabled' as const,
+    sourceField: 'payment_visible_method_alipay_source' as const,
+  REDACTED,
+  {
+    key: 'wxpay' as const,
+    title: t('payment.methods.wxpay'),
+    enabledField: 'payment_visible_method_wxpay_enabled' as const,
+    sourceField: 'payment_visible_method_wxpay_source' as const,
+  REDACTED,
+])
+
+function getPaymentVisibleMethodEnabled(method: 'alipay' | 'wxpay'): boolean {
+  return method === 'alipay'
+    ? form.payment_visible_method_alipay_enabled
+    : form.payment_visible_method_wxpay_enabled
+REDACTED
+
+function setPaymentVisibleMethodEnabled(method: 'alipay' | 'wxpay', enabled: boolean) {
+  if (method === 'alipay') {
+    form.payment_visible_method_alipay_enabled = enabled
+    return
+  REDACTED
+  form.payment_visible_method_wxpay_enabled = enabled
+REDACTED
+
+function getPaymentVisibleMethodSource(method: 'alipay' | 'wxpay'): string {
+  return method === 'alipay'
+    ? form.payment_visible_method_alipay_source
+    : form.payment_visible_method_wxpay_source
+REDACTED
+
+function setPaymentVisibleMethodSource(method: 'alipay' | 'wxpay', source: string) {
+  if (method === 'alipay') {
+    form.payment_visible_method_alipay_source = source
+    return
+  REDACTED
+  form.payment_visible_method_wxpay_source = source
+REDACTED
 
 // Proxies for web search emulation ProxySelector
 const webSearchProxies = ref<Proxy[]>([])
@@ -3428,15 +3802,9 @@ async function loadSettings() {
         (form as Record<string, unknown>)[key] = value
       REDACTED
     REDACTED
+    Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(settings))
     form.backend_mode_enabled = settings.backend_mode_enabled
-    form.default_subscriptions = Array.isArray(settings.default_subscriptions)
-      ? settings.default_subscriptions
-          .filter((item) => item.group_id > 0 && item.validity_days > 0)
-          .map((item) => ({
-            group_id: item.group_id,
-            validity_days: item.validity_days
-          REDACTED))
-      : []
+    form.default_subscriptions = normalizeDefaultSubscriptionSettings(settings.default_subscriptions)
     registrationEmailSuffixWhitelistTags.value = normalizeRegistrationEmailSuffixDomains(
       settings.registration_email_suffix_whitelist
     )
@@ -3471,10 +3839,18 @@ async function loadSubscriptionGroups() {
   REDACTED
 REDACTED
 
+function findNextAvailableSubscriptionGroup(
+  existingGroupIDs: number[]
+): AdminGroup | undefined {
+  const existing = new Set(existingGroupIDs)
+  return subscriptionGroups.value.find((group) => !existing.has(group.id))
+REDACTED
+
 function addDefaultSubscription() {
   if (subscriptionGroups.value.length === 0) return
-  const existing = new Set(form.default_subscriptions.map((item) => item.group_id))
-  const candidate = subscriptionGroups.value.find((group) => !existing.has(group.id))
+  const candidate = findNextAvailableSubscriptionGroup(
+    form.default_subscriptions.map((item) => item.group_id)
+  )
   if (!candidate) return
   form.default_subscriptions.push({
     group_id: candidate.id,
@@ -3484,6 +3860,36 @@ REDACTED
 
 function removeDefaultSubscription(index: number) {
   form.default_subscriptions.splice(index, 1)
+REDACTED
+
+function addAuthSourceDefaultSubscription(source: AuthSourceType) {
+  if (subscriptionGroups.value.length === 0) return
+  const candidate = findNextAvailableSubscriptionGroup(
+    authSourceDefaults[source].subscriptions.map((item) => item.group_id)
+  )
+  if (!candidate) return
+  authSourceDefaults[source].subscriptions.push({
+    group_id: candidate.id,
+    validity_days: 30
+  REDACTED)
+REDACTED
+
+function removeAuthSourceDefaultSubscription(source: AuthSourceType, index: number) {
+  authSourceDefaults[source].subscriptions.splice(index, 1)
+REDACTED
+
+function findDuplicateDefaultSubscription(
+  subscriptions: DefaultSubscriptionSetting[]
+): DefaultSubscriptionSetting | undefined {
+  const seenGroupIDs = new Set<number>()
+
+  return subscriptions.find((item) => {
+    if (seenGroupIDs.has(item.group_id)) {
+      return true
+    REDACTED
+    seenGroupIDs.add(item.group_id)
+    return false
+  REDACTED)
 REDACTED
 
 async function saveSettings() {
@@ -3520,21 +3926,12 @@ async function saveSettings() {
     form.table_default_page_size = normalizedTableDefaultPageSize
     form.table_page_size_options = normalizedTablePageSizeOptions
 
-    const normalizedDefaultSubscriptions = form.default_subscriptions
-      .filter((item) => item.group_id > 0 && item.validity_days > 0)
-      .map((item: DefaultSubscriptionSetting) => ({
-        group_id: item.group_id,
-        validity_days: Math.min(36500, Math.max(1, Math.floor(item.validity_days)))
-      REDACTED))
-
-    const seenGroupIDs = new Set<number>()
-    const duplicateDefaultSubscription = normalizedDefaultSubscriptions.find((item) => {
-      if (seenGroupIDs.has(item.group_id)) {
-        return true
-      REDACTED
-      seenGroupIDs.add(item.group_id)
-      return false
-    REDACTED)
+    const normalizedDefaultSubscriptions = normalizeDefaultSubscriptionSettings(
+      form.default_subscriptions
+    )
+    const duplicateDefaultSubscription = findDuplicateDefaultSubscription(
+      normalizedDefaultSubscriptions
+    )
     if (duplicateDefaultSubscription) {
       appStore.showError(
         t('admin.settings.defaults.defaultSubscriptionsDuplicate', {
@@ -3542,6 +3939,23 @@ async function saveSettings() {
         REDACTED)
       )
       return
+    REDACTED
+
+    for (const authSource of authSourceDefaultsMeta.value) {
+      authSourceDefaults[authSource.source].subscriptions = normalizeDefaultSubscriptionSettings(
+        authSourceDefaults[authSource.source].subscriptions
+      )
+      const duplicate = findDuplicateDefaultSubscription(
+        authSourceDefaults[authSource.source].subscriptions
+      )
+      if (duplicate) {
+        appStore.showError(
+          `${authSource.titleREDACTED: ${t('admin.settings.defaults.defaultSubscriptionsDuplicate', {
+            groupId: duplicate.group_id
+          REDACTED)REDACTED`
+        )
+        return
+      REDACTED
     REDACTED
 
     // Validate URL fields — novalidate disables browser-native checks, so we validate here
@@ -3571,6 +3985,7 @@ async function saveSettings() {
       default_balance: form.default_balance,
       default_concurrency: form.default_concurrency,
       default_subscriptions: normalizedDefaultSubscriptions,
+      force_email_on_third_party_signup: form.force_email_on_third_party_signup,
       site_name: form.site_name,
       site_logo: form.site_logo,
       site_subtitle: form.site_subtitle,
@@ -3655,6 +4070,11 @@ async function saveSettings() {
       payment_cancel_rate_limit_window: Number(form.payment_cancel_rate_limit_window) || 1,
       payment_cancel_rate_limit_unit: form.payment_cancel_rate_limit_unit,
       payment_cancel_rate_limit_window_mode: form.payment_cancel_rate_limit_window_mode,
+      payment_visible_method_alipay_source: form.payment_visible_method_alipay_source,
+      payment_visible_method_wxpay_source: form.payment_visible_method_wxpay_source,
+      payment_visible_method_alipay_enabled: form.payment_visible_method_alipay_enabled,
+      payment_visible_method_wxpay_enabled: form.payment_visible_method_wxpay_enabled,
+      openai_advanced_scheduler_enabled: form.openai_advanced_scheduler_enabled,
       // Balance & quota notification
       balance_low_notify_enabled: form.balance_low_notify_enabled,
       balance_low_notify_threshold: Number(form.balance_low_notify_threshold) || 0,
@@ -3663,12 +4083,15 @@ async function saveSettings() {
       account_quota_notify_emails: (form.account_quota_notify_emails || []).filter((e) => e.email.trim() !== ''),
     REDACTED
 
+    appendAuthSourceDefaultsToUpdateRequest(payload, authSourceDefaults)
+
     const updated = await adminAPI.settings.updateSettings(payload)
     for (const [key, value] of Object.entries(updated)) {
       if (value !== null && value !== undefined) {
         (form as Record<string, unknown>)[key] = value
       REDACTED
     REDACTED
+    Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(updated))
     registrationEmailSuffixWhitelistTags.value = normalizeRegistrationEmailSuffixDomains(
       updated.registration_email_suffix_whitelist
     )

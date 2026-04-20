@@ -72,6 +72,17 @@ func (User) Fields() []ent.Field {
 		field.Time("totp_enabled_at").
 			Optional().
 			Nillable(),
+		field.String("signup_source").
+			MaxLen(20).
+			Default("email"),
+		field.Time("last_login_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"REDACTED),
+		field.Time("last_active_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"REDACTED),
 
 		// 余额不足通知
 		field.Bool("balance_notify_enabled").
@@ -104,6 +115,8 @@ func (User) Edges() []ent.Edge {
 		edge.To("attribute_values", UserAttributeValue.Type),
 		edge.To("promo_code_usages", PromoCodeUsage.Type),
 		edge.To("payment_orders", PaymentOrder.Type),
+		edge.To("auth_identities", AuthIdentity.Type),
+		edge.To("pending_auth_sessions", PendingAuthSession.Type),
 REDACTED
 REDACTED
 

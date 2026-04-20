@@ -73,6 +73,11 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 REDACTED
+	authSourceDefaults, err := h.settingService.GetAuthSourceDefaultSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
 
 	// Check if ops monitoring is enabled (respects config.ops.enabled)
 	opsEnabled := h.opsService != nil && h.opsService.IsMonitoringEnabled(c.Request.Context())
@@ -93,7 +98,7 @@ REDACTED
 		paymentCfg = &service.PaymentConfig{REDACTED
 REDACTED
 
-	response.Success(c, dto.SystemSettings{
+	payload := dto.SystemSettings{
 		RegistrationEnabled:                  settings.RegistrationEnabled,
 		EmailVerifyEnabled:                   settings.EmailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist:     settings.RegistrationEmailSuffixWhitelist,
@@ -200,7 +205,8 @@ REDACTED
 		PaymentCancelRateLimitWindow:         paymentCfg.CancelRateLimitWindow,
 		PaymentCancelRateLimitUnit:           paymentCfg.CancelRateLimitUnit,
 		PaymentCancelRateLimitMode:           paymentCfg.CancelRateLimitMode,
-REDACTED)
+REDACTED
+	response.Success(c, systemSettingsResponseData(payload, authSourceDefaults))
 REDACTED
 
 // UpdateSettingsRequest 更新设置请求
@@ -276,9 +282,30 @@ type UpdateSettingsRequest struct {
 	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
 
 	// 默认配置
-	DefaultConcurrency   int                              `json:"default_concurrency"`
-	DefaultBalance       float64                          `json:"default_balance"`
-	DefaultSubscriptions []dto.DefaultSubscriptionSetting `json:"default_subscriptions"`
+	DefaultConcurrency                       int                               `json:"default_concurrency"`
+	DefaultBalance                           float64                           `json:"default_balance"`
+	DefaultSubscriptions                     []dto.DefaultSubscriptionSetting  `json:"default_subscriptions"`
+	AuthSourceDefaultEmailBalance            *float64                          `json:"auth_source_default_email_balance"`
+	AuthSourceDefaultEmailConcurrency        *int                              `json:"auth_source_default_email_concurrency"`
+	AuthSourceDefaultEmailSubscriptions      *[]dto.DefaultSubscriptionSetting `json:"auth_source_default_email_subscriptions"`
+	AuthSourceDefaultEmailGrantOnSignup      *bool                             `json:"auth_source_default_email_grant_on_signup"`
+	AuthSourceDefaultEmailGrantOnFirstBind   *bool                             `json:"auth_source_default_email_grant_on_first_bind"`
+	AuthSourceDefaultLinuxDoBalance          *float64                          `json:"auth_source_default_linuxdo_balance"`
+	AuthSourceDefaultLinuxDoConcurrency      *int                              `json:"auth_source_default_linuxdo_concurrency"`
+	AuthSourceDefaultLinuxDoSubscriptions    *[]dto.DefaultSubscriptionSetting `json:"auth_source_default_linuxdo_subscriptions"`
+	AuthSourceDefaultLinuxDoGrantOnSignup    *bool                             `json:"auth_source_default_linuxdo_grant_on_signup"`
+	AuthSourceDefaultLinuxDoGrantOnFirstBind *bool                             `json:"auth_source_default_linuxdo_grant_on_first_bind"`
+	AuthSourceDefaultOIDCBalance             *float64                          `json:"auth_source_default_oidc_balance"`
+	AuthSourceDefaultOIDCConcurrency         *int                              `json:"auth_source_default_oidc_concurrency"`
+	AuthSourceDefaultOIDCSubscriptions       *[]dto.DefaultSubscriptionSetting `json:"auth_source_default_oidc_subscriptions"`
+	AuthSourceDefaultOIDCGrantOnSignup       *bool                             `json:"auth_source_default_oidc_grant_on_signup"`
+	AuthSourceDefaultOIDCGrantOnFirstBind    *bool                             `json:"auth_source_default_oidc_grant_on_first_bind"`
+	AuthSourceDefaultWeChatBalance           *float64                          `json:"auth_source_default_wechat_balance"`
+	AuthSourceDefaultWeChatConcurrency       *int                              `json:"auth_source_default_wechat_concurrency"`
+	AuthSourceDefaultWeChatSubscriptions     *[]dto.DefaultSubscriptionSetting `json:"auth_source_default_wechat_subscriptions"`
+	AuthSourceDefaultWeChatGrantOnSignup     *bool                             `json:"auth_source_default_wechat_grant_on_signup"`
+	AuthSourceDefaultWeChatGrantOnFirstBind  *bool                             `json:"auth_source_default_wechat_grant_on_first_bind"`
+	ForceEmailOnThirdPartySignup             *bool                             `json:"force_email_on_third_party_signup"`
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
@@ -357,6 +384,11 @@ REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
+	previousAuthSourceDefaults, err := h.settingService.GetAuthSourceDefaultSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
 
 	// 验证参数
 	if req.DefaultConcurrency < 1 {
@@ -381,6 +413,10 @@ REDACTED
 		req.SMTPPort = 587
 REDACTED
 	req.DefaultSubscriptions = normalizeDefaultSubscriptions(req.DefaultSubscriptions)
+	req.AuthSourceDefaultEmailSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultEmailSubscriptions)
+	req.AuthSourceDefaultLinuxDoSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultLinuxDoSubscriptions)
+	req.AuthSourceDefaultOIDCSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultOIDCSubscriptions)
+	req.AuthSourceDefaultWeChatSubscriptions = normalizeOptionalDefaultSubscriptions(req.AuthSourceDefaultWeChatSubscriptions)
 
 	// SMTP 配置保护：如果请求中 smtp_host 为空但数据库中已有配置，则保留已有 SMTP 配置
 	// 防止前端加载设置失败时空表单覆盖已保存的 SMTP 配置
@@ -538,25 +574,27 @@ REDACTED
 			response.BadRequest(c, "OIDC scopes must contain openid")
 			return
 	REDACTED
+		if !req.OIDCConnectUsePKCE {
+			response.BadRequest(c, "OIDC PKCE must be enabled")
+			return
+	REDACTED
+		if !req.OIDCConnectValidateIDToken {
+			response.BadRequest(c, "OIDC ID Token validation must be enabled")
+			return
+	REDACTED
 		switch req.OIDCConnectTokenAuthMethod {
 		case "", "client_secret_post", "client_secret_basic", "none":
 		default:
 			response.BadRequest(c, "OIDC Token Auth Method must be one of client_secret_post/client_secret_basic/none")
 			return
 	REDACTED
-		if req.OIDCConnectTokenAuthMethod == "none" && !req.OIDCConnectUsePKCE {
-			response.BadRequest(c, "OIDC PKCE must be enabled when token_auth_method=none")
-			return
-	REDACTED
 		if req.OIDCConnectClockSkewSeconds < 0 || req.OIDCConnectClockSkewSeconds > 600 {
 			response.BadRequest(c, "OIDC clock skew seconds must be between 0 and 600")
 			return
 	REDACTED
-		if req.OIDCConnectValidateIDToken {
-			if req.OIDCConnectAllowedSigningAlgs == "" {
-				response.BadRequest(c, "OIDC Allowed Signing Algs is required when validate_id_token=true")
-				return
-		REDACTED
+		if req.OIDCConnectAllowedSigningAlgs == "" {
+			response.BadRequest(c, "OIDC Allowed Signing Algs is required when validate_id_token=true")
+			return
 	REDACTED
 		if req.OIDCConnectJWKSURL != "" {
 			if err := config.ValidateAbsoluteHTTPURL(req.OIDCConnectJWKSURL); err != nil {
@@ -933,6 +971,41 @@ REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
+	authSourceDefaults := &service.AuthSourceDefaultSettings{
+		Email: service.ProviderDefaultGrantSettings{
+			Balance:          float64ValueOrDefault(req.AuthSourceDefaultEmailBalance, previousAuthSourceDefaults.Email.Balance),
+			Concurrency:      intValueOrDefault(req.AuthSourceDefaultEmailConcurrency, previousAuthSourceDefaults.Email.Concurrency),
+			Subscriptions:    defaultSubscriptionsValueOrDefault(req.AuthSourceDefaultEmailSubscriptions, previousAuthSourceDefaults.Email.Subscriptions),
+			GrantOnSignup:    boolValueOrDefault(req.AuthSourceDefaultEmailGrantOnSignup, previousAuthSourceDefaults.Email.GrantOnSignup),
+			GrantOnFirstBind: boolValueOrDefault(req.AuthSourceDefaultEmailGrantOnFirstBind, previousAuthSourceDefaults.Email.GrantOnFirstBind),
+	REDACTED,
+		LinuxDo: service.ProviderDefaultGrantSettings{
+			Balance:          float64ValueOrDefault(req.AuthSourceDefaultLinuxDoBalance, previousAuthSourceDefaults.LinuxDo.Balance),
+			Concurrency:      intValueOrDefault(req.AuthSourceDefaultLinuxDoConcurrency, previousAuthSourceDefaults.LinuxDo.Concurrency),
+			Subscriptions:    defaultSubscriptionsValueOrDefault(req.AuthSourceDefaultLinuxDoSubscriptions, previousAuthSourceDefaults.LinuxDo.Subscriptions),
+			GrantOnSignup:    boolValueOrDefault(req.AuthSourceDefaultLinuxDoGrantOnSignup, previousAuthSourceDefaults.LinuxDo.GrantOnSignup),
+			GrantOnFirstBind: boolValueOrDefault(req.AuthSourceDefaultLinuxDoGrantOnFirstBind, previousAuthSourceDefaults.LinuxDo.GrantOnFirstBind),
+	REDACTED,
+		OIDC: service.ProviderDefaultGrantSettings{
+			Balance:          float64ValueOrDefault(req.AuthSourceDefaultOIDCBalance, previousAuthSourceDefaults.OIDC.Balance),
+			Concurrency:      intValueOrDefault(req.AuthSourceDefaultOIDCConcurrency, previousAuthSourceDefaults.OIDC.Concurrency),
+			Subscriptions:    defaultSubscriptionsValueOrDefault(req.AuthSourceDefaultOIDCSubscriptions, previousAuthSourceDefaults.OIDC.Subscriptions),
+			GrantOnSignup:    boolValueOrDefault(req.AuthSourceDefaultOIDCGrantOnSignup, previousAuthSourceDefaults.OIDC.GrantOnSignup),
+			GrantOnFirstBind: boolValueOrDefault(req.AuthSourceDefaultOIDCGrantOnFirstBind, previousAuthSourceDefaults.OIDC.GrantOnFirstBind),
+	REDACTED,
+		WeChat: service.ProviderDefaultGrantSettings{
+			Balance:          float64ValueOrDefault(req.AuthSourceDefaultWeChatBalance, previousAuthSourceDefaults.WeChat.Balance),
+			Concurrency:      intValueOrDefault(req.AuthSourceDefaultWeChatConcurrency, previousAuthSourceDefaults.WeChat.Concurrency),
+			Subscriptions:    defaultSubscriptionsValueOrDefault(req.AuthSourceDefaultWeChatSubscriptions, previousAuthSourceDefaults.WeChat.Subscriptions),
+			GrantOnSignup:    boolValueOrDefault(req.AuthSourceDefaultWeChatGrantOnSignup, previousAuthSourceDefaults.WeChat.GrantOnSignup),
+			GrantOnFirstBind: boolValueOrDefault(req.AuthSourceDefaultWeChatGrantOnFirstBind, previousAuthSourceDefaults.WeChat.GrantOnFirstBind),
+	REDACTED,
+		ForceEmailOnThirdPartySignup: boolValueOrDefault(req.ForceEmailOnThirdPartySignup, previousAuthSourceDefaults.ForceEmailOnThirdPartySignup),
+REDACTED
+	if err := h.settingService.UpdateAuthSourceDefaultSettings(c.Request.Context(), authSourceDefaults); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
 
 	// Update payment configuration (integrated into system settings).
 	// Skip if no payment fields were provided (prevents accidental wipe).
@@ -977,6 +1050,11 @@ REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
+	updatedAuthSourceDefaults, err := h.settingService.GetAuthSourceDefaultSettings(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
 	updatedDefaultSubscriptions := make([]dto.DefaultSubscriptionSetting, 0, len(updatedSettings.DefaultSubscriptions))
 	for _, sub := range updatedSettings.DefaultSubscriptions {
 		updatedDefaultSubscriptions = append(updatedDefaultSubscriptions, dto.DefaultSubscriptionSetting{
@@ -994,7 +1072,7 @@ REDACTED
 		updatedPaymentCfg = &service.PaymentConfig{REDACTED
 REDACTED
 
-	response.Success(c, dto.SystemSettings{
+	payload := dto.SystemSettings{
 		RegistrationEnabled:                  updatedSettings.RegistrationEnabled,
 		EmailVerifyEnabled:                   updatedSettings.EmailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist:     updatedSettings.RegistrationEmailSuffixWhitelist,
@@ -1100,7 +1178,8 @@ REDACTED
 		PaymentCancelRateLimitWindow:         updatedPaymentCfg.CancelRateLimitWindow,
 		PaymentCancelRateLimitUnit:           updatedPaymentCfg.CancelRateLimitUnit,
 		PaymentCancelRateLimitMode:           updatedPaymentCfg.CancelRateLimitMode,
-REDACTED)
+REDACTED
+	response.Success(c, systemSettingsResponseData(payload, updatedAuthSourceDefaults))
 REDACTED
 
 // hasPaymentFields returns true if any payment-related field was explicitly provided.
@@ -1410,6 +1489,84 @@ REDACTED
 		normalized = append(normalized, item)
 REDACTED
 	return normalized
+REDACTED
+
+func normalizeOptionalDefaultSubscriptions(input *[]dto.DefaultSubscriptionSetting) *[]dto.DefaultSubscriptionSetting {
+	if input == nil {
+		return nil
+REDACTED
+	normalized := normalizeDefaultSubscriptions(*input)
+	return &normalized
+REDACTED
+
+func float64ValueOrDefault(value *float64, fallback float64) float64 {
+	if value == nil {
+		return fallback
+REDACTED
+	return *value
+REDACTED
+
+func intValueOrDefault(value *int, fallback int) int {
+	if value == nil {
+		return fallback
+REDACTED
+	return *value
+REDACTED
+
+func boolValueOrDefault(value *bool, fallback bool) bool {
+	if value == nil {
+		return fallback
+REDACTED
+	return *value
+REDACTED
+
+func defaultSubscriptionsValueOrDefault(input *[]dto.DefaultSubscriptionSetting, fallback []service.DefaultSubscriptionSetting) []service.DefaultSubscriptionSetting {
+	if input == nil {
+		return fallback
+REDACTED
+	result := make([]service.DefaultSubscriptionSetting, 0, len(*input))
+	for _, item := range *input {
+		result = append(result, service.DefaultSubscriptionSetting{
+			GroupID:      item.GroupID,
+			ValidityDays: item.ValidityDays,
+	REDACTED)
+REDACTED
+	return result
+REDACTED
+
+func systemSettingsResponseData(settings dto.SystemSettings, authSourceDefaults *service.AuthSourceDefaultSettings) map[string]any {
+	data := make(map[string]any)
+	raw, err := json.Marshal(settings)
+	if err == nil {
+		_ = json.Unmarshal(raw, &data)
+REDACTED
+	if authSourceDefaults == nil {
+		authSourceDefaults = &service.AuthSourceDefaultSettings{REDACTED
+REDACTED
+
+	data["auth_source_default_email_balance"] = authSourceDefaults.Email.Balance
+	data["auth_source_default_email_concurrency"] = authSourceDefaults.Email.Concurrency
+	data["auth_source_default_email_subscriptions"] = authSourceDefaults.Email.Subscriptions
+	data["auth_source_default_email_grant_on_signup"] = authSourceDefaults.Email.GrantOnSignup
+	data["auth_source_default_email_grant_on_first_bind"] = authSourceDefaults.Email.GrantOnFirstBind
+	data["auth_source_default_linuxdo_balance"] = authSourceDefaults.LinuxDo.Balance
+	data["auth_source_default_linuxdo_concurrency"] = authSourceDefaults.LinuxDo.Concurrency
+	data["auth_source_default_linuxdo_subscriptions"] = authSourceDefaults.LinuxDo.Subscriptions
+	data["auth_source_default_linuxdo_grant_on_signup"] = authSourceDefaults.LinuxDo.GrantOnSignup
+	data["auth_source_default_linuxdo_grant_on_first_bind"] = authSourceDefaults.LinuxDo.GrantOnFirstBind
+	data["auth_source_default_oidc_balance"] = authSourceDefaults.OIDC.Balance
+	data["auth_source_default_oidc_concurrency"] = authSourceDefaults.OIDC.Concurrency
+	data["auth_source_default_oidc_subscriptions"] = authSourceDefaults.OIDC.Subscriptions
+	data["auth_source_default_oidc_grant_on_signup"] = authSourceDefaults.OIDC.GrantOnSignup
+	data["auth_source_default_oidc_grant_on_first_bind"] = authSourceDefaults.OIDC.GrantOnFirstBind
+	data["auth_source_default_wechat_balance"] = authSourceDefaults.WeChat.Balance
+	data["auth_source_default_wechat_concurrency"] = authSourceDefaults.WeChat.Concurrency
+	data["auth_source_default_wechat_subscriptions"] = authSourceDefaults.WeChat.Subscriptions
+	data["auth_source_default_wechat_grant_on_signup"] = authSourceDefaults.WeChat.GrantOnSignup
+	data["auth_source_default_wechat_grant_on_first_bind"] = authSourceDefaults.WeChat.GrantOnFirstBind
+	data["force_email_on_third_party_signup"] = authSourceDefaults.ForceEmailOnThirdPartySignup
+
+	return data
 REDACTED
 
 func equalStringSlice(a, b []string) bool {

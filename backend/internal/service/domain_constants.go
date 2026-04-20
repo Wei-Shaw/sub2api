@@ -74,6 +74,9 @@ const LinuxDoConnectSyntheticEmailDomain = "@linuxdo-connect.invalid"
 // OIDCConnectSyntheticEmailDomain 是 OIDC 用户的合成邮箱后缀（RFC 保留域名）。
 const OIDCConnectSyntheticEmailDomain = "@oidc-connect.invalid"
 
+// WeChatConnectSyntheticEmailDomain 是 WeChat Connect 用户的合成邮箱后缀（RFC 保留域名）。
+const WeChatConnectSyntheticEmailDomain = "@wechat-connect.invalid"
+
 // Setting keys
 const (
 	// 注册设置
@@ -152,6 +155,29 @@ const (
 	SettingKeyDefaultConcurrency   = "default_concurrency"   // 新用户默认并发量
 	SettingKeyDefaultBalance       = "default_balance"       // 新用户默认余额
 	SettingKeyDefaultSubscriptions = "default_subscriptions" // 新用户默认订阅列表（JSON）
+
+	// 第三方认证来源默认授予配置
+	SettingKeyAuthSourceDefaultEmailBalance            = "auth_source_default_email_balance"
+	SettingKeyAuthSourceDefaultEmailConcurrency        = "auth_source_default_email_concurrency"
+	SettingKeyAuthSourceDefaultEmailSubscriptions      = "auth_source_default_email_subscriptions"
+	SettingKeyAuthSourceDefaultEmailGrantOnSignup      = "auth_source_default_email_grant_on_signup"
+	SettingKeyAuthSourceDefaultEmailGrantOnFirstBind   = "auth_source_default_email_grant_on_first_bind"
+	SettingKeyAuthSourceDefaultLinuxDoBalance          = "auth_source_default_linuxdo_balance"
+	SettingKeyAuthSourceDefaultLinuxDoConcurrency      = "auth_source_default_linuxdo_concurrency"
+	SettingKeyAuthSourceDefaultLinuxDoSubscriptions    = "auth_source_default_linuxdo_subscriptions"
+	SettingKeyAuthSourceDefaultLinuxDoGrantOnSignup    = "auth_source_default_linuxdo_grant_on_signup"
+	SettingKeyAuthSourceDefaultLinuxDoGrantOnFirstBind = "auth_source_default_linuxdo_grant_on_first_bind"
+	SettingKeyAuthSourceDefaultOIDCBalance             = "auth_source_default_oidc_balance"
+	SettingKeyAuthSourceDefaultOIDCConcurrency         = "auth_source_default_oidc_concurrency"
+	SettingKeyAuthSourceDefaultOIDCSubscriptions       = "auth_source_default_oidc_subscriptions"
+	SettingKeyAuthSourceDefaultOIDCGrantOnSignup       = "auth_source_default_oidc_grant_on_signup"
+	SettingKeyAuthSourceDefaultOIDCGrantOnFirstBind    = "auth_source_default_oidc_grant_on_first_bind"
+	SettingKeyAuthSourceDefaultWeChatBalance           = "auth_source_default_wechat_balance"
+	SettingKeyAuthSourceDefaultWeChatConcurrency       = "auth_source_default_wechat_concurrency"
+	SettingKeyAuthSourceDefaultWeChatSubscriptions     = "auth_source_default_wechat_subscriptions"
+	SettingKeyAuthSourceDefaultWeChatGrantOnSignup     = "auth_source_default_wechat_grant_on_signup"
+	SettingKeyAuthSourceDefaultWeChatGrantOnFirstBind  = "auth_source_default_wechat_grant_on_first_bind"
+	SettingKeyForceEmailOnThirdPartySignup             = "force_email_on_third_party_signup"
 
 	// 管理员 API Key
 	SettingKeyAdminAPIKey = "admin_api_key" // 全局管理员 API Key（用于外部系统集成）

@@ -11,9 +11,14 @@
         </p>
       </div>
 
-      <div v-if="linuxdoOAuthEnabled || oidcOAuthEnabled" class="space-y-4">
+      <div v-if="linuxdoOAuthEnabled || wechatOAuthEnabled || oidcOAuthEnabled" class="space-y-4">
         <LinuxDoOAuthSection
           v-if="linuxdoOAuthEnabled"
+          :disabled="isLoading"
+          :show-divider="false"
+        />
+        <WechatOAuthSection
+          v-if="wechatOAuthEnabled"
           :disabled="isLoading"
           :show-divider="false"
         />
@@ -308,6 +313,7 @@ import { useI18n REDACTED from 'vue-i18n'
 import { AuthLayout REDACTED from '@/components/layout'
 import LinuxDoOAuthSection from '@/components/auth/LinuxDoOAuthSection.vue'
 import OidcOAuthSection from '@/components/auth/OidcOAuthSection.vue'
+import WechatOAuthSection from '@/components/auth/WechatOAuthSection.vue'
 import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { useAuthStore, useAppStore REDACTED from '@/stores'
@@ -343,6 +349,7 @@ const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
 const siteName = ref<string>('Sub2API')
 const linuxdoOAuthEnabled = ref<boolean>(false)
+const wechatOAuthEnabled = ref<boolean>(false)
 const oidcOAuthEnabled = ref<boolean>(false)
 const oidcOAuthProviderName = ref<string>('OIDC')
 const registrationEmailSuffixWhitelist = ref<string[]>([])
@@ -397,6 +404,7 @@ onMounted(async () => {
     turnstileSiteKey.value = settings.turnstile_site_key || ''
     siteName.value = settings.site_name || 'Sub2API'
     linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
+    wechatOAuthEnabled.value = settings.wechat_oauth_enabled
     oidcOAuthEnabled.value = settings.oidc_oauth_enabled
     oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
     registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(

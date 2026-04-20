@@ -23,20 +23,7 @@
             :order-type="paymentState.orderType"
             @done="onPaymentDone"
             @success="onPaymentSuccess"
-          />
-        </template>
-        <template v-else-if="paymentPhase === 'stripe'">
-          <StripePaymentInline
-            :order-id="paymentState.orderId"
-            :amount="paymentState.amount"
-            :client-secret="paymentState.clientSecret"
-            :order-type="paymentState.orderType || undefined"
-            :publishable-key="checkout.stripe_publishable_key"
-            :pay-amount="paymentState.payAmount"
-            @success="onPaymentSuccess"
-            @done="onStripeDone"
-            @back="resetPayment"
-            @redirect="onStripeRedirect"
+            @settled="onPaymentSettled"
           />
         </template>
         <!-- Tab content (select phase) -->
@@ -265,7 +252,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
-import { useRoute REDACTED from 'vue-router'
+import { useRoute, useRouter REDACTED from 'vue-router'
 import { useAuthStore REDACTED from '@/stores/auth'
 import { usePaymentStore REDACTED from '@/stores/payment'
 import { useSubscriptionStore REDACTED from '@/stores/subscriptions'
@@ -273,20 +260,30 @@ import { useAppStore REDACTED from '@/stores'
 import { paymentAPI REDACTED from '@/api/payment'
 import { extractApiErrorMessage REDACTED from '@/utils/apiError'
 import { isMobileDevice REDACTED from '@/utils/device'
-import type { SubscriptionPlan, CheckoutInfoResponse, OrderType REDACTED from '@/types/payment'
+import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType REDACTED from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
-import { METHOD_ORDER, POPUP_WINDOW_FEATURES REDACTED from '@/components/payment/providerConfig'
+import { METHOD_ORDER, POPUP_WINDOW_FEATURES, STRIPE_POPUP_WINDOW_FEATURES REDACTED from '@/components/payment/providerConfig'
+import {
+  PAYMENT_RECOVERY_STORAGE_KEY,
+  clearPaymentRecoverySnapshot,
+  decidePaymentLaunch,
+  getVisibleMethods,
+  normalizeVisibleMethod,
+  readPaymentRecoverySnapshot,
+  type PaymentRecoverySnapshot,
+  writePaymentRecoverySnapshot,
+REDACTED from '@/components/payment/paymentFlow'
 import { platformAccentBarClass, platformBadgeLightClass, platformBadgeClass, platformTextClass, platformLabel REDACTED from '@/utils/platformColors'
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
-import StripePaymentInline from '@/components/payment/StripePaymentInline.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { PaymentMethodOption REDACTED from '@/components/payment/PaymentMethodSelector.vue'
 
 const { t REDACTED = useI18n()
 const route = useRoute()
+const router = useRouter()
 const authStore = useAuthStore()
 const paymentStore = usePaymentStore()
 const subscriptionStore = useSubscriptionStore()
@@ -309,23 +306,41 @@ const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
 const previewImage = ref('')
 
-// Payment phase: 'select' → 'paying' (QR/redirect) or 'stripe' (inline Stripe)
-const paymentPhase = ref<'select' | 'paying' | 'stripe'>('select')
-const paymentState = ref<{
-  orderId: number
-  amount: number
-  qrCode: string
-  expiresAt: string
-  paymentType: string
-  payUrl: string
-  clientSecret: string
-  payAmount: number
-  orderType: OrderType | ''
-REDACTED>({ orderId: 0, amount: 0, qrCode: '', expiresAt: '', paymentType: '', payUrl: '', clientSecret: '', payAmount: 0, orderType: '' REDACTED)
+const paymentPhase = ref<'select' | 'paying'>('select')
+
+function emptyPaymentState(): PaymentRecoverySnapshot {
+  return {
+    orderId: 0,
+    amount: 0,
+    qrCode: '',
+    expiresAt: '',
+    paymentType: '',
+    payUrl: '',
+    clientSecret: '',
+    payAmount: 0,
+    orderType: '',
+    paymentMode: '',
+    resumeToken: '',
+    createdAt: 0,
+  REDACTED
+REDACTED
+
+const paymentState = ref<PaymentRecoverySnapshot>(emptyPaymentState())
+
+function persistRecoverySnapshot(snapshot: PaymentRecoverySnapshot) {
+  if (typeof window === 'undefined' || !snapshot.orderId) return
+  writePaymentRecoverySnapshot(window.localStorage, snapshot, PAYMENT_RECOVERY_STORAGE_KEY)
+REDACTED
+
+function removeRecoverySnapshot() {
+  if (typeof window === 'undefined') return
+  clearPaymentRecoverySnapshot(window.localStorage, PAYMENT_RECOVERY_STORAGE_KEY)
+REDACTED
 
 function resetPayment() {
   paymentPhase.value = 'select'
-  paymentState.value = { orderId: 0, amount: 0, qrCode: '', expiresAt: '', paymentType: '', payUrl: '', clientSecret: '', payAmount: 0, orderType: '' REDACTED
+  paymentState.value = emptyPaymentState()
+  removeRecoverySnapshot()
 REDACTED
 
 function onPaymentDone() {
@@ -338,24 +353,15 @@ function onPaymentDone() {
 REDACTED
 
 function onPaymentSuccess() {
+  removeRecoverySnapshot()
   authStore.refreshUser()
   if (paymentState.value.orderType === 'subscription') {
     subscriptionStore.fetchActiveSubscriptions(true).catch(() => {REDACTED)
   REDACTED
 REDACTED
 
-function onStripeDone() {
-  const wasSubscription = paymentState.value.orderType === 'subscription'
-  resetPayment()
-  selectedPlan.value = null
-  if (wasSubscription) {
-    subscriptionStore.fetchActiveSubscriptions(true).catch(() => {REDACTED)
-  REDACTED
-REDACTED
-
-function onStripeRedirect(orderId: number, payUrl: string) {
-  paymentState.value = { ...paymentState.value, orderId, payUrl, qrCode: '' REDACTED
-  paymentPhase.value = 'paying'
+function onPaymentSettled() {
+  removeRecoverySnapshot()
 REDACTED
 
 // All checkout data from single API call
@@ -371,7 +377,8 @@ const tabs = computed(() => {
   return result
 REDACTED)
 
-const enabledMethods = computed(() => Object.keys(checkout.value.methods))
+const visibleMethods = computed(() => getVisibleMethods(checkout.value.methods))
+const enabledMethods = computed(() => Object.keys(visibleMethods.value))
 const validAmount = computed(() => amount.value ?? 0)
 const balanceRechargeMultiplier = computed(() => {
   const multiplier = checkout.value.balance_recharge_multiplier
@@ -389,23 +396,33 @@ REDACTED)
 // Check if an amount fits a method's [min, max]. 0 = no limit.
 function amountFitsMethod(amt: number, methodType: string): boolean {
   if (amt <= 0) return true
-  const ml = checkout.value.methods[methodType]
+  const ml = visibleMethods.value[methodType]
   if (!ml) return false
   if (ml.single_min > 0 && amt < ml.single_min) return false
   if (ml.single_max > 0 && amt > ml.single_max) return false
   return true
 REDACTED
 
-// Global range for AmountInput (union of all methods, precomputed by backend)
-const globalMinAmount = computed(() => checkout.value.global_min)
-const globalMaxAmount = computed(() => checkout.value.global_max)
+// Visible methods decide the amount range shown to users.
+const globalMinAmount = computed(() => {
+  const limits = Object.values(visibleMethods.value)
+  if (limits.length === 0) return 0
+  if (limits.some(limit => limit.single_min <= 0)) return 0
+  return Math.min(...limits.map(limit => limit.single_min))
+REDACTED)
+const globalMaxAmount = computed(() => {
+  const limits = Object.values(visibleMethods.value)
+  if (limits.length === 0) return 0
+  if (limits.some(limit => limit.single_max <= 0)) return 0
+  return Math.max(...limits.map(limit => limit.single_max))
+REDACTED)
 
 // Selected method's limits (for validation and error messages)
-const selectedLimit = computed(() => checkout.value.methods[selectedMethod.value])
+const selectedLimit = computed(() => visibleMethods.value[selectedMethod.value])
 
 const methodOptions = computed<PaymentMethodOption[]>(() =>
   enabledMethods.value.map((type) => {
-    const ml = checkout.value.methods[type]
+    const ml = visibleMethods.value[type]
     return {
       type,
       fee_rate: ml?.fee_rate ?? 0,
@@ -451,7 +468,7 @@ const canSubmit = computed(() =>
 const subMethodOptions = computed<PaymentMethodOption[]>(() => {
   const planPrice = selectedPlan.value?.price ?? 0
   return enabledMethods.value.map((type) => {
-    const ml = checkout.value.methods[type]
+    const ml = visibleMethods.value[type]
     return {
       type,
       fee_rate: ml?.fee_rate ?? 0,
@@ -551,55 +568,58 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       payment_type: selectedMethod.value,
       order_type: orderType,
       plan_id: planId,
-    REDACTED)
-    const openWindow = (url: string) => {
-      const win = window.open(url, 'paymentPopup', POPUP_WINDOW_FEATURES)
+    REDACTED) as CreateOrderResult & { resume_token?: string REDACTED
+    const openWindow = (url: string, features = POPUP_WINDOW_FEATURES) => {
+      const win = window.open(url, 'paymentPopup', features)
       if (!win || win.closed) {
         window.location.href = url
       REDACTED
     REDACTED
-    if (result.client_secret) {
-      // Stripe: show Payment Element inline (user picks method → confirms → redirect if needed)
-      paymentState.value = {
-        orderId: result.order_id, amount: result.amount, qrCode: '', expiresAt: result.expires_at || '',
-        paymentType: selectedMethod.value, payUrl: '',
-        clientSecret: result.client_secret, payAmount: result.pay_amount,
-        orderType,
-      REDACTED
-      paymentPhase.value = 'stripe'
-    REDACTED else if (isMobileDevice() && result.pay_url) {
-      // Mobile + pay_url: redirect directly instead of QR/popup (mobile browsers block popups)
-      paymentState.value = {
-        orderId: result.order_id, amount: result.amount, qrCode: '', expiresAt: result.expires_at || '',
-        paymentType: selectedMethod.value, payUrl: result.pay_url,
-        clientSecret: '', payAmount: 0,
-        orderType,
-      REDACTED
-      paymentPhase.value = 'paying'
-      window.location.href = result.pay_url
-      return
-    REDACTED else if (result.qr_code) {
-      // QR mode: show QR code inline
-      paymentState.value = {
-        orderId: result.order_id, amount: result.amount, qrCode: result.qr_code,
-        expiresAt: result.expires_at || '', paymentType: selectedMethod.value, payUrl: '',
-        clientSecret: '', payAmount: 0,
-        orderType,
-      REDACTED
-      paymentPhase.value = 'paying'
-    REDACTED else if (result.pay_url) {
-      // Redirect/popup mode: open payment URL, show waiting state inline
-      openWindow(result.pay_url)
-      paymentState.value = {
-        orderId: result.order_id, amount: result.amount, qrCode: '', expiresAt: result.expires_at || '',
-        paymentType: selectedMethod.value, payUrl: result.pay_url,
-        clientSecret: '', payAmount: 0,
-        orderType,
-      REDACTED
-      paymentPhase.value = 'paying'
-    REDACTED else {
+    const visibleMethod = normalizeVisibleMethod(selectedMethod.value) || selectedMethod.value
+    const stripeMethod = visibleMethod === 'wxpay' ? 'wechat_pay' : 'alipay'
+    const stripeRouteUrl = result.client_secret
+      ? router.resolve({
+        path: '/payment/stripe',
+        query: {
+          order_id: String(result.order_id),
+          client_secret: result.client_secret,
+          method: stripeMethod,
+          resume_token: result.resume_token || undefined,
+        REDACTED,
+      REDACTED).href
+      : ''
+    const decision = decidePaymentLaunch(result, {
+      visibleMethod,
+      orderType,
+      isMobile: isMobileDevice(),
+      stripePopupUrl: stripeRouteUrl,
+      stripeRouteUrl,
+    REDACTED)
+
+    if (decision.kind === 'unhandled') {
       errorMessage.value = t('payment.result.failed')
       appStore.showError(errorMessage.value)
+      return
+    REDACTED
+
+    paymentState.value = decision.paymentState
+    paymentPhase.value = 'paying'
+    persistRecoverySnapshot(decision.recovery)
+
+    if (decision.kind === 'stripe_popup') {
+      openWindow(decision.paymentState.payUrl, STRIPE_POPUP_WINDOW_FEATURES)
+      return
+    REDACTED
+    if (decision.kind === 'stripe_route') {
+      window.location.href = decision.paymentState.payUrl
+      return
+    REDACTED
+    if (decision.kind === 'redirect_waiting' && decision.paymentState.payUrl) {
+      if (isMobileDevice()) {
+        window.location.href = decision.paymentState.payUrl
+        return
+      REDACTED
+      openWindow(decision.paymentState.payUrl)
     REDACTED
   REDACTED catch (err: unknown) {
     const apiErr = err as Record<string, unknown>
@@ -629,6 +649,25 @@ onMounted(async () => {
         return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
       REDACTED)
       selectedMethod.value = sorted[0]
+    REDACTED
+    if (typeof window !== 'undefined') {
+      const routeResumeToken = typeof route.query.resume_token === 'string'
+        ? route.query.resume_token
+        : undefined
+      const restored = readPaymentRecoverySnapshot(
+        window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY),
+        { resumeToken: routeResumeToken REDACTED,
+      )
+      if (restored) {
+        paymentState.value = restored
+        paymentPhase.value = 'paying'
+        const restoredMethod = normalizeVisibleMethod(restored.paymentType)
+        if (restoredMethod) {
+          selectedMethod.value = restoredMethod
+        REDACTED
+      REDACTED else {
+        removeRecoverySnapshot()
+      REDACTED
     REDACTED
     if (checkout.value.balance_disabled) {
       activeTab.value = 'subscription'

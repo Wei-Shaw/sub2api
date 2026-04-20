@@ -1608,6 +1608,9 @@ REDACTED
 		return fmt.Errorf("security.csp.policy is required when CSP is enabled")
 REDACTED
 	if c.LinuxDo.Enabled {
+		if !c.LinuxDo.UsePKCE {
+			return fmt.Errorf("linuxdo_connect.use_pkce must be true when linuxdo_connect.enabled=true")
+	REDACTED
 		if strings.TrimSpace(c.LinuxDo.ClientID) == "" {
 			return fmt.Errorf("linuxdo_connect.client_id is required when linuxdo_connect.enabled=true")
 	REDACTED
@@ -1628,9 +1631,6 @@ REDACTED
 		case "", "client_secret_post", "client_secret_basic", "none":
 		default:
 			return fmt.Errorf("linuxdo_connect.token_auth_method must be one of: client_secret_post/client_secret_basic/none")
-	REDACTED
-		if method == "none" && !c.LinuxDo.UsePKCE {
-			return fmt.Errorf("linuxdo_connect.use_pkce must be true when linuxdo_connect.token_auth_method=none")
 	REDACTED
 		if (method == "" || method == "client_secret_post" || method == "client_secret_basic") &&
 			strings.TrimSpace(c.LinuxDo.ClientSecret) == "" {
@@ -1663,6 +1663,12 @@ REDACTED
 		warnIfInsecureURL("linuxdo_connect.frontend_redirect_url", c.LinuxDo.FrontendRedirectURL)
 REDACTED
 	if c.OIDC.Enabled {
+		if !c.OIDC.UsePKCE {
+			return fmt.Errorf("oidc_connect.use_pkce must be true when oidc_connect.enabled=true")
+	REDACTED
+		if !c.OIDC.ValidateIDToken {
+			return fmt.Errorf("oidc_connect.validate_id_token must be true when oidc_connect.enabled=true")
+	REDACTED
 		if strings.TrimSpace(c.OIDC.ClientID) == "" {
 			return fmt.Errorf("oidc_connect.client_id is required when oidc_connect.enabled=true")
 	REDACTED
@@ -1684,9 +1690,6 @@ REDACTED
 		case "", "client_secret_post", "client_secret_basic", "none":
 		default:
 			return fmt.Errorf("oidc_connect.token_auth_method must be one of: client_secret_post/client_secret_basic/none")
-	REDACTED
-		if method == "none" && !c.OIDC.UsePKCE {
-			return fmt.Errorf("oidc_connect.use_pkce must be true when oidc_connect.token_auth_method=none")
 	REDACTED
 		if (method == "" || method == "client_secret_post" || method == "client_secret_basic") &&
 			strings.TrimSpace(c.OIDC.ClientSecret) == "" {

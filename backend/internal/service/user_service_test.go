@@ -4,6 +4,9 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -19,14 +22,65 @@ import (
 type mockUserRepo struct {
 	updateBalanceErr error
 	updateBalanceFn  func(ctx context.Context, id int64, amount float64) error
+	getByIDUser      *User
+	getByIDErr       error
+	updateFn         func(ctx context.Context, user *User) error
+	updateCalls      int
+	upsertAvatarFn   func(ctx context.Context, userID int64, input UpsertUserAvatarInput) (*UserAvatar, error)
+	upsertAvatarArgs []UpsertUserAvatarInput
+	deleteAvatarFn   func(ctx context.Context, userID int64) error
+	deleteAvatarIDs  []int64
+	getAvatarFn      func(ctx context.Context, userID int64) (*UserAvatar, error)
 REDACTED
 
-func (m *mockUserRepo) Create(context.Context, *User) error               { return nil REDACTED
-func (m *mockUserRepo) GetByID(context.Context, int64) (*User, error)     { return &User{REDACTED, nil REDACTED
+func (m *mockUserRepo) Create(context.Context, *User) error { return nil REDACTED
+func (m *mockUserRepo) GetByID(context.Context, int64) (*User, error) {
+	if m.getByIDErr != nil {
+		return nil, m.getByIDErr
+REDACTED
+	if m.getByIDUser != nil {
+		cloned := *m.getByIDUser
+		return &cloned, nil
+REDACTED
+	return &User{REDACTED, nil
+REDACTED
 func (m *mockUserRepo) GetByEmail(context.Context, string) (*User, error) { return &User{REDACTED, nil REDACTED
 func (m *mockUserRepo) GetFirstAdmin(context.Context) (*User, error)      { return &User{REDACTED, nil REDACTED
-func (m *mockUserRepo) Update(context.Context, *User) error               { return nil REDACTED
-func (m *mockUserRepo) Delete(context.Context, int64) error               { return nil REDACTED
+func (m *mockUserRepo) Update(ctx context.Context, user *User) error {
+	m.updateCalls++
+	if m.updateFn != nil {
+		return m.updateFn(ctx, user)
+REDACTED
+	return nil
+REDACTED
+func (m *mockUserRepo) Delete(context.Context, int64) error { return nil REDACTED
+func (m *mockUserRepo) GetUserAvatar(ctx context.Context, userID int64) (*UserAvatar, error) {
+	if m.getAvatarFn != nil {
+		return m.getAvatarFn(ctx, userID)
+REDACTED
+	return nil, nil
+REDACTED
+func (m *mockUserRepo) UpsertUserAvatar(ctx context.Context, userID int64, input UpsertUserAvatarInput) (*UserAvatar, error) {
+	m.upsertAvatarArgs = append(m.upsertAvatarArgs, input)
+	if m.upsertAvatarFn != nil {
+		return m.upsertAvatarFn(ctx, userID, input)
+REDACTED
+	return &UserAvatar{
+		StorageProvider: input.StorageProvider,
+		StorageKey:      input.StorageKey,
+		URL:             input.URL,
+		ContentType:     input.ContentType,
+		ByteSize:        input.ByteSize,
+		SHA256:          input.SHA256,
+REDACTED, nil
+REDACTED
+func (m *mockUserRepo) DeleteUserAvatar(ctx context.Context, userID int64) error {
+	m.deleteAvatarIDs = append(m.deleteAvatarIDs, userID)
+	if m.deleteAvatarFn != nil {
+		return m.deleteAvatarFn(ctx, userID)
+REDACTED
+	return nil
+REDACTED
 func (m *mockUserRepo) List(context.Context, pagination.PaginationParams) ([]User, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 REDACTED
@@ -199,4 +253,122 @@ func TestNewUserService_FieldsAssignment(t *testing.T) {
 	require.Equal(t, repo, svc.userRepo)
 	require.Equal(t, auth, svc.authCacheInvalidator)
 	require.Equal(t, cache, svc.billingCache)
+REDACTED
+
+func TestUpdateProfile_StoresInlineAvatarWithinLimit(t *testing.T) {
+	raw := []byte("small-avatar")
+	dataURL := "data:image/png;base64," + base64.StdEncoding.EncodeToString(raw)
+	expectedSum := sha256.Sum256(raw)
+	repo := &mockUserRepo{
+		getByIDUser: &User{
+			ID:       7,
+			Email:    "avatar@example.com",
+			Username: "avatar-user",
+	REDACTED,
+REDACTED
+	svc := NewUserService(repo, nil, nil, nil)
+
+	updated, err := svc.UpdateProfile(context.Background(), 7, UpdateProfileRequest{
+		AvatarURL: &dataURL,
+REDACTED)
+REDACTED
+	require.Len(t, repo.upsertAvatarArgs, 1)
+	require.Equal(t, "inline", repo.upsertAvatarArgs[0].StorageProvider)
+	require.Equal(t, "image/png", repo.upsertAvatarArgs[0].ContentType)
+	require.Equal(t, len(raw), repo.upsertAvatarArgs[0].ByteSize)
+	require.Equal(t, hex.EncodeToString(expectedSum[:]), repo.upsertAvatarArgs[0].SHA256)
+	require.Equal(t, dataURL, updated.AvatarURL)
+	require.Equal(t, "inline", updated.AvatarSource)
+	require.Equal(t, "image/png", updated.AvatarMIME)
+	require.Equal(t, len(raw), updated.AvatarByteSize)
+	require.Equal(t, hex.EncodeToString(expectedSum[:]), updated.AvatarSHA256)
+REDACTED
+
+func TestUpdateProfile_RejectsInlineAvatarOverLimit(t *testing.T) {
+	raw := make([]byte, maxInlineAvatarBytes+1)
+	dataURL := "data:image/png;base64," + base64.StdEncoding.EncodeToString(raw)
+	repo := &mockUserRepo{
+		getByIDUser: &User{
+			ID:       8,
+			Email:    "large-avatar@example.com",
+			Username: "too-large",
+	REDACTED,
+REDACTED
+	svc := NewUserService(repo, nil, nil, nil)
+
+	_, err := svc.UpdateProfile(context.Background(), 8, UpdateProfileRequest{
+		AvatarURL: &dataURL,
+REDACTED)
+	require.ErrorIs(t, err, ErrAvatarTooLarge)
+	require.Empty(t, repo.upsertAvatarArgs)
+	require.Empty(t, repo.deleteAvatarIDs)
+	require.Zero(t, repo.updateCalls)
+REDACTED
+
+func TestUpdateProfile_StoresRemoteAvatarURL(t *testing.T) {
+	remoteURL := "https://cdn.example.com/avatar.png"
+	repo := &mockUserRepo{
+		getByIDUser: &User{
+			ID:       9,
+			Email:    "remote-avatar@example.com",
+			Username: "remote-avatar",
+	REDACTED,
+REDACTED
+	svc := NewUserService(repo, nil, nil, nil)
+
+	updated, err := svc.UpdateProfile(context.Background(), 9, UpdateProfileRequest{
+		AvatarURL: &remoteURL,
+REDACTED)
+REDACTED
+	require.Len(t, repo.upsertAvatarArgs, 1)
+	require.Equal(t, "remote_url", repo.upsertAvatarArgs[0].StorageProvider)
+	require.Equal(t, remoteURL, repo.upsertAvatarArgs[0].URL)
+	require.Equal(t, remoteURL, updated.AvatarURL)
+	require.Equal(t, "remote_url", updated.AvatarSource)
+	require.Zero(t, updated.AvatarByteSize)
+REDACTED
+
+func TestUpdateProfile_DeletesAvatarOnEmptyString(t *testing.T) {
+	empty := ""
+	repo := &mockUserRepo{
+		getByIDUser: &User{
+			ID:           10,
+			Email:        "delete-avatar@example.com",
+			Username:     "delete-avatar",
+			AvatarURL:    "https://cdn.example.com/old.png",
+			AvatarSource: "remote_url",
+	REDACTED,
+REDACTED
+	svc := NewUserService(repo, nil, nil, nil)
+
+	updated, err := svc.UpdateProfile(context.Background(), 10, UpdateProfileRequest{
+		AvatarURL: &empty,
+REDACTED)
+REDACTED
+	require.Equal(t, []int64{10REDACTED, repo.deleteAvatarIDs)
+	require.Empty(t, repo.upsertAvatarArgs)
+	require.Empty(t, updated.AvatarURL)
+	require.Empty(t, updated.AvatarSource)
+REDACTED
+
+func TestGetProfile_HydratesAvatarFromRepository(t *testing.T) {
+	repo := &mockUserRepo{
+		getByIDUser: &User{
+			ID:       12,
+			Email:    "profile-avatar@example.com",
+			Username: "profile-avatar",
+	REDACTED,
+		getAvatarFn: func(context.Context, int64) (*UserAvatar, error) {
+			return &UserAvatar{
+				StorageProvider: "remote_url",
+				URL:             "https://cdn.example.com/profile.png",
+		REDACTED, nil
+	REDACTED,
+REDACTED
+	svc := NewUserService(repo, nil, nil, nil)
+
+	user, err := svc.GetProfile(context.Background(), 12)
+REDACTED
+	require.Equal(t, "https://cdn.example.com/profile.png", user.AvatarURL)
+	require.Equal(t, "remote_url", user.AvatarSource)
 REDACTED

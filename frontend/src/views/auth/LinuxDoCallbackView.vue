@@ -11,32 +11,94 @@
       </div>
 
       <transition name="fade">
-        <div v-if="needsInvitation" class="space-y-4">
-          <p class="text-sm text-gray-700 dark:text-gray-300">
-            {{ t('auth.linuxdo.invitationRequired') REDACTEDREDACTED
-          </p>
-          <div>
-            <input
-              v-model="invitationCode"
-              type="text"
-              class="input w-full"
-              :placeholder="t('auth.invitationCodePlaceholder')"
-              :disabled="isSubmitting"
-              @keyup.enter="handleSubmitInvitation"
-            />
-          </div>
-          <transition name="fade">
-            <p v-if="invitationError" class="text-sm text-red-600 dark:text-red-400">
-              {{ invitationError REDACTEDREDACTED
-            </p>
-          </transition>
-          <button
-            class="btn btn-primary w-full"
-            :disabled="isSubmitting || !invitationCode.trim()"
-            @click="handleSubmitInvitation"
+        <div v-if="needsInvitation || needsAdoptionConfirmation" class="space-y-4">
+          <div
+            v-if="adoptionRequired && (suggestedDisplayName || suggestedAvatarUrl)"
+            class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-600 dark:bg-dark-800/60"
           >
-            {{ isSubmitting ? t('auth.linuxdo.completing') : t('auth.linuxdo.completeRegistration') REDACTEDREDACTED
-          </button>
+            <div class="space-y-3">
+              <div class="space-y-1">
+                <p class="text-sm font-medium text-gray-900 dark:text-white">
+                  Use LinuxDo profile details
+                </p>
+                <p class="text-xs text-gray-500 dark:text-dark-400">
+                  Choose whether to apply the nickname or avatar from LinuxDo to this account.
+                </p>
+              </div>
+
+              <label
+                v-if="suggestedDisplayName"
+                class="flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-3 text-sm dark:border-dark-600 dark:bg-dark-900/50"
+              >
+                <input v-model="adoptDisplayName" type="checkbox" class="mt-1 h-4 w-4" />
+                <span class="space-y-1">
+                  <span class="block font-medium text-gray-900 dark:text-white">
+                    Use display name
+                  </span>
+                  <span class="block text-gray-500 dark:text-dark-400">
+                    {{ suggestedDisplayName REDACTEDREDACTED
+                  </span>
+                </span>
+              </label>
+
+              <label
+                v-if="suggestedAvatarUrl"
+                class="flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-3 text-sm dark:border-dark-600 dark:bg-dark-900/50"
+              >
+                <input v-model="adoptAvatar" type="checkbox" class="mt-1 h-4 w-4" />
+                <img
+                  :src="suggestedAvatarUrl"
+                  alt="LinuxDo avatar"
+                  class="h-10 w-10 rounded-full border border-gray-200 object-cover dark:border-dark-600"
+                />
+                <span class="space-y-1">
+                  <span class="block font-medium text-gray-900 dark:text-white">
+                    Use avatar
+                  </span>
+                  <span class="block break-all text-gray-500 dark:text-dark-400">
+                    {{ suggestedAvatarUrl REDACTEDREDACTED
+                  </span>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <template v-if="needsInvitation">
+            <p class="text-sm text-gray-700 dark:text-gray-300">
+              {{ t('auth.linuxdo.invitationRequired') REDACTEDREDACTED
+            </p>
+            <div>
+              <input
+                v-model="invitationCode"
+                type="text"
+                class="input w-full"
+                :placeholder="t('auth.invitationCodePlaceholder')"
+                :disabled="isSubmitting"
+                @keyup.enter="handleSubmitInvitation"
+              />
+            </div>
+            <transition name="fade">
+              <p v-if="invitationError" class="text-sm text-red-600 dark:text-red-400">
+                {{ invitationError REDACTEDREDACTED
+              </p>
+            </transition>
+            <button
+              class="btn btn-primary w-full"
+              :disabled="isSubmitting || !invitationCode.trim()"
+              @click="handleSubmitInvitation"
+            >
+              {{ isSubmitting ? t('auth.linuxdo.completing') : t('auth.linuxdo.completeRegistration') REDACTEDREDACTED
+            </button>
+          </template>
+
+          <template v-else-if="needsAdoptionConfirmation">
+            <p class="text-sm text-gray-700 dark:text-gray-300">
+              Review the LinuxDo profile details before continuing.
+            </p>
+            <button class="btn btn-primary w-full" :disabled="isSubmitting" @click="handleContinueLogin">
+              {{ isSubmitting ? t('common.processing') : 'Continue' REDACTEDREDACTED
+            </button>
+          </template>
         </div>
       </transition>
 
@@ -71,7 +133,12 @@ import { useI18n REDACTED from 'vue-i18n'
 import { AuthLayout REDACTED from '@/components/layout'
 import Icon from '@/components/icons/Icon.vue'
 import { useAuthStore, useAppStore REDACTED from '@/stores'
-import { completeLinuxDoOAuthRegistration REDACTED from '@/api/auth'
+import {
+  completeLinuxDoOAuthRegistration,
+  exchangePendingOAuthCompletion,
+  type OAuthAdoptionDecision,
+  type PendingOAuthExchangeResponse
+REDACTED from '@/api/auth'
 
 const route = useRoute()
 const router = useRouter()
@@ -85,11 +152,16 @@ const errorMessage = ref('')
 
 // Invitation code flow state
 const needsInvitation = ref(false)
-const pendingOAuthToken = ref('')
 const invitationCode = ref('')
 const isSubmitting = ref(false)
 const invitationError = ref('')
 const redirectTo = ref('/dashboard')
+const adoptionRequired = ref(false)
+const suggestedDisplayName = ref('')
+const suggestedAvatarUrl = ref('')
+const adoptDisplayName = ref(true)
+const adoptAvatar = ref(true)
+const needsAdoptionConfirmation = ref(false)
 
 function parseFragmentParams(): URLSearchParams {
   const raw = typeof window !== 'undefined' ? window.location.hash : ''
@@ -106,6 +178,54 @@ function sanitizeRedirectPath(path: string | null | undefined): string {
   return path
 REDACTED
 
+function currentAdoptionDecision(): OAuthAdoptionDecision {
+  return {
+    adoptDisplayName: adoptDisplayName.value,
+    adoptAvatar: adoptAvatar.value
+  REDACTED
+REDACTED
+
+function applyAdoptionSuggestionState(completion: {
+  adoption_required?: boolean
+  suggested_display_name?: string
+  suggested_avatar_url?: string
+REDACTED) {
+  adoptionRequired.value = completion.adoption_required === true
+  suggestedDisplayName.value = completion.suggested_display_name || ''
+  suggestedAvatarUrl.value = completion.suggested_avatar_url || ''
+
+  if (!suggestedDisplayName.value) {
+    adoptDisplayName.value = false
+  REDACTED
+  if (!suggestedAvatarUrl.value) {
+    adoptAvatar.value = false
+  REDACTED
+REDACTED
+
+function hasSuggestedProfile(completion: {
+  suggested_display_name?: string
+  suggested_avatar_url?: string
+REDACTED): boolean {
+  return Boolean(completion.suggested_display_name || completion.suggested_avatar_url)
+REDACTED
+
+async function finalizeLogin(completion: PendingOAuthExchangeResponse, redirect: string) {
+  if (!completion.access_token) {
+    throw new Error(t('auth.linuxdo.callbackMissingToken'))
+  REDACTED
+
+  if (completion.refresh_token) {
+    localStorage.setItem('refresh_token', completion.refresh_token)
+  REDACTED
+  if (completion.expires_in) {
+    localStorage.setItem('token_expires_at', String(Date.now() + completion.expires_in * 1000))
+  REDACTED
+
+  await authStore.setToken(completion.access_token)
+  appStore.showSuccess(t('auth.loginSuccess'))
+  await router.replace(redirect)
+REDACTED
+
 async function handleSubmitInvitation() {
   invitationError.value = ''
   if (!invitationCode.value.trim()) return
@@ -113,8 +233,8 @@ async function handleSubmitInvitation() {
   isSubmitting.value = true
   try {
     const tokenData = await completeLinuxDoOAuthRegistration(
-      pendingOAuthToken.value,
-      invitationCode.value.trim()
+      invitationCode.value.trim(),
+      currentAdoptionDecision()
     )
     if (tokenData.refresh_token) {
       localStorage.setItem('refresh_token', tokenData.refresh_token)
@@ -134,63 +254,65 @@ async function handleSubmitInvitation() {
   REDACTED
 REDACTED
 
+async function handleContinueLogin() {
+  isSubmitting.value = true
+  try {
+    const completion = await exchangePendingOAuthCompletion(currentAdoptionDecision())
+    await finalizeLogin(completion, redirectTo.value)
+  REDACTED catch (e: unknown) {
+    const err = e as { message?: string; response?: { data?: { detail?: string; message?: string REDACTED REDACTED REDACTED
+    errorMessage.value =
+      err.response?.data?.detail ||
+      err.response?.data?.message ||
+      err.message ||
+      t('auth.loginFailed')
+    appStore.showError(errorMessage.value)
+    needsAdoptionConfirmation.value = false
+  REDACTED finally {
+    isSubmitting.value = false
+  REDACTED
+REDACTED
+
 onMounted(async () => {
   const params = parseFragmentParams()
-
-  const token = params.get('access_token') || ''
-  const refreshToken = params.get('refresh_token') || ''
-  const expiresInStr = params.get('expires_in') || ''
-  const redirect = sanitizeRedirectPath(
-    params.get('redirect') || (route.query.redirect as string | undefined) || '/dashboard'
-  )
   const error = params.get('error')
   const errorDesc = params.get('error_description') || params.get('error_message') || ''
 
   if (error) {
-    if (error === 'invitation_required') {
-      pendingOAuthToken.value = params.get('pending_oauth_token') || ''
-      redirectTo.value = sanitizeRedirectPath(params.get('redirect'))
-      if (!pendingOAuthToken.value) {
-        errorMessage.value = t('auth.linuxdo.invalidPendingToken')
-        appStore.showError(errorMessage.value)
-        isProcessing.value = false
-        return
-      REDACTED
-      needsInvitation.value = true
-      isProcessing.value = false
-      return
-    REDACTED
     errorMessage.value = errorDesc || error
     appStore.showError(errorMessage.value)
     isProcessing.value = false
     return
   REDACTED
 
-  if (!token) {
-    errorMessage.value = t('auth.linuxdo.callbackMissingToken')
-    appStore.showError(errorMessage.value)
-    isProcessing.value = false
-    return
-  REDACTED
-
   try {
-    // Store refresh token and expires_at (convert to timestamp) if provided
-    if (refreshToken) {
-      localStorage.setItem('refresh_token', refreshToken)
-    REDACTED
-    if (expiresInStr) {
-      const expiresIn = parseInt(expiresInStr, 10)
-      if (!isNaN(expiresIn)) {
-        localStorage.setItem('token_expires_at', String(Date.now() + expiresIn * 1000))
-      REDACTED
+    const completion = await exchangePendingOAuthCompletion()
+    const redirect = sanitizeRedirectPath(
+      completion.redirect || (route.query.redirect as string | undefined) || '/dashboard'
+    )
+    applyAdoptionSuggestionState(completion)
+    redirectTo.value = redirect
+
+    if (completion.error === 'invitation_required') {
+      needsInvitation.value = true
+      isProcessing.value = false
+      return
     REDACTED
 
-    await authStore.setToken(token)
-    appStore.showSuccess(t('auth.loginSuccess'))
-    await router.replace(redirect)
+    if (adoptionRequired.value && hasSuggestedProfile(completion)) {
+      needsAdoptionConfirmation.value = true
+      isProcessing.value = false
+      return
+    REDACTED
+
+    await finalizeLogin(completion, redirect)
   REDACTED catch (e: unknown) {
-    const err = e as { message?: string; response?: { data?: { detail?: string REDACTED REDACTED REDACTED
-    errorMessage.value = err.response?.data?.detail || err.message || t('auth.loginFailed')
+    const err = e as { message?: string; response?: { data?: { detail?: string; message?: string REDACTED REDACTED REDACTED
+    errorMessage.value =
+      err.response?.data?.detail ||
+      err.response?.data?.message ||
+      err.message ||
+      t('auth.loginFailed')
     appStore.showError(errorMessage.value)
     isProcessing.value = false
   REDACTED
@@ -209,4 +331,3 @@ REDACTED
   transform: translateY(-8px);
 REDACTED
 </style>
-

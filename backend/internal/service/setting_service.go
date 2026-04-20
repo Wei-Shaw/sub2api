@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -114,6 +115,66 @@ type SettingService struct {
 	webSearchManagerBuilder WebSearchManagerBuilder
 REDACTED
 
+type ProviderDefaultGrantSettings struct {
+	Balance          float64
+	Concurrency      int
+	Subscriptions    []DefaultSubscriptionSetting
+	GrantOnSignup    bool
+	GrantOnFirstBind bool
+REDACTED
+
+type AuthSourceDefaultSettings struct {
+	Email                        ProviderDefaultGrantSettings
+	LinuxDo                      ProviderDefaultGrantSettings
+	OIDC                         ProviderDefaultGrantSettings
+	WeChat                       ProviderDefaultGrantSettings
+	ForceEmailOnThirdPartySignup bool
+REDACTED
+
+type authSourceDefaultKeySet struct {
+	balance          string
+	concurrency      string
+	subscriptions    string
+	grantOnSignup    string
+	grantOnFirstBind string
+REDACTED
+
+var (
+	emailAuthSourceDefaultKeys = authSourceDefaultKeySet{
+		balance:          SettingKeyAuthSourceDefaultEmailBalance,
+		concurrency:      SettingKeyAuthSourceDefaultEmailConcurrency,
+		subscriptions:    SettingKeyAuthSourceDefaultEmailSubscriptions,
+		grantOnSignup:    SettingKeyAuthSourceDefaultEmailGrantOnSignup,
+		grantOnFirstBind: SettingKeyAuthSourceDefaultEmailGrantOnFirstBind,
+REDACTED
+	linuxDoAuthSourceDefaultKeys = authSourceDefaultKeySet{
+		balance:          SettingKeyAuthSourceDefaultLinuxDoBalance,
+		concurrency:      SettingKeyAuthSourceDefaultLinuxDoConcurrency,
+		subscriptions:    SettingKeyAuthSourceDefaultLinuxDoSubscriptions,
+		grantOnSignup:    SettingKeyAuthSourceDefaultLinuxDoGrantOnSignup,
+		grantOnFirstBind: SettingKeyAuthSourceDefaultLinuxDoGrantOnFirstBind,
+REDACTED
+	oidcAuthSourceDefaultKeys = authSourceDefaultKeySet{
+		balance:          SettingKeyAuthSourceDefaultOIDCBalance,
+		concurrency:      SettingKeyAuthSourceDefaultOIDCConcurrency,
+		subscriptions:    SettingKeyAuthSourceDefaultOIDCSubscriptions,
+		grantOnSignup:    SettingKeyAuthSourceDefaultOIDCGrantOnSignup,
+		grantOnFirstBind: SettingKeyAuthSourceDefaultOIDCGrantOnFirstBind,
+REDACTED
+	weChatAuthSourceDefaultKeys = authSourceDefaultKeySet{
+		balance:          SettingKeyAuthSourceDefaultWeChatBalance,
+		concurrency:      SettingKeyAuthSourceDefaultWeChatConcurrency,
+		subscriptions:    SettingKeyAuthSourceDefaultWeChatSubscriptions,
+		grantOnSignup:    SettingKeyAuthSourceDefaultWeChatGrantOnSignup,
+		grantOnFirstBind: SettingKeyAuthSourceDefaultWeChatGrantOnFirstBind,
+REDACTED
+)
+
+const (
+	defaultAuthSourceBalance     = 0
+	defaultAuthSourceConcurrency = 5
+)
+
 // NewSettingService 创建系统设置服务实例
 func NewSettingService(settingRepo SettingRepository, cfg *config.Config) *SettingService {
 	return &SettingService{
@@ -212,6 +273,7 @@ REDACTED
 	if oidcProviderName == "" {
 		oidcProviderName = "OIDC"
 REDACTED
+	weChatEnabled := isWeChatOAuthConfigured()
 
 	// Password reset requires email verification to be enabled
 	emailVerifyEnabled := settings[SettingKeyEmailVerifyEnabled] == "true"
@@ -254,6 +316,7 @@ REDACTED
 		CustomMenuItems:                  settings[SettingKeyCustomMenuItems],
 		CustomEndpoints:                  settings[SettingKeyCustomEndpoints],
 		LinuxDoOAuthEnabled:              linuxDoEnabled,
+		WeChatOAuthEnabled:               weChatEnabled,
 		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
 		PaymentEnabled:                   settings[SettingPaymentEnabled] == "true",
 		OIDCOAuthEnabled:                 oidcEnabled,
@@ -310,6 +373,7 @@ REDACTED
 		CustomMenuItems                  json.RawMessage `json:"custom_menu_items"`
 		CustomEndpoints                  json.RawMessage `json:"custom_endpoints"`
 		LinuxDoOAuthEnabled              bool            `json:"linuxdo_oauth_enabled"`
+		WeChatOAuthEnabled               bool            `json:"wechat_oauth_enabled"`
 		BackendModeEnabled               bool            `json:"backend_mode_enabled"`
 		PaymentEnabled                   bool            `json:"payment_enabled"`
 		OIDCOAuthEnabled                 bool            `json:"oidc_oauth_enabled"`
@@ -344,6 +408,7 @@ REDACTED{
 		CustomMenuItems:                  filterUserVisibleMenuItems(settings.CustomMenuItems),
 		CustomEndpoints:                  safeRawJSONArray(settings.CustomEndpoints),
 		LinuxDoOAuthEnabled:              settings.LinuxDoOAuthEnabled,
+		WeChatOAuthEnabled:               settings.WeChatOAuthEnabled,
 		BackendModeEnabled:               settings.BackendModeEnabled,
 		PaymentEnabled:                   settings.PaymentEnabled,
 		OIDCOAuthEnabled:                 settings.OIDCOAuthEnabled,
@@ -390,6 +455,14 @@ REDACTED
 		return json.RawMessage("[]")
 REDACTED
 	return result
+REDACTED
+
+func isWeChatOAuthConfigured() bool {
+	openConfigured := strings.TrimSpace(os.Getenv("WECHAT_OAUTH_OPEN_APP_ID")) != "" &&
+		strings.TrimSpace(os.Getenv("WECHAT_OAUTH_OPEN_APP_SECRET")) != ""
+	mpConfigured := strings.TrimSpace(os.Getenv("WECHAT_OAUTH_MP_APP_ID")) != "" &&
+		strings.TrimSpace(os.Getenv("WECHAT_OAUTH_MP_APP_SECRET")) != ""
+	return openConfigured || mpConfigured
 REDACTED
 
 // safeRawJSONArray returns raw as json.RawMessage if it's valid JSON, otherwise "[]".
@@ -919,6 +992,74 @@ REDACTED
 	return parseDefaultSubscriptions(value)
 REDACTED
 
+func (s *SettingService) GetAuthSourceDefaultSettings(ctx context.Context) (*AuthSourceDefaultSettings, error) {
+	keys := []string{
+		SettingKeyAuthSourceDefaultEmailBalance,
+		SettingKeyAuthSourceDefaultEmailConcurrency,
+		SettingKeyAuthSourceDefaultEmailSubscriptions,
+		SettingKeyAuthSourceDefaultEmailGrantOnSignup,
+		SettingKeyAuthSourceDefaultEmailGrantOnFirstBind,
+		SettingKeyAuthSourceDefaultLinuxDoBalance,
+		SettingKeyAuthSourceDefaultLinuxDoConcurrency,
+		SettingKeyAuthSourceDefaultLinuxDoSubscriptions,
+		SettingKeyAuthSourceDefaultLinuxDoGrantOnSignup,
+		SettingKeyAuthSourceDefaultLinuxDoGrantOnFirstBind,
+		SettingKeyAuthSourceDefaultOIDCBalance,
+		SettingKeyAuthSourceDefaultOIDCConcurrency,
+		SettingKeyAuthSourceDefaultOIDCSubscriptions,
+		SettingKeyAuthSourceDefaultOIDCGrantOnSignup,
+		SettingKeyAuthSourceDefaultOIDCGrantOnFirstBind,
+		SettingKeyAuthSourceDefaultWeChatBalance,
+		SettingKeyAuthSourceDefaultWeChatConcurrency,
+		SettingKeyAuthSourceDefaultWeChatSubscriptions,
+		SettingKeyAuthSourceDefaultWeChatGrantOnSignup,
+		SettingKeyAuthSourceDefaultWeChatGrantOnFirstBind,
+		SettingKeyForceEmailOnThirdPartySignup,
+REDACTED
+
+	settings, err := s.settingRepo.GetMultiple(ctx, keys)
+	if err != nil {
+		return nil, fmt.Errorf("get auth source default settings: %w", err)
+REDACTED
+
+	return &AuthSourceDefaultSettings{
+		Email:                        parseProviderDefaultGrantSettings(settings, emailAuthSourceDefaultKeys),
+		LinuxDo:                      parseProviderDefaultGrantSettings(settings, linuxDoAuthSourceDefaultKeys),
+		OIDC:                         parseProviderDefaultGrantSettings(settings, oidcAuthSourceDefaultKeys),
+		WeChat:                       parseProviderDefaultGrantSettings(settings, weChatAuthSourceDefaultKeys),
+		ForceEmailOnThirdPartySignup: settings[SettingKeyForceEmailOnThirdPartySignup] == "true",
+REDACTED, nil
+REDACTED
+
+func (s *SettingService) UpdateAuthSourceDefaultSettings(ctx context.Context, settings *AuthSourceDefaultSettings) error {
+	if settings == nil {
+		return nil
+REDACTED
+
+	for _, subscriptions := range [][]DefaultSubscriptionSetting{
+		settings.Email.Subscriptions,
+		settings.LinuxDo.Subscriptions,
+		settings.OIDC.Subscriptions,
+		settings.WeChat.Subscriptions,
+REDACTED {
+		if err := s.validateDefaultSubscriptionGroups(ctx, subscriptions); err != nil {
+			return err
+	REDACTED
+REDACTED
+
+	updates := make(map[string]string, 21)
+	writeProviderDefaultGrantUpdates(updates, emailAuthSourceDefaultKeys, settings.Email)
+	writeProviderDefaultGrantUpdates(updates, linuxDoAuthSourceDefaultKeys, settings.LinuxDo)
+	writeProviderDefaultGrantUpdates(updates, oidcAuthSourceDefaultKeys, settings.OIDC)
+	writeProviderDefaultGrantUpdates(updates, weChatAuthSourceDefaultKeys, settings.WeChat)
+	updates[SettingKeyForceEmailOnThirdPartySignup] = strconv.FormatBool(settings.ForceEmailOnThirdPartySignup)
+
+	if err := s.settingRepo.SetMultiple(ctx, updates); err != nil {
+		return fmt.Errorf("update auth source default settings: %w", err)
+REDACTED
+	return nil
+REDACTED
+
 // InitializeDefaultSettings 初始化默认设置
 func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 	// 检查是否已有设置
@@ -933,25 +1074,46 @@ REDACTED
 
 	// 初始化默认设置
 	defaults := map[string]string{
-		SettingKeyRegistrationEnabled:              "true",
-		SettingKeyEmailVerifyEnabled:               "false",
-		SettingKeyRegistrationEmailSuffixWhitelist: "[]",
-		SettingKeyPromoCodeEnabled:                 "true", // 默认启用优惠码功能
-		SettingKeySiteName:                         "Sub2API",
-		SettingKeySiteLogo:                         "",
-		SettingKeyPurchaseSubscriptionEnabled:      "false",
-		SettingKeyPurchaseSubscriptionURL:          "",
-		SettingKeyTableDefaultPageSize:             "20",
-		SettingKeyTablePageSizeOptions:             "[10,20,50,100]",
-		SettingKeyCustomMenuItems:                  "[]",
-		SettingKeyCustomEndpoints:                  "[]",
-		SettingKeyOIDCConnectEnabled:               "false",
-		SettingKeyOIDCConnectProviderName:          "OIDC",
-		SettingKeyDefaultConcurrency:               strconv.Itoa(s.cfg.Default.UserConcurrency),
-		SettingKeyDefaultBalance:                   strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
-		SettingKeyDefaultSubscriptions:             "[]",
-		SettingKeySMTPPort:                         "587",
-		SettingKeySMTPUseTLS:                       "false",
+		SettingKeyRegistrationEnabled:                      "true",
+		SettingKeyEmailVerifyEnabled:                       "false",
+		SettingKeyRegistrationEmailSuffixWhitelist:         "[]",
+		SettingKeyPromoCodeEnabled:                         "true", // 默认启用优惠码功能
+		SettingKeySiteName:                                 "Sub2API",
+		SettingKeySiteLogo:                                 "",
+		SettingKeyPurchaseSubscriptionEnabled:              "false",
+		SettingKeyPurchaseSubscriptionURL:                  "",
+		SettingKeyTableDefaultPageSize:                     "20",
+		SettingKeyTablePageSizeOptions:                     "[10,20,50,100]",
+		SettingKeyCustomMenuItems:                          "[]",
+		SettingKeyCustomEndpoints:                          "[]",
+		SettingKeyOIDCConnectEnabled:                       "false",
+		SettingKeyOIDCConnectProviderName:                  "OIDC",
+		SettingKeyDefaultConcurrency:                       strconv.Itoa(s.cfg.Default.UserConcurrency),
+		SettingKeyDefaultBalance:                           strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
+		SettingKeyDefaultSubscriptions:                     "[]",
+		SettingKeyAuthSourceDefaultEmailBalance:            "0",
+		SettingKeyAuthSourceDefaultEmailConcurrency:        "5",
+		SettingKeyAuthSourceDefaultEmailSubscriptions:      "[]",
+		SettingKeyAuthSourceDefaultEmailGrantOnSignup:      "true",
+		SettingKeyAuthSourceDefaultEmailGrantOnFirstBind:   "false",
+		SettingKeyAuthSourceDefaultLinuxDoBalance:          "0",
+		SettingKeyAuthSourceDefaultLinuxDoConcurrency:      "5",
+		SettingKeyAuthSourceDefaultLinuxDoSubscriptions:    "[]",
+		SettingKeyAuthSourceDefaultLinuxDoGrantOnSignup:    "true",
+		SettingKeyAuthSourceDefaultLinuxDoGrantOnFirstBind: "false",
+		SettingKeyAuthSourceDefaultOIDCBalance:             "0",
+		SettingKeyAuthSourceDefaultOIDCConcurrency:         "5",
+		SettingKeyAuthSourceDefaultOIDCSubscriptions:       "[]",
+		SettingKeyAuthSourceDefaultOIDCGrantOnSignup:       "true",
+		SettingKeyAuthSourceDefaultOIDCGrantOnFirstBind:    "false",
+		SettingKeyAuthSourceDefaultWeChatBalance:           "0",
+		SettingKeyAuthSourceDefaultWeChatConcurrency:       "5",
+		SettingKeyAuthSourceDefaultWeChatSubscriptions:     "[]",
+		SettingKeyAuthSourceDefaultWeChatGrantOnSignup:     "true",
+		SettingKeyAuthSourceDefaultWeChatGrantOnFirstBind:  "false",
+		SettingKeyForceEmailOnThirdPartySignup:             "false",
+		SettingKeySMTPPort:                                 "587",
+		SettingKeySMTPUseTLS:                               "false",
 		// Model fallback defaults
 		SettingKeyEnableModelFallback:      "false",
 		SettingKeyFallbackModelAnthropic:   "claude-3-5-sonnet-20241022",
@@ -1164,6 +1326,8 @@ REDACTED
 REDACTED else {
 		result.OIDCConnectValidateIDToken = oidcBase.ValidateIDToken
 REDACTED
+	result.OIDCConnectUsePKCE = true
+	result.OIDCConnectValidateIDToken = true
 	if v, ok := settings[SettingKeyOIDCConnectAllowedSigningAlgs]; ok && strings.TrimSpace(v) != "" {
 		result.OIDCConnectAllowedSigningAlgs = strings.TrimSpace(v)
 REDACTED else {
@@ -1315,6 +1479,51 @@ REDACTED
 REDACTED
 
 	return normalized
+REDACTED
+
+func parseProviderDefaultGrantSettings(settings map[string]string, keys authSourceDefaultKeySet) ProviderDefaultGrantSettings {
+	result := ProviderDefaultGrantSettings{
+		Balance:          defaultAuthSourceBalance,
+		Concurrency:      defaultAuthSourceConcurrency,
+		Subscriptions:    []DefaultSubscriptionSetting{REDACTED,
+		GrantOnSignup:    true,
+		GrantOnFirstBind: false,
+REDACTED
+
+	if v, err := strconv.ParseFloat(strings.TrimSpace(settings[keys.balance]), 64); err == nil {
+		result.Balance = v
+REDACTED
+	if v, err := strconv.Atoi(strings.TrimSpace(settings[keys.concurrency])); err == nil {
+		result.Concurrency = v
+REDACTED
+	if items := parseDefaultSubscriptions(settings[keys.subscriptions]); items != nil {
+		result.Subscriptions = items
+REDACTED
+	if raw, ok := settings[keys.grantOnSignup]; ok {
+		result.GrantOnSignup = raw == "true"
+REDACTED
+	if raw, ok := settings[keys.grantOnFirstBind]; ok {
+		result.GrantOnFirstBind = raw == "true"
+REDACTED
+
+	return result
+REDACTED
+
+func writeProviderDefaultGrantUpdates(updates map[string]string, keys authSourceDefaultKeySet, settings ProviderDefaultGrantSettings) {
+	updates[keys.balance] = strconv.FormatFloat(settings.Balance, 'f', 8, 64)
+	updates[keys.concurrency] = strconv.Itoa(settings.Concurrency)
+
+	subscriptions := settings.Subscriptions
+	if subscriptions == nil {
+		subscriptions = []DefaultSubscriptionSetting{REDACTED
+REDACTED
+	raw, err := json.Marshal(subscriptions)
+	if err != nil {
+		raw = []byte("[]")
+REDACTED
+	updates[keys.subscriptions] = string(raw)
+	updates[keys.grantOnSignup] = strconv.FormatBool(settings.GrantOnSignup)
+	updates[keys.grantOnFirstBind] = strconv.FormatBool(settings.GrantOnFirstBind)
 REDACTED
 
 func parseTablePreferences(defaultPageSizeRaw, optionsRaw string) (int, []int) {
@@ -1539,6 +1748,7 @@ REDACTED
 	if v, ok := settings[SettingKeyLinuxDoConnectRedirectURL]; ok && strings.TrimSpace(v) != "" {
 		effective.RedirectURL = strings.TrimSpace(v)
 REDACTED
+	effective.UsePKCE = true
 
 	if !effective.Enabled {
 		return config.LinuxDoConnectConfig{REDACTED, infraerrors.NotFound("OAUTH_DISABLED", "oauth login is disabled")
@@ -1587,9 +1797,6 @@ REDACTED
 			return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth client secret not configured")
 	REDACTED
 	case "none":
-		if !effective.UsePKCE {
-			return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth pkce must be enabled when token_auth_method=none")
-	REDACTED
 	default:
 		return config.LinuxDoConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth token_auth_method invalid")
 REDACTED
@@ -1737,6 +1944,8 @@ REDACTED
 	if raw, ok := settings[SettingKeyOIDCConnectValidateIDToken]; ok {
 		effective.ValidateIDToken = raw == "true"
 REDACTED
+	effective.UsePKCE = true
+	effective.ValidateIDToken = true
 	if v, ok := settings[SettingKeyOIDCConnectAllowedSigningAlgs]; ok && strings.TrimSpace(v) != "" {
 		effective.AllowedSigningAlgs = strings.TrimSpace(v)
 REDACTED
@@ -1864,9 +2073,6 @@ REDACTED
 			return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth client secret not configured")
 	REDACTED
 	case "none":
-		if !effective.UsePKCE {
-			return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth pkce must be enabled when token_auth_method=none")
-	REDACTED
 	default:
 		return config.OIDCConnectConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "oauth token_auth_method invalid")
 REDACTED

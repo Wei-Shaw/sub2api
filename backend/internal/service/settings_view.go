@@ -152,6 +152,7 @@ type PublicSettings struct {
 	CustomEndpoints             string // JSON array of custom endpoints
 
 	LinuxDoOAuthEnabled   bool
+	WeChatOAuthEnabled    bool
 	BackendModeEnabled    bool
 	PaymentEnabled        bool
 	OIDCOAuthEnabled      bool

@@ -1,0 +1,149 @@
+package admin
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
+)
+
+type settingHandlerRepoStub struct {
+	values      map[string]string
+	lastUpdates map[string]string
+REDACTED
+
+func (s *settingHandlerRepoStub) Get(ctx context.Context, key string) (*service.Setting, error) {
+	panic("unexpected Get call")
+REDACTED
+
+func (s *settingHandlerRepoStub) GetValue(ctx context.Context, key string) (string, error) {
+	panic("unexpected GetValue call")
+REDACTED
+
+func (s *settingHandlerRepoStub) Set(ctx context.Context, key, value string) error {
+	panic("unexpected Set call")
+REDACTED
+
+func (s *settingHandlerRepoStub) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
+	out := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if value, ok := s.values[key]; ok {
+			out[key] = value
+	REDACTED
+REDACTED
+	return out, nil
+REDACTED
+
+func (s *settingHandlerRepoStub) SetMultiple(ctx context.Context, settings map[string]string) error {
+	s.lastUpdates = make(map[string]string, len(settings))
+	for key, value := range settings {
+		s.lastUpdates[key] = value
+		if s.values == nil {
+			s.values = map[string]string{REDACTED
+	REDACTED
+		s.values[key] = value
+REDACTED
+	return nil
+REDACTED
+
+func (s *settingHandlerRepoStub) GetAll(ctx context.Context) (map[string]string, error) {
+	out := make(map[string]string, len(s.values))
+	for key, value := range s.values {
+		out[key] = value
+REDACTED
+	return out, nil
+REDACTED
+
+func (s *settingHandlerRepoStub) Delete(ctx context.Context, key string) error {
+	panic("unexpected Delete call")
+REDACTED
+
+func TestSettingHandler_GetSettings_InjectsAuthSourceDefaults(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerRepoStub{
+		values: map[string]string{
+			service.SettingKeyRegistrationEnabled:                 "true",
+			service.SettingKeyPromoCodeEnabled:                    "true",
+			service.SettingKeyAuthSourceDefaultEmailBalance:       "9.5",
+			service.SettingKeyAuthSourceDefaultEmailConcurrency:   "8",
+			service.SettingKeyAuthSourceDefaultEmailSubscriptions: `[{"group_id":31,"validity_days":15REDACTED]`,
+			service.SettingKeyForceEmailOnThirdPartySignup:        "true",
+	REDACTED,
+REDACTED
+	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5REDACTEDREDACTED)
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/settings", nil)
+
+	handler.GetSettings(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp response.Response
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	data, ok := resp.Data.(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, 9.5, data["auth_source_default_email_balance"])
+	require.Equal(t, float64(8), data["auth_source_default_email_concurrency"])
+	require.Equal(t, true, data["force_email_on_third_party_signup"])
+
+	subscriptions, ok := data["auth_source_default_email_subscriptions"].([]any)
+	require.True(t, ok)
+	require.Len(t, subscriptions, 1)
+REDACTED
+
+func TestSettingHandler_UpdateSettings_PreservesOmittedAuthSourceDefaults(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerRepoStub{
+		values: map[string]string{
+			service.SettingKeyRegistrationEnabled:                    "false",
+			service.SettingKeyPromoCodeEnabled:                       "true",
+			service.SettingKeyAuthSourceDefaultEmailBalance:          "9.5",
+			service.SettingKeyAuthSourceDefaultEmailConcurrency:      "8",
+			service.SettingKeyAuthSourceDefaultEmailSubscriptions:    `[{"group_id":31,"validity_days":15REDACTED]`,
+			service.SettingKeyAuthSourceDefaultEmailGrantOnSignup:    "true",
+			service.SettingKeyAuthSourceDefaultEmailGrantOnFirstBind: "false",
+			service.SettingKeyForceEmailOnThirdPartySignup:           "true",
+	REDACTED,
+REDACTED
+	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5REDACTEDREDACTED)
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+
+	body := map[string]any{
+		"registration_enabled":              true,
+		"promo_code_enabled":                true,
+		"auth_source_default_email_balance": 12.75,
+REDACTED
+	rawBody, err := json.Marshal(body)
+REDACTED
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.UpdateSettings(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "12.75000000", repo.values[service.SettingKeyAuthSourceDefaultEmailBalance])
+	require.Equal(t, "8", repo.values[service.SettingKeyAuthSourceDefaultEmailConcurrency])
+	require.Equal(t, `[{"group_id":31,"validity_days":15REDACTED]`, repo.values[service.SettingKeyAuthSourceDefaultEmailSubscriptions])
+	require.Equal(t, "true", repo.values[service.SettingKeyForceEmailOnThirdPartySignup])
+
+	var resp response.Response
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	data, ok := resp.Data.(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, 12.75, data["auth_source_default_email_balance"])
+	require.Equal(t, float64(8), data["auth_source_default_email_concurrency"])
+	require.Equal(t, true, data["force_email_on_third_party_signup"])
+REDACTED

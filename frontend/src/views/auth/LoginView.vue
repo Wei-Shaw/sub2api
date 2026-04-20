@@ -11,9 +11,14 @@
         </p>
       </div>
 
-  <div v-if="!backendModeEnabled && (linuxdoOAuthEnabled || oidcOAuthEnabled)" class="space-y-4">
+  <div v-if="!backendModeEnabled && (linuxdoOAuthEnabled || wechatOAuthEnabled || oidcOAuthEnabled)" class="space-y-4">
         <LinuxDoOAuthSection
           v-if="linuxdoOAuthEnabled"
+          :disabled="isLoading"
+          :show-divider="false"
+        />
+        <WechatOAuthSection
+          v-if="wechatOAuthEnabled"
           :disabled="isLoading"
           :show-divider="false"
         />
@@ -200,6 +205,7 @@ import { useI18n REDACTED from 'vue-i18n'
 import { AuthLayout REDACTED from '@/components/layout'
 import LinuxDoOAuthSection from '@/components/auth/LinuxDoOAuthSection.vue'
 import OidcOAuthSection from '@/components/auth/OidcOAuthSection.vue'
+import WechatOAuthSection from '@/components/auth/WechatOAuthSection.vue'
 import TotpLoginModal from '@/components/auth/TotpLoginModal.vue'
 import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
@@ -225,6 +231,7 @@ const showPassword = ref<boolean>(false)
 const turnstileEnabled = ref<boolean>(false)
 const turnstileSiteKey = ref<string>('')
 const linuxdoOAuthEnabled = ref<boolean>(false)
+const wechatOAuthEnabled = ref<boolean>(false)
 const backendModeEnabled = ref<boolean>(false)
 const oidcOAuthEnabled = ref<boolean>(false)
 const oidcOAuthProviderName = ref<string>('OIDC')
@@ -267,6 +274,7 @@ onMounted(async () => {
     turnstileEnabled.value = settings.turnstile_enabled
     turnstileSiteKey.value = settings.turnstile_site_key || ''
     linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
+    wechatOAuthEnabled.value = settings.wechat_oauth_enabled
     backendModeEnabled.value = settings.backend_mode_enabled
     oidcOAuthEnabled.value = settings.oidc_oauth_enabled
     oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
