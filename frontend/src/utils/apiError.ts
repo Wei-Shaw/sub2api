@@ -49,8 +49,43 @@ type TranslateFn = (key: string, params?: Record<string, unknown>) => string
 type TranslateWithExistsFn = TranslateFn & { te?: (key: string) => boolean }
 
 /**
+ * Translate a value via i18n if a matching key exists, otherwise return the original.
+ * Example: "certSerial" → t('admin.settings.payment.field_certSerial') → "证书序列号".
+ */
+function tryTranslate(t: TranslateFn, key: string, fallback: string): string {
+  const translated = t(key)
+  if (translated === key) return fallback
+  const te = (t as TranslateWithExistsFn).te
+  if (te && !te(key)) return fallback
+  return translated
+}
+
+/**
+ * Replace raw config field names in metadata (e.g. "certSerial") with their
+ * localized UI labels (e.g. "证书序列号"), using the provider-config field i18n namespace.
+ * Handles both single `key` and `/`-joined `keys` patterns used by wxpay errors.
+ */
+function localizeMetadata(metadata: Record<string, unknown>, t: TranslateFn): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...metadata }
+  if (typeof out.key === 'string') {
+    out.key = tryTranslate(t, `admin.settings.payment.field_${out.key}`, out.key)
+  }
+  if (typeof out.keys === 'string') {
+    out.keys = out.keys
+      .split('/')
+      .map(k => tryTranslate(t, `admin.settings.payment.field_${k}`, k))
+      .join(' / ')
+  }
+  return out
+}
+
+/**
  * Extract a localized error message from an API error by looking up
  * `<namespace>.<REASON>` in i18n and substituting metadata as placeholders.
+ *
+ * Config-field names in metadata (`key` / `keys`) are automatically translated
+ * to their UI labels before substitution, so error messages read like
+ * "缺少必填项：证书序列号" instead of "缺少必填项：certSerial".
  *
  * @param err      - The caught error
  * @param t        - Vue i18n translate function
@@ -66,7 +101,8 @@ export function extractI18nErrorMessage(
   const code = extractApiErrorCode(err)
   if (code) {
     const key = `${namespace}.${code}`
-    const metadata = extractApiErrorMetadata(err) ?? {}
+    const rawMetadata = extractApiErrorMetadata(err) ?? {}
+    const metadata = localizeMetadata(rawMetadata, t)
     const translated = t(key, metadata)
     // Vue i18n returns the key itself when missing; detect that and fall back.
     if (translated !== key) return translated
