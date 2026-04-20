@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -241,7 +242,10 @@ func (s *PaymentService) getOrderProvider(ctx context.Context, o *dbent.PaymentO
 		if err == nil {
 			cfg, err := s.loadBalancer.GetInstanceConfig(ctx, instID)
 			if err == nil {
-				providerKey := s.registry.GetProviderKey(o.PaymentType)
+				providerKey := strings.TrimSpace(psStringValue(o.ProviderKey))
+				if providerKey == "" {
+					providerKey = s.registry.GetProviderKey(o.PaymentType)
+			REDACTED
 				if providerKey == "" {
 					providerKey = o.PaymentType
 			REDACTED
@@ -254,4 +258,11 @@ func (s *PaymentService) getOrderProvider(ctx context.Context, o *dbent.PaymentO
 REDACTED
 	s.EnsureProviders(ctx)
 	return s.registry.GetProvider(o.PaymentType)
+REDACTED
+
+func psStringValue(value *string) string {
+	if value == nil {
+		return ""
+REDACTED
+	return *value
 REDACTED

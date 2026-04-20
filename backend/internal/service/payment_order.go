@@ -251,7 +251,13 @@ REDACTED)
 		slog.Error("[PaymentService] CreatePayment failed", "provider", sel.ProviderKey, "instance", sel.InstanceID, "error", err)
 		return nil, infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", fmt.Sprintf("payment gateway error: %s", err.Error()))
 REDACTED
-	_, err = s.entClient.PaymentOrder.UpdateOneID(order.ID).SetNillablePaymentTradeNo(psNilIfEmpty(pr.TradeNo)).SetNillablePayURL(psNilIfEmpty(pr.PayURL)).SetNillableQrCode(psNilIfEmpty(pr.QRCode)).SetNillableProviderInstanceID(psNilIfEmpty(sel.InstanceID)).Save(ctx)
+	_, err = s.entClient.PaymentOrder.UpdateOneID(order.ID).
+		SetNillablePaymentTradeNo(psNilIfEmpty(pr.TradeNo)).
+		SetNillablePayURL(psNilIfEmpty(pr.PayURL)).
+		SetNillableQrCode(psNilIfEmpty(pr.QRCode)).
+		SetNillableProviderInstanceID(psNilIfEmpty(sel.InstanceID)).
+		SetNillableProviderKey(psNilIfEmpty(sel.ProviderKey)).
+		Save(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("update order with payment details: %w", err)
 REDACTED

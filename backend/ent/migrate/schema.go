@@ -654,6 +654,7 @@ REDACTED
 		{Name: "subscription_group_id", Type: field.TypeInt64, Nullable: trueREDACTED,
 		{Name: "subscription_days", Type: field.TypeInt, Nullable: trueREDACTED,
 		{Name: "provider_instance_id", Type: field.TypeString, Nullable: true, Size: 64REDACTED,
+		{Name: "provider_key", Type: field.TypeString, Nullable: true, Size: 30REDACTED,
 		{Name: "status", Type: field.TypeString, Size: 30, Default: "PENDING"REDACTED,
 		{Name: "refund_amount", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,2)"REDACTEDREDACTED,
 		{Name: "refund_reason", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
@@ -682,7 +683,7 @@ REDACTED
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "payment_orders_users_payment_orders",
-				Columns:    []*schema.Column{PaymentOrdersColumns[37]REDACTED,
+				Columns:    []*schema.Column{PaymentOrdersColumns[38]REDACTED,
 				RefColumns: []*schema.Column{UsersColumns[0]REDACTED,
 				OnDelete:   schema.NoAction,
 		REDACTED,
@@ -696,32 +697,32 @@ REDACTED
 			{
 				Name:    "paymentorder_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[37]REDACTED,
+				Columns: []*schema.Column{PaymentOrdersColumns[38]REDACTED,
 		REDACTED,
 			{
 				Name:    "paymentorder_status",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[19]REDACTED,
+				Columns: []*schema.Column{PaymentOrdersColumns[20]REDACTED,
 		REDACTED,
 			{
 				Name:    "paymentorder_expires_at",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[27]REDACTED,
+				Columns: []*schema.Column{PaymentOrdersColumns[28]REDACTED,
 		REDACTED,
 			{
 				Name:    "paymentorder_created_at",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[35]REDACTED,
+				Columns: []*schema.Column{PaymentOrdersColumns[36]REDACTED,
 		REDACTED,
 			{
 				Name:    "paymentorder_paid_at",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[28]REDACTED,
+				Columns: []*schema.Column{PaymentOrdersColumns[29]REDACTED,
 		REDACTED,
 			{
 				Name:    "paymentorder_payment_type_paid_at",
 				Unique:  false,
-				Columns: []*schema.Column{PaymentOrdersColumns[9], PaymentOrdersColumns[28]REDACTED,
+				Columns: []*schema.Column{PaymentOrdersColumns[9], PaymentOrdersColumns[29]REDACTED,
 		REDACTED,
 			{
 				Name:    "paymentorder_order_type",

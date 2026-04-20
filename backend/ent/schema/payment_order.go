@@ -91,6 +91,10 @@ func (PaymentOrder) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			MaxLen(64),
+		field.String("provider_key").
+			Optional().
+			Nillable().
+			MaxLen(30),
 
 		// 状态
 		field.String("status").

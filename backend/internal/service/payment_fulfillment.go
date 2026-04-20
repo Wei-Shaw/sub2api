@@ -45,7 +45,7 @@ REDACTED
 	if inst, instErr := s.getOrderProviderInstance(ctx, o); instErr == nil && inst != nil {
 		instanceProviderKey = inst.ProviderKey
 REDACTED
-	expectedProviderKey := expectedNotificationProviderKey(s.registry, o.PaymentType, instanceProviderKey)
+	expectedProviderKey := expectedNotificationProviderKey(s.registry, o.PaymentType, psStringValue(o.ProviderKey), instanceProviderKey)
 	if expectedProviderKey != "" && strings.TrimSpace(pk) != "" && !strings.EqualFold(expectedProviderKey, strings.TrimSpace(pk)) {
 		s.writeAuditLog(ctx, o.ID, "PAYMENT_PROVIDER_MISMATCH", pk, map[string]any{
 			"expectedProvider": expectedProviderKey,
@@ -69,8 +69,11 @@ REDACTED
 	return s.toPaid(ctx, o, tradeNo, paid, pk)
 REDACTED
 
-func expectedNotificationProviderKey(registry *payment.Registry, orderPaymentType string, instanceProviderKey string) string {
+func expectedNotificationProviderKey(registry *payment.Registry, orderPaymentType string, orderProviderKey string, instanceProviderKey string) string {
 	if key := strings.TrimSpace(instanceProviderKey); key != "" {
+		return key
+REDACTED
+	if key := strings.TrimSpace(orderProviderKey); key != "" {
 		return key
 REDACTED
 	if registry != nil {
