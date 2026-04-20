@@ -430,6 +430,7 @@ REDACTED
 	if !user.IsActive() {
 		return "", nil, ErrUserNotActive
 REDACTED
+	s.backfillEmailIdentityOnSuccessfulLogin(ctx, user)
 	s.touchUserLogin(ctx, user.ID)
 
 	// 生成JWT token
@@ -800,6 +801,13 @@ REDACTED
 		Exec(ctx); err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Failed to touch login timestamps: user_id=%d err=%v", userID, err)
 REDACTED
+REDACTED
+
+func (s *AuthService) backfillEmailIdentityOnSuccessfulLogin(ctx context.Context, user *User) {
+	if s == nil || user == nil || user.ID <= 0 {
+		return
+REDACTED
+	s.ensureEmailAuthIdentity(ctx, user)
 REDACTED
 
 func (s *AuthService) ensureEmailAuthIdentity(ctx context.Context, user *User) {

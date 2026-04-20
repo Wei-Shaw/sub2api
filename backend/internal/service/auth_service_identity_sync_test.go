@@ -150,4 +150,41 @@ REDACTED
 	require.NotNil(t, storedUser.LastActiveAt)
 	require.True(t, storedUser.LastLoginAt.After(old))
 	require.True(t, storedUser.LastActiveAt.After(old))
+
+	identity, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ("email"),
+			authidentity.ProviderKeyEQ("email"),
+			authidentity.ProviderSubjectEQ("login@example.com"),
+		).
+		Only(ctx)
+REDACTED
+	require.Equal(t, user.ID, identity.UserID)
+REDACTED
+
+func TestAuthServiceRecordSuccessfulLoginBackfillsEmailIdentity(t *testing.T) {
+	svc, repo, client := newAuthServiceWithEnt(t)
+	ctx := context.Background()
+
+	user := &service.User{
+		Email:       "record@example.com",
+		Role:        service.RoleUser,
+		Status:      service.StatusActive,
+		Balance:     1,
+		Concurrency: 1,
+REDACTED
+	require.NoError(t, user.SetPassword("password"))
+	require.NoError(t, repo.Create(ctx, user))
+
+	svc.RecordSuccessfulLogin(ctx, user.ID)
+
+	identity, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ("email"),
+			authidentity.ProviderKeyEQ("email"),
+			authidentity.ProviderSubjectEQ("record@example.com"),
+		).
+		Only(ctx)
+REDACTED
+	require.Equal(t, user.ID, identity.UserID)
 REDACTED
