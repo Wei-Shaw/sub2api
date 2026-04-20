@@ -17,6 +17,7 @@ type stubAdminService struct {
 	proxies              []service.Proxy
 	proxyCounts          []service.ProxyWithAccountCount
 	redeems              []service.RedeemCode
+	migrationReports     []service.AuthIdentityMigrationReport
 	createdAccounts      []*service.CreateAccountInput
 	createdProxies       []*service.CreateProxyInput
 	updatedProxyIDs      []int64
@@ -123,6 +124,15 @@ REDACTED
 		proxies:     []service.Proxy{proxyREDACTED,
 		proxyCounts: []service.ProxyWithAccountCount{{Proxy: proxy, AccountCount: 1REDACTEDREDACTED,
 		redeems:     []service.RedeemCode{redeemREDACTED,
+		migrationReports: []service.AuthIdentityMigrationReport{
+			{
+				ID:         1,
+				ReportType: "oidc_synthetic_email_requires_manual_recovery",
+				ReportKey:  "u-1",
+				Details:    map[string]any{"user_id": 1REDACTED,
+				CreatedAt:  now,
+		REDACTED,
+	REDACTED,
 REDACTED
 REDACTED
 
@@ -165,6 +175,30 @@ REDACTED
 
 func (s *stubAdminService) GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error) {
 	return map[string]any{"user_id": userIDREDACTED, nil
+REDACTED
+
+func (s *stubAdminService) ListAuthIdentityMigrationReports(ctx context.Context, reportType string, page, pageSize int) ([]service.AuthIdentityMigrationReport, int64, error) {
+	if reportType == "" {
+		return s.migrationReports, int64(len(s.migrationReports)), nil
+REDACTED
+	filtered := make([]service.AuthIdentityMigrationReport, 0, len(s.migrationReports))
+	for _, report := range s.migrationReports {
+		if strings.EqualFold(report.ReportType, reportType) {
+			filtered = append(filtered, report)
+	REDACTED
+REDACTED
+	return filtered, int64(len(filtered)), nil
+REDACTED
+
+func (s *stubAdminService) GetAuthIdentityMigrationReportSummary(ctx context.Context) (*service.AuthIdentityMigrationReportSummary, error) {
+	summary := &service.AuthIdentityMigrationReportSummary{
+		ByType: map[string]int64{REDACTED,
+REDACTED
+	for _, report := range s.migrationReports {
+		summary.Total++
+		summary.ByType[report.ReportType]++
+REDACTED
+	return summary, nil
 REDACTED
 
 func (s *stubAdminService) ListGroups(ctx context.Context, page, pageSize int, platform, status, search string, isExclusive *bool, sortBy, sortOrder string) ([]service.Group, int64, error) {

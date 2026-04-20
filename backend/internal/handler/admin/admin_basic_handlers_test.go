@@ -22,6 +22,8 @@ func setupAdminRouter() (*gin.Engine, *stubAdminService) {
 	redeemHandler := NewRedeemHandler(adminSvc, nil)
 
 	router.GET("/api/v1/admin/users", userHandler.List)
+	router.GET("/api/v1/admin/users/auth-identity-migration-reports/summary", userHandler.GetAuthIdentityMigrationReportSummary)
+	router.GET("/api/v1/admin/users/auth-identity-migration-reports", userHandler.ListAuthIdentityMigrationReports)
 	router.GET("/api/v1/admin/users/:id", userHandler.GetByID)
 	router.POST("/api/v1/admin/users", userHandler.Create)
 	router.PUT("/api/v1/admin/users/:id", userHandler.Update)
@@ -67,6 +69,16 @@ func TestUserHandlerEndpoints(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users?page=1&page_size=20", nil)
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/admin/users/auth-identity-migration-reports/summary", nil)
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/admin/users/auth-identity-migration-reports?report_type=oidc_synthetic_email_requires_manual_recovery", nil)
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
 

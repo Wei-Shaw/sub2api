@@ -210,6 +210,8 @@ REDACTED
 func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	users := admin.Group("/users")
 	{
+		users.GET("/auth-identity-migration-reports/summary", h.Admin.User.GetAuthIdentityMigrationReportSummary)
+		users.GET("/auth-identity-migration-reports", h.Admin.User.ListAuthIdentityMigrationReports)
 		users.GET("", h.Admin.User.List)
 		users.GET("/:id", h.Admin.User.GetByID)
 		users.POST("", h.Admin.User.Create)
