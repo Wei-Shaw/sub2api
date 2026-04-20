@@ -372,7 +372,7 @@ REDACTED
 	require.Nil(t, storedSession.ConsumedAt)
 REDACTED
 
-func TestExchangePendingOAuthCompletionLoginFalseFalseDoesNotBindIdentity(t *testing.T) {
+func TestExchangePendingOAuthCompletionLoginFalseFalseBindsIdentityWithoutAdoption(t *testing.T) {
 	handler, client := newOAuthPendingFlowTestHandler(t, false)
 	ctx := context.Background()
 
@@ -420,21 +420,22 @@ REDACTED
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 
-	identityCount, err := client.AuthIdentity.Query().
+	identity, err := client.AuthIdentity.Query().
 		Where(
 			authidentity.ProviderTypeEQ("linuxdo"),
 			authidentity.ProviderKeyEQ("linuxdo"),
 			authidentity.ProviderSubjectEQ("login-false-123"),
 		).
-		Count(ctx)
+		Only(ctx)
 REDACTED
-	require.Zero(t, identityCount)
+	require.Equal(t, userEntity.ID, identity.UserID)
 
 	decision, err := client.IdentityAdoptionDecision.Query().
 		Where(identityadoptiondecision.PendingAuthSessionIDEQ(session.ID)).
 		Only(ctx)
 REDACTED
-	require.Nil(t, decision.IdentityID)
+	require.NotNil(t, decision.IdentityID)
+	require.Equal(t, identity.ID, *decision.IdentityID)
 	require.False(t, decision.AdoptDisplayName)
 	require.False(t, decision.AdoptAvatar)
 

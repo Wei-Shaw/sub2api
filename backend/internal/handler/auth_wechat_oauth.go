@@ -242,7 +242,18 @@ REDACTED
 		redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
 		return
 REDACTED
+	if existingIdentityUser == nil {
+		existingIdentityUser, err = h.findWeChatUserByLegacyOpenID(c.Request.Context(), identityRef, cfg, openid)
+		if err != nil {
+			redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
+			return
+	REDACTED
+REDACTED
 	if existingIdentityUser != nil {
+		if err := h.ensureWeChatRuntimeIdentityBinding(c.Request.Context(), existingIdentityUser.ID, identityRef, upstreamClaims); err != nil {
+			redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
+			return
+	REDACTED
 		tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), existingIdentityUser.Email, username, "")
 		if err != nil {
 			redirectOAuthError(c, frontendCallback, "login_failed", infraerrors.Reason(err), infraerrors.Message(err))
@@ -509,6 +520,91 @@ REDACTED
 		return infraerrors.Conflict("AUTH_IDENTITY_CHANNEL_OWNERSHIP_CONFLICT", "auth identity channel already belongs to another user")
 REDACTED
 	return nil
+REDACTED
+
+func (h *AuthHandler) findWeChatUserByLegacyOpenID(
+	ctx context.Context,
+	identity service.PendingAuthIdentityKey,
+	cfg wechatOAuthConfig,
+	openid string,
+) (*dbent.User, error) {
+	client := h.entClient()
+	if client == nil {
+		return nil, infraerrors.ServiceUnavailable("PENDING_AUTH_NOT_READY", "pending auth service is not ready")
+REDACTED
+
+	openid = strings.TrimSpace(openid)
+	channel := strings.TrimSpace(cfg.mode)
+	channelAppID := strings.TrimSpace(cfg.appID)
+	if openid != "" && channel != "" && channelAppID != "" {
+		record, err := client.AuthIdentityChannel.Query().
+			Where(
+				authidentitychannel.ProviderTypeEQ(strings.TrimSpace(identity.ProviderType)),
+				authidentitychannel.ProviderKeyEQ(strings.TrimSpace(identity.ProviderKey)),
+				authidentitychannel.ChannelEQ(channel),
+				authidentitychannel.ChannelAppIDEQ(channelAppID),
+				authidentitychannel.ChannelSubjectEQ(openid),
+			).
+			WithIdentity(func(q *dbent.AuthIdentityQuery) {
+				q.WithUser()
+		REDACTED).
+			Only(ctx)
+		if err != nil && !dbent.IsNotFound(err) {
+			return nil, infraerrors.InternalServer("AUTH_IDENTITY_CHANNEL_LOOKUP_FAILED", "failed to inspect auth identity channel ownership").WithCause(err)
+	REDACTED
+		if record != nil && record.Edges.Identity != nil && record.Edges.Identity.Edges.User != nil {
+			return record.Edges.Identity.Edges.User, nil
+	REDACTED
+REDACTED
+
+	if openid == "" {
+		return nil, nil
+REDACTED
+
+	record, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ(strings.TrimSpace(identity.ProviderType)),
+			authidentity.ProviderKeyEQ(strings.TrimSpace(identity.ProviderKey)),
+			authidentity.ProviderSubjectEQ(openid),
+		).
+		WithUser().
+		Only(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil, nil
+	REDACTED
+		return nil, infraerrors.InternalServer("AUTH_IDENTITY_LOOKUP_FAILED", "failed to inspect auth identity ownership").WithCause(err)
+REDACTED
+	return record.Edges.User, nil
+REDACTED
+
+func (h *AuthHandler) ensureWeChatRuntimeIdentityBinding(
+	ctx context.Context,
+	userID int64,
+	identity service.PendingAuthIdentityKey,
+	upstreamClaims map[string]any,
+) error {
+	client := h.entClient()
+	if client == nil {
+		return infraerrors.ServiceUnavailable("PENDING_AUTH_NOT_READY", "pending auth service is not ready")
+REDACTED
+
+	tx, err := client.Tx(ctx)
+	if err != nil {
+		return infraerrors.InternalServer("AUTH_IDENTITY_BIND_FAILED", "failed to begin wechat identity repair transaction").WithCause(err)
+REDACTED
+	defer func() { _ = tx.Rollback() REDACTED()
+
+	_, err = ensurePendingOAuthIdentityForUser(dbent.NewTxContext(ctx, tx), tx, &dbent.PendingAuthSession{
+		ProviderType:           strings.TrimSpace(identity.ProviderType),
+		ProviderKey:            strings.TrimSpace(identity.ProviderKey),
+		ProviderSubject:        strings.TrimSpace(identity.ProviderSubject),
+		UpstreamIdentityClaims: cloneOAuthMetadata(upstreamClaims),
+REDACTED, userID)
+	if err != nil {
+		return err
+REDACTED
+	return tx.Commit()
 REDACTED
 
 func (h *AuthHandler) getWeChatOAuthConfig(ctx context.Context, rawMode string, c *gin.Context) (wechatOAuthConfig, error) {
