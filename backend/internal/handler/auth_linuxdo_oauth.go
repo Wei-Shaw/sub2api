@@ -15,6 +15,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
+	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
@@ -237,6 +239,7 @@ REDACTED
 		redirectOAuthError(c, frontendCallback, "userinfo_failed", "failed to fetch user info", "")
 		return
 REDACTED
+	compatEmail := strings.TrimSpace(email)
 
 	// 安全考虑：不要把第三方返回的 email 直接映射到本地账号（可能与本地邮箱用户冲突导致账号被接管）。
 	// 统一使用基于 subject 的稳定合成邮箱来做账号绑定。
@@ -254,6 +257,9 @@ REDACTED
 		"subject":                subject,
 		"suggested_display_name": displayName,
 		"suggested_avatar_url":   avatarURL,
+REDACTED
+	if compatEmail != "" && !strings.EqualFold(strings.TrimSpace(compatEmail), strings.TrimSpace(email)) {
+		upstreamClaims["compat_email"] = compatEmail
 REDACTED
 	if intent == oauthIntentBindCurrentUser {
 		targetUserID, err := h.readOAuthBindUserIDFromCookie(c, linuxDoOAuthBindUserCookieName)
@@ -305,6 +311,33 @@ REDACTED
 				"expires_in":    tokenPair.ExpiresIn,
 				"token_type":    "Bearer",
 				"redirect":      redirectTo,
+		REDACTED,
+	REDACTED); err != nil {
+			redirectOAuthError(c, frontendCallback, "session_error", "failed to continue oauth login", "")
+			return
+	REDACTED
+		redirectToFrontendCallback(c, frontendCallback)
+		return
+REDACTED
+
+	compatEmailUser, err := h.findLinuxDoCompatEmailUser(c.Request.Context(), compatEmail)
+	if err != nil {
+		redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
+		return
+REDACTED
+	if compatEmailUser != nil {
+		if err := h.createOAuthPendingSession(c, oauthPendingSessionPayload{
+			Intent:                 "adopt_existing_user_by_email",
+			Identity:               identityKey,
+			TargetUserID:           &compatEmailUser.ID,
+			ResolvedEmail:          compatEmailUser.Email,
+			RedirectTo:             redirectTo,
+			BrowserSessionKey:      browserSessionKey,
+			UpstreamIdentityClaims: upstreamClaims,
+			CompletionResponse: map[string]any{
+				"redirect": redirectTo,
+				"step":     "bind_login_required",
+				"email":    compatEmailUser.Email,
 		REDACTED,
 	REDACTED); err != nil {
 			redirectOAuthError(c, frontendCallback, "session_error", "failed to continue oauth login", "")
@@ -370,6 +403,32 @@ REDACTED); err != nil {
 		return
 REDACTED
 	redirectToFrontendCallback(c, frontendCallback)
+REDACTED
+
+func (h *AuthHandler) findLinuxDoCompatEmailUser(ctx context.Context, email string) (*dbent.User, error) {
+	client := h.entClient()
+	if client == nil {
+		return nil, infraerrors.ServiceUnavailable("PENDING_AUTH_NOT_READY", "pending auth service is not ready")
+REDACTED
+
+	email = strings.TrimSpace(strings.ToLower(email))
+	if email == "" ||
+		strings.HasSuffix(email, service.LinuxDoConnectSyntheticEmailDomain) ||
+		strings.HasSuffix(email, service.OIDCConnectSyntheticEmailDomain) ||
+		strings.HasSuffix(email, service.WeChatConnectSyntheticEmailDomain) {
+		return nil, nil
+REDACTED
+
+	userEntity, err := client.User.Query().
+		Where(dbuser.EmailEqualFold(email)).
+		Only(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil, nil
+	REDACTED
+		return nil, infraerrors.InternalServer("COMPAT_EMAIL_LOOKUP_FAILED", "failed to look up compat email user").WithCause(err)
+REDACTED
+	return userEntity, nil
 REDACTED
 
 type completeLinuxDoOAuthRequest struct {
