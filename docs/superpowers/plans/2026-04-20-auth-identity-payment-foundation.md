@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Rebuild the auth identity, profile binding, payment routing, and OpenAI advanced scheduler foundation on top of a clean `origin/main` branch while preserving historical compatibility for existing email users and historical LinuxDo users.
+**Goal:** Rebuild the auth identity, profile binding, payment routing, and OpenAI advanced scheduler foundation on top of a clean `origin/main` branch while preserving historical compatibility for existing email users, existing LinuxDo users, historical LinuxDo/WeChat/OIDC synthetic-email users, and historical WeChat `openid`-only records.
 **Architecture:** A unified identity foundation centered on durable provider subjects (`email`, `linuxdo`, `oidc`, `wechat`) and transactional pending-auth sessions; backend-owned payment source routing behind stable frontend methods (`alipay`, `wxpay`); compatibility-first migration/backfill before feature enablement.
 **Tech Stack:** Go, Gin, Ent, PostgreSQL, Redis, Vue 3, Pinia, TypeScript, Vitest, pnpm.
 
@@ -10,8 +10,9 @@
 
 ## Non-Negotiable Product Rules
 
-- [ ] Preserve login continuity for existing email users and historical LinuxDo users.
-- [ ] During migration, backfill historical LinuxDo synthetic-email users into explicit LinuxDo identities before first post-upgrade login.
+- [ ] Preserve login continuity for existing email users, existing LinuxDo users, and historically migrated third-party users.
+- [ ] During migration, backfill historical LinuxDo/WeChat/OIDC synthetic-email users into explicit third-party identities before first post-upgrade login whenever deterministic recovery is possible.
+- [ ] During migration, surface historical WeChat `openid`-only records through explicit migration reports and remediation rules; do not silently reinterpret them as valid canonical identities.
 - [ ] Keep existing email login and add third-party login/bind for `linuxdo`, `oidc`, and `wechat`.
 - [ ] On first third-party login:
   - identity exists: direct login.
@@ -37,6 +38,11 @@
   - non-WeChat browser uses Open/QR login.
   - canonical identity uses `unionid`.
   - when `unionid` is unavailable, fail the login/bind flow under the approved option-1 policy.
+- [ ] OIDC rules:
+  - browser authorization-code flow always uses PKCE `S256`.
+  - discovery issuer and ID token `iss` must match exactly.
+  - `userinfo.sub` must match ID token `sub` when UserInfo is used.
+  - upstream `email_verified` does not satisfy local email verification.
 - [ ] Payment UI rules:
   - user-facing methods stay `支付宝` and `微信支付`.
   - backend decides whether each method routes to official provider instance or EasyPay.
@@ -49,20 +55,26 @@
   - WeChat H5: MP/JSAPI first, fallback to H5 pay.
   - non-WeChat H5: H5 pay, or prompt to open in WeChat when unavailable.
 - [ ] Payment success pages are informational only; actual fulfillment depends on webhook or server-side reconciliation.
+- [ ] WeChat in-app payment requiring `openid` must use a dedicated server-backed payment OAuth resume flow rather than frontend-only recovery state.
 - [ ] OpenAI advanced scheduler is available but default-disabled.
 
 ## Hard Technical Constraints From Audit
 
 - [ ] Browser-based third-party auth must use Authorization Code + PKCE `S256`.
+- [ ] PKCE must not be admin-configurable off for browser authorization-code providers.
 - [ ] OIDC identity primary key must be `(issuer, subject)`, not email.
 - [ ] Email equality must never auto-link accounts.
 - [ ] Bind-existing-account must require explicit local re-authentication and TOTP verification when enabled.
+- [ ] Bind-current-user must originate from an already-authenticated local user and preserve explicit bind intent across callback completion.
 - [ ] OAuth redirect URI must be fixed server config, exact-match, and never derived from user input.
 - [ ] User-supplied redirect may only choose a normalized same-origin internal route after completion.
 - [ ] WeChat canonical identity must be `unionid`; `openid` remains channel/app-scoped support data only.
-- [ ] Every payment order must snapshot the selected provider instance and reuse that exact instance for callback verification, reconciliation, refund, and audit.
+- [ ] Every canonical identity uniqueness rule must include provider namespace (`provider_key`) consistently.
+- [ ] Callback completion must use backend session completion or a one-time opaque exchange code that is short-lived, one-time, browser-session-bound, `POST`-redeemed, and unusable as a bearer token.
+- [ ] Every payment order must snapshot the selected provider instance plus the order-time verification inputs required for callback verification, reconciliation, refund, and audit.
 - [ ] Frontend must not receive first-party bearer tokens through callback URL fragments in the rebuilt flow.
 - [ ] Public payment result polling must not expose order data by raw `out_trade_no` alone; use authenticated lookup or signed opaque result token.
+- [ ] WeChat Pay webhook handling must verify signature, decrypt payload, and compare `appid`, `mchid`, `out_trade_no`, `amount`, `currency`, and provider trade state against the order snapshot before fulfillment.
 
 ## Baseline Notes
 
@@ -100,6 +112,8 @@
 - [ ] `backend/internal/service/payment_order.go`
 - [ ] `backend/internal/service/payment_order_lifecycle.go`
 - [ ] `backend/internal/service/payment_fulfillment.go`
+- [ ] `backend/internal/service/payment_resume_service.go`
+- [ ] `backend/internal/service/payment_resume_service_test.go`
 - [ ] `backend/internal/service/openai_account_scheduler.go`
 - [ ] `backend/internal/handler/auth_pending_identity_flow.go`
 - [ ] `backend/internal/handler/auth_linuxdo_oauth.go`
@@ -148,9 +162,10 @@
   - `users.last_active_at`
   - grant-tracking columns/tables required to prevent double-award
 - [ ] Add uniqueness/index rules:
-  - one canonical identity per `(provider, provider_subject)`
+  - one canonical identity per `(provider, provider_key, provider_subject)`
   - one channel record per `(provider, provider_channel, provider_app_id, provider_channel_subject)`
   - one adoption decision per pending session
+- [ ] Model `pending_auth_sessions` so immutable upstream claims and mutable local flow state are stored separately; do not reintroduce a mixed `metadata` catch-all.
 - [ ] Preserve null-safe compatibility defaults so historical rows remain readable before backfill finishes.
 - [ ] Add explicit rollback blocks only where safe; never repeat the destructive pattern observed in old `112_update_pending_auth_sessions.sql`.
 
@@ -160,8 +175,10 @@
   - existing email users into `auth_identities(provider=email, provider_subject=normalized_email)`
   - historical LinuxDo users into `auth_identities(provider=linuxdo, provider_subject=linuxdo_subject)`
   - historical synthetic-email LinuxDo users into explicit LinuxDo identity rows by parsing legacy email mode and legacy provider metadata
+  - historical synthetic-email WeChat users into explicit WeChat identities where `unionid` or equivalent deterministic provider identity is recoverable
+  - historical synthetic-email OIDC users into explicit OIDC identities where deterministic provider identity is recoverable
   - profile/channel rows from historical `user_external_identities`-style data when present in upgraded databases
-- [ ] Write migration report output in `backend/internal/repository/auth_identity_migration_report.go` so production can inspect unmatched rows instead of silently skipping them.
+- [ ] Write migration report output in `backend/internal/repository/auth_identity_migration_report.go` so production can inspect unmatched rows, `openid`-only WeChat rows, and non-deterministic synthetic-email rows instead of silently skipping them.
 - [ ] Set `signup_source` and provider provenance when recoverable from historical data. Do not flatten everything to `email`.
 
 ### Task 3. Provider default grant and scheduler config migration
@@ -173,6 +190,7 @@
   - profile avatar storage columns/settings
 - [ ] Implement `backend/migrations/111_payment_routing_and_scheduler_flags.sql` for:
   - stable payment method to provider-instance routing
+  - visible-method normalization from historical `supported_types`, `payment_mode`, and legacy aliases such as `wxpay_direct`
   - admin exclusivity flags for `alipay` and `wxpay`
   - advanced scheduler enable flag defaulting to disabled
 
@@ -213,6 +231,7 @@
   - update `last_login_at` and `last_active_at`
 - [ ] Add repository contract coverage in `backend/internal/repository/user_profile_identity_repo_contract_test.go`.
 - [ ] Enforce dual-write for email registration/login so `users.email` and `auth_identities(provider=email, ...)` stay consistent from this phase onward.
+- [ ] Add repository coverage proving `last_login_at` and `last_active_at` use the required field names and are not silently replaced by derived `last_used_at` logic.
 
 ### Task 6. Rebuild transactional pending-auth service
 
@@ -223,8 +242,15 @@
   - bind pending identity to existing account after password/TOTP re-auth
   - apply configured provider defaults on the correct trigger only once
   - store provider nickname/avatar candidates and user opt-in replacement decisions independently
+- [ ] Implement callback completion so pending auth can finish through backend session completion or a one-time exchange code:
+  - short TTL
+  - one-time use
+  - browser-session binding
+  - `POST` redemption only
+  - safe mixed-version bridge to legacy pending-token aliases during rollout
 - [ ] Keep pending session payload normalized:
   - provider identity fields live in typed columns/JSON structure
+  - mutable local progression lives separately from immutable upstream claims
   - avoid the old branch’s mixed `metadata` and `upstream_identity_payload` ambiguity
 - [ ] Do not call plain email registration helpers from this flow. The old feature branch bug where pending third-party signup fell back to `RegisterWithVerification` must not reappear.
 
@@ -236,11 +262,13 @@
   - `backend/internal/handler/auth_wechat_oauth.go`
 - [ ] For OIDC:
   - require PKCE `S256`, `state`, and `nonce`
-  - validate `iss`, `aud`, optional `azp`, `exp`, `nonce`
+  - validate discovery issuer, `iss`, `aud`, optional `azp`, `exp`, and `nonce`
+  - verify `userinfo.sub == id_token.sub` when UserInfo is used
   - persist canonical identity as `(issuer, sub)`
 - [ ] For WeChat:
   - MP flow in WeChat UA
   - Open/QR flow outside WeChat UA
+  - website login uses authorization-code flow and persists channel/app binding
   - persist channel identity by `(channel, appid, openid)`
   - persist canonical identity by `unionid`
   - hard-fail when `unionid` is absent under the approved product policy
@@ -253,6 +281,10 @@
   - submit verified email
   - choose create-new-account or bind-existing-account
   - submit nickname/avatar replacement choices
+- [ ] Make bind-existing-account and bind-current-user flows explicit:
+  - no automatic linking on matching email
+  - fresh password/TOTP proof is scoped to the intended target account only
+  - no automatic metadata merge beyond explicitly selected nickname/avatar adoption
 - [ ] Update `backend/internal/handler/auth_handler.go` and `backend/internal/handler/user_handler.go` to expose:
   - current bindings summary
   - start-bind endpoints for LinuxDo/OIDC/WeChat
@@ -312,6 +344,7 @@
   - `frontend/src/api/auth.ts`
   - `frontend/src/stores/auth.ts`
 - [ ] Replace any token-fragment bootstrap with backend session completion or one-time exchange code flow.
+- [ ] During rollout, keep temporary compatibility readers for legacy pending-token aliases behind a bounded bridge contract and explicit removal step.
 
 ### Task 12. Rebuild profile account binding and avatar UX
 
@@ -351,11 +384,17 @@
   - frontend visible methods remain `alipay` and `wxpay`
   - admin chooses which provider instance serves each method
   - runtime validation guarantees only one active source per visible method
+- [ ] Add migration logic and tests to normalize historical provider-instance config:
+  - `supported_types`
+  - `payment_mode`
+  - legacy aliases such as `wxpay_direct`
+  - historical limit config
 - [ ] Rebuild `backend/internal/service/payment_order.go` and `backend/internal/service/payment_order_lifecycle.go` so order creation snapshots:
   - visible method
   - selected provider instance id
   - provider type
   - provider capability mode
+  - verification-critical provider fields needed for later callback/query/refund validation
 - [ ] Rebuild `backend/internal/handler/payment_handler.go` for UX rules:
   - Alipay PC: QR page
   - Alipay mobile: direct jump
@@ -363,6 +402,11 @@
   - WeChat H5 in WeChat: MP/JSAPI first, fallback to H5
   - WeChat H5 outside WeChat: H5 or “open in WeChat” prompt when unavailable
 - [ ] Never derive canonical return URL from `Referer`; use configured or signed internal callback targets only.
+- [ ] Implement `backend/internal/service/payment_resume_service.go` so WeChat in-app payment OAuth resume is server-backed rather than localStorage-backed:
+  - create `oauth_required` resume context
+  - persist amount/order_type/plan_id/visible method/redirect/state
+  - redeem callback into same-origin internal resume target
+  - expire and consume resume context safely
 
 ### Task 15. Make fulfillment and reconciliation provider-instance-safe
 
@@ -370,6 +414,12 @@
   - verification uses the order’s original provider instance
   - webhook processing is idempotent by provider event id and internal order id
   - missed webhook recovery uses server-side provider query, not frontend success return
+- [ ] For WeChat Pay specifically, enforce:
+  - fixed HTTPS `notify_url` with no query params
+  - no dependency on user login state
+  - signature verification before decrypt
+  - APIv3 decrypt before business parsing
+  - comparison of `appid`, `mchid`, `out_trade_no`, `amount`, `currency`, and trade state against the order snapshot
 - [ ] Harden `frontend/src/views/user/PaymentResultView.vue` and `frontend/src/api/payment.ts` so result polling uses an authenticated order lookup or signed opaque token, not a raw public `out_trade_no` query.
 
 ### Task 16. Rebuild payment frontend views
@@ -378,6 +428,10 @@
   - only two buttons are shown to user: `支付宝` and `微信支付`
   - frontend does not leak official-vs-EasyPay distinction
   - route-specific copy handles QR, jump, MP, H5 fallback correctly
+- [ ] Rebuild WeChat in-app payment resume UX around the server-backed resume context:
+  - handle `oauth_required`
+  - continue from same-origin resume target
+  - avoid long-lived localStorage as the source of truth
 - [ ] Add or update:
   - `frontend/src/views/user/__tests__/PaymentView.spec.ts`
   - `frontend/src/views/user/__tests__/PaymentResultView.spec.ts`
@@ -416,16 +470,22 @@
   - historical email-only user login after upgrade
   - historical LinuxDo user login after upgrade
   - historical synthetic-email LinuxDo user login after upgrade
+  - historical synthetic-email WeChat user login after upgrade
+  - historical synthetic-email OIDC user login after upgrade
+  - historical WeChat `openid`-only rows are reported or explicitly remediated
   - no retroactive grant replay during migration
   - first-bind grant fires once only when enabled
   - email identity dual-write stays consistent
   - bind-existing-account requires password and TOTP where configured
+  - mixed-version callback token bridge works during rollout and is removable afterward
+  - historical payment config is normalized into visible-method routing without refund/query regression
 - [ ] Add deploy sequencing note to release docs or internal runbook:
   1. deploy schema and backfill release.
   2. inspect migration report for unmatched rows.
-  3. deploy backend identity/payment compatibility code.
-  4. deploy frontend callback/profile/payment UI.
-  5. enable strict email-required signup or provider bind grants only after metrics are healthy.
+  3. deploy backend identity/payment compatibility code with exchange bridge and legacy token aliases still enabled.
+  4. deploy frontend callback/profile/payment UI using session completion, exchange code, and server-backed WeChat payment resume.
+  5. remove legacy callback/token parsing after mixed-version window closes.
+  6. enable strict email-required signup or provider bind grants only after metrics are healthy.
 
 ### Task 20. Final verification and handoff
 
@@ -449,6 +509,8 @@
 - [ ] Run focused manual smoke checks:
   - email login with existing account
   - LinuxDo existing-account login after migration
+  - WeChat synthetic-email account login after migration
+  - OIDC synthetic-email account login after migration
   - third-party first login create-new-account path
   - third-party first login bind-existing-account path
   - first third-party bind with optional nickname/avatar replacement
@@ -456,6 +518,7 @@
   - mobile Alipay jump
   - PC WeChat QR
   - WeChat H5 MP/JSAPI path
+  - WeChat in-app OAuth resume path
   - non-WeChat H5 fallback path
 - [ ] Commit final checkpoint:
   ```bash
@@ -468,9 +531,9 @@
 - [ ] No flow still relies on provider email equality for account linking.
 - [ ] No flow still creates third-party users through plain email registration helpers.
 - [ ] No callback still returns first-party bearer tokens in URL fragments.
+- [ ] No callback completion path can be replayed as a bearer token substitute.
 - [ ] No payment result view trusts provider return page as authoritative fulfillment.
 - [ ] No webhook verification path selects provider credentials from “currently active config” instead of the order snapshot.
-- [ ] Existing email users and historical LinuxDo users are covered by migration tests.
+- [ ] Existing email users, historical LinuxDo/WeChat/OIDC users, and `openid`-only WeChat remediation cases are covered by migration tests.
 - [ ] Avatar adoption and deletion semantics are explicit and reversible.
 - [ ] Grant timing is source-aware and one-time only.
-
