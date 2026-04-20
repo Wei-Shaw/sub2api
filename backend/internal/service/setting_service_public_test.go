@@ -77,3 +77,16 @@ REDACTED
 	require.Equal(t, 50, settings.TableDefaultPageSize)
 	require.Equal(t, []int{20, 50, 100REDACTED, settings.TablePageSizeOptions)
 REDACTED
+
+func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t *testing.T) {
+	repo := &settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyForceEmailOnThirdPartySignup: "true",
+	REDACTED,
+REDACTED
+	svc := NewSettingService(repo, &config.Config{REDACTED)
+
+	settings, err := svc.GetPublicSettings(context.Background())
+REDACTED
+	require.True(t, settings.ForceEmailOnThirdPartySignup)
+REDACTED

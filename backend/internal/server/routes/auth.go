@@ -72,17 +72,53 @@ func RegisterAuthRoutes(
 		REDACTED),
 			h.Auth.ExchangePendingOAuthCompletion,
 		)
+		auth.POST("/oauth/pending/create-account",
+			rateLimiter.LimitWithOptions("oauth-pending-create-account", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+		REDACTED),
+			h.Auth.CreatePendingOAuthAccount,
+		)
+		auth.POST("/oauth/pending/bind-login",
+			rateLimiter.LimitWithOptions("oauth-pending-bind-login", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+		REDACTED),
+			h.Auth.BindPendingOAuthLogin,
+		)
 		auth.POST("/oauth/linuxdo/complete-registration",
 			rateLimiter.LimitWithOptions("oauth-linuxdo-complete", 10, time.Minute, middleware.RateLimitOptions{
 				FailureMode: middleware.RateLimitFailClose,
 		REDACTED),
 			h.Auth.CompleteLinuxDoOAuthRegistration,
 		)
+		auth.POST("/oauth/linuxdo/bind-login",
+			rateLimiter.LimitWithOptions("oauth-linuxdo-bind-login", 20, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+		REDACTED),
+			h.Auth.BindLinuxDoOAuthLogin,
+		)
+		auth.POST("/oauth/linuxdo/create-account",
+			rateLimiter.LimitWithOptions("oauth-linuxdo-create-account", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+		REDACTED),
+			h.Auth.CreateLinuxDoOAuthAccount,
+		)
 		auth.POST("/oauth/wechat/complete-registration",
 			rateLimiter.LimitWithOptions("oauth-wechat-complete", 10, time.Minute, middleware.RateLimitOptions{
 				FailureMode: middleware.RateLimitFailClose,
 		REDACTED),
 			h.Auth.CompleteWeChatOAuthRegistration,
+		)
+		auth.POST("/oauth/wechat/bind-login",
+			rateLimiter.LimitWithOptions("oauth-wechat-bind-login", 20, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+		REDACTED),
+			h.Auth.BindWeChatOAuthLogin,
+		)
+		auth.POST("/oauth/wechat/create-account",
+			rateLimiter.LimitWithOptions("oauth-wechat-create-account", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+		REDACTED),
+			h.Auth.CreateWeChatOAuthAccount,
 		)
 		auth.GET("/oauth/oidc/start", h.Auth.OIDCOAuthStart)
 		auth.GET("/oauth/oidc/callback", h.Auth.OIDCOAuthCallback)
@@ -91,6 +127,18 @@ func RegisterAuthRoutes(
 				FailureMode: middleware.RateLimitFailClose,
 		REDACTED),
 			h.Auth.CompleteOIDCOAuthRegistration,
+		)
+		auth.POST("/oauth/oidc/bind-login",
+			rateLimiter.LimitWithOptions("oauth-oidc-bind-login", 20, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+		REDACTED),
+			h.Auth.BindOIDCOAuthLogin,
+		)
+		auth.POST("/oauth/oidc/create-account",
+			rateLimiter.LimitWithOptions("oauth-oidc-create-account", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+		REDACTED),
+			h.Auth.CreateOIDCOAuthAccount,
 		)
 REDACTED
 

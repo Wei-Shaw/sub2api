@@ -214,6 +214,11 @@ REDACTED
 		"suggested_display_name": strings.TrimSpace(userInfo.Nickname),
 		"suggested_avatar_url":   strings.TrimSpace(userInfo.HeadImgURL),
 REDACTED
+	identityRef := service.PendingAuthIdentityKey{
+		ProviderType:    "wechat",
+		ProviderKey:     wechatOAuthProviderKey,
+		ProviderSubject: providerSubject,
+REDACTED
 
 	normalizedIntent := normalizeWeChatOAuthIntent(intent)
 	if normalizedIntent == wechatOAuthIntentBind {
@@ -226,6 +231,34 @@ REDACTED
 			default:
 				redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
 		REDACTED
+			return
+	REDACTED
+		redirectToFrontendCallback(c, frontendCallback)
+		return
+REDACTED
+
+	existingIdentityUser, err := h.findOAuthIdentityUser(c.Request.Context(), identityRef)
+	if err != nil {
+		redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
+		return
+REDACTED
+	if existingIdentityUser != nil {
+		tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), existingIdentityUser.Email, username, "")
+		if err != nil {
+			redirectOAuthError(c, frontendCallback, "login_failed", infraerrors.Reason(err), infraerrors.Message(err))
+			return
+	REDACTED
+		if err := h.createWeChatPendingSession(c, normalizedIntent, providerSubject, existingIdentityUser.Email, redirectTo, browserSessionKey, upstreamClaims, tokenPair, nil, &user.ID); err != nil {
+			redirectOAuthError(c, frontendCallback, "session_error", "failed to continue oauth login", "")
+			return
+	REDACTED
+		redirectToFrontendCallback(c, frontendCallback)
+		return
+REDACTED
+
+	if h.isForceEmailOnThirdPartySignup(c.Request.Context()) {
+		if err := h.createOAuthEmailRequiredPendingSession(c, identityRef, redirectTo, browserSessionKey, upstreamClaims); err != nil {
+			redirectOAuthError(c, frontendCallback, "session_error", "failed to continue oauth login", "")
 			return
 	REDACTED
 		redirectToFrontendCallback(c, frontendCallback)

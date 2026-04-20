@@ -128,6 +128,7 @@ REDACTED
 type PublicSettings struct {
 	RegistrationEnabled              bool
 	EmailVerifyEnabled               bool
+	ForceEmailOnThirdPartySignup     bool
 	RegistrationEmailSuffixWhitelist []string
 	PromoCodeEnabled                 bool
 	PasswordResetEnabled             bool

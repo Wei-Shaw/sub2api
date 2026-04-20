@@ -509,7 +509,303 @@ REDACTED
 	require.Nil(t, storedSession.ConsumedAt)
 REDACTED
 
+func TestCreateOIDCOAuthAccountCreatesUserBindsIdentityAndConsumesSession(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandlerWithEmailVerification(t, false, "fresh@example.com", "246810")
+	ctx := context.Background()
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("create-account-session-token").
+		SetIntent("login").
+		SetProviderType("oidc").
+		SetProviderKey("https://issuer.example").
+		SetProviderSubject("oidc-create-123").
+		SetBrowserSessionKey("create-account-browser-session-key").
+		SetUpstreamIdentityClaims(map[string]any{
+			"username":               "oidc_user",
+			"suggested_display_name": "Fresh OIDC User",
+			"suggested_avatar_url":   "https://cdn.example/fresh.png",
+	REDACTED).
+		SetRedirectTo("/profile").
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+REDACTED
+
+	body := bytes.NewBufferString(`{"email":"fresh@example.com","verify_code":"246810","password":"secret-123","adopt_display_name":false,"adopt_avatar":falseREDACTED`)
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/oidc/create-account", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)REDACTED)
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("create-account-browser-session-key")REDACTED)
+	ginCtx.Request = req
+
+	handler.CreateOIDCOAuthAccount(ginCtx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
+	require.NotEmpty(t, payload["access_token"])
+	require.NotEmpty(t, payload["refresh_token"])
+	require.Equal(t, "Bearer", payload["token_type"])
+
+	createdUser, err := client.User.Query().Where(dbuser.EmailEQ("fresh@example.com")).Only(ctx)
+REDACTED
+	require.Equal(t, service.StatusActive, createdUser.Status)
+
+	identity, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ("oidc"),
+			authidentity.ProviderKeyEQ("https://issuer.example"),
+			authidentity.ProviderSubjectEQ("oidc-create-123"),
+		).
+		Only(ctx)
+REDACTED
+	require.Equal(t, createdUser.ID, identity.UserID)
+
+	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
+REDACTED
+	require.NotNil(t, storedSession.ConsumedAt)
+REDACTED
+
+func TestCreateOIDCOAuthAccountExistingEmailReturnsAdoptExistingUserByEmailState(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandlerWithEmailVerification(t, false, "owner@example.com", "135790")
+	ctx := context.Background()
+
+	existingUser, err := client.User.Create().
+		SetEmail("owner@example.com").
+		SetUsername("owner-user").
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("existing-email-session-token").
+		SetIntent("login").
+		SetProviderType("oidc").
+		SetProviderKey("https://issuer.example").
+		SetProviderSubject("oidc-existing-123").
+		SetBrowserSessionKey("existing-email-browser-session-key").
+		SetUpstreamIdentityClaims(map[string]any{
+			"username":               "oidc_user",
+			"suggested_display_name": "Existing OIDC User",
+			"suggested_avatar_url":   "https://cdn.example/existing.png",
+	REDACTED).
+		SetRedirectTo("/dashboard").
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+REDACTED
+
+	body := bytes.NewBufferString(`{"email":"owner@example.com","verify_code":"135790","password":"secret-123"REDACTED`)
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/oidc/create-account", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)REDACTED)
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("existing-email-browser-session-key")REDACTED)
+	ginCtx.Request = req
+
+	handler.CreateOIDCOAuthAccount(ginCtx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
+	require.Equal(t, "pending_session", payload["auth_result"])
+	require.Equal(t, "adopt_existing_user_by_email", payload["intent"])
+	require.Equal(t, "oidc", payload["provider"])
+	require.Equal(t, "/dashboard", payload["redirect"])
+	require.Equal(t, true, payload["adoption_required"])
+	require.Equal(t, "Existing OIDC User", payload["suggested_display_name"])
+	require.Equal(t, "https://cdn.example/existing.png", payload["suggested_avatar_url"])
+
+	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
+REDACTED
+	require.Equal(t, "adopt_existing_user_by_email", storedSession.Intent)
+	require.NotNil(t, storedSession.TargetUserID)
+	require.Equal(t, existingUser.ID, *storedSession.TargetUserID)
+	require.Equal(t, "owner@example.com", storedSession.ResolvedEmail)
+	require.Nil(t, storedSession.ConsumedAt)
+
+	identityCount, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ("oidc"),
+			authidentity.ProviderKeyEQ("https://issuer.example"),
+			authidentity.ProviderSubjectEQ("oidc-existing-123"),
+		).
+		Count(ctx)
+REDACTED
+	require.Zero(t, identityCount)
+REDACTED
+
+func TestBindOIDCOAuthLoginBindsExistingUserAndConsumesSession(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandler(t, false)
+	ctx := context.Background()
+
+	passwordHash, err := handler.authService.HashPassword("secret-123")
+REDACTED
+
+	existingUser, err := client.User.Create().
+		SetEmail("owner@example.com").
+		SetUsername("owner-user").
+		SetPasswordHash(passwordHash).
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("bind-login-session-token").
+		SetIntent("adopt_existing_user_by_email").
+		SetProviderType("oidc").
+		SetProviderKey("https://issuer.example").
+		SetProviderSubject("oidc-bind-123").
+		SetTargetUserID(existingUser.ID).
+		SetResolvedEmail(existingUser.Email).
+		SetBrowserSessionKey("bind-login-browser-session-key").
+		SetUpstreamIdentityClaims(map[string]any{
+			"username":               "oidc_user",
+			"suggested_display_name": "Bound OIDC User",
+			"suggested_avatar_url":   "https://cdn.example/bound.png",
+	REDACTED).
+		SetRedirectTo("/profile").
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+REDACTED
+
+	body := bytes.NewBufferString(`{"email":"owner@example.com","password":"secret-123","adopt_display_name":false,"adopt_avatar":falseREDACTED`)
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/oidc/bind-login", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)REDACTED)
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("bind-login-browser-session-key")REDACTED)
+	ginCtx.Request = req
+
+	handler.BindOIDCOAuthLogin(ginCtx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
+	require.NotEmpty(t, payload["access_token"])
+	require.NotEmpty(t, payload["refresh_token"])
+	require.Equal(t, "Bearer", payload["token_type"])
+
+	identity, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ("oidc"),
+			authidentity.ProviderKeyEQ("https://issuer.example"),
+			authidentity.ProviderSubjectEQ("oidc-bind-123"),
+		).
+		Only(ctx)
+REDACTED
+	require.Equal(t, existingUser.ID, identity.UserID)
+
+	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
+REDACTED
+	require.NotNil(t, storedSession.ConsumedAt)
+REDACTED
+
+func TestBindOIDCOAuthLoginRejectsInvalidPasswordWithoutConsumingSession(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandler(t, false)
+	ctx := context.Background()
+
+	passwordHash, err := handler.authService.HashPassword("secret-123")
+REDACTED
+
+	existingUser, err := client.User.Create().
+		SetEmail("owner@example.com").
+		SetUsername("owner-user").
+		SetPasswordHash(passwordHash).
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("bind-login-invalid-password-session-token").
+		SetIntent("adopt_existing_user_by_email").
+		SetProviderType("oidc").
+		SetProviderKey("https://issuer.example").
+		SetProviderSubject("oidc-bind-invalid-123").
+		SetTargetUserID(existingUser.ID).
+		SetResolvedEmail(existingUser.Email).
+		SetBrowserSessionKey("bind-login-invalid-password-browser-session-key").
+		SetUpstreamIdentityClaims(map[string]any{
+			"username":               "oidc_user",
+			"suggested_display_name": "Bound OIDC User",
+			"suggested_avatar_url":   "https://cdn.example/bound.png",
+	REDACTED).
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+REDACTED
+
+	body := bytes.NewBufferString(`{"email":"owner@example.com","password":"wrong-password"REDACTED`)
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/oidc/bind-login", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)REDACTED)
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("bind-login-invalid-password-browser-session-key")REDACTED)
+	ginCtx.Request = req
+
+	handler.BindOIDCOAuthLogin(ginCtx)
+
+	require.Equal(t, http.StatusUnauthorized, recorder.Code)
+	payload := decodeJSONBody(t, recorder)
+	require.Equal(t, "INVALID_CREDENTIALS", payload["reason"])
+
+	identityCount, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ("oidc"),
+			authidentity.ProviderKeyEQ("https://issuer.example"),
+			authidentity.ProviderSubjectEQ("oidc-bind-invalid-123"),
+		).
+		Count(ctx)
+REDACTED
+	require.Zero(t, identityCount)
+
+	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
+REDACTED
+	require.Nil(t, storedSession.ConsumedAt)
+REDACTED
+
 func newOAuthPendingFlowTestHandler(t *testing.T, invitationEnabled bool) (*AuthHandler, *dbent.Client) {
+REDACTED
+
+	return newOAuthPendingFlowTestHandlerWithOptions(t, invitationEnabled, false, nil)
+REDACTED
+
+func newOAuthPendingFlowTestHandlerWithEmailVerification(
+	t *testing.T,
+	invitationEnabled bool,
+	email string,
+	code string,
+) (*AuthHandler, *dbent.Client) {
+REDACTED
+
+	cache := &oauthPendingFlowEmailCacheStub{
+		verificationCodes: map[string]*service.VerificationCodeData{
+			email: {
+				Code:      code,
+				Attempts:  0,
+				CreatedAt: time.Now().UTC(),
+				ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
+		REDACTED,
+	REDACTED,
+REDACTED
+	return newOAuthPendingFlowTestHandlerWithOptions(t, invitationEnabled, true, cache)
+REDACTED
+
+func newOAuthPendingFlowTestHandlerWithOptions(
+	t *testing.T,
+	invitationEnabled bool,
+	emailVerifyEnabled bool,
+	emailCache service.EmailCache,
+) (*AuthHandler, *dbent.Client) {
 REDACTED
 
 	db, err := sql.Open("sqlite", "file:auth_oauth_pending_flow_handler?mode=memory&cache=shared")
@@ -538,9 +834,18 @@ REDACTED
 		values: map[string]string{
 			service.SettingKeyRegistrationEnabled:   "true",
 			service.SettingKeyInvitationCodeEnabled: boolSettingValue(invitationEnabled),
+			service.SettingKeyEmailVerifyEnabled:    boolSettingValue(emailVerifyEnabled),
 	REDACTED,
 REDACTED, cfg)
 	userRepo := &oauthPendingFlowUserRepo{client: clientREDACTED
+	var emailService *service.EmailService
+	if emailCache != nil {
+		emailService = service.NewEmailService(&oauthPendingFlowSettingRepoStub{
+			values: map[string]string{
+				service.SettingKeyEmailVerifyEnabled: boolSettingValue(emailVerifyEnabled),
+		REDACTED,
+	REDACTED, emailCache)
+REDACTED
 	authSvc := service.NewAuthService(
 		client,
 		userRepo,
@@ -548,7 +853,7 @@ REDACTED, cfg)
 		&oauthPendingFlowRefreshTokenCacheStub{REDACTED,
 		cfg,
 		settingSvc,
-		nil,
+		emailService,
 		nil,
 		nil,
 		nil,
@@ -621,6 +926,70 @@ func (s *oauthPendingFlowSettingRepoStub) Delete(context.Context, string) error 
 REDACTED
 
 type oauthPendingFlowRefreshTokenCacheStub struct{REDACTED
+
+type oauthPendingFlowEmailCacheStub struct {
+	verificationCodes map[string]*service.VerificationCodeData
+REDACTED
+
+func (s *oauthPendingFlowEmailCacheStub) GetVerificationCode(_ context.Context, email string) (*service.VerificationCodeData, error) {
+	if s == nil || s.verificationCodes == nil {
+		return nil, nil
+REDACTED
+	return s.verificationCodes[email], nil
+REDACTED
+
+func (s *oauthPendingFlowEmailCacheStub) SetVerificationCode(_ context.Context, email string, data *service.VerificationCodeData, _ time.Duration) error {
+	if s.verificationCodes == nil {
+		s.verificationCodes = map[string]*service.VerificationCodeData{REDACTED
+REDACTED
+	s.verificationCodes[email] = data
+	return nil
+REDACTED
+
+func (s *oauthPendingFlowEmailCacheStub) DeleteVerificationCode(_ context.Context, email string) error {
+	delete(s.verificationCodes, email)
+	return nil
+REDACTED
+
+func (s *oauthPendingFlowEmailCacheStub) GetNotifyVerifyCode(context.Context, string) (*service.VerificationCodeData, error) {
+	return nil, nil
+REDACTED
+
+func (s *oauthPendingFlowEmailCacheStub) SetNotifyVerifyCode(context.Context, string, *service.VerificationCodeData, time.Duration) error {
+	return nil
+REDACTED
+
+func (s *oauthPendingFlowEmailCacheStub) DeleteNotifyVerifyCode(context.Context, string) error {
+	return nil
+REDACTED
+
+func (s *oauthPendingFlowEmailCacheStub) GetPasswordResetToken(context.Context, string) (*service.PasswordResetTokenData, error) {
+	return nil, nil
+REDACTED
+
+func (s *oauthPendingFlowEmailCacheStub) SetPasswordResetToken(context.Context, string, *service.PasswordResetTokenData, time.Duration) error {
+	return nil
+REDACTED
+
+func (s *oauthPendingFlowEmailCacheStub) DeletePasswordResetToken(context.Context, string) error {
+	return nil
+REDACTED
+
+func (s *oauthPendingFlowEmailCacheStub) IsPasswordResetEmailInCooldown(context.Context, string) bool {
+	return false
+REDACTED
+
+func (s *oauthPendingFlowEmailCacheStub) SetPasswordResetEmailCooldown(context.Context, string, time.Duration) error {
+	return nil
+REDACTED
+
+func (s *oauthPendingFlowEmailCacheStub) IncrNotifyCodeUserRate(context.Context, int64, time.Duration) (int64, error) {
+	return 0, nil
+REDACTED
+
+func (s *oauthPendingFlowEmailCacheStub) GetNotifyCodeUserRate(context.Context, int64) (int64, error) {
+	return 0, nil
+REDACTED
 
 func (s *oauthPendingFlowRefreshTokenCacheStub) StoreRefreshToken(context.Context, string, *service.RefreshTokenData, time.Duration) error {
 	return nil
