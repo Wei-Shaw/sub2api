@@ -24,6 +24,30 @@ export interface AuthIdentityMigrationReportSummary {
   by_type: Record<string, number>
 REDACTED
 
+export interface AdminBindAuthIdentityChannelRequest {
+  channel: string
+  channel_app_id?: string
+  channel_subject: string
+  metadata?: Record<string, unknown>
+REDACTED
+
+export interface AdminBindAuthIdentityRequest {
+  provider_type: string
+  provider_key: string
+  provider_subject: string
+  issuer?: string
+  metadata?: Record<string, unknown>
+  channel?: AdminBindAuthIdentityChannelRequest
+REDACTED
+
+export interface AdminBoundAuthIdentity {
+  identity_id: number
+  provider_type: string
+  provider_key: string
+  provider_subject: string
+  channel_id?: number | null
+REDACTED
+
 export interface ListAuthIdentityMigrationReportsParams {
   page?: number
   pageSize?: number
@@ -308,6 +332,17 @@ export async function resolveAuthIdentityMigrationReport(
   return data
 REDACTED
 
+export async function bindUserAuthIdentity(
+  userId: number,
+  input: AdminBindAuthIdentityRequest
+): Promise<AdminBoundAuthIdentity> {
+  const { data REDACTED = await apiClient.post<AdminBoundAuthIdentity>(
+    `/admin/users/${userIdREDACTED/auth-identities`,
+    input
+  )
+  return data
+REDACTED
+
 export const usersAPI = {
   list,
   getById,
@@ -321,6 +356,7 @@ export const usersAPI = {
   getUserUsageStats,
   getUserBalanceHistory,
   replaceGroup,
+  bindUserAuthIdentity,
   getAuthIdentityMigrationReportSummary,
   listAuthIdentityMigrationReports,
   resolveAuthIdentityMigrationReport

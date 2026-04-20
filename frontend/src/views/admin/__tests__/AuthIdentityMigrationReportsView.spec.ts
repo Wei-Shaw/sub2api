@@ -4,7 +4,13 @@ import { defineComponent, h REDACTED from 'vue'
 
 import AuthIdentityMigrationReportsView from '../AuthIdentityMigrationReportsView.vue'
 
-const { getAuthIdentityMigrationReportSummary, listAuthIdentityMigrationReports, resolveAuthIdentityMigrationReport REDACTED = vi.hoisted(() => ({
+const {
+  bindUserAuthIdentity,
+  getAuthIdentityMigrationReportSummary,
+  listAuthIdentityMigrationReports,
+  resolveAuthIdentityMigrationReport,
+REDACTED = vi.hoisted(() => ({
+  bindUserAuthIdentity: vi.fn(),
   getAuthIdentityMigrationReportSummary: vi.fn(),
   listAuthIdentityMigrationReports: vi.fn(),
   resolveAuthIdentityMigrationReport: vi.fn(),
@@ -18,6 +24,7 @@ REDACTED))
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     users: {
+      bindUserAuthIdentity,
       getAuthIdentityMigrationReportSummary,
       listAuthIdentityMigrationReports,
       resolveAuthIdentityMigrationReport,
@@ -156,6 +163,7 @@ describe('AuthIdentityMigrationReportsView', () => {
     getAuthIdentityMigrationReportSummary.mockReset()
     listAuthIdentityMigrationReports.mockReset()
     resolveAuthIdentityMigrationReport.mockReset()
+    bindUserAuthIdentity.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
 
@@ -166,6 +174,12 @@ describe('AuthIdentityMigrationReportsView', () => {
       resolved_at: '2026-04-20T02:00:00Z',
       resolved_by_user_id: 100,
       resolution_note: 'resolved by admin',
+    REDACTED)
+    bindUserAuthIdentity.mockResolvedValue({
+      identity_id: 77,
+      provider_type: 'oidc',
+      provider_key: 'https://issuer.example',
+      provider_subject: 'subject-123',
     REDACTED)
   REDACTED)
 
@@ -239,6 +253,35 @@ describe('AuthIdentityMigrationReportsView', () => {
       pageSize: 20,
       reportType: '',
     REDACTED)
+  REDACTED)
+
+  it('pre-fills and submits remediation binding for the selected report', async () => {
+    const wrapper = mountView()
+
+    await flushPromises()
+    await wrapper.get('[data-test="select-report-1"]').trigger('click')
+    await flushPromises()
+
+    expect((wrapper.get('[data-test="remediation-user-id"]').element as HTMLInputElement).value).toBe('42')
+    expect((wrapper.get('[data-test="remediation-provider-type"]').element as HTMLInputElement).value).toBe('oidc')
+    expect((wrapper.get('[data-test="remediation-provider-key"]').element as HTMLInputElement).value).toBe(
+      'https://issuer.example'
+    )
+    expect((wrapper.get('[data-test="remediation-provider-subject"]').element as HTMLInputElement).value).toBe(
+      'subject-123'
+    )
+
+    await wrapper.get('[data-test="remediation-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(bindUserAuthIdentity).toHaveBeenCalledWith(42, {
+      provider_type: 'oidc',
+      provider_key: 'https://issuer.example',
+      provider_subject: 'subject-123',
+      issuer: undefined,
+      metadata: {REDACTED,
+    REDACTED)
+    expect(showSuccess).toHaveBeenCalled()
   REDACTED)
 
   it('keeps report type filter options available from list data when summary fails', async () => {

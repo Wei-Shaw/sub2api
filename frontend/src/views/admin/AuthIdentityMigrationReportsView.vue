@@ -238,6 +238,83 @@
               {{ resolving ? copy.resolving : copy.resolveAction REDACTEDREDACTED
             </button>
           </div>
+
+          <div class="mt-8 border-t border-gray-200 pt-6 dark:border-dark-700">
+            <h3 class="text-base font-semibold text-gray-900 dark:text-gray-100">
+              {{ copy.remediationTitle REDACTEDREDACTED
+            </h3>
+            <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">
+              {{ copy.remediationSubtitle REDACTEDREDACTED
+            </p>
+
+            <div class="mt-6 space-y-4">
+              <div>
+                <label class="input-label" for="remediation-user-id">{{ copy.remediationUserID REDACTEDREDACTED</label>
+                <input
+                  id="remediation-user-id"
+                  v-model="remediation.userID"
+                  data-test="remediation-user-id"
+                  class="input"
+                  :disabled="!selectedReport || Boolean(selectedReport.resolved_at) || binding"
+                  inputmode="numeric"
+                />
+              </div>
+
+              <div>
+                <label class="input-label" for="remediation-provider-type">{{ copy.remediationProviderType REDACTEDREDACTED</label>
+                <input
+                  id="remediation-provider-type"
+                  v-model="remediation.providerType"
+                  data-test="remediation-provider-type"
+                  class="input"
+                  :disabled="!selectedReport || Boolean(selectedReport.resolved_at) || binding"
+                />
+              </div>
+
+              <div>
+                <label class="input-label" for="remediation-provider-key">{{ copy.remediationProviderKey REDACTEDREDACTED</label>
+                <input
+                  id="remediation-provider-key"
+                  v-model="remediation.providerKey"
+                  data-test="remediation-provider-key"
+                  class="input"
+                  :disabled="!selectedReport || Boolean(selectedReport.resolved_at) || binding"
+                />
+              </div>
+
+              <div>
+                <label class="input-label" for="remediation-provider-subject">{{ copy.remediationProviderSubject REDACTEDREDACTED</label>
+                <input
+                  id="remediation-provider-subject"
+                  v-model="remediation.providerSubject"
+                  data-test="remediation-provider-subject"
+                  class="input"
+                  :disabled="!selectedReport || Boolean(selectedReport.resolved_at) || binding"
+                />
+              </div>
+
+              <div>
+                <label class="input-label" for="remediation-issuer">{{ copy.remediationIssuer REDACTEDREDACTED</label>
+                <input
+                  id="remediation-issuer"
+                  v-model="remediation.issuer"
+                  data-test="remediation-issuer"
+                  class="input"
+                  :disabled="!selectedReport || Boolean(selectedReport.resolved_at) || binding"
+                />
+              </div>
+
+              <button
+                type="button"
+                class="btn btn-secondary w-full"
+                data-test="remediation-submit"
+                :disabled="!canBindRemediation"
+                @click="submitRemediationBinding"
+              >
+                {{ binding ? copy.remediationSubmitting : copy.remediationAction REDACTEDREDACTED
+              </button>
+            </div>
+          </div>
         </div>
       </section>
     </div>
@@ -249,6 +326,7 @@ import { computed, onMounted, reactive, ref REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { adminAPI REDACTED from '@/api/admin'
 import type {
+  AdminBindAuthIdentityRequest,
   AuthIdentityMigrationReport,
   AuthIdentityMigrationReportSummary,
 REDACTED from '@/api/admin/users'
@@ -294,6 +372,15 @@ const copy = computed(() => ({
   resolvePlaceholder: text('填写本次处理动作、用户沟通结果或后续追踪信息。', 'Describe the action taken, user communication, or follow-up context.'),
   resolveAction: text('提交 Resolve', 'Submit resolve'),
   resolving: text('提交中...', 'Submitting...'),
+  remediationTitle: text('修复绑定', 'Remediation binding'),
+  remediationSubtitle: text('可直接把迁移报告中的身份信息绑定到指定用户；已识别字段会自动预填。', 'Bind the migrated identity directly to a user. Recognized fields are prefilled automatically.'),
+  remediationUserID: text('目标用户 ID', 'Target user ID'),
+  remediationProviderType: text('Provider Type', 'Provider type'),
+  remediationProviderKey: text('Provider Key', 'Provider key'),
+  remediationProviderSubject: text('Provider Subject', 'Provider subject'),
+  remediationIssuer: text('Issuer', 'Issuer'),
+  remediationAction: text('提交绑定修复', 'Submit remediation binding'),
+  remediationSubmitting: text('提交中...', 'Submitting...'),
 REDACTED))
 
 const summary = ref<AuthIdentityMigrationReportSummary>({
@@ -308,6 +395,7 @@ const resolutionNote = ref('')
 const loading = ref(false)
 const summaryLoading = ref(false)
 const resolving = ref(false)
+const binding = ref(false)
 
 const filters = reactive({
   reportType: '',
@@ -319,6 +407,13 @@ const pagination = reactive({
   total: 0,
 REDACTED)
 const knownReportTypes = ref<string[]>([])
+const remediation = reactive({
+  userID: '',
+  providerType: '',
+  providerKey: '',
+  providerSubject: '',
+  issuer: '',
+REDACTED)
 
 const columns: Column[] = [
   { key: 'status', label: text('状态', 'Status') REDACTED,
@@ -349,6 +444,18 @@ const canResolve = computed(() =>
     !selectedReport.value.resolved_at &&
     resolutionNote.value.trim() &&
     !resolving.value
+  )
+)
+
+const canBindRemediation = computed(() =>
+  Boolean(
+    selectedReport.value &&
+    !selectedReport.value.resolved_at &&
+    remediation.userID.trim() &&
+    remediation.providerType.trim() &&
+    remediation.providerKey.trim() &&
+    remediation.providerSubject.trim() &&
+    !binding.value
   )
 )
 
@@ -392,6 +499,7 @@ const loadReports = async () => {
     if (selectedReport.value) {
       const refreshed = response.items.find((report) => report.id === selectedReport.value?.id) ?? null
       selectedReport.value = refreshed
+      applyRemediationDefaults(refreshed)
       resolutionNote.value = refreshed?.resolved_at
         ? refreshed.resolution_note ?? ''
         : resolutionNote.value
@@ -427,6 +535,7 @@ REDACTED
 const selectReport = (report: AuthIdentityMigrationReport) => {
   selectedReport.value = report
   resolutionNote.value = report.resolution_note ?? ''
+  applyRemediationDefaults(report)
 REDACTED
 
 const formatDetailsJson = (details: Record<string, unknown>) => JSON.stringify(details ?? {REDACTED, null, 2)
@@ -458,6 +567,63 @@ const getDetailHighlights = (details: Record<string, unknown>) => {
     .map(([key, value]) => ({ key, value: String(value) REDACTED))
 REDACTED
 
+const stringDetailValue = (details: Record<string, unknown>, key: string) => {
+  const value = details[key]
+  return typeof value === 'string' ? value.trim() : ''
+REDACTED
+
+const numericDetailValue = (details: Record<string, unknown>, key: string) => {
+  const value = details[key]
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(Math.trunc(value))
+  REDACTED
+  if (typeof value === 'string' && value.trim()) {
+    return value.trim()
+  REDACTED
+  return ''
+REDACTED
+
+const inferProviderTypeFromReport = (report: AuthIdentityMigrationReport) => {
+  const explicit = stringDetailValue(report.details, 'provider_type')
+  if (explicit) {
+    return explicit
+  REDACTED
+  if (report.report_type.includes('oidc')) {
+    return 'oidc'
+  REDACTED
+  if (report.report_type.includes('wechat')) {
+    return 'wechat'
+  REDACTED
+  if (report.report_type.includes('linuxdo')) {
+    return 'linuxdo'
+  REDACTED
+  return ''
+REDACTED
+
+const inferProviderKeyFromReport = (report: AuthIdentityMigrationReport, providerType: string) => {
+  const explicit = stringDetailValue(report.details, 'provider_key')
+  if (explicit) {
+    return explicit
+  REDACTED
+  if (providerType === 'wechat') {
+    return 'wechat-main'
+  REDACTED
+  return ''
+REDACTED
+
+const inferProviderSubjectFromReport = (report: AuthIdentityMigrationReport) =>
+  stringDetailValue(report.details, 'provider_subject')
+  || stringDetailValue(report.details, 'subject')
+  || stringDetailValue(report.details, 'unionid')
+
+const applyRemediationDefaults = (report: AuthIdentityMigrationReport | null) => {
+  remediation.userID = report ? numericDetailValue(report.details, 'user_id') : ''
+  remediation.providerType = report ? inferProviderTypeFromReport(report) : ''
+  remediation.providerKey = report ? inferProviderKeyFromReport(report, remediation.providerType) : ''
+  remediation.providerSubject = report ? inferProviderSubjectFromReport(report) : ''
+  remediation.issuer = report ? stringDetailValue(report.details, 'issuer') : ''
+REDACTED
+
 const submitResolve = async () => {
   if (!selectedReport.value) {
     appStore.showError(text('请先选择一条报告', 'Select a report first'))
@@ -482,6 +648,38 @@ const submitResolve = async () => {
     appStore.showError(text('提交 resolve 失败', 'Failed to resolve report'))
   REDACTED finally {
     resolving.value = false
+  REDACTED
+REDACTED
+
+const submitRemediationBinding = async () => {
+  if (!selectedReport.value) {
+    appStore.showError(text('请先选择一条报告', 'Select a report first'))
+    return
+  REDACTED
+
+  const userID = Number.parseInt(remediation.userID.trim(), 10)
+  if (!Number.isFinite(userID) || userID <= 0) {
+    appStore.showError(text('请输入有效的目标用户 ID', 'Enter a valid target user ID'))
+    return
+  REDACTED
+
+  const payload: AdminBindAuthIdentityRequest = {
+    provider_type: remediation.providerType.trim(),
+    provider_key: remediation.providerKey.trim(),
+    provider_subject: remediation.providerSubject.trim(),
+    issuer: remediation.issuer.trim() || undefined,
+    metadata: {REDACTED,
+  REDACTED
+
+  binding.value = true
+  try {
+    await adminAPI.users.bindUserAuthIdentity(userID, payload)
+    appStore.showSuccess(text('修复绑定已提交', 'Remediation binding submitted'))
+  REDACTED catch (error) {
+    console.error('Failed to submit auth identity remediation binding:', error)
+    appStore.showError(text('提交修复绑定失败', 'Failed to submit remediation binding'))
+  REDACTED finally {
+    binding.value = false
   REDACTED
 REDACTED
 

@@ -71,8 +71,15 @@ REDACTED
 	require.True(t, ok)
 	require.Equal(t, true, linuxdoBinding["bound"])
 
-	_, hasAvatarSource := resp.Data["avatar_source"]
-	require.False(t, hasAvatarSource)
-	_, hasProfileSources := resp.Data["profile_sources"]
-	require.False(t, hasProfileSources)
+	avatarSource, ok := resp.Data["avatar_source"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "linuxdo", avatarSource["provider"])
+	require.Equal(t, "linuxdo", avatarSource["source"])
+
+	profileSources, ok := resp.Data["profile_sources"].(map[string]any)
+	require.True(t, ok)
+	usernameSource, ok := profileSources["username"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "linuxdo", usernameSource["provider"])
+	require.Equal(t, "linuxdo", usernameSource["source"])
 REDACTED

@@ -31,12 +31,25 @@ type mockUserRepo struct {
 	deleteAvatarFn   func(ctx context.Context, userID int64) error
 	deleteAvatarIDs  []int64
 	getAvatarFn      func(ctx context.Context, userID int64) (*UserAvatar, error)
+	txCalls          int
+REDACTED
+
+type mockUserRepoTxKey struct{REDACTED
+
+type mockUserRepoTxState struct {
+	getByIDUser      *User
+	upsertAvatarArgs []UpsertUserAvatarInput
+	deleteAvatarIDs  []int64
 REDACTED
 
 func (m *mockUserRepo) Create(context.Context, *User) error { return nil REDACTED
-func (m *mockUserRepo) GetByID(context.Context, int64) (*User, error) {
+func (m *mockUserRepo) GetByID(ctx context.Context, _ int64) (*User, error) {
 	if m.getByIDErr != nil {
 		return nil, m.getByIDErr
+REDACTED
+	if txState, _ := ctx.Value(mockUserRepoTxKey{REDACTED).(*mockUserRepoTxState); txState != nil && txState.getByIDUser != nil {
+		cloned := *txState.getByIDUser
+		return &cloned, nil
 REDACTED
 	if m.getByIDUser != nil {
 		cloned := *m.getByIDUser
@@ -61,6 +74,27 @@ REDACTED
 	return nil, nil
 REDACTED
 func (m *mockUserRepo) UpsertUserAvatar(ctx context.Context, userID int64, input UpsertUserAvatarInput) (*UserAvatar, error) {
+	if txState, _ := ctx.Value(mockUserRepoTxKey{REDACTED).(*mockUserRepoTxState); txState != nil {
+		txState.upsertAvatarArgs = append(txState.upsertAvatarArgs, input)
+		if txState.getByIDUser != nil {
+			txState.getByIDUser.AvatarURL = input.URL
+			txState.getByIDUser.AvatarSource = input.StorageProvider
+			txState.getByIDUser.AvatarMIME = input.ContentType
+			txState.getByIDUser.AvatarByteSize = input.ByteSize
+			txState.getByIDUser.AvatarSHA256 = input.SHA256
+	REDACTED
+		if m.upsertAvatarFn != nil {
+			return m.upsertAvatarFn(ctx, userID, input)
+	REDACTED
+		return &UserAvatar{
+			StorageProvider: input.StorageProvider,
+			StorageKey:      input.StorageKey,
+			URL:             input.URL,
+			ContentType:     input.ContentType,
+			ByteSize:        input.ByteSize,
+			SHA256:          input.SHA256,
+	REDACTED, nil
+REDACTED
 	m.upsertAvatarArgs = append(m.upsertAvatarArgs, input)
 	if m.upsertAvatarFn != nil {
 		return m.upsertAvatarFn(ctx, userID, input)
@@ -75,6 +109,20 @@ REDACTED
 REDACTED, nil
 REDACTED
 func (m *mockUserRepo) DeleteUserAvatar(ctx context.Context, userID int64) error {
+	if txState, _ := ctx.Value(mockUserRepoTxKey{REDACTED).(*mockUserRepoTxState); txState != nil {
+		txState.deleteAvatarIDs = append(txState.deleteAvatarIDs, userID)
+		if txState.getByIDUser != nil {
+			txState.getByIDUser.AvatarURL = ""
+			txState.getByIDUser.AvatarSource = ""
+			txState.getByIDUser.AvatarMIME = ""
+			txState.getByIDUser.AvatarByteSize = 0
+			txState.getByIDUser.AvatarSHA256 = ""
+	REDACTED
+		if m.deleteAvatarFn != nil {
+			return m.deleteAvatarFn(ctx, userID)
+	REDACTED
+		return nil
+REDACTED
 	m.deleteAvatarIDs = append(m.deleteAvatarIDs, userID)
 	if m.deleteAvatarFn != nil {
 		return m.deleteAvatarFn(ctx, userID)
@@ -113,6 +161,26 @@ func (m *mockUserRepo) UpdateTotpSecret(context.Context, int64, *string) error {
 func (m *mockUserRepo) EnableTotp(context.Context, int64) error                { return nil REDACTED
 func (m *mockUserRepo) DisableTotp(context.Context, int64) error               { return nil REDACTED
 func (m *mockUserRepo) RemoveGroupFromUserAllowedGroups(context.Context, int64, int64) error {
+	return nil
+REDACTED
+
+func (m *mockUserRepo) WithUserProfileIdentityTx(ctx context.Context, fn func(txCtx context.Context) error) error {
+	m.txCalls++
+	txState := &mockUserRepoTxState{
+		upsertAvatarArgs: append([]UpsertUserAvatarInput(nil), m.upsertAvatarArgs...),
+		deleteAvatarIDs:  append([]int64(nil), m.deleteAvatarIDs...),
+REDACTED
+	if m.getByIDUser != nil {
+		userCopy := *m.getByIDUser
+		txState.getByIDUser = &userCopy
+REDACTED
+	err := fn(context.WithValue(ctx, mockUserRepoTxKey{REDACTED, txState))
+	if err != nil {
+		return err
+REDACTED
+	m.getByIDUser = txState.getByIDUser
+	m.upsertAvatarArgs = txState.upsertAvatarArgs
+	m.deleteAvatarIDs = txState.deleteAvatarIDs
 	return nil
 REDACTED
 
@@ -358,6 +426,33 @@ REDACTED
 	require.Empty(t, repo.upsertAvatarArgs)
 	require.Empty(t, updated.AvatarURL)
 	require.Empty(t, updated.AvatarSource)
+REDACTED
+
+func TestUpdateProfile_RollsBackAvatarMutationWhenUserUpdateFails(t *testing.T) {
+	repo := &mockUserRepo{
+		getByIDUser: &User{
+			ID:           11,
+			Email:        "rollback@example.com",
+			AvatarURL:    "https://cdn.example.com/original.png",
+			AvatarSource: "remote_url",
+	REDACTED,
+		updateFn: func(context.Context, *User) error {
+			return errors.New("write user failed")
+	REDACTED,
+REDACTED
+	svc := NewUserService(repo, nil, nil, nil)
+
+	remoteURL := "https://cdn.example.com/new.png"
+	_, err := svc.UpdateProfile(context.Background(), 11, UpdateProfileRequest{
+		AvatarURL: &remoteURL,
+REDACTED)
+
+	require.EqualError(t, err, "update user: write user failed")
+	require.Equal(t, 1, repo.txCalls)
+	require.Empty(t, repo.upsertAvatarArgs)
+	require.Empty(t, repo.deleteAvatarIDs)
+	require.Equal(t, "https://cdn.example.com/original.png", repo.getByIDUser.AvatarURL)
+	require.Equal(t, "remote_url", repo.getByIDUser.AvatarSource)
 REDACTED
 
 func TestGetProfile_HydratesAvatarFromRepository(t *testing.T) {

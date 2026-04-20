@@ -161,6 +161,10 @@ type userAuthIdentityReader interface {
 	ListUserAuthIdentities(ctx context.Context, userID int64) ([]UserAuthIdentityRecord, error)
 REDACTED
 
+type userProfileIdentityTxRunner interface {
+	WithUserProfileIdentityTx(ctx context.Context, fn func(txCtx context.Context) error) error
+REDACTED
+
 // ChangePasswordRequest 修改密码请求
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"current_password"`
@@ -249,9 +253,38 @@ REDACTED
 
 // UpdateProfile 更新用户资料
 func (s *UserService) UpdateProfile(ctx context.Context, userID int64, req UpdateProfileRequest) (*User, error) {
+	if txRunner, ok := s.userRepo.(userProfileIdentityTxRunner); ok {
+		var (
+			updated        *User
+			oldConcurrency int
+		)
+		if err := txRunner.WithUserProfileIdentityTx(ctx, func(txCtx context.Context) error {
+			var err error
+			updated, oldConcurrency, err = s.updateProfile(txCtx, userID, req)
+			return err
+	REDACTED); err != nil {
+			return nil, err
+	REDACTED
+		if s.authCacheInvalidator != nil && updated != nil && updated.Concurrency != oldConcurrency {
+			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+	REDACTED
+		return updated, nil
+REDACTED
+
+	updated, oldConcurrency, err := s.updateProfile(ctx, userID, req)
+	if err != nil {
+		return nil, err
+REDACTED
+	if s.authCacheInvalidator != nil && updated.Concurrency != oldConcurrency {
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+REDACTED
+	return updated, nil
+REDACTED
+
+func (s *UserService) updateProfile(ctx context.Context, userID int64, req UpdateProfileRequest) (*User, int, error) {
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("get user: %w", err)
+		return nil, 0, fmt.Errorf("get user: %w", err)
 REDACTED
 	oldConcurrency := user.Concurrency
 
@@ -260,10 +293,10 @@ REDACTED
 		// 检查新邮箱是否已被使用
 		exists, err := s.userRepo.ExistsByEmail(ctx, *req.Email)
 		if err != nil {
-			return nil, fmt.Errorf("check email exists: %w", err)
+			return nil, oldConcurrency, fmt.Errorf("check email exists: %w", err)
 	REDACTED
 		if exists && *req.Email != user.Email {
-			return nil, ErrEmailExists
+			return nil, oldConcurrency, ErrEmailExists
 	REDACTED
 		user.Email = *req.Email
 REDACTED
@@ -275,7 +308,7 @@ REDACTED
 	if req.AvatarURL != nil {
 		avatar, err := s.SetAvatar(ctx, userID, *req.AvatarURL)
 		if err != nil {
-			return nil, err
+			return nil, oldConcurrency, err
 	REDACTED
 		applyUserAvatar(user, avatar)
 REDACTED
@@ -296,13 +329,10 @@ REDACTED
 REDACTED
 
 	if err := s.userRepo.Update(ctx, user); err != nil {
-		return nil, fmt.Errorf("update user: %w", err)
-REDACTED
-	if s.authCacheInvalidator != nil && user.Concurrency != oldConcurrency {
-		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+		return nil, oldConcurrency, fmt.Errorf("update user: %w", err)
 REDACTED
 
-	return user, nil
+	return user, oldConcurrency, nil
 REDACTED
 
 func (s *UserService) SetAvatar(ctx context.Context, userID int64, raw string) (*UserAvatar, error) {
