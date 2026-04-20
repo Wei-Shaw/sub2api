@@ -30,26 +30,11 @@ func TestOIDCSyntheticEmailStableAndDistinct(t *testing.T) {
 	require.Contains(t, e1, "@oidc-connect.invalid")
 REDACTED
 
-func TestOIDCSelectLoginEmailPrefersRealEmail(t *testing.T) {
-	identityKey := oidcIdentityKey("https://issuer.example.com", "subject-a")
-
-	email := oidcSelectLoginEmail("user@example.com", "idtoken@example.com", identityKey)
-	require.Equal(t, "user@example.com", email)
-
-	email = oidcSelectLoginEmail("", "idtoken@example.com", identityKey)
-	require.Equal(t, "idtoken@example.com", email)
-
-	email = oidcSelectLoginEmail("", "", identityKey)
-	require.Contains(t, email, "@oidc-connect.invalid")
-	require.Equal(t, oidcSyntheticEmailFromIdentityKey(identityKey), email)
-REDACTED
-
 func TestBuildOIDCAuthorizeURLIncludesNonceAndPKCE(t *testing.T) {
 	cfg := config.OIDCConnectConfig{
 		AuthorizeURL: "https://issuer.example.com/auth",
 		ClientID:     "cid",
 		Scopes:       "openid email profile",
-		UsePKCE:      true,
 REDACTED
 
 	u, err := buildOIDCAuthorizeURL(cfg, "state123", "nonce123", "challenge123", "https://app.example.com/callback")

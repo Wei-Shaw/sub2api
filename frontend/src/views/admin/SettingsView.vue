@@ -1382,7 +1382,7 @@
                       {{ t('admin.settings.oidc.usePkce') REDACTEDREDACTED
                     </label>
                   </div>
-                  <Toggle v-model="form.oidc_connect_use_pkce" />
+                  <Toggle v-model="form.oidc_connect_use_pkce" :disabled="true" />
                 </div>
 
                 <div class="flex items-center justify-between rounded border border-gray-200 px-4 py-3 dark:border-dark-700">
@@ -1391,7 +1391,7 @@
                       {{ t('admin.settings.oidc.validateIdToken') REDACTEDREDACTED
                     </label>
                   </div>
-                  <Toggle v-model="form.oidc_connect_validate_id_token" />
+                  <Toggle v-model="form.oidc_connect_validate_id_token" :disabled="true" />
                 </div>
 
                 <div class="flex items-center justify-between rounded border border-gray-200 px-4 py-3 dark:border-dark-700">
@@ -3024,7 +3024,7 @@ const form = reactive<SettingsForm>({
   oidc_connect_redirect_url: '',
   oidc_connect_frontend_redirect_url: '/auth/oidc/callback',
   oidc_connect_token_auth_method: 'client_secret_post',
-  oidc_connect_use_pkce: false,
+  oidc_connect_use_pkce: true,
   oidc_connect_validate_id_token: true,
   oidc_connect_allowed_signing_algs: 'RS256,ES256,PS256',
   oidc_connect_clock_skew_seconds: 120,
@@ -3613,8 +3613,8 @@ async function saveSettings() {
       oidc_connect_redirect_url: form.oidc_connect_redirect_url,
       oidc_connect_frontend_redirect_url: form.oidc_connect_frontend_redirect_url,
       oidc_connect_token_auth_method: form.oidc_connect_token_auth_method,
-      oidc_connect_use_pkce: form.oidc_connect_use_pkce,
-      oidc_connect_validate_id_token: form.oidc_connect_validate_id_token,
+      oidc_connect_use_pkce: true,
+      oidc_connect_validate_id_token: true,
       oidc_connect_allowed_signing_algs: form.oidc_connect_allowed_signing_algs,
       oidc_connect_clock_skew_seconds: form.oidc_connect_clock_skew_seconds,
       oidc_connect_require_email_verified: form.oidc_connect_require_email_verified,

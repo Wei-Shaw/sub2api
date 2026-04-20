@@ -334,7 +334,7 @@ REDACTED
 	cfg.LinuxDo.ClientSecret = "test-secret"
 	cfg.LinuxDo.RedirectURL = "https://example.com/api/v1/auth/oauth/linuxdo/callback"
 	cfg.LinuxDo.TokenAuthMethod = "client_secret_post"
-	cfg.LinuxDo.UsePKCE = false
+	cfg.LinuxDo.UsePKCE = true
 
 	cfg.LinuxDo.FrontendRedirectURL = "javascript:alert(1)"
 	err = cfg.Validate()
