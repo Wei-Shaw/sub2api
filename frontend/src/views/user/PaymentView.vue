@@ -267,6 +267,7 @@ import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vu
 import { METHOD_ORDER, POPUP_WINDOW_FEATURES, STRIPE_POPUP_WINDOW_FEATURES REDACTED from '@/components/payment/providerConfig'
 import {
   PAYMENT_RECOVERY_STORAGE_KEY,
+  buildCreateOrderPayload,
   clearPaymentRecoverySnapshot,
   decidePaymentLaunch,
   getVisibleMethods,
@@ -563,12 +564,14 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
   submitting.value = true
   errorMessage.value = ''
   try {
-    const result = await paymentStore.createOrder({
+    const result = await paymentStore.createOrder(buildCreateOrderPayload({
       amount: orderAmount,
-      payment_type: selectedMethod.value,
-      order_type: orderType,
-      plan_id: planId,
-    REDACTED) as CreateOrderResult & { resume_token?: string REDACTED
+      paymentType: selectedMethod.value,
+      orderType,
+      planId,
+      origin: typeof window !== 'undefined' ? window.location.origin : '',
+      isWechatBrowser: typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
+    REDACTED)) as CreateOrderResult & { resume_token?: string REDACTED
     const openWindow = (url: string, features = POPUP_WINDOW_FEATURES) => {
       const win = window.open(url, 'paymentPopup', features)
       if (!win || win.closed) {

@@ -202,10 +202,12 @@ REDACTED
 
 // CreateOrderRequest is the request body for creating a payment order.
 type CreateOrderRequest struct {
-	Amount      float64 `json:"amount"`
-	PaymentType string  `json:"payment_type" binding:"required"`
-	OrderType   string  `json:"order_type"`
-	PlanID      int64   `json:"plan_id"`
+	Amount        float64 `json:"amount"`
+	PaymentType   string  `json:"payment_type" binding:"required"`
+	ReturnURL     string  `json:"return_url"`
+	PaymentSource string  `json:"payment_source"`
+	OrderType     string  `json:"order_type"`
+	PlanID        int64   `json:"plan_id"`
 REDACTED
 
 // CreateOrder creates a new payment order.
@@ -223,15 +225,16 @@ REDACTED
 REDACTED
 
 	result, err := h.paymentService.CreateOrder(c.Request.Context(), service.CreateOrderRequest{
-		UserID:      subject.UserID,
-		Amount:      req.Amount,
-		PaymentType: req.PaymentType,
-		ClientIP:    c.ClientIP(),
-		IsMobile:    isMobile(c),
-		SrcHost:     c.Request.Host,
-		SrcURL:      c.Request.Referer(),
-		OrderType:   req.OrderType,
-		PlanID:      req.PlanID,
+		UserID:        subject.UserID,
+		Amount:        req.Amount,
+		PaymentType:   req.PaymentType,
+		ClientIP:      c.ClientIP(),
+		IsMobile:      isMobile(c),
+		SrcHost:       c.Request.Host,
+		ReturnURL:     req.ReturnURL,
+		PaymentSource: req.PaymentSource,
+		OrderType:     req.OrderType,
+		PlanID:        req.PlanID,
 REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)

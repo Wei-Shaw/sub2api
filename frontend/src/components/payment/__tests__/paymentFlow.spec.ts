@@ -1,6 +1,7 @@
 import { describe, expect, it REDACTED from 'vitest'
 import type { CreateOrderResult, MethodLimit REDACTED from '@/types/payment'
 import {
+  buildCreateOrderPayload,
   decidePaymentLaunch,
   getVisibleMethods,
   readPaymentRecoverySnapshot,
@@ -103,6 +104,42 @@ describe('decidePaymentLaunch', () => {
     expect(decision.paymentState.payUrl).toBe('https://pay.example.com/session/abc')
     expect(decision.recovery.paymentMode).toBe('popup')
     expect(decision.recovery.resumeToken).toBe('resume-2')
+  REDACTED)
+REDACTED)
+
+describe('buildCreateOrderPayload', () => {
+  it('normalizes visible method aliases and attaches a canonical result URL', () => {
+    expect(buildCreateOrderPayload({
+      amount: 88,
+      paymentType: 'alipay_direct',
+      orderType: 'balance',
+      origin: 'https://app.example.com/',
+      isWechatBrowser: false,
+    REDACTED)).toEqual({
+      amount: 88,
+      payment_type: 'alipay',
+      order_type: 'balance',
+      return_url: 'https://app.example.com/payment/result',
+      payment_source: 'hosted_redirect',
+    REDACTED)
+  REDACTED)
+
+  it('uses WeChat in-app resume source for visible WeChat payments in the WeChat browser', () => {
+    expect(buildCreateOrderPayload({
+      amount: 128,
+      paymentType: 'wxpay',
+      orderType: 'subscription',
+      planId: 7,
+      origin: 'https://app.example.com',
+      isWechatBrowser: true,
+    REDACTED)).toEqual({
+      amount: 128,
+      payment_type: 'wxpay',
+      order_type: 'subscription',
+      plan_id: 7,
+      return_url: 'https://app.example.com/payment/result',
+      payment_source: 'wechat_in_app_resume',
+    REDACTED)
   REDACTED)
 REDACTED)
 

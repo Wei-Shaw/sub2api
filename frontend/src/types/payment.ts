@@ -154,6 +154,8 @@ export interface CreateOrderRequest {
   payment_type: string
   order_type: string
   plan_id?: number
+  return_url?: string
+  payment_source?: string
 REDACTED
 
 export interface CreateOrderResult {
@@ -166,6 +168,7 @@ export interface CreateOrderResult {
   fee_rate: number
   expires_at: string
   payment_mode?: string
+  resume_token?: string
 REDACTED
 
 export interface DashboardStats {
