@@ -2728,8 +2728,8 @@
                     <p class="mt-1.5 text-xs text-gray-400">
                       {{
                         localText(
-                          '留空表示自动路由；仅允许当前系统支持的官方或易支付来源。',
-                          'Leave blank for automatic routing. Only supported official or EasyPay sources are allowed.'
+                          '启用后必须明确选择一个来源；未配置状态不会对外展示该支付方式。',
+                          'Choose an explicit source before enabling the method. Not configured methods are not exposed.'
                         )
                       REDACTEDREDACTED
                     </p>
@@ -3450,6 +3450,28 @@ function setPaymentVisibleMethodSource(
   form.payment_visible_method_wxpay_source = normalized
 REDACTED
 
+function validatePaymentVisibleMethodSelections(): boolean {
+  for (const visibleMethod of paymentVisibleMethodCards.value) {
+    if (!getPaymentVisibleMethodEnabled(visibleMethod.key)) {
+      continue
+    REDACTED
+
+    if (getPaymentVisibleMethodSource(visibleMethod.key)) {
+      continue
+    REDACTED
+
+    appStore.showError(
+      localText(
+        `${visibleMethod.titleREDACTED 已启用，请先选择支付来源`,
+        `Select a payment source before enabling ${visibleMethod.titleREDACTED`
+      )
+    )
+    return false
+  REDACTED
+
+  return true
+REDACTED
+
 // Proxies for web search emulation ProxySelector
 const webSearchProxies = ref<Proxy[]>([])
 
@@ -3977,6 +3999,10 @@ async function saveSettings() {
         )
         return
       REDACTED
+    REDACTED
+
+    if (!validatePaymentVisibleMethodSelections()) {
+      return
     REDACTED
 
     // Validate URL fields — novalidate disables browser-native checks, so we validate here

@@ -30,3 +30,9 @@ describe('AppSidebar header styles', () => {
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
   REDACTED)
 REDACTED)
+
+describe('AppSidebar admin navigation', () => {
+  it('includes a visible entry for auth identity migration reports', () => {
+    expect(componentSource).toContain("'/admin/users/auth-identity-migration-reports'")
+  REDACTED)
+REDACTED)

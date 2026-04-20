@@ -27,8 +27,8 @@ describe('admin settings payment visible method helpers', () => {
     expect(getPaymentVisibleMethodSourceOptions('alipay')).toEqual([
       {
         value: '',
-        labelZh: '自动路由',
-        labelEn: 'Automatic routing',
+        labelZh: '未配置',
+        labelEn: 'Not configured',
       REDACTED,
       {
         value: 'official_alipay',
@@ -45,8 +45,8 @@ describe('admin settings payment visible method helpers', () => {
     expect(getPaymentVisibleMethodSourceOptions('wxpay')).toEqual([
       {
         value: '',
-        labelZh: '自动路由',
-        labelEn: 'Automatic routing',
+        labelZh: '未配置',
+        labelEn: 'Not configured',
       REDACTED,
       {
         value: 'official_wxpay',

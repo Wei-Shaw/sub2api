@@ -449,4 +449,27 @@ describe('admin SettingsView payment visible method controls', () => {
       REDACTED)
     )
   REDACTED)
+
+  it('blocks saving when a visible payment method is enabled without a source', async () => {
+    const wrapper = mountView()
+
+    await flushPromises()
+    await openPaymentTab(wrapper)
+
+    const paymentSourceSelects = wrapper
+      .findAll('select.select-stub')
+      .filter((node) => ['alipay', 'wxpay'].includes(node.attributes('data-placeholder')))
+
+    const alipaySelect = paymentSourceSelects.find(
+      (node) => node.attributes('data-placeholder') === 'alipay'
+    )
+
+    await alipaySelect?.setValue('')
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateSettings).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenCalled()
+    expect(String(showError.mock.calls.at(-1)?.[0] ?? '')).toContain('支付来源')
+  REDACTED)
 REDACTED)

@@ -318,6 +318,7 @@ const pagination = reactive({
   pageSize: 20,
   total: 0,
 REDACTED)
+const knownReportTypes = ref<string[]>([])
 
 const columns: Column[] = [
   { key: 'status', label: text('状态', 'Status') REDACTED,
@@ -330,12 +331,16 @@ const columns: Column[] = [
 ]
 
 const reportTypeOptions = computed(() =>
-  Object.entries(summary.value.by_type)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([value, count]) => ({
-      value,
-      label: `${valueREDACTED (${countREDACTED)`,
-    REDACTED))
+  knownReportTypes.value
+    .slice()
+    .sort((left, right) => left.localeCompare(right))
+    .map((value) => {
+      const count = summary.value.by_type[value]
+      return {
+        value,
+        label: count === undefined ? value : `${valueREDACTED (${countREDACTED)`,
+      REDACTED
+    REDACTED)
 )
 
 const canResolve = computed(() =>
@@ -347,10 +352,22 @@ const canResolve = computed(() =>
   )
 )
 
+const mergeKnownReportTypes = (...values: Array<string | null | undefined>) => {
+  const merged = new Set(knownReportTypes.value)
+  for (const value of values) {
+    const normalized = value?.trim()
+    if (normalized) {
+      merged.add(normalized)
+    REDACTED
+  REDACTED
+  knownReportTypes.value = Array.from(merged)
+REDACTED
+
 const loadSummary = async () => {
   summaryLoading.value = true
   try {
     summary.value = await adminAPI.users.getAuthIdentityMigrationReportSummary()
+    mergeKnownReportTypes(...Object.keys(summary.value.by_type))
   REDACTED catch (error) {
     console.error('Failed to load auth identity migration report summary:', error)
     appStore.showError(text('加载 migration reports 汇总失败', 'Failed to load migration report summary'))
@@ -370,6 +387,7 @@ const loadReports = async () => {
 
     reports.value = response.items
     pagination.total = response.total
+    mergeKnownReportTypes(filters.reportType, ...response.items.map((report) => report.report_type))
 
     if (selectedReport.value) {
       const refreshed = response.items.find((report) => report.id === selectedReport.value?.id) ?? null

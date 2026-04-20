@@ -240,4 +240,21 @@ describe('AuthIdentityMigrationReportsView', () => {
       reportType: '',
     REDACTED)
   REDACTED)
+
+  it('keeps report type filter options available from list data when summary fails', async () => {
+    getAuthIdentityMigrationReportSummary.mockRejectedValueOnce(new Error('summary failed'))
+    listAuthIdentityMigrationReports.mockResolvedValueOnce(listResponse)
+
+    const wrapper = mountView()
+
+    await flushPromises()
+
+    const options = wrapper
+      .get('[data-test="report-type-filter"]')
+      .findAll('option')
+      .map((node) => node.element.value)
+
+    expect(showError).toHaveBeenCalled()
+    expect(options).toContain('oidc_synthetic_email_requires_manual_recovery')
+  REDACTED)
 REDACTED)
