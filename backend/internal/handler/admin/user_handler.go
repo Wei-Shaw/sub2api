@@ -7,6 +7,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -80,6 +81,10 @@ type BindUserAuthIdentityChannelRequest struct {
 	ChannelAppID   string         `json:"channel_app_id"`
 	ChannelSubject string         `json:"channel_subject"`
 	Metadata       map[string]any `json:"metadata"`
+REDACTED
+
+type ResolveAuthIdentityMigrationReportRequest struct {
+	ResolutionNote string `json:"resolution_note"`
 REDACTED
 
 // List handles listing all users with pagination
@@ -250,6 +255,40 @@ REDACTED
 		return
 REDACTED
 	response.Success(c, result)
+REDACTED
+
+// ResolveAuthIdentityMigrationReport marks a migration report as resolved.
+// POST /api/v1/admin/users/auth-identity-migration-reports/:id/resolve
+func (h *UserHandler) ResolveAuthIdentityMigrationReport(c *gin.Context) {
+	reportID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid report ID")
+		return
+REDACTED
+
+	subject, ok := servermiddleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		response.Unauthorized(c, "Authentication required")
+		return
+REDACTED
+
+	var req ResolveAuthIdentityMigrationReportRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+
+	report, err := h.adminService.ResolveAuthIdentityMigrationReport(
+		c.Request.Context(),
+		reportID,
+		subject.UserID,
+		req.ResolutionNote,
+	)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	response.Success(c, report)
 REDACTED
 
 // Create handles creating a new user

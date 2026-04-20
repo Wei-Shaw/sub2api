@@ -212,6 +212,7 @@ func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		users.GET("/auth-identity-migration-reports/summary", h.Admin.User.GetAuthIdentityMigrationReportSummary)
 		users.GET("/auth-identity-migration-reports", h.Admin.User.ListAuthIdentityMigrationReports)
+		users.POST("/auth-identity-migration-reports/:id/resolve", h.Admin.User.ResolveAuthIdentityMigrationReport)
 		users.GET("", h.Admin.User.List)
 		users.GET("/:id", h.Admin.User.GetByID)
 		users.POST("/:id/auth-identities", h.Admin.User.BindAuthIdentity)

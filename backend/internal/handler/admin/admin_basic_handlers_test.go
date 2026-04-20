@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -24,6 +25,10 @@ func setupAdminRouter() (*gin.Engine, *stubAdminService) {
 	router.GET("/api/v1/admin/users", userHandler.List)
 	router.GET("/api/v1/admin/users/auth-identity-migration-reports/summary", userHandler.GetAuthIdentityMigrationReportSummary)
 	router.GET("/api/v1/admin/users/auth-identity-migration-reports", userHandler.ListAuthIdentityMigrationReports)
+	router.POST("/api/v1/admin/users/auth-identity-migration-reports/:id/resolve", func(c *gin.Context) {
+		c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 99REDACTED)
+		userHandler.ResolveAuthIdentityMigrationReport(c)
+REDACTED)
 	router.GET("/api/v1/admin/users/:id", userHandler.GetByID)
 	router.POST("/api/v1/admin/users/:id/auth-identities", userHandler.BindAuthIdentity)
 	router.POST("/api/v1/admin/users", userHandler.Create)
@@ -83,6 +88,13 @@ func TestUserHandlerEndpoints(t *testing.T) {
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
 
+	body, _ := json.Marshal(map[string]any{"resolution_note": "resolved by manual bind"REDACTED)
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/auth-identity-migration-reports/1/resolve", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/admin/users/1", nil)
 	router.ServeHTTP(rec, req)
@@ -99,7 +111,7 @@ func TestUserHandlerEndpoints(t *testing.T) {
 			"channel_subject": "openid-123",
 	REDACTED,
 REDACTED
-	body, _ := json.Marshal(bindBody)
+	body, _ = json.Marshal(bindBody)
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/users/1/auth-identities", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")

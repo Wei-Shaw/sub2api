@@ -249,6 +249,20 @@ REDACTED
 	return result, nil
 REDACTED
 
+func (s *stubAdminService) ResolveAuthIdentityMigrationReport(ctx context.Context, reportID, resolvedByUserID int64, resolutionNote string) (*service.AuthIdentityMigrationReport, error) {
+	now := time.Now().UTC()
+	for i := range s.migrationReports {
+		if s.migrationReports[i].ID != reportID {
+			continue
+	REDACTED
+		s.migrationReports[i].ResolvedAt = &now
+		s.migrationReports[i].ResolvedByUserID = &resolvedByUserID
+		s.migrationReports[i].ResolutionNote = resolutionNote
+		return &s.migrationReports[i], nil
+REDACTED
+	return nil, nil
+REDACTED
+
 func (s *stubAdminService) ListGroups(ctx context.Context, page, pageSize int, platform, status, search string, isExclusive *bool, sortBy, sortOrder string) ([]service.Group, int64, error) {
 	return s.groups, int64(len(s.groups)), nil
 REDACTED
