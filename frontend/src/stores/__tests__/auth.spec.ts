@@ -261,6 +261,35 @@ describe('useAuthStore', () => {
       expect(localStorage.getItem('pending_auth_session')).toBeNull()
     REDACTED)
 
+    it('restores a persisted pending oauth session without requiring a token value', () => {
+      const firstStore = useAuthStore()
+
+      firstStore.setPendingAuthSession({
+        token: '',
+        token_field: 'pending_oauth_token',
+        provider: 'oidc',
+        redirect: '/welcome',
+        adoption_required: true,
+        suggested_display_name: 'OIDC Nick'
+      REDACTED)
+
+      setActivePinia(createPinia())
+      const restoredStore = useAuthStore()
+      restoredStore.checkAuth()
+
+      expect(restoredStore.isAuthenticated).toBe(false)
+      expect(restoredStore.hasPendingAuthSession).toBe(true)
+      expect(restoredStore.pendingAuthSession).toEqual({
+        token: '',
+        token_field: 'pending_oauth_token',
+        provider: 'oidc',
+        redirect: '/welcome',
+        adoption_required: true,
+        suggested_display_name: 'OIDC Nick',
+        suggested_avatar_url: undefined
+      REDACTED)
+    REDACTED)
+
     it('preserves pending auth session when registration fails', async () => {
       const store = useAuthStore()
       store.setPendingAuthSession({

@@ -28,6 +28,10 @@ interface PendingAuthSessionSummary {
   suggested_avatar_url?: string
 REDACTED
 
+function normalizePendingAuthTokenField(value: unknown): PendingAuthTokenField {
+  return value === 'pending_oauth_token' ? 'pending_oauth_token' : 'pending_auth_token'
+REDACTED
+
 function getPersistedPendingAuthSession(): PendingAuthSessionSummary | null {
   const raw = localStorage.getItem(PENDING_AUTH_SESSION_KEY)
   if (!raw) {
@@ -35,18 +39,20 @@ function getPersistedPendingAuthSession(): PendingAuthSessionSummary | null {
   REDACTED
 
   try {
-    const parsed = JSON.parse(raw) as PendingAuthSessionSummary
-    if (!parsed?.token || !parsed?.provider) {
+    const parsed = JSON.parse(raw) as Partial<PendingAuthSessionSummary> | null
+    const provider = typeof parsed?.provider === 'string' ? parsed.provider.trim() : ''
+    if (!provider) {
+      localStorage.removeItem(PENDING_AUTH_SESSION_KEY)
       return null
     REDACTED
     return {
-      token: parsed.token,
-      token_field: parsed.token_field || 'pending_auth_token',
-      provider: parsed.provider,
-      redirect: parsed.redirect,
-      adoption_required: parsed.adoption_required,
-      suggested_display_name: parsed.suggested_display_name,
-      suggested_avatar_url: parsed.suggested_avatar_url
+      token: typeof parsed?.token === 'string' ? parsed.token : '',
+      token_field: normalizePendingAuthTokenField(parsed?.token_field),
+      provider,
+      redirect: typeof parsed?.redirect === 'string' ? parsed.redirect : undefined,
+      adoption_required: typeof parsed?.adoption_required === 'boolean' ? parsed.adoption_required : undefined,
+      suggested_display_name: typeof parsed?.suggested_display_name === 'string' ? parsed.suggested_display_name : undefined,
+      suggested_avatar_url: typeof parsed?.suggested_avatar_url === 'string' ? parsed.suggested_avatar_url : undefined
     REDACTED
   REDACTED catch {
     localStorage.removeItem(PENDING_AUTH_SESSION_KEY)
