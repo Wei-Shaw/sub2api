@@ -959,8 +959,6 @@ export default {
       imageOutputPrice: '图片输出',
       perRequestPrice: '每次请求',
       intervals: '阶梯定价',
-      tierLabel: '层级',
-      tokenRange: 'Token 区间',
       unitPerMillion: '/ 1M token',
       unitPerRequest: '/ 次'
     REDACTED
@@ -2127,8 +2125,6 @@ export default {
         imageOutputPrice: '图片输出',
         perRequestPrice: '每次请求',
         intervals: '阶梯定价',
-        tierLabel: '层级',
-        tokenRange: 'Token 区间',
         unitPerMillion: '/ 1M token',
         unitPerRequest: '/ 次'
       REDACTED

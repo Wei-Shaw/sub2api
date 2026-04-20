@@ -120,6 +120,7 @@
 import { computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import PricingRow from './PricingRow.vue'
+import { formatScaled REDACTED from '@/utils/pricing'
 import {
   BILLING_MODE_TOKEN,
   BILLING_MODE_PER_REQUEST,
@@ -192,11 +193,6 @@ const billingModeLabel = computed(() => {
       return '-'
   REDACTED
 REDACTED)
-
-function formatScaled(value: number | null | undefined, scale: number): string {
-  if (value == null) return '-'
-  return `$${(value * scale).toPrecision(10).replace(/\.?0+$/, '')REDACTED`
-REDACTED
 
 function formatRange(min: number, max: number | null): string {
   const maxLabel = max == null ? '∞' : String(max)

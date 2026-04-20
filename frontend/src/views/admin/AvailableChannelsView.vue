@@ -59,11 +59,7 @@
 
           <template #cell-billing_model_source="{ row REDACTED">
             <span class="text-xs text-gray-700 dark:text-gray-300">
-              {{
-                t(
-                  `admin.availableChannels.billingSource.${row.billing_model_source || BILLING_MODEL_SOURCE_CHANNEL_MAPPEDREDACTED`
-                )
-              REDACTEDREDACTED
+              {{ t(`admin.availableChannels.billingSource.${row.billing_model_sourceREDACTED`) REDACTEDREDACTED
             </span>
           </template>
         </AvailableChannelsTable>
@@ -82,10 +78,7 @@ import AvailableChannelsTable from '@/components/channels/AvailableChannelsTable
 import channelsAPI, { type AvailableChannel REDACTED from '@/api/admin/channels'
 import { useAppStore REDACTED from '@/stores/app'
 import { extractApiErrorMessage REDACTED from '@/utils/apiError'
-import {
-  CHANNEL_STATUS_ACTIVE,
-  BILLING_MODEL_SOURCE_CHANNEL_MAPPED
-REDACTED from '@/constants/channel'
+import { CHANNEL_STATUS_ACTIVE REDACTED from '@/constants/channel'
 
 const { t REDACTED = useI18n()
 const appStore = useAppStore()
