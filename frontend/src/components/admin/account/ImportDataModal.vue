@@ -103,6 +103,14 @@ import { adminAPI } from '@/api/admin'
 import { useAppStore } from '@/stores/app'
 import type { AdminDataImportResult, AdminDataPayload } from '@/types'
 
+type AdminImportData = AdminDataPayload
+
+const IMPORT_FORMAT_FILE_PREFIX = 'sub2api-account'
+const STRUCTURED_EXPORT_ONLY_ERROR = 'Structured export file must be imported alone'
+const IMPORT_FORMAT_TYPE = 'sub2api-account-data'
+const SUPPORTED_DATA_TYPES = ['sub2api-data', 'sub2api-bundle']
+const SUPPORTED_DATA_VERSION = 1
+
 interface Props {
   show: boolean
 }
@@ -110,6 +118,23 @@ interface Props {
 interface Emits {
   (e: 'close'): void
   (e: 'imported'): void
+}
+
+interface ImportAggregateResult extends AdminDataImportResult {
+  errors: NonNullable<AdminDataImportResult['errors']>
+}
+
+interface ParsedImportFile {
+  data: AdminImportData
+}
+
+class ImportFileError extends Error {
+  constructor(
+    readonly messageKey: string,
+    readonly params?: Record<string, unknown>
+  ) {
+    super(messageKey)
+  }
 }
 
 const props = defineProps<Props>()
@@ -132,26 +157,33 @@ const selectedFilesLabel = computed(() => {
   return t('admin.accounts.selectedCount', { count: files.value.length })
 })
 const fileListTitle = computed(() => files.value.map((item) => item.name).join(', '))
-
 const errorItems = computed(() => result.value?.errors || [])
 
 watch(
   () => props.show,
   (open) => {
     if (open) {
-      files.value = []
+      clearSelection()
       dragDepth.value = 0
       hasCreatedData.value = false
-      result.value = null
-      if (fileInput.value) {
-        fileInput.value.value = ''
-      }
     }
   }
 )
 
 const openFilePicker = () => {
   fileInput.value?.click()
+}
+
+const resetInputValue = (input: HTMLInputElement | null) => {
+  if (input) {
+    input.value = ''
+  }
+}
+
+const clearSelection = () => {
+  files.value = []
+  result.value = null
+  resetInputValue(fileInput.value)
 }
 
 const handleFileChange = (event: Event) => {
@@ -174,21 +206,52 @@ const isJsonFile = (sourceFile: File) => {
   return name.endsWith('.json') || sourceFile.type === 'application/json'
 }
 
+const isStructuredExportFilename = (fileName: string) => {
+  const normalized = fileName.toLowerCase()
+  return normalized.startsWith(IMPORT_FORMAT_FILE_PREFIX) || normalized.startsWith(IMPORT_FORMAT_TYPE)
+}
+
+const normalizeSelectedFiles = (sourceFiles: FileList | File[] | null | undefined): File[] => {
+  const selected = Array.from(sourceFiles || [])
+  const hasStructuredDataFile = selected.some((file) => isStructuredExportFilename(file.name))
+  if (hasStructuredDataFile && selected.length > 1) {
+    throw new Error(STRUCTURED_EXPORT_ONLY_ERROR)
+  }
+  return selected
+}
+
+const getImportErrorMessage = (error: unknown, translate: (key: string, params?: Record<string, unknown>) => string): string => {
+  if (error instanceof ImportFileError) {
+    return translate(error.messageKey, error.params)
+  }
+  if (error instanceof SyntaxError) {
+    return translate('admin.accounts.dataImportParseFailed')
+  }
+  return error instanceof Error ? error.message : translate('admin.accounts.dataImportFailed')
+}
+
 const setSelectedFiles = (sourceFiles: FileList | File[] | null | undefined) => {
   if (importing.value) return
-  const incoming = Array.from(sourceFiles || [])
-  const picked = incoming.filter(isJsonFile)
-  if (!picked.length) {
-    appStore.showError(t('admin.accounts.dataImportSelectFile'))
-    return
+
+  try {
+    const incoming = normalizeSelectedFiles(sourceFiles)
+    const picked = incoming.filter(isJsonFile)
+    if (!picked.length) {
+      appStore.showError(t('admin.accounts.dataImportSelectFile'))
+      return
+    }
+    if (picked.length < incoming.length) {
+      appStore.showWarning(
+        t('admin.accounts.dataImportIgnoredFiles', { count: incoming.length - picked.length })
+      )
+    }
+    files.value = picked
+    result.value = null
+  } catch (error) {
+    files.value = []
+    result.value = null
+    appStore.showError(getImportErrorMessage(error, t))
   }
-  if (picked.length < incoming.length) {
-    appStore.showWarning(
-      t('admin.accounts.dataImportIgnoredFiles', { count: incoming.length - picked.length })
-    )
-  }
-  files.value = picked
-  result.value = null
 }
 
 const handleDragEnter = () => {
@@ -224,46 +287,127 @@ const readFileAsText = async (sourceFile: File): Promise<string> => {
   })
 }
 
-const SUPPORTED_DATA_TYPES = ['sub2api-data', 'sub2api-bundle']
-const SUPPORTED_DATA_VERSION = 1
-
-// 与后端 validateDataHeader 对齐:合并前逐文件校验,避免坏文件混入合并 payload 后
-// 报错无法定位来源,或绕过后端本会对单文件做的 type/version 检查。
-const isValidDataPayload = (payload: unknown): payload is AdminDataPayload => {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false
-  const candidate = payload as Record<string, unknown>
-  if (
-    candidate.type !== undefined &&
-    candidate.type !== '' &&
-    !SUPPORTED_DATA_TYPES.includes(candidate.type as string)
-  ) {
-    return false
-  }
-  if (
-    candidate.version !== undefined &&
-    candidate.version !== 0 &&
-    candidate.version !== SUPPORTED_DATA_VERSION
-  ) {
-    return false
-  }
-  return Array.isArray(candidate.proxies) && Array.isArray(candidate.accounts)
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-const mergeDataPayloads = (payloads: AdminDataPayload[]): AdminDataPayload => {
-  const [firstPayload] = payloads
-  if (payloads.length === 1 && firstPayload) return firstPayload
-
-  return {
-    type: payloads.find((item) => typeof item.type === 'string')?.type,
-    version: payloads.find((item) => typeof item.version === 'number')?.version,
-    exported_at: new Date().toISOString(),
-    proxies: payloads.flatMap((item) => item.proxies),
-    accounts: payloads.flatMap((item) => item.accounts),
-    skipped_shadows: payloads.reduce((sum, item) => {
-      const count = Number(item.skipped_shadows || 0)
-      return Number.isFinite(count) ? sum + count : sum
-    }, 0)
+const isStructuredDataPayload = (payload: unknown): payload is AdminDataPayload => {
+  if (!isPlainObject(payload)) return false
+  if (
+    payload.type !== undefined
+    && payload.type !== ''
+    && !SUPPORTED_DATA_TYPES.includes(payload.type as string)
+  ) {
+    return false
   }
+  if (
+    payload.version !== undefined
+    && payload.version !== 0
+    && payload.version !== SUPPORTED_DATA_VERSION
+  ) {
+    return false
+  }
+  return Array.isArray(payload.proxies) && Array.isArray(payload.accounts)
+}
+
+const isCPAAccountObject = (value: unknown): value is Record<string, unknown> => {
+  return isPlainObject(value) && (
+    typeof value.refresh_token === 'string'
+    || typeof value.access_token === 'string'
+    || typeof value.id_token === 'string'
+    || typeof value.account_id === 'string'
+  )
+}
+
+const normalizeCPAAccountsPayload = (accounts: Record<string, unknown>[]): AdminDataPayload => ({
+  exported_at: new Date(0).toISOString(),
+  proxies: [],
+  accounts: accounts.map((account) => ({
+    name: typeof account.name === 'string'
+      ? account.name
+      : (typeof account.account_id === 'string' ? account.account_id : 'Imported Account'),
+    notes: typeof account.notes === 'string' ? account.notes : null,
+    platform: typeof account.platform === 'string' ? account.platform as never : 'openai',
+    type: typeof account.type === 'string' ? account.type as never : 'apikey',
+    credentials: account,
+    extra: {},
+    proxy_key: typeof account.proxy_key === 'string' ? account.proxy_key : null,
+    concurrency: typeof account.concurrency === 'number' ? account.concurrency : 1,
+    priority: typeof account.priority === 'number' ? account.priority : 0,
+    rate_multiplier: typeof account.rate_multiplier === 'number' ? account.rate_multiplier : null,
+    expires_at: typeof account.expires_at === 'number' ? account.expires_at : null,
+    auto_pause_on_expired: typeof account.auto_pause_on_expired === 'boolean' ? account.auto_pause_on_expired : false,
+  })),
+})
+
+const parseImportPayload = (raw: unknown, sourceFile: File): AdminImportData => {
+  if (Array.isArray(raw)) {
+    if (raw.every(isCPAAccountObject)) {
+      return normalizeCPAAccountsPayload(raw)
+    }
+    throw new ImportFileError('admin.accounts.dataImportInvalidFile', { name: sourceFile.name })
+  }
+
+  if (isStructuredDataPayload(raw)) {
+    return raw
+  }
+
+  if (isCPAAccountObject(raw)) {
+    return normalizeCPAAccountsPayload([raw])
+  }
+
+  throw new ImportFileError('admin.accounts.dataImportInvalidFile', { name: sourceFile.name })
+}
+
+const parseImportFilesFromText = async (selectedFiles: File[]): Promise<AdminImportData[]> => {
+  const parsedEntries = await Promise.all(selectedFiles.map(async (sourceFile) => {
+    let raw: unknown
+    try {
+      raw = JSON.parse(await readFileAsText(sourceFile))
+    } catch {
+      throw new ImportFileError('admin.accounts.dataImportParseFailedFile', { name: sourceFile.name })
+    }
+    return {
+      data: parseImportPayload(raw, sourceFile)
+    } satisfies ParsedImportFile
+  }))
+
+  return parsedEntries.map((entry) => entry.data)
+}
+
+const mergeImportResults = (results: AdminDataImportResult[]): ImportAggregateResult => {
+  return results.reduce<ImportAggregateResult>((acc, item) => {
+    acc.proxy_created += item.proxy_created
+    acc.proxy_reused += item.proxy_reused
+    acc.proxy_failed += item.proxy_failed
+    acc.account_created += item.account_created
+    acc.account_failed += item.account_failed
+    if (item.errors?.length) {
+      acc.errors.push(...item.errors)
+    }
+    return acc
+  }, {
+    proxy_created: 0,
+    proxy_reused: 0,
+    proxy_failed: 0,
+    account_created: 0,
+    account_failed: 0,
+    errors: []
+  })
+}
+
+const importDataPayloads = async (payloads: AdminImportData[]): Promise<ImportAggregateResult> => {
+  const responses = await Promise.all(payloads.map((data) => adminAPI.accounts.importData({
+    data,
+    skip_default_group_bind: true
+  })))
+
+  return mergeImportResults(responses)
+}
+
+const readAndImportSelectedFiles = async (selectedFiles: File[]): Promise<ImportAggregateResult> => {
+  const payloads = await parseImportFilesFromText(selectedFiles)
+  return importDataPayloads(payloads)
 }
 
 const handleImport = async () => {
@@ -274,42 +418,19 @@ const handleImport = async () => {
 
   importing.value = true
   try {
-    const dataPayloads: AdminDataPayload[] = []
-    for (const sourceFile of files.value) {
-      let parsed: unknown
-      try {
-        parsed = JSON.parse(await readFileAsText(sourceFile))
-      } catch {
-        appStore.showError(
-          t('admin.accounts.dataImportParseFailedFile', { name: sourceFile.name })
-        )
-        return
-      }
-      if (!isValidDataPayload(parsed)) {
-        appStore.showError(t('admin.accounts.dataImportInvalidFile', { name: sourceFile.name }))
-        return
-      }
-      dataPayloads.push(parsed)
-    }
-    const dataPayload = mergeDataPayloads(dataPayloads)
-
-    const res = await adminAPI.accounts.importData({
-      data: dataPayload,
-      skip_default_group_bind: true
-    })
-
-    result.value = res
+    const aggregatedResult = await readAndImportSelectedFiles(files.value)
+    result.value = aggregatedResult
 
     const msgParams: Record<string, unknown> = {
-      account_created: res.account_created,
-      account_failed: res.account_failed,
-      proxy_created: res.proxy_created,
-      proxy_reused: res.proxy_reused,
-      proxy_failed: res.proxy_failed,
+      account_created: aggregatedResult.account_created,
+      account_failed: aggregatedResult.account_failed,
+      proxy_created: aggregatedResult.proxy_created,
+      proxy_reused: aggregatedResult.proxy_reused,
+      proxy_failed: aggregatedResult.proxy_failed,
     }
-    if (res.account_failed > 0 || res.proxy_failed > 0) {
-      // 部分成功也创建了数据;弹窗关闭时通过 imported 通知父组件刷新列表
-      if (res.account_created > 0 || res.proxy_created > 0) {
+
+    if (aggregatedResult.account_failed > 0 || aggregatedResult.proxy_failed > 0) {
+      if (aggregatedResult.account_created > 0 || aggregatedResult.proxy_created > 0) {
         hasCreatedData.value = true
       }
       appStore.showError(t('admin.accounts.dataImportCompletedWithErrors', msgParams))
@@ -317,8 +438,8 @@ const handleImport = async () => {
       appStore.showSuccess(t('admin.accounts.dataImportSuccess', msgParams))
       emit('imported')
     }
-  } catch (error: any) {
-    appStore.showError(error?.message || t('admin.accounts.dataImportFailed'))
+  } catch (error) {
+    appStore.showError(getImportErrorMessage(error, t))
   } finally {
     importing.value = false
   }
