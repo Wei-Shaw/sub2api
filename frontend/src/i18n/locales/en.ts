@@ -4397,12 +4397,23 @@ export default {
       description: 'Manage registration, email verification, default values, and SMTP settings',
       tabs: {
         general: 'General',
+        features: 'Feature Switches',
         security: 'Security',
         users: 'Users',
         gateway: 'Gateway',
         email: 'Email',
         backup: 'Backup',
         payment: 'Payment',
+      },
+      features: {
+        channelMonitor: {
+          title: 'Channel Monitor',
+          description: 'Periodically probe configured channels and surface availability / latency to users. Turning it off stops the scheduler and returns an empty list on the user page.',
+          enabled: 'Enable Channel Monitor',
+          enabledHint: 'Disabling stops background checks; existing history is preserved.',
+          defaultInterval: 'Default check interval (seconds)',
+          defaultIntervalHint: 'Pre-fills the interval when creating a new monitor; each monitor can override it. Range 15 – 3600.',
+        },
       },
       emailTabDisabledTitle: 'Email Verification Not Enabled',
       emailTabDisabledHint: 'Enable email verification in the Security tab to configure SMTP settings.',

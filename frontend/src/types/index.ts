@@ -130,6 +130,8 @@ export interface PublicSettings {
   balance_low_notify_enabled: boolean
   account_quota_notify_enabled: boolean
   balance_low_notify_threshold: number
+  channel_monitor_enabled: boolean
+  channel_monitor_default_interval_seconds: number
 }
 
 export interface AuthResponse {

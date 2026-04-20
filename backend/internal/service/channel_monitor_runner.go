@@ -18,8 +18,13 @@ import (
 //   - Stop 时优雅关闭：池 drain + ticker.Stop + wg.Wait
 //
 // 不引入 cron 库；清理调度通过"每小时检查时间"实现，足够 MVP。
+//
+// 定时任务维护：删除/创建/编辑 monitor 无需显式 reload，每个 tick 都会重新查 DB
+// （ListEnabled + listDueForCheck），新 monitor 的 LastCheckedAt 为 nil 天然立即到期，
+// 被删除的 monitor 自然不再返回，interval 变化下次 tick 自动按新值判定。
 type ChannelMonitorRunner struct {
-	svc *ChannelMonitorService
+	svc            *ChannelMonitorService
+	settingService *SettingService
 
 	pool   pond.Pool
 	stopCh chan struct{}
@@ -37,11 +42,13 @@ type ChannelMonitorRunner struct {
 }
 
 // NewChannelMonitorRunner 构造调度器。Start 在 wire 中调用。
-func NewChannelMonitorRunner(svc *ChannelMonitorService) *ChannelMonitorRunner {
+// settingService 用于在每次 tick 前读取功能开关；传 nil 时视为总是启用（兼容测试）。
+func NewChannelMonitorRunner(svc *ChannelMonitorService, settingService *SettingService) *ChannelMonitorRunner {
 	return &ChannelMonitorRunner{
-		svc:      svc,
-		stopCh:   make(chan struct{}),
-		inFlight: make(map[int64]struct{}),
+		svc:            svc,
+		settingService: settingService,
+		stopCh:         make(chan struct{}),
+		inFlight:       make(map[int64]struct{}),
 	}
 }
 
@@ -93,9 +100,14 @@ func (r *ChannelMonitorRunner) dueCheckLoop() {
 // tickDueChecks 一次扫描：查询到期监控并逐个提交到池。
 // 已在执行的 monitor 会被跳过（防止单次检测耗时 > interval 时重复调度）。
 // 池满时使用 TrySubmit 跳过（不能阻塞 ticker），同时立即释放已占用的 inFlight 槽。
+// 当功能开关关闭时直接返回——管理员可以动态禁用模块，runner 不会拉取 DB。
 func (r *ChannelMonitorRunner) tickDueChecks() {
 	ctx, cancel := context.WithTimeout(context.Background(), monitorListDueTimeout)
 	defer cancel()
+
+	if r.settingService != nil && !r.settingService.GetChannelMonitorRuntime(ctx).Enabled {
+		return
+	}
 
 	due, err := r.svc.listDueForCheck(ctx)
 	if err != nil {

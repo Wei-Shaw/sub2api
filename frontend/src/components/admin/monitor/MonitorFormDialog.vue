@@ -143,6 +143,13 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const appStore = useAppStore()
 
+// System-configured default interval for new monitors. Falls back to the static
+// constant when public settings haven't loaded yet or store the legacy 0 value.
+const systemDefaultInterval = computed<number>(() => {
+  const configured = appStore.cachedPublicSettings?.channel_monitor_default_interval_seconds
+  return configured && configured > 0 ? configured : DEFAULT_INTERVAL_SECONDS
+})
+
 // editing is true when we have an existing monitor
 const editing = computed<ChannelMonitor | null>(() => props.monitor)
 
@@ -173,7 +180,7 @@ const form = reactive<MonitorForm>({
   primary_model: '',
   extra_models: [],
   group_name: '',
-  interval_seconds: DEFAULT_INTERVAL_SECONDS,
+  interval_seconds: systemDefaultInterval.value,
   enabled: true,
 })
 
@@ -191,7 +198,7 @@ function resetForm() {
   form.primary_model = ''
   form.extra_models = []
   form.group_name = ''
-  form.interval_seconds = DEFAULT_INTERVAL_SECONDS
+  form.interval_seconds = systemDefaultInterval.value
   form.enabled = true
 }
 
@@ -203,7 +210,7 @@ function loadFromMonitor(m: ChannelMonitor) {
   form.primary_model = m.primary_model
   form.extra_models = [...(m.extra_models || [])]
   form.group_name = m.group_name || ''
-  form.interval_seconds = m.interval_seconds || DEFAULT_INTERVAL_SECONDS
+  form.interval_seconds = m.interval_seconds || systemDefaultInterval.value
   form.enabled = m.enabled
 }
 
