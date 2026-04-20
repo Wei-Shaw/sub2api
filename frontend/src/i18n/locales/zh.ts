@@ -871,7 +871,22 @@ export default {
     REDACTED,
     extraModelsHeader: '附加模型',
     extraModelsEmpty: '无附加模型',
-    latencyEmpty: '-'
+    latencyEmpty: '-',
+    availabilityPrefix: '可用性',
+    dialogLatency: '对话延迟',
+    endpointPing: '端点 PING',
+    history60pts: '近 {nREDACTED 次记录',
+    nextUpdateIn: '{nREDACTEDs 后刷新',
+    past: 'PAST',
+    now: 'NOW',
+    maintenancePaused: '维护中 · 已暂停时间线采集',
+    extraModelsCount: '+ {nREDACTED 模型',
+    pollEvery: '{nREDACTEDs 轮询',
+    updatedAt: '更新于 {timeREDACTED',
+    relativeSecondsAgo: '{nREDACTED 秒前',
+    relativeMinutesAgo: '{nREDACTED 分钟前',
+    relativeHoursAgo: '{nREDACTED 小时前',
+    relativeDaysAgo: '{nREDACTED 天前'
   REDACTED,
 
   // Channel Status (user-facing read-only view)
@@ -884,6 +899,22 @@ export default {
     detailLoadError: '加载渠道详情失败',
     detailTitle: '渠道详情',
     closeDetail: '关闭',
+    hero: {
+      breadcrumb: '渠道 · 状态',
+      title: 'INTELLIGENCE MONITOR',
+      subtitleZh: '实时追踪各大 AI 模型对话接口的可用性、延迟与官方服务状态。',
+      subtitleEn: 'Advanced performance metrics for next-gen intelligence.'
+    REDACTED,
+    windowTab: {
+      '7d': '7 天',
+      '15d': '15 天',
+      '30d': '30 天'
+    REDACTED,
+    overall: {
+      operational: 'OPERATIONAL',
+      degraded: 'DEGRADED',
+      unavailable: 'UNAVAILABLE'
+    REDACTED,
     columns: {
       name: '名称',
       provider: '供应商',
