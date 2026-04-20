@@ -38,7 +38,7 @@
                   'sidebar-link-collapsed': sidebarCollapsed
                 REDACTED"
                 :title="sidebarCollapsed ? item.label : undefined"
-                @click="sidebarCollapsed ? undefined : toggleGroup(item)"
+                @click="handleGroupClick(item)"
               >
                 <component :is="item.icon" class="h-5 w-5 flex-shrink-0" />
                 <span
@@ -181,7 +181,7 @@
 
 <script setup lang="ts">
 import { computed, h, onMounted, ref, watch REDACTED from 'vue'
-import { useRoute REDACTED from 'vue-router'
+import { useRoute, useRouter REDACTED from 'vue-router'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore REDACTED from '@/stores'
 import VersionBadge from '@/components/common/VersionBadge.vue'
@@ -194,11 +194,17 @@ interface NavItem {
   iconSvg?: string
   hideInSimpleMode?: boolean
   children?: NavItem[]
+  /**
+   * When true, the parent item only toggles the expand/collapse state and
+   * does NOT navigate to its `path`. The `path` is purely a stable key.
+   */
+  expandOnly?: boolean
 REDACTED
 
 const { t REDACTED = useI18n()
 
 const route = useRoute()
+const router = useRouter()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 const onboardingStore = useOnboardingStore()
@@ -549,6 +555,41 @@ const ChevronDoubleRightIcon = {
     )
 REDACTED
 
+const SignalIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' REDACTED,
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M9.348 14.651a3.75 3.75 0 010-5.303m5.304 0a3.75 3.75 0 010 5.303m-7.425 2.122a6.75 6.75 0 010-9.546m9.546 0a6.75 6.75 0 010 9.546M5.106 18.894c-3.808-3.807-3.808-9.98 0-13.788m13.788 0c3.808 3.807 3.808 9.98 0 13.788M12 12h.008v.008H12V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z'
+        REDACTED)
+      ]
+    )
+REDACTED
+
+const PriceTagIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' REDACTED,
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z'
+        REDACTED),
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M6 6h.008v.008H6V6z'
+        REDACTED)
+      ]
+    )
+REDACTED
+
 const ChevronDownIcon = {
   render: () =>
     h(
@@ -570,6 +611,7 @@ const userNavItems = computed((): NavItem[] => {
     { path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon REDACTED,
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon REDACTED,
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true REDACTED,
+    { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon REDACTED,
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true REDACTED,
     ...(appStore.cachedPublicSettings?.payment_enabled
       ? [
@@ -608,6 +650,7 @@ const personalNavItems = computed((): NavItem[] => {
   const items: NavItem[] = [
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon REDACTED,
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true REDACTED,
+    { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon REDACTED,
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true REDACTED,
     ...(appStore.cachedPublicSettings?.payment_enabled
       ? [
@@ -664,7 +707,17 @@ const adminNavItems = computed((): NavItem[] => {
       : []),
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true REDACTED,
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true REDACTED,
-    { path: '/admin/channels', label: t('nav.channels', '渠道管理'), icon: ChannelIcon, hideInSimpleMode: true REDACTED,
+    {
+      path: '/admin/channels',
+      label: t('nav.channelManagement'),
+      icon: ChannelIcon,
+      hideInSimpleMode: true,
+      expandOnly: true,
+      children: [
+        { path: '/admin/channels/pricing', label: t('nav.channelPricing'), icon: PriceTagIcon REDACTED,
+        { path: '/admin/channels/monitor', label: t('nav.channelMonitor'), icon: SignalIcon REDACTED,
+      ],
+    REDACTED,
     { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true REDACTED,
     { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon REDACTED,
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon REDACTED,
@@ -678,6 +731,7 @@ const adminNavItems = computed((): NavItem[] => {
             label: t('nav.orderManagement'),
             icon: OrderIcon,
             hideInSimpleMode: true,
+            expandOnly: true,
             children: [
               { path: '/admin/orders/dashboard', label: t('nav.paymentDashboard'), icon: ChartIcon REDACTED,
               { path: '/admin/orders', label: t('nav.orderManagement'), icon: OrderIcon REDACTED,
@@ -760,6 +814,28 @@ function toggleGroup(item: NavItem) {
   if (expandedGroups.value.has(item.path)) {
     expandedGroups.value.delete(item.path)
   REDACTED else {
+    expandedGroups.value.add(item.path)
+  REDACTED
+REDACTED
+
+/**
+ * Click handler for collapsible parent items.
+ * - When sidebar is collapsed: do nothing (children are not visible).
+ * - When `expandOnly` is true: only toggle expand state.
+ * - Otherwise (default, e.g. /admin/orders): navigate to the parent path
+ *   (router-link semantics) and ensure the group is expanded.
+ */
+function handleGroupClick(item: NavItem) {
+  if (sidebarCollapsed.value) return
+  if (item.expandOnly) {
+    toggleGroup(item)
+    return
+  REDACTED
+  // Push to path and ensure expanded
+  if (route.path !== item.path) {
+    router.push(item.path)
+  REDACTED
+  if (!expandedGroups.value.has(item.path)) {
     expandedGroups.value.add(item.path)
   REDACTED
 REDACTED

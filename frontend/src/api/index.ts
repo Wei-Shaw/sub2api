@@ -18,6 +18,7 @@ export { paymentAPI REDACTED from './payment'
 export { userGroupsAPI REDACTED from './groups'
 export { totpAPI REDACTED from './totp'
 export { default as announcementsAPI REDACTED from './announcements'
+export { channelMonitorUserAPI REDACTED from './channelMonitor'
 
 // Admin APIs
 export { adminAPI REDACTED from './admin'

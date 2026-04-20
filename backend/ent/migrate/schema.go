@@ -421,6 +421,83 @@ REDACTED
 		REDACTED,
 	REDACTED,
 REDACTED
+	// ChannelMonitorsColumns holds the columns for the "channel_monitors" table.
+	ChannelMonitorsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "name", Type: field.TypeString, Size: 100REDACTED,
+		{Name: "provider", Type: field.TypeEnum, Enums: []string{"openai", "anthropic", "gemini"REDACTEDREDACTED,
+		{Name: "endpoint", Type: field.TypeString, Size: 500REDACTED,
+		{Name: "api_key_encrypted", Type: field.TypeStringREDACTED,
+		{Name: "primary_model", Type: field.TypeString, Size: 200REDACTED,
+		{Name: "extra_models", Type: field.TypeJSONREDACTED,
+		{Name: "group_name", Type: field.TypeString, Nullable: true, Size: 100, Default: ""REDACTED,
+		{Name: "enabled", Type: field.TypeBool, Default: trueREDACTED,
+		{Name: "interval_seconds", Type: field.TypeIntREDACTED,
+		{Name: "last_checked_at", Type: field.TypeTime, Nullable: trueREDACTED,
+		{Name: "created_by", Type: field.TypeInt64REDACTED,
+REDACTED
+	// ChannelMonitorsTable holds the schema information for the "channel_monitors" table.
+	ChannelMonitorsTable = &schema.Table{
+		Name:       "channel_monitors",
+		Columns:    ChannelMonitorsColumns,
+		PrimaryKey: []*schema.Column{ChannelMonitorsColumns[0]REDACTED,
+		Indexes: []*schema.Index{
+			{
+				Name:    "channelmonitor_enabled_last_checked_at",
+				Unique:  false,
+				Columns: []*schema.Column{ChannelMonitorsColumns[10], ChannelMonitorsColumns[12]REDACTED,
+		REDACTED,
+			{
+				Name:    "channelmonitor_provider",
+				Unique:  false,
+				Columns: []*schema.Column{ChannelMonitorsColumns[4]REDACTED,
+		REDACTED,
+			{
+				Name:    "channelmonitor_group_name",
+				Unique:  false,
+				Columns: []*schema.Column{ChannelMonitorsColumns[9]REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	// ChannelMonitorHistoriesColumns holds the columns for the "channel_monitor_histories" table.
+	ChannelMonitorHistoriesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
+		{Name: "model", Type: field.TypeString, Size: 200REDACTED,
+		{Name: "status", Type: field.TypeEnum, Enums: []string{"operational", "degraded", "failed", "error"REDACTEDREDACTED,
+		{Name: "latency_ms", Type: field.TypeInt, Nullable: trueREDACTED,
+		{Name: "ping_latency_ms", Type: field.TypeInt, Nullable: trueREDACTED,
+		{Name: "message", Type: field.TypeString, Nullable: true, Size: 500, Default: ""REDACTED,
+		{Name: "checked_at", Type: field.TypeTimeREDACTED,
+		{Name: "monitor_id", Type: field.TypeInt64REDACTED,
+REDACTED
+	// ChannelMonitorHistoriesTable holds the schema information for the "channel_monitor_histories" table.
+	ChannelMonitorHistoriesTable = &schema.Table{
+		Name:       "channel_monitor_histories",
+		Columns:    ChannelMonitorHistoriesColumns,
+		PrimaryKey: []*schema.Column{ChannelMonitorHistoriesColumns[0]REDACTED,
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "channel_monitor_histories_channel_monitors_history",
+				Columns:    []*schema.Column{ChannelMonitorHistoriesColumns[7]REDACTED,
+				RefColumns: []*schema.Column{ChannelMonitorsColumns[0]REDACTED,
+				OnDelete:   schema.Cascade,
+		REDACTED,
+	REDACTED,
+		Indexes: []*schema.Index{
+			{
+				Name:    "channelmonitorhistory_monitor_id_model_checked_at",
+				Unique:  false,
+				Columns: []*schema.Column{ChannelMonitorHistoriesColumns[7], ChannelMonitorHistoriesColumns[1], ChannelMonitorHistoriesColumns[6]REDACTED,
+		REDACTED,
+			{
+				Name:    "channelmonitorhistory_checked_at",
+				Unique:  false,
+				Columns: []*schema.Column{ChannelMonitorHistoriesColumns[6]REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
 	// ErrorPassthroughRulesColumns holds the columns for the "error_passthrough_rules" table.
 	ErrorPassthroughRulesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
@@ -1276,7 +1353,7 @@ REDACTED
 		{Name: "totp_secret_encrypted", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
 		{Name: "totp_enabled", Type: field.TypeBool, Default: falseREDACTED,
 		{Name: "totp_enabled_at", Type: field.TypeTime, Nullable: trueREDACTED,
-		{Name: "signup_source", Type: field.TypeString, Size: 20, Default: "email"REDACTED,
+		{Name: "signup_source", Type: field.TypeString, Default: "email"REDACTED,
 		{Name: "last_login_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "last_active_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "balance_notify_enabled", Type: field.TypeBool, Default: trueREDACTED,
@@ -1520,6 +1597,8 @@ REDACTED
 		AnnouncementReadsTable,
 		AuthIdentitiesTable,
 		AuthIdentityChannelsTable,
+		ChannelMonitorsTable,
+		ChannelMonitorHistoriesTable,
 		ErrorPassthroughRulesTable,
 		GroupsTable,
 		IdempotencyRecordsTable,
@@ -1576,6 +1655,13 @@ REDACTED
 	AuthIdentityChannelsTable.ForeignKeys[0].RefTable = AuthIdentitiesTable
 	AuthIdentityChannelsTable.Annotation = &entsql.Annotation{
 		Table: "auth_identity_channels",
+REDACTED
+	ChannelMonitorsTable.Annotation = &entsql.Annotation{
+		Table: "channel_monitors",
+REDACTED
+	ChannelMonitorHistoriesTable.ForeignKeys[0].RefTable = ChannelMonitorsTable
+	ChannelMonitorHistoriesTable.Annotation = &entsql.Annotation{
+		Table: "channel_monitor_histories",
 REDACTED
 	ErrorPassthroughRulesTable.Annotation = &entsql.Annotation{
 		Table: "error_passthrough_rules",

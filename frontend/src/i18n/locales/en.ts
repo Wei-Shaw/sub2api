@@ -245,6 +245,7 @@ export default {
   // Common
   common: {
     loading: 'Loading...',
+    submitting: 'Submitting...',
     justNow: 'just now',
     save: 'Save',
     saved: 'Saved successfully',
@@ -363,7 +364,11 @@ export default {
     orderManagement: 'Orders',
     paymentDashboard: 'Payment Dashboard',
     paymentConfig: 'Payment Config',
-    paymentPlans: 'Plans'
+    paymentPlans: 'Plans',
+    channelManagement: 'Channels',
+    channelPricing: 'Channel Pricing',
+    channelMonitor: 'Channel Monitor',
+    channelStatus: 'Channel Status',
   REDACTED,
 
   // Auth
@@ -844,6 +849,58 @@ export default {
     exportExcelFailed: 'Failed to export usage data',
     imageUnit: ' images',
     userAgent: 'User-Agent'
+  REDACTED,
+
+  // Shared keys for channel monitor (admin + user views)
+  monitorCommon: {
+    status: {
+      operational: 'Operational',
+      degraded: 'Degraded',
+      failed: 'Failed',
+      error: 'Error',
+      unknown: '-'
+    REDACTED,
+    providers: {
+      openai: 'OpenAI',
+      anthropic: 'Anthropic',
+      gemini: 'Gemini'
+    REDACTED,
+    extraModelsHeader: 'Extra Models',
+    extraModelsEmpty: 'No extra models',
+    latencyEmpty: '-'
+  REDACTED,
+
+  // Channel Status (user-facing read-only view)
+  channelStatus: {
+    title: 'Channel Status',
+    description: 'Inspect channel availability, latency and recent status',
+    searchPlaceholder: 'Search channels...',
+    allProviders: 'All Providers',
+    loadError: 'Failed to load channel status',
+    detailLoadError: 'Failed to load channel detail',
+    detailTitle: 'Channel Detail',
+    closeDetail: 'Close',
+    columns: {
+      name: 'Name',
+      provider: 'Provider',
+      groupName: 'Group',
+      primaryModel: 'Primary Model',
+      availability7d: '7d Availability',
+      latency: 'Latency (ms)'
+    REDACTED,
+    detailColumns: {
+      model: 'Model',
+      latestStatus: 'Latest Status',
+      latestLatency: 'Latest Latency (ms)',
+      availability7d: '7d Availability',
+      availability15d: '15d Availability',
+      availability30d: '30d Availability',
+      avgLatency7d: '7d Avg Latency (ms)'
+    REDACTED,
+    empty: {
+      title: 'No channels available',
+      description: 'No monitored channels have been configured yet.'
+    REDACTED
   REDACTED,
 
   // Redeem
@@ -2012,6 +2069,69 @@ export default {
         noGroupsInChannel: 'No groups selected in platform tabs above',
         unnamed: 'Unnamed'
       REDACTED
+    REDACTED,
+
+    // Channel Monitor
+    channelMonitor: {
+      title: 'Channel Monitor',
+      description: 'Monitor channel availability, latency and status',
+      searchPlaceholder: 'Search monitor name...',
+      allProviders: 'All Providers',
+      allStatus: 'All Status',
+      enabledFilter: 'Enabled',
+      onlyEnabled: 'Enabled only',
+      onlyDisabled: 'Disabled only',
+      createButton: 'Create Monitor',
+      createTitle: 'Create Channel Monitor',
+      editTitle: 'Edit Channel Monitor',
+      runNow: 'Run Now',
+      runSuccess: 'Check completed',
+      runFailed: 'Check failed',
+      apiKeyDecryptFailed: 'API Key decryption failed. Please re-edit this monitor with a fresh key.',
+      createSuccess: 'Monitor created',
+      updateSuccess: 'Monitor updated',
+      deleteSuccess: 'Monitor deleted',
+      loadError: 'Failed to load monitors',
+      deleteConfirm: 'Are you sure you want to delete monitor "{nameREDACTED"? This action cannot be undone.',
+      nameRequired: 'Please enter a monitor name',
+      primaryModelRequired: 'Please enter a primary model',
+      columns: {
+        name: 'Name',
+        provider: 'Provider',
+        primaryModel: 'Primary Model',
+        availability7d: '7d Availability',
+        latency: 'Latency (ms)',
+        enabled: 'Enabled',
+        actions: 'Actions'
+      REDACTED,
+      form: {
+        name: 'Name',
+        namePlaceholder: 'Enter monitor name',
+        provider: 'Provider',
+        endpoint: 'Endpoint',
+        endpointPlaceholder: 'https://api.example.com',
+        useCurrentDomain: 'Use current service',
+        apiKey: 'API Key',
+        apiKeyPlaceholder: 'Enter API Key',
+        apiKeyEditPlaceholder: 'Leave blank to keep current key',
+        useMyKey: 'Use my key',
+        selectKeyTitle: 'Select my API Key',
+        selectKeyHint: 'Only your active, non-expired keys are listed.',
+        noActiveKey: 'No active API keys available',
+        primaryModel: 'Primary Model',
+        primaryModelPlaceholder: 'gpt-4o-mini',
+        extraModels: 'Extra Models',
+        extraModelsPlaceholder: 'Press Enter to add extra model',
+        groupName: 'Group Name',
+        groupNamePlaceholder: 'Optional, used to group rows in user view',
+        intervalSeconds: 'Interval (seconds)',
+        intervalSecondsHint: 'Range: 15 - 3600 seconds',
+        enabled: 'Enable monitor',
+        kindRequired: 'Please select a provider'
+      REDACTED,
+      runResultTitle: 'Check Result',
+      noMonitorsYet: 'No monitors yet',
+      createFirstMonitor: 'Create your first monitor to track channel availability'
     REDACTED,
 
     // Subscriptions

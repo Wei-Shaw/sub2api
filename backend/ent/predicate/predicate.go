@@ -27,6 +27,12 @@ type AuthIdentity func(*sql.Selector)
 // AuthIdentityChannel is the predicate function for authidentitychannel builders.
 type AuthIdentityChannel func(*sql.Selector)
 
+// ChannelMonitor is the predicate function for channelmonitor builders.
+type ChannelMonitor func(*sql.Selector)
+
+// ChannelMonitorHistory is the predicate function for channelmonitorhistory builders.
+type ChannelMonitorHistory func(*sql.Selector)
+
 // ErrorPassthroughRule is the predicate function for errorpassthroughrule builders.
 type ErrorPassthroughRule func(*sql.Selector)
 

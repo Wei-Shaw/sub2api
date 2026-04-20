@@ -245,6 +245,7 @@ export default {
   // Common
   common: {
     loading: '加载中...',
+    submitting: '提交中...',
     justNow: '刚刚',
     save: '保存',
     saved: '保存成功',
@@ -363,7 +364,11 @@ export default {
     orderManagement: '订单管理',
     paymentDashboard: '支付概览',
     paymentConfig: '支付配置',
-    paymentPlans: '订阅套餐'
+    paymentPlans: '订阅套餐',
+    channelManagement: '渠道管理',
+    channelPricing: '渠道定价',
+    channelMonitor: '渠道监控',
+    channelStatus: '渠道状态',
   REDACTED,
 
   // Auth
@@ -848,6 +853,58 @@ export default {
     exportExcelFailed: '使用数据导出失败',
     imageUnit: '张',
     userAgent: 'User-Agent'
+  REDACTED,
+
+  // Shared keys for channel monitor (admin + user views)
+  monitorCommon: {
+    status: {
+      operational: '正常',
+      degraded: '降级',
+      failed: '失败',
+      error: '错误',
+      unknown: '-'
+    REDACTED,
+    providers: {
+      openai: 'OpenAI',
+      anthropic: 'Anthropic',
+      gemini: 'Gemini'
+    REDACTED,
+    extraModelsHeader: '附加模型',
+    extraModelsEmpty: '无附加模型',
+    latencyEmpty: '-'
+  REDACTED,
+
+  // Channel Status (user-facing read-only view)
+  channelStatus: {
+    title: '渠道状态',
+    description: '查看渠道可用性、延迟和近期状态',
+    searchPlaceholder: '搜索渠道...',
+    allProviders: '全部供应商',
+    loadError: '加载渠道状态失败',
+    detailLoadError: '加载渠道详情失败',
+    detailTitle: '渠道详情',
+    closeDetail: '关闭',
+    columns: {
+      name: '名称',
+      provider: '供应商',
+      groupName: '分组',
+      primaryModel: '主模型',
+      availability7d: '7 天可用率',
+      latency: '延迟 (ms)'
+    REDACTED,
+    detailColumns: {
+      model: '模型',
+      latestStatus: '最新状态',
+      latestLatency: '最新延迟 (ms)',
+      availability7d: '7 天可用率',
+      availability15d: '15 天可用率',
+      availability30d: '30 天可用率',
+      avgLatency7d: '7 天平均延迟 (ms)'
+    REDACTED,
+    empty: {
+      title: '暂无可显示的渠道',
+      description: '管理员尚未配置可监控的渠道。'
+    REDACTED
   REDACTED,
 
   // Redeem
@@ -2091,6 +2148,69 @@ export default {
         noGroupsInChannel: '上方平台标签页中未选择分组',
         unnamed: '未命名'
       REDACTED
+    REDACTED,
+
+    // Channel Monitor
+    channelMonitor: {
+      title: '渠道监控',
+      description: '监测各渠道的可用性、延迟和状态',
+      searchPlaceholder: '搜索监控名称...',
+      allProviders: '全部供应商',
+      allStatus: '全部状态',
+      enabledFilter: '启用状态',
+      onlyEnabled: '仅启用',
+      onlyDisabled: '仅禁用',
+      createButton: '新增监控',
+      createTitle: '新增渠道监控',
+      editTitle: '编辑渠道监控',
+      runNow: '立即检测',
+      runSuccess: '检测完成',
+      runFailed: '检测失败',
+      apiKeyDecryptFailed: 'API Key 解密失败，请重新编辑该监控并填入新的 Key',
+      createSuccess: '监控创建成功',
+      updateSuccess: '监控更新成功',
+      deleteSuccess: '监控删除成功',
+      loadError: '加载监控列表失败',
+      deleteConfirm: '确定要删除监控「{nameREDACTED」吗？此操作不可撤销。',
+      nameRequired: '请输入监控名称',
+      primaryModelRequired: '请输入主模型',
+      columns: {
+        name: '名称',
+        provider: '供应商',
+        primaryModel: '主模型',
+        availability7d: '7 天可用率',
+        latency: '延迟 (ms)',
+        enabled: '启用',
+        actions: '操作'
+      REDACTED,
+      form: {
+        name: '名称',
+        namePlaceholder: '输入监控名称',
+        provider: '供应商',
+        endpoint: '上游地址',
+        endpointPlaceholder: 'https://api.example.com',
+        useCurrentDomain: '使用当前服务',
+        apiKey: 'API Key',
+        apiKeyPlaceholder: '请输入 API Key',
+        apiKeyEditPlaceholder: '留空表示不修改',
+        useMyKey: '使用我的 Key',
+        selectKeyTitle: '选择我的 API Key',
+        selectKeyHint: '仅显示当前账号下处于「启用」状态且未过期的 Key。',
+        noActiveKey: '没有可用的启用状态 Key',
+        primaryModel: '主模型',
+        primaryModelPlaceholder: 'gpt-4o-mini',
+        extraModels: '附加模型',
+        extraModelsPlaceholder: '回车添加附加模型',
+        groupName: '分组名称',
+        groupNamePlaceholder: '可选，用于在用户视图中聚合显示',
+        intervalSeconds: '检测间隔 (秒)',
+        intervalSecondsHint: '范围：15 - 3600 秒',
+        enabled: '启用监控',
+        kindRequired: '请选择供应商'
+      REDACTED,
+      runResultTitle: '检测结果',
+      noMonitorsYet: '暂无监控',
+      createFirstMonitor: '创建第一个监控来跟踪渠道可用性'
     REDACTED,
 
     // Subscriptions Management
