@@ -76,6 +76,32 @@ export function useChannelMonitorFormat() {
     }
   }
 
+  /**
+   * Tailwind class for a provider radio-button-style picker (active/inactive state).
+   * Reuses the same emerald/orange/sky palette as providerBadgeClass to keep
+   * visual semantics consistent across badges and pickers.
+   */
+  function providerPickerClass(p: Provider | string, active: boolean): string {
+    switch (p) {
+      case PROVIDER_OPENAI:
+        return active
+          ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-400'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-emerald-300 hover:text-emerald-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-emerald-500/50'
+      case PROVIDER_ANTHROPIC:
+        return active
+          ? 'border-orange-500 bg-orange-50 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300 dark:border-orange-400'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-orange-300 hover:text-orange-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-orange-500/50'
+      case PROVIDER_GEMINI:
+        return active
+          ? 'border-sky-500 bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-400'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-sky-300 hover:text-sky-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-sky-500/50'
+      default:
+        return active
+          ? 'border-gray-400 bg-gray-50 text-gray-700 dark:border-dark-500 dark:bg-dark-700 dark:text-gray-200'
+          : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400'
+    }
+  }
+
   function formatLatency(ms: number | null | undefined): string {
     if (ms == null) return t('monitorCommon.latencyEmpty')
     return String(Math.round(ms))
@@ -110,6 +136,7 @@ export function useChannelMonitorFormat() {
     statusBadgeClass,
     providerLabel,
     providerBadgeClass,
+    providerPickerClass,
     formatLatency,
     formatPercent,
     formatAvailability,

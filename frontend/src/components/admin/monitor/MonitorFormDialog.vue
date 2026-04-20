@@ -13,7 +13,20 @@
 
       <div>
         <label class="input-label">{{ t('admin.channelMonitor.form.provider') }} <span class="text-red-500">*</span></label>
-        <Select v-model="form.provider" :options="providerOptions" />
+        <div class="grid grid-cols-3 gap-3">
+          <button
+            v-for="opt in providerOptions"
+            :key="opt.value"
+            type="button"
+            :aria-pressed="form.provider === opt.value"
+            class="flex items-center justify-center gap-2 rounded-lg border-2 px-3 py-2.5 text-sm font-medium transition-colors"
+            :class="providerPickerClass(opt.value, form.provider === opt.value)"
+            @click="form.provider = opt.value"
+          >
+            <ProviderIcon :provider="opt.value" :size="18" />
+            <span>{{ opt.label }}</span>
+          </button>
+        </div>
       </div>
 
       <div>
@@ -99,6 +112,7 @@
     :show="showKeyPicker"
     :loading="myKeysLoading"
     :keys="myActiveKeys"
+    :provider="form.provider"
     @close="showKeyPicker = false"
     @pick="pickMyKey"
   />
@@ -119,10 +133,11 @@ import type {
 } from '@/api/admin/channelMonitor'
 import type { ApiKey } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
-import Select from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import ModelTagInput from '@/components/admin/channel/ModelTagInput.vue'
 import MonitorKeyPickerDialog from '@/components/admin/monitor/MonitorKeyPickerDialog.vue'
+import ProviderIcon from '@/components/user/monitor/ProviderIcon.vue'
+import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
 import {
   PROVIDER_OPENAI,
   PROVIDER_ANTHROPIC,
@@ -142,6 +157,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const { providerPickerClass } = useChannelMonitorFormat()
 
 // System-configured default interval for new monitors. Falls back to the static
 // constant when public settings haven't loaded yet or store the legacy 0 value.
@@ -184,11 +200,24 @@ const form = reactive<MonitorForm>({
   enabled: true,
 })
 
-const providerOptions = computed(() => [
+interface ProviderOption {
+  value: Provider
+  label: string
+}
+
+const providerOptions = computed<ProviderOption[]>(() => [
   { value: PROVIDER_OPENAI, label: t('monitorCommon.providers.openai') },
   { value: PROVIDER_ANTHROPIC, label: t('monitorCommon.providers.anthropic') },
   { value: PROVIDER_GEMINI, label: t('monitorCommon.providers.gemini') },
 ])
+
+// Clear api_key whenever provider changes to avoid cross-provider key mismatch.
+// Editing mode loads api_key='' via loadFromMonitor and only sets it on user
+// typing, so clearing on provider change is always a safe no-op until the user
+// picks a new key.
+watch(() => form.provider, () => {
+  form.api_key = ''
+})
 
 function resetForm() {
   form.name = ''

@@ -2100,7 +2100,7 @@ export default {
       form: {
         name: '名称',
         namePlaceholder: '输入监控名称',
-        provider: '供应商',
+        provider: '平台',
         endpoint: '上游地址',
         endpointPlaceholder: 'https://api.example.com',
         useCurrentDomain: '使用当前服务',
