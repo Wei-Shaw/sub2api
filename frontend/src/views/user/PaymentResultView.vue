@@ -15,6 +15,10 @@
               <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
+          <div v-else-if="isPending"
+            class="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-yellow-100 dark:bg-yellow-900/30">
+            <div class="h-10 w-10 animate-spin rounded-full border-4 border-yellow-500 border-t-transparent"></div>
+          </div>
           <div v-else
             class="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
             <svg class="h-10 w-10 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -22,8 +26,11 @@
             </svg>
           </div>
           <h2 class="mt-4 text-2xl font-bold text-gray-900 dark:text-white">
-            {{ isSuccess ? t('payment.result.success') : t('payment.result.failed') REDACTEDREDACTED
+            {{ statusTitle REDACTEDREDACTED
           </h2>
+          <p v-if="isPending" class="mt-2 text-sm text-gray-500 dark:text-gray-400">
+            {{ t('payment.result.processingHint') REDACTEDREDACTED
+          </p>
         </div>
         <!-- Order Info -->
         <div v-if="order" class="rounded-xl bg-white p-5 shadow-sm dark:bg-dark-800">
@@ -90,7 +97,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted REDACTED from 'vue'
+import { ref, computed, onBeforeUnmount, onMounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useRoute, useRouter REDACTED from 'vue-router'
 import OrderStatusBadge from '@/components/payment/OrderStatusBadge.vue'
@@ -117,6 +124,12 @@ REDACTED
 const returnInfo = ref<ReturnInfo | null>(null)
 
 const SUCCESS_STATUSES = new Set(['COMPLETED', 'PAID', 'RECHARGING'])
+const PENDING_STATUSES = new Set(['PENDING', 'CREATED', 'WAITING', 'PROCESSING'])
+const STATUS_REFRESH_INTERVAL_MS = 2000
+const STATUS_REFRESH_MAX_ATTEMPTS = 15
+
+let statusRefreshTimer: ReturnType<typeof setTimeout> | null = null
+const refreshAttempts = ref(0)
 
 /** 充值金额 = pay_amount / (1 + fee_rate/100)，fee_rate=0 时等于 pay_amount */
 const baseAmount = computed(() => {
@@ -131,11 +144,63 @@ const feeAmount = computed(() => {
 REDACTED)
 
 const isSuccess = computed(() => {
-  return !!order.value && SUCCESS_STATUSES.has(order.value.status)
+  return isSuccessStatus(order.value?.status)
+REDACTED)
+
+const isPending = computed(() => {
+  return isPendingStatus(order.value?.status)
+REDACTED)
+
+const statusTitle = computed(() => {
+  if (isSuccess.value) {
+    return t('payment.result.success')
+  REDACTED
+  if (isPending.value) {
+    return t('payment.result.processing')
+  REDACTED
+  return t('payment.result.failed')
 REDACTED)
 
 function normalizedOrderPaymentType(paymentType: string): string {
   return normalizePaymentMethodForDisplay(paymentType) || paymentType
+REDACTED
+
+function normalizeOrderStatus(status: string | null | undefined): string {
+  return String(status || '').trim().toUpperCase()
+REDACTED
+
+function isSuccessStatus(status: string | null | undefined): boolean {
+  return SUCCESS_STATUSES.has(normalizeOrderStatus(status))
+REDACTED
+
+function isPendingStatus(status: string | null | undefined): boolean {
+  return PENDING_STATUSES.has(normalizeOrderStatus(status))
+REDACTED
+
+function clearStatusRefreshTimer(): void {
+  if (statusRefreshTimer !== null) {
+    clearTimeout(statusRefreshTimer)
+    statusRefreshTimer = null
+  REDACTED
+REDACTED
+
+function scheduleStatusRefresh(refreshOrder: (() => Promise<PaymentOrder | null>) | null): void {
+  clearStatusRefreshTimer()
+  if (!refreshOrder || !isPending.value || refreshAttempts.value >= STATUS_REFRESH_MAX_ATTEMPTS) {
+    return
+  REDACTED
+
+  statusRefreshTimer = setTimeout(async () => {
+    refreshAttempts.value += 1
+    const refreshedOrder = await refreshOrder()
+    if (refreshedOrder) {
+      order.value = refreshedOrder
+    REDACTED
+
+    if (isPendingStatus(order.value?.status)) {
+      scheduleStatusRefresh(refreshOrder)
+    REDACTED
+  REDACTED, STATUS_REFRESH_INTERVAL_MS)
 REDACTED
 
 onMounted(async () => {
@@ -145,6 +210,7 @@ onMounted(async () => {
   const routeOrderId = Number(route.query.order_id) || 0
   const outTradeNo = String(route.query.out_trade_no || '')
   let orderId = 0
+  let canUseLegacyPublicVerify = false
 
   if (resumeToken && typeof window !== 'undefined') {
     const restored = readPaymentRecoverySnapshot(
@@ -191,6 +257,7 @@ onMounted(async () => {
   const hasLegacyFallbackContext = typeof route.query.trade_status === 'string'
     && route.query.trade_status.trim() !== ''
   if (!order.value && !resumeToken && !orderId && outTradeNo && hasLegacyFallbackContext) {
+    canUseLegacyPublicVerify = true
     returnInfo.value = {
       outTradeNo,
       money: String(route.query.money || ''),
@@ -208,6 +275,45 @@ onMounted(async () => {
       REDACTED catch (_e: unknown) { /* fall through */ REDACTED
     REDACTED
   REDACTED
+
+  const refreshOrder = async (): Promise<PaymentOrder | null> => {
+    if (resumeToken) {
+      try {
+        const result = await paymentAPI.resolveOrderPublicByResumeToken(resumeToken)
+        return result.data
+      REDACTED catch (_err: unknown) {
+        return null
+      REDACTED
+    REDACTED
+
+    if (orderId) {
+      return await paymentStore.pollOrderStatus(orderId)
+    REDACTED
+
+    if (canUseLegacyPublicVerify && outTradeNo) {
+      try {
+        const result = await paymentAPI.verifyOrderPublic(outTradeNo)
+        return result.data
+      REDACTED catch (_err: unknown) {
+        try {
+          const result = await paymentAPI.verifyOrder(outTradeNo)
+          return result.data
+        REDACTED catch (_e: unknown) {
+          return null
+        REDACTED
+      REDACTED
+    REDACTED
+
+    return null
+  REDACTED
+
+  if (isPendingStatus(order.value?.status)) {
+    scheduleStatusRefresh(refreshOrder)
+  REDACTED
   loading.value = false
+REDACTED)
+
+onBeforeUnmount(() => {
+  clearStatusRefreshTimer()
 REDACTED)
 </script>
