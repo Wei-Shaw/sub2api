@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -120,6 +119,59 @@ REDACTED
 	require.Equal(t, "https://cdn.example/avatar.png", session.UpstreamIdentityClaims["suggested_avatar_url"])
 	require.Equal(t, "union-456", session.UpstreamIdentityClaims["unionid"])
 	require.Equal(t, "openid-123", session.UpstreamIdentityClaims["openid"])
+REDACTED
+
+func TestWeChatOAuthCallbackRejectsMissingUnionID(t *testing.T) {
+	t.Setenv("WECHAT_OAUTH_OPEN_APP_ID", "wx-open-app")
+	t.Setenv("WECHAT_OAUTH_OPEN_APP_SECRET", "wx-open-secret")
+	t.Setenv("WECHAT_OAUTH_FRONTEND_REDIRECT_URL", "https://app.example.com/auth/wechat/callback")
+
+	originalAccessTokenURL := wechatOAuthAccessTokenURL
+	originalUserInfoURL := wechatOAuthUserInfoURL
+	t.Cleanup(func() {
+		wechatOAuthAccessTokenURL = originalAccessTokenURL
+		wechatOAuthUserInfoURL = originalUserInfoURL
+REDACTED)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/sns/oauth2/access_token"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"wechat-access","openid":"openid-123","scope":"snsapi_login"REDACTED`))
+		case strings.Contains(r.URL.Path, "/sns/userinfo"):
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"openid":"openid-123","nickname":"WeChat Nick","headimgurl":"https://cdn.example/avatar.png"REDACTED`))
+		default:
+			http.NotFound(w, r)
+	REDACTED
+REDACTED))
+	defer upstream.Close()
+	wechatOAuthAccessTokenURL = upstream.URL + "/sns/oauth2/access_token"
+	wechatOAuthUserInfoURL = upstream.URL + "/sns/userinfo"
+
+	handler, client := newWeChatOAuthTestHandler(t, false)
+	defer client.Close()
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/wechat/callback?code=wechat-code&state=state-123", nil)
+	req.Host = "api.example.com"
+	req.AddCookie(encodedCookie(wechatOAuthStateCookieName, "state-123"))
+	req.AddCookie(encodedCookie(wechatOAuthRedirectCookieName, "/dashboard"))
+	req.AddCookie(encodedCookie(wechatOAuthModeCookieName, "open"))
+	req.AddCookie(encodedCookie(oauthPendingBrowserCookieName, "browser-123"))
+	c.Request = req
+
+	handler.WeChatOAuthCallback(c)
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	require.Contains(t, recorder.Header().Get("Location"), "#error=provider_error")
+	require.Contains(t, recorder.Header().Get("Location"), "error_message=wechat_missing_unionid")
+	require.Nil(t, findCookie(recorder.Result().Cookies(), oauthPendingSessionCookieName))
+
+	count, err := client.PendingAuthSession.Query().Count(context.Background())
+REDACTED
+	require.Zero(t, count)
 REDACTED
 
 func TestWeChatOAuthCallbackBindUsesUnionCanonicalIdentityAcrossChannels(t *testing.T) {
@@ -542,12 +594,7 @@ REDACTED
 
 	userRepo := &oauthPendingFlowUserRepo{client: clientREDACTED
 	redeemRepo := repository.NewRedeemCodeRepository(client)
-	settingSvc := service.NewSettingService(&wechatOAuthSettingRepoStub{
-		values: map[string]string{
-			service.SettingKeyRegistrationEnabled:   "true",
-			service.SettingKeyInvitationCodeEnabled: boolSettingValue(invitationEnabled),
-	REDACTED,
-REDACTED, &config.Config{
+	cfg := &config.Config{
 		JWT: config.JWTConfig{
 			Secret:                   "test-secret",
 			ExpireHour:               1,
@@ -558,25 +605,20 @@ REDACTED, &config.Config{
 			UserBalance:     0,
 			UserConcurrency: 1,
 	REDACTED,
-REDACTED)
+REDACTED
+	settingSvc := service.NewSettingService(&wechatOAuthSettingRepoStub{
+		values: map[string]string{
+			service.SettingKeyRegistrationEnabled:   "true",
+			service.SettingKeyInvitationCodeEnabled: boolSettingValue(invitationEnabled),
+	REDACTED,
+REDACTED, cfg)
 
 	authSvc := service.NewAuthService(
 		client,
 		userRepo,
 		redeemRepo,
 		&wechatOAuthRefreshTokenCacheStub{REDACTED,
-		&config.Config{
-			JWT: config.JWTConfig{
-				Secret:                   "test-secret",
-				ExpireHour:               1,
-				AccessTokenExpireMinutes: 60,
-				RefreshTokenExpireDays:   7,
-		REDACTED,
-			Default: config.DefaultConfig{
-				UserBalance:     0,
-				UserConcurrency: 1,
-		REDACTED,
-	REDACTED,
+		cfg,
 		settingSvc,
 		nil,
 		nil,
@@ -588,31 +630,8 @@ REDACTED)
 	return &AuthHandler{
 		authService: authSvc,
 		settingSvc:  settingSvc,
+		cfg:         cfg,
 REDACTED, client
-REDACTED
-
-func encodedCookie(name, value string) *http.Cookie {
-	return &http.Cookie{
-		Name:  name,
-		Value: encodeCookieValue(value),
-		Path:  "/",
-REDACTED
-REDACTED
-
-func findCookie(cookies []*http.Cookie, name string) *http.Cookie {
-	for _, cookie := range cookies {
-		if cookie.Name == name {
-			return cookie
-	REDACTED
-REDACTED
-	return nil
-REDACTED
-
-func decodeCookieValueForTest(t *testing.T, value string) string {
-REDACTED
-	raw, err := base64.RawURLEncoding.DecodeString(value)
-REDACTED
-	return string(raw)
 REDACTED
 
 func assertOAuthRedirectError(t *testing.T, location string, errorCode string, errorMessage string) {
