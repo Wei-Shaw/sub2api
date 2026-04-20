@@ -273,8 +273,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 // channelMonitorIntervalMin / channelMonitorIntervalMax bound the default interval
 // (mirrors the monitor-level constraint but lives here so setting_service stays decoupled).
 const (
-	channelMonitorIntervalMin     = 15
-	channelMonitorIntervalMax     = 3600
+	channelMonitorIntervalMin      = 15
+	channelMonitorIntervalMax      = 3600
 	channelMonitorIntervalFallback = 60
 )
 
@@ -305,8 +305,8 @@ func clampChannelMonitorInterval(v int) int {
 // ChannelMonitorRuntime is the lightweight view of the channel monitor feature
 // consumed by the runner and user-facing handlers.
 type ChannelMonitorRuntime struct {
-	Enabled                 bool
-	DefaultIntervalSeconds  int
+	Enabled                bool
+	DefaultIntervalSeconds int
 }
 
 // GetChannelMonitorRuntime reads the channel monitor feature flags directly from

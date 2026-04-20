@@ -93,8 +93,8 @@ type SystemSettings struct {
 	OpsMetricsIntervalSeconds    int
 
 	// Channel Monitor feature
-	ChannelMonitorEnabled                 bool `json:"channel_monitor_enabled"`
-	ChannelMonitorDefaultIntervalSeconds  int  `json:"channel_monitor_default_interval_seconds"`
+	ChannelMonitorEnabled                bool `json:"channel_monitor_enabled"`
+	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
 
 	// Claude Code version check
 	MinClaudeCodeVersion string
