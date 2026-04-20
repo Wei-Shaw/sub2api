@@ -11,6 +11,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	dbgroup "github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
@@ -74,6 +75,9 @@ REDACTED
 REDACTED
 
 	if err := r.syncUserAllowedGroupsWithClient(ctx, txClient, created.ID, userIn.AllowedGroups); err != nil {
+		return err
+REDACTED
+	if err := ensureEmailAuthIdentityWithClient(ctx, txClient, created.ID, created.Email, "user_repo_create"); err != nil {
 		return err
 REDACTED
 
@@ -150,6 +154,11 @@ REDACTED else {
 		// 已处于外部事务中（ErrTxStarted），复用当前 client 并由调用方负责提交/回滚。
 		txClient = r.client
 REDACTED
+	existing, err := clientFromContext(ctx, txClient).User.Get(ctx, userIn.ID)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrUserNotFound, nil)
+REDACTED
+	oldEmail := existing.Email
 
 	updateOp := txClient.User.UpdateOneID(userIn.ID).
 		SetEmail(userIn.Email).
@@ -185,6 +194,9 @@ REDACTED
 	if err := r.syncUserAllowedGroupsWithClient(ctx, txClient, updated.ID, userIn.AllowedGroups); err != nil {
 		return err
 REDACTED
+	if err := replaceEmailAuthIdentityWithClient(ctx, txClient, updated.ID, oldEmail, updated.Email, "user_repo_update"); err != nil {
+		return err
+REDACTED
 
 	if tx != nil {
 		if err := tx.Commit(); err != nil {
@@ -194,6 +206,96 @@ REDACTED
 
 	userIn.UpdatedAt = updated.UpdatedAt
 	return nil
+REDACTED
+
+func (r *userRepository) EnsureEmailAuthIdentity(ctx context.Context, userID int64, email string) error {
+	return ensureEmailAuthIdentityWithClient(ctx, r.client, userID, email, "service_dual_write")
+REDACTED
+
+func (r *userRepository) ReplaceEmailAuthIdentity(ctx context.Context, userID int64, oldEmail, newEmail string) error {
+	return replaceEmailAuthIdentityWithClient(ctx, r.client, userID, oldEmail, newEmail, "service_dual_write")
+REDACTED
+
+func ensureEmailAuthIdentityWithClient(ctx context.Context, client *dbent.Client, userID int64, email string, source string) error {
+	client = clientFromContext(ctx, client)
+	if client == nil || userID <= 0 {
+		return nil
+REDACTED
+
+	subject := normalizeEmailAuthIdentitySubject(email)
+	if subject == "" {
+		return nil
+REDACTED
+
+	if err := client.AuthIdentity.Create().
+		SetUserID(userID).
+		SetProviderType("email").
+		SetProviderKey("email").
+		SetProviderSubject(subject).
+		SetVerifiedAt(time.Now().UTC()).
+		SetMetadata(map[string]any{"source": sourceREDACTED).
+		OnConflictColumns(
+			authidentity.FieldProviderType,
+			authidentity.FieldProviderKey,
+			authidentity.FieldProviderSubject,
+		).
+		DoNothing().
+		Exec(ctx); err != nil {
+		return err
+REDACTED
+
+	identity, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ("email"),
+			authidentity.ProviderKeyEQ("email"),
+			authidentity.ProviderSubjectEQ(subject),
+		).
+		Only(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil
+	REDACTED
+		return err
+REDACTED
+	if identity.UserID != userID {
+		return ErrAuthIdentityOwnershipConflict
+REDACTED
+	return nil
+REDACTED
+
+func replaceEmailAuthIdentityWithClient(ctx context.Context, client *dbent.Client, userID int64, oldEmail, newEmail string, source string) error {
+	newSubject := normalizeEmailAuthIdentitySubject(newEmail)
+	if err := ensureEmailAuthIdentityWithClient(ctx, client, userID, newEmail, source); err != nil {
+		return err
+REDACTED
+
+	oldSubject := normalizeEmailAuthIdentitySubject(oldEmail)
+	if oldSubject == "" || oldSubject == newSubject {
+		return nil
+REDACTED
+
+	_, err := clientFromContext(ctx, client).AuthIdentity.Delete().
+		Where(
+			authidentity.UserIDEQ(userID),
+			authidentity.ProviderTypeEQ("email"),
+			authidentity.ProviderKeyEQ("email"),
+			authidentity.ProviderSubjectEQ(oldSubject),
+		).
+		Exec(ctx)
+	return err
+REDACTED
+
+func normalizeEmailAuthIdentitySubject(email string) string {
+	normalized := strings.ToLower(strings.TrimSpace(email))
+	if normalized == "" {
+		return ""
+REDACTED
+	if strings.HasSuffix(normalized, service.LinuxDoConnectSyntheticEmailDomain) ||
+		strings.HasSuffix(normalized, service.OIDCConnectSyntheticEmailDomain) ||
+		strings.HasSuffix(normalized, service.WeChatConnectSyntheticEmailDomain) {
+		return ""
+REDACTED
+	return normalized
 REDACTED
 
 func (r *userRepository) Delete(ctx context.Context, id int64) error {
