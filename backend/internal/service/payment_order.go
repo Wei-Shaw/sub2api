@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -167,7 +168,7 @@ func (s *PaymentService) checkPendingLimit(ctx context.Context, tx *dbent.Tx, us
 		return fmt.Errorf("count pending orders: %w", err)
 	}
 	if c >= max {
-		return infraerrors.TooManyRequests("TOO_MANY_PENDING", fmt.Sprintf("too many pending orders (max %d)", max)).
+		return infraerrors.TooManyRequests("TOO_MANY_PENDING", "too_many_pending").
 			WithMetadata(map[string]string{"max": strconv.Itoa(max)})
 	}
 	return nil
@@ -191,7 +192,8 @@ func (s *PaymentService) checkDailyLimit(ctx context.Context, tx *dbent.Tx, user
 		used += o.Amount
 	}
 	if used+amount > limit {
-		return infraerrors.TooManyRequests("DAILY_LIMIT_EXCEEDED", fmt.Sprintf("daily recharge limit reached, remaining: %.2f", math.Max(0, limit-used)))
+		return infraerrors.TooManyRequests("DAILY_LIMIT_EXCEEDED", "daily_limit_exceeded").
+			WithMetadata(map[string]string{"remaining": fmt.Sprintf("%.2f", math.Max(0, limit-used))})
 	}
 	return nil
 }
@@ -201,15 +203,25 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 	// This enables cross-provider load balancing (e.g. EasyPay + Alipay direct for "alipay").
 	sel, err := s.loadBalancer.SelectInstance(ctx, "", req.PaymentType, payment.Strategy(cfg.LoadBalanceStrategy), payAmount)
 	if err != nil {
-		return nil, infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", fmt.Sprintf("payment method (%s) is not configured", req.PaymentType))
+		return nil, infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", "method_not_configured").
+			WithMetadata(map[string]string{"payment_type": req.PaymentType})
 	}
 	if sel == nil {
-		return nil, infraerrors.TooManyRequests("NO_AVAILABLE_INSTANCE", "no available payment instance")
+		return nil, infraerrors.TooManyRequests("NO_AVAILABLE_INSTANCE", "no_available_instance")
 	}
 	prov, err := provider.CreateProvider(sel.ProviderKey, sel.InstanceID, sel.Config)
 	if err != nil {
 		slog.Error("[PaymentService] CreateProvider failed", "provider", sel.ProviderKey, "instance", sel.InstanceID, "error", err)
-		return nil, infraerrors.ServiceUnavailable("PAYMENT_PROVIDER_MISCONFIGURED", fmt.Sprintf("payment provider misconfigured: %s", err.Error())).
+		// If the provider returned a structured ApplicationError (e.g. WXPAY_CONFIG_MISSING_KEY),
+		// pass it through with provider context added to metadata. Otherwise wrap as PAYMENT_PROVIDER_MISCONFIGURED.
+		if appErr := new(infraerrors.ApplicationError); errors.As(err, &appErr) {
+			md := map[string]string{"provider": sel.ProviderKey, "instance_id": sel.InstanceID}
+			for k, v := range appErr.Metadata {
+				md[k] = v
+			}
+			return nil, appErr.WithMetadata(md)
+		}
+		return nil, infraerrors.ServiceUnavailable("PAYMENT_PROVIDER_MISCONFIGURED", "provider_misconfigured").
 			WithMetadata(map[string]string{"provider": sel.ProviderKey, "instance_id": sel.InstanceID})
 	}
 	subject := s.buildPaymentSubject(plan, limitAmount, cfg)
@@ -217,7 +229,11 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 	pr, err := prov.CreatePayment(ctx, payment.CreatePaymentRequest{OrderID: outTradeNo, Amount: payAmountStr, PaymentType: req.PaymentType, Subject: subject, ClientIP: req.ClientIP, IsMobile: req.IsMobile, InstanceSubMethods: sel.SupportedTypes})
 	if err != nil {
 		slog.Error("[PaymentService] CreatePayment failed", "provider", sel.ProviderKey, "instance", sel.InstanceID, "error", err)
-		return nil, infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", fmt.Sprintf("payment gateway error: %s", err.Error()))
+		if appErr := new(infraerrors.ApplicationError); errors.As(err, &appErr) {
+			return nil, appErr
+		}
+		return nil, infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", "payment_gateway_error").
+			WithMetadata(map[string]string{"provider": sel.ProviderKey, "instance_id": sel.InstanceID})
 	}
 	_, err = s.entClient.PaymentOrder.UpdateOneID(order.ID).SetNillablePaymentTradeNo(psNilIfEmpty(pr.TradeNo)).SetNillablePayURL(psNilIfEmpty(pr.PayURL)).SetNillableQrCode(psNilIfEmpty(pr.QRCode)).SetNillableProviderInstanceID(psNilIfEmpty(sel.InstanceID)).Save(ctx)
 	if err != nil {

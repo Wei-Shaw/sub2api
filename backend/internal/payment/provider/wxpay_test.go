@@ -221,25 +221,25 @@ func TestNewWxpay(t *testing.T) {
 			name:      "publicKey without publicKeyId",
 			config:    withOverride(map[string]string{"publicKeyId": ""}),
 			wantErr:   true,
-			errSubstr: "must be provided together",
+			errSubstr: "WXPAY_CONFIG_PAIR_VIOLATION",
 		},
 		{
 			name:      "publicKeyId without publicKey",
 			config:    withOverride(map[string]string{"publicKey": ""}),
 			wantErr:   true,
-			errSubstr: "must be provided together",
+			errSubstr: "WXPAY_CONFIG_PAIR_VIOLATION",
 		},
 		{
 			name:      "apiV3Key too short",
 			config:    withOverride(map[string]string{"apiV3Key": "short"}),
 			wantErr:   true,
-			errSubstr: "exactly 32 bytes",
+			errSubstr: "WXPAY_CONFIG_INVALID_KEY_LENGTH",
 		},
 		{
 			name:      "apiV3Key too long",
 			config:    withOverride(map[string]string{"apiV3Key": "123456789012345678901234567890123"}), // 33 bytes
 			wantErr:   true,
-			errSubstr: "exactly 32 bytes",
+			errSubstr: "WXPAY_CONFIG_INVALID_KEY_LENGTH",
 		},
 	}
 

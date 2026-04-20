@@ -271,7 +271,7 @@ import { usePaymentStore } from '@/stores/payment'
 import { useSubscriptionStore } from '@/stores/subscriptions'
 import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
-import { extractApiErrorMessage } from '@/utils/apiError'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
 import type { SubscriptionPlan, CheckoutInfoResponse, OrderType } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -610,7 +610,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     } else if (apiErr.reason === 'CANCEL_RATE_LIMITED') {
       errorMessage.value = t('payment.errors.cancelRateLimited')
     } else {
-      errorMessage.value = extractApiErrorMessage(err, t('payment.result.failed'))
+      errorMessage.value = extractI18nErrorMessage(err, t, 'payment.errors', t('payment.result.failed'))
     }
     appStore.showError(errorMessage.value)
   } finally {
@@ -648,7 +648,7 @@ onMounted(async () => {
         }
       }
     }
-  } catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) }
+  } catch (err: unknown) { appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error'))) }
   finally { loading.value = false }
   // Fetch active subscriptions (uses cache, non-blocking)
   subscriptionStore.fetchActiveSubscriptions().catch(() => {})

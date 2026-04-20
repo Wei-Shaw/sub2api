@@ -8,11 +8,13 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/wechatpay-apiv3/wechatpay-go/core"
 	"github.com/wechatpay-apiv3/wechatpay-go/core/auth"
 	"github.com/wechatpay-apiv3/wechatpay-go/core/auth/verifiers"
@@ -58,22 +60,29 @@ type Wxpay struct {
 	notifyHandler *notify.Handler
 }
 
+const wxpayAPIv3KeyLength = 32
+
 func NewWxpay(instanceID string, config map[string]string) (*Wxpay, error) {
 	required := []string{"appId", "mchId", "privateKey", "apiV3Key", "certSerial"}
 	for _, k := range required {
 		if config[k] == "" {
-			return nil, fmt.Errorf("wxpay config missing required key: %s", k)
+			return nil, infraerrors.BadRequest("WXPAY_CONFIG_MISSING_KEY", "missing_required_key").
+				WithMetadata(map[string]string{"key": k})
 		}
 	}
-	if len(config["apiV3Key"]) != 32 {
-		return nil, fmt.Errorf("wxpay apiV3Key must be exactly 32 bytes, got %d", len(config["apiV3Key"]))
+	if len(config["apiV3Key"]) != wxpayAPIv3KeyLength {
+		return nil, infraerrors.BadRequest("WXPAY_CONFIG_INVALID_KEY_LENGTH", "invalid_key_length").
+			WithMetadata(map[string]string{
+				"key":      "apiV3Key",
+				"expected": strconv.Itoa(wxpayAPIv3KeyLength),
+				"actual":   strconv.Itoa(len(config["apiV3Key"])),
+			})
 	}
 	// publicKey + publicKeyId are a pair used by the new pubkey verifier.
 	// If either is set, both must be set; otherwise fall back to legacy platform certificate mode.
-	hasPubKey := config["publicKey"] != ""
-	hasPubKeyID := config["publicKeyId"] != ""
-	if hasPubKey != hasPubKeyID {
-		return nil, fmt.Errorf("wxpay publicKey and publicKeyId must be provided together")
+	if (config["publicKey"] != "") != (config["publicKeyId"] != "") {
+		return nil, infraerrors.BadRequest("WXPAY_CONFIG_PAIR_VIOLATION", "pair_violation").
+			WithMetadata(map[string]string{"keys": "publicKey/publicKeyId"})
 	}
 	return &Wxpay{instanceID: instanceID, config: config}, nil
 }

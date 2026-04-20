@@ -67,7 +67,7 @@
 import { ref, onMounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { extractApiErrorMessage } from '@/utils/apiError'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 import { paymentAPI } from '@/api/payment'
 import { useAppStore } from '@/stores'
 import { getPaymentPopupFeatures } from '@/components/payment/providerConfig'
@@ -132,7 +132,7 @@ onMounted(async () => {
       selectedType.value = event.value.type
     })
   } catch (err: unknown) {
-    initError.value = extractApiErrorMessage(err, t('payment.stripeLoadFailed'))
+    initError.value = extractI18nErrorMessage(err, t, 'payment.errors', t('payment.stripeLoadFailed'))
   } finally {
     loading.value = false
   }
@@ -186,7 +186,7 @@ async function handlePay() {
       emit('success')
     }
   } catch (err: unknown) {
-    error.value = extractApiErrorMessage(err, t('payment.result.failed'))
+    error.value = extractI18nErrorMessage(err, t, 'payment.errors', t('payment.result.failed'))
   } finally {
     submitting.value = false
   }
@@ -199,7 +199,7 @@ async function handleCancel() {
     await paymentAPI.cancelOrder(props.orderId)
     emit('back')
   } catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
   } finally {
     cancelling.value = false
   }
