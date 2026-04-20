@@ -133,6 +133,8 @@
         :oidc-enabled="oidcEnabled"
         :oidc-provider-name="oidcProviderName"
         :wechat-enabled="wechatEnabled"
+        :wechat-open-enabled="wechatOpenEnabled"
+        :wechat-mp-enabled="wechatMpEnabled"
       />
     </div>
   </div>
@@ -156,12 +158,16 @@ const props = withDefaults(
     oidcEnabled?: boolean
     oidcProviderName?: string
     wechatEnabled?: boolean
+    wechatOpenEnabled?: boolean
+    wechatMpEnabled?: boolean
   REDACTED>(),
   {
     linuxdoEnabled: false,
     oidcEnabled: false,
     oidcProviderName: 'OIDC',
     wechatEnabled: false,
+    wechatOpenEnabled: undefined,
+    wechatMpEnabled: undefined,
   REDACTED
 )
 

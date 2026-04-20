@@ -292,12 +292,13 @@ import {
   completeWeChatOAuthRegistration,
   exchangePendingOAuthCompletion,
   getAuthToken,
+  hasExplicitWeChatOAuthCapabilities,
   getOAuthCompletionKind,
   isOAuthLoginCompletion,
   login2FA,
   prepareOAuthBindAccessTokenCookie,
   persistOAuthTokenContext,
-  resolveWeChatOAuthStart,
+  resolveWeChatOAuthStartStrict,
   type OAuthAdoptionDecision,
   type PendingOAuthExchangeResponse
 REDACTED from '@/api/auth'
@@ -368,41 +369,32 @@ function sanitizeRedirectPath(path: string | null | undefined): string {
   return path
 REDACTED
 
-function resolveWeChatOAuthMode(): 'open' | 'mp' {
-  if (typeof navigator === 'undefined') {
-    return 'open'
-  REDACTED
-  return /MicroMessenger/i.test(navigator.userAgent) ? 'mp' : 'open'
-REDACTED
-
-function normalizeWeChatOAuthMode(value: unknown): 'open' | 'mp' | null {
-  return value === 'open' || value === 'mp' ? value : null
-REDACTED
-
 async function ensurePublicSettingsLoaded(): Promise<void> {
-  if (appStore.cachedPublicSettings || appStore.publicSettingsLoaded) {
+  if (hasExplicitWeChatOAuthCapabilities(appStore.cachedPublicSettings)) {
     return
   REDACTED
 
-  try {
-    await appStore.fetchPublicSettings()
-  REDACTED catch {
-    // Fall back to legacy mode selection when public settings are unavailable.
+  if (appStore.publicSettingsLoaded) {
+    return
   REDACTED
+
+  await appStore.fetchPublicSettings()
 REDACTED
 
 function resolveConfiguredWeChatOAuthMode(): 'open' | 'mp' | null {
-  if (!appStore.cachedPublicSettings && !appStore.publicSettingsLoaded) {
+  if (!hasExplicitWeChatOAuthCapabilities(appStore.cachedPublicSettings)) {
     return null
   REDACTED
 
-  return resolveWeChatOAuthStart(appStore.cachedPublicSettings).mode
+  return resolveWeChatOAuthStartStrict(appStore.cachedPublicSettings).mode
 REDACTED
 
 function resolveWeChatOAuthUnavailableMessage(): string {
-  const resolved = resolveWeChatOAuthStart(appStore.cachedPublicSettings)
+  const resolved = resolveWeChatOAuthStartStrict(appStore.cachedPublicSettings)
 
   switch (resolved.unavailableReason) {
+    case 'capability_unknown':
+      return 'WeChat sign-in availability could not be confirmed. Refresh and retry.'
     case 'external_browser_required':
       return 'This WeChat sign-in flow is only available in your system browser.'
     case 'wechat_browser_required':
@@ -414,6 +406,17 @@ function resolveWeChatOAuthUnavailableMessage(): string {
   REDACTED
 REDACTED
 
+function resolveRuntimeWeChatOAuthMode(): 'open' | 'mp' {
+  if (typeof navigator === 'undefined') {
+    return 'open'
+  REDACTED
+  return /MicroMessenger/i.test(navigator.userAgent) ? 'mp' : 'open'
+REDACTED
+
+function normalizeWeChatOAuthMode(value: unknown): 'open' | 'mp' | null {
+  return value === 'open' || value === 'mp' ? value : null
+REDACTED
+
 function resolveRequestedWeChatOAuthMode(): 'open' | 'mp' | null {
   const configuredMode = resolveConfiguredWeChatOAuthMode()
   if (configuredMode) {
@@ -421,7 +424,11 @@ function resolveRequestedWeChatOAuthMode(): 'open' | 'mp' | null {
   REDACTED
 
   const queryMode = normalizeWeChatOAuthMode(route.query.mode)
-  return queryMode || resolveWeChatOAuthMode()
+  if (queryMode) {
+    return queryMode
+  REDACTED
+
+  return resolveRuntimeWeChatOAuthMode()
 REDACTED
 
 function resolveRedirectTarget(): string {
@@ -786,7 +793,11 @@ async function handleSubmitTotpChallenge() {
 REDACTED
 
 onMounted(async () => {
-  await ensurePublicSettingsLoaded()
+  try {
+    await ensurePublicSettingsLoaded()
+  REDACTED catch {
+    // Binding recovery requires confirmed capability flags. Use the strict guard below.
+  REDACTED
 
   if (typeof route.query.email === 'string') {
     existingAccountEmail.value = route.query.email

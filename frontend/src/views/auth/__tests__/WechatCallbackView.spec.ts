@@ -201,6 +201,61 @@ describe('WechatCallbackView', () => {
     expect(locationState.current.href).not.toContain('mode=mp')
   REDACTED)
 
+  it('falls back to the query mode when capability settings cannot be confirmed', async () => {
+    routeState.query = {
+      wechat_bind_existing: '1',
+      mode: 'mp',
+      redirect: '/profile',
+    REDACTED
+    fetchPublicSettingsMock.mockResolvedValue(null)
+    getAuthTokenMock.mockReturnValue('current-auth-token')
+
+    mount(WechatCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    await flushPromises()
+
+    expect(prepareOAuthBindAccessTokenCookieMock).toHaveBeenCalledTimes(1)
+    expect(locationState.current.href).toContain('mode=mp')
+  REDACTED)
+
+  it('ignores legacy aggregate wechat settings and reuses the query mode during bind recovery', async () => {
+    routeState.query = {
+      wechat_bind_existing: '1',
+      mode: 'open',
+      redirect: '/profile',
+    REDACTED
+    appStoreState.cachedPublicSettings = {
+      wechat_oauth_enabled: true,
+    REDACTED
+    appStoreState.publicSettingsLoaded = true
+    getAuthTokenMock.mockReturnValue('current-auth-token')
+
+    mount(WechatCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    await flushPromises()
+
+    expect(prepareOAuthBindAccessTokenCookieMock).toHaveBeenCalledTimes(1)
+    expect(locationState.current.href).toContain('mode=open')
+  REDACTED)
+
   it('does not send adoption decisions during the initial exchange', async () => {
     exchangePendingOAuthCompletionMock.mockResolvedValue({
       access_token: 'access-token',

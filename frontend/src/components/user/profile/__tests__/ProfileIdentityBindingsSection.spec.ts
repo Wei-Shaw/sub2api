@@ -100,6 +100,8 @@ describe('ProfileIdentityBindingsSection', () => {
         oidcEnabled: true,
         oidcProviderName: 'ExampleID',
         wechatEnabled: true,
+        wechatOpenEnabled: true,
+        wechatMpEnabled: false,
       REDACTED,
     REDACTED)
 
@@ -151,5 +153,75 @@ describe('ProfileIdentityBindingsSection', () => {
     REDACTED)
 
     expect(wrapper.find('[data-testid="profile-binding-wechat-action"]').exists()).toBe(false)
+  REDACTED)
+
+  it('hides the WeChat bind action when only the legacy aggregate setting is present', () => {
+    const wrapper = mount(ProfileIdentityBindingsSection, {
+      global: {
+        plugins: [pinia],
+      REDACTED,
+      props: {
+        user: createUser(),
+        linuxdoEnabled: false,
+        oidcEnabled: false,
+        wechatEnabled: true,
+      REDACTED,
+    REDACTED)
+
+    expect(wrapper.find('[data-testid="profile-binding-wechat-action"]').exists()).toBe(false)
+  REDACTED)
+
+  it('uses explicit cached WeChat capabilities and ignores legacy prop fallbacks', () => {
+    const appStore = useAppStore()
+    appStore.cachedPublicSettings = {
+      registration_enabled: false,
+      email_verify_enabled: false,
+      force_email_on_third_party_signup: false,
+      registration_email_suffix_whitelist: [],
+      promo_code_enabled: true,
+      password_reset_enabled: false,
+      invitation_code_enabled: false,
+      turnstile_enabled: false,
+      turnstile_site_key: '',
+      site_name: 'Sub2API',
+      site_logo: '',
+      site_subtitle: '',
+      api_base_url: '',
+      contact_info: '',
+      doc_url: '',
+      home_content: '',
+      hide_ccs_import_button: false,
+      payment_enabled: false,
+      table_default_page_size: 20,
+      table_page_size_options: [10, 20, 50, 100],
+      custom_menu_items: [],
+      custom_endpoints: [],
+      linuxdo_oauth_enabled: false,
+      wechat_oauth_enabled: true,
+      wechat_oauth_open_enabled: true,
+      wechat_oauth_mp_enabled: false,
+      oidc_oauth_enabled: false,
+      oidc_oauth_provider_name: 'OIDC',
+      backend_mode_enabled: false,
+      version: 'test',
+      balance_low_notify_enabled: false,
+      account_quota_notify_enabled: false,
+      balance_low_notify_threshold: 0,
+    REDACTED
+    appStore.publicSettingsLoaded = true
+
+    const wrapper = mount(ProfileIdentityBindingsSection, {
+      global: {
+        plugins: [pinia],
+      REDACTED,
+      props: {
+        user: createUser(),
+        linuxdoEnabled: false,
+        oidcEnabled: false,
+        wechatEnabled: true,
+      REDACTED,
+    REDACTED)
+
+    expect(wrapper.find('[data-testid="profile-binding-wechat-action"]').exists()).toBe(true)
   REDACTED)
 REDACTED)

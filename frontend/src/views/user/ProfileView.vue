@@ -28,6 +28,8 @@
         :oidc-enabled="oidcOAuthEnabled"
         :oidc-provider-name="oidcOAuthProviderName"
         :wechat-enabled="wechatOAuthEnabled"
+        :wechat-open-enabled="wechatOAuthOpenEnabled"
+        :wechat-mp-enabled="wechatOAuthMPEnabled"
       />
 
       <div
@@ -89,6 +91,8 @@ const balanceLowNotifyEnabled = ref(false)
 const systemDefaultThreshold = ref(0)
 const linuxdoOAuthEnabled = ref(false)
 const wechatOAuthEnabled = ref(false)
+const wechatOAuthOpenEnabled = ref<boolean | undefined>(undefined)
+const wechatOAuthMPEnabled = ref<boolean | undefined>(undefined)
 const oidcOAuthEnabled = ref(false)
 const oidcOAuthProviderName = ref('OIDC')
 
@@ -132,6 +136,12 @@ onMounted(async () => {
       systemDefaultThreshold.value = settings.balance_low_notify_threshold ?? 0
       linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled ?? false
       wechatOAuthEnabled.value = settings.wechat_oauth_enabled ?? false
+      wechatOAuthOpenEnabled.value = typeof settings.wechat_oauth_open_enabled === 'boolean'
+        ? settings.wechat_oauth_open_enabled
+        : undefined
+      wechatOAuthMPEnabled.value = typeof settings.wechat_oauth_mp_enabled === 'boolean'
+        ? settings.wechat_oauth_mp_enabled
+        : undefined
       oidcOAuthEnabled.value = settings.oidc_oauth_enabled ?? false
       oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
     REDACTED)
