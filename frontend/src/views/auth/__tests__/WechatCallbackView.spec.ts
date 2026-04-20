@@ -5,6 +5,8 @@ import WechatCallbackView from '@/views/auth/WechatCallbackView.vue'
 const {
   exchangePendingOAuthCompletionMock,
   completeWeChatOAuthRegistrationMock,
+  login2FAMock,
+  apiClientPostMock,
   prepareOAuthBindAccessTokenCookieMock,
   getAuthTokenMock,
   replaceMock,
@@ -16,6 +18,8 @@ const {
 REDACTED = vi.hoisted(() => ({
   exchangePendingOAuthCompletionMock: vi.fn(),
   completeWeChatOAuthRegistrationMock: vi.fn(),
+  login2FAMock: vi.fn(),
+  apiClientPostMock: vi.fn(),
   prepareOAuthBindAccessTokenCookieMock: vi.fn(),
   getAuthTokenMock: vi.fn(),
   replaceMock: vi.fn(),
@@ -101,12 +105,19 @@ vi.mock('@/stores', () => ({
   REDACTED),
 REDACTED))
 
+vi.mock('@/api/client', () => ({
+  apiClient: {
+    post: (...args: any[]) => apiClientPostMock(...args),
+  REDACTED,
+REDACTED))
+
 vi.mock('@/api/auth', async () => {
   const actual = await vi.importActual<typeof import('@/api/auth')>('@/api/auth')
   return {
     ...actual,
     exchangePendingOAuthCompletion: (...args: any[]) => exchangePendingOAuthCompletionMock(...args),
     completeWeChatOAuthRegistration: (...args: any[]) => completeWeChatOAuthRegistrationMock(...args),
+    login2FA: (...args: any[]) => login2FAMock(...args),
     prepareOAuthBindAccessTokenCookie: (...args: any[]) => prepareOAuthBindAccessTokenCookieMock(...args),
     getAuthToken: (...args: any[]) => getAuthTokenMock(...args),
   REDACTED
@@ -116,6 +127,8 @@ describe('WechatCallbackView', () => {
   beforeEach(() => {
     exchangePendingOAuthCompletionMock.mockReset()
     completeWeChatOAuthRegistrationMock.mockReset()
+    login2FAMock.mockReset()
+    apiClientPostMock.mockReset()
     replaceMock.mockReset()
     setTokenMock.mockReset()
     showSuccessMock.mockReset()
@@ -329,6 +342,251 @@ describe('WechatCallbackView', () => {
     expect(replaceMock.mock.calls[0]?.[0]).toContain('/login?')
     expect(replaceMock.mock.calls[0]?.[0]).toContain('wechat_bind_existing%3D1')
     expect(replaceMock.mock.calls[0]?.[0]).toContain('email=user%40example.com')
+  REDACTED)
+
+  it('collects email for pending oauth account creation and submits adoption decisions', async () => {
+    exchangePendingOAuthCompletionMock.mockResolvedValue({
+      error: 'email_required',
+      redirect: '/welcome',
+      adoption_required: true,
+      suggested_display_name: 'WeChat Nick',
+      suggested_avatar_url: 'https://cdn.example/wechat.png',
+    REDACTED)
+    apiClientPostMock.mockResolvedValue({
+      data: {
+        access_token: 'new-access-token',
+        refresh_token: 'new-refresh-token',
+        expires_in: 3600,
+        token_type: 'Bearer',
+      REDACTED,
+    REDACTED)
+    setTokenMock.mockResolvedValue({REDACTED)
+
+    const wrapper = mount(WechatCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    await flushPromises()
+
+    const checkboxes = wrapper.findAll('input[type="checkbox"]')
+    expect(checkboxes).toHaveLength(2)
+    await checkboxes[1].setValue(false)
+    await wrapper.get('[data-testid="wechat-create-account-email"]').setValue('  new@example.com  ')
+    await wrapper.get('[data-testid="wechat-create-account-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(apiClientPostMock).toHaveBeenCalledWith('/auth/oauth/pending/create-account', {
+      email: 'new@example.com',
+      adopt_display_name: true,
+      adopt_avatar: false,
+    REDACTED)
+    expect(setTokenMock).toHaveBeenCalledWith('new-access-token')
+    expect(replaceMock).toHaveBeenCalledWith('/welcome')
+  REDACTED)
+
+  it('shows bind-login form for existing account binding and submits credentials with adoption decisions', async () => {
+    exchangePendingOAuthCompletionMock.mockResolvedValue({
+      step: 'bind_login_required',
+      redirect: '/profile/security',
+      email: 'existing@example.com',
+      adoption_required: true,
+      suggested_display_name: 'WeChat Nick',
+      suggested_avatar_url: 'https://cdn.example/wechat.png',
+    REDACTED)
+    apiClientPostMock.mockResolvedValue({
+      data: {
+        access_token: 'bind-access-token',
+        refresh_token: 'bind-refresh-token',
+        expires_in: 3600,
+        token_type: 'Bearer',
+      REDACTED,
+    REDACTED)
+    setTokenMock.mockResolvedValue({REDACTED)
+
+    const wrapper = mount(WechatCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    await flushPromises()
+
+    const checkboxes = wrapper.findAll('input[type="checkbox"]')
+    expect(checkboxes).toHaveLength(2)
+    await checkboxes[0].setValue(false)
+    await wrapper.get('[data-testid="wechat-bind-login-email"]').setValue('existing@example.com')
+    await wrapper.get('[data-testid="wechat-bind-login-password"]').setValue('secret-password')
+    await wrapper.get('[data-testid="wechat-bind-login-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(apiClientPostMock).toHaveBeenCalledWith('/auth/oauth/pending/bind-login', {
+      email: 'existing@example.com',
+      password: 'secret-password',
+      adopt_display_name: false,
+      adopt_avatar: true,
+    REDACTED)
+    expect(setTokenMock).toHaveBeenCalledWith('bind-access-token')
+    expect(replaceMock).toHaveBeenCalledWith('/profile/security')
+  REDACTED)
+
+  it('allows switching from server-driven bind-login to create-account mode', async () => {
+    exchangePendingOAuthCompletionMock.mockResolvedValue({
+      step: 'bind_login_required',
+      redirect: '/welcome',
+      email: 'existing@example.com',
+    REDACTED)
+
+    const wrapper = mount(WechatCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    await flushPromises()
+
+    await wrapper.get('button.btn-secondary').trigger('click')
+    await flushPromises()
+
+    const createAccountEmail = wrapper.get('[data-testid="wechat-create-account-email"]')
+    expect((createAccountEmail.element as HTMLInputElement).value).toBe('existing@example.com')
+  REDACTED)
+
+  it('reuses query email for bind-login when backend does not echo it back', async () => {
+    routeState.query = {
+      email: 'resume@example.com',
+    REDACTED
+    exchangePendingOAuthCompletionMock.mockResolvedValue({
+      step: 'bind_login_required',
+      redirect: '/profile',
+    REDACTED)
+
+    const wrapper = mount(WechatCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    await flushPromises()
+
+    const bindEmail = wrapper.get('[data-testid="wechat-bind-login-email"]')
+    expect((bindEmail.element as HTMLInputElement).value).toBe('resume@example.com')
+  REDACTED)
+
+  it('keeps rendering pending bind-login UI when adoption confirmation leads to another pending step', async () => {
+    exchangePendingOAuthCompletionMock
+      .mockResolvedValueOnce({
+        redirect: '/profile',
+        adoption_required: true,
+        suggested_display_name: 'WeChat Nick',
+        suggested_avatar_url: 'https://cdn.example/wechat.png',
+      REDACTED)
+      .mockResolvedValueOnce({
+        step: 'bind_login_required',
+        redirect: '/profile',
+        email: 'existing@example.com',
+        adoption_required: true,
+        suggested_display_name: 'WeChat Nick',
+        suggested_avatar_url: 'https://cdn.example/wechat.png',
+      REDACTED)
+
+    const wrapper = mount(WechatCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    await flushPromises()
+    await wrapper.findAll('button')[0].trigger('click')
+    await flushPromises()
+
+    expect(showSuccessMock).not.toHaveBeenCalled()
+    expect(replaceMock).not.toHaveBeenCalled()
+    expect((wrapper.get('[data-testid="wechat-bind-login-email"]').element as HTMLInputElement).value).toBe(
+      'existing@example.com'
+    )
+  REDACTED)
+
+  it('handles bind-login 2FA challenge before redirecting', async () => {
+    exchangePendingOAuthCompletionMock.mockResolvedValue({
+      error: 'adopt_existing_user_by_email',
+      redirect: '/profile',
+      email: 'existing@example.com',
+      adoption_required: true,
+      suggested_display_name: 'WeChat Nick',
+      suggested_avatar_url: 'https://cdn.example/wechat.png',
+    REDACTED)
+    apiClientPostMock.mockResolvedValue({
+      data: {
+        requires_2fa: true,
+        temp_token: 'temp-123',
+        user_email_masked: 'o***g@example.com',
+      REDACTED,
+    REDACTED)
+    login2FAMock.mockResolvedValue({
+      access_token: '2fa-access-token',
+      refresh_token: '2fa-refresh-token',
+      expires_in: 3600,
+    REDACTED)
+    setTokenMock.mockResolvedValue({REDACTED)
+
+    const wrapper = mount(WechatCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    await flushPromises()
+
+    await wrapper.get('[data-testid="wechat-bind-login-password"]').setValue('secret-password')
+    await wrapper.get('[data-testid="wechat-bind-login-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('o***g@example.com')
+    expect(login2FAMock).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-testid="wechat-bind-login-totp"]').setValue('123456')
+    await wrapper.get('[data-testid="wechat-bind-login-totp-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(login2FAMock).toHaveBeenCalledWith({
+      temp_token: 'temp-123',
+      totp_code: '123456',
+    REDACTED)
+    expect(setTokenMock).toHaveBeenCalledWith('2fa-access-token')
+    expect(replaceMock).toHaveBeenCalledWith('/profile')
+    expect(localStorage.getItem('refresh_token')).toBe('2fa-refresh-token')
   REDACTED)
 
   it('restarts the current-user bind flow after returning from login', async () => {

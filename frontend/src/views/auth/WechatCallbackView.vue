@@ -15,7 +15,16 @@
       </div>
 
       <transition name="fade">
-        <div v-if="needsInvitation || needsAdoptionConfirmation" class="space-y-4">
+        <div
+          v-if="
+            needsInvitation ||
+            needsAdoptionConfirmation ||
+            needsCreateAccount ||
+            needsBindLogin ||
+            needsTotpChallenge
+          "
+          class="space-y-4"
+        >
           <div
             v-if="adoptionRequired && (suggestedDisplayName || suggestedAvatarUrl)"
             class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-600 dark:bg-dark-800/60"
@@ -141,6 +150,124 @@
               {{ isSubmitting ? t('common.processing') : 'Continue' REDACTEDREDACTED
             </button>
           </template>
+
+          <template v-else-if="needsCreateAccount">
+            <p class="text-sm text-gray-700 dark:text-gray-300">
+              Enter an email address to create your account and continue.
+            </p>
+            <div class="space-y-3">
+              <input
+                v-model="pendingAccountEmail"
+                data-testid="wechat-create-account-email"
+                type="email"
+                class="input w-full"
+                placeholder="you@example.com"
+                :disabled="isSubmitting"
+                @keyup.enter="handleCreateAccount"
+              />
+              <button
+                data-testid="wechat-create-account-submit"
+                class="btn btn-primary w-full"
+                :disabled="isSubmitting || !pendingAccountEmail.trim()"
+                @click="handleCreateAccount"
+              >
+                {{ isSubmitting ? t('common.processing') : 'Create account' REDACTEDREDACTED
+              </button>
+              <button
+                class="btn btn-secondary w-full"
+                :disabled="isSubmitting"
+                @click="switchToBindLoginMode"
+              >
+                I already have an account
+              </button>
+            </div>
+            <transition name="fade">
+              <p v-if="accountActionError" class="text-sm text-red-600 dark:text-red-400">
+                {{ accountActionError REDACTEDREDACTED
+              </p>
+            </transition>
+          </template>
+
+          <template v-else-if="needsBindLogin">
+            <p class="text-sm text-gray-700 dark:text-gray-300">
+              Log in to an existing account to bind this {{ providerName REDACTEDREDACTED sign-in.
+            </p>
+            <div class="space-y-3">
+              <input
+                v-model="bindLoginEmail"
+                data-testid="wechat-bind-login-email"
+                type="email"
+                class="input w-full"
+                placeholder="you@example.com"
+                :disabled="isSubmitting"
+                @keyup.enter="handleBindLogin"
+              />
+              <input
+                v-model="bindLoginPassword"
+                data-testid="wechat-bind-login-password"
+                type="password"
+                class="input w-full"
+                placeholder="Password"
+                :disabled="isSubmitting"
+                @keyup.enter="handleBindLogin"
+              />
+              <button
+                data-testid="wechat-bind-login-submit"
+                class="btn btn-primary w-full"
+                :disabled="isSubmitting || !bindLoginEmail.trim() || !bindLoginPassword"
+                @click="handleBindLogin"
+              >
+                {{ isSubmitting ? t('common.processing') : 'Log in and bind' REDACTEDREDACTED
+              </button>
+              <button
+                v-if="canReturnToCreateAccount"
+                class="btn btn-secondary w-full"
+                :disabled="isSubmitting"
+                @click="switchToCreateAccountMode"
+              >
+                Use a different email
+              </button>
+            </div>
+            <transition name="fade">
+              <p v-if="accountActionError" class="text-sm text-red-600 dark:text-red-400">
+                {{ accountActionError REDACTEDREDACTED
+              </p>
+            </transition>
+          </template>
+
+          <template v-else-if="needsTotpChallenge">
+            <p class="text-sm text-gray-700 dark:text-gray-300">
+              Enter the 6-digit verification code for
+              <span class="font-medium">{{ totpUserEmailMasked || 'your account' REDACTEDREDACTED</span>
+              to finish binding this {{ providerName REDACTEDREDACTED sign-in.
+            </p>
+            <div class="space-y-3">
+              <input
+                v-model="totpCode"
+                data-testid="wechat-bind-login-totp"
+                type="text"
+                inputmode="numeric"
+                maxlength="6"
+                class="input w-full"
+                placeholder="123456"
+                :disabled="isSubmitting"
+                @keyup.enter="handleSubmitTotpChallenge"
+              />
+              <button
+                data-testid="wechat-bind-login-totp-submit"
+                class="btn btn-primary w-full"
+                :disabled="isSubmitting || totpCode.trim().length !== 6"
+                @click="handleSubmitTotpChallenge"
+              >
+                {{ isSubmitting ? t('common.processing') : 'Verify and continue' REDACTEDREDACTED
+              </button>
+            </div>
+            <transition name="fade">
+              <p v-if="totpError" class="text-sm text-red-600 dark:text-red-400">
+                {{ totpError REDACTEDREDACTED
+              </p>
+            </transition>
+          </template>
         </div>
       </transition>
 
@@ -169,11 +296,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref REDACTED from 'vue'
+import { computed, onMounted, ref REDACTED from 'vue'
 import { useRoute, useRouter REDACTED from 'vue-router'
 import { useI18n REDACTED from 'vue-i18n'
 import { AuthLayout REDACTED from '@/components/layout'
 import Icon from '@/components/icons/Icon.vue'
+import { apiClient REDACTED from '@/api/client'
 import { useAuthStore, useAppStore REDACTED from '@/stores'
 import {
   completeWeChatOAuthRegistration,
@@ -181,6 +309,7 @@ import {
   getAuthToken,
   getOAuthCompletionKind,
   isOAuthLoginCompletion,
+  login2FA,
   prepareOAuthBindAccessTokenCookie,
   persistOAuthTokenContext,
   type OAuthAdoptionDecision,
@@ -208,9 +337,34 @@ const existingAccountEmail = ref('')
 const adoptDisplayName = ref(true)
 const adoptAvatar = ref(true)
 const needsAdoptionConfirmation = ref(false)
+const pendingAccountAction = ref<'none' | 'create_account' | 'bind_login'>('none')
+const pendingAccountEmail = ref('')
+const bindLoginEmail = ref('')
+const bindLoginPassword = ref('')
+const accountActionError = ref('')
+const canReturnToCreateAccount = ref(false)
+const needsTotpChallenge = ref(false)
+const totpTempToken = ref('')
+const totpCode = ref('')
+const totpError = ref('')
+const totpUserEmailMasked = ref('')
 const bindSuccessMessage = t('profile.authBindings.bindSuccess')
 
 const providerName = 'WeChat'
+const needsCreateAccount = computed(() => pendingAccountAction.value === 'create_account')
+const needsBindLogin = computed(() => pendingAccountAction.value === 'bind_login')
+
+type PendingWeChatCompletion = PendingOAuthExchangeResponse & {
+  step?: string
+  pending_email?: string
+  resolved_email?: string
+  existing_account_email?: string
+  email?: string
+  intent?: string
+  requires_2fa?: boolean
+  temp_token?: string
+  user_email_masked?: string
+REDACTED
 
 function parseFragmentParams(): URLSearchParams {
   const raw = typeof window !== 'undefined' ? window.location.hash : ''
@@ -278,6 +432,21 @@ function currentAdoptionDecision(): OAuthAdoptionDecision {
   REDACTED
 REDACTED
 
+function resolveResumeEmail(): string {
+  return typeof route.query.email === 'string' ? route.query.email.trim() : ''
+REDACTED
+
+function serializeAdoptionDecision(decision: OAuthAdoptionDecision): Record<string, boolean> {
+  const payload: Record<string, boolean> = {REDACTED
+  if (typeof decision.adoptDisplayName === 'boolean') {
+    payload.adopt_display_name = decision.adoptDisplayName
+  REDACTED
+  if (typeof decision.adoptAvatar === 'boolean') {
+    payload.adopt_avatar = decision.adoptAvatar
+  REDACTED
+  return payload
+REDACTED
+
 async function handleExistingAccountBinding() {
   if (getAuthToken()) {
     prepareOAuthBindAccessTokenCookie()
@@ -312,6 +481,103 @@ function hasSuggestedProfile(completion: PendingOAuthExchangeResponse): boolean 
   return Boolean(completion.suggested_display_name || completion.suggested_avatar_url)
 REDACTED
 
+function normalizedPendingState(value: string | null | undefined): string {
+  return value?.trim().toLowerCase() || ''
+REDACTED
+
+function extractPendingAccountEmail(completion: PendingWeChatCompletion): string {
+  return (
+    completion.pending_email ||
+    completion.existing_account_email ||
+    completion.resolved_email ||
+    completion.email ||
+    resolveResumeEmail() ||
+    ''
+  ).trim()
+REDACTED
+
+function resolvePendingAccountAction(
+  completion: PendingWeChatCompletion
+): 'none' | 'create_account' | 'bind_login' {
+  const raw = normalizedPendingState(completion.step || completion.error || completion.intent)
+  if (raw === 'email_required' || raw === 'create_account_required' || raw === 'create_account') {
+    return 'create_account'
+  REDACTED
+  if (
+    raw === 'bind_login_required' ||
+    raw === 'bind_login' ||
+    raw === 'existing_account_binding_required' ||
+    raw === 'existing_account_required' ||
+    raw === 'adopt_existing_user_by_email'
+  ) {
+    return 'bind_login'
+  REDACTED
+  return 'none'
+REDACTED
+
+function applyPendingAccountAction(completion: PendingWeChatCompletion) {
+  const action = resolvePendingAccountAction(completion)
+  pendingAccountAction.value = action
+  accountActionError.value = ''
+  needsTotpChallenge.value = false
+  totpTempToken.value = ''
+  totpCode.value = ''
+  totpError.value = ''
+  totpUserEmailMasked.value = ''
+
+  const email = extractPendingAccountEmail(completion)
+  if (action === 'create_account') {
+    pendingAccountEmail.value = email
+    canReturnToCreateAccount.value = true
+    return
+  REDACTED
+
+  if (action === 'bind_login') {
+    bindLoginEmail.value = email
+    bindLoginPassword.value = ''
+    canReturnToCreateAccount.value = true
+    return
+  REDACTED
+
+  canReturnToCreateAccount.value = false
+REDACTED
+
+function applyTotpChallenge(completion: PendingWeChatCompletion): boolean {
+  if (completion.requires_2fa !== true || !completion.temp_token) {
+    return false
+  REDACTED
+
+  pendingAccountAction.value = 'none'
+  needsInvitation.value = false
+  needsAdoptionConfirmation.value = false
+  needsTotpChallenge.value = true
+  totpTempToken.value = completion.temp_token
+  totpCode.value = ''
+  totpError.value = ''
+  totpUserEmailMasked.value = completion.user_email_masked || ''
+  isProcessing.value = false
+  return true
+REDACTED
+
+function switchToBindLoginMode() {
+  pendingAccountAction.value = 'bind_login'
+  bindLoginEmail.value = bindLoginEmail.value.trim() || pendingAccountEmail.value.trim()
+  bindLoginPassword.value = ''
+  accountActionError.value = ''
+  canReturnToCreateAccount.value = true
+REDACTED
+
+function switchToCreateAccountMode() {
+  pendingAccountAction.value = 'create_account'
+  pendingAccountEmail.value = pendingAccountEmail.value.trim() || bindLoginEmail.value.trim()
+  accountActionError.value = ''
+REDACTED
+
+function getRequestErrorMessage(error: unknown, fallback: string): string {
+  const err = error as { message?: string; response?: { data?: { detail?: string; message?: string REDACTED REDACTED REDACTED
+  return err.response?.data?.detail || err.response?.data?.message || err.message || fallback
+REDACTED
+
 async function finalizeCompletion(completion: PendingOAuthExchangeResponse, redirect: string) {
   if (getOAuthCompletionKind(completion) === 'bind') {
     const bindRedirect = sanitizeRedirectPath(completion.redirect || '/profile')
@@ -328,6 +594,33 @@ async function finalizeCompletion(completion: PendingOAuthExchangeResponse, redi
   await authStore.setToken(completion.access_token)
   appStore.showSuccess(t('auth.loginSuccess'))
   await router.replace(redirect)
+REDACTED
+
+async function finalizePendingAccountResponse(completion: PendingWeChatCompletion) {
+  applyAdoptionSuggestionState(completion)
+
+  if (completion.error === 'invitation_required') {
+    pendingAccountAction.value = 'none'
+    needsInvitation.value = true
+    needsAdoptionConfirmation.value = false
+    isProcessing.value = false
+    return
+  REDACTED
+
+  if (applyTotpChallenge(completion)) {
+    return
+  REDACTED
+
+  applyPendingAccountAction(completion)
+  if (pendingAccountAction.value !== 'none') {
+    needsInvitation.value = false
+    needsAdoptionConfirmation.value = false
+    isProcessing.value = false
+    return
+  REDACTED
+
+  const redirect = sanitizeRedirectPath(completion.redirect || redirectTo.value)
+  await finalizeCompletion(completion, redirect)
 REDACTED
 
 async function handleSubmitInvitation() {
@@ -356,17 +649,74 @@ REDACTED
 async function handleContinueLogin() {
   isSubmitting.value = true
   try {
-    const completion = await exchangePendingOAuthCompletion(currentAdoptionDecision())
-    await finalizeCompletion(completion, redirectTo.value)
+    const completion = await exchangePendingOAuthCompletion(currentAdoptionDecision()) as PendingWeChatCompletion
+    await finalizePendingAccountResponse(completion)
   REDACTED catch (e: unknown) {
-    const err = e as { message?: string; response?: { data?: { detail?: string; message?: string REDACTED REDACTED REDACTED
-    errorMessage.value =
-      err.response?.data?.detail ||
-      err.response?.data?.message ||
-      err.message ||
-      t('auth.loginFailed')
+    errorMessage.value = getRequestErrorMessage(e, t('auth.loginFailed'))
     appStore.showError(errorMessage.value)
     needsAdoptionConfirmation.value = false
+  REDACTED finally {
+    isSubmitting.value = false
+  REDACTED
+REDACTED
+
+async function handleCreateAccount() {
+  accountActionError.value = ''
+  const email = pendingAccountEmail.value.trim()
+  if (!email) return
+
+  isSubmitting.value = true
+  try {
+    const { data REDACTED = await apiClient.post<PendingWeChatCompletion>('/auth/oauth/pending/create-account', {
+      email,
+      ...serializeAdoptionDecision(currentAdoptionDecision())
+    REDACTED)
+    await finalizePendingAccountResponse(data)
+  REDACTED catch (e: unknown) {
+    accountActionError.value = getRequestErrorMessage(e, t('auth.loginFailed'))
+  REDACTED finally {
+    isSubmitting.value = false
+  REDACTED
+REDACTED
+
+async function handleBindLogin() {
+  accountActionError.value = ''
+  const email = bindLoginEmail.value.trim()
+  const password = bindLoginPassword.value
+  if (!email || !password) return
+
+  isSubmitting.value = true
+  try {
+    const { data REDACTED = await apiClient.post<PendingWeChatCompletion>('/auth/oauth/pending/bind-login', {
+      email,
+      password,
+      ...serializeAdoptionDecision(currentAdoptionDecision())
+    REDACTED)
+    await finalizePendingAccountResponse(data)
+  REDACTED catch (e: unknown) {
+    accountActionError.value = getRequestErrorMessage(e, t('auth.loginFailed'))
+  REDACTED finally {
+    isSubmitting.value = false
+  REDACTED
+REDACTED
+
+async function handleSubmitTotpChallenge() {
+  totpError.value = ''
+  const code = totpCode.value.trim()
+  if (!totpTempToken.value || code.length !== 6) return
+
+  isSubmitting.value = true
+  try {
+    const completion = await login2FA({
+      temp_token: totpTempToken.value,
+      totp_code: code
+    REDACTED)
+    persistOAuthTokenContext(completion)
+    await authStore.setToken(completion.access_token)
+    appStore.showSuccess(t('auth.loginSuccess'))
+    await router.replace(redirectTo.value)
+  REDACTED catch (e: unknown) {
+    totpError.value = getRequestErrorMessage(e, t('auth.loginFailed'))
   REDACTED finally {
     isSubmitting.value = false
   REDACTED
@@ -395,7 +745,7 @@ onMounted(async () => {
   REDACTED
 
   try {
-    const completion = await exchangePendingOAuthCompletion()
+    const completion = await exchangePendingOAuthCompletion() as PendingWeChatCompletion
     const redirect = sanitizeRedirectPath(
       completion.redirect || (route.query.redirect as string | undefined) || '/dashboard'
     )
@@ -408,6 +758,16 @@ onMounted(async () => {
       return
     REDACTED
 
+    if (applyTotpChallenge(completion)) {
+      return
+    REDACTED
+
+    applyPendingAccountAction(completion)
+    if (pendingAccountAction.value !== 'none') {
+      isProcessing.value = false
+      return
+    REDACTED
+
     if (adoptionRequired.value && hasSuggestedProfile(completion)) {
       needsAdoptionConfirmation.value = true
       isProcessing.value = false
@@ -416,12 +776,7 @@ onMounted(async () => {
 
     await finalizeCompletion(completion, redirect)
   REDACTED catch (e: unknown) {
-    const err = e as { message?: string; response?: { data?: { detail?: string; message?: string REDACTED REDACTED REDACTED
-    errorMessage.value =
-      err.response?.data?.detail ||
-      err.response?.data?.message ||
-      err.message ||
-      t('auth.loginFailed')
+    errorMessage.value = getRequestErrorMessage(e, t('auth.loginFailed'))
     appStore.showError(errorMessage.value)
     isProcessing.value = false
   REDACTED
