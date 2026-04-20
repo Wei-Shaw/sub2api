@@ -49,6 +49,7 @@ REDACTED
 	public := v1.Group("/payment/public")
 	{
 		public.POST("/orders/verify", paymentHandler.VerifyOrderPublic)
+		public.POST("/orders/resolve", paymentHandler.ResolveOrderPublicByResumeToken)
 REDACTED
 
 	// --- Webhook endpoints (no auth) ---

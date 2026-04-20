@@ -9,6 +9,7 @@ const routerPush = vi.hoisted(() => vi.fn())
 const pollOrderStatus = vi.hoisted(() => vi.fn())
 const verifyOrderPublic = vi.hoisted(() => vi.fn())
 const verifyOrder = vi.hoisted(() => vi.fn())
+const resolveOrderPublicByResumeToken = vi.hoisted(() => vi.fn())
 
 vi.mock('vue-router', async () => {
   const actual = await vi.importActual<typeof import('vue-router')>('vue-router')
@@ -39,6 +40,7 @@ vi.mock('@/api/payment', () => ({
   paymentAPI: {
     verifyOrderPublic,
     verifyOrder,
+    resolveOrderPublicByResumeToken,
   REDACTED,
 REDACTED))
 
@@ -67,6 +69,7 @@ describe('PaymentResultView', () => {
     pollOrderStatus.mockReset()
     verifyOrderPublic.mockReset()
     verifyOrder.mockReset()
+    resolveOrderPublicByResumeToken.mockReset()
     window.localStorage.clear()
   REDACTED)
 
@@ -128,5 +131,28 @@ describe('PaymentResultView', () => {
 
     expect(verifyOrderPublic).toHaveBeenCalledWith('legacy-123')
     expect(wrapper.text()).toContain('payment.result.success')
+  REDACTED)
+
+  it('resolves order by resume token when local recovery snapshot is missing', async () => {
+    routeState.query = {
+      resume_token: 'resume-77',
+    REDACTED
+    resolveOrderPublicByResumeToken.mockResolvedValue({
+      data: orderFactory('PAID'),
+    REDACTED)
+
+    const wrapper = mount(PaymentResultView, {
+      global: {
+        stubs: {
+          OrderStatusBadge: true,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    await flushPromises()
+
+    expect(resolveOrderPublicByResumeToken).toHaveBeenCalledWith('resume-77')
+    expect(wrapper.text()).toContain('payment.result.success')
+    expect(verifyOrderPublic).not.toHaveBeenCalled()
   REDACTED)
 REDACTED)
