@@ -72,7 +72,7 @@ import { ref, watch, onMounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { adminPaymentAPI REDACTED from '@/api/admin/payment'
-import { extractApiErrorMessage REDACTED from '@/utils/apiError'
+import { extractI18nErrorMessage REDACTED from '@/utils/apiError'
 import type { DashboardStats REDACTED from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
@@ -110,7 +110,7 @@ async function loadDashboard() {
     const res = await adminPaymentAPI.getDashboard(days.value)
     stats.value = res.data
   REDACTED catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
   REDACTED finally {
     loading.value = false
   REDACTED

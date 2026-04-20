@@ -271,7 +271,7 @@ import { usePaymentStore REDACTED from '@/stores/payment'
 import { useSubscriptionStore REDACTED from '@/stores/subscriptions'
 import { useAppStore REDACTED from '@/stores'
 import { paymentAPI REDACTED from '@/api/payment'
-import { extractApiErrorMessage REDACTED from '@/utils/apiError'
+import { extractI18nErrorMessage REDACTED from '@/utils/apiError'
 import { isMobileDevice REDACTED from '@/utils/device'
 import type { SubscriptionPlan, CheckoutInfoResponse, OrderType REDACTED from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -610,7 +610,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     REDACTED else if (apiErr.reason === 'CANCEL_RATE_LIMITED') {
       errorMessage.value = t('payment.errors.cancelRateLimited')
     REDACTED else {
-      errorMessage.value = extractApiErrorMessage(err, t('payment.result.failed'))
+      errorMessage.value = extractI18nErrorMessage(err, t, 'payment.errors', t('payment.result.failed'))
     REDACTED
     appStore.showError(errorMessage.value)
   REDACTED finally {
@@ -648,7 +648,7 @@ onMounted(async () => {
         REDACTED
       REDACTED
     REDACTED
-  REDACTED catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) REDACTED
+  REDACTED catch (err: unknown) { appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error'))) REDACTED
   finally { loading.value = false REDACTED
   // Fetch active subscriptions (uses cache, non-blocking)
   subscriptionStore.fetchActiveSubscriptions().catch(() => {REDACTED)
