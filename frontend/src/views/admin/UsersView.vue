@@ -461,6 +461,12 @@
             </span>
           </template>
 
+          <template #cell-last_used_at="{ value REDACTED">
+            <span class="text-sm text-gray-500 dark:text-dark-400">
+              {{ value ? formatDateTime(value) : '-' REDACTEDREDACTED
+            </span>
+          </template>
+
           <template #cell-last_active_at="{ value REDACTED">
             <span class="text-sm text-gray-500 dark:text-dark-400">
               {{ value ? formatDateTime(value) : '-' REDACTEDREDACTED
@@ -713,6 +719,7 @@ const allColumns = computed<Column[]>(() => [
   { key: 'concurrency', label: t('admin.users.columns.concurrency'), sortable: true REDACTED,
   { key: 'status', label: t('admin.users.columns.status'), sortable: true REDACTED,
   { key: 'last_login_at', label: t('admin.users.columns.lastLogin'), sortable: true REDACTED,
+  { key: 'last_used_at', label: t('admin.users.columns.lastUsed'), sortable: true REDACTED,
   { key: 'last_active_at', label: t('admin.users.columns.lastActive'), sortable: true REDACTED,
   { key: 'created_at', label: t('admin.users.columns.created'), sortable: true REDACTED,
   { key: 'actions', label: t('admin.users.columns.actions'), sortable: false REDACTED
@@ -801,7 +808,7 @@ const searchQuery = ref('')
 const USER_SORT_STORAGE_KEY = 'admin-users-table-sort'
 const loadInitialSortState = (): { sort_by: string; sort_order: 'asc' | 'desc' REDACTED => {
   const fallback = { sort_by: 'created_at', sort_order: 'desc' as 'asc' | 'desc' REDACTED
-  const sortable = new Set(['email', 'id', 'username', 'role', 'balance', 'concurrency', 'status', 'last_login_at', 'last_active_at', 'created_at'])
+  const sortable = new Set(['email', 'id', 'username', 'role', 'balance', 'concurrency', 'status', 'last_login_at', 'last_used_at', 'last_active_at', 'created_at'])
   try {
     const raw = localStorage.getItem(USER_SORT_STORAGE_KEY)
     if (!raw) return fallback

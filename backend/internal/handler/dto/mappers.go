@@ -68,6 +68,7 @@ REDACTED
 	return &AdminUser{
 		User:       *base,
 		Notes:      u.Notes,
+		LastUsedAt: u.LastUsedAt,
 		GroupRates: u.GroupRates,
 REDACTED
 REDACTED

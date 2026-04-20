@@ -299,51 +299,6 @@ REDACTED
 	return normalized
 REDACTED
 
-func (r *userRepository) GetLatestUsedAtByUserIDs(ctx context.Context, userIDs []int64) (map[int64]*time.Time, error) {
-	result := make(map[int64]*time.Time, len(userIDs))
-	if len(userIDs) == 0 {
-		return result, nil
-REDACTED
-	if r.sql == nil {
-		return nil, fmt.Errorf("sql executor is not configured")
-REDACTED
-
-	rows, err := r.sql.QueryContext(ctx, `
-		SELECT user_id, MAX(created_at) AS last_used_at
-		FROM usage_logs
-		WHERE user_id = ANY($1)
-		GROUP BY user_id
-	`, pq.Array(userIDs))
-	if err != nil {
-		return nil, err
-REDACTED
-	defer func() { _ = rows.Close() REDACTED()
-
-	for rows.Next() {
-		var (
-			userID     int64
-			lastUsedAt time.Time
-		)
-		if err := rows.Scan(&userID, &lastUsedAt); err != nil {
-			return nil, err
-	REDACTED
-		ts := lastUsedAt.UTC()
-		result[userID] = &ts
-REDACTED
-	if err := rows.Err(); err != nil {
-		return nil, err
-REDACTED
-	return result, nil
-REDACTED
-
-func (r *userRepository) GetLatestUsedAtByUserID(ctx context.Context, userID int64) (*time.Time, error) {
-	latestByUserID, err := r.GetLatestUsedAtByUserIDs(ctx, []int64{userIDREDACTED)
-	if err != nil {
-		return nil, err
-REDACTED
-	return latestByUserID[userID], nil
-REDACTED
-
 func (r *userRepository) Delete(ctx context.Context, id int64) error {
 	affected, err := r.client.User.Delete().Where(dbuser.IDEQ(id)).Exec(ctx)
 	if err != nil {
@@ -469,6 +424,10 @@ func userListOrder(params pagination.PaginationParams) []func(*entsql.Selector) 
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderDesc)
 
+	if sortBy == "last_used_at" {
+		return userLastUsedAtOrder(sortOrder)
+REDACTED
+
 	var field string
 	defaultField := true
 	nullsLastField := false
@@ -528,6 +487,72 @@ REDACTED
 	REDACTED
 REDACTED
 	return []func(*entsql.Selector){dbent.Desc(field), dbent.Desc(dbuser.FieldID)REDACTED
+REDACTED
+
+func (r *userRepository) GetLatestUsedAtByUserIDs(ctx context.Context, userIDs []int64) (map[int64]*time.Time, error) {
+	result := make(map[int64]*time.Time, len(userIDs))
+	if len(userIDs) == 0 {
+		return result, nil
+REDACTED
+	if r.sql == nil {
+		return nil, fmt.Errorf("sql executor is not configured")
+REDACTED
+
+	const query = `
+		SELECT user_id, MAX(created_at) AS last_used_at
+		FROM usage_logs
+		WHERE user_id = ANY($1)
+		GROUP BY user_id
+	`
+
+	rows, err := r.sql.QueryContext(ctx, query, pq.Array(userIDs))
+	if err != nil {
+		return nil, err
+REDACTED
+	defer func() { _ = rows.Close() REDACTED()
+
+	for rows.Next() {
+		var (
+			userID     int64
+			lastUsedAt time.Time
+		)
+		if scanErr := rows.Scan(&userID, &lastUsedAt); scanErr != nil {
+			return nil, scanErr
+	REDACTED
+		ts := lastUsedAt.UTC()
+		result[userID] = &ts
+REDACTED
+	if err := rows.Err(); err != nil {
+		return nil, err
+REDACTED
+	return result, nil
+REDACTED
+
+func (r *userRepository) GetLatestUsedAtByUserID(ctx context.Context, userID int64) (*time.Time, error) {
+	latestByUserID, err := r.GetLatestUsedAtByUserIDs(ctx, []int64{userIDREDACTED)
+	if err != nil {
+		return nil, err
+REDACTED
+	return latestByUserID[userID], nil
+REDACTED
+
+func userLastUsedAtOrder(sortOrder string) []func(*entsql.Selector) {
+	orderExpr := func(direction, nulls string, tieOrder func(string) string) func(*entsql.Selector) {
+		return func(s *entsql.Selector) {
+			subquery := fmt.Sprintf("(SELECT MAX(created_at) FROM usage_logs WHERE user_id = %s)", s.C(dbuser.FieldID))
+			s.OrderExpr(entsql.Expr(subquery + " " + direction + " NULLS " + nulls))
+			s.OrderBy(tieOrder(s.C(dbuser.FieldID)))
+	REDACTED
+REDACTED
+
+	if sortOrder == pagination.SortOrderAsc {
+		return []func(*entsql.Selector){
+			orderExpr("ASC", "FIRST", entsql.Asc),
+	REDACTED
+REDACTED
+	return []func(*entsql.Selector){
+		orderExpr("DESC", "LAST", entsql.Desc),
+REDACTED
 REDACTED
 
 // filterUsersByAttributes returns user IDs that match ALL the given attribute filters

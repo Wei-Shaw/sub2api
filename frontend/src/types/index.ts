@@ -93,6 +93,7 @@ REDACTED
 export interface AdminUser extends User {
   // 管理员备注（普通用户接口不返回）
   notes: string
+  last_used_at?: string | null
   // 用户专属分组倍率配置 (group_id -> rate_multiplier)
   group_rates?: Record<number, number>
   // 当前并发数（仅管理员列表接口返回）

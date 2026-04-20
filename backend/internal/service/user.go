@@ -26,6 +26,7 @@ type User struct {
 	SignupSource   string
 	LastLoginAt    *time.Time
 	LastActiveAt   *time.Time
+	LastUsedAt     *time.Time
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 
