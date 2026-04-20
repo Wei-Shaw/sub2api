@@ -30,6 +30,15 @@ REDACTED
 	if claims.PaymentType != "" && strings.TrimSpace(order.PaymentType) != claims.PaymentType {
 		return nil, fmt.Errorf("resume token payment type mismatch")
 REDACTED
+	if order.Status == OrderStatusPending || order.Status == OrderStatusExpired {
+		result := s.checkPaid(ctx, order)
+		if result == checkPaidResultAlreadyPaid {
+			order, err = s.entClient.PaymentOrder.Get(ctx, order.ID)
+			if err != nil {
+				return nil, fmt.Errorf("reload order by resume token: %w", err)
+		REDACTED
+	REDACTED
+REDACTED
 
 	return order, nil
 REDACTED

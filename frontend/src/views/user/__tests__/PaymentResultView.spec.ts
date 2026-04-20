@@ -116,6 +116,58 @@ describe('PaymentResultView', () => {
     expect(wrapper.text()).not.toContain('payment.result.failed')
   REDACTED)
 
+  it('prefers the public resume-token result over a stale restored DB snapshot', async () => {
+    routeState.query = {
+      resume_token: 'resume-authoritative',
+      order_id: '42',
+      status: 'success',
+    REDACTED
+    window.localStorage.setItem(PAYMENT_RECOVERY_STORAGE_KEY, JSON.stringify({
+      orderId: 42,
+      amount: 88,
+      qrCode: '',
+      expiresAt: '2099-01-01T00:10:00.000Z',
+      paymentType: 'alipay',
+      payUrl: 'https://pay.example.com/session/42',
+      clientSecret: '',
+      payAmount: 88,
+      orderType: 'balance',
+      paymentMode: 'popup',
+      resumeToken: 'resume-authoritative',
+      createdAt: Date.UTC(2099, 0, 1, 0, 0, 0),
+    REDACTED))
+    pollOrderStatus.mockResolvedValue({
+      ...orderFactory('PENDING'),
+      amount: 88,
+      pay_amount: 88,
+      fee_rate: 0,
+    REDACTED)
+    resolveOrderPublicByResumeToken.mockResolvedValue({
+      data: {
+        ...orderFactory('PAID'),
+        amount: 100,
+        pay_amount: 103,
+        fee_rate: 3,
+      REDACTED,
+    REDACTED)
+
+    const wrapper = mount(PaymentResultView, {
+      global: {
+        stubs: {
+          OrderStatusBadge: true,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    await flushPromises()
+
+    expect(pollOrderStatus).toHaveBeenCalledWith(42)
+    expect(resolveOrderPublicByResumeToken).toHaveBeenCalledWith('resume-authoritative')
+    expect(wrapper.text()).toContain('payment.result.success')
+    expect(wrapper.text()).toContain('103.00')
+    expect(wrapper.text()).toContain('100.00')
+  REDACTED)
+
   it('refreshes a pending resume-token result until the order becomes paid', async () => {
     vi.useFakeTimers()
     routeState.query = {

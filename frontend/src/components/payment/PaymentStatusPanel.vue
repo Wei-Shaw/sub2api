@@ -194,6 +194,10 @@ const countdownDisplay = computed(() => {
   return m.toString().padStart(2, '0') + ':' + s.toString().padStart(2, '0')
 REDACTED)
 
+function isSuccessStatus(status: string | null | undefined): boolean {
+  return status === 'COMPLETED' || status === 'PAID' || status === 'RECHARGING'
+REDACTED
+
 function reopenPopup() {
   if (props.payUrl) {
     const win = window.open(props.payUrl, 'paymentPopup', POPUP_WINDOW_FEATURES)
@@ -222,7 +226,7 @@ async function pollStatus() {
   if (!props.orderId || outcome.value) return
   const order = await paymentStore.pollOrderStatus(props.orderId)
   if (!order) return
-  if (order.status === 'COMPLETED' || order.status === 'PAID') {
+  if (isSuccessStatus(order.status)) {
     cleanup()
     paidOrder.value = order
     setOutcome('success')
