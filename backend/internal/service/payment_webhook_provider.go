@@ -16,25 +16,58 @@ import (
 // It resolves the original provider instance from the order whenever possible and
 // only falls back to a registry provider for legacy/single-instance scenarios.
 func (s *PaymentService) GetWebhookProvider(ctx context.Context, providerKey, outTradeNo string) (payment.Provider, error) {
+	providers, err := s.GetWebhookProviders(ctx, providerKey, outTradeNo)
+	if err != nil {
+		return nil, err
+REDACTED
+	if len(providers) == 0 {
+		return nil, payment.ErrProviderNotFound
+REDACTED
+	return providers[0], nil
+REDACTED
+
+// GetWebhookProviders returns provider candidates that can verify the webhook.
+// Official WeChat Pay may require multiple candidates because the callback body
+// cannot be bound to a merchant before decryption.
+func (s *PaymentService) GetWebhookProviders(ctx context.Context, providerKey, outTradeNo string) ([]payment.Provider, error) {
 	if outTradeNo != "" {
 		order, err := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(outTradeNo)).Only(ctx)
 		if err == nil {
 			if psHasPinnedProviderInstance(order) {
-				return s.getPinnedOrderProvider(ctx, order)
+				prov, err := s.getPinnedOrderProvider(ctx, order)
+				if err != nil {
+					return nil, err
+			REDACTED
+				return []payment.Provider{provREDACTED, nil
 		REDACTED
 			inst, err := s.getOrderProviderInstance(ctx, order)
 			if err != nil {
 				return nil, fmt.Errorf("load order provider instance: %w", err)
 		REDACTED
 			if inst != nil {
-				return s.createProviderFromInstance(ctx, inst)
+				prov, err := s.createProviderFromInstance(ctx, inst)
+				if err != nil {
+					return nil, err
+			REDACTED
+				return []payment.Provider{provREDACTED, nil
+		REDACTED
+			if strings.TrimSpace(providerKey) == payment.TypeWxpay {
+				return s.getEnabledWebhookProvidersByKey(ctx, providerKey)
 		REDACTED
 			if !s.webhookRegistryFallbackAllowed(ctx, providerKey) {
 				return nil, fmt.Errorf("webhook provider fallback is ambiguous for %s", providerKey)
 		REDACTED
 			s.EnsureProviders(ctx)
-			return s.registry.GetProviderByKey(providerKey)
+			prov, err := s.registry.GetProviderByKey(providerKey)
+			if err != nil {
+				return nil, err
+		REDACTED
+			return []payment.Provider{provREDACTED, nil
 	REDACTED
+REDACTED
+
+	if strings.TrimSpace(providerKey) == payment.TypeWxpay {
+		return s.getEnabledWebhookProvidersByKey(ctx, providerKey)
 REDACTED
 
 	if !s.webhookRegistryFallbackAllowed(ctx, providerKey) {
@@ -42,7 +75,11 @@ REDACTED
 REDACTED
 
 	s.EnsureProviders(ctx)
-	return s.registry.GetProviderByKey(providerKey)
+	prov, err := s.registry.GetProviderByKey(providerKey)
+	if err != nil {
+		return nil, err
+REDACTED
+	return []payment.Provider{provREDACTED, nil
 REDACTED
 
 func (s *PaymentService) getPinnedOrderProvider(ctx context.Context, o *dbent.PaymentOrder) (payment.Provider, error) {
@@ -77,4 +114,35 @@ REDACTED
 
 func psHasPinnedProviderInstance(order *dbent.PaymentOrder) bool {
 	return order != nil && order.ProviderInstanceID != nil && strings.TrimSpace(*order.ProviderInstanceID) != ""
+REDACTED
+
+func (s *PaymentService) getEnabledWebhookProvidersByKey(ctx context.Context, providerKey string) ([]payment.Provider, error) {
+	providerKey = strings.TrimSpace(providerKey)
+	instances, err := s.entClient.PaymentProviderInstance.Query().
+		Where(
+			paymentproviderinstance.ProviderKeyEQ(providerKey),
+			paymentproviderinstance.EnabledEQ(true),
+		).
+		Order(dbent.Asc(paymentproviderinstance.FieldSortOrder)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("query webhook provider instances: %w", err)
+REDACTED
+	if len(instances) == 0 {
+		return nil, payment.ErrProviderNotFound
+REDACTED
+
+	providers := make([]payment.Provider, 0, len(instances))
+	for _, inst := range instances {
+		prov, provErr := s.createProviderFromInstance(ctx, inst)
+		if provErr != nil {
+			slog.Warn("skip webhook provider instance", "provider", providerKey, "instanceID", inst.ID, "error", provErr)
+			continue
+	REDACTED
+		providers = append(providers, prov)
+REDACTED
+	if len(providers) == 0 {
+		return nil, payment.ErrProviderNotFound
+REDACTED
+	return providers, nil
 REDACTED

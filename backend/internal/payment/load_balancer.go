@@ -45,9 +45,29 @@ type DefaultLoadBalancer struct {
 	counter       atomic.Uint64
 REDACTED
 
+type contextKey string
+
+const wxpayJSAPIAppIDContextKey contextKey = "payment.wxpay.jsapi_app_id"
+
 // NewDefaultLoadBalancer creates a new load balancer.
 func NewDefaultLoadBalancer(db *dbent.Client, encryptionKey []byte) *DefaultLoadBalancer {
 	return &DefaultLoadBalancer{db: db, encryptionKey: encryptionKeyREDACTED
+REDACTED
+
+func WithWxpayJSAPIAppID(ctx context.Context, appID string) context.Context {
+	appID = strings.TrimSpace(appID)
+	if appID == "" {
+		return ctx
+REDACTED
+	return context.WithValue(ctx, wxpayJSAPIAppIDContextKey, appID)
+REDACTED
+
+func wxpayJSAPIAppIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+REDACTED
+	appID, _ := ctx.Value(wxpayJSAPIAppIDContextKey).(string)
+	return strings.TrimSpace(appID)
 REDACTED
 
 // instanceCandidate pairs an instance with its pre-fetched daily usage.
@@ -116,6 +136,7 @@ REDACTED
 REDACTED
 
 	var matched []*dbent.PaymentProviderInstance
+	expectedWxpayJSAPIAppID := wxpayJSAPIAppIDFromContext(ctx)
 	for _, inst := range instances {
 		// Stripe: match by provider_key because supported_types lists sub-types (card,link,alipay,wxpay),
 		// not "stripe" itself. The checkout page aggregates all sub-types under "stripe".
@@ -124,6 +145,16 @@ REDACTED
 				matched = append(matched, inst)
 		REDACTED
 	REDACTED else if InstanceSupportsType(inst.SupportedTypes, paymentType) {
+			if expectedWxpayJSAPIAppID != "" && normalizeVisibleMethodSupportType(paymentType) == TypeWxpay && inst.ProviderKey == TypeWxpay {
+				config, cfgErr := lb.decryptConfig(inst.Config)
+				if cfgErr != nil {
+					slog.Warn("skip wxpay instance with unreadable config during jsapi filtering", "instance_id", inst.ID, "error", cfgErr)
+					continue
+			REDACTED
+				if resolveWxpayJSAPIAppID(config) != expectedWxpayJSAPIAppID {
+					continue
+			REDACTED
+		REDACTED
 			matched = append(matched, inst)
 	REDACTED
 REDACTED
@@ -356,6 +387,13 @@ func legacyVisibleMethodAlias(paymentType PaymentType) PaymentType {
 	default:
 		return ""
 REDACTED
+REDACTED
+
+func resolveWxpayJSAPIAppID(config map[string]string) string {
+	if appID := strings.TrimSpace(config["mpAppId"]); appID != "" {
+		return appID
+REDACTED
+	return strings.TrimSpace(config["appId"])
 REDACTED
 
 // GetInstanceConfig decrypts and returns the configuration for a provider instance by ID.

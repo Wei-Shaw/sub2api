@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -77,9 +79,13 @@ REDACTED
 	// This is needed when multiple instances of the same provider exist (e.g. multiple EasyPay accounts).
 	outTradeNo := extractOutTradeNo(rawBody, providerKey)
 
-	provider, err := h.paymentService.GetWebhookProvider(c.Request.Context(), providerKey, outTradeNo)
+	providers, err := h.paymentService.GetWebhookProviders(c.Request.Context(), providerKey, outTradeNo)
 	if err != nil {
 		slog.Warn("[Payment Webhook] provider not found", "provider", providerKey, "outTradeNo", outTradeNo, "error", err)
+		if providerKey == payment.TypeWxpay {
+			c.String(http.StatusBadRequest, "verify failed")
+			return
+	REDACTED
 		writeSuccessResponse(c, providerKey)
 		return
 REDACTED
@@ -89,7 +95,7 @@ REDACTED
 		headers[strings.ToLower(k)] = c.GetHeader(k)
 REDACTED
 
-	notification, err := provider.VerifyNotification(c.Request.Context(), rawBody, headers)
+	resolvedProviderKey, notification, err := verifyNotificationWithProviders(c.Request.Context(), providers, rawBody, headers)
 	if err != nil {
 		truncatedBody := rawBody
 		if len(truncatedBody) > webhookLogTruncateLen {
@@ -103,17 +109,17 @@ REDACTED
 
 	// nil notification means irrelevant event (e.g. Stripe non-payment event); return success.
 	if notification == nil {
-		writeSuccessResponse(c, providerKey)
+		writeSuccessResponse(c, resolvedProviderKey)
 		return
 REDACTED
 
-	if err := h.paymentService.HandlePaymentNotification(c.Request.Context(), notification, providerKey); err != nil {
-		slog.Error("[Payment Webhook] handle notification failed", "provider", providerKey, "error", err)
+	if err := h.paymentService.HandlePaymentNotification(c.Request.Context(), notification, resolvedProviderKey); err != nil {
+		slog.Error("[Payment Webhook] handle notification failed", "provider", resolvedProviderKey, "error", err)
 		c.String(http.StatusInternalServerError, "handle failed")
 		return
 REDACTED
 
-	writeSuccessResponse(c, providerKey)
+	writeSuccessResponse(c, resolvedProviderKey)
 REDACTED
 
 // extractOutTradeNo parses the webhook body to find the out_trade_no.
@@ -129,6 +135,25 @@ REDACTED
 	// For other providers (Stripe, Alipay direct, WxPay direct), the registry
 	// typically has only one instance, so no instance lookup is needed.
 	return ""
+REDACTED
+
+func verifyNotificationWithProviders(ctx context.Context, providers []payment.Provider, rawBody string, headers map[string]string) (string, *payment.PaymentNotification, error) {
+	var lastErr error
+	for _, provider := range providers {
+		if provider == nil {
+			continue
+	REDACTED
+		notification, err := provider.VerifyNotification(ctx, rawBody, headers)
+		if err != nil {
+			lastErr = err
+			continue
+	REDACTED
+		return provider.ProviderKey(), notification, nil
+REDACTED
+	if lastErr != nil {
+		return "", nil, lastErr
+REDACTED
+	return "", nil, fmt.Errorf("no webhook provider could verify notification")
 REDACTED
 
 // wxpaySuccessResponse is the JSON response expected by WeChat Pay webhook.

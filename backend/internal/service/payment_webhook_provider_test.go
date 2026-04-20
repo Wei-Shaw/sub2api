@@ -208,10 +208,28 @@ REDACTED
 func TestGetWebhookProviderRejectsAmbiguousRegistryFallback(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
+	wxpayConfigA := encryptWebhookProviderConfig(t, map[string]string{
+		"appId":       "wx-app-a",
+		"mchId":       "mch-a",
+		"privateKey":  "private-key-a",
+		"apiV3Key":    webhookProviderTestEncryptionKey,
+		"publicKey":   "public-key-a",
+		"publicKeyId": "public-key-id-a",
+		"certSerial":  "cert-serial-a",
+REDACTED)
+	wxpayConfigB := encryptWebhookProviderConfig(t, map[string]string{
+		"appId":       "wx-app-b",
+		"mchId":       "mch-b",
+		"privateKey":  "private-key-b",
+		"apiV3Key":    webhookProviderTestEncryptionKey,
+		"publicKey":   "public-key-b",
+		"publicKeyId": "public-key-id-b",
+		"certSerial":  "cert-serial-b",
+REDACTED)
 	_, err := client.PaymentProviderInstance.Create().
 		SetProviderKey(payment.TypeWxpay).
 		SetName("wxpay-a").
-		SetConfig("{REDACTED").
+		SetConfig(wxpayConfigA).
 		SetSupportedTypes("wxpay").
 		SetEnabled(true).
 		Save(ctx)
@@ -219,8 +237,40 @@ REDACTED
 	_, err = client.PaymentProviderInstance.Create().
 		SetProviderKey(payment.TypeWxpay).
 		SetName("wxpay-b").
-		SetConfig("{REDACTED").
+		SetConfig(wxpayConfigB).
 		SetSupportedTypes("wxpay").
+		SetEnabled(true).
+		Save(ctx)
+REDACTED
+
+	svc := &PaymentService{
+		entClient:       client,
+		loadBalancer:    newWebhookProviderTestLoadBalancer(client),
+		registry:        payment.NewRegistry(),
+		providersLoaded: true,
+REDACTED
+
+	providers, err := svc.GetWebhookProviders(ctx, payment.TypeWxpay, "")
+REDACTED
+	require.Len(t, providers, 2)
+REDACTED
+
+func TestGetWebhookProvidersRejectAmbiguousFallbackForNonWxpay(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	_, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeAlipay).
+		SetName("alipay-a").
+		SetConfig("{REDACTED").
+		SetSupportedTypes("alipay").
+		SetEnabled(true).
+		Save(ctx)
+REDACTED
+	_, err = client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeAlipay).
+		SetName("alipay-b").
+		SetConfig("{REDACTED").
+		SetSupportedTypes("alipay").
 		SetEnabled(true).
 		Save(ctx)
 REDACTED
@@ -231,7 +281,7 @@ REDACTED
 		providersLoaded: true,
 REDACTED
 
-	_, err = svc.GetWebhookProvider(ctx, payment.TypeWxpay, "")
+	_, err = svc.GetWebhookProviders(ctx, payment.TypeAlipay, "")
 REDACTED
 	require.Contains(t, err.Error(), "ambiguous")
 REDACTED
@@ -260,8 +310,10 @@ REDACTED)
 		providersLoaded: true,
 REDACTED
 
-	prov, err := svc.GetWebhookProvider(ctx, payment.TypeStripe, "")
+	providers, err := svc.GetWebhookProviders(ctx, payment.TypeStripe, "")
 REDACTED
+	require.Len(t, providers, 1)
+	prov := providers[0]
 	require.Equal(t, payment.TypeStripe, prov.ProviderKey())
 REDACTED
 
@@ -308,7 +360,7 @@ REDACTED)
 		providersLoaded: true,
 REDACTED
 
-	_, err = svc.GetWebhookProvider(ctx, payment.TypeWxpay, "sub2_test_pinned_order")
+	_, err = svc.GetWebhookProviders(ctx, payment.TypeWxpay, "sub2_test_pinned_order")
 REDACTED
 	require.Contains(t, err.Error(), "provider instance")
 REDACTED
