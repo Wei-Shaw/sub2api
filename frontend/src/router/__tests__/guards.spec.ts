@@ -52,6 +52,7 @@ interface MockAuthState {
   isAdmin: boolean
   isSimpleMode: boolean
   backendModeEnabled: boolean
+  hasPendingAuthSession: boolean
 REDACTED
 
 /**
@@ -78,7 +79,18 @@ function simulateGuard(
     REDACTED
     if (authState.backendModeEnabled && !authState.isAuthenticated) {
       const allowed = ['/login', '/key-usage', '/setup']
-      if (!allowed.some((path) => toPath === path || toPath.startsWith(path))) {
+      const callbackPaths = [
+        '/auth/callback',
+        '/auth/linuxdo/callback',
+        '/auth/oidc/callback',
+        '/auth/wechat/callback'
+      ]
+      const pendingAuthPaths = ['/register', '/email-verify']
+      const isAllowed =
+        allowed.some((path) => toPath === path || toPath.startsWith(path)) ||
+        callbackPaths.includes(toPath) ||
+        (authState.hasPendingAuthSession && pendingAuthPaths.includes(toPath))
+      if (!isAllowed) {
         return '/login'
       REDACTED
     REDACTED
@@ -115,7 +127,18 @@ function simulateGuard(
       return null
     REDACTED
     const allowed = ['/login', '/key-usage', '/setup']
-    if (!allowed.some((path) => toPath === path || toPath.startsWith(path))) {
+    const callbackPaths = [
+      '/auth/callback',
+      '/auth/linuxdo/callback',
+      '/auth/oidc/callback',
+      '/auth/wechat/callback'
+    ]
+    const pendingAuthPaths = ['/register', '/email-verify']
+    const isAllowed =
+      allowed.some((path) => toPath === path || toPath.startsWith(path)) ||
+      callbackPaths.includes(toPath) ||
+      (authState.hasPendingAuthSession && pendingAuthPaths.includes(toPath))
+    if (!isAllowed) {
       return '/login'
     REDACTED
   REDACTED
@@ -136,6 +159,7 @@ describe('路由守卫逻辑', () => {
       isAdmin: false,
       isSimpleMode: false,
       backendModeEnabled: false,
+      hasPendingAuthSession: false,
     REDACTED
 
     it('访问需要认证的页面重定向到 /login', () => {
@@ -167,6 +191,7 @@ describe('路由守卫逻辑', () => {
       isAdmin: false,
       isSimpleMode: false,
       backendModeEnabled: false,
+      hasPendingAuthSession: false,
     REDACTED
 
     it('访问 /login 重定向到 /dashboard', () => {
@@ -203,6 +228,7 @@ describe('路由守卫逻辑', () => {
       isAdmin: true,
       isSimpleMode: false,
       backendModeEnabled: false,
+      hasPendingAuthSession: false,
     REDACTED
 
     it('访问 /login 重定向到 /admin/dashboard', () => {
@@ -230,6 +256,7 @@ describe('路由守卫逻辑', () => {
         isAdmin: false,
         isSimpleMode: true,
         backendModeEnabled: false,
+        hasPendingAuthSession: false,
       REDACTED
       const redirect = simulateGuard('/subscriptions', {REDACTED, authState)
       expect(redirect).toBe('/dashboard')
@@ -241,6 +268,7 @@ describe('路由守卫逻辑', () => {
         isAdmin: false,
         isSimpleMode: true,
         backendModeEnabled: false,
+        hasPendingAuthSession: false,
       REDACTED
       const redirect = simulateGuard('/redeem', {REDACTED, authState)
       expect(redirect).toBe('/dashboard')
@@ -252,6 +280,7 @@ describe('路由守卫逻辑', () => {
         isAdmin: true,
         isSimpleMode: true,
         backendModeEnabled: false,
+        hasPendingAuthSession: false,
       REDACTED
       const redirect = simulateGuard('/admin/groups', { requiresAdmin: true REDACTED, authState)
       expect(redirect).toBe('/admin/dashboard')
@@ -263,6 +292,7 @@ describe('路由守卫逻辑', () => {
         isAdmin: true,
         isSimpleMode: true,
         backendModeEnabled: false,
+        hasPendingAuthSession: false,
       REDACTED
       const redirect = simulateGuard(
         '/admin/subscriptions',
@@ -278,6 +308,7 @@ describe('路由守卫逻辑', () => {
         isAdmin: false,
         isSimpleMode: true,
         backendModeEnabled: false,
+        hasPendingAuthSession: false,
       REDACTED
       const redirect = simulateGuard('/dashboard', {REDACTED, authState)
       expect(redirect).toBeNull()
@@ -289,6 +320,7 @@ describe('路由守卫逻辑', () => {
         isAdmin: false,
         isSimpleMode: true,
         backendModeEnabled: false,
+        hasPendingAuthSession: false,
       REDACTED
       const redirect = simulateGuard('/keys', {REDACTED, authState)
       expect(redirect).toBeNull()
@@ -302,6 +334,7 @@ describe('路由守卫逻辑', () => {
         isAdmin: false,
         isSimpleMode: false,
         backendModeEnabled: true,
+        hasPendingAuthSession: false,
       REDACTED
       const redirect = simulateGuard('/home', { requiresAuth: false REDACTED, authState)
       expect(redirect).toBe('/login')
@@ -313,6 +346,7 @@ describe('路由守卫逻辑', () => {
         isAdmin: false,
         isSimpleMode: false,
         backendModeEnabled: true,
+        hasPendingAuthSession: false,
       REDACTED
       const redirect = simulateGuard('/login', { requiresAuth: false REDACTED, authState)
       expect(redirect).toBeNull()
@@ -324,6 +358,7 @@ describe('路由守卫逻辑', () => {
         isAdmin: false,
         isSimpleMode: false,
         backendModeEnabled: true,
+        hasPendingAuthSession: false,
       REDACTED
       const redirect = simulateGuard('/key-usage', { requiresAuth: false REDACTED, authState)
       expect(redirect).toBeNull()
@@ -335,6 +370,7 @@ describe('路由守卫逻辑', () => {
         isAdmin: false,
         isSimpleMode: false,
         backendModeEnabled: true,
+        hasPendingAuthSession: false,
       REDACTED
       const redirect = simulateGuard('/setup', { requiresAuth: false REDACTED, authState)
       expect(redirect).toBeNull()
@@ -346,6 +382,7 @@ describe('路由守卫逻辑', () => {
         isAdmin: true,
         isSimpleMode: false,
         backendModeEnabled: true,
+        hasPendingAuthSession: false,
       REDACTED
       const redirect = simulateGuard('/admin/dashboard', { requiresAdmin: true REDACTED, authState)
       expect(redirect).toBeNull()
@@ -357,6 +394,7 @@ describe('路由守卫逻辑', () => {
         isAdmin: true,
         isSimpleMode: false,
         backendModeEnabled: true,
+        hasPendingAuthSession: false,
       REDACTED
       const redirect = simulateGuard('/login', { requiresAuth: false REDACTED, authState)
       expect(redirect).toBe('/admin/dashboard')
@@ -368,6 +406,7 @@ describe('路由守卫逻辑', () => {
         isAdmin: false,
         isSimpleMode: false,
         backendModeEnabled: true,
+        hasPendingAuthSession: false,
       REDACTED
       const redirect = simulateGuard('/dashboard', {REDACTED, authState)
       expect(redirect).toBe('/login')
@@ -379,6 +418,7 @@ describe('路由守卫逻辑', () => {
         isAdmin: false,
         isSimpleMode: false,
         backendModeEnabled: true,
+        hasPendingAuthSession: false,
       REDACTED
       const redirect = simulateGuard('/login', { requiresAuth: false REDACTED, authState)
       expect(redirect).toBeNull()
@@ -390,9 +430,46 @@ describe('路由守卫逻辑', () => {
         isAdmin: false,
         isSimpleMode: false,
         backendModeEnabled: true,
+        hasPendingAuthSession: false,
       REDACTED
       const redirect = simulateGuard('/key-usage', { requiresAuth: false REDACTED, authState)
       expect(redirect).toBeNull()
+    REDACTED)
+
+    it('unauthenticated: callback routes are allowed', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: false,
+        isAdmin: false,
+        isSimpleMode: false,
+        backendModeEnabled: true,
+        hasPendingAuthSession: false,
+      REDACTED
+      const redirect = simulateGuard('/auth/wechat/callback', { requiresAuth: false REDACTED, authState)
+      expect(redirect).toBeNull()
+    REDACTED)
+
+    it('unauthenticated: /register is allowed when a pending auth session exists', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: false,
+        isAdmin: false,
+        isSimpleMode: false,
+        backendModeEnabled: true,
+        hasPendingAuthSession: true,
+      REDACTED
+      const redirect = simulateGuard('/register', { requiresAuth: false REDACTED, authState)
+      expect(redirect).toBeNull()
+    REDACTED)
+
+    it('unauthenticated: /email-verify is blocked without a pending auth session', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: false,
+        isAdmin: false,
+        isSimpleMode: false,
+        backendModeEnabled: true,
+        hasPendingAuthSession: false,
+      REDACTED
+      const redirect = simulateGuard('/email-verify', { requiresAuth: false REDACTED, authState)
+      expect(redirect).toBe('/login')
     REDACTED)
   REDACTED)
 REDACTED)

@@ -176,7 +176,8 @@ import { AuthLayout REDACTED from '@/components/layout'
 import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { useAuthStore, useAppStore REDACTED from '@/stores'
-import { getPublicSettings, sendVerifyCode REDACTED from '@/api/auth'
+import { persistOAuthTokenContext, getPublicSettings, sendVerifyCode REDACTED from '@/api/auth'
+import { apiClient REDACTED from '@/api/client'
 import { buildAuthErrorMessage REDACTED from '@/utils/authError'
 import {
   isRegistrationEmailSuffixAllowed,
@@ -202,11 +203,33 @@ const countdown = ref<number>(0)
 let countdownTimer: ReturnType<typeof setInterval> | null = null
 
 // Registration data from sessionStorage
+type PendingAuthTokenField = 'pending_auth_token' | 'pending_oauth_token'
+type PendingAuthSessionSummary = {
+  token: string
+  token_field: PendingAuthTokenField
+  provider: string
+  redirect?: string
+REDACTED
+type PendingOAuthCreateAccountResponse = {
+  access_token: string
+  refresh_token?: string
+  expires_in?: number
+  token_type?: string
+REDACTED
+
 const email = ref<string>('')
 const password = ref<string>('')
 const initialTurnstileToken = ref<string>('')
 const promoCode = ref<string>('')
 const invitationCode = ref<string>('')
+const pendingAuthToken = ref<string>('')
+const pendingAuthTokenField = ref<PendingAuthTokenField>('pending_auth_token')
+const pendingProvider = ref<string>('')
+const pendingRedirect = ref<string>('')
+const pendingAdoptionDecision = ref<{
+  adoptDisplayName?: boolean
+  adoptAvatar?: boolean
+REDACTED | null>(null)
 const hasRegisterData = ref<boolean>(false)
 
 // Public settings
@@ -228,6 +251,8 @@ REDACTED)
 // ==================== Lifecycle ====================
 
 onMounted(async () => {
+  const activePendingSession = authStore.pendingAuthSession as PendingAuthSessionSummary | null
+
   // Load registration data from sessionStorage
   const registerDataStr = sessionStorage.getItem('register_data')
   if (registerDataStr) {
@@ -238,10 +263,25 @@ onMounted(async () => {
       initialTurnstileToken.value = registerData.turnstile_token || ''
       promoCode.value = registerData.promo_code || ''
       invitationCode.value = registerData.invitation_code || ''
+      pendingAuthToken.value = registerData.pending_auth_token || activePendingSession?.token || ''
+      pendingAuthTokenField.value = registerData.pending_auth_token_field || activePendingSession?.token_field || 'pending_auth_token'
+      pendingProvider.value = registerData.pending_provider || activePendingSession?.provider || ''
+      pendingRedirect.value = registerData.pending_redirect || activePendingSession?.redirect || ''
+      pendingAdoptionDecision.value = registerData.pending_adoption_decision
+        ? {
+            adoptDisplayName: registerData.pending_adoption_decision.adopt_display_name === true,
+            adoptAvatar: registerData.pending_adoption_decision.adopt_avatar === true
+          REDACTED
+        : null
       hasRegisterData.value = !!(email.value && password.value)
     REDACTED catch {
       hasRegisterData.value = false
     REDACTED
+  REDACTED else if (activePendingSession) {
+    pendingAuthToken.value = activePendingSession.token
+    pendingAuthTokenField.value = activePendingSession.token_field
+    pendingProvider.value = activePendingSession.provider
+    pendingRedirect.value = activePendingSession.redirect || ''
   REDACTED
 
   // Load public settings
@@ -323,9 +363,10 @@ async function sendCode(): Promise<void> {
 
     const response = await sendVerifyCode({
       email: email.value,
+      [pendingAuthTokenField.value]: pendingAuthToken.value || undefined,
       // 优先使用重发时新获取的 token（因为初始 token 可能已被使用）
       turnstile_token: resendTurnstileToken.value || initialTurnstileToken.value || undefined
-    REDACTED)
+    REDACTED as Parameters<typeof sendVerifyCode>[0])
 
     codeSent.value = true
     startCountdown(response.countdown)
@@ -395,15 +436,32 @@ async function handleVerify(): Promise<void> {
       return
     REDACTED
 
-    // Register with verification code
-    await authStore.register({
-      email: email.value,
-      password: password.value,
-      verify_code: verifyCode.value.trim(),
-      turnstile_token: initialTurnstileToken.value || undefined,
-      promo_code: promoCode.value || undefined,
-      invitation_code: invitationCode.value || undefined
-    REDACTED)
+    if (pendingProvider.value) {
+      const { data REDACTED = await apiClient.post<PendingOAuthCreateAccountResponse>(
+        '/auth/oauth/pending/create-account',
+        {
+          email: email.value,
+          password: password.value,
+          verify_code: verifyCode.value.trim(),
+          invitation_code: invitationCode.value || undefined,
+          adopt_display_name: pendingAdoptionDecision.value?.adoptDisplayName,
+          adopt_avatar: pendingAdoptionDecision.value?.adoptAvatar
+        REDACTED
+      )
+      persistOAuthTokenContext(data)
+      await authStore.setToken(data.access_token)
+      authStore.clearPendingAuthSession?.()
+    REDACTED else {
+      // Register with verification code
+      await authStore.register({
+        email: email.value,
+        password: password.value,
+        verify_code: verifyCode.value.trim(),
+        turnstile_token: initialTurnstileToken.value || undefined,
+        promo_code: promoCode.value || undefined,
+        invitation_code: invitationCode.value || undefined
+      REDACTED)
+    REDACTED
 
     // Clear session data
     sessionStorage.removeItem('register_data')
@@ -412,7 +470,7 @@ async function handleVerify(): Promise<void> {
     appStore.showSuccess(t('auth.accountCreatedSuccess', { siteName: siteName.value REDACTED))
 
     // Redirect to dashboard
-    await router.push('/dashboard')
+    await router.push(pendingRedirect.value || '/dashboard')
   REDACTED catch (error: unknown) {
     errorMessage.value = buildAuthErrorMessage(error, {
       fallback: t('auth.verifyFailed')
