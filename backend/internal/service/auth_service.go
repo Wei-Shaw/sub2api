@@ -78,6 +78,12 @@ type DefaultSubscriptionAssigner interface {
 	AssignOrExtendSubscription(ctx context.Context, input *AssignSubscriptionInput) (*UserSubscription, bool, error)
 REDACTED
 
+type signupGrantPlan struct {
+	Balance       float64
+	Concurrency   int
+	Subscriptions []DefaultSubscriptionSetting
+REDACTED
+
 // NewAuthService 创建认证服务实例
 func NewAuthService(
 	entClient *dbent.Client,
@@ -187,21 +193,15 @@ REDACTED
 		return "", nil, fmt.Errorf("hash password: %w", err)
 REDACTED
 
-	// 获取默认配置
-	defaultBalance := s.cfg.Default.UserBalance
-	defaultConcurrency := s.cfg.Default.UserConcurrency
-	if s.settingService != nil {
-		defaultBalance = s.settingService.GetDefaultBalance(ctx)
-		defaultConcurrency = s.settingService.GetDefaultConcurrency(ctx)
-REDACTED
+	grantPlan := s.resolveSignupGrantPlan(ctx, "email")
 
 	// 创建用户
 	user := &User{
 		Email:        email,
 		PasswordHash: hashedPassword,
 		Role:         RoleUser,
-		Balance:      defaultBalance,
-		Concurrency:  defaultConcurrency,
+		Balance:      grantPlan.Balance,
+		Concurrency:  grantPlan.Concurrency,
 		Status:       StatusActive,
 REDACTED
 
@@ -214,7 +214,7 @@ REDACTED
 		return "", nil, ErrServiceUnavailable
 REDACTED
 	s.postAuthUserBootstrap(ctx, user, "email", true)
-	s.assignDefaultSubscriptions(ctx, user.ID)
+	s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 
 	// 标记邀请码为已使用（如果使用了邀请码）
 	if invitationRedeemCode != nil {
@@ -479,21 +479,16 @@ REDACTED
 				return "", nil, fmt.Errorf("hash password: %w", err)
 		REDACTED
 
-			// 新用户默认值。
-			defaultBalance := s.cfg.Default.UserBalance
-			defaultConcurrency := s.cfg.Default.UserConcurrency
-			if s.settingService != nil {
-				defaultBalance = s.settingService.GetDefaultBalance(ctx)
-				defaultConcurrency = s.settingService.GetDefaultConcurrency(ctx)
-		REDACTED
+			signupSource := inferLegacySignupSource(email)
+			grantPlan := s.resolveSignupGrantPlan(ctx, signupSource)
 
 			newUser := &User{
 				Email:        email,
 				Username:     username,
 				PasswordHash: hashedPassword,
 				Role:         RoleUser,
-				Balance:      defaultBalance,
-				Concurrency:  defaultConcurrency,
+				Balance:      grantPlan.Balance,
+				Concurrency:  grantPlan.Concurrency,
 				Status:       StatusActive,
 		REDACTED
 
@@ -511,8 +506,8 @@ REDACTED
 			REDACTED
 		REDACTED else {
 				user = newUser
-				s.postAuthUserBootstrap(ctx, user, inferLegacySignupSource(email), true)
-				s.assignDefaultSubscriptions(ctx, user.ID)
+				s.postAuthUserBootstrap(ctx, user, signupSource, true)
+				s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 		REDACTED
 	REDACTED else {
 			logger.LegacyPrintf("service.auth", "[Auth] Database error during oauth login: %v", err)
@@ -596,20 +591,16 @@ REDACTED
 				return nil, nil, fmt.Errorf("hash password: %w", err)
 		REDACTED
 
-			defaultBalance := s.cfg.Default.UserBalance
-			defaultConcurrency := s.cfg.Default.UserConcurrency
-			if s.settingService != nil {
-				defaultBalance = s.settingService.GetDefaultBalance(ctx)
-				defaultConcurrency = s.settingService.GetDefaultConcurrency(ctx)
-		REDACTED
+			signupSource := inferLegacySignupSource(email)
+			grantPlan := s.resolveSignupGrantPlan(ctx, signupSource)
 
 			newUser := &User{
 				Email:        email,
 				Username:     username,
 				PasswordHash: hashedPassword,
 				Role:         RoleUser,
-				Balance:      defaultBalance,
-				Concurrency:  defaultConcurrency,
+				Balance:      grantPlan.Balance,
+				Concurrency:  grantPlan.Concurrency,
 				Status:       StatusActive,
 		REDACTED
 
@@ -642,8 +633,8 @@ REDACTED
 						return nil, nil, ErrServiceUnavailable
 				REDACTED
 					user = newUser
-					s.postAuthUserBootstrap(ctx, user, inferLegacySignupSource(email), true)
-					s.assignDefaultSubscriptions(ctx, user.ID)
+					s.postAuthUserBootstrap(ctx, user, signupSource, true)
+					s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 			REDACTED
 		REDACTED else {
 				if err := s.userRepo.Create(ctx, newUser); err != nil {
@@ -659,8 +650,8 @@ REDACTED
 				REDACTED
 			REDACTED else {
 					user = newUser
-					s.postAuthUserBootstrap(ctx, user, inferLegacySignupSource(email), true)
-					s.assignDefaultSubscriptions(ctx, user.ID)
+					s.postAuthUserBootstrap(ctx, user, signupSource, true)
+					s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 					if invitationRedeemCode != nil {
 						if err := s.redeemRepo.Use(ctx, invitationRedeemCode.ID, user.ID); err != nil {
 							return nil, nil, ErrInvitationCodeInvalid
@@ -694,19 +685,75 @@ REDACTED
 REDACTED
 
 func (s *AuthService) assignDefaultSubscriptions(ctx context.Context, userID int64) {
+	if s.settingService == nil {
+		return
+REDACTED
+	s.assignSubscriptions(ctx, userID, s.settingService.GetDefaultSubscriptions(ctx), "auto assigned by default user subscriptions setting")
+REDACTED
+
+func (s *AuthService) assignSubscriptions(ctx context.Context, userID int64, items []DefaultSubscriptionSetting, notes string) {
 	if s.settingService == nil || s.defaultSubAssigner == nil || userID <= 0 {
 		return
 REDACTED
-	items := s.settingService.GetDefaultSubscriptions(ctx)
 	for _, item := range items {
 		if _, _, err := s.defaultSubAssigner.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
 			UserID:       userID,
 			GroupID:      item.GroupID,
 			ValidityDays: item.ValidityDays,
-			Notes:        "auto assigned by default user subscriptions setting",
+			Notes:        notes,
 	REDACTED); err != nil {
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to assign default subscription: user_id=%d group_id=%d err=%v", userID, item.GroupID, err)
 	REDACTED
+REDACTED
+REDACTED
+
+func (s *AuthService) resolveSignupGrantPlan(ctx context.Context, signupSource string) signupGrantPlan {
+	plan := signupGrantPlan{REDACTED
+	if s != nil && s.cfg != nil {
+		plan.Balance = s.cfg.Default.UserBalance
+		plan.Concurrency = s.cfg.Default.UserConcurrency
+REDACTED
+	if s == nil || s.settingService == nil {
+		return plan
+REDACTED
+
+	plan.Balance = s.settingService.GetDefaultBalance(ctx)
+	plan.Concurrency = s.settingService.GetDefaultConcurrency(ctx)
+	plan.Subscriptions = s.settingService.GetDefaultSubscriptions(ctx)
+
+	defaults, err := s.settingService.GetAuthSourceDefaultSettings(ctx)
+	if err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Failed to load auth source signup defaults for %s: %v", signupSource, err)
+		return plan
+REDACTED
+
+	providerDefaults, ok := authSourceSignupSettings(defaults, signupSource)
+	if !ok || !providerDefaults.GrantOnSignup {
+		return plan
+REDACTED
+
+	plan.Balance = providerDefaults.Balance
+	plan.Concurrency = providerDefaults.Concurrency
+	plan.Subscriptions = providerDefaults.Subscriptions
+	return plan
+REDACTED
+
+func authSourceSignupSettings(defaults *AuthSourceDefaultSettings, signupSource string) (ProviderDefaultGrantSettings, bool) {
+	if defaults == nil {
+		return ProviderDefaultGrantSettings{REDACTED, false
+REDACTED
+
+	switch strings.ToLower(strings.TrimSpace(signupSource)) {
+	case "email":
+		return defaults.Email, true
+	case "linuxdo":
+		return defaults.LinuxDo, true
+	case "oidc":
+		return defaults.OIDC, true
+	case "wechat":
+		return defaults.WeChat, true
+	default:
+		return ProviderDefaultGrantSettings{REDACTED, false
 REDACTED
 REDACTED
 
