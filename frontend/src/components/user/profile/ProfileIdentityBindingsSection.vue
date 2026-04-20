@@ -52,7 +52,9 @@
 import { computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useRoute REDACTED from 'vue-router'
+import { resolveWeChatOAuthStart, type WeChatOAuthPublicSettings REDACTED from '@/api/auth'
 import { startOAuthBinding REDACTED from '@/api/user'
+import { useAppStore REDACTED from '@/stores'
 import type { User, UserAuthBindingStatus, UserAuthProvider REDACTED from '@/types'
 
 const props = withDefaults(
@@ -62,17 +64,44 @@ const props = withDefaults(
     oidcEnabled?: boolean
     oidcProviderName?: string
     wechatEnabled?: boolean
+    wechatOpenEnabled?: boolean
+    wechatMpEnabled?: boolean
   REDACTED>(),
   {
     linuxdoEnabled: false,
     oidcEnabled: false,
     oidcProviderName: 'OIDC',
     wechatEnabled: false,
+    wechatOpenEnabled: undefined,
+    wechatMpEnabled: undefined,
   REDACTED
 )
 
 const { t REDACTED = useI18n()
 const route = useRoute()
+const appStore = useAppStore()
+
+const wechatOAuthSettings = computed<WeChatOAuthPublicSettings | null>(() => {
+  if (appStore.cachedPublicSettings) {
+    return appStore.cachedPublicSettings
+  REDACTED
+
+  if (
+    typeof props.wechatEnabled === 'boolean' ||
+    typeof props.wechatOpenEnabled === 'boolean' ||
+    typeof props.wechatMpEnabled === 'boolean'
+  ) {
+    return {
+      wechat_oauth_enabled: props.wechatEnabled,
+      wechat_oauth_open_enabled: props.wechatOpenEnabled,
+      wechat_oauth_mp_enabled: props.wechatMpEnabled,
+    REDACTED
+  REDACTED
+
+  return null
+REDACTED)
+
+const resolvedWeChatBinding = computed(() => resolveWeChatOAuthStart(wechatOAuthSettings.value))
 
 function normalizeBindingStatus(binding: boolean | UserAuthBindingStatus | undefined): boolean | null {
   if (typeof binding === 'boolean') {
@@ -129,7 +158,7 @@ const providerItems = computed(() => [
     provider: 'wechat' as const,
     label: t('profile.authBindings.providers.wechat'),
     bound: getBindingStatus('wechat'),
-    canBind: props.wechatEnabled && !getBindingStatus('wechat'),
+    canBind: resolvedWeChatBinding.value.mode !== null && !getBindingStatus('wechat'),
   REDACTED,
 ])
 
@@ -139,6 +168,7 @@ function startBinding(provider: UserAuthProvider): void {
   REDACTED
   startOAuthBinding(provider, {
     redirectTo: route.fullPath || '/profile',
+    wechatOAuthSettings: provider === 'wechat' ? wechatOAuthSettings.value : null,
   REDACTED)
 REDACTED
 </script>

@@ -363,7 +363,7 @@ export interface ResolvedWeChatOAuthStart {
   unavailableReason: WeChatOAuthUnavailableReason | null
 REDACTED
 
-type WeChatOAuthPublicSettings = {
+export type WeChatOAuthPublicSettings = {
   wechat_oauth_enabled?: boolean
   wechat_oauth_open_enabled?: boolean
   wechat_oauth_mp_enabled?: boolean

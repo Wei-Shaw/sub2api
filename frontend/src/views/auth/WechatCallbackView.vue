@@ -297,6 +297,7 @@ import {
   login2FA,
   prepareOAuthBindAccessTokenCookie,
   persistOAuthTokenContext,
+  resolveWeChatOAuthStart,
   type OAuthAdoptionDecision,
   type PendingOAuthExchangeResponse
 REDACTED from '@/api/auth'
@@ -378,7 +379,47 @@ function normalizeWeChatOAuthMode(value: unknown): 'open' | 'mp' | null {
   return value === 'open' || value === 'mp' ? value : null
 REDACTED
 
-function resolveRequestedWeChatOAuthMode(): 'open' | 'mp' {
+async function ensurePublicSettingsLoaded(): Promise<void> {
+  if (appStore.cachedPublicSettings || appStore.publicSettingsLoaded) {
+    return
+  REDACTED
+
+  try {
+    await appStore.fetchPublicSettings()
+  REDACTED catch {
+    // Fall back to legacy mode selection when public settings are unavailable.
+  REDACTED
+REDACTED
+
+function resolveConfiguredWeChatOAuthMode(): 'open' | 'mp' | null {
+  if (!appStore.cachedPublicSettings && !appStore.publicSettingsLoaded) {
+    return null
+  REDACTED
+
+  return resolveWeChatOAuthStart(appStore.cachedPublicSettings).mode
+REDACTED
+
+function resolveWeChatOAuthUnavailableMessage(): string {
+  const resolved = resolveWeChatOAuthStart(appStore.cachedPublicSettings)
+
+  switch (resolved.unavailableReason) {
+    case 'external_browser_required':
+      return 'This WeChat sign-in flow is only available in your system browser.'
+    case 'wechat_browser_required':
+      return 'This WeChat sign-in flow is only available inside the WeChat browser.'
+    case 'not_configured':
+      return 'WeChat sign-in is not configured yet.'
+    default:
+      return t('auth.loginFailed')
+  REDACTED
+REDACTED
+
+function resolveRequestedWeChatOAuthMode(): 'open' | 'mp' | null {
+  const configuredMode = resolveConfiguredWeChatOAuthMode()
+  if (configuredMode) {
+    return configuredMode
+  REDACTED
+
   const queryMode = normalizeWeChatOAuthMode(route.query.mode)
   return queryMode || resolveWeChatOAuthMode()
 REDACTED
@@ -389,11 +430,15 @@ function resolveRedirectTarget(): string {
   )
 REDACTED
 
-function resolveWeChatStartURL(intent: 'bind_current_user' | 'adopt_existing_user_by_email'): string {
+function resolveWeChatStartURL(intent: 'bind_current_user' | 'adopt_existing_user_by_email'): string | null {
   const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
   const normalized = apiBase.replace(/\/$/, '')
+  const mode = resolveRequestedWeChatOAuthMode()
+  if (!mode) {
+    return null
+  REDACTED
   const params = new URLSearchParams({
-    mode: resolveRequestedWeChatOAuthMode(),
+    mode,
     redirect: resolveRedirectTarget(),
     intent,
   REDACTED)
@@ -406,11 +451,15 @@ function resolveWeChatStartURL(intent: 'bind_current_user' | 'adopt_existing_use
   return `${normalizedREDACTED/auth/oauth/wechat/start?${params.toString()REDACTED`
 REDACTED
 
-function buildExistingAccountResumePath(): string {
+function buildExistingAccountResumePath(): string | null {
+  const mode = resolveRequestedWeChatOAuthMode()
+  if (!mode) {
+    return null
+  REDACTED
   const params = new URLSearchParams({
     wechat_bind_existing: '1',
     redirect: resolveRedirectTarget(),
-    mode: resolveRequestedWeChatOAuthMode(),
+    mode,
   REDACTED)
 
   const email = existingAccountEmail.value.trim()
@@ -444,14 +493,31 @@ function serializeAdoptionDecision(decision: OAuthAdoptionDecision): Record<stri
 REDACTED
 
 async function handleExistingAccountBinding() {
+  const unavailableMessage = resolveConfiguredWeChatOAuthMode() === null
+    ? resolveWeChatOAuthUnavailableMessage()
+    : ''
+
   if (getAuthToken()) {
+    const startURL = resolveWeChatStartURL('bind_current_user')
+    if (!startURL) {
+      errorMessage.value = unavailableMessage || resolveWeChatOAuthUnavailableMessage()
+      appStore.showError(errorMessage.value)
+      return
+    REDACTED
     prepareOAuthBindAccessTokenCookie()
-    window.location.href = resolveWeChatStartURL('bind_current_user')
+    window.location.href = startURL
+    return
+  REDACTED
+
+  const resumePath = buildExistingAccountResumePath()
+  if (!resumePath) {
+    errorMessage.value = unavailableMessage || resolveWeChatOAuthUnavailableMessage()
+    appStore.showError(errorMessage.value)
     return
   REDACTED
 
   const params = new URLSearchParams({
-    redirect: buildExistingAccountResumePath(),
+    redirect: resumePath,
   REDACTED)
   const email = existingAccountEmail.value.trim()
   if (email) {
@@ -720,19 +786,36 @@ async function handleSubmitTotpChallenge() {
 REDACTED
 
 onMounted(async () => {
+  await ensurePublicSettingsLoaded()
+
   if (typeof route.query.email === 'string') {
     existingAccountEmail.value = route.query.email
   REDACTED
 
   if (route.query.wechat_bind_existing === '1') {
     if (getAuthToken()) {
+      const startURL = resolveWeChatStartURL('bind_current_user')
+      if (!startURL) {
+        errorMessage.value = resolveWeChatOAuthUnavailableMessage()
+        appStore.showError(errorMessage.value)
+        isProcessing.value = false
+        return
+      REDACTED
       prepareOAuthBindAccessTokenCookie()
-      window.location.href = resolveWeChatStartURL('bind_current_user')
+      window.location.href = startURL
+      return
+    REDACTED
+
+    const resumePath = buildExistingAccountResumePath()
+    if (!resumePath) {
+      errorMessage.value = resolveWeChatOAuthUnavailableMessage()
+      appStore.showError(errorMessage.value)
+      isProcessing.value = false
       return
     REDACTED
 
     const params = new URLSearchParams({
-      redirect: buildExistingAccountResumePath(),
+      redirect: resumePath,
     REDACTED)
     const email = existingAccountEmail.value.trim()
     if (email) {

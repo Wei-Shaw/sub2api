@@ -338,6 +338,8 @@ export const useAppStore = defineStore('app', () => {
         custom_endpoints: [],
         linuxdo_oauth_enabled: false,
         wechat_oauth_enabled: false,
+        wechat_oauth_open_enabled: false,
+        wechat_oauth_mp_enabled: false,
         oidc_oauth_enabled: false,
         oidc_oauth_provider_name: 'OIDC',
         backend_mode_enabled: false,

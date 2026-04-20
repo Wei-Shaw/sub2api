@@ -67,7 +67,6 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
-import { authAPI REDACTED from '@/api'
 import { Icon REDACTED from '@/components/icons'
 import StatCard from '@/components/common/StatCard.vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -76,10 +75,12 @@ import ProfileEditForm from '@/components/user/profile/ProfileEditForm.vue'
 import ProfileInfoCard from '@/components/user/profile/ProfileInfoCard.vue'
 import ProfilePasswordForm from '@/components/user/profile/ProfilePasswordForm.vue'
 import ProfileTotpCard from '@/components/user/profile/ProfileTotpCard.vue'
+import { useAppStore REDACTED from '@/stores/app'
 import { useAuthStore REDACTED from '@/stores/auth'
 import { formatDate REDACTED from '@/utils/format'
 
 const { t REDACTED = useI18n()
+const appStore = useAppStore()
 const authStore = useAuthStore()
 const user = computed(() => authStore.user)
 
@@ -121,8 +122,11 @@ onMounted(async () => {
     console.error('Failed to refresh profile:', error)
   REDACTED)
 
-  const settingsLoad = authAPI.getPublicSettings()
+  const settingsLoad = appStore.fetchPublicSettings()
     .then((settings) => {
+      if (!settings) {
+        return
+      REDACTED
       contactInfo.value = settings.contact_info || ''
       balanceLowNotifyEnabled.value = settings.balance_low_notify_enabled ?? false
       systemDefaultThreshold.value = settings.balance_low_notify_threshold ?? 0

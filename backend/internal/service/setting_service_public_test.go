@@ -90,3 +90,18 @@ REDACTED
 REDACTED
 	require.True(t, settings.ForceEmailOnThirdPartySignup)
 REDACTED
+
+func TestSettingService_GetPublicSettings_ExposesWeChatOAuthModeCapabilities(t *testing.T) {
+	t.Setenv("WECHAT_OAUTH_OPEN_APP_ID", "wx-open-app")
+	t.Setenv("WECHAT_OAUTH_OPEN_APP_SECRET", "wx-open-secret")
+	t.Setenv("WECHAT_OAUTH_MP_APP_ID", "")
+	t.Setenv("WECHAT_OAUTH_MP_APP_SECRET", "")
+
+	svc := NewSettingService(&settingPublicRepoStub{REDACTED, &config.Config{REDACTED)
+
+	settings, err := svc.GetPublicSettings(context.Background())
+REDACTED
+	require.True(t, settings.WeChatOAuthEnabled)
+	require.True(t, settings.WeChatOAuthOpenEnabled)
+	require.False(t, settings.WeChatOAuthMPEnabled)
+REDACTED

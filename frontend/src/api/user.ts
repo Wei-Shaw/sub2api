@@ -4,7 +4,11 @@
  */
 
 import { apiClient REDACTED from './client'
-import { prepareOAuthBindAccessTokenCookie REDACTED from './auth'
+import {
+  prepareOAuthBindAccessTokenCookie,
+  resolveWeChatOAuthStart,
+  type WeChatOAuthPublicSettings,
+REDACTED from './auth'
 import type { User, ChangePasswordRequest, NotifyEmailEntry, UserAuthProvider REDACTED from '@/types'
 
 /**
@@ -89,6 +93,7 @@ export type BindableOAuthProvider = Exclude<UserAuthProvider, 'email'>
 
 interface BuildOAuthBindingStartURLOptions {
   redirectTo?: string
+  wechatOAuthSettings?: WeChatOAuthPublicSettings | null
 REDACTED
 
 export function resolveWeChatOAuthMode(): 'open' | 'mp' {
@@ -98,10 +103,19 @@ export function resolveWeChatOAuthMode(): 'open' | 'mp' {
   return /MicroMessenger/i.test(navigator.userAgent) ? 'mp' : 'open'
 REDACTED
 
+function resolveWeChatOAuthBindingMode(
+  settings?: WeChatOAuthPublicSettings | null
+): 'open' | 'mp' | null {
+  if (settings) {
+    return resolveWeChatOAuthStart(settings).mode
+  REDACTED
+  return resolveWeChatOAuthMode()
+REDACTED
+
 export function buildOAuthBindingStartURL(
   provider: BindableOAuthProvider,
   options: BuildOAuthBindingStartURLOptions = {REDACTED
-): string {
+): string | null {
   const redirectTo = options.redirectTo?.trim() || '/profile'
   const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
   const normalized = apiBase.replace(/\/$/, '')
@@ -111,7 +125,11 @@ export function buildOAuthBindingStartURL(
   REDACTED)
 
   if (provider === 'wechat') {
-    params.set('mode', resolveWeChatOAuthMode())
+    const mode = resolveWeChatOAuthBindingMode(options.wechatOAuthSettings)
+    if (!mode) {
+      return null
+    REDACTED
+    params.set('mode', mode)
   REDACTED
 
   return `${normalizedREDACTED/auth/oauth/${providerREDACTED/start?${params.toString()REDACTED`
@@ -124,8 +142,12 @@ export function startOAuthBinding(
   if (typeof window === 'undefined') {
     return
   REDACTED
+  const startURL = buildOAuthBindingStartURL(provider, options)
+  if (!startURL) {
+    return
+  REDACTED
   prepareOAuthBindAccessTokenCookie()
-  window.location.href = buildOAuthBindingStartURL(provider, options)
+  window.location.href = startURL
 REDACTED
 
 export const userAPI = {

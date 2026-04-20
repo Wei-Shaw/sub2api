@@ -14,8 +14,10 @@ const {
   setTokenMock,
   showSuccessMock,
   showErrorMock,
+  fetchPublicSettingsMock,
   routeState,
   locationState,
+  appStoreState,
 REDACTED = vi.hoisted(() => ({
   exchangePendingOAuthCompletionMock: vi.fn(),
   completeWeChatOAuthRegistrationMock: vi.fn(),
@@ -28,6 +30,7 @@ REDACTED = vi.hoisted(() => ({
   setTokenMock: vi.fn(),
   showSuccessMock: vi.fn(),
   showErrorMock: vi.fn(),
+  fetchPublicSettingsMock: vi.fn(),
   routeState: {
     query: {REDACTED as Record<string, unknown>,
   REDACTED,
@@ -38,6 +41,10 @@ REDACTED = vi.hoisted(() => ({
       search: '',
       pathname: '/auth/wechat/callback'
     REDACTED as { href: string; hash: string; search: string; pathname: string REDACTED,
+  REDACTED,
+  appStoreState: {
+    cachedPublicSettings: null as null | Record<string, unknown>,
+    publicSettingsLoaded: false,
   REDACTED,
 REDACTED))
 
@@ -102,8 +109,10 @@ vi.mock('@/stores', () => ({
     setToken: setTokenMock,
   REDACTED),
   useAppStore: () => ({
+    ...appStoreState,
     showSuccess: showSuccessMock,
     showError: showErrorMock,
+    fetchPublicSettings: fetchPublicSettingsMock,
   REDACTED),
 REDACTED))
 
@@ -139,7 +148,10 @@ describe('WechatCallbackView', () => {
     showErrorMock.mockReset()
     prepareOAuthBindAccessTokenCookieMock.mockReset()
     getAuthTokenMock.mockReset()
+    fetchPublicSettingsMock.mockReset()
     routeState.query = {REDACTED
+    appStoreState.cachedPublicSettings = null
+    appStoreState.publicSettingsLoaded = false
     localStorage.clear()
     locationState.current = {
       href: 'http://localhost/auth/wechat/callback',
@@ -155,6 +167,38 @@ describe('WechatCallbackView', () => {
       configurable: true,
       value: 'Mozilla/5.0',
     REDACTED)
+  REDACTED)
+
+  it('overrides an incompatible query mode with the configured open capability during bind recovery', async () => {
+    routeState.query = {
+      wechat_bind_existing: '1',
+      mode: 'mp',
+      redirect: '/profile',
+    REDACTED
+    appStoreState.cachedPublicSettings = {
+      wechat_oauth_enabled: true,
+      wechat_oauth_open_enabled: true,
+      wechat_oauth_mp_enabled: false,
+    REDACTED
+    appStoreState.publicSettingsLoaded = true
+    getAuthTokenMock.mockReturnValue('current-auth-token')
+
+    mount(WechatCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    await flushPromises()
+
+    expect(prepareOAuthBindAccessTokenCookieMock).toHaveBeenCalledTimes(1)
+    expect(locationState.current.href).toContain('mode=open')
+    expect(locationState.current.href).not.toContain('mode=mp')
   REDACTED)
 
   it('does not send adoption decisions during the initial exchange', async () => {
