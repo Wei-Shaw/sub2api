@@ -12,6 +12,8 @@ describe('oauth adoption auth api', () => {
   beforeEach(() => {
     post.mockReset()
     post.mockResolvedValue({ data: {REDACTED REDACTED)
+    localStorage.clear()
+    document.cookie = 'oauth_bind_access_token=; Max-Age=0; path=/'
   REDACTED)
 
   it('posts adoption decisions when exchanging pending oauth completion', async () => {
@@ -56,5 +58,44 @@ describe('oauth adoption auth api', () => {
       adopt_display_name: false,
       adopt_avatar: true
     REDACTED)
+  REDACTED)
+
+  it('posts wechat invitation completion with adoption decisions', async () => {
+    const { completeWeChatOAuthRegistration REDACTED = await import('@/api/auth')
+
+    await completeWeChatOAuthRegistration('invite-code', {
+      adoptDisplayName: true,
+      adoptAvatar: true
+    REDACTED)
+
+    expect(post).toHaveBeenCalledWith('/auth/oauth/wechat/complete-registration', {
+      invitation_code: 'invite-code',
+      adopt_display_name: true,
+      adopt_avatar: true
+    REDACTED)
+  REDACTED)
+
+  it('classifies oauth completion results as login or bind', async () => {
+    const { getOAuthCompletionKind REDACTED = await import('@/api/auth')
+
+    expect(getOAuthCompletionKind({ access_token: 'access-token' REDACTED)).toBe('login')
+    expect(getOAuthCompletionKind({ redirect: '/profile' REDACTED)).toBe('bind')
+  REDACTED)
+
+  it('prepares an oauth bind access token cookie before redirect binding', async () => {
+    localStorage.setItem('auth_token', 'access-token-value')
+    const setCookie = vi.fn()
+    Object.defineProperty(document, 'cookie', {
+      configurable: true,
+      get: () => '',
+      set: setCookie
+    REDACTED)
+
+    const { prepareOAuthBindAccessTokenCookie REDACTED = await import('@/api/auth')
+
+    prepareOAuthBindAccessTokenCookie()
+
+    expect(setCookie).toHaveBeenCalledTimes(1)
+    expect(setCookie.mock.calls[0]?.[0]).toContain('oauth_bind_access_token=access-token-value')
   REDACTED)
 REDACTED)

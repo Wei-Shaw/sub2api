@@ -391,6 +391,16 @@ REDACTED
 	return create.Save(ctx)
 REDACTED
 
+func shouldBindPendingOAuthIdentity(session *dbent.PendingAuthSession, decision *dbent.IdentityAdoptionDecision) bool {
+	if session == nil || decision == nil {
+		return false
+REDACTED
+	if strings.EqualFold(strings.TrimSpace(session.Intent), "bind_current_user") {
+		return true
+REDACTED
+	return decision.AdoptDisplayName || decision.AdoptAvatar
+REDACTED
+
 func applyPendingOAuthAdoption(
 	ctx context.Context,
 	client *dbent.Client,
@@ -401,7 +411,7 @@ func applyPendingOAuthAdoption(
 	if client == nil || session == nil || decision == nil {
 		return nil
 REDACTED
-	if !decision.AdoptDisplayName && !decision.AdoptAvatar {
+	if !shouldBindPendingOAuthIdentity(session, decision) {
 		return nil
 REDACTED
 

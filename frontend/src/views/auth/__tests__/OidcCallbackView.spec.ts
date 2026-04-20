@@ -45,11 +45,15 @@ vi.mock('@/stores', () => ({
   REDACTED)
 REDACTED))
 
-vi.mock('@/api/auth', () => ({
-  exchangePendingOAuthCompletion: (...args: any[]) => exchangePendingOAuthCompletion(...args),
-  completeOIDCOAuthRegistration: (...args: any[]) => completeOIDCOAuthRegistration(...args),
-  getPublicSettings: (...args: any[]) => getPublicSettings(...args)
-REDACTED))
+vi.mock('@/api/auth', async () => {
+  const actual = await vi.importActual<typeof import('@/api/auth')>('@/api/auth')
+  return {
+    ...actual,
+    exchangePendingOAuthCompletion: (...args: any[]) => exchangePendingOAuthCompletion(...args),
+    completeOIDCOAuthRegistration: (...args: any[]) => completeOIDCOAuthRegistration(...args),
+    getPublicSettings: (...args: any[]) => getPublicSettings(...args)
+  REDACTED
+REDACTED)
 
 describe('OidcCallbackView', () => {
   beforeEach(() => {
@@ -141,6 +145,43 @@ describe('OidcCallbackView', () => {
     REDACTED)
     expect(setToken).toHaveBeenCalledWith('access-token')
     expect(replace).toHaveBeenCalledWith('/dashboard')
+  REDACTED)
+
+  it('supports bind completion after adoption confirmation', async () => {
+    exchangePendingOAuthCompletion
+      .mockResolvedValueOnce({
+        redirect: '/dashboard',
+        adoption_required: true,
+        suggested_display_name: 'OIDC Nick',
+        suggested_avatar_url: 'https://cdn.example/oidc.png'
+      REDACTED)
+      .mockResolvedValueOnce({
+        redirect: '/profile'
+      REDACTED)
+
+    const wrapper = mount(OidcCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+
+    await wrapper.findAll('button')[0].trigger('click')
+    await flushPromises()
+
+    expect(exchangePendingOAuthCompletion).toHaveBeenNthCalledWith(2, {
+      adoptDisplayName: true,
+      adoptAvatar: true
+    REDACTED)
+    expect(setToken).not.toHaveBeenCalled()
+    expect(showSuccess).toHaveBeenCalledWith('profile.authBindings.bindSuccess')
+    expect(replace).toHaveBeenCalledWith('/profile')
   REDACTED)
 
   it('renders adoption choices for invitation flow and submits the selected values', async () => {

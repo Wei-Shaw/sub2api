@@ -4,7 +4,8 @@
  */
 
 import { apiClient REDACTED from './client'
-import type { User, ChangePasswordRequest, NotifyEmailEntry REDACTED from '@/types'
+import { prepareOAuthBindAccessTokenCookie REDACTED from './auth'
+import type { User, ChangePasswordRequest, NotifyEmailEntry, UserAuthProvider REDACTED from '@/types'
 
 /**
  * Get current user profile
@@ -83,6 +84,49 @@ export async function toggleNotifyEmail(email: string, disabled: boolean): Promi
   return data
 REDACTED
 
+export type BindableOAuthProvider = Exclude<UserAuthProvider, 'email'>
+
+interface BuildOAuthBindingStartURLOptions {
+  redirectTo?: string
+REDACTED
+
+export function resolveWeChatOAuthMode(): 'open' | 'mp' {
+  if (typeof navigator === 'undefined') {
+    return 'open'
+  REDACTED
+  return /MicroMessenger/i.test(navigator.userAgent) ? 'mp' : 'open'
+REDACTED
+
+export function buildOAuthBindingStartURL(
+  provider: BindableOAuthProvider,
+  options: BuildOAuthBindingStartURLOptions = {REDACTED
+): string {
+  const redirectTo = options.redirectTo?.trim() || '/profile'
+  const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
+  const normalized = apiBase.replace(/\/$/, '')
+  const params = new URLSearchParams({
+    redirect: redirectTo,
+    intent: 'bind_current_user'
+  REDACTED)
+
+  if (provider === 'wechat') {
+    params.set('mode', resolveWeChatOAuthMode())
+  REDACTED
+
+  return `${normalizedREDACTED/auth/oauth/${providerREDACTED/start?${params.toString()REDACTED`
+REDACTED
+
+export function startOAuthBinding(
+  provider: BindableOAuthProvider,
+  options: BuildOAuthBindingStartURLOptions = {REDACTED
+): void {
+  if (typeof window === 'undefined') {
+    return
+  REDACTED
+  prepareOAuthBindAccessTokenCookie()
+  window.location.href = buildOAuthBindingStartURL(provider, options)
+REDACTED
+
 export const userAPI = {
   getProfile,
   updateProfile,
@@ -90,7 +134,9 @@ export const userAPI = {
   sendNotifyEmailCode,
   verifyNotifyEmail,
   removeNotifyEmail,
-  toggleNotifyEmail
+  toggleNotifyEmail,
+  buildOAuthBindingStartURL,
+  startOAuthBinding
 REDACTED
 
 export default userAPI

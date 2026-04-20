@@ -108,5 +108,23 @@ REDACTED
 		authenticated.GET("/auth/me", h.Auth.GetCurrentUser)
 		// 撤销所有会话（需要认证）
 		authenticated.POST("/auth/revoke-all-sessions", h.Auth.RevokeAllSessions)
+		authenticated.GET("/auth/oauth/linuxdo/bind/start", func(c *gin.Context) {
+			query := c.Request.URL.Query()
+			query.Set("intent", "bind_current_user")
+			c.Request.URL.RawQuery = query.Encode()
+			h.Auth.LinuxDoOAuthStart(c)
+	REDACTED)
+		authenticated.GET("/auth/oauth/oidc/bind/start", func(c *gin.Context) {
+			query := c.Request.URL.Query()
+			query.Set("intent", "bind_current_user")
+			c.Request.URL.RawQuery = query.Encode()
+			h.Auth.OIDCOAuthStart(c)
+	REDACTED)
+		authenticated.GET("/auth/oauth/wechat/bind/start", func(c *gin.Context) {
+			query := c.Request.URL.Query()
+			query.Set("intent", "bind_current_user")
+			c.Request.URL.RawQuery = query.Encode()
+			h.Auth.WeChatOAuthStart(c)
+	REDACTED)
 REDACTED
 REDACTED

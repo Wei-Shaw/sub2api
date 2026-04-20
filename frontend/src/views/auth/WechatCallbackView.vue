@@ -140,27 +140,16 @@ import { useRoute, useRouter REDACTED from 'vue-router'
 import { useI18n REDACTED from 'vue-i18n'
 import { AuthLayout REDACTED from '@/components/layout'
 import Icon from '@/components/icons/Icon.vue'
-import { apiClient REDACTED from '@/api/client'
 import { useAuthStore, useAppStore REDACTED from '@/stores'
-
-interface OAuthTokenResponse {
-  access_token: string
-  refresh_token: string
-  expires_in: number
-  token_type: string
-REDACTED
-
-interface PendingOAuthExchangeResponse {
-  access_token?: string
-  refresh_token?: string
-  expires_in?: number
-  token_type?: string
-  redirect?: string
-  error?: string
-  adoption_required?: boolean
-  suggested_display_name?: string
-  suggested_avatar_url?: string
-REDACTED
+import {
+  completeWeChatOAuthRegistration,
+  exchangePendingOAuthCompletion,
+  getOAuthCompletionKind,
+  isOAuthLoginCompletion,
+  persistOAuthTokenContext,
+  type OAuthAdoptionDecision,
+  type PendingOAuthExchangeResponse
+REDACTED from '@/api/auth'
 
 const route = useRoute()
 const router = useRouter()
@@ -182,6 +171,7 @@ const suggestedAvatarUrl = ref('')
 const adoptDisplayName = ref(true)
 const adoptAvatar = ref(true)
 const needsAdoptionConfirmation = ref(false)
+const bindSuccessMessage = t('profile.authBindings.bindSuccess')
 
 const providerName = 'WeChat'
 
@@ -200,10 +190,10 @@ function sanitizeRedirectPath(path: string | null | undefined): string {
   return path
 REDACTED
 
-function currentAdoptionDecision(): Record<string, boolean> {
+function currentAdoptionDecision(): OAuthAdoptionDecision {
   return {
-    adopt_display_name: adoptDisplayName.value,
-    adopt_avatar: adoptAvatar.value,
+    adoptDisplayName: adoptDisplayName.value,
+    adoptAvatar: adoptAvatar.value
   REDACTED
 REDACTED
 
@@ -224,34 +214,22 @@ function hasSuggestedProfile(completion: PendingOAuthExchangeResponse): boolean 
   return Boolean(completion.suggested_display_name || completion.suggested_avatar_url)
 REDACTED
 
-async function exchangePendingOAuthCompletion(): Promise<PendingOAuthExchangeResponse> {
-  const { data REDACTED = await apiClient.post<PendingOAuthExchangeResponse>('/auth/oauth/pending/exchange', {REDACTED)
-  return data
-REDACTED
+async function finalizeCompletion(completion: PendingOAuthExchangeResponse, redirect: string) {
+  if (getOAuthCompletionKind(completion) === 'bind') {
+    const bindRedirect = sanitizeRedirectPath(completion.redirect || '/profile')
+    appStore.showSuccess(bindSuccessMessage)
+    await router.replace(bindRedirect)
+    return
+  REDACTED
 
-async function finalizeLogin(completion: PendingOAuthExchangeResponse, redirect: string) {
-  if (!completion.access_token) {
+  if (!isOAuthLoginCompletion(completion)) {
     throw new Error(t('auth.oidc.callbackMissingToken'))
   REDACTED
 
-  if (completion.refresh_token) {
-    localStorage.setItem('refresh_token', completion.refresh_token)
-  REDACTED
-  if (completion.expires_in) {
-    localStorage.setItem('token_expires_at', String(Date.now() + completion.expires_in * 1000))
-  REDACTED
-
+  persistOAuthTokenContext(completion)
   await authStore.setToken(completion.access_token)
   appStore.showSuccess(t('auth.loginSuccess'))
   await router.replace(redirect)
-REDACTED
-
-async function completeWeChatOAuthRegistration(invitation: string): Promise<OAuthTokenResponse> {
-  const { data REDACTED = await apiClient.post<OAuthTokenResponse>('/auth/oauth/wechat/complete-registration', {
-    invitation_code: invitation,
-    ...currentAdoptionDecision(),
-  REDACTED)
-  return data
 REDACTED
 
 async function handleSubmitInvitation() {
@@ -260,13 +238,11 @@ async function handleSubmitInvitation() {
 
   isSubmitting.value = true
   try {
-    const tokenData = await completeWeChatOAuthRegistration(invitationCode.value.trim())
-    if (tokenData.refresh_token) {
-      localStorage.setItem('refresh_token', tokenData.refresh_token)
-    REDACTED
-    if (tokenData.expires_in) {
-      localStorage.setItem('token_expires_at', String(Date.now() + tokenData.expires_in * 1000))
-    REDACTED
+    const tokenData = await completeWeChatOAuthRegistration(
+      invitationCode.value.trim(),
+      currentAdoptionDecision()
+    )
+    persistOAuthTokenContext(tokenData)
     await authStore.setToken(tokenData.access_token)
     appStore.showSuccess(t('auth.loginSuccess'))
     await router.replace(redirectTo.value)
@@ -282,11 +258,8 @@ REDACTED
 async function handleContinueLogin() {
   isSubmitting.value = true
   try {
-    const { data REDACTED = await apiClient.post<PendingOAuthExchangeResponse>(
-      '/auth/oauth/pending/exchange',
-      currentAdoptionDecision()
-    )
-    await finalizeLogin(data, redirectTo.value)
+    const completion = await exchangePendingOAuthCompletion(currentAdoptionDecision())
+    await finalizeCompletion(completion, redirectTo.value)
   REDACTED catch (e: unknown) {
     const err = e as { message?: string; response?: { data?: { detail?: string; message?: string REDACTED REDACTED REDACTED
     errorMessage.value =
@@ -333,7 +306,7 @@ onMounted(async () => {
       return
     REDACTED
 
-    await finalizeLogin(completion, redirect)
+    await finalizeCompletion(completion, redirect)
   REDACTED catch (e: unknown) {
     const err = e as { message?: string; response?: { data?: { detail?: string; message?: string REDACTED REDACTED REDACTED
     errorMessage.value =

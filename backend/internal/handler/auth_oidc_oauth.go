@@ -32,14 +32,16 @@ import (
 )
 
 const (
-	oidcOAuthCookiePath        = "/api/v1/auth/oauth/oidc"
-	oidcOAuthStateCookieName   = "oidc_oauth_state"
-	oidcOAuthVerifierCookie    = "oidc_oauth_verifier"
-	oidcOAuthRedirectCookie    = "oidc_oauth_redirect"
-	oidcOAuthNonceCookie       = "oidc_oauth_nonce"
-	oidcOAuthCookieMaxAgeSec   = 10 * 60 // 10 minutes
-	oidcOAuthDefaultRedirectTo = "/dashboard"
-	oidcOAuthDefaultFrontendCB = "/auth/oidc/callback"
+	oidcOAuthCookiePath         = "/api/v1/auth/oauth/oidc"
+	oidcOAuthStateCookieName    = "oidc_oauth_state"
+	oidcOAuthVerifierCookie     = "oidc_oauth_verifier"
+	oidcOAuthRedirectCookie     = "oidc_oauth_redirect"
+	oidcOAuthNonceCookie        = "oidc_oauth_nonce"
+	oidcOAuthIntentCookieName   = "oidc_oauth_intent"
+	oidcOAuthBindUserCookieName = "oidc_oauth_bind_user"
+	oidcOAuthCookieMaxAgeSec    = 10 * 60 // 10 minutes
+	oidcOAuthDefaultRedirectTo  = "/dashboard"
+	oidcOAuthDefaultFrontendCB  = "/auth/oidc/callback"
 )
 
 type oidcTokenResponse struct {
@@ -138,8 +140,20 @@ REDACTED
 	secureCookie := isRequestHTTPS(c)
 	oidcSetCookie(c, oidcOAuthStateCookieName, encodeCookieValue(state), oidcOAuthCookieMaxAgeSec, secureCookie)
 	oidcSetCookie(c, oidcOAuthRedirectCookie, encodeCookieValue(redirectTo), oidcOAuthCookieMaxAgeSec, secureCookie)
+	intent := normalizeOAuthIntent(c.Query("intent"))
+	oidcSetCookie(c, oidcOAuthIntentCookieName, encodeCookieValue(intent), oidcOAuthCookieMaxAgeSec, secureCookie)
 	setOAuthPendingBrowserCookie(c, browserSessionKey, secureCookie)
 	clearOAuthPendingSessionCookie(c, secureCookie)
+	if intent == oauthIntentBindCurrentUser {
+		bindCookieValue, err := h.buildOAuthBindUserCookieFromContext(c)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+	REDACTED
+		oidcSetCookie(c, oidcOAuthBindUserCookieName, encodeCookieValue(bindCookieValue), oidcOAuthCookieMaxAgeSec, secureCookie)
+REDACTED else {
+		oidcClearCookie(c, oidcOAuthBindUserCookieName, secureCookie)
+REDACTED
 
 	codeChallenge := ""
 	verifier, genErr := oauth.GenerateCodeVerifier()
@@ -205,6 +219,8 @@ REDACTED
 		oidcClearCookie(c, oidcOAuthVerifierCookie, secureCookie)
 		oidcClearCookie(c, oidcOAuthRedirectCookie, secureCookie)
 		oidcClearCookie(c, oidcOAuthNonceCookie, secureCookie)
+		oidcClearCookie(c, oidcOAuthIntentCookieName, secureCookie)
+		oidcClearCookie(c, oidcOAuthBindUserCookieName, secureCookie)
 REDACTED()
 
 	expectedState, err := readCookieDecoded(c, oidcOAuthStateCookieName)
@@ -223,6 +239,8 @@ REDACTED
 		redirectOAuthError(c, frontendCallback, "missing_browser_session", "missing oauth browser session", "")
 		return
 REDACTED
+	intent, _ := readCookieDecoded(c, oidcOAuthIntentCookieName)
+	intent = normalizeOAuthIntent(intent)
 
 	codeVerifier := ""
 	codeVerifier, _ = readCookieDecoded(c, oidcOAuthVerifierCookie)
@@ -324,6 +342,43 @@ REDACTED
 		idClaims.Name,
 		oidcFallbackUsername(subject),
 	)
+	if intent == oauthIntentBindCurrentUser {
+		targetUserID, err := h.readOAuthBindUserIDFromCookie(c, oidcOAuthBindUserCookieName)
+		if err != nil {
+			redirectOAuthError(c, frontendCallback, "invalid_state", "invalid oauth bind target", "")
+			return
+	REDACTED
+		if err := h.createOAuthPendingSession(c, oauthPendingSessionPayload{
+			Intent: oauthIntentBindCurrentUser,
+			Identity: service.PendingAuthIdentityKey{
+				ProviderType:    "oidc",
+				ProviderKey:     issuer,
+				ProviderSubject: subject,
+		REDACTED,
+			TargetUserID:      &targetUserID,
+			ResolvedEmail:     email,
+			RedirectTo:        redirectTo,
+			BrowserSessionKey: browserSessionKey,
+			UpstreamIdentityClaims: map[string]any{
+				"email":                  email,
+				"username":               username,
+				"subject":                subject,
+				"issuer":                 issuer,
+				"email_verified":         emailVerified != nil && *emailVerified,
+				"provider_fallback":      strings.TrimSpace(cfg.ProviderName),
+				"suggested_display_name": firstNonEmpty(userInfoClaims.DisplayName, idClaims.Name, username),
+				"suggested_avatar_url":   userInfoClaims.AvatarURL,
+		REDACTED,
+			CompletionResponse: map[string]any{
+				"redirect": redirectTo,
+		REDACTED,
+	REDACTED); err != nil {
+			redirectOAuthError(c, frontendCallback, "session_error", "failed to continue oauth bind", "")
+			return
+	REDACTED
+		redirectToFrontendCallback(c, frontendCallback)
+		return
+REDACTED
 
 	// 传入空邀请码；如果需要邀请码，服务层返回 ErrOAuthInvitationRequired
 	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, "")

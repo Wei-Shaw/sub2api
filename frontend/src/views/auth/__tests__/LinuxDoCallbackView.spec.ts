@@ -39,10 +39,14 @@ vi.mock('@/stores', () => ({
   REDACTED)
 REDACTED))
 
-vi.mock('@/api/auth', () => ({
-  exchangePendingOAuthCompletion: (...args: any[]) => exchangePendingOAuthCompletion(...args),
-  completeLinuxDoOAuthRegistration: (...args: any[]) => completeLinuxDoOAuthRegistration(...args)
-REDACTED))
+vi.mock('@/api/auth', async () => {
+  const actual = await vi.importActual<typeof import('@/api/auth')>('@/api/auth')
+  return {
+    ...actual,
+    exchangePendingOAuthCompletion: (...args: any[]) => exchangePendingOAuthCompletion(...args),
+    completeLinuxDoOAuthRegistration: (...args: any[]) => completeLinuxDoOAuthRegistration(...args)
+  REDACTED
+REDACTED)
 
 describe('LinuxDoCallbackView', () => {
   beforeEach(() => {
@@ -130,6 +134,64 @@ describe('LinuxDoCallbackView', () => {
     REDACTED)
     expect(setToken).toHaveBeenCalledWith('access-token')
     expect(replace).toHaveBeenCalledWith('/dashboard')
+  REDACTED)
+
+  it('treats a completion without token as bind success and returns to profile', async () => {
+    exchangePendingOAuthCompletion.mockResolvedValue({REDACTED)
+
+    mount(LinuxDoCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+
+    expect(setToken).not.toHaveBeenCalled()
+    expect(showSuccess).toHaveBeenCalledWith('profile.authBindings.bindSuccess')
+    expect(replace).toHaveBeenCalledWith('/profile')
+  REDACTED)
+
+  it('supports bind completion after adoption confirmation', async () => {
+    exchangePendingOAuthCompletion
+      .mockResolvedValueOnce({
+        redirect: '/dashboard',
+        adoption_required: true,
+        suggested_display_name: 'LinuxDo Nick',
+        suggested_avatar_url: 'https://cdn.example/linuxdo.png'
+      REDACTED)
+      .mockResolvedValueOnce({
+        redirect: '/profile/security'
+      REDACTED)
+
+    const wrapper = mount(LinuxDoCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+
+    await wrapper.findAll('button')[0].trigger('click')
+    await flushPromises()
+
+    expect(exchangePendingOAuthCompletion).toHaveBeenNthCalledWith(2, {
+      adoptDisplayName: true,
+      adoptAvatar: true
+    REDACTED)
+    expect(setToken).not.toHaveBeenCalled()
+    expect(showSuccess).toHaveBeenCalledWith('profile.authBindings.bindSuccess')
+    expect(replace).toHaveBeenCalledWith('/profile/security')
   REDACTED)
 
   it('renders adoption choices for invitation flow and submits the selected values', async () => {

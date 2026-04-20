@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"context"
+
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -41,7 +43,8 @@ REDACTED
 
 type userProfileResponse struct {
 	dto.User
-	AvatarURL string `json:"avatar_url,omitempty"`
+	AvatarURL  string                         `json:"avatar_url,omitempty"`
+	Identities service.UserIdentitySummarySet `json:"identities"`
 REDACTED
 
 // GetProfile handles getting user profile
@@ -59,7 +62,13 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, userProfileResponseFromService(userData))
+	profileResp, err := h.buildUserProfileResponse(c.Request.Context(), subject.UserID, userData)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, profileResp)
 REDACTED
 
 // ChangePassword handles changing user password
@@ -117,7 +126,44 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, userProfileResponseFromService(updatedUser))
+	profileResp, err := h.buildUserProfileResponse(c.Request.Context(), subject.UserID, updatedUser)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, profileResp)
+REDACTED
+
+type StartIdentityBindingRequest struct {
+	Provider   string `json:"provider" binding:"required"`
+	RedirectTo string `json:"redirect_to"`
+REDACTED
+
+// StartIdentityBinding returns the backend authorize URL for starting a third-party identity bind flow.
+// POST /api/v1/user/auth-identities/bind/start
+func (h *UserHandler) StartIdentityBinding(c *gin.Context) {
+	if _, ok := middleware2.GetAuthSubjectFromContext(c); !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+REDACTED
+
+	var req StartIdentityBindingRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+
+	result, err := h.userService.PrepareIdentityBindingStart(c.Request.Context(), service.StartUserIdentityBindingRequest{
+		Provider:   req.Provider,
+		RedirectTo: req.RedirectTo,
+REDACTED)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, result)
 REDACTED
 
 // SendNotifyEmailCodeRequest represents the request to send notify email verification code
@@ -183,7 +229,13 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, userProfileResponseFromService(updatedUser))
+	profileResp, err := h.buildUserProfileResponse(c.Request.Context(), subject.UserID, updatedUser)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, profileResp)
 REDACTED
 
 // RemoveNotifyEmailRequest represents the request to remove a notify email
@@ -219,7 +271,13 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, userProfileResponseFromService(updatedUser))
+	profileResp, err := h.buildUserProfileResponse(c.Request.Context(), subject.UserID, updatedUser)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, profileResp)
 REDACTED
 
 // ToggleNotifyEmailRequest represents the request to toggle a notify email's disabled state
@@ -255,16 +313,31 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, userProfileResponseFromService(updatedUser))
+	profileResp, err := h.buildUserProfileResponse(c.Request.Context(), subject.UserID, updatedUser)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
 REDACTED
 
-func userProfileResponseFromService(user *service.User) userProfileResponse {
+	response.Success(c, profileResp)
+REDACTED
+
+func (h *UserHandler) buildUserProfileResponse(ctx context.Context, userID int64, user *service.User) (userProfileResponse, error) {
+	identities, err := h.userService.GetProfileIdentitySummaries(ctx, userID, user)
+	if err != nil {
+		return userProfileResponse{REDACTED, err
+REDACTED
+	return userProfileResponseFromService(user, identities), nil
+REDACTED
+
+func userProfileResponseFromService(user *service.User, identities service.UserIdentitySummarySet) userProfileResponse {
 	base := dto.UserFromService(user)
 	if base == nil {
 		return userProfileResponse{REDACTED
 REDACTED
 	return userProfileResponse{
-		User:      *base,
-		AvatarURL: user.AvatarURL,
+		User:       *base,
+		AvatarURL:  user.AvatarURL,
+		Identities: identities,
 REDACTED
 REDACTED

@@ -34,10 +34,47 @@ REDACTED
 
 // ==================== User & Auth Types ====================
 
+export type UserAuthProvider = 'email' | 'linuxdo' | 'oidc' | 'wechat'
+
+export interface UserAuthBindingStatus {
+  bound?: boolean
+  provider?: UserAuthProvider | string
+  provider_key?: string | null
+  provider_subject?: string | null
+  issuer?: string | null
+  label?: string | null
+  provider_label?: string | null
+  metadata?: Record<string, unknown>
+REDACTED
+
+export interface UserProfileSourceContext {
+  provider?: UserAuthProvider | string
+  source?: string | null
+  label?: string | null
+  provider_label?: string | null
+REDACTED
+
 export interface User {
   id: number
   username: string
   email: string
+  avatar_url?: string | null
+  avatar_source?: string | UserProfileSourceContext | null
+  username_source?: string | UserProfileSourceContext | null
+  display_name_source?: string | UserProfileSourceContext | null
+  nickname_source?: string | UserProfileSourceContext | null
+  profile_sources?: {
+    avatar?: string | UserProfileSourceContext | null
+    username?: string | UserProfileSourceContext | null
+    display_name?: string | UserProfileSourceContext | null
+    nickname?: string | UserProfileSourceContext | null
+  REDACTED
+  auth_bindings?: Partial<Record<UserAuthProvider, boolean | UserAuthBindingStatus>>
+  identity_bindings?: Partial<Record<UserAuthProvider, boolean | UserAuthBindingStatus>>
+  email_bound?: boolean
+  linuxdo_bound?: boolean
+  oidc_bound?: boolean
+  wechat_bound?: boolean
   role: 'admin' | 'user' // User role for authorization
   balance: number // User balance for API usage
   concurrency: number // Allowed concurrent requests
