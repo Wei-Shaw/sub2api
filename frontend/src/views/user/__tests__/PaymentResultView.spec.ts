@@ -1,0 +1,132 @@
+import { beforeEach, describe, expect, it, vi REDACTED from 'vitest'
+import { flushPromises, mount REDACTED from '@vue/test-utils'
+
+const routeState = vi.hoisted(() => ({
+  query: {REDACTED as Record<string, unknown>,
+REDACTED))
+
+const routerPush = vi.hoisted(() => vi.fn())
+const pollOrderStatus = vi.hoisted(() => vi.fn())
+const verifyOrderPublic = vi.hoisted(() => vi.fn())
+const verifyOrder = vi.hoisted(() => vi.fn())
+
+vi.mock('vue-router', async () => {
+  const actual = await vi.importActual<typeof import('vue-router')>('vue-router')
+  return {
+    ...actual,
+    useRoute: () => routeState,
+    useRouter: () => ({ push: routerPush REDACTED),
+  REDACTED
+REDACTED)
+
+vi.mock('vue-i18n', async () => {
+  const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
+  return {
+    ...actual,
+    useI18n: () => ({
+      t: (key: string) => key,
+    REDACTED),
+  REDACTED
+REDACTED)
+
+vi.mock('@/stores/payment', () => ({
+  usePaymentStore: () => ({
+    pollOrderStatus,
+  REDACTED),
+REDACTED))
+
+vi.mock('@/api/payment', () => ({
+  paymentAPI: {
+    verifyOrderPublic,
+    verifyOrder,
+  REDACTED,
+REDACTED))
+
+import PaymentResultView from '../PaymentResultView.vue'
+import { PAYMENT_RECOVERY_STORAGE_KEY REDACTED from '@/components/payment/paymentFlow'
+
+const orderFactory = (status: string) => ({
+  id: 42,
+  user_id: 9,
+  amount: 88,
+  pay_amount: 88,
+  fee_rate: 0,
+  payment_type: 'alipay',
+  out_trade_no: 'sub2_20260420abcd1234',
+  status,
+  order_type: 'balance',
+  created_at: '2026-04-20T12:00:00Z',
+  expires_at: '2026-04-20T12:30:00Z',
+  refund_amount: 0,
+REDACTED)
+
+describe('PaymentResultView', () => {
+  beforeEach(() => {
+    routeState.query = {REDACTED
+    routerPush.mockReset()
+    pollOrderStatus.mockReset()
+    verifyOrderPublic.mockReset()
+    verifyOrder.mockReset()
+    window.localStorage.clear()
+  REDACTED)
+
+  it('restores order id from a matching resume token and does not trust query success flags', async () => {
+    routeState.query = {
+      resume_token: 'resume-42',
+      status: 'success',
+    REDACTED
+    window.localStorage.setItem(PAYMENT_RECOVERY_STORAGE_KEY, JSON.stringify({
+      orderId: 42,
+      amount: 88,
+      qrCode: '',
+      expiresAt: '2099-01-01T00:10:00.000Z',
+      paymentType: 'alipay',
+      payUrl: 'https://pay.example.com/session/42',
+      clientSecret: '',
+      payAmount: 88,
+      orderType: 'balance',
+      paymentMode: 'redirect',
+      resumeToken: 'resume-42',
+      createdAt: Date.UTC(2099, 0, 1, 0, 0, 0),
+    REDACTED))
+    pollOrderStatus.mockResolvedValue(orderFactory('PENDING'))
+
+    const wrapper = mount(PaymentResultView, {
+      global: {
+        stubs: {
+          OrderStatusBadge: true,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    await flushPromises()
+
+    expect(pollOrderStatus).toHaveBeenCalledWith(42)
+    expect(verifyOrderPublic).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('payment.result.failed')
+    expect(wrapper.text()).not.toContain('payment.result.success')
+  REDACTED)
+
+  it('keeps legacy out_trade_no verification as a fallback when no order context is available', async () => {
+    routeState.query = {
+      out_trade_no: 'legacy-123',
+      trade_status: 'TRADE_SUCCESS',
+    REDACTED
+    verifyOrderPublic.mockResolvedValue({
+      data: orderFactory('PAID'),
+    REDACTED)
+
+    const wrapper = mount(PaymentResultView, {
+      global: {
+        stubs: {
+          OrderStatusBadge: true,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    await flushPromises()
+
+    expect(verifyOrderPublic).toHaveBeenCalledWith('legacy-123')
+    expect(wrapper.text()).toContain('payment.result.success')
+  REDACTED)
+REDACTED)
