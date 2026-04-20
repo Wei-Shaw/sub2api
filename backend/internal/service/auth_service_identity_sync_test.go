@@ -170,24 +170,26 @@ REDACTED
 	require.NotNil(t, identity.VerifiedAt)
 REDACTED
 
-func TestAuthServiceLoginTouchesLastLoginAt(t *testing.T) {
-	svc, repo, client := newAuthServiceWithEnt(t, map[string]string{
+func TestAuthServiceLoginDefersLastLoginTouchUntilRecordSuccessfulLogin(t *testing.T) {
+	svc, _, client := newAuthServiceWithEnt(t, map[string]string{
 		service.SettingKeyRegistrationEnabled: "true",
 REDACTED, nil)
 	ctx := context.Background()
 
-	user := &service.User{
-		Email:       "login@example.com",
-		Role:        service.RoleUser,
-		Status:      service.StatusActive,
-		Balance:     1,
-		Concurrency: 1,
+	passwordHash, err := svc.HashPassword("password")
 REDACTED
-	require.NoError(t, user.SetPassword("password"))
-	require.NoError(t, repo.Create(ctx, user))
+	user, err := client.User.Create().
+		SetEmail("login@example.com").
+		SetPasswordHash(passwordHash).
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		SetBalance(1).
+		SetConcurrency(1).
+		Save(ctx)
+REDACTED
 
 	old := time.Now().Add(-2 * time.Hour).UTC().Round(time.Second)
-	_, err := client.User.UpdateOneID(user.ID).
+	_, err = client.User.UpdateOneID(user.ID).
 		SetLastLoginAt(old).
 		SetLastActiveAt(old).
 		Save(ctx)
@@ -202,8 +204,20 @@ REDACTED
 REDACTED
 	require.NotNil(t, storedUser.LastLoginAt)
 	require.NotNil(t, storedUser.LastActiveAt)
-	require.True(t, storedUser.LastLoginAt.After(old))
-	require.True(t, storedUser.LastActiveAt.After(old))
+	require.True(t, storedUser.LastLoginAt.Equal(old))
+	require.True(t, storedUser.LastActiveAt.Equal(old))
+
+	identityCount, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ("email"),
+			authidentity.ProviderKeyEQ("email"),
+			authidentity.ProviderSubjectEQ("login@example.com"),
+		).
+		Count(ctx)
+REDACTED
+	require.Zero(t, identityCount)
+
+	svc.RecordSuccessfulLogin(ctx, user.ID)
 
 	identity, err := client.AuthIdentity.Query().
 		Where(
@@ -273,6 +287,7 @@ REDACTED
 REDACTED
 	require.NotEmpty(t, token)
 	require.NotNil(t, gotUser)
+	svc.RecordSuccessfulLogin(ctx, user.ID)
 
 	storedUser, err := client.User.Get(ctx, user.ID)
 REDACTED
@@ -343,6 +358,7 @@ REDACTED
 REDACTED
 	require.NotEmpty(t, token)
 	require.NotNil(t, gotUser)
+	svc.RecordSuccessfulLogin(ctx, user.ID)
 
 	storedUser, err := client.User.Get(ctx, user.ID)
 REDACTED
@@ -380,6 +396,7 @@ REDACTED
 REDACTED
 	require.NotEmpty(t, token)
 	require.NotNil(t, gotUser)
+	svc.RecordSuccessfulLogin(ctx, user.ID)
 
 	storedUser, err := client.User.Get(ctx, user.ID)
 REDACTED
@@ -392,6 +409,7 @@ REDACTED
 REDACTED
 	require.NotEmpty(t, token)
 	require.NotNil(t, gotUser)
+	svc.RecordSuccessfulLogin(ctx, user.ID)
 
 	storedUser, err = client.User.Get(ctx, user.ID)
 REDACTED

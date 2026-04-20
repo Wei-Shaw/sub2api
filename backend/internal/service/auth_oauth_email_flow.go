@@ -104,7 +104,7 @@ REDACTED
 		return nil, nil, ErrServiceUnavailable
 REDACTED
 
-	s.postAuthUserBootstrap(ctx, user, signupSource, true)
+	s.postAuthUserBootstrap(ctx, user, signupSource, false)
 	s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
 
 	if invitationRedeemCode != nil {

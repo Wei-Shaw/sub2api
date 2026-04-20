@@ -474,6 +474,14 @@ REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
+	if err := ensurePendingOAuthCompleteRegistrationSession(session); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	if err := h.ensureBackendModeAllowsNewUserLogin(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
 
 	email := strings.TrimSpace(session.ResolvedEmail)
 	username := pendingSessionStringValue(session.UpstreamIdentityClaims, "username")
@@ -499,6 +507,7 @@ REDACTED
 		response.ErrorFrom(c, infraerrors.InternalServer("PENDING_AUTH_ADOPTION_APPLY_FAILED", "failed to apply oauth profile adoption").WithCause(err))
 		return
 REDACTED
+	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
 	if _, err := pendingSvc.ConsumeBrowserSession(c.Request.Context(), sessionToken, browserSessionKey); err != nil {
 		clearOAuthPendingSessionCookie(c, secureCookie)
 		clearOAuthPendingBrowserCookie(c, secureCookie)

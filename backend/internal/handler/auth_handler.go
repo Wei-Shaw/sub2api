@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"log/slog"
 	"strings"
 
@@ -105,6 +106,34 @@ REDACTED
 REDACTED)
 REDACTED
 
+func (h *AuthHandler) ensureBackendModeAllowsUser(ctx context.Context, user *service.User) error {
+	if user == nil {
+		return infraerrors.Unauthorized("INVALID_USER", "user not found")
+REDACTED
+	if h == nil || !h.isBackendModeEnabled(ctx) || user.IsAdmin() {
+		return nil
+REDACTED
+	return infraerrors.Forbidden("BACKEND_MODE_ADMIN_ONLY", "Backend mode is active. Only admin login is allowed.")
+REDACTED
+
+func (h *AuthHandler) ensureBackendModeAllowsNewUserLogin(ctx context.Context) error {
+	if h == nil || !h.isBackendModeEnabled(ctx) {
+		return nil
+REDACTED
+	return infraerrors.Forbidden("BACKEND_MODE_ADMIN_ONLY", "Backend mode is active. Only admin login is allowed.")
+REDACTED
+
+func (h *AuthHandler) isBackendModeEnabled(ctx context.Context) bool {
+	if h == nil || h.settingSvc == nil {
+		return false
+REDACTED
+	settings, err := h.settingSvc.GetPublicSettings(ctx)
+	if err == nil && settings != nil {
+		return settings.BackendModeEnabled
+REDACTED
+	return h.settingSvc.IsBackendModeEnabled(ctx)
+REDACTED
+
 // Register handles user registration
 // POST /api/v1/auth/register
 func (h *AuthHandler) Register(c *gin.Context) {
@@ -178,6 +207,11 @@ REDACTED
 REDACTED
 	_ = token // token 由 authService.Login 返回但此处由 respondWithTokenPair 重新生成
 
+	if err := h.ensureBackendModeAllowsUser(c.Request.Context(), user); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
 	// Check if TOTP 2FA is enabled for this user
 	if h.totpService != nil && h.settingSvc.IsTotpEnabled(c.Request.Context()) && user.TotpEnabled {
 		// Create a temporary login session for 2FA
@@ -195,11 +229,7 @@ REDACTED
 		return
 REDACTED
 
-	// Backend mode: only admin can login
-	if h.settingSvc.IsBackendModeEnabled(c.Request.Context()) && !user.IsAdmin() {
-		response.Forbidden(c, "Backend mode is active. Only admin login is allowed.")
-		return
-REDACTED
+	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
 
 	h.respondWithTokenPair(c, user)
 REDACTED
@@ -264,9 +294,8 @@ REDACTED
 		return
 REDACTED
 
-	// Backend mode: only admin can login (check BEFORE deleting session)
-	if h.settingSvc.IsBackendModeEnabled(c.Request.Context()) && !user.IsAdmin() {
-		response.Forbidden(c, "Backend mode is active. Only admin login is allowed.")
+	if err := h.ensureBackendModeAllowsUser(c.Request.Context(), user); err != nil {
+		response.ErrorFrom(c, err)
 		return
 REDACTED
 
@@ -329,6 +358,10 @@ REDACTED
 
 	// Delete the login session (only after all checks pass)
 	_ = h.totpService.DeleteLoginSession(c.Request.Context(), req.TempToken)
+
+	if session.PendingOAuthBind == nil {
+		h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
+REDACTED
 
 	h.respondWithTokenPair(c, user)
 REDACTED

@@ -523,6 +523,60 @@ REDACTED
 	require.NotNil(t, storedSession.ConsumedAt)
 REDACTED
 
+func TestExchangePendingOAuthCompletionBlocksBackendModeBeforeReturningTokenPayload(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{
+		settingValues: map[string]string{
+			service.SettingKeyBackendModeEnabled: "true",
+	REDACTED,
+REDACTED)
+	ctx := context.Background()
+
+	userEntity, err := client.User.Create().
+		SetEmail("blocked@example.com").
+		SetUsername("blocked-user").
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("blocked-backend-mode-session-token").
+		SetIntent("login").
+		SetProviderType("linuxdo").
+		SetProviderKey("linuxdo").
+		SetProviderSubject("blocked-subject-123").
+		SetTargetUserID(userEntity.ID).
+		SetResolvedEmail(userEntity.Email).
+		SetBrowserSessionKey("blocked-backend-mode-browser-session-key").
+		SetLocalFlowState(map[string]any{
+			oauthCompletionResponseKey: map[string]any{
+				"access_token":  "access-token",
+				"refresh_token": "refresh-token",
+				"expires_in":    float64(3600),
+				"token_type":    "Bearer",
+		REDACTED,
+	REDACTED).
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+REDACTED
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/pending/exchange", nil)
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)REDACTED)
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("blocked-backend-mode-browser-session-key")REDACTED)
+	ginCtx.Request = req
+
+	handler.ExchangePendingOAuthCompletion(ginCtx)
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+
+	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
+REDACTED
+	require.Nil(t, storedSession.ConsumedAt)
+REDACTED
+
 func TestExchangePendingOAuthCompletionInvitationRequiredFalseFalsePersistsDecisionWithoutBinding(t *testing.T) {
 	handler, client := newOAuthPendingFlowTestHandler(t, true)
 	ctx := context.Background()
@@ -773,6 +827,60 @@ REDACTED
 	require.Equal(t, "owner@example.com", storedSession.ResolvedEmail)
 REDACTED
 
+func TestCreateOIDCOAuthAccountBlocksBackendModeBeforeCreatingUser(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{
+		emailVerifyEnabled: true,
+		emailCache: &oauthPendingFlowEmailCacheStub{
+			verificationCodes: map[string]*service.VerificationCodeData{
+				"fresh@example.com": {
+					Code:      "246810",
+					CreatedAt: time.Now().UTC(),
+					ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
+			REDACTED,
+		REDACTED,
+	REDACTED,
+		settingValues: map[string]string{
+			service.SettingKeyBackendModeEnabled: "true",
+	REDACTED,
+REDACTED)
+	ctx := context.Background()
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("create-account-backend-mode-session-token").
+		SetIntent("login").
+		SetProviderType("oidc").
+		SetProviderKey("https://issuer.example").
+		SetProviderSubject("oidc-create-backend-mode-123").
+		SetBrowserSessionKey("create-account-backend-mode-browser-session-key").
+		SetUpstreamIdentityClaims(map[string]any{
+			"username": "oidc_user",
+	REDACTED).
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+REDACTED
+
+	body := bytes.NewBufferString(`{"email":"fresh@example.com","verify_code":"246810","password":"secret-123"REDACTED`)
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/oidc/create-account", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)REDACTED)
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("create-account-backend-mode-browser-session-key")REDACTED)
+	ginCtx.Request = req
+
+	handler.CreateOIDCOAuthAccount(ginCtx)
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+
+	userCount, err := client.User.Query().Where(dbuser.EmailEQ("fresh@example.com")).Count(ctx)
+REDACTED
+	require.Zero(t, userCount)
+
+	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
+REDACTED
+	require.Nil(t, storedSession.ConsumedAt)
+REDACTED
+
 func TestBindOIDCOAuthLoginBindsExistingUserAndConsumesSession(t *testing.T) {
 	handler, client := newOAuthPendingFlowTestHandler(t, false)
 	ctx := context.Background()
@@ -840,6 +948,70 @@ REDACTED
 	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
 REDACTED
 	require.NotNil(t, storedSession.ConsumedAt)
+REDACTED
+
+func TestBindOIDCOAuthLoginBlocksBackendModeBeforeTokenIssue(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{
+		settingValues: map[string]string{
+			service.SettingKeyBackendModeEnabled: "true",
+	REDACTED,
+REDACTED)
+	ctx := context.Background()
+
+	passwordHash, err := handler.authService.HashPassword("secret-123")
+REDACTED
+
+	existingUser, err := client.User.Create().
+		SetEmail("owner@example.com").
+		SetUsername("owner-user").
+		SetPasswordHash(passwordHash).
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("bind-login-backend-mode-session-token").
+		SetIntent("adopt_existing_user_by_email").
+		SetProviderType("oidc").
+		SetProviderKey("https://issuer.example").
+		SetProviderSubject("oidc-bind-backend-mode-123").
+		SetTargetUserID(existingUser.ID).
+		SetResolvedEmail(existingUser.Email).
+		SetBrowserSessionKey("bind-login-backend-mode-browser-session-key").
+		SetUpstreamIdentityClaims(map[string]any{
+			"username": "oidc_user",
+	REDACTED).
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+REDACTED
+
+	body := bytes.NewBufferString(`{"email":"owner@example.com","password":"secret-123"REDACTED`)
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/oidc/bind-login", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)REDACTED)
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("bind-login-backend-mode-browser-session-key")REDACTED)
+	ginCtx.Request = req
+
+	handler.BindOIDCOAuthLogin(ginCtx)
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+
+	identityCount, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ("oidc"),
+			authidentity.ProviderKeyEQ("https://issuer.example"),
+			authidentity.ProviderSubjectEQ("oidc-bind-backend-mode-123"),
+		).
+		Count(ctx)
+REDACTED
+	require.Zero(t, identityCount)
+
+	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
+REDACTED
+	require.Nil(t, storedSession.ConsumedAt)
 REDACTED
 
 func TestBindOIDCOAuthLoginRejectsInvalidPasswordWithoutConsumingSession(t *testing.T) {
