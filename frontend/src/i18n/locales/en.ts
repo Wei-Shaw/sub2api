@@ -309,6 +309,7 @@ export default {
     view: 'View',
     settings: 'Settings',
     chooseFile: 'Choose File',
+    copy: 'Copy',
     notAvailable: 'N/A',
     now: 'Now',
     today: 'Today',
@@ -407,6 +408,7 @@ export default {
     verificationCode: 'Verification Code',
     verificationCodeHint: 'Enter the 6-digit code sent to your email',
     sendingCode: 'Sending...',
+    sendCode: 'Send code',
     clickToResend: 'Click to resend code',
     resendCode: 'Resend verification code',
     sendCodeDesc: "We'll send a verification code to",
@@ -466,7 +468,51 @@ export default {
       completing: 'Completing registration…',
       completeRegistrationFailed: 'Registration failed. Please check your invitation code and try again.'
     REDACTED,
+    oauthFlow: {
+      profileDetailsTitle: 'Use {providerNameREDACTED profile details',
+      profileDetailsDescription: 'Choose whether to apply the nickname or avatar from {providerNameREDACTED to this account.',
+      useDisplayName: 'Use display name',
+      useAvatar: 'Use avatar',
+      avatarAlt: '{providerNameREDACTED avatar',
+      reviewProfileBeforeContinue: 'Review the {providerNameREDACTED profile details before continuing.',
+      chooseHowToContinue: 'Choose how to continue',
+      chooseAccountActionHint: 'Choose whether to bind an existing account or create a new one.',
+      suggestedEmail: 'Suggested email: {emailREDACTED',
+      bindExistingAccount: 'Bind existing account',
+      createNewAccount: 'Create new account',
+      createAccountHint: 'Enter an email address to create your account and continue.',
+      bindLoginHint: 'Log in to an existing account to bind this {providerNameREDACTED sign-in.',
+      signInThenBindDescription: 'Sign in to an existing account, then bind this {providerNameREDACTED sign-in to it.',
+      bindSignInToExistingAccount: 'Bind this {providerNameREDACTED sign-in to an existing account.',
+      bindCurrentAccountTitle: 'Bind the current account',
+      bindCurrentAccountDescription: 'Bind this {providerNameREDACTED sign-in to the account currently signed in on this browser.',
+      bindCurrentAccount: 'Bind current account',
+      logInAndBind: 'Log in and bind',
+      useDifferentEmail: 'Use a different email',
+      backToOptions: 'Back to options',
+      yourAccount: 'your account',
+      totpHint: 'Enter the 6-digit verification code for {accountREDACTED to finish binding this {providerNameREDACTED sign-in.',
+      verifyAndContinue: 'Verify and continue',
+      wechatAvailabilityUnknown: 'WeChat sign-in availability could not be confirmed. Refresh and retry.',
+      wechatSystemBrowserOnly: 'This WeChat sign-in flow is only available in your system browser.',
+      wechatBrowserOnly: 'This WeChat sign-in flow is only available inside the WeChat browser.',
+      wechatNotConfigured: 'WeChat sign-in is not configured yet.'
+    REDACTED,
+    linuxdoCallbackPageTitle: 'LinuxDo Sign-In Callback',
+    oidcCallbackPageTitle: 'OIDC Sign-In Callback',
+    oauthCallbackPageTitle: 'OAuth Callback',
+    wechatProviderName: 'WeChat',
+    wechatCallbackPageTitle: 'WeChat Sign-In Callback',
+    wechatPaymentCallbackPageTitle: 'WeChat Payment Callback',
+    wechatPayment: {
+      callbackTitle: 'Resuming WeChat payment',
+      callbackProcessing: 'Resuming WeChat payment...',
+      backToPayment: 'Back to payment',
+      callbackMissingResumeToken: 'The WeChat payment callback is missing the resume token.'
+    REDACTED,
     oauth: {
+      callbackTitle: 'OAuth Callback',
+      callbackHint: 'Copy the code and state back to the admin authorization flow when needed.',
       code: 'Code',
       state: 'State',
       fullUrl: 'Full URL'
@@ -1425,6 +1471,7 @@ export default {
       updating: 'Updating...',
       columns: {
         user: 'User',
+        id: 'ID',
         email: 'Email',
         username: 'Username',
         notes: 'Notes',
@@ -4972,6 +5019,72 @@ export default {
         presetOpusOnlyDesc: 'Pass for Opus, filter others',
         commonPatterns: 'Common patterns'
       REDACTED,
+      wechatConnect: {
+        title: 'WeChat Connect',
+        description: 'Third-party login configuration for WeChat Open Platform or Official Account / Mini Program.',
+        enabledLabel: 'Enable WeChat Connect',
+        enabledHint: 'Enable this to configure WeChat OAuth callbacks and authorization.',
+        appIdLabel: 'App ID',
+        appIdPlaceholder: 'WeChat App ID',
+        appSecretLabel: 'App Secret',
+        appSecretConfiguredPlaceholder: 'Secret configured. Leave empty to keep the current value.',
+        appSecretPlaceholder: 'WeChat App Secret',
+        appSecretConfiguredHint: 'Secret configured. Leave empty to keep the current value.',
+        appSecretHint: 'Enter a new secret to replace the current WeChat credential.',
+        modeLabel: 'Mode',
+        openModeLabel: 'Use Open outside WeChat',
+        openModeHint: 'Use Open Platform QR authorization outside the WeChat browser.',
+        mpModeLabel: 'Use MP inside WeChat',
+        mpModeHint: 'Use Official Account authorization inside the WeChat browser.',
+        redirectUrlLabel: 'Redirect URL',
+        redirectUrlPlaceholder: 'https://your-site.com/api/v1/auth/oauth/wechat/callback',
+        generateAndCopy: 'Generate & Copy (current site)',
+        redirectUrlSetAndCopied: 'Redirect URL generated and copied to clipboard',
+        frontendRedirectUrlLabel: 'Frontend redirect URL',
+        frontendRedirectUrlPlaceholder: '/auth/wechat/callback',
+        frontendRedirectUrlHint: 'Usually the frontend route callback path; keep it aligned with the backend.'
+      REDACTED,
+      authSourceDefaults: {
+        title: 'Auth Source Defaults',
+        description: 'Configure per-source default balance, concurrency, subscriptions, and grant rules.',
+        requireEmailLabel: 'Require email on third-party signup',
+        requireEmailHint: 'When enabled, Linux DO, OIDC, and WeChat signups must provide an email before account creation.',
+        enabledHint: 'These defaults apply when a new user registers through this source. Grant on first bind only applies when an existing user binds this source.',
+        sources: {
+          email: {
+            title: 'Email signup',
+            description: 'Default quota grants for email-password signups.'
+          REDACTED,
+          linuxdo: {
+            title: 'Linux DO signup',
+            description: 'Default quota grants for Linux DO signups.'
+          REDACTED,
+          oidc: {
+            title: 'OIDC signup',
+            description: 'Default quota grants for OIDC signups.'
+          REDACTED,
+          wechat: {
+            title: 'WeChat signup',
+            description: 'Default quota grants for WeChat signups.'
+          REDACTED
+        REDACTED,
+        grantOnFirstBindLabel: 'Grant on first bind',
+        grantOnFirstBindHint: 'Grant default entitlements when an existing user first binds this source.',
+        defaultSubscriptionsLabel: 'Default subscriptions',
+        defaultSubscriptionsHint: 'Applies only to this auth source. Leave empty to skip source-specific subscriptions.',
+        noSourceSubscriptions: 'No source-specific default subscriptions configured.'
+      REDACTED,
+      paymentVisibleMethods: {
+        methodLabel: '{titleREDACTED visible method',
+        methodHint: 'Controls whether checkout shows this method and which source key it exposes.',
+        sourceLabel: 'Payment source',
+        sourceHint: 'Choose an explicit source before enabling the method. Not configured methods are not exposed.',
+        sourceRequiredError: 'Select a payment source before enabling {titleREDACTED.'
+      REDACTED,
+      openaiExperimentalScheduler: {
+        title: 'OpenAI experimental scheduler policy',
+        description: "Disabled by default. When enabled, this only changes the gateway's experimental account-selection policy for OpenAI traffic; it does not indicate an upstream OpenAI capability."
+      REDACTED,
       saveSettings: 'Save Settings',
       saving: 'Saving...',
       settingsSaved: 'Settings saved successfully',
@@ -5461,6 +5574,7 @@ export default {
       viewOrders: 'View Orders',
     REDACTED,
     currentBalance: 'Current Balance',
+    groupFallback: 'Group #{idREDACTED',
     rechargeAccount: 'Recharge Account',
     activeSubscription: 'Active Subscription',
     noActiveSubscription: 'No active subscription',

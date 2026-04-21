@@ -5,7 +5,7 @@
       :data-testid="`${testIdPrefixREDACTED-create-account-email`"
       type="email"
       class="input w-full"
-      placeholder="you@example.com"
+      :placeholder="t('auth.emailPlaceholder')"
       :disabled="isSubmitting || isSendingCode"
     />
     <input
@@ -13,7 +13,7 @@
       :data-testid="`${testIdPrefixREDACTED-create-account-password`"
       type="password"
       class="input w-full"
-      placeholder="Password"
+      :placeholder="t('auth.passwordPlaceholder')"
       :disabled="isSubmitting"
     />
     <div v-if="turnstileEnabled && turnstileSiteKey" class="space-y-2">
@@ -26,16 +26,16 @@
       />
     </div>
     <div class="flex gap-3">
-      <input
-        v-model="verifyCode"
-        :data-testid="`${testIdPrefixREDACTED-create-account-verify-code`"
-        type="text"
+    <input
+      v-model="verifyCode"
+      :data-testid="`${testIdPrefixREDACTED-create-account-verify-code`"
+      type="text"
         inputmode="numeric"
-        maxlength="6"
-        class="input min-w-0 flex-1"
-        placeholder="123456"
-        :disabled="isSubmitting"
-      />
+      maxlength="6"
+      class="input min-w-0 flex-1"
+      placeholder="123456"
+      :disabled="isSubmitting"
+    />
       <button
         :data-testid="`${testIdPrefixREDACTED-create-account-send-code`"
         type="button"
@@ -74,7 +74,7 @@
       :disabled="isSubmitting || !email.trim() || password.length < 6 || (invitationCodeEnabled && !invitationCode.trim())"
       @click="handleSubmit"
     >
-      {{ isSubmitting ? t('common.processing') : 'Create account' REDACTEDREDACTED
+      {{ isSubmitting ? t('common.processing') : t('auth.createAccount') REDACTEDREDACTED
     </button>
     <button
       type="button"
@@ -82,18 +82,8 @@
       :disabled="isSubmitting"
       @click="emitSwitchToBind"
     >
-      I already have an account
+      {{ t('auth.alreadyHaveAccount') REDACTEDREDACTED
     </button>
-    <transition name="fade">
-      <p v-if="sendCodeError" class="text-sm text-red-600 dark:text-red-400">
-        {{ sendCodeError REDACTEDREDACTED
-      </p>
-    </transition>
-    <transition name="fade">
-      <p v-if="errorMessage" class="text-sm text-red-600 dark:text-red-400">
-        {{ errorMessage REDACTEDREDACTED
-      </p>
-    </transition>
   </form>
 </template>
 
@@ -102,6 +92,7 @@ import { onMounted, onUnmounted, ref, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { getPublicSettings, sendPendingOAuthVerifyCode REDACTED from '@/api/auth'
+import { useAppStore REDACTED from '@/stores'
 
 export type PendingOAuthCreateAccountPayload = {
   email: string
@@ -123,6 +114,7 @@ const emit = defineEmits<{
 REDACTED>()
 
 const { t REDACTED = useI18n()
+const appStore = useAppStore()
 
 const email = ref('')
 const password = ref('')
@@ -146,6 +138,21 @@ watch(
     email.value = value || ''
   REDACTED,
   { immediate: true REDACTED
+)
+
+watch(sendCodeError, value => {
+  if (value) {
+    appStore.showError(value)
+  REDACTED
+REDACTED)
+
+watch(
+  () => props.errorMessage,
+  value => {
+    if (value) {
+      appStore.showError(value)
+    REDACTED
+  REDACTED
 )
 
 function clearCountdown() {

@@ -309,6 +309,7 @@ export default {
     view: '查看',
     settings: '设置',
     chooseFile: '选择文件',
+    copy: '复制',
     notAvailable: '不可用',
     now: '现在',
     today: '今天',
@@ -406,6 +407,7 @@ export default {
     verificationCode: '验证码',
     verificationCodeHint: '请输入发送到您邮箱的6位验证码',
     sendingCode: '发送中...',
+    sendCode: '发送验证码',
     clickToResend: '点击重新发送验证码',
     resendCode: '重新发送验证码',
     sendCodeDesc: '我们将发送验证码到',
@@ -464,7 +466,51 @@ export default {
       completing: '正在完成注册...',
       completeRegistrationFailed: '注册失败，请检查邀请码后重试。'
     REDACTED,
+    oauthFlow: {
+      profileDetailsTitle: '使用 {providerNameREDACTED 资料',
+      profileDetailsDescription: '选择是否将 {providerNameREDACTED 的昵称或头像应用到当前账户。',
+      useDisplayName: '使用昵称',
+      useAvatar: '使用头像',
+      avatarAlt: '{providerNameREDACTED 头像',
+      reviewProfileBeforeContinue: '请先确认 {providerNameREDACTED 资料后再继续。',
+      chooseHowToContinue: '选择后续操作',
+      chooseAccountActionHint: '请选择绑定已有账户，或创建一个新账户。',
+      suggestedEmail: '建议邮箱：{emailREDACTED',
+      bindExistingAccount: '绑定已有账户',
+      createNewAccount: '创建新账户',
+      createAccountHint: '请输入邮箱地址以创建账户并继续。',
+      bindLoginHint: '登录一个已有账户以绑定此次 {providerNameREDACTED 登录。',
+      signInThenBindDescription: '请先登录已有账户，再将此次 {providerNameREDACTED 登录绑定到该账户。',
+      bindSignInToExistingAccount: '将此次 {providerNameREDACTED 登录绑定到已有账户。',
+      bindCurrentAccountTitle: '绑定当前账户',
+      bindCurrentAccountDescription: '将此次 {providerNameREDACTED 登录绑定到当前浏览器已登录的账户。',
+      bindCurrentAccount: '绑定当前账户',
+      logInAndBind: '登录并绑定',
+      useDifferentEmail: '使用其他邮箱',
+      backToOptions: '返回选项',
+      yourAccount: '当前账户',
+      totpHint: '请输入 {accountREDACTED 的 6 位验证码，以完成此次 {providerNameREDACTED 登录绑定。',
+      verifyAndContinue: '验证并继续',
+      wechatAvailabilityUnknown: '暂时无法确认微信登录可用性，请刷新后重试。',
+      wechatSystemBrowserOnly: '当前微信登录流程仅支持在系统浏览器中继续。',
+      wechatBrowserOnly: '当前微信登录流程仅支持在微信内置浏览器中继续。',
+      wechatNotConfigured: '微信登录尚未配置。'
+    REDACTED,
+    linuxdoCallbackPageTitle: 'LinuxDo 登录回调',
+    oidcCallbackPageTitle: 'OIDC 登录回调',
+    oauthCallbackPageTitle: 'OAuth 回调',
+    wechatProviderName: '微信',
+    wechatCallbackPageTitle: '微信登录回调',
+    wechatPaymentCallbackPageTitle: '微信支付回调',
+    wechatPayment: {
+      callbackTitle: '正在恢复微信支付',
+      callbackProcessing: '正在恢复微信支付...',
+      backToPayment: '返回支付页',
+      callbackMissingResumeToken: '微信支付回调缺少恢复令牌。'
+    REDACTED,
     oauth: {
+      callbackTitle: 'OAuth 回调',
+      callbackHint: '按需将授权码和状态值复制回后台授权流程。',
       code: '授权码',
       state: '状态',
       fullUrl: '完整URL'
@@ -1451,6 +1497,7 @@ export default {
       updating: '更新中...',
       columns: {
         user: '用户',
+        id: 'ID',
         email: '邮箱',
         username: '用户名',
         notes: '备注',
@@ -5135,6 +5182,72 @@ export default {
         presetOpusOnlyDesc: 'Opus 透传，其他模型过滤',
         commonPatterns: '常用模式'
       REDACTED,
+      wechatConnect: {
+        title: '微信登录',
+        description: '用于微信开放平台或公众号/小程序的第三方登录配置。',
+        enabledLabel: '启用微信登录',
+        enabledHint: '开启后可使用微信第三方登录回调与授权配置。',
+        appIdLabel: 'AppID',
+        appIdPlaceholder: '微信开放平台 AppID',
+        appSecretLabel: 'AppSecret',
+        appSecretConfiguredPlaceholder: '密钥已配置，留空以保留当前值。',
+        appSecretPlaceholder: '微信开放平台 AppSecret',
+        appSecretConfiguredHint: '密钥已配置，留空以保留当前值。',
+        appSecretHint: '填写后会覆盖当前微信密钥。',
+        modeLabel: '模式',
+        openModeLabel: '非微信环境使用开放平台',
+        openModeHint: '浏览器不在微信内时，自动走开放平台扫码授权。',
+        mpModeLabel: '微信环境使用公众号',
+        mpModeHint: '浏览器在微信内时，自动走公众号授权。',
+        redirectUrlLabel: '回调地址',
+        redirectUrlPlaceholder: 'https://your-site.com/api/v1/auth/oauth/wechat/callback',
+        generateAndCopy: '使用当前站点生成并复制',
+        redirectUrlSetAndCopied: '已使用当前站点生成回调地址并复制到剪贴板',
+        frontendRedirectUrlLabel: '前端回调地址',
+        frontendRedirectUrlPlaceholder: '/auth/wechat/callback',
+        frontendRedirectUrlHint: '通常用于前端路由回调地址，需与后端配置保持一致。'
+      REDACTED,
+      authSourceDefaults: {
+        title: '认证来源默认值',
+        description: '按注册来源配置新用户默认余额、并发、订阅与授权策略。',
+        requireEmailLabel: '第三方注册强制补充邮箱',
+        requireEmailHint: '启用后，Linux DO、OIDC、微信注册缺少邮箱时必须先补充邮箱地址。',
+        enabledHint: '以下默认值会在该来源注册新用户时发放；首次绑定时授权仅作用于已有账号绑定该来源。',
+        sources: {
+          email: {
+            title: '邮箱注册',
+            description: '适用于邮箱密码注册的新用户默认配额。'
+          REDACTED,
+          linuxdo: {
+            title: 'Linux DO 登录',
+            description: '适用于 Linux DO 第三方注册的新用户默认配额。'
+          REDACTED,
+          oidc: {
+            title: 'OIDC 登录',
+            description: '适用于 OIDC 第三方注册的新用户默认配额。'
+          REDACTED,
+          wechat: {
+            title: '微信登录',
+            description: '适用于微信第三方注册的新用户默认配额。'
+          REDACTED
+        REDACTED,
+        grantOnFirstBindLabel: '首次绑定时授权',
+        grantOnFirstBindHint: '已有账号首次绑定该来源时发放默认权益。',
+        defaultSubscriptionsLabel: '默认订阅',
+        defaultSubscriptionsHint: '仅对当前认证来源生效，未配置时不追加来源专属订阅。',
+        noSourceSubscriptions: '当前来源未配置专属默认订阅。'
+      REDACTED,
+      paymentVisibleMethods: {
+        methodLabel: '{titleREDACTED 可见方式',
+        methodHint: '控制前台结算页是否展示该方式，以及展示时使用的来源键。',
+        sourceLabel: '支付来源',
+        sourceHint: '启用后必须明确选择一个来源；未配置状态不会对外展示该支付方式。',
+        sourceRequiredError: '{titleREDACTED 已启用，请先选择支付来源。'
+      REDACTED,
+      openaiExperimentalScheduler: {
+        title: 'OpenAI 实验调度策略',
+        description: '默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。'
+      REDACTED,
       saveSettings: '保存设置',
       saving: '保存中...',
       settingsSaved: '设置保存成功',
@@ -5649,6 +5762,7 @@ export default {
       viewOrders: '查看订单',
     REDACTED,
     currentBalance: '当前余额',
+    groupFallback: '分组 #{idREDACTED',
     rechargeAccount: '充值账户',
     activeSubscription: '当前订阅',
     noActiveSubscription: '暂无有效订阅',

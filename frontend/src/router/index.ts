@@ -71,7 +71,8 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/auth/OAuthCallbackView.vue'),
     meta: {
       requiresAuth: false,
-      title: 'OAuth Callback'
+      title: 'OAuth Callback',
+      titleKey: 'auth.oauthCallbackPageTitle'
     REDACTED
   REDACTED,
   {
@@ -80,7 +81,8 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/auth/LinuxDoCallbackView.vue'),
     meta: {
       requiresAuth: false,
-      title: 'LinuxDo OAuth Callback'
+      title: 'LinuxDo OAuth Callback',
+      titleKey: 'auth.linuxdoCallbackPageTitle'
     REDACTED
   REDACTED,
   {
@@ -89,7 +91,8 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/auth/WechatCallbackView.vue'),
     meta: {
       requiresAuth: false,
-      title: 'WeChat OAuth Callback'
+      title: 'WeChat OAuth Callback',
+      titleKey: 'auth.wechatCallbackPageTitle'
     REDACTED
   REDACTED,
   {
@@ -98,7 +101,8 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/auth/WechatPaymentCallbackView.vue'),
     meta: {
       requiresAuth: false,
-      title: 'WeChat Payment Callback'
+      title: 'WeChat Payment Callback',
+      titleKey: 'auth.wechatPaymentCallbackPageTitle'
     REDACTED
   REDACTED,
   {
@@ -107,7 +111,8 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/auth/OidcCallbackView.vue'),
     meta: {
       requiresAuth: false,
-      title: 'OIDC OAuth Callback'
+      title: 'OIDC OAuth Callback',
+      titleKey: 'auth.oidcCallbackPageTitle'
     REDACTED
   REDACTED,
   {

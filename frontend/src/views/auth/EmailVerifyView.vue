@@ -48,10 +48,7 @@
             :class="{ 'input-error': errors.code REDACTED"
             placeholder="000000"
           />
-          <p v-if="errors.code" class="input-error-text text-center">
-            {{ errors.code REDACTEDREDACTED
-          </p>
-          <p v-else class="input-hint text-center">{{ t('auth.verificationCodeHint') REDACTEDREDACTED</p>
+          <p class="input-hint text-center">{{ t('auth.verificationCodeHint') REDACTEDREDACTED</p>
         </div>
 
         <!-- Code Status -->
@@ -78,27 +75,7 @@
             @expire="onTurnstileExpire"
             @error="onTurnstileError"
           />
-          <p v-if="errors.turnstile" class="input-error-text mt-2 text-center">
-            {{ errors.turnstile REDACTEDREDACTED
-          </p>
         </div>
-
-        <!-- Error Message -->
-        <transition name="fade">
-          <div
-            v-if="errorMessage"
-            class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20"
-          >
-            <div class="flex items-start gap-3">
-              <div class="flex-shrink-0">
-                <Icon name="exclamationCircle" size="md" class="text-red-500" />
-              </div>
-              <p class="text-sm text-red-700 dark:text-red-400">
-                {{ errorMessage REDACTEDREDACTED
-              </p>
-            </div>
-          </div>
-        </transition>
 
         <!-- Submit Button -->
         <button type="submit" :disabled="isLoading || !verifyCode" class="btn btn-primary w-full">
@@ -169,7 +146,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted REDACTED from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch REDACTED from 'vue'
 import { useRouter REDACTED from 'vue-router'
 import { useI18n REDACTED from 'vue-i18n'
 import { AuthLayout REDACTED from '@/components/layout'
@@ -256,6 +233,16 @@ const showResendTurnstile = ref<boolean>(false)
 const errors = ref({
   code: '',
   turnstile: ''
+REDACTED)
+
+const validationToastMessage = computed(
+  () => errors.value.code || errors.value.turnstile || ''
+)
+
+watch(validationToastMessage, (value, previousValue) => {
+  if (value && value !== previousValue) {
+    appStore.showError(value)
+  REDACTED
 REDACTED)
 
 // ==================== Lifecycle ====================

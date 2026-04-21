@@ -76,9 +76,6 @@
               :placeholder="t('auth.emailPlaceholder')"
             />
           </div>
-          <p v-if="errors.email" class="input-error-text">
-            {{ errors.email REDACTEDREDACTED
-          </p>
         </div>
 
         <!-- Password Input -->
@@ -110,9 +107,6 @@
               <Icon v-else name="eye" size="md" />
             </button>
           </div>
-          <p v-if="errors.password" class="input-error-text">
-            {{ errors.password REDACTEDREDACTED
-          </p>
           <p v-else class="input-hint">
             {{ t('auth.passwordHint') REDACTEDREDACTED
           </p>
@@ -162,12 +156,6 @@
                 {{ t('auth.invitationCodeValid') REDACTEDREDACTED
               </span>
             </div>
-            <p v-else-if="invitationValidation.invalid" class="input-error-text">
-              {{ invitationValidation.message REDACTEDREDACTED
-            </p>
-            <p v-else-if="errors.invitation_code" class="input-error-text">
-              {{ errors.invitation_code REDACTEDREDACTED
-            </p>
           </transition>
         </div>
 
@@ -216,9 +204,6 @@
                 {{ t('auth.promoCodeValid', { amount: promoValidation.bonusAmount?.toFixed(2) REDACTED) REDACTEDREDACTED
               </span>
             </div>
-            <p v-else-if="promoValidation.invalid" class="input-error-text">
-              {{ promoValidation.message REDACTEDREDACTED
-            </p>
           </transition>
         </div>
 
@@ -231,27 +216,7 @@
             @expire="onTurnstileExpire"
             @error="onTurnstileError"
           />
-          <p v-if="errors.turnstile" class="input-error-text mt-2 text-center">
-            {{ errors.turnstile REDACTEDREDACTED
-          </p>
         </div>
-
-        <!-- Error Message -->
-        <transition name="fade">
-          <div
-            v-if="errorMessage"
-            class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20"
-          >
-            <div class="flex items-start gap-3">
-              <div class="flex-shrink-0">
-                <Icon name="exclamationCircle" size="md" class="text-red-500" />
-              </div>
-              <p class="text-sm text-red-700 dark:text-red-400">
-                {{ errorMessage REDACTEDREDACTED
-              </p>
-            </div>
-          </div>
-        </transition>
 
         <!-- Submit Button -->
         <button
@@ -307,7 +272,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted REDACTED from 'vue'
+import { computed, ref, reactive, onMounted, onUnmounted, watch REDACTED from 'vue'
 import { useRouter, useRoute REDACTED from 'vue-router'
 import { useI18n REDACTED from 'vue-i18n'
 import { AuthLayout REDACTED from '@/components/layout'
@@ -389,6 +354,22 @@ const errors = reactive({
   password: '',
   turnstile: '',
   invitation_code: ''
+REDACTED)
+
+const validationToastMessage = computed(() =>
+  errors.email ||
+  errors.password ||
+  (invitationValidation.invalid ? invitationValidation.message : '') ||
+  errors.invitation_code ||
+  (promoValidation.invalid ? promoValidation.message : '') ||
+  errors.turnstile ||
+  ''
+)
+
+watch(validationToastMessage, (value, previousValue) => {
+  if (value && value !== previousValue) {
+    appStore.showError(value)
+  REDACTED
 REDACTED)
 
 // ==================== Lifecycle ====================

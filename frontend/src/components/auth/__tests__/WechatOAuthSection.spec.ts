@@ -26,8 +26,20 @@ vi.mock('vue-i18n', async () => {
     useI18n: () => ({
       locale: { value: 'en' REDACTED,
       t: (key: string, params?: Record<string, string>) => {
+        if (key === 'auth.wechatProviderName') {
+          return 'Mock WeChat'
+        REDACTED
         if (key === 'auth.oidc.signIn') {
           return `Continue with ${params?.providerName ?? ''REDACTED`.trim()
+        REDACTED
+        if (key === 'auth.oauthFlow.wechatSystemBrowserOnly') {
+          return 'MOCK-SYSTEM-BROWSER-ONLY'
+        REDACTED
+        if (key === 'auth.oauthFlow.wechatBrowserOnly') {
+          return 'MOCK-WECHAT-BROWSER-ONLY'
+        REDACTED
+        if (key === 'auth.oauthFlow.wechatNotConfigured') {
+          return 'MOCK-NOT-CONFIGURED'
         REDACTED
         if (key === 'auth.oauthOrContinue') {
           return 'or continue'
@@ -118,7 +130,7 @@ describe('WechatOAuthSection', () => {
       REDACTED,
     REDACTED)
 
-    expect(wrapper.text()).toContain('WeChat')
+    expect(wrapper.text()).toContain('Mock WeChat')
 
     await wrapper.get('button').trigger('click')
 
@@ -161,7 +173,7 @@ describe('WechatOAuthSection', () => {
     REDACTED)
 
     expect(wrapper.get('button').attributes('disabled')).toBeDefined()
-    expect(wrapper.text()).toContain('Open this page inside WeChat to continue.')
+    expect(wrapper.text()).toContain('MOCK-WECHAT-BROWSER-ONLY')
 
     await wrapper.get('button').trigger('click')
 
@@ -184,7 +196,7 @@ describe('WechatOAuthSection', () => {
     REDACTED)
 
     expect(wrapper.get('button').attributes('disabled')).toBeDefined()
-    expect(wrapper.text()).toContain('This site only has WeChat website login configured. Open this page in your browser to continue.')
+    expect(wrapper.text()).toContain('MOCK-SYSTEM-BROWSER-ONLY')
 
     await wrapper.get('button').trigger('click')
 
@@ -206,5 +218,21 @@ describe('WechatOAuthSection', () => {
     expect(locationState.current.href).toContain(
       '/api/v1/auth/oauth/wechat/start?mode=open&redirect=%2Fbilling%3Fplan%3Dpro'
     )
+  REDACTED)
+
+  it('shows the localized not-configured hint when WeChat OAuth is unavailable', async () => {
+    seedPublicSettings({
+      wechat_oauth_enabled: false,
+      wechat_oauth_open_enabled: false,
+      wechat_oauth_mp_enabled: false,
+    REDACTED)
+
+    const wrapper = mount(WechatOAuthSection, {
+      global: {
+        plugins: [pinia],
+      REDACTED,
+    REDACTED)
+
+    expect(wrapper.text()).toContain('MOCK-NOT-CONFIGURED')
   REDACTED)
 REDACTED)

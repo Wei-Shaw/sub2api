@@ -2,7 +2,7 @@ import { flushPromises, mount REDACTED from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi REDACTED from 'vitest'
 import WechatPaymentCallbackView from '@/views/auth/WechatPaymentCallbackView.vue'
 
-const { replaceMock, routeState, locationState REDACTED = vi.hoisted(() => ({
+const { replaceMock, routeState, locationState, showErrorMock REDACTED = vi.hoisted(() => ({
   replaceMock: vi.fn(),
   routeState: {
     query: {REDACTED as Record<string, unknown>,
@@ -16,6 +16,7 @@ const { replaceMock, routeState, locationState REDACTED = vi.hoisted(() => ({
       origin: 'http://localhost',
     REDACTED as Location & { origin: string REDACTED,
   REDACTED,
+  showErrorMock: vi.fn(),
 REDACTED))
 
 vi.mock('vue-router', () => ({
@@ -27,14 +28,27 @@ REDACTED))
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
-    t: (key: string) => key,
+    t: (key: string) => {
+      if (key === 'auth.wechatPayment.callbackTitle') return '正在恢复微信支付'
+      if (key === 'auth.wechatPayment.callbackProcessing') return '正在恢复微信支付...'
+      if (key === 'auth.wechatPayment.backToPayment') return '返回支付页'
+      if (key === 'auth.wechatPayment.callbackMissingResumeToken') return '微信支付回调缺少恢复令牌。'
+      return key
+    REDACTED,
     locale: { value: 'zh-CN' REDACTED,
+  REDACTED),
+REDACTED))
+
+vi.mock('@/stores', () => ({
+  useAppStore: () => ({
+    showError: (...args: any[]) => showErrorMock(...args),
   REDACTED),
 REDACTED))
 
 describe('WechatPaymentCallbackView', () => {
   beforeEach(() => {
     replaceMock.mockReset()
+    showErrorMock.mockReset()
     routeState.query = {REDACTED
     locationState.current = {
       href: 'http://localhost/auth/wechat/payment/callback',
@@ -72,6 +86,8 @@ describe('WechatPaymentCallbackView', () => {
     await flushPromises()
 
     expect(replaceMock).not.toHaveBeenCalled()
+    expect(showErrorMock).toHaveBeenCalledWith('微信支付回调缺少恢复令牌。')
     expect(wrapper.text()).toContain('微信支付回调缺少恢复令牌。')
+    expect(wrapper.find('.bg-red-50').exists()).toBe(false)
   REDACTED)
 REDACTED)

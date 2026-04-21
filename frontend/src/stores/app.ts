@@ -6,6 +6,7 @@
 import { defineStore REDACTED from 'pinia'
 import { ref, computed REDACTED from 'vue'
 import type { Toast, ToastType, PublicSettings REDACTED from '@/types'
+import { i18n REDACTED from '@/i18n'
 import {
   checkUpdates as checkUpdatesAPI,
   type VersionInfo,
@@ -209,7 +210,10 @@ export const useAppStore = defineStore('app', () => {
     try {
       return await operation()
     REDACTED catch (error) {
-      const message = errorMessage || (error as { message?: string REDACTED).message || 'An error occurred'
+      const message =
+        errorMessage ||
+        (error as { message?: string REDACTED).message ||
+        i18n.global.t('common.unknownError')
       showError(message)
       return null
     REDACTED finally {

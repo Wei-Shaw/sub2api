@@ -32,6 +32,9 @@ vi.mock('vue-i18n', async () => {
     ...actual,
     useI18n: () => ({
       t: (key: string, params?: Record<string, string>) => {
+        if (key === 'auth.oauthFlow.totpHint') {
+          return `verify ${params?.account ?? ''REDACTED`.trim()
+        REDACTED
         if (!params?.providerName) {
           return key
         REDACTED
@@ -475,6 +478,34 @@ describe('OidcCallbackView', () => {
     expect((wrapper.get('[data-testid="oidc-bind-login-email"]').element as HTMLInputElement).value).toBe(
       'existing@example.com'
     )
+  REDACTED)
+
+  it('shows create-account failures through toast without inline error text', async () => {
+    exchangePendingOAuthCompletion.mockResolvedValue({
+      error: 'email_required',
+      redirect: '/welcome'
+    REDACTED)
+    apiClientPost.mockRejectedValue(new Error('create failed'))
+
+    const wrapper = mount(OidcCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+    await wrapper.get('[data-testid="oidc-create-account-email"]').setValue('new@example.com')
+    await wrapper.get('[data-testid="oidc-create-account-password"]').setValue('secret-123')
+    await wrapper.get('[data-testid="oidc-create-account-submit"]').trigger('click')
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalledWith('create failed')
+    expect(wrapper.text()).not.toContain('create failed')
   REDACTED)
 
   it('sends a verify code for pending oauth account creation', async () => {

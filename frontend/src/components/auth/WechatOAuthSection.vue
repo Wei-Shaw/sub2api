@@ -43,8 +43,8 @@ REDACTED)
 
 const appStore = useAppStore()
 const route = useRoute()
-const { locale, t REDACTED = useI18n()
-const providerName = 'WeChat'
+const { t REDACTED = useI18n()
+const providerName = computed(() => t('auth.wechatProviderName'))
 
 const resolvedStart = computed(() => resolveWeChatOAuthStart(appStore.cachedPublicSettings))
 const buttonDisabled = computed(() => props.disabled || resolvedStart.value.mode === null)
@@ -54,28 +54,15 @@ const disabledHint = computed(() => {
   REDACTED
   switch (resolvedStart.value.unavailableReason) {
     case 'external_browser_required':
-      return localizeWeChatHint(
-        '当前仅配置网站微信登录，请在系统浏览器中打开此页面后再继续。',
-        'This site only has WeChat website login configured. Open this page in your browser to continue.',
-      )
+      return t('auth.oauthFlow.wechatSystemBrowserOnly')
     case 'wechat_browser_required':
-      return localizeWeChatHint(
-        '当前仅配置微信内登录，请在微信中打开此页面后再继续。',
-        'This site only has WeChat in-app login configured. Open this page inside WeChat to continue.',
-      )
+      return t('auth.oauthFlow.wechatBrowserOnly')
     case 'not_configured':
-      return localizeWeChatHint(
-        '管理员尚未配置微信登录。',
-        'WeChat sign-in is not configured yet.',
-      )
+      return t('auth.oauthFlow.wechatNotConfigured')
     default:
       return ''
   REDACTED
 REDACTED)
-
-function localizeWeChatHint(zh: string, en: string): string {
-  return locale.value.toLowerCase().startsWith('zh') ? zh : en
-REDACTED
 
 onMounted(() => {
   if (!appStore.cachedPublicSettings && !appStore.publicSettingsLoaded) {
