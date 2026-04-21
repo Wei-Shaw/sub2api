@@ -25,14 +25,33 @@ REDACTED
 	// Look up order by out_trade_no (the external order ID we sent to the provider)
 	order, err := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(n.OrderID)).Only(ctx)
 	if err != nil {
-		// Fallback: try legacy format (sub2_N where N is DB ID)
-		trimmed := strings.TrimPrefix(n.OrderID, orderIDPrefix)
-		if oid, parseErr := strconv.ParseInt(trimmed, 10, 64); parseErr == nil {
+		// Fallback only for true legacy "sub2_N" DB-ID payloads when the
+		// current out_trade_no lookup genuinely did not find an order.
+		if oid, ok := parseLegacyPaymentOrderID(n.OrderID, err); ok {
 			return s.confirmPayment(ctx, oid, n.TradeNo, n.Amount, pk, n.Metadata)
 	REDACTED
 		return fmt.Errorf("order not found for out_trade_no: %s", n.OrderID)
 REDACTED
 	return s.confirmPayment(ctx, order.ID, n.TradeNo, n.Amount, pk, n.Metadata)
+REDACTED
+
+func parseLegacyPaymentOrderID(orderID string, lookupErr error) (int64, bool) {
+	if !dbent.IsNotFound(lookupErr) {
+		return 0, false
+REDACTED
+	orderID = strings.TrimSpace(orderID)
+	if !strings.HasPrefix(orderID, orderIDPrefix) {
+		return 0, false
+REDACTED
+	trimmed := strings.TrimPrefix(orderID, orderIDPrefix)
+	if trimmed == "" || trimmed == orderID {
+		return 0, false
+REDACTED
+	oid, err := strconv.ParseInt(trimmed, 10, 64)
+	if err != nil || oid <= 0 {
+		return 0, false
+REDACTED
+	return oid, true
 REDACTED
 
 func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo string, paid float64, pk string, metadata map[string]string) error {
