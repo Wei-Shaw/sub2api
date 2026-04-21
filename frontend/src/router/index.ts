@@ -348,18 +348,6 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/admin/available-channels',
-    name: 'AdminAvailableChannels',
-    component: () => import('@/views/admin/AvailableChannelsView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: true,
-      title: 'Available Channels',
-      titleKey: 'admin.availableChannels.title',
-      descriptionKey: 'admin.availableChannels.description'
-    }
-  },
-  {
     path: '/admin/channels',
     redirect: '/admin/channels/pricing'
   },
