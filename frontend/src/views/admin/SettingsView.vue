@@ -1372,30 +1372,20 @@
               class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
             >
               <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-                {{ localText("微信登录", "WeChat Connect") REDACTEDREDACTED
+                {{ t("admin.settings.wechatConnect.title") REDACTEDREDACTED
               </h2>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{
-                  localText(
-                    "用于微信开放平台或公众号/小程序的第三方登录配置。",
-                    "Third-party login configuration for WeChat Open Platform or Official Account / Mini Program.",
-                  )
-                REDACTEDREDACTED
+                {{ t("admin.settings.wechatConnect.description") REDACTEDREDACTED
               </p>
             </div>
             <div class="space-y-5 p-6">
               <div class="flex items-center justify-between">
                 <div>
                   <label class="font-medium text-gray-900 dark:text-white">{{
-                    localText("启用微信登录", "Enable WeChat Connect")
+                    t("admin.settings.wechatConnect.enabledLabel")
                   REDACTEDREDACTED</label>
                   <p class="text-sm text-gray-500 dark:text-gray-400">
-                    {{
-                      localText(
-                        "开启后可使用微信第三方登录回调与授权配置。",
-                        "Enable this to configure WeChat OAuth callbacks and authorization.",
-                      )
-                    REDACTEDREDACTED
+                    {{ t("admin.settings.wechatConnect.enabledHint") REDACTEDREDACTED
                   </p>
                 </div>
                 <Toggle
@@ -1413,16 +1403,14 @@
                     <label
                       class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
                     >
-                      {{ localText("AppID", "App ID") REDACTEDREDACTED
+                      {{ t("admin.settings.wechatConnect.appIdLabel") REDACTEDREDACTED
                     </label>
                     <input
                       data-testid="wechat-connect-app-id"
                       v-model="form.wechat_connect_app_id"
                       type="text"
                       class="input font-mono text-sm"
-                      :placeholder="
-                        localText('微信开放平台 AppID', 'WeChat App ID')
-                      "
+                      :placeholder="t('admin.settings.wechatConnect.appIdPlaceholder')"
                     />
                   </div>
 
@@ -1430,7 +1418,7 @@
                     <label
                       class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
                     >
-                      {{ localText("AppSecret", "App Secret") REDACTEDREDACTED
+                      {{ t("admin.settings.wechatConnect.appSecretLabel") REDACTEDREDACTED
                     </label>
                     <input
                       data-testid="wechat-connect-app-secret"
@@ -1439,27 +1427,15 @@
                       class="input font-mono text-sm"
                       :placeholder="
                         form.wechat_connect_app_secret_configured
-                          ? localText(
-                              '密钥已配置，留空以保留当前值。',
-                              'Secret configured. Leave empty to keep the current value.',
-                            )
-                          : localText(
-                              '微信开放平台 AppSecret',
-                              'WeChat App Secret',
-                            )
+                          ? t('admin.settings.wechatConnect.appSecretConfiguredPlaceholder')
+                          : t('admin.settings.wechatConnect.appSecretPlaceholder')
                       "
                     />
                     <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                       {{
                         form.wechat_connect_app_secret_configured
-                          ? localText(
-                              "密钥已配置，留空以保留当前值。",
-                              "Secret configured. Leave empty to keep the current value.",
-                            )
-                          : localText(
-                              "填写后会覆盖当前微信密钥。",
-                              "Enter a new secret to replace the current WeChat credential.",
-                            )
+                          ? t('admin.settings.wechatConnect.appSecretConfiguredHint')
+                          : t('admin.settings.wechatConnect.appSecretHint')
                       REDACTEDREDACTED
                     </p>
                   </div>
@@ -1470,29 +1446,19 @@
                     <label
                       class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
                     >
-                      {{ localText("模式", "Mode") REDACTEDREDACTED
+                      {{ t("admin.settings.wechatConnect.modeLabel") REDACTEDREDACTED
                     </label>
                     <div
                       class="flex items-center justify-between rounded border border-gray-200 px-4 py-3 dark:border-dark-700"
                     >
                       <div>
                         <div class="font-medium text-gray-900 dark:text-white">
-                          {{
-                            localText(
-                              "非微信环境使用开放平台",
-                              "Use Open outside WeChat",
-                            )
-                          REDACTEDREDACTED
+                          {{ t("admin.settings.wechatConnect.openModeLabel") REDACTEDREDACTED
                         </div>
                         <p
                           class="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
                         >
-                          {{
-                            localText(
-                              "浏览器不在微信内时，自动走开放平台扫码授权。",
-                              "Use Open Platform QR authorization outside the WeChat browser.",
-                            )
-                          REDACTEDREDACTED
+                          {{ t("admin.settings.wechatConnect.openModeHint") REDACTEDREDACTED
                         </p>
                       </div>
                       <Toggle
@@ -1506,22 +1472,12 @@
                     >
                       <div>
                         <div class="font-medium text-gray-900 dark:text-white">
-                          {{
-                            localText(
-                              "微信环境使用公众号",
-                              "Use MP inside WeChat",
-                            )
-                          REDACTEDREDACTED
+                          {{ t("admin.settings.wechatConnect.mpModeLabel") REDACTEDREDACTED
                         </div>
                         <p
                           class="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
                         >
-                          {{
-                            localText(
-                              "浏览器在微信内时，自动走公众号授权。",
-                              "Use Official Account authorization inside the WeChat browser.",
-                            )
-                          REDACTEDREDACTED
+                          {{ t("admin.settings.wechatConnect.mpModeHint") REDACTEDREDACTED
                         </p>
                       </div>
                       <Toggle
@@ -1536,19 +1492,14 @@
                     <label
                       class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
                     >
-                      {{ localText("回调地址", "Redirect URL") REDACTEDREDACTED
+                      {{ t("admin.settings.wechatConnect.redirectUrlLabel") REDACTEDREDACTED
                     </label>
                     <input
                       data-testid="wechat-connect-redirect-url"
                       v-model="form.wechat_connect_redirect_url"
                       type="url"
                       class="input font-mono text-sm"
-                      :placeholder="
-                        localText(
-                          'https://your-site.com/api/v1/auth/oauth/wechat/callback',
-                          'https://your-site.com/api/v1/auth/oauth/wechat/callback',
-                        )
-                      "
+                      :placeholder="t('admin.settings.wechatConnect.redirectUrlPlaceholder')"
                     />
                     <div
                       class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3"
@@ -1558,12 +1509,7 @@
                         class="btn btn-secondary btn-sm w-fit"
                         @click="setAndCopyWeChatRedirectUrl"
                       >
-                        {{
-                          localText(
-                            "使用当前站点生成并复制",
-                            "Generate & Copy (current site)",
-                          )
-                        REDACTEDREDACTED
+                        {{ t("admin.settings.wechatConnect.generateAndCopy") REDACTEDREDACTED
                       </button>
                       <code
                         v-if="wechatRedirectUrlSuggestion"
@@ -1579,27 +1525,17 @@
                   <label
                     class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
                   >
-                    {{ localText("前端回调地址", "Frontend redirect URL") REDACTEDREDACTED
+                    {{ t("admin.settings.wechatConnect.frontendRedirectUrlLabel") REDACTEDREDACTED
                   </label>
                   <input
                     data-testid="wechat-connect-frontend-redirect-url"
                     v-model="form.wechat_connect_frontend_redirect_url"
                     type="text"
                     class="input font-mono text-sm"
-                    :placeholder="
-                      localText(
-                        '/auth/wechat/callback',
-                        '/auth/wechat/callback',
-                      )
-                    "
+                    :placeholder="t('admin.settings.wechatConnect.frontendRedirectUrlPlaceholder')"
                   />
                   <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{
-                      localText(
-                        "通常用于前端路由回调地址，需与后端配置保持一致。",
-                        "Usually the frontend route callback path; keep it aligned with the backend.",
-                      )
-                    REDACTEDREDACTED
+                    {{ t("admin.settings.wechatConnect.frontendRedirectUrlHint") REDACTEDREDACTED
                   </p>
                 </div>
               </div>
@@ -2215,15 +2151,10 @@
               class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
             >
               <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-                {{ localText("认证来源默认值", "Auth Source Defaults") REDACTEDREDACTED
+                {{ t("admin.settings.authSourceDefaults.title") REDACTEDREDACTED
               </h2>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{
-                  localText(
-                    "按注册来源配置新用户默认余额、并发、订阅与授权策略。",
-                    "Configure per-source default balance, concurrency, subscriptions, and grant rules.",
-                  )
-                REDACTEDREDACTED
+                {{ t("admin.settings.authSourceDefaults.description") REDACTEDREDACTED
               </p>
             </div>
             <div class="space-y-6 p-6">
@@ -2232,20 +2163,10 @@
               >
                 <div>
                   <label class="font-medium text-gray-900 dark:text-white">
-                    {{
-                      localText(
-                        "第三方注册强制补充邮箱",
-                        "Require email on third-party signup",
-                      )
-                    REDACTEDREDACTED
+                    {{ t("admin.settings.authSourceDefaults.requireEmailLabel") REDACTEDREDACTED
                   </label>
                   <p class="text-sm text-gray-500 dark:text-gray-400">
-                    {{
-                      localText(
-                        "启用后，Linux DO、OIDC、微信注册缺少邮箱时必须先补充邮箱地址。",
-                        "When enabled, Linux DO, OIDC, and WeChat signups must provide an email before account creation.",
-                      )
-                    REDACTEDREDACTED
+                    {{ t("admin.settings.authSourceDefaults.requireEmailHint") REDACTEDREDACTED
                   </p>
                 </div>
                 <Toggle v-model="form.force_email_on_third_party_signup" />
@@ -2280,12 +2201,7 @@
                     class="mt-4 space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700"
                   >
                     <p class="text-sm text-gray-500 dark:text-gray-400">
-                      {{
-                        localText(
-                          "以下默认值会在该来源注册新用户时发放；首次绑定时授权仅作用于已有账号绑定该来源。",
-                          "These defaults apply when a new user registers through this source. Grant on first bind only applies when an existing user binds this source.",
-                        )
-                      REDACTEDREDACTED
+                      {{ t("admin.settings.authSourceDefaults.enabledHint") REDACTEDREDACTED
                     </p>
 
                     <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -2331,19 +2247,12 @@
                         <label
                           class="font-medium text-gray-900 dark:text-white"
                         >
-                          {{
-                            localText("首次绑定时授权", "Grant on first bind")
-                          REDACTEDREDACTED
+                          {{ t("admin.settings.authSourceDefaults.grantOnFirstBindLabel") REDACTEDREDACTED
                         </label>
                         <p
                           class="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
                         >
-                          {{
-                            localText(
-                              "已有账号首次绑定该来源时发放默认权益。",
-                              "Grant default entitlements when an existing user first binds this source.",
-                            )
-                          REDACTEDREDACTED
+                          {{ t("admin.settings.authSourceDefaults.grantOnFirstBindHint") REDACTEDREDACTED
                         </p>
                       </div>
                       <Toggle
@@ -2359,15 +2268,10 @@
                         <label
                           class="font-medium text-gray-900 dark:text-white"
                         >
-                          {{ localText("默认订阅", "Default subscriptions") REDACTEDREDACTED
+                          {{ t("admin.settings.authSourceDefaults.defaultSubscriptionsLabel") REDACTEDREDACTED
                         </label>
                         <p class="text-sm text-gray-500 dark:text-gray-400">
-                          {{
-                            localText(
-                              "仅对当前认证来源生效，未配置时不追加来源专属订阅。",
-                              "Applies only to this auth source. Leave empty to skip source-specific subscriptions.",
-                            )
-                          REDACTEDREDACTED
+                          {{ t("admin.settings.authSourceDefaults.defaultSubscriptionsHint") REDACTEDREDACTED
                         </p>
                       </div>
                       <button
@@ -2391,12 +2295,7 @@
                       "
                       class="rounded border border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
                     >
-                      {{
-                        localText(
-                          "当前来源未配置专属默认订阅。",
-                          "No source-specific default subscriptions configured.",
-                        )
-                      REDACTEDREDACTED
+                      {{ t("admin.settings.authSourceDefaults.noSourceSubscriptions") REDACTEDREDACTED
                     </div>
 
                     <div v-else class="space-y-3">
@@ -2621,18 +2520,12 @@
                       class="text-sm font-medium text-gray-700 dark:text-gray-300"
                     >
                       {{
-                        localText(
-                          "OpenAI 实验调度策略",
-                          "OpenAI experimental scheduler policy",
-                        )
+                        t("admin.settings.openaiExperimentalScheduler.title")
                       REDACTEDREDACTED
                     </label>
                     <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                       {{
-                        localText(
-                          "默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。",
-                          "Disabled by default. When enabled, this only changes the gateway's experimental account-selection policy for OpenAI traffic; it does not indicate an upstream OpenAI capability.",
-                        )
+                        t("admin.settings.openaiExperimentalScheduler.description")
                       REDACTEDREDACTED
                     </p>
                   </div>
@@ -4131,20 +4024,16 @@
                           class="font-medium text-gray-900 dark:text-white"
                         >
                           {{
-                            localText(
-                              `${visibleMethod.titleREDACTED 可见方式`,
-                              `${visibleMethod.titleREDACTED visible method`,
-                            )
+                            t("admin.settings.paymentVisibleMethods.methodLabel", {
+                              title: visibleMethod.title,
+                            REDACTED)
                           REDACTEDREDACTED
                         </label>
                         <p
                           class="mt-1 text-sm text-gray-500 dark:text-gray-400"
                         >
                           {{
-                            localText(
-                              "控制前台结算页是否展示该方式，以及展示时使用的来源键。",
-                              "Controls whether checkout shows this method and which source key it exposes.",
-                            )
+                            t("admin.settings.paymentVisibleMethods.methodHint")
                           REDACTEDREDACTED
                         </p>
                       </div>
@@ -4163,7 +4052,7 @@
 
                     <div class="mt-4">
                       <label class="input-label">
-                        {{ localText("支付来源", "Payment source") REDACTEDREDACTED
+                        {{ t("admin.settings.paymentVisibleMethods.sourceLabel") REDACTEDREDACTED
                       </label>
                       <Select
                         :model-value="
@@ -4184,10 +4073,7 @@
                       />
                       <p class="mt-1.5 text-xs text-gray-400">
                         {{
-                          localText(
-                            "启用后必须明确选择一个来源；未配置状态不会对外展示该支付方式。",
-                            "Choose an explicit source before enabling the method. Not configured methods are not exposed.",
-                          )
+                          t("admin.settings.paymentVisibleMethods.sourceHint")
                         REDACTEDREDACTED
                       </p>
                     </div>
@@ -5028,35 +4914,23 @@ const authSourceDefaults = reactive<AuthSourceDefaultsState>(
 const authSourceDefaultsMeta = computed(() => [
   {
     source: "email" as AuthSourceType,
-    title: localText("邮箱注册", "Email signup"),
-    description: localText(
-      "适用于邮箱密码注册的新用户默认配额。",
-      "Default quota grants for email-password signups.",
-    ),
+    title: t("admin.settings.authSourceDefaults.sources.email.title"),
+    description: t("admin.settings.authSourceDefaults.sources.email.description"),
   REDACTED,
   {
     source: "linuxdo" as AuthSourceType,
-    title: localText("Linux DO 登录", "Linux DO signup"),
-    description: localText(
-      "适用于 Linux DO 第三方注册的新用户默认配额。",
-      "Default quota grants for Linux DO signups.",
-    ),
+    title: t("admin.settings.authSourceDefaults.sources.linuxdo.title"),
+    description: t("admin.settings.authSourceDefaults.sources.linuxdo.description"),
   REDACTED,
   {
     source: "oidc" as AuthSourceType,
-    title: localText("OIDC 登录", "OIDC signup"),
-    description: localText(
-      "适用于 OIDC 第三方注册的新用户默认配额。",
-      "Default quota grants for OIDC signups.",
-    ),
+    title: t("admin.settings.authSourceDefaults.sources.oidc.title"),
+    description: t("admin.settings.authSourceDefaults.sources.oidc.description"),
   REDACTED,
   {
     source: "wechat" as AuthSourceType,
-    title: localText("微信登录", "WeChat signup"),
-    description: localText(
-      "适用于微信第三方注册的新用户默认配额。",
-      "Default quota grants for WeChat signups.",
-    ),
+    title: t("admin.settings.authSourceDefaults.sources.wechat.title"),
+    description: t("admin.settings.authSourceDefaults.sources.wechat.description"),
   REDACTED,
 ]);
 
@@ -5130,10 +5004,9 @@ function validatePaymentVisibleMethodSelections(): boolean {
     REDACTED
 
     appStore.showError(
-      localText(
-        `${visibleMethod.titleREDACTED 已启用，请先选择支付来源`,
-        `Select a payment source before enabling ${visibleMethod.titleREDACTED`,
-      ),
+      t("admin.settings.paymentVisibleMethods.sourceRequiredError", {
+        title: visibleMethod.title,
+      REDACTED),
     );
     return false;
   REDACTED
@@ -5479,10 +5352,7 @@ async function setAndCopyWeChatRedirectUrl() {
   form.wechat_connect_redirect_url = url;
   await copyToClipboard(
     url,
-    localText(
-      "已使用当前站点生成回调地址并复制到剪贴板",
-      "Redirect URL generated and copied to clipboard",
-    ),
+    t("admin.settings.wechatConnect.redirectUrlSetAndCopied"),
   );
 REDACTED
 

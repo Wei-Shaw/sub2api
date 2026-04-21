@@ -50,12 +50,6 @@
             autocomplete="new-password"
             class="input"
           />
-          <p
-            v-if="form.new_password && form.confirm_password && form.new_password !== form.confirm_password"
-            class="input-error-text"
-          >
-            {{ t('profile.passwordsNotMatch') REDACTEDREDACTED
-          </p>
         </div>
 
         <div class="flex justify-end pt-4">

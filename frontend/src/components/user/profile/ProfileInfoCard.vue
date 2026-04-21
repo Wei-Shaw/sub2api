@@ -29,7 +29,11 @@
             <span
               :class="['badge', user?.status === 'active' ? 'badge-success' : 'badge-danger']"
             >
-              {{ user?.status REDACTEDREDACTED
+              {{
+                user?.status === 'active'
+                  ? t('common.active')
+                  : t('common.disabled')
+              REDACTEDREDACTED
             </span>
           </div>
         </div>
@@ -80,7 +84,7 @@ REDACTED>()
 const { t REDACTED = useI18n()
 
 const avatarUrl = computed(() => props.user?.avatar_url?.trim() || '')
-const displayName = computed(() => props.user?.username?.trim() || props.user?.email?.trim() || 'User')
+const displayName = computed(() => props.user?.username?.trim() || props.user?.email?.trim() || t('profile.user'))
 const avatarInitial = computed(() => displayName.value.charAt(0).toUpperCase() || 'U')
 
 const providerLabels = computed<Record<UserAuthProvider, string>>(() => ({

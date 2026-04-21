@@ -700,7 +700,7 @@ REDACTED
 // All possible columns (for column settings)
 const allColumns = computed<Column[]>(() => [
   { key: 'email', label: t('admin.users.columns.user'), sortable: true REDACTED,
-  { key: 'id', label: 'ID', sortable: true REDACTED,
+  { key: 'id', label: t('admin.users.columns.id'), sortable: true REDACTED,
   { key: 'username', label: t('admin.users.columns.username'), sortable: true REDACTED,
   { key: 'notes', label: t('admin.users.columns.notes'), sortable: false REDACTED,
   // Dynamic attribute columns
