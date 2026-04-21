@@ -708,6 +708,29 @@ func HasHistoryWith(preds ...predicate.ChannelMonitorHistory) predicate.ChannelM
 	})
 }
 
+// HasDailyRollups applies the HasEdge predicate on the "daily_rollups" edge.
+func HasDailyRollups() predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, DailyRollupsTable, DailyRollupsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasDailyRollupsWith applies the HasEdge predicate on the "daily_rollups" edge with a given conditions (other predicates).
+func HasDailyRollupsWith(preds ...predicate.ChannelMonitorDailyRollup) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(func(s *sql.Selector) {
+		step := newDailyRollupsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.ChannelMonitor) predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.AndPredicates(predicates...))

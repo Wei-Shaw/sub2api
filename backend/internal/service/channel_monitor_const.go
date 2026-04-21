@@ -15,8 +15,16 @@ const (
 	monitorPingTimeout = 8 * time.Second
 	// monitorDegradedThreshold 主请求成功但耗时超过该阈值视为 degraded。
 	monitorDegradedThreshold = 6 * time.Second
-	// monitorHistoryRetentionDays 历史保留天数（每天清理一次）。
-	monitorHistoryRetentionDays = 30
+	// monitorHistoryRetentionDays 明细历史保留天数。
+	// 明细只保留 1 天，超出由 SoftDeleteMixin 软删；
+	// 维护任务每天凌晨跑（由 OpsCleanupService 统一调度）。
+	monitorHistoryRetentionDays = 1
+	// monitorRollupRetentionDays 日聚合保留天数。
+	// 日聚合行由 RunDailyMaintenance 在超过该窗口后软删。
+	monitorRollupRetentionDays = 30
+	// monitorMaintenanceMaxDaysPerRun 单次维护任务最多聚合的天数。
+	// 用于限制首次上线回填（30 天）+ 少量余量，避免长事务。
+	monitorMaintenanceMaxDaysPerRun = 35
 	// monitorWorkerConcurrency 调度器并发执行的监控数（pond 池容量）。
 	monitorWorkerConcurrency = 5
 	// monitorTickerInterval 调度器扫描"到期监控"的间隔。
@@ -55,11 +63,6 @@ const (
 	monitorAvailability15Days = 15
 	monitorAvailability30Days = 30
 
-	// monitorCleanupCheckInterval 历史清理调度器的检查频率（每小时检查"是否到 03:00"）。
-	monitorCleanupCheckInterval = time.Hour
-	// monitorCleanupHour 凌晨 3 点执行历史清理。
-	monitorCleanupHour = 3
-
 	// MonitorHistoryDefaultLimit 历史查询默认返回条数（handler 层共享）。
 	MonitorHistoryDefaultLimit = 100
 	// MonitorHistoryMaxLimit 历史查询最大返回条数（handler 层共享）。
@@ -82,10 +85,6 @@ const (
 	monitorListDueTimeout = 10 * time.Second
 	// monitorRunOneBuffer runOne 的总超时缓冲（除请求超时与 ping 超时外的额外裕量）。
 	monitorRunOneBuffer = 10 * time.Second
-	// monitorCleanupTimeout 历史清理任务的总超时。
-	monitorCleanupTimeout = 30 * time.Second
-	// monitorCleanupDayLayout 历史清理用于"今日是否已跑过"判定的日期格式。
-	monitorCleanupDayLayout = "2006-01-02"
 
 	// monitorIdleConnTimeout HTTP transport 空闲连接关闭超时。
 	monitorIdleConnTimeout = 30 * time.Second

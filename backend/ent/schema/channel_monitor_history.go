@@ -9,10 +9,13 @@ import (
 	"entgo.io/ent/schema/edge"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
+
+	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 )
 
 // ChannelMonitorHistory holds the schema definition for the ChannelMonitorHistory entity.
-// 渠道监控历史：每次检测每个模型一行记录，由调度器写入，定期清理 30 天前的旧数据。
+// 渠道监控历史：每次检测每个模型一行记录。明细只保留 1 天，超过 1 天的数据被聚合到
+// channel_monitor_daily_rollups 后软删（deleted_at），由后续懒清理任务物理移除。
 type ChannelMonitorHistory struct {
 	ent.Schema
 }
@@ -20,6 +23,12 @@ type ChannelMonitorHistory struct {
 func (ChannelMonitorHistory) Annotations() []schema.Annotation {
 	return []schema.Annotation{
 		entsql.Annotation{Table: "channel_monitor_histories"},
+	}
+}
+
+func (ChannelMonitorHistory) Mixin() []ent.Mixin {
+	return []ent.Mixin{
+		mixins.SoftDeleteMixin{},
 	}
 }
 

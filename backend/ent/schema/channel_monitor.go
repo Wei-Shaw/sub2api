@@ -69,6 +69,8 @@ func (ChannelMonitor) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("history", ChannelMonitorHistory.Type).
 			Annotations(entsql.OnDelete(entsql.Cascade)),
+		edge.To("daily_rollups", ChannelMonitorDailyRollup.Type).
+			Annotations(entsql.OnDelete(entsql.Cascade)),
 	}
 }
 

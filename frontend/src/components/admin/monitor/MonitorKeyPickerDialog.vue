@@ -47,9 +47,14 @@
               <td class="px-3 py-2 font-medium text-gray-900 dark:text-white">{{ k.name }}</td>
               <td class="px-3 py-2 font-mono text-xs text-gray-500 dark:text-gray-400">{{ maskApiKey(k.key) }}</td>
               <td class="px-3 py-2">
-                <span v-if="k.group" class="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-700 dark:bg-dark-700 dark:text-gray-300">
-                  {{ k.group.name }}
-                </span>
+                <GroupBadge
+                  v-if="k.group"
+                  :name="k.group.name"
+                  :platform="k.group.platform"
+                  :subscription-type="k.group.subscription_type"
+                  :rate-multiplier="k.group.rate_multiplier"
+                  :user-rate-multiplier="userGroupRates[k.group.id]"
+                />
                 <span v-else class="text-xs text-gray-400">—</span>
               </td>
             </tr>
@@ -73,14 +78,18 @@ import { useI18n } from 'vue-i18n'
 import type { ApiKey } from '@/types'
 import type { Provider } from '@/api/admin/channelMonitor'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import GroupBadge from '@/components/common/GroupBadge.vue'
 import { maskApiKey } from '@/utils/maskApiKey'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   show: boolean
   loading: boolean
   keys: ApiKey[]
   provider: Provider
-}>()
+  userGroupRates?: Record<number, number>
+}>(), {
+  userGroupRates: () => ({}),
+})
 
 defineEmits<{
   (e: 'close'): void

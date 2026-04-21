@@ -9,6 +9,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
+	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
@@ -246,6 +247,7 @@ func (r *channelMonitorRepository) ListLatestPerModel(ctx context.Context, monit
 		    model, status, latency_ms, ping_latency_ms, checked_at
 		FROM channel_monitor_histories
 		WHERE monitor_id = $1
+		  AND deleted_at IS NULL
 		ORDER BY model, checked_at DESC
 	`
 	rows, err := r.db.QueryContext(ctx, q, monitorID)
@@ -280,23 +282,48 @@ func assignNullInt(dst **int, n sql.NullInt64) {
 
 // ComputeAvailability 计算指定窗口内每个模型的可用率与平均延迟。
 // "可用" = status IN (operational, degraded)。
+//
+// 数据来源：明细表只保留 1 天；窗口前其余天数走聚合表。
+//   - raw   = 今天（CURRENT_DATE 起）的未软删明细，按 model 累加
+//   - rollup = [CURRENT_DATE - windowDays, CURRENT_DATE) 区间的聚合行
+//
+// 总窗口为 "今天 + 过去 windowDays 天"，比 windowDays 字面值大 1 天，但因为聚合
+// 是按整 UTC 日切的，这是聚合化无法避免的精度损失，且偏宽不偏窄（数据更全）。
 func (r *channelMonitorRepository) ComputeAvailability(ctx context.Context, monitorID int64, windowDays int) ([]*service.ChannelMonitorAvailability, error) {
 	if windowDays <= 0 {
 		windowDays = 7
 	}
 	const q = `
-		SELECT
-		    model,
-		    COUNT(*)                                                  AS total_checks,
-		    COUNT(*) FILTER (WHERE status IN ('operational','degraded')) AS ok_checks,
-		    AVG(latency_ms) FILTER (WHERE latency_ms IS NOT NULL)     AS avg_latency_ms
-		FROM channel_monitor_histories
-		WHERE monitor_id = $1
-		  AND checked_at >= $2
+		WITH raw AS (
+		    SELECT model,
+		           COUNT(*)                                                  AS total_checks,
+		           COUNT(*) FILTER (WHERE status IN ('operational','degraded')) AS ok_count,
+		           COALESCE(SUM(latency_ms) FILTER (WHERE latency_ms IS NOT NULL), 0) AS sum_latency_ms,
+		           COUNT(latency_ms)                                         AS count_latency
+		    FROM channel_monitor_histories
+		    WHERE monitor_id = $1
+		      AND deleted_at IS NULL
+		      AND checked_at >= CURRENT_DATE
+		    GROUP BY model
+		),
+		rollup AS (
+		    SELECT model, total_checks, ok_count, sum_latency_ms, count_latency
+		    FROM channel_monitor_daily_rollups
+		    WHERE monitor_id = $1
+		      AND deleted_at IS NULL
+		      AND bucket_date >= (CURRENT_DATE - $2::int)
+		      AND bucket_date < CURRENT_DATE
+		)
+		SELECT model,
+		       SUM(total_checks)                                            AS total,
+		       SUM(ok_count)                                                AS ok,
+		       CASE WHEN SUM(count_latency) > 0
+		            THEN SUM(sum_latency_ms)::float8 / SUM(count_latency)
+		            ELSE NULL END                                           AS avg_latency_ms
+		FROM (SELECT * FROM raw UNION ALL SELECT * FROM rollup) combined
 		GROUP BY model
 	`
-	from := time.Now().AddDate(0, 0, -windowDays)
-	rows, err := r.db.QueryContext(ctx, q, monitorID, from)
+	rows, err := r.db.QueryContext(ctx, q, monitorID, windowDays)
 	if err != nil {
 		return nil, fmt.Errorf("query availability: %w", err)
 	}
@@ -349,6 +376,7 @@ func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, 
 		    monitor_id, model, status, latency_ms, ping_latency_ms, checked_at
 		FROM channel_monitor_histories
 		WHERE monitor_id = ANY($1)
+		  AND deleted_at IS NULL
 		ORDER BY monitor_id, model, checked_at DESC
 	`
 	rows, err := r.db.QueryContext(ctx, q, pq.Array(ids))
@@ -409,6 +437,7 @@ func (r *channelMonitorRepository) ListRecentHistoryForMonitors(
 		    FROM channel_monitor_histories h
 		    JOIN targets t
 		      ON t.monitor_id = h.monitor_id AND t.model = h.model
+		    WHERE h.deleted_at IS NULL
 		)
 		SELECT monitor_id, status, latency_ms, ping_latency_ms, checked_at
 		FROM ranked
@@ -476,6 +505,7 @@ func clampTimelineLimit(n int) int {
 }
 
 // ComputeAvailabilityForMonitors 一次性计算多个监控在某个窗口内的每模型可用率与平均延迟。
+// 与单 monitor 版本同构：明细只覆盖今天，更早走聚合表 UNION 合并。
 func (r *channelMonitorRepository) ComputeAvailabilityForMonitors(ctx context.Context, ids []int64, windowDays int) (map[int64][]*service.ChannelMonitorAvailability, error) {
 	out := make(map[int64][]*service.ChannelMonitorAvailability, len(ids))
 	if len(ids) == 0 {
@@ -485,19 +515,38 @@ func (r *channelMonitorRepository) ComputeAvailabilityForMonitors(ctx context.Co
 		windowDays = 7
 	}
 	const q = `
-		SELECT
-		    monitor_id,
-		    model,
-		    COUNT(*)                                                  AS total_checks,
-		    COUNT(*) FILTER (WHERE status IN ('operational','degraded')) AS ok_checks,
-		    AVG(latency_ms) FILTER (WHERE latency_ms IS NOT NULL)     AS avg_latency_ms
-		FROM channel_monitor_histories
-		WHERE monitor_id = ANY($1)
-		  AND checked_at >= $2
+		WITH raw AS (
+		    SELECT monitor_id,
+		           model,
+		           COUNT(*)                                                  AS total_checks,
+		           COUNT(*) FILTER (WHERE status IN ('operational','degraded')) AS ok_count,
+		           COALESCE(SUM(latency_ms) FILTER (WHERE latency_ms IS NOT NULL), 0) AS sum_latency_ms,
+		           COUNT(latency_ms)                                         AS count_latency
+		    FROM channel_monitor_histories
+		    WHERE monitor_id = ANY($1)
+		      AND deleted_at IS NULL
+		      AND checked_at >= CURRENT_DATE
+		    GROUP BY monitor_id, model
+		),
+		rollup AS (
+		    SELECT monitor_id, model, total_checks, ok_count, sum_latency_ms, count_latency
+		    FROM channel_monitor_daily_rollups
+		    WHERE monitor_id = ANY($1)
+		      AND deleted_at IS NULL
+		      AND bucket_date >= (CURRENT_DATE - $2::int)
+		      AND bucket_date < CURRENT_DATE
+		)
+		SELECT monitor_id,
+		       model,
+		       SUM(total_checks)                                            AS total,
+		       SUM(ok_count)                                                AS ok,
+		       CASE WHEN SUM(count_latency) > 0
+		            THEN SUM(sum_latency_ms)::float8 / SUM(count_latency)
+		            ELSE NULL END                                           AS avg_latency_ms
+		FROM (SELECT * FROM raw UNION ALL SELECT * FROM rollup) combined
 		GROUP BY monitor_id, model
 	`
-	from := time.Now().AddDate(0, 0, -windowDays)
-	rows, err := r.db.QueryContext(ctx, q, pq.Array(ids), from)
+	rows, err := r.db.QueryContext(ctx, q, pq.Array(ids), windowDays)
 	if err != nil {
 		return nil, fmt.Errorf("query availability batch: %w", err)
 	}
@@ -519,6 +568,116 @@ func (r *channelMonitorRepository) ComputeAvailabilityForMonitors(ctx context.Co
 		return nil, err
 	}
 	return out, nil
+}
+
+// ---------- 聚合维护 ----------
+
+// UpsertDailyRollupsFor 把 targetDate 当天（[targetDate, targetDate+1d)）未软删的明细
+// 按 (monitor_id, model, bucket_date) 聚合写入 channel_monitor_daily_rollups。
+//   - 用 ON CONFLICT (monitor_id, model, bucket_date) DO UPDATE 实现幂等回填，
+//     重复执行只会用最新统计覆盖；
+//   - 同时把 deleted_at 重置为 NULL，避免历史误删后聚合行被持续过滤掉；
+//   - $1::date 让 PG 自动把入参 truncate 到 UTC 日期，调用方不需要预处理 targetDate。
+func (r *channelMonitorRepository) UpsertDailyRollupsFor(ctx context.Context, targetDate time.Time) (int64, error) {
+	const q = `
+		INSERT INTO channel_monitor_daily_rollups (
+		    monitor_id, model, bucket_date,
+		    total_checks, ok_count,
+		    operational_count, degraded_count, failed_count, error_count,
+		    sum_latency_ms, count_latency,
+		    sum_ping_latency_ms, count_ping_latency,
+		    computed_at
+		)
+		SELECT
+		    monitor_id,
+		    model,
+		    $1::date AS bucket_date,
+		    COUNT(*)                                                         AS total_checks,
+		    COUNT(*) FILTER (WHERE status IN ('operational','degraded'))     AS ok_count,
+		    COUNT(*) FILTER (WHERE status = 'operational')                   AS operational_count,
+		    COUNT(*) FILTER (WHERE status = 'degraded')                      AS degraded_count,
+		    COUNT(*) FILTER (WHERE status = 'failed')                        AS failed_count,
+		    COUNT(*) FILTER (WHERE status = 'error')                         AS error_count,
+		    COALESCE(SUM(latency_ms) FILTER (WHERE latency_ms IS NOT NULL), 0)             AS sum_latency_ms,
+		    COUNT(latency_ms)                                                AS count_latency,
+		    COALESCE(SUM(ping_latency_ms) FILTER (WHERE ping_latency_ms IS NOT NULL), 0)   AS sum_ping_latency_ms,
+		    COUNT(ping_latency_ms)                                           AS count_ping_latency,
+		    NOW()
+		FROM channel_monitor_histories
+		WHERE deleted_at IS NULL
+		  AND checked_at >= $1::date
+		  AND checked_at <  ($1::date + INTERVAL '1 day')
+		GROUP BY monitor_id, model
+		ON CONFLICT (monitor_id, model, bucket_date) DO UPDATE SET
+		    total_checks        = EXCLUDED.total_checks,
+		    ok_count            = EXCLUDED.ok_count,
+		    operational_count   = EXCLUDED.operational_count,
+		    degraded_count      = EXCLUDED.degraded_count,
+		    failed_count        = EXCLUDED.failed_count,
+		    error_count         = EXCLUDED.error_count,
+		    sum_latency_ms      = EXCLUDED.sum_latency_ms,
+		    count_latency       = EXCLUDED.count_latency,
+		    sum_ping_latency_ms = EXCLUDED.sum_ping_latency_ms,
+		    count_ping_latency  = EXCLUDED.count_ping_latency,
+		    computed_at         = NOW(),
+		    deleted_at          = NULL
+	`
+	res, err := r.db.ExecContext(ctx, q, targetDate)
+	if err != nil {
+		return 0, fmt.Errorf("upsert daily rollups for %s: %w", targetDate.Format("2006-01-02"), err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("rows affected (upsert rollups): %w", err)
+	}
+	return n, nil
+}
+
+// DeleteRollupsBefore 软删 bucket_date < beforeDate 的聚合行。
+// 走 ent client，利用 SoftDeleteMixin 把 DELETE 自动改写为 UPDATE deleted_at = NOW()。
+func (r *channelMonitorRepository) DeleteRollupsBefore(ctx context.Context, beforeDate time.Time) (int64, error) {
+	client := clientFromContext(ctx, r.client)
+	n, err := client.ChannelMonitorDailyRollup.Delete().
+		Where(channelmonitordailyrollup.BucketDateLT(beforeDate)).
+		Exec(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("delete rollups before: %w", err)
+	}
+	return int64(n), nil
+}
+
+// LoadAggregationWatermark 读 watermark 表（id=1）。
+// watermark 表不是 ent schema（只有一行），直接走原生 SQL。
+//   - 行不存在或 last_aggregated_date IS NULL：返回 (nil, nil)，由调用方决定首次回填策略
+func (r *channelMonitorRepository) LoadAggregationWatermark(ctx context.Context) (*time.Time, error) {
+	const q = `SELECT last_aggregated_date FROM channel_monitor_aggregation_watermark WHERE id = 1`
+	var t sql.NullTime
+	if err := r.db.QueryRowContext(ctx, q).Scan(&t); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("load aggregation watermark: %w", err)
+	}
+	if !t.Valid {
+		return nil, nil
+	}
+	return &t.Time, nil
+}
+
+// UpdateAggregationWatermark 更新 watermark（UPSERT 到 id=1）。
+// $1::date 让 PG 把入参 truncate 到 UTC 日期，与 last_aggregated_date 列的 DATE 类型一致。
+func (r *channelMonitorRepository) UpdateAggregationWatermark(ctx context.Context, date time.Time) error {
+	const q = `
+		INSERT INTO channel_monitor_aggregation_watermark (id, last_aggregated_date, updated_at)
+		VALUES (1, $1::date, NOW())
+		ON CONFLICT (id) DO UPDATE SET
+		    last_aggregated_date = EXCLUDED.last_aggregated_date,
+		    updated_at           = NOW()
+	`
+	if _, err := r.db.ExecContext(ctx, q, date); err != nil {
+		return fmt.Errorf("update aggregation watermark: %w", err)
+	}
+	return nil
 }
 
 // ---------- helpers ----------

@@ -41,6 +41,20 @@ type ChannelMonitorRepository interface {
 	// ListRecentHistoryForMonitors 批量取多个 monitor 各自主模型（primaryModels[monitorID]）最近 perMonitorLimit 条历史。
 	// 返回的 entry 已按 checked_at DESC 排序（最新在前），不含 message 字段。
 	ListRecentHistoryForMonitors(ctx context.Context, ids []int64, primaryModels map[int64]string, perMonitorLimit int) (map[int64][]*ChannelMonitorHistoryEntry, error)
+
+	// ---------- 聚合维护（OpsCleanupService 调用） ----------
+
+	// UpsertDailyRollupsFor 把 targetDate 当天的明细按 (monitor_id, model, bucket_date)
+	// 聚合到 channel_monitor_daily_rollups。targetDate 会被截断到日期；
+	// 用 ON CONFLICT DO UPDATE 实现幂等回填，返回 upsert 影响的行数。
+	UpsertDailyRollupsFor(ctx context.Context, targetDate time.Time) (int64, error)
+	// DeleteRollupsBefore 软删 bucket_date < beforeDate 的聚合行，返回删除行数。
+	DeleteRollupsBefore(ctx context.Context, beforeDate time.Time) (int64, error)
+	// LoadAggregationWatermark 读 watermark（id=1）。
+	// 返回 nil 表示从未聚合过；watermark 表本身预期已存在单行（migration 110 写入）。
+	LoadAggregationWatermark(ctx context.Context) (*time.Time, error)
+	// UpdateAggregationWatermark 写 watermark（UPSERT 到 id=1）。
+	UpdateAggregationWatermark(ctx context.Context, date time.Time) error
 }
 
 // ChannelMonitorService 渠道监控管理服务。
@@ -300,9 +314,10 @@ func (s *ChannelMonitorService) listDueForCheck(ctx context.Context) ([]*Channel
 	return due, nil
 }
 
-// cleanupOldHistory 删除 monitorHistoryRetentionDays 天之前的历史记录。
+// cleanupOldHistory 删除 monitorHistoryRetentionDays 天之前的明细历史记录。
+// 由 RunDailyMaintenance 调用；SoftDeleteMixin 自动把 DELETE 改为 UPDATE deleted_at。
 func (s *ChannelMonitorService) cleanupOldHistory(ctx context.Context) error {
-	before := time.Now().AddDate(0, 0, -monitorHistoryRetentionDays)
+	before := time.Now().UTC().AddDate(0, 0, -monitorHistoryRetentionDays)
 	deleted, err := s.repo.DeleteHistoryBefore(ctx, before)
 	if err != nil {
 		return fmt.Errorf("delete history before %s: %w", before.Format(time.RFC3339), err)
@@ -310,6 +325,94 @@ func (s *ChannelMonitorService) cleanupOldHistory(ctx context.Context) error {
 	if deleted > 0 {
 		slog.Info("channel_monitor: history cleanup",
 			"deleted_rows", deleted, "before", before.Format(time.RFC3339))
+	}
+	return nil
+}
+
+// RunDailyMaintenance 每日维护任务：聚合昨天之前未聚合的明细，软删过期明细和聚合。
+// 由 OpsCleanupService 的 cron 调度触发（共享 schedule 和 leader lock）。
+//
+// 幂等性：
+//   - watermark 保证已聚合的日期不会重复处理；
+//   - UpsertDailyRollupsFor 内部使用 ON CONFLICT DO UPDATE，同一日重复跑结果一致。
+//
+// 每一步失败都只记 slog.Warn，整体函数始终返回 nil 让后续步骤能继续跑
+// （与 OpsCleanupService.runCleanupOnce 风格一致）。
+func (s *ChannelMonitorService) RunDailyMaintenance(ctx context.Context) error {
+	now := time.Now().UTC()
+	today := now.Truncate(24 * time.Hour)
+
+	if err := s.runDailyAggregation(ctx, today); err != nil {
+		slog.Warn("channel_monitor: maintenance step failed",
+			"step", "aggregate", "error", err)
+	}
+	if err := s.cleanupOldHistory(ctx); err != nil {
+		slog.Warn("channel_monitor: maintenance step failed",
+			"step", "prune_history", "error", err)
+	}
+	if err := s.cleanupOldRollups(ctx, today); err != nil {
+		slog.Warn("channel_monitor: maintenance step failed",
+			"step", "prune_rollups", "error", err)
+	}
+	return nil
+}
+
+// runDailyAggregation 从 watermark+1 聚合到昨天（UTC）。
+// 首次跑（watermark nil）：从 today-monitorRollupRetentionDays 开始回填。
+// 每次最多聚合 monitorMaintenanceMaxDaysPerRun 天，避免长事务。
+func (s *ChannelMonitorService) runDailyAggregation(ctx context.Context, today time.Time) error {
+	watermark, err := s.repo.LoadAggregationWatermark(ctx)
+	if err != nil {
+		return fmt.Errorf("load watermark: %w", err)
+	}
+
+	start := s.resolveAggregationStart(watermark, today)
+	if !start.Before(today) {
+		return nil // 没有需要聚合的日期
+	}
+
+	iterations := 0
+	for d := start; d.Before(today); d = d.Add(24 * time.Hour) {
+		if iterations >= monitorMaintenanceMaxDaysPerRun {
+			slog.Info("channel_monitor: maintenance aggregation capped",
+				"max_days", monitorMaintenanceMaxDaysPerRun,
+				"next_resume", d.Format("2006-01-02"))
+			break
+		}
+		affected, upErr := s.repo.UpsertDailyRollupsFor(ctx, d)
+		if upErr != nil {
+			return fmt.Errorf("upsert rollups for %s: %w", d.Format("2006-01-02"), upErr)
+		}
+		if err := s.repo.UpdateAggregationWatermark(ctx, d); err != nil {
+			return fmt.Errorf("update watermark to %s: %w", d.Format("2006-01-02"), err)
+		}
+		slog.Info("channel_monitor: rollups upserted",
+			"date", d.Format("2006-01-02"), "affected_rows", affected)
+		iterations++
+	}
+	return nil
+}
+
+// resolveAggregationStart 计算本次聚合起点：
+//   - watermark == nil：today - monitorRollupRetentionDays（首次回填最多 30 天）
+//   - watermark != nil：*watermark + 1 day
+func (s *ChannelMonitorService) resolveAggregationStart(watermark *time.Time, today time.Time) time.Time {
+	if watermark == nil {
+		return today.AddDate(0, 0, -monitorRollupRetentionDays)
+	}
+	return watermark.UTC().Truncate(24 * time.Hour).Add(24 * time.Hour)
+}
+
+// cleanupOldRollups 软删 bucket_date < today - monitorRollupRetentionDays 的日聚合行。
+func (s *ChannelMonitorService) cleanupOldRollups(ctx context.Context, today time.Time) error {
+	cutoff := today.AddDate(0, 0, -monitorRollupRetentionDays)
+	deleted, err := s.repo.DeleteRollupsBefore(ctx, cutoff)
+	if err != nil {
+		return fmt.Errorf("delete rollups before %s: %w", cutoff.Format("2006-01-02"), err)
+	}
+	if deleted > 0 {
+		slog.Info("channel_monitor: rollups cleanup",
+			"deleted_rows", deleted, "before", cutoff.Format("2006-01-02"))
 	}
 	return nil
 }

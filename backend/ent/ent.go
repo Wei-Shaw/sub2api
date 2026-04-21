@@ -18,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
+	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
@@ -100,34 +101,35 @@ var (
 func checkColumn(t, c string) error {
 	initCheck.Do(func() {
 		columnCheck = sql.NewColumnCheck(map[string]func(string) bool{
-			apikey.Table:                  apikey.ValidColumn,
-			account.Table:                 account.ValidColumn,
-			accountgroup.Table:            accountgroup.ValidColumn,
-			announcement.Table:            announcement.ValidColumn,
-			announcementread.Table:        announcementread.ValidColumn,
-			channelmonitor.Table:          channelmonitor.ValidColumn,
-			channelmonitorhistory.Table:   channelmonitorhistory.ValidColumn,
-			errorpassthroughrule.Table:    errorpassthroughrule.ValidColumn,
-			group.Table:                   group.ValidColumn,
-			idempotencyrecord.Table:       idempotencyrecord.ValidColumn,
-			paymentauditlog.Table:         paymentauditlog.ValidColumn,
-			paymentorder.Table:            paymentorder.ValidColumn,
-			paymentproviderinstance.Table: paymentproviderinstance.ValidColumn,
-			promocode.Table:               promocode.ValidColumn,
-			promocodeusage.Table:          promocodeusage.ValidColumn,
-			proxy.Table:                   proxy.ValidColumn,
-			redeemcode.Table:              redeemcode.ValidColumn,
-			securitysecret.Table:          securitysecret.ValidColumn,
-			setting.Table:                 setting.ValidColumn,
-			subscriptionplan.Table:        subscriptionplan.ValidColumn,
-			tlsfingerprintprofile.Table:   tlsfingerprintprofile.ValidColumn,
-			usagecleanuptask.Table:        usagecleanuptask.ValidColumn,
-			usagelog.Table:                usagelog.ValidColumn,
-			user.Table:                    user.ValidColumn,
-			userallowedgroup.Table:        userallowedgroup.ValidColumn,
-			userattributedefinition.Table: userattributedefinition.ValidColumn,
-			userattributevalue.Table:      userattributevalue.ValidColumn,
-			usersubscription.Table:        usersubscription.ValidColumn,
+			apikey.Table:                    apikey.ValidColumn,
+			account.Table:                   account.ValidColumn,
+			accountgroup.Table:              accountgroup.ValidColumn,
+			announcement.Table:              announcement.ValidColumn,
+			announcementread.Table:          announcementread.ValidColumn,
+			channelmonitor.Table:            channelmonitor.ValidColumn,
+			channelmonitordailyrollup.Table: channelmonitordailyrollup.ValidColumn,
+			channelmonitorhistory.Table:     channelmonitorhistory.ValidColumn,
+			errorpassthroughrule.Table:      errorpassthroughrule.ValidColumn,
+			group.Table:                     group.ValidColumn,
+			idempotencyrecord.Table:         idempotencyrecord.ValidColumn,
+			paymentauditlog.Table:           paymentauditlog.ValidColumn,
+			paymentorder.Table:              paymentorder.ValidColumn,
+			paymentproviderinstance.Table:   paymentproviderinstance.ValidColumn,
+			promocode.Table:                 promocode.ValidColumn,
+			promocodeusage.Table:            promocodeusage.ValidColumn,
+			proxy.Table:                     proxy.ValidColumn,
+			redeemcode.Table:                redeemcode.ValidColumn,
+			securitysecret.Table:            securitysecret.ValidColumn,
+			setting.Table:                   setting.ValidColumn,
+			subscriptionplan.Table:          subscriptionplan.ValidColumn,
+			tlsfingerprintprofile.Table:     tlsfingerprintprofile.ValidColumn,
+			usagecleanuptask.Table:          usagecleanuptask.ValidColumn,
+			usagelog.Table:                  usagelog.ValidColumn,
+			user.Table:                      user.ValidColumn,
+			userallowedgroup.Table:          userallowedgroup.ValidColumn,
+			userattributedefinition.Table:   userattributedefinition.ValidColumn,
+			userattributevalue.Table:        userattributevalue.ValidColumn,
+			usersubscription.Table:          usersubscription.ValidColumn,
 		})
 	})
 	return columnCheck(t, c)

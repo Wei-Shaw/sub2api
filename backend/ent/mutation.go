@@ -18,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
+	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
@@ -53,34 +54,35 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeAPIKey                  = "APIKey"
-	TypeAccount                 = "Account"
-	TypeAccountGroup            = "AccountGroup"
-	TypeAnnouncement            = "Announcement"
-	TypeAnnouncementRead        = "AnnouncementRead"
-	TypeChannelMonitor          = "ChannelMonitor"
-	TypeChannelMonitorHistory   = "ChannelMonitorHistory"
-	TypeErrorPassthroughRule    = "ErrorPassthroughRule"
-	TypeGroup                   = "Group"
-	TypeIdempotencyRecord       = "IdempotencyRecord"
-	TypePaymentAuditLog         = "PaymentAuditLog"
-	TypePaymentOrder            = "PaymentOrder"
-	TypePaymentProviderInstance = "PaymentProviderInstance"
-	TypePromoCode               = "PromoCode"
-	TypePromoCodeUsage          = "PromoCodeUsage"
-	TypeProxy                   = "Proxy"
-	TypeRedeemCode              = "RedeemCode"
-	TypeSecuritySecret          = "SecuritySecret"
-	TypeSetting                 = "Setting"
-	TypeSubscriptionPlan        = "SubscriptionPlan"
-	TypeTLSFingerprintProfile   = "TLSFingerprintProfile"
-	TypeUsageCleanupTask        = "UsageCleanupTask"
-	TypeUsageLog                = "UsageLog"
-	TypeUser                    = "User"
-	TypeUserAllowedGroup        = "UserAllowedGroup"
-	TypeUserAttributeDefinition = "UserAttributeDefinition"
-	TypeUserAttributeValue      = "UserAttributeValue"
-	TypeUserSubscription        = "UserSubscription"
+	TypeAPIKey                    = "APIKey"
+	TypeAccount                   = "Account"
+	TypeAccountGroup              = "AccountGroup"
+	TypeAnnouncement              = "Announcement"
+	TypeAnnouncementRead          = "AnnouncementRead"
+	TypeChannelMonitor            = "ChannelMonitor"
+	TypeChannelMonitorDailyRollup = "ChannelMonitorDailyRollup"
+	TypeChannelMonitorHistory     = "ChannelMonitorHistory"
+	TypeErrorPassthroughRule      = "ErrorPassthroughRule"
+	TypeGroup                     = "Group"
+	TypeIdempotencyRecord         = "IdempotencyRecord"
+	TypePaymentAuditLog           = "PaymentAuditLog"
+	TypePaymentOrder              = "PaymentOrder"
+	TypePaymentProviderInstance   = "PaymentProviderInstance"
+	TypePromoCode                 = "PromoCode"
+	TypePromoCodeUsage            = "PromoCodeUsage"
+	TypeProxy                     = "Proxy"
+	TypeRedeemCode                = "RedeemCode"
+	TypeSecuritySecret            = "SecuritySecret"
+	TypeSetting                   = "Setting"
+	TypeSubscriptionPlan          = "SubscriptionPlan"
+	TypeTLSFingerprintProfile     = "TLSFingerprintProfile"
+	TypeUsageCleanupTask          = "UsageCleanupTask"
+	TypeUsageLog                  = "UsageLog"
+	TypeUser                      = "User"
+	TypeUserAllowedGroup          = "UserAllowedGroup"
+	TypeUserAttributeDefinition   = "UserAttributeDefinition"
+	TypeUserAttributeValue        = "UserAttributeValue"
+	TypeUserSubscription          = "UserSubscription"
 )
 
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
@@ -6894,32 +6896,35 @@ func (m *AnnouncementReadMutation) ResetEdge(name string) error {
 // ChannelMonitorMutation represents an operation that mutates the ChannelMonitor nodes in the graph.
 type ChannelMonitorMutation struct {
 	config
-	op                  Op
-	typ                 string
-	id                  *int64
-	created_at          *time.Time
-	updated_at          *time.Time
-	name                *string
-	provider            *channelmonitor.Provider
-	endpoint            *string
-	api_key_encrypted   *string
-	primary_model       *string
-	extra_models        *[]string
-	appendextra_models  []string
-	group_name          *string
-	enabled             *bool
-	interval_seconds    *int
-	addinterval_seconds *int
-	last_checked_at     *time.Time
-	created_by          *int64
-	addcreated_by       *int64
-	clearedFields       map[string]struct{}
-	history             map[int64]struct{}
-	removedhistory      map[int64]struct{}
-	clearedhistory      bool
-	done                bool
-	oldValue            func(context.Context) (*ChannelMonitor, error)
-	predicates          []predicate.ChannelMonitor
+	op                   Op
+	typ                  string
+	id                   *int64
+	created_at           *time.Time
+	updated_at           *time.Time
+	name                 *string
+	provider             *channelmonitor.Provider
+	endpoint             *string
+	api_key_encrypted    *string
+	primary_model        *string
+	extra_models         *[]string
+	appendextra_models   []string
+	group_name           *string
+	enabled              *bool
+	interval_seconds     *int
+	addinterval_seconds  *int
+	last_checked_at      *time.Time
+	created_by           *int64
+	addcreated_by        *int64
+	clearedFields        map[string]struct{}
+	history              map[int64]struct{}
+	removedhistory       map[int64]struct{}
+	clearedhistory       bool
+	daily_rollups        map[int64]struct{}
+	removeddaily_rollups map[int64]struct{}
+	cleareddaily_rollups bool
+	done                 bool
+	oldValue             func(context.Context) (*ChannelMonitor, error)
+	predicates           []predicate.ChannelMonitor
 }
 
 var _ ent.Mutation = (*ChannelMonitorMutation)(nil)
@@ -7623,6 +7628,60 @@ func (m *ChannelMonitorMutation) ResetHistory() {
 	m.removedhistory = nil
 }
 
+// AddDailyRollupIDs adds the "daily_rollups" edge to the ChannelMonitorDailyRollup entity by ids.
+func (m *ChannelMonitorMutation) AddDailyRollupIDs(ids ...int64) {
+	if m.daily_rollups == nil {
+		m.daily_rollups = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.daily_rollups[ids[i]] = struct{}{}
+	}
+}
+
+// ClearDailyRollups clears the "daily_rollups" edge to the ChannelMonitorDailyRollup entity.
+func (m *ChannelMonitorMutation) ClearDailyRollups() {
+	m.cleareddaily_rollups = true
+}
+
+// DailyRollupsCleared reports if the "daily_rollups" edge to the ChannelMonitorDailyRollup entity was cleared.
+func (m *ChannelMonitorMutation) DailyRollupsCleared() bool {
+	return m.cleareddaily_rollups
+}
+
+// RemoveDailyRollupIDs removes the "daily_rollups" edge to the ChannelMonitorDailyRollup entity by IDs.
+func (m *ChannelMonitorMutation) RemoveDailyRollupIDs(ids ...int64) {
+	if m.removeddaily_rollups == nil {
+		m.removeddaily_rollups = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.daily_rollups, ids[i])
+		m.removeddaily_rollups[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedDailyRollups returns the removed IDs of the "daily_rollups" edge to the ChannelMonitorDailyRollup entity.
+func (m *ChannelMonitorMutation) RemovedDailyRollupsIDs() (ids []int64) {
+	for id := range m.removeddaily_rollups {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// DailyRollupsIDs returns the "daily_rollups" edge IDs in the mutation.
+func (m *ChannelMonitorMutation) DailyRollupsIDs() (ids []int64) {
+	for id := range m.daily_rollups {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetDailyRollups resets all changes to the "daily_rollups" edge.
+func (m *ChannelMonitorMutation) ResetDailyRollups() {
+	m.daily_rollups = nil
+	m.cleareddaily_rollups = false
+	m.removeddaily_rollups = nil
+}
+
 // Where appends a list predicates to the ChannelMonitorMutation builder.
 func (m *ChannelMonitorMutation) Where(ps ...predicate.ChannelMonitor) {
 	m.predicates = append(m.predicates, ps...)
@@ -8002,9 +8061,12 @@ func (m *ChannelMonitorMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *ChannelMonitorMutation) AddedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
 	if m.history != nil {
 		edges = append(edges, channelmonitor.EdgeHistory)
+	}
+	if m.daily_rollups != nil {
+		edges = append(edges, channelmonitor.EdgeDailyRollups)
 	}
 	return edges
 }
@@ -8019,15 +8081,24 @@ func (m *ChannelMonitorMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case channelmonitor.EdgeDailyRollups:
+		ids := make([]ent.Value, 0, len(m.daily_rollups))
+		for id := range m.daily_rollups {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *ChannelMonitorMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
 	if m.removedhistory != nil {
 		edges = append(edges, channelmonitor.EdgeHistory)
+	}
+	if m.removeddaily_rollups != nil {
+		edges = append(edges, channelmonitor.EdgeDailyRollups)
 	}
 	return edges
 }
@@ -8042,15 +8113,24 @@ func (m *ChannelMonitorMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case channelmonitor.EdgeDailyRollups:
+		ids := make([]ent.Value, 0, len(m.removeddaily_rollups))
+		for id := range m.removeddaily_rollups {
+			ids = append(ids, id)
+		}
+		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *ChannelMonitorMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 1)
+	edges := make([]string, 0, 2)
 	if m.clearedhistory {
 		edges = append(edges, channelmonitor.EdgeHistory)
+	}
+	if m.cleareddaily_rollups {
+		edges = append(edges, channelmonitor.EdgeDailyRollups)
 	}
 	return edges
 }
@@ -8061,6 +8141,8 @@ func (m *ChannelMonitorMutation) EdgeCleared(name string) bool {
 	switch name {
 	case channelmonitor.EdgeHistory:
 		return m.clearedhistory
+	case channelmonitor.EdgeDailyRollups:
+		return m.cleareddaily_rollups
 	}
 	return false
 }
@@ -8080,8 +8162,1502 @@ func (m *ChannelMonitorMutation) ResetEdge(name string) error {
 	case channelmonitor.EdgeHistory:
 		m.ResetHistory()
 		return nil
+	case channelmonitor.EdgeDailyRollups:
+		m.ResetDailyRollups()
+		return nil
 	}
 	return fmt.Errorf("unknown ChannelMonitor edge %s", name)
+}
+
+// ChannelMonitorDailyRollupMutation represents an operation that mutates the ChannelMonitorDailyRollup nodes in the graph.
+type ChannelMonitorDailyRollupMutation struct {
+	config
+	op                     Op
+	typ                    string
+	id                     *int64
+	deleted_at             *time.Time
+	model                  *string
+	bucket_date            *time.Time
+	total_checks           *int
+	addtotal_checks        *int
+	ok_count               *int
+	addok_count            *int
+	operational_count      *int
+	addoperational_count   *int
+	degraded_count         *int
+	adddegraded_count      *int
+	failed_count           *int
+	addfailed_count        *int
+	error_count            *int
+	adderror_count         *int
+	sum_latency_ms         *int64
+	addsum_latency_ms      *int64
+	count_latency          *int
+	addcount_latency       *int
+	sum_ping_latency_ms    *int64
+	addsum_ping_latency_ms *int64
+	count_ping_latency     *int
+	addcount_ping_latency  *int
+	computed_at            *time.Time
+	clearedFields          map[string]struct{}
+	monitor                *int64
+	clearedmonitor         bool
+	done                   bool
+	oldValue               func(context.Context) (*ChannelMonitorDailyRollup, error)
+	predicates             []predicate.ChannelMonitorDailyRollup
+}
+
+var _ ent.Mutation = (*ChannelMonitorDailyRollupMutation)(nil)
+
+// channelmonitordailyrollupOption allows management of the mutation configuration using functional options.
+type channelmonitordailyrollupOption func(*ChannelMonitorDailyRollupMutation)
+
+// newChannelMonitorDailyRollupMutation creates new mutation for the ChannelMonitorDailyRollup entity.
+func newChannelMonitorDailyRollupMutation(c config, op Op, opts ...channelmonitordailyrollupOption) *ChannelMonitorDailyRollupMutation {
+	m := &ChannelMonitorDailyRollupMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeChannelMonitorDailyRollup,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withChannelMonitorDailyRollupID sets the ID field of the mutation.
+func withChannelMonitorDailyRollupID(id int64) channelmonitordailyrollupOption {
+	return func(m *ChannelMonitorDailyRollupMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ChannelMonitorDailyRollup
+		)
+		m.oldValue = func(ctx context.Context) (*ChannelMonitorDailyRollup, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ChannelMonitorDailyRollup.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withChannelMonitorDailyRollup sets the old ChannelMonitorDailyRollup of the mutation.
+func withChannelMonitorDailyRollup(node *ChannelMonitorDailyRollup) channelmonitordailyrollupOption {
+	return func(m *ChannelMonitorDailyRollupMutation) {
+		m.oldValue = func(context.Context) (*ChannelMonitorDailyRollup, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ChannelMonitorDailyRollupMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ChannelMonitorDailyRollupMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ChannelMonitorDailyRollupMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ChannelMonitorDailyRollupMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ChannelMonitorDailyRollup.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (m *ChannelMonitorDailyRollupMutation) SetDeletedAt(t time.Time) {
+	m.deleted_at = &t
+}
+
+// DeletedAt returns the value of the "deleted_at" field in the mutation.
+func (m *ChannelMonitorDailyRollupMutation) DeletedAt() (r time.Time, exists bool) {
+	v := m.deleted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeletedAt returns the old "deleted_at" field's value of the ChannelMonitorDailyRollup entity.
+// If the ChannelMonitorDailyRollup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorDailyRollupMutation) OldDeletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
+	}
+	return oldValue.DeletedAt, nil
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (m *ChannelMonitorDailyRollupMutation) ClearDeletedAt() {
+	m.deleted_at = nil
+	m.clearedFields[channelmonitordailyrollup.FieldDeletedAt] = struct{}{}
+}
+
+// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
+func (m *ChannelMonitorDailyRollupMutation) DeletedAtCleared() bool {
+	_, ok := m.clearedFields[channelmonitordailyrollup.FieldDeletedAt]
+	return ok
+}
+
+// ResetDeletedAt resets all changes to the "deleted_at" field.
+func (m *ChannelMonitorDailyRollupMutation) ResetDeletedAt() {
+	m.deleted_at = nil
+	delete(m.clearedFields, channelmonitordailyrollup.FieldDeletedAt)
+}
+
+// SetMonitorID sets the "monitor_id" field.
+func (m *ChannelMonitorDailyRollupMutation) SetMonitorID(i int64) {
+	m.monitor = &i
+}
+
+// MonitorID returns the value of the "monitor_id" field in the mutation.
+func (m *ChannelMonitorDailyRollupMutation) MonitorID() (r int64, exists bool) {
+	v := m.monitor
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldMonitorID returns the old "monitor_id" field's value of the ChannelMonitorDailyRollup entity.
+// If the ChannelMonitorDailyRollup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorDailyRollupMutation) OldMonitorID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldMonitorID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldMonitorID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldMonitorID: %w", err)
+	}
+	return oldValue.MonitorID, nil
+}
+
+// ResetMonitorID resets all changes to the "monitor_id" field.
+func (m *ChannelMonitorDailyRollupMutation) ResetMonitorID() {
+	m.monitor = nil
+}
+
+// SetModel sets the "model" field.
+func (m *ChannelMonitorDailyRollupMutation) SetModel(s string) {
+	m.model = &s
+}
+
+// Model returns the value of the "model" field in the mutation.
+func (m *ChannelMonitorDailyRollupMutation) Model() (r string, exists bool) {
+	v := m.model
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModel returns the old "model" field's value of the ChannelMonitorDailyRollup entity.
+// If the ChannelMonitorDailyRollup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorDailyRollupMutation) OldModel(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModel is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModel requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModel: %w", err)
+	}
+	return oldValue.Model, nil
+}
+
+// ResetModel resets all changes to the "model" field.
+func (m *ChannelMonitorDailyRollupMutation) ResetModel() {
+	m.model = nil
+}
+
+// SetBucketDate sets the "bucket_date" field.
+func (m *ChannelMonitorDailyRollupMutation) SetBucketDate(t time.Time) {
+	m.bucket_date = &t
+}
+
+// BucketDate returns the value of the "bucket_date" field in the mutation.
+func (m *ChannelMonitorDailyRollupMutation) BucketDate() (r time.Time, exists bool) {
+	v := m.bucket_date
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBucketDate returns the old "bucket_date" field's value of the ChannelMonitorDailyRollup entity.
+// If the ChannelMonitorDailyRollup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorDailyRollupMutation) OldBucketDate(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBucketDate is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBucketDate requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBucketDate: %w", err)
+	}
+	return oldValue.BucketDate, nil
+}
+
+// ResetBucketDate resets all changes to the "bucket_date" field.
+func (m *ChannelMonitorDailyRollupMutation) ResetBucketDate() {
+	m.bucket_date = nil
+}
+
+// SetTotalChecks sets the "total_checks" field.
+func (m *ChannelMonitorDailyRollupMutation) SetTotalChecks(i int) {
+	m.total_checks = &i
+	m.addtotal_checks = nil
+}
+
+// TotalChecks returns the value of the "total_checks" field in the mutation.
+func (m *ChannelMonitorDailyRollupMutation) TotalChecks() (r int, exists bool) {
+	v := m.total_checks
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTotalChecks returns the old "total_checks" field's value of the ChannelMonitorDailyRollup entity.
+// If the ChannelMonitorDailyRollup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorDailyRollupMutation) OldTotalChecks(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTotalChecks is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTotalChecks requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTotalChecks: %w", err)
+	}
+	return oldValue.TotalChecks, nil
+}
+
+// AddTotalChecks adds i to the "total_checks" field.
+func (m *ChannelMonitorDailyRollupMutation) AddTotalChecks(i int) {
+	if m.addtotal_checks != nil {
+		*m.addtotal_checks += i
+	} else {
+		m.addtotal_checks = &i
+	}
+}
+
+// AddedTotalChecks returns the value that was added to the "total_checks" field in this mutation.
+func (m *ChannelMonitorDailyRollupMutation) AddedTotalChecks() (r int, exists bool) {
+	v := m.addtotal_checks
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetTotalChecks resets all changes to the "total_checks" field.
+func (m *ChannelMonitorDailyRollupMutation) ResetTotalChecks() {
+	m.total_checks = nil
+	m.addtotal_checks = nil
+}
+
+// SetOkCount sets the "ok_count" field.
+func (m *ChannelMonitorDailyRollupMutation) SetOkCount(i int) {
+	m.ok_count = &i
+	m.addok_count = nil
+}
+
+// OkCount returns the value of the "ok_count" field in the mutation.
+func (m *ChannelMonitorDailyRollupMutation) OkCount() (r int, exists bool) {
+	v := m.ok_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOkCount returns the old "ok_count" field's value of the ChannelMonitorDailyRollup entity.
+// If the ChannelMonitorDailyRollup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorDailyRollupMutation) OldOkCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOkCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOkCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOkCount: %w", err)
+	}
+	return oldValue.OkCount, nil
+}
+
+// AddOkCount adds i to the "ok_count" field.
+func (m *ChannelMonitorDailyRollupMutation) AddOkCount(i int) {
+	if m.addok_count != nil {
+		*m.addok_count += i
+	} else {
+		m.addok_count = &i
+	}
+}
+
+// AddedOkCount returns the value that was added to the "ok_count" field in this mutation.
+func (m *ChannelMonitorDailyRollupMutation) AddedOkCount() (r int, exists bool) {
+	v := m.addok_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetOkCount resets all changes to the "ok_count" field.
+func (m *ChannelMonitorDailyRollupMutation) ResetOkCount() {
+	m.ok_count = nil
+	m.addok_count = nil
+}
+
+// SetOperationalCount sets the "operational_count" field.
+func (m *ChannelMonitorDailyRollupMutation) SetOperationalCount(i int) {
+	m.operational_count = &i
+	m.addoperational_count = nil
+}
+
+// OperationalCount returns the value of the "operational_count" field in the mutation.
+func (m *ChannelMonitorDailyRollupMutation) OperationalCount() (r int, exists bool) {
+	v := m.operational_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldOperationalCount returns the old "operational_count" field's value of the ChannelMonitorDailyRollup entity.
+// If the ChannelMonitorDailyRollup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorDailyRollupMutation) OldOperationalCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldOperationalCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldOperationalCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldOperationalCount: %w", err)
+	}
+	return oldValue.OperationalCount, nil
+}
+
+// AddOperationalCount adds i to the "operational_count" field.
+func (m *ChannelMonitorDailyRollupMutation) AddOperationalCount(i int) {
+	if m.addoperational_count != nil {
+		*m.addoperational_count += i
+	} else {
+		m.addoperational_count = &i
+	}
+}
+
+// AddedOperationalCount returns the value that was added to the "operational_count" field in this mutation.
+func (m *ChannelMonitorDailyRollupMutation) AddedOperationalCount() (r int, exists bool) {
+	v := m.addoperational_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetOperationalCount resets all changes to the "operational_count" field.
+func (m *ChannelMonitorDailyRollupMutation) ResetOperationalCount() {
+	m.operational_count = nil
+	m.addoperational_count = nil
+}
+
+// SetDegradedCount sets the "degraded_count" field.
+func (m *ChannelMonitorDailyRollupMutation) SetDegradedCount(i int) {
+	m.degraded_count = &i
+	m.adddegraded_count = nil
+}
+
+// DegradedCount returns the value of the "degraded_count" field in the mutation.
+func (m *ChannelMonitorDailyRollupMutation) DegradedCount() (r int, exists bool) {
+	v := m.degraded_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDegradedCount returns the old "degraded_count" field's value of the ChannelMonitorDailyRollup entity.
+// If the ChannelMonitorDailyRollup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorDailyRollupMutation) OldDegradedCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDegradedCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDegradedCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDegradedCount: %w", err)
+	}
+	return oldValue.DegradedCount, nil
+}
+
+// AddDegradedCount adds i to the "degraded_count" field.
+func (m *ChannelMonitorDailyRollupMutation) AddDegradedCount(i int) {
+	if m.adddegraded_count != nil {
+		*m.adddegraded_count += i
+	} else {
+		m.adddegraded_count = &i
+	}
+}
+
+// AddedDegradedCount returns the value that was added to the "degraded_count" field in this mutation.
+func (m *ChannelMonitorDailyRollupMutation) AddedDegradedCount() (r int, exists bool) {
+	v := m.adddegraded_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetDegradedCount resets all changes to the "degraded_count" field.
+func (m *ChannelMonitorDailyRollupMutation) ResetDegradedCount() {
+	m.degraded_count = nil
+	m.adddegraded_count = nil
+}
+
+// SetFailedCount sets the "failed_count" field.
+func (m *ChannelMonitorDailyRollupMutation) SetFailedCount(i int) {
+	m.failed_count = &i
+	m.addfailed_count = nil
+}
+
+// FailedCount returns the value of the "failed_count" field in the mutation.
+func (m *ChannelMonitorDailyRollupMutation) FailedCount() (r int, exists bool) {
+	v := m.failed_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFailedCount returns the old "failed_count" field's value of the ChannelMonitorDailyRollup entity.
+// If the ChannelMonitorDailyRollup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorDailyRollupMutation) OldFailedCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFailedCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFailedCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFailedCount: %w", err)
+	}
+	return oldValue.FailedCount, nil
+}
+
+// AddFailedCount adds i to the "failed_count" field.
+func (m *ChannelMonitorDailyRollupMutation) AddFailedCount(i int) {
+	if m.addfailed_count != nil {
+		*m.addfailed_count += i
+	} else {
+		m.addfailed_count = &i
+	}
+}
+
+// AddedFailedCount returns the value that was added to the "failed_count" field in this mutation.
+func (m *ChannelMonitorDailyRollupMutation) AddedFailedCount() (r int, exists bool) {
+	v := m.addfailed_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetFailedCount resets all changes to the "failed_count" field.
+func (m *ChannelMonitorDailyRollupMutation) ResetFailedCount() {
+	m.failed_count = nil
+	m.addfailed_count = nil
+}
+
+// SetErrorCount sets the "error_count" field.
+func (m *ChannelMonitorDailyRollupMutation) SetErrorCount(i int) {
+	m.error_count = &i
+	m.adderror_count = nil
+}
+
+// ErrorCount returns the value of the "error_count" field in the mutation.
+func (m *ChannelMonitorDailyRollupMutation) ErrorCount() (r int, exists bool) {
+	v := m.error_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldErrorCount returns the old "error_count" field's value of the ChannelMonitorDailyRollup entity.
+// If the ChannelMonitorDailyRollup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorDailyRollupMutation) OldErrorCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldErrorCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldErrorCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldErrorCount: %w", err)
+	}
+	return oldValue.ErrorCount, nil
+}
+
+// AddErrorCount adds i to the "error_count" field.
+func (m *ChannelMonitorDailyRollupMutation) AddErrorCount(i int) {
+	if m.adderror_count != nil {
+		*m.adderror_count += i
+	} else {
+		m.adderror_count = &i
+	}
+}
+
+// AddedErrorCount returns the value that was added to the "error_count" field in this mutation.
+func (m *ChannelMonitorDailyRollupMutation) AddedErrorCount() (r int, exists bool) {
+	v := m.adderror_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetErrorCount resets all changes to the "error_count" field.
+func (m *ChannelMonitorDailyRollupMutation) ResetErrorCount() {
+	m.error_count = nil
+	m.adderror_count = nil
+}
+
+// SetSumLatencyMs sets the "sum_latency_ms" field.
+func (m *ChannelMonitorDailyRollupMutation) SetSumLatencyMs(i int64) {
+	m.sum_latency_ms = &i
+	m.addsum_latency_ms = nil
+}
+
+// SumLatencyMs returns the value of the "sum_latency_ms" field in the mutation.
+func (m *ChannelMonitorDailyRollupMutation) SumLatencyMs() (r int64, exists bool) {
+	v := m.sum_latency_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSumLatencyMs returns the old "sum_latency_ms" field's value of the ChannelMonitorDailyRollup entity.
+// If the ChannelMonitorDailyRollup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorDailyRollupMutation) OldSumLatencyMs(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSumLatencyMs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSumLatencyMs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSumLatencyMs: %w", err)
+	}
+	return oldValue.SumLatencyMs, nil
+}
+
+// AddSumLatencyMs adds i to the "sum_latency_ms" field.
+func (m *ChannelMonitorDailyRollupMutation) AddSumLatencyMs(i int64) {
+	if m.addsum_latency_ms != nil {
+		*m.addsum_latency_ms += i
+	} else {
+		m.addsum_latency_ms = &i
+	}
+}
+
+// AddedSumLatencyMs returns the value that was added to the "sum_latency_ms" field in this mutation.
+func (m *ChannelMonitorDailyRollupMutation) AddedSumLatencyMs() (r int64, exists bool) {
+	v := m.addsum_latency_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSumLatencyMs resets all changes to the "sum_latency_ms" field.
+func (m *ChannelMonitorDailyRollupMutation) ResetSumLatencyMs() {
+	m.sum_latency_ms = nil
+	m.addsum_latency_ms = nil
+}
+
+// SetCountLatency sets the "count_latency" field.
+func (m *ChannelMonitorDailyRollupMutation) SetCountLatency(i int) {
+	m.count_latency = &i
+	m.addcount_latency = nil
+}
+
+// CountLatency returns the value of the "count_latency" field in the mutation.
+func (m *ChannelMonitorDailyRollupMutation) CountLatency() (r int, exists bool) {
+	v := m.count_latency
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCountLatency returns the old "count_latency" field's value of the ChannelMonitorDailyRollup entity.
+// If the ChannelMonitorDailyRollup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorDailyRollupMutation) OldCountLatency(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCountLatency is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCountLatency requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCountLatency: %w", err)
+	}
+	return oldValue.CountLatency, nil
+}
+
+// AddCountLatency adds i to the "count_latency" field.
+func (m *ChannelMonitorDailyRollupMutation) AddCountLatency(i int) {
+	if m.addcount_latency != nil {
+		*m.addcount_latency += i
+	} else {
+		m.addcount_latency = &i
+	}
+}
+
+// AddedCountLatency returns the value that was added to the "count_latency" field in this mutation.
+func (m *ChannelMonitorDailyRollupMutation) AddedCountLatency() (r int, exists bool) {
+	v := m.addcount_latency
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCountLatency resets all changes to the "count_latency" field.
+func (m *ChannelMonitorDailyRollupMutation) ResetCountLatency() {
+	m.count_latency = nil
+	m.addcount_latency = nil
+}
+
+// SetSumPingLatencyMs sets the "sum_ping_latency_ms" field.
+func (m *ChannelMonitorDailyRollupMutation) SetSumPingLatencyMs(i int64) {
+	m.sum_ping_latency_ms = &i
+	m.addsum_ping_latency_ms = nil
+}
+
+// SumPingLatencyMs returns the value of the "sum_ping_latency_ms" field in the mutation.
+func (m *ChannelMonitorDailyRollupMutation) SumPingLatencyMs() (r int64, exists bool) {
+	v := m.sum_ping_latency_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSumPingLatencyMs returns the old "sum_ping_latency_ms" field's value of the ChannelMonitorDailyRollup entity.
+// If the ChannelMonitorDailyRollup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorDailyRollupMutation) OldSumPingLatencyMs(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSumPingLatencyMs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSumPingLatencyMs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSumPingLatencyMs: %w", err)
+	}
+	return oldValue.SumPingLatencyMs, nil
+}
+
+// AddSumPingLatencyMs adds i to the "sum_ping_latency_ms" field.
+func (m *ChannelMonitorDailyRollupMutation) AddSumPingLatencyMs(i int64) {
+	if m.addsum_ping_latency_ms != nil {
+		*m.addsum_ping_latency_ms += i
+	} else {
+		m.addsum_ping_latency_ms = &i
+	}
+}
+
+// AddedSumPingLatencyMs returns the value that was added to the "sum_ping_latency_ms" field in this mutation.
+func (m *ChannelMonitorDailyRollupMutation) AddedSumPingLatencyMs() (r int64, exists bool) {
+	v := m.addsum_ping_latency_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSumPingLatencyMs resets all changes to the "sum_ping_latency_ms" field.
+func (m *ChannelMonitorDailyRollupMutation) ResetSumPingLatencyMs() {
+	m.sum_ping_latency_ms = nil
+	m.addsum_ping_latency_ms = nil
+}
+
+// SetCountPingLatency sets the "count_ping_latency" field.
+func (m *ChannelMonitorDailyRollupMutation) SetCountPingLatency(i int) {
+	m.count_ping_latency = &i
+	m.addcount_ping_latency = nil
+}
+
+// CountPingLatency returns the value of the "count_ping_latency" field in the mutation.
+func (m *ChannelMonitorDailyRollupMutation) CountPingLatency() (r int, exists bool) {
+	v := m.count_ping_latency
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCountPingLatency returns the old "count_ping_latency" field's value of the ChannelMonitorDailyRollup entity.
+// If the ChannelMonitorDailyRollup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorDailyRollupMutation) OldCountPingLatency(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCountPingLatency is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCountPingLatency requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCountPingLatency: %w", err)
+	}
+	return oldValue.CountPingLatency, nil
+}
+
+// AddCountPingLatency adds i to the "count_ping_latency" field.
+func (m *ChannelMonitorDailyRollupMutation) AddCountPingLatency(i int) {
+	if m.addcount_ping_latency != nil {
+		*m.addcount_ping_latency += i
+	} else {
+		m.addcount_ping_latency = &i
+	}
+}
+
+// AddedCountPingLatency returns the value that was added to the "count_ping_latency" field in this mutation.
+func (m *ChannelMonitorDailyRollupMutation) AddedCountPingLatency() (r int, exists bool) {
+	v := m.addcount_ping_latency
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetCountPingLatency resets all changes to the "count_ping_latency" field.
+func (m *ChannelMonitorDailyRollupMutation) ResetCountPingLatency() {
+	m.count_ping_latency = nil
+	m.addcount_ping_latency = nil
+}
+
+// SetComputedAt sets the "computed_at" field.
+func (m *ChannelMonitorDailyRollupMutation) SetComputedAt(t time.Time) {
+	m.computed_at = &t
+}
+
+// ComputedAt returns the value of the "computed_at" field in the mutation.
+func (m *ChannelMonitorDailyRollupMutation) ComputedAt() (r time.Time, exists bool) {
+	v := m.computed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldComputedAt returns the old "computed_at" field's value of the ChannelMonitorDailyRollup entity.
+// If the ChannelMonitorDailyRollup object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorDailyRollupMutation) OldComputedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldComputedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldComputedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldComputedAt: %w", err)
+	}
+	return oldValue.ComputedAt, nil
+}
+
+// ResetComputedAt resets all changes to the "computed_at" field.
+func (m *ChannelMonitorDailyRollupMutation) ResetComputedAt() {
+	m.computed_at = nil
+}
+
+// ClearMonitor clears the "monitor" edge to the ChannelMonitor entity.
+func (m *ChannelMonitorDailyRollupMutation) ClearMonitor() {
+	m.clearedmonitor = true
+	m.clearedFields[channelmonitordailyrollup.FieldMonitorID] = struct{}{}
+}
+
+// MonitorCleared reports if the "monitor" edge to the ChannelMonitor entity was cleared.
+func (m *ChannelMonitorDailyRollupMutation) MonitorCleared() bool {
+	return m.clearedmonitor
+}
+
+// MonitorIDs returns the "monitor" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// MonitorID instead. It exists only for internal usage by the builders.
+func (m *ChannelMonitorDailyRollupMutation) MonitorIDs() (ids []int64) {
+	if id := m.monitor; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetMonitor resets all changes to the "monitor" edge.
+func (m *ChannelMonitorDailyRollupMutation) ResetMonitor() {
+	m.monitor = nil
+	m.clearedmonitor = false
+}
+
+// Where appends a list predicates to the ChannelMonitorDailyRollupMutation builder.
+func (m *ChannelMonitorDailyRollupMutation) Where(ps ...predicate.ChannelMonitorDailyRollup) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ChannelMonitorDailyRollupMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ChannelMonitorDailyRollupMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ChannelMonitorDailyRollup, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ChannelMonitorDailyRollupMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ChannelMonitorDailyRollupMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ChannelMonitorDailyRollup).
+func (m *ChannelMonitorDailyRollupMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ChannelMonitorDailyRollupMutation) Fields() []string {
+	fields := make([]string, 0, 15)
+	if m.deleted_at != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldDeletedAt)
+	}
+	if m.monitor != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldMonitorID)
+	}
+	if m.model != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldModel)
+	}
+	if m.bucket_date != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldBucketDate)
+	}
+	if m.total_checks != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldTotalChecks)
+	}
+	if m.ok_count != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldOkCount)
+	}
+	if m.operational_count != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldOperationalCount)
+	}
+	if m.degraded_count != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldDegradedCount)
+	}
+	if m.failed_count != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldFailedCount)
+	}
+	if m.error_count != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldErrorCount)
+	}
+	if m.sum_latency_ms != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldSumLatencyMs)
+	}
+	if m.count_latency != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldCountLatency)
+	}
+	if m.sum_ping_latency_ms != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldSumPingLatencyMs)
+	}
+	if m.count_ping_latency != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldCountPingLatency)
+	}
+	if m.computed_at != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldComputedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ChannelMonitorDailyRollupMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case channelmonitordailyrollup.FieldDeletedAt:
+		return m.DeletedAt()
+	case channelmonitordailyrollup.FieldMonitorID:
+		return m.MonitorID()
+	case channelmonitordailyrollup.FieldModel:
+		return m.Model()
+	case channelmonitordailyrollup.FieldBucketDate:
+		return m.BucketDate()
+	case channelmonitordailyrollup.FieldTotalChecks:
+		return m.TotalChecks()
+	case channelmonitordailyrollup.FieldOkCount:
+		return m.OkCount()
+	case channelmonitordailyrollup.FieldOperationalCount:
+		return m.OperationalCount()
+	case channelmonitordailyrollup.FieldDegradedCount:
+		return m.DegradedCount()
+	case channelmonitordailyrollup.FieldFailedCount:
+		return m.FailedCount()
+	case channelmonitordailyrollup.FieldErrorCount:
+		return m.ErrorCount()
+	case channelmonitordailyrollup.FieldSumLatencyMs:
+		return m.SumLatencyMs()
+	case channelmonitordailyrollup.FieldCountLatency:
+		return m.CountLatency()
+	case channelmonitordailyrollup.FieldSumPingLatencyMs:
+		return m.SumPingLatencyMs()
+	case channelmonitordailyrollup.FieldCountPingLatency:
+		return m.CountPingLatency()
+	case channelmonitordailyrollup.FieldComputedAt:
+		return m.ComputedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ChannelMonitorDailyRollupMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case channelmonitordailyrollup.FieldDeletedAt:
+		return m.OldDeletedAt(ctx)
+	case channelmonitordailyrollup.FieldMonitorID:
+		return m.OldMonitorID(ctx)
+	case channelmonitordailyrollup.FieldModel:
+		return m.OldModel(ctx)
+	case channelmonitordailyrollup.FieldBucketDate:
+		return m.OldBucketDate(ctx)
+	case channelmonitordailyrollup.FieldTotalChecks:
+		return m.OldTotalChecks(ctx)
+	case channelmonitordailyrollup.FieldOkCount:
+		return m.OldOkCount(ctx)
+	case channelmonitordailyrollup.FieldOperationalCount:
+		return m.OldOperationalCount(ctx)
+	case channelmonitordailyrollup.FieldDegradedCount:
+		return m.OldDegradedCount(ctx)
+	case channelmonitordailyrollup.FieldFailedCount:
+		return m.OldFailedCount(ctx)
+	case channelmonitordailyrollup.FieldErrorCount:
+		return m.OldErrorCount(ctx)
+	case channelmonitordailyrollup.FieldSumLatencyMs:
+		return m.OldSumLatencyMs(ctx)
+	case channelmonitordailyrollup.FieldCountLatency:
+		return m.OldCountLatency(ctx)
+	case channelmonitordailyrollup.FieldSumPingLatencyMs:
+		return m.OldSumPingLatencyMs(ctx)
+	case channelmonitordailyrollup.FieldCountPingLatency:
+		return m.OldCountPingLatency(ctx)
+	case channelmonitordailyrollup.FieldComputedAt:
+		return m.OldComputedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ChannelMonitorDailyRollup field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ChannelMonitorDailyRollupMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case channelmonitordailyrollup.FieldDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeletedAt(v)
+		return nil
+	case channelmonitordailyrollup.FieldMonitorID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetMonitorID(v)
+		return nil
+	case channelmonitordailyrollup.FieldModel:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModel(v)
+		return nil
+	case channelmonitordailyrollup.FieldBucketDate:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBucketDate(v)
+		return nil
+	case channelmonitordailyrollup.FieldTotalChecks:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTotalChecks(v)
+		return nil
+	case channelmonitordailyrollup.FieldOkCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOkCount(v)
+		return nil
+	case channelmonitordailyrollup.FieldOperationalCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetOperationalCount(v)
+		return nil
+	case channelmonitordailyrollup.FieldDegradedCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDegradedCount(v)
+		return nil
+	case channelmonitordailyrollup.FieldFailedCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFailedCount(v)
+		return nil
+	case channelmonitordailyrollup.FieldErrorCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetErrorCount(v)
+		return nil
+	case channelmonitordailyrollup.FieldSumLatencyMs:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSumLatencyMs(v)
+		return nil
+	case channelmonitordailyrollup.FieldCountLatency:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCountLatency(v)
+		return nil
+	case channelmonitordailyrollup.FieldSumPingLatencyMs:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSumPingLatencyMs(v)
+		return nil
+	case channelmonitordailyrollup.FieldCountPingLatency:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCountPingLatency(v)
+		return nil
+	case channelmonitordailyrollup.FieldComputedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetComputedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ChannelMonitorDailyRollup field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ChannelMonitorDailyRollupMutation) AddedFields() []string {
+	var fields []string
+	if m.addtotal_checks != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldTotalChecks)
+	}
+	if m.addok_count != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldOkCount)
+	}
+	if m.addoperational_count != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldOperationalCount)
+	}
+	if m.adddegraded_count != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldDegradedCount)
+	}
+	if m.addfailed_count != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldFailedCount)
+	}
+	if m.adderror_count != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldErrorCount)
+	}
+	if m.addsum_latency_ms != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldSumLatencyMs)
+	}
+	if m.addcount_latency != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldCountLatency)
+	}
+	if m.addsum_ping_latency_ms != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldSumPingLatencyMs)
+	}
+	if m.addcount_ping_latency != nil {
+		fields = append(fields, channelmonitordailyrollup.FieldCountPingLatency)
+	}
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ChannelMonitorDailyRollupMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	case channelmonitordailyrollup.FieldTotalChecks:
+		return m.AddedTotalChecks()
+	case channelmonitordailyrollup.FieldOkCount:
+		return m.AddedOkCount()
+	case channelmonitordailyrollup.FieldOperationalCount:
+		return m.AddedOperationalCount()
+	case channelmonitordailyrollup.FieldDegradedCount:
+		return m.AddedDegradedCount()
+	case channelmonitordailyrollup.FieldFailedCount:
+		return m.AddedFailedCount()
+	case channelmonitordailyrollup.FieldErrorCount:
+		return m.AddedErrorCount()
+	case channelmonitordailyrollup.FieldSumLatencyMs:
+		return m.AddedSumLatencyMs()
+	case channelmonitordailyrollup.FieldCountLatency:
+		return m.AddedCountLatency()
+	case channelmonitordailyrollup.FieldSumPingLatencyMs:
+		return m.AddedSumPingLatencyMs()
+	case channelmonitordailyrollup.FieldCountPingLatency:
+		return m.AddedCountPingLatency()
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ChannelMonitorDailyRollupMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	case channelmonitordailyrollup.FieldTotalChecks:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTotalChecks(v)
+		return nil
+	case channelmonitordailyrollup.FieldOkCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddOkCount(v)
+		return nil
+	case channelmonitordailyrollup.FieldOperationalCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddOperationalCount(v)
+		return nil
+	case channelmonitordailyrollup.FieldDegradedCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddDegradedCount(v)
+		return nil
+	case channelmonitordailyrollup.FieldFailedCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFailedCount(v)
+		return nil
+	case channelmonitordailyrollup.FieldErrorCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddErrorCount(v)
+		return nil
+	case channelmonitordailyrollup.FieldSumLatencyMs:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSumLatencyMs(v)
+		return nil
+	case channelmonitordailyrollup.FieldCountLatency:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCountLatency(v)
+		return nil
+	case channelmonitordailyrollup.FieldSumPingLatencyMs:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSumPingLatencyMs(v)
+		return nil
+	case channelmonitordailyrollup.FieldCountPingLatency:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddCountPingLatency(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ChannelMonitorDailyRollup numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ChannelMonitorDailyRollupMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(channelmonitordailyrollup.FieldDeletedAt) {
+		fields = append(fields, channelmonitordailyrollup.FieldDeletedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ChannelMonitorDailyRollupMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ChannelMonitorDailyRollupMutation) ClearField(name string) error {
+	switch name {
+	case channelmonitordailyrollup.FieldDeletedAt:
+		m.ClearDeletedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ChannelMonitorDailyRollup nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ChannelMonitorDailyRollupMutation) ResetField(name string) error {
+	switch name {
+	case channelmonitordailyrollup.FieldDeletedAt:
+		m.ResetDeletedAt()
+		return nil
+	case channelmonitordailyrollup.FieldMonitorID:
+		m.ResetMonitorID()
+		return nil
+	case channelmonitordailyrollup.FieldModel:
+		m.ResetModel()
+		return nil
+	case channelmonitordailyrollup.FieldBucketDate:
+		m.ResetBucketDate()
+		return nil
+	case channelmonitordailyrollup.FieldTotalChecks:
+		m.ResetTotalChecks()
+		return nil
+	case channelmonitordailyrollup.FieldOkCount:
+		m.ResetOkCount()
+		return nil
+	case channelmonitordailyrollup.FieldOperationalCount:
+		m.ResetOperationalCount()
+		return nil
+	case channelmonitordailyrollup.FieldDegradedCount:
+		m.ResetDegradedCount()
+		return nil
+	case channelmonitordailyrollup.FieldFailedCount:
+		m.ResetFailedCount()
+		return nil
+	case channelmonitordailyrollup.FieldErrorCount:
+		m.ResetErrorCount()
+		return nil
+	case channelmonitordailyrollup.FieldSumLatencyMs:
+		m.ResetSumLatencyMs()
+		return nil
+	case channelmonitordailyrollup.FieldCountLatency:
+		m.ResetCountLatency()
+		return nil
+	case channelmonitordailyrollup.FieldSumPingLatencyMs:
+		m.ResetSumPingLatencyMs()
+		return nil
+	case channelmonitordailyrollup.FieldCountPingLatency:
+		m.ResetCountPingLatency()
+		return nil
+	case channelmonitordailyrollup.FieldComputedAt:
+		m.ResetComputedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ChannelMonitorDailyRollup field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ChannelMonitorDailyRollupMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.monitor != nil {
+		edges = append(edges, channelmonitordailyrollup.EdgeMonitor)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ChannelMonitorDailyRollupMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case channelmonitordailyrollup.EdgeMonitor:
+		if id := m.monitor; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ChannelMonitorDailyRollupMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ChannelMonitorDailyRollupMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ChannelMonitorDailyRollupMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedmonitor {
+		edges = append(edges, channelmonitordailyrollup.EdgeMonitor)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ChannelMonitorDailyRollupMutation) EdgeCleared(name string) bool {
+	switch name {
+	case channelmonitordailyrollup.EdgeMonitor:
+		return m.clearedmonitor
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ChannelMonitorDailyRollupMutation) ClearEdge(name string) error {
+	switch name {
+	case channelmonitordailyrollup.EdgeMonitor:
+		m.ClearMonitor()
+		return nil
+	}
+	return fmt.Errorf("unknown ChannelMonitorDailyRollup unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ChannelMonitorDailyRollupMutation) ResetEdge(name string) error {
+	switch name {
+	case channelmonitordailyrollup.EdgeMonitor:
+		m.ResetMonitor()
+		return nil
+	}
+	return fmt.Errorf("unknown ChannelMonitorDailyRollup edge %s", name)
 }
 
 // ChannelMonitorHistoryMutation represents an operation that mutates the ChannelMonitorHistory nodes in the graph.
@@ -8090,6 +9666,7 @@ type ChannelMonitorHistoryMutation struct {
 	op                 Op
 	typ                string
 	id                 *int64
+	deleted_at         *time.Time
 	model              *string
 	status             *channelmonitorhistory.Status
 	latency_ms         *int
@@ -8202,6 +9779,55 @@ func (m *ChannelMonitorHistoryMutation) IDs(ctx context.Context) ([]int64, error
 	default:
 		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
 	}
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (m *ChannelMonitorHistoryMutation) SetDeletedAt(t time.Time) {
+	m.deleted_at = &t
+}
+
+// DeletedAt returns the value of the "deleted_at" field in the mutation.
+func (m *ChannelMonitorHistoryMutation) DeletedAt() (r time.Time, exists bool) {
+	v := m.deleted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeletedAt returns the old "deleted_at" field's value of the ChannelMonitorHistory entity.
+// If the ChannelMonitorHistory object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorHistoryMutation) OldDeletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
+	}
+	return oldValue.DeletedAt, nil
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (m *ChannelMonitorHistoryMutation) ClearDeletedAt() {
+	m.deleted_at = nil
+	m.clearedFields[channelmonitorhistory.FieldDeletedAt] = struct{}{}
+}
+
+// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
+func (m *ChannelMonitorHistoryMutation) DeletedAtCleared() bool {
+	_, ok := m.clearedFields[channelmonitorhistory.FieldDeletedAt]
+	return ok
+}
+
+// ResetDeletedAt resets all changes to the "deleted_at" field.
+func (m *ChannelMonitorHistoryMutation) ResetDeletedAt() {
+	m.deleted_at = nil
+	delete(m.clearedFields, channelmonitorhistory.FieldDeletedAt)
 }
 
 // SetMonitorID sets the "monitor_id" field.
@@ -8598,7 +10224,10 @@ func (m *ChannelMonitorHistoryMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ChannelMonitorHistoryMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
+	if m.deleted_at != nil {
+		fields = append(fields, channelmonitorhistory.FieldDeletedAt)
+	}
 	if m.monitor != nil {
 		fields = append(fields, channelmonitorhistory.FieldMonitorID)
 	}
@@ -8628,6 +10257,8 @@ func (m *ChannelMonitorHistoryMutation) Fields() []string {
 // schema.
 func (m *ChannelMonitorHistoryMutation) Field(name string) (ent.Value, bool) {
 	switch name {
+	case channelmonitorhistory.FieldDeletedAt:
+		return m.DeletedAt()
 	case channelmonitorhistory.FieldMonitorID:
 		return m.MonitorID()
 	case channelmonitorhistory.FieldModel:
@@ -8651,6 +10282,8 @@ func (m *ChannelMonitorHistoryMutation) Field(name string) (ent.Value, bool) {
 // database failed.
 func (m *ChannelMonitorHistoryMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
 	switch name {
+	case channelmonitorhistory.FieldDeletedAt:
+		return m.OldDeletedAt(ctx)
 	case channelmonitorhistory.FieldMonitorID:
 		return m.OldMonitorID(ctx)
 	case channelmonitorhistory.FieldModel:
@@ -8674,6 +10307,13 @@ func (m *ChannelMonitorHistoryMutation) OldField(ctx context.Context, name strin
 // type.
 func (m *ChannelMonitorHistoryMutation) SetField(name string, value ent.Value) error {
 	switch name {
+	case channelmonitorhistory.FieldDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeletedAt(v)
+		return nil
 	case channelmonitorhistory.FieldMonitorID:
 		v, ok := value.(int64)
 		if !ok {
@@ -8780,6 +10420,9 @@ func (m *ChannelMonitorHistoryMutation) AddField(name string, value ent.Value) e
 // mutation.
 func (m *ChannelMonitorHistoryMutation) ClearedFields() []string {
 	var fields []string
+	if m.FieldCleared(channelmonitorhistory.FieldDeletedAt) {
+		fields = append(fields, channelmonitorhistory.FieldDeletedAt)
+	}
 	if m.FieldCleared(channelmonitorhistory.FieldLatencyMs) {
 		fields = append(fields, channelmonitorhistory.FieldLatencyMs)
 	}
@@ -8803,6 +10446,9 @@ func (m *ChannelMonitorHistoryMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *ChannelMonitorHistoryMutation) ClearField(name string) error {
 	switch name {
+	case channelmonitorhistory.FieldDeletedAt:
+		m.ClearDeletedAt()
+		return nil
 	case channelmonitorhistory.FieldLatencyMs:
 		m.ClearLatencyMs()
 		return nil
@@ -8820,6 +10466,9 @@ func (m *ChannelMonitorHistoryMutation) ClearField(name string) error {
 // It returns an error if the field is not defined in the schema.
 func (m *ChannelMonitorHistoryMutation) ResetField(name string) error {
 	switch name {
+	case channelmonitorhistory.FieldDeletedAt:
+		m.ResetDeletedAt()
+		return nil
 	case channelmonitorhistory.FieldMonitorID:
 		m.ResetMonitorID()
 		return nil

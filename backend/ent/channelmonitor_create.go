@@ -12,6 +12,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
+	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 )
 
@@ -154,6 +155,21 @@ func (_c *ChannelMonitorCreate) AddHistory(v ...*ChannelMonitorHistory) *Channel
 		ids[i] = v[i].ID
 	}
 	return _c.AddHistoryIDs(ids...)
+}
+
+// AddDailyRollupIDs adds the "daily_rollups" edge to the ChannelMonitorDailyRollup entity by IDs.
+func (_c *ChannelMonitorCreate) AddDailyRollupIDs(ids ...int64) *ChannelMonitorCreate {
+	_c.mutation.AddDailyRollupIDs(ids...)
+	return _c
+}
+
+// AddDailyRollups adds the "daily_rollups" edges to the ChannelMonitorDailyRollup entity.
+func (_c *ChannelMonitorCreate) AddDailyRollups(v ...*ChannelMonitorDailyRollup) *ChannelMonitorCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddDailyRollupIDs(ids...)
 }
 
 // Mutation returns the ChannelMonitorMutation object of the builder.
@@ -371,6 +387,22 @@ func (_c *ChannelMonitorCreate) createSpec() (*ChannelMonitor, *sqlgraph.CreateS
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(channelmonitorhistory.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.DailyRollupsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   channelmonitor.DailyRollupsTable,
+			Columns: []string{channelmonitor.DailyRollupsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(channelmonitordailyrollup.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

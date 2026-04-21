@@ -23,6 +23,20 @@ type ChannelMonitorHistoryCreate struct {
 	conflict []sql.ConflictOption
 }
 
+// SetDeletedAt sets the "deleted_at" field.
+func (_c *ChannelMonitorHistoryCreate) SetDeletedAt(v time.Time) *ChannelMonitorHistoryCreate {
+	_c.mutation.SetDeletedAt(v)
+	return _c
+}
+
+// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
+func (_c *ChannelMonitorHistoryCreate) SetNillableDeletedAt(v *time.Time) *ChannelMonitorHistoryCreate {
+	if v != nil {
+		_c.SetDeletedAt(*v)
+	}
+	return _c
+}
+
 // SetMonitorID sets the "monitor_id" field.
 func (_c *ChannelMonitorHistoryCreate) SetMonitorID(v int64) *ChannelMonitorHistoryCreate {
 	_c.mutation.SetMonitorID(v)
@@ -109,7 +123,9 @@ func (_c *ChannelMonitorHistoryCreate) Mutation() *ChannelMonitorHistoryMutation
 
 // Save creates the ChannelMonitorHistory in the database.
 func (_c *ChannelMonitorHistoryCreate) Save(ctx context.Context) (*ChannelMonitorHistory, error) {
-	_c.defaults()
+	if err := _c.defaults(); err != nil {
+		return nil, err
+	}
 	return withHooks(ctx, _c.sqlSave, _c.mutation, _c.hooks)
 }
 
@@ -136,15 +152,19 @@ func (_c *ChannelMonitorHistoryCreate) ExecX(ctx context.Context) {
 }
 
 // defaults sets the default values of the builder before save.
-func (_c *ChannelMonitorHistoryCreate) defaults() {
+func (_c *ChannelMonitorHistoryCreate) defaults() error {
 	if _, ok := _c.mutation.Message(); !ok {
 		v := channelmonitorhistory.DefaultMessage
 		_c.mutation.SetMessage(v)
 	}
 	if _, ok := _c.mutation.CheckedAt(); !ok {
+		if channelmonitorhistory.DefaultCheckedAt == nil {
+			return fmt.Errorf("ent: uninitialized channelmonitorhistory.DefaultCheckedAt (forgotten import ent/runtime?)")
+		}
 		v := channelmonitorhistory.DefaultCheckedAt()
 		_c.mutation.SetCheckedAt(v)
 	}
+	return nil
 }
 
 // check runs all checks and user-defined validators on the builder.
@@ -206,6 +226,10 @@ func (_c *ChannelMonitorHistoryCreate) createSpec() (*ChannelMonitorHistory, *sq
 		_spec = sqlgraph.NewCreateSpec(channelmonitorhistory.Table, sqlgraph.NewFieldSpec(channelmonitorhistory.FieldID, field.TypeInt64))
 	)
 	_spec.OnConflict = _c.conflict
+	if value, ok := _c.mutation.DeletedAt(); ok {
+		_spec.SetField(channelmonitorhistory.FieldDeletedAt, field.TypeTime, value)
+		_node.DeletedAt = &value
+	}
 	if value, ok := _c.mutation.Model(); ok {
 		_spec.SetField(channelmonitorhistory.FieldModel, field.TypeString, value)
 		_node.Model = value
@@ -254,7 +278,7 @@ func (_c *ChannelMonitorHistoryCreate) createSpec() (*ChannelMonitorHistory, *sq
 // of the `INSERT` statement. For example:
 //
 //	client.ChannelMonitorHistory.Create().
-//		SetMonitorID(v).
+//		SetDeletedAt(v).
 //		OnConflict(
 //			// Update the row with the new values
 //			// the was proposed for insertion.
@@ -263,7 +287,7 @@ func (_c *ChannelMonitorHistoryCreate) createSpec() (*ChannelMonitorHistory, *sq
 //		// Override some of the fields with custom
 //		// update values.
 //		Update(func(u *ent.ChannelMonitorHistoryUpsert) {
-//			SetMonitorID(v+v).
+//			SetDeletedAt(v+v).
 //		}).
 //		Exec(ctx)
 func (_c *ChannelMonitorHistoryCreate) OnConflict(opts ...sql.ConflictOption) *ChannelMonitorHistoryUpsertOne {
@@ -298,6 +322,24 @@ type (
 		*sql.UpdateSet
 	}
 )
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *ChannelMonitorHistoryUpsert) SetDeletedAt(v time.Time) *ChannelMonitorHistoryUpsert {
+	u.Set(channelmonitorhistory.FieldDeletedAt, v)
+	return u
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *ChannelMonitorHistoryUpsert) UpdateDeletedAt() *ChannelMonitorHistoryUpsert {
+	u.SetExcluded(channelmonitorhistory.FieldDeletedAt)
+	return u
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *ChannelMonitorHistoryUpsert) ClearDeletedAt() *ChannelMonitorHistoryUpsert {
+	u.SetNull(channelmonitorhistory.FieldDeletedAt)
+	return u
+}
 
 // SetMonitorID sets the "monitor_id" field.
 func (u *ChannelMonitorHistoryUpsert) SetMonitorID(v int64) *ChannelMonitorHistoryUpsert {
@@ -451,6 +493,27 @@ func (u *ChannelMonitorHistoryUpsertOne) Update(set func(*ChannelMonitorHistoryU
 		set(&ChannelMonitorHistoryUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *ChannelMonitorHistoryUpsertOne) SetDeletedAt(v time.Time) *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.SetDeletedAt(v)
+	})
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *ChannelMonitorHistoryUpsertOne) UpdateDeletedAt() *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.UpdateDeletedAt()
+	})
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *ChannelMonitorHistoryUpsertOne) ClearDeletedAt() *ChannelMonitorHistoryUpsertOne {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.ClearDeletedAt()
+	})
 }
 
 // SetMonitorID sets the "monitor_id" field.
@@ -721,7 +784,7 @@ func (_c *ChannelMonitorHistoryCreateBulk) ExecX(ctx context.Context) {
 //		// Override some of the fields with custom
 //		// update values.
 //		Update(func(u *ent.ChannelMonitorHistoryUpsert) {
-//			SetMonitorID(v+v).
+//			SetDeletedAt(v+v).
 //		}).
 //		Exec(ctx)
 func (_c *ChannelMonitorHistoryCreateBulk) OnConflict(opts ...sql.ConflictOption) *ChannelMonitorHistoryUpsertBulk {
@@ -788,6 +851,27 @@ func (u *ChannelMonitorHistoryUpsertBulk) Update(set func(*ChannelMonitorHistory
 		set(&ChannelMonitorHistoryUpsert{UpdateSet: update})
 	}))
 	return u
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (u *ChannelMonitorHistoryUpsertBulk) SetDeletedAt(v time.Time) *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.SetDeletedAt(v)
+	})
+}
+
+// UpdateDeletedAt sets the "deleted_at" field to the value that was provided on create.
+func (u *ChannelMonitorHistoryUpsertBulk) UpdateDeletedAt() *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.UpdateDeletedAt()
+	})
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (u *ChannelMonitorHistoryUpsertBulk) ClearDeletedAt() *ChannelMonitorHistoryUpsertBulk {
+	return u.Update(func(s *ChannelMonitorHistoryUpsert) {
+		s.ClearDeletedAt()
+	})
 }
 
 // SetMonitorID sets the "monitor_id" field.

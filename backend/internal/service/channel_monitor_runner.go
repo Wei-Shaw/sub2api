@@ -14,10 +14,10 @@ import (
 // 职责：
 //   - 每 monitorTickerInterval 扫描一次"到期需要检测"的监控
 //   - 通过 pond 池（容量 monitorWorkerConcurrency）异步执行检测
-//   - 每小时检查一次时钟，到 monitorCleanupHour 点时执行历史清理
 //   - Stop 时优雅关闭：池 drain + ticker.Stop + wg.Wait
 //
-// 不引入 cron 库；清理调度通过"每小时检查时间"实现，足够 MVP。
+// 历史清理与日聚合维护不再由 runner 负责，由 OpsCleanupService 的统一 cron
+// 在凌晨触发 ChannelMonitorService.RunDailyMaintenance（复用 leader lock + heartbeat）。
 //
 // 定时任务维护：删除/创建/编辑 monitor 无需显式 reload，每个 tick 都会重新查 DB
 // （ListEnabled + listDueForCheck），新 monitor 的 LastCheckedAt 为 nil 天然立即到期，
@@ -35,10 +35,6 @@ type ChannelMonitorRunner struct {
 	// 防止单次检测耗时 > interval 时同一 monitor 被并发执行。
 	inFlight   map[int64]struct{}
 	inFlightMu sync.Mutex
-
-	// 清理状态：lastCleanupDay 记录上次清理的"年-月-日"，避免同一天重复跑。
-	lastCleanupDay string
-	cleanupMu      sync.Mutex
 }
 
 // NewChannelMonitorRunner 构造调度器。Start 在 wire 中调用。
@@ -52,7 +48,7 @@ func NewChannelMonitorRunner(svc *ChannelMonitorService, settingService *Setting
 	}
 }
 
-// Start 启动 ticker + worker pool + cleanup loop。
+// Start 启动 ticker + worker pool。
 // 调用方需保证只调一次（wire ProvideChannelMonitorRunner 内只调一次）。
 func (r *ChannelMonitorRunner) Start() {
 	if r == nil || r.svc == nil {
@@ -61,12 +57,11 @@ func (r *ChannelMonitorRunner) Start() {
 	// 容量 5 的 pond 池：超出时调用方等待，避免调度堆积无限增长。
 	r.pool = pond.NewPool(monitorWorkerConcurrency)
 
-	r.wg.Add(2)
+	r.wg.Add(1)
 	go r.dueCheckLoop()
-	go r.cleanupLoop()
 }
 
-// Stop 优雅停止：close stopCh -> 等待两个 loop 退出 -> 池 drain。
+// Stop 优雅停止：close stopCh -> 等待 loop 退出 -> 池 drain。
 func (r *ChannelMonitorRunner) Stop() {
 	if r == nil {
 		return
@@ -174,47 +169,5 @@ func (r *ChannelMonitorRunner) runOne(id int64, name string) {
 		// ErrChannelMonitorAPIKeyDecryptFailed 是预期可恢复错误，降为 Warn 即可。
 		slog.Warn("channel_monitor: run check failed",
 			"monitor_id", id, "name", name, "error", err)
-	}
-}
-
-// cleanupLoop 每小时检查当前时间，到 monitorCleanupHour 点（且当天还没清理过）则跑一次清理。
-// 启动时立即检查一次，避免长时间运行才跑首次清理。
-func (r *ChannelMonitorRunner) cleanupLoop() {
-	defer r.wg.Done()
-
-	ticker := time.NewTicker(monitorCleanupCheckInterval)
-	defer ticker.Stop()
-
-	r.maybeRunCleanup()
-	for {
-		select {
-		case <-r.stopCh:
-			return
-		case <-ticker.C:
-			r.maybeRunCleanup()
-		}
-	}
-}
-
-// maybeRunCleanup 如果当前小时是 monitorCleanupHour 且当天未跑过，则执行清理。
-func (r *ChannelMonitorRunner) maybeRunCleanup() {
-	now := time.Now()
-	if now.Hour() != monitorCleanupHour {
-		return
-	}
-	day := now.Format(monitorCleanupDayLayout)
-
-	r.cleanupMu.Lock()
-	if r.lastCleanupDay == day {
-		r.cleanupMu.Unlock()
-		return
-	}
-	r.lastCleanupDay = day
-	r.cleanupMu.Unlock()
-
-	ctx, cancel := context.WithTimeout(context.Background(), monitorCleanupTimeout)
-	defer cancel()
-	if err := r.svc.cleanupOldHistory(ctx); err != nil {
-		slog.Warn("channel_monitor: cleanup history failed", "error", err)
 	}
 }

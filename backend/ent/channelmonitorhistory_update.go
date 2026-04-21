@@ -29,6 +29,26 @@ func (_u *ChannelMonitorHistoryUpdate) Where(ps ...predicate.ChannelMonitorHisto
 	return _u
 }
 
+// SetDeletedAt sets the "deleted_at" field.
+func (_u *ChannelMonitorHistoryUpdate) SetDeletedAt(v time.Time) *ChannelMonitorHistoryUpdate {
+	_u.mutation.SetDeletedAt(v)
+	return _u
+}
+
+// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
+func (_u *ChannelMonitorHistoryUpdate) SetNillableDeletedAt(v *time.Time) *ChannelMonitorHistoryUpdate {
+	if v != nil {
+		_u.SetDeletedAt(*v)
+	}
+	return _u
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (_u *ChannelMonitorHistoryUpdate) ClearDeletedAt() *ChannelMonitorHistoryUpdate {
+	_u.mutation.ClearDeletedAt()
+	return _u
+}
+
 // SetMonitorID sets the "monitor_id" field.
 func (_u *ChannelMonitorHistoryUpdate) SetMonitorID(v int64) *ChannelMonitorHistoryUpdate {
 	_u.mutation.SetMonitorID(v)
@@ -237,6 +257,12 @@ func (_u *ChannelMonitorHistoryUpdate) sqlSave(ctx context.Context) (_node int, 
 			}
 		}
 	}
+	if value, ok := _u.mutation.DeletedAt(); ok {
+		_spec.SetField(channelmonitorhistory.FieldDeletedAt, field.TypeTime, value)
+	}
+	if _u.mutation.DeletedAtCleared() {
+		_spec.ClearField(channelmonitorhistory.FieldDeletedAt, field.TypeTime)
+	}
 	if value, ok := _u.mutation.Model(); ok {
 		_spec.SetField(channelmonitorhistory.FieldModel, field.TypeString, value)
 	}
@@ -317,6 +343,26 @@ type ChannelMonitorHistoryUpdateOne struct {
 	fields   []string
 	hooks    []Hook
 	mutation *ChannelMonitorHistoryMutation
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (_u *ChannelMonitorHistoryUpdateOne) SetDeletedAt(v time.Time) *ChannelMonitorHistoryUpdateOne {
+	_u.mutation.SetDeletedAt(v)
+	return _u
+}
+
+// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
+func (_u *ChannelMonitorHistoryUpdateOne) SetNillableDeletedAt(v *time.Time) *ChannelMonitorHistoryUpdateOne {
+	if v != nil {
+		_u.SetDeletedAt(*v)
+	}
+	return _u
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (_u *ChannelMonitorHistoryUpdateOne) ClearDeletedAt() *ChannelMonitorHistoryUpdateOne {
+	_u.mutation.ClearDeletedAt()
+	return _u
 }
 
 // SetMonitorID sets the "monitor_id" field.
@@ -556,6 +602,12 @@ func (_u *ChannelMonitorHistoryUpdateOne) sqlSave(ctx context.Context) (_node *C
 				ps[i](selector)
 			}
 		}
+	}
+	if value, ok := _u.mutation.DeletedAt(); ok {
+		_spec.SetField(channelmonitorhistory.FieldDeletedAt, field.TypeTime, value)
+	}
+	if _u.mutation.DeletedAtCleared() {
+		_spec.ClearField(channelmonitorhistory.FieldDeletedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.Model(); ok {
 		_spec.SetField(channelmonitorhistory.FieldModel, field.TypeString, value)

@@ -11,6 +11,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
+	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
@@ -402,6 +403,82 @@ func init() {
 	channelmonitorDescIntervalSeconds := channelmonitorFields[8].Descriptor()
 	// channelmonitor.IntervalSecondsValidator is a validator for the "interval_seconds" field. It is called by the builders before save.
 	channelmonitor.IntervalSecondsValidator = channelmonitorDescIntervalSeconds.Validators[0].(func(int) error)
+	channelmonitordailyrollupMixin := schema.ChannelMonitorDailyRollup{}.Mixin()
+	channelmonitordailyrollupMixinHooks0 := channelmonitordailyrollupMixin[0].Hooks()
+	channelmonitordailyrollup.Hooks[0] = channelmonitordailyrollupMixinHooks0[0]
+	channelmonitordailyrollupMixinInters0 := channelmonitordailyrollupMixin[0].Interceptors()
+	channelmonitordailyrollup.Interceptors[0] = channelmonitordailyrollupMixinInters0[0]
+	channelmonitordailyrollupFields := schema.ChannelMonitorDailyRollup{}.Fields()
+	_ = channelmonitordailyrollupFields
+	// channelmonitordailyrollupDescModel is the schema descriptor for model field.
+	channelmonitordailyrollupDescModel := channelmonitordailyrollupFields[1].Descriptor()
+	// channelmonitordailyrollup.ModelValidator is a validator for the "model" field. It is called by the builders before save.
+	channelmonitordailyrollup.ModelValidator = func() func(string) error {
+		validators := channelmonitordailyrollupDescModel.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(model string) error {
+			for _, fn := range fns {
+				if err := fn(model); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// channelmonitordailyrollupDescTotalChecks is the schema descriptor for total_checks field.
+	channelmonitordailyrollupDescTotalChecks := channelmonitordailyrollupFields[3].Descriptor()
+	// channelmonitordailyrollup.DefaultTotalChecks holds the default value on creation for the total_checks field.
+	channelmonitordailyrollup.DefaultTotalChecks = channelmonitordailyrollupDescTotalChecks.Default.(int)
+	// channelmonitordailyrollupDescOkCount is the schema descriptor for ok_count field.
+	channelmonitordailyrollupDescOkCount := channelmonitordailyrollupFields[4].Descriptor()
+	// channelmonitordailyrollup.DefaultOkCount holds the default value on creation for the ok_count field.
+	channelmonitordailyrollup.DefaultOkCount = channelmonitordailyrollupDescOkCount.Default.(int)
+	// channelmonitordailyrollupDescOperationalCount is the schema descriptor for operational_count field.
+	channelmonitordailyrollupDescOperationalCount := channelmonitordailyrollupFields[5].Descriptor()
+	// channelmonitordailyrollup.DefaultOperationalCount holds the default value on creation for the operational_count field.
+	channelmonitordailyrollup.DefaultOperationalCount = channelmonitordailyrollupDescOperationalCount.Default.(int)
+	// channelmonitordailyrollupDescDegradedCount is the schema descriptor for degraded_count field.
+	channelmonitordailyrollupDescDegradedCount := channelmonitordailyrollupFields[6].Descriptor()
+	// channelmonitordailyrollup.DefaultDegradedCount holds the default value on creation for the degraded_count field.
+	channelmonitordailyrollup.DefaultDegradedCount = channelmonitordailyrollupDescDegradedCount.Default.(int)
+	// channelmonitordailyrollupDescFailedCount is the schema descriptor for failed_count field.
+	channelmonitordailyrollupDescFailedCount := channelmonitordailyrollupFields[7].Descriptor()
+	// channelmonitordailyrollup.DefaultFailedCount holds the default value on creation for the failed_count field.
+	channelmonitordailyrollup.DefaultFailedCount = channelmonitordailyrollupDescFailedCount.Default.(int)
+	// channelmonitordailyrollupDescErrorCount is the schema descriptor for error_count field.
+	channelmonitordailyrollupDescErrorCount := channelmonitordailyrollupFields[8].Descriptor()
+	// channelmonitordailyrollup.DefaultErrorCount holds the default value on creation for the error_count field.
+	channelmonitordailyrollup.DefaultErrorCount = channelmonitordailyrollupDescErrorCount.Default.(int)
+	// channelmonitordailyrollupDescSumLatencyMs is the schema descriptor for sum_latency_ms field.
+	channelmonitordailyrollupDescSumLatencyMs := channelmonitordailyrollupFields[9].Descriptor()
+	// channelmonitordailyrollup.DefaultSumLatencyMs holds the default value on creation for the sum_latency_ms field.
+	channelmonitordailyrollup.DefaultSumLatencyMs = channelmonitordailyrollupDescSumLatencyMs.Default.(int64)
+	// channelmonitordailyrollupDescCountLatency is the schema descriptor for count_latency field.
+	channelmonitordailyrollupDescCountLatency := channelmonitordailyrollupFields[10].Descriptor()
+	// channelmonitordailyrollup.DefaultCountLatency holds the default value on creation for the count_latency field.
+	channelmonitordailyrollup.DefaultCountLatency = channelmonitordailyrollupDescCountLatency.Default.(int)
+	// channelmonitordailyrollupDescSumPingLatencyMs is the schema descriptor for sum_ping_latency_ms field.
+	channelmonitordailyrollupDescSumPingLatencyMs := channelmonitordailyrollupFields[11].Descriptor()
+	// channelmonitordailyrollup.DefaultSumPingLatencyMs holds the default value on creation for the sum_ping_latency_ms field.
+	channelmonitordailyrollup.DefaultSumPingLatencyMs = channelmonitordailyrollupDescSumPingLatencyMs.Default.(int64)
+	// channelmonitordailyrollupDescCountPingLatency is the schema descriptor for count_ping_latency field.
+	channelmonitordailyrollupDescCountPingLatency := channelmonitordailyrollupFields[12].Descriptor()
+	// channelmonitordailyrollup.DefaultCountPingLatency holds the default value on creation for the count_ping_latency field.
+	channelmonitordailyrollup.DefaultCountPingLatency = channelmonitordailyrollupDescCountPingLatency.Default.(int)
+	// channelmonitordailyrollupDescComputedAt is the schema descriptor for computed_at field.
+	channelmonitordailyrollupDescComputedAt := channelmonitordailyrollupFields[13].Descriptor()
+	// channelmonitordailyrollup.DefaultComputedAt holds the default value on creation for the computed_at field.
+	channelmonitordailyrollup.DefaultComputedAt = channelmonitordailyrollupDescComputedAt.Default.(func() time.Time)
+	// channelmonitordailyrollup.UpdateDefaultComputedAt holds the default value on update for the computed_at field.
+	channelmonitordailyrollup.UpdateDefaultComputedAt = channelmonitordailyrollupDescComputedAt.UpdateDefault.(func() time.Time)
+	channelmonitorhistoryMixin := schema.ChannelMonitorHistory{}.Mixin()
+	channelmonitorhistoryMixinHooks0 := channelmonitorhistoryMixin[0].Hooks()
+	channelmonitorhistory.Hooks[0] = channelmonitorhistoryMixinHooks0[0]
+	channelmonitorhistoryMixinInters0 := channelmonitorhistoryMixin[0].Interceptors()
+	channelmonitorhistory.Interceptors[0] = channelmonitorhistoryMixinInters0[0]
 	channelmonitorhistoryFields := schema.ChannelMonitorHistory{}.Fields()
 	_ = channelmonitorhistoryFields
 	// channelmonitorhistoryDescModel is the schema descriptor for model field.
