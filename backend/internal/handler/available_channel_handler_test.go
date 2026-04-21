@@ -42,21 +42,6 @@ func TestFilterUserVisibleGroups_IntersectionOnly(t *testing.T) {
 	require.ElementsMatch(t, []int64{1, 3}, ids)
 }
 
-func TestCollectGroupPlatforms_DerivesAllowedSet(t *testing.T) {
-	groups := []userAvailableGroup{
-		{ID: 1, Platform: "anthropic"},
-		{ID: 2, Platform: "openai"},
-		{ID: 3, Platform: "anthropic"}, // 去重
-		{ID: 4, Platform: ""},          // 空平台忽略
-	}
-	got := collectGroupPlatforms(groups)
-	require.Len(t, got, 2)
-	_, hasAnt := got["anthropic"]
-	_, hasOA := got["openai"]
-	require.True(t, hasAnt)
-	require.True(t, hasOA)
-}
-
 func TestToUserSupportedModels_FiltersByAllowedPlatforms(t *testing.T) {
 	// 用户可访问分组只覆盖 anthropic；anthropic 平台的模型保留，openai 模型被剔除。
 	src := []service.SupportedModel{

@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"sort"
+
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -84,9 +86,14 @@ type userSupportedModel struct {
 }
 
 // userAvailableChannel 用户可见的渠道条目（白名单字段）。
+//
+// 同一个渠道若在多个平台上都有用户可见的分组，会被摊开成多条记录 —— 每条对应
+// 一个平台，groups 和 supported_models 都只包含该平台的内容。这样前端无需在
+// 一行内混排多平台信息，也能直接为整行应用平台色/图标。
 type userAvailableChannel struct {
 	Name            string               `json:"name"`
 	Description     string               `json:"description"`
+	Platform        string               `json:"platform"`
 	Groups          []userAvailableGroup `json:"groups"`
 	SupportedModels []userSupportedModel `json:"supported_models"`
 }
@@ -132,28 +139,48 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 		if len(visibleGroups) == 0 {
 			continue
 		}
-		allowedPlatforms := collectGroupPlatforms(visibleGroups)
-		out = append(out, userAvailableChannel{
-			Name:            ch.Name,
-			Description:     ch.Description,
-			Groups:          visibleGroups,
-			SupportedModels: toUserSupportedModels(ch.SupportedModels, allowedPlatforms),
-		})
+		out = append(out, explodeChannelByPlatform(ch, visibleGroups)...)
 	}
 
 	response.Success(c, out)
 }
 
-// collectGroupPlatforms 聚合 visible groups 覆盖的平台集合，用于过滤 SupportedModels。
-func collectGroupPlatforms(groups []userAvailableGroup) map[string]struct{} {
-	set := make(map[string]struct{}, len(groups))
-	for _, g := range groups {
+// explodeChannelByPlatform 将单个渠道按 visibleGroups 的平台集合摊开成多条记录。
+// 每条记录对应一个平台：groups 仅含该平台的 visibleGroups，supported_models 仅含
+// 该平台的模型。输出按 platform 字母序稳定排序，便于前端等效比较与回归测试。
+func explodeChannelByPlatform(
+	ch service.AvailableChannel,
+	visibleGroups []userAvailableGroup,
+) []userAvailableChannel {
+	groupsByPlatform := make(map[string][]userAvailableGroup, 4)
+	for _, g := range visibleGroups {
 		if g.Platform == "" {
 			continue
 		}
-		set[g.Platform] = struct{}{}
+		groupsByPlatform[g.Platform] = append(groupsByPlatform[g.Platform], g)
 	}
-	return set
+	if len(groupsByPlatform) == 0 {
+		return nil
+	}
+
+	platforms := make([]string, 0, len(groupsByPlatform))
+	for p := range groupsByPlatform {
+		platforms = append(platforms, p)
+	}
+	sort.Strings(platforms)
+
+	out := make([]userAvailableChannel, 0, len(platforms))
+	for _, platform := range platforms {
+		platformSet := map[string]struct{}{platform: {}}
+		out = append(out, userAvailableChannel{
+			Name:            ch.Name,
+			Description:     ch.Description,
+			Platform:        platform,
+			Groups:          groupsByPlatform[platform],
+			SupportedModels: toUserSupportedModels(ch.SupportedModels, platformSet),
+		})
+	}
+	return out
 }
 
 // filterUserVisibleGroups 仅保留用户可访问的分组。

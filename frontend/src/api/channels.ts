@@ -43,6 +43,11 @@ export interface UserSupportedModel {
 export interface UserAvailableChannel {
   name: string
   description: string
+  /**
+   * 所属平台（anthropic / openai / antigravity / gemini ...）。后端按平台把一个渠道
+   * 摊开成多条记录，因此此字段决定整行的配色与图标。
+   */
+  platform: string
   groups: UserAvailableGroup[]
   supported_models: UserSupportedModel[]
 }

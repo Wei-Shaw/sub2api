@@ -1,12 +1,19 @@
 <template>
   <DataTable :columns="columns" :data="rows" :loading="loading">
     <template #cell-name="{ row }">
-      <div class="font-medium text-gray-900 dark:text-white">{{ row.name }}</div>
-      <div
-        v-if="row.description"
-        class="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
-      >
-        {{ row.description }}
+      <div class="flex items-center gap-2">
+        <span class="font-medium text-gray-900 dark:text-white">{{ row.name }}</span>
+        <span
+          v-if="row.platform"
+          :class="[
+            'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium uppercase',
+            platformBadgeClass(row.platform),
+          ]"
+          :title="row.description || undefined"
+        >
+          <PlatformIcon :platform="row.platform as GroupPlatform" size="xs" />
+          {{ row.platform }}
+        </span>
       </div>
     </template>
 
@@ -18,8 +25,16 @@
         <span
           v-for="g in row.groups"
           :key="g.id"
-          class="inline-flex items-center rounded bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+          :class="[
+            'inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium',
+            platformBadgeLightClass(g.platform || row.platform || ''),
+          ]"
         >
+          <PlatformIcon
+            v-if="g.platform || row.platform"
+            :platform="(g.platform || row.platform) as GroupPlatform"
+            size="xs"
+          />
           {{ g.name }}
         </span>
       </div>
@@ -36,6 +51,8 @@
           :model="m"
           :pricing-key-prefix="pricingKeyPrefix"
           :no-pricing-label="noPricingLabel"
+          :show-platform="false"
+          :platform-hint="row.platform"
         />
       </div>
     </template>
@@ -60,9 +77,12 @@
 import { computed, useSlots } from 'vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Icon from '@/components/icons/Icon.vue'
+import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import SupportedModelChip from './SupportedModelChip.vue'
 import type { UserSupportedModel } from '@/api/channels'
 import type { ChannelStatus, BillingModelSource } from '@/constants/channel'
+import type { GroupPlatform } from '@/types'
+import { platformBadgeClass, platformBadgeLightClass } from '@/utils/platformColors'
 
 interface GroupRef {
   id: number
@@ -73,6 +93,8 @@ interface GroupRef {
 interface Row {
   name: string
   description?: string
+  /** 单条记录归属的平台；后端按平台摊开后每行一个。admin 场景可能缺失，因此允许 optional。 */
+  platform?: string
   groups: GroupRef[]
   // 复用 user 侧最小 DTO；admin 侧 SupportedModel 结构上是其超集，可直接传入。
   supported_models: UserSupportedModel[]

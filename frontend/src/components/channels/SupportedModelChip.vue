@@ -1,11 +1,21 @@
 <template>
   <div class="group relative inline-block">
     <span
-      class="inline-flex cursor-help items-center rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs font-medium text-gray-700 transition-colors hover:border-brand-400 hover:bg-brand-50 hover:text-brand-700 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-brand-500 dark:hover:bg-brand-900/30 dark:hover:text-brand-300"
+      :class="[
+        'inline-flex cursor-help items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium transition-colors',
+        effectivePlatform
+          ? platformBadgeClass(effectivePlatform)
+          : 'border-gray-200 bg-gray-50 text-gray-700 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300',
+      ]"
     >
+      <PlatformIcon
+        v-if="effectivePlatform"
+        :platform="effectivePlatform as GroupPlatform"
+        size="xs"
+      />
       <span
         v-if="showPlatform && model.platform"
-        class="mr-1 rounded bg-gray-200 px-1 text-[10px] uppercase text-gray-600 dark:bg-dark-700 dark:text-gray-400"
+        class="rounded bg-gray-200/60 px-1 text-[10px] uppercase text-gray-600 dark:bg-dark-700 dark:text-gray-400"
       >
         {{ model.platform }}
       </span>
@@ -130,6 +140,9 @@ import {
 // 复用 api/channels.ts 的用户侧最小形态 DTO。
 // admin 侧 ChannelModelPricing 字段更多，但结构上是用户 DTO 的超集，admin 视图传入可直接通过结构化子类型检查。
 import type { UserPricingInterval, UserSupportedModel } from '@/api/channels'
+import PlatformIcon from '@/components/common/PlatformIcon.vue'
+import type { GroupPlatform } from '@/types'
+import { platformBadgeClass } from '@/utils/platformColors'
 
 const props = withDefaults(
   defineProps<{
@@ -138,13 +151,21 @@ const props = withDefaults(
     pricingKeyPrefix?: string
     noPricingLabel?: string
     showPlatform?: boolean
+    /**
+     * 当 model.platform 缺失（如 admin 聚合场景）时，用父行的平台作为兜底着色。
+     * 仅用于视觉，不影响业务逻辑。
+     */
+    platformHint?: string
   }>(),
   {
     pricingKeyPrefix: 'availableChannels.pricing',
     noPricingLabel: '',
-    showPlatform: true
+    showPlatform: true,
+    platformHint: ''
   }
 )
+
+const effectivePlatform = computed<string>(() => props.model.platform || props.platformHint || '')
 
 const { t } = useI18n()
 
