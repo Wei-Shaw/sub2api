@@ -21,17 +21,28 @@ import (
 type AvailableChannelHandler struct {
 	channelService *service.ChannelService
 	apiKeyService  *service.APIKeyService
+	settingService *service.SettingService
 }
 
 // NewAvailableChannelHandler 创建用户侧可用渠道 handler。
 func NewAvailableChannelHandler(
 	channelService *service.ChannelService,
 	apiKeyService *service.APIKeyService,
+	settingService *service.SettingService,
 ) *AvailableChannelHandler {
 	return &AvailableChannelHandler{
 		channelService: channelService,
 		apiKeyService:  apiKeyService,
+		settingService: settingService,
 	}
+}
+
+// featureEnabled 返回 available-channels 开关是否启用。默认关闭（opt-in）。
+func (h *AvailableChannelHandler) featureEnabled(c *gin.Context) bool {
+	if h.settingService == nil {
+		return false
+	}
+	return h.settingService.GetAvailableChannelsRuntime(c.Request.Context()).Enabled
 }
 
 // userAvailableGroup 用户可见的分组概要（白名单字段）。
@@ -86,6 +97,13 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 	subject, ok := middleware.GetAuthSubjectFromContext(c)
 	if !ok {
 		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	// Feature 未启用时返回空数组（不暴露渠道信息）。检查放在认证之后，
+	// 保持与未开关前的 401 行为一致：未登录先 401，登录后再按开关决定。
+	if !h.featureEnabled(c) {
+		response.Success(c, []userAvailableChannel{})
 		return
 	}
 
