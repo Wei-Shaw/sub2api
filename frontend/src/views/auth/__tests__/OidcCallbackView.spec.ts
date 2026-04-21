@@ -92,6 +92,74 @@ describe('OidcCallbackView', () => {
       turnstile_enabled: false,
       turnstile_site_key: ''
     REDACTED)
+    window.location.hash = ''
+    localStorage.clear()
+  REDACTED)
+
+  it('accepts the legacy fragment token success callback without pending-session exchange', async () => {
+    window.location.hash =
+      '#access_token=legacy-access-token&refresh_token=legacy-refresh-token&expires_in=3600&token_type=Bearer&redirect=%2Flegacy-dashboard'
+    setToken.mockResolvedValue({REDACTED)
+
+    mount(OidcCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+
+    expect(exchangePendingOAuthCompletion).not.toHaveBeenCalled()
+    expect(setToken).toHaveBeenCalledWith('legacy-access-token')
+    expect(localStorage.getItem('refresh_token')).toBe('legacy-refresh-token')
+    expect(localStorage.getItem('token_expires_at')).not.toBeNull()
+    expect(showSuccess).toHaveBeenCalledWith('auth.loginSuccess')
+    expect(replace).toHaveBeenCalledWith('/legacy-dashboard')
+  REDACTED)
+
+  it('accepts the legacy pending oauth invitation fragment without pending-session exchange', async () => {
+    window.location.hash = '#error=invitation_required&pending_oauth_token=legacy-pending-token&redirect=%2Flegacy-invite'
+    apiClientPost.mockResolvedValue({
+      data: {
+        access_token: 'legacy-access-token',
+        refresh_token: 'legacy-refresh-token',
+        expires_in: 3600,
+        token_type: 'Bearer'
+      REDACTED
+    REDACTED)
+    setToken.mockResolvedValue({REDACTED)
+
+    const wrapper = mount(OidcCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+
+    expect(exchangePendingOAuthCompletion).not.toHaveBeenCalled()
+    await wrapper.find('input[type="text"]').setValue('invite-code')
+    await wrapper.find('button').trigger('click')
+    await flushPromises()
+
+    expect(apiClientPost).toHaveBeenCalledWith('/auth/oauth/oidc/complete-registration', {
+      adopt_display_name: true,
+      adopt_avatar: true,
+      pending_oauth_token: 'legacy-pending-token',
+      invitation_code: 'invite-code'
+    REDACTED)
+    expect(setToken).toHaveBeenCalledWith('legacy-access-token')
+    expect(replace).toHaveBeenCalledWith('/legacy-invite')
   REDACTED)
 
   it('does not send adoption decisions during the initial exchange', async () => {
