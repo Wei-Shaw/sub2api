@@ -22,7 +22,11 @@
         />
       </div>
 
-      <ProfileInfoCard
+      <ProfileInfoCard :user="user" />
+
+      <ProfileAvatarCard :user="user" />
+
+      <ProfileAccountBindingsCard
         :user="user"
         :linuxdo-enabled="linuxdoOAuthEnabled"
         :oidc-enabled="oidcOAuthEnabled"
@@ -73,6 +77,8 @@ import { Icon REDACTED from '@/components/icons'
 import StatCard from '@/components/common/StatCard.vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import ProfileBalanceNotifyCard from '@/components/user/profile/ProfileBalanceNotifyCard.vue'
+import ProfileAccountBindingsCard from '@/components/user/profile/ProfileAccountBindingsCard.vue'
+import ProfileAvatarCard from '@/components/user/profile/ProfileAvatarCard.vue'
 import ProfileEditForm from '@/components/user/profile/ProfileEditForm.vue'
 import ProfileInfoCard from '@/components/user/profile/ProfileInfoCard.vue'
 import ProfilePasswordForm from '@/components/user/profile/ProfilePasswordForm.vue'
