@@ -640,7 +640,12 @@ const flagAdminPayment = () => adminSettingsStore.paymentEnabled
 
 // buildSelfNavItems 构造用户自己的导航项（用户端主菜单和管理员的"我的账户"子菜单共享这组声明）。
 // withDashboard=true 时包含仪表盘（用户端），false 时不含（管理员的个人区已经有独立仪表盘入口）。
-function buildSelfNavItems(withDashboard: boolean): NavItem[] {
+// includeAvailableChannels=false 时省略"可用渠道"入口——管理员在 admin 区已经有一个显眼入口，
+// 重复显示会让管理员同时看到两处"可用渠道"。
+//
+// 条目顺序：密钥 → 用量 → 可用渠道 → 渠道状态 → 订阅/支付 → 兑换/资料。
+// 可用渠道紧挨渠道状态之上，让用户"先看自己能用什么、再看对应状态"。
+function buildSelfNavItems(withDashboard: boolean, includeAvailableChannels = true): NavItem[] {
   const items: NavItem[] = []
   if (withDashboard) {
     items.push({ path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon REDACTED)
@@ -648,11 +653,15 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   items.push(
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon REDACTED,
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true REDACTED,
+  )
+  if (includeAvailableChannels) {
+    items.push({ path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels REDACTED)
+  REDACTED
+  items.push(
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor REDACTED,
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true REDACTED,
     { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment REDACTED,
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment REDACTED,
-    { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true REDACTED,
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true REDACTED,
     { path: '/profile', label: t('nav.profile'), icon: UserIcon REDACTED,
     ...customMenuItemsForUser.value.map((item): NavItem => ({
