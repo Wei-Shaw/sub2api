@@ -18,6 +18,7 @@ let pinia: ReturnType<typeof createPinia>
 const userApiMocks = vi.hoisted(() => ({
   sendEmailBindingCode: vi.fn(),
   bindEmailIdentity: vi.fn(),
+  unbindAuthIdentity: vi.fn(),
 REDACTED))
 
 vi.mock('vue-router', () => ({
@@ -30,6 +31,7 @@ vi.mock('@/api/user', async (importOriginal) => {
     ...actual,
     sendEmailBindingCode: (...args: any[]) => userApiMocks.sendEmailBindingCode(...args),
     bindEmailIdentity: (...args: any[]) => userApiMocks.bindEmailIdentity(...args),
+    unbindAuthIdentity: (...args: any[]) => userApiMocks.unbindAuthIdentity(...args),
   REDACTED
 REDACTED)
 
@@ -54,6 +56,9 @@ vi.mock('vue-i18n', async (importOriginal) => {
         if (key === 'profile.authBindings.replaceEmailPasswordPlaceholder')
           return 'Current password'
         if (key === 'profile.authBindings.sendCodeAction') return 'Send code'
+        if (key === 'profile.authBindings.unbindAction') return 'Unbind'
+        if (key === 'profile.authBindings.manageEmailAction') return 'Manage email'
+        if (key === 'profile.authBindings.hideEmailFormAction') return 'Hide email form'
         if (key === 'profile.authBindings.confirmEmailBindAction') return 'Bind email'
         if (key === 'profile.authBindings.confirmEmailReplaceAction') return 'Replace primary email'
         if (key === 'profile.authBindings.codeSentTo') return `Code sent to ${params?.email || ''REDACTED`.trim()
@@ -103,6 +108,7 @@ describe('ProfileIdentityBindingsSection', () => {
     appStore.publicSettingsLoaded = false
     userApiMocks.sendEmailBindingCode.mockReset()
     userApiMocks.bindEmailIdentity.mockReset()
+    userApiMocks.unbindAuthIdentity.mockReset()
   REDACTED)
 
   afterEach(() => {
@@ -391,5 +397,81 @@ describe('ProfileIdentityBindingsSection', () => {
     REDACTED)
     expect(authStore.user?.email).toBe('new@example.com')
     expect(showSuccessSpy).toHaveBeenCalledWith('Primary email updated')
+  REDACTED)
+
+  it('collapses the email binding form in compact mode until the user expands it', async () => {
+    const wrapper = mount(ProfileIdentityBindingsSection, {
+      global: {
+        plugins: [pinia],
+      REDACTED,
+      props: {
+        user: createUser({
+          email: 'legacy@example.com',
+          email_bound: false,
+          auth_bindings: {
+            email: { bound: false REDACTED,
+          REDACTED,
+        REDACTED),
+        compact: true,
+        linuxdoEnabled: false,
+        oidcEnabled: false,
+        wechatEnabled: false,
+      REDACTED,
+    REDACTED)
+
+    expect(wrapper.find('[data-testid="profile-binding-email-input"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="profile-binding-email-toggle"]').text()).toBe('Manage email')
+
+    await wrapper.get('[data-testid="profile-binding-email-toggle"]').trigger('click')
+
+    expect(wrapper.get('[data-testid="profile-binding-email-input"]').exists()).toBe(true)
+  REDACTED)
+
+  it('shows third-party binding details and unbinds a connected provider', async () => {
+    userApiMocks.unbindAuthIdentity.mockResolvedValue(
+      createUser({
+        email_bound: true,
+        linuxdo_bound: false,
+        auth_bindings: {
+          email: { bound: true REDACTED,
+          linuxdo: { bound: false, can_unbind: false REDACTED,
+        REDACTED,
+      REDACTED)
+    )
+
+    const wrapper = mount(ProfileIdentityBindingsSection, {
+      global: {
+        plugins: [pinia],
+      REDACTED,
+      props: {
+        user: createUser({
+          email_bound: true,
+          linuxdo_bound: true,
+          auth_bindings: {
+            email: { bound: true REDACTED,
+            linuxdo: {
+              bound: true,
+              display_name: 'linuxdo-handle',
+              subject_hint: 'lin***3456',
+              note: 'Linked from LinuxDo',
+              can_unbind: true,
+            REDACTED,
+          REDACTED,
+        REDACTED),
+        compact: true,
+        linuxdoEnabled: true,
+        oidcEnabled: false,
+        wechatEnabled: false,
+      REDACTED,
+    REDACTED)
+
+    expect(wrapper.text()).toContain('linuxdo-handle')
+    expect(wrapper.text()).toContain('lin***3456')
+    expect(wrapper.text()).toContain('Linked from LinuxDo')
+
+    await wrapper.get('[data-testid="profile-binding-linuxdo-unbind"]').trigger('click')
+
+    expect(userApiMocks.unbindAuthIdentity).toHaveBeenCalledWith('linuxdo')
+    expect(wrapper.get('[data-testid="profile-binding-linuxdo-status"]').text()).toBe('Not bound')
   REDACTED)
 REDACTED)

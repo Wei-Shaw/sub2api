@@ -21,14 +21,11 @@
           {{ t('profile.authBindings.description') REDACTEDREDACTED
         </p>
       </div>
+
       <div
         v-for="item in providerItems"
         :key="item.provider"
-        :class="
-          props.embedded
-            ? 'rounded-2xl border border-gray-100 bg-gray-50/70 p-4 dark:border-dark-700 dark:bg-dark-900/30'
-            : 'px-6 py-5'
-        "
+        :class="rowClass"
       >
         <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div class="flex min-w-0 flex-1 items-start gap-4">
@@ -45,7 +42,7 @@
               <span v-else>{{ providerInitial(item.provider) REDACTEDREDACTED</span>
             </div>
 
-            <div class="min-w-0 flex-1">
+            <div class="min-w-0 flex-1 space-y-3">
               <div class="flex flex-wrap items-center gap-2">
                 <h3 class="font-medium text-gray-900 dark:text-white">
                   {{ item.label REDACTEDREDACTED
@@ -64,14 +61,36 @@
 
               <p
                 v-if="providerSummary(item.provider)"
-                class="mt-1 text-sm text-gray-600 dark:text-gray-300"
+                class="text-sm text-gray-600 dark:text-gray-300"
               >
                 {{ providerSummary(item.provider) REDACTEDREDACTED
               </p>
 
               <div
-                v-if="item.provider === 'email'"
-                class="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1.4fr)_auto]"
+                v-if="item.details && (item.details.display_name || item.details.subject_hint || bindingCountLabel(item.details) || item.details.note)"
+                class="grid gap-1 text-sm text-gray-500 dark:text-gray-400"
+              >
+                <p
+                  v-if="item.details.display_name"
+                  class="font-medium text-gray-700 dark:text-gray-200"
+                >
+                  {{ item.details.display_name REDACTEDREDACTED
+                </p>
+                <p v-if="item.details.subject_hint">
+                  {{ item.details.subject_hint REDACTEDREDACTED
+                </p>
+                <p v-if="bindingCountLabel(item.details)">
+                  {{ bindingCountLabel(item.details) REDACTEDREDACTED
+                </p>
+                <p v-if="item.details.note">
+                  {{ item.details.note REDACTEDREDACTED
+                </p>
+              </div>
+
+              <div
+                v-if="item.provider === 'email' && showEmailForm"
+                data-testid="profile-binding-email-form"
+                class="grid gap-2 sm:grid-cols-[minmax(0,1.4fr)_auto]"
               >
                 <input
                   v-model.trim="emailBindingForm.email"
@@ -129,7 +148,20 @@
             </div>
           </div>
 
-          <div class="flex shrink-0 items-center gap-3">
+          <div class="flex shrink-0 flex-wrap items-center gap-3">
+            <button
+              v-if="item.provider === 'email' && compact"
+              data-testid="profile-binding-email-toggle"
+              type="button"
+              class="btn btn-secondary btn-sm"
+              @click="toggleEmailForm"
+            >
+              {{
+                showEmailForm
+                  ? t('profile.authBindings.hideEmailFormAction')
+                  : t('profile.authBindings.manageEmailAction')
+              REDACTEDREDACTED
+            </button>
             <button
               v-if="item.canBind"
               :data-testid="`profile-binding-${item.providerREDACTED-action`"
@@ -138,6 +170,20 @@
               @click="startBinding(item.provider)"
             >
               {{ t('profile.authBindings.bindAction', { providerName: item.label REDACTED) REDACTEDREDACTED
+            </button>
+            <button
+              v-if="item.canUnbind"
+              :data-testid="`profile-binding-${item.providerREDACTED-unbind`"
+              type="button"
+              class="btn btn-secondary btn-sm"
+              :disabled="unbindingProvider === item.provider"
+              @click="handleUnbindForItem(item.provider, item.label)"
+            >
+              {{
+                unbindingProvider === item.provider
+                  ? t('common.loading')
+                  : t('profile.authBindings.unbindAction')
+              REDACTEDREDACTED
             </button>
           </div>
         </div>
@@ -155,10 +201,17 @@ import {
   resolveWeChatOAuthStartStrict,
   type WeChatOAuthPublicSettings,
 REDACTED from '@/api/auth'
-import { bindEmailIdentity, sendEmailBindingCode, startOAuthBinding REDACTED from '@/api/user'
+import {
+  bindEmailIdentity,
+  sendEmailBindingCode,
+  startOAuthBinding,
+  unbindAuthIdentity,
+REDACTED from '@/api/user'
 import Icon from '@/components/icons/Icon.vue'
 import { useAppStore, useAuthStore REDACTED from '@/stores'
 import type { User, UserAuthBindingStatus, UserAuthProvider REDACTED from '@/types'
+
+type BindableProvider = Exclude<UserAuthProvider, 'email'>
 
 const props = withDefaults(
   defineProps<{
@@ -170,6 +223,7 @@ const props = withDefaults(
     wechatOpenEnabled?: boolean
     wechatMpEnabled?: boolean
     embedded?: boolean
+    compact?: boolean
   REDACTED>(),
   {
     linuxdoEnabled: false,
@@ -179,6 +233,7 @@ const props = withDefaults(
     wechatOpenEnabled: undefined,
     wechatMpEnabled: undefined,
     embedded: false,
+    compact: false,
   REDACTED
 )
 
@@ -190,6 +245,8 @@ const authStore = useAuthStore()
 const localUser = ref<User | null>(null)
 const isSendingEmailCode = ref(false)
 const isBindingEmail = ref(false)
+const isEmailFormExpanded = ref(!props.compact)
+const unbindingProvider = ref<BindableProvider | null>(null)
 const emailBindingForm = reactive({
   email: '',
   verifyCode: '',
@@ -210,8 +267,27 @@ watch(
   { immediate: true REDACTED
 )
 
+watch(
+  () => props.compact,
+  (value) => {
+    if (!value) {
+      isEmailFormExpanded.value = true
+    REDACTED
+  REDACTED,
+  { immediate: true REDACTED
+)
+
 const currentUser = computed(() => localUser.value ?? props.user)
+const compact = computed(() => props.compact)
+const rowClass = computed(() =>
+  props.embedded
+    ? compact.value
+      ? 'rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-900/40'
+      : 'rounded-2xl border border-gray-100 bg-gray-50/70 p-4 dark:border-dark-700 dark:bg-dark-900/30'
+    : 'px-6 py-5'
+)
 const emailBound = computed(() => getBindingStatus('email'))
+const showEmailForm = computed(() => !compact.value || isEmailFormExpanded.value)
 const emailPasswordPlaceholder = computed(() =>
   emailBound.value
     ? t('profile.authBindings.replaceEmailPasswordPlaceholder')
@@ -278,30 +354,46 @@ function getBindingStatusForUser(user: User | null | undefined, provider: UserAu
   return normalized ?? false
 REDACTED
 
+function getBindingDetails(provider: UserAuthProvider): UserAuthBindingStatus | null {
+  const binding = currentUser.value?.auth_bindings?.[provider] ?? currentUser.value?.identity_bindings?.[provider]
+  if (!binding || typeof binding === 'boolean') {
+    return null
+  REDACTED
+  return binding
+REDACTED
+
 const providerItems = computed(() => [
   {
     provider: 'email' as const,
     label: t('profile.authBindings.providers.email'),
     bound: getBindingStatus('email'),
     canBind: false,
+    canUnbind: false,
+    details: getBindingDetails('email'),
   REDACTED,
   {
     provider: 'linuxdo' as const,
     label: t('profile.authBindings.providers.linuxdo'),
     bound: getBindingStatus('linuxdo'),
-    canBind: props.linuxdoEnabled && !getBindingStatus('linuxdo'),
+    canBind: getBindingDetails('linuxdo')?.can_bind ?? (props.linuxdoEnabled && !getBindingStatus('linuxdo')),
+    canUnbind: Boolean(getBindingStatus('linuxdo') && getBindingDetails('linuxdo')?.can_unbind),
+    details: getBindingDetails('linuxdo'),
   REDACTED,
   {
     provider: 'oidc' as const,
     label: t('profile.authBindings.providers.oidc', { providerName: props.oidcProviderName REDACTED),
     bound: getBindingStatus('oidc'),
-    canBind: props.oidcEnabled && !getBindingStatus('oidc'),
+    canBind: getBindingDetails('oidc')?.can_bind ?? (props.oidcEnabled && !getBindingStatus('oidc')),
+    canUnbind: Boolean(getBindingStatus('oidc') && getBindingDetails('oidc')?.can_unbind),
+    details: getBindingDetails('oidc'),
   REDACTED,
   {
     provider: 'wechat' as const,
     label: t('profile.authBindings.providers.wechat'),
     bound: getBindingStatus('wechat'),
-    canBind: resolvedWeChatBinding.value.mode !== null && !getBindingStatus('wechat'),
+    canBind: getBindingDetails('wechat')?.can_bind ?? (resolvedWeChatBinding.value.mode !== null && !getBindingStatus('wechat')),
+    canUnbind: Boolean(getBindingStatus('wechat') && getBindingDetails('wechat')?.can_unbind),
+    details: getBindingDetails('wechat'),
   REDACTED,
 ])
 
@@ -338,6 +430,17 @@ function providerSummary(provider: UserAuthProvider): string {
   return ''
 REDACTED
 
+function bindingCountLabel(details: UserAuthBindingStatus | null): string {
+  if (!details || typeof details.bound_count !== 'number' || details.bound_count <= 1) {
+    return ''
+  REDACTED
+  return t('profile.authBindings.boundCount', { count: details.bound_count REDACTED)
+REDACTED
+
+function toggleEmailForm(): void {
+  isEmailFormExpanded.value = !isEmailFormExpanded.value
+REDACTED
+
 function startBinding(provider: UserAuthProvider): void {
   if (provider === 'email') {
     return
@@ -351,6 +454,26 @@ REDACTED
 function applyUpdatedUser(user: User): void {
   localUser.value = user
   authStore.user = user
+REDACTED
+
+async function handleUnbind(provider: BindableProvider, providerLabel: string): Promise<void> {
+  unbindingProvider.value = provider
+  try {
+    const user = await unbindAuthIdentity(provider)
+    applyUpdatedUser(user)
+    appStore.showSuccess(t('profile.authBindings.unbindSuccess', { providerName: providerLabel REDACTED))
+  REDACTED catch (error) {
+    appStore.showError((error as { message?: string REDACTED).message || t('common.tryAgain'))
+  REDACTED finally {
+    unbindingProvider.value = null
+  REDACTED
+REDACTED
+
+function handleUnbindForItem(provider: UserAuthProvider, providerLabel: string): void {
+  if (provider === 'email') {
+    return
+  REDACTED
+  void handleUnbind(provider, providerLabel)
 REDACTED
 
 function validateEmailBindingForm(requireCode: boolean): boolean {
@@ -409,6 +532,9 @@ async function bindEmail(): Promise<void> {
     applyUpdatedUser(user)
     emailBindingForm.verifyCode = ''
     emailBindingForm.password = ''
+    if (compact.value) {
+      isEmailFormExpanded.value = false
+    REDACTED
     appStore.showSuccess(
       replacingBoundEmail
         ? t('profile.authBindings.replaceSuccess')

@@ -3,6 +3,12 @@ import { describe, expect, it, vi REDACTED from 'vitest'
 import ProfileInfoCard from '@/components/user/profile/ProfileInfoCard.vue'
 import type { User REDACTED from '@/types'
 
+vi.mock('vue-router', () => ({
+  useRoute: () => ({
+    fullPath: '/profile'
+  REDACTED)
+REDACTED))
+
 vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({
     user: null
@@ -22,6 +28,9 @@ vi.mock('vue-i18n', async (importOriginal) => {
     ...actual,
     useI18n: () => ({
       t: (key: string, params?: Record<string, string>) => {
+        if (key === 'profile.accountBalance') return 'Account Balance'
+        if (key === 'profile.concurrencyLimit') return 'Concurrency Limit'
+        if (key === 'profile.memberSince') return 'Member Since'
         if (key === 'profile.administrator') return 'Administrator'
         if (key === 'profile.user') return 'User'
         if (key === 'profile.authBindings.providers.email') return 'Email'
@@ -61,7 +70,7 @@ function createUser(overrides: Partial<User> = {REDACTED): User {
 REDACTED
 
 describe('ProfileInfoCard', () => {
-  it('renders basic account information without avatar or bindings actions', () => {
+  it('renders basic account information inside the new overview shell', () => {
     const wrapper = mount(ProfileInfoCard, {
       props: {
         user: createUser()
@@ -76,8 +85,8 @@ describe('ProfileInfoCard', () => {
     expect(wrapper.text()).toContain('alice@example.com')
     expect(wrapper.text()).toContain('alice')
     expect(wrapper.text()).toContain('User')
-    expect(wrapper.find('[data-testid="profile-avatar-save"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="profile-binding-email-status"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="profile-basics-panel"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="profile-auth-bindings-panel"]').exists()).toBe(true)
   REDACTED)
 
   it('renders third-party source hints from profile sources', () => {
@@ -100,5 +109,28 @@ describe('ProfileInfoCard', () => {
 
     expect(wrapper.text()).toContain('Avatar synced from LinuxDo')
     expect(wrapper.text()).toContain('Username synced from LinuxDo')
+  REDACTED)
+
+  it('renders the approved overview hero and two-column content shell', () => {
+    const wrapper = mount(ProfileInfoCard, {
+      props: {
+        user: createUser()
+      REDACTED,
+      global: {
+        stubs: {
+          Icon: true
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    expect(wrapper.get('[data-testid="profile-overview-hero"]').text()).toContain('alice@example.com')
+    expect(wrapper.get('[data-testid="profile-overview-metric-balance"]').text()).toContain('Account Balance')
+    expect(wrapper.get('[data-testid="profile-overview-metric-concurrency"]').text()).toContain('Concurrency Limit')
+    expect(wrapper.get('[data-testid="profile-overview-metric-member-since"]').text()).toContain('Member Since')
+    expect(wrapper.find('[data-testid="profile-info-summary-grid"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="profile-main-column"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="profile-side-column"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="profile-basics-panel"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="profile-auth-bindings-panel"]').exists()).toBe(true)
   REDACTED)
 REDACTED)

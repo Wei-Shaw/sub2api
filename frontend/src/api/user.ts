@@ -102,6 +102,11 @@ REDACTED): Promise<User> {
   return data
 REDACTED
 
+export async function unbindAuthIdentity(provider: BindableOAuthProvider): Promise<User> {
+  const { data REDACTED = await apiClient.delete<User>(`/user/account-bindings/${providerREDACTED`)
+  return data
+REDACTED
+
 export type BindableOAuthProvider = Exclude<UserAuthProvider, 'email'>
 
 interface BuildOAuthBindingStartURLOptions {
@@ -173,6 +178,7 @@ export const userAPI = {
   toggleNotifyEmail,
   sendEmailBindingCode,
   bindEmailIdentity,
+  unbindAuthIdentity,
   buildOAuthBindingStartURL,
   startOAuthBinding
 REDACTED

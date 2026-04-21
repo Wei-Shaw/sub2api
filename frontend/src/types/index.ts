@@ -38,12 +38,20 @@ export type UserAuthProvider = 'email' | 'linuxdo' | 'oidc' | 'wechat'
 
 export interface UserAuthBindingStatus {
   bound?: boolean
+  bound_count?: number
   provider?: UserAuthProvider | string
   provider_key?: string | null
   provider_subject?: string | null
   issuer?: string | null
   label?: string | null
   provider_label?: string | null
+  display_name?: string | null
+  subject_hint?: string | null
+  verified_at?: string | null
+  bind_start_path?: string | null
+  can_bind?: boolean
+  can_unbind?: boolean
+  note?: string | null
   metadata?: Record<string, unknown>
 REDACTED
 
