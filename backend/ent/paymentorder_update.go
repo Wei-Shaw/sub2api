@@ -405,6 +405,18 @@ func (_u *PaymentOrderUpdate) ClearProviderKey() *PaymentOrderUpdate {
 	return _u
 REDACTED
 
+// SetProviderSnapshot sets the "provider_snapshot" field.
+func (_u *PaymentOrderUpdate) SetProviderSnapshot(v map[string]interface{REDACTED) *PaymentOrderUpdate {
+	_u.mutation.SetProviderSnapshot(v)
+	return _u
+REDACTED
+
+// ClearProviderSnapshot clears the value of the "provider_snapshot" field.
+func (_u *PaymentOrderUpdate) ClearProviderSnapshot() *PaymentOrderUpdate {
+	_u.mutation.ClearProviderSnapshot()
+	return _u
+REDACTED
+
 // SetStatus sets the "status" field.
 func (_u *PaymentOrderUpdate) SetStatus(v string) *PaymentOrderUpdate {
 	_u.mutation.SetStatus(v)
@@ -941,6 +953,12 @@ REDACTED
 	if _u.mutation.ProviderKeyCleared() {
 		_spec.ClearField(paymentorder.FieldProviderKey, field.TypeString)
 REDACTED
+	if value, ok := _u.mutation.ProviderSnapshot(); ok {
+		_spec.SetField(paymentorder.FieldProviderSnapshot, field.TypeJSON, value)
+REDACTED
+	if _u.mutation.ProviderSnapshotCleared() {
+		_spec.ClearField(paymentorder.FieldProviderSnapshot, field.TypeJSON)
+REDACTED
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(paymentorder.FieldStatus, field.TypeString, value)
 REDACTED
@@ -1447,6 +1465,18 @@ REDACTED
 // ClearProviderKey clears the value of the "provider_key" field.
 func (_u *PaymentOrderUpdateOne) ClearProviderKey() *PaymentOrderUpdateOne {
 	_u.mutation.ClearProviderKey()
+	return _u
+REDACTED
+
+// SetProviderSnapshot sets the "provider_snapshot" field.
+func (_u *PaymentOrderUpdateOne) SetProviderSnapshot(v map[string]interface{REDACTED) *PaymentOrderUpdateOne {
+	_u.mutation.SetProviderSnapshot(v)
+	return _u
+REDACTED
+
+// ClearProviderSnapshot clears the value of the "provider_snapshot" field.
+func (_u *PaymentOrderUpdateOne) ClearProviderSnapshot() *PaymentOrderUpdateOne {
+	_u.mutation.ClearProviderSnapshot()
 	return _u
 REDACTED
 
@@ -2015,6 +2045,12 @@ REDACTED
 REDACTED
 	if _u.mutation.ProviderKeyCleared() {
 		_spec.ClearField(paymentorder.FieldProviderKey, field.TypeString)
+REDACTED
+	if value, ok := _u.mutation.ProviderSnapshot(); ok {
+		_spec.SetField(paymentorder.FieldProviderSnapshot, field.TypeJSON, value)
+REDACTED
+	if _u.mutation.ProviderSnapshotCleared() {
+		_spec.ClearField(paymentorder.FieldProviderSnapshot, field.TypeJSON)
 REDACTED
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(paymentorder.FieldStatus, field.TypeString, value)

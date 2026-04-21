@@ -73,7 +73,7 @@ REDACTED
 	if oauthResp != nil {
 		return oauthResp, nil
 REDACTED
-	order, err := s.createOrderInTx(ctx, req, user, plan, cfg, orderAmount, limitAmount, feeRate, payAmount)
+	order, err := s.createOrderInTx(ctx, req, user, plan, cfg, orderAmount, limitAmount, feeRate, payAmount, sel)
 	if err != nil {
 		return nil, err
 REDACTED
@@ -122,7 +122,7 @@ REDACTED
 	return plan, nil
 REDACTED
 
-func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, limitAmount, feeRate, payAmount float64) (*dbent.PaymentOrder, error) {
+func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, limitAmount, feeRate, payAmount float64, sel *payment.InstanceSelection) (*dbent.PaymentOrder, error) {
 	tx, err := s.entClient.Tx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
@@ -139,6 +139,13 @@ REDACTED
 		tm = defaultOrderTimeoutMin
 REDACTED
 	exp := time.Now().Add(time.Duration(tm) * time.Minute)
+	providerSnapshot := buildPaymentOrderProviderSnapshot(sel)
+	selectedInstanceID := ""
+	selectedProviderKey := ""
+	if sel != nil {
+		selectedInstanceID = strings.TrimSpace(sel.InstanceID)
+		selectedProviderKey = strings.TrimSpace(sel.ProviderKey)
+REDACTED
 	b := tx.PaymentOrder.Create().
 		SetUserID(req.UserID).
 		SetUserEmail(user.Email).
@@ -158,6 +165,15 @@ REDACTED
 		SetSrcHost(req.SrcHost)
 	if req.SrcURL != "" {
 		b.SetSrcURL(req.SrcURL)
+REDACTED
+	if selectedInstanceID != "" {
+		b.SetProviderInstanceID(selectedInstanceID)
+REDACTED
+	if selectedProviderKey != "" {
+		b.SetProviderKey(selectedProviderKey)
+REDACTED
+	if providerSnapshot != nil {
+		b.SetProviderSnapshot(providerSnapshot)
 REDACTED
 	if plan != nil {
 		b.SetPlanID(plan.ID).SetSubscriptionGroupID(plan.GroupID).SetSubscriptionDays(psComputeValidityDays(plan.ValidityDays, plan.ValidityUnit))
@@ -190,6 +206,35 @@ REDACTED
 			WithMetadata(map[string]string{"max": strconv.Itoa(max)REDACTED)
 REDACTED
 	return nil
+REDACTED
+
+func buildPaymentOrderProviderSnapshot(sel *payment.InstanceSelection) map[string]any {
+	if sel == nil {
+		return nil
+REDACTED
+
+	snapshot := map[string]any{REDACTED
+	snapshot["schema_version"] = 1
+
+	instanceID := strings.TrimSpace(sel.InstanceID)
+	if instanceID != "" {
+		snapshot["provider_instance_id"] = instanceID
+REDACTED
+
+	providerKey := strings.TrimSpace(sel.ProviderKey)
+	if providerKey != "" {
+		snapshot["provider_key"] = providerKey
+REDACTED
+
+	paymentMode := strings.TrimSpace(sel.PaymentMode)
+	if paymentMode != "" {
+		snapshot["payment_mode"] = paymentMode
+REDACTED
+
+	if len(snapshot) == 1 {
+		return nil
+REDACTED
+	return snapshot
 REDACTED
 
 func (s *PaymentService) checkDailyLimit(ctx context.Context, tx *dbent.Tx, userID int64, amount, limit float64) error {
