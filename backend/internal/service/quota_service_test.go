@@ -5,6 +5,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"testing"
@@ -540,4 +541,118 @@ func TestQuotaExceededTotalErrorMetadata(t *testing.T) {
 	require.Error(t, err)
 	// 错误需能被 errors.Is 识别为 ErrQuotaExceeded
 	assert.True(t, errors.Is(err, ErrQuotaExceeded))
+}
+
+// ---- UpdateUserQuotaRequest.UnmarshalJSON 三态测试 ----
+
+// 字段缺失：Has* 都为 false，指针也都为 nil。UpdateUserQuota 读到这种状态时保留现值。
+func TestUpdateUserQuotaRequest_FieldMissing(t *testing.T) {
+	var req UpdateUserQuotaRequest
+	require.NoError(t, json.Unmarshal([]byte(`{}`), &req))
+	assert.False(t, req.HasUsageLimitEnabled())
+	assert.False(t, req.HasDailyUsageLimitUSD())
+	assert.Nil(t, req.UsageLimitEnabled)
+	assert.Nil(t, req.DailyUsageLimitUSD)
+}
+
+// 字段为 null：Has* 为 true 但指针为 nil，表示"清回默认/不限"。
+func TestUpdateUserQuotaRequest_FieldNull(t *testing.T) {
+	var req UpdateUserQuotaRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"usage_limit_enabled": null, "daily_usage_limit_usd": null}`), &req))
+	assert.True(t, req.HasUsageLimitEnabled())
+	assert.True(t, req.HasDailyUsageLimitUSD())
+	assert.Nil(t, req.UsageLimitEnabled)
+	assert.Nil(t, req.DailyUsageLimitUSD)
+}
+
+// 字段有值：Has* 为 true 且指针非 nil，指向写入值。
+func TestUpdateUserQuotaRequest_FieldValue(t *testing.T) {
+	var req UpdateUserQuotaRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"usage_limit_enabled": true, "daily_usage_limit_usd": 12.5}`), &req))
+	require.True(t, req.HasUsageLimitEnabled())
+	require.True(t, req.HasDailyUsageLimitUSD())
+	require.NotNil(t, req.UsageLimitEnabled)
+	require.NotNil(t, req.DailyUsageLimitUSD)
+	assert.True(t, *req.UsageLimitEnabled)
+	assert.InDelta(t, 12.5, *req.DailyUsageLimitUSD, 1e-9)
+}
+
+// 混合场景：一个字段 null、另一个字段有值；另一个未出现
+func TestUpdateUserQuotaRequest_FieldMixed(t *testing.T) {
+	var req UpdateUserQuotaRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"usage_limit_enabled": false}`), &req))
+	require.True(t, req.HasUsageLimitEnabled())
+	require.NotNil(t, req.UsageLimitEnabled)
+	assert.False(t, *req.UsageLimitEnabled)
+	assert.False(t, req.HasDailyUsageLimitUSD())
+	assert.Nil(t, req.DailyUsageLimitUSD)
+}
+
+// UpdateUserQuota：字段缺失时保留现值，不改写
+func TestUpdateUserQuota_MissingFieldPreservesCurrent(t *testing.T) {
+	existing := true
+	existingLimit := 5.0
+	user := &User{ID: 1, UsageLimitEnabled: &existing, DailyUsageLimitUSD: &existingLimit}
+	writer := &stubQuotaUserWriter{}
+	svc := &quotaService{
+		ruleRepo:   &stubQuotaRuleRepo{},
+		userRepo:   &stubQuotaUserRepo{user: user},
+		userWriter: writer,
+		groupRepo:  &stubGroupRepo{},
+		settings:   &stubQuotaSettings{enabled: true},
+	}
+
+	var req UpdateUserQuotaRequest
+	require.NoError(t, json.Unmarshal([]byte(`{}`), &req))
+	require.NoError(t, svc.UpdateUserQuota(context.Background(), 1, req))
+
+	require.True(t, writer.called)
+	require.NotNil(t, writer.lastEnabled)
+	assert.True(t, *writer.lastEnabled, "missing field must preserve existing enabled=true")
+	require.NotNil(t, writer.lastLimit)
+	assert.InDelta(t, 5.0, *writer.lastLimit, 1e-9)
+}
+
+// UpdateUserQuota：显式 null 清回 NULL（follow-global / 不限）
+func TestUpdateUserQuota_NullFieldClears(t *testing.T) {
+	existing := true
+	existingLimit := 5.0
+	user := &User{ID: 1, UsageLimitEnabled: &existing, DailyUsageLimitUSD: &existingLimit}
+	writer := &stubQuotaUserWriter{}
+	svc := &quotaService{
+		ruleRepo:   &stubQuotaRuleRepo{},
+		userRepo:   &stubQuotaUserRepo{user: user},
+		userWriter: writer,
+		groupRepo:  &stubGroupRepo{},
+		settings:   &stubQuotaSettings{enabled: true},
+	}
+
+	var req UpdateUserQuotaRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"usage_limit_enabled": null, "daily_usage_limit_usd": null}`), &req))
+	require.NoError(t, svc.UpdateUserQuota(context.Background(), 1, req))
+
+	assert.Nil(t, writer.lastEnabled, "null must clear enabled back to NULL")
+	assert.Nil(t, writer.lastLimit, "null must clear limit back to NULL")
+}
+
+// UpdateUserQuota：显式值写入
+func TestUpdateUserQuota_ExplicitValueWrites(t *testing.T) {
+	user := &User{ID: 1}
+	writer := &stubQuotaUserWriter{}
+	svc := &quotaService{
+		ruleRepo:   &stubQuotaRuleRepo{},
+		userRepo:   &stubQuotaUserRepo{user: user},
+		userWriter: writer,
+		groupRepo:  &stubGroupRepo{},
+		settings:   &stubQuotaSettings{enabled: true},
+	}
+
+	var req UpdateUserQuotaRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"usage_limit_enabled": false, "daily_usage_limit_usd": 8.5}`), &req))
+	require.NoError(t, svc.UpdateUserQuota(context.Background(), 1, req))
+
+	require.NotNil(t, writer.lastEnabled)
+	assert.False(t, *writer.lastEnabled)
+	require.NotNil(t, writer.lastLimit)
+	assert.InDelta(t, 8.5, *writer.lastLimit, 1e-9)
 }

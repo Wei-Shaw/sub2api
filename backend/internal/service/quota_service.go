@@ -184,7 +184,13 @@ func (s *quotaService) GetUserQuota(ctx context.Context, userID int64) (*UserQuo
 	return view, nil
 }
 
-// UpdateUserQuota 按契约 §2.2 的双指针语义更新用户配额
+// UpdateUserQuota 按契约 §2.2 的三态语义更新用户配额：
+//
+//   - 未提供字段（req.Has* 为 false）→ 保留 current 现值，不写入
+//   - 提供了字段但值是 null（req.Has* 为 true 且字段指针为 nil）→ 清回默认（NULL）
+//   - 提供了字段且有值（req.Has* 为 true 且字段指针非 nil）→ 写入该值
+//
+// 迁移前使用 **bool/**float64 无法区分前两种情形，现在通过 UnmarshalJSON 的 Has* 标志区分。
 func (s *quotaService) UpdateUserQuota(ctx context.Context, userID int64, req UpdateUserQuotaRequest) error {
 	current, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
@@ -192,12 +198,12 @@ func (s *quotaService) UpdateUserQuota(ctx context.Context, userID int64, req Up
 	}
 
 	enabled := current.UsageLimitEnabled
-	if req.UsageLimitEnabled != nil {
-		enabled = *req.UsageLimitEnabled
+	if req.HasUsageLimitEnabled() {
+		enabled = req.UsageLimitEnabled // 可能是 nil（清回 follow-global）或具体值
 	}
 	limit := current.DailyUsageLimitUSD
-	if req.DailyUsageLimitUSD != nil {
-		limit = *req.DailyUsageLimitUSD
+	if req.HasDailyUsageLimitUSD() {
+		limit = req.DailyUsageLimitUSD // 可能是 nil（清回不限）或具体值
 	}
 	if limit != nil && *limit < 0 {
 		return infraerrors.BadRequest("QUOTA_LIMIT_NEGATIVE", "daily usage limit must be >= 0")

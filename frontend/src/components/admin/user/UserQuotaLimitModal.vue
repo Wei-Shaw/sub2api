@@ -266,7 +266,14 @@ async function doSave(): Promise<void> {
   submitting.value = true
   try {
     // 1. 提交用户级总开关与总限额（不含规则）
-    // 空字符串/null/undefined 统一成 null（"不限"）；显式 0 已在 validateDrafts 拒绝
+    //
+    // 三态提交约定（与后端 UpdateUserQuotaRequest.UnmarshalJSON 契合）：
+    //   - 显式 null    → 清回 follow-global / 不限（JSON 字段值为 null）
+    //   - 具体值       → 写入
+    //   - 字段不出现   → 保留 DB 现值（本 modal 保存时总是提交两个字段的完整快照，
+    //                    不利用"省略"语义；省略写法仅用于细粒度补丁接口的场景）
+    //
+    // 空字符串/undefined/非法值统一成 null（"不限"）；显式 0 已在 validateDrafts 拒绝。
     const raw = dailyLimitInput.value
     const dailyLimit: number | null = raw === null || raw === undefined || Number.isNaN(Number(raw)) || Number(raw) <= 0 ? null : Number(raw)
     const body: UpdateUserQuotaRequest = {
