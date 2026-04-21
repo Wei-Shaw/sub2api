@@ -6,9 +6,8 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"time"
-
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
 // checkAPIKeyRateLimits checks rate limit windows for an API key.
@@ -104,14 +103,22 @@ func (s *BillingCacheService) evaluateRateLimits(ctx context.Context, apiKey *AP
 					ResetRateLimitWindows(ctx context.Context, id int64) error
 				}); ok {
 					if err := loader.ResetRateLimitWindows(resetCtx, keyID); err != nil {
-						logger.LegacyPrintf("service.billing_cache", "Warning: reset rate limit windows failed for api key %d: %v", keyID, err)
+						slog.Warn("reset rate limit windows failed",
+							"component", billingCacheLogComponent,
+							"api_key_id", keyID,
+							"error", err,
+						)
 					}
 				}
 			}
 			// Invalidate cache so next request loads fresh data
 			if s.cache != nil {
 				if err := s.cache.InvalidateAPIKeyRateLimit(resetCtx, keyID); err != nil {
-					logger.LegacyPrintf("service.billing_cache", "Warning: invalidate rate limit cache failed for api key %d: %v", keyID, err)
+					slog.Warn("invalidate rate limit cache failed",
+						"component", billingCacheLogComponent,
+						"api_key_id", keyID,
+						"error", err,
+					)
 				}
 			}
 		}()
@@ -149,6 +156,10 @@ func (s *BillingCacheService) processUpdateRateLimitUsageTask(ctx context.Contex
 		return
 	}
 	if err := s.cache.UpdateAPIKeyRateLimitUsage(ctx, task.apiKeyID, task.amount); err != nil {
-		logger.LegacyPrintf("service.billing_cache", "Warning: update rate limit usage cache failed for api key %d: %v", task.apiKeyID, err)
+		slog.Warn("update rate limit usage cache failed",
+			"component", billingCacheLogComponent,
+			"api_key_id", task.apiKeyID,
+			"error", err,
+		)
 	}
 }

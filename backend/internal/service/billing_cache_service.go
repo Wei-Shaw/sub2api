@@ -32,6 +32,12 @@ var (
 	ErrUserRPMExceeded  = infraerrors.TooManyRequests("USER_RPM_EXCEEDED", "user requests-per-minute limit exceeded")
 )
 
+// billingCacheLogComponent 是 billing_cache_service 所有子文件（余额/订阅/限速/worker）
+// 异步写入告警日志共用的 component 标签，与 quotaLogComponent (billing_cache_service_quota.go)
+// 平行。集中一处避免各方法散落相同字面量；消息本身（如 "set balance cache failed"）
+// 已足够区分具体场景。
+const billingCacheLogComponent = "service.billing_cache"
+
 // BillingCacheService 计费缓存服务
 // 负责余额和订阅数据的缓存管理，提供高性能的计费资格检查
 type BillingCacheService struct {

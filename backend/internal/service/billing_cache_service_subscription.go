@@ -7,8 +7,7 @@ package service
 import (
 	"context"
 	"fmt"
-
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"log/slog"
 )
 
 // GetSubscriptionStatus 获取订阅状态（优先从缓存读取）
@@ -63,7 +62,12 @@ func (s *BillingCacheService) setSubscriptionCache(ctx context.Context, userID, 
 		return
 	}
 	if err := s.cache.SetSubscriptionCache(ctx, userID, groupID, data); err != nil {
-		logger.LegacyPrintf("service.billing_cache", "Warning: set subscription cache failed for user %d group %d: %v", userID, groupID, err)
+		slog.Warn("set subscription cache failed",
+			"component", billingCacheLogComponent,
+			"user_id", userID,
+			"group_id", groupID,
+			"error", err,
+		)
 	}
 }
 
@@ -92,7 +96,12 @@ func (s *BillingCacheService) QueueUpdateSubscriptionUsage(userID, groupID int64
 	ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
 	defer cancel()
 	if err := s.UpdateSubscriptionUsage(ctx, userID, groupID, costUSD); err != nil {
-		logger.LegacyPrintf("service.billing_cache", "Warning: update subscription cache fallback failed for user %d group %d: %v", userID, groupID, err)
+		slog.Warn("update subscription cache fallback failed",
+			"component", billingCacheLogComponent,
+			"user_id", userID,
+			"group_id", groupID,
+			"error", err,
+		)
 	}
 }
 
@@ -102,7 +111,12 @@ func (s *BillingCacheService) InvalidateSubscription(ctx context.Context, userID
 		return nil
 	}
 	if err := s.cache.InvalidateSubscriptionCache(ctx, userID, groupID); err != nil {
-		logger.LegacyPrintf("service.billing_cache", "Warning: invalidate subscription cache failed for user %d group %d: %v", userID, groupID, err)
+		slog.Warn("invalidate subscription cache failed",
+			"component", billingCacheLogComponent,
+			"user_id", userID,
+			"group_id", groupID,
+			"error", err,
+		)
 		return err
 	}
 	return nil
@@ -120,6 +134,11 @@ func (s *BillingCacheService) processUpdateSubscriptionUsageTask(ctx context.Con
 		return
 	}
 	if err := s.cache.UpdateSubscriptionUsage(ctx, task.userID, task.groupID, task.amount); err != nil {
-		logger.LegacyPrintf("service.billing_cache", "Warning: update subscription cache failed for user %d group %d: %v", task.userID, task.groupID, err)
+		slog.Warn("update subscription cache failed",
+			"component", billingCacheLogComponent,
+			"user_id", task.userID,
+			"group_id", task.groupID,
+			"error", err,
+		)
 	}
 }

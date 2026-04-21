@@ -6,10 +6,9 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"sync/atomic"
 	"time"
-
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
 // 缓存写入任务类型
@@ -200,12 +199,13 @@ func (s *BillingCacheService) logCacheWriteDrop(task cacheWriteTask, reason stri
 	if dropped == 0 {
 		return
 	}
-	logger.LegacyPrintf("service.billing_cache", "Warning: cache write queue %s, dropped %d tasks in last %s (latest kind=%s user %d group %d)",
-		reason,
-		dropped,
-		cacheWriteDropLogInterval,
-		cacheWriteKindName(task.kind),
-		task.userID,
-		task.groupID,
+	slog.Warn("cache write queue dropping tasks",
+		"component", billingCacheLogComponent,
+		"reason", reason,
+		"dropped", dropped,
+		"interval", cacheWriteDropLogInterval,
+		"kind", cacheWriteKindName(task.kind),
+		"user_id", task.userID,
+		"group_id", task.groupID,
 	)
 }

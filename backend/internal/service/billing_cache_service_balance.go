@@ -7,9 +7,8 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
-
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
 // GetUserBalance 获取用户余额（优先从缓存读取）
@@ -68,7 +67,11 @@ func (s *BillingCacheService) setBalanceCache(ctx context.Context, userID int64,
 		return
 	}
 	if err := s.cache.SetUserBalance(ctx, userID, balance); err != nil {
-		logger.LegacyPrintf("service.billing_cache", "Warning: set balance cache failed for user %d: %v", userID, err)
+		slog.Warn("set balance cache failed",
+			"component", billingCacheLogComponent,
+			"user_id", userID,
+			"error", err,
+		)
 	}
 }
 
@@ -96,7 +99,11 @@ func (s *BillingCacheService) QueueDeductBalance(userID int64, amount float64) {
 	ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
 	defer cancel()
 	if err := s.DeductBalanceCache(ctx, userID, amount); err != nil {
-		logger.LegacyPrintf("service.billing_cache", "Warning: deduct balance cache fallback failed for user %d: %v", userID, err)
+		slog.Warn("deduct balance cache fallback failed",
+			"component", billingCacheLogComponent,
+			"user_id", userID,
+			"error", err,
+		)
 	}
 }
 
@@ -106,7 +113,11 @@ func (s *BillingCacheService) InvalidateUserBalance(ctx context.Context, userID 
 		return nil
 	}
 	if err := s.cache.InvalidateUserBalance(ctx, userID); err != nil {
-		logger.LegacyPrintf("service.billing_cache", "Warning: invalidate balance cache failed for user %d: %v", userID, err)
+		slog.Warn("invalidate balance cache failed",
+			"component", billingCacheLogComponent,
+			"user_id", userID,
+			"error", err,
+		)
 		return err
 	}
 	return nil
@@ -123,6 +134,10 @@ func (s *BillingCacheService) processDeductBalanceTask(ctx context.Context, task
 		return
 	}
 	if err := s.cache.DeductUserBalance(ctx, task.userID, task.amount); err != nil {
-		logger.LegacyPrintf("service.billing_cache", "Warning: deduct balance cache failed for user %d: %v", task.userID, err)
+		slog.Warn("deduct balance cache failed",
+			"component", billingCacheLogComponent,
+			"user_id", task.userID,
+			"error", err,
+		)
 	}
 }
