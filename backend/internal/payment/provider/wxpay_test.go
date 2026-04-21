@@ -487,3 +487,86 @@ REDACTED
 		t.Fatalf("jsapi paySign = %q, want %q", resp.JSAPI.PaySign, "signed-payload")
 REDACTED
 REDACTED
+
+func TestCreatePaymentMobileH5IncludesConfiguredSceneInfo(t *testing.T) {
+	origJSAPIPrepay := wxpayJSAPIPrepayWithRequestPayment
+	origNativePrepay := wxpayNativePrepay
+	origH5Prepay := wxpayH5Prepay
+	t.Cleanup(func() {
+		wxpayJSAPIPrepayWithRequestPayment = origJSAPIPrepay
+		wxpayNativePrepay = origNativePrepay
+		wxpayH5Prepay = origH5Prepay
+REDACTED)
+
+	jsapiCalls := 0
+	nativeCalls := 0
+	h5Calls := 0
+	wxpayJSAPIPrepayWithRequestPayment = func(ctx context.Context, svc jsapi.JsapiApiService, req jsapi.PrepayRequest) (*jsapi.PrepayWithRequestPaymentResponse, *core.APIResult, error) {
+		jsapiCalls++
+		return &jsapi.PrepayWithRequestPaymentResponse{REDACTED, nil, nil
+REDACTED
+	wxpayNativePrepay = func(ctx context.Context, svc native.NativeApiService, req native.PrepayRequest) (*native.PrepayResponse, *core.APIResult, error) {
+		nativeCalls++
+		return &native.PrepayResponse{REDACTED, nil, nil
+REDACTED
+	wxpayH5Prepay = func(ctx context.Context, svc h5.H5ApiService, req h5.PrepayRequest) (*h5.PrepayResponse, *core.APIResult, error) {
+		h5Calls++
+		if req.SceneInfo == nil {
+			t.Fatal("expected scene_info, got nil")
+	REDACTED
+		if got := wxSV(req.SceneInfo.PayerClientIp); got != "203.0.113.10" {
+			t.Fatalf("scene_info payer_client_ip = %q, want %q", got, "203.0.113.10")
+	REDACTED
+		if req.SceneInfo.H5Info == nil {
+			t.Fatal("expected scene_info.h5_info, got nil")
+	REDACTED
+		if got := wxSV(req.SceneInfo.H5Info.Type); got != wxpayH5Type {
+			t.Fatalf("scene_info.h5_info.type = %q, want %q", got, wxpayH5Type)
+	REDACTED
+		if got := wxSV(req.SceneInfo.H5Info.AppName); got != "Sub2API" {
+			t.Fatalf("scene_info.h5_info.app_name = %q, want %q", got, "Sub2API")
+	REDACTED
+		if got := wxSV(req.SceneInfo.H5Info.AppUrl); got != "https://app.example.com" {
+			t.Fatalf("scene_info.h5_info.app_url = %q, want %q", got, "https://app.example.com")
+	REDACTED
+		return &h5.PrepayResponse{
+			H5Url: core.String("https://wx.tenpay.example/h5pay?prepay_id=1"),
+	REDACTED, nil, nil
+REDACTED
+
+	provider := &Wxpay{
+		config: map[string]string{
+			"appId":     "wx123",
+			"mchId":     "mch123",
+			"h5AppName": "Sub2API",
+			"h5AppUrl":  "https://app.example.com",
+	REDACTED,
+		coreClient: &core.Client{REDACTED,
+REDACTED
+
+	resp, err := provider.CreatePayment(context.Background(), payment.CreatePaymentRequest{
+		OrderID:     "sub2_99",
+		Amount:      "66.88",
+		PaymentType: payment.TypeWxpay,
+		Subject:     "Balance Recharge",
+		NotifyURL:   "https://merchant.example/payment/notify",
+		ReturnURL:   "https://merchant.example/payment/result?resume_token=resume-99",
+		ClientIP:    "203.0.113.10",
+		IsMobile:    true,
+REDACTED)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+REDACTED
+	if jsapiCalls != 0 {
+		t.Fatalf("jsapi prepay calls = %d, want 0", jsapiCalls)
+REDACTED
+	if nativeCalls != 0 {
+		t.Fatalf("native prepay calls = %d, want 0", nativeCalls)
+REDACTED
+	if h5Calls != 1 {
+		t.Fatalf("h5 prepay calls = %d, want 1", h5Calls)
+REDACTED
+	if !strings.Contains(resp.PayURL, "redirect_url=") {
+		t.Fatalf("pay_url = %q, want redirect_url query appended", resp.PayURL)
+REDACTED
+REDACTED
