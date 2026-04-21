@@ -32,6 +32,9 @@ type AvailableChannel struct {
 // 支持模型通过 (*Channel).SupportedModels() 计算得到（见 channel.go）。
 // 关联分组信息通过 groupRepo.ListActive 查询后按 ID 映射；渠道 GroupIDs 中未在活跃列表中
 // 的分组（已停用或删除）会被忽略。
+//
+// 前置条件：s.groupRepo 必须非 nil（由 wire DI 保证）。直接 nil-deref 用于 fail-fast，
+// 避免静默掩盖注入缺失。
 func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel, error) {
 	channels, err := s.repo.ListAll(ctx)
 	if err != nil {
@@ -61,19 +64,16 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 				groups = append(groups, ref)
 			}
 		}
-		sort.Slice(groups, func(i, j int) bool { return groups[i].Name < groups[j].Name })
+		sort.SliceStable(groups, func(i, j int) bool { return groups[i].Name < groups[j].Name })
 
-		billingSource := ch.BillingModelSource
-		if billingSource == "" {
-			billingSource = BillingModelSourceChannelMapped
-		}
+		normalizeBillingModelSource(ch)
 
 		out = append(out, AvailableChannel{
 			ID:                 ch.ID,
 			Name:               ch.Name,
 			Description:        ch.Description,
 			Status:             ch.Status,
-			BillingModelSource: billingSource,
+			BillingModelSource: ch.BillingModelSource,
 			RestrictModels:     ch.RestrictModels,
 			Groups:             groups,
 			SupportedModels:    ch.SupportedModels(),

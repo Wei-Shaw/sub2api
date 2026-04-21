@@ -127,19 +127,13 @@ import {
   BILLING_MODE_IMAGE,
   type BillingMode
 } from '@/constants/channel'
+// 复用 api/channels.ts 的用户侧最小形态 DTO。
+// admin 侧 ChannelModelPricing 字段更多，但结构上是用户 DTO 的超集，admin 视图传入可直接通过结构化子类型检查。
 import type { UserPricingInterval, UserSupportedModel } from '@/api/channels'
-
-/**
- * 复用 api/channels.ts 的用户侧最小形态 DTO。
- * admin 侧 ChannelModelPricing 字段更多，但结构上是用户 DTO 的超集，
- * 因此 admin 视图传入时 TypeScript 结构化子类型会直接通过。
- */
-type PricingInterval = UserPricingInterval
-type SupportedModelLike = UserSupportedModel
 
 const props = withDefaults(
   defineProps<{
-    model: SupportedModelLike
+    model: UserSupportedModel
     /** i18n 前缀：管理端传 `admin.availableChannels.pricing`，用户端传 `availableChannels.pricing`。 */
     pricingKeyPrefix?: string
     noPricingLabel?: string
@@ -180,7 +174,7 @@ function formatRange(min: number, max: number | null): string {
   return `(${min}, ${maxLabel}]`
 }
 
-function formatInterval(iv: PricingInterval, mode: BillingMode): string {
+function formatInterval(iv: UserPricingInterval, mode: BillingMode): string {
   if (mode === BILLING_MODE_PER_REQUEST || mode === BILLING_MODE_IMAGE) {
     return formatScaled(iv.per_request_price, 1)
   }

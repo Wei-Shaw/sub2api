@@ -14,12 +14,15 @@ import (
 // stubGroupRepoForAvailable 是 ListAvailable 测试用的 GroupRepository stub，
 // 仅实现 ListActive；其他方法对本测试无关，返回零值即可。
 // listActiveErr 非 nil 时，ListActive 返回该错误用于错误传播测试。
+// listActiveCalls 记录调用次数，用于断言「失败短路时不再访问 groupRepo」等行为。
 type stubGroupRepoForAvailable struct {
-	activeGroups  []Group
-	listActiveErr error
+	activeGroups    []Group
+	listActiveErr   error
+	listActiveCalls int
 }
 
 func (s *stubGroupRepoForAvailable) ListActive(ctx context.Context) ([]Group, error) {
+	s.listActiveCalls++
 	if s.listActiveErr != nil {
 		return nil, s.listActiveErr
 	}
@@ -125,15 +128,18 @@ func TestListAvailable_SortedByName(t *testing.T) {
 }
 
 func TestListAvailable_ListAllErrorPropagates(t *testing.T) {
-	// ListAll 返回错误时 ListAvailable 应直接返回包装后的错误，不再访问 groupRepo。
+	// ListAll 返回错误时 ListAvailable 应直接返回包装后的错误，且不再访问 groupRepo（短路）。
 	sentinel := errors.New("list-all-boom")
 	repo := &mockChannelRepository{
 		listAllFn: func(ctx context.Context) ([]Channel, error) { return nil, sentinel },
 	}
-	svc := NewChannelService(repo, &stubGroupRepoForAvailable{}, nil)
+	groupRepo := &stubGroupRepoForAvailable{}
+	svc := NewChannelService(repo, groupRepo, nil)
 	out, err := svc.ListAvailable(context.Background())
 	require.Nil(t, out)
 	require.ErrorIs(t, err, sentinel)
+	require.Contains(t, err.Error(), "list channels", "wrap 前缀缺失，可能 %w 被改为 %v")
+	require.Equal(t, 0, groupRepo.listActiveCalls, "ListAll 失败后不应再调用 groupRepo.ListActive")
 }
 
 func TestListAvailable_ListActiveErrorPropagates(t *testing.T) {
@@ -146,6 +152,7 @@ func TestListAvailable_ListActiveErrorPropagates(t *testing.T) {
 	out, err := svc.ListAvailable(context.Background())
 	require.Nil(t, out)
 	require.ErrorIs(t, err, sentinel)
+	require.Contains(t, err.Error(), "list active groups", "wrap 前缀缺失，可能 %w 被改为 %v")
 }
 
 func TestListAvailable_DefaultsEmptyBillingModelSource(t *testing.T) {
@@ -159,6 +166,12 @@ func TestListAvailable_DefaultsEmptyBillingModelSource(t *testing.T) {
 	out, err := svc.ListAvailable(context.Background())
 	require.NoError(t, err)
 	require.Len(t, out, 2)
-	require.Equal(t, BillingModelSourceChannelMapped, out[0].BillingModelSource)
-	require.Equal(t, BillingModelSourceUpstream, out[1].BillingModelSource)
+
+	// 按 Name 查找，避免依赖排序副作用。
+	byName := make(map[string]string, len(out))
+	for _, ch := range out {
+		byName[ch.Name] = ch.BillingModelSource
+	}
+	require.Equal(t, BillingModelSourceChannelMapped, byName["empty"])
+	require.Equal(t, BillingModelSourceUpstream, byName["explicit"])
 }

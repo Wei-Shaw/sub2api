@@ -158,9 +158,6 @@ func channelToResponse(ch *service.Channel) *channelResponse {
 		UpdatedAt:      ch.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 	}
 	resp.BillingModelSource = ch.BillingModelSource
-	if resp.BillingModelSource == "" {
-		resp.BillingModelSource = service.BillingModelSourceChannelMapped
-	}
 	if resp.GroupIDs == nil {
 		resp.GroupIDs = []int64{}
 	}
