@@ -82,12 +82,6 @@ func (s *billingCacheMissStub) IncrQuotaUsedRule(ctx context.Context, userID, ru
 func (s *billingCacheMissStub) InvalidateQuotaConfig(ctx context.Context, userID int64) error {
 	return nil
 }
-func (s *billingCacheMissStub) GetQuotaConfig(ctx context.Context, userID int64) (*ResolvedQuota, error) {
-	return nil, nil
-}
-func (s *billingCacheMissStub) SetQuotaConfig(ctx context.Context, userID int64, resolved *ResolvedQuota) error {
-	return nil
-}
 
 type balanceLoadUserRepoStub struct {
 	mockUserRepo

@@ -31,11 +31,11 @@ const (
 const (
 	// QuotaUsageTTL 用量计数器 TTL：48h 覆盖时区切换边界 + 保险
 	QuotaUsageTTL = 48 * time.Hour
-	// QuotaConfigTTL 用户配额配置缓存 TTL
-	QuotaConfigTTL = 5 * time.Minute
-	// QuotaConfigTTLJitter 配置缓存抖动幅度，防止雪崩
-	QuotaConfigTTLJitter = 30 * time.Second
 )
+
+// quotaMinPositiveLimit DB 列 numeric(20,8) 的最小精度阈值。
+// 小于该值的"正数"写入 DB 会被截成 0，需归一化为 NULL 避免 in-memory 与 DB 不一致。
+const quotaMinPositiveLimit = 1e-8
 
 // quotaDateKey 按系统配置时区计算"今日"的日期字符串（YYYYMMDD）。
 //

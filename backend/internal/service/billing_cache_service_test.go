@@ -83,12 +83,6 @@ func (b *billingCacheWorkerStub) IncrQuotaUsedRule(ctx context.Context, userID, 
 func (b *billingCacheWorkerStub) InvalidateQuotaConfig(ctx context.Context, userID int64) error {
 	return nil
 }
-func (b *billingCacheWorkerStub) GetQuotaConfig(ctx context.Context, userID int64) (*ResolvedQuota, error) {
-	return nil, nil
-}
-func (b *billingCacheWorkerStub) SetQuotaConfig(ctx context.Context, userID int64, resolved *ResolvedQuota) error {
-	return nil
-}
 
 func TestBillingCacheServiceQueueHighLoad(t *testing.T) {
 	cache := &billingCacheWorkerStub{}

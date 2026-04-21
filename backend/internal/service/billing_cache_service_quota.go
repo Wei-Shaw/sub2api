@@ -22,7 +22,12 @@ type quotaServiceBox struct{ svc QuotaService }
 // 用 atomic.Pointer 存储是因为存在构造序依赖循环：BillingCacheService 先被其他 service 依赖，
 // 之后才创建 QuotaService（QuotaService 内部依赖 BillingCache 读用量）。若改成构造函数注入
 // 需要破除环，成本较高，目前选择 init-time setter + 原子读写保证 race detector 清洁。
+//
+// 防御：传 nil 直接忽略，避免误传把已注入的服务静默清空导致热路径全放行。
 func (s *BillingCacheService) SetQuotaService(qs QuotaService) {
+	if qs == nil {
+		return
+	}
 	s.quotaServicePtr.Store(&quotaServiceBox{svc: qs})
 }
 
@@ -92,6 +97,10 @@ func (s *BillingCacheService) processQuotaUsageTask(ctx context.Context, task ca
 }
 
 // checkQuotaEligibility 配额前置检查（余额分支内调用）。
+//
+// 不可拆分（~40 行 > CLAUDE.md §10 的 30 行阈值）：total 校验 与 rule 校验共享
+// date / resetAt 上下文 + 相同的 fail-open 分支结构；拆成两个函数要么重复传递参数，
+// 要么引入中间结构体承载共享状态，都比保留线性流水线更难读。
 //
 // ---- TOCTOU 设计取舍（与 processQuotaUsageTask 对称） ----
 // 这是 check-then-incr 流水线的 "check" 半段：先读 Redis 当前用量与上限对比，

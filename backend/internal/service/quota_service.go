@@ -11,7 +11,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
-// QuotaService 接口与相关 DTO 在 quota_types.go；校验 helper 在 quota_rule_validator.go。
+// QuotaService 接口与相关 DTO 在 quota_types.go；校验 helper 在 quota_service_validate.go。
 
 // quotaSettingsProvider 读 quota 相关 setting 的子接口（便于测试替换）。
 // 目前只需读 bool（全局开关、默认启用）；default_daily_usage_limit_usd 在
@@ -192,9 +192,10 @@ func (s *quotaService) UpdateUserQuota(ctx context.Context, userID int64, req Up
 	if limit != nil && *limit < 0 {
 		return infraerrors.BadRequest("QUOTA_LIMIT_NEGATIVE", "daily usage limit must be >= 0")
 	}
-	// 归一化：0 视同"不限"，直接清空为 NULL。保持 DB 列只有 {NULL / 正值} 两态，
-	// 避免下游读到 "*float64 非 nil 但 == 0" 的半中间态。
-	if limit != nil && *limit == 0 {
+	// 归一化：<= quotaMinPositiveLimit 视同"不限"，直接清空为 NULL。
+	// 保持 DB 列只有 {NULL / 正值} 两态，避免 "*float64 非 nil 但 ~0" 的半中间态
+	// （numeric(20,8) 会把 1e-9 这种亚常量小数截成 0，DB 与 in-memory 不一致）。
+	if limit != nil && *limit < quotaMinPositiveLimit {
 		limit = nil
 	}
 

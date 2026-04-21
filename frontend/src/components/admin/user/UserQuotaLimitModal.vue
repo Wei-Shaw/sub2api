@@ -172,6 +172,10 @@ watch(() => props.show, (v) => { if (v && props.user) void load() })
 async function load(): Promise<void> {
   if (!props.user) return
   loading.value = true
+  // 首行重置所有"跨用户不应残留"的状态，防止上一次 load 失败后数值串到新用户
+  originalRulesCount.value = 0
+  ruleDrafts.value = []
+  quotaData.value = null
   try {
     const [view, groupsRes] = await Promise.all([
       userQuotaAPI.getUserQuota(props.user.id),

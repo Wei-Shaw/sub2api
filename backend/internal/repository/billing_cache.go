@@ -417,43 +417,7 @@ func (c *billingCache) InvalidateQuotaConfig(ctx context.Context, userID int64) 
 	return c.rdb.Del(ctx, quotaConfigKey(userID)).Err()
 }
 
-func (c *billingCache) GetQuotaConfig(ctx context.Context, userID int64) (*service.ResolvedQuota, error) {
-	key := quotaConfigKey(userID)
-	raw, err := c.rdb.Get(ctx, key).Result()
-	if err != nil {
-		if errors.Is(err, redis.Nil) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	var resolved service.ResolvedQuota
-	if err := service.DecodeResolvedQuota(raw, &resolved); err != nil {
-		return nil, err
-	}
-	return &resolved, nil
-}
-
-func (c *billingCache) SetQuotaConfig(ctx context.Context, userID int64, resolved *service.ResolvedQuota) error {
-	if resolved == nil {
-		return nil
-	}
-	raw, err := service.EncodeResolvedQuota(resolved)
-	if err != nil {
-		return err
-	}
-	return c.rdb.Set(ctx, quotaConfigKey(userID), raw, quotaConfigTTLWithJitter()).Err()
-}
-
 // quotaUsageTTLSeconds 用量计数器 TTL（秒），基于 service.QuotaUsageTTL
 func quotaUsageTTLSeconds() int64 {
 	return int64(service.QuotaUsageTTL.Seconds())
-}
-
-// quotaConfigTTLWithJitter 配置缓存 TTL，带抖动防雪崩
-func quotaConfigTTLWithJitter() time.Duration {
-	if service.QuotaConfigTTLJitter <= 0 {
-		return service.QuotaConfigTTL
-	}
-	jitter := time.Duration(rand.IntN(int(service.QuotaConfigTTLJitter)))
-	return service.QuotaConfigTTL - jitter
 }

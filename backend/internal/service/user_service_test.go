@@ -326,10 +326,6 @@ func (m *mockBillingCache) IncrQuotaUsedRule(context.Context, int64, int64, stri
 	return nil
 }
 func (m *mockBillingCache) InvalidateQuotaConfig(context.Context, int64) error { return nil }
-func (m *mockBillingCache) GetQuotaConfig(context.Context, int64) (*ResolvedQuota, error) {
-	return nil, nil
-}
-func (m *mockBillingCache) SetQuotaConfig(context.Context, int64, *ResolvedQuota) error { return nil }
 
 // --- 测试 ---
 
@@ -669,7 +665,7 @@ func TestNewUserService_FieldsAssignment(t *testing.T) {
 	require.NotNil(t, svc)
 	require.Equal(t, repo, svc.userRepo)
 	require.Equal(t, auth, svc.authCacheInvalidator)
-	require.Equal(t, cache, svc.billingCache)
+	require.Equal(t, cache, svc.balanceCache)
 }
 
 func TestUpdateProfile_StoresInlineAvatarWithinLimit(t *testing.T) {

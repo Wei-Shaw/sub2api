@@ -465,27 +465,6 @@ func TestFormatQuotaAmount(t *testing.T) {
 	assert.Equal(t, "0.12345678", formatQuotaAmount(0.12345678))
 }
 
-func TestResolvedQuotaJSONRoundTrip(t *testing.T) {
-	limit := 10.0
-	original := &ResolvedQuota{
-		UserID:     7,
-		Enabled:    true,
-		DailyLimit: &limit,
-		ResolvedAt: time.Unix(1700000000, 0).UTC(),
-		Rules: []QuotaRule{
-			{ID: 1, GroupIDs: []int64{1, 2}, DailyLimitUSD: 3, Period: QuotaPeriodDaily},
-		},
-	}
-	raw, err := EncodeResolvedQuota(original)
-	require.NoError(t, err)
-	var decoded ResolvedQuota
-	require.NoError(t, DecodeResolvedQuota(raw, &decoded))
-	assert.Equal(t, original.UserID, decoded.UserID)
-	assert.Equal(t, original.Enabled, decoded.Enabled)
-	require.NotNil(t, decoded.DailyLimit)
-	assert.Equal(t, *original.DailyLimit, *decoded.DailyLimit)
-}
-
 func TestQuotaExceededTotalErrorMetadata(t *testing.T) {
 	t0 := time.Unix(1700000000, 0).UTC()
 	err := QuotaExceededTotalError(10, 9.5, t0)

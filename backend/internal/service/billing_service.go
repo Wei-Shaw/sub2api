@@ -53,8 +53,8 @@ type RateLimitCache interface {
 // QuotaCache 用户每日配额缓存操作（feature issue #1750）
 //
 // QuotaService 只依赖此接口；BillingCacheService 的 quota 相关热路径同样只需此接口。
-// 与 BillingCache 的完整接口解耦后，quota 相关测试 stub 只需实现 7 个方法，无需为
-// 全部 17 个 BillingCache 方法打桩。
+// 与 BillingCache 的完整接口解耦后，quota 相关测试 stub 只需实现 5 个方法，无需为
+// 全部 15 个 BillingCache 方法打桩。
 type QuotaCache interface {
 	// 读今日总已用；缓存 miss 返回 0, nil
 	GetQuotaUsedTotal(ctx context.Context, userID int64, date string) (float64, error)
@@ -65,12 +65,6 @@ type QuotaCache interface {
 	IncrQuotaUsedRule(ctx context.Context, userID, ruleID int64, date string, delta float64) error
 	// 用户配额配置缓存失效（改配置时调用）
 	InvalidateQuotaConfig(ctx context.Context, userID int64) error
-	// GetQuotaConfig 读用户配额配置（miss 返回 nil, nil；调用方负责回源）
-	// reserved for Phase-N: Resolve 结果缓存。当前未使用。
-	GetQuotaConfig(ctx context.Context, userID int64) (*ResolvedQuota, error)
-	// SetQuotaConfig 写用户配额配置（TTL = QuotaConfigTTL ± QuotaConfigTTLJitter）
-	// reserved for Phase-N: Resolve 结果缓存。当前未使用。
-	SetQuotaConfig(ctx context.Context, userID int64, resolved *ResolvedQuota) error
 }
 
 // BillingCache 计费服务的完整缓存接口（4 个关注点的组合）。

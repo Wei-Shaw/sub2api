@@ -442,12 +442,6 @@ func (s *billingCacheStub) IncrQuotaUsedRule(ctx context.Context, userID, ruleID
 func (s *billingCacheStub) InvalidateQuotaConfig(ctx context.Context, userID int64) error {
 	return nil
 }
-func (s *billingCacheStub) GetQuotaConfig(ctx context.Context, userID int64) (*ResolvedQuota, error) {
-	return nil, nil
-}
-func (s *billingCacheStub) SetQuotaConfig(ctx context.Context, userID int64, resolved *ResolvedQuota) error {
-	return nil
-}
 
 func waitForInvalidations(t *testing.T, ch <-chan subscriptionInvalidateCall, expected int) []subscriptionInvalidateCall {
 	t.Helper()

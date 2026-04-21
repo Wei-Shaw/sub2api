@@ -1,33 +1,10 @@
 package service
 
 import (
-	"encoding/json"
 	"sort"
 	"strconv"
 	"time"
 )
-
-// ---- JSON 编解码（供 billing_cache 复用，避免循环依赖） ----
-
-// EncodeResolvedQuota 用于 Redis 配置缓存
-func EncodeResolvedQuota(resolved *ResolvedQuota) (string, error) {
-	if resolved == nil {
-		return "", nil
-	}
-	b, err := json.Marshal(resolved)
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
-}
-
-// DecodeResolvedQuota 解码配置缓存
-func DecodeResolvedQuota(raw string, dst *ResolvedQuota) error {
-	if raw == "" || dst == nil {
-		return nil
-	}
-	return json.Unmarshal([]byte(raw), dst)
-}
 
 // QuotaExceededTotalError 构造超限错误（总限额）
 func QuotaExceededTotalError(limit, used float64, resetAt time.Time) error {
