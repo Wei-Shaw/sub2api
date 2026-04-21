@@ -61,9 +61,10 @@ REDACTED
 
 type openAIAccountTestRepo struct {
 	mockAccountRepoForGemini
-	updatedExtra  map[string]any
+	updatedExtra map[string]any
 	rateLimitedID int64
 	rateLimitedAt *time.Time
+	clearedErrorID int64
 REDACTED
 
 func (r *openAIAccountTestRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
@@ -74,6 +75,11 @@ REDACTED
 func (r *openAIAccountTestRepo) SetRateLimited(_ context.Context, id int64, resetAt time.Time) error {
 	r.rateLimitedID = id
 	r.rateLimitedAt = &resetAt
+	return nil
+REDACTED
+
+func (r *openAIAccountTestRepo) ClearError(_ context.Context, id int64) error {
+	r.clearedErrorID = id
 	return nil
 REDACTED
 
@@ -111,11 +117,11 @@ REDACTED
 	require.Contains(t, recorder.Body.String(), "test_complete")
 REDACTED
 
-func TestAccountTestService_OpenAI429PersistsSnapshotWithoutRateLimit(t *testing.T) {
+func TestAccountTestService_OpenAI429PersistsSnapshotAndRateLimitState(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := newTestContext()
 
-	resp := newJSONResponse(http.StatusTooManyRequests, `{"error":{"type":"usage_limit_reached","message":"limit reached"REDACTEDREDACTED`)
+	resp := newJSONResponse(http.StatusTooManyRequests, `{"error":{"type":"usage_limit_reached","message":"limit reached","resets_at":1777283883REDACTEDREDACTED`)
 	resp.Header.Set("x-codex-primary-used-percent", "100")
 	resp.Header.Set("x-codex-primary-reset-after-seconds", "604800")
 	resp.Header.Set("x-codex-primary-window-minutes", "10080")
@@ -130,6 +136,7 @@ func TestAccountTestService_OpenAI429PersistsSnapshotWithoutRateLimit(t *testing
 		ID:          88,
 		Platform:    PlatformOpenAI,
 		Type:        AccountTypeOAuth,
+		Status:      StatusError,
 		Concurrency: 1,
 REDACTED"access_token": "test-token"REDACTED,
 REDACTED
@@ -138,7 +145,7 @@ REDACTED
 REDACTED
 	require.NotEmpty(t, repo.updatedExtra)
 	require.Equal(t, 100.0, repo.updatedExtra["codex_5h_used_percent"])
-	require.Zero(t, repo.rateLimitedID)
-	require.Nil(t, repo.rateLimitedAt)
-	require.Nil(t, account.RateLimitResetAt)
+	require.Equal(t, account.ID, repo.rateLimitedID)
+	require.NotNil(t, repo.rateLimitedAt)
+	require.Equal(t, account.ID, repo.clearedErrorID)
 REDACTED
