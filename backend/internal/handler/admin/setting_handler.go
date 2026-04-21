@@ -238,6 +238,8 @@ REDACTED
 
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
+
+		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 REDACTED
 	response.Success(c, systemSettingsResponseData(payload, authSourceDefaults))
 REDACTED
@@ -432,6 +434,9 @@ type UpdateSettingsRequest struct {
 	// Channel Monitor feature switch
 	ChannelMonitorEnabled                *bool `json:"channel_monitor_enabled"`
 	ChannelMonitorDefaultIntervalSeconds *int  `json:"channel_monitor_default_interval_seconds"`
+
+	// Available Channels feature switch (user-facing)
+	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
 REDACTED
 
 // UpdateSettings 更新系统设置
@@ -1238,6 +1243,12 @@ REDACTED
 		REDACTED
 			return previousSettings.ChannelMonitorDefaultIntervalSeconds
 	REDACTED(),
+		AvailableChannelsEnabled: func() bool {
+			if req.AvailableChannelsEnabled != nil {
+				return *req.AvailableChannelsEnabled
+		REDACTED
+			return previousSettings.AvailableChannelsEnabled
+	REDACTED(),
 REDACTED
 
 	authSourceDefaults := &service.AuthSourceDefaultSettings{
@@ -1471,6 +1482,8 @@ REDACTED
 
 		ChannelMonitorEnabled:                updatedSettings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
+
+		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
 REDACTED
 	response.Success(c, systemSettingsResponseData(payload, updatedAuthSourceDefaults))
 REDACTED
@@ -1832,6 +1845,9 @@ REDACTED
 REDACTED
 	if before.ChannelMonitorDefaultIntervalSeconds != after.ChannelMonitorDefaultIntervalSeconds {
 		changed = append(changed, "channel_monitor_default_interval_seconds")
+REDACTED
+	if before.AvailableChannelsEnabled != after.AvailableChannelsEnabled {
+		changed = append(changed, "available_channels_enabled")
 REDACTED
 	changed = appendAuthSourceDefaultChanges(changed, beforeAuthSourceDefaults, afterAuthSourceDefaults)
 	return changed
