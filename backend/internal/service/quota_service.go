@@ -13,10 +13,11 @@ import (
 
 // QuotaService 接口与相关 DTO 在 quota_types.go；校验 helper 在 quota_rule_validator.go。
 
-// quotaSettingsProvider 读写 quota 相关 setting 的子接口（便于测试）
+// quotaSettingsProvider 读 quota 相关 setting 的子接口（便于测试替换）。
+// 目前只需读 bool（全局开关、默认启用）；default_daily_usage_limit_usd 在
+// 用户创建流程直接走 *SettingService.GetDefaultDailyUsageLimitUSD，不经此接口。
 type quotaSettingsProvider interface {
 	GetBool(ctx context.Context, key string) (bool, error)
-	GetFloat(ctx context.Context, key string) (float64, error)
 }
 
 // QuotaService 默认实现

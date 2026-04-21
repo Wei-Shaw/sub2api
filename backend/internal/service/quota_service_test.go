@@ -33,7 +33,6 @@ func (s *stubQuotaSettings) GetBool(ctx context.Context, key string) (bool, erro
 	}
 	return false, nil
 }
-func (s *stubQuotaSettings) GetFloat(ctx context.Context, key string) (float64, error) { return 0, nil }
 
 type stubQuotaUserRepo struct {
 	user *User
