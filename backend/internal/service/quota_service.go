@@ -90,9 +90,19 @@ func (s *quotaService) Resolve(ctx context.Context, userID int64) (*ResolvedQuot
 		return resolved, nil
 	}
 
+	// 正常路径：只有 > 0 时下发为 DailyLimit（契约 §0.3：NULL/0/负数 都视同"不限"）。
+	// 迁移 102_normalize_zero_usage_limit.sql 会一次性把 <=0 的历史脏数据清成 NULL，
+	// 下面这个 else-if 是防御日志：DB 层约束被绕过（例如 CLI 直连 UPDATE、未跑迁移的旧库升级）
+	// 时，把情况记录下来以便排查，而行为继续"视同不限"，与 CLAUDE.md §11 fail-open 对齐。
 	if user.DailyUsageLimitUSD != nil && *user.DailyUsageLimitUSD > 0 {
 		v := *user.DailyUsageLimitUSD
 		resolved.DailyLimit = &v
+	} else if user.DailyUsageLimitUSD != nil && *user.DailyUsageLimitUSD <= 0 {
+		slog.Warn("historical zero daily_usage_limit, treated as unlimited",
+			"component", quotaLogComponent,
+			"user_id", userID,
+			"value", *user.DailyUsageLimitUSD,
+		)
 	}
 
 	rules, err := s.loadDailyRules(ctx, userID)

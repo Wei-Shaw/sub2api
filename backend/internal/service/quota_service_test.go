@@ -3,8 +3,10 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -267,6 +269,73 @@ func TestResolve_UserOverrideNilFollowsDefault(t *testing.T) {
 	assert.True(t, r.Enabled)
 	require.NotNil(t, r.DailyLimit)
 	assert.Equal(t, 10.0, *r.DailyLimit)
+}
+
+// withCapturedSlog 暂替 slog default logger 为 JSON handler 写入 buf，返回恢复函数。
+// 用于验证 Resolve 对历史 *v<=0 脏数据的防御日志路径。
+func withCapturedSlog(t *testing.T) (*bytes.Buffer, func()) {
+	t.Helper()
+	buf := &bytes.Buffer{}
+	handler := slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	prev := slog.Default()
+	slog.SetDefault(slog.New(handler))
+	return buf, func() { slog.SetDefault(prev) }
+}
+
+// 迁移 102_normalize_zero_usage_limit.sql 负责把历史 <=0 的值清成 NULL，
+// 但未迁移/CLI 直写绕过约束时 Resolve 仍应防御性：视同"不限"且记 warn。
+func TestResolve_ZeroDailyUsageLimitTreatedAsUnlimited(t *testing.T) {
+	buf, restore := withCapturedSlog(t)
+	defer restore()
+
+	settings := &stubQuotaSettings{enabled: true, defaultEnabled: true}
+	zero := 0.0
+	truePtr := true
+	u := &User{ID: 1, UsageLimitEnabled: &truePtr, DailyUsageLimitUSD: &zero}
+	svc := newTestQuotaService(t, settings, u, nil)
+
+	r, err := svc.Resolve(context.Background(), 1)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+	assert.True(t, r.Enabled)
+	assert.Nil(t, r.DailyLimit, "zero stored value must surface as unlimited (nil)")
+
+	logs := buf.String()
+	assert.Contains(t, logs, "historical zero daily_usage_limit")
+	assert.Contains(t, logs, "\"user_id\":1")
+	assert.Contains(t, logs, quotaLogComponent)
+}
+
+// 负值同样走防御日志分支（DB 约束通常禁负数，但为防御到底）
+func TestResolve_NegativeDailyUsageLimitTreatedAsUnlimited(t *testing.T) {
+	buf, restore := withCapturedSlog(t)
+	defer restore()
+
+	settings := &stubQuotaSettings{enabled: true, defaultEnabled: true}
+	neg := -1.0
+	truePtr := true
+	u := &User{ID: 2, UsageLimitEnabled: &truePtr, DailyUsageLimitUSD: &neg}
+	svc := newTestQuotaService(t, settings, u, nil)
+
+	r, err := svc.Resolve(context.Background(), 2)
+	require.NoError(t, err)
+	assert.Nil(t, r.DailyLimit)
+	assert.Contains(t, buf.String(), "historical zero daily_usage_limit")
+}
+
+// NULL 是期望路径（迁移后的状态），不应触发防御日志
+func TestResolve_NilDailyUsageLimitSilent(t *testing.T) {
+	buf, restore := withCapturedSlog(t)
+	defer restore()
+
+	settings := &stubQuotaSettings{enabled: true, defaultEnabled: true}
+	truePtr := true
+	u := &User{ID: 3, UsageLimitEnabled: &truePtr, DailyUsageLimitUSD: nil}
+	svc := newTestQuotaService(t, settings, u, nil)
+
+	_, err := svc.Resolve(context.Background(), 3)
+	require.NoError(t, err)
+	assert.NotContains(t, buf.String(), "historical zero daily_usage_limit")
 }
 
 func TestResolve_UserNotFoundReturnsDisabled(t *testing.T) {
