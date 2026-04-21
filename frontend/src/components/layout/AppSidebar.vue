@@ -186,6 +186,7 @@ import { useI18n } from 'vue-i18n'
 import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
 import VersionBadge from '@/components/common/VersionBadge.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
+import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 
 interface NavItem {
   path: string
@@ -627,13 +628,12 @@ const ChevronDownIcon = {
     )
 }
 
-// 各个开关集中声明：所有菜单项引用这里的 getter，未来加新开关只需在此加一个常量。
-// getter 返回 false = 隐藏；undefined/true = 显示（宽容策略，避免 public settings 未加载闪烁）。
-const flagChannelMonitor = () => appStore.cachedPublicSettings?.channel_monitor_enabled
-const flagPayment = () => appStore.cachedPublicSettings?.payment_enabled
-// Opt-in feature：默认关闭，未加载 settings 时也视为关闭（严格 === true 判定）
-const flagAvailableChannels = () =>
-  appStore.cachedPublicSettings?.available_channels_enabled === true
+// Public-settings flags go through the registry in utils/featureFlags.ts,
+// which handles the opt-in vs opt-out fallback when settings haven't loaded
+// yet. Admin-only flags (not in public settings) stay inline below.
+const flagChannelMonitor = makeSidebarFlag(FeatureFlags.channelMonitor)
+const flagPayment = makeSidebarFlag(FeatureFlags.payment)
+const flagAvailableChannels = makeSidebarFlag(FeatureFlags.availableChannels)
 const flagOpsMonitoring = () => adminSettingsStore.opsMonitoringEnabled
 const flagAdminPayment = () => adminSettingsStore.paymentEnabled
 
