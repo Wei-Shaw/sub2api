@@ -73,7 +73,7 @@ describe('ProfileView', () => {
     REDACTED)
   REDACTED)
 
-  it('renders the approved two-column profile shell without separate stat cards', async () => {
+  it('renders the simplified single-column profile shell without separate stat cards', async () => {
     const wrapper = mount(ProfileView, {
       global: {
         stubs: {
@@ -92,10 +92,8 @@ describe('ProfileView', () => {
 
     expect(wrapper.findAll('.stat-card')).toHaveLength(0)
     expect(wrapper.get('[data-testid="profile-shell"]').exists()).toBe(true)
-    expect(wrapper.get('[data-testid="profile-primary-column"]').exists()).toBe(true)
-    expect(wrapper.get('[data-testid="profile-secondary-column"]').exists()).toBe(true)
-    expect(wrapper.get('[data-testid="profile-primary-column"]').html()).toContain('profile-info-card')
-    expect(wrapper.get('[data-testid="profile-secondary-column"]').html()).toContain('profile-password-form')
-    expect(wrapper.get('[data-testid="profile-secondary-column"]').html()).toContain('profile-totp-card')
+    expect(wrapper.get('[data-testid="profile-shell"]').html()).toContain('profile-info-card')
+    expect(wrapper.get('[data-testid="profile-shell"]').html()).toContain('profile-password-form')
+    expect(wrapper.get('[data-testid="profile-shell"]').html()).toContain('profile-totp-card')
   REDACTED)
 REDACTED)

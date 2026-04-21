@@ -98,7 +98,7 @@
       </div>
     </section>
 
-    <div class="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_320px]">
+    <div class="space-y-6">
       <div data-testid="profile-main-column" class="space-y-6">
         <section
           data-testid="profile-basics-panel"
@@ -115,7 +115,7 @@
             </div>
           </div>
 
-          <div class="grid gap-6 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+          <div class="grid gap-6 sm:grid-cols-1 md:grid-cols-2">
             <div class="rounded-3xl border border-gray-100 bg-gray-50/80 p-5 dark:border-dark-700 dark:bg-dark-900/30">
               <ProfileAvatarCard
                 :user="user"
@@ -150,35 +150,7 @@
         </section>
       </div>
 
-      <aside data-testid="profile-side-column" class="space-y-6">
-        <section class="card border border-gray-100 bg-white/90 p-6 dark:border-dark-700 dark:bg-dark-900/50">
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-            {{ t('profile.overviewTitle') REDACTEDREDACTED
-          </h3>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {{ t('profile.overviewDescription') REDACTEDREDACTED
-          </p>
-
-          <div class="mt-5 grid gap-3">
-            <div class="rounded-2xl border border-gray-100 bg-gray-50/80 px-4 py-3 dark:border-dark-700 dark:bg-dark-900/30">
-              <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
-                {{ t('profile.username') REDACTEDREDACTED
-              </p>
-              <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                {{ user?.username || displayName REDACTEDREDACTED
-              </p>
-            </div>
-            <div class="rounded-2xl border border-gray-100 bg-gray-50/80 px-4 py-3 dark:border-dark-700 dark:bg-dark-900/30">
-              <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
-                {{ t('profile.email') REDACTEDREDACTED
-              </p>
-              <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                {{ user?.email || '-' REDACTEDREDACTED
-              </p>
-            </div>
-          </div>
-        </section>
-
+      <div data-testid="profile-side-column" class="space-y-6">
         <section
           v-if="sourceHints.length"
           class="card border border-gray-100 bg-white/90 p-6 dark:border-dark-700 dark:bg-dark-900/50"
@@ -201,7 +173,7 @@
             </div>
           </div>
         </section>
-      </aside>
+      </div>
     </div>
   </div>
 </template>

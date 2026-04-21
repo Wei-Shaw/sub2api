@@ -2,59 +2,47 @@
   <AppLayout>
     <div
       data-testid="profile-shell"
-      class="mx-auto max-w-6xl space-y-6"
+      class="mx-auto max-w-[950px] space-y-6"
     >
-      <div class="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_360px]">
-        <div
-          data-testid="profile-primary-column"
-          class="space-y-6"
-        >
-          <ProfileInfoCard
-            :user="user"
-            :linuxdo-enabled="linuxdoOAuthEnabled"
-            :oidc-enabled="oidcOAuthEnabled"
-            :oidc-provider-name="oidcOAuthProviderName"
-            :wechat-enabled="wechatOAuthEnabled"
-            :wechat-open-enabled="wechatOAuthOpenEnabled"
-            :wechat-mp-enabled="wechatOAuthMPEnabled"
-          />
-        </div>
+      <ProfileInfoCard
+        :user="user"
+        :linuxdo-enabled="linuxdoOAuthEnabled"
+        :oidc-enabled="oidcOAuthEnabled"
+        :oidc-provider-name="oidcOAuthProviderName"
+        :wechat-enabled="wechatOAuthEnabled"
+        :wechat-open-enabled="wechatOAuthOpenEnabled"
+        :wechat-mp-enabled="wechatOAuthMPEnabled"
+      />
 
-        <aside
-          data-testid="profile-secondary-column"
-          class="space-y-6"
-        >
-          <div
-            v-if="contactInfo"
-            class="card border-primary-200 bg-primary-50 p-6 dark:bg-primary-900/20"
-          >
-            <div class="flex items-center gap-4">
-              <div class="rounded-xl bg-primary-100 p-3 text-primary-600">
-                <Icon name="chat" size="lg" />
-              </div>
-              <div>
-                <h3 class="font-semibold text-primary-800 dark:text-primary-200">
-                  {{ t('common.contactSupport') REDACTEDREDACTED
-                </h3>
-                <p class="text-sm font-medium">{{ contactInfo REDACTEDREDACTED</p>
-              </div>
-            </div>
+      <div
+        v-if="contactInfo"
+        class="card border-primary-200 bg-primary-50 p-6 dark:bg-primary-900/20"
+      >
+        <div class="flex items-center gap-4">
+          <div class="rounded-xl bg-primary-100 p-3 text-primary-600">
+            <Icon name="chat" size="lg" />
           </div>
-
-          <ProfilePasswordForm />
-
-          <ProfileBalanceNotifyCard
-            v-if="user && balanceLowNotifyEnabled"
-            :enabled="user.balance_notify_enabled ?? true"
-            :threshold="user.balance_notify_threshold"
-            :extra-emails="user.balance_notify_extra_emails ?? []"
-            :system-default-threshold="systemDefaultThreshold"
-            :user-email="user.email"
-          />
-
-          <ProfileTotpCard />
-        </aside>
+          <div>
+            <h3 class="font-semibold text-primary-800 dark:text-primary-200">
+              {{ t('common.contactSupport') REDACTEDREDACTED
+            </h3>
+            <p class="text-sm font-medium">{{ contactInfo REDACTEDREDACTED</p>
+          </div>
+        </div>
       </div>
+
+      <ProfilePasswordForm />
+
+      <ProfileBalanceNotifyCard
+        v-if="user && balanceLowNotifyEnabled"
+        :enabled="user.balance_notify_enabled ?? true"
+        :threshold="user.balance_notify_threshold"
+        :extra-emails="user.balance_notify_extra_emails ?? []"
+        :system-default-threshold="systemDefaultThreshold"
+        :user-email="user.email"
+      />
+
+      <ProfileTotpCard />
     </div>
   </AppLayout>
 </template>
