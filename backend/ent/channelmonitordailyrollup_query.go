@@ -300,12 +300,12 @@ func (_q *ChannelMonitorDailyRollupQuery) WithMonitor(opts ...func(*ChannelMonit
 // Example:
 //
 //	var v []struct {
-//		DeletedAt time.Time `json:"deleted_at,omitempty"`
+//		MonitorID int64 `json:"monitor_id,omitempty"`
 //		Count int `json:"count,omitempty"`
 //	}
 //
 //	client.ChannelMonitorDailyRollup.Query().
-//		GroupBy(channelmonitordailyrollup.FieldDeletedAt).
+//		GroupBy(channelmonitordailyrollup.FieldMonitorID).
 //		Aggregate(ent.Count()).
 //		Scan(ctx, &v)
 func (_q *ChannelMonitorDailyRollupQuery) GroupBy(field string, fields ...string) *ChannelMonitorDailyRollupGroupBy {
@@ -323,11 +323,11 @@ func (_q *ChannelMonitorDailyRollupQuery) GroupBy(field string, fields ...string
 // Example:
 //
 //	var v []struct {
-//		DeletedAt time.Time `json:"deleted_at,omitempty"`
+//		MonitorID int64 `json:"monitor_id,omitempty"`
 //	}
 //
 //	client.ChannelMonitorDailyRollup.Query().
-//		Select(channelmonitordailyrollup.FieldDeletedAt).
+//		Select(channelmonitordailyrollup.FieldMonitorID).
 //		Scan(ctx, &v)
 func (_q *ChannelMonitorDailyRollupQuery) Select(fields ...string) *ChannelMonitorDailyRollupSelect {
 	_q.ctx.Fields = append(_q.ctx.Fields, fields...)

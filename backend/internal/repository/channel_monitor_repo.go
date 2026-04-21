@@ -9,7 +9,6 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
-	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
@@ -195,15 +194,10 @@ func (r *channelMonitorRepository) InsertHistoryBatch(ctx context.Context, rows 
 	return nil
 }
 
+// DeleteHistoryBefore 物理删 checked_at < before 的明细，分批 channelMonitorPruneBatchSize 行一批，
+// 避免单事务删除过多引起锁/WAL 压力。借助 (checked_at) 索引定位小批 id，再按 id 删。
 func (r *channelMonitorRepository) DeleteHistoryBefore(ctx context.Context, before time.Time) (int64, error) {
-	client := clientFromContext(ctx, r.client)
-	n, err := client.ChannelMonitorHistory.Delete().
-		Where(channelmonitorhistory.CheckedAtLT(before)).
-		Exec(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("delete history before: %w", err)
-	}
-	return int64(n), nil
+	return deleteChannelMonitorBatched(ctx, r.db, channelMonitorPruneHistorySQL, before)
 }
 
 // ListHistory 按 checked_at 倒序返回某个监控的最近 N 条历史记录。
@@ -247,7 +241,6 @@ func (r *channelMonitorRepository) ListLatestPerModel(ctx context.Context, monit
 		    model, status, latency_ms, ping_latency_ms, checked_at
 		FROM channel_monitor_histories
 		WHERE monitor_id = $1
-		  AND deleted_at IS NULL
 		ORDER BY model, checked_at DESC
 	`
 	rows, err := r.db.QueryContext(ctx, q, monitorID)
@@ -302,7 +295,6 @@ func (r *channelMonitorRepository) ComputeAvailability(ctx context.Context, moni
 		           COUNT(latency_ms)                                         AS count_latency
 		    FROM channel_monitor_histories
 		    WHERE monitor_id = $1
-		      AND deleted_at IS NULL
 		      AND checked_at >= CURRENT_DATE
 		    GROUP BY model
 		),
@@ -310,7 +302,6 @@ func (r *channelMonitorRepository) ComputeAvailability(ctx context.Context, moni
 		    SELECT model, total_checks, ok_count, sum_latency_ms, count_latency
 		    FROM channel_monitor_daily_rollups
 		    WHERE monitor_id = $1
-		      AND deleted_at IS NULL
 		      AND bucket_date >= (CURRENT_DATE - $2::int)
 		      AND bucket_date < CURRENT_DATE
 		)
@@ -376,7 +367,6 @@ func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, 
 		    monitor_id, model, status, latency_ms, ping_latency_ms, checked_at
 		FROM channel_monitor_histories
 		WHERE monitor_id = ANY($1)
-		  AND deleted_at IS NULL
 		ORDER BY monitor_id, model, checked_at DESC
 	`
 	rows, err := r.db.QueryContext(ctx, q, pq.Array(ids))
@@ -437,7 +427,6 @@ func (r *channelMonitorRepository) ListRecentHistoryForMonitors(
 		    FROM channel_monitor_histories h
 		    JOIN targets t
 		      ON t.monitor_id = h.monitor_id AND t.model = h.model
-		    WHERE h.deleted_at IS NULL
 		)
 		SELECT monitor_id, status, latency_ms, ping_latency_ms, checked_at
 		FROM ranked
@@ -524,7 +513,6 @@ func (r *channelMonitorRepository) ComputeAvailabilityForMonitors(ctx context.Co
 		           COUNT(latency_ms)                                         AS count_latency
 		    FROM channel_monitor_histories
 		    WHERE monitor_id = ANY($1)
-		      AND deleted_at IS NULL
 		      AND checked_at >= CURRENT_DATE
 		    GROUP BY monitor_id, model
 		),
@@ -532,7 +520,6 @@ func (r *channelMonitorRepository) ComputeAvailabilityForMonitors(ctx context.Co
 		    SELECT monitor_id, model, total_checks, ok_count, sum_latency_ms, count_latency
 		    FROM channel_monitor_daily_rollups
 		    WHERE monitor_id = ANY($1)
-		      AND deleted_at IS NULL
 		      AND bucket_date >= (CURRENT_DATE - $2::int)
 		      AND bucket_date < CURRENT_DATE
 		)
@@ -572,11 +559,10 @@ func (r *channelMonitorRepository) ComputeAvailabilityForMonitors(ctx context.Co
 
 // ---------- 聚合维护 ----------
 
-// UpsertDailyRollupsFor 把 targetDate 当天（[targetDate, targetDate+1d)）未软删的明细
+// UpsertDailyRollupsFor 把 targetDate 当天（[targetDate, targetDate+1d)）的明细
 // 按 (monitor_id, model, bucket_date) 聚合写入 channel_monitor_daily_rollups。
 //   - 用 ON CONFLICT (monitor_id, model, bucket_date) DO UPDATE 实现幂等回填，
 //     重复执行只会用最新统计覆盖；
-//   - 同时把 deleted_at 重置为 NULL，避免历史误删后聚合行被持续过滤掉；
 //   - $1::date 让 PG 自动把入参 truncate 到 UTC 日期，调用方不需要预处理 targetDate。
 func (r *channelMonitorRepository) UpsertDailyRollupsFor(ctx context.Context, targetDate time.Time) (int64, error) {
 	const q = `
@@ -604,8 +590,7 @@ func (r *channelMonitorRepository) UpsertDailyRollupsFor(ctx context.Context, ta
 		    COUNT(ping_latency_ms)                                           AS count_ping_latency,
 		    NOW()
 		FROM channel_monitor_histories
-		WHERE deleted_at IS NULL
-		  AND checked_at >= $1::date
+		WHERE checked_at >= $1::date
 		  AND checked_at <  ($1::date + INTERVAL '1 day')
 		GROUP BY monitor_id, model
 		ON CONFLICT (monitor_id, model, bucket_date) DO UPDATE SET
@@ -619,8 +604,7 @@ func (r *channelMonitorRepository) UpsertDailyRollupsFor(ctx context.Context, ta
 		    count_latency       = EXCLUDED.count_latency,
 		    sum_ping_latency_ms = EXCLUDED.sum_ping_latency_ms,
 		    count_ping_latency  = EXCLUDED.count_ping_latency,
-		    computed_at         = NOW(),
-		    deleted_at          = NULL
+		    computed_at         = NOW()
 	`
 	res, err := r.db.ExecContext(ctx, q, targetDate)
 	if err != nil {
@@ -633,17 +617,59 @@ func (r *channelMonitorRepository) UpsertDailyRollupsFor(ctx context.Context, ta
 	return n, nil
 }
 
-// DeleteRollupsBefore 软删 bucket_date < beforeDate 的聚合行。
-// 走 ent client，利用 SoftDeleteMixin 把 DELETE 自动改写为 UPDATE deleted_at = NOW()。
+// DeleteRollupsBefore 物理删 bucket_date < beforeDate 的聚合行，同样分批。
 func (r *channelMonitorRepository) DeleteRollupsBefore(ctx context.Context, beforeDate time.Time) (int64, error) {
-	client := clientFromContext(ctx, r.client)
-	n, err := client.ChannelMonitorDailyRollup.Delete().
-		Where(channelmonitordailyrollup.BucketDateLT(beforeDate)).
-		Exec(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("delete rollups before: %w", err)
+	return deleteChannelMonitorBatched(ctx, r.db, channelMonitorPruneRollupSQL, beforeDate)
+}
+
+// channelMonitorPruneBatchSize 单批删除上限。与 ops_cleanup_service 保持一致的 5000，
+// 在大表上按 id 小批删可以避免长事务和 WAL 堆积。
+const channelMonitorPruneBatchSize = 5000
+
+// channelMonitorPruneHistorySQL 分批物理删明细表过期行。
+const channelMonitorPruneHistorySQL = `
+WITH batch AS (
+    SELECT id FROM channel_monitor_histories
+    WHERE checked_at < $1
+    ORDER BY id
+    LIMIT $2
+)
+DELETE FROM channel_monitor_histories
+WHERE id IN (SELECT id FROM batch)
+`
+
+// channelMonitorPruneRollupSQL 分批物理删 rollup 表过期行。bucket_date 需要 ::date 转型
+// 保证与 DATE 列一致比较。
+const channelMonitorPruneRollupSQL = `
+WITH batch AS (
+    SELECT id FROM channel_monitor_daily_rollups
+    WHERE bucket_date < $1::date
+    ORDER BY id
+    LIMIT $2
+)
+DELETE FROM channel_monitor_daily_rollups
+WHERE id IN (SELECT id FROM batch)
+`
+
+// deleteChannelMonitorBatched 循环执行分批 DELETE，直到影响行为 0。返回累计删除行数。
+// cutoff 由调用方按列类型传入（明细用 time.Time 对 TIMESTAMPTZ，rollup 用 time.Time SQL 侧 ::date 转型）。
+func deleteChannelMonitorBatched(ctx context.Context, db *sql.DB, query string, cutoff time.Time) (int64, error) {
+	var total int64
+	for {
+		res, err := db.ExecContext(ctx, query, cutoff, channelMonitorPruneBatchSize)
+		if err != nil {
+			return total, fmt.Errorf("channel_monitor prune batch: %w", err)
+		}
+		affected, err := res.RowsAffected()
+		if err != nil {
+			return total, fmt.Errorf("channel_monitor prune rows affected: %w", err)
+		}
+		total += affected
+		if affected == 0 {
+			break
+		}
 	}
-	return int64(n), nil
+	return total, nil
 }
 
 // LoadAggregationWatermark 读 watermark 表（id=1）。

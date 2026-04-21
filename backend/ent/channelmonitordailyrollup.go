@@ -18,8 +18,6 @@ type ChannelMonitorDailyRollup struct {
 	config `json:"-"`
 	// ID of the ent.
 	ID int64 `json:"id,omitempty"`
-	// DeletedAt holds the value of the "deleted_at" field.
-	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 	// MonitorID holds the value of the "monitor_id" field.
 	MonitorID int64 `json:"monitor_id,omitempty"`
 	// Model holds the value of the "model" field.
@@ -83,7 +81,7 @@ func (*ChannelMonitorDailyRollup) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullInt64)
 		case channelmonitordailyrollup.FieldModel:
 			values[i] = new(sql.NullString)
-		case channelmonitordailyrollup.FieldDeletedAt, channelmonitordailyrollup.FieldBucketDate, channelmonitordailyrollup.FieldComputedAt:
+		case channelmonitordailyrollup.FieldBucketDate, channelmonitordailyrollup.FieldComputedAt:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -106,13 +104,6 @@ func (_m *ChannelMonitorDailyRollup) assignValues(columns []string, values []any
 				return fmt.Errorf("unexpected type %T for field id", value)
 			}
 			_m.ID = int64(value.Int64)
-		case channelmonitordailyrollup.FieldDeletedAt:
-			if value, ok := values[i].(*sql.NullTime); !ok {
-				return fmt.Errorf("unexpected type %T for field deleted_at", values[i])
-			} else if value.Valid {
-				_m.DeletedAt = new(time.Time)
-				*_m.DeletedAt = value.Time
-			}
 		case channelmonitordailyrollup.FieldMonitorID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field monitor_id", values[i])
@@ -238,11 +229,6 @@ func (_m *ChannelMonitorDailyRollup) String() string {
 	var builder strings.Builder
 	builder.WriteString("ChannelMonitorDailyRollup(")
 	builder.WriteString(fmt.Sprintf("id=%v, ", _m.ID))
-	if v := _m.DeletedAt; v != nil {
-		builder.WriteString("deleted_at=")
-		builder.WriteString(v.Format(time.ANSIC))
-	}
-	builder.WriteString(", ")
 	builder.WriteString("monitor_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.MonitorID))
 	builder.WriteString(", ")

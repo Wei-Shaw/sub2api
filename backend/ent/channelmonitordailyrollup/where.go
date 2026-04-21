@@ -55,11 +55,6 @@ func IDLTE(id int64) predicate.ChannelMonitorDailyRollup {
 	return predicate.ChannelMonitorDailyRollup(sql.FieldLTE(FieldID, id))
 }
 
-// DeletedAt applies equality check predicate on the "deleted_at" field. It's identical to DeletedAtEQ.
-func DeletedAt(v time.Time) predicate.ChannelMonitorDailyRollup {
-	return predicate.ChannelMonitorDailyRollup(sql.FieldEQ(FieldDeletedAt, v))
-}
-
 // MonitorID applies equality check predicate on the "monitor_id" field. It's identical to MonitorIDEQ.
 func MonitorID(v int64) predicate.ChannelMonitorDailyRollup {
 	return predicate.ChannelMonitorDailyRollup(sql.FieldEQ(FieldMonitorID, v))
@@ -128,56 +123,6 @@ func CountPingLatency(v int) predicate.ChannelMonitorDailyRollup {
 // ComputedAt applies equality check predicate on the "computed_at" field. It's identical to ComputedAtEQ.
 func ComputedAt(v time.Time) predicate.ChannelMonitorDailyRollup {
 	return predicate.ChannelMonitorDailyRollup(sql.FieldEQ(FieldComputedAt, v))
-}
-
-// DeletedAtEQ applies the EQ predicate on the "deleted_at" field.
-func DeletedAtEQ(v time.Time) predicate.ChannelMonitorDailyRollup {
-	return predicate.ChannelMonitorDailyRollup(sql.FieldEQ(FieldDeletedAt, v))
-}
-
-// DeletedAtNEQ applies the NEQ predicate on the "deleted_at" field.
-func DeletedAtNEQ(v time.Time) predicate.ChannelMonitorDailyRollup {
-	return predicate.ChannelMonitorDailyRollup(sql.FieldNEQ(FieldDeletedAt, v))
-}
-
-// DeletedAtIn applies the In predicate on the "deleted_at" field.
-func DeletedAtIn(vs ...time.Time) predicate.ChannelMonitorDailyRollup {
-	return predicate.ChannelMonitorDailyRollup(sql.FieldIn(FieldDeletedAt, vs...))
-}
-
-// DeletedAtNotIn applies the NotIn predicate on the "deleted_at" field.
-func DeletedAtNotIn(vs ...time.Time) predicate.ChannelMonitorDailyRollup {
-	return predicate.ChannelMonitorDailyRollup(sql.FieldNotIn(FieldDeletedAt, vs...))
-}
-
-// DeletedAtGT applies the GT predicate on the "deleted_at" field.
-func DeletedAtGT(v time.Time) predicate.ChannelMonitorDailyRollup {
-	return predicate.ChannelMonitorDailyRollup(sql.FieldGT(FieldDeletedAt, v))
-}
-
-// DeletedAtGTE applies the GTE predicate on the "deleted_at" field.
-func DeletedAtGTE(v time.Time) predicate.ChannelMonitorDailyRollup {
-	return predicate.ChannelMonitorDailyRollup(sql.FieldGTE(FieldDeletedAt, v))
-}
-
-// DeletedAtLT applies the LT predicate on the "deleted_at" field.
-func DeletedAtLT(v time.Time) predicate.ChannelMonitorDailyRollup {
-	return predicate.ChannelMonitorDailyRollup(sql.FieldLT(FieldDeletedAt, v))
-}
-
-// DeletedAtLTE applies the LTE predicate on the "deleted_at" field.
-func DeletedAtLTE(v time.Time) predicate.ChannelMonitorDailyRollup {
-	return predicate.ChannelMonitorDailyRollup(sql.FieldLTE(FieldDeletedAt, v))
-}
-
-// DeletedAtIsNil applies the IsNil predicate on the "deleted_at" field.
-func DeletedAtIsNil() predicate.ChannelMonitorDailyRollup {
-	return predicate.ChannelMonitorDailyRollup(sql.FieldIsNull(FieldDeletedAt))
-}
-
-// DeletedAtNotNil applies the NotNil predicate on the "deleted_at" field.
-func DeletedAtNotNil() predicate.ChannelMonitorDailyRollup {
-	return predicate.ChannelMonitorDailyRollup(sql.FieldNotNull(FieldDeletedAt))
 }
 
 // MonitorIDEQ applies the EQ predicate on the "monitor_id" field.

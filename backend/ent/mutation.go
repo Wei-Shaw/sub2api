@@ -8175,7 +8175,6 @@ type ChannelMonitorDailyRollupMutation struct {
 	op                     Op
 	typ                    string
 	id                     *int64
-	deleted_at             *time.Time
 	model                  *string
 	bucket_date            *time.Time
 	total_checks           *int
@@ -8303,55 +8302,6 @@ func (m *ChannelMonitorDailyRollupMutation) IDs(ctx context.Context) ([]int64, e
 	default:
 		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
 	}
-}
-
-// SetDeletedAt sets the "deleted_at" field.
-func (m *ChannelMonitorDailyRollupMutation) SetDeletedAt(t time.Time) {
-	m.deleted_at = &t
-}
-
-// DeletedAt returns the value of the "deleted_at" field in the mutation.
-func (m *ChannelMonitorDailyRollupMutation) DeletedAt() (r time.Time, exists bool) {
-	v := m.deleted_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldDeletedAt returns the old "deleted_at" field's value of the ChannelMonitorDailyRollup entity.
-// If the ChannelMonitorDailyRollup object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ChannelMonitorDailyRollupMutation) OldDeletedAt(ctx context.Context) (v *time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
-	}
-	return oldValue.DeletedAt, nil
-}
-
-// ClearDeletedAt clears the value of the "deleted_at" field.
-func (m *ChannelMonitorDailyRollupMutation) ClearDeletedAt() {
-	m.deleted_at = nil
-	m.clearedFields[channelmonitordailyrollup.FieldDeletedAt] = struct{}{}
-}
-
-// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
-func (m *ChannelMonitorDailyRollupMutation) DeletedAtCleared() bool {
-	_, ok := m.clearedFields[channelmonitordailyrollup.FieldDeletedAt]
-	return ok
-}
-
-// ResetDeletedAt resets all changes to the "deleted_at" field.
-func (m *ChannelMonitorDailyRollupMutation) ResetDeletedAt() {
-	m.deleted_at = nil
-	delete(m.clearedFields, channelmonitordailyrollup.FieldDeletedAt)
 }
 
 // SetMonitorID sets the "monitor_id" field.
@@ -9119,10 +9069,7 @@ func (m *ChannelMonitorDailyRollupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ChannelMonitorDailyRollupMutation) Fields() []string {
-	fields := make([]string, 0, 15)
-	if m.deleted_at != nil {
-		fields = append(fields, channelmonitordailyrollup.FieldDeletedAt)
-	}
+	fields := make([]string, 0, 14)
 	if m.monitor != nil {
 		fields = append(fields, channelmonitordailyrollup.FieldMonitorID)
 	}
@@ -9173,8 +9120,6 @@ func (m *ChannelMonitorDailyRollupMutation) Fields() []string {
 // schema.
 func (m *ChannelMonitorDailyRollupMutation) Field(name string) (ent.Value, bool) {
 	switch name {
-	case channelmonitordailyrollup.FieldDeletedAt:
-		return m.DeletedAt()
 	case channelmonitordailyrollup.FieldMonitorID:
 		return m.MonitorID()
 	case channelmonitordailyrollup.FieldModel:
@@ -9212,8 +9157,6 @@ func (m *ChannelMonitorDailyRollupMutation) Field(name string) (ent.Value, bool)
 // database failed.
 func (m *ChannelMonitorDailyRollupMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
 	switch name {
-	case channelmonitordailyrollup.FieldDeletedAt:
-		return m.OldDeletedAt(ctx)
 	case channelmonitordailyrollup.FieldMonitorID:
 		return m.OldMonitorID(ctx)
 	case channelmonitordailyrollup.FieldModel:
@@ -9251,13 +9194,6 @@ func (m *ChannelMonitorDailyRollupMutation) OldField(ctx context.Context, name s
 // type.
 func (m *ChannelMonitorDailyRollupMutation) SetField(name string, value ent.Value) error {
 	switch name {
-	case channelmonitordailyrollup.FieldDeletedAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetDeletedAt(v)
-		return nil
 	case channelmonitordailyrollup.FieldMonitorID:
 		v, ok := value.(int64)
 		if !ok {
@@ -9508,11 +9444,7 @@ func (m *ChannelMonitorDailyRollupMutation) AddField(name string, value ent.Valu
 // ClearedFields returns all nullable fields that were cleared during this
 // mutation.
 func (m *ChannelMonitorDailyRollupMutation) ClearedFields() []string {
-	var fields []string
-	if m.FieldCleared(channelmonitordailyrollup.FieldDeletedAt) {
-		fields = append(fields, channelmonitordailyrollup.FieldDeletedAt)
-	}
-	return fields
+	return nil
 }
 
 // FieldCleared returns a boolean indicating if a field with the given name was
@@ -9525,11 +9457,6 @@ func (m *ChannelMonitorDailyRollupMutation) FieldCleared(name string) bool {
 // ClearField clears the value of the field with the given name. It returns an
 // error if the field is not defined in the schema.
 func (m *ChannelMonitorDailyRollupMutation) ClearField(name string) error {
-	switch name {
-	case channelmonitordailyrollup.FieldDeletedAt:
-		m.ClearDeletedAt()
-		return nil
-	}
 	return fmt.Errorf("unknown ChannelMonitorDailyRollup nullable field %s", name)
 }
 
@@ -9537,9 +9464,6 @@ func (m *ChannelMonitorDailyRollupMutation) ClearField(name string) error {
 // It returns an error if the field is not defined in the schema.
 func (m *ChannelMonitorDailyRollupMutation) ResetField(name string) error {
 	switch name {
-	case channelmonitordailyrollup.FieldDeletedAt:
-		m.ResetDeletedAt()
-		return nil
 	case channelmonitordailyrollup.FieldMonitorID:
 		m.ResetMonitorID()
 		return nil
@@ -9666,7 +9590,6 @@ type ChannelMonitorHistoryMutation struct {
 	op                 Op
 	typ                string
 	id                 *int64
-	deleted_at         *time.Time
 	model              *string
 	status             *channelmonitorhistory.Status
 	latency_ms         *int
@@ -9779,55 +9702,6 @@ func (m *ChannelMonitorHistoryMutation) IDs(ctx context.Context) ([]int64, error
 	default:
 		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
 	}
-}
-
-// SetDeletedAt sets the "deleted_at" field.
-func (m *ChannelMonitorHistoryMutation) SetDeletedAt(t time.Time) {
-	m.deleted_at = &t
-}
-
-// DeletedAt returns the value of the "deleted_at" field in the mutation.
-func (m *ChannelMonitorHistoryMutation) DeletedAt() (r time.Time, exists bool) {
-	v := m.deleted_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldDeletedAt returns the old "deleted_at" field's value of the ChannelMonitorHistory entity.
-// If the ChannelMonitorHistory object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ChannelMonitorHistoryMutation) OldDeletedAt(ctx context.Context) (v *time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
-	}
-	return oldValue.DeletedAt, nil
-}
-
-// ClearDeletedAt clears the value of the "deleted_at" field.
-func (m *ChannelMonitorHistoryMutation) ClearDeletedAt() {
-	m.deleted_at = nil
-	m.clearedFields[channelmonitorhistory.FieldDeletedAt] = struct{}{}
-}
-
-// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
-func (m *ChannelMonitorHistoryMutation) DeletedAtCleared() bool {
-	_, ok := m.clearedFields[channelmonitorhistory.FieldDeletedAt]
-	return ok
-}
-
-// ResetDeletedAt resets all changes to the "deleted_at" field.
-func (m *ChannelMonitorHistoryMutation) ResetDeletedAt() {
-	m.deleted_at = nil
-	delete(m.clearedFields, channelmonitorhistory.FieldDeletedAt)
 }
 
 // SetMonitorID sets the "monitor_id" field.
@@ -10224,10 +10098,7 @@ func (m *ChannelMonitorHistoryMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ChannelMonitorHistoryMutation) Fields() []string {
-	fields := make([]string, 0, 8)
-	if m.deleted_at != nil {
-		fields = append(fields, channelmonitorhistory.FieldDeletedAt)
-	}
+	fields := make([]string, 0, 7)
 	if m.monitor != nil {
 		fields = append(fields, channelmonitorhistory.FieldMonitorID)
 	}
@@ -10257,8 +10128,6 @@ func (m *ChannelMonitorHistoryMutation) Fields() []string {
 // schema.
 func (m *ChannelMonitorHistoryMutation) Field(name string) (ent.Value, bool) {
 	switch name {
-	case channelmonitorhistory.FieldDeletedAt:
-		return m.DeletedAt()
 	case channelmonitorhistory.FieldMonitorID:
 		return m.MonitorID()
 	case channelmonitorhistory.FieldModel:
@@ -10282,8 +10151,6 @@ func (m *ChannelMonitorHistoryMutation) Field(name string) (ent.Value, bool) {
 // database failed.
 func (m *ChannelMonitorHistoryMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
 	switch name {
-	case channelmonitorhistory.FieldDeletedAt:
-		return m.OldDeletedAt(ctx)
 	case channelmonitorhistory.FieldMonitorID:
 		return m.OldMonitorID(ctx)
 	case channelmonitorhistory.FieldModel:
@@ -10307,13 +10174,6 @@ func (m *ChannelMonitorHistoryMutation) OldField(ctx context.Context, name strin
 // type.
 func (m *ChannelMonitorHistoryMutation) SetField(name string, value ent.Value) error {
 	switch name {
-	case channelmonitorhistory.FieldDeletedAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetDeletedAt(v)
-		return nil
 	case channelmonitorhistory.FieldMonitorID:
 		v, ok := value.(int64)
 		if !ok {
@@ -10420,9 +10280,6 @@ func (m *ChannelMonitorHistoryMutation) AddField(name string, value ent.Value) e
 // mutation.
 func (m *ChannelMonitorHistoryMutation) ClearedFields() []string {
 	var fields []string
-	if m.FieldCleared(channelmonitorhistory.FieldDeletedAt) {
-		fields = append(fields, channelmonitorhistory.FieldDeletedAt)
-	}
 	if m.FieldCleared(channelmonitorhistory.FieldLatencyMs) {
 		fields = append(fields, channelmonitorhistory.FieldLatencyMs)
 	}
@@ -10446,9 +10303,6 @@ func (m *ChannelMonitorHistoryMutation) FieldCleared(name string) bool {
 // error if the field is not defined in the schema.
 func (m *ChannelMonitorHistoryMutation) ClearField(name string) error {
 	switch name {
-	case channelmonitorhistory.FieldDeletedAt:
-		m.ClearDeletedAt()
-		return nil
 	case channelmonitorhistory.FieldLatencyMs:
 		m.ClearLatencyMs()
 		return nil
@@ -10466,9 +10320,6 @@ func (m *ChannelMonitorHistoryMutation) ClearField(name string) error {
 // It returns an error if the field is not defined in the schema.
 func (m *ChannelMonitorHistoryMutation) ResetField(name string) error {
 	switch name {
-	case channelmonitorhistory.FieldDeletedAt:
-		m.ResetDeletedAt()
-		return nil
 	case channelmonitorhistory.FieldMonitorID:
 		m.ResetMonitorID()
 		return nil
