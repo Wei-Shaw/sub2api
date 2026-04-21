@@ -300,6 +300,7 @@ import {
   persistOAuthTokenContext,
   resolveWeChatOAuthStartStrict,
   type OAuthAdoptionDecision,
+  type OAuthTokenResponse,
   type PendingOAuthExchangeResponse
 REDACTED from '@/api/auth'
 
@@ -328,6 +329,7 @@ const pendingAccountAction = ref<'none' | 'create_account' | 'bind_login'>('none
 const pendingAccountEmail = ref('')
 const bindLoginEmail = ref('')
 const bindLoginPassword = ref('')
+const legacyPendingOAuthToken = ref('')
 const accountActionError = ref('')
 const canReturnToCreateAccount = ref(false)
 const needsTotpChallenge = ref(false)
@@ -354,10 +356,47 @@ type PendingWeChatCompletion = PendingOAuthExchangeResponse & {
   user_email_masked?: string
 REDACTED
 
+function persistPendingAuthSession(redirect?: string) {
+  authStore.setPendingAuthSession({
+    token: '',
+    token_field: 'pending_oauth_token',
+    provider: 'wechat',
+    redirect: sanitizeRedirectPath(redirect || redirectTo.value)
+  REDACTED)
+REDACTED
+
+function clearPendingAuthSession() {
+  authStore.clearPendingAuthSession()
+REDACTED
+
 function parseFragmentParams(): URLSearchParams {
   const raw = typeof window !== 'undefined' ? window.location.hash : ''
   const hash = raw.startsWith('#') ? raw.slice(1) : raw
   return new URLSearchParams(hash)
+REDACTED
+
+function readLegacyFragmentLogin(params: URLSearchParams): OAuthTokenResponse | null {
+  const accessToken = params.get('access_token')?.trim() || ''
+  if (!accessToken) {
+    return null
+  REDACTED
+
+  const completion: OAuthTokenResponse = {
+    access_token: accessToken
+  REDACTED
+  const refreshToken = params.get('refresh_token')?.trim() || ''
+  if (refreshToken) {
+    completion.refresh_token = refreshToken
+  REDACTED
+  const expiresIn = Number.parseInt(params.get('expires_in')?.trim() || '', 10)
+  if (Number.isFinite(expiresIn) && expiresIn > 0) {
+    completion.expires_in = expiresIn
+  REDACTED
+  const tokenType = params.get('token_type')?.trim() || ''
+  if (tokenType) {
+    completion.token_type = tokenType
+  REDACTED
+  return completion
 REDACTED
 
 function sanitizeRedirectPath(path: string | null | undefined): string {
@@ -672,6 +711,7 @@ REDACTED
 async function finalizeCompletion(completion: PendingOAuthExchangeResponse, redirect: string) {
   if (getOAuthCompletionKind(completion) === 'bind') {
     const bindRedirect = sanitizeRedirectPath(completion.redirect || '/profile')
+    clearPendingAuthSession()
     appStore.showSuccess(bindSuccessMessage)
     await router.replace(bindRedirect)
     return
@@ -689,16 +729,19 @@ REDACTED
 
 async function finalizePendingAccountResponse(completion: PendingWeChatCompletion) {
   applyAdoptionSuggestionState(completion)
+  const redirect = sanitizeRedirectPath(completion.redirect || redirectTo.value)
 
   if (completion.error === 'invitation_required') {
     pendingAccountAction.value = 'none'
     needsInvitation.value = true
     needsAdoptionConfirmation.value = false
     isProcessing.value = false
+    persistPendingAuthSession(redirect)
     return
   REDACTED
 
   if (applyTotpChallenge(completion)) {
+    persistPendingAuthSession(redirect)
     return
   REDACTED
 
@@ -707,10 +750,10 @@ async function finalizePendingAccountResponse(completion: PendingWeChatCompletio
     needsInvitation.value = false
     needsAdoptionConfirmation.value = false
     isProcessing.value = false
+    persistPendingAuthSession(redirect)
     return
   REDACTED
 
-  const redirect = sanitizeRedirectPath(completion.redirect || redirectTo.value)
   await finalizeCompletion(completion, redirect)
 REDACTED
 
@@ -720,10 +763,18 @@ async function handleSubmitInvitation() {
 
   isSubmitting.value = true
   try {
-    const tokenData = await completeWeChatOAuthRegistration(
-      invitationCode.value.trim(),
-      currentAdoptionDecision()
-    )
+    const tokenData = legacyPendingOAuthToken.value
+      ? (
+          await apiClient.post<OAuthTokenResponse>('/auth/oauth/wechat/complete-registration', {
+            pending_oauth_token: legacyPendingOAuthToken.value,
+            invitation_code: invitationCode.value.trim(),
+            ...serializeAdoptionDecision(currentAdoptionDecision())
+          REDACTED)
+        ).data
+      : await completeWeChatOAuthRegistration(
+          invitationCode.value.trim(),
+          currentAdoptionDecision()
+        )
     persistOAuthTokenContext(tokenData)
     await authStore.setToken(tokenData.access_token)
     appStore.showSuccess(t('auth.loginSuccess'))
@@ -864,48 +915,74 @@ onMounted(async () => {
   REDACTED
 
   const params = parseFragmentParams()
+  const legacyLogin = readLegacyFragmentLogin(params)
+  const legacyPendingToken = params.get('pending_oauth_token')?.trim() || ''
   const error = params.get('error')
   const errorDesc = params.get('error_description') || params.get('error_message') || ''
-
-  if (error) {
-    errorMessage.value = errorDesc || error
-    appStore.showError(errorMessage.value)
-    isProcessing.value = false
-    return
-  REDACTED
+  const redirect = sanitizeRedirectPath(
+    params.get('redirect') || (route.query.redirect as string | undefined) || '/dashboard'
+  )
 
   try {
-    const completion = await exchangePendingOAuthCompletion() as PendingWeChatCompletion
-    const redirect = sanitizeRedirectPath(
-      completion.redirect || (route.query.redirect as string | undefined) || '/dashboard'
-    )
-    applyAdoptionSuggestionState(completion)
-    redirectTo.value = redirect
+    if (legacyLogin) {
+      persistOAuthTokenContext(legacyLogin)
+      await authStore.setToken(legacyLogin.access_token)
+      appStore.showSuccess(t('auth.loginSuccess'))
+      await router.replace(redirect)
+      return
+    REDACTED
 
-    if (completion.error === 'invitation_required') {
+    if (error === 'invitation_required' && legacyPendingToken) {
+      legacyPendingOAuthToken.value = legacyPendingToken
+      redirectTo.value = redirect
       needsInvitation.value = true
       isProcessing.value = false
       return
     REDACTED
 
+    if (error) {
+      errorMessage.value = errorDesc || error
+      appStore.showError(errorMessage.value)
+      isProcessing.value = false
+      return
+    REDACTED
+
+    const completion = await exchangePendingOAuthCompletion() as PendingWeChatCompletion
+    const completionRedirect = sanitizeRedirectPath(
+      completion.redirect || (route.query.redirect as string | undefined) || '/dashboard'
+    )
+    applyAdoptionSuggestionState(completion)
+    redirectTo.value = completionRedirect
+
+    if (completion.error === 'invitation_required') {
+      needsInvitation.value = true
+      isProcessing.value = false
+      persistPendingAuthSession(completionRedirect)
+      return
+    REDACTED
+
     if (applyTotpChallenge(completion)) {
+      persistPendingAuthSession(completionRedirect)
       return
     REDACTED
 
     applyPendingAccountAction(completion)
     if (pendingAccountAction.value !== 'none') {
       isProcessing.value = false
+      persistPendingAuthSession(completionRedirect)
       return
     REDACTED
 
     if (adoptionRequired.value && hasSuggestedProfile(completion)) {
       needsAdoptionConfirmation.value = true
       isProcessing.value = false
+      persistPendingAuthSession(completionRedirect)
       return
     REDACTED
 
-    await finalizeCompletion(completion, redirect)
+    await finalizeCompletion(completion, completionRedirect)
   REDACTED catch (e: unknown) {
+    clearPendingAuthSession()
     errorMessage.value = getRequestErrorMessage(e, t('auth.loginFailed'))
     appStore.showError(errorMessage.value)
     isProcessing.value = false
