@@ -6308,6 +6308,10 @@ export default {
     validationGroupsOverlap: '分组不能在多条规则中重复',
     validationLimitPositive: '限额必须大于 0',
     validationGroupsRequired: '至少选择一个分组',
+    validationTotalLimitZero: '总限额不能为 0；如需"不限"请清空此字段',
+    disabledBanner: '⚠ 配额功能当前对该用户未生效（已被关闭或全局总开关已关）。以下配置仍会保存，生效时自动启用。',
+    clearAllRulesConfirmTitle: '确认清空所有规则',
+    clearAllRulesConfirmMessage: '当前有 {count} 条规则，保存后将全部删除。用户仍受总限额约束（如有）。确认吗？',
 
     // 用户侧 Dashboard 小部件
     dashboardCardTitle: '今日配额',

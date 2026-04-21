@@ -15,6 +15,9 @@
         </svg>
       </div>
       <template v-else>
+        <div v-if="showDisabledWarning" class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-300">
+          {{ t('userQuota.disabledBanner') }}
+        </div>
         <div>
           <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('userQuota.userLevelSwitch') }}</label>
           <div class="flex flex-wrap gap-3">
@@ -82,6 +85,14 @@
       </div>
     </template>
   </BaseDialog>
+  <ConfirmDialog
+    :show="showClearRulesConfirm"
+    :title="t('userQuota.clearAllRulesConfirmTitle')"
+    :message="t('userQuota.clearAllRulesConfirmMessage', { count: originalRulesCount })"
+    :danger="true"
+    @confirm="onClearRulesConfirm"
+    @cancel="showClearRulesConfirm = false"
+  />
 </template>
 
 <script setup lang="ts">
@@ -89,6 +100,7 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { adminAPI } from '@/api/admin'
 import { userQuotaAPI } from '@/api/admin/quota'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -117,6 +129,18 @@ const overrideValue = ref<OverrideValue>(QUOTA_OVERRIDE_FOLLOW_GLOBAL)
 const dailyLimitInput = ref<number | null>(null)
 const ruleDrafts = ref<RuleDraft[]>([])
 const allGroups = ref<AdminGroup[]>([])
+const originalRulesCount = ref(0) // 记录初始规则数，保存时若减到 0 触发清空确认
+const showClearRulesConfirm = ref(false)
+
+// 当前配置是否对用户生效（UI 灰化/提示用）：
+// - 用户级开关 DISABLED → 明确关闭
+// - FOLLOW_GLOBAL + 全局关 → resolved.enabled 为 false
+// 两种情况下规则和总限额仍可编辑保存，只是不会生效。
+const showDisabledWarning = computed(() => {
+  if (overrideValue.value === QUOTA_OVERRIDE_DISABLED) return true
+  if (overrideValue.value === QUOTA_OVERRIDE_FOLLOW_GLOBAL && quotaData.value && !quotaData.value.resolved.enabled) return true
+  return false
+})
 
 const overrideOptions = computed(() => [
   { value: QUOTA_OVERRIDE_FOLLOW_GLOBAL as OverrideValue, label: t('userQuota.overrideFollow') },
@@ -160,6 +184,7 @@ async function load(): Promise<void> {
     ruleDrafts.value = view.resolved.rules.map((r) => ({
       id: r.id, group_ids: [...r.group_ids], daily_limit_usd: r.daily_limit_usd,
     }))
+    originalRulesCount.value = ruleDrafts.value.length
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error'), errorI18nMap.value))
   } finally {
@@ -193,6 +218,12 @@ function ruleUsageFor(ruleId: number | undefined): number {
 }
 
 function validateDrafts(): string | null {
+  // 总限额：null/undefined/空字符串 = 不限；显式 0（或负数）被拒绝
+  // 区分意图：用户想"不限"应清空字段；填 0 没有业务含义
+  if (dailyLimitInput.value !== null && dailyLimitInput.value !== undefined) {
+    const n = Number(dailyLimitInput.value)
+    if (Number.isFinite(n) && n === 0) return t('userQuota.validationTotalLimitZero')
+  }
   const seen = new Set<number>()
   for (const d of ruleDrafts.value) {
     if (d.group_ids.length === 0) return t('userQuota.validationGroupsRequired')
@@ -209,14 +240,30 @@ async function handleSave(): Promise<void> {
   if (!props.user) return
   const err = validateDrafts()
   if (err) { appStore.showError(err); return }
+  // 清空所有规则的防误操作：原本有规则、现在为 0 时要求二次确认
+  if (ruleDrafts.value.length === 0 && originalRulesCount.value > 0) {
+    showClearRulesConfirm.value = true
+    return
+  }
+  await doSave()
+}
+
+function onClearRulesConfirm(): void {
+  showClearRulesConfirm.value = false
+  void doSave()
+}
+
+async function doSave(): Promise<void> {
+  if (!props.user) return
   submitting.value = true
   try {
     // 1. 提交用户级总开关与总限额（不含规则）
+    // 空字符串/null/undefined 统一成 null（"不限"）；显式 0 已在 validateDrafts 拒绝
+    const raw = dailyLimitInput.value
+    const dailyLimit: number | null = raw === null || raw === undefined || Number.isNaN(Number(raw)) || Number(raw) <= 0 ? null : Number(raw)
     const body: UpdateUserQuotaRequest = {
       usage_limit_enabled: overrideValue.value,
-      daily_usage_limit_usd:
-        dailyLimitInput.value === null || dailyLimitInput.value === undefined || Number(dailyLimitInput.value) <= 0
-          ? null : Number(dailyLimitInput.value),
+      daily_usage_limit_usd: dailyLimit,
     }
     await userQuotaAPI.updateUserQuota(props.user.id, body)
 

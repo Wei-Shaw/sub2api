@@ -6115,6 +6115,10 @@ export default {
     validationGroupsOverlap: 'Groups cannot be reused across rules',
     validationLimitPositive: 'Limit must be greater than 0',
     validationGroupsRequired: 'Select at least one group',
+    validationTotalLimitZero: 'Total limit cannot be 0; leave empty for "unlimited"',
+    disabledBanner: '⚠ Quota is currently inactive for this user (disabled or global switch off). Configuration below will still be saved and apply once re-enabled.',
+    clearAllRulesConfirmTitle: 'Confirm clearing all rules',
+    clearAllRulesConfirmMessage: 'There are {count} rule(s). Saving will remove them all. The user remains bound by the total limit (if set). Continue?',
 
     // User-side dashboard card
     dashboardCardTitle: 'Today\'s Quota',
