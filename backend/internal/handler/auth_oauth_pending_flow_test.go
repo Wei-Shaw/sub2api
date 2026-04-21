@@ -537,6 +537,114 @@ REDACTED
 	require.NotNil(t, storedSession.ConsumedAt)
 REDACTED
 
+func TestExchangePendingOAuthCompletionLoginReassignsExistingDecisionIdentityReference(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandler(t, false)
+	ctx := context.Background()
+
+	userEntity, err := client.User.Create().
+		SetEmail("login-reassign@example.com").
+		SetUsername("legacy-name").
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+
+	existingIdentity, err := client.AuthIdentity.Create().
+		SetUserID(userEntity.ID).
+		SetProviderType("linuxdo").
+		SetProviderKey("linuxdo").
+		SetProviderSubject("login-reassign-123").
+		SetMetadata(map[string]any{REDACTED).
+		Save(ctx)
+REDACTED
+
+	previousSession, err := client.PendingAuthSession.Create().
+		SetSessionToken("login-reassign-previous-session-token").
+		SetIntent("login").
+		SetProviderType("linuxdo").
+		SetProviderKey("linuxdo").
+		SetProviderSubject("login-reassign-123").
+		SetTargetUserID(userEntity.ID).
+		SetResolvedEmail(userEntity.Email).
+		SetBrowserSessionKey("login-reassign-previous-browser-session-key").
+		SetLocalFlowState(map[string]any{
+			oauthCompletionResponseKey: map[string]any{
+				"access_token": "previous-access-token",
+		REDACTED,
+	REDACTED).
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+REDACTED
+
+	previousDecision, err := client.IdentityAdoptionDecision.Create().
+		SetPendingAuthSessionID(previousSession.ID).
+		SetIdentityID(existingIdentity.ID).
+		SetAdoptDisplayName(true).
+		SetAdoptAvatar(true).
+		Save(ctx)
+REDACTED
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("login-reassign-session-token").
+		SetIntent("login").
+		SetProviderType("linuxdo").
+		SetProviderKey("linuxdo").
+		SetProviderSubject("login-reassign-123").
+		SetTargetUserID(userEntity.ID).
+		SetResolvedEmail(userEntity.Email).
+		SetBrowserSessionKey("login-reassign-browser-session-key").
+		SetUpstreamIdentityClaims(map[string]any{
+			"suggested_display_name": "Login Reassign",
+			"suggested_avatar_url":   "https://cdn.example/login-reassign.png",
+	REDACTED).
+		SetLocalFlowState(map[string]any{
+			oauthCompletionResponseKey: map[string]any{
+				"access_token": "access-token",
+		REDACTED,
+	REDACTED).
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+REDACTED
+
+	_, err = client.IdentityAdoptionDecision.Create().
+		SetPendingAuthSessionID(session.ID).
+		SetAdoptDisplayName(false).
+		SetAdoptAvatar(false).
+		Save(ctx)
+REDACTED
+
+	body := bytes.NewBufferString(`{"adopt_display_name":false,"adopt_avatar":falseREDACTED`)
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/pending/exchange", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)REDACTED)
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("login-reassign-browser-session-key")REDACTED)
+	ginCtx.Request = req
+
+	handler.ExchangePendingOAuthCompletion(ginCtx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	reloadedPrevious, err := client.IdentityAdoptionDecision.Get(ctx, previousDecision.ID)
+REDACTED
+	require.Nil(t, reloadedPrevious.IdentityID)
+
+	currentDecision, err := client.IdentityAdoptionDecision.Query().
+		Where(identityadoptiondecision.PendingAuthSessionIDEQ(session.ID)).
+		Only(ctx)
+REDACTED
+	require.NotNil(t, currentDecision.IdentityID)
+	require.Equal(t, existingIdentity.ID, *currentDecision.IdentityID)
+
+	storedSession, err := client.PendingAuthSession.Query().
+		Where(pendingauthsession.IDEQ(session.ID)).
+		Only(ctx)
+REDACTED
+	require.NotNil(t, storedSession.ConsumedAt)
+REDACTED
+
 func TestExchangePendingOAuthCompletionLoginWithoutDecisionStillBindsIdentity(t *testing.T) {
 	handler, client := newOAuthPendingFlowTestHandler(t, false)
 	ctx := context.Background()

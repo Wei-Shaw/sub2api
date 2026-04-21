@@ -1107,6 +1107,15 @@ REDACTED
 REDACTED
 
 	if decision != nil && (decision.IdentityID == nil || *decision.IdentityID != identity.ID) {
+		if _, err := tx.Client().IdentityAdoptionDecision.Update().
+			Where(
+				identityadoptiondecision.IdentityIDEQ(identity.ID),
+				identityadoptiondecision.IDNEQ(decision.ID),
+			).
+			ClearIdentityID().
+			Save(ctx); err != nil {
+			return err
+	REDACTED
 		if _, err := tx.Client().IdentityAdoptionDecision.UpdateOneID(decision.ID).
 			SetIdentityID(identity.ID).
 			Save(ctx); err != nil {
