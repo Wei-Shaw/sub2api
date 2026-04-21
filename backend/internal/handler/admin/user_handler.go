@@ -7,7 +7,6 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
-	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -81,10 +80,6 @@ type BindUserAuthIdentityChannelRequest struct {
 	ChannelAppID   string         `json:"channel_app_id"`
 	ChannelSubject string         `json:"channel_subject"`
 	Metadata       map[string]any `json:"metadata"`
-REDACTED
-
-type ResolveAuthIdentityMigrationReportRequest struct {
-	ResolutionNote string `json:"resolution_note"`
 REDACTED
 
 // List handles listing all users with pagination
@@ -193,31 +188,6 @@ REDACTED
 	response.Success(c, dto.UserFromServiceAdmin(user))
 REDACTED
 
-// GetAuthIdentityMigrationReportSummary returns aggregate migration report counts.
-// GET /api/v1/admin/users/auth-identity-migration-reports/summary
-func (h *UserHandler) GetAuthIdentityMigrationReportSummary(c *gin.Context) {
-	summary, err := h.adminService.GetAuthIdentityMigrationReportSummary(c.Request.Context())
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-REDACTED
-	response.Success(c, summary)
-REDACTED
-
-// ListAuthIdentityMigrationReports returns paginated auth identity migration reports.
-// GET /api/v1/admin/users/auth-identity-migration-reports
-func (h *UserHandler) ListAuthIdentityMigrationReports(c *gin.Context) {
-	page, pageSize := response.ParsePagination(c)
-	reportType := strings.TrimSpace(c.Query("report_type"))
-
-	reports, total, err := h.adminService.ListAuthIdentityMigrationReports(c.Request.Context(), reportType, page, pageSize)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-REDACTED
-	response.Paginated(c, reports, total, page, pageSize)
-REDACTED
-
 // BindAuthIdentity manually binds a canonical auth identity to a user.
 // POST /api/v1/admin/users/:id/auth-identities
 func (h *UserHandler) BindAuthIdentity(c *gin.Context) {
@@ -255,40 +225,6 @@ REDACTED
 		return
 REDACTED
 	response.Success(c, result)
-REDACTED
-
-// ResolveAuthIdentityMigrationReport marks a migration report as resolved.
-// POST /api/v1/admin/users/auth-identity-migration-reports/:id/resolve
-func (h *UserHandler) ResolveAuthIdentityMigrationReport(c *gin.Context) {
-	reportID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		response.BadRequest(c, "Invalid report ID")
-		return
-REDACTED
-
-	subject, ok := servermiddleware.GetAuthSubjectFromContext(c)
-	if !ok || subject.UserID <= 0 {
-		response.Unauthorized(c, "Authentication required")
-		return
-REDACTED
-
-	var req ResolveAuthIdentityMigrationReportRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
-		return
-REDACTED
-
-	report, err := h.adminService.ResolveAuthIdentityMigrationReport(
-		c.Request.Context(),
-		reportID,
-		subject.UserID,
-		req.ResolutionNote,
-	)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-REDACTED
-	response.Success(c, report)
 REDACTED
 
 // Create handles creating a new user

@@ -29,7 +29,6 @@ func TestUserHandlerListIncludesActivityFieldsAndSortParams(t *testing.T) {
 			Username:     "activity-user",
 			Role:         service.RoleUser,
 			Status:       service.StatusActive,
-			LastLoginAt:  &lastLoginAt,
 			LastActiveAt: &lastActiveAt,
 			LastUsedAt:   &lastUsedAt,
 			CreatedAt:    lastLoginAt.Add(-24 * time.Hour),
@@ -57,7 +56,6 @@ REDACTED
 		Code int `json:"code"`
 		Data struct {
 			Items []struct {
-				LastLoginAt  *time.Time `json:"last_login_at"`
 				LastActiveAt *time.Time `json:"last_active_at"`
 				LastUsedAt   *time.Time `json:"last_used_at"`
 		REDACTED `json:"items"`
@@ -66,7 +64,6 @@ REDACTED
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
 	require.Equal(t, 0, resp.Code)
 	require.Len(t, resp.Data.Items, 1)
-	require.WithinDuration(t, lastLoginAt, *resp.Data.Items[0].LastLoginAt, time.Second)
 	require.WithinDuration(t, lastActiveAt, *resp.Data.Items[0].LastActiveAt, time.Second)
 	require.WithinDuration(t, lastUsedAt, *resp.Data.Items[0].LastUsedAt, time.Second)
 REDACTED
@@ -86,7 +83,6 @@ func TestUserHandlerGetByIDIncludesActivityFields(t *testing.T) {
 			Username:     "detail-user",
 			Role:         service.RoleUser,
 			Status:       service.StatusActive,
-			LastLoginAt:  &lastLoginAt,
 			LastActiveAt: &lastActiveAt,
 			LastUsedAt:   &lastUsedAt,
 			CreatedAt:    lastLoginAt.Add(-24 * time.Hour),
@@ -107,14 +103,12 @@ REDACTED
 	var resp struct {
 		Code int `json:"code"`
 		Data struct {
-			LastLoginAt  *time.Time `json:"last_login_at"`
 			LastActiveAt *time.Time `json:"last_active_at"`
 			LastUsedAt   *time.Time `json:"last_used_at"`
 	REDACTED `json:"data"`
 REDACTED
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
 	require.Equal(t, 0, resp.Code)
-	require.WithinDuration(t, lastLoginAt, *resp.Data.LastLoginAt, time.Second)
 	require.WithinDuration(t, lastActiveAt, *resp.Data.LastActiveAt, time.Second)
 	require.WithinDuration(t, lastUsedAt, *resp.Data.LastUsedAt, time.Second)
 REDACTED

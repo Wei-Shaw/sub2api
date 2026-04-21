@@ -84,7 +84,6 @@ export interface User {
   balance_notify_threshold: number | null
   balance_notify_extra_emails: NotifyEmailEntry[]
   subscriptions?: UserSubscription[] // User's active subscriptions
-  last_login_at?: string | null
   last_active_at?: string | null
   created_at: string
   updated_at: string

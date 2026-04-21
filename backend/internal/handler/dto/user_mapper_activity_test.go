@@ -21,16 +21,13 @@ func TestUserFromServiceAdmin_MapsActivityTimestamps(t *testing.T) {
 		Username:     "admin",
 		Role:         service.RoleAdmin,
 		Status:       service.StatusActive,
-		LastLoginAt:  &lastLoginAt,
 		LastActiveAt: &lastActiveAt,
 		LastUsedAt:   &lastUsedAt,
 REDACTED)
 
 	require.NotNil(t, out)
-	require.NotNil(t, out.LastLoginAt)
 	require.NotNil(t, out.LastActiveAt)
 	require.NotNil(t, out.LastUsedAt)
-	require.WithinDuration(t, lastLoginAt, *out.LastLoginAt, time.Second)
 	require.WithinDuration(t, lastActiveAt, *out.LastActiveAt, time.Second)
 	require.WithinDuration(t, lastUsedAt, *out.LastUsedAt, time.Second)
 REDACTED

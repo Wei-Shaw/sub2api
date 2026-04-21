@@ -445,10 +445,6 @@ REDACTED
 	case "created_at":
 		field = dbuser.FieldCreatedAt
 		defaultField = false
-	case "last_login_at":
-		field = dbuser.FieldLastLoginAt
-		defaultField = false
-		nullsLastField = true
 	case "last_active_at":
 		field = dbuser.FieldLastActiveAt
 		defaultField = false

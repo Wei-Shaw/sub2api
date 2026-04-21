@@ -36,7 +36,6 @@ TRUNCATE TABLE
 	auth_identity_channels,
 	auth_identities,
 	pending_auth_sessions,
-	auth_identity_migration_reports,
 	user_provider_default_grants,
 	user_avatars
 RESTART IDENTITY`)
@@ -391,36 +390,6 @@ REDACTED)
 	loadedAvatar, err = s.repo.GetUserAvatar(s.ctx, user.ID)
 	s.Require().NoError(err)
 	s.Require().Nil(loadedAvatar)
-REDACTED
-
-func (s *UserProfileIdentityRepoSuite) TestAuthIdentityMigrationReportHelpers_ListAndSummarize() {
-	_, err := integrationDB.ExecContext(s.ctx, `
-INSERT INTO auth_identity_migration_reports (report_type, report_key, details, created_at)
-VALUES
-	('wechat_openid_only_requires_remediation', 'u-1', '{"user_id":1REDACTED'::jsonb, '2026-04-20T10:00:00Z'),
-	('wechat_openid_only_requires_remediation', 'u-2', '{"user_id":2REDACTED'::jsonb, '2026-04-20T11:00:00Z'),
-	('oidc_synthetic_email_requires_manual_recovery', 'u-3', '{"user_id":3REDACTED'::jsonb, '2026-04-20T12:00:00Z')`)
-	s.Require().NoError(err)
-
-	summary, err := s.repo.SummarizeAuthIdentityMigrationReports(s.ctx)
-	s.Require().NoError(err)
-	s.Require().Equal(int64(3), summary.Total)
-	s.Require().Equal(int64(2), summary.ByType["wechat_openid_only_requires_remediation"])
-	s.Require().Equal(int64(1), summary.ByType["oidc_synthetic_email_requires_manual_recovery"])
-
-	reports, err := s.repo.ListAuthIdentityMigrationReports(s.ctx, AuthIdentityMigrationReportQuery{
-		ReportType: "wechat_openid_only_requires_remediation",
-		Limit:      10,
-REDACTED)
-	s.Require().NoError(err)
-	s.Require().Len(reports, 2)
-	s.Require().Equal("u-2", reports[0].ReportKey)
-	s.Require().Equal(float64(2), reports[0].Details["user_id"])
-
-	report, err := s.repo.GetAuthIdentityMigrationReport(s.ctx, "oidc_synthetic_email_requires_manual_recovery", "u-3")
-	s.Require().NoError(err)
-	s.Require().Equal("u-3", report.ReportKey)
-	s.Require().Equal(float64(3), report.Details["user_id"])
 REDACTED
 
 func (s *UserProfileIdentityRepoSuite) TestUpdateUserLastLoginAndActiveAt_UsesDedicatedColumns() {

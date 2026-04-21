@@ -663,12 +663,6 @@ const adminNavItems = computed((): NavItem[] => {
       ? [{ path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon REDACTED]
       : []),
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true REDACTED,
-    {
-      path: '/admin/users/auth-identity-migration-reports',
-      label: 'Migration Reports',
-      icon: UsersIcon,
-      hideInSimpleMode: true
-    REDACTED,
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true REDACTED,
     { path: '/admin/channels', label: t('nav.channels', '渠道管理'), icon: ChannelIcon, hideInSimpleMode: true REDACTED,
     { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true REDACTED,

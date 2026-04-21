@@ -1438,8 +1438,8 @@ export default {
         usage: 'Usage',
         concurrency: 'Concurrency',
         status: 'Status',
-        lastLogin: 'Last Login',
         lastActive: 'Last Active',
+        lastUsed: 'Last Used',
         created: 'Created',
         actions: 'Actions'
       REDACTED,
