@@ -767,6 +767,9 @@ REDACTED
 REDACTED
 
 func (s *defaultOpenAIAccountScheduler) isAccountTransportCompatible(account *Account, requiredTransport OpenAIUpstreamTransport) bool {
+	if requiredTransport == OpenAIUpstreamTransportAny || requiredTransport == OpenAIUpstreamTransportHTTPSSE {
+		return true
+REDACTED
 	if s == nil || s.service == nil {
 		return false
 REDACTED
