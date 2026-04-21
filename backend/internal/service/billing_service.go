@@ -20,27 +20,42 @@ type APIKeyRateLimitCacheData struct {
 	Window7d int64   `json:"window_7d"`
 }
 
-// BillingCache defines cache operations for billing service
-type BillingCache interface {
-	// Balance operations
+// ---- 计费缓存按关注点拆分的子接口（ISP） ----
+//
+// 每个关注点（余额 / 订阅 / API Key 限速 / 用户每日配额）是独立的小接口，单个消费者可以
+// 只依赖它需要的那一块，测试 stub 也只需实现对应的小接口。生产实现 *billingCache
+// 自然同时满足全部 4 个子接口。BillingCache 通过接口嵌入组合四者，兼容既有调用方。
+
+// BalanceCache 用户余额缓存操作
+type BalanceCache interface {
 	GetUserBalance(ctx context.Context, userID int64) (float64, error)
 	SetUserBalance(ctx context.Context, userID int64, balance float64) error
 	DeductUserBalance(ctx context.Context, userID int64, amount float64) error
 	InvalidateUserBalance(ctx context.Context, userID int64) error
+}
 
-	// Subscription operations
+// SubscriptionCache 订阅用量缓存操作
+type SubscriptionCache interface {
 	GetSubscriptionCache(ctx context.Context, userID, groupID int64) (*SubscriptionCacheData, error)
 	SetSubscriptionCache(ctx context.Context, userID, groupID int64, data *SubscriptionCacheData) error
 	UpdateSubscriptionUsage(ctx context.Context, userID, groupID int64, cost float64) error
 	InvalidateSubscriptionCache(ctx context.Context, userID, groupID int64) error
+}
 
-	// API Key rate limit operations
+// RateLimitCache API Key 限速缓存操作
+type RateLimitCache interface {
 	GetAPIKeyRateLimit(ctx context.Context, keyID int64) (*APIKeyRateLimitCacheData, error)
 	SetAPIKeyRateLimit(ctx context.Context, keyID int64, data *APIKeyRateLimitCacheData) error
 	UpdateAPIKeyRateLimitUsage(ctx context.Context, keyID int64, cost float64) error
 	InvalidateAPIKeyRateLimit(ctx context.Context, keyID int64) error
+}
 
-	// Quota operations（feature issue #1750）
+// QuotaCache 用户每日配额缓存操作（feature issue #1750）
+//
+// QuotaService 只依赖此接口；BillingCacheService 的 quota 相关热路径同样只需此接口。
+// 与 BillingCache 的完整接口解耦后，quota 相关测试 stub 只需实现 7 个方法，无需为
+// 全部 17 个 BillingCache 方法打桩。
+type QuotaCache interface {
 	// 读今日总已用；缓存 miss 返回 0, nil
 	GetQuotaUsedTotal(ctx context.Context, userID int64, date string) (float64, error)
 	// 读某规则今日已用；缓存 miss 返回 0, nil
@@ -56,6 +71,16 @@ type BillingCache interface {
 	// SetQuotaConfig 写用户配额配置（TTL = QuotaConfigTTL ± QuotaConfigTTLJitter）
 	// reserved for Phase-N: Resolve 结果缓存。当前未使用。
 	SetQuotaConfig(ctx context.Context, userID int64, resolved *ResolvedQuota) error
+}
+
+// BillingCache 计费服务的完整缓存接口（4 个关注点的组合）。
+// 保留该聚合接口是为了兼容现有消费者（如 *BillingCacheService）；新代码应尽量依赖
+// 更窄的子接口（BalanceCache / SubscriptionCache / RateLimitCache / QuotaCache）。
+type BillingCache interface {
+	BalanceCache
+	SubscriptionCache
+	RateLimitCache
+	QuotaCache
 }
 
 // ModelPricing 模型价格配置（per-token价格，与LiteLLM格式一致）

@@ -26,7 +26,7 @@ type quotaService struct {
 	userWriter QuotaUserWriter
 	groupRepo  GroupRepository
 	settings   quotaSettingsProvider
-	cache      BillingCache // 可能为 nil，不可依赖
+	cache      QuotaCache // 可能为 nil，不可依赖（ISP：仅依赖配额子接口，非完整 BillingCache）
 }
 
 // NewQuotaService 构造 QuotaService
@@ -36,7 +36,7 @@ func NewQuotaService(
 	userWriter QuotaUserWriter,
 	groupRepo GroupRepository,
 	settings quotaSettingsProvider,
-	cache BillingCache,
+	cache QuotaCache,
 ) QuotaService {
 	return &quotaService{
 		ruleRepo:   ruleRepo,
