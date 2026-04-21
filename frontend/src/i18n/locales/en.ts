@@ -938,6 +938,10 @@ export default {
     empty: 'No available channels',
     noModels: 'No models configured',
     noPricing: 'Pricing not configured',
+    exclusive: 'Exclusive',
+    public: 'Public',
+    exclusiveTooltip: 'Exclusive groups granted to you by an admin',
+    publicTooltip: 'Groups open to all users',
     columns: {
       name: 'Channel',
       platform: 'Platform',

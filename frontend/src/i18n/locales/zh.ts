@@ -942,6 +942,10 @@ export default {
     empty: '暂无可用渠道',
     noModels: '未配置模型',
     noPricing: '未配置定价',
+    exclusive: '专属',
+    public: '公开',
+    exclusiveTooltip: '管理员授权给你的专属分组',
+    publicTooltip: '对所有用户公开的分组',
     columns: {
       name: '渠道名',
       platform: '平台',
