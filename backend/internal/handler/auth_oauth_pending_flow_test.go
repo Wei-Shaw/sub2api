@@ -903,6 +903,63 @@ REDACTED
 	require.Equal(t, "owner@example.com", storedSession.ResolvedEmail)
 REDACTED
 
+func TestSendPendingOAuthVerifyCodeExistingEmailReturnsBindLoginState(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandlerWithEmailVerification(t, false, "owner@example.com", "135790")
+	ctx := context.Background()
+
+	existingUser, err := client.User.Create().
+		SetEmail("owner@example.com").
+		SetUsername("owner-user").
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("existing-email-send-code-session-token").
+		SetIntent("login").
+		SetProviderType("oidc").
+		SetProviderKey("https://issuer.example").
+		SetProviderSubject("oidc-existing-send-code-123").
+		SetBrowserSessionKey("existing-email-send-code-browser-session-key").
+		SetLocalFlowState(map[string]any{
+			oauthCompletionResponseKey: map[string]any{
+				"step": "email_required",
+		REDACTED,
+	REDACTED).
+		SetRedirectTo("/dashboard").
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+REDACTED
+
+	body := bytes.NewBufferString(`{"email":"owner@example.com"REDACTED`)
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/pending/send-verify-code", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)REDACTED)
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("existing-email-send-code-browser-session-key")REDACTED)
+	ginCtx.Request = req
+
+	handler.SendPendingOAuthVerifyCode(ginCtx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
+	require.Equal(t, "pending_session", payload["auth_result"])
+	require.Equal(t, "bind_login_required", payload["step"])
+	require.Equal(t, "owner@example.com", payload["email"])
+
+	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
+REDACTED
+	require.Equal(t, "adopt_existing_user_by_email", storedSession.Intent)
+	require.NotNil(t, storedSession.TargetUserID)
+	require.Equal(t, existingUser.ID, *storedSession.TargetUserID)
+	require.Equal(t, "owner@example.com", storedSession.ResolvedEmail)
+REDACTED
+
 func TestCreateOIDCOAuthAccountBlocksBackendModeBeforeCreatingUser(t *testing.T) {
 	handler, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{
 		emailVerifyEnabled: true,
@@ -1026,6 +1083,78 @@ REDACTED
 	require.Equal(t, service.StatusUnused, storedInvitation.Status)
 	require.Nil(t, storedInvitation.UsedBy)
 	require.Nil(t, storedInvitation.UsedAt)
+
+	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
+REDACTED
+	require.Nil(t, storedSession.ConsumedAt)
+REDACTED
+
+func TestCreateOIDCOAuthAccountRollsBackPostBindFailureBeforeIdentityCanCommit(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{
+		emailVerifyEnabled: true,
+		emailCache: &oauthPendingFlowEmailCacheStub{
+			verificationCodes: map[string]*service.VerificationCodeData{
+				"fresh@example.com": {
+					Code:      "246810",
+					CreatedAt: time.Now().UTC(),
+					ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
+			REDACTED,
+		REDACTED,
+	REDACTED,
+		userRepoOptions: oauthPendingFlowUserRepoOptions{
+			rejectDeleteWhileAuthIdentityExists: true,
+	REDACTED,
+REDACTED)
+	ctx := context.Background()
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("create-account-finalize-failure-session-token").
+		SetIntent("login").
+		SetProviderType("oidc").
+		SetProviderKey("https://issuer.example").
+		SetProviderSubject("oidc-finalize-failure-123").
+		SetBrowserSessionKey("create-account-finalize-failure-browser-session-key").
+		SetUpstreamIdentityClaims(map[string]any{
+			"username": "oidc_user",
+	REDACTED).
+		SetRedirectTo("/profile").
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+REDACTED
+
+	pendingOAuthCreateAccountPreCommitHook = func(context.Context, *dbent.PendingAuthSession) error {
+		return errors.New("forced post-bind failure")
+REDACTED
+	t.Cleanup(func() {
+		pendingOAuthCreateAccountPreCommitHook = nil
+REDACTED)
+
+	body := bytes.NewBufferString(`{"email":"fresh@example.com","verify_code":"246810","password":"secret-123"REDACTED`)
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/oidc/create-account", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)REDACTED)
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("create-account-finalize-failure-browser-session-key")REDACTED)
+	ginCtx.Request = req
+
+	handler.CreateOIDCOAuthAccount(ginCtx)
+
+	require.Equal(t, http.StatusInternalServerError, recorder.Code)
+
+	userCount, err := client.User.Query().Where(dbuser.EmailEQ("fresh@example.com")).Count(ctx)
+REDACTED
+	require.Zero(t, userCount)
+
+	identityCount, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ("oidc"),
+			authidentity.ProviderKeyEQ("https://issuer.example"),
+			authidentity.ProviderSubjectEQ("oidc-finalize-failure-123"),
+		).
+		Count(ctx)
+REDACTED
+	require.Zero(t, identityCount)
 
 	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
 REDACTED
@@ -1618,7 +1747,6 @@ type oauthPendingFlowTestHandlerOptions struct {
 	defaultSubAssigner service.DefaultSubscriptionAssigner
 	totpCache          service.TotpCache
 	totpEncryptor      service.SecretEncryptor
-	redeemRepoFactory  func(client *dbent.Client) service.RedeemCodeRepository
 	userRepoOptions    oauthPendingFlowUserRepoOptions
 REDACTED
 
@@ -1685,13 +1813,7 @@ REDACTED
 		client:  client,
 		options: options.userRepoOptions,
 REDACTED
-	redeemRepo := service.RedeemCodeRepository(nil)
-	if options.redeemRepoFactory != nil {
-		redeemRepo = options.redeemRepoFactory(client)
-REDACTED
-	if redeemRepo == nil {
-		redeemRepo = &oauthPendingFlowRedeemCodeRepo{client: clientREDACTED
-REDACTED
+	redeemRepo := &oauthPendingFlowRedeemCodeRepo{client: clientREDACTED
 	var emailService *service.EmailService
 	if options.emailCache != nil {
 		emailService = service.NewEmailService(&oauthPendingFlowSettingRepoStub{
@@ -2011,14 +2133,6 @@ func (r *oauthPendingFlowRedeemCodeRepo) SumPositiveBalanceByUser(context.Contex
 	panic("unexpected SumPositiveBalanceByUser call")
 REDACTED
 
-type oauthPendingFlowFailingUseRedeemRepo struct {
-	*oauthPendingFlowRedeemCodeRepo
-REDACTED
-
-func (r *oauthPendingFlowFailingUseRedeemRepo) Use(context.Context, int64, int64) error {
-	return errors.New("forced invitation use failure")
-REDACTED
-
 func decodeJSONResponseData(t *testing.T, recorder *httptest.ResponseRecorder) map[string]any {
 REDACTED
 
@@ -2093,7 +2207,7 @@ REDACTED
 REDACTED
 
 type oauthPendingFlowUserRepo struct {
-	client *dbent.Client
+	client  *dbent.Client
 	options oauthPendingFlowUserRepoOptions
 REDACTED
 

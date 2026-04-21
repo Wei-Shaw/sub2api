@@ -209,7 +209,12 @@ REDACTED
 
 function getBindingStatusForUser(user: User | null | undefined, provider: UserAuthProvider): boolean {
   if (provider === 'email') {
-    return typeof user?.email_bound === 'boolean' ? user.email_bound : Boolean(user?.email)
+    if (typeof user?.email_bound === 'boolean') {
+      return user.email_bound
+    REDACTED
+    const nested = user?.auth_bindings?.email ?? user?.identity_bindings?.email
+    const normalized = normalizeBindingStatus(nested)
+    return normalized ?? false
   REDACTED
 
   const directFlag = user?.[`${providerREDACTED_bound` as keyof User]

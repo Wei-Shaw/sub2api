@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
@@ -34,6 +35,8 @@ const (
 
 	oauthCompletionResponseKey = "completion_response"
 )
+
+var pendingOAuthCreateAccountPreCommitHook func(context.Context, *dbent.PendingAuthSession) error
 
 type oauthPendingSessionPayload struct {
 	Intent                 string
@@ -477,6 +480,26 @@ REDACTED
 		return
 REDACTED
 	if err := ensurePendingOAuthCompleteRegistrationSession(session); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	client := h.entClient()
+	if client == nil {
+		response.ErrorFrom(c, infraerrors.ServiceUnavailable("PENDING_AUTH_NOT_READY", "pending auth service is not ready"))
+		return
+REDACTED
+
+	email := strings.TrimSpace(strings.ToLower(req.Email))
+	if existingUser, err := findUserByNormalizedEmail(c.Request.Context(), client, email); err == nil && existingUser != nil {
+		session, err = h.transitionPendingOAuthAccountToBindLogin(c, client, session, email, oauthAdoptionDecisionRequest{REDACTED)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+	REDACTED
+		c.JSON(http.StatusOK, buildPendingOAuthSessionStatusPayload(session))
+		return
+REDACTED else if err != nil && !errors.Is(err, service.ErrUserNotFound) {
 		response.ErrorFrom(c, err)
 		return
 REDACTED
@@ -946,11 +969,46 @@ REDACTED
 		return nil
 REDACTED
 
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		return applyPendingOAuthBindingTx(ctx, tx, authService, userService, session, decision, overrideUserID, forceBind, applyFirstBindDefaults)
+REDACTED
+
+	tx, err := client.Tx(ctx)
+	if err != nil {
+		return err
+REDACTED
+	defer func() { _ = tx.Rollback() REDACTED()
+
+	txCtx := dbent.NewTxContext(ctx, tx)
+	if err := applyPendingOAuthBindingTx(txCtx, tx, authService, userService, session, decision, overrideUserID, forceBind, applyFirstBindDefaults); err != nil {
+		return err
+REDACTED
+	return tx.Commit()
+REDACTED
+
+func applyPendingOAuthBindingTx(
+	ctx context.Context,
+	tx *dbent.Tx,
+	authService *service.AuthService,
+	userService *service.UserService,
+	session *dbent.PendingAuthSession,
+	decision *dbent.IdentityAdoptionDecision,
+	overrideUserID *int64,
+	forceBind bool,
+	applyFirstBindDefaults bool,
+) error {
+	if tx == nil || session == nil {
+		return nil
+REDACTED
+	if !forceBind && !shouldBindPendingOAuthIdentity(session, decision) {
+		return nil
+REDACTED
+
 	targetUserID := int64(0)
 	if overrideUserID != nil && *overrideUserID > 0 {
 		targetUserID = *overrideUserID
 REDACTED else {
-		resolvedUserID, err := resolvePendingOAuthTargetUserID(ctx, client, session)
+		resolvedUserID, err := resolvePendingOAuthTargetUserID(ctx, tx.Client(), session)
 		if err != nil {
 			return err
 	REDACTED
@@ -974,22 +1032,15 @@ REDACTED
 	REDACTED
 REDACTED
 
-	tx, err := client.Tx(ctx)
-	if err != nil {
-		return err
-REDACTED
-	defer func() { _ = tx.Rollback() REDACTED()
-	txCtx := dbent.NewTxContext(ctx, tx)
-
 	if decision != nil && decision.AdoptDisplayName && adoptedDisplayName != "" {
 		if err := tx.Client().User.UpdateOneID(targetUserID).
 			SetUsername(adoptedDisplayName).
-			Exec(txCtx); err != nil {
+			Exec(ctx); err != nil {
 			return err
 	REDACTED
 REDACTED
 
-	identity, err := ensurePendingOAuthIdentityForUser(txCtx, tx, session, targetUserID)
+	identity, err := ensurePendingOAuthIdentityForUser(ctx, tx, session, targetUserID)
 	if err != nil {
 		return err
 REDACTED
@@ -1009,31 +1060,71 @@ REDACTED
 	if issuer := oauthIdentityIssuer(session); issuer != nil {
 		updateIdentity = updateIdentity.SetIssuer(strings.TrimSpace(*issuer))
 REDACTED
-	if _, err := updateIdentity.Save(txCtx); err != nil {
+	if _, err := updateIdentity.Save(ctx); err != nil {
 		return err
 REDACTED
 
 	if decision != nil && (decision.IdentityID == nil || *decision.IdentityID != identity.ID) {
 		if _, err := tx.Client().IdentityAdoptionDecision.UpdateOneID(decision.ID).
 			SetIdentityID(identity.ID).
-			Save(txCtx); err != nil {
+			Save(ctx); err != nil {
 			return err
 	REDACTED
 REDACTED
 
 	if applyFirstBindDefaults && authService != nil {
-		if err := authService.ApplyProviderDefaultSettingsOnFirstBind(txCtx, targetUserID, session.ProviderType); err != nil {
+		if err := authService.ApplyProviderDefaultSettingsOnFirstBind(ctx, targetUserID, session.ProviderType); err != nil {
 			return err
 	REDACTED
 REDACTED
 
 	if shouldAdoptAvatar && userService != nil {
-		if _, err := userService.SetAvatar(txCtx, targetUserID, adoptedAvatarURL); err != nil {
+		if _, err := userService.SetAvatar(ctx, targetUserID, adoptedAvatarURL); err != nil {
 			return err
 	REDACTED
 REDACTED
 
-	return tx.Commit()
+	return nil
+REDACTED
+
+func consumePendingOAuthBrowserSessionTx(
+	ctx context.Context,
+	tx *dbent.Tx,
+	session *dbent.PendingAuthSession,
+) error {
+	if tx == nil || session == nil {
+		return service.ErrPendingAuthSessionNotFound
+REDACTED
+
+	storedSession, err := tx.Client().PendingAuthSession.Get(ctx, session.ID)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return service.ErrPendingAuthSessionNotFound
+	REDACTED
+		return err
+REDACTED
+
+	now := time.Now().UTC()
+	if storedSession.ConsumedAt != nil {
+		return service.ErrPendingAuthSessionConsumed
+REDACTED
+	if !storedSession.ExpiresAt.IsZero() && now.After(storedSession.ExpiresAt) {
+		return service.ErrPendingAuthSessionExpired
+REDACTED
+	if strings.TrimSpace(storedSession.BrowserSessionKey) != "" &&
+		strings.TrimSpace(storedSession.BrowserSessionKey) != strings.TrimSpace(session.BrowserSessionKey) {
+		return service.ErrPendingAuthBrowserMismatch
+REDACTED
+
+	if _, err := tx.Client().PendingAuthSession.UpdateOneID(storedSession.ID).
+		SetConsumedAt(now).
+		SetCompletionCodeHash("").
+		ClearCompletionCodeExpiresAt().
+		Save(ctx); err != nil {
+		return err
+REDACTED
+
+	return nil
 REDACTED
 
 func applyPendingOAuthAdoption(
@@ -1256,7 +1347,7 @@ func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string)
 		return
 REDACTED
 
-	pendingSvc, session, clearCookies, err := readPendingOAuthBrowserSession(c, h)
+	_, session, clearCookies, err := readPendingOAuthBrowserSession(c, h)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -1341,7 +1432,20 @@ REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
-	if err := applyPendingOAuthBinding(c.Request.Context(), client, h.authService, h.userService, session, decision, &user.ID, true, false); err != nil {
+
+	tx, err := client.Tx(c.Request.Context())
+	if err != nil {
+		if rollbackCreatedUser(err) {
+			return
+	REDACTED
+		response.ErrorFrom(c, infraerrors.InternalServer("PENDING_AUTH_BIND_APPLY_FAILED", "failed to bind pending oauth identity").WithCause(err))
+		return
+REDACTED
+	defer func() { _ = tx.Rollback() REDACTED()
+	txCtx := dbent.NewTxContext(c.Request.Context(), tx)
+
+	if err := applyPendingOAuthBinding(txCtx, client, h.authService, h.userService, session, decision, &user.ID, true, false); err != nil {
+		_ = tx.Rollback()
 		if rollbackCreatedUser(err) {
 			return
 	REDACTED
@@ -1350,11 +1454,12 @@ REDACTED
 REDACTED
 
 	if err := h.authService.FinalizeOAuthEmailAccount(
-		c.Request.Context(),
+		txCtx,
 		user,
 		strings.TrimSpace(req.InvitationCode),
 		strings.TrimSpace(session.ProviderType),
 	); err != nil {
+		_ = tx.Rollback()
 		if rollbackCreatedUser(err) {
 			return
 	REDACTED
@@ -1362,12 +1467,32 @@ REDACTED
 		return
 REDACTED
 
-	if _, err := pendingSvc.ConsumeBrowserSession(c.Request.Context(), session.SessionToken, session.BrowserSessionKey); err != nil {
+	if err := consumePendingOAuthBrowserSessionTx(txCtx, tx, session); err != nil {
+		_ = tx.Rollback()
 		if rollbackCreatedUser(err) {
 			return
 	REDACTED
 		clearCookies()
 		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	if pendingOAuthCreateAccountPreCommitHook != nil {
+		if err := pendingOAuthCreateAccountPreCommitHook(txCtx, session); err != nil {
+			_ = tx.Rollback()
+			if rollbackCreatedUser(err) {
+				return
+		REDACTED
+			response.ErrorFrom(c, infraerrors.InternalServer("PENDING_AUTH_BIND_APPLY_FAILED", "failed to bind pending oauth identity").WithCause(err))
+			return
+	REDACTED
+REDACTED
+
+	if err := tx.Commit(); err != nil {
+		if rollbackCreatedUser(err) {
+			return
+	REDACTED
+		response.ErrorFrom(c, infraerrors.InternalServer("PENDING_AUTH_BIND_APPLY_FAILED", "failed to bind pending oauth identity").WithCause(err))
 		return
 REDACTED
 
