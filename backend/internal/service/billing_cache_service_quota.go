@@ -6,10 +6,14 @@ package service
 
 import (
 	"context"
+	"log/slog"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
+
+// quotaLogComponent 是 quota 相关异步累加日志统一的 component 标签。
+// 集中一处避免各方法重复写字符串字面量，便于未来调整日志分类。
+const quotaLogComponent = "service.quota"
 
 // quotaServiceBox 包装 QuotaService 接口以便配合 atomic.Pointer 使用。
 // Go 的 atomic.Pointer 需要具名指针类型；接口类型不能直接存入，
@@ -76,7 +80,12 @@ func (s *BillingCacheService) processQuotaUsageTask(ctx context.Context, task ca
 	}
 	date := quotaDateKey(timezone.Now())
 	if err := s.cache.IncrQuotaUsedTotal(ctx, task.userID, date, task.amount); err != nil {
-		logger.LegacyPrintf("service.quota", "Warning: incr quota used total failed user=%d err=%v", task.userID, err)
+		slog.Warn("incr quota used total failed",
+			"component", quotaLogComponent,
+			"user_id", task.userID,
+			"date", date,
+			"error", err,
+		)
 	}
 	// 命中规则时还要累加规则用量（通过 QuotaService 匹配）
 	qs := s.quotaService()
@@ -92,7 +101,13 @@ func (s *BillingCacheService) processQuotaUsageTask(ctx context.Context, task ca
 		return
 	}
 	if err := s.cache.IncrQuotaUsedRule(ctx, task.userID, rule.ID, date, task.amount); err != nil {
-		logger.LegacyPrintf("service.quota", "Warning: incr quota used rule failed user=%d rule=%d err=%v", task.userID, rule.ID, err)
+		slog.Warn("incr quota used rule failed",
+			"component", quotaLogComponent,
+			"user_id", task.userID,
+			"rule_id", rule.ID,
+			"date", date,
+			"error", err,
+		)
 	}
 }
 

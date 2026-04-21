@@ -352,7 +352,7 @@ func (s *quotaService) invalidateQuotaConfig(ctx context.Context, userID int64) 
 	if err := s.cache.InvalidateQuotaConfig(ctx, userID); err != nil {
 		// fail open：失效失败只记告警，由 TTL 兜底
 		slog.Warn("invalidate quota config failed",
-			"component", "service.quota",
+			"component", quotaLogComponent,
 			"user_id", userID,
 			"error", err,
 		)
