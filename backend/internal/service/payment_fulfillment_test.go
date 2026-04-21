@@ -264,3 +264,46 @@ REDACTED
 		expectedNotificationProviderKeyForOrder(registry, order, ""),
 	)
 REDACTED
+
+func TestValidateProviderNotificationMetadataRejectsWxpaySnapshotMismatch(t *testing.T) {
+	t.Parallel()
+
+	order := &dbent.PaymentOrder{
+		PaymentType: payment.TypeWxpay,
+		ProviderSnapshot: map[string]any{
+			"schema_version":  1,
+			"merchant_app_id": "wx-app-expected",
+			"merchant_id":     "mch-expected",
+			"currency":        "CNY",
+	REDACTED,
+REDACTED
+
+	err := validateProviderNotificationMetadata(order, payment.TypeWxpay, map[string]string{
+		"appid":       "wx-app-other",
+		"mchid":       "mch-expected",
+		"currency":    "CNY",
+		"trade_state": "SUCCESS",
+REDACTED)
+	assert.ErrorContains(t, err, "wxpay appid mismatch")
+REDACTED
+
+func TestValidateProviderNotificationMetadataAllowsLegacyOrdersWithoutSnapshotFields(t *testing.T) {
+	t.Parallel()
+
+	order := &dbent.PaymentOrder{
+		PaymentType: payment.TypeWxpay,
+		ProviderSnapshot: map[string]any{
+			"schema_version":       1,
+			"provider_instance_id": "9",
+			"provider_key":         payment.TypeWxpay,
+	REDACTED,
+REDACTED
+
+	err := validateProviderNotificationMetadata(order, payment.TypeWxpay, map[string]string{
+		"appid":       "wx-app-runtime",
+		"mchid":       "mch-runtime",
+		"currency":    "CNY",
+		"trade_state": "SUCCESS",
+REDACTED)
+	assert.NoError(t, err)
+REDACTED

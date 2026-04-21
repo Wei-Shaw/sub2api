@@ -26,18 +26,21 @@ func TestBuildPaymentOrderProviderSnapshot_ExcludesSensitiveConfig(t *testing.T)
 	REDACTED,
 REDACTED
 
-	snapshot := buildPaymentOrderProviderSnapshot(sel)
+	snapshot := buildPaymentOrderProviderSnapshot(sel, CreateOrderRequest{REDACTED)
 	require.Equal(t, map[string]any{
-		"schema_version":      1,
+		"schema_version":       2,
 		"provider_instance_id": "12",
 		"provider_key":         payment.TypeWxpay,
 		"payment_mode":         "popup",
+		"merchant_app_id":      "wx-app-id",
+		"currency":             "CNY",
 REDACTED, snapshot)
 	require.NotContains(t, snapshot, "config")
 	require.NotContains(t, snapshot, "privateKey")
 	require.NotContains(t, snapshot, "apiV3Key")
 	require.NotContains(t, snapshot, "supported_types")
 	require.NotContains(t, snapshot, "instance_name")
+	require.NotContains(t, snapshot, "merchant_id")
 REDACTED
 
 func TestCreateOrderInTx_WritesProviderSnapshot(t *testing.T) {
@@ -98,7 +101,7 @@ REDACTED
 REDACTED
 	require.Equal(t, strconv.FormatInt(instance.ID, 10), valueOrEmpty(order.ProviderInstanceID))
 	require.Equal(t, payment.TypeAlipay, valueOrEmpty(order.ProviderKey))
-	require.Equal(t, float64(1), order.ProviderSnapshot["schema_version"])
+	require.Equal(t, float64(2), order.ProviderSnapshot["schema_version"])
 	require.Equal(t, strconv.FormatInt(instance.ID, 10), order.ProviderSnapshot["provider_instance_id"])
 	require.Equal(t, payment.TypeAlipay, order.ProviderSnapshot["provider_key"])
 	require.Equal(t, "redirect", order.ProviderSnapshot["payment_mode"])
@@ -106,6 +109,25 @@ REDACTED
 	require.NotContains(t, order.ProviderSnapshot, "secretKey")
 	require.NotContains(t, order.ProviderSnapshot, "supported_types")
 	require.NotContains(t, order.ProviderSnapshot, "instance_name")
+REDACTED
+
+func TestBuildPaymentOrderProviderSnapshot_UsesWxpayJSAPIAppIDForOpenIDOrders(t *testing.T) {
+	t.Parallel()
+
+	snapshot := buildPaymentOrderProviderSnapshot(&payment.InstanceSelection{
+		InstanceID:  "88",
+		ProviderKey: payment.TypeWxpay,
+		Config: map[string]string{
+			"appId":   "wx-open-app",
+			"mpAppId": "wx-mp-app",
+			"mchId":   "mch-88",
+	REDACTED,
+		PaymentMode: "jsapi",
+REDACTED, CreateOrderRequest{OpenID: "openid-123"REDACTED)
+
+	require.Equal(t, "wx-mp-app", snapshot["merchant_app_id"])
+	require.Equal(t, "mch-88", snapshot["merchant_id"])
+	require.Equal(t, "CNY", snapshot["currency"])
 REDACTED
 
 func valueOrEmpty(v *string) string {

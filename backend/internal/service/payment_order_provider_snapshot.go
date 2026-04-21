@@ -15,6 +15,9 @@ type paymentOrderProviderSnapshot struct {
 	ProviderInstanceID string
 	ProviderKey        string
 	PaymentMode        string
+	MerchantAppID      string
+	MerchantID         string
+	Currency           string
 REDACTED
 
 func psOrderProviderSnapshot(order *dbent.PaymentOrder) *paymentOrderProviderSnapshot {
@@ -27,8 +30,17 @@ REDACTED
 		ProviderInstanceID: psSnapshotStringValue(order.ProviderSnapshot["provider_instance_id"]),
 		ProviderKey:        psSnapshotStringValue(order.ProviderSnapshot["provider_key"]),
 		PaymentMode:        psSnapshotStringValue(order.ProviderSnapshot["payment_mode"]),
+		MerchantAppID:      psSnapshotStringValue(order.ProviderSnapshot["merchant_app_id"]),
+		MerchantID:         psSnapshotStringValue(order.ProviderSnapshot["merchant_id"]),
+		Currency:           psSnapshotStringValue(order.ProviderSnapshot["currency"]),
 REDACTED
-	if snapshot.SchemaVersion == 0 && snapshot.ProviderInstanceID == "" && snapshot.ProviderKey == "" && snapshot.PaymentMode == "" {
+	if snapshot.SchemaVersion == 0 &&
+		snapshot.ProviderInstanceID == "" &&
+		snapshot.ProviderKey == "" &&
+		snapshot.PaymentMode == "" &&
+		snapshot.MerchantAppID == "" &&
+		snapshot.MerchantID == "" &&
+		snapshot.Currency == "" {
 		return nil
 REDACTED
 	return snapshot
