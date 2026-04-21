@@ -113,7 +113,7 @@ REDACTED
 REDACTED
 
 func psHasPinnedProviderInstance(order *dbent.PaymentOrder) bool {
-	return order != nil && order.ProviderInstanceID != nil && strings.TrimSpace(*order.ProviderInstanceID) != ""
+	return order != nil && (psOrderProviderSnapshot(order) != nil || (order.ProviderInstanceID != nil && strings.TrimSpace(*order.ProviderInstanceID) != ""))
 REDACTED
 
 func (s *PaymentService) getEnabledWebhookProvidersByKey(ctx context.Context, providerKey string) ([]payment.Provider, error) {

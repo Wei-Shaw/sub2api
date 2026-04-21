@@ -7,6 +7,7 @@ import (
 	"errors"
 	"testing"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/stretchr/testify/assert"
 )
@@ -238,5 +239,28 @@ REDACTED)
 	assert.Equal(t,
 		payment.TypeEasyPay,
 		expectedNotificationProviderKey(registry, payment.TypeAlipay, payment.TypeEasyPay, ""),
+	)
+REDACTED
+
+func TestExpectedNotificationProviderKeyForOrderUsesSnapshotProviderKey(t *testing.T) {
+	t.Parallel()
+
+	registry := payment.NewRegistry()
+	registry.Register(paymentFulfillmentTestProvider{
+		key:            payment.TypeAlipay,
+		supportedTypes: []payment.PaymentType{payment.TypeAlipayREDACTED,
+REDACTED)
+
+	order := &dbent.PaymentOrder{
+		PaymentType: payment.TypeAlipay,
+		ProviderSnapshot: map[string]any{
+			"schema_version": 1,
+			"provider_key":   payment.TypeEasyPay,
+	REDACTED,
+REDACTED
+
+	assert.Equal(t,
+		payment.TypeEasyPay,
+		expectedNotificationProviderKeyForOrder(registry, order, ""),
 	)
 REDACTED
