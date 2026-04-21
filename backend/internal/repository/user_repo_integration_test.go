@@ -160,6 +160,30 @@ func (s *UserRepoSuite) TestUpdate() {
 	s.Require().Equal("updated", updated.Username)
 REDACTED
 
+func (s *UserRepoSuite) TestUpdateIgnoresNoRowsFromConflictingEmailIdentityUpsert() {
+	user := s.mustCreateUser(&service.User{Email: "update-existing-identity@test.com", Username: "original"REDACTED)
+
+	identityCount, err := s.client.AuthIdentity.Query().
+		Where(
+			authidentity.UserIDEQ(user.ID),
+			authidentity.ProviderTypeEQ("email"),
+			authidentity.ProviderKeyEQ("email"),
+			authidentity.ProviderSubjectEQ("update-existing-identity@test.com"),
+		).
+		Count(s.ctx)
+	s.Require().NoError(err)
+	s.Require().Equal(1, identityCount)
+
+	got, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	got.Username = "updated"
+	s.Require().NoError(s.repo.Update(s.ctx, got), "Update should tolerate ON CONFLICT DO NOTHING returning no rows")
+
+	updated, err := s.repo.GetByID(s.ctx, user.ID)
+	s.Require().NoError(err)
+	s.Require().Equal("updated", updated.Username)
+REDACTED
+
 func (s *UserRepoSuite) TestDelete() {
 	user := s.mustCreateUser(&service.User{Email: "delete@test.com"REDACTED)
 

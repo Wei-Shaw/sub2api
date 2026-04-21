@@ -916,6 +916,11 @@ REDACTED
 			).
 			DoNothing().
 			Exec(ctx); err != nil {
+			if isSQLNoRowsError(err) {
+				err = nil
+		REDACTED
+	REDACTED
+		if err != nil {
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to ensure email auth identity: user_id=%d email=%s err=%v", user.ID, email, err)
 			return nil, false
 	REDACTED

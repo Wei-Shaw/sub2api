@@ -277,7 +277,9 @@ REDACTED
 		).
 		DoNothing().
 		Exec(ctx); err != nil {
-		return err
+		if !isSQLNoRowsError(err) {
+			return err
+	REDACTED
 REDACTED
 
 	identity, err := client.AuthIdentity.Query().
