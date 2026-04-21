@@ -796,7 +796,7 @@ func (s *AuthService) backfillEmailIdentityOnSuccessfulLogin(ctx context.Context
 	if s == nil || user == nil || user.ID <= 0 {
 		return
 REDACTED
-	identity, created := s.ensureEmailAuthIdentity(ctx, user)
+	identity, created := s.ensureEmailAuthIdentity(ctx, user, "auth_service_login_backfill")
 	if s.shouldApplyEmailFirstBindDefaults(ctx, user.ID, identity, created) {
 		if err := s.ApplyProviderDefaultSettingsOnFirstBind(ctx, user.ID, "email"); err != nil {
 			logger.LegacyPrintf("service.auth", "[Auth] Failed to apply email first bind defaults: user_id=%d err=%v", user.ID, err)
@@ -810,13 +810,17 @@ func (s *AuthService) shouldApplyEmailFirstBindDefaults(
 	identity *dbent.AuthIdentity,
 	created bool,
 ) bool {
+	source := emailAuthIdentitySource(identity.Metadata)
+	if source == "auth_service_login_backfill" {
+		return false
+REDACTED
 	if created {
 		return true
 REDACTED
 	if s == nil || s.entClient == nil || userID <= 0 || identity == nil || identity.UserID != userID {
 		return false
 REDACTED
-	if emailAuthIdentitySource(identity.Metadata) != "auth_service_dual_write" {
+	if source != "auth_service_dual_write" {
 		return false
 REDACTED
 
@@ -863,7 +867,7 @@ REDACTED
 	return rows.Next(), rows.Err()
 REDACTED
 
-func (s *AuthService) ensureEmailAuthIdentity(ctx context.Context, user *User) (*dbent.AuthIdentity, bool) {
+func (s *AuthService) ensureEmailAuthIdentity(ctx context.Context, user *User, source string) (*dbent.AuthIdentity, bool) {
 	if s == nil || s.entClient == nil || user == nil || user.ID <= 0 {
 		return nil, false
 REDACTED
@@ -871,6 +875,9 @@ REDACTED
 	email := strings.ToLower(strings.TrimSpace(user.Email))
 	if email == "" || isReservedEmail(email) {
 		return nil, false
+REDACTED
+	if strings.TrimSpace(source) == "" {
+		source = "auth_service_dual_write"
 REDACTED
 
 	client := s.entClient
@@ -900,7 +907,7 @@ REDACTED
 			SetProviderSubject(email).
 			SetVerifiedAt(time.Now().UTC()).
 			SetMetadata(map[string]any{
-				"source": "auth_service_dual_write",
+				"source": strings.TrimSpace(source),
 		REDACTED).
 			OnConflictColumns(
 				authidentity.FieldProviderType,
