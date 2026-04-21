@@ -60,19 +60,19 @@
                 </div>
                 <div class="flex items-end"><button type="button" class="btn btn-secondary text-red-600 dark:text-red-400" @click="removeRuleDraft(idx)">{{ t('userQuota.deleteRule') }}</button></div>
               </div>
-              <div v-if="quotaData && draft.id" class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t('userQuota.todayUsageRule', { ruleId: draft.id }) }}: ${{ formatLimitUsd(ruleUsageFor(draft.id)) }}</div>
+              <div v-if="quotaData && draft.id" class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t('userQuota.todayUsageRule', { ruleId: draft.id }) }}: {{ formatCurrency(ruleUsageFor(draft.id)) }}</div>
             </div>
           </div>
         </div>
         <div v-if="quotaData" class="rounded-xl bg-gray-50 p-4 text-sm dark:bg-dark-700">
-          <div class="mb-1 flex items-center justify-between"><span class="text-gray-600 dark:text-gray-400">{{ t('userQuota.todayUsageLabel') }}</span><span class="font-medium text-gray-900 dark:text-white">${{ formatLimitUsd(quotaData.today_usage.total_used_usd) }}</span></div>
+          <div class="mb-1 flex items-center justify-between"><span class="text-gray-600 dark:text-gray-400">{{ t('userQuota.todayUsageLabel') }}</span><span class="font-medium text-gray-900 dark:text-white">{{ formatCurrency(quotaData.today_usage.total_used_usd) }}</span></div>
           <div class="mb-1 flex items-center justify-between"><span class="text-gray-600 dark:text-gray-400">{{ t('userQuota.resetAtLabel') }}</span><span class="text-gray-900 dark:text-white">{{ formatDateTime(quotaData.today_usage.reset_at) }}</span></div>
           <div class="flex items-center justify-between">
             <span class="text-gray-600 dark:text-gray-400">{{ t('userQuota.effectiveLimitLabel') }}</span>
             <span class="text-gray-900 dark:text-white">
               <template v-if="!quotaData.resolved.enabled">{{ t('userQuota.effectiveDisabled') }}</template>
               <template v-else-if="quotaData.resolved.daily_limit === null">{{ t('userQuota.unlimited') }}</template>
-              <template v-else>${{ formatLimitUsd(quotaData.resolved.daily_limit) }}</template>
+              <template v-else>{{ formatCurrency(quotaData.resolved.daily_limit) }}</template>
             </span>
           </div>
         </div>
@@ -104,7 +104,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { adminAPI } from '@/api/admin'
 import { userQuotaAPI } from '@/api/admin/quota'
 import { extractApiErrorMessage } from '@/utils/apiError'
-import { formatDateTime, formatLimitUsd } from '@/utils/format'
+import { formatDateTime, formatCurrency } from '@/utils/format'
 import {
   QUOTA_OVERRIDE_ENABLED, QUOTA_OVERRIDE_DISABLED, QUOTA_OVERRIDE_FOLLOW_GLOBAL,
   QUOTA_PERIOD_DAILY,

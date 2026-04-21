@@ -15,11 +15,11 @@
       </template>
       <template v-else-if="data.resolved.daily_limit === null">
         <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('userQuota.dashboardUnlimited') }}</p>
-        <p class="mt-1 text-sm text-gray-700 dark:text-gray-300">{{ t('userQuota.dashboardUsedOnly', { used: formatLimitUsd(data.today_usage.total_used_usd) }) }}</p>
+        <p class="mt-1 text-sm text-gray-700 dark:text-gray-300">{{ t('userQuota.dashboardUsedOnly', { used: formatCurrency(data.today_usage.total_used_usd) }) }}</p>
       </template>
       <template v-else>
         <div class="mb-2 flex items-end justify-between text-sm">
-          <span class="font-medium text-gray-900 dark:text-white">{{ t('userQuota.dashboardUsage', { used: formatLimitUsd(data.today_usage.total_used_usd), limit: formatLimitUsd(data.resolved.daily_limit) }) }}</span>
+          <span class="font-medium text-gray-900 dark:text-white">{{ t('userQuota.dashboardUsage', { used: formatCurrency(data.today_usage.total_used_usd), limit: formatCurrency(data.resolved.daily_limit) }) }}</span>
           <span class="text-xs text-gray-500">{{ progressPct.toFixed(0) }}%</span>
         </div>
         <div class="h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
@@ -37,7 +37,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getMyQuotaStatus } from '@/api/user/quota'
 import { extractApiErrorMessage } from '@/utils/apiError'
-import { formatDateTime, formatLimitUsd } from '@/utils/format'
+import { formatDateTime, formatCurrency } from '@/utils/format'
 import { QUOTA_ERR_EXCEEDED } from '@/constants/quota'
 import type { UserQuotaStatus } from '@/types/quota'
 

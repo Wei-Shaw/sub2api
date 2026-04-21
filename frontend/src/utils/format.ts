@@ -54,24 +54,38 @@ export function formatNumber(num: number | null | undefined): string {
 
 /**
  * 格式化货币金额
- * @param amount 金额
+ *
+ * 行为：
+ * - null / undefined / NaN / 非有限数 → "$0.00"
+ * - 正常数值先经 toPrecision(10) 消除 IEEE 754 浮点误差（参考 CLAUDE.md §12 "前端显示规范 - 浮点精度"），
+ *   再用 Intl.NumberFormat 按当前 locale 以货币样式输出（默认 USD → "$1.25"）
+ * - 极小金额（0 < amount < 0.01）显示 6 位小数，其他情况 2 位小数
+ *
+ * 合并自原 `formatLimitUsd`，作为货币展示的唯一权威实现。
+ *
+ * @param amount 金额，可能为 null/undefined
  * @param currency 货币代码，默认 USD
- * @returns 格式化后的字符串，如 "$1.25"
+ * @returns 本地化的货币字符串（含货币符号，如 "$1.25"）
  */
 export function formatCurrency(amount: number | null | undefined, currency: string = 'USD'): string {
   if (amount === null || amount === undefined) return '$0.00'
+  const num = Number(amount)
+  if (!Number.isFinite(num)) return '$0.00'
 
   const locale = getLocale()
 
+  // IEEE 754 误差消除：例如 5e-8 * 1e6 = 0.04999...96 → 0.05
+  const normalized = Number(num.toPrecision(10))
+
   // For very small amounts, show more decimals
-  const fractionDigits = amount > 0 && amount < 0.01 ? 6 : 2
+  const fractionDigits = normalized > 0 && normalized < 0.01 ? 6 : 2
 
   return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: currency,
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits
-  }).format(amount)
+  }).format(normalized)
 }
 
 /**
@@ -236,17 +250,6 @@ export function formatNumberLocaleString(num: number): string {
  */
 export function formatCostFixed(amount: number, fractionDigits: number = 4): string {
   return amount.toFixed(fractionDigits)
-}
-
-/**
- * 格式化用户每日配额限额（2 位小数，使用 toPrecision(10) 消除 IEEE 754 浮点误差）
- * 参考 CLAUDE.md §12 "前端显示规范 - 浮点精度"
- * @param v 金额，可能为 null/undefined
- * @returns 两位小数字符串，如 "1.25"；空值返回 "0.00"
- */
-export function formatLimitUsd(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(Number(v))) return '0.00'
-  return Number(Number(v).toPrecision(10)).toFixed(2)
 }
 
 /**

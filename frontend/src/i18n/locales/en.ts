@@ -6122,8 +6122,8 @@ export default {
 
     // User-side dashboard card
     dashboardCardTitle: 'Today\'s Quota',
-    dashboardUsage: 'Used {used} / Limit {limit} USD',
-    dashboardUsedOnly: 'Used {used} USD',
+    dashboardUsage: 'Used {used} / Limit {limit}',
+    dashboardUsedOnly: 'Used {used}',
     dashboardDisabled: 'Quota limit is currently disabled',
     dashboardUnlimited: 'Unlimited (no total cap)',
     dashboardResetAt: 'Resets at {time}',

@@ -6315,8 +6315,8 @@ export default {
 
     // 用户侧 Dashboard 小部件
     dashboardCardTitle: '今日配额',
-    dashboardUsage: '已用 {used} / 上限 {limit} USD',
-    dashboardUsedOnly: '已用 {used} USD',
+    dashboardUsage: '已用 {used} / 上限 {limit}',
+    dashboardUsedOnly: '已用 {used}',
     dashboardDisabled: '当前未启用配额限制',
     dashboardUnlimited: '不限（无总限额）',
     dashboardResetAt: '将于 {time} 重置',
