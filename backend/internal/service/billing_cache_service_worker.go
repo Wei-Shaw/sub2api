@@ -7,6 +7,7 @@ package service
 import (
 	"context"
 	"log/slog"
+	"runtime/debug"
 	"sync/atomic"
 	"time"
 )
@@ -130,7 +131,27 @@ func (s *BillingCacheService) cacheWriteWorker(ch <-chan cacheWriteTask) {
 }
 
 // runCacheWriteTask 在独立 context 内执行单个缓存写入任务。
+//
+// ---- panic 恢复 ----
+// 下游 process* 方法依赖外部组件（Redis / QuotaService / DB）；任一
+// 链路里出现 nil 解引用或其他意外 panic，都会把当前 worker goroutine 带走，
+// 导致工作池容量永久减一、剩余任务堆积直至队列满（见 logCacheWriteDrop "full"）。
+// 所以在任务入口设 recover：记录 panic、调用栈、任务类型，让 worker 能继续
+// 消费后续任务（符合 CLAUDE.md §8「并发安全」：避免单个任务带走整个 goroutine）。
 func (s *BillingCacheService) runCacheWriteTask(task cacheWriteTask) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("cache write task panic",
+				"component", billingCacheLogComponent,
+				"kind", cacheWriteKindName(task.kind),
+				"user_id", task.userID,
+				"group_id", task.groupID,
+				"api_key_id", task.apiKeyID,
+				"panic", r,
+				"stack", string(debug.Stack()),
+			)
+		}
+	}()
 	ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
 	defer cancel()
 	switch task.kind {
