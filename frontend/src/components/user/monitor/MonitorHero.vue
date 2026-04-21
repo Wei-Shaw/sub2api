@@ -1,18 +1,6 @@
 <template>
   <section class="pt-6 pb-6 md:pb-8">
-    <div class="text-xs font-medium tracking-widest uppercase text-gray-400 dark:text-gray-500 mb-4">
-      {{ t('channelStatus.hero.breadcrumb') }}
-    </div>
-    <div class="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-      <div class="min-w-0">
-        <p class="text-sm md:text-base text-gray-500 dark:text-gray-400 max-w-xl">
-          {{ t('channelStatus.hero.subtitleZh') }}
-        </p>
-        <p class="mt-1 text-xs md:text-sm italic opacity-80 text-gray-500 dark:text-gray-400 max-w-xl">
-          {{ t('channelStatus.hero.subtitleEn') }}
-        </p>
-      </div>
-
+    <div class="flex flex-col gap-6 md:flex-row md:items-end md:justify-end">
       <div class="flex flex-col items-start md:items-end gap-2.5">
         <div
           role="tablist"

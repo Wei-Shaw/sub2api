@@ -849,11 +849,6 @@ export default {
     detailLoadError: 'Failed to load channel detail',
     detailTitle: 'Channel Detail',
     closeDetail: 'Close',
-    hero: {
-      breadcrumb: 'CHANNEL · STATUS',
-      subtitleZh: 'Real-time tracking of availability, latency and status for leading AI endpoints.',
-      subtitleEn: 'Advanced performance metrics for next-gen intelligence.'
-    },
     windowTab: {
       '7d': '7 days',
       '15d': '15 days',

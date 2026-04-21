@@ -853,11 +853,6 @@ export default {
     detailLoadError: '加载渠道详情失败',
     detailTitle: '渠道详情',
     closeDetail: '关闭',
-    hero: {
-      breadcrumb: '渠道 · 状态',
-      subtitleZh: '实时追踪各大 AI 模型对话接口的可用性、延迟与官方服务状态。',
-      subtitleEn: 'Advanced performance metrics for next-gen intelligence.'
-    },
     windowTab: {
       '7d': '7 天',
       '15d': '15 天',
