@@ -1877,13 +1877,13 @@
               <div class="flex items-center justify-between rounded border border-gray-200 px-4 py-3 dark:border-dark-700">
                 <div>
                   <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ localText('OpenAI 高级调度器', 'OpenAI advanced scheduler') REDACTEDREDACTED
+                    {{ localText('OpenAI 实验调度策略', 'OpenAI experimental scheduler policy') REDACTEDREDACTED
                   </label>
                   <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                     {{
                       localText(
-                        '切换 OpenAI 侧新增的高级调度开关，供当前分支实验性调度逻辑使用。',
-                        'Toggles the new OpenAI advanced scheduler flag for the experimental routing logic on this branch.'
+                        '默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。',
+                        'Disabled by default. When enabled, this only changes the gateway\'s experimental account-selection policy for OpenAI traffic; it does not indicate an upstream OpenAI capability.'
                       )
                     REDACTEDREDACTED
                   </p>

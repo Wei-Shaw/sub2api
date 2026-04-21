@@ -472,4 +472,14 @@ describe('admin SettingsView payment visible method controls', () => {
     expect(showError).toHaveBeenCalled()
     expect(String(showError.mock.calls.at(-1)?.[0] ?? '')).toContain('支付来源')
   REDACTED)
+
+  it('renders advanced scheduler copy as local experimental gateway policy', async () => {
+    const wrapper = mountView()
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('OpenAI 实验调度策略')
+    expect(wrapper.text()).toContain('默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑')
+    expect(wrapper.text()).not.toContain('OpenAI 高级调度器')
+  REDACTED)
 REDACTED)
