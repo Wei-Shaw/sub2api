@@ -14,7 +14,6 @@
 | `origin` | `touwaeriol/sub2api` | 推送 | 我们的 fork，主开发仓库 |
 | `upstream` | `Wei-Shaw/sub2api` | 只读（仅 PR） | 官方上游，所有"PR"默认指这里 |
 | `business` | `Sub2API-Devs/sub2api-pro` | **直接推送** | 商业版上游，可直接 push（不走 PR）|
-| `silentflower` | `SilentFlower/sub2api` | 只读 | 第三方 fork |
 
 涉及 `business` 仓库的操作必须明确表述（如 "push 到 business"、"business 的 main"），避免与 `upstream` 概念混淆。
 
