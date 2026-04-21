@@ -4675,10 +4675,18 @@ export default {
         channelMonitor: {
           title: 'Channel Monitor',
           description: 'Periodically probe configured channels and surface availability / latency to users. Turning it off stops the scheduler and returns an empty list on the user page.',
+          configureLink: 'Configure monitors in Channel Management > Channel Monitor',
           enabled: 'Enable Channel Monitor',
           enabledHint: 'Disabling stops background checks; existing history is preserved.',
           defaultInterval: 'Default check interval (seconds)',
           defaultIntervalHint: 'Pre-fills the interval when creating a new monitor; each monitor can override it. Range 15 – 3600.',
+        REDACTED,
+        availableChannels: {
+          title: 'Available Channels',
+          description: 'Show logged-in users an aggregate view of the channels, models and pricing they can access. Disabled by default.',
+          configureLink: 'Configure model pricing in Channel Management > Channel Pricing',
+          enabled: 'Enable Available Channels',
+          enabledHint: 'When off, the sidebar entry is hidden and the endpoint returns an empty list.',
         REDACTED,
       REDACTED,
       emailTabDisabledTitle: 'Email Verification Not Enabled',

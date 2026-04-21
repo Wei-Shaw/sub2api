@@ -473,6 +473,9 @@ export interface SystemSettings {
   // Channel Monitor feature switch
   channel_monitor_enabled: boolean;
   channel_monitor_default_interval_seconds: number;
+
+  // Available Channels feature switch
+  available_channels_enabled: boolean;
 REDACTED
 
 export interface UpdateSettingsRequest {
@@ -626,6 +629,9 @@ export interface UpdateSettingsRequest {
   // Channel Monitor feature switch
   channel_monitor_enabled?: boolean;
   channel_monitor_default_interval_seconds?: number;
+
+  // Available Channels feature switch
+  available_channels_enabled?: boolean;
 REDACTED
 
 /**

@@ -4840,10 +4840,18 @@ export default {
         channelMonitor: {
           title: '渠道监控',
           description: '定期对配置的渠道发起健康检查，向用户展示可用性与延迟。关闭后调度器停止扫描，用户端列表为空。',
+          configureLink: '前往 渠道管理 > 渠道监控 配置监控项',
           enabled: '启用渠道监控',
           enabledHint: '关闭后后台不再执行定时检测，已有数据保留。',
           defaultInterval: '默认检测间隔（秒）',
           defaultIntervalHint: '新建渠道监控时表单的默认值，可被单个渠道覆盖。范围 15 – 3600 秒。',
+        REDACTED,
+        availableChannels: {
+          title: '可用渠道',
+          description: '向已登录用户展示他们能访问的渠道、模型和定价聚合视图。默认关闭。',
+          configureLink: '前往 渠道管理 > 渠道定价 配置模型价格',
+          enabled: '启用可用渠道',
+          enabledHint: '关闭后用户端侧边栏入口隐藏，接口返回空数组。',
         REDACTED,
       REDACTED,
       emailTabDisabledTitle: '邮箱验证未启用',
