@@ -50,6 +50,19 @@
         </div>
       </div>
 
+      <div
+        v-if="sourceHints.length"
+        class="mt-4 grid gap-2 rounded-2xl border border-gray-100 bg-gray-50/80 p-3 text-xs text-gray-500 dark:border-dark-700 dark:bg-dark-900/30 dark:text-gray-400"
+      >
+        <div
+          v-for="hint in sourceHints"
+          :key="hint.key"
+          class="flex items-start gap-2"
+        >
+          <Icon name="link" size="sm" class="mt-0.5 text-gray-400 dark:text-gray-500" />
+          <span>{{ hint.text REDACTEDREDACTED</span>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -58,7 +71,7 @@
 import { computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
-import type { User REDACTED from '@/types'
+import type { User, UserAuthProvider, UserProfileSourceContext REDACTED from '@/types'
 
 const props = defineProps<{
   user: User | null
@@ -69,4 +82,108 @@ const { t REDACTED = useI18n()
 const avatarUrl = computed(() => props.user?.avatar_url?.trim() || '')
 const displayName = computed(() => props.user?.username?.trim() || props.user?.email?.trim() || 'User')
 const avatarInitial = computed(() => displayName.value.charAt(0).toUpperCase() || 'U')
+
+const providerLabels = computed<Record<UserAuthProvider, string>>(() => ({
+  email: t('profile.authBindings.providers.email'),
+  linuxdo: t('profile.authBindings.providers.linuxdo'),
+  oidc: t('profile.authBindings.providers.oidc', { providerName: 'OIDC' REDACTED),
+  wechat: t('profile.authBindings.providers.wechat')
+REDACTED))
+
+function normalizeProvider(value: string): UserAuthProvider | null {
+  const normalized = value.trim().toLowerCase()
+  if (normalized === 'email' || normalized === 'linuxdo' || normalized === 'wechat') {
+    return normalized
+  REDACTED
+  if (normalized === 'oidc' || normalized.startsWith('oidc:') || normalized.startsWith('oidc/')) {
+    return 'oidc'
+  REDACTED
+  return null
+REDACTED
+
+function readObjectString(source: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = source[key]
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim()
+    REDACTED
+  REDACTED
+  return ''
+REDACTED
+
+function resolveThirdPartySource(
+  rawSource: string | UserProfileSourceContext | null | undefined
+): { provider: UserAuthProvider; label: string REDACTED | null {
+  if (!rawSource) {
+    return null
+  REDACTED
+
+  if (typeof rawSource === 'string') {
+    const provider = normalizeProvider(rawSource)
+    if (!provider || provider === 'email') {
+      return null
+    REDACTED
+    return {
+      provider,
+      label: providerLabels.value[provider]
+    REDACTED
+  REDACTED
+
+  const sourceRecord = rawSource as Record<string, unknown>
+  const provider = normalizeProvider(
+    readObjectString(sourceRecord, 'provider', 'source', 'provider_type', 'auth_provider')
+  )
+  if (!provider || provider === 'email') {
+    return null
+  REDACTED
+
+  const explicitLabel = readObjectString(
+    sourceRecord,
+    'provider_label',
+    'label',
+    'provider_name',
+    'providerName'
+  )
+
+  return {
+    provider,
+    label: explicitLabel || providerLabels.value[provider]
+  REDACTED
+REDACTED
+
+const sourceHints = computed(() => {
+  const currentUser = props.user
+  if (!currentUser) {
+    return []
+  REDACTED
+
+  const hints: Array<{ key: string; text: string REDACTED> = []
+  const avatarSource = resolveThirdPartySource(
+    currentUser.profile_sources?.avatar ?? currentUser.avatar_source
+  )
+  const usernameSource = resolveThirdPartySource(
+    currentUser.profile_sources?.username ??
+      currentUser.profile_sources?.display_name ??
+      currentUser.profile_sources?.nickname ??
+      currentUser.display_name_source ??
+      currentUser.username_source ??
+      currentUser.nickname_source
+  )
+
+  if (avatarSource) {
+    hints.push({
+      key: 'avatar',
+      text: t('profile.authBindings.source.avatar', { providerName: avatarSource.label REDACTED)
+    REDACTED)
+  REDACTED
+
+  if (usernameSource) {
+    hints.push({
+      key: 'username',
+      text: t('profile.authBindings.source.username', { providerName: usernameSource.label REDACTED)
+    REDACTED)
+  REDACTED
+
+  return hints
+REDACTED)
 </script>

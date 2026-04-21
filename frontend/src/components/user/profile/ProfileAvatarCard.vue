@@ -32,14 +32,6 @@
           </p>
         </div>
 
-        <textarea
-          data-testid="profile-avatar-input"
-          v-model="avatarDraft"
-          rows="3"
-          class="input min-h-[88px]"
-          :placeholder="t('profile.avatar.inputPlaceholder')"
-        />
-
         <div class="flex flex-wrap items-center gap-3">
           <label class="btn btn-secondary btn-sm cursor-pointer">
             <input
@@ -56,7 +48,7 @@
             data-testid="profile-avatar-save"
             type="button"
             class="btn btn-primary btn-sm"
-            :disabled="avatarSaving"
+            :disabled="avatarSaving || !avatarDraft"
             @click="handleAvatarSave"
           >
             {{ t('common.save') REDACTEDREDACTED
@@ -97,7 +89,7 @@ const appStore = useAppStore()
 const targetAvatarUploadBytes = 20 * 1024
 const avatarScaleSteps = [1, 0.92, 0.84, 0.76, 0.68, 0.6, 0.52, 0.44, 0.36]
 const avatarQualitySteps = [0.92, 0.84, 0.76, 0.68, 0.6, 0.52, 0.44, 0.36]
-const avatarDraft = ref(props.user?.avatar_url?.trim() || '')
+const avatarDraft = ref('')
 const avatarSaving = ref(false)
 
 const displayName = computed(() => props.user?.username?.trim() || props.user?.email?.trim() || 'User')
@@ -106,36 +98,23 @@ const avatarPreviewUrl = computed(() => avatarDraft.value.trim() || props.user?.
 
 watch(
   () => props.user?.avatar_url,
-  (value) => {
-    avatarDraft.value = value?.trim() || ''
+  () => {
+    avatarDraft.value = ''
   REDACTED
 )
 
-function validateAvatarInput(value: string): string | null {
+function normalizeUploadedAvatar(value: string): string | null {
   const normalized = value.trim()
   if (!normalized) {
     return null
   REDACTED
 
-  if (normalized.startsWith('data:')) {
-    if (!/^data:image\/[a-zA-Z0-9.+-]+;base64,/i.test(normalized)) {
-      appStore.showError(t('profile.avatar.invalidValue'))
-      return null
-    REDACTED
-    return normalized
+  if (!/^data:image\/[a-zA-Z0-9.+-]+;base64,/i.test(normalized)) {
+    appStore.showError(t('profile.avatar.uploadRequired'))
+    return null
   REDACTED
 
-  try {
-    const parsed = new URL(normalized)
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
-      return normalized
-    REDACTED
-  REDACTED catch {
-    // Invalid URL is handled below.
-  REDACTED
-
-  appStore.showError(t('profile.avatar.invalidValue'))
-  return null
+  return normalized
 REDACTED
 
 function readFileAsDataURL(file: File): Promise<string> {
@@ -226,7 +205,7 @@ async function handleAvatarFileChange(event: Event) {
   try {
     const preparedFile = await prepareAvatarUpload(file)
     const dataURL = await readFileAsDataURL(preparedFile)
-    const normalized = validateAvatarInput(dataURL)
+    const normalized = normalizeUploadedAvatar(dataURL)
     if (!normalized) {
       return
     REDACTED
@@ -237,7 +216,7 @@ async function handleAvatarFileChange(event: Event) {
 REDACTED
 
 async function handleAvatarSave() {
-  const normalized = validateAvatarInput(avatarDraft.value)
+  const normalized = normalizeUploadedAvatar(avatarDraft.value)
   if (!normalized) {
     return
   REDACTED
@@ -277,4 +256,3 @@ async function handleAvatarDelete() {
   REDACTED
 REDACTED
 </script>
-

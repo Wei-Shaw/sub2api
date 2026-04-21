@@ -88,6 +88,8 @@ REDACTED
 async function flushAsyncWork(): Promise<void> {
   await Promise.resolve()
   await Promise.resolve()
+  await Promise.resolve()
+  await Promise.resolve()
 REDACTED
 
 const originalFileReader = globalThis.FileReader
@@ -154,6 +156,23 @@ describe('ProfileAvatarCard', () => {
     globalThis.FileReader = originalFileReader
     globalThis.Image = originalImage
     vi.restoreAllMocks()
+  REDACTED)
+
+  it('does not render a manual avatar input field', () => {
+    authStoreState.user = createUser()
+
+    const wrapper = mount(ProfileAvatarCard, {
+      props: {
+        user: authStoreState.user
+      REDACTED,
+      global: {
+        stubs: {
+          Icon: true
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    expect(wrapper.find('[data-testid="profile-avatar-input"]').exists()).toBe(false)
   REDACTED)
 
   it('compresses an uploaded image that exceeds the 20KB target before saving', async () => {

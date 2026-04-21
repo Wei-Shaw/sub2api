@@ -947,11 +947,10 @@ export default {
     REDACTED,
     avatar: {
       title: '资料头像',
-      description: '支持填写远程图片 URL，或上传头像图片；静态图片会自动压缩到 20KB 以内后再保存。',
-      inputLabel: '头像 URL 或 data URL',
-      inputPlaceholder: 'https://cdn.example.com/avatar.png',
+      description: '仅支持上传头像图片；静态图片会自动压缩到 20KB 以内后再保存。',
       uploadAction: '上传图片',
       uploadHint: '上传图片时会自动压缩静态图片到 20KB 以内，GIF 需自行控制在 20KB 以内',
+      uploadRequired: '请先上传头像图片',
       saveSuccess: '头像已更新',
       deleteSuccess: '头像已删除',
       invalidType: '请选择图片文件',
@@ -959,7 +958,6 @@ export default {
       compressTooLarge: '无法将图片压缩到 20KB 以内，请换一张更小的图片',
       compressFailed: '压缩所选图片失败',
       readFailed: '读取所选图片失败',
-      invalidValue: '请输入有效的头像 URL 或图片 data URL',
       emptyDeleteHint: '当前没有可删除的头像',
     REDACTED,
     authBindings: {

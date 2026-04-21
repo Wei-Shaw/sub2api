@@ -21,9 +21,19 @@ vi.mock('vue-i18n', async (importOriginal) => {
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string) => {
+      t: (key: string, params?: Record<string, string>) => {
         if (key === 'profile.administrator') return 'Administrator'
         if (key === 'profile.user') return 'User'
+        if (key === 'profile.authBindings.providers.email') return 'Email'
+        if (key === 'profile.authBindings.providers.linuxdo') return 'LinuxDo'
+        if (key === 'profile.authBindings.providers.wechat') return 'WeChat'
+        if (key === 'profile.authBindings.providers.oidc') return params?.providerName || 'OIDC'
+        if (key === 'profile.authBindings.source.avatar') {
+          return `Avatar synced from ${params?.providerName || 'provider'REDACTED`
+        REDACTED
+        if (key === 'profile.authBindings.source.username') {
+          return `Username synced from ${params?.providerName || 'provider'REDACTED`
+        REDACTED
         return key
       REDACTED
     REDACTED)
@@ -68,5 +78,27 @@ describe('ProfileInfoCard', () => {
     expect(wrapper.text()).toContain('User')
     expect(wrapper.find('[data-testid="profile-avatar-save"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="profile-binding-email-status"]').exists()).toBe(false)
+  REDACTED)
+
+  it('renders third-party source hints from profile sources', () => {
+    const wrapper = mount(ProfileInfoCard, {
+      props: {
+        user: createUser({
+          avatar_url: 'https://cdn.example.com/linuxdo.png',
+          profile_sources: {
+            avatar: { provider: 'linuxdo', source: 'linuxdo' REDACTED,
+            username: { provider: 'linuxdo', source: 'linuxdo' REDACTED
+          REDACTED
+        REDACTED)
+      REDACTED,
+      global: {
+        stubs: {
+          Icon: true
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    expect(wrapper.text()).toContain('Avatar synced from LinuxDo')
+    expect(wrapper.text()).toContain('Username synced from LinuxDo')
   REDACTED)
 REDACTED)

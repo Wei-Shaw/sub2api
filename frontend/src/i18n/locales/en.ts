@@ -943,11 +943,10 @@ export default {
     REDACTED,
     avatar: {
       title: 'Profile Avatar',
-      description: 'Set your avatar with a remote image URL or upload an image. Static uploads are compressed to 20KB before saving.',
-      inputLabel: 'Avatar URL or data URL',
-      inputPlaceholder: 'https://cdn.example.com/avatar.png',
+      description: 'Upload an avatar image. Static uploads are compressed to 20KB before saving.',
       uploadAction: 'Upload image',
       uploadHint: 'Static uploads are compressed to 20KB when possible. GIF uploads must already be within 20KB.',
+      uploadRequired: 'Upload an avatar image first',
       saveSuccess: 'Avatar updated',
       deleteSuccess: 'Avatar removed',
       invalidType: 'Please choose an image file',
@@ -955,7 +954,6 @@ export default {
       compressTooLarge: 'Unable to compress this image below 20KB. Try a smaller image.',
       compressFailed: 'Failed to compress the selected image.',
       readFailed: 'Failed to read the selected image.',
-      invalidValue: 'Enter a valid avatar URL or image data URL',
       emptyDeleteHint: 'Avatar is already empty',
     REDACTED,
     authBindings: {
