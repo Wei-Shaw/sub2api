@@ -40,16 +40,21 @@ export interface UserSupportedModel {
   pricing: UserSupportedModelPricing | null
 }
 
-export interface UserAvailableChannel {
-  name: string
-  description: string
-  /**
-   * 所属平台（anthropic / openai / antigravity / gemini ...）。后端按平台把一个渠道
-   * 摊开成多条记录，因此此字段决定整行的配色与图标。
-   */
+/**
+ * 渠道下单个平台的子视图：用户可访问的分组 + 该平台支持的模型。
+ * 后端把一个渠道按平台聚合成 sections，前端可以把渠道名作为 row-group
+ * 一次渲染，后面按 sections 顺序用 rowspan 铺开。
+ */
+export interface UserChannelPlatformSection {
   platform: string
   groups: UserAvailableGroup[]
   supported_models: UserSupportedModel[]
+}
+
+export interface UserAvailableChannel {
+  name: string
+  description: string
+  platforms: UserChannelPlatformSection[]
 }
 
 /** 列出当前用户可见的「可用渠道」（与 /groups/available 保持一致，返回平数组）。 */

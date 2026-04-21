@@ -34,7 +34,7 @@
 
       <template #table>
         <AvailableChannelsTable
-          :columns="columns"
+          :columns="columnLabels"
           :rows="filteredChannels"
           :loading="loading"
           pricing-key-prefix="availableChannels.pricing"
@@ -65,22 +65,37 @@ const channels = ref<UserAvailableChannel[]>([])
 const loading = ref(false)
 const searchQuery = ref('')
 
-const columns = computed(() => [
-  { key: 'name', label: t('availableChannels.columns.name') },
-  { key: 'groups', label: t('availableChannels.columns.groups') },
-  { key: 'supported_models', label: t('availableChannels.columns.supportedModels') }
-])
+const columnLabels = computed(() => ({
+  name: t('availableChannels.columns.name'),
+  platform: t('availableChannels.columns.platform'),
+  groups: t('availableChannels.columns.groups'),
+  supportedModels: t('availableChannels.columns.supportedModels'),
+}))
 
+/**
+ * 搜索过滤：
+ * - 命中渠道名/描述 → 整个渠道（所有 platforms）都保留
+ * - 否则按 platform/group/model 维度在 sections 里过滤，保留有匹配的 section
+ * - 所有 sections 都不匹配时，渠道本身被过滤掉
+ */
 const filteredChannels = computed(() => {
   const q = searchQuery.value.trim().toLowerCase()
   if (!q) return channels.value
-  return channels.value.filter((ch) => {
-    if (ch.name.toLowerCase().includes(q)) return true
-    if ((ch.description || '').toLowerCase().includes(q)) return true
-    if (ch.groups.some((g) => g.name.toLowerCase().includes(q))) return true
-    if (ch.supported_models.some((m) => m.name.toLowerCase().includes(q))) return true
-    return false
-  })
+  return channels.value
+    .map((ch) => {
+      const nameHit = ch.name.toLowerCase().includes(q)
+      const descHit = (ch.description || '').toLowerCase().includes(q)
+      if (nameHit || descHit) return ch
+      const matchingSections = ch.platforms.filter(
+        (p) =>
+          p.platform.toLowerCase().includes(q) ||
+          p.groups.some((g) => g.name.toLowerCase().includes(q)) ||
+          p.supported_models.some((m) => m.name.toLowerCase().includes(q)),
+      )
+      if (matchingSections.length === 0) return null
+      return { ...ch, platforms: matchingSections }
+    })
+    .filter((ch): ch is UserAvailableChannel => ch !== null)
 })
 
 async function loadChannels() {

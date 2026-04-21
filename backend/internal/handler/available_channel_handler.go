@@ -85,17 +85,23 @@ type userSupportedModel struct {
 	Pricing  *userSupportedModelPricing `json:"pricing"`
 }
 
-// userAvailableChannel 用户可见的渠道条目（白名单字段）。
-//
-// 同一个渠道若在多个平台上都有用户可见的分组，会被摊开成多条记录 —— 每条对应
-// 一个平台，groups 和 supported_models 都只包含该平台的内容。这样前端无需在
-// 一行内混排多平台信息，也能直接为整行应用平台色/图标。
-type userAvailableChannel struct {
-	Name            string               `json:"name"`
-	Description     string               `json:"description"`
+// userChannelPlatformSection 单渠道内某个平台的子视图：用户可见的分组 + 该平台
+// 支持的模型。按 platform 聚合后让前端可以把渠道名作为 row-group 一次渲染，
+// 后面的平台行按 sections 顺序铺开。
+type userChannelPlatformSection struct {
 	Platform        string               `json:"platform"`
 	Groups          []userAvailableGroup `json:"groups"`
 	SupportedModels []userSupportedModel `json:"supported_models"`
+}
+
+// userAvailableChannel 用户可见的渠道条目（白名单字段）。
+//
+// 每个渠道聚合为一条记录，内嵌 platforms 子数组：每个 section 对应一个平台，
+// 包含该平台的 groups 和 supported_models。
+type userAvailableChannel struct {
+	Name        string                       `json:"name"`
+	Description string                       `json:"description"`
+	Platforms   []userChannelPlatformSection `json:"platforms"`
 }
 
 // List 列出当前用户可见的「可用渠道」。
@@ -139,19 +145,27 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 		if len(visibleGroups) == 0 {
 			continue
 		}
-		out = append(out, explodeChannelByPlatform(ch, visibleGroups)...)
+		sections := buildPlatformSections(ch, visibleGroups)
+		if len(sections) == 0 {
+			continue
+		}
+		out = append(out, userAvailableChannel{
+			Name:        ch.Name,
+			Description: ch.Description,
+			Platforms:   sections,
+		})
 	}
 
 	response.Success(c, out)
 }
 
-// explodeChannelByPlatform 将单个渠道按 visibleGroups 的平台集合摊开成多条记录。
-// 每条记录对应一个平台：groups 仅含该平台的 visibleGroups，supported_models 仅含
-// 该平台的模型。输出按 platform 字母序稳定排序，便于前端等效比较与回归测试。
-func explodeChannelByPlatform(
+// buildPlatformSections 把一个渠道按 visibleGroups 的平台集合拆成有序的 section 列表：
+// 每个 section 对应一个平台，只包含该平台的 groups 和 supported_models。
+// 输出按 platform 字母序稳定排序，便于前端等效比较与回归测试。
+func buildPlatformSections(
 	ch service.AvailableChannel,
 	visibleGroups []userAvailableGroup,
-) []userAvailableChannel {
+) []userChannelPlatformSection {
 	groupsByPlatform := make(map[string][]userAvailableGroup, 4)
 	for _, g := range visibleGroups {
 		if g.Platform == "" {
@@ -169,18 +183,16 @@ func explodeChannelByPlatform(
 	}
 	sort.Strings(platforms)
 
-	out := make([]userAvailableChannel, 0, len(platforms))
+	sections := make([]userChannelPlatformSection, 0, len(platforms))
 	for _, platform := range platforms {
 		platformSet := map[string]struct{}{platform: {}}
-		out = append(out, userAvailableChannel{
-			Name:            ch.Name,
-			Description:     ch.Description,
+		sections = append(sections, userChannelPlatformSection{
 			Platform:        platform,
 			Groups:          groupsByPlatform[platform],
 			SupportedModels: toUserSupportedModels(ch.SupportedModels, platformSet),
 		})
 	}
-	return out
+	return sections
 }
 
 // filterUserVisibleGroups 仅保留用户可访问的分组。
