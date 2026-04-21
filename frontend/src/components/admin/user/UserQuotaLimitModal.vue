@@ -105,6 +105,7 @@ import { adminAPI } from '@/api/admin'
 import { userQuotaAPI } from '@/api/admin/quota'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { formatDateTime, formatCurrency } from '@/utils/format'
+import { findOverlappingGroupID, normalizeGroupIDs } from '@/utils/quota'
 import {
   QUOTA_OVERRIDE_ENABLED, QUOTA_OVERRIDE_DISABLED, QUOTA_OVERRIDE_FOLLOW_GLOBAL,
   QUOTA_PERIOD_DAILY,
@@ -232,14 +233,14 @@ function validateDrafts(): string | null {
     const n = Number(dailyLimitInput.value)
     if (Number.isFinite(n) && n === 0) return t('userQuota.validationTotalLimitZero')
   }
-  const seen = new Set<number>()
+  // 每条规则的分组/限额合法性
   for (const d of ruleDrafts.value) {
     if (d.group_ids.length === 0) return t('userQuota.validationGroupsRequired')
     if (!(d.daily_limit_usd > 0)) return t('userQuota.validationLimitPositive')
-    for (const gid of d.group_ids) {
-      if (seen.has(gid)) return t('userQuota.validationGroupsOverlap')
-      seen.add(gid)
-    }
+  }
+  // 跨规则的 group_ids 不得重叠（同一分组只能被一条规则覆盖）
+  if (findOverlappingGroupID(ruleDrafts.value) !== null) {
+    return t('userQuota.validationGroupsOverlap')
   }
   return null
 }
@@ -283,8 +284,9 @@ async function doSave(): Promise<void> {
     await userQuotaAPI.updateUserQuota(props.user.id, body)
 
     // 2. 单事务幂等全量替换所有规则（后端会删除未出现的历史规则、新建/更新其他）
+    //    normalizeGroupIDs 做"去 <=0 + 去重 + 升序"，与后端 normalizeGroupIDs 保持语义一致
     const rules: CreateRuleRequest[] = ruleDrafts.value.map((draft) => ({
-      group_ids: [...draft.group_ids].sort((a, b) => a - b),
+      group_ids: normalizeGroupIDs(draft.group_ids),
       daily_limit_usd: draft.daily_limit_usd,
       period: QUOTA_PERIOD_DAILY,
     }))
