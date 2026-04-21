@@ -38,12 +38,24 @@
 
     <!-- Body JSON (仅当 mode != off) -->
     <div v-if="bodyOverrideMode !== 'off'">
-      <label class="input-label">{{ t('admin.channelMonitor.advanced.bodyJson') }}</label>
+      <div class="mb-1 flex items-center justify-between">
+        <label class="input-label !mb-0">{{ t('admin.channelMonitor.advanced.bodyJson') }}</label>
+        <button
+          type="button"
+          class="text-xs text-primary-600 hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline dark:text-primary-400"
+          :disabled="!bodyText.trim()"
+          @click="formatBody"
+        >
+          {{ t('admin.channelMonitor.advanced.bodyJsonFormat') }}
+        </button>
+      </div>
       <textarea
         v-model="bodyText"
-        rows="8"
+        rows="10"
         :placeholder="bodyPlaceholder"
         class="input font-mono text-xs"
+        style="white-space: pre; overflow-wrap: normal; overflow-x: auto;"
+        spellcheck="false"
         @blur="commitBody"
       />
       <p v-if="bodyError" class="mt-1 text-xs text-red-500">{{ bodyError }}</p>
@@ -150,6 +162,25 @@ function commitBody() {
     }
     emit('update:bodyOverride', parsed as Record<string, unknown>)
     bodyError.value = ''
+  } catch (e) {
+    bodyError.value =
+      t('admin.channelMonitor.advanced.bodyJsonError') +
+      ': ' +
+      (e instanceof Error ? e.message : String(e))
+  }
+}
+
+function formatBody() {
+  const trimmed = bodyText.value.trim()
+  if (trimmed === '') return
+  try {
+    const parsed = JSON.parse(trimmed)
+    bodyText.value = JSON.stringify(parsed, null, 2)
+    bodyError.value = ''
+    // 同步把校验过的对象提交，避免格式化后焦点未移走时父组件读到旧值
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      emit('update:bodyOverride', parsed as Record<string, unknown>)
+    }
   } catch (e) {
     bodyError.value =
       t('admin.channelMonitor.advanced.bodyJsonError') +

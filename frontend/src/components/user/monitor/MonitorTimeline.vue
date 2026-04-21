@@ -59,19 +59,21 @@ interface Bar {
   title: string
 }
 
+// 4 级高度 + 颜色双重编码：高=好+绿，短=坏+红，灰=未测试。
+// 长绿(正常) > 中黄(降级) > 短红(失败/系统错误) > 很短灰(未测试)。
 const STATUS_HEIGHT: Record<string, number> = {
   operational: 100,
-  degraded: 70,
-  failed: 55,
+  degraded: 65,
+  failed: 35,
   error: 35,
-  empty: 20,
+  empty: 15,
 }
 
 const STATUS_COLOR: Record<string, string> = {
   operational: 'bg-emerald-500',
   degraded: 'bg-amber-500',
   failed: 'bg-red-500',
-  error: 'bg-gray-400 dark:bg-dark-500',
+  error: 'bg-red-500',
   empty: 'bg-gray-300 dark:bg-dark-600',
 }
 

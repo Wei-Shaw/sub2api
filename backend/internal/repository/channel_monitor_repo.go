@@ -297,41 +297,22 @@ func assignNullInt(dst **int, n sql.NullInt64) {
 // "可用" = status IN (operational, degraded)。
 //
 // 数据来源：明细表只保留 1 天；窗口前其余天数走聚合表。
-//   - raw   = 今天（CURRENT_DATE 起）的未软删明细，按 model 累加
-//   - rollup = [CURRENT_DATE - windowDays, CURRENT_DATE) 区间的聚合行
-//
-// 总窗口为 "今天 + 过去 windowDays 天"，比 windowDays 字面值大 1 天，但因为聚合
-// 是按整 UTC 日切的，这是聚合化无法避免的精度损失，且偏宽不偏窄（数据更全）。
+// 明细保留 30 天（monitorHistoryRetentionDays），窗口 <= 30 天时直接扫 histories，
+// 精度到秒，避免与聚合表 UNION 带来的 UTC 日切精度损失。
 func (r *channelMonitorRepository) ComputeAvailability(ctx context.Context, monitorID int64, windowDays int) ([]*service.ChannelMonitorAvailability, error) {
 	if windowDays <= 0 {
 		windowDays = 7
 	}
 	const q = `
-		WITH raw AS (
-		    SELECT model,
-		           COUNT(*)                                                  AS total_checks,
-		           COUNT(*) FILTER (WHERE status IN ('operational','degraded')) AS ok_count,
-		           COALESCE(SUM(latency_ms) FILTER (WHERE latency_ms IS NOT NULL), 0) AS sum_latency_ms,
-		           COUNT(latency_ms)                                         AS count_latency
-		    FROM channel_monitor_histories
-		    WHERE monitor_id = $1
-		      AND checked_at >= CURRENT_DATE
-		    GROUP BY model
-		),
-		rollup AS (
-		    SELECT model, total_checks, ok_count, sum_latency_ms, count_latency
-		    FROM channel_monitor_daily_rollups
-		    WHERE monitor_id = $1
-		      AND bucket_date >= (CURRENT_DATE - $2::int)
-		      AND bucket_date < CURRENT_DATE
-		)
 		SELECT model,
-		       SUM(total_checks)                                            AS total,
-		       SUM(ok_count)                                                AS ok,
-		       CASE WHEN SUM(count_latency) > 0
-		            THEN SUM(sum_latency_ms)::float8 / SUM(count_latency)
-		            ELSE NULL END                                           AS avg_latency_ms
-		FROM (SELECT * FROM raw UNION ALL SELECT * FROM rollup) combined
+		       COUNT(*)                                                             AS total,
+		       COUNT(*) FILTER (WHERE status IN ('operational','degraded'))         AS ok,
+		       CASE WHEN COUNT(latency_ms) > 0
+		            THEN SUM(latency_ms) FILTER (WHERE latency_ms IS NOT NULL)::float8 / COUNT(latency_ms)
+		            ELSE NULL END                                                   AS avg_latency_ms
+		FROM channel_monitor_histories
+		WHERE monitor_id = $1
+		  AND checked_at >= NOW() - ($2::int || ' days')::interval
 		GROUP BY model
 	`
 	rows, err := r.db.QueryContext(ctx, q, monitorID, windowDays)
@@ -514,7 +495,7 @@ func clampTimelineLimit(n int) int {
 }
 
 // ComputeAvailabilityForMonitors 一次性计算多个监控在某个窗口内的每模型可用率与平均延迟。
-// 与单 monitor 版本同构：明细只覆盖今天，更早走聚合表 UNION 合并。
+// 明细保留 30 天，直接扫 histories（窗口 <= 30 天时无需聚合）。
 func (r *channelMonitorRepository) ComputeAvailabilityForMonitors(ctx context.Context, ids []int64, windowDays int) (map[int64][]*service.ChannelMonitorAvailability, error) {
 	out := make(map[int64][]*service.ChannelMonitorAvailability, len(ids))
 	if len(ids) == 0 {
@@ -524,33 +505,16 @@ func (r *channelMonitorRepository) ComputeAvailabilityForMonitors(ctx context.Co
 		windowDays = 7
 	}
 	const q = `
-		WITH raw AS (
-		    SELECT monitor_id,
-		           model,
-		           COUNT(*)                                                  AS total_checks,
-		           COUNT(*) FILTER (WHERE status IN ('operational','degraded')) AS ok_count,
-		           COALESCE(SUM(latency_ms) FILTER (WHERE latency_ms IS NOT NULL), 0) AS sum_latency_ms,
-		           COUNT(latency_ms)                                         AS count_latency
-		    FROM channel_monitor_histories
-		    WHERE monitor_id = ANY($1)
-		      AND checked_at >= CURRENT_DATE
-		    GROUP BY monitor_id, model
-		),
-		rollup AS (
-		    SELECT monitor_id, model, total_checks, ok_count, sum_latency_ms, count_latency
-		    FROM channel_monitor_daily_rollups
-		    WHERE monitor_id = ANY($1)
-		      AND bucket_date >= (CURRENT_DATE - $2::int)
-		      AND bucket_date < CURRENT_DATE
-		)
 		SELECT monitor_id,
 		       model,
-		       SUM(total_checks)                                            AS total,
-		       SUM(ok_count)                                                AS ok,
-		       CASE WHEN SUM(count_latency) > 0
-		            THEN SUM(sum_latency_ms)::float8 / SUM(count_latency)
-		            ELSE NULL END                                           AS avg_latency_ms
-		FROM (SELECT * FROM raw UNION ALL SELECT * FROM rollup) combined
+		       COUNT(*)                                                             AS total,
+		       COUNT(*) FILTER (WHERE status IN ('operational','degraded'))         AS ok,
+		       CASE WHEN COUNT(latency_ms) > 0
+		            THEN SUM(latency_ms) FILTER (WHERE latency_ms IS NOT NULL)::float8 / COUNT(latency_ms)
+		            ELSE NULL END                                                   AS avg_latency_ms
+		FROM channel_monitor_histories
+		WHERE monitor_id = ANY($1)
+		  AND checked_at >= NOW() - ($2::int || ' days')::interval
 		GROUP BY monitor_id, model
 	`
 	rows, err := r.db.QueryContext(ctx, q, pq.Array(ids), windowDays)

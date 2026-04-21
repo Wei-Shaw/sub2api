@@ -16,9 +16,10 @@ const (
 	// monitorDegradedThreshold 主请求成功但耗时超过该阈值视为 degraded。
 	monitorDegradedThreshold = 6 * time.Second
 	// monitorHistoryRetentionDays 明细历史保留天数。
-	// 明细只保留 1 天，超出由 SoftDeleteMixin 软删；
-	// 维护任务每天凌晨跑（由 OpsCleanupService 统一调度）。
-	monitorHistoryRetentionDays = 1
+	// 60s 默认间隔 * 30 天 ≈ 43200 行/monitor/model，一般部署总量 <= 2M 行，
+	// PG 无压力；所以直接保留完整明细一个月，可用率查询可以全走原始行不依赖聚合。
+	// 聚合表 channel_monitor_daily_rollups 仍然保留，作为长期历史回填/降级查询的兜底。
+	monitorHistoryRetentionDays = 30
 	// monitorRollupRetentionDays 日聚合保留天数。
 	// 日聚合行由 RunDailyMaintenance 在超过该窗口后软删。
 	monitorRollupRetentionDays = 30
