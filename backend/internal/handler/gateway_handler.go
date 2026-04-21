@@ -243,11 +243,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	// 2. 【新增】Wait后二次检查余额/订阅
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
 		reqLog.Info("gateway.billing_eligibility_check_failed", zap.Error(err))
-		status, code, message, retryAfter := billingErrorDetails(err)
-		if retryAfter > 0 {
-			c.Header("Retry-After", strconv.Itoa(retryAfter))
-		}
-		h.handleStreamingAwareError(c, status, code, message, streamStarted)
+		status, code, message, metadata := billingErrorDetails(err)
+		h.handleStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
 		return
 	}
 
@@ -761,11 +758,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						}
 						fallbackAPIKey := cloneAPIKeyWithGroup(apiKey, fallbackGroup)
 						if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), fallbackAPIKey.User, fallbackAPIKey, fallbackGroup, nil); err != nil {
-							status, code, message, retryAfter := billingErrorDetails(err)
-							if retryAfter > 0 {
-								c.Header("Retry-After", strconv.Itoa(retryAfter))
-							}
-							h.handleStreamingAwareError(c, status, code, message, streamStarted)
+							status, code, message, metadata := billingErrorDetails(err)
+							h.handleStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
 							return
 						}
 						// 兜底重试按"直接请求兜底分组"处理：清除强制平台，允许按分组平台调度
@@ -1320,12 +1314,20 @@ func (h *GatewayHandler) mapUpstreamError(statusCode int) (int, string, string) 
 
 // handleStreamingAwareError handles errors that may occur after streaming has started
 func (h *GatewayHandler) handleStreamingAwareError(c *gin.Context, status int, errType, message string, streamStarted bool) {
+	h.handleStreamingAwareErrorWithMetadata(c, status, errType, message, nil, streamStarted)
+}
+
+// handleStreamingAwareErrorWithMetadata 带 metadata 的错误处理（feature issue #1750）
+// metadata 在非流式响应中作为 JSON 字段透传；流式场景下为避免破坏 SSE schema 只作为 error 对象字段追加。
+func (h *GatewayHandler) handleStreamingAwareErrorWithMetadata(c *gin.Context, status int, errType, message string, metadata map[string]string, streamStarted bool) {
+	if ra, ok := metadata["retry_after"]; ok && ra != "" {
+		c.Header("Retry-After", ra)
+	}
 	if streamStarted {
-		// Stream already started, send error as SSE event then close
 		flusher, ok := c.Writer.(http.Flusher)
 		if ok {
-			// SSE 错误事件固定 schema，使用 Quote 直拼可避免额外 Marshal 分配。
-			errorEvent := `data: {"type":"error","error":{"type":` + strconv.Quote(errType) + `,"message":` + strconv.Quote(message) + `}}` + "\n\n"
+			// SSE 错误事件固定 schema；metadata 作为 error 对象的字段注入（非破坏性）。
+			errorEvent := streamingErrorEvent(errType, message, metadata)
 			if _, err := fmt.Fprint(c.Writer, errorEvent); err != nil {
 				_ = c.Error(err)
 			}
@@ -1333,9 +1335,19 @@ func (h *GatewayHandler) handleStreamingAwareError(c *gin.Context, status int, e
 		}
 		return
 	}
+	h.errorResponseWithMetadata(c, status, errType, message, metadata)
+}
 
-	// Normal case: return JSON response with proper status code
-	h.errorResponse(c, status, errType, message)
+// streamingErrorEvent 构造 SSE 错误事件字符串（含可选 metadata）
+func streamingErrorEvent(errType, message string, metadata map[string]string) string {
+	base := `data: {"type":"error","error":{"type":` + strconv.Quote(errType) + `,"message":` + strconv.Quote(message)
+	if len(metadata) > 0 {
+		mdJSON, err := json.Marshal(metadata)
+		if err == nil {
+			base += `,"metadata":` + string(mdJSON)
+		}
+	}
+	return base + "}}\n\n"
 }
 
 // ensureForwardErrorResponse 在 Forward 返回错误但尚未写响应时补写统一错误响应。
@@ -1393,13 +1405,30 @@ func (h *GatewayHandler) checkClaudeCodeVersion(c *gin.Context) bool {
 
 // errorResponse 返回Claude API格式的错误响应
 func (h *GatewayHandler) errorResponse(c *gin.Context, status int, errType, message string) {
-	c.JSON(status, gin.H{
-		"type": "error",
+	h.errorResponseWithMetadata(c, status, errType, message, nil)
+}
+
+// errorResponseWithMetadata 返回 Claude API 格式错误响应，额外附带 metadata。
+// 用于配额超限等需要把上下文（scope/limit_usd/...）带回前端做 i18n 渲染的场景。
+//
+// 契约 §3.3 / 决策 0.4：响应顶层必须携带 reason 字段（值与 errType 相同，即 billingErrorDetails
+// 返回的 code），供前端 extractApiErrorCode 走 data.reason 通路匹配 i18nMap。
+func (h *GatewayHandler) errorResponseWithMetadata(c *gin.Context, status int, errType, message string, metadata map[string]string) {
+	if ra, ok := metadata["retry_after"]; ok && ra != "" {
+		c.Header("Retry-After", ra)
+	}
+	body := gin.H{
+		"type":   "error",
+		"reason": errType,
 		"error": gin.H{
 			"type":    errType,
 			"message": message,
 		},
-	})
+	}
+	if len(metadata) > 0 {
+		body["metadata"] = metadata
+	}
+	c.JSON(status, body)
 }
 
 // CountTokens handles token counting endpoint
@@ -1470,11 +1499,8 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	// 校验 billing eligibility（订阅/余额）
 	// 【注意】不计算并发，但需要校验订阅/余额
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
-		status, code, message, retryAfter := billingErrorDetails(err)
-		if retryAfter > 0 {
-			c.Header("Retry-After", strconv.Itoa(retryAfter))
-		}
-		h.errorResponse(c, status, code, message)
+		status, code, message, metadata := billingErrorDetails(err)
+		h.errorResponseWithMetadata(c, status, code, message, metadata)
 		return
 	}
 
@@ -1716,32 +1742,38 @@ func sendMockInterceptResponse(c *gin.Context, model string, interceptType Inter
 	c.JSON(http.StatusOK, response)
 }
 
-func billingErrorDetails(err error) (status int, code, message string, retryAfter int) {
+// billingErrorDetails 将计费错误转换为 HTTP 响应参数。
+// 返回 status + code（error type）+ message + metadata（可为 nil）。
+// 配额超限（feature issue #1750）必须通过 metadata 透传 scope/limit/used/reset_at 给前端 i18n。
+func billingErrorDetails(err error) (status int, code, message string, metadata map[string]string) {
 	if errors.Is(err, service.ErrBillingServiceUnavailable) {
 		msg := pkgerrors.Message(err)
 		if msg == "" {
 			msg = "Billing service temporarily unavailable. Please retry later."
 		}
-		return http.StatusServiceUnavailable, "billing_service_error", msg, 0
+		return http.StatusServiceUnavailable, "billing_service_error", msg, nil
 	}
 	if errors.Is(err, service.ErrAPIKeyRateLimit5hExceeded) {
-		msg := pkgerrors.Message(err)
-		return http.StatusTooManyRequests, "rate_limit_exceeded", msg, 0
+		return http.StatusTooManyRequests, "rate_limit_exceeded", pkgerrors.Message(err), nil
 	}
 	if errors.Is(err, service.ErrAPIKeyRateLimit1dExceeded) {
-		msg := pkgerrors.Message(err)
-		return http.StatusTooManyRequests, "rate_limit_exceeded", msg, 0
+		return http.StatusTooManyRequests, "rate_limit_exceeded", pkgerrors.Message(err), nil
 	}
 	if errors.Is(err, service.ErrAPIKeyRateLimit7dExceeded) {
-		msg := pkgerrors.Message(err)
-		return http.StatusTooManyRequests, "rate_limit_exceeded", msg, 0
+		return http.StatusTooManyRequests, "rate_limit_exceeded", pkgerrors.Message(err), nil
 	}
-	// 用户/分组 RPM 超限统一映射为 HTTP 429；保留与其它 rate_limit 一致的错误码便于客户端分类。
-	// 返回 Retry-After 秒数（当前分钟剩余秒数），让 SDK 自动退避。
 	if errors.Is(err, service.ErrGroupRPMExceeded) || errors.Is(err, service.ErrUserRPMExceeded) {
 		msg := pkgerrors.Message(err)
 		retrySeconds := 60 - int(time.Now().Unix()%60)
-		return http.StatusTooManyRequests, "rate_limit_exceeded", msg, retrySeconds
+		return http.StatusTooManyRequests, "rate_limit_exceeded", msg, map[string]string{"retry_after": strconv.Itoa(retrySeconds)}
+	}
+	if errors.Is(err, service.ErrQuotaExceeded) {
+		app := pkgerrors.FromError(err)
+		var md map[string]string
+		if app != nil {
+			md = app.Metadata
+		}
+		return http.StatusTooManyRequests, "USAGE_QUOTA_EXCEEDED", pkgerrors.Message(err), md
 	}
 	msg := pkgerrors.Message(err)
 	if msg == "" {
@@ -1751,7 +1783,7 @@ func billingErrorDetails(err error) (status int, code, message string, retryAfte
 		).Warn("gateway.billing_error_missing_message")
 		msg = "Billing error"
 	}
-	return http.StatusForbidden, "billing_error", msg, 0
+	return http.StatusForbidden, "billing_error", msg, nil
 }
 
 func (h *GatewayHandler) metadataBridgeEnabled() bool {

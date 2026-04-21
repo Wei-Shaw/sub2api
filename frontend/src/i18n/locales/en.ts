@@ -6071,4 +6071,69 @@ export default {
     },
   },
 
+  // Per-user daily usage quota (feature issue #1750; namespace contract §0.3)
+  userQuota: {
+    // Global settings (admin/settings.users tab)
+    globalEnabled: 'Enable usage quota limit',
+    globalEnabledHint: 'Master switch: when off, no user is subject to quota checks (legacy behaviour)',
+    defaultEnabled: 'Default: enable quota for users',
+    defaultEnabledHint: 'Applies only when the per-user toggle is set to "follow global"',
+    defaultDailyLimit: 'Default daily limit (USD)',
+    defaultDailyLimitHint: 'Initial per-user daily limit assigned on user creation; 0 = unlimited',
+
+    // Users list (UsersView)
+    column: 'Quota',
+    columnEmpty: '—',
+    columnRules: '{count} rule(s)',
+    adjustLimit: 'Adjust Limit',
+
+    // Adjust modal (UserQuotaLimitModal)
+    modalTitle: 'Adjust User Quota',
+    modalDescription: 'Configure the user\'s daily total limit and per-group rules. Rules apply only to non-subscription groups.',
+    userLevelSwitch: 'User-level override',
+    overrideFollow: 'Follow global',
+    overrideOn: 'Enabled',
+    overrideOff: 'Disabled',
+    dailyLimitLabel: 'Daily total limit (USD)',
+    dailyLimitPlaceholder: 'Leave empty = unlimited',
+    dailyLimitHint: 'When exceeded, all usage-billed requests will be rejected for the rest of the day',
+    unlimited: 'Unlimited',
+    rulesLabel: 'Per-group rules',
+    rulesHint: 'Set stricter limits for specific groups; a group cannot appear in more than one rule',
+    addRule: 'Add rule',
+    ruleGroups: 'Groups',
+    ruleLimit: 'Limit (USD)',
+    ruleGroupsPlaceholder: 'Select groups',
+    noRules: 'No rules yet',
+    deleteRule: 'Delete',
+    todayUsageLabel: 'Today\'s usage',
+    todayUsageTotal: 'Total',
+    todayUsageRule: 'Rule {ruleId}',
+    resetAtLabel: 'Next reset',
+    effectiveLimitLabel: 'Currently effective',
+    effectiveDisabled: 'Quota feature is currently disabled',
+    validationGroupsOverlap: 'Groups cannot be reused across rules',
+    validationLimitPositive: 'Limit must be greater than 0',
+    validationGroupsRequired: 'Select at least one group',
+
+    // User-side dashboard card
+    dashboardCardTitle: 'Today\'s Quota',
+    dashboardUsage: 'Used {used} / Limit {limit} USD',
+    dashboardUsedOnly: 'Used {used} USD',
+    dashboardDisabled: 'Quota limit is currently disabled',
+    dashboardUnlimited: 'Unlimited (no total cap)',
+    dashboardResetAt: 'Resets at {time}',
+    dashboardRulesSummary: '{count} per-group rule(s)',
+
+    // Error code i18n (extractApiErrorMessage i18nMap)
+    errors: {
+      USAGE_QUOTA_EXCEEDED: 'Daily quota exceeded (used {used_usd} USD / limit {limit_usd} USD, resets at {reset_at})',
+      USAGE_QUOTA_EXCEEDED_RULE: 'Group rule quota exceeded (rule {rule_id}, used {used_usd} USD / limit {limit_usd} USD)',
+      QUOTA_RULE_GROUPS_OVERLAP: 'Rule groups overlap with another rule; please adjust',
+      QUOTA_RULE_GROUP_SUBSCRIPTION: 'Subscription groups cannot be used in quota rules',
+      QUOTA_RULE_GROUP_NOT_FOUND: 'One of the referenced groups does not exist',
+      QUOTA_RULE_NOT_FOUND: 'Quota rule not found',
+    },
+  },
+
 }

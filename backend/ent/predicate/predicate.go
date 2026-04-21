@@ -107,3 +107,6 @@ type UserAttributeValue func(*sql.Selector)
 
 // UserSubscription is the predicate function for usersubscription builders.
 type UserSubscription func(*sql.Selector)
+
+// UserUsageLimitRule is the predicate function for userusagelimitrule builders.
+type UserUsageLimitRule func(*sql.Selector)

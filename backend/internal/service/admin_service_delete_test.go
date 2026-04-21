@@ -170,6 +170,10 @@ func (s *userRepoStub) DisableTotp(ctx context.Context, userID int64) error {
 	panic("unexpected DisableTotp call")
 }
 
+func (s *userRepoStub) UpdateUsageLimit(ctx context.Context, userID int64, enabled *bool, dailyUsageLimitUSD *float64) error {
+	panic("unexpected UpdateUsageLimit call")
+}
+
 type groupRepoStub struct {
 	affectedUserIDs []int64
 	deleteErr       error
@@ -420,6 +424,29 @@ func (s *billingCacheStub) UpdateAPIKeyRateLimitUsage(ctx context.Context, keyID
 }
 func (s *billingCacheStub) InvalidateAPIKeyRateLimit(ctx context.Context, keyID int64) error {
 	panic("unexpected InvalidateAPIKeyRateLimit call")
+}
+
+// ---- Quota stubs (feature issue #1750) ----
+func (s *billingCacheStub) GetQuotaUsedTotal(ctx context.Context, userID int64, date string) (float64, error) {
+	return 0, nil
+}
+func (s *billingCacheStub) GetQuotaUsedRule(ctx context.Context, userID, ruleID int64, date string) (float64, error) {
+	return 0, nil
+}
+func (s *billingCacheStub) IncrQuotaUsedTotal(ctx context.Context, userID int64, date string, delta float64) error {
+	return nil
+}
+func (s *billingCacheStub) IncrQuotaUsedRule(ctx context.Context, userID, ruleID int64, date string, delta float64) error {
+	return nil
+}
+func (s *billingCacheStub) InvalidateQuotaConfig(ctx context.Context, userID int64) error {
+	return nil
+}
+func (s *billingCacheStub) GetQuotaConfig(ctx context.Context, userID int64) (*ResolvedQuota, error) {
+	return nil, nil
+}
+func (s *billingCacheStub) SetQuotaConfig(ctx context.Context, userID int64, resolved *ResolvedQuota) error {
+	return nil
 }
 
 func waitForInvalidations(t *testing.T, ch <-chan subscriptionInvalidateCall, expected int) []subscriptionInvalidateCall {

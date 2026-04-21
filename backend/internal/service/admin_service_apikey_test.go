@@ -97,6 +97,7 @@ func (s *userRepoStubForGroupUpdate) UpdateUserLastActiveAt(context.Context, int
 	panic("unexpected")
 }
 func (s *userRepoStubForGroupUpdate) RemoveGroupFromUserAllowedGroups(context.Context, int64, int64) error {
+func (s *userRepoStubForGroupUpdate) UpdateUsageLimit(context.Context, int64, *bool, *float64) error {
 	panic("unexpected")
 }
 

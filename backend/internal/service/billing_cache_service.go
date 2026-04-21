@@ -11,6 +11,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -25,16 +26,6 @@ var (
 	ErrUserRPMExceeded  = infraerrors.TooManyRequests("USER_RPM_EXCEEDED", "user requests-per-minute limit exceeded")
 )
 
-// subscriptionCacheData 订阅缓存数据结构（内部使用）
-type subscriptionCacheData struct {
-	Status       string
-	ExpiresAt    time.Time
-	DailyUsage   float64
-	WeeklyUsage  float64
-	MonthlyUsage float64
-	Version      int64
-}
-
 // 缓存写入任务类型
 type cacheWriteKind int
 
@@ -44,6 +35,8 @@ const (
 	cacheWriteUpdateSubscriptionUsage
 	cacheWriteDeductBalance
 	cacheWriteUpdateRateLimitUsage
+	// cacheWriteIncrQuotaUsage feature issue #1750：配额用量累加任务
+	cacheWriteIncrQuotaUsage
 )
 
 // 异步缓存写入工作池配置
@@ -75,7 +68,7 @@ type cacheWriteTask struct {
 	apiKeyID         int64
 	balance          float64
 	amount           float64
-	subscriptionData *subscriptionCacheData
+	subscriptionData *SubscriptionCacheData
 }
 
 // apiKeyRateLimitLoader defines the interface for loading rate limit data from DB.
@@ -94,6 +87,10 @@ type BillingCacheService struct {
 	userGroupRateRepo     UserGroupRateRepository
 	cfg                   *config.Config
 	circuitBreaker        *billingCircuitBreaker
+
+	// quotaService 用户每日配额（feature issue #1750）
+	// 通过 SetQuotaService 注入；为 nil 时所有配额逻辑短路返回，不影响现有行为
+	quotaService QuotaService
 
 	cacheWriteChan     chan cacheWriteTask
 	cacheWriteWg       sync.WaitGroup
@@ -218,8 +215,47 @@ func (s *BillingCacheService) cacheWriteWorker(ch <-chan cacheWriteTask) {
 					logger.LegacyPrintf("service.billing_cache", "Warning: update rate limit usage cache failed for api key %d: %v", task.apiKeyID, err)
 				}
 			}
+		case cacheWriteIncrQuotaUsage:
+			s.processQuotaUsageTask(ctx, task)
 		}
 		cancel()
+	}
+}
+
+// processQuotaUsageTask 执行配额用量累加（total + 可选 rule）
+//
+// ---- TOCTOU 设计取舍（与 checkQuotaEligibility 对称） ----
+// 这里是 check-then-incr 流水线的 "incr" 半段，与 checkQuotaEligibility 的 "check"
+// 非原子组合。高并发下，同一用户 N 个并发请求可能在 check 阶段都看到 "未超限"，
+// 然后各自 incr 导致实际累计值短暂超过上限（最多 N × 单次费用）。
+// 这是已知的设计取舍：权衡 Redis 原子 CAS 的实现成本与极小比例的超出容忍度，
+// 选择异步累加 + 软上限。详见契约 §10 和 CLAUDE.md §11「fail open 策略」。
+//
+// ---- 失败策略 ----
+// Redis/DB 任意读/写失败只记日志，不回源也不重试。配额是"执行力"不是"账本"，
+// 丢失极小比例的累加对计费不影响（余额扣减走独立路径）。
+func (s *BillingCacheService) processQuotaUsageTask(ctx context.Context, task cacheWriteTask) {
+	if s.cache == nil || task.amount <= 0 {
+		return
+	}
+	date := quotaDateKey(timezone.Now())
+	if err := s.cache.IncrQuotaUsedTotal(ctx, task.userID, date, task.amount); err != nil {
+		logger.LegacyPrintf("service.quota", "Warning: incr quota used total failed user=%d err=%v", task.userID, err)
+	}
+	// 命中规则时还要累加规则用量（通过 QuotaService 匹配）
+	if s.quotaService == nil || task.groupID <= 0 {
+		return
+	}
+	resolved, err := s.quotaService.Resolve(ctx, task.userID)
+	if err != nil || resolved == nil || !resolved.Enabled {
+		return
+	}
+	rule := s.quotaService.MatchRule(resolved, task.groupID)
+	if rule == nil {
+		return
+	}
+	if err := s.cache.IncrQuotaUsedRule(ctx, task.userID, rule.ID, date, task.amount); err != nil {
+		logger.LegacyPrintf("service.quota", "Warning: incr quota used rule failed user=%d rule=%d err=%v", task.userID, rule.ID, err)
 	}
 }
 
@@ -236,6 +272,8 @@ func cacheWriteKindName(kind cacheWriteKind) string {
 		return "deduct_balance"
 	case cacheWriteUpdateRateLimitUsage:
 		return "update_rate_limit_usage"
+	case cacheWriteIncrQuotaUsage:
+		return "incr_quota_usage"
 	default:
 		return "unknown"
 	}
@@ -390,7 +428,7 @@ func (s *BillingCacheService) InvalidateUserBalance(ctx context.Context, userID 
 // ============================================
 
 // GetSubscriptionStatus 获取订阅状态（优先从缓存读取）
-func (s *BillingCacheService) GetSubscriptionStatus(ctx context.Context, userID, groupID int64) (*subscriptionCacheData, error) {
+func (s *BillingCacheService) GetSubscriptionStatus(ctx context.Context, userID, groupID int64) (*SubscriptionCacheData, error) {
 	if s.cache == nil {
 		return s.getSubscriptionFromDB(ctx, userID, groupID)
 	}
@@ -398,7 +436,7 @@ func (s *BillingCacheService) GetSubscriptionStatus(ctx context.Context, userID,
 	// 尝试从缓存读取
 	cacheData, err := s.cache.GetSubscriptionCache(ctx, userID, groupID)
 	if err == nil && cacheData != nil {
-		return s.convertFromPortsData(cacheData), nil
+		return cacheData, nil
 	}
 
 	// 缓存未命中，从数据库读取
@@ -418,36 +456,14 @@ func (s *BillingCacheService) GetSubscriptionStatus(ctx context.Context, userID,
 	return data, nil
 }
 
-func (s *BillingCacheService) convertFromPortsData(data *SubscriptionCacheData) *subscriptionCacheData {
-	return &subscriptionCacheData{
-		Status:       data.Status,
-		ExpiresAt:    data.ExpiresAt,
-		DailyUsage:   data.DailyUsage,
-		WeeklyUsage:  data.WeeklyUsage,
-		MonthlyUsage: data.MonthlyUsage,
-		Version:      data.Version,
-	}
-}
-
-func (s *BillingCacheService) convertToPortsData(data *subscriptionCacheData) *SubscriptionCacheData {
-	return &SubscriptionCacheData{
-		Status:       data.Status,
-		ExpiresAt:    data.ExpiresAt,
-		DailyUsage:   data.DailyUsage,
-		WeeklyUsage:  data.WeeklyUsage,
-		MonthlyUsage: data.MonthlyUsage,
-		Version:      data.Version,
-	}
-}
-
 // getSubscriptionFromDB 从数据库获取订阅数据
-func (s *BillingCacheService) getSubscriptionFromDB(ctx context.Context, userID, groupID int64) (*subscriptionCacheData, error) {
+func (s *BillingCacheService) getSubscriptionFromDB(ctx context.Context, userID, groupID int64) (*SubscriptionCacheData, error) {
 	sub, err := s.subRepo.GetActiveByUserIDAndGroupID(ctx, userID, groupID)
 	if err != nil {
 		return nil, fmt.Errorf("get subscription: %w", err)
 	}
 
-	return &subscriptionCacheData{
+	return &SubscriptionCacheData{
 		Status:       sub.Status,
 		ExpiresAt:    sub.ExpiresAt,
 		DailyUsage:   sub.DailyUsageUSD,
@@ -458,11 +474,11 @@ func (s *BillingCacheService) getSubscriptionFromDB(ctx context.Context, userID,
 }
 
 // setSubscriptionCache 设置订阅缓存
-func (s *BillingCacheService) setSubscriptionCache(ctx context.Context, userID, groupID int64, data *subscriptionCacheData) {
+func (s *BillingCacheService) setSubscriptionCache(ctx context.Context, userID, groupID int64, data *SubscriptionCacheData) {
 	if s.cache == nil || data == nil {
 		return
 	}
-	if err := s.cache.SetSubscriptionCache(ctx, userID, groupID, s.convertToPortsData(data)); err != nil {
+	if err := s.cache.SetSubscriptionCache(ctx, userID, groupID, data); err != nil {
 		logger.LegacyPrintf("service.billing_cache", "Warning: set subscription cache failed for user %d group %d: %v", userID, groupID, err)
 	}
 }
@@ -668,6 +684,11 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 		}
 	} else {
 		if err := s.checkBalanceEligibility(ctx, user.ID); err != nil {
+			return err
+		}
+		// 用户每日配额检查（仅余额模式，订阅模式由 group 限额独立控制）
+		// 契约 §10：fail open 策略见 checkQuotaEligibility 注释
+		if err := s.checkQuotaEligibility(ctx, user.ID, group); err != nil {
 			return err
 		}
 	}
@@ -949,6 +970,87 @@ func (b *billingCircuitBreaker) OnSuccess() {
 	} else if previousFailures > 0 {
 		logger.LegacyPrintf("service.billing_cache", "INFO: billing circuit breaker failures reset from %d", previousFailures)
 	}
+}
+
+// ============================================
+// Quota（feature issue #1750）
+// ============================================
+
+// SetQuotaService 注入 QuotaService（构造后注入，允许 nil）
+// 契约见 docs/DAILY_QUOTA_CONTRACT.md §6：BillingCacheService 依赖 QuotaService。
+func (s *BillingCacheService) SetQuotaService(qs QuotaService) {
+	s.quotaService = qs
+}
+
+// QueueIncrQuotaUsage 异步累加用户今日配额用量。
+//
+// 用在 finalizePostUsageBilling 余额分支（订阅分支不累加，见契约 §10）。
+// 队列满时直接丢弃（不同步回退），配额丢失不会导致超扣，容忍极小比例误差。
+func (s *BillingCacheService) QueueIncrQuotaUsage(userID, groupID int64, amount float64) {
+	if s.cache == nil || s.quotaService == nil || userID <= 0 || amount <= 0 {
+		return
+	}
+	s.enqueueCacheWrite(cacheWriteTask{
+		kind:    cacheWriteIncrQuotaUsage,
+		userID:  userID,
+		groupID: groupID,
+		amount:  amount,
+	})
+}
+
+// checkQuotaEligibility 配额前置检查（余额分支内调用）。
+//
+// ---- TOCTOU 设计取舍（与 processQuotaUsageTask 对称） ----
+// 这是 check-then-incr 流水线的 "check" 半段：先读 Redis 当前用量与上限对比，
+// 然后请求完成时由 processQuotaUsageTask 异步 "incr"。两段非原子。
+// 高并发下，同一用户 N 个并发请求可能都在 check 阶段读到 "未超限"，然后各自累加
+// 导致实际用量短暂超过上限（最多 N × 单次费用）。这是已知设计取舍：
+// 权衡 Redis 原子 CAS 的实现成本与极小比例的超出容忍度，
+// 选择软上限 + 异步累加。详见契约 §10 和 CLAUDE.md §11「fail open 策略」。
+//
+// ---- 失败安全（fail open） ----
+// 任何 Resolve / Redis 读取错误都返回 nil 放行，
+// 与 checkAPIKeyRateLimits "Don't block requests on DB errors" 对齐。
+// 配额只是软限制，宁可短暂漏扣也不阻断付费请求。
+func (s *BillingCacheService) checkQuotaEligibility(ctx context.Context, userID int64, group *Group) error {
+	if s.quotaService == nil || userID <= 0 {
+		return nil
+	}
+	resolved, err := s.quotaService.Resolve(ctx, userID)
+	if err != nil || resolved == nil || !resolved.Enabled {
+		return nil // fail open：解析失败/未启用都放行
+	}
+
+	date := quotaDateKey(timezone.Now())
+	resetAt := nextQuotaResetTime()
+
+	// 总限额校验
+	if resolved.DailyLimit != nil && *resolved.DailyLimit > 0 {
+		used, readErr := s.cache.GetQuotaUsedTotal(ctx, userID, date)
+		if readErr != nil {
+			return nil // fail open：读 Redis 失败放行
+		}
+		if used >= *resolved.DailyLimit {
+			return QuotaExceededTotalError(*resolved.DailyLimit, used, resetAt)
+		}
+	}
+
+	// 规则限额校验：仅在有 group 时执行
+	if group == nil {
+		return nil
+	}
+	rule := s.quotaService.MatchRule(resolved, group.ID)
+	if rule == nil {
+		return nil
+	}
+	used, readErr := s.cache.GetQuotaUsedRule(ctx, userID, rule.ID, date)
+	if readErr != nil {
+		return nil // fail open
+	}
+	if used >= rule.DailyLimitUSD {
+		return QuotaExceededRuleError(rule.ID, rule.DailyLimitUSD, used, resetAt)
+	}
+	return nil
 }
 
 func circuitStateString(state billingCircuitBreakerState) string {

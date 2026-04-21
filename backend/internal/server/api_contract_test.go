@@ -993,7 +993,10 @@ func TestAPIContracts(t *testing.T) {
 					"force_email_on_third_party_signup": false,
 					"channel_monitor_enabled": true,
 					"channel_monitor_default_interval_seconds": 60,
-					"available_channels_enabled": false
+					"available_channels_enabled": false,
+					"usage_limit_enabled": false,
+					"default_usage_limit_enabled": false,
+					"default_daily_usage_limit_usd": 0
 				}
 			}`,
 		},
@@ -1312,6 +1315,10 @@ func (r *stubUserRepo) EnableTotp(ctx context.Context, userID int64) error {
 }
 
 func (r *stubUserRepo) DisableTotp(ctx context.Context, userID int64) error {
+	return errors.New("not implemented")
+}
+
+func (r *stubUserRepo) UpdateUsageLimit(ctx context.Context, userID int64, enabled *bool, dailyUsageLimitUSD *float64) error {
 	return errors.New("not implemented")
 }
 

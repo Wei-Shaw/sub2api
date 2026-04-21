@@ -493,6 +493,7 @@ var ProviderSet = wire.NewSet(
 	ProvideChannelMonitorService,
 	ProvideChannelMonitorRunner,
 	NewChannelMonitorRequestTemplateService,
+	ProvideQuotaService,
 )
 
 // ProvidePaymentConfigService wraps NewPaymentConfigService to accept the named
@@ -531,4 +532,21 @@ func ProvideChannelMonitorRunner(svc *ChannelMonitorService, settingService *Set
 	svc.SetScheduler(r)
 	r.Start()
 	return r
+}
+
+// ProvideQuotaService 创建 QuotaService（feature issue #1750）并反向注入 BillingCacheService。
+// 依赖：ruleRepo / userRepo（同时作为 QuotaUserWriter）/ groupRepo / settingService / billingCache。
+func ProvideQuotaService(
+	ruleRepo UserUsageLimitRuleRepository,
+	userRepo UserRepository,
+	groupRepo GroupRepository,
+	settingService *SettingService,
+	billingCache BillingCache,
+	billingCacheService *BillingCacheService,
+) QuotaService {
+	qs := NewQuotaService(ruleRepo, userRepo, userRepo, groupRepo, settingService, billingCache)
+	if billingCacheService != nil {
+		billingCacheService.SetQuotaService(qs)
+	}
+	return qs
 }

@@ -40,6 +40,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/ent/userusagelimitrule"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
@@ -2002,6 +2003,27 @@ func init() {
 	usersubscriptionDescAssignedAt := usersubscriptionFields[12].Descriptor()
 	// usersubscription.DefaultAssignedAt holds the default value on creation for the assigned_at field.
 	usersubscription.DefaultAssignedAt = usersubscriptionDescAssignedAt.Default.(func() time.Time)
+	userusagelimitruleMixin := schema.UserUsageLimitRule{}.Mixin()
+	userusagelimitruleMixinFields0 := userusagelimitruleMixin[0].Fields()
+	_ = userusagelimitruleMixinFields0
+	userusagelimitruleFields := schema.UserUsageLimitRule{}.Fields()
+	_ = userusagelimitruleFields
+	// userusagelimitruleDescCreatedAt is the schema descriptor for created_at field.
+	userusagelimitruleDescCreatedAt := userusagelimitruleMixinFields0[0].Descriptor()
+	// userusagelimitrule.DefaultCreatedAt holds the default value on creation for the created_at field.
+	userusagelimitrule.DefaultCreatedAt = userusagelimitruleDescCreatedAt.Default.(func() time.Time)
+	// userusagelimitruleDescUpdatedAt is the schema descriptor for updated_at field.
+	userusagelimitruleDescUpdatedAt := userusagelimitruleMixinFields0[1].Descriptor()
+	// userusagelimitrule.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	userusagelimitrule.DefaultUpdatedAt = userusagelimitruleDescUpdatedAt.Default.(func() time.Time)
+	// userusagelimitrule.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	userusagelimitrule.UpdateDefaultUpdatedAt = userusagelimitruleDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// userusagelimitruleDescPeriod is the schema descriptor for period field.
+	userusagelimitruleDescPeriod := userusagelimitruleFields[3].Descriptor()
+	// userusagelimitrule.DefaultPeriod holds the default value on creation for the period field.
+	userusagelimitrule.DefaultPeriod = userusagelimitruleDescPeriod.Default.(string)
+	// userusagelimitrule.PeriodValidator is a validator for the "period" field. It is called by the builders before save.
+	userusagelimitrule.PeriodValidator = userusagelimitruleDescPeriod.Validators[0].(func(string) error)
 }
 
 const (

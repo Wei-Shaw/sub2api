@@ -652,6 +652,13 @@ func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInpu
 		Status:        StatusActive,
 		AllowedGroups: input.AllowedGroups,
 	}
+	// 默认每日配额（feature issue #1750）：读 default_daily_usage_limit_usd，> 0 才写入；
+	// usage_limit_enabled 保持 nil 以跟随全局默认。
+	if s.settingService != nil {
+		if v := s.settingService.GetDefaultDailyUsageLimitUSD(ctx); v > 0 {
+			user.DailyUsageLimitUSD = &v
+		}
+	}
 	if err := user.SetPassword(input.Password); err != nil {
 		return nil, err
 	}

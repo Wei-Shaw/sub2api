@@ -233,3 +233,7 @@ func (s *stubUserRepo) EnableTotp(ctx context.Context, userID int64) error {
 func (s *stubUserRepo) DisableTotp(ctx context.Context, userID int64) error {
 	panic("unexpected DisableTotp call")
 }
+
+func (s *stubUserRepo) UpdateUsageLimit(ctx context.Context, userID int64, enabled *bool, dailyUsageLimitUSD *float64) error {
+	panic("unexpected UpdateUsageLimit call")
+}

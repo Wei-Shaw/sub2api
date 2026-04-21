@@ -43,6 +43,12 @@ type AdminUser struct {
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]rateMultiplier
 	GroupRates map[int64]float64 `json:"group_rates,omitempty"`
+
+	// 每日配额限制（feature issue #1750）：跟随 users 表字段自然返回
+	// UsageLimitEnabled 三态：nil=跟随全局；true/false=强制覆盖
+	UsageLimitEnabled *bool `json:"usage_limit_enabled"`
+	// DailyUsageLimitUSD nil 表示不限
+	DailyUsageLimitUSD *float64 `json:"daily_usage_limit_usd"`
 }
 
 type APIKey struct {

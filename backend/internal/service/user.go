@@ -57,6 +57,10 @@ type User struct {
 	// nil = 该 API Key 对应的 (user, group) 无 override；非 nil 时 checkRPM 直接使用，
 	// 避免每请求查 DB。字段不持久化到数据库。
 	UserGroupRPMOverride *int
+	// 每日配额限制（feature issue #1750）
+	// UsageLimitEnabled 三态：nil=跟随全局默认；true/false=强制覆盖
+	UsageLimitEnabled  *bool
+	DailyUsageLimitUSD *float64 // nil 或 <=0 表示不限
 
 	APIKeys       []APIKey
 	Subscriptions []UserSubscription

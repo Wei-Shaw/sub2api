@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 	"time"
 
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
@@ -142,11 +141,8 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	// 2. Re-check billing
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
 		reqLog.Info("gateway.responses.billing_check_failed", zap.Error(err))
-		status, code, message, retryAfter := billingErrorDetails(err)
-		if retryAfter > 0 {
-			c.Header("Retry-After", strconv.Itoa(retryAfter))
-		}
-		h.responsesErrorResponse(c, status, code, message)
+		status, code, message, metadata := billingErrorDetails(err)
+		h.responsesErrorResponseWithMetadata(c, status, code, message, metadata)
 		return
 	}
 
@@ -286,12 +282,23 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 // responsesErrorResponse writes an error in OpenAI Responses API format.
 func (h *GatewayHandler) responsesErrorResponse(c *gin.Context, status int, code, message string) {
-	c.JSON(status, gin.H{
+	h.responsesErrorResponseWithMetadata(c, status, code, message, nil)
+}
+
+// responsesErrorResponseWithMetadata 带 metadata + reason 的 Responses 格式错误响应
+// （feature issue #1750：配额超限等场景要求前端能取到 metadata 和 reason 做 i18n 渲染）
+func (h *GatewayHandler) responsesErrorResponseWithMetadata(c *gin.Context, status int, code, message string, metadata map[string]string) {
+	body := gin.H{
+		"reason": code,
 		"error": gin.H{
 			"code":    code,
 			"message": message,
 		},
-	})
+	}
+	if len(metadata) > 0 {
+		body["metadata"] = metadata
+	}
+	c.JSON(status, body)
 }
 
 // handleResponsesFailoverExhausted writes a failover-exhausted error in Responses format.

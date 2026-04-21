@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 	"time"
 
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
@@ -137,11 +136,8 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	// 2. Re-check billing
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
 		reqLog.Info("gateway.cc.billing_check_failed", zap.Error(err))
-		status, code, message, retryAfter := billingErrorDetails(err)
-		if retryAfter > 0 {
-			c.Header("Retry-After", strconv.Itoa(retryAfter))
-		}
-		h.chatCompletionsErrorResponse(c, status, code, message)
+		status, code, message, metadata := billingErrorDetails(err)
+		h.chatCompletionsErrorResponseWithMetadata(c, status, code, message, metadata)
 		return
 	}
 
@@ -280,12 +276,23 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 
 // chatCompletionsErrorResponse writes an error in OpenAI Chat Completions format.
 func (h *GatewayHandler) chatCompletionsErrorResponse(c *gin.Context, status int, errType, message string) {
-	c.JSON(status, gin.H{
+	h.chatCompletionsErrorResponseWithMetadata(c, status, errType, message, nil)
+}
+
+// chatCompletionsErrorResponseWithMetadata 带 metadata + reason 的 CC 格式错误响应
+// （feature issue #1750：配额超限等场景要求前端能取到 metadata 和 reason 做 i18n 渲染）
+func (h *GatewayHandler) chatCompletionsErrorResponseWithMetadata(c *gin.Context, status int, errType, message string, metadata map[string]string) {
+	body := gin.H{
+		"reason": errType,
 		"error": gin.H{
 			"type":    errType,
 			"message": message,
 		},
-	})
+	}
+	if len(metadata) > 0 {
+		body["metadata"] = metadata
+	}
+	c.JSON(status, body)
 }
 
 // handleCCFailoverExhausted writes a failover-exhausted error in CC format.

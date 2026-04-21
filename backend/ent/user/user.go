@@ -61,6 +61,10 @@ const (
 	FieldTotalRecharged = "total_recharged"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
+	// FieldUsageLimitEnabled holds the string denoting the usage_limit_enabled field in the database.
+	FieldUsageLimitEnabled = "usage_limit_enabled"
+	// FieldDailyUsageLimitUsd holds the string denoting the daily_usage_limit_usd field in the database.
+	FieldDailyUsageLimitUsd = "daily_usage_limit_usd"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -85,6 +89,8 @@ const (
 	EdgeAuthIdentities = "auth_identities"
 	// EdgePendingAuthSessions holds the string denoting the pending_auth_sessions edge name in mutations.
 	EdgePendingAuthSessions = "pending_auth_sessions"
+	// EdgeUsageLimitRules holds the string denoting the usage_limit_rules edge name in mutations.
+	EdgeUsageLimitRules = "usage_limit_rules"
 	// EdgeUserAllowedGroups holds the string denoting the user_allowed_groups edge name in mutations.
 	EdgeUserAllowedGroups = "user_allowed_groups"
 	// Table holds the table name of the user in the database.
@@ -171,6 +177,13 @@ const (
 	PendingAuthSessionsInverseTable = "pending_auth_sessions"
 	// PendingAuthSessionsColumn is the table column denoting the pending_auth_sessions relation/edge.
 	PendingAuthSessionsColumn = "target_user_id"
+	// UsageLimitRulesTable is the table that holds the usage_limit_rules relation/edge.
+	UsageLimitRulesTable = "user_usage_limit_rules"
+	// UsageLimitRulesInverseTable is the table name for the UserUsageLimitRule entity.
+	// It exists in this package in order to avoid circular dependency with the "userusagelimitrule" package.
+	UsageLimitRulesInverseTable = "user_usage_limit_rules"
+	// UsageLimitRulesColumn is the table column denoting the usage_limit_rules relation/edge.
+	UsageLimitRulesColumn = "user_id"
 	// UserAllowedGroupsTable is the table that holds the user_allowed_groups relation/edge.
 	UserAllowedGroupsTable = "user_allowed_groups"
 	// UserAllowedGroupsInverseTable is the table name for the UserAllowedGroup entity.
@@ -206,6 +219,8 @@ var Columns = []string{
 	FieldBalanceNotifyExtraEmails,
 	FieldTotalRecharged,
 	FieldRpmLimit,
+	FieldUsageLimitEnabled,
+	FieldDailyUsageLimitUsd,
 }
 
 var (
@@ -401,6 +416,16 @@ func ByRpmLimit(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRpmLimit, opts...).ToFunc()
 }
 
+// ByUsageLimitEnabled orders the results by the usage_limit_enabled field.
+func ByUsageLimitEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldUsageLimitEnabled, opts...).ToFunc()
+}
+
+// ByDailyUsageLimitUsd orders the results by the daily_usage_limit_usd field.
+func ByDailyUsageLimitUsd(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldDailyUsageLimitUsd, opts...).ToFunc()
+}
+
 // ByAPIKeysCount orders the results by api_keys count.
 func ByAPIKeysCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -569,6 +594,20 @@ func ByPendingAuthSessions(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOpti
 	}
 }
 
+// ByUsageLimitRulesCount orders the results by usage_limit_rules count.
+func ByUsageLimitRulesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newUsageLimitRulesStep(), opts...)
+	}
+}
+
+// ByUsageLimitRules orders the results by usage_limit_rules terms.
+func ByUsageLimitRules(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newUsageLimitRulesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByUserAllowedGroupsCount orders the results by user_allowed_groups count.
 func ByUserAllowedGroupsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -664,6 +703,13 @@ func newPendingAuthSessionsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(PendingAuthSessionsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, PendingAuthSessionsTable, PendingAuthSessionsColumn),
+	)
+}
+func newUsageLimitRulesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(UsageLimitRulesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, UsageLimitRulesTable, UsageLimitRulesColumn),
 	)
 }
 func newUserAllowedGroupsStep() *sqlgraph.Step {

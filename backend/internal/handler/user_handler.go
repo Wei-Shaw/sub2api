@@ -18,6 +18,7 @@ type UserHandler struct {
 	authService  *service.AuthService
 	emailService *service.EmailService
 	emailCache   service.EmailCache
+	quotaService service.QuotaService
 }
 
 // NewUserHandler creates a new UserHandler
@@ -33,6 +34,11 @@ func NewUserHandler(
 		emailService: emailService,
 		emailCache:   emailCache,
 	}
+}
+
+// SetQuotaService 注入配额服务（feature issue #1750）
+func (h *UserHandler) SetQuotaService(qs service.QuotaService) {
+	h.quotaService = qs
 }
 
 // ChangePasswordRequest represents the change password request payload
@@ -561,4 +567,36 @@ func buildUserProfileSourceContext(provider string) *userProfileSourceContext {
 		Provider: provider,
 		Source:   provider,
 	}
+}
+
+// GetMyQuotaStatus 当前用户今日配额状态
+// GET /api/v1/users/me/quota/status
+func (h *UserHandler) GetMyQuotaStatus(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	if h.quotaService == nil {
+		// Quota 未启用：返回空结果保持 API 稳定（前端根据 enabled=false 隐藏小组件）
+		response.Success(c, gin.H{
+			"resolved":    nil,
+			"today_usage": nil,
+		})
+		return
+	}
+	resolved, err := h.quotaService.Resolve(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	usage, err := h.quotaService.GetTodayUsage(c.Request.Context(), subject.UserID, resolved)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{
+		"resolved":    resolved,
+		"today_usage": usage,
+	})
 }

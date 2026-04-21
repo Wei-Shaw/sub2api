@@ -250,6 +250,7 @@ func (m *mockUserRepo) WithUserProfileIdentityTx(ctx context.Context, fn func(tx
 	m.getByIDUser = txState.getByIDUser
 	m.upsertAvatarArgs = txState.upsertAvatarArgs
 	m.deleteAvatarIDs = txState.deleteAvatarIDs
+func (m *mockUserRepo) UpdateUsageLimit(context.Context, int64, *bool, *float64) error {
 	return nil
 }
 
@@ -311,6 +312,24 @@ func (m *mockBillingCache) UpdateAPIKeyRateLimitUsage(context.Context, int64, fl
 func (m *mockBillingCache) InvalidateAPIKeyRateLimit(context.Context, int64) error {
 	return nil
 }
+
+func (m *mockBillingCache) GetQuotaUsedTotal(context.Context, int64, string) (float64, error) {
+	return 0, nil
+}
+func (m *mockBillingCache) GetQuotaUsedRule(context.Context, int64, int64, string) (float64, error) {
+	return 0, nil
+}
+func (m *mockBillingCache) IncrQuotaUsedTotal(context.Context, int64, string, float64) error {
+	return nil
+}
+func (m *mockBillingCache) IncrQuotaUsedRule(context.Context, int64, int64, string, float64) error {
+	return nil
+}
+func (m *mockBillingCache) InvalidateQuotaConfig(context.Context, int64) error { return nil }
+func (m *mockBillingCache) GetQuotaConfig(context.Context, int64) (*ResolvedQuota, error) {
+	return nil, nil
+}
+func (m *mockBillingCache) SetQuotaConfig(context.Context, int64, *ResolvedQuota) error { return nil }
 
 // --- 测试 ---
 

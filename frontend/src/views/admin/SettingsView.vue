@@ -4982,6 +4982,10 @@ const form = reactive<SettingsForm>({
   contact_info: "",
   doc_url: "",
   home_content: "",
+  // 用户每日配额限制（feature issue #1750）
+  usage_limit_enabled: false,
+  default_usage_limit_enabled: false,
+  default_daily_usage_limit_usd: 0,
   backend_mode_enabled: false,
   hide_ccs_import_button: false,
   payment_enabled: false,
@@ -5897,6 +5901,10 @@ async function saveSettings() {
       default_subscriptions: normalizedDefaultSubscriptions,
       force_email_on_third_party_signup: form.force_email_on_third_party_signup,
       default_user_rpm_limit: form.default_user_rpm_limit,
+      // 用户每日配额限制（feature issue #1750）
+      usage_limit_enabled: form.usage_limit_enabled,
+      default_usage_limit_enabled: form.default_usage_limit_enabled,
+      default_daily_usage_limit_usd: Number(form.default_daily_usage_limit_usd) || 0,
       site_name: form.site_name,
       site_logo: form.site_logo,
       site_subtitle: form.site_subtitle,

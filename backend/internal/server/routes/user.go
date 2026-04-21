@@ -116,5 +116,12 @@ func RegisterUserRoutes(
 			monitors.GET("", h.ChannelMonitor.List)
 			monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
 		}
+
+		// 用户每日配额状态（feature issue #1750）
+		// 契约端点：GET /api/v1/users/me/quota/status
+		usersMe := authenticated.Group("/users/me")
+		{
+			usersMe.GET("/quota/status", h.User.GetMyQuotaStatus)
+		}
 	}
 }

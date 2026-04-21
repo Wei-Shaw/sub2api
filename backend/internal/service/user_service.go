@@ -109,6 +109,10 @@ type UserRepository interface {
 	UpdateTotpSecret(ctx context.Context, userID int64, encryptedSecret *string) error
 	EnableTotp(ctx context.Context, userID int64) error
 	DisableTotp(ctx context.Context, userID int64) error
+
+	// 每日配额（feature issue #1750）
+	// enabled=nil 清空为"跟随全局默认"；dailyUsageLimitUSD=nil 清空为"不限"
+	UpdateUsageLimit(ctx context.Context, userID int64, enabled *bool, dailyUsageLimitUSD *float64) error
 }
 
 type UserAuthIdentityRecord struct {

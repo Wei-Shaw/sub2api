@@ -228,11 +228,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 2. Re-check billing eligibility after wait
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
 		reqLog.Info("openai.billing_eligibility_check_failed", zap.Error(err))
-		status, code, message, retryAfter := billingErrorDetails(err)
-		if retryAfter > 0 {
-			c.Header("Retry-After", strconv.Itoa(retryAfter))
-		}
-		h.handleStreamingAwareError(c, status, code, message, streamStarted)
+		status, code, message, metadata := billingErrorDetails(err)
+		h.handleStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
 		return
 	}
 
@@ -597,11 +594,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
 		reqLog.Info("openai_messages.billing_eligibility_check_failed", zap.Error(err))
-		status, code, message, retryAfter := billingErrorDetails(err)
-		if retryAfter > 0 {
-			c.Header("Retry-After", strconv.Itoa(retryAfter))
-		}
-		h.anthropicStreamingAwareError(c, status, code, message, streamStarted)
+		status, code, message, metadata := billingErrorDetails(err)
+		h.anthropicStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
 		return
 	}
 
@@ -796,18 +790,34 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 // anthropicErrorResponse writes an error in Anthropic Messages API format.
 func (h *OpenAIGatewayHandler) anthropicErrorResponse(c *gin.Context, status int, errType, message string) {
-	c.JSON(status, gin.H{
-		"type": "error",
+	h.anthropicErrorResponseWithMetadata(c, status, errType, message, nil)
+}
+
+// anthropicErrorResponseWithMetadata 带 metadata + reason 的 Anthropic 格式错误响应
+// （feature issue #1750：配额超限等场景要求前端能取到 metadata 和 reason 做 i18n 渲染）
+func (h *OpenAIGatewayHandler) anthropicErrorResponseWithMetadata(c *gin.Context, status int, errType, message string, metadata map[string]string) {
+	body := gin.H{
+		"type":   "error",
+		"reason": errType,
 		"error": gin.H{
 			"type":    errType,
 			"message": message,
 		},
-	})
+	}
+	if len(metadata) > 0 {
+		body["metadata"] = metadata
+	}
+	c.JSON(status, body)
 }
 
 // anthropicStreamingAwareError handles errors that may occur during streaming,
 // using Anthropic SSE error format.
 func (h *OpenAIGatewayHandler) anthropicStreamingAwareError(c *gin.Context, status int, errType, message string, streamStarted bool) {
+	h.anthropicStreamingAwareErrorWithMetadata(c, status, errType, message, nil, streamStarted)
+}
+
+// anthropicStreamingAwareErrorWithMetadata 带 metadata + reason 的 Anthropic 流错误响应
+func (h *OpenAIGatewayHandler) anthropicStreamingAwareErrorWithMetadata(c *gin.Context, status int, errType, message string, metadata map[string]string, streamStarted bool) {
 	if streamStarted {
 		flusher, ok := c.Writer.(http.Flusher)
 		if ok {
@@ -823,7 +833,7 @@ func (h *OpenAIGatewayHandler) anthropicStreamingAwareError(c *gin.Context, stat
 		}
 		return
 	}
-	h.anthropicErrorResponse(c, status, errType, message)
+	h.anthropicErrorResponseWithMetadata(c, status, errType, message, metadata)
 }
 
 // handleAnthropicFailoverExhausted maps upstream failover errors to Anthropic format.
@@ -1510,6 +1520,11 @@ func (h *OpenAIGatewayHandler) mapUpstreamError(statusCode int) (int, string, st
 
 // handleStreamingAwareError handles errors that may occur after streaming has started
 func (h *OpenAIGatewayHandler) handleStreamingAwareError(c *gin.Context, status int, errType, message string, streamStarted bool) {
+	h.handleStreamingAwareErrorWithMetadata(c, status, errType, message, nil, streamStarted)
+}
+
+// handleStreamingAwareErrorWithMetadata 带 metadata + reason 的错误响应（feature issue #1750）
+func (h *OpenAIGatewayHandler) handleStreamingAwareErrorWithMetadata(c *gin.Context, status int, errType, message string, metadata map[string]string, streamStarted bool) {
 	if streamStarted {
 		// Stream already started, send error as SSE event then close
 		flusher, ok := c.Writer.(http.Flusher)
@@ -1525,7 +1540,7 @@ func (h *OpenAIGatewayHandler) handleStreamingAwareError(c *gin.Context, status 
 	}
 
 	// Normal case: return JSON response with proper status code
-	h.errorResponse(c, status, errType, message)
+	h.errorResponseWithMetadata(c, status, errType, message, metadata)
 }
 
 // ensureForwardErrorResponse 在 Forward 返回错误但尚未写响应时补写统一错误响应。
@@ -1549,12 +1564,22 @@ func shouldLogOpenAIForwardFailureAsWarn(c *gin.Context, wroteFallback bool) boo
 
 // errorResponse returns OpenAI API format error response
 func (h *OpenAIGatewayHandler) errorResponse(c *gin.Context, status int, errType, message string) {
-	c.JSON(status, gin.H{
+	h.errorResponseWithMetadata(c, status, errType, message, nil)
+}
+
+// errorResponseWithMetadata 带 metadata + reason 的错误响应（feature issue #1750）
+func (h *OpenAIGatewayHandler) errorResponseWithMetadata(c *gin.Context, status int, errType, message string, metadata map[string]string) {
+	body := gin.H{
+		"reason": errType,
 		"error": gin.H{
 			"type":    errType,
 			"message": message,
 		},
-	})
+	}
+	if len(metadata) > 0 {
+		body["metadata"] = metadata
+	}
+	c.JSON(status, body)
 }
 
 func setOpenAIClientTransportHTTP(c *gin.Context) {

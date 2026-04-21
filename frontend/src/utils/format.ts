@@ -239,6 +239,17 @@ export function formatCostFixed(amount: number, fractionDigits: number = 4): str
 }
 
 /**
+ * 格式化用户每日配额限额（2 位小数，使用 toPrecision(10) 消除 IEEE 754 浮点误差）
+ * 参考 CLAUDE.md §12 "前端显示规范 - 浮点精度"
+ * @param v 金额，可能为 null/undefined
+ * @returns 两位小数字符串，如 "1.25"；空值返回 "0.00"
+ */
+export function formatLimitUsd(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(Number(v))) return '0.00'
+  return Number(Number(v).toPrecision(10)).toFixed(2)
+}
+
+/**
  * 格式化 token 数量（>=1M 显示为 M，>=1K 显示为 K，保留 1 位小数）
  * @param tokens token 数量
  * @returns 格式化后的字符串，如 "950", "1.2K", "3.5M"

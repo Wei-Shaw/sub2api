@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"math/rand/v2"
 	"strconv"
 	"time"
@@ -25,6 +26,11 @@ const (
 	rateLimitWindow5h = 5 * time.Hour
 	rateLimitWindow1d = 24 * time.Hour
 	rateLimitWindow7d = 7 * 24 * time.Hour
+
+	// Quota cache key prefixes（feature issue #1750）
+	quotaConfigKeyPrefix    = "quota:cfg:"
+	quotaUsedTotalKeyPrefix = "quota:used:total:"
+	quotaUsedRuleKeyPrefix  = "quota:used:rule:"
 )
 
 // jitteredTTL 返回带随机抖动的 TTL，防止缓存雪崩
@@ -93,6 +99,15 @@ var (
 		redis.call('HINCRBYFLOAT', KEYS[1], 'monthly_usage', cost)
 		redis.call('EXPIRE', KEYS[1], ARGV[2])
 		return 1
+	`)
+
+	// incrQuotaUsageScript 原子 INCRBYFLOAT + EXPIRE，用于用户配额用量累加
+	// KEYS[1]=counter key
+	// ARGV[1]=delta, ARGV[2]=ttl_seconds
+	incrQuotaUsageScript = redis.NewScript(`
+		local v = redis.call('INCRBYFLOAT', KEYS[1], ARGV[1])
+		redis.call('EXPIRE', KEYS[1], ARGV[2])
+		return v
 	`)
 
 	// updateRateLimitUsageScript atomically increments all three rate limit usage counters
@@ -327,4 +342,118 @@ func (c *billingCache) UpdateAPIKeyRateLimitUsage(ctx context.Context, keyID int
 func (c *billingCache) InvalidateAPIKeyRateLimit(ctx context.Context, keyID int64) error {
 	key := billingRateLimitKey(keyID)
 	return c.rdb.Del(ctx, key).Err()
+}
+
+// ============================================
+// Quota（feature issue #1750）
+// ============================================
+
+func quotaConfigKey(userID int64) string {
+	return fmt.Sprintf("%s%d", quotaConfigKeyPrefix, userID)
+}
+
+func quotaUsedTotalKey(userID int64, date string) string {
+	return fmt.Sprintf("%s%d:%s", quotaUsedTotalKeyPrefix, userID, date)
+}
+
+func quotaUsedRuleKey(userID, ruleID int64, date string) string {
+	return fmt.Sprintf("%s%d:%d:%s", quotaUsedRuleKeyPrefix, userID, ruleID, date)
+}
+
+func (c *billingCache) GetQuotaUsedTotal(ctx context.Context, userID int64, date string) (float64, error) {
+	key := quotaUsedTotalKey(userID, date)
+	val, err := c.rdb.Get(ctx, key).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return strconv.ParseFloat(val, 64)
+}
+
+func (c *billingCache) GetQuotaUsedRule(ctx context.Context, userID, ruleID int64, date string) (float64, error) {
+	key := quotaUsedRuleKey(userID, ruleID, date)
+	val, err := c.rdb.Get(ctx, key).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return strconv.ParseFloat(val, 64)
+}
+
+func (c *billingCache) IncrQuotaUsedTotal(ctx context.Context, userID int64, date string, delta float64) error {
+	key := quotaUsedTotalKey(userID, date)
+	_, err := incrQuotaUsageScript.Run(ctx, c.rdb, []string{key}, delta, int(quotaUsageTTLSeconds())).Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		slog.Warn("incr quota used total failed",
+			"component", "repository.billing_cache",
+			"user_id", userID,
+			"error", err,
+		)
+		return err
+	}
+	return nil
+}
+
+func (c *billingCache) IncrQuotaUsedRule(ctx context.Context, userID, ruleID int64, date string, delta float64) error {
+	key := quotaUsedRuleKey(userID, ruleID, date)
+	_, err := incrQuotaUsageScript.Run(ctx, c.rdb, []string{key}, delta, int(quotaUsageTTLSeconds())).Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		slog.Warn("incr quota used rule failed",
+			"component", "repository.billing_cache",
+			"user_id", userID,
+			"rule_id", ruleID,
+			"error", err,
+		)
+		return err
+	}
+	return nil
+}
+
+func (c *billingCache) InvalidateQuotaConfig(ctx context.Context, userID int64) error {
+	return c.rdb.Del(ctx, quotaConfigKey(userID)).Err()
+}
+
+func (c *billingCache) GetQuotaConfig(ctx context.Context, userID int64) (*service.ResolvedQuota, error) {
+	key := quotaConfigKey(userID)
+	raw, err := c.rdb.Get(ctx, key).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var resolved service.ResolvedQuota
+	if err := service.DecodeResolvedQuota(raw, &resolved); err != nil {
+		return nil, err
+	}
+	return &resolved, nil
+}
+
+func (c *billingCache) SetQuotaConfig(ctx context.Context, userID int64, resolved *service.ResolvedQuota) error {
+	if resolved == nil {
+		return nil
+	}
+	raw, err := service.EncodeResolvedQuota(resolved)
+	if err != nil {
+		return err
+	}
+	return c.rdb.Set(ctx, quotaConfigKey(userID), raw, quotaConfigTTLWithJitter()).Err()
+}
+
+// quotaUsageTTLSeconds 用量计数器 TTL（秒），基于 service.QuotaUsageTTL
+func quotaUsageTTLSeconds() int64 {
+	return int64(service.QuotaUsageTTL.Seconds())
+}
+
+// quotaConfigTTLWithJitter 配置缓存 TTL，带抖动防雪崩
+func quotaConfigTTLWithJitter() time.Duration {
+	if service.QuotaConfigTTLJitter <= 0 {
+		return service.QuotaConfigTTL
+	}
+	jitter := time.Duration(rand.IntN(int(service.QuotaConfigTTLJitter)))
+	return service.QuotaConfigTTL - jitter
 }

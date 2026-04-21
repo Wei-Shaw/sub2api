@@ -229,6 +229,17 @@ func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// User attribute values
 		users.GET("/:id/attributes", h.Admin.UserAttribute.GetUserAttributes)
 		users.PUT("/:id/attributes", h.Admin.UserAttribute.UpdateUserAttributes)
+
+		// 用户每日配额（feature issue #1750）
+		if h.Admin.Quota != nil {
+			users.GET("/:id/quota", h.Admin.Quota.Get)
+			users.PUT("/:id/quota", h.Admin.Quota.Update)
+			users.GET("/:id/quota/rules", h.Admin.Quota.ListRules)
+			users.POST("/:id/quota/rules", h.Admin.Quota.CreateRule)
+			users.PUT("/:id/quota/rules", h.Admin.Quota.ReplaceRules)
+			users.PUT("/:id/quota/rules/:ruleID", h.Admin.Quota.UpdateRule)
+			users.DELETE("/:id/quota/rules/:ruleID", h.Admin.Quota.DeleteRule)
+		}
 	}
 }
 

@@ -39,6 +39,23 @@ type BillingCache interface {
 	SetAPIKeyRateLimit(ctx context.Context, keyID int64, data *APIKeyRateLimitCacheData) error
 	UpdateAPIKeyRateLimitUsage(ctx context.Context, keyID int64, cost float64) error
 	InvalidateAPIKeyRateLimit(ctx context.Context, keyID int64) error
+
+	// Quota operations（feature issue #1750）
+	// 读今日总已用；缓存 miss 返回 0, nil
+	GetQuotaUsedTotal(ctx context.Context, userID int64, date string) (float64, error)
+	// 读某规则今日已用；缓存 miss 返回 0, nil
+	GetQuotaUsedRule(ctx context.Context, userID, ruleID int64, date string) (float64, error)
+	// Lua 原子：INCRBYFLOAT + EXPIRE（TTL = QuotaUsageTTL）
+	IncrQuotaUsedTotal(ctx context.Context, userID int64, date string, delta float64) error
+	IncrQuotaUsedRule(ctx context.Context, userID, ruleID int64, date string, delta float64) error
+	// 用户配额配置缓存失效（改配置时调用）
+	InvalidateQuotaConfig(ctx context.Context, userID int64) error
+	// GetQuotaConfig 读用户配额配置（miss 返回 nil, nil；调用方负责回源）
+	// reserved for Phase-N: Resolve 结果缓存。当前未使用。
+	GetQuotaConfig(ctx context.Context, userID int64) (*ResolvedQuota, error)
+	// SetQuotaConfig 写用户配额配置（TTL = QuotaConfigTTL ± QuotaConfigTTLJitter）
+	// reserved for Phase-N: Resolve 结果缓存。当前未使用。
+	SetQuotaConfig(ctx context.Context, userID int64, resolved *ResolvedQuota) error
 }
 
 // ModelPricing 模型价格配置（per-token价格，与LiteLLM格式一致）

@@ -109,6 +109,11 @@ type SystemSettings struct {
 	DefaultUserRPMLimit  int
 	DefaultSubscriptions []DefaultSubscriptionSetting
 
+	// 用户每日配额限制（feature issue #1750）
+	UsageLimitEnabled         bool    // 总开关
+	DefaultUsageLimitEnabled  bool    // 用户 usage_limit_enabled=nil 时的回退
+	DefaultDailyUsageLimitUSD float64 // 新建用户默认 daily_usage_limit_usd（0=不下发）
+
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
 	FallbackModelAnthropic   string `json:"fallback_model_anthropic"`

@@ -67,6 +67,28 @@ func (s *billingCacheMissStub) InvalidateAPIKeyRateLimit(ctx context.Context, ke
 	return nil
 }
 
+func (s *billingCacheMissStub) GetQuotaUsedTotal(ctx context.Context, userID int64, date string) (float64, error) {
+	return 0, nil
+}
+func (s *billingCacheMissStub) GetQuotaUsedRule(ctx context.Context, userID, ruleID int64, date string) (float64, error) {
+	return 0, nil
+}
+func (s *billingCacheMissStub) IncrQuotaUsedTotal(ctx context.Context, userID int64, date string, delta float64) error {
+	return nil
+}
+func (s *billingCacheMissStub) IncrQuotaUsedRule(ctx context.Context, userID, ruleID int64, date string, delta float64) error {
+	return nil
+}
+func (s *billingCacheMissStub) InvalidateQuotaConfig(ctx context.Context, userID int64) error {
+	return nil
+}
+func (s *billingCacheMissStub) GetQuotaConfig(ctx context.Context, userID int64) (*ResolvedQuota, error) {
+	return nil, nil
+}
+func (s *billingCacheMissStub) SetQuotaConfig(ctx context.Context, userID int64, resolved *ResolvedQuota) error {
+	return nil
+}
+
 type balanceLoadUserRepoStub struct {
 	mockUserRepo
 	calls   atomic.Int64
