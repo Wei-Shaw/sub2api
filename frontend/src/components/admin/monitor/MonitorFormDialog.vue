@@ -113,6 +113,7 @@
     :loading="myKeysLoading"
     :keys="myActiveKeys"
     :provider="form.provider"
+    :user-group-rates="userGroupRates"
     @close="showKeyPicker = false"
     @pick="pickMyKey"
   />
@@ -125,6 +126,7 @@ import { useAppStore REDACTED from '@/stores/app'
 import { extractApiErrorMessage REDACTED from '@/utils/apiError'
 import { adminAPI REDACTED from '@/api/admin'
 import { keysAPI REDACTED from '@/api/keys'
+import { userGroupsAPI REDACTED from '@/api/groups'
 import type {
   ChannelMonitor,
   CreateParams,
@@ -175,6 +177,7 @@ const submitting = ref(false)
 const showKeyPicker = ref(false)
 const myKeysLoading = ref(false)
 const myActiveKeys = ref<ApiKey[]>([])
+const userGroupRates = ref<Record<number, number>>({REDACTED)
 
 interface MonitorForm {
   name: string
@@ -263,7 +266,10 @@ async function openMyKeyPicker() {
   if (myActiveKeys.value.length > 0) return
   myKeysLoading.value = true
   try {
-    const res = await keysAPI.list(1, 100, { status: 'active' REDACTED)
+    const [res, rates] = await Promise.all([
+      keysAPI.list(1, 100, { status: 'active' REDACTED),
+      userGroupsAPI.getUserGroupRates(),
+    ])
     const items = res.items || []
     const now = Date.now()
     myActiveKeys.value = items.filter(k => {
@@ -271,6 +277,7 @@ async function openMyKeyPicker() {
       if (!k.expires_at) return true
       return new Date(k.expires_at).getTime() > now
     REDACTED)
+    userGroupRates.value = rates
   REDACTED catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('admin.channelMonitor.form.noActiveKey')))
   REDACTED finally {

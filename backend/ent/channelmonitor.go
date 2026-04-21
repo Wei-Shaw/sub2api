@@ -54,9 +54,11 @@ REDACTED
 type ChannelMonitorEdges struct {
 	// History holds the value of the history edge.
 	History []*ChannelMonitorHistory `json:"history,omitempty"`
+	// DailyRollups holds the value of the daily_rollups edge.
+	DailyRollups []*ChannelMonitorDailyRollup `json:"daily_rollups,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [1]bool
+	loadedTypes [2]bool
 REDACTED
 
 // HistoryOrErr returns the History value or an error if the edge
@@ -66,6 +68,15 @@ func (e ChannelMonitorEdges) HistoryOrErr() ([]*ChannelMonitorHistory, error) {
 		return e.History, nil
 REDACTED
 	return nil, &NotLoadedError{edge: "history"REDACTED
+REDACTED
+
+// DailyRollupsOrErr returns the DailyRollups value or an error if the edge
+// was not loaded in eager-loading.
+func (e ChannelMonitorEdges) DailyRollupsOrErr() ([]*ChannelMonitorDailyRollup, error) {
+	if e.loadedTypes[1] {
+		return e.DailyRollups, nil
+REDACTED
+	return nil, &NotLoadedError{edge: "daily_rollups"REDACTED
 REDACTED
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -201,6 +212,11 @@ REDACTED
 // QueryHistory queries the "history" edge of the ChannelMonitor entity.
 func (_m *ChannelMonitor) QueryHistory() *ChannelMonitorHistoryQuery {
 	return NewChannelMonitorClient(_m.config).QueryHistory(_m)
+REDACTED
+
+// QueryDailyRollups queries the "daily_rollups" edge of the ChannelMonitor entity.
+func (_m *ChannelMonitor) QueryDailyRollups() *ChannelMonitorDailyRollupQuery {
+	return NewChannelMonitorClient(_m.config).QueryDailyRollups(_m)
 REDACTED
 
 // Update returns a builder for updating this ChannelMonitor.

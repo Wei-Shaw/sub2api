@@ -30,6 +30,9 @@ type AuthIdentityChannel func(*sql.Selector)
 // ChannelMonitor is the predicate function for channelmonitor builders.
 type ChannelMonitor func(*sql.Selector)
 
+// ChannelMonitorDailyRollup is the predicate function for channelmonitordailyrollup builders.
+type ChannelMonitorDailyRollup func(*sql.Selector)
+
 // ChannelMonitorHistory is the predicate function for channelmonitorhistory builders.
 type ChannelMonitorHistory func(*sql.Selector)
 

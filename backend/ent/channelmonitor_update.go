@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
+	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 )
@@ -229,6 +230,21 @@ REDACTED
 	return _u.AddHistoryIDs(ids...)
 REDACTED
 
+// AddDailyRollupIDs adds the "daily_rollups" edge to the ChannelMonitorDailyRollup entity by IDs.
+func (_u *ChannelMonitorUpdate) AddDailyRollupIDs(ids ...int64) *ChannelMonitorUpdate {
+	_u.mutation.AddDailyRollupIDs(ids...)
+	return _u
+REDACTED
+
+// AddDailyRollups adds the "daily_rollups" edges to the ChannelMonitorDailyRollup entity.
+func (_u *ChannelMonitorUpdate) AddDailyRollups(v ...*ChannelMonitorDailyRollup) *ChannelMonitorUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.AddDailyRollupIDs(ids...)
+REDACTED
+
 // Mutation returns the ChannelMonitorMutation object of the builder.
 func (_u *ChannelMonitorUpdate) Mutation() *ChannelMonitorMutation {
 	return _u.mutation
@@ -253,6 +269,27 @@ func (_u *ChannelMonitorUpdate) RemoveHistory(v ...*ChannelMonitorHistory) *Chan
 		ids[i] = v[i].ID
 REDACTED
 	return _u.RemoveHistoryIDs(ids...)
+REDACTED
+
+// ClearDailyRollups clears all "daily_rollups" edges to the ChannelMonitorDailyRollup entity.
+func (_u *ChannelMonitorUpdate) ClearDailyRollups() *ChannelMonitorUpdate {
+	_u.mutation.ClearDailyRollups()
+	return _u
+REDACTED
+
+// RemoveDailyRollupIDs removes the "daily_rollups" edge to ChannelMonitorDailyRollup entities by IDs.
+func (_u *ChannelMonitorUpdate) RemoveDailyRollupIDs(ids ...int64) *ChannelMonitorUpdate {
+	_u.mutation.RemoveDailyRollupIDs(ids...)
+	return _u
+REDACTED
+
+// RemoveDailyRollups removes "daily_rollups" edges to ChannelMonitorDailyRollup entities.
+func (_u *ChannelMonitorUpdate) RemoveDailyRollups(v ...*ChannelMonitorDailyRollup) *ChannelMonitorUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.RemoveDailyRollupIDs(ids...)
 REDACTED
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -434,6 +471,51 @@ REDACTED
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(channelmonitorhistory.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+REDACTED
+	if _u.mutation.DailyRollupsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   channelmonitor.DailyRollupsTable,
+			Columns: []string{channelmonitor.DailyRollupsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(channelmonitordailyrollup.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.RemovedDailyRollupsIDs(); len(nodes) > 0 && !_u.mutation.DailyRollupsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   channelmonitor.DailyRollupsTable,
+			Columns: []string{channelmonitor.DailyRollupsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(channelmonitordailyrollup.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.DailyRollupsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   channelmonitor.DailyRollupsTable,
+			Columns: []string{channelmonitor.DailyRollupsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(channelmonitordailyrollup.FieldID, field.TypeInt64),
 		REDACTED,
 	REDACTED
 		for _, k := range nodes {
@@ -660,6 +742,21 @@ REDACTED
 	return _u.AddHistoryIDs(ids...)
 REDACTED
 
+// AddDailyRollupIDs adds the "daily_rollups" edge to the ChannelMonitorDailyRollup entity by IDs.
+func (_u *ChannelMonitorUpdateOne) AddDailyRollupIDs(ids ...int64) *ChannelMonitorUpdateOne {
+	_u.mutation.AddDailyRollupIDs(ids...)
+	return _u
+REDACTED
+
+// AddDailyRollups adds the "daily_rollups" edges to the ChannelMonitorDailyRollup entity.
+func (_u *ChannelMonitorUpdateOne) AddDailyRollups(v ...*ChannelMonitorDailyRollup) *ChannelMonitorUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.AddDailyRollupIDs(ids...)
+REDACTED
+
 // Mutation returns the ChannelMonitorMutation object of the builder.
 func (_u *ChannelMonitorUpdateOne) Mutation() *ChannelMonitorMutation {
 	return _u.mutation
@@ -684,6 +781,27 @@ func (_u *ChannelMonitorUpdateOne) RemoveHistory(v ...*ChannelMonitorHistory) *C
 		ids[i] = v[i].ID
 REDACTED
 	return _u.RemoveHistoryIDs(ids...)
+REDACTED
+
+// ClearDailyRollups clears all "daily_rollups" edges to the ChannelMonitorDailyRollup entity.
+func (_u *ChannelMonitorUpdateOne) ClearDailyRollups() *ChannelMonitorUpdateOne {
+	_u.mutation.ClearDailyRollups()
+	return _u
+REDACTED
+
+// RemoveDailyRollupIDs removes the "daily_rollups" edge to ChannelMonitorDailyRollup entities by IDs.
+func (_u *ChannelMonitorUpdateOne) RemoveDailyRollupIDs(ids ...int64) *ChannelMonitorUpdateOne {
+	_u.mutation.RemoveDailyRollupIDs(ids...)
+	return _u
+REDACTED
+
+// RemoveDailyRollups removes "daily_rollups" edges to ChannelMonitorDailyRollup entities.
+func (_u *ChannelMonitorUpdateOne) RemoveDailyRollups(v ...*ChannelMonitorDailyRollup) *ChannelMonitorUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+REDACTED
+	return _u.RemoveDailyRollupIDs(ids...)
 REDACTED
 
 // Where appends a list predicates to the ChannelMonitorUpdate builder.
@@ -895,6 +1013,51 @@ REDACTED
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(channelmonitorhistory.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+REDACTED
+	if _u.mutation.DailyRollupsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   channelmonitor.DailyRollupsTable,
+			Columns: []string{channelmonitor.DailyRollupsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(channelmonitordailyrollup.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.RemovedDailyRollupsIDs(); len(nodes) > 0 && !_u.mutation.DailyRollupsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   channelmonitor.DailyRollupsTable,
+			Columns: []string{channelmonitor.DailyRollupsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(channelmonitordailyrollup.FieldID, field.TypeInt64),
+		REDACTED,
+	REDACTED
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+	REDACTED
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+REDACTED
+	if nodes := _u.mutation.DailyRollupsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   channelmonitor.DailyRollupsTable,
+			Columns: []string{channelmonitor.DailyRollupsColumnREDACTED,
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(channelmonitordailyrollup.FieldID, field.TypeInt64),
 		REDACTED,
 	REDACTED
 		for _, k := range nodes {
