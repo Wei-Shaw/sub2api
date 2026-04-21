@@ -23,18 +23,21 @@ import (
 // --- mock: UserRepository ---
 
 type mockUserRepo struct {
-	updateBalanceErr error
-	updateBalanceFn  func(ctx context.Context, id int64, amount float64) error
-	getByIDUser      *User
-	getByIDErr       error
-	updateFn         func(ctx context.Context, user *User) error
-	updateCalls      int
-	upsertAvatarFn   func(ctx context.Context, userID int64, input UpsertUserAvatarInput) (*UserAvatar, error)
-	upsertAvatarArgs []UpsertUserAvatarInput
-	deleteAvatarFn   func(ctx context.Context, userID int64) error
-	deleteAvatarIDs  []int64
-	getAvatarFn      func(ctx context.Context, userID int64) (*UserAvatar, error)
-	txCalls          int
+	updateBalanceErr        error
+	updateBalanceFn         func(ctx context.Context, id int64, amount float64) error
+	getByIDUser             *User
+	getByIDErr              error
+	updateLastActiveErr     error
+	updateLastActiveUserIDs []int64
+	updateLastActiveAt      []time.Time
+	updateFn                func(ctx context.Context, user *User) error
+	updateCalls             int
+	upsertAvatarFn          func(ctx context.Context, userID int64, input UpsertUserAvatarInput) (*UserAvatar, error)
+	upsertAvatarArgs        []UpsertUserAvatarInput
+	deleteAvatarFn          func(ctx context.Context, userID int64) error
+	deleteAvatarIDs         []int64
+	getAvatarFn             func(ctx context.Context, userID int64) (*UserAvatar, error)
+	txCalls                 int
 REDACTED
 
 type mockUserRepoTxKey struct{REDACTED
@@ -143,6 +146,11 @@ func (m *mockUserRepo) UpdateBalance(ctx context.Context, id int64, amount float
 		return m.updateBalanceFn(ctx, id, amount)
 REDACTED
 	return m.updateBalanceErr
+REDACTED
+func (m *mockUserRepo) UpdateUserLastActiveAt(_ context.Context, userID int64, activeAt time.Time) error {
+	m.updateLastActiveUserIDs = append(m.updateLastActiveUserIDs, userID)
+	m.updateLastActiveAt = append(m.updateLastActiveAt, activeAt)
+	return m.updateLastActiveErr
 REDACTED
 func (m *mockUserRepo) DeductBalance(context.Context, int64, float64) error { return nil REDACTED
 func (m *mockUserRepo) UpdateConcurrency(context.Context, int64, int) error { return nil REDACTED
@@ -286,6 +294,39 @@ func TestUpdateBalance_CacheFailure_DoesNotAffectReturn(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return cache.invalidateCallCount.Load() == 1
 REDACTED, 2*time.Second, 10*time.Millisecond, "即使失败也应调用 InvalidateUserBalance")
+REDACTED
+
+func TestTouchLastActive_UpdatesWhenStale(t *testing.T) {
+	stale := time.Now().Add(-11 * time.Minute)
+	repo := &mockUserRepo{
+		getByIDUser: &User{
+			ID:           42,
+			LastActiveAt: &stale,
+	REDACTED,
+REDACTED
+	svc := NewUserService(repo, nil, nil, nil)
+
+	svc.TouchLastActive(context.Background(), 42)
+
+	require.Equal(t, []int64{42REDACTED, repo.updateLastActiveUserIDs)
+	require.Len(t, repo.updateLastActiveAt, 1)
+	require.WithinDuration(t, time.Now(), repo.updateLastActiveAt[0], 2*time.Second)
+REDACTED
+
+func TestTouchLastActive_SkipsWhenRecent(t *testing.T) {
+	recent := time.Now().Add(-time.Minute)
+	repo := &mockUserRepo{
+		getByIDUser: &User{
+			ID:           42,
+			LastActiveAt: &recent,
+	REDACTED,
+REDACTED
+	svc := NewUserService(repo, nil, nil, nil)
+
+	svc.TouchLastActive(context.Background(), 42)
+
+	require.Empty(t, repo.updateLastActiveUserIDs)
+	require.Empty(t, repo.updateLastActiveAt)
 REDACTED
 
 func TestUpdateBalance_RepoError_ReturnsError(t *testing.T) {

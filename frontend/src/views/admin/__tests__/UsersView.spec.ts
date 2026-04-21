@@ -113,7 +113,7 @@ describe('admin UsersView', () => {
     getBatchUserAttributes.mockResolvedValue({ values: {REDACTED REDACTED)
   REDACTED)
 
-  it('shows last_used_at column and requests last_used_at sort', async () => {
+  it('shows active and used activity columns, hides last_login_at, and requests last_used_at sort', async () => {
     const wrapper = mount(UsersView, {
       global: {
         stubs: {
@@ -144,7 +144,10 @@ describe('admin UsersView', () => {
 
     await flushPromises()
 
-    expect(wrapper.get('[data-test="columns"]').text()).toContain('last_used_at')
+    const columns = wrapper.get('[data-test="columns"]').text()
+    expect(columns).toContain('last_used_at')
+    expect(columns).toContain('last_active_at')
+    expect(columns).not.toContain('last_login_at')
 
     await wrapper.get('[data-test="sort-last-used"]').trigger('click')
     await flushPromises()
