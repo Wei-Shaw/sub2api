@@ -144,14 +144,14 @@ func (h *QuotaHandler) ReplaceRules(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Rules []service.ReplaceRuleInput `json:"rules"`
+		Rules []service.CreateRuleRequest `json:"rules"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "invalid request: "+err.Error())
 		return
 	}
 	if req.Rules == nil {
-		req.Rules = []service.ReplaceRuleInput{}
+		req.Rules = []service.CreateRuleRequest{}
 	}
 	rules, err := h.quotaService.ReplaceUserRules(c.Request.Context(), userID, req.Rules)
 	if err != nil {

@@ -61,6 +61,12 @@ export interface UpdateUserQuotaRequest {
   daily_usage_limit_usd?: number | null
 }
 
+/**
+ * 规则新增请求体，同时用作批量替换的单项输入
+ *
+ * 批量替换 PUT /api/v1/admin/users/:id/quota/rules 全量覆盖（单事务幂等），
+ * body 为 { rules: CreateRuleRequest[] }
+ */
 export interface CreateRuleRequest {
   group_ids: number[]
   daily_limit_usd: number
@@ -70,18 +76,6 @@ export interface CreateRuleRequest {
 export interface UpdateRuleRequest {
   group_ids?: number[]
   daily_limit_usd?: number
-}
-
-/**
- * 批量替换规则的单项输入
- *
- * 用于 PUT /api/v1/admin/users/:id/quota/rules 批量替换接口
- * 后端全量覆盖（单事务幂等）：未出现的历史规则会被删除，出现的规则会被新建或更新
- */
-export interface ReplaceRuleInput {
-  group_ids: number[]
-  daily_limit_usd: number
-  period?: 'daily'
 }
 
 /**

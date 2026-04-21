@@ -77,7 +77,7 @@ func (f *quotaServiceFake) UpdateRule(context.Context, int64, int64, UpdateRuleR
 	return nil, nil
 }
 func (f *quotaServiceFake) DeleteRule(context.Context, int64, int64) error { return nil }
-func (f *quotaServiceFake) ReplaceUserRules(context.Context, int64, []ReplaceRuleInput) ([]*QuotaRule, error) {
+func (f *quotaServiceFake) ReplaceUserRules(context.Context, int64, []CreateRuleRequest) ([]*QuotaRule, error) {
 	return nil, nil
 }
 func (f *quotaServiceFake) GetTodayUsage(context.Context, int64, *ResolvedQuota) (*QuotaUsageSnapshot, error) {

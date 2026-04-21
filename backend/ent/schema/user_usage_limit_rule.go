@@ -42,7 +42,7 @@ func (UserUsageLimitRule) Fields() []ent.Field {
 			Comment("本规则下每日限额（USD）"),
 		field.String("period").
 			MaxLen(16).
-			Default("daily").
+			Default("daily"). // 值必须与 service.QuotaPeriodDaily 保持一致（ent schema 不便直接 import service 常量）
 			Comment("扩展占位：daily / weekly / monthly；首版只支持 daily"),
 	}
 }

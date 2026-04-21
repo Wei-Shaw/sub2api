@@ -408,7 +408,7 @@ func TestReplaceUserRules_Success(t *testing.T) {
 		}},
 		settings: settings,
 	}
-	out, err := svc.ReplaceUserRules(context.Background(), 7, []ReplaceRuleInput{
+	out, err := svc.ReplaceUserRules(context.Background(), 7, []CreateRuleRequest{
 		{GroupIDs: []int64{30, 20}, DailyLimitUSD: 3},
 		{GroupIDs: []int64{40}, DailyLimitUSD: 2},
 	})
@@ -433,7 +433,7 @@ func TestReplaceUserRules_BatchInternalOverlapRollsBack(t *testing.T) {
 		}},
 		settings: settings,
 	}
-	_, err := svc.ReplaceUserRules(context.Background(), 7, []ReplaceRuleInput{
+	_, err := svc.ReplaceUserRules(context.Background(), 7, []CreateRuleRequest{
 		{GroupIDs: []int64{10, 20}, DailyLimitUSD: 3},
 		{GroupIDs: []int64{20, 30}, DailyLimitUSD: 2},
 	})
@@ -454,7 +454,7 @@ func TestReplaceUserRules_RepoErrorPropagates(t *testing.T) {
 		groupRepo:  &stubGroupRepo{groups: map[int64]*Group{1: {ID: 1}}},
 		settings:   settings,
 	}
-	_, err := svc.ReplaceUserRules(context.Background(), 7, []ReplaceRuleInput{
+	_, err := svc.ReplaceUserRules(context.Background(), 7, []CreateRuleRequest{
 		{GroupIDs: []int64{1}, DailyLimitUSD: 3},
 	})
 	require.Error(t, err)

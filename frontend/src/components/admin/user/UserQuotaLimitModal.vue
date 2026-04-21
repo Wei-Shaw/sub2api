@@ -100,7 +100,7 @@ import {
   QUOTA_ERR_RULE_GROUP_NOT_FOUND, QUOTA_ERR_RULE_NOT_FOUND,
 } from '@/constants/quota'
 import type { AdminUser, AdminGroup } from '@/types'
-import type { UserQuotaView, UpdateUserQuotaRequest, ReplaceRuleInput } from '@/types/quota'
+import type { UserQuotaView, UpdateUserQuotaRequest, CreateRuleRequest } from '@/types/quota'
 
 interface RuleDraft { id?: number; group_ids: number[]; daily_limit_usd: number }
 type OverrideValue = boolean | null
@@ -221,7 +221,7 @@ async function handleSave(): Promise<void> {
     await userQuotaAPI.updateUserQuota(props.user.id, body)
 
     // 2. 单事务幂等全量替换所有规则（后端会删除未出现的历史规则、新建/更新其他）
-    const rules: ReplaceRuleInput[] = ruleDrafts.value.map((draft) => ({
+    const rules: CreateRuleRequest[] = ruleDrafts.value.map((draft) => ({
       group_ids: [...draft.group_ids].sort((a, b) => a - b),
       daily_limit_usd: draft.daily_limit_usd,
       period: QUOTA_PERIOD_DAILY,

@@ -98,6 +98,10 @@ func (r *userUsageLimitRuleRepository) Update(ctx context.Context, userID, ruleI
 //  1. DELETE FROM user_usage_limit_rule WHERE user_id = ?
 //  2. 逐条 INSERT（ent 无批量 Create Many 带 Save 的接口，使用 CreateBulk）
 //  3. 任何一步失败 → Rollback；全部成功 → Commit
+//
+// 不可拆分（~34 行 > CLAUDE.md §10 的 30 行阈值）：事务 DELETE + INSERT 序列必须
+// 在同一函数内，以保证失败时 defer tx.Rollback() 能统一回滚。拆出子函数会让事务
+// 边界跨函数，不符合"事务是持久化细节，在 repo 层一次性落地"的原则。
 func (r *userUsageLimitRuleRepository) ReplaceAll(ctx context.Context, userID int64, rules []service.CreateRuleRequest) ([]*service.QuotaRule, error) {
 	tx, err := r.client.Tx(ctx)
 	if err != nil {

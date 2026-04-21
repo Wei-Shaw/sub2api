@@ -107,15 +107,6 @@ type UpdateRuleRequest struct {
 	DailyLimitUSD *float64 `json:"daily_limit_usd"`
 }
 
-// ReplaceRuleInput 批量替换规则的单条输入（对应 CreateRuleRequest 子集）。
-//
-// 专用于 PUT /api/v1/admin/users/:id/quota/rules：整体 DELETE 后 INSERT。
-type ReplaceRuleInput struct {
-	GroupIDs      []int64 `json:"group_ids" binding:"required,min=1"`
-	DailyLimitUSD float64 `json:"daily_limit_usd" binding:"required,gt=0"`
-	Period        string  `json:"period,omitempty"`
-}
-
 // ---- Repository 接口（quota 专用） ----
 
 // UserUsageLimitRuleRepository 规则仓储契约
@@ -149,6 +140,6 @@ type QuotaService interface {
 	DeleteRule(ctx context.Context, userID, ruleID int64) error
 	// ReplaceUserRules 全量替换用户规则：单事务内 DELETE 旧规则 + 批量 INSERT 新规则。
 	// 前置在应用层做校验（分组重叠、订阅分组、limit > 0）。校验或事务失败整体回滚。
-	ReplaceUserRules(ctx context.Context, userID int64, rules []ReplaceRuleInput) ([]*QuotaRule, error)
+	ReplaceUserRules(ctx context.Context, userID int64, rules []CreateRuleRequest) ([]*QuotaRule, error)
 	GetTodayUsage(ctx context.Context, userID int64, resolved *ResolvedQuota) (*QuotaUsageSnapshot, error)
 }

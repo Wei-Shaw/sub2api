@@ -52,9 +52,10 @@ func (s *quotaService) validateAndNormalizeRule(
 	return &normalizedRule{groupIDs: cleaned, dailyLimit: dailyLimit, period: period}, nil
 }
 
-// normalizeReplaceInput 校验单条 ReplaceRuleInput 并转为 CreateRuleRequest。
-// 只做逐条的应用层校验，不检查批次内/已有规则的重叠（由调用方负责）。
-func (s *quotaService) normalizeReplaceInput(ctx context.Context, userID int64, input ReplaceRuleInput) (CreateRuleRequest, error) {
+// normalizeRuleForReplace 校验批量替换用的单条规则并归一化字段。
+// 与 validateAndNormalizeRule 的区别：不检查与已有规则的重叠（批量替换会先 DELETE 旧规则，
+// 故"库内重叠"天然不成立；批次内重叠由调用方 ReplaceUserRules 统一扫描）。
+func (s *quotaService) normalizeRuleForReplace(ctx context.Context, input CreateRuleRequest) (CreateRuleRequest, error) {
 	period := input.Period
 	if period == "" {
 		period = QuotaPeriodDaily

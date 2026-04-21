@@ -53,15 +53,10 @@ func NewQuotaService(
 // Resolve 合并全局默认 + 用户覆盖 + rules，返回"今天生效"的配额快照。
 // 任何错误都返回 Enabled=false（失败安全）但仍返回非 nil 快照与 error，供上游区分失败和"未启用"。
 //
-// 函数体略超 30 行（~42 行）的原因：主体是五步线性短路（user_id 校验 → 全局开关 →
-// 用户存在 → 启用判定 → 限额/规则填充），每步都有独立 early-return 分支。强行再拆会
-// 使多返回值编排变复杂（ResolvedQuota 需逐步填充），降低可读性。次级大块（规则过滤、
-// 启用回退）已抽出为 loadDailyRules / resolveUserEnabled。对应 CLAUDE.md §10 例外。
-// Resolve 计算用户当前生效的配额：global 总开关 → 用户三态 → 总限额 → 规则。
-//
-// 不可拆分（44 行 > CLAUDE.md 30 行硬阈值）：函数体是 6 段 early-return 流水线，
-// 每段 3-9 行，强拆会让"resolve 流水线"被切碎到难以一眼读懂。规则加载已抽至
-// loadDailyRules，剩余各段无法继续合并或抽取。
+// 不可拆分（~42 行 > CLAUDE.md §10 的 30 行阈值）：函数体是 5 段 early-return 流水线
+// （user_id 校验 → 全局开关 → 用户存在 → 启用判定 → 限额/规则填充），每段 3-9 行。
+// 规则加载和启用回退已抽至 loadDailyRules / resolveUserEnabled；剩余各段继续拆会让
+// ResolvedQuota 的逐步填充变成多返回值编排，降低可读性。
 func (s *quotaService) Resolve(ctx context.Context, userID int64) (*ResolvedQuota, error) {
 	if userID <= 0 {
 		return &ResolvedQuota{UserID: userID, Enabled: false, ResolvedAt: timezone.Now()}, nil
@@ -196,6 +191,11 @@ func (s *quotaService) UpdateUserQuota(ctx context.Context, userID int64, req Up
 	if limit != nil && *limit < 0 {
 		return infraerrors.BadRequest("QUOTA_LIMIT_NEGATIVE", "daily usage limit must be >= 0")
 	}
+	// 归一化：0 视同"不限"，直接清空为 NULL。保持 DB 列只有 {NULL / 正值} 两态，
+	// 避免下游读到 "*float64 非 nil 但 == 0" 的半中间态。
+	if limit != nil && *limit == 0 {
+		limit = nil
+	}
 
 	if err := s.userWriter.UpdateUsageLimit(ctx, userID, enabled, limit); err != nil {
 		return err
@@ -277,7 +277,10 @@ func (s *quotaService) DeleteRule(ctx context.Context, userID, ruleID int64) err
 //
 // 注意：批次内部的重叠校验与 validateAndNormalizeRule 的跨规则重叠校验互补
 // （后者看已落库的规则，这里看本次批次内部）。
-func (s *quotaService) ReplaceUserRules(ctx context.Context, userID int64, rules []ReplaceRuleInput) ([]*QuotaRule, error) {
+//
+// 不可拆分（~32 行 > 30 行阈值）：逐条校验 + 批次内重叠扫描 + 事务替换是线性编排，
+// 拆出子函数会割裂"校验失败立即返回、成功再进事务"的原子流程。
+func (s *quotaService) ReplaceUserRules(ctx context.Context, userID int64, rules []CreateRuleRequest) ([]*QuotaRule, error) {
 	if userID <= 0 {
 		return nil, infraerrors.BadRequest("QUOTA_USER_INVALID", "invalid user id")
 	}
@@ -285,7 +288,7 @@ func (s *quotaService) ReplaceUserRules(ctx context.Context, userID int64, rules
 	normalized := make([]CreateRuleRequest, 0, len(rules))
 	seen := make(map[int64]int, 0) // group_id → index 用于批次内重叠检测
 	for i, input := range rules {
-		n, err := s.normalizeReplaceInput(ctx, userID, input)
+		n, err := s.normalizeRuleForReplace(ctx, input)
 		if err != nil {
 			return nil, err
 		}

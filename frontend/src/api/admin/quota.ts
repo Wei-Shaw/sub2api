@@ -11,7 +11,6 @@ import type {
   QuotaRule,
   CreateRuleRequest,
   UpdateRuleRequest,
-  ReplaceRuleInput,
 } from '@/types/quota'
 
 /** 获取指定用户的配额视图（含 resolved + today_usage） */
@@ -71,7 +70,7 @@ export async function deleteUserQuotaRule(userId: number, ruleId: number): Promi
  */
 export async function replaceUserQuotaRules(
   userId: number,
-  rules: ReplaceRuleInput[],
+  rules: CreateRuleRequest[],
 ): Promise<QuotaRule[]> {
   const { data } = await apiClient.put<QuotaRule[]>(
     `/admin/users/${userId}/quota/rules`,
