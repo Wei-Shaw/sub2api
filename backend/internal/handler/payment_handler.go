@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -459,29 +460,20 @@ type PublicOrderResult struct {
 	Status      string  `json:"status"`
 REDACTED
 
-// VerifyOrderPublic verifies payment status without requiring authentication.
-// Returns limited order info (no user details) to prevent information leakage.
+var errPaymentPublicOrderVerifyRemoved = infraerrors.New(
+	http.StatusGone,
+	"PAYMENT_PUBLIC_ORDER_VERIFY_REMOVED",
+	"public payment order verification by out_trade_no has been removed; use resume_token recovery instead",
+).WithMetadata(map[string]string{
+	"replacement_endpoint": "/api/v1/payment/public/orders/resolve",
+	"replacement_field":    "resume_token",
+REDACTED)
+
+// VerifyOrderPublic is kept as a compatibility shim for the removed anonymous
+// out_trade_no lookup endpoint and always returns HTTP 410 Gone.
 // POST /api/v1/payment/public/orders/verify
 func (h *PaymentHandler) VerifyOrderPublic(c *gin.Context) {
-	var req VerifyOrderRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
-		return
-REDACTED
-	order, err := h.paymentService.VerifyOrderPublic(c.Request.Context(), req.OutTradeNo)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-REDACTED
-	response.Success(c, PublicOrderResult{
-		ID:          order.ID,
-		OutTradeNo:  order.OutTradeNo,
-		Amount:      order.Amount,
-		PayAmount:   order.PayAmount,
-		PaymentType: order.PaymentType,
-		OrderType:   order.OrderType,
-		Status:      order.Status,
-REDACTED)
+	response.ErrorFrom(c, errPaymentPublicOrderVerifyRemoved)
 REDACTED
 
 // ResolveOrderPublicByResumeToken resolves a payment order from a signed resume token.

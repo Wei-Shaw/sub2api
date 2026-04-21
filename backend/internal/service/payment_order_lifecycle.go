@@ -151,7 +151,19 @@ REDACTED
 		return ""
 REDACTED
 	if resp.Status == payment.ProviderStatusPaid {
-		if err := s.HandlePaymentNotification(ctx, &payment.PaymentNotification{TradeNo: o.PaymentTradeNo, OrderID: o.OutTradeNo, Amount: resp.Amount, Status: payment.ProviderStatusSuccessREDACTED, prov.ProviderKey()); err != nil {
+		notificationTradeNo := o.PaymentTradeNo
+		if upstreamTradeNo := resp.TradeNo; upstreamTradeNo != "" && upstreamTradeNo != notificationTradeNo {
+			if _, updateErr := s.entClient.PaymentOrder.Update().
+				Where(paymentorder.IDEQ(o.ID)).
+				SetPaymentTradeNo(upstreamTradeNo).
+				Save(ctx); updateErr != nil {
+				slog.Error("persist upstream trade no during checkPaid failed", "orderID", o.ID, "tradeNo", upstreamTradeNo, "error", updateErr)
+		REDACTED else {
+				o.PaymentTradeNo = upstreamTradeNo
+		REDACTED
+			notificationTradeNo = upstreamTradeNo
+	REDACTED
+		if err := s.HandlePaymentNotification(ctx, &payment.PaymentNotification{TradeNo: notificationTradeNo, OrderID: o.OutTradeNo, Amount: resp.Amount, Status: payment.ProviderStatusSuccessREDACTED, prov.ProviderKey()); err != nil {
 			slog.Error("fulfillment failed during checkPaid", "orderID", o.ID, "error", err)
 			// Still return already_paid — order was paid, fulfillment can be retried
 	REDACTED

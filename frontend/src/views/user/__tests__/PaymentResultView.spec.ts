@@ -7,7 +7,6 @@ REDACTED))
 
 const routerPush = vi.hoisted(() => vi.fn())
 const pollOrderStatus = vi.hoisted(() => vi.fn())
-const verifyOrderPublic = vi.hoisted(() => vi.fn())
 const verifyOrder = vi.hoisted(() => vi.fn())
 const resolveOrderPublicByResumeToken = vi.hoisted(() => vi.fn())
 
@@ -38,7 +37,6 @@ REDACTED))
 
 vi.mock('@/api/payment', () => ({
   paymentAPI: {
-    verifyOrderPublic,
     verifyOrder,
     resolveOrderPublicByResumeToken,
   REDACTED,
@@ -67,7 +65,6 @@ describe('PaymentResultView', () => {
     routeState.query = {REDACTED
     routerPush.mockReset()
     pollOrderStatus.mockReset()
-    verifyOrderPublic.mockReset()
     verifyOrder.mockReset()
     resolveOrderPublicByResumeToken.mockReset()
     window.localStorage.clear()
@@ -110,7 +107,6 @@ describe('PaymentResultView', () => {
     await flushPromises()
 
     expect(pollOrderStatus).toHaveBeenCalledWith(42)
-    expect(verifyOrderPublic).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('payment.result.processing')
     expect(wrapper.text()).not.toContain('payment.result.success')
     expect(wrapper.text()).not.toContain('payment.result.failed')
@@ -221,7 +217,6 @@ describe('PaymentResultView', () => {
     await flushPromises()
 
     expect(resolveOrderPublicByResumeToken).toHaveBeenCalledWith('resume-fail')
-    expect(verifyOrderPublic).not.toHaveBeenCalled()
     expect(verifyOrder).not.toHaveBeenCalled()
   REDACTED)
 
@@ -241,7 +236,6 @@ describe('PaymentResultView', () => {
 
     await flushPromises()
 
-    expect(verifyOrderPublic).not.toHaveBeenCalled()
     expect(verifyOrder).not.toHaveBeenCalled()
   REDACTED)
 
@@ -260,7 +254,6 @@ describe('PaymentResultView', () => {
 
     await flushPromises()
 
-    expect(verifyOrderPublic).not.toHaveBeenCalled()
     expect(verifyOrder).not.toHaveBeenCalled()
   REDACTED)
 
@@ -284,7 +277,6 @@ describe('PaymentResultView', () => {
 
     expect(resolveOrderPublicByResumeToken).toHaveBeenCalledWith('resume-77')
     expect(wrapper.text()).toContain('payment.result.success')
-    expect(verifyOrderPublic).not.toHaveBeenCalled()
   REDACTED)
 
   it('normalizes aliased payment methods before rendering the label', async () => {
