@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
@@ -34,8 +35,23 @@ const (
 )
 
 var (
-	ErrAnnouncementNotFound      = domain.ErrAnnouncementNotFound
-	ErrAnnouncementInvalidTarget = domain.ErrAnnouncementInvalidTarget
+	ErrAnnouncementNotFound        = domain.ErrAnnouncementNotFound
+	ErrAnnouncementInvalidTarget   = domain.ErrAnnouncementInvalidTarget
+	ErrAnnouncementNilInput        = infraerrors.BadRequest("ANNOUNCEMENT_INPUT_REQUIRED", "announcement input is required")
+	ErrAnnouncementInvalidTitle    = infraerrors.BadRequest("ANNOUNCEMENT_TITLE_INVALID", "announcement title is invalid")
+	ErrAnnouncementContentRequired = infraerrors.BadRequest(
+		"ANNOUNCEMENT_CONTENT_REQUIRED",
+		"announcement content is required",
+	)
+	ErrAnnouncementInvalidStatus     = infraerrors.BadRequest("ANNOUNCEMENT_STATUS_INVALID", "announcement status is invalid")
+	ErrAnnouncementInvalidNotifyMode = infraerrors.BadRequest(
+		"ANNOUNCEMENT_NOTIFY_MODE_INVALID",
+		"announcement notify_mode is invalid",
+	)
+	ErrAnnouncementInvalidSchedule = infraerrors.BadRequest(
+		"ANNOUNCEMENT_TIME_RANGE_INVALID",
+		"starts_at must be before ends_at",
+	)
 )
 
 type AnnouncementTargeting = domain.AnnouncementTargeting

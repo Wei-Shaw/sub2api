@@ -70,16 +70,16 @@ REDACTED
 
 func (s *AnnouncementService) Create(ctx context.Context, input *CreateAnnouncementInput) (*Announcement, error) {
 	if input == nil {
-		return nil, fmt.Errorf("create announcement: nil input")
+		return nil, ErrAnnouncementNilInput
 REDACTED
 
 	title := strings.TrimSpace(input.Title)
 	content := strings.TrimSpace(input.Content)
 	if title == "" || len(title) > 200 {
-		return nil, fmt.Errorf("create announcement: invalid title")
+		return nil, ErrAnnouncementInvalidTitle
 REDACTED
 	if content == "" {
-		return nil, fmt.Errorf("create announcement: content is required")
+		return nil, ErrAnnouncementContentRequired
 REDACTED
 
 	status := strings.TrimSpace(input.Status)
@@ -87,7 +87,7 @@ REDACTED
 		status = AnnouncementStatusDraft
 REDACTED
 	if !isValidAnnouncementStatus(status) {
-		return nil, fmt.Errorf("create announcement: invalid status")
+		return nil, ErrAnnouncementInvalidStatus
 REDACTED
 
 	targeting, err := domain.AnnouncementTargeting(input.Targeting).NormalizeAndValidate()
@@ -100,12 +100,12 @@ REDACTED
 		notifyMode = AnnouncementNotifyModeSilent
 REDACTED
 	if !isValidAnnouncementNotifyMode(notifyMode) {
-		return nil, fmt.Errorf("create announcement: invalid notify_mode")
+		return nil, ErrAnnouncementInvalidNotifyMode
 REDACTED
 
 	if input.StartsAt != nil && input.EndsAt != nil {
 		if !input.StartsAt.Before(*input.EndsAt) {
-			return nil, fmt.Errorf("create announcement: starts_at must be before ends_at")
+			return nil, ErrAnnouncementInvalidSchedule
 	REDACTED
 REDACTED
 
@@ -131,7 +131,7 @@ REDACTED
 
 func (s *AnnouncementService) Update(ctx context.Context, id int64, input *UpdateAnnouncementInput) (*Announcement, error) {
 	if input == nil {
-		return nil, fmt.Errorf("update announcement: nil input")
+		return nil, ErrAnnouncementNilInput
 REDACTED
 
 	a, err := s.announcementRepo.GetByID(ctx, id)
@@ -142,21 +142,21 @@ REDACTED
 	if input.Title != nil {
 		title := strings.TrimSpace(*input.Title)
 		if title == "" || len(title) > 200 {
-			return nil, fmt.Errorf("update announcement: invalid title")
+			return nil, ErrAnnouncementInvalidTitle
 	REDACTED
 		a.Title = title
 REDACTED
 	if input.Content != nil {
 		content := strings.TrimSpace(*input.Content)
 		if content == "" {
-			return nil, fmt.Errorf("update announcement: content is required")
+			return nil, ErrAnnouncementContentRequired
 	REDACTED
 		a.Content = content
 REDACTED
 	if input.Status != nil {
 		status := strings.TrimSpace(*input.Status)
 		if !isValidAnnouncementStatus(status) {
-			return nil, fmt.Errorf("update announcement: invalid status")
+			return nil, ErrAnnouncementInvalidStatus
 	REDACTED
 		a.Status = status
 REDACTED
@@ -164,7 +164,7 @@ REDACTED
 	if input.NotifyMode != nil {
 		notifyMode := strings.TrimSpace(*input.NotifyMode)
 		if !isValidAnnouncementNotifyMode(notifyMode) {
-			return nil, fmt.Errorf("update announcement: invalid notify_mode")
+			return nil, ErrAnnouncementInvalidNotifyMode
 	REDACTED
 		a.NotifyMode = notifyMode
 REDACTED
@@ -186,7 +186,7 @@ REDACTED
 
 	if a.StartsAt != nil && a.EndsAt != nil {
 		if !a.StartsAt.Before(*a.EndsAt) {
-			return nil, fmt.Errorf("update announcement: starts_at must be before ends_at")
+			return nil, ErrAnnouncementInvalidSchedule
 	REDACTED
 REDACTED
 
