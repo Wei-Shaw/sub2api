@@ -32,6 +32,7 @@ const (
 	oauthPendingSessionCookiePath = "/api/v1/auth/oauth"
 	oauthPendingSessionCookieName = "oauth_pending_session"
 	oauthPendingCookieMaxAgeSec   = 10 * 60
+	oauthPendingChoiceStep        = "choose_account_action_required"
 
 	oauthCompletionResponseKey = "completion_response"
 )
@@ -431,8 +432,9 @@ func (h *AuthHandler) createOAuthEmailRequiredPendingSession(
 		BrowserSessionKey:      browserSessionKey,
 		UpstreamIdentityClaims: upstreamClaims,
 		CompletionResponse: map[string]any{
-			"redirect":                  redirectTo,
-			"step":                      "email_required",
+			"redirect":                  strings.TrimSpace(redirectTo),
+			"step":                      oauthPendingChoiceStep,
+			"adoption_required":         true,
 			"force_email_on_signup":     true,
 			"email_binding_required":    true,
 			"existing_account_bindable": true,
@@ -492,7 +494,7 @@ REDACTED
 
 	email := strings.TrimSpace(strings.ToLower(req.Email))
 	if existingUser, err := findUserByNormalizedEmail(c.Request.Context(), client, email); err == nil && existingUser != nil {
-		session, err = h.transitionPendingOAuthAccountToBindLogin(c, client, session, email, oauthAdoptionDecisionRequest{REDACTED)
+		session, err = h.transitionPendingOAuthAccountToChoiceState(c, client, session, email)
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return
@@ -1206,12 +1208,13 @@ REDACTED
 REDACTED
 
 func buildPendingOAuthSessionStatusPayload(session *dbent.PendingAuthSession) gin.H {
+	completionResponse := normalizePendingOAuthCompletionResponse(mergePendingCompletionResponse(session, nil))
 	payload := gin.H{
 		"auth_result": "pending_session",
 		"provider":    strings.TrimSpace(session.ProviderType),
 		"intent":      strings.TrimSpace(session.Intent),
 REDACTED
-	for key, value := range mergePendingCompletionResponse(session, nil) {
+	for key, value := range completionResponse {
 		payload[key] = value
 REDACTED
 	if email := strings.TrimSpace(session.ResolvedEmail); email != "" {
@@ -1220,37 +1223,57 @@ REDACTED
 	return payload
 REDACTED
 
-func (h *AuthHandler) transitionPendingOAuthAccountToBindLogin(
+func normalizePendingOAuthCompletionResponse(payload map[string]any) map[string]any {
+	normalized := clonePendingMap(payload)
+	step := strings.ToLower(strings.TrimSpace(pendingSessionStringValue(normalized, "step")))
+	switch step {
+	case "choice", "choose_account_action", "choose_account", "choose", "email_required", "bind_login_required":
+		normalized["step"] = oauthPendingChoiceStep
+REDACTED
+	if strings.EqualFold(strings.TrimSpace(pendingSessionStringValue(normalized, "step")), oauthPendingChoiceStep) {
+		normalized["adoption_required"] = true
+REDACTED
+	if _, exists := normalized["adoption_required"]; !exists {
+		if _, hasChoiceFields := normalized["email_binding_required"]; hasChoiceFields {
+			normalized["adoption_required"] = true
+	REDACTED
+REDACTED
+	return normalized
+REDACTED
+
+func pendingOAuthChoiceCompletionResponse(session *dbent.PendingAuthSession, email string) map[string]any {
+	response := mergePendingCompletionResponse(session, map[string]any{
+		"step":                      oauthPendingChoiceStep,
+		"adoption_required":         true,
+		"force_email_on_signup":     true,
+		"email_binding_required":    true,
+		"existing_account_bindable": true,
+REDACTED)
+	if email = strings.TrimSpace(email); email != "" {
+		response["email"] = email
+		response["resolved_email"] = email
+REDACTED
+	return response
+REDACTED
+
+func (h *AuthHandler) transitionPendingOAuthAccountToChoiceState(
 	c *gin.Context,
 	client *dbent.Client,
 	session *dbent.PendingAuthSession,
 	email string,
-	decision oauthAdoptionDecisionRequest,
 ) (*dbent.PendingAuthSession, error) {
-	existingUser, err := findUserByNormalizedEmail(c.Request.Context(), client, email)
-	if err != nil {
-		return nil, err
-REDACTED
-
-	completionResponse := mergePendingCompletionResponse(session, map[string]any{
-		"step":  "bind_login_required",
-		"email": email,
-REDACTED)
-	session, err = updatePendingOAuthSessionProgress(
+	completionResponse := pendingOAuthChoiceCompletionResponse(session, email)
+	session, err := updatePendingOAuthSessionProgress(
 		c.Request.Context(),
 		client,
 		session,
-		"adopt_existing_user_by_email",
+		strings.TrimSpace(session.Intent),
 		email,
-		&existingUser.ID,
+		nil,
 		completionResponse,
 	)
 	if err != nil {
 		return nil, infraerrors.InternalServer("PENDING_AUTH_SESSION_UPDATE_FAILED", "failed to update pending oauth session").WithCause(err)
-REDACTED
-
-	if _, err := h.ensurePendingOAuthAdoptionDecision(c, session.ID, decision); err != nil {
-		return nil, err
 REDACTED
 	return session, nil
 REDACTED
@@ -1365,12 +1388,20 @@ REDACTED
 
 	email := strings.TrimSpace(strings.ToLower(req.Email))
 	existingUser, err := findUserByNormalizedEmail(c.Request.Context(), client, email)
-	if err != nil && !errors.Is(err, service.ErrUserNotFound) {
-		response.ErrorFrom(c, infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable"))
-		return
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrUserNotFound):
+			existingUser = nil
+		case infraerrors.Code(err) >= http.StatusBadRequest && infraerrors.Code(err) < http.StatusInternalServerError:
+			response.ErrorFrom(c, err)
+			return
+		default:
+			response.ErrorFrom(c, infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "service temporarily unavailable"))
+			return
+	REDACTED
 REDACTED
 	if existingUser != nil {
-		session, err = h.transitionPendingOAuthAccountToBindLogin(c, client, session, email, req.adoptionDecision())
+		session, err = h.transitionPendingOAuthAccountToChoiceState(c, client, session, email)
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return
@@ -1393,7 +1424,7 @@ REDACTED
 	)
 	if err != nil {
 		if errors.Is(err, service.ErrEmailExists) {
-			session, err = h.transitionPendingOAuthAccountToBindLogin(c, client, session, email, req.adoptionDecision())
+			session, err = h.transitionPendingOAuthAccountToChoiceState(c, client, session, email)
 			if err != nil {
 				response.ErrorFrom(c, err)
 				return
@@ -1548,6 +1579,7 @@ REDACTED
 		response.ErrorFrom(c, infraerrors.InternalServer("PENDING_AUTH_COMPLETION_INVALID", "pending auth completion payload is invalid"))
 		return
 REDACTED
+	payload = normalizePendingOAuthCompletionResponse(payload)
 	if strings.TrimSpace(session.RedirectTo) != "" {
 		if _, exists := payload["redirect"]; !exists {
 			payload["redirect"] = session.RedirectTo

@@ -19,6 +19,7 @@
           v-if="
             needsInvitation ||
             needsAdoptionConfirmation ||
+            needsChooser ||
             needsCreateAccount ||
             needsBindLogin ||
             needsTotpChallenge
@@ -116,6 +117,42 @@
             <button class="btn btn-primary w-full" :disabled="isSubmitting" @click="handleContinueLogin">
               {{ isSubmitting ? t('common.processing') : 'Continue' REDACTEDREDACTED
             </button>
+          </template>
+
+          <template v-else-if="needsChooser">
+            <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-600 dark:bg-dark-800/60">
+              <div class="space-y-4">
+                <div class="space-y-1">
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">
+                    Choose how to continue
+                  </p>
+                  <p class="text-xs text-gray-500 dark:text-dark-400">
+                    {{
+                      pendingAccountEmail
+                        ? `Suggested email: ${pendingAccountEmailREDACTED`
+                        : `Choose whether to bind an existing ${providerNameREDACTED account or create a new one.`
+                    REDACTEDREDACTED
+                  </p>
+                </div>
+
+                <div class="grid gap-3 sm:grid-cols-2">
+                  <button
+                    class="btn btn-secondary w-full"
+                    :disabled="isSubmitting"
+                    @click="switchToBindLoginMode()"
+                  >
+                    Bind existing account
+                  </button>
+                  <button
+                    class="btn btn-primary w-full"
+                    :disabled="isSubmitting"
+                    @click="switchToCreateAccountMode"
+                  >
+                    Create new account
+                  </button>
+                </div>
+              </div>
+            </div>
           </template>
 
           <template v-else-if="needsCreateAccount">
@@ -284,7 +321,7 @@ const suggestedAvatarUrl = ref('')
 const adoptDisplayName = ref(true)
 const adoptAvatar = ref(true)
 const needsAdoptionConfirmation = ref(false)
-const pendingAccountAction = ref<'none' | 'create_account' | 'bind_login'>('none')
+const pendingAccountAction = ref<'none' | 'choose_account_action' | 'create_account' | 'bind_login'>('none')
 const pendingAccountEmail = ref('')
 const bindLoginEmail = ref('')
 const bindLoginPassword = ref('')
@@ -299,6 +336,7 @@ const totpError = ref('')
 const totpUserEmailMasked = ref('')
 
 const needsCreateAccount = computed(() => pendingAccountAction.value === 'create_account')
+const needsChooser = computed(() => pendingAccountAction.value === 'choose_account_action')
 const needsBindLogin = computed(() => pendingAccountAction.value === 'bind_login')
 
 type PendingOidcCompletion = PendingOAuthExchangeResponse & {
@@ -307,6 +345,7 @@ type PendingOidcCompletion = PendingOAuthExchangeResponse & {
   resolved_email?: string
   existing_account_email?: string
   email?: string
+  suggested_email?: string
   provider_fallback?: string
   intent?: string
   requires_2fa?: boolean
@@ -430,12 +469,24 @@ function extractPendingAccountEmail(completion: PendingOidcCompletion): string {
     completion.existing_account_email ||
     completion.resolved_email ||
     completion.email ||
+    completion.suggested_email ||
     ''
   ).trim()
 REDACTED
 
-function resolvePendingAccountAction(completion: PendingOidcCompletion): 'none' | 'create_account' | 'bind_login' {
+function resolvePendingAccountAction(
+  completion: PendingOidcCompletion
+): 'none' | 'choose_account_action' | 'create_account' | 'bind_login' {
   const raw = normalizedPendingState(completion.step || completion.error || completion.intent)
+  if (
+    raw === 'choice' ||
+    raw === 'choose_account_action_required' ||
+    raw === 'choose_account_action' ||
+    raw === 'choose_account' ||
+    raw === 'choose'
+  ) {
+    return 'choose_account_action'
+  REDACTED
   if (raw === 'email_required' || raw === 'create_account_required' || raw === 'create_account') {
     return 'create_account'
   REDACTED
@@ -462,6 +513,14 @@ function applyPendingAccountAction(completion: PendingOidcCompletion) {
   totpUserEmailMasked.value = ''
 
   const email = extractPendingAccountEmail(completion)
+  if (action === 'choose_account_action') {
+    pendingAccountEmail.value = email
+    bindLoginEmail.value = email
+    bindLoginPassword.value = ''
+    canReturnToCreateAccount.value = false
+    return
+  REDACTED
+
   if (action === 'create_account') {
     pendingAccountEmail.value = email
     canReturnToCreateAccount.value = true
@@ -512,28 +571,6 @@ REDACTED
 function getRequestErrorMessage(error: unknown, fallback: string): string {
   const err = error as { message?: string; response?: { data?: { detail?: string; message?: string REDACTED REDACTED REDACTED
   return err.response?.data?.detail || err.response?.data?.message || err.message || fallback
-REDACTED
-
-function isCreateAccountRecoveryError(error: unknown): boolean {
-  const data = (error as {
-    response?: {
-      data?: {
-        reason?: string
-        error?: string
-        code?: string
-        step?: string
-        intent?: string
-      REDACTED
-    REDACTED
-  REDACTED).response?.data
-  const states = [data?.reason, data?.error, data?.code, data?.step, data?.intent]
-    .map(value => value?.trim().toLowerCase())
-    .filter((value): value is string => Boolean(value))
-
-  return states.includes('email_exists') ||
-    states.includes('bind_login_required') ||
-    states.includes('bind_login') ||
-    states.includes('adopt_existing_user_by_email')
 REDACTED
 
 async function finalizeCompletion(completion: PendingOAuthExchangeResponse, redirect: string) {
@@ -645,10 +682,6 @@ async function handleCreateAccount(payload: PendingOAuthCreateAccountPayload) {
     REDACTED)
     await finalizePendingAccountResponse(data)
   REDACTED catch (e: unknown) {
-    if (isCreateAccountRecoveryError(e)) {
-      switchToBindLoginMode(payload.email)
-      return
-    REDACTED
     accountActionError.value = getRequestErrorMessage(e, t('auth.loginFailed'))
   REDACTED finally {
     isSubmitting.value = false

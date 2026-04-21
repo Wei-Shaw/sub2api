@@ -65,6 +65,36 @@ REDACTED)
 	require.NotEmpty(t, findCookie(cookies, oauthPendingBrowserCookieName))
 REDACTED
 
+func TestWeChatOAuthStart_AllowsOpenModeWhenBothCapabilitiesEnabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, client := newWeChatOAuthTestHandlerWithSettings(t, false, map[string]string{
+		service.SettingKeyWeChatConnectEnabled:             "true",
+		service.SettingKeyWeChatConnectAppID:               "wx-shared-app",
+		service.SettingKeyWeChatConnectAppSecret:           "wx-shared-secret",
+		service.SettingKeyWeChatConnectMode:                "mp",
+		service.SettingKeyWeChatConnectScopes:              "snsapi_base",
+		service.SettingKeyWeChatConnectOpenEnabled:         "true",
+		service.SettingKeyWeChatConnectMPEnabled:           "true",
+		service.SettingKeyWeChatConnectRedirectURL:         "https://api.example.com/api/v1/auth/oauth/wechat/callback",
+		service.SettingKeyWeChatConnectFrontendRedirectURL: "/auth/wechat/callback",
+REDACTED)
+	defer client.Close()
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/wechat/start?mode=open&redirect=/billing", nil)
+	c.Request.Host = "api.example.com"
+
+	handler.WeChatOAuthStart(c)
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	location := recorder.Header().Get("Location")
+	require.NotEmpty(t, location)
+	require.Contains(t, location, "open.weixin.qq.com")
+	require.Contains(t, location, "connect/qrconnect")
+	require.Contains(t, location, "scope=snsapi_login")
+REDACTED
+
 func TestWeChatOAuthCallbackCreatesPendingSessionForUnifiedFlow(t *testing.T) {
 	originalAccessTokenURL := wechatOAuthAccessTokenURL
 	originalUserInfoURL := wechatOAuthUserInfoURL
