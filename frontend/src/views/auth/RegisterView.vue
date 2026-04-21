@@ -107,7 +107,7 @@
               <Icon v-else name="eye" size="md" />
             </button>
           </div>
-          <p v-else class="input-hint">
+          <p class="input-hint">
             {{ t('auth.passwordHint') REDACTEDREDACTED
           </p>
         </div>
