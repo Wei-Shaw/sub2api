@@ -7,6 +7,17 @@
   - “fork 内部 PR”
 - 禁止将“上游 PR”和“我们自己仓库内的同步 PR”混用为同一个概念
 
+## Git remote 列表
+
+| remote | 仓库 | 权限 | 用途 |
+|--------|------|------|------|
+| `origin` | `touwaeriol/sub2api` | 推送 | 我们的 fork，主开发仓库 |
+| `upstream` | `Wei-Shaw/sub2api` | 只读（仅 PR） | 官方上游，所有"PR"默认指这里 |
+| `business` | `Sub2API-Devs/sub2api-pro` | **直接推送** | 商业版上游，可直接 push（不走 PR）|
+| `silentflower` | `SilentFlower/sub2api` | 只读 | 第三方 fork |
+
+涉及 `business` 仓库的操作必须明确表述（如 "push 到 business"、"business 的 main"），避免与 `upstream` 概念混淆。
+
 ## 本地依赖联调
 
 - 本地 `go-sora2api` 仓库固定路径：`C:\Users\16790\GolandProjects\go-sora2api`
@@ -30,54 +41,83 @@
 | 分支 | 说明 |
 |------|------|
 | `main` | 我们的主分支，包含所有定制功能 |
-| `release/custom-X.Y.Z` | 基于官方 `vX.Y.Z` 的发布分支 |
-| `upstream/main` | 上游官方仓库 |
+| `release/custom-X.Y.Z` | 基于我们的 release 分支 + 上游 `vX.Y.Z` 合并 |
+| `feat/*` | 功能分支，基于 `upstream/main`，用于提交上游 PR |
+| `upstream/main` | 上游官方仓库（remote: upstream） |
 
 ---
 
 ## 发布流程（基于新官方版本）
 
-当官方发布新版本（如 `v0.1.69`）时：
+当官方发布新版本（如 `v0.1.110`）时：
 
-### 1. 同步上游并创建发布分支
+> **核心原则**：始终从我们的 release 分支出发，将上游代码合并进来。**禁止**基于上游标签创建分支再合并我们的代码——这会导致上游非相关改动以 auto-merge 方式混入，破坏我们的定制功能。
+
+### 1. 从我们的 release 出发，合并上游
 
 ```bash
 # 获取上游最新代码
 git fetch upstream --tags
 
-# 基于官方标签创建新的发布分支
-git checkout v0.1.69 -b release/custom-0.1.69
+# 从我们当前的 release 创建新的 release 分支
+git checkout -b release/custom-0.1.110 release/custom-0.1.108
 
-# 合并我们的 main 分支（包含所有定制功能）
-git merge main --no-edit
+# 合并上游新版本（我们的代码是基底，上游变更合并进来）
+git merge v0.1.110 --no-edit
 
-# 解决可能的冲突后继续
+# 解决冲突时：
+# - 我们的定制代码优先保留
+# - 上游的新功能/修复按需采纳
+# - 仔细检查 auto-merge 的文件是否引入了不兼容变更
 ```
 
-### 2. 更新版本号并打标签
+### 2. 验证合并结果
+
+```bash
+# 检查 auto-merge 引入的文件变更
+git diff release/custom-0.1.108 release/custom-0.1.110 --stat
+
+# 重点关注可能冲突的文件：
+# - backend/internal/service/gateway_service.go
+# - backend/internal/service/openai_gateway_service.go
+# - backend/internal/service/antigravity_gateway_service.go
+# - backend/internal/handler/handler.go
+
+# 本地构建验证
+cd backend && go build ./... && cd ..
+cd frontend && pnpm build && cd ..
+```
+
+### 3. 更新版本号并打标签
 
 ```bash
 # 更新版本号文件
-echo "0.1.69.1" > backend/cmd/server/VERSION
+echo "0.1.110.1" > backend/cmd/server/VERSION
 git add backend/cmd/server/VERSION
-git commit -m "chore: bump version to 0.1.69.1"
+git commit -m "chore: bump version to 0.1.110.1"
 
 # 打上我们自己的标签
-git tag v0.1.69.1
+git tag v0.1.110.1
 
 # 推送分支和标签
-git push origin release/custom-0.1.69
-git push origin v0.1.69.1
+git push origin release/custom-0.1.110
+git push origin v0.1.110.1
 ```
 
-### 3. 更新 main 分支
+### 4. 更新 main 分支
 
 ```bash
 # 将发布分支合并回 main，保持 main 包含最新定制功能
 git checkout main
-git merge release/custom-0.1.69
+git merge release/custom-0.1.110
 git push origin main
 ```
+
+### ⚠️ 注意事项
+
+- **禁止反向合并**：不要 `git checkout v0.1.110 -b release/custom-0.1.110 && git merge main`。这种方式会以上游为基底，导致我们的定制代码在 merge 时被上游的改动覆盖或产生 auto-merge 错误。
+- **cherry-pick 功能分支改动到 release**：如果有 `feat/*` 分支的改进需要带入 release，使用 `git cherry-pick` 而非 `git merge`，避免引入 PR 分支的 upstream/main 基底代码。
+- **合并后必须全量测试**：部署到 beta 环境验证所有核心功能（API 转发、支付、认证等），确认无 auto-merge 引入的问题。
 
 ---
 
@@ -1016,16 +1056,20 @@ func (s *Service) getLogConfig() (logBody bool, maxBytes int) {
 
 ### 3. 常量管理
 
-#### 避免魔法数字
-所有硬编码的数值都应定义为常量：
+#### 避免魔法值（数字和字符串）
+所有硬编码的数值和业务字符串都应定义为常量，**包括状态值、模式标识、类型标识等字符串**：
 
 ```go
-// ❌ 不推荐
+// ❌ 不推荐：魔法数字
 if retryDelay >= 10*time.Second {
     resetAt := time.Now().Add(30 * time.Second)
 }
 
-// ✅ 推荐
+// ❌ 不推荐：魔法字符串
+if e.config["paymentMode"] == "redirect" { ... }
+if order.Status == "PENDING" { ... }
+
+// ✅ 推荐：使用常量
 const (
     rateLimitThreshold       = 10 * time.Second
     defaultRateLimitDuration = 30 * time.Second
@@ -1034,6 +1078,29 @@ const (
 if retryDelay >= rateLimitThreshold {
     resetAt := time.Now().Add(defaultRateLimitDuration)
 }
+
+// ✅ 推荐：字符串常量
+const (
+    PaymentModeRedirect = "redirect"
+    PaymentModeAPI      = "api"
+)
+
+if e.config["paymentMode"] == PaymentModeRedirect { ... }
+```
+
+```typescript
+// ❌ 不推荐：前端魔法字符串
+if (provider.payment_mode === 'redirect') return '跳转'
+if (provider.payment_mode === 'api') return '二维码'
+
+// ✅ 推荐：使用常量
+export const PAYMENT_MODE_REDIRECT = 'redirect'
+export const PAYMENT_MODE_API = 'api'
+
+if (provider.payment_mode === PAYMENT_MODE_REDIRECT) return t('...')
+```
+
+**规则**：任何在多处使用的字符串值（状态码、模式标识、配置键名等）必须定义为常量。前后端共享的值应在各自的常量文件中保持同步。
 ```
 
 #### 注释引用常量名
@@ -1165,13 +1232,19 @@ antigravityRateLimitThreshold
 在提交代码前，检查以下项目：
 
 - [ ] 函数是否超过 30 行？（不可拆分的逻辑除外，需注释说明）
+- [ ] 文件是否超过 500 行（Go）/ 300 行（Vue）？是否需要按职责域拆分？
 - [ ] 嵌套是否超过 3 层？
 - [ ] 是否有重复代码可以提取？
 - [ ] 是否使用了魔法数字？
 - [ ] Mock 函数签名是否与实际函数一致？
 - [ ] 测试是否覆盖了新增逻辑？
-- [ ] 日志是否包含足够的上下文信息？
+- [ ] 日志是否包含足够的上下文信息？日志中是否有敏感数据需要脱敏？
 - [ ] 是否考虑了并发安全？
+- [ ] 金额计算是否使用了 decimal 精确运算？
+- [ ] HTTP 外部调用是否限制了响应体大小？
+- [ ] 前端是否有 `any` 类型或硬编码文本？
+- [ ] 支付订单操作是否有物理删除？（禁止）
+- [ ] 共享常量是否只在一处定义？
 
 ### 11. 代码结构化与解耦
 
@@ -1224,7 +1297,226 @@ API 客户端拦截器（`api/client.ts`）将后端错误统一转换为 `{ sta
 
 #### 国际化方向（后续）
 
-长期目标是前端根据 `code` 映射 i18n key（如 `errors.ORDER_NOT_FOUND`），用 `details` 填充模板变量。��前阶段后端 `message` 已足够可读，直接展示即可。
+长期目标是前端根据 `code` 映射 i18n key（如 `errors.ORDER_NOT_FOUND`），用 `details` 填充模板变量。当前阶段后端 `message` 已足够可读，直接展示即可。
+
+### 14. 文件与模块拆分规范
+
+#### 文件行数限制
+- **Go 文件**：单文件不超过 **500 行**。超过 300 行时应评估是否可拆分
+- **Vue 组件**：单文件不超过 **300 行**（template + script + style 合计）
+- **TypeScript 工具文件**：单文件不超过 **200 行**
+
+#### 大文件拆分原则
+
+当文件超出限制时，按**职责域**拆分，而非按函数数量机械切割：
+
+```
+# ❌ 不推荐：按序号拆分
+payment_service_1.go / payment_service_2.go
+
+# ✅ 推荐：按职责域拆分
+payment_order.go      — 订单创建、查询、取消
+payment_fulfillment.go — 余额/订阅履约
+payment_refund.go     — 退款流程
+payment_stats.go      — 统计、Dashboard
+```
+
+拆分后各文件共享同一 package 和 receiver type（如 `*PaymentService`），无需改动外部调用方。
+
+#### 共享常量不重复定义
+
+跨文件/组件使用的常量（如排序顺序、类型枚举）只在一处定义，其他地方引用：
+
+```go
+// ❌ 不推荐：在 service 和 handler 中各定义一份
+const OrderStatusPending = "PENDING" // service/payment_service.go
+const OrderStatusPending = "PENDING" // handler/payment_handler.go
+
+// ✅ 推荐：在类型包中定义一次
+payment.OrderStatusPending // 其他包直接引用
+```
+
+```typescript
+// ❌ 不推荐：在多个 Vue 组件中各定义一份 METHOD_ORDER
+// ✅ 推荐：在 providerConfig.ts 中定义一次，各组件 import
+export const METHOD_ORDER = ['easypay', 'alipay', 'wxpay', 'stripe']
+```
+
+### 15. 支付系统编码规范
+
+#### 订单不可物理删除
+
+支付订单一旦创建，**禁止物理删除**（`DELETE`）。失败场景使用状态更新：
+
+```go
+// ❌ 禁止
+s.entClient.PaymentOrder.DeleteOneID(order.ID).Exec(ctx)
+
+// ✅ 必须
+s.entClient.PaymentOrder.UpdateOneID(order.ID).
+    SetStatus("FAILED").
+    SetFailReason(err.Error()).
+    Exec(ctx)
+```
+
+原因：provider 可能已扣款但网络超时，物理删除会导致订单永久丢失、审计链断裂。
+
+#### 金额计算必须使用精确运算
+
+涉及金额的计算**禁止使用 float64 裸算术**，必须使用 `shopspring/decimal`（项目已引入）：
+
+```go
+// ❌ 浮点精度风险
+cents := int64(math.Round(amount * 100)) // 1.15 * 100 = 114.99999...
+
+// ✅ 精确运算
+d := decimal.NewFromString(amountStr)
+cents := d.Mul(decimal.NewFromInt(100)).IntPart()
+```
+
+元转分等公共运算提取为 `payment` 包函数，禁止各 provider 各自实现。
+
+#### 循环解码必须限制迭代次数
+
+任何"重复处理直到稳定"的循环，必须设置最大迭代次数防止无限循环：
+
+```go
+// ❌ 无限循环风险
+func fullyDecodeURL(s string) string {
+    for {
+        decoded, err := url.QueryUnescape(s)
+        if err != nil || decoded == s { return s }
+        s = decoded
+    }
+}
+
+// ✅ 带上限
+const maxDecodeIterations = 10
+
+func fullyDecodeURL(s string) string {
+    for i := 0; i < maxDecodeIterations; i++ {
+        decoded, err := url.QueryUnescape(s)
+        if err != nil || decoded == s { return s }
+        s = decoded
+    }
+    return s
+}
+```
+
+#### HTTP 响应体必须限制读取大小
+
+读取外部 HTTP 响应时，必须使用 `io.LimitReader` 防止 OOM：
+
+```go
+// ❌ 无限制
+body, err := io.ReadAll(resp.Body)
+
+// ✅ 有限制
+const maxResponseSize = 1 << 20 // 1MB
+body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
+```
+
+#### Webhook 日志脱敏
+
+Webhook 日志中**禁止记录完整请求体**，应截断或脱敏：
+
+```go
+// ❌ 可能泄露 Stripe 卡号、客户信息
+slog.Error("verify failed", "rawBody", rawBody)
+
+// ✅ 截断 + 仅 Debug 级别
+if len(rawBody) > 200 { rawBody = rawBody[:200] + "...(truncated)" }
+slog.Debug("verify failed body", "rawBody", rawBody)
+slog.Error("verify failed", "provider", providerKey, "bodyLen", len(rawBody))
+```
+
+#### 加密密钥初始化必须校验
+
+启动时加载加密密钥，**必须检查错误**，失败则拒绝启动：
+
+```go
+// ❌ 静默忽略，可能导致数据不加密
+key, _ := hex.DecodeString(cfg.EncryptionKey)
+
+// ✅ 启动时校验
+key, err := hex.DecodeString(cfg.EncryptionKey)
+if err != nil {
+    return nil, fmt.Errorf("invalid encryption key: %w", err)
+}
+if len(key) != 32 {
+    return nil, fmt.Errorf("encryption key must be 32 bytes, got %d", len(key))
+}
+```
+
+#### sync.Once 重置必须与使用方同锁
+
+重置 `sync.Once` 时，必须确保使用方（如 `EnsureProviders`）持有同一把锁，防止竞态：
+
+```go
+// ❌ 竞态风险：EnsureProviders 不持锁，可能读到半重置状态
+func (s *Service) RefreshProviders(ctx context.Context) {
+    s.mu.Lock()
+    s.once = sync.Once{}  // goroutine A 重置
+    s.mu.Unlock()
+}
+func (s *Service) EnsureProviders(ctx context.Context) {
+    s.once.Do(func() { ... })  // goroutine B 可能使用旧 once
+}
+
+// ✅ 统一使用 mutex + bool 标记
+func (s *Service) EnsureProviders(ctx context.Context) {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+    if !s.loaded {
+        s.loadProviders(ctx)
+        s.loaded = true
+    }
+}
+```
+
+### 16. 前端 TypeScript 严格规范
+
+#### 禁止 any 类型
+
+所有前端代码**禁止使用 `any`**，包括 catch 块：
+
+```typescript
+// ❌ 禁止
+catch (err: any) { ... }
+let instance: any = null
+
+// ✅ 必须
+catch (err: unknown) {
+  appStore.showError(extractApiErrorMessage(err, t('common.error')))
+}
+let instance: Stripe | null = null
+```
+
+#### 禁止硬编码用户可见文本
+
+所有用户可见的文本**必须走 i18n**，禁止硬编码中文或英文：
+
+```typescript
+// ❌ 禁止
+initError.value = 'Stripe is not configured'
+placeholder="输入金额"
+
+// ✅ 必须
+initError.value = t('payment.stripeNotConfigured')
+:placeholder="t('payment.enterAmount')"
+```
+
+#### Vue Router query 参数类型安全
+
+路由 query 值可能是 `string | string[] | undefined`，禁止直接 `as string` 断言：
+
+```typescript
+// ❌ 不安全
+const id = route.query.order_id as string
+
+// ✅ 安全
+const id = String(route.query.order_id || '')
+```
 
 ---
 
@@ -1243,19 +1535,67 @@ API 客户端拦截器（`api/client.ts`）将后端错误统一转换为 `{ sta
 
 ### 向上游提交 PR
 
-PR 目标是上游官方仓库，**只包含通用功能改动**（bug fix、新功能、性能优化等）。
+PR 目标是上游官方仓库 `Wei-Shaw/sub2api:main`，**只包含通用功能改动**（bug fix、新功能、性能优化等）。
 
-**以下文件禁止出现在 PR 中**（属于我们 fork 的定制化内容）：
+#### PR 分支创建流程
+
+> **核心原则**：PR 分支必须基于 `upstream/main`，代码来源是我们的 release 分支（已测试过的代码）。通过 cherry-pick 将支付/功能代码从 release 带入 PR 分支，**禁止**将 PR 分支 merge 回 release（会带入 upstream/main 的非相关代码）。
+
+```bash
+# 1. 获取最新上游代码
+git fetch upstream
+
+# 2. 从 upstream/main 创建 PR 分支
+git checkout -b feat/my-feature upstream/main
+
+# 3. 从 release 分支 cherry-pick 功能代码
+#    方式一：cherry-pick 已有的精简 commit
+git cherry-pick <commit1> <commit2> ...
+
+#    方式二：如果 release 上有大量零散 commit，
+#    先在 release 分支整理为 1-2 个精简 commit，再 cherry-pick
+
+# 4. 验证 PR 分支只包含功能相关改动
+git diff --name-only upstream/main feat/my-feature
+# 确认没有 fork 定制文件（见下方禁止列表）
+
+# 5. 推送并等待 CI
+git push origin feat/my-feature
+gh run list --repo touwaeriol/sub2api --branch feat/my-feature
+```
+
+#### 将 PR 改进带入 release（反向同步）
+
+当 PR 分支有额外的代码改进（如代码规范优化、H5 支持等）需要带入 release 时：
+
+```bash
+# 从 release 出发，cherry-pick PR 的改进 commit
+git checkout release/custom-0.1.108
+git checkout -b release/custom-0.1.110
+git cherry-pick <pr-improvement-commit1> <pr-improvement-commit2> ...
+
+# ⚠️ 禁止：git merge feat/my-feature
+# 这会把 upstream/main 的所有代码带入 release！
+```
+
+#### 禁止出现在 PR 中的文件
+
+以下属于我们 fork 的定制化内容：
 - `CLAUDE.md`、`AGENTS.md` — 我们的开发文档
 - `backend/cmd/server/VERSION` — 我们的版本号文件
 - UI 定制改动（GitHub 链接移除、微信客服按钮、首页定制等）
 - 部署配置（`deploy/` 目录下的定制修改）
+- `sora_client_enabled` 相关代码
+- 测试脚本（`stress_test_*.sh`、`test_*.py`）
+- partner logos（`assets/partners/`）
 
-**PR 流程**：
-1. 从我们的当前开发分支（如 `release/custom-0.1.93`）或对应功能分支创建 PR 分支，只包含要提交给上游的通用改动
-2. 推送分支后，**等待 4 个 CI job 全部通过**
-3. 确认通过后再创建 PR
-4. 使用 `gh run list --repo touwaeriol/sub2api --branch <branch>` 检查状态
+#### PR 提交检查清单
+
+1. PR 分支基于最新 `upstream/main` ✅
+2. 只包含通用功能代码，无 fork 定制 ✅
+3. 推送后 4 个 CI job 全部通过 ✅
+4. 使用 `gh run list --repo touwaeriol/sub2api --branch <branch>` 确认
+5. PR 描述符合中英文格式规范（见下方模板）✅
 
 ### 自有分支推送（release/custom-X.Y.Z / 功能分支 / main）
 
