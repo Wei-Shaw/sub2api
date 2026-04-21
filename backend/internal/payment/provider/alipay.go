@@ -33,9 +33,6 @@ REDACTED
 	alipayTradePagePay = func(client *alipay.Client, param alipay.TradePagePay) (*url.URL, error) {
 		return client.TradePagePay(param)
 REDACTED
-	alipayTradePreCreate = func(ctx context.Context, client *alipay.Client, param alipay.TradePreCreate) (*alipay.TradePreCreateRsp, error) {
-		return client.TradePreCreate(ctx, param)
-REDACTED
 )
 
 // Alipay implements payment.Provider and payment.CancelableProvider using the smartwalle/alipay SDK.
@@ -138,7 +135,7 @@ func (a *Alipay) createWapTrade(client *alipay.Client, req payment.CreatePayment
 	param.NotifyURL = notifyURL
 	param.ReturnURL = returnURL
 
-	payURL, err := client.TradeWapPay(param)
+	payURL, err := alipayTradeWapPay(client, param)
 	if err != nil {
 		return nil, fmt.Errorf("alipay TradeWapPay: %w", err)
 REDACTED

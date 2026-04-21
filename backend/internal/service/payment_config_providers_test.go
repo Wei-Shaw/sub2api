@@ -210,9 +210,15 @@ func TestCreateProviderInstanceRejectsConflictingVisibleMethodEnablement(t *test
 REDACTED
 
 	_, err := svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
-		ProviderKey:    "easypay",
-		Name:           "EasyPay Alipay",
-		Config:         map[string]string{"pid": "1001"REDACTED,
+		ProviderKey: "easypay",
+		Name:        "EasyPay Alipay",
+		Config: map[string]string{
+			"pid":       "1001",
+			"pkey":      "pkey-1001",
+			"apiBase":   "https://pay.example.com",
+			"notifyUrl": "https://merchant.example.com/notify",
+			"returnUrl": "https://merchant.example.com/return",
+	REDACTED,
 		SupportedTypes: []string{"alipay"REDACTED,
 		Enabled:        true,
 REDACTED)
@@ -240,9 +246,15 @@ func TestUpdateProviderInstanceRejectsEnablingConflictingVisibleMethodProvider(t
 REDACTED
 
 	existing, err := svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
-		ProviderKey:    "easypay",
-		Name:           "EasyPay WeChat",
-		Config:         map[string]string{"pid": "2001"REDACTED,
+		ProviderKey: "easypay",
+		Name:        "EasyPay WeChat",
+		Config: map[string]string{
+			"pid":       "2001",
+			"pkey":      "pkey-2001",
+			"apiBase":   "https://pay.example.com",
+			"notifyUrl": "https://merchant.example.com/notify",
+			"returnUrl": "https://merchant.example.com/return",
+	REDACTED,
 		SupportedTypes: []string{"wxpay"REDACTED,
 		Enabled:        true,
 REDACTED)
@@ -276,9 +288,15 @@ func TestUpdateProviderInstancePersistsEnabledAndSupportedTypes(t *testing.T) {
 REDACTED
 
 	instance, err := svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
-		ProviderKey:    "easypay",
-		Name:           "EasyPay",
-		Config:         map[string]string{"pid": "3001"REDACTED,
+		ProviderKey: "easypay",
+		Name:        "EasyPay",
+		Config: map[string]string{
+			"pid":       "3001",
+			"pkey":      "pkey-3001",
+			"apiBase":   "https://pay.example.com",
+			"notifyUrl": "https://merchant.example.com/notify",
+			"returnUrl": "https://merchant.example.com/return",
+	REDACTED,
 		SupportedTypes: []string{"alipay"REDACTED,
 		Enabled:        false,
 REDACTED)

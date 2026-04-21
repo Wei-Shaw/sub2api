@@ -298,19 +298,6 @@ func (r oauthAdoptionDecisionRequest) hasDecision() bool {
 	return r.AdoptDisplayName != nil || r.AdoptAvatar != nil
 REDACTED
 
-func (r oauthAdoptionDecisionRequest) toServiceInput(sessionID int64) service.PendingIdentityAdoptionDecisionInput {
-	input := service.PendingIdentityAdoptionDecisionInput{
-		PendingAuthSessionID: sessionID,
-REDACTED
-	if r.AdoptDisplayName != nil {
-		input.AdoptDisplayName = *r.AdoptDisplayName
-REDACTED
-	if r.AdoptAvatar != nil {
-		input.AdoptAvatar = *r.AdoptAvatar
-REDACTED
-	return input
-REDACTED
-
 func bindOptionalOAuthAdoptionDecision(c *gin.Context) (oauthAdoptionDecisionRequest, error) {
 	var req oauthAdoptionDecisionRequest
 	if c == nil || c.Request == nil || c.Request.Body == nil {
@@ -323,24 +310,6 @@ REDACTED
 		return req, err
 REDACTED
 	return req, nil
-REDACTED
-
-func persistPendingOAuthAdoptionDecision(
-	c *gin.Context,
-	svc *service.AuthPendingIdentityService,
-	sessionID int64,
-	req oauthAdoptionDecisionRequest,
-) error {
-	if !req.hasDecision() {
-		return nil
-REDACTED
-	if svc == nil {
-		return infraerrors.ServiceUnavailable("PENDING_AUTH_NOT_READY", "pending auth service is not ready")
-REDACTED
-	if _, err := svc.UpsertAdoptionDecision(c.Request.Context(), req.toServiceInput(sessionID)); err != nil {
-		return infraerrors.InternalServer("PENDING_AUTH_ADOPTION_SAVE_FAILED", "failed to save oauth profile adoption decision").WithCause(err)
-REDACTED
-	return nil
 REDACTED
 
 func cloneOAuthMetadata(values map[string]any) map[string]any {
@@ -416,30 +385,6 @@ REDACTED
 		return nil, infraerrors.InternalServer("AUTH_IDENTITY_USER_LOOKUP_FAILED", "failed to load auth identity user").WithCause(err)
 REDACTED
 	return userEntity, nil
-REDACTED
-
-func (h *AuthHandler) createOAuthEmailRequiredPendingSession(
-	c *gin.Context,
-	identity service.PendingAuthIdentityKey,
-	redirectTo string,
-	browserSessionKey string,
-	upstreamClaims map[string]any,
-) error {
-	return h.createOAuthPendingSession(c, oauthPendingSessionPayload{
-		Intent:                 oauthIntentLogin,
-		Identity:               identity,
-		RedirectTo:             redirectTo,
-		BrowserSessionKey:      browserSessionKey,
-		UpstreamIdentityClaims: upstreamClaims,
-		CompletionResponse: map[string]any{
-			"redirect":                  strings.TrimSpace(redirectTo),
-			"step":                      oauthPendingChoiceStep,
-			"adoption_required":         true,
-			"force_email_on_signup":     true,
-			"email_binding_required":    true,
-			"existing_account_bindable": true,
-	REDACTED,
-REDACTED)
 REDACTED
 
 func (h *AuthHandler) BindLinuxDoOAuthLogin(c *gin.Context) { h.bindPendingOAuthLogin(c, "linuxdo") REDACTED

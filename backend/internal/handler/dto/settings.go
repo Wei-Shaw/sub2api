@@ -51,22 +51,22 @@ type SystemSettings struct {
 	LinuxDoConnectClientSecretConfigured bool   `json:"linuxdo_connect_client_secret_configured"`
 	LinuxDoConnectRedirectURL            string `json:"linuxdo_connect_redirect_url"`
 
-	WeChatConnectEnabled             bool   `json:"wechat_connect_enabled"`
-	WeChatConnectAppID               string `json:"wechat_connect_app_id"`
-	WeChatConnectAppSecretConfigured bool   `json:"wechat_connect_app_secret_configured"`
-	WeChatConnectOpenAppID               string `json:"wechat_connect_open_app_id"`
-	WeChatConnectOpenAppSecretConfigured bool   `json:"wechat_connect_open_app_secret_configured"`
-	WeChatConnectMPAppID                 string `json:"wechat_connect_mp_app_id"`
-	WeChatConnectMPAppSecretConfigured   bool   `json:"wechat_connect_mp_app_secret_configured"`
-	WeChatConnectMobileAppID             string `json:"wechat_connect_mobile_app_id"`
-	WeChatConnectMobileAppSecretConfigured bool `json:"wechat_connect_mobile_app_secret_configured"`
-	WeChatConnectOpenEnabled         bool   `json:"wechat_connect_open_enabled"`
-	WeChatConnectMPEnabled           bool   `json:"wechat_connect_mp_enabled"`
-	WeChatConnectMobileEnabled       bool   `json:"wechat_connect_mobile_enabled"`
-	WeChatConnectMode                string `json:"wechat_connect_mode"`
-	WeChatConnectScopes              string `json:"wechat_connect_scopes"`
-	WeChatConnectRedirectURL         string `json:"wechat_connect_redirect_url"`
-	WeChatConnectFrontendRedirectURL string `json:"wechat_connect_frontend_redirect_url"`
+	WeChatConnectEnabled                   bool   `json:"wechat_connect_enabled"`
+	WeChatConnectAppID                     string `json:"wechat_connect_app_id"`
+	WeChatConnectAppSecretConfigured       bool   `json:"wechat_connect_app_secret_configured"`
+	WeChatConnectOpenAppID                 string `json:"wechat_connect_open_app_id"`
+	WeChatConnectOpenAppSecretConfigured   bool   `json:"wechat_connect_open_app_secret_configured"`
+	WeChatConnectMPAppID                   string `json:"wechat_connect_mp_app_id"`
+	WeChatConnectMPAppSecretConfigured     bool   `json:"wechat_connect_mp_app_secret_configured"`
+	WeChatConnectMobileAppID               string `json:"wechat_connect_mobile_app_id"`
+	WeChatConnectMobileAppSecretConfigured bool   `json:"wechat_connect_mobile_app_secret_configured"`
+	WeChatConnectOpenEnabled               bool   `json:"wechat_connect_open_enabled"`
+	WeChatConnectMPEnabled                 bool   `json:"wechat_connect_mp_enabled"`
+	WeChatConnectMobileEnabled             bool   `json:"wechat_connect_mobile_enabled"`
+	WeChatConnectMode                      string `json:"wechat_connect_mode"`
+	WeChatConnectScopes                    string `json:"wechat_connect_scopes"`
+	WeChatConnectRedirectURL               string `json:"wechat_connect_redirect_url"`
+	WeChatConnectFrontendRedirectURL       string `json:"wechat_connect_frontend_redirect_url"`
 
 	OIDCConnectEnabled                bool   `json:"oidc_connect_enabled"`
 	OIDCConnectProviderName           string `json:"oidc_connect_provider_name"`

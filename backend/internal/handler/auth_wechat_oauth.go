@@ -1129,7 +1129,7 @@ REDACTED
 	if err != nil {
 		return nil, fmt.Errorf("request wechat access token: %w", err)
 REDACTED
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() REDACTED()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -1177,7 +1177,7 @@ REDACTED
 	if err != nil {
 		return nil, fmt.Errorf("request wechat userinfo: %w", err)
 REDACTED
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() REDACTED()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

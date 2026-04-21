@@ -155,7 +155,7 @@ REDACTED
 	require.Equal(t, "openid-123", session.UpstreamIdentityClaims["openid"])
 REDACTED
 
-func TestWeChatOAuthCallbackRejectsMissingUnionID(t *testing.T) {
+func TestWeChatOAuthCallbackFallsBackToOpenIDWhenUnionIDMissingInSingleChannelMode(t *testing.T) {
 	originalAccessTokenURL := wechatOAuthAccessTokenURL
 	originalUserInfoURL := wechatOAuthUserInfoURL
 	t.Cleanup(func() {
@@ -195,13 +195,22 @@ REDACTED))
 	handler.WeChatOAuthCallback(c)
 
 	require.Equal(t, http.StatusFound, recorder.Code)
-	require.Contains(t, recorder.Header().Get("Location"), "#error=provider_error")
-	require.Contains(t, recorder.Header().Get("Location"), "error_message=wechat_missing_unionid")
-	require.Nil(t, findCookie(recorder.Result().Cookies(), oauthPendingSessionCookieName))
+	require.Equal(t, "https://app.example.com/auth/wechat/callback", recorder.Header().Get("Location"))
 
-	count, err := client.PendingAuthSession.Query().Count(context.Background())
+	sessionCookie := findCookie(recorder.Result().Cookies(), oauthPendingSessionCookieName)
+	require.NotNil(t, sessionCookie)
+
+	session, err := client.PendingAuthSession.Query().
+		Where(pendingauthsession.SessionTokenEQ(decodeCookieValueForTest(t, sessionCookie.Value))).
+		Only(context.Background())
 REDACTED
-	require.Zero(t, count)
+	require.Equal(t, oauthIntentLogin, session.Intent)
+	require.Equal(t, "openid-123", session.ProviderSubject)
+	require.Equal(t, wechatSyntheticEmail("openid-123"), session.ResolvedEmail)
+
+	completion := session.LocalFlowState[oauthCompletionResponseKey].(map[string]any)
+	require.Equal(t, oauthPendingChoiceStep, completion["step"])
+	require.Equal(t, "third_party_signup", completion["choice_reason"])
 REDACTED
 
 func TestWeChatPaymentOAuthCallbackRedirectsWithOpaqueResumeToken(t *testing.T) {
@@ -669,7 +678,7 @@ REDACTED))
 		Where(pendingauthsession.SessionTokenEQ(sessionToken)).
 		Only(ctx)
 REDACTED
-	require.Equal(t, "invitation_required", pendingSession.LocalFlowState[oauthCompletionResponseKey].(map[string]any)["error"])
+	require.Equal(t, oauthPendingChoiceStep, pendingSession.LocalFlowState[oauthCompletionResponseKey].(map[string]any)["step"])
 
 	body := bytes.NewBufferString(`{"invitation_code":"invite-1","adopt_display_name":true,"adopt_avatar":trueREDACTED`)
 	completeRecorder := httptest.NewRecorder()

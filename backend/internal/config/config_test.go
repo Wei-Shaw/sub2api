@@ -389,6 +389,7 @@ REDACTED
 	cfg.OIDC.RedirectURL = "https://example.com/api/v1/auth/oauth/oidc/callback"
 	cfg.OIDC.FrontendRedirectURL = "/auth/oidc/callback"
 	cfg.OIDC.Scopes = "profile email"
+	cfg.OIDC.UsePKCE = true
 
 	err = cfg.Validate()
 	if err == nil {
@@ -418,6 +419,7 @@ REDACTED
 	cfg.OIDC.FrontendRedirectURL = "/auth/oidc/callback"
 	cfg.OIDC.Scopes = "openid email profile"
 	cfg.OIDC.ValidateIDToken = true
+	cfg.OIDC.UsePKCE = true
 
 	err = cfg.Validate()
 	if err != nil {
@@ -840,6 +842,7 @@ REDACTED
 	cfg.LinuxDo.RedirectURL = "https://example.com/api/v1/auth/oauth/linuxdo/callback"
 	cfg.LinuxDo.FrontendRedirectURL = "/auth/linuxdo/callback"
 	cfg.LinuxDo.TokenAuthMethod = "client_secret_post"
+	cfg.LinuxDo.UsePKCE = true
 
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() unexpected error: %v", err)
@@ -990,6 +993,7 @@ REDACTED{
 			name: "linuxdo client id required",
 			mutate: func(c *Config) {
 				c.LinuxDo.Enabled = true
+				c.LinuxDo.UsePKCE = true
 				c.LinuxDo.ClientID = ""
 		REDACTED,
 			wantErr: "linuxdo_connect.client_id",
@@ -998,6 +1002,7 @@ REDACTED{
 			name: "linuxdo token auth method",
 			mutate: func(c *Config) {
 				c.LinuxDo.Enabled = true
+				c.LinuxDo.UsePKCE = true
 				c.LinuxDo.ClientID = "client"
 				c.LinuxDo.ClientSecret = "secret"
 				c.LinuxDo.AuthorizeURL = "https://example.com/authorize"

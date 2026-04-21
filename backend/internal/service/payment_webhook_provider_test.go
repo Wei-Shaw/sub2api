@@ -4,7 +4,11 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"strconv"
 	"testing"
 	"time"
@@ -50,6 +54,28 @@ REDACTED
 
 func newWebhookProviderTestLoadBalancer(client *dbent.Client) payment.LoadBalancer {
 	return payment.NewDefaultLoadBalancer(client, []byte(webhookProviderTestEncryptionKey))
+REDACTED
+
+func encryptValidWebhookWxpayConfig(t *testing.T, suffix string) string {
+REDACTED
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+REDACTED
+
+	privDER, err := x509.MarshalPKCS8PrivateKey(key)
+REDACTED
+	pubDER, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+REDACTED
+
+	return encryptWebhookProviderConfig(t, map[string]string{
+		"appId":       "wx-app-" + suffix,
+		"mchId":       "mch-" + suffix,
+		"privateKey":  string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privDERREDACTED)),
+		"apiV3Key":    webhookProviderTestEncryptionKey,
+		"publicKey":   string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDERREDACTED)),
+		"publicKeyId": "public-key-id-" + suffix,
+		"certSerial":  "cert-serial-" + suffix,
+REDACTED)
 REDACTED
 
 func TestGetOrderProviderInstanceResolvesUniqueLegacyProviderKey(t *testing.T) {
@@ -275,24 +301,8 @@ REDACTED
 func TestGetWebhookProviderRejectsAmbiguousRegistryFallback(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
-	wxpayConfigA := encryptWebhookProviderConfig(t, map[string]string{
-		"appId":       "wx-app-a",
-		"mchId":       "mch-a",
-		"privateKey":  "private-key-a",
-		"apiV3Key":    webhookProviderTestEncryptionKey,
-		"publicKey":   "public-key-a",
-		"publicKeyId": "public-key-id-a",
-		"certSerial":  "cert-serial-a",
-REDACTED)
-	wxpayConfigB := encryptWebhookProviderConfig(t, map[string]string{
-		"appId":       "wx-app-b",
-		"mchId":       "mch-b",
-		"privateKey":  "private-key-b",
-		"apiV3Key":    webhookProviderTestEncryptionKey,
-		"publicKey":   "public-key-b",
-		"publicKeyId": "public-key-id-b",
-		"certSerial":  "cert-serial-b",
-REDACTED)
+	wxpayConfigA := encryptValidWebhookWxpayConfig(t, "a")
+	wxpayConfigB := encryptValidWebhookWxpayConfig(t, "b")
 	_, err := client.PaymentProviderInstance.Create().
 		SetProviderKey(payment.TypeWxpay).
 		SetName("wxpay-a").
@@ -442,24 +452,8 @@ func TestGetWebhookProviderUsesProviderSnapshotBeforeWxpayFallback(t *testing.T)
 		Save(ctx)
 REDACTED
 
-	wxpayConfigA := encryptWebhookProviderConfig(t, map[string]string{
-		"appId":       "wx-app-snapshot-a",
-		"mchId":       "mch-snapshot-a",
-		"privateKey":  "private-key-snapshot-a",
-		"apiV3Key":    webhookProviderTestEncryptionKey,
-		"publicKey":   "public-key-snapshot-a",
-		"publicKeyId": "public-key-id-snapshot-a",
-		"certSerial":  "cert-serial-snapshot-a",
-REDACTED)
-	wxpayConfigB := encryptWebhookProviderConfig(t, map[string]string{
-		"appId":       "wx-app-snapshot-b",
-		"mchId":       "mch-snapshot-b",
-		"privateKey":  "private-key-snapshot-b",
-		"apiV3Key":    webhookProviderTestEncryptionKey,
-		"publicKey":   "public-key-snapshot-b",
-		"publicKeyId": "public-key-id-snapshot-b",
-		"certSerial":  "cert-serial-snapshot-b",
-REDACTED)
+	wxpayConfigA := encryptValidWebhookWxpayConfig(t, "snapshot-a")
+	wxpayConfigB := encryptValidWebhookWxpayConfig(t, "snapshot-b")
 	instA, err := client.PaymentProviderInstance.Create().
 		SetProviderKey(payment.TypeWxpay).
 		SetName("wxpay-snapshot-a").

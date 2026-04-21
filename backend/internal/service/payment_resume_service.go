@@ -23,8 +23,6 @@ const (
 	PaymentSourceHostedRedirect    = "hosted_redirect"
 	PaymentSourceWechatInAppResume = "wechat_in_app_resume"
 
-	paymentResumeFallbackSigningKey = "sub2api-payment-resume"
-
 	SettingPaymentVisibleMethodAlipaySource  = "payment_visible_method_alipay_source"
 	SettingPaymentVisibleMethodWxpaySource   = "payment_visible_method_wxpay_source"
 	SettingPaymentVisibleMethodAlipayEnabled = "payment_visible_method_alipay_enabled"
