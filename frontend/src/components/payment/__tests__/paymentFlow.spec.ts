@@ -106,6 +106,35 @@ describe('decidePaymentLaunch', () => {
     expect(decision.recovery.resumeToken).toBe('resume-2')
   REDACTED)
 
+  it('prefers redirect on mobile when both pay_url and qr_code are present', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      pay_url: 'https://pay.example.com/mobile/session',
+      qr_code: 'https://pay.example.com/qr/session',
+    REDACTED), {
+      visibleMethod: 'alipay',
+      orderType: 'balance',
+      isMobile: true,
+    REDACTED)
+
+    expect(decision.kind).toBe('redirect_waiting')
+    expect(decision.paymentState.payUrl).toBe('https://pay.example.com/mobile/session')
+    expect(decision.paymentState.qrCode).toBe('https://pay.example.com/qr/session')
+  REDACTED)
+
+  it('keeps QR flow on desktop when both pay_url and qr_code are present', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      pay_url: 'https://pay.example.com/desktop/session',
+      qr_code: 'https://pay.example.com/qr/session',
+    REDACTED), {
+      visibleMethod: 'wxpay',
+      orderType: 'balance',
+      isMobile: false,
+    REDACTED)
+
+    expect(decision.kind).toBe('qr_waiting')
+    expect(decision.paymentState.qrCode).toBe('https://pay.example.com/qr/session')
+  REDACTED)
+
   it('returns wechat oauth launch when backend requires in-app authorization', () => {
     const decision = decidePaymentLaunch(createOrderResult({
       result_type: 'oauth_required',

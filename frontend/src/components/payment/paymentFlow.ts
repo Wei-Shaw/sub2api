@@ -46,6 +46,7 @@ export interface PaymentLaunchContext {
   visibleMethod: string
   orderType: OrderType
   isMobile: boolean
+  isWechatBrowser?: boolean
   now?: number
   stripePopupUrl?: string
   stripeRouteUrl?: string
@@ -159,7 +160,23 @@ export function decidePaymentLaunch(
     return { kind: 'wechat_jsapi', paymentState: baseState, recovery: baseState, jsapi: jsapiPayload REDACTED
   REDACTED
 
-  if (baseState.qrCode) {
+  const normalizedPaymentMode = baseState.paymentMode.trim().toLowerCase()
+  const prefersRedirect = normalizedPaymentMode === 'redirect'
+    || normalizedPaymentMode === 'popup'
+    || (context.isMobile && !!baseState.payUrl)
+  const prefersQr = normalizedPaymentMode === 'qrcode'
+    || normalizedPaymentMode === 'native'
+    || (!prefersRedirect && !!baseState.qrCode)
+
+  if (visibleMethod === 'wxpay' && context.isWechatBrowser && baseState.payUrl && !baseState.qrCode) {
+    return { kind: 'redirect_waiting', paymentState: baseState, recovery: baseState REDACTED
+  REDACTED
+
+  if (prefersRedirect && baseState.payUrl) {
+    return { kind: 'redirect_waiting', paymentState: baseState, recovery: baseState REDACTED
+  REDACTED
+
+  if (prefersQr && baseState.qrCode) {
     return { kind: 'qr_waiting', paymentState: baseState, recovery: baseState REDACTED
   REDACTED
 
