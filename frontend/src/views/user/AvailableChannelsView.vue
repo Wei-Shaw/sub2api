@@ -37,6 +37,7 @@
           :columns="columnLabels"
           :rows="filteredChannels"
           :loading="loading"
+          :user-group-rates="userGroupRates"
           pricing-key-prefix="availableChannels.pricing"
           :no-pricing-label="t('availableChannels.noPricing')"
           :no-models-label="t('availableChannels.noModels')"
@@ -55,6 +56,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import AvailableChannelsTable from '@/components/channels/AvailableChannelsTable.vue'
 import userChannelsAPI, { type UserAvailableChannel } from '@/api/channels'
+import userGroupsAPI from '@/api/groups'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 
@@ -62,6 +64,7 @@ const { t } = useI18n()
 const appStore = useAppStore()
 
 const channels = ref<UserAvailableChannel[]>([])
+const userGroupRates = ref<Record<number, number>>({})
 const loading = ref(false)
 const searchQuery = ref('')
 
@@ -101,7 +104,17 @@ const filteredChannels = computed(() => {
 async function loadChannels() {
   loading.value = true
   try {
-    channels.value = await userChannelsAPI.getAvailable()
+    // 渠道列表和用户专属倍率并发拉取。专属倍率失败不阻塞渠道展示——
+    // 失败时只是无法渲染专属倍率角标，降级为仅显示默认倍率。
+    const [list, rates] = await Promise.all([
+      userChannelsAPI.getAvailable(),
+      userGroupsAPI.getUserGroupRates().catch((err: unknown) => {
+        console.error('Failed to load user group rates:', err)
+        return {} as Record<number, number>
+      }),
+    ])
+    channels.value = list
+    userGroupRates.value = rates
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))
   } finally {
