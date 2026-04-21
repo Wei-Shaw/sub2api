@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"testing"
 	"time"
@@ -558,7 +559,8 @@ func TestUpdateUserQuotaRequest_FieldMissing(t *testing.T) {
 // 字段为 null：Has* 为 true 但指针为 nil，表示"清回默认/不限"。
 func TestUpdateUserQuotaRequest_FieldNull(t *testing.T) {
 	var req UpdateUserQuotaRequest
-	require.NoError(t, json.Unmarshal([]byte(`{"usage_limit_enabled": null, "daily_usage_limit_usd": null}`), &req))
+	payload := fmt.Sprintf(`{%q: null, %q: null}`, fieldUsageLimitEnabled, fieldDailyUsageLimitUSD)
+	require.NoError(t, json.Unmarshal([]byte(payload), &req))
 	assert.True(t, req.HasUsageLimitEnabled())
 	assert.True(t, req.HasDailyUsageLimitUSD())
 	assert.Nil(t, req.UsageLimitEnabled)
@@ -568,7 +570,8 @@ func TestUpdateUserQuotaRequest_FieldNull(t *testing.T) {
 // 字段有值：Has* 为 true 且指针非 nil，指向写入值。
 func TestUpdateUserQuotaRequest_FieldValue(t *testing.T) {
 	var req UpdateUserQuotaRequest
-	require.NoError(t, json.Unmarshal([]byte(`{"usage_limit_enabled": true, "daily_usage_limit_usd": 12.5}`), &req))
+	payload := fmt.Sprintf(`{%q: true, %q: 12.5}`, fieldUsageLimitEnabled, fieldDailyUsageLimitUSD)
+	require.NoError(t, json.Unmarshal([]byte(payload), &req))
 	require.True(t, req.HasUsageLimitEnabled())
 	require.True(t, req.HasDailyUsageLimitUSD())
 	require.NotNil(t, req.UsageLimitEnabled)
@@ -580,7 +583,8 @@ func TestUpdateUserQuotaRequest_FieldValue(t *testing.T) {
 // 混合场景：一个字段 null、另一个字段有值；另一个未出现
 func TestUpdateUserQuotaRequest_FieldMixed(t *testing.T) {
 	var req UpdateUserQuotaRequest
-	require.NoError(t, json.Unmarshal([]byte(`{"usage_limit_enabled": false}`), &req))
+	payload := fmt.Sprintf(`{%q: false}`, fieldUsageLimitEnabled)
+	require.NoError(t, json.Unmarshal([]byte(payload), &req))
 	require.True(t, req.HasUsageLimitEnabled())
 	require.NotNil(t, req.UsageLimitEnabled)
 	assert.False(t, *req.UsageLimitEnabled)
@@ -628,7 +632,8 @@ func TestUpdateUserQuota_NullFieldClears(t *testing.T) {
 	}
 
 	var req UpdateUserQuotaRequest
-	require.NoError(t, json.Unmarshal([]byte(`{"usage_limit_enabled": null, "daily_usage_limit_usd": null}`), &req))
+	payload := fmt.Sprintf(`{%q: null, %q: null}`, fieldUsageLimitEnabled, fieldDailyUsageLimitUSD)
+	require.NoError(t, json.Unmarshal([]byte(payload), &req))
 	require.NoError(t, svc.UpdateUserQuota(context.Background(), 1, req))
 
 	assert.Nil(t, writer.lastEnabled, "null must clear enabled back to NULL")
@@ -648,7 +653,8 @@ func TestUpdateUserQuota_ExplicitValueWrites(t *testing.T) {
 	}
 
 	var req UpdateUserQuotaRequest
-	require.NoError(t, json.Unmarshal([]byte(`{"usage_limit_enabled": false, "daily_usage_limit_usd": 8.5}`), &req))
+	payload := fmt.Sprintf(`{%q: false, %q: 8.5}`, fieldUsageLimitEnabled, fieldDailyUsageLimitUSD)
+	require.NoError(t, json.Unmarshal([]byte(payload), &req))
 	require.NoError(t, svc.UpdateUserQuota(context.Background(), 1, req))
 
 	require.NotNil(t, writer.lastEnabled)

@@ -93,6 +93,9 @@ type QuotaUsageSnapshot struct {
 // 里用 map[string]json.RawMessage 先看 key 是否出现，再决定是否把 Set=true。
 // 下游（UpdateUserQuota）判断"是否更新"时读 UsageLimitEnabledSet / DailyUsageLimitUSDSet，
 // 判断"是否清空回默认"时读字段本身是否为 nil，语义明确。
+//
+// 注意：struct tag 的 JSON 字段名必须与 fieldUsageLimitEnabled /
+// fieldDailyUsageLimitUSD 保持一致（Go 不允许用常量生成 tag，需人工同步）。
 type UpdateUserQuotaRequest struct {
 	UsageLimitEnabled  *bool    `json:"usage_limit_enabled"`
 	DailyUsageLimitUSD *float64 `json:"daily_usage_limit_usd"`
@@ -103,6 +106,17 @@ type UpdateUserQuotaRequest struct {
 	usageLimitEnabledSet  bool
 	dailyUsageLimitUSDSet bool
 }
+
+// UpdateUserQuotaRequest JSON 字段名常量。
+//
+// 这两个常量同时被 UnmarshalJSON（map key 查找）和测试用例（构造 JSON 字面量）引用，
+// 避免各处重复写 "usage_limit_enabled" / "daily_usage_limit_usd" 字面量；
+// 改名时只需同步这里和同 struct 的 `json:"..."` tag（tag 不能用常量生成，
+// Go 语言限制：tag 必须是编译期字符串字面量）。
+const (
+	fieldUsageLimitEnabled  = "usage_limit_enabled"
+	fieldDailyUsageLimitUSD = "daily_usage_limit_usd"
+)
 
 // HasUsageLimitEnabled 返回请求体是否提供了 usage_limit_enabled 字段（包含显式 null）。
 func (r *UpdateUserQuotaRequest) HasUsageLimitEnabled() bool {
@@ -121,7 +135,7 @@ func (r *UpdateUserQuotaRequest) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-	if v, ok := raw["usage_limit_enabled"]; ok {
+	if v, ok := raw[fieldUsageLimitEnabled]; ok {
 		r.usageLimitEnabledSet = true
 		if !isJSONNull(v) {
 			var b bool
@@ -131,7 +145,7 @@ func (r *UpdateUserQuotaRequest) UnmarshalJSON(data []byte) error {
 			r.UsageLimitEnabled = &b
 		}
 	}
-	if v, ok := raw["daily_usage_limit_usd"]; ok {
+	if v, ok := raw[fieldDailyUsageLimitUSD]; ok {
 		r.dailyUsageLimitUSDSet = true
 		if !isJSONNull(v) {
 			var f float64
