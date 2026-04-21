@@ -121,37 +121,32 @@ func (s *BillingCacheService) enqueueCacheWrite(task cacheWriteTask) (enqueued b
 	}
 }
 
+// cacheWriteWorker 消费缓存写入队列。每个任务类型都被分派给独立的 processXxxTask
+// 方法实现，本函数只负责 context 生命周期与类型分派。
 func (s *BillingCacheService) cacheWriteWorker(ch <-chan cacheWriteTask) {
 	defer s.cacheWriteWg.Done()
 	for task := range ch {
-		ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
-		switch task.kind {
-		case cacheWriteSetBalance:
-			s.setBalanceCache(ctx, task.userID, task.balance)
-		case cacheWriteSetSubscription:
-			s.setSubscriptionCache(ctx, task.userID, task.groupID, task.subscriptionData)
-		case cacheWriteUpdateSubscriptionUsage:
-			if s.cache != nil {
-				if err := s.cache.UpdateSubscriptionUsage(ctx, task.userID, task.groupID, task.amount); err != nil {
-					logger.LegacyPrintf("service.billing_cache", "Warning: update subscription cache failed for user %d group %d: %v", task.userID, task.groupID, err)
-				}
-			}
-		case cacheWriteDeductBalance:
-			if s.cache != nil {
-				if err := s.cache.DeductUserBalance(ctx, task.userID, task.amount); err != nil {
-					logger.LegacyPrintf("service.billing_cache", "Warning: deduct balance cache failed for user %d: %v", task.userID, err)
-				}
-			}
-		case cacheWriteUpdateRateLimitUsage:
-			if s.cache != nil {
-				if err := s.cache.UpdateAPIKeyRateLimitUsage(ctx, task.apiKeyID, task.amount); err != nil {
-					logger.LegacyPrintf("service.billing_cache", "Warning: update rate limit usage cache failed for api key %d: %v", task.apiKeyID, err)
-				}
-			}
-		case cacheWriteIncrQuotaUsage:
-			s.processQuotaUsageTask(ctx, task)
-		}
-		cancel()
+		s.runCacheWriteTask(task)
+	}
+}
+
+// runCacheWriteTask 在独立 context 内执行单个缓存写入任务。
+func (s *BillingCacheService) runCacheWriteTask(task cacheWriteTask) {
+	ctx, cancel := context.WithTimeout(context.Background(), cacheWriteTimeout)
+	defer cancel()
+	switch task.kind {
+	case cacheWriteSetBalance:
+		s.processSetBalanceTask(ctx, task)
+	case cacheWriteSetSubscription:
+		s.processSetSubscriptionTask(ctx, task)
+	case cacheWriteUpdateSubscriptionUsage:
+		s.processUpdateSubscriptionUsageTask(ctx, task)
+	case cacheWriteDeductBalance:
+		s.processDeductBalanceTask(ctx, task)
+	case cacheWriteUpdateRateLimitUsage:
+		s.processUpdateRateLimitUsageTask(ctx, task)
+	case cacheWriteIncrQuotaUsage:
+		s.processQuotaUsageTask(ctx, task)
 	}
 }
 

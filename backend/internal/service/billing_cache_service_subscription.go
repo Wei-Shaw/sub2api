@@ -107,3 +107,19 @@ func (s *BillingCacheService) InvalidateSubscription(ctx context.Context, userID
 	}
 	return nil
 }
+
+// processSetSubscriptionTask 处理 cacheWriteSetSubscription：异步写入订阅缓存。
+func (s *BillingCacheService) processSetSubscriptionTask(ctx context.Context, task cacheWriteTask) {
+	s.setSubscriptionCache(ctx, task.userID, task.groupID, task.subscriptionData)
+}
+
+// processUpdateSubscriptionUsageTask 处理 cacheWriteUpdateSubscriptionUsage：
+// 异步累加订阅用量到缓存。
+func (s *BillingCacheService) processUpdateSubscriptionUsageTask(ctx context.Context, task cacheWriteTask) {
+	if s.cache == nil {
+		return
+	}
+	if err := s.cache.UpdateSubscriptionUsage(ctx, task.userID, task.groupID, task.amount); err != nil {
+		logger.LegacyPrintf("service.billing_cache", "Warning: update subscription cache failed for user %d group %d: %v", task.userID, task.groupID, err)
+	}
+}

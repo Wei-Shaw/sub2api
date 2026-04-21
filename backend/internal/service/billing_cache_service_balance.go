@@ -111,3 +111,18 @@ func (s *BillingCacheService) InvalidateUserBalance(ctx context.Context, userID 
 	}
 	return nil
 }
+
+// processSetBalanceTask 处理 cacheWriteSetBalance：异步把 DB 读回的余额写入缓存。
+func (s *BillingCacheService) processSetBalanceTask(ctx context.Context, task cacheWriteTask) {
+	s.setBalanceCache(ctx, task.userID, task.balance)
+}
+
+// processDeductBalanceTask 处理 cacheWriteDeductBalance：异步扣减缓存中的余额。
+func (s *BillingCacheService) processDeductBalanceTask(ctx context.Context, task cacheWriteTask) {
+	if s.cache == nil {
+		return
+	}
+	if err := s.cache.DeductUserBalance(ctx, task.userID, task.amount); err != nil {
+		logger.LegacyPrintf("service.billing_cache", "Warning: deduct balance cache failed for user %d: %v", task.userID, err)
+	}
+}

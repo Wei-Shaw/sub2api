@@ -141,3 +141,14 @@ func (s *BillingCacheService) QueueUpdateAPIKeyRateLimitUsage(apiKeyID int64, co
 		amount:   cost,
 	})
 }
+
+// processUpdateRateLimitUsageTask 处理 cacheWriteUpdateRateLimitUsage：
+// 异步累加 API Key 限速窗口用量到缓存。
+func (s *BillingCacheService) processUpdateRateLimitUsageTask(ctx context.Context, task cacheWriteTask) {
+	if s.cache == nil {
+		return
+	}
+	if err := s.cache.UpdateAPIKeyRateLimitUsage(ctx, task.apiKeyID, task.amount); err != nil {
+		logger.LegacyPrintf("service.billing_cache", "Warning: update rate limit usage cache failed for api key %d: %v", task.apiKeyID, err)
+	}
+}
