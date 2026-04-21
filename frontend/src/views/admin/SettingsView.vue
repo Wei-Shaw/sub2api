@@ -2490,47 +2490,35 @@
                 {{ t("admin.settings.scheduling.description") REDACTEDREDACTED
               </p>
             </div>
-            <div class="p-6">
-              <div class="space-y-4">
-                <div class="flex items-center justify-between">
-                  <div>
-                    <label
-                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                    >
-                      {{ t("admin.settings.scheduling.allowUngroupedKey") REDACTEDREDACTED
-                    </label>
-                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                      {{ t("admin.settings.scheduling.allowUngroupedKeyHint") REDACTEDREDACTED
-                    </p>
-                  </div>
-                  <label class="toggle">
-                    <input
-                      v-model="form.allow_ungrouped_key_scheduling"
-                      type="checkbox"
-                    />
-                    <span class="toggle-slider"></span>
+            <div class="space-y-5 p-6">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.scheduling.allowUngroupedKey") REDACTEDREDACTED
                   </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.scheduling.allowUngroupedKeyHint") REDACTEDREDACTED
+                  </p>
                 </div>
+                <Toggle v-model="form.allow_ungrouped_key_scheduling" />
+              </div>
 
-                <div
-                  class="flex items-center justify-between rounded border border-gray-200 px-4 py-3 dark:border-dark-700"
-                >
-                  <div>
-                    <label
-                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                    >
-                      {{
-                        t("admin.settings.openaiExperimentalScheduler.title")
-                      REDACTEDREDACTED
-                    </label>
-                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                      {{
-                        t("admin.settings.openaiExperimentalScheduler.description")
-                      REDACTEDREDACTED
-                    </p>
-                  </div>
-                  <Toggle v-model="form.openai_advanced_scheduler_enabled" />
+              <div class="flex items-center justify-between">
+                <div>
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.openaiExperimentalScheduler.title") REDACTEDREDACTED
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t("admin.settings.openaiExperimentalScheduler.description")
+                    REDACTEDREDACTED
+                  </p>
                 </div>
+                <Toggle v-model="form.openai_advanced_scheduler_enabled" />
               </div>
             </div>
           </div>
