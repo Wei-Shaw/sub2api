@@ -252,13 +252,13 @@ import { usePaymentStore REDACTED from '@/stores/payment'
 import { useSubscriptionStore REDACTED from '@/stores/subscriptions'
 import { useAppStore REDACTED from '@/stores'
 import { paymentAPI REDACTED from '@/api/payment'
-import { extractApiErrorMessage REDACTED from '@/utils/apiError'
+import { extractApiErrorMessage, extractI18nErrorMessage REDACTED from '@/utils/apiError'
 import { isMobileDevice REDACTED from '@/utils/device'
 import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType REDACTED from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
-import { METHOD_ORDER, POPUP_WINDOW_FEATURES, STRIPE_POPUP_WINDOW_FEATURES REDACTED from '@/components/payment/providerConfig'
+import { METHOD_ORDER, getPaymentPopupFeatures REDACTED from '@/components/payment/providerConfig'
 import {
   PAYMENT_RECOVERY_STORAGE_KEY,
   buildCreateOrderPayload,
@@ -630,8 +630,8 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     payload.is_mobile = isMobileDevice()
 
     const result = await paymentStore.createOrder(payload) as CreateOrderResult & { resume_token?: string REDACTED
-    const openWindow = (url: string, features = POPUP_WINDOW_FEATURES) => {
-      const win = window.open(url, 'paymentPopup', features)
+    const openWindow = (url: string) => {
+      const win = window.open(url, 'paymentPopup', getPaymentPopupFeatures())
       if (!win || win.closed) {
         window.location.href = url
       REDACTED
@@ -672,7 +672,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     persistRecoverySnapshot(decision.recovery)
 
     if (decision.kind === 'stripe_popup') {
-      openWindow(decision.paymentState.payUrl, STRIPE_POPUP_WINDOW_FEATURES)
+      openWindow(decision.paymentState.payUrl)
       return
     REDACTED
     if (decision.kind === 'stripe_route') {
@@ -710,8 +710,8 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
         err,
         normalizeVisibleMethod(options.paymentType || selectedMethod.value) || selectedMethod.value,
       )
-      if (!errorMessage.value) {
-        errorMessage.value = extractApiErrorMessage(err, t('payment.result.failed'))
+      if (!handled) {
+        errorMessage.value = extractI18nErrorMessage(err, t, 'payment.errors', extractApiErrorMessage(err, t('payment.result.failed')))
         errorHintMessage.value = ''
       REDACTED
       if (handled) {
@@ -825,7 +825,7 @@ onMounted(async () => {
         REDACTED
       REDACTED
     REDACTED
-  REDACTED catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) REDACTED
+  REDACTED catch (err: unknown) { appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error'))) REDACTED
   finally { loading.value = false REDACTED
   // Fetch active subscriptions (uses cache, non-blocking)
   subscriptionStore.fetchActiveSubscriptions().catch(() => {REDACTED)

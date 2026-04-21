@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -201,7 +202,7 @@ REDACTED
 		return fmt.Errorf("count pending orders: %w", err)
 REDACTED
 	if c >= max {
-		return infraerrors.TooManyRequests("TOO_MANY_PENDING", fmt.Sprintf("too many pending orders (max %d)", max)).
+		return infraerrors.TooManyRequests("TOO_MANY_PENDING", "too_many_pending").
 			WithMetadata(map[string]string{"max": strconv.Itoa(max)REDACTED)
 REDACTED
 	return nil
@@ -284,7 +285,8 @@ REDACTED
 		used += o.Amount
 REDACTED
 	if used+amount > limit {
-		return infraerrors.TooManyRequests("DAILY_LIMIT_EXCEEDED", fmt.Sprintf("daily recharge limit reached, remaining: %.2f", math.Max(0, limit-used)))
+		return infraerrors.TooManyRequests("DAILY_LIMIT_EXCEEDED", "daily_limit_exceeded").
+			WithMetadata(map[string]string{"remaining": fmt.Sprintf("%.2f", math.Max(0, limit-used))REDACTED)
 REDACTED
 	return nil
 REDACTED
@@ -296,10 +298,11 @@ func (s *PaymentService) selectCreateOrderInstance(ctx context.Context, req Crea
 REDACTED
 	sel, err := s.loadBalancer.SelectInstance(selectCtx, "", req.PaymentType, payment.Strategy(cfg.LoadBalanceStrategy), payAmount)
 	if err != nil {
-		return nil, infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", fmt.Sprintf("payment method (%s) is not configured", req.PaymentType))
+		return nil, infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", "method_not_configured").
+			WithMetadata(map[string]string{"payment_type": req.PaymentTypeREDACTED)
 REDACTED
 	if sel == nil {
-		return nil, infraerrors.TooManyRequests("NO_AVAILABLE_INSTANCE", "no available payment instance")
+		return nil, infraerrors.TooManyRequests("NO_AVAILABLE_INSTANCE", "no_available_instance")
 REDACTED
 	return sel, nil
 REDACTED
@@ -342,7 +345,18 @@ REDACTED
 func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.PaymentOrder, req CreateOrderRequest, cfg *PaymentConfig, limitAmount float64, payAmountStr string, payAmount float64, plan *dbent.SubscriptionPlan, sel *payment.InstanceSelection) (*CreateOrderResponse, error) {
 	prov, err := provider.CreateProvider(sel.ProviderKey, sel.InstanceID, sel.Config)
 	if err != nil {
-		return nil, infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", "payment method is temporarily unavailable")
+		slog.Error("[PaymentService] CreateProvider failed", "provider", sel.ProviderKey, "instance", sel.InstanceID, "error", err)
+		// If the provider returned a structured ApplicationError (e.g. WXPAY_CONFIG_MISSING_KEY),
+		// pass it through with provider context added to metadata. Otherwise wrap as PAYMENT_PROVIDER_MISCONFIGURED.
+		if appErr := new(infraerrors.ApplicationError); errors.As(err, &appErr) {
+			md := map[string]string{"provider": sel.ProviderKey, "instance_id": sel.InstanceIDREDACTED
+			for k, v := range appErr.Metadata {
+				md[k] = v
+		REDACTED
+			return nil, appErr.WithMetadata(md)
+	REDACTED
+		return nil, infraerrors.ServiceUnavailable("PAYMENT_PROVIDER_MISCONFIGURED", "provider_misconfigured").
+			WithMetadata(map[string]string{"provider": sel.ProviderKey, "instance_id": sel.InstanceIDREDACTED)
 REDACTED
 	subject := s.buildPaymentSubject(plan, limitAmount, cfg)
 	outTradeNo := order.OutTradeNo
@@ -380,6 +394,9 @@ REDACTED, sel, outTradeNo, payAmountStr, subject)
 	pr, err := prov.CreatePayment(ctx, providerReq)
 	if err != nil {
 		slog.Error("[PaymentService] CreatePayment failed", "provider", sel.ProviderKey, "instance", sel.InstanceID, "error", err)
+		if appErr := new(infraerrors.ApplicationError); errors.As(err, &appErr) {
+			return nil, appErr
+	REDACTED
 		return nil, classifyCreatePaymentError(req, sel.ProviderKey, err)
 REDACTED
 	_, err = s.entClient.PaymentOrder.UpdateOneID(order.ID).

@@ -651,6 +651,15 @@ REDACTED
 REDACTED
 
 func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *UpdateUserInput) (*User, error) {
+	// 校验用户专属分组倍率：必须 > 0（nil 合法，表示清除专属倍率）
+	if input.GroupRates != nil {
+		for groupID, rate := range input.GroupRates {
+			if rate != nil && *rate <= 0 {
+				return nil, fmt.Errorf("rate_multiplier must be > 0 (group_id=%d)", groupID)
+		REDACTED
+	REDACTED
+REDACTED
+
 	user, err := s.userRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -1108,6 +1117,10 @@ func (s *adminServiceImpl) GetGroup(ctx context.Context, id int64) (*Group, erro
 REDACTED
 
 func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupInput) (*Group, error) {
+	if input.RateMultiplier <= 0 {
+		return nil, errors.New("rate_multiplier must be > 0")
+REDACTED
+
 	platform := input.Platform
 	if platform == "" {
 		platform = PlatformAnthropic
@@ -1347,6 +1360,9 @@ REDACTED
 		group.Platform = input.Platform
 REDACTED
 	if input.RateMultiplier != nil {
+		if *input.RateMultiplier <= 0 {
+			return nil, errors.New("rate_multiplier must be > 0")
+	REDACTED
 		group.RateMultiplier = *input.RateMultiplier
 REDACTED
 	if input.IsExclusive != nil {
@@ -1582,6 +1598,11 @@ REDACTED
 func (s *adminServiceImpl) BatchSetGroupRateMultipliers(ctx context.Context, groupID int64, entries []GroupRateMultiplierInput) error {
 	if s.userGroupRateRepo == nil {
 		return nil
+REDACTED
+	for _, e := range entries {
+		if e.RateMultiplier <= 0 {
+			return fmt.Errorf("rate_multiplier must be > 0 (user_id=%d)", e.UserID)
+	REDACTED
 REDACTED
 	return s.userGroupRateRepo.SyncGroupRateMultipliers(ctx, groupID, entries)
 REDACTED

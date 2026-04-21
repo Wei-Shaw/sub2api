@@ -39,7 +39,7 @@ import { useRoute, useRouter REDACTED from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import { usePaymentStore REDACTED from '@/stores/payment'
 import { paymentAPI REDACTED from '@/api/payment'
-import { extractApiErrorMessage REDACTED from '@/utils/apiError'
+import { extractI18nErrorMessage REDACTED from '@/utils/apiError'
 import { useAppStore REDACTED from '@/stores'
 import QRCode from 'qrcode'
 import alipayIcon from '@/assets/icons/alipay.svg'
@@ -167,7 +167,7 @@ async function handleCancel() {
     cleanup()
     router.push('/purchase')
   REDACTED catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
   REDACTED finally {
     cancelling.value = false
   REDACTED

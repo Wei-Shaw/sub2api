@@ -147,40 +147,35 @@ REDACTED
 	require.Equal(t, string(BillingModeImage), cost.BillingMode)
 REDACTED
 
-func TestCalculateCostUnified_RateMultiplierZeroDefaultsToOne(t *testing.T) {
+// TestCalculateCostUnified_RateMultiplierZeroProducesZero 锁定新行为：
+// 保存时强制 > 0；若 0 仍泄漏到计费层，按 0 计费（而非历史上的 1.0）。
+func TestCalculateCostUnified_RateMultiplierZeroProducesZero(t *testing.T) {
 	bs := newTestBillingService()
 	resolver := NewModelPricingResolver(nil, bs)
 
 	tokens := UsageTokens{InputTokens: 1000, OutputTokens: 500REDACTED
 
-	costZero, err := bs.CalculateCostUnified(CostInput{
+	cost, err := bs.CalculateCostUnified(CostInput{
 		Ctx:            context.Background(),
 		Model:          "claude-sonnet-4",
 		Tokens:         tokens,
-		RateMultiplier: 0, // should default to 1.0
+		RateMultiplier: 0,
 		Resolver:       resolver,
 REDACTED)
 REDACTED
-
-	costOne, err := bs.CalculateCostUnified(CostInput{
-		Ctx:            context.Background(),
-		Model:          "claude-sonnet-4",
-		Tokens:         tokens,
-		RateMultiplier: 1.0,
-		Resolver:       resolver,
-REDACTED)
+	require.Greater(t, cost.TotalCost, 0.0)
+	require.InDelta(t, 0.0, cost.ActualCost, 1e-10)
 REDACTED
 
-	require.InDelta(t, costOne.ActualCost, costZero.ActualCost, 1e-10)
-REDACTED
-
-func TestCalculateCostUnified_NegativeRateMultiplierDefaultsToOne(t *testing.T) {
+// TestCalculateCostUnified_NegativeRateMultiplierClampedToZero 锁定新行为：
+// 负数倍率按 0 计费，避免历史的 <=0 → 1.0 把配置异常静默按标准价扣费。
+func TestCalculateCostUnified_NegativeRateMultiplierClampedToZero(t *testing.T) {
 	bs := newTestBillingService()
 	resolver := NewModelPricingResolver(nil, bs)
 
 	tokens := UsageTokens{InputTokens: 1000REDACTED
 
-	costNeg, err := bs.CalculateCostUnified(CostInput{
+	cost, err := bs.CalculateCostUnified(CostInput{
 		Ctx:            context.Background(),
 		Model:          "claude-sonnet-4",
 		Tokens:         tokens,
@@ -188,17 +183,8 @@ func TestCalculateCostUnified_NegativeRateMultiplierDefaultsToOne(t *testing.T) 
 		Resolver:       resolver,
 REDACTED)
 REDACTED
-
-	costOne, err := bs.CalculateCostUnified(CostInput{
-		Ctx:            context.Background(),
-		Model:          "claude-sonnet-4",
-		Tokens:         tokens,
-		RateMultiplier: 1.0,
-		Resolver:       resolver,
-REDACTED)
-REDACTED
-
-	require.InDelta(t, costOne.ActualCost, costNeg.ActualCost, 1e-10)
+	require.Greater(t, cost.TotalCost, 0.0)
+	require.InDelta(t, 0.0, cost.ActualCost, 1e-10)
 REDACTED
 
 func TestCalculateCostUnified_BillingModeFieldFilled(t *testing.T) {

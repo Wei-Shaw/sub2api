@@ -78,8 +78,8 @@ import Icon from '@/components/icons/Icon.vue'
 import { usePaymentStore REDACTED from '@/stores/payment'
 import { useAppStore REDACTED from '@/stores'
 import { paymentAPI REDACTED from '@/api/payment'
-import { extractApiErrorMessage REDACTED from '@/utils/apiError'
-import { POPUP_WINDOW_FEATURES REDACTED from '@/components/payment/providerConfig'
+import { extractI18nErrorMessage REDACTED from '@/utils/apiError'
+import { getPaymentPopupFeatures REDACTED from '@/components/payment/providerConfig'
 import type { PaymentOrder REDACTED from '@/types/payment'
 import QRCode from 'qrcode'
 import alipayIcon from '@/assets/icons/alipay.svg'
@@ -147,7 +147,7 @@ REDACTED
 
 function reopenPopup() {
   if (props.payUrl) {
-    window.open(props.payUrl, 'paymentPopup', POPUP_WINDOW_FEATURES)
+    window.open(props.payUrl, 'paymentPopup', getPaymentPopupFeatures())
   REDACTED
 REDACTED
 
@@ -222,7 +222,7 @@ async function handleCancel() {
     cleanup()
     emit('close')
   REDACTED catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
   REDACTED finally {
     cancelling.value = false
   REDACTED

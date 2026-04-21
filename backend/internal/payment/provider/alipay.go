@@ -15,8 +15,8 @@ import (
 
 // Alipay product codes.
 const (
-	alipayProductCodePagePay = "FAST_INSTANT_TRADE_PAY"
 	alipayProductCodeWapPay  = "QUICK_WAP_WAY"
+	alipayProductCodePagePay = "FAST_INSTANT_TRADE_PAY"
 )
 
 // Alipay response constants.
@@ -102,8 +102,13 @@ REDACTED
 	return map[string]string{"app_id": appIDREDACTED
 REDACTED
 
-// CreatePayment creates an Alipay payment page URL.
-func (a *Alipay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
+// CreatePayment creates an Alipay payment using redirect-only flow:
+//   - Mobile (H5): alipay.trade.wap.pay — returns a URL the browser jumps to.
+//   - PC: alipay.trade.page.pay — returns a gateway URL the browser opens in a
+//     new window; Alipay's own page then shows login/QR. We intentionally do
+//     NOT encode the URL into a QR on the client (it isn't a scannable payload
+//     and would produce an invalid scan result).
+func (a *Alipay) CreatePayment(_ context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	client, err := a.getClient()
 	if err != nil {
 		return nil, err
@@ -119,44 +124,46 @@ REDACTED
 REDACTED
 
 	if req.IsMobile {
-		return a.createTrade(ctx, client, req, notifyURL, returnURL, true)
+		return a.createWapTrade(client, req, notifyURL, returnURL)
 REDACTED
-	return a.createTrade(ctx, client, req, notifyURL, returnURL, false)
-REDACTED
-
-func (a *Alipay) createTrade(ctx context.Context, client *alipay.Client, req payment.CreatePaymentRequest, notifyURL, returnURL string, isMobile bool) (*payment.CreatePaymentResponse, error) {
-	if isMobile {
-		param := alipay.TradeWapPay{REDACTED
-		param.OutTradeNo = req.OrderID
-		param.TotalAmount = req.Amount
-		param.Subject = req.Subject
-		param.ProductCode = alipayProductCodeWapPay
-		param.NotifyURL = notifyURL
-		param.ReturnURL = returnURL
-
-		payURL, err := alipayTradeWapPay(client, param)
-		if err != nil {
-			return nil, fmt.Errorf("alipay TradeWapPay: %w", err)
-	REDACTED
-		return &payment.CreatePaymentResponse{
-			TradeNo: req.OrderID,
-			PayURL:  payURL.String(),
-	REDACTED, nil
+	return a.createPagePayTrade(client, req, notifyURL, returnURL)
 REDACTED
 
-	param := alipay.TradePreCreate{REDACTED
+func (a *Alipay) createWapTrade(client *alipay.Client, req payment.CreatePaymentRequest, notifyURL, returnURL string) (*payment.CreatePaymentResponse, error) {
+	param := alipay.TradeWapPay{REDACTED
 	param.OutTradeNo = req.OrderID
 	param.TotalAmount = req.Amount
 	param.Subject = req.Subject
+	param.ProductCode = alipayProductCodeWapPay
 	param.NotifyURL = notifyURL
+	param.ReturnURL = returnURL
 
-	resp, err := alipayTradePreCreate(ctx, client, param)
+	payURL, err := client.TradeWapPay(param)
 	if err != nil {
-		return nil, fmt.Errorf("alipay TradePreCreate: %w", err)
+		return nil, fmt.Errorf("alipay TradeWapPay: %w", err)
 REDACTED
 	return &payment.CreatePaymentResponse{
 		TradeNo: req.OrderID,
-		QRCode:  strings.TrimSpace(resp.QRCode),
+		PayURL:  payURL.String(),
+REDACTED, nil
+REDACTED
+
+func (a *Alipay) createPagePayTrade(client *alipay.Client, req payment.CreatePaymentRequest, notifyURL, returnURL string) (*payment.CreatePaymentResponse, error) {
+	param := alipay.TradePagePay{REDACTED
+	param.OutTradeNo = req.OrderID
+	param.TotalAmount = req.Amount
+	param.Subject = req.Subject
+	param.ProductCode = alipayProductCodePagePay
+	param.NotifyURL = notifyURL
+	param.ReturnURL = returnURL
+
+	payURL, err := alipayTradePagePay(client, param)
+	if err != nil {
+		return nil, fmt.Errorf("alipay TradePagePay: %w", err)
+REDACTED
+	return &payment.CreatePaymentResponse{
+		TradeNo: req.OrderID,
+		PayURL:  payURL.String(),
 REDACTED, nil
 REDACTED
 

@@ -99,41 +99,52 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestIsSensitiveConfigField(t *testing.T) {
+func TestIsSensitiveProviderConfigField(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		field   string
-		wantSen bool
+		providerKey string
+		field       string
+		wantSen     bool
 REDACTED{
-		// Sensitive fields (contain key/secret/private/password/pkey patterns)
-		{"secretKey", trueREDACTED,
-		{"apiSecret", trueREDACTED,
-		{"pkey", trueREDACTED,
-		{"privateKey", trueREDACTED,
-		{"apiPassword", trueREDACTED,
-		{"appKey", trueREDACTED,
-		{"SECRET_TOKEN", trueREDACTED,
-		{"PrivateData", trueREDACTED,
-		{"PASSWORD", trueREDACTED,
-		{"mySecretValue", trueREDACTED,
+		// Stripe: publishableKey is public, only secretKey/webhookSecret are secrets
+		{"stripe", "secretKey", trueREDACTED,
+		{"stripe", "webhookSecret", trueREDACTED,
+		{"stripe", "SecretKey", trueREDACTED, // case-insensitive
+		{"stripe", "publishableKey", falseREDACTED,
+		{"stripe", "appId", falseREDACTED,
 
-		// Non-sensitive fields
-		{"appId", falseREDACTED,
-		{"mchId", falseREDACTED,
-		{"apiBase", falseREDACTED,
-		{"endpoint", falseREDACTED,
-		{"merchantNo", falseREDACTED,
-		{"paymentMode", falseREDACTED,
-		{"notifyUrl", falseREDACTED,
+		// Alipay
+		{"alipay", "privateKey", trueREDACTED,
+		{"alipay", "publicKey", trueREDACTED,
+		{"alipay", "alipayPublicKey", trueREDACTED,
+		{"alipay", "appId", falseREDACTED,
+		{"alipay", "notifyUrl", falseREDACTED,
+
+		// Wxpay
+		{"wxpay", "privateKey", trueREDACTED,
+		{"wxpay", "apiV3Key", trueREDACTED,
+		{"wxpay", "publicKey", trueREDACTED,
+		{"wxpay", "publicKeyId", falseREDACTED,
+		{"wxpay", "certSerial", falseREDACTED,
+		{"wxpay", "mchId", falseREDACTED,
+
+		// EasyPay
+		{"easypay", "pkey", trueREDACTED,
+		{"easypay", "pid", falseREDACTED,
+		{"easypay", "apiBase", falseREDACTED,
+
+		// Unknown provider: never sensitive
+		{"unknown", "secretKey", falseREDACTED,
 REDACTED
 
 	for _, tc := range tests {
-		t.Run(tc.field, func(t *testing.T) {
+		tc := tc
+		t.Run(tc.providerKey+"/"+tc.field, func(t *testing.T) {
 			t.Parallel()
 
-			got := isSensitiveConfigField(tc.field)
-			assert.Equal(t, tc.wantSen, got, "isSensitiveConfigField(%q)", tc.field)
+			got := isSensitiveProviderConfigField(tc.providerKey, tc.field)
+			assert.Equal(t, tc.wantSen, got, "isSensitiveProviderConfigField(%q, %q)", tc.providerKey, tc.field)
 	REDACTED)
 REDACTED
 REDACTED

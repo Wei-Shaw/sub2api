@@ -67,10 +67,10 @@
 import { ref, onMounted, nextTick REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useRouter REDACTED from 'vue-router'
-import { extractApiErrorMessage REDACTED from '@/utils/apiError'
+import { extractI18nErrorMessage REDACTED from '@/utils/apiError'
 import { paymentAPI REDACTED from '@/api/payment'
 import { useAppStore REDACTED from '@/stores'
-import { STRIPE_POPUP_WINDOW_FEATURES REDACTED from '@/components/payment/providerConfig'
+import { getPaymentPopupFeatures REDACTED from '@/components/payment/providerConfig'
 import type { Stripe, StripeElements REDACTED from '@stripe/stripe-js'
 import Icon from '@/components/icons/Icon.vue'
 
@@ -132,7 +132,7 @@ onMounted(async () => {
       selectedType.value = event.value.type
     REDACTED)
   REDACTED catch (err: unknown) {
-    initError.value = extractApiErrorMessage(err, t('payment.stripeLoadFailed'))
+    initError.value = extractI18nErrorMessage(err, t, 'payment.errors', t('payment.stripeLoadFailed'))
   REDACTED finally {
     loading.value = false
   REDACTED
@@ -151,7 +151,7 @@ async function handlePay() {
         amount: String(props.payAmount),
       REDACTED,
     REDACTED).href
-    const popup = window.open(popupUrl, 'paymentPopup', STRIPE_POPUP_WINDOW_FEATURES)
+    const popup = window.open(popupUrl, 'paymentPopup', getPaymentPopupFeatures())
 
     const onReady = (event: MessageEvent) => {
       if (event.source !== popup || event.data?.type !== 'STRIPE_POPUP_READY') return
@@ -186,7 +186,7 @@ async function handlePay() {
       emit('success')
     REDACTED
   REDACTED catch (err: unknown) {
-    error.value = extractApiErrorMessage(err, t('payment.result.failed'))
+    error.value = extractI18nErrorMessage(err, t, 'payment.errors', t('payment.result.failed'))
   REDACTED finally {
     submitting.value = false
   REDACTED
@@ -199,7 +199,7 @@ async function handleCancel() {
     await paymentAPI.cancelOrder(props.orderId)
     emit('back')
   REDACTED catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
   REDACTED finally {
     cancelling.value = false
   REDACTED
