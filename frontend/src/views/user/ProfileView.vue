@@ -22,11 +22,7 @@
         />
       </div>
 
-      <ProfileInfoCard :user="user" />
-
-      <ProfileAvatarCard :user="user" />
-
-      <ProfileAccountBindingsCard
+      <ProfileInfoCard
         :user="user"
         :linuxdo-enabled="linuxdoOAuthEnabled"
         :oidc-enabled="oidcOAuthEnabled"
@@ -52,9 +48,6 @@
           </div>
         </div>
       </div>
-
-      <ProfileEditForm :initial-username="user?.username || ''" />
-
       <ProfileBalanceNotifyCard
         v-if="user && balanceLowNotifyEnabled"
         :enabled="user.balance_notify_enabled ?? true"
@@ -63,8 +56,6 @@
         :system-default-threshold="systemDefaultThreshold"
         :user-email="user.email"
       />
-
-      <ProfilePasswordForm />
       <ProfileTotpCard />
     </div>
   </AppLayout>
@@ -77,12 +68,9 @@ import { Icon REDACTED from '@/components/icons'
 import StatCard from '@/components/common/StatCard.vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import ProfileBalanceNotifyCard from '@/components/user/profile/ProfileBalanceNotifyCard.vue'
-import ProfileAccountBindingsCard from '@/components/user/profile/ProfileAccountBindingsCard.vue'
-import ProfileAvatarCard from '@/components/user/profile/ProfileAvatarCard.vue'
-import ProfileEditForm from '@/components/user/profile/ProfileEditForm.vue'
 import ProfileInfoCard from '@/components/user/profile/ProfileInfoCard.vue'
-import ProfilePasswordForm from '@/components/user/profile/ProfilePasswordForm.vue'
 import ProfileTotpCard from '@/components/user/profile/ProfileTotpCard.vue'
+import { isWeChatWebOAuthEnabled REDACTED from '@/api/auth'
 import { useAppStore REDACTED from '@/stores/app'
 import { useAuthStore REDACTED from '@/stores/auth'
 import { formatDate REDACTED from '@/utils/format'
@@ -141,7 +129,7 @@ onMounted(async () => {
       balanceLowNotifyEnabled.value = settings.balance_low_notify_enabled ?? false
       systemDefaultThreshold.value = settings.balance_low_notify_threshold ?? 0
       linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled ?? false
-      wechatOAuthEnabled.value = settings.wechat_oauth_enabled ?? false
+      wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
       wechatOAuthOpenEnabled.value = typeof settings.wechat_oauth_open_enabled === 'boolean'
         ? settings.wechat_oauth_open_enabled
         : undefined

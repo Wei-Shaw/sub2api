@@ -1,6 +1,9 @@
 <template>
-  <div class="card overflow-hidden">
-    <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+  <div :class="props.embedded ? 'space-y-4' : 'card overflow-hidden'">
+    <div
+      v-if="!props.embedded"
+      class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+    >
       <h2 class="text-lg font-medium text-gray-900 dark:text-white">
         {{ t('profile.authBindings.title') REDACTEDREDACTED
       </h2>
@@ -9,11 +12,23 @@
       </p>
     </div>
 
-    <div class="divide-y divide-gray-100 dark:divide-dark-700">
+    <div :class="props.embedded ? 'space-y-4' : 'divide-y divide-gray-100 dark:divide-dark-700'">
+      <div v-if="props.embedded">
+        <p class="text-sm font-semibold text-gray-900 dark:text-white">
+          {{ t('profile.authBindings.title') REDACTEDREDACTED
+        </p>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          {{ t('profile.authBindings.description') REDACTEDREDACTED
+        </p>
+      </div>
       <div
         v-for="item in providerItems"
         :key="item.provider"
-        class="px-6 py-5"
+        :class="
+          props.embedded
+            ? 'rounded-2xl border border-gray-100 bg-gray-50/70 p-4 dark:border-dark-700 dark:bg-dark-900/30'
+            : 'px-6 py-5'
+        "
       >
         <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div class="flex min-w-0 flex-1 items-start gap-4">
@@ -154,6 +169,7 @@ const props = withDefaults(
     wechatEnabled?: boolean
     wechatOpenEnabled?: boolean
     wechatMpEnabled?: boolean
+    embedded?: boolean
   REDACTED>(),
   {
     linuxdoEnabled: false,
@@ -162,6 +178,7 @@ const props = withDefaults(
     wechatEnabled: false,
     wechatOpenEnabled: undefined,
     wechatMpEnabled: undefined,
+    embedded: false,
   REDACTED
 )
 

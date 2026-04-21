@@ -361,11 +361,13 @@ export type WeChatOAuthUnavailableReason =
   | 'capability_unknown'
   | 'external_browser_required'
   | 'wechat_browser_required'
+  | 'native_app_required'
 
 export interface ResolvedWeChatOAuthStart {
   mode: WeChatOAuthMode | null
   openEnabled: boolean
   mpEnabled: boolean
+  mobileEnabled: boolean
   isWeChatBrowser: boolean
   unavailableReason: WeChatOAuthUnavailableReason | null
 REDACTED
@@ -374,6 +376,22 @@ export type WeChatOAuthPublicSettings = {
   wechat_oauth_enabled?: boolean
   wechat_oauth_open_enabled?: boolean
   wechat_oauth_mp_enabled?: boolean
+  wechat_oauth_mobile_enabled?: boolean
+REDACTED
+
+export function isWeChatWebOAuthEnabled(
+  settings: WeChatOAuthPublicSettings | null | undefined,
+): boolean {
+  const legacyEnabled = settings?.wechat_oauth_enabled ?? false
+  const hasExplicitCapabilities =
+    typeof settings?.wechat_oauth_open_enabled === 'boolean' ||
+    typeof settings?.wechat_oauth_mp_enabled === 'boolean'
+
+  if (!hasExplicitCapabilities) {
+    return legacyEnabled
+  REDACTED
+
+  return settings?.wechat_oauth_open_enabled === true || settings?.wechat_oauth_mp_enabled === true
 REDACTED
 
 export function hasExplicitWeChatOAuthCapabilities(
@@ -401,24 +419,27 @@ export function resolveWeChatOAuthStart(
   const mpEnabled = typeof settings?.wechat_oauth_mp_enabled === 'boolean'
     ? settings.wechat_oauth_mp_enabled
     : legacyEnabled
+  const mobileEnabled = typeof settings?.wechat_oauth_mobile_enabled === 'boolean'
+    ? settings.wechat_oauth_mobile_enabled
+    : false
 
   if (isWeChatBrowser) {
     if (mpEnabled) {
-      return { mode: 'mp', openEnabled, mpEnabled, isWeChatBrowser, unavailableReason: null REDACTED
+      return { mode: 'mp', openEnabled, mpEnabled, mobileEnabled, isWeChatBrowser, unavailableReason: null REDACTED
     REDACTED
     if (openEnabled) {
-      return { mode: null, openEnabled, mpEnabled, isWeChatBrowser, unavailableReason: 'external_browser_required' REDACTED
+      return { mode: null, openEnabled, mpEnabled, mobileEnabled, isWeChatBrowser, unavailableReason: 'external_browser_required' REDACTED
     REDACTED
-    return { mode: null, openEnabled, mpEnabled, isWeChatBrowser, unavailableReason: 'not_configured' REDACTED
+    return { mode: null, openEnabled, mpEnabled, mobileEnabled, isWeChatBrowser, unavailableReason: 'not_configured' REDACTED
   REDACTED
 
   if (openEnabled) {
-    return { mode: 'open', openEnabled, mpEnabled, isWeChatBrowser, unavailableReason: null REDACTED
+    return { mode: 'open', openEnabled, mpEnabled, mobileEnabled, isWeChatBrowser, unavailableReason: null REDACTED
   REDACTED
   if (mpEnabled) {
-    return { mode: null, openEnabled, mpEnabled, isWeChatBrowser, unavailableReason: 'wechat_browser_required' REDACTED
+    return { mode: null, openEnabled, mpEnabled, mobileEnabled, isWeChatBrowser, unavailableReason: 'wechat_browser_required' REDACTED
   REDACTED
-  return { mode: null, openEnabled, mpEnabled, isWeChatBrowser, unavailableReason: 'not_configured' REDACTED
+  return { mode: null, openEnabled, mpEnabled, mobileEnabled, isWeChatBrowser, unavailableReason: 'not_configured' REDACTED
 REDACTED
 
 export function resolveWeChatOAuthStartStrict(
@@ -435,6 +456,7 @@ export function resolveWeChatOAuthStartStrict(
       mode: null,
       openEnabled: false,
       mpEnabled: false,
+      mobileEnabled: false,
       isWeChatBrowser,
       unavailableReason: 'capability_unknown',
     REDACTED

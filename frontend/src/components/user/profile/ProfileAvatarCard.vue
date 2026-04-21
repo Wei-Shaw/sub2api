@@ -1,6 +1,9 @@
 <template>
-  <div class="card">
-    <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+  <div :class="props.embedded ? 'space-y-4' : 'card'">
+    <div
+      v-if="!props.embedded"
+      class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+    >
       <h2 class="text-lg font-medium text-gray-900 dark:text-white">
         {{ t('profile.avatar.title') REDACTEDREDACTED
       </h2>
@@ -9,8 +12,9 @@
       </p>
     </div>
 
-    <div class="flex flex-col gap-5 px-6 py-6 sm:flex-row sm:items-start">
+    <div :class="props.embedded ? 'space-y-3' : 'flex flex-col gap-5 px-6 py-6 sm:flex-row sm:items-start'">
       <div
+        v-if="!props.embedded"
         class="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 text-3xl font-bold text-white shadow-lg shadow-primary-500/20"
       >
         <img
@@ -22,9 +26,12 @@
         <span v-else>{{ avatarInitial REDACTEDREDACTED</span>
       </div>
 
-      <div class="min-w-0 flex-1 space-y-4">
+      <div :class="props.embedded ? 'space-y-3' : 'min-w-0 flex-1 space-y-4'">
         <div class="space-y-1">
-          <p class="text-sm font-medium text-gray-900 dark:text-white">
+          <p v-if="props.embedded" class="text-sm font-semibold text-gray-900 dark:text-white">
+            {{ t('profile.avatar.title') REDACTEDREDACTED
+          </p>
+          <p v-else class="text-sm font-medium text-gray-900 dark:text-white">
             {{ displayName REDACTEDREDACTED
           </p>
           <p class="text-sm text-gray-500 dark:text-gray-400">
@@ -78,9 +85,12 @@ import { useAuthStore REDACTED from '@/stores/auth'
 import type { User REDACTED from '@/types'
 import { extractApiErrorMessage REDACTED from '@/utils/apiError'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   user: User | null
-REDACTED>()
+  embedded?: boolean
+REDACTED>(), {
+  embedded: false,
+REDACTED)
 
 const { t REDACTED = useI18n()
 const authStore = useAuthStore()

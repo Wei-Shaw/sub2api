@@ -8,6 +8,8 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/authidentity"
+	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
@@ -124,9 +126,25 @@ func (s *UserRepoSuite) TestGetByEmail() {
 	s.Require().Equal(user.ID, got.ID)
 REDACTED
 
+func (s *UserRepoSuite) TestGetByEmail_NormalizesSpacingAndCaseOnPostgres() {
+	user := s.mustCreateUser(&service.User{Email: " Legacy@Example.com "REDACTED)
+
+	got, err := s.repo.GetByEmail(s.ctx, "  legacy@example.com  ")
+	s.Require().NoError(err, "GetByEmail normalized lookup")
+	s.Require().Equal(user.ID, got.ID)
+REDACTED
+
 func (s *UserRepoSuite) TestGetByEmail_NotFound() {
 	_, err := s.repo.GetByEmail(s.ctx, "nonexistent@test.com")
 	s.Require().Error(err, "expected error for non-existent email")
+REDACTED
+
+func (s *UserRepoSuite) TestExistsByEmail_NormalizesSpacingAndCaseOnPostgres() {
+	s.mustCreateUser(&service.User{Email: " Legacy@Example.com "REDACTED)
+
+	exists, err := s.repo.ExistsByEmail(s.ctx, "  LEGACY@example.com  ")
+	s.Require().NoError(err, "ExistsByEmail normalized lookup")
+	s.Require().True(exists)
 REDACTED
 
 func (s *UserRepoSuite) TestUpdate() {
@@ -150,6 +168,39 @@ func (s *UserRepoSuite) TestDelete() {
 
 	_, err = s.repo.GetByID(s.ctx, user.ID)
 	s.Require().Error(err, "expected error after delete")
+REDACTED
+
+func (s *UserRepoSuite) TestDeleteRemovesAuthIdentitiesAndChannels() {
+	user := s.mustCreateUser(&service.User{Email: "delete-oauth@test.com"REDACTED)
+
+	identity, err := s.client.AuthIdentity.Create().
+		SetUserID(user.ID).
+		SetProviderType("linuxdo").
+		SetProviderKey("linuxdo").
+		SetProviderSubject("delete-oauth-subject").
+		Save(s.ctx)
+	s.Require().NoError(err)
+
+	_, err = s.client.AuthIdentityChannel.Create().
+		SetIdentityID(identity.ID).
+		SetProviderType("wechat").
+		SetProviderKey("wechat").
+		SetChannel("open").
+		SetChannelAppID("app-id").
+		SetChannelSubject("openid-123").
+		Save(s.ctx)
+	s.Require().NoError(err)
+
+	err = s.repo.Delete(s.ctx, user.ID)
+	s.Require().NoError(err)
+
+	identityCount, err := s.client.AuthIdentity.Query().Where(authidentity.UserIDEQ(user.ID)).Count(s.ctx)
+	s.Require().NoError(err)
+	s.Require().Zero(identityCount)
+
+	channelCount, err := s.client.AuthIdentityChannel.Query().Where(authidentitychannel.IdentityIDEQ(identity.ID)).Count(s.ctx)
+	s.Require().NoError(err)
+	s.Require().Zero(channelCount)
 REDACTED
 
 // --- List / ListWithFilters ---

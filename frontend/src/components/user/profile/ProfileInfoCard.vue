@@ -3,9 +3,9 @@
     <div
       class="border-b border-gray-100 bg-gradient-to-r from-primary-500/10 to-primary-600/5 px-6 py-5 dark:border-dark-700 dark:from-primary-500/20 dark:to-primary-600/10"
     >
-      <div class="flex items-center gap-4">
+      <div class="flex flex-col gap-5 lg:flex-row lg:items-start">
         <div
-          class="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 text-2xl font-bold text-white shadow-lg shadow-primary-500/20"
+          class="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[1.5rem] bg-gradient-to-br from-primary-500 to-primary-600 text-2xl font-bold text-white shadow-lg shadow-primary-500/20"
         >
           <img
             v-if="avatarUrl"
@@ -15,48 +15,78 @@
           >
           <span v-else>{{ avatarInitial REDACTEDREDACTED</span>
         </div>
-        <div class="min-w-0 flex-1">
-          <h2 class="truncate text-lg font-semibold text-gray-900 dark:text-white">
-            {{ displayName REDACTEDREDACTED
-          </h2>
-          <p class="mt-1 truncate text-sm text-gray-500 dark:text-gray-400">
-            {{ user?.email REDACTEDREDACTED
-          </p>
-          <div class="mt-1 flex items-center gap-2">
-            <span :class="['badge', user?.role === 'admin' ? 'badge-primary' : 'badge-gray']">
-              {{ user?.role === 'admin' ? t('profile.administrator') : t('profile.user') REDACTEDREDACTED
-            </span>
-            <span
-              :class="['badge', user?.status === 'active' ? 'badge-success' : 'badge-danger']"
-            >
-              {{
-                user?.status === 'active'
-                  ? t('common.active')
-                  : t('common.disabled')
-              REDACTEDREDACTED
-            </span>
+        <div class="min-w-0 flex-1 space-y-5">
+          <div class="space-y-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <h2 class="truncate text-xl font-semibold text-gray-900 dark:text-white">
+                {{ displayName REDACTEDREDACTED
+              </h2>
+              <span :class="['badge', user?.role === 'admin' ? 'badge-primary' : 'badge-gray']">
+                {{ user?.role === 'admin' ? t('profile.administrator') : t('profile.user') REDACTEDREDACTED
+              </span>
+              <span
+                :class="['badge', user?.status === 'active' ? 'badge-success' : 'badge-danger']"
+              >
+                {{
+                  user?.status === 'active'
+                    ? t('common.active')
+                    : t('common.disabled')
+                REDACTEDREDACTED
+              </span>
+            </div>
+            <p class="truncate text-sm text-gray-500 dark:text-gray-400">
+              {{ user?.email REDACTEDREDACTED
+            </p>
+          </div>
+
+          <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div class="rounded-2xl bg-white/75 px-4 py-3 shadow-sm ring-1 ring-white/70 dark:bg-dark-900/40 dark:ring-dark-700">
+              <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                {{ t('profile.username') REDACTEDREDACTED
+              </p>
+              <p class="mt-1 truncate text-sm font-medium text-gray-900 dark:text-white">
+                {{ user?.username || displayName REDACTEDREDACTED
+              </p>
+            </div>
+            <div class="rounded-2xl bg-white/75 px-4 py-3 shadow-sm ring-1 ring-white/70 dark:bg-dark-900/40 dark:ring-dark-700">
+              <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                {{ t('profile.email') REDACTEDREDACTED
+              </p>
+              <p class="mt-1 truncate text-sm font-medium text-gray-900 dark:text-white">
+                {{ user?.email || '-' REDACTEDREDACTED
+              </p>
+            </div>
+            <div class="rounded-2xl bg-white/75 px-4 py-3 shadow-sm ring-1 ring-white/70 dark:bg-dark-900/40 dark:ring-dark-700">
+              <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                {{ t('profile.status') REDACTEDREDACTED
+              </p>
+              <p class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
+                {{
+                  user?.status === 'active'
+                    ? t('common.active')
+                    : user?.status
+                      ? t('common.disabled')
+                      : '-'
+                REDACTEDREDACTED
+              </p>
+            </div>
+            <div class="rounded-2xl bg-white/75 px-4 py-3 shadow-sm ring-1 ring-white/70 dark:bg-dark-900/40 dark:ring-dark-700">
+              <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                {{ t('profile.role') REDACTEDREDACTED
+              </p>
+              <p class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
+                {{ user?.role === 'admin' ? t('profile.administrator') : t('profile.user') REDACTEDREDACTED
+              </p>
+            </div>
           </div>
         </div>
       </div>
     </div>
-    <div class="px-6 py-4">
-      <div class="space-y-3">
-        <div class="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
-          <Icon name="mail" size="sm" class="text-gray-400 dark:text-gray-500" />
-          <span class="truncate">{{ user?.email REDACTEDREDACTED</span>
-        </div>
-        <div
-          v-if="user?.username"
-          class="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-400"
-        >
-          <Icon name="user" size="sm" class="text-gray-400 dark:text-gray-500" />
-          <span class="truncate">{{ user.username REDACTEDREDACTED</span>
-        </div>
-      </div>
 
+    <div class="space-y-6 px-6 py-6">
       <div
         v-if="sourceHints.length"
-        class="mt-4 grid gap-2 rounded-2xl border border-gray-100 bg-gray-50/80 p-3 text-xs text-gray-500 dark:border-dark-700 dark:bg-dark-900/30 dark:text-gray-400"
+        class="grid gap-2 rounded-2xl border border-gray-100 bg-gray-50/80 p-4 text-xs text-gray-500 dark:border-dark-700 dark:bg-dark-900/30 dark:text-gray-400"
       >
         <div
           v-for="hint in sourceHints"
@@ -67,6 +97,39 @@
           <span>{{ hint.text REDACTEDREDACTED</span>
         </div>
       </div>
+
+      <div class="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <div class="rounded-3xl border border-gray-100 bg-gray-50/70 p-5 dark:border-dark-700 dark:bg-dark-900/30">
+          <ProfileAvatarCard
+            :user="user"
+            embedded
+          />
+        </div>
+
+        <div class="rounded-3xl border border-gray-100 bg-gray-50/70 p-5 dark:border-dark-700 dark:bg-dark-900/30">
+          <ProfileEditForm
+            :initial-username="user?.username || ''"
+            embedded
+          />
+        </div>
+      </div>
+
+      <div class="rounded-3xl border border-gray-100 bg-gray-50/70 p-5 dark:border-dark-700 dark:bg-dark-900/30">
+        <ProfileIdentityBindingsSection
+          :user="user"
+          :linuxdo-enabled="linuxdoEnabled"
+          :oidc-enabled="oidcEnabled"
+          :oidc-provider-name="oidcProviderName"
+          :wechat-enabled="wechatEnabled"
+          :wechat-open-enabled="wechatOpenEnabled"
+          :wechat-mp-enabled="wechatMpEnabled"
+          embedded
+        />
+      </div>
+
+      <div class="rounded-3xl border border-gray-100 bg-gray-50/70 p-5 dark:border-dark-700 dark:bg-dark-900/30">
+        <ProfilePasswordForm embedded />
+      </div>
     </div>
   </div>
 </template>
@@ -75,11 +138,28 @@
 import { computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
+import ProfileAvatarCard from '@/components/user/profile/ProfileAvatarCard.vue'
+import ProfileEditForm from '@/components/user/profile/ProfileEditForm.vue'
+import ProfileIdentityBindingsSection from '@/components/user/profile/ProfileIdentityBindingsSection.vue'
+import ProfilePasswordForm from '@/components/user/profile/ProfilePasswordForm.vue'
 import type { User, UserAuthProvider, UserProfileSourceContext REDACTED from '@/types'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   user: User | null
-REDACTED>()
+  linuxdoEnabled?: boolean
+  oidcEnabled?: boolean
+  oidcProviderName?: string
+  wechatEnabled?: boolean
+  wechatOpenEnabled?: boolean
+  wechatMpEnabled?: boolean
+REDACTED>(), {
+  linuxdoEnabled: false,
+  oidcEnabled: false,
+  oidcProviderName: 'OIDC',
+  wechatEnabled: false,
+  wechatOpenEnabled: undefined,
+  wechatMpEnabled: undefined,
+REDACTED)
 
 const { t REDACTED = useI18n()
 

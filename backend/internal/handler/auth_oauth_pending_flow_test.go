@@ -1358,6 +1358,80 @@ REDACTED
 	require.Nil(t, storedSession.ConsumedAt)
 REDACTED
 
+func TestBindOIDCOAuthLoginReclaimsIdentityOwnedBySoftDeletedUser(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandler(t, false)
+	ctx := context.Background()
+
+	oldOwnerHash, err := handler.authService.HashPassword("old-secret")
+REDACTED
+	oldOwner, err := client.User.Create().
+		SetEmail("old-owner@example.com").
+		SetUsername("old-owner").
+		SetPasswordHash(oldOwnerHash).
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+
+	identity, err := client.AuthIdentity.Create().
+		SetUserID(oldOwner.ID).
+		SetProviderType("oidc").
+		SetProviderKey("https://issuer.example").
+		SetProviderSubject("oidc-bind-soft-deleted-123").
+		SetMetadata(map[string]any{"username": "old-owner"REDACTED).
+		Save(ctx)
+REDACTED
+
+	_, err = client.User.Delete().Where(dbuser.IDEQ(oldOwner.ID)).Exec(ctx)
+REDACTED
+
+	newOwnerHash, err := handler.authService.HashPassword("secret-123")
+REDACTED
+	newOwner, err := client.User.Create().
+		SetEmail("owner@example.com").
+		SetUsername("owner-user").
+		SetPasswordHash(newOwnerHash).
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("bind-login-soft-deleted-owner-session-token").
+		SetIntent("adopt_existing_user_by_email").
+		SetProviderType("oidc").
+		SetProviderKey("https://issuer.example").
+		SetProviderSubject("oidc-bind-soft-deleted-123").
+		SetTargetUserID(newOwner.ID).
+		SetResolvedEmail(newOwner.Email).
+		SetBrowserSessionKey("bind-login-soft-deleted-owner-browser-session-key").
+		SetUpstreamIdentityClaims(map[string]any{
+			"username":               "oidc_user",
+			"suggested_display_name": "Recovered OIDC User",
+	REDACTED).
+		SetRedirectTo("/profile").
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+REDACTED
+
+	body := bytes.NewBufferString(`{"email":"owner@example.com","password":"secret-123","adopt_display_name":false,"adopt_avatar":falseREDACTED`)
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/oidc/bind-login", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)REDACTED)
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("bind-login-soft-deleted-owner-browser-session-key")REDACTED)
+	ginCtx.Request = req
+
+	handler.BindOIDCOAuthLogin(ginCtx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	identity, err = client.AuthIdentity.Get(ctx, identity.ID)
+REDACTED
+	require.Equal(t, newOwner.ID, identity.UserID)
+REDACTED
+
 func TestBindOIDCOAuthLoginAppliesFirstBindGrantOnce(t *testing.T) {
 	defaultSubAssigner := &oauthPendingFlowDefaultSubAssignerStub{REDACTED
 	handler, client := newOAuthPendingFlowTestHandlerWithDependencies(t, oauthPendingFlowTestHandlerOptions{
