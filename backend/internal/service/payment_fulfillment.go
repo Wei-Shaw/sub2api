@@ -96,47 +96,7 @@ REDACTED
 REDACTED
 
 func validateProviderNotificationMetadata(order *dbent.PaymentOrder, providerKey string, metadata map[string]string) error {
-	if order == nil || len(metadata) == 0 || !strings.EqualFold(strings.TrimSpace(providerKey), payment.TypeWxpay) {
-		return nil
-REDACTED
-
-	snapshot := psOrderProviderSnapshot(order)
-	if snapshot == nil {
-		return nil
-REDACTED
-
-	if expected := strings.TrimSpace(snapshot.MerchantAppID); expected != "" {
-		actual := strings.TrimSpace(metadata["appid"])
-		if actual == "" {
-			return fmt.Errorf("wxpay notification missing appid")
-	REDACTED
-		if !strings.EqualFold(expected, actual) {
-			return fmt.Errorf("wxpay appid mismatch: expected %s, got %s", expected, actual)
-	REDACTED
-REDACTED
-	if expected := strings.TrimSpace(snapshot.MerchantID); expected != "" {
-		actual := strings.TrimSpace(metadata["mchid"])
-		if actual == "" {
-			return fmt.Errorf("wxpay notification missing mchid")
-	REDACTED
-		if !strings.EqualFold(expected, actual) {
-			return fmt.Errorf("wxpay mchid mismatch: expected %s, got %s", expected, actual)
-	REDACTED
-REDACTED
-	if expected := strings.TrimSpace(snapshot.Currency); expected != "" {
-		actual := strings.ToUpper(strings.TrimSpace(metadata["currency"]))
-		if actual == "" {
-			return fmt.Errorf("wxpay notification missing currency")
-	REDACTED
-		if !strings.EqualFold(expected, actual) {
-			return fmt.Errorf("wxpay currency mismatch: expected %s, got %s", expected, actual)
-	REDACTED
-REDACTED
-	if actual := strings.TrimSpace(metadata["trade_state"]); actual != "" && !strings.EqualFold(actual, "SUCCESS") {
-		return fmt.Errorf("wxpay trade_state mismatch: expected SUCCESS, got %s", actual)
-REDACTED
-
-	return nil
+	return validateProviderSnapshotMetadata(order, providerKey, metadata)
 REDACTED
 
 func expectedNotificationProviderKey(registry *payment.Registry, orderPaymentType string, orderProviderKey string, instanceProviderKey string) string {

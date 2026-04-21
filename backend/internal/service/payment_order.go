@@ -240,6 +240,16 @@ REDACTED
 	REDACTED
 		snapshot["currency"] = "CNY"
 REDACTED
+	if providerKey == payment.TypeAlipay {
+		if merchantAppID := strings.TrimSpace(sel.Config["appId"]); merchantAppID != "" {
+			snapshot["merchant_app_id"] = merchantAppID
+	REDACTED
+REDACTED
+	if providerKey == payment.TypeEasyPay {
+		if merchantID := strings.TrimSpace(sel.Config["pid"]); merchantID != "" {
+			snapshot["merchant_id"] = merchantID
+	REDACTED
+REDACTED
 
 	if len(snapshot) == 1 {
 		return nil

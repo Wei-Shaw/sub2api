@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -114,4 +115,72 @@ REDACTED
 	require.Nil(t, result)
 REDACTED
 	require.Equal(t, "REFUND_DISABLED", infraerrors.Reason(err))
+REDACTED
+
+func TestGwRefundRejectsAlipayMerchantIdentitySnapshotMismatch(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("refund-snapshot-mismatch@example.com").
+		SetPasswordHash("hash").
+		SetUsername("refund-snapshot-mismatch-user").
+		Save(ctx)
+REDACTED
+
+	inst, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeAlipay).
+		SetName("alipay-refund-mismatch-instance").
+		SetConfig(encryptWebhookProviderConfig(t, map[string]string{
+			"appId":      "runtime-alipay-app",
+			"privateKey": "runtime-private-key",
+	REDACTED)).
+		SetSupportedTypes("alipay").
+		SetEnabled(true).
+		SetRefundEnabled(true).
+		Save(ctx)
+REDACTED
+
+	instID := strconv.FormatInt(inst.ID, 10)
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(88).
+		SetPayAmount(88).
+		SetFeeRate(0).
+		SetRechargeCode("REFUND-SNAPSHOT-MISMATCH-ORDER").
+		SetOutTradeNo("sub2_refund_snapshot_mismatch_order").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("trade-refund-snapshot-mismatch").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusCompleted).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetPaidAt(time.Now()).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		SetProviderInstanceID(instID).
+		SetProviderKey(payment.TypeAlipay).
+		SetProviderSnapshot(map[string]any{
+			"schema_version":       2,
+			"provider_instance_id": instID,
+			"provider_key":         payment.TypeAlipay,
+			"merchant_app_id":      "expected-alipay-app",
+	REDACTED).
+		Save(ctx)
+REDACTED
+
+	svc := &PaymentService{
+		entClient:    client,
+		loadBalancer: newWebhookProviderTestLoadBalancer(client),
+REDACTED
+
+	err = svc.gwRefund(ctx, &RefundPlan{
+		OrderID:       order.ID,
+		Order:         order,
+		RefundAmount:  order.Amount,
+		GatewayAmount: order.Amount,
+		Reason:        "snapshot mismatch",
+REDACTED)
+	require.ErrorContains(t, err, "alipay app_id mismatch")
 REDACTED

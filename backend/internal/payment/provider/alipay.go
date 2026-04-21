@@ -91,6 +91,17 @@ func (a *Alipay) SupportedTypes() []payment.PaymentType {
 	return []payment.PaymentType{payment.TypeAlipayREDACTED
 REDACTED
 
+func (a *Alipay) MerchantIdentityMetadata() map[string]string {
+	if a == nil {
+		return nil
+REDACTED
+	appID := strings.TrimSpace(a.config["appId"])
+	if appID == "" {
+		return nil
+REDACTED
+	return map[string]string{"app_id": appIDREDACTED
+REDACTED
+
 // CreatePayment creates an Alipay payment page URL.
 func (a *Alipay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	client, err := a.getClient()
@@ -181,10 +192,11 @@ REDACTED
 REDACTED
 
 	return &payment.QueryOrderResponse{
-		TradeNo: result.TradeNo,
-		Status:  status,
-		Amount:  amount,
-		PaidAt:  result.SendPayDate,
+		TradeNo:  result.TradeNo,
+		Status:   status,
+		Amount:   amount,
+		PaidAt:   result.SendPayDate,
+		Metadata: a.MerchantIdentityMetadata(),
 REDACTED, nil
 REDACTED
 
@@ -215,12 +227,21 @@ REDACTED
 		return nil, fmt.Errorf("alipay parse notification amount %q: %w", notification.TotalAmount, err)
 REDACTED
 
+	metadata := a.MerchantIdentityMetadata()
+	if appID := strings.TrimSpace(notification.AppId); appID != "" {
+		if metadata == nil {
+			metadata = map[string]string{REDACTED
+	REDACTED
+		metadata["app_id"] = appID
+REDACTED
+
 	return &payment.PaymentNotification{
-		TradeNo: notification.TradeNo,
-		OrderID: notification.OutTradeNo,
-		Amount:  amount,
-		Status:  status,
-		RawData: rawBody,
+		TradeNo:  notification.TradeNo,
+		OrderID:  notification.OutTradeNo,
+		Amount:   amount,
+		Status:   status,
+		RawData:  rawBody,
+		Metadata: metadata,
 REDACTED, nil
 REDACTED
 
@@ -283,6 +304,7 @@ REDACTED
 
 // Ensure interface compliance.
 var (
-	_ payment.Provider           = (*Alipay)(nil)
-	_ payment.CancelableProvider = (*Alipay)(nil)
+	_ payment.Provider                 = (*Alipay)(nil)
+	_ payment.CancelableProvider       = (*Alipay)(nil)
+	_ payment.MerchantIdentityProvider = (*Alipay)(nil)
 )

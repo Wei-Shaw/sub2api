@@ -243,3 +243,18 @@ REDACTED
 		t.Fatalf("qr_code = %q, want empty", resp.QRCode)
 REDACTED
 REDACTED
+
+func TestAlipayMerchantIdentityMetadata(t *testing.T) {
+	t.Parallel()
+
+	provider := &Alipay{
+		config: map[string]string{
+			"appId": "2021001234567890",
+	REDACTED,
+REDACTED
+
+	metadata := provider.MerchantIdentityMetadata()
+	if metadata["app_id"] != "2021001234567890" {
+		t.Fatalf("app_id = %q, want %q", metadata["app_id"], "2021001234567890")
+REDACTED
+REDACTED

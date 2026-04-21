@@ -110,7 +110,7 @@ func TestBuildWxpayTransactionMetadata(t *testing.T) {
 		Appid:      strPtr("wx-app-id"),
 		Mchid:      strPtr("mch-id"),
 		TradeState: strPtr(wxpayTradeStateSuccess),
-		Amount: &payments.Amount{
+		Amount: &payments.TransactionAmount{
 			Currency: strPtr(wxpayCurrency),
 	REDACTED,
 REDACTED

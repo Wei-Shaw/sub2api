@@ -214,3 +214,9 @@ type CancelableProvider interface {
 	// CancelPayment cancels/expires a pending payment on the upstream platform.
 	CancelPayment(ctx context.Context, tradeNo string) error
 REDACTED
+
+// MerchantIdentityProvider exposes the current non-sensitive merchant identity
+// derived from provider configuration for snapshot consistency checks.
+type MerchantIdentityProvider interface {
+	MerchantIdentityMetadata() map[string]string
+REDACTED

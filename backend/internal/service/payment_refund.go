@@ -333,6 +333,12 @@ REDACTED
 	if err != nil {
 		return fmt.Errorf("get refund provider: %w", err)
 REDACTED
+	if err := validateProviderSnapshotMetadata(p.Order, prov.ProviderKey(), providerMerchantIdentityMetadata(prov)); err != nil {
+		s.writeAuditLog(ctx, p.Order.ID, "REFUND_PROVIDER_METADATA_MISMATCH", "admin", map[string]any{
+			"detail": err.Error(),
+	REDACTED)
+		return err
+REDACTED
 	_, err = prov.Refund(ctx, payment.RefundRequest{
 		TradeNo: p.Order.PaymentTradeNo,
 		OrderID: p.Order.OutTradeNo,

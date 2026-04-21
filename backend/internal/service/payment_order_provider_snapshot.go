@@ -125,3 +125,81 @@ REDACTED
 
 	return expectedNotificationProviderKey(registry, order.PaymentType, orderProviderKey, instanceProviderKey)
 REDACTED
+
+func validateProviderSnapshotMetadata(order *dbent.PaymentOrder, providerKey string, metadata map[string]string) error {
+	if order == nil || len(metadata) == 0 {
+		return nil
+REDACTED
+
+	snapshot := psOrderProviderSnapshot(order)
+	if snapshot == nil {
+		return nil
+REDACTED
+
+	switch strings.TrimSpace(providerKey) {
+	case payment.TypeWxpay:
+		if expected := strings.TrimSpace(snapshot.MerchantAppID); expected != "" {
+			actual := strings.TrimSpace(metadata["appid"])
+			if actual == "" {
+				return fmt.Errorf("wxpay notification missing appid")
+		REDACTED
+			if !strings.EqualFold(expected, actual) {
+				return fmt.Errorf("wxpay appid mismatch: expected %s, got %s", expected, actual)
+		REDACTED
+	REDACTED
+		if expected := strings.TrimSpace(snapshot.MerchantID); expected != "" {
+			actual := strings.TrimSpace(metadata["mchid"])
+			if actual == "" {
+				return fmt.Errorf("wxpay notification missing mchid")
+		REDACTED
+			if !strings.EqualFold(expected, actual) {
+				return fmt.Errorf("wxpay mchid mismatch: expected %s, got %s", expected, actual)
+		REDACTED
+	REDACTED
+		if expected := strings.TrimSpace(snapshot.Currency); expected != "" {
+			actual := strings.ToUpper(strings.TrimSpace(metadata["currency"]))
+			if actual == "" {
+				return fmt.Errorf("wxpay notification missing currency")
+		REDACTED
+			if !strings.EqualFold(expected, actual) {
+				return fmt.Errorf("wxpay currency mismatch: expected %s, got %s", expected, actual)
+		REDACTED
+	REDACTED
+		if actual := strings.TrimSpace(metadata["trade_state"]); actual != "" && !strings.EqualFold(actual, "SUCCESS") {
+			return fmt.Errorf("wxpay trade_state mismatch: expected SUCCESS, got %s", actual)
+	REDACTED
+	case payment.TypeAlipay:
+		if expected := strings.TrimSpace(snapshot.MerchantAppID); expected != "" {
+			actual := strings.TrimSpace(metadata["app_id"])
+			if actual == "" {
+				return fmt.Errorf("alipay app_id missing")
+		REDACTED
+			if !strings.EqualFold(expected, actual) {
+				return fmt.Errorf("alipay app_id mismatch: expected %s, got %s", expected, actual)
+		REDACTED
+	REDACTED
+	case payment.TypeEasyPay:
+		if expected := strings.TrimSpace(snapshot.MerchantID); expected != "" {
+			actual := strings.TrimSpace(metadata["pid"])
+			if actual == "" {
+				return fmt.Errorf("easypay pid missing")
+		REDACTED
+			if !strings.EqualFold(expected, actual) {
+				return fmt.Errorf("easypay pid mismatch: expected %s, got %s", expected, actual)
+		REDACTED
+	REDACTED
+REDACTED
+
+	return nil
+REDACTED
+
+func providerMerchantIdentityMetadata(prov payment.Provider) map[string]string {
+	if prov == nil {
+		return nil
+REDACTED
+	reporter, ok := prov.(payment.MerchantIdentityProvider)
+	if !ok {
+		return nil
+REDACTED
+	return reporter.MerchantIdentityMetadata()
+REDACTED
