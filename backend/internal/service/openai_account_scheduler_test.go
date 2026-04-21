@@ -298,6 +298,98 @@ REDACTED
 	require.False(t, decision.StickyPreviousHit)
 REDACTED
 
+func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_RequiredWSV2_SkipsHTTPOnlyAccount(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(10108)
+	accounts := []Account{
+		{
+			ID:          36011,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    0,
+	REDACTED,
+		{
+			ID:          36012,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    5,
+			Extra: map[string]any{
+				"openai_apikey_responses_websockets_v2_enabled": true,
+		REDACTED,
+	REDACTED,
+REDACTED
+	cfg := newSchedulerTestOpenAIWSV2Config()
+	cfg.Gateway.Scheduling.LoadBatchEnabled = false
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accountsREDACTED,
+		cache:              &schedulerTestGatewayCache{REDACTED,
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{REDACTED),
+REDACTED
+
+	selection, decision, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"",
+		"gpt-5.1",
+		nil,
+		OpenAIUpstreamTransportResponsesWebsocketV2,
+	)
+REDACTED
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(36012), selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+REDACTED
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_RequiredWSV2_NoAvailableAccount(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(10109)
+	accounts := []Account{
+		{
+			ID:          36021,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    0,
+	REDACTED,
+REDACTED
+	cfg := newSchedulerTestOpenAIWSV2Config()
+	cfg.Gateway.Scheduling.LoadBatchEnabled = false
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accountsREDACTED,
+		cache:              &schedulerTestGatewayCache{REDACTED,
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{REDACTED),
+REDACTED
+
+	selection, decision, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"",
+		"gpt-5.1",
+		nil,
+		OpenAIUpstreamTransportResponsesWebsocketV2,
+	)
+	require.ErrorContains(t, err, "no available OpenAI accounts")
+	require.Nil(t, selection)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+REDACTED
+
 func TestOpenAIGatewayService_SelectAccountWithScheduler_EnabledUsesAdvancedPreviousResponseRouting(t *testing.T) {
 	resetOpenAIAdvancedSchedulerSettingCacheForTest()
 
