@@ -122,6 +122,13 @@ REDACTED
 		LinuxDoConnectClientID:               settings.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecretConfigured: settings.LinuxDoConnectClientSecretConfigured,
 		LinuxDoConnectRedirectURL:            settings.LinuxDoConnectRedirectURL,
+		WeChatConnectEnabled:                 settings.WeChatConnectEnabled,
+		WeChatConnectAppID:                   settings.WeChatConnectAppID,
+		WeChatConnectAppSecretConfigured:     settings.WeChatConnectAppSecretConfigured,
+		WeChatConnectMode:                    settings.WeChatConnectMode,
+		WeChatConnectScopes:                  settings.WeChatConnectScopes,
+		WeChatConnectRedirectURL:             settings.WeChatConnectRedirectURL,
+		WeChatConnectFrontendRedirectURL:     settings.WeChatConnectFrontendRedirectURL,
 		OIDCConnectEnabled:                   settings.OIDCConnectEnabled,
 		OIDCConnectProviderName:              settings.OIDCConnectProviderName,
 		OIDCConnectClientID:                  settings.OIDCConnectClientID,
@@ -245,6 +252,15 @@ type UpdateSettingsRequest struct {
 	LinuxDoConnectClientID     string `json:"linuxdo_connect_client_id"`
 	LinuxDoConnectClientSecret string `json:"linuxdo_connect_client_secret"`
 	LinuxDoConnectRedirectURL  string `json:"linuxdo_connect_redirect_url"`
+
+	// WeChat Connect OAuth 登录
+	WeChatConnectEnabled             bool   `json:"wechat_connect_enabled"`
+	WeChatConnectAppID               string `json:"wechat_connect_app_id"`
+	WeChatConnectAppSecret           string `json:"wechat_connect_app_secret"`
+	WeChatConnectMode                string `json:"wechat_connect_mode"`
+	WeChatConnectScopes              string `json:"wechat_connect_scopes"`
+	WeChatConnectRedirectURL         string `json:"wechat_connect_redirect_url"`
+	WeChatConnectFrontendRedirectURL string `json:"wechat_connect_frontend_redirect_url"`
 
 	// Generic OIDC OAuth 登录
 	OIDCConnectEnabled              bool   `json:"oidc_connect_enabled"`
@@ -506,6 +522,54 @@ REDACTED
 				return
 		REDACTED
 			req.LinuxDoConnectClientSecret = previousSettings.LinuxDoConnectClientSecret
+	REDACTED
+REDACTED
+
+	if req.WeChatConnectEnabled {
+		req.WeChatConnectAppID = strings.TrimSpace(req.WeChatConnectAppID)
+		req.WeChatConnectAppSecret = strings.TrimSpace(req.WeChatConnectAppSecret)
+		req.WeChatConnectMode = strings.ToLower(strings.TrimSpace(req.WeChatConnectMode))
+		req.WeChatConnectScopes = strings.TrimSpace(req.WeChatConnectScopes)
+		req.WeChatConnectRedirectURL = strings.TrimSpace(req.WeChatConnectRedirectURL)
+		req.WeChatConnectFrontendRedirectURL = strings.TrimSpace(req.WeChatConnectFrontendRedirectURL)
+
+		if req.WeChatConnectAppID == "" {
+			response.BadRequest(c, "WeChat App ID is required when enabled")
+			return
+	REDACTED
+		if req.WeChatConnectAppSecret == "" {
+			if previousSettings.WeChatConnectAppSecret == "" {
+				response.BadRequest(c, "WeChat App Secret is required when enabled")
+				return
+		REDACTED
+			req.WeChatConnectAppSecret = previousSettings.WeChatConnectAppSecret
+	REDACTED
+		if req.WeChatConnectMode == "" {
+			req.WeChatConnectMode = "open"
+	REDACTED
+		switch req.WeChatConnectMode {
+		case "open", "mp":
+		default:
+			response.BadRequest(c, "WeChat mode must be open or mp")
+			return
+	REDACTED
+		if req.WeChatConnectScopes == "" {
+			req.WeChatConnectScopes = service.DefaultWeChatConnectScopesForMode(req.WeChatConnectMode)
+	REDACTED
+		if req.WeChatConnectRedirectURL == "" {
+			response.BadRequest(c, "WeChat Redirect URL is required when enabled")
+			return
+	REDACTED
+		if err := config.ValidateAbsoluteHTTPURL(req.WeChatConnectRedirectURL); err != nil {
+			response.BadRequest(c, "WeChat Redirect URL must be an absolute http(s) URL")
+			return
+	REDACTED
+		if req.WeChatConnectFrontendRedirectURL == "" {
+			req.WeChatConnectFrontendRedirectURL = "/auth/wechat/callback"
+	REDACTED
+		if err := config.ValidateFrontendRedirectURL(req.WeChatConnectFrontendRedirectURL); err != nil {
+			response.BadRequest(c, "WeChat Frontend Redirect URL is invalid")
+			return
 	REDACTED
 REDACTED
 
@@ -857,6 +921,13 @@ REDACTED
 		LinuxDoConnectClientID:           req.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecret:       req.LinuxDoConnectClientSecret,
 		LinuxDoConnectRedirectURL:        req.LinuxDoConnectRedirectURL,
+		WeChatConnectEnabled:             req.WeChatConnectEnabled,
+		WeChatConnectAppID:               req.WeChatConnectAppID,
+		WeChatConnectAppSecret:           req.WeChatConnectAppSecret,
+		WeChatConnectMode:                req.WeChatConnectMode,
+		WeChatConnectScopes:              req.WeChatConnectScopes,
+		WeChatConnectRedirectURL:         req.WeChatConnectRedirectURL,
+		WeChatConnectFrontendRedirectURL: req.WeChatConnectFrontendRedirectURL,
 		OIDCConnectEnabled:               req.OIDCConnectEnabled,
 		OIDCConnectProviderName:          req.OIDCConnectProviderName,
 		OIDCConnectClientID:              req.OIDCConnectClientID,
@@ -1136,6 +1207,13 @@ REDACTED
 		LinuxDoConnectClientID:               updatedSettings.LinuxDoConnectClientID,
 		LinuxDoConnectClientSecretConfigured: updatedSettings.LinuxDoConnectClientSecretConfigured,
 		LinuxDoConnectRedirectURL:            updatedSettings.LinuxDoConnectRedirectURL,
+		WeChatConnectEnabled:                 updatedSettings.WeChatConnectEnabled,
+		WeChatConnectAppID:                   updatedSettings.WeChatConnectAppID,
+		WeChatConnectAppSecretConfigured:     updatedSettings.WeChatConnectAppSecretConfigured,
+		WeChatConnectMode:                    updatedSettings.WeChatConnectMode,
+		WeChatConnectScopes:                  updatedSettings.WeChatConnectScopes,
+		WeChatConnectRedirectURL:             updatedSettings.WeChatConnectRedirectURL,
+		WeChatConnectFrontendRedirectURL:     updatedSettings.WeChatConnectFrontendRedirectURL,
 		OIDCConnectEnabled:                   updatedSettings.OIDCConnectEnabled,
 		OIDCConnectProviderName:              updatedSettings.OIDCConnectProviderName,
 		OIDCConnectClientID:                  updatedSettings.OIDCConnectClientID,
@@ -1328,6 +1406,27 @@ REDACTED
 REDACTED
 	if before.LinuxDoConnectRedirectURL != after.LinuxDoConnectRedirectURL {
 		changed = append(changed, "linuxdo_connect_redirect_url")
+REDACTED
+	if before.WeChatConnectEnabled != after.WeChatConnectEnabled {
+		changed = append(changed, "wechat_connect_enabled")
+REDACTED
+	if before.WeChatConnectAppID != after.WeChatConnectAppID {
+		changed = append(changed, "wechat_connect_app_id")
+REDACTED
+	if req.WeChatConnectAppSecret != "" {
+		changed = append(changed, "wechat_connect_app_secret")
+REDACTED
+	if before.WeChatConnectMode != after.WeChatConnectMode {
+		changed = append(changed, "wechat_connect_mode")
+REDACTED
+	if before.WeChatConnectScopes != after.WeChatConnectScopes {
+		changed = append(changed, "wechat_connect_scopes")
+REDACTED
+	if before.WeChatConnectRedirectURL != after.WeChatConnectRedirectURL {
+		changed = append(changed, "wechat_connect_redirect_url")
+REDACTED
+	if before.WeChatConnectFrontendRedirectURL != after.WeChatConnectFrontendRedirectURL {
+		changed = append(changed, "wechat_connect_frontend_redirect_url")
 REDACTED
 	if before.OIDCConnectEnabled != after.OIDCConnectEnabled {
 		changed = append(changed, "oidc_connect_enabled")

@@ -31,6 +31,16 @@ type SystemSettings struct {
 	LinuxDoConnectClientSecretConfigured bool
 	LinuxDoConnectRedirectURL            string
 
+	// WeChat Connect OAuth 登录
+	WeChatConnectEnabled             bool
+	WeChatConnectAppID               string
+	WeChatConnectAppSecret           string
+	WeChatConnectAppSecretConfigured bool
+	WeChatConnectMode                string
+	WeChatConnectScopes              string
+	WeChatConnectRedirectURL         string
+	WeChatConnectFrontendRedirectURL string
+
 	// Generic OIDC OAuth 登录
 	OIDCConnectEnabled                bool
 	OIDCConnectProviderName           string
@@ -175,6 +185,16 @@ type PublicSettings struct {
 	AccountQuotaNotifyEnabled   bool
 	BalanceLowNotifyThreshold   float64
 	BalanceLowNotifyRechargeURL string
+REDACTED
+
+type WeChatConnectOAuthConfig struct {
+	Enabled             bool
+	AppID               string
+	AppSecret           string
+	Mode                string
+	Scopes              string
+	RedirectURL         string
+	FrontendRedirectURL string
 REDACTED
 
 // StreamTimeoutSettings 流超时处理配置（仅控制超时后的处理方式，超时判定由网关配置控制）

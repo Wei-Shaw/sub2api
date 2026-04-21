@@ -33,16 +33,22 @@ import (
 )
 
 func TestWeChatOAuthStartRedirectsAndSetsPendingCookies(t *testing.T) {
-	t.Setenv("WECHAT_OAUTH_OPEN_APP_ID", "wx-open-app")
-	t.Setenv("WECHAT_OAUTH_OPEN_APP_SECRET", "wx-open-secret")
-
 	gin.SetMode(gin.TestMode)
+	handler, client := newWeChatOAuthTestHandlerWithSettings(t, false, map[string]string{
+		service.SettingKeyWeChatConnectEnabled:             "true",
+		service.SettingKeyWeChatConnectAppID:               "wx-open-app",
+		service.SettingKeyWeChatConnectAppSecret:           "wx-open-secret",
+		service.SettingKeyWeChatConnectMode:                "open",
+		service.SettingKeyWeChatConnectScopes:              "snsapi_login",
+		service.SettingKeyWeChatConnectRedirectURL:         "https://api.example.com/api/v1/auth/oauth/wechat/callback",
+		service.SettingKeyWeChatConnectFrontendRedirectURL: "/auth/wechat/callback",
+REDACTED)
+	defer client.Close()
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/wechat/start?mode=open&redirect=/billing", nil)
 	c.Request.Host = "api.example.com"
 
-	handler := &AuthHandler{REDACTED
 	handler.WeChatOAuthStart(c)
 
 	require.Equal(t, http.StatusFound, recorder.Code)
@@ -60,10 +66,6 @@ func TestWeChatOAuthStartRedirectsAndSetsPendingCookies(t *testing.T) {
 REDACTED
 
 func TestWeChatOAuthCallbackCreatesPendingSessionForUnifiedFlow(t *testing.T) {
-	t.Setenv("WECHAT_OAUTH_OPEN_APP_ID", "wx-open-app")
-	t.Setenv("WECHAT_OAUTH_OPEN_APP_SECRET", "wx-open-secret")
-	t.Setenv("WECHAT_OAUTH_FRONTEND_REDIRECT_URL", "/auth/wechat/callback")
-
 	originalAccessTokenURL := wechatOAuthAccessTokenURL
 	originalUserInfoURL := wechatOAuthUserInfoURL
 	t.Cleanup(func() {
@@ -124,10 +126,6 @@ REDACTED
 REDACTED
 
 func TestWeChatOAuthCallbackRejectsMissingUnionID(t *testing.T) {
-	t.Setenv("WECHAT_OAUTH_OPEN_APP_ID", "wx-open-app")
-	t.Setenv("WECHAT_OAUTH_OPEN_APP_SECRET", "wx-open-secret")
-	t.Setenv("WECHAT_OAUTH_FRONTEND_REDIRECT_URL", "https://app.example.com/auth/wechat/callback")
-
 	originalAccessTokenURL := wechatOAuthAccessTokenURL
 	originalUserInfoURL := wechatOAuthUserInfoURL
 	t.Cleanup(func() {
@@ -151,7 +149,7 @@ REDACTED))
 	wechatOAuthAccessTokenURL = upstream.URL + "/sns/oauth2/access_token"
 	wechatOAuthUserInfoURL = upstream.URL + "/sns/userinfo"
 
-	handler, client := newWeChatOAuthTestHandler(t, false)
+	handler, client := newWeChatOAuthTestHandlerWithSettings(t, false, wechatOAuthTestSettings("open", "wx-open-app", "wx-open-secret", "https://app.example.com/auth/wechat/callback"))
 	defer client.Close()
 
 	recorder := httptest.NewRecorder()
@@ -177,9 +175,6 @@ REDACTED
 REDACTED
 
 func TestWeChatPaymentOAuthCallbackRedirectsWithOpaqueResumeToken(t *testing.T) {
-	t.Setenv("WECHAT_OAUTH_MP_APP_ID", "wx-mp-app")
-	t.Setenv("WECHAT_OAUTH_MP_APP_SECRET", "wx-mp-secret")
-
 	originalAccessTokenURL := wechatOAuthAccessTokenURL
 	t.Cleanup(func() {
 		wechatOAuthAccessTokenURL = originalAccessTokenURL
@@ -196,7 +191,7 @@ REDACTED))
 	defer upstream.Close()
 	wechatOAuthAccessTokenURL = upstream.URL + "/sns/oauth2/access_token"
 
-	handler, client := newWeChatOAuthTestHandler(t, false)
+	handler, client := newWeChatOAuthTestHandlerWithSettings(t, false, wechatOAuthTestSettings("mp", "wx-mp-app", "wx-mp-secret", "/auth/wechat/callback"))
 	defer client.Close()
 	handler.cfg.Totp.EncryptionKey = "REDACTEDREDACTED"
 
@@ -240,7 +235,6 @@ func TestWeChatOAuthCallbackBindUsesUnionCanonicalIdentityAcrossChannels(t *test
 	testCases := []struct {
 		name      string
 		mode      string
-		appIDEnv  string
 		appID     string
 		appSecret string
 		openID    string
@@ -248,7 +242,6 @@ REDACTED{
 		{
 			name:      "open",
 			mode:      "open",
-			appIDEnv:  "WECHAT_OAUTH_OPEN_APP_ID",
 			appID:     "wx-open-app",
 			appSecret: "wx-open-secret",
 			openID:    "openid-open-123",
@@ -256,7 +249,6 @@ REDACTED{
 		{
 			name:      "mp",
 			mode:      "mp",
-			appIDEnv:  "WECHAT_OAUTH_MP_APP_ID",
 			appID:     "wx-mp-app",
 			appSecret: "wx-mp-secret",
 			openID:    "openid-mp-123",
@@ -265,15 +257,6 @@ REDACTED
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv(tc.appIDEnv, tc.appID)
-			switch tc.mode {
-			case "open":
-				t.Setenv("WECHAT_OAUTH_OPEN_APP_SECRET", tc.appSecret)
-			case "mp":
-				t.Setenv("WECHAT_OAUTH_MP_APP_SECRET", tc.appSecret)
-		REDACTED
-			t.Setenv("WECHAT_OAUTH_FRONTEND_REDIRECT_URL", "/auth/wechat/callback")
-
 			originalAccessTokenURL := wechatOAuthAccessTokenURL
 			originalUserInfoURL := wechatOAuthUserInfoURL
 			t.Cleanup(func() {
@@ -297,7 +280,7 @@ REDACTED
 			wechatOAuthAccessTokenURL = upstream.URL + "/sns/oauth2/access_token"
 			wechatOAuthUserInfoURL = upstream.URL + "/sns/userinfo"
 
-			handler, client := newWeChatOAuthTestHandler(t, false)
+			handler, client := newWeChatOAuthTestHandlerWithSettings(t, false, wechatOAuthTestSettings(tc.mode, tc.appID, tc.appSecret, "/auth/wechat/callback"))
 			defer client.Close()
 
 			currentUser, err := client.User.Create().
@@ -354,10 +337,6 @@ REDACTED
 REDACTED
 
 func TestWeChatOAuthCallbackBindRejectsCanonicalOwnershipConflict(t *testing.T) {
-	t.Setenv("WECHAT_OAUTH_OPEN_APP_ID", "wx-open-app")
-	t.Setenv("WECHAT_OAUTH_OPEN_APP_SECRET", "wx-open-secret")
-	t.Setenv("WECHAT_OAUTH_FRONTEND_REDIRECT_URL", "/auth/wechat/callback")
-
 	originalAccessTokenURL := wechatOAuthAccessTokenURL
 	originalUserInfoURL := wechatOAuthUserInfoURL
 	t.Cleanup(func() {
@@ -436,10 +415,6 @@ REDACTED
 REDACTED
 
 func TestWeChatOAuthCallbackBindRejectsChannelOwnershipConflict(t *testing.T) {
-	t.Setenv("WECHAT_OAUTH_OPEN_APP_ID", "wx-open-app")
-	t.Setenv("WECHAT_OAUTH_OPEN_APP_SECRET", "wx-open-secret")
-	t.Setenv("WECHAT_OAUTH_FRONTEND_REDIRECT_URL", "/auth/wechat/callback")
-
 	originalAccessTokenURL := wechatOAuthAccessTokenURL
 	originalUserInfoURL := wechatOAuthUserInfoURL
 	t.Cleanup(func() {
@@ -529,10 +504,6 @@ REDACTED
 REDACTED
 
 func TestWeChatOAuthCallbackBindRejectsLegacyProviderKeyOwnershipConflict(t *testing.T) {
-	t.Setenv("WECHAT_OAUTH_OPEN_APP_ID", "wx-open-app")
-	t.Setenv("WECHAT_OAUTH_OPEN_APP_SECRET", "wx-open-secret")
-	t.Setenv("WECHAT_OAUTH_FRONTEND_REDIRECT_URL", "/auth/wechat/callback")
-
 	originalAccessTokenURL := wechatOAuthAccessTokenURL
 	originalUserInfoURL := wechatOAuthUserInfoURL
 	t.Cleanup(func() {
@@ -611,10 +582,6 @@ REDACTED
 REDACTED
 
 func TestCompleteWeChatOAuthRegistrationAfterInvitationPendingSession(t *testing.T) {
-	t.Setenv("WECHAT_OAUTH_OPEN_APP_ID", "wx-open-app")
-	t.Setenv("WECHAT_OAUTH_OPEN_APP_SECRET", "wx-open-secret")
-	t.Setenv("WECHAT_OAUTH_FRONTEND_REDIRECT_URL", "/auth/wechat/callback")
-
 	originalAccessTokenURL := wechatOAuthAccessTokenURL
 	originalUserInfoURL := wechatOAuthUserInfoURL
 	t.Cleanup(func() {
@@ -737,10 +704,6 @@ REDACTED
 REDACTED
 
 func TestWeChatOAuthCallbackRepairsLegacyOpenIDOnlyIdentity(t *testing.T) {
-	t.Setenv("WECHAT_OAUTH_OPEN_APP_ID", "wx-open-app")
-	t.Setenv("WECHAT_OAUTH_OPEN_APP_SECRET", "wx-open-secret")
-	t.Setenv("WECHAT_OAUTH_FRONTEND_REDIRECT_URL", "/auth/wechat/callback")
-
 	originalAccessTokenURL := wechatOAuthAccessTokenURL
 	originalUserInfoURL := wechatOAuthUserInfoURL
 	t.Cleanup(func() {
@@ -900,10 +863,6 @@ REDACTED
 REDACTED
 
 func TestWeChatOAuthCallbackRepairsLegacyProviderKeyCanonicalIdentity(t *testing.T) {
-	t.Setenv("WECHAT_OAUTH_OPEN_APP_ID", "wx-open-app")
-	t.Setenv("WECHAT_OAUTH_OPEN_APP_SECRET", "wx-open-secret")
-	t.Setenv("WECHAT_OAUTH_FRONTEND_REDIRECT_URL", "/auth/wechat/callback")
-
 	originalAccessTokenURL := wechatOAuthAccessTokenURL
 	originalUserInfoURL := wechatOAuthUserInfoURL
 	t.Cleanup(func() {
@@ -1010,6 +969,22 @@ REDACTED
 REDACTED
 
 func newWeChatOAuthTestHandler(t *testing.T, invitationEnabled bool) (*AuthHandler, *dbent.Client) {
+	return newWeChatOAuthTestHandlerWithSettings(t, invitationEnabled, nil)
+REDACTED
+
+func wechatOAuthTestSettings(mode, appID, secret, frontendRedirect string) map[string]string {
+	return map[string]string{
+		service.SettingKeyWeChatConnectEnabled:             "true",
+		service.SettingKeyWeChatConnectAppID:               appID,
+		service.SettingKeyWeChatConnectAppSecret:           secret,
+		service.SettingKeyWeChatConnectMode:                mode,
+		service.SettingKeyWeChatConnectScopes:              service.DefaultWeChatConnectScopesForMode(mode),
+		service.SettingKeyWeChatConnectRedirectURL:         "https://api.example.com/api/v1/auth/oauth/wechat/callback",
+		service.SettingKeyWeChatConnectFrontendRedirectURL: frontendRedirect,
+REDACTED
+REDACTED
+
+func newWeChatOAuthTestHandlerWithSettings(t *testing.T, invitationEnabled bool, extraSettings map[string]string) (*AuthHandler, *dbent.Client) {
 REDACTED
 
 	db, err := sql.Open("sqlite", "file:auth_wechat_oauth?mode=memory&cache=shared")
@@ -1036,12 +1011,17 @@ REDACTED
 			UserConcurrency: 1,
 	REDACTED,
 REDACTED
-	settingSvc := service.NewSettingService(&wechatOAuthSettingRepoStub{
-		values: map[string]string{
-			service.SettingKeyRegistrationEnabled:   "true",
-			service.SettingKeyInvitationCodeEnabled: boolSettingValue(invitationEnabled),
-	REDACTED,
-REDACTED, cfg)
+	values := map[string]string{
+		service.SettingKeyRegistrationEnabled:   "true",
+		service.SettingKeyInvitationCodeEnabled: boolSettingValue(invitationEnabled),
+REDACTED
+	for key, value := range wechatOAuthTestSettings("open", "wx-open-app", "wx-open-secret", "/auth/wechat/callback") {
+		values[key] = value
+REDACTED
+	for key, value := range extraSettings {
+		values[key] = value
+REDACTED
+	settingSvc := service.NewSettingService(&wechatOAuthSettingRepoStub{values: valuesREDACTED, cfg)
 
 	authSvc := service.NewAuthService(
 		client,

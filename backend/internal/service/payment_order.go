@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"math"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -512,16 +511,21 @@ REDACTED
 	return req.IsWeChatBrowser || strings.TrimSpace(req.OpenID) != ""
 REDACTED
 
-func (s *PaymentService) getWeChatPaymentOAuthCredential(context.Context) (string, string, error) {
-	appID := strings.TrimSpace(os.Getenv("WECHAT_OAUTH_MP_APP_ID"))
-	appSecret := strings.TrimSpace(os.Getenv("WECHAT_OAUTH_MP_APP_SECRET"))
-	if appID == "" || appSecret == "" {
+func (s *PaymentService) getWeChatPaymentOAuthCredential(ctx context.Context) (string, string, error) {
+	if s == nil || s.configService == nil || s.configService.settingRepo == nil {
 		return "", "", infraerrors.ServiceUnavailable(
 			"WECHAT_PAYMENT_MP_NOT_CONFIGURED",
 			"wechat in-app payment requires a complete WeChat MP OAuth credential",
 		)
 REDACTED
-	return appID, appSecret, nil
+	cfg, err := (&SettingService{settingRepo: s.configService.settingRepoREDACTED).GetWeChatConnectOAuthConfig(ctx)
+	if err != nil || cfg.Mode != "mp" || strings.TrimSpace(cfg.AppID) == "" || strings.TrimSpace(cfg.AppSecret) == "" {
+		return "", "", infraerrors.ServiceUnavailable(
+			"WECHAT_PAYMENT_MP_NOT_CONFIGURED",
+			"wechat in-app payment requires a complete WeChat MP OAuth credential",
+		)
+REDACTED
+	return strings.TrimSpace(cfg.AppID), strings.TrimSpace(cfg.AppSecret), nil
 REDACTED
 
 func classifyCreatePaymentError(req CreateOrderRequest, providerKey string, err error) error {
