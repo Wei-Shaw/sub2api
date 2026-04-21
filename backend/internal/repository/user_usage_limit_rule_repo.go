@@ -4,6 +4,7 @@ import (
 	"context"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userusagelimitrule"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -95,13 +96,14 @@ func (r *userUsageLimitRuleRepository) Update(ctx context.Context, userID, ruleI
 // ReplaceAll 单事务内清空指定用户所有规则并批量插入新规则。
 //
 // 校验由 service 层完成，repo 只负责事务边界：
-//  1. DELETE FROM user_usage_limit_rule WHERE user_id = ?
-//  2. 逐条 INSERT（ent 无批量 Create Many 带 Save 的接口，使用 CreateBulk）
-//  3. 任何一步失败 → Rollback；全部成功 → Commit
+//  1. SELECT users.id FOR UPDATE（行锁，串行化同一用户的规则变更，防止竞态覆盖）
+//  2. DELETE FROM user_usage_limit_rule WHERE user_id = ?
+//  3. 批量 INSERT（CreateBulk 单条 SQL）
+//  4. 任何一步失败 → Rollback；全部成功 → Commit
 //
-// 不可拆分（~34 行 > CLAUDE.md §10 的 30 行阈值）：事务 DELETE + INSERT 序列必须
-// 在同一函数内，以保证失败时 defer tx.Rollback() 能统一回滚。拆出子函数会让事务
-// 边界跨函数，不符合"事务是持久化细节，在 repo 层一次性落地"的原则。
+// 事务 DELETE + INSERT 序列必须在同一函数内，以保证失败时 defer tx.Rollback() 能
+// 统一回滚。拆出子函数会让事务边界跨函数，不符合"事务是持久化细节，在 repo 层一次性
+// 落地"的原则。
 func (r *userUsageLimitRuleRepository) ReplaceAll(ctx context.Context, userID int64, rules []service.CreateRuleRequest) ([]*service.QuotaRule, error) {
 	tx, err := r.client.Tx(ctx)
 	if err != nil {
@@ -109,28 +111,48 @@ func (r *userUsageLimitRuleRepository) ReplaceAll(ctx context.Context, userID in
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// 1. 对 users 行加 FOR UPDATE 锁，串行化同一用户的规则变更。
+	exists, err := tx.User.Query().
+		Where(user.IDEQ(userID)).
+		ForUpdate().
+		Exist(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, service.ErrUserNotFound
+	}
+
+	// 2. 清空旧规则。
 	if _, err := tx.UserUsageLimitRule.Delete().
 		Where(userusagelimitrule.UserIDEQ(userID)).
 		Exec(ctx); err != nil {
 		return nil, err
 	}
 
-	inserted := make([]*service.QuotaRule, 0, len(rules))
+	// 3. 批量 INSERT（一次 SQL 写入）。
+	builders := make([]*dbent.UserUsageLimitRuleCreate, 0, len(rules))
 	for _, req := range rules {
 		period := req.Period
 		if period == "" {
 			period = service.QuotaPeriodDaily
 		}
-		row, err := tx.UserUsageLimitRule.Create().
+		builders = append(builders, tx.UserUsageLimitRule.Create().
 			SetUserID(userID).
 			SetGroupIds(req.GroupIDs).
 			SetDailyLimitUsd(req.DailyLimitUSD).
-			SetPeriod(period).
-			Save(ctx)
+			SetPeriod(period),
+		)
+	}
+	inserted := make([]*service.QuotaRule, 0, len(rules))
+	if len(builders) > 0 {
+		rows, err := tx.UserUsageLimitRule.CreateBulk(builders...).Save(ctx)
 		if err != nil {
 			return nil, err
 		}
-		inserted = append(inserted, ruleEntityToService(row))
+		for _, row := range rows {
+			inserted = append(inserted, ruleEntityToService(row))
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
