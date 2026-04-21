@@ -49,7 +49,7 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 	challenge := generateChallenge()
 
 	start := time.Now()
-	respText, statusCode, err := callProvider(ctx, provider, endpoint, apiKey, model, challenge.Prompt)
+	respText, rawBody, statusCode, err := callProvider(ctx, provider, endpoint, apiKey, model, challenge.Prompt)
 	latency := time.Since(start)
 	latencyMs := int(latency / time.Millisecond)
 	res.LatencyMs = &latencyMs
@@ -60,8 +60,11 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 		return res
 	}
 	if statusCode < 200 || statusCode >= 300 {
+		// 错误路径：用 rawBody 而非 respText（gjson textPath 抽取在错误响应里通常为空，
+		// 会丢掉真正的上游错误信息，例如 `{"error":{"message":"No available accounts ..."}}`）。
 		res.Status = MonitorStatusError
-		res.Message = truncateMessage(sanitizeErrorMessage(fmt.Sprintf("upstream HTTP %d: %s", statusCode, respText)))
+		bodySnippet := truncateForErrorBody(rawBody)
+		res.Message = truncateMessage(sanitizeErrorMessage(fmt.Sprintf("upstream HTTP %d: %s", statusCode, bodySnippet)))
 		return res
 	}
 
@@ -180,22 +183,27 @@ func isSupportedProvider(p string) bool {
 }
 
 // callProvider 通过 providerAdapters 分发到具体实现。
-// 返回值：响应中提取的文本、HTTP status、网络/序列化错误。
-func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt string) (string, int, error) {
+//
+// 返回值：
+//   - extractedText: 按 textPath 抽出的成功文本，仅在 status 2xx 时有意义；非 2xx 时通常为空串
+//   - rawBody: 完整响应体的字符串形式（已被 monitorResponseMaxBytes 截断），用于错误路径保留上游真实回包
+//   - status: HTTP 状态码
+//   - err: 网络 / 序列化错误
+func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt string) (extractedText, rawBody string, status int, err error) {
 	adapter, ok := providerAdapters[provider]
 	if !ok {
-		return "", 0, fmt.Errorf("unsupported provider %q", provider)
+		return "", "", 0, fmt.Errorf("unsupported provider %q", provider)
 	}
 	body, err := adapter.buildBody(model, prompt)
 	if err != nil {
-		return "", 0, fmt.Errorf("marshal body: %w", err)
+		return "", "", 0, fmt.Errorf("marshal body: %w", err)
 	}
 	full := joinURL(endpoint, adapter.buildPath(model))
-	respBody, status, err := postRawJSON(ctx, full, body, adapter.buildHeaders(apiKey))
+	respBytes, status, err := postRawJSON(ctx, full, body, adapter.buildHeaders(apiKey))
 	if err != nil {
-		return "", status, err
+		return "", "", status, err
 	}
-	return gjson.GetBytes(respBody, adapter.textPath).String(), status, nil
+	return gjson.GetBytes(respBytes, adapter.textPath).String(), string(respBytes), status, nil
 }
 
 // postRawJSON 发送 POST + 已序列化好的 JSON 字节，限制响应体大小，返回响应字节、HTTP status、错误。
@@ -296,4 +304,20 @@ func truncateMessage(msg string) string {
 		cutoff = 0
 	}
 	return msg[:cutoff] + ellipsis
+}
+
+// truncateForErrorBody 把上游错误响应 body 压到 monitorErrorBodySnippetMaxBytes 以内，
+// 并顺手把连续空白折成一个空格：上游 HTML 错误页常含大量缩进/换行，保留会浪费预算。
+// 被 truncateMessage 做最终总截断兜底，所以这里只负责 body 自身的精简。
+func truncateForErrorBody(body string) string {
+	body = strings.Join(strings.Fields(body), " ")
+	if len(body) <= monitorErrorBodySnippetMaxBytes {
+		return body
+	}
+	const ellipsis = "...(body truncated)"
+	cutoff := monitorErrorBodySnippetMaxBytes - len(ellipsis)
+	if cutoff < 0 {
+		cutoff = 0
+	}
+	return body[:cutoff] + ellipsis
 }

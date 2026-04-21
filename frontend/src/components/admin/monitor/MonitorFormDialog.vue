@@ -60,13 +60,21 @@
 
       <div>
         <label class="input-label">{{ t('admin.channelMonitor.form.primaryModel') }} <span class="text-red-500">*</span></label>
-        <input v-model="form.primary_model" type="text" required class="input" :placeholder="t('admin.channelMonitor.form.primaryModelPlaceholder')" />
+        <input
+          v-model="form.primary_model"
+          type="text"
+          required
+          class="input font-medium"
+          :class="getPlatformTextClass(form.provider)"
+          :placeholder="t('admin.channelMonitor.form.primaryModelPlaceholder')"
+        />
       </div>
 
       <div>
         <label class="input-label">{{ t('admin.channelMonitor.form.extraModels') }}</label>
         <ModelTagInput
           :models="form.extra_models"
+          :platform="form.provider"
           :placeholder="t('admin.channelMonitor.form.extraModelsPlaceholder')"
           @update:models="form.extra_models = $event"
         />
@@ -137,6 +145,7 @@ import type { ApiKey } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import ModelTagInput from '@/components/admin/channel/ModelTagInput.vue'
+import { getPlatformTextClass } from '@/components/admin/channel/types'
 import MonitorKeyPickerDialog from '@/components/admin/monitor/MonitorKeyPickerDialog.vue'
 import ProviderIcon from '@/components/user/monitor/ProviderIcon.vue'
 import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
