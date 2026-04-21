@@ -1,5 +1,5 @@
 import { mount REDACTED from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi REDACTED from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi REDACTED from 'vitest'
 import ProfileInfoCard from '@/components/user/profile/ProfileInfoCard.vue'
 import type { User REDACTED from '@/types'
 
@@ -51,11 +51,15 @@ vi.mock('vue-i18n', async (importOriginal) => {
         if (key === 'profile.avatar.inputLabel') return 'Avatar URL or data URL'
         if (key === 'profile.avatar.inputPlaceholder') return 'https://cdn.example.com/avatar.png'
         if (key === 'profile.avatar.uploadAction') return 'Upload image'
-        if (key === 'profile.avatar.uploadHint') return 'Images must be 100KB or smaller'
+        if (key === 'profile.avatar.uploadHint') return 'Images must be 100KB or smaller and will be compressed to 20KB'
         if (key === 'profile.avatar.saveSuccess') return 'Avatar updated'
         if (key === 'profile.avatar.deleteSuccess') return 'Avatar removed'
         if (key === 'profile.avatar.invalidType') return 'Please choose an image file'
         if (key === 'profile.avatar.fileTooLarge') return 'Avatar image must be 100KB or smaller'
+        if (key === 'profile.avatar.gifTooLarge') return 'GIF avatars must already be 20KB or smaller'
+        if (key === 'profile.avatar.compressTooLarge') return 'Unable to compress this image below 20KB'
+        if (key === 'profile.avatar.compressFailed') return 'Failed to compress the selected image'
+        if (key === 'profile.avatar.readFailed') return 'Failed to read the selected image'
         if (key === 'profile.avatar.invalidValue') return 'Enter a valid avatar URL or image data URL'
         if (key === 'profile.avatar.emptyDeleteHint') return 'Avatar already removed'
         if (key === 'profile.authBindings.providers.email') return 'Email'
@@ -92,12 +96,75 @@ function createUser(overrides: Partial<User> = {REDACTED): User {
   REDACTED
 REDACTED
 
+async function flushAsyncWork(): Promise<void> {
+  await Promise.resolve()
+  await Promise.resolve()
+REDACTED
+
+const originalFileReader = globalThis.FileReader
+const originalImage = globalThis.Image
+const originalCreateElement = document.createElement.bind(document)
+
+function installAvatarCompressionMocks() {
+  class MockFileReader {
+    result: string | ArrayBuffer | null = null
+    onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null = null
+    onerror: ((this: FileReader, ev: ProgressEvent<FileReader>) => any) | null = null
+    error: DOMException | null = null
+
+    readAsDataURL(blob: Blob) {
+      if (blob.type === 'image/webp') {
+        this.result = 'data:image/webp;base64,' + Buffer.from('compressed-avatar').toString('base64')
+      REDACTED else {
+        this.result = 'data:image/png;base64,' + Buffer.from('original-avatar').toString('base64')
+      REDACTED
+      this.onload?.call(this as unknown as FileReader, new ProgressEvent('load'))
+    REDACTED
+  REDACTED
+
+  class MockImage {
+    naturalWidth = 1200
+    naturalHeight = 1200
+    onload: (() => void) | null = null
+    onerror: (() => void) | null = null
+
+    set src(_value: string) {
+      this.onload?.()
+    REDACTED
+  REDACTED
+
+  globalThis.FileReader = MockFileReader as unknown as typeof FileReader
+  globalThis.Image = MockImage as unknown as typeof Image
+  vi.spyOn(document, 'createElement').mockImplementation(((tagName: string, options?: ElementCreationOptions) => {
+    if (tagName === 'canvas') {
+      return {
+        width: 0,
+        height: 0,
+        getContext: () => ({
+          clearRect: vi.fn(),
+          drawImage: vi.fn(),
+        REDACTED),
+        toBlob: (callback: BlobCallback) => {
+          callback(new Blob([new Uint8Array(8 * 1024)], { type: 'image/webp' REDACTED))
+        REDACTED,
+      REDACTED as unknown as HTMLCanvasElement
+    REDACTED
+    return originalCreateElement(tagName, options)
+  REDACTED) as typeof document.createElement)
+REDACTED
+
 describe('ProfileInfoCard', () => {
   beforeEach(() => {
     updateProfileMock.mockReset()
     showSuccessMock.mockReset()
     showErrorMock.mockReset()
     authStoreState.user = null
+  REDACTED)
+
+  afterEach(() => {
+    globalThis.FileReader = originalFileReader
+    globalThis.Image = originalImage
+    vi.restoreAllMocks()
   REDACTED)
 
   it('saves a remote avatar URL and updates the auth store', async () => {
@@ -146,6 +213,39 @@ describe('ProfileInfoCard', () => {
 
     expect(updateProfileMock).not.toHaveBeenCalled()
     expect(showErrorMock).toHaveBeenCalledWith('Avatar image must be 100KB or smaller')
+  REDACTED)
+
+  it('compresses uploaded images under 100KB before saving', async () => {
+    installAvatarCompressionMocks()
+    const updatedUser = createUser({ avatar_url: 'data:image/webp;base64,Y29tcHJlc3NlZC1hdmF0YXI=' REDACTED)
+    updateProfileMock.mockResolvedValue(updatedUser)
+    authStoreState.user = createUser()
+
+    const wrapper = mount(ProfileInfoCard, {
+      props: {
+        user: authStoreState.user
+      REDACTED,
+      global: {
+        stubs: {
+          Icon: true,
+          ProfileIdentityBindingsSection: true
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    const fileInput = wrapper.get('[data-testid="profile-avatar-file-input"]')
+    Object.defineProperty(fileInput.element, 'files', {
+      value: [new File([new Uint8Array(80 * 1024)], 'avatar.png', { type: 'image/png' REDACTED)],
+      configurable: true
+    REDACTED)
+
+    await fileInput.trigger('change')
+    await flushAsyncWork()
+    await wrapper.get('[data-testid="profile-avatar-save"]').trigger('click')
+
+    expect(updateProfileMock).toHaveBeenCalledWith({
+      avatar_url: 'data:image/webp;base64,Y29tcHJlc3NlZC1hdmF0YXI='
+    REDACTED)
   REDACTED)
 
   it('deletes the current avatar', async () => {
