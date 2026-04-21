@@ -464,7 +464,6 @@ REDACTED
 	// ChannelMonitorDailyRollupsColumns holds the columns for the "channel_monitor_daily_rollups" table.
 	ChannelMonitorDailyRollupsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
-		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "model", Type: field.TypeString, Size: 200REDACTED,
 		{Name: "bucket_date", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "date"REDACTEDREDACTED,
 		{Name: "total_checks", Type: field.TypeInt, Default: 0REDACTED,
@@ -488,7 +487,7 @@ REDACTED
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "channel_monitor_daily_rollups_channel_monitors_daily_rollups",
-				Columns:    []*schema.Column{ChannelMonitorDailyRollupsColumns[15]REDACTED,
+				Columns:    []*schema.Column{ChannelMonitorDailyRollupsColumns[14]REDACTED,
 				RefColumns: []*schema.Column{ChannelMonitorsColumns[0]REDACTED,
 				OnDelete:   schema.Cascade,
 		REDACTED,
@@ -497,19 +496,18 @@ REDACTED
 			{
 				Name:    "channelmonitordailyrollup_monitor_id_model_bucket_date",
 				Unique:  true,
-				Columns: []*schema.Column{ChannelMonitorDailyRollupsColumns[15], ChannelMonitorDailyRollupsColumns[2], ChannelMonitorDailyRollupsColumns[3]REDACTED,
+				Columns: []*schema.Column{ChannelMonitorDailyRollupsColumns[14], ChannelMonitorDailyRollupsColumns[1], ChannelMonitorDailyRollupsColumns[2]REDACTED,
 		REDACTED,
 			{
 				Name:    "channelmonitordailyrollup_bucket_date",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorDailyRollupsColumns[3]REDACTED,
+				Columns: []*schema.Column{ChannelMonitorDailyRollupsColumns[2]REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED
 	// ChannelMonitorHistoriesColumns holds the columns for the "channel_monitor_histories" table.
 	ChannelMonitorHistoriesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
-		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "model", Type: field.TypeString, Size: 200REDACTED,
 		{Name: "status", Type: field.TypeEnum, Enums: []string{"operational", "degraded", "failed", "error"REDACTEDREDACTED,
 		{Name: "latency_ms", Type: field.TypeInt, Nullable: trueREDACTED,
@@ -526,7 +524,7 @@ REDACTED
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "channel_monitor_histories_channel_monitors_history",
-				Columns:    []*schema.Column{ChannelMonitorHistoriesColumns[8]REDACTED,
+				Columns:    []*schema.Column{ChannelMonitorHistoriesColumns[7]REDACTED,
 				RefColumns: []*schema.Column{ChannelMonitorsColumns[0]REDACTED,
 				OnDelete:   schema.Cascade,
 		REDACTED,
@@ -535,12 +533,12 @@ REDACTED
 			{
 				Name:    "channelmonitorhistory_monitor_id_model_checked_at",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorHistoriesColumns[8], ChannelMonitorHistoriesColumns[2], ChannelMonitorHistoriesColumns[7]REDACTED,
+				Columns: []*schema.Column{ChannelMonitorHistoriesColumns[7], ChannelMonitorHistoriesColumns[1], ChannelMonitorHistoriesColumns[6]REDACTED,
 		REDACTED,
 			{
 				Name:    "channelmonitorhistory_checked_at",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorHistoriesColumns[7]REDACTED,
+				Columns: []*schema.Column{ChannelMonitorHistoriesColumns[6]REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED

@@ -521,11 +521,6 @@ REDACTED()
 	channelmonitorDescIntervalSeconds := channelmonitorFields[8].Descriptor()
 	// channelmonitor.IntervalSecondsValidator is a validator for the "interval_seconds" field. It is called by the builders before save.
 	channelmonitor.IntervalSecondsValidator = channelmonitorDescIntervalSeconds.Validators[0].(func(int) error)
-	channelmonitordailyrollupMixin := schema.ChannelMonitorDailyRollup{REDACTED.Mixin()
-	channelmonitordailyrollupMixinHooks0 := channelmonitordailyrollupMixin[0].Hooks()
-	channelmonitordailyrollup.Hooks[0] = channelmonitordailyrollupMixinHooks0[0]
-	channelmonitordailyrollupMixinInters0 := channelmonitordailyrollupMixin[0].Interceptors()
-	channelmonitordailyrollup.Interceptors[0] = channelmonitordailyrollupMixinInters0[0]
 	channelmonitordailyrollupFields := schema.ChannelMonitorDailyRollup{REDACTED.Fields()
 	_ = channelmonitordailyrollupFields
 	// channelmonitordailyrollupDescModel is the schema descriptor for model field.
@@ -592,11 +587,6 @@ REDACTED()
 	channelmonitordailyrollup.DefaultComputedAt = channelmonitordailyrollupDescComputedAt.Default.(func() time.Time)
 	// channelmonitordailyrollup.UpdateDefaultComputedAt holds the default value on update for the computed_at field.
 	channelmonitordailyrollup.UpdateDefaultComputedAt = channelmonitordailyrollupDescComputedAt.UpdateDefault.(func() time.Time)
-	channelmonitorhistoryMixin := schema.ChannelMonitorHistory{REDACTED.Mixin()
-	channelmonitorhistoryMixinHooks0 := channelmonitorhistoryMixin[0].Hooks()
-	channelmonitorhistory.Hooks[0] = channelmonitorhistoryMixinHooks0[0]
-	channelmonitorhistoryMixinInters0 := channelmonitorhistoryMixin[0].Interceptors()
-	channelmonitorhistory.Interceptors[0] = channelmonitorhistoryMixinInters0[0]
 	channelmonitorhistoryFields := schema.ChannelMonitorHistory{REDACTED.Fields()
 	_ = channelmonitorhistoryFields
 	// channelmonitorhistoryDescModel is the schema descriptor for model field.

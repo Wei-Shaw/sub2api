@@ -29,26 +29,6 @@ func (_u *ChannelMonitorDailyRollupUpdate) Where(ps ...predicate.ChannelMonitorD
 	return _u
 REDACTED
 
-// SetDeletedAt sets the "deleted_at" field.
-func (_u *ChannelMonitorDailyRollupUpdate) SetDeletedAt(v time.Time) *ChannelMonitorDailyRollupUpdate {
-	_u.mutation.SetDeletedAt(v)
-	return _u
-REDACTED
-
-// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
-func (_u *ChannelMonitorDailyRollupUpdate) SetNillableDeletedAt(v *time.Time) *ChannelMonitorDailyRollupUpdate {
-	if v != nil {
-		_u.SetDeletedAt(*v)
-REDACTED
-	return _u
-REDACTED
-
-// ClearDeletedAt clears the value of the "deleted_at" field.
-func (_u *ChannelMonitorDailyRollupUpdate) ClearDeletedAt() *ChannelMonitorDailyRollupUpdate {
-	_u.mutation.ClearDeletedAt()
-	return _u
-REDACTED
-
 // SetMonitorID sets the "monitor_id" field.
 func (_u *ChannelMonitorDailyRollupUpdate) SetMonitorID(v int64) *ChannelMonitorDailyRollupUpdate {
 	_u.mutation.SetMonitorID(v)
@@ -325,9 +305,7 @@ REDACTED
 
 // Save executes the query and returns the number of nodes affected by the update operation.
 func (_u *ChannelMonitorDailyRollupUpdate) Save(ctx context.Context) (int, error) {
-	if err := _u.defaults(); err != nil {
-		return 0, err
-REDACTED
+	_u.defaults()
 	return withHooks(ctx, _u.sqlSave, _u.mutation, _u.hooks)
 REDACTED
 
@@ -354,15 +332,11 @@ REDACTED
 REDACTED
 
 // defaults sets the default values of the builder before save.
-func (_u *ChannelMonitorDailyRollupUpdate) defaults() error {
+func (_u *ChannelMonitorDailyRollupUpdate) defaults() {
 	if _, ok := _u.mutation.ComputedAt(); !ok {
-		if channelmonitordailyrollup.UpdateDefaultComputedAt == nil {
-			return fmt.Errorf("ent: uninitialized channelmonitordailyrollup.UpdateDefaultComputedAt (forgotten import ent/runtime?)")
-	REDACTED
 		v := channelmonitordailyrollup.UpdateDefaultComputedAt()
 		_u.mutation.SetComputedAt(v)
 REDACTED
-	return nil
 REDACTED
 
 // check runs all checks and user-defined validators on the builder.
@@ -389,12 +363,6 @@ REDACTED
 				ps[i](selector)
 		REDACTED
 	REDACTED
-REDACTED
-	if value, ok := _u.mutation.DeletedAt(); ok {
-		_spec.SetField(channelmonitordailyrollup.FieldDeletedAt, field.TypeTime, value)
-REDACTED
-	if _u.mutation.DeletedAtCleared() {
-		_spec.ClearField(channelmonitordailyrollup.FieldDeletedAt, field.TypeTime)
 REDACTED
 	if value, ok := _u.mutation.Model(); ok {
 		_spec.SetField(channelmonitordailyrollup.FieldModel, field.TypeString, value)
@@ -512,26 +480,6 @@ type ChannelMonitorDailyRollupUpdateOne struct {
 	fields   []string
 	hooks    []Hook
 	mutation *ChannelMonitorDailyRollupMutation
-REDACTED
-
-// SetDeletedAt sets the "deleted_at" field.
-func (_u *ChannelMonitorDailyRollupUpdateOne) SetDeletedAt(v time.Time) *ChannelMonitorDailyRollupUpdateOne {
-	_u.mutation.SetDeletedAt(v)
-	return _u
-REDACTED
-
-// SetNillableDeletedAt sets the "deleted_at" field if the given value is not nil.
-func (_u *ChannelMonitorDailyRollupUpdateOne) SetNillableDeletedAt(v *time.Time) *ChannelMonitorDailyRollupUpdateOne {
-	if v != nil {
-		_u.SetDeletedAt(*v)
-REDACTED
-	return _u
-REDACTED
-
-// ClearDeletedAt clears the value of the "deleted_at" field.
-func (_u *ChannelMonitorDailyRollupUpdateOne) ClearDeletedAt() *ChannelMonitorDailyRollupUpdateOne {
-	_u.mutation.ClearDeletedAt()
-	return _u
 REDACTED
 
 // SetMonitorID sets the "monitor_id" field.
@@ -823,9 +771,7 @@ REDACTED
 
 // Save executes the query and returns the updated ChannelMonitorDailyRollup entity.
 func (_u *ChannelMonitorDailyRollupUpdateOne) Save(ctx context.Context) (*ChannelMonitorDailyRollup, error) {
-	if err := _u.defaults(); err != nil {
-		return nil, err
-REDACTED
+	_u.defaults()
 	return withHooks(ctx, _u.sqlSave, _u.mutation, _u.hooks)
 REDACTED
 
@@ -852,15 +798,11 @@ REDACTED
 REDACTED
 
 // defaults sets the default values of the builder before save.
-func (_u *ChannelMonitorDailyRollupUpdateOne) defaults() error {
+func (_u *ChannelMonitorDailyRollupUpdateOne) defaults() {
 	if _, ok := _u.mutation.ComputedAt(); !ok {
-		if channelmonitordailyrollup.UpdateDefaultComputedAt == nil {
-			return fmt.Errorf("ent: uninitialized channelmonitordailyrollup.UpdateDefaultComputedAt (forgotten import ent/runtime?)")
-	REDACTED
 		v := channelmonitordailyrollup.UpdateDefaultComputedAt()
 		_u.mutation.SetComputedAt(v)
 REDACTED
-	return nil
 REDACTED
 
 // check runs all checks and user-defined validators on the builder.
@@ -904,12 +846,6 @@ REDACTED
 				ps[i](selector)
 		REDACTED
 	REDACTED
-REDACTED
-	if value, ok := _u.mutation.DeletedAt(); ok {
-		_spec.SetField(channelmonitordailyrollup.FieldDeletedAt, field.TypeTime, value)
-REDACTED
-	if _u.mutation.DeletedAtCleared() {
-		_spec.ClearField(channelmonitordailyrollup.FieldDeletedAt, field.TypeTime)
 REDACTED
 	if value, ok := _u.mutation.Model(); ok {
 		_spec.SetField(channelmonitordailyrollup.FieldModel, field.TypeString, value)

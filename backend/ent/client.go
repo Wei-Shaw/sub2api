@@ -1912,14 +1912,12 @@ REDACTED
 
 // Hooks returns the client hooks.
 func (c *ChannelMonitorDailyRollupClient) Hooks() []Hook {
-	hooks := c.hooks.ChannelMonitorDailyRollup
-	return append(hooks[:len(hooks):len(hooks)], channelmonitordailyrollup.Hooks[:]...)
+	return c.hooks.ChannelMonitorDailyRollup
 REDACTED
 
 // Interceptors returns the client interceptors.
 func (c *ChannelMonitorDailyRollupClient) Interceptors() []Interceptor {
-	inters := c.inters.ChannelMonitorDailyRollup
-	return append(inters[:len(inters):len(inters)], channelmonitordailyrollup.Interceptors[:]...)
+	return c.inters.ChannelMonitorDailyRollup
 REDACTED
 
 func (c *ChannelMonitorDailyRollupClient) mutate(ctx context.Context, m *ChannelMonitorDailyRollupMutation) (Value, error) {
@@ -2063,14 +2061,12 @@ REDACTED
 
 // Hooks returns the client hooks.
 func (c *ChannelMonitorHistoryClient) Hooks() []Hook {
-	hooks := c.hooks.ChannelMonitorHistory
-	return append(hooks[:len(hooks):len(hooks)], channelmonitorhistory.Hooks[:]...)
+	return c.hooks.ChannelMonitorHistory
 REDACTED
 
 // Interceptors returns the client interceptors.
 func (c *ChannelMonitorHistoryClient) Interceptors() []Interceptor {
-	inters := c.inters.ChannelMonitorHistory
-	return append(inters[:len(inters):len(inters)], channelmonitorhistory.Interceptors[:]...)
+	return c.inters.ChannelMonitorHistory
 REDACTED
 
 func (c *ChannelMonitorHistoryClient) mutate(ctx context.Context, m *ChannelMonitorHistoryMutation) (Value, error) {
