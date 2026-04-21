@@ -2850,7 +2850,7 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import ImageUpload from '@/components/common/ImageUpload.vue'
 import BackupSettings from '@/views/admin/BackupView.vue'
 import { useClipboard REDACTED from '@/composables/useClipboard'
-import { extractApiErrorMessage REDACTED from '@/utils/apiError'
+import { extractApiErrorMessage, extractI18nErrorMessage REDACTED from '@/utils/apiError'
 import { useAppStore REDACTED from '@/stores'
 import { useAdminSettingsStore REDACTED from '@/stores/adminSettings'
 import {
@@ -4085,14 +4085,10 @@ const cancelRateLimitModeOptions = computed(() => [
   { value: 'fixed', label: t('admin.settings.payment.cancelRateLimitWindowModeFixed') REDACTED,
 ])
 
-const paymentErrorMap = computed(() => ({
-  PENDING_ORDERS: t('payment.errors.PENDING_ORDERS'),
-REDACTED))
-
 async function loadProviders() {
   providersLoading.value = true
   try { const res = await adminAPI.payment.getProviders(); providers.value = res.data || [] REDACTED
-  catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) REDACTED
+  catch (err: unknown) { appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error'))) REDACTED
   finally { providersLoading.value = false REDACTED
 REDACTED
 
@@ -4122,7 +4118,7 @@ async function handleSaveProvider(payload: Partial<ProviderInstance>) {
     // Auto-save settings so provider changes take effect immediately
     await saveSettings()
   REDACTED catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('common.error'), paymentErrorMap.value))
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
   REDACTED finally {
     providerSaving.value = false
   REDACTED
@@ -4148,7 +4144,7 @@ async function handleToggleField(provider: ProviderInstance, field: 'enabled' | 
     REDACTED else {
       provider.allow_user_refund = newValue
     REDACTED
-  REDACTED catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'), paymentErrorMap.value)) REDACTED
+  REDACTED catch (err: unknown) { appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error'))) REDACTED
 REDACTED
 
 async function handleToggleType(provider: ProviderInstance, type: string) {
@@ -4158,7 +4154,7 @@ async function handleToggleType(provider: ProviderInstance, type: string) {
   try {
     await adminAPI.payment.updateProvider(provider.id, { supported_types: updated REDACTED as any)
     provider.supported_types = updated
-  REDACTED catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'), paymentErrorMap.value)) REDACTED
+  REDACTED catch (err: unknown) { appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error'))) REDACTED
 REDACTED
 
 function confirmDeleteProvider(provider: ProviderInstance) {
@@ -4177,7 +4173,7 @@ async function handleReorderProviders(updates: { id: number; sort_order: number 
       if (p) p.sort_order = u.sort_order
     REDACTED
   REDACTED catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
     loadProviders()
   REDACTED
 REDACTED
@@ -4189,7 +4185,7 @@ async function handleDeleteProvider() {
     appStore.showSuccess(t('common.deleted'))
     showDeleteProviderDialog.value = false
     loadProviders()
-  REDACTED catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'), paymentErrorMap.value)) REDACTED
+  REDACTED catch (err: unknown) { appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error'))) REDACTED
 REDACTED
 
 onMounted(() => {

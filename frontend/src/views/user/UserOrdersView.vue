@@ -86,7 +86,7 @@ import { useI18n REDACTED from 'vue-i18n'
 import { useRouter REDACTED from 'vue-router'
 import { useAppStore REDACTED from '@/stores'
 import { paymentAPI REDACTED from '@/api/payment'
-import { extractApiErrorMessage REDACTED from '@/utils/apiError'
+import { extractI18nErrorMessage REDACTED from '@/utils/apiError'
 import type { PaymentOrder REDACTED from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
@@ -128,7 +128,7 @@ async function fetchOrders() {
     orders.value = res.data.items || []
     pagination.total = res.data.total || 0
   REDACTED catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
   REDACTED finally {
     loading.value = false
   REDACTED
@@ -148,7 +148,7 @@ async function confirmCancel() {
     cancelTargetId.value = null
     await fetchOrders()
   REDACTED catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
   REDACTED finally {
     actionLoading.value = false
   REDACTED
@@ -166,7 +166,7 @@ async function confirmRefund() {
     refundReason.value = ''
     await fetchOrders()
   REDACTED catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
   REDACTED finally {
     actionLoading.value = false
   REDACTED

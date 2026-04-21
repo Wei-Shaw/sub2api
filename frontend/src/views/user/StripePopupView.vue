@@ -56,7 +56,7 @@
 import { computed, ref, onMounted, onUnmounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useRoute REDACTED from 'vue-router'
-import { extractApiErrorMessage REDACTED from '@/utils/apiError'
+import { extractI18nErrorMessage REDACTED from '@/utils/apiError'
 import { isMobileDevice REDACTED from '@/utils/device'
 
 interface StripeWithWechatPay {
@@ -143,7 +143,7 @@ async function initStripe(clientSecret: string, publishableKey: string) {
       REDACTED
     REDACTED
   REDACTED catch (err: unknown) {
-    error.value = extractApiErrorMessage(err, t('payment.stripeLoadFailed'))
+    error.value = extractI18nErrorMessage(err, t, 'payment.errors', t('payment.stripeLoadFailed'))
   REDACTED
 REDACTED
 

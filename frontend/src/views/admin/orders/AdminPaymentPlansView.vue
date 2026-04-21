@@ -78,7 +78,7 @@ import { ref, computed, onMounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { adminPaymentAPI REDACTED from '@/api/admin/payment'
-import { extractApiErrorMessage REDACTED from '@/utils/apiError'
+import { extractI18nErrorMessage REDACTED from '@/utils/apiError'
 import adminAPI from '@/api/admin'
 import type { SubscriptionPlan REDACTED from '@/types/payment'
 import type { AdminGroup REDACTED from '@/types'
@@ -150,7 +150,7 @@ async function loadPlans() {
         : (p.features || []),
     REDACTED))
   REDACTED
-  catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) REDACTED
+  catch (err: unknown) { appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error'))) REDACTED
   finally { plansLoading.value = false REDACTED
 REDACTED
 
@@ -166,7 +166,7 @@ async function toggleForSale(plan: SubscriptionPlan) {
     await adminPaymentAPI.updatePlan(plan.id, { for_sale: !plan.for_sale REDACTED)
     plan.for_sale = !plan.for_sale
   REDACTED catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
   REDACTED
 REDACTED
 
@@ -174,7 +174,7 @@ function confirmDeletePlan(plan: SubscriptionPlan) { deletingPlanId.value = plan
 async function handleDeletePlan() {
   if (!deletingPlanId.value) return
   try { await adminPaymentAPI.deletePlan(deletingPlanId.value); appStore.showSuccess(t('common.deleted')); showDeletePlanDialog.value = false; loadPlans() REDACTED
-  catch (err: unknown) { appStore.showError(extractApiErrorMessage(err, t('common.error'))) REDACTED
+  catch (err: unknown) { appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error'))) REDACTED
 REDACTED
 
 // ==================== Lifecycle ====================
