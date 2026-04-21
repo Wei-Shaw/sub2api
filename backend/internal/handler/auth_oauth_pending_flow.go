@@ -1350,10 +1350,24 @@ REDACTED
 		return
 REDACTED
 	if !adoptionDecision.hasDecision() {
-		response.Success(c, payload)
-		return
+		adoptionRequired, _ := payload["adoption_required"].(bool)
+		if adoptionRequired {
+			response.Success(c, payload)
+			return
+	REDACTED
 REDACTED
-	decision, err := h.upsertPendingOAuthAdoptionDecision(c, session.ID, adoptionDecision)
+
+	decisionReq := adoptionDecision
+	if !decisionReq.hasDecision() {
+		adoptDisplayName := false
+		adoptAvatar := false
+		decisionReq = oauthAdoptionDecisionRequest{
+			AdoptDisplayName: &adoptDisplayName,
+			AdoptAvatar:      &adoptAvatar,
+	REDACTED
+REDACTED
+
+	decision, err := h.ensurePendingOAuthAdoptionDecision(c, session.ID, decisionReq)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

@@ -219,7 +219,6 @@ onMounted(async () => {
   const routeOrderId = Number(route.query.order_id) || 0
   const outTradeNo = String(route.query.out_trade_no || '')
   let orderId = 0
-  let canUseLegacyPublicVerify = false
 
   if (resumeToken && typeof window !== 'undefined') {
     const restored = readPaymentRecoverySnapshot(
@@ -264,22 +263,11 @@ onMounted(async () => {
   const hasLegacyFallbackContext = typeof route.query.trade_status === 'string'
     && route.query.trade_status.trim() !== ''
   if (!order.value && !resumeToken && !orderId && outTradeNo && hasLegacyFallbackContext) {
-    canUseLegacyPublicVerify = true
     returnInfo.value = {
       outTradeNo,
       money: String(route.query.money || ''),
       type: String(route.query.type || ''),
       tradeStatus: String(route.query.trade_status || ''),
-    REDACTED
-
-    try {
-      const result = await paymentAPI.verifyOrderPublic(outTradeNo)
-      order.value = result.data
-    REDACTED catch (_err: unknown) {
-      try {
-        const result = await paymentAPI.verifyOrder(outTradeNo)
-        order.value = result.data
-      REDACTED catch (_e: unknown) { /* fall through */ REDACTED
     REDACTED
   REDACTED
 
@@ -290,20 +278,6 @@ onMounted(async () => {
 
     if (orderId) {
       return await paymentStore.pollOrderStatus(orderId)
-    REDACTED
-
-    if (canUseLegacyPublicVerify && outTradeNo) {
-      try {
-        const result = await paymentAPI.verifyOrderPublic(outTradeNo)
-        return result.data
-      REDACTED catch (_err: unknown) {
-        try {
-          const result = await paymentAPI.verifyOrder(outTradeNo)
-          return result.data
-        REDACTED catch (_e: unknown) {
-          return null
-        REDACTED
-      REDACTED
     REDACTED
 
     return null
