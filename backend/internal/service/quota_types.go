@@ -206,12 +206,28 @@ type QuotaUserWriter interface {
 	UpdateUsageLimit(ctx context.Context, userID int64, enabled *bool, dailyUsageLimitUSD *float64) error
 }
 
-// ---- QuotaService 接口 ----
+// ---- QuotaService 接口（ISP 拆分）----
+//
+// 按 CLAUDE.md §7「接口隔离原则」拆为两个接口：
+//   - QuotaChecker：gateway 热路径（checkQuotaEligibility / processQuotaUsageTask）
+//     只需 Resolve + MatchRule 两个方法。BillingCacheService 只依赖 QuotaChecker，
+//     测试 mock 从 10 个方法缩减到 2 个。
+//   - QuotaAdminService：admin handler 需要完整 CRUD + 用户配额视图；
+//     嵌入 QuotaChecker 以便单点注入同一实现。
+//
+// 过渡期：QuotaService 作为 QuotaAdminService 的别名保留，减少上游/测试改动面。
+// 新代码请按实际依赖面选择更窄的接口。
 
-// QuotaService 用户每日配额限制服务
-type QuotaService interface {
+// QuotaChecker 配额热路径接口（只读 + 规则匹配）。gateway 注入此接口避免依赖膨胀。
+type QuotaChecker interface {
 	Resolve(ctx context.Context, userID int64) (*ResolvedQuota, error)
 	MatchRule(resolved *ResolvedQuota, groupID int64) *QuotaRule
+}
+
+// QuotaAdminService admin 管理面接口：规则 CRUD + 用户配额视图 + 今日用量。
+// 嵌入 QuotaChecker 提供 Resolve / MatchRule（单一实现同时满足 admin 与热路径）。
+type QuotaAdminService interface {
+	QuotaChecker
 	GetUserQuota(ctx context.Context, userID int64) (*UserQuotaView, error)
 	UpdateUserQuota(ctx context.Context, userID int64, req UpdateUserQuotaRequest) error
 	ListRules(ctx context.Context, userID int64) ([]*QuotaRule, error)
@@ -223,3 +239,7 @@ type QuotaService interface {
 	ReplaceUserRules(ctx context.Context, userID int64, rules []CreateRuleRequest) ([]*QuotaRule, error)
 	GetTodayUsage(ctx context.Context, userID int64, resolved *ResolvedQuota) (*QuotaUsageSnapshot, error)
 }
+
+// QuotaService 历史别名，等同于 QuotaAdminService。新代码按实际需要选 QuotaChecker
+// 或 QuotaAdminService；保留该名以避免上游 PR 分支的广泛改动。
+type QuotaService = QuotaAdminService

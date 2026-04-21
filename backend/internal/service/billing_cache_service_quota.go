@@ -15,10 +15,14 @@ import (
 // 集中一处避免各方法重复写字符串字面量，便于未来调整日志分类。
 const quotaLogComponent = "service.quota"
 
-// quotaServiceBox 包装 QuotaService 接口以便配合 atomic.Pointer 使用。
+// quotaServiceBox 包装 QuotaChecker 接口以便配合 atomic.Pointer 使用。
 // Go 的 atomic.Pointer 需要具名指针类型；接口类型不能直接存入，
 // 因此用 struct 包一层，Store 时传 *quotaServiceBox，Load 返回 *quotaServiceBox。
-type quotaServiceBox struct{ svc QuotaService }
+//
+// 热路径（checkQuotaEligibility / processQuotaUsageTask）只需 Resolve + MatchRule，
+// 所以这里持有的是窄接口 QuotaChecker（ISP）。SetQuotaService 的入参是完整
+// QuotaAdminService（= QuotaService），但会隐式降级为 QuotaChecker 存入 box。
+type quotaServiceBox struct{ svc QuotaChecker }
 
 // SetQuotaService 注入 QuotaService（仅在服务启动期调用一次，线程安全）。
 // 契约见 docs/DAILY_QUOTA_CONTRACT.md §6：BillingCacheService 依赖 QuotaService。
@@ -28,6 +32,10 @@ type quotaServiceBox struct{ svc QuotaService }
 // 需要破除环，成本较高，目前选择 init-time setter + 原子读写保证 race detector 清洁。
 //
 // 防御：传 nil 直接忽略，避免误传把已注入的服务静默清空导致热路径全放行。
+//
+// 参数类型保留为 QuotaService（= QuotaAdminService）而非 QuotaChecker：现有装配
+// （wire.go / 测试 newQuotaBillingCacheService）都传完整实现，保留上层入参宽泛化
+// 可避免调用方重复类型断言。存入 box 时隐式降级为 QuotaChecker 窄接口。
 func (s *BillingCacheService) SetQuotaService(qs QuotaService) {
 	if qs == nil {
 		return
@@ -35,10 +43,10 @@ func (s *BillingCacheService) SetQuotaService(qs QuotaService) {
 	s.quotaServicePtr.Store(&quotaServiceBox{svc: qs})
 }
 
-// quotaService 读取当前注入的 QuotaService；未注入时返回 nil。
+// quotaService 读取当前注入的 QuotaChecker；未注入时返回 nil。
 // 所有热路径（checkQuotaEligibility / processQuotaUsageTask / QueueIncrQuotaUsage）
 // 都走这个 getter，避免直接访问 atomic.Pointer 字段。
-func (s *BillingCacheService) quotaService() QuotaService {
+func (s *BillingCacheService) quotaService() QuotaChecker {
 	box := s.quotaServicePtr.Load()
 	if box == nil {
 		return nil

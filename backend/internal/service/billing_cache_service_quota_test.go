@@ -42,6 +42,9 @@ func (q *quotaCacheStub) GetQuotaUsedRule(_ context.Context, _, ruleID int64, _ 
 }
 
 // quotaServiceFake 用于 checkQuotaEligibility 测试：直接返回预置 ResolvedQuota
+//
+// ISP 拆分后（R5）：BillingCacheService.checkQuotaEligibility 只依赖 QuotaChecker
+// 的 Resolve + MatchRule 两个方法，这里只需实现这两个即可，不再需要 stub admin CRUD。
 type quotaServiceFake struct {
 	resolved *ResolvedQuota
 	err      error
@@ -63,31 +66,37 @@ func (f *quotaServiceFake) MatchRule(r *ResolvedQuota, groupID int64) *QuotaRule
 	}
 	return nil
 }
-func (f *quotaServiceFake) GetUserQuota(context.Context, int64) (*UserQuotaView, error) {
+
+// quotaCheckerToAdmin 把只实现 QuotaChecker 的 fake 适配为 QuotaAdminService，
+// 仅为兼容 SetQuotaService(QuotaService) 的入参类型。测试只触达 Resolve / MatchRule，
+// 其它 admin 方法返回零值即可。
+type quotaCheckerToAdmin struct{ QuotaChecker }
+
+func (quotaCheckerToAdmin) GetUserQuota(context.Context, int64) (*UserQuotaView, error) {
 	return nil, nil
 }
-func (f *quotaServiceFake) UpdateUserQuota(context.Context, int64, UpdateUserQuotaRequest) error {
+func (quotaCheckerToAdmin) UpdateUserQuota(context.Context, int64, UpdateUserQuotaRequest) error {
 	return nil
 }
-func (f *quotaServiceFake) ListRules(context.Context, int64) ([]*QuotaRule, error) { return nil, nil }
-func (f *quotaServiceFake) CreateRule(context.Context, int64, CreateRuleRequest) (*QuotaRule, error) {
+func (quotaCheckerToAdmin) ListRules(context.Context, int64) ([]*QuotaRule, error) { return nil, nil }
+func (quotaCheckerToAdmin) CreateRule(context.Context, int64, CreateRuleRequest) (*QuotaRule, error) {
 	return nil, nil
 }
-func (f *quotaServiceFake) UpdateRule(context.Context, int64, int64, UpdateRuleRequest) (*QuotaRule, error) {
+func (quotaCheckerToAdmin) UpdateRule(context.Context, int64, int64, UpdateRuleRequest) (*QuotaRule, error) {
 	return nil, nil
 }
-func (f *quotaServiceFake) DeleteRule(context.Context, int64, int64) error { return nil }
-func (f *quotaServiceFake) ReplaceUserRules(context.Context, int64, []CreateRuleRequest) ([]*QuotaRule, error) {
+func (quotaCheckerToAdmin) DeleteRule(context.Context, int64, int64) error { return nil }
+func (quotaCheckerToAdmin) ReplaceUserRules(context.Context, int64, []CreateRuleRequest) ([]*QuotaRule, error) {
 	return nil, nil
 }
-func (f *quotaServiceFake) GetTodayUsage(context.Context, int64, *ResolvedQuota) (*QuotaUsageSnapshot, error) {
+func (quotaCheckerToAdmin) GetTodayUsage(context.Context, int64, *ResolvedQuota) (*QuotaUsageSnapshot, error) {
 	return nil, nil
 }
 
-func newQuotaBillingCacheService(t *testing.T, cache BillingCache, qs QuotaService) *BillingCacheService {
+func newQuotaBillingCacheService(t *testing.T, cache BillingCache, qs QuotaChecker) *BillingCacheService {
 	t.Helper()
 	svc := NewBillingCacheService(cache, nil, nil, nil, &config.Config{})
-	svc.SetQuotaService(qs)
+	svc.SetQuotaService(quotaCheckerToAdmin{QuotaChecker: qs})
 	t.Cleanup(svc.Stop)
 	return svc
 }
