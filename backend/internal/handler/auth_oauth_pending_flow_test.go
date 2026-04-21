@@ -2735,6 +2735,10 @@ REDACTED
 	return records, nil
 REDACTED
 
+func (r *oauthPendingFlowUserRepo) UnbindUserAuthProvider(context.Context, int64, string) error {
+	panic("unexpected UnbindUserAuthProvider call")
+REDACTED
+
 func (r *oauthPendingFlowUserRepo) UpdateTotpSecret(ctx context.Context, userID int64, encryptedSecret *string) error {
 	update := r.client.User.UpdateOneID(userID)
 	if encryptedSecret == nil {

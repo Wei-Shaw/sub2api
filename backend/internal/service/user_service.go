@@ -29,15 +29,19 @@ import (
 )
 
 var (
-	ErrUserNotFound            = infraerrors.NotFound("USER_NOT_FOUND", "user not found")
-	ErrPasswordIncorrect       = infraerrors.BadRequest("PASSWORD_INCORRECT", "current password is incorrect")
-	ErrInsufficientPerms       = infraerrors.Forbidden("INSUFFICIENT_PERMISSIONS", "insufficient permissions")
-	ErrNotifyCodeUserRateLimit = infraerrors.TooManyRequests("NOTIFY_CODE_USER_RATE_LIMIT", "too many verification codes requested, please try again later")
-	ErrAvatarInvalid           = infraerrors.BadRequest("AVATAR_INVALID", "avatar must be a valid image data URL or http(s) URL")
-	ErrAvatarTooLarge          = infraerrors.BadRequest("AVATAR_TOO_LARGE", "avatar image must be 100KB or smaller")
-	ErrAvatarNotImage          = infraerrors.BadRequest("AVATAR_NOT_IMAGE", "avatar content must be an image")
-	ErrIdentityProviderInvalid = infraerrors.BadRequest("IDENTITY_PROVIDER_INVALID", "identity provider is invalid")
-	ErrIdentityRedirectInvalid = infraerrors.BadRequest("IDENTITY_REDIRECT_INVALID", "identity redirect path is invalid")
+	ErrUserNotFound             = infraerrors.NotFound("USER_NOT_FOUND", "user not found")
+	ErrPasswordIncorrect        = infraerrors.BadRequest("PASSWORD_INCORRECT", "current password is incorrect")
+	ErrInsufficientPerms        = infraerrors.Forbidden("INSUFFICIENT_PERMISSIONS", "insufficient permissions")
+	ErrNotifyCodeUserRateLimit  = infraerrors.TooManyRequests("NOTIFY_CODE_USER_RATE_LIMIT", "too many verification codes requested, please try again later")
+	ErrAvatarInvalid            = infraerrors.BadRequest("AVATAR_INVALID", "avatar must be a valid image data URL or http(s) URL")
+	ErrAvatarTooLarge           = infraerrors.BadRequest("AVATAR_TOO_LARGE", "avatar image must be 100KB or smaller")
+	ErrAvatarNotImage           = infraerrors.BadRequest("AVATAR_NOT_IMAGE", "avatar content must be an image")
+	ErrIdentityProviderInvalid  = infraerrors.BadRequest("IDENTITY_PROVIDER_INVALID", "identity provider is invalid")
+	ErrIdentityRedirectInvalid  = infraerrors.BadRequest("IDENTITY_REDIRECT_INVALID", "identity redirect path is invalid")
+	ErrIdentityUnbindLastMethod = infraerrors.Conflict(
+		"IDENTITY_UNBIND_LAST_METHOD",
+		"bind another sign-in method before unbinding this provider",
+	)
 )
 
 const (
@@ -99,6 +103,7 @@ type UserRepository interface {
 	// RemoveGroupFromUserAllowedGroups 移除单个用户的指定分组权限
 	RemoveGroupFromUserAllowedGroups(ctx context.Context, userID int64, groupID int64) error
 	ListUserAuthIdentities(ctx context.Context, userID int64) ([]UserAuthIdentityRecord, error)
+	UnbindUserAuthProvider(ctx context.Context, userID int64, provider string) error
 
 	// TOTP 双因素认证
 	UpdateTotpSecret(ctx context.Context, userID int64, encryptedSecret *string) error
@@ -249,9 +254,9 @@ REDACTED
 
 	return UserIdentitySummarySet{
 		Email:   s.buildEmailIdentitySummary(user, records),
-		LinuxDo: s.buildProviderIdentitySummary("linuxdo", records),
-		OIDC:    s.buildProviderIdentitySummary("oidc", records),
-		WeChat:  s.buildProviderIdentitySummary("wechat", records),
+		LinuxDo: s.buildProviderIdentitySummary("linuxdo", user, records),
+		OIDC:    s.buildProviderIdentitySummary("oidc", user, records),
+		WeChat:  s.buildProviderIdentitySummary("wechat", user, records),
 REDACTED, nil
 REDACTED
 
@@ -272,6 +277,42 @@ REDACTED
 		Method:             "GET",
 		UseBrowserRedirect: true,
 REDACTED, nil
+REDACTED
+
+func (s *UserService) UnbindUserAuthProvider(ctx context.Context, userID int64, provider string) (*User, error) {
+	provider = normalizeUserIdentityProvider(provider)
+	if provider == "" || provider == "email" {
+		return nil, ErrIdentityProviderInvalid
+REDACTED
+
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+REDACTED
+
+	records, err := s.listUserAuthIdentities(ctx, userID)
+	if err != nil {
+		return nil, err
+REDACTED
+	if len(filterUserAuthIdentities(records, provider)) == 0 {
+		return user, nil
+REDACTED
+	if !s.canUnbindProvider(provider, user, records) {
+		return nil, ErrIdentityUnbindLastMethod
+REDACTED
+
+	if err := s.userRepo.UnbindUserAuthProvider(ctx, userID, provider); err != nil {
+		return nil, err
+REDACTED
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
+REDACTED
+
+	updatedUser, err := s.GetProfile(ctx, userID)
+	if err != nil {
+		return nil, err
+REDACTED
+	return updatedUser, nil
 REDACTED
 
 // UpdateProfile 更新用户资料
@@ -552,7 +593,7 @@ REDACTED
 	return summary
 REDACTED
 
-func (s *UserService) buildProviderIdentitySummary(provider string, records []UserAuthIdentityRecord) UserIdentitySummary {
+func (s *UserService) buildProviderIdentitySummary(provider string, user *User, records []UserAuthIdentityRecord) UserIdentitySummary {
 	summary := UserIdentitySummary{
 		Provider:  provider,
 		CanUnbind: false,
@@ -574,8 +615,34 @@ REDACTED
 	summary.SubjectHint = maskOpaqueIdentity(primary.ProviderSubject)
 	summary.ProviderKey = strings.TrimSpace(primary.ProviderKey)
 	summary.VerifiedAt = primary.VerifiedAt
-	summary.Note = "Unbind is not available yet."
+	summary.CanUnbind = s.canUnbindProvider(provider, user, records)
+	if summary.CanUnbind {
+		summary.Note = "You can unbind this sign-in method."
+REDACTED else {
+		summary.Note = "Bind another sign-in method before unbinding."
+REDACTED
 	return summary
+REDACTED
+
+func (s *UserService) canUnbindProvider(provider string, user *User, records []UserAuthIdentityRecord) bool {
+	if provider == "" || provider == "email" || len(filterUserAuthIdentities(records, provider)) == 0 {
+		return false
+REDACTED
+
+	if s.buildEmailIdentitySummary(user, records).Bound {
+		return true
+REDACTED
+
+	for _, candidate := range []string{"linuxdo", "oidc", "wechat"REDACTED {
+		if candidate == provider {
+			continue
+	REDACTED
+		if len(filterUserAuthIdentities(records, candidate)) > 0 {
+			return true
+	REDACTED
+REDACTED
+
+	return false
 REDACTED
 
 func (s *UserService) listUserAuthIdentities(ctx context.Context, userID int64) ([]UserAuthIdentityRecord, error) {

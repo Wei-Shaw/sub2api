@@ -249,6 +249,48 @@ REDACTED
 	return records, nil
 REDACTED
 
+func (r *userRepository) UnbindUserAuthProvider(ctx context.Context, userID int64, provider string) error {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if provider == "" || provider == "email" {
+		return service.ErrIdentityProviderInvalid
+REDACTED
+
+	return r.WithUserProfileIdentityTx(ctx, func(txCtx context.Context) error {
+		client := clientFromContext(txCtx, r.client)
+		identityIDs, err := client.AuthIdentity.Query().
+			Where(
+				authidentity.UserIDEQ(userID),
+				authidentity.ProviderTypeEQ(provider),
+			).
+			IDs(txCtx)
+		if err != nil {
+			return err
+	REDACTED
+		if len(identityIDs) == 0 {
+			return nil
+	REDACTED
+
+		if _, err := client.IdentityAdoptionDecision.Update().
+			Where(identityadoptiondecision.IdentityIDIn(identityIDs...)).
+			ClearIdentityID().
+			Save(txCtx); err != nil {
+			return err
+	REDACTED
+		if _, err := client.AuthIdentityChannel.Delete().
+			Where(authidentitychannel.IdentityIDIn(identityIDs...)).
+			Exec(txCtx); err != nil {
+			return err
+	REDACTED
+		_, err = client.AuthIdentity.Delete().
+			Where(
+				authidentity.UserIDEQ(userID),
+				authidentity.ProviderTypeEQ(provider),
+			).
+			Exec(txCtx)
+		return err
+REDACTED)
+REDACTED
+
 func (r *userRepository) BindAuthIdentityToUser(ctx context.Context, input BindAuthIdentityInput) (*CreateAuthIdentityResult, error) {
 	if err := validateAuthIdentityChannelProviderMatch(input.Canonical, input.Channel); err != nil {
 		return nil, err

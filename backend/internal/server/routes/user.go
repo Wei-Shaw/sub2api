@@ -27,6 +27,7 @@ func RegisterUserRoutes(
 			user.PUT("", h.User.UpdateProfile)
 			user.POST("/account-bindings/email/send-code", h.User.SendEmailBindingCode)
 			user.POST("/account-bindings/email", h.User.BindEmailIdentity)
+			user.DELETE("/account-bindings/:provider", h.User.UnbindIdentity)
 			user.POST("/auth-identities/bind/start", h.User.StartIdentityBinding)
 
 			// 通知邮箱管理

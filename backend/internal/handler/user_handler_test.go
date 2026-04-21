@@ -22,6 +22,7 @@ import (
 type userHandlerRepoStub struct {
 	user       *service.User
 	identities []service.UserAuthIdentityRecord
+	unbound    []string
 REDACTED
 
 func (s *userHandlerRepoStub) Create(context.Context, *service.User) error { return nil REDACTED
@@ -115,6 +116,18 @@ func (s *userHandlerRepoStub) ListUserAuthIdentities(context.Context, int64) ([]
 	out := make([]service.UserAuthIdentityRecord, len(s.identities))
 	copy(out, s.identities)
 	return out, nil
+REDACTED
+func (s *userHandlerRepoStub) UnbindUserAuthProvider(_ context.Context, _ int64, provider string) error {
+	s.unbound = append(s.unbound, provider)
+	filtered := s.identities[:0]
+	for _, identity := range s.identities {
+		if identity.ProviderType == provider {
+			continue
+	REDACTED
+		filtered = append(filtered, identity)
+REDACTED
+	s.identities = append([]service.UserAuthIdentityRecord(nil), filtered...)
+	return nil
 REDACTED
 
 func TestUserHandlerUpdateProfileReturnsAvatarURL(t *testing.T) {
@@ -426,6 +439,60 @@ REDACTED
 	require.Equal(t, 0, resp.Code)
 	require.Equal(t, "new@example.com", resp.Data.Email)
 	require.True(t, resp.Data.EmailBound)
+REDACTED
+
+func TestUserHandlerUnbindIdentityReturnsUpdatedProfile(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := &userHandlerRepoStub{
+		user: &service.User{
+			ID:       21,
+			Email:    "identity@example.com",
+			Username: "identity-user",
+			Role:     service.RoleUser,
+			Status:   service.StatusActive,
+	REDACTED,
+		identities: []service.UserAuthIdentityRecord{
+			{
+				ProviderType:    "email",
+				ProviderKey:     "email",
+				ProviderSubject: "identity@example.com",
+		REDACTED,
+			{
+				ProviderType:    "linuxdo",
+				ProviderKey:     "linuxdo",
+				ProviderSubject: "linuxdo-subject-21",
+				Metadata: map[string]any{
+					"username": "linuxdo-handle",
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), nil, nil, nil)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodDelete, "/api/v1/user/account-bindings/linuxdo", nil)
+	c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 21REDACTED)
+	c.Params = gin.Params{{Key: "provider", Value: "linuxdo"REDACTEDREDACTED
+
+	handler.UnbindIdentity(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, []string{"linuxdo"REDACTED, repo.unbound)
+
+	var resp struct {
+		Code int            `json:"code"`
+		Data map[string]any `json:"data"`
+REDACTED
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+
+	authBindings, ok := resp.Data["auth_bindings"].(map[string]any)
+	require.True(t, ok)
+	linuxdoBinding, ok := authBindings["linuxdo"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, false, linuxdoBinding["bound"])
 REDACTED
 
 func TestUserHandlerBindEmailIdentityRejectsWrongCurrentPasswordForBoundEmail(t *testing.T) {

@@ -941,6 +941,10 @@ func (r *stubUserRepo) ListUserAuthIdentities(ctx context.Context, userID int64)
 	return nil, errors.New("not implemented")
 REDACTED
 
+func (r *stubUserRepo) UnbindUserAuthProvider(context.Context, int64, string) error {
+	return errors.New("not implemented")
+REDACTED
+
 func (r *stubUserRepo) GetLatestUsedAtByUserIDs(ctx context.Context, userIDs []int64) (map[int64]*time.Time, error) {
 	return map[int64]*time.Time{REDACTED, nil
 REDACTED
