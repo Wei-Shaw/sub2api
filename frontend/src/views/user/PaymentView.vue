@@ -627,7 +627,6 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     if (options.wechatResumeToken) {
       payload.wechat_resume_token = options.wechatResumeToken
     REDACTED
-    payload.is_mobile = isMobileDevice()
 
     const result = await paymentStore.createOrder(payload) as CreateOrderResult & { resume_token?: string REDACTED
     const openWindow = (url: string) => {
@@ -653,6 +652,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       visibleMethod,
       orderType,
       isMobile: isMobileDevice(),
+      isWechatBrowser: typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
       stripePopupUrl: stripeRouteUrl,
       stripeRouteUrl,
     REDACTED)
