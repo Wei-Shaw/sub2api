@@ -19,6 +19,10 @@ export const QUOTA_ERR_RULE_OVERLAP = 'QUOTA_RULE_GROUPS_OVERLAP'
 export const QUOTA_ERR_RULE_SUBSCRIPTION = 'QUOTA_RULE_GROUP_SUBSCRIPTION'
 export const QUOTA_ERR_RULE_GROUP_NOT_FOUND = 'QUOTA_RULE_GROUP_NOT_FOUND'
 export const QUOTA_ERR_RULE_NOT_FOUND = 'QUOTA_RULE_NOT_FOUND'
+// Admin handler 层的结构化 400（params/JSON binding），对应 quota_handler.go 顶部常量
+export const QUOTA_ERR_INVALID_USER_ID = 'QUOTA_INVALID_USER_ID'
+export const QUOTA_ERR_INVALID_RULE_ID = 'QUOTA_INVALID_RULE_ID'
+export const QUOTA_ERR_INVALID_REQUEST = 'QUOTA_INVALID_REQUEST'
 
 // ---- metadata scope 值 ----
 export const QUOTA_SCOPE_TOTAL = 'total'

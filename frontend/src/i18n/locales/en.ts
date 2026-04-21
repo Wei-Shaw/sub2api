@@ -6137,6 +6137,9 @@ export default {
       QUOTA_RULE_GROUP_SUBSCRIPTION: 'Subscription groups cannot be used in quota rules',
       QUOTA_RULE_GROUP_NOT_FOUND: 'One of the referenced groups does not exist',
       QUOTA_RULE_NOT_FOUND: 'Quota rule not found',
+      QUOTA_INVALID_USER_ID: 'Invalid user ID',
+      QUOTA_INVALID_RULE_ID: 'Invalid rule ID',
+      QUOTA_INVALID_REQUEST: 'Invalid request payload',
     },
   },
 

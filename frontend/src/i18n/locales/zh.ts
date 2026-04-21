@@ -6330,6 +6330,9 @@ export default {
       QUOTA_RULE_GROUP_SUBSCRIPTION: '订阅分组不能加入配额规则',
       QUOTA_RULE_GROUP_NOT_FOUND: '规则引用的分组不存在',
       QUOTA_RULE_NOT_FOUND: '配额规则不存在',
+      QUOTA_INVALID_USER_ID: '用户 ID 无效',
+      QUOTA_INVALID_RULE_ID: '规则 ID 无效',
+      QUOTA_INVALID_REQUEST: '请求参数格式错误',
     },
   },
 

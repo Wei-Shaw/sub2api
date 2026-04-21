@@ -110,6 +110,7 @@ import {
   QUOTA_PERIOD_DAILY,
   QUOTA_ERR_RULE_OVERLAP, QUOTA_ERR_RULE_SUBSCRIPTION,
   QUOTA_ERR_RULE_GROUP_NOT_FOUND, QUOTA_ERR_RULE_NOT_FOUND,
+  QUOTA_ERR_INVALID_USER_ID, QUOTA_ERR_INVALID_RULE_ID, QUOTA_ERR_INVALID_REQUEST,
 } from '@/constants/quota'
 import type { AdminUser, AdminGroup } from '@/types'
 import type { UserQuotaView, UpdateUserQuotaRequest, CreateRuleRequest } from '@/types/quota'
@@ -165,6 +166,9 @@ const errorI18nMap = computed<Record<string, string>>(() => ({
   [QUOTA_ERR_RULE_SUBSCRIPTION]: t('userQuota.errors.QUOTA_RULE_GROUP_SUBSCRIPTION'),
   [QUOTA_ERR_RULE_GROUP_NOT_FOUND]: t('userQuota.errors.QUOTA_RULE_GROUP_NOT_FOUND'),
   [QUOTA_ERR_RULE_NOT_FOUND]: t('userQuota.errors.QUOTA_RULE_NOT_FOUND'),
+  [QUOTA_ERR_INVALID_USER_ID]: t('userQuota.errors.QUOTA_INVALID_USER_ID'),
+  [QUOTA_ERR_INVALID_RULE_ID]: t('userQuota.errors.QUOTA_INVALID_RULE_ID'),
+  [QUOTA_ERR_INVALID_REQUEST]: t('userQuota.errors.QUOTA_INVALID_REQUEST'),
 }))
 
 watch(() => props.show, (v) => { if (v && props.user) void load() })
