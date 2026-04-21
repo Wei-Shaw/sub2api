@@ -28,6 +28,11 @@ export function paymentMethodI18nKey(paymentType: string): string {
   return `payment.methods.${normalizePaymentMethodForDisplay(paymentType)REDACTED`
 REDACTED
 
+export function buildPaymentErrorToastMessage(message: string, hint?: string): string {
+  if (!hint) return message
+  return `${messageREDACTED ${hintREDACTED`.trim()
+REDACTED
+
 function defaultWechatHint(context: PaymentScenarioContext): string {
   if (!context.isMobile) return 'payment.errors.wechatScanOnDesktopHint'
   return 'payment.errors.wechatOpenInWeChatHint'
@@ -78,7 +83,10 @@ export function describePaymentScenarioError(
         hintKey: defaultWechatHint(context),
       REDACTED
     REDACTED
-    if (normalizedMessage.includes('weixinjsbridge is unavailable')) {
+    if (
+      normalizedMessage.includes('weixinjsbridge is unavailable') ||
+      normalizedMessage.includes('wechat_jsapi_unavailable')
+    ) {
       return {
         messageKey: 'payment.errors.wechatJsapiUnavailable',
         hintKey: 'payment.errors.wechatOpenInWeChatHint',
