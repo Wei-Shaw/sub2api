@@ -245,6 +245,127 @@ REDACTED
 	require.Nil(t, completion["error"])
 REDACTED
 
+func TestOIDCOAuthCallbackCreatesBindPendingSessionForCompatEmailUser(t *testing.T) {
+	cfg, cleanup := newOIDCTestProvider(t, oidcProviderFixture{
+		Subject:           "oidc-subject-compat",
+		PreferredUsername: "oidc_compat",
+		DisplayName:       "OIDC Compat Display",
+		AvatarURL:         "https://cdn.example/oidc-compat.png",
+		Email:             "legacy@example.com",
+		EmailVerified:     true,
+REDACTED)
+	defer cleanup()
+
+	handler, client := newOIDCOAuthHandlerAndClient(t, false, cfg)
+	defer client.Close()
+
+	ctx := context.Background()
+	existingUser, err := client.User.Create().
+		SetEmail("legacy@example.com").
+		SetUsername("legacy-user").
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/callback?code=oidc-code&state=state-compat", nil)
+	req.AddCookie(encodedCookie(oidcOAuthStateCookieName, "state-compat"))
+	req.AddCookie(encodedCookie(oidcOAuthRedirectCookie, "/dashboard"))
+	req.AddCookie(encodedCookie(oidcOAuthVerifierCookie, "verifier-compat"))
+	req.AddCookie(encodedCookie(oidcOAuthNonceCookie, "nonce-oidc-subject-compat"))
+	req.AddCookie(encodedCookie(oidcOAuthIntentCookieName, oauthIntentLogin))
+	req.AddCookie(encodedCookie(oauthPendingBrowserCookieName, "browser-compat"))
+	c.Request = req
+
+	handler.OIDCOAuthCallback(c)
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	require.Equal(t, "/auth/oidc/callback", recorder.Header().Get("Location"))
+
+	sessionCookie := findCookie(recorder.Result().Cookies(), oauthPendingSessionCookieName)
+	require.NotNil(t, sessionCookie)
+
+	session, err := client.PendingAuthSession.Query().
+		Where(pendingauthsession.SessionTokenEQ(decodeCookieValueForTest(t, sessionCookie.Value))).
+		Only(ctx)
+REDACTED
+	require.Equal(t, "adopt_existing_user_by_email", session.Intent)
+	require.NotNil(t, session.TargetUserID)
+	require.Equal(t, existingUser.ID, *session.TargetUserID)
+	require.Equal(t, existingUser.Email, session.ResolvedEmail)
+	require.Equal(t, "legacy@example.com", session.UpstreamIdentityClaims["compat_email"])
+
+	completion := session.LocalFlowState[oauthCompletionResponseKey].(map[string]any)
+	require.Equal(t, "/dashboard", completion["redirect"])
+	require.Equal(t, "bind_login_required", completion["step"])
+	require.Equal(t, existingUser.Email, completion["email"])
+	_, hasAccessToken := completion["access_token"]
+	require.False(t, hasAccessToken)
+REDACTED
+
+func TestOIDCOAuthCallbackAllowsCompatEmailBindWhenUpstreamEmailIsUnverified(t *testing.T) {
+	cfg, cleanup := newOIDCTestProvider(t, oidcProviderFixture{
+		Subject:           "oidc-subject-unverified-compat",
+		PreferredUsername: "oidc_unverified",
+		DisplayName:       "OIDC Unverified Compat Display",
+		AvatarURL:         "https://cdn.example/oidc-unverified.png",
+		Email:             "owner@example.com",
+		EmailVerified:     false,
+REDACTED)
+	defer cleanup()
+	cfg.RequireEmailVerified = true
+
+	handler, client := newOIDCOAuthHandlerAndClient(t, false, cfg)
+	defer client.Close()
+
+	ctx := context.Background()
+	existingUser, err := client.User.Create().
+		SetEmail("owner@example.com").
+		SetUsername("owner-user").
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/callback?code=oidc-code&state=state-unverified-compat", nil)
+	req.AddCookie(encodedCookie(oidcOAuthStateCookieName, "state-unverified-compat"))
+	req.AddCookie(encodedCookie(oidcOAuthRedirectCookie, "/settings/connections"))
+	req.AddCookie(encodedCookie(oidcOAuthVerifierCookie, "verifier-unverified-compat"))
+	req.AddCookie(encodedCookie(oidcOAuthNonceCookie, "nonce-oidc-subject-unverified-compat"))
+	req.AddCookie(encodedCookie(oidcOAuthIntentCookieName, oauthIntentLogin))
+	req.AddCookie(encodedCookie(oauthPendingBrowserCookieName, "browser-unverified-compat"))
+	c.Request = req
+
+	handler.OIDCOAuthCallback(c)
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	require.Equal(t, "/auth/oidc/callback", recorder.Header().Get("Location"))
+
+	sessionCookie := findCookie(recorder.Result().Cookies(), oauthPendingSessionCookieName)
+	require.NotNil(t, sessionCookie)
+
+	session, err := client.PendingAuthSession.Query().
+		Where(pendingauthsession.SessionTokenEQ(decodeCookieValueForTest(t, sessionCookie.Value))).
+		Only(ctx)
+REDACTED
+	require.Equal(t, "adopt_existing_user_by_email", session.Intent)
+	require.NotNil(t, session.TargetUserID)
+	require.Equal(t, existingUser.ID, *session.TargetUserID)
+	require.Equal(t, existingUser.Email, session.ResolvedEmail)
+	require.Equal(t, "owner@example.com", session.UpstreamIdentityClaims["compat_email"])
+
+	completion := session.LocalFlowState[oauthCompletionResponseKey].(map[string]any)
+	require.Equal(t, "/settings/connections", completion["redirect"])
+	require.Equal(t, "bind_login_required", completion["step"])
+	require.Equal(t, existingUser.Email, completion["email"])
+REDACTED
+
 func TestOIDCOAuthCallbackCreatesInvitationPendingSessionWhenSignupRequiresInvite(t *testing.T) {
 	cfg, cleanup := newOIDCTestProvider(t, oidcProviderFixture{
 		Subject:           "oidc-subject-invite",
