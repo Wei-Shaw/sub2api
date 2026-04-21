@@ -1434,6 +1434,7 @@
                         </label>
                         <input
                           v-model="form.wechat_connect_open_app_id"
+                          data-testid="wechat-connect-open-app-id"
                           type="text"
                           class="input font-mono text-sm"
                           :placeholder="
@@ -1452,6 +1453,7 @@
                         </label>
                         <input
                           v-model="form.wechat_connect_open_app_secret"
+                          data-testid="wechat-connect-open-app-secret"
                           type="password"
                           class="input font-mono text-sm"
                           :placeholder="
@@ -1505,6 +1507,7 @@
                         </label>
                         <input
                           v-model="form.wechat_connect_mp_app_id"
+                          data-testid="wechat-connect-mp-app-id"
                           type="text"
                           class="input font-mono text-sm"
                           :placeholder="
@@ -1528,6 +1531,7 @@
                         </label>
                         <input
                           v-model="form.wechat_connect_mp_app_secret"
+                          data-testid="wechat-connect-mp-app-secret"
                           type="password"
                           class="input font-mono text-sm"
                           :placeholder="
@@ -1581,6 +1585,7 @@
                         </label>
                         <input
                           v-model="form.wechat_connect_mobile_app_id"
+                          data-testid="wechat-connect-mobile-app-id"
                           type="text"
                           class="input font-mono text-sm"
                           :placeholder="
@@ -1599,6 +1604,7 @@
                         </label>
                         <input
                           v-model="form.wechat_connect_mobile_app_secret"
+                          data-testid="wechat-connect-mobile-app-secret"
                           type="password"
                           class="input font-mono text-sm"
                           :placeholder="
@@ -4719,6 +4725,10 @@ const { t, locale REDACTED = useI18n();
 const appStore = useAppStore();
 const adminSettingsStore = useAdminSettingsStore();
 
+function localText(zh: string, en: string): string {
+  return locale.value.startsWith("zh") ? zh : en;
+REDACTED
+
 type SettingsTab =
   | "general"
   | "security"
@@ -5532,6 +5542,39 @@ async function loadSettings() {
       wechatCapabilities.mobileEnabled,
       settings.wechat_connect_mode,
     );
+    const legacyWeChatAppID = String(settings.wechat_connect_app_id || "").trim();
+    const legacyWeChatSecretConfigured = Boolean(
+      settings.wechat_connect_app_secret_configured,
+    );
+    if (!form.wechat_connect_open_app_id && wechatCapabilities.openEnabled) {
+      form.wechat_connect_open_app_id = legacyWeChatAppID;
+    REDACTED
+    if (!form.wechat_connect_mp_app_id && wechatCapabilities.mpEnabled) {
+      form.wechat_connect_mp_app_id = legacyWeChatAppID;
+    REDACTED
+    if (!form.wechat_connect_mobile_app_id && wechatCapabilities.mobileEnabled) {
+      form.wechat_connect_mobile_app_id = legacyWeChatAppID;
+    REDACTED
+    if (
+      !form.wechat_connect_open_app_secret_configured &&
+      wechatCapabilities.openEnabled
+    ) {
+      form.wechat_connect_open_app_secret_configured =
+        legacyWeChatSecretConfigured;
+    REDACTED
+    if (
+      !form.wechat_connect_mp_app_secret_configured &&
+      wechatCapabilities.mpEnabled
+    ) {
+      form.wechat_connect_mp_app_secret_configured = legacyWeChatSecretConfigured;
+    REDACTED
+    if (
+      !form.wechat_connect_mobile_app_secret_configured &&
+      wechatCapabilities.mobileEnabled
+    ) {
+      form.wechat_connect_mobile_app_secret_configured =
+        legacyWeChatSecretConfigured;
+    REDACTED
     form.wechat_connect_scopes = defaultWeChatConnectScopesForMode(
       form.wechat_connect_mode,
     );
@@ -5687,10 +5730,6 @@ async function saveSettings() {
         );
         return;
       REDACTED
-    REDACTED
-
-    if (!validatePaymentVisibleMethodSelections()) {
-      return;
     REDACTED
 
     if (form.wechat_connect_mp_enabled && form.wechat_connect_mobile_enabled) {

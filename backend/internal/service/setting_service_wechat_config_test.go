@@ -70,8 +70,8 @@ REDACTED
 	got, err := svc.GetWeChatConnectOAuthConfig(context.Background())
 REDACTED
 	require.True(t, got.Enabled)
-	require.Equal(t, "wx-db-app", got.AppID)
-	require.Equal(t, "wx-db-secret", got.AppSecret)
+	require.Equal(t, "wx-db-app", got.AppIDForMode("mp"))
+	require.Equal(t, "wx-db-secret", got.AppSecretForMode("mp"))
 	require.True(t, got.OpenEnabled)
 	require.True(t, got.MPEnabled)
 	require.Equal(t, "mp", got.Mode)
