@@ -13,6 +13,12 @@ import (
 //
 // 职责：规则行的 CRUD；业务校验（group_ids 重叠、订阅分组禁止、正数校验等）由
 // quota_service 负责。
+//
+// 错误约定（R3 解耦）：所有"未找到"场景均返回 ent 原生 *dbent.NotFoundError，
+// 不再向上抛 service.Err*，避免 repo→service 反向依赖。Service 层通过
+// dbent.IsNotFound(err) 判断并按调用方法的语义映射到 service.ErrUserNotFound
+// 或 service.ErrQuotaRuleNotFound（因为 ent.NotFoundError 的 label 字段私有，
+// 无法在 service 层区分是哪个实体，所以按 repo 方法的调用语义来映射）。
 type userUsageLimitRuleRepository struct {
 	client *dbent.Client
 }
@@ -37,6 +43,8 @@ func (r *userUsageLimitRuleRepository) ListByUser(ctx context.Context, userID in
 	return out, nil
 }
 
+// GetByIDForUser 未找到时返回 *dbent.NotFoundError（ent.Only 原生行为），
+// service 层用 dbent.IsNotFound(err) 识别后映射为 ErrQuotaRuleNotFound。
 func (r *userUsageLimitRuleRepository) GetByIDForUser(ctx context.Context, userID, ruleID int64) (*service.QuotaRule, error) {
 	row, err := r.client.UserUsageLimitRule.Query().
 		Where(
@@ -45,9 +53,6 @@ func (r *userUsageLimitRuleRepository) GetByIDForUser(ctx context.Context, userI
 		).
 		Only(ctx)
 	if err != nil {
-		if dbent.IsNotFound(err) {
-			return nil, service.ErrQuotaRuleNotFound
-		}
 		return nil, err
 	}
 	return ruleEntityToService(row), nil
@@ -70,6 +75,8 @@ func (r *userUsageLimitRuleRepository) Create(ctx context.Context, userID int64,
 	return ruleEntityToService(row), nil
 }
 
+// Update 未找到时（GetByIDForUser 前置校验失败或 UpdateOneID 未命中）返回 ent 原生
+// NotFoundError，不在 repo 层转译。
 func (r *userUsageLimitRuleRepository) Update(ctx context.Context, userID, ruleID int64, req service.UpdateRuleRequest) (*service.QuotaRule, error) {
 	existing, err := r.GetByIDForUser(ctx, userID, ruleID)
 	if err != nil {
@@ -84,9 +91,6 @@ func (r *userUsageLimitRuleRepository) Update(ctx context.Context, userID, ruleI
 	}
 	row, err := update.Save(ctx)
 	if err != nil {
-		if dbent.IsNotFound(err) {
-			return nil, service.ErrQuotaRuleNotFound
-		}
 		return nil, err
 	}
 	_ = existing // 预留给审计日志；目前仅用于 NotFound 前置校验
@@ -104,6 +108,9 @@ func (r *userUsageLimitRuleRepository) Update(ctx context.Context, userID, ruleI
 // 事务 DELETE + INSERT 序列必须在同一函数内，以保证失败时 defer tx.Rollback() 能
 // 统一回滚。拆出子函数会让事务边界跨函数，不符合"事务是持久化细节，在 repo 层一次性
 // 落地"的原则。
+//
+// user 不存在时 Only() 返回 *dbent.NotFoundError（而非转译为 service.ErrUserNotFound），
+// service 层 dbent.IsNotFound(err) 识别后映射为 ErrUserNotFound。
 func (r *userUsageLimitRuleRepository) ReplaceAll(ctx context.Context, userID int64, rules []service.CreateRuleRequest) ([]*service.QuotaRule, error) {
 	tx, err := r.client.Tx(ctx)
 	if err != nil {
@@ -112,15 +119,12 @@ func (r *userUsageLimitRuleRepository) ReplaceAll(ctx context.Context, userID in
 	defer func() { _ = tx.Rollback() }()
 
 	// 1. 对 users 行加 FOR UPDATE 锁，串行化同一用户的规则变更。
-	exists, err := tx.User.Query().
+	//    用 Only() 代替 Exist()+手工转译：ent 在行不存在时原生返回 *NotFoundError。
+	if _, err := tx.User.Query().
 		Where(user.IDEQ(userID)).
 		ForUpdate().
-		Exist(ctx)
-	if err != nil {
+		Only(ctx); err != nil {
 		return nil, err
-	}
-	if !exists {
-		return nil, service.ErrUserNotFound
 	}
 
 	// 2. 清空旧规则。
@@ -161,20 +165,12 @@ func (r *userUsageLimitRuleRepository) ReplaceAll(ctx context.Context, userID in
 	return inserted, nil
 }
 
+// Delete 利用 ent DeleteOneID + Where(userID) 复合主键约束：行不存在时 ent 在 n==0
+// 的分支自动返回 *NotFoundError。避免手工 `affected == 0` + 自定义 error 分支。
 func (r *userUsageLimitRuleRepository) Delete(ctx context.Context, userID, ruleID int64) error {
-	affected, err := r.client.UserUsageLimitRule.Delete().
-		Where(
-			userusagelimitrule.IDEQ(ruleID),
-			userusagelimitrule.UserIDEQ(userID),
-		).
+	return r.client.UserUsageLimitRule.DeleteOneID(ruleID).
+		Where(userusagelimitrule.UserIDEQ(userID)).
 		Exec(ctx)
-	if err != nil {
-		return err
-	}
-	if affected == 0 {
-		return service.ErrQuotaRuleNotFound
-	}
-	return nil
 }
 
 // ruleEntityToService 转换 ent 行到 service DTO

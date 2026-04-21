@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strconv"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
@@ -224,6 +225,32 @@ func (s *quotaService) UpdateUserQuota(ctx context.Context, userID int64, req Up
 
 // ---- Admin 面：规则 CRUD ----
 
+// mapRuleNotFound 把 repo 层 ent.NotFoundError 映射为 ErrQuotaRuleNotFound。
+// 非 NotFound 错误原样返回。这里不能用 errors.Is(err, service.ErrQuotaRuleNotFound)，
+// 因为 repo 不再抛出该 sentinel（R3 解耦：repo 只返回 ent 原生错误）。
+func mapRuleNotFound(err error) error {
+	if err == nil {
+		return nil
+	}
+	if dbent.IsNotFound(err) {
+		return ErrQuotaRuleNotFound.WithCause(err)
+	}
+	return err
+}
+
+// mapUserNotFound 把 repo 层 ent.NotFoundError 映射为 ErrUserNotFound。
+// 用于 ReplaceAll：事务内只有 user Only() 可能返回 NotFoundError，rule 不存在
+// 不产生 NotFound（走 DELETE 0 行正常路径）。
+func mapUserNotFound(err error) error {
+	if err == nil {
+		return nil
+	}
+	if dbent.IsNotFound(err) {
+		return ErrUserNotFound
+	}
+	return err
+}
+
 func (s *quotaService) ListRules(ctx context.Context, userID int64) ([]*QuotaRule, error) {
 	return s.ruleRepo.ListByUser(ctx, userID)
 }
@@ -248,7 +275,7 @@ func (s *quotaService) CreateRule(ctx context.Context, userID int64, req CreateR
 func (s *quotaService) UpdateRule(ctx context.Context, userID, ruleID int64, req UpdateRuleRequest) (*QuotaRule, error) {
 	existing, err := s.ruleRepo.GetByIDForUser(ctx, userID, ruleID)
 	if err != nil {
-		return nil, err
+		return nil, mapRuleNotFound(err)
 	}
 
 	groupIDs := existing.GroupIDs
@@ -271,7 +298,7 @@ func (s *quotaService) UpdateRule(ctx context.Context, userID, ruleID int64, req
 		DailyLimitUSD: &normalizedLimit,
 	})
 	if err != nil {
-		return nil, err
+		return nil, mapRuleNotFound(err)
 	}
 	s.invalidateQuotaConfig(ctx, userID)
 	return updated, nil
@@ -279,7 +306,7 @@ func (s *quotaService) UpdateRule(ctx context.Context, userID, ruleID int64, req
 
 func (s *quotaService) DeleteRule(ctx context.Context, userID, ruleID int64) error {
 	if err := s.ruleRepo.Delete(ctx, userID, ruleID); err != nil {
-		return err
+		return mapRuleNotFound(err)
 	}
 	s.invalidateQuotaConfig(ctx, userID)
 	return nil
@@ -326,7 +353,9 @@ func (s *quotaService) ReplaceUserRules(ctx context.Context, userID int64, rules
 
 	replaced, err := s.ruleRepo.ReplaceAll(ctx, userID, normalized)
 	if err != nil {
-		return nil, err
+		// ReplaceAll 事务内只有 users.Only() 会产生 NotFound；rule 不存在不会触发
+		// NotFound（DELETE 0 行是正常路径），所以这里 dbent.IsNotFound == user 未找到。
+		return nil, mapUserNotFound(err)
 	}
 	s.invalidateQuotaConfig(ctx, userID)
 	return replaced, nil
