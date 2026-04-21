@@ -36,27 +36,36 @@ REDACTED
 // --- Request / Response ---
 
 type channelMonitorCreateRequest struct {
-	Name            string   `json:"name" binding:"required,max=100"`
-	Provider        string   `json:"provider" binding:"required,oneof=openai anthropic gemini"`
-	Endpoint        string   `json:"endpoint" binding:"required,max=500"`
-	APIKey          string   `json:"api_key" binding:"required,max=2000"`
-	PrimaryModel    string   `json:"primary_model" binding:"required,max=200"`
-	ExtraModels     []string `json:"extra_models"`
-	GroupName       string   `json:"group_name" binding:"max=100"`
-	Enabled         *bool    `json:"enabled"`
-	IntervalSeconds int      `json:"interval_seconds" binding:"required,min=15,max=3600"`
+	Name             string            `json:"name" binding:"required,max=100"`
+	Provider         string            `json:"provider" binding:"required,oneof=openai anthropic gemini"`
+	Endpoint         string            `json:"endpoint" binding:"required,max=500"`
+	APIKey           string            `json:"api_key" binding:"required,max=2000"`
+	PrimaryModel     string            `json:"primary_model" binding:"required,max=200"`
+	ExtraModels      []string          `json:"extra_models"`
+	GroupName        string            `json:"group_name" binding:"max=100"`
+	Enabled          *bool             `json:"enabled"`
+	IntervalSeconds  int               `json:"interval_seconds" binding:"required,min=15,max=3600"`
+	TemplateID       *int64            `json:"template_id"`
+	ExtraHeaders     map[string]string `json:"extra_headers"`
+	BodyOverrideMode string            `json:"body_override_mode" binding:"omitempty,oneof=off merge replace"`
+	BodyOverride     map[string]any    `json:"body_override"`
 REDACTED
 
 type channelMonitorUpdateRequest struct {
-	Name            *string   `json:"name" binding:"omitempty,max=100"`
-	Provider        *string   `json:"provider" binding:"omitempty,oneof=openai anthropic gemini"`
-	Endpoint        *string   `json:"endpoint" binding:"omitempty,max=500"`
-	APIKey          *string   `json:"api_key" binding:"omitempty,max=2000"`
-	PrimaryModel    *string   `json:"primary_model" binding:"omitempty,max=200"`
-	ExtraModels     *[]string `json:"extra_models"`
-	GroupName       *string   `json:"group_name" binding:"omitempty,max=100"`
-	Enabled         *bool     `json:"enabled"`
-	IntervalSeconds *int      `json:"interval_seconds" binding:"omitempty,min=15,max=3600"`
+	Name             *string            `json:"name" binding:"omitempty,max=100"`
+	Provider         *string            `json:"provider" binding:"omitempty,oneof=openai anthropic gemini"`
+	Endpoint         *string            `json:"endpoint" binding:"omitempty,max=500"`
+	APIKey           *string            `json:"api_key" binding:"omitempty,max=2000"`
+	PrimaryModel     *string            `json:"primary_model" binding:"omitempty,max=200"`
+	ExtraModels      *[]string          `json:"extra_models"`
+	GroupName        *string            `json:"group_name" binding:"omitempty,max=100"`
+	Enabled          *bool              `json:"enabled"`
+	IntervalSeconds  *int               `json:"interval_seconds" binding:"omitempty,min=15,max=3600"`
+	TemplateID       *int64             `json:"template_id"`
+	ClearTemplate    bool               `json:"clear_template"` // true 时把 template_id 置空，忽略 TemplateID
+	ExtraHeaders     *map[string]string `json:"extra_headers"`
+	BodyOverrideMode *string            `json:"body_override_mode" binding:"omitempty,oneof=off merge replace"`
+	BodyOverride     *map[string]any    `json:"body_override"`
 REDACTED
 
 type channelMonitorResponse struct {
@@ -79,6 +88,11 @@ type channelMonitorResponse struct {
 	PrimaryLatencyMs    *int                                 `json:"primary_latency_ms"`
 	Availability7d      float64                              `json:"availability_7d"`
 	ExtraModelsStatus   []dto.ChannelMonitorExtraModelStatus `json:"extra_models_status"`
+	// 请求自定义快照：前端编辑 / 展示「高级设置」用
+	TemplateID       *int64            `json:"template_id"`
+	ExtraHeaders     map[string]string `json:"extra_headers"`
+	BodyOverrideMode string            `json:"body_override_mode"`
+	BodyOverride     map[string]any    `json:"body_override"`
 REDACTED
 
 type channelMonitorCheckResultResponse struct {
@@ -116,6 +130,10 @@ REDACTED
 	if extras == nil {
 		extras = []string{REDACTED
 REDACTED
+	headers := m.ExtraHeaders
+	if headers == nil {
+		headers = map[string]string{REDACTED
+REDACTED
 	resp := &channelMonitorResponse{
 		ID:                  m.ID,
 		Name:                m.Name,
@@ -131,6 +149,10 @@ REDACTED
 		CreatedBy:           m.CreatedBy,
 		CreatedAt:           m.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:           m.UpdatedAt.UTC().Format(time.RFC3339),
+		TemplateID:          m.TemplateID,
+		ExtraHeaders:        headers,
+		BodyOverrideMode:    m.BodyOverrideMode,
+		BodyOverride:        m.BodyOverride,
 		// PrimaryStatus / PrimaryLatencyMs / Availability7d 由 List handler 在批量聚合后填充。
 REDACTED
 	if m.LastCheckedAt != nil {
@@ -279,16 +301,20 @@ REDACTED
 REDACTED
 
 	m, err := h.monitorService.Create(c.Request.Context(), service.ChannelMonitorCreateParams{
-		Name:            req.Name,
-		Provider:        req.Provider,
-		Endpoint:        req.Endpoint,
-		APIKey:          req.APIKey,
-		PrimaryModel:    req.PrimaryModel,
-		ExtraModels:     req.ExtraModels,
-		GroupName:       req.GroupName,
-		Enabled:         enabled,
-		IntervalSeconds: req.IntervalSeconds,
-		CreatedBy:       subject.UserID,
+		Name:             req.Name,
+		Provider:         req.Provider,
+		Endpoint:         req.Endpoint,
+		APIKey:           req.APIKey,
+		PrimaryModel:     req.PrimaryModel,
+		ExtraModels:      req.ExtraModels,
+		GroupName:        req.GroupName,
+		Enabled:          enabled,
+		IntervalSeconds:  req.IntervalSeconds,
+		CreatedBy:        subject.UserID,
+		TemplateID:       req.TemplateID,
+		ExtraHeaders:     req.ExtraHeaders,
+		BodyOverrideMode: req.BodyOverrideMode,
+		BodyOverride:     req.BodyOverride,
 REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -310,15 +336,20 @@ REDACTED
 REDACTED
 
 	m, err := h.monitorService.Update(c.Request.Context(), id, service.ChannelMonitorUpdateParams{
-		Name:            req.Name,
-		Provider:        req.Provider,
-		Endpoint:        req.Endpoint,
-		APIKey:          req.APIKey,
-		PrimaryModel:    req.PrimaryModel,
-		ExtraModels:     req.ExtraModels,
-		GroupName:       req.GroupName,
-		Enabled:         req.Enabled,
-		IntervalSeconds: req.IntervalSeconds,
+		Name:             req.Name,
+		Provider:         req.Provider,
+		Endpoint:         req.Endpoint,
+		APIKey:           req.APIKey,
+		PrimaryModel:     req.PrimaryModel,
+		ExtraModels:      req.ExtraModels,
+		GroupName:        req.GroupName,
+		Enabled:          req.Enabled,
+		IntervalSeconds:  req.IntervalSeconds,
+		TemplateID:       req.TemplateID,
+		ClearTemplate:    req.ClearTemplate,
+		ExtraHeaders:     req.ExtraHeaders,
+		BodyOverrideMode: req.BodyOverrideMode,
+		BodyOverride:     req.BodyOverride,
 REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)

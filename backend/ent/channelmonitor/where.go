@@ -110,6 +110,16 @@ func CreatedBy(v int64) predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldEQ(FieldCreatedBy, v))
 REDACTED
 
+// TemplateID applies equality check predicate on the "template_id" field. It's identical to TemplateIDEQ.
+func TemplateID(v int64) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldTemplateID, v))
+REDACTED
+
+// BodyOverrideMode applies equality check predicate on the "body_override_mode" field. It's identical to BodyOverrideModeEQ.
+func BodyOverrideMode(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldBodyOverrideMode, v))
+REDACTED
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldEQ(FieldCreatedAt, v))
@@ -685,6 +695,111 @@ func CreatedByLTE(v int64) predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldLTE(FieldCreatedBy, v))
 REDACTED
 
+// TemplateIDEQ applies the EQ predicate on the "template_id" field.
+func TemplateIDEQ(v int64) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldTemplateID, v))
+REDACTED
+
+// TemplateIDNEQ applies the NEQ predicate on the "template_id" field.
+func TemplateIDNEQ(v int64) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNEQ(FieldTemplateID, v))
+REDACTED
+
+// TemplateIDIn applies the In predicate on the "template_id" field.
+func TemplateIDIn(vs ...int64) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldIn(FieldTemplateID, vs...))
+REDACTED
+
+// TemplateIDNotIn applies the NotIn predicate on the "template_id" field.
+func TemplateIDNotIn(vs ...int64) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNotIn(FieldTemplateID, vs...))
+REDACTED
+
+// TemplateIDIsNil applies the IsNil predicate on the "template_id" field.
+func TemplateIDIsNil() predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldIsNull(FieldTemplateID))
+REDACTED
+
+// TemplateIDNotNil applies the NotNil predicate on the "template_id" field.
+func TemplateIDNotNil() predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNotNull(FieldTemplateID))
+REDACTED
+
+// BodyOverrideModeEQ applies the EQ predicate on the "body_override_mode" field.
+func BodyOverrideModeEQ(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldBodyOverrideMode, v))
+REDACTED
+
+// BodyOverrideModeNEQ applies the NEQ predicate on the "body_override_mode" field.
+func BodyOverrideModeNEQ(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNEQ(FieldBodyOverrideMode, v))
+REDACTED
+
+// BodyOverrideModeIn applies the In predicate on the "body_override_mode" field.
+func BodyOverrideModeIn(vs ...string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldIn(FieldBodyOverrideMode, vs...))
+REDACTED
+
+// BodyOverrideModeNotIn applies the NotIn predicate on the "body_override_mode" field.
+func BodyOverrideModeNotIn(vs ...string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNotIn(FieldBodyOverrideMode, vs...))
+REDACTED
+
+// BodyOverrideModeGT applies the GT predicate on the "body_override_mode" field.
+func BodyOverrideModeGT(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldGT(FieldBodyOverrideMode, v))
+REDACTED
+
+// BodyOverrideModeGTE applies the GTE predicate on the "body_override_mode" field.
+func BodyOverrideModeGTE(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldGTE(FieldBodyOverrideMode, v))
+REDACTED
+
+// BodyOverrideModeLT applies the LT predicate on the "body_override_mode" field.
+func BodyOverrideModeLT(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldLT(FieldBodyOverrideMode, v))
+REDACTED
+
+// BodyOverrideModeLTE applies the LTE predicate on the "body_override_mode" field.
+func BodyOverrideModeLTE(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldLTE(FieldBodyOverrideMode, v))
+REDACTED
+
+// BodyOverrideModeContains applies the Contains predicate on the "body_override_mode" field.
+func BodyOverrideModeContains(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldContains(FieldBodyOverrideMode, v))
+REDACTED
+
+// BodyOverrideModeHasPrefix applies the HasPrefix predicate on the "body_override_mode" field.
+func BodyOverrideModeHasPrefix(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldHasPrefix(FieldBodyOverrideMode, v))
+REDACTED
+
+// BodyOverrideModeHasSuffix applies the HasSuffix predicate on the "body_override_mode" field.
+func BodyOverrideModeHasSuffix(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldHasSuffix(FieldBodyOverrideMode, v))
+REDACTED
+
+// BodyOverrideModeEqualFold applies the EqualFold predicate on the "body_override_mode" field.
+func BodyOverrideModeEqualFold(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEqualFold(FieldBodyOverrideMode, v))
+REDACTED
+
+// BodyOverrideModeContainsFold applies the ContainsFold predicate on the "body_override_mode" field.
+func BodyOverrideModeContainsFold(v string) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldContainsFold(FieldBodyOverrideMode, v))
+REDACTED
+
+// BodyOverrideIsNil applies the IsNil predicate on the "body_override" field.
+func BodyOverrideIsNil() predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldIsNull(FieldBodyOverride))
+REDACTED
+
+// BodyOverrideNotNil applies the NotNil predicate on the "body_override" field.
+func BodyOverrideNotNil() predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNotNull(FieldBodyOverride))
+REDACTED
+
 // HasHistory applies the HasEdge predicate on the "history" edge.
 func HasHistory() predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(func(s *sql.Selector) {
@@ -723,6 +838,29 @@ REDACTED
 func HasDailyRollupsWith(preds ...predicate.ChannelMonitorDailyRollup) predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(func(s *sql.Selector) {
 		step := newDailyRollupsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+		REDACTED
+	REDACTED)
+REDACTED)
+REDACTED
+
+// HasRequestTemplate applies the HasEdge predicate on the "request_template" edge.
+func HasRequestTemplate() predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, RequestTemplateTable, RequestTemplateColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+REDACTED)
+REDACTED
+
+// HasRequestTemplateWith applies the HasEdge predicate on the "request_template" edge with a given conditions (other predicates).
+func HasRequestTemplateWith(preds ...predicate.ChannelMonitorRequestTemplate) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(func(s *sql.Selector) {
+		step := newRequestTemplateStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

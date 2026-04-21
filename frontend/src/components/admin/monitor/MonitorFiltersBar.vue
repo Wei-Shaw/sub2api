@@ -44,6 +44,14 @@
       >
         <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
       </button>
+      <button
+        @click="$emit('manage-templates')"
+        class="btn btn-secondary"
+        :title="t('admin.channelMonitor.template.manageButton')"
+      >
+        <Icon name="cog" size="md" class="mr-2" />
+        {{ t('admin.channelMonitor.template.manageButton') REDACTEDREDACTED
+      </button>
       <button @click="$emit('create')" class="btn btn-primary">
         <Icon name="plus" size="md" class="mr-2" />
         {{ t('admin.channelMonitor.createButton') REDACTEDREDACTED
@@ -71,6 +79,7 @@ REDACTED>()
 defineEmits<{
   (e: 'reload'): void
   (e: 'create'): void
+  (e: 'manage-templates'): void
   (e: 'search-input'): void
 REDACTED>()
 

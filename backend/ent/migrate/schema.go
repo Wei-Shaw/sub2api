@@ -437,12 +437,24 @@ REDACTED
 		{Name: "interval_seconds", Type: field.TypeIntREDACTED,
 		{Name: "last_checked_at", Type: field.TypeTime, Nullable: trueREDACTED,
 		{Name: "created_by", Type: field.TypeInt64REDACTED,
+		{Name: "extra_headers", Type: field.TypeJSONREDACTED,
+		{Name: "body_override_mode", Type: field.TypeString, Size: 10, Default: "off"REDACTED,
+		{Name: "body_override", Type: field.TypeJSON, Nullable: trueREDACTED,
+		{Name: "template_id", Type: field.TypeInt64, Nullable: trueREDACTED,
 REDACTED
 	// ChannelMonitorsTable holds the schema information for the "channel_monitors" table.
 	ChannelMonitorsTable = &schema.Table{
 		Name:       "channel_monitors",
 		Columns:    ChannelMonitorsColumns,
 		PrimaryKey: []*schema.Column{ChannelMonitorsColumns[0]REDACTED,
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "channel_monitors_channel_monitor_request_templates_request_template",
+				Columns:    []*schema.Column{ChannelMonitorsColumns[17]REDACTED,
+				RefColumns: []*schema.Column{ChannelMonitorRequestTemplatesColumns[0]REDACTED,
+				OnDelete:   schema.SetNull,
+		REDACTED,
+	REDACTED,
 		Indexes: []*schema.Index{
 			{
 				Name:    "channelmonitor_enabled_last_checked_at",
@@ -458,6 +470,11 @@ REDACTED
 				Name:    "channelmonitor_group_name",
 				Unique:  false,
 				Columns: []*schema.Column{ChannelMonitorsColumns[9]REDACTED,
+		REDACTED,
+			{
+				Name:    "channelmonitor_template_id",
+				Unique:  false,
+				Columns: []*schema.Column{ChannelMonitorsColumns[17]REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED
@@ -539,6 +556,31 @@ REDACTED
 				Name:    "channelmonitorhistory_checked_at",
 				Unique:  false,
 				Columns: []*schema.Column{ChannelMonitorHistoriesColumns[6]REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	// ChannelMonitorRequestTemplatesColumns holds the columns for the "channel_monitor_request_templates" table.
+	ChannelMonitorRequestTemplatesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: trueREDACTED,
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
+		{Name: "name", Type: field.TypeString, Size: 100REDACTED,
+		{Name: "provider", Type: field.TypeEnum, Enums: []string{"openai", "anthropic", "gemini"REDACTEDREDACTED,
+		{Name: "description", Type: field.TypeString, Nullable: true, Size: 500, Default: ""REDACTED,
+		{Name: "extra_headers", Type: field.TypeJSONREDACTED,
+		{Name: "body_override_mode", Type: field.TypeString, Size: 10, Default: "off"REDACTED,
+		{Name: "body_override", Type: field.TypeJSON, Nullable: trueREDACTED,
+REDACTED
+	// ChannelMonitorRequestTemplatesTable holds the schema information for the "channel_monitor_request_templates" table.
+	ChannelMonitorRequestTemplatesTable = &schema.Table{
+		Name:       "channel_monitor_request_templates",
+		Columns:    ChannelMonitorRequestTemplatesColumns,
+		PrimaryKey: []*schema.Column{ChannelMonitorRequestTemplatesColumns[0]REDACTED,
+		Indexes: []*schema.Index{
+			{
+				Name:    "channelmonitorrequesttemplate_provider_name",
+				Unique:  true,
+				Columns: []*schema.Column{ChannelMonitorRequestTemplatesColumns[4], ChannelMonitorRequestTemplatesColumns[3]REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED
@@ -1644,6 +1686,7 @@ REDACTED
 		ChannelMonitorsTable,
 		ChannelMonitorDailyRollupsTable,
 		ChannelMonitorHistoriesTable,
+		ChannelMonitorRequestTemplatesTable,
 		ErrorPassthroughRulesTable,
 		GroupsTable,
 		IdempotencyRecordsTable,
@@ -1701,6 +1744,7 @@ REDACTED
 	AuthIdentityChannelsTable.Annotation = &entsql.Annotation{
 		Table: "auth_identity_channels",
 REDACTED
+	ChannelMonitorsTable.ForeignKeys[0].RefTable = ChannelMonitorRequestTemplatesTable
 	ChannelMonitorsTable.Annotation = &entsql.Annotation{
 		Table: "channel_monitors",
 REDACTED
@@ -1711,6 +1755,9 @@ REDACTED
 	ChannelMonitorHistoriesTable.ForeignKeys[0].RefTable = ChannelMonitorsTable
 	ChannelMonitorHistoriesTable.Annotation = &entsql.Annotation{
 		Table: "channel_monitor_histories",
+REDACTED
+	ChannelMonitorRequestTemplatesTable.Annotation = &entsql.Annotation{
+		Table: "channel_monitor_request_templates",
 REDACTED
 	ErrorPassthroughRulesTable.Annotation = &entsql.Annotation{
 		Table: "error_passthrough_rules",

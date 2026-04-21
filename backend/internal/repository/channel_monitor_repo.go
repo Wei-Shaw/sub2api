@@ -44,7 +44,15 @@ func (r *channelMonitorRepository) Create(ctx context.Context, m *service.Channe
 		SetGroupName(m.GroupName).
 		SetEnabled(m.Enabled).
 		SetIntervalSeconds(m.IntervalSeconds).
-		SetCreatedBy(m.CreatedBy)
+		SetCreatedBy(m.CreatedBy).
+		SetExtraHeaders(emptyHeadersIfNilRepo(m.ExtraHeaders)).
+		SetBodyOverrideMode(defaultBodyModeRepo(m.BodyOverrideMode))
+	if m.TemplateID != nil {
+		builder = builder.SetTemplateID(*m.TemplateID)
+REDACTED
+	if m.BodyOverride != nil {
+		builder = builder.SetBodyOverride(m.BodyOverride)
+REDACTED
 
 	created, err := builder.Save(ctx)
 	if err != nil {
@@ -77,7 +85,19 @@ func (r *channelMonitorRepository) Update(ctx context.Context, m *service.Channe
 		SetExtraModels(emptySliceIfNil(m.ExtraModels)).
 		SetGroupName(m.GroupName).
 		SetEnabled(m.Enabled).
-		SetIntervalSeconds(m.IntervalSeconds)
+		SetIntervalSeconds(m.IntervalSeconds).
+		SetExtraHeaders(emptyHeadersIfNilRepo(m.ExtraHeaders)).
+		SetBodyOverrideMode(defaultBodyModeRepo(m.BodyOverrideMode))
+	if m.TemplateID != nil {
+		updater = updater.SetTemplateID(*m.TemplateID)
+REDACTED else {
+		updater = updater.ClearTemplateID()
+REDACTED
+	if m.BodyOverride != nil {
+		updater = updater.SetBodyOverride(m.BodyOverride)
+REDACTED else {
+		updater = updater.ClearBodyOverride()
+REDACTED
 
 	updated, err := updater.Save(ctx)
 	if err != nil {
@@ -716,22 +736,51 @@ REDACTED
 	if extras == nil {
 		extras = []string{REDACTED
 REDACTED
-	return &service.ChannelMonitor{
-		ID:              row.ID,
-		Name:            row.Name,
-		Provider:        string(row.Provider),
-		Endpoint:        row.Endpoint,
-		APIKey:          row.APIKeyEncrypted, // 仍为密文，service 层负责解密
-		PrimaryModel:    row.PrimaryModel,
-		ExtraModels:     extras,
-		GroupName:       row.GroupName,
-		Enabled:         row.Enabled,
-		IntervalSeconds: row.IntervalSeconds,
-		LastCheckedAt:   row.LastCheckedAt,
-		CreatedBy:       row.CreatedBy,
-		CreatedAt:       row.CreatedAt,
-		UpdatedAt:       row.UpdatedAt,
+	headers := row.ExtraHeaders
+	if headers == nil {
+		headers = map[string]string{REDACTED
 REDACTED
+	out := &service.ChannelMonitor{
+		ID:               row.ID,
+		Name:             row.Name,
+		Provider:         string(row.Provider),
+		Endpoint:         row.Endpoint,
+		APIKey:           row.APIKeyEncrypted, // 仍为密文，service 层负责解密
+		PrimaryModel:     row.PrimaryModel,
+		ExtraModels:      extras,
+		GroupName:        row.GroupName,
+		Enabled:          row.Enabled,
+		IntervalSeconds:  row.IntervalSeconds,
+		LastCheckedAt:    row.LastCheckedAt,
+		CreatedBy:        row.CreatedBy,
+		CreatedAt:        row.CreatedAt,
+		UpdatedAt:        row.UpdatedAt,
+		ExtraHeaders:     headers,
+		BodyOverrideMode: row.BodyOverrideMode,
+		BodyOverride:     row.BodyOverride,
+REDACTED
+	if row.TemplateID != nil {
+		id := *row.TemplateID
+		out.TemplateID = &id
+REDACTED
+	return out
+REDACTED
+
+// emptyHeadersIfNilRepo 与 service.emptyHeadersIfNil 功能一致，
+// repo 独立一份避免 import 循环。
+func emptyHeadersIfNilRepo(h map[string]string) map[string]string {
+	if h == nil {
+		return map[string]string{REDACTED
+REDACTED
+	return h
+REDACTED
+
+// defaultBodyModeRepo 空串归一为 off（同上不循环）。
+func defaultBodyModeRepo(mode string) string {
+	if mode == "" {
+		return "off"
+REDACTED
+	return mode
 REDACTED
 
 func emptySliceIfNil(in []string) []string {

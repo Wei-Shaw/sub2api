@@ -36,6 +36,9 @@ type ChannelMonitorDailyRollup func(*sql.Selector)
 // ChannelMonitorHistory is the predicate function for channelmonitorhistory builders.
 type ChannelMonitorHistory func(*sql.Selector)
 
+// ChannelMonitorRequestTemplate is the predicate function for channelmonitorrequesttemplate builders.
+type ChannelMonitorRequestTemplate func(*sql.Selector)
+
 // ErrorPassthroughRule is the predicate function for errorpassthroughrule builders.
 type ErrorPassthroughRule func(*sql.Selector)
 

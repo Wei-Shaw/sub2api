@@ -2235,7 +2235,57 @@ export default {
       REDACTED,
       runResultTitle: '检测结果',
       noMonitorsYet: '暂无监控',
-      createFirstMonitor: '创建第一个监控来跟踪渠道可用性'
+      createFirstMonitor: '创建第一个监控来跟踪渠道可用性',
+      advanced: {
+        section: '高级（可选）',
+        sectionHint: '自定义请求头和请求体，用于突破上游的客户端识别限制（如仅允许 Claude Code 客户端）。',
+        headers: '自定义请求头',
+        headersPlaceholder: 'User-Agent: claude-cli/1.0.83 (external, cli)\nx-app: cli\nanthropic-beta: claude-code-20250219',
+        headersHint: '每行一对 Key: Value；会与默认请求头合并，用户值优先。hop-by-hop 类 header（Host/Content-Length/...）会被忽略。',
+        headersParseError: '无法解析这一行：{lineREDACTED',
+        bodyMode: '请求体处理',
+        bodyModeOff: '默认',
+        bodyModeMerge: '合并',
+        bodyModeReplace: '覆盖',
+        bodyModeHintOff: '使用 adapter 默认请求体（带 challenge 数学题校验）。',
+        bodyModeHintMerge: '与默认请求体浅合并，用户字段优先；但 model / messages / contents 会被保护不允许覆盖（动这些字段请用「覆盖」模式）。',
+        bodyModeHintReplace: '完全用下方 JSON 作为请求体。注意：此模式下跳过 challenge 校验，改为 HTTP 2xx + 响应文本非空即视为可用。',
+        bodyJson: 'Body JSON',
+        bodyJsonHint: '失焦时自动解析校验。留空等价于没有覆盖。',
+        bodyJsonError: 'JSON 解析失败',
+        bodyJsonObjectError: '请求体必须是一个 JSON 对象（不能是数组或基本类型）'
+      REDACTED,
+      templateField: {
+        label: '请求模板',
+        none: '不使用模板',
+        placeholder: '选择一个模板（按当前平台过滤）',
+        applyHint: '选中模板后，会把模板的请求头和请求体拷贝到此监控（快照）。后续模板变动不自动同步。'
+      REDACTED,
+      template: {
+        manageButton: '模板管理',
+        managerTitle: '请求模板管理',
+        createButton: '新建模板',
+        emptyState: '当前平台下还没有请求模板',
+        missingName: '请输入模板名称',
+        createSuccess: '模板创建成功',
+        updateSuccess: '模板更新成功',
+        deleteSuccess: '模板删除成功',
+        applyButton: '应用到关联监控',
+        applyTooltip: '把当前模板配置覆盖到所有关联的监控上',
+        applyTitle: '应用模板',
+        applyConfirm: '确认应用',
+        applyConfirmMessage: '将把模板「{nameREDACTED」的当前配置覆盖到 {nREDACTED 个关联监控。监控本地已编辑的自定义修改会被丢弃，是否继续？',
+        applySuccess: '已应用到 {nREDACTED 个监控',
+        deleteConfirm: '确定要删除模板「{nameREDACTED」吗？{nREDACTED 个关联监控会解除关联但保留自己的快照继续工作。',
+        associatedCount: '{nREDACTED 个关联监控',
+        headersSummary: '{nREDACTED 个自定义请求头',
+        form: {
+          name: '模板名称',
+          namePlaceholder: '例：Claude Code 伪装',
+          description: '说明',
+          descriptionPlaceholder: '可选：说明这个模板的用途和来源（抓包日期等）'
+        REDACTED
+      REDACTED
     REDACTED,
 
     // Subscriptions Management
