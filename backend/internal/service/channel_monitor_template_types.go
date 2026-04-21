@@ -71,4 +71,7 @@ var (
 	ErrChannelMonitorTemplateProviderMismatch = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_TEMPLATE_PROVIDER_MISMATCH", "monitor provider does not match template provider",
 	)
+	ErrChannelMonitorTemplateApplyEmpty = infraerrors.BadRequest(
+		"CHANNEL_MONITOR_TEMPLATE_APPLY_EMPTY", "monitor_ids must be a non-empty array",
+	)
 )
