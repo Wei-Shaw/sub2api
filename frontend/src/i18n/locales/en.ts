@@ -2173,6 +2173,7 @@ export default {
         bodyModeHintMerge: 'Shallow-merge with the default body; user fields win but model / messages / contents are protected (use Replace to change those).',
         bodyModeHintReplace: 'Use the JSON below as the complete body. Challenge validation is skipped; HTTP 2xx + non-empty response text is treated as operational.',
         bodyJson: 'Body JSON',
+        bodyJsonFormat: 'Format',
         bodyJsonHint: 'Parsed on blur. Empty means no override.',
         bodyJsonError: 'JSON parse failed',
         bodyJsonObjectError: 'Body must be a JSON object (no arrays or primitives)'
