@@ -66,7 +66,7 @@ REDACTED
 	REDACTED
 		sort.SliceStable(groups, func(i, j int) bool { return groups[i].Name < groups[j].Name REDACTED)
 
-		normalizeBillingModelSource(ch)
+		ch.normalizeBillingModelSource()
 
 		out = append(out, AvailableChannel{
 			ID:                 ch.ID,

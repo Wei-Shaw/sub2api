@@ -46,16 +46,16 @@
 
           <template #cell-status="{ row REDACTED">
             <span
-              :class="statusStyles[row.status as ChannelStatus].cls"
+              :class="statusStyleOf(row.status).cls"
               class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium"
             >
-              {{ statusStyles[row.status as ChannelStatus].label REDACTEDREDACTED
+              {{ statusStyleOf(row.status).label REDACTEDREDACTED
             </span>
           </template>
 
           <template #cell-billing_model_source="{ row REDACTED">
             <span class="text-xs text-gray-700 dark:text-gray-300">
-              {{ billingSourceLabels[row.billing_model_source as BillingModelSource] REDACTEDREDACTED
+              {{ billingSourceLabelOf(row.billing_model_source) REDACTEDREDACTED
             </span>
           </template>
         </AvailableChannelsTable>
@@ -101,7 +101,7 @@ const columns = computed(() => [
 
 /**
  * 显示样式：i18n label + Tailwind class，按 ChannelStatus 完整穷举。
- * 用 Record<ChannelStatus, ...> 强制未来新增状态时 TS 编译失败，避免遗漏分支。
+ * Record 键类型强制未来新增 ChannelStatus 成员时 TS 编译失败，避免遗漏分支。
  */
 const statusStyles = computed<Record<ChannelStatus, { label: string; cls: string REDACTED>>(() => ({
   [CHANNEL_STATUS_ACTIVE]: {
@@ -123,6 +123,19 @@ const billingSourceLabels = computed<Record<BillingModelSource, string>>(() => (
   [BILLING_MODEL_SOURCE_UPSTREAM]: t('admin.availableChannels.billingSource.upstream'),
   [BILLING_MODEL_SOURCE_CHANNEL_MAPPED]: t('admin.availableChannels.billingSource.channel_mapped')
 REDACTED))
+
+// 运行时兜底：即便 service 层归一化漏点或后端新增未同步的 enum 值传入，
+// 也不会触发 undefined.cls 崩溃；统一降级为 "-"。
+const DEFAULT_STATUS_STYLE = { label: '-', cls: '' REDACTED
+const DEFAULT_BILLING_LABEL = '-'
+
+function statusStyleOf(status: ChannelStatus | undefined): { label: string; cls: string REDACTED {
+  return status ? statusStyles.value[status] : DEFAULT_STATUS_STYLE
+REDACTED
+
+function billingSourceLabelOf(src: BillingModelSource | undefined): string {
+  return src ? billingSourceLabels.value[src] : DEFAULT_BILLING_LABEL
+REDACTED
 
 const filteredChannels = computed(() => {
   const q = searchQuery.value.trim().toLowerCase()
