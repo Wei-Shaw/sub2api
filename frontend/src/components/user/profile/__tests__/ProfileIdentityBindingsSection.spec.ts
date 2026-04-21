@@ -51,10 +51,14 @@ vi.mock('vue-i18n', async (importOriginal) => {
         if (key === 'profile.authBindings.emailPlaceholder') return 'Email address'
         if (key === 'profile.authBindings.codePlaceholder') return 'Verification code'
         if (key === 'profile.authBindings.passwordPlaceholder') return 'Set password'
+        if (key === 'profile.authBindings.replaceEmailPasswordPlaceholder')
+          return 'Current password'
         if (key === 'profile.authBindings.sendCodeAction') return 'Send code'
         if (key === 'profile.authBindings.confirmEmailBindAction') return 'Bind email'
+        if (key === 'profile.authBindings.confirmEmailReplaceAction') return 'Replace primary email'
         if (key === 'profile.authBindings.codeSentTo') return `Code sent to ${params?.email || ''REDACTED`.trim()
         if (key === 'profile.authBindings.bindSuccess') return 'Bind success'
+        if (key === 'profile.authBindings.replaceSuccess') return 'Primary email updated'
         return key
       REDACTED,
     REDACTED),
@@ -323,5 +327,69 @@ describe('ProfileIdentityBindingsSection', () => {
 
     expect(wrapper.get('[data-testid="profile-binding-email-status"]').text()).toBe('Not bound')
     expect(wrapper.get('[data-testid="profile-binding-email-input"]').exists()).toBe(true)
+  REDACTED)
+
+  it('keeps the email form available for replacing a bound primary email', async () => {
+    userApiMocks.sendEmailBindingCode.mockResolvedValue(undefined)
+    userApiMocks.bindEmailIdentity.mockResolvedValue(
+      createUser({
+        email: 'new@example.com',
+        email_bound: true,
+        auth_bindings: {
+          email: { bound: true REDACTED,
+        REDACTED,
+      REDACTED)
+    )
+
+    const appStore = useAppStore()
+    const authStore = useAuthStore()
+    authStore.user = createUser({
+      email: 'current@example.com',
+      email_bound: true,
+      auth_bindings: {
+        email: { bound: true REDACTED,
+      REDACTED,
+    REDACTED)
+    const showSuccessSpy = vi.spyOn(appStore, 'showSuccess')
+
+    const wrapper = mount(ProfileIdentityBindingsSection, {
+      global: {
+        plugins: [pinia],
+      REDACTED,
+      props: {
+        user: authStore.user,
+        linuxdoEnabled: false,
+        oidcEnabled: false,
+        wechatEnabled: false,
+      REDACTED,
+    REDACTED)
+
+    expect(wrapper.get('[data-testid="profile-binding-email-status"]').text()).toBe('Bound')
+    expect(wrapper.get('[data-testid="profile-binding-email-input"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="profile-binding-email-submit"]').text()).toBe(
+      'Replace primary email'
+    )
+    expect(
+      (wrapper.get('[data-testid="profile-binding-email-password-input"]').element as HTMLInputElement)
+        .placeholder
+    ).toBe('Current password')
+
+    await wrapper.get('[data-testid="profile-binding-email-input"]').setValue('new@example.com')
+    await wrapper.get('[data-testid="profile-binding-email-send-code"]').trigger('click')
+    expect(userApiMocks.sendEmailBindingCode).toHaveBeenCalledWith('new@example.com')
+
+    await wrapper.get('[data-testid="profile-binding-email-code-input"]').setValue('123456')
+    await wrapper.get('[data-testid="profile-binding-email-password-input"]').setValue(
+      'current-password'
+    )
+    await wrapper.get('[data-testid="profile-binding-email-submit"]').trigger('click')
+
+    expect(userApiMocks.bindEmailIdentity).toHaveBeenCalledWith({
+      email: 'new@example.com',
+      verify_code: '123456',
+      password: 'current-password',
+    REDACTED)
+    expect(authStore.user?.email).toBe('new@example.com')
+    expect(showSuccessSpy).toHaveBeenCalledWith('Primary email updated')
   REDACTED)
 REDACTED)

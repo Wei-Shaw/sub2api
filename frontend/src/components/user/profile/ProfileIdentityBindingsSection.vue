@@ -34,7 +34,7 @@
             </div>
 
             <div
-              v-if="item.provider === 'email' && !item.bound"
+              v-if="item.provider === 'email'"
               class="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1.4fr)_auto]"
             >
               <input
@@ -73,7 +73,7 @@
                 data-testid="profile-binding-email-password-input"
                 type="password"
                 class="input"
-                :placeholder="t('profile.authBindings.passwordPlaceholder')"
+                :placeholder="emailPasswordPlaceholder"
                 :disabled="isBindingEmail"
               />
               <button
@@ -86,7 +86,7 @@
                 {{
                   isBindingEmail
                     ? t('common.loading')
-                    : t('profile.authBindings.confirmEmailBindAction')
+                    : emailSubmitActionLabel
                 REDACTEDREDACTED
               </button>
             </div>
@@ -160,7 +160,7 @@ watch(
   () => props.user,
   (user) => {
     localUser.value = null
-    if (!user || getBindingStatusForUser(user, 'email')) {
+    if (!user) {
       return
     REDACTED
     if (typeof user.email === 'string' && !user.email.endsWith('.invalid')) {
@@ -171,6 +171,17 @@ watch(
 )
 
 const currentUser = computed(() => localUser.value ?? props.user)
+const emailBound = computed(() => getBindingStatus('email'))
+const emailPasswordPlaceholder = computed(() =>
+  emailBound.value
+    ? t('profile.authBindings.replaceEmailPasswordPlaceholder')
+    : t('profile.authBindings.passwordPlaceholder')
+)
+const emailSubmitActionLabel = computed(() =>
+  emailBound.value
+    ? t('profile.authBindings.confirmEmailReplaceAction')
+    : t('profile.authBindings.confirmEmailBindAction')
+)
 
 const wechatOAuthSettings = computed<WeChatOAuthPublicSettings | null>(() => {
   if (hasExplicitWeChatOAuthCapabilities(appStore.cachedPublicSettings)) {
@@ -286,7 +297,7 @@ function validateEmailBindingForm(requireCode: boolean): boolean {
     appStore.showError(t('auth.passwordRequired'))
     return false
   REDACTED
-  if (requireCode && emailBindingForm.password.length < 6) {
+  if (requireCode && !emailBound.value && emailBindingForm.password.length < 6) {
     appStore.showError(t('auth.passwordMinLength'))
     return false
   REDACTED
@@ -321,10 +332,15 @@ async function bindEmail(): Promise<void> {
       verify_code: emailBindingForm.verifyCode,
       password: emailBindingForm.password,
     REDACTED)
+    const replacingBoundEmail = emailBound.value
     applyUpdatedUser(user)
     emailBindingForm.verifyCode = ''
     emailBindingForm.password = ''
-    appStore.showSuccess(t('profile.authBindings.bindSuccess'))
+    appStore.showSuccess(
+      replacingBoundEmail
+        ? t('profile.authBindings.replaceSuccess')
+        : t('profile.authBindings.bindSuccess')
+    )
   REDACTED catch (error) {
     appStore.showError((error as { message?: string REDACTED).message || t('common.tryAgain'))
   REDACTED finally {

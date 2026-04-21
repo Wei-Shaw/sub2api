@@ -285,6 +285,148 @@ REDACTED
 	require.Nil(t, updatedUser)
 REDACTED
 
+func TestAuthServiceBindEmailIdentity_ReplacesBoundEmailAndSkipsFirstBindDefaults(t *testing.T) {
+	assigner := &emailBindDefaultSubAssignerStub{REDACTED
+	cache := &emailBindCacheStub{
+		data: &service.VerificationCodeData{
+			Code:      "123456",
+			CreatedAt: time.Now().UTC(),
+			ExpiresAt: time.Now().UTC().Add(10 * time.Minute),
+	REDACTED,
+REDACTED
+	svc, _, client := newAuthServiceForEmailBind(t, map[string]string{
+		service.SettingKeyAuthSourceDefaultEmailBalance:          "8.5",
+		service.SettingKeyAuthSourceDefaultEmailConcurrency:      "4",
+		service.SettingKeyAuthSourceDefaultEmailSubscriptions:    `[{"group_id":11,"validity_days":30REDACTED]`,
+		service.SettingKeyAuthSourceDefaultEmailGrantOnFirstBind: "true",
+REDACTED, cache, assigner)
+
+	ctx := context.Background()
+	hashedPassword, err := svc.HashPassword("current-password")
+REDACTED
+
+	user, err := client.User.Create().
+		SetEmail("current@example.com").
+		SetUsername("bound-user").
+		SetPasswordHash(hashedPassword).
+		SetBalance(7.5).
+		SetConcurrency(3).
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+	require.NoError(t, client.AuthIdentity.Create().
+		SetUserID(user.ID).
+		SetProviderType("email").
+		SetProviderKey("email").
+		SetProviderSubject("current@example.com").
+		SetVerifiedAt(time.Now().UTC()).
+		SetMetadata(map[string]any{"source": "test"REDACTED).
+		Exec(ctx))
+
+	updatedUser, err := svc.BindEmailIdentity(ctx, user.ID, "new@example.com", "123456", "current-password")
+REDACTED
+	require.NotNil(t, updatedUser)
+	require.Equal(t, "new@example.com", updatedUser.Email)
+
+	storedUser, err := client.User.Get(ctx, user.ID)
+REDACTED
+	require.Equal(t, "new@example.com", storedUser.Email)
+	require.Equal(t, 7.5, storedUser.Balance)
+	require.Equal(t, 3, storedUser.Concurrency)
+	require.True(t, svc.CheckPassword("current-password", storedUser.PasswordHash))
+
+	newIdentityCount, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.UserIDEQ(user.ID),
+			authidentity.ProviderTypeEQ("email"),
+			authidentity.ProviderKeyEQ("email"),
+			authidentity.ProviderSubjectEQ("new@example.com"),
+		).
+		Count(ctx)
+REDACTED
+	require.Equal(t, 1, newIdentityCount)
+
+	oldIdentityCount, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.UserIDEQ(user.ID),
+			authidentity.ProviderTypeEQ("email"),
+			authidentity.ProviderKeyEQ("email"),
+			authidentity.ProviderSubjectEQ("current@example.com"),
+		).
+		Count(ctx)
+REDACTED
+	require.Equal(t, 0, oldIdentityCount)
+
+	require.Empty(t, assigner.calls)
+	require.Equal(t, 0, countProviderGrantRecords(t, client, user.ID, "email", "first_bind"))
+REDACTED
+
+func TestAuthServiceBindEmailIdentity_RejectsWrongCurrentPasswordForBoundEmail(t *testing.T) {
+	cache := &emailBindCacheStub{
+		data: &service.VerificationCodeData{
+			Code:      "123456",
+			CreatedAt: time.Now().UTC(),
+			ExpiresAt: time.Now().UTC().Add(10 * time.Minute),
+	REDACTED,
+REDACTED
+	svc, _, client := newAuthServiceForEmailBind(t, nil, cache, nil)
+
+	ctx := context.Background()
+	hashedPassword, err := svc.HashPassword("current-password")
+REDACTED
+
+	user, err := client.User.Create().
+		SetEmail("current@example.com").
+		SetUsername("bound-user").
+		SetPasswordHash(hashedPassword).
+		SetBalance(1).
+		SetConcurrency(1).
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+	require.NoError(t, client.AuthIdentity.Create().
+		SetUserID(user.ID).
+		SetProviderType("email").
+		SetProviderKey("email").
+		SetProviderSubject("current@example.com").
+		SetVerifiedAt(time.Now().UTC()).
+		SetMetadata(map[string]any{"source": "test"REDACTED).
+		Exec(ctx))
+
+	updatedUser, err := svc.BindEmailIdentity(ctx, user.ID, "new@example.com", "123456", "wrong-password")
+	require.ErrorIs(t, err, service.ErrPasswordIncorrect)
+	require.Nil(t, updatedUser)
+
+	storedUser, err := client.User.Get(ctx, user.ID)
+REDACTED
+	require.Equal(t, "current@example.com", storedUser.Email)
+	require.True(t, svc.CheckPassword("current-password", storedUser.PasswordHash))
+
+	oldIdentityCount, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.UserIDEQ(user.ID),
+			authidentity.ProviderTypeEQ("email"),
+			authidentity.ProviderKeyEQ("email"),
+			authidentity.ProviderSubjectEQ("current@example.com"),
+		).
+		Count(ctx)
+REDACTED
+	require.Equal(t, 1, oldIdentityCount)
+
+	newIdentityCount, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.UserIDEQ(user.ID),
+			authidentity.ProviderTypeEQ("email"),
+			authidentity.ProviderKeyEQ("email"),
+			authidentity.ProviderSubjectEQ("new@example.com"),
+		).
+		Count(ctx)
+REDACTED
+	require.Equal(t, 0, newIdentityCount)
+REDACTED
+
 type emailBindSettingRepoStub struct {
 	values map[string]string
 REDACTED

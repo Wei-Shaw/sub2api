@@ -971,9 +971,12 @@ export default {
       emailPlaceholder: '输入邮箱地址',
       codePlaceholder: '输入验证码',
       passwordPlaceholder: '设置登录密码',
+      replaceEmailPasswordPlaceholder: '输入当前密码',
       sendCodeAction: '发送验证码',
       confirmEmailBindAction: '绑定邮箱',
+      confirmEmailReplaceAction: '更换主邮箱',
       codeSentTo: '验证码已发送到 {emailREDACTED',
+      replaceSuccess: '主邮箱已更新',
       status: {
         bound: '已绑定',
         notBound: '未绑定',

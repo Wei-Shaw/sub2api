@@ -422,6 +422,59 @@ REDACTED
 	require.True(t, resp.Data.EmailBound)
 REDACTED
 
+func TestUserHandlerBindEmailIdentityRejectsWrongCurrentPasswordForBoundEmail(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	user := &service.User{
+		ID:       11,
+		Email:    "current@example.com",
+		Username: "bound-user",
+		Role:     service.RoleUser,
+		Status:   service.StatusActive,
+REDACTED
+	require.NoError(t, user.SetPassword("current-password"))
+
+	repo := &userHandlerRepoStub{user: userREDACTED
+	emailCache := &userHandlerEmailCacheStub{
+		data: &service.VerificationCodeData{
+			Code:      "123456",
+			CreatedAt: time.Now().UTC(),
+			ExpiresAt: time.Now().UTC().Add(10 * time.Minute),
+	REDACTED,
+REDACTED
+	cfg := &config.Config{
+		JWT: config.JWTConfig{
+			Secret:     "test-secret",
+			ExpireHour: 1,
+	REDACTED,
+REDACTED
+	emailService := service.NewEmailService(nil, emailCache)
+	authService := service.NewAuthService(nil, repo, nil, nil, cfg, nil, emailService, nil, nil, nil, nil)
+	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), authService, nil, nil)
+
+	body := []byte(`{"email":"new@example.com","verify_code":"123456","password":"wrong-password"REDACTED`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/user/account-bindings/email", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 11REDACTED)
+
+	handler.BindEmailIdentity(c)
+
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+
+	var resp struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Reason  string `json:"reason"`
+REDACTED
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.Equal(t, http.StatusBadRequest, resp.Code)
+	require.Equal(t, "PASSWORD_INCORRECT", resp.Reason)
+	require.Equal(t, "current password is incorrect", resp.Message)
+	require.Equal(t, "current@example.com", repo.user.Email)
+REDACTED
+
 func TestUserHandlerStartIdentityBindingReturnsAuthorizeURL(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

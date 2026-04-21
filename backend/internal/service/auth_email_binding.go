@@ -13,7 +13,8 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
-// BindEmailIdentity verifies and binds a local email/password identity to the current user.
+// BindEmailIdentity verifies and binds a local email/password identity to the
+// current user, or replaces the existing bound primary email.
 func (s *AuthService) BindEmailIdentity(
 	ctx context.Context,
 	userID int64,
@@ -43,6 +44,13 @@ REDACTED
 	if err != nil {
 		return nil, err
 REDACTED
+	firstRealEmailBind := !hasBindableEmailIdentitySubject(currentUser.Email)
+	if firstRealEmailBind && len(password) < 6 {
+		return nil, infraerrors.BadRequest("PASSWORD_TOO_SHORT", "password must be at least 6 characters")
+REDACTED
+	if !firstRealEmailBind && !s.CheckPassword(password, currentUser.PasswordHash) {
+		return nil, ErrPasswordIncorrect
+REDACTED
 
 	existingUser, err := s.userRepo.GetByEmail(ctx, normalizedEmail)
 	switch {
@@ -57,9 +65,8 @@ REDACTED
 		return nil, fmt.Errorf("hash password: %w", err)
 REDACTED
 
-	firstRealEmailBind := !hasBindableEmailIdentitySubject(currentUser.Email)
-	if firstRealEmailBind && s.entClient != nil {
-		if err := s.bindEmailIdentityWithDefaultsTx(ctx, currentUser, normalizedEmail, hashedPassword); err != nil {
+	if s.entClient != nil {
+		if err := s.updateBoundEmailIdentityTx(ctx, currentUser, normalizedEmail, hashedPassword, firstRealEmailBind); err != nil {
 			return nil, err
 	REDACTED
 		return currentUser, nil
@@ -137,14 +144,15 @@ func hasBindableEmailIdentitySubject(email string) bool {
 	return normalized != "" && !isReservedEmail(normalized)
 REDACTED
 
-func (s *AuthService) bindEmailIdentityWithDefaultsTx(
+func (s *AuthService) updateBoundEmailIdentityTx(
 	ctx context.Context,
 	currentUser *User,
 	email string,
 	hashedPassword string,
+	applyFirstBindDefaults bool,
 ) error {
 	if tx := dbent.TxFromContext(ctx); tx != nil {
-		return s.bindEmailIdentityWithDefaults(ctx, tx.Client(), currentUser, email, hashedPassword)
+		return s.updateBoundEmailIdentityWithClient(ctx, tx.Client(), currentUser, email, hashedPassword, applyFirstBindDefaults)
 REDACTED
 
 	tx, err := s.entClient.Tx(ctx)
@@ -154,7 +162,7 @@ REDACTED
 	defer func() { _ = tx.Rollback() REDACTED()
 
 	txCtx := dbent.NewTxContext(ctx, tx)
-	if err := s.bindEmailIdentityWithDefaults(txCtx, tx.Client(), currentUser, email, hashedPassword); err != nil {
+	if err := s.updateBoundEmailIdentityWithClient(txCtx, tx.Client(), currentUser, email, hashedPassword, applyFirstBindDefaults); err != nil {
 		return err
 REDACTED
 	if err := tx.Commit(); err != nil {
@@ -163,12 +171,13 @@ REDACTED
 	return nil
 REDACTED
 
-func (s *AuthService) bindEmailIdentityWithDefaults(
+func (s *AuthService) updateBoundEmailIdentityWithClient(
 	ctx context.Context,
 	client *dbent.Client,
 	currentUser *User,
 	email string,
 	hashedPassword string,
+	applyFirstBindDefaults bool,
 ) error {
 	if client == nil || currentUser == nil || currentUser.ID <= 0 {
 		return ErrServiceUnavailable
@@ -192,8 +201,10 @@ REDACTED
 		return ErrServiceUnavailable
 REDACTED
 
-	if err := s.ApplyProviderDefaultSettingsOnFirstBind(ctx, currentUser.ID, "email"); err != nil {
-		return fmt.Errorf("apply email first bind defaults: %w", err)
+	if applyFirstBindDefaults {
+		if err := s.ApplyProviderDefaultSettingsOnFirstBind(ctx, currentUser.ID, "email"); err != nil {
+			return fmt.Errorf("apply email first bind defaults: %w", err)
+	REDACTED
 REDACTED
 
 	updatedUser, err := client.User.Get(ctx, currentUser.ID)

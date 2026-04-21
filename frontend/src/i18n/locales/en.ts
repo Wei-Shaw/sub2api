@@ -967,9 +967,12 @@ export default {
       emailPlaceholder: 'Enter email address',
       codePlaceholder: 'Enter verification code',
       passwordPlaceholder: 'Set a login password',
+      replaceEmailPasswordPlaceholder: 'Enter current password',
       sendCodeAction: 'Send code',
       confirmEmailBindAction: 'Bind email',
+      confirmEmailReplaceAction: 'Replace primary email',
       codeSentTo: 'Code sent to {emailREDACTED',
+      replaceSuccess: 'Primary email updated',
       status: {
         bound: 'Bound',
         notBound: 'Not bound',
