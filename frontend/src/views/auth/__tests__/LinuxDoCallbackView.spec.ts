@@ -15,6 +15,7 @@ const getPublicSettings = vi.fn()
 const login2FA = vi.fn()
 const apiClientPost = vi.fn()
 const sendVerifyCode = vi.fn()
+const sendPendingOAuthVerifyCode = vi.fn()
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({
@@ -61,7 +62,8 @@ vi.mock('@/api/auth', async () => {
     completeLinuxDoOAuthRegistration: (...args: any[]) => completeLinuxDoOAuthRegistration(...args),
     getPublicSettings: (...args: any[]) => getPublicSettings(...args),
     login2FA: (...args: any[]) => login2FA(...args),
-    sendVerifyCode: (...args: any[]) => sendVerifyCode(...args)
+    sendVerifyCode: (...args: any[]) => sendVerifyCode(...args),
+    sendPendingOAuthVerifyCode: (...args: any[]) => sendPendingOAuthVerifyCode(...args)
   REDACTED
 REDACTED)
 
@@ -79,6 +81,7 @@ describe('LinuxDoCallbackView', () => {
     login2FA.mockReset()
     apiClientPost.mockReset()
     sendVerifyCode.mockReset()
+    sendPendingOAuthVerifyCode.mockReset()
     getPublicSettings.mockResolvedValue({
       turnstile_enabled: false,
       turnstile_site_key: ''
@@ -334,6 +337,11 @@ describe('LinuxDoCallbackView', () => {
   REDACTED)
 
   it('collects email, password, and verify code for pending oauth account creation and submits adoption decisions', async () => {
+    getPublicSettings.mockResolvedValue({
+      invitation_code_enabled: true,
+      turnstile_enabled: false,
+      turnstile_site_key: ''
+    REDACTED)
     exchangePendingOAuthCompletion.mockResolvedValue({
       error: 'email_required',
       redirect: '/welcome',
@@ -370,6 +378,7 @@ describe('LinuxDoCallbackView', () => {
     await wrapper.get('[data-testid="linuxdo-create-account-email"]').setValue('  new@example.com  ')
     await wrapper.get('[data-testid="linuxdo-create-account-password"]').setValue('secret-123')
     await wrapper.get('[data-testid="linuxdo-create-account-verify-code"]').setValue('246810')
+    await wrapper.get('[data-testid="linuxdo-create-account-invitation-code"]').setValue(' INVITE123 ')
     await wrapper.get('[data-testid="linuxdo-create-account-submit"]').trigger('click')
     await flushPromises()
 
@@ -377,6 +386,7 @@ describe('LinuxDoCallbackView', () => {
       email: 'new@example.com',
       password: 'secret-123',
       verify_code: '246810',
+      invitation_code: 'INVITE123',
       adopt_display_name: true,
       adopt_avatar: false
     REDACTED)
@@ -384,12 +394,48 @@ describe('LinuxDoCallbackView', () => {
     expect(replace).toHaveBeenCalledWith('/welcome')
   REDACTED)
 
+  it('switches to bind-login when create-account returns EMAIL_EXISTS', async () => {
+    exchangePendingOAuthCompletion.mockResolvedValue({
+      error: 'email_required',
+      redirect: '/welcome'
+    REDACTED)
+    apiClientPost.mockRejectedValue({
+      response: {
+        data: {
+          reason: 'EMAIL_EXISTS',
+          message: 'email already exists'
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    const wrapper = mount(LinuxDoCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+    await wrapper.get('[data-testid="linuxdo-create-account-email"]').setValue('existing@example.com')
+    await wrapper.get('[data-testid="linuxdo-create-account-password"]').setValue('secret-123')
+    await wrapper.get('[data-testid="linuxdo-create-account-submit"]').trigger('click')
+    await flushPromises()
+
+    expect((wrapper.get('[data-testid="linuxdo-bind-login-email"]').element as HTMLInputElement).value).toBe(
+      'existing@example.com'
+    )
+  REDACTED)
+
   it('sends a verify code for pending oauth account creation', async () => {
     exchangePendingOAuthCompletion.mockResolvedValue({
       error: 'email_required',
       redirect: '/welcome'
     REDACTED)
-    sendVerifyCode.mockResolvedValue({
+    sendPendingOAuthVerifyCode.mockResolvedValue({
       message: 'sent',
       countdown: 60
     REDACTED)
@@ -411,7 +457,7 @@ describe('LinuxDoCallbackView', () => {
     await wrapper.get('[data-testid="linuxdo-create-account-send-code"]').trigger('click')
     await flushPromises()
 
-    expect(sendVerifyCode).toHaveBeenCalledWith({
+    expect(sendPendingOAuthVerifyCode).toHaveBeenCalledWith({
       email: 'new@example.com'
     REDACTED)
   REDACTED)

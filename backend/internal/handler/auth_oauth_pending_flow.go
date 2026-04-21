@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -27,7 +28,7 @@ import (
 const (
 	oauthPendingBrowserCookiePath = "/api/v1/auth/oauth"
 	oauthPendingBrowserCookieName = "oauth_pending_browser_session"
-	oauthPendingSessionCookiePath = "/api/v1/auth/oauth/pending"
+	oauthPendingSessionCookiePath = "/api/v1/auth/oauth"
 	oauthPendingSessionCookieName = "oauth_pending_session"
 	oauthPendingCookieMaxAgeSec   = 10 * 60
 
@@ -64,6 +65,13 @@ type createPendingOAuthAccountRequest struct {
 	InvitationCode   string `json:"invitation_code,omitempty"`
 	AdoptDisplayName *bool  `json:"adopt_display_name,omitempty"`
 	AdoptAvatar      *bool  `json:"adopt_avatar,omitempty"`
+REDACTED
+
+type sendPendingOAuthVerifyCodeRequest struct {
+	Email             string `json:"email" binding:"required,email"`
+	TurnstileToken    string `json:"turnstile_token,omitempty"`
+	PendingAuthToken  string `json:"pending_auth_token,omitempty"`
+	PendingOAuthToken string `json:"pending_oauth_token,omitempty"`
 REDACTED
 
 func (r bindPendingOAuthLoginRequest) adoptionDecision() oauthAdoptionDecisionRequest {
@@ -446,6 +454,43 @@ REDACTED
 
 func (h *AuthHandler) CreatePendingOAuthAccount(c *gin.Context) {
 	h.createPendingOAuthAccount(c, "")
+REDACTED
+
+// SendPendingOAuthVerifyCode sends a verification code for a browser-bound
+// pending OAuth account-creation flow.
+// POST /api/v1/auth/oauth/pending/send-verify-code
+func (h *AuthHandler) SendPendingOAuthVerifyCode(c *gin.Context) {
+	var req sendPendingOAuthVerifyCodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+
+	if err := h.authService.VerifyTurnstile(c.Request.Context(), req.TurnstileToken, ip.GetClientIP(c)); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	_, session, _, err := readPendingOAuthBrowserSession(c, h)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	if err := ensurePendingOAuthCompleteRegistrationSession(session); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	result, err := h.authService.SendPendingOAuthVerifyCode(c.Request.Context(), req.Email)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, SendVerifyCodeResponse{
+		Message:   "Verification code sent successfully",
+		Countdown: result.Countdown,
+REDACTED)
 REDACTED
 
 func (h *AuthHandler) upsertPendingOAuthAdoptionDecision(
@@ -1084,6 +1129,41 @@ REDACTED
 	return payload
 REDACTED
 
+func (h *AuthHandler) transitionPendingOAuthAccountToBindLogin(
+	c *gin.Context,
+	client *dbent.Client,
+	session *dbent.PendingAuthSession,
+	email string,
+	decision oauthAdoptionDecisionRequest,
+) (*dbent.PendingAuthSession, error) {
+	existingUser, err := findUserByNormalizedEmail(c.Request.Context(), client, email)
+	if err != nil {
+		return nil, err
+REDACTED
+
+	completionResponse := mergePendingCompletionResponse(session, map[string]any{
+		"step":  "bind_login_required",
+		"email": email,
+REDACTED)
+	session, err = updatePendingOAuthSessionProgress(
+		c.Request.Context(),
+		client,
+		session,
+		"adopt_existing_user_by_email",
+		email,
+		&existingUser.ID,
+		completionResponse,
+	)
+	if err != nil {
+		return nil, infraerrors.InternalServer("PENDING_AUTH_SESSION_UPDATE_FAILED", "failed to update pending oauth session").WithCause(err)
+REDACTED
+
+	if _, err := h.ensurePendingOAuthAdoptionDecision(c, session.ID, decision); err != nil {
+		return nil, err
+REDACTED
+	return session, nil
+REDACTED
+
 func writeOAuthTokenPairResponse(c *gin.Context, tokenPair *service.TokenPair) {
 	c.JSON(http.StatusOK, gin.H{
 		"access_token":  tokenPair.AccessToken,
@@ -1199,29 +1279,11 @@ REDACTED
 		return
 REDACTED
 	if existingUser != nil {
-		completionResponse := mergePendingCompletionResponse(session, map[string]any{
-			"step":  "bind_login_required",
-			"email": email,
-	REDACTED)
-		session, err = updatePendingOAuthSessionProgress(
-			c.Request.Context(),
-			client,
-			session,
-			"adopt_existing_user_by_email",
-			email,
-			&existingUser.ID,
-			completionResponse,
-		)
+		session, err = h.transitionPendingOAuthAccountToBindLogin(c, client, session, email, req.adoptionDecision())
 		if err != nil {
-			response.ErrorFrom(c, infraerrors.InternalServer("PENDING_AUTH_SESSION_UPDATE_FAILED", "failed to update pending oauth session").WithCause(err))
-			return
-	REDACTED
-
-		if _, err := h.ensurePendingOAuthAdoptionDecision(c, session.ID, req.adoptionDecision()); err != nil {
 			response.ErrorFrom(c, err)
 			return
 	REDACTED
-
 		c.JSON(http.StatusOK, buildPendingOAuthSessionStatusPayload(session))
 		return
 REDACTED
@@ -1239,27 +1301,77 @@ REDACTED
 		strings.TrimSpace(session.ProviderType),
 	)
 	if err != nil {
+		if errors.Is(err, service.ErrEmailExists) {
+			session, err = h.transitionPendingOAuthAccountToBindLogin(c, client, session, email, req.adoptionDecision())
+			if err != nil {
+				response.ErrorFrom(c, err)
+				return
+		REDACTED
+			c.JSON(http.StatusOK, buildPendingOAuthSessionStatusPayload(session))
+			return
+	REDACTED
 		response.ErrorFrom(c, err)
 		return
+REDACTED
+
+	rollbackCreatedUser := func(originalErr error) bool {
+		if user == nil || user.ID <= 0 {
+			return false
+	REDACTED
+		if rollbackErr := h.authService.RollbackOAuthEmailAccountCreation(
+			c.Request.Context(),
+			user.ID,
+			strings.TrimSpace(req.InvitationCode),
+		); rollbackErr != nil {
+			response.ErrorFrom(c, infraerrors.InternalServer(
+				"PENDING_AUTH_ACCOUNT_ROLLBACK_FAILED",
+				"failed to rollback pending oauth account creation",
+			).WithCause(fmt.Errorf("original error: %w; rollback error: %v", originalErr, rollbackErr)))
+			return true
+	REDACTED
+		user = nil
+		return false
 REDACTED
 
 	decision, err := h.ensurePendingOAuthAdoptionDecision(c, session.ID, req.adoptionDecision())
 	if err != nil {
+		if rollbackCreatedUser(err) {
+			return
+	REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
 	if err := applyPendingOAuthBinding(c.Request.Context(), client, h.authService, h.userService, session, decision, &user.ID, true, false); err != nil {
+		if rollbackCreatedUser(err) {
+			return
+	REDACTED
 		response.ErrorFrom(c, infraerrors.InternalServer("PENDING_AUTH_BIND_APPLY_FAILED", "failed to bind pending oauth identity").WithCause(err))
 		return
 REDACTED
-	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
+
+	if err := h.authService.FinalizeOAuthEmailAccount(
+		c.Request.Context(),
+		user,
+		strings.TrimSpace(req.InvitationCode),
+		strings.TrimSpace(session.ProviderType),
+	); err != nil {
+		if rollbackCreatedUser(err) {
+			return
+	REDACTED
+		response.ErrorFrom(c, err)
+		return
+REDACTED
 
 	if _, err := pendingSvc.ConsumeBrowserSession(c.Request.Context(), session.SessionToken, session.BrowserSessionKey); err != nil {
+		if rollbackCreatedUser(err) {
+			return
+	REDACTED
 		clearCookies()
 		response.ErrorFrom(c, err)
 		return
 REDACTED
 
+	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
 	clearCookies()
 	writeOAuthTokenPairResponse(c, tokenPair)
 REDACTED

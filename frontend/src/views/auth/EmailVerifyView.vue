@@ -176,7 +176,12 @@ import { AuthLayout REDACTED from '@/components/layout'
 import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { useAuthStore, useAppStore REDACTED from '@/stores'
-import { persistOAuthTokenContext, getPublicSettings, sendVerifyCode REDACTED from '@/api/auth'
+import {
+  persistOAuthTokenContext,
+  getPublicSettings,
+  sendPendingOAuthVerifyCode,
+  sendVerifyCode,
+REDACTED from '@/api/auth'
 import { apiClient REDACTED from '@/api/client'
 import { buildAuthErrorMessage REDACTED from '@/utils/authError'
 import {
@@ -355,18 +360,21 @@ async function sendCode(): Promise<void> {
   errorMessage.value = ''
 
   try {
-    if (!isRegistrationEmailSuffixAllowed(email.value, registrationEmailSuffixWhitelist.value)) {
+    if (!pendingAuthToken.value && !isRegistrationEmailSuffixAllowed(email.value, registrationEmailSuffixWhitelist.value)) {
       errorMessage.value = buildEmailSuffixNotAllowedMessage()
       appStore.showError(errorMessage.value)
       return
     REDACTED
 
-    const response = await sendVerifyCode({
+    const requestPayload = {
       email: email.value,
       [pendingAuthTokenField.value]: pendingAuthToken.value || undefined,
       // 优先使用重发时新获取的 token（因为初始 token 可能已被使用）
       turnstile_token: resendTurnstileToken.value || initialTurnstileToken.value || undefined
-    REDACTED as Parameters<typeof sendVerifyCode>[0])
+    REDACTED as Parameters<typeof sendVerifyCode>[0]
+    const response = pendingAuthToken.value
+      ? await sendPendingOAuthVerifyCode(requestPayload)
+      : await sendVerifyCode(requestPayload)
 
     codeSent.value = true
     startCountdown(response.countdown)

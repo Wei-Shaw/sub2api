@@ -118,6 +118,8 @@ REDACTED
 export interface SendVerifyCodeRequest {
   email: string
   turnstile_token?: string
+  pending_auth_token?: string
+  pending_oauth_token?: string
 REDACTED
 
 export interface SendVerifyCodeResponse {

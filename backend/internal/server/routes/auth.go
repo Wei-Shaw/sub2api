@@ -74,6 +74,12 @@ func RegisterAuthRoutes(
 		REDACTED),
 			h.Auth.ExchangePendingOAuthCompletion,
 		)
+		auth.POST("/oauth/pending/send-verify-code",
+			rateLimiter.LimitWithOptions("oauth-pending-send-verify-code", 5, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+		REDACTED),
+			h.Auth.SendPendingOAuthVerifyCode,
+		)
 		auth.POST("/oauth/pending/create-account",
 			rateLimiter.LimitWithOptions("oauth-pending-create-account", 10, time.Minute, middleware.RateLimitOptions{
 				FailureMode: middleware.RateLimitFailClose,

@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/enttest"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
+	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -59,6 +61,18 @@ REDACTED
 	require.Equal(t, "Existing", payload["suggested_display_name"])
 	require.Equal(t, "https://cdn.example/avatar.png", payload["suggested_avatar_url"])
 	require.Equal(t, true, payload["adoption_required"])
+REDACTED
+
+func TestSetOAuthPendingSessionCookieUsesProviderCompletionPathPrefix(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	ginCtx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/callback", nil)
+
+	setOAuthPendingSessionCookie(ginCtx, "pending-session-token", false)
+
+	cookie := findCookie(recorder.Result().Cookies(), oauthPendingSessionCookieName)
+	require.NotNil(t, cookie)
+	require.Equal(t, "/api/v1/auth/oauth", cookie.Path)
 REDACTED
 
 func TestExchangePendingOAuthCompletionPreviewThenFinalizeAppliesAdoptionDecision(t *testing.T) {
@@ -943,6 +957,81 @@ REDACTED
 	require.Nil(t, storedSession.ConsumedAt)
 REDACTED
 
+func TestCreateOIDCOAuthAccountRollsBackCreatedUserWhenBindingFails(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandlerWithEmailVerification(t, true, "fresh@example.com", "246810")
+	ctx := context.Background()
+
+	conflictOwner, err := client.User.Create().
+		SetEmail("owner@example.com").
+		SetUsername("owner-user").
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+
+	_, err = client.AuthIdentity.Create().
+		SetUserID(conflictOwner.ID).
+		SetProviderType("oidc").
+		SetProviderKey("https://issuer.example").
+		SetProviderSubject("oidc-conflict-123").
+		SetMetadata(map[string]any{
+			"username": "owner-user",
+	REDACTED).
+		Save(ctx)
+REDACTED
+
+	invitation, err := client.RedeemCode.Create().
+		SetCode("INVITE123").
+		SetType(service.RedeemTypeInvitation).
+		SetStatus(service.StatusUnused).
+		SetValue(0).
+		Save(ctx)
+REDACTED
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("create-account-conflict-session-token").
+		SetIntent("login").
+		SetProviderType("oidc").
+		SetProviderKey("https://issuer.example").
+		SetProviderSubject("oidc-conflict-123").
+		SetBrowserSessionKey("create-account-conflict-browser-session-key").
+		SetUpstreamIdentityClaims(map[string]any{
+			"username": "oidc_user",
+	REDACTED).
+		SetRedirectTo("/profile").
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+REDACTED
+
+	body := bytes.NewBufferString(`{"email":"fresh@example.com","verify_code":"246810","password":"secret-123","invitation_code":"INVITE123"REDACTED`)
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/oidc/create-account", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)REDACTED)
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("create-account-conflict-browser-session-key")REDACTED)
+	ginCtx.Request = req
+
+	handler.CreateOIDCOAuthAccount(ginCtx)
+
+	require.Equal(t, http.StatusInternalServerError, recorder.Code)
+
+	userCount, err := client.User.Query().Where(dbuser.EmailEQ("fresh@example.com")).Count(ctx)
+REDACTED
+	require.Zero(t, userCount)
+
+	storedInvitation, err := client.RedeemCode.Get(ctx, invitation.ID)
+REDACTED
+	require.Equal(t, service.StatusUnused, storedInvitation.Status)
+	require.Nil(t, storedInvitation.UsedBy)
+	require.Nil(t, storedInvitation.UsedAt)
+
+	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
+REDACTED
+	require.Nil(t, storedSession.ConsumedAt)
+REDACTED
+
 func TestBindOIDCOAuthLoginBindsExistingUserAndConsumesSession(t *testing.T) {
 	handler, client := newOAuthPendingFlowTestHandler(t, false)
 	ctx := context.Background()
@@ -1529,6 +1618,8 @@ type oauthPendingFlowTestHandlerOptions struct {
 	defaultSubAssigner service.DefaultSubscriptionAssigner
 	totpCache          service.TotpCache
 	totpEncryptor      service.SecretEncryptor
+	redeemRepoFactory  func(client *dbent.Client) service.RedeemCodeRepository
+	userRepoOptions    oauthPendingFlowUserRepoOptions
 REDACTED
 
 func newOAuthPendingFlowTestHandlerWithDependencies(
@@ -1590,7 +1681,17 @@ REDACTED
 		settingValues[key] = value
 REDACTED
 	settingSvc := service.NewSettingService(&oauthPendingFlowSettingRepoStub{values: settingValuesREDACTED, cfg)
-	userRepo := &oauthPendingFlowUserRepo{client: clientREDACTED
+	userRepo := &oauthPendingFlowUserRepo{
+		client:  client,
+		options: options.userRepoOptions,
+REDACTED
+	redeemRepo := service.RedeemCodeRepository(nil)
+	if options.redeemRepoFactory != nil {
+		redeemRepo = options.redeemRepoFactory(client)
+REDACTED
+	if redeemRepo == nil {
+		redeemRepo = &oauthPendingFlowRedeemCodeRepo{client: clientREDACTED
+REDACTED
 	var emailService *service.EmailService
 	if options.emailCache != nil {
 		emailService = service.NewEmailService(&oauthPendingFlowSettingRepoStub{
@@ -1602,7 +1703,7 @@ REDACTED
 	authSvc := service.NewAuthService(
 		client,
 		userRepo,
-		nil,
+		redeemRepo,
 		&oauthPendingFlowRefreshTokenCacheStub{REDACTED,
 		cfg,
 		settingSvc,
@@ -1797,6 +1898,127 @@ func (s *oauthPendingFlowRefreshTokenCacheStub) IsTokenInFamily(context.Context,
 	return false, nil
 REDACTED
 
+type oauthPendingFlowRedeemCodeRepo struct {
+	client *dbent.Client
+REDACTED
+
+func (r *oauthPendingFlowRedeemCodeRepo) Create(context.Context, *service.RedeemCode) error {
+	panic("unexpected Create call")
+REDACTED
+
+func (r *oauthPendingFlowRedeemCodeRepo) CreateBatch(context.Context, []service.RedeemCode) error {
+	panic("unexpected CreateBatch call")
+REDACTED
+
+func (r *oauthPendingFlowRedeemCodeRepo) GetByID(context.Context, int64) (*service.RedeemCode, error) {
+	panic("unexpected GetByID call")
+REDACTED
+
+func (r *oauthPendingFlowRedeemCodeRepo) GetByCode(ctx context.Context, code string) (*service.RedeemCode, error) {
+	entity, err := r.client.RedeemCode.Query().Where(redeemcode.CodeEQ(code)).Only(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil, service.ErrRedeemCodeNotFound
+	REDACTED
+		return nil, err
+REDACTED
+	notes := ""
+	if entity.Notes != nil {
+		notes = *entity.Notes
+REDACTED
+	return &service.RedeemCode{
+		ID:           entity.ID,
+		Code:         entity.Code,
+		Type:         entity.Type,
+		Value:        entity.Value,
+		Status:       entity.Status,
+		UsedBy:       entity.UsedBy,
+		UsedAt:       entity.UsedAt,
+		Notes:        notes,
+		CreatedAt:    entity.CreatedAt,
+		GroupID:      entity.GroupID,
+		ValidityDays: entity.ValidityDays,
+REDACTED, nil
+REDACTED
+
+func (r *oauthPendingFlowRedeemCodeRepo) Update(ctx context.Context, code *service.RedeemCode) error {
+	if code == nil {
+		return nil
+REDACTED
+	update := r.client.RedeemCode.UpdateOneID(code.ID).
+		SetCode(code.Code).
+		SetType(code.Type).
+		SetValue(code.Value).
+		SetStatus(code.Status).
+		SetNotes(code.Notes).
+		SetValidityDays(code.ValidityDays)
+	if code.UsedBy != nil {
+		update = update.SetUsedBy(*code.UsedBy)
+REDACTED else {
+		update = update.ClearUsedBy()
+REDACTED
+	if code.UsedAt != nil {
+		update = update.SetUsedAt(*code.UsedAt)
+REDACTED else {
+		update = update.ClearUsedAt()
+REDACTED
+	if code.GroupID != nil {
+		update = update.SetGroupID(*code.GroupID)
+REDACTED else {
+		update = update.ClearGroupID()
+REDACTED
+	_, err := update.Save(ctx)
+	return err
+REDACTED
+
+func (r *oauthPendingFlowRedeemCodeRepo) Delete(context.Context, int64) error {
+	panic("unexpected Delete call")
+REDACTED
+
+func (r *oauthPendingFlowRedeemCodeRepo) Use(ctx context.Context, id, userID int64) error {
+	affected, err := r.client.RedeemCode.Update().
+		Where(redeemcode.IDEQ(id), redeemcode.StatusEQ(service.StatusUnused)).
+		SetStatus(service.StatusUsed).
+		SetUsedBy(userID).
+		SetUsedAt(time.Now().UTC()).
+		Save(ctx)
+	if err != nil {
+		return err
+REDACTED
+	if affected == 0 {
+		return service.ErrRedeemCodeUsed
+REDACTED
+	return nil
+REDACTED
+
+func (r *oauthPendingFlowRedeemCodeRepo) List(context.Context, pagination.PaginationParams) ([]service.RedeemCode, *pagination.PaginationResult, error) {
+	panic("unexpected List call")
+REDACTED
+
+func (r *oauthPendingFlowRedeemCodeRepo) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string) ([]service.RedeemCode, *pagination.PaginationResult, error) {
+	panic("unexpected ListWithFilters call")
+REDACTED
+
+func (r *oauthPendingFlowRedeemCodeRepo) ListByUser(context.Context, int64, int) ([]service.RedeemCode, error) {
+	panic("unexpected ListByUser call")
+REDACTED
+
+func (r *oauthPendingFlowRedeemCodeRepo) ListByUserPaginated(context.Context, int64, pagination.PaginationParams, string) ([]service.RedeemCode, *pagination.PaginationResult, error) {
+	panic("unexpected ListByUserPaginated call")
+REDACTED
+
+func (r *oauthPendingFlowRedeemCodeRepo) SumPositiveBalanceByUser(context.Context, int64) (float64, error) {
+	panic("unexpected SumPositiveBalanceByUser call")
+REDACTED
+
+type oauthPendingFlowFailingUseRedeemRepo struct {
+	*oauthPendingFlowRedeemCodeRepo
+REDACTED
+
+func (r *oauthPendingFlowFailingUseRedeemRepo) Use(context.Context, int64, int64) error {
+	return errors.New("forced invitation use failure")
+REDACTED
+
 func decodeJSONResponseData(t *testing.T, recorder *httptest.ResponseRecorder) map[string]any {
 REDACTED
 
@@ -1872,6 +2094,11 @@ REDACTED
 
 type oauthPendingFlowUserRepo struct {
 	client *dbent.Client
+	options oauthPendingFlowUserRepoOptions
+REDACTED
+
+type oauthPendingFlowUserRepoOptions struct {
+	rejectDeleteWhileAuthIdentityExists bool
 REDACTED
 
 func (r *oauthPendingFlowUserRepo) Create(ctx context.Context, user *service.User) error {
@@ -1953,6 +2180,15 @@ REDACTED
 REDACTED
 
 func (r *oauthPendingFlowUserRepo) Delete(ctx context.Context, id int64) error {
+	if r.options.rejectDeleteWhileAuthIdentityExists {
+		count, err := r.client.AuthIdentity.Query().Where(authidentity.UserIDEQ(id)).Count(ctx)
+		if err != nil {
+			return err
+	REDACTED
+		if count > 0 {
+			return errors.New("cannot delete user while auth identities still exist")
+	REDACTED
+REDACTED
 	return r.client.User.DeleteOneID(id).Exec(ctx)
 REDACTED
 

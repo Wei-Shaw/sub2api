@@ -647,6 +647,28 @@ function getRequestErrorMessage(error: unknown, fallback: string): string {
   return err.response?.data?.detail || err.response?.data?.message || err.message || fallback
 REDACTED
 
+function isCreateAccountRecoveryError(error: unknown): boolean {
+  const data = (error as {
+    response?: {
+      data?: {
+        reason?: string
+        error?: string
+        code?: string
+        step?: string
+        intent?: string
+      REDACTED
+    REDACTED
+  REDACTED).response?.data
+  const states = [data?.reason, data?.error, data?.code, data?.step, data?.intent]
+    .map(value => value?.trim().toLowerCase())
+    .filter((value): value is string => Boolean(value))
+
+  return states.includes('email_exists') ||
+    states.includes('bind_login_required') ||
+    states.includes('bind_login') ||
+    states.includes('adopt_existing_user_by_email')
+REDACTED
+
 async function finalizeCompletion(completion: PendingOAuthExchangeResponse, redirect: string) {
   if (getOAuthCompletionKind(completion) === 'bind') {
     const bindRedirect = sanitizeRedirectPath(completion.redirect || '/profile')
@@ -739,10 +761,15 @@ async function handleCreateAccount(payload: PendingOAuthCreateAccountPayload) {
       email: payload.email,
       password: payload.password,
       verify_code: payload.verifyCode || undefined,
+      invitation_code: payload.invitationCode || undefined,
       ...serializeAdoptionDecision(currentAdoptionDecision())
     REDACTED)
     await finalizePendingAccountResponse(data)
   REDACTED catch (e: unknown) {
+    if (isCreateAccountRecoveryError(e)) {
+      switchToBindLoginMode(payload.email)
+      return
+    REDACTED
     accountActionError.value = getRequestErrorMessage(e, t('auth.loginFailed'))
   REDACTED finally {
     isSubmitting.value = false

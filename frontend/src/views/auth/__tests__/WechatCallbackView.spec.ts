@@ -8,6 +8,8 @@ const {
   login2FAMock,
   apiClientPostMock,
   sendVerifyCodeMock,
+  sendPendingOAuthVerifyCodeMock,
+  getPublicSettingsMock,
   prepareOAuthBindAccessTokenCookieMock,
   getAuthTokenMock,
   replaceMock,
@@ -24,6 +26,8 @@ REDACTED = vi.hoisted(() => ({
   login2FAMock: vi.fn(),
   apiClientPostMock: vi.fn(),
   sendVerifyCodeMock: vi.fn(),
+  sendPendingOAuthVerifyCodeMock: vi.fn(),
+  getPublicSettingsMock: vi.fn(),
   prepareOAuthBindAccessTokenCookieMock: vi.fn(),
   getAuthTokenMock: vi.fn(),
   replaceMock: vi.fn(),
@@ -130,6 +134,8 @@ vi.mock('@/api/auth', async () => {
     completeWeChatOAuthRegistration: (...args: any[]) => completeWeChatOAuthRegistrationMock(...args),
     login2FA: (...args: any[]) => login2FAMock(...args),
     sendVerifyCode: (...args: any[]) => sendVerifyCodeMock(...args),
+    sendPendingOAuthVerifyCode: (...args: any[]) => sendPendingOAuthVerifyCodeMock(...args),
+    getPublicSettings: (...args: any[]) => getPublicSettingsMock(...args),
     prepareOAuthBindAccessTokenCookie: (...args: any[]) => prepareOAuthBindAccessTokenCookieMock(...args),
     getAuthToken: (...args: any[]) => getAuthTokenMock(...args),
   REDACTED
@@ -142,6 +148,8 @@ describe('WechatCallbackView', () => {
     login2FAMock.mockReset()
     apiClientPostMock.mockReset()
     sendVerifyCodeMock.mockReset()
+    sendPendingOAuthVerifyCodeMock.mockReset()
+    getPublicSettingsMock.mockReset()
     replaceMock.mockReset()
     setTokenMock.mockReset()
     showSuccessMock.mockReset()
@@ -166,6 +174,11 @@ describe('WechatCallbackView', () => {
     Object.defineProperty(window.navigator, 'userAgent', {
       configurable: true,
       value: 'Mozilla/5.0',
+    REDACTED)
+    getPublicSettingsMock.mockResolvedValue({
+      invitation_code_enabled: false,
+      turnstile_enabled: false,
+      turnstile_site_key: '',
     REDACTED)
   REDACTED)
 
@@ -478,6 +491,11 @@ describe('WechatCallbackView', () => {
   REDACTED)
 
   it('collects email, password, and verify code for pending oauth account creation and submits adoption decisions', async () => {
+    getPublicSettingsMock.mockResolvedValue({
+      invitation_code_enabled: true,
+      turnstile_enabled: false,
+      turnstile_site_key: '',
+    REDACTED)
     exchangePendingOAuthCompletionMock.mockResolvedValue({
       error: 'email_required',
       redirect: '/welcome',
@@ -514,6 +532,7 @@ describe('WechatCallbackView', () => {
     await wrapper.get('[data-testid="wechat-create-account-email"]').setValue('  new@example.com  ')
     await wrapper.get('[data-testid="wechat-create-account-password"]').setValue('secret-123')
     await wrapper.get('[data-testid="wechat-create-account-verify-code"]').setValue('246810')
+    await wrapper.get('[data-testid="wechat-create-account-invitation-code"]').setValue(' INVITE123 ')
     await wrapper.get('[data-testid="wechat-create-account-submit"]').trigger('click')
     await flushPromises()
 
@@ -521,6 +540,7 @@ describe('WechatCallbackView', () => {
       email: 'new@example.com',
       password: 'secret-123',
       verify_code: '246810',
+      invitation_code: 'INVITE123',
       adopt_display_name: true,
       adopt_avatar: false,
     REDACTED)
@@ -528,12 +548,48 @@ describe('WechatCallbackView', () => {
     expect(replaceMock).toHaveBeenCalledWith('/welcome')
   REDACTED)
 
+  it('switches to bind-login when create-account returns EMAIL_EXISTS', async () => {
+    exchangePendingOAuthCompletionMock.mockResolvedValue({
+      error: 'email_required',
+      redirect: '/welcome',
+    REDACTED)
+    apiClientPostMock.mockRejectedValue({
+      response: {
+        data: {
+          reason: 'EMAIL_EXISTS',
+          message: 'email already exists',
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    const wrapper = mount(WechatCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    await flushPromises()
+    await wrapper.get('[data-testid="wechat-create-account-email"]').setValue('existing@example.com')
+    await wrapper.get('[data-testid="wechat-create-account-password"]').setValue('secret-123')
+    await wrapper.get('[data-testid="wechat-create-account-submit"]').trigger('click')
+    await flushPromises()
+
+    expect((wrapper.get('[data-testid="wechat-bind-login-email"]').element as HTMLInputElement).value).toBe(
+      'existing@example.com'
+    )
+  REDACTED)
+
   it('sends a verify code for pending oauth account creation', async () => {
     exchangePendingOAuthCompletionMock.mockResolvedValue({
       error: 'email_required',
       redirect: '/welcome',
     REDACTED)
-    sendVerifyCodeMock.mockResolvedValue({
+    sendPendingOAuthVerifyCodeMock.mockResolvedValue({
       message: 'sent',
       countdown: 60,
     REDACTED)
@@ -555,7 +611,7 @@ describe('WechatCallbackView', () => {
     await wrapper.get('[data-testid="wechat-create-account-send-code"]').trigger('click')
     await flushPromises()
 
-    expect(sendVerifyCodeMock).toHaveBeenCalledWith({
+    expect(sendPendingOAuthVerifyCodeMock).toHaveBeenCalledWith({
       email: 'new@example.com',
     REDACTED)
   REDACTED)

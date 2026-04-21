@@ -968,6 +968,12 @@ export default {
       description: '查看当前绑定状态，并将更多第三方登录方式关联到这个账号。',
       bindAction: '绑定 {providerNameREDACTED',
       bindSuccess: '账号绑定成功',
+      emailPlaceholder: '输入邮箱地址',
+      codePlaceholder: '输入验证码',
+      passwordPlaceholder: '设置登录密码',
+      sendCodeAction: '发送验证码',
+      confirmEmailBindAction: '绑定邮箱',
+      codeSentTo: '验证码已发送到 {emailREDACTED',
       status: {
         bound: '已绑定',
         notBound: '未绑定',

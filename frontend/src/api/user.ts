@@ -89,6 +89,19 @@ export async function toggleNotifyEmail(email: string, disabled: boolean): Promi
   return data
 REDACTED
 
+export async function sendEmailBindingCode(email: string): Promise<void> {
+  await apiClient.post('/user/account-bindings/email/send-code', { email REDACTED)
+REDACTED
+
+export async function bindEmailIdentity(payload: {
+  email: string
+  verify_code: string
+  password: string
+REDACTED): Promise<User> {
+  const { data REDACTED = await apiClient.post<User>('/user/account-bindings/email', payload)
+  return data
+REDACTED
+
 export type BindableOAuthProvider = Exclude<UserAuthProvider, 'email'>
 
 interface BuildOAuthBindingStartURLOptions {
@@ -158,6 +171,8 @@ export const userAPI = {
   verifyNotifyEmail,
   removeNotifyEmail,
   toggleNotifyEmail,
+  sendEmailBindingCode,
+  bindEmailIdentity,
   buildOAuthBindingStartURL,
   startOAuthBinding
 REDACTED

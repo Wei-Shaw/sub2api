@@ -964,6 +964,12 @@ export default {
       description: 'View current bindings and connect another provider to this account.',
       bindAction: 'Bind {providerNameREDACTED',
       bindSuccess: 'Account linked successfully',
+      emailPlaceholder: 'Enter email address',
+      codePlaceholder: 'Enter verification code',
+      passwordPlaceholder: 'Set a login password',
+      sendCodeAction: 'Send code',
+      confirmEmailBindAction: 'Bind email',
+      codeSentTo: 'Code sent to {emailREDACTED',
       status: {
         bound: 'Bound',
         notBound: 'Not bound',
