@@ -62,6 +62,7 @@ import DataTable from '@/components/common/DataTable.vue'
 import Icon from '@/components/icons/Icon.vue'
 import SupportedModelChip from './SupportedModelChip.vue'
 import type { UserSupportedModel } from '@/api/channels'
+import type { ChannelStatus, BillingModelSource } from '@/constants/channel'
 
 interface GroupRef {
   id: number
@@ -75,7 +76,10 @@ interface Row {
   groups: GroupRef[]
   // 复用 user 侧最小 DTO；admin 侧 SupportedModel 结构上是其超集，可直接传入。
   supported_models: UserSupportedModel[]
-  [key: string]: unknown
+  // admin 独有字段：用精确类型代替 `unknown`，让消费端无需 `as` 断言，
+  // 也能在后端新增 union 成员时让前端 Record 查表立刻出空而非崩溃。
+  status?: ChannelStatus
+  billing_model_source?: BillingModelSource
 }
 
 interface Column {

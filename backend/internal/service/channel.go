@@ -111,6 +111,18 @@ func (c *Channel) IsActive() bool {
 	return c.Status == StatusActive
 }
 
+// normalizeBillingModelSource 若 BillingModelSource 为空则回填默认值 ChannelMapped。
+// 作为 *Channel 的实体方法集中管理默认值，service 层只需在 Channel 进入内存
+// （缓存装填、repo 读出）时调用一次，下游读路径就无需重复兜底。
+func (c *Channel) normalizeBillingModelSource() {
+	if c == nil {
+		return
+	}
+	if c.BillingModelSource == "" {
+		c.BillingModelSource = BillingModelSourceChannelMapped
+	}
+}
+
 // GetModelPricing 根据模型名查找渠道定价，未找到返回 nil。
 // 精确匹配，大小写不敏感。返回值拷贝，不污染缓存。
 func (c *Channel) GetModelPricing(model string) *ChannelModelPricing {

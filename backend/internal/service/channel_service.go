@@ -301,6 +301,9 @@ func (s *ChannelService) fetchChannelData(ctx context.Context) ([]Channel, map[i
 }
 
 // populateChannelCache 将渠道列表和分组平台映射填充到缓存快照中。
+// 装填时对每个 Channel 统一归一化 BillingModelSource，让缓存命中的所有下游
+// （gateway routing / billing / 未来任何 cache-backed 读路径）都拿到已归一化的实体，
+// 避免"每个出口各自记得 normalize"反模式。
 func populateChannelCache(channels []Channel, groupPlatforms map[int64]string) *channelCache {
 	cache := newEmptyChannelCache()
 	cache.groupPlatform = groupPlatforms
@@ -308,6 +311,7 @@ func populateChannelCache(channels []Channel, groupPlatforms map[int64]string) *
 	cache.loadedAt = time.Now()
 
 	for i := range channels {
+		channels[i].normalizeBillingModelSource()
 		ch := &channels[i]
 		cache.byID[ch.ID] = ch
 		for _, gid := range ch.GroupIDs {
@@ -518,13 +522,12 @@ func (s *ChannelService) ResolveChannelMappingAndRestrict(ctx context.Context, g
 // resolveMapping 基于已查找的渠道信息解析模型映射。
 // antigravity 分组依次尝试所有匹配平台，确保跨平台同名映射各自独立。
 func resolveMapping(lk *channelLookup, groupID int64, model string) ChannelMappingResult {
+	// lk.channel 来自已装填的缓存，BillingModelSource 已在 populateChannelCache 阶段归一化，
+	// 这里无需重复兜底。
 	result := ChannelMappingResult{
 		MappedModel:        model,
 		ChannelID:          lk.channel.ID,
 		BillingModelSource: lk.channel.BillingModelSource,
-	}
-	if result.BillingModelSource == "" {
-		result.BillingModelSource = BillingModelSourceChannelMapped
 	}
 
 	modelLower := strings.ToLower(model)
@@ -686,7 +689,7 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 		ApplyPricingToAccountStats: input.ApplyPricingToAccountStats,
 		AccountStatsPricingRules:   input.AccountStatsPricingRules,
 	}
-	normalizeBillingModelSource(channel)
+	channel.normalizeBillingModelSource()
 
 	if err := validateChannelConfig(channel.ModelPricing, channel.ModelMapping); err != nil {
 		return nil, err
@@ -706,7 +709,7 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 	if err != nil {
 		return nil, err
 	}
-	normalizeBillingModelSource(created)
+	created.normalizeBillingModelSource()
 	return created, nil
 }
 
@@ -717,16 +720,8 @@ func (s *ChannelService) GetByID(ctx context.Context, id int64) (*Channel, error
 	if err != nil {
 		return nil, err
 	}
-	normalizeBillingModelSource(ch)
+	ch.normalizeBillingModelSource()
 	return ch, nil
-}
-
-// normalizeBillingModelSource 若 BillingModelSource 为空则回填默认值 ChannelMapped。
-// 统一在 service 层完成，避免 handler 响应层重复兜底。
-func normalizeBillingModelSource(ch *Channel) {
-	if ch != nil && ch.BillingModelSource == "" {
-		ch.BillingModelSource = BillingModelSourceChannelMapped
-	}
 }
 
 // Update 更新渠道
@@ -762,7 +757,7 @@ func (s *ChannelService) Update(ctx context.Context, id int64, input *UpdateChan
 	if err != nil {
 		return nil, err
 	}
-	normalizeBillingModelSource(updated)
+	updated.normalizeBillingModelSource()
 	return updated, nil
 }
 
@@ -886,7 +881,7 @@ func (s *ChannelService) List(ctx context.Context, params pagination.PaginationP
 		return nil, nil, err
 	}
 	for i := range channels {
-		normalizeBillingModelSource(&channels[i])
+		channels[i].normalizeBillingModelSource()
 	}
 	return channels, res, nil
 }
