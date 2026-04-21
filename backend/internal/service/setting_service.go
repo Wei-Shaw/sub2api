@@ -675,6 +675,8 @@ REDACTED
 		AccountQuotaNotifyEnabled        bool            `json:"account_quota_notify_enabled"`
 		BalanceLowNotifyThreshold        float64         `json:"balance_low_notify_threshold"`
 		BalanceLowNotifyRechargeURL      string          `json:"balance_low_notify_recharge_url"`
+		ChannelMonitorEnabled            bool            `json:"channel_monitor_enabled"`
+		AvailableChannelsEnabled         bool            `json:"available_channels_enabled"`
 REDACTED{
 		RegistrationEnabled:              settings.RegistrationEnabled,
 		EmailVerifyEnabled:               settings.EmailVerifyEnabled,
@@ -713,6 +715,8 @@ REDACTED{
 		AccountQuotaNotifyEnabled:        settings.AccountQuotaNotifyEnabled,
 		BalanceLowNotifyThreshold:        settings.BalanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:      settings.BalanceLowNotifyRechargeURL,
+		ChannelMonitorEnabled:            settings.ChannelMonitorEnabled,
+		AvailableChannelsEnabled:         settings.AvailableChannelsEnabled,
 REDACTED, nil
 REDACTED
 
