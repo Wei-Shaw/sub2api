@@ -21,10 +21,21 @@ REDACTED
 	if claims.UserID > 0 && order.UserID != claims.UserID {
 		return nil, fmt.Errorf("resume token user mismatch")
 REDACTED
-	if claims.ProviderInstanceID != "" && strings.TrimSpace(psStringValue(order.ProviderInstanceID)) != claims.ProviderInstanceID {
+	snapshot := psOrderProviderSnapshot(order)
+	orderProviderInstanceID := strings.TrimSpace(psStringValue(order.ProviderInstanceID))
+	orderProviderKey := strings.TrimSpace(psStringValue(order.ProviderKey))
+	if snapshot != nil {
+		if snapshot.ProviderInstanceID != "" {
+			orderProviderInstanceID = snapshot.ProviderInstanceID
+	REDACTED
+		if snapshot.ProviderKey != "" {
+			orderProviderKey = snapshot.ProviderKey
+	REDACTED
+REDACTED
+	if claims.ProviderInstanceID != "" && orderProviderInstanceID != claims.ProviderInstanceID {
 		return nil, fmt.Errorf("resume token provider instance mismatch")
 REDACTED
-	if claims.ProviderKey != "" && strings.TrimSpace(psStringValue(order.ProviderKey)) != claims.ProviderKey {
+	if claims.ProviderKey != "" && orderProviderKey != claims.ProviderKey {
 		return nil, fmt.Errorf("resume token provider key mismatch")
 REDACTED
 	if claims.PaymentType != "" && strings.TrimSpace(order.PaymentType) != claims.PaymentType {
