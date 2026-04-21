@@ -36,11 +36,6 @@ func NewUserHandler(
 	}
 }
 
-// SetQuotaService 注入配额服务（feature issue #1750）
-func (h *UserHandler) SetQuotaService(qs service.QuotaService) {
-	h.quotaService = qs
-}
-
 // ChangePasswordRequest represents the change password request payload
 type ChangePasswordRequest struct {
 	OldPassword string `json:"old_password" binding:"required"`

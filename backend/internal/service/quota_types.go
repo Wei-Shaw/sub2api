@@ -121,7 +121,14 @@ type UserUsageLimitRuleRepository interface {
 	ReplaceAll(ctx context.Context, userID int64, rules []CreateRuleRequest) ([]*QuotaRule, error)
 }
 
-// QuotaUserWriter 用户配额字段写入接口（避免依赖完整 UserRepository）
+// QuotaUserWriter 用户配额字段写入接口，只暴露"更新配额相关字段"这一能力。
+//
+// 设计动机：配额服务只需要写 users.usage_limit_enabled / daily_usage_limit_usd 两列，
+// 而 UserRepository 聚集了 30+ 用户相关方法，引入会让 QuotaService 依赖过大。
+// 用单方法小接口隔离，既便于单测 mock，也为未来拆出 quota 独立存储留口子。
+//
+// 注：当前 wire 装配中 QuotaUserWriter 和 UserRepository 被同一个 *userRepository
+// 同时实现（双注入），这是 ISP 预留的第二实现占位，不是代码错误。
 type QuotaUserWriter interface {
 	UpdateUsageLimit(ctx context.Context, userID int64, enabled *bool, dailyUsageLimitUSD *float64) error
 }
