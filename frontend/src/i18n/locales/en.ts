@@ -940,6 +940,7 @@ export default {
     noPricing: 'Pricing not configured',
     columns: {
       name: 'Channel',
+      platform: 'Platform',
       groups: 'Your Accessible Groups',
       supportedModels: 'Supported Models'
     REDACTED,

@@ -944,6 +944,7 @@ export default {
     noPricing: '未配置定价',
     columns: {
       name: '渠道名',
+      platform: '平台',
       groups: '我可访问的分组',
       supportedModels: '支持模型'
     REDACTED,

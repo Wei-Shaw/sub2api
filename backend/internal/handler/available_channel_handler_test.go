@@ -65,12 +65,17 @@ REDACTED
 
 func TestUserAvailableChannel_FieldWhitelist(t *testing.T) {
 	// 通过序列化 userAvailableChannel 结构体验证响应形状：
-	// 只有 name / description / groups / supported_models；不含管理端字段。
+	// 只有 name / description / platforms；不含管理端字段。
 	row := userAvailableChannel{
-		Name:            "ch",
-		Description:     "d",
-		Groups:          []userAvailableGroup{{ID: 1, Name: "g1", Platform: "anthropic"REDACTEDREDACTED,
-		SupportedModels: []userSupportedModel{REDACTED,
+		Name:        "ch",
+		Description: "d",
+		Platforms: []userChannelPlatformSection{
+			{
+				Platform:        "anthropic",
+				Groups:          []userAvailableGroup{{ID: 1, Name: "g1", Platform: "anthropic"REDACTEDREDACTED,
+				SupportedModels: []userSupportedModel{REDACTED,
+		REDACTED,
+	REDACTED,
 REDACTED
 	raw, err := json.Marshal(row)
 REDACTED
@@ -81,9 +86,19 @@ REDACTED
 		_, exists := decoded[key]
 		require.Falsef(t, exists, "user DTO must not expose %q", key)
 REDACTED
-	for _, key := range []string{"name", "description", "groups", "supported_models"REDACTED {
+	for _, key := range []string{"name", "description", "platforms"REDACTED {
 		_, exists := decoded[key]
 		require.Truef(t, exists, "user DTO must expose %q", key)
+REDACTED
+
+	// 验证 section 的字段（platform / groups / supported_models）。
+	rawSection, err := json.Marshal(row.Platforms[0])
+REDACTED
+	var sectionDecoded map[string]any
+	require.NoError(t, json.Unmarshal(rawSection, &sectionDecoded))
+	for _, key := range []string{"platform", "groups", "supported_models"REDACTED {
+		_, exists := sectionDecoded[key]
+		require.Truef(t, exists, "platform section must expose %q", key)
 REDACTED
 
 	// pricing interval 白名单：不应暴露 id / sort_order。
@@ -103,4 +118,29 @@ REDACTED
 		_, exists := ivDecoded[key]
 		require.Falsef(t, exists, "user pricing interval must not expose %q", key)
 REDACTED
+REDACTED
+
+func TestBuildPlatformSections_GroupsByPlatform(t *testing.T) {
+	// 一个渠道横跨 anthropic / openai / 空平台：应该生成 2 个 section，
+	// 按 platform 字母序排序，各自 groups 和 supported_models 只含同平台条目。
+	ch := service.AvailableChannel{
+		Name: "ch",
+		SupportedModels: []service.SupportedModel{
+			{Name: "claude-sonnet-4-6", Platform: "anthropic"REDACTED,
+			{Name: "gpt-4o", Platform: "openai"REDACTED,
+	REDACTED,
+REDACTED
+	visible := []userAvailableGroup{
+		{ID: 1, Name: "g-openai", Platform: "openai"REDACTED,
+		{ID: 2, Name: "g-ant", Platform: "anthropic"REDACTED,
+		{ID: 3, Name: "g-empty", Platform: ""REDACTED,
+REDACTED
+	sections := buildPlatformSections(ch, visible)
+	require.Len(t, sections, 2)
+	require.Equal(t, "anthropic", sections[0].Platform)
+	require.Equal(t, "openai", sections[1].Platform)
+	require.Len(t, sections[0].Groups, 1)
+	require.Equal(t, int64(2), sections[0].Groups[0].ID)
+	require.Len(t, sections[0].SupportedModels, 1)
+	require.Equal(t, "claude-sonnet-4-6", sections[0].SupportedModels[0].Name)
 REDACTED
