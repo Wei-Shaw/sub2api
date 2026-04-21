@@ -61,14 +61,14 @@ func (s *UserRepoSuite) TestCreateAndRead_PreservesSignupSourceAndActivityTimest
 
 	created := s.mustCreateUser(&service.User{
 		Email:        "identity-meta@example.com",
-		SignupSource: "github",
+		SignupSource: "linuxdo",
 		LastLoginAt:  &lastLoginAt,
 		LastActiveAt: &lastActiveAt,
 REDACTED)
 
 	got, err := s.repo.GetByID(s.ctx, created.ID)
 	s.Require().NoError(err)
-	s.Require().Equal("github", got.SignupSource)
+	s.Require().Equal("linuxdo", got.SignupSource)
 	s.Require().NotNil(got.LastLoginAt)
 	s.Require().NotNil(got.LastActiveAt)
 	s.Require().True(got.LastLoginAt.Equal(lastLoginAt))

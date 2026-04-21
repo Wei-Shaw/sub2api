@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS user_external_identities (
 
 	TRUNCATE TABLE
 		auth_identity_channels,
+		identity_adoption_decisions,
 		auth_identities,
 		auth_identity_migration_reports,
 		user_external_identities,
@@ -235,6 +236,7 @@ CREATE TABLE IF NOT EXISTS user_external_identities (
 
 TRUNCATE TABLE
 	auth_identity_channels,
+	identity_adoption_decisions,
 	auth_identities,
 	auth_identity_migration_reports,
 	user_external_identities,
@@ -424,6 +426,7 @@ CREATE TABLE IF NOT EXISTS user_external_identities (
 
 	TRUNCATE TABLE
 		auth_identity_channels,
+		identity_adoption_decisions,
 		auth_identities,
 		auth_identity_migration_reports,
 		user_external_identities,
