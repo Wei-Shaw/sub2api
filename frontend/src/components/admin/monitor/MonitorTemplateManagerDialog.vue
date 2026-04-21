@@ -180,14 +180,12 @@
     </template>
   </BaseDialog>
 
-  <ConfirmDialog
-    :show="confirmApply_.show"
-    :title="t('admin.channelMonitor.template.applyTitle')"
-    :message="confirmApplyMessage"
-    :confirm-text="t('admin.channelMonitor.template.applyConfirm')"
-    :cancel-text="t('common.cancel')"
-    @confirm="doApply"
-    @cancel="confirmApply_.show = false"
+  <MonitorTemplateApplyPickerDialog
+    :show="applyPicker.show"
+    :template-id="applyPicker.tpl ? applyPicker.tpl.id : null"
+    :template-name="applyPicker.tpl ? applyPicker.tpl.name : ''"
+    @close="applyPicker.show = false"
+    @applied="onApplied"
   />
 
   <ConfirmDialog
@@ -217,6 +215,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import MonitorAdvancedRequestConfig from '@/components/admin/monitor/MonitorAdvancedRequestConfig.vue'
+import MonitorTemplateApplyPickerDialog from '@/components/admin/monitor/MonitorTemplateApplyPickerDialog.vue'
 import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
 import {
   PROVIDER_ANTHROPIC,
@@ -373,38 +372,21 @@ async function handleSubmit() {
   }
 }
 
-// --- apply to monitors ---
-const confirmApply_ = reactive<{ show: boolean; tpl: ChannelMonitorTemplate | null }>({
+// --- apply to monitors (picker 流程) ---
+const applyPicker = reactive<{ show: boolean; tpl: ChannelMonitorTemplate | null }>({
   show: false,
   tpl: null,
 })
 
 function confirmApply(tpl: ChannelMonitorTemplate) {
-  confirmApply_.tpl = tpl
-  confirmApply_.show = true
+  applyPicker.tpl = tpl
+  applyPicker.show = true
 }
 
-const confirmApplyMessage = computed(() => {
-  const tpl = confirmApply_.tpl
-  if (!tpl) return ''
-  return t('admin.channelMonitor.template.applyConfirmMessage', {
-    name: tpl.name,
-    n: tpl.associated_monitors,
-  })
-})
-
-async function doApply() {
-  const tpl = confirmApply_.tpl
-  confirmApply_.show = false
-  if (!tpl) return
-  try {
-    const { affected } = await adminAPI.channelMonitorTemplate.apply(tpl.id)
-    appStore.showSuccess(t('admin.channelMonitor.template.applySuccess', { n: affected }))
-    await fetchTemplates()
-    emit('updated')
-  } catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('common.error')))
-  }
+// picker 提交后触发：刷新模板列表（拿最新 associated_monitors）+ 通知父组件
+async function onApplied(_affected: number) {
+  await fetchTemplates()
+  emit('updated')
 }
 
 // --- delete ---

@@ -51,6 +51,17 @@ export interface ApplyResponse {
   affected: number
 }
 
+export interface AssociatedMonitorBrief {
+  id: number
+  name: string
+  provider: Provider
+  enabled: boolean
+}
+
+export interface AssociatedMonitorsResponse {
+  items: AssociatedMonitorBrief[]
+}
+
 export async function list(params: ListParams = {}): Promise<ListResponse> {
   const { data } = await apiClient.get<ListResponse>('/admin/channel-monitor-templates', {
     params,
@@ -86,12 +97,24 @@ export async function del(id: number): Promise<void> {
 }
 
 /**
- * Apply the template to all associated monitors (overwrite snapshot fields).
- * Returns count of affected monitors.
+ * Apply the template to the specified associated monitors (overwrite snapshot fields).
+ * monitorIds must be a non-empty subset of the template's associated monitors.
+ * Returns count of actually affected monitors.
  */
-export async function apply(id: number): Promise<ApplyResponse> {
+export async function apply(id: number, monitorIds: number[]): Promise<ApplyResponse> {
   const { data } = await apiClient.post<ApplyResponse>(
     `/admin/channel-monitor-templates/${id}/apply`,
+    { monitor_ids: monitorIds },
+  )
+  return data
+}
+
+/**
+ * List monitors currently associated to this template (used by apply picker).
+ */
+export async function listAssociatedMonitors(id: number): Promise<AssociatedMonitorsResponse> {
+  const { data } = await apiClient.get<AssociatedMonitorsResponse>(
+    `/admin/channel-monitor-templates/${id}/monitors`,
   )
   return data
 }
@@ -103,6 +126,7 @@ export const channelMonitorTemplateAPI = {
   update,
   del,
   apply,
+  listAssociatedMonitors,
 }
 
 export default channelMonitorTemplateAPI

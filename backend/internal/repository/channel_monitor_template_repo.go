@@ -103,11 +103,13 @@ func (r *channelMonitorRequestTemplateRepository) List(ctx context.Context, para
 	return out, nil
 }
 
-// ApplyToMonitors 把模板当前配置批量覆盖到 template_id = id 的监控上。
-//
-// 用一条 UPDATE 完成：extra_headers / body_override_mode / body_override 都覆盖。
-// 走 ent 的 UpdateMany 保证走 ent hooks；走原生 SQL 也可以但 ent jsonb 序列化更省心。
-func (r *channelMonitorRequestTemplateRepository) ApplyToMonitors(ctx context.Context, id int64) (int64, error) {
+// ApplyToMonitors 把模板当前配置覆盖到 monitorIDs 列表里的关联监控。
+// WHERE 双重过滤：template_id = id AND id IN (monitorIDs)，防止用户传了未关联本模板的 id
+// 就被覆盖。走 ent UpdateMany 保留 hooks。
+func (r *channelMonitorRequestTemplateRepository) ApplyToMonitors(ctx context.Context, id int64, monitorIDs []int64) (int64, error) {
+	if len(monitorIDs) == 0 {
+		return 0, nil
+	}
 	client := clientFromContext(ctx, r.client)
 	tpl, err := client.ChannelMonitorRequestTemplate.Query().
 		Where(channelmonitorrequesttemplate.IDEQ(id)).
@@ -117,7 +119,10 @@ func (r *channelMonitorRequestTemplateRepository) ApplyToMonitors(ctx context.Co
 	}
 
 	updater := client.ChannelMonitor.Update().
-		Where(channelmonitor.TemplateIDEQ(id)).
+		Where(
+			channelmonitor.TemplateIDEQ(id),
+			channelmonitor.IDIn(monitorIDs...),
+		).
 		SetExtraHeaders(emptyHeadersIfNilRepo(tpl.ExtraHeaders)).
 		SetBodyOverrideMode(defaultBodyModeRepo(tpl.BodyOverrideMode))
 	if tpl.BodyOverride != nil {
@@ -142,6 +147,28 @@ func (r *channelMonitorRequestTemplateRepository) CountAssociatedMonitors(ctx co
 		return 0, fmt.Errorf("count monitors for template %d: %w", id, err)
 	}
 	return int64(count), nil
+}
+
+// ListAssociatedMonitors 列出模板关联的所有监控简略字段。
+// ORDER BY name 稳定输出方便前端展示。
+func (r *channelMonitorRequestTemplateRepository) ListAssociatedMonitors(ctx context.Context, id int64) ([]*service.AssociatedMonitorBrief, error) {
+	rows, err := r.client.ChannelMonitor.Query().
+		Where(channelmonitor.TemplateIDEQ(id)).
+		Order(dbent.Asc(channelmonitor.FieldName)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list associated monitors for template %d: %w", id, err)
+	}
+	out := make([]*service.AssociatedMonitorBrief, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, &service.AssociatedMonitorBrief{
+			ID:       row.ID,
+			Name:     row.Name,
+			Provider: string(row.Provider),
+			Enabled:  row.Enabled,
+		})
+	}
+	return out, nil
 }
 
 // ---------- helpers ----------

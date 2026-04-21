@@ -587,6 +587,7 @@ func registerChannelMonitorRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		templates.GET("/:id", h.Admin.ChannelMonitorTemplate.Get)
 		templates.PUT("/:id", h.Admin.ChannelMonitorTemplate.Update)
 		templates.DELETE("/:id", h.Admin.ChannelMonitorTemplate.Delete)
+		templates.GET("/:id/monitors", h.Admin.ChannelMonitorTemplate.AssociatedMonitors)
 		templates.POST("/:id/apply", h.Admin.ChannelMonitorTemplate.Apply)
 	}
 }

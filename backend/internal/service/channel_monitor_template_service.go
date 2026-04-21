@@ -15,10 +15,23 @@ type ChannelMonitorRequestTemplateRepository interface {
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context, params ChannelMonitorRequestTemplateListParams) ([]*ChannelMonitorRequestTemplate, error)
 	// ApplyToMonitors 把模板当前的 extra_headers / body_override_mode / body_override
-	// 批量覆盖到所有 template_id = id 的监控上。返回被覆盖的监控数量。
-	ApplyToMonitors(ctx context.Context, id int64) (int64, error)
+	// 批量覆盖到指定 monitorIDs 的监控上（同时还要求这些监控当前 template_id = id，
+	// 防止误覆盖未关联的监控）。monitorIDs 必须非空；空列表直接返回 0 不写库。
+	// 返回被覆盖的监控数量。
+	ApplyToMonitors(ctx context.Context, id int64, monitorIDs []int64) (int64, error)
 	// CountAssociatedMonitors 统计 template_id = id 的监控数（用于 UI 展示「应用到 N 个配置」）。
 	CountAssociatedMonitors(ctx context.Context, id int64) (int64, error)
+	// ListAssociatedMonitors 列出所有 template_id = id 的监控简略信息（id/name/provider/enabled）
+	// 给 apply picker UI 用，避免前端再做一次 list+filter。
+	ListAssociatedMonitors(ctx context.Context, id int64) ([]*AssociatedMonitorBrief, error)
+}
+
+// AssociatedMonitorBrief 模板关联监控的简略信息（picker / 列表展示用）。
+type AssociatedMonitorBrief struct {
+	ID       int64
+	Name     string
+	Provider string
+	Enabled  bool
 }
 
 // ChannelMonitorRequestTemplateService 模板管理 service。
@@ -90,13 +103,17 @@ func (s *ChannelMonitorRequestTemplateService) Delete(ctx context.Context, id in
 	return nil
 }
 
-// ApplyToMonitors 把模板当前配置一键应用到所有关联监控。
-// 返回被影响的监控数。
-func (s *ChannelMonitorRequestTemplateService) ApplyToMonitors(ctx context.Context, id int64) (int64, error) {
+// ApplyToMonitors 把模板当前配置应用到 monitorIDs 列表里的关联监控。
+// monitorIDs 必须非空且每个 id 都必须当前 template_id = id；不满足条件的会被 SQL WHERE 过滤掉。
+// 返回实际被覆盖的监控数。
+func (s *ChannelMonitorRequestTemplateService) ApplyToMonitors(ctx context.Context, id int64, monitorIDs []int64) (int64, error) {
 	if _, err := s.repo.GetByID(ctx, id); err != nil {
 		return 0, err
 	}
-	affected, err := s.repo.ApplyToMonitors(ctx, id)
+	if len(monitorIDs) == 0 {
+		return 0, ErrChannelMonitorTemplateApplyEmpty
+	}
+	affected, err := s.repo.ApplyToMonitors(ctx, id, monitorIDs)
 	if err != nil {
 		return 0, fmt.Errorf("apply template to monitors: %w", err)
 	}
@@ -106,6 +123,15 @@ func (s *ChannelMonitorRequestTemplateService) ApplyToMonitors(ctx context.Conte
 // CountAssociatedMonitors 返回关联监控数。
 func (s *ChannelMonitorRequestTemplateService) CountAssociatedMonitors(ctx context.Context, id int64) (int64, error) {
 	return s.repo.CountAssociatedMonitors(ctx, id)
+}
+
+// ListAssociatedMonitors 返回模板关联的所有监控简略信息。
+// 给前端 apply picker 用，handler 直接吐 JSON 不再做 join。
+func (s *ChannelMonitorRequestTemplateService) ListAssociatedMonitors(ctx context.Context, id int64) ([]*AssociatedMonitorBrief, error) {
+	if _, err := s.repo.GetByID(ctx, id); err != nil {
+		return nil, err
+	}
+	return s.repo.ListAssociatedMonitors(ctx, id)
 }
 
 // ---------- 校验 & 工具 ----------

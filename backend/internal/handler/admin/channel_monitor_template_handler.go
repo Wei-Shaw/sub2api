@@ -179,17 +179,56 @@ func (h *ChannelMonitorRequestTemplateHandler) Delete(c *gin.Context) {
 	response.Success(c, nil)
 }
 
+type channelMonitorTemplateApplyRequest struct {
+	// MonitorIDs 必填、非空：用户在 picker 里勾选的要被覆盖的监控 ID 列表。
+	// 仅当对应监控当前 template_id == :id 时才会真的被覆盖。
+	MonitorIDs []int64 `json:"monitor_ids" binding:"required,min=1"`
+}
+
 // Apply POST /api/v1/admin/channel-monitor-templates/:id/apply
-// 一键把模板当前配置覆盖到所有关联监控上。
+// 把模板当前配置覆盖到 monitor_ids 列表里的关联监控（picker 选中的子集）。
 func (h *ChannelMonitorRequestTemplateHandler) Apply(c *gin.Context) {
 	id, ok := parseTemplateID(c)
 	if !ok {
 		return
 	}
-	affected, err := h.templateService.ApplyToMonitors(c.Request.Context(), id)
+	var req channelMonitorTemplateApplyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorFrom(c, infraerrors.BadRequest("VALIDATION_ERROR", err.Error()))
+		return
+	}
+	affected, err := h.templateService.ApplyToMonitors(c.Request.Context(), id, req.MonitorIDs)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 	response.Success(c, gin.H{"affected": affected})
+}
+
+type associatedMonitorBriefResponse struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Provider string `json:"provider"`
+	Enabled  bool   `json:"enabled"`
+}
+
+// AssociatedMonitors GET /api/v1/admin/channel-monitor-templates/:id/monitors
+// 列出关联监控（picker 弹窗用）。
+func (h *ChannelMonitorRequestTemplateHandler) AssociatedMonitors(c *gin.Context) {
+	id, ok := parseTemplateID(c)
+	if !ok {
+		return
+	}
+	items, err := h.templateService.ListAssociatedMonitors(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]associatedMonitorBriefResponse, 0, len(items))
+	for _, m := range items {
+		out = append(out, associatedMonitorBriefResponse{
+			ID: m.ID, Name: m.Name, Provider: m.Provider, Enabled: m.Enabled,
+		})
+	}
+	response.Success(c, gin.H{"items": out})
 }
