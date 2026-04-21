@@ -54,8 +54,15 @@ type SystemSettings struct {
 	WeChatConnectEnabled             bool   `json:"wechat_connect_enabled"`
 	WeChatConnectAppID               string `json:"wechat_connect_app_id"`
 	WeChatConnectAppSecretConfigured bool   `json:"wechat_connect_app_secret_configured"`
+	WeChatConnectOpenAppID               string `json:"wechat_connect_open_app_id"`
+	WeChatConnectOpenAppSecretConfigured bool   `json:"wechat_connect_open_app_secret_configured"`
+	WeChatConnectMPAppID                 string `json:"wechat_connect_mp_app_id"`
+	WeChatConnectMPAppSecretConfigured   bool   `json:"wechat_connect_mp_app_secret_configured"`
+	WeChatConnectMobileAppID             string `json:"wechat_connect_mobile_app_id"`
+	WeChatConnectMobileAppSecretConfigured bool `json:"wechat_connect_mobile_app_secret_configured"`
 	WeChatConnectOpenEnabled         bool   `json:"wechat_connect_open_enabled"`
 	WeChatConnectMPEnabled           bool   `json:"wechat_connect_mp_enabled"`
+	WeChatConnectMobileEnabled       bool   `json:"wechat_connect_mobile_enabled"`
 	WeChatConnectMode                string `json:"wechat_connect_mode"`
 	WeChatConnectScopes              string `json:"wechat_connect_scopes"`
 	WeChatConnectRedirectURL         string `json:"wechat_connect_redirect_url"`
@@ -212,6 +219,7 @@ type PublicSettings struct {
 	WeChatOAuthEnabled               bool             `json:"wechat_oauth_enabled"`
 	WeChatOAuthOpenEnabled           bool             `json:"wechat_oauth_open_enabled"`
 	WeChatOAuthMPEnabled             bool             `json:"wechat_oauth_mp_enabled"`
+	WeChatOAuthMobileEnabled         bool             `json:"wechat_oauth_mobile_enabled"`
 	OIDCOAuthEnabled                 bool             `json:"oidc_oauth_enabled"`
 	OIDCOAuthProviderName            string           `json:"oidc_oauth_provider_name"`
 	SoraClientEnabled                bool             `json:"sora_client_enabled"`

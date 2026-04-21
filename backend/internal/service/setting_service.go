@@ -181,14 +181,19 @@ func normalizeWeChatConnectModeSetting(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "mp":
 		return "mp"
+	case "mobile":
+		return "mobile"
 	default:
 		return "open"
 REDACTED
 REDACTED
 
 func defaultWeChatConnectScopeForMode(mode string) string {
-	if normalizeWeChatConnectModeSetting(mode) == "mp" {
+	switch normalizeWeChatConnectModeSetting(mode) {
+	case "mp":
 		return "snsapi_userinfo"
+	case "mobile":
+		return ""
 REDACTED
 	return defaultWeChatConnectScopes
 REDACTED
@@ -204,37 +209,47 @@ func normalizeWeChatConnectScopeSetting(raw, mode string) string {
 		default:
 			return defaultWeChatConnectScopeForMode(mode)
 	REDACTED
+	case "mobile":
+		return ""
 	default:
 		return defaultWeChatConnectScopes
 REDACTED
 REDACTED
 
-func parseWeChatConnectCapabilitySettings(settings map[string]string, enabled bool, mode string) (bool, bool) {
+func parseWeChatConnectCapabilitySettings(settings map[string]string, enabled bool, mode string) (bool, bool, bool) {
 	mode = normalizeWeChatConnectModeSetting(mode)
 	rawOpen, hasOpen := settings[SettingKeyWeChatConnectOpenEnabled]
 	rawMP, hasMP := settings[SettingKeyWeChatConnectMPEnabled]
+	rawMobile, hasMobile := settings[SettingKeyWeChatConnectMobileEnabled]
 	openConfigured := hasOpen && strings.TrimSpace(rawOpen) != ""
 	mpConfigured := hasMP && strings.TrimSpace(rawMP) != ""
+	mobileConfigured := hasMobile && strings.TrimSpace(rawMobile) != ""
 
-	if openConfigured || mpConfigured {
+	if openConfigured || mpConfigured || mobileConfigured {
 		openEnabled := strings.TrimSpace(rawOpen) == "true"
 		mpEnabled := strings.TrimSpace(rawMP) == "true"
-		return openEnabled, mpEnabled
+		mobileEnabled := strings.TrimSpace(rawMobile) == "true"
+		return openEnabled, mpEnabled, mobileEnabled
 REDACTED
 
 	if !enabled {
-		return false, false
+		return false, false, false
 REDACTED
 	if mode == "mp" {
-		return false, true
+		return false, true, false
 REDACTED
-	return true, false
+	if mode == "mobile" {
+		return false, false, true
+REDACTED
+	return true, false, false
 REDACTED
 
-func normalizeWeChatConnectStoredMode(openEnabled, mpEnabled bool, mode string) string {
+func normalizeWeChatConnectStoredMode(openEnabled, mpEnabled, mobileEnabled bool, mode string) string {
 	switch {
 	case mpEnabled:
 		return "mp"
+	case mobileEnabled:
+		return "mobile"
 	case openEnabled:
 		return "open"
 	default:
@@ -310,8 +325,15 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyWeChatConnectEnabled,
 		SettingKeyWeChatConnectAppID,
 		SettingKeyWeChatConnectAppSecret,
+		SettingKeyWeChatConnectOpenAppID,
+		SettingKeyWeChatConnectOpenAppSecret,
+		SettingKeyWeChatConnectMPAppID,
+		SettingKeyWeChatConnectMPAppSecret,
+		SettingKeyWeChatConnectMobileAppID,
+		SettingKeyWeChatConnectMobileAppSecret,
 		SettingKeyWeChatConnectOpenEnabled,
 		SettingKeyWeChatConnectMPEnabled,
+		SettingKeyWeChatConnectMobileEnabled,
 		SettingKeyWeChatConnectMode,
 		SettingKeyWeChatConnectScopes,
 		SettingKeyWeChatConnectRedirectURL,
@@ -350,7 +372,7 @@ REDACTED
 	if oidcProviderName == "" {
 		oidcProviderName = "OIDC"
 REDACTED
-	weChatEnabled, weChatOpenEnabled, weChatMPEnabled := s.weChatOAuthCapabilitiesFromSettings(settings)
+	weChatEnabled, weChatOpenEnabled, weChatMPEnabled, weChatMobileEnabled := s.weChatOAuthCapabilitiesFromSettings(settings)
 
 	// Password reset requires email verification to be enabled
 	emailVerifyEnabled := settings[SettingKeyEmailVerifyEnabled] == "true"
@@ -397,6 +419,7 @@ REDACTED
 		WeChatOAuthEnabled:               weChatEnabled,
 		WeChatOAuthOpenEnabled:           weChatOpenEnabled,
 		WeChatOAuthMPEnabled:             weChatMPEnabled,
+		WeChatOAuthMobileEnabled:         weChatMobileEnabled,
 		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
 		PaymentEnabled:                   settings[SettingPaymentEnabled] == "true",
 		OIDCOAuthEnabled:                 oidcEnabled,
@@ -456,6 +479,7 @@ REDACTED
 		WeChatOAuthEnabled               bool            `json:"wechat_oauth_enabled"`
 		WeChatOAuthOpenEnabled           bool            `json:"wechat_oauth_open_enabled"`
 		WeChatOAuthMPEnabled             bool            `json:"wechat_oauth_mp_enabled"`
+		WeChatOAuthMobileEnabled         bool            `json:"wechat_oauth_mobile_enabled"`
 		BackendModeEnabled               bool            `json:"backend_mode_enabled"`
 		PaymentEnabled                   bool            `json:"payment_enabled"`
 		OIDCOAuthEnabled                 bool            `json:"oidc_oauth_enabled"`
@@ -493,6 +517,7 @@ REDACTED{
 		WeChatOAuthEnabled:               settings.WeChatOAuthEnabled,
 		WeChatOAuthOpenEnabled:           settings.WeChatOAuthOpenEnabled,
 		WeChatOAuthMPEnabled:             settings.WeChatOAuthMPEnabled,
+		WeChatOAuthMobileEnabled:         settings.WeChatOAuthMobileEnabled,
 		BackendModeEnabled:               settings.BackendModeEnabled,
 		PaymentEnabled:                   settings.PaymentEnabled,
 		OIDCOAuthEnabled:                 settings.OIDCOAuthEnabled,
@@ -512,15 +537,22 @@ REDACTED
 func (s *SettingService) parseWeChatConnectOAuthConfig(settings map[string]string) (WeChatConnectOAuthConfig, error) {
 	enabled := settings[SettingKeyWeChatConnectEnabled] == "true"
 	mode := normalizeWeChatConnectModeSetting(settings[SettingKeyWeChatConnectMode])
-	openEnabled, mpEnabled := parseWeChatConnectCapabilitySettings(settings, enabled, mode)
-	mode = normalizeWeChatConnectStoredMode(openEnabled, mpEnabled, mode)
+	openEnabled, mpEnabled, mobileEnabled := parseWeChatConnectCapabilitySettings(settings, enabled, mode)
+	mode = normalizeWeChatConnectStoredMode(openEnabled, mpEnabled, mobileEnabled, mode)
 
 	cfg := WeChatConnectOAuthConfig{
 		Enabled:             enabled,
-		AppID:               strings.TrimSpace(settings[SettingKeyWeChatConnectAppID]),
-		AppSecret:           strings.TrimSpace(settings[SettingKeyWeChatConnectAppSecret]),
+		LegacyAppID:         strings.TrimSpace(settings[SettingKeyWeChatConnectAppID]),
+		LegacyAppSecret:     strings.TrimSpace(settings[SettingKeyWeChatConnectAppSecret]),
+		OpenAppID:           strings.TrimSpace(firstNonEmpty(settings[SettingKeyWeChatConnectOpenAppID], settings[SettingKeyWeChatConnectAppID])),
+		OpenAppSecret:       strings.TrimSpace(firstNonEmpty(settings[SettingKeyWeChatConnectOpenAppSecret], settings[SettingKeyWeChatConnectAppSecret])),
+		MPAppID:             strings.TrimSpace(firstNonEmpty(settings[SettingKeyWeChatConnectMPAppID], settings[SettingKeyWeChatConnectAppID])),
+		MPAppSecret:         strings.TrimSpace(firstNonEmpty(settings[SettingKeyWeChatConnectMPAppSecret], settings[SettingKeyWeChatConnectAppSecret])),
+		MobileAppID:         strings.TrimSpace(firstNonEmpty(settings[SettingKeyWeChatConnectMobileAppID], settings[SettingKeyWeChatConnectAppID])),
+		MobileAppSecret:     strings.TrimSpace(firstNonEmpty(settings[SettingKeyWeChatConnectMobileAppSecret], settings[SettingKeyWeChatConnectAppSecret])),
 		OpenEnabled:         openEnabled,
 		MPEnabled:           mpEnabled,
+		MobileEnabled:       mobileEnabled,
 		Mode:                mode,
 		Scopes:              normalizeWeChatConnectScopeSetting(settings[SettingKeyWeChatConnectScopes], mode),
 		RedirectURL:         strings.TrimSpace(settings[SettingKeyWeChatConnectRedirectURL]),
@@ -533,11 +565,29 @@ REDACTED
 	if !cfg.Enabled || (!cfg.OpenEnabled && !cfg.MPEnabled) {
 		return WeChatConnectOAuthConfig{REDACTED, infraerrors.NotFound("OAUTH_DISABLED", "wechat oauth is disabled")
 REDACTED
-	if cfg.AppID == "" {
-		return WeChatConnectOAuthConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "wechat oauth app id not configured")
+	if cfg.OpenEnabled {
+		if cfg.AppIDForMode("open") == "" {
+			return WeChatConnectOAuthConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "wechat oauth pc app id not configured")
+	REDACTED
+		if cfg.AppSecretForMode("open") == "" {
+			return WeChatConnectOAuthConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "wechat oauth pc app secret not configured")
+	REDACTED
 REDACTED
-	if cfg.AppSecret == "" {
-		return WeChatConnectOAuthConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "wechat oauth app secret not configured")
+	if cfg.MPEnabled {
+		if cfg.AppIDForMode("mp") == "" {
+			return WeChatConnectOAuthConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "wechat oauth official account app id not configured")
+	REDACTED
+		if cfg.AppSecretForMode("mp") == "" {
+			return WeChatConnectOAuthConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "wechat oauth official account app secret not configured")
+	REDACTED
+REDACTED
+	if cfg.MobileEnabled {
+		if cfg.AppIDForMode("mobile") == "" {
+			return WeChatConnectOAuthConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "wechat oauth mobile app id not configured")
+	REDACTED
+		if cfg.AppSecretForMode("mobile") == "" {
+			return WeChatConnectOAuthConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "wechat oauth mobile app secret not configured")
+	REDACTED
 REDACTED
 	if cfg.RedirectURL == "" {
 		return WeChatConnectOAuthConfig{REDACTED, infraerrors.InternalServer("OAUTH_CONFIG_INVALID", "wechat oauth redirect url not configured")
@@ -554,12 +604,34 @@ REDACTED
 	return cfg, nil
 REDACTED
 
-func (s *SettingService) weChatOAuthCapabilitiesFromSettings(settings map[string]string) (bool, bool, bool) {
-	cfg, err := s.parseWeChatConnectOAuthConfig(settings)
-	if err != nil {
-		return false, false, false
+func (s *SettingService) weChatOAuthCapabilitiesFromSettings(settings map[string]string) (bool, bool, bool, bool) {
+	if settings[SettingKeyWeChatConnectEnabled] != "true" {
+		return false, false, false, false
 REDACTED
-	return true, cfg.OpenEnabled, cfg.MPEnabled
+
+	mode := normalizeWeChatConnectModeSetting(settings[SettingKeyWeChatConnectMode])
+	openEnabled, mpEnabled, mobileEnabled := parseWeChatConnectCapabilitySettings(settings, true, mode)
+	redirectURL := strings.TrimSpace(settings[SettingKeyWeChatConnectRedirectURL])
+	frontendRedirectURL := strings.TrimSpace(settings[SettingKeyWeChatConnectFrontendRedirectURL])
+	if frontendRedirectURL == "" {
+		frontendRedirectURL = defaultWeChatConnectFrontend
+REDACTED
+
+	legacyAppID := strings.TrimSpace(settings[SettingKeyWeChatConnectAppID])
+	legacyAppSecret := strings.TrimSpace(settings[SettingKeyWeChatConnectAppSecret])
+	openAppID := strings.TrimSpace(firstNonEmpty(settings[SettingKeyWeChatConnectOpenAppID], legacyAppID))
+	openAppSecret := strings.TrimSpace(firstNonEmpty(settings[SettingKeyWeChatConnectOpenAppSecret], legacyAppSecret))
+	mpAppID := strings.TrimSpace(firstNonEmpty(settings[SettingKeyWeChatConnectMPAppID], legacyAppID))
+	mpAppSecret := strings.TrimSpace(firstNonEmpty(settings[SettingKeyWeChatConnectMPAppSecret], legacyAppSecret))
+	mobileAppID := strings.TrimSpace(firstNonEmpty(settings[SettingKeyWeChatConnectMobileAppID], legacyAppID))
+	mobileAppSecret := strings.TrimSpace(firstNonEmpty(settings[SettingKeyWeChatConnectMobileAppSecret], legacyAppSecret))
+
+	webRedirectReady := redirectURL != "" && frontendRedirectURL != ""
+	openReady := openEnabled && webRedirectReady && openAppID != "" && openAppSecret != ""
+	mpReady := mpEnabled && webRedirectReady && mpAppID != "" && mpAppSecret != ""
+	mobileReady := mobileEnabled && mobileAppID != "" && mobileAppSecret != ""
+
+	return openReady || mpReady || mobileReady, openReady, mpReady, mobileReady
 REDACTED
 
 // filterUserVisibleMenuItems filters out admin-only menu items from a raw JSON
@@ -744,9 +816,16 @@ REDACTED
 	settings.PaymentVisibleMethodWxpaySource = wxpaySource
 	settings.WeChatConnectAppID = strings.TrimSpace(settings.WeChatConnectAppID)
 	settings.WeChatConnectAppSecret = strings.TrimSpace(settings.WeChatConnectAppSecret)
+	settings.WeChatConnectOpenAppID = strings.TrimSpace(firstNonEmpty(settings.WeChatConnectOpenAppID, settings.WeChatConnectAppID))
+	settings.WeChatConnectOpenAppSecret = strings.TrimSpace(firstNonEmpty(settings.WeChatConnectOpenAppSecret, settings.WeChatConnectAppSecret))
+	settings.WeChatConnectMPAppID = strings.TrimSpace(firstNonEmpty(settings.WeChatConnectMPAppID, settings.WeChatConnectAppID))
+	settings.WeChatConnectMPAppSecret = strings.TrimSpace(firstNonEmpty(settings.WeChatConnectMPAppSecret, settings.WeChatConnectAppSecret))
+	settings.WeChatConnectMobileAppID = strings.TrimSpace(firstNonEmpty(settings.WeChatConnectMobileAppID, settings.WeChatConnectAppID))
+	settings.WeChatConnectMobileAppSecret = strings.TrimSpace(firstNonEmpty(settings.WeChatConnectMobileAppSecret, settings.WeChatConnectAppSecret))
 	settings.WeChatConnectMode = normalizeWeChatConnectStoredMode(
 		settings.WeChatConnectOpenEnabled,
 		settings.WeChatConnectMPEnabled,
+		settings.WeChatConnectMobileEnabled,
 		settings.WeChatConnectMode,
 	)
 	settings.WeChatConnectScopes = normalizeWeChatConnectScopeSetting(settings.WeChatConnectScopes, settings.WeChatConnectMode)
@@ -827,14 +906,27 @@ REDACTED
 	// WeChat Connect OAuth 登录
 	updates[SettingKeyWeChatConnectEnabled] = strconv.FormatBool(settings.WeChatConnectEnabled)
 	updates[SettingKeyWeChatConnectAppID] = settings.WeChatConnectAppID
+	updates[SettingKeyWeChatConnectOpenAppID] = settings.WeChatConnectOpenAppID
+	updates[SettingKeyWeChatConnectMPAppID] = settings.WeChatConnectMPAppID
+	updates[SettingKeyWeChatConnectMobileAppID] = settings.WeChatConnectMobileAppID
 	updates[SettingKeyWeChatConnectOpenEnabled] = strconv.FormatBool(settings.WeChatConnectOpenEnabled)
 	updates[SettingKeyWeChatConnectMPEnabled] = strconv.FormatBool(settings.WeChatConnectMPEnabled)
+	updates[SettingKeyWeChatConnectMobileEnabled] = strconv.FormatBool(settings.WeChatConnectMobileEnabled)
 	updates[SettingKeyWeChatConnectMode] = settings.WeChatConnectMode
 	updates[SettingKeyWeChatConnectScopes] = settings.WeChatConnectScopes
 	updates[SettingKeyWeChatConnectRedirectURL] = settings.WeChatConnectRedirectURL
 	updates[SettingKeyWeChatConnectFrontendRedirectURL] = settings.WeChatConnectFrontendRedirectURL
 	if settings.WeChatConnectAppSecret != "" {
 		updates[SettingKeyWeChatConnectAppSecret] = settings.WeChatConnectAppSecret
+REDACTED
+	if settings.WeChatConnectOpenAppSecret != "" {
+		updates[SettingKeyWeChatConnectOpenAppSecret] = settings.WeChatConnectOpenAppSecret
+REDACTED
+	if settings.WeChatConnectMPAppSecret != "" {
+		updates[SettingKeyWeChatConnectMPAppSecret] = settings.WeChatConnectMPAppSecret
+REDACTED
+	if settings.WeChatConnectMobileAppSecret != "" {
+		updates[SettingKeyWeChatConnectMobileAppSecret] = settings.WeChatConnectMobileAppSecret
 REDACTED
 
 	// OEM设置
@@ -1344,8 +1436,15 @@ REDACTED
 		SettingKeyCustomMenuItems:                          "[]",
 		SettingKeyCustomEndpoints:                          "[]",
 		SettingKeyWeChatConnectEnabled:                     "false",
+		SettingKeyWeChatConnectOpenAppID:                   "",
+		SettingKeyWeChatConnectOpenAppSecret:               "",
+		SettingKeyWeChatConnectMPAppID:                     "",
+		SettingKeyWeChatConnectMPAppSecret:                 "",
+		SettingKeyWeChatConnectMobileAppID:                 "",
+		SettingKeyWeChatConnectMobileAppSecret:             "",
 		SettingKeyWeChatConnectOpenEnabled:                 "false",
 		SettingKeyWeChatConnectMPEnabled:                   "false",
+		SettingKeyWeChatConnectMobileEnabled:               "false",
 		SettingKeyWeChatConnectMode:                        "open",
 		SettingKeyWeChatConnectScopes:                      "snsapi_login",
 		SettingKeyWeChatConnectFrontendRedirectURL:         defaultWeChatConnectFrontend,
@@ -1645,7 +1744,16 @@ REDACTED
 	result.WeChatConnectAppID = strings.TrimSpace(settings[SettingKeyWeChatConnectAppID])
 	result.WeChatConnectAppSecret = strings.TrimSpace(settings[SettingKeyWeChatConnectAppSecret])
 	result.WeChatConnectAppSecretConfigured = result.WeChatConnectAppSecret != ""
-	result.WeChatConnectOpenEnabled, result.WeChatConnectMPEnabled = parseWeChatConnectCapabilitySettings(
+	result.WeChatConnectOpenAppID = strings.TrimSpace(firstNonEmpty(settings[SettingKeyWeChatConnectOpenAppID], result.WeChatConnectAppID))
+	result.WeChatConnectOpenAppSecret = strings.TrimSpace(firstNonEmpty(settings[SettingKeyWeChatConnectOpenAppSecret], result.WeChatConnectAppSecret))
+	result.WeChatConnectOpenAppSecretConfigured = result.WeChatConnectOpenAppSecret != ""
+	result.WeChatConnectMPAppID = strings.TrimSpace(firstNonEmpty(settings[SettingKeyWeChatConnectMPAppID], result.WeChatConnectAppID))
+	result.WeChatConnectMPAppSecret = strings.TrimSpace(firstNonEmpty(settings[SettingKeyWeChatConnectMPAppSecret], result.WeChatConnectAppSecret))
+	result.WeChatConnectMPAppSecretConfigured = result.WeChatConnectMPAppSecret != ""
+	result.WeChatConnectMobileAppID = strings.TrimSpace(firstNonEmpty(settings[SettingKeyWeChatConnectMobileAppID], result.WeChatConnectAppID))
+	result.WeChatConnectMobileAppSecret = strings.TrimSpace(firstNonEmpty(settings[SettingKeyWeChatConnectMobileAppSecret], result.WeChatConnectAppSecret))
+	result.WeChatConnectMobileAppSecretConfigured = result.WeChatConnectMobileAppSecret != ""
+	result.WeChatConnectOpenEnabled, result.WeChatConnectMPEnabled, result.WeChatConnectMobileEnabled = parseWeChatConnectCapabilitySettings(
 		settings,
 		result.WeChatConnectEnabled,
 		settings[SettingKeyWeChatConnectMode],
@@ -1653,6 +1761,7 @@ REDACTED
 	result.WeChatConnectMode = normalizeWeChatConnectStoredMode(
 		result.WeChatConnectOpenEnabled,
 		result.WeChatConnectMPEnabled,
+		result.WeChatConnectMobileEnabled,
 		settings[SettingKeyWeChatConnectMode],
 	)
 	result.WeChatConnectScopes = normalizeWeChatConnectScopeSetting(settings[SettingKeyWeChatConnectScopes], result.WeChatConnectMode)
@@ -2151,8 +2260,15 @@ func (s *SettingService) GetWeChatConnectOAuthConfig(ctx context.Context) (WeCha
 		SettingKeyWeChatConnectEnabled,
 		SettingKeyWeChatConnectAppID,
 		SettingKeyWeChatConnectAppSecret,
+		SettingKeyWeChatConnectOpenAppID,
+		SettingKeyWeChatConnectOpenAppSecret,
+		SettingKeyWeChatConnectMPAppID,
+		SettingKeyWeChatConnectMPAppSecret,
+		SettingKeyWeChatConnectMobileAppID,
+		SettingKeyWeChatConnectMobileAppSecret,
 		SettingKeyWeChatConnectOpenEnabled,
 		SettingKeyWeChatConnectMPEnabled,
+		SettingKeyWeChatConnectMobileEnabled,
 		SettingKeyWeChatConnectMode,
 		SettingKeyWeChatConnectScopes,
 		SettingKeyWeChatConnectRedirectURL,

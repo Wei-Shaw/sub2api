@@ -1398,101 +1398,253 @@
                 v-if="form.wechat_connect_enabled"
                 class="space-y-6 border-t border-gray-100 pt-4 dark:border-dark-700"
               >
-                <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                  <div>
-                    <label
-                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                <div class="space-y-4">
+                  <div
+                    class="rounded-lg border border-gray-200 p-4 dark:border-dark-700"
+                  >
+                    <div class="flex items-start justify-between gap-4">
+                      <div>
+                        <h3 class="font-medium text-gray-900 dark:text-white">
+                          {{ localText("PC 应用", "PC App") REDACTEDREDACTED
+                        </h3>
+                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                          {{
+                            localText(
+                              "桌面浏览器通过微信开放平台扫码登录。可与公众号或移动应用同时存在。",
+                              "Desktop browsers sign in through WeChat Open Platform QR login. This can coexist with Official Account or Mobile App.",
+                            )
+                          REDACTEDREDACTED
+                        </p>
+                      </div>
+                      <Toggle
+                        :model-value="form.wechat_connect_open_enabled"
+                        data-testid="wechat-connect-open-enabled"
+                        @update:model-value="handleWeChatOpenEnabledChange"
+                      />
+                    </div>
+                    <div
+                      v-if="form.wechat_connect_open_enabled"
+                      class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2"
                     >
-                      {{ t("admin.settings.wechatConnect.appIdLabel") REDACTEDREDACTED
-                    </label>
-                    <input
-                      data-testid="wechat-connect-app-id"
-                      v-model="form.wechat_connect_app_id"
-                      type="text"
-                      class="input font-mono text-sm"
-                      :placeholder="t('admin.settings.wechatConnect.appIdPlaceholder')"
-                    />
+                      <div>
+                        <label
+                          class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
+                          {{ localText("PC AppID", "PC App ID") REDACTEDREDACTED
+                        </label>
+                        <input
+                          v-model="form.wechat_connect_open_app_id"
+                          type="text"
+                          class="input font-mono text-sm"
+                          :placeholder="
+                            localText(
+                              '微信开放平台 PC 应用 AppID',
+                              'WeChat Open Platform PC App ID',
+                            )
+                          "
+                        />
+                      </div>
+                      <div>
+                        <label
+                          class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
+                          {{ localText("PC AppSecret", "PC App Secret") REDACTEDREDACTED
+                        </label>
+                        <input
+                          v-model="form.wechat_connect_open_app_secret"
+                          type="password"
+                          class="input font-mono text-sm"
+                          :placeholder="
+                            form.wechat_connect_open_app_secret_configured
+                              ? localText(
+                                  '密钥已配置，留空以保留当前值。',
+                                  'Secret configured. Leave empty to keep the current value.',
+                                )
+                              : localText(
+                                  '微信开放平台 PC 应用 AppSecret',
+                                  'WeChat Open Platform PC App Secret',
+                                )
+                          "
+                        />
+                      </div>
+                    </div>
                   </div>
 
-                  <div>
-                    <label
-                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  <div
+                    class="rounded-lg border border-gray-200 p-4 dark:border-dark-700"
+                  >
+                    <div class="flex items-start justify-between gap-4">
+                      <div>
+                        <h3 class="font-medium text-gray-900 dark:text-white">
+                          {{ localText("公众号", "Official Account") REDACTEDREDACTED
+                        </h3>
+                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                          {{
+                            localText(
+                              "仅在微信内浏览器可用；非微信环境下会显示不可用。",
+                              "Only available inside the WeChat browser. It is shown as unavailable outside WeChat.",
+                            )
+                          REDACTEDREDACTED
+                        </p>
+                      </div>
+                      <Toggle
+                        :model-value="form.wechat_connect_mp_enabled"
+                        data-testid="wechat-connect-mp-enabled"
+                        @update:model-value="handleWeChatMPEnabledChange"
+                      />
+                    </div>
+                    <div
+                      v-if="form.wechat_connect_mp_enabled"
+                      class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2"
                     >
-                      {{ t("admin.settings.wechatConnect.appSecretLabel") REDACTEDREDACTED
-                    </label>
-                    <input
-                      data-testid="wechat-connect-app-secret"
-                      v-model="form.wechat_connect_app_secret"
-                      type="password"
-                      class="input font-mono text-sm"
-                      :placeholder="
-                        form.wechat_connect_app_secret_configured
-                          ? t('admin.settings.wechatConnect.appSecretConfiguredPlaceholder')
-                          : t('admin.settings.wechatConnect.appSecretPlaceholder')
-                      "
-                    />
-                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                      {{
-                        form.wechat_connect_app_secret_configured
-                          ? t('admin.settings.wechatConnect.appSecretConfiguredHint')
-                          : t('admin.settings.wechatConnect.appSecretHint')
-                      REDACTEDREDACTED
-                    </p>
+                      <div>
+                        <label
+                          class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
+                          {{ localText("公众号 AppID", "Official Account App ID") REDACTEDREDACTED
+                        </label>
+                        <input
+                          v-model="form.wechat_connect_mp_app_id"
+                          type="text"
+                          class="input font-mono text-sm"
+                          :placeholder="
+                            localText(
+                              '公众号 AppID',
+                              'Official Account App ID',
+                            )
+                          "
+                        />
+                      </div>
+                      <div>
+                        <label
+                          class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
+                          {{
+                            localText(
+                              "公众号 AppSecret",
+                              "Official Account App Secret",
+                            )
+                          REDACTEDREDACTED
+                        </label>
+                        <input
+                          v-model="form.wechat_connect_mp_app_secret"
+                          type="password"
+                          class="input font-mono text-sm"
+                          :placeholder="
+                            form.wechat_connect_mp_app_secret_configured
+                              ? localText(
+                                  '密钥已配置，留空以保留当前值。',
+                                  'Secret configured. Leave empty to keep the current value.',
+                                )
+                              : localText(
+                                  '公众号 AppSecret',
+                                  'Official Account App Secret',
+                                )
+                          "
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    class="rounded-lg border border-gray-200 p-4 dark:border-dark-700"
+                  >
+                    <div class="flex items-start justify-between gap-4">
+                      <div>
+                        <h3 class="font-medium text-gray-900 dark:text-white">
+                          {{ localText("移动应用", "Mobile App") REDACTEDREDACTED
+                        </h3>
+                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                          {{
+                            localText(
+                              "原生移动端通过微信 SDK 唤起授权，网页端不会直接发起该流程。",
+                              "Native mobile clients start authorization through the WeChat SDK. The web UI does not launch this flow directly.",
+                            )
+                          REDACTEDREDACTED
+                        </p>
+                      </div>
+                      <Toggle
+                        :model-value="form.wechat_connect_mobile_enabled"
+                        data-testid="wechat-connect-mobile-enabled"
+                        @update:model-value="handleWeChatMobileEnabledChange"
+                      />
+                    </div>
+                    <div
+                      v-if="form.wechat_connect_mobile_enabled"
+                      class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2"
+                    >
+                      <div>
+                        <label
+                          class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
+                          {{ localText("移动应用 AppID", "Mobile App ID") REDACTEDREDACTED
+                        </label>
+                        <input
+                          v-model="form.wechat_connect_mobile_app_id"
+                          type="text"
+                          class="input font-mono text-sm"
+                          :placeholder="
+                            localText(
+                              '移动应用 AppID',
+                              'Mobile App ID',
+                            )
+                          "
+                        />
+                      </div>
+                      <div>
+                        <label
+                          class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
+                          {{ localText("移动应用 AppSecret", "Mobile App Secret") REDACTEDREDACTED
+                        </label>
+                        <input
+                          v-model="form.wechat_connect_mobile_app_secret"
+                          type="password"
+                          class="input font-mono text-sm"
+                          :placeholder="
+                            form.wechat_connect_mobile_app_secret_configured
+                              ? localText(
+                                  '密钥已配置，留空以保留当前值。',
+                                  'Secret configured. Leave empty to keep the current value.',
+                                )
+                              : localText(
+                                  '移动应用 AppSecret',
+                                  'Mobile App Secret',
+                                )
+                          "
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                  <div class="space-y-3">
-                    <label
-                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                    >
-                      {{ t("admin.settings.wechatConnect.modeLabel") REDACTEDREDACTED
-                    </label>
-                    <div
-                      class="flex items-center justify-between rounded border border-gray-200 px-4 py-3 dark:border-dark-700"
-                    >
-                      <div>
-                        <div class="font-medium text-gray-900 dark:text-white">
-                          {{ t("admin.settings.wechatConnect.openModeLabel") REDACTEDREDACTED
-                        </div>
-                        <p
-                          class="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
-                        >
-                          {{ t("admin.settings.wechatConnect.openModeHint") REDACTEDREDACTED
-                        </p>
-                      </div>
-                      <Toggle
-                        v-model="form.wechat_connect_open_enabled"
-                        data-testid="wechat-connect-open-enabled"
-                        @update:model-value="syncWeChatConnectMode"
-                      />
-                    </div>
-                    <div
-                      class="flex items-center justify-between rounded border border-gray-200 px-4 py-3 dark:border-dark-700"
-                    >
-                      <div>
-                        <div class="font-medium text-gray-900 dark:text-white">
-                          {{ t("admin.settings.wechatConnect.mpModeLabel") REDACTEDREDACTED
-                        </div>
-                        <p
-                          class="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
-                        >
-                          {{ t("admin.settings.wechatConnect.mpModeHint") REDACTEDREDACTED
-                        </p>
-                      </div>
-                      <Toggle
-                        v-model="form.wechat_connect_mp_enabled"
-                        data-testid="wechat-connect-mp-enabled"
-                        @update:model-value="syncWeChatConnectMode"
-                      />
-                    </div>
-                  </div>
+                <div
+                  v-if="
+                    form.wechat_connect_open_enabled &&
+                    (form.wechat_connect_mp_enabled ||
+                      form.wechat_connect_mobile_enabled)
+                  "
+                  class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/10 dark:text-amber-300"
+                >
+                  {{
+                    localText(
+                      "如果同时启用 PC 应用和公众号/移动应用，这些应用需要挂在同一个微信开放平台主体下，否则 UnionID 无法稳定归并账号。",
+                      "When PC App is enabled together with Official Account or Mobile App, they should belong to the same WeChat Open Platform account so UnionID can merge identities reliably.",
+                    )
+                  REDACTEDREDACTED
+                </div>
 
+                <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
                   <div>
                     <label
                       class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
                     >
-                      {{ t("admin.settings.wechatConnect.redirectUrlLabel") REDACTEDREDACTED
+                      {{
+                        localText(
+                          "浏览器回调地址",
+                          "Browser Redirect URL",
+                        )
+                      REDACTEDREDACTED
                     </label>
                     <input
                       data-testid="wechat-connect-redirect-url"
@@ -1501,6 +1653,14 @@
                       class="input font-mono text-sm"
                       :placeholder="t('admin.settings.wechatConnect.redirectUrlPlaceholder')"
                     />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{
+                        localText(
+                          "用于 PC 应用和公众号的网页回调。移动应用走原生 SDK 时不直接使用这个浏览器回调。",
+                          "Used by PC App and Official Account browser callbacks. Native mobile SDK flows do not start from this browser callback directly.",
+                        )
+                      REDACTEDREDACTED
+                    </p>
                     <div
                       class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3"
                     >
@@ -4594,6 +4754,7 @@ import type {
   SystemSettings,
   UpdateSettingsRequest,
   DefaultSubscriptionSetting,
+  WeChatConnectMode,
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
   WebSearchTestResult,
@@ -4731,14 +4892,20 @@ REDACTED
 
 type SettingsForm = Omit<
   SystemSettings,
-  "wechat_connect_open_enabled" | "wechat_connect_mp_enabled"
+  | "wechat_connect_open_enabled"
+  | "wechat_connect_mp_enabled"
+  | "wechat_connect_mobile_enabled"
 > & {
   smtp_password: string;
   turnstile_secret_key: string;
   linuxdo_connect_client_secret: string;
   wechat_connect_app_secret: string;
+  wechat_connect_open_app_secret: string;
+  wechat_connect_mp_app_secret: string;
+  wechat_connect_mobile_app_secret: string;
   wechat_connect_open_enabled: boolean;
   wechat_connect_mp_enabled: boolean;
+  wechat_connect_mobile_enabled: boolean;
   oidc_connect_client_secret: string;
   force_email_on_third_party_signup: boolean;
   payment_visible_method_alipay_source: string;
@@ -4833,8 +5000,18 @@ const form = reactive<SettingsForm>({
   wechat_connect_app_id: "",
   wechat_connect_app_secret: "",
   wechat_connect_app_secret_configured: false,
+  wechat_connect_open_app_id: "",
+  wechat_connect_open_app_secret: "",
+  wechat_connect_open_app_secret_configured: false,
+  wechat_connect_mp_app_id: "",
+  wechat_connect_mp_app_secret: "",
+  wechat_connect_mp_app_secret_configured: false,
+  wechat_connect_mobile_app_id: "",
+  wechat_connect_mobile_app_secret: "",
+  wechat_connect_mobile_app_secret_configured: false,
   wechat_connect_open_enabled: false,
   wechat_connect_mp_enabled: false,
+  wechat_connect_mobile_enabled: false,
   wechat_connect_mode: "open",
   wechat_connect_scopes: "snsapi_login",
   wechat_connect_redirect_url: "",
@@ -5315,22 +5492,54 @@ const wechatRedirectUrlSuggestion = computed(() => {
   return `${originREDACTED/api/v1/auth/oauth/wechat/callback`;
 REDACTED);
 
-function syncWeChatConnectMode() {
+function syncWeChatConnectMode(preferredMode?: WeChatConnectMode) {
+  if (form.wechat_connect_mp_enabled && form.wechat_connect_mobile_enabled) {
+    if (preferredMode === "mobile") {
+      form.wechat_connect_mp_enabled = false;
+    REDACTED else {
+      form.wechat_connect_mobile_enabled = false;
+    REDACTED
+  REDACTED
+
   const capabilities = resolveWeChatConnectModeCapabilities(
     form.wechat_connect_open_enabled,
     form.wechat_connect_mp_enabled,
+    form.wechat_connect_mobile_enabled,
     form.wechat_connect_mode,
   );
   form.wechat_connect_open_enabled = capabilities.openEnabled;
   form.wechat_connect_mp_enabled = capabilities.mpEnabled;
+  form.wechat_connect_mobile_enabled = capabilities.mobileEnabled;
   form.wechat_connect_mode = deriveWeChatConnectStoredMode(
     capabilities.openEnabled,
     capabilities.mpEnabled,
+    capabilities.mobileEnabled,
     form.wechat_connect_mode,
   );
   form.wechat_connect_scopes = defaultWeChatConnectScopesForMode(
     form.wechat_connect_mode,
   );
+REDACTED
+
+function handleWeChatOpenEnabledChange(value: boolean) {
+  form.wechat_connect_open_enabled = value;
+  syncWeChatConnectMode(value ? "open" : undefined);
+REDACTED
+
+function handleWeChatMPEnabledChange(value: boolean) {
+  form.wechat_connect_mp_enabled = value;
+  if (value) {
+    form.wechat_connect_mobile_enabled = false;
+  REDACTED
+  syncWeChatConnectMode(value ? "mp" : undefined);
+REDACTED
+
+function handleWeChatMobileEnabledChange(value: boolean) {
+  form.wechat_connect_mobile_enabled = value;
+  if (value) {
+    form.wechat_connect_mp_enabled = false;
+  REDACTED
+  syncWeChatConnectMode(value ? "mobile" : undefined);
 REDACTED
 
 async function setAndCopyWeChatRedirectUrl() {
@@ -5476,16 +5685,22 @@ async function loadSettings() {
     form.turnstile_secret_key = "";
     form.linuxdo_connect_client_secret = "";
     form.wechat_connect_app_secret = "";
+    form.wechat_connect_open_app_secret = "";
+    form.wechat_connect_mp_app_secret = "";
+    form.wechat_connect_mobile_app_secret = "";
     const wechatCapabilities = resolveWeChatConnectModeCapabilities(
       settings.wechat_connect_open_enabled,
       settings.wechat_connect_mp_enabled,
+      settings.wechat_connect_mobile_enabled,
       settings.wechat_connect_mode,
     );
     form.wechat_connect_open_enabled = wechatCapabilities.openEnabled;
     form.wechat_connect_mp_enabled = wechatCapabilities.mpEnabled;
+    form.wechat_connect_mobile_enabled = wechatCapabilities.mobileEnabled;
     form.wechat_connect_mode = deriveWeChatConnectStoredMode(
       wechatCapabilities.openEnabled,
       wechatCapabilities.mpEnabled,
+      wechatCapabilities.mobileEnabled,
       settings.wechat_connect_mode,
     );
     form.wechat_connect_scopes = defaultWeChatConnectScopesForMode(
@@ -5649,6 +5864,16 @@ async function saveSettings() {
       return;
     REDACTED
 
+    if (form.wechat_connect_mp_enabled && form.wechat_connect_mobile_enabled) {
+      appStore.showError(
+        localText(
+          "公众号和移动应用不能同时启用。",
+          "Official Account and Mobile App cannot be enabled at the same time.",
+        ),
+      );
+      return;
+    REDACTED
+
     // Validate URL fields — novalidate disables browser-native checks, so we validate here
     const isValidHttpUrl = (url: string): boolean => {
       if (!url) return true;
@@ -5666,6 +5891,7 @@ async function saveSettings() {
     const wechatStoredMode = deriveWeChatConnectStoredMode(
       form.wechat_connect_open_enabled,
       form.wechat_connect_mp_enabled,
+      form.wechat_connect_mobile_enabled,
       form.wechat_connect_mode,
     );
 
@@ -5714,10 +5940,24 @@ async function saveSettings() {
         form.linuxdo_connect_client_secret || undefined,
       linuxdo_connect_redirect_url: form.linuxdo_connect_redirect_url,
       wechat_connect_enabled: form.wechat_connect_enabled,
-      wechat_connect_app_id: form.wechat_connect_app_id,
+      wechat_connect_app_id:
+        form.wechat_connect_open_app_id ||
+        form.wechat_connect_mp_app_id ||
+        form.wechat_connect_mobile_app_id ||
+        form.wechat_connect_app_id,
       wechat_connect_app_secret: form.wechat_connect_app_secret || undefined,
+      wechat_connect_open_app_id: form.wechat_connect_open_app_id,
+      wechat_connect_open_app_secret:
+        form.wechat_connect_open_app_secret || undefined,
+      wechat_connect_mp_app_id: form.wechat_connect_mp_app_id,
+      wechat_connect_mp_app_secret:
+        form.wechat_connect_mp_app_secret || undefined,
+      wechat_connect_mobile_app_id: form.wechat_connect_mobile_app_id,
+      wechat_connect_mobile_app_secret:
+        form.wechat_connect_mobile_app_secret || undefined,
       wechat_connect_open_enabled: form.wechat_connect_open_enabled,
       wechat_connect_mp_enabled: form.wechat_connect_mp_enabled,
+      wechat_connect_mobile_enabled: form.wechat_connect_mobile_enabled,
       wechat_connect_mode: wechatStoredMode,
       wechat_connect_scopes:
         defaultWeChatConnectScopesForMode(wechatStoredMode),
@@ -5847,16 +6087,23 @@ async function saveSettings() {
     form.turnstile_secret_key = "";
     form.linuxdo_connect_client_secret = "";
     form.wechat_connect_app_secret = "";
+    form.wechat_connect_open_app_secret = "";
+    form.wechat_connect_mp_app_secret = "";
+    form.wechat_connect_mobile_app_secret = "";
     const updatedWechatCapabilities = resolveWeChatConnectModeCapabilities(
       updated.wechat_connect_open_enabled,
       updated.wechat_connect_mp_enabled,
+      updated.wechat_connect_mobile_enabled,
       updated.wechat_connect_mode,
     );
     form.wechat_connect_open_enabled = updatedWechatCapabilities.openEnabled;
     form.wechat_connect_mp_enabled = updatedWechatCapabilities.mpEnabled;
+    form.wechat_connect_mobile_enabled =
+      updatedWechatCapabilities.mobileEnabled;
     form.wechat_connect_mode = deriveWeChatConnectStoredMode(
       updatedWechatCapabilities.openEnabled,
       updatedWechatCapabilities.mpEnabled,
+      updatedWechatCapabilities.mobileEnabled,
       updated.wechat_connect_mode,
     );
     form.wechat_connect_scopes = defaultWeChatConnectScopesForMode(

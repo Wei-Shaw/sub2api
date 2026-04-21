@@ -504,6 +504,8 @@ function resolveWeChatOAuthUnavailableMessage(): string {
       return t('auth.oauthFlow.wechatSystemBrowserOnly')
     case 'wechat_browser_required':
       return t('auth.oauthFlow.wechatBrowserOnly')
+    case 'native_app_required':
+      return 'This WeChat sign-in flow is only available from the native mobile app.'
     case 'not_configured':
       return t('auth.oauthFlow.wechatNotConfigured')
     default:

@@ -32,7 +32,7 @@ export type PaymentVisibleMethodSource =
   | "easypay_alipay"
   | "official_wxpay"
   | "easypay_wxpay";
-export type WeChatConnectMode = "open" | "mp";
+export type WeChatConnectMode = "open" | "mp" | "mobile";
 
 export interface PaymentVisibleMethodSourceOption {
   value: PaymentVisibleMethodSource;
@@ -108,11 +108,16 @@ const PAYMENT_VISIBLE_METHOD_SOURCE_ALIASES: Record<
   REDACTED,
 REDACTED;
 const WECHAT_CONNECT_MODE_OPTIONS: WeChatConnectModeOption[] = [
-  { value: "open", labelZh: "微信开放平台", labelEn: "WeChat Open Platform" REDACTED,
+  { value: "open", labelZh: "PC 应用", labelEn: "PC App" REDACTED,
   {
     value: "mp",
-    labelZh: "微信公众号 / 小程序",
-    labelEn: "WeChat Official Account / Mini Program",
+    labelZh: "公众号",
+    labelEn: "Official Account",
+  REDACTED,
+  {
+    value: "mobile",
+    labelZh: "移动应用",
+    labelEn: "Mobile App",
   REDACTED,
 ];
 const WECHAT_CONNECT_MODE_ALIASES: Record<string, WeChatConnectMode> = {
@@ -124,6 +129,9 @@ const WECHAT_CONNECT_MODE_ALIASES: Record<string, WeChatConnectMode> = {
   official_account: "mp",
   wechat_mp: "mp",
   mini_program: "mp",
+  mobile: "mobile",
+  mobile_app: "mobile",
+  native_app: "mobile",
 REDACTED;
 
 export function normalizeDefaultSubscriptionSettings(
@@ -234,34 +242,52 @@ export function normalizeWeChatConnectMode(source: unknown): WeChatConnectMode {
 REDACTED
 
 export function defaultWeChatConnectScopesForMode(mode: unknown): string {
-  return normalizeWeChatConnectMode(mode) === "mp"
-    ? "snsapi_userinfo"
-    : "snsapi_login";
+  switch (normalizeWeChatConnectMode(mode)) {
+    case "mp":
+      return "snsapi_userinfo";
+    case "mobile":
+      return "";
+    default:
+      return "snsapi_login";
+  REDACTED
 REDACTED
 
 export function resolveWeChatConnectModeCapabilities(
   openEnabled: unknown,
   mpEnabled: unknown,
+  mobileEnabled: unknown,
   legacyMode: unknown,
-): { openEnabled: boolean; mpEnabled: boolean REDACTED {
-  if (typeof openEnabled === "boolean" || typeof mpEnabled === "boolean") {
+): { openEnabled: boolean; mpEnabled: boolean; mobileEnabled: boolean REDACTED {
+  if (
+    typeof openEnabled === "boolean" ||
+    typeof mpEnabled === "boolean" ||
+    typeof mobileEnabled === "boolean"
+  ) {
     return {
       openEnabled: openEnabled === true,
       mpEnabled: mpEnabled === true,
+      mobileEnabled: mobileEnabled === true,
     REDACTED;
   REDACTED
 
-  return normalizeWeChatConnectMode(legacyMode) === "mp"
-    ? { openEnabled: false, mpEnabled: true REDACTED
-    : { openEnabled: true, mpEnabled: false REDACTED;
+  switch (normalizeWeChatConnectMode(legacyMode)) {
+    case "mp":
+      return { openEnabled: false, mpEnabled: true, mobileEnabled: false REDACTED;
+    case "mobile":
+      return { openEnabled: false, mpEnabled: false, mobileEnabled: true REDACTED;
+    default:
+      return { openEnabled: true, mpEnabled: false, mobileEnabled: false REDACTED;
+  REDACTED
 REDACTED
 
 export function deriveWeChatConnectStoredMode(
   openEnabled: boolean,
   mpEnabled: boolean,
+  mobileEnabled: boolean,
   legacyMode: unknown,
 ): WeChatConnectMode {
   if (mpEnabled) return "mp";
+  if (mobileEnabled) return "mobile";
   if (openEnabled) return "open";
   return normalizeWeChatConnectMode(legacyMode);
 REDACTED
@@ -342,8 +368,15 @@ export interface SystemSettings {
   wechat_connect_enabled: boolean;
   wechat_connect_app_id: string;
   wechat_connect_app_secret_configured: boolean;
+  wechat_connect_open_app_id?: string;
+  wechat_connect_open_app_secret_configured?: boolean;
+  wechat_connect_mp_app_id?: string;
+  wechat_connect_mp_app_secret_configured?: boolean;
+  wechat_connect_mobile_app_id?: string;
+  wechat_connect_mobile_app_secret_configured?: boolean;
   wechat_connect_open_enabled?: boolean;
   wechat_connect_mp_enabled?: boolean;
+  wechat_connect_mobile_enabled?: boolean;
   wechat_connect_mode: string;
   wechat_connect_scopes: string;
   wechat_connect_redirect_url: string;
@@ -501,8 +534,15 @@ export interface UpdateSettingsRequest {
   wechat_connect_enabled?: boolean;
   wechat_connect_app_id?: string;
   wechat_connect_app_secret?: string;
+  wechat_connect_open_app_id?: string;
+  wechat_connect_open_app_secret?: string;
+  wechat_connect_mp_app_id?: string;
+  wechat_connect_mp_app_secret?: string;
+  wechat_connect_mobile_app_id?: string;
+  wechat_connect_mobile_app_secret?: string;
   wechat_connect_open_enabled?: boolean;
   wechat_connect_mp_enabled?: boolean;
+  wechat_connect_mobile_enabled?: boolean;
   wechat_connect_mode?: string;
   wechat_connect_scopes?: string;
   wechat_connect_redirect_url?: string;
