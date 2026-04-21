@@ -167,7 +167,7 @@ export function buildAuthSourceDefaultsState(
           : [],
       ),
       grant_on_signup:
-        raw[`auth_source_default_${sourceREDACTED_grant_on_signup`] !== false,
+        raw[`auth_source_default_${sourceREDACTED_grant_on_signup`] === true,
       grant_on_first_bind:
         raw[`auth_source_default_${sourceREDACTED_grant_on_first_bind`] === true,
     REDACTED;
@@ -237,6 +237,33 @@ export function defaultWeChatConnectScopesForMode(mode: unknown): string {
   return normalizeWeChatConnectMode(mode) === "mp"
     ? "snsapi_userinfo"
     : "snsapi_login";
+REDACTED
+
+export function resolveWeChatConnectModeCapabilities(
+  openEnabled: unknown,
+  mpEnabled: unknown,
+  legacyMode: unknown,
+): { openEnabled: boolean; mpEnabled: boolean REDACTED {
+  if (typeof openEnabled === "boolean" || typeof mpEnabled === "boolean") {
+    return {
+      openEnabled: openEnabled === true,
+      mpEnabled: mpEnabled === true,
+    REDACTED;
+  REDACTED
+
+  return normalizeWeChatConnectMode(legacyMode) === "mp"
+    ? { openEnabled: false, mpEnabled: true REDACTED
+    : { openEnabled: true, mpEnabled: false REDACTED;
+REDACTED
+
+export function deriveWeChatConnectStoredMode(
+  openEnabled: boolean,
+  mpEnabled: boolean,
+  legacyMode: unknown,
+): WeChatConnectMode {
+  if (mpEnabled) return "mp";
+  if (openEnabled) return "open";
+  return normalizeWeChatConnectMode(legacyMode);
 REDACTED
 
 /**
@@ -315,6 +342,8 @@ export interface SystemSettings {
   wechat_connect_enabled: boolean;
   wechat_connect_app_id: string;
   wechat_connect_app_secret_configured: boolean;
+  wechat_connect_open_enabled?: boolean;
+  wechat_connect_mp_enabled?: boolean;
   wechat_connect_mode: string;
   wechat_connect_scopes: string;
   wechat_connect_redirect_url: string;
@@ -472,6 +501,8 @@ export interface UpdateSettingsRequest {
   wechat_connect_enabled?: boolean;
   wechat_connect_app_id?: string;
   wechat_connect_app_secret?: string;
+  wechat_connect_open_enabled?: boolean;
+  wechat_connect_mp_enabled?: boolean;
   wechat_connect_mode?: string;
   wechat_connect_scopes?: string;
   wechat_connect_redirect_url?: string;

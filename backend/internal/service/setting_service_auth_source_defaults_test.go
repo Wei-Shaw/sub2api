@@ -81,10 +81,12 @@ REDACTED
 	require.Equal(t, 0.0, got.LinuxDo.Balance)
 	require.Equal(t, 5, got.LinuxDo.Concurrency)
 	require.Equal(t, []DefaultSubscriptionSetting{REDACTED, got.LinuxDo.Subscriptions)
-	require.True(t, got.LinuxDo.GrantOnSignup)
+	require.False(t, got.LinuxDo.GrantOnSignup)
 	require.True(t, got.LinuxDo.GrantOnFirstBind)
 	require.Equal(t, 5, got.OIDC.Concurrency)
 	require.Equal(t, 5, got.WeChat.Concurrency)
+	require.False(t, got.OIDC.GrantOnSignup)
+	require.False(t, got.WeChat.GrantOnSignup)
 	require.True(t, got.ForceEmailOnThirdPartySignup)
 REDACTED
 

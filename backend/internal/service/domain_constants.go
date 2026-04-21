@@ -115,6 +115,8 @@ const (
 	SettingKeyWeChatConnectEnabled             = "wechat_connect_enabled"
 	SettingKeyWeChatConnectAppID               = "wechat_connect_app_id"
 	SettingKeyWeChatConnectAppSecret           = "wechat_connect_app_secret"
+	SettingKeyWeChatConnectOpenEnabled         = "wechat_connect_open_enabled"
+	SettingKeyWeChatConnectMPEnabled           = "wechat_connect_mp_enabled"
 	SettingKeyWeChatConnectMode                = "wechat_connect_mode"
 	SettingKeyWeChatConnectScopes              = "wechat_connect_scopes"
 	SettingKeyWeChatConnectRedirectURL         = "wechat_connect_redirect_url"

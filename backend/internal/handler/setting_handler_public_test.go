@@ -91,6 +91,8 @@ func TestSettingHandler_GetPublicSettings_ExposesWeChatOAuthModeCapabilities(t *
 			service.SettingKeyWeChatConnectAppSecret:           "wx-mp-secret",
 			service.SettingKeyWeChatConnectMode:                "mp",
 			service.SettingKeyWeChatConnectScopes:              "snsapi_base",
+			service.SettingKeyWeChatConnectOpenEnabled:         "true",
+			service.SettingKeyWeChatConnectMPEnabled:           "true",
 			service.SettingKeyWeChatConnectRedirectURL:         "https://api.example.com/api/v1/auth/oauth/wechat/callback",
 			service.SettingKeyWeChatConnectFrontendRedirectURL: "/auth/wechat/callback",
 	REDACTED,
@@ -115,6 +117,6 @@ REDACTED
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
 	require.Equal(t, 0, resp.Code)
 	require.True(t, resp.Data.WeChatOAuthEnabled)
-	require.False(t, resp.Data.WeChatOAuthOpenEnabled)
+	require.True(t, resp.Data.WeChatOAuthOpenEnabled)
 	require.True(t, resp.Data.WeChatOAuthMPEnabled)
 REDACTED

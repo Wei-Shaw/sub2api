@@ -59,6 +59,8 @@ func TestSettingService_GetWeChatConnectOAuthConfig_UsesDatabaseOverrides(t *tes
 			SettingKeyWeChatConnectAppSecret:           "wx-db-secret",
 			SettingKeyWeChatConnectMode:                "mp",
 			SettingKeyWeChatConnectScopes:              "snsapi_base",
+			SettingKeyWeChatConnectOpenEnabled:         "true",
+			SettingKeyWeChatConnectMPEnabled:           "true",
 			SettingKeyWeChatConnectRedirectURL:         "https://api.example.com/api/v1/auth/oauth/wechat/callback",
 			SettingKeyWeChatConnectFrontendRedirectURL: "/auth/wechat/callback",
 	REDACTED,
@@ -70,6 +72,8 @@ REDACTED
 	require.True(t, got.Enabled)
 	require.Equal(t, "wx-db-app", got.AppID)
 	require.Equal(t, "wx-db-secret", got.AppSecret)
+	require.True(t, got.OpenEnabled)
+	require.True(t, got.MPEnabled)
 	require.Equal(t, "mp", got.Mode)
 	require.Equal(t, "snsapi_base", got.Scopes)
 	require.Equal(t, "https://api.example.com/api/v1/auth/oauth/wechat/callback", got.RedirectURL)

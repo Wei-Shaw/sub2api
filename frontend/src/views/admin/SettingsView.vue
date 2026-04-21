@@ -1408,7 +1408,7 @@
                 v-if="form.wechat_connect_enabled"
                 class="space-y-6 border-t border-gray-100 pt-4 dark:border-dark-700"
               >
-                <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
                   <div>
                     <label
                       class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
@@ -1463,68 +1463,73 @@
                       REDACTEDREDACTED
                     </p>
                   </div>
+                </div>
 
-                  <div>
+                <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  <div class="space-y-3">
                     <label
                       class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
                     >
                       {{ localText("模式", "Mode") REDACTEDREDACTED
                     </label>
-                    <select
-                      data-testid="wechat-connect-mode"
-                      v-model="form.wechat_connect_mode"
-                      class="input font-mono text-sm"
-                      @change="syncWeChatConnectMode"
+                    <div
+                      class="flex items-center justify-between rounded border border-gray-200 px-4 py-3 dark:border-dark-700"
                     >
-                      <option value="open">
-                        {{ localText("开放平台", "Open Platform") REDACTEDREDACTED
-                      </option>
-                      <option value="mp">
-                        {{
-                          localText(
-                            "公众号 / 小程序",
-                            "Official Account / Mini Program",
-                          )
-                        REDACTEDREDACTED
-                      </option>
-                    </select>
-                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                      {{
-                        localText(
-                          "open 对应微信开放平台，mp 对应公众号/小程序授权。",
-                          "open maps to WeChat Open Platform, mp maps to Official Account / Mini Program authorization.",
-                        )
-                      REDACTEDREDACTED
-                    </p>
-                  </div>
-                </div>
-
-                <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                  <div>
-                    <label
-                      class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                      <div>
+                        <div class="font-medium text-gray-900 dark:text-white">
+                          {{
+                            localText(
+                              "非微信环境使用开放平台",
+                              "Use Open outside WeChat",
+                            )
+                          REDACTEDREDACTED
+                        </div>
+                        <p
+                          class="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
+                        >
+                          {{
+                            localText(
+                              "浏览器不在微信内时，自动走开放平台扫码授权。",
+                              "Use Open Platform QR authorization outside the WeChat browser.",
+                            )
+                          REDACTEDREDACTED
+                        </p>
+                      </div>
+                      <Toggle
+                        v-model="form.wechat_connect_open_enabled"
+                        data-testid="wechat-connect-open-enabled"
+                        @update:model-value="syncWeChatConnectMode"
+                      />
+                    </div>
+                    <div
+                      class="flex items-center justify-between rounded border border-gray-200 px-4 py-3 dark:border-dark-700"
                     >
-                      {{ localText("Scopes", "Scopes") REDACTEDREDACTED
-                    </label>
-                    <input
-                      data-testid="wechat-connect-scopes"
-                      v-model="form.wechat_connect_scopes"
-                      type="text"
-                      class="input font-mono text-sm"
-                      :placeholder="
-                        form.wechat_connect_mode === 'mp'
-                          ? 'snsapi_userinfo'
-                          : 'snsapi_login'
-                      "
-                    />
-                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                      {{
-                        localText(
-                          "留空时会按模式自动回填默认值。",
-                          "Leave empty to use the default scope for the selected mode.",
-                        )
-                      REDACTEDREDACTED
-                    </p>
+                      <div>
+                        <div class="font-medium text-gray-900 dark:text-white">
+                          {{
+                            localText(
+                              "微信环境使用公众号",
+                              "Use MP inside WeChat",
+                            )
+                          REDACTEDREDACTED
+                        </div>
+                        <p
+                          class="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
+                        >
+                          {{
+                            localText(
+                              "浏览器在微信内时，自动走公众号授权。",
+                              "Use Official Account authorization inside the WeChat browser.",
+                            )
+                          REDACTEDREDACTED
+                        </p>
+                      </div>
+                      <Toggle
+                        v-model="form.wechat_connect_mp_enabled"
+                        data-testid="wechat-connect-mp-enabled"
+                        @update:model-value="syncWeChatConnectMode"
+                      />
+                    </div>
                   </div>
 
                   <div>
@@ -2246,83 +2251,77 @@
                 <Toggle v-model="form.force_email_on_third_party_signup" />
               </div>
 
-              <div class="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              <div class="space-y-4">
                 <div
                   v-for="authSource in authSourceDefaultsMeta"
                   :key="authSource.source"
                   class="rounded-xl border border-gray-200 p-4 dark:border-dark-700"
                 >
-                  <div class="mb-4">
-                    <div class="font-medium text-gray-900 dark:text-white">
-                      {{ authSource.title REDACTEDREDACTED
+                  <div class="flex items-center justify-between gap-4">
+                    <div>
+                      <div class="font-medium text-gray-900 dark:text-white">
+                        {{ authSource.title REDACTEDREDACTED
+                      </div>
+                      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        {{ authSource.description REDACTEDREDACTED
+                      </p>
                     </div>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                      {{ authSource.description REDACTEDREDACTED
+                    <Toggle
+                      v-model="
+                        authSourceDefaults[authSource.source].grant_on_signup
+                      "
+                      :data-testid="`auth-source-${authSource.sourceREDACTED-enabled`"
+                    />
+                  </div>
+
+                  <div
+                    v-if="authSourceDefaults[authSource.source].grant_on_signup"
+                    :data-testid="`auth-source-${authSource.sourceREDACTED-panel`"
+                    class="mt-4 space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700"
+                  >
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{
+                        localText(
+                          "以下默认值会在该来源注册新用户时发放；首次绑定时授权仅作用于已有账号绑定该来源。",
+                          "These defaults apply when a new user registers through this source. Grant on first bind only applies when an existing user binds this source.",
+                        )
+                      REDACTEDREDACTED
                     </p>
-                  </div>
 
-                  <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
-                      <label
-                        class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                      >
-                        {{ t("admin.settings.defaults.defaultBalance") REDACTEDREDACTED
-                      </label>
-                      <input
-                        v-model.number="
-                          authSourceDefaults[authSource.source].balance
-                        "
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        class="input"
-                        placeholder="0.00"
-                      />
-                    </div>
-                    <div>
-                      <label
-                        class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                      >
-                        {{ t("admin.settings.defaults.defaultConcurrency") REDACTEDREDACTED
-                      </label>
-                      <input
-                        v-model.number="
-                          authSourceDefaults[authSource.source].concurrency
-                        "
-                        type="number"
-                        min="1"
-                        class="input"
-                        placeholder="5"
-                      />
-                    </div>
-                  </div>
-
-                  <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <div
-                      class="flex items-center justify-between rounded border border-gray-200 px-4 py-3 dark:border-dark-700"
-                    >
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <div>
                         <label
-                          class="font-medium text-gray-900 dark:text-white"
+                          class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
                         >
-                          {{ localText("注册即授权", "Grant on signup") REDACTEDREDACTED
+                          {{ t("admin.settings.defaults.defaultBalance") REDACTEDREDACTED
                         </label>
-                        <p
-                          class="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
-                        >
-                          {{
-                            localText(
-                              "来源首次注册成功后立即发放默认权益。",
-                              "Grant default entitlements immediately after signup.",
-                            )
-                          REDACTEDREDACTED
-                        </p>
+                        <input
+                          v-model.number="
+                            authSourceDefaults[authSource.source].balance
+                          "
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          class="input"
+                          placeholder="0.00"
+                        />
                       </div>
-                      <Toggle
-                        v-model="
-                          authSourceDefaults[authSource.source].grant_on_signup
-                        "
-                      />
+                      <div>
+                        <label
+                          class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >
+                          {{ t("admin.settings.defaults.defaultConcurrency") REDACTEDREDACTED
+                        </label>
+                        <input
+                          v-model.number="
+                            authSourceDefaults[authSource.source].concurrency
+                          "
+                          type="number"
+                          min="1"
+                          class="input"
+                          placeholder="5"
+                        />
+                      </div>
                     </div>
 
                     <div
@@ -2341,8 +2340,8 @@
                         >
                           {{
                             localText(
-                              "来源首次绑定到现有账号时发放默认权益。",
-                              "Grant default entitlements when the source is first bound to an existing user.",
+                              "已有账号首次绑定该来源时发放默认权益。",
+                              "Grant default entitlements when an existing user first binds this source.",
                             )
                           REDACTEDREDACTED
                         </p>
@@ -2354,11 +2353,7 @@
                         "
                       />
                     </div>
-                  </div>
 
-                  <div
-                    class="mt-4 border-t border-gray-100 pt-4 dark:border-dark-700"
-                  >
                     <div class="mb-3 flex items-center justify-between">
                       <div>
                         <label
@@ -4710,12 +4705,13 @@ import { useI18n REDACTED from "vue-i18n";
 import { adminAPI REDACTED from "@/api";
 import {
   appendAuthSourceDefaultsToUpdateRequest,
-  defaultWeChatConnectScopesForMode,
   buildAuthSourceDefaultsState,
+  defaultWeChatConnectScopesForMode,
+  deriveWeChatConnectStoredMode,
   getPaymentVisibleMethodSourceOptions,
   normalizePaymentVisibleMethodSource,
   normalizeDefaultSubscriptionSettings,
-  normalizeWeChatConnectMode,
+  resolveWeChatConnectModeCapabilities,
 REDACTED from "@/api/admin/settings";
 import type {
   AuthSourceDefaultsState,
@@ -4859,11 +4855,16 @@ interface DefaultSubscriptionGroupOption {
   [key: string]: unknown;
 REDACTED
 
-type SettingsForm = SystemSettings & {
+type SettingsForm = Omit<
+  SystemSettings,
+  "wechat_connect_open_enabled" | "wechat_connect_mp_enabled"
+> & {
   smtp_password: string;
   turnstile_secret_key: string;
   linuxdo_connect_client_secret: string;
   wechat_connect_app_secret: string;
+  wechat_connect_open_enabled: boolean;
+  wechat_connect_mp_enabled: boolean;
   oidc_connect_client_secret: string;
   force_email_on_third_party_signup: boolean;
   payment_visible_method_alipay_source: string;
@@ -4958,6 +4959,8 @@ const form = reactive<SettingsForm>({
   wechat_connect_app_id: "",
   wechat_connect_app_secret: "",
   wechat_connect_app_secret_configured: false,
+  wechat_connect_open_enabled: false,
+  wechat_connect_mp_enabled: false,
   wechat_connect_mode: "open",
   wechat_connect_scopes: "snsapi_login",
   wechat_connect_redirect_url: "",
@@ -5452,14 +5455,21 @@ const wechatRedirectUrlSuggestion = computed(() => {
 REDACTED);
 
 function syncWeChatConnectMode() {
-  form.wechat_connect_mode = normalizeWeChatConnectMode(
+  const capabilities = resolveWeChatConnectModeCapabilities(
+    form.wechat_connect_open_enabled,
+    form.wechat_connect_mp_enabled,
     form.wechat_connect_mode,
   );
-  if (!form.wechat_connect_scopes.trim()) {
-    form.wechat_connect_scopes = defaultWeChatConnectScopesForMode(
-      form.wechat_connect_mode,
-    );
-  REDACTED
+  form.wechat_connect_open_enabled = capabilities.openEnabled;
+  form.wechat_connect_mp_enabled = capabilities.mpEnabled;
+  form.wechat_connect_mode = deriveWeChatConnectStoredMode(
+    capabilities.openEnabled,
+    capabilities.mpEnabled,
+    form.wechat_connect_mode,
+  );
+  form.wechat_connect_scopes = defaultWeChatConnectScopesForMode(
+    form.wechat_connect_mode,
+  );
 REDACTED
 
 async function setAndCopyWeChatRedirectUrl() {
@@ -5608,16 +5618,21 @@ async function loadSettings() {
     form.turnstile_secret_key = "";
     form.linuxdo_connect_client_secret = "";
     form.wechat_connect_app_secret = "";
-    form.wechat_connect_mode = normalizeWeChatConnectMode(
+    const wechatCapabilities = resolveWeChatConnectModeCapabilities(
+      settings.wechat_connect_open_enabled,
+      settings.wechat_connect_mp_enabled,
       settings.wechat_connect_mode,
     );
-    const wechatConnectScopes =
-      typeof settings.wechat_connect_scopes === "string"
-        ? settings.wechat_connect_scopes.trim()
-        : "";
-    form.wechat_connect_scopes =
-      wechatConnectScopes ||
-      defaultWeChatConnectScopesForMode(form.wechat_connect_mode);
+    form.wechat_connect_open_enabled = wechatCapabilities.openEnabled;
+    form.wechat_connect_mp_enabled = wechatCapabilities.mpEnabled;
+    form.wechat_connect_mode = deriveWeChatConnectStoredMode(
+      wechatCapabilities.openEnabled,
+      wechatCapabilities.mpEnabled,
+      settings.wechat_connect_mode,
+    );
+    form.wechat_connect_scopes = defaultWeChatConnectScopesForMode(
+      form.wechat_connect_mode,
+    );
     form.oidc_connect_client_secret = "";
 
     // Load web search emulation config separately
@@ -5789,6 +5804,12 @@ async function saveSettings() {
     // Optional URL fields: auto-clear invalid values so they don't cause backend 400 errors
     if (!isValidHttpUrl(form.frontend_url)) form.frontend_url = "";
     if (!isValidHttpUrl(form.doc_url)) form.doc_url = "";
+    syncWeChatConnectMode();
+    const wechatStoredMode = deriveWeChatConnectStoredMode(
+      form.wechat_connect_open_enabled,
+      form.wechat_connect_mp_enabled,
+      form.wechat_connect_mode,
+    );
 
     const payload: UpdateSettingsRequest = {
       registration_enabled: form.registration_enabled,
@@ -5837,10 +5858,11 @@ async function saveSettings() {
       wechat_connect_enabled: form.wechat_connect_enabled,
       wechat_connect_app_id: form.wechat_connect_app_id,
       wechat_connect_app_secret: form.wechat_connect_app_secret || undefined,
-      wechat_connect_mode: normalizeWeChatConnectMode(form.wechat_connect_mode),
+      wechat_connect_open_enabled: form.wechat_connect_open_enabled,
+      wechat_connect_mp_enabled: form.wechat_connect_mp_enabled,
+      wechat_connect_mode: wechatStoredMode,
       wechat_connect_scopes:
-        form.wechat_connect_scopes.trim() ||
-        defaultWeChatConnectScopesForMode(form.wechat_connect_mode),
+        defaultWeChatConnectScopesForMode(wechatStoredMode),
       wechat_connect_redirect_url: form.wechat_connect_redirect_url,
       wechat_connect_frontend_redirect_url:
         form.wechat_connect_frontend_redirect_url,
@@ -5967,16 +5989,21 @@ async function saveSettings() {
     form.turnstile_secret_key = "";
     form.linuxdo_connect_client_secret = "";
     form.wechat_connect_app_secret = "";
-    form.wechat_connect_mode = normalizeWeChatConnectMode(
+    const updatedWechatCapabilities = resolveWeChatConnectModeCapabilities(
+      updated.wechat_connect_open_enabled,
+      updated.wechat_connect_mp_enabled,
       updated.wechat_connect_mode,
     );
-    const updatedWechatConnectScopes =
-      typeof updated.wechat_connect_scopes === "string"
-        ? updated.wechat_connect_scopes.trim()
-        : "";
-    form.wechat_connect_scopes =
-      updatedWechatConnectScopes ||
-      defaultWeChatConnectScopesForMode(form.wechat_connect_mode);
+    form.wechat_connect_open_enabled = updatedWechatCapabilities.openEnabled;
+    form.wechat_connect_mp_enabled = updatedWechatCapabilities.mpEnabled;
+    form.wechat_connect_mode = deriveWeChatConnectStoredMode(
+      updatedWechatCapabilities.openEnabled,
+      updatedWechatCapabilities.mpEnabled,
+      updated.wechat_connect_mode,
+    );
+    form.wechat_connect_scopes = defaultWeChatConnectScopesForMode(
+      form.wechat_connect_mode,
+    );
     form.oidc_connect_client_secret = "";
     // Save web search emulation config separately (errors handled internally)
     const wsOk = await saveWebSearchConfig();

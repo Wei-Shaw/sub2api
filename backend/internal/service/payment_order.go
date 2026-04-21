@@ -519,7 +519,7 @@ func (s *PaymentService) getWeChatPaymentOAuthCredential(ctx context.Context) (s
 		)
 REDACTED
 	cfg, err := (&SettingService{settingRepo: s.configService.settingRepoREDACTED).GetWeChatConnectOAuthConfig(ctx)
-	if err != nil || cfg.Mode != "mp" || strings.TrimSpace(cfg.AppID) == "" || strings.TrimSpace(cfg.AppSecret) == "" {
+	if err != nil || !cfg.SupportsMode("mp") || strings.TrimSpace(cfg.AppID) == "" || strings.TrimSpace(cfg.AppSecret) == "" {
 		return "", "", infraerrors.ServiceUnavailable(
 			"WECHAT_PAYMENT_MP_NOT_CONFIGURED",
 			"wechat in-app payment requires a complete WeChat MP OAuth credential",

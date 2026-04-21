@@ -54,6 +54,8 @@ type SystemSettings struct {
 	WeChatConnectEnabled             bool   `json:"wechat_connect_enabled"`
 	WeChatConnectAppID               string `json:"wechat_connect_app_id"`
 	WeChatConnectAppSecretConfigured bool   `json:"wechat_connect_app_secret_configured"`
+	WeChatConnectOpenEnabled         bool   `json:"wechat_connect_open_enabled"`
+	WeChatConnectMPEnabled           bool   `json:"wechat_connect_mp_enabled"`
 	WeChatConnectMode                string `json:"wechat_connect_mode"`
 	WeChatConnectScopes              string `json:"wechat_connect_scopes"`
 	WeChatConnectRedirectURL         string `json:"wechat_connect_redirect_url"`

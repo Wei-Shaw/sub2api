@@ -111,9 +111,11 @@ const ToggleStub = defineComponent({
     REDACTED,
   REDACTED,
   emits: ["update:modelValue"],
-  setup(props, { emit REDACTED) {
+  inheritAttrs: false,
+  setup(props, { attrs, emit REDACTED) {
     return () =>
       h("input", {
+        ...attrs,
         class: "toggle-stub",
         type: "checkbox",
         checked: props.modelValue,
@@ -217,6 +219,8 @@ const baseSettingsResponse = {
   wechat_connect_enabled: true,
   wechat_connect_app_id: "wx-app-id-123",
   wechat_connect_app_secret_configured: true,
+  wechat_connect_open_enabled: false,
+  wechat_connect_mp_enabled: true,
   wechat_connect_mode: "mp",
   wechat_connect_scopes: "",
   wechat_connect_redirect_url:
@@ -331,6 +335,16 @@ async function openSecurityTab(wrapper: ReturnType<typeof mountView>) {
 
   expect(securityTabButton).toBeDefined();
   await securityTabButton?.trigger("click");
+  await flushPromises();
+REDACTED
+
+async function openUsersTab(wrapper: ReturnType<typeof mountView>) {
+  const usersTabButton = wrapper
+    .findAll("button")
+    .find((node) => node.text().includes("admin.settings.tabs.users"));
+
+  expect(usersTabButton).toBeDefined();
+  await usersTabButton?.trigger("click");
   await flushPromises();
 REDACTED
 
@@ -595,16 +609,19 @@ describe("admin SettingsView wechat connect controls", () => {
     ).toBe("wx-app-id-123");
     expect(
       (
-        wrapper.get('[data-testid="wechat-connect-mode"]')
-          .element as HTMLSelectElement
-      ).value,
-    ).toBe("mp");
+        wrapper.get('[data-testid="wechat-connect-open-enabled"]')
+          .element as HTMLInputElement
+      ).checked,
+    ).toBe(false);
     expect(
       (
-        wrapper.get('[data-testid="wechat-connect-scopes"]')
+        wrapper.get('[data-testid="wechat-connect-mp-enabled"]')
           .element as HTMLInputElement
-      ).value,
-    ).toBe("snsapi_userinfo");
+      ).checked,
+    ).toBe(true);
+    expect(wrapper.find('[data-testid="wechat-connect-scopes"]').exists()).toBe(
+      false,
+    );
     expect(
       wrapper
         .get('[data-testid="wechat-connect-app-secret"]')
@@ -630,10 +647,12 @@ describe("admin SettingsView wechat connect controls", () => {
     await wrapper
       .get('[data-testid="wechat-connect-app-secret"]')
       .setValue("new-secret");
-    await wrapper.get('[data-testid="wechat-connect-mode"]').setValue("open");
     await wrapper
-      .get('[data-testid="wechat-connect-scopes"]')
-      .setValue("  snsapi_base  ");
+      .get('[data-testid="wechat-connect-open-enabled"]')
+      .setValue(true);
+    await wrapper
+      .get('[data-testid="wechat-connect-mp-enabled"]')
+      .setValue(true);
     await wrapper
       .get('[data-testid="wechat-connect-redirect-url"]')
       .setValue("https://admin.example.com/api/v1/auth/oauth/wechat/callback");
@@ -649,8 +668,8 @@ describe("admin SettingsView wechat connect controls", () => {
         wechat_connect_enabled: true,
         wechat_connect_app_id: "wx-app-id-updated",
         wechat_connect_app_secret: "new-secret",
-        wechat_connect_mode: "open",
-        wechat_connect_scopes: "snsapi_base",
+        wechat_connect_open_enabled: true,
+        wechat_connect_mp_enabled: true,
         wechat_connect_redirect_url:
           "https://admin.example.com/api/v1/auth/oauth/wechat/callback",
         wechat_connect_frontend_redirect_url: "/auth/wechat/callback",
@@ -667,5 +686,32 @@ describe("admin SettingsView wechat connect controls", () => {
         .get('[data-testid="wechat-connect-app-secret"]')
         .attributes("placeholder"),
     ).toContain("密钥已配置");
+  REDACTED);
+
+  it("collapses auth source defaults until the source is enabled", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openUsersTab(wrapper);
+
+    expect(
+      (
+        wrapper.get('[data-testid="auth-source-email-enabled"]')
+          .element as HTMLInputElement
+      ).checked,
+    ).toBe(false);
+    expect(
+      wrapper.find('[data-testid="auth-source-email-panel"]').exists(),
+    ).toBe(false);
+    expect(wrapper.text()).not.toContain("注册即授权");
+
+    await wrapper
+      .get('[data-testid="auth-source-email-enabled"]')
+      .setValue(true);
+
+    expect(
+      wrapper.find('[data-testid="auth-source-email-panel"]').exists(),
+    ).toBe(true);
+    expect(wrapper.text()).toContain("首次绑定时授权");
   REDACTED);
 REDACTED);
