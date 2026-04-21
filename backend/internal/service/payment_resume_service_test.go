@@ -344,21 +344,30 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestVisibleMethodLoadBalancerUsesConfiguredSource(t *testing.T) {
+func TestVisibleMethodLoadBalancerUsesEnabledProviderInstance(t *testing.T) {
 	t.Parallel()
+
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	_, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeAlipay).
+		SetName("Official Alipay").
+		SetConfig("{REDACTED").
+		SetSupportedTypes("alipay").
+		SetEnabled(true).
+		SetSortOrder(1).
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("create alipay provider: %v", err)
+REDACTED
 
 	inner := &captureLoadBalancer{REDACTED
 	configService := &PaymentConfigService{
-		settingRepo: &paymentSettingRepoStub{
-			values: map[string]string{
-				SettingPaymentVisibleMethodAlipayEnabled: "true",
-				SettingPaymentVisibleMethodAlipaySource:  VisibleMethodSourceOfficialAlipay,
-		REDACTED,
-	REDACTED,
+		entClient: client,
 REDACTED
 	lb := newVisibleMethodLoadBalancer(inner, configService)
 
-	_, err := lb.SelectInstance(context.Background(), "", payment.TypeAlipay, payment.StrategyRoundRobin, 12.5)
+	_, err = lb.SelectInstance(ctx, "", payment.TypeAlipay, payment.StrategyRoundRobin, 12.5)
 	if err != nil {
 		t.Fatalf("SelectInstance returned error: %v", err)
 REDACTED
@@ -367,46 +376,19 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestVisibleMethodLoadBalancerRejectsDisabledVisibleMethod(t *testing.T) {
+func TestVisibleMethodLoadBalancerRejectsMissingEnabledVisibleMethodProvider(t *testing.T) {
 	t.Parallel()
 
 	inner := &captureLoadBalancer{REDACTED
 	configService := &PaymentConfigService{
-		settingRepo: &paymentSettingRepoStub{
-			values: map[string]string{
-				SettingPaymentVisibleMethodWxpayEnabled: "false",
-				SettingPaymentVisibleMethodWxpaySource:  VisibleMethodSourceOfficialWechat,
-		REDACTED,
-	REDACTED,
+		entClient: newPaymentConfigServiceTestClient(t),
 REDACTED
 	lb := newVisibleMethodLoadBalancer(inner, configService)
 
 	if _, err := lb.SelectInstance(context.Background(), "", payment.TypeWxpay, payment.StrategyRoundRobin, 9.9); err == nil {
-		t.Fatal("SelectInstance should reject disabled visible method")
+		t.Fatal("SelectInstance should reject when no enabled provider instance exists")
 REDACTED
 REDACTED
-
-type paymentSettingRepoStub struct {
-	values map[string]string
-REDACTED
-
-func (s *paymentSettingRepoStub) Get(context.Context, string) (*Setting, error) { return nil, nil REDACTED
-func (s *paymentSettingRepoStub) GetValue(_ context.Context, key string) (string, error) {
-	return s.values[key], nil
-REDACTED
-func (s *paymentSettingRepoStub) Set(context.Context, string, string) error { return nil REDACTED
-func (s *paymentSettingRepoStub) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
-	out := make(map[string]string, len(keys))
-	for _, key := range keys {
-		out[key] = s.values[key]
-REDACTED
-	return out, nil
-REDACTED
-func (s *paymentSettingRepoStub) SetMultiple(context.Context, map[string]string) error { return nil REDACTED
-func (s *paymentSettingRepoStub) GetAll(context.Context) (map[string]string, error) {
-	return s.values, nil
-REDACTED
-func (s *paymentSettingRepoStub) Delete(context.Context, string) error { return nil REDACTED
 
 type captureLoadBalancer struct {
 	lastProviderKey string

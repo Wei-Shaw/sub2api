@@ -40,8 +40,8 @@ const (
 	paymentResumeNotConfiguredCode    = "PAYMENT_RESUME_NOT_CONFIGURED"
 	paymentResumeNotConfiguredMessage = "payment resume tokens require a configured signing key"
 
-	paymentResumeTokenTTL        = 24 * time.Hour
-	wechatPaymentResumeTokenTTL  = 15 * time.Minute
+	paymentResumeTokenTTL       = 24 * time.Hour
+	wechatPaymentResumeTokenTTL = 15 * time.Minute
 )
 
 type ResumeTokenClaims struct {
@@ -163,7 +163,7 @@ REDACTED
 REDACTED
 
 func newVisibleMethodLoadBalancer(inner payment.LoadBalancer, configService *PaymentConfigService) payment.LoadBalancer {
-	if inner == nil || configService == nil || configService.settingRepo == nil {
+	if inner == nil || configService == nil || configService.entClient == nil {
 		return inner
 REDACTED
 	return &visibleMethodLoadBalancer{inner: inner, configService: configServiceREDACTED
@@ -179,21 +179,14 @@ func (lb *visibleMethodLoadBalancer) SelectInstance(ctx context.Context, provide
 		return lb.inner.SelectInstance(ctx, providerKey, paymentType, strategy, orderAmount)
 REDACTED
 
-	enabledKey := visibleMethodEnabledSettingKey(visibleMethod)
-	sourceKey := visibleMethodSourceSettingKey(visibleMethod)
-	vals, err := lb.configService.settingRepo.GetMultiple(ctx, []string{enabledKey, sourceKeyREDACTED)
+	inst, err := lb.configService.resolveEnabledVisibleMethodInstance(ctx, visibleMethod)
 	if err != nil {
-		return nil, fmt.Errorf("load visible method routing for %s: %w", visibleMethod, err)
+		return nil, err
 REDACTED
-	if vals[enabledKey] != "true" {
-		return nil, fmt.Errorf("visible payment method %s is disabled", visibleMethod)
+	if inst == nil {
+		return nil, fmt.Errorf("visible payment method %s has no enabled provider instance", visibleMethod)
 REDACTED
-
-	targetProviderKey, ok := VisibleMethodProviderKeyForSource(visibleMethod, vals[sourceKey])
-	if !ok {
-		return nil, fmt.Errorf("visible payment method %s has no valid source", visibleMethod)
-REDACTED
-	return lb.inner.SelectInstance(ctx, targetProviderKey, paymentType, strategy, orderAmount)
+	return lb.inner.SelectInstance(ctx, inst.ProviderKey, paymentType, strategy, orderAmount)
 REDACTED
 
 func visibleMethodEnabledSettingKey(method string) string {

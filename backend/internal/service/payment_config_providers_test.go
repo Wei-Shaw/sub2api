@@ -3,8 +3,10 @@
 package service
 
 import (
+	"context"
 	"testing"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -184,4 +186,105 @@ REDACTED
 			assert.Equal(t, tc.want, got)
 	REDACTED)
 REDACTED
+REDACTED
+
+func TestCreateProviderInstanceRejectsConflictingVisibleMethodEnablement(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	svc := &PaymentConfigService{
+		entClient:     client,
+		encryptionKey: []byte("REDACTED"),
+REDACTED
+
+	_, err := svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
+		ProviderKey:    "easypay",
+		Name:           "EasyPay Alipay",
+		Config:         map[string]string{"pid": "1001"REDACTED,
+		SupportedTypes: []string{"alipay"REDACTED,
+		Enabled:        true,
+REDACTED)
+REDACTED
+
+	_, err = svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
+		ProviderKey:    "alipay",
+		Name:           "Official Alipay",
+		Config:         map[string]string{"appId": "app-1"REDACTED,
+		SupportedTypes: []string{"alipay"REDACTED,
+		Enabled:        true,
+REDACTED)
+REDACTED
+	require.Equal(t, "PAYMENT_PROVIDER_CONFLICT", infraerrors.Reason(err))
+REDACTED
+
+func TestUpdateProviderInstanceRejectsEnablingConflictingVisibleMethodProvider(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	svc := &PaymentConfigService{
+		entClient:     client,
+		encryptionKey: []byte("REDACTED"),
+REDACTED
+
+	existing, err := svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
+		ProviderKey:    "easypay",
+		Name:           "EasyPay WeChat",
+		Config:         map[string]string{"pid": "2001"REDACTED,
+		SupportedTypes: []string{"wxpay"REDACTED,
+		Enabled:        true,
+REDACTED)
+REDACTED
+	require.NotNil(t, existing)
+
+	candidate, err := svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
+		ProviderKey:    "wxpay",
+		Name:           "Official WeChat",
+		Config:         map[string]string{"appId": "wx-app"REDACTED,
+		SupportedTypes: []string{"wxpay"REDACTED,
+		Enabled:        false,
+REDACTED)
+REDACTED
+
+	_, err = svc.UpdateProviderInstance(ctx, candidate.ID, UpdateProviderInstanceRequest{
+		Enabled: boolPtrValue(true),
+REDACTED)
+REDACTED
+	require.Equal(t, "PAYMENT_PROVIDER_CONFLICT", infraerrors.Reason(err))
+REDACTED
+
+func TestUpdateProviderInstancePersistsEnabledAndSupportedTypes(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+	svc := &PaymentConfigService{
+		entClient:     client,
+		encryptionKey: []byte("REDACTED"),
+REDACTED
+
+	instance, err := svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
+		ProviderKey:    "easypay",
+		Name:           "EasyPay",
+		Config:         map[string]string{"pid": "3001"REDACTED,
+		SupportedTypes: []string{"alipay"REDACTED,
+		Enabled:        false,
+REDACTED)
+REDACTED
+
+	_, err = svc.UpdateProviderInstance(ctx, instance.ID, UpdateProviderInstanceRequest{
+		Enabled:        boolPtrValue(true),
+		SupportedTypes: []string{"alipay", "wxpay"REDACTED,
+REDACTED)
+REDACTED
+
+	saved, err := client.PaymentProviderInstance.Get(ctx, instance.ID)
+REDACTED
+	require.True(t, saved.Enabled)
+	require.Equal(t, "alipay,wxpay", saved.SupportedTypes)
+REDACTED
+
+func boolPtrValue(v bool) *bool {
+	return &v
 REDACTED

@@ -17,6 +17,9 @@ const {
   getGroups,
   listProxies,
   getProviders,
+  updateProvider,
+  createProvider,
+  deleteProvider,
   fetchPublicSettings,
   adminSettingsFetch,
   showError,
@@ -34,6 +37,9 @@ REDACTED = vi.hoisted(() => ({
   getGroups: vi.fn(),
   listProxies: vi.fn(),
   getProviders: vi.fn(),
+  updateProvider: vi.fn(),
+  createProvider: vi.fn(),
+  deleteProvider: vi.fn(),
   fetchPublicSettings: vi.fn(),
   adminSettingsFetch: vi.fn(),
   showError: vi.fn(),
@@ -61,6 +67,9 @@ vi.mock("@/api", () => ({
     REDACTED,
     payment: {
       getProviders,
+      updateProvider,
+      createProvider,
+      deleteProvider,
     REDACTED,
   REDACTED,
 REDACTED));
@@ -413,6 +422,9 @@ describe("admin SettingsView payment visible method controls", () => {
     getGroups.mockReset();
     listProxies.mockReset();
     getProviders.mockReset();
+    updateProvider.mockReset();
+    createProvider.mockReset();
+    deleteProvider.mockReset();
     fetchPublicSettings.mockReset();
     adminSettingsFetch.mockReset();
     showError.mockReset();
@@ -467,98 +479,93 @@ describe("admin SettingsView payment visible method controls", () => {
     adminSettingsFetch.mockResolvedValue(undefined);
   REDACTED);
 
-  it("loads canonical source options and normalizes existing values", async () => {
+  it("does not render legacy visible payment method controls", async () => {
     const wrapper = mountView();
 
     await flushPromises();
     await openPaymentTab(wrapper);
 
-    const paymentSourceSelects = wrapper
-      .findAll("select.select-stub")
-      .filter((node) =>
-        ["alipay", "wxpay"].includes(node.attributes("data-placeholder")),
-      );
-
-    expect(paymentSourceSelects).toHaveLength(2);
-
-    const alipaySelect = paymentSourceSelects.find(
-      (node) => node.attributes("data-placeholder") === "alipay",
-    );
-    const wxpaySelect = paymentSourceSelects.find(
-      (node) => node.attributes("data-placeholder") === "wxpay",
-    );
-
-    expect(alipaySelect?.element.value).toBe("official_alipay");
-    expect(
-      alipaySelect?.findAll("option").map((option) => option.element.value),
-    ).toEqual(["", "official_alipay", "easypay_alipay"]);
-
-    expect(wxpaySelect?.element.value).toBe("");
-    expect(
-      wxpaySelect?.findAll("option").map((option) => option.element.value),
-    ).toEqual(["", "official_wxpay", "easypay_wxpay"]);
+    expect(wrapper.text()).not.toContain("可见方式");
+    expect(wrapper.text()).not.toContain("支付来源");
   REDACTED);
 
-  it("saves canonical source keys selected from the dropdowns", async () => {
+  it("does not submit legacy visible payment method settings", async () => {
     const wrapper = mountView();
 
     await flushPromises();
     await openPaymentTab(wrapper);
-
-    const paymentSourceSelects = wrapper
-      .findAll("select.select-stub")
-      .filter((node) =>
-        ["alipay", "wxpay"].includes(node.attributes("data-placeholder")),
-      );
-
-    const alipaySelect = paymentSourceSelects.find(
-      (node) => node.attributes("data-placeholder") === "alipay",
-    );
-    const wxpaySelect = paymentSourceSelects.find(
-      (node) => node.attributes("data-placeholder") === "wxpay",
-    );
-
-    await alipaySelect?.setValue("easypay_alipay");
-    await wxpaySelect?.setValue("official_wxpay");
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
 
     expect(updateSettings).toHaveBeenCalledTimes(1);
-    expect(updateSettings).toHaveBeenCalledWith(
-      expect.objectContaining({
-        payment_visible_method_alipay_source: "easypay_alipay",
-        payment_visible_method_wxpay_source: "official_wxpay",
-        payment_visible_method_alipay_enabled: true,
-        payment_visible_method_wxpay_enabled: true,
-      REDACTED),
-    );
+    const payload = updateSettings.mock.calls[0]?.[0];
+    expect(payload).not.toHaveProperty("payment_visible_method_alipay_source");
+    expect(payload).not.toHaveProperty("payment_visible_method_wxpay_source");
+    expect(payload).not.toHaveProperty("payment_visible_method_alipay_enabled");
+    expect(payload).not.toHaveProperty("payment_visible_method_wxpay_enabled");
   REDACTED);
 
-  it("blocks saving when a visible payment method is enabled without a source", async () => {
-    const wrapper = mountView();
+  it("updates provider enablement immediately and reloads providers", async () => {
+    const provider = {
+      id: 7,
+      provider_key: "alipay",
+      name: "Official Alipay",
+      config: {REDACTED,
+      supported_types: ["alipay"],
+      enabled: false,
+      payment_mode: "",
+      refund_enabled: false,
+      allow_user_refund: false,
+      limits: "",
+      sort_order: 0,
+    REDACTED;
+    getProviders.mockReset();
+    getProviders
+      .mockResolvedValueOnce({ data: [provider] REDACTED)
+      .mockResolvedValueOnce({ data: [{ ...provider, enabled: true REDACTED] REDACTED);
+    updateProvider.mockResolvedValue({ data: { ...provider, enabled: true REDACTED REDACTED);
+
+    const PaymentProviderListStub = defineComponent({
+      emits: ["toggleField"],
+      setup(_, { emit REDACTED) {
+        return () =>
+          h(
+            "button",
+            {
+              class: "provider-toggle-stub",
+              onClick: () => emit("toggleField", provider, "enabled"),
+            REDACTED,
+            "toggle provider",
+          );
+      REDACTED,
+    REDACTED);
+
+    const wrapper = mount(SettingsView, {
+      global: {
+        stubs: {
+          AppLayout: AppLayoutStub,
+          Select: SelectStub,
+          Toggle: ToggleStub,
+          Icon: true,
+          ConfirmDialog: true,
+          PaymentProviderList: PaymentProviderListStub,
+          PaymentProviderDialog: true,
+          GroupBadge: true,
+          GroupOptionItem: true,
+          ProxySelector: true,
+          ImageUpload: true,
+          BackupSettings: true,
+        REDACTED,
+      REDACTED,
+    REDACTED);
 
     await flushPromises();
     await openPaymentTab(wrapper);
-
-    const paymentSourceSelects = wrapper
-      .findAll("select.select-stub")
-      .filter((node) =>
-        ["alipay", "wxpay"].includes(node.attributes("data-placeholder")),
-      );
-
-    const alipaySelect = paymentSourceSelects.find(
-      (node) => node.attributes("data-placeholder") === "alipay",
-    );
-
-    await alipaySelect?.setValue("");
-    await wrapper.find("form").trigger("submit.prevent");
+    await wrapper.get(".provider-toggle-stub").trigger("click");
     await flushPromises();
 
-    expect(updateSettings).not.toHaveBeenCalled();
-    expect(showError).toHaveBeenCalled();
-    expect(String(showError.mock.calls.at(-1)?.[0] ?? "")).toContain(
-      "支付来源",
-    );
+    expect(updateProvider).toHaveBeenCalledWith(7, { enabled: true REDACTED);
+    expect(getProviders).toHaveBeenCalledTimes(2);
   REDACTED);
 
   it("renders advanced scheduler copy as local experimental gateway policy", async () => {
@@ -588,6 +595,9 @@ describe("admin SettingsView wechat connect controls", () => {
     getGroups.mockReset();
     listProxies.mockReset();
     getProviders.mockReset();
+    updateProvider.mockReset();
+    createProvider.mockReset();
+    deleteProvider.mockReset();
     fetchPublicSettings.mockReset();
     adminSettingsFetch.mockReset();
     showError.mockReset();

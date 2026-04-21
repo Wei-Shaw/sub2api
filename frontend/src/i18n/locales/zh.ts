@@ -4921,6 +4921,7 @@ export default {
         supportedTypesHint: '逗号分隔，如 alipay,wxpay',
         refundEnabled: '允许退款',
         allowUserRefund: '允许用户退款',
+        enableConflict: '{methodREDACTED 已有启用中的服务商实例：{providerREDACTED。请先停用现有实例后再启用或切换。',
       REDACTED,
       balanceNotify: {
         title: '余额不足提醒',
@@ -5800,6 +5801,7 @@ export default {
       alipayMobileUnavailable: '当前页面未成功跳转到支付宝。',
       alipayMobileOpenHint: '请允许当前页面打开支付宝 App，或改用系统浏览器重新发起支付。',
       PENDING_ORDERS: '该服务商有未完成的订单，请等待订单完成后再操作',
+      PAYMENT_PROVIDER_CONFLICT: '该支付方式已有其他启用中的服务商实例，请先停用后再继续。',
     REDACTED,
     stripePay: '立即支付',
     stripeSuccessProcessing: '支付成功，正在处理订单...',

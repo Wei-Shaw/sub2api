@@ -4757,6 +4757,7 @@ export default {
         supportedTypesHint: 'Comma-separated, e.g. alipay,wxpay',
         refundEnabled: 'Allow Refund',
         allowUserRefund: 'Allow User Refund',
+        enableConflict: '{methodREDACTED already has an enabled provider instance: {providerREDACTED. Disable the existing instance before switching.',
       REDACTED,
       balanceNotify: {
         title: 'Balance Low Notification',
@@ -5612,6 +5613,7 @@ export default {
       alipayMobileUnavailable: 'This page could not hand off to Alipay.',
       alipayMobileOpenHint: 'Allow the current page to open the Alipay app, or retry from the system browser.',
       PENDING_ORDERS: 'This provider has pending orders. Please wait for them to complete before making changes.',
+      PAYMENT_PROVIDER_CONFLICT: 'Another enabled provider instance is already serving this payment method. Disable it before continuing.',
     REDACTED,
     stripePay: 'Pay Now',
     stripeSuccessProcessing: 'Payment successful, processing your order...',

@@ -326,20 +326,17 @@ REDACTED
 REDACTED
 
 func (s *PaymentService) usesOfficialWxpayVisibleMethod(ctx context.Context) bool {
-	if s == nil || s.configService == nil || s.configService.settingRepo == nil {
+	if s == nil || s.configService == nil {
 		return false
 REDACTED
-	vals, err := s.configService.settingRepo.GetMultiple(ctx, []string{
-		SettingPaymentVisibleMethodWxpayEnabled,
-		SettingPaymentVisibleMethodWxpaySource,
-REDACTED)
+	inst, err := s.configService.resolveEnabledVisibleMethodInstance(ctx, payment.TypeWxpay)
 	if err != nil {
 		return false
 REDACTED
-	if vals[SettingPaymentVisibleMethodWxpayEnabled] != "true" {
+	if inst == nil {
 		return false
 REDACTED
-	return NormalizeVisibleMethodSource(payment.TypeWxpay, vals[SettingPaymentVisibleMethodWxpaySource]) == VisibleMethodSourceOfficialWechat
+	return inst.ProviderKey == payment.TypeWxpay
 REDACTED
 
 func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.PaymentOrder, req CreateOrderRequest, cfg *PaymentConfig, limitAmount float64, payAmountStr string, payAmount float64, plan *dbent.SubscriptionPlan, sel *payment.InstanceSelection) (*CreateOrderResponse, error) {

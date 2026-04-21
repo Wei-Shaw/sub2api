@@ -301,7 +301,7 @@ REDACTED)
 REDACTED)
 REDACTED
 
-func TestGetAvailableMethodLimitsRespectsVisibleMethodRouting(t *testing.T) {
+func TestGetAvailableMethodLimitsHidesConflictingVisibleMethodProviders(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
 
@@ -341,14 +341,6 @@ REDACTED
 
 	svc := &PaymentConfigService{
 		entClient: client,
-		settingRepo: &paymentConfigSettingRepoStub{
-			values: map[string]string{
-				SettingPaymentVisibleMethodAlipayEnabled: "true",
-				SettingPaymentVisibleMethodAlipaySource:  VisibleMethodSourceEasyPayAlipay,
-				SettingPaymentVisibleMethodWxpayEnabled:  "false",
-				SettingPaymentVisibleMethodWxpaySource:   VisibleMethodSourceOfficialWechat,
-		REDACTED,
-	REDACTED,
 REDACTED
 
 	resp, err := svc.GetAvailableMethodLimits(ctx)
@@ -356,17 +348,18 @@ REDACTED
 		t.Fatalf("GetAvailableMethodLimits returned error: %v", err)
 REDACTED
 
-	alipayLimits, ok := resp.Methods[payment.TypeAlipay]
+	if _, ok := resp.Methods[payment.TypeAlipay]; ok {
+		t.Fatalf("alipay should be hidden when multiple enabled providers claim it, got %v", resp.Methods[payment.TypeAlipay])
+REDACTED
+
+	wxpayLimits, ok := resp.Methods[payment.TypeWxpay]
 	if !ok {
-		t.Fatalf("expected visible alipay limits, got %v", resp.Methods)
+		t.Fatalf("expected wxpay limits to remain visible, got %v", resp.Methods)
 REDACTED
-	if alipayLimits.SingleMin != 20 || alipayLimits.SingleMax != 200 {
-		t.Fatalf("alipay limits = %+v, want easypay-only min=20 max=200", alipayLimits)
+	if wxpayLimits.SingleMin != 30 || wxpayLimits.SingleMax != 300 {
+		t.Fatalf("wxpay limits = %+v, want official-only min=30 max=300", wxpayLimits)
 REDACTED
-	if _, ok := resp.Methods[payment.TypeWxpay]; ok {
-		t.Fatalf("wxpay should be hidden when visible method is disabled, got %v", resp.Methods[payment.TypeWxpay])
-REDACTED
-	if resp.GlobalMin != 20 || resp.GlobalMax != 200 {
-		t.Fatalf("global range = (%v, %v), want (20, 200)", resp.GlobalMin, resp.GlobalMax)
+	if resp.GlobalMin != 30 || resp.GlobalMax != 300 {
+		t.Fatalf("global range = (%v, %v), want (30, 300)", resp.GlobalMin, resp.GlobalMax)
 REDACTED
 REDACTED
