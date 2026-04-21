@@ -855,7 +855,7 @@ REDACTED
 
 	rows, err := s.entClient.QueryContext(
 		ctx,
-		`SELECT 1 FROM user_provider_default_grants WHERE user_id = ? AND provider_type = ? AND grant_reason = ? LIMIT 1`,
+		`SELECT 1 FROM user_provider_default_grants WHERE user_id = $1 AND provider_type = $2 AND grant_reason = $3 LIMIT 1`,
 		userID,
 		strings.TrimSpace(providerType),
 		strings.TrimSpace(grantReason),
