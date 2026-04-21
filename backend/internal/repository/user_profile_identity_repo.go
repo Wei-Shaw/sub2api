@@ -9,10 +9,12 @@ import (
 	"time"
 	"unsafe"
 
+	entsql "entgo.io/ent/dialect/sql"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	dbpredicate "github.com/Wei-Shaw/sub2api/ent/predicate"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -379,6 +381,24 @@ REDACTED
 
 func (r *userRepository) UpsertIdentityAdoptionDecision(ctx context.Context, input IdentityAdoptionDecisionInput) (*dbent.IdentityAdoptionDecision, error) {
 	client := clientFromContext(ctx, r.client)
+	if input.IdentityID != nil && *input.IdentityID > 0 {
+		if _, err := client.IdentityAdoptionDecision.Update().
+			Where(
+				identityadoptiondecision.IdentityIDEQ(*input.IdentityID),
+				dbpredicate.IdentityAdoptionDecision(func(s *entsql.Selector) {
+					col := s.C(identityadoptiondecision.FieldPendingAuthSessionID)
+					s.Where(entsql.Or(
+						entsql.IsNull(col),
+						entsql.NEQ(col, input.PendingAuthSessionID),
+					))
+			REDACTED),
+			).
+			ClearIdentityID().
+			Save(ctx); err != nil {
+			return nil, err
+	REDACTED
+REDACTED
+
 	current, err := client.IdentityAdoptionDecision.Query().
 		Where(identityadoptiondecision.PendingAuthSessionIDEQ(input.PendingAuthSessionID)).
 		Only(ctx)

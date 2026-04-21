@@ -353,6 +353,45 @@ REDACTED)
 	s.Require().Equal(identity.Identity.ID, *loaded.IdentityID)
 REDACTED
 
+func (s *UserProfileIdentityRepoSuite) TestUpsertIdentityAdoptionDecision_ReassignsExistingIdentityReference() {
+	user := s.mustCreateUser("adoption-reassign")
+	identity, err := s.repo.CreateAuthIdentity(s.ctx, CreateAuthIdentityInput{
+		UserID: user.ID,
+		Canonical: AuthIdentityKey{
+			ProviderType:    "wechat",
+			ProviderKey:     "wechat-open",
+			ProviderSubject: "union-adoption-reassign",
+	REDACTED,
+REDACTED)
+	s.Require().NoError(err)
+
+	firstSession := s.mustCreatePendingAuthSession(identity.IdentityRef())
+	firstDecision, err := s.repo.UpsertIdentityAdoptionDecision(s.ctx, IdentityAdoptionDecisionInput{
+		PendingAuthSessionID: firstSession.ID,
+		IdentityID:           &identity.Identity.ID,
+		AdoptDisplayName:     true,
+		AdoptAvatar:          false,
+REDACTED)
+	s.Require().NoError(err)
+	s.Require().NotNil(firstDecision.IdentityID)
+	s.Require().Equal(identity.Identity.ID, *firstDecision.IdentityID)
+
+	secondSession := s.mustCreatePendingAuthSession(identity.IdentityRef())
+	secondDecision, err := s.repo.UpsertIdentityAdoptionDecision(s.ctx, IdentityAdoptionDecisionInput{
+		PendingAuthSessionID: secondSession.ID,
+		IdentityID:           &identity.Identity.ID,
+		AdoptDisplayName:     false,
+		AdoptAvatar:          true,
+REDACTED)
+	s.Require().NoError(err)
+	s.Require().NotNil(secondDecision.IdentityID)
+	s.Require().Equal(identity.Identity.ID, *secondDecision.IdentityID)
+
+	reloadedFirst, err := s.repo.GetIdentityAdoptionDecisionByPendingAuthSessionID(s.ctx, firstSession.ID)
+	s.Require().NoError(err)
+	s.Require().Nil(reloadedFirst.IdentityID)
+REDACTED
+
 func (s *UserProfileIdentityRepoSuite) TestUserAvatarCRUDAndUserLookup() {
 	user := s.mustCreateUser("avatar")
 
