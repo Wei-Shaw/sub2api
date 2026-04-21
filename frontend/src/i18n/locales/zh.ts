@@ -4714,6 +4714,12 @@ export default {
           defaultInterval: '默认检测间隔（秒）',
           defaultIntervalHint: '新建渠道监控时表单的默认值，可被单个渠道覆盖。范围 15 – 3600 秒。',
         },
+        availableChannels: {
+          title: '可用渠道',
+          description: '向已登录用户展示他们能访问的渠道、模型和定价聚合视图。默认关闭。',
+          enabled: '启用可用渠道',
+          enabledHint: '关闭后用户端侧边栏入口隐藏，接口返回空数组。',
+        },
       },
       emailTabDisabledTitle: '邮箱验证未启用',
       emailTabDisabledHint: '请在「安全与认证」选项卡中启用邮箱验证后，再配置 SMTP 设置。',

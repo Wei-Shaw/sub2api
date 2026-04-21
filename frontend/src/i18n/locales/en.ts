@@ -4541,6 +4541,12 @@ export default {
           defaultInterval: 'Default check interval (seconds)',
           defaultIntervalHint: 'Pre-fills the interval when creating a new monitor; each monitor can override it. Range 15 – 3600.',
         },
+        availableChannels: {
+          title: 'Available Channels',
+          description: 'Show logged-in users an aggregate view of the channels, models and pricing they can access. Disabled by default.',
+          enabled: 'Enable Available Channels',
+          enabledHint: 'When off, the sidebar entry is hidden and the endpoint returns an empty list.',
+        },
       },
       emailTabDisabledTitle: 'Email Verification Not Enabled',
       emailTabDisabledHint: 'Enable email verification in the Security tab to configure SMTP settings.',

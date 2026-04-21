@@ -631,6 +631,9 @@ const ChevronDownIcon = {
 // getter 返回 false = 隐藏；undefined/true = 显示（宽容策略，避免 public settings 未加载闪烁）。
 const flagChannelMonitor = () => appStore.cachedPublicSettings?.channel_monitor_enabled
 const flagPayment = () => appStore.cachedPublicSettings?.payment_enabled
+// Opt-in feature：默认关闭，未加载 settings 时也视为关闭（严格 === true 判定）
+const flagAvailableChannels = () =>
+  appStore.cachedPublicSettings?.available_channels_enabled === true
 const flagOpsMonitoring = () => adminSettingsStore.opsMonitoringEnabled
 const flagAdminPayment = () => adminSettingsStore.paymentEnabled
 
@@ -648,7 +651,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     { path: '/purchase', label: t('nav.buySubscription'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
-    { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true },
+    { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
     ...customMenuItemsForUser.value.map((item): NavItem => ({

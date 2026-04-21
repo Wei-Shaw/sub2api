@@ -132,6 +132,7 @@ export interface PublicSettings {
   balance_low_notify_threshold: number
   channel_monitor_enabled: boolean
   channel_monitor_default_interval_seconds: number
+  available_channels_enabled: boolean
 }
 
 export interface AuthResponse {
