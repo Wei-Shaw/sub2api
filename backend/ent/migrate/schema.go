@@ -354,12 +354,24 @@ var (
 		{Name: "interval_seconds", Type: field.TypeInt},
 		{Name: "last_checked_at", Type: field.TypeTime, Nullable: true},
 		{Name: "created_by", Type: field.TypeInt64},
+		{Name: "extra_headers", Type: field.TypeJSON},
+		{Name: "body_override_mode", Type: field.TypeString, Size: 10, Default: "off"},
+		{Name: "body_override", Type: field.TypeJSON, Nullable: true},
+		{Name: "template_id", Type: field.TypeInt64, Nullable: true},
 	}
 	// ChannelMonitorsTable holds the schema information for the "channel_monitors" table.
 	ChannelMonitorsTable = &schema.Table{
 		Name:       "channel_monitors",
 		Columns:    ChannelMonitorsColumns,
 		PrimaryKey: []*schema.Column{ChannelMonitorsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "channel_monitors_channel_monitor_request_templates_request_template",
+				Columns:    []*schema.Column{ChannelMonitorsColumns[17]},
+				RefColumns: []*schema.Column{ChannelMonitorRequestTemplatesColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+		},
 		Indexes: []*schema.Index{
 			{
 				Name:    "channelmonitor_enabled_last_checked_at",
@@ -375,6 +387,11 @@ var (
 				Name:    "channelmonitor_group_name",
 				Unique:  false,
 				Columns: []*schema.Column{ChannelMonitorsColumns[9]},
+			},
+			{
+				Name:    "channelmonitor_template_id",
+				Unique:  false,
+				Columns: []*schema.Column{ChannelMonitorsColumns[17]},
 			},
 		},
 	}
@@ -456,6 +473,31 @@ var (
 				Name:    "channelmonitorhistory_checked_at",
 				Unique:  false,
 				Columns: []*schema.Column{ChannelMonitorHistoriesColumns[6]},
+			},
+		},
+	}
+	// ChannelMonitorRequestTemplatesColumns holds the columns for the "channel_monitor_request_templates" table.
+	ChannelMonitorRequestTemplatesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "name", Type: field.TypeString, Size: 100},
+		{Name: "provider", Type: field.TypeEnum, Enums: []string{"openai", "anthropic", "gemini"}},
+		{Name: "description", Type: field.TypeString, Nullable: true, Size: 500, Default: ""},
+		{Name: "extra_headers", Type: field.TypeJSON},
+		{Name: "body_override_mode", Type: field.TypeString, Size: 10, Default: "off"},
+		{Name: "body_override", Type: field.TypeJSON, Nullable: true},
+	}
+	// ChannelMonitorRequestTemplatesTable holds the schema information for the "channel_monitor_request_templates" table.
+	ChannelMonitorRequestTemplatesTable = &schema.Table{
+		Name:       "channel_monitor_request_templates",
+		Columns:    ChannelMonitorRequestTemplatesColumns,
+		PrimaryKey: []*schema.Column{ChannelMonitorRequestTemplatesColumns[0]},
+		Indexes: []*schema.Index{
+			{
+				Name:    "channelmonitorrequesttemplate_provider_name",
+				Unique:  true,
+				Columns: []*schema.Column{ChannelMonitorRequestTemplatesColumns[4], ChannelMonitorRequestTemplatesColumns[3]},
 			},
 		},
 	}
@@ -1442,6 +1484,7 @@ var (
 		ChannelMonitorsTable,
 		ChannelMonitorDailyRollupsTable,
 		ChannelMonitorHistoriesTable,
+		ChannelMonitorRequestTemplatesTable,
 		ErrorPassthroughRulesTable,
 		GroupsTable,
 		IdempotencyRecordsTable,
@@ -1489,6 +1532,7 @@ func init() {
 	AnnouncementReadsTable.Annotation = &entsql.Annotation{
 		Table: "announcement_reads",
 	}
+	ChannelMonitorsTable.ForeignKeys[0].RefTable = ChannelMonitorRequestTemplatesTable
 	ChannelMonitorsTable.Annotation = &entsql.Annotation{
 		Table: "channel_monitors",
 	}
@@ -1499,6 +1543,9 @@ func init() {
 	ChannelMonitorHistoriesTable.ForeignKeys[0].RefTable = ChannelMonitorsTable
 	ChannelMonitorHistoriesTable.Annotation = &entsql.Annotation{
 		Table: "channel_monitor_histories",
+	}
+	ChannelMonitorRequestTemplatesTable.Annotation = &entsql.Annotation{
+		Table: "channel_monitor_request_templates",
 	}
 	ErrorPassthroughRulesTable.Annotation = &entsql.Annotation{
 		Table: "error_passthrough_rules",

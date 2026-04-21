@@ -23,6 +23,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
+	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -69,6 +70,8 @@ type Client struct {
 	ChannelMonitorDailyRollup *ChannelMonitorDailyRollupClient
 	// ChannelMonitorHistory is the client for interacting with the ChannelMonitorHistory builders.
 	ChannelMonitorHistory *ChannelMonitorHistoryClient
+	// ChannelMonitorRequestTemplate is the client for interacting with the ChannelMonitorRequestTemplate builders.
+	ChannelMonitorRequestTemplate *ChannelMonitorRequestTemplateClient
 	// ErrorPassthroughRule is the client for interacting with the ErrorPassthroughRule builders.
 	ErrorPassthroughRule *ErrorPassthroughRuleClient
 	// Group is the client for interacting with the Group builders.
@@ -130,6 +133,7 @@ func (c *Client) init() {
 	c.ChannelMonitor = NewChannelMonitorClient(c.config)
 	c.ChannelMonitorDailyRollup = NewChannelMonitorDailyRollupClient(c.config)
 	c.ChannelMonitorHistory = NewChannelMonitorHistoryClient(c.config)
+	c.ChannelMonitorRequestTemplate = NewChannelMonitorRequestTemplateClient(c.config)
 	c.ErrorPassthroughRule = NewErrorPassthroughRuleClient(c.config)
 	c.Group = NewGroupClient(c.config)
 	c.IdempotencyRecord = NewIdempotencyRecordClient(c.config)
@@ -241,37 +245,38 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:                       ctx,
-		config:                    cfg,
-		APIKey:                    NewAPIKeyClient(cfg),
-		Account:                   NewAccountClient(cfg),
-		AccountGroup:              NewAccountGroupClient(cfg),
-		Announcement:              NewAnnouncementClient(cfg),
-		AnnouncementRead:          NewAnnouncementReadClient(cfg),
-		ChannelMonitor:            NewChannelMonitorClient(cfg),
-		ChannelMonitorDailyRollup: NewChannelMonitorDailyRollupClient(cfg),
-		ChannelMonitorHistory:     NewChannelMonitorHistoryClient(cfg),
-		ErrorPassthroughRule:      NewErrorPassthroughRuleClient(cfg),
-		Group:                     NewGroupClient(cfg),
-		IdempotencyRecord:         NewIdempotencyRecordClient(cfg),
-		PaymentAuditLog:           NewPaymentAuditLogClient(cfg),
-		PaymentOrder:              NewPaymentOrderClient(cfg),
-		PaymentProviderInstance:   NewPaymentProviderInstanceClient(cfg),
-		PromoCode:                 NewPromoCodeClient(cfg),
-		PromoCodeUsage:            NewPromoCodeUsageClient(cfg),
-		Proxy:                     NewProxyClient(cfg),
-		RedeemCode:                NewRedeemCodeClient(cfg),
-		SecuritySecret:            NewSecuritySecretClient(cfg),
-		Setting:                   NewSettingClient(cfg),
-		SubscriptionPlan:          NewSubscriptionPlanClient(cfg),
-		TLSFingerprintProfile:     NewTLSFingerprintProfileClient(cfg),
-		UsageCleanupTask:          NewUsageCleanupTaskClient(cfg),
-		UsageLog:                  NewUsageLogClient(cfg),
-		User:                      NewUserClient(cfg),
-		UserAllowedGroup:          NewUserAllowedGroupClient(cfg),
-		UserAttributeDefinition:   NewUserAttributeDefinitionClient(cfg),
-		UserAttributeValue:        NewUserAttributeValueClient(cfg),
-		UserSubscription:          NewUserSubscriptionClient(cfg),
+		ctx:                           ctx,
+		config:                        cfg,
+		APIKey:                        NewAPIKeyClient(cfg),
+		Account:                       NewAccountClient(cfg),
+		AccountGroup:                  NewAccountGroupClient(cfg),
+		Announcement:                  NewAnnouncementClient(cfg),
+		AnnouncementRead:              NewAnnouncementReadClient(cfg),
+		ChannelMonitor:                NewChannelMonitorClient(cfg),
+		ChannelMonitorDailyRollup:     NewChannelMonitorDailyRollupClient(cfg),
+		ChannelMonitorHistory:         NewChannelMonitorHistoryClient(cfg),
+		ChannelMonitorRequestTemplate: NewChannelMonitorRequestTemplateClient(cfg),
+		ErrorPassthroughRule:          NewErrorPassthroughRuleClient(cfg),
+		Group:                         NewGroupClient(cfg),
+		IdempotencyRecord:             NewIdempotencyRecordClient(cfg),
+		PaymentAuditLog:               NewPaymentAuditLogClient(cfg),
+		PaymentOrder:                  NewPaymentOrderClient(cfg),
+		PaymentProviderInstance:       NewPaymentProviderInstanceClient(cfg),
+		PromoCode:                     NewPromoCodeClient(cfg),
+		PromoCodeUsage:                NewPromoCodeUsageClient(cfg),
+		Proxy:                         NewProxyClient(cfg),
+		RedeemCode:                    NewRedeemCodeClient(cfg),
+		SecuritySecret:                NewSecuritySecretClient(cfg),
+		Setting:                       NewSettingClient(cfg),
+		SubscriptionPlan:              NewSubscriptionPlanClient(cfg),
+		TLSFingerprintProfile:         NewTLSFingerprintProfileClient(cfg),
+		UsageCleanupTask:              NewUsageCleanupTaskClient(cfg),
+		UsageLog:                      NewUsageLogClient(cfg),
+		User:                          NewUserClient(cfg),
+		UserAllowedGroup:              NewUserAllowedGroupClient(cfg),
+		UserAttributeDefinition:       NewUserAttributeDefinitionClient(cfg),
+		UserAttributeValue:            NewUserAttributeValueClient(cfg),
+		UserSubscription:              NewUserSubscriptionClient(cfg),
 	}, nil
 }
 
@@ -289,37 +294,38 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:                       ctx,
-		config:                    cfg,
-		APIKey:                    NewAPIKeyClient(cfg),
-		Account:                   NewAccountClient(cfg),
-		AccountGroup:              NewAccountGroupClient(cfg),
-		Announcement:              NewAnnouncementClient(cfg),
-		AnnouncementRead:          NewAnnouncementReadClient(cfg),
-		ChannelMonitor:            NewChannelMonitorClient(cfg),
-		ChannelMonitorDailyRollup: NewChannelMonitorDailyRollupClient(cfg),
-		ChannelMonitorHistory:     NewChannelMonitorHistoryClient(cfg),
-		ErrorPassthroughRule:      NewErrorPassthroughRuleClient(cfg),
-		Group:                     NewGroupClient(cfg),
-		IdempotencyRecord:         NewIdempotencyRecordClient(cfg),
-		PaymentAuditLog:           NewPaymentAuditLogClient(cfg),
-		PaymentOrder:              NewPaymentOrderClient(cfg),
-		PaymentProviderInstance:   NewPaymentProviderInstanceClient(cfg),
-		PromoCode:                 NewPromoCodeClient(cfg),
-		PromoCodeUsage:            NewPromoCodeUsageClient(cfg),
-		Proxy:                     NewProxyClient(cfg),
-		RedeemCode:                NewRedeemCodeClient(cfg),
-		SecuritySecret:            NewSecuritySecretClient(cfg),
-		Setting:                   NewSettingClient(cfg),
-		SubscriptionPlan:          NewSubscriptionPlanClient(cfg),
-		TLSFingerprintProfile:     NewTLSFingerprintProfileClient(cfg),
-		UsageCleanupTask:          NewUsageCleanupTaskClient(cfg),
-		UsageLog:                  NewUsageLogClient(cfg),
-		User:                      NewUserClient(cfg),
-		UserAllowedGroup:          NewUserAllowedGroupClient(cfg),
-		UserAttributeDefinition:   NewUserAttributeDefinitionClient(cfg),
-		UserAttributeValue:        NewUserAttributeValueClient(cfg),
-		UserSubscription:          NewUserSubscriptionClient(cfg),
+		ctx:                           ctx,
+		config:                        cfg,
+		APIKey:                        NewAPIKeyClient(cfg),
+		Account:                       NewAccountClient(cfg),
+		AccountGroup:                  NewAccountGroupClient(cfg),
+		Announcement:                  NewAnnouncementClient(cfg),
+		AnnouncementRead:              NewAnnouncementReadClient(cfg),
+		ChannelMonitor:                NewChannelMonitorClient(cfg),
+		ChannelMonitorDailyRollup:     NewChannelMonitorDailyRollupClient(cfg),
+		ChannelMonitorHistory:         NewChannelMonitorHistoryClient(cfg),
+		ChannelMonitorRequestTemplate: NewChannelMonitorRequestTemplateClient(cfg),
+		ErrorPassthroughRule:          NewErrorPassthroughRuleClient(cfg),
+		Group:                         NewGroupClient(cfg),
+		IdempotencyRecord:             NewIdempotencyRecordClient(cfg),
+		PaymentAuditLog:               NewPaymentAuditLogClient(cfg),
+		PaymentOrder:                  NewPaymentOrderClient(cfg),
+		PaymentProviderInstance:       NewPaymentProviderInstanceClient(cfg),
+		PromoCode:                     NewPromoCodeClient(cfg),
+		PromoCodeUsage:                NewPromoCodeUsageClient(cfg),
+		Proxy:                         NewProxyClient(cfg),
+		RedeemCode:                    NewRedeemCodeClient(cfg),
+		SecuritySecret:                NewSecuritySecretClient(cfg),
+		Setting:                       NewSettingClient(cfg),
+		SubscriptionPlan:              NewSubscriptionPlanClient(cfg),
+		TLSFingerprintProfile:         NewTLSFingerprintProfileClient(cfg),
+		UsageCleanupTask:              NewUsageCleanupTaskClient(cfg),
+		UsageLog:                      NewUsageLogClient(cfg),
+		User:                          NewUserClient(cfg),
+		UserAllowedGroup:              NewUserAllowedGroupClient(cfg),
+		UserAttributeDefinition:       NewUserAttributeDefinitionClient(cfg),
+		UserAttributeValue:            NewUserAttributeValueClient(cfg),
+		UserSubscription:              NewUserSubscriptionClient(cfg),
 	}, nil
 }
 
@@ -351,9 +357,10 @@ func (c *Client) Use(hooks ...Hook) {
 	for _, n := range []interface{ Use(...Hook) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.ChannelMonitor, c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
-		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord, c.PaymentAuditLog,
-		c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
+		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.Group,
+		c.IdempotencyRecord, c.PaymentAuditLog, c.PaymentOrder,
+		c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage, c.Proxy,
+		c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
 		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
 		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserSubscription,
@@ -368,9 +375,10 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 	for _, n := range []interface{ Intercept(...Interceptor) }{
 		c.APIKey, c.Account, c.AccountGroup, c.Announcement, c.AnnouncementRead,
 		c.ChannelMonitor, c.ChannelMonitorDailyRollup, c.ChannelMonitorHistory,
-		c.ErrorPassthroughRule, c.Group, c.IdempotencyRecord, c.PaymentAuditLog,
-		c.PaymentOrder, c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage,
-		c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
+		c.ChannelMonitorRequestTemplate, c.ErrorPassthroughRule, c.Group,
+		c.IdempotencyRecord, c.PaymentAuditLog, c.PaymentOrder,
+		c.PaymentProviderInstance, c.PromoCode, c.PromoCodeUsage, c.Proxy,
+		c.RedeemCode, c.SecuritySecret, c.Setting, c.SubscriptionPlan,
 		c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog, c.User,
 		c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
 		c.UserSubscription,
@@ -398,6 +406,8 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.ChannelMonitorDailyRollup.mutate(ctx, m)
 	case *ChannelMonitorHistoryMutation:
 		return c.ChannelMonitorHistory.mutate(ctx, m)
+	case *ChannelMonitorRequestTemplateMutation:
+		return c.ChannelMonitorRequestTemplate.mutate(ctx, m)
 	case *ErrorPassthroughRuleMutation:
 		return c.ErrorPassthroughRule.mutate(ctx, m)
 	case *GroupMutation:
@@ -1397,6 +1407,22 @@ func (c *ChannelMonitorClient) QueryDailyRollups(_m *ChannelMonitor) *ChannelMon
 	return query
 }
 
+// QueryRequestTemplate queries the request_template edge of a ChannelMonitor.
+func (c *ChannelMonitorClient) QueryRequestTemplate(_m *ChannelMonitor) *ChannelMonitorRequestTemplateQuery {
+	query := (&ChannelMonitorRequestTemplateClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(channelmonitor.Table, channelmonitor.FieldID, id),
+			sqlgraph.To(channelmonitorrequesttemplate.Table, channelmonitorrequesttemplate.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, channelmonitor.RequestTemplateTable, channelmonitor.RequestTemplateColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
 // Hooks returns the client hooks.
 func (c *ChannelMonitorClient) Hooks() []Hook {
 	return c.hooks.ChannelMonitor
@@ -1717,6 +1743,155 @@ func (c *ChannelMonitorHistoryClient) mutate(ctx context.Context, m *ChannelMoni
 		return (&ChannelMonitorHistoryDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
 	default:
 		return nil, fmt.Errorf("ent: unknown ChannelMonitorHistory mutation op: %q", m.Op())
+	}
+}
+
+// ChannelMonitorRequestTemplateClient is a client for the ChannelMonitorRequestTemplate schema.
+type ChannelMonitorRequestTemplateClient struct {
+	config
+}
+
+// NewChannelMonitorRequestTemplateClient returns a client for the ChannelMonitorRequestTemplate from the given config.
+func NewChannelMonitorRequestTemplateClient(c config) *ChannelMonitorRequestTemplateClient {
+	return &ChannelMonitorRequestTemplateClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `channelmonitorrequesttemplate.Hooks(f(g(h())))`.
+func (c *ChannelMonitorRequestTemplateClient) Use(hooks ...Hook) {
+	c.hooks.ChannelMonitorRequestTemplate = append(c.hooks.ChannelMonitorRequestTemplate, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `channelmonitorrequesttemplate.Intercept(f(g(h())))`.
+func (c *ChannelMonitorRequestTemplateClient) Intercept(interceptors ...Interceptor) {
+	c.inters.ChannelMonitorRequestTemplate = append(c.inters.ChannelMonitorRequestTemplate, interceptors...)
+}
+
+// Create returns a builder for creating a ChannelMonitorRequestTemplate entity.
+func (c *ChannelMonitorRequestTemplateClient) Create() *ChannelMonitorRequestTemplateCreate {
+	mutation := newChannelMonitorRequestTemplateMutation(c.config, OpCreate)
+	return &ChannelMonitorRequestTemplateCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of ChannelMonitorRequestTemplate entities.
+func (c *ChannelMonitorRequestTemplateClient) CreateBulk(builders ...*ChannelMonitorRequestTemplateCreate) *ChannelMonitorRequestTemplateCreateBulk {
+	return &ChannelMonitorRequestTemplateCreateBulk{config: c.config, builders: builders}
+}
+
+// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
+// a builder and applies setFunc on it.
+func (c *ChannelMonitorRequestTemplateClient) MapCreateBulk(slice any, setFunc func(*ChannelMonitorRequestTemplateCreate, int)) *ChannelMonitorRequestTemplateCreateBulk {
+	rv := reflect.ValueOf(slice)
+	if rv.Kind() != reflect.Slice {
+		return &ChannelMonitorRequestTemplateCreateBulk{err: fmt.Errorf("calling to ChannelMonitorRequestTemplateClient.MapCreateBulk with wrong type %T, need slice", slice)}
+	}
+	builders := make([]*ChannelMonitorRequestTemplateCreate, rv.Len())
+	for i := 0; i < rv.Len(); i++ {
+		builders[i] = c.Create()
+		setFunc(builders[i], i)
+	}
+	return &ChannelMonitorRequestTemplateCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for ChannelMonitorRequestTemplate.
+func (c *ChannelMonitorRequestTemplateClient) Update() *ChannelMonitorRequestTemplateUpdate {
+	mutation := newChannelMonitorRequestTemplateMutation(c.config, OpUpdate)
+	return &ChannelMonitorRequestTemplateUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *ChannelMonitorRequestTemplateClient) UpdateOne(_m *ChannelMonitorRequestTemplate) *ChannelMonitorRequestTemplateUpdateOne {
+	mutation := newChannelMonitorRequestTemplateMutation(c.config, OpUpdateOne, withChannelMonitorRequestTemplate(_m))
+	return &ChannelMonitorRequestTemplateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *ChannelMonitorRequestTemplateClient) UpdateOneID(id int64) *ChannelMonitorRequestTemplateUpdateOne {
+	mutation := newChannelMonitorRequestTemplateMutation(c.config, OpUpdateOne, withChannelMonitorRequestTemplateID(id))
+	return &ChannelMonitorRequestTemplateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for ChannelMonitorRequestTemplate.
+func (c *ChannelMonitorRequestTemplateClient) Delete() *ChannelMonitorRequestTemplateDelete {
+	mutation := newChannelMonitorRequestTemplateMutation(c.config, OpDelete)
+	return &ChannelMonitorRequestTemplateDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *ChannelMonitorRequestTemplateClient) DeleteOne(_m *ChannelMonitorRequestTemplate) *ChannelMonitorRequestTemplateDeleteOne {
+	return c.DeleteOneID(_m.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *ChannelMonitorRequestTemplateClient) DeleteOneID(id int64) *ChannelMonitorRequestTemplateDeleteOne {
+	builder := c.Delete().Where(channelmonitorrequesttemplate.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &ChannelMonitorRequestTemplateDeleteOne{builder}
+}
+
+// Query returns a query builder for ChannelMonitorRequestTemplate.
+func (c *ChannelMonitorRequestTemplateClient) Query() *ChannelMonitorRequestTemplateQuery {
+	return &ChannelMonitorRequestTemplateQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeChannelMonitorRequestTemplate},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a ChannelMonitorRequestTemplate entity by its id.
+func (c *ChannelMonitorRequestTemplateClient) Get(ctx context.Context, id int64) (*ChannelMonitorRequestTemplate, error) {
+	return c.Query().Where(channelmonitorrequesttemplate.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *ChannelMonitorRequestTemplateClient) GetX(ctx context.Context, id int64) *ChannelMonitorRequestTemplate {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// QueryMonitors queries the monitors edge of a ChannelMonitorRequestTemplate.
+func (c *ChannelMonitorRequestTemplateClient) QueryMonitors(_m *ChannelMonitorRequestTemplate) *ChannelMonitorQuery {
+	query := (&ChannelMonitorClient{config: c.config}).Query()
+	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
+		id := _m.ID
+		step := sqlgraph.NewStep(
+			sqlgraph.From(channelmonitorrequesttemplate.Table, channelmonitorrequesttemplate.FieldID, id),
+			sqlgraph.To(channelmonitor.Table, channelmonitor.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, true, channelmonitorrequesttemplate.MonitorsTable, channelmonitorrequesttemplate.MonitorsColumn),
+		)
+		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
+		return fromV, nil
+	}
+	return query
+}
+
+// Hooks returns the client hooks.
+func (c *ChannelMonitorRequestTemplateClient) Hooks() []Hook {
+	return c.hooks.ChannelMonitorRequestTemplate
+}
+
+// Interceptors returns the client interceptors.
+func (c *ChannelMonitorRequestTemplateClient) Interceptors() []Interceptor {
+	return c.inters.ChannelMonitorRequestTemplate
+}
+
+func (c *ChannelMonitorRequestTemplateClient) mutate(ctx context.Context, m *ChannelMonitorRequestTemplateMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&ChannelMonitorRequestTemplateCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&ChannelMonitorRequestTemplateUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&ChannelMonitorRequestTemplateUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&ChannelMonitorRequestTemplateDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown ChannelMonitorRequestTemplate mutation op: %q", m.Op())
 	}
 }
 
@@ -5118,21 +5293,21 @@ func (c *UserSubscriptionClient) mutate(ctx context.Context, m *UserSubscription
 type (
 	hooks struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, ChannelMonitor,
-		ChannelMonitorDailyRollup, ChannelMonitorHistory, ErrorPassthroughRule, Group,
-		IdempotencyRecord, PaymentAuditLog, PaymentOrder, PaymentProviderInstance,
-		PromoCode, PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting,
-		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
-		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserSubscription []ent.Hook
+		ChannelMonitorDailyRollup, ChannelMonitorHistory,
+		ChannelMonitorRequestTemplate, ErrorPassthroughRule, Group, IdempotencyRecord,
+		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PromoCode,
+		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
+		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
+		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, ChannelMonitor,
-		ChannelMonitorDailyRollup, ChannelMonitorHistory, ErrorPassthroughRule, Group,
-		IdempotencyRecord, PaymentAuditLog, PaymentOrder, PaymentProviderInstance,
-		PromoCode, PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting,
-		SubscriptionPlan, TLSFingerprintProfile, UsageCleanupTask, UsageLog, User,
-		UserAllowedGroup, UserAttributeDefinition, UserAttributeValue,
-		UserSubscription []ent.Interceptor
+		ChannelMonitorDailyRollup, ChannelMonitorHistory,
+		ChannelMonitorRequestTemplate, ErrorPassthroughRule, Group, IdempotencyRecord,
+		PaymentAuditLog, PaymentOrder, PaymentProviderInstance, PromoCode,
+		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
+		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
+		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Interceptor
 	}
 )
 

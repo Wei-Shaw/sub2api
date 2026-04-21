@@ -2032,7 +2032,57 @@ export default {
       },
       runResultTitle: 'Check Result',
       noMonitorsYet: 'No monitors yet',
-      createFirstMonitor: 'Create your first monitor to track channel availability'
+      createFirstMonitor: 'Create your first monitor to track channel availability',
+      advanced: {
+        section: 'Advanced (optional)',
+        sectionHint: 'Customize request headers and body to bypass upstream client-detection (e.g. "only Claude Code clients allowed").',
+        headers: 'Custom request headers',
+        headersPlaceholder: 'User-Agent: claude-cli/1.0.83 (external, cli)\nx-app: cli\nanthropic-beta: claude-code-20250219',
+        headersHint: 'One Key: Value per line; merged on top of adapter defaults (user wins). Hop-by-hop headers (Host / Content-Length / ...) are ignored.',
+        headersParseError: 'Cannot parse line: {line}',
+        bodyMode: 'Body handling',
+        bodyModeOff: 'Default',
+        bodyModeMerge: 'Merge',
+        bodyModeReplace: 'Replace',
+        bodyModeHintOff: 'Use the adapter default body (includes challenge validation).',
+        bodyModeHintMerge: 'Shallow-merge with the default body; user fields win but model / messages / contents are protected (use Replace to change those).',
+        bodyModeHintReplace: 'Use the JSON below as the complete body. Challenge validation is skipped; HTTP 2xx + non-empty response text is treated as operational.',
+        bodyJson: 'Body JSON',
+        bodyJsonHint: 'Parsed on blur. Empty means no override.',
+        bodyJsonError: 'JSON parse failed',
+        bodyJsonObjectError: 'Body must be a JSON object (no arrays or primitives)'
+      },
+      templateField: {
+        label: 'Request template',
+        none: 'No template',
+        placeholder: 'Pick a template (filtered by current provider)',
+        applyHint: 'Picking a template copies its headers and body to this monitor (snapshot). Later template edits are not auto-synced.'
+      },
+      template: {
+        manageButton: 'Templates',
+        managerTitle: 'Request template manager',
+        createButton: 'New template',
+        emptyState: 'No templates for this provider yet',
+        missingName: 'Template name is required',
+        createSuccess: 'Template created',
+        updateSuccess: 'Template updated',
+        deleteSuccess: 'Template deleted',
+        applyButton: 'Apply to monitors',
+        applyTooltip: 'Overwrite snapshot fields on all associated monitors',
+        applyTitle: 'Apply template',
+        applyConfirm: 'Apply',
+        applyConfirmMessage: 'Overwrite {n} associated monitor(s) with the current configuration of "{name}"? Any local customizations on those monitors will be discarded.',
+        applySuccess: 'Applied to {n} monitor(s)',
+        deleteConfirm: 'Delete template "{name}"? {n} associated monitor(s) will be disassociated but keep their current snapshot and continue running.',
+        associatedCount: '{n} associated monitor(s)',
+        headersSummary: '{n} custom header(s)',
+        form: {
+          name: 'Template name',
+          namePlaceholder: 'e.g. Claude Code mimicry',
+          description: 'Description',
+          descriptionPlaceholder: 'Optional: what this template is for, capture date, etc.'
+        }
+      }
     },
 
     // Subscriptions

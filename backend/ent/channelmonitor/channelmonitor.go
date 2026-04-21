@@ -41,10 +41,20 @@ const (
 	FieldLastCheckedAt = "last_checked_at"
 	// FieldCreatedBy holds the string denoting the created_by field in the database.
 	FieldCreatedBy = "created_by"
+	// FieldTemplateID holds the string denoting the template_id field in the database.
+	FieldTemplateID = "template_id"
+	// FieldExtraHeaders holds the string denoting the extra_headers field in the database.
+	FieldExtraHeaders = "extra_headers"
+	// FieldBodyOverrideMode holds the string denoting the body_override_mode field in the database.
+	FieldBodyOverrideMode = "body_override_mode"
+	// FieldBodyOverride holds the string denoting the body_override field in the database.
+	FieldBodyOverride = "body_override"
 	// EdgeHistory holds the string denoting the history edge name in mutations.
 	EdgeHistory = "history"
 	// EdgeDailyRollups holds the string denoting the daily_rollups edge name in mutations.
 	EdgeDailyRollups = "daily_rollups"
+	// EdgeRequestTemplate holds the string denoting the request_template edge name in mutations.
+	EdgeRequestTemplate = "request_template"
 	// Table holds the table name of the channelmonitor in the database.
 	Table = "channel_monitors"
 	// HistoryTable is the table that holds the history relation/edge.
@@ -61,6 +71,13 @@ const (
 	DailyRollupsInverseTable = "channel_monitor_daily_rollups"
 	// DailyRollupsColumn is the table column denoting the daily_rollups relation/edge.
 	DailyRollupsColumn = "monitor_id"
+	// RequestTemplateTable is the table that holds the request_template relation/edge.
+	RequestTemplateTable = "channel_monitors"
+	// RequestTemplateInverseTable is the table name for the ChannelMonitorRequestTemplate entity.
+	// It exists in this package in order to avoid circular dependency with the "channelmonitorrequesttemplate" package.
+	RequestTemplateInverseTable = "channel_monitor_request_templates"
+	// RequestTemplateColumn is the table column denoting the request_template relation/edge.
+	RequestTemplateColumn = "template_id"
 )
 
 // Columns holds all SQL columns for channelmonitor fields.
@@ -79,6 +96,10 @@ var Columns = []string{
 	FieldIntervalSeconds,
 	FieldLastCheckedAt,
 	FieldCreatedBy,
+	FieldTemplateID,
+	FieldExtraHeaders,
+	FieldBodyOverrideMode,
+	FieldBodyOverride,
 }
 
 // ValidColumn reports if the column name is valid (part of the table columns).
@@ -116,6 +137,12 @@ var (
 	DefaultEnabled bool
 	// IntervalSecondsValidator is a validator for the "interval_seconds" field. It is called by the builders before save.
 	IntervalSecondsValidator func(int) error
+	// DefaultExtraHeaders holds the default value on creation for the "extra_headers" field.
+	DefaultExtraHeaders map[string]string
+	// DefaultBodyOverrideMode holds the default value on creation for the "body_override_mode" field.
+	DefaultBodyOverrideMode string
+	// BodyOverrideModeValidator is a validator for the "body_override_mode" field. It is called by the builders before save.
+	BodyOverrideModeValidator func(string) error
 )
 
 // Provider defines the type for the "provider" enum field.
@@ -210,6 +237,16 @@ func ByCreatedBy(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCreatedBy, opts...).ToFunc()
 }
 
+// ByTemplateID orders the results by the template_id field.
+func ByTemplateID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTemplateID, opts...).ToFunc()
+}
+
+// ByBodyOverrideMode orders the results by the body_override_mode field.
+func ByBodyOverrideMode(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldBodyOverrideMode, opts...).ToFunc()
+}
+
 // ByHistoryCount orders the results by history count.
 func ByHistoryCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -237,6 +274,13 @@ func ByDailyRollups(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 		sqlgraph.OrderByNeighborTerms(s, newDailyRollupsStep(), append([]sql.OrderTerm{term}, terms...)...)
 	}
 }
+
+// ByRequestTemplateField orders the results by request_template field.
+func ByRequestTemplateField(field string, opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newRequestTemplateStep(), sql.OrderByField(field, opts...))
+	}
+}
 func newHistoryStep() *sqlgraph.Step {
 	return sqlgraph.NewStep(
 		sqlgraph.From(Table, FieldID),
@@ -249,5 +293,12 @@ func newDailyRollupsStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(DailyRollupsInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, DailyRollupsTable, DailyRollupsColumn),
+	)
+}
+func newRequestTemplateStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(RequestTemplateInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.M2O, false, RequestTemplateTable, RequestTemplateColumn),
 	)
 }

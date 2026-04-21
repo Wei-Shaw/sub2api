@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
+	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 )
 
 // ChannelMonitor is the model entity for the ChannelMonitor schema.
@@ -44,6 +45,14 @@ type ChannelMonitor struct {
 	LastCheckedAt *time.Time `json:"last_checked_at,omitempty"`
 	// CreatedBy holds the value of the "created_by" field.
 	CreatedBy int64 `json:"created_by,omitempty"`
+	// TemplateID holds the value of the "template_id" field.
+	TemplateID *int64 `json:"template_id,omitempty"`
+	// ExtraHeaders holds the value of the "extra_headers" field.
+	ExtraHeaders map[string]string `json:"extra_headers,omitempty"`
+	// BodyOverrideMode holds the value of the "body_override_mode" field.
+	BodyOverrideMode string `json:"body_override_mode,omitempty"`
+	// BodyOverride holds the value of the "body_override" field.
+	BodyOverride map[string]interface{} `json:"body_override,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
 	// The values are being populated by the ChannelMonitorQuery when eager-loading is set.
 	Edges        ChannelMonitorEdges `json:"edges"`
@@ -56,9 +65,11 @@ type ChannelMonitorEdges struct {
 	History []*ChannelMonitorHistory `json:"history,omitempty"`
 	// DailyRollups holds the value of the daily_rollups edge.
 	DailyRollups []*ChannelMonitorDailyRollup `json:"daily_rollups,omitempty"`
+	// RequestTemplate holds the value of the request_template edge.
+	RequestTemplate *ChannelMonitorRequestTemplate `json:"request_template,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [2]bool
+	loadedTypes [3]bool
 }
 
 // HistoryOrErr returns the History value or an error if the edge
@@ -79,18 +90,29 @@ func (e ChannelMonitorEdges) DailyRollupsOrErr() ([]*ChannelMonitorDailyRollup, 
 	return nil, &NotLoadedError{edge: "daily_rollups"}
 }
 
+// RequestTemplateOrErr returns the RequestTemplate value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e ChannelMonitorEdges) RequestTemplateOrErr() (*ChannelMonitorRequestTemplate, error) {
+	if e.RequestTemplate != nil {
+		return e.RequestTemplate, nil
+	} else if e.loadedTypes[2] {
+		return nil, &NotFoundError{label: channelmonitorrequesttemplate.Label}
+	}
+	return nil, &NotLoadedError{edge: "request_template"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*ChannelMonitor) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
 	for i := range columns {
 		switch columns[i] {
-		case channelmonitor.FieldExtraModels:
+		case channelmonitor.FieldExtraModels, channelmonitor.FieldExtraHeaders, channelmonitor.FieldBodyOverride:
 			values[i] = new([]byte)
 		case channelmonitor.FieldEnabled:
 			values[i] = new(sql.NullBool)
-		case channelmonitor.FieldID, channelmonitor.FieldIntervalSeconds, channelmonitor.FieldCreatedBy:
+		case channelmonitor.FieldID, channelmonitor.FieldIntervalSeconds, channelmonitor.FieldCreatedBy, channelmonitor.FieldTemplateID:
 			values[i] = new(sql.NullInt64)
-		case channelmonitor.FieldName, channelmonitor.FieldProvider, channelmonitor.FieldEndpoint, channelmonitor.FieldAPIKeyEncrypted, channelmonitor.FieldPrimaryModel, channelmonitor.FieldGroupName:
+		case channelmonitor.FieldName, channelmonitor.FieldProvider, channelmonitor.FieldEndpoint, channelmonitor.FieldAPIKeyEncrypted, channelmonitor.FieldPrimaryModel, channelmonitor.FieldGroupName, channelmonitor.FieldBodyOverrideMode:
 			values[i] = new(sql.NullString)
 		case channelmonitor.FieldCreatedAt, channelmonitor.FieldUpdatedAt, channelmonitor.FieldLastCheckedAt:
 			values[i] = new(sql.NullTime)
@@ -196,6 +218,35 @@ func (_m *ChannelMonitor) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.CreatedBy = value.Int64
 			}
+		case channelmonitor.FieldTemplateID:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field template_id", values[i])
+			} else if value.Valid {
+				_m.TemplateID = new(int64)
+				*_m.TemplateID = value.Int64
+			}
+		case channelmonitor.FieldExtraHeaders:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field extra_headers", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.ExtraHeaders); err != nil {
+					return fmt.Errorf("unmarshal field extra_headers: %w", err)
+				}
+			}
+		case channelmonitor.FieldBodyOverrideMode:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field body_override_mode", values[i])
+			} else if value.Valid {
+				_m.BodyOverrideMode = value.String
+			}
+		case channelmonitor.FieldBodyOverride:
+			if value, ok := values[i].(*[]byte); !ok {
+				return fmt.Errorf("unexpected type %T for field body_override", values[i])
+			} else if value != nil && len(*value) > 0 {
+				if err := json.Unmarshal(*value, &_m.BodyOverride); err != nil {
+					return fmt.Errorf("unmarshal field body_override: %w", err)
+				}
+			}
 		default:
 			_m.selectValues.Set(columns[i], values[i])
 		}
@@ -217,6 +268,11 @@ func (_m *ChannelMonitor) QueryHistory() *ChannelMonitorHistoryQuery {
 // QueryDailyRollups queries the "daily_rollups" edge of the ChannelMonitor entity.
 func (_m *ChannelMonitor) QueryDailyRollups() *ChannelMonitorDailyRollupQuery {
 	return NewChannelMonitorClient(_m.config).QueryDailyRollups(_m)
+}
+
+// QueryRequestTemplate queries the "request_template" edge of the ChannelMonitor entity.
+func (_m *ChannelMonitor) QueryRequestTemplate() *ChannelMonitorRequestTemplateQuery {
+	return NewChannelMonitorClient(_m.config).QueryRequestTemplate(_m)
 }
 
 // Update returns a builder for updating this ChannelMonitor.
@@ -281,6 +337,20 @@ func (_m *ChannelMonitor) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("created_by=")
 	builder.WriteString(fmt.Sprintf("%v", _m.CreatedBy))
+	builder.WriteString(", ")
+	if v := _m.TemplateID; v != nil {
+		builder.WriteString("template_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
+	builder.WriteString("extra_headers=")
+	builder.WriteString(fmt.Sprintf("%v", _m.ExtraHeaders))
+	builder.WriteString(", ")
+	builder.WriteString("body_override_mode=")
+	builder.WriteString(_m.BodyOverrideMode)
+	builder.WriteString(", ")
+	builder.WriteString("body_override=")
+	builder.WriteString(fmt.Sprintf("%v", _m.BodyOverride))
 	builder.WriteByte(')')
 	return builder.String()
 }

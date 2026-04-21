@@ -16,19 +16,21 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
+	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 )
 
 // ChannelMonitorQuery is the builder for querying ChannelMonitor entities.
 type ChannelMonitorQuery struct {
 	config
-	ctx              *QueryContext
-	order            []channelmonitor.OrderOption
-	inters           []Interceptor
-	predicates       []predicate.ChannelMonitor
-	withHistory      *ChannelMonitorHistoryQuery
-	withDailyRollups *ChannelMonitorDailyRollupQuery
-	modifiers        []func(*sql.Selector)
+	ctx                 *QueryContext
+	order               []channelmonitor.OrderOption
+	inters              []Interceptor
+	predicates          []predicate.ChannelMonitor
+	withHistory         *ChannelMonitorHistoryQuery
+	withDailyRollups    *ChannelMonitorDailyRollupQuery
+	withRequestTemplate *ChannelMonitorRequestTemplateQuery
+	modifiers           []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
 	path func(context.Context) (*sql.Selector, error)
@@ -102,6 +104,28 @@ func (_q *ChannelMonitorQuery) QueryDailyRollups() *ChannelMonitorDailyRollupQue
 			sqlgraph.From(channelmonitor.Table, channelmonitor.FieldID, selector),
 			sqlgraph.To(channelmonitordailyrollup.Table, channelmonitordailyrollup.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, channelmonitor.DailyRollupsTable, channelmonitor.DailyRollupsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryRequestTemplate chains the current query on the "request_template" edge.
+func (_q *ChannelMonitorQuery) QueryRequestTemplate() *ChannelMonitorRequestTemplateQuery {
+	query := (&ChannelMonitorRequestTemplateClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(channelmonitor.Table, channelmonitor.FieldID, selector),
+			sqlgraph.To(channelmonitorrequesttemplate.Table, channelmonitorrequesttemplate.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, false, channelmonitor.RequestTemplateTable, channelmonitor.RequestTemplateColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -296,13 +320,14 @@ func (_q *ChannelMonitorQuery) Clone() *ChannelMonitorQuery {
 		return nil
 	}
 	return &ChannelMonitorQuery{
-		config:           _q.config,
-		ctx:              _q.ctx.Clone(),
-		order:            append([]channelmonitor.OrderOption{}, _q.order...),
-		inters:           append([]Interceptor{}, _q.inters...),
-		predicates:       append([]predicate.ChannelMonitor{}, _q.predicates...),
-		withHistory:      _q.withHistory.Clone(),
-		withDailyRollups: _q.withDailyRollups.Clone(),
+		config:              _q.config,
+		ctx:                 _q.ctx.Clone(),
+		order:               append([]channelmonitor.OrderOption{}, _q.order...),
+		inters:              append([]Interceptor{}, _q.inters...),
+		predicates:          append([]predicate.ChannelMonitor{}, _q.predicates...),
+		withHistory:         _q.withHistory.Clone(),
+		withDailyRollups:    _q.withDailyRollups.Clone(),
+		withRequestTemplate: _q.withRequestTemplate.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -328,6 +353,17 @@ func (_q *ChannelMonitorQuery) WithDailyRollups(opts ...func(*ChannelMonitorDail
 		opt(query)
 	}
 	_q.withDailyRollups = query
+	return _q
+}
+
+// WithRequestTemplate tells the query-builder to eager-load the nodes that are connected to
+// the "request_template" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *ChannelMonitorQuery) WithRequestTemplate(opts ...func(*ChannelMonitorRequestTemplateQuery)) *ChannelMonitorQuery {
+	query := (&ChannelMonitorRequestTemplateClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withRequestTemplate = query
 	return _q
 }
 
@@ -409,9 +445,10 @@ func (_q *ChannelMonitorQuery) sqlAll(ctx context.Context, hooks ...queryHook) (
 	var (
 		nodes       = []*ChannelMonitor{}
 		_spec       = _q.querySpec()
-		loadedTypes = [2]bool{
+		loadedTypes = [3]bool{
 			_q.withHistory != nil,
 			_q.withDailyRollups != nil,
+			_q.withRequestTemplate != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -448,6 +485,12 @@ func (_q *ChannelMonitorQuery) sqlAll(ctx context.Context, hooks ...queryHook) (
 			func(n *ChannelMonitor, e *ChannelMonitorDailyRollup) {
 				n.Edges.DailyRollups = append(n.Edges.DailyRollups, e)
 			}); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withRequestTemplate; query != nil {
+		if err := _q.loadRequestTemplate(ctx, query, nodes, nil,
+			func(n *ChannelMonitor, e *ChannelMonitorRequestTemplate) { n.Edges.RequestTemplate = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -514,6 +557,38 @@ func (_q *ChannelMonitorQuery) loadDailyRollups(ctx context.Context, query *Chan
 	}
 	return nil
 }
+func (_q *ChannelMonitorQuery) loadRequestTemplate(ctx context.Context, query *ChannelMonitorRequestTemplateQuery, nodes []*ChannelMonitor, init func(*ChannelMonitor), assign func(*ChannelMonitor, *ChannelMonitorRequestTemplate)) error {
+	ids := make([]int64, 0, len(nodes))
+	nodeids := make(map[int64][]*ChannelMonitor)
+	for i := range nodes {
+		if nodes[i].TemplateID == nil {
+			continue
+		}
+		fk := *nodes[i].TemplateID
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(channelmonitorrequesttemplate.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "template_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
 
 func (_q *ChannelMonitorQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
@@ -542,6 +617,9 @@ func (_q *ChannelMonitorQuery) querySpec() *sqlgraph.QuerySpec {
 			if fields[i] != channelmonitor.FieldID {
 				_spec.Node.Columns = append(_spec.Node.Columns, fields[i])
 			}
+		}
+		if _q.withRequestTemplate != nil {
+			_spec.Node.AddColumnOnce(channelmonitor.FieldTemplateID)
 		}
 	}
 	if ps := _q.predicates; len(ps) > 0 {

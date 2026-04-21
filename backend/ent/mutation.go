@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
+	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
@@ -54,35 +55,36 @@ const (
 	OpUpdateOne = ent.OpUpdateOne
 
 	// Node types.
-	TypeAPIKey                    = "APIKey"
-	TypeAccount                   = "Account"
-	TypeAccountGroup              = "AccountGroup"
-	TypeAnnouncement              = "Announcement"
-	TypeAnnouncementRead          = "AnnouncementRead"
-	TypeChannelMonitor            = "ChannelMonitor"
-	TypeChannelMonitorDailyRollup = "ChannelMonitorDailyRollup"
-	TypeChannelMonitorHistory     = "ChannelMonitorHistory"
-	TypeErrorPassthroughRule      = "ErrorPassthroughRule"
-	TypeGroup                     = "Group"
-	TypeIdempotencyRecord         = "IdempotencyRecord"
-	TypePaymentAuditLog           = "PaymentAuditLog"
-	TypePaymentOrder              = "PaymentOrder"
-	TypePaymentProviderInstance   = "PaymentProviderInstance"
-	TypePromoCode                 = "PromoCode"
-	TypePromoCodeUsage            = "PromoCodeUsage"
-	TypeProxy                     = "Proxy"
-	TypeRedeemCode                = "RedeemCode"
-	TypeSecuritySecret            = "SecuritySecret"
-	TypeSetting                   = "Setting"
-	TypeSubscriptionPlan          = "SubscriptionPlan"
-	TypeTLSFingerprintProfile     = "TLSFingerprintProfile"
-	TypeUsageCleanupTask          = "UsageCleanupTask"
-	TypeUsageLog                  = "UsageLog"
-	TypeUser                      = "User"
-	TypeUserAllowedGroup          = "UserAllowedGroup"
-	TypeUserAttributeDefinition   = "UserAttributeDefinition"
-	TypeUserAttributeValue        = "UserAttributeValue"
-	TypeUserSubscription          = "UserSubscription"
+	TypeAPIKey                        = "APIKey"
+	TypeAccount                       = "Account"
+	TypeAccountGroup                  = "AccountGroup"
+	TypeAnnouncement                  = "Announcement"
+	TypeAnnouncementRead              = "AnnouncementRead"
+	TypeChannelMonitor                = "ChannelMonitor"
+	TypeChannelMonitorDailyRollup     = "ChannelMonitorDailyRollup"
+	TypeChannelMonitorHistory         = "ChannelMonitorHistory"
+	TypeChannelMonitorRequestTemplate = "ChannelMonitorRequestTemplate"
+	TypeErrorPassthroughRule          = "ErrorPassthroughRule"
+	TypeGroup                         = "Group"
+	TypeIdempotencyRecord             = "IdempotencyRecord"
+	TypePaymentAuditLog               = "PaymentAuditLog"
+	TypePaymentOrder                  = "PaymentOrder"
+	TypePaymentProviderInstance       = "PaymentProviderInstance"
+	TypePromoCode                     = "PromoCode"
+	TypePromoCodeUsage                = "PromoCodeUsage"
+	TypeProxy                         = "Proxy"
+	TypeRedeemCode                    = "RedeemCode"
+	TypeSecuritySecret                = "SecuritySecret"
+	TypeSetting                       = "Setting"
+	TypeSubscriptionPlan              = "SubscriptionPlan"
+	TypeTLSFingerprintProfile         = "TLSFingerprintProfile"
+	TypeUsageCleanupTask              = "UsageCleanupTask"
+	TypeUsageLog                      = "UsageLog"
+	TypeUser                          = "User"
+	TypeUserAllowedGroup              = "UserAllowedGroup"
+	TypeUserAttributeDefinition       = "UserAttributeDefinition"
+	TypeUserAttributeValue            = "UserAttributeValue"
+	TypeUserSubscription              = "UserSubscription"
 )
 
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
@@ -6896,35 +6898,40 @@ func (m *AnnouncementReadMutation) ResetEdge(name string) error {
 // ChannelMonitorMutation represents an operation that mutates the ChannelMonitor nodes in the graph.
 type ChannelMonitorMutation struct {
 	config
-	op                   Op
-	typ                  string
-	id                   *int64
-	created_at           *time.Time
-	updated_at           *time.Time
-	name                 *string
-	provider             *channelmonitor.Provider
-	endpoint             *string
-	api_key_encrypted    *string
-	primary_model        *string
-	extra_models         *[]string
-	appendextra_models   []string
-	group_name           *string
-	enabled              *bool
-	interval_seconds     *int
-	addinterval_seconds  *int
-	last_checked_at      *time.Time
-	created_by           *int64
-	addcreated_by        *int64
-	clearedFields        map[string]struct{}
-	history              map[int64]struct{}
-	removedhistory       map[int64]struct{}
-	clearedhistory       bool
-	daily_rollups        map[int64]struct{}
-	removeddaily_rollups map[int64]struct{}
-	cleareddaily_rollups bool
-	done                 bool
-	oldValue             func(context.Context) (*ChannelMonitor, error)
-	predicates           []predicate.ChannelMonitor
+	op                      Op
+	typ                     string
+	id                      *int64
+	created_at              *time.Time
+	updated_at              *time.Time
+	name                    *string
+	provider                *channelmonitor.Provider
+	endpoint                *string
+	api_key_encrypted       *string
+	primary_model           *string
+	extra_models            *[]string
+	appendextra_models      []string
+	group_name              *string
+	enabled                 *bool
+	interval_seconds        *int
+	addinterval_seconds     *int
+	last_checked_at         *time.Time
+	created_by              *int64
+	addcreated_by           *int64
+	extra_headers           *map[string]string
+	body_override_mode      *string
+	body_override           *map[string]interface{}
+	clearedFields           map[string]struct{}
+	history                 map[int64]struct{}
+	removedhistory          map[int64]struct{}
+	clearedhistory          bool
+	daily_rollups           map[int64]struct{}
+	removeddaily_rollups    map[int64]struct{}
+	cleareddaily_rollups    bool
+	request_template        *int64
+	clearedrequest_template bool
+	done                    bool
+	oldValue                func(context.Context) (*ChannelMonitor, error)
+	predicates              []predicate.ChannelMonitor
 }
 
 var _ ent.Mutation = (*ChannelMonitorMutation)(nil)
@@ -7574,6 +7581,176 @@ func (m *ChannelMonitorMutation) ResetCreatedBy() {
 	m.addcreated_by = nil
 }
 
+// SetTemplateID sets the "template_id" field.
+func (m *ChannelMonitorMutation) SetTemplateID(i int64) {
+	m.request_template = &i
+}
+
+// TemplateID returns the value of the "template_id" field in the mutation.
+func (m *ChannelMonitorMutation) TemplateID() (r int64, exists bool) {
+	v := m.request_template
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTemplateID returns the old "template_id" field's value of the ChannelMonitor entity.
+// If the ChannelMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorMutation) OldTemplateID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTemplateID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTemplateID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTemplateID: %w", err)
+	}
+	return oldValue.TemplateID, nil
+}
+
+// ClearTemplateID clears the value of the "template_id" field.
+func (m *ChannelMonitorMutation) ClearTemplateID() {
+	m.request_template = nil
+	m.clearedFields[channelmonitor.FieldTemplateID] = struct{}{}
+}
+
+// TemplateIDCleared returns if the "template_id" field was cleared in this mutation.
+func (m *ChannelMonitorMutation) TemplateIDCleared() bool {
+	_, ok := m.clearedFields[channelmonitor.FieldTemplateID]
+	return ok
+}
+
+// ResetTemplateID resets all changes to the "template_id" field.
+func (m *ChannelMonitorMutation) ResetTemplateID() {
+	m.request_template = nil
+	delete(m.clearedFields, channelmonitor.FieldTemplateID)
+}
+
+// SetExtraHeaders sets the "extra_headers" field.
+func (m *ChannelMonitorMutation) SetExtraHeaders(value map[string]string) {
+	m.extra_headers = &value
+}
+
+// ExtraHeaders returns the value of the "extra_headers" field in the mutation.
+func (m *ChannelMonitorMutation) ExtraHeaders() (r map[string]string, exists bool) {
+	v := m.extra_headers
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExtraHeaders returns the old "extra_headers" field's value of the ChannelMonitor entity.
+// If the ChannelMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorMutation) OldExtraHeaders(ctx context.Context) (v map[string]string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExtraHeaders is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExtraHeaders requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExtraHeaders: %w", err)
+	}
+	return oldValue.ExtraHeaders, nil
+}
+
+// ResetExtraHeaders resets all changes to the "extra_headers" field.
+func (m *ChannelMonitorMutation) ResetExtraHeaders() {
+	m.extra_headers = nil
+}
+
+// SetBodyOverrideMode sets the "body_override_mode" field.
+func (m *ChannelMonitorMutation) SetBodyOverrideMode(s string) {
+	m.body_override_mode = &s
+}
+
+// BodyOverrideMode returns the value of the "body_override_mode" field in the mutation.
+func (m *ChannelMonitorMutation) BodyOverrideMode() (r string, exists bool) {
+	v := m.body_override_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBodyOverrideMode returns the old "body_override_mode" field's value of the ChannelMonitor entity.
+// If the ChannelMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorMutation) OldBodyOverrideMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBodyOverrideMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBodyOverrideMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBodyOverrideMode: %w", err)
+	}
+	return oldValue.BodyOverrideMode, nil
+}
+
+// ResetBodyOverrideMode resets all changes to the "body_override_mode" field.
+func (m *ChannelMonitorMutation) ResetBodyOverrideMode() {
+	m.body_override_mode = nil
+}
+
+// SetBodyOverride sets the "body_override" field.
+func (m *ChannelMonitorMutation) SetBodyOverride(value map[string]interface{}) {
+	m.body_override = &value
+}
+
+// BodyOverride returns the value of the "body_override" field in the mutation.
+func (m *ChannelMonitorMutation) BodyOverride() (r map[string]interface{}, exists bool) {
+	v := m.body_override
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBodyOverride returns the old "body_override" field's value of the ChannelMonitor entity.
+// If the ChannelMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorMutation) OldBodyOverride(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBodyOverride is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBodyOverride requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBodyOverride: %w", err)
+	}
+	return oldValue.BodyOverride, nil
+}
+
+// ClearBodyOverride clears the value of the "body_override" field.
+func (m *ChannelMonitorMutation) ClearBodyOverride() {
+	m.body_override = nil
+	m.clearedFields[channelmonitor.FieldBodyOverride] = struct{}{}
+}
+
+// BodyOverrideCleared returns if the "body_override" field was cleared in this mutation.
+func (m *ChannelMonitorMutation) BodyOverrideCleared() bool {
+	_, ok := m.clearedFields[channelmonitor.FieldBodyOverride]
+	return ok
+}
+
+// ResetBodyOverride resets all changes to the "body_override" field.
+func (m *ChannelMonitorMutation) ResetBodyOverride() {
+	m.body_override = nil
+	delete(m.clearedFields, channelmonitor.FieldBodyOverride)
+}
+
 // AddHistoryIDs adds the "history" edge to the ChannelMonitorHistory entity by ids.
 func (m *ChannelMonitorMutation) AddHistoryIDs(ids ...int64) {
 	if m.history == nil {
@@ -7682,6 +7859,46 @@ func (m *ChannelMonitorMutation) ResetDailyRollups() {
 	m.removeddaily_rollups = nil
 }
 
+// SetRequestTemplateID sets the "request_template" edge to the ChannelMonitorRequestTemplate entity by id.
+func (m *ChannelMonitorMutation) SetRequestTemplateID(id int64) {
+	m.request_template = &id
+}
+
+// ClearRequestTemplate clears the "request_template" edge to the ChannelMonitorRequestTemplate entity.
+func (m *ChannelMonitorMutation) ClearRequestTemplate() {
+	m.clearedrequest_template = true
+	m.clearedFields[channelmonitor.FieldTemplateID] = struct{}{}
+}
+
+// RequestTemplateCleared reports if the "request_template" edge to the ChannelMonitorRequestTemplate entity was cleared.
+func (m *ChannelMonitorMutation) RequestTemplateCleared() bool {
+	return m.TemplateIDCleared() || m.clearedrequest_template
+}
+
+// RequestTemplateID returns the "request_template" edge ID in the mutation.
+func (m *ChannelMonitorMutation) RequestTemplateID() (id int64, exists bool) {
+	if m.request_template != nil {
+		return *m.request_template, true
+	}
+	return
+}
+
+// RequestTemplateIDs returns the "request_template" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// RequestTemplateID instead. It exists only for internal usage by the builders.
+func (m *ChannelMonitorMutation) RequestTemplateIDs() (ids []int64) {
+	if id := m.request_template; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetRequestTemplate resets all changes to the "request_template" edge.
+func (m *ChannelMonitorMutation) ResetRequestTemplate() {
+	m.request_template = nil
+	m.clearedrequest_template = false
+}
+
 // Where appends a list predicates to the ChannelMonitorMutation builder.
 func (m *ChannelMonitorMutation) Where(ps ...predicate.ChannelMonitor) {
 	m.predicates = append(m.predicates, ps...)
@@ -7716,7 +7933,7 @@ func (m *ChannelMonitorMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ChannelMonitorMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 17)
 	if m.created_at != nil {
 		fields = append(fields, channelmonitor.FieldCreatedAt)
 	}
@@ -7756,6 +7973,18 @@ func (m *ChannelMonitorMutation) Fields() []string {
 	if m.created_by != nil {
 		fields = append(fields, channelmonitor.FieldCreatedBy)
 	}
+	if m.request_template != nil {
+		fields = append(fields, channelmonitor.FieldTemplateID)
+	}
+	if m.extra_headers != nil {
+		fields = append(fields, channelmonitor.FieldExtraHeaders)
+	}
+	if m.body_override_mode != nil {
+		fields = append(fields, channelmonitor.FieldBodyOverrideMode)
+	}
+	if m.body_override != nil {
+		fields = append(fields, channelmonitor.FieldBodyOverride)
+	}
 	return fields
 }
 
@@ -7790,6 +8019,14 @@ func (m *ChannelMonitorMutation) Field(name string) (ent.Value, bool) {
 		return m.LastCheckedAt()
 	case channelmonitor.FieldCreatedBy:
 		return m.CreatedBy()
+	case channelmonitor.FieldTemplateID:
+		return m.TemplateID()
+	case channelmonitor.FieldExtraHeaders:
+		return m.ExtraHeaders()
+	case channelmonitor.FieldBodyOverrideMode:
+		return m.BodyOverrideMode()
+	case channelmonitor.FieldBodyOverride:
+		return m.BodyOverride()
 	}
 	return nil, false
 }
@@ -7825,6 +8062,14 @@ func (m *ChannelMonitorMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldLastCheckedAt(ctx)
 	case channelmonitor.FieldCreatedBy:
 		return m.OldCreatedBy(ctx)
+	case channelmonitor.FieldTemplateID:
+		return m.OldTemplateID(ctx)
+	case channelmonitor.FieldExtraHeaders:
+		return m.OldExtraHeaders(ctx)
+	case channelmonitor.FieldBodyOverrideMode:
+		return m.OldBodyOverrideMode(ctx)
+	case channelmonitor.FieldBodyOverride:
+		return m.OldBodyOverride(ctx)
 	}
 	return nil, fmt.Errorf("unknown ChannelMonitor field %s", name)
 }
@@ -7925,6 +8170,34 @@ func (m *ChannelMonitorMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetCreatedBy(v)
 		return nil
+	case channelmonitor.FieldTemplateID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTemplateID(v)
+		return nil
+	case channelmonitor.FieldExtraHeaders:
+		v, ok := value.(map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExtraHeaders(v)
+		return nil
+	case channelmonitor.FieldBodyOverrideMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBodyOverrideMode(v)
+		return nil
+	case channelmonitor.FieldBodyOverride:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBodyOverride(v)
+		return nil
 	}
 	return fmt.Errorf("unknown ChannelMonitor field %s", name)
 }
@@ -7988,6 +8261,12 @@ func (m *ChannelMonitorMutation) ClearedFields() []string {
 	if m.FieldCleared(channelmonitor.FieldLastCheckedAt) {
 		fields = append(fields, channelmonitor.FieldLastCheckedAt)
 	}
+	if m.FieldCleared(channelmonitor.FieldTemplateID) {
+		fields = append(fields, channelmonitor.FieldTemplateID)
+	}
+	if m.FieldCleared(channelmonitor.FieldBodyOverride) {
+		fields = append(fields, channelmonitor.FieldBodyOverride)
+	}
 	return fields
 }
 
@@ -8007,6 +8286,12 @@ func (m *ChannelMonitorMutation) ClearField(name string) error {
 		return nil
 	case channelmonitor.FieldLastCheckedAt:
 		m.ClearLastCheckedAt()
+		return nil
+	case channelmonitor.FieldTemplateID:
+		m.ClearTemplateID()
+		return nil
+	case channelmonitor.FieldBodyOverride:
+		m.ClearBodyOverride()
 		return nil
 	}
 	return fmt.Errorf("unknown ChannelMonitor nullable field %s", name)
@@ -8055,18 +8340,33 @@ func (m *ChannelMonitorMutation) ResetField(name string) error {
 	case channelmonitor.FieldCreatedBy:
 		m.ResetCreatedBy()
 		return nil
+	case channelmonitor.FieldTemplateID:
+		m.ResetTemplateID()
+		return nil
+	case channelmonitor.FieldExtraHeaders:
+		m.ResetExtraHeaders()
+		return nil
+	case channelmonitor.FieldBodyOverrideMode:
+		m.ResetBodyOverrideMode()
+		return nil
+	case channelmonitor.FieldBodyOverride:
+		m.ResetBodyOverride()
+		return nil
 	}
 	return fmt.Errorf("unknown ChannelMonitor field %s", name)
 }
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *ChannelMonitorMutation) AddedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.history != nil {
 		edges = append(edges, channelmonitor.EdgeHistory)
 	}
 	if m.daily_rollups != nil {
 		edges = append(edges, channelmonitor.EdgeDailyRollups)
+	}
+	if m.request_template != nil {
+		edges = append(edges, channelmonitor.EdgeRequestTemplate)
 	}
 	return edges
 }
@@ -8087,13 +8387,17 @@ func (m *ChannelMonitorMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case channelmonitor.EdgeRequestTemplate:
+		if id := m.request_template; id != nil {
+			return []ent.Value{*id}
+		}
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *ChannelMonitorMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.removedhistory != nil {
 		edges = append(edges, channelmonitor.EdgeHistory)
 	}
@@ -8125,12 +8429,15 @@ func (m *ChannelMonitorMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *ChannelMonitorMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 2)
+	edges := make([]string, 0, 3)
 	if m.clearedhistory {
 		edges = append(edges, channelmonitor.EdgeHistory)
 	}
 	if m.cleareddaily_rollups {
 		edges = append(edges, channelmonitor.EdgeDailyRollups)
+	}
+	if m.clearedrequest_template {
+		edges = append(edges, channelmonitor.EdgeRequestTemplate)
 	}
 	return edges
 }
@@ -8143,6 +8450,8 @@ func (m *ChannelMonitorMutation) EdgeCleared(name string) bool {
 		return m.clearedhistory
 	case channelmonitor.EdgeDailyRollups:
 		return m.cleareddaily_rollups
+	case channelmonitor.EdgeRequestTemplate:
+		return m.clearedrequest_template
 	}
 	return false
 }
@@ -8151,6 +8460,9 @@ func (m *ChannelMonitorMutation) EdgeCleared(name string) bool {
 // if that edge is not defined in the schema.
 func (m *ChannelMonitorMutation) ClearEdge(name string) error {
 	switch name {
+	case channelmonitor.EdgeRequestTemplate:
+		m.ClearRequestTemplate()
+		return nil
 	}
 	return fmt.Errorf("unknown ChannelMonitor unique edge %s", name)
 }
@@ -8164,6 +8476,9 @@ func (m *ChannelMonitorMutation) ResetEdge(name string) error {
 		return nil
 	case channelmonitor.EdgeDailyRollups:
 		m.ResetDailyRollups()
+		return nil
+	case channelmonitor.EdgeRequestTemplate:
+		m.ResetRequestTemplate()
 		return nil
 	}
 	return fmt.Errorf("unknown ChannelMonitor edge %s", name)
@@ -10417,6 +10732,844 @@ func (m *ChannelMonitorHistoryMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown ChannelMonitorHistory edge %s", name)
+}
+
+// ChannelMonitorRequestTemplateMutation represents an operation that mutates the ChannelMonitorRequestTemplate nodes in the graph.
+type ChannelMonitorRequestTemplateMutation struct {
+	config
+	op                 Op
+	typ                string
+	id                 *int64
+	created_at         *time.Time
+	updated_at         *time.Time
+	name               *string
+	provider           *channelmonitorrequesttemplate.Provider
+	description        *string
+	extra_headers      *map[string]string
+	body_override_mode *string
+	body_override      *map[string]interface{}
+	clearedFields      map[string]struct{}
+	monitors           map[int64]struct{}
+	removedmonitors    map[int64]struct{}
+	clearedmonitors    bool
+	done               bool
+	oldValue           func(context.Context) (*ChannelMonitorRequestTemplate, error)
+	predicates         []predicate.ChannelMonitorRequestTemplate
+}
+
+var _ ent.Mutation = (*ChannelMonitorRequestTemplateMutation)(nil)
+
+// channelmonitorrequesttemplateOption allows management of the mutation configuration using functional options.
+type channelmonitorrequesttemplateOption func(*ChannelMonitorRequestTemplateMutation)
+
+// newChannelMonitorRequestTemplateMutation creates new mutation for the ChannelMonitorRequestTemplate entity.
+func newChannelMonitorRequestTemplateMutation(c config, op Op, opts ...channelmonitorrequesttemplateOption) *ChannelMonitorRequestTemplateMutation {
+	m := &ChannelMonitorRequestTemplateMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeChannelMonitorRequestTemplate,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withChannelMonitorRequestTemplateID sets the ID field of the mutation.
+func withChannelMonitorRequestTemplateID(id int64) channelmonitorrequesttemplateOption {
+	return func(m *ChannelMonitorRequestTemplateMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ChannelMonitorRequestTemplate
+		)
+		m.oldValue = func(ctx context.Context) (*ChannelMonitorRequestTemplate, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ChannelMonitorRequestTemplate.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withChannelMonitorRequestTemplate sets the old ChannelMonitorRequestTemplate of the mutation.
+func withChannelMonitorRequestTemplate(node *ChannelMonitorRequestTemplate) channelmonitorrequesttemplateOption {
+	return func(m *ChannelMonitorRequestTemplateMutation) {
+		m.oldValue = func(context.Context) (*ChannelMonitorRequestTemplate, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ChannelMonitorRequestTemplateMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ChannelMonitorRequestTemplateMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ChannelMonitorRequestTemplateMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ChannelMonitorRequestTemplateMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ChannelMonitorRequestTemplate.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ChannelMonitorRequestTemplateMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ChannelMonitorRequestTemplateMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ChannelMonitorRequestTemplate entity.
+// If the ChannelMonitorRequestTemplate object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorRequestTemplateMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ChannelMonitorRequestTemplateMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *ChannelMonitorRequestTemplateMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *ChannelMonitorRequestTemplateMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the ChannelMonitorRequestTemplate entity.
+// If the ChannelMonitorRequestTemplate object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorRequestTemplateMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *ChannelMonitorRequestTemplateMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetName sets the "name" field.
+func (m *ChannelMonitorRequestTemplateMutation) SetName(s string) {
+	m.name = &s
+}
+
+// Name returns the value of the "name" field in the mutation.
+func (m *ChannelMonitorRequestTemplateMutation) Name() (r string, exists bool) {
+	v := m.name
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldName returns the old "name" field's value of the ChannelMonitorRequestTemplate entity.
+// If the ChannelMonitorRequestTemplate object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorRequestTemplateMutation) OldName(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldName is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldName requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldName: %w", err)
+	}
+	return oldValue.Name, nil
+}
+
+// ResetName resets all changes to the "name" field.
+func (m *ChannelMonitorRequestTemplateMutation) ResetName() {
+	m.name = nil
+}
+
+// SetProvider sets the "provider" field.
+func (m *ChannelMonitorRequestTemplateMutation) SetProvider(c channelmonitorrequesttemplate.Provider) {
+	m.provider = &c
+}
+
+// Provider returns the value of the "provider" field in the mutation.
+func (m *ChannelMonitorRequestTemplateMutation) Provider() (r channelmonitorrequesttemplate.Provider, exists bool) {
+	v := m.provider
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProvider returns the old "provider" field's value of the ChannelMonitorRequestTemplate entity.
+// If the ChannelMonitorRequestTemplate object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorRequestTemplateMutation) OldProvider(ctx context.Context) (v channelmonitorrequesttemplate.Provider, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProvider is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProvider requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProvider: %w", err)
+	}
+	return oldValue.Provider, nil
+}
+
+// ResetProvider resets all changes to the "provider" field.
+func (m *ChannelMonitorRequestTemplateMutation) ResetProvider() {
+	m.provider = nil
+}
+
+// SetDescription sets the "description" field.
+func (m *ChannelMonitorRequestTemplateMutation) SetDescription(s string) {
+	m.description = &s
+}
+
+// Description returns the value of the "description" field in the mutation.
+func (m *ChannelMonitorRequestTemplateMutation) Description() (r string, exists bool) {
+	v := m.description
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDescription returns the old "description" field's value of the ChannelMonitorRequestTemplate entity.
+// If the ChannelMonitorRequestTemplate object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorRequestTemplateMutation) OldDescription(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDescription is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDescription requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDescription: %w", err)
+	}
+	return oldValue.Description, nil
+}
+
+// ClearDescription clears the value of the "description" field.
+func (m *ChannelMonitorRequestTemplateMutation) ClearDescription() {
+	m.description = nil
+	m.clearedFields[channelmonitorrequesttemplate.FieldDescription] = struct{}{}
+}
+
+// DescriptionCleared returns if the "description" field was cleared in this mutation.
+func (m *ChannelMonitorRequestTemplateMutation) DescriptionCleared() bool {
+	_, ok := m.clearedFields[channelmonitorrequesttemplate.FieldDescription]
+	return ok
+}
+
+// ResetDescription resets all changes to the "description" field.
+func (m *ChannelMonitorRequestTemplateMutation) ResetDescription() {
+	m.description = nil
+	delete(m.clearedFields, channelmonitorrequesttemplate.FieldDescription)
+}
+
+// SetExtraHeaders sets the "extra_headers" field.
+func (m *ChannelMonitorRequestTemplateMutation) SetExtraHeaders(value map[string]string) {
+	m.extra_headers = &value
+}
+
+// ExtraHeaders returns the value of the "extra_headers" field in the mutation.
+func (m *ChannelMonitorRequestTemplateMutation) ExtraHeaders() (r map[string]string, exists bool) {
+	v := m.extra_headers
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExtraHeaders returns the old "extra_headers" field's value of the ChannelMonitorRequestTemplate entity.
+// If the ChannelMonitorRequestTemplate object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorRequestTemplateMutation) OldExtraHeaders(ctx context.Context) (v map[string]string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExtraHeaders is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExtraHeaders requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExtraHeaders: %w", err)
+	}
+	return oldValue.ExtraHeaders, nil
+}
+
+// ResetExtraHeaders resets all changes to the "extra_headers" field.
+func (m *ChannelMonitorRequestTemplateMutation) ResetExtraHeaders() {
+	m.extra_headers = nil
+}
+
+// SetBodyOverrideMode sets the "body_override_mode" field.
+func (m *ChannelMonitorRequestTemplateMutation) SetBodyOverrideMode(s string) {
+	m.body_override_mode = &s
+}
+
+// BodyOverrideMode returns the value of the "body_override_mode" field in the mutation.
+func (m *ChannelMonitorRequestTemplateMutation) BodyOverrideMode() (r string, exists bool) {
+	v := m.body_override_mode
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBodyOverrideMode returns the old "body_override_mode" field's value of the ChannelMonitorRequestTemplate entity.
+// If the ChannelMonitorRequestTemplate object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorRequestTemplateMutation) OldBodyOverrideMode(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBodyOverrideMode is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBodyOverrideMode requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBodyOverrideMode: %w", err)
+	}
+	return oldValue.BodyOverrideMode, nil
+}
+
+// ResetBodyOverrideMode resets all changes to the "body_override_mode" field.
+func (m *ChannelMonitorRequestTemplateMutation) ResetBodyOverrideMode() {
+	m.body_override_mode = nil
+}
+
+// SetBodyOverride sets the "body_override" field.
+func (m *ChannelMonitorRequestTemplateMutation) SetBodyOverride(value map[string]interface{}) {
+	m.body_override = &value
+}
+
+// BodyOverride returns the value of the "body_override" field in the mutation.
+func (m *ChannelMonitorRequestTemplateMutation) BodyOverride() (r map[string]interface{}, exists bool) {
+	v := m.body_override
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBodyOverride returns the old "body_override" field's value of the ChannelMonitorRequestTemplate entity.
+// If the ChannelMonitorRequestTemplate object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorRequestTemplateMutation) OldBodyOverride(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBodyOverride is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBodyOverride requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBodyOverride: %w", err)
+	}
+	return oldValue.BodyOverride, nil
+}
+
+// ClearBodyOverride clears the value of the "body_override" field.
+func (m *ChannelMonitorRequestTemplateMutation) ClearBodyOverride() {
+	m.body_override = nil
+	m.clearedFields[channelmonitorrequesttemplate.FieldBodyOverride] = struct{}{}
+}
+
+// BodyOverrideCleared returns if the "body_override" field was cleared in this mutation.
+func (m *ChannelMonitorRequestTemplateMutation) BodyOverrideCleared() bool {
+	_, ok := m.clearedFields[channelmonitorrequesttemplate.FieldBodyOverride]
+	return ok
+}
+
+// ResetBodyOverride resets all changes to the "body_override" field.
+func (m *ChannelMonitorRequestTemplateMutation) ResetBodyOverride() {
+	m.body_override = nil
+	delete(m.clearedFields, channelmonitorrequesttemplate.FieldBodyOverride)
+}
+
+// AddMonitorIDs adds the "monitors" edge to the ChannelMonitor entity by ids.
+func (m *ChannelMonitorRequestTemplateMutation) AddMonitorIDs(ids ...int64) {
+	if m.monitors == nil {
+		m.monitors = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.monitors[ids[i]] = struct{}{}
+	}
+}
+
+// ClearMonitors clears the "monitors" edge to the ChannelMonitor entity.
+func (m *ChannelMonitorRequestTemplateMutation) ClearMonitors() {
+	m.clearedmonitors = true
+}
+
+// MonitorsCleared reports if the "monitors" edge to the ChannelMonitor entity was cleared.
+func (m *ChannelMonitorRequestTemplateMutation) MonitorsCleared() bool {
+	return m.clearedmonitors
+}
+
+// RemoveMonitorIDs removes the "monitors" edge to the ChannelMonitor entity by IDs.
+func (m *ChannelMonitorRequestTemplateMutation) RemoveMonitorIDs(ids ...int64) {
+	if m.removedmonitors == nil {
+		m.removedmonitors = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.monitors, ids[i])
+		m.removedmonitors[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedMonitors returns the removed IDs of the "monitors" edge to the ChannelMonitor entity.
+func (m *ChannelMonitorRequestTemplateMutation) RemovedMonitorsIDs() (ids []int64) {
+	for id := range m.removedmonitors {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// MonitorsIDs returns the "monitors" edge IDs in the mutation.
+func (m *ChannelMonitorRequestTemplateMutation) MonitorsIDs() (ids []int64) {
+	for id := range m.monitors {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetMonitors resets all changes to the "monitors" edge.
+func (m *ChannelMonitorRequestTemplateMutation) ResetMonitors() {
+	m.monitors = nil
+	m.clearedmonitors = false
+	m.removedmonitors = nil
+}
+
+// Where appends a list predicates to the ChannelMonitorRequestTemplateMutation builder.
+func (m *ChannelMonitorRequestTemplateMutation) Where(ps ...predicate.ChannelMonitorRequestTemplate) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ChannelMonitorRequestTemplateMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ChannelMonitorRequestTemplateMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ChannelMonitorRequestTemplate, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ChannelMonitorRequestTemplateMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ChannelMonitorRequestTemplateMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ChannelMonitorRequestTemplate).
+func (m *ChannelMonitorRequestTemplateMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ChannelMonitorRequestTemplateMutation) Fields() []string {
+	fields := make([]string, 0, 8)
+	if m.created_at != nil {
+		fields = append(fields, channelmonitorrequesttemplate.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, channelmonitorrequesttemplate.FieldUpdatedAt)
+	}
+	if m.name != nil {
+		fields = append(fields, channelmonitorrequesttemplate.FieldName)
+	}
+	if m.provider != nil {
+		fields = append(fields, channelmonitorrequesttemplate.FieldProvider)
+	}
+	if m.description != nil {
+		fields = append(fields, channelmonitorrequesttemplate.FieldDescription)
+	}
+	if m.extra_headers != nil {
+		fields = append(fields, channelmonitorrequesttemplate.FieldExtraHeaders)
+	}
+	if m.body_override_mode != nil {
+		fields = append(fields, channelmonitorrequesttemplate.FieldBodyOverrideMode)
+	}
+	if m.body_override != nil {
+		fields = append(fields, channelmonitorrequesttemplate.FieldBodyOverride)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ChannelMonitorRequestTemplateMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case channelmonitorrequesttemplate.FieldCreatedAt:
+		return m.CreatedAt()
+	case channelmonitorrequesttemplate.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case channelmonitorrequesttemplate.FieldName:
+		return m.Name()
+	case channelmonitorrequesttemplate.FieldProvider:
+		return m.Provider()
+	case channelmonitorrequesttemplate.FieldDescription:
+		return m.Description()
+	case channelmonitorrequesttemplate.FieldExtraHeaders:
+		return m.ExtraHeaders()
+	case channelmonitorrequesttemplate.FieldBodyOverrideMode:
+		return m.BodyOverrideMode()
+	case channelmonitorrequesttemplate.FieldBodyOverride:
+		return m.BodyOverride()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ChannelMonitorRequestTemplateMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case channelmonitorrequesttemplate.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case channelmonitorrequesttemplate.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case channelmonitorrequesttemplate.FieldName:
+		return m.OldName(ctx)
+	case channelmonitorrequesttemplate.FieldProvider:
+		return m.OldProvider(ctx)
+	case channelmonitorrequesttemplate.FieldDescription:
+		return m.OldDescription(ctx)
+	case channelmonitorrequesttemplate.FieldExtraHeaders:
+		return m.OldExtraHeaders(ctx)
+	case channelmonitorrequesttemplate.FieldBodyOverrideMode:
+		return m.OldBodyOverrideMode(ctx)
+	case channelmonitorrequesttemplate.FieldBodyOverride:
+		return m.OldBodyOverride(ctx)
+	}
+	return nil, fmt.Errorf("unknown ChannelMonitorRequestTemplate field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ChannelMonitorRequestTemplateMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case channelmonitorrequesttemplate.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case channelmonitorrequesttemplate.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case channelmonitorrequesttemplate.FieldName:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetName(v)
+		return nil
+	case channelmonitorrequesttemplate.FieldProvider:
+		v, ok := value.(channelmonitorrequesttemplate.Provider)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProvider(v)
+		return nil
+	case channelmonitorrequesttemplate.FieldDescription:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDescription(v)
+		return nil
+	case channelmonitorrequesttemplate.FieldExtraHeaders:
+		v, ok := value.(map[string]string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExtraHeaders(v)
+		return nil
+	case channelmonitorrequesttemplate.FieldBodyOverrideMode:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBodyOverrideMode(v)
+		return nil
+	case channelmonitorrequesttemplate.FieldBodyOverride:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBodyOverride(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ChannelMonitorRequestTemplate field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ChannelMonitorRequestTemplateMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ChannelMonitorRequestTemplateMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ChannelMonitorRequestTemplateMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown ChannelMonitorRequestTemplate numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ChannelMonitorRequestTemplateMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(channelmonitorrequesttemplate.FieldDescription) {
+		fields = append(fields, channelmonitorrequesttemplate.FieldDescription)
+	}
+	if m.FieldCleared(channelmonitorrequesttemplate.FieldBodyOverride) {
+		fields = append(fields, channelmonitorrequesttemplate.FieldBodyOverride)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ChannelMonitorRequestTemplateMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ChannelMonitorRequestTemplateMutation) ClearField(name string) error {
+	switch name {
+	case channelmonitorrequesttemplate.FieldDescription:
+		m.ClearDescription()
+		return nil
+	case channelmonitorrequesttemplate.FieldBodyOverride:
+		m.ClearBodyOverride()
+		return nil
+	}
+	return fmt.Errorf("unknown ChannelMonitorRequestTemplate nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ChannelMonitorRequestTemplateMutation) ResetField(name string) error {
+	switch name {
+	case channelmonitorrequesttemplate.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case channelmonitorrequesttemplate.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case channelmonitorrequesttemplate.FieldName:
+		m.ResetName()
+		return nil
+	case channelmonitorrequesttemplate.FieldProvider:
+		m.ResetProvider()
+		return nil
+	case channelmonitorrequesttemplate.FieldDescription:
+		m.ResetDescription()
+		return nil
+	case channelmonitorrequesttemplate.FieldExtraHeaders:
+		m.ResetExtraHeaders()
+		return nil
+	case channelmonitorrequesttemplate.FieldBodyOverrideMode:
+		m.ResetBodyOverrideMode()
+		return nil
+	case channelmonitorrequesttemplate.FieldBodyOverride:
+		m.ResetBodyOverride()
+		return nil
+	}
+	return fmt.Errorf("unknown ChannelMonitorRequestTemplate field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ChannelMonitorRequestTemplateMutation) AddedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.monitors != nil {
+		edges = append(edges, channelmonitorrequesttemplate.EdgeMonitors)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ChannelMonitorRequestTemplateMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case channelmonitorrequesttemplate.EdgeMonitors:
+		ids := make([]ent.Value, 0, len(m.monitors))
+		for id := range m.monitors {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ChannelMonitorRequestTemplateMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.removedmonitors != nil {
+		edges = append(edges, channelmonitorrequesttemplate.EdgeMonitors)
+	}
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ChannelMonitorRequestTemplateMutation) RemovedIDs(name string) []ent.Value {
+	switch name {
+	case channelmonitorrequesttemplate.EdgeMonitors:
+		ids := make([]ent.Value, 0, len(m.removedmonitors))
+		for id := range m.removedmonitors {
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ChannelMonitorRequestTemplateMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 1)
+	if m.clearedmonitors {
+		edges = append(edges, channelmonitorrequesttemplate.EdgeMonitors)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ChannelMonitorRequestTemplateMutation) EdgeCleared(name string) bool {
+	switch name {
+	case channelmonitorrequesttemplate.EdgeMonitors:
+		return m.clearedmonitors
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ChannelMonitorRequestTemplateMutation) ClearEdge(name string) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown ChannelMonitorRequestTemplate unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ChannelMonitorRequestTemplateMutation) ResetEdge(name string) error {
+	switch name {
+	case channelmonitorrequesttemplate.EdgeMonitors:
+		m.ResetMonitors()
+		return nil
+	}
+	return fmt.Errorf("unknown ChannelMonitorRequestTemplate edge %s", name)
 }
 
 // ErrorPassthroughRuleMutation represents an operation that mutates the ErrorPassthroughRule nodes in the graph.

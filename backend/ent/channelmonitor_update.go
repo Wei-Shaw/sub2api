@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
+	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 )
 
@@ -215,6 +216,58 @@ func (_u *ChannelMonitorUpdate) AddCreatedBy(v int64) *ChannelMonitorUpdate {
 	return _u
 }
 
+// SetTemplateID sets the "template_id" field.
+func (_u *ChannelMonitorUpdate) SetTemplateID(v int64) *ChannelMonitorUpdate {
+	_u.mutation.SetTemplateID(v)
+	return _u
+}
+
+// SetNillableTemplateID sets the "template_id" field if the given value is not nil.
+func (_u *ChannelMonitorUpdate) SetNillableTemplateID(v *int64) *ChannelMonitorUpdate {
+	if v != nil {
+		_u.SetTemplateID(*v)
+	}
+	return _u
+}
+
+// ClearTemplateID clears the value of the "template_id" field.
+func (_u *ChannelMonitorUpdate) ClearTemplateID() *ChannelMonitorUpdate {
+	_u.mutation.ClearTemplateID()
+	return _u
+}
+
+// SetExtraHeaders sets the "extra_headers" field.
+func (_u *ChannelMonitorUpdate) SetExtraHeaders(v map[string]string) *ChannelMonitorUpdate {
+	_u.mutation.SetExtraHeaders(v)
+	return _u
+}
+
+// SetBodyOverrideMode sets the "body_override_mode" field.
+func (_u *ChannelMonitorUpdate) SetBodyOverrideMode(v string) *ChannelMonitorUpdate {
+	_u.mutation.SetBodyOverrideMode(v)
+	return _u
+}
+
+// SetNillableBodyOverrideMode sets the "body_override_mode" field if the given value is not nil.
+func (_u *ChannelMonitorUpdate) SetNillableBodyOverrideMode(v *string) *ChannelMonitorUpdate {
+	if v != nil {
+		_u.SetBodyOverrideMode(*v)
+	}
+	return _u
+}
+
+// SetBodyOverride sets the "body_override" field.
+func (_u *ChannelMonitorUpdate) SetBodyOverride(v map[string]interface{}) *ChannelMonitorUpdate {
+	_u.mutation.SetBodyOverride(v)
+	return _u
+}
+
+// ClearBodyOverride clears the value of the "body_override" field.
+func (_u *ChannelMonitorUpdate) ClearBodyOverride() *ChannelMonitorUpdate {
+	_u.mutation.ClearBodyOverride()
+	return _u
+}
+
 // AddHistoryIDs adds the "history" edge to the ChannelMonitorHistory entity by IDs.
 func (_u *ChannelMonitorUpdate) AddHistoryIDs(ids ...int64) *ChannelMonitorUpdate {
 	_u.mutation.AddHistoryIDs(ids...)
@@ -243,6 +296,25 @@ func (_u *ChannelMonitorUpdate) AddDailyRollups(v ...*ChannelMonitorDailyRollup)
 		ids[i] = v[i].ID
 	}
 	return _u.AddDailyRollupIDs(ids...)
+}
+
+// SetRequestTemplateID sets the "request_template" edge to the ChannelMonitorRequestTemplate entity by ID.
+func (_u *ChannelMonitorUpdate) SetRequestTemplateID(id int64) *ChannelMonitorUpdate {
+	_u.mutation.SetRequestTemplateID(id)
+	return _u
+}
+
+// SetNillableRequestTemplateID sets the "request_template" edge to the ChannelMonitorRequestTemplate entity by ID if the given value is not nil.
+func (_u *ChannelMonitorUpdate) SetNillableRequestTemplateID(id *int64) *ChannelMonitorUpdate {
+	if id != nil {
+		_u = _u.SetRequestTemplateID(*id)
+	}
+	return _u
+}
+
+// SetRequestTemplate sets the "request_template" edge to the ChannelMonitorRequestTemplate entity.
+func (_u *ChannelMonitorUpdate) SetRequestTemplate(v *ChannelMonitorRequestTemplate) *ChannelMonitorUpdate {
+	return _u.SetRequestTemplateID(v.ID)
 }
 
 // Mutation returns the ChannelMonitorMutation object of the builder.
@@ -290,6 +362,12 @@ func (_u *ChannelMonitorUpdate) RemoveDailyRollups(v ...*ChannelMonitorDailyRoll
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveDailyRollupIDs(ids...)
+}
+
+// ClearRequestTemplate clears the "request_template" edge to the ChannelMonitorRequestTemplate entity.
+func (_u *ChannelMonitorUpdate) ClearRequestTemplate() *ChannelMonitorUpdate {
+	_u.mutation.ClearRequestTemplate()
+	return _u
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -365,6 +443,11 @@ func (_u *ChannelMonitorUpdate) check() error {
 			return &ValidationError{Name: "interval_seconds", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.interval_seconds": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.BodyOverrideMode(); ok {
+		if err := channelmonitor.BodyOverrideModeValidator(v); err != nil {
+			return &ValidationError{Name: "body_override_mode", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.body_override_mode": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -432,6 +515,18 @@ func (_u *ChannelMonitorUpdate) sqlSave(ctx context.Context) (_node int, err err
 	}
 	if value, ok := _u.mutation.AddedCreatedBy(); ok {
 		_spec.AddField(channelmonitor.FieldCreatedBy, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.ExtraHeaders(); ok {
+		_spec.SetField(channelmonitor.FieldExtraHeaders, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.BodyOverrideMode(); ok {
+		_spec.SetField(channelmonitor.FieldBodyOverrideMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.BodyOverride(); ok {
+		_spec.SetField(channelmonitor.FieldBodyOverride, field.TypeJSON, value)
+	}
+	if _u.mutation.BodyOverrideCleared() {
+		_spec.ClearField(channelmonitor.FieldBodyOverride, field.TypeJSON)
 	}
 	if _u.mutation.HistoryCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -516,6 +611,35 @@ func (_u *ChannelMonitorUpdate) sqlSave(ctx context.Context) (_node int, err err
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(channelmonitordailyrollup.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.RequestTemplateCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   channelmonitor.RequestTemplateTable,
+			Columns: []string{channelmonitor.RequestTemplateColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(channelmonitorrequesttemplate.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RequestTemplateIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   channelmonitor.RequestTemplateTable,
+			Columns: []string{channelmonitor.RequestTemplateColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(channelmonitorrequesttemplate.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -727,6 +851,58 @@ func (_u *ChannelMonitorUpdateOne) AddCreatedBy(v int64) *ChannelMonitorUpdateOn
 	return _u
 }
 
+// SetTemplateID sets the "template_id" field.
+func (_u *ChannelMonitorUpdateOne) SetTemplateID(v int64) *ChannelMonitorUpdateOne {
+	_u.mutation.SetTemplateID(v)
+	return _u
+}
+
+// SetNillableTemplateID sets the "template_id" field if the given value is not nil.
+func (_u *ChannelMonitorUpdateOne) SetNillableTemplateID(v *int64) *ChannelMonitorUpdateOne {
+	if v != nil {
+		_u.SetTemplateID(*v)
+	}
+	return _u
+}
+
+// ClearTemplateID clears the value of the "template_id" field.
+func (_u *ChannelMonitorUpdateOne) ClearTemplateID() *ChannelMonitorUpdateOne {
+	_u.mutation.ClearTemplateID()
+	return _u
+}
+
+// SetExtraHeaders sets the "extra_headers" field.
+func (_u *ChannelMonitorUpdateOne) SetExtraHeaders(v map[string]string) *ChannelMonitorUpdateOne {
+	_u.mutation.SetExtraHeaders(v)
+	return _u
+}
+
+// SetBodyOverrideMode sets the "body_override_mode" field.
+func (_u *ChannelMonitorUpdateOne) SetBodyOverrideMode(v string) *ChannelMonitorUpdateOne {
+	_u.mutation.SetBodyOverrideMode(v)
+	return _u
+}
+
+// SetNillableBodyOverrideMode sets the "body_override_mode" field if the given value is not nil.
+func (_u *ChannelMonitorUpdateOne) SetNillableBodyOverrideMode(v *string) *ChannelMonitorUpdateOne {
+	if v != nil {
+		_u.SetBodyOverrideMode(*v)
+	}
+	return _u
+}
+
+// SetBodyOverride sets the "body_override" field.
+func (_u *ChannelMonitorUpdateOne) SetBodyOverride(v map[string]interface{}) *ChannelMonitorUpdateOne {
+	_u.mutation.SetBodyOverride(v)
+	return _u
+}
+
+// ClearBodyOverride clears the value of the "body_override" field.
+func (_u *ChannelMonitorUpdateOne) ClearBodyOverride() *ChannelMonitorUpdateOne {
+	_u.mutation.ClearBodyOverride()
+	return _u
+}
+
 // AddHistoryIDs adds the "history" edge to the ChannelMonitorHistory entity by IDs.
 func (_u *ChannelMonitorUpdateOne) AddHistoryIDs(ids ...int64) *ChannelMonitorUpdateOne {
 	_u.mutation.AddHistoryIDs(ids...)
@@ -755,6 +931,25 @@ func (_u *ChannelMonitorUpdateOne) AddDailyRollups(v ...*ChannelMonitorDailyRoll
 		ids[i] = v[i].ID
 	}
 	return _u.AddDailyRollupIDs(ids...)
+}
+
+// SetRequestTemplateID sets the "request_template" edge to the ChannelMonitorRequestTemplate entity by ID.
+func (_u *ChannelMonitorUpdateOne) SetRequestTemplateID(id int64) *ChannelMonitorUpdateOne {
+	_u.mutation.SetRequestTemplateID(id)
+	return _u
+}
+
+// SetNillableRequestTemplateID sets the "request_template" edge to the ChannelMonitorRequestTemplate entity by ID if the given value is not nil.
+func (_u *ChannelMonitorUpdateOne) SetNillableRequestTemplateID(id *int64) *ChannelMonitorUpdateOne {
+	if id != nil {
+		_u = _u.SetRequestTemplateID(*id)
+	}
+	return _u
+}
+
+// SetRequestTemplate sets the "request_template" edge to the ChannelMonitorRequestTemplate entity.
+func (_u *ChannelMonitorUpdateOne) SetRequestTemplate(v *ChannelMonitorRequestTemplate) *ChannelMonitorUpdateOne {
+	return _u.SetRequestTemplateID(v.ID)
 }
 
 // Mutation returns the ChannelMonitorMutation object of the builder.
@@ -802,6 +997,12 @@ func (_u *ChannelMonitorUpdateOne) RemoveDailyRollups(v ...*ChannelMonitorDailyR
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveDailyRollupIDs(ids...)
+}
+
+// ClearRequestTemplate clears the "request_template" edge to the ChannelMonitorRequestTemplate entity.
+func (_u *ChannelMonitorUpdateOne) ClearRequestTemplate() *ChannelMonitorUpdateOne {
+	_u.mutation.ClearRequestTemplate()
+	return _u
 }
 
 // Where appends a list predicates to the ChannelMonitorUpdate builder.
@@ -890,6 +1091,11 @@ func (_u *ChannelMonitorUpdateOne) check() error {
 			return &ValidationError{Name: "interval_seconds", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.interval_seconds": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.BodyOverrideMode(); ok {
+		if err := channelmonitor.BodyOverrideModeValidator(v); err != nil {
+			return &ValidationError{Name: "body_override_mode", err: fmt.Errorf(`ent: validator failed for field "ChannelMonitor.body_override_mode": %w`, err)}
+		}
+	}
 	return nil
 }
 
@@ -975,6 +1181,18 @@ func (_u *ChannelMonitorUpdateOne) sqlSave(ctx context.Context) (_node *ChannelM
 	if value, ok := _u.mutation.AddedCreatedBy(); ok {
 		_spec.AddField(channelmonitor.FieldCreatedBy, field.TypeInt64, value)
 	}
+	if value, ok := _u.mutation.ExtraHeaders(); ok {
+		_spec.SetField(channelmonitor.FieldExtraHeaders, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.BodyOverrideMode(); ok {
+		_spec.SetField(channelmonitor.FieldBodyOverrideMode, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.BodyOverride(); ok {
+		_spec.SetField(channelmonitor.FieldBodyOverride, field.TypeJSON, value)
+	}
+	if _u.mutation.BodyOverrideCleared() {
+		_spec.ClearField(channelmonitor.FieldBodyOverride, field.TypeJSON)
+	}
 	if _u.mutation.HistoryCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -1058,6 +1276,35 @@ func (_u *ChannelMonitorUpdateOne) sqlSave(ctx context.Context) (_node *ChannelM
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(channelmonitordailyrollup.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.RequestTemplateCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   channelmonitor.RequestTemplateTable,
+			Columns: []string{channelmonitor.RequestTemplateColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(channelmonitorrequesttemplate.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RequestTemplateIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: false,
+			Table:   channelmonitor.RequestTemplateTable,
+			Columns: []string{channelmonitor.RequestTemplateColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(channelmonitorrequesttemplate.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

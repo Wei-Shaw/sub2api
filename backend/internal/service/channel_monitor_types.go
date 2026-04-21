@@ -2,6 +2,19 @@ package service
 
 import "time"
 
+// MonitorBodyOverrideMode 自定义请求体处理模式。
+//
+//   - off     使用 adapter 默认 body（忽略 BodyOverride）
+//   - merge   adapter 默认 body 与 BodyOverride 浅合并（用户优先；
+//     model/messages/contents 等关键字段在 checker 黑名单内会被静默丢弃）
+//   - replace 完全用 BodyOverride 作为 body；跳过 challenge 校验，
+//     改成 HTTP 2xx + 响应非空即视为可用（用户负责构造 body）
+const (
+	MonitorBodyOverrideModeOff     = "off"
+	MonitorBodyOverrideModeMerge   = "merge"
+	MonitorBodyOverrideModeReplace = "replace"
+)
+
 // ChannelMonitor 渠道监控配置（service 层模型，不直接暴露 ent 类型）。
 type ChannelMonitor struct {
 	ID              int64
@@ -19,6 +32,12 @@ type ChannelMonitor struct {
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 
+	// 请求自定义快照（来自模板拷贝 or 用户手填，运行时直接读取）
+	TemplateID       *int64            // 仅用于 UI 分组 + 一键应用，运行时不用
+	ExtraHeaders     map[string]string // 与 adapter 默认 headers 合并，用户优先
+	BodyOverrideMode string            // off / merge / replace
+	BodyOverride     map[string]any    // 仅 mode != off 时使用
+
 	// APIKeyDecryptFailed 表示 APIKey 字段无法解密（密钥不一致或损坏）。
 	// 此时 APIKey 为空字符串，runner / RunCheck 必须跳过该监控并提示重填。
 	APIKeyDecryptFailed bool
@@ -35,16 +54,20 @@ type ChannelMonitorListParams struct {
 
 // ChannelMonitorCreateParams 创建参数。
 type ChannelMonitorCreateParams struct {
-	Name            string
-	Provider        string
-	Endpoint        string
-	APIKey          string
-	PrimaryModel    string
-	ExtraModels     []string
-	GroupName       string
-	Enabled         bool
-	IntervalSeconds int
-	CreatedBy       int64
+	Name             string
+	Provider         string
+	Endpoint         string
+	APIKey           string
+	PrimaryModel     string
+	ExtraModels      []string
+	GroupName        string
+	Enabled          bool
+	IntervalSeconds  int
+	CreatedBy        int64
+	TemplateID       *int64
+	ExtraHeaders     map[string]string
+	BodyOverrideMode string
+	BodyOverride     map[string]any
 }
 
 // ChannelMonitorUpdateParams 更新参数（指针字段表示"未提供则不更新"）。
@@ -58,6 +81,14 @@ type ChannelMonitorUpdateParams struct {
 	GroupName       *string
 	Enabled         *bool
 	IntervalSeconds *int
+	// 自定义快照字段：指针为 nil 表示不更新，非 nil 覆盖
+	// TemplateID *(*int64)：用 ** 表达三态：nil=不更新；&nil=清空；&&id=设为 id。
+	// 简化处理：用 ClearTemplate 显式标志 + TemplateID（普通指针）
+	TemplateID       *int64
+	ClearTemplate    bool // true 时无视 TemplateID，把监控的 template_id 置空
+	ExtraHeaders     *map[string]string
+	BodyOverrideMode *string
+	BodyOverride     *map[string]any
 }
 
 // CheckResult 单个模型一次检测的结果。

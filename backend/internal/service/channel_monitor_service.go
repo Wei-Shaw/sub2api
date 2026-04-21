@@ -104,21 +104,31 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 	if err := validateCreateParams(p); err != nil {
 		return nil, err
 	}
+	if err := validateBodyModeParams(p.BodyOverrideMode, p.BodyOverride); err != nil {
+		return nil, err
+	}
+	if err := validateExtraHeaders(p.ExtraHeaders); err != nil {
+		return nil, err
+	}
 	encrypted, err := s.encryptor.Encrypt(p.APIKey)
 	if err != nil {
 		return nil, fmt.Errorf("encrypt api key: %w", err)
 	}
 	m := &ChannelMonitor{
-		Name:            strings.TrimSpace(p.Name),
-		Provider:        p.Provider,
-		Endpoint:        normalizeEndpoint(p.Endpoint),
-		APIKey:          encrypted, // 注意：传入 repository 时该字段为密文
-		PrimaryModel:    strings.TrimSpace(p.PrimaryModel),
-		ExtraModels:     normalizeModels(p.ExtraModels),
-		GroupName:       strings.TrimSpace(p.GroupName),
-		Enabled:         p.Enabled,
-		IntervalSeconds: p.IntervalSeconds,
-		CreatedBy:       p.CreatedBy,
+		Name:             strings.TrimSpace(p.Name),
+		Provider:         p.Provider,
+		Endpoint:         normalizeEndpoint(p.Endpoint),
+		APIKey:           encrypted, // 注意：传入 repository 时该字段为密文
+		PrimaryModel:     strings.TrimSpace(p.PrimaryModel),
+		ExtraModels:      normalizeModels(p.ExtraModels),
+		GroupName:        strings.TrimSpace(p.GroupName),
+		Enabled:          p.Enabled,
+		IntervalSeconds:  p.IntervalSeconds,
+		CreatedBy:        p.CreatedBy,
+		TemplateID:       p.TemplateID,
+		ExtraHeaders:     emptyHeadersIfNil(p.ExtraHeaders),
+		BodyOverrideMode: defaultBodyMode(p.BodyOverrideMode),
+		BodyOverride:     p.BodyOverride,
 	}
 	if err := s.repo.Create(ctx, m); err != nil {
 		return nil, fmt.Errorf("create channel monitor: %w", err)
@@ -272,12 +282,19 @@ func (s *ChannelMonitorService) runChecksConcurrent(ctx context.Context, m *Chan
 	// ping 共享一次，所有模型记录同一个 ping 延迟。
 	pingMs := pingEndpointOrigin(ctx, m.Endpoint)
 
+	// 所有模型共用同一份 CheckOptions（来自监控的快照字段）。
+	opts := &CheckOptions{
+		ExtraHeaders:     m.ExtraHeaders,
+		BodyOverrideMode: m.BodyOverrideMode,
+		BodyOverride:     m.BodyOverride,
+	}
+
 	var eg errgroup.Group
 	var mu sync.Mutex
 	for i, model := range models {
 		i, model := i, model
 		eg.Go(func() error {
-			r := runCheckForModel(ctx, m.Provider, m.Endpoint, m.APIKey, model)
+			r := runCheckForModel(ctx, m.Provider, m.Endpoint, m.APIKey, model, opts)
 			r.PingLatencyMs = pingMs
 			mu.Lock()
 			results[i] = r
@@ -475,6 +492,39 @@ func applyMonitorUpdate(existing *ChannelMonitor, p ChannelMonitorUpdateParams) 
 			return err
 		}
 		existing.IntervalSeconds = *p.IntervalSeconds
+	}
+	return applyMonitorAdvancedUpdate(existing, p)
+}
+
+// applyMonitorAdvancedUpdate 处理自定义请求快照相关字段，从 applyMonitorUpdate 拆出避免过长。
+func applyMonitorAdvancedUpdate(existing *ChannelMonitor, p ChannelMonitorUpdateParams) error {
+	if p.ClearTemplate {
+		existing.TemplateID = nil
+	} else if p.TemplateID != nil {
+		id := *p.TemplateID
+		existing.TemplateID = &id
+	}
+	if p.ExtraHeaders != nil {
+		if err := validateExtraHeaders(*p.ExtraHeaders); err != nil {
+			return err
+		}
+		existing.ExtraHeaders = emptyHeadersIfNil(*p.ExtraHeaders)
+	}
+	// BodyOverrideMode / BodyOverride 联合校验，和模板一致。
+	newMode := existing.BodyOverrideMode
+	newBody := existing.BodyOverride
+	if p.BodyOverrideMode != nil {
+		newMode = *p.BodyOverrideMode
+	}
+	if p.BodyOverride != nil {
+		newBody = *p.BodyOverride
+	}
+	if p.BodyOverrideMode != nil || p.BodyOverride != nil {
+		if err := validateBodyModeParams(newMode, newBody); err != nil {
+			return err
+		}
+		existing.BodyOverrideMode = defaultBodyMode(newMode)
+		existing.BodyOverride = newBody
 	}
 	return nil
 }

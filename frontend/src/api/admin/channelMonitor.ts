@@ -7,6 +7,7 @@ import { apiClient } from '../client'
 
 export type Provider = 'openai' | 'anthropic' | 'gemini'
 export type MonitorStatus = 'operational' | 'degraded' | 'failed' | 'error'
+export type BodyOverrideMode = 'off' | 'merge' | 'replace'
 
 export interface ChannelMonitor {
   id: number
@@ -37,6 +38,11 @@ export interface ChannelMonitor {
   availability_7d: number
   /** Latest status per extra model (used for hover tooltip) */
   extra_models_status: ExtraModelStatus[]
+  /** 请求自定义快照字段（高级设置） */
+  template_id: number | null
+  extra_headers: Record<string, string>
+  body_override_mode: BodyOverrideMode
+  body_override: Record<string, unknown> | null
 }
 
 export interface ExtraModelStatus {
@@ -71,10 +77,16 @@ export interface CreateParams {
   group_name?: string
   enabled?: boolean
   interval_seconds: number
+  template_id?: number | null
+  extra_headers?: Record<string, string>
+  body_override_mode?: BodyOverrideMode
+  body_override?: Record<string, unknown> | null
 }
 
-// Update request: api_key empty string means "do not modify"
-export type UpdateParams = Partial<CreateParams>
+// Update request: api_key 空串 = 不修改；clear_template=true 时把 template_id 置空
+export type UpdateParams = Partial<CreateParams> & {
+  clear_template?: boolean
+}
 
 export interface CheckResult {
   model: string

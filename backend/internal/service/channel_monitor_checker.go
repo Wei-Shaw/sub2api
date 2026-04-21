@@ -37,9 +37,23 @@ func newSSRFSafeHTTPClient(timeout time.Duration) *http.Client {
 	return &http.Client{Timeout: timeout, Transport: tr}
 }
 
+// CheckOptions 承载一次检测的自定义入参。
+// 所有字段都是可选（零值即等价于"用默认行为"）。
+type CheckOptions struct {
+	// ExtraHeaders 用户自定义 HTTP 头（merge 到 adapter 默认 headers，用户优先）。
+	ExtraHeaders map[string]string
+	// BodyOverrideMode: off | merge | replace
+	BodyOverrideMode string
+	// BodyOverride 在 merge 模式下做浅合并（key 命中黑名单时静默丢弃），
+	// 在 replace 模式下直接当作完整 body。
+	BodyOverride map[string]any
+}
+
 // runCheckForModel 对单个 (provider, model) 做一次完整检测。
 // 不返回 error：所有失败都包装进 CheckResult.Status=error/failed。
-func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model string) *CheckResult {
+//
+// opts 承载模板 / 监控快照带来的自定义配置。nil 等同于 "off + 无 extra headers"。
+func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model string, opts *CheckOptions) *CheckResult {
 	res := &CheckResult{
 		Model:     model,
 		Status:    MonitorStatusError,
@@ -47,9 +61,10 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 	}
 
 	challenge := generateChallenge()
+	mode := bodyOverrideMode(opts)
 
 	start := time.Now()
-	respText, rawBody, statusCode, err := callProvider(ctx, provider, endpoint, apiKey, model, challenge.Prompt)
+	respText, rawBody, statusCode, err := callProvider(ctx, provider, endpoint, apiKey, model, challenge.Prompt, opts)
 	latency := time.Since(start)
 	latencyMs := int(latency / time.Millisecond)
 	res.LatencyMs = &latencyMs
@@ -68,20 +83,45 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 		return res
 	}
 
+	// Replace 模式：跳过 challenge 校验（用户 body 是静态的，challenge 没法嵌入）。
+	// 改用「HTTP 2xx + 响应文本（adapter.textPath 抽取）非空」作为 operational 判定。
+	// 响应文本为空则降级为 failed（视为上游回了 200 但没实际内容）。
+	if mode == MonitorBodyOverrideModeReplace {
+		if strings.TrimSpace(respText) == "" {
+			res.Status = MonitorStatusFailed
+			res.Message = truncateMessage("replace-mode: upstream returned 2xx with empty text")
+			return res
+		}
+		return finalizeOperationalOrDegraded(res, latency, latencyMs)
+	}
+
 	if !validateChallenge(respText, challenge.Expected) {
 		res.Status = MonitorStatusFailed
 		res.Message = truncateMessage(sanitizeErrorMessage(fmt.Sprintf("challenge mismatch (expected %s, got %q)", challenge.Expected, respText)))
 		return res
 	}
 
+	return finalizeOperationalOrDegraded(res, latency, latencyMs)
+}
+
+// finalizeOperationalOrDegraded 负责走到最后一步的 operational/degraded 判定。
+// 拆出来是为了让 runCheckForModel 不超过 30 行。
+func finalizeOperationalOrDegraded(res *CheckResult, latency time.Duration, latencyMs int) *CheckResult {
 	if latency >= monitorDegradedThreshold {
 		res.Status = MonitorStatusDegraded
 		res.Message = truncateMessage(fmt.Sprintf("slow response: %dms", latencyMs))
 		return res
 	}
-
 	res.Status = MonitorStatusOperational
 	return res
+}
+
+// bodyOverrideMode 归一取 opts.BodyOverrideMode，nil opts / 空串都视为 off。
+func bodyOverrideMode(opts *CheckOptions) string {
+	if opts == nil || opts.BodyOverrideMode == "" {
+		return MonitorBodyOverrideModeOff
+	}
+	return opts.BodyOverrideMode
 }
 
 // pingEndpointOrigin 对 endpoint 的 origin (scheme://host) 发起 HEAD 请求，返回耗时。
@@ -183,27 +223,107 @@ func isSupportedProvider(p string) bool {
 }
 
 // callProvider 通过 providerAdapters 分发到具体实现。
+// opts 承载用户的自定义 headers / body 覆盖（可为 nil）。
 //
 // 返回值：
 //   - extractedText: 按 textPath 抽出的成功文本，仅在 status 2xx 时有意义；非 2xx 时通常为空串
 //   - rawBody: 完整响应体的字符串形式（已被 monitorResponseMaxBytes 截断），用于错误路径保留上游真实回包
 //   - status: HTTP 状态码
 //   - err: 网络 / 序列化错误
-func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt string) (extractedText, rawBody string, status int, err error) {
+func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt string, opts *CheckOptions) (extractedText, rawBody string, status int, err error) {
 	adapter, ok := providerAdapters[provider]
 	if !ok {
 		return "", "", 0, fmt.Errorf("unsupported provider %q", provider)
 	}
-	body, err := adapter.buildBody(model, prompt)
+	body, err := buildRequestBody(adapter, provider, model, prompt, opts)
 	if err != nil {
-		return "", "", 0, fmt.Errorf("marshal body: %w", err)
+		return "", "", 0, err
 	}
+	headers := mergeHeaders(adapter.buildHeaders(apiKey), opts)
 	full := joinURL(endpoint, adapter.buildPath(model))
-	respBytes, status, err := postRawJSON(ctx, full, body, adapter.buildHeaders(apiKey))
+	respBytes, status, err := postRawJSON(ctx, full, body, headers)
 	if err != nil {
 		return "", "", status, err
 	}
 	return gjson.GetBytes(respBytes, adapter.textPath).String(), string(respBytes), status, nil
+}
+
+// mergeHeaders 把用户自定义 headers 合并到 adapter 默认 headers 上。
+// 用户值覆盖默认；命中黑名单（hop-by-hop / 由 http.Client 自管的）的 key 静默丢弃。
+func mergeHeaders(base map[string]string, opts *CheckOptions) map[string]string {
+	if opts == nil || len(opts.ExtraHeaders) == 0 {
+		return base
+	}
+	out := make(map[string]string, len(base)+len(opts.ExtraHeaders))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range opts.ExtraHeaders {
+		if IsForbiddenHeaderName(k) {
+			continue
+		}
+		out[k] = v
+	}
+	return out
+}
+
+// buildRequestBody 根据 body_override_mode 构造请求 body。
+//
+//   - off:     adapter 默认 body
+//   - merge:   adapter 默认 body 与 BodyOverride 浅合并；BodyOverride 中命中
+//     bodyMergeKeyDenyList[provider] 的 key 会被静默丢弃，避免破坏 challenge / model 路由
+//   - replace: 直接 marshal BodyOverride 作为完整 body
+//
+// 任何 mode 返回的 []byte 都已经是合法 JSON，可直接送入 postRawJSON。
+func buildRequestBody(adapter providerAdapter, provider, model, prompt string, opts *CheckOptions) ([]byte, error) {
+	mode := bodyOverrideMode(opts)
+
+	if mode == MonitorBodyOverrideModeReplace {
+		if opts == nil || len(opts.BodyOverride) == 0 {
+			return nil, fmt.Errorf("replace mode: body_override is empty")
+		}
+		body, err := json.Marshal(opts.BodyOverride)
+		if err != nil {
+			return nil, fmt.Errorf("marshal body_override (replace): %w", err)
+		}
+		return body, nil
+	}
+
+	defaultBody, err := adapter.buildBody(model, prompt)
+	if err != nil {
+		return nil, fmt.Errorf("marshal default body: %w", err)
+	}
+	if mode != MonitorBodyOverrideModeMerge || opts == nil || len(opts.BodyOverride) == 0 {
+		return defaultBody, nil
+	}
+
+	var defaultMap map[string]any
+	if err := json.Unmarshal(defaultBody, &defaultMap); err != nil {
+		return nil, fmt.Errorf("unmarshal default body for merge: %w", err)
+	}
+	deny := bodyMergeKeyDenyList[provider]
+	for k, v := range opts.BodyOverride {
+		if deny[k] {
+			continue
+		}
+		defaultMap[k] = v
+	}
+	merged, err := json.Marshal(defaultMap)
+	if err != nil {
+		return nil, fmt.Errorf("marshal merged body: %w", err)
+	}
+	return merged, nil
+}
+
+// bodyMergeKeyDenyList 在 merge 模式下，禁止用户覆盖这些 provider-specific 的关键字段。
+// 思路抄 check-cx 的 EXCLUDED_METADATA_KEYS：保护 challenge / model 路由不被用户误伤。
+// 用户想动这些字段就用 replace 模式（已知会跳 challenge 校验）。
+//
+//nolint:gochecknoglobals // 静态查表，初始化后不变。
+var bodyMergeKeyDenyList = map[string]map[string]bool{
+	MonitorProviderOpenAI:    {"model": true, "messages": true, "stream": true},
+	MonitorProviderAnthropic: {"model": true, "messages": true},
+	MonitorProviderGemini:    {"contents": true},
 }
 
 // postRawJSON 发送 POST + 已序列化好的 JSON 字节，限制响应体大小，返回响应字节、HTTP status、错误。
