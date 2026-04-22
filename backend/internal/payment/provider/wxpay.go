@@ -60,11 +60,6 @@ const (
 	wxpayEventTransactionSuccess = "TRANSACTION.SUCCESS"
 )
 
-// WeChat Pay error codes.
-const (
-	wxpayErrNoAuth = "NO_AUTH"
-)
-
 var (
 	wxpayNativePrepay = func(ctx context.Context, svc native.NativeApiService, req native.PrepayRequest) (*native.PrepayResponse, *core.APIResult, error) {
 		return svc.Prepay(ctx, req)
