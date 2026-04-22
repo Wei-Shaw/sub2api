@@ -209,7 +209,7 @@ func visibleMethodSourceSettingKey(method string) string {
 REDACTED
 REDACTED
 
-func CanonicalizeReturnURL(raw string, srcHost string) (string, error) {
+func CanonicalizeReturnURL(raw string, srcHost string, srcURL string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", nil
@@ -228,13 +228,29 @@ REDACTED
 	if parsed.Path != paymentResultReturnPath {
 		return "", infraerrors.BadRequest("INVALID_RETURN_URL", "return_url must target the canonical internal payment result page")
 REDACTED
-	if !sameOriginHost(parsed.Host, srcHost) {
-		return "", infraerrors.BadRequest("INVALID_RETURN_URL", "return_url must use the same host as the current site")
+	if !allowedReturnURLHost(parsed.Host, srcHost, srcURL) {
+		return "", infraerrors.BadRequest("INVALID_RETURN_URL", "return_url must use the same host as the current site or browser origin")
 REDACTED
 	return parsed.String(), nil
 REDACTED
 
-func buildPaymentReturnURL(base string, orderID int64, resumeToken string) (string, error) {
+func allowedReturnURLHost(returnURLHost string, requestHost string, refererURL string) bool {
+	if sameOriginHost(returnURLHost, requestHost) {
+		return true
+REDACTED
+
+	refererURL = strings.TrimSpace(refererURL)
+	if refererURL == "" {
+		return false
+REDACTED
+	parsedReferer, err := url.Parse(refererURL)
+	if err != nil || parsedReferer.Host == "" {
+		return false
+REDACTED
+	return sameOriginHost(returnURLHost, parsedReferer.Host)
+REDACTED
+
+func buildPaymentReturnURL(base string, orderID int64, outTradeNo string, resumeToken string) (string, error) {
 	canonical := strings.TrimSpace(base)
 	if canonical == "" {
 		return "", nil
@@ -252,6 +268,9 @@ REDACTED
 	query := parsed.Query()
 	if orderID > 0 {
 		query.Set("order_id", strconv.FormatInt(orderID, 10))
+REDACTED
+	if strings.TrimSpace(outTradeNo) != "" {
+		query.Set("out_trade_no", strings.TrimSpace(outTradeNo))
 REDACTED
 	if strings.TrimSpace(resumeToken) != "" {
 		query.Set("resume_token", strings.TrimSpace(resumeToken))

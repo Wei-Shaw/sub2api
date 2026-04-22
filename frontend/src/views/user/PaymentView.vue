@@ -276,7 +276,7 @@ import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { PaymentMethodOption REDACTED from '@/components/payment/PaymentMethodSelector.vue'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError REDACTED from './paymentUx'
-import { parseWechatResumeRoute, stripWechatResumeQuery REDACTED from './paymentWechatResume'
+import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery REDACTED from './paymentWechatResume'
 
 const { t REDACTED = useI18n()
 const route = useRoute()
@@ -329,6 +329,7 @@ function emptyPaymentState(): PaymentRecoverySnapshot {
     expiresAt: '',
     paymentType: '',
     payUrl: '',
+    outTradeNo: '',
     clientSecret: '',
     payAmount: 0,
     orderType: '',
@@ -395,6 +396,9 @@ async function redirectToPaymentResult(state: PaymentRecoverySnapshot): Promise<
   const query: Record<string, string | undefined> = {REDACTED
   if (state.orderId > 0) {
     query.order_id = String(state.orderId)
+  REDACTED
+  if (state.outTradeNo) {
+    query.out_trade_no = state.outTradeNo
   REDACTED
   if (state.resumeToken) {
     query.resume_token = state.resumeToken
@@ -809,9 +813,14 @@ onMounted(async () => {
       selectedMethod.value = sorted[0]
     REDACTED
     if (typeof window !== 'undefined') {
+      if (hasWechatResumeQuery(route.query)) {
+        removeRecoverySnapshot()
+      REDACTED
       const routeResumeToken = typeof route.query.resume_token === 'string'
         ? route.query.resume_token
-        : undefined
+        : typeof route.query.wechat_resume_token === 'string'
+          ? route.query.wechat_resume_token
+          : undefined
       const restored = readPaymentRecoverySnapshot(
         window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY),
         { resumeToken: routeResumeToken REDACTED,

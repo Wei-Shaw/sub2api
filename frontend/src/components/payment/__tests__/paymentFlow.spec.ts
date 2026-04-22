@@ -73,6 +73,7 @@ describe('decidePaymentLaunch', () => {
     expect(decision.paymentState.paymentType).toBe('alipay')
     expect(decision.stripeMethod).toBe('alipay')
     expect(decision.recovery.resumeToken).toBe('resume-1')
+    expect(decision.recovery.outTradeNo).toBe('')
   REDACTED)
 
   it('uses Stripe route flow for mobile WeChat client secret', () => {
@@ -94,6 +95,7 @@ describe('decidePaymentLaunch', () => {
       pay_url: 'https://pay.example.com/session/abc',
       payment_mode: 'popup',
       resume_token: 'resume-2',
+      out_trade_no: 'sub2_abc',
     REDACTED), {
       visibleMethod: 'wxpay',
       orderType: 'balance',
@@ -103,6 +105,7 @@ describe('decidePaymentLaunch', () => {
     expect(decision.kind).toBe('redirect_waiting')
     expect(decision.paymentState.payUrl).toBe('https://pay.example.com/session/abc')
     expect(decision.recovery.paymentMode).toBe('popup')
+    expect(decision.recovery.outTradeNo).toBe('sub2_abc')
     expect(decision.recovery.resumeToken).toBe('resume-2')
   REDACTED)
 
@@ -225,6 +228,7 @@ describe('readPaymentRecoverySnapshot', () => {
       expiresAt: '2099-01-01T00:10:00.000Z',
       paymentType: 'alipay',
       payUrl: 'https://pay.example.com/session/33',
+      outTradeNo: 'sub2_33',
       clientSecret: '',
       payAmount: 18,
       orderType: 'balance',
@@ -249,6 +253,7 @@ describe('readPaymentRecoverySnapshot', () => {
       expiresAt: '2024-01-01T00:10:00.000Z',
       paymentType: 'wxpay',
       payUrl: 'https://pay.example.com/session/55',
+      outTradeNo: 'sub2_55',
       clientSecret: '',
       payAmount: 18,
       orderType: 'balance',
@@ -264,10 +269,34 @@ describe('readPaymentRecoverySnapshot', () => {
 
     expect(readPaymentRecoverySnapshot(JSON.stringify({
       ...expiredSnapshot,
+      outTradeNo: 'sub2_55',
       expiresAt: '2099-01-01T00:10:00.000Z',
     REDACTED), {
       now: Date.UTC(2099, 0, 1, 0, 1, 0),
       resumeToken: 'other-token',
     REDACTED)).toBeNull()
+  REDACTED)
+
+  it('keeps backward compatibility with snapshots written before outTradeNo existed', () => {
+    const restored = readPaymentRecoverySnapshot(JSON.stringify({
+      orderId: 44,
+      amount: 18,
+      qrCode: '',
+      expiresAt: '2099-01-01T00:10:00.000Z',
+      paymentType: 'alipay',
+      payUrl: 'https://pay.example.com/session/44',
+      clientSecret: '',
+      payAmount: 18,
+      orderType: 'balance',
+      paymentMode: 'popup',
+      resumeToken: 'resume-44',
+      createdAt: Date.UTC(2099, 0, 1, 0, 0, 0),
+    REDACTED), {
+      now: Date.UTC(2099, 0, 1, 0, 1, 0),
+      resumeToken: 'resume-44',
+    REDACTED)
+
+    expect(restored?.orderId).toBe(44)
+    expect(restored?.outTradeNo).toBe('')
   REDACTED)
 REDACTED)

@@ -117,6 +117,7 @@ function jsapiOrderFixture(resumeToken: string) {
     fee_rate: 0,
     expires_at: '2099-01-01T00:10:00.000Z',
     payment_type: 'wxpay',
+    out_trade_no: 'sub2_jsapi_123',
     result_type: 'jsapi_ready' as const,
     resume_token: resumeToken,
     jsapi: {
@@ -175,6 +176,7 @@ describe('PaymentView WeChat JSAPI flow', () => {
       path: '/payment/result',
       query: {
         order_id: '123',
+        out_trade_no: 'sub2_jsapi_123',
         resume_token: 'resume-token-123',
       REDACTED,
     REDACTED)
@@ -200,6 +202,41 @@ describe('PaymentView WeChat JSAPI flow', () => {
 
     expect(showInfo).toHaveBeenCalledWith('payment.qr.cancelled')
     expect(routerPush).not.toHaveBeenCalled()
+    expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).toBeNull()
+  REDACTED)
+
+  it('clears a stale recovery snapshot before handling wechat resume callback params', async () => {
+    createOrder.mockRejectedValueOnce(new Error('resume failed'))
+    window.localStorage.setItem(PAYMENT_RECOVERY_STORAGE_KEY, JSON.stringify({
+      orderId: 999,
+      amount: 66,
+      qrCode: 'stale-qr',
+      expiresAt: '2099-01-01T00:10:00.000Z',
+      paymentType: 'alipay',
+      payUrl: 'https://pay.example.com/stale',
+      outTradeNo: 'stale-out-trade-no',
+      clientSecret: '',
+      payAmount: 66,
+      orderType: 'balance',
+      paymentMode: 'popup',
+      resumeToken: '',
+      createdAt: Date.UTC(2099, 0, 1, 0, 0, 0),
+    REDACTED))
+
+    shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          Teleport: true,
+          Transition: false,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+    await flushPromises()
+    await flushPromises()
+
+    expect(createOrder).toHaveBeenCalledWith(expect.objectContaining({
+      wechat_resume_token: 'resume-token-123',
+    REDACTED))
     expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).toBeNull()
   REDACTED)
 REDACTED)

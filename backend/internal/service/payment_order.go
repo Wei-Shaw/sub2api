@@ -379,16 +379,13 @@ func (s *PaymentService) invokeProvider(ctx context.Context, order *dbent.Paymen
 REDACTED
 	subject := s.buildPaymentSubject(plan, limitAmount, cfg)
 	outTradeNo := order.OutTradeNo
-	canonicalReturnURL, err := CanonicalizeReturnURL(req.ReturnURL, req.SrcHost)
+	canonicalReturnURL, err := CanonicalizeReturnURL(req.ReturnURL, req.SrcHost, req.SrcURL)
 	if err != nil {
 		return nil, err
 REDACTED
 	resumeToken := ""
 	if resume := s.paymentResume(); resume != nil {
-		if canonicalReturnURL != "" {
-			if err := resume.ensureSigningKey(); err != nil {
-				return nil, err
-		REDACTED
+		if canonicalReturnURL != "" && resume.isSigningConfigured() {
 			resumeToken, err = resume.CreateToken(ResumeTokenClaims{
 				OrderID:            order.ID,
 				UserID:             order.UserID,
@@ -402,7 +399,7 @@ REDACTED
 		REDACTED
 	REDACTED
 REDACTED
-	providerReturnURL, err := buildPaymentReturnURL(canonicalReturnURL, order.ID, resumeToken)
+	providerReturnURL, err := buildPaymentReturnURL(canonicalReturnURL, order.ID, outTradeNo, resumeToken)
 	if err != nil {
 		return nil, err
 REDACTED
