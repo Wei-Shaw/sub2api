@@ -51,6 +51,44 @@ type mockUserRepoTxState struct {
 	deleteAvatarIDs  []int64
 REDACTED
 
+type mockUserSettingRepo struct {
+	values map[string]string
+REDACTED
+
+func (m *mockUserSettingRepo) Get(context.Context, string) (*Setting, error) {
+	panic("unexpected Get call")
+REDACTED
+
+func (m *mockUserSettingRepo) GetValue(context.Context, string) (string, error) {
+	panic("unexpected GetValue call")
+REDACTED
+
+func (m *mockUserSettingRepo) Set(context.Context, string, string) error {
+	panic("unexpected Set call")
+REDACTED
+
+func (m *mockUserSettingRepo) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+	out := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if value, ok := m.values[key]; ok {
+			out[key] = value
+	REDACTED
+REDACTED
+	return out, nil
+REDACTED
+
+func (m *mockUserSettingRepo) SetMultiple(context.Context, map[string]string) error {
+	panic("unexpected SetMultiple call")
+REDACTED
+
+func (m *mockUserSettingRepo) GetAll(context.Context) (map[string]string, error) {
+	panic("unexpected GetAll call")
+REDACTED
+
+func (m *mockUserSettingRepo) Delete(context.Context, string) error {
+	panic("unexpected Delete call")
+REDACTED
+
 func (m *mockUserRepo) Create(context.Context, *User) error { return nil REDACTED
 func (m *mockUserRepo) GetByID(ctx context.Context, _ int64) (*User, error) {
 	if m.getByIDErr != nil {
@@ -380,6 +418,35 @@ REDACTED
 REDACTED
 	require.False(t, summaries.LinuxDo.Bound)
 	require.True(t, summaries.LinuxDo.CanBind)
+REDACTED
+
+func TestGetProfileIdentitySummaries_HidesBindActionWhenProviderExplicitlyDisabled(t *testing.T) {
+	repo := &mockUserRepo{
+		getByIDUser: &User{
+			ID:    15,
+			Email: "alice@example.com",
+	REDACTED,
+		identities: []UserAuthIdentityRecord{
+			{
+				ProviderType:    "email",
+				ProviderKey:     "email",
+				ProviderSubject: "alice@example.com",
+		REDACTED,
+	REDACTED,
+REDACTED
+	settingRepo := &mockUserSettingRepo{
+		values: map[string]string{
+			SettingKeyLinuxDoConnectEnabled: "false",
+	REDACTED,
+REDACTED
+	svc := NewUserService(repo, settingRepo, nil, nil)
+
+	summaries, err := svc.GetProfileIdentitySummaries(context.Background(), 15, repo.getByIDUser)
+
+REDACTED
+	require.False(t, summaries.LinuxDo.Bound)
+	require.False(t, summaries.LinuxDo.CanBind)
+	require.Empty(t, summaries.LinuxDo.BindStartPath)
 REDACTED
 
 func TestUpdateBalance_NilBillingCache_NoPanic(t *testing.T) {

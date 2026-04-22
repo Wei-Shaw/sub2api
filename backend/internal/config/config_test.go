@@ -346,7 +346,7 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestValidateLinuxDoPKCERequiredForPublicClient(t *testing.T) {
+func TestValidateLinuxDoAllowsDisablingPKCEForCompatibility(t *testing.T) {
 	resetViperWithJWTSecret(t)
 
 	cfg, err := Load()
@@ -363,11 +363,8 @@ REDACTED
 	cfg.LinuxDo.UsePKCE = false
 
 	err = cfg.Validate()
-	if err == nil {
-		t.Fatalf("Validate() expected error when token_auth_method=none and use_pkce=false, got nil")
-REDACTED
-	if !strings.Contains(err.Error(), "linuxdo_connect.use_pkce") {
-		t.Fatalf("Validate() expected use_pkce error, got: %v", err)
+	if err != nil {
+		t.Fatalf("Validate() expected LinuxDo config without PKCE to pass for compatibility, got: %v", err)
 REDACTED
 REDACTED
 
@@ -424,6 +421,35 @@ REDACTED
 	err = cfg.Validate()
 	if err != nil {
 		t.Fatalf("Validate() expected issuer-only OIDC config to pass with discovery fallback, got: %v", err)
+REDACTED
+REDACTED
+
+func TestValidateOIDCAllowsDisablingPKCEAndIDTokenValidation(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+
+	cfg.OIDC.Enabled = true
+	cfg.OIDC.ClientID = "oidc-client"
+	cfg.OIDC.ClientSecret = "oidc-secret"
+	cfg.OIDC.IssuerURL = "https://issuer.example.com"
+	cfg.OIDC.AuthorizeURL = "https://issuer.example.com/auth"
+	cfg.OIDC.TokenURL = "https://issuer.example.com/token"
+	cfg.OIDC.UserInfoURL = "https://issuer.example.com/userinfo"
+	cfg.OIDC.RedirectURL = "https://example.com/api/v1/auth/oauth/oidc/callback"
+	cfg.OIDC.FrontendRedirectURL = "/auth/oidc/callback"
+	cfg.OIDC.Scopes = "openid email profile"
+	cfg.OIDC.UsePKCE = false
+	cfg.OIDC.ValidateIDToken = false
+	cfg.OIDC.JWKSURL = ""
+	cfg.OIDC.AllowedSigningAlgs = ""
+
+	err = cfg.Validate()
+	if err != nil {
+		t.Fatalf("Validate() expected OIDC config without PKCE/id_token validation to pass for compatibility, got: %v", err)
 REDACTED
 REDACTED
 

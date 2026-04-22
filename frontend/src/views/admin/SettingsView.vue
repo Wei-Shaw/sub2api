@@ -2032,7 +2032,7 @@
                     </div>
                     <Toggle
                       v-model="form.oidc_connect_use_pkce"
-                      :disabled="true"
+                      data-testid="oidc-connect-use-pkce"
                     />
                   </div>
 
@@ -2046,7 +2046,7 @@
                     </div>
                     <Toggle
                       v-model="form.oidc_connect_validate_id_token"
-                      :disabled="true"
+                      data-testid="oidc-connect-validate-id-token"
                     />
                   </div>
 
@@ -4961,8 +4961,8 @@ const form = reactive<SettingsForm>({
   oidc_connect_redirect_url: "",
   oidc_connect_frontend_redirect_url: "/auth/oidc/callback",
   oidc_connect_token_auth_method: "client_secret_post",
-  oidc_connect_use_pkce: true,
-  oidc_connect_validate_id_token: true,
+  oidc_connect_use_pkce: false,
+  oidc_connect_validate_id_token: false,
   oidc_connect_allowed_signing_algs: "RS256,ES256,PS256",
   oidc_connect_clock_skew_seconds: 120,
   oidc_connect_require_email_verified: false,
@@ -5846,8 +5846,8 @@ async function saveSettings() {
       oidc_connect_frontend_redirect_url:
         form.oidc_connect_frontend_redirect_url,
       oidc_connect_token_auth_method: form.oidc_connect_token_auth_method,
-      oidc_connect_use_pkce: true,
-      oidc_connect_validate_id_token: true,
+      oidc_connect_use_pkce: form.oidc_connect_use_pkce,
+      oidc_connect_validate_id_token: form.oidc_connect_validate_id_token,
       oidc_connect_allowed_signing_algs: form.oidc_connect_allowed_signing_algs,
       oidc_connect_clock_skew_seconds: form.oidc_connect_clock_skew_seconds,
       oidc_connect_require_email_verified:

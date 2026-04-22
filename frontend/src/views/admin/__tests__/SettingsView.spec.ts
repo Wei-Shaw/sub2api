@@ -776,4 +776,28 @@ describe("admin SettingsView wechat connect controls", () => {
     ).toBe(true);
     expect(wrapper.text()).toContain("首次绑定时授权");
   REDACTED);
+
+  it("preserves optional OIDC compatibility flags instead of forcing them on save", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      oidc_connect_enabled: true,
+      oidc_connect_use_pkce: false,
+      oidc_connect_validate_id_token: false,
+    REDACTED);
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openSecurityTab(wrapper);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        oidc_connect_use_pkce: false,
+        oidc_connect_validate_id_token: false,
+      REDACTED),
+    );
+  REDACTED);
 REDACTED);

@@ -248,12 +248,59 @@ REDACTED
 		return UserIdentitySummarySet{REDACTED, err
 REDACTED
 
-	return UserIdentitySummarySet{
+	summaries := UserIdentitySummarySet{
 		Email:   s.buildEmailIdentitySummary(user, records),
 		LinuxDo: s.buildProviderIdentitySummary("linuxdo", user, records),
 		OIDC:    s.buildProviderIdentitySummary("oidc", user, records),
 		WeChat:  s.buildProviderIdentitySummary("wechat", user, records),
-REDACTED, nil
+REDACTED
+
+	s.applyExplicitProviderAvailability(ctx, &summaries)
+	return summaries, nil
+REDACTED
+
+func (s *UserService) applyExplicitProviderAvailability(ctx context.Context, summaries *UserIdentitySummarySet) {
+	if s == nil || summaries == nil || s.settingRepo == nil {
+		return
+REDACTED
+
+	settings, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyLinuxDoConnectEnabled,
+		SettingKeyOIDCConnectEnabled,
+		SettingKeyWeChatConnectEnabled,
+		SettingKeyWeChatConnectOpenEnabled,
+		SettingKeyWeChatConnectMPEnabled,
+		SettingKeyWeChatConnectMobileEnabled,
+		SettingKeyWeChatConnectMode,
+REDACTED)
+	if err != nil {
+		return
+REDACTED
+
+	if raw, ok := settings[SettingKeyLinuxDoConnectEnabled]; ok && strings.TrimSpace(raw) != "" && raw != "true" {
+		disableIdentityBindAction(&summaries.LinuxDo)
+REDACTED
+	if raw, ok := settings[SettingKeyOIDCConnectEnabled]; ok && strings.TrimSpace(raw) != "" && raw != "true" {
+		disableIdentityBindAction(&summaries.OIDC)
+REDACTED
+	if raw, ok := settings[SettingKeyWeChatConnectEnabled]; ok && strings.TrimSpace(raw) != "" {
+		if raw != "true" {
+			disableIdentityBindAction(&summaries.WeChat)
+			return
+	REDACTED
+		openEnabled, mpEnabled, _ := parseWeChatConnectCapabilitySettings(settings, true, settings[SettingKeyWeChatConnectMode])
+		if !openEnabled && !mpEnabled {
+			disableIdentityBindAction(&summaries.WeChat)
+	REDACTED
+REDACTED
+REDACTED
+
+func disableIdentityBindAction(summary *UserIdentitySummary) {
+	if summary == nil || summary.Bound {
+		return
+REDACTED
+	summary.CanBind = false
+	summary.BindStartPath = ""
 REDACTED
 
 func (s *UserService) PrepareIdentityBindingStart(_ context.Context, req StartUserIdentityBindingRequest) (*StartUserIdentityBindingResult, error) {

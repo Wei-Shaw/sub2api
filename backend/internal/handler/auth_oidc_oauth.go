@@ -157,21 +157,25 @@ REDACTED else {
 REDACTED
 
 	codeChallenge := ""
-	verifier, genErr := oauth.GenerateCodeVerifier()
-	if genErr != nil {
-		response.ErrorFrom(c, infraerrors.InternalServer("OAUTH_PKCE_GEN_FAILED", "failed to generate pkce verifier").WithCause(genErr))
-		return
+	if cfg.UsePKCE {
+		verifier, genErr := oauth.GenerateCodeVerifier()
+		if genErr != nil {
+			response.ErrorFrom(c, infraerrors.InternalServer("OAUTH_PKCE_GEN_FAILED", "failed to generate pkce verifier").WithCause(genErr))
+			return
+	REDACTED
+		codeChallenge = oauth.GenerateCodeChallenge(verifier)
+		oidcSetCookie(c, oidcOAuthVerifierCookie, encodeCookieValue(verifier), oidcOAuthCookieMaxAgeSec, secureCookie)
 REDACTED
-	codeChallenge = oauth.GenerateCodeChallenge(verifier)
-	oidcSetCookie(c, oidcOAuthVerifierCookie, encodeCookieValue(verifier), oidcOAuthCookieMaxAgeSec, secureCookie)
 
 	nonce := ""
-	nonce, err = oauth.GenerateState()
-	if err != nil {
-		response.ErrorFrom(c, infraerrors.InternalServer("OAUTH_NONCE_GEN_FAILED", "failed to generate oauth nonce").WithCause(err))
-		return
+	if cfg.ValidateIDToken {
+		nonce, err = oauth.GenerateState()
+		if err != nil {
+			response.ErrorFrom(c, infraerrors.InternalServer("OAUTH_NONCE_GEN_FAILED", "failed to generate oauth nonce").WithCause(err))
+			return
+	REDACTED
+		oidcSetCookie(c, oidcOAuthNonceCookie, encodeCookieValue(nonce), oidcOAuthCookieMaxAgeSec, secureCookie)
 REDACTED
-	oidcSetCookie(c, oidcOAuthNonceCookie, encodeCookieValue(nonce), oidcOAuthCookieMaxAgeSec, secureCookie)
 
 	redirectURI := strings.TrimSpace(cfg.RedirectURL)
 	if redirectURI == "" {
@@ -244,17 +248,21 @@ REDACTED
 	intent = normalizeOAuthIntent(intent)
 
 	codeVerifier := ""
-	codeVerifier, _ = readCookieDecoded(c, oidcOAuthVerifierCookie)
-	if codeVerifier == "" {
-		redirectOAuthError(c, frontendCallback, "missing_verifier", "missing pkce verifier", "")
-		return
+	if cfg.UsePKCE {
+		codeVerifier, _ = readCookieDecoded(c, oidcOAuthVerifierCookie)
+		if codeVerifier == "" {
+			redirectOAuthError(c, frontendCallback, "missing_verifier", "missing pkce verifier", "")
+			return
+	REDACTED
 REDACTED
 
 	expectedNonce := ""
-	expectedNonce, _ = readCookieDecoded(c, oidcOAuthNonceCookie)
-	if expectedNonce == "" {
-		redirectOAuthError(c, frontendCallback, "missing_nonce", "missing oauth nonce", "")
-		return
+	if cfg.ValidateIDToken {
+		expectedNonce, _ = readCookieDecoded(c, oidcOAuthNonceCookie)
+		if expectedNonce == "" {
+			redirectOAuthError(c, frontendCallback, "missing_nonce", "missing oauth nonce", "")
+			return
+	REDACTED
 REDACTED
 
 	redirectURI := strings.TrimSpace(cfg.RedirectURL)
@@ -284,16 +292,19 @@ REDACTED
 		return
 REDACTED
 
-	if strings.TrimSpace(tokenResp.IDToken) == "" {
-		redirectOAuthError(c, frontendCallback, "missing_id_token", "missing id_token", "")
-		return
-REDACTED
+	var idClaims *oidcIDTokenClaims
+	if cfg.ValidateIDToken {
+		if strings.TrimSpace(tokenResp.IDToken) == "" {
+			redirectOAuthError(c, frontendCallback, "missing_id_token", "missing id_token", "")
+			return
+	REDACTED
 
-	idClaims, err := oidcParseAndValidateIDToken(c.Request.Context(), cfg, tokenResp.IDToken, expectedNonce)
-	if err != nil {
-		log.Printf("[OIDC OAuth] id_token validation failed: %v", err)
-		redirectOAuthError(c, frontendCallback, "invalid_id_token", "failed to validate id_token", "")
-		return
+		idClaims, err = oidcParseAndValidateIDToken(c.Request.Context(), cfg, tokenResp.IDToken, expectedNonce)
+		if err != nil {
+			log.Printf("[OIDC OAuth] id_token validation failed: %v", err)
+			redirectOAuthError(c, frontendCallback, "invalid_id_token", "failed to validate id_token", "")
+			return
+	REDACTED
 REDACTED
 
 	userInfoClaims, err := oidcFetchUserInfo(c.Request.Context(), cfg, tokenResp)
@@ -303,7 +314,10 @@ REDACTED
 		return
 REDACTED
 
-	subject := strings.TrimSpace(idClaims.Subject)
+	subject := ""
+	if idClaims != nil {
+		subject = strings.TrimSpace(idClaims.Subject)
+REDACTED
 	if subject == "" {
 		subject = strings.TrimSpace(userInfoClaims.Subject)
 REDACTED
@@ -311,7 +325,10 @@ REDACTED
 		redirectOAuthError(c, frontendCallback, "missing_subject", "missing subject claim", "")
 		return
 REDACTED
-	issuer := strings.TrimSpace(idClaims.Issuer)
+	issuer := ""
+	if idClaims != nil {
+		issuer = strings.TrimSpace(idClaims.Issuer)
+REDACTED
 	if issuer == "" {
 		issuer = strings.TrimSpace(cfg.IssuerURL)
 REDACTED
@@ -321,21 +338,34 @@ REDACTED
 REDACTED
 
 	emailVerified := userInfoClaims.EmailVerified
-	if emailVerified == nil {
+	if emailVerified == nil && idClaims != nil {
 		emailVerified = idClaims.EmailVerified
 REDACTED
-	if userInfoClaims.Subject != "" && idClaims.Subject != "" && strings.TrimSpace(userInfoClaims.Subject) != strings.TrimSpace(idClaims.Subject) {
+	if idClaims != nil && userInfoClaims.Subject != "" && idClaims.Subject != "" && strings.TrimSpace(userInfoClaims.Subject) != strings.TrimSpace(idClaims.Subject) {
 		redirectOAuthError(c, frontendCallback, "subject_mismatch", "userinfo subject does not match id_token", "")
 		return
 REDACTED
 
 	identityKey := oidcIdentityKey(issuer, subject)
-	compatEmail := strings.TrimSpace(firstNonEmpty(userInfoClaims.Email, idClaims.Email))
+	compatEmail := strings.TrimSpace(userInfoClaims.Email)
+	if compatEmail == "" && idClaims != nil {
+		compatEmail = strings.TrimSpace(idClaims.Email)
+REDACTED
 	email := oidcSyntheticEmailFromIdentityKey(identityKey)
 	username := firstNonEmpty(
 		userInfoClaims.Username,
-		idClaims.PreferredUsername,
-		idClaims.Name,
+		func() string {
+			if idClaims != nil {
+				return idClaims.PreferredUsername
+		REDACTED
+			return ""
+	REDACTED(),
+		func() string {
+			if idClaims != nil {
+				return idClaims.Name
+		REDACTED
+			return ""
+	REDACTED(),
 		oidcFallbackUsername(subject),
 	)
 	identityRef := service.PendingAuthIdentityKey{
@@ -350,7 +380,12 @@ REDACTED
 		"issuer":                 issuer,
 		"email_verified":         emailVerified != nil && *emailVerified,
 		"provider_fallback":      strings.TrimSpace(cfg.ProviderName),
-		"suggested_display_name": firstNonEmpty(userInfoClaims.DisplayName, idClaims.Name, username),
+		"suggested_display_name": firstNonEmpty(userInfoClaims.DisplayName, func() string {
+			if idClaims != nil {
+				return idClaims.Name
+		REDACTED
+			return ""
+	REDACTED(), username),
 		"suggested_avatar_url":   userInfoClaims.AvatarURL,
 REDACTED
 	if compatEmail != "" && !strings.EqualFold(strings.TrimSpace(compatEmail), strings.TrimSpace(email)) {
@@ -387,25 +422,16 @@ REDACTED
 		return
 REDACTED
 	if existingIdentityUser != nil {
-		tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), existingIdentityUser.Email, username, "")
-		if err != nil {
-			redirectOAuthError(c, frontendCallback, "login_failed", infraerrors.Reason(err), infraerrors.Message(err))
-			return
-	REDACTED
 		if err := h.createOAuthPendingSession(c, oauthPendingSessionPayload{
 			Intent:                 oauthIntentLogin,
 			Identity:               identityRef,
-			TargetUserID:           &user.ID,
+			TargetUserID:           &existingIdentityUser.ID,
 			ResolvedEmail:          existingIdentityUser.Email,
 			RedirectTo:             redirectTo,
 			BrowserSessionKey:      browserSessionKey,
 			UpstreamIdentityClaims: upstreamClaims,
 			CompletionResponse: map[string]any{
-				"access_token":  tokenPair.AccessToken,
-				"refresh_token": tokenPair.RefreshToken,
-				"expires_in":    tokenPair.ExpiresIn,
-				"token_type":    "Bearer",
-				"redirect":      redirectTo,
+				"redirect": redirectTo,
 		REDACTED,
 	REDACTED); err != nil {
 			redirectOAuthError(c, frontendCallback, "session_error", "failed to continue oauth login", "")
@@ -670,7 +696,9 @@ func oidcExchangeCode(
 	form.Set("client_id", cfg.ClientID)
 	form.Set("code", code)
 	form.Set("redirect_uri", redirectURI)
-	form.Set("code_verifier", codeVerifier)
+	if strings.TrimSpace(codeVerifier) != "" {
+		form.Set("code_verifier", codeVerifier)
+REDACTED
 
 	r := client.R().
 		SetContext(ctx).
@@ -872,9 +900,13 @@ REDACTED
 		q.Set("scope", cfg.Scopes)
 REDACTED
 	q.Set("state", state)
-	q.Set("nonce", nonce)
-	q.Set("code_challenge", codeChallenge)
-	q.Set("code_challenge_method", "S256")
+	if strings.TrimSpace(nonce) != "" {
+		q.Set("nonce", nonce)
+REDACTED
+	if strings.TrimSpace(codeChallenge) != "" {
+		q.Set("code_challenge", codeChallenge)
+		q.Set("code_challenge_method", "S256")
+REDACTED
 
 	u.RawQuery = q.Encode()
 	return u.String(), nil

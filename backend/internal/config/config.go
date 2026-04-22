@@ -1202,7 +1202,7 @@ REDACTED)
 	viper.SetDefault("linuxdo_connect.redirect_url", "")
 	viper.SetDefault("linuxdo_connect.frontend_redirect_url", "/auth/linuxdo/callback")
 	viper.SetDefault("linuxdo_connect.token_auth_method", "client_secret_post")
-	viper.SetDefault("linuxdo_connect.use_pkce", true)
+	viper.SetDefault("linuxdo_connect.use_pkce", false)
 	viper.SetDefault("linuxdo_connect.userinfo_email_path", "")
 	viper.SetDefault("linuxdo_connect.userinfo_id_path", "")
 	viper.SetDefault("linuxdo_connect.userinfo_username_path", "")
@@ -1222,8 +1222,8 @@ REDACTED)
 	viper.SetDefault("oidc_connect.redirect_url", "")
 	viper.SetDefault("oidc_connect.frontend_redirect_url", "/auth/oidc/callback")
 	viper.SetDefault("oidc_connect.token_auth_method", "client_secret_post")
-	viper.SetDefault("oidc_connect.use_pkce", true)
-	viper.SetDefault("oidc_connect.validate_id_token", true)
+	viper.SetDefault("oidc_connect.use_pkce", false)
+	viper.SetDefault("oidc_connect.validate_id_token", false)
 	viper.SetDefault("oidc_connect.allowed_signing_algs", "RS256,ES256,PS256")
 	viper.SetDefault("oidc_connect.clock_skew_seconds", 120)
 	viper.SetDefault("oidc_connect.require_email_verified", false)
@@ -1613,9 +1613,6 @@ REDACTED
 		return fmt.Errorf("security.csp.policy is required when CSP is enabled")
 REDACTED
 	if c.LinuxDo.Enabled {
-		if !c.LinuxDo.UsePKCE {
-			return fmt.Errorf("linuxdo_connect.use_pkce must be true when linuxdo_connect.enabled=true")
-	REDACTED
 		if strings.TrimSpace(c.LinuxDo.ClientID) == "" {
 			return fmt.Errorf("linuxdo_connect.client_id is required when linuxdo_connect.enabled=true")
 	REDACTED
@@ -1668,12 +1665,6 @@ REDACTED
 		warnIfInsecureURL("linuxdo_connect.frontend_redirect_url", c.LinuxDo.FrontendRedirectURL)
 REDACTED
 	if c.OIDC.Enabled {
-		if !c.OIDC.UsePKCE {
-			return fmt.Errorf("oidc_connect.use_pkce must be true when oidc_connect.enabled=true")
-	REDACTED
-		if !c.OIDC.ValidateIDToken {
-			return fmt.Errorf("oidc_connect.validate_id_token must be true when oidc_connect.enabled=true")
-	REDACTED
 		if strings.TrimSpace(c.OIDC.ClientID) == "" {
 			return fmt.Errorf("oidc_connect.client_id is required when oidc_connect.enabled=true")
 	REDACTED

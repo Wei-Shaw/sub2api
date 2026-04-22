@@ -171,6 +171,80 @@ REDACTED
 	require.Equal(t, int64(42), userID)
 REDACTED
 
+func TestLinuxDoOAuthStartOmitsPKCEWhenDisabled(t *testing.T) {
+	handler := newLinuxDoOAuthTestHandler(t, false, config.LinuxDoConnectConfig{
+		Enabled:             true,
+		ClientID:            "linuxdo-client",
+		ClientSecret:        "linuxdo-secret",
+		AuthorizeURL:        "https://connect.linux.do/oauth/authorize",
+		TokenURL:            "https://connect.linux.do/oauth/token",
+		UserInfoURL:         "https://connect.linux.do/api/user",
+		Scopes:              "read",
+		RedirectURL:         "https://api.example.com/api/v1/auth/oauth/linuxdo/callback",
+		FrontendRedirectURL: "/auth/linuxdo/callback",
+		TokenAuthMethod:     "client_secret_post",
+		UsePKCE:             false,
+REDACTED)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/linuxdo/start?redirect=/dashboard", nil)
+
+	handler.LinuxDoOAuthStart(c)
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	require.NotContains(t, recorder.Header().Get("Location"), "code_challenge=")
+	require.Nil(t, findCookie(recorder.Result().Cookies(), linuxDoOAuthVerifierCookie))
+REDACTED
+
+func TestLinuxDoOAuthCallbackAllowsMissingVerifierWhenPKCEDisabled(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			require.NoError(t, r.ParseForm())
+			require.Empty(t, r.PostForm.Get("code_verifier"))
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"linuxdo-access","token_type":"Bearer","expires_in":3600REDACTED`))
+		case "/userinfo":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"compat-subject","username":"linuxdo_user","name":"LinuxDo Display"REDACTED`))
+		default:
+			http.NotFound(w, r)
+	REDACTED
+REDACTED))
+	defer upstream.Close()
+
+	handler, client := newLinuxDoOAuthHandlerAndClient(t, false, config.LinuxDoConnectConfig{
+		Enabled:             true,
+		ClientID:            "linuxdo-client",
+		ClientSecret:        "linuxdo-secret",
+		AuthorizeURL:        upstream.URL + "/authorize",
+		TokenURL:            upstream.URL + "/token",
+		UserInfoURL:         upstream.URL + "/userinfo",
+		Scopes:              "read",
+		RedirectURL:         "https://api.example.com/api/v1/auth/oauth/linuxdo/callback",
+		FrontendRedirectURL: "/auth/linuxdo/callback",
+		TokenAuthMethod:     "client_secret_post",
+		UsePKCE:             false,
+REDACTED)
+	t.Cleanup(func() { _ = client.Close() REDACTED)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/linuxdo/callback?code=linuxdo-code&state=state-123", nil)
+	req.AddCookie(encodedCookie(linuxDoOAuthStateCookieName, "state-123"))
+	req.AddCookie(encodedCookie(linuxDoOAuthRedirectCookie, "/dashboard"))
+	req.AddCookie(encodedCookie(linuxDoOAuthIntentCookieName, oauthIntentLogin))
+	req.AddCookie(encodedCookie(oauthPendingBrowserCookieName, "browser-123"))
+	c.Request = req
+
+	handler.LinuxDoOAuthCallback(c)
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	require.Equal(t, "/auth/linuxdo/callback", recorder.Header().Get("Location"))
+	require.NotNil(t, findCookie(recorder.Result().Cookies(), oauthPendingSessionCookieName))
+REDACTED
+
 func TestLinuxDoOAuthBindStartAcceptsAccessTokenCookie(t *testing.T) {
 	handler, client := newLinuxDoOAuthHandlerAndClient(t, false, config.LinuxDoConnectConfig{
 		Enabled:             true,
@@ -327,7 +401,10 @@ REDACTED
 	completion, ok := session.LocalFlowState[oauthCompletionResponseKey].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "/dashboard", completion["redirect"])
-	require.NotEmpty(t, completion["access_token"])
+	_, hasAccessToken := completion["access_token"]
+	require.False(t, hasAccessToken)
+	_, hasRefreshToken := completion["refresh_token"]
+	require.False(t, hasRefreshToken)
 	require.Nil(t, completion["error"])
 REDACTED
 

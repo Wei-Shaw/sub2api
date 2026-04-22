@@ -631,7 +631,7 @@ REDACTED
 	mpReady := mpEnabled && webRedirectReady && mpAppID != "" && mpAppSecret != ""
 	mobileReady := mobileEnabled && mobileAppID != "" && mobileAppSecret != ""
 
-	return openReady || mpReady || mobileReady, openReady, mpReady, mobileReady
+	return openReady || mpReady, openReady, mpReady, mobileReady
 REDACTED
 
 // filterUserVisibleMenuItems filters out admin-only menu items from a raw JSON
@@ -1693,8 +1693,6 @@ REDACTED
 REDACTED else {
 		result.OIDCConnectValidateIDToken = oidcBase.ValidateIDToken
 REDACTED
-	result.OIDCConnectUsePKCE = true
-	result.OIDCConnectValidateIDToken = true
 	if v, ok := settings[SettingKeyOIDCConnectAllowedSigningAlgs]; ok && strings.TrimSpace(v) != "" {
 		result.OIDCConnectAllowedSigningAlgs = strings.TrimSpace(v)
 REDACTED else {
@@ -2196,8 +2194,6 @@ REDACTED
 	if v, ok := settings[SettingKeyLinuxDoConnectRedirectURL]; ok && strings.TrimSpace(v) != "" {
 		effective.RedirectURL = strings.TrimSpace(v)
 REDACTED
-	effective.UsePKCE = true
-
 	if !effective.Enabled {
 		return config.LinuxDoConnectConfig{REDACTED, infraerrors.NotFound("OAUTH_DISABLED", "oauth login is disabled")
 REDACTED
@@ -2421,8 +2417,6 @@ REDACTED
 	if raw, ok := settings[SettingKeyOIDCConnectValidateIDToken]; ok {
 		effective.ValidateIDToken = raw == "true"
 REDACTED
-	effective.UsePKCE = true
-	effective.ValidateIDToken = true
 	if v, ok := settings[SettingKeyOIDCConnectAllowedSigningAlgs]; ok && strings.TrimSpace(v) != "" {
 		effective.AllowedSigningAlgs = strings.TrimSpace(v)
 REDACTED

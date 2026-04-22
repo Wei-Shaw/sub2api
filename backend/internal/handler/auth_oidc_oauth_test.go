@@ -186,6 +186,89 @@ REDACTED
 	require.Equal(t, int64(84), userID)
 REDACTED
 
+func TestOIDCOAuthStartOmitsPKCEAndNonceWhenDisabled(t *testing.T) {
+	handler := newOIDCOAuthTestHandler(t, false, config.OIDCConnectConfig{
+		Enabled:              true,
+		ClientID:             "oidc-client",
+		ClientSecret:         "oidc-secret",
+		IssuerURL:            "https://issuer.example.com",
+		AuthorizeURL:         "https://issuer.example.com/oauth/authorize",
+		TokenURL:             "https://issuer.example.com/oauth/token",
+		UserInfoURL:          "https://issuer.example.com/oauth/userinfo",
+		Scopes:               "openid profile email",
+		RedirectURL:          "https://api.example.com/api/v1/auth/oauth/oidc/callback",
+		FrontendRedirectURL:  "/auth/oidc/callback",
+		TokenAuthMethod:      "client_secret_post",
+		UsePKCE:              false,
+		ValidateIDToken:      false,
+		RequireEmailVerified: false,
+REDACTED)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/start?redirect=/dashboard", nil)
+
+	handler.OIDCOAuthStart(c)
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	location := recorder.Header().Get("Location")
+	require.NotContains(t, location, "code_challenge=")
+	require.NotContains(t, location, "nonce=")
+	require.Nil(t, findCookie(recorder.Result().Cookies(), oidcOAuthVerifierCookie))
+	require.Nil(t, findCookie(recorder.Result().Cookies(), oidcOAuthNonceCookie))
+REDACTED
+
+func TestOIDCOAuthCallbackAllowsOptionalPKCEAndIDTokenValidation(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			require.NoError(t, r.ParseForm())
+			require.Empty(t, r.PostForm.Get("code_verifier"))
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"oidc-access","token_type":"Bearer","expires_in":3600REDACTED`))
+		case "/userinfo":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"sub":"oidc-subject-compat","preferred_username":"oidc_user","name":"OIDC Display","email":"oidc@example.com"REDACTED`))
+		default:
+			http.NotFound(w, r)
+	REDACTED
+REDACTED))
+	defer upstream.Close()
+
+	handler, client := newOIDCOAuthHandlerAndClient(t, false, config.OIDCConnectConfig{
+		Enabled:              true,
+		ClientID:             "oidc-client",
+		ClientSecret:         "oidc-secret",
+		IssuerURL:            "https://issuer.example.com",
+		AuthorizeURL:         upstream.URL + "/authorize",
+		TokenURL:             upstream.URL + "/token",
+		UserInfoURL:          upstream.URL + "/userinfo",
+		Scopes:               "openid profile email",
+		RedirectURL:          "https://api.example.com/api/v1/auth/oauth/oidc/callback",
+		FrontendRedirectURL:  "/auth/oidc/callback",
+		TokenAuthMethod:      "client_secret_post",
+		UsePKCE:              false,
+		ValidateIDToken:      false,
+		RequireEmailVerified: false,
+REDACTED)
+	t.Cleanup(func() { _ = client.Close() REDACTED)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/callback?code=oidc-code&state=state-123", nil)
+	req.AddCookie(encodedCookie(oidcOAuthStateCookieName, "state-123"))
+	req.AddCookie(encodedCookie(oidcOAuthRedirectCookie, "/dashboard"))
+	req.AddCookie(encodedCookie(oidcOAuthIntentCookieName, oauthIntentLogin))
+	req.AddCookie(encodedCookie(oauthPendingBrowserCookieName, "browser-123"))
+	c.Request = req
+
+	handler.OIDCOAuthCallback(c)
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	require.Equal(t, "/auth/oidc/callback", recorder.Header().Get("Location"))
+	require.NotNil(t, findCookie(recorder.Result().Cookies(), oauthPendingSessionCookieName))
+REDACTED
+
 func TestOIDCOAuthCallbackCreatesLoginPendingSessionForExistingIdentityUser(t *testing.T) {
 	cfg, cleanup := newOIDCTestProvider(t, oidcProviderFixture{
 		Subject:           "oidc-subject-login",
@@ -250,7 +333,10 @@ REDACTED
 	completion, ok := session.LocalFlowState[oauthCompletionResponseKey].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "/dashboard", completion["redirect"])
-	require.NotEmpty(t, completion["access_token"])
+	_, hasAccessToken := completion["access_token"]
+	require.False(t, hasAccessToken)
+	_, hasRefreshToken := completion["refresh_token"]
+	require.False(t, hasRefreshToken)
 	require.Nil(t, completion["error"])
 REDACTED
 

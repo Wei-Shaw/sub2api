@@ -362,6 +362,16 @@ function getBindingDetails(provider: UserAuthProvider): UserAuthBindingStatus | 
   return binding
 REDACTED
 
+function isProviderEnabledForBinding(provider: BindableProvider): boolean {
+  if (provider === 'linuxdo') {
+    return props.linuxdoEnabled
+  REDACTED
+  if (provider === 'oidc') {
+    return props.oidcEnabled
+  REDACTED
+  return resolvedWeChatBinding.value.mode !== null
+REDACTED
+
 const providerItems = computed(() => [
   {
     provider: 'email' as const,
@@ -375,7 +385,10 @@ const providerItems = computed(() => [
     provider: 'linuxdo' as const,
     label: t('profile.authBindings.providers.linuxdo'),
     bound: getBindingStatus('linuxdo'),
-    canBind: getBindingDetails('linuxdo')?.can_bind ?? (props.linuxdoEnabled && !getBindingStatus('linuxdo')),
+    canBind:
+      !getBindingStatus('linuxdo') &&
+      isProviderEnabledForBinding('linuxdo') &&
+      (getBindingDetails('linuxdo')?.can_bind ?? true),
     canUnbind: Boolean(getBindingStatus('linuxdo') && getBindingDetails('linuxdo')?.can_unbind),
     details: getBindingDetails('linuxdo'),
   REDACTED,
@@ -383,7 +396,10 @@ const providerItems = computed(() => [
     provider: 'oidc' as const,
     label: t('profile.authBindings.providers.oidc', { providerName: props.oidcProviderName REDACTED),
     bound: getBindingStatus('oidc'),
-    canBind: getBindingDetails('oidc')?.can_bind ?? (props.oidcEnabled && !getBindingStatus('oidc')),
+    canBind:
+      !getBindingStatus('oidc') &&
+      isProviderEnabledForBinding('oidc') &&
+      (getBindingDetails('oidc')?.can_bind ?? true),
     canUnbind: Boolean(getBindingStatus('oidc') && getBindingDetails('oidc')?.can_unbind),
     details: getBindingDetails('oidc'),
   REDACTED,
@@ -391,7 +407,10 @@ const providerItems = computed(() => [
     provider: 'wechat' as const,
     label: t('profile.authBindings.providers.wechat'),
     bound: getBindingStatus('wechat'),
-    canBind: getBindingDetails('wechat')?.can_bind ?? (resolvedWeChatBinding.value.mode !== null && !getBindingStatus('wechat')),
+    canBind:
+      !getBindingStatus('wechat') &&
+      isProviderEnabledForBinding('wechat') &&
+      (getBindingDetails('wechat')?.can_bind ?? true),
     canUnbind: Boolean(getBindingStatus('wechat') && getBindingDetails('wechat')?.can_unbind),
     details: getBindingDetails('wechat'),
   REDACTED,

@@ -474,4 +474,26 @@ describe('ProfileIdentityBindingsSection', () => {
     expect(userApiMocks.unbindAuthIdentity).toHaveBeenCalledWith('linuxdo')
     expect(wrapper.get('[data-testid="profile-binding-linuxdo-status"]').text()).toBe('Not bound')
   REDACTED)
+
+  it('hides bind actions when provider details say bindable but the provider is disabled', () => {
+    const wrapper = mount(ProfileIdentityBindingsSection, {
+      global: {
+        plugins: [pinia],
+      REDACTED,
+      props: {
+        user: createUser({
+          auth_bindings: {
+            linuxdo: { bound: false, can_bind: true REDACTED,
+            oidc: { bound: false, can_bind: true REDACTED,
+          REDACTED,
+        REDACTED),
+        linuxdoEnabled: false,
+        oidcEnabled: false,
+        wechatEnabled: false,
+      REDACTED,
+    REDACTED)
+
+    expect(wrapper.find('[data-testid="profile-binding-linuxdo-action"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="profile-binding-oidc-action"]').exists()).toBe(false)
+  REDACTED)
 REDACTED)
