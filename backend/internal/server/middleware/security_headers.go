@@ -96,7 +96,8 @@ REDACTED
 	return strings.HasPrefix(path, "/v1/") ||
 		strings.HasPrefix(path, "/v1beta/") ||
 		strings.HasPrefix(path, "/antigravity/") ||
-		strings.HasPrefix(path, "/responses")
+		strings.HasPrefix(path, "/responses") ||
+		strings.HasPrefix(path, "/images")
 REDACTED
 
 // enhanceCSPPolicy ensures the CSP policy includes nonce support, Cloudflare Insights,

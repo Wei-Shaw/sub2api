@@ -25,12 +25,16 @@ REDACTED{
 		{"/v1/messages", EndpointMessagesREDACTED,
 		{"/v1/chat/completions", EndpointChatCompletionsREDACTED,
 		{"/v1/responses", EndpointResponsesREDACTED,
+		{"/v1/images/generations", EndpointImagesGenerationsREDACTED,
+		{"/v1/images/edits", EndpointImagesEditsREDACTED,
 		{"/v1beta/models", EndpointGeminiModelsREDACTED,
 
 		// Prefixed paths (antigravity, openai).
 		{"/antigravity/v1/messages", EndpointMessagesREDACTED,
 		{"/openai/v1/responses", EndpointResponsesREDACTED,
 		{"/openai/v1/responses/compact", EndpointResponsesREDACTED,
+		{"/openai/v1/images/generations", EndpointImagesGenerationsREDACTED,
+		{"/openai/v1/images/edits", EndpointImagesEditsREDACTED,
 		{"/antigravity/v1beta/models/gemini:generateContent", EndpointGeminiModelsREDACTED,
 
 		// Gin route patterns with wildcards.
@@ -73,6 +77,8 @@ REDACTED{
 		{"openai responses nested", EndpointResponses, "/openai/v1/responses/compact/detail", service.PlatformOpenAI, "/v1/responses/compact/detail"REDACTED,
 		{"openai from messages", EndpointMessages, "/v1/messages", service.PlatformOpenAI, EndpointResponsesREDACTED,
 		{"openai from completions", EndpointChatCompletions, "/v1/chat/completions", service.PlatformOpenAI, EndpointResponsesREDACTED,
+		{"openai image generations", EndpointImagesGenerations, "/v1/images/generations", service.PlatformOpenAI, EndpointImagesGenerationsREDACTED,
+		{"openai image edits", EndpointImagesEdits, "/openai/v1/images/edits", service.PlatformOpenAI, EndpointImagesEditsREDACTED,
 
 		// Antigravity — uses inbound to pick Claude vs Gemini upstream.
 		{"antigravity claude", EndpointMessages, "/antigravity/v1/messages", service.PlatformAntigravity, EndpointMessagesREDACTED,
