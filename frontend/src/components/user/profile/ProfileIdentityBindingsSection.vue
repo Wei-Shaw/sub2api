@@ -67,23 +67,23 @@
               </p>
 
               <div
-                v-if="item.details && (item.details.display_name || item.details.subject_hint || bindingCountLabel(item.details) || item.details.note)"
+                v-if="hasBindingDetails(item.provider, item.details)"
                 class="grid gap-1 text-sm text-gray-500 dark:text-gray-400"
               >
                 <p
-                  v-if="item.details.display_name"
+                  v-if="item.provider !== 'email' && item.details?.display_name"
                   class="font-medium text-gray-700 dark:text-gray-200"
                 >
                   {{ item.details.display_name REDACTEDREDACTED
                 </p>
-                <p v-if="item.details.subject_hint">
+                <p v-if="item.provider !== 'email' && item.details?.subject_hint">
                   {{ item.details.subject_hint REDACTEDREDACTED
                 </p>
                 <p v-if="bindingCountLabel(item.details)">
                   {{ bindingCountLabel(item.details) REDACTEDREDACTED
                 </p>
-                <p v-if="item.details.note">
-                  {{ item.details.note REDACTEDREDACTED
+                <p v-if="bindingNote(item.details)">
+                  {{ bindingNote(item.details) REDACTEDREDACTED
                 </p>
               </div>
 
@@ -298,6 +298,13 @@ const emailSubmitActionLabel = computed(() =>
     ? t('profile.authBindings.confirmEmailReplaceAction')
     : t('profile.authBindings.confirmEmailBindAction')
 )
+const legacyBindingNoteKeys: Record<string, string> = {
+  'Primary account email is managed from the profile form.':
+    'profile.authBindings.notes.emailManagedFromProfile',
+  'You can unbind this sign-in method.': 'profile.authBindings.notes.canUnbind',
+  'Bind another sign-in method before unbinding.':
+    'profile.authBindings.notes.bindAnotherBeforeUnbind',
+REDACTED
 
 function resolveLegacyCompatibleWeChatSettings(
   settings: WeChatOAuthPublicSettings | null | undefined
@@ -487,6 +494,36 @@ function bindingCountLabel(details: UserAuthBindingStatus | null): string {
     return ''
   REDACTED
   return t('profile.authBindings.boundCount', { count: details.bound_count REDACTED)
+REDACTED
+
+function bindingNote(details: UserAuthBindingStatus | null): string {
+  if (!details) {
+    return ''
+  REDACTED
+
+  const noteKey = details.note_key?.trim() || legacyBindingNoteKeys[details.note?.trim() || ''] || ''
+  if (noteKey) {
+    const translated = t(noteKey)
+    if (translated !== noteKey) {
+      return translated
+    REDACTED
+  REDACTED
+
+  return details.note?.trim() || ''
+REDACTED
+
+function hasBindingDetails(
+  provider: UserAuthProvider,
+  details: UserAuthBindingStatus | null
+): boolean {
+  if (!details) {
+    return false
+  REDACTED
+
+  const showsProviderIdentityDetails =
+    provider !== 'email' && Boolean(details.display_name || details.subject_hint)
+
+  return Boolean(showsProviderIdentityDetails || bindingCountLabel(details) || bindingNote(details))
 REDACTED
 
 function toggleEmailForm(): void {

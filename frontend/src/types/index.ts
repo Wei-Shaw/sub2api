@@ -51,6 +51,7 @@ export interface UserAuthBindingStatus {
   bind_start_path?: string | null
   can_bind?: boolean
   can_unbind?: boolean
+  note_key?: string | null
   note?: string | null
   metadata?: Record<string, unknown>
 REDACTED

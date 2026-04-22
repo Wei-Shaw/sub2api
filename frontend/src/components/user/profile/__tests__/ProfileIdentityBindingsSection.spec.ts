@@ -64,6 +64,12 @@ vi.mock('vue-i18n', async (importOriginal) => {
         if (key === 'profile.authBindings.codeSentTo') return `Code sent to ${params?.email || ''REDACTED`.trim()
         if (key === 'profile.authBindings.bindSuccess') return 'Bind success'
         if (key === 'profile.authBindings.replaceSuccess') return 'Primary email updated'
+        if (key === 'profile.authBindings.notes.emailManagedFromProfile')
+          return 'Primary email is managed in the profile form'
+        if (key === 'profile.authBindings.notes.canUnbind')
+          return 'You can unbind this sign-in method'
+        if (key === 'profile.authBindings.notes.bindAnotherBeforeUnbind')
+          return 'Bind another sign-in method before unbinding'
         return key
       REDACTED,
     REDACTED),
@@ -164,7 +170,7 @@ describe('ProfileIdentityBindingsSection', () => {
 
     await wrapper.get('[data-testid="profile-binding-wechat-action"]').trigger('click')
 
-    expect(locationState.current.href).toContain('/api/v1/auth/oauth/wechat/start?')
+    expect(locationState.current.href).toContain('/api/v1/auth/oauth/wechat/bind/start?')
     expect(locationState.current.href).toContain('mode=open')
     expect(locationState.current.href).toContain('intent=bind_current_user')
     expect(locationState.current.href).toContain('redirect=%2Fprofile')
@@ -219,7 +225,7 @@ describe('ProfileIdentityBindingsSection', () => {
 
     await wrapper.get('[data-testid="profile-binding-wechat-action"]').trigger('click')
 
-    expect(locationState.current.href).toContain('/api/v1/auth/oauth/wechat/start?')
+    expect(locationState.current.href).toContain('/api/v1/auth/oauth/wechat/bind/start?')
     expect(locationState.current.href).toContain('mode=open')
     expect(locationState.current.href).toContain('intent=bind_current_user')
     expect(locationState.current.href).toContain('redirect=%2Fprofile')
@@ -401,6 +407,36 @@ describe('ProfileIdentityBindingsSection', () => {
     expect(wrapper.get('[data-testid="profile-binding-email-status"]').text()).toBe('Not bound')
   REDACTED)
 
+  it('shows the bound email only once and localizes the email management note', () => {
+    const wrapper = mount(ProfileIdentityBindingsSection, {
+      global: {
+        plugins: [pinia],
+      REDACTED,
+      props: {
+        user: createUser({
+          email: 'alice@example.com',
+          email_bound: true,
+          auth_bindings: {
+            email: {
+              bound: true,
+              display_name: 'alice@example.com',
+              subject_hint: 'a***e@example.com',
+              note_key: 'profile.authBindings.notes.emailManagedFromProfile',
+              note: 'Primary account email is managed from the profile form.',
+            REDACTED as any,
+          REDACTED,
+        REDACTED),
+        linuxdoEnabled: false,
+        oidcEnabled: false,
+        wechatEnabled: false,
+      REDACTED,
+    REDACTED)
+
+    expect(wrapper.text().match(/alice@example\.com/g)).toHaveLength(1)
+    expect(wrapper.text()).not.toContain('a***e@example.com')
+    expect(wrapper.text()).toContain('Primary email is managed in the profile form')
+  REDACTED)
+
   it('keeps the email form available for replacing a bound primary email', async () => {
     userApiMocks.sendEmailBindingCode.mockResolvedValue(undefined)
     userApiMocks.bindEmailIdentity.mockResolvedValue(
@@ -539,6 +575,36 @@ describe('ProfileIdentityBindingsSection', () => {
 
     expect(userApiMocks.unbindAuthIdentity).toHaveBeenCalledWith('linuxdo')
     expect(wrapper.get('[data-testid="profile-binding-linuxdo-status"]').text()).toBe('Not bound')
+  REDACTED)
+
+  it('localizes third-party unbind guidance from note_key', () => {
+    const wrapper = mount(ProfileIdentityBindingsSection, {
+      global: {
+        plugins: [pinia],
+      REDACTED,
+      props: {
+        user: createUser({
+          email_bound: true,
+          linuxdo_bound: true,
+          auth_bindings: {
+            email: { bound: true REDACTED,
+            linuxdo: {
+              bound: true,
+              display_name: 'linuxdo-handle',
+              note_key: 'profile.authBindings.notes.canUnbind',
+              note: 'You can unbind this sign-in method.',
+              can_unbind: true,
+            REDACTED as any,
+          REDACTED,
+        REDACTED),
+        linuxdoEnabled: true,
+        oidcEnabled: false,
+        wechatEnabled: false,
+      REDACTED,
+    REDACTED)
+
+    expect(wrapper.text()).toContain('You can unbind this sign-in method')
+    expect(wrapper.text()).not.toContain('You can unbind this sign-in method.')
   REDACTED)
 
   it('hides bind actions when provider details say bindable but the provider is disabled', () => {
