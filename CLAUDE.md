@@ -1538,17 +1538,6 @@ PR 目标是上游官方仓库 `Wei-Shaw/sub2api:main`，**只包含通用功能
 
 #### PR 分支创建流程
 
-> **禁止**将 PR 分支 merge 回 release（会带入 upstream/main 的非相关代码）。
-
-**为什么用 squash merge 而不是 cherry-pick？**
-
-我们 release 上一个功能往往跨几十上百个 commit（初版 → 重构 → 修复 → ent 重新生成 …），还和已上游化的功能（支付、亲和度、通知等）的 commit 交织。逐 commit cherry-pick 会：
-1. 大量冲突（基底差太远）
-2. 拉进很多 fork-only 边角改动
-3. 最终 PR 历史依然混乱
-
-squash merge 让我们一次性拿到「release vs upstream/main」的完整差量，然后**按文件级 revert** 把不相关的 hunk 剥掉，得到一个语义内聚的 PR。
-
 ```bash
 # 1. 获取最新上游代码
 git fetch upstream
