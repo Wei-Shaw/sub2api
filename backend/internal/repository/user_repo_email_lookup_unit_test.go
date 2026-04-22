@@ -209,10 +209,10 @@ REDACTED()
 	successes := 0
 	conflicts := 0
 	for _, err := range errors {
-		switch {
-		case err == nil:
+		switch err {
+		case nil:
 			successes++
-		case err == service.ErrEmailExists:
+		case service.ErrEmailExists:
 			conflicts++
 		default:
 			t.Fatalf("unexpected create error: %v", err)

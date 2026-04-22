@@ -131,21 +131,6 @@ REDACTED
 	return nil
 REDACTED
 
-func buildPaymentProviderConflictError(method string, conflicting *dbent.PaymentProviderInstance) error {
-	metadata := map[string]string{
-		"payment_method": NormalizeVisibleMethod(method),
-REDACTED
-	if conflicting != nil {
-		metadata["conflicting_provider_id"] = fmt.Sprintf("%d", conflicting.ID)
-		metadata["conflicting_provider_key"] = conflicting.ProviderKey
-		metadata["conflicting_provider_name"] = conflicting.Name
-REDACTED
-	return infraerrors.Conflict(
-		"PAYMENT_PROVIDER_CONFLICT",
-		fmt.Sprintf("%s payment already has an enabled provider instance", NormalizeVisibleMethod(method)),
-	).WithMetadata(metadata)
-REDACTED
-
 func (s *PaymentConfigService) validateVisibleMethodEnablementConflicts(
 	ctx context.Context,
 	excludeID int64,

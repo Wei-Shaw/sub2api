@@ -265,18 +265,6 @@ func pendingSessionWantsInvitation(payload map[string]any) bool {
 	return strings.EqualFold(strings.TrimSpace(pendingSessionStringValue(payload, "error")), "invitation_required")
 REDACTED
 
-func pendingOAuthCompletionIncludesTokenPayload(payload map[string]any) bool {
-	if len(payload) == 0 {
-		return false
-REDACTED
-	for _, key := range []string{"access_token", "refresh_token"REDACTED {
-		if value := pendingSessionStringValue(payload, key); value != "" {
-			return true
-	REDACTED
-REDACTED
-	return false
-REDACTED
-
 func pendingOAuthCompletionCanIssueTokenPair(session *dbent.PendingAuthSession, payload map[string]any) bool {
 	if session == nil {
 		return false
