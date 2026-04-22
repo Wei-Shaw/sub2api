@@ -595,6 +595,10 @@ REDACTED()
 	groupDescMessagesDispatchModelConfig := groupFields[26].Descriptor()
 	// group.DefaultMessagesDispatchModelConfig holds the default value on creation for the messages_dispatch_model_config field.
 	group.DefaultMessagesDispatchModelConfig = groupDescMessagesDispatchModelConfig.Default.(domain.OpenAIMessagesDispatchModelConfig)
+	// groupDescRpmLimit is the schema descriptor for rpm_limit field.
+	groupDescRpmLimit := groupFields[27].Descriptor()
+	// group.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
+	group.DefaultRpmLimit = groupDescRpmLimit.Default.(int)
 	idempotencyrecordMixin := schema.IdempotencyRecord{REDACTED.Mixin()
 	idempotencyrecordMixinFields0 := idempotencyrecordMixin[0].Fields()
 	_ = idempotencyrecordMixinFields0
@@ -1575,6 +1579,10 @@ REDACTED()
 	userDescTotalRecharged := userFields[18].Descriptor()
 	// user.DefaultTotalRecharged holds the default value on creation for the total_recharged field.
 	user.DefaultTotalRecharged = userDescTotalRecharged.Default.(float64)
+	// userDescRpmLimit is the schema descriptor for rpm_limit field.
+	userDescRpmLimit := userFields[19].Descriptor()
+	// user.DefaultRpmLimit holds the default value on creation for the rpm_limit field.
+	user.DefaultRpmLimit = userDescRpmLimit.Default.(int)
 	userallowedgroupFields := schema.UserAllowedGroup{REDACTED.Fields()
 	_ = userallowedgroupFields
 	// userallowedgroupDescCreatedAt is the schema descriptor for created_at field.
