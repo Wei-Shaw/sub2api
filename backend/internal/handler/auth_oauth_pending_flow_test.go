@@ -746,11 +746,7 @@ REDACTED
 	REDACTED).
 		SetLocalFlowState(map[string]any{
 			oauthCompletionResponseKey: map[string]any{
-				"access_token":  "access-token",
-				"refresh_token": "refresh-token",
-				"expires_in":    float64(3600),
-				"token_type":    "Bearer",
-				"redirect":      "/dashboard",
+				"redirect": "/dashboard",
 		REDACTED,
 	REDACTED).
 		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
@@ -769,8 +765,8 @@ REDACTED
 	require.Equal(t, http.StatusOK, recorder.Code)
 
 	payload := decodeJSONResponseData(t, recorder)
-	require.Equal(t, "access-token", payload["access_token"])
-	require.Equal(t, "refresh-token", payload["refresh_token"])
+	require.NotEmpty(t, payload["access_token"])
+	require.NotEmpty(t, payload["refresh_token"])
 	require.Equal(t, "/dashboard", payload["redirect"])
 	require.Equal(t, "Existing Login Example", payload["suggested_display_name"])
 	require.Equal(t, "https://cdn.example/existing-login.png", payload["suggested_avatar_url"])

@@ -356,3 +356,69 @@ REDACTED
 	_, err = svc.ConsumeBrowserSession(ctx, session.SessionToken, "browser-session")
 	require.ErrorIs(t, err, ErrPendingAuthSessionConsumed)
 REDACTED
+
+func TestAuthPendingIdentityService_ConsumeBrowserSessionRejectsStaleLoadedSessionReplay(t *testing.T) {
+	svc, _ := newAuthPendingIdentityServiceTestClient(t)
+	ctx := context.Background()
+
+	session, err := svc.CreatePendingSession(ctx, CreatePendingAuthSessionInput{
+		Intent: "login",
+		Identity: PendingAuthIdentityKey{
+			ProviderType:    "linuxdo",
+			ProviderKey:     "linuxdo",
+			ProviderSubject: "stale-replay-subject",
+	REDACTED,
+		BrowserSessionKey: "browser-session",
+REDACTED)
+REDACTED
+
+	loaded, err := svc.getBrowserSession(ctx, session.SessionToken)
+REDACTED
+
+	consumed, err := svc.consumeSession(ctx, loaded, "browser-session", ErrPendingAuthSessionExpired, ErrPendingAuthSessionConsumed)
+REDACTED
+	require.NotNil(t, consumed.ConsumedAt)
+
+	_, err = svc.consumeSession(ctx, loaded, "browser-session", ErrPendingAuthSessionExpired, ErrPendingAuthSessionConsumed)
+	require.ErrorIs(t, err, ErrPendingAuthSessionConsumed)
+REDACTED
+
+func TestAuthPendingIdentityService_ConsumeBrowserSessionScrubsLegacyCompletionTokens(t *testing.T) {
+	svc, client := newAuthPendingIdentityServiceTestClient(t)
+	ctx := context.Background()
+
+	session, err := svc.CreatePendingSession(ctx, CreatePendingAuthSessionInput{
+		Intent: "login",
+		Identity: PendingAuthIdentityKey{
+			ProviderType:    "linuxdo",
+			ProviderKey:     "linuxdo",
+			ProviderSubject: "legacy-token-subject",
+	REDACTED,
+		BrowserSessionKey: "browser-session",
+		LocalFlowState: map[string]any{
+			"completion_response": map[string]any{
+				"access_token":  "legacy-access-token",
+				"refresh_token": "legacy-refresh-token",
+				"expires_in":    float64(3600),
+				"token_type":    "Bearer",
+				"redirect":      "/dashboard",
+		REDACTED,
+	REDACTED,
+REDACTED)
+REDACTED
+
+	consumed, err := svc.ConsumeBrowserSession(ctx, session.SessionToken, "browser-session")
+REDACTED
+	require.NotNil(t, consumed.ConsumedAt)
+
+	stored, err := client.PendingAuthSession.Get(ctx, session.ID)
+REDACTED
+
+	completion, ok := stored.LocalFlowState["completion_response"].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, completion, "access_token")
+	require.NotContains(t, completion, "refresh_token")
+	require.NotContains(t, completion, "expires_in")
+	require.NotContains(t, completion, "token_type")
+	require.Equal(t, "/dashboard", completion["redirect"])
+REDACTED
