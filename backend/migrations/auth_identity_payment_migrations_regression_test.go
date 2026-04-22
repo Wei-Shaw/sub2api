@@ -59,3 +59,28 @@ REDACTED
 	require.Contains(t, followupSQL, "DROP INDEX CONCURRENTLY IF EXISTS paymentorder_out_trade_no")
 	require.Contains(t, followupSQL, "WHERE out_trade_no <> ''")
 REDACTED
+
+func TestMigration122ScrubsPendingOAuthCompletionTokensAtRest(t *testing.T) {
+	content, err := FS.ReadFile("122_pending_auth_completion_token_cleanup.sql")
+REDACTED
+
+	sql := string(content)
+	require.Contains(t, sql, "UPDATE pending_auth_sessions")
+	require.Contains(t, sql, "completion_response")
+	require.Contains(t, sql, "access_token")
+	require.Contains(t, sql, "refresh_token")
+	require.Contains(t, sql, "expires_in")
+	require.Contains(t, sql, "token_type")
+REDACTED
+
+func TestMigration123BackfillsLegacyAuthSourceGrantDefaultsSafely(t *testing.T) {
+	content, err := FS.ReadFile("123_fix_legacy_auth_source_grant_on_signup_defaults.sql")
+REDACTED
+
+	sql := string(content)
+	require.Contains(t, sql, "110_pending_auth_and_provider_default_grants.sql")
+	require.Contains(t, sql, "schema_migrations")
+	require.Contains(t, sql, "updated_at")
+	require.Contains(t, sql, "'_grant_on_signup'")
+	require.Contains(t, sql, "value = 'false'")
+REDACTED

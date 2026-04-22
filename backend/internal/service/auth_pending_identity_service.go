@@ -236,6 +236,7 @@ func (s *AuthPendingIdentityService) consumeSession(
 		return nil, err
 REDACTED
 
+	sanitizedLocalFlowState := sanitizePendingAuthLocalFlowState(session.LocalFlowState)
 	now := time.Now().UTC()
 	update := s.entClient.PendingAuthSession.UpdateOneID(session.ID).
 		Where(
@@ -247,6 +248,7 @@ REDACTED
 			),
 		).
 		SetConsumedAt(now).
+		SetLocalFlowState(sanitizedLocalFlowState).
 		SetCompletionCodeHash("").
 		ClearCompletionCodeExpiresAt()
 	if expectedBrowserSessionKey := strings.TrimSpace(session.BrowserSessionKey); expectedBrowserSessionKey != "" {
@@ -271,6 +273,29 @@ REDACTED
 		return nil, err
 REDACTED
 	return nil, consumedErr
+REDACTED
+
+func sanitizePendingAuthLocalFlowState(localFlowState map[string]any) map[string]any {
+	sanitized := copyPendingMap(localFlowState)
+	if len(sanitized) == 0 {
+		return sanitized
+REDACTED
+
+	rawCompletion, ok := sanitized["completion_response"]
+	if !ok {
+		return sanitized
+REDACTED
+	completion, ok := rawCompletion.(map[string]any)
+	if !ok {
+		return sanitized
+REDACTED
+
+	cleanedCompletion := copyPendingMap(completion)
+	for _, key := range []string{"access_token", "refresh_token", "expires_in", "token_type"REDACTED {
+		delete(cleanedCompletion, key)
+REDACTED
+	sanitized["completion_response"] = cleanedCompletion
+	return sanitized
 REDACTED
 
 func validatePendingSessionState(session *dbent.PendingAuthSession, browserSessionKey string, expiredErr error, consumedErr error) error {
