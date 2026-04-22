@@ -1,133 +1,147 @@
 <template>
-  <div class="card">
-    <!-- 表头 -->
-    <div
-      class="grid items-center rounded-t-lg border-b border-gray-100 bg-gray-50/50 px-4 py-3 text-xs font-medium uppercase tracking-wide text-gray-500 dark:border-dark-700 dark:bg-dark-800/50 dark:text-gray-400"
-      :style="gridStyle"
-    >
-      <div>{{ columns.name REDACTEDREDACTED</div>
-      <div>{{ columns.platform REDACTEDREDACTED</div>
-      <div>{{ columns.groups REDACTEDREDACTED</div>
-      <div>{{ columns.supportedModels REDACTEDREDACTED</div>
-    </div>
-
-    <div v-if="loading" class="flex justify-center py-10">
-      <Icon name="refresh" size="lg" class="animate-spin text-gray-400" />
-    </div>
-
-    <div v-else-if="rows.length === 0" class="flex flex-col items-center py-12">
-      <Icon name="inbox" size="xl" class="mb-3 h-12 w-12 text-gray-400" />
-      <p class="text-sm text-gray-500 dark:text-gray-400">{{ emptyLabel REDACTEDREDACTED</p>
-    </div>
-
-    <!-- 渠道分组：每个渠道一个 section，内部按 platform 顺序铺开。
-         外层无 overflow-hidden，避免裁掉 SupportedModelChip 的价格浮层。 -->
-    <div
-      v-else
-      v-for="(channel, chIdx) in rows"
-      :key="`${channel.nameREDACTED-${chIdxREDACTED`"
-      class="border-b border-gray-100 last:rounded-b-lg last:border-b-0 dark:border-dark-700"
-    >
-      <div
-        v-for="(section, secIdx) in channel.platforms"
-        :key="`${channel.nameREDACTED-${section.platformREDACTED`"
-        class="grid items-center px-4 py-3 transition-colors hover:bg-gray-50/40 dark:hover:bg-dark-800/40"
-        :class="{ 'border-t border-gray-100/70 dark:border-dark-700/50': secIdx > 0 REDACTED"
-        :style="gridStyle"
+  <div class="card overflow-hidden">
+    <table class="w-full table-fixed border-collapse text-sm">
+      <thead>
+        <tr class="border-b border-gray-100 bg-gray-50/50 text-xs font-medium uppercase tracking-wide text-gray-500 dark:border-dark-700 dark:bg-dark-800/50 dark:text-gray-400">
+          <th class="w-[180px] px-4 py-3 text-center">{{ columns.name REDACTEDREDACTED</th>
+          <th class="w-[200px] px-4 py-3 text-left">{{ columns.description REDACTEDREDACTED</th>
+          <th class="w-[140px] px-4 py-3 text-left">{{ columns.platform REDACTEDREDACTED</th>
+          <th class="px-4 py-3 text-left">{{ columns.groups REDACTEDREDACTED</th>
+          <th class="px-4 py-3 text-left">{{ columns.supportedModels REDACTEDREDACTED</th>
+        </tr>
+      </thead>
+      <tbody v-if="loading">
+        <tr>
+          <td colspan="5" class="py-10 text-center">
+            <Icon name="refresh" size="lg" class="inline-block animate-spin text-gray-400" />
+          </td>
+        </tr>
+      </tbody>
+      <tbody v-else-if="rows.length === 0">
+        <tr>
+          <td colspan="5" class="py-12 text-center">
+            <Icon name="inbox" size="xl" class="mx-auto mb-3 h-12 w-12 text-gray-400" />
+            <p class="text-sm text-gray-500 dark:text-gray-400">{{ emptyLabel REDACTEDREDACTED</p>
+          </td>
+        </tr>
+      </tbody>
+      <!-- 每个渠道一个 tbody：首行 td rowspan 渠道名，后续行只渲染其余三列。
+           tbody 之间强分隔线表达"渠道边界"，tbody 内部用淡分隔线区分平台。 -->
+      <tbody
+        v-else
+        v-for="(channel, chIdx) in rows"
+        :key="`${channel.nameREDACTED-${chIdxREDACTED`"
+        class="border-b-2 border-gray-200 last:border-b-0 dark:border-dark-600"
       >
-        <!-- 渠道名：仅第一行渲染，后续行留空（视觉上的 rowspan） -->
-        <div>
-          <template v-if="secIdx === 0">
-            <div class="font-medium text-gray-900 dark:text-white">{{ channel.name REDACTEDREDACTED</div>
-            <div
-              v-if="channel.description"
-              class="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
+        <tr
+          v-for="(section, secIdx) in channel.platforms"
+          :key="`${channel.nameREDACTED-${section.platformREDACTED`"
+          class="transition-colors hover:bg-gray-50/40 dark:hover:bg-dark-800/40"
+          :class="{ 'border-t border-gray-100/70 dark:border-dark-700/50': secIdx > 0 REDACTED"
+        >
+          <!-- 渠道名：只在第一行渲染并用 rowspan 纵向合并 -->
+          <td
+            v-if="secIdx === 0"
+            :rowspan="channel.platforms.length"
+            class="px-4 py-3 text-center align-middle font-medium text-gray-900 dark:text-white"
+          >
+            {{ channel.name REDACTEDREDACTED
+          </td>
+
+          <!-- 描述：独立一列，同样用 rowspan 纵向合并 -->
+          <td
+            v-if="secIdx === 0"
+            :rowspan="channel.platforms.length"
+            class="px-4 py-3 align-middle text-xs text-gray-500 dark:text-gray-400"
+          >
+            <template v-if="channel.description">{{ channel.description REDACTEDREDACTED</template>
+            <span v-else class="text-gray-400">-</span>
+          </td>
+
+          <!-- 平台徽章 -->
+          <td class="align-top px-4 py-3">
+            <span
+              :class="[
+                'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium uppercase',
+                platformBadgeClass(section.platform),
+              ]"
             >
-              {{ channel.description REDACTEDREDACTED
+              <PlatformIcon :platform="section.platform as GroupPlatform" size="xs" />
+              {{ section.platform REDACTEDREDACTED
+            </span>
+          </td>
+
+          <!-- 分组：专属分组在前（紫色 shield 行），公开分组在后（灰色 globe 行）。 -->
+          <td class="align-top px-4 py-3">
+            <div class="flex flex-col gap-1.5">
+              <div
+                v-if="exclusiveGroups(section).length > 0"
+                class="flex flex-wrap items-center gap-1.5"
+              >
+                <span
+                  class="inline-flex items-center gap-0.5 text-[10px] font-medium uppercase text-purple-600 dark:text-purple-400"
+                  :title="t('availableChannels.exclusiveTooltip')"
+                >
+                  <Icon name="shield" size="xs" class="h-3 w-3" />
+                  {{ t('availableChannels.exclusive') REDACTEDREDACTED
+                </span>
+                <GroupBadge
+                  v-for="g in exclusiveGroups(section)"
+                  :key="`ex-${g.idREDACTED`"
+                  :name="g.name"
+                  :platform="g.platform as GroupPlatform"
+                  :subscription-type="(g.subscription_type || 'standard') as SubscriptionType"
+                  :rate-multiplier="g.rate_multiplier"
+                  :user-rate-multiplier="userGroupRates[g.id] ?? null"
+                  always-show-rate
+                />
+              </div>
+              <div
+                v-if="publicGroups(section).length > 0"
+                class="flex flex-wrap items-center gap-1.5"
+              >
+                <span
+                  class="inline-flex items-center gap-0.5 text-[10px] font-medium uppercase text-gray-500 dark:text-gray-400"
+                  :title="t('availableChannels.publicTooltip')"
+                >
+                  <Icon name="globe" size="xs" class="h-3 w-3" />
+                  {{ t('availableChannels.public') REDACTEDREDACTED
+                </span>
+                <GroupBadge
+                  v-for="g in publicGroups(section)"
+                  :key="`pub-${g.idREDACTED`"
+                  :name="g.name"
+                  :platform="g.platform as GroupPlatform"
+                  :subscription-type="(g.subscription_type || 'standard') as SubscriptionType"
+                  :rate-multiplier="g.rate_multiplier"
+                  :user-rate-multiplier="userGroupRates[g.id] ?? null"
+                  always-show-rate
+                />
+              </div>
+              <span v-if="section.groups.length === 0" class="text-xs text-gray-400">-</span>
             </div>
-          </template>
-        </div>
+          </td>
 
-        <!-- 平台徽章 -->
-        <div>
-          <span
-            :class="[
-              'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium uppercase',
-              platformBadgeClass(section.platform),
-            ]"
-          >
-            <PlatformIcon :platform="section.platform as GroupPlatform" size="xs" />
-            {{ section.platform REDACTEDREDACTED
-          </span>
-        </div>
-
-        <!-- 分组：专属分组在前（紫色 shield 行），公开分组在后（灰色 globe 行）。
-             订阅分组由 GroupBadge 内部按 subscription_type 自动加深背景。 -->
-        <div class="flex flex-col gap-1.5">
-          <div
-            v-if="exclusiveGroups(section).length > 0"
-            class="flex flex-wrap items-center gap-1.5"
-          >
-            <span
-              class="inline-flex items-center gap-0.5 text-[10px] font-medium uppercase text-purple-600 dark:text-purple-400"
-              :title="t('availableChannels.exclusiveTooltip')"
-            >
-              <Icon name="shield" size="xs" class="h-3 w-3" />
-              {{ t('availableChannels.exclusive') REDACTEDREDACTED
-            </span>
-            <GroupBadge
-              v-for="g in exclusiveGroups(section)"
-              :key="`ex-${g.idREDACTED`"
-              :name="g.name"
-              :platform="g.platform as GroupPlatform"
-              :subscription-type="(g.subscription_type || 'standard') as SubscriptionType"
-              :rate-multiplier="g.rate_multiplier"
-              :user-rate-multiplier="userGroupRates[g.id] ?? null"
-              always-show-rate
-            />
-          </div>
-          <div
-            v-if="publicGroups(section).length > 0"
-            class="flex flex-wrap items-center gap-1.5"
-          >
-            <span
-              class="inline-flex items-center gap-0.5 text-[10px] font-medium uppercase text-gray-500 dark:text-gray-400"
-              :title="t('availableChannels.publicTooltip')"
-            >
-              <Icon name="globe" size="xs" class="h-3 w-3" />
-              {{ t('availableChannels.public') REDACTEDREDACTED
-            </span>
-            <GroupBadge
-              v-for="g in publicGroups(section)"
-              :key="`pub-${g.idREDACTED`"
-              :name="g.name"
-              :platform="g.platform as GroupPlatform"
-              :subscription-type="(g.subscription_type || 'standard') as SubscriptionType"
-              :rate-multiplier="g.rate_multiplier"
-              :user-rate-multiplier="userGroupRates[g.id] ?? null"
-              always-show-rate
-            />
-          </div>
-          <span v-if="section.groups.length === 0" class="text-xs text-gray-400">-</span>
-        </div>
-
-        <!-- 支持模型 -->
-        <div class="flex flex-wrap gap-1">
-          <SupportedModelChip
-            v-for="m in section.supported_models"
-            :key="`${section.platformREDACTED-${m.nameREDACTED`"
-            :model="m"
-            :pricing-key-prefix="pricingKeyPrefix"
-            :no-pricing-label="noPricingLabel"
-            :show-platform="false"
-            :platform-hint="section.platform"
-          />
-          <span v-if="section.supported_models.length === 0" class="text-xs text-gray-400">
-            {{ noModelsLabel REDACTEDREDACTED
-          </span>
-        </div>
-      </div>
-    </div>
+          <!-- 支持模型 -->
+          <td class="align-top px-4 py-3">
+            <div class="flex flex-wrap gap-1">
+              <SupportedModelChip
+                v-for="m in section.supported_models"
+                :key="`${section.platformREDACTED-${m.nameREDACTED`"
+                :model="m"
+                :pricing-key-prefix="pricingKeyPrefix"
+                :no-pricing-label="noPricingLabel"
+                :show-platform="false"
+                :platform-hint="section.platform"
+              />
+              <span v-if="section.supported_models.length === 0" class="text-xs text-gray-400">
+                {{ noModelsLabel REDACTEDREDACTED
+              </span>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 </template>
 
@@ -141,12 +155,10 @@ import type { UserAvailableChannel, UserAvailableGroup, UserChannelPlatformSecti
 import type { GroupPlatform, SubscriptionType REDACTED from '@/types'
 import { platformBadgeClass REDACTED from '@/utils/platformColors'
 
-/** 四列 grid 的 template-columns；与表头、每个 section 行共享。 */
-const gridStyle = 'grid-template-columns: 220px 140px minmax(240px, 1fr) minmax(280px, 2fr); display: grid;'
-
 const props = defineProps<{
   columns: {
     name: string
+    description: string
     platform: string
     groups: string
     supportedModels: string

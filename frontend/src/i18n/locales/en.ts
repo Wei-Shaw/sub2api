@@ -944,6 +944,7 @@ export default {
     publicTooltip: 'Groups open to all users',
     columns: {
       name: 'Channel',
+      description: 'Description',
       platform: 'Platform',
       groups: 'Your Accessible Groups',
       supportedModels: 'Supported Models'
