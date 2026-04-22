@@ -20,6 +20,10 @@ func TestAuthIdentityCompatBackfillMigration_AllowsLongReportTypes(t *testing.T)
 	migration108SQL, err := os.ReadFile(migration108Path)
 REDACTED
 
+	migration108aPath := filepath.Join("..", "..", "migrations", "108a_widen_auth_identity_migration_report_type.sql")
+	migration108aSQL, err := os.ReadFile(migration108aPath)
+REDACTED
+
 	migration109Path := filepath.Join("..", "..", "migrations", "109_auth_identity_compat_backfill.sql")
 	migration109SQL, err := os.ReadFile(migration109Path)
 REDACTED
@@ -39,6 +43,9 @@ ALTER TABLE users
 REDACTED
 
 	_, err = tx.ExecContext(ctx, string(migration108SQL))
+REDACTED
+
+	_, err = tx.ExecContext(ctx, string(migration108aSQL))
 REDACTED
 
 	var userID int64
