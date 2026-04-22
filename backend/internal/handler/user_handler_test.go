@@ -593,11 +593,12 @@ func TestUserHandlerUnbindIdentityRevokesAllUserSessionsWhenAuthServiceConfigure
 
 	repo := &userHandlerRepoStub{
 		user: &service.User{
-			ID:       23,
-			Email:    "identity@example.com",
-			Username: "identity-user",
-			Role:     service.RoleUser,
-			Status:   service.StatusActive,
+			ID:           23,
+			Email:        "identity@example.com",
+			Username:     "identity-user",
+			Role:         service.RoleUser,
+			Status:       service.StatusActive,
+			TokenVersion: 4,
 	REDACTED,
 		identities: []service.UserAuthIdentityRecord{
 			{
@@ -632,6 +633,7 @@ REDACTED
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, []int64{23REDACTED, refreshTokenCache.revokedUserIDs)
+	require.Equal(t, int64(5), repo.user.TokenVersion)
 REDACTED
 
 func TestUserHandlerBindEmailIdentityRejectsWrongCurrentPasswordForBoundEmail(t *testing.T) {

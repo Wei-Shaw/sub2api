@@ -259,7 +259,7 @@ REDACTED
 		return
 REDACTED
 	if h.authService != nil {
-		if err := h.authService.RevokeAllUserSessions(c.Request.Context(), subject.UserID); err != nil {
+		if err := h.authService.RevokeAllUserTokens(c.Request.Context(), subject.UserID); err != nil {
 			response.ErrorFrom(c, err)
 			return
 	REDACTED

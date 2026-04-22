@@ -1346,18 +1346,6 @@ REDACTED
 REDACTED, client
 REDACTED
 
-func assertOAuthRedirectError(t *testing.T, location string, errorCode string, errorMessage string) {
-REDACTED
-
-	parsed, err := url.Parse(location)
-REDACTED
-
-	fragment, err := url.ParseQuery(parsed.Fragment)
-REDACTED
-	require.Equal(t, errorCode, fragment.Get("error"))
-	require.Equal(t, errorMessage, fragment.Get("error_message"))
-REDACTED
-
 type wechatOAuthSettingRepoStub struct {
 	values map[string]string
 REDACTED

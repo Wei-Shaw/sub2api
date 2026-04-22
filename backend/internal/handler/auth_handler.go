@@ -719,7 +719,7 @@ func (h *AuthHandler) RevokeAllSessions(c *gin.Context) {
 		return
 REDACTED
 
-	if err := h.authService.RevokeAllUserSessions(c.Request.Context(), subject.UserID); err != nil {
+	if err := h.authService.RevokeAllUserTokens(c.Request.Context(), subject.UserID); err != nil {
 		slog.Error("failed to revoke all sessions", "user_id", subject.UserID, "error", err)
 		response.InternalError(c, "Failed to revoke sessions")
 		return
