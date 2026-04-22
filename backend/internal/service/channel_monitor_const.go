@@ -28,8 +28,8 @@ const (
 	monitorMaintenanceMaxDaysPerRun = 35
 	// monitorWorkerConcurrency 调度器并发执行的监控数（pond 池容量）。
 	monitorWorkerConcurrency = 5
-	// monitorTickerInterval 调度器扫描"到期监控"的间隔。
-	monitorTickerInterval = 5 * time.Second
+	// monitorStartupLoadTimeout Start 时一次性加载所有 enabled monitor 的总超时。
+	monitorStartupLoadTimeout = 10 * time.Second
 	// monitorMinIntervalSeconds / monitorMaxIntervalSeconds 用户配置的检测间隔上下限。
 	monitorMinIntervalSeconds = 15
 	monitorMaxIntervalSeconds = 3600
@@ -86,8 +86,6 @@ const (
 	// monitorChallengeMaxTokens 单次 challenge 请求的 max_tokens（足够回答个位数算术）。
 	monitorChallengeMaxTokens = 50
 
-	// monitorListDueTimeout tickDueChecks 查询到期监控的总超时。
-	monitorListDueTimeout = 10 * time.Second
 	// monitorRunOneBuffer runOne 的总超时缓冲（除请求超时与 ping 超时外的额外裕量）。
 	monitorRunOneBuffer = 10 * time.Second
 
