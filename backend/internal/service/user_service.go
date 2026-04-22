@@ -943,10 +943,11 @@ REDACTED
 REDACTED
 
 func normalizeLoadedUserTokenVersion(user *User) {
-	if user == nil {
+	if user == nil || user.TokenVersionResolved {
 		return
 REDACTED
 	user.TokenVersion = resolvedTokenVersion(user)
+	user.TokenVersionResolved = true
 REDACTED
 
 // TouchLastActive 通过防抖更新 users.last_active_at，减少鉴权热路径写放大。
