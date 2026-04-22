@@ -746,7 +746,11 @@ REDACTED
 	REDACTED).
 		SetLocalFlowState(map[string]any{
 			oauthCompletionResponseKey: map[string]any{
-				"redirect": "/dashboard",
+				"access_token":  "legacy-access-token",
+				"refresh_token": "legacy-refresh-token",
+				"expires_in":    float64(3600),
+				"token_type":    "Bearer",
+				"redirect":      "/dashboard",
 		REDACTED,
 	REDACTED).
 		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
@@ -767,6 +771,8 @@ REDACTED
 	payload := decodeJSONResponseData(t, recorder)
 	require.NotEmpty(t, payload["access_token"])
 	require.NotEmpty(t, payload["refresh_token"])
+	require.NotEqual(t, "legacy-access-token", payload["access_token"])
+	require.NotEqual(t, "legacy-refresh-token", payload["refresh_token"])
 	require.Equal(t, "/dashboard", payload["redirect"])
 	require.Equal(t, "Existing Login Example", payload["suggested_display_name"])
 	require.Equal(t, "https://cdn.example/existing-login.png", payload["suggested_avatar_url"])
@@ -781,6 +787,14 @@ REDACTED
 	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
 REDACTED
 	require.NotNil(t, storedSession.ConsumedAt)
+
+	completion, ok := storedSession.LocalFlowState[oauthCompletionResponseKey].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, completion, "access_token")
+	require.NotContains(t, completion, "refresh_token")
+	require.NotContains(t, completion, "expires_in")
+	require.NotContains(t, completion, "token_type")
+	require.Equal(t, "/dashboard", completion["redirect"])
 REDACTED
 
 func TestExchangePendingOAuthCompletionBlocksBackendModeBeforeReturningTokenPayload(t *testing.T) {
