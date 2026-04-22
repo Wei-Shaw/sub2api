@@ -38,13 +38,14 @@ var openAIAdvancedSchedulerSettingCache atomic.Value // *cachedOpenAIAdvancedSch
 var openAIAdvancedSchedulerSettingSF singleflight.Group
 
 type OpenAIAccountScheduleRequest struct {
-	GroupID            *int64
-	SessionHash        string
-	StickyAccountID    int64
-	PreviousResponseID string
-	RequestedModel     string
-	RequiredTransport  OpenAIUpstreamTransport
-	ExcludedIDs        map[int64]struct{REDACTED
+	GroupID                 *int64
+	SessionHash             string
+	StickyAccountID         int64
+	PreviousResponseID      string
+	RequestedModel          string
+	RequiredTransport       OpenAIUpstreamTransport
+	RequiredImageCapability OpenAIImagesCapability
+	ExcludedIDs             map[int64]struct{REDACTED
 REDACTED
 
 type OpenAIAccountScheduleDecision struct {
@@ -340,7 +341,7 @@ REDACTED
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, nil
 REDACTED
-	if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
+	if !s.isAccountRequestCompatible(account, req) {
 		return nil, nil
 REDACTED
 	if !s.isAccountTransportCompatible(account, req.RequiredTransport) {
@@ -616,7 +617,7 @@ REDACTED
 				fmt.Sprintf("Privacy not set, required by group [%s]", schedGroup.Name))
 			continue
 	REDACTED
-		if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
+		if !s.isAccountRequestCompatible(account, req) {
 			continue
 	REDACTED
 		if !s.isAccountTransportCompatible(account, req.RequiredTransport) {
@@ -722,11 +723,11 @@ REDACTED
 	for i := 0; i < len(selectionOrder); i++ {
 		candidate := selectionOrder[i]
 		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.RequestedModel)
-		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
+		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(fresh, req) {
 			continue
 	REDACTED
 		fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.RequestedModel)
-		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
+		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(fresh, req) {
 			continue
 	REDACTED
 		result, acquireErr := s.service.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
@@ -749,7 +750,7 @@ REDACTED
 	// WaitPlan.MaxConcurrency 使用 Concurrency（非 EffectiveLoadFactor），因为 WaitPlan 控制的是 Redis 实际并发槽位等待。
 	for _, candidate := range selectionOrder {
 		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.RequestedModel)
-		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
+		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !s.isAccountRequestCompatible(fresh, req) {
 			continue
 	REDACTED
 		return &AccountSelectionResult{
@@ -774,6 +775,16 @@ REDACTED
 		return false
 REDACTED
 	return s.service.isOpenAIAccountTransportCompatible(account, requiredTransport)
+REDACTED
+
+func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatible(account *Account, req OpenAIAccountScheduleRequest) bool {
+	if account == nil {
+		return false
+REDACTED
+	if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
+		return false
+REDACTED
+	return account.SupportsOpenAIImageCapability(req.RequiredImageCapability)
 REDACTED
 
 func (s *defaultOpenAIAccountScheduler) ReportResult(accountID int64, success bool, firstTokenMs *int) {
@@ -895,13 +906,58 @@ func (s *OpenAIGatewayService) SelectAccountWithScheduler(
 	excludedIDs map[int64]struct{REDACTED,
 	requiredTransport OpenAIUpstreamTransport,
 ) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	return s.selectAccountWithScheduler(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, "")
+REDACTED
+
+func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
+	ctx context.Context,
+	groupID *int64,
+	sessionHash string,
+	requestedModel string,
+	excludedIDs map[int64]struct{REDACTED,
+	requiredCapability OpenAIImagesCapability,
+) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	return s.selectAccountWithScheduler(ctx, groupID, "", sessionHash, requestedModel, excludedIDs, OpenAIUpstreamTransportHTTPSSE, requiredCapability)
+REDACTED
+
+func (s *OpenAIGatewayService) selectAccountWithScheduler(
+	ctx context.Context,
+	groupID *int64,
+	previousResponseID string,
+	sessionHash string,
+	requestedModel string,
+	excludedIDs map[int64]struct{REDACTED,
+	requiredTransport OpenAIUpstreamTransport,
+	requiredImageCapability OpenAIImagesCapability,
+) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
 	decision := OpenAIAccountScheduleDecision{REDACTED
 	scheduler := s.getOpenAIAccountScheduler(ctx)
 	if scheduler == nil {
 		decision.Layer = openAIAccountScheduleLayerLoadBalance
 		if requiredTransport == OpenAIUpstreamTransportAny || requiredTransport == OpenAIUpstreamTransportHTTPSSE {
-			selection, err := s.SelectAccountWithLoadAwareness(ctx, groupID, sessionHash, requestedModel, excludedIDs)
-			return selection, decision, err
+			effectiveExcludedIDs := cloneExcludedAccountIDs(excludedIDs)
+			for {
+				selection, err := s.SelectAccountWithLoadAwareness(ctx, groupID, sessionHash, requestedModel, effectiveExcludedIDs)
+				if err != nil {
+					return nil, decision, err
+			REDACTED
+				if selection == nil || selection.Account == nil {
+					return selection, decision, nil
+			REDACTED
+				if selection.Account.SupportsOpenAIImageCapability(requiredImageCapability) {
+					return selection, decision, nil
+			REDACTED
+				if selection.ReleaseFunc != nil {
+					selection.ReleaseFunc()
+			REDACTED
+				if effectiveExcludedIDs == nil {
+					effectiveExcludedIDs = make(map[int64]struct{REDACTED)
+			REDACTED
+				if _, exists := effectiveExcludedIDs[selection.Account.ID]; exists {
+					return nil, decision, ErrNoAvailableAccounts
+			REDACTED
+				effectiveExcludedIDs[selection.Account.ID] = struct{REDACTED{REDACTED
+		REDACTED
 	REDACTED
 
 		effectiveExcludedIDs := cloneExcludedAccountIDs(excludedIDs)
@@ -937,13 +993,14 @@ REDACTED
 REDACTED
 
 	return scheduler.Select(ctx, OpenAIAccountScheduleRequest{
-		GroupID:            groupID,
-		SessionHash:        sessionHash,
-		StickyAccountID:    stickyAccountID,
-		PreviousResponseID: previousResponseID,
-		RequestedModel:     requestedModel,
-		RequiredTransport:  requiredTransport,
-		ExcludedIDs:        excludedIDs,
+		GroupID:                 groupID,
+		SessionHash:             sessionHash,
+		StickyAccountID:         stickyAccountID,
+		PreviousResponseID:      previousResponseID,
+		RequestedModel:          requestedModel,
+		RequiredTransport:       requiredTransport,
+		RequiredImageCapability: requiredImageCapability,
+		ExcludedIDs:             excludedIDs,
 REDACTED)
 REDACTED
 
