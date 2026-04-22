@@ -1538,8 +1538,6 @@ PR 目标是上游官方仓库 `Wei-Shaw/sub2api:main`，**只包含通用功能
 
 #### PR 分支创建流程
 
-> **核心原则**：PR 分支必须基于 `upstream/main`，代码来源是我们的 release 分支（已测试过的代码）。通过 `git merge --squash` 把 release 的功能差量整体压入 PR 分支，再**手动 revert 掉 fork 定制文件**，最后压成 1-2 个干净 commit 推上游。
->
 > **禁止**将 PR 分支 merge 回 release（会带入 upstream/main 的非相关代码）。
 
 **为什么用 squash merge 而不是 cherry-pick？**
