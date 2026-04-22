@@ -442,12 +442,6 @@ export interface RectifierSettings {
   thinking_budget_enabled: boolean
   apikey_signature_enabled: boolean
   apikey_signature_patterns: string[]
-  /**
-   * 签名池容量。0 = 关闭池化，签名错误时走"剥除 thinking 重试"；
-   * \>0 = 从正常响应抓取签名入池，签名错误时从池中取签名替换重试，
-   * 池空直接透传错误（不回退剥除）。
-   */
-  signature_pool_size: number
 }
 
 /**

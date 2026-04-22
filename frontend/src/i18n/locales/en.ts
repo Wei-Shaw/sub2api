@@ -5057,24 +5057,16 @@ export default {
         enabledHint: 'Master switch - disabling turns off all rectification features',
         thinkingSignature: 'Thinking Signature Rectifier',
         thinkingSignatureHint: 'Automatically strip signatures and retry when upstream returns thinking block signature validation errors',
-        thinkingSignatureHintPool:
-          'Automatically replace bad signatures with pooled ones when upstream returns thinking block signature validation errors (pass through original error when pool is empty)',
         thinkingBudget: 'Thinking Budget Rectifier',
         thinkingBudgetHint: 'Automatically set budget to 32000 and retry when upstream returns budget_tokens constraint error (≥1024)',
         apikeySignature: 'API Key Signature Rectifier',
         apikeySignatureHint:
           'Automatically strip signatures and retry when API Key accounts receive signature-related errors (built-in patterns always apply)',
-        apikeySignatureHintPool:
-          'Automatically replace bad signatures with pooled ones when API Key accounts receive signature-related errors (pass through original error when pool is empty)',
         apikeyPatterns: 'Custom Match Patterns',
         apikeyPatternsHint:
           'Additional keywords matched against the response body (case-insensitive). Built-in patterns always apply; use these for supplementary matching.',
         apikeyPatternPlaceholder: 'e.g., thinking_error',
         addPattern: 'Add Pattern',
-        poolSize: 'Signature Pool Size',
-        poolSizeHint:
-          '0 = pool disabled (legacy "strip and retry" behavior); >0 = harvest thinking signatures from successful responses into a Redis pool, then replace bad signatures with pooled ones on retry. OAuth/Setup accounts share one pool; each API Key account has its own. Signatures have a soft TTL of 1 hour; oldest entries are evicted when the pool is full.',
-        poolSizeUnit: 'entries',
         saved: 'Rectifier settings saved',
         saveFailed: 'Failed to save rectifier settings'
       },

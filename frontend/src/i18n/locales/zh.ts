@@ -5228,24 +5228,16 @@ export default {
         enabledHint: '总开关，关闭后所有整流功能均不生效',
         thinkingSignature: 'Thinking 签名整流',
         thinkingSignatureHint: '当上游返回 thinking block 签名校验错误时，自动去除签名并重试',
-        thinkingSignatureHintPool:
-          '当上游返回 thinking block 签名校验错误时，自动使用签名池中的签名（池空直接透传错误）',
         thinkingBudget: 'Thinking Budget 整流',
         thinkingBudgetHint: '当上游返回 budget_tokens 约束错误（≥1024）时，自动将 budget 设为 32000 并重试',
         apikeySignature: 'API Key 签名整流',
         apikeySignatureHint:
           '当 API Key 账号的上游返回签名相关错误时，自动去除签名并重试（内置规则始终生效）',
-        apikeySignatureHintPool:
-          '当 API Key 账号的上游返回签名相关错误时，自动使用签名池中的签名替换（池空直接透传错误）',
         apikeyPatterns: '自定义匹配关键词',
         apikeyPatternsHint:
           '额外的关键词，匹配响应体中的内容（不区分大小写）。内置规则始终生效，此处用于补充额外匹配。',
         apikeyPatternPlaceholder: '例如：thinking_error 或 签名无效',
         addPattern: '添加关键词',
-        poolSize: '签名池大小',
-        poolSizeHint:
-          '0 = 关闭池化（沿用"剥除 thinking 重试"）；>0 = 从成功响应抓取 thinking 签名到 Redis 池，签名错误时从池中取签名替换请求后重试。OAuth/Setup 账号共享一个池，每个 API Key 账号独立一个池。签名软 TTL 1 小时，池满后按时间淘汰最老的。',
-        poolSizeUnit: '条',
         saved: '整流器设置保存成功',
         saveFailed: '保存整流器设置失败'
       },
