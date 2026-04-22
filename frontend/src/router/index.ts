@@ -547,7 +547,8 @@ const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
   '/auth/linuxdo/callback',
   '/auth/oidc/callback',
-  '/auth/wechat/callback'
+  '/auth/wechat/callback',
+  '/auth/wechat/payment/callback',
 ]
 const BACKEND_MODE_PENDING_AUTH_PATHS = ['/register', '/email-verify']
 

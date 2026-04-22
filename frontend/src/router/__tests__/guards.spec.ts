@@ -83,7 +83,8 @@ function simulateGuard(
         '/auth/callback',
         '/auth/linuxdo/callback',
         '/auth/oidc/callback',
-        '/auth/wechat/callback'
+        '/auth/wechat/callback',
+        '/auth/wechat/payment/callback',
       ]
       const pendingAuthPaths = ['/register', '/email-verify']
       const isAllowed =
@@ -131,7 +132,8 @@ function simulateGuard(
       '/auth/callback',
       '/auth/linuxdo/callback',
       '/auth/oidc/callback',
-      '/auth/wechat/callback'
+      '/auth/wechat/callback',
+      '/auth/wechat/payment/callback',
     ]
     const pendingAuthPaths = ['/register', '/email-verify']
     const isAllowed =
@@ -445,6 +447,18 @@ describe('路由守卫逻辑', () => {
         hasPendingAuthSession: false,
       REDACTED
       const redirect = simulateGuard('/auth/wechat/callback', { requiresAuth: false REDACTED, authState)
+      expect(redirect).toBeNull()
+    REDACTED)
+
+    it('unauthenticated: WeChat payment callback route is allowed', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: false,
+        isAdmin: false,
+        isSimpleMode: false,
+        backendModeEnabled: true,
+        hasPendingAuthSession: false,
+      REDACTED
+      const redirect = simulateGuard('/auth/wechat/payment/callback', { requiresAuth: false REDACTED, authState)
       expect(redirect).toBeNull()
     REDACTED)
 

@@ -159,6 +159,45 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestMaybeBuildWeChatOAuthRequiredResponseRequiresResumeSigningKey(t *testing.T) {
+	t.Parallel()
+
+	svc := &PaymentService{
+		configService: &PaymentConfigService{
+			settingRepo: &paymentConfigSettingRepoStub{values: map[string]string{
+				SettingKeyWeChatConnectEnabled:             "true",
+				SettingKeyWeChatConnectAppID:               "wx123456",
+				SettingKeyWeChatConnectAppSecret:           "wechat-secret",
+				SettingKeyWeChatConnectMode:                "mp",
+				SettingKeyWeChatConnectScopes:              "snsapi_base",
+				SettingKeyWeChatConnectRedirectURL:         "https://api.example.com/api/v1/auth/oauth/wechat/callback",
+				SettingKeyWeChatConnectFrontendRedirectURL: "/auth/wechat/callback",
+	REDACTED
+			// Intentionally missing payment resume signing key.
+			encryptionKey: nil,
+	REDACTED,
+REDACTED
+
+	resp, err := svc.maybeBuildWeChatOAuthRequiredResponse(context.Background(), CreateOrderRequest{
+		Amount:          12.5,
+		PaymentType:     payment.TypeWxpay,
+		IsWeChatBrowser: true,
+		SrcURL:          "https://merchant.example/payment?from=wechat",
+		OrderType:       payment.OrderTypeBalance,
+REDACTED, 12.5, 12.88, 0.03)
+	if resp != nil {
+		t.Fatalf("expected nil response, got %+v", resp)
+REDACTED
+	if err == nil {
+		t.Fatal("expected error, got nil")
+REDACTED
+
+	appErr := infraerrors.FromError(err)
+	if appErr.Reason != "PAYMENT_RESUME_NOT_CONFIGURED" {
+		t.Fatalf("reason = %q, want %q", appErr.Reason, "PAYMENT_RESUME_NOT_CONFIGURED")
+REDACTED
+REDACTED
+
 func TestMaybeBuildWeChatOAuthRequiredResponseForSelectionSkipsEasyPayProvider(t *testing.T) {
 	svc := newWeChatPaymentOAuthTestService(map[string]string{
 		SettingKeyWeChatConnectEnabled:             "true",
@@ -189,7 +228,8 @@ REDACTED
 func newWeChatPaymentOAuthTestService(values map[string]string) *PaymentService {
 	return &PaymentService{
 		configService: &PaymentConfigService{
-			settingRepo: &paymentConfigSettingRepoStub{values: valuesREDACTED,
+			settingRepo:   &paymentConfigSettingRepoStub{values: valuesREDACTED,
+			encryptionKey: []byte("REDACTED"),
 	REDACTED,
 REDACTED
 REDACTED

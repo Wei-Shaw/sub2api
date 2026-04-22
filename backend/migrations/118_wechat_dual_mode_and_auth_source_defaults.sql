@@ -21,12 +21,3 @@ VALUES
     ('auth_source_default_oidc_grant_on_signup', 'false'),
     ('auth_source_default_wechat_grant_on_signup', 'false')
 ON CONFLICT (key) DO NOTHING;
-
-UPDATE settings
-SET value = 'false'
-WHERE key IN (
-    'auth_source_default_email_grant_on_signup',
-    'auth_source_default_linuxdo_grant_on_signup',
-    'auth_source_default_oidc_grant_on_signup',
-    'auth_source_default_wechat_grant_on_signup'
-);

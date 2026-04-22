@@ -101,7 +101,11 @@ import { ref, computed, onBeforeUnmount, onMounted REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import { useRoute, useRouter REDACTED from 'vue-router'
 import OrderStatusBadge from '@/components/payment/OrderStatusBadge.vue'
-import { PAYMENT_RECOVERY_STORAGE_KEY, readPaymentRecoverySnapshot REDACTED from '@/components/payment/paymentFlow'
+import {
+  PAYMENT_RECOVERY_STORAGE_KEY,
+  clearPaymentRecoverySnapshot,
+  readPaymentRecoverySnapshot,
+REDACTED from '@/components/payment/paymentFlow'
 import { usePaymentStore REDACTED from '@/stores/payment'
 import { paymentAPI REDACTED from '@/api/payment'
 import type { PaymentOrder REDACTED from '@/types/payment'
@@ -193,6 +197,18 @@ function clearStatusRefreshTimer(): void {
   REDACTED
 REDACTED
 
+function clearRecoverySnapshot(): void {
+  if (typeof window === 'undefined') return
+  clearPaymentRecoverySnapshot(window.localStorage, PAYMENT_RECOVERY_STORAGE_KEY)
+REDACTED
+
+function clearRecoverySnapshotForTerminalStatus(status: string | null | undefined): void {
+  if (!status) return
+  if (!isPendingStatus(status)) {
+    clearRecoverySnapshot()
+  REDACTED
+REDACTED
+
 function scheduleStatusRefresh(refreshOrder: (() => Promise<PaymentOrder | null>) | null): void {
   clearStatusRefreshTimer()
   if (!refreshOrder || !isPending.value || refreshAttempts.value >= STATUS_REFRESH_MAX_ATTEMPTS) {
@@ -204,6 +220,7 @@ function scheduleStatusRefresh(refreshOrder: (() => Promise<PaymentOrder | null>
     const refreshedOrder = await refreshOrder()
     if (refreshedOrder) {
       order.value = refreshedOrder
+      clearRecoverySnapshotForTerminalStatus(refreshedOrder.status)
     REDACTED
 
     if (isPendingStatus(order.value?.status)) {
@@ -285,6 +302,10 @@ onMounted(async () => {
 
   if (isPendingStatus(order.value?.status)) {
     scheduleStatusRefresh(refreshOrder)
+  REDACTED else if (order.value) {
+    clearRecoverySnapshotForTerminalStatus(order.value.status)
+  REDACTED else if (returnInfo.value) {
+    clearRecoverySnapshot()
   REDACTED
   loading.value = false
 REDACTED)

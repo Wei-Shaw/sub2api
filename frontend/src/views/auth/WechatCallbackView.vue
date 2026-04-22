@@ -613,7 +613,7 @@ async function handleBindCurrentAccount() {
     return
   REDACTED
 
-  prepareOAuthBindAccessTokenCookie()
+  await prepareOAuthBindAccessTokenCookie()
   window.location.href = startURL
 REDACTED
 

@@ -937,7 +937,19 @@ func clearOAuthBindAccessTokenCookie(c *gin.Context, secure bool) {
 		Value:    "",
 		Path:     oauthBindAccessTokenCookiePath,
 		MaxAge:   -1,
-		HttpOnly: false,
+		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+REDACTED)
+REDACTED
+
+func setOAuthBindAccessTokenCookie(c *gin.Context, token string, secure bool) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     oauthBindAccessTokenCookieName,
+		Value:    url.QueryEscape(strings.TrimSpace(token)),
+		Path:     oauthBindAccessTokenCookiePath,
+		MaxAge:   linuxDoOAuthCookieMaxAgeSec,
+		HttpOnly: true,
 		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
 REDACTED)
@@ -1019,6 +1031,26 @@ func (h *AuthHandler) buildOAuthBindUserCookieFromContext(c *gin.Context) (strin
 		return "", infraerrors.Unauthorized("UNAUTHORIZED", "authentication required")
 REDACTED
 	return buildOAuthBindUserCookieValue(*userID, h.oauthBindCookieSecret())
+REDACTED
+
+func (h *AuthHandler) PrepareOAuthBindAccessTokenCookie(c *gin.Context) {
+	const bearerPrefix = "Bearer "
+
+	authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
+	if !strings.HasPrefix(strings.ToLower(authHeader), strings.ToLower(bearerPrefix)) {
+		response.ErrorFrom(c, infraerrors.Unauthorized("UNAUTHORIZED", "authentication required"))
+		return
+REDACTED
+
+	token := strings.TrimSpace(authHeader[len(bearerPrefix):])
+	if token == "" {
+		response.ErrorFrom(c, infraerrors.Unauthorized("UNAUTHORIZED", "authentication required"))
+		return
+REDACTED
+
+	setOAuthBindAccessTokenCookie(c, token, isRequestHTTPS(c))
+	c.Status(http.StatusNoContent)
+	c.Writer.WriteHeaderNow()
 REDACTED
 
 func (h *AuthHandler) resolveOAuthBindTargetUserID(c *gin.Context) (*int64, error) {

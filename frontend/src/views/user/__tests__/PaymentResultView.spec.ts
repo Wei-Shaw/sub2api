@@ -60,6 +60,21 @@ const orderFactory = (status: string) => ({
   refund_amount: 0,
 REDACTED)
 
+const recoverySnapshotFactory = (resumeToken: string) => ({
+  orderId: 42,
+  amount: 88,
+  qrCode: '',
+  expiresAt: '2099-01-01T00:10:00.000Z',
+  paymentType: 'alipay',
+  payUrl: 'https://pay.example.com/session/42',
+  clientSecret: '',
+  payAmount: 88,
+  orderType: 'balance',
+  paymentMode: 'popup',
+  resumeToken,
+  createdAt: Date.UTC(2099, 0, 1, 0, 0, 0),
+REDACTED)
+
 describe('PaymentResultView', () => {
   beforeEach(() => {
     routeState.query = {REDACTED
@@ -162,6 +177,7 @@ describe('PaymentResultView', () => {
     expect(wrapper.text()).toContain('payment.result.success')
     expect(wrapper.text()).toContain('103.00')
     expect(wrapper.text()).toContain('100.00')
+    expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).toBeNull()
   REDACTED)
 
   it('refreshes a pending resume-token result until the order becomes paid', async () => {
@@ -169,6 +185,10 @@ describe('PaymentResultView', () => {
     routeState.query = {
       resume_token: 'resume-77',
     REDACTED
+    window.localStorage.setItem(
+      PAYMENT_RECOVERY_STORAGE_KEY,
+      JSON.stringify(recoverySnapshotFactory('resume-77')),
+    )
     resolveOrderPublicByResumeToken
       .mockResolvedValueOnce({
         data: orderFactory('PENDING'),
@@ -189,6 +209,7 @@ describe('PaymentResultView', () => {
 
     expect(resolveOrderPublicByResumeToken).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('payment.result.processing')
+    expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).not.toBeNull()
 
     await vi.advanceTimersByTimeAsync(2000)
     await flushPromises()
@@ -196,6 +217,7 @@ describe('PaymentResultView', () => {
     expect(resolveOrderPublicByResumeToken).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).toContain('payment.result.success')
     expect(wrapper.text()).not.toContain('payment.result.failed')
+    expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).toBeNull()
   REDACTED)
 
   it('does not fall back to public out_trade_no verification when resume_token recovery fails', async () => {

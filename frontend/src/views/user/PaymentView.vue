@@ -391,6 +391,20 @@ function resetPayment() {
   removeRecoverySnapshot()
 REDACTED
 
+async function redirectToPaymentResult(state: PaymentRecoverySnapshot): Promise<void> {
+  const query: Record<string, string | undefined> = {REDACTED
+  if (state.orderId > 0) {
+    query.order_id = String(state.orderId)
+  REDACTED
+  if (state.resumeToken) {
+    query.resume_token = state.resumeToken
+  REDACTED
+  await router.push({
+    path: '/payment/result',
+    query,
+  REDACTED)
+REDACTED
+
 function onPaymentDone() {
   const wasSubscription = paymentState.value.orderType === 'subscription'
   resetPayment()
@@ -684,8 +698,14 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       const errMsg = String(jsapiResult.err_msg || '').toLowerCase()
       if (errMsg.includes('cancel')) {
         appStore.showInfo(t('payment.qr.cancelled'))
+        resetPayment()
       REDACTED else if (errMsg && !errMsg.includes('ok')) {
         applyScenarioError({ reason: 'WECHAT_JSAPI_FAILED', message: errMsg REDACTED, visibleMethod)
+        resetPayment()
+      REDACTED else {
+        const resultState = { ...decision.paymentState REDACTED
+        resetPayment()
+        await redirectToPaymentResult(resultState)
       REDACTED
       return
     REDACTED

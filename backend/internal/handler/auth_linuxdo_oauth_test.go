@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -224,6 +225,27 @@ REDACTED
 	accessTokenCookie := findCookie(recorder.Result().Cookies(), oauthBindAccessTokenCookieName)
 	require.NotNil(t, accessTokenCookie)
 	require.Equal(t, -1, accessTokenCookie.MaxAge)
+REDACTED
+
+func TestPrepareOAuthBindAccessTokenCookieSetsHttpOnlyCookie(t *testing.T) {
+	handler, client := newLinuxDoOAuthHandlerAndClient(t, false, config.LinuxDoConnectConfig{REDACTED)
+	t.Cleanup(func() { _ = client.Close() REDACTED)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/bind-token", nil)
+	req.Header.Set("Authorization", "Bearer access-token-value")
+	c.Request = req
+
+	handler.PrepareOAuthBindAccessTokenCookie(c)
+
+	require.Equal(t, http.StatusNoContent, recorder.Code)
+	accessTokenCookie := findCookie(recorder.Result().Cookies(), oauthBindAccessTokenCookieName)
+	require.NotNil(t, accessTokenCookie)
+	require.Equal(t, oauthBindAccessTokenCookiePath, accessTokenCookie.Path)
+	require.Equal(t, linuxDoOAuthCookieMaxAgeSec, accessTokenCookie.MaxAge)
+	require.True(t, accessTokenCookie.HttpOnly)
+	require.Equal(t, url.QueryEscape("access-token-value"), accessTokenCookie.Value)
 REDACTED
 
 func TestLinuxDoOAuthCallbackCreatesLoginPendingSessionForExistingIdentityUser(t *testing.T) {

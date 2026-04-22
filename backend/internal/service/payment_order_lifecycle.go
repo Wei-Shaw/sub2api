@@ -150,6 +150,16 @@ REDACTED
 		return ""
 REDACTED
 	if resp.Status == payment.ProviderStatusPaid {
+		if !isValidProviderAmount(resp.Amount) {
+			s.writeAuditLog(ctx, o.ID, "PAYMENT_INVALID_AMOUNT", prov.ProviderKey(), map[string]any{
+				"expected": o.PayAmount,
+				"paid":     resp.Amount,
+				"tradeNo":  resp.TradeNo,
+				"queryRef": queryRef,
+		REDACTED)
+			slog.Warn("query upstream returned invalid paid amount", "orderID", o.ID, "queryRef", queryRef, "paid", resp.Amount)
+			return ""
+	REDACTED
 		notificationTradeNo := o.PaymentTradeNo
 		if upstreamTradeNo := strings.TrimSpace(resp.TradeNo); paymentOrderShouldPersistUpstreamTradeNo(queryRef, upstreamTradeNo, notificationTradeNo) {
 			if _, updateErr := s.entClient.PaymentOrder.Update().

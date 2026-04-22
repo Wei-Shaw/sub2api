@@ -139,6 +139,10 @@ REDACTED
 		tm = defaultOrderTimeoutMin
 REDACTED
 	exp := time.Now().Add(time.Duration(tm) * time.Minute)
+	outTradeNo, err := s.allocateOutTradeNo(ctx, tx)
+	if err != nil {
+		return nil, err
+REDACTED
 	providerSnapshot := buildPaymentOrderProviderSnapshot(sel, req)
 	selectedInstanceID := ""
 	selectedProviderKey := ""
@@ -155,7 +159,7 @@ REDACTED
 		SetPayAmount(payAmount).
 		SetFeeRate(feeRate).
 		SetRechargeCode("").
-		SetOutTradeNo(generateOutTradeNo()).
+		SetOutTradeNo(outTradeNo).
 		SetPaymentType(req.PaymentType).
 		SetPaymentTradeNo("").
 		SetOrderType(req.OrderType).
@@ -191,6 +195,21 @@ REDACTED
 		return nil, fmt.Errorf("commit order transaction: %w", err)
 REDACTED
 	return order, nil
+REDACTED
+
+func (s *PaymentService) allocateOutTradeNo(ctx context.Context, tx *dbent.Tx) (string, error) {
+	const maxAttempts = 5
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		candidate := generateOutTradeNo()
+		exists, err := tx.PaymentOrder.Query().Where(paymentorder.OutTradeNo(candidate)).Exist(ctx)
+		if err != nil {
+			return "", fmt.Errorf("check out_trade_no uniqueness: %w", err)
+	REDACTED
+		if !exists {
+			return candidate, nil
+	REDACTED
+REDACTED
+	return "", fmt.Errorf("generate unique out_trade_no: exhausted %d attempts", maxAttempts)
 REDACTED
 
 func (s *PaymentService) checkPendingLimit(ctx context.Context, tx *dbent.Tx, userID int64, max int) error {
@@ -366,7 +385,10 @@ REDACTED
 REDACTED
 	resumeToken := ""
 	if resume := s.paymentResume(); resume != nil {
-		if resume.isSigningConfigured() {
+		if canonicalReturnURL != "" {
+			if err := resume.ensureSigningKey(); err != nil {
+				return nil, err
+		REDACTED
 			resumeToken, err = resume.CreateToken(ResumeTokenClaims{
 				OrderID:            order.ID,
 				UserID:             order.UserID,
@@ -480,6 +502,9 @@ REDACTED
 func (s *PaymentService) buildWeChatOAuthRequiredResponse(ctx context.Context, req CreateOrderRequest, amount, payAmount, feeRate float64) (*CreateOrderResponse, error) {
 	appID, _, err := s.getWeChatPaymentOAuthCredential(ctx)
 	if err != nil {
+		return nil, err
+REDACTED
+	if err := s.paymentResume().ensureSigningKey(); err != nil {
 		return nil, err
 REDACTED
 
