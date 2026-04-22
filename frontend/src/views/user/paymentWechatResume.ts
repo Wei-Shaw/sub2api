@@ -37,12 +37,20 @@ export function parseWechatResumeRoute(
   REDACTED
 
   const wechatResumeToken = readQueryString(query, 'wechat_resume_token')
+  const paymentType = normalizeVisibleMethod(readQueryString(query, 'payment_type')) || 'wxpay'
+  const planId = Number.parseInt(readQueryString(query, 'plan_id'), 10)
+  const hasPlanId = Number.isFinite(planId) && planId > 0
+  const orderType = readQueryString(query, 'order_type') === 'subscription' || hasPlanId
+    ? 'subscription'
+    : 'balance'
+
   if (wechatResumeToken) {
     return {
       wechatResumeToken,
-      paymentType: 'wxpay',
-      orderType: 'balance',
+      paymentType,
+      orderType,
       orderAmount: 0,
+      planId: hasPlanId ? planId : undefined,
     REDACTED
   REDACTED
 
@@ -51,9 +59,6 @@ export function parseWechatResumeRoute(
     return null
   REDACTED
 
-  const paymentType = normalizeVisibleMethod(readQueryString(query, 'payment_type')) || 'wxpay'
-  const orderType = readQueryString(query, 'order_type') === 'subscription' ? 'subscription' : 'balance'
-  const planId = Number.parseInt(readQueryString(query, 'plan_id'), 10)
   const rawAmount = Number.parseFloat(readQueryString(query, 'amount'))
   const orderAmount = Number.isFinite(rawAmount) && rawAmount > 0
     ? rawAmount
@@ -66,7 +71,7 @@ export function parseWechatResumeRoute(
     paymentType,
     orderType,
     orderAmount,
-    planId: Number.isFinite(planId) && planId > 0 ? planId : undefined,
+    planId: hasPlanId ? planId : undefined,
   REDACTED
 REDACTED
 

@@ -409,6 +409,43 @@ async function redirectToPaymentResult(state: PaymentRecoverySnapshot): Promise<
   REDACTED)
 REDACTED
 
+function buildWechatOAuthAuthorizeUrl(
+  authorizeUrl: string,
+  context: { paymentType: string; orderType: OrderType; planId?: number; orderAmount: number REDACTED,
+): string {
+  const normalizedUrl = authorizeUrl.trim()
+  if (!normalizedUrl || typeof window === 'undefined') {
+    return normalizedUrl
+  REDACTED
+
+  try {
+    const targetUrl = new URL(normalizedUrl, window.location.origin)
+    const redirectPath = targetUrl.searchParams.get('redirect') || '/purchase'
+    const redirectUrl = new URL(redirectPath, window.location.origin)
+    const paymentType = normalizeVisibleMethod(context.paymentType) || context.paymentType.trim() || 'wxpay'
+
+    redirectUrl.searchParams.set('payment_type', paymentType)
+    redirectUrl.searchParams.set('order_type', context.orderType)
+
+    if (context.planId) {
+      redirectUrl.searchParams.set('plan_id', String(context.planId))
+    REDACTED else {
+      redirectUrl.searchParams.delete('plan_id')
+    REDACTED
+
+    if (context.orderAmount > 0) {
+      redirectUrl.searchParams.set('amount', String(context.orderAmount))
+    REDACTED else {
+      redirectUrl.searchParams.delete('amount')
+    REDACTED
+
+    targetUrl.searchParams.set('redirect', `${redirectUrl.pathnameREDACTED${redirectUrl.searchREDACTED`)
+    return targetUrl.toString()
+  REDACTED catch {
+    return normalizedUrl
+  REDACTED
+REDACTED
+
 function onPaymentDone() {
   const wasSubscription = paymentState.value.orderType === 'subscription'
   resetPayment()
@@ -676,7 +713,12 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     REDACTED)
 
     if (decision.kind === 'wechat_oauth' && decision.oauth?.authorize_url) {
-      window.location.href = decision.oauth.authorize_url
+      window.location.href = buildWechatOAuthAuthorizeUrl(decision.oauth.authorize_url, {
+        paymentType: visibleMethod,
+        orderType,
+        planId,
+        orderAmount,
+      REDACTED)
       return
     REDACTED
 
