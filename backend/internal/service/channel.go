@@ -451,19 +451,29 @@ func buildPricingIndex(pricings []ChannelModelPricing) map[string]*platformPrici
 
 // SupportedModels 计算渠道的支持模型列表，结果保证不含通配符。
 //
-// 算法（以渠道自身的 ModelMapping 为唯一入口）：
-//   - 遍历 Channel.ModelMapping 的每个 platform 条目；
-//   - 映射 key 不带尾部 "*"：直接作为一个支持模型名（即使没有匹配的定价行，也会产出 Pricing=nil 的条目）；
-//   - 映射 key 带尾部 "*"：用同 platform 的 ModelPricing.Models 做前缀匹配展开（定价中带 "*" 的条目被忽略，因为它们本身就是模式，不是具体模型名）；
-//   - 映射 key 为 `"*"`（单独一个星号）将展开为该平台所有定价模型（前缀为空 → 全匹配）。这是刻意行为，用于"将该平台所有模型透传"的场景；
-//   - 未在 ModelMapping 中出现的 platform 不会产出任何条目——这是**刻意设计**（"没配映射就不显示"），即使该平台有定价行。
+// 算法（mapping ∪ pricing 并联）：
 //
-// 当映射 key（exact 或 wildcard 展开后的候选）能命中定价时，结果中的 Name 使用**定价的原始大小写**
-// （定价是模型身份的事实来源），否则保留映射 key 的原始大小写。
-// 每个结果尝试从 platform 索引查找精确定价，未配置则 Pricing=nil。
-// 结果按 (Platform, Name) 稳定排序，并按 (Platform, lowercase(Name)) 去重。
+//   - Pass A（mapping）：遍历 ModelMapping
+//   - 精确 src → target：显示名 = src（用户视角），定价用 target 在同 platform 定价里查
+//     （mapping 改写后实际计费的是 target；这是用户感知的"实际花费"）。
+//     target 为空或为通配符时退化为按 src 自查。
+//   - 通配符 src（如 "claude-3-*"）：用同 platform 定价里前缀匹配的模型作为候选展开，
+//     每个候选用自身定价（通配符场景一般是 passthrough，target 通常也是通配符）。
+//   - "*" 单独 mapping key 走通配符分支（前缀为空 → 全展开）。
+//   - Pass B（pricing-only）：遍历 ModelPricing 中所有非通配符模型，对未在 Pass A 添加过的
+//     补齐——显示名 = 定价模型名，定价 = 自身（这是关键修复：定价存在即代表渠道支持该模型，
+//     即使没配映射）。
+//
+// 显示名命中定价时使用**定价的原始大小写**（定价是模型身份的事实来源）。
+// 按 (Platform, Name) 稳定排序，按 (Platform, lowercase(Name)) 去重，先到者胜出。
+//
+// 注意：定价仅在 channel.ModelPricing 内查找——全局 LiteLLM 回落由调用方
+// （`ChannelService.ListAvailable`）在合成展示数据时叠加。
 func (c *Channel) SupportedModels() []SupportedModel {
-	if c == nil || len(c.ModelMapping) == 0 {
+	if c == nil {
+		return nil
+	}
+	if len(c.ModelMapping) == 0 && len(c.ModelPricing) == 0 {
 		return nil
 	}
 
@@ -476,21 +486,24 @@ func (c *Channel) SupportedModels() []SupportedModel {
 	seen := make(map[dedupKey]struct{})
 	result := make([]SupportedModel, 0)
 
-	add := func(platform, name string, pidx *platformPricingIndex) {
-		key := dedupKey{platform: platform, name: strings.ToLower(name)}
+	// lookup 在 platform pricing index 中按精确名查定价，命中时返回定价大小写。
+	lookup := func(pidx *platformPricingIndex, name string) (display string, pricing *ChannelModelPricing) {
+		if pidx == nil || name == "" {
+			return name, nil
+		}
+		lower := strings.ToLower(name)
+		if p, ok := pidx.byLower[lower]; ok {
+			return pidx.originalCase[lower], p
+		}
+		return name, nil
+	}
+
+	add := func(platform, displayName string, pricing *ChannelModelPricing) {
+		key := dedupKey{platform: platform, name: strings.ToLower(displayName)}
 		if _, ok := seen[key]; ok {
 			return
 		}
 		seen[key] = struct{}{}
-		var pricing *ChannelModelPricing
-		displayName := name
-		if pidx != nil {
-			lower := strings.ToLower(name)
-			if p, ok := pidx.byLower[lower]; ok {
-				pricing = p
-				displayName = pidx.originalCase[lower] // 定价大小写胜出
-			}
-		}
 		result = append(result, SupportedModel{
 			Name:     displayName,
 			Platform: platform,
@@ -498,12 +511,13 @@ func (c *Channel) SupportedModels() []SupportedModel {
 		})
 	}
 
+	// Pass A：从 mapping 展开
 	for platform, mapping := range c.ModelMapping {
 		if len(mapping) == 0 {
 			continue
 		}
-		pidx := idx[platform] // 可能为 nil（该平台无定价行）
-		for src := range mapping {
+		pidx := idx[platform]
+		for src, target := range mapping {
 			prefix, isWild := splitWildcardSuffix(src)
 			if isWild {
 				if pidx == nil {
@@ -512,12 +526,32 @@ func (c *Channel) SupportedModels() []SupportedModel {
 				prefixLower := strings.ToLower(prefix)
 				for _, candidate := range pidx.names {
 					if strings.HasPrefix(strings.ToLower(candidate), prefixLower) {
-						add(platform, candidate, pidx)
+						display, pricing := lookup(pidx, candidate)
+						add(platform, display, pricing)
 					}
 				}
 				continue
 			}
-			add(platform, src, pidx)
+			// 精确 mapping：定价按 target 查；target 缺失/通配则退化按 src 查
+			pricingKey := target
+			if pricingKey == "" {
+				pricingKey = src
+			}
+			if _, targetWild := splitWildcardSuffix(pricingKey); targetWild {
+				pricingKey = src
+			}
+			_, pricing := lookup(pidx, pricingKey)
+			// 显示名优先用 src 在定价里的原始大小写（若 src 本身是个定价模型名）
+			displayName, _ := lookup(pidx, src)
+			add(platform, displayName, pricing)
+		}
+	}
+
+	// Pass B：从 pricing 补齐 mapping 未覆盖的具体模型（修复"定价存在但没配映射 → 不显示"）
+	for platform, pidx := range idx {
+		for _, name := range pidx.names {
+			display, pricing := lookup(pidx, name)
+			add(platform, display, pricing)
 		}
 	}
 

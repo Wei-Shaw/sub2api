@@ -75,7 +75,7 @@ func newAvailableChannelService(channels []Channel, groupRepo GroupRepository) *
 	repo := &mockChannelRepository{
 		listAllFn: func(ctx context.Context) ([]Channel, error) { return channels, nil },
 	}
-	return NewChannelService(repo, groupRepo, nil)
+	return NewChannelService(repo, groupRepo, nil, nil)
 }
 
 func TestListAvailable_EmptyActiveGroups_NoGroupsAttached(t *testing.T) {
@@ -134,7 +134,7 @@ func TestListAvailable_ListAllErrorPropagates(t *testing.T) {
 		listAllFn: func(ctx context.Context) ([]Channel, error) { return nil, sentinel },
 	}
 	groupRepo := &stubGroupRepoForAvailable{}
-	svc := NewChannelService(repo, groupRepo, nil)
+	svc := NewChannelService(repo, groupRepo, nil, nil)
 	out, err := svc.ListAvailable(context.Background())
 	require.Nil(t, out)
 	require.ErrorIs(t, err, sentinel)

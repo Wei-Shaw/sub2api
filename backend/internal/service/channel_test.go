@@ -476,29 +476,12 @@ func TestSupportedModels_WildcardExpandedFromPricing(t *testing.T) {
 	for _, m := range got {
 		names = append(names, m.Name)
 	}
-	require.ElementsMatch(t, []string{"claude-sonnet-4-5", "claude-sonnet-4-6"}, names)
+	require.ElementsMatch(t, []string{"claude-sonnet-4-5", "claude-sonnet-4-6", "claude-opus-4-6"}, names)
 	for _, m := range got {
 		require.NotContains(t, m.Name, "*")
 	}
 }
 
-func TestSupportedModels_PlatformWithoutMappingSkipped(t *testing.T) {
-	ch := &Channel{
-		ModelPricing: []ChannelModelPricing{
-			{ID: 1, Platform: "anthropic", Models: []string{"claude-sonnet-4-6"}},
-			{ID: 2, Platform: "openai", Models: []string{"gpt-4o"}},
-		},
-		ModelMapping: map[string]map[string]string{
-			"anthropic": {"claude-sonnet-4-6": "claude-sonnet-4-6"},
-			// openai 没有 mapping 条目
-		},
-	}
-
-	got := ch.SupportedModels()
-	require.Len(t, got, 1)
-	require.Equal(t, "anthropic", got[0].Platform)
-	require.Equal(t, "claude-sonnet-4-6", got[0].Name)
-}
 
 func TestSupportedModels_MissingPricingKeepsNilPricing(t *testing.T) {
 	ch := &Channel{
@@ -584,7 +567,8 @@ func TestSupportedModels_WildcardOnlyPricingRowsSkipped(t *testing.T) {
 }
 
 func TestSupportedModels_WildcardPrefixMatchesNothing(t *testing.T) {
-	// 通配符模式无任何对应定价模型时，该平台应产出 0 个模型。
+	// 通配符模式无任何对应定价模型时，该平台 mapping 路不产出；
+	// 但其他平台的 pricing-only 模型仍会通过 Pass B 出现。
 	ch := &Channel{
 		ModelPricing: []ChannelModelPricing{
 			{ID: 1, Platform: "openai", Models: []string{"gpt-4o"}},
@@ -593,11 +577,15 @@ func TestSupportedModels_WildcardPrefixMatchesNothing(t *testing.T) {
 			"anthropic": {"gpt-foo-*": "gpt-foo-1"},
 		},
 	}
-	require.Empty(t, ch.SupportedModels())
+	got := ch.SupportedModels()
+	require.Len(t, got, 1)
+	require.Equal(t, "openai", got[0].Platform)
+	require.Equal(t, "gpt-4o", got[0].Name)
 }
 
 func TestSupportedModels_CrossPlatformPricingDoesNotBleed(t *testing.T) {
-	// anthropic 的通配符不应拉入 openai 定价行，哪怕名字恰好前缀匹配。
+	// anthropic 的通配符不应把 openai 定价行拉到 anthropic 平台下；
+	// openai 的 pricing-only 模型则正常通过 Pass B 暴露在 openai 平台下。
 	ch := &Channel{
 		ModelPricing: []ChannelModelPricing{
 			{ID: 1, Platform: "openai", Models: []string{"claude-sonnet-4-6"}},
@@ -606,7 +594,10 @@ func TestSupportedModels_CrossPlatformPricingDoesNotBleed(t *testing.T) {
 			"anthropic": {"claude-sonnet-*": "x"},
 		},
 	}
-	require.Empty(t, ch.SupportedModels())
+	got := ch.SupportedModels()
+	require.Len(t, got, 1)
+	require.Equal(t, "openai", got[0].Platform, "不能把 openai 定价标记为 anthropic 模型")
+	require.Equal(t, "claude-sonnet-4-6", got[0].Name)
 }
 
 func TestSupportedModels_CaseInsensitiveDedup(t *testing.T) {
@@ -626,7 +617,8 @@ func TestSupportedModels_CaseInsensitiveDedup(t *testing.T) {
 }
 
 func TestSupportedModels_EmptyPlatformMapping(t *testing.T) {
-	// ModelMapping 有一个 platform key 但 value 是空 map —— 该 platform 应被跳过。
+	// ModelMapping 平台 key 存在但 value 为空 map：mapping 路跳过该平台，
+	// 但 pricing 路仍会把该平台的定价模型补齐（关键修复：azcc 这种"只配定价不配映射"渠道）。
 	ch := &Channel{
 		ModelPricing: []ChannelModelPricing{
 			{ID: 1, Platform: "anthropic", Models: []string{"claude-sonnet-4-6"}},
@@ -635,7 +627,11 @@ func TestSupportedModels_EmptyPlatformMapping(t *testing.T) {
 			"anthropic": {},
 		},
 	}
-	require.Empty(t, ch.SupportedModels())
+	got := ch.SupportedModels()
+	require.Len(t, got, 1)
+	require.Equal(t, "anthropic", got[0].Platform)
+	require.Equal(t, "claude-sonnet-4-6", got[0].Name)
+	require.NotNil(t, got[0].Pricing)
 }
 
 func TestSupportedModels_ExactKeyUsesPricedCaseWhenAvailable(t *testing.T) {
@@ -667,4 +663,66 @@ func TestSupportedModels_AsteriskOnlyMappingExpandsAllPriced(t *testing.T) {
 	require.Len(t, got, 2)
 	names := []string{got[0].Name, got[1].Name}
 	require.ElementsMatch(t, []string{"gpt-4o", "gpt-4o-mini"}, names)
+}
+
+func TestSupportedModels_PricingOnlyNoMapping(t *testing.T) {
+	// 渠道完全没配 mapping，只配了定价 —— 应该把所有定价模型作为支持模型返回。
+	// 这是修复前的核心 bug 场景（前端显示"未配置模型"）。
+	ch := &Channel{
+		ModelPricing: []ChannelModelPricing{
+			{ID: 1, Platform: "anthropic", Models: []string{"claude-opus-4-6"}, InputPrice: testPtrFloat64(1.5e-5)},
+			{ID: 2, Platform: "anthropic", Models: []string{"claude-haiku-4-5"}, InputPrice: testPtrFloat64(3e-7)},
+		},
+	}
+	got := ch.SupportedModels()
+	require.Len(t, got, 2)
+	require.Equal(t, "claude-haiku-4-5", got[0].Name)
+	require.NotNil(t, got[0].Pricing)
+	require.Equal(t, int64(2), got[0].Pricing.ID)
+	require.Equal(t, "claude-opus-4-6", got[1].Name)
+	require.Equal(t, int64(1), got[1].Pricing.ID)
+}
+
+func TestSupportedModels_ExactMappingUsesTargetPricing(t *testing.T) {
+	// 精确 mapping `src → target`：定价应按 target 查（实际计费的是 target），
+	// 而不是按 src 自查。
+	ch := &Channel{
+		ModelPricing: []ChannelModelPricing{
+			{ID: 100, Platform: "anthropic", Models: []string{"req-model"}, InputPrice: testPtrFloat64(3e-6)},
+			{ID: 200, Platform: "anthropic", Models: []string{"served-model"}, InputPrice: testPtrFloat64(1.5e-5)},
+		},
+		ModelMapping: map[string]map[string]string{
+			"anthropic": {
+				"req-model": "served-model",
+			},
+		},
+	}
+	got := ch.SupportedModels()
+	require.Len(t, got, 2)
+	require.Equal(t, "req-model", got[0].Name)
+	require.NotNil(t, got[0].Pricing)
+	require.Equal(t, int64(200), got[0].Pricing.ID, "req-model 显示但定价是 served-model 的（mapping target）")
+	require.Equal(t, "served-model", got[1].Name)
+	require.Equal(t, int64(200), got[1].Pricing.ID)
+}
+
+func TestSupportedModels_ExactMappingTargetMissingFromPricing(t *testing.T) {
+	// `src → target` 但 target 不在渠道定价里 —— 结果中 src 的 Pricing 为 nil
+	// （等待 ListAvailable 阶段的全局 LiteLLM 回落填充）。
+	ch := &Channel{
+		ModelPricing: []ChannelModelPricing{
+			{ID: 1, Platform: "anthropic", Models: []string{"some-priced-model"}, InputPrice: testPtrFloat64(1.5e-5)},
+		},
+		ModelMapping: map[string]map[string]string{
+			"anthropic": {
+				"missing-src": "missing-target",
+			},
+		},
+	}
+	got := ch.SupportedModels()
+	require.Len(t, got, 2)
+	require.Equal(t, "missing-src", got[0].Name)
+	require.Nil(t, got[0].Pricing, "target 在渠道定价中缺失时不虚假填充，留给 ListAvailable 走 LiteLLM 回落")
+	require.Equal(t, "some-priced-model", got[1].Name)
+	require.NotNil(t, got[1].Pricing)
 }
