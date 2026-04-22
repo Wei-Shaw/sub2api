@@ -1157,9 +1157,9 @@ REDACTED
 		if err != nil {
 			return nil, err
 	REDACTED
-		if putResp.Response != nil && putResp.Response.Body != nil {
-			_, _ = io.Copy(io.Discard, putResp.Response.Body)
-			_ = putResp.Response.Body.Close()
+		if putResp.Response != nil && putResp.Body != nil {
+			_, _ = io.Copy(io.Discard, putResp.Body)
+			_ = putResp.Body.Close()
 	REDACTED
 		if putResp.StatusCode < 200 || putResp.StatusCode >= 300 {
 			return nil, newOpenAIImageStatusError(putResp, "upload image bytes failed")
@@ -1294,10 +1294,10 @@ type openAIImageToolMessage struct {
 REDACTED
 
 func readOpenAIImageConversationStream(resp *req.Response, startTime time.Time) (string, []openAIImagePointerInfo, OpenAIUsage, *int, error) {
-	if resp == nil || resp.Response == nil || resp.Response.Body == nil {
+	if resp == nil || resp.Body == nil {
 		return "", nil, OpenAIUsage{REDACTED, nil, fmt.Errorf("empty conversation response")
 REDACTED
-	reader := bufio.NewReader(resp.Response.Body)
+	reader := bufio.NewReader(resp.Body)
 	var (
 		conversationID string
 		firstTokenMs   *int
@@ -1529,8 +1529,8 @@ REDACTED
 			lastErr = err
 	REDACTED else {
 			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-				body, readErr := io.ReadAll(resp.Response.Body)
-				_ = resp.Response.Body.Close()
+				body, readErr := io.ReadAll(resp.Body)
+				_ = resp.Body.Close()
 				if readErr != nil {
 					lastErr = readErr
 					goto waitNextPoll
