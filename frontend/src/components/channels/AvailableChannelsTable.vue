@@ -1,9 +1,10 @@
 <template>
   <div class="card overflow-hidden">
-    <table class="w-full border-collapse text-sm">
+    <table class="w-full table-fixed border-collapse text-sm">
       <thead>
         <tr class="border-b border-gray-100 bg-gray-50/50 text-xs font-medium uppercase tracking-wide text-gray-500 dark:border-dark-700 dark:bg-dark-800/50 dark:text-gray-400">
-          <th class="w-[220px] px-4 py-3 text-left">{{ columns.name }}</th>
+          <th class="w-[180px] px-4 py-3 text-center">{{ columns.name }}</th>
+          <th class="w-[200px] px-4 py-3 text-left">{{ columns.description }}</th>
           <th class="w-[140px] px-4 py-3 text-left">{{ columns.platform }}</th>
           <th class="px-4 py-3 text-left">{{ columns.groups }}</th>
           <th class="px-4 py-3 text-left">{{ columns.supportedModels }}</th>
@@ -11,14 +12,14 @@
       </thead>
       <tbody v-if="loading">
         <tr>
-          <td colspan="4" class="py-10 text-center">
+          <td colspan="5" class="py-10 text-center">
             <Icon name="refresh" size="lg" class="inline-block animate-spin text-gray-400" />
           </td>
         </tr>
       </tbody>
       <tbody v-else-if="rows.length === 0">
         <tr>
-          <td colspan="4" class="py-12 text-center">
+          <td colspan="5" class="py-12 text-center">
             <Icon name="inbox" size="xl" class="mx-auto mb-3 h-12 w-12 text-gray-400" />
             <p class="text-sm text-gray-500 dark:text-gray-400">{{ emptyLabel }}</p>
           </td>
@@ -38,19 +39,23 @@
           class="transition-colors hover:bg-gray-50/40 dark:hover:bg-dark-800/40"
           :class="{ 'border-t border-gray-100/70 dark:border-dark-700/50': secIdx > 0 }"
         >
-          <!-- 渠道名：只在第一行渲染并用 rowspan 纵向合并；多平台时视觉上整列对齐 -->
+          <!-- 渠道名：只在第一行渲染并用 rowspan 纵向合并 -->
           <td
             v-if="secIdx === 0"
             :rowspan="channel.platforms.length"
-            class="align-top px-4 py-3"
+            class="px-4 py-3 text-center align-middle font-medium text-gray-900 dark:text-white"
           >
-            <div class="font-medium text-gray-900 dark:text-white">{{ channel.name }}</div>
-            <div
-              v-if="channel.description"
-              class="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
-            >
-              {{ channel.description }}
-            </div>
+            {{ channel.name }}
+          </td>
+
+          <!-- 描述：独立一列，同样用 rowspan 纵向合并 -->
+          <td
+            v-if="secIdx === 0"
+            :rowspan="channel.platforms.length"
+            class="px-4 py-3 align-middle text-xs text-gray-500 dark:text-gray-400"
+          >
+            <template v-if="channel.description">{{ channel.description }}</template>
+            <span v-else class="text-gray-400">-</span>
           </td>
 
           <!-- 平台徽章 -->
@@ -153,6 +158,7 @@ import { platformBadgeClass } from '@/utils/platformColors'
 const props = defineProps<{
   columns: {
     name: string
+    description: string
     platform: string
     groups: string
     supportedModels: string
