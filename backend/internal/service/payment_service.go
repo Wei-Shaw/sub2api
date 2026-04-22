@@ -1,10 +1,14 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -43,6 +47,8 @@ const (
 
 	orderIDPrefix = "sub2_"
 )
+
+const paymentResumeSigningKeyEnv = "PAYMENT_RESUME_SIGNING_KEY"
 
 // --- Types ---
 
@@ -179,7 +185,7 @@ REDACTED
 
 func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository) *PaymentService {
 	svc := &PaymentService{entClient: entClient, registry: registry, loadBalancer: newVisibleMethodLoadBalancer(loadBalancer, configService), redeemService: redeemService, subscriptionSvc: subscriptionSvc, configService: configService, userRepo: userRepo, groupRepo: groupRepoREDACTED
-	svc.resumeService = NewPaymentResumeService(psResumeSigningKey(configService))
+	svc.resumeService = psNewPaymentResumeService(configService)
 	return svc
 REDACTED
 
@@ -259,14 +265,52 @@ func (s *PaymentService) paymentResume() *PaymentResumeService {
 	if s.resumeService != nil {
 		return s.resumeService
 REDACTED
-	return NewPaymentResumeService(psResumeSigningKey(s.configService))
+	return psNewPaymentResumeService(s.configService)
+REDACTED
+
+func psNewPaymentResumeService(configService *PaymentConfigService) *PaymentResumeService {
+	signingKey, verifyFallbacks := psResumeSigningKeys(configService)
+	return NewPaymentResumeService(signingKey, verifyFallbacks...)
 REDACTED
 
 func psResumeSigningKey(configService *PaymentConfigService) []byte {
+	signingKey, _ := psResumeSigningKeys(configService)
+	return signingKey
+REDACTED
+
+func psResumeSigningKeys(configService *PaymentConfigService) ([]byte, [][]byte) {
+	signingKey := parsePaymentResumeSigningKey(os.Getenv(paymentResumeSigningKeyEnv))
+	legacyKey := psResumeLegacyVerificationKey(configService)
+	if len(signingKey) == 0 {
+		if len(legacyKey) == 0 {
+			return nil, nil
+	REDACTED
+		return legacyKey, nil
+REDACTED
+	if len(legacyKey) == 0 || bytes.Equal(legacyKey, signingKey) {
+		return signingKey, nil
+REDACTED
+	return signingKey, [][]byte{legacyKeyREDACTED
+REDACTED
+
+func psResumeLegacyVerificationKey(configService *PaymentConfigService) []byte {
 	if configService == nil {
 		return nil
 REDACTED
 	return configService.encryptionKey
+REDACTED
+
+func parsePaymentResumeSigningKey(raw string) []byte {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+REDACTED
+	if len(raw) >= 64 && len(raw)%2 == 0 {
+		if decoded, err := hex.DecodeString(raw); err == nil && len(decoded) > 0 {
+			return decoded
+	REDACTED
+REDACTED
+	return []byte(raw)
 REDACTED
 
 func psSliceContains(sl []string, s string) bool {

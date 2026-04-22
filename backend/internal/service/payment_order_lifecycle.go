@@ -234,6 +234,10 @@ REDACTED
 // if a payment was made, and processes it if so. This handles the case where
 // the provider's notify callback was missed (e.g. EasyPay popup mode).
 func (s *PaymentService) VerifyOrderByOutTradeNo(ctx context.Context, outTradeNo string, userID int64) (*dbent.PaymentOrder, error) {
+	outTradeNo, err := normalizeOrderLookupOutTradeNo(outTradeNo)
+	if err != nil {
+		return nil, err
+REDACTED
 	o, err := s.entClient.PaymentOrder.Query().
 		Where(paymentorder.OutTradeNo(outTradeNo)).
 		Only(ctx)
@@ -261,6 +265,10 @@ REDACTED
 // triggering any upstream reconciliation. Signed resume-token recovery is the
 // only public recovery path allowed to query upstream state.
 func (s *PaymentService) VerifyOrderPublic(ctx context.Context, outTradeNo string) (*dbent.PaymentOrder, error) {
+	outTradeNo, err := normalizeOrderLookupOutTradeNo(outTradeNo)
+	if err != nil {
+		return nil, err
+REDACTED
 	o, err := s.entClient.PaymentOrder.Query().
 		Where(paymentorder.OutTradeNo(outTradeNo)).
 		Only(ctx)
@@ -268,6 +276,27 @@ func (s *PaymentService) VerifyOrderPublic(ctx context.Context, outTradeNo strin
 		return nil, infraerrors.NotFound("NOT_FOUND", "order not found")
 REDACTED
 	return o, nil
+REDACTED
+
+func normalizeOrderLookupOutTradeNo(raw string) (string, error) {
+	outTradeNo := strings.TrimSpace(raw)
+	if outTradeNo == "" {
+		return "", infraerrors.BadRequest("INVALID_OUT_TRADE_NO", "out_trade_no is required")
+REDACTED
+	if len(outTradeNo) > 64 {
+		return "", infraerrors.BadRequest("INVALID_OUT_TRADE_NO", "out_trade_no is invalid")
+REDACTED
+	for _, ch := range outTradeNo {
+		switch {
+		case ch >= 'a' && ch <= 'z':
+		case ch >= 'A' && ch <= 'Z':
+		case ch >= '0' && ch <= '9':
+		case ch == '_' || ch == '-':
+		default:
+			return "", infraerrors.BadRequest("INVALID_OUT_TRADE_NO", "out_trade_no is invalid")
+	REDACTED
+REDACTED
+	return outTradeNo, nil
 REDACTED
 
 func (s *PaymentService) ExpireTimedOutOrders(ctx context.Context) (int, error) {

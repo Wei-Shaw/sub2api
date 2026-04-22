@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -143,7 +144,7 @@ REDACTED
 
 	_, err = svc.GetPublicOrderByResumeToken(ctx, token)
 REDACTED
-	require.Contains(t, err.Error(), "resume token")
+	require.Equal(t, "INVALID_RESUME_TOKEN", infraerrors.Reason(err))
 REDACTED
 
 func TestGetPublicOrderByResumeTokenUsesSnapshotAuthorityWhenColumnsDiffer(t *testing.T) {
@@ -301,4 +302,14 @@ REDACTED
 REDACTED
 	require.Equal(t, order.ID, got.ID)
 	require.Equal(t, 0, provider.queryCount)
+REDACTED
+
+func TestVerifyOrderPublicRejectsBlankOutTradeNo(t *testing.T) {
+	svc := &PaymentService{
+		entClient: newPaymentConfigServiceTestClient(t),
+REDACTED
+
+	_, err := svc.VerifyOrderPublic(context.Background(), "   ")
+REDACTED
+	require.Equal(t, "INVALID_OUT_TRADE_NO", infraerrors.Reason(err))
 REDACTED

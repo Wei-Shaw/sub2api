@@ -4,9 +4,12 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"testing"
 
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -199,7 +202,7 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestCreateProviderInstanceRejectsConflictingVisibleMethodEnablement(t *testing.T) {
+func TestCreateProviderInstanceAllowsVisibleMethodProvidersFromDifferentSources(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -227,15 +230,14 @@ REDACTED
 	_, err = svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
 		ProviderKey:    "alipay",
 		Name:           "Official Alipay",
-		Config:         map[string]string{"appId": "app-1"REDACTED,
+		Config:         map[string]string{"appId": "app-1", "privateKey": "private-key"REDACTED,
 		SupportedTypes: []string{"alipay"REDACTED,
 		Enabled:        true,
 REDACTED)
 REDACTED
-	require.Equal(t, "PAYMENT_PROVIDER_CONFLICT", infraerrors.Reason(err))
 REDACTED
 
-func TestUpdateProviderInstanceRejectsEnablingConflictingVisibleMethodProvider(t *testing.T) {
+func TestUpdateProviderInstanceAllowsEnablingVisibleMethodProviderFromDifferentSource(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -264,7 +266,7 @@ REDACTED
 	candidate, err := svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
 		ProviderKey:    "wxpay",
 		Name:           "Official WeChat",
-		Config:         map[string]string{"appId": "wx-app"REDACTED,
+		Config:         validWxpayProviderConfig(t),
 		SupportedTypes: []string{"wxpay"REDACTED,
 		Enabled:        false,
 REDACTED)
@@ -274,7 +276,6 @@ REDACTED
 		Enabled: boolPtrValue(true),
 REDACTED)
 REDACTED
-	require.Equal(t, "PAYMENT_PROVIDER_CONFLICT", infraerrors.Reason(err))
 REDACTED
 
 func TestUpdateProviderInstancePersistsEnabledAndSupportedTypes(t *testing.T) {
@@ -316,4 +317,26 @@ REDACTED
 
 func boolPtrValue(v bool) *bool {
 	return &v
+REDACTED
+
+func validWxpayProviderConfig(t *testing.T) map[string]string {
+REDACTED
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+REDACTED
+
+	privDER, err := x509.MarshalPKCS8PrivateKey(key)
+REDACTED
+	pubDER, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+REDACTED
+
+	return map[string]string{
+		"appId":       "wx-app-test",
+		"mchId":       "mch-test",
+		"privateKey":  string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privDERREDACTED)),
+		"apiV3Key":    "12345678901234567890123456789012",
+		"publicKey":   string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDERREDACTED)),
+		"publicKeyId": "public-key-id-test",
+		"certSerial":  "cert-serial-test",
+REDACTED
 REDACTED

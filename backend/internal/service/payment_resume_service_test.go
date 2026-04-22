@@ -334,6 +334,59 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestPaymentServiceParseWeChatPaymentResumeTokenUsesExplicitSigningKey(t *testing.T) {
+	t.Setenv("PAYMENT_RESUME_SIGNING_KEY", "explicit-payment-resume-signing-key")
+
+	token, err := NewPaymentResumeService([]byte("explicit-payment-resume-signing-key")).CreateWeChatPaymentResumeToken(WeChatPaymentResumeClaims{
+		OpenID:      "openid-explicit-key",
+		PaymentType: payment.TypeWxpay,
+REDACTED)
+	if err != nil {
+		t.Fatalf("CreateWeChatPaymentResumeToken returned error: %v", err)
+REDACTED
+
+	svc := &PaymentService{
+		configService: &PaymentConfigService{
+			encryptionKey: []byte("REDACTED"),
+	REDACTED,
+REDACTED
+
+	claims, err := svc.ParseWeChatPaymentResumeToken(token)
+	if err != nil {
+		t.Fatalf("ParseWeChatPaymentResumeToken returned error: %v", err)
+REDACTED
+	if claims.OpenID != "openid-explicit-key" {
+		t.Fatalf("openid = %q, want %q", claims.OpenID, "openid-explicit-key")
+REDACTED
+REDACTED
+
+func TestPaymentServiceParseWeChatPaymentResumeTokenAcceptsLegacyEncryptionKeyDuringMigration(t *testing.T) {
+	t.Setenv("PAYMENT_RESUME_SIGNING_KEY", "explicit-payment-resume-signing-key")
+
+	legacyKey := []byte("REDACTED")
+	token, err := NewPaymentResumeService(legacyKey).CreateWeChatPaymentResumeToken(WeChatPaymentResumeClaims{
+		OpenID:      "openid-legacy-key",
+		PaymentType: payment.TypeWxpay,
+REDACTED)
+	if err != nil {
+		t.Fatalf("CreateWeChatPaymentResumeToken returned error: %v", err)
+REDACTED
+
+	svc := &PaymentService{
+		configService: &PaymentConfigService{
+			encryptionKey: legacyKey,
+	REDACTED,
+REDACTED
+
+	claims, err := svc.ParseWeChatPaymentResumeToken(token)
+	if err != nil {
+		t.Fatalf("ParseWeChatPaymentResumeToken returned error: %v", err)
+REDACTED
+	if claims.OpenID != "openid-legacy-key" {
+		t.Fatalf("openid = %q, want %q", claims.OpenID, "openid-legacy-key")
+REDACTED
+REDACTED
+
 func TestNormalizeVisibleMethodSource(t *testing.T) {
 	t.Parallel()
 
@@ -424,14 +477,14 @@ func TestVisibleMethodLoadBalancerUsesConfiguredSourceWhenMultipleProvidersEnabl
 	t.Parallel()
 
 	tests := []struct {
-		name           string
-		method         payment.PaymentType
-		officialName   string
-		officialTypes  string
-		easyPayName    string
-		easyPayTypes   string
-		sourceSetting  string
-		wantProvider   string
+		name          string
+		method        payment.PaymentType
+		officialName  string
+		officialTypes string
+		easyPayName   string
+		easyPayTypes  string
+		sourceSetting string
+		wantProvider  string
 REDACTED{
 		{
 			name:          "alipay uses official source",
@@ -487,7 +540,7 @@ REDACTED
 				officialProviderKey = payment.TypeWxpay
 		REDACTED
 
-			_, err = client.PaymentProviderInstance.Create().
+			_, err := client.PaymentProviderInstance.Create().
 				SetProviderKey(officialProviderKey).
 				SetName(tt.officialName).
 				SetConfig("{REDACTED").
