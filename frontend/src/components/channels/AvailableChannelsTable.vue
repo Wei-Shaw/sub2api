@@ -1,11 +1,10 @@
 <template>
   <div class="card">
-    <!-- 表头 -->
+    <!-- 表头：三列（渠道头单独一行，不进 grid） -->
     <div
       class="grid items-center rounded-t-lg border-b border-gray-100 bg-gray-50/50 px-4 py-3 text-xs font-medium uppercase tracking-wide text-gray-500 dark:border-dark-700 dark:bg-dark-800/50 dark:text-gray-400"
       :style="gridStyle"
     >
-      <div>{{ columns.name }}</div>
       <div>{{ columns.platform }}</div>
       <div>{{ columns.groups }}</div>
       <div>{{ columns.supportedModels }}</div>
@@ -20,34 +19,51 @@
       <p class="text-sm text-gray-500 dark:text-gray-400">{{ emptyLabel }}</p>
     </div>
 
-    <!-- 渠道分组：每个渠道一个 section，内部按 platform 顺序铺开。
-         外层无 overflow-hidden，避免裁掉 SupportedModelChip 的价格浮层。 -->
+    <!-- 一个渠道 = 一张卡片：顶部 header 横跨整行显示渠道名 + 描述，
+         下面按 platform 逐行展开。卡片间留空隙 + 边框，多平台聚合一目了然。 -->
     <div
       v-else
       v-for="(channel, chIdx) in rows"
       :key="`${channel.name}-${chIdx}`"
       class="border-b border-gray-100 last:rounded-b-lg last:border-b-0 dark:border-dark-700"
     >
+      <!-- 渠道 header：横跨所有列；有多平台时显示平台徽章摘要。 -->
       <div
-        v-for="(section, secIdx) in channel.platforms"
+        class="flex flex-wrap items-center gap-3 bg-gray-50/60 px-4 py-2.5 dark:bg-dark-800/40"
+      >
+        <div class="min-w-0 flex-1">
+          <div class="text-sm font-semibold text-gray-900 dark:text-white">
+            {{ channel.name }}
+          </div>
+          <div
+            v-if="channel.description"
+            class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400"
+          >
+            {{ channel.description }}
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-1.5">
+          <span
+            v-for="p in channel.platforms"
+            :key="`hdr-${channel.name}-${p.platform}`"
+            :class="[
+              'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium uppercase',
+              platformBadgeClass(p.platform),
+            ]"
+          >
+            <PlatformIcon :platform="p.platform as GroupPlatform" size="xs" />
+            {{ p.platform }}
+          </span>
+        </div>
+      </div>
+
+      <!-- 平台子行：每个平台一行，共享三列 grid 对齐到表头。 -->
+      <div
+        v-for="section in channel.platforms"
         :key="`${channel.name}-${section.platform}`"
-        class="grid items-center px-4 py-3 transition-colors hover:bg-gray-50/40 dark:hover:bg-dark-800/40"
-        :class="{ 'border-t border-gray-100/70 dark:border-dark-700/50': secIdx > 0 }"
+        class="grid items-center border-t border-gray-100/70 px-4 py-3 transition-colors hover:bg-gray-50/40 dark:border-dark-700/50 dark:hover:bg-dark-800/40"
         :style="gridStyle"
       >
-        <!-- 渠道名：仅第一行渲染，后续行留空（视觉上的 rowspan） -->
-        <div>
-          <template v-if="secIdx === 0">
-            <div class="font-medium text-gray-900 dark:text-white">{{ channel.name }}</div>
-            <div
-              v-if="channel.description"
-              class="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
-            >
-              {{ channel.description }}
-            </div>
-          </template>
-        </div>
-
         <!-- 平台徽章 -->
         <div>
           <span
@@ -141,8 +157,9 @@ import type { UserAvailableChannel, UserAvailableGroup, UserChannelPlatformSecti
 import type { GroupPlatform, SubscriptionType } from '@/types'
 import { platformBadgeClass } from '@/utils/platformColors'
 
-/** 四列 grid 的 template-columns；与表头、每个 section 行共享。 */
-const gridStyle = 'grid-template-columns: 220px 140px minmax(240px, 1fr) minmax(280px, 2fr); display: grid;'
+/** 三列 grid 的 template-columns；与表头、每个 section 行共享。
+ *  渠道名/描述移到渠道 header 条，不占列。 */
+const gridStyle = 'grid-template-columns: 140px minmax(240px, 1fr) minmax(280px, 2fr); display: grid;'
 
 const props = defineProps<{
   columns: {
