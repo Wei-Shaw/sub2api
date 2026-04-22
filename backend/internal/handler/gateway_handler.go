@@ -324,6 +324,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		for {
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
 			if err != nil {
+				if len(fs.FailedAccountIDs) == 0 && h.handleSelectionError(c, err, streamStarted) {
+					return
+				}
 				if len(fs.FailedAccountIDs) == 0 {
 					reqLog.Warn("gateway.select_account_no_available",
 						zap.String("model", reqModel),
@@ -565,6 +568,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			)
 			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID)
 			if err != nil {
+				if len(fs.FailedAccountIDs) == 0 && h.handleSelectionError(c, err, streamStarted) {
+					return
+				}
 				if len(fs.FailedAccountIDs) == 0 {
 					reqLog.Warn("gateway.select_account_no_available",
 						zap.String("model", reqModel),
@@ -1307,6 +1313,20 @@ func (h *GatewayHandler) calculateSubscriptionRemaining(group *service.Group, su
 func (h *GatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotType string, streamStarted bool) {
 	h.handleStreamingAwareError(c, http.StatusTooManyRequests, "rate_limit_error",
 		fmt.Sprintf("Concurrency limit exceeded for %s, please retry later", slotType), streamStarted)
+}
+
+func (h *GatewayHandler) handleSelectionError(c *gin.Context, err error, streamStarted bool) bool {
+	var unsupportedErr *service.UnsupportedRequestedModelError
+	if errors.As(err, &unsupportedErr) {
+		h.handleStreamingAwareError(c, http.StatusBadRequest, "invalid_request_error", unsupportedErr.Error(), streamStarted)
+		return true
+	}
+	var deniedErr *service.ModelAccessDeniedError
+	if errors.As(err, &deniedErr) {
+		h.handleStreamingAwareError(c, http.StatusForbidden, "permission_error", deniedErr.Error(), streamStarted)
+		return true
+	}
+	return false
 }
 
 func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, platform string, streamStarted bool) {

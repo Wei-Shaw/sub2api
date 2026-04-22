@@ -352,6 +352,34 @@ var (
 // ErrNoAvailableAccounts 表示没有可用的账号
 var ErrNoAvailableAccounts = errors.New("no available accounts")
 
+type UnsupportedRequestedModelError struct{ Model string }
+
+func (e *UnsupportedRequestedModelError) Error() string {
+	model := strings.TrimSpace(e.Model)
+	if model == "" {
+		return "requested model is not supported by this endpoint/account pool"
+	}
+	return fmt.Sprintf("requested model %q is not supported by this endpoint/account pool", model)
+}
+
+type ModelAccessDeniedError struct {
+	Model  string
+	Reason string
+}
+
+func (e *ModelAccessDeniedError) Error() string {
+	model := strings.TrimSpace(e.Model)
+	reason := strings.TrimSpace(e.Reason)
+	msg := "requested model is not allowed for this endpoint/account"
+	if model != "" {
+		msg = fmt.Sprintf("requested model %q is not allowed for this endpoint/account", model)
+	}
+	if reason != "" {
+		return msg + ": " + reason
+	}
+	return msg
+}
+
 // ErrClaudeCodeOnly 表示分组仅允许 Claude Code 客户端访问
 var ErrClaudeCodeOnly = errors.New("this group only allows Claude Code clients")
 
@@ -1376,7 +1404,7 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 		slog.Warn("channel pricing restriction blocked request",
 			"group_id", derefGroupID(groupID),
 			"model", requestedModel)
-		return nil, fmt.Errorf("%w supporting model: %s (channel pricing restriction)", ErrNoAvailableAccounts, requestedModel)
+		return nil, modelAccessDeniedError(requestedModel, "channel pricing restriction")
 	}
 
 	// anthropic/gemini 分组支持混合调度（包含启用了 mixed_scheduling 的 antigravity 账户）
@@ -1429,7 +1457,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		slog.Warn("channel pricing restriction blocked request",
 			"group_id", derefGroupID(groupID),
 			"model", requestedModel)
-		return nil, fmt.Errorf("%w supporting model: %s (channel pricing restriction)", ErrNoAvailableAccounts, requestedModel)
+		return nil, modelAccessDeniedError(requestedModel, "channel pricing restriction")
 	}
 
 	var stickyAccountID int64
@@ -3234,10 +3262,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 
 	if selected == nil {
 		stats := s.logDetailedSelectionFailure(ctx, groupID, sessionHash, requestedModel, platform, accounts, excludedIDs, false)
-		if requestedModel != "" {
-			return nil, fmt.Errorf("%w supporting model: %s (%s)", ErrNoAvailableAccounts, requestedModel, summarizeSelectionFailureStats(stats))
-		}
-		return nil, ErrNoAvailableAccounts
+		return nil, classifySelectionFailureError(requestedModel, stats)
 	}
 
 	// 4. 建立粘性绑定
@@ -3495,10 +3520,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 
 	if selected == nil {
 		stats := s.logDetailedSelectionFailure(ctx, groupID, sessionHash, requestedModel, nativePlatform, accounts, excludedIDs, true)
-		if requestedModel != "" {
-			return nil, fmt.Errorf("%w supporting model: %s (%s)", ErrNoAvailableAccounts, requestedModel, summarizeSelectionFailureStats(stats))
-		}
-		return nil, ErrNoAvailableAccounts
+		return nil, classifySelectionFailureError(requestedModel, stats)
 	}
 
 	// 4. 建立粘性绑定
@@ -3681,6 +3703,24 @@ func summarizeSelectionFailureStats(stats selectionFailureStats) string {
 		stats.ModelUnsupported,
 		stats.ModelRateLimited,
 	)
+}
+
+func unsupportedRequestedModelError(model string) error {
+	return &UnsupportedRequestedModelError{Model: strings.TrimSpace(model)}
+}
+
+func modelAccessDeniedError(model, reason string) error {
+	return &ModelAccessDeniedError{Model: strings.TrimSpace(model), Reason: strings.TrimSpace(reason)}
+}
+
+func classifySelectionFailureError(requestedModel string, stats selectionFailureStats) error {
+	if strings.TrimSpace(requestedModel) == "" {
+		return ErrNoAvailableAccounts
+	}
+	if stats.Total > 0 && stats.Excluded == 0 && stats.ModelUnsupported == stats.Total && stats.Eligible == 0 && stats.Unschedulable == 0 && stats.PlatformFiltered == 0 && stats.ModelRateLimited == 0 {
+		return unsupportedRequestedModelError(requestedModel)
+	}
+	return fmt.Errorf("%w supporting model: %s (%s)", ErrNoAvailableAccounts, requestedModel, summarizeSelectionFailureStats(stats))
 }
 
 // isModelSupportedByAccountWithContext 根据账户平台检查模型支持（带 context）
