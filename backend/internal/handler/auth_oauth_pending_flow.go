@@ -310,6 +310,78 @@ REDACTED
 	return nil
 REDACTED
 
+func buildLegacyCompleteRegistrationPendingResponse(
+	session *dbent.PendingAuthSession,
+	forceEmailOnSignup bool,
+	emailVerificationRequired bool,
+) map[string]any {
+	completionResponse := normalizePendingOAuthCompletionResponse(mergePendingCompletionResponse(session, map[string]any{
+		"step":                   oauthPendingChoiceStep,
+		"adoption_required":      true,
+		"create_account_allowed": true,
+		"force_email_on_signup":  forceEmailOnSignup,
+REDACTED))
+
+	if email := strings.TrimSpace(session.ResolvedEmail); email != "" {
+		if _, exists := completionResponse["email"]; !exists {
+			completionResponse["email"] = email
+	REDACTED
+		if _, exists := completionResponse["resolved_email"]; !exists {
+			completionResponse["resolved_email"] = email
+	REDACTED
+REDACTED
+	if _, exists := completionResponse["choice_reason"]; !exists {
+		switch {
+		case forceEmailOnSignup:
+			completionResponse["choice_reason"] = "force_email_on_signup"
+		case emailVerificationRequired:
+			completionResponse["choice_reason"] = "email_verification_required"
+		default:
+			completionResponse["choice_reason"] = "third_party_signup"
+	REDACTED
+REDACTED
+	return completionResponse
+REDACTED
+
+func (h *AuthHandler) legacyCompleteRegistrationSessionStatus(
+	c *gin.Context,
+	session *dbent.PendingAuthSession,
+) (*dbent.PendingAuthSession, bool, error) {
+	if session == nil {
+		return nil, false, infraerrors.BadRequest("PENDING_AUTH_SESSION_INVALID", "pending auth registration context is invalid")
+REDACTED
+
+	payload := normalizePendingOAuthCompletionResponse(mergePendingCompletionResponse(session, nil))
+	if step := pendingSessionStringValue(payload, "step"); step != "" {
+		return session, true, nil
+REDACTED
+
+	emailVerificationRequired := h != nil && h.authService != nil && h.authService.IsEmailVerifyEnabled(c.Request.Context())
+	forceEmailOnSignup := h.isForceEmailOnThirdPartySignup(c.Request.Context())
+	if !emailVerificationRequired && !forceEmailOnSignup {
+		return session, false, nil
+REDACTED
+
+	client := h.entClient()
+	if client == nil {
+		return nil, false, infraerrors.ServiceUnavailable("PENDING_AUTH_NOT_READY", "pending auth service is not ready")
+REDACTED
+
+	updatedSession, err := updatePendingOAuthSessionProgress(
+		c.Request.Context(),
+		client,
+		session,
+		strings.TrimSpace(session.Intent),
+		strings.TrimSpace(session.ResolvedEmail),
+		nil,
+		buildLegacyCompleteRegistrationPendingResponse(session, forceEmailOnSignup, emailVerificationRequired),
+	)
+	if err != nil {
+		return nil, false, infraerrors.InternalServer("PENDING_AUTH_SESSION_UPDATE_FAILED", "failed to update pending oauth session").WithCause(err)
+REDACTED
+	return updatedSession, true, nil
+REDACTED
+
 func (r oauthAdoptionDecisionRequest) hasDecision() bool {
 	return r.AdoptDisplayName != nil || r.AdoptAvatar != nil
 REDACTED
@@ -1272,6 +1344,59 @@ REDACTED
 	return svc, session, clearCookies, nil
 REDACTED
 
+func (h *AuthHandler) consumePendingOAuthSessionOnLogout(c *gin.Context) {
+	if c == nil || c.Request == nil {
+		return
+REDACTED
+
+	sessionToken, err := readOAuthPendingSessionCookie(c)
+	if err != nil || strings.TrimSpace(sessionToken) == "" {
+		return
+REDACTED
+	browserSessionKey, err := readOAuthPendingBrowserCookie(c)
+	if err != nil || strings.TrimSpace(browserSessionKey) == "" {
+		return
+REDACTED
+
+	svc, err := h.pendingIdentityService()
+	if err != nil {
+		return
+REDACTED
+	_, _ = svc.ConsumeBrowserSession(c.Request.Context(), sessionToken, browserSessionKey)
+REDACTED
+
+func clearOAuthLogoutCookies(c *gin.Context) {
+	secureCookie := isRequestHTTPS(c)
+
+	clearOAuthPendingSessionCookie(c, secureCookie)
+	clearOAuthPendingBrowserCookie(c, secureCookie)
+	clearOAuthBindAccessTokenCookie(c, secureCookie)
+
+	clearCookie(c, linuxDoOAuthStateCookieName, secureCookie)
+	clearCookie(c, linuxDoOAuthVerifierCookie, secureCookie)
+	clearCookie(c, linuxDoOAuthRedirectCookie, secureCookie)
+	clearCookie(c, linuxDoOAuthIntentCookieName, secureCookie)
+	clearCookie(c, linuxDoOAuthBindUserCookieName, secureCookie)
+
+	oidcClearCookie(c, oidcOAuthStateCookieName, secureCookie)
+	oidcClearCookie(c, oidcOAuthVerifierCookie, secureCookie)
+	oidcClearCookie(c, oidcOAuthRedirectCookie, secureCookie)
+	oidcClearCookie(c, oidcOAuthNonceCookie, secureCookie)
+	oidcClearCookie(c, oidcOAuthIntentCookieName, secureCookie)
+	oidcClearCookie(c, oidcOAuthBindUserCookieName, secureCookie)
+
+	wechatClearCookie(c, wechatOAuthStateCookieName, secureCookie)
+	wechatClearCookie(c, wechatOAuthRedirectCookieName, secureCookie)
+	wechatClearCookie(c, wechatOAuthIntentCookieName, secureCookie)
+	wechatClearCookie(c, wechatOAuthModeCookieName, secureCookie)
+	wechatClearCookie(c, wechatOAuthBindUserCookieName, secureCookie)
+
+	wechatPaymentClearCookie(c, wechatPaymentOAuthStateName, secureCookie)
+	wechatPaymentClearCookie(c, wechatPaymentOAuthRedirect, secureCookie)
+	wechatPaymentClearCookie(c, wechatPaymentOAuthContextName, secureCookie)
+	wechatPaymentClearCookie(c, wechatPaymentOAuthScope, secureCookie)
+REDACTED
+
 func buildPendingOAuthSessionStatusPayload(session *dbent.PendingAuthSession) gin.H {
 	completionResponse := normalizePendingOAuthCompletionResponse(mergePendingCompletionResponse(session, nil))
 	payload := gin.H{
@@ -1448,6 +1573,10 @@ REDACTED
 
 	_, session, clearCookies, err := readPendingOAuthBrowserSession(c, h)
 	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	if err := ensurePendingOAuthCompleteRegistrationSession(session); err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED

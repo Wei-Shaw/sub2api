@@ -374,19 +374,19 @@ REDACTED
 		ProviderSubject: subject,
 REDACTED
 	upstreamClaims := map[string]any{
-		"email":                  email,
-		"username":               username,
-		"subject":                subject,
-		"issuer":                 issuer,
-		"email_verified":         emailVerified != nil && *emailVerified,
-		"provider_fallback":      strings.TrimSpace(cfg.ProviderName),
+		"email":             email,
+		"username":          username,
+		"subject":           subject,
+		"issuer":            issuer,
+		"email_verified":    emailVerified != nil && *emailVerified,
+		"provider_fallback": strings.TrimSpace(cfg.ProviderName),
 		"suggested_display_name": firstNonEmpty(userInfoClaims.DisplayName, func() string {
 			if idClaims != nil {
 				return idClaims.Name
 		REDACTED
 			return ""
 	REDACTED(), username),
-		"suggested_avatar_url":   userInfoClaims.AvatarURL,
+		"suggested_avatar_url": userInfoClaims.AvatarURL,
 REDACTED
 	if compatEmail != "" && !strings.EqualFold(strings.TrimSpace(compatEmail), strings.TrimSpace(email)) {
 		upstreamClaims["compat_email"] = compatEmail
@@ -621,6 +621,15 @@ REDACTED
 	if err := ensurePendingOAuthCompleteRegistrationSession(session); err != nil {
 		response.ErrorFrom(c, err)
 		return
+REDACTED
+	if updatedSession, handled, err := h.legacyCompleteRegistrationSessionStatus(c, session); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED else if handled {
+		c.JSON(http.StatusOK, buildPendingOAuthSessionStatusPayload(updatedSession))
+		return
+REDACTED else {
+		session = updatedSession
 REDACTED
 	if err := h.ensureBackendModeAllowsNewUserLogin(c.Request.Context()); err != nil {
 		response.ErrorFrom(c, err)

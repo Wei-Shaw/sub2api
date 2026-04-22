@@ -678,6 +678,8 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 			// 不影响登出流程
 	REDACTED
 REDACTED
+	h.consumePendingOAuthSessionOnLogout(c)
+	clearOAuthLogoutCookies(c)
 
 	response.Success(c, LogoutResponse{
 		Message: "Logged out successfully",
