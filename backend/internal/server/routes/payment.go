@@ -44,11 +44,13 @@ func RegisterPaymentRoutes(
 REDACTED
 
 	// --- Public payment endpoints (no auth) ---
-	// Payment result page needs to verify order status without login
-	// (user session may have expired during provider redirect).
+	// Signed resume-token recovery is the supported public lookup path.
+	// The legacy anonymous out_trade_no verify endpoint is kept only as a
+	// compatibility shim that returns HTTP 410 Gone.
 	public := v1.Group("/payment/public")
 	{
 		public.POST("/orders/verify", paymentHandler.VerifyOrderPublic)
+		public.POST("/orders/resolve", paymentHandler.ResolveOrderPublicByResumeToken)
 REDACTED
 
 	// --- Webhook endpoints (no auth) ---

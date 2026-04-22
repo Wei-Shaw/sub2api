@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"context"
+	"strings"
+
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -12,14 +15,21 @@ import (
 // UserHandler handles user-related requests
 type UserHandler struct {
 	userService  *service.UserService
+	authService  *service.AuthService
 	emailService *service.EmailService
 	emailCache   service.EmailCache
 REDACTED
 
 // NewUserHandler creates a new UserHandler
-func NewUserHandler(userService *service.UserService, emailService *service.EmailService, emailCache service.EmailCache) *UserHandler {
+func NewUserHandler(
+	userService *service.UserService,
+	authService *service.AuthService,
+	emailService *service.EmailService,
+	emailCache service.EmailCache,
+) *UserHandler {
 	return &UserHandler{
 		userService:  userService,
+		authService:  authService,
 		emailService: emailService,
 		emailCache:   emailCache,
 REDACTED
@@ -34,8 +44,31 @@ REDACTED
 // UpdateProfileRequest represents the update profile request payload
 type UpdateProfileRequest struct {
 	Username               *string  `json:"username"`
+	AvatarURL              *string  `json:"avatar_url"`
 	BalanceNotifyEnabled   *bool    `json:"balance_notify_enabled"`
 	BalanceNotifyThreshold *float64 `json:"balance_notify_threshold"`
+REDACTED
+
+type userProfileResponse struct {
+	dto.User
+	AvatarURL         string                                 `json:"avatar_url,omitempty"`
+	AvatarSource      *userProfileSourceContext              `json:"avatar_source,omitempty"`
+	UsernameSource    *userProfileSourceContext              `json:"username_source,omitempty"`
+	DisplayNameSource *userProfileSourceContext              `json:"display_name_source,omitempty"`
+	NicknameSource    *userProfileSourceContext              `json:"nickname_source,omitempty"`
+	ProfileSources    map[string]*userProfileSourceContext   `json:"profile_sources,omitempty"`
+	Identities        service.UserIdentitySummarySet         `json:"identities"`
+	AuthBindings      map[string]service.UserIdentitySummary `json:"auth_bindings"`
+	IdentityBindings  map[string]service.UserIdentitySummary `json:"identity_bindings"`
+	EmailBound        bool                                   `json:"email_bound"`
+	LinuxDoBound      bool                                   `json:"linuxdo_bound"`
+	OIDCBound         bool                                   `json:"oidc_bound"`
+	WeChatBound       bool                                   `json:"wechat_bound"`
+REDACTED
+
+type userProfileSourceContext struct {
+	Provider string `json:"provider,omitempty"`
+	Source   string `json:"source,omitempty"`
 REDACTED
 
 // GetProfile handles getting user profile
@@ -47,13 +80,19 @@ func (h *UserHandler) GetProfile(c *gin.Context) {
 		return
 REDACTED
 
-	userData, err := h.userService.GetByID(c.Request.Context(), subject.UserID)
+	userData, err := h.userService.GetProfile(c.Request.Context(), subject.UserID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED
 
-	response.Success(c, dto.UserFromService(userData))
+	profileResp, err := h.buildUserProfileResponse(c.Request.Context(), subject.UserID, userData)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, profileResp)
 REDACTED
 
 // ChangePassword handles changing user password
@@ -101,6 +140,7 @@ REDACTED
 
 	svcReq := service.UpdateProfileRequest{
 		Username:               req.Username,
+		AvatarURL:              req.AvatarURL,
 		BalanceNotifyEnabled:   req.BalanceNotifyEnabled,
 		BalanceNotifyThreshold: req.BalanceNotifyThreshold,
 REDACTED
@@ -110,7 +150,149 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, dto.UserFromService(updatedUser))
+	profileResp, err := h.buildUserProfileResponse(c.Request.Context(), subject.UserID, updatedUser)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, profileResp)
+REDACTED
+
+type StartIdentityBindingRequest struct {
+	Provider   string `json:"provider" binding:"required"`
+	RedirectTo string `json:"redirect_to"`
+REDACTED
+
+type BindEmailIdentityRequest struct {
+	Email      string `json:"email" binding:"required,email"`
+	VerifyCode string `json:"verify_code" binding:"required"`
+	Password   string `json:"password" binding:"required"`
+REDACTED
+
+type SendEmailBindingCodeRequest struct {
+	Email string `json:"email" binding:"required,email"`
+REDACTED
+
+// StartIdentityBinding returns the backend authorize URL for starting a third-party identity bind flow.
+// POST /api/v1/user/auth-identities/bind/start
+func (h *UserHandler) StartIdentityBinding(c *gin.Context) {
+	if _, ok := middleware2.GetAuthSubjectFromContext(c); !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+REDACTED
+
+	var req StartIdentityBindingRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+
+	result, err := h.userService.PrepareIdentityBindingStart(c.Request.Context(), service.StartUserIdentityBindingRequest{
+		Provider:   req.Provider,
+		RedirectTo: req.RedirectTo,
+REDACTED)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, result)
+REDACTED
+
+// BindEmailIdentity verifies and binds a local email identity for the current user.
+// POST /api/v1/user/account-bindings/email
+func (h *UserHandler) BindEmailIdentity(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+REDACTED
+	if h.authService == nil {
+		response.InternalError(c, "Auth service not configured")
+		return
+REDACTED
+
+	var req BindEmailIdentityRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+
+	updatedUser, err := h.authService.BindEmailIdentity(
+		c.Request.Context(),
+		subject.UserID,
+		req.Email,
+		req.VerifyCode,
+		req.Password,
+	)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	profileResp, err := h.buildUserProfileResponse(c.Request.Context(), subject.UserID, updatedUser)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, profileResp)
+REDACTED
+
+// UnbindIdentity removes a third-party sign-in provider from the current user.
+// DELETE /api/v1/user/account-bindings/:provider
+func (h *UserHandler) UnbindIdentity(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+REDACTED
+
+	updatedUser, err := h.userService.UnbindUserAuthProvider(
+		c.Request.Context(),
+		subject.UserID,
+		c.Param("provider"),
+	)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	profileResp, err := h.buildUserProfileResponse(c.Request.Context(), subject.UserID, updatedUser)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, profileResp)
+REDACTED
+
+// SendEmailBindingCode sends a verification code for the current user's email binding flow.
+// POST /api/v1/user/account-bindings/email/send-code
+func (h *UserHandler) SendEmailBindingCode(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+REDACTED
+	if h.authService == nil {
+		response.InternalError(c, "Auth service not configured")
+		return
+REDACTED
+
+	var req SendEmailBindingCodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+
+	if err := h.authService.SendEmailIdentityBindCode(c.Request.Context(), subject.UserID, req.Email); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, gin.H{"message": "Verification code sent successfully"REDACTED)
 REDACTED
 
 // SendNotifyEmailCodeRequest represents the request to send notify email verification code
@@ -176,7 +358,13 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, dto.UserFromService(updatedUser))
+	profileResp, err := h.buildUserProfileResponse(c.Request.Context(), subject.UserID, updatedUser)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, profileResp)
 REDACTED
 
 // RemoveNotifyEmailRequest represents the request to remove a notify email
@@ -212,7 +400,13 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, dto.UserFromService(updatedUser))
+	profileResp, err := h.buildUserProfileResponse(c.Request.Context(), subject.UserID, updatedUser)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, profileResp)
 REDACTED
 
 // ToggleNotifyEmailRequest represents the request to toggle a notify email's disabled state
@@ -248,5 +442,116 @@ REDACTED
 		return
 REDACTED
 
-	response.Success(c, dto.UserFromService(updatedUser))
+	profileResp, err := h.buildUserProfileResponse(c.Request.Context(), subject.UserID, updatedUser)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	response.Success(c, profileResp)
+REDACTED
+
+func (h *UserHandler) buildUserProfileResponse(ctx context.Context, userID int64, user *service.User) (userProfileResponse, error) {
+	identities, err := h.userService.GetProfileIdentitySummaries(ctx, userID, user)
+	if err != nil {
+		return userProfileResponse{REDACTED, err
+REDACTED
+	return userProfileResponseFromService(user, identities), nil
+REDACTED
+
+func userProfileResponseFromService(user *service.User, identities service.UserIdentitySummarySet) userProfileResponse {
+	base := dto.UserFromService(user)
+	if base == nil {
+		return userProfileResponse{REDACTED
+REDACTED
+	bindings := userProfileBindingMap(identities)
+	profileSources, avatarSource, usernameSource := inferUserProfileSources(user, identities)
+	return userProfileResponse{
+		User:              *base,
+		AvatarURL:         user.AvatarURL,
+		AvatarSource:      avatarSource,
+		UsernameSource:    usernameSource,
+		DisplayNameSource: usernameSource,
+		NicknameSource:    usernameSource,
+		ProfileSources:    profileSources,
+		Identities:        identities,
+		AuthBindings:      bindings,
+		IdentityBindings:  bindings,
+		EmailBound:        identities.Email.Bound,
+		LinuxDoBound:      identities.LinuxDo.Bound,
+		OIDCBound:         identities.OIDC.Bound,
+		WeChatBound:       identities.WeChat.Bound,
+REDACTED
+REDACTED
+
+func userProfileBindingMap(identities service.UserIdentitySummarySet) map[string]service.UserIdentitySummary {
+	return map[string]service.UserIdentitySummary{
+		"email":   identities.Email,
+		"linuxdo": identities.LinuxDo,
+		"oidc":    identities.OIDC,
+		"wechat":  identities.WeChat,
+REDACTED
+REDACTED
+
+func inferUserProfileSources(user *service.User, identities service.UserIdentitySummarySet) (
+	map[string]*userProfileSourceContext,
+	*userProfileSourceContext,
+	*userProfileSourceContext,
+) {
+	if user == nil {
+		return nil, nil, nil
+REDACTED
+
+	thirdParty := thirdPartyIdentityProviders(identities)
+	var avatarSource *userProfileSourceContext
+	if strings.TrimSpace(user.AvatarURL) != "" && len(thirdParty) == 1 {
+		avatarSource = buildUserProfileSourceContext(thirdParty[0].Provider)
+REDACTED
+
+	usernameValue := strings.TrimSpace(user.Username)
+	var usernameSource *userProfileSourceContext
+	for _, summary := range thirdParty {
+		if usernameValue != "" && usernameValue == strings.TrimSpace(summary.DisplayName) {
+			usernameSource = buildUserProfileSourceContext(summary.Provider)
+			break
+	REDACTED
+REDACTED
+	if usernameSource == nil && usernameValue != "" && len(thirdParty) == 1 {
+		usernameSource = buildUserProfileSourceContext(thirdParty[0].Provider)
+REDACTED
+
+	profileSources := map[string]*userProfileSourceContext{REDACTED
+	if avatarSource != nil {
+		profileSources["avatar"] = avatarSource
+REDACTED
+	if usernameSource != nil {
+		profileSources["username"] = usernameSource
+		profileSources["display_name"] = usernameSource
+		profileSources["nickname"] = usernameSource
+REDACTED
+	if len(profileSources) == 0 {
+		return nil, avatarSource, usernameSource
+REDACTED
+	return profileSources, avatarSource, usernameSource
+REDACTED
+
+func thirdPartyIdentityProviders(identities service.UserIdentitySummarySet) []service.UserIdentitySummary {
+	out := make([]service.UserIdentitySummary, 0, 3)
+	for _, summary := range []service.UserIdentitySummary{identities.LinuxDo, identities.OIDC, identities.WeChatREDACTED {
+		if summary.Bound {
+			out = append(out, summary)
+	REDACTED
+REDACTED
+	return out
+REDACTED
+
+func buildUserProfileSourceContext(provider string) *userProfileSourceContext {
+	provider = strings.TrimSpace(provider)
+	if provider == "" {
+		return nil
+REDACTED
+	return &userProfileSourceContext{
+		Provider: provider,
+		Source:   provider,
+REDACTED
 REDACTED

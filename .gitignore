@@ -126,12 +126,9 @@ backend/cmd/server/server
 deploy/docker-compose.override.yml
 .gocache/
 vite.config.js
-docs/*
-!docs/PAYMENT.md
-!docs/PAYMENT_CN.md
+docs/
 .serena/
 .codex/
 frontend/coverage/
 aicodex
 output/
-

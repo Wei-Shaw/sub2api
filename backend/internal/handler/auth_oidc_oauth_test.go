@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -12,7 +13,15 @@ import (
 	"testing"
 	"time"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/authidentity"
+	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
+	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 )
@@ -30,26 +39,11 @@ func TestOIDCSyntheticEmailStableAndDistinct(t *testing.T) {
 	require.Contains(t, e1, "@oidc-connect.invalid")
 REDACTED
 
-func TestOIDCSelectLoginEmailPrefersRealEmail(t *testing.T) {
-	identityKey := oidcIdentityKey("https://issuer.example.com", "subject-a")
-
-	email := oidcSelectLoginEmail("user@example.com", "idtoken@example.com", identityKey)
-	require.Equal(t, "user@example.com", email)
-
-	email = oidcSelectLoginEmail("", "idtoken@example.com", identityKey)
-	require.Equal(t, "idtoken@example.com", email)
-
-	email = oidcSelectLoginEmail("", "", identityKey)
-	require.Contains(t, email, "@oidc-connect.invalid")
-	require.Equal(t, oidcSyntheticEmailFromIdentityKey(identityKey), email)
-REDACTED
-
 func TestBuildOIDCAuthorizeURLIncludesNonceAndPKCE(t *testing.T) {
 	cfg := config.OIDCConnectConfig{
 		AuthorizeURL: "https://issuer.example.com/auth",
 		ClientID:     "cid",
 		Scopes:       "openid email profile",
-		UsePKCE:      true,
 REDACTED
 
 	u, err := buildOIDCAuthorizeURL(cfg, "state123", "nonce123", "challenge123", "https://app.example.com/callback")
@@ -106,6 +100,26 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestOIDCParseUserInfoIncludesSuggestedProfile(t *testing.T) {
+	cfg := config.OIDCConnectConfig{REDACTED
+
+	claims := oidcParseUserInfo(`{
+		"sub":"subject-1",
+		"preferred_username":"alice",
+		"name":"Alice Example",
+		"picture":"https://cdn.example/avatar.png",
+		"email":"alice@example.com",
+		"email_verified":true
+REDACTED`, cfg)
+
+	require.Equal(t, "subject-1", claims.Subject)
+	require.Equal(t, "alice", claims.Username)
+	require.Equal(t, "Alice Example", claims.DisplayName)
+	require.Equal(t, "https://cdn.example/avatar.png", claims.AvatarURL)
+	require.NotNil(t, claims.EmailVerified)
+	require.True(t, *claims.EmailVerified)
+REDACTED
+
 func buildRSAJWK(kid string, pub *rsa.PublicKey) oidcJWK {
 	n := base64.RawURLEncoding.EncodeToString(pub.N.Bytes())
 	e := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(pub.E)).Bytes())
@@ -117,4 +131,590 @@ func buildRSAJWK(kid string, pub *rsa.PublicKey) oidcJWK {
 		N:   n,
 		E:   e,
 REDACTED
+REDACTED
+
+func TestOIDCOAuthBindStartRedirectsAndSetsBindCookies(t *testing.T) {
+	handler := newOIDCOAuthTestHandler(t, false, config.OIDCConnectConfig{
+		Enabled:              true,
+		ClientID:             "oidc-client",
+		ClientSecret:         "oidc-secret",
+		IssuerURL:            "https://issuer.example.com",
+		AuthorizeURL:         "https://issuer.example.com/oauth/authorize",
+		TokenURL:             "https://issuer.example.com/oauth/token",
+		UserInfoURL:          "https://issuer.example.com/oauth/userinfo",
+		JWKSURL:              "https://issuer.example.com/oauth/jwks",
+		Scopes:               "openid profile email",
+		RedirectURL:          "https://api.example.com/api/v1/auth/oauth/oidc/callback",
+		FrontendRedirectURL:  "/auth/oidc/callback",
+		TokenAuthMethod:      "client_secret_post",
+		UsePKCE:              true,
+		ValidateIDToken:      true,
+		AllowedSigningAlgs:   "RS256",
+		ClockSkewSeconds:     120,
+		RequireEmailVerified: false,
+REDACTED)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/bind/start?intent=bind_current_user&redirect=/settings/connections", nil)
+	c.Request = req
+	c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 84REDACTED)
+
+	handler.OIDCOAuthStart(c)
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	location := recorder.Header().Get("Location")
+	require.Contains(t, location, "issuer.example.com/oauth/authorize")
+	require.Contains(t, location, "client_id=oidc-client")
+	require.Contains(t, location, "nonce=")
+
+	cookies := recorder.Result().Cookies()
+	require.NotNil(t, findCookie(cookies, oidcOAuthStateCookieName))
+	require.NotNil(t, findCookie(cookies, oidcOAuthRedirectCookie))
+	require.NotNil(t, findCookie(cookies, oidcOAuthVerifierCookie))
+	require.NotNil(t, findCookie(cookies, oidcOAuthNonceCookie))
+	require.NotNil(t, findCookie(cookies, oauthPendingBrowserCookieName))
+
+	intentCookie := findCookie(cookies, oidcOAuthIntentCookieName)
+	require.NotNil(t, intentCookie)
+	require.Equal(t, oauthIntentBindCurrentUser, decodeCookieValueForTest(t, intentCookie.Value))
+
+	bindCookie := findCookie(cookies, oidcOAuthBindUserCookieName)
+	require.NotNil(t, bindCookie)
+	userID, err := parseOAuthBindUserCookieValue(decodeCookieValueForTest(t, bindCookie.Value), "test-secret")
+REDACTED
+	require.Equal(t, int64(84), userID)
+REDACTED
+
+func TestOIDCOAuthCallbackCreatesLoginPendingSessionForExistingIdentityUser(t *testing.T) {
+	cfg, cleanup := newOIDCTestProvider(t, oidcProviderFixture{
+		Subject:           "oidc-subject-login",
+		PreferredUsername: "oidc_login",
+		DisplayName:       "OIDC Login Display",
+		AvatarURL:         "https://cdn.example/oidc-login.png",
+		Email:             "oidc-login@example.com",
+		EmailVerified:     true,
+REDACTED)
+	defer cleanup()
+
+	handler, client := newOIDCOAuthHandlerAndClient(t, false, cfg)
+	t.Cleanup(func() { _ = client.Close() REDACTED)
+
+	ctx := context.Background()
+	existingUser, err := client.User.Create().
+		SetEmail(oidcSyntheticEmailFromIdentityKey(oidcIdentityKey(cfg.IssuerURL, "oidc-subject-login"))).
+		SetUsername("legacy-user").
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+	_, err = client.AuthIdentity.Create().
+		SetUserID(existingUser.ID).
+		SetProviderType("oidc").
+		SetProviderKey(cfg.IssuerURL).
+		SetProviderSubject("oidc-subject-login").
+		SetMetadata(map[string]any{"username": "legacy-user"REDACTED).
+		Save(ctx)
+REDACTED
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/callback?code=oidc-code&state=state-123", nil)
+	req.AddCookie(encodedCookie(oidcOAuthStateCookieName, "state-123"))
+	req.AddCookie(encodedCookie(oidcOAuthRedirectCookie, "/dashboard"))
+	req.AddCookie(encodedCookie(oidcOAuthVerifierCookie, "verifier-123"))
+	req.AddCookie(encodedCookie(oidcOAuthNonceCookie, "nonce-oidc-subject-login"))
+	req.AddCookie(encodedCookie(oidcOAuthIntentCookieName, oauthIntentLogin))
+	req.AddCookie(encodedCookie(oauthPendingBrowserCookieName, "browser-123"))
+	c.Request = req
+
+	handler.OIDCOAuthCallback(c)
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	require.Equal(t, "/auth/oidc/callback", recorder.Header().Get("Location"))
+
+	sessionCookie := findCookie(recorder.Result().Cookies(), oauthPendingSessionCookieName)
+	require.NotNil(t, sessionCookie)
+
+	session, err := client.PendingAuthSession.Query().
+		Where(pendingauthsession.SessionTokenEQ(decodeCookieValueForTest(t, sessionCookie.Value))).
+		Only(ctx)
+REDACTED
+	require.Equal(t, oauthIntentLogin, session.Intent)
+	require.NotNil(t, session.TargetUserID)
+	require.Equal(t, existingUser.ID, *session.TargetUserID)
+	require.Equal(t, cfg.IssuerURL, session.ProviderKey)
+	require.Equal(t, "OIDC Login Display", session.UpstreamIdentityClaims["suggested_display_name"])
+
+	completion, ok := session.LocalFlowState[oauthCompletionResponseKey].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "/dashboard", completion["redirect"])
+	require.NotEmpty(t, completion["access_token"])
+	require.Nil(t, completion["error"])
+REDACTED
+
+func TestOIDCOAuthCallbackCreatesBindPendingSessionForCompatEmailUser(t *testing.T) {
+	cfg, cleanup := newOIDCTestProvider(t, oidcProviderFixture{
+		Subject:           "oidc-subject-compat",
+		PreferredUsername: "oidc_compat",
+		DisplayName:       "OIDC Compat Display",
+		AvatarURL:         "https://cdn.example/oidc-compat.png",
+		Email:             "legacy@example.com",
+		EmailVerified:     true,
+REDACTED)
+	defer cleanup()
+
+	handler, client := newOIDCOAuthHandlerAndClient(t, false, cfg)
+	t.Cleanup(func() { _ = client.Close() REDACTED)
+
+	ctx := context.Background()
+	existingUser, err := client.User.Create().
+		SetEmail("legacy@example.com").
+		SetUsername("legacy-user").
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/callback?code=oidc-code&state=state-compat", nil)
+	req.AddCookie(encodedCookie(oidcOAuthStateCookieName, "state-compat"))
+	req.AddCookie(encodedCookie(oidcOAuthRedirectCookie, "/dashboard"))
+	req.AddCookie(encodedCookie(oidcOAuthVerifierCookie, "verifier-compat"))
+	req.AddCookie(encodedCookie(oidcOAuthNonceCookie, "nonce-oidc-subject-compat"))
+	req.AddCookie(encodedCookie(oidcOAuthIntentCookieName, oauthIntentLogin))
+	req.AddCookie(encodedCookie(oauthPendingBrowserCookieName, "browser-compat"))
+	c.Request = req
+
+	handler.OIDCOAuthCallback(c)
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	require.Equal(t, "/auth/oidc/callback", recorder.Header().Get("Location"))
+
+	sessionCookie := findCookie(recorder.Result().Cookies(), oauthPendingSessionCookieName)
+	require.NotNil(t, sessionCookie)
+
+	session, err := client.PendingAuthSession.Query().
+		Where(pendingauthsession.SessionTokenEQ(decodeCookieValueForTest(t, sessionCookie.Value))).
+		Only(ctx)
+REDACTED
+	require.Equal(t, oauthIntentLogin, session.Intent)
+	require.Nil(t, session.TargetUserID)
+	require.Equal(t, existingUser.Email, session.ResolvedEmail)
+	require.Equal(t, "legacy@example.com", session.UpstreamIdentityClaims["compat_email"])
+
+	completion, ok := session.LocalFlowState[oauthCompletionResponseKey].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "/dashboard", completion["redirect"])
+	require.Equal(t, oauthPendingChoiceStep, completion["step"])
+	require.Equal(t, existingUser.Email, completion["email"])
+	require.Equal(t, existingUser.Email, completion["existing_account_email"])
+	require.Equal(t, true, completion["existing_account_bindable"])
+	require.Equal(t, "compat_email_match", completion["choice_reason"])
+	_, hasAccessToken := completion["access_token"]
+	require.False(t, hasAccessToken)
+REDACTED
+
+func TestOIDCOAuthCallbackAllowsCompatEmailBindWhenUpstreamEmailIsUnverified(t *testing.T) {
+	cfg, cleanup := newOIDCTestProvider(t, oidcProviderFixture{
+		Subject:           "oidc-subject-unverified-compat",
+		PreferredUsername: "oidc_unverified",
+		DisplayName:       "OIDC Unverified Compat Display",
+		AvatarURL:         "https://cdn.example/oidc-unverified.png",
+		Email:             "owner@example.com",
+		EmailVerified:     false,
+REDACTED)
+	defer cleanup()
+	cfg.RequireEmailVerified = true
+
+	handler, client := newOIDCOAuthHandlerAndClient(t, false, cfg)
+	t.Cleanup(func() { _ = client.Close() REDACTED)
+
+	ctx := context.Background()
+	_, err := client.User.Create().
+		SetEmail("owner@example.com").
+		SetUsername("owner-user").
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/callback?code=oidc-code&state=state-unverified-compat", nil)
+	req.AddCookie(encodedCookie(oidcOAuthStateCookieName, "state-unverified-compat"))
+	req.AddCookie(encodedCookie(oidcOAuthRedirectCookie, "/settings/connections"))
+	req.AddCookie(encodedCookie(oidcOAuthVerifierCookie, "verifier-unverified-compat"))
+	req.AddCookie(encodedCookie(oidcOAuthNonceCookie, "nonce-oidc-subject-unverified-compat"))
+	req.AddCookie(encodedCookie(oidcOAuthIntentCookieName, oauthIntentLogin))
+	req.AddCookie(encodedCookie(oauthPendingBrowserCookieName, "browser-unverified-compat"))
+	c.Request = req
+
+	handler.OIDCOAuthCallback(c)
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	require.Equal(t, "/auth/oidc/callback#error=email_not_verified&error_message=email+is+not+verified", recorder.Header().Get("Location"))
+	require.Nil(t, findCookie(recorder.Result().Cookies(), oauthPendingSessionCookieName))
+
+	count, err := client.PendingAuthSession.Query().Count(ctx)
+REDACTED
+	require.Zero(t, count)
+REDACTED
+
+func TestOIDCOAuthCallbackCreatesChoicePendingSessionWhenSignupRequiresInvite(t *testing.T) {
+	cfg, cleanup := newOIDCTestProvider(t, oidcProviderFixture{
+		Subject:           "oidc-subject-invite",
+		PreferredUsername: "oidc_invite",
+		DisplayName:       "OIDC Invite Display",
+		AvatarURL:         "https://cdn.example/oidc-invite.png",
+		Email:             "oidc-invite@example.com",
+		EmailVerified:     true,
+REDACTED)
+	defer cleanup()
+
+	handler, client := newOIDCOAuthHandlerAndClient(t, true, cfg)
+	t.Cleanup(func() { _ = client.Close() REDACTED)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/callback?code=oidc-code&state=state-456", nil)
+	req.AddCookie(encodedCookie(oidcOAuthStateCookieName, "state-456"))
+	req.AddCookie(encodedCookie(oidcOAuthRedirectCookie, "/dashboard"))
+	req.AddCookie(encodedCookie(oidcOAuthVerifierCookie, "verifier-456"))
+	req.AddCookie(encodedCookie(oidcOAuthNonceCookie, "nonce-oidc-subject-invite"))
+	req.AddCookie(encodedCookie(oidcOAuthIntentCookieName, oauthIntentLogin))
+	req.AddCookie(encodedCookie(oauthPendingBrowserCookieName, "browser-456"))
+	c.Request = req
+
+	handler.OIDCOAuthCallback(c)
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	require.Equal(t, "/auth/oidc/callback", recorder.Header().Get("Location"))
+
+	sessionCookie := findCookie(recorder.Result().Cookies(), oauthPendingSessionCookieName)
+	require.NotNil(t, sessionCookie)
+
+	ctx := context.Background()
+	session, err := client.PendingAuthSession.Query().
+		Where(pendingauthsession.SessionTokenEQ(decodeCookieValueForTest(t, sessionCookie.Value))).
+		Only(ctx)
+REDACTED
+	require.Equal(t, oauthIntentLogin, session.Intent)
+	require.Nil(t, session.TargetUserID)
+
+	completion, ok := session.LocalFlowState[oauthCompletionResponseKey].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, oauthPendingChoiceStep, completion["step"])
+	require.Equal(t, "/dashboard", completion["redirect"])
+	require.Equal(t, "third_party_signup", completion["choice_reason"])
+REDACTED
+
+func TestOIDCOAuthCallbackCreatesBindPendingSessionForCurrentUser(t *testing.T) {
+	cfg, cleanup := newOIDCTestProvider(t, oidcProviderFixture{
+		Subject:           "oidc-subject-bind",
+		PreferredUsername: "oidc_bind",
+		DisplayName:       "OIDC Bind Display",
+		AvatarURL:         "https://cdn.example/oidc-bind.png",
+		Email:             "oidc-bind@example.com",
+		EmailVerified:     true,
+REDACTED)
+	defer cleanup()
+
+	handler, client := newOIDCOAuthHandlerAndClient(t, false, cfg)
+	t.Cleanup(func() { _ = client.Close() REDACTED)
+
+	ctx := context.Background()
+	currentUser, err := client.User.Create().
+		SetEmail("current@example.com").
+		SetUsername("current-user").
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/oidc/callback?code=oidc-code&state=state-bind", nil)
+	req.AddCookie(encodedCookie(oidcOAuthStateCookieName, "state-bind"))
+	req.AddCookie(encodedCookie(oidcOAuthRedirectCookie, "/settings/connections"))
+	req.AddCookie(encodedCookie(oidcOAuthVerifierCookie, "verifier-bind"))
+	req.AddCookie(encodedCookie(oidcOAuthNonceCookie, "nonce-oidc-subject-bind"))
+	req.AddCookie(encodedCookie(oidcOAuthIntentCookieName, oauthIntentBindCurrentUser))
+	req.AddCookie(encodedCookie(oidcOAuthBindUserCookieName, buildEncodedOAuthBindUserCookie(t, currentUser.ID, "test-secret")))
+	req.AddCookie(encodedCookie(oauthPendingBrowserCookieName, "browser-bind"))
+	c.Request = req
+
+	handler.OIDCOAuthCallback(c)
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	require.Equal(t, "/auth/oidc/callback", recorder.Header().Get("Location"))
+
+	sessionCookie := findCookie(recorder.Result().Cookies(), oauthPendingSessionCookieName)
+	require.NotNil(t, sessionCookie)
+
+	session, err := client.PendingAuthSession.Query().
+		Where(pendingauthsession.SessionTokenEQ(decodeCookieValueForTest(t, sessionCookie.Value))).
+		Only(ctx)
+REDACTED
+	require.Equal(t, oauthIntentBindCurrentUser, session.Intent)
+	require.NotNil(t, session.TargetUserID)
+	require.Equal(t, currentUser.ID, *session.TargetUserID)
+	require.Equal(t, cfg.IssuerURL, session.ProviderKey)
+	require.Equal(t, "OIDC Bind Display", session.UpstreamIdentityClaims["suggested_display_name"])
+
+	completion, ok := session.LocalFlowState[oauthCompletionResponseKey].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "/settings/connections", completion["redirect"])
+	require.Empty(t, completion["access_token"])
+
+	userCount, err := client.User.Query().Count(ctx)
+REDACTED
+	require.Equal(t, 1, userCount)
+REDACTED
+
+func TestCompleteOIDCOAuthRegistrationAppliesPendingAdoptionDecision(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandler(t, false)
+	ctx := context.Background()
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("oidc-complete-session").
+		SetIntent("login").
+		SetProviderType("oidc").
+		SetProviderKey("https://issuer.example.com").
+		SetProviderSubject("oidc-subject-1").
+		SetResolvedEmail("93a310f4c1944c5bbd2e246df1f76485@oidc-connect.invalid").
+		SetBrowserSessionKey("oidc-browser").
+		SetUpstreamIdentityClaims(map[string]any{
+			"username":               "oidc_user",
+			"issuer":                 "https://issuer.example.com",
+			"suggested_display_name": "OIDC Display",
+			"suggested_avatar_url":   "https://cdn.example/oidc.png",
+	REDACTED).
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+REDACTED
+
+	_, err = service.NewAuthPendingIdentityService(client).UpsertAdoptionDecision(ctx, service.PendingIdentityAdoptionDecisionInput{
+		PendingAuthSessionID: session.ID,
+		AdoptAvatar:          true,
+REDACTED)
+REDACTED
+
+	body := bytes.NewBufferString(`{"invitation_code":"invite-1","adopt_display_name":trueREDACTED`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/oidc/complete-registration", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)REDACTED)
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("oidc-browser")REDACTED)
+	c.Request = req
+
+	handler.CompleteOIDCOAuthRegistration(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	responseData := decodeJSONBody(t, recorder)
+	require.NotEmpty(t, responseData["access_token"])
+
+	userEntity, err := client.User.Query().
+		Where(dbuser.EmailEQ(session.ResolvedEmail)).
+		Only(ctx)
+REDACTED
+	require.Equal(t, "OIDC Display", userEntity.Username)
+
+	identity, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ("oidc"),
+			authidentity.ProviderKeyEQ("https://issuer.example.com"),
+			authidentity.ProviderSubjectEQ("oidc-subject-1"),
+		).
+		Only(ctx)
+REDACTED
+	require.Equal(t, userEntity.ID, identity.UserID)
+	require.Equal(t, "OIDC Display", identity.Metadata["display_name"])
+	require.Equal(t, "https://cdn.example/oidc.png", identity.Metadata["avatar_url"])
+
+	decision, err := client.IdentityAdoptionDecision.Query().
+		Where(identityadoptiondecision.PendingAuthSessionIDEQ(session.ID)).
+		Only(ctx)
+REDACTED
+	require.NotNil(t, decision.IdentityID)
+	require.Equal(t, identity.ID, *decision.IdentityID)
+	require.True(t, decision.AdoptDisplayName)
+	require.True(t, decision.AdoptAvatar)
+
+	consumed, err := client.PendingAuthSession.Query().
+		Where(pendingauthsession.IDEQ(session.ID)).
+		Only(ctx)
+REDACTED
+	require.NotNil(t, consumed.ConsumedAt)
+REDACTED
+
+func TestCompleteOIDCOAuthRegistrationRejectsAdoptExistingUserSession(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandler(t, false)
+	ctx := context.Background()
+
+	existingUser, err := client.User.Create().
+		SetEmail("owner@example.com").
+		SetUsername("owner-user").
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("oidc-complete-invalid-session").
+		SetIntent("adopt_existing_user_by_email").
+		SetProviderType("oidc").
+		SetProviderKey("https://issuer.example.com").
+		SetProviderSubject("oidc-invalid-subject-1").
+		SetTargetUserID(existingUser.ID).
+		SetResolvedEmail(existingUser.Email).
+		SetBrowserSessionKey("oidc-invalid-browser").
+		SetUpstreamIdentityClaims(map[string]any{
+			"username": "oidc_user",
+	REDACTED).
+		SetLocalFlowState(map[string]any{
+			oauthCompletionResponseKey: map[string]any{
+				"step": "bind_login_required",
+		REDACTED,
+	REDACTED).
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+REDACTED
+
+	body := bytes.NewBufferString(`{"invitation_code":"invite-1"REDACTED`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/oidc/complete-registration", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)REDACTED)
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("oidc-invalid-browser")REDACTED)
+	c.Request = req
+
+	handler.CompleteOIDCOAuthRegistration(c)
+
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+
+	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
+REDACTED
+	require.Nil(t, storedSession.ConsumedAt)
+REDACTED
+
+type oidcProviderFixture struct {
+	Subject           string
+	PreferredUsername string
+	DisplayName       string
+	AvatarURL         string
+	Email             string
+	EmailVerified     bool
+REDACTED
+
+func newOIDCOAuthTestHandler(t *testing.T, invitationEnabled bool, oauthCfg config.OIDCConnectConfig) *AuthHandler {
+REDACTED
+	handler, _ := newOIDCOAuthHandlerAndClient(t, invitationEnabled, oauthCfg)
+	return handler
+REDACTED
+
+func newOIDCOAuthHandlerAndClient(t *testing.T, invitationEnabled bool, oauthCfg config.OIDCConnectConfig) (*AuthHandler, *dbent.Client) {
+REDACTED
+	handler, client := newOAuthPendingFlowTestHandler(t, invitationEnabled)
+	handler.settingSvc = nil
+	handler.cfg = &config.Config{
+		JWT: config.JWTConfig{
+			Secret:                   "test-secret",
+			ExpireHour:               1,
+			AccessTokenExpireMinutes: 60,
+			RefreshTokenExpireDays:   7,
+	REDACTED,
+		OIDC: oauthCfg,
+REDACTED
+	return handler, client
+REDACTED
+
+func newOIDCTestProvider(t *testing.T, fixture oidcProviderFixture) (config.OIDCConnectConfig, func()) {
+REDACTED
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+REDACTED
+
+	kid := "test-kid"
+	jwks := oidcJWKSet{Keys: []oidcJWK{buildRSAJWK(kid, &privateKey.PublicKey)REDACTEDREDACTED
+	tokenResponse := oidcTokenResponse{
+		AccessToken: "oidc-access-token",
+		TokenType:   "Bearer",
+		ExpiresIn:   3600,
+REDACTED
+
+	userInfoPayload := map[string]any{
+		"sub":                fixture.Subject,
+		"preferred_username": fixture.PreferredUsername,
+		"name":               fixture.DisplayName,
+		"picture":            fixture.AvatarURL,
+		"email":              fixture.Email,
+		"email_verified":     fixture.EmailVerified,
+REDACTED
+
+	var issuer string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/token":
+			require.NoError(t, json.NewEncoder(w).Encode(tokenResponse))
+		case "/userinfo":
+			require.NoError(t, json.NewEncoder(w).Encode(userInfoPayload))
+		case "/jwks":
+			require.NoError(t, json.NewEncoder(w).Encode(jwks))
+		default:
+			http.NotFound(w, r)
+	REDACTED
+REDACTED))
+
+	issuer = server.URL
+	now := time.Now()
+	claims := oidcIDTokenClaims{
+		Email:             fixture.Email,
+		EmailVerified:     boolPtr(fixture.EmailVerified),
+		PreferredUsername: fixture.PreferredUsername,
+		Name:              fixture.DisplayName,
+		Nonce:             "nonce-" + fixture.Subject,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    issuer,
+			Subject:   fixture.Subject,
+			Audience:  jwt.ClaimStrings{"oidc-client"REDACTED,
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now.Add(-30 * time.Second)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(5 * time.Minute)),
+	REDACTED,
+REDACTED
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	token.Header["kid"] = kid
+	tokenResponse.IDToken, err = token.SignedString(privateKey)
+REDACTED
+
+	cfg := config.OIDCConnectConfig{
+		Enabled:              true,
+		ProviderName:         "Test OIDC",
+		ClientID:             "oidc-client",
+		ClientSecret:         "oidc-secret",
+		IssuerURL:            issuer,
+		AuthorizeURL:         issuer + "/authorize",
+		TokenURL:             issuer + "/token",
+		UserInfoURL:          issuer + "/userinfo",
+		JWKSURL:              issuer + "/jwks",
+		Scopes:               "openid profile email",
+		RedirectURL:          "https://api.example.com/api/v1/auth/oauth/oidc/callback",
+		FrontendRedirectURL:  "/auth/oidc/callback",
+		TokenAuthMethod:      "client_secret_post",
+		UsePKCE:              true,
+		ValidateIDToken:      true,
+		AllowedSigningAlgs:   "RS256",
+		ClockSkewSeconds:     120,
+		RequireEmailVerified: false,
+REDACTED
+	return cfg, server.Close
 REDACTED

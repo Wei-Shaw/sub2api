@@ -61,10 +61,6 @@
               </div>
             </div>
 
-            <div v-if="verifyError" class="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400">
-              {{ verifyError REDACTEDREDACTED
-            </div>
-
             <div class="flex justify-end gap-3 pt-4">
               <button type="button" class="btn btn-secondary" @click="$emit('close')">
                 {{ t('common.cancel') REDACTEDREDACTED
@@ -151,10 +147,6 @@
               </div>
             </div>
 
-            <div v-if="error" class="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400">
-              {{ error REDACTEDREDACTED
-            </div>
-
             <div class="flex justify-end gap-3">
               <button type="button" class="btn btn-secondary" @click="step = 1">
                 {{ t('common.back') REDACTEDREDACTED
@@ -195,7 +187,6 @@ const step = ref(0)
 const methodLoading = ref(true)
 const verificationMethod = ref<'email' | 'password'>('password')
 const verifyForm = ref({ emailCode: '', password: '' REDACTED)
-const verifyError = ref('')
 const sendingCode = ref(false)
 const codeCooldown = ref(0)
 const cooldownTimer = ref<ReturnType<typeof setInterval> | null>(null)
@@ -203,7 +194,6 @@ const cooldownTimer = ref<ReturnType<typeof setInterval> | null>(null)
 const setupLoading = ref(false)
 const setupData = ref<TotpSetupResponse | null>(null)
 const verifying = ref(false)
-const error = ref('')
 const code = ref<string[]>(['', '', '', '', '', ''])
 const inputRefs = ref<(HTMLInputElement | null)[]>([])
 const qrCodeDataUrl = ref('')
@@ -361,7 +351,6 @@ REDACTED
 
 const handleVerifyAndSetup = async () => {
   setupLoading.value = true
-  verifyError.value = ''
 
   try {
     const request = verificationMethod.value === 'email'
@@ -371,7 +360,7 @@ const handleVerifyAndSetup = async () => {
     setupData.value = await totpAPI.initiateSetup(request)
     step.value = 1
   REDACTED catch (err: any) {
-    verifyError.value = err.response?.data?.message || t('profile.totp.setupFailed')
+    appStore.showError(err.response?.data?.message || t('profile.totp.setupFailed'))
   REDACTED finally {
     setupLoading.value = false
   REDACTED
@@ -382,7 +371,6 @@ const handleVerify = async () => {
   if (totpCode.length !== 6 || !setupData.value) return
 
   verifying.value = true
-  error.value = ''
 
   try {
     await totpAPI.enable({
@@ -392,7 +380,7 @@ const handleVerify = async () => {
     appStore.showSuccess(t('profile.totp.enableSuccess'))
     emit('success')
   REDACTED catch (err: any) {
-    error.value = err.response?.data?.message || t('profile.totp.verifyFailed')
+    appStore.showError(err.response?.data?.message || t('profile.totp.verifyFailed'))
     code.value = ['', '', '', '', '', '']
     nextTick(() => {
       inputRefs.value[0]?.focus()

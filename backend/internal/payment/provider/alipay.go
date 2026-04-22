@@ -26,6 +26,15 @@ const (
 	alipayRefundSuffix     = "-refund"
 )
 
+var (
+	alipayTradeWapPay = func(client *alipay.Client, param alipay.TradeWapPay) (*url.URL, error) {
+		return client.TradeWapPay(param)
+REDACTED
+	alipayTradePagePay = func(client *alipay.Client, param alipay.TradePagePay) (*url.URL, error) {
+		return client.TradePagePay(param)
+REDACTED
+)
+
 // Alipay implements payment.Provider and payment.CancelableProvider using the smartwalle/alipay SDK.
 type Alipay struct {
 	instanceID string
@@ -79,6 +88,17 @@ func (a *Alipay) SupportedTypes() []payment.PaymentType {
 	return []payment.PaymentType{payment.TypeAlipayREDACTED
 REDACTED
 
+func (a *Alipay) MerchantIdentityMetadata() map[string]string {
+	if a == nil {
+		return nil
+REDACTED
+	appID := strings.TrimSpace(a.config["appId"])
+	if appID == "" {
+		return nil
+REDACTED
+	return map[string]string{"app_id": appIDREDACTED
+REDACTED
+
 // CreatePayment creates an Alipay payment using redirect-only flow:
 //   - Mobile (H5): alipay.trade.wap.pay — returns a URL the browser jumps to.
 //   - PC: alipay.trade.page.pay — returns a gateway URL the browser opens in a
@@ -115,7 +135,7 @@ func (a *Alipay) createWapTrade(client *alipay.Client, req payment.CreatePayment
 	param.NotifyURL = notifyURL
 	param.ReturnURL = returnURL
 
-	payURL, err := client.TradeWapPay(param)
+	payURL, err := alipayTradeWapPay(client, param)
 	if err != nil {
 		return nil, fmt.Errorf("alipay TradeWapPay: %w", err)
 REDACTED
@@ -134,7 +154,7 @@ func (a *Alipay) createPagePayTrade(client *alipay.Client, req payment.CreatePay
 	param.NotifyURL = notifyURL
 	param.ReturnURL = returnURL
 
-	payURL, err := client.TradePagePay(param)
+	payURL, err := alipayTradePagePay(client, param)
 	if err != nil {
 		return nil, fmt.Errorf("alipay TradePagePay: %w", err)
 REDACTED
@@ -176,10 +196,11 @@ REDACTED
 REDACTED
 
 	return &payment.QueryOrderResponse{
-		TradeNo: result.TradeNo,
-		Status:  status,
-		Amount:  amount,
-		PaidAt:  result.SendPayDate,
+		TradeNo:  result.TradeNo,
+		Status:   status,
+		Amount:   amount,
+		PaidAt:   result.SendPayDate,
+		Metadata: a.MerchantIdentityMetadata(),
 REDACTED, nil
 REDACTED
 
@@ -210,12 +231,21 @@ REDACTED
 		return nil, fmt.Errorf("alipay parse notification amount %q: %w", notification.TotalAmount, err)
 REDACTED
 
+	metadata := a.MerchantIdentityMetadata()
+	if appID := strings.TrimSpace(notification.AppId); appID != "" {
+		if metadata == nil {
+			metadata = map[string]string{REDACTED
+	REDACTED
+		metadata["app_id"] = appID
+REDACTED
+
 	return &payment.PaymentNotification{
-		TradeNo: notification.TradeNo,
-		OrderID: notification.OutTradeNo,
-		Amount:  amount,
-		Status:  status,
-		RawData: rawBody,
+		TradeNo:  notification.TradeNo,
+		OrderID:  notification.OutTradeNo,
+		Amount:   amount,
+		Status:   status,
+		RawData:  rawBody,
+		Metadata: metadata,
 REDACTED, nil
 REDACTED
 
@@ -278,6 +308,7 @@ REDACTED
 
 // Ensure interface compliance.
 var (
-	_ payment.Provider           = (*Alipay)(nil)
-	_ payment.CancelableProvider = (*Alipay)(nil)
+	_ payment.Provider                 = (*Alipay)(nil)
+	_ payment.CancelableProvider       = (*Alipay)(nil)
+	_ payment.MerchantIdentityProvider = (*Alipay)(nil)
 )

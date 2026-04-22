@@ -66,6 +66,22 @@ type UpdateBalanceRequest struct {
 	Notes     string  `json:"notes"`
 REDACTED
 
+type BindUserAuthIdentityRequest struct {
+	ProviderType    string                              `json:"provider_type"`
+	ProviderKey     string                              `json:"provider_key"`
+	ProviderSubject string                              `json:"provider_subject"`
+	Issuer          *string                             `json:"issuer"`
+	Metadata        map[string]any                      `json:"metadata"`
+	Channel         *BindUserAuthIdentityChannelRequest `json:"channel"`
+REDACTED
+
+type BindUserAuthIdentityChannelRequest struct {
+	Channel        string         `json:"channel"`
+	ChannelAppID   string         `json:"channel_app_id"`
+	ChannelSubject string         `json:"channel_subject"`
+	Metadata       map[string]any `json:"metadata"`
+REDACTED
+
 // List handles listing all users with pagination
 // GET /api/v1/admin/users
 // Query params:
@@ -170,6 +186,45 @@ REDACTED
 REDACTED
 
 	response.Success(c, dto.UserFromServiceAdmin(user))
+REDACTED
+
+// BindAuthIdentity manually binds a canonical auth identity to a user.
+// POST /api/v1/admin/users/:id/auth-identities
+func (h *UserHandler) BindAuthIdentity(c *gin.Context) {
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid user ID")
+		return
+REDACTED
+
+	var req BindUserAuthIdentityRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+REDACTED
+
+	input := service.AdminBindAuthIdentityInput{
+		ProviderType:    req.ProviderType,
+		ProviderKey:     req.ProviderKey,
+		ProviderSubject: req.ProviderSubject,
+		Issuer:          req.Issuer,
+		Metadata:        req.Metadata,
+REDACTED
+	if req.Channel != nil {
+		input.Channel = &service.AdminBindAuthIdentityChannelInput{
+			Channel:        req.Channel.Channel,
+			ChannelAppID:   req.Channel.ChannelAppID,
+			ChannelSubject: req.Channel.ChannelSubject,
+			Metadata:       req.Channel.Metadata,
+	REDACTED
+REDACTED
+
+	result, err := h.adminService.BindUserAuthIdentity(c.Request.Context(), userID, input)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	response.Success(c, result)
 REDACTED
 
 // Create handles creating a new user

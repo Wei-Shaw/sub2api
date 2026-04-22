@@ -10,12 +10,16 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcement"
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/authidentity"
+	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
+	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
+	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
@@ -309,6 +313,120 @@ REDACTED()
 	announcementreadDescCreatedAt := announcementreadFields[3].Descriptor()
 	// announcementread.DefaultCreatedAt holds the default value on creation for the created_at field.
 	announcementread.DefaultCreatedAt = announcementreadDescCreatedAt.Default.(func() time.Time)
+	authidentityMixin := schema.AuthIdentity{REDACTED.Mixin()
+	authidentityMixinFields0 := authidentityMixin[0].Fields()
+	_ = authidentityMixinFields0
+	authidentityFields := schema.AuthIdentity{REDACTED.Fields()
+	_ = authidentityFields
+	// authidentityDescCreatedAt is the schema descriptor for created_at field.
+	authidentityDescCreatedAt := authidentityMixinFields0[0].Descriptor()
+	// authidentity.DefaultCreatedAt holds the default value on creation for the created_at field.
+	authidentity.DefaultCreatedAt = authidentityDescCreatedAt.Default.(func() time.Time)
+	// authidentityDescUpdatedAt is the schema descriptor for updated_at field.
+	authidentityDescUpdatedAt := authidentityMixinFields0[1].Descriptor()
+	// authidentity.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	authidentity.DefaultUpdatedAt = authidentityDescUpdatedAt.Default.(func() time.Time)
+	// authidentity.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	authidentity.UpdateDefaultUpdatedAt = authidentityDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// authidentityDescProviderType is the schema descriptor for provider_type field.
+	authidentityDescProviderType := authidentityFields[1].Descriptor()
+	// authidentity.ProviderTypeValidator is a validator for the "provider_type" field. It is called by the builders before save.
+	authidentity.ProviderTypeValidator = func() func(string) error {
+		validators := authidentityDescProviderType.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+			validators[2].(func(string) error),
+	REDACTED
+		return func(provider_type string) error {
+			for _, fn := range fns {
+				if err := fn(provider_type); err != nil {
+					return err
+			REDACTED
+		REDACTED
+			return nil
+	REDACTED
+REDACTED()
+	// authidentityDescProviderKey is the schema descriptor for provider_key field.
+	authidentityDescProviderKey := authidentityFields[2].Descriptor()
+	// authidentity.ProviderKeyValidator is a validator for the "provider_key" field. It is called by the builders before save.
+	authidentity.ProviderKeyValidator = authidentityDescProviderKey.Validators[0].(func(string) error)
+	// authidentityDescProviderSubject is the schema descriptor for provider_subject field.
+	authidentityDescProviderSubject := authidentityFields[3].Descriptor()
+	// authidentity.ProviderSubjectValidator is a validator for the "provider_subject" field. It is called by the builders before save.
+	authidentity.ProviderSubjectValidator = authidentityDescProviderSubject.Validators[0].(func(string) error)
+	// authidentityDescMetadata is the schema descriptor for metadata field.
+	authidentityDescMetadata := authidentityFields[6].Descriptor()
+	// authidentity.DefaultMetadata holds the default value on creation for the metadata field.
+	authidentity.DefaultMetadata = authidentityDescMetadata.Default.(func() map[string]interface{REDACTED)
+	authidentitychannelMixin := schema.AuthIdentityChannel{REDACTED.Mixin()
+	authidentitychannelMixinFields0 := authidentitychannelMixin[0].Fields()
+	_ = authidentitychannelMixinFields0
+	authidentitychannelFields := schema.AuthIdentityChannel{REDACTED.Fields()
+	_ = authidentitychannelFields
+	// authidentitychannelDescCreatedAt is the schema descriptor for created_at field.
+	authidentitychannelDescCreatedAt := authidentitychannelMixinFields0[0].Descriptor()
+	// authidentitychannel.DefaultCreatedAt holds the default value on creation for the created_at field.
+	authidentitychannel.DefaultCreatedAt = authidentitychannelDescCreatedAt.Default.(func() time.Time)
+	// authidentitychannelDescUpdatedAt is the schema descriptor for updated_at field.
+	authidentitychannelDescUpdatedAt := authidentitychannelMixinFields0[1].Descriptor()
+	// authidentitychannel.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	authidentitychannel.DefaultUpdatedAt = authidentitychannelDescUpdatedAt.Default.(func() time.Time)
+	// authidentitychannel.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	authidentitychannel.UpdateDefaultUpdatedAt = authidentitychannelDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// authidentitychannelDescProviderType is the schema descriptor for provider_type field.
+	authidentitychannelDescProviderType := authidentitychannelFields[1].Descriptor()
+	// authidentitychannel.ProviderTypeValidator is a validator for the "provider_type" field. It is called by the builders before save.
+	authidentitychannel.ProviderTypeValidator = func() func(string) error {
+		validators := authidentitychannelDescProviderType.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+			validators[2].(func(string) error),
+	REDACTED
+		return func(provider_type string) error {
+			for _, fn := range fns {
+				if err := fn(provider_type); err != nil {
+					return err
+			REDACTED
+		REDACTED
+			return nil
+	REDACTED
+REDACTED()
+	// authidentitychannelDescProviderKey is the schema descriptor for provider_key field.
+	authidentitychannelDescProviderKey := authidentitychannelFields[2].Descriptor()
+	// authidentitychannel.ProviderKeyValidator is a validator for the "provider_key" field. It is called by the builders before save.
+	authidentitychannel.ProviderKeyValidator = authidentitychannelDescProviderKey.Validators[0].(func(string) error)
+	// authidentitychannelDescChannel is the schema descriptor for channel field.
+	authidentitychannelDescChannel := authidentitychannelFields[3].Descriptor()
+	// authidentitychannel.ChannelValidator is a validator for the "channel" field. It is called by the builders before save.
+	authidentitychannel.ChannelValidator = func() func(string) error {
+		validators := authidentitychannelDescChannel.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+	REDACTED
+		return func(channel string) error {
+			for _, fn := range fns {
+				if err := fn(channel); err != nil {
+					return err
+			REDACTED
+		REDACTED
+			return nil
+	REDACTED
+REDACTED()
+	// authidentitychannelDescChannelAppID is the schema descriptor for channel_app_id field.
+	authidentitychannelDescChannelAppID := authidentitychannelFields[4].Descriptor()
+	// authidentitychannel.ChannelAppIDValidator is a validator for the "channel_app_id" field. It is called by the builders before save.
+	authidentitychannel.ChannelAppIDValidator = authidentitychannelDescChannelAppID.Validators[0].(func(string) error)
+	// authidentitychannelDescChannelSubject is the schema descriptor for channel_subject field.
+	authidentitychannelDescChannelSubject := authidentitychannelFields[5].Descriptor()
+	// authidentitychannel.ChannelSubjectValidator is a validator for the "channel_subject" field. It is called by the builders before save.
+	authidentitychannel.ChannelSubjectValidator = authidentitychannelDescChannelSubject.Validators[0].(func(string) error)
+	// authidentitychannelDescMetadata is the schema descriptor for metadata field.
+	authidentitychannelDescMetadata := authidentitychannelFields[6].Descriptor()
+	// authidentitychannel.DefaultMetadata holds the default value on creation for the metadata field.
+	authidentitychannel.DefaultMetadata = authidentitychannelDescMetadata.Default.(func() map[string]interface{REDACTED)
 	errorpassthroughruleMixin := schema.ErrorPassthroughRule{REDACTED.Mixin()
 	errorpassthroughruleMixinFields0 := errorpassthroughruleMixin[0].Fields()
 	_ = errorpassthroughruleMixinFields0
@@ -512,6 +630,33 @@ REDACTED()
 	idempotencyrecordDescErrorReason := idempotencyrecordFields[6].Descriptor()
 	// idempotencyrecord.ErrorReasonValidator is a validator for the "error_reason" field. It is called by the builders before save.
 	idempotencyrecord.ErrorReasonValidator = idempotencyrecordDescErrorReason.Validators[0].(func(string) error)
+	identityadoptiondecisionMixin := schema.IdentityAdoptionDecision{REDACTED.Mixin()
+	identityadoptiondecisionMixinFields0 := identityadoptiondecisionMixin[0].Fields()
+	_ = identityadoptiondecisionMixinFields0
+	identityadoptiondecisionFields := schema.IdentityAdoptionDecision{REDACTED.Fields()
+	_ = identityadoptiondecisionFields
+	// identityadoptiondecisionDescCreatedAt is the schema descriptor for created_at field.
+	identityadoptiondecisionDescCreatedAt := identityadoptiondecisionMixinFields0[0].Descriptor()
+	// identityadoptiondecision.DefaultCreatedAt holds the default value on creation for the created_at field.
+	identityadoptiondecision.DefaultCreatedAt = identityadoptiondecisionDescCreatedAt.Default.(func() time.Time)
+	// identityadoptiondecisionDescUpdatedAt is the schema descriptor for updated_at field.
+	identityadoptiondecisionDescUpdatedAt := identityadoptiondecisionMixinFields0[1].Descriptor()
+	// identityadoptiondecision.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	identityadoptiondecision.DefaultUpdatedAt = identityadoptiondecisionDescUpdatedAt.Default.(func() time.Time)
+	// identityadoptiondecision.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	identityadoptiondecision.UpdateDefaultUpdatedAt = identityadoptiondecisionDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// identityadoptiondecisionDescAdoptDisplayName is the schema descriptor for adopt_display_name field.
+	identityadoptiondecisionDescAdoptDisplayName := identityadoptiondecisionFields[2].Descriptor()
+	// identityadoptiondecision.DefaultAdoptDisplayName holds the default value on creation for the adopt_display_name field.
+	identityadoptiondecision.DefaultAdoptDisplayName = identityadoptiondecisionDescAdoptDisplayName.Default.(bool)
+	// identityadoptiondecisionDescAdoptAvatar is the schema descriptor for adopt_avatar field.
+	identityadoptiondecisionDescAdoptAvatar := identityadoptiondecisionFields[3].Descriptor()
+	// identityadoptiondecision.DefaultAdoptAvatar holds the default value on creation for the adopt_avatar field.
+	identityadoptiondecision.DefaultAdoptAvatar = identityadoptiondecisionDescAdoptAvatar.Default.(bool)
+	// identityadoptiondecisionDescDecidedAt is the schema descriptor for decided_at field.
+	identityadoptiondecisionDescDecidedAt := identityadoptiondecisionFields[4].Descriptor()
+	// identityadoptiondecision.DefaultDecidedAt holds the default value on creation for the decided_at field.
+	identityadoptiondecision.DefaultDecidedAt = identityadoptiondecisionDescDecidedAt.Default.(func() time.Time)
 	paymentauditlogFields := schema.PaymentAuditLog{REDACTED.Fields()
 	_ = paymentauditlogFields
 	// paymentauditlogDescOrderID is the schema descriptor for order_id field.
@@ -578,38 +723,42 @@ REDACTED()
 	paymentorderDescProviderInstanceID := paymentorderFields[18].Descriptor()
 	// paymentorder.ProviderInstanceIDValidator is a validator for the "provider_instance_id" field. It is called by the builders before save.
 	paymentorder.ProviderInstanceIDValidator = paymentorderDescProviderInstanceID.Validators[0].(func(string) error)
+	// paymentorderDescProviderKey is the schema descriptor for provider_key field.
+	paymentorderDescProviderKey := paymentorderFields[19].Descriptor()
+	// paymentorder.ProviderKeyValidator is a validator for the "provider_key" field. It is called by the builders before save.
+	paymentorder.ProviderKeyValidator = paymentorderDescProviderKey.Validators[0].(func(string) error)
 	// paymentorderDescStatus is the schema descriptor for status field.
-	paymentorderDescStatus := paymentorderFields[19].Descriptor()
+	paymentorderDescStatus := paymentorderFields[21].Descriptor()
 	// paymentorder.DefaultStatus holds the default value on creation for the status field.
 	paymentorder.DefaultStatus = paymentorderDescStatus.Default.(string)
 	// paymentorder.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	paymentorder.StatusValidator = paymentorderDescStatus.Validators[0].(func(string) error)
 	// paymentorderDescRefundAmount is the schema descriptor for refund_amount field.
-	paymentorderDescRefundAmount := paymentorderFields[20].Descriptor()
+	paymentorderDescRefundAmount := paymentorderFields[22].Descriptor()
 	// paymentorder.DefaultRefundAmount holds the default value on creation for the refund_amount field.
 	paymentorder.DefaultRefundAmount = paymentorderDescRefundAmount.Default.(float64)
 	// paymentorderDescForceRefund is the schema descriptor for force_refund field.
-	paymentorderDescForceRefund := paymentorderFields[23].Descriptor()
+	paymentorderDescForceRefund := paymentorderFields[25].Descriptor()
 	// paymentorder.DefaultForceRefund holds the default value on creation for the force_refund field.
 	paymentorder.DefaultForceRefund = paymentorderDescForceRefund.Default.(bool)
 	// paymentorderDescRefundRequestedBy is the schema descriptor for refund_requested_by field.
-	paymentorderDescRefundRequestedBy := paymentorderFields[26].Descriptor()
+	paymentorderDescRefundRequestedBy := paymentorderFields[28].Descriptor()
 	// paymentorder.RefundRequestedByValidator is a validator for the "refund_requested_by" field. It is called by the builders before save.
 	paymentorder.RefundRequestedByValidator = paymentorderDescRefundRequestedBy.Validators[0].(func(string) error)
 	// paymentorderDescClientIP is the schema descriptor for client_ip field.
-	paymentorderDescClientIP := paymentorderFields[32].Descriptor()
+	paymentorderDescClientIP := paymentorderFields[34].Descriptor()
 	// paymentorder.ClientIPValidator is a validator for the "client_ip" field. It is called by the builders before save.
 	paymentorder.ClientIPValidator = paymentorderDescClientIP.Validators[0].(func(string) error)
 	// paymentorderDescSrcHost is the schema descriptor for src_host field.
-	paymentorderDescSrcHost := paymentorderFields[33].Descriptor()
+	paymentorderDescSrcHost := paymentorderFields[35].Descriptor()
 	// paymentorder.SrcHostValidator is a validator for the "src_host" field. It is called by the builders before save.
 	paymentorder.SrcHostValidator = paymentorderDescSrcHost.Validators[0].(func(string) error)
 	// paymentorderDescCreatedAt is the schema descriptor for created_at field.
-	paymentorderDescCreatedAt := paymentorderFields[35].Descriptor()
+	paymentorderDescCreatedAt := paymentorderFields[37].Descriptor()
 	// paymentorder.DefaultCreatedAt holds the default value on creation for the created_at field.
 	paymentorder.DefaultCreatedAt = paymentorderDescCreatedAt.Default.(func() time.Time)
 	// paymentorderDescUpdatedAt is the schema descriptor for updated_at field.
-	paymentorderDescUpdatedAt := paymentorderFields[36].Descriptor()
+	paymentorderDescUpdatedAt := paymentorderFields[38].Descriptor()
 	// paymentorder.DefaultUpdatedAt holds the default value on creation for the updated_at field.
 	paymentorder.DefaultUpdatedAt = paymentorderDescUpdatedAt.Default.(func() time.Time)
 	// paymentorder.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
@@ -682,6 +831,113 @@ REDACTED()
 	paymentproviderinstance.DefaultUpdatedAt = paymentproviderinstanceDescUpdatedAt.Default.(func() time.Time)
 	// paymentproviderinstance.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
 	paymentproviderinstance.UpdateDefaultUpdatedAt = paymentproviderinstanceDescUpdatedAt.UpdateDefault.(func() time.Time)
+	pendingauthsessionMixin := schema.PendingAuthSession{REDACTED.Mixin()
+	pendingauthsessionMixinFields0 := pendingauthsessionMixin[0].Fields()
+	_ = pendingauthsessionMixinFields0
+	pendingauthsessionFields := schema.PendingAuthSession{REDACTED.Fields()
+	_ = pendingauthsessionFields
+	// pendingauthsessionDescCreatedAt is the schema descriptor for created_at field.
+	pendingauthsessionDescCreatedAt := pendingauthsessionMixinFields0[0].Descriptor()
+	// pendingauthsession.DefaultCreatedAt holds the default value on creation for the created_at field.
+	pendingauthsession.DefaultCreatedAt = pendingauthsessionDescCreatedAt.Default.(func() time.Time)
+	// pendingauthsessionDescUpdatedAt is the schema descriptor for updated_at field.
+	pendingauthsessionDescUpdatedAt := pendingauthsessionMixinFields0[1].Descriptor()
+	// pendingauthsession.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	pendingauthsession.DefaultUpdatedAt = pendingauthsessionDescUpdatedAt.Default.(func() time.Time)
+	// pendingauthsession.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	pendingauthsession.UpdateDefaultUpdatedAt = pendingauthsessionDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// pendingauthsessionDescSessionToken is the schema descriptor for session_token field.
+	pendingauthsessionDescSessionToken := pendingauthsessionFields[0].Descriptor()
+	// pendingauthsession.SessionTokenValidator is a validator for the "session_token" field. It is called by the builders before save.
+	pendingauthsession.SessionTokenValidator = func() func(string) error {
+		validators := pendingauthsessionDescSessionToken.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+	REDACTED
+		return func(session_token string) error {
+			for _, fn := range fns {
+				if err := fn(session_token); err != nil {
+					return err
+			REDACTED
+		REDACTED
+			return nil
+	REDACTED
+REDACTED()
+	// pendingauthsessionDescIntent is the schema descriptor for intent field.
+	pendingauthsessionDescIntent := pendingauthsessionFields[1].Descriptor()
+	// pendingauthsession.IntentValidator is a validator for the "intent" field. It is called by the builders before save.
+	pendingauthsession.IntentValidator = func() func(string) error {
+		validators := pendingauthsessionDescIntent.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+			validators[2].(func(string) error),
+	REDACTED
+		return func(intent string) error {
+			for _, fn := range fns {
+				if err := fn(intent); err != nil {
+					return err
+			REDACTED
+		REDACTED
+			return nil
+	REDACTED
+REDACTED()
+	// pendingauthsessionDescProviderType is the schema descriptor for provider_type field.
+	pendingauthsessionDescProviderType := pendingauthsessionFields[2].Descriptor()
+	// pendingauthsession.ProviderTypeValidator is a validator for the "provider_type" field. It is called by the builders before save.
+	pendingauthsession.ProviderTypeValidator = func() func(string) error {
+		validators := pendingauthsessionDescProviderType.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+			validators[2].(func(string) error),
+	REDACTED
+		return func(provider_type string) error {
+			for _, fn := range fns {
+				if err := fn(provider_type); err != nil {
+					return err
+			REDACTED
+		REDACTED
+			return nil
+	REDACTED
+REDACTED()
+	// pendingauthsessionDescProviderKey is the schema descriptor for provider_key field.
+	pendingauthsessionDescProviderKey := pendingauthsessionFields[3].Descriptor()
+	// pendingauthsession.ProviderKeyValidator is a validator for the "provider_key" field. It is called by the builders before save.
+	pendingauthsession.ProviderKeyValidator = pendingauthsessionDescProviderKey.Validators[0].(func(string) error)
+	// pendingauthsessionDescProviderSubject is the schema descriptor for provider_subject field.
+	pendingauthsessionDescProviderSubject := pendingauthsessionFields[4].Descriptor()
+	// pendingauthsession.ProviderSubjectValidator is a validator for the "provider_subject" field. It is called by the builders before save.
+	pendingauthsession.ProviderSubjectValidator = pendingauthsessionDescProviderSubject.Validators[0].(func(string) error)
+	// pendingauthsessionDescRedirectTo is the schema descriptor for redirect_to field.
+	pendingauthsessionDescRedirectTo := pendingauthsessionFields[6].Descriptor()
+	// pendingauthsession.DefaultRedirectTo holds the default value on creation for the redirect_to field.
+	pendingauthsession.DefaultRedirectTo = pendingauthsessionDescRedirectTo.Default.(string)
+	// pendingauthsessionDescResolvedEmail is the schema descriptor for resolved_email field.
+	pendingauthsessionDescResolvedEmail := pendingauthsessionFields[7].Descriptor()
+	// pendingauthsession.DefaultResolvedEmail holds the default value on creation for the resolved_email field.
+	pendingauthsession.DefaultResolvedEmail = pendingauthsessionDescResolvedEmail.Default.(string)
+	// pendingauthsessionDescRegistrationPasswordHash is the schema descriptor for registration_password_hash field.
+	pendingauthsessionDescRegistrationPasswordHash := pendingauthsessionFields[8].Descriptor()
+	// pendingauthsession.DefaultRegistrationPasswordHash holds the default value on creation for the registration_password_hash field.
+	pendingauthsession.DefaultRegistrationPasswordHash = pendingauthsessionDescRegistrationPasswordHash.Default.(string)
+	// pendingauthsessionDescUpstreamIdentityClaims is the schema descriptor for upstream_identity_claims field.
+	pendingauthsessionDescUpstreamIdentityClaims := pendingauthsessionFields[9].Descriptor()
+	// pendingauthsession.DefaultUpstreamIdentityClaims holds the default value on creation for the upstream_identity_claims field.
+	pendingauthsession.DefaultUpstreamIdentityClaims = pendingauthsessionDescUpstreamIdentityClaims.Default.(func() map[string]interface{REDACTED)
+	// pendingauthsessionDescLocalFlowState is the schema descriptor for local_flow_state field.
+	pendingauthsessionDescLocalFlowState := pendingauthsessionFields[10].Descriptor()
+	// pendingauthsession.DefaultLocalFlowState holds the default value on creation for the local_flow_state field.
+	pendingauthsession.DefaultLocalFlowState = pendingauthsessionDescLocalFlowState.Default.(func() map[string]interface{REDACTED)
+	// pendingauthsessionDescBrowserSessionKey is the schema descriptor for browser_session_key field.
+	pendingauthsessionDescBrowserSessionKey := pendingauthsessionFields[11].Descriptor()
+	// pendingauthsession.DefaultBrowserSessionKey holds the default value on creation for the browser_session_key field.
+	pendingauthsession.DefaultBrowserSessionKey = pendingauthsessionDescBrowserSessionKey.Default.(string)
+	// pendingauthsessionDescCompletionCodeHash is the schema descriptor for completion_code_hash field.
+	pendingauthsessionDescCompletionCodeHash := pendingauthsessionFields[12].Descriptor()
+	// pendingauthsession.DefaultCompletionCodeHash holds the default value on creation for the completion_code_hash field.
+	pendingauthsession.DefaultCompletionCodeHash = pendingauthsessionDescCompletionCodeHash.Default.(string)
 	promocodeFields := schema.PromoCode{REDACTED.Fields()
 	_ = promocodeFields
 	// promocodeDescCode is the schema descriptor for code field.
@@ -1297,20 +1553,26 @@ REDACTED()
 	userDescTotpEnabled := userFields[9].Descriptor()
 	// user.DefaultTotpEnabled holds the default value on creation for the totp_enabled field.
 	user.DefaultTotpEnabled = userDescTotpEnabled.Default.(bool)
+	// userDescSignupSource is the schema descriptor for signup_source field.
+	userDescSignupSource := userFields[11].Descriptor()
+	// user.DefaultSignupSource holds the default value on creation for the signup_source field.
+	user.DefaultSignupSource = userDescSignupSource.Default.(string)
+	// user.SignupSourceValidator is a validator for the "signup_source" field. It is called by the builders before save.
+	user.SignupSourceValidator = userDescSignupSource.Validators[0].(func(string) error)
 	// userDescBalanceNotifyEnabled is the schema descriptor for balance_notify_enabled field.
-	userDescBalanceNotifyEnabled := userFields[11].Descriptor()
+	userDescBalanceNotifyEnabled := userFields[14].Descriptor()
 	// user.DefaultBalanceNotifyEnabled holds the default value on creation for the balance_notify_enabled field.
 	user.DefaultBalanceNotifyEnabled = userDescBalanceNotifyEnabled.Default.(bool)
 	// userDescBalanceNotifyThresholdType is the schema descriptor for balance_notify_threshold_type field.
-	userDescBalanceNotifyThresholdType := userFields[12].Descriptor()
+	userDescBalanceNotifyThresholdType := userFields[15].Descriptor()
 	// user.DefaultBalanceNotifyThresholdType holds the default value on creation for the balance_notify_threshold_type field.
 	user.DefaultBalanceNotifyThresholdType = userDescBalanceNotifyThresholdType.Default.(string)
 	// userDescBalanceNotifyExtraEmails is the schema descriptor for balance_notify_extra_emails field.
-	userDescBalanceNotifyExtraEmails := userFields[14].Descriptor()
+	userDescBalanceNotifyExtraEmails := userFields[17].Descriptor()
 	// user.DefaultBalanceNotifyExtraEmails holds the default value on creation for the balance_notify_extra_emails field.
 	user.DefaultBalanceNotifyExtraEmails = userDescBalanceNotifyExtraEmails.Default.(string)
 	// userDescTotalRecharged is the schema descriptor for total_recharged field.
-	userDescTotalRecharged := userFields[15].Descriptor()
+	userDescTotalRecharged := userFields[18].Descriptor()
 	// user.DefaultTotalRecharged holds the default value on creation for the total_recharged field.
 	user.DefaultTotalRecharged = userDescTotalRecharged.Default.(float64)
 	userallowedgroupFields := schema.UserAllowedGroup{REDACTED.Fields()

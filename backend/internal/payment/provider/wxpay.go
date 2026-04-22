@@ -5,8 +5,8 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,6 +20,7 @@ import (
 	"github.com/wechatpay-apiv3/wechatpay-go/core/option"
 	"github.com/wechatpay-apiv3/wechatpay-go/services/payments"
 	"github.com/wechatpay-apiv3/wechatpay-go/services/payments/h5"
+	"github.com/wechatpay-apiv3/wechatpay-go/services/payments/jsapi"
 	"github.com/wechatpay-apiv3/wechatpay-go/services/payments/native"
 	"github.com/wechatpay-apiv3/wechatpay-go/services/refunddomestic"
 	"github.com/wechatpay-apiv3/wechatpay-go/utils"
@@ -27,8 +28,23 @@ import (
 
 // WeChat Pay constants.
 const (
-	wxpayCurrency = "CNY"
-	wxpayH5Type   = "Wap"
+	wxpayCurrency   = "CNY"
+	wxpayH5Type     = "Wap"
+	wxpayResultPath = "/payment/result"
+)
+
+const (
+	wxpayMetadataAppID      = "appid"
+	wxpayMetadataMerchantID = "mchid"
+	wxpayMetadataCurrency   = "currency"
+	wxpayMetadataTradeState = "trade_state"
+)
+
+// WeChat Pay create-payment modes.
+const (
+	wxpayModeNative = "native"
+	wxpayModeH5     = "h5"
+	wxpayModeJSAPI  = "jsapi"
 )
 
 // WeChat Pay trade states.
@@ -47,6 +63,18 @@ const (
 // WeChat Pay error codes.
 const (
 	wxpayErrNoAuth = "NO_AUTH"
+)
+
+var (
+	wxpayNativePrepay = func(ctx context.Context, svc native.NativeApiService, req native.PrepayRequest) (*native.PrepayResponse, *core.APIResult, error) {
+		return svc.Prepay(ctx, req)
+REDACTED
+	wxpayH5Prepay = func(ctx context.Context, svc h5.H5ApiService, req h5.PrepayRequest) (*h5.PrepayResponse, *core.APIResult, error) {
+		return svc.Prepay(ctx, req)
+REDACTED
+	wxpayJSAPIPrepayWithRequestPayment = func(ctx context.Context, svc jsapi.JsapiApiService, req jsapi.PrepayRequest) (*jsapi.PrepayWithRequestPaymentResponse, *core.APIResult, error) {
+		return svc.PrepayWithRequestPayment(ctx, req)
+REDACTED
 )
 
 type Wxpay struct {
@@ -94,6 +122,16 @@ func (w *Wxpay) Name() string        { return "Wxpay" REDACTED
 func (w *Wxpay) ProviderKey() string { return payment.TypeWxpay REDACTED
 func (w *Wxpay) SupportedTypes() []payment.PaymentType {
 	return []payment.PaymentType{payment.TypeWxpayREDACTED
+REDACTED
+
+// ResolveWxpayJSAPIAppID returns the AppID that JSAPI prepay will use for a
+// given provider config. A dedicated MP AppID takes precedence over the base
+// merchant AppID.
+func ResolveWxpayJSAPIAppID(config map[string]string) string {
+	if appID := strings.TrimSpace(config["mpAppId"]); appID != "" {
+		return appID
+REDACTED
+	return strings.TrimSpace(config["appId"])
 REDACTED
 
 func formatPEM(key, keyType string) string {
@@ -153,30 +191,68 @@ REDACTED
 	if err != nil {
 		return nil, fmt.Errorf("wxpay create payment: %w", err)
 REDACTED
-	if req.IsMobile && req.ClientIP != "" {
-		resp, err := w.createOrder(ctx, client, req, notifyURL, totalFen, true)
+
+	mode, err := resolveWxpayCreateMode(req)
+	if err != nil {
+		return nil, err
+REDACTED
+	switch mode {
+	case wxpayModeJSAPI:
+		return w.prepayJSAPI(ctx, client, req, notifyURL, totalFen)
+	case wxpayModeH5:
+		resp, err := w.prepayH5(ctx, client, req, notifyURL, totalFen)
 		if err == nil {
 			return resp, nil
 	REDACTED
-		if !strings.Contains(err.Error(), wxpayErrNoAuth) {
-			return nil, err
+		if strings.Contains(err.Error(), wxpayErrNoAuth) {
+			return nil, fmt.Errorf("wxpay h5 payments are not authorized for this merchant: %w", err)
 	REDACTED
-		slog.Warn("wxpay H5 payment not authorized, falling back to native", "order", req.OrderID)
+		return nil, err
+	case wxpayModeNative:
+		return w.prepayNative(ctx, client, req, notifyURL, totalFen)
+	default:
+		return nil, fmt.Errorf("wxpay create payment: unsupported mode %q", mode)
 REDACTED
-	return w.createOrder(ctx, client, req, notifyURL, totalFen, false)
 REDACTED
 
-func (w *Wxpay) createOrder(ctx context.Context, c *core.Client, req payment.CreatePaymentRequest, notifyURL string, totalFen int64, useH5 bool) (*payment.CreatePaymentResponse, error) {
-	if useH5 {
-		return w.prepayH5(ctx, c, req, notifyURL, totalFen)
+func (w *Wxpay) prepayJSAPI(ctx context.Context, c *core.Client, req payment.CreatePaymentRequest, notifyURL string, totalFen int64) (*payment.CreatePaymentResponse, error) {
+	svc := jsapi.JsapiApiService{Client: cREDACTED
+	cur := wxpayCurrency
+	appID := ResolveWxpayJSAPIAppID(w.config)
+	prepayReq := jsapi.PrepayRequest{
+		Appid:       core.String(appID),
+		Mchid:       core.String(w.config["mchId"]),
+		Description: core.String(req.Subject),
+		OutTradeNo:  core.String(req.OrderID),
+		NotifyUrl:   core.String(notifyURL),
+		Amount:      &jsapi.Amount{Total: core.Int64(totalFen), Currency: &curREDACTED,
+		Payer:       &jsapi.Payer{Openid: core.String(strings.TrimSpace(req.OpenID))REDACTED,
 REDACTED
-	return w.prepayNative(ctx, c, req, notifyURL, totalFen)
+	if clientIP := strings.TrimSpace(req.ClientIP); clientIP != "" {
+		prepayReq.SceneInfo = &jsapi.SceneInfo{PayerClientIp: core.String(clientIP)REDACTED
+REDACTED
+	resp, _, err := wxpayJSAPIPrepayWithRequestPayment(ctx, svc, prepayReq)
+	if err != nil {
+		return nil, fmt.Errorf("wxpay jsapi prepay: %w", err)
+REDACTED
+	return &payment.CreatePaymentResponse{
+		TradeNo:    req.OrderID,
+		ResultType: payment.CreatePaymentResultJSAPIReady,
+		JSAPI: &payment.WechatJSAPIPayload{
+			AppID:     wxSV(resp.Appid),
+			TimeStamp: wxSV(resp.TimeStamp),
+			NonceStr:  wxSV(resp.NonceStr),
+			Package:   wxSV(resp.Package),
+			SignType:  wxSV(resp.SignType),
+			PaySign:   wxSV(resp.PaySign),
+	REDACTED,
+REDACTED, nil
 REDACTED
 
 func (w *Wxpay) prepayNative(ctx context.Context, c *core.Client, req payment.CreatePaymentRequest, notifyURL string, totalFen int64) (*payment.CreatePaymentResponse, error) {
 	svc := native.NativeApiService{Client: cREDACTED
 	cur := wxpayCurrency
-	resp, _, err := svc.Prepay(ctx, native.PrepayRequest{
+	resp, _, err := wxpayNativePrepay(ctx, svc, native.PrepayRequest{
 		Appid: core.String(w.config["appId"]), Mchid: core.String(w.config["mchId"]),
 		Description: core.String(req.Subject), OutTradeNo: core.String(req.OrderID),
 		NotifyUrl: core.String(notifyURL),
@@ -195,13 +271,12 @@ REDACTED
 func (w *Wxpay) prepayH5(ctx context.Context, c *core.Client, req payment.CreatePaymentRequest, notifyURL string, totalFen int64) (*payment.CreatePaymentResponse, error) {
 	svc := h5.H5ApiService{Client: cREDACTED
 	cur := wxpayCurrency
-	tp := wxpayH5Type
-	resp, _, err := svc.Prepay(ctx, h5.PrepayRequest{
+	resp, _, err := wxpayH5Prepay(ctx, svc, h5.PrepayRequest{
 		Appid: core.String(w.config["appId"]), Mchid: core.String(w.config["mchId"]),
 		Description: core.String(req.Subject), OutTradeNo: core.String(req.OrderID),
 		NotifyUrl: core.String(notifyURL),
 		Amount:    &h5.Amount{Total: core.Int64(totalFen), Currency: &curREDACTED,
-		SceneInfo: &h5.SceneInfo{PayerClientIp: core.String(req.ClientIP), H5Info: &h5.H5Info{Type: &tpREDACTEDREDACTED,
+		SceneInfo: &h5.SceneInfo{PayerClientIp: core.String(req.ClientIP), H5Info: buildWxpayH5Info(w.config)REDACTED,
 REDACTED)
 	if err != nil {
 		return nil, fmt.Errorf("wxpay h5 prepay: %w", err)
@@ -210,7 +285,75 @@ REDACTED
 	if resp.H5Url != nil {
 		h5URL = *resp.H5Url
 REDACTED
+	h5URL, err = appendWxpayRedirectURL(h5URL, req)
+	if err != nil {
+		return nil, err
+REDACTED
 	return &payment.CreatePaymentResponse{TradeNo: req.OrderID, PayURL: h5URLREDACTED, nil
+REDACTED
+
+func buildWxpayH5Info(config map[string]string) *h5.H5Info {
+	tp := wxpayH5Type
+	info := &h5.H5Info{Type: &tpREDACTED
+	if appName := strings.TrimSpace(config["h5AppName"]); appName != "" {
+		info.AppName = core.String(appName)
+REDACTED
+	if appURL := strings.TrimSpace(config["h5AppUrl"]); appURL != "" {
+		info.AppUrl = core.String(appURL)
+REDACTED
+	return info
+REDACTED
+
+func resolveWxpayCreateMode(req payment.CreatePaymentRequest) (string, error) {
+	if strings.TrimSpace(req.OpenID) != "" {
+		return wxpayModeJSAPI, nil
+REDACTED
+	if req.IsMobile {
+		if strings.TrimSpace(req.ClientIP) == "" {
+			return "", fmt.Errorf("wxpay H5 payment requires client IP")
+	REDACTED
+		return wxpayModeH5, nil
+REDACTED
+	return wxpayModeNative, nil
+REDACTED
+
+func appendWxpayRedirectURL(h5URL string, req payment.CreatePaymentRequest) (string, error) {
+	h5URL = strings.TrimSpace(h5URL)
+	returnURL := strings.TrimSpace(req.ReturnURL)
+	if h5URL == "" || returnURL == "" {
+		return h5URL, nil
+REDACTED
+
+	redirectURL, err := buildWxpayResultURL(returnURL, req)
+	if err != nil {
+		return "", err
+REDACTED
+
+	sep := "&"
+	if !strings.Contains(h5URL, "?") {
+		sep = "?"
+REDACTED
+	return h5URL + sep + "redirect_url=" + url.QueryEscape(redirectURL), nil
+REDACTED
+
+func buildWxpayResultURL(returnURL string, req payment.CreatePaymentRequest) (string, error) {
+	u, err := url.Parse(returnURL)
+	if err != nil || !u.IsAbs() || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return "", fmt.Errorf("return URL must be an absolute http(s) URL")
+REDACTED
+
+	values := u.Query()
+	values.Set("out_trade_no", strings.TrimSpace(req.OrderID))
+	if paymentType := strings.TrimSpace(req.PaymentType); paymentType != "" {
+		values.Set("payment_type", paymentType)
+REDACTED
+	if strings.TrimSpace(u.Path) == "" {
+		u.Path = wxpayResultPath
+REDACTED
+	u.RawPath = ""
+	u.RawQuery = values.Encode()
+	u.Fragment = ""
+	return u.String(), nil
 REDACTED
 
 func wxSV(s *string) string {
@@ -231,6 +374,32 @@ func mapWxState(s string) string {
 	default:
 		return payment.ProviderStatusPending
 REDACTED
+REDACTED
+
+func buildWxpayTransactionMetadata(tx *payments.Transaction) map[string]string {
+	if tx == nil {
+		return nil
+REDACTED
+
+	metadata := map[string]string{REDACTED
+	if appID := wxSV(tx.Appid); appID != "" {
+		metadata[wxpayMetadataAppID] = appID
+REDACTED
+	if merchantID := wxSV(tx.Mchid); merchantID != "" {
+		metadata[wxpayMetadataMerchantID] = merchantID
+REDACTED
+	if tradeState := wxSV(tx.TradeState); tradeState != "" {
+		metadata[wxpayMetadataTradeState] = tradeState
+REDACTED
+	if tx.Amount != nil {
+		if currency := wxSV(tx.Amount.Currency); currency != "" {
+			metadata[wxpayMetadataCurrency] = currency
+	REDACTED
+REDACTED
+	if len(metadata) == 0 {
+		return nil
+REDACTED
+	return metadata
 REDACTED
 
 func (w *Wxpay) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryOrderResponse, error) {
@@ -257,7 +426,13 @@ REDACTED
 	if tx.SuccessTime != nil {
 		pa = *tx.SuccessTime
 REDACTED
-	return &payment.QueryOrderResponse{TradeNo: id, Status: mapWxState(wxSV(tx.TradeState)), Amount: amt, PaidAt: paREDACTED, nil
+	return &payment.QueryOrderResponse{
+		TradeNo:  id,
+		Status:   mapWxState(wxSV(tx.TradeState)),
+		Amount:   amt,
+		PaidAt:   pa,
+		Metadata: buildWxpayTransactionMetadata(tx),
+REDACTED, nil
 REDACTED
 
 func (w *Wxpay) VerifyNotification(ctx context.Context, rawBody string, headers map[string]string) (*payment.PaymentNotification, error) {
@@ -289,7 +464,7 @@ REDACTED
 REDACTED
 	return &payment.PaymentNotification{
 		TradeNo: wxSV(tx.TransactionId), OrderID: wxSV(tx.OutTradeNo),
-		Amount: amt, Status: st, RawData: rawBody,
+		Amount: amt, Status: st, RawData: rawBody, Metadata: buildWxpayTransactionMetadata(&tx),
 REDACTED, nil
 REDACTED
 

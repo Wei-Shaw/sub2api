@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -13,10 +15,13 @@ import (
 	"time"
 	"unicode/utf8"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
+	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -25,17 +30,24 @@ import (
 )
 
 const (
-	linuxDoOAuthCookiePath        = "/api/v1/auth/oauth/linuxdo"
-	linuxDoOAuthStateCookieName   = "linuxdo_oauth_state"
-	linuxDoOAuthVerifierCookie    = "linuxdo_oauth_verifier"
-	linuxDoOAuthRedirectCookie    = "linuxdo_oauth_redirect"
-	linuxDoOAuthCookieMaxAgeSec   = 10 * 60 // 10 minutes
-	linuxDoOAuthDefaultRedirectTo = "/dashboard"
-	linuxDoOAuthDefaultFrontendCB = "/auth/linuxdo/callback"
+	linuxDoOAuthCookiePath         = "/api/v1/auth/oauth/linuxdo"
+	oauthBindAccessTokenCookiePath = "/api/v1/auth/oauth"
+	linuxDoOAuthStateCookieName    = "linuxdo_oauth_state"
+	linuxDoOAuthVerifierCookie     = "linuxdo_oauth_verifier"
+	linuxDoOAuthRedirectCookie     = "linuxdo_oauth_redirect"
+	linuxDoOAuthIntentCookieName   = "linuxdo_oauth_intent"
+	linuxDoOAuthBindUserCookieName = "linuxdo_oauth_bind_user"
+	oauthBindAccessTokenCookieName = "oauth_bind_access_token"
+	linuxDoOAuthCookieMaxAgeSec    = 10 * 60 // 10 minutes
+	linuxDoOAuthDefaultRedirectTo  = "/dashboard"
+	linuxDoOAuthDefaultFrontendCB  = "/auth/linuxdo/callback"
 
 	linuxDoOAuthMaxRedirectLen      = 2048
 	linuxDoOAuthMaxFragmentValueLen = 512
 	linuxDoOAuthMaxSubjectLen       = 64 - len("linuxdo-")
+
+	oauthIntentLogin           = "login"
+	oauthIntentBindCurrentUser = "bind_current_user"
 )
 
 type linuxDoTokenResponse struct {
@@ -87,20 +99,37 @@ REDACTED
 		redirectTo = linuxDoOAuthDefaultRedirectTo
 REDACTED
 
+	browserSessionKey, err := generateOAuthPendingBrowserSession()
+	if err != nil {
+		response.ErrorFrom(c, infraerrors.InternalServer("OAUTH_BROWSER_SESSION_GEN_FAILED", "failed to generate oauth browser session").WithCause(err))
+		return
+REDACTED
+
 	secureCookie := isRequestHTTPS(c)
 	setCookie(c, linuxDoOAuthStateCookieName, encodeCookieValue(state), linuxDoOAuthCookieMaxAgeSec, secureCookie)
 	setCookie(c, linuxDoOAuthRedirectCookie, encodeCookieValue(redirectTo), linuxDoOAuthCookieMaxAgeSec, secureCookie)
-
-	codeChallenge := ""
-	if cfg.UsePKCE {
-		verifier, err := oauth.GenerateCodeVerifier()
+	intent := normalizeOAuthIntent(c.Query("intent"))
+	setCookie(c, linuxDoOAuthIntentCookieName, encodeCookieValue(intent), linuxDoOAuthCookieMaxAgeSec, secureCookie)
+	setOAuthPendingBrowserCookie(c, browserSessionKey, secureCookie)
+	clearOAuthPendingSessionCookie(c, secureCookie)
+	if intent == oauthIntentBindCurrentUser {
+		bindCookieValue, err := h.buildOAuthBindUserCookieFromContext(c)
 		if err != nil {
-			response.ErrorFrom(c, infraerrors.InternalServer("OAUTH_PKCE_GEN_FAILED", "failed to generate pkce verifier").WithCause(err))
+			response.ErrorFrom(c, err)
 			return
 	REDACTED
-		codeChallenge = oauth.GenerateCodeChallenge(verifier)
-		setCookie(c, linuxDoOAuthVerifierCookie, encodeCookieValue(verifier), linuxDoOAuthCookieMaxAgeSec, secureCookie)
+		setCookie(c, linuxDoOAuthBindUserCookieName, encodeCookieValue(bindCookieValue), linuxDoOAuthCookieMaxAgeSec, secureCookie)
+REDACTED else {
+		clearCookie(c, linuxDoOAuthBindUserCookieName, secureCookie)
 REDACTED
+
+	verifier, err := oauth.GenerateCodeVerifier()
+	if err != nil {
+		response.ErrorFrom(c, infraerrors.InternalServer("OAUTH_PKCE_GEN_FAILED", "failed to generate pkce verifier").WithCause(err))
+		return
+REDACTED
+	codeChallenge := oauth.GenerateCodeChallenge(verifier)
+	setCookie(c, linuxDoOAuthVerifierCookie, encodeCookieValue(verifier), linuxDoOAuthCookieMaxAgeSec, secureCookie)
 
 	redirectURI := strings.TrimSpace(cfg.RedirectURL)
 	if redirectURI == "" {
@@ -148,6 +177,8 @@ REDACTED
 		clearCookie(c, linuxDoOAuthStateCookieName, secureCookie)
 		clearCookie(c, linuxDoOAuthVerifierCookie, secureCookie)
 		clearCookie(c, linuxDoOAuthRedirectCookie, secureCookie)
+		clearCookie(c, linuxDoOAuthIntentCookieName, secureCookie)
+		clearCookie(c, linuxDoOAuthBindUserCookieName, secureCookie)
 REDACTED()
 
 	expectedState, err := readCookieDecoded(c, linuxDoOAuthStateCookieName)
@@ -161,14 +192,18 @@ REDACTED
 	if redirectTo == "" {
 		redirectTo = linuxDoOAuthDefaultRedirectTo
 REDACTED
+	browserSessionKey, _ := readOAuthPendingBrowserCookie(c)
+	if strings.TrimSpace(browserSessionKey) == "" {
+		redirectOAuthError(c, frontendCallback, "missing_browser_session", "missing oauth browser session", "")
+		return
+REDACTED
+	intent, _ := readCookieDecoded(c, linuxDoOAuthIntentCookieName)
+	intent = normalizeOAuthIntent(intent)
 
-	codeVerifier := ""
-	if cfg.UsePKCE {
-		codeVerifier, _ = readCookieDecoded(c, linuxDoOAuthVerifierCookie)
-		if codeVerifier == "" {
-			redirectOAuthError(c, frontendCallback, "missing_verifier", "missing pkce verifier", "")
-			return
-	REDACTED
+	codeVerifier, _ := readCookieDecoded(c, linuxDoOAuthVerifierCookie)
+	if codeVerifier == "" {
+		redirectOAuthError(c, frontendCallback, "missing_verifier", "missing pkce verifier", "")
+		return
 REDACTED
 
 	redirectURI := strings.TrimSpace(cfg.RedirectURL)
@@ -198,52 +233,202 @@ REDACTED
 		return
 REDACTED
 
-	email, username, subject, err := linuxDoFetchUserInfo(c.Request.Context(), cfg, tokenResp)
+	email, username, subject, displayName, avatarURL, err := linuxDoFetchUserInfo(c.Request.Context(), cfg, tokenResp)
 	if err != nil {
 		log.Printf("[LinuxDo OAuth] userinfo fetch failed: %v", err)
 		redirectOAuthError(c, frontendCallback, "userinfo_failed", "failed to fetch user info", "")
 		return
 REDACTED
+	compatEmail := strings.TrimSpace(email)
 
 	// 安全考虑：不要把第三方返回的 email 直接映射到本地账号（可能与本地邮箱用户冲突导致账号被接管）。
 	// 统一使用基于 subject 的稳定合成邮箱来做账号绑定。
 	if subject != "" {
 		email = linuxDoSyntheticEmail(subject)
 REDACTED
-
-	// 传入空邀请码；如果需要邀请码，服务层返回 ErrOAuthInvitationRequired
-	tokenPair, _, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, "")
-	if err != nil {
-		if errors.Is(err, service.ErrOAuthInvitationRequired) {
-			pendingToken, tokenErr := h.authService.CreatePendingOAuthToken(email, username)
-			if tokenErr != nil {
-				redirectOAuthError(c, frontendCallback, "login_failed", "service_error", "")
-				return
-		REDACTED
-			fragment := url.Values{REDACTED
-			fragment.Set("error", "invitation_required")
-			fragment.Set("pending_oauth_token", pendingToken)
-			fragment.Set("redirect", redirectTo)
-			redirectWithFragment(c, frontendCallback, fragment)
+	identityKey := service.PendingAuthIdentityKey{
+		ProviderType:    "linuxdo",
+		ProviderKey:     "linuxdo",
+		ProviderSubject: subject,
+REDACTED
+	upstreamClaims := map[string]any{
+		"email":                  email,
+		"username":               username,
+		"subject":                subject,
+		"suggested_display_name": displayName,
+		"suggested_avatar_url":   avatarURL,
+REDACTED
+	if compatEmail != "" && !strings.EqualFold(strings.TrimSpace(compatEmail), strings.TrimSpace(email)) {
+		upstreamClaims["compat_email"] = compatEmail
+REDACTED
+	if intent == oauthIntentBindCurrentUser {
+		targetUserID, err := h.readOAuthBindUserIDFromCookie(c, linuxDoOAuthBindUserCookieName)
+		if err != nil {
+			redirectOAuthError(c, frontendCallback, "invalid_state", "invalid oauth bind target", "")
 			return
 	REDACTED
-		// 避免把内部细节泄露给客户端；给前端保留结构化原因与提示信息即可。
-		redirectOAuthError(c, frontendCallback, "login_failed", infraerrors.Reason(err), infraerrors.Message(err))
+		if err := h.createOAuthPendingSession(c, oauthPendingSessionPayload{
+			Intent:                 oauthIntentBindCurrentUser,
+			Identity:               identityKey,
+			TargetUserID:           &targetUserID,
+			ResolvedEmail:          email,
+			RedirectTo:             redirectTo,
+			BrowserSessionKey:      browserSessionKey,
+			UpstreamIdentityClaims: upstreamClaims,
+			CompletionResponse: map[string]any{
+				"redirect": redirectTo,
+		REDACTED,
+	REDACTED); err != nil {
+			redirectOAuthError(c, frontendCallback, "session_error", "failed to continue oauth bind", "")
+			return
+	REDACTED
+		redirectToFrontendCallback(c, frontendCallback)
 		return
 REDACTED
 
-	fragment := url.Values{REDACTED
-	fragment.Set("access_token", tokenPair.AccessToken)
-	fragment.Set("refresh_token", tokenPair.RefreshToken)
-	fragment.Set("expires_in", fmt.Sprintf("%d", tokenPair.ExpiresIn))
-	fragment.Set("token_type", "Bearer")
-	fragment.Set("redirect", redirectTo)
-	redirectWithFragment(c, frontendCallback, fragment)
+	existingIdentityUser, err := h.findOAuthIdentityUser(c.Request.Context(), identityKey)
+	if err != nil {
+		redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
+		return
+REDACTED
+	if existingIdentityUser != nil {
+		tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), existingIdentityUser.Email, username, "")
+		if err != nil {
+			redirectOAuthError(c, frontendCallback, "login_failed", infraerrors.Reason(err), infraerrors.Message(err))
+			return
+	REDACTED
+		if err := h.createOAuthPendingSession(c, oauthPendingSessionPayload{
+			Intent:                 oauthIntentLogin,
+			Identity:               identityKey,
+			TargetUserID:           &user.ID,
+			ResolvedEmail:          existingIdentityUser.Email,
+			RedirectTo:             redirectTo,
+			BrowserSessionKey:      browserSessionKey,
+			UpstreamIdentityClaims: upstreamClaims,
+			CompletionResponse: map[string]any{
+				"access_token":  tokenPair.AccessToken,
+				"refresh_token": tokenPair.RefreshToken,
+				"expires_in":    tokenPair.ExpiresIn,
+				"token_type":    "Bearer",
+				"redirect":      redirectTo,
+		REDACTED,
+	REDACTED); err != nil {
+			redirectOAuthError(c, frontendCallback, "session_error", "failed to continue oauth login", "")
+			return
+	REDACTED
+		redirectToFrontendCallback(c, frontendCallback)
+		return
+REDACTED
+
+	compatEmailUser, err := h.findLinuxDoCompatEmailUser(c.Request.Context(), compatEmail)
+	if err != nil {
+		redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
+		return
+REDACTED
+	if err := h.createLinuxDoOAuthChoicePendingSession(
+		c,
+		identityKey,
+		email,
+		email,
+		redirectTo,
+		browserSessionKey,
+		upstreamClaims,
+		compatEmail,
+		compatEmailUser,
+		h.isForceEmailOnThirdPartySignup(c.Request.Context()),
+	); err != nil {
+		redirectOAuthError(c, frontendCallback, "session_error", "failed to continue oauth login", "")
+		return
+REDACTED
+	redirectToFrontendCallback(c, frontendCallback)
+REDACTED
+
+func (h *AuthHandler) findLinuxDoCompatEmailUser(ctx context.Context, email string) (*dbent.User, error) {
+	client := h.entClient()
+	if client == nil {
+		return nil, infraerrors.ServiceUnavailable("PENDING_AUTH_NOT_READY", "pending auth service is not ready")
+REDACTED
+
+	email = strings.TrimSpace(strings.ToLower(email))
+	if email == "" ||
+		strings.HasSuffix(email, service.LinuxDoConnectSyntheticEmailDomain) ||
+		strings.HasSuffix(email, service.OIDCConnectSyntheticEmailDomain) ||
+		strings.HasSuffix(email, service.WeChatConnectSyntheticEmailDomain) {
+		return nil, nil
+REDACTED
+
+	userEntity, err := client.User.Query().
+		Where(dbuser.EmailEqualFold(email)).
+		Only(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil, nil
+	REDACTED
+		return nil, infraerrors.InternalServer("COMPAT_EMAIL_LOOKUP_FAILED", "failed to look up compat email user").WithCause(err)
+REDACTED
+	return userEntity, nil
+REDACTED
+
+func (h *AuthHandler) createLinuxDoOAuthChoicePendingSession(
+	c *gin.Context,
+	identity service.PendingAuthIdentityKey,
+	suggestedEmail string,
+	resolvedEmail string,
+	redirectTo string,
+	browserSessionKey string,
+	upstreamClaims map[string]any,
+	compatEmail string,
+	compatEmailUser *dbent.User,
+	forceEmailOnSignup bool,
+) error {
+	suggestionEmail := strings.TrimSpace(suggestedEmail)
+	canonicalEmail := strings.TrimSpace(resolvedEmail)
+	if suggestionEmail == "" {
+		suggestionEmail = canonicalEmail
+REDACTED
+
+	completionResponse := map[string]any{
+		"step":                      oauthPendingChoiceStep,
+		"adoption_required":         true,
+		"redirect":                  strings.TrimSpace(redirectTo),
+		"email":                     suggestionEmail,
+		"resolved_email":            canonicalEmail,
+		"existing_account_email":    "",
+		"existing_account_bindable": false,
+		"create_account_allowed":    true,
+		"force_email_on_signup":     forceEmailOnSignup,
+		"choice_reason":             "third_party_signup",
+REDACTED
+	if strings.TrimSpace(compatEmail) != "" {
+		completionResponse["compat_email"] = strings.TrimSpace(compatEmail)
+REDACTED
+	resolvedChoiceEmail := suggestionEmail
+	if compatEmailUser != nil {
+		completionResponse["email"] = strings.TrimSpace(compatEmailUser.Email)
+		completionResponse["existing_account_email"] = strings.TrimSpace(compatEmailUser.Email)
+		completionResponse["existing_account_bindable"] = true
+		completionResponse["choice_reason"] = "compat_email_match"
+		resolvedChoiceEmail = strings.TrimSpace(compatEmailUser.Email)
+REDACTED
+	if forceEmailOnSignup && compatEmailUser == nil {
+		completionResponse["choice_reason"] = "force_email_on_signup"
+REDACTED
+
+	return h.createOAuthPendingSession(c, oauthPendingSessionPayload{
+		Intent:                 oauthIntentLogin,
+		Identity:               identity,
+		ResolvedEmail:          resolvedChoiceEmail,
+		RedirectTo:             redirectTo,
+		BrowserSessionKey:      browserSessionKey,
+		UpstreamIdentityClaims: upstreamClaims,
+		CompletionResponse:     completionResponse,
+REDACTED)
 REDACTED
 
 type completeLinuxDoOAuthRequest struct {
-	PendingOAuthToken string `json:"pending_oauth_token" binding:"required"`
-	InvitationCode    string `json:"invitation_code"     binding:"required"`
+	InvitationCode   string `json:"invitation_code" binding:"required"`
+	AdoptDisplayName *bool  `json:"adopt_display_name,omitempty"`
+	AdoptAvatar      *bool  `json:"adopt_avatar,omitempty"`
 REDACTED
 
 // CompleteLinuxDoOAuthRegistration completes a pending OAuth registration by validating
@@ -256,17 +441,75 @@ func (h *AuthHandler) CompleteLinuxDoOAuthRegistration(c *gin.Context) {
 		return
 REDACTED
 
-	email, username, err := h.authService.VerifyPendingOAuthToken(req.PendingOAuthToken)
+	secureCookie := isRequestHTTPS(c)
+	sessionToken, err := readOAuthPendingSessionCookie(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "INVALID_TOKEN", "message": "invalid or expired registration token"REDACTED)
+		clearOAuthPendingSessionCookie(c, secureCookie)
+		clearOAuthPendingBrowserCookie(c, secureCookie)
+		response.ErrorFrom(c, service.ErrPendingAuthSessionNotFound)
 		return
 REDACTED
-
-	tokenPair, _, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode)
+	browserSessionKey, err := readOAuthPendingBrowserCookie(c)
+	if err != nil {
+		clearOAuthPendingSessionCookie(c, secureCookie)
+		clearOAuthPendingBrowserCookie(c, secureCookie)
+		response.ErrorFrom(c, service.ErrPendingAuthBrowserMismatch)
+		return
+REDACTED
+	pendingSvc, err := h.pendingIdentityService()
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED
+	session, err := pendingSvc.GetBrowserSession(c.Request.Context(), sessionToken, browserSessionKey)
+	if err != nil {
+		clearOAuthPendingSessionCookie(c, secureCookie)
+		clearOAuthPendingBrowserCookie(c, secureCookie)
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	if err := ensurePendingOAuthCompleteRegistrationSession(session); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	if err := h.ensureBackendModeAllowsNewUserLogin(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+
+	email := strings.TrimSpace(session.ResolvedEmail)
+	username := pendingSessionStringValue(session.UpstreamIdentityClaims, "username")
+	if email == "" || username == "" {
+		response.ErrorFrom(c, infraerrors.BadRequest("PENDING_AUTH_SESSION_INVALID", "pending auth registration context is invalid"))
+		return
+REDACTED
+
+	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	decision, err := h.upsertPendingOAuthAdoptionDecision(c, session.ID, oauthAdoptionDecisionRequest{
+		AdoptDisplayName: req.AdoptDisplayName,
+		AdoptAvatar:      req.AdoptAvatar,
+REDACTED)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	if err := applyPendingOAuthAdoption(c.Request.Context(), h.entClient(), h.authService, h.userService, session, decision, &user.ID); err != nil {
+		response.ErrorFrom(c, infraerrors.InternalServer("PENDING_AUTH_ADOPTION_APPLY_FAILED", "failed to apply oauth profile adoption").WithCause(err))
+		return
+REDACTED
+	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
+	if _, err := pendingSvc.ConsumeBrowserSession(c.Request.Context(), sessionToken, browserSessionKey); err != nil {
+		clearOAuthPendingSessionCookie(c, secureCookie)
+		clearOAuthPendingBrowserCookie(c, secureCookie)
+		response.ErrorFrom(c, err)
+		return
+REDACTED
+	clearOAuthPendingSessionCookie(c, secureCookie)
+	clearOAuthPendingBrowserCookie(c, secureCookie)
 
 	c.JSON(http.StatusOK, gin.H{
 		"access_token":  tokenPair.AccessToken,
@@ -303,9 +546,7 @@ func linuxDoExchangeCode(
 	form.Set("client_id", cfg.ClientID)
 	form.Set("code", code)
 	form.Set("redirect_uri", redirectURI)
-	if cfg.UsePKCE {
-		form.Set("code_verifier", codeVerifier)
-REDACTED
+	form.Set("code_verifier", codeVerifier)
 
 	r := client.R().
 		SetContext(ctx).
@@ -353,11 +594,11 @@ func linuxDoFetchUserInfo(
 	ctx context.Context,
 	cfg config.LinuxDoConnectConfig,
 	token *linuxDoTokenResponse,
-) (email string, username string, subject string, err error) {
+) (email string, username string, subject string, displayName string, avatarURL string, err error) {
 	client := req.C().SetTimeout(30 * time.Second)
 	authorization, err := buildBearerAuthorization(token.TokenType, token.AccessToken)
 	if err != nil {
-		return "", "", "", fmt.Errorf("invalid token for userinfo request: %w", err)
+		return "", "", "", "", "", fmt.Errorf("invalid token for userinfo request: %w", err)
 REDACTED
 
 	resp, err := client.R().
@@ -366,16 +607,16 @@ REDACTED
 		SetHeader("Authorization", authorization).
 		Get(cfg.UserInfoURL)
 	if err != nil {
-		return "", "", "", fmt.Errorf("request userinfo: %w", err)
+		return "", "", "", "", "", fmt.Errorf("request userinfo: %w", err)
 REDACTED
 	if !resp.IsSuccessState() {
-		return "", "", "", fmt.Errorf("userinfo status=%d", resp.StatusCode)
+		return "", "", "", "", "", fmt.Errorf("userinfo status=%d", resp.StatusCode)
 REDACTED
 
 	return linuxDoParseUserInfo(resp.String(), cfg)
 REDACTED
 
-func linuxDoParseUserInfo(body string, cfg config.LinuxDoConnectConfig) (email string, username string, subject string, err error) {
+func linuxDoParseUserInfo(body string, cfg config.LinuxDoConnectConfig) (email string, username string, subject string, displayName string, avatarURL string, err error) {
 	email = firstNonEmpty(
 		getGJSON(body, cfg.UserInfoEmailPath),
 		getGJSON(body, "email"),
@@ -400,12 +641,29 @@ func linuxDoParseUserInfo(body string, cfg config.LinuxDoConnectConfig) (email s
 		getGJSON(body, "user.id"),
 	)
 
+	displayName = firstNonEmpty(
+		getGJSON(body, "name"),
+		getGJSON(body, "nickname"),
+		getGJSON(body, "display_name"),
+		getGJSON(body, "user.name"),
+		getGJSON(body, "user.username"),
+		username,
+	)
+	avatarURL = firstNonEmpty(
+		getGJSON(body, "avatar_url"),
+		getGJSON(body, "avatar"),
+		getGJSON(body, "picture"),
+		getGJSON(body, "profile_image_url"),
+		getGJSON(body, "user.avatar"),
+		getGJSON(body, "user.avatar_url"),
+	)
+
 	subject = strings.TrimSpace(subject)
 	if subject == "" {
-		return "", "", "", errors.New("userinfo missing id field")
+		return "", "", "", "", "", errors.New("userinfo missing id field")
 REDACTED
 	if !isSafeLinuxDoSubject(subject) {
-		return "", "", "", errors.New("userinfo returned invalid id field")
+		return "", "", "", "", "", errors.New("userinfo returned invalid id field")
 REDACTED
 
 	email = strings.TrimSpace(email)
@@ -418,8 +676,13 @@ REDACTED
 	if username == "" {
 		username = "linuxdo_" + subject
 REDACTED
+	displayName = strings.TrimSpace(displayName)
+	if displayName == "" {
+		displayName = username
+REDACTED
+	avatarURL = strings.TrimSpace(avatarURL)
 
-	return email, username, subject, nil
+	return email, username, subject, displayName, avatarURL, nil
 REDACTED
 
 func buildLinuxDoAuthorizeURL(cfg config.LinuxDoConnectConfig, state string, codeChallenge string, redirectURI string) (string, error) {
@@ -436,10 +699,8 @@ REDACTED
 		q.Set("scope", cfg.Scopes)
 REDACTED
 	q.Set("state", state)
-	if cfg.UsePKCE {
-		q.Set("code_challenge", codeChallenge)
-		q.Set("code_challenge_method", "S256")
-REDACTED
+	q.Set("code_challenge", codeChallenge)
+	q.Set("code_challenge_method", "S256")
 
 	u.RawQuery = q.Encode()
 	return u.String(), nil
@@ -670,6 +931,18 @@ func clearCookie(c *gin.Context, name string, secure bool) {
 REDACTED)
 REDACTED
 
+func clearOAuthBindAccessTokenCookie(c *gin.Context, secure bool) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     oauthBindAccessTokenCookieName,
+		Value:    "",
+		Path:     oauthBindAccessTokenCookiePath,
+		MaxAge:   -1,
+		HttpOnly: false,
+		Secure:   secure,
+		SameSite: http.SameSiteLaxMode,
+REDACTED)
+REDACTED
+
 func truncateFragmentValue(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -727,4 +1000,108 @@ func linuxDoSyntheticEmail(subject string) string {
 		return ""
 REDACTED
 	return "linuxdo-" + subject + service.LinuxDoConnectSyntheticEmailDomain
+REDACTED
+
+func normalizeOAuthIntent(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", oauthIntentLogin:
+		return oauthIntentLogin
+	case "bind", oauthIntentBindCurrentUser:
+		return oauthIntentBindCurrentUser
+	default:
+		return oauthIntentLogin
+REDACTED
+REDACTED
+
+func (h *AuthHandler) buildOAuthBindUserCookieFromContext(c *gin.Context) (string, error) {
+	userID, err := h.resolveOAuthBindTargetUserID(c)
+	if err != nil || userID == nil || *userID <= 0 {
+		return "", infraerrors.Unauthorized("UNAUTHORIZED", "authentication required")
+REDACTED
+	return buildOAuthBindUserCookieValue(*userID, h.oauthBindCookieSecret())
+REDACTED
+
+func (h *AuthHandler) resolveOAuthBindTargetUserID(c *gin.Context) (*int64, error) {
+	if subject, ok := servermiddleware.GetAuthSubjectFromContext(c); ok && subject.UserID > 0 {
+		return &subject.UserID, nil
+REDACTED
+	if h == nil || h.authService == nil || h.userService == nil {
+		return nil, service.ErrInvalidToken
+REDACTED
+
+	ck, err := c.Request.Cookie(oauthBindAccessTokenCookieName)
+	clearOAuthBindAccessTokenCookie(c, isRequestHTTPS(c))
+	if err != nil {
+		return nil, err
+REDACTED
+
+	tokenString, err := url.QueryUnescape(strings.TrimSpace(ck.Value))
+	if err != nil {
+		return nil, err
+REDACTED
+	if tokenString == "" {
+		return nil, service.ErrInvalidToken
+REDACTED
+
+	claims, err := h.authService.ValidateToken(tokenString)
+	if err != nil {
+		return nil, err
+REDACTED
+	user, err := h.userService.GetByID(c.Request.Context(), claims.UserID)
+	if err != nil {
+		return nil, err
+REDACTED
+	if user == nil || !user.IsActive() || claims.TokenVersion != user.TokenVersion {
+		return nil, service.ErrInvalidToken
+REDACTED
+	return &user.ID, nil
+REDACTED
+
+func (h *AuthHandler) readOAuthBindUserIDFromCookie(c *gin.Context, cookieName string) (int64, error) {
+	value, err := readCookieDecoded(c, cookieName)
+	if err != nil {
+		return 0, err
+REDACTED
+	return parseOAuthBindUserCookieValue(value, h.oauthBindCookieSecret())
+REDACTED
+
+func (h *AuthHandler) oauthBindCookieSecret() string {
+	if h == nil || h.cfg == nil {
+		return ""
+REDACTED
+	return strings.TrimSpace(h.cfg.JWT.Secret)
+REDACTED
+
+func buildOAuthBindUserCookieValue(userID int64, secret string) (string, error) {
+	secret = strings.TrimSpace(secret)
+	if userID <= 0 || secret == "" {
+		return "", errors.New("invalid oauth bind cookie input")
+REDACTED
+	payload := strconv.FormatInt(userID, 10)
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(payload))
+	signature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return payload + "." + signature, nil
+REDACTED
+
+func parseOAuthBindUserCookieValue(value string, secret string) (int64, error) {
+	secret = strings.TrimSpace(secret)
+	if secret == "" {
+		return 0, errors.New("missing oauth bind cookie secret")
+REDACTED
+	payload, signature, ok := strings.Cut(strings.TrimSpace(value), ".")
+	if !ok || payload == "" || signature == "" {
+		return 0, errors.New("invalid oauth bind cookie")
+REDACTED
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(payload))
+	expectedSignature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	if !hmac.Equal([]byte(signature), []byte(expectedSignature)) {
+		return 0, errors.New("invalid oauth bind cookie signature")
+REDACTED
+	userID, err := strconv.ParseInt(payload, 10, 64)
+	if err != nil || userID <= 0 {
+		return 0, errors.New("invalid oauth bind cookie user")
+REDACTED
+	return userID, nil
 REDACTED

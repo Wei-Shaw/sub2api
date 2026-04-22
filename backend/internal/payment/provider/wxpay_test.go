@@ -3,14 +3,21 @@
 package provider
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/wechatpay-apiv3/wechatpay-go/core"
+	"github.com/wechatpay-apiv3/wechatpay-go/services/payments"
+	"github.com/wechatpay-apiv3/wechatpay-go/services/payments/h5"
+	"github.com/wechatpay-apiv3/wechatpay-go/services/payments/jsapi"
+	"github.com/wechatpay-apiv3/wechatpay-go/services/payments/native"
 )
 
 // generateTestKeyPair returns a fresh RSA 2048 key pair as PEM strings.
@@ -117,6 +124,33 @@ REDACTED
 				t.Errorf("wxSV() = %q, want %q", got, tt.want)
 		REDACTED
 	REDACTED)
+REDACTED
+REDACTED
+
+func TestBuildWxpayTransactionMetadata(t *testing.T) {
+	t.Parallel()
+
+	tx := &payments.Transaction{
+		Appid:      strPtr("wx-app-id"),
+		Mchid:      strPtr("mch-id"),
+		TradeState: strPtr(wxpayTradeStateSuccess),
+		Amount: &payments.TransactionAmount{
+			Currency: strPtr(wxpayCurrency),
+	REDACTED,
+REDACTED
+
+	metadata := buildWxpayTransactionMetadata(tx)
+	if metadata[wxpayMetadataAppID] != "wx-app-id" {
+		t.Fatalf("appid = %q", metadata[wxpayMetadataAppID])
+REDACTED
+	if metadata[wxpayMetadataMerchantID] != "mch-id" {
+		t.Fatalf("mchid = %q", metadata[wxpayMetadataMerchantID])
+REDACTED
+	if metadata[wxpayMetadataCurrency] != wxpayCurrency {
+		t.Fatalf("currency = %q", metadata[wxpayMetadataCurrency])
+REDACTED
+	if metadata[wxpayMetadataTradeState] != wxpayTradeStateSuccess {
+		t.Fatalf("trade_state = %q", metadata[wxpayMetadataTradeState])
 REDACTED
 REDACTED
 
@@ -298,5 +332,312 @@ REDACTED
 				t.Errorf("instanceID = %q, want %q", got.instanceID, "test-instance")
 		REDACTED
 	REDACTED)
+REDACTED
+REDACTED
+
+func TestBuildWxpayResultURLPreservesResumeToken(t *testing.T) {
+	t.Parallel()
+
+	resultURL, err := buildWxpayResultURL("https://app.example.com/payment/result?order_id=42&resume_token=resume-42&status=success", payment.CreatePaymentRequest{
+		OrderID:     "sub2_42",
+		PaymentType: payment.TypeWxpay,
+REDACTED)
+	if err != nil {
+		t.Fatalf("buildWxpayResultURL returned error: %v", err)
+REDACTED
+
+	parsed, err := url.Parse(resultURL)
+	if err != nil {
+		t.Fatalf("url.Parse returned error: %v", err)
+REDACTED
+	query := parsed.Query()
+	if parsed.Path != wxpayResultPath {
+		t.Fatalf("path = %q, want %q", parsed.Path, wxpayResultPath)
+REDACTED
+	if query.Get("resume_token") != "resume-42" {
+		t.Fatalf("resume_token = %q, want %q", query.Get("resume_token"), "resume-42")
+REDACTED
+	if query.Get("order_id") != "42" {
+		t.Fatalf("order_id = %q, want %q", query.Get("order_id"), "42")
+REDACTED
+	if query.Get("out_trade_no") != "sub2_42" {
+		t.Fatalf("out_trade_no = %q, want %q", query.Get("out_trade_no"), "sub2_42")
+REDACTED
+REDACTED
+
+func TestResolveWxpayJSAPIAppID(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		config map[string]string
+		want   string
+REDACTED{
+		{
+			name: "prefers dedicated mp app id",
+			config: map[string]string{
+				"mpAppId": "wx-mp-app",
+				"appId":   "wx-merchant-app",
+		REDACTED,
+			want: "wx-mp-app",
+	REDACTED,
+		{
+			name: "falls back to merchant app id",
+			config: map[string]string{
+				"appId": "wx-merchant-app",
+		REDACTED,
+			want: "wx-merchant-app",
+	REDACTED,
+		{
+			name:   "missing app ids returns empty",
+			config: map[string]string{REDACTED,
+			want:   "",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := ResolveWxpayJSAPIAppID(tt.config); got != tt.want {
+				t.Fatalf("ResolveWxpayJSAPIAppID() = %q, want %q", got, tt.want)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestResolveWxpayCreateMode(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		req      payment.CreatePaymentRequest
+		wantMode string
+		wantErr  string
+REDACTED{
+		{
+			name:     "desktop uses native",
+			req:      payment.CreatePaymentRequest{REDACTED,
+			wantMode: wxpayModeNative,
+	REDACTED,
+		{
+			name: "mobile uses h5 when client ip is present",
+			req: payment.CreatePaymentRequest{
+				IsMobile: true,
+				ClientIP: "203.0.113.10",
+		REDACTED,
+			wantMode: wxpayModeH5,
+	REDACTED,
+		{
+			name: "mobile without client ip returns clear error",
+			req: payment.CreatePaymentRequest{
+				IsMobile: true,
+		REDACTED,
+			wantErr: "requires client IP",
+	REDACTED,
+		{
+			name: "openid uses jsapi mode",
+			req: payment.CreatePaymentRequest{
+				OpenID: "openid-123",
+		REDACTED,
+			wantMode: wxpayModeJSAPI,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := resolveWxpayCreateMode(tt.req)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+			REDACTED
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("error %q should contain %q", err.Error(), tt.wantErr)
+			REDACTED
+				return
+		REDACTED
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+		REDACTED
+			if got != tt.wantMode {
+				t.Fatalf("resolveWxpayCreateMode() = %q, want %q", got, tt.wantMode)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestCreatePaymentWithOpenIDReturnsJSAPIResult(t *testing.T) {
+	origJSAPIPrepay := wxpayJSAPIPrepayWithRequestPayment
+	origNativePrepay := wxpayNativePrepay
+	origH5Prepay := wxpayH5Prepay
+	t.Cleanup(func() {
+		wxpayJSAPIPrepayWithRequestPayment = origJSAPIPrepay
+		wxpayNativePrepay = origNativePrepay
+		wxpayH5Prepay = origH5Prepay
+REDACTED)
+
+	jsapiCalls := 0
+	nativeCalls := 0
+	h5Calls := 0
+	wxpayJSAPIPrepayWithRequestPayment = func(ctx context.Context, svc jsapi.JsapiApiService, req jsapi.PrepayRequest) (*jsapi.PrepayWithRequestPaymentResponse, *core.APIResult, error) {
+		jsapiCalls++
+		if got := wxSV(req.Payer.Openid); got != "openid-123" {
+			t.Fatalf("openid = %q, want %q", got, "openid-123")
+	REDACTED
+		if req.SceneInfo == nil || wxSV(req.SceneInfo.PayerClientIp) != "203.0.113.10" {
+			t.Fatalf("scene_info payer_client_ip = %q, want %q", wxSV(req.SceneInfo.PayerClientIp), "203.0.113.10")
+	REDACTED
+		return &jsapi.PrepayWithRequestPaymentResponse{
+			Appid:     core.String("wx123"),
+			TimeStamp: core.String("1712345678"),
+			NonceStr:  core.String("nonce-123"),
+			Package:   core.String("REDACTED"),
+			SignType:  core.String("RSA"),
+			PaySign:   core.String("signed-payload"),
+	REDACTED, nil, nil
+REDACTED
+	wxpayNativePrepay = func(ctx context.Context, svc native.NativeApiService, req native.PrepayRequest) (*native.PrepayResponse, *core.APIResult, error) {
+		nativeCalls++
+		return &native.PrepayResponse{REDACTED, nil, nil
+REDACTED
+	wxpayH5Prepay = func(ctx context.Context, svc h5.H5ApiService, req h5.PrepayRequest) (*h5.PrepayResponse, *core.APIResult, error) {
+		h5Calls++
+		return &h5.PrepayResponse{REDACTED, nil, nil
+REDACTED
+
+	provider := &Wxpay{
+		config: map[string]string{
+			"appId": "wx123",
+			"mchId": "mch123",
+	REDACTED,
+		coreClient: &core.Client{REDACTED,
+REDACTED
+
+	resp, err := provider.CreatePayment(context.Background(), payment.CreatePaymentRequest{
+		OrderID:     "sub2_88",
+		Amount:      "66.88",
+		PaymentType: payment.TypeWxpay,
+		NotifyURL:   "https://merchant.example/payment/notify",
+		OpenID:      "openid-123",
+		ClientIP:    "203.0.113.10",
+REDACTED)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+REDACTED
+	if jsapiCalls != 1 {
+		t.Fatalf("jsapi prepay calls = %d, want 1", jsapiCalls)
+REDACTED
+	if nativeCalls != 0 {
+		t.Fatalf("native prepay calls = %d, want 0", nativeCalls)
+REDACTED
+	if h5Calls != 0 {
+		t.Fatalf("h5 prepay calls = %d, want 0", h5Calls)
+REDACTED
+	if resp.ResultType != payment.CreatePaymentResultJSAPIReady {
+		t.Fatalf("result type = %q, want %q", resp.ResultType, payment.CreatePaymentResultJSAPIReady)
+REDACTED
+	if resp.JSAPI == nil {
+		t.Fatal("expected jsapi payload, got nil")
+REDACTED
+	if resp.JSAPI.AppID != "wx123" {
+		t.Fatalf("jsapi appId = %q, want %q", resp.JSAPI.AppID, "wx123")
+REDACTED
+	if resp.JSAPI.TimeStamp != "1712345678" {
+		t.Fatalf("jsapi timeStamp = %q, want %q", resp.JSAPI.TimeStamp, "1712345678")
+REDACTED
+	if resp.JSAPI.NonceStr != "nonce-123" {
+		t.Fatalf("jsapi nonceStr = %q, want %q", resp.JSAPI.NonceStr, "nonce-123")
+REDACTED
+	if resp.JSAPI.Package != "REDACTED" {
+		t.Fatalf("jsapi package = %q, want %q", resp.JSAPI.Package, "REDACTED")
+REDACTED
+	if resp.JSAPI.SignType != "RSA" {
+		t.Fatalf("jsapi signType = %q, want %q", resp.JSAPI.SignType, "RSA")
+REDACTED
+	if resp.JSAPI.PaySign != "signed-payload" {
+		t.Fatalf("jsapi paySign = %q, want %q", resp.JSAPI.PaySign, "signed-payload")
+REDACTED
+REDACTED
+
+func TestCreatePaymentMobileH5IncludesConfiguredSceneInfo(t *testing.T) {
+	origJSAPIPrepay := wxpayJSAPIPrepayWithRequestPayment
+	origNativePrepay := wxpayNativePrepay
+	origH5Prepay := wxpayH5Prepay
+	t.Cleanup(func() {
+		wxpayJSAPIPrepayWithRequestPayment = origJSAPIPrepay
+		wxpayNativePrepay = origNativePrepay
+		wxpayH5Prepay = origH5Prepay
+REDACTED)
+
+	jsapiCalls := 0
+	nativeCalls := 0
+	h5Calls := 0
+	wxpayJSAPIPrepayWithRequestPayment = func(ctx context.Context, svc jsapi.JsapiApiService, req jsapi.PrepayRequest) (*jsapi.PrepayWithRequestPaymentResponse, *core.APIResult, error) {
+		jsapiCalls++
+		return &jsapi.PrepayWithRequestPaymentResponse{REDACTED, nil, nil
+REDACTED
+	wxpayNativePrepay = func(ctx context.Context, svc native.NativeApiService, req native.PrepayRequest) (*native.PrepayResponse, *core.APIResult, error) {
+		nativeCalls++
+		return &native.PrepayResponse{REDACTED, nil, nil
+REDACTED
+	wxpayH5Prepay = func(ctx context.Context, svc h5.H5ApiService, req h5.PrepayRequest) (*h5.PrepayResponse, *core.APIResult, error) {
+		h5Calls++
+		if req.SceneInfo == nil {
+			t.Fatal("expected scene_info, got nil")
+	REDACTED
+		if got := wxSV(req.SceneInfo.PayerClientIp); got != "203.0.113.10" {
+			t.Fatalf("scene_info payer_client_ip = %q, want %q", got, "203.0.113.10")
+	REDACTED
+		if req.SceneInfo.H5Info == nil {
+			t.Fatal("expected scene_info.h5_info, got nil")
+	REDACTED
+		if got := wxSV(req.SceneInfo.H5Info.Type); got != wxpayH5Type {
+			t.Fatalf("scene_info.h5_info.type = %q, want %q", got, wxpayH5Type)
+	REDACTED
+		if got := wxSV(req.SceneInfo.H5Info.AppName); got != "Sub2API" {
+			t.Fatalf("scene_info.h5_info.app_name = %q, want %q", got, "Sub2API")
+	REDACTED
+		if got := wxSV(req.SceneInfo.H5Info.AppUrl); got != "https://app.example.com" {
+			t.Fatalf("scene_info.h5_info.app_url = %q, want %q", got, "https://app.example.com")
+	REDACTED
+		return &h5.PrepayResponse{
+			H5Url: core.String("https://wx.tenpay.example/h5pay?prepay_id=1"),
+	REDACTED, nil, nil
+REDACTED
+
+	provider := &Wxpay{
+		config: map[string]string{
+			"appId":     "wx123",
+			"mchId":     "mch123",
+			"h5AppName": "Sub2API",
+			"h5AppUrl":  "https://app.example.com",
+	REDACTED,
+		coreClient: &core.Client{REDACTED,
+REDACTED
+
+	resp, err := provider.CreatePayment(context.Background(), payment.CreatePaymentRequest{
+		OrderID:     "sub2_99",
+		Amount:      "66.88",
+		PaymentType: payment.TypeWxpay,
+		Subject:     "Balance Recharge",
+		NotifyURL:   "https://merchant.example/payment/notify",
+		ReturnURL:   "https://merchant.example/payment/result?resume_token=resume-99",
+		ClientIP:    "203.0.113.10",
+		IsMobile:    true,
+REDACTED)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+REDACTED
+	if jsapiCalls != 0 {
+		t.Fatalf("jsapi prepay calls = %d, want 0", jsapiCalls)
+REDACTED
+	if nativeCalls != 0 {
+		t.Fatalf("native prepay calls = %d, want 0", nativeCalls)
+REDACTED
+	if h5Calls != 1 {
+		t.Fatalf("h5 prepay calls = %d, want 1", h5Calls)
+REDACTED
+	if !strings.Contains(resp.PayURL, "redirect_url=") {
+		t.Fatalf("pay_url = %q, want redirect_url query appended", resp.PayURL)
 REDACTED
 REDACTED

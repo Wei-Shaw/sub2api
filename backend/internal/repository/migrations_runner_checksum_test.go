@@ -51,4 +51,13 @@ REDACTED)
 		)
 		require.False(t, ok)
 REDACTED)
+
+	t.Run("109历史checksum可兼容", func(t *testing.T) {
+		ok := isMigrationChecksumCompatible(
+			"109_auth_identity_compat_backfill.sql",
+			"2b380305e73ff0c13aa8c811e45897f2b36ca4a438f7b3e8f98e19ecb6bae0b3",
+			"551e498aa5616d2d91096e9d72cf9fb36e418ee22eacc557f8811cadbc9e20ee",
+		)
+		require.True(t, ok)
+REDACTED)
 REDACTED

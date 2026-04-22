@@ -141,7 +141,9 @@ const props = defineProps<{
   orderType?: string
 REDACTED>()
 
-const emit = defineEmits<{ done: []; success: [] REDACTED>()
+type PaymentOutcome = 'success' | 'cancelled' | 'expired'
+
+const emit = defineEmits<{ done: []; success: []; settled: [outcome: PaymentOutcome] REDACTED>()
 
 const { t REDACTED = useI18n()
 const paymentStore = usePaymentStore()
@@ -154,7 +156,7 @@ const cancelling = ref(false)
 const paidOrder = ref<PaymentOrder | null>(null)
 
 // Terminal outcome: null = still active, 'success' | 'cancelled' | 'expired'
-const outcome = ref<'success' | 'cancelled' | 'expired' | null>(null)
+const outcome = ref<PaymentOutcome | null>(null)
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let countdownTimer: ReturnType<typeof setInterval> | null = null
@@ -192,10 +194,23 @@ const countdownDisplay = computed(() => {
   return m.toString().padStart(2, '0') + ':' + s.toString().padStart(2, '0')
 REDACTED)
 
+function isSuccessStatus(status: string | null | undefined): boolean {
+  return status === 'COMPLETED' || status === 'PAID' || status === 'RECHARGING'
+REDACTED
+
 function reopenPopup() {
   if (props.payUrl) {
-    window.open(props.payUrl, 'paymentPopup', getPaymentPopupFeatures())
+    const win = window.open(props.payUrl, 'paymentPopup', getPaymentPopupFeatures())
+    if (!win || win.closed) {
+      window.location.href = props.payUrl
+    REDACTED
   REDACTED
+REDACTED
+
+function setOutcome(next: PaymentOutcome) {
+  if (outcome.value === next) return
+  outcome.value = next
+  emit('settled', next)
 REDACTED
 
 async function renderQR() {
@@ -211,26 +226,26 @@ async function pollStatus() {
   if (!props.orderId || outcome.value) return
   const order = await paymentStore.pollOrderStatus(props.orderId)
   if (!order) return
-  if (order.status === 'COMPLETED' || order.status === 'PAID') {
+  if (isSuccessStatus(order.status)) {
     cleanup()
     paidOrder.value = order
-    outcome.value = 'success'
+    setOutcome('success')
     emit('success')
   REDACTED else if (order.status === 'CANCELLED') {
     cleanup()
-    outcome.value = 'cancelled'
+    setOutcome('cancelled')
   REDACTED else if (order.status === 'EXPIRED' || order.status === 'FAILED') {
     cleanup()
-    outcome.value = 'expired'
+    setOutcome('expired')
   REDACTED
 REDACTED
 
 function startCountdown(seconds: number) {
   remainingSeconds.value = Math.max(0, seconds)
-  if (remainingSeconds.value <= 0) { outcome.value = 'expired'; return REDACTED
+  if (remainingSeconds.value <= 0) { setOutcome('expired'); return REDACTED
   countdownTimer = setInterval(() => {
     remainingSeconds.value--
-    if (remainingSeconds.value <= 0) { outcome.value = 'expired'; cleanup() REDACTED
+    if (remainingSeconds.value <= 0) { setOutcome('expired'); cleanup() REDACTED
   REDACTED, 1000)
 REDACTED
 
@@ -240,7 +255,7 @@ async function handleCancel() {
   try {
     await paymentAPI.cancelOrder(props.orderId)
     cleanup()
-    outcome.value = 'cancelled'
+    setOutcome('cancelled')
   REDACTED catch (err: unknown) {
     appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
   REDACTED finally {

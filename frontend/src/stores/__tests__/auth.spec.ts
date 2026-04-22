@@ -211,6 +211,107 @@ describe('useAuthStore', () => {
 
       expect(store.isAuthenticated).toBe(true)
     REDACTED)
+
+    it('恢复持久化 pending auth session', () => {
+      localStorage.setItem(
+        'pending_auth_session',
+        JSON.stringify({
+          token: 'pending-token',
+          token_field: 'pending_auth_token',
+          provider: 'wechat',
+          redirect: '/profile',
+        REDACTED)
+      )
+
+      const store = useAuthStore()
+      store.checkAuth()
+
+      expect(store.hasPendingAuthSession).toBe(true)
+      expect(store.pendingAuthSession).toEqual({
+        token: 'pending-token',
+        token_field: 'pending_auth_token',
+        provider: 'wechat',
+        redirect: '/profile',
+      REDACTED)
+    REDACTED)
+  REDACTED)
+
+  describe('pending auth session', () => {
+    it('persists and clears pending auth session state', () => {
+      const store = useAuthStore()
+
+      store.setPendingAuthSession({
+        token: 'pending-token',
+        token_field: 'pending_auth_token',
+        provider: 'wechat',
+        redirect: '/profile',
+      REDACTED)
+
+      expect(store.hasPendingAuthSession).toBe(true)
+      expect(JSON.parse(localStorage.getItem('pending_auth_session') || 'null')).toEqual({
+        token: 'pending-token',
+        token_field: 'pending_auth_token',
+        provider: 'wechat',
+        redirect: '/profile',
+      REDACTED)
+
+      store.clearPendingAuthSession()
+
+      expect(store.hasPendingAuthSession).toBe(false)
+      expect(localStorage.getItem('pending_auth_session')).toBeNull()
+    REDACTED)
+
+    it('restores a persisted pending oauth session without requiring a token value', () => {
+      const firstStore = useAuthStore()
+
+      firstStore.setPendingAuthSession({
+        token: '',
+        token_field: 'pending_oauth_token',
+        provider: 'oidc',
+        redirect: '/welcome',
+        adoption_required: true,
+        suggested_display_name: 'OIDC Nick'
+      REDACTED)
+
+      setActivePinia(createPinia())
+      const restoredStore = useAuthStore()
+      restoredStore.checkAuth()
+
+      expect(restoredStore.isAuthenticated).toBe(false)
+      expect(restoredStore.hasPendingAuthSession).toBe(true)
+      expect(restoredStore.pendingAuthSession).toEqual({
+        token: '',
+        token_field: 'pending_oauth_token',
+        provider: 'oidc',
+        redirect: '/welcome',
+        adoption_required: true,
+        suggested_display_name: 'OIDC Nick',
+        suggested_avatar_url: undefined
+      REDACTED)
+    REDACTED)
+
+    it('preserves pending auth session when registration fails', async () => {
+      const store = useAuthStore()
+      store.setPendingAuthSession({
+        token: 'pending-token',
+        token_field: 'pending_auth_token',
+        provider: 'oidc',
+        redirect: '/register',
+      REDACTED)
+      mockRegister.mockRejectedValue(new Error('Register failed'))
+
+      await expect(
+        store.register({ email: 'user@example.com', password: 'secret-123' REDACTED)
+      ).rejects.toThrow('Register failed')
+
+      expect(store.hasPendingAuthSession).toBe(true)
+      expect(store.pendingAuthSession).toEqual({
+        token: 'pending-token',
+        token_field: 'pending_auth_token',
+        provider: 'oidc',
+        redirect: '/register',
+      REDACTED)
+    REDACTED)
   REDACTED)
 
   // --- isAdmin ---

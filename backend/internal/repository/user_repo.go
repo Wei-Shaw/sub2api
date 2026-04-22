@@ -11,12 +11,17 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/authidentity"
+	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
 	dbgroup "github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -51,8 +56,12 @@ REDACTED
 		defer func() { _ = tx.Rollback() REDACTED()
 		txClient = tx.Client()
 REDACTED else {
-		// 已处于外部事务中（ErrTxStarted），复用当前 client 并由调用方负责提交/回滚。
-		txClient = r.client
+		// 已处于外部事务中（ErrTxStarted），复用当前事务 client 并由调用方负责提交/回滚。
+		if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
+			txClient = existingTx.Client()
+	REDACTED else {
+			txClient = r.client
+	REDACTED
 REDACTED
 
 	created, err := txClient.User.Create().
@@ -64,12 +73,18 @@ REDACTED
 		SetBalance(userIn.Balance).
 		SetConcurrency(userIn.Concurrency).
 		SetStatus(userIn.Status).
+		SetSignupSource(userSignupSourceOrDefault(userIn.SignupSource)).
+		SetNillableLastLoginAt(userIn.LastLoginAt).
+		SetNillableLastActiveAt(userIn.LastActiveAt).
 		Save(ctx)
 	if err != nil {
 		return translatePersistenceError(err, nil, service.ErrEmailExists)
 REDACTED
 
 	if err := r.syncUserAllowedGroupsWithClient(ctx, txClient, created.ID, userIn.AllowedGroups); err != nil {
+		return err
+REDACTED
+	if err := ensureEmailAuthIdentityWithClient(ctx, txClient, created.ID, created.Email, "user_repo_create"); err != nil {
 		return err
 REDACTED
 
@@ -101,10 +116,20 @@ REDACTED
 REDACTED
 
 func (r *userRepository) GetByEmail(ctx context.Context, email string) (*service.User, error) {
-	m, err := r.client.User.Query().Where(dbuser.EmailEQ(email)).Only(ctx)
+	matches, err := r.client.User.Query().
+		Where(userEmailLookupPredicate(email)).
+		Order(dbent.Asc(dbuser.FieldID)).
+		All(ctx)
 	if err != nil {
-		return nil, translatePersistenceError(err, service.ErrUserNotFound, nil)
+		return nil, err
 REDACTED
+	if len(matches) == 0 {
+		return nil, service.ErrUserNotFound
+REDACTED
+	if len(matches) > 1 {
+		return nil, fmt.Errorf("normalized email lookup matched multiple users for %q", strings.TrimSpace(email))
+REDACTED
+	m := matches[0]
 
 	out := userEntityToService(m)
 	groups, err := r.loadAllowedGroups(ctx, []int64{m.IDREDACTED)
@@ -133,9 +158,18 @@ REDACTED
 		defer func() { _ = tx.Rollback() REDACTED()
 		txClient = tx.Client()
 REDACTED else {
-		// 已处于外部事务中（ErrTxStarted），复用当前 client 并由调用方负责提交/回滚。
-		txClient = r.client
+		// 已处于外部事务中（ErrTxStarted），复用当前事务 client 并由调用方负责提交/回滚。
+		if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
+			txClient = existingTx.Client()
+	REDACTED else {
+			txClient = r.client
+	REDACTED
 REDACTED
+	existing, err := clientFromContext(ctx, txClient).User.Get(ctx, userIn.ID)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrUserNotFound, nil)
+REDACTED
+	oldEmail := existing.Email
 
 	updateOp := txClient.User.UpdateOneID(userIn.ID).
 		SetEmail(userIn.Email).
@@ -151,6 +185,15 @@ REDACTED
 		SetNillableBalanceNotifyThreshold(userIn.BalanceNotifyThreshold).
 		SetBalanceNotifyExtraEmails(marshalExtraEmails(userIn.BalanceNotifyExtraEmails)).
 		SetTotalRecharged(userIn.TotalRecharged)
+	if userIn.SignupSource != "" {
+		updateOp = updateOp.SetSignupSource(userIn.SignupSource)
+REDACTED
+	if userIn.LastLoginAt != nil {
+		updateOp = updateOp.SetLastLoginAt(*userIn.LastLoginAt)
+REDACTED
+	if userIn.LastActiveAt != nil {
+		updateOp = updateOp.SetLastActiveAt(*userIn.LastActiveAt)
+REDACTED
 	if userIn.BalanceNotifyThreshold == nil {
 		updateOp = updateOp.ClearBalanceNotifyThreshold()
 REDACTED
@@ -160,6 +203,9 @@ REDACTED
 REDACTED
 
 	if err := r.syncUserAllowedGroupsWithClient(ctx, txClient, updated.ID, userIn.AllowedGroups); err != nil {
+		return err
+REDACTED
+	if err := replaceEmailAuthIdentityWithClient(ctx, txClient, updated.ID, oldEmail, updated.Email, "user_repo_update"); err != nil {
 		return err
 REDACTED
 
@@ -173,13 +219,145 @@ REDACTED
 	return nil
 REDACTED
 
+func ensureEmailAuthIdentityWithClient(ctx context.Context, client *dbent.Client, userID int64, email string, source string) error {
+	client = clientFromContext(ctx, client)
+	if client == nil || userID <= 0 {
+		return nil
+REDACTED
+
+	subject := normalizeEmailAuthIdentitySubject(email)
+	if subject == "" {
+		return nil
+REDACTED
+
+	if err := client.AuthIdentity.Create().
+		SetUserID(userID).
+		SetProviderType("email").
+		SetProviderKey("email").
+		SetProviderSubject(subject).
+		SetVerifiedAt(time.Now().UTC()).
+		SetMetadata(map[string]any{"source": sourceREDACTED).
+		OnConflictColumns(
+			authidentity.FieldProviderType,
+			authidentity.FieldProviderKey,
+			authidentity.FieldProviderSubject,
+		).
+		DoNothing().
+		Exec(ctx); err != nil {
+		if !isSQLNoRowsError(err) {
+			return err
+	REDACTED
+REDACTED
+
+	identity, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ("email"),
+			authidentity.ProviderKeyEQ("email"),
+			authidentity.ProviderSubjectEQ(subject),
+		).
+		Only(ctx)
+	if err != nil {
+		if dbent.IsNotFound(err) {
+			return nil
+	REDACTED
+		return err
+REDACTED
+	if identity.UserID != userID {
+		return ErrAuthIdentityOwnershipConflict
+REDACTED
+	return nil
+REDACTED
+
+func replaceEmailAuthIdentityWithClient(ctx context.Context, client *dbent.Client, userID int64, oldEmail, newEmail string, source string) error {
+	newSubject := normalizeEmailAuthIdentitySubject(newEmail)
+	if err := ensureEmailAuthIdentityWithClient(ctx, client, userID, newEmail, source); err != nil {
+		return err
+REDACTED
+
+	oldSubject := normalizeEmailAuthIdentitySubject(oldEmail)
+	if oldSubject == "" || oldSubject == newSubject {
+		return nil
+REDACTED
+
+	_, err := clientFromContext(ctx, client).AuthIdentity.Delete().
+		Where(
+			authidentity.UserIDEQ(userID),
+			authidentity.ProviderTypeEQ("email"),
+			authidentity.ProviderKeyEQ("email"),
+			authidentity.ProviderSubjectEQ(oldSubject),
+		).
+		Exec(ctx)
+	return err
+REDACTED
+
+func normalizeEmailAuthIdentitySubject(email string) string {
+	normalized := strings.ToLower(strings.TrimSpace(email))
+	if normalized == "" {
+		return ""
+REDACTED
+	if strings.HasSuffix(normalized, service.LinuxDoConnectSyntheticEmailDomain) ||
+		strings.HasSuffix(normalized, service.OIDCConnectSyntheticEmailDomain) ||
+		strings.HasSuffix(normalized, service.WeChatConnectSyntheticEmailDomain) {
+		return ""
+REDACTED
+	return normalized
+REDACTED
+
 func (r *userRepository) Delete(ctx context.Context, id int64) error {
-	affected, err := r.client.User.Delete().Where(dbuser.IDEQ(id)).Exec(ctx)
+	tx, err := r.client.Tx(ctx)
+	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
+		return translatePersistenceError(err, service.ErrUserNotFound, nil)
+REDACTED
+
+	var txClient *dbent.Client
+	if err == nil {
+		defer func() { _ = tx.Rollback() REDACTED()
+		txClient = tx.Client()
+REDACTED else {
+		if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
+			txClient = existingTx.Client()
+	REDACTED else {
+			txClient = r.client
+	REDACTED
+REDACTED
+
+	identityIDs, err := txClient.AuthIdentity.Query().
+		Where(authidentity.UserIDEQ(id)).
+		IDs(ctx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrUserNotFound, nil)
+REDACTED
+	if len(identityIDs) > 0 {
+		if _, err := txClient.IdentityAdoptionDecision.Update().
+			Where(identityadoptiondecision.IdentityIDIn(identityIDs...)).
+			ClearIdentityID().
+			Save(ctx); err != nil {
+			return translatePersistenceError(err, service.ErrUserNotFound, nil)
+	REDACTED
+		if _, err := txClient.AuthIdentityChannel.Delete().
+			Where(authidentitychannel.IdentityIDIn(identityIDs...)).
+			Exec(ctx); err != nil {
+			return translatePersistenceError(err, service.ErrUserNotFound, nil)
+	REDACTED
+		if _, err := txClient.AuthIdentity.Delete().
+			Where(authidentity.UserIDEQ(id)).
+			Exec(ctx); err != nil {
+			return translatePersistenceError(err, service.ErrUserNotFound, nil)
+	REDACTED
+REDACTED
+
+	affected, err := txClient.User.Delete().Where(dbuser.IDEQ(id)).Exec(ctx)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrUserNotFound, nil)
 REDACTED
 	if affected == 0 {
 		return service.ErrUserNotFound
+REDACTED
+
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return translatePersistenceError(err, service.ErrUserNotFound, nil)
+	REDACTED
 REDACTED
 	return nil
 REDACTED
@@ -298,8 +476,13 @@ func userListOrder(params pagination.PaginationParams) []func(*entsql.Selector) 
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderDesc)
 
+	if sortBy == "last_used_at" {
+		return userLastUsedAtOrder(sortOrder)
+REDACTED
+
 	var field string
 	defaultField := true
+	nullsLastField := false
 	switch sortBy {
 	case "email":
 		field = dbuser.FieldEmail
@@ -322,6 +505,10 @@ func userListOrder(params pagination.PaginationParams) []func(*entsql.Selector) 
 	case "created_at":
 		field = dbuser.FieldCreatedAt
 		defaultField = false
+	case "last_active_at":
+		field = dbuser.FieldLastActiveAt
+		defaultField = false
+		nullsLastField = true
 	default:
 		field = dbuser.FieldID
 REDACTED
@@ -330,12 +517,90 @@ REDACTED
 		if defaultField && field == dbuser.FieldID {
 			return []func(*entsql.Selector){dbent.Asc(dbuser.FieldID)REDACTED
 	REDACTED
+		if nullsLastField {
+			return []func(*entsql.Selector){
+				entsql.OrderByField(field, entsql.OrderNullsLast()).ToFunc(),
+				dbent.Asc(dbuser.FieldID),
+		REDACTED
+	REDACTED
 		return []func(*entsql.Selector){dbent.Asc(field), dbent.Asc(dbuser.FieldID)REDACTED
 REDACTED
 	if defaultField && field == dbuser.FieldID {
 		return []func(*entsql.Selector){dbent.Desc(dbuser.FieldID)REDACTED
 REDACTED
+	if nullsLastField {
+		return []func(*entsql.Selector){
+			entsql.OrderByField(field, entsql.OrderDesc(), entsql.OrderNullsLast()).ToFunc(),
+			dbent.Desc(dbuser.FieldID),
+	REDACTED
+REDACTED
 	return []func(*entsql.Selector){dbent.Desc(field), dbent.Desc(dbuser.FieldID)REDACTED
+REDACTED
+
+func (r *userRepository) GetLatestUsedAtByUserIDs(ctx context.Context, userIDs []int64) (map[int64]*time.Time, error) {
+	result := make(map[int64]*time.Time, len(userIDs))
+	if len(userIDs) == 0 {
+		return result, nil
+REDACTED
+	if r.sql == nil {
+		return nil, fmt.Errorf("sql executor is not configured")
+REDACTED
+
+	const query = `
+		SELECT user_id, MAX(created_at) AS last_used_at
+		FROM usage_logs
+		WHERE user_id = ANY($1)
+		GROUP BY user_id
+	`
+
+	rows, err := r.sql.QueryContext(ctx, query, pq.Array(userIDs))
+	if err != nil {
+		return nil, err
+REDACTED
+	defer func() { _ = rows.Close() REDACTED()
+
+	for rows.Next() {
+		var (
+			userID     int64
+			lastUsedAt time.Time
+		)
+		if scanErr := rows.Scan(&userID, &lastUsedAt); scanErr != nil {
+			return nil, scanErr
+	REDACTED
+		ts := lastUsedAt.UTC()
+		result[userID] = &ts
+REDACTED
+	if err := rows.Err(); err != nil {
+		return nil, err
+REDACTED
+	return result, nil
+REDACTED
+
+func (r *userRepository) GetLatestUsedAtByUserID(ctx context.Context, userID int64) (*time.Time, error) {
+	latestByUserID, err := r.GetLatestUsedAtByUserIDs(ctx, []int64{userIDREDACTED)
+	if err != nil {
+		return nil, err
+REDACTED
+	return latestByUserID[userID], nil
+REDACTED
+
+func userLastUsedAtOrder(sortOrder string) []func(*entsql.Selector) {
+	orderExpr := func(direction, nulls string, tieOrder func(string) string) func(*entsql.Selector) {
+		return func(s *entsql.Selector) {
+			subquery := fmt.Sprintf("(SELECT MAX(created_at) FROM usage_logs WHERE user_id = %s)", s.C(dbuser.FieldID))
+			s.OrderExpr(entsql.Expr(subquery + " " + direction + " NULLS " + nulls))
+			s.OrderBy(tieOrder(s.C(dbuser.FieldID)))
+	REDACTED
+REDACTED
+
+	if sortOrder == pagination.SortOrderAsc {
+		return []func(*entsql.Selector){
+			orderExpr("ASC", "FIRST", entsql.Asc),
+	REDACTED
+REDACTED
+	return []func(*entsql.Selector){
+		orderExpr("DESC", "LAST", entsql.Desc),
+REDACTED
 REDACTED
 
 // filterUsersByAttributes returns user IDs that match ALL the given attribute filters
@@ -436,17 +701,36 @@ REDACTED
 REDACTED
 
 func (r *userRepository) ExistsByEmail(ctx context.Context, email string) (bool, error) {
-	return r.client.User.Query().Where(dbuser.EmailEQ(email)).Exist(ctx)
+	return r.client.User.Query().Where(userEmailLookupPredicate(email)).Exist(ctx)
+REDACTED
+
+func userEmailLookupPredicate(email string) predicate.User {
+	normalized := strings.ToLower(strings.TrimSpace(email))
+	if normalized == "" {
+		return dbuser.EmailEQ(email)
+REDACTED
+	return predicate.User(func(s *entsql.Selector) {
+		s.Where(entsql.P(func(b *entsql.Builder) {
+			b.WriteString("LOWER(TRIM(").
+				Ident(s.C(dbuser.FieldEmail)).
+				WriteString(")) = ").
+				Arg(normalized)
+	REDACTED))
+REDACTED)
 REDACTED
 
 func (r *userRepository) AddGroupToAllowedGroups(ctx context.Context, userID int64, groupID int64) error {
 	client := clientFromContext(ctx, r.client)
-	return client.UserAllowedGroup.Create().
+	err := client.UserAllowedGroup.Create().
 		SetUserID(userID).
 		SetGroupID(groupID).
 		OnConflictColumns(userallowedgroup.FieldUserID, userallowedgroup.FieldGroupID).
 		DoNothing().
 		Exec(ctx)
+	if isSQLNoRowsError(err) {
+		return nil
+REDACTED
+	return err
 REDACTED
 
 func (r *userRepository) RemoveGroupFromAllowedGroups(ctx context.Context, groupID int64) (int64, error) {
@@ -546,6 +830,9 @@ REDACTED
 			OnConflictColumns(userallowedgroup.FieldUserID, userallowedgroup.FieldGroupID).
 			DoNothing().
 			Exec(ctx); err != nil {
+			if isSQLNoRowsError(err) {
+				return nil
+		REDACTED
 			return err
 	REDACTED
 REDACTED
@@ -558,8 +845,19 @@ func applyUserEntityToService(dst *service.User, src *dbent.User) {
 		return
 REDACTED
 	dst.ID = src.ID
+	dst.SignupSource = src.SignupSource
+	dst.LastLoginAt = src.LastLoginAt
+	dst.LastActiveAt = src.LastActiveAt
 	dst.CreatedAt = src.CreatedAt
 	dst.UpdatedAt = src.UpdatedAt
+REDACTED
+
+func userSignupSourceOrDefault(signupSource string) string {
+	signupSource = strings.TrimSpace(signupSource)
+	if signupSource == "" {
+		return "email"
+REDACTED
+	return signupSource
 REDACTED
 
 // marshalExtraEmails serializes notify email entries to JSON for storage.

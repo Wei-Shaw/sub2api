@@ -23,20 +23,7 @@
             :order-type="paymentState.orderType"
             @done="onPaymentDone"
             @success="onPaymentSuccess"
-          />
-        </template>
-        <template v-else-if="paymentPhase === 'stripe'">
-          <StripePaymentInline
-            :order-id="paymentState.orderId"
-            :amount="paymentState.amount"
-            :client-secret="paymentState.clientSecret"
-            :order-type="paymentState.orderType || undefined"
-            :publishable-key="checkout.stripe_publishable_key"
-            :pay-amount="paymentState.payAmount"
-            @success="onPaymentSuccess"
-            @done="onStripeDone"
-            @back="resetPayment"
-            @redirect="onStripeRedirect"
+            @settled="onPaymentSettled"
           />
         </template>
         <!-- Tab content (select phase) -->
@@ -99,9 +86,6 @@
               </span>
               <span v-else>{{ t('payment.createOrder') REDACTEDREDACTED ¥{{ totalAmount.toFixed(2) REDACTEDREDACTED</span>
             </button>
-            <div v-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20">
-              <p class="text-sm text-red-700 dark:text-red-400">{{ errorMessage REDACTEDREDACTED</p>
-            </div>
             </template>
           </template>
           <!-- Subscribe Tab -->
@@ -185,9 +169,6 @@
                 <span v-else>{{ t('payment.createOrder') REDACTEDREDACTED ¥{{ (feeRate > 0 ? subTotalAmount : selectedPlan.price).toFixed(2) REDACTEDREDACTED</span>
               </button>
               <button class="btn btn-secondary w-full" @click="selectedPlan = null">{{ t('common.cancel') REDACTEDREDACTED</button>
-              <div v-if="errorMessage" class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20">
-                <p class="text-sm text-red-700 dark:text-red-400">{{ errorMessage REDACTEDREDACTED</p>
-              </div>
             </template>
             <!-- Plan list -->
             <template v-else>
@@ -207,7 +188,7 @@
                     <div :class="['h-6 w-1 shrink-0 rounded-full', platformAccentBarClass(sub.group?.platform || '')]" />
                     <div class="min-w-0 flex-1">
                       <div class="flex items-center gap-1.5">
-                        <span class="truncate text-xs font-semibold text-gray-900 dark:text-white">{{ sub.group?.name || `Group #${sub.group_idREDACTED` REDACTEDREDACTED</span>
+                        <span class="truncate text-xs font-semibold text-gray-900 dark:text-white">{{ sub.group?.name || t('payment.groupFallback', { id: sub.group_id REDACTED) REDACTEDREDACTED</span>
                         <span :class="['shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium', platformBadgeLightClass(sub.group?.platform || '')]">{{ platformLabel(sub.group?.platform || '') REDACTEDREDACTED</span>
                       </div>
                       <div class="flex flex-wrap gap-x-3 text-[11px] text-gray-400 dark:text-gray-500">
@@ -265,28 +246,41 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
-import { useRoute REDACTED from 'vue-router'
+import { useRoute, useRouter REDACTED from 'vue-router'
 import { useAuthStore REDACTED from '@/stores/auth'
 import { usePaymentStore REDACTED from '@/stores/payment'
 import { useSubscriptionStore REDACTED from '@/stores/subscriptions'
 import { useAppStore REDACTED from '@/stores'
 import { paymentAPI REDACTED from '@/api/payment'
-import { extractI18nErrorMessage REDACTED from '@/utils/apiError'
+import { extractApiErrorMessage, extractI18nErrorMessage REDACTED from '@/utils/apiError'
 import { isMobileDevice REDACTED from '@/utils/device'
-import type { SubscriptionPlan, CheckoutInfoResponse, OrderType REDACTED from '@/types/payment'
+import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType REDACTED from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
 import { METHOD_ORDER, getPaymentPopupFeatures REDACTED from '@/components/payment/providerConfig'
+import {
+  PAYMENT_RECOVERY_STORAGE_KEY,
+  buildCreateOrderPayload,
+  clearPaymentRecoverySnapshot,
+  decidePaymentLaunch,
+  getVisibleMethods,
+  normalizeVisibleMethod,
+  readPaymentRecoverySnapshot,
+  type PaymentRecoverySnapshot,
+  writePaymentRecoverySnapshot,
+REDACTED from '@/components/payment/paymentFlow'
 import { platformAccentBarClass, platformBadgeLightClass, platformBadgeClass, platformTextClass, platformLabel REDACTED from '@/utils/platformColors'
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
-import StripePaymentInline from '@/components/payment/StripePaymentInline.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { PaymentMethodOption REDACTED from '@/components/payment/PaymentMethodSelector.vue'
+import { buildPaymentErrorToastMessage, describePaymentScenarioError REDACTED from './paymentUx'
+import { parseWechatResumeRoute, stripWechatResumeQuery REDACTED from './paymentWechatResume'
 
 const { t REDACTED = useI18n()
 const route = useRoute()
+const router = useRouter()
 const authStore = useAuthStore()
 const paymentStore = usePaymentStore()
 const subscriptionStore = useSubscriptionStore()
@@ -303,29 +297,98 @@ REDACTED
 const loading = ref(true)
 const submitting = ref(false)
 const errorMessage = ref('')
+const errorHintMessage = ref('')
 const activeTab = ref<'recharge' | 'subscription'>('recharge')
 const amount = ref<number | null>(null)
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
 const previewImage = ref('')
 
-// Payment phase: 'select' → 'paying' (QR/redirect) or 'stripe' (inline Stripe)
-const paymentPhase = ref<'select' | 'paying' | 'stripe'>('select')
-const paymentState = ref<{
-  orderId: number
-  amount: number
-  qrCode: string
-  expiresAt: string
-  paymentType: string
-  payUrl: string
-  clientSecret: string
-  payAmount: number
-  orderType: OrderType | ''
-REDACTED>({ orderId: 0, amount: 0, qrCode: '', expiresAt: '', paymentType: '', payUrl: '', clientSecret: '', payAmount: 0, orderType: '' REDACTED)
+const paymentPhase = ref<'select' | 'paying'>('select')
+
+interface CreateOrderOptions {
+  openid?: string
+  wechatResumeToken?: string
+  paymentType?: string
+  isResume?: boolean
+REDACTED
+
+interface WeixinJSBridgeLike {
+  invoke(
+    action: string,
+    payload: Record<string, unknown>,
+    callback: (result: Record<string, unknown>) => void,
+  ): void
+REDACTED
+
+function emptyPaymentState(): PaymentRecoverySnapshot {
+  return {
+    orderId: 0,
+    amount: 0,
+    qrCode: '',
+    expiresAt: '',
+    paymentType: '',
+    payUrl: '',
+    clientSecret: '',
+    payAmount: 0,
+    orderType: '',
+    paymentMode: '',
+    resumeToken: '',
+    createdAt: 0,
+  REDACTED
+REDACTED
+
+function getWeixinJSBridge(): WeixinJSBridgeLike | undefined {
+  return (window as Window & { WeixinJSBridge?: WeixinJSBridgeLike REDACTED).WeixinJSBridge
+REDACTED
+
+function waitForWeixinJSBridge(timeoutMs = 4000): Promise<WeixinJSBridgeLike | null> {
+  const existing = getWeixinJSBridge()
+  if (existing) return Promise.resolve(existing)
+
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (bridge: WeixinJSBridgeLike | null) => {
+      if (settled) return
+      settled = true
+      document.removeEventListener('WeixinJSBridgeReady', handleReady)
+      document.removeEventListener('onWeixinJSBridgeReady', handleReady)
+      window.clearTimeout(timer)
+      resolve(bridge)
+    REDACTED
+    const handleReady = () => finish(getWeixinJSBridge() ?? null)
+    const timer = window.setTimeout(() => finish(getWeixinJSBridge() ?? null), timeoutMs)
+    document.addEventListener('WeixinJSBridgeReady', handleReady, false)
+    document.addEventListener('onWeixinJSBridgeReady', handleReady, false)
+  REDACTED)
+REDACTED
+
+async function invokeWechatJsapiPayment(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const bridge = await waitForWeixinJSBridge()
+  if (!bridge) {
+    throw new Error('WECHAT_JSAPI_UNAVAILABLE')
+  REDACTED
+  return new Promise((resolve) => {
+    bridge.invoke('getBrandWCPayRequest', payload, (result) => resolve(result || {REDACTED))
+  REDACTED)
+REDACTED
+
+const paymentState = ref<PaymentRecoverySnapshot>(emptyPaymentState())
+
+function persistRecoverySnapshot(snapshot: PaymentRecoverySnapshot) {
+  if (typeof window === 'undefined' || !snapshot.orderId) return
+  writePaymentRecoverySnapshot(window.localStorage, snapshot, PAYMENT_RECOVERY_STORAGE_KEY)
+REDACTED
+
+function removeRecoverySnapshot() {
+  if (typeof window === 'undefined') return
+  clearPaymentRecoverySnapshot(window.localStorage, PAYMENT_RECOVERY_STORAGE_KEY)
+REDACTED
 
 function resetPayment() {
   paymentPhase.value = 'select'
-  paymentState.value = { orderId: 0, amount: 0, qrCode: '', expiresAt: '', paymentType: '', payUrl: '', clientSecret: '', payAmount: 0, orderType: '' REDACTED
+  paymentState.value = emptyPaymentState()
+  removeRecoverySnapshot()
 REDACTED
 
 function onPaymentDone() {
@@ -338,24 +401,15 @@ function onPaymentDone() {
 REDACTED
 
 function onPaymentSuccess() {
+  removeRecoverySnapshot()
   authStore.refreshUser()
   if (paymentState.value.orderType === 'subscription') {
     subscriptionStore.fetchActiveSubscriptions(true).catch(() => {REDACTED)
   REDACTED
 REDACTED
 
-function onStripeDone() {
-  const wasSubscription = paymentState.value.orderType === 'subscription'
-  resetPayment()
-  selectedPlan.value = null
-  if (wasSubscription) {
-    subscriptionStore.fetchActiveSubscriptions(true).catch(() => {REDACTED)
-  REDACTED
-REDACTED
-
-function onStripeRedirect(orderId: number, payUrl: string) {
-  paymentState.value = { ...paymentState.value, orderId, payUrl, qrCode: '' REDACTED
-  paymentPhase.value = 'paying'
+function onPaymentSettled() {
+  removeRecoverySnapshot()
 REDACTED
 
 // All checkout data from single API call
@@ -371,7 +425,8 @@ const tabs = computed(() => {
   return result
 REDACTED)
 
-const enabledMethods = computed(() => Object.keys(checkout.value.methods))
+const visibleMethods = computed(() => getVisibleMethods(checkout.value.methods))
+const enabledMethods = computed(() => Object.keys(visibleMethods.value))
 const validAmount = computed(() => amount.value ?? 0)
 const balanceRechargeMultiplier = computed(() => {
   const multiplier = checkout.value.balance_recharge_multiplier
@@ -389,23 +444,33 @@ REDACTED)
 // Check if an amount fits a method's [min, max]. 0 = no limit.
 function amountFitsMethod(amt: number, methodType: string): boolean {
   if (amt <= 0) return true
-  const ml = checkout.value.methods[methodType]
+  const ml = visibleMethods.value[methodType]
   if (!ml) return false
   if (ml.single_min > 0 && amt < ml.single_min) return false
   if (ml.single_max > 0 && amt > ml.single_max) return false
   return true
 REDACTED
 
-// Global range for AmountInput (union of all methods, precomputed by backend)
-const globalMinAmount = computed(() => checkout.value.global_min)
-const globalMaxAmount = computed(() => checkout.value.global_max)
+// Visible methods decide the amount range shown to users.
+const globalMinAmount = computed(() => {
+  const limits = Object.values(visibleMethods.value)
+  if (limits.length === 0) return 0
+  if (limits.some(limit => limit.single_min <= 0)) return 0
+  return Math.min(...limits.map(limit => limit.single_min))
+REDACTED)
+const globalMaxAmount = computed(() => {
+  const limits = Object.values(visibleMethods.value)
+  if (limits.length === 0) return 0
+  if (limits.some(limit => limit.single_max <= 0)) return 0
+  return Math.max(...limits.map(limit => limit.single_max))
+REDACTED)
 
 // Selected method's limits (for validation and error messages)
-const selectedLimit = computed(() => checkout.value.methods[selectedMethod.value])
+const selectedLimit = computed(() => visibleMethods.value[selectedMethod.value])
 
 const methodOptions = computed<PaymentMethodOption[]>(() =>
   enabledMethods.value.map((type) => {
-    const ml = checkout.value.methods[type]
+    const ml = visibleMethods.value[type]
     return {
       type,
       fee_rate: ml?.fee_rate ?? 0,
@@ -451,7 +516,7 @@ const canSubmit = computed(() =>
 const subMethodOptions = computed<PaymentMethodOption[]>(() => {
   const planPrice = selectedPlan.value?.price ?? 0
   return enabledMethods.value.map((type) => {
-    const ml = checkout.value.methods[type]
+    const ml = visibleMethods.value[type]
     return {
       type,
       fee_rate: ml?.fee_rate ?? 0,
@@ -542,79 +607,171 @@ async function confirmSubscribe() {
   await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id)
 REDACTED
 
-async function createOrder(orderAmount: number, orderType: OrderType, planId?: number) {
+async function createOrder(orderAmount: number, orderType: OrderType, planId?: number, options: CreateOrderOptions = {REDACTED) {
   submitting.value = true
   errorMessage.value = ''
+  errorHintMessage.value = ''
   try {
-    const result = await paymentStore.createOrder({
+    const requestType = normalizeVisibleMethod(options.paymentType || selectedMethod.value) || options.paymentType || selectedMethod.value
+    const payload = buildCreateOrderPayload({
       amount: orderAmount,
-      payment_type: selectedMethod.value,
-      order_type: orderType,
-      plan_id: planId,
-      is_mobile: isMobileDevice(),
+      paymentType: requestType,
+      orderType,
+      planId,
+      origin: typeof window !== 'undefined' ? window.location.origin : '',
+      isWechatBrowser: typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
     REDACTED)
+    if (options.openid) {
+      payload.openid = options.openid
+    REDACTED
+    if (options.wechatResumeToken) {
+      payload.wechat_resume_token = options.wechatResumeToken
+    REDACTED
+
+    const result = await paymentStore.createOrder(payload) as CreateOrderResult & { resume_token?: string REDACTED
     const openWindow = (url: string) => {
       const win = window.open(url, 'paymentPopup', getPaymentPopupFeatures())
       if (!win || win.closed) {
         window.location.href = url
       REDACTED
     REDACTED
-    if (result.client_secret) {
-      // Stripe: show Payment Element inline (user picks method → confirms → redirect if needed)
-      paymentState.value = {
-        orderId: result.order_id, amount: result.amount, qrCode: '', expiresAt: result.expires_at || '',
-        paymentType: selectedMethod.value, payUrl: '',
-        clientSecret: result.client_secret, payAmount: result.pay_amount,
-        orderType,
-      REDACTED
-      paymentPhase.value = 'stripe'
-    REDACTED else if (isMobileDevice() && result.pay_url) {
-      // Mobile + pay_url: redirect directly instead of QR/popup (mobile browsers block popups)
-      paymentState.value = {
-        orderId: result.order_id, amount: result.amount, qrCode: '', expiresAt: result.expires_at || '',
-        paymentType: selectedMethod.value, payUrl: result.pay_url,
-        clientSecret: '', payAmount: 0,
-        orderType,
-      REDACTED
-      paymentPhase.value = 'paying'
-      window.location.href = result.pay_url
+    const visibleMethod = normalizeVisibleMethod(requestType) || requestType
+    const stripeMethod = visibleMethod === 'wxpay' ? 'wechat_pay' : 'alipay'
+    const stripeRouteUrl = result.client_secret
+      ? router.resolve({
+        path: '/payment/stripe',
+        query: {
+          order_id: String(result.order_id),
+          client_secret: result.client_secret,
+          method: stripeMethod,
+          resume_token: result.resume_token || undefined,
+        REDACTED,
+      REDACTED).href
+      : ''
+    const decision = decidePaymentLaunch(result, {
+      visibleMethod,
+      orderType,
+      isMobile: isMobileDevice(),
+      isWechatBrowser: typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
+      stripePopupUrl: stripeRouteUrl,
+      stripeRouteUrl,
+    REDACTED)
+
+    if (decision.kind === 'wechat_oauth' && decision.oauth?.authorize_url) {
+      window.location.href = decision.oauth.authorize_url
       return
-    REDACTED else if (result.qr_code) {
-      // QR mode: show QR code inline
-      paymentState.value = {
-        orderId: result.order_id, amount: result.amount, qrCode: result.qr_code,
-        expiresAt: result.expires_at || '', paymentType: selectedMethod.value, payUrl: '',
-        clientSecret: '', payAmount: 0,
-        orderType,
+    REDACTED
+
+    if (decision.kind === 'unhandled') {
+      applyScenarioError({ reason: 'UNHANDLED_PAYMENT_SCENARIO' REDACTED, visibleMethod)
+      return
+    REDACTED
+
+    paymentState.value = decision.paymentState
+    paymentPhase.value = 'paying'
+    persistRecoverySnapshot(decision.recovery)
+
+    if (decision.kind === 'stripe_popup') {
+      openWindow(decision.paymentState.payUrl)
+      return
+    REDACTED
+    if (decision.kind === 'stripe_route') {
+      window.location.href = decision.paymentState.payUrl
+      return
+    REDACTED
+    if (decision.kind === 'wechat_jsapi' && decision.jsapi) {
+      const jsapiResult = await invokeWechatJsapiPayment(decision.jsapi as Record<string, unknown>)
+      const errMsg = String(jsapiResult.err_msg || '').toLowerCase()
+      if (errMsg.includes('cancel')) {
+        appStore.showInfo(t('payment.qr.cancelled'))
+      REDACTED else if (errMsg && !errMsg.includes('ok')) {
+        applyScenarioError({ reason: 'WECHAT_JSAPI_FAILED', message: errMsg REDACTED, visibleMethod)
       REDACTED
-      paymentPhase.value = 'paying'
-    REDACTED else if (result.pay_url) {
-      // Redirect/popup mode: open payment URL, show waiting state inline
-      openWindow(result.pay_url)
-      paymentState.value = {
-        orderId: result.order_id, amount: result.amount, qrCode: '', expiresAt: result.expires_at || '',
-        paymentType: selectedMethod.value, payUrl: result.pay_url,
-        clientSecret: '', payAmount: 0,
-        orderType,
+      return
+    REDACTED
+    if (decision.kind === 'redirect_waiting' && decision.paymentState.payUrl) {
+      if (isMobileDevice()) {
+        window.location.href = decision.paymentState.payUrl
+        return
       REDACTED
-      paymentPhase.value = 'paying'
-    REDACTED else {
-      errorMessage.value = t('payment.result.failed')
-      appStore.showError(errorMessage.value)
+      openWindow(decision.paymentState.payUrl)
     REDACTED
   REDACTED catch (err: unknown) {
     const apiErr = err as Record<string, unknown>
     if (apiErr.reason === 'TOO_MANY_PENDING') {
       const metadata = apiErr.metadata as Record<string, unknown> | undefined
       errorMessage.value = t('payment.errors.tooManyPending', { max: metadata?.max || '' REDACTED)
+      errorHintMessage.value = ''
     REDACTED else if (apiErr.reason === 'CANCEL_RATE_LIMITED') {
       errorMessage.value = t('payment.errors.cancelRateLimited')
+      errorHintMessage.value = ''
     REDACTED else {
-      errorMessage.value = extractI18nErrorMessage(err, t, 'payment.errors', t('payment.result.failed'))
+      const handled = applyScenarioError(
+        err,
+        normalizeVisibleMethod(options.paymentType || selectedMethod.value) || selectedMethod.value,
+      )
+      if (!handled) {
+        errorMessage.value = extractI18nErrorMessage(err, t, 'payment.errors', extractApiErrorMessage(err, t('payment.result.failed')))
+        errorHintMessage.value = ''
+      REDACTED
+      if (handled) {
+        return
+      REDACTED
     REDACTED
-    appStore.showError(errorMessage.value)
+    appStore.showError(buildPaymentErrorToastMessage(errorMessage.value, errorHintMessage.value))
   REDACTED finally {
     submitting.value = false
+  REDACTED
+REDACTED
+
+function applyScenarioError(err: unknown, paymentMethod: string): boolean {
+  const descriptor = describePaymentScenarioError(err, {
+    paymentMethod,
+    isMobile: isMobileDevice(),
+    isWechatBrowser: typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
+  REDACTED)
+  if (!descriptor) {
+    errorMessage.value = ''
+    errorHintMessage.value = ''
+    return false
+  REDACTED
+  errorMessage.value = t(descriptor.messageKey)
+  errorHintMessage.value = descriptor.hintKey ? t(descriptor.hintKey) : ''
+  appStore.showError(buildPaymentErrorToastMessage(errorMessage.value, errorHintMessage.value))
+  return true
+REDACTED
+
+async function resumeWechatPaymentFromQuery() {
+  const resume = parseWechatResumeRoute(route.query, checkout.value.plans, validAmount.value)
+  if (!resume) {
+    return
+  REDACTED
+
+  selectedMethod.value = resume.paymentType
+  if (resume.orderType === 'balance' && resume.orderAmount > 0) {
+    amount.value = resume.orderAmount
+  REDACTED
+  if (resume.orderType === 'subscription' && resume.planId) {
+    selectedPlan.value = checkout.value.plans.find(plan => plan.id === resume.planId) ?? null
+  REDACTED
+
+  await router.replace({ path: route.path, query: stripWechatResumeQuery(route.query) REDACTED)
+
+  if (resume.wechatResumeToken) {
+    await createOrder(0, resume.orderType, resume.planId, {
+      wechatResumeToken: resume.wechatResumeToken,
+      paymentType: resume.paymentType,
+      isResume: true,
+    REDACTED)
+    return
+  REDACTED
+
+  if (resume.orderAmount > 0 && resume.openid) {
+    await createOrder(resume.orderAmount, resume.orderType, resume.planId, {
+      openid: resume.openid,
+      paymentType: resume.paymentType,
+      isResume: true,
+    REDACTED)
   REDACTED
 REDACTED
 
@@ -631,6 +788,26 @@ onMounted(async () => {
       REDACTED)
       selectedMethod.value = sorted[0]
     REDACTED
+    if (typeof window !== 'undefined') {
+      const routeResumeToken = typeof route.query.resume_token === 'string'
+        ? route.query.resume_token
+        : undefined
+      const restored = readPaymentRecoverySnapshot(
+        window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY),
+        { resumeToken: routeResumeToken REDACTED,
+      )
+      if (restored) {
+        paymentState.value = restored
+        paymentPhase.value = 'paying'
+        const restoredMethod = normalizeVisibleMethod(restored.paymentType)
+        if (restoredMethod) {
+          selectedMethod.value = restoredMethod
+        REDACTED
+      REDACTED else {
+        removeRecoverySnapshot()
+      REDACTED
+    REDACTED
+    await resumeWechatPaymentFromQuery()
     if (checkout.value.balance_disabled) {
       activeTab.value = 'subscription'
     REDACTED

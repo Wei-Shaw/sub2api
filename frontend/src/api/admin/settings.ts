@@ -3,12 +3,293 @@
  * Handles system settings management for administrators
  */
 
-import { apiClient REDACTED from '../client'
-import type { CustomMenuItem, CustomEndpoint, NotifyEmailEntry REDACTED from '@/types'
+import { apiClient REDACTED from "../client";
+import type { CustomMenuItem, CustomEndpoint, NotifyEmailEntry REDACTED from "@/types";
 
 export interface DefaultSubscriptionSetting {
-  group_id: number
-  validity_days: number
+  group_id: number;
+  validity_days: number;
+REDACTED
+
+export type AuthSourceType = "email" | "linuxdo" | "oidc" | "wechat";
+
+export interface AuthSourceDefaultsValue {
+  balance: number;
+  concurrency: number;
+  subscriptions: DefaultSubscriptionSetting[];
+  grant_on_signup: boolean;
+  grant_on_first_bind: boolean;
+REDACTED
+
+export type AuthSourceDefaultsState = Record<
+  AuthSourceType,
+  AuthSourceDefaultsValue
+>;
+export type PaymentVisibleMethod = "alipay" | "wxpay";
+export type PaymentVisibleMethodSource =
+  | ""
+  | "official_alipay"
+  | "easypay_alipay"
+  | "official_wxpay"
+  | "easypay_wxpay";
+export type WeChatConnectMode = "open" | "mp" | "mobile";
+
+export interface PaymentVisibleMethodSourceOption {
+  value: PaymentVisibleMethodSource;
+  labelZh: string;
+  labelEn: string;
+REDACTED
+
+export interface WeChatConnectModeOption {
+  value: WeChatConnectMode;
+  labelZh: string;
+  labelEn: string;
+REDACTED
+
+const AUTH_SOURCE_TYPES: AuthSourceType[] = [
+  "email",
+  "linuxdo",
+  "oidc",
+  "wechat",
+];
+const AUTH_SOURCE_DEFAULT_BALANCE = 0;
+const AUTH_SOURCE_DEFAULT_CONCURRENCY = 5;
+const PAYMENT_VISIBLE_METHOD_SOURCE_OPTIONS: Record<
+  PaymentVisibleMethod,
+  PaymentVisibleMethodSourceOption[]
+> = {
+  alipay: [
+    { value: "", labelZh: "未配置", labelEn: "Not configured" REDACTED,
+    {
+      value: "official_alipay",
+      labelZh: "支付宝官方",
+      labelEn: "Official Alipay",
+    REDACTED,
+    {
+      value: "easypay_alipay",
+      labelZh: "易支付支付宝",
+      labelEn: "EasyPay Alipay",
+    REDACTED,
+  ],
+  wxpay: [
+    { value: "", labelZh: "未配置", labelEn: "Not configured" REDACTED,
+    {
+      value: "official_wxpay",
+      labelZh: "微信官方",
+      labelEn: "Official WeChat Pay",
+    REDACTED,
+    {
+      value: "easypay_wxpay",
+      labelZh: "易支付微信",
+      labelEn: "EasyPay WeChat Pay",
+    REDACTED,
+  ],
+REDACTED;
+const PAYMENT_VISIBLE_METHOD_SOURCE_ALIASES: Record<
+  PaymentVisibleMethod,
+  Record<string, PaymentVisibleMethodSource>
+> = {
+  alipay: {
+    official_alipay: "official_alipay",
+    alipay: "official_alipay",
+    alipay_direct: "official_alipay",
+    official: "official_alipay",
+    easypay_alipay: "easypay_alipay",
+    easypay: "easypay_alipay",
+  REDACTED,
+  wxpay: {
+    official_wxpay: "official_wxpay",
+    wxpay: "official_wxpay",
+    wxpay_direct: "official_wxpay",
+    wechat: "official_wxpay",
+    official: "official_wxpay",
+    easypay_wxpay: "easypay_wxpay",
+    easypay: "easypay_wxpay",
+  REDACTED,
+REDACTED;
+const WECHAT_CONNECT_MODE_OPTIONS: WeChatConnectModeOption[] = [
+  { value: "open", labelZh: "PC 应用", labelEn: "PC App" REDACTED,
+  {
+    value: "mp",
+    labelZh: "公众号",
+    labelEn: "Official Account",
+  REDACTED,
+  {
+    value: "mobile",
+    labelZh: "移动应用",
+    labelEn: "Mobile App",
+  REDACTED,
+];
+const WECHAT_CONNECT_MODE_ALIASES: Record<string, WeChatConnectMode> = {
+  open: "open",
+  open_platform: "open",
+  official: "open",
+  wx_open: "open",
+  mp: "mp",
+  official_account: "mp",
+  wechat_mp: "mp",
+  mini_program: "mp",
+  mobile: "mobile",
+  mobile_app: "mobile",
+  native_app: "mobile",
+REDACTED;
+
+export function normalizeDefaultSubscriptionSettings(
+  subscriptions: DefaultSubscriptionSetting[] | null | undefined,
+): DefaultSubscriptionSetting[] {
+  if (!Array.isArray(subscriptions)) return [];
+
+  return subscriptions
+    .filter((item) => item.group_id > 0 && item.validity_days > 0)
+    .map((item) => ({
+      group_id: Math.floor(item.group_id),
+      validity_days: Math.min(
+        36500,
+        Math.max(1, Math.floor(item.validity_days)),
+      ),
+    REDACTED));
+REDACTED
+
+export function buildAuthSourceDefaultsState(
+  settings: Partial<SystemSettings>,
+): AuthSourceDefaultsState {
+  const raw = settings as Record<string, unknown>;
+
+  return AUTH_SOURCE_TYPES.reduce((acc, source) => {
+    const subscriptions = raw[`auth_source_default_${sourceREDACTED_subscriptions`];
+    acc[source] = {
+      balance: Number(
+        raw[`auth_source_default_${sourceREDACTED_balance`] ??
+          AUTH_SOURCE_DEFAULT_BALANCE,
+      ),
+      concurrency: Math.max(
+        1,
+        Number(
+          raw[`auth_source_default_${sourceREDACTED_concurrency`] ??
+            AUTH_SOURCE_DEFAULT_CONCURRENCY,
+        ),
+      ),
+      subscriptions: normalizeDefaultSubscriptionSettings(
+        Array.isArray(subscriptions)
+          ? (subscriptions as DefaultSubscriptionSetting[])
+          : [],
+      ),
+      grant_on_signup:
+        raw[`auth_source_default_${sourceREDACTED_grant_on_signup`] === true,
+      grant_on_first_bind:
+        raw[`auth_source_default_${sourceREDACTED_grant_on_first_bind`] === true,
+    REDACTED;
+    return acc;
+  REDACTED, {REDACTED as AuthSourceDefaultsState);
+REDACTED
+
+export function appendAuthSourceDefaultsToUpdateRequest(
+  payload: UpdateSettingsRequest,
+  authSourceDefaults: AuthSourceDefaultsState,
+): UpdateSettingsRequest {
+  const target = payload as Record<string, unknown>;
+
+  for (const source of AUTH_SOURCE_TYPES) {
+    const current = authSourceDefaults[source];
+    target[`auth_source_default_${sourceREDACTED_balance`] =
+      Number(current.balance) || 0;
+    target[`auth_source_default_${sourceREDACTED_concurrency`] = Math.max(
+      1,
+      Math.floor(
+        Number(current.concurrency) || AUTH_SOURCE_DEFAULT_CONCURRENCY,
+      ),
+    );
+    target[`auth_source_default_${sourceREDACTED_subscriptions`] =
+      normalizeDefaultSubscriptionSettings(current.subscriptions);
+    target[`auth_source_default_${sourceREDACTED_grant_on_signup`] =
+      current.grant_on_signup;
+    target[`auth_source_default_${sourceREDACTED_grant_on_first_bind`] =
+      current.grant_on_first_bind;
+  REDACTED
+
+  return payload;
+REDACTED
+
+export function getPaymentVisibleMethodSourceOptions(
+  method: PaymentVisibleMethod,
+): PaymentVisibleMethodSourceOption[] {
+  return PAYMENT_VISIBLE_METHOD_SOURCE_OPTIONS[method];
+REDACTED
+
+export function normalizePaymentVisibleMethodSource(
+  method: PaymentVisibleMethod,
+  source: unknown,
+): PaymentVisibleMethodSource {
+  if (typeof source !== "string") return "";
+
+  const normalized = source.trim().toLowerCase();
+  if (!normalized) return "";
+
+  return PAYMENT_VISIBLE_METHOD_SOURCE_ALIASES[method][normalized] ?? "";
+REDACTED
+
+export function getWeChatConnectModeOptions(): WeChatConnectModeOption[] {
+  return WECHAT_CONNECT_MODE_OPTIONS;
+REDACTED
+
+export function normalizeWeChatConnectMode(source: unknown): WeChatConnectMode {
+  if (typeof source !== "string") return "open";
+
+  const normalized = source.trim().toLowerCase();
+  if (!normalized) return "open";
+
+  return WECHAT_CONNECT_MODE_ALIASES[normalized] ?? "open";
+REDACTED
+
+export function defaultWeChatConnectScopesForMode(mode: unknown): string {
+  switch (normalizeWeChatConnectMode(mode)) {
+    case "mp":
+      return "snsapi_userinfo";
+    case "mobile":
+      return "";
+    default:
+      return "snsapi_login";
+  REDACTED
+REDACTED
+
+export function resolveWeChatConnectModeCapabilities(
+  openEnabled: unknown,
+  mpEnabled: unknown,
+  mobileEnabled: unknown,
+  legacyMode: unknown,
+): { openEnabled: boolean; mpEnabled: boolean; mobileEnabled: boolean REDACTED {
+  if (
+    typeof openEnabled === "boolean" ||
+    typeof mpEnabled === "boolean" ||
+    typeof mobileEnabled === "boolean"
+  ) {
+    return {
+      openEnabled: openEnabled === true,
+      mpEnabled: mpEnabled === true,
+      mobileEnabled: mobileEnabled === true,
+    REDACTED;
+  REDACTED
+
+  switch (normalizeWeChatConnectMode(legacyMode)) {
+    case "mp":
+      return { openEnabled: false, mpEnabled: true, mobileEnabled: false REDACTED;
+    case "mobile":
+      return { openEnabled: false, mpEnabled: false, mobileEnabled: true REDACTED;
+    default:
+      return { openEnabled: true, mpEnabled: false, mobileEnabled: false REDACTED;
+  REDACTED
+REDACTED
+
+export function deriveWeChatConnectStoredMode(
+  openEnabled: boolean,
+  mpEnabled: boolean,
+  mobileEnabled: boolean,
+  legacyMode: unknown,
+): WeChatConnectMode {
+  if (mpEnabled) return "mp";
+  if (mobileEnabled) return "mobile";
+  if (openEnabled) return "open";
+  return normalizeWeChatConnectMode(legacyMode);
 REDACTED
 
 /**
@@ -16,241 +297,327 @@ REDACTED
  */
 export interface SystemSettings {
   // Registration settings
-  registration_enabled: boolean
-  email_verify_enabled: boolean
-  registration_email_suffix_whitelist: string[]
-  promo_code_enabled: boolean
-  password_reset_enabled: boolean
-  frontend_url: string
-  invitation_code_enabled: boolean
-  totp_enabled: boolean // TOTP 双因素认证
-  totp_encryption_key_configured: boolean // TOTP 加密密钥是否已配置
+  registration_enabled: boolean;
+  email_verify_enabled: boolean;
+  registration_email_suffix_whitelist: string[];
+  promo_code_enabled: boolean;
+  password_reset_enabled: boolean;
+  frontend_url: string;
+  invitation_code_enabled: boolean;
+  totp_enabled: boolean; // TOTP 双因素认证
+  totp_encryption_key_configured: boolean; // TOTP 加密密钥是否已配置
   // Default settings
-  default_balance: number
-  default_concurrency: number
-  default_subscriptions: DefaultSubscriptionSetting[]
+  default_balance: number;
+  default_concurrency: number;
+  default_subscriptions: DefaultSubscriptionSetting[];
+  auth_source_default_email_balance?: number;
+  auth_source_default_email_concurrency?: number;
+  auth_source_default_email_subscriptions?: DefaultSubscriptionSetting[];
+  auth_source_default_email_grant_on_signup?: boolean;
+  auth_source_default_email_grant_on_first_bind?: boolean;
+  auth_source_default_linuxdo_balance?: number;
+  auth_source_default_linuxdo_concurrency?: number;
+  auth_source_default_linuxdo_subscriptions?: DefaultSubscriptionSetting[];
+  auth_source_default_linuxdo_grant_on_signup?: boolean;
+  auth_source_default_linuxdo_grant_on_first_bind?: boolean;
+  auth_source_default_oidc_balance?: number;
+  auth_source_default_oidc_concurrency?: number;
+  auth_source_default_oidc_subscriptions?: DefaultSubscriptionSetting[];
+  auth_source_default_oidc_grant_on_signup?: boolean;
+  auth_source_default_oidc_grant_on_first_bind?: boolean;
+  auth_source_default_wechat_balance?: number;
+  auth_source_default_wechat_concurrency?: number;
+  auth_source_default_wechat_subscriptions?: DefaultSubscriptionSetting[];
+  auth_source_default_wechat_grant_on_signup?: boolean;
+  auth_source_default_wechat_grant_on_first_bind?: boolean;
+  force_email_on_third_party_signup?: boolean;
   // OEM settings
-  site_name: string
-  site_logo: string
-  site_subtitle: string
-  api_base_url: string
-  contact_info: string
-  doc_url: string
-  home_content: string
-  hide_ccs_import_button: boolean
-  table_default_page_size: number
-  table_page_size_options: number[]
-  backend_mode_enabled: boolean
-  custom_menu_items: CustomMenuItem[]
-  custom_endpoints: CustomEndpoint[]
+  site_name: string;
+  site_logo: string;
+  site_subtitle: string;
+  api_base_url: string;
+  contact_info: string;
+  doc_url: string;
+  home_content: string;
+  hide_ccs_import_button: boolean;
+  table_default_page_size: number;
+  table_page_size_options: number[];
+  backend_mode_enabled: boolean;
+  custom_menu_items: CustomMenuItem[];
+  custom_endpoints: CustomEndpoint[];
   // SMTP settings
-  smtp_host: string
-  smtp_port: number
-  smtp_username: string
-  smtp_password_configured: boolean
-  smtp_from_email: string
-  smtp_from_name: string
-  smtp_use_tls: boolean
+  smtp_host: string;
+  smtp_port: number;
+  smtp_username: string;
+  smtp_password_configured: boolean;
+  smtp_from_email: string;
+  smtp_from_name: string;
+  smtp_use_tls: boolean;
   // Cloudflare Turnstile settings
-  turnstile_enabled: boolean
-  turnstile_site_key: string
-  turnstile_secret_key_configured: boolean
+  turnstile_enabled: boolean;
+  turnstile_site_key: string;
+  turnstile_secret_key_configured: boolean;
 
   // LinuxDo Connect OAuth settings
-  linuxdo_connect_enabled: boolean
-  linuxdo_connect_client_id: string
-  linuxdo_connect_client_secret_configured: boolean
-  linuxdo_connect_redirect_url: string
+  linuxdo_connect_enabled: boolean;
+  linuxdo_connect_client_id: string;
+  linuxdo_connect_client_secret_configured: boolean;
+  linuxdo_connect_redirect_url: string;
+
+  // WeChat Connect OAuth settings
+  wechat_connect_enabled: boolean;
+  wechat_connect_app_id: string;
+  wechat_connect_app_secret_configured: boolean;
+  wechat_connect_open_app_id?: string;
+  wechat_connect_open_app_secret_configured?: boolean;
+  wechat_connect_mp_app_id?: string;
+  wechat_connect_mp_app_secret_configured?: boolean;
+  wechat_connect_mobile_app_id?: string;
+  wechat_connect_mobile_app_secret_configured?: boolean;
+  wechat_connect_open_enabled?: boolean;
+  wechat_connect_mp_enabled?: boolean;
+  wechat_connect_mobile_enabled?: boolean;
+  wechat_connect_mode: string;
+  wechat_connect_scopes: string;
+  wechat_connect_redirect_url: string;
+  wechat_connect_frontend_redirect_url: string;
 
   // Generic OIDC OAuth settings
-  oidc_connect_enabled: boolean
-  oidc_connect_provider_name: string
-  oidc_connect_client_id: string
-  oidc_connect_client_secret_configured: boolean
-  oidc_connect_issuer_url: string
-  oidc_connect_discovery_url: string
-  oidc_connect_authorize_url: string
-  oidc_connect_token_url: string
-  oidc_connect_userinfo_url: string
-  oidc_connect_jwks_url: string
-  oidc_connect_scopes: string
-  oidc_connect_redirect_url: string
-  oidc_connect_frontend_redirect_url: string
-  oidc_connect_token_auth_method: string
-  oidc_connect_use_pkce: boolean
-  oidc_connect_validate_id_token: boolean
-  oidc_connect_allowed_signing_algs: string
-  oidc_connect_clock_skew_seconds: number
-  oidc_connect_require_email_verified: boolean
-  oidc_connect_userinfo_email_path: string
-  oidc_connect_userinfo_id_path: string
-  oidc_connect_userinfo_username_path: string
+  oidc_connect_enabled: boolean;
+  oidc_connect_provider_name: string;
+  oidc_connect_client_id: string;
+  oidc_connect_client_secret_configured: boolean;
+  oidc_connect_issuer_url: string;
+  oidc_connect_discovery_url: string;
+  oidc_connect_authorize_url: string;
+  oidc_connect_token_url: string;
+  oidc_connect_userinfo_url: string;
+  oidc_connect_jwks_url: string;
+  oidc_connect_scopes: string;
+  oidc_connect_redirect_url: string;
+  oidc_connect_frontend_redirect_url: string;
+  oidc_connect_token_auth_method: string;
+  oidc_connect_use_pkce: boolean;
+  oidc_connect_validate_id_token: boolean;
+  oidc_connect_allowed_signing_algs: string;
+  oidc_connect_clock_skew_seconds: number;
+  oidc_connect_require_email_verified: boolean;
+  oidc_connect_userinfo_email_path: string;
+  oidc_connect_userinfo_id_path: string;
+  oidc_connect_userinfo_username_path: string;
 
   // Model fallback configuration
-  enable_model_fallback: boolean
-  fallback_model_anthropic: string
-  fallback_model_openai: string
-  fallback_model_gemini: string
-  fallback_model_antigravity: string
+  enable_model_fallback: boolean;
+  fallback_model_anthropic: string;
+  fallback_model_openai: string;
+  fallback_model_gemini: string;
+  fallback_model_antigravity: string;
 
   // Identity patch configuration (Claude -> Gemini)
-  enable_identity_patch: boolean
-  identity_patch_prompt: string
+  enable_identity_patch: boolean;
+  identity_patch_prompt: string;
 
   // Ops Monitoring (vNext)
-  ops_monitoring_enabled: boolean
-  ops_realtime_monitoring_enabled: boolean
-  ops_query_mode_default: 'auto' | 'raw' | 'preagg' | string
-  ops_metrics_interval_seconds: number
+  ops_monitoring_enabled: boolean;
+  ops_realtime_monitoring_enabled: boolean;
+  ops_query_mode_default: "auto" | "raw" | "preagg" | string;
+  ops_metrics_interval_seconds: number;
 
   // Claude Code version check
-  min_claude_code_version: string
-  max_claude_code_version: string
+  min_claude_code_version: string;
+  max_claude_code_version: string;
 
   // 分组隔离
-  allow_ungrouped_key_scheduling: boolean
+  allow_ungrouped_key_scheduling: boolean;
 
   // Gateway forwarding behavior
-  enable_fingerprint_unification: boolean
-  enable_metadata_passthrough: boolean
-  enable_cch_signing: boolean
-  web_search_emulation_enabled?: boolean
+  enable_fingerprint_unification: boolean;
+  enable_metadata_passthrough: boolean;
+  enable_cch_signing: boolean;
+  web_search_emulation_enabled?: boolean;
 
   // Payment configuration
-  payment_enabled: boolean
-  payment_min_amount: number
-  payment_max_amount: number
-  payment_daily_limit: number
-  payment_order_timeout_minutes: number
-  payment_max_pending_orders: number
-  payment_enabled_types: string[]
-  payment_balance_disabled: boolean
-  payment_balance_recharge_multiplier: number
-  payment_recharge_fee_rate: number
-  payment_load_balance_strategy: string
-  payment_product_name_prefix: string
-  payment_product_name_suffix: string
-  payment_help_image_url: string
-  payment_help_text: string
-  payment_cancel_rate_limit_enabled: boolean
-  payment_cancel_rate_limit_max: number
-  payment_cancel_rate_limit_window: number
-  payment_cancel_rate_limit_unit: string
-  payment_cancel_rate_limit_window_mode: string
+  payment_enabled: boolean;
+  payment_min_amount: number;
+  payment_max_amount: number;
+  payment_daily_limit: number;
+  payment_order_timeout_minutes: number;
+  payment_max_pending_orders: number;
+  payment_enabled_types: string[];
+  payment_balance_disabled: boolean;
+  payment_balance_recharge_multiplier: number;
+  payment_recharge_fee_rate: number;
+  payment_load_balance_strategy: string;
+  payment_product_name_prefix: string;
+  payment_product_name_suffix: string;
+  payment_help_image_url: string;
+  payment_help_text: string;
+  payment_cancel_rate_limit_enabled: boolean;
+  payment_cancel_rate_limit_max: number;
+  payment_cancel_rate_limit_window: number;
+  payment_cancel_rate_limit_unit: string;
+  payment_cancel_rate_limit_window_mode: string;
+  payment_visible_method_alipay_source?: string;
+  payment_visible_method_wxpay_source?: string;
+  payment_visible_method_alipay_enabled?: boolean;
+  payment_visible_method_wxpay_enabled?: boolean;
+  openai_advanced_scheduler_enabled?: boolean;
 
   // Balance & quota notification
-  balance_low_notify_enabled: boolean
-  balance_low_notify_threshold: number
-  balance_low_notify_recharge_url: string
-  account_quota_notify_enabled: boolean
-  account_quota_notify_emails: NotifyEmailEntry[]
+  balance_low_notify_enabled: boolean;
+  balance_low_notify_threshold: number;
+  balance_low_notify_recharge_url: string;
+  account_quota_notify_enabled: boolean;
+  account_quota_notify_emails: NotifyEmailEntry[];
 REDACTED
 
 export interface UpdateSettingsRequest {
-  registration_enabled?: boolean
-  email_verify_enabled?: boolean
-  registration_email_suffix_whitelist?: string[]
-  promo_code_enabled?: boolean
-  password_reset_enabled?: boolean
-  frontend_url?: string
-  invitation_code_enabled?: boolean
-  totp_enabled?: boolean // TOTP 双因素认证
-  default_balance?: number
-  default_concurrency?: number
-  default_subscriptions?: DefaultSubscriptionSetting[]
-  site_name?: string
-  site_logo?: string
-  site_subtitle?: string
-  api_base_url?: string
-  contact_info?: string
-  doc_url?: string
-  home_content?: string
-  hide_ccs_import_button?: boolean
-  table_default_page_size?: number
-  table_page_size_options?: number[]
-  backend_mode_enabled?: boolean
-  custom_menu_items?: CustomMenuItem[]
-  custom_endpoints?: CustomEndpoint[]
-  smtp_host?: string
-  smtp_port?: number
-  smtp_username?: string
-  smtp_password?: string
-  smtp_from_email?: string
-  smtp_from_name?: string
-  smtp_use_tls?: boolean
-  turnstile_enabled?: boolean
-  turnstile_site_key?: string
-  turnstile_secret_key?: string
-  linuxdo_connect_enabled?: boolean
-  linuxdo_connect_client_id?: string
-  linuxdo_connect_client_secret?: string
-  linuxdo_connect_redirect_url?: string
-  oidc_connect_enabled?: boolean
-  oidc_connect_provider_name?: string
-  oidc_connect_client_id?: string
-  oidc_connect_client_secret?: string
-  oidc_connect_issuer_url?: string
-  oidc_connect_discovery_url?: string
-  oidc_connect_authorize_url?: string
-  oidc_connect_token_url?: string
-  oidc_connect_userinfo_url?: string
-  oidc_connect_jwks_url?: string
-  oidc_connect_scopes?: string
-  oidc_connect_redirect_url?: string
-  oidc_connect_frontend_redirect_url?: string
-  oidc_connect_token_auth_method?: string
-  oidc_connect_use_pkce?: boolean
-  oidc_connect_validate_id_token?: boolean
-  oidc_connect_allowed_signing_algs?: string
-  oidc_connect_clock_skew_seconds?: number
-  oidc_connect_require_email_verified?: boolean
-  oidc_connect_userinfo_email_path?: string
-  oidc_connect_userinfo_id_path?: string
-  oidc_connect_userinfo_username_path?: string
-  enable_model_fallback?: boolean
-  fallback_model_anthropic?: string
-  fallback_model_openai?: string
-  fallback_model_gemini?: string
-  fallback_model_antigravity?: string
-  enable_identity_patch?: boolean
-  identity_patch_prompt?: string
-  ops_monitoring_enabled?: boolean
-  ops_realtime_monitoring_enabled?: boolean
-  ops_query_mode_default?: 'auto' | 'raw' | 'preagg' | string
-  ops_metrics_interval_seconds?: number
-  min_claude_code_version?: string
-  max_claude_code_version?: string
-  allow_ungrouped_key_scheduling?: boolean
-  enable_fingerprint_unification?: boolean
-  enable_metadata_passthrough?: boolean
-  enable_cch_signing?: boolean
+  registration_enabled?: boolean;
+  email_verify_enabled?: boolean;
+  registration_email_suffix_whitelist?: string[];
+  promo_code_enabled?: boolean;
+  password_reset_enabled?: boolean;
+  frontend_url?: string;
+  invitation_code_enabled?: boolean;
+  totp_enabled?: boolean; // TOTP 双因素认证
+  default_balance?: number;
+  default_concurrency?: number;
+  default_subscriptions?: DefaultSubscriptionSetting[];
+  auth_source_default_email_balance?: number;
+  auth_source_default_email_concurrency?: number;
+  auth_source_default_email_subscriptions?: DefaultSubscriptionSetting[];
+  auth_source_default_email_grant_on_signup?: boolean;
+  auth_source_default_email_grant_on_first_bind?: boolean;
+  auth_source_default_linuxdo_balance?: number;
+  auth_source_default_linuxdo_concurrency?: number;
+  auth_source_default_linuxdo_subscriptions?: DefaultSubscriptionSetting[];
+  auth_source_default_linuxdo_grant_on_signup?: boolean;
+  auth_source_default_linuxdo_grant_on_first_bind?: boolean;
+  auth_source_default_oidc_balance?: number;
+  auth_source_default_oidc_concurrency?: number;
+  auth_source_default_oidc_subscriptions?: DefaultSubscriptionSetting[];
+  auth_source_default_oidc_grant_on_signup?: boolean;
+  auth_source_default_oidc_grant_on_first_bind?: boolean;
+  auth_source_default_wechat_balance?: number;
+  auth_source_default_wechat_concurrency?: number;
+  auth_source_default_wechat_subscriptions?: DefaultSubscriptionSetting[];
+  auth_source_default_wechat_grant_on_signup?: boolean;
+  auth_source_default_wechat_grant_on_first_bind?: boolean;
+  force_email_on_third_party_signup?: boolean;
+  site_name?: string;
+  site_logo?: string;
+  site_subtitle?: string;
+  api_base_url?: string;
+  contact_info?: string;
+  doc_url?: string;
+  home_content?: string;
+  hide_ccs_import_button?: boolean;
+  table_default_page_size?: number;
+  table_page_size_options?: number[];
+  backend_mode_enabled?: boolean;
+  custom_menu_items?: CustomMenuItem[];
+  custom_endpoints?: CustomEndpoint[];
+  smtp_host?: string;
+  smtp_port?: number;
+  smtp_username?: string;
+  smtp_password?: string;
+  smtp_from_email?: string;
+  smtp_from_name?: string;
+  smtp_use_tls?: boolean;
+  turnstile_enabled?: boolean;
+  turnstile_site_key?: string;
+  turnstile_secret_key?: string;
+  linuxdo_connect_enabled?: boolean;
+  linuxdo_connect_client_id?: string;
+  linuxdo_connect_client_secret?: string;
+  linuxdo_connect_redirect_url?: string;
+  wechat_connect_enabled?: boolean;
+  wechat_connect_app_id?: string;
+  wechat_connect_app_secret?: string;
+  wechat_connect_open_app_id?: string;
+  wechat_connect_open_app_secret?: string;
+  wechat_connect_mp_app_id?: string;
+  wechat_connect_mp_app_secret?: string;
+  wechat_connect_mobile_app_id?: string;
+  wechat_connect_mobile_app_secret?: string;
+  wechat_connect_open_enabled?: boolean;
+  wechat_connect_mp_enabled?: boolean;
+  wechat_connect_mobile_enabled?: boolean;
+  wechat_connect_mode?: string;
+  wechat_connect_scopes?: string;
+  wechat_connect_redirect_url?: string;
+  wechat_connect_frontend_redirect_url?: string;
+  oidc_connect_enabled?: boolean;
+  oidc_connect_provider_name?: string;
+  oidc_connect_client_id?: string;
+  oidc_connect_client_secret?: string;
+  oidc_connect_issuer_url?: string;
+  oidc_connect_discovery_url?: string;
+  oidc_connect_authorize_url?: string;
+  oidc_connect_token_url?: string;
+  oidc_connect_userinfo_url?: string;
+  oidc_connect_jwks_url?: string;
+  oidc_connect_scopes?: string;
+  oidc_connect_redirect_url?: string;
+  oidc_connect_frontend_redirect_url?: string;
+  oidc_connect_token_auth_method?: string;
+  oidc_connect_use_pkce?: boolean;
+  oidc_connect_validate_id_token?: boolean;
+  oidc_connect_allowed_signing_algs?: string;
+  oidc_connect_clock_skew_seconds?: number;
+  oidc_connect_require_email_verified?: boolean;
+  oidc_connect_userinfo_email_path?: string;
+  oidc_connect_userinfo_id_path?: string;
+  oidc_connect_userinfo_username_path?: string;
+  enable_model_fallback?: boolean;
+  fallback_model_anthropic?: string;
+  fallback_model_openai?: string;
+  fallback_model_gemini?: string;
+  fallback_model_antigravity?: string;
+  enable_identity_patch?: boolean;
+  identity_patch_prompt?: string;
+  ops_monitoring_enabled?: boolean;
+  ops_realtime_monitoring_enabled?: boolean;
+  ops_query_mode_default?: "auto" | "raw" | "preagg" | string;
+  ops_metrics_interval_seconds?: number;
+  min_claude_code_version?: string;
+  max_claude_code_version?: string;
+  allow_ungrouped_key_scheduling?: boolean;
+  enable_fingerprint_unification?: boolean;
+  enable_metadata_passthrough?: boolean;
+  enable_cch_signing?: boolean;
   // Payment configuration
-  payment_enabled?: boolean
-  payment_min_amount?: number
-  payment_max_amount?: number
-  payment_daily_limit?: number
-  payment_order_timeout_minutes?: number
-  payment_max_pending_orders?: number
-  payment_enabled_types?: string[]
-  payment_balance_disabled?: boolean
-  payment_balance_recharge_multiplier?: number
-  payment_recharge_fee_rate?: number
-  payment_load_balance_strategy?: string
-  payment_product_name_prefix?: string
-  payment_product_name_suffix?: string
-  payment_help_image_url?: string
-  payment_help_text?: string
-  payment_cancel_rate_limit_enabled?: boolean
-  payment_cancel_rate_limit_max?: number
-  payment_cancel_rate_limit_window?: number
-  payment_cancel_rate_limit_unit?: string
-  payment_cancel_rate_limit_window_mode?: string
+  payment_enabled?: boolean;
+  payment_min_amount?: number;
+  payment_max_amount?: number;
+  payment_daily_limit?: number;
+  payment_order_timeout_minutes?: number;
+  payment_max_pending_orders?: number;
+  payment_enabled_types?: string[];
+  payment_balance_disabled?: boolean;
+  payment_balance_recharge_multiplier?: number;
+  payment_recharge_fee_rate?: number;
+  payment_load_balance_strategy?: string;
+  payment_product_name_prefix?: string;
+  payment_product_name_suffix?: string;
+  payment_help_image_url?: string;
+  payment_help_text?: string;
+  payment_cancel_rate_limit_enabled?: boolean;
+  payment_cancel_rate_limit_max?: number;
+  payment_cancel_rate_limit_window?: number;
+  payment_cancel_rate_limit_unit?: string;
+  payment_cancel_rate_limit_window_mode?: string;
+  payment_visible_method_alipay_source?: string;
+  payment_visible_method_wxpay_source?: string;
+  payment_visible_method_alipay_enabled?: boolean;
+  payment_visible_method_wxpay_enabled?: boolean;
+  openai_advanced_scheduler_enabled?: boolean;
   // Balance & quota notification
-  balance_low_notify_enabled?: boolean
-  balance_low_notify_threshold?: number
-  balance_low_notify_recharge_url?: string
-  account_quota_notify_enabled?: boolean
-  account_quota_notify_emails?: NotifyEmailEntry[]
+  balance_low_notify_enabled?: boolean;
+  balance_low_notify_threshold?: number;
+  balance_low_notify_recharge_url?: string;
+  account_quota_notify_enabled?: boolean;
+  account_quota_notify_emails?: NotifyEmailEntry[];
 REDACTED
 
 /**
@@ -258,8 +625,8 @@ REDACTED
  * @returns System settings
  */
 export async function getSettings(): Promise<SystemSettings> {
-  const { data REDACTED = await apiClient.get<SystemSettings>('/admin/settings')
-  return data
+  const { data REDACTED = await apiClient.get<SystemSettings>("/admin/settings");
+  return data;
 REDACTED
 
 /**
@@ -267,20 +634,25 @@ REDACTED
  * @param settings - Partial settings to update
  * @returns Updated settings
  */
-export async function updateSettings(settings: UpdateSettingsRequest): Promise<SystemSettings> {
-  const { data REDACTED = await apiClient.put<SystemSettings>('/admin/settings', settings)
-  return data
+export async function updateSettings(
+  settings: UpdateSettingsRequest,
+): Promise<SystemSettings> {
+  const { data REDACTED = await apiClient.put<SystemSettings>(
+    "/admin/settings",
+    settings,
+  );
+  return data;
 REDACTED
 
 /**
  * Test SMTP connection request
  */
 export interface TestSmtpRequest {
-  smtp_host: string
-  smtp_port: number
-  smtp_username: string
-  smtp_password: string
-  smtp_use_tls: boolean
+  smtp_host: string;
+  smtp_port: number;
+  smtp_username: string;
+  smtp_password: string;
+  smtp_use_tls: boolean;
 REDACTED
 
 /**
@@ -288,23 +660,28 @@ REDACTED
  * @param config - SMTP configuration to test
  * @returns Test result message
  */
-export async function testSmtpConnection(config: TestSmtpRequest): Promise<{ message: string REDACTED> {
-  const { data REDACTED = await apiClient.post<{ message: string REDACTED>('/admin/settings/test-smtp', config)
-  return data
+export async function testSmtpConnection(
+  config: TestSmtpRequest,
+): Promise<{ message: string REDACTED> {
+  const { data REDACTED = await apiClient.post<{ message: string REDACTED>(
+    "/admin/settings/test-smtp",
+    config,
+  );
+  return data;
 REDACTED
 
 /**
  * Send test email request
  */
 export interface SendTestEmailRequest {
-  email: string
-  smtp_host: string
-  smtp_port: number
-  smtp_username: string
-  smtp_password: string
-  smtp_from_email: string
-  smtp_from_name: string
-  smtp_use_tls: boolean
+  email: string;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_username: string;
+  smtp_password: string;
+  smtp_from_email: string;
+  smtp_from_name: string;
+  smtp_use_tls: boolean;
 REDACTED
 
 /**
@@ -312,20 +689,22 @@ REDACTED
  * @param request - Email address and SMTP config
  * @returns Test result message
  */
-export async function sendTestEmail(request: SendTestEmailRequest): Promise<{ message: string REDACTED> {
+export async function sendTestEmail(
+  request: SendTestEmailRequest,
+): Promise<{ message: string REDACTED> {
   const { data REDACTED = await apiClient.post<{ message: string REDACTED>(
-    '/admin/settings/send-test-email',
-    request
-  )
-  return data
+    "/admin/settings/send-test-email",
+    request,
+  );
+  return data;
 REDACTED
 
 /**
  * Admin API Key status response
  */
 export interface AdminApiKeyStatus {
-  exists: boolean
-  masked_key: string
+  exists: boolean;
+  masked_key: string;
 REDACTED
 
 /**
@@ -333,8 +712,10 @@ REDACTED
  * @returns Status indicating if key exists and masked version
  */
 export async function getAdminApiKey(): Promise<AdminApiKeyStatus> {
-  const { data REDACTED = await apiClient.get<AdminApiKeyStatus>('/admin/settings/admin-api-key')
-  return data
+  const { data REDACTED = await apiClient.get<AdminApiKeyStatus>(
+    "/admin/settings/admin-api-key",
+  );
+  return data;
 REDACTED
 
 /**
@@ -342,8 +723,10 @@ REDACTED
  * @returns The new full API key (only shown once)
  */
 export async function regenerateAdminApiKey(): Promise<{ key: string REDACTED> {
-  const { data REDACTED = await apiClient.post<{ key: string REDACTED>('/admin/settings/admin-api-key/regenerate')
-  return data
+  const { data REDACTED = await apiClient.post<{ key: string REDACTED>(
+    "/admin/settings/admin-api-key/regenerate",
+  );
+  return data;
 REDACTED
 
 /**
@@ -351,8 +734,10 @@ REDACTED
  * @returns Success message
  */
 export async function deleteAdminApiKey(): Promise<{ message: string REDACTED> {
-  const { data REDACTED = await apiClient.delete<{ message: string REDACTED>('/admin/settings/admin-api-key')
-  return data
+  const { data REDACTED = await apiClient.delete<{ message: string REDACTED>(
+    "/admin/settings/admin-api-key",
+  );
+  return data;
 REDACTED
 
 // ==================== Overload Cooldown Settings ====================
@@ -361,23 +746,25 @@ REDACTED
  * Overload cooldown settings interface (529 handling)
  */
 export interface OverloadCooldownSettings {
-  enabled: boolean
-  cooldown_minutes: number
+  enabled: boolean;
+  cooldown_minutes: number;
 REDACTED
 
 export async function getOverloadCooldownSettings(): Promise<OverloadCooldownSettings> {
-  const { data REDACTED = await apiClient.get<OverloadCooldownSettings>('/admin/settings/overload-cooldown')
-  return data
+  const { data REDACTED = await apiClient.get<OverloadCooldownSettings>(
+    "/admin/settings/overload-cooldown",
+  );
+  return data;
 REDACTED
 
 export async function updateOverloadCooldownSettings(
-  settings: OverloadCooldownSettings
+  settings: OverloadCooldownSettings,
 ): Promise<OverloadCooldownSettings> {
   const { data REDACTED = await apiClient.put<OverloadCooldownSettings>(
-    '/admin/settings/overload-cooldown',
-    settings
-  )
-  return data
+    "/admin/settings/overload-cooldown",
+    settings,
+  );
+  return data;
 REDACTED
 
 // ==================== Stream Timeout Settings ====================
@@ -386,11 +773,11 @@ REDACTED
  * Stream timeout settings interface
  */
 export interface StreamTimeoutSettings {
-  enabled: boolean
-  action: 'temp_unsched' | 'error' | 'none'
-  temp_unsched_minutes: number
-  threshold_count: number
-  threshold_window_minutes: number
+  enabled: boolean;
+  action: "temp_unsched" | "error" | "none";
+  temp_unsched_minutes: number;
+  threshold_count: number;
+  threshold_window_minutes: number;
 REDACTED
 
 /**
@@ -398,8 +785,10 @@ REDACTED
  * @returns Stream timeout settings
  */
 export async function getStreamTimeoutSettings(): Promise<StreamTimeoutSettings> {
-  const { data REDACTED = await apiClient.get<StreamTimeoutSettings>('/admin/settings/stream-timeout')
-  return data
+  const { data REDACTED = await apiClient.get<StreamTimeoutSettings>(
+    "/admin/settings/stream-timeout",
+  );
+  return data;
 REDACTED
 
 /**
@@ -408,13 +797,13 @@ REDACTED
  * @returns Updated settings
  */
 export async function updateStreamTimeoutSettings(
-  settings: StreamTimeoutSettings
+  settings: StreamTimeoutSettings,
 ): Promise<StreamTimeoutSettings> {
   const { data REDACTED = await apiClient.put<StreamTimeoutSettings>(
-    '/admin/settings/stream-timeout',
-    settings
-  )
-  return data
+    "/admin/settings/stream-timeout",
+    settings,
+  );
+  return data;
 REDACTED
 
 // ==================== Rectifier Settings ====================
@@ -423,11 +812,11 @@ REDACTED
  * Rectifier settings interface
  */
 export interface RectifierSettings {
-  enabled: boolean
-  thinking_signature_enabled: boolean
-  thinking_budget_enabled: boolean
-  apikey_signature_enabled: boolean
-  apikey_signature_patterns: string[]
+  enabled: boolean;
+  thinking_signature_enabled: boolean;
+  thinking_budget_enabled: boolean;
+  apikey_signature_enabled: boolean;
+  apikey_signature_patterns: string[];
 REDACTED
 
 /**
@@ -435,8 +824,10 @@ REDACTED
  * @returns Rectifier settings
  */
 export async function getRectifierSettings(): Promise<RectifierSettings> {
-  const { data REDACTED = await apiClient.get<RectifierSettings>('/admin/settings/rectifier')
-  return data
+  const { data REDACTED = await apiClient.get<RectifierSettings>(
+    "/admin/settings/rectifier",
+  );
+  return data;
 REDACTED
 
 /**
@@ -445,13 +836,13 @@ REDACTED
  * @returns Updated settings
  */
 export async function updateRectifierSettings(
-  settings: RectifierSettings
+  settings: RectifierSettings,
 ): Promise<RectifierSettings> {
   const { data REDACTED = await apiClient.put<RectifierSettings>(
-    '/admin/settings/rectifier',
-    settings
-  )
-  return data
+    "/admin/settings/rectifier",
+    settings,
+  );
+  return data;
 REDACTED
 
 // ==================== Beta Policy Settings ====================
@@ -460,20 +851,20 @@ REDACTED
  * Beta policy rule interface
  */
 export interface BetaPolicyRule {
-  beta_token: string
-  action: 'pass' | 'filter' | 'block'
-  scope: 'all' | 'oauth' | 'apikey' | 'bedrock'
-  error_message?: string
-  model_whitelist?: string[]
-  fallback_action?: 'pass' | 'filter' | 'block'
-  fallback_error_message?: string
+  beta_token: string;
+  action: "pass" | "filter" | "block";
+  scope: "all" | "oauth" | "apikey" | "bedrock";
+  error_message?: string;
+  model_whitelist?: string[];
+  fallback_action?: "pass" | "filter" | "block";
+  fallback_error_message?: string;
 REDACTED
 
 /**
  * Beta policy settings interface
  */
 export interface BetaPolicySettings {
-  rules: BetaPolicyRule[]
+  rules: BetaPolicyRule[];
 REDACTED
 
 /**
@@ -481,8 +872,10 @@ REDACTED
  * @returns Beta policy settings
  */
 export async function getBetaPolicySettings(): Promise<BetaPolicySettings> {
-  const { data REDACTED = await apiClient.get<BetaPolicySettings>('/admin/settings/beta-policy')
-  return data
+  const { data REDACTED = await apiClient.get<BetaPolicySettings>(
+    "/admin/settings/beta-policy",
+  );
+  return data;
 REDACTED
 
 /**
@@ -491,70 +884,73 @@ REDACTED
  * @returns Updated settings
  */
 export async function updateBetaPolicySettings(
-  settings: BetaPolicySettings
+  settings: BetaPolicySettings,
 ): Promise<BetaPolicySettings> {
   const { data REDACTED = await apiClient.put<BetaPolicySettings>(
-    '/admin/settings/beta-policy',
-    settings
-  )
-  return data
+    "/admin/settings/beta-policy",
+    settings,
+  );
+  return data;
 REDACTED
 
 // --- Web Search Emulation Config ---
 
 export interface WebSearchProviderConfig {
-  type: 'brave' | 'tavily'
-  api_key: string
-  api_key_configured: boolean
-  quota_limit: number | null
-  subscribed_at: number | null
-  quota_used?: number
-  proxy_id: number | null
-  expires_at: number | null
+  type: "brave" | "tavily";
+  api_key: string;
+  api_key_configured: boolean;
+  quota_limit: number | null;
+  subscribed_at: number | null;
+  quota_used?: number;
+  proxy_id: number | null;
+  expires_at: number | null;
 REDACTED
 
 export interface WebSearchEmulationConfig {
-  enabled: boolean
-  providers: WebSearchProviderConfig[]
+  enabled: boolean;
+  providers: WebSearchProviderConfig[];
 REDACTED
 
 export interface WebSearchTestResult {
-  provider: string
-  results: { url: string; title: string; snippet: string; page_age?: string REDACTED[]
-  query: string
+  provider: string;
+  results: { url: string; title: string; snippet: string; page_age?: string REDACTED[];
+  query: string;
 REDACTED
 
 export async function getWebSearchEmulationConfig(): Promise<WebSearchEmulationConfig> {
   const { data REDACTED = await apiClient.get<WebSearchEmulationConfig>(
-    '/admin/settings/web-search-emulation'
-  )
-  return data
+    "/admin/settings/web-search-emulation",
+  );
+  return data;
 REDACTED
 
 export async function updateWebSearchEmulationConfig(
-  config: WebSearchEmulationConfig
+  config: WebSearchEmulationConfig,
 ): Promise<WebSearchEmulationConfig> {
   const { data REDACTED = await apiClient.put<WebSearchEmulationConfig>(
-    '/admin/settings/web-search-emulation',
-    config
-  )
-  return data
+    "/admin/settings/web-search-emulation",
+    config,
+  );
+  return data;
 REDACTED
 
 export async function testWebSearchEmulation(
-  query: string
+  query: string,
 ): Promise<WebSearchTestResult> {
   const { data REDACTED = await apiClient.post<WebSearchTestResult>(
-    '/admin/settings/web-search-emulation/test',
-    { query REDACTED
-  )
-  return data
+    "/admin/settings/web-search-emulation/test",
+    { query REDACTED,
+  );
+  return data;
 REDACTED
 
-export async function resetWebSearchUsage(
-  payload: { provider_type: string REDACTED
-): Promise<void> {
-  await apiClient.post('/admin/settings/web-search-emulation/reset-usage', payload)
+export async function resetWebSearchUsage(payload: {
+  provider_type: string;
+REDACTED): Promise<void> {
+  await apiClient.post(
+    "/admin/settings/web-search-emulation/reset-usage",
+    payload,
+  );
 REDACTED
 
 export const settingsAPI = {
@@ -576,7 +972,7 @@ export const settingsAPI = {
   getWebSearchEmulationConfig,
   updateWebSearchEmulationConfig,
   testWebSearchEmulation,
-  resetWebSearchUsage
-REDACTED
+  resetWebSearchUsage,
+REDACTED;
 
-export default settingsAPI
+export default settingsAPI;

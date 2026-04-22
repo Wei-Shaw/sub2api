@@ -1,9 +1,14 @@
 package handler
 
 import (
+	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/payment"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -202,10 +207,14 @@ REDACTED
 
 // CreateOrderRequest is the request body for creating a payment order.
 type CreateOrderRequest struct {
-	Amount      float64 `json:"amount"`
-	PaymentType string  `json:"payment_type" binding:"required"`
-	OrderType   string  `json:"order_type"`
-	PlanID      int64   `json:"plan_id"`
+	Amount            float64 `json:"amount"`
+	PaymentType       string  `json:"payment_type" binding:"required"`
+	OpenID            string  `json:"openid"`
+	WechatResumeToken string  `json:"wechat_resume_token"`
+	ReturnURL         string  `json:"return_url"`
+	PaymentSource     string  `json:"payment_source"`
+	OrderType         string  `json:"order_type"`
+	PlanID            int64   `json:"plan_id"`
 	// IsMobile lets the frontend declare its mobile status directly. When
 	// nil we fall back to User-Agent heuristics (which miss iPadOS / some
 	// embedded browsers that strip the "Mobile" keyword).
@@ -225,27 +234,80 @@ REDACTED
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 REDACTED
+	if strings.TrimSpace(req.WechatResumeToken) != "" {
+		claims, err := h.paymentService.ParseWeChatPaymentResumeToken(req.WechatResumeToken)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+	REDACTED
+		if err := applyWeChatPaymentResumeClaims(&req, claims); err != nil {
+			response.ErrorFrom(c, err)
+			return
+	REDACTED
+REDACTED
 
 	mobile := isMobile(c)
 	if req.IsMobile != nil {
 		mobile = *req.IsMobile
 REDACTED
 	result, err := h.paymentService.CreateOrder(c.Request.Context(), service.CreateOrderRequest{
-		UserID:      subject.UserID,
-		Amount:      req.Amount,
-		PaymentType: req.PaymentType,
-		ClientIP:    c.ClientIP(),
-		IsMobile:    mobile,
-		SrcHost:     c.Request.Host,
-		SrcURL:      c.Request.Referer(),
-		OrderType:   req.OrderType,
-		PlanID:      req.PlanID,
+		UserID:          subject.UserID,
+		Amount:          req.Amount,
+		PaymentType:     req.PaymentType,
+		OpenID:          req.OpenID,
+		ClientIP:        c.ClientIP(),
+		IsMobile:        mobile,
+		IsWeChatBrowser: isWeChatBrowser(c),
+		SrcHost:         c.Request.Host,
+		SrcURL:          c.Request.Referer(),
+		ReturnURL:       req.ReturnURL,
+		PaymentSource:   req.PaymentSource,
+		OrderType:       req.OrderType,
+		PlanID:          req.PlanID,
 REDACTED)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 REDACTED
 	response.Success(c, result)
+REDACTED
+
+func applyWeChatPaymentResumeClaims(req *CreateOrderRequest, claims *service.WeChatPaymentResumeClaims) error {
+	if req == nil || claims == nil {
+		return infraerrors.BadRequest("INVALID_WECHAT_PAYMENT_RESUME_TOKEN", "wechat payment resume context is missing")
+REDACTED
+	openid := strings.TrimSpace(claims.OpenID)
+	if openid == "" {
+		return infraerrors.BadRequest("INVALID_WECHAT_PAYMENT_RESUME_TOKEN", "wechat payment resume token missing openid")
+REDACTED
+
+	paymentType := service.NormalizeVisibleMethod(claims.PaymentType)
+	if paymentType == "" {
+		paymentType = payment.TypeWxpay
+REDACTED
+	if req.PaymentType != "" {
+		requestPaymentType := service.NormalizeVisibleMethod(req.PaymentType)
+		if requestPaymentType != "" && requestPaymentType != paymentType {
+			return infraerrors.BadRequest("INVALID_WECHAT_PAYMENT_RESUME_TOKEN", "wechat payment resume token payment type mismatch")
+	REDACTED
+REDACTED
+	req.PaymentType = paymentType
+	req.OpenID = openid
+
+	if strings.TrimSpace(claims.Amount) != "" {
+		amount, err := strconv.ParseFloat(strings.TrimSpace(claims.Amount), 64)
+		if err != nil || amount <= 0 {
+			return infraerrors.BadRequest("INVALID_WECHAT_PAYMENT_RESUME_TOKEN", fmt.Sprintf("invalid resume amount: %s", claims.Amount))
+	REDACTED
+		req.Amount = amount
+REDACTED
+	if claims.OrderType != "" {
+		req.OrderType = claims.OrderType
+REDACTED
+	if claims.PlanID > 0 {
+		req.PlanID = claims.PlanID
+REDACTED
+	return nil
 REDACTED
 
 // GetMyOrders returns the authenticated user's orders.
@@ -268,7 +330,7 @@ REDACTED)
 		response.ErrorFrom(c, err)
 		return
 REDACTED
-	response.Paginated(c, orders, int64(total), page, pageSize)
+	response.Paginated(c, sanitizePaymentOrdersForResponse(orders), int64(total), page, pageSize)
 REDACTED
 
 // GetOrder returns a single order for the authenticated user.
@@ -290,7 +352,7 @@ REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
-	response.Success(c, order)
+	response.Success(c, sanitizePaymentOrderForResponse(order))
 REDACTED
 
 // CancelOrder cancels a pending order for the authenticated user.
@@ -362,6 +424,10 @@ type VerifyOrderRequest struct {
 	OutTradeNo string `json:"out_trade_no" binding:"required"`
 REDACTED
 
+type ResolveOrderByResumeTokenRequest struct {
+	ResumeToken string `json:"resume_token" binding:"required"`
+REDACTED
+
 // VerifyOrder actively queries the upstream payment provider to check
 // if payment was made, and processes it if so.
 // POST /api/v1/payment/orders/verify
@@ -382,7 +448,7 @@ REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
-	response.Success(c, order)
+	response.Success(c, sanitizePaymentOrderForResponse(order))
 REDACTED
 
 // PublicOrderResult is the limited order info returned by the public verify endpoint.
@@ -397,16 +463,32 @@ type PublicOrderResult struct {
 	Status      string  `json:"status"`
 REDACTED
 
-// VerifyOrderPublic verifies payment status without requiring authentication.
-// Returns limited order info (no user details) to prevent information leakage.
+var errPaymentPublicOrderVerifyRemoved = infraerrors.New(
+	http.StatusGone,
+	"PAYMENT_PUBLIC_ORDER_VERIFY_REMOVED",
+	"public payment order verification by out_trade_no has been removed; use resume_token recovery instead",
+).WithMetadata(map[string]string{
+	"replacement_endpoint": "/api/v1/payment/public/orders/resolve",
+	"replacement_field":    "resume_token",
+REDACTED)
+
+// VerifyOrderPublic is kept as a compatibility shim for the removed anonymous
+// out_trade_no lookup endpoint and always returns HTTP 410 Gone.
 // POST /api/v1/payment/public/orders/verify
 func (h *PaymentHandler) VerifyOrderPublic(c *gin.Context) {
-	var req VerifyOrderRequest
+	response.ErrorFrom(c, errPaymentPublicOrderVerifyRemoved)
+REDACTED
+
+// ResolveOrderPublicByResumeToken resolves a payment order from a signed resume token.
+// POST /api/v1/payment/public/orders/resolve
+func (h *PaymentHandler) ResolveOrderPublicByResumeToken(c *gin.Context) {
+	var req ResolveOrderByResumeTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 REDACTED
-	order, err := h.paymentService.VerifyOrderPublic(c.Request.Context(), req.OutTradeNo)
+
+	order, err := h.paymentService.GetPublicOrderByResumeToken(c.Request.Context(), req.ResumeToken)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -442,4 +524,28 @@ func isMobile(c *gin.Context) bool {
 	REDACTED
 REDACTED
 	return false
+REDACTED
+
+func sanitizePaymentOrdersForResponse(orders []*dbent.PaymentOrder) []*dbent.PaymentOrder {
+	if len(orders) == 0 {
+		return orders
+REDACTED
+	out := make([]*dbent.PaymentOrder, 0, len(orders))
+	for _, order := range orders {
+		out = append(out, sanitizePaymentOrderForResponse(order))
+REDACTED
+	return out
+REDACTED
+
+func sanitizePaymentOrderForResponse(order *dbent.PaymentOrder) *dbent.PaymentOrder {
+	if order == nil {
+		return nil
+REDACTED
+	cloned := *order
+	cloned.ProviderSnapshot = nil
+	return &cloned
+REDACTED
+
+func isWeChatBrowser(c *gin.Context) bool {
+	return strings.Contains(strings.ToLower(c.GetHeader("User-Agent")), "micromessenger")
 REDACTED

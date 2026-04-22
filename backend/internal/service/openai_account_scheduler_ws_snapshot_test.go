@@ -38,11 +38,12 @@ REDACTED
 	cfg.Gateway.OpenAIWS.IngressModeDefault = OpenAIWSIngressModeCtxPool
 
 	svc := &OpenAIGatewayService{
-		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{*accountREDACTEDREDACTED,
-		cache:              &stubGatewayCache{REDACTED,
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{*accountREDACTEDREDACTED,
+		cache:              &schedulerTestGatewayCache{REDACTED,
 		cfg:                cfg,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
 		schedulerSnapshot:  &SchedulerSnapshotService{cache: snapshotCacheREDACTED,
-		concurrencyService: NewConcurrencyService(stubConcurrencyCache{REDACTED),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{REDACTED),
 REDACTED
 
 	selection, decision, err := svc.SelectAccountWithScheduler(

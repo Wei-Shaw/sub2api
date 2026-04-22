@@ -9,7 +9,6 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
@@ -65,29 +64,39 @@ REDACTED
 REDACTED
 
 type CreateOrderRequest struct {
-	UserID      int64
-	Amount      float64
-	PaymentType string
-	ClientIP    string
-	IsMobile    bool
-	SrcHost     string
-	SrcURL      string
-	OrderType   string
-	PlanID      int64
+	UserID          int64
+	Amount          float64
+	PaymentType     string
+	OpenID          string
+	ClientIP        string
+	IsMobile        bool
+	IsWeChatBrowser bool
+	SrcHost         string
+	SrcURL          string
+	ReturnURL       string
+	PaymentSource   string
+	OrderType       string
+	PlanID          int64
 REDACTED
 
 type CreateOrderResponse struct {
-	OrderID      int64     `json:"order_id"`
-	Amount       float64   `json:"amount"`
-	PayAmount    float64   `json:"pay_amount"`
-	FeeRate      float64   `json:"fee_rate"`
-	Status       string    `json:"status"`
-	PaymentType  string    `json:"payment_type"`
-	PayURL       string    `json:"pay_url,omitempty"`
-	QRCode       string    `json:"qr_code,omitempty"`
-	ClientSecret string    `json:"client_secret,omitempty"`
-	ExpiresAt    time.Time `json:"expires_at"`
-	PaymentMode  string    `json:"payment_mode,omitempty"`
+	OrderID      int64                           `json:"order_id"`
+	Amount       float64                         `json:"amount"`
+	PayAmount    float64                         `json:"pay_amount"`
+	FeeRate      float64                         `json:"fee_rate"`
+	Status       string                          `json:"status"`
+	ResultType   payment.CreatePaymentResultType `json:"result_type,omitempty"`
+	PaymentType  string                          `json:"payment_type"`
+	OutTradeNo   string                          `json:"out_trade_no,omitempty"`
+	PayURL       string                          `json:"pay_url,omitempty"`
+	QRCode       string                          `json:"qr_code,omitempty"`
+	ClientSecret string                          `json:"client_secret,omitempty"`
+	OAuth        *payment.WechatOAuthInfo        `json:"oauth,omitempty"`
+	JSAPI        *payment.WechatJSAPIPayload     `json:"jsapi,omitempty"`
+	JSAPIPayload *payment.WechatJSAPIPayload     `json:"jsapi_payload,omitempty"`
+	ExpiresAt    time.Time                       `json:"expires_at"`
+	PaymentMode  string                          `json:"payment_mode,omitempty"`
+	ResumeToken  string                          `json:"resume_token,omitempty"`
 REDACTED
 
 type OrderListParams struct {
@@ -165,10 +174,13 @@ type PaymentService struct {
 	configService   *PaymentConfigService
 	userRepo        UserRepository
 	groupRepo       GroupRepository
+	resumeService   *PaymentResumeService
 REDACTED
 
 func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository) *PaymentService {
-	return &PaymentService{entClient: entClient, registry: registry, loadBalancer: loadBalancer, redeemService: redeemService, subscriptionSvc: subscriptionSvc, configService: configService, userRepo: userRepo, groupRepo: groupRepoREDACTED
+	svc := &PaymentService{entClient: entClient, registry: registry, loadBalancer: newVisibleMethodLoadBalancer(loadBalancer, configService), redeemService: redeemService, subscriptionSvc: subscriptionSvc, configService: configService, userRepo: userRepo, groupRepo: groupRepoREDACTED
+	svc.resumeService = NewPaymentResumeService(psResumeSigningKey(configService))
+	return svc
 REDACTED
 
 // --- Provider Registry ---
@@ -219,25 +231,6 @@ REDACTED
 REDACTED
 REDACTED
 
-// GetWebhookProvider returns the provider instance that should verify a webhook.
-// It extracts out_trade_no from the raw body, looks up the order to find the
-// original provider instance, and creates a provider with that instance's credentials.
-// Falls back to the registry provider when the order cannot be found.
-func (s *PaymentService) GetWebhookProvider(ctx context.Context, providerKey, outTradeNo string) (payment.Provider, error) {
-	if outTradeNo != "" {
-		order, err := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(outTradeNo)).Only(ctx)
-		if err == nil {
-			p, pErr := s.getOrderProvider(ctx, order)
-			if pErr == nil {
-				return p, nil
-		REDACTED
-			slog.Warn("[Webhook] order provider creation failed, falling back to registry", "outTradeNo", outTradeNo, "error", pErr)
-	REDACTED
-REDACTED
-	s.EnsureProviders(ctx)
-	return s.registry.GetProviderByKey(providerKey)
-REDACTED
-
 // --- Helpers ---
 
 func psIsRefundStatus(s string) bool {
@@ -260,6 +253,20 @@ func psNilIfEmpty(s string) *string {
 		return nil
 REDACTED
 	return &s
+REDACTED
+
+func (s *PaymentService) paymentResume() *PaymentResumeService {
+	if s.resumeService != nil {
+		return s.resumeService
+REDACTED
+	return NewPaymentResumeService(psResumeSigningKey(s.configService))
+REDACTED
+
+func psResumeSigningKey(configService *PaymentConfigService) []byte {
+	if configService == nil {
+		return nil
+REDACTED
+	return configService.encryptionKey
 REDACTED
 
 func psSliceContains(sl []string, s string) bool {

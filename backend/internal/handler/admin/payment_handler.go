@@ -3,6 +3,7 @@ package admin
 import (
 	"strconv"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -66,7 +67,7 @@ REDACTED)
 		response.ErrorFrom(c, err)
 		return
 REDACTED
-	response.Paginated(c, orders, int64(total), page, pageSize)
+	response.Paginated(c, sanitizeAdminPaymentOrdersForResponse(orders), int64(total), page, pageSize)
 REDACTED
 
 // GetOrderDetail returns detailed information about a single order.
@@ -82,7 +83,7 @@ REDACTED
 		return
 REDACTED
 	auditLogs, _ := h.paymentService.GetOrderAuditLogs(c.Request.Context(), orderID)
-	response.Success(c, gin.H{"order": order, "auditLogs": auditLogsREDACTED)
+	response.Success(c, gin.H{"order": sanitizeAdminPaymentOrderForResponse(order), "auditLogs": auditLogsREDACTED)
 REDACTED
 
 // CancelOrder cancels a pending order (admin).
@@ -112,6 +113,26 @@ REDACTED
 		return
 REDACTED
 	response.Success(c, gin.H{"message": "fulfillment retried"REDACTED)
+REDACTED
+
+func sanitizeAdminPaymentOrdersForResponse(orders []*dbent.PaymentOrder) []*dbent.PaymentOrder {
+	if len(orders) == 0 {
+		return orders
+REDACTED
+	out := make([]*dbent.PaymentOrder, 0, len(orders))
+	for _, order := range orders {
+		out = append(out, sanitizeAdminPaymentOrderForResponse(order))
+REDACTED
+	return out
+REDACTED
+
+func sanitizeAdminPaymentOrderForResponse(order *dbent.PaymentOrder) *dbent.PaymentOrder {
+	if order == nil {
+		return nil
+REDACTED
+	cloned := *order
+	cloned.ProviderSnapshot = nil
+	return &cloned
 REDACTED
 
 // AdminProcessRefundRequest is the request body for admin refund processing.

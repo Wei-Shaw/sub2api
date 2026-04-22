@@ -107,11 +107,15 @@ REDACTED
 				responsesBody = stripped
 		REDACTED
 	REDACTED
+		responsesBody, normalizedServiceTier, err := normalizeResponsesBodyServiceTier(responsesBody)
+		if err != nil {
+			return nil, fmt.Errorf("normalize service_tier in responses-shape body: %w", err)
+	REDACTED
 		// Minimal stub populated from the raw body so downstream billing
 		// propagation (ServiceTier, ReasoningEffort) keeps working.
 		responsesReq = &apicompat.ResponsesRequest{
 			Model:       upstreamModel,
-			ServiceTier: gjson.GetBytes(responsesBody, "service_tier").String(),
+			ServiceTier: normalizedServiceTier,
 	REDACTED
 		if effort := gjson.GetBytes(responsesBody, "reasoning.effort").String(); effort != "" {
 			responsesReq.Reasoning = &apicompat.ResponsesReasoning{Effort: effortREDACTED
@@ -124,6 +128,7 @@ REDACTED else {
 			return nil, fmt.Errorf("convert chat completions to responses: %w", err)
 	REDACTED
 		responsesReq.Model = upstreamModel
+		normalizeResponsesRequestServiceTier(responsesReq)
 		responsesBody, err = json.Marshal(responsesReq)
 		if err != nil {
 			return nil, fmt.Errorf("marshal responses request: %w", err)
@@ -272,6 +277,41 @@ REDACTED
 REDACTED
 
 	return result, handleErr
+REDACTED
+
+func normalizeResponsesRequestServiceTier(req *apicompat.ResponsesRequest) {
+	if req == nil {
+		return
+REDACTED
+	req.ServiceTier = normalizedOpenAIServiceTierValue(req.ServiceTier)
+REDACTED
+
+func normalizeResponsesBodyServiceTier(body []byte) ([]byte, string, error) {
+	if len(body) == 0 {
+		return body, "", nil
+REDACTED
+	rawServiceTier := gjson.GetBytes(body, "service_tier").String()
+	if rawServiceTier == "" {
+		return body, "", nil
+REDACTED
+	normalizedServiceTier := normalizedOpenAIServiceTierValue(rawServiceTier)
+	if normalizedServiceTier == "" {
+		trimmed, err := sjson.DeleteBytes(body, "service_tier")
+		return trimmed, "", err
+REDACTED
+	if normalizedServiceTier == rawServiceTier {
+		return body, normalizedServiceTier, nil
+REDACTED
+	trimmed, err := sjson.SetBytes(body, "service_tier", normalizedServiceTier)
+	return trimmed, normalizedServiceTier, err
+REDACTED
+
+func normalizedOpenAIServiceTierValue(raw string) string {
+	normalized := normalizeOpenAIServiceTier(raw)
+	if normalized == nil {
+		return ""
+REDACTED
+	return *normalized
 REDACTED
 
 // handleChatCompletionsErrorResponse reads an upstream error and returns it in
