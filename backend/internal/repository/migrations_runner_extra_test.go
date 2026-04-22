@@ -96,6 +96,9 @@ REDACTED
 
 func TestMigrationChecksumCompatibilityRules_CoverEditedUpgradeCompatibilityMigrations(t *testing.T) {
 	for _, name := range []string{
+		"109_auth_identity_compat_backfill.sql",
+		"110_pending_auth_and_provider_default_grants.sql",
+		"112_add_payment_order_provider_key_snapshot.sql",
 		"115_auth_identity_legacy_external_backfill.sql",
 		"116_auth_identity_legacy_external_safety_reports.sql",
 		"118_wechat_dual_mode_and_auth_source_defaults.sql",

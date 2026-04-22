@@ -115,3 +115,15 @@ REDACTED
 	require.Contains(t, sql, "value = 'false'")
 	require.Contains(t, sql, "auth_identity_migration_reports")
 REDACTED
+
+func TestMigration124BackfillsLegacyOIDCSecurityFlagsSafely(t *testing.T) {
+	content, err := FS.ReadFile("124_backfill_legacy_oidc_security_flags.sql")
+REDACTED
+
+	sql := string(content)
+	require.Contains(t, sql, "oidc_connect_use_pkce")
+	require.Contains(t, sql, "oidc_connect_validate_id_token")
+	require.Contains(t, sql, "ON CONFLICT (key) DO NOTHING")
+	require.Contains(t, sql, "oidc_connect_enabled")
+	require.Contains(t, sql, "'false'")
+REDACTED
