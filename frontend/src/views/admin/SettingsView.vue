@@ -4136,7 +4136,7 @@
                   <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">
                     {{ t("admin.settings.payment.enabledPaymentTypesHint") REDACTEDREDACTED
                     <a
-                      :href="paymentGuideHref"
+                      :href="paymentMethodsHref"
                       target="_blank"
                       rel="noopener noreferrer"
                       class="ml-1 text-primary-500 hover:text-primary-600 dark:text-primary-400 dark:hover:text-primary-300"
@@ -4723,8 +4723,14 @@ REDACTED
 
 const paymentGuideHref = computed(() =>
   locale.value.startsWith("zh")
-    ? "https://github.com/Wei-Shaw/sub2api/blob/main/README_CN.md#%E6%94%AF%E4%BB%98"
-    : "https://github.com/Wei-Shaw/sub2api/blob/main/README.md#payment",
+    ? "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md"
+    : "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT.md",
+);
+
+const paymentMethodsHref = computed(() =>
+  locale.value.startsWith("zh")
+    ? "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md#支持的支付方式"
+    : "https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT.md#supported-payment-methods",
 );
 
 type SettingsTab =
