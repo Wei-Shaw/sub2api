@@ -323,6 +323,11 @@ REDACTED
 	emailBinding, ok := identityBindings["email"].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, true, emailBinding["bound"])
+	require.Equal(t, "profile.authBindings.notes.emailManagedFromProfile", emailBinding["note_key"])
+
+	linuxdoCompatBinding, ok := identityBindings["linuxdo"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "profile.authBindings.notes.canUnbind", linuxdoCompatBinding["note_key"])
 
 	profileSources, ok := resp.Data["profile_sources"].(map[string]any)
 	require.True(t, ok)

@@ -134,6 +134,7 @@ type UserIdentitySummary struct {
 	BindStartPath string     `json:"bind_start_path,omitempty"`
 	CanBind       bool       `json:"can_bind"`
 	CanUnbind     bool       `json:"can_unbind"`
+	NoteKey       string     `json:"note_key,omitempty"`
 	Note          string     `json:"note,omitempty"`
 REDACTED
 
@@ -155,6 +156,12 @@ type StartUserIdentityBindingResult struct {
 	Method             string `json:"method"`
 	UseBrowserRedirect bool   `json:"use_browser_redirect"`
 REDACTED
+
+const (
+	userIdentityNoteEmailManagedFromProfile = "profile.authBindings.notes.emailManagedFromProfile"
+	userIdentityNoteCanUnbind               = "profile.authBindings.notes.canUnbind"
+	userIdentityNoteBindAnotherBeforeUnbind = "profile.authBindings.notes.bindAnotherBeforeUnbind"
+)
 
 // UpdateProfileRequest 更新用户资料请求
 type UpdateProfileRequest struct {
@@ -601,6 +608,7 @@ func (s *UserService) buildEmailIdentitySummary(user *User, records []UserAuthId
 		Provider:  "email",
 		CanBind:   false,
 		CanUnbind: false,
+		NoteKey:   userIdentityNoteEmailManagedFromProfile,
 		Note:      "Primary account email is managed from the profile form.",
 REDACTED
 	if user == nil {
@@ -668,8 +676,10 @@ REDACTED
 	summary.VerifiedAt = primary.VerifiedAt
 	summary.CanUnbind = s.canUnbindProvider(provider, user, records)
 	if summary.CanUnbind {
+		summary.NoteKey = userIdentityNoteCanUnbind
 		summary.Note = "You can unbind this sign-in method."
 REDACTED else {
+		summary.NoteKey = userIdentityNoteBindAnotherBeforeUnbind
 		summary.Note = "Bind another sign-in method before unbinding."
 REDACTED
 	return summary
