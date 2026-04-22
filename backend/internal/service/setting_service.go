@@ -828,6 +828,16 @@ REDACTED
 	return true
 REDACTED
 
+func oidcCompatibilityWriteDefault(base config.OIDCConnectConfig, configured bool, raw string, explicit bool, explicitValue bool) bool {
+	if configured {
+		return strings.TrimSpace(raw) == "true"
+REDACTED
+	if explicit {
+		return explicitValue
+REDACTED
+	return false
+REDACTED
+
 // UpdateSettings 更新系统设置
 func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSettings) error {
 	updates, err := s.buildSystemSettingsUpdates(ctx, settings)
@@ -840,6 +850,28 @@ REDACTED
 		s.refreshCachedSettings(settings)
 REDACTED
 	return err
+REDACTED
+
+func (s *SettingService) OIDCSecurityWriteDefaults(ctx context.Context) (bool, bool, error) {
+	rawSettings, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyOIDCConnectUsePKCE,
+		SettingKeyOIDCConnectValidateIDToken,
+REDACTED)
+	if err != nil {
+		return false, false, fmt.Errorf("get oidc security write defaults: %w", err)
+REDACTED
+
+	base := config.OIDCConnectConfig{REDACTED
+	if s != nil && s.cfg != nil {
+		base = s.cfg.OIDC
+REDACTED
+
+	rawUsePKCE, hasUsePKCE := rawSettings[SettingKeyOIDCConnectUsePKCE]
+	rawValidateIDToken, hasValidateIDToken := rawSettings[SettingKeyOIDCConnectValidateIDToken]
+
+	return oidcCompatibilityWriteDefault(base, hasUsePKCE, rawUsePKCE, base.UsePKCEExplicit, base.UsePKCE),
+		oidcCompatibilityWriteDefault(base, hasValidateIDToken, rawValidateIDToken, base.ValidateIDTokenExplicit, base.ValidateIDToken),
+		nil
 REDACTED
 
 // UpdateSettingsWithAuthSourceDefaults persists system settings and auth-source defaults in a single write.
