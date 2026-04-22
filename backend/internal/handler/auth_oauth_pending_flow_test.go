@@ -1045,7 +1045,7 @@ func TestCreateOIDCOAuthAccountExistingEmailReturnsChoicePendingSessionState(t *
 	handler, client := newOAuthPendingFlowTestHandlerWithEmailVerification(t, false, "owner@example.com", "135790")
 	ctx := context.Background()
 
-	_, err := client.User.Create().
+	existingUser, err := client.User.Create().
 		SetEmail("owner@example.com").
 		SetUsername("owner-user").
 		SetPasswordHash("hash").
@@ -1099,7 +1099,8 @@ REDACTED
 	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
 REDACTED
 	require.Equal(t, oauthIntentLogin, storedSession.Intent)
-	require.Nil(t, storedSession.TargetUserID)
+	require.NotNil(t, storedSession.TargetUserID)
+	require.Equal(t, existingUser.ID, *storedSession.TargetUserID)
 	require.Equal(t, "owner@example.com", storedSession.ResolvedEmail)
 	require.Nil(t, storedSession.ConsumedAt)
 
@@ -1118,7 +1119,7 @@ func TestCreateOIDCOAuthAccountExistingEmailNormalizesLegacySpacingAndCase(t *te
 	handler, client := newOAuthPendingFlowTestHandlerWithEmailVerification(t, false, "owner@example.com", "135790")
 	ctx := context.Background()
 
-	_, err := client.User.Create().
+	existingUser, err := client.User.Create().
 		SetEmail(" Owner@Example.com ").
 		SetUsername("owner-user").
 		SetPasswordHash("hash").
@@ -1164,7 +1165,8 @@ REDACTED
 
 	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
 REDACTED
-	require.Nil(t, storedSession.TargetUserID)
+	require.NotNil(t, storedSession.TargetUserID)
+	require.Equal(t, existingUser.ID, *storedSession.TargetUserID)
 	require.Equal(t, "owner@example.com", storedSession.ResolvedEmail)
 REDACTED
 
@@ -1172,7 +1174,7 @@ func TestSendPendingOAuthVerifyCodeExistingEmailReturnsBindLoginState(t *testing
 	handler, client := newOAuthPendingFlowTestHandlerWithEmailVerification(t, false, "owner@example.com", "135790")
 	ctx := context.Background()
 
-	_, err := client.User.Create().
+	existingUser, err := client.User.Create().
 		SetEmail("owner@example.com").
 		SetUsername("owner-user").
 		SetPasswordHash("hash").
@@ -1220,7 +1222,8 @@ REDACTED
 	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
 REDACTED
 	require.Equal(t, oauthIntentLogin, storedSession.Intent)
-	require.Nil(t, storedSession.TargetUserID)
+	require.NotNil(t, storedSession.TargetUserID)
+	require.Equal(t, existingUser.ID, *storedSession.TargetUserID)
 	require.Equal(t, "owner@example.com", storedSession.ResolvedEmail)
 REDACTED
 

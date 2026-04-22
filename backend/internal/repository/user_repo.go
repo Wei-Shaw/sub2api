@@ -43,9 +43,6 @@ func (r *userRepository) Create(ctx context.Context, userIn *service.User) error
 	if userIn == nil {
 		return nil
 REDACTED
-	if err := r.ensureNormalizedEmailAvailable(ctx, 0, userIn.Email); err != nil {
-		return err
-REDACTED
 
 	// 统一使用 ent 的事务：保证用户与允许分组的更新原子化，
 	// 并避免基于 *sql.Tx 手动构造 ent client 导致的 ExecQuerier 断言错误。
@@ -55,9 +52,11 @@ REDACTED
 REDACTED
 
 	var txClient *dbent.Client
+	txCtx := ctx
 	if err == nil {
 		defer func() { _ = tx.Rollback() REDACTED()
 		txClient = tx.Client()
+		txCtx = dbent.NewTxContext(ctx, tx)
 REDACTED else {
 		// 已处于外部事务中（ErrTxStarted），复用当前事务 client 并由调用方负责提交/回滚。
 		if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
@@ -65,6 +64,21 @@ REDACTED else {
 	REDACTED else {
 			txClient = r.client
 	REDACTED
+REDACTED
+
+	releaseEmailLock, err := lockRepositoryScopedKeys(
+		txCtx,
+		txClient,
+		txAwareSQLExecutor(txCtx, r.sql, r.client),
+		normalizedEmailUniquenessLockKey(userIn.Email),
+	)
+	if err != nil {
+		return err
+REDACTED
+	defer releaseEmailLock()
+
+	if err := ensureNormalizedEmailAvailableWithClient(txCtx, txClient, 0, userIn.Email); err != nil {
+		return err
 REDACTED
 
 	created, err := txClient.User.Create().
@@ -79,15 +93,15 @@ REDACTED
 		SetSignupSource(userSignupSourceOrDefault(userIn.SignupSource)).
 		SetNillableLastLoginAt(userIn.LastLoginAt).
 		SetNillableLastActiveAt(userIn.LastActiveAt).
-		Save(ctx)
+		Save(txCtx)
 	if err != nil {
 		return translatePersistenceError(err, nil, service.ErrEmailExists)
 REDACTED
 
-	if err := r.syncUserAllowedGroupsWithClient(ctx, txClient, created.ID, userIn.AllowedGroups); err != nil {
+	if err := r.syncUserAllowedGroupsWithClient(txCtx, txClient, created.ID, userIn.AllowedGroups); err != nil {
 		return err
 REDACTED
-	if err := ensureEmailAuthIdentityWithClient(ctx, txClient, created.ID, created.Email, "user_repo_create"); err != nil {
+	if err := ensureEmailAuthIdentityWithClient(txCtx, txClient, created.ID, created.Email, "user_repo_create"); err != nil {
 		return err
 REDACTED
 
@@ -149,9 +163,6 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 	if userIn == nil {
 		return nil
 REDACTED
-	if err := r.ensureNormalizedEmailAvailable(ctx, userIn.ID, userIn.Email); err != nil {
-		return err
-REDACTED
 
 	// 使用 ent 事务包裹用户更新与 allowed_groups 同步，避免跨层事务不一致。
 	tx, err := r.client.Tx(ctx)
@@ -160,9 +171,11 @@ REDACTED
 REDACTED
 
 	var txClient *dbent.Client
+	txCtx := ctx
 	if err == nil {
 		defer func() { _ = tx.Rollback() REDACTED()
 		txClient = tx.Client()
+		txCtx = dbent.NewTxContext(ctx, tx)
 REDACTED else {
 		// 已处于外部事务中（ErrTxStarted），复用当前事务 client 并由调用方负责提交/回滚。
 		if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
@@ -171,7 +184,23 @@ REDACTED else {
 			txClient = r.client
 	REDACTED
 REDACTED
-	existing, err := clientFromContext(ctx, txClient).User.Get(ctx, userIn.ID)
+
+	releaseEmailLock, err := lockRepositoryScopedKeys(
+		txCtx,
+		txClient,
+		txAwareSQLExecutor(txCtx, r.sql, r.client),
+		normalizedEmailUniquenessLockKey(userIn.Email),
+	)
+	if err != nil {
+		return err
+REDACTED
+	defer releaseEmailLock()
+
+	if err := ensureNormalizedEmailAvailableWithClient(txCtx, txClient, userIn.ID, userIn.Email); err != nil {
+		return err
+REDACTED
+
+	existing, err := clientFromContext(txCtx, txClient).User.Get(txCtx, userIn.ID)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrUserNotFound, nil)
 REDACTED
@@ -203,15 +232,15 @@ REDACTED
 	if userIn.BalanceNotifyThreshold == nil {
 		updateOp = updateOp.ClearBalanceNotifyThreshold()
 REDACTED
-	updated, err := updateOp.Save(ctx)
+	updated, err := updateOp.Save(txCtx)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrUserNotFound, service.ErrEmailExists)
 REDACTED
 
-	if err := r.syncUserAllowedGroupsWithClient(ctx, txClient, updated.ID, userIn.AllowedGroups); err != nil {
+	if err := r.syncUserAllowedGroupsWithClient(txCtx, txClient, updated.ID, userIn.AllowedGroups); err != nil {
 		return err
 REDACTED
-	if err := replaceEmailAuthIdentityWithClient(ctx, txClient, updated.ID, oldEmail, updated.Email, "user_repo_update"); err != nil {
+	if err := replaceEmailAuthIdentityWithClient(txCtx, txClient, updated.ID, oldEmail, updated.Email, "user_repo_update"); err != nil {
 		return err
 REDACTED
 
@@ -711,7 +740,16 @@ func (r *userRepository) ExistsByEmail(ctx context.Context, email string) (bool,
 REDACTED
 
 func (r *userRepository) ensureNormalizedEmailAvailable(ctx context.Context, userID int64, email string) error {
-	matches, err := r.client.User.Query().
+	return ensureNormalizedEmailAvailableWithClient(ctx, clientFromContext(ctx, r.client), userID, email)
+REDACTED
+
+func ensureNormalizedEmailAvailableWithClient(ctx context.Context, client *dbent.Client, userID int64, email string) error {
+	client = clientFromContext(ctx, client)
+	if client == nil {
+		return nil
+REDACTED
+
+	matches, err := client.User.Query().
 		Where(userEmailLookupPredicate(email)).
 		All(ctx)
 	if err != nil {
@@ -726,7 +764,7 @@ REDACTED
 REDACTED
 
 func userEmailLookupPredicate(email string) predicate.User {
-	normalized := strings.ToLower(strings.TrimSpace(email))
+	normalized := normalizeEmailLookupValue(email)
 	if normalized == "" {
 		return dbuser.EmailEQ(email)
 REDACTED
@@ -738,6 +776,18 @@ REDACTED
 				Arg(normalized)
 	REDACTED))
 REDACTED)
+REDACTED
+
+func normalizeEmailLookupValue(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+REDACTED
+
+func normalizedEmailUniquenessLockKey(email string) string {
+	normalized := normalizeEmailLookupValue(email)
+	if normalized == "" {
+		return ""
+REDACTED
+	return "users:normalized-email:" + normalized
 REDACTED
 
 func (r *userRepository) AddGroupToAllowedGroups(ctx context.Context, userID int64, groupID int64) error {
@@ -874,11 +924,14 @@ REDACTED
 REDACTED
 
 func userSignupSourceOrDefault(signupSource string) string {
-	signupSource = strings.TrimSpace(signupSource)
-	if signupSource == "" {
+	switch strings.TrimSpace(strings.ToLower(signupSource)) {
+	case "", "email":
+		return "email"
+	case "linuxdo", "wechat", "oidc":
+		return strings.TrimSpace(strings.ToLower(signupSource))
+	default:
 		return "email"
 REDACTED
-	return signupSource
 REDACTED
 
 // marshalExtraEmails serializes notify email entries to JSON for storage.

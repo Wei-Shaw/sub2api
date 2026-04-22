@@ -1,6 +1,8 @@
 package schema
 
 import (
+	"fmt"
+
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 
@@ -73,7 +75,14 @@ func (User) Fields() []ent.Field {
 			Optional().
 			Nillable(),
 		field.String("signup_source").
-			MaxLen(20).
+			Validate(func(value string) error {
+				switch value {
+				case "email", "linuxdo", "wechat", "oidc":
+					return nil
+				default:
+					return fmt.Errorf("must be one of email, linuxdo, wechat, oidc")
+			REDACTED
+		REDACTED).
 			Default("email"),
 		field.Time("last_login_at").
 			Optional().

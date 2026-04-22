@@ -3,7 +3,9 @@ package schema
 import (
 	"testing"
 
+	"entgo.io/ent"
 	"entgo.io/ent/entc/load"
+	"entgo.io/ent/schema/field"
 	"github.com/stretchr/testify/require"
 )
 
@@ -74,6 +76,17 @@ REDACTED
 
 	userSchema := requireSchema(t, schemas, "User")
 	requireSchemaFields(t, userSchema, "signup_source", "last_login_at", "last_active_at")
+	signupSource := requireSchemaField(t, userSchema, "signup_source")
+	require.Equal(t, field.TypeString, signupSource.Info.Type)
+	require.True(t, signupSource.Default)
+	require.Equal(t, "email", signupSource.DefaultValue)
+	require.Equal(t, 1, signupSource.Validators)
+
+	validator := requireStringFieldValidator(t, User{REDACTED.Fields(), "signup_source")
+	for _, value := range []string{"email", "linuxdo", "wechat", "oidc"REDACTED {
+		require.NoError(t, validator(value))
+REDACTED
+	require.Error(t, validator("github"))
 REDACTED
 
 func requireSchema(t *testing.T, schemas map[string]*load.Schema, name string) *load.Schema {
@@ -96,6 +109,37 @@ REDACTED
 		_, ok := fields[name]
 		require.True(t, ok, "schema %s should include field %s", schema.Name, name)
 REDACTED
+REDACTED
+
+func requireSchemaField(t *testing.T, schema *load.Schema, name string) *load.Field {
+REDACTED
+
+	for _, schemaField := range schema.Fields {
+		if schemaField.Name == name {
+			return schemaField
+	REDACTED
+REDACTED
+
+	require.Failf(t, "missing schema field", "schema %s should include field %s", schema.Name, name)
+	return nil
+REDACTED
+
+func requireStringFieldValidator(t *testing.T, fields []ent.Field, name string) func(string) error {
+REDACTED
+
+	for _, entField := range fields {
+		descriptor := entField.Descriptor()
+		if descriptor.Name != name {
+			continue
+	REDACTED
+		require.NotEmpty(t, descriptor.Validators, "field %s should include a validator", name)
+		validator, ok := descriptor.Validators[0].(func(string) error)
+		require.True(t, ok, "field %s validator should be func(string) error", name)
+		return validator
+REDACTED
+
+	require.Failf(t, "missing field validator", "schema should include field %s", name)
+	return nil
 REDACTED
 
 func requireHasUniqueIndex(t *testing.T, schema *load.Schema, fields ...string) {

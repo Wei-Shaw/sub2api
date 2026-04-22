@@ -814,6 +814,20 @@ REDACTED
 	return urls
 REDACTED
 
+func oidcUsePKCECompatibilityDefault(base config.OIDCConnectConfig) bool {
+	if base.UsePKCEExplicit {
+		return base.UsePKCE
+REDACTED
+	return false
+REDACTED
+
+func oidcValidateIDTokenCompatibilityDefault(base config.OIDCConnectConfig) bool {
+	if base.ValidateIDTokenExplicit {
+		return base.ValidateIDToken
+REDACTED
+	return false
+REDACTED
+
 // UpdateSettings 更新系统设置
 func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSettings) error {
 	updates, err := s.buildSystemSettingsUpdates(ctx, settings)
@@ -1479,6 +1493,17 @@ REDACTED
 		return fmt.Errorf("check existing settings: %w", err)
 REDACTED
 
+	oidcUsePKCEDefault := true
+	oidcValidateIDTokenDefault := true
+	if s != nil && s.cfg != nil {
+		if s.cfg.OIDC.UsePKCEExplicit {
+			oidcUsePKCEDefault = s.cfg.OIDC.UsePKCE
+	REDACTED
+		if s.cfg.OIDC.ValidateIDTokenExplicit {
+			oidcValidateIDTokenDefault = s.cfg.OIDC.ValidateIDToken
+	REDACTED
+REDACTED
+
 	// 初始化默认设置
 	defaults := map[string]string{
 		SettingKeyRegistrationEnabled:                      "true",
@@ -1523,8 +1548,8 @@ REDACTED
 		SettingKeyOIDCConnectRedirectURL:                   "",
 		SettingKeyOIDCConnectFrontendRedirectURL:           "/auth/oidc/callback",
 		SettingKeyOIDCConnectTokenAuthMethod:               "client_secret_post",
-		SettingKeyOIDCConnectUsePKCE:                       "true",
-		SettingKeyOIDCConnectValidateIDToken:               "true",
+		SettingKeyOIDCConnectUsePKCE:                       strconv.FormatBool(oidcUsePKCEDefault),
+		SettingKeyOIDCConnectValidateIDToken:               strconv.FormatBool(oidcValidateIDTokenDefault),
 		SettingKeyOIDCConnectAllowedSigningAlgs:            "RS256,ES256,PS256",
 		SettingKeyOIDCConnectClockSkewSeconds:              "120",
 		SettingKeyOIDCConnectRequireEmailVerified:          "false",
@@ -1767,12 +1792,12 @@ REDACTED
 	if raw, ok := settings[SettingKeyOIDCConnectUsePKCE]; ok {
 		result.OIDCConnectUsePKCE = raw == "true"
 REDACTED else {
-		result.OIDCConnectUsePKCE = oidcBase.UsePKCE
+		result.OIDCConnectUsePKCE = oidcUsePKCECompatibilityDefault(oidcBase)
 REDACTED
 	if raw, ok := settings[SettingKeyOIDCConnectValidateIDToken]; ok {
 		result.OIDCConnectValidateIDToken = raw == "true"
 REDACTED else {
-		result.OIDCConnectValidateIDToken = oidcBase.ValidateIDToken
+		result.OIDCConnectValidateIDToken = oidcValidateIDTokenCompatibilityDefault(oidcBase)
 REDACTED
 	if v, ok := settings[SettingKeyOIDCConnectAllowedSigningAlgs]; ok && strings.TrimSpace(v) != "" {
 		result.OIDCConnectAllowedSigningAlgs = strings.TrimSpace(v)
@@ -2482,9 +2507,13 @@ REDACTED
 REDACTED
 	if raw, ok := settings[SettingKeyOIDCConnectUsePKCE]; ok {
 		effective.UsePKCE = raw == "true"
+REDACTED else {
+		effective.UsePKCE = oidcUsePKCECompatibilityDefault(effective)
 REDACTED
 	if raw, ok := settings[SettingKeyOIDCConnectValidateIDToken]; ok {
 		effective.ValidateIDToken = raw == "true"
+REDACTED else {
+		effective.ValidateIDToken = oidcValidateIDTokenCompatibilityDefault(effective)
 REDACTED
 	if v, ok := settings[SettingKeyOIDCConnectAllowedSigningAlgs]; ok && strings.TrimSpace(v) != "" {
 		effective.AllowedSigningAlgs = strings.TrimSpace(v)

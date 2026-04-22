@@ -335,6 +335,75 @@ REDACTED
 	require.Equal(t, false, data["oidc_connect_validate_id_token"])
 REDACTED
 
+func TestSettingHandler_UpdateSettings_DoesNotSolidifyImplicitOIDCSecurityDefaultsOnLegacyUpgrade(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerRepoStub{
+		values: map[string]string{
+			service.SettingKeyPromoCodeEnabled:                "true",
+			service.SettingKeyOIDCConnectEnabled:              "true",
+			service.SettingKeyOIDCConnectProviderName:         "OIDC",
+			service.SettingKeyOIDCConnectClientID:             "oidc-client",
+			service.SettingKeyOIDCConnectClientSecret:         "oidc-secret",
+			service.SettingKeyOIDCConnectIssuerURL:            "https://issuer.example.com",
+			service.SettingKeyOIDCConnectAuthorizeURL:         "https://issuer.example.com/auth",
+			service.SettingKeyOIDCConnectTokenURL:             "https://issuer.example.com/token",
+			service.SettingKeyOIDCConnectUserInfoURL:          "https://issuer.example.com/userinfo",
+			service.SettingKeyOIDCConnectJWKSURL:              "https://issuer.example.com/jwks",
+			service.SettingKeyOIDCConnectScopes:               "openid email profile",
+			service.SettingKeyOIDCConnectRedirectURL:          "https://example.com/api/v1/auth/oauth/oidc/callback",
+			service.SettingKeyOIDCConnectFrontendRedirectURL:  "/auth/oidc/callback",
+			service.SettingKeyOIDCConnectTokenAuthMethod:      "client_secret_post",
+			service.SettingKeyOIDCConnectAllowedSigningAlgs:   "RS256",
+			service.SettingKeyOIDCConnectClockSkewSeconds:     "120",
+			service.SettingKeyOIDCConnectRequireEmailVerified: "false",
+			service.SettingKeyOIDCConnectUserInfoEmailPath:    "",
+			service.SettingKeyOIDCConnectUserInfoIDPath:       "",
+			service.SettingKeyOIDCConnectUserInfoUsernamePath: "",
+	REDACTED,
+REDACTED
+	svc := service.NewSettingService(repo, &config.Config{
+		Default: config.DefaultConfig{UserConcurrency: 5REDACTED,
+		OIDC: config.OIDCConnectConfig{
+			Enabled:             true,
+			ProviderName:        "OIDC",
+			ClientID:            "oidc-client",
+			ClientSecret:        "oidc-secret",
+			IssuerURL:           "https://issuer.example.com",
+			AuthorizeURL:        "https://issuer.example.com/auth",
+			TokenURL:            "https://issuer.example.com/token",
+			UserInfoURL:         "https://issuer.example.com/userinfo",
+			JWKSURL:             "https://issuer.example.com/jwks",
+			Scopes:              "openid email profile",
+			RedirectURL:         "https://example.com/api/v1/auth/oauth/oidc/callback",
+			FrontendRedirectURL: "/auth/oidc/callback",
+			TokenAuthMethod:     "client_secret_post",
+			UsePKCE:             true,
+			ValidateIDToken:     true,
+			AllowedSigningAlgs:  "RS256",
+			ClockSkewSeconds:    120,
+	REDACTED,
+REDACTED)
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil)
+
+	body := map[string]any{
+		"promo_code_enabled":   true,
+		"oidc_connect_enabled": true,
+REDACTED
+	rawBody, err := json.Marshal(body)
+REDACTED
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/settings", bytes.NewReader(rawBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler.UpdateSettings(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "false", repo.values[service.SettingKeyOIDCConnectUsePKCE])
+	require.Equal(t, "false", repo.values[service.SettingKeyOIDCConnectValidateIDToken])
+REDACTED
+
 func TestSettingHandler_UpdateSettings_RejectsInvalidPaymentVisibleMethodSource(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &settingHandlerRepoStub{

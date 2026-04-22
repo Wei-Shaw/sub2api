@@ -14,10 +14,14 @@ import (
 
 func normalizeOAuthSignupSource(signupSource string) string {
 	signupSource = strings.TrimSpace(strings.ToLower(signupSource))
-	if signupSource == "" {
+	switch signupSource {
+	case "", "email":
+		return "email"
+	case "linuxdo", "wechat", "oidc":
+		return signupSource
+	default:
 		return "email"
 REDACTED
-	return signupSource
 REDACTED
 
 // SendPendingOAuthVerifyCode sends a local verification code for pending OAuth
@@ -136,10 +140,7 @@ REDACTED
 		return nil, nil, fmt.Errorf("hash password: %w", err)
 REDACTED
 
-	signupSource = strings.TrimSpace(strings.ToLower(signupSource))
-	if signupSource == "" {
-		signupSource = "email"
-REDACTED
+	signupSource = normalizeOAuthSignupSource(signupSource)
 	grantPlan := s.resolveSignupGrantPlan(ctx, signupSource)
 
 	user := &User{
@@ -149,6 +150,7 @@ REDACTED
 		Balance:      grantPlan.Balance,
 		Concurrency:  grantPlan.Concurrency,
 		Status:       StatusActive,
+		SignupSource: signupSource,
 REDACTED
 
 	if err := s.userRepo.Create(ctx, user); err != nil {

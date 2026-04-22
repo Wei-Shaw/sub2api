@@ -576,6 +576,258 @@ FROM auth_identity_migration_reports
 	require.Equal(t, beforeCount, afterCount)
 REDACTED
 
+func TestAuthIdentityLegacyExternalBackfillMigration_SkipsAmbiguousCanonicalSubjects(t *testing.T) {
+	tx := testTx(t)
+	ctx := context.Background()
+
+	migrationPath := filepath.Join("..", "..", "migrations", "115_auth_identity_legacy_external_backfill.sql")
+	migrationSQL, err := os.ReadFile(migrationPath)
+REDACTED
+
+	prepareLegacyExternalIdentitiesTable(t, tx, ctx)
+	truncateAuthIdentityLegacyFixtureTables(t, tx, ctx)
+
+	var linuxDoFirstUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('legacy-linuxdo-ambiguous-a@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&linuxDoFirstUserID))
+
+	var linuxDoSecondUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('legacy-linuxdo-ambiguous-b@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&linuxDoSecondUserID))
+
+	var wechatFirstUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('legacy-wechat-ambiguous-a@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&wechatFirstUserID))
+
+	var wechatSecondUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('legacy-wechat-ambiguous-b@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&wechatSecondUserID))
+
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'linuxdo', 'linuxdo-ambiguous-subject', NULL, 'legacy-linuxdo-ambiguous-a', 'Legacy LinuxDo Ambiguous A', '{"source":"legacy"REDACTED')
+RETURNING id
+`, linuxDoFirstUserID).Scan(new(int64)))
+
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'linuxdo', 'linuxdo-ambiguous-subject', NULL, 'legacy-linuxdo-ambiguous-b', 'Legacy LinuxDo Ambiguous B', '{"source":"legacy"REDACTED')
+RETURNING id
+`, linuxDoSecondUserID).Scan(new(int64)))
+
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'wechat', 'openid-ambiguous-a', 'union-ambiguous-subject', 'legacy-wechat-ambiguous-a', 'Legacy WeChat Ambiguous A', '{"channel":"oa","appid":"wx-ambiguous-a"REDACTED')
+RETURNING id
+`, wechatFirstUserID).Scan(new(int64)))
+
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'wechat', 'openid-ambiguous-b', 'union-ambiguous-subject', 'legacy-wechat-ambiguous-b', 'Legacy WeChat Ambiguous B', '{"channel":"oa","appid":"wx-ambiguous-b"REDACTED')
+RETURNING id
+`, wechatSecondUserID).Scan(new(int64)))
+
+	_, err = tx.ExecContext(ctx, string(migrationSQL))
+REDACTED
+
+	var linuxDoIdentityCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identities
+WHERE provider_type = 'linuxdo'
+  AND provider_key = 'linuxdo'
+  AND provider_subject = 'linuxdo-ambiguous-subject'
+`).Scan(&linuxDoIdentityCount))
+	require.Zero(t, linuxDoIdentityCount)
+
+	var wechatIdentityCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identities
+WHERE provider_type = 'wechat'
+  AND provider_key = 'wechat-main'
+  AND provider_subject = 'union-ambiguous-subject'
+`).Scan(&wechatIdentityCount))
+	require.Zero(t, wechatIdentityCount)
+
+	var wechatChannelCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identity_channels
+WHERE provider_type = 'wechat'
+  AND provider_key = 'wechat-main'
+  AND channel = 'oa'
+  AND channel_app_id IN ('wx-ambiguous-a', 'wx-ambiguous-b')
+`).Scan(&wechatChannelCount))
+	require.Zero(t, wechatChannelCount)
+REDACTED
+
+func TestAuthIdentityLegacyExternalMigrations_ReportAmbiguousCanonicalSubjectsWithoutWinnerAttribution(t *testing.T) {
+	tx := testTx(t)
+	ctx := context.Background()
+
+	migration115Path := filepath.Join("..", "..", "migrations", "115_auth_identity_legacy_external_backfill.sql")
+	migration115SQL, err := os.ReadFile(migration115Path)
+REDACTED
+
+	migration116Path := filepath.Join("..", "..", "migrations", "116_auth_identity_legacy_external_safety_reports.sql")
+	migration116SQL, err := os.ReadFile(migration116Path)
+REDACTED
+
+	prepareLegacyExternalIdentitiesTable(t, tx, ctx)
+	truncateAuthIdentityLegacyFixtureTables(t, tx, ctx)
+
+	var linuxDoFirstUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('legacy-linuxdo-conflict-a@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&linuxDoFirstUserID))
+
+	var linuxDoSecondUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('legacy-linuxdo-conflict-b@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&linuxDoSecondUserID))
+
+	var wechatFirstUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('legacy-wechat-conflict-a@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&wechatFirstUserID))
+
+	var wechatSecondUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('legacy-wechat-conflict-b@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&wechatSecondUserID))
+
+	var linuxDoFirstLegacyID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'linuxdo', 'linuxdo-conflict-subject', NULL, 'legacy-linuxdo-conflict-a', 'Legacy LinuxDo Conflict A', '{"source":"legacy"REDACTED')
+RETURNING id
+`, linuxDoFirstUserID).Scan(&linuxDoFirstLegacyID))
+
+	var linuxDoSecondLegacyID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'linuxdo', 'linuxdo-conflict-subject', NULL, 'legacy-linuxdo-conflict-b', 'Legacy LinuxDo Conflict B', '{"source":"legacy"REDACTED')
+RETURNING id
+`, linuxDoSecondUserID).Scan(&linuxDoSecondLegacyID))
+
+	var wechatFirstLegacyID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'wechat', 'openid-conflict-a', 'union-conflict-subject', 'legacy-wechat-conflict-a', 'Legacy WeChat Conflict A', '{"channel":"oa","appid":"wx-conflict-a"REDACTED')
+RETURNING id
+`, wechatFirstUserID).Scan(&wechatFirstLegacyID))
+
+	var wechatSecondLegacyID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'wechat', 'openid-conflict-b', 'union-conflict-subject', 'legacy-wechat-conflict-b', 'Legacy WeChat Conflict B', '{"channel":"oa","appid":"wx-conflict-b"REDACTED')
+RETURNING id
+`, wechatSecondUserID).Scan(&wechatSecondLegacyID))
+
+	_, err = tx.ExecContext(ctx, string(migration115SQL))
+REDACTED
+
+	_, err = tx.ExecContext(ctx, string(migration116SQL))
+REDACTED
+
+	var identityCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identities
+WHERE (provider_type = 'linuxdo' AND provider_key = 'linuxdo' AND provider_subject = 'linuxdo-conflict-subject')
+   OR (provider_type = 'wechat' AND provider_key = 'wechat-main' AND provider_subject = 'union-conflict-subject')
+`).Scan(&identityCount))
+	require.Zero(t, identityCount)
+
+	var conflictReportCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identity_migration_reports
+WHERE report_type = 'legacy_external_identity_conflict'
+  AND report_key IN ($1, $2, $3, $4)
+`, "legacy_external_identity:"+strconv.FormatInt(linuxDoFirstLegacyID, 10), "legacy_external_identity:"+strconv.FormatInt(linuxDoSecondLegacyID, 10), "legacy_external_identity:"+strconv.FormatInt(wechatFirstLegacyID, 10), "legacy_external_identity:"+strconv.FormatInt(wechatSecondLegacyID, 10)).Scan(&conflictReportCount))
+	require.Equal(t, 4, conflictReportCount)
+
+	var winnerAttributedReportCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identity_migration_reports
+WHERE report_type = 'legacy_external_identity_conflict'
+  AND report_key IN ($1, $2, $3, $4)
+  AND details ->> 'existing_identity_id' IS NOT NULL
+`, "legacy_external_identity:"+strconv.FormatInt(linuxDoFirstLegacyID, 10), "legacy_external_identity:"+strconv.FormatInt(linuxDoSecondLegacyID, 10), "legacy_external_identity:"+strconv.FormatInt(wechatFirstLegacyID, 10), "legacy_external_identity:"+strconv.FormatInt(wechatSecondLegacyID, 10)).Scan(&winnerAttributedReportCount))
+	require.Zero(t, winnerAttributedReportCount)
+REDACTED
+
 func TestAuthIdentityMigrationReportTypeWideningPreflightKeeps109And116SafeBefore121(t *testing.T) {
 	tx := testTx(t)
 	ctx := context.Background()

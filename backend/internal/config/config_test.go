@@ -254,6 +254,21 @@ func TestLoadDefaultOIDCSecurityDefaults(t *testing.T) {
 REDACTED
 	require.True(t, cfg.OIDC.UsePKCE)
 	require.True(t, cfg.OIDC.ValidateIDToken)
+	require.False(t, cfg.OIDC.UsePKCEExplicit)
+	require.False(t, cfg.OIDC.ValidateIDTokenExplicit)
+REDACTED
+
+func TestLoadExplicitOIDCSecurityDefaultsFromEnvMarksFlagsExplicit(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("OIDC_CONNECT_USE_PKCE", "false")
+	t.Setenv("OIDC_CONNECT_VALIDATE_ID_TOKEN", "false")
+
+	cfg, err := Load()
+REDACTED
+	require.False(t, cfg.OIDC.UsePKCE)
+	require.False(t, cfg.OIDC.ValidateIDToken)
+	require.True(t, cfg.OIDC.UsePKCEExplicit)
+	require.True(t, cfg.OIDC.ValidateIDTokenExplicit)
 REDACTED
 
 func TestLoadForcedCodexInstructionsTemplate(t *testing.T) {

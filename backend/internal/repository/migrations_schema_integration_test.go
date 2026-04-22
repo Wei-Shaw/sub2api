@@ -93,6 +93,19 @@ func TestMigrationsRunner_AuthIdentityAndPaymentSchemaStayAligned(t *testing.T) 
 	tx := testTx(t)
 
 	requireColumn(t, tx, "auth_identity_migration_reports", "report_type", "character varying", 80, false)
+	requireColumn(t, tx, "users", "signup_source", "character varying", 20, false)
+	requireColumnDefaultContains(t, tx, "users", "signup_source", "email")
+	requireConstraintDefinitionContains(
+		t,
+		tx,
+		"users",
+		"users_signup_source_check",
+		"signup_source",
+		"'email'",
+		"'linuxdo'",
+		"'wechat'",
+		"'oidc'",
+	)
 
 	requireForeignKeyOnDelete(t, tx, "auth_identities", "user_id", "users", "CASCADE")
 	requireForeignKeyOnDelete(t, tx, "auth_identity_channels", "identity_id", "auth_identities", "CASCADE")
@@ -193,6 +206,45 @@ LIMIT 1
 `, table, column, refTable).Scan(&actual)
 	require.NoError(t, err, "query foreign key action for %s.%s -> %s", table, column, refTable)
 	require.Equal(t, expected, actual, "unexpected ON DELETE action for %s.%s -> %s", table, column, refTable)
+REDACTED
+
+func requireConstraintDefinitionContains(t *testing.T, tx *sql.Tx, table, constraint string, fragments ...string) {
+REDACTED
+
+	var def string
+	err := tx.QueryRowContext(context.Background(), `
+SELECT pg_get_constraintdef(c.oid)
+FROM pg_constraint c
+JOIN pg_class tbl ON tbl.oid = c.conrelid
+JOIN pg_namespace ns ON ns.oid = tbl.relnamespace
+WHERE ns.nspname = 'public'
+  AND tbl.relname = $1
+  AND c.conname = $2
+`, table, constraint).Scan(&def)
+	require.NoError(t, err, "query constraint definition for %s.%s", table, constraint)
+
+	for _, fragment := range fragments {
+		require.Contains(t, def, fragment, "expected constraint definition for %s.%s to contain %q", table, constraint, fragment)
+REDACTED
+REDACTED
+
+func requireColumnDefaultContains(t *testing.T, tx *sql.Tx, table, column string, fragments ...string) {
+REDACTED
+
+	var columnDefault sql.NullString
+	err := tx.QueryRowContext(context.Background(), `
+SELECT column_default
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = $1
+  AND column_name = $2
+`, table, column).Scan(&columnDefault)
+	require.NoError(t, err, "query column_default for %s.%s", table, column)
+	require.True(t, columnDefault.Valid, "expected column_default for %s.%s", table, column)
+
+	for _, fragment := range fragments {
+		require.Contains(t, columnDefault.String, fragment, "expected default for %s.%s to contain %q", table, column, fragment)
+REDACTED
 REDACTED
 
 func requireColumn(t *testing.T, tx *sql.Tx, table, column, dataType string, maxLen int, nullable bool) {

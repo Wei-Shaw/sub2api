@@ -70,6 +70,24 @@ REDACTED)
 		require.True(t, ok)
 REDACTED)
 
+	t.Run("115历史checksum可兼容修复后的legacy external backfill", func(t *testing.T) {
+		ok := isMigrationChecksumCompatible(
+			"115_auth_identity_legacy_external_backfill.sql",
+			"4cf39e508be9fd1a5aa41610cbbebeb80385c9adda45bf78a706de9db4f1385f",
+			"022aadd97bb53e755f0cf7a3a957e0cb1a1353b0c39ec4de3234acd2871fd04f",
+		)
+		require.True(t, ok)
+REDACTED)
+
+	t.Run("116历史checksum可兼容修复后的legacy external safety reports", func(t *testing.T) {
+		ok := isMigrationChecksumCompatible(
+			"116_auth_identity_legacy_external_safety_reports.sql",
+			"f7757bd929ac67ffb08ce69fa4cf20fad39dbff9d5a5085fb2adabb7607e5877",
+			"07edb09fa8d04ffb172b0621e3c22f4d1757d20a24ae267b3b36b087ab72d488",
+		)
+		require.True(t, ok)
+REDACTED)
+
 	t.Run("119历史checksum可兼容占位文件", func(t *testing.T) {
 		ok := isMigrationChecksumCompatible(
 			"119_enforce_payment_orders_out_trade_no_unique.sql",
@@ -77,6 +95,21 @@ REDACTED)
 			"0bbe809ae48a9d811dabda1ba1c74955bd71c4a9cc610f9128816818dfa6c11e",
 		)
 		require.True(t, ok)
+REDACTED)
+
+	t.Run("120多个历史checksum都可兼容新的notx修复版本", func(t *testing.T) {
+		for _, dbChecksum := range []string{
+			"e77921f79d539bc24575cb9c16cbe566d2b23ce816190343d0a7568f6a3fcf61",
+			"707431450603e70a43ce9fbd61e0c12fa67da4875158ccefabacea069587ab22",
+			"04b082b5a239c525154fe9185d324ee2b05ff90da9297e10dba19f9be79aa59a",
+	REDACTED {
+			ok := isMigrationChecksumCompatible(
+				"120_enforce_payment_orders_out_trade_no_unique_notx.sql",
+				dbChecksum,
+				"34aadc0db59a4e390f92a12b73bd74642d9724f33124f73638ae00089ea5e074",
+			)
+			require.True(t, ok)
+	REDACTED
 REDACTED)
 
 	t.Run("119未知checksum不兼容", func(t *testing.T) {
