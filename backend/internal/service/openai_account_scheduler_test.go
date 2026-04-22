@@ -1440,6 +1440,38 @@ func TestSelectByLoadBalance_ExhaustedOverflowUsesReserve(t *testing.T) {
 	}
 }
 
+func TestSelectByLoadBalance_ExhaustedEmptyTreatsUsageAsFullAndUsesReserve(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(13015)
+	accounts := []Account{
+		newOpenAIReserveCandidateAccountForTest(3115, 10, 20),
+	}
+	loadMap := map[int64]*AccountLoadInfo{
+		3115: {AccountID: 3115, CurrentConcurrency: 0, LoadRate: 0},
+	}
+	svc := newOpenAIReserveSelectionServiceForTest(accounts, loadMap)
+
+	selection, decision, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"session_hash_exhausted_empty_uses_reserve",
+		"gpt-5.1",
+		TargetGroupExhausted,
+		nil,
+		OpenAIUpstreamTransportAny,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(3115), selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	require.Equal(t, "reserve", requireDecisionStringField(t, decision, "SelectedGroup"))
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
 func TestSelectByLoadBalance_ExhaustedBelowThresholdDoesNotUseReserve(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(1302)

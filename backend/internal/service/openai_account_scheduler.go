@@ -713,9 +713,9 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 			_ = s.service.bindOpenAIStickySessionAffinity(ctx, req.GroupID, sessionHash, newOpenAIAffinityBinding(account.ID, selectedGroup))
 		}
 		return &AccountSelectionResult{
-			Account:     account,
-			Acquired:    true,
-			ReleaseFunc: result.ReleaseFunc,
+			Account:       account,
+			Acquired:      true,
+			ReleaseFunc:   result.ReleaseFunc,
 			SelectedGroup: selectedGroup,
 		}, nil
 	}
@@ -966,7 +966,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	if err != nil {
 		return nil, "", 0, 0, 0, err
 	}
-	if len(accounts) == 0 {
+	if len(accounts) == 0 && !(req.TargetGroup == TargetGroupExhausted && len(reserveAccounts) > 0) {
 		return nil, "", 0, 0, 0, errors.New("no available OpenAI accounts")
 	}
 
@@ -1038,7 +1038,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	for i := range reserveAccounts {
 		appendFilteredAccount(&reserveAccounts[i], openAISelectedGroupReserve, &reserveFiltered, &reserveFilteredValues)
 	}
-	if len(filtered) == 0 {
+	if len(filtered) == 0 && !(req.TargetGroup == TargetGroupExhausted && len(reserveFiltered) > 0) {
 		return nil, "", 0, 0, 0, errors.New("no available OpenAI accounts")
 	}
 
@@ -1198,9 +1198,9 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 				_ = s.service.bindOpenAIStickySessionAffinity(ctx, req.GroupID, req.SessionHash, newOpenAIAffinityBinding(fresh.ID, candidate.selectedGroup))
 			}
 			return &AccountSelectionResult{
-				Account:     fresh,
-				Acquired:    true,
-				ReleaseFunc: result.ReleaseFunc,
+				Account:       fresh,
+				Acquired:      true,
+				ReleaseFunc:   result.ReleaseFunc,
 				SelectedGroup: candidate.selectedGroup,
 			}, candidate.selectedGroup, len(candidates), topK, loadSkew, nil
 		}

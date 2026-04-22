@@ -1821,7 +1821,7 @@ func shouldRouteExhaustedOverflowToReserve(exhaustedAccounts []Account, reserveA
 
 	exhaustedCapacity := calculateOpenAIConcurrentCapacity(exhaustedAccounts)
 	if exhaustedCapacity <= 0 {
-		return false
+		return len(exhaustedAccounts) == 0
 	}
 
 	usagePercent := calculateOpenAIConcurrentUsagePercent(exhaustedAccounts, loadMap)
