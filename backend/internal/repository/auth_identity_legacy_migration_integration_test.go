@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS user_external_identities (
 		auth_identity_migration_reports,
 		user_external_identities,
 		users
-	RESTART IDENTITY;
+	RESTART IDENTITY CASCADE;
 `)
 REDACTED
 
@@ -241,7 +241,7 @@ TRUNCATE TABLE
 	auth_identity_migration_reports,
 	user_external_identities,
 	users
-RESTART IDENTITY;
+RESTART IDENTITY CASCADE;
 `)
 REDACTED
 
@@ -431,7 +431,7 @@ CREATE TABLE IF NOT EXISTS user_external_identities (
 		auth_identity_migration_reports,
 		user_external_identities,
 		users
-	RESTART IDENTITY;
+	RESTART IDENTITY CASCADE;
 `)
 REDACTED
 
