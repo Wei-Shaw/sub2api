@@ -311,6 +311,7 @@ interface CreateOrderOptions {
   wechatResumeToken?: string
   paymentType?: string
   isResume?: boolean
+  mobileQrFallbackAttempted?: boolean
 REDACTED
 
 interface WeixinJSBridgeLike {
@@ -666,14 +667,15 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
   submitting.value = true
   errorMessage.value = ''
   errorHintMessage.value = ''
+  const requestType = normalizeVisibleMethod(options.paymentType || selectedMethod.value) || options.paymentType || selectedMethod.value
   try {
-    const requestType = normalizeVisibleMethod(options.paymentType || selectedMethod.value) || options.paymentType || selectedMethod.value
     const payload = buildCreateOrderPayload({
       amount: orderAmount,
       paymentType: requestType,
       orderType,
       planId,
       origin: typeof window !== 'undefined' ? window.location.origin : '',
+      isMobile: isMobileDevice(),
       isWechatBrowser: typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
     REDACTED)
     if (options.openid) {
@@ -747,8 +749,20 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
           appStore.showInfo(t('payment.qr.cancelled'))
           resetPayment()
         REDACTED else if (errMsg && !errMsg.includes('ok')) {
-          applyScenarioError({ reason: 'WECHAT_JSAPI_FAILED', message: errMsg REDACTED, visibleMethod)
           resetPayment()
+          const fallbackApplied = await attemptMobileQrFallback(
+            { reason: 'WECHAT_JSAPI_FAILED', message: errMsg REDACTED,
+            {
+              orderAmount,
+              orderType,
+              planId,
+              paymentType: visibleMethod,
+              attempted: options.mobileQrFallbackAttempted === true,
+            REDACTED,
+          )
+          if (!fallbackApplied) {
+            applyScenarioError({ reason: 'WECHAT_JSAPI_FAILED', message: errMsg REDACTED, visibleMethod)
+          REDACTED
         REDACTED else {
           const resultState = { ...decision.paymentState REDACTED
           resetPayment()
@@ -756,7 +770,16 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
         REDACTED
       REDACTED catch (err: unknown) {
         resetPayment()
-        throw err
+        const fallbackApplied = await attemptMobileQrFallback(err, {
+          orderAmount,
+          orderType,
+          planId,
+          paymentType: visibleMethod,
+          attempted: options.mobileQrFallbackAttempted === true,
+        REDACTED)
+        if (!fallbackApplied) {
+          throw err
+        REDACTED
       REDACTED
       return
     REDACTED
@@ -776,6 +799,14 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     REDACTED else if (apiErr.reason === 'CANCEL_RATE_LIMITED') {
       errorMessage.value = t('payment.errors.cancelRateLimited')
       errorHintMessage.value = ''
+    REDACTED else if (await attemptMobileQrFallback(err, {
+      orderAmount,
+      orderType,
+      planId,
+      paymentType: requestType,
+      attempted: options.mobileQrFallbackAttempted === true,
+    REDACTED)) {
+      return
     REDACTED else {
       const handled = applyScenarioError(
         err,
@@ -792,6 +823,101 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     appStore.showError(buildPaymentErrorToastMessage(errorMessage.value, errorHintMessage.value))
   REDACTED finally {
     submitting.value = false
+  REDACTED
+REDACTED
+
+interface MobileQrFallbackContext {
+  orderAmount: number
+  orderType: OrderType
+  planId?: number
+  paymentType: string
+  attempted: boolean
+REDACTED
+
+function shouldFallbackToDesktopQr(err: unknown, paymentMethod: string, attempted: boolean): boolean {
+  if (attempted || !isMobileDevice()) {
+    return false
+  REDACTED
+
+  const normalizedMethod = normalizeVisibleMethod(paymentMethod) || paymentMethod
+  const reason = typeof err === 'object' && err && 'reason' in err && typeof err.reason === 'string'
+    ? err.reason
+    : ''
+  const message = err instanceof Error
+    ? err.message
+    : (typeof err === 'object' && err && 'message' in err && typeof err.message === 'string'
+      ? err.message
+      : '')
+  const normalizedMessage = message.toLowerCase()
+
+  if (normalizedMethod === 'wxpay') {
+    return reason === 'WECHAT_H5_NOT_AUTHORIZED'
+      || reason === 'WECHAT_PAYMENT_MP_NOT_CONFIGURED'
+      || reason === 'WECHAT_JSAPI_FAILED'
+      || reason === 'PAYMENT_GATEWAY_ERROR'
+      || reason === 'UNHANDLED_PAYMENT_SCENARIO'
+      || normalizedMessage.includes('weixinjsbridge is unavailable')
+      || normalizedMessage.includes('wechat_jsapi_unavailable')
+  REDACTED
+
+  if (normalizedMethod === 'alipay') {
+    return reason === 'PAYMENT_GATEWAY_ERROR' || reason === 'UNHANDLED_PAYMENT_SCENARIO'
+  REDACTED
+
+  return false
+REDACTED
+
+async function attemptMobileQrFallback(err: unknown, context: MobileQrFallbackContext): Promise<boolean> {
+  if (!shouldFallbackToDesktopQr(err, context.paymentType, context.attempted)) {
+    return false
+  REDACTED
+
+  try {
+    const visibleMethod = normalizeVisibleMethod(context.paymentType) || context.paymentType
+    const payload = buildCreateOrderPayload({
+      amount: context.orderAmount,
+      paymentType: visibleMethod,
+      orderType: context.orderType,
+      planId: context.planId,
+      origin: typeof window !== 'undefined' ? window.location.origin : '',
+      isMobile: false,
+      isWechatBrowser: false,
+    REDACTED)
+    const result = await paymentStore.createOrder(payload) as CreateOrderResult & { resume_token?: string REDACTED
+    const stripeMethod = visibleMethod === 'wxpay' ? 'wechat_pay' : 'alipay'
+    const stripeRouteUrl = result.client_secret
+      ? router.resolve({
+        path: '/payment/stripe',
+        query: {
+          order_id: String(result.order_id),
+          client_secret: result.client_secret,
+          method: stripeMethod,
+          resume_token: result.resume_token || undefined,
+        REDACTED,
+      REDACTED).href
+      : ''
+    const decision = decidePaymentLaunch(result, {
+      visibleMethod,
+      orderType: context.orderType,
+      isMobile: false,
+      isWechatBrowser: false,
+      stripePopupUrl: stripeRouteUrl,
+      stripeRouteUrl,
+    REDACTED)
+
+    if (decision.kind !== 'qr_waiting' || !decision.paymentState.qrCode) {
+      return false
+    REDACTED
+
+    errorMessage.value = ''
+    errorHintMessage.value = ''
+    paymentState.value = decision.paymentState
+    paymentPhase.value = 'paying'
+    persistRecoverySnapshot(decision.recovery)
+    appStore.showWarning(t('payment.errors.mobilePaymentFallbackToQr'))
+    return true
+  REDACTED catch {
+    return false
   REDACTED
 REDACTED
 
