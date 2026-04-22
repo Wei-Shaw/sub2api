@@ -52,6 +52,10 @@ const (
 	FieldSubscriptionDays = "subscription_days"
 	// FieldProviderInstanceID holds the string denoting the provider_instance_id field in the database.
 	FieldProviderInstanceID = "provider_instance_id"
+	// FieldProviderKey holds the string denoting the provider_key field in the database.
+	FieldProviderKey = "provider_key"
+	// FieldProviderSnapshot holds the string denoting the provider_snapshot field in the database.
+	FieldProviderSnapshot = "provider_snapshot"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
 	// FieldRefundAmount holds the string denoting the refund_amount field in the database.
@@ -123,6 +127,8 @@ var Columns = []string{
 	FieldSubscriptionGroupID,
 	FieldSubscriptionDays,
 	FieldProviderInstanceID,
+	FieldProviderKey,
+	FieldProviderSnapshot,
 	FieldStatus,
 	FieldRefundAmount,
 	FieldRefundReason,
@@ -176,6 +182,8 @@ var (
 	OrderTypeValidator func(string) error
 	// ProviderInstanceIDValidator is a validator for the "provider_instance_id" field. It is called by the builders before save.
 	ProviderInstanceIDValidator func(string) error
+	// ProviderKeyValidator is a validator for the "provider_key" field. It is called by the builders before save.
+	ProviderKeyValidator func(string) error
 	// DefaultStatus holds the default value on creation for the "status" field.
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
@@ -299,6 +307,11 @@ func BySubscriptionDays(opts ...sql.OrderTermOption) OrderOption {
 // ByProviderInstanceID orders the results by the provider_instance_id field.
 func ByProviderInstanceID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldProviderInstanceID, opts...).ToFunc()
+}
+
+// ByProviderKey orders the results by the provider_key field.
+func ByProviderKey(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldProviderKey, opts...).ToFunc()
 }
 
 // ByStatus orders the results by the status field.

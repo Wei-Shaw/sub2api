@@ -86,6 +86,14 @@ func (s *balanceLoadUserRepoStub) GetByID(ctx context.Context, id int64) (*User,
 	return &User{ID: id, Balance: s.balance}, nil
 }
 
+func (s *balanceLoadUserRepoStub) ListUserAuthIdentities(context.Context, int64) ([]UserAuthIdentityRecord, error) {
+	return nil, nil
+}
+
+func (s *balanceLoadUserRepoStub) UnbindUserAuthProvider(context.Context, int64, string) error {
+	return nil
+}
+
 func TestBillingCacheServiceGetUserBalance_Singleflight(t *testing.T) {
 	cache := &billingCacheMissStub{}
 	userRepo := &balanceLoadUserRepoStub{

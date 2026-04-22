@@ -68,10 +68,16 @@ func TestInstanceSupportsType(t *testing.T) {
 			expected:       true,
 		},
 		{
-			name:           "partial match should not succeed",
+			name:           "legacy alipay direct supports canonical visible method",
 			supportedTypes: "alipay_direct",
 			target:         "alipay",
-			expected:       false,
+			expected:       true,
+		},
+		{
+			name:           "legacy wxpay direct supports canonical visible method",
+			supportedTypes: "wxpay_direct",
+			target:         "wxpay",
+			expected:       true,
 		},
 		{
 			name:           "empty supported types means all supported",
@@ -89,6 +95,22 @@ func TestInstanceSupportsType(t *testing.T) {
 				t.Fatalf("InstanceSupportsType(%q, %q) = %v, want %v", tt.supportedTypes, tt.target, got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestGetInstanceChannelLimitsFallsBackToLegacyDirectAliases(t *testing.T) {
+	t.Parallel()
+
+	inst := testInstance(1, TypeAlipay, makeLimitsJSON(TypeAlipayDirect, ChannelLimits{SingleMax: 66}))
+	got := getInstanceChannelLimits(inst, TypeAlipay)
+	if got.SingleMax != 66 {
+		t.Fatalf("getInstanceChannelLimits() = %+v, want SingleMax=66", got)
+	}
+
+	wxInst := testInstance(2, TypeWxpay, makeLimitsJSON(TypeWxpayDirect, ChannelLimits{SingleMin: 8}))
+	wxGot := getInstanceChannelLimits(wxInst, TypeWxpay)
+	if wxGot.SingleMin != 8 {
+		t.Fatalf("getInstanceChannelLimits() = %+v, want SingleMin=8", wxGot)
 	}
 }
 

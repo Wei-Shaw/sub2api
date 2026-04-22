@@ -131,6 +131,7 @@ docs/*
 !docs/ACCOUNT_SCHEDULING_FLOW.md
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
+!docs/ADMIN_PAYMENT_INTEGRATION_API.md
 .serena/
 
 # ===================

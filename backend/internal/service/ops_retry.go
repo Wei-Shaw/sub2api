@@ -388,7 +388,7 @@ func (s *OpsService) executeRetry(ctx context.Context, errorLog *OpsErrorLogDeta
 func detectOpsRetryType(path string) opsRetryRequestType {
 	p := strings.ToLower(strings.TrimSpace(path))
 	switch {
-	case strings.Contains(p, "/responses"):
+	case strings.Contains(p, "/responses"), strings.Contains(p, "/images/"):
 		return opsRetryTypeOpenAI
 	case strings.Contains(p, "/v1beta/"):
 		return opsRetryTypeGeminiV1B

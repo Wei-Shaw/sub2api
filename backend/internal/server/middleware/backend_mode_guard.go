@@ -27,23 +27,50 @@ func BackendModeUserGuard(settingService *service.SettingService) gin.HandlerFun
 	}
 }
 
+func backendModeAllowsAuthPath(path string) bool {
+	path = strings.ToLower(strings.TrimSpace(path))
+	for _, suffix := range []string{"/auth/login", "/auth/login/2fa", "/auth/logout", "/auth/refresh"} {
+		if strings.HasSuffix(path, suffix) {
+			return true
+		}
+	}
+
+	for _, suffix := range []string{
+		"/auth/oauth/linuxdo/callback",
+		"/auth/oauth/wechat/callback",
+		"/auth/oauth/wechat/payment/callback",
+		"/auth/oauth/oidc/callback",
+		"/auth/oauth/linuxdo/complete-registration",
+		"/auth/oauth/wechat/complete-registration",
+		"/auth/oauth/oidc/complete-registration",
+		"/auth/oauth/linuxdo/create-account",
+		"/auth/oauth/wechat/create-account",
+		"/auth/oauth/oidc/create-account",
+		"/auth/oauth/linuxdo/bind-login",
+		"/auth/oauth/wechat/bind-login",
+		"/auth/oauth/oidc/bind-login",
+	} {
+		if strings.HasSuffix(path, suffix) {
+			return true
+		}
+	}
+
+	return strings.Contains(path, "/auth/oauth/pending/")
+}
+
 // BackendModeAuthGuard selectively blocks auth endpoints when backend mode is enabled.
-// Allows: login, login/2fa, logout, refresh (admin needs these).
-// Blocks: register, forgot-password, reset-password, OAuth, etc.
+// Allows the minimal auth surface admins still need in backend mode, including
+// OAuth callbacks and pending continuations. Handler-level backend mode checks
+// still enforce admin-only login and forbid self-service registration.
 func BackendModeAuthGuard(settingService *service.SettingService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if settingService == nil || !settingService.IsBackendModeEnabled(c.Request.Context()) {
 			c.Next()
 			return
 		}
-		path := c.Request.URL.Path
-		// Allow login, 2FA, logout, refresh, public settings
-		allowedSuffixes := []string{"/auth/login", "/auth/login/2fa", "/auth/logout", "/auth/refresh"}
-		for _, suffix := range allowedSuffixes {
-			if strings.HasSuffix(path, suffix) {
-				c.Next()
-				return
-			}
+		if backendModeAllowsAuthPath(c.Request.URL.Path) {
+			c.Next()
+			return
 		}
 		response.Forbidden(c, "Backend mode is active. Registration and self-service auth flows are disabled.")
 		c.Abort()

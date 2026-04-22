@@ -63,11 +63,6 @@
             />
           </div>
 
-          <!-- Error -->
-          <div v-if="error" class="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400">
-            {{ error }}
-          </div>
-
           <!-- Actions -->
           <div class="flex justify-end gap-3 pt-4">
             <button type="button" class="btn btn-secondary" @click="$emit('close')">
@@ -104,7 +99,6 @@ const appStore = useAppStore()
 const methodLoading = ref(true)
 const verificationMethod = ref<'email' | 'password'>('password')
 const loading = ref(false)
-const error = ref('')
 const sendingCode = ref(false)
 const codeCooldown = ref(0)
 const cooldownTimer = ref<ReturnType<typeof setInterval> | null>(null)
@@ -164,7 +158,6 @@ const handleDisable = async () => {
   if (!canSubmit.value) return
 
   loading.value = true
-  error.value = ''
 
   try {
     const request = verificationMethod.value === 'email'
@@ -175,7 +168,7 @@ const handleDisable = async () => {
     appStore.showSuccess(t('profile.totp.disableSuccess'))
     emit('success')
   } catch (err: any) {
-    error.value = err.response?.data?.message || t('profile.totp.disableFailed')
+    appStore.showError(err.response?.data?.message || t('profile.totp.disableFailed'))
   } finally {
     loading.value = false
   }

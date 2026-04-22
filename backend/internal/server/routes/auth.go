@@ -63,20 +63,108 @@ func RegisterAuthRoutes(
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.ResetPassword)
 		auth.GET("/oauth/linuxdo/start", h.Auth.LinuxDoOAuthStart)
+		auth.GET("/oauth/linuxdo/bind/start", func(c *gin.Context) {
+			query := c.Request.URL.Query()
+			query.Set("intent", "bind_current_user")
+			c.Request.URL.RawQuery = query.Encode()
+			h.Auth.LinuxDoOAuthStart(c)
+		})
 		auth.GET("/oauth/linuxdo/callback", h.Auth.LinuxDoOAuthCallback)
+		auth.GET("/oauth/wechat/start", h.Auth.WeChatOAuthStart)
+		auth.GET("/oauth/wechat/bind/start", func(c *gin.Context) {
+			query := c.Request.URL.Query()
+			query.Set("intent", "bind_current_user")
+			c.Request.URL.RawQuery = query.Encode()
+			h.Auth.WeChatOAuthStart(c)
+		})
+		auth.GET("/oauth/wechat/callback", h.Auth.WeChatOAuthCallback)
+		auth.GET("/oauth/wechat/payment/start", h.Auth.WeChatPaymentOAuthStart)
+		auth.GET("/oauth/wechat/payment/callback", h.Auth.WeChatPaymentOAuthCallback)
+		auth.POST("/oauth/pending/exchange",
+			rateLimiter.LimitWithOptions("oauth-pending-exchange", 20, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.ExchangePendingOAuthCompletion,
+		)
+		auth.POST("/oauth/pending/send-verify-code",
+			rateLimiter.LimitWithOptions("oauth-pending-send-verify-code", 5, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.SendPendingOAuthVerifyCode,
+		)
+		auth.POST("/oauth/pending/create-account",
+			rateLimiter.LimitWithOptions("oauth-pending-create-account", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.CreatePendingOAuthAccount,
+		)
+		auth.POST("/oauth/pending/bind-login",
+			rateLimiter.LimitWithOptions("oauth-pending-bind-login", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.BindPendingOAuthLogin,
+		)
 		auth.POST("/oauth/linuxdo/complete-registration",
 			rateLimiter.LimitWithOptions("oauth-linuxdo-complete", 10, time.Minute, middleware.RateLimitOptions{
 				FailureMode: middleware.RateLimitFailClose,
 			}),
 			h.Auth.CompleteLinuxDoOAuthRegistration,
 		)
+		auth.POST("/oauth/linuxdo/bind-login",
+			rateLimiter.LimitWithOptions("oauth-linuxdo-bind-login", 20, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.BindLinuxDoOAuthLogin,
+		)
+		auth.POST("/oauth/linuxdo/create-account",
+			rateLimiter.LimitWithOptions("oauth-linuxdo-create-account", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.CreateLinuxDoOAuthAccount,
+		)
+		auth.POST("/oauth/wechat/complete-registration",
+			rateLimiter.LimitWithOptions("oauth-wechat-complete", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.CompleteWeChatOAuthRegistration,
+		)
+		auth.POST("/oauth/wechat/bind-login",
+			rateLimiter.LimitWithOptions("oauth-wechat-bind-login", 20, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.BindWeChatOAuthLogin,
+		)
+		auth.POST("/oauth/wechat/create-account",
+			rateLimiter.LimitWithOptions("oauth-wechat-create-account", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.CreateWeChatOAuthAccount,
+		)
 		auth.GET("/oauth/oidc/start", h.Auth.OIDCOAuthStart)
+		auth.GET("/oauth/oidc/bind/start", func(c *gin.Context) {
+			query := c.Request.URL.Query()
+			query.Set("intent", "bind_current_user")
+			c.Request.URL.RawQuery = query.Encode()
+			h.Auth.OIDCOAuthStart(c)
+		})
 		auth.GET("/oauth/oidc/callback", h.Auth.OIDCOAuthCallback)
 		auth.POST("/oauth/oidc/complete-registration",
 			rateLimiter.LimitWithOptions("oauth-oidc-complete", 10, time.Minute, middleware.RateLimitOptions{
 				FailureMode: middleware.RateLimitFailClose,
 			}),
 			h.Auth.CompleteOIDCOAuthRegistration,
+		)
+		auth.POST("/oauth/oidc/bind-login",
+			rateLimiter.LimitWithOptions("oauth-oidc-bind-login", 20, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.BindOIDCOAuthLogin,
+		)
+		auth.POST("/oauth/oidc/create-account",
+			rateLimiter.LimitWithOptions("oauth-oidc-create-account", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.CreateOIDCOAuthAccount,
 		)
 	}
 
@@ -94,5 +182,6 @@ func RegisterAuthRoutes(
 		authenticated.GET("/auth/me", h.Auth.GetCurrentUser)
 		// 撤销所有会话（需要认证）
 		authenticated.POST("/auth/revoke-all-sessions", h.Auth.RevokeAllSessions)
+		authenticated.POST("/auth/oauth/bind-token", h.Auth.PrepareOAuthBindAccessTokenCookie)
 	}
 }
