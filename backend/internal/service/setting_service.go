@@ -282,7 +282,19 @@ func mergeWeChatConnectCapabilitySettings(settings map[string]string, base confi
 	mobileConfigured := hasMobile && strings.TrimSpace(rawMobile) != ""
 
 	if openConfigured || mpConfigured || mobileConfigured {
-		return parseWeChatConnectCapabilitySettings(settings, enabled, mode)
+		openEnabled := strings.TrimSpace(rawOpen) == "true"
+		mpEnabled := strings.TrimSpace(rawMP) == "true"
+		mobileEnabled := strings.TrimSpace(rawMobile) == "true"
+		_, enabledConfigured := settings[SettingKeyWeChatConnectEnabled]
+		if !enabledConfigured &&
+			enabled &&
+			!openEnabled &&
+			!mpEnabled &&
+			!mobileEnabled &&
+			(base.OpenEnabled || base.MPEnabled || base.MobileEnabled) {
+			return base.OpenEnabled, base.MPEnabled, base.MobileEnabled
+	REDACTED
+		return openEnabled, mpEnabled, mobileEnabled
 REDACTED
 	if !enabled {
 		return false, false, false
@@ -1921,14 +1933,9 @@ REDACTED
 REDACTED
 
 func normalizeVisibleMethodSettingSource(method, source string, enabled bool) (string, error) {
+	_ = enabled
 	source = strings.TrimSpace(source)
 	if source == "" {
-		if enabled {
-			return "", infraerrors.BadRequest(
-				"INVALID_PAYMENT_VISIBLE_METHOD_SOURCE",
-				fmt.Sprintf("%s source is required when the visible method is enabled", method),
-			)
-	REDACTED
 		return "", nil
 REDACTED
 

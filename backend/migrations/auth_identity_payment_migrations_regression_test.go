@@ -24,6 +24,7 @@ REDACTED
 	require.NotContains(t, sql, "UPDATE settings")
 	require.NotContains(t, sql, "SET value = 'false'")
 	require.True(t, strings.Contains(sql, "ON CONFLICT (key) DO NOTHING"))
+	require.Contains(t, sql, "THEN ''")
 REDACTED
 
 func TestAuthIdentityReportTypeWideningRunsBeforeLongReportWritersAndStillReconcilesAt121(t *testing.T) {
@@ -63,6 +64,7 @@ REDACTED
 
 	followupSQL := string(followupContent)
 	require.Contains(t, followupSQL, "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS paymentorder_out_trade_no_unique")
+	require.NotContains(t, followupSQL, "DROP INDEX CONCURRENTLY IF EXISTS paymentorder_out_trade_no_unique")
 	require.Contains(t, followupSQL, "DROP INDEX CONCURRENTLY IF EXISTS paymentorder_out_trade_no")
 	require.Contains(t, followupSQL, "WHERE out_trade_no <> ''")
 
@@ -92,9 +94,7 @@ func TestMigration123BackfillsLegacyAuthSourceGrantDefaultsSafely(t *testing.T) 
 REDACTED
 
 	sql := string(content)
-	require.Contains(t, sql, "110_pending_auth_and_provider_default_grants.sql")
-	require.Contains(t, sql, "schema_migrations")
-	require.Contains(t, sql, "updated_at")
-	require.Contains(t, sql, "'_grant_on_signup'")
-	require.Contains(t, sql, "value = 'false'")
+	require.Contains(t, sql, "Intentionally left as a no-op")
+	require.NotContains(t, sql, "UPDATE settings")
+	require.NotContains(t, sql, "value = 'false'")
 REDACTED

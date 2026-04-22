@@ -586,7 +586,60 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestVisibleMethodLoadBalancerRejectsMissingOrInvalidSourceWhenMultipleProvidersEnabled(t *testing.T) {
+func TestVisibleMethodLoadBalancerPreservesLegacyCrossProviderRoutingWhenSourceMissing(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	_, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeAlipay).
+		SetName("Official Alipay").
+		SetConfig("{REDACTED").
+		SetSupportedTypes("alipay").
+		SetEnabled(true).
+		SetSortOrder(1).
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("create official provider: %v", err)
+REDACTED
+
+	_, err = client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeEasyPay).
+		SetName("EasyPay Alipay").
+		SetConfig("{REDACTED").
+		SetSupportedTypes("alipay").
+		SetEnabled(true).
+		SetSortOrder(2).
+		Save(ctx)
+	if err != nil {
+		t.Fatalf("create easypay provider: %v", err)
+REDACTED
+
+	inner := &captureLoadBalancer{REDACTED
+	configService := &PaymentConfigService{
+		entClient: client,
+		settingRepo: &paymentConfigSettingRepoStub{
+			values: map[string]string{
+				visibleMethodSourceSettingKey(payment.TypeAlipay): "",
+		REDACTED,
+	REDACTED,
+REDACTED
+	lb := newVisibleMethodLoadBalancer(inner, configService)
+
+	_, err = lb.SelectInstance(ctx, "", payment.TypeAlipay, payment.StrategyRoundRobin, 9.9)
+	if err != nil {
+		t.Fatalf("SelectInstance returned error: %v", err)
+REDACTED
+	if inner.lastProviderKey != "" {
+		t.Fatalf("lastProviderKey = %q, want legacy cross-provider empty key", inner.lastProviderKey)
+REDACTED
+	if inner.lastPaymentType != payment.TypeAlipay {
+		t.Fatalf("lastPaymentType = %q, want %q", inner.lastPaymentType, payment.TypeAlipay)
+REDACTED
+REDACTED
+
+func TestVisibleMethodLoadBalancerRejectsInvalidSourceWhenMultipleProvidersEnabled(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -595,12 +648,6 @@ func TestVisibleMethodLoadBalancerRejectsMissingOrInvalidSourceWhenMultipleProvi
 		sourceValue string
 		wantMessage string
 REDACTED{
-		{
-			name:        "missing alipay source",
-			method:      payment.TypeAlipay,
-			sourceValue: "",
-			wantMessage: "alipay source is required when the visible method is enabled",
-	REDACTED,
 		{
 			name:        "invalid wxpay source",
 			method:      payment.TypeWxpay,

@@ -109,6 +109,36 @@ REDACTED
 	require.Empty(t, got.RedirectURL)
 REDACTED
 
+func TestSettingService_GetWeChatConnectOAuthConfig_IgnoresSyntheticDisabledCapabilitiesFromMigration118(t *testing.T) {
+	repo := &settingWeChatRepoStub{
+		values: map[string]string{
+			SettingKeyWeChatConnectOpenEnabled: "false",
+			SettingKeyWeChatConnectMPEnabled:   "false",
+	REDACTED,
+REDACTED
+	svc := NewSettingService(repo, &config.Config{
+		WeChat: config.WeChatConnectConfig{
+			Enabled:             true,
+			OpenEnabled:         true,
+			MPEnabled:           true,
+			Mode:                "open",
+			OpenAppID:           "wx-open-config",
+			OpenAppSecret:       "wx-open-secret",
+			MPAppID:             "wx-mp-config",
+			MPAppSecret:         "wx-mp-secret",
+			FrontendRedirectURL: "/auth/wechat/config-callback",
+	REDACTED,
+REDACTED)
+
+	got, err := svc.GetWeChatConnectOAuthConfig(context.Background())
+REDACTED
+	require.True(t, got.Enabled)
+	require.True(t, got.OpenEnabled)
+	require.True(t, got.MPEnabled)
+	require.Equal(t, "wx-open-config", got.AppIDForMode("open"))
+	require.Equal(t, "wx-mp-config", got.AppIDForMode("mp"))
+REDACTED
+
 func TestSettingService_ParseSettings_FallsBackToConfigForWeChatAdminView(t *testing.T) {
 	svc := NewSettingService(&settingWeChatRepoStub{values: map[string]string{REDACTEDREDACTED, &config.Config{
 		WeChat: config.WeChatConnectConfig{

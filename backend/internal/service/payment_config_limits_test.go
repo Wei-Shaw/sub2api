@@ -6,6 +6,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/stretchr/testify/require"
 )
 
 func TestUnionFloat(t *testing.T) {
@@ -401,4 +402,60 @@ REDACTED
 		REDACTED
 	REDACTED)
 REDACTED
+REDACTED
+
+func TestGetAvailableMethodLimitsPreservesLegacyCrossProviderBehaviorWhenVisibleMethodSourceMissing(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	_, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeAlipay).
+		SetName("Official Alipay").
+		SetConfig("{REDACTED").
+		SetSupportedTypes("alipay").
+		SetLimits(`{"alipay":{"singleMin":10,"singleMax":100REDACTEDREDACTED`).
+		SetEnabled(true).
+		Save(ctx)
+REDACTED
+
+	_, err = client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeEasyPay).
+		SetName("EasyPay Mixed").
+		SetConfig("{REDACTED").
+		SetSupportedTypes("alipay,wxpay").
+		SetLimits(`{"alipay":{"singleMin":20,"singleMax":200REDACTED,"wxpay":{"singleMin":40,"singleMax":400REDACTEDREDACTED`).
+		SetEnabled(true).
+		Save(ctx)
+REDACTED
+
+	_, err = client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeWxpay).
+		SetName("Official WeChat").
+		SetConfig("{REDACTED").
+		SetSupportedTypes("wxpay").
+		SetLimits(`{"wxpay":{"singleMin":30,"singleMax":300REDACTEDREDACTED`).
+		SetEnabled(true).
+		Save(ctx)
+REDACTED
+
+	svc := &PaymentConfigService{
+		entClient:   client,
+		settingRepo: &paymentConfigSettingRepoStub{values: map[string]string{REDACTEDREDACTED,
+REDACTED
+
+	resp, err := svc.GetAvailableMethodLimits(ctx)
+REDACTED
+
+	alipayLimits, ok := resp.Methods[payment.TypeAlipay]
+	require.True(t, ok, "expected alipay limits to remain visible")
+	require.Equal(t, 10.0, alipayLimits.SingleMin)
+	require.Equal(t, 200.0, alipayLimits.SingleMax)
+
+	wxpayLimits, ok := resp.Methods[payment.TypeWxpay]
+	require.True(t, ok, "expected wxpay limits to remain visible")
+	require.Equal(t, 30.0, wxpayLimits.SingleMin)
+	require.Equal(t, 400.0, wxpayLimits.SingleMax)
+
+	require.Equal(t, 10.0, resp.GlobalMin)
+	require.Equal(t, 400.0, resp.GlobalMax)
 REDACTED

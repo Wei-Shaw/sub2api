@@ -45,8 +45,16 @@ REDACTED
 	for _, method := range []string{payment.TypeAlipay, payment.TypeWxpayREDACTED {
 		matching := filterEnabledVisibleMethodInstances(instances, method)
 		providerKey, err := s.resolveVisibleMethodProviderKey(ctx, method, matching)
-		if err != nil || providerKey == "" {
+		if err != nil {
 			delete(filtered, method)
+			continue
+	REDACTED
+		if providerKey == "" {
+			if len(matching) == 0 {
+				delete(filtered, method)
+				continue
+		REDACTED
+			filtered[method] = matching
 			continue
 	REDACTED
 		selectedInstances := filterVisibleMethodInstancesByProviderKey(instances, method, providerKey)
