@@ -127,6 +127,7 @@ type UserIdentitySummary struct {
 	Bound         bool       `json:"bound"`
 	BoundCount    int        `json:"bound_count"`
 	DisplayName   string     `json:"display_name,omitempty"`
+	AvatarURL     string     `json:"-"`
 	SubjectHint   string     `json:"subject_hint,omitempty"`
 	ProviderKey   string     `json:"provider_key,omitempty"`
 	VerifiedAt    *time.Time `json:"verified_at,omitempty"`
@@ -228,6 +229,7 @@ func (s *UserService) GetProfile(ctx context.Context, userID int64) (*User, erro
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
 REDACTED
+	normalizeLoadedUserTokenVersion(user)
 	if err := s.hydrateUserAvatar(ctx, user); err != nil {
 		return nil, fmt.Errorf("get user avatar: %w", err)
 REDACTED
@@ -323,29 +325,34 @@ REDACTED, nil
 REDACTED
 
 func (s *UserService) UnbindUserAuthProvider(ctx context.Context, userID int64, provider string) (*User, error) {
+	user, _, err := s.UnbindUserAuthProviderWithResult(ctx, userID, provider)
+	return user, err
+REDACTED
+
+func (s *UserService) UnbindUserAuthProviderWithResult(ctx context.Context, userID int64, provider string) (*User, bool, error) {
 	provider = normalizeUserIdentityProvider(provider)
 	if provider == "" || provider == "email" {
-		return nil, ErrIdentityProviderInvalid
+		return nil, false, ErrIdentityProviderInvalid
 REDACTED
 
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("get user: %w", err)
+		return nil, false, fmt.Errorf("get user: %w", err)
 REDACTED
 
 	records, err := s.listUserAuthIdentities(ctx, userID)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 REDACTED
 	if len(filterUserAuthIdentities(records, provider)) == 0 {
-		return user, nil
+		return user, false, nil
 REDACTED
 	if !s.canUnbindProvider(provider, user, records) {
-		return nil, ErrIdentityUnbindLastMethod
+		return nil, false, ErrIdentityUnbindLastMethod
 REDACTED
 
 	if err := s.userRepo.UnbindUserAuthProvider(ctx, userID, provider); err != nil {
-		return nil, err
+		return nil, false, err
 REDACTED
 	if s.authCacheInvalidator != nil {
 		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
@@ -353,9 +360,9 @@ REDACTED
 
 	updatedUser, err := s.GetProfile(ctx, userID)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 REDACTED
-	return updatedUser, nil
+	return updatedUser, true, nil
 REDACTED
 
 // UpdateProfile 更新用户资料
@@ -655,6 +662,7 @@ REDACTED
 	summary.Bound = true
 	summary.BoundCount = len(filtered)
 	summary.DisplayName = userAuthIdentityDisplayName(primary)
+	summary.AvatarURL = strings.TrimSpace(firstStringIdentityValue(primary.Metadata, "avatar_url", "suggested_avatar_url", "headimgurl"))
 	summary.SubjectHint = maskOpaqueIdentity(primary.ProviderSubject)
 	summary.ProviderKey = strings.TrimSpace(primary.ProviderKey)
 	summary.VerifiedAt = primary.VerifiedAt
@@ -672,7 +680,7 @@ func (s *UserService) canUnbindProvider(provider string, user *User, records []U
 		return false
 REDACTED
 
-	if s.buildEmailIdentitySummary(user, records).Bound {
+	if s.canUseEmailAsSignInMethod(user, records) {
 		return true
 REDACTED
 
@@ -686,6 +694,44 @@ REDACTED
 REDACTED
 
 	return false
+REDACTED
+
+func (s *UserService) canUseEmailAsSignInMethod(user *User, records []UserAuthIdentityRecord) bool {
+	if user == nil {
+		return false
+REDACTED
+
+	email := strings.ToLower(strings.TrimSpace(user.Email))
+	if email == "" || isReservedEmail(email) {
+		return false
+REDACTED
+
+	if emailSignupSourceAllowsLogin(user.SignupSource) {
+		return true
+REDACTED
+
+	for _, record := range filterUserAuthIdentities(records, "email") {
+		if emailIdentitySupportsSignIn(record) {
+			return true
+	REDACTED
+REDACTED
+
+	return false
+REDACTED
+
+func emailSignupSourceAllowsLogin(signupSource string) bool {
+	signupSource = strings.ToLower(strings.TrimSpace(signupSource))
+	return signupSource == "" || signupSource == "email"
+REDACTED
+
+func emailIdentitySupportsSignIn(record UserAuthIdentityRecord) bool {
+	source := strings.TrimSpace(firstStringIdentityValue(record.Metadata, "source"))
+	switch source {
+	case "auth_service_email_bind", "auth_service_login_backfill", "auth_service_dual_write":
+		return true
+	default:
+		return false
+REDACTED
 REDACTED
 
 func (s *UserService) listUserAuthIdentities(ctx context.Context, userID int64) ([]UserAuthIdentityRecord, error) {
@@ -709,11 +755,11 @@ REDACTED
 	path := ""
 	switch provider {
 	case "linuxdo":
-		path = "/api/v1/auth/oauth/linuxdo/start"
+		path = "/api/v1/auth/oauth/linuxdo/bind/start"
 	case "oidc":
-		path = "/api/v1/auth/oauth/oidc/start"
+		path = "/api/v1/auth/oauth/oidc/bind/start"
 	case "wechat":
-		path = "/api/v1/auth/oauth/wechat/start"
+		path = "/api/v1/auth/oauth/wechat/bind/start"
 	default:
 		return "", ErrIdentityProviderInvalid
 REDACTED
@@ -889,10 +935,18 @@ func (s *UserService) GetByID(ctx context.Context, id int64) (*User, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
 REDACTED
+	normalizeLoadedUserTokenVersion(user)
 	if err := s.hydrateUserAvatar(ctx, user); err != nil {
 		return nil, fmt.Errorf("get user avatar: %w", err)
 REDACTED
 	return user, nil
+REDACTED
+
+func normalizeLoadedUserTokenVersion(user *User) {
+	if user == nil {
+		return
+REDACTED
+	user.TokenVersion = resolvedTokenVersion(user)
 REDACTED
 
 // TouchLastActive 通过防抖更新 users.last_active_at，减少鉴权热路径写放大。

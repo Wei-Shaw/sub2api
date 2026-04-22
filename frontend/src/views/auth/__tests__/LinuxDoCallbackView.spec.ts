@@ -336,6 +336,33 @@ describe('LinuxDoCallbackView', () => {
     )
   REDACTED)
 
+  it('keeps rendering bind-login UI for legacy pending bind responses instead of treating them as success', async () => {
+    exchangePendingOAuthCompletion.mockResolvedValue({
+      error: 'adopt_existing_user_by_email',
+      redirect: '/profile/security',
+      email: 'existing@example.com'
+    REDACTED)
+
+    const wrapper = mount(LinuxDoCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+
+    expect(showSuccess).not.toHaveBeenCalled()
+    expect(replace).not.toHaveBeenCalled()
+    expect((wrapper.get('[data-testid="linuxdo-bind-login-email"]').element as HTMLInputElement).value).toBe(
+      'existing@example.com'
+    )
+  REDACTED)
+
   it('persists a pending auth session when the oauth flow still needs account creation', async () => {
     exchangePendingOAuthCompletion.mockResolvedValue({
       error: 'email_required',

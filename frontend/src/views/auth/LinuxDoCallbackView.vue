@@ -456,7 +456,14 @@ function resolvePendingAccountAction(
   if (raw === 'email_required' || raw === 'create_account_required' || raw === 'create_account') {
     return 'create_account'
   REDACTED
-  if (raw === 'bind_login_required' || raw === 'bind_login') {
+  if (
+    raw === 'bind_login_required' ||
+    raw === 'bind_login' ||
+    raw === 'existing_account' ||
+    raw === 'existing_account_required' ||
+    raw === 'existing_account_binding_required' ||
+    raw === 'adopt_existing_user_by_email'
+  ) {
     return 'bind_login'
   REDACTED
   return 'none'

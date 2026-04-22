@@ -150,7 +150,7 @@ export function buildOAuthBindingStartURL(
     params.set('mode', mode)
   REDACTED
 
-  return `${normalizedREDACTED/auth/oauth/${providerREDACTED/start?${params.toString()REDACTED`
+  return `${normalizedREDACTED/auth/oauth/${providerREDACTED/bind/start?${params.toString()REDACTED`
 REDACTED
 
 export async function startOAuthBinding(

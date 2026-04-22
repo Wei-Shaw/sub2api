@@ -188,7 +188,7 @@ describe('ProfileIdentityBindingsSection', () => {
     expect(wrapper.find('[data-testid="profile-binding-wechat-action"]').exists()).toBe(false)
   REDACTED)
 
-  it('hides the WeChat bind action when only the legacy aggregate setting is present', () => {
+  it('keeps the WeChat bind action visible when only the legacy aggregate setting is present', () => {
     const wrapper = mount(ProfileIdentityBindingsSection, {
       global: {
         plugins: [pinia],
@@ -201,7 +201,28 @@ describe('ProfileIdentityBindingsSection', () => {
       REDACTED,
     REDACTED)
 
-    expect(wrapper.find('[data-testid="profile-binding-wechat-action"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="profile-binding-wechat-action"]').exists()).toBe(true)
+  REDACTED)
+
+  it('starts the WeChat bind flow when only the legacy aggregate setting is present', async () => {
+    const wrapper = mount(ProfileIdentityBindingsSection, {
+      global: {
+        plugins: [pinia],
+      REDACTED,
+      props: {
+        user: createUser(),
+        linuxdoEnabled: false,
+        oidcEnabled: false,
+        wechatEnabled: true,
+      REDACTED,
+    REDACTED)
+
+    await wrapper.get('[data-testid="profile-binding-wechat-action"]').trigger('click')
+
+    expect(locationState.current.href).toContain('/api/v1/auth/oauth/wechat/start?')
+    expect(locationState.current.href).toContain('mode=open')
+    expect(locationState.current.href).toContain('intent=bind_current_user')
+    expect(locationState.current.href).toContain('redirect=%2Fprofile')
   REDACTED)
 
   it('uses explicit cached WeChat capabilities and ignores legacy prop fallbacks', () => {
@@ -355,6 +376,28 @@ describe('ProfileIdentityBindingsSection', () => {
     REDACTED)
 
     expect(wrapper.text()).not.toContain('legacy-user@linuxdo-connect.invalid')
+    expect(wrapper.get('[data-testid="profile-binding-email-status"]').text()).toBe('Not bound')
+  REDACTED)
+
+  it('does not show a synthetic oauth-only email when only fallback auth bindings mark email as unbound', () => {
+    const wrapper = mount(ProfileIdentityBindingsSection, {
+      global: {
+        plugins: [pinia],
+      REDACTED,
+      props: {
+        user: createUser({
+          email: 'legacy-user@wechat-connect.invalid',
+          auth_bindings: {
+            email: { bound: false REDACTED,
+          REDACTED,
+        REDACTED),
+        linuxdoEnabled: false,
+        oidcEnabled: false,
+        wechatEnabled: false,
+      REDACTED,
+    REDACTED)
+
+    expect(wrapper.text()).not.toContain('legacy-user@wechat-connect.invalid')
     expect(wrapper.get('[data-testid="profile-binding-email-status"]').text()).toBe('Not bound')
   REDACTED)
 

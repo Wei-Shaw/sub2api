@@ -3763,11 +3763,7 @@
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                 {{ t("admin.settings.payment.description") REDACTEDREDACTED
                 <a
-                  :href="
-                    locale === 'zh'
-                      ? 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md'
-                      : 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT.md'
-                  "
+                  :href="paymentGuideHref"
                   target="_blank"
                   rel="noopener noreferrer"
                   class="ml-2 inline-flex items-center text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
@@ -4140,11 +4136,7 @@
                   <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">
                     {{ t("admin.settings.payment.enabledPaymentTypesHint") REDACTEDREDACTED
                     <a
-                      :href="
-                        locale === 'zh'
-                          ? 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT_CN.md#%E6%94%AF%E6%8C%81%E7%9A%84%E6%94%AF%E4%BB%98%E6%96%B9%E5%BC%8F'
-                          : 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/PAYMENT.md#supported-payment-methods'
-                      "
+                      :href="paymentGuideHref"
                       target="_blank"
                       rel="noopener noreferrer"
                       class="ml-1 text-primary-500 hover:text-primary-600 dark:text-primary-400 dark:hover:text-primary-300"
@@ -4728,6 +4720,12 @@ const adminSettingsStore = useAdminSettingsStore();
 function localText(zh: string, en: string): string {
   return locale.value.startsWith("zh") ? zh : en;
 REDACTED
+
+const paymentGuideHref = computed(() =>
+  locale.value.startsWith("zh")
+    ? "https://github.com/Wei-Shaw/sub2api/blob/main/README_CN.md#%E6%94%AF%E4%BB%98"
+    : "https://github.com/Wei-Shaw/sub2api/blob/main/README.md#payment",
+);
 
 type SettingsTab =
   | "general"

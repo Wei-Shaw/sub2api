@@ -636,6 +636,50 @@ REDACTED
 	require.Equal(t, int64(5), repo.user.TokenVersion)
 REDACTED
 
+func TestUserHandlerUnbindIdentityDoesNotRevokeSessionsWhenNothingWasUnbound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := &userHandlerRepoStub{
+		user: &service.User{
+			ID:           24,
+			Email:        "identity@example.com",
+			Username:     "identity-user",
+			Role:         service.RoleUser,
+			Status:       service.StatusActive,
+			TokenVersion: 4,
+	REDACTED,
+		identities: []service.UserAuthIdentityRecord{
+			{
+				ProviderType:    "email",
+				ProviderKey:     "email",
+				ProviderSubject: "identity@example.com",
+		REDACTED,
+	REDACTED,
+REDACTED
+	refreshTokenCache := &userHandlerRefreshTokenCacheStub{REDACTED
+	cfg := &config.Config{
+		JWT: config.JWTConfig{
+			Secret:     "test-secret",
+			ExpireHour: 1,
+	REDACTED,
+REDACTED
+	authService := service.NewAuthService(nil, repo, nil, refreshTokenCache, cfg, nil, nil, nil, nil, nil, nil)
+	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), authService, nil, nil)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodDelete, "/api/v1/user/account-bindings/linuxdo", nil)
+	c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 24REDACTED)
+	c.Params = gin.Params{{Key: "provider", Value: "linuxdo"REDACTEDREDACTED
+
+	handler.UnbindIdentity(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Empty(t, repo.unbound)
+	require.Empty(t, refreshTokenCache.revokedUserIDs)
+	require.Equal(t, int64(4), repo.user.TokenVersion)
+REDACTED
+
 func TestUserHandlerBindEmailIdentityRejectsWrongCurrentPasswordForBoundEmail(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -728,7 +772,7 @@ REDACTED
 	require.Equal(t, "wechat", resp.Data.Provider)
 	require.Equal(t, "GET", resp.Data.Method)
 	require.True(t, resp.Data.UseBrowserRedirect)
-	require.Contains(t, resp.Data.AuthorizeURL, "/api/v1/auth/oauth/wechat/start")
+	require.Contains(t, resp.Data.AuthorizeURL, "/api/v1/auth/oauth/wechat/bind/start")
 	require.Contains(t, resp.Data.AuthorizeURL, "intent=bind_current_user")
 	require.Contains(t, resp.Data.AuthorizeURL, "redirect=%2Fsettings%2Fprofile")
 REDACTED
