@@ -60,4 +60,31 @@ REDACTED)
 		)
 		require.True(t, ok)
 REDACTED)
+
+	t.Run("109回滚到历史文件后仍兼容已应用的新checksum", func(t *testing.T) {
+		ok := isMigrationChecksumCompatible(
+			"109_auth_identity_compat_backfill.sql",
+			"551e498aa5616d2d91096e9d72cf9fb36e418ee22eacc557f8811cadbc9e20ee",
+			"2b380305e73ff0c13aa8c811e45897f2b36ca4a438f7b3e8f98e19ecb6bae0b3",
+		)
+		require.True(t, ok)
+REDACTED)
+
+	t.Run("119历史checksum可兼容占位文件", func(t *testing.T) {
+		ok := isMigrationChecksumCompatible(
+			"119_enforce_payment_orders_out_trade_no_unique.sql",
+			"ebd2c67cce0116393fb4f1b5d5116a67c6aceb73820dfb5133d1ff6f36d72d34",
+			"0bbe809ae48a9d811dabda1ba1c74955bd71c4a9cc610f9128816818dfa6c11e",
+		)
+		require.True(t, ok)
+REDACTED)
+
+	t.Run("119未知checksum不兼容", func(t *testing.T) {
+		ok := isMigrationChecksumCompatible(
+			"119_enforce_payment_orders_out_trade_no_unique.sql",
+			"ebd2c67cce0116393fb4f1b5d5116a67c6aceb73820dfb5133d1ff6f36d72d34",
+			"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+		)
+		require.False(t, ok)
+REDACTED)
 REDACTED

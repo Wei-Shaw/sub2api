@@ -26,12 +26,36 @@ REDACTED
 	require.True(t, strings.Contains(sql, "ON CONFLICT (key) DO NOTHING"))
 REDACTED
 
-func TestMigration119EnforcesOutTradeNoPartialUniqueIndex(t *testing.T) {
+func TestMigration109KeepsPublishedBackfillBodyAndDefersReportTypeWidening(t *testing.T) {
+	content, err := FS.ReadFile("109_auth_identity_compat_backfill.sql")
+REDACTED
+
+	sql := string(content)
+	require.NotContains(t, sql, "ALTER TABLE auth_identity_migration_reports")
+
+	followupContent, err := FS.ReadFile("121_auth_identity_migration_report_type_widen.sql")
+REDACTED
+
+	followupSQL := string(followupContent)
+	require.Contains(t, followupSQL, "ALTER TABLE auth_identity_migration_reports")
+	require.Contains(t, followupSQL, "ALTER COLUMN report_type TYPE VARCHAR(80)")
+REDACTED
+
+func TestMigration119DefersPaymentIndexRolloutToOnlineFollowup(t *testing.T) {
 	content, err := FS.ReadFile("119_enforce_payment_orders_out_trade_no_unique.sql")
 REDACTED
 
 	sql := string(content)
-	require.Contains(t, sql, "DROP INDEX IF EXISTS paymentorder_out_trade_no")
-	require.Contains(t, sql, "CREATE UNIQUE INDEX IF NOT EXISTS paymentorder_out_trade_no")
-	require.Contains(t, sql, "WHERE out_trade_no <> ''")
+	require.Contains(t, sql, "120_enforce_payment_orders_out_trade_no_unique_notx.sql")
+	require.Contains(t, sql, "NULL;")
+	require.NotContains(t, sql, "CREATE UNIQUE INDEX")
+	require.NotContains(t, sql, "DROP INDEX")
+
+	followupContent, err := FS.ReadFile("120_enforce_payment_orders_out_trade_no_unique_notx.sql")
+REDACTED
+
+	followupSQL := string(followupContent)
+	require.Contains(t, followupSQL, "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS paymentorder_out_trade_no_unique")
+	require.Contains(t, followupSQL, "DROP INDEX CONCURRENTLY IF EXISTS paymentorder_out_trade_no")
+	require.Contains(t, followupSQL, "WHERE out_trade_no <> ''")
 REDACTED
