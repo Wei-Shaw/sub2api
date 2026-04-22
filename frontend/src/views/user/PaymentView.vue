@@ -740,18 +740,23 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       return
     REDACTED
     if (decision.kind === 'wechat_jsapi' && decision.jsapi) {
-      const jsapiResult = await invokeWechatJsapiPayment(decision.jsapi as Record<string, unknown>)
-      const errMsg = String(jsapiResult.err_msg || '').toLowerCase()
-      if (errMsg.includes('cancel')) {
-        appStore.showInfo(t('payment.qr.cancelled'))
+      try {
+        const jsapiResult = await invokeWechatJsapiPayment(decision.jsapi as Record<string, unknown>)
+        const errMsg = String(jsapiResult.err_msg || '').toLowerCase()
+        if (errMsg.includes('cancel')) {
+          appStore.showInfo(t('payment.qr.cancelled'))
+          resetPayment()
+        REDACTED else if (errMsg && !errMsg.includes('ok')) {
+          applyScenarioError({ reason: 'WECHAT_JSAPI_FAILED', message: errMsg REDACTED, visibleMethod)
+          resetPayment()
+        REDACTED else {
+          const resultState = { ...decision.paymentState REDACTED
+          resetPayment()
+          await redirectToPaymentResult(resultState)
+        REDACTED
+      REDACTED catch (err: unknown) {
         resetPayment()
-      REDACTED else if (errMsg && !errMsg.includes('ok')) {
-        applyScenarioError({ reason: 'WECHAT_JSAPI_FAILED', message: errMsg REDACTED, visibleMethod)
-        resetPayment()
-      REDACTED else {
-        const resultState = { ...decision.paymentState REDACTED
-        resetPayment()
-        await redirectToPaymentResult(resultState)
+        throw err
       REDACTED
       return
     REDACTED

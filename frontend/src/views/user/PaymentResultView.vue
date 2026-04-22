@@ -291,6 +291,7 @@ onMounted(async () => {
   const routeOrderId = Number(readRouteQueryString('order_id')) || 0
   let outTradeNo = readRouteQueryString('out_trade_no')
   let orderId = 0
+  let resumeTokenLookupFailed = false
 
   const restored = restoreRecoverySnapshot({
     resumeToken,
@@ -312,24 +313,17 @@ onMounted(async () => {
         orderId = resolvedOrder.id
       REDACTED
     REDACTED else if (routeOrderId > 0) {
+      resumeTokenLookupFailed = true
       orderId = routeOrderId
+    REDACTED else {
+      resumeTokenLookupFailed = true
     REDACTED
   REDACTED else if (routeOrderId > 0) {
     orderId = routeOrderId
   REDACTED
 
   const hasLegacyFallbackContext = readRouteQueryString('trade_status').trim() !== ''
-  const shouldUsePublicOutTradeNo = !resumeToken && outTradeNo !== '' && (hasLegacyFallbackContext || routeOrderId > 0 || orderId > 0)
-
-  if (!order.value && shouldUsePublicOutTradeNo) {
-    const legacyOrder = await resolveOrderFromOutTradeNo(outTradeNo)
-    if (legacyOrder) {
-      order.value = legacyOrder
-      if (!orderId) {
-        orderId = legacyOrder.id
-      REDACTED
-    REDACTED
-  REDACTED
+  const shouldUsePublicOutTradeNo = outTradeNo !== '' && (hasLegacyFallbackContext || routeOrderId > 0 || orderId > 0)
 
   if (!order.value && orderId && (!resumeToken || routeOrderId > 0)) {
     try {
@@ -339,7 +333,17 @@ onMounted(async () => {
     REDACTED
   REDACTED
 
-  if (!order.value && !resumeToken && !orderId && outTradeNo && hasLegacyFallbackContext) {
+  if (!order.value && shouldUsePublicOutTradeNo && (!resumeToken || resumeTokenLookupFailed)) {
+    const legacyOrder = await resolveOrderFromOutTradeNo(outTradeNo)
+    if (legacyOrder) {
+      order.value = legacyOrder
+      if (!orderId) {
+        orderId = legacyOrder.id
+      REDACTED
+    REDACTED
+  REDACTED
+
+  if (!order.value && !orderId && outTradeNo && hasLegacyFallbackContext) {
     returnInfo.value = {
       outTradeNo,
       money: String(route.query.money || ''),
@@ -350,15 +354,22 @@ onMounted(async () => {
 
   const refreshOrder = async (): Promise<PaymentOrder | null> => {
     if (resumeToken) {
-      return await resolveOrderFromResumeToken(resumeToken)
+      const resolvedOrder = await resolveOrderFromResumeToken(resumeToken)
+      if (resolvedOrder) {
+        return resolvedOrder
+      REDACTED
+    REDACTED
+
+    if (orderId) {
+      try {
+        return await paymentStore.pollOrderStatus(orderId)
+      REDACTED catch (_err: unknown) {
+        // Fall through to legacy public verification when order polling is unavailable.
+      REDACTED
     REDACTED
 
     if (shouldUsePublicOutTradeNo) {
       return await resolveOrderFromOutTradeNo(outTradeNo)
-    REDACTED
-
-    if (orderId) {
-      return await paymentStore.pollOrderStatus(orderId)
     REDACTED
 
     return null

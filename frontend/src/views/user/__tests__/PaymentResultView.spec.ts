@@ -255,14 +255,21 @@ describe('PaymentResultView', () => {
     expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).toBeNull()
   REDACTED)
 
-  it('does not fall back to public out_trade_no verification when resume_token recovery fails', async () => {
+  it('falls back to public out_trade_no verification when resume_token recovery fails in legacy return flows', async () => {
     routeState.query = {
       resume_token: 'resume-fail',
       out_trade_no: 'legacy-should-not-run',
       trade_status: 'TRADE_SUCCESS',
     REDACTED
     resolveOrderPublicByResumeToken.mockRejectedValueOnce(new Error('resume failed'))
-    mount(PaymentResultView, {
+    verifyOrderPublic.mockResolvedValueOnce({
+      data: {
+        ...orderFactory('PAID'),
+        out_trade_no: 'legacy-should-not-run',
+      REDACTED,
+    REDACTED)
+
+    const wrapper = mount(PaymentResultView, {
       global: {
         stubs: {
           OrderStatusBadge: true,
@@ -273,7 +280,9 @@ describe('PaymentResultView', () => {
     await flushPromises()
 
     expect(resolveOrderPublicByResumeToken).toHaveBeenCalledWith('resume-fail')
-    expect(verifyOrderPublic).not.toHaveBeenCalled()
+    expect(verifyOrderPublic).toHaveBeenCalledWith('legacy-should-not-run')
+    expect(pollOrderStatus).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('payment.result.success')
   REDACTED)
 
   it('ignores a stale global recovery snapshot when legacy return markers do not identify the order', async () => {

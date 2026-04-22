@@ -252,6 +252,33 @@ describe('PaymentView WeChat JSAPI flow', () => {
     expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).toBeNull()
   REDACTED)
 
+  it('clears stale recovery state when JSAPI never becomes available', async () => {
+    vi.useFakeTimers()
+    createOrder.mockResolvedValue(jsapiOrderFixture('resume-token-missing-bridge'))
+    ;(window as Window & { WeixinJSBridge?: { invoke: typeof bridgeInvoke REDACTED REDACTED).WeixinJSBridge = undefined
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          Teleport: true,
+          Transition: false,
+        REDACTED,
+      REDACTED,
+    REDACTED)
+
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(4000)
+    await flushPromises()
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalledWith(
+      'payment.errors.wechatJsapiUnavailable payment.errors.wechatOpenInWeChatHint',
+    )
+    expect(routerPush).not.toHaveBeenCalled()
+    expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).toBeNull()
+    expect(wrapper.html()).not.toContain('payment-status-panel-stub')
+  REDACTED)
+
   it('clears a stale recovery snapshot before handling wechat resume callback params', async () => {
     createOrder.mockRejectedValueOnce(new Error('resume failed'))
     window.localStorage.setItem(PAYMENT_RECOVERY_STORAGE_KEY, JSON.stringify({

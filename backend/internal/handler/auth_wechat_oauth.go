@@ -471,11 +471,12 @@ REDACTED
 REDACTED
 
 func (h *AuthHandler) wechatPaymentResumeService() *service.PaymentResumeService {
+	var legacyKey []byte
 	key, err := payment.ProvideEncryptionKey(h.cfg)
-	if err != nil {
-		return service.NewPaymentResumeService(nil)
+	if err == nil {
+		legacyKey = []byte(key)
 REDACTED
-	return service.NewPaymentResumeService([]byte(key))
+	return service.NewLegacyAwarePaymentResumeService(legacyKey)
 REDACTED
 
 type completeWeChatOAuthRequest struct {

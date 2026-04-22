@@ -63,6 +63,8 @@ REDACTED
 REDACTED
 
 	followupSQL := string(followupContent)
+	require.Contains(t, followupSQL, "explicit duplicate out_trade_no precheck")
+	require.Contains(t, followupSQL, "stale invalid paymentorder_out_trade_no_unique index")
 	require.Contains(t, followupSQL, "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS paymentorder_out_trade_no_unique")
 	require.NotContains(t, followupSQL, "DROP INDEX CONCURRENTLY IF EXISTS paymentorder_out_trade_no_unique")
 	require.Contains(t, followupSQL, "DROP INDEX CONCURRENTLY IF EXISTS paymentorder_out_trade_no")
@@ -74,6 +76,18 @@ REDACTED
 	alignmentSQL := string(alignmentContent)
 	require.Contains(t, alignmentSQL, "paymentorder_out_trade_no_unique")
 	require.Contains(t, alignmentSQL, "RENAME TO paymentorder_out_trade_no")
+REDACTED
+
+func TestMigration110SeedsAuthSourceSignupGrantsDisabledByDefault(t *testing.T) {
+	content, err := FS.ReadFile("110_pending_auth_and_provider_default_grants.sql")
+REDACTED
+
+	sql := string(content)
+	require.Contains(t, sql, "('auth_source_default_email_grant_on_signup', 'false')")
+	require.Contains(t, sql, "('auth_source_default_linuxdo_grant_on_signup', 'false')")
+	require.Contains(t, sql, "('auth_source_default_oidc_grant_on_signup', 'false')")
+	require.Contains(t, sql, "('auth_source_default_wechat_grant_on_signup', 'false')")
+	require.NotContains(t, sql, "('auth_source_default_email_grant_on_signup', 'true')")
 REDACTED
 
 func TestMigration122ScrubsPendingOAuthCompletionTokensAtRest(t *testing.T) {
@@ -94,7 +108,10 @@ func TestMigration123BackfillsLegacyAuthSourceGrantDefaultsSafely(t *testing.T) 
 REDACTED
 
 	sql := string(content)
-	require.Contains(t, sql, "Intentionally left as a no-op")
-	require.NotContains(t, sql, "UPDATE settings")
-	require.NotContains(t, sql, "value = 'false'")
+	require.Contains(t, sql, "110_pending_auth_and_provider_default_grants.sql")
+	require.Contains(t, sql, "schema_migrations")
+	require.Contains(t, sql, "updated_at")
+	require.Contains(t, sql, "'_grant_on_signup'")
+	require.Contains(t, sql, "value = 'false'")
+	require.Contains(t, sql, "auth_identity_migration_reports")
 REDACTED
