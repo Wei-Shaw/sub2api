@@ -51,10 +51,10 @@ type UpdateTLSFingerprintProfileRequest struct {
 	Extensions          []uint16 `json:"extensions"`
 }
 
-// List 获取所有模板（附带每个模板当前的绑定账号数）
+// List 获取所有模板
 // GET /api/v1/admin/tls-fingerprint-profiles
 func (h *TLSFingerprintProfileHandler) List(c *gin.Context) {
-	profiles, err := h.service.ListWithBindingCount(c.Request.Context())
+	profiles, err := h.service.List(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -231,23 +231,4 @@ func (h *TLSFingerprintProfileHandler) Delete(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{"message": "Profile deleted successfully"})
-}
-
-// RandomizeForAccount 为指定账号生成并绑定一个随机化 TLS 指纹 profile。
-// 重复调用会"重新随机"：旧的 auto-generated profile 会被删除。
-// POST /api/v1/admin/tls-fingerprint-profiles/randomize-for-account/:accountID
-func (h *TLSFingerprintProfileHandler) RandomizeForAccount(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("accountID"), 10, 64)
-	if err != nil || accountID <= 0 {
-		response.BadRequest(c, "Invalid account ID")
-		return
-	}
-
-	profile, err := h.service.RandomizeForAccount(c.Request.Context(), accountID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-
-	response.Success(c, profile)
 }

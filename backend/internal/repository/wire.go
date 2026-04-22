@@ -8,7 +8,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/Wei-Shaw/sub2api/internal/service/signature"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
 )
@@ -117,7 +116,6 @@ var ProviderSet = wire.NewSet(
 	NewRefreshTokenCache,
 	NewErrorPassthroughCache,
 	NewTLSFingerprintProfileCache,
-	ProvideSignaturePool,
 
 	// Encryptors
 	NewAESEncryptor,
@@ -178,14 +176,6 @@ func ProvideSQLDB(client *ent.Client) (*sql.DB, error) {
 	}
 	// 返回驱动持有的 sql.DB 实例
 	return drv.DB(), nil
-}
-
-// ProvideSignaturePool 创建 thinking 签名池缓存。
-// 签名池存储从成功响应中抓取的 thinking 签名，后续遇到签名错误时从池中取签名替换重试，
-// 而不是剥除 thinking blocks（行为由 RectifierSettings.SignaturePoolSize 控制）。
-// softTTL 固定为 signature.DefaultSignatureTTL（1h），与 Phase 2 设计一致。
-func ProvideSignaturePool(rdb *redis.Client) signature.SignaturePool {
-	return NewSignaturePoolCache(rdb, signature.DefaultSignatureTTL)
 }
 
 // ProvideRedis 为依赖注入提供 Redis 客户端。

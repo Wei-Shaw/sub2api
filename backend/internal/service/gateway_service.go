@@ -27,7 +27,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
-	"github.com/Wei-Shaw/sub2api/internal/service/signature"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/cespare/xxhash/v2"
@@ -564,7 +563,6 @@ type GatewayService struct {
 	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
-	signatureFactory      *signatureRectifierFactory
 }
 
 // NewGatewayService creates a new GatewayService
@@ -595,7 +593,6 @@ func NewGatewayService(
 	channelService *ChannelService,
 	resolver *ModelPricingResolver,
 	balanceNotifyService *BalanceNotifyService,
-	signaturePool signature.SignaturePool,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
@@ -631,7 +628,6 @@ func NewGatewayService(
 		channelService:       channelService,
 		resolver:             resolver,
 		balanceNotifyService: balanceNotifyService,
-		signatureFactory:     newSignatureRectifierFactory(signaturePool, settingService),
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
@@ -3854,41 +3850,6 @@ func collectCacheControlPaths(body []byte) (invalidThinking []cacheControlPath, 
 	return invalidThinking, messagePaths, systemPaths
 }
 
-// ensureToolsCacheControl stamps `cache_control: {"type":"ephemeral"}` onto
-// the final entry of the `tools` array when no tool in the request already
-// carries a cache_control marker. This matches real Claude Code traffic —
-// the CLI always caches its tool schema — so a mimicked request from a
-// non-CLI client (Cherry Studio, Cursor, plain OpenAI SDK, etc.) exhibits a
-// cache hit ratio consistent with the CLI instead of "0%, always".
-//
-// No-ops when: body lacks tools, tools is empty, or any tool already has a
-// cache_control breakpoint (trust the caller in that case).
-func ensureToolsCacheControl(body []byte) []byte {
-	if len(body) == 0 {
-		return body
-	}
-	tools := gjson.GetBytes(body, "tools")
-	if !tools.IsArray() {
-		return body
-	}
-	arr := tools.Array()
-	if len(arr) == 0 {
-		return body
-	}
-	for _, t := range arr {
-		if t.Get("cache_control").Exists() {
-			return body
-		}
-	}
-	lastIdx := len(arr) - 1
-	path := fmt.Sprintf("tools.%d.cache_control", lastIdx)
-	out, err := sjson.SetBytes(body, path, map[string]string{"type": "ephemeral"})
-	if err != nil {
-		return body
-	}
-	return out
-}
-
 // enforceCacheControlLimit 强制执行 cache_control 块数量限制（最多 4 个）
 // 超限时优先从 messages 中移除 cache_control，保护 system 中的缓存控制
 func enforceCacheControlLimit(body []byte) []byte {
@@ -3966,9 +3927,6 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	if parsed == nil {
 		return nil, fmt.Errorf("parse request: empty request")
 	}
-	// Stash the session hash so downstream metadata rewrites can reuse a
-	// sticky session UUID for all requests belonging to this conversation.
-	ctx = WithSessionHash(ctx, s.GenerateSessionHash(parsed))
 
 	// Web Search 模拟：纯 web_search 请求时，直接调用搜索 API 构造响应
 	if account != nil && s.shouldEmulateWebSearch(ctx, account, parsed.GroupID, parsed.Body) {
@@ -4039,14 +3997,6 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			body = rewriteSystemForNonClaudeCode(body, parsed.System)
 			systemRewritten = true
 		}
-
-		// Real Claude Code caches its tool definitions by stamping cache_control
-		// on the final tool block; clients like Cursor / Cherry Studio / OpenAI
-		// SDK wrappers send tools without any cache_control, which produces a
-		// cache-hit-rate profile unlike a real CLI. Inject a breakpoint when
-		// none is present. enforceCacheControlLimit below guarantees we stay
-		// within Anthropic's 4-block cap.
-		body = ensureToolsCacheControl(body)
 
 		// system 被重写时保留 CC prompt 的 cache_control: ephemeral（匹配真实 Claude Code 行为）；
 		// 未重写时（haiku / 已含 CC 前缀）剥离客户端 cache_control，与原有行为一致。
@@ -4123,11 +4073,6 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	// 重试间复用同一请求体，避免每次 string(body) 产生额外分配。
 	setOpsUpstreamRequestBody(c, body)
 
-	// Sidecar: 为 Claude OAuth 账号注入 count_tokens 请求，让 endpoint 比例
-	// 看起来像真实 Claude Code CLI。非阻塞，默认关闭（由 sidecar_probe
-	// 配置控制）。详见 gateway_count_tokens_inject.go。
-	s.maybeInjectCountTokensSidecar(account, body, reqModel, token, tokenType, shouldMimicClaudeCode, isClaudeCode, proxyURL)
-
 	// 重试循环
 	var resp *http.Response
 	retryStart := time.Now()
@@ -4168,11 +4113,6 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 		}
 
-		// Wrap the response body so the signature harvester can ingest any
-		// thinking signatures that flow through (no-op when the pool is disabled
-		// for this account or when this context is a rectify retry).
-		resp.Body = s.signatureFactory.WrapResponseBody(ctx, account, resp.Body, reqStream)
-
 		// 优先检测thinking block签名错误（400）并重试一次
 		if resp.StatusCode == 400 {
 			respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
@@ -4197,6 +4137,16 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 						}(),
 					})
 
+					looksLikeToolSignatureError := func(msg string) bool {
+						m := strings.ToLower(msg)
+						return strings.Contains(m, "tool_use") ||
+							strings.Contains(m, "tool_result") ||
+							strings.Contains(m, "functioncall") ||
+							strings.Contains(m, "function_call") ||
+							strings.Contains(m, "functionresponse") ||
+							strings.Contains(m, "function_response")
+					}
+
 					// 避免在重试预算已耗尽时再发起额外请求
 					if time.Since(retryStart) >= maxRetryElapsed {
 						resp.Body = io.NopCloser(bytes.NewReader(respBody))
@@ -4209,22 +4159,8 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					// 2) Only if upstream still errors AND error message points to tool/function signature issues:
 					//    also downgrade tool_use/tool_result blocks to text.
 
-					sigIn := signature.ClaudeInput{
-						AccountType: account.Type,
-						AccountID:   account.ID,
-						Platform:    account.Platform,
-						Body:        body,
-					}
-					rectifier := s.signatureFactory.ForClaude(ctx, account)
-					filteredBody, proceedStage1 := rectifier.Apply(ctx, sigIn, signature.StageThinkingOnly)
-					if !proceedStage1 {
-						// Rectifier declined (e.g. signature pool is empty under rule A)
-						resp.Body = io.NopCloser(bytes.NewReader(respBody))
-						break
-					}
+					filteredBody := FilterThinkingBlocksForRetry(body)
 					retryCtx, releaseRetryCtx := detachStreamUpstreamContext(ctx, reqStream)
-					// Mark retry context so the Harvester skips ingesting signatures from retry responses.
-					retryCtx = context.WithValue(retryCtx, ctxkey.IsSignatureRectifyRetry, true)
 					retryReq, buildErr := s.buildUpstreamRequest(retryCtx, c, account, filteredBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 					releaseRetryCtx()
 					if buildErr == nil {
@@ -4256,13 +4192,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 									}(),
 								})
 								msg2 := extractUpstreamErrorMessage(retryRespBody)
-								sigIn2 := sigIn
-								sigIn2.LastErrMsg = msg2
-								filteredBody2, proceedStage2 := rectifier.Apply(ctx, sigIn2, signature.StageThinkingAndTools)
-								if proceedStage2 && time.Since(retryStart) < maxRetryElapsed {
+								if looksLikeToolSignatureError(msg2) && time.Since(retryStart) < maxRetryElapsed {
 									logger.LegacyPrintf("service.gateway", "Account %d: signature retry still failing and looks tool-related, retrying with tool blocks downgraded", account.ID)
+									filteredBody2 := FilterSignatureSensitiveBlocksForRetry(body)
 									retryCtx2, releaseRetryCtx2 := detachStreamUpstreamContext(ctx, reqStream)
-									retryCtx2 = context.WithValue(retryCtx2, ctxkey.IsSignatureRectifyRetry, true)
 									retryReq2, buildErr2 := s.buildUpstreamRequest(retryCtx2, c, account, filteredBody2, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
 									releaseRetryCtx2()
 									if buildErr2 == nil {
@@ -4669,9 +4602,6 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 			})
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 		}
-
-		// Wrap the response body for signature harvesting on the passthrough path.
-		resp.Body = s.signatureFactory.WrapResponseBody(ctx, account, resp.Body, input.RequestStream)
 
 		// 透传分支禁止 400 请求体降级重试（该重试会改写请求体）
 		if resp.StatusCode >= 400 && resp.StatusCode != 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
@@ -5380,9 +5310,6 @@ func (s *GatewayService) executeBedrockUpstream(
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 		}
 
-		// Wrap the response body for signature harvesting on the Bedrock path.
-		resp.Body = s.signatureFactory.WrapResponseBody(ctx, account, resp.Body, stream)
-
 		if resp.StatusCode >= 400 && resp.StatusCode != 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
 			if attempt < maxRetryAttempts {
 				elapsed := time.Since(retryStart)
@@ -5698,19 +5625,9 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 			// this as a legitimate Claude Code request; without it, the request is
 			// rejected as third-party ("out of extra usage").
 			// Haiku models are exempt from third-party detection and don't need it.
-			// Non-haiku additionally carries the betas that the current Claude Code CLI ships
-			// by default — see claude.DefaultHeaders and the clientExtraBetas constant; if we
-			// stamp that UA but drop these, upstream can rule-match the mismatch pool-wide.
 			requiredBetas := []string{claude.BetaOAuth, claude.BetaInterleavedThinking}
 			if !strings.Contains(strings.ToLower(modelID), "haiku") {
-				requiredBetas = []string{
-					claude.BetaClaudeCode,
-					claude.BetaOAuth,
-					claude.BetaInterleavedThinking,
-					claude.BetaContextManagement20250627,
-					claude.BetaPromptCachingScope20260105,
-					claude.BetaAdvisorTool20260301,
-				}
+				requiredBetas = []string{claude.BetaClaudeCode, claude.BetaOAuth, claude.BetaInterleavedThinking}
 			}
 			setHeaderRaw(req.Header, "anthropic-beta", mergeAnthropicBetaDropping(requiredBetas, incomingBeta, effectiveDropSet))
 		} else {
@@ -5844,11 +5761,6 @@ func applyClaudeOAuthHeaderDefaults(req *http.Request) {
 		if getHeaderRaw(req.Header, key) == "" {
 			setHeaderRaw(req.Header, resolveWireCasing(key), value)
 		}
-	}
-	// Retry count is sampled per-request rather than held as a constant default,
-	// so every request gets fresh variance instead of a flat "0".
-	if getHeaderRaw(req.Header, "X-Stainless-Retry-Count") == "" {
-		setHeaderRaw(req.Header, resolveWireCasing("X-Stainless-Retry-Count"), claude.SampleStainlessRetryCount())
 	}
 }
 
@@ -6182,9 +6094,6 @@ func applyClaudeCodeMimicHeaders(req *http.Request, isStream bool) {
 		}
 		setHeaderRaw(req.Header, resolveWireCasing(key), value)
 	}
-	// Force a freshly sampled retry count — mimic mode overrides whatever the
-	// downstream client may have sent.
-	setHeaderRaw(req.Header, resolveWireCasing("X-Stainless-Retry-Count"), claude.SampleStainlessRetryCount())
 	// Real Claude CLI uses Accept: application/json (even for streaming).
 	setHeaderRaw(req.Header, "Accept", "application/json")
 	if isStream {
@@ -8261,7 +8170,6 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		s.countTokensError(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
 		return fmt.Errorf("parse request: empty request")
 	}
-	ctx = WithSessionHash(ctx, s.GenerateSessionHash(parsed))
 
 	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabled() {
 		passthroughBody := parsed.Body
@@ -8372,30 +8280,21 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 
 	// 检测 thinking block 签名错误（400）并重试一次（过滤 thinking blocks）
 	if resp.StatusCode == 400 && s.shouldRectifySignatureError(ctx, account, respBody) {
-		sigIn := signature.ClaudeInput{
-			AccountType: account.Type,
-			AccountID:   account.ID,
-			Platform:    account.Platform,
-			Body:        body,
-		}
-		rectifier := s.signatureFactory.ForClaude(ctx, account)
-		filteredBody, proceedStage1 := rectifier.Apply(ctx, sigIn, signature.StageThinkingOnly)
-		if proceedStage1 {
-			logger.LegacyPrintf("service.gateway", "Account %d: detected thinking block signature error on count_tokens, retrying with filtered thinking blocks", account.ID)
-			retryCtx := context.WithValue(ctx, ctxkey.IsSignatureRectifyRetry, true)
-			retryReq, buildErr := s.buildCountTokensRequest(retryCtx, c, account, filteredBody, token, tokenType, reqModel, shouldMimicClaudeCode)
-			if buildErr == nil {
-				retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
-				if retryErr == nil {
-					resp = retryResp
-					respBody, err = ReadUpstreamResponseBody(resp.Body, s.cfg, c, countTokensTooLarge)
-					_ = resp.Body.Close()
-					if err != nil {
-						if !errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
-							s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to read response")
-						}
-						return err
+		logger.LegacyPrintf("service.gateway", "Account %d: detected thinking block signature error on count_tokens, retrying with filtered thinking blocks", account.ID)
+
+		filteredBody := FilterThinkingBlocksForRetry(body)
+		retryReq, buildErr := s.buildCountTokensRequest(ctx, c, account, filteredBody, token, tokenType, reqModel, shouldMimicClaudeCode)
+		if buildErr == nil {
+			retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+			if retryErr == nil {
+				resp = retryResp
+				respBody, err = ReadUpstreamResponseBody(resp.Body, s.cfg, c, countTokensTooLarge)
+				_ = resp.Body.Close()
+				if err != nil {
+					if !errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
+						s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to read response")
 					}
+					return err
 				}
 			}
 		}

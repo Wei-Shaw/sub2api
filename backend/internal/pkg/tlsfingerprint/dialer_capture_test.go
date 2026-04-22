@@ -57,13 +57,7 @@ func TestDialerAgainstCaptureServer(t *testing.T) {
 			profile: &Profile{
 				Name:         "default",
 				EnableGREASE: false,
-				// Pin to the plain (no ECH/padding) extension list to make
-				// this capture-based test deterministic. The production dialer's
-				// maybeEnrichExtensions() probabilistically appends 65037 (ECH)
-				// + 21 (padding); without pinning we'd alternate between the
-				// 13-extension plain variant and 15-extension rich variant.
-				// See dialer_integration_test.go:TestJA3Fingerprint for full WHY.
-				Extensions: []uint16{0, 23, 65281, 10, 11, 35, 16, 5, 13, 18, 51, 45, 43},
+				// All empty → uses built-in defaults
 			},
 		},
 		{
@@ -143,7 +137,7 @@ func TestDialerAgainstCaptureServer(t *testing.T) {
 			}
 			effectiveKeyShare := tc.profile.KeyShareGroups
 			if len(effectiveKeyShare) == 0 {
-				effectiveKeyShare = []uint16{29} // X25519 only (Claude Code 2.1.114 default)
+				effectiveKeyShare = []uint16{29} // X25519
 			}
 			effectivePSKModes := tc.profile.PSKModes
 			if len(effectivePSKModes) == 0 {
@@ -316,11 +310,8 @@ func TestBuildClientHelloSpecNewFields(t *testing.T) {
 		switch e := ext.(type) {
 		case *utls.ALPNExtension:
 			foundALPN = true
-			// "h2" is defensively filtered out at build time because
-			// http.Transport with a custom DialTLSContext cannot speak
-			// HTTP/2 — ["h2", "http/1.1"] collapses to ["http/1.1"].
-			if len(e.AlpnProtocols) != 1 || e.AlpnProtocols[0] != "http/1.1" {
-				t.Errorf("ALPN: got %v, want [http/1.1] (h2 filtered)", e.AlpnProtocols)
+			if len(e.AlpnProtocols) != 2 || e.AlpnProtocols[0] != "h2" {
+				t.Errorf("ALPN: got %v, want [h2, http/1.1]", e.AlpnProtocols)
 			}
 		case *utls.SupportedVersionsExtension:
 			foundVersions = true

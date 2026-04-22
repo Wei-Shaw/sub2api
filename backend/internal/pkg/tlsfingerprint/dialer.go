@@ -8,7 +8,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log/slog"
-	mrand "math/rand/v2"
 	"net"
 	"net/http"
 	"net/url"
@@ -53,104 +52,57 @@ type SOCKS5ProxyDialer struct {
 	proxyURL *url.URL
 }
 
-// Default TLS fingerprint values captured from Claude Code 2.1.114 on
-// macOS arm64 (bundled Node 24.3.0), pointed at a local capture server via
-// `ANTHROPIC_BASE_URL`. Capture tool: backend/tools/capture_fingerprint.
-// Baseline JSON: backend/tools/capture_fingerprint/baselines/claude-code-2.1.114.json.
-//
-// Capture date: 2026-04-19 (30 CC requests across 5 invocation modes)
-//
-// JA3 string (without ECH GREASE, majority variant):
-//
-//	771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49161-49171-49162-
-//	49172-156-157-47-53,
-//	0-23-65281-10-11-35-16-5-13-18-51-45-43,
-//	29-23-24,0-1-2
-//
-// JA3 hash: dc782a9d905fdcee1223a3d4e8108bc6  (no ECH GREASE — ~67% of conns)
-// JA3 hash: d871d02cecbde59abbf8f4806134addf  (with ECH GREASE — ~33% of conns)
-// JA4:      t13d1713h1 / t13d1714h1 (17 ciphers, 13 or 14 extensions, http/1.1 ALPN)
-//
-// CRITICAL — this is the REVERSE of what the 2026-04-15 rewrite assumed.
-// Claude Code 2.1.112→2.1.114 simplified its TLS stack dramatically:
-//   - Cipher list 52 → 17. Node dropped its "OpenSSL enable-all" suite
-//     (ARIA/CCM/Brainpool/DHE legacy) in favor of a modern minimal set.
-//   - Curves 8 → 3. MLKEM768 (post-quantum hybrid) is GONE. X25519 is the
-//     single key share.
-//   - Signature schemes 26 → 9. Brainpool TLS 1.3 and Ed25519/Ed448 gone.
-//   - Extension count 12 → 13 (or 14 with ECH GREASE). encrypt_then_mac(22)
-//     dropped. status_request(5), SCT(18) added. ECH GREASE appears in
-//     ~33% of connections — probabilistic per-handshake.
-//   - Extension order completely different — server_name is NOW first, not
-//     renegotiation_info.
-//
-// If these defaults look "thin," that's the point: matching the real shape
-// means NOT overselling TLS capabilities.
+// Default TLS fingerprint values captured from Claude Code (Node.js 24.x)
+// Captured via tls-fingerprint-web capture server
+// JA3 Hash: 44f88fca027f27bab4bb08d4af15f23e
+// JA4:      t13d1714h1_5b57614c22b0_7baf387fc6ff
 var (
-	// defaultCipherSuites — 17 cipher suites in the exact order Claude Code
-	// 2.1.114 bundled Node 24.3.0 sends them. Do NOT reorder: JA3 hash
-	// depends on order.
+	// defaultCipherSuites contains the 17 cipher suites from Node.js 24.x
+	// Order is critical for JA3 fingerprint matching
 	defaultCipherSuites = []uint16{
-		// TLS 1.3 (note: 1301 FIRST, unlike the old OpenSSL order)
+		// TLS 1.3 cipher suites
 		0x1301, // TLS_AES_128_GCM_SHA256
 		0x1302, // TLS_AES_256_GCM_SHA384
 		0x1303, // TLS_CHACHA20_POLY1305_SHA256
 
-		// ECDHE + AES-GCM (ECDSA before RSA, AES-128 before AES-256)
+		// ECDHE + AES-GCM
 		0xc02b, // TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
 		0xc02f, // TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
 		0xc02c, // TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
 		0xc030, // TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
 
-		// ChaCha20-Poly1305 (ECDSA before RSA)
+		// ECDHE + ChaCha20-Poly1305
 		0xcca9, // TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
 		0xcca8, // TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
 
-		// ECDHE + AES-CBC-SHA (legacy — SHA1 HMAC, kept for compat)
+		// ECDHE + AES-CBC-SHA (legacy fallback)
 		0xc009, // TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
 		0xc013, // TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
 		0xc00a, // TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
 		0xc014, // TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
 
-		// RSA key exchange + AES-GCM (non-PFS)
+		// RSA + AES-GCM (non-PFS)
 		0x009c, // TLS_RSA_WITH_AES_128_GCM_SHA256
 		0x009d, // TLS_RSA_WITH_AES_256_GCM_SHA384
 
-		// RSA + AES-CBC-SHA (very legacy)
+		// RSA + AES-CBC-SHA (non-PFS, legacy)
 		0x002f, // TLS_RSA_WITH_AES_128_CBC_SHA
 		0x0035, // TLS_RSA_WITH_AES_256_CBC_SHA
 	}
 
-	// defaultCurves — 3 supported groups Claude Code 2.1.114 advertises.
-	//
-	// The 2.1.109 era had 8 groups including post-quantum X25519MLKEM768.
-	// 2.1.114 reverts to a minimal set of classical ECDHE curves only —
-	// no PQ hybrid, no FFDHE, no P521, no x448. This matches what modern
-	// undici (Node 24.x bundled fetch API) offers.
+	// defaultCurves contains the 3 supported groups from Node.js 24.x
 	defaultCurves = []utls.CurveID{
 		utls.X25519,    // 0x001d
 		utls.CurveP256, // 0x0017 (secp256r1)
 		utls.CurveP384, // 0x0018 (secp384r1)
 	}
 
-	// defaultKeyShareGroups — single X25519 key share. MLKEM768 is no
-	// longer advertised as of 2.1.114 (see defaultCurves note).
-	defaultKeyShareGroups = []utls.CurveID{
-		utls.X25519,
-	}
-
-	// defaultPointFormats — Claude Code 2.1.114 advertises only
-	// uncompressed. The 2.1.109 baseline listed all 3 classical formats,
-	// but the bundled Node 24.3.0 TLS stack now sends just one.
+	// defaultPointFormats contains point formats from Node.js 24.x
 	defaultPointFormats = []uint16{
 		0, // uncompressed
 	}
 
-	// defaultSignatureAlgorithms — 9 schemes Claude Code 2.1.114 advertises,
-	// in capture order. Dramatically reduced from 2.1.109's 26-scheme list:
-	// no Brainpool TLS 1.3, no Ed25519/Ed448, no experimental 0x0904/5/6,
-	// no legacy DSA/SHA224 variants. Just modern RSA-PSS + ECDSA + legacy
-	// RSA-PKCS1-SHA1 floor.
+	// defaultSignatureAlgorithms contains the 9 signature algorithms from Node.js 24.x
 	defaultSignatureAlgorithms = []utls.SignatureScheme{
 		0x0403, // ecdsa_secp256r1_sha256
 		0x0804, // rsa_pss_rsae_sha256
@@ -160,7 +112,7 @@ var (
 		0x0501, // rsa_pkcs1_sha384
 		0x0806, // rsa_pss_rsae_sha512
 		0x0601, // rsa_pkcs1_sha512
-		0x0201, // rsa_pkcs1_sha1 (legacy floor)
+		0x0201, // rsa_pkcs1_sha1
 	}
 )
 
@@ -214,17 +166,9 @@ func (d *SOCKS5ProxyDialer) DialTLSContext(ctx context.Context, network, addr st
 		return nil, fmt.Errorf("create SOCKS5 dialer: %w", err)
 	}
 
-	// Step 2: Establish SOCKS5 tunnel to target.
-	// Use ContextDialer so the caller's ctx (timeout/cancel) covers the SOCKS5
-	// handshake; otherwise an unresponsive proxy hangs goroutines for minutes
-	// and exhausts connections. x/net's *socks.Dialer satisfies ContextDialer
-	// (verified for golang.org/x/net v0.49.0).
+	// Step 2: Establish SOCKS5 tunnel to target
 	slog.Debug("tls_fingerprint_socks5_establishing_tunnel", "target", addr)
-	ctxDialer, ok := socksDialer.(proxy.ContextDialer)
-	if !ok {
-		return nil, fmt.Errorf("SOCKS5 dialer does not implement ContextDialer (x/net contract changed)")
-	}
-	conn, err := ctxDialer.DialContext(ctx, "tcp", addr)
+	conn, err := socksDialer.Dial("tcp", addr)
 	if err != nil {
 		slog.Debug("tls_fingerprint_socks5_connect_failed", "error", err)
 		return nil, fmt.Errorf("SOCKS5 connect: %w", err)
@@ -363,67 +307,23 @@ func toUTLSCurves(curves []uint16) []utls.CurveID {
 	return result
 }
 
-// defaultExtensionOrder — 13 base extensions in the exact order Claude Code
-// 2.1.114 (bundled Node 24.3.0) sends them when ECH/padding are OFF. Real
-// CC alternates between two variants (observed ratio ~55:45):
-//
-//	"Rich" variant (~55%): +ECH at position 1 AND +padding (21) at end.
-//	                        15 raw extensions, JA3 d871d02cecbde59abbf8f4806134addf,
-//	                        JA4 t13d1714h1.
-//	"Plain" variant (~45%): no ECH, no padding. 13 raw extensions,
-//	                         JA3 dc782a9d905fdcee1223a3d4e8108bc6, JA4 t13d1713h1.
-//
-// ECH and padding appear together, not independently — probably because
-// both are emitted by the same OpenSSL "extended hello" code path in Node.
-//
-// Versus the 2026-04-15 list:
-//   - server_name is FIRST (was #2 after renegotiation_info)
-//   - extended_master_secret moved UP before renegotiation_info
-//   - supported_groups now BEFORE ec_point_formats (was reversed)
-//   - encrypt_then_mac (22) REMOVED
-//   - status_request (5) and signed_certificate_timestamp (18) ADDED back
-//   - key_share → psk_key_exchange_modes → supported_versions trailing triple
-//
+// defaultExtensionOrder is the Node.js 24.x extension order.
 // Used when Profile.Extensions is empty.
 var defaultExtensionOrder = []uint16{
 	0,     // server_name
+	65037, // encrypted_client_hello
 	23,    // extended_master_secret
-	65281, // renegotiation_info (0xff01)
+	65281, // renegotiation_info
 	10,    // supported_groups
 	11,    // ec_point_formats
 	35,    // session_ticket
 	16,    // alpn
-	5,     // status_request (OCSP)
+	5,     // status_request
 	13,    // signature_algorithms
 	18,    // signed_certificate_timestamp
 	51,    // key_share
 	45,    // psk_key_exchange_modes
 	43,    // supported_versions
-}
-
-// echAndPaddingProbability is the empirically measured frequency of the
-// "rich" ClientHello variant (GREASE ECH + padding) in Claude Code 2.1.114
-// captures. Observed ratio: 22 of 40 first-round captures plus 14 of 30
-// follow-up captures = 36/70 ≈ 0.51. Per-connection independent roll.
-const echAndPaddingProbability = 0.50
-
-// maybeEnrichExtensions returns extOrder unchanged (plain variant, ~50%) or
-// a copy with 0xfe0d inserted at index 1 AND 21 (padding) appended at end
-// (rich variant, ~50%). Called per-handshake so each connection rolls
-// independently — matches the per-connection randomness observed in real CC.
-func maybeEnrichExtensions(extOrder []uint16) []uint16 {
-	if mrand.Float64() >= echAndPaddingProbability {
-		return extOrder
-	}
-	if len(extOrder) < 1 || extOrder[0] != 0 {
-		return extOrder
-	}
-	out := make([]uint16, 0, len(extOrder)+2)
-	out = append(out, extOrder[0])     // server_name
-	out = append(out, 0xfe0d)          // encrypted_client_hello (GREASE)
-	out = append(out, extOrder[1:]...) // 23, 65281, ..., 43
-	out = append(out, 21)              // padding (RFC 7685)
-	return out
 }
 
 // isGREASEValue checks if a uint16 value matches the TLS GREASE pattern (0x?a?a).
@@ -462,19 +362,13 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 	if profile != nil && len(profile.ALPNProtocols) > 0 {
 		alpnProtocols = profile.ALPNProtocols
 	}
-	// Defensive: strip "h2" from any profile (including ones persisted before
-	// the randomizer fix). http.Transport with a custom DialTLSContext cannot
-	// speak HTTP/2 — if the server negotiates h2 via ALPN, the transport writes
-	// HTTP/1.1 and the server responds with HTTP/2 SETTINGS/WINDOW_UPDATE/GOAWAY
-	// frames, surfacing as "malformed HTTP response" errors.
-	alpnProtocols = filterHTTP2FromALPN(alpnProtocols)
 
 	supportedVersions := []uint16{utls.VersionTLS13, utls.VersionTLS12}
 	if profile != nil && len(profile.SupportedVersions) > 0 {
 		supportedVersions = profile.SupportedVersions
 	}
 
-	keyShareGroups := defaultKeyShareGroups
+	keyShareGroups := []utls.CurveID{utls.X25519}
 	if profile != nil && len(profile.KeyShareGroups) > 0 {
 		keyShareGroups = toUTLSCurves(profile.KeyShareGroups)
 	}
@@ -493,11 +387,9 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 	}
 
 	// Determine extension order
-	var extOrder []uint16
+	extOrder := defaultExtensionOrder
 	if profile != nil && len(profile.Extensions) > 0 {
 		extOrder = profile.Extensions
-	} else {
-		extOrder = maybeEnrichExtensions(defaultExtensionOrder)
 	}
 
 	// Build extensions list from the ordered IDs.
@@ -540,12 +432,11 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 			// Send GREASE ECH with random payload — mimics Node.js behavior when no real ECHConfig is available.
 			// An empty GenericExtension causes "error decoding message" from servers that validate ECH format.
 			extensions = append(extensions, &utls.GREASEEncryptedClientHelloExtension{})
-		case 21: // padding (RFC 7685) — BoringPaddingStyle pads CH to ≥512 bytes
-			extensions = append(extensions, &utls.UtlsPaddingExtension{GetPaddingLen: utls.BoringPaddingStyle})
 		case 0xff01: // renegotiation_info
 			extensions = append(extensions, &utls.RenegotiationInfoExtension{})
 		default:
 			// Unknown extension — send as GenericExtension (type ID + empty data).
+			// This covers encrypt_then_mac(22) and any future extensions.
 			extensions = append(extensions, &utls.GenericExtension{Id: id})
 		}
 	}
@@ -563,23 +454,6 @@ func buildClientHelloSpecFromProfile(profile *Profile) *utls.ClientHelloSpec {
 		TLSVersMax:         utls.VersionTLS13,
 		TLSVersMin:         utls.VersionTLS10,
 	}
-}
-
-// filterHTTP2FromALPN removes "h2" (and the deprecated "h2c") entries from an
-// ALPN list, guaranteeing at least ["http/1.1"] is advertised. Called before
-// every TLS handshake — see comment at call site for why h2 is unsafe.
-func filterHTTP2FromALPN(alpn []string) []string {
-	out := make([]string, 0, len(alpn))
-	for _, p := range alpn {
-		if p == "h2" || p == "h2c" {
-			continue
-		}
-		out = append(out, p)
-	}
-	if len(out) == 0 {
-		return []string{"http/1.1"}
-	}
-	return out
 }
 
 // toUint8s converts []uint16 to []uint8 (for utls fields that require []uint8).

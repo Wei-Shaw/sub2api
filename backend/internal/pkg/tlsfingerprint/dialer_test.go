@@ -163,12 +163,10 @@ func skipNetworkTest(t *testing.T) {
 
 // TestDialerWithProfile tests that different profiles produce different fingerprints.
 func TestDialerWithProfile(t *testing.T) {
-	// Use explicit extensions on profile1 to avoid the probabilistic
-	// maybeEnrichExtensions path — ensures a deterministic extension count.
+	// Create two dialers with different profiles
 	profile1 := &Profile{
 		Name:         "Profile 1 - No GREASE",
 		EnableGREASE: false,
-		Extensions:   []uint16{0, 23, 65281, 10, 11, 35, 16, 5, 13, 18, 51, 45, 43},
 	}
 	profile2 := &Profile{
 		Name:         "Profile 2 - With GREASE",
@@ -178,12 +176,15 @@ func TestDialerWithProfile(t *testing.T) {
 	dialer1 := NewDialer(profile1, nil)
 	dialer2 := NewDialer(profile2, nil)
 
+	// Build specs and compare
+	// Note: We can't directly compare JA3 without making network requests
+	// but we can verify the specs are different
 	spec1 := buildClientHelloSpecFromProfile(dialer1.profile)
 	spec2 := buildClientHelloSpecFromProfile(dialer2.profile)
 
-	// Profile with GREASE should have 2 extra bookend extensions
+	// Profile with GREASE should have more extensions
 	if len(spec2.Extensions) <= len(spec1.Extensions) {
-		t.Errorf("expected GREASE profile to have more extensions: got %d vs %d", len(spec2.Extensions), len(spec1.Extensions))
+		t.Error("expected GREASE profile to have more extensions")
 	}
 }
 

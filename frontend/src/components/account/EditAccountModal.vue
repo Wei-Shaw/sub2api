@@ -1602,41 +1602,12 @@
             </button>
           </div>
           <!-- Profile selector -->
-          <div v-if="tlsFingerprintEnabled" class="mt-3 space-y-2">
-            <div class="flex items-center gap-2">
-              <select
-                v-model="tlsFingerprintProfileId"
-                class="input flex-1"
-                @change="tlsFingerprintRandomized = false"
-              >
-                <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') }}</option>
-                <option v-if="tlsFingerprintProfiles.length > 0" :value="-1">{{ t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }}</option>
-                <option v-for="p in tlsFingerprintProfiles" :key="p.id" :value="p.id">
-                  {{ p.name }}{{ p.bound_account_count ? ` (${p.bound_account_count})` : '' }}
-                </option>
-              </select>
-              <span
-                v-if="tlsFingerprintRandomized"
-                class="inline-flex items-center rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900 dark:text-primary-300"
-              >
-                {{ t('admin.accounts.quotaControl.tlsFingerprint.randomizedBadge') }}
-              </span>
-            </div>
-            <div class="flex items-center justify-between gap-2">
-              <p class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.accounts.quotaControl.tlsFingerprint.randomizeHint') }}
-              </p>
-              <button
-                type="button"
-                class="whitespace-nowrap rounded-md border border-primary-600 px-3 py-1 text-xs font-medium text-primary-600 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-primary-400 dark:text-primary-300 dark:hover:bg-primary-900/30"
-                :disabled="tlsFingerprintRandomizing || !props.account?.id"
-                @click="handleRandomizeTLSFingerprint"
-              >
-                {{ tlsFingerprintRandomized
-                  ? t('admin.accounts.quotaControl.tlsFingerprint.reshuffleButton')
-                  : t('admin.accounts.quotaControl.tlsFingerprint.randomizeButton') }}
-              </button>
-            </div>
+          <div v-if="tlsFingerprintEnabled" class="mt-3">
+            <select v-model="tlsFingerprintProfileId" class="input">
+              <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') }}</option>
+              <option v-if="tlsFingerprintProfiles.length > 0" :value="-1">{{ t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }}</option>
+              <option v-for="p in tlsFingerprintProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
+            </select>
           </div>
         </div>
 
@@ -1869,16 +1840,6 @@
     @confirm="handleMixedChannelConfirm"
     @cancel="handleMixedChannelCancel"
   />
-  <ConfirmDialog
-    :show="showRandomizeTLSConfirm"
-    :title="t('admin.accounts.quotaControl.tlsFingerprint.reshuffleButton')"
-    :message="t('admin.accounts.quotaControl.tlsFingerprint.randomizeConfirm')"
-    :confirm-text="t('common.confirm')"
-    :cancel-text="t('common.cancel')"
-    :danger="true"
-    @confirm="handleRandomizeTLSConfirm"
-    @cancel="handleRandomizeTLSCancel"
-  />
 </template>
 
 <script setup lang="ts">
@@ -1899,7 +1860,6 @@ import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
-import { extractApiErrorMessage } from '@/utils/apiError'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import {
   OPENAI_WS_MODE_CTX_POOL,
@@ -2004,9 +1964,6 @@ const mixedChannelWarningRawMessage = ref('')
 const mixedChannelWarningAction = ref<(() => Promise<void>) | null>(null)
 const antigravityMixedChannelConfirmed = ref(false)
 
-const showRandomizeTLSConfirm = ref(false)
-const randomizeTLSConfirmAction = ref<(() => Promise<void>) | null>(null)
-
 // Quota control state (Anthropic OAuth/SetupToken only)
 const windowCostEnabled = ref(false)
 const windowCostLimit = ref<number | null>(null)
@@ -2026,9 +1983,7 @@ const umqModeOptions = computed(() => [
 ])
 const tlsFingerprintEnabled = ref(false)
 const tlsFingerprintProfileId = ref<number | null>(null)
-const tlsFingerprintProfiles = ref<{ id: number; name: string; bound_account_count?: number }[]>([])
-const tlsFingerprintRandomized = ref(false)
-const tlsFingerprintRandomizing = ref(false)
+const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
 const sessionIdMaskingEnabled = ref(false)
 const cacheTTLOverrideEnabled = ref(false)
 const cacheTTLOverrideTarget = ref<string>('5m')
@@ -2488,45 +2443,10 @@ const loadTLSProfiles = async () => {
     tlsFingerprintProfiles.value = profiles.map(p => ({
       id: p.id,
       name: p.name,
-      bound_account_count: p.bound_account_count,
     }))
   } catch {
     tlsFingerprintProfiles.value = []
   }
-}
-
-const performRandomizeTLSFingerprint = async () => {
-  if (!props.account?.id) return
-  tlsFingerprintRandomizing.value = true
-  try {
-    const profile = await adminAPI.tlsFingerprintProfiles.randomizeForAccount(props.account.id)
-    // Server has already persisted enable_tls_fingerprint + new profile ID +
-    // randomized flag on the account. Sync local form state so Save doesn't
-    // roll it back.
-    tlsFingerprintEnabled.value = true
-    tlsFingerprintProfileId.value = profile.id
-    tlsFingerprintRandomized.value = true
-    // Refresh the manual dropdown list; we don't need to see the new auto
-    // profile there, but the call also primes cache if needed.
-    await loadTLSProfiles()
-    appStore.showSuccess(t('admin.accounts.quotaControl.tlsFingerprint.randomizeSuccess'))
-  } catch (err: unknown) {
-    console.error('randomize TLS fingerprint failed', err)
-    appStore.showError(
-      extractApiErrorMessage(err, t('admin.accounts.quotaControl.tlsFingerprint.randomizeFailed'))
-    )
-  } finally {
-    tlsFingerprintRandomizing.value = false
-  }
-}
-
-const handleRandomizeTLSFingerprint = () => {
-  if (!props.account?.id) return
-  if (tlsFingerprintRandomized.value) {
-    openRandomizeTLSConfirm(performRandomizeTLSFingerprint)
-    return
-  }
-  void performRandomizeTLSFingerprint()
 }
 
 // Model mapping helpers
@@ -2728,7 +2648,6 @@ function loadQuotaControlSettings(account: Account) {
   userMsgQueueMode.value = ''
   tlsFingerprintEnabled.value = false
   tlsFingerprintProfileId.value = null
-  tlsFingerprintRandomized.value = false
   sessionIdMaskingEnabled.value = false
   cacheTTLOverrideEnabled.value = false
   cacheTTLOverrideTarget.value = '5m'
@@ -2774,7 +2693,6 @@ function loadQuotaControlSettings(account: Account) {
     tlsFingerprintEnabled.value = true
   }
   tlsFingerprintProfileId.value = account.tls_fingerprint_profile_id ?? null
-  tlsFingerprintRandomized.value = account.tls_fingerprint_randomized === true
 
   // Load session ID masking setting
   if (account.session_id_masking_enabled === true) {
@@ -2856,15 +2774,6 @@ const openMixedChannelDialog = (opts: {
   showMixedChannelWarning.value = true
 }
 
-const clearRandomizeTLSConfirm = () => {
-  showRandomizeTLSConfirm.value = false
-  randomizeTLSConfirmAction.value = null
-}
-const openRandomizeTLSConfirm = (onConfirm: () => Promise<void>) => {
-  randomizeTLSConfirmAction.value = onConfirm
-  showRandomizeTLSConfirm.value = true
-}
-
 const withAntigravityConfirmFlag = (payload: Record<string, unknown>) => {
   if (needsMixedChannelCheck() && antigravityMixedChannelConfirmed.value) {
     return {
@@ -2918,7 +2827,6 @@ const parseDateTimeLocal = parseDateTimeLocalInput
 const handleClose = () => {
   antigravityMixedChannelConfirmed.value = false
   clearMixedChannelDialog()
-  clearRandomizeTLSConfirm()
   emit('close')
 }
 
@@ -3233,18 +3141,9 @@ const handleSubmit = async () => {
         } else {
           delete newExtra.tls_fingerprint_profile_id
         }
-        // Preserve randomized flag only if it still matches the bound profile.
-        // If the user switched to a different profile via the dropdown, the
-        // random assignment is no longer authoritative.
-        if (tlsFingerprintRandomized.value) {
-          newExtra.tls_fingerprint_randomized = true
-        } else {
-          delete newExtra.tls_fingerprint_randomized
-        }
       } else {
         delete newExtra.enable_tls_fingerprint
         delete newExtra.tls_fingerprint_profile_id
-        delete newExtra.tls_fingerprint_randomized
       }
 
       // Session ID masking setting
@@ -3414,10 +3313,4 @@ const handleMixedChannelCancel = () => {
   clearMixedChannelDialog()
 }
 
-const handleRandomizeTLSConfirm = async () => {
-  const action = randomizeTLSConfirmAction.value
-  clearRandomizeTLSConfirm()
-  if (action) await action()
-}
-const handleRandomizeTLSCancel = () => clearRandomizeTLSConfirm()
 </script>

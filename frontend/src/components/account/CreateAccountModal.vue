@@ -2165,33 +2165,12 @@
             </button>
           </div>
           <!-- Profile selector -->
-          <div v-if="tlsFingerprintEnabled" class="mt-3 space-y-3">
+          <div v-if="tlsFingerprintEnabled" class="mt-3">
             <select v-model="tlsFingerprintProfileId" class="input">
               <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') }}</option>
               <option v-if="tlsFingerprintProfiles.length > 0" :value="-1">{{ t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }}</option>
-              <option v-for="p in tlsFingerprintProfiles" :key="p.id" :value="p.id">
-                {{ p.name }}{{ p.bound_account_count ? ` (${p.bound_account_count})` : '' }}
-              </option>
+              <option v-for="p in tlsFingerprintProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
             </select>
-            <!-- Auto-randomize on create (Anthropic OAuth/setup-token only) -->
-            <label
-              v-if="form.platform === 'anthropic' && (addMethod === 'oauth' || addMethod === 'setup-token')"
-              class="flex cursor-pointer items-start gap-2 rounded-md border border-dashed border-primary-300 bg-primary-50 p-3 dark:border-primary-700 dark:bg-primary-900/20"
-            >
-              <input
-                v-model="tlsFingerprintRandomizeOnCreate"
-                type="checkbox"
-                class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-              />
-              <div class="flex-1">
-                <div class="text-sm font-medium text-gray-800 dark:text-gray-200">
-                  {{ t('admin.accounts.quotaControl.tlsFingerprint.randomizeOnCreate') }}
-                </div>
-                <div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('admin.accounts.quotaControl.tlsFingerprint.randomizeOnCreateHint') }}
-                </div>
-              </div>
-            </label>
           </div>
         </div>
 
@@ -2951,7 +2930,6 @@ import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
-import { extractApiErrorMessage } from '@/utils/apiError'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import {
   OPENAI_WS_MODE_CTX_POOL,
@@ -3175,8 +3153,7 @@ const umqModeOptions = computed(() => [
 ])
 const tlsFingerprintEnabled = ref(false)
 const tlsFingerprintProfileId = ref<number | null>(null)
-const tlsFingerprintProfiles = ref<{ id: number; name: string; bound_account_count?: number }[]>([])
-const tlsFingerprintRandomizeOnCreate = ref(false)
+const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
 const sessionIdMaskingEnabled = ref(false)
 const cacheTTLOverrideEnabled = ref(false)
 const cacheTTLOverrideTarget = ref<string>('5m')
@@ -3349,7 +3326,6 @@ watch(
           tlsFingerprintProfiles.value = profiles.map(p => ({
             id: p.id,
             name: p.name,
-            bound_account_count: p.bound_account_count,
           }))
         })
         .catch(() => { tlsFingerprintProfiles.value = [] })
@@ -3760,8 +3736,7 @@ const ensureAntigravityMixedChannelConfirmed = async (onConfirm: () => Promise<v
 const submitCreateAccount = async (payload: CreateAccountRequest) => {
   submitting.value = true
   try {
-    const created = await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
-    await maybeRandomizeTLSForCreatedAccount(created?.id, payload.platform)
+    await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
     appStore.showSuccess(t('admin.accounts.accountCreated'))
     emit('created')
     handleClose()
@@ -3846,7 +3821,6 @@ const resetForm = () => {
   userMsgQueueMode.value = ''
   tlsFingerprintEnabled.value = false
   tlsFingerprintProfileId.value = null
-  tlsFingerprintRandomizeOnCreate.value = false
   sessionIdMaskingEnabled.value = false
   cacheTTLOverrideEnabled.value = false
   cacheTTLOverrideTarget.value = '5m'
@@ -3938,25 +3912,6 @@ const doCreateAccount = async (payload: CreateAccountRequest) => {
     return
   }
   await submitCreateAccount(payload)
-}
-
-// maybeRandomizeTLSForCreatedAccount fires the randomize-for-account endpoint
-// after a successful create if the user ticked "randomize on create". Noop for
-// non-Anthropic accounts (backend rejects them) and noop if the flag is off.
-// Failures surface as toasts but don't roll back the account — the user can
-// always re-randomize manually from the edit modal.
-const maybeRandomizeTLSForCreatedAccount = async (accountID: number | undefined, platform: AccountPlatform) => {
-  if (!accountID) return
-  if (!tlsFingerprintRandomizeOnCreate.value) return
-  if (platform !== 'anthropic') return
-  try {
-    await adminAPI.tlsFingerprintProfiles.randomizeForAccount(accountID)
-  } catch (err: unknown) {
-    console.error('randomize TLS fingerprint after create failed', err)
-    appStore.showError(
-      extractApiErrorMessage(err, t('admin.accounts.quotaControl.tlsFingerprint.randomizeFailed'))
-    )
-  }
 }
 
 // Handle mixed channel warning confirmation
@@ -4839,7 +4794,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           credentials.temp_unschedulable_rules = tempUnschedPayload
         }
 
-        const createdAccount = await adminAPI.accounts.create({
+        await adminAPI.accounts.create({
           name: accountName,
           notes: form.notes,
           platform: form.platform,
@@ -4855,7 +4810,6 @@ const handleCookieAuth = async (sessionKey: string) => {
           expires_at: form.expires_at,
           auto_pause_on_expired: autoPauseOnExpired.value
         })
-        await maybeRandomizeTLSForCreatedAccount(createdAccount?.id, form.platform)
 
         successCount++
       } catch (error: any) {

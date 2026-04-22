@@ -1,8 +1,6 @@
 // Package claude provides constants and helpers for Claude API integration.
 package claude
 
-import "math/rand/v2"
-
 // Claude Code 客户端相关常量
 
 // Beta header 常量
@@ -14,33 +12,14 @@ const (
 	BetaTokenCounting            = "token-counting-2024-11-01"
 	BetaContext1M                = "context-1m-2025-08-07"
 	BetaFastMode                 = "fast-mode-2026-02-01"
-	// Additions captured from Claude Code 2.1.109 (see capture_fingerprint tool).
-	BetaContextManagement20250627  = "context-management-2025-06-27"
-	BetaPromptCachingScope20260105 = "prompt-caching-scope-2026-01-05"
-	BetaAdvisorTool20260301        = "advisor-tool-2026-03-01"
-	// Added 2026-04-19 from 2.1.114 haiku title-sidecar capture — haiku
-	// background requests (title generation) carry this but the main sonnet
-	// request does not.
-	BetaStructuredOutputs20251215 = "structured-outputs-2025-12-15"
 )
 
 // DroppedBetas 是转发时需要从 anthropic-beta header 中移除的 beta token 列表。
 // 这些 token 是客户端特有的，不应透传给上游 API。
 var DroppedBetas = []string{}
 
-// clientExtraBetas 是 Claude Code 基线抓包里额外出现的 beta token。
-// 真实客户端稳定携带这些 beta；缺失的话上游可以靠 "UA=版本号 但 beta 不符"
-// 一条规则批量扫出 mimic 流量。保持和 DefaultHeaders 的抓包版本同步。
-const clientExtraBetas = "," + BetaContextManagement20250627 + "," + BetaPromptCachingScope20260105 + "," + BetaAdvisorTool20260301
-
-// DefaultBetaHeader Claude Code 客户端默认的 anthropic-beta header.
-//
-// 2.1.111 capture (2026-04-17) no longer advertises fine-grained-tool-streaming
-// — Anthropic rolled the behavior into the baseline API. 2.1.112 (latest on
-// npm) is a patch bump with no observed beta-token change. Keeping the stale
-// beta here would leave "UA=2.1.11x but fine-grained-tool-streaming present"
-// as a one-rule scan-for-mimic flag.
-const DefaultBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + clientExtraBetas
+// DefaultBetaHeader Claude Code 客户端默认的 anthropic-beta header
+const DefaultBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + "," + BetaFineGrainedToolStreaming
 
 // MessageBetaHeaderNoTools /v1/messages 在无工具时的 beta header
 //
@@ -48,80 +27,38 @@ const DefaultBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleav
 // Claude Code for non-Claude-Code clients, we must include the claude-code beta
 // even if the request doesn't use tools, otherwise upstream may reject the
 // request as a non-Claude-Code API request.
-const MessageBetaHeaderNoTools = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + clientExtraBetas
+const MessageBetaHeaderNoTools = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking
 
 // MessageBetaHeaderWithTools /v1/messages 在有工具时的 beta header
-const MessageBetaHeaderWithTools = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + clientExtraBetas
+const MessageBetaHeaderWithTools = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking
 
 // CountTokensBetaHeader count_tokens 请求使用的 anthropic-beta header
-const CountTokensBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + "," + BetaTokenCounting + clientExtraBetas
+const CountTokensBetaHeader = BetaClaudeCode + "," + BetaOAuth + "," + BetaInterleavedThinking + "," + BetaTokenCounting
 
-// HaikuBetaHeader Haiku 模型（OAuth）使用的 anthropic-beta header.
-//
-// Captured 2026-04-19 from Claude Code 2.1.114 title-generation sidecar
-// request (api-key mode). Matches the variant exactly except for the oauth
-// token, which is prepended here for OAuth-credential accounts.
-const HaikuBetaHeader = BetaOAuth + "," + BetaInterleavedThinking + clientExtraBetas + "," + BetaStructuredOutputs20251215
+// HaikuBetaHeader Haiku 模型使用的 anthropic-beta header（不需要 claude-code beta）
+const HaikuBetaHeader = BetaOAuth + "," + BetaInterleavedThinking
 
-// APIKeyBetaHeader API-key 账号使用的 anthropic-beta header.
-//
-// Exactly matches Claude Code 2.1.114 main /v1/messages request against
-// x-api-key auth (captured 2026-04-19):
-//
-//	claude-code-20250219,
-//	interleaved-thinking-2025-05-14,
-//	context-management-2025-06-27,
-//	prompt-caching-scope-2026-01-05,
-//	advisor-tool-2026-03-01
-//
-// Differs from DefaultBetaHeader only by the absence of oauth-2025-04-20
-// (beta is auth-type conditional; non-OAuth requests never carry it).
-const APIKeyBetaHeader = BetaClaudeCode + "," + BetaInterleavedThinking + clientExtraBetas
+// APIKeyBetaHeader API-key 账号建议使用的 anthropic-beta header（不包含 oauth）
+const APIKeyBetaHeader = BetaClaudeCode + "," + BetaInterleavedThinking + "," + BetaFineGrainedToolStreaming
 
-// APIKeyHaikuBetaHeader Haiku 模型在 API-key 账号下的 anthropic-beta header.
-//
-// Exact match to Claude Code 2.1.114 title-generation sidecar request captured
-// 2026-04-19: interleaved-thinking, context-management, prompt-caching-scope,
-// advisor-tool, structured-outputs. No claude-code and no oauth.
-const APIKeyHaikuBetaHeader = BetaInterleavedThinking + clientExtraBetas + "," + BetaStructuredOutputs20251215
+// APIKeyHaikuBetaHeader Haiku 模型在 API-key 账号下使用的 anthropic-beta header（不包含 oauth / claude-code）
+const APIKeyHaikuBetaHeader = BetaInterleavedThinking
 
 // DefaultHeaders 是 Claude Code 客户端默认请求头。
-//
-// Re-verified 2026-04-19 from a live capture of Claude Code 2.1.114 on
-// macOS arm64 (backend/tools/capture_fingerprint). Critical: CC 2.1.114
-// bundles its own Node 24.3.0 runtime; the host Node version is NOT what
-// gets advertised in the X-Stainless-Runtime-Version header. Bundled
-// @anthropic-ai/sdk is 0.81.0 — unchanged since the 2.1.109 capture.
-// Keep these in sync with recent Claude CLI traffic to reduce the chance
-// that Claude Code-scoped OAuth credentials are rejected as "non-CLI" usage.
 var DefaultHeaders = map[string]string{
-	"User-Agent":                                "claude-cli/2.1.114 (external, sdk-cli)",
+	// Keep these in sync with recent Claude CLI traffic to reduce the chance
+	// that Claude Code-scoped OAuth credentials are rejected as "non-CLI" usage.
+	"User-Agent":                                "claude-cli/2.1.22 (external, cli)",
 	"X-Stainless-Lang":                          "js",
-	"X-Stainless-Package-Version":               "0.81.0",
-	"X-Stainless-OS":                            "MacOS",
+	"X-Stainless-Package-Version":               "0.70.0",
+	"X-Stainless-OS":                            "Linux",
 	"X-Stainless-Arch":                          "arm64",
 	"X-Stainless-Runtime":                       "node",
-	"X-Stainless-Runtime-Version":               "v24.3.0",
+	"X-Stainless-Runtime-Version":               "v24.13.0",
+	"X-Stainless-Retry-Count":                   "0",
 	"X-Stainless-Timeout":                       "600",
 	"X-App":                                     "cli",
 	"Anthropic-Dangerous-Direct-Browser-Access": "true",
-}
-
-// SampleStainlessRetryCount returns a probabilistically sampled retry count
-// for the X-Stainless-Retry-Count header. Real Claude CLI emits "0" on the
-// vast majority of requests but occasionally "1" (after a transient failure)
-// and rarely "2" (after two). A constant "0" across every request is a weak
-// mimic tell — this introduces natural variance.
-func SampleStainlessRetryCount() string {
-	r := rand.Float64()
-	switch {
-	case r < 0.005:
-		return "2"
-	case r < 0.03:
-		return "1"
-	default:
-		return "0"
-	}
 }
 
 // Model 表示一个 Claude 模型
@@ -219,6 +156,3 @@ func DenormalizeModelID(id string) string {
 	}
 	return id
 }
-
-// HaikuModelShort is the short alias Claude Code's startup probe sends.
-const HaikuModelShort = "claude-haiku-4-5"

@@ -24,8 +24,6 @@ export interface TLSFingerprintProfile {
   extensions: number[]
   created_at: string
   updated_at: string
-  // 当前被多少账号绑定；仅 List 接口返回，GetByID/Create/Update 可能缺省
-  bound_account_count?: number
 }
 
 /**
@@ -89,25 +87,12 @@ export async function deleteProfile(id: number): Promise<{ message: string }> {
   return data
 }
 
-/**
- * Generate a randomized TLS fingerprint profile, insert it into the library,
- * and bind it to the given account. Calling this a second time reshuffles:
- * the previous auto-generated profile is deleted after the new one is bound.
- */
-export async function randomizeForAccount(accountID: number): Promise<TLSFingerprintProfile> {
-  const { data } = await apiClient.post<TLSFingerprintProfile>(
-    `/admin/tls-fingerprint-profiles/randomize-for-account/${accountID}`
-  )
-  return data
-}
-
 export const tlsFingerprintProfileAPI = {
   list,
   getById,
   create,
   update,
-  delete: deleteProfile,
-  randomizeForAccount
+  delete: deleteProfile
 }
 
 export default tlsFingerprintProfileAPI

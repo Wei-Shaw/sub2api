@@ -83,7 +83,6 @@ type Config struct {
 	UsageCleanup            UsageCleanupConfig            `mapstructure:"usage_cleanup"`
 	Concurrency             ConcurrencyConfig             `mapstructure:"concurrency"`
 	TokenRefresh            TokenRefreshConfig            `mapstructure:"token_refresh"`
-	SidecarProbe            SidecarProbeConfig            `mapstructure:"sidecar_probe"`
 	RunMode                 string                        `mapstructure:"run_mode" yaml:"run_mode"`
 	Timezone                string                        `mapstructure:"timezone"` // e.g. "Asia/Shanghai", "UTC"
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
@@ -231,48 +230,6 @@ type TokenRefreshConfig struct {
 	MaxRetries int `mapstructure:"max_retries"`
 	// 重试退避基础时间（秒）
 	RetryBackoffSeconds int `mapstructure:"retry_backoff_seconds"`
-}
-
-// SidecarProbeConfig 控制 Claude OAuth 账号的 sidecar 流量注入。
-//
-// Anthropic 的订阅滥用检测会对只产生 /v1/messages 流量的账号静默降低 weekly
-// limit（典型症状：实际用量不到 2% 就触发限流）。真实 Claude Code CLI 会在
-// statusline 上周期性调用 /api/oauth/usage，也会在发送 /v1/messages 之前发
-// count_tokens。这个配置启用两个补丁来让上游看到的 endpoint 比例更像真人：
-//   - UsagePoll: 周期性调 /api/oauth/usage
-//   - CountTokensInject: 在热路径上为 /v1/messages 前置注入 count_tokens
-type SidecarProbeConfig struct {
-	UsagePoll         SidecarProbeUsagePollConfig `mapstructure:"usage_poll"`
-	CountTokensInject SidecarProbeCTInjectConfig  `mapstructure:"count_tokens_inject"`
-	StartupProbe      SidecarProbeStartupConfig   `mapstructure:"startup_probe"`
-}
-
-// SidecarProbeUsagePollConfig 控制 /api/oauth/usage 周期轮询。
-type SidecarProbeUsagePollConfig struct {
-	// Enabled 开关；默认 true。
-	Enabled bool `mapstructure:"enabled"`
-	// MinIntervalSeconds 最短探测间隔（秒），下限 60。
-	MinIntervalSeconds int `mapstructure:"min_interval_seconds"`
-	// MaxIntervalSeconds 最长探测间隔（秒），必须 >= Min。
-	MaxIntervalSeconds int `mapstructure:"max_interval_seconds"`
-	// DryRun 为 true 时只打印将要探测的账号，不发真实请求（用于灰度）。
-	DryRun bool `mapstructure:"dry_run"`
-}
-
-// SidecarProbeCTInjectConfig 控制 /v1/messages/count_tokens 前置注入。
-type SidecarProbeCTInjectConfig struct {
-	// Enabled 开关；默认 false（Phase 1 先跑 usage poll，观察后再打开）。
-	Enabled bool `mapstructure:"enabled"`
-	// TimeoutMilliseconds count_tokens 调用的独立超时，超时不影响主请求；默认 3000。
-	TimeoutMilliseconds int `mapstructure:"timeout_ms"`
-}
-
-// SidecarProbeStartupConfig 控制 token 刷新后的启动探测。
-// 真实 Claude Code CLI 在拿到新 token 后会立刻发一个 max_tokens=1 的 haiku
-// 请求验活，这个配置让 gateway 在后台刷新 token 后也模拟这个动作。
-type SidecarProbeStartupConfig struct {
-	// Enabled 开关；默认 true。
-	Enabled bool `mapstructure:"enabled"`
 }
 
 type PricingConfig struct {
@@ -1522,17 +1479,6 @@ func setDefaults() {
 	viper.SetDefault("token_refresh.refresh_before_expiry_hours", 0.5) // 提前30分钟刷新（适配Google 1小时token）
 	viper.SetDefault("token_refresh.max_retries", 3)                   // 最多重试3次
 	viper.SetDefault("token_refresh.retry_backoff_seconds", 2)         // 重试退避基础2秒
-
-	// Sidecar Probe: 生成 /api/oauth/usage 和 count_tokens 的 sidecar 流量，
-	// 让 Claude OAuth 账号的 endpoint 比例看起来像真实 Claude Code CLI。
-	// 详见 SidecarProbeConfig 的注释。
-	viper.SetDefault("sidecar_probe.usage_poll.enabled", true)
-	viper.SetDefault("sidecar_probe.usage_poll.min_interval_seconds", 300) // 5 分钟
-	viper.SetDefault("sidecar_probe.usage_poll.max_interval_seconds", 900) // 15 分钟
-	viper.SetDefault("sidecar_probe.usage_poll.dry_run", false)
-	viper.SetDefault("sidecar_probe.count_tokens_inject.enabled", false) // Phase 2，默认关闭
-	viper.SetDefault("sidecar_probe.count_tokens_inject.timeout_ms", 3000)
-	viper.SetDefault("sidecar_probe.startup_probe.enabled", true) // token 刷新后的启动探测，默认开启
 
 	// Gemini OAuth - configure via environment variables or config file
 	// GEMINI_OAUTH_CLIENT_ID and GEMINI_OAUTH_CLIENT_SECRET

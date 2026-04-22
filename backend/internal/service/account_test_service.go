@@ -268,7 +268,6 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 	for key, value := range claude.DefaultHeaders {
 		req.Header.Set(key, value)
 	}
-	req.Header.Set("X-Stainless-Retry-Count", claude.SampleStainlessRetryCount())
 
 	// Set authentication header
 	if useBearer {

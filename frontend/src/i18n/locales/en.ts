@@ -2766,15 +2766,6 @@ export default {
           hint: 'Simulate Node.js/Claude Code client TLS fingerprint',
           defaultProfile: 'Built-in Default',
           randomProfile: 'Random',
-          randomizeButton: 'Randomize Fingerprint',
-          reshuffleButton: 'Re-randomize',
-          randomizeHint: 'Generate a perturbed copy of the Claude Code 2.1.109 baseline unique to this account. Avoids pool-wide fingerprint clustering.',
-          randomizedBadge: 'Randomized',
-          randomizeConfirm: 'Generate a new random TLS fingerprint for this account? The previous random fingerprint will be deleted.',
-          randomizeSuccess: 'Generated a new random TLS fingerprint for the account',
-          randomizeFailed: 'Failed to generate random fingerprint',
-          randomizeOnCreate: 'Auto-randomize fingerprint after create',
-          randomizeOnCreateHint: 'Automatically generate a unique random TLS fingerprint for each new account once it is created (Anthropic OAuth / setup-token only)'
         },
         sessionIdMasking: {
           label: 'Session ID Masking',
@@ -5219,7 +5210,6 @@ export default {
         name: 'Name',
         description: 'Description',
         grease: 'GREASE',
-        boundAccounts: 'In use',
         alpn: 'ALPN',
         actions: 'Actions'
       },

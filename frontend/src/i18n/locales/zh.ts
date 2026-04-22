@@ -2917,15 +2917,6 @@ export default {
           hint: '模拟 Node.js/Claude Code 客户端的 TLS 指纹',
           defaultProfile: '内置默认',
           randomProfile: '随机',
-          randomizeButton: '随机分配指纹',
-          reshuffleButton: '重新随机',
-          randomizeHint: '从 Claude Code 2.1.109 基线随机扰动一个独有指纹并绑定到此账号，避免整池指纹聚类',
-          randomizedBadge: '已随机分配',
-          randomizeConfirm: '确认要为此账号重新生成随机 TLS 指纹吗？之前的随机指纹会被删除。',
-          randomizeSuccess: '已为账号生成新的随机 TLS 指纹',
-          randomizeFailed: '生成随机指纹失败',
-          randomizeOnCreate: '创建后自动随机分配指纹',
-          randomizeOnCreateHint: '账号创建成功后自动为每个新账号生成独立的随机 TLS 指纹（仅对 Anthropic OAuth / setup-token 账号生效）'
         },
         sessionIdMasking: {
           label: '会话 ID 伪装',
@@ -5390,7 +5381,6 @@ export default {
         name: '名称',
         description: '描述',
         grease: 'GREASE',
-        boundAccounts: '使用中',
         alpn: 'ALPN',
         actions: '操作'
       },
