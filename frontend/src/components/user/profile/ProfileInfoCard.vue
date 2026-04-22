@@ -40,7 +40,7 @@
 
               <div class="space-y-1">
                 <p class="truncate text-sm text-gray-600 dark:text-gray-300">
-                  {{ user?.email REDACTEDREDACTED
+                  {{ primaryEmailDisplay REDACTEDREDACTED
                 </p>
                 <div
                   v-if="sourceHints.length"
@@ -208,6 +208,16 @@ const { t REDACTED = useI18n()
 
 const avatarUrl = computed(() => props.user?.avatar_url?.trim() || '')
 const displayName = computed(() => props.user?.username?.trim() || props.user?.email?.trim() || t('profile.user'))
+const primaryEmailDisplay = computed(() => {
+  const email = props.user?.email?.trim() || ''
+  if (!email) {
+    return ''
+  REDACTED
+  if (props.user?.email_bound === false && email.endsWith('.invalid')) {
+    return ''
+  REDACTED
+  return email
+REDACTED)
 const avatarInitial = computed(() => displayName.value.charAt(0).toUpperCase() || 'U')
 const memberSinceLabel = computed(() => {
   const raw = props.user?.created_at?.trim()
@@ -229,7 +239,7 @@ REDACTED)
 const providerLabels = computed<Record<UserAuthProvider, string>>(() => ({
   email: t('profile.authBindings.providers.email'),
   linuxdo: t('profile.authBindings.providers.linuxdo'),
-  oidc: t('profile.authBindings.providers.oidc', { providerName: 'OIDC' REDACTED),
+  oidc: t('profile.authBindings.providers.oidc', { providerName: props.oidcProviderName REDACTED),
   wechat: t('profile.authBindings.providers.wechat')
 REDACTED))
 

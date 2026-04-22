@@ -67,3 +67,80 @@ REDACTED
 REDACTED
 	require.True(t, exists)
 REDACTED
+
+func TestUserRepositoryCreateRejectsNormalizedEmailDuplicate(t *testing.T) {
+	repo, _ := newUserEntRepo(t)
+	ctx := context.Background()
+
+	err := repo.Create(ctx, &service.User{
+		Email:        " Existing@Example.com ",
+		Username:     "existing-user",
+		PasswordHash: "hash",
+		Role:         service.RoleUser,
+		Status:       service.StatusActive,
+REDACTED)
+REDACTED
+
+	err = repo.Create(ctx, &service.User{
+		Email:        "existing@example.com",
+		Username:     "duplicate-user",
+		PasswordHash: "hash",
+		Role:         service.RoleUser,
+		Status:       service.StatusActive,
+REDACTED)
+	require.ErrorIs(t, err, service.ErrEmailExists)
+REDACTED
+
+func TestUserRepositoryUpdateRejectsNormalizedEmailDuplicate(t *testing.T) {
+	repo, _ := newUserEntRepo(t)
+	ctx := context.Background()
+
+	first := &service.User{
+		Email:        " Existing@Example.com ",
+		Username:     "existing-user",
+		PasswordHash: "hash",
+		Role:         service.RoleUser,
+		Status:       service.StatusActive,
+REDACTED
+	require.NoError(t, repo.Create(ctx, first))
+
+	second := &service.User{
+		Email:        "second@example.com",
+		Username:     "second-user",
+		PasswordHash: "hash",
+		Role:         service.RoleUser,
+		Status:       service.StatusActive,
+REDACTED
+	require.NoError(t, repo.Create(ctx, second))
+
+	second.Email = " existing@example.com "
+	err := repo.Update(ctx, second)
+	require.ErrorIs(t, err, service.ErrEmailExists)
+REDACTED
+
+func TestUserRepositoryGetByEmailReportsNormalizedEmailConflict(t *testing.T) {
+	repo, client := newUserEntRepo(t)
+	ctx := context.Background()
+
+	_, err := client.User.Create().
+		SetEmail("Conflict@Example.com").
+		SetUsername("conflict-user-1").
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+
+	_, err = client.User.Create().
+		SetEmail(" conflict@example.com ").
+		SetUsername("conflict-user-2").
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+REDACTED
+
+	_, err = repo.GetByEmail(ctx, "conflict@example.com")
+REDACTED
+	require.ErrorContains(t, err, "normalized email lookup matched multiple users")
+REDACTED

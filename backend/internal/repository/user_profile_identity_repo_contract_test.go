@@ -186,6 +186,79 @@ REDACTED)
 	s.Require().ErrorIs(err, ErrAuthIdentityChannelOwnershipConflict)
 REDACTED
 
+func (s *UserProfileIdentityRepoSuite) TestBindAuthIdentityToUser_ReusesLegacyWeChatAliasRecords() {
+	user := s.mustCreateUser("wechat-legacy-alias")
+
+	legacyIdentity, err := s.client.AuthIdentity.Create().
+		SetUserID(user.ID).
+		SetProviderType("wechat").
+		SetProviderKey("wechat").
+		SetProviderSubject("union-legacy-123").
+		SetMetadata(map[string]any{"source": "legacy-alias"REDACTED).
+		Save(s.ctx)
+	s.Require().NoError(err)
+
+	legacyChannel, err := s.client.AuthIdentityChannel.Create().
+		SetIdentityID(legacyIdentity.ID).
+		SetProviderType("wechat").
+		SetProviderKey("wechat").
+		SetChannel("oa").
+		SetChannelAppID("wx-app-legacy").
+		SetChannelSubject("openid-legacy-123").
+		SetMetadata(map[string]any{"scene": "legacy-alias"REDACTED).
+		Save(s.ctx)
+	s.Require().NoError(err)
+
+	bound, err := s.repo.BindAuthIdentityToUser(s.ctx, BindAuthIdentityInput{
+		UserID: user.ID,
+		Canonical: AuthIdentityKey{
+			ProviderType:    "wechat",
+			ProviderKey:     "wechat-main",
+			ProviderSubject: "union-legacy-123",
+	REDACTED,
+		Channel: &AuthIdentityChannelKey{
+			ProviderType:   "wechat",
+			ProviderKey:    "wechat-main",
+			Channel:        "oa",
+			ChannelAppID:   "wx-app-legacy",
+			ChannelSubject: "openid-legacy-123",
+	REDACTED,
+		Metadata:        map[string]any{"source": "canonical-bind"REDACTED,
+		ChannelMetadata: map[string]any{"scene": "canonical-bind"REDACTED,
+REDACTED)
+	s.Require().NoError(err)
+	s.Require().NotNil(bound)
+	s.Require().NotNil(bound.Identity)
+	s.Require().NotNil(bound.Channel)
+	s.Require().Equal(legacyIdentity.ID, bound.Identity.ID)
+	s.Require().Equal(legacyChannel.ID, bound.Channel.ID)
+	s.Require().Equal("wechat-main", bound.Identity.ProviderKey)
+	s.Require().Equal("wechat-main", bound.Channel.ProviderKey)
+	s.Require().Equal("canonical-bind", bound.Identity.Metadata["source"])
+	s.Require().Equal("canonical-bind", bound.Channel.Metadata["scene"])
+
+	identityCount, err := s.client.AuthIdentity.Query().
+		Where(
+			authidentity.UserIDEQ(user.ID),
+			authidentity.ProviderTypeEQ("wechat"),
+			authidentity.ProviderSubjectEQ("union-legacy-123"),
+		).
+		Count(s.ctx)
+	s.Require().NoError(err)
+	s.Require().Equal(1, identityCount)
+
+	channelCount, err := s.client.AuthIdentityChannel.Query().
+		Where(
+			authidentitychannel.ProviderTypeEQ("wechat"),
+			authidentitychannel.ChannelEQ("oa"),
+			authidentitychannel.ChannelAppIDEQ("wx-app-legacy"),
+			authidentitychannel.ChannelSubjectEQ("openid-legacy-123"),
+		).
+		Count(s.ctx)
+	s.Require().NoError(err)
+	s.Require().Equal(1, channelCount)
+REDACTED
+
 func (s *UserProfileIdentityRepoSuite) TestCreateAuthIdentity_RejectsChannelProviderMismatch() {
 	user := s.mustCreateUser("provider-mismatch-create")
 

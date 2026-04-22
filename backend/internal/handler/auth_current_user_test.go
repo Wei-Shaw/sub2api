@@ -29,18 +29,19 @@ func TestAuthHandlerGetCurrentUserReturnsProfileCompatibilityFields(t *testing.T
 			AvatarURL:    "https://cdn.example.com/linuxdo.png",
 			AvatarSource: "remote_url",
 	REDACTED,
-		identities: []service.UserAuthIdentityRecord{
-			{
-				ProviderType:    "linuxdo",
-				ProviderKey:     "linuxdo",
-				ProviderSubject: "linuxdo-subject-31",
-				VerifiedAt:      &verifiedAt,
-				Metadata: map[string]any{
-					"username": "linuxdo-handle",
+			identities: []service.UserAuthIdentityRecord{
+				{
+					ProviderType:    "linuxdo",
+					ProviderKey:     "linuxdo",
+					ProviderSubject: "linuxdo-subject-31",
+					VerifiedAt:      &verifiedAt,
+					Metadata: map[string]any{
+						"username":   "linuxdo-handle",
+						"avatar_url": "https://cdn.example.com/linuxdo.png",
+				REDACTED,
 			REDACTED,
 		REDACTED,
-	REDACTED,
-REDACTED
+	REDACTED
 
 	handler := &AuthHandler{
 		userService: service.NewUserService(repo, nil, nil, nil),
