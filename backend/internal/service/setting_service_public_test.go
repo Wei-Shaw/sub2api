@@ -132,3 +132,22 @@ REDACTED
 	require.False(t, settings.WeChatOAuthMPEnabled)
 	require.True(t, settings.WeChatOAuthMobileEnabled)
 REDACTED
+
+func TestSettingService_GetPublicSettings_FallsBackToConfigForWeChatOAuthCapabilities(t *testing.T) {
+	svc := NewSettingService(&settingPublicRepoStub{values: map[string]string{REDACTEDREDACTED, &config.Config{
+		WeChat: config.WeChatConnectConfig{
+			Enabled:             true,
+			OpenEnabled:         true,
+			OpenAppID:           "wx-open-config",
+			OpenAppSecret:       "wx-open-secret",
+			FrontendRedirectURL: "/auth/wechat/config-callback",
+	REDACTED,
+REDACTED)
+
+	settings, err := svc.GetPublicSettings(context.Background())
+REDACTED
+	require.True(t, settings.WeChatOAuthEnabled)
+	require.True(t, settings.WeChatOAuthOpenEnabled)
+	require.False(t, settings.WeChatOAuthMPEnabled)
+	require.False(t, settings.WeChatOAuthMobileEnabled)
+REDACTED

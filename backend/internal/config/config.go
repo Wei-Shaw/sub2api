@@ -70,6 +70,7 @@ type Config struct {
 	JWT                     JWTConfig                     `mapstructure:"jwt"`
 	Totp                    TotpConfig                    `mapstructure:"totp"`
 	LinuxDo                 LinuxDoConnectConfig          `mapstructure:"linuxdo_connect"`
+	WeChat                  WeChatConnectConfig           `mapstructure:"wechat_connect"`
 	OIDC                    OIDCConnectConfig             `mapstructure:"oidc_connect"`
 	Default                 DefaultConfig                 `mapstructure:"default"`
 	RateLimit               RateLimitConfig               `mapstructure:"rate_limit"`
@@ -190,6 +191,25 @@ type LinuxDoConnectConfig struct {
 	UserInfoUsernamePath string `mapstructure:"userinfo_username_path"`
 REDACTED
 
+type WeChatConnectConfig struct {
+	Enabled             bool   `mapstructure:"enabled"`
+	AppID               string `mapstructure:"app_id"`
+	AppSecret           string `mapstructure:"app_secret"`
+	OpenAppID           string `mapstructure:"open_app_id"`
+	OpenAppSecret       string `mapstructure:"open_app_secret"`
+	MPAppID             string `mapstructure:"mp_app_id"`
+	MPAppSecret         string `mapstructure:"mp_app_secret"`
+	MobileAppID         string `mapstructure:"mobile_app_id"`
+	MobileAppSecret     string `mapstructure:"mobile_app_secret"`
+	OpenEnabled         bool   `mapstructure:"open_enabled"`
+	MPEnabled           bool   `mapstructure:"mp_enabled"`
+	MobileEnabled       bool   `mapstructure:"mobile_enabled"`
+	Mode                string `mapstructure:"mode"`
+	Scopes              string `mapstructure:"scopes"`
+	RedirectURL         string `mapstructure:"redirect_url"`
+	FrontendRedirectURL string `mapstructure:"frontend_redirect_url"`
+REDACTED
+
 type OIDCConnectConfig struct {
 	Enabled              bool   `mapstructure:"enabled"`
 	ProviderName         string `mapstructure:"provider_name"` // 显示名: "Keycloak" 等
@@ -216,6 +236,217 @@ type OIDCConnectConfig struct {
 	UserInfoEmailPath    string `mapstructure:"userinfo_email_path"`
 	UserInfoIDPath       string `mapstructure:"userinfo_id_path"`
 	UserInfoUsernamePath string `mapstructure:"userinfo_username_path"`
+REDACTED
+
+const (
+	defaultWeChatConnectMode             = "open"
+	defaultWeChatConnectScopes           = "snsapi_login"
+	defaultWeChatConnectFrontendRedirect = "/auth/wechat/callback"
+)
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+	REDACTED
+REDACTED
+	return ""
+REDACTED
+
+func normalizeWeChatConnectMode(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "mp":
+		return "mp"
+	case "mobile":
+		return "mobile"
+	default:
+		return defaultWeChatConnectMode
+REDACTED
+REDACTED
+
+func normalizeWeChatConnectStoredMode(openEnabled, mpEnabled, mobileEnabled bool, mode string) string {
+	mode = normalizeWeChatConnectMode(mode)
+	switch mode {
+	case "open":
+		if openEnabled {
+			return "open"
+	REDACTED
+	case "mp":
+		if mpEnabled {
+			return "mp"
+	REDACTED
+	case "mobile":
+		if mobileEnabled {
+			return "mobile"
+	REDACTED
+REDACTED
+	switch {
+	case openEnabled:
+		return "open"
+	case mpEnabled:
+		return "mp"
+	case mobileEnabled:
+		return "mobile"
+	default:
+		return mode
+REDACTED
+REDACTED
+
+func defaultWeChatConnectScopesForMode(mode string) string {
+	switch normalizeWeChatConnectMode(mode) {
+	case "mp":
+		return "snsapi_userinfo"
+	case "mobile":
+		return ""
+	default:
+		return defaultWeChatConnectScopes
+REDACTED
+REDACTED
+
+func normalizeWeChatConnectScopes(raw, mode string) string {
+	switch normalizeWeChatConnectMode(mode) {
+	case "mp":
+		switch strings.TrimSpace(raw) {
+		case "snsapi_base":
+			return "snsapi_base"
+		case "snsapi_userinfo":
+			return "snsapi_userinfo"
+		default:
+			return defaultWeChatConnectScopesForMode(mode)
+	REDACTED
+	case "mobile":
+		return ""
+	default:
+		return defaultWeChatConnectScopes
+REDACTED
+REDACTED
+
+func shouldApplyLegacyWeChatEnv(configKey, envKey string) bool {
+	if viper.InConfig(configKey) {
+		return false
+REDACTED
+	_, hasNewEnv := os.LookupEnv(envKey)
+	return !hasNewEnv
+REDACTED
+
+func applyLegacyWeChatConnectEnvCompatibility(cfg *WeChatConnectConfig) {
+	if cfg == nil {
+		return
+REDACTED
+
+	legacyOpenAppID := ""
+	if shouldApplyLegacyWeChatEnv("wechat_connect.open_app_id", "WECHAT_CONNECT_OPEN_APP_ID") &&
+		shouldApplyLegacyWeChatEnv("wechat_connect.app_id", "WECHAT_CONNECT_APP_ID") {
+		legacyOpenAppID = strings.TrimSpace(os.Getenv("WECHAT_OAUTH_OPEN_APP_ID"))
+		if legacyOpenAppID != "" {
+			cfg.OpenAppID = legacyOpenAppID
+	REDACTED
+REDACTED
+
+	legacyOpenAppSecret := ""
+	if shouldApplyLegacyWeChatEnv("wechat_connect.open_app_secret", "WECHAT_CONNECT_OPEN_APP_SECRET") &&
+		shouldApplyLegacyWeChatEnv("wechat_connect.app_secret", "WECHAT_CONNECT_APP_SECRET") {
+		legacyOpenAppSecret = strings.TrimSpace(os.Getenv("WECHAT_OAUTH_OPEN_APP_SECRET"))
+		if legacyOpenAppSecret != "" {
+			cfg.OpenAppSecret = legacyOpenAppSecret
+	REDACTED
+REDACTED
+
+	legacyMPAppID := ""
+	if shouldApplyLegacyWeChatEnv("wechat_connect.mp_app_id", "WECHAT_CONNECT_MP_APP_ID") &&
+		shouldApplyLegacyWeChatEnv("wechat_connect.app_id", "WECHAT_CONNECT_APP_ID") {
+		legacyMPAppID = strings.TrimSpace(os.Getenv("WECHAT_OAUTH_MP_APP_ID"))
+		if legacyMPAppID != "" {
+			cfg.MPAppID = legacyMPAppID
+	REDACTED
+REDACTED
+
+	legacyMPAppSecret := ""
+	if shouldApplyLegacyWeChatEnv("wechat_connect.mp_app_secret", "WECHAT_CONNECT_MP_APP_SECRET") &&
+		shouldApplyLegacyWeChatEnv("wechat_connect.app_secret", "WECHAT_CONNECT_APP_SECRET") {
+		legacyMPAppSecret = strings.TrimSpace(os.Getenv("WECHAT_OAUTH_MP_APP_SECRET"))
+		if legacyMPAppSecret != "" {
+			cfg.MPAppSecret = legacyMPAppSecret
+	REDACTED
+REDACTED
+
+	if shouldApplyLegacyWeChatEnv("wechat_connect.frontend_redirect_url", "WECHAT_CONNECT_FRONTEND_REDIRECT_URL") {
+		if legacyFrontend := strings.TrimSpace(os.Getenv("WECHAT_OAUTH_FRONTEND_REDIRECT_URL")); legacyFrontend != "" {
+			cfg.FrontendRedirectURL = legacyFrontend
+	REDACTED
+REDACTED
+
+	hasLegacyOpen := legacyOpenAppID != "" && legacyOpenAppSecret != ""
+	hasLegacyMP := legacyMPAppID != "" && legacyMPAppSecret != ""
+
+	if shouldApplyLegacyWeChatEnv("wechat_connect.enabled", "WECHAT_CONNECT_ENABLED") && (hasLegacyOpen || hasLegacyMP) {
+		cfg.Enabled = true
+REDACTED
+	if shouldApplyLegacyWeChatEnv("wechat_connect.open_enabled", "WECHAT_CONNECT_OPEN_ENABLED") && hasLegacyOpen {
+		cfg.OpenEnabled = true
+REDACTED
+	if shouldApplyLegacyWeChatEnv("wechat_connect.mp_enabled", "WECHAT_CONNECT_MP_ENABLED") && hasLegacyMP {
+		cfg.MPEnabled = true
+REDACTED
+	if shouldApplyLegacyWeChatEnv("wechat_connect.mode", "WECHAT_CONNECT_MODE") {
+		switch {
+		case hasLegacyMP && !hasLegacyOpen:
+			cfg.Mode = "mp"
+		case hasLegacyOpen:
+			cfg.Mode = "open"
+	REDACTED
+REDACTED
+	if shouldApplyLegacyWeChatEnv("wechat_connect.scopes", "WECHAT_CONNECT_SCOPES") {
+		switch {
+		case hasLegacyMP && !hasLegacyOpen:
+			cfg.Scopes = defaultWeChatConnectScopesForMode("mp")
+		case hasLegacyOpen:
+			cfg.Scopes = defaultWeChatConnectScopesForMode("open")
+	REDACTED
+REDACTED
+REDACTED
+
+func normalizeWeChatConnectConfig(cfg *WeChatConnectConfig) {
+	if cfg == nil {
+		return
+REDACTED
+
+	cfg.AppID = strings.TrimSpace(cfg.AppID)
+	cfg.AppSecret = strings.TrimSpace(cfg.AppSecret)
+	cfg.OpenAppID = strings.TrimSpace(cfg.OpenAppID)
+	cfg.OpenAppSecret = strings.TrimSpace(cfg.OpenAppSecret)
+	cfg.MPAppID = strings.TrimSpace(cfg.MPAppID)
+	cfg.MPAppSecret = strings.TrimSpace(cfg.MPAppSecret)
+	cfg.MobileAppID = strings.TrimSpace(cfg.MobileAppID)
+	cfg.MobileAppSecret = strings.TrimSpace(cfg.MobileAppSecret)
+	cfg.Mode = normalizeWeChatConnectMode(cfg.Mode)
+	cfg.RedirectURL = strings.TrimSpace(cfg.RedirectURL)
+	cfg.FrontendRedirectURL = strings.TrimSpace(cfg.FrontendRedirectURL)
+
+	cfg.AppID = firstNonEmptyString(cfg.AppID, cfg.OpenAppID, cfg.MPAppID, cfg.MobileAppID)
+	cfg.AppSecret = firstNonEmptyString(cfg.AppSecret, cfg.OpenAppSecret, cfg.MPAppSecret, cfg.MobileAppSecret)
+	cfg.OpenAppID = firstNonEmptyString(cfg.OpenAppID, cfg.AppID)
+	cfg.OpenAppSecret = firstNonEmptyString(cfg.OpenAppSecret, cfg.AppSecret)
+	cfg.MPAppID = firstNonEmptyString(cfg.MPAppID, cfg.AppID)
+	cfg.MPAppSecret = firstNonEmptyString(cfg.MPAppSecret, cfg.AppSecret)
+	cfg.MobileAppID = firstNonEmptyString(cfg.MobileAppID, cfg.AppID)
+	cfg.MobileAppSecret = firstNonEmptyString(cfg.MobileAppSecret, cfg.AppSecret)
+
+	if !cfg.OpenEnabled && !cfg.MPEnabled && !cfg.MobileEnabled && cfg.Enabled {
+		switch cfg.Mode {
+		case "mp":
+			cfg.MPEnabled = true
+		case "mobile":
+			cfg.MobileEnabled = true
+		default:
+			cfg.OpenEnabled = true
+	REDACTED
+REDACTED
+	cfg.Mode = normalizeWeChatConnectStoredMode(cfg.OpenEnabled, cfg.MPEnabled, cfg.MobileEnabled, cfg.Mode)
+	cfg.Scopes = normalizeWeChatConnectScopes(cfg.Scopes, cfg.Mode)
+	if cfg.FrontendRedirectURL == "" {
+		cfg.FrontendRedirectURL = defaultWeChatConnectFrontendRedirect
+REDACTED
 REDACTED
 
 // TokenRefreshConfig OAuth token自动刷新配置
@@ -1012,6 +1243,8 @@ REDACTED
 	cfg.LinuxDo.UserInfoEmailPath = strings.TrimSpace(cfg.LinuxDo.UserInfoEmailPath)
 	cfg.LinuxDo.UserInfoIDPath = strings.TrimSpace(cfg.LinuxDo.UserInfoIDPath)
 	cfg.LinuxDo.UserInfoUsernamePath = strings.TrimSpace(cfg.LinuxDo.UserInfoUsernamePath)
+	applyLegacyWeChatConnectEnvCompatibility(&cfg.WeChat)
+	normalizeWeChatConnectConfig(&cfg.WeChat)
 	cfg.OIDC.ProviderName = strings.TrimSpace(cfg.OIDC.ProviderName)
 	cfg.OIDC.ClientID = strings.TrimSpace(cfg.OIDC.ClientID)
 	cfg.OIDC.ClientSecret = strings.TrimSpace(cfg.OIDC.ClientSecret)
@@ -1207,6 +1440,24 @@ REDACTED)
 	viper.SetDefault("linuxdo_connect.userinfo_id_path", "")
 	viper.SetDefault("linuxdo_connect.userinfo_username_path", "")
 
+	// WeChat Connect OAuth 登录
+	viper.SetDefault("wechat_connect.enabled", false)
+	viper.SetDefault("wechat_connect.app_id", "")
+	viper.SetDefault("wechat_connect.app_secret", "")
+	viper.SetDefault("wechat_connect.open_app_id", "")
+	viper.SetDefault("wechat_connect.open_app_secret", "")
+	viper.SetDefault("wechat_connect.mp_app_id", "")
+	viper.SetDefault("wechat_connect.mp_app_secret", "")
+	viper.SetDefault("wechat_connect.mobile_app_id", "")
+	viper.SetDefault("wechat_connect.mobile_app_secret", "")
+	viper.SetDefault("wechat_connect.open_enabled", false)
+	viper.SetDefault("wechat_connect.mp_enabled", false)
+	viper.SetDefault("wechat_connect.mobile_enabled", false)
+	viper.SetDefault("wechat_connect.mode", defaultWeChatConnectMode)
+	viper.SetDefault("wechat_connect.scopes", defaultWeChatConnectScopes)
+	viper.SetDefault("wechat_connect.redirect_url", "")
+	viper.SetDefault("wechat_connect.frontend_redirect_url", defaultWeChatConnectFrontendRedirect)
+
 	// Generic OIDC OAuth 登录
 	viper.SetDefault("oidc_connect.enabled", false)
 	viper.SetDefault("oidc_connect.provider_name", "OIDC")
@@ -1222,8 +1473,8 @@ REDACTED)
 	viper.SetDefault("oidc_connect.redirect_url", "")
 	viper.SetDefault("oidc_connect.frontend_redirect_url", "/auth/oidc/callback")
 	viper.SetDefault("oidc_connect.token_auth_method", "client_secret_post")
-	viper.SetDefault("oidc_connect.use_pkce", false)
-	viper.SetDefault("oidc_connect.validate_id_token", false)
+	viper.SetDefault("oidc_connect.use_pkce", true)
+	viper.SetDefault("oidc_connect.validate_id_token", true)
 	viper.SetDefault("oidc_connect.allowed_signing_algs", "RS256,ES256,PS256")
 	viper.SetDefault("oidc_connect.clock_skew_seconds", 120)
 	viper.SetDefault("oidc_connect.require_email_verified", false)
@@ -1663,6 +1914,45 @@ REDACTED
 		warnIfInsecureURL("linuxdo_connect.userinfo_url", c.LinuxDo.UserInfoURL)
 		warnIfInsecureURL("linuxdo_connect.redirect_url", c.LinuxDo.RedirectURL)
 		warnIfInsecureURL("linuxdo_connect.frontend_redirect_url", c.LinuxDo.FrontendRedirectURL)
+REDACTED
+	if c.WeChat.Enabled {
+		weChat := c.WeChat
+		normalizeWeChatConnectConfig(&weChat)
+
+		if weChat.OpenEnabled {
+			if strings.TrimSpace(weChat.OpenAppID) == "" {
+				return fmt.Errorf("wechat_connect.open_app_id is required when wechat_connect.open_enabled=true")
+		REDACTED
+			if strings.TrimSpace(weChat.OpenAppSecret) == "" {
+				return fmt.Errorf("wechat_connect.open_app_secret is required when wechat_connect.open_enabled=true")
+		REDACTED
+	REDACTED
+		if weChat.MPEnabled {
+			if strings.TrimSpace(weChat.MPAppID) == "" {
+				return fmt.Errorf("wechat_connect.mp_app_id is required when wechat_connect.mp_enabled=true")
+		REDACTED
+			if strings.TrimSpace(weChat.MPAppSecret) == "" {
+				return fmt.Errorf("wechat_connect.mp_app_secret is required when wechat_connect.mp_enabled=true")
+		REDACTED
+	REDACTED
+		if weChat.MobileEnabled {
+			if strings.TrimSpace(weChat.MobileAppID) == "" {
+				return fmt.Errorf("wechat_connect.mobile_app_id is required when wechat_connect.mobile_enabled=true")
+		REDACTED
+			if strings.TrimSpace(weChat.MobileAppSecret) == "" {
+				return fmt.Errorf("wechat_connect.mobile_app_secret is required when wechat_connect.mobile_enabled=true")
+		REDACTED
+	REDACTED
+		if v := strings.TrimSpace(weChat.RedirectURL); v != "" {
+			if err := ValidateAbsoluteHTTPURL(v); err != nil {
+				return fmt.Errorf("wechat_connect.redirect_url invalid: %w", err)
+		REDACTED
+			warnIfInsecureURL("wechat_connect.redirect_url", v)
+	REDACTED
+		if err := ValidateFrontendRedirectURL(weChat.FrontendRedirectURL); err != nil {
+			return fmt.Errorf("wechat_connect.frontend_redirect_url invalid: %w", err)
+	REDACTED
+		warnIfInsecureURL("wechat_connect.frontend_redirect_url", weChat.FrontendRedirectURL)
 REDACTED
 	if c.OIDC.Enabled {
 		if strings.TrimSpace(c.OIDC.ClientID) == "" {

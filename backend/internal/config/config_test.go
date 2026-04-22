@@ -225,6 +225,37 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestLoadWeChatConnectConfigFromLegacyEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("WECHAT_OAUTH_OPEN_APP_ID", "wx-open-app")
+	t.Setenv("WECHAT_OAUTH_OPEN_APP_SECRET", "wx-open-secret")
+	t.Setenv("WECHAT_OAUTH_MP_APP_ID", "wx-mp-app")
+	t.Setenv("WECHAT_OAUTH_MP_APP_SECRET", "wx-mp-secret")
+	t.Setenv("WECHAT_OAUTH_FRONTEND_REDIRECT_URL", "/auth/wechat/legacy-callback")
+
+	cfg, err := Load()
+REDACTED
+	require.True(t, cfg.WeChat.Enabled)
+	require.True(t, cfg.WeChat.OpenEnabled)
+	require.True(t, cfg.WeChat.MPEnabled)
+	require.False(t, cfg.WeChat.MobileEnabled)
+	require.Equal(t, "open", cfg.WeChat.Mode)
+	require.Equal(t, "wx-open-app", cfg.WeChat.OpenAppID)
+	require.Equal(t, "wx-open-secret", cfg.WeChat.OpenAppSecret)
+	require.Equal(t, "wx-mp-app", cfg.WeChat.MPAppID)
+	require.Equal(t, "wx-mp-secret", cfg.WeChat.MPAppSecret)
+	require.Equal(t, "/auth/wechat/legacy-callback", cfg.WeChat.FrontendRedirectURL)
+REDACTED
+
+func TestLoadDefaultOIDCSecurityDefaults(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+REDACTED
+	require.True(t, cfg.OIDC.UsePKCE)
+	require.True(t, cfg.OIDC.ValidateIDToken)
+REDACTED
+
 func TestLoadForcedCodexInstructionsTemplate(t *testing.T) {
 	resetViperWithJWTSecret(t)
 
@@ -424,7 +455,7 @@ REDACTED
 REDACTED
 REDACTED
 
-func TestValidateOIDCAllowsDisablingPKCEAndIDTokenValidation(t *testing.T) {
+func TestValidateOIDCAllowsExplicitCompatibilityOverridesForPKCEAndIDTokenValidation(t *testing.T) {
 	resetViperWithJWTSecret(t)
 
 	cfg, err := Load()
