@@ -19,6 +19,17 @@ type MonitorScheduler interface {
 	Unschedule(id int64)
 }
 
+// monitorRunnerSvc 抽出 runner 实际依赖的两个 service 方法：
+//   - 启动时加载 enabled monitor
+//   - 每次 ticker 触发执行检测
+//
+// 用接口而非 *ChannelMonitorService 是为了让 runner 单元测试可注入轻量 stub，
+// 避免依赖完整的 repo + encryptor 链路。生产实现 *ChannelMonitorService 自然满足。
+type monitorRunnerSvc interface {
+	ListEnabledMonitors(ctx context.Context) ([]*ChannelMonitor, error)
+	RunCheck(ctx context.Context, id int64) ([]*CheckResult, error)
+}
+
 // ChannelMonitorRunner 渠道监控调度器。
 //
 // 设计：
@@ -33,7 +44,7 @@ type MonitorScheduler interface {
 // ChannelMonitorService.RunDailyMaintenance（复用 leader lock + heartbeat），
 // 不在 runner 职责内。
 type ChannelMonitorRunner struct {
-	svc            *ChannelMonitorService
+	svc            monitorRunnerSvc
 	settingService *SettingService
 
 	pool         pond.Pool
@@ -62,11 +73,20 @@ type scheduledMonitor struct {
 
 // NewChannelMonitorRunner 构造调度器。Start 在 wire 中调用一次。
 // settingService 用于在每次 fire 前读取功能开关；传 nil 时视为总是启用（兼容测试）。
+//
+// pool 在构造时即建好：避免 Start 在 mu 内赋值、fire/Stop 在 mu 外读取的竞态隐患，
+// 且 pond.NewPool 创建本身近似零开销，提前建池不会浪费资源。
 func NewChannelMonitorRunner(svc *ChannelMonitorService, settingService *SettingService) *ChannelMonitorRunner {
+	return newChannelMonitorRunner(svc, settingService)
+}
+
+// newChannelMonitorRunner 内部构造，接受最小化接口，便于单元测试注入 stub。
+func newChannelMonitorRunner(svc monitorRunnerSvc, settingService *SettingService) *ChannelMonitorRunner {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &ChannelMonitorRunner{
 		svc:            svc,
 		settingService: settingService,
+		pool:           pond.NewPool(monitorWorkerConcurrency),
 		parentCtx:      ctx,
 		parentCancel:   cancel,
 		tasks:          make(map[int64]*scheduledMonitor),
@@ -86,7 +106,6 @@ func (r *ChannelMonitorRunner) Start() {
 		return
 	}
 	r.started = true
-	r.pool = pond.NewPool(monitorWorkerConcurrency)
 	r.mu.Unlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), monitorStartupLoadTimeout)
@@ -116,14 +135,26 @@ func (r *ChannelMonitorRunner) Schedule(m *ChannelMonitor) {
 	}
 	interval := time.Duration(m.IntervalSeconds) * time.Second
 	if interval <= 0 {
-		slog.Warn("channel_monitor: skip schedule for invalid interval",
+		// Create/Update 已通过 validateInterval 校验区间，正常路径不可能到这里。
+		// 真触发说明数据库中存在违反约束的数据或校验链路有 bug，记 Error 暴露问题。
+		slog.Error("channel_monitor: skip schedule for invalid interval",
 			"monitor_id", m.ID, "interval_seconds", m.IntervalSeconds)
 		return
 	}
 
 	r.mu.Lock()
-	if r.stopped || !r.started {
+	if r.stopped {
 		r.mu.Unlock()
+		return
+	}
+	if !r.started {
+		// Start 之前调用 Schedule 通常意味着 wire 顺序错乱：
+		// 当前 wire 顺序是 SetScheduler → Start，CRUD 钩子最早也只能在请求到达时触发，
+		// 此时 Start 早已完成。出现此分支时把 monitor 信息打出来便于排查，
+		// 不入队、不缓存——交给运维通过重启或修复 wire 解决。
+		r.mu.Unlock()
+		slog.Warn("channel_monitor: schedule before runner started, skip",
+			"monitor_id", m.ID, "name", m.Name)
 		return
 	}
 	if existing, ok := r.tasks[m.ID]; ok {
@@ -176,9 +207,7 @@ func (r *ChannelMonitorRunner) Stop() {
 	r.mu.Unlock()
 
 	r.wg.Wait()
-	if r.pool != nil {
-		r.pool.StopAndWait()
-	}
+	r.pool.StopAndWait()
 }
 
 // runScheduled 单个监控的循环：立即触发首次（满足"新建/启用即跑"），
