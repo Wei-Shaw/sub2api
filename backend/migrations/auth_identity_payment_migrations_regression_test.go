@@ -26,7 +26,14 @@ REDACTED
 	require.True(t, strings.Contains(sql, "ON CONFLICT (key) DO NOTHING"))
 REDACTED
 
-func TestMigration109KeepsPublishedBackfillBodyAndDefersReportTypeWidening(t *testing.T) {
+func TestAuthIdentityReportTypeWideningRunsBeforeLongReportWritersAndStillReconcilesAt121(t *testing.T) {
+	preflightContent, err := FS.ReadFile("108a_widen_auth_identity_migration_report_type.sql")
+REDACTED
+
+	preflightSQL := string(preflightContent)
+	require.Contains(t, preflightSQL, "ALTER TABLE auth_identity_migration_reports")
+	require.Contains(t, preflightSQL, "ALTER COLUMN report_type TYPE VARCHAR(80)")
+
 	content, err := FS.ReadFile("109_auth_identity_compat_backfill.sql")
 REDACTED
 
@@ -58,6 +65,13 @@ REDACTED
 	require.Contains(t, followupSQL, "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS paymentorder_out_trade_no_unique")
 	require.Contains(t, followupSQL, "DROP INDEX CONCURRENTLY IF EXISTS paymentorder_out_trade_no")
 	require.Contains(t, followupSQL, "WHERE out_trade_no <> ''")
+
+	alignmentContent, err := FS.ReadFile("120a_align_payment_orders_out_trade_no_index_name.sql")
+REDACTED
+
+	alignmentSQL := string(alignmentContent)
+	require.Contains(t, alignmentSQL, "paymentorder_out_trade_no_unique")
+	require.Contains(t, alignmentSQL, "RENAME TO paymentorder_out_trade_no")
 REDACTED
 
 func TestMigration122ScrubsPendingOAuthCompletionTokensAtRest(t *testing.T) {

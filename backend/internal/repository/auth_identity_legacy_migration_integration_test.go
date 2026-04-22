@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -20,32 +21,8 @@ func TestAuthIdentityLegacyExternalBackfillMigration(t *testing.T) {
 	migrationSQL, err := os.ReadFile(migrationPath)
 REDACTED
 
-	_, err = tx.ExecContext(ctx, `
-CREATE TABLE IF NOT EXISTS user_external_identities (
-	id BIGSERIAL PRIMARY KEY,
-	user_id BIGINT NOT NULL,
-	provider TEXT NOT NULL,
-	provider_user_id TEXT NOT NULL,
-	provider_union_id TEXT NULL,
-	provider_username TEXT NOT NULL DEFAULT '',
-	display_name TEXT NOT NULL DEFAULT '',
-	profile_url TEXT NOT NULL DEFAULT '',
-	avatar_url TEXT NOT NULL DEFAULT '',
-	metadata TEXT NOT NULL DEFAULT '{REDACTED',
-	created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-	TRUNCATE TABLE
-		auth_identity_channels,
-		identity_adoption_decisions,
-		auth_identities,
-		auth_identity_migration_reports,
-		user_external_identities,
-		users
-	RESTART IDENTITY CASCADE;
-`)
-REDACTED
+	prepareLegacyExternalIdentitiesTable(t, tx, ctx)
+	truncateAuthIdentityLegacyFixtureTables(t, tx, ctx)
 
 	var linuxDoUserID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
@@ -218,32 +195,8 @@ REDACTED
 	migration116SQL, err := os.ReadFile(migration116Path)
 REDACTED
 
-	_, err = tx.ExecContext(ctx, `
-CREATE TABLE IF NOT EXISTS user_external_identities (
-	id BIGSERIAL PRIMARY KEY,
-	user_id BIGINT NOT NULL,
-	provider TEXT NOT NULL,
-	provider_user_id TEXT NOT NULL,
-	provider_union_id TEXT NULL,
-	provider_username TEXT NOT NULL DEFAULT '',
-	display_name TEXT NOT NULL DEFAULT '',
-	profile_url TEXT NOT NULL DEFAULT '',
-	avatar_url TEXT NOT NULL DEFAULT '',
-	metadata TEXT NOT NULL DEFAULT '{REDACTED',
-	created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-TRUNCATE TABLE
-	auth_identity_channels,
-	identity_adoption_decisions,
-	auth_identities,
-	auth_identity_migration_reports,
-	user_external_identities,
-	users
-RESTART IDENTITY CASCADE;
-`)
-REDACTED
+	prepareLegacyExternalIdentitiesTable(t, tx, ctx)
+	truncateAuthIdentityLegacyFixtureTables(t, tx, ctx)
 
 	var linuxDoMalformedUserID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
@@ -408,32 +361,8 @@ func TestAuthIdentityLegacyExternalSafetyMigration_ReportsConflictsAndDowngrades
 	migrationSQL, err := os.ReadFile(migrationPath)
 REDACTED
 
-	_, err = tx.ExecContext(ctx, `
-CREATE TABLE IF NOT EXISTS user_external_identities (
-	id BIGSERIAL PRIMARY KEY,
-	user_id BIGINT NOT NULL,
-	provider TEXT NOT NULL,
-	provider_user_id TEXT NOT NULL,
-	provider_union_id TEXT NULL,
-	provider_username TEXT NOT NULL DEFAULT '',
-	display_name TEXT NOT NULL DEFAULT '',
-	profile_url TEXT NOT NULL DEFAULT '',
-	avatar_url TEXT NOT NULL DEFAULT '',
-	metadata TEXT NOT NULL DEFAULT '{REDACTED',
-	created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-	TRUNCATE TABLE
-		auth_identity_channels,
-		identity_adoption_decisions,
-		auth_identities,
-		auth_identity_migration_reports,
-		user_external_identities,
-		users
-	RESTART IDENTITY CASCADE;
-`)
-REDACTED
+	prepareLegacyExternalIdentitiesTable(t, tx, ctx)
+	truncateAuthIdentityLegacyFixtureTables(t, tx, ctx)
 
 	userIDs := make([]int64, 0, 8)
 	for _, email := range []string{
@@ -643,6 +572,136 @@ REDACTED
 	require.NoError(t, tx.QueryRowContext(ctx, `
 SELECT COUNT(*)
 FROM auth_identity_migration_reports
-`).Scan(&afterCount))
+	`).Scan(&afterCount))
 	require.Equal(t, beforeCount, afterCount)
+REDACTED
+
+func TestAuthIdentityMigrationReportTypeWideningPreflightKeeps109And116SafeBefore121(t *testing.T) {
+	tx := testTx(t)
+	ctx := context.Background()
+
+	migration108aPath := filepath.Join("..", "..", "migrations", "108a_widen_auth_identity_migration_report_type.sql")
+	migration108aSQL, err := os.ReadFile(migration108aPath)
+REDACTED
+
+	migration109Path := filepath.Join("..", "..", "migrations", "109_auth_identity_compat_backfill.sql")
+	migration109SQL, err := os.ReadFile(migration109Path)
+REDACTED
+
+	migration116Path := filepath.Join("..", "..", "migrations", "116_auth_identity_legacy_external_safety_reports.sql")
+	migration116SQL, err := os.ReadFile(migration116Path)
+REDACTED
+
+	prepareLegacyExternalIdentitiesTable(t, tx, ctx)
+	truncateAuthIdentityLegacyFixtureTables(t, tx, ctx)
+
+	_, err = tx.ExecContext(ctx, `
+ALTER TABLE auth_identity_migration_reports
+ALTER COLUMN report_type TYPE VARCHAR(40);
+`)
+REDACTED
+
+	var oidcSyntheticUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('oidc-before-121@oidc-connect.invalid', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&oidcSyntheticUserID))
+
+	var linuxdoLegacyUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('legacy-linuxdo-before-121@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&linuxdoLegacyUserID))
+
+	var invalidMetadataLegacyID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'linuxdo', 'linuxdo-before-121', NULL, 'legacy-linuxdo-before-121', 'Legacy LinuxDo Before 121', '{invalid')
+RETURNING id
+`, linuxdoLegacyUserID).Scan(&invalidMetadataLegacyID))
+
+	_, err = tx.ExecContext(ctx, string(migration108aSQL))
+REDACTED
+
+	_, err = tx.ExecContext(ctx, string(migration109SQL))
+REDACTED
+
+	_, err = tx.ExecContext(ctx, string(migration116SQL))
+REDACTED
+
+	var reportTypeWidth int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT character_maximum_length
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'auth_identity_migration_reports'
+  AND column_name = 'report_type'
+`).Scan(&reportTypeWidth))
+	require.Equal(t, 80, reportTypeWidth)
+
+	var oidcSyntheticRecoveryReportCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identity_migration_reports
+WHERE report_type = 'oidc_synthetic_email_requires_manual_recovery'
+  AND report_key = $1
+`, strconv.FormatInt(oidcSyntheticUserID, 10)).Scan(&oidcSyntheticRecoveryReportCount))
+	require.Equal(t, 1, oidcSyntheticRecoveryReportCount)
+
+	var invalidMetadataReportCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identity_migration_reports
+WHERE report_type = 'legacy_external_identity_invalid_metadata_json'
+  AND report_key = $1
+`, "legacy_external_identity:"+strconv.FormatInt(invalidMetadataLegacyID, 10)).Scan(&invalidMetadataReportCount))
+	require.Equal(t, 1, invalidMetadataReportCount)
+REDACTED
+
+func prepareLegacyExternalIdentitiesTable(t *testing.T, tx *sql.Tx, ctx context.Context) {
+REDACTED
+
+	_, err := tx.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS user_external_identities (
+	id BIGSERIAL PRIMARY KEY,
+	user_id BIGINT NOT NULL,
+	provider TEXT NOT NULL,
+	provider_user_id TEXT NOT NULL,
+	provider_union_id TEXT NULL,
+	provider_username TEXT NOT NULL DEFAULT '',
+	display_name TEXT NOT NULL DEFAULT '',
+	profile_url TEXT NOT NULL DEFAULT '',
+	avatar_url TEXT NOT NULL DEFAULT '',
+	metadata TEXT NOT NULL DEFAULT '{REDACTED',
+	created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+`)
+REDACTED
+REDACTED
+
+func truncateAuthIdentityLegacyFixtureTables(t *testing.T, tx *sql.Tx, ctx context.Context) {
+REDACTED
+
+	_, err := tx.ExecContext(ctx, `
+TRUNCATE TABLE
+	auth_identity_channels,
+	identity_adoption_decisions,
+	pending_auth_sessions,
+	auth_identities,
+	auth_identity_migration_reports,
+	user_provider_default_grants,
+	user_avatars,
+	user_external_identities,
+	users
+RESTART IDENTITY CASCADE;
+`)
+REDACTED
 REDACTED

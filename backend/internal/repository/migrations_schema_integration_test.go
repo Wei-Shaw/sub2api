@@ -89,6 +89,22 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "user_allowed_groups", "created_at", "timestamp with time zone", 0, false)
 REDACTED
 
+func TestMigrationsRunner_AuthIdentityAndPaymentSchemaStayAligned(t *testing.T) {
+	tx := testTx(t)
+
+	requireColumn(t, tx, "auth_identity_migration_reports", "report_type", "character varying", 80, false)
+
+	requireForeignKeyOnDelete(t, tx, "auth_identities", "user_id", "users", "CASCADE")
+	requireForeignKeyOnDelete(t, tx, "auth_identity_channels", "identity_id", "auth_identities", "CASCADE")
+	requireForeignKeyOnDelete(t, tx, "pending_auth_sessions", "target_user_id", "users", "SET NULL")
+	requireForeignKeyOnDelete(t, tx, "identity_adoption_decisions", "pending_auth_session_id", "pending_auth_sessions", "CASCADE")
+	requireForeignKeyOnDelete(t, tx, "identity_adoption_decisions", "identity_id", "auth_identities", "SET NULL")
+
+	requireIndex(t, tx, "payment_orders", "paymentorder_out_trade_no")
+	requirePartialUniqueIndexDefinition(t, tx, "payment_orders", "paymentorder_out_trade_no", "out_trade_no", "WHERE")
+	requireIndexAbsent(t, tx, "payment_orders", "paymentorder_out_trade_no_unique")
+REDACTED
+
 func requireIndex(t *testing.T, tx *sql.Tx, table, index string) {
 REDACTED
 
@@ -104,6 +120,79 @@ SELECT EXISTS (
 `, table, index).Scan(&exists)
 	require.NoError(t, err, "query pg_indexes for %s.%s", table, index)
 	require.True(t, exists, "expected index %s on %s", index, table)
+REDACTED
+
+func requireIndexAbsent(t *testing.T, tx *sql.Tx, table, index string) {
+REDACTED
+
+	var exists bool
+	err := tx.QueryRowContext(context.Background(), `
+SELECT EXISTS (
+	SELECT 1
+	FROM pg_indexes
+	WHERE schemaname = 'public'
+	  AND tablename = $1
+	  AND indexname = $2
+)
+`, table, index).Scan(&exists)
+	require.NoError(t, err, "query pg_indexes for %s.%s", table, index)
+	require.False(t, exists, "expected index %s on %s to be absent", index, table)
+REDACTED
+
+func requirePartialUniqueIndexDefinition(t *testing.T, tx *sql.Tx, table, index string, fragments ...string) {
+REDACTED
+
+	var (
+		unique bool
+		def    string
+	)
+
+	err := tx.QueryRowContext(context.Background(), `
+SELECT
+	i.indisunique,
+	pg_get_indexdef(i.indexrelid)
+FROM pg_class idx
+JOIN pg_index i ON i.indexrelid = idx.oid
+JOIN pg_class tbl ON tbl.oid = i.indrelid
+JOIN pg_namespace ns ON ns.oid = tbl.relnamespace
+WHERE ns.nspname = 'public'
+  AND tbl.relname = $1
+  AND idx.relname = $2
+`, table, index).Scan(&unique, &def)
+	require.NoError(t, err, "query index definition for %s.%s", table, index)
+	require.True(t, unique, "expected index %s on %s to be unique", index, table)
+
+	for _, fragment := range fragments {
+		require.Contains(t, def, fragment, "expected index definition for %s.%s to contain %q", table, index, fragment)
+REDACTED
+REDACTED
+
+func requireForeignKeyOnDelete(t *testing.T, tx *sql.Tx, table, column, refTable, expected string) {
+REDACTED
+
+	var actual string
+	err := tx.QueryRowContext(context.Background(), `
+SELECT CASE c.confdeltype
+	WHEN 'a' THEN 'NO ACTION'
+	WHEN 'r' THEN 'RESTRICT'
+	WHEN 'c' THEN 'CASCADE'
+	WHEN 'n' THEN 'SET NULL'
+	WHEN 'd' THEN 'SET DEFAULT'
+END
+FROM pg_constraint c
+JOIN pg_class tbl ON tbl.oid = c.conrelid
+JOIN pg_namespace ns ON ns.oid = tbl.relnamespace
+JOIN pg_class ref_tbl ON ref_tbl.oid = c.confrelid
+JOIN pg_attribute attr ON attr.attrelid = tbl.oid AND attr.attnum = ANY(c.conkey)
+WHERE ns.nspname = 'public'
+  AND c.contype = 'f'
+  AND tbl.relname = $1
+  AND attr.attname = $2
+  AND ref_tbl.relname = $3
+LIMIT 1
+`, table, column, refTable).Scan(&actual)
+	require.NoError(t, err, "query foreign key action for %s.%s -> %s", table, column, refTable)
+	require.Equal(t, expected, actual, "unexpected ON DELETE action for %s.%s -> %s", table, column, refTable)
 REDACTED
 
 func requireColumn(t *testing.T, tx *sql.Tx, table, column, dataType string, maxLen int, nullable bool) {
