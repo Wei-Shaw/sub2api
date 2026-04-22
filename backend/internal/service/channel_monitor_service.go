@@ -61,6 +61,9 @@ type ChannelMonitorRepository interface {
 type ChannelMonitorService struct {
 	repo      ChannelMonitorRepository
 	encryptor SecretEncryptor
+	// scheduler 由 wire 通过 SetScheduler 注入；CRUD 后调用对应钩子即时同步任务。
+	// 测试或未注入场景下保持 nil，所有钩子调用变为 no-op。
+	scheduler MonitorScheduler
 }
 
 // NewChannelMonitorService 创建渠道监控服务实例。
@@ -136,6 +139,9 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 	// 不再调 s.Get 重走解密链：已知刚加密的明文，直接构造响应。
 	// 这样可避免 SecretEncryptor 解密失败时 APIKey 被静默清空的问题（见 Fix 4）。
 	m.APIKey = strings.TrimSpace(p.APIKey)
+	if s.scheduler != nil {
+		s.scheduler.Schedule(m)
+	}
 	return m, nil
 }
 
@@ -184,6 +190,11 @@ func (s *ChannelMonitorService) Update(ctx context.Context, id int64, p ChannelM
 	} else {
 		s.decryptInPlace(existing)
 	}
+	if s.scheduler != nil {
+		// Schedule 内部根据 Enabled 自动选择 Unschedule 或重建任务，
+		// IntervalSeconds 变化也会被自然吸收（旧 task 取消 + 新 task 用新 interval）。
+		s.scheduler.Schedule(existing)
+	}
 	return existing, nil
 }
 
@@ -208,6 +219,9 @@ func (s *ChannelMonitorService) applyAPIKeyUpdate(existing *ChannelMonitor, raw 
 func (s *ChannelMonitorService) Delete(ctx context.Context, id int64) error {
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete channel monitor: %w", err)
+	}
+	if s.scheduler != nil {
+		s.scheduler.Unschedule(id)
 	}
 	return nil
 }
@@ -306,29 +320,24 @@ func (s *ChannelMonitorService) runChecksConcurrent(ctx context.Context, m *Chan
 	return results
 }
 
-// ---------- 调度器内部 ----------
+// ---------- 调度器协作 ----------
 
-// listDueForCheck 返回需要立即检测的监控列表：
-// enabled=true AND (last_checked_at IS NULL OR last_checked_at + interval <= now)。
-// 实现下沉到 repository（用 SQL 表达式比较），减少应用层数据传输。
-func (s *ChannelMonitorService) listDueForCheck(ctx context.Context) ([]*ChannelMonitor, error) {
+// SetScheduler 由 wire 在 runner 构造后注入，用于在 CRUD 时即时同步任务表。
+// 通过 setter 注入避免 service ↔ runner 的依赖环。
+func (s *ChannelMonitorService) SetScheduler(sched MonitorScheduler) {
+	s.scheduler = sched
+}
+
+// ListEnabledMonitors 返回所有 enabled=true 的监控（解密后），供 runner 启动时建立任务表。
+func (s *ChannelMonitorService) ListEnabledMonitors(ctx context.Context) ([]*ChannelMonitor, error) {
 	all, err := s.repo.ListEnabled(ctx)
 	if err != nil {
 		return nil, err
 	}
-	now := time.Now()
-	due := make([]*ChannelMonitor, 0, len(all))
 	for _, m := range all {
-		if m.LastCheckedAt == nil {
-			due = append(due, m)
-			continue
-		}
-		nextAt := m.LastCheckedAt.Add(time.Duration(m.IntervalSeconds) * time.Second)
-		if !nextAt.After(now) {
-			due = append(due, m)
-		}
+		s.decryptInPlace(m)
 	}
-	return due, nil
+	return all, nil
 }
 
 // cleanupOldHistory 删除 monitorHistoryRetentionDays 天之前的明细历史记录。
