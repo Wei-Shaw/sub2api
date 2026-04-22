@@ -1538,7 +1538,18 @@ PR 目标是上游官方仓库 `Wei-Shaw/sub2api:main`，**只包含通用功能
 
 #### PR 分支创建流程
 
-> **核心原则**：PR 分支必须基于 `upstream/main`，代码来源是我们的 release 分支（已测试过的代码）。通过 cherry-pick 将支付/功能代码从 release 带入 PR 分支，**禁止**将 PR 分支 merge 回 release（会带入 upstream/main 的非相关代码）。
+> **核心原则**：PR 分支必须基于 `upstream/main`，代码来源是我们的 release 分支（已测试过的代码）。通过 `git merge --squash` 把 release 的功能差量整体压入 PR 分支，再**手动 revert 掉 fork 定制文件**，最后压成 1-2 个干净 commit 推上游。
+>
+> **禁止**将 PR 分支 merge 回 release（会带入 upstream/main 的非相关代码）。
+
+**为什么用 squash merge 而不是 cherry-pick？**
+
+我们 release 上一个功能往往跨几十上百个 commit（初版 → 重构 → 修复 → ent 重新生成 …），还和已上游化的功能（支付、亲和度、通知等）的 commit 交织。逐 commit cherry-pick 会：
+1. 大量冲突（基底差太远）
+2. 拉进很多 fork-only 边角改动
+3. 最终 PR 历史依然混乱
+
+squash merge 让我们一次性拿到「release vs upstream/main」的完整差量，然后**按文件级 revert** 把不相关的 hunk 剥掉，得到一个语义内聚的 PR。
 
 ```bash
 # 1. 获取最新上游代码
@@ -1547,21 +1558,47 @@ git fetch upstream
 # 2. 从 upstream/main 创建 PR 分支
 git checkout -b feat/my-feature upstream/main
 
-# 3. 从 release 分支 cherry-pick 功能代码
-#    方式一：cherry-pick 已有的精简 commit
-git cherry-pick <commit1> <commit2> ...
+# 3. 把 release 的全部差量压入工作区（不创建 commit）
+git merge --squash release/custom-0.1.115
 
-#    方式二：如果 release 上有大量零散 commit，
-#    先在 release 分支整理为 1-2 个精简 commit，再 cherry-pick
+# 4. revert 掉所有 fork-only 文件 + 不属于本 PR 的功能改动
+#    a) 完全 fork-only 的整文件 → 恢复 upstream 版本 / 删除新增
+git checkout HEAD -- CLAUDE.md AGENTS.md backend/cmd/server/VERSION \
+  frontend/src/components/layout/AppHeader.vue \
+  frontend/src/views/HomeView.vue \
+  deploy/docker-compose.yml \
+  .gitattributes .gitignore
+rm -f frontend/src/components/common/WechatServiceButton.vue \
+  frontend/public/wechat-qr.jpg
 
-# 4. 验证 PR 分支只包含功能相关改动
-git diff --name-only upstream/main feat/my-feature
-# 确认没有 fork 定制文件（见下方禁止列表）
+#    b) 与本 PR 无关的功能文件（其他已上游化但 release 还有残余）
+git checkout HEAD -- backend/internal/service/account_service.go \
+  backend/internal/service/openai_*.go \
+  ... (按 git diff --cached --name-only 列表逐项判断)
 
-# 5. 推送并等待 CI
+#    c) 混合文件（i18n/sidebar/router/settings 等）需要 surgical 编辑：
+#       打开看 staged 内容 vs upstream 版本，只保留本 PR 相关 hunk
+#       用 git restore --staged --patch <file> 交互式撤销不要的 hunk
+git restore --staged --patch frontend/src/components/layout/AppSidebar.vue
+git restore --staged --patch frontend/src/i18n/locales/en.ts
+
+# 5. 验证 PR 只剩下本功能相关改动
+git diff --cached --name-only
+git diff --cached --stat | tail -5
+
+# 6. 一次提交（commit message 用本 PR 的功能名）
+git commit -m "feat(scope): description"
+
+# 7. 推送并等待 CI
 git push origin feat/my-feature
 gh run list --repo touwaeriol/sub2api --branch feat/my-feature
 ```
+
+**冲突处理原则**：
+
+- 出现 `<<<<<<<` 冲突标记时（罕见，因为 release 通常已合并最新 upstream），按本 PR 功能定位选边。
+- 文件被 release 重命名（R100）但内容未改的，**保留 upstream 命名**：迁移已部署 DB 的 `schema_migrations` 不能凭空改名。
+- 拿不准时优先 `git checkout HEAD -- <path>`（保留上游版本），再单独决定是否要带入。
 
 #### 将 PR 改进带入 release（反向同步）
 
