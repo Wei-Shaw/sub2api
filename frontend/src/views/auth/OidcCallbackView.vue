@@ -632,6 +632,14 @@ async function finalizePendingAccountResponse(completion: PendingOidcCompletion)
     return
   REDACTED
 
+  if (completion.auth_result === 'pending_session') {
+    needsInvitation.value = false
+    needsAdoptionConfirmation.value = false
+    isProcessing.value = false
+    persistPendingAuthSession(redirect)
+    return
+  REDACTED
+
   await finalizeCompletion(completion, redirect)
 REDACTED
 
@@ -641,9 +649,9 @@ async function handleSubmitInvitation() {
 
   isSubmitting.value = true
   try {
-    const tokenData = legacyPendingOAuthToken.value
+    const completion: PendingOidcCompletion = legacyPendingOAuthToken.value
       ? (
-          await apiClient.post<OAuthTokenResponse>('/auth/oauth/oidc/complete-registration', {
+          await apiClient.post<PendingOidcCompletion>('/auth/oauth/oidc/complete-registration', {
             pending_oauth_token: legacyPendingOAuthToken.value,
             invitation_code: invitationCode.value.trim(),
             ...serializeAdoptionDecision(currentAdoptionDecision())
@@ -653,10 +661,7 @@ async function handleSubmitInvitation() {
           invitationCode.value.trim(),
           currentAdoptionDecision()
         )
-    persistOAuthTokenContext(tokenData)
-    await authStore.setToken(tokenData.access_token)
-    appStore.showSuccess(t('auth.loginSuccess'))
-    await router.replace(redirectTo.value)
+    await finalizePendingAccountResponse(completion)
   REDACTED catch (e: unknown) {
     const err = e as { message?: string; response?: { data?: { message?: string REDACTED REDACTED REDACTED
     invitationError.value =

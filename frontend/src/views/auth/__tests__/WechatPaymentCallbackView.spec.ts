@@ -79,6 +79,29 @@ describe('WechatPaymentCallbackView', () => {
     REDACTED)
   REDACTED)
 
+  it('redirects legacy openid callback payloads back to purchase while preserving resume context', async () => {
+    locationState.current.hash =
+      '#openid=openid-123&state=oauth-state&scope=snsapi_base&payment_type=wxpay_direct&amount=128&order_type=subscription&plan_id=7&redirect=%2Fpayment%3Ffrom%3Dwechat'
+
+    mount(WechatPaymentCallbackView)
+    await flushPromises()
+
+    expect(replaceMock).toHaveBeenCalledWith({
+      path: '/purchase',
+      query: {
+        from: 'wechat',
+        wechat_resume: '1',
+        openid: 'openid-123',
+        state: 'oauth-state',
+        scope: 'snsapi_base',
+        payment_type: 'wxpay_direct',
+        amount: '128',
+        order_type: 'subscription',
+        plan_id: '7',
+      REDACTED,
+    REDACTED)
+  REDACTED)
+
   it('shows an error when the callback payload is missing the resume token', async () => {
     locationState.current.hash = '#payment_type=wxpay'
 
