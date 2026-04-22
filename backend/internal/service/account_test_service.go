@@ -419,6 +419,7 @@ REDACTED
 // testOpenAIAccountConnection tests an OpenAI account's connection
 func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
 	ctx := c.Request.Context()
+	_ = prompt
 
 	// Default to openai.DefaultTestModel for OpenAI testing
 	testModelID := modelID

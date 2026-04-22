@@ -40,7 +40,7 @@
 
               <div class="space-y-1">
                 <p class="truncate text-sm text-gray-600 dark:text-gray-300">
-                  {{ user?.email REDACTEDREDACTED
+                  {{ primaryEmailDisplay REDACTEDREDACTED
                 </p>
                 <div
                   v-if="sourceHints.length"
@@ -185,7 +185,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ProfileAvatarCard from '@/components/user/profile/ProfileAvatarCard.vue'
 import ProfileEditForm from '@/components/user/profile/ProfileEditForm.vue'
 import ProfileIdentityBindingsSection from '@/components/user/profile/ProfileIdentityBindingsSection.vue'
-import type { User, UserAuthProvider, UserProfileSourceContext REDACTED from '@/types'
+import type { User, UserAuthBindingStatus, UserAuthProvider, UserProfileSourceContext REDACTED from '@/types'
 
 const props = withDefaults(defineProps<{
   user: User | null
@@ -206,8 +206,41 @@ REDACTED)
 
 const { t REDACTED = useI18n()
 
+function normalizeBindingStatus(binding: boolean | UserAuthBindingStatus | undefined): boolean | null {
+  if (typeof binding === 'boolean') {
+    return binding
+  REDACTED
+  if (!binding) {
+    return null
+  REDACTED
+  if (typeof binding.bound === 'boolean') {
+    return binding.bound
+  REDACTED
+  return Boolean(binding.provider_subject || binding.issuer || binding.provider_key)
+REDACTED
+
+function isEmailBound(user: User | null | undefined): boolean {
+  if (typeof user?.email_bound === 'boolean') {
+    return user.email_bound
+  REDACTED
+
+  const nested = user?.auth_bindings?.email ?? user?.identity_bindings?.email
+  const normalized = normalizeBindingStatus(nested)
+  return normalized ?? false
+REDACTED
+
 const avatarUrl = computed(() => props.user?.avatar_url?.trim() || '')
 const displayName = computed(() => props.user?.username?.trim() || props.user?.email?.trim() || t('profile.user'))
+const primaryEmailDisplay = computed(() => {
+  const email = props.user?.email?.trim() || ''
+  if (!email) {
+    return ''
+  REDACTED
+  if (email.endsWith('.invalid') && !isEmailBound(props.user)) {
+    return ''
+  REDACTED
+  return email
+REDACTED)
 const avatarInitial = computed(() => displayName.value.charAt(0).toUpperCase() || 'U')
 const memberSinceLabel = computed(() => {
   const raw = props.user?.created_at?.trim()
@@ -229,7 +262,7 @@ REDACTED)
 const providerLabels = computed<Record<UserAuthProvider, string>>(() => ({
   email: t('profile.authBindings.providers.email'),
   linuxdo: t('profile.authBindings.providers.linuxdo'),
-  oidc: t('profile.authBindings.providers.oidc', { providerName: 'OIDC' REDACTED),
+  oidc: t('profile.authBindings.providers.oidc', { providerName: props.oidcProviderName REDACTED),
   wechat: t('profile.authBindings.providers.wechat')
 REDACTED))
 

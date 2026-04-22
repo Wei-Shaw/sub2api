@@ -111,6 +111,67 @@ describe('ProfileInfoCard', () => {
     expect(wrapper.text()).toContain('Username synced from LinuxDo')
   REDACTED)
 
+  it('uses the configured OIDC provider name in source hints', () => {
+    const wrapper = mount(ProfileInfoCard, {
+      props: {
+        user: createUser({
+          profile_sources: {
+            username: { provider: 'oidc', source: 'oidc' REDACTED
+          REDACTED
+        REDACTED),
+        oidcProviderName: 'ExampleID'
+      REDACTED,
+      global: {
+        stubs: {
+          Icon: true
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    expect(wrapper.text()).toContain('Username synced from ExampleID')
+  REDACTED)
+
+  it('does not display synthetic oauth-only emails as a real bound email', () => {
+    const wrapper = mount(ProfileInfoCard, {
+      props: {
+        user: createUser({
+          email: 'legacy-user@oidc-connect.invalid',
+          email_bound: false,
+          auth_bindings: {
+            email: { bound: false REDACTED
+          REDACTED
+        REDACTED)
+      REDACTED,
+      global: {
+        stubs: {
+          Icon: true
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    expect(wrapper.text()).not.toContain('legacy-user@oidc-connect.invalid')
+  REDACTED)
+
+  it('does not display synthetic oauth-only emails when only legacy identity bindings mark email as unbound', () => {
+    const wrapper = mount(ProfileInfoCard, {
+      props: {
+        user: createUser({
+          email: 'legacy-user@wechat-connect.invalid',
+          identity_bindings: {
+            email: { bound: false REDACTED
+          REDACTED
+        REDACTED)
+      REDACTED,
+      global: {
+        stubs: {
+          Icon: true
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    expect(wrapper.text()).not.toContain('legacy-user@wechat-connect.invalid')
+  REDACTED)
+
   it('renders the approved overview hero and two-column content shell', () => {
     const wrapper = mount(ProfileInfoCard, {
       props: {

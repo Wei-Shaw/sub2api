@@ -249,7 +249,7 @@ func (h *UserHandler) UnbindIdentity(c *gin.Context) {
 		return
 REDACTED
 
-	updatedUser, err := h.userService.UnbindUserAuthProvider(
+	updatedUser, unbound, err := h.userService.UnbindUserAuthProviderWithResult(
 		c.Request.Context(),
 		subject.UserID,
 		c.Param("provider"),
@@ -257,6 +257,12 @@ REDACTED
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+REDACTED
+	if unbound && h.authService != nil {
+		if err := h.authService.RevokeAllUserTokens(c.Request.Context(), subject.UserID); err != nil {
+			response.ErrorFrom(c, err)
+			return
+	REDACTED
 REDACTED
 
 	profileResp, err := h.buildUserProfileResponse(c.Request.Context(), subject.UserID, updatedUser)
@@ -504,8 +510,12 @@ REDACTED
 
 	thirdParty := thirdPartyIdentityProviders(identities)
 	var avatarSource *userProfileSourceContext
-	if strings.TrimSpace(user.AvatarURL) != "" && len(thirdParty) == 1 {
-		avatarSource = buildUserProfileSourceContext(thirdParty[0].Provider)
+	avatarValue := strings.TrimSpace(user.AvatarURL)
+	for _, summary := range thirdParty {
+		if avatarValue != "" && avatarValue == strings.TrimSpace(summary.AvatarURL) {
+			avatarSource = buildUserProfileSourceContext(summary.Provider)
+			break
+	REDACTED
 REDACTED
 
 	usernameValue := strings.TrimSpace(user.Username)
@@ -515,9 +525,6 @@ REDACTED
 			usernameSource = buildUserProfileSourceContext(summary.Provider)
 			break
 	REDACTED
-REDACTED
-	if usernameSource == nil && usernameValue != "" && len(thirdParty) == 1 {
-		usernameSource = buildUserProfileSourceContext(thirdParty[0].Provider)
 REDACTED
 
 	profileSources := map[string]*userProfileSourceContext{REDACTED

@@ -385,6 +385,50 @@ describe('OidcCallbackView', () => {
     REDACTED)
   REDACTED)
 
+  it('keeps the oauth flow active when complete-registration returns another pending step', async () => {
+    exchangePendingOAuthCompletion.mockResolvedValue({
+      error: 'invitation_required',
+      redirect: '/dashboard',
+      adoption_required: true,
+      suggested_display_name: 'OIDC Nick',
+      suggested_avatar_url: 'https://cdn.example/oidc.png'
+    REDACTED)
+    completeOIDCOAuthRegistration.mockResolvedValue({
+      auth_result: 'pending_session',
+      step: 'choose_account_action_required',
+      redirect: '/dashboard',
+      email: 'fresh@example.com',
+      resolved_email: 'fresh@example.com',
+      force_email_on_signup: true,
+      adoption_required: true
+    REDACTED)
+
+    const wrapper = mount(OidcCallbackView, {
+      global: {
+        stubs: {
+          AuthLayout: { template: '<div><slot /></div>' REDACTED,
+          Icon: true,
+          RouterLink: { template: '<a><slot /></a>' REDACTED,
+          transition: false
+        REDACTED
+      REDACTED
+    REDACTED)
+
+    await flushPromises()
+    await wrapper.find('input[type="text"]').setValue('invite-code')
+    await wrapper.find('button').trigger('click')
+    await flushPromises()
+
+    expect(completeOIDCOAuthRegistration).toHaveBeenCalledWith('invite-code', {
+      adoptDisplayName: true,
+      adoptAvatar: true
+    REDACTED)
+    expect(setToken).not.toHaveBeenCalled()
+    expect(replace).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('auth.oauthFlow.bindExistingAccount')
+    expect(wrapper.text()).toContain('auth.oauthFlow.createNewAccount')
+  REDACTED)
+
   it('collects email, password, and verify code for pending oauth account creation and submits adoption decisions', async () => {
     getPublicSettings.mockResolvedValue({
       oidc_oauth_provider_name: 'ExampleID',

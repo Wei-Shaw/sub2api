@@ -85,7 +85,7 @@ REDACTED{
 							"bound_count": 0,
 							"can_bind": true,
 							"can_unbind": false,
-							"bind_start_path": "/api/v1/auth/oauth/linuxdo/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
+							"bind_start_path": "/api/v1/auth/oauth/linuxdo/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
 					REDACTED,
 						"oidc": {
 							"provider": "oidc",
@@ -93,7 +93,7 @@ REDACTED{
 							"bound_count": 0,
 							"can_bind": true,
 							"can_unbind": false,
-							"bind_start_path": "/api/v1/auth/oauth/oidc/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
+							"bind_start_path": "/api/v1/auth/oauth/oidc/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
 					REDACTED,
 						"wechat": {
 							"provider": "wechat",
@@ -101,7 +101,7 @@ REDACTED{
 							"bound_count": 0,
 							"can_bind": true,
 							"can_unbind": false,
-							"bind_start_path": "/api/v1/auth/oauth/wechat/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
+							"bind_start_path": "/api/v1/auth/oauth/wechat/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
 					REDACTED
 				REDACTED,
 					"identity_bindings": {
@@ -122,7 +122,7 @@ REDACTED{
 							"bound_count": 0,
 							"can_bind": true,
 							"can_unbind": false,
-							"bind_start_path": "/api/v1/auth/oauth/linuxdo/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
+							"bind_start_path": "/api/v1/auth/oauth/linuxdo/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
 					REDACTED,
 						"oidc": {
 							"provider": "oidc",
@@ -130,7 +130,7 @@ REDACTED{
 							"bound_count": 0,
 							"can_bind": true,
 							"can_unbind": false,
-							"bind_start_path": "/api/v1/auth/oauth/oidc/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
+							"bind_start_path": "/api/v1/auth/oauth/oidc/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
 					REDACTED,
 						"wechat": {
 							"provider": "wechat",
@@ -138,7 +138,7 @@ REDACTED{
 							"bound_count": 0,
 							"can_bind": true,
 							"can_unbind": false,
-							"bind_start_path": "/api/v1/auth/oauth/wechat/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
+							"bind_start_path": "/api/v1/auth/oauth/wechat/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
 					REDACTED
 				REDACTED,
 					"auth_bindings": {
@@ -159,7 +159,7 @@ REDACTED{
 							"bound_count": 0,
 							"can_bind": true,
 							"can_unbind": false,
-							"bind_start_path": "/api/v1/auth/oauth/linuxdo/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
+							"bind_start_path": "/api/v1/auth/oauth/linuxdo/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
 					REDACTED,
 						"oidc": {
 							"provider": "oidc",
@@ -167,7 +167,7 @@ REDACTED{
 							"bound_count": 0,
 							"can_bind": true,
 							"can_unbind": false,
-							"bind_start_path": "/api/v1/auth/oauth/oidc/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
+							"bind_start_path": "/api/v1/auth/oauth/oidc/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
 					REDACTED,
 						"wechat": {
 							"provider": "wechat",
@@ -175,7 +175,7 @@ REDACTED{
 							"bound_count": 0,
 							"can_bind": true,
 							"can_unbind": false,
-							"bind_start_path": "/api/v1/auth/oauth/wechat/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
+							"bind_start_path": "/api/v1/auth/oauth/wechat/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
 					REDACTED
 				REDACTED,
 					"run_mode": "standard"
@@ -785,6 +785,198 @@ REDACTED{
 		REDACTED`,
 	REDACTED,
 		{
+			name: "GET /api/v1/admin/settings falls back to config oauth defaults",
+			setup: func(t *testing.T, deps *contractDeps) {
+			REDACTED
+				deps.cfg.OIDC = config.OIDCConnectConfig{
+					Enabled:             true,
+					ProviderName:        "ConfigOIDC",
+					ClientID:            "oidc-config-client",
+					ClientSecret:        "oidc-config-secret",
+					IssuerURL:           "https://issuer.example.com",
+					RedirectURL:         "https://api.example.com/api/v1/auth/oauth/oidc/callback",
+					FrontendRedirectURL: "/auth/oidc/callback",
+					Scopes:              "openid email profile",
+					TokenAuthMethod:     "client_secret_post",
+					UsePKCE:             true,
+					ValidateIDToken:     true,
+					AllowedSigningAlgs:  "RS256,ES256,PS256",
+					ClockSkewSeconds:    120,
+			REDACTED
+				deps.cfg.WeChat = config.WeChatConnectConfig{
+					Enabled:             true,
+					OpenEnabled:         true,
+					OpenAppID:           "wx-open-config",
+					OpenAppSecret:       "wx-open-secret",
+					Mode:                "open",
+					Scopes:              "snsapi_login",
+					FrontendRedirectURL: "/auth/wechat/callback",
+			REDACTED
+				deps.settingRepo.SetAll(map[string]string{
+					service.SettingKeyRegistrationEnabled:              "true",
+					service.SettingKeyEmailVerifyEnabled:               "false",
+					service.SettingKeyRegistrationEmailSuffixWhitelist: "[]",
+			REDACTED)
+		REDACTED,
+			method:     http.MethodGet,
+			path:       "/api/v1/admin/settings",
+			wantStatus: http.StatusOK,
+			wantJSON: `{
+				"code": 0,
+				"message": "success",
+				"data": {
+					"registration_enabled": true,
+					"email_verify_enabled": false,
+					"registration_email_suffix_whitelist": [],
+					"promo_code_enabled": true,
+					"password_reset_enabled": false,
+					"frontend_url": "",
+					"invitation_code_enabled": false,
+					"totp_enabled": false,
+					"totp_encryption_key_configured": false,
+					"smtp_host": "",
+					"smtp_port": 587,
+					"smtp_username": "",
+					"smtp_password_configured": false,
+					"smtp_from_email": "",
+					"smtp_from_name": "",
+					"smtp_use_tls": false,
+					"turnstile_enabled": false,
+					"turnstile_site_key": "",
+					"turnstile_secret_key_configured": false,
+					"linuxdo_connect_enabled": false,
+					"linuxdo_connect_client_id": "",
+					"linuxdo_connect_client_secret_configured": false,
+					"linuxdo_connect_redirect_url": "",
+					"oidc_connect_enabled": true,
+					"oidc_connect_provider_name": "ConfigOIDC",
+					"oidc_connect_client_id": "oidc-config-client",
+					"oidc_connect_client_secret_configured": true,
+					"oidc_connect_issuer_url": "https://issuer.example.com",
+					"oidc_connect_discovery_url": "",
+					"oidc_connect_authorize_url": "",
+					"oidc_connect_token_url": "",
+					"oidc_connect_userinfo_url": "",
+					"oidc_connect_jwks_url": "",
+					"oidc_connect_scopes": "openid email profile",
+					"oidc_connect_redirect_url": "https://api.example.com/api/v1/auth/oauth/oidc/callback",
+					"oidc_connect_frontend_redirect_url": "/auth/oidc/callback",
+					"oidc_connect_token_auth_method": "client_secret_post",
+					"oidc_connect_use_pkce": true,
+					"oidc_connect_validate_id_token": true,
+					"oidc_connect_allowed_signing_algs": "RS256,ES256,PS256",
+					"oidc_connect_clock_skew_seconds": 120,
+					"oidc_connect_require_email_verified": false,
+					"oidc_connect_userinfo_email_path": "",
+					"oidc_connect_userinfo_id_path": "",
+					"oidc_connect_userinfo_username_path": "",
+					"site_name": "Sub2API",
+					"site_logo": "",
+					"site_subtitle": "Subscription to API Conversion Platform",
+					"api_base_url": "",
+					"contact_info": "",
+					"doc_url": "",
+					"home_content": "",
+					"hide_ccs_import_button": false,
+					"purchase_subscription_enabled": false,
+					"purchase_subscription_url": "",
+					"table_default_page_size": 20,
+					"table_page_size_options": [10, 20, 50],
+					"custom_menu_items": [],
+					"custom_endpoints": [],
+					"default_concurrency": 0,
+					"default_balance": 0,
+					"default_subscriptions": [],
+					"enable_model_fallback": false,
+					"fallback_model_anthropic": "claude-3-5-sonnet-20241022",
+					"fallback_model_openai": "gpt-4o",
+					"fallback_model_gemini": "gemini-2.5-pro",
+					"fallback_model_antigravity": "gemini-2.5-pro",
+					"enable_identity_patch": true,
+					"identity_patch_prompt": "",
+					"ops_monitoring_enabled": false,
+					"ops_realtime_monitoring_enabled": true,
+					"ops_query_mode_default": "auto",
+					"ops_metrics_interval_seconds": 60,
+					"min_claude_code_version": "",
+					"max_claude_code_version": "",
+					"allow_ungrouped_key_scheduling": false,
+					"backend_mode_enabled": false,
+					"enable_fingerprint_unification": true,
+					"enable_metadata_passthrough": false,
+					"enable_cch_signing": false,
+					"web_search_emulation_enabled": false,
+					"payment_visible_method_alipay_source": "",
+					"payment_visible_method_wxpay_source": "",
+					"payment_visible_method_alipay_enabled": false,
+					"payment_visible_method_wxpay_enabled": false,
+					"openai_advanced_scheduler_enabled": false,
+					"payment_enabled": false,
+					"payment_min_amount": 0,
+					"payment_max_amount": 0,
+					"payment_daily_limit": 0,
+					"payment_order_timeout_minutes": 0,
+					"payment_max_pending_orders": 0,
+					"payment_enabled_types": null,
+					"payment_balance_disabled": false,
+					"payment_balance_recharge_multiplier": 0,
+					"payment_recharge_fee_rate": 0,
+					"payment_load_balance_strategy": "",
+					"payment_product_name_prefix": "",
+					"payment_product_name_suffix": "",
+					"payment_help_image_url": "",
+					"payment_help_text": "",
+					"payment_cancel_rate_limit_enabled": false,
+					"payment_cancel_rate_limit_max": 0,
+					"payment_cancel_rate_limit_window": 0,
+					"payment_cancel_rate_limit_unit": "",
+					"payment_cancel_rate_limit_window_mode": "",
+					"balance_low_notify_enabled": false,
+					"account_quota_notify_enabled": false,
+					"balance_low_notify_threshold": 0,
+					"balance_low_notify_recharge_url": "",
+					"account_quota_notify_emails": [],
+					"wechat_connect_enabled": true,
+					"wechat_connect_app_id": "wx-open-config",
+					"wechat_connect_app_secret_configured": true,
+					"wechat_connect_mode": "open",
+					"wechat_connect_open_enabled": true,
+					"wechat_connect_open_app_id": "wx-open-config",
+					"wechat_connect_open_app_secret_configured": true,
+					"wechat_connect_mp_enabled": false,
+					"wechat_connect_mp_app_id": "wx-open-config",
+					"wechat_connect_mp_app_secret_configured": true,
+					"wechat_connect_mobile_enabled": false,
+					"wechat_connect_mobile_app_id": "wx-open-config",
+					"wechat_connect_mobile_app_secret_configured": true,
+					"wechat_connect_redirect_url": "",
+					"wechat_connect_frontend_redirect_url": "/auth/wechat/callback",
+					"wechat_connect_scopes": "snsapi_login",
+					"auth_source_default_email_balance": 0,
+					"auth_source_default_email_concurrency": 5,
+					"auth_source_default_email_subscriptions": [],
+					"auth_source_default_email_grant_on_signup": false,
+					"auth_source_default_email_grant_on_first_bind": false,
+					"auth_source_default_linuxdo_balance": 0,
+					"auth_source_default_linuxdo_concurrency": 5,
+					"auth_source_default_linuxdo_subscriptions": [],
+					"auth_source_default_linuxdo_grant_on_signup": false,
+					"auth_source_default_linuxdo_grant_on_first_bind": false,
+					"auth_source_default_oidc_balance": 0,
+					"auth_source_default_oidc_concurrency": 5,
+					"auth_source_default_oidc_subscriptions": [],
+					"auth_source_default_oidc_grant_on_signup": false,
+					"auth_source_default_oidc_grant_on_first_bind": false,
+					"auth_source_default_wechat_balance": 0,
+					"auth_source_default_wechat_concurrency": 5,
+					"auth_source_default_wechat_subscriptions": [],
+					"auth_source_default_wechat_grant_on_signup": false,
+					"auth_source_default_wechat_grant_on_first_bind": false,
+					"force_email_on_third_party_signup": false
+			REDACTED
+		REDACTED`,
+	REDACTED,
+		{
 			name:   "POST /api/v1/admin/accounts/bulk-update",
 			method: http.MethodPost,
 			path:   "/api/v1/admin/accounts/bulk-update",
@@ -827,6 +1019,7 @@ REDACTED
 type contractDeps struct {
 	now         time.Time
 	router      http.Handler
+	cfg         *config.Config
 	apiKeyRepo  *stubApiKeyRepo
 	groupRepo   *stubGroupRepo
 	userSubRepo *stubUserSubscriptionRepo
@@ -947,6 +1140,7 @@ REDACTED
 	return &contractDeps{
 		now:         now,
 		router:      r,
+		cfg:         cfg,
 		apiKeyRepo:  apiKeyRepo,
 		groupRepo:   groupRepo,
 		userSubRepo: userSubRepo,

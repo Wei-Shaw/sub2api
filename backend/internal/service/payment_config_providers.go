@@ -116,6 +116,17 @@ var providerSensitiveConfigFields = map[string]map[string]struct{REDACTED{
 	payment.TypeStripe:  {"secretkey": {REDACTED, "webhooksecret": {REDACTEDREDACTED,
 REDACTED
 
+// providerPendingOrderProtectedConfigFields lists config keys that cannot be
+// changed while the instance has in-progress orders. This includes secrets plus
+// all provider identity fields that are snapshotted into orders or used by
+// webhook/refund verification.
+var providerPendingOrderProtectedConfigFields = map[string]map[string]struct{REDACTED{
+	payment.TypeEasyPay: {"pkey": {REDACTED, "pid": {REDACTEDREDACTED,
+	payment.TypeAlipay:  {"privatekey": {REDACTED, "publickey": {REDACTED, "alipaypublickey": {REDACTED, "appid": {REDACTEDREDACTED,
+	payment.TypeWxpay:   {"privatekey": {REDACTED, "apiv3key": {REDACTED, "publickey": {REDACTED, "appid": {REDACTED, "mpappid": {REDACTED, "mchid": {REDACTED, "publickeyid": {REDACTED, "certserial": {REDACTEDREDACTED,
+	payment.TypeStripe:  {"secretkey": {REDACTED, "webhooksecret": {REDACTEDREDACTED,
+REDACTED
+
 func isSensitiveProviderConfigField(providerKey, fieldName string) bool {
 	fields, ok := providerSensitiveConfigFields[providerKey]
 	if !ok {
@@ -123,6 +134,28 @@ func isSensitiveProviderConfigField(providerKey, fieldName string) bool {
 REDACTED
 	_, found := fields[strings.ToLower(fieldName)]
 	return found
+REDACTED
+
+func hasPendingOrderProtectedConfigChange(providerKey string, currentConfig, nextConfig map[string]string) bool {
+	fields, ok := providerPendingOrderProtectedConfigFields[providerKey]
+	if !ok {
+		return false
+REDACTED
+	for fieldName := range fields {
+		if providerConfigFieldValue(currentConfig, fieldName) != providerConfigFieldValue(nextConfig, fieldName) {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+func providerConfigFieldValue(config map[string]string, fieldName string) string {
+	for key, value := range config {
+		if strings.EqualFold(key, fieldName) {
+			return value
+	REDACTED
+REDACTED
+	return ""
 REDACTED
 
 func (s *PaymentConfigService) countPendingOrders(ctx context.Context, providerInstanceID int64) (int, error) {
@@ -190,6 +223,18 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 	if err != nil {
 		return nil, fmt.Errorf("load provider instance: %w", err)
 REDACTED
+	var pendingOrderCount *int
+	getPendingOrderCount := func() (int, error) {
+		if pendingOrderCount != nil {
+			return *pendingOrderCount, nil
+	REDACTED
+		count, err := s.countPendingOrders(ctx, id)
+		if err != nil {
+			return 0, fmt.Errorf("check pending orders: %w", err)
+	REDACTED
+		pendingOrderCount = &count
+		return count, nil
+REDACTED
 	nextEnabled := current.Enabled
 	if req.Enabled != nil {
 		nextEnabled = *req.Enabled
@@ -201,18 +246,20 @@ REDACTED
 	if err := s.validateVisibleMethodEnablementConflicts(ctx, id, current.ProviderKey, nextSupportedTypes, nextEnabled); err != nil {
 		return nil, err
 REDACTED
+	var mergedConfig map[string]string
 	if req.Config != nil {
-		hasSensitive := false
-		for k, v := range req.Config {
-			if v != "" && isSensitiveProviderConfigField(current.ProviderKey, k) {
-				hasSensitive = true
-				break
-		REDACTED
+		currentConfig, err := s.decryptConfig(current.Config)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt existing config: %w", err)
 	REDACTED
-		if hasSensitive {
-			count, err := s.countPendingOrders(ctx, id)
+		mergedConfig, err = s.mergeConfig(ctx, id, req.Config)
+		if err != nil {
+			return nil, err
+	REDACTED
+		if hasPendingOrderProtectedConfigChange(current.ProviderKey, currentConfig, mergedConfig) {
+			count, err := getPendingOrderCount()
 			if err != nil {
-				return nil, fmt.Errorf("check pending orders: %w", err)
+				return nil, err
 		REDACTED
 			if count > 0 {
 				return nil, infraerrors.Conflict("PENDING_ORDERS", "instance has pending orders").
@@ -221,9 +268,9 @@ REDACTED
 	REDACTED
 REDACTED
 	if req.Enabled != nil && !*req.Enabled {
-		count, err := s.countPendingOrders(ctx, id)
+		count, err := getPendingOrderCount()
 		if err != nil {
-			return nil, fmt.Errorf("check pending orders: %w", err)
+			return nil, err
 	REDACTED
 		if count > 0 {
 			return nil, infraerrors.Conflict("PENDING_ORDERS", "instance has pending orders").
@@ -236,13 +283,6 @@ REDACTED
 	finalEnabled := current.Enabled
 	if req.Enabled != nil {
 		finalEnabled = *req.Enabled
-REDACTED
-	var mergedConfig map[string]string
-	if req.Config != nil {
-		mergedConfig, err = s.mergeConfig(ctx, id, req.Config)
-		if err != nil {
-			return nil, err
-	REDACTED
 REDACTED
 	if finalEnabled {
 		configToValidate := mergedConfig
@@ -269,9 +309,9 @@ REDACTED
 REDACTED
 	if req.SupportedTypes != nil {
 		// Check pending orders before removing payment types
-		count, err := s.countPendingOrders(ctx, id)
+		count, err := getPendingOrderCount()
 		if err != nil {
-			return nil, fmt.Errorf("check pending orders: %w", err)
+			return nil, err
 	REDACTED
 		if count > 0 {
 			// Load current instance to compare types

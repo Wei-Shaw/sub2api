@@ -188,6 +188,93 @@ REDACTED
 	require.Equal(t, "second", identities[0].Metadata["source"])
 REDACTED
 
+func TestAdminServiceBindUserAuthIdentityReusesLegacyWeChatAliasRecords(t *testing.T) {
+	client := newAdminServiceAuthIdentityBindingTestClient(t)
+	ctx := context.Background()
+
+	user, err := client.User.Create().
+		SetEmail("wechat-alias@example.com").
+		SetPasswordHash("hash").
+		SetRole(RoleUser).
+		SetStatus(StatusActive).
+		Save(ctx)
+REDACTED
+
+	legacyIdentity, err := client.AuthIdentity.Create().
+		SetUserID(user.ID).
+		SetProviderType("wechat").
+		SetProviderKey("wechat").
+		SetProviderSubject("union-legacy-123").
+		SetMetadata(map[string]any{"source": "legacy"REDACTED).
+		Save(ctx)
+REDACTED
+
+	legacyChannel, err := client.AuthIdentityChannel.Create().
+		SetIdentityID(legacyIdentity.ID).
+		SetProviderType("wechat").
+		SetProviderKey("wechat").
+		SetChannel("open").
+		SetChannelAppID("wx-open").
+		SetChannelSubject("openid-legacy-123").
+		SetMetadata(map[string]any{"scene": "legacy"REDACTED).
+		Save(ctx)
+REDACTED
+
+	svc := &adminServiceImpl{
+		userRepo:  &userRepoStub{user: &User{ID: user.ID, Email: user.Email, Status: StatusActiveREDACTEDREDACTED,
+		entClient: client,
+REDACTED
+
+	result, err := svc.BindUserAuthIdentity(ctx, user.ID, AdminBindAuthIdentityInput{
+		ProviderType:    "wechat",
+		ProviderKey:     "wechat-main",
+		ProviderSubject: "union-legacy-123",
+		Metadata:        map[string]any{"source": "admin-repair"REDACTED,
+		Channel: &AdminBindAuthIdentityChannelInput{
+			Channel:        "open",
+			ChannelAppID:   "wx-open",
+			ChannelSubject: "openid-legacy-123",
+			Metadata:       map[string]any{"scene": "admin-repair"REDACTED,
+	REDACTED,
+REDACTED)
+REDACTED
+	require.NotNil(t, result)
+	require.Equal(t, "wechat-main", result.ProviderKey)
+	require.NotNil(t, result.Channel)
+	require.Equal(t, "open", result.Channel.Channel)
+
+	identity, err := client.AuthIdentity.Get(ctx, legacyIdentity.ID)
+REDACTED
+	require.Equal(t, "wechat-main", identity.ProviderKey)
+	require.Equal(t, "admin-repair", identity.Metadata["source"])
+
+	channel, err := client.AuthIdentityChannel.Get(ctx, legacyChannel.ID)
+REDACTED
+	require.Equal(t, "wechat-main", channel.ProviderKey)
+	require.Equal(t, legacyIdentity.ID, channel.IdentityID)
+	require.Equal(t, "admin-repair", channel.Metadata["scene"])
+
+	identityCount, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ("wechat"),
+			authidentity.ProviderSubjectEQ("union-legacy-123"),
+		).
+		Count(ctx)
+REDACTED
+	require.Equal(t, 1, identityCount)
+
+	channelCount, err := client.AuthIdentityChannel.Query().
+		Where(
+			authidentitychannel.ProviderTypeEQ("wechat"),
+			authidentitychannel.ChannelEQ("open"),
+			authidentitychannel.ChannelAppIDEQ("wx-open"),
+			authidentitychannel.ChannelSubjectEQ("openid-legacy-123"),
+		).
+		Count(ctx)
+REDACTED
+	require.Equal(t, 1, channelCount)
+REDACTED
+
 func TestAdminServiceBindUserAuthIdentityRejectsInvalidProviderType(t *testing.T) {
 	client := newAdminServiceAuthIdentityBindingTestClient(t)
 	ctx := context.Background()

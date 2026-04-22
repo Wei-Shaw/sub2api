@@ -879,6 +879,8 @@ REDACTED
 	if providerKey == "" || providerSubject == "" {
 		return nil, infraerrors.BadRequest("INVALID_INPUT", "provider_type, provider_key, and provider_subject are required")
 REDACTED
+	canonicalProviderKey := canonicalAdminAuthIdentityProviderKey(providerType, "", providerKey)
+	compatibleProviderKeys := compatibleAdminAuthIdentityProviderKeys(providerType, providerKey)
 
 	var issuer *string
 	if input.Issuer != nil {
@@ -900,25 +902,26 @@ REDACTED
 REDACTED
 	defer func() { _ = tx.Rollback() REDACTED()
 
-	identity, err := tx.AuthIdentity.Query().
+	identityRecords, err := tx.AuthIdentity.Query().
 		Where(
 			authidentity.ProviderTypeEQ(providerType),
-			authidentity.ProviderKeyEQ(providerKey),
+			authidentity.ProviderKeyIn(compatibleProviderKeys...),
 			authidentity.ProviderSubjectEQ(providerSubject),
 		).
-		Only(ctx)
-	if err != nil && !dbent.IsNotFound(err) {
+		All(ctx)
+	if err != nil {
 		return nil, infraerrors.InternalServer("ADMIN_AUTH_IDENTITY_BIND_LOOKUP_FAILED", "failed to inspect auth identity ownership").WithCause(err)
 REDACTED
-	if identity != nil && identity.UserID != userID {
+	if hasAdminAuthIdentityOwnershipConflict(identityRecords, userID) {
 		return nil, infraerrors.Conflict("AUTH_IDENTITY_OWNERSHIP_CONFLICT", "auth identity already belongs to another user")
 REDACTED
+	identity := selectOwnedAdminAuthIdentity(identityRecords, userID)
 
 	if identity == nil {
 		create := tx.AuthIdentity.Create().
 			SetUserID(userID).
 			SetProviderType(providerType).
-			SetProviderKey(providerKey).
+			SetProviderKey(canonicalProviderKey).
 			SetProviderSubject(providerSubject).
 			SetVerifiedAt(verifiedAt)
 		if issuer != nil {
@@ -932,7 +935,9 @@ REDACTED
 			return nil, infraerrors.InternalServer("ADMIN_AUTH_IDENTITY_BIND_SAVE_FAILED", "failed to save auth identity").WithCause(err)
 	REDACTED
 REDACTED else {
-		update := tx.AuthIdentity.UpdateOneID(identity.ID).SetVerifiedAt(verifiedAt)
+		update := tx.AuthIdentity.UpdateOneID(identity.ID).
+			SetVerifiedAt(verifiedAt).
+			SetProviderKey(canonicalProviderKey)
 		if issuer != nil {
 			update = update.SetIssuer(*issuer)
 	REDACTED
@@ -947,27 +952,28 @@ REDACTED
 
 	var channel *dbent.AuthIdentityChannel
 	if channelInput != nil {
-		channel, err = tx.AuthIdentityChannel.Query().
+		channelRecords, err := tx.AuthIdentityChannel.Query().
 			Where(
 				authidentitychannel.ProviderTypeEQ(providerType),
-				authidentitychannel.ProviderKeyEQ(providerKey),
+				authidentitychannel.ProviderKeyIn(compatibleProviderKeys...),
 				authidentitychannel.ChannelEQ(channelInput.Channel),
 				authidentitychannel.ChannelAppIDEQ(channelInput.ChannelAppID),
 				authidentitychannel.ChannelSubjectEQ(channelInput.ChannelSubject),
 			).
 			WithIdentity().
-			Only(ctx)
-		if err != nil && !dbent.IsNotFound(err) {
+			All(ctx)
+		if err != nil {
 			return nil, infraerrors.InternalServer("ADMIN_AUTH_IDENTITY_CHANNEL_LOOKUP_FAILED", "failed to inspect auth identity channel ownership").WithCause(err)
 	REDACTED
-		if channel != nil && channel.Edges.Identity != nil && channel.Edges.Identity.UserID != userID {
+		if hasAdminAuthIdentityChannelOwnershipConflict(channelRecords, userID) {
 			return nil, infraerrors.Conflict("AUTH_IDENTITY_CHANNEL_OWNERSHIP_CONFLICT", "auth identity channel already belongs to another user")
 	REDACTED
+		channel = selectOwnedAdminAuthIdentityChannel(channelRecords, userID)
 		if channel == nil {
 			create := tx.AuthIdentityChannel.Create().
 				SetIdentityID(identity.ID).
 				SetProviderType(providerType).
-				SetProviderKey(providerKey).
+				SetProviderKey(canonicalProviderKey).
 				SetChannel(channelInput.Channel).
 				SetChannelAppID(channelInput.ChannelAppID).
 				SetChannelSubject(channelInput.ChannelSubject)
@@ -979,7 +985,9 @@ REDACTED
 				return nil, infraerrors.InternalServer("ADMIN_AUTH_IDENTITY_CHANNEL_SAVE_FAILED", "failed to save auth identity channel").WithCause(err)
 		REDACTED
 	REDACTED else {
-			update := tx.AuthIdentityChannel.UpdateOneID(channel.ID).SetIdentityID(identity.ID)
+			update := tx.AuthIdentityChannel.UpdateOneID(channel.ID).
+				SetIdentityID(identity.ID).
+				SetProviderKey(canonicalProviderKey)
 			if channelInput.Metadata != nil {
 				update = update.SetMetadata(cloneAdminAuthIdentityMetadata(channelInput.Metadata))
 		REDACTED
@@ -994,6 +1002,105 @@ REDACTED
 		return nil, infraerrors.InternalServer("ADMIN_AUTH_IDENTITY_BIND_COMMIT_FAILED", "failed to commit auth identity bind").WithCause(err)
 REDACTED
 	return buildAdminBoundAuthIdentity(identity, channel), nil
+REDACTED
+
+func compatibleAdminAuthIdentityProviderKeys(providerType, providerKey string) []string {
+	providerType = strings.TrimSpace(strings.ToLower(providerType))
+	providerKey = strings.TrimSpace(providerKey)
+	if providerKey == "" {
+		return []string{providerKeyREDACTED
+REDACTED
+	if providerType != "wechat" {
+		return []string{providerKeyREDACTED
+REDACTED
+
+	keys := []string{providerKeyREDACTED
+	if !strings.EqualFold(providerKey, "wechat-main") {
+		keys = append(keys, "wechat-main")
+REDACTED
+	if !strings.EqualFold(providerKey, "wechat") {
+		keys = append(keys, "wechat")
+REDACTED
+	return keys
+REDACTED
+
+func canonicalAdminAuthIdentityProviderKey(providerType, existingKey, requestedKey string) string {
+	providerType = strings.TrimSpace(strings.ToLower(providerType))
+	existingKey = strings.TrimSpace(existingKey)
+	requestedKey = strings.TrimSpace(requestedKey)
+	if providerType != "wechat" {
+		if requestedKey != "" {
+			return requestedKey
+	REDACTED
+		return existingKey
+REDACTED
+	if strings.EqualFold(existingKey, "wechat") || strings.EqualFold(existingKey, "wechat-main") || strings.EqualFold(requestedKey, "wechat-main") {
+		return "wechat-main"
+REDACTED
+	if requestedKey != "" {
+		return requestedKey
+REDACTED
+	return existingKey
+REDACTED
+
+func adminAuthIdentityProviderKeyRank(providerType, providerKey string) int {
+	providerType = strings.TrimSpace(strings.ToLower(providerType))
+	providerKey = strings.TrimSpace(providerKey)
+	if providerType != "wechat" {
+		return 0
+REDACTED
+	switch {
+	case strings.EqualFold(providerKey, "wechat-main"):
+		return 0
+	case strings.EqualFold(providerKey, "wechat"):
+		return 2
+	default:
+		return 1
+REDACTED
+REDACTED
+
+func selectOwnedAdminAuthIdentity(records []*dbent.AuthIdentity, userID int64) *dbent.AuthIdentity {
+	var selected *dbent.AuthIdentity
+	for _, record := range records {
+		if record.UserID != userID {
+			continue
+	REDACTED
+		if selected == nil || adminAuthIdentityProviderKeyRank(record.ProviderType, record.ProviderKey) < adminAuthIdentityProviderKeyRank(selected.ProviderType, selected.ProviderKey) {
+			selected = record
+	REDACTED
+REDACTED
+	return selected
+REDACTED
+
+func hasAdminAuthIdentityOwnershipConflict(records []*dbent.AuthIdentity, userID int64) bool {
+	for _, record := range records {
+		if record.UserID != userID {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+func selectOwnedAdminAuthIdentityChannel(records []*dbent.AuthIdentityChannel, userID int64) *dbent.AuthIdentityChannel {
+	var selected *dbent.AuthIdentityChannel
+	for _, record := range records {
+		if record.Edges.Identity == nil || record.Edges.Identity.UserID != userID {
+			continue
+	REDACTED
+		if selected == nil || adminAuthIdentityProviderKeyRank(record.ProviderType, record.ProviderKey) < adminAuthIdentityProviderKeyRank(selected.ProviderType, selected.ProviderKey) {
+			selected = record
+	REDACTED
+REDACTED
+	return selected
+REDACTED
+
+func hasAdminAuthIdentityChannelOwnershipConflict(records []*dbent.AuthIdentityChannel, userID int64) bool {
+	for _, record := range records {
+		if record.Edges.Identity != nil && record.Edges.Identity.UserID != userID {
+			return true
+	REDACTED
+REDACTED
+	return false
 REDACTED
 
 func normalizeAdminBindChannelInput(input *AdminBindAuthIdentityChannelInput) *AdminBindAuthIdentityChannelInput {

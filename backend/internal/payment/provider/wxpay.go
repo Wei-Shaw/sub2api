@@ -60,11 +60,6 @@ const (
 	wxpayEventTransactionSuccess = "TRANSACTION.SUCCESS"
 )
 
-// WeChat Pay error codes.
-const (
-	wxpayErrNoAuth = "NO_AUTH"
-)
-
 var (
 	wxpayNativePrepay = func(ctx context.Context, svc native.NativeApiService, req native.PrepayRequest) (*native.PrepayResponse, *core.APIResult, error) {
 		return svc.Prepay(ctx, req)
@@ -200,14 +195,7 @@ REDACTED
 	case wxpayModeJSAPI:
 		return w.prepayJSAPI(ctx, client, req, notifyURL, totalFen)
 	case wxpayModeH5:
-		resp, err := w.prepayH5(ctx, client, req, notifyURL, totalFen)
-		if err == nil {
-			return resp, nil
-	REDACTED
-		if strings.Contains(err.Error(), wxpayErrNoAuth) {
-			return nil, fmt.Errorf("wxpay h5 payments are not authorized for this merchant: %w", err)
-	REDACTED
-		return nil, err
+		return w.prepayH5(ctx, client, req, notifyURL, totalFen)
 	case wxpayModeNative:
 		return w.prepayNative(ctx, client, req, notifyURL, totalFen)
 	default:

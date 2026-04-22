@@ -101,3 +101,151 @@ REDACTED
 	require.Equal(t, srv.URL+"/issuer/protocol/openid-connect/userinfo", got.UserInfoURL)
 	require.Equal(t, srv.URL+"/issuer/protocol/openid-connect/certs", got.JWKSURL)
 REDACTED
+
+func TestSettingService_ParseSettings_PreservesOptionalOIDCCompatibilityFlags(t *testing.T) {
+	svc := NewSettingService(&settingOIDCRepoStub{values: map[string]string{REDACTEDREDACTED, &config.Config{REDACTED)
+
+	got := svc.parseSettings(map[string]string{
+		SettingKeyOIDCConnectEnabled:         "true",
+		SettingKeyOIDCConnectUsePKCE:         "false",
+		SettingKeyOIDCConnectValidateIDToken: "false",
+REDACTED)
+
+	require.False(t, got.OIDCConnectUsePKCE)
+	require.False(t, got.OIDCConnectValidateIDToken)
+REDACTED
+
+func TestSettingService_ParseSettings_DefaultsOIDCSecurityFlagsToSafeConfigValues(t *testing.T) {
+	svc := NewSettingService(&settingOIDCRepoStub{values: map[string]string{REDACTEDREDACTED, &config.Config{
+		OIDC: config.OIDCConnectConfig{
+			UsePKCE:                 true,
+			UsePKCEExplicit:         true,
+			ValidateIDToken:         true,
+			ValidateIDTokenExplicit: true,
+	REDACTED,
+REDACTED)
+
+	got := svc.parseSettings(map[string]string{
+		SettingKeyOIDCConnectEnabled: "true",
+REDACTED)
+
+	require.True(t, got.OIDCConnectUsePKCE)
+	require.True(t, got.OIDCConnectValidateIDToken)
+REDACTED
+
+func TestSettingService_ParseSettings_DefaultsOIDCCompatibilityFlagsToSafeDefaultsWhenSettingsMissing(t *testing.T) {
+	svc := NewSettingService(&settingOIDCRepoStub{values: map[string]string{REDACTEDREDACTED, &config.Config{
+		OIDC: config.OIDCConnectConfig{
+			UsePKCE:         true,
+			ValidateIDToken: true,
+	REDACTED,
+REDACTED)
+
+	got := svc.parseSettings(map[string]string{
+		SettingKeyOIDCConnectEnabled: "true",
+REDACTED)
+
+	require.True(t, got.OIDCConnectUsePKCE)
+	require.True(t, got.OIDCConnectValidateIDToken)
+REDACTED
+
+func TestGetOIDCConnectOAuthConfig_AllowsCompatibilityFlagsToDisablePKCEAndIDTokenValidation(t *testing.T) {
+	cfg := &config.Config{
+		OIDC: config.OIDCConnectConfig{
+			Enabled:             true,
+			ProviderName:        "OIDC",
+			ClientID:            "oidc-client",
+			ClientSecret:        "oidc-secret",
+			IssuerURL:           "https://issuer.example.com",
+			AuthorizeURL:        "https://issuer.example.com/auth",
+			TokenURL:            "https://issuer.example.com/token",
+			UserInfoURL:         "https://issuer.example.com/userinfo",
+			RedirectURL:         "https://example.com/api/v1/auth/oauth/oidc/callback",
+			FrontendRedirectURL: "/auth/oidc/callback",
+			Scopes:              "openid email profile",
+			TokenAuthMethod:     "client_secret_post",
+	REDACTED,
+REDACTED
+
+	repo := &settingOIDCRepoStub{values: map[string]string{
+		SettingKeyOIDCConnectEnabled:         "true",
+		SettingKeyOIDCConnectUsePKCE:         "false",
+		SettingKeyOIDCConnectValidateIDToken: "false",
+REDACTEDREDACTED
+	svc := NewSettingService(repo, cfg)
+
+	got, err := svc.GetOIDCConnectOAuthConfig(context.Background())
+REDACTED
+	require.False(t, got.UsePKCE)
+	require.False(t, got.ValidateIDToken)
+REDACTED
+
+func TestGetOIDCConnectOAuthConfig_DefaultsToSecureFlagsWhenSettingsMissing(t *testing.T) {
+	cfg := &config.Config{
+		OIDC: config.OIDCConnectConfig{
+			Enabled:                 true,
+			ProviderName:            "OIDC",
+			ClientID:                "oidc-client",
+			ClientSecret:            "oidc-secret",
+			IssuerURL:               "https://issuer.example.com",
+			AuthorizeURL:            "https://issuer.example.com/auth",
+			TokenURL:                "https://issuer.example.com/token",
+			UserInfoURL:             "https://issuer.example.com/userinfo",
+			JWKSURL:                 "https://issuer.example.com/jwks",
+			RedirectURL:             "https://example.com/api/v1/auth/oauth/oidc/callback",
+			FrontendRedirectURL:     "/auth/oidc/callback",
+			Scopes:                  "openid email profile",
+			TokenAuthMethod:         "client_secret_post",
+			UsePKCE:                 true,
+			UsePKCEExplicit:         true,
+			ValidateIDToken:         true,
+			ValidateIDTokenExplicit: true,
+			AllowedSigningAlgs:      "RS256",
+			ClockSkewSeconds:        120,
+	REDACTED,
+REDACTED
+
+	repo := &settingOIDCRepoStub{values: map[string]string{
+		SettingKeyOIDCConnectEnabled: "true",
+REDACTEDREDACTED
+	svc := NewSettingService(repo, cfg)
+
+	got, err := svc.GetOIDCConnectOAuthConfig(context.Background())
+REDACTED
+	require.True(t, got.UsePKCE)
+	require.True(t, got.ValidateIDToken)
+REDACTED
+
+func TestGetOIDCConnectOAuthConfig_DefaultsCompatibilityFlagsToSafeValuesWhenSettingsMissing(t *testing.T) {
+	cfg := &config.Config{
+		OIDC: config.OIDCConnectConfig{
+			Enabled:             true,
+			ProviderName:        "OIDC",
+			ClientID:            "oidc-client",
+			ClientSecret:        "oidc-secret",
+			IssuerURL:           "https://issuer.example.com",
+			AuthorizeURL:        "https://issuer.example.com/auth",
+			TokenURL:            "https://issuer.example.com/token",
+			UserInfoURL:         "https://issuer.example.com/userinfo",
+			JWKSURL:             "https://issuer.example.com/jwks",
+			RedirectURL:         "https://example.com/api/v1/auth/oauth/oidc/callback",
+			FrontendRedirectURL: "/auth/oidc/callback",
+			Scopes:              "openid email profile",
+			TokenAuthMethod:     "client_secret_post",
+			UsePKCE:             true,
+			ValidateIDToken:     true,
+			AllowedSigningAlgs:  "RS256",
+			ClockSkewSeconds:    120,
+	REDACTED,
+REDACTED
+
+	repo := &settingOIDCRepoStub{values: map[string]string{
+		SettingKeyOIDCConnectEnabled: "true",
+REDACTEDREDACTED
+	svc := NewSettingService(repo, cfg)
+
+	got, err := svc.GetOIDCConnectOAuthConfig(context.Background())
+REDACTED
+	require.True(t, got.UsePKCE)
+	require.True(t, got.ValidateIDToken)
+REDACTED

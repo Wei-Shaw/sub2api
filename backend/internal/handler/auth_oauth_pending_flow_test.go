@@ -746,8 +746,8 @@ REDACTED
 	REDACTED).
 		SetLocalFlowState(map[string]any{
 			oauthCompletionResponseKey: map[string]any{
-				"access_token":  "access-token",
-				"refresh_token": "refresh-token",
+				"access_token":  "legacy-access-token",
+				"refresh_token": "legacy-refresh-token",
 				"expires_in":    float64(3600),
 				"token_type":    "Bearer",
 				"redirect":      "/dashboard",
@@ -769,12 +769,22 @@ REDACTED
 	require.Equal(t, http.StatusOK, recorder.Code)
 
 	payload := decodeJSONResponseData(t, recorder)
-	require.Equal(t, "access-token", payload["access_token"])
-	require.Equal(t, "refresh-token", payload["refresh_token"])
+	require.NotEmpty(t, payload["access_token"])
+	require.NotEmpty(t, payload["refresh_token"])
+	require.NotEqual(t, "legacy-access-token", payload["access_token"])
+	require.NotEqual(t, "legacy-refresh-token", payload["refresh_token"])
 	require.Equal(t, "/dashboard", payload["redirect"])
 	require.Equal(t, "Existing Login Example", payload["suggested_display_name"])
 	require.Equal(t, "https://cdn.example/existing-login.png", payload["suggested_avatar_url"])
 	require.NotContains(t, payload, "adoption_required")
+
+	accessToken, ok := payload["access_token"].(string)
+	require.True(t, ok)
+	claims, err := handler.authService.ValidateToken(accessToken)
+REDACTED
+	reloadedUser, err := handler.userService.GetByID(ctx, userEntity.ID)
+REDACTED
+	require.Equal(t, reloadedUser.TokenVersion, claims.TokenVersion)
 
 	decisionCount, err := client.IdentityAdoptionDecision.Query().
 		Where(identityadoptiondecision.PendingAuthSessionIDEQ(session.ID)).
@@ -785,6 +795,14 @@ REDACTED
 	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
 REDACTED
 	require.NotNil(t, storedSession.ConsumedAt)
+
+	completion, ok := storedSession.LocalFlowState[oauthCompletionResponseKey].(map[string]any)
+	require.True(t, ok)
+	require.NotContains(t, completion, "access_token")
+	require.NotContains(t, completion, "refresh_token")
+	require.NotContains(t, completion, "expires_in")
+	require.NotContains(t, completion, "token_type")
+	require.Equal(t, "/dashboard", completion["redirect"])
 REDACTED
 
 func TestExchangePendingOAuthCompletionBlocksBackendModeBeforeReturningTokenPayload(t *testing.T) {
@@ -839,6 +857,72 @@ REDACTED
 	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
 REDACTED
 	require.Nil(t, storedSession.ConsumedAt)
+REDACTED
+
+func TestExchangePendingOAuthCompletionRejectsDisabledTargetUser(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandler(t, false)
+	ctx := context.Background()
+
+	userEntity, err := client.User.Create().
+		SetEmail("disabled-linked@example.com").
+		SetUsername("disabled-linked-user").
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusDisabled).
+		Save(ctx)
+REDACTED
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("disabled-linked-session-token").
+		SetIntent("login").
+		SetProviderType("linuxdo").
+		SetProviderKey("linuxdo").
+		SetProviderSubject("disabled-linked-subject").
+		SetTargetUserID(userEntity.ID).
+		SetResolvedEmail(userEntity.Email).
+		SetBrowserSessionKey("disabled-linked-browser-session-key").
+		SetUpstreamIdentityClaims(map[string]any{
+			"suggested_display_name": "Disabled Linked User",
+	REDACTED).
+		SetLocalFlowState(map[string]any{
+			oauthCompletionResponseKey: map[string]any{
+				"redirect": "/dashboard",
+		REDACTED,
+	REDACTED).
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+REDACTED
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/pending/exchange", nil)
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)REDACTED)
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("disabled-linked-browser-session-key")REDACTED)
+	ginCtx.Request = req
+
+	handler.ExchangePendingOAuthCompletion(ginCtx)
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+
+	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
+REDACTED
+	require.Nil(t, storedSession.ConsumedAt)
+REDACTED
+
+func TestNormalizePendingOAuthCompletionResponseScrubsLegacyTokenPayload(t *testing.T) {
+	payload := normalizePendingOAuthCompletionResponse(map[string]any{
+		"access_token":  "legacy-access-token",
+		"refresh_token": "legacy-refresh-token",
+		"expires_in":    float64(3600),
+		"token_type":    "Bearer",
+		"redirect":      "/dashboard",
+REDACTED)
+
+	require.NotContains(t, payload, "access_token")
+	require.NotContains(t, payload, "refresh_token")
+	require.NotContains(t, payload, "expires_in")
+	require.NotContains(t, payload, "token_type")
+	require.Equal(t, "/dashboard", payload["redirect"])
 REDACTED
 
 func TestExchangePendingOAuthCompletionInvitationRequiredFalseFalsePersistsDecisionWithoutBinding(t *testing.T) {
@@ -969,7 +1053,7 @@ func TestCreateOIDCOAuthAccountExistingEmailReturnsChoicePendingSessionState(t *
 	handler, client := newOAuthPendingFlowTestHandlerWithEmailVerification(t, false, "owner@example.com", "135790")
 	ctx := context.Background()
 
-	_, err := client.User.Create().
+	existingUser, err := client.User.Create().
 		SetEmail("owner@example.com").
 		SetUsername("owner-user").
 		SetPasswordHash("hash").
@@ -1023,7 +1107,8 @@ REDACTED
 	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
 REDACTED
 	require.Equal(t, oauthIntentLogin, storedSession.Intent)
-	require.Nil(t, storedSession.TargetUserID)
+	require.NotNil(t, storedSession.TargetUserID)
+	require.Equal(t, existingUser.ID, *storedSession.TargetUserID)
 	require.Equal(t, "owner@example.com", storedSession.ResolvedEmail)
 	require.Nil(t, storedSession.ConsumedAt)
 
@@ -1042,7 +1127,7 @@ func TestCreateOIDCOAuthAccountExistingEmailNormalizesLegacySpacingAndCase(t *te
 	handler, client := newOAuthPendingFlowTestHandlerWithEmailVerification(t, false, "owner@example.com", "135790")
 	ctx := context.Background()
 
-	_, err := client.User.Create().
+	existingUser, err := client.User.Create().
 		SetEmail(" Owner@Example.com ").
 		SetUsername("owner-user").
 		SetPasswordHash("hash").
@@ -1088,7 +1173,8 @@ REDACTED
 
 	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
 REDACTED
-	require.Nil(t, storedSession.TargetUserID)
+	require.NotNil(t, storedSession.TargetUserID)
+	require.Equal(t, existingUser.ID, *storedSession.TargetUserID)
 	require.Equal(t, "owner@example.com", storedSession.ResolvedEmail)
 REDACTED
 
@@ -1096,7 +1182,7 @@ func TestSendPendingOAuthVerifyCodeExistingEmailReturnsBindLoginState(t *testing
 	handler, client := newOAuthPendingFlowTestHandlerWithEmailVerification(t, false, "owner@example.com", "135790")
 	ctx := context.Background()
 
-	_, err := client.User.Create().
+	existingUser, err := client.User.Create().
 		SetEmail("owner@example.com").
 		SetUsername("owner-user").
 		SetPasswordHash("hash").
@@ -1144,7 +1230,8 @@ REDACTED
 	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
 REDACTED
 	require.Equal(t, oauthIntentLogin, storedSession.Intent)
-	require.Nil(t, storedSession.TargetUserID)
+	require.NotNil(t, storedSession.TargetUserID)
+	require.Equal(t, existingUser.ID, *storedSession.TargetUserID)
 	require.Equal(t, "owner@example.com", storedSession.ResolvedEmail)
 REDACTED
 
@@ -1200,6 +1287,26 @@ REDACTED
 	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
 REDACTED
 	require.Nil(t, storedSession.ConsumedAt)
+REDACTED
+
+func TestLogoutClearsPendingOAuthAndBindCookies(t *testing.T) {
+	handler, _ := newOAuthPendingFlowTestHandler(t, false)
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", bytes.NewBufferString(`{REDACTED`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue("pending-session-token")REDACTED)
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("pending-browser-key")REDACTED)
+	req.AddCookie(&http.Cookie{Name: oauthBindAccessTokenCookieName, Value: "bind-token"REDACTED)
+	ginCtx.Request = req
+
+	handler.Logout(ginCtx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, -1, findCookie(recorder.Result().Cookies(), oauthPendingSessionCookieName).MaxAge)
+	require.Equal(t, -1, findCookie(recorder.Result().Cookies(), oauthPendingBrowserCookieName).MaxAge)
+	require.Equal(t, -1, findCookie(recorder.Result().Cookies(), oauthBindAccessTokenCookieName).MaxAge)
 REDACTED
 
 func TestCreateOIDCOAuthAccountRollsBackCreatedUserWhenBindingFails(t *testing.T) {
@@ -1934,6 +2041,13 @@ REDACTED
 	payload := decodeJSONResponseData(t, recorder)
 	require.NotEmpty(t, payload["access_token"])
 	require.NotEmpty(t, payload["refresh_token"])
+	accessToken, ok := payload["access_token"].(string)
+	require.True(t, ok)
+	claims, err := handler.authService.ValidateToken(accessToken)
+REDACTED
+	reloadedUser, err := handler.userService.GetByID(ctx, existingUser.ID)
+REDACTED
+	require.Equal(t, reloadedUser.TokenVersion, claims.TokenVersion)
 
 	identity, err := client.AuthIdentity.Query().
 		Where(

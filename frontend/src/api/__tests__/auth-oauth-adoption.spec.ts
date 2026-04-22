@@ -173,20 +173,12 @@ describe('oauth adoption auth api', () => {
     expect(hasPendingOAuthSuggestedProfile({REDACTED)).toBe(false)
   REDACTED)
 
-  it('prepares an oauth bind access token cookie before redirect binding', async () => {
+  it('requests an HttpOnly oauth bind cookie before redirect binding', async () => {
     localStorage.setItem('auth_token', 'access-token-value')
-    const setCookie = vi.fn()
-    Object.defineProperty(document, 'cookie', {
-      configurable: true,
-      get: () => '',
-      set: setCookie
-    REDACTED)
-
     const { prepareOAuthBindAccessTokenCookie REDACTED = await import('@/api/auth')
 
-    prepareOAuthBindAccessTokenCookie()
+    await prepareOAuthBindAccessTokenCookie()
 
-    expect(setCookie).toHaveBeenCalledTimes(1)
-    expect(setCookie.mock.calls[0]?.[0]).toContain('oauth_bind_access_token=access-token-value')
+    expect(post).toHaveBeenCalledWith('/auth/oauth/bind-token')
   REDACTED)
 REDACTED)

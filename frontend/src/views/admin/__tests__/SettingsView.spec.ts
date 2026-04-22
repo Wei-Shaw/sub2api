@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi REDACTED from "vitest";
-import { defineComponent, h, ref REDACTED from "vue";
+import { defineComponent, h REDACTED from "vue";
 import { flushPromises, mount REDACTED from "@vue/test-utils";
 
 import SettingsView from "../SettingsView.vue";
@@ -45,6 +45,8 @@ REDACTED = vi.hoisted(() => ({
   showError: vi.fn(),
   showSuccess: vi.fn(),
 REDACTED));
+
+const localeRef = vi.hoisted(() => ({ value: "zh-CN" REDACTED));
 
 vi.mock("@/api", () => ({
   adminAPI: {
@@ -149,6 +151,8 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.paymentVisibleMethods.sourceLabel": "支付来源",
     "admin.settings.paymentVisibleMethods.sourceHint": "启用后必须明确选择一个来源；未配置状态不会对外展示该支付方式。",
     "admin.settings.paymentVisibleMethods.sourceRequiredError": "{titleREDACTED 已启用，请先选择支付来源。",
+    "admin.settings.payment.configGuide": "查看支付配置说明",
+    "admin.settings.payment.findProvider": "查看支持的支付方式",
     "admin.settings.openaiExperimentalScheduler.title": "OpenAI 实验调度策略",
     "admin.settings.openaiExperimentalScheduler.description": "默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。",
   REDACTED;
@@ -157,7 +161,7 @@ vi.mock("vue-i18n", async () => {
     useI18n: () => ({
       t: (key: string, params?: Record<string, string>) =>
         (translations[key] ?? key).replace(/\{(\w+)\REDACTED/g, (_, token) => params?.[token] ?? `{${tokenREDACTEDREDACTED`),
-      locale: ref("zh-CN"),
+      locale: localeRef,
     REDACTED),
   REDACTED;
 REDACTED);
@@ -429,6 +433,7 @@ describe("admin SettingsView payment visible method controls", () => {
     adminSettingsFetch.mockReset();
     showError.mockReset();
     showSuccess.mockReset();
+    localeRef.value = "zh-CN";
 
     getSettings.mockResolvedValue({ ...baseSettingsResponse REDACTED);
     updateSettings.mockImplementation(async (payload) => ({
@@ -487,6 +492,30 @@ describe("admin SettingsView payment visible method controls", () => {
 
     expect(wrapper.text()).not.toContain("可见方式");
     expect(wrapper.text()).not.toContain("支付来源");
+  REDACTED);
+
+  it("links payment guidance to README sections instead of removed payment docs", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openPaymentTab(wrapper);
+
+    const paymentLinks = wrapper
+      .findAll("a")
+      .filter((node) =>
+        ["查看支付配置说明", "查看支持的支付方式"].includes(node.text()),
+      );
+
+    expect(paymentLinks).toHaveLength(2);
+    expect(paymentLinks[0]?.attributes("href")).toBe(
+      "https://github.com/Wei-Shaw/sub2api/blob/main/README_CN.md#%E6%94%AF%E4%BB%98",
+    );
+    expect(paymentLinks[1]?.attributes("href")).toBe(
+      "https://github.com/Wei-Shaw/sub2api/blob/main/README_CN.md#%E6%94%AF%E4%BB%98",
+    );
+    for (const link of paymentLinks) {
+      expect(link.attributes("href")).not.toContain("docs/PAYMENT");
+    REDACTED
   REDACTED);
 
   it("does not submit legacy visible payment method settings", async () => {
@@ -775,5 +804,29 @@ describe("admin SettingsView wechat connect controls", () => {
       wrapper.find('[data-testid="auth-source-email-panel"]').exists(),
     ).toBe(true);
     expect(wrapper.text()).toContain("首次绑定时授权");
+  REDACTED);
+
+  it("preserves optional OIDC compatibility flags instead of forcing them on save", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      oidc_connect_enabled: true,
+      oidc_connect_use_pkce: false,
+      oidc_connect_validate_id_token: false,
+    REDACTED);
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openSecurityTab(wrapper);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        oidc_connect_use_pkce: false,
+        oidc_connect_validate_id_token: false,
+      REDACTED),
+    );
   REDACTED);
 REDACTED);

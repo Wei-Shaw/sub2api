@@ -276,7 +276,7 @@ import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { PaymentMethodOption REDACTED from '@/components/payment/PaymentMethodSelector.vue'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError REDACTED from './paymentUx'
-import { parseWechatResumeRoute, stripWechatResumeQuery REDACTED from './paymentWechatResume'
+import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery REDACTED from './paymentWechatResume'
 
 const { t REDACTED = useI18n()
 const route = useRoute()
@@ -329,6 +329,7 @@ function emptyPaymentState(): PaymentRecoverySnapshot {
     expiresAt: '',
     paymentType: '',
     payUrl: '',
+    outTradeNo: '',
     clientSecret: '',
     payAmount: 0,
     orderType: '',
@@ -389,6 +390,60 @@ function resetPayment() {
   paymentPhase.value = 'select'
   paymentState.value = emptyPaymentState()
   removeRecoverySnapshot()
+REDACTED
+
+async function redirectToPaymentResult(state: PaymentRecoverySnapshot): Promise<void> {
+  const query: Record<string, string | undefined> = {REDACTED
+  if (state.orderId > 0) {
+    query.order_id = String(state.orderId)
+  REDACTED
+  if (state.outTradeNo) {
+    query.out_trade_no = state.outTradeNo
+  REDACTED
+  if (state.resumeToken) {
+    query.resume_token = state.resumeToken
+  REDACTED
+  await router.push({
+    path: '/payment/result',
+    query,
+  REDACTED)
+REDACTED
+
+function buildWechatOAuthAuthorizeUrl(
+  authorizeUrl: string,
+  context: { paymentType: string; orderType: OrderType; planId?: number; orderAmount: number REDACTED,
+): string {
+  const normalizedUrl = authorizeUrl.trim()
+  if (!normalizedUrl || typeof window === 'undefined') {
+    return normalizedUrl
+  REDACTED
+
+  try {
+    const targetUrl = new URL(normalizedUrl, window.location.origin)
+    const redirectPath = targetUrl.searchParams.get('redirect') || '/purchase'
+    const redirectUrl = new URL(redirectPath, window.location.origin)
+    const paymentType = normalizeVisibleMethod(context.paymentType) || context.paymentType.trim() || 'wxpay'
+
+    redirectUrl.searchParams.set('payment_type', paymentType)
+    redirectUrl.searchParams.set('order_type', context.orderType)
+
+    if (context.planId) {
+      redirectUrl.searchParams.set('plan_id', String(context.planId))
+    REDACTED else {
+      redirectUrl.searchParams.delete('plan_id')
+    REDACTED
+
+    if (context.orderAmount > 0) {
+      redirectUrl.searchParams.set('amount', String(context.orderAmount))
+    REDACTED else {
+      redirectUrl.searchParams.delete('amount')
+    REDACTED
+
+    targetUrl.searchParams.set('redirect', `${redirectUrl.pathnameREDACTED${redirectUrl.searchREDACTED`)
+    return targetUrl.toString()
+  REDACTED catch {
+    return normalizedUrl
+  REDACTED
 REDACTED
 
 function onPaymentDone() {
@@ -658,7 +713,12 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     REDACTED)
 
     if (decision.kind === 'wechat_oauth' && decision.oauth?.authorize_url) {
-      window.location.href = decision.oauth.authorize_url
+      window.location.href = buildWechatOAuthAuthorizeUrl(decision.oauth.authorize_url, {
+        paymentType: visibleMethod,
+        orderType,
+        planId,
+        orderAmount,
+      REDACTED)
       return
     REDACTED
 
@@ -680,12 +740,23 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       return
     REDACTED
     if (decision.kind === 'wechat_jsapi' && decision.jsapi) {
-      const jsapiResult = await invokeWechatJsapiPayment(decision.jsapi as Record<string, unknown>)
-      const errMsg = String(jsapiResult.err_msg || '').toLowerCase()
-      if (errMsg.includes('cancel')) {
-        appStore.showInfo(t('payment.qr.cancelled'))
-      REDACTED else if (errMsg && !errMsg.includes('ok')) {
-        applyScenarioError({ reason: 'WECHAT_JSAPI_FAILED', message: errMsg REDACTED, visibleMethod)
+      try {
+        const jsapiResult = await invokeWechatJsapiPayment(decision.jsapi as Record<string, unknown>)
+        const errMsg = String(jsapiResult.err_msg || '').toLowerCase()
+        if (errMsg.includes('cancel')) {
+          appStore.showInfo(t('payment.qr.cancelled'))
+          resetPayment()
+        REDACTED else if (errMsg && !errMsg.includes('ok')) {
+          applyScenarioError({ reason: 'WECHAT_JSAPI_FAILED', message: errMsg REDACTED, visibleMethod)
+          resetPayment()
+        REDACTED else {
+          const resultState = { ...decision.paymentState REDACTED
+          resetPayment()
+          await redirectToPaymentResult(resultState)
+        REDACTED
+      REDACTED catch (err: unknown) {
+        resetPayment()
+        throw err
       REDACTED
       return
     REDACTED
@@ -789,9 +860,14 @@ onMounted(async () => {
       selectedMethod.value = sorted[0]
     REDACTED
     if (typeof window !== 'undefined') {
+      if (hasWechatResumeQuery(route.query)) {
+        removeRecoverySnapshot()
+      REDACTED
       const routeResumeToken = typeof route.query.resume_token === 'string'
         ? route.query.resume_token
-        : undefined
+        : typeof route.query.wechat_resume_token === 'string'
+          ? route.query.wechat_resume_token
+          : undefined
       const restored = readPaymentRecoverySnapshot(
         window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY),
         { resumeToken: routeResumeToken REDACTED,

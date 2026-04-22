@@ -253,7 +253,7 @@ REDACTED
 	require.Equal(t, "https://issuer.example.com", resp.Data.Identities.OIDC.ProviderKey)
 	require.False(t, resp.Data.Identities.WeChat.Bound)
 	require.True(t, resp.Data.Identities.WeChat.CanBind)
-	require.Contains(t, resp.Data.Identities.WeChat.BindStartPath, "/api/v1/auth/oauth/wechat/start")
+	require.Contains(t, resp.Data.Identities.WeChat.BindStartPath, "/api/v1/auth/oauth/wechat/bind/start")
 REDACTED
 
 func TestUserHandlerGetProfileReturnsLegacyCompatibilityFields(t *testing.T) {
@@ -270,18 +270,19 @@ func TestUserHandlerGetProfileReturnsLegacyCompatibilityFields(t *testing.T) {
 			AvatarURL:    "https://cdn.example.com/linuxdo.png",
 			AvatarSource: "remote_url",
 	REDACTED,
-		identities: []service.UserAuthIdentityRecord{
-			{
-				ProviderType:    "linuxdo",
-				ProviderKey:     "linuxdo",
-				ProviderSubject: "linuxdo-subject-21",
-				VerifiedAt:      &verifiedAt,
-				Metadata: map[string]any{
-					"username": "linuxdo-handle",
+			identities: []service.UserAuthIdentityRecord{
+				{
+					ProviderType:    "linuxdo",
+					ProviderKey:     "linuxdo",
+					ProviderSubject: "linuxdo-subject-21",
+					VerifiedAt:      &verifiedAt,
+					Metadata: map[string]any{
+						"username":   "linuxdo-handle",
+						"avatar_url": "https://cdn.example.com/linuxdo.png",
+				REDACTED,
 			REDACTED,
 		REDACTED,
-	REDACTED,
-REDACTED
+	REDACTED
 	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), nil, nil, nil)
 
 	recorder := httptest.NewRecorder()
@@ -331,8 +332,100 @@ REDACTED
 	require.Equal(t, "linuxdo", usernameSource["source"])
 REDACTED
 
+func TestUserHandlerGetProfileDoesNotInferEditedProfileSourcesWithoutMatchingIdentityMetadata(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := &userHandlerRepoStub{
+		user: &service.User{
+			ID:           22,
+			Email:        "edited-profile@example.com",
+			Username:     "custom-name",
+			Role:         service.RoleUser,
+			Status:       service.StatusActive,
+			AvatarURL:    "https://cdn.example.com/custom.png",
+			AvatarSource: "remote_url",
+	REDACTED,
+		identities: []service.UserAuthIdentityRecord{
+			{
+				ProviderType:    "linuxdo",
+				ProviderKey:     "linuxdo",
+				ProviderSubject: "linuxdo-subject-22",
+				Metadata: map[string]any{
+					"username":   "linuxdo-handle",
+					"avatar_url": "https://cdn.example.com/linuxdo.png",
+			REDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), nil, nil, nil)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/user/profile", nil)
+	c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 22REDACTED)
+
+	handler.GetProfile(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var resp struct {
+		Code int            `json:"code"`
+		Data map[string]any `json:"data"`
+REDACTED
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.NotContains(t, resp.Data, "avatar_source")
+	require.NotContains(t, resp.Data, "username_source")
+	require.NotContains(t, resp.Data, "profile_sources")
+REDACTED
+
 type userHandlerEmailCacheStub struct {
 	data *service.VerificationCodeData
+REDACTED
+
+type userHandlerRefreshTokenCacheStub struct {
+	revokedUserIDs []int64
+REDACTED
+
+func (s *userHandlerRefreshTokenCacheStub) StoreRefreshToken(context.Context, string, *service.RefreshTokenData, time.Duration) error {
+	return nil
+REDACTED
+
+func (s *userHandlerRefreshTokenCacheStub) GetRefreshToken(context.Context, string) (*service.RefreshTokenData, error) {
+	return nil, service.ErrRefreshTokenNotFound
+REDACTED
+
+func (s *userHandlerRefreshTokenCacheStub) DeleteRefreshToken(context.Context, string) error {
+	return nil
+REDACTED
+
+func (s *userHandlerRefreshTokenCacheStub) DeleteUserRefreshTokens(_ context.Context, userID int64) error {
+	s.revokedUserIDs = append(s.revokedUserIDs, userID)
+	return nil
+REDACTED
+
+func (s *userHandlerRefreshTokenCacheStub) DeleteTokenFamily(context.Context, string) error {
+	return nil
+REDACTED
+
+func (s *userHandlerRefreshTokenCacheStub) AddToUserTokenSet(context.Context, int64, string, time.Duration) error {
+	return nil
+REDACTED
+
+func (s *userHandlerRefreshTokenCacheStub) AddToFamilyTokenSet(context.Context, string, string, time.Duration) error {
+	return nil
+REDACTED
+
+func (s *userHandlerRefreshTokenCacheStub) GetUserTokenHashes(context.Context, int64) ([]string, error) {
+	return nil, nil
+REDACTED
+
+func (s *userHandlerRefreshTokenCacheStub) GetFamilyTokenHashes(context.Context, string) ([]string, error) {
+	return nil, nil
+REDACTED
+
+func (s *userHandlerRefreshTokenCacheStub) IsTokenInFamily(context.Context, string, string) (bool, error) {
+	return false, nil
 REDACTED
 
 func (s *userHandlerEmailCacheStub) GetVerificationCode(context.Context, string) (*service.VerificationCodeData, error) {
@@ -495,6 +588,98 @@ REDACTED
 	require.Equal(t, false, linuxdoBinding["bound"])
 REDACTED
 
+func TestUserHandlerUnbindIdentityRevokesAllUserSessionsWhenAuthServiceConfigured(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := &userHandlerRepoStub{
+		user: &service.User{
+			ID:           23,
+			Email:        "identity@example.com",
+			Username:     "identity-user",
+			Role:         service.RoleUser,
+			Status:       service.StatusActive,
+			TokenVersion: 4,
+	REDACTED,
+		identities: []service.UserAuthIdentityRecord{
+			{
+				ProviderType:    "email",
+				ProviderKey:     "email",
+				ProviderSubject: "identity@example.com",
+		REDACTED,
+			{
+				ProviderType:    "linuxdo",
+				ProviderKey:     "linuxdo",
+				ProviderSubject: "linuxdo-subject-23",
+		REDACTED,
+	REDACTED,
+REDACTED
+	refreshTokenCache := &userHandlerRefreshTokenCacheStub{REDACTED
+	cfg := &config.Config{
+		JWT: config.JWTConfig{
+			Secret:     "test-secret",
+			ExpireHour: 1,
+	REDACTED,
+REDACTED
+	authService := service.NewAuthService(nil, repo, nil, refreshTokenCache, cfg, nil, nil, nil, nil, nil, nil)
+	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), authService, nil, nil)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodDelete, "/api/v1/user/account-bindings/linuxdo", nil)
+	c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 23REDACTED)
+	c.Params = gin.Params{{Key: "provider", Value: "linuxdo"REDACTEDREDACTED
+
+	handler.UnbindIdentity(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, []int64{23REDACTED, refreshTokenCache.revokedUserIDs)
+	require.Equal(t, int64(5), repo.user.TokenVersion)
+REDACTED
+
+func TestUserHandlerUnbindIdentityDoesNotRevokeSessionsWhenNothingWasUnbound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	repo := &userHandlerRepoStub{
+		user: &service.User{
+			ID:           24,
+			Email:        "identity@example.com",
+			Username:     "identity-user",
+			Role:         service.RoleUser,
+			Status:       service.StatusActive,
+			TokenVersion: 4,
+	REDACTED,
+		identities: []service.UserAuthIdentityRecord{
+			{
+				ProviderType:    "email",
+				ProviderKey:     "email",
+				ProviderSubject: "identity@example.com",
+		REDACTED,
+	REDACTED,
+REDACTED
+	refreshTokenCache := &userHandlerRefreshTokenCacheStub{REDACTED
+	cfg := &config.Config{
+		JWT: config.JWTConfig{
+			Secret:     "test-secret",
+			ExpireHour: 1,
+	REDACTED,
+REDACTED
+	authService := service.NewAuthService(nil, repo, nil, refreshTokenCache, cfg, nil, nil, nil, nil, nil, nil)
+	handler := NewUserHandler(service.NewUserService(repo, nil, nil, nil), authService, nil, nil)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodDelete, "/api/v1/user/account-bindings/linuxdo", nil)
+	c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 24REDACTED)
+	c.Params = gin.Params{{Key: "provider", Value: "linuxdo"REDACTEDREDACTED
+
+	handler.UnbindIdentity(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Empty(t, repo.unbound)
+	require.Empty(t, refreshTokenCache.revokedUserIDs)
+	require.Equal(t, int64(4), repo.user.TokenVersion)
+REDACTED
+
 func TestUserHandlerBindEmailIdentityRejectsWrongCurrentPasswordForBoundEmail(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -587,7 +772,7 @@ REDACTED
 	require.Equal(t, "wechat", resp.Data.Provider)
 	require.Equal(t, "GET", resp.Data.Method)
 	require.True(t, resp.Data.UseBrowserRedirect)
-	require.Contains(t, resp.Data.AuthorizeURL, "/api/v1/auth/oauth/wechat/start")
+	require.Contains(t, resp.Data.AuthorizeURL, "/api/v1/auth/oauth/wechat/bind/start")
 	require.Contains(t, resp.Data.AuthorizeURL, "intent=bind_current_user")
 	require.Contains(t, resp.Data.AuthorizeURL, "redirect=%2Fsettings%2Fprofile")
 REDACTED

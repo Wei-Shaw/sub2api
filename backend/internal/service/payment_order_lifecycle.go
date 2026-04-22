@@ -150,6 +150,20 @@ REDACTED
 		return ""
 REDACTED
 	if resp.Status == payment.ProviderStatusPaid {
+		if !isValidProviderAmount(resp.Amount) {
+			s.writeAuditLog(ctx, o.ID, "PAYMENT_INVALID_AMOUNT", prov.ProviderKey(), map[string]any{
+				"expected": o.PayAmount,
+				"paid":     resp.Amount,
+				"tradeNo":  resp.TradeNo,
+				"queryRef": queryRef,
+		REDACTED)
+			slog.Warn("query upstream returned invalid paid amount", "orderID", o.ID, "queryRef", queryRef, "paid", resp.Amount)
+			retriedResp, retryOK := requeryPaidOrderOnce(ctx, prov, queryRef)
+			if !retryOK {
+				return ""
+		REDACTED
+			resp = retriedResp
+	REDACTED
 		notificationTradeNo := o.PaymentTradeNo
 		if upstreamTradeNo := strings.TrimSpace(resp.TradeNo); paymentOrderShouldPersistUpstreamTradeNo(queryRef, upstreamTradeNo, notificationTradeNo) {
 			if _, updateErr := s.entClient.PaymentOrder.Update().
@@ -172,6 +186,21 @@ REDACTED
 		_ = cp.CancelPayment(ctx, queryRef)
 REDACTED
 	return ""
+REDACTED
+
+func requeryPaidOrderOnce(ctx context.Context, prov payment.Provider, queryRef string) (*payment.QueryOrderResponse, bool) {
+	if prov == nil || strings.TrimSpace(queryRef) == "" {
+		return nil, false
+REDACTED
+	resp, err := prov.QueryOrder(ctx, queryRef)
+	if err != nil {
+		slog.Warn("query upstream retry failed", "queryRef", queryRef, "error", err)
+		return nil, false
+REDACTED
+	if resp == nil || resp.Status != payment.ProviderStatusPaid || !isValidProviderAmount(resp.Amount) {
+		return nil, false
+REDACTED
+	return resp, true
 REDACTED
 
 func paymentOrderQueryReference(order *dbent.PaymentOrder, prov payment.Provider) string {
@@ -224,6 +253,10 @@ REDACTED
 // if a payment was made, and processes it if so. This handles the case where
 // the provider's notify callback was missed (e.g. EasyPay popup mode).
 func (s *PaymentService) VerifyOrderByOutTradeNo(ctx context.Context, outTradeNo string, userID int64) (*dbent.PaymentOrder, error) {
+	outTradeNo, err := normalizeOrderLookupOutTradeNo(outTradeNo)
+	if err != nil {
+		return nil, err
+REDACTED
 	o, err := s.entClient.PaymentOrder.Query().
 		Where(paymentorder.OutTradeNo(outTradeNo)).
 		Only(ctx)
@@ -251,6 +284,10 @@ REDACTED
 // triggering any upstream reconciliation. Signed resume-token recovery is the
 // only public recovery path allowed to query upstream state.
 func (s *PaymentService) VerifyOrderPublic(ctx context.Context, outTradeNo string) (*dbent.PaymentOrder, error) {
+	outTradeNo, err := normalizeOrderLookupOutTradeNo(outTradeNo)
+	if err != nil {
+		return nil, err
+REDACTED
 	o, err := s.entClient.PaymentOrder.Query().
 		Where(paymentorder.OutTradeNo(outTradeNo)).
 		Only(ctx)
@@ -258,6 +295,27 @@ func (s *PaymentService) VerifyOrderPublic(ctx context.Context, outTradeNo strin
 		return nil, infraerrors.NotFound("NOT_FOUND", "order not found")
 REDACTED
 	return o, nil
+REDACTED
+
+func normalizeOrderLookupOutTradeNo(raw string) (string, error) {
+	outTradeNo := strings.TrimSpace(raw)
+	if outTradeNo == "" {
+		return "", infraerrors.BadRequest("INVALID_OUT_TRADE_NO", "out_trade_no is required")
+REDACTED
+	if len(outTradeNo) > 64 {
+		return "", infraerrors.BadRequest("INVALID_OUT_TRADE_NO", "out_trade_no is invalid")
+REDACTED
+	for _, ch := range outTradeNo {
+		switch {
+		case ch >= 'a' && ch <= 'z':
+		case ch >= 'A' && ch <= 'Z':
+		case ch >= '0' && ch <= '9':
+		case ch == '_' || ch == '-':
+		default:
+			return "", infraerrors.BadRequest("INVALID_OUT_TRADE_NO", "out_trade_no is invalid")
+	REDACTED
+REDACTED
+	return outTradeNo, nil
 REDACTED
 
 func (s *PaymentService) ExpireTimedOutOrders(ctx context.Context) (int, error) {

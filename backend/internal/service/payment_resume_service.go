@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -68,6 +69,7 @@ REDACTED
 
 type PaymentResumeService struct {
 	signingKey []byte
+	verifyKeys [][]byte
 REDACTED
 
 type visibleMethodLoadBalancer struct {
@@ -75,8 +77,29 @@ type visibleMethodLoadBalancer struct {
 	configService *PaymentConfigService
 REDACTED
 
-func NewPaymentResumeService(signingKey []byte) *PaymentResumeService {
-	return &PaymentResumeService{signingKey: signingKeyREDACTED
+func NewPaymentResumeService(signingKey []byte, verifyFallbacks ...[]byte) *PaymentResumeService {
+	svc := &PaymentResumeService{REDACTED
+	if len(signingKey) > 0 {
+		svc.signingKey = append([]byte(nil), signingKey...)
+		svc.verifyKeys = append(svc.verifyKeys, svc.signingKey)
+REDACTED
+	for _, fallback := range verifyFallbacks {
+		if len(fallback) == 0 {
+			continue
+	REDACTED
+		cloned := append([]byte(nil), fallback...)
+		duplicate := false
+		for _, existing := range svc.verifyKeys {
+			if bytes.Equal(existing, cloned) {
+				duplicate = true
+				break
+		REDACTED
+	REDACTED
+		if !duplicate {
+			svc.verifyKeys = append(svc.verifyKeys, cloned)
+	REDACTED
+REDACTED
+	return svc
 REDACTED
 
 func (s *PaymentResumeService) isSigningConfigured() bool {
@@ -209,7 +232,7 @@ func visibleMethodSourceSettingKey(method string) string {
 REDACTED
 REDACTED
 
-func CanonicalizeReturnURL(raw string, srcHost string) (string, error) {
+func CanonicalizeReturnURL(raw string, srcHost string, srcURL string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", nil
@@ -228,13 +251,29 @@ REDACTED
 	if parsed.Path != paymentResultReturnPath {
 		return "", infraerrors.BadRequest("INVALID_RETURN_URL", "return_url must target the canonical internal payment result page")
 REDACTED
-	if !sameOriginHost(parsed.Host, srcHost) {
-		return "", infraerrors.BadRequest("INVALID_RETURN_URL", "return_url must use the same host as the current site")
+	if !allowedReturnURLHost(parsed.Host, srcHost, srcURL) {
+		return "", infraerrors.BadRequest("INVALID_RETURN_URL", "return_url must use the same host as the current site or browser origin")
 REDACTED
 	return parsed.String(), nil
 REDACTED
 
-func buildPaymentReturnURL(base string, orderID int64, resumeToken string) (string, error) {
+func allowedReturnURLHost(returnURLHost string, requestHost string, refererURL string) bool {
+	if sameOriginHost(returnURLHost, requestHost) {
+		return true
+REDACTED
+
+	refererURL = strings.TrimSpace(refererURL)
+	if refererURL == "" {
+		return false
+REDACTED
+	parsedReferer, err := url.Parse(refererURL)
+	if err != nil || parsedReferer.Host == "" {
+		return false
+REDACTED
+	return sameOriginHost(returnURLHost, parsedReferer.Host)
+REDACTED
+
+func buildPaymentReturnURL(base string, orderID int64, outTradeNo string, resumeToken string) (string, error) {
 	canonical := strings.TrimSpace(base)
 	if canonical == "" {
 		return "", nil
@@ -252,6 +291,9 @@ REDACTED
 	query := parsed.Query()
 	if orderID > 0 {
 		query.Set("order_id", strconv.FormatInt(orderID, 10))
+REDACTED
+	if strings.TrimSpace(outTradeNo) != "" {
+		query.Set("out_trade_no", strings.TrimSpace(outTradeNo))
 REDACTED
 	if strings.TrimSpace(resumeToken) != "" {
 		query.Set("resume_token", strings.TrimSpace(resumeToken))
@@ -391,7 +433,7 @@ func (s *PaymentResumeService) parseSignedToken(token string, dest any) error {
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return infraerrors.BadRequest("INVALID_RESUME_TOKEN", "resume token is malformed")
 REDACTED
-	if !hmac.Equal([]byte(parts[1]), []byte(s.sign(parts[0]))) {
+	if !s.verifySignature(parts[0], parts[1]) {
 		return infraerrors.BadRequest("INVALID_RESUME_TOKEN", "resume token signature mismatch")
 REDACTED
 	payload, err := base64.RawURLEncoding.DecodeString(parts[0])
@@ -399,6 +441,18 @@ REDACTED
 		return infraerrors.BadRequest("INVALID_RESUME_TOKEN", "resume token payload is malformed")
 REDACTED
 	return json.Unmarshal(payload, dest)
+REDACTED
+
+func (s *PaymentResumeService) verifySignature(payload string, signature string) bool {
+	if s == nil {
+		return false
+REDACTED
+	for _, key := range s.verifyKeys {
+		if hmac.Equal([]byte(signature), []byte(signPaymentResumePayload(payload, key))) {
+			return true
+	REDACTED
+REDACTED
+	return false
 REDACTED
 
 func validatePaymentResumeExpiry(expiresAt int64, code, message string) error {
@@ -412,7 +466,11 @@ REDACTED
 REDACTED
 
 func (s *PaymentResumeService) sign(payload string) string {
-	mac := hmac.New(sha256.New, s.signingKey)
+	return signPaymentResumePayload(payload, s.signingKey)
+REDACTED
+
+func signPaymentResumePayload(payload string, key []byte) string {
+	mac := hmac.New(sha256.New, key)
 	_, _ = mac.Write([]byte(payload))
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 REDACTED

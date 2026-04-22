@@ -279,12 +279,7 @@ REDACTED
 			redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
 			return
 	REDACTED
-		tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), existingIdentityUser.Email, username, "")
-		if err != nil {
-			redirectOAuthError(c, frontendCallback, "login_failed", infraerrors.Reason(err), infraerrors.Message(err))
-			return
-	REDACTED
-		if err := h.createWeChatPendingSession(c, normalizedIntent, providerSubject, existingIdentityUser.Email, redirectTo, browserSessionKey, upstreamClaims, tokenPair, nil, &user.ID); err != nil {
+		if err := h.createWeChatPendingSession(c, normalizedIntent, providerSubject, existingIdentityUser.Email, redirectTo, browserSessionKey, upstreamClaims, nil, nil, &existingIdentityUser.ID); err != nil {
 			redirectOAuthError(c, frontendCallback, "session_error", "failed to continue oauth login", "")
 			return
 	REDACTED
@@ -476,11 +471,12 @@ REDACTED
 REDACTED
 
 func (h *AuthHandler) wechatPaymentResumeService() *service.PaymentResumeService {
+	var legacyKey []byte
 	key, err := payment.ProvideEncryptionKey(h.cfg)
-	if err != nil {
-		return service.NewPaymentResumeService(nil)
+	if err == nil {
+		legacyKey = []byte(key)
 REDACTED
-	return service.NewPaymentResumeService([]byte(key))
+	return service.NewLegacyAwarePaymentResumeService(legacyKey)
 REDACTED
 
 type completeWeChatOAuthRequest struct {
@@ -530,6 +526,15 @@ REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
+	if updatedSession, handled, err := h.legacyCompleteRegistrationSessionStatus(c, session); err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED else if handled {
+		c.JSON(http.StatusOK, buildPendingOAuthSessionStatusPayload(updatedSession))
+		return
+REDACTED else {
+		session = updatedSession
+REDACTED
 	if err := h.ensureBackendModeAllowsNewUserLogin(c.Request.Context()); err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -547,7 +552,7 @@ REDACTED
 		response.ErrorFrom(c, err)
 		return
 REDACTED
-	decision, err := h.upsertPendingOAuthAdoptionDecision(c, session.ID, oauthAdoptionDecisionRequest{
+	decision, err := h.ensurePendingOAuthAdoptionDecision(c, session.ID, oauthAdoptionDecisionRequest{
 		AdoptDisplayName: req.AdoptDisplayName,
 		AdoptAvatar:      req.AdoptAvatar,
 REDACTED)
@@ -823,7 +828,10 @@ REDACTED
 			return nil, infraerrors.InternalServer("AUTH_IDENTITY_LOOKUP_FAILED", "failed to inspect auth identity ownership").WithCause(err)
 	REDACTED
 		if user, err := singleWeChatIdentityUser(records); err != nil || user != nil {
-			return user, err
+			if err != nil || user == nil {
+				return user, err
+		REDACTED
+			return findActiveUserByID(ctx, client, user.ID)
 	REDACTED
 REDACTED
 
@@ -847,7 +855,10 @@ REDACTED
 			return nil, infraerrors.InternalServer("AUTH_IDENTITY_CHANNEL_LOOKUP_FAILED", "failed to inspect auth identity channel ownership").WithCause(err)
 	REDACTED
 		if user, err := singleWeChatChannelUser(records); err != nil || user != nil {
-			return user, err
+			if err != nil || user == nil {
+				return user, err
+		REDACTED
+			return findActiveUserByID(ctx, client, user.ID)
 	REDACTED
 REDACTED
 
@@ -866,7 +877,11 @@ REDACTED
 	if err != nil {
 		return nil, infraerrors.InternalServer("AUTH_IDENTITY_LOOKUP_FAILED", "failed to inspect auth identity ownership").WithCause(err)
 REDACTED
-	return singleWeChatIdentityUser(records)
+	user, err := singleWeChatIdentityUser(records)
+	if err != nil || user == nil {
+		return user, err
+REDACTED
+	return findActiveUserByID(ctx, client, user.ID)
 REDACTED
 
 func wechatCompatibleProviderKeys(providerKey string) []string {

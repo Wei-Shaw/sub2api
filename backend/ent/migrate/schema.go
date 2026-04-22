@@ -361,7 +361,7 @@ REDACTED
 				Symbol:     "auth_identities_users_auth_identities",
 				Columns:    []*schema.Column{AuthIdentitiesColumns[9]REDACTED,
 				RefColumns: []*schema.Column{UsersColumns[0]REDACTED,
-				OnDelete:   schema.NoAction,
+				OnDelete:   schema.Cascade,
 		REDACTED,
 	REDACTED,
 		Indexes: []*schema.Index{
@@ -405,7 +405,7 @@ REDACTED
 				Symbol:     "auth_identity_channels_auth_identities_channels",
 				Columns:    []*schema.Column{AuthIdentityChannelsColumns[9]REDACTED,
 				RefColumns: []*schema.Column{AuthIdentitiesColumns[0]REDACTED,
-				OnDelete:   schema.NoAction,
+				OnDelete:   schema.Cascade,
 		REDACTED,
 	REDACTED,
 		Indexes: []*schema.Index{
@@ -595,7 +595,7 @@ REDACTED
 				Symbol:     "identity_adoption_decisions_pending_auth_sessions_adoption_decision",
 				Columns:    []*schema.Column{IdentityAdoptionDecisionsColumns[7]REDACTED,
 				RefColumns: []*schema.Column{PendingAuthSessionsColumns[0]REDACTED,
-				OnDelete:   schema.NoAction,
+				OnDelete:   schema.Cascade,
 		REDACTED,
 	REDACTED,
 		Indexes: []*schema.Index{
@@ -692,8 +692,11 @@ REDACTED
 		Indexes: []*schema.Index{
 			{
 				Name:    "paymentorder_out_trade_no",
-				Unique:  false,
+				Unique:  true,
 				Columns: []*schema.Column{PaymentOrdersColumns[8]REDACTED,
+				Annotation: &entsql.IndexAnnotation{
+					Where: "out_trade_no <> ''",
+			REDACTED,
 		REDACTED,
 			{
 				Name:    "paymentorder_user_id",

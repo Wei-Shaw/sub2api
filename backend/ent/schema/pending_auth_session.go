@@ -119,6 +119,7 @@ func (PendingAuthSession) Edges() []ent.Edge {
 			Field("target_user_id").
 			Unique(),
 		edge.To("adoption_decision", IdentityAdoptionDecision.Type).
+			Annotations(entsql.OnDelete(entsql.Cascade)).
 			Unique(),
 REDACTED
 REDACTED

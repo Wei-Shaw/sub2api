@@ -63,8 +63,20 @@ func RegisterAuthRoutes(
 			FailureMode: middleware.RateLimitFailClose,
 	REDACTED), h.Auth.ResetPassword)
 		auth.GET("/oauth/linuxdo/start", h.Auth.LinuxDoOAuthStart)
+		auth.GET("/oauth/linuxdo/bind/start", func(c *gin.Context) {
+			query := c.Request.URL.Query()
+			query.Set("intent", "bind_current_user")
+			c.Request.URL.RawQuery = query.Encode()
+			h.Auth.LinuxDoOAuthStart(c)
+	REDACTED)
 		auth.GET("/oauth/linuxdo/callback", h.Auth.LinuxDoOAuthCallback)
 		auth.GET("/oauth/wechat/start", h.Auth.WeChatOAuthStart)
+		auth.GET("/oauth/wechat/bind/start", func(c *gin.Context) {
+			query := c.Request.URL.Query()
+			query.Set("intent", "bind_current_user")
+			c.Request.URL.RawQuery = query.Encode()
+			h.Auth.WeChatOAuthStart(c)
+	REDACTED)
 		auth.GET("/oauth/wechat/callback", h.Auth.WeChatOAuthCallback)
 		auth.GET("/oauth/wechat/payment/start", h.Auth.WeChatPaymentOAuthStart)
 		auth.GET("/oauth/wechat/payment/callback", h.Auth.WeChatPaymentOAuthCallback)
@@ -129,6 +141,12 @@ func RegisterAuthRoutes(
 			h.Auth.CreateWeChatOAuthAccount,
 		)
 		auth.GET("/oauth/oidc/start", h.Auth.OIDCOAuthStart)
+		auth.GET("/oauth/oidc/bind/start", func(c *gin.Context) {
+			query := c.Request.URL.Query()
+			query.Set("intent", "bind_current_user")
+			c.Request.URL.RawQuery = query.Encode()
+			h.Auth.OIDCOAuthStart(c)
+	REDACTED)
 		auth.GET("/oauth/oidc/callback", h.Auth.OIDCOAuthCallback)
 		auth.POST("/oauth/oidc/complete-registration",
 			rateLimiter.LimitWithOptions("oauth-oidc-complete", 10, time.Minute, middleware.RateLimitOptions{
@@ -164,23 +182,6 @@ REDACTED
 		authenticated.GET("/auth/me", h.Auth.GetCurrentUser)
 		// 撤销所有会话（需要认证）
 		authenticated.POST("/auth/revoke-all-sessions", h.Auth.RevokeAllSessions)
-		authenticated.GET("/auth/oauth/linuxdo/bind/start", func(c *gin.Context) {
-			query := c.Request.URL.Query()
-			query.Set("intent", "bind_current_user")
-			c.Request.URL.RawQuery = query.Encode()
-			h.Auth.LinuxDoOAuthStart(c)
-	REDACTED)
-		authenticated.GET("/auth/oauth/oidc/bind/start", func(c *gin.Context) {
-			query := c.Request.URL.Query()
-			query.Set("intent", "bind_current_user")
-			c.Request.URL.RawQuery = query.Encode()
-			h.Auth.OIDCOAuthStart(c)
-	REDACTED)
-		authenticated.GET("/auth/oauth/wechat/bind/start", func(c *gin.Context) {
-			query := c.Request.URL.Query()
-			query.Set("intent", "bind_current_user")
-			c.Request.URL.RawQuery = query.Encode()
-			h.Auth.WeChatOAuthStart(c)
-	REDACTED)
+		authenticated.POST("/auth/oauth/bind-token", h.Auth.PrepareOAuthBindAccessTokenCookie)
 REDACTED
 REDACTED

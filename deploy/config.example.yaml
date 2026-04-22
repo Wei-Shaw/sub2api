@@ -841,7 +841,7 @@ linuxdo_connect:
   frontend_redirect_url: "/auth/linuxdo/callback"
   token_auth_method: "client_secret_post" # client_secret_post | client_secret_basic | none
   # 注意：当 token_auth_method=none（public client）时，必须启用 PKCE
-  use_pkce: false
+  use_pkce: true
   userinfo_email_path: ""
   userinfo_id_path: ""
   userinfo_username_path: ""

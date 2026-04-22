@@ -1,4 +1,4 @@
-ALTER TABLE payment_orders ADD COLUMN provider_key VARCHAR(30);
+ALTER TABLE payment_orders ADD COLUMN IF NOT EXISTS provider_key VARCHAR(30);
 
 UPDATE payment_orders
 SET provider_key = (

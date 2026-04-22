@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"errors"
+	"math"
 	"testing"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -320,6 +321,16 @@ func TestParseLegacyPaymentOrderID(t *testing.T) {
 
 	_, ok = parseLegacyPaymentOrderID("sub2_42", errors.New("db down"))
 	assert.False(t, ok)
+REDACTED
+
+func TestIsValidProviderAmount(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, isValidProviderAmount(0.01))
+	assert.False(t, isValidProviderAmount(0))
+	assert.False(t, isValidProviderAmount(-1))
+	assert.False(t, isValidProviderAmount(math.NaN()))
+	assert.False(t, isValidProviderAmount(math.Inf(1)))
 REDACTED
 
 func TestValidateProviderNotificationMetadataRejectsAlipaySnapshotMismatch(t *testing.T) {

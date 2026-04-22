@@ -185,7 +185,9 @@ REDACTED
 
 func (PaymentOrder) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("out_trade_no"),
+		index.Fields("out_trade_no").
+			Unique().
+			Annotations(entsql.IndexWhere("out_trade_no <> ''")),
 		index.Fields("user_id"),
 		index.Fields("status"),
 		index.Fields("expires_at"),

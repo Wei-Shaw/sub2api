@@ -80,19 +80,23 @@ REDACTED
 	REDACTED)
 		return err
 REDACTED
-	// Skip amount check when paid=0 (e.g. QueryOrder doesn't return amount).
-	// Also skip if paid is NaN/Inf (malformed provider data).
-	if paid > 0 && !math.IsNaN(paid) && !math.IsInf(paid, 0) {
-		if math.Abs(paid-o.PayAmount) > amountToleranceCNY {
-			s.writeAuditLog(ctx, o.ID, "PAYMENT_AMOUNT_MISMATCH", pk, map[string]any{"expected": o.PayAmount, "paid": paid, "tradeNo": tradeNoREDACTED)
-			return fmt.Errorf("amount mismatch: expected %.2f, got %.2f", o.PayAmount, paid)
-	REDACTED
+	if !isValidProviderAmount(paid) {
+		s.writeAuditLog(ctx, o.ID, "PAYMENT_INVALID_AMOUNT", pk, map[string]any{
+			"expected": o.PayAmount,
+			"paid":     paid,
+			"tradeNo":  tradeNo,
+	REDACTED)
+		return fmt.Errorf("invalid paid amount from provider: %v", paid)
 REDACTED
-	// Use order's expected amount when provider didn't report one
-	if paid <= 0 || math.IsNaN(paid) || math.IsInf(paid, 0) {
-		paid = o.PayAmount
+	if math.Abs(paid-o.PayAmount) > amountToleranceCNY {
+		s.writeAuditLog(ctx, o.ID, "PAYMENT_AMOUNT_MISMATCH", pk, map[string]any{"expected": o.PayAmount, "paid": paid, "tradeNo": tradeNoREDACTED)
+		return fmt.Errorf("amount mismatch: expected %.2f, got %.2f", o.PayAmount, paid)
 REDACTED
 	return s.toPaid(ctx, o, tradeNo, paid, pk)
+REDACTED
+
+func isValidProviderAmount(amount float64) bool {
+	return amount > 0 && !math.IsNaN(amount) && !math.IsInf(amount, 0)
 REDACTED
 
 func validateProviderNotificationMetadata(order *dbent.PaymentOrder, providerKey string, metadata map[string]string) error {

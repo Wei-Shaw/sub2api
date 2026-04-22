@@ -79,7 +79,8 @@ func (AuthIdentity) Edges() []ent.Edge {
 			Field("user_id").
 			Required().
 			Unique(),
-		edge.To("channels", AuthIdentityChannel.Type),
+		edge.To("channels", AuthIdentityChannel.Type).
+			Annotations(entsql.OnDelete(entsql.Cascade)),
 		edge.To("adoption_decisions", IdentityAdoptionDecision.Type),
 REDACTED
 REDACTED

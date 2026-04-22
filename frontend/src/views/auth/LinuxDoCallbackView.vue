@@ -456,7 +456,14 @@ function resolvePendingAccountAction(
   if (raw === 'email_required' || raw === 'create_account_required' || raw === 'create_account') {
     return 'create_account'
   REDACTED
-  if (raw === 'bind_login_required' || raw === 'bind_login') {
+  if (
+    raw === 'bind_login_required' ||
+    raw === 'bind_login' ||
+    raw === 'existing_account' ||
+    raw === 'existing_account_required' ||
+    raw === 'existing_account_binding_required' ||
+    raw === 'adopt_existing_user_by_email'
+  ) {
     return 'bind_login'
   REDACTED
   return 'none'
@@ -603,6 +610,14 @@ async function finalizePendingAccountResponse(completion: LinuxDoPendingActionRe
     return
   REDACTED
 
+  if (completion.auth_result === 'pending_session') {
+    needsInvitation.value = false
+    needsAdoptionConfirmation.value = false
+    isProcessing.value = false
+    persistPendingAuthSession(redirect)
+    return
+  REDACTED
+
   await finalizeCompletion(completion, redirect)
 REDACTED
 
@@ -612,9 +627,9 @@ async function handleSubmitInvitation() {
 
   isSubmitting.value = true
   try {
-    const tokenData = legacyPendingOAuthToken.value
+    const completion: LinuxDoPendingActionResponse = legacyPendingOAuthToken.value
       ? (
-          await apiClient.post<OAuthTokenResponse>('/auth/oauth/linuxdo/complete-registration', {
+          await apiClient.post<LinuxDoPendingActionResponse>('/auth/oauth/linuxdo/complete-registration', {
             pending_oauth_token: legacyPendingOAuthToken.value,
             invitation_code: invitationCode.value.trim(),
             ...serializeAdoptionDecision(currentAdoptionDecision())
@@ -624,10 +639,7 @@ async function handleSubmitInvitation() {
           invitationCode.value.trim(),
           currentAdoptionDecision()
         )
-    persistOAuthTokenContext(tokenData)
-    await authStore.setToken(tokenData.access_token)
-    appStore.showSuccess(t('auth.loginSuccess'))
-    await router.replace(redirectTo.value)
+    await finalizePendingAccountResponse(completion)
   REDACTED catch (e: unknown) {
     const err = e as { message?: string; response?: { data?: { message?: string REDACTED REDACTED REDACTED
     invitationError.value =

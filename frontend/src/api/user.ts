@@ -150,13 +150,13 @@ export function buildOAuthBindingStartURL(
     params.set('mode', mode)
   REDACTED
 
-  return `${normalizedREDACTED/auth/oauth/${providerREDACTED/start?${params.toString()REDACTED`
+  return `${normalizedREDACTED/auth/oauth/${providerREDACTED/bind/start?${params.toString()REDACTED`
 REDACTED
 
-export function startOAuthBinding(
+export async function startOAuthBinding(
   provider: BindableOAuthProvider,
   options: BuildOAuthBindingStartURLOptions = {REDACTED
-): void {
+): Promise<void> {
   if (typeof window === 'undefined') {
     return
   REDACTED
@@ -164,7 +164,7 @@ export function startOAuthBinding(
   if (!startURL) {
     return
   REDACTED
-  prepareOAuthBindAccessTokenCookie()
+  await prepareOAuthBindAccessTokenCookie()
   window.location.href = startURL
 REDACTED
 

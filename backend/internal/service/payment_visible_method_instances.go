@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -82,19 +83,52 @@ REDACTED
 	return filtered
 REDACTED
 
-func buildPaymentProviderConflictError(method string, conflicting *dbent.PaymentProviderInstance) error {
-	metadata := map[string]string{
-		"payment_method": NormalizeVisibleMethod(method),
+func filterVisibleMethodInstancesByProviderKey(instances []*dbent.PaymentProviderInstance, method string, providerKey string) []*dbent.PaymentProviderInstance {
+	filtered := make([]*dbent.PaymentProviderInstance, 0, len(instances))
+	for _, inst := range instances {
+		if !providerSupportsVisibleMethod(inst, method) {
+			continue
+	REDACTED
+		if !strings.EqualFold(strings.TrimSpace(inst.ProviderKey), strings.TrimSpace(providerKey)) {
+			continue
+	REDACTED
+		filtered = append(filtered, inst)
 REDACTED
-	if conflicting != nil {
-		metadata["conflicting_provider_id"] = fmt.Sprintf("%d", conflicting.ID)
-		metadata["conflicting_provider_key"] = conflicting.ProviderKey
-		metadata["conflicting_provider_name"] = conflicting.Name
+	return filtered
 REDACTED
-	return infraerrors.Conflict(
-		"PAYMENT_PROVIDER_CONFLICT",
-		fmt.Sprintf("%s payment already has an enabled provider instance", NormalizeVisibleMethod(method)),
-	).WithMetadata(metadata)
+
+func distinctVisibleMethodProviderKeys(instances []*dbent.PaymentProviderInstance) []string {
+	seen := make(map[string]struct{REDACTED, len(instances))
+	keys := make([]string, 0, len(instances))
+	for _, inst := range instances {
+		if inst == nil {
+			continue
+	REDACTED
+		key := strings.TrimSpace(inst.ProviderKey)
+		if key == "" {
+			continue
+	REDACTED
+		normalized := strings.ToLower(key)
+		if _, ok := seen[normalized]; ok {
+			continue
+	REDACTED
+		seen[normalized] = struct{REDACTED{REDACTED
+		keys = append(keys, key)
+REDACTED
+	return keys
+REDACTED
+
+func selectVisibleMethodInstanceByProviderKey(instances []*dbent.PaymentProviderInstance, providerKey string) *dbent.PaymentProviderInstance {
+	providerKey = strings.TrimSpace(providerKey)
+	if providerKey == "" {
+		return nil
+REDACTED
+	for _, inst := range instances {
+		if strings.EqualFold(strings.TrimSpace(inst.ProviderKey), providerKey) {
+			return inst
+	REDACTED
+REDACTED
+	return nil
 REDACTED
 
 func (s *PaymentConfigService) validateVisibleMethodEnablementConflicts(
@@ -104,33 +138,72 @@ func (s *PaymentConfigService) validateVisibleMethodEnablementConflicts(
 	supportedTypes string,
 	enabled bool,
 ) error {
-	if s == nil || s.entClient == nil || !enabled {
-		return nil
+	// Visible methods are selected by configured source (official/easypay),
+	// so multiple enabled providers can intentionally claim the same user-facing
+	// method. Order creation and limits will route through the configured source.
+	_, _, _, _, _ = ctx, excludeID, providerKey, supportedTypes, enabled
+	return nil
 REDACTED
 
-	claimedMethods := enabledVisibleMethodsForProvider(providerKey, supportedTypes)
-	if len(claimedMethods) == 0 {
-		return nil
-REDACTED
-
-	query := s.entClient.PaymentProviderInstance.Query().
-		Where(paymentproviderinstance.EnabledEQ(true))
-	if excludeID > 0 {
-		query = query.Where(paymentproviderinstance.IDNEQ(excludeID))
-REDACTED
-	instances, err := query.All(ctx)
-	if err != nil {
-		return fmt.Errorf("query enabled payment providers: %w", err)
-REDACTED
-
-	for _, method := range claimedMethods {
-		for _, inst := range instances {
-			if providerSupportsVisibleMethod(inst, method) {
-				return buildPaymentProviderConflictError(method, inst)
+func (s *PaymentConfigService) resolveVisibleMethodSourceProviderKey(ctx context.Context, method string) (string, error) {
+	method = NormalizeVisibleMethod(method)
+	sourceKey := visibleMethodSourceSettingKey(method)
+	rawSource := ""
+	if s != nil && s.settingRepo != nil && sourceKey != "" {
+		value, err := s.settingRepo.GetValue(ctx, sourceKey)
+		if err != nil {
+			if !errors.Is(err, ErrSettingNotFound) {
+				return "", fmt.Errorf("get %s: %w", sourceKey, err)
 		REDACTED
+	REDACTED else {
+			rawSource = value
 	REDACTED
 REDACTED
-	return nil
+
+	normalizedSource, err := normalizeVisibleMethodSettingSource(method, rawSource, true)
+	if err != nil {
+		return "", err
+REDACTED
+	if normalizedSource == "" {
+		return "", nil
+REDACTED
+	providerKey, ok := VisibleMethodProviderKeyForSource(method, normalizedSource)
+	if !ok {
+		return "", infraerrors.BadRequest(
+			"INVALID_PAYMENT_VISIBLE_METHOD_SOURCE",
+			fmt.Sprintf("%s source must be one of the supported payment providers", method),
+		)
+REDACTED
+	return providerKey, nil
+REDACTED
+
+func (s *PaymentConfigService) resolveVisibleMethodProviderKey(
+	ctx context.Context,
+	method string,
+	matching []*dbent.PaymentProviderInstance,
+) (string, error) {
+	switch providerKeys := distinctVisibleMethodProviderKeys(matching); len(providerKeys) {
+	case 0:
+		return "", nil
+	case 1:
+		return strings.TrimSpace(providerKeys[0]), nil
+	default:
+		providerKey, err := s.resolveVisibleMethodSourceProviderKey(ctx, method)
+		if err != nil {
+			return "", err
+	REDACTED
+		if providerKey == "" {
+			return "", nil
+	REDACTED
+		selected := selectVisibleMethodInstanceByProviderKey(matching, providerKey)
+		if selected == nil {
+			return "", infraerrors.BadRequest(
+				"INVALID_PAYMENT_VISIBLE_METHOD_SOURCE",
+				fmt.Sprintf("%s source has no enabled provider instance", method),
+			)
+	REDACTED
+		return strings.TrimSpace(selected.ProviderKey), nil
+REDACTED
 REDACTED
 
 func (s *PaymentConfigService) resolveEnabledVisibleMethodInstance(
@@ -155,12 +228,15 @@ REDACTED
 REDACTED
 
 	matching := filterEnabledVisibleMethodInstances(instances, method)
-	switch len(matching) {
-	case 0:
-		return nil, nil
-	case 1:
-		return matching[0], nil
-	default:
-		return nil, buildPaymentProviderConflictError(method, matching[0])
+	providerKey, err := s.resolveVisibleMethodProviderKey(ctx, method, matching)
+	if err != nil {
+		return nil, err
 REDACTED
+	if providerKey == "" {
+		if len(matching) == 0 {
+			return nil, nil
+	REDACTED
+		return &dbent.PaymentProviderInstance{ProviderKey: ""REDACTED, nil
+REDACTED
+	return selectVisibleMethodInstanceByProviderKey(matching, providerKey), nil
 REDACTED

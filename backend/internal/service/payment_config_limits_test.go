@@ -6,6 +6,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/stretchr/testify/require"
 )
 
 func TestUnionFloat(t *testing.T) {
@@ -301,7 +302,109 @@ REDACTED)
 REDACTED)
 REDACTED
 
-func TestGetAvailableMethodLimitsHidesConflictingVisibleMethodProviders(t *testing.T) {
+func TestGetAvailableMethodLimitsUsesConfiguredVisibleMethodSource(t *testing.T) {
+	tests := []struct {
+		name                string
+		sourceSetting       string
+		wantAlipaySingleMin float64
+		wantAlipaySingleMax float64
+		wantGlobalMin       float64
+		wantGlobalMax       float64
+REDACTED{
+		{
+			name:                "official source",
+			sourceSetting:       VisibleMethodSourceOfficialAlipay,
+			wantAlipaySingleMin: 10,
+			wantAlipaySingleMax: 100,
+			wantGlobalMin:       10,
+			wantGlobalMax:       300,
+	REDACTED,
+		{
+			name:                "easypay source",
+			sourceSetting:       VisibleMethodSourceEasyPayAlipay,
+			wantAlipaySingleMin: 20,
+			wantAlipaySingleMax: 200,
+			wantGlobalMin:       20,
+			wantGlobalMax:       300,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+			client := newPaymentConfigServiceTestClient(t)
+
+			_, err := client.PaymentProviderInstance.Create().
+				SetProviderKey(payment.TypeAlipay).
+				SetName("Official Alipay").
+				SetConfig("{REDACTED").
+				SetSupportedTypes("alipay").
+				SetLimits(`{"alipay":{"singleMin":10,"singleMax":100REDACTEDREDACTED`).
+				SetEnabled(true).
+				Save(ctx)
+			if err != nil {
+				t.Fatalf("create official alipay instance: %v", err)
+		REDACTED
+			_, err = client.PaymentProviderInstance.Create().
+				SetProviderKey(payment.TypeEasyPay).
+				SetName("EasyPay Alipay").
+				SetConfig("{REDACTED").
+				SetSupportedTypes("alipay").
+				SetLimits(`{"alipay":{"singleMin":20,"singleMax":200REDACTEDREDACTED`).
+				SetEnabled(true).
+				Save(ctx)
+			if err != nil {
+				t.Fatalf("create easypay alipay instance: %v", err)
+		REDACTED
+			_, err = client.PaymentProviderInstance.Create().
+				SetProviderKey(payment.TypeWxpay).
+				SetName("Official WeChat").
+				SetConfig("{REDACTED").
+				SetSupportedTypes("wxpay").
+				SetLimits(`{"wxpay":{"singleMin":30,"singleMax":300REDACTEDREDACTED`).
+				SetEnabled(true).
+				Save(ctx)
+			if err != nil {
+				t.Fatalf("create official wxpay instance: %v", err)
+		REDACTED
+
+			svc := &PaymentConfigService{
+				entClient: client,
+				settingRepo: &paymentConfigSettingRepoStub{
+					values: map[string]string{
+						SettingPaymentVisibleMethodAlipaySource: tt.sourceSetting,
+				REDACTED,
+			REDACTED,
+		REDACTED
+
+			resp, err := svc.GetAvailableMethodLimits(ctx)
+			if err != nil {
+				t.Fatalf("GetAvailableMethodLimits returned error: %v", err)
+		REDACTED
+
+			alipayLimits, ok := resp.Methods[payment.TypeAlipay]
+			if !ok {
+				t.Fatalf("expected alipay limits to remain visible, got %v", resp.Methods)
+		REDACTED
+			if alipayLimits.SingleMin != tt.wantAlipaySingleMin || alipayLimits.SingleMax != tt.wantAlipaySingleMax {
+				t.Fatalf("alipay limits = %+v, want min=%v max=%v", alipayLimits, tt.wantAlipaySingleMin, tt.wantAlipaySingleMax)
+		REDACTED
+
+			wxpayLimits, ok := resp.Methods[payment.TypeWxpay]
+			if !ok {
+				t.Fatalf("expected wxpay limits to remain visible, got %v", resp.Methods)
+		REDACTED
+			if wxpayLimits.SingleMin != 30 || wxpayLimits.SingleMax != 300 {
+				t.Fatalf("wxpay limits = %+v, want official-only min=30 max=300", wxpayLimits)
+		REDACTED
+			if resp.GlobalMin != tt.wantGlobalMin || resp.GlobalMax != tt.wantGlobalMax {
+				t.Fatalf("global range = (%v, %v), want (%v, %v)", resp.GlobalMin, resp.GlobalMax, tt.wantGlobalMin, tt.wantGlobalMax)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestGetAvailableMethodLimitsPreservesLegacyCrossProviderBehaviorWhenVisibleMethodSourceMissing(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
 
@@ -313,20 +416,18 @@ func TestGetAvailableMethodLimitsHidesConflictingVisibleMethodProviders(t *testi
 		SetLimits(`{"alipay":{"singleMin":10,"singleMax":100REDACTEDREDACTED`).
 		SetEnabled(true).
 		Save(ctx)
-	if err != nil {
-		t.Fatalf("create official alipay instance: %v", err)
 REDACTED
+
 	_, err = client.PaymentProviderInstance.Create().
 		SetProviderKey(payment.TypeEasyPay).
-		SetName("EasyPay Alipay").
+		SetName("EasyPay Mixed").
 		SetConfig("{REDACTED").
-		SetSupportedTypes("alipay").
-		SetLimits(`{"alipay":{"singleMin":20,"singleMax":200REDACTEDREDACTED`).
+		SetSupportedTypes("alipay,wxpay").
+		SetLimits(`{"alipay":{"singleMin":20,"singleMax":200REDACTED,"wxpay":{"singleMin":40,"singleMax":400REDACTEDREDACTED`).
 		SetEnabled(true).
 		Save(ctx)
-	if err != nil {
-		t.Fatalf("create easypay alipay instance: %v", err)
 REDACTED
+
 	_, err = client.PaymentProviderInstance.Create().
 		SetProviderKey(payment.TypeWxpay).
 		SetName("Official WeChat").
@@ -335,31 +436,26 @@ REDACTED
 		SetLimits(`{"wxpay":{"singleMin":30,"singleMax":300REDACTEDREDACTED`).
 		SetEnabled(true).
 		Save(ctx)
-	if err != nil {
-		t.Fatalf("create official wxpay instance: %v", err)
 REDACTED
 
 	svc := &PaymentConfigService{
-		entClient: client,
+		entClient:   client,
+		settingRepo: &paymentConfigSettingRepoStub{values: map[string]string{REDACTEDREDACTED,
 REDACTED
 
 	resp, err := svc.GetAvailableMethodLimits(ctx)
-	if err != nil {
-		t.Fatalf("GetAvailableMethodLimits returned error: %v", err)
 REDACTED
 
-	if _, ok := resp.Methods[payment.TypeAlipay]; ok {
-		t.Fatalf("alipay should be hidden when multiple enabled providers claim it, got %v", resp.Methods[payment.TypeAlipay])
-REDACTED
+	alipayLimits, ok := resp.Methods[payment.TypeAlipay]
+	require.True(t, ok, "expected alipay limits to remain visible")
+	require.Equal(t, 10.0, alipayLimits.SingleMin)
+	require.Equal(t, 200.0, alipayLimits.SingleMax)
 
 	wxpayLimits, ok := resp.Methods[payment.TypeWxpay]
-	if !ok {
-		t.Fatalf("expected wxpay limits to remain visible, got %v", resp.Methods)
-REDACTED
-	if wxpayLimits.SingleMin != 30 || wxpayLimits.SingleMax != 300 {
-		t.Fatalf("wxpay limits = %+v, want official-only min=30 max=300", wxpayLimits)
-REDACTED
-	if resp.GlobalMin != 30 || resp.GlobalMax != 300 {
-		t.Fatalf("global range = (%v, %v), want (30, 300)", resp.GlobalMin, resp.GlobalMax)
-REDACTED
+	require.True(t, ok, "expected wxpay limits to remain visible")
+	require.Equal(t, 30.0, wxpayLimits.SingleMin)
+	require.Equal(t, 400.0, wxpayLimits.SingleMax)
+
+	require.Equal(t, 10.0, resp.GlobalMin)
+	require.Equal(t, 400.0, resp.GlobalMax)
 REDACTED

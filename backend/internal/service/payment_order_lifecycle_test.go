@@ -21,6 +21,8 @@ import (
 
 type paymentOrderLifecycleQueryProvider struct {
 	lastQueryTradeNo string
+	queryCalls       int
+	responses        []*payment.QueryOrderResponse
 	resp             *payment.QueryOrderResponse
 REDACTED
 
@@ -48,6 +50,14 @@ REDACTED
 
 func (p *paymentOrderLifecycleQueryProvider) QueryOrder(_ context.Context, tradeNo string) (*payment.QueryOrderResponse, error) {
 	p.lastQueryTradeNo = tradeNo
+	p.queryCalls++
+	if len(p.responses) > 0 {
+		resp := p.responses[0]
+		if len(p.responses) > 1 {
+			p.responses = p.responses[1:]
+	REDACTED
+		return resp, nil
+REDACTED
 	return p.resp, nil
 REDACTED
 
@@ -232,6 +242,194 @@ REDACTED
 	require.Len(t, redeemRepo.useCalls, 1)
 	require.Equal(t, int64(1), redeemRepo.useCalls[0].id)
 	require.Equal(t, user.ID, redeemRepo.useCalls[0].userID)
+REDACTED
+
+func TestVerifyOrderByOutTradeNoRetriesZeroAmountPaidQueryOnce(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("checkpaid-retry@example.com").
+		SetPasswordHash("hash").
+		SetUsername("checkpaid-retry-user").
+		Save(ctx)
+REDACTED
+
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(88).
+		SetPayAmount(88).
+		SetFeeRate(0).
+		SetRechargeCode("CHECKPAID-UPSTREAM-RETRY").
+		SetOutTradeNo("sub2_checkpaid_retry_zero_amount").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusPending).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		Save(ctx)
+REDACTED
+
+	userRepo := &mockUserRepo{
+		getByIDUser: &User{
+			ID:       user.ID,
+			Email:    user.Email,
+			Username: user.Username,
+			Balance:  0,
+	REDACTED,
+REDACTED
+	userRepo.updateBalanceFn = func(ctx context.Context, id int64, amount float64) error {
+		require.Equal(t, user.ID, id)
+		if userRepo.getByIDUser != nil {
+			userRepo.getByIDUser.Balance += amount
+	REDACTED
+		return nil
+REDACTED
+	redeemRepo := &paymentOrderLifecycleRedeemRepo{
+		codesByCode: map[string]*RedeemCode{
+			order.RechargeCode: {
+				ID:     1,
+				Code:   order.RechargeCode,
+				Type:   RedeemTypeBalance,
+				Value:  order.Amount,
+				Status: StatusUnused,
+		REDACTED,
+	REDACTED,
+REDACTED
+	redeemService := NewRedeemService(
+		redeemRepo,
+		userRepo,
+		nil,
+		nil,
+		nil,
+		client,
+		nil,
+	)
+	registry := payment.NewRegistry()
+	provider := &paymentOrderLifecycleQueryProvider{
+		responses: []*payment.QueryOrderResponse{
+			{
+				TradeNo: "upstream-trade-zero",
+				Status:  payment.ProviderStatusPaid,
+				Amount:  0,
+		REDACTED,
+			{
+				TradeNo: "upstream-trade-retry",
+				Status:  payment.ProviderStatusPaid,
+				Amount:  88,
+		REDACTED,
+	REDACTED,
+REDACTED
+	registry.Register(provider)
+
+	svc := &PaymentService{
+		entClient:       client,
+		registry:        registry,
+		redeemService:   redeemService,
+		userRepo:        userRepo,
+		providersLoaded: true,
+REDACTED
+
+	got, err := svc.VerifyOrderByOutTradeNo(ctx, order.OutTradeNo, user.ID)
+REDACTED
+	require.Equal(t, 2, provider.queryCalls)
+	require.Equal(t, OrderStatusCompleted, got.Status)
+	require.Equal(t, "upstream-trade-retry", got.PaymentTradeNo)
+REDACTED
+
+func TestVerifyOrderByOutTradeNoRejectsPaidQueryWithZeroAmount(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentOrderLifecycleTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("checkpaid-zero-amount@example.com").
+		SetPasswordHash("hash").
+		SetUsername("checkpaid-zero-amount-user").
+		Save(ctx)
+REDACTED
+
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(88).
+		SetPayAmount(88).
+		SetFeeRate(0).
+		SetRechargeCode("CHECKPAID-ZERO-AMOUNT").
+		SetOutTradeNo("sub2_checkpaid_zero_amount").
+		SetPaymentType(payment.TypeAlipay).
+		SetPaymentTradeNo("").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusPending).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		Save(ctx)
+REDACTED
+
+	userRepo := &mockUserRepo{
+		getByIDUser: &User{
+			ID:       user.ID,
+			Email:    user.Email,
+			Username: user.Username,
+			Balance:  0,
+	REDACTED,
+REDACTED
+	redeemRepo := &paymentOrderLifecycleRedeemRepo{
+		codesByCode: map[string]*RedeemCode{
+			order.RechargeCode: {
+				ID:     1,
+				Code:   order.RechargeCode,
+				Type:   RedeemTypeBalance,
+				Value:  order.Amount,
+				Status: StatusUnused,
+		REDACTED,
+	REDACTED,
+REDACTED
+	redeemService := NewRedeemService(
+		redeemRepo,
+		userRepo,
+		nil,
+		nil,
+		nil,
+		client,
+		nil,
+	)
+	registry := payment.NewRegistry()
+	provider := &paymentOrderLifecycleQueryProvider{
+		resp: &payment.QueryOrderResponse{
+			TradeNo: "upstream-trade-zero",
+			Status:  payment.ProviderStatusPaid,
+			Amount:  0,
+	REDACTED,
+REDACTED
+	registry.Register(provider)
+
+	svc := &PaymentService{
+		entClient:       client,
+		registry:        registry,
+		redeemService:   redeemService,
+		userRepo:        userRepo,
+		providersLoaded: true,
+REDACTED
+
+	got, err := svc.VerifyOrderByOutTradeNo(ctx, order.OutTradeNo, user.ID)
+REDACTED
+	require.Equal(t, order.OutTradeNo, provider.lastQueryTradeNo)
+	require.Equal(t, OrderStatusPending, got.Status)
+	require.Empty(t, got.PaymentTradeNo)
+
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+REDACTED
+	require.Equal(t, OrderStatusPending, reloaded.Status)
+	require.Empty(t, reloaded.PaymentTradeNo)
+
+	require.Equal(t, 0.0, userRepo.getByIDUser.Balance)
+	require.Empty(t, redeemRepo.useCalls)
 REDACTED
 
 func TestVerifyOrderByOutTradeNoUsesOutTradeNoWhenPaymentTradeNoAlreadyExistsForAlipay(t *testing.T) {

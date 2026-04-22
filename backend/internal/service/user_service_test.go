@@ -51,6 +51,44 @@ type mockUserRepoTxState struct {
 	deleteAvatarIDs  []int64
 REDACTED
 
+type mockUserSettingRepo struct {
+	values map[string]string
+REDACTED
+
+func (m *mockUserSettingRepo) Get(context.Context, string) (*Setting, error) {
+	panic("unexpected Get call")
+REDACTED
+
+func (m *mockUserSettingRepo) GetValue(context.Context, string) (string, error) {
+	panic("unexpected GetValue call")
+REDACTED
+
+func (m *mockUserSettingRepo) Set(context.Context, string, string) error {
+	panic("unexpected Set call")
+REDACTED
+
+func (m *mockUserSettingRepo) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+	out := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if value, ok := m.values[key]; ok {
+			out[key] = value
+	REDACTED
+REDACTED
+	return out, nil
+REDACTED
+
+func (m *mockUserSettingRepo) SetMultiple(context.Context, map[string]string) error {
+	panic("unexpected SetMultiple call")
+REDACTED
+
+func (m *mockUserSettingRepo) GetAll(context.Context) (map[string]string, error) {
+	panic("unexpected GetAll call")
+REDACTED
+
+func (m *mockUserSettingRepo) Delete(context.Context, string) error {
+	panic("unexpected Delete call")
+REDACTED
+
 func (m *mockUserRepo) Create(context.Context, *User) error { return nil REDACTED
 func (m *mockUserRepo) GetByID(ctx context.Context, _ int64) (*User, error) {
 	if m.getByIDErr != nil {
@@ -349,6 +387,70 @@ REDACTED
 	require.Empty(t, repo.unboundProviders)
 REDACTED
 
+func TestGetProfileIdentitySummaries_DoesNotTreatOAuthOnlyCompatEmailAsAlternativeLoginMethod(t *testing.T) {
+	repo := &mockUserRepo{
+		getByIDUser: &User{
+			ID:           10,
+			Email:        "oauth-only@example.com",
+			SignupSource: "oidc",
+	REDACTED,
+		identities: []UserAuthIdentityRecord{
+			{
+				ProviderType:    "oidc",
+				ProviderKey:     "https://issuer.example.com",
+				ProviderSubject: "oidc-only-subject",
+		REDACTED,
+	REDACTED,
+REDACTED
+	svc := NewUserService(repo, nil, nil, nil)
+
+	summaries, err := svc.GetProfileIdentitySummaries(context.Background(), 10, repo.getByIDUser)
+
+REDACTED
+	require.False(t, summaries.OIDC.CanUnbind)
+
+	_, err = svc.UnbindUserAuthProvider(context.Background(), 10, "oidc")
+	require.ErrorIs(t, err, ErrIdentityUnbindLastMethod)
+	require.Empty(t, repo.unboundProviders)
+REDACTED
+
+func TestGetProfileIdentitySummaries_DoesNotTreatCompatBackfilledEmailIdentityAsAlternativeLoginMethod(t *testing.T) {
+	repo := &mockUserRepo{
+		getByIDUser: &User{
+			ID:           11,
+			Email:        "oauth-only@example.com",
+			SignupSource: "wechat",
+	REDACTED,
+		identities: []UserAuthIdentityRecord{
+			{
+				ProviderType:    "email",
+				ProviderKey:     "email",
+				ProviderSubject: "oauth-only@example.com",
+				Metadata: map[string]any{
+					"backfill_source": "users.email",
+					"migration":       "109_auth_identity_compat_backfill",
+			REDACTED,
+		REDACTED,
+			{
+				ProviderType:    "wechat",
+				ProviderKey:     "wechat",
+				ProviderSubject: "wechat-only-subject",
+		REDACTED,
+	REDACTED,
+REDACTED
+	svc := NewUserService(repo, nil, nil, nil)
+
+	summaries, err := svc.GetProfileIdentitySummaries(context.Background(), 11, repo.getByIDUser)
+
+REDACTED
+	require.True(t, summaries.Email.Bound)
+	require.False(t, summaries.WeChat.CanUnbind)
+
+	_, err = svc.UnbindUserAuthProvider(context.Background(), 11, "wechat")
+	require.ErrorIs(t, err, ErrIdentityUnbindLastMethod)
+	require.Empty(t, repo.unboundProviders)
+REDACTED
+
 func TestUnbindUserAuthProviderRemovesProviderAndReturnsUpdatedProfile(t *testing.T) {
 	repo := &mockUserRepo{
 		getByIDUser: &User{
@@ -368,18 +470,85 @@ func TestUnbindUserAuthProviderRemovesProviderAndReturnsUpdatedProfile(t *testin
 		REDACTED,
 	REDACTED,
 REDACTED
-	svc := NewUserService(repo, nil, nil, nil)
+	invalidator := &mockAuthCacheInvalidator{REDACTED
+	svc := NewUserService(repo, nil, invalidator, nil)
 
 	user, err := svc.UnbindUserAuthProvider(context.Background(), 12, "linuxdo")
 
 REDACTED
 	require.Equal(t, []string{"linuxdo"REDACTED, repo.unboundProviders)
 	require.Equal(t, int64(12), user.ID)
+	require.Equal(t, []int64{12REDACTED, invalidator.invalidatedUserIDs)
 
 	summaries, err := svc.GetProfileIdentitySummaries(context.Background(), 12, user)
 REDACTED
 	require.False(t, summaries.LinuxDo.Bound)
 	require.True(t, summaries.LinuxDo.CanBind)
+REDACTED
+
+func TestGetProfileIdentitySummaries_HidesBindActionWhenProviderExplicitlyDisabled(t *testing.T) {
+	repo := &mockUserRepo{
+		getByIDUser: &User{
+			ID:    15,
+			Email: "alice@example.com",
+	REDACTED,
+		identities: []UserAuthIdentityRecord{
+			{
+				ProviderType:    "email",
+				ProviderKey:     "email",
+				ProviderSubject: "alice@example.com",
+		REDACTED,
+	REDACTED,
+REDACTED
+	settingRepo := &mockUserSettingRepo{
+		values: map[string]string{
+			SettingKeyLinuxDoConnectEnabled: "false",
+	REDACTED,
+REDACTED
+	svc := NewUserService(repo, settingRepo, nil, nil)
+
+	summaries, err := svc.GetProfileIdentitySummaries(context.Background(), 15, repo.getByIDUser)
+
+REDACTED
+	require.False(t, summaries.LinuxDo.Bound)
+	require.False(t, summaries.LinuxDo.CanBind)
+	require.Empty(t, summaries.LinuxDo.BindStartPath)
+REDACTED
+
+func TestGetProfileIdentitySummaries_UsesBindStartRoute(t *testing.T) {
+	repo := &mockUserRepo{
+		getByIDUser: &User{
+			ID:    16,
+			Email: "alice@example.com",
+	REDACTED,
+		identities: []UserAuthIdentityRecord{
+			{
+				ProviderType:    "email",
+				ProviderKey:     "email",
+				ProviderSubject: "alice@example.com",
+		REDACTED,
+	REDACTED,
+REDACTED
+	svc := NewUserService(repo, nil, nil, nil)
+
+	summaries, err := svc.GetProfileIdentitySummaries(context.Background(), 16, repo.getByIDUser)
+
+REDACTED
+	require.Equal(
+		t,
+		"/api/v1/auth/oauth/linuxdo/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile",
+		summaries.LinuxDo.BindStartPath,
+	)
+	require.Equal(
+		t,
+		"/api/v1/auth/oauth/oidc/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile",
+		summaries.OIDC.BindStartPath,
+	)
+	require.Equal(
+		t,
+		"/api/v1/auth/oauth/wechat/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile",
+		summaries.WeChat.BindStartPath,
+	)
 REDACTED
 
 func TestUpdateBalance_NilBillingCache_NoPanic(t *testing.T) {

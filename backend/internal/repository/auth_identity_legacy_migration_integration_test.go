@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -20,32 +21,8 @@ func TestAuthIdentityLegacyExternalBackfillMigration(t *testing.T) {
 	migrationSQL, err := os.ReadFile(migrationPath)
 REDACTED
 
-	_, err = tx.ExecContext(ctx, `
-CREATE TABLE IF NOT EXISTS user_external_identities (
-	id BIGSERIAL PRIMARY KEY,
-	user_id BIGINT NOT NULL,
-	provider TEXT NOT NULL,
-	provider_user_id TEXT NOT NULL,
-	provider_union_id TEXT NULL,
-	provider_username TEXT NOT NULL DEFAULT '',
-	display_name TEXT NOT NULL DEFAULT '',
-	profile_url TEXT NOT NULL DEFAULT '',
-	avatar_url TEXT NOT NULL DEFAULT '',
-	metadata TEXT NOT NULL DEFAULT '{REDACTED',
-	created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-	TRUNCATE TABLE
-		auth_identity_channels,
-		identity_adoption_decisions,
-		auth_identities,
-		auth_identity_migration_reports,
-		user_external_identities,
-		users
-	RESTART IDENTITY CASCADE;
-`)
-REDACTED
+	prepareLegacyExternalIdentitiesTable(t, tx, ctx)
+	truncateAuthIdentityLegacyFixtureTables(t, tx, ctx)
 
 	var linuxDoUserID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
@@ -218,32 +195,8 @@ REDACTED
 	migration116SQL, err := os.ReadFile(migration116Path)
 REDACTED
 
-	_, err = tx.ExecContext(ctx, `
-CREATE TABLE IF NOT EXISTS user_external_identities (
-	id BIGSERIAL PRIMARY KEY,
-	user_id BIGINT NOT NULL,
-	provider TEXT NOT NULL,
-	provider_user_id TEXT NOT NULL,
-	provider_union_id TEXT NULL,
-	provider_username TEXT NOT NULL DEFAULT '',
-	display_name TEXT NOT NULL DEFAULT '',
-	profile_url TEXT NOT NULL DEFAULT '',
-	avatar_url TEXT NOT NULL DEFAULT '',
-	metadata TEXT NOT NULL DEFAULT '{REDACTED',
-	created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-TRUNCATE TABLE
-	auth_identity_channels,
-	identity_adoption_decisions,
-	auth_identities,
-	auth_identity_migration_reports,
-	user_external_identities,
-	users
-RESTART IDENTITY CASCADE;
-`)
-REDACTED
+	prepareLegacyExternalIdentitiesTable(t, tx, ctx)
+	truncateAuthIdentityLegacyFixtureTables(t, tx, ctx)
 
 	var linuxDoMalformedUserID int64
 	require.NoError(t, tx.QueryRowContext(ctx, `
@@ -408,32 +361,8 @@ func TestAuthIdentityLegacyExternalSafetyMigration_ReportsConflictsAndDowngrades
 	migrationSQL, err := os.ReadFile(migrationPath)
 REDACTED
 
-	_, err = tx.ExecContext(ctx, `
-CREATE TABLE IF NOT EXISTS user_external_identities (
-	id BIGSERIAL PRIMARY KEY,
-	user_id BIGINT NOT NULL,
-	provider TEXT NOT NULL,
-	provider_user_id TEXT NOT NULL,
-	provider_union_id TEXT NULL,
-	provider_username TEXT NOT NULL DEFAULT '',
-	display_name TEXT NOT NULL DEFAULT '',
-	profile_url TEXT NOT NULL DEFAULT '',
-	avatar_url TEXT NOT NULL DEFAULT '',
-	metadata TEXT NOT NULL DEFAULT '{REDACTED',
-	created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-	TRUNCATE TABLE
-		auth_identity_channels,
-		identity_adoption_decisions,
-		auth_identities,
-		auth_identity_migration_reports,
-		user_external_identities,
-		users
-	RESTART IDENTITY CASCADE;
-`)
-REDACTED
+	prepareLegacyExternalIdentitiesTable(t, tx, ctx)
+	truncateAuthIdentityLegacyFixtureTables(t, tx, ctx)
 
 	userIDs := make([]int64, 0, 8)
 	for _, email := range []string{
@@ -643,6 +572,388 @@ REDACTED
 	require.NoError(t, tx.QueryRowContext(ctx, `
 SELECT COUNT(*)
 FROM auth_identity_migration_reports
-`).Scan(&afterCount))
+	`).Scan(&afterCount))
 	require.Equal(t, beforeCount, afterCount)
+REDACTED
+
+func TestAuthIdentityLegacyExternalBackfillMigration_SkipsAmbiguousCanonicalSubjects(t *testing.T) {
+	tx := testTx(t)
+	ctx := context.Background()
+
+	migrationPath := filepath.Join("..", "..", "migrations", "115_auth_identity_legacy_external_backfill.sql")
+	migrationSQL, err := os.ReadFile(migrationPath)
+REDACTED
+
+	prepareLegacyExternalIdentitiesTable(t, tx, ctx)
+	truncateAuthIdentityLegacyFixtureTables(t, tx, ctx)
+
+	var linuxDoFirstUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('legacy-linuxdo-ambiguous-a@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&linuxDoFirstUserID))
+
+	var linuxDoSecondUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('legacy-linuxdo-ambiguous-b@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&linuxDoSecondUserID))
+
+	var wechatFirstUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('legacy-wechat-ambiguous-a@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&wechatFirstUserID))
+
+	var wechatSecondUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('legacy-wechat-ambiguous-b@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&wechatSecondUserID))
+
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'linuxdo', 'linuxdo-ambiguous-subject', NULL, 'legacy-linuxdo-ambiguous-a', 'Legacy LinuxDo Ambiguous A', '{"source":"legacy"REDACTED')
+RETURNING id
+`, linuxDoFirstUserID).Scan(new(int64)))
+
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'linuxdo', 'linuxdo-ambiguous-subject', NULL, 'legacy-linuxdo-ambiguous-b', 'Legacy LinuxDo Ambiguous B', '{"source":"legacy"REDACTED')
+RETURNING id
+`, linuxDoSecondUserID).Scan(new(int64)))
+
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'wechat', 'openid-ambiguous-a', 'union-ambiguous-subject', 'legacy-wechat-ambiguous-a', 'Legacy WeChat Ambiguous A', '{"channel":"oa","appid":"wx-ambiguous-a"REDACTED')
+RETURNING id
+`, wechatFirstUserID).Scan(new(int64)))
+
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'wechat', 'openid-ambiguous-b', 'union-ambiguous-subject', 'legacy-wechat-ambiguous-b', 'Legacy WeChat Ambiguous B', '{"channel":"oa","appid":"wx-ambiguous-b"REDACTED')
+RETURNING id
+`, wechatSecondUserID).Scan(new(int64)))
+
+	_, err = tx.ExecContext(ctx, string(migrationSQL))
+REDACTED
+
+	var linuxDoIdentityCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identities
+WHERE provider_type = 'linuxdo'
+  AND provider_key = 'linuxdo'
+  AND provider_subject = 'linuxdo-ambiguous-subject'
+`).Scan(&linuxDoIdentityCount))
+	require.Zero(t, linuxDoIdentityCount)
+
+	var wechatIdentityCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identities
+WHERE provider_type = 'wechat'
+  AND provider_key = 'wechat-main'
+  AND provider_subject = 'union-ambiguous-subject'
+`).Scan(&wechatIdentityCount))
+	require.Zero(t, wechatIdentityCount)
+
+	var wechatChannelCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identity_channels
+WHERE provider_type = 'wechat'
+  AND provider_key = 'wechat-main'
+  AND channel = 'oa'
+  AND channel_app_id IN ('wx-ambiguous-a', 'wx-ambiguous-b')
+`).Scan(&wechatChannelCount))
+	require.Zero(t, wechatChannelCount)
+REDACTED
+
+func TestAuthIdentityLegacyExternalMigrations_ReportAmbiguousCanonicalSubjectsWithoutWinnerAttribution(t *testing.T) {
+	tx := testTx(t)
+	ctx := context.Background()
+
+	migration115Path := filepath.Join("..", "..", "migrations", "115_auth_identity_legacy_external_backfill.sql")
+	migration115SQL, err := os.ReadFile(migration115Path)
+REDACTED
+
+	migration116Path := filepath.Join("..", "..", "migrations", "116_auth_identity_legacy_external_safety_reports.sql")
+	migration116SQL, err := os.ReadFile(migration116Path)
+REDACTED
+
+	prepareLegacyExternalIdentitiesTable(t, tx, ctx)
+	truncateAuthIdentityLegacyFixtureTables(t, tx, ctx)
+
+	var linuxDoFirstUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('legacy-linuxdo-conflict-a@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&linuxDoFirstUserID))
+
+	var linuxDoSecondUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('legacy-linuxdo-conflict-b@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&linuxDoSecondUserID))
+
+	var wechatFirstUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('legacy-wechat-conflict-a@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&wechatFirstUserID))
+
+	var wechatSecondUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('legacy-wechat-conflict-b@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&wechatSecondUserID))
+
+	var linuxDoFirstLegacyID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'linuxdo', 'linuxdo-conflict-subject', NULL, 'legacy-linuxdo-conflict-a', 'Legacy LinuxDo Conflict A', '{"source":"legacy"REDACTED')
+RETURNING id
+`, linuxDoFirstUserID).Scan(&linuxDoFirstLegacyID))
+
+	var linuxDoSecondLegacyID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'linuxdo', 'linuxdo-conflict-subject', NULL, 'legacy-linuxdo-conflict-b', 'Legacy LinuxDo Conflict B', '{"source":"legacy"REDACTED')
+RETURNING id
+`, linuxDoSecondUserID).Scan(&linuxDoSecondLegacyID))
+
+	var wechatFirstLegacyID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'wechat', 'openid-conflict-a', 'union-conflict-subject', 'legacy-wechat-conflict-a', 'Legacy WeChat Conflict A', '{"channel":"oa","appid":"wx-conflict-a"REDACTED')
+RETURNING id
+`, wechatFirstUserID).Scan(&wechatFirstLegacyID))
+
+	var wechatSecondLegacyID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'wechat', 'openid-conflict-b', 'union-conflict-subject', 'legacy-wechat-conflict-b', 'Legacy WeChat Conflict B', '{"channel":"oa","appid":"wx-conflict-b"REDACTED')
+RETURNING id
+`, wechatSecondUserID).Scan(&wechatSecondLegacyID))
+
+	_, err = tx.ExecContext(ctx, string(migration115SQL))
+REDACTED
+
+	_, err = tx.ExecContext(ctx, string(migration116SQL))
+REDACTED
+
+	var identityCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identities
+WHERE (provider_type = 'linuxdo' AND provider_key = 'linuxdo' AND provider_subject = 'linuxdo-conflict-subject')
+   OR (provider_type = 'wechat' AND provider_key = 'wechat-main' AND provider_subject = 'union-conflict-subject')
+`).Scan(&identityCount))
+	require.Zero(t, identityCount)
+
+	var conflictReportCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identity_migration_reports
+WHERE report_type = 'legacy_external_identity_conflict'
+  AND report_key IN ($1, $2, $3, $4)
+`, "legacy_external_identity:"+strconv.FormatInt(linuxDoFirstLegacyID, 10), "legacy_external_identity:"+strconv.FormatInt(linuxDoSecondLegacyID, 10), "legacy_external_identity:"+strconv.FormatInt(wechatFirstLegacyID, 10), "legacy_external_identity:"+strconv.FormatInt(wechatSecondLegacyID, 10)).Scan(&conflictReportCount))
+	require.Equal(t, 4, conflictReportCount)
+
+	var winnerAttributedReportCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identity_migration_reports
+WHERE report_type = 'legacy_external_identity_conflict'
+  AND report_key IN ($1, $2, $3, $4)
+  AND details ->> 'existing_identity_id' IS NOT NULL
+`, "legacy_external_identity:"+strconv.FormatInt(linuxDoFirstLegacyID, 10), "legacy_external_identity:"+strconv.FormatInt(linuxDoSecondLegacyID, 10), "legacy_external_identity:"+strconv.FormatInt(wechatFirstLegacyID, 10), "legacy_external_identity:"+strconv.FormatInt(wechatSecondLegacyID, 10)).Scan(&winnerAttributedReportCount))
+	require.Zero(t, winnerAttributedReportCount)
+REDACTED
+
+func TestAuthIdentityMigrationReportTypeWideningPreflightKeeps109And116SafeBefore121(t *testing.T) {
+	tx := testTx(t)
+	ctx := context.Background()
+
+	migration108aPath := filepath.Join("..", "..", "migrations", "108a_widen_auth_identity_migration_report_type.sql")
+	migration108aSQL, err := os.ReadFile(migration108aPath)
+REDACTED
+
+	migration109Path := filepath.Join("..", "..", "migrations", "109_auth_identity_compat_backfill.sql")
+	migration109SQL, err := os.ReadFile(migration109Path)
+REDACTED
+
+	migration116Path := filepath.Join("..", "..", "migrations", "116_auth_identity_legacy_external_safety_reports.sql")
+	migration116SQL, err := os.ReadFile(migration116Path)
+REDACTED
+
+	prepareLegacyExternalIdentitiesTable(t, tx, ctx)
+	truncateAuthIdentityLegacyFixtureTables(t, tx, ctx)
+
+	_, err = tx.ExecContext(ctx, `
+ALTER TABLE auth_identity_migration_reports
+ALTER COLUMN report_type TYPE VARCHAR(40);
+`)
+REDACTED
+
+	var oidcSyntheticUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('oidc-before-121@oidc-connect.invalid', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&oidcSyntheticUserID))
+
+	var linuxdoLegacyUserID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO users (email, password_hash, role, status, balance, concurrency)
+VALUES ('legacy-linuxdo-before-121@example.com', 'hash', 'user', 'active', 0, 1)
+RETURNING id`).Scan(&linuxdoLegacyUserID))
+
+	var invalidMetadataLegacyID int64
+	require.NoError(t, tx.QueryRowContext(ctx, `
+INSERT INTO user_external_identities (
+	user_id,
+	provider,
+	provider_user_id,
+	provider_union_id,
+	provider_username,
+	display_name,
+	metadata
+) VALUES ($1, 'linuxdo', 'linuxdo-before-121', NULL, 'legacy-linuxdo-before-121', 'Legacy LinuxDo Before 121', '{invalid')
+RETURNING id
+`, linuxdoLegacyUserID).Scan(&invalidMetadataLegacyID))
+
+	_, err = tx.ExecContext(ctx, string(migration108aSQL))
+REDACTED
+
+	_, err = tx.ExecContext(ctx, string(migration109SQL))
+REDACTED
+
+	_, err = tx.ExecContext(ctx, string(migration116SQL))
+REDACTED
+
+	var reportTypeWidth int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT character_maximum_length
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'auth_identity_migration_reports'
+  AND column_name = 'report_type'
+`).Scan(&reportTypeWidth))
+	require.Equal(t, 80, reportTypeWidth)
+
+	var oidcSyntheticRecoveryReportCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identity_migration_reports
+WHERE report_type = 'oidc_synthetic_email_requires_manual_recovery'
+  AND report_key = $1
+`, strconv.FormatInt(oidcSyntheticUserID, 10)).Scan(&oidcSyntheticRecoveryReportCount))
+	require.Equal(t, 1, oidcSyntheticRecoveryReportCount)
+
+	var invalidMetadataReportCount int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_identity_migration_reports
+WHERE report_type = 'legacy_external_identity_invalid_metadata_json'
+  AND report_key = $1
+`, "legacy_external_identity:"+strconv.FormatInt(invalidMetadataLegacyID, 10)).Scan(&invalidMetadataReportCount))
+	require.Equal(t, 1, invalidMetadataReportCount)
+REDACTED
+
+func prepareLegacyExternalIdentitiesTable(t *testing.T, tx *sql.Tx, ctx context.Context) {
+REDACTED
+
+	_, err := tx.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS user_external_identities (
+	id BIGSERIAL PRIMARY KEY,
+	user_id BIGINT NOT NULL,
+	provider TEXT NOT NULL,
+	provider_user_id TEXT NOT NULL,
+	provider_union_id TEXT NULL,
+	provider_username TEXT NOT NULL DEFAULT '',
+	display_name TEXT NOT NULL DEFAULT '',
+	profile_url TEXT NOT NULL DEFAULT '',
+	avatar_url TEXT NOT NULL DEFAULT '',
+	metadata TEXT NOT NULL DEFAULT '{REDACTED',
+	created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+`)
+REDACTED
+REDACTED
+
+func truncateAuthIdentityLegacyFixtureTables(t *testing.T, tx *sql.Tx, ctx context.Context) {
+REDACTED
+
+	_, err := tx.ExecContext(ctx, `
+TRUNCATE TABLE
+	auth_identity_channels,
+	identity_adoption_decisions,
+	pending_auth_sessions,
+	auth_identities,
+	auth_identity_migration_reports,
+	user_provider_default_grants,
+	user_avatars,
+	user_external_identities,
+	users
+RESTART IDENTITY CASCADE;
+`)
+REDACTED
 REDACTED

@@ -304,8 +304,8 @@ type UpdateSettingsRequest struct {
 	OIDCConnectRedirectURL          string `json:"oidc_connect_redirect_url"`
 	OIDCConnectFrontendRedirectURL  string `json:"oidc_connect_frontend_redirect_url"`
 	OIDCConnectTokenAuthMethod      string `json:"oidc_connect_token_auth_method"`
-	OIDCConnectUsePKCE              bool   `json:"oidc_connect_use_pkce"`
-	OIDCConnectValidateIDToken      bool   `json:"oidc_connect_validate_id_token"`
+	OIDCConnectUsePKCE              *bool  `json:"oidc_connect_use_pkce"`
+	OIDCConnectValidateIDToken      *bool  `json:"oidc_connect_validate_id_token"`
 	OIDCConnectAllowedSigningAlgs   string `json:"oidc_connect_allowed_signing_algs"`
 	OIDCConnectClockSkewSeconds     int    `json:"oidc_connect_clock_skew_seconds"`
 	OIDCConnectRequireEmailVerified bool   `json:"oidc_connect_require_email_verified"`
@@ -565,6 +565,15 @@ REDACTED
 		req.WeChatConnectScopes = strings.TrimSpace(req.WeChatConnectScopes)
 		req.WeChatConnectRedirectURL = strings.TrimSpace(req.WeChatConnectRedirectURL)
 		req.WeChatConnectFrontendRedirectURL = strings.TrimSpace(req.WeChatConnectFrontendRedirectURL)
+		req.WeChatConnectAppID = strings.TrimSpace(firstNonEmpty(req.WeChatConnectAppID, previousSettings.WeChatConnectAppID))
+		req.WeChatConnectRedirectURL = strings.TrimSpace(firstNonEmpty(req.WeChatConnectRedirectURL, previousSettings.WeChatConnectRedirectURL))
+		req.WeChatConnectFrontendRedirectURL = strings.TrimSpace(firstNonEmpty(req.WeChatConnectFrontendRedirectURL, previousSettings.WeChatConnectFrontendRedirectURL))
+		if req.WeChatConnectMode == "" {
+			req.WeChatConnectMode = strings.ToLower(strings.TrimSpace(previousSettings.WeChatConnectMode))
+	REDACTED
+		if req.WeChatConnectScopes == "" {
+			req.WeChatConnectScopes = strings.TrimSpace(previousSettings.WeChatConnectScopes)
+	REDACTED
 
 		if req.WeChatConnectMPEnabled && req.WeChatConnectMobileEnabled {
 			response.BadRequest(c, "WeChat Official Account and Mobile App cannot be enabled at the same time")
@@ -598,9 +607,9 @@ REDACTED
 		REDACTED
 	REDACTED
 
-		req.WeChatConnectOpenAppID = strings.TrimSpace(firstNonEmpty(req.WeChatConnectOpenAppID, req.WeChatConnectAppID))
-		req.WeChatConnectMPAppID = strings.TrimSpace(firstNonEmpty(req.WeChatConnectMPAppID, req.WeChatConnectAppID))
-		req.WeChatConnectMobileAppID = strings.TrimSpace(firstNonEmpty(req.WeChatConnectMobileAppID, req.WeChatConnectAppID))
+		req.WeChatConnectOpenAppID = strings.TrimSpace(firstNonEmpty(req.WeChatConnectOpenAppID, req.WeChatConnectAppID, previousSettings.WeChatConnectOpenAppID, previousSettings.WeChatConnectAppID))
+		req.WeChatConnectMPAppID = strings.TrimSpace(firstNonEmpty(req.WeChatConnectMPAppID, req.WeChatConnectAppID, previousSettings.WeChatConnectMPAppID, previousSettings.WeChatConnectAppID))
+		req.WeChatConnectMobileAppID = strings.TrimSpace(firstNonEmpty(req.WeChatConnectMobileAppID, req.WeChatConnectAppID, previousSettings.WeChatConnectMobileAppID, previousSettings.WeChatConnectAppID))
 
 		if req.WeChatConnectOpenAppSecret == "" {
 			req.WeChatConnectOpenAppSecret = strings.TrimSpace(firstNonEmpty(previousSettings.WeChatConnectOpenAppSecret, previousSettings.WeChatConnectAppSecret, req.WeChatConnectAppSecret))
@@ -653,24 +662,31 @@ REDACTED
 				req.WeChatConnectScopes = service.DefaultWeChatConnectScopesForMode(req.WeChatConnectMode)
 		REDACTED
 	REDACTED
-		if req.WeChatConnectRedirectURL == "" {
-			response.BadRequest(c, "WeChat Redirect URL is required when enabled")
-			return
-	REDACTED
-		if err := config.ValidateAbsoluteHTTPURL(req.WeChatConnectRedirectURL); err != nil {
-			response.BadRequest(c, "WeChat Redirect URL must be an absolute http(s) URL")
-			return
-	REDACTED
-		if req.WeChatConnectFrontendRedirectURL == "" {
-			req.WeChatConnectFrontendRedirectURL = "/auth/wechat/callback"
-	REDACTED
-		if err := config.ValidateFrontendRedirectURL(req.WeChatConnectFrontendRedirectURL); err != nil {
-			response.BadRequest(c, "WeChat Frontend Redirect URL is invalid")
-			return
+		if req.WeChatConnectOpenEnabled || req.WeChatConnectMPEnabled {
+			if req.WeChatConnectRedirectURL == "" {
+				response.BadRequest(c, "WeChat Redirect URL is required when web oauth is enabled")
+				return
+		REDACTED
+			if err := config.ValidateAbsoluteHTTPURL(req.WeChatConnectRedirectURL); err != nil {
+				response.BadRequest(c, "WeChat Redirect URL must be an absolute http(s) URL")
+				return
+		REDACTED
+			if req.WeChatConnectFrontendRedirectURL == "" {
+				req.WeChatConnectFrontendRedirectURL = "/auth/wechat/callback"
+		REDACTED
+			if err := config.ValidateFrontendRedirectURL(req.WeChatConnectFrontendRedirectURL); err != nil {
+				response.BadRequest(c, "WeChat Frontend Redirect URL is invalid")
+				return
+		REDACTED
 	REDACTED
 REDACTED
 
 	// Generic OIDC 参数验证
+	oidcUsePKCE, oidcValidateIDToken, err := h.settingService.OIDCSecurityWriteDefaults(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+REDACTED
 	if req.OIDCConnectEnabled {
 		req.OIDCConnectProviderName = strings.TrimSpace(req.OIDCConnectProviderName)
 		req.OIDCConnectClientID = strings.TrimSpace(req.OIDCConnectClientID)
@@ -689,10 +705,35 @@ REDACTED
 		req.OIDCConnectUserInfoEmailPath = strings.TrimSpace(req.OIDCConnectUserInfoEmailPath)
 		req.OIDCConnectUserInfoIDPath = strings.TrimSpace(req.OIDCConnectUserInfoIDPath)
 		req.OIDCConnectUserInfoUsernamePath = strings.TrimSpace(req.OIDCConnectUserInfoUsernamePath)
-
-		if req.OIDCConnectProviderName == "" {
-			req.OIDCConnectProviderName = "OIDC"
+		req.OIDCConnectProviderName = strings.TrimSpace(firstNonEmpty(req.OIDCConnectProviderName, previousSettings.OIDCConnectProviderName, "OIDC"))
+		req.OIDCConnectClientID = strings.TrimSpace(firstNonEmpty(req.OIDCConnectClientID, previousSettings.OIDCConnectClientID))
+		req.OIDCConnectIssuerURL = strings.TrimSpace(firstNonEmpty(req.OIDCConnectIssuerURL, previousSettings.OIDCConnectIssuerURL))
+		req.OIDCConnectDiscoveryURL = strings.TrimSpace(firstNonEmpty(req.OIDCConnectDiscoveryURL, previousSettings.OIDCConnectDiscoveryURL))
+		req.OIDCConnectAuthorizeURL = strings.TrimSpace(firstNonEmpty(req.OIDCConnectAuthorizeURL, previousSettings.OIDCConnectAuthorizeURL))
+		req.OIDCConnectTokenURL = strings.TrimSpace(firstNonEmpty(req.OIDCConnectTokenURL, previousSettings.OIDCConnectTokenURL))
+		req.OIDCConnectUserInfoURL = strings.TrimSpace(firstNonEmpty(req.OIDCConnectUserInfoURL, previousSettings.OIDCConnectUserInfoURL))
+		req.OIDCConnectJWKSURL = strings.TrimSpace(firstNonEmpty(req.OIDCConnectJWKSURL, previousSettings.OIDCConnectJWKSURL))
+		req.OIDCConnectScopes = strings.TrimSpace(firstNonEmpty(req.OIDCConnectScopes, previousSettings.OIDCConnectScopes, "openid email profile"))
+		req.OIDCConnectRedirectURL = strings.TrimSpace(firstNonEmpty(req.OIDCConnectRedirectURL, previousSettings.OIDCConnectRedirectURL))
+		req.OIDCConnectFrontendRedirectURL = strings.TrimSpace(firstNonEmpty(req.OIDCConnectFrontendRedirectURL, previousSettings.OIDCConnectFrontendRedirectURL, "/auth/oidc/callback"))
+		req.OIDCConnectTokenAuthMethod = strings.ToLower(strings.TrimSpace(firstNonEmpty(req.OIDCConnectTokenAuthMethod, previousSettings.OIDCConnectTokenAuthMethod, "client_secret_post")))
+		req.OIDCConnectAllowedSigningAlgs = strings.TrimSpace(firstNonEmpty(req.OIDCConnectAllowedSigningAlgs, previousSettings.OIDCConnectAllowedSigningAlgs, "RS256,ES256,PS256"))
+		req.OIDCConnectUserInfoEmailPath = strings.TrimSpace(firstNonEmpty(req.OIDCConnectUserInfoEmailPath, previousSettings.OIDCConnectUserInfoEmailPath))
+		req.OIDCConnectUserInfoIDPath = strings.TrimSpace(firstNonEmpty(req.OIDCConnectUserInfoIDPath, previousSettings.OIDCConnectUserInfoIDPath))
+		req.OIDCConnectUserInfoUsernamePath = strings.TrimSpace(firstNonEmpty(req.OIDCConnectUserInfoUsernamePath, previousSettings.OIDCConnectUserInfoUsernamePath))
+		if req.OIDCConnectUsePKCE != nil {
+			oidcUsePKCE = *req.OIDCConnectUsePKCE
 	REDACTED
+		if req.OIDCConnectValidateIDToken != nil {
+			oidcValidateIDToken = *req.OIDCConnectValidateIDToken
+	REDACTED
+		if req.OIDCConnectClockSkewSeconds == 0 {
+			req.OIDCConnectClockSkewSeconds = previousSettings.OIDCConnectClockSkewSeconds
+			if req.OIDCConnectClockSkewSeconds == 0 {
+				req.OIDCConnectClockSkewSeconds = 120
+		REDACTED
+	REDACTED
+
 		if req.OIDCConnectClientID == "" {
 			response.BadRequest(c, "OIDC Client ID is required when enabled")
 			return
@@ -749,14 +790,6 @@ REDACTED
 			response.BadRequest(c, "OIDC scopes must contain openid")
 			return
 	REDACTED
-		if !req.OIDCConnectUsePKCE {
-			response.BadRequest(c, "OIDC PKCE must be enabled")
-			return
-	REDACTED
-		if !req.OIDCConnectValidateIDToken {
-			response.BadRequest(c, "OIDC ID Token validation must be enabled")
-			return
-	REDACTED
 		switch req.OIDCConnectTokenAuthMethod {
 		case "", "client_secret_post", "client_secret_basic", "none":
 		default:
@@ -767,7 +800,7 @@ REDACTED
 			response.BadRequest(c, "OIDC clock skew seconds must be between 0 and 600")
 			return
 	REDACTED
-		if req.OIDCConnectAllowedSigningAlgs == "" {
+		if oidcValidateIDToken && req.OIDCConnectAllowedSigningAlgs == "" {
 			response.BadRequest(c, "OIDC Allowed Signing Algs is required when validate_id_token=true")
 			return
 	REDACTED
@@ -1048,8 +1081,8 @@ REDACTED
 		OIDCConnectRedirectURL:           req.OIDCConnectRedirectURL,
 		OIDCConnectFrontendRedirectURL:   req.OIDCConnectFrontendRedirectURL,
 		OIDCConnectTokenAuthMethod:       req.OIDCConnectTokenAuthMethod,
-		OIDCConnectUsePKCE:               req.OIDCConnectUsePKCE,
-		OIDCConnectValidateIDToken:       req.OIDCConnectValidateIDToken,
+		OIDCConnectUsePKCE:               oidcUsePKCE,
+		OIDCConnectValidateIDToken:       oidcValidateIDToken,
 		OIDCConnectAllowedSigningAlgs:    req.OIDCConnectAllowedSigningAlgs,
 		OIDCConnectClockSkewSeconds:      req.OIDCConnectClockSkewSeconds,
 		OIDCConnectRequireEmailVerified:  req.OIDCConnectRequireEmailVerified,
