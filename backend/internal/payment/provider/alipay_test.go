@@ -3,6 +3,7 @@
 package provider
 
 import (
+	"context"
 	"errors"
 	"net/url"
 	"strings"
@@ -136,15 +137,22 @@ REDACTED
 REDACTED
 
 func TestCreateTradeUsesPagePayForDesktop(t *testing.T) {
+	origPreCreate := alipayTradePreCreate
 	origPagePay := alipayTradePagePay
 	origWapPay := alipayTradeWapPay
 	t.Cleanup(func() {
+		alipayTradePreCreate = origPreCreate
 		alipayTradePagePay = origPagePay
 		alipayTradeWapPay = origWapPay
 REDACTED)
 
+	preCreateCalls := 0
 	pagePayCalls := 0
 	wapPayCalls := 0
+	alipayTradePreCreate = func(ctx context.Context, client *alipay.Client, param alipay.TradePreCreate) (*alipay.TradePreCreateRsp, error) {
+		preCreateCalls++
+		return nil, errors.New("merchant does not have FACE_TO_FACE_PAYMENT")
+REDACTED
 	alipayTradePagePay = func(client *alipay.Client, param alipay.TradePagePay) (*url.URL, error) {
 		pagePayCalls++
 		if param.OutTradeNo != "sub2_100" {
@@ -161,13 +169,16 @@ REDACTED
 REDACTED
 
 	provider := &Alipay{REDACTED
-	resp, err := provider.createPagePayTrade(&alipay.Client{REDACTED, payment.CreatePaymentRequest{
+	resp, err := provider.createDesktopTrade(context.Background(), &alipay.Client{REDACTED, payment.CreatePaymentRequest{
 		OrderID: "sub2_100",
 		Amount:  "88.00",
 		Subject: "Balance recharge",
 REDACTED, "https://merchant.example.com/api/v1/payment/webhook/alipay", "https://merchant.example.com/payment/result")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+REDACTED
+	if preCreateCalls != 1 {
+		t.Fatalf("precreate calls = %d, want 1", preCreateCalls)
 REDACTED
 	if pagePayCalls != 1 {
 		t.Fatalf("page pay calls = %d, want 1", pagePayCalls)
@@ -177,6 +188,9 @@ REDACTED
 REDACTED
 	if resp.PayURL == "" {
 		t.Fatal("expected pay_url for desktop page pay")
+REDACTED
+	if resp.QRCode != resp.PayURL {
+		t.Fatalf("qr_code = %q, want same as pay_url %q", resp.QRCode, resp.PayURL)
 REDACTED
 REDACTED
 
@@ -213,6 +227,54 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestCreateTradeUsesPrecreateForDesktopWhenAvailable(t *testing.T) {
+	origPreCreate := alipayTradePreCreate
+	origPagePay := alipayTradePagePay
+	t.Cleanup(func() {
+		alipayTradePreCreate = origPreCreate
+		alipayTradePagePay = origPagePay
+REDACTED)
+
+	preCreateCalls := 0
+	pagePayCalls := 0
+	alipayTradePreCreate = func(ctx context.Context, client *alipay.Client, param alipay.TradePreCreate) (*alipay.TradePreCreateRsp, error) {
+		preCreateCalls++
+		if param.ProductCode != alipayProductCodePreCreate {
+			t.Fatalf("product_code = %q, want %q", param.ProductCode, alipayProductCodePreCreate)
+	REDACTED
+		return &alipay.TradePreCreateRsp{
+			Error:  alipay.Error{Code: alipay.CodeSuccessREDACTED,
+			QRCode: "https://qr.alipay.example.com/precreate-token",
+	REDACTED, nil
+REDACTED
+	alipayTradePagePay = func(client *alipay.Client, param alipay.TradePagePay) (*url.URL, error) {
+		pagePayCalls++
+		return url.Parse("https://openapi.alipay.com/gateway.do?page-pay")
+REDACTED
+
+	provider := &Alipay{REDACTED
+	resp, err := provider.createDesktopTrade(context.Background(), &alipay.Client{REDACTED, payment.CreatePaymentRequest{
+		OrderID: "sub2_102",
+		Amount:  "66.00",
+		Subject: "Balance recharge",
+REDACTED, "https://merchant.example.com/api/v1/payment/webhook/alipay", "https://merchant.example.com/payment/result")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+REDACTED
+	if preCreateCalls != 1 {
+		t.Fatalf("precreate calls = %d, want 1", preCreateCalls)
+REDACTED
+	if pagePayCalls != 0 {
+		t.Fatalf("page pay calls = %d, want 0", pagePayCalls)
+REDACTED
+	if resp.QRCode != "https://qr.alipay.example.com/precreate-token" {
+		t.Fatalf("qr_code = %q", resp.QRCode)
+REDACTED
+	if resp.PayURL != "" {
+		t.Fatalf("pay_url = %q, want empty for precreate", resp.PayURL)
+REDACTED
+REDACTED
+
 func TestAlipayMerchantIdentityMetadata(t *testing.T) {
 	t.Parallel()
 
@@ -225,5 +287,21 @@ REDACTED
 	metadata := provider.MerchantIdentityMetadata()
 	if metadata["app_id"] != "2021001234567890" {
 		t.Fatalf("app_id = %q, want %q", metadata["app_id"], "2021001234567890")
+REDACTED
+REDACTED
+
+func TestParseAlipayAmount(t *testing.T) {
+	t.Parallel()
+
+	amount, err := parseAlipayAmount("", "88.00", "77.00")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+REDACTED
+	if amount != 88 {
+		t.Fatalf("amount = %v, want 88", amount)
+REDACTED
+
+	if _, err := parseAlipayAmount("", "not-a-number"); err == nil {
+		t.Fatal("expected error when no valid amount field exists")
 REDACTED
 REDACTED
