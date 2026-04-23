@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -15,6 +16,14 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
+
+// ErrOrderNotFound is returned by HandlePaymentNotification when the webhook
+// references an out_trade_no that does not exist in our DB. Callers (webhook
+// handlers) should treat this as a terminal, non-retryable condition and still
+// respond with a 2xx success to the provider — otherwise the provider will keep
+// retrying forever (e.g. when a foreign environment's webhook endpoint is
+// misconfigured to point at us, or when our orders table has been wiped).
+var ErrOrderNotFound = errors.New("payment order not found")
 
 // --- Payment Notification & Fulfillment ---
 
@@ -30,7 +39,10 @@ func (s *PaymentService) HandlePaymentNotification(ctx context.Context, n *payme
 		if oid, ok := parseLegacyPaymentOrderID(n.OrderID, err); ok {
 			return s.confirmPayment(ctx, oid, n.TradeNo, n.Amount, pk, n.Metadata)
 		}
-		return fmt.Errorf("order not found for out_trade_no: %s", n.OrderID)
+		if dbent.IsNotFound(err) {
+			return fmt.Errorf("%w: out_trade_no=%s", ErrOrderNotFound, n.OrderID)
+		}
+		return fmt.Errorf("lookup order failed for out_trade_no %s: %w", n.OrderID, err)
 	}
 	return s.confirmPayment(ctx, order.ID, n.TradeNo, n.Amount, pk, n.Metadata)
 }

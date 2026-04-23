@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -114,6 +115,20 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 	}
 
 	if err := h.paymentService.HandlePaymentNotification(c.Request.Context(), notification, resolvedProviderKey); err != nil {
+		// Unknown order: ack with 2xx so the provider stops retrying. This
+		// guards against foreign environments whose webhook endpoints are
+		// (mis)configured to point at us — without a 2xx, the provider will
+		// retry for days and spam our error logs. We still emit a WARN so the
+		// event is discoverable in logs.
+		if errors.Is(err, service.ErrOrderNotFound) {
+			slog.Warn("[Payment Webhook] unknown order, acking to stop retries",
+				"provider", resolvedProviderKey,
+				"outTradeNo", notification.OrderID,
+				"tradeNo", notification.TradeNo,
+			)
+			writeSuccessResponse(c, resolvedProviderKey)
+			return
+		}
 		slog.Error("[Payment Webhook] handle notification failed", "provider", resolvedProviderKey, "error", err)
 		c.String(http.StatusInternalServerError, "handle failed")
 		return
