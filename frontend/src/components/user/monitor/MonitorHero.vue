@@ -60,14 +60,11 @@ import { computed REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import AutoRefreshButton from '@/components/common/AutoRefreshButton.vue'
-import { useChannelMonitorFormat REDACTED from '@/composables/useChannelMonitorFormat'
-
 export type MonitorWindow = '7d' | '15d' | '30d'
 export type OverallStatus = 'operational' | 'degraded'
 
 const props = defineProps<{
   overallStatus: OverallStatus
-  updatedAt: string | null
   intervalSeconds: number
   window: MonitorWindow
   loading: boolean
@@ -87,7 +84,6 @@ const emit = defineEmits<{
 REDACTED>()
 
 const { t REDACTED = useI18n()
-const { formatRelativeTime REDACTED = useChannelMonitorFormat()
 
 const windowOptions = computed<{ value: MonitorWindow; label: string REDACTED[]>(() => [
   { value: '7d', label: t('channelStatus.windowTab.7d') REDACTED,
@@ -117,8 +113,4 @@ const overallDotClass = computed(() => {
   REDACTED
 REDACTED)
 
-const updatedLabel = computed(() => {
-  if (!props.updatedAt) return t('monitorCommon.updatedAt', { time: '--' REDACTED)
-  return t('monitorCommon.updatedAt', { time: formatRelativeTime(props.updatedAt) REDACTED)
-REDACTED)
 </script>
