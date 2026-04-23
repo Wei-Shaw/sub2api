@@ -51,10 +51,6 @@
         @update:enabled="autoRefresh.setEnabled"
         @update:interval="autoRefresh.setInterval"
       />
-
-      <div class="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
-        {{ updatedLabel }}
-      </div>
     </div>
   </section>
 </template>
