@@ -821,7 +821,7 @@ REDACTED
 
 	var (
 		usage        OpenAIUsage
-		imageCount   = parsed.N
+		imageCount   int
 		firstTokenMs *int
 	)
 	if parsed.Stream {
