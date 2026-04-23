@@ -6,6 +6,7 @@
       :interval-seconds="DEFAULT_INTERVAL_SECONDS"
       :window="currentWindow"
       :loading="loading"
+      :auto-refresh="autoRefresh"
       @update:window="handleWindowChange"
       @refresh="manualReload"
     />
@@ -47,6 +48,7 @@ import MonitorHero, {
 import MonitorCardGrid from '@/components/user/monitor/MonitorCardGrid.vue'
 import MonitorDetailDialog from '@/components/user/MonitorDetailDialog.vue'
 import { DEFAULT_INTERVAL_SECONDS, STATUS_OPERATIONAL } from '@/constants/channelMonitor'
+import { useAutoRefresh } from '@/composables/useAutoRefresh'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -57,25 +59,32 @@ const loading = ref(false)
 const updatedAt = ref<string | null>(null)
 const currentWindow = ref<MonitorWindow>('7d')
 const detailCache = reactive<Record<number, UserMonitorDetail>>({})
-const countdown = ref(DEFAULT_INTERVAL_SECONDS)
-
 const showDetail = ref(false)
 const detailTarget = ref<UserMonitorView | null>(null)
 
-let countdownTimer: number | undefined
 let abortController: AbortController | null = null
+
+const autoRefresh = useAutoRefresh({
+  storageKey: 'channel-status-auto-refresh',
+  intervals: [30, 60, 120] as const,
+  defaultInterval: DEFAULT_INTERVAL_SECONDS,
+  onRefresh: () => reload(true),
+  shouldPause: () => document.hidden || loading.value,
+})
+const countdown = autoRefresh.countdown
 
 // ── Computed ──
 const overallStatus = computed<OverallStatus>(() => {
-  if (items.value.length === 0) return 'operational'
-  let hasFailure = false
-  let hasDegraded = false
+  const total = items.value.length
+  if (total === 0) return 'operational'
+  let failCount = 0
+  let degradedCount = 0
   for (const it of items.value) {
-    if (it.primary_status === 'failed' || it.primary_status === 'error') hasFailure = true
-    else if (it.primary_status !== STATUS_OPERATIONAL) hasDegraded = true
+    if (it.primary_status === 'failed' || it.primary_status === 'error') failCount++
+    else if (it.primary_status !== STATUS_OPERATIONAL) degradedCount++
   }
-  if (hasFailure) return 'unavailable'
-  if (hasDegraded) return 'degraded'
+  if (failCount > total / 2) return 'unavailable'
+  if (failCount > 0 || degradedCount > 0) return 'degraded'
   return 'operational'
 })
 
@@ -146,48 +155,26 @@ function closeDetail() {
   detailTarget.value = null
 }
 
-// ── Polling ──
-function tick() {
-  if (countdown.value <= 1) {
-    void reload(true)
-    return
-  }
-  countdown.value -= 1
-}
-
 watch(items, () => {
-  // Lazily load detail entries when window requires it and the list refreshes.
   void ensureDetailsForWindow()
 })
-
-function startTimer() {
-  if (countdownTimer !== undefined) return
-  countdownTimer = setInterval(tick, 1000) as unknown as number
-}
-
-function stopTimer() {
-  if (countdownTimer !== undefined) {
-    clearInterval(countdownTimer)
-    countdownTimer = undefined
-  }
-}
 
 watch(
   () => appStore.cachedPublicSettings?.channel_monitor_enabled,
   (enabled) => {
-    if (enabled === false) stopTimer()
-    else startTimer()
+    if (enabled === false) autoRefresh.stop()
+    else if (autoRefresh.enabled.value) autoRefresh.start()
   },
 )
 
-// ── Lifecycle ──
 onMounted(() => {
   void reload(false)
-  if (appStore.cachedPublicSettings?.channel_monitor_enabled !== false) startTimer()
+  if (appStore.cachedPublicSettings?.channel_monitor_enabled !== false) {
+    autoRefresh.setEnabled(true)
+  }
 })
 
 onBeforeUnmount(() => {
-  stopTimer()
   if (abortController) abortController.abort()
 })
 </script>

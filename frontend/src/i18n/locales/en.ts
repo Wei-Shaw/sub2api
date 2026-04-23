@@ -308,6 +308,12 @@ export default {
     saving: 'Saving...',
     selectedCount: '({count} selected)',
     refresh: 'Refresh',
+    autoRefresh: {
+      title: 'Auto Refresh',
+      enable: 'Enable auto refresh',
+      countdown: 'Auto refresh: {seconds}s',
+      seconds: '{n} seconds',
+    },
     view: 'View',
     settings: 'Settings',
     chooseFile: 'Choose File',

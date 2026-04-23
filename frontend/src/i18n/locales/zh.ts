@@ -308,6 +308,12 @@ export default {
     saving: '保存中...',
     selectedCount: '（已选 {count} 个）',
     refresh: '刷新',
+    autoRefresh: {
+      title: '自动刷新',
+      enable: '启用自动刷新',
+      countdown: '自动刷新: {seconds}s',
+      seconds: '{n} 秒',
+    },
     view: '查看',
     settings: '设置',
     chooseFile: '选择文件',
