@@ -75,16 +75,11 @@ const countdown = autoRefresh.countdown
 
 // ── Computed ──
 const overallStatus = computed<OverallStatus>(() => {
-  const total = items.value.length
-  if (total === 0) return 'operational'
-  let failCount = 0
-  let degradedCount = 0
+  if (items.value.length === 0) return 'operational'
   for (const it of items.value) {
-    if (it.primary_status === 'failed' || it.primary_status === 'error') failCount++
-    else if (it.primary_status !== STATUS_OPERATIONAL) degradedCount++
+    if (it.primary_status === 'failed' || it.primary_status === 'error') return 'degraded'
+    if (it.primary_status !== STATUS_OPERATIONAL) return 'degraded'
   }
-  if (failCount > total / 2) return 'unavailable'
-  if (failCount > 0 || degradedCount > 0) return 'degraded'
   return 'operational'
 })
 
