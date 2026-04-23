@@ -243,6 +243,159 @@ REDACTED
 	require.False(t, hasCompression)
 REDACTED
 
+func TestEnsureOpenAIResponsesImageGenerationTool_NoTools(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.4",
+		"input": "draw a cat",
+REDACTED
+
+	modified := ensureOpenAIResponsesImageGenerationTool(reqBody)
+	require.True(t, modified)
+
+	tools, ok := reqBody["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, tools, 1)
+	tool, ok := tools[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "image_generation", tool["type"])
+	require.Equal(t, "png", tool["output_format"])
+REDACTED
+
+func TestEnsureOpenAIResponsesImageGenerationTool_AppendsToExistingTools(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.4",
+		"tools": []any{
+			map[string]any{"type": "web_search"REDACTED,
+	REDACTED,
+REDACTED
+
+	modified := ensureOpenAIResponsesImageGenerationTool(reqBody)
+	require.True(t, modified)
+
+	tools, ok := reqBody["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, tools, 2)
+	first, ok := tools[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "web_search", first["type"])
+	second, ok := tools[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "image_generation", second["type"])
+	require.Equal(t, "png", second["output_format"])
+REDACTED
+
+func TestEnsureOpenAIResponsesImageGenerationTool_PreservesExistingImageTool(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.4",
+		"tools": []any{
+			map[string]any{"type": "image_generation", "output_format": "webp"REDACTED,
+			map[string]any{"type": "web_search"REDACTED,
+	REDACTED,
+REDACTED
+
+	modified := ensureOpenAIResponsesImageGenerationTool(reqBody)
+	require.False(t, modified)
+
+	tools, ok := reqBody["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, tools, 2)
+	tool, ok := tools[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "webp", tool["output_format"])
+REDACTED
+
+func TestApplyCodexImageGenerationBridgeInstructions_AppendsBridgeOnce(t *testing.T) {
+	reqBody := map[string]any{
+		"instructions": "existing instructions",
+		"tools": []any{
+			map[string]any{"type": "image_generation", "output_format": "png"REDACTED,
+	REDACTED,
+REDACTED
+
+	modified := applyCodexImageGenerationBridgeInstructions(reqBody)
+	require.True(t, modified)
+
+	instructions, ok := reqBody["instructions"].(string)
+	require.True(t, ok)
+	require.Contains(t, instructions, "existing instructions")
+	require.Contains(t, instructions, codexImageGenerationBridgeMarker)
+	require.Contains(t, instructions, "Responses native `image_generation` tool")
+
+	modified = applyCodexImageGenerationBridgeInstructions(reqBody)
+	require.False(t, modified)
+REDACTED
+
+func TestApplyCodexImageGenerationBridgeInstructions_SkipsWithoutImageTool(t *testing.T) {
+	reqBody := map[string]any{
+		"instructions": "existing instructions",
+		"tools": []any{
+			map[string]any{"type": "web_search"REDACTED,
+	REDACTED,
+REDACTED
+
+	modified := applyCodexImageGenerationBridgeInstructions(reqBody)
+	require.False(t, modified)
+	require.Equal(t, "existing instructions", reqBody["instructions"])
+REDACTED
+
+func TestNormalizeOpenAIResponsesImageOnlyModel_BuildsImageToolRequest(t *testing.T) {
+	reqBody := map[string]any{
+		"model":         "gpt-image-2",
+		"prompt":        "draw a cat",
+		"size":          "1024x1024",
+		"output_format": "png",
+REDACTED
+
+	modified := normalizeOpenAIResponsesImageOnlyModel(reqBody)
+	require.True(t, modified)
+	require.Equal(t, openAIImagesResponsesMainModel, reqBody["model"])
+	require.Equal(t, "draw a cat", reqBody["input"])
+	_, hasPrompt := reqBody["prompt"]
+	require.False(t, hasPrompt)
+	_, hasTopLevelSize := reqBody["size"]
+	require.False(t, hasTopLevelSize)
+
+	tools, ok := reqBody["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, tools, 1)
+	tool, ok := tools[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "image_generation", tool["type"])
+	require.Equal(t, "gpt-image-2", tool["model"])
+	require.Equal(t, "1024x1024", tool["size"])
+	require.Equal(t, "png", tool["output_format"])
+
+	choice, ok := reqBody["tool_choice"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "image_generation", choice["type"])
+REDACTED
+
+func TestNormalizeOpenAIResponsesImageOnlyModel_PreservesExistingImageTool(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-image-2",
+		"input": "draw a cat",
+		"tools": []any{
+			map[string]any{
+				"type":  "image_generation",
+				"model": "gpt-image-1.5",
+		REDACTED,
+	REDACTED,
+		"tool_choice": "auto",
+REDACTED
+
+	modified := normalizeOpenAIResponsesImageOnlyModel(reqBody)
+	require.True(t, modified)
+	require.Equal(t, openAIImagesResponsesMainModel, reqBody["model"])
+	require.Equal(t, "auto", reqBody["tool_choice"])
+
+	tools, ok := reqBody["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, tools, 1)
+	tool, ok := tools[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "gpt-image-1.5", tool["model"])
+REDACTED
+
 func TestValidateOpenAIResponsesImageModel_RejectsImageOnlyModel(t *testing.T) {
 	err := validateOpenAIResponsesImageModel(map[string]any{
 		"tools": []any{
