@@ -196,6 +196,12 @@ REDACTED
 
 	grantPlan := s.resolveSignupGrantPlan(ctx, "email")
 
+	// 新用户默认 RPM（0 = 不限制）。注册时写入，后续作为用户级兜底。
+	var defaultRPMLimit int
+	if s.settingService != nil {
+		defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(ctx)
+REDACTED
+
 	// 创建用户
 	user := &User{
 		Email:        email,
@@ -203,6 +209,7 @@ REDACTED
 		Role:         RoleUser,
 		Balance:      grantPlan.Balance,
 		Concurrency:  grantPlan.Concurrency,
+		RPMLimit:     defaultRPMLimit,
 		Status:       StatusActive,
 REDACTED
 
@@ -481,6 +488,10 @@ REDACTED
 
 			signupSource := inferLegacySignupSource(email)
 			grantPlan := s.resolveSignupGrantPlan(ctx, signupSource)
+			var defaultRPMLimit int
+			if s.settingService != nil {
+				defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(ctx)
+		REDACTED
 
 			newUser := &User{
 				Email:        email,
@@ -489,6 +500,7 @@ REDACTED
 				Role:         RoleUser,
 				Balance:      grantPlan.Balance,
 				Concurrency:  grantPlan.Concurrency,
+				RPMLimit:     defaultRPMLimit,
 				Status:       StatusActive,
 				SignupSource: signupSource,
 		REDACTED
@@ -592,6 +604,10 @@ REDACTED
 
 			signupSource := inferLegacySignupSource(email)
 			grantPlan := s.resolveSignupGrantPlan(ctx, signupSource)
+			var defaultRPMLimit int
+			if s.settingService != nil {
+				defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(ctx)
+		REDACTED
 
 			newUser := &User{
 				Email:        email,
@@ -600,6 +616,7 @@ REDACTED
 				Role:         RoleUser,
 				Balance:      grantPlan.Balance,
 				Concurrency:  grantPlan.Concurrency,
+				RPMLimit:     defaultRPMLimit,
 				Status:       StatusActive,
 				SignupSource: signupSource,
 		REDACTED

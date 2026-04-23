@@ -491,6 +491,7 @@ REDACTED
 		{Name: "require_privacy_set", Type: field.TypeBool, Default: falseREDACTED,
 		{Name: "default_mapped_model", Type: field.TypeString, Size: 100, Default: ""REDACTED,
 		{Name: "messages_dispatch_model_config", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"REDACTEDREDACTED,
+		{Name: "rpm_limit", Type: field.TypeInt, Default: 0REDACTED,
 REDACTED
 	// GroupsTable holds the schema information for the "groups" table.
 	GroupsTable = &schema.Table{
@@ -1276,7 +1277,7 @@ REDACTED
 		{Name: "totp_secret_encrypted", Type: field.TypeString, Nullable: true, SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
 		{Name: "totp_enabled", Type: field.TypeBool, Default: falseREDACTED,
 		{Name: "totp_enabled_at", Type: field.TypeTime, Nullable: trueREDACTED,
-		{Name: "signup_source", Type: field.TypeString, Size: 20, Default: "email"REDACTED,
+		{Name: "signup_source", Type: field.TypeString, Default: "email"REDACTED,
 		{Name: "last_login_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "last_active_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"REDACTEDREDACTED,
 		{Name: "balance_notify_enabled", Type: field.TypeBool, Default: trueREDACTED,
@@ -1284,6 +1285,7 @@ REDACTED
 		{Name: "balance_notify_threshold", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
 		{Name: "balance_notify_extra_emails", Type: field.TypeString, Default: "[]", SchemaType: map[string]string{"postgres": "text"REDACTEDREDACTED,
 		{Name: "total_recharged", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
+		{Name: "rpm_limit", Type: field.TypeInt, Default: 0REDACTED,
 REDACTED
 	// UsersTable holds the schema information for the "users" table.
 	UsersTable = &schema.Table{
