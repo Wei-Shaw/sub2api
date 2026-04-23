@@ -2774,6 +2774,13 @@ export default {
             'Option 1: Copy the complete URL\n(http://localhost:xxx/auth/callback?code=...)\nOption 2: Copy only the code parameter value',
           authCodeHint:
             'You can copy the entire URL or just the code parameter value, the system will auto-detect',
+          failedToGenerateUrl: 'Failed to generate OpenAI auth URL',
+          failedToExchangeCode: 'Failed to exchange OpenAI auth code',
+          failedToValidateRT: 'Failed to validate refresh token',
+          errors: {
+            OPENAI_OAUTH_PROXY_REQUIRED:
+              'No proxy is configured and this server could not reach OpenAI directly, so the OpenAI OAuth request failed. Select a proxy that can access OpenAI and retry; if the authorization code has expired, regenerate the authorization URL.'
+          REDACTED,
           // Refresh Token auth
           refreshTokenAuth: 'Manual RT Input',
           refreshTokenDesc: 'Enter your existing OpenAI Refresh Token(s). Supports batch input (one per line). The system will automatically validate and create accounts.',

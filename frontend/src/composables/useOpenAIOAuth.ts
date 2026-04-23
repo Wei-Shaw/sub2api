@@ -1,6 +1,8 @@
 import { ref REDACTED from 'vue'
+import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores/app'
 import { adminAPI REDACTED from '@/api/admin'
+import { extractApiErrorMessage, extractI18nErrorMessage REDACTED from '@/utils/apiError'
 
 export interface OpenAITokenInfo {
   access_token?: string
@@ -26,6 +28,7 @@ export type OpenAIOAuthPlatform = 'openai'
 
 export function useOpenAIOAuth() {
   const appStore = useAppStore()
+  const { t REDACTED = useI18n()
   const endpointPrefix = '/admin/openai'
 
   // State
@@ -78,7 +81,7 @@ export function useOpenAIOAuth() {
       REDACTED
       return true
     REDACTED catch (err: any) {
-      error.value = err.response?.data?.detail || 'Failed to generate OpenAI auth URL'
+      error.value = extractApiErrorMessage(err, t('admin.accounts.oauth.openai.failedToGenerateUrl'))
       appStore.showError(error.value)
       return false
     REDACTED finally {
@@ -114,7 +117,12 @@ export function useOpenAIOAuth() {
       const tokenInfo = await adminAPI.accounts.exchangeCode(`${endpointPrefixREDACTED/exchange-code`, payload)
       return tokenInfo as OpenAITokenInfo
     REDACTED catch (err: any) {
-      error.value = err.response?.data?.detail || 'Failed to exchange OpenAI auth code'
+      error.value = extractI18nErrorMessage(
+        err,
+        t,
+        'admin.accounts.oauth.openai.errors',
+        t('admin.accounts.oauth.openai.failedToExchangeCode')
+      )
       appStore.showError(error.value)
       return null
     REDACTED finally {
@@ -147,7 +155,12 @@ export function useOpenAIOAuth() {
       )
       return tokenInfo as OpenAITokenInfo
     REDACTED catch (err: any) {
-      error.value = err.response?.data?.detail || err.message || 'Failed to validate refresh token'
+      error.value = extractI18nErrorMessage(
+        err,
+        t,
+        'admin.accounts.oauth.openai.errors',
+        t('admin.accounts.oauth.openai.failedToValidateRT')
+      )
       appStore.showError(error.value)
       return null
     REDACTED finally {

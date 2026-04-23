@@ -2911,6 +2911,13 @@ export default {
           authCodePlaceholder:
             '方式1：复制完整的链接\n(http://localhost:xxx/auth/callback?code=...)\n方式2：仅复制 code 参数的值',
           authCodeHint: '您可以直接复制整个链接或仅复制 code 参数值，系统会自动识别',
+          failedToGenerateUrl: '生成 OpenAI 授权链接失败',
+          failedToExchangeCode: 'OpenAI 授权码兑换失败',
+          failedToValidateRT: '验证 Refresh Token 失败',
+          errors: {
+            OPENAI_OAUTH_PROXY_REQUIRED:
+              '未设置代理，当前服务器无法直连 OpenAI，导致 OpenAI OAuth 请求失败。请先选择可访问 OpenAI 的代理后重试；如果授权码已失效，请重新生成授权链接。'
+          REDACTED,
           // Refresh Token auth
           refreshTokenAuth: '手动输入 RT',
           refreshTokenDesc: '输入您已有的 OpenAI Refresh Token，支持批量输入（每行一个），系统将自动验证并创建账号。',
