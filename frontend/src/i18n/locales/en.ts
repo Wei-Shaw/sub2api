@@ -308,6 +308,12 @@ export default {
     saving: 'Saving...',
     selectedCount: '({countREDACTED selected)',
     refresh: 'Refresh',
+    autoRefresh: {
+      title: 'Auto Refresh',
+      enable: 'Enable auto refresh',
+      countdown: 'Auto refresh: {secondsREDACTEDs',
+      seconds: '{nREDACTED seconds',
+    REDACTED,
     view: 'View',
     settings: 'Settings',
     chooseFile: 'Choose File',
