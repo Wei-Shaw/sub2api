@@ -25,6 +25,7 @@ type openAIResponsesImageResult struct {
 	Size          string
 	Background    string
 	Quality       string
+	Model         string
 REDACTED
 
 func openAIResponsesImageResultKey(itemID string, result openAIResponsesImageResult) string {
@@ -47,6 +48,126 @@ REDACTED
 REDACTED
 	*results = append(*results, result)
 	return true
+REDACTED
+
+func mergeOpenAIResponsesImageMeta(dst *openAIResponsesImageResult, src openAIResponsesImageResult) {
+	if dst == nil {
+		return
+REDACTED
+	if trimmed := strings.TrimSpace(src.OutputFormat); trimmed != "" {
+		dst.OutputFormat = trimmed
+REDACTED
+	if trimmed := strings.TrimSpace(src.Size); trimmed != "" {
+		dst.Size = trimmed
+REDACTED
+	if trimmed := strings.TrimSpace(src.Background); trimmed != "" {
+		dst.Background = trimmed
+REDACTED
+	if trimmed := strings.TrimSpace(src.Quality); trimmed != "" {
+		dst.Quality = trimmed
+REDACTED
+	if trimmed := strings.TrimSpace(src.Model); trimmed != "" {
+		dst.Model = trimmed
+REDACTED
+REDACTED
+
+func extractOpenAIResponsesImageMetaFromLifecycleEvent(payload []byte) (openAIResponsesImageResult, int64, bool) {
+	switch gjson.GetBytes(payload, "type").String() {
+	case "response.created", "response.in_progress", "response.completed":
+	default:
+		return openAIResponsesImageResult{REDACTED, 0, false
+REDACTED
+
+	response := gjson.GetBytes(payload, "response")
+	if !response.Exists() {
+		return openAIResponsesImageResult{REDACTED, 0, false
+REDACTED
+
+	meta := openAIResponsesImageResult{
+		OutputFormat: strings.TrimSpace(response.Get("tools.0.output_format").String()),
+		Size:         strings.TrimSpace(response.Get("tools.0.size").String()),
+		Background:   strings.TrimSpace(response.Get("tools.0.background").String()),
+		Quality:      strings.TrimSpace(response.Get("tools.0.quality").String()),
+		Model:        strings.TrimSpace(response.Get("tools.0.model").String()),
+REDACTED
+	return meta, response.Get("created_at").Int(), true
+REDACTED
+
+func buildOpenAIImagesStreamPartialPayload(
+	eventType string,
+	b64 string,
+	partialImageIndex int64,
+	responseFormat string,
+	createdAt int64,
+	meta openAIResponsesImageResult,
+) []byte {
+	if createdAt <= 0 {
+		createdAt = time.Now().Unix()
+REDACTED
+
+	payload := []byte(`{"type":"","created_at":0,"partial_image_index":0,"b64_json":""REDACTED`)
+	payload, _ = sjson.SetBytes(payload, "type", eventType)
+	payload, _ = sjson.SetBytes(payload, "created_at", createdAt)
+	payload, _ = sjson.SetBytes(payload, "partial_image_index", partialImageIndex)
+	payload, _ = sjson.SetBytes(payload, "b64_json", b64)
+	if strings.EqualFold(strings.TrimSpace(responseFormat), "url") {
+		payload, _ = sjson.SetBytes(payload, "url", "data:"+openAIImageOutputMIMEType(meta.OutputFormat)+";base64,"+b64)
+REDACTED
+	if meta.Background != "" {
+		payload, _ = sjson.SetBytes(payload, "background", meta.Background)
+REDACTED
+	if meta.OutputFormat != "" {
+		payload, _ = sjson.SetBytes(payload, "output_format", meta.OutputFormat)
+REDACTED
+	if meta.Quality != "" {
+		payload, _ = sjson.SetBytes(payload, "quality", meta.Quality)
+REDACTED
+	if meta.Size != "" {
+		payload, _ = sjson.SetBytes(payload, "size", meta.Size)
+REDACTED
+	if meta.Model != "" {
+		payload, _ = sjson.SetBytes(payload, "model", meta.Model)
+REDACTED
+	return payload
+REDACTED
+
+func buildOpenAIImagesStreamCompletedPayload(
+	eventType string,
+	img openAIResponsesImageResult,
+	responseFormat string,
+	createdAt int64,
+	usageRaw []byte,
+) []byte {
+	if createdAt <= 0 {
+		createdAt = time.Now().Unix()
+REDACTED
+
+	payload := []byte(`{"type":"","created_at":0,"b64_json":""REDACTED`)
+	payload, _ = sjson.SetBytes(payload, "type", eventType)
+	payload, _ = sjson.SetBytes(payload, "created_at", createdAt)
+	payload, _ = sjson.SetBytes(payload, "b64_json", img.Result)
+	if strings.EqualFold(strings.TrimSpace(responseFormat), "url") {
+		payload, _ = sjson.SetBytes(payload, "url", "data:"+openAIImageOutputMIMEType(img.OutputFormat)+";base64,"+img.Result)
+REDACTED
+	if img.Background != "" {
+		payload, _ = sjson.SetBytes(payload, "background", img.Background)
+REDACTED
+	if img.OutputFormat != "" {
+		payload, _ = sjson.SetBytes(payload, "output_format", img.OutputFormat)
+REDACTED
+	if img.Quality != "" {
+		payload, _ = sjson.SetBytes(payload, "quality", img.Quality)
+REDACTED
+	if img.Size != "" {
+		payload, _ = sjson.SetBytes(payload, "size", img.Size)
+REDACTED
+	if img.Model != "" {
+		payload, _ = sjson.SetBytes(payload, "model", img.Model)
+REDACTED
+	if len(usageRaw) > 0 && gjson.ValidBytes(usageRaw) {
+		payload, _ = sjson.SetRawBytes(payload, "usage", usageRaw)
+REDACTED
+	return payload
 REDACTED
 
 func openAIImageOutputMIMEType(outputFormat string) string {
@@ -134,15 +255,11 @@ REDACTED{
 		{path: "background", value: parsed.BackgroundREDACTED,
 		{path: "output_format", value: parsed.OutputFormatREDACTED,
 		{path: "moderation", value: parsed.ModerationREDACTED,
-		{path: "input_fidelity", value: parsed.InputFidelityREDACTED,
 		{path: "style", value: parsed.StyleREDACTED,
 REDACTED {
 		if trimmed := strings.TrimSpace(field.value); trimmed != "" {
 			tool, _ = sjson.SetBytes(tool, field.path, trimmed)
 	REDACTED
-REDACTED
-	if parsed.N > 1 {
-		return nil, fmt.Errorf("codex /responses image tool currently supports only n=1")
 REDACTED
 	if parsed.OutputCompression != nil {
 		tool, _ = sjson.SetBytes(tool, "output_compression", *parsed.OutputCompression)
@@ -247,6 +364,7 @@ func collectOpenAIImagesFromResponsesBody(body []byte) ([]openAIResponsesImageRe
 		createdAt       int64
 		usageRaw        []byte
 		foundFinal      bool
+		responseMeta    openAIResponsesImageResult
 	)
 
 	for _, line := range bytes.Split(body, []byte("\n")) {
@@ -259,18 +377,21 @@ func collectOpenAIImagesFromResponsesBody(body []byte) ([]openAIResponsesImageRe
 		if !gjson.ValidBytes(payload) {
 			continue
 	REDACTED
+		if meta, eventCreatedAt, ok := extractOpenAIResponsesImageMetaFromLifecycleEvent(payload); ok {
+			mergeOpenAIResponsesImageMeta(&responseMeta, meta)
+			if eventCreatedAt > 0 {
+				createdAt = eventCreatedAt
+		REDACTED
+	REDACTED
 
 		switch gjson.GetBytes(payload, "type").String() {
-		case "response.created":
-			if createdAt <= 0 {
-				createdAt = gjson.GetBytes(payload, "response.created_at").Int()
-		REDACTED
 		case "response.output_item.done":
 			result, itemID, ok, err := extractOpenAIImageFromResponsesOutputItemDone(payload)
 			if err != nil {
 				return nil, 0, nil, openAIResponsesImageResult{REDACTED, false, err
 		REDACTED
 			if ok {
+				mergeOpenAIResponsesImageMeta(&result, responseMeta)
 				appendOpenAIResponsesImageResultDedup(&fallbackResults, fallbackSeen, itemID, result)
 		REDACTED
 		case "response.completed":
@@ -286,16 +407,21 @@ func collectOpenAIImagesFromResponsesBody(body []byte) ([]openAIResponsesImageRe
 				usageRaw = completedUsageRaw
 		REDACTED
 			if len(results) > 0 {
+				mergeOpenAIResponsesImageMeta(&firstMeta, responseMeta)
 				return results, createdAt, usageRaw, firstMeta, true, nil
 		REDACTED
 			if len(fallbackResults) > 0 {
-				return fallbackResults, createdAt, usageRaw, fallbackResults[0], true, nil
+				firstMeta = fallbackResults[0]
+				mergeOpenAIResponsesImageMeta(&firstMeta, responseMeta)
+				return fallbackResults, createdAt, usageRaw, firstMeta, true, nil
 		REDACTED
 	REDACTED
 REDACTED
 
 	if len(fallbackResults) > 0 {
-		return fallbackResults, createdAt, usageRaw, fallbackResults[0], foundFinal, nil
+		firstMeta := fallbackResults[0]
+		mergeOpenAIResponsesImageMeta(&firstMeta, responseMeta)
+		return fallbackResults, createdAt, usageRaw, firstMeta, foundFinal, nil
 REDACTED
 	return nil, createdAt, usageRaw, openAIResponsesImageResult{REDACTED, foundFinal, nil
 REDACTED
@@ -341,6 +467,9 @@ REDACTED
 	if firstMeta.Size != "" {
 		out, _ = sjson.SetBytes(out, "size", firstMeta.Size)
 REDACTED
+	if firstMeta.Model != "" {
+		out, _ = sjson.SetBytes(out, "model", firstMeta.Model)
+REDACTED
 	if len(usageRaw) > 0 && gjson.ValidBytes(usageRaw) {
 		out, _ = sjson.SetRawBytes(out, "usage", usageRaw)
 REDACTED
@@ -380,6 +509,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 	resp *http.Response,
 	c *gin.Context,
 	responseFormat string,
+	fallbackModel string,
 ) (OpenAIUsage, int, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
@@ -403,6 +533,9 @@ REDACTED
 	if len(results) == 0 {
 		return OpenAIUsage{REDACTED, 0, fmt.Errorf("upstream did not return image output")
 REDACTED
+	if strings.TrimSpace(firstMeta.Model) == "" {
+		firstMeta.Model = strings.TrimSpace(fallbackModel)
+REDACTED
 
 	responseBody, err := buildOpenAIImagesAPIResponse(results, createdAt, usageRaw, firstMeta, responseFormat)
 	if err != nil {
@@ -419,6 +552,7 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthStreamingResponse(
 	startTime time.Time,
 	responseFormat string,
 	streamPrefix string,
+	fallbackModel string,
 ) (OpenAIUsage, int, *int, error) {
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	c.Header("Content-Type", "text/event-stream")
@@ -441,6 +575,10 @@ REDACTED
 	imageCount := 0
 	var firstTokenMs *int
 	emitted := make(map[string]struct{REDACTED)
+	pendingResults := make([]openAIResponsesImageResult, 0, 1)
+	pendingSeen := make(map[string]struct{REDACTED)
+	streamMeta := openAIResponsesImageResult{Model: strings.TrimSpace(fallbackModel)REDACTED
+	var createdAt int64
 
 	for {
 		line, err := reader.ReadBytes('\n')
@@ -455,20 +593,30 @@ REDACTED
 				dataBytes := []byte(data)
 				s.parseSSEUsageBytes(dataBytes, &usage)
 				if gjson.ValidBytes(dataBytes) {
+					if meta, eventCreatedAt, ok := extractOpenAIResponsesImageMetaFromLifecycleEvent(dataBytes); ok {
+						mergeOpenAIResponsesImageMeta(&streamMeta, meta)
+						if eventCreatedAt > 0 {
+							createdAt = eventCreatedAt
+					REDACTED
+				REDACTED
 					switch gjson.GetBytes(dataBytes, "type").String() {
 					case "response.image_generation_call.partial_image":
 						b64 := strings.TrimSpace(gjson.GetBytes(dataBytes, "partial_image_b64").String())
 						if b64 != "" {
 							eventName := streamPrefix + ".partial_image"
-							payload := []byte(`{"type":"","partial_image_index":0REDACTED`)
-							payload, _ = sjson.SetBytes(payload, "type", eventName)
-							payload, _ = sjson.SetBytes(payload, "partial_image_index", gjson.GetBytes(dataBytes, "partial_image_index").Int())
-							if format == "url" {
-								outputFormat := strings.TrimSpace(gjson.GetBytes(dataBytes, "output_format").String())
-								payload, _ = sjson.SetBytes(payload, "url", "data:"+openAIImageOutputMIMEType(outputFormat)+";base64,"+b64)
-						REDACTED else {
-								payload, _ = sjson.SetBytes(payload, "b64_json", b64)
-						REDACTED
+							partialMeta := streamMeta
+							mergeOpenAIResponsesImageMeta(&partialMeta, openAIResponsesImageResult{
+								OutputFormat: strings.TrimSpace(gjson.GetBytes(dataBytes, "output_format").String()),
+								Background:   strings.TrimSpace(gjson.GetBytes(dataBytes, "background").String()),
+						REDACTED)
+							payload := buildOpenAIImagesStreamPartialPayload(
+								eventName,
+								b64,
+								gjson.GetBytes(dataBytes, "partial_image_index").Int(),
+								format,
+								createdAt,
+								partialMeta,
+							)
 							if writeErr := s.writeOpenAIImagesStreamEvent(c, flusher, eventName, payload); writeErr != nil {
 								return OpenAIUsage{REDACTED, imageCount, firstTokenMs, writeErr
 						REDACTED
@@ -482,59 +630,46 @@ REDACTED
 						if !ok {
 							break
 					REDACTED
+						mergeOpenAIResponsesImageMeta(&streamMeta, img)
+						mergeOpenAIResponsesImageMeta(&img, streamMeta)
 						key := openAIResponsesImageResultKey(itemID, img)
 						if _, exists := emitted[key]; exists {
 							break
 					REDACTED
-						eventName := streamPrefix + ".completed"
-						payload := []byte(`{"type":""REDACTED`)
-						payload, _ = sjson.SetBytes(payload, "type", eventName)
-						if format == "url" {
-							payload, _ = sjson.SetBytes(payload, "url", "data:"+openAIImageOutputMIMEType(img.OutputFormat)+";base64,"+img.Result)
-					REDACTED else {
-							payload, _ = sjson.SetBytes(payload, "b64_json", img.Result)
+						if _, exists := pendingSeen[key]; exists {
+							break
 					REDACTED
-						if img.RevisedPrompt != "" {
-							payload, _ = sjson.SetBytes(payload, "revised_prompt", img.RevisedPrompt)
-					REDACTED
-						if writeErr := s.writeOpenAIImagesStreamEvent(c, flusher, eventName, payload); writeErr != nil {
-							return OpenAIUsage{REDACTED, imageCount, firstTokenMs, writeErr
-					REDACTED
-						emitted[key] = struct{REDACTED{REDACTED
-						imageCount = len(emitted)
+						pendingSeen[key] = struct{REDACTED{REDACTED
+						pendingResults = append(pendingResults, img)
 					case "response.completed":
-						results, _, usageRaw, _, extractErr := extractOpenAIImagesFromResponsesCompleted(dataBytes)
+						results, _, usageRaw, firstMeta, extractErr := extractOpenAIImagesFromResponsesCompleted(dataBytes)
 						if extractErr != nil {
 							_ = s.writeOpenAIImagesStreamEvent(c, flusher, "error", buildOpenAIImagesStreamErrorBody(extractErr.Error()))
 							return OpenAIUsage{REDACTED, imageCount, firstTokenMs, extractErr
 					REDACTED
-						if len(results) == 0 {
-							if imageCount > 0 {
-								return usage, imageCount, firstTokenMs, nil
-						REDACTED
+						mergeOpenAIResponsesImageMeta(&streamMeta, firstMeta)
+						finalResults := make([]openAIResponsesImageResult, 0, len(results)+len(pendingResults))
+						finalSeen := make(map[string]struct{REDACTED)
+						for _, img := range results {
+							mergeOpenAIResponsesImageMeta(&img, streamMeta)
+							appendOpenAIResponsesImageResultDedup(&finalResults, finalSeen, "", img)
+					REDACTED
+						for _, img := range pendingResults {
+							mergeOpenAIResponsesImageMeta(&img, streamMeta)
+							appendOpenAIResponsesImageResultDedup(&finalResults, finalSeen, "", img)
+					REDACTED
+						if len(finalResults) == 0 {
 							err = fmt.Errorf("upstream did not return image output")
 							_ = s.writeOpenAIImagesStreamEvent(c, flusher, "error", buildOpenAIImagesStreamErrorBody(err.Error()))
 							return OpenAIUsage{REDACTED, imageCount, firstTokenMs, err
 					REDACTED
 						eventName := streamPrefix + ".completed"
-						for _, img := range results {
+						for _, img := range finalResults {
 							key := openAIResponsesImageResultKey("", img)
 							if _, exists := emitted[key]; exists {
 								continue
 						REDACTED
-							payload := []byte(`{"type":""REDACTED`)
-							payload, _ = sjson.SetBytes(payload, "type", eventName)
-							if format == "url" {
-								payload, _ = sjson.SetBytes(payload, "url", "data:"+openAIImageOutputMIMEType(img.OutputFormat)+";base64,"+img.Result)
-						REDACTED else {
-								payload, _ = sjson.SetBytes(payload, "b64_json", img.Result)
-						REDACTED
-							if img.RevisedPrompt != "" {
-								payload, _ = sjson.SetBytes(payload, "revised_prompt", img.RevisedPrompt)
-						REDACTED
-							if len(usageRaw) > 0 && gjson.ValidBytes(usageRaw) {
-								payload, _ = sjson.SetRawBytes(payload, "usage", usageRaw)
-						REDACTED
+							payload := buildOpenAIImagesStreamCompletedPayload(eventName, img, format, createdAt, usageRaw)
 							if writeErr := s.writeOpenAIImagesStreamEvent(c, flusher, eventName, payload); writeErr != nil {
 								return OpenAIUsage{REDACTED, imageCount, firstTokenMs, writeErr
 						REDACTED
@@ -556,6 +691,23 @@ REDACTED
 REDACTED
 
 	if imageCount > 0 {
+		return usage, imageCount, firstTokenMs, nil
+REDACTED
+	if len(pendingResults) > 0 {
+		eventName := streamPrefix + ".completed"
+		for _, img := range pendingResults {
+			mergeOpenAIResponsesImageMeta(&img, streamMeta)
+			key := openAIResponsesImageResultKey("", img)
+			if _, exists := emitted[key]; exists {
+				continue
+		REDACTED
+			payload := buildOpenAIImagesStreamCompletedPayload(eventName, img, format, createdAt, nil)
+			if writeErr := s.writeOpenAIImagesStreamEvent(c, flusher, eventName, payload); writeErr != nil {
+				return OpenAIUsage{REDACTED, imageCount, firstTokenMs, writeErr
+		REDACTED
+			emitted[key] = struct{REDACTED{REDACTED
+	REDACTED
+		imageCount = len(emitted)
 		return usage, imageCount, firstTokenMs, nil
 REDACTED
 
@@ -590,6 +742,15 @@ REDACTED
 		account.Type,
 		len(parsed.Uploads),
 	)
+	if parsed.N > 1 {
+		logger.LegacyPrintf(
+			"service.openai_gateway",
+			"[Warning] Codex /responses image tool requested n=%d; falling back to n=1 request_model=%s endpoint=%s",
+			parsed.N,
+			requestModel,
+			parsed.Endpoint,
+		)
+REDACTED
 
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
@@ -664,12 +825,12 @@ REDACTED
 		firstTokenMs *int
 	)
 	if parsed.Stream {
-		usage, imageCount, firstTokenMs, err = s.handleOpenAIImagesOAuthStreamingResponse(resp, c, startTime, parsed.ResponseFormat, openAIImagesStreamPrefix(parsed))
+		usage, imageCount, firstTokenMs, err = s.handleOpenAIImagesOAuthStreamingResponse(resp, c, startTime, parsed.ResponseFormat, openAIImagesStreamPrefix(parsed), requestModel)
 		if err != nil {
 			return nil, err
 	REDACTED
 REDACTED else {
-		usage, imageCount, err = s.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, parsed.ResponseFormat)
+		usage, imageCount, err = s.handleOpenAIImagesOAuthNonStreamingResponse(resp, c, parsed.ResponseFormat, requestModel)
 		if err != nil {
 			return nil, err
 	REDACTED
