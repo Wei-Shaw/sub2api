@@ -146,12 +146,18 @@ func TestCalculateOpenAI429ResetTime_ReversedWindowOrder(t *testing.T) {
 
 type openAI429SnapshotRepo struct {
 	mockAccountRepoForGemini
-	rateLimitedID int64
-	updatedExtra  map[string]any
+	rateLimitedID    int64
+	clearedRateLimit int64
+	updatedExtra     map[string]any
 }
 
 func (r *openAI429SnapshotRepo) SetRateLimited(_ context.Context, id int64, _ time.Time) error {
 	r.rateLimitedID = id
+	return nil
+}
+
+func (r *openAI429SnapshotRepo) ClearRateLimit(_ context.Context, id int64) error {
+	r.clearedRateLimit = id
 	return nil
 }
 
@@ -175,8 +181,11 @@ func TestHandle429_OpenAIPersistsCodexSnapshotImmediately(t *testing.T) {
 
 	svc.handle429(context.Background(), account, headers, nil)
 
-	if repo.rateLimitedID != account.ID {
-		t.Fatalf("rateLimitedID = %d, want %d", repo.rateLimitedID, account.ID)
+	if repo.rateLimitedID != 0 {
+		t.Fatalf("rateLimitedID = %d, want 0", repo.rateLimitedID)
+	}
+	if repo.clearedRateLimit != account.ID {
+		t.Fatalf("clearedRateLimit = %d, want %d", repo.clearedRateLimit, account.ID)
 	}
 	if len(repo.updatedExtra) == 0 {
 		t.Fatal("expected codex snapshot to be persisted on 429")

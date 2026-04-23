@@ -727,6 +727,14 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 	// 1. OpenAI 平台：优先尝试解析 x-codex-* 响应头（用于 rate_limit_exceeded）
 	if account.Platform == PlatformOpenAI {
 		s.persistOpenAICodexSnapshot(ctx, account, headers)
+		if isOpenAI429QuotaExhausted(headers, responseBody) {
+			if err := s.accountRepo.ClearRateLimit(ctx, account.ID); err != nil {
+				slog.Warn("openai_exhausted_clear_rate_limit_failed", "account_id", account.ID, "error", err)
+				return
+			}
+			slog.Info("openai_account_marked_exhausted", "account_id", account.ID)
+			return
+		}
 		if resetAt := s.calculateOpenAI429ResetTime(headers); resetAt != nil {
 			if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
 				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
@@ -834,6 +842,36 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 	}
 
 	slog.Info("account_rate_limited", "account_id", account.ID, "reset_at", resetAt)
+}
+
+func isOpenAI429QuotaExhausted(headers http.Header, responseBody []byte) bool {
+	if snapshot := ParseCodexRateLimitHeaders(headers); snapshot != nil {
+		if normalized := snapshot.Normalize(); normalized != nil {
+			if normalized.Used7dPercent != nil && *normalized.Used7dPercent >= 100 {
+				return true
+			}
+			if normalized.Used5hPercent != nil && *normalized.Used5hPercent >= 100 {
+				return true
+			}
+		}
+	}
+	return openAI429ErrorType(responseBody) == "usage_limit_reached"
+}
+
+func openAI429ErrorType(body []byte) string {
+	if len(body) == 0 {
+		return ""
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return ""
+	}
+	errObj, ok := parsed["error"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	errType, _ := errObj["type"].(string)
+	return strings.TrimSpace(errType)
 }
 
 // calculateOpenAI429ResetTime 从 OpenAI 429 响应头计算正确的重置时间
