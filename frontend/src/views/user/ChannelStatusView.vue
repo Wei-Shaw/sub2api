@@ -2,7 +2,6 @@
   <AppLayout>
     <MonitorHero
       :overall-status="overallStatus"
-      :updated-at="updatedAt"
       :interval-seconds="DEFAULT_INTERVAL_SECONDS"
       :window="currentWindow"
       :loading="loading"
@@ -56,7 +55,6 @@ const appStore = useAppStore()
 // ── State ──
 const items = ref<UserMonitorView[]>([])
 const loading = ref(false)
-const updatedAt = ref<string | null>(null)
 const currentWindow = ref<MonitorWindow>('7d')
 const detailCache = reactive<Record<number, UserMonitorDetail>>({})
 const showDetail = ref(false)
@@ -97,7 +95,6 @@ async function reload(silent = false) {
     const res = await listChannelMonitorViews({ signal: ctrl.signal })
     if (ctrl.signal.aborted || abortController !== ctrl) return
     items.value = res.items || []
-    updatedAt.value = new Date().toISOString()
   } catch (err: unknown) {
     const e = err as { name?: string; code?: string }
     if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return
