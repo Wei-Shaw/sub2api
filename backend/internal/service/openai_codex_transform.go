@@ -187,8 +187,12 @@ REDACTED
 REDACTED
 
 func normalizeCodexModel(model string) string {
+	model = strings.TrimSpace(model)
 	if model == "" {
 		return "gpt-5.4"
+REDACTED
+	if isOpenAIImageGenerationModel(model) {
+		return model
 REDACTED
 
 	modelID := model
@@ -229,6 +233,78 @@ REDACTED
 REDACTED
 
 	return "gpt-5.4"
+REDACTED
+
+func hasOpenAIImageGenerationTool(reqBody map[string]any) bool {
+	rawTools, ok := reqBody["tools"]
+	if !ok || rawTools == nil {
+		return false
+REDACTED
+	tools, ok := rawTools.([]any)
+	if !ok {
+		return false
+REDACTED
+	for _, rawTool := range tools {
+		toolMap, ok := rawTool.(map[string]any)
+		if !ok {
+			continue
+	REDACTED
+		if strings.TrimSpace(firstNonEmptyString(toolMap["type"])) == "image_generation" {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+func normalizeOpenAIResponsesImageGenerationTools(reqBody map[string]any) bool {
+	rawTools, ok := reqBody["tools"]
+	if !ok || rawTools == nil {
+		return false
+REDACTED
+	tools, ok := rawTools.([]any)
+	if !ok {
+		return false
+REDACTED
+
+	modified := false
+	for _, rawTool := range tools {
+		toolMap, ok := rawTool.(map[string]any)
+		if !ok || strings.TrimSpace(firstNonEmptyString(toolMap["type"])) != "image_generation" {
+			continue
+	REDACTED
+		if _, ok := toolMap["output_format"]; !ok {
+			if value := strings.TrimSpace(firstNonEmptyString(toolMap["format"])); value != "" {
+				toolMap["output_format"] = value
+				modified = true
+		REDACTED
+	REDACTED
+		if _, ok := toolMap["output_compression"]; !ok {
+			if value, exists := toolMap["compression"]; exists && value != nil {
+				toolMap["output_compression"] = value
+				modified = true
+		REDACTED
+	REDACTED
+		if _, ok := toolMap["format"]; ok {
+			delete(toolMap, "format")
+			modified = true
+	REDACTED
+		if _, ok := toolMap["compression"]; ok {
+			delete(toolMap, "compression")
+			modified = true
+	REDACTED
+REDACTED
+	return modified
+REDACTED
+
+func validateOpenAIResponsesImageModel(reqBody map[string]any, model string) error {
+	if !hasOpenAIImageGenerationTool(reqBody) {
+		return nil
+REDACTED
+	model = strings.TrimSpace(model)
+	if !isOpenAIImageGenerationModel(model) {
+		return nil
+REDACTED
+	return fmt.Errorf("/v1/responses image_generation requests require a Responses-capable text model; image-only model %q is not allowed", model)
 REDACTED
 
 func normalizeOpenAIModelForUpstream(account *Account, model string) string {
