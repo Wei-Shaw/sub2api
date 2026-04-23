@@ -151,23 +151,38 @@ REDACTED
 REDACTED
 	logger.L().Debug("openai chat_completions: model mapping applied", logFields...)
 
-	if account.Type == AccountTypeOAuth {
+	{
 		var reqBody map[string]any
 		if err := json.Unmarshal(responsesBody, &reqBody); err != nil {
 			return nil, fmt.Errorf("unmarshal for codex transform: %w", err)
 	REDACTED
-		codexResult := applyCodexOAuthTransform(reqBody, false, false)
-		if codexResult.NormalizedModel != "" {
-			upstreamModel = codexResult.NormalizedModel
+		modified := false
+		if account.Type == AccountTypeOAuth {
+			codexResult := applyCodexOAuthTransform(reqBody, false, false)
+			modified = codexResult.Modified
+			if codexResult.NormalizedModel != "" {
+				upstreamModel = codexResult.NormalizedModel
+		REDACTED
+			if codexResult.PromptCacheKey != "" {
+				promptCacheKey = codexResult.PromptCacheKey
+		REDACTED else if promptCacheKey != "" {
+				reqBody["prompt_cache_key"] = promptCacheKey
+		REDACTED
+	REDACTED else {
+			// 非 OAuth 账号也需要提取 system 消息并注入 instructions，
+			// 否则上游 GPT-5/Codex 等模型会报 "Instructions are required"。
+			if extractSystemMessagesFromInput(reqBody) {
+				modified = true
+		REDACTED
+			if applyInstructions(reqBody, false) {
+				modified = true
+		REDACTED
 	REDACTED
-		if codexResult.PromptCacheKey != "" {
-			promptCacheKey = codexResult.PromptCacheKey
-	REDACTED else if promptCacheKey != "" {
-			reqBody["prompt_cache_key"] = promptCacheKey
-	REDACTED
-		responsesBody, err = json.Marshal(reqBody)
-		if err != nil {
-			return nil, fmt.Errorf("remarshal after codex transform: %w", err)
+		if modified {
+			responsesBody, err = json.Marshal(reqBody)
+			if err != nil {
+				return nil, fmt.Errorf("remarshal after codex transform: %w", err)
+		REDACTED
 	REDACTED
 REDACTED
 

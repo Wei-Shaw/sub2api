@@ -110,13 +110,12 @@ REDACTED{
 			expected:   ErrorPolicyTempUnscheduled,
 	REDACTED,
 		{
-			// Antigravity 401 不走升级逻辑（由 applyErrorPolicy 的 temp_unschedulable_rules 自行控制），
-			// second hit 仍然返回 TempUnscheduled。
-			name: "temp_unschedulable_401_second_hit_antigravity_stays_temp",
+			// Gemini OAuth 401 second hit 会升级为 error（返回 None，交由默认错误逻辑处理）。
+			name: "temp_unschedulable_401_second_hit_gemini_escalates",
 			account: &Account{
 				ID:                      15,
 				Type:                    AccountTypeOAuth,
-				Platform:                PlatformAntigravity,
+				Platform:                PlatformGemini, // 非 Antigravity 平台 401 second hit 升级
 				TempUnschedulableReason: `{"status_code":401,"until_unix":1735689600REDACTED`,
 		REDACTED
 					"temp_unschedulable_enabled": true,
@@ -131,7 +130,29 @@ REDACTED{
 		REDACTED,
 			statusCode: 401,
 			body:       []byte(`unauthorized`),
-			expected:   ErrorPolicyTempUnscheduled,
+			expected:   ErrorPolicyNone, // Gemini 401 second hit 升级为 error
+	REDACTED,
+		{
+			name: "temp_unschedulable_401_antigravity_no_escalation",
+			account: &Account{
+				ID:                      16,
+				Type:                    AccountTypeOAuth,
+				Platform:                PlatformAntigravity, // Antigravity 跳过 401 升级，由 rules 正常处理
+				TempUnschedulableReason: `{"status_code":401,"until_unix":1735689600REDACTED`,
+		REDACTED
+					"temp_unschedulable_enabled": true,
+					"temp_unschedulable_rules": []any{
+						map[string]any{
+							"error_code":       float64(401),
+							"keywords":         []any{"unauthorized"REDACTED,
+							"duration_minutes": float64(10),
+					REDACTED,
+				REDACTED,
+			REDACTED,
+		REDACTED,
+			statusCode: 401,
+			body:       []byte(`unauthorized`),
+			expected:   ErrorPolicyTempUnscheduled, // Antigravity 不升级，继续走规则匹配
 	REDACTED,
 		{
 			name: "temp_unschedulable_body_miss_returns_none",

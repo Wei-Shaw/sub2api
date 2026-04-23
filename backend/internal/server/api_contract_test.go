@@ -54,8 +54,13 @@ REDACTED{
 					"username": "alice",
 					"role": "user",
 					"balance": 12.5,
+					"balance_notify_enabled": false,
+					"balance_notify_extra_emails": null,
+					"balance_notify_threshold": null,
+					"balance_notify_threshold_type": "",
 					"concurrency": 5,
 					"status": "active",
+					"total_recharged": 0,
 					"allowed_groups": null,
 					"created_at": "2025-01-02T03:04:05Z",
 					"updated_at": "2025-01-02T03:04:05Z",
@@ -764,10 +769,13 @@ REDACTED{
 					"payment_cancel_rate_limit_unit": "",
 					"payment_cancel_rate_limit_window_mode": "",
 					"balance_low_notify_enabled": false,
-					"account_quota_notify_enabled": false,
 					"balance_low_notify_threshold": 0,
 					"balance_low_notify_recharge_url": "",
+					"account_quota_notify_enabled": false,
 					"account_quota_notify_emails": [],
+					"channel_monitor_enabled": true,
+					"channel_monitor_default_interval_seconds": 60,
+					"available_channels_enabled": false,
 					"wechat_connect_enabled": false,
 					"wechat_connect_app_id": "",
 					"wechat_connect_app_secret_configured": false,
@@ -975,7 +983,10 @@ REDACTED{
 					"auth_source_default_wechat_subscriptions": [],
 					"auth_source_default_wechat_grant_on_signup": false,
 					"auth_source_default_wechat_grant_on_first_bind": false,
-					"force_email_on_third_party_signup": false
+					"force_email_on_third_party_signup": false,
+					"channel_monitor_enabled": true,
+					"channel_monitor_default_interval_seconds": 60,
+					"available_channels_enabled": false
 			REDACTED
 		REDACTED`,
 	REDACTED,
@@ -1443,6 +1454,10 @@ func (s *stubAccountRepo) GetByCRSAccountID(ctx context.Context, crsAccountID st
 REDACTED
 
 func (s *stubAccountRepo) FindByExtraField(ctx context.Context, key string, value any) ([]service.Account, error) {
+	return nil, errors.New("not implemented")
+REDACTED
+
+func (s *stubAccountRepo) CountByTLSFingerprintProfile(ctx context.Context) (map[int64]int, error) {
 	return nil, errors.New("not implemented")
 REDACTED
 

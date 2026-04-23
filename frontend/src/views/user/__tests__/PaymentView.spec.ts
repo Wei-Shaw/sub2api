@@ -16,7 +16,6 @@ const refreshUser = vi.hoisted(() => vi.fn())
 const fetchActiveSubscriptions = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const showError = vi.hoisted(() => vi.fn())
 const showInfo = vi.hoisted(() => vi.fn())
-const showWarning = vi.hoisted(() => vi.fn())
 const getCheckoutInfo = vi.hoisted(() => vi.fn())
 const bridgeInvoke = vi.hoisted(() => vi.fn())
 
@@ -70,7 +69,6 @@ vi.mock('@/stores', () => ({
   useAppStore: () => ({
     showError,
     showInfo,
-    showWarning,
   REDACTED),
 REDACTED))
 
@@ -195,7 +193,6 @@ describe('PaymentView WeChat JSAPI flow', () => {
     fetchActiveSubscriptions.mockReset().mockResolvedValue(undefined)
     showError.mockReset()
     showInfo.mockReset()
-    showWarning.mockReset()
     getCheckoutInfo.mockReset().mockResolvedValue(checkoutInfoFixture())
     bridgeInvoke.mockReset()
     window.localStorage.clear()
@@ -367,24 +364,13 @@ describe('PaymentView WeChat JSAPI flow', () => {
     REDACTED)
   REDACTED)
 
-  it('falls back to QR flow when mobile WeChat payment is unavailable', async () => {
+  it('shows explicit H5 authorization guidance instead of failing silently', async () => {
     routeState.query = {
       wechat_resume: '1',
       wechat_resume_token: 'resume-token-h5',
       payment_type: 'wxpay_direct',
     REDACTED
-    createOrder
-      .mockRejectedValueOnce({ reason: 'WECHAT_H5_NOT_AUTHORIZED' REDACTED)
-      .mockResolvedValueOnce({
-        order_id: 778,
-        amount: 88,
-        pay_amount: 88,
-        fee_rate: 0,
-        expires_at: '2099-01-01T00:10:00.000Z',
-        payment_type: 'wxpay',
-        qr_code: 'weixin://wxpay/bizpayurl?pr=fallback-native',
-        out_trade_no: 'sub2_qr_778',
-      REDACTED)
+    createOrder.mockRejectedValueOnce({ reason: 'WECHAT_H5_NOT_AUTHORIZED' REDACTED)
 
     shallowMount(PaymentView, {
       global: {
@@ -397,18 +383,8 @@ describe('PaymentView WeChat JSAPI flow', () => {
     await flushPromises()
     await flushPromises()
 
-    expect(createOrder).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      payment_type: 'wxpay',
-      is_mobile: true,
-      wechat_resume_token: 'resume-token-h5',
-    REDACTED))
-    expect(createOrder).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      payment_type: 'wxpay',
-      is_mobile: false,
-      payment_source: 'hosted_redirect',
-    REDACTED))
-    expect(showWarning).toHaveBeenCalledWith('payment.errors.mobilePaymentFallbackToQr')
-    expect(showError).not.toHaveBeenCalled()
-    expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).toContain('weixin://wxpay/bizpayurl?pr=fallback-native')
+    expect(showError).toHaveBeenCalledWith(
+      'payment.errors.wechatH5NotAuthorized payment.errors.wechatOpenInWeChatHint',
+    )
   REDACTED)
 REDACTED)

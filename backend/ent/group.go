@@ -53,21 +53,21 @@ type Group struct {
 	ImagePrice2k *float64 `json:"image_price_2k,omitempty"`
 	// ImagePrice4k holds the value of the "image_price_4k" field.
 	ImagePrice4k *float64 `json:"image_price_4k,omitempty"`
-	// 是否仅允许 Claude Code 客户端
+	// allow Claude Code client only
 	ClaudeCodeOnly bool `json:"claude_code_only,omitempty"`
-	// 非 Claude Code 请求降级使用的分组 ID
+	// fallback group for non-Claude-Code requests
 	FallbackGroupID *int64 `json:"fallback_group_id,omitempty"`
-	// 无效请求兜底使用的分组 ID
+	// fallback group for invalid request
 	FallbackGroupIDOnInvalidRequest *int64 `json:"fallback_group_id_on_invalid_request,omitempty"`
-	// 模型路由配置：模型模式 -> 优先账号ID列表
+	// model routing config: pattern -> account ids
 	ModelRouting map[string][]int64 `json:"model_routing,omitempty"`
-	// 是否启用模型路由配置
+	// whether model routing is enabled
 	ModelRoutingEnabled bool `json:"model_routing_enabled,omitempty"`
-	// 是否注入 MCP XML 调用协议提示词（仅 antigravity 平台）
+	// whether MCP XML prompt injection is enabled
 	McpXMLInject bool `json:"mcp_xml_inject,omitempty"`
-	// 支持的模型系列：claude, gemini_text, gemini_image
+	// supported model scopes: claude, gemini_text, gemini_image
 	SupportedModelScopes []string `json:"supported_model_scopes,omitempty"`
-	// 分组显示排序，数值越小越靠前
+	// group display order, lower comes first
 	SortOrder int `json:"sort_order,omitempty"`
 	// 是否允许 /v1/messages 调度到此 OpenAI 分组
 	AllowMessagesDispatch bool `json:"allow_messages_dispatch,omitempty"`

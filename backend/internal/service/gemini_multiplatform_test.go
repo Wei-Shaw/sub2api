@@ -71,6 +71,10 @@ func (m *mockAccountRepoForGemini) FindByExtraField(ctx context.Context, key str
 	return nil, nil
 REDACTED
 
+func (m *mockAccountRepoForGemini) CountByTLSFingerprintProfile(ctx context.Context) (map[int64]int, error) {
+	return nil, nil
+REDACTED
+
 func (m *mockAccountRepoForGemini) ListCRSAccountIDs(ctx context.Context) (map[string]int64, error) {
 	return nil, nil
 REDACTED

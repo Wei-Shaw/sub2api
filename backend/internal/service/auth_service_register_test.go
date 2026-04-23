@@ -170,11 +170,11 @@ func (s *emailCacheStub) SetPasswordResetEmailCooldown(ctx context.Context, emai
 	return nil
 REDACTED
 
-func (s *emailCacheStub) GetNotifyCodeUserRate(ctx context.Context, userID int64) (int64, error) {
+func (s *emailCacheStub) IncrNotifyCodeUserRate(ctx context.Context, userID int64, window time.Duration) (int64, error) {
 	return 0, nil
 REDACTED
 
-func (s *emailCacheStub) IncrNotifyCodeUserRate(ctx context.Context, userID int64, window time.Duration) (int64, error) {
+func (s *emailCacheStub) GetNotifyCodeUserRate(ctx context.Context, userID int64) (int64, error) {
 	return 0, nil
 REDACTED
 

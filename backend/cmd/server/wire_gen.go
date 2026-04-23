@@ -222,7 +222,6 @@ REDACTED
 	channelMonitorHandler := admin.NewChannelMonitorHandler(channelMonitorService)
 	channelMonitorUserHandler := handler.NewChannelMonitorUserHandler(channelMonitorService, settingService)
 	channelMonitorRunner := service.ProvideChannelMonitorRunner(channelMonitorService, settingService)
-	_ = channelMonitorRunner
 	registry := payment.ProvideRegistry()
 	encryptionKey, err := payment.ProvideEncryptionKey(configConfig)
 	if err != nil {
@@ -262,7 +261,7 @@ REDACTED
 	accountExpiryService := service.ProvideAccountExpiryService(accountRepository)
 	subscriptionExpiryService := service.ProvideSubscriptionExpiryService(userSubscriptionRepository)
 	scheduledTestRunnerService := service.ProvideScheduledTestRunnerService(scheduledTestPlanRepository, scheduledTestService, accountTestService, rateLimitService, configConfig)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService)
+	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, channelMonitorRunner)
 	application := &Application{
 		Server:  httpServer,
 		Cleanup: v,
@@ -316,6 +315,7 @@ func provideCleanup(
 	scheduledTestRunner *service.ScheduledTestRunnerService,
 	backupSvc *service.BackupService,
 	paymentOrderExpiry *service.PaymentOrderExpiryService,
+	channelMonitorRunner *service.ChannelMonitorRunner,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

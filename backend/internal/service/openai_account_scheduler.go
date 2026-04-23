@@ -781,7 +781,7 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatible(account *Acco
 	if account == nil {
 		return false
 REDACTED
-	if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
+	if req.RequestedModel != "" && !account.IsOpenAIPassthroughEnabled() && !account.IsModelSupported(req.RequestedModel) {
 		return false
 REDACTED
 	return account.SupportsOpenAIImageCapability(req.RequiredImageCapability)

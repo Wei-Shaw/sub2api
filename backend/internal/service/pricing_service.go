@@ -812,16 +812,6 @@ REDACTED
 		return openAIGPT54FallbackPricing
 REDACTED
 
-	if isOpenAIImageGenerationModel(model) {
-		for _, candidate := range []string{"gpt-image-2", "gpt-image-1.5", "gpt-image-1"REDACTED {
-			if pricing, ok := s.pricingData[candidate]; ok {
-				logger.LegacyPrintf("service.pricing", "[Pricing] OpenAI image fallback matched %s -> %s", model, candidate)
-				return pricing
-		REDACTED
-	REDACTED
-		return nil
-REDACTED
-
 	// 最终回退到 DefaultTestModel
 	defaultModel := strings.ToLower(openai.DefaultTestModel)
 	if pricing, ok := s.pricingData[defaultModel]; ok {

@@ -546,8 +546,8 @@ REDACTED
 // channelMonitorIntervalMin / channelMonitorIntervalMax bound the default interval
 // (mirrors the monitor-level constraint but lives here so setting_service stays decoupled).
 const (
-	channelMonitorIntervalMin     = 15
-	channelMonitorIntervalMax     = 3600
+	channelMonitorIntervalMin      = 15
+	channelMonitorIntervalMax      = 3600
 	channelMonitorIntervalFallback = 60
 )
 
@@ -578,8 +578,8 @@ REDACTED
 // ChannelMonitorRuntime is the lightweight view of the channel monitor feature
 // consumed by the runner and user-facing handlers.
 type ChannelMonitorRuntime struct {
-	Enabled                 bool
-	DefaultIntervalSeconds  int
+	Enabled                bool
+	DefaultIntervalSeconds int
 REDACTED
 
 // GetChannelMonitorRuntime reads the channel monitor feature flags directly from
@@ -628,56 +628,76 @@ func (s *SettingService) SetVersion(version string) {
 	s.version = version
 REDACTED
 
-// GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection
-// This implements the web.PublicSettingsProvider interface
+// PublicSettingsInjectionPayload is the JSON shape embedded into HTML as
+// `window.__APP_CONFIG__` so the frontend can hydrate feature flags & site
+// config before the first XHR finishes.
+//
+// INVARIANT: every `json` tag here MUST also exist on handler/dto.PublicSettings.
+// If you forget a feature-flag field here, the frontend's
+// `cachedPublicSettings.xxx_enabled` will be `undefined` on refresh until the
+// async `/api/v1/settings/public` call returns — which causes opt-in menus
+// (strict `=== true`) to flicker off/on. See
+// frontend/src/utils/featureFlags.ts for the matching registry.
+//
+// A unit test diffs this struct's JSON keys against dto.PublicSettings to catch
+// drift automatically (see setting_service_injection_test.go).
+type PublicSettingsInjectionPayload struct {
+	RegistrationEnabled              bool            `json:"registration_enabled"`
+	EmailVerifyEnabled               bool            `json:"email_verify_enabled"`
+	RegistrationEmailSuffixWhitelist []string        `json:"registration_email_suffix_whitelist"`
+	PromoCodeEnabled                 bool            `json:"promo_code_enabled"`
+	PasswordResetEnabled             bool            `json:"password_reset_enabled"`
+	InvitationCodeEnabled            bool            `json:"invitation_code_enabled"`
+	TotpEnabled                      bool            `json:"totp_enabled"`
+	TurnstileEnabled                 bool            `json:"turnstile_enabled"`
+	TurnstileSiteKey                 string          `json:"turnstile_site_key"`
+	SiteName                         string          `json:"site_name"`
+	SiteLogo                         string          `json:"site_logo"`
+	SiteSubtitle                     string          `json:"site_subtitle"`
+	APIBaseURL                       string          `json:"api_base_url"`
+	ContactInfo                      string          `json:"contact_info"`
+	DocURL                           string          `json:"doc_url"`
+	HomeContent                      string          `json:"home_content"`
+	HideCcsImportButton              bool            `json:"hide_ccs_import_button"`
+	PurchaseSubscriptionEnabled      bool            `json:"purchase_subscription_enabled"`
+	PurchaseSubscriptionURL          string          `json:"purchase_subscription_url"`
+	TableDefaultPageSize             int             `json:"table_default_page_size"`
+	TablePageSizeOptions             []int           `json:"table_page_size_options"`
+	CustomMenuItems                  json.RawMessage `json:"custom_menu_items"`
+	CustomEndpoints                  json.RawMessage `json:"custom_endpoints"`
+	LinuxDoOAuthEnabled              bool            `json:"linuxdo_oauth_enabled"`
+	WeChatOAuthEnabled               bool            `json:"wechat_oauth_enabled"`
+	WeChatOAuthOpenEnabled           bool            `json:"wechat_oauth_open_enabled"`
+	WeChatOAuthMPEnabled             bool            `json:"wechat_oauth_mp_enabled"`
+	WeChatOAuthMobileEnabled         bool            `json:"wechat_oauth_mobile_enabled"`
+	OIDCOAuthEnabled                 bool            `json:"oidc_oauth_enabled"`
+	OIDCOAuthProviderName            string          `json:"oidc_oauth_provider_name"`
+	BackendModeEnabled               bool            `json:"backend_mode_enabled"`
+	PaymentEnabled                   bool            `json:"payment_enabled"`
+	Version                          string          `json:"version"`
+	BalanceLowNotifyEnabled          bool            `json:"balance_low_notify_enabled"`
+	AccountQuotaNotifyEnabled        bool            `json:"account_quota_notify_enabled"`
+	BalanceLowNotifyThreshold        float64         `json:"balance_low_notify_threshold"`
+	BalanceLowNotifyRechargeURL      string          `json:"balance_low_notify_recharge_url"`
+
+	// Feature flags — MUST match the opt-in/opt-out registry in
+	// frontend/src/utils/featureFlags.ts. Missing a field here is the bug
+	// that hid the "可用渠道" menu on page refresh.
+	ForceEmailOnThirdPartySignup         bool `json:"force_email_on_third_party_signup"`
+	ChannelMonitorEnabled                bool `json:"channel_monitor_enabled"`
+	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
+	AvailableChannelsEnabled             bool `json:"available_channels_enabled"`
+REDACTED
+
+// GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
+// This implements the web.PublicSettingsProvider interface.
 func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any, error) {
 	settings, err := s.GetPublicSettings(ctx)
 	if err != nil {
 		return nil, err
 REDACTED
 
-	// Return a struct that matches the frontend's expected format
-	return &struct {
-		RegistrationEnabled              bool            `json:"registration_enabled"`
-		EmailVerifyEnabled               bool            `json:"email_verify_enabled"`
-		RegistrationEmailSuffixWhitelist []string        `json:"registration_email_suffix_whitelist"`
-		PromoCodeEnabled                 bool            `json:"promo_code_enabled"`
-		PasswordResetEnabled             bool            `json:"password_reset_enabled"`
-		InvitationCodeEnabled            bool            `json:"invitation_code_enabled"`
-		TotpEnabled                      bool            `json:"totp_enabled"`
-		TurnstileEnabled                 bool            `json:"turnstile_enabled"`
-		TurnstileSiteKey                 string          `json:"turnstile_site_key,omitempty"`
-		SiteName                         string          `json:"site_name"`
-		SiteLogo                         string          `json:"site_logo,omitempty"`
-		SiteSubtitle                     string          `json:"site_subtitle,omitempty"`
-		APIBaseURL                       string          `json:"api_base_url,omitempty"`
-		ContactInfo                      string          `json:"contact_info,omitempty"`
-		DocURL                           string          `json:"doc_url,omitempty"`
-		HomeContent                      string          `json:"home_content,omitempty"`
-		HideCcsImportButton              bool            `json:"hide_ccs_import_button"`
-		PurchaseSubscriptionEnabled      bool            `json:"purchase_subscription_enabled"`
-		PurchaseSubscriptionURL          string          `json:"purchase_subscription_url,omitempty"`
-		TableDefaultPageSize             int             `json:"table_default_page_size"`
-		TablePageSizeOptions             []int           `json:"table_page_size_options"`
-		CustomMenuItems                  json.RawMessage `json:"custom_menu_items"`
-		CustomEndpoints                  json.RawMessage `json:"custom_endpoints"`
-		LinuxDoOAuthEnabled              bool            `json:"linuxdo_oauth_enabled"`
-		WeChatOAuthEnabled               bool            `json:"wechat_oauth_enabled"`
-		WeChatOAuthOpenEnabled           bool            `json:"wechat_oauth_open_enabled"`
-		WeChatOAuthMPEnabled             bool            `json:"wechat_oauth_mp_enabled"`
-		WeChatOAuthMobileEnabled         bool            `json:"wechat_oauth_mobile_enabled"`
-		BackendModeEnabled               bool            `json:"backend_mode_enabled"`
-		PaymentEnabled                   bool            `json:"payment_enabled"`
-		OIDCOAuthEnabled                 bool            `json:"oidc_oauth_enabled"`
-		OIDCOAuthProviderName            string          `json:"oidc_oauth_provider_name"`
-		Version                          string          `json:"version,omitempty"`
-		BalanceLowNotifyEnabled          bool            `json:"balance_low_notify_enabled"`
-		AccountQuotaNotifyEnabled        bool            `json:"account_quota_notify_enabled"`
-		BalanceLowNotifyThreshold        float64         `json:"balance_low_notify_threshold"`
-		BalanceLowNotifyRechargeURL      string          `json:"balance_low_notify_recharge_url"`
-		ChannelMonitorEnabled            bool            `json:"channel_monitor_enabled"`
-		AvailableChannelsEnabled         bool            `json:"available_channels_enabled"`
-REDACTED{
+	return &PublicSettingsInjectionPayload{
 		RegistrationEnabled:              settings.RegistrationEnabled,
 		EmailVerifyEnabled:               settings.EmailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist: settings.RegistrationEmailSuffixWhitelist,
@@ -706,17 +726,20 @@ REDACTED{
 		WeChatOAuthOpenEnabled:           settings.WeChatOAuthOpenEnabled,
 		WeChatOAuthMPEnabled:             settings.WeChatOAuthMPEnabled,
 		WeChatOAuthMobileEnabled:         settings.WeChatOAuthMobileEnabled,
-		BackendModeEnabled:               settings.BackendModeEnabled,
-		PaymentEnabled:                   settings.PaymentEnabled,
 		OIDCOAuthEnabled:                 settings.OIDCOAuthEnabled,
 		OIDCOAuthProviderName:            settings.OIDCOAuthProviderName,
+		BackendModeEnabled:               settings.BackendModeEnabled,
+		PaymentEnabled:                   settings.PaymentEnabled,
 		Version:                          s.version,
 		BalanceLowNotifyEnabled:          settings.BalanceLowNotifyEnabled,
 		AccountQuotaNotifyEnabled:        settings.AccountQuotaNotifyEnabled,
 		BalanceLowNotifyThreshold:        settings.BalanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:      settings.BalanceLowNotifyRechargeURL,
-		ChannelMonitorEnabled:            settings.ChannelMonitorEnabled,
-		AvailableChannelsEnabled:         settings.AvailableChannelsEnabled,
+
+		ForceEmailOnThirdPartySignup:         settings.ForceEmailOnThirdPartySignup,
+		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
+		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
+		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
 REDACTED, nil
 REDACTED
 

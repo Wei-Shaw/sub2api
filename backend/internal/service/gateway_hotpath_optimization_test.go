@@ -143,7 +143,6 @@ REDACTED
 func (s *stickyGatewayCacheHotpathStub) DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error {
 	return nil
 REDACTED
-
 func (s *modelsListAccountRepoStub) ListSchedulableByGroupID(ctx context.Context, groupID int64) ([]Account, error) {
 	s.listByGroupCalls.Add(1)
 	if s.err != nil {

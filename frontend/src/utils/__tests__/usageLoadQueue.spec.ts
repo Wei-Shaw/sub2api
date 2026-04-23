@@ -145,6 +145,25 @@ describe('usageLoadQueue', () => {
     expect(Math.abs(timestamps[1] - timestamps[0])).toBeLessThan(50)
   REDACTED)
 
+  it('Antigravity 平台直接执行，不排队', async () => {
+    const timestamps: number[] = []
+    const makeFn = () => async () => {
+      timestamps.push(Date.now())
+      return 'ok'
+    REDACTED
+
+    const acc1 = makeAccount('antigravity', 'oauth', { host: '1.2.3.4', port: 8080 REDACTED)
+    const acc2 = makeAccount('antigravity', 'oauth', { host: '1.2.3.4', port: 8080 REDACTED)
+
+    const p1 = enqueueUsageRequest(acc1, makeFn())
+    const p2 = enqueueUsageRequest(acc2, makeFn())
+
+    await Promise.all([p1, p2])
+
+    expect(timestamps).toHaveLength(2)
+    expect(Math.abs(timestamps[1] - timestamps[0])).toBeLessThan(50)
+  REDACTED)
+
   it('OpenAI 平台直接执行，不排队', async () => {
     const timestamps: number[] = []
     const makeFn = () => async () => {

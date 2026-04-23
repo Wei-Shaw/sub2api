@@ -9,7 +9,9 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-const stickySessionPrefix = "sticky_session:"
+const (
+	stickySessionPrefix = "sticky_session:"
+)
 
 type gatewayCache struct {
 	rdb *redis.Client
@@ -41,12 +43,6 @@ func (c *gatewayCache) RefreshSessionTTL(ctx context.Context, groupID int64, ses
 REDACTED
 
 // DeleteSessionAccountID 删除粘性会话与账号的绑定关系。
-// 当检测到绑定的账号不可用（如状态错误、禁用、不可调度等）时调用，
-// 以便下次请求能够重新选择可用账号。
-//
-// DeleteSessionAccountID removes the sticky session binding for the given session.
-// Called when the bound account becomes unavailable (e.g., error status, disabled,
-// or unschedulable), allowing subsequent requests to select a new available account.
 func (c *gatewayCache) DeleteSessionAccountID(ctx context.Context, groupID int64, sessionHash string) error {
 	key := buildSessionKey(groupID, sessionHash)
 	return c.rdb.Del(ctx, key).Err()

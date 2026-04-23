@@ -90,6 +90,13 @@
                 :unit="t(prefixKey('unitPerMillion'))"
                 :scale="perMillionScale"
               />
+              <PricingRow
+                v-if="model.pricing.image_output_price != null && model.pricing.image_output_price > 0"
+                :label="t(prefixKey('imageOutputPrice'))"
+                :value="model.pricing.image_output_price"
+                :unit="t(prefixKey('unitPerMillion'))"
+                :scale="perMillionScale"
+              />
             </template>
 
             <PricingRow

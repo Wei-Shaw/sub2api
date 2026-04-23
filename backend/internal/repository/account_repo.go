@@ -313,6 +313,31 @@ REDACTED
 	return result, nil
 REDACTED
 
+// CountByTLSFingerprintProfile 按 TLS 指纹模板 ID 聚合绑定账号数。
+// 走 108_add_tls_fingerprint_profile_id_index.sql 的表达式索引。
+func (r *accountRepository) CountByTLSFingerprintProfile(ctx context.Context) (map[int64]int, error) {
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT (extra->>'tls_fingerprint_profile_id')::bigint AS profile_id, COUNT(*)
+		FROM accounts
+		WHERE deleted_at IS NULL AND extra ? 'tls_fingerprint_profile_id'
+		GROUP BY profile_id`)
+	if err != nil {
+		return nil, err
+REDACTED
+	defer func() { _ = rows.Close() REDACTED()
+
+	counts := make(map[int64]int)
+	for rows.Next() {
+		var id int64
+		var n int
+		if err := rows.Scan(&id, &n); err != nil {
+			return nil, err
+	REDACTED
+		counts[id] = n
+REDACTED
+	return counts, rows.Err()
+REDACTED
+
 func (r *accountRepository) Update(ctx context.Context, account *service.Account) error {
 	if account == nil {
 		return nil
