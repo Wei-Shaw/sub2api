@@ -55,9 +55,4 @@ const (
 
 	// ClaudeCodeVersion stores the extracted Claude Code version from User-Agent (e.g. "2.1.22")
 	ClaudeCodeVersion Key = "ctx_claude_code_version"
-
-	// IsSignatureRectifyRetry marks a retry request that was produced by the signature rectifier
-	// (strip or pool-replace). The harvester consults this flag to avoid ingesting signatures
-	// from retries, which would pollute the pool with signatures we ourselves injected.
-	IsSignatureRectifyRetry Key = "ctx_is_signature_rectify_retry"
 )

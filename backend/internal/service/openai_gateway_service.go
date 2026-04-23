@@ -1503,7 +1503,7 @@ REDACTED
 		if !acc.IsSchedulable() {
 			continue
 	REDACTED
-		if requestedModel != "" && !acc.IsOpenAIPassthroughEnabled() && !acc.IsModelSupported(requestedModel) {
+		if requestedModel != "" && !acc.IsModelSupported(requestedModel) {
 			continue
 	REDACTED
 		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel) {
@@ -1665,7 +1665,7 @@ REDACTED
 	if !fresh.IsSchedulable() || !fresh.IsOpenAI() {
 		return nil
 REDACTED
-	if requestedModel != "" && !fresh.IsOpenAIPassthroughEnabled() && !fresh.IsModelSupported(requestedModel) {
+	if requestedModel != "" && !fresh.IsModelSupported(requestedModel) {
 		return nil
 REDACTED
 	return fresh
@@ -1935,6 +1935,12 @@ REDACTED
 		markPatchSet("instructions", "You are a helpful coding assistant.")
 REDACTED
 
+	if normalizeOpenAIResponsesImageGenerationTools(reqBody) {
+		bodyModified = true
+		disablePatch()
+		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Normalized /responses image_generation tool payload")
+REDACTED
+
 	// 对所有请求执行模型映射（包含 Codex CLI）。
 	billingModel := account.GetMappedModel(reqModel)
 	if billingModel != reqModel {
@@ -1944,6 +1950,26 @@ REDACTED
 		markPatchSet("model", billingModel)
 REDACTED
 	upstreamModel := billingModel
+	if err := validateOpenAIResponsesImageModel(reqBody, upstreamModel); err != nil {
+		setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": gin.H{
+				"type":    "invalid_request_error",
+				"message": err.Error(),
+				"param":   "model",
+		REDACTED,
+	REDACTED)
+		return nil, err
+REDACTED
+	if hasOpenAIImageGenerationTool(reqBody) {
+		logger.LegacyPrintf(
+			"service.openai_gateway",
+			"[OpenAI] /responses image_generation request inbound_model=%s mapped_model=%s account_type=%s",
+			reqModel,
+			upstreamModel,
+			account.Type,
+		)
+REDACTED
 
 	// OpenAI OAuth 账号走 ChatGPT internal Codex endpoint，需要将模型名规范化为
 	// 上游可识别的 Codex/GPT 系列。API Key 账号则应保留原始/映射后的模型名，

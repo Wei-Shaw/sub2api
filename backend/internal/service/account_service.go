@@ -30,10 +30,6 @@ type AccountRepository interface {
 	GetByCRSAccountID(ctx context.Context, crsAccountID string) (*Account, error)
 	// FindByExtraField 根据 extra 字段中的键值对查找账号
 	FindByExtraField(ctx context.Context, key string, value any) ([]Account, error)
-	// CountByTLSFingerprintProfile 按 TLS 指纹模板 ID 聚合每个模板当前被多少账号绑定。
-	// 返回 map[profile_id]count；未绑定任何账号的 profile 不出现在 map 中。
-	// 查询走 108_add_tls_fingerprint_profile_id_index.sql 的表达式索引。
-	CountByTLSFingerprintProfile(ctx context.Context) (map[int64]int, error)
 	// ListCRSAccountIDs returns a map of crs_account_id -> local account ID
 	// for all accounts that have been synced from CRS.
 	ListCRSAccountIDs(ctx context.Context) (map[string]int64, error)

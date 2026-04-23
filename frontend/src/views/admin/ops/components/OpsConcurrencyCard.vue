@@ -122,7 +122,6 @@ const platformRows = computed((): SummaryRow[] => {
       available_accounts: availableAccounts,
       rate_limited_accounts: safeNumber(avail.rate_limit_count),
 
-
       error_accounts: safeNumber(avail.error_count),
       total_concurrency: totalConcurrency,
       used_concurrency: usedConcurrency,
@@ -162,6 +161,7 @@ const groupRows = computed((): SummaryRow[] => {
         total_accounts: totalAccounts,
         available_accounts: availableAccounts,
         rate_limited_accounts: safeNumber(avail.rate_limit_count),
+  
         error_accounts: safeNumber(avail.error_count),
         total_concurrency: totalConcurrency,
         used_concurrency: usedConcurrency,
@@ -327,7 +327,6 @@ function formatDuration(seconds: number): string {
   const hours = Math.floor(minutes / 60)
   return `${hoursREDACTEDh`
 REDACTED
-
 
 
 watch(

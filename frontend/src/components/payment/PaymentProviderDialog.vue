@@ -73,9 +73,42 @@
 
       <!-- Config fields -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-700">
-        <h4 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">
-          {{ t('admin.settings.payment.providerConfig') REDACTEDREDACTED
-        </h4>
+        <div class="mb-3 flex items-center gap-2">
+          <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
+            {{ t('admin.settings.payment.providerConfig') REDACTEDREDACTED
+          </h4>
+          <HelpTooltip v-if="paymentGuide" trigger="click" width-class="w-80">
+            <template #trigger>
+              <button
+                type="button"
+                class="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-300 text-[11px] font-semibold text-gray-400 transition-colors hover:border-primary-500 hover:text-primary-600 dark:border-dark-500 dark:text-gray-500 dark:hover:border-primary-400 dark:hover:text-primary-400"
+                :aria-label="t('admin.settings.payment.paymentGuideTrigger')"
+                :title="t('admin.settings.payment.paymentGuideTrigger')"
+              >
+                ?
+              </button>
+            </template>
+            <div class="space-y-3">
+              <p class="font-medium text-white">{{ paymentGuide.summary REDACTEDREDACTED</p>
+              <div
+                v-for="item in paymentGuide.items"
+                :key="item.title"
+                class="space-y-1.5 border-t border-white/10 pt-2 first:border-t-0 first:pt-0"
+              >
+                <p class="font-medium text-white">{{ item.title REDACTEDREDACTED</p>
+                <p><span class="text-gray-300">{{ t('admin.settings.payment.guideOpenLabel') REDACTEDREDACTED</span>{{ item.open REDACTEDREDACTED</p>
+                <p><span class="text-gray-300">{{ t('admin.settings.payment.guideCallLabel') REDACTEDREDACTED</span>{{ item.call REDACTEDREDACTED</p>
+                <p><span class="text-gray-300">{{ t('admin.settings.payment.guideFallbackLabel') REDACTEDREDACTED</span>{{ item.fallback REDACTEDREDACTED</p>
+              </div>
+              <p v-if="paymentGuide.note" class="border-t border-white/10 pt-2 text-[11px] text-gray-300">
+                {{ paymentGuide.note REDACTEDREDACTED
+              </p>
+            </div>
+          </HelpTooltip>
+        </div>
+        <p v-if="paymentGuide" class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+          {{ paymentGuide.summary REDACTEDREDACTED
+        </p>
         <div class="space-y-3">
           <div v-for="field in resolvedFields" :key="field.key">
             <label class="input-label">
@@ -220,6 +253,7 @@
 import { reactive, computed, ref REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import Select from '@/components/common/Select.vue'
 import type { SelectOption REDACTED from '@/components/common/Select.vue'
 import ToggleSwitch from './ToggleSwitch.vue'
@@ -262,6 +296,19 @@ const emit = defineEmits<{
 REDACTED>()
 
 const { t REDACTED = useI18n()
+
+interface PaymentGuideItem {
+  title: string
+  open: string
+  call: string
+  fallback: string
+REDACTED
+
+interface PaymentGuide {
+  summary: string
+  items: PaymentGuideItem[]
+  note?: string
+REDACTED
 
 // --- Form state ---
 const form = reactive({
@@ -312,6 +359,63 @@ const resolvedFields = computed(() => {
     ...f,
     label: f.label || t(`admin.settings.payment.field_${f.keyREDACTED`),
   REDACTED))
+REDACTED)
+
+const paymentGuide = computed<PaymentGuide | null>(() => {
+  if (form.provider_key === 'alipay') {
+    return {
+      summary: t('admin.settings.payment.alipayGuideSummary'),
+      items: [
+        {
+          title: t('admin.settings.payment.alipayGuideFaceToFaceTitle'),
+          open: t('admin.settings.payment.alipayGuideFaceToFaceOpen'),
+          call: t('admin.settings.payment.alipayGuideFaceToFaceCall'),
+          fallback: t('admin.settings.payment.alipayGuideFaceToFaceFallback'),
+        REDACTED,
+        {
+          title: t('admin.settings.payment.alipayGuidePagePayTitle'),
+          open: t('admin.settings.payment.alipayGuidePagePayOpen'),
+          call: t('admin.settings.payment.alipayGuidePagePayCall'),
+          fallback: t('admin.settings.payment.alipayGuidePagePayFallback'),
+        REDACTED,
+        {
+          title: t('admin.settings.payment.alipayGuideWapTitle'),
+          open: t('admin.settings.payment.alipayGuideWapOpen'),
+          call: t('admin.settings.payment.alipayGuideWapCall'),
+          fallback: t('admin.settings.payment.alipayGuideWapFallback'),
+        REDACTED,
+      ],
+    REDACTED
+  REDACTED
+
+  if (form.provider_key === 'wxpay') {
+    return {
+      summary: t('admin.settings.payment.wxpayGuideSummary'),
+      note: t('admin.settings.payment.wxpayGuideNote'),
+      items: [
+        {
+          title: t('admin.settings.payment.wxpayGuideNativeTitle'),
+          open: t('admin.settings.payment.wxpayGuideNativeOpen'),
+          call: t('admin.settings.payment.wxpayGuideNativeCall'),
+          fallback: t('admin.settings.payment.wxpayGuideNativeFallback'),
+        REDACTED,
+        {
+          title: t('admin.settings.payment.wxpayGuideJsapiTitle'),
+          open: t('admin.settings.payment.wxpayGuideJsapiOpen'),
+          call: t('admin.settings.payment.wxpayGuideJsapiCall'),
+          fallback: t('admin.settings.payment.wxpayGuideJsapiFallback'),
+        REDACTED,
+        {
+          title: t('admin.settings.payment.wxpayGuideH5Title'),
+          open: t('admin.settings.payment.wxpayGuideH5Open'),
+          call: t('admin.settings.payment.wxpayGuideH5Call'),
+          fallback: t('admin.settings.payment.wxpayGuideH5Fallback'),
+        REDACTED,
+      ],
+    REDACTED
+  REDACTED
+
+  return null
 REDACTED)
 
 const limitableTypes = computed(() => {

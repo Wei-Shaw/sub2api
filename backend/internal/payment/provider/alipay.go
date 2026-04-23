@@ -15,8 +15,9 @@ import (
 
 // Alipay product codes.
 const (
-	alipayProductCodeWapPay  = "QUICK_WAP_WAY"
-	alipayProductCodePagePay = "FAST_INSTANT_TRADE_PAY"
+	alipayProductCodePreCreate = "FACE_TO_FACE_PAYMENT"
+	alipayProductCodeWapPay    = "QUICK_WAP_WAY"
+	alipayProductCodePagePay   = "FAST_INSTANT_TRADE_PAY"
 )
 
 // Alipay response constants.
@@ -29,6 +30,9 @@ const (
 var (
 	alipayTradeWapPay = func(client *alipay.Client, param alipay.TradeWapPay) (*url.URL, error) {
 		return client.TradeWapPay(param)
+REDACTED
+	alipayTradePreCreate = func(ctx context.Context, client *alipay.Client, param alipay.TradePreCreate) (*alipay.TradePreCreateRsp, error) {
+		return client.TradePreCreate(ctx, param)
 REDACTED
 	alipayTradePagePay = func(client *alipay.Client, param alipay.TradePagePay) (*url.URL, error) {
 		return client.TradePagePay(param)
@@ -99,13 +103,13 @@ REDACTED
 	return map[string]string{"app_id": appIDREDACTED
 REDACTED
 
-// CreatePayment creates an Alipay payment using redirect-only flow:
-//   - Mobile (H5): alipay.trade.wap.pay — returns a URL the browser jumps to.
-//   - PC: alipay.trade.page.pay — returns a gateway URL the browser opens in a
-//     new window; Alipay's own page then shows login/QR. We intentionally do
-//     NOT encode the URL into a QR on the client (it isn't a scannable payload
-//     and would produce an invalid scan result).
-func (a *Alipay) CreatePayment(_ context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
+// CreatePayment creates an Alipay payment using the following routing:
+//   - Mobile (H5): alipay.trade.wap.pay — browser redirect into Alipay.
+//   - Desktop: prefer alipay.trade.precreate to get a scan payload directly.
+//   - Desktop fallback: if precreate is unavailable for the merchant, fall back
+//     to alipay.trade.page.pay and expose both pay_url and qr_code so the
+//     frontend can render a QR while still allowing direct page open.
+func (a *Alipay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
 	client, err := a.getClient()
 	if err != nil {
 		return nil, err
@@ -123,7 +127,7 @@ REDACTED
 	if req.IsMobile {
 		return a.createWapTrade(client, req, notifyURL, returnURL)
 REDACTED
-	return a.createPagePayTrade(client, req, notifyURL, returnURL)
+	return a.createDesktopTrade(ctx, client, req, notifyURL, returnURL)
 REDACTED
 
 func (a *Alipay) createWapTrade(client *alipay.Client, req payment.CreatePaymentRequest, notifyURL, returnURL string) (*payment.CreatePaymentResponse, error) {
@@ -145,6 +149,48 @@ REDACTED
 REDACTED, nil
 REDACTED
 
+func (a *Alipay) createDesktopTrade(ctx context.Context, client *alipay.Client, req payment.CreatePaymentRequest, notifyURL, returnURL string) (*payment.CreatePaymentResponse, error) {
+	resp, precreateErr := a.createPrecreateTrade(ctx, client, req, notifyURL)
+	if precreateErr == nil {
+		return resp, nil
+REDACTED
+
+	resp, pagePayErr := a.createPagePayTrade(client, req, notifyURL, returnURL)
+	if pagePayErr == nil {
+		return resp, nil
+REDACTED
+
+	return nil, fmt.Errorf("alipay desktop payment failed: precreate=%v; pagepay=%w", precreateErr, pagePayErr)
+REDACTED
+
+func (a *Alipay) createPrecreateTrade(ctx context.Context, client *alipay.Client, req payment.CreatePaymentRequest, notifyURL string) (*payment.CreatePaymentResponse, error) {
+	param := alipay.TradePreCreate{REDACTED
+	param.OutTradeNo = req.OrderID
+	param.TotalAmount = req.Amount
+	param.Subject = req.Subject
+	param.ProductCode = alipayProductCodePreCreate
+	param.NotifyURL = notifyURL
+
+	rsp, err := alipayTradePreCreate(ctx, client, param)
+	if err != nil {
+		return nil, fmt.Errorf("alipay TradePreCreate: %w", err)
+REDACTED
+	if rsp == nil {
+		return nil, fmt.Errorf("alipay TradePreCreate: empty response")
+REDACTED
+	if rsp.IsFailure() {
+		return nil, fmt.Errorf("alipay TradePreCreate failed: %s", rsp.Error.Error())
+REDACTED
+	if strings.TrimSpace(rsp.QRCode) == "" {
+		return nil, fmt.Errorf("alipay TradePreCreate: empty qr_code")
+REDACTED
+
+	return &payment.CreatePaymentResponse{
+		TradeNo: req.OrderID,
+		QRCode:  rsp.QRCode,
+REDACTED, nil
+REDACTED
+
 func (a *Alipay) createPagePayTrade(client *alipay.Client, req payment.CreatePaymentRequest, notifyURL, returnURL string) (*payment.CreatePaymentResponse, error) {
 	param := alipay.TradePagePay{REDACTED
 	param.OutTradeNo = req.OrderID
@@ -161,6 +207,7 @@ REDACTED
 	return &payment.CreatePaymentResponse{
 		TradeNo: req.OrderID,
 		PayURL:  payURL.String(),
+		QRCode:  payURL.String(),
 REDACTED, nil
 REDACTED
 
@@ -192,7 +239,15 @@ REDACTED
 
 	amount, err := strconv.ParseFloat(result.TotalAmount, 64)
 	if err != nil {
-		return nil, fmt.Errorf("alipay parse amount %q: %w", result.TotalAmount, err)
+		amount, err = parseAlipayAmount(
+			result.TotalAmount,
+			result.ReceiptAmount,
+			result.BuyerPayAmount,
+			result.InvoiceAmount,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("alipay parse amount: %w", err)
+	REDACTED
 REDACTED
 
 	return &payment.QueryOrderResponse{
@@ -228,7 +283,14 @@ REDACTED
 
 	amount, err := strconv.ParseFloat(notification.TotalAmount, 64)
 	if err != nil {
-		return nil, fmt.Errorf("alipay parse notification amount %q: %w", notification.TotalAmount, err)
+		amount, err = parseAlipayAmount(
+			notification.TotalAmount,
+			notification.ReceiptAmount,
+			notification.BuyerPayAmount,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("alipay parse notification amount: %w", err)
+	REDACTED
 REDACTED
 
 	metadata := a.MerchantIdentityMetadata()
@@ -304,6 +366,20 @@ func isTradeNotExist(err error) bool {
 		return false
 REDACTED
 	return strings.Contains(err.Error(), alipayErrTradeNotExist)
+REDACTED
+
+func parseAlipayAmount(values ...string) (float64, error) {
+	for _, raw := range values {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+	REDACTED
+		amount, err := strconv.ParseFloat(raw, 64)
+		if err == nil {
+			return amount, nil
+	REDACTED
+REDACTED
+	return 0, fmt.Errorf("no valid amount field")
 REDACTED
 
 // Ensure interface compliance.

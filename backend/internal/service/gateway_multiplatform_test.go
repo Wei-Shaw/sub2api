@@ -82,10 +82,6 @@ func (m *mockAccountRepoForPlatform) FindByExtraField(ctx context.Context, key s
 	return nil, nil
 REDACTED
 
-func (m *mockAccountRepoForPlatform) CountByTLSFingerprintProfile(ctx context.Context) (map[int64]int, error) {
-	return nil, nil
-REDACTED
-
 func (m *mockAccountRepoForPlatform) ListCRSAccountIDs(ctx context.Context) (map[string]int64, error) {
 	return nil, nil
 REDACTED

@@ -87,7 +87,6 @@ REDACTED
 func (c *stubConcurrencyCacheForTest) GetUsersLoadBatch(_ context.Context, _ []UserWithConcurrency) (map[int64]*UserLoadInfo, error) {
 	return c.usersLoadBatch, c.usersLoadErr
 REDACTED
-
 func (c *stubConcurrencyCacheForTest) CleanupExpiredAccountSlots(_ context.Context, _ int64) error {
 	return c.cleanupErr
 REDACTED

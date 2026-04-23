@@ -45,8 +45,11 @@ const (
 	openAIChatGPTConversationPrepareURL = "https://chatgpt.com/backend-api/f/conversation/prepare"
 	openAIChatGPTChatRequirementsURL    = "https://chatgpt.com/backend-api/sentinel/chat-requirements"
 
-	openAIImageBackendUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-	openAIImageRequirementsDiff = "0fffff"
+	openAIImageBackendUserAgent  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+	openAIImageRequirementsDiff  = "0fffff"
+	openAIImageLifecycleTimeout  = 2 * time.Minute
+	openAIImageMaxDownloadBytes  = 20 << 20 // 20MB per image download
+	openAIImageMaxUploadPartSize = 20 << 20 // 20MB per multipart upload part
 )
 
 type OpenAIImagesCapability string
@@ -148,6 +151,9 @@ REDACTED else {
 REDACTED
 
 	applyOpenAIImagesDefaults(req)
+	if err := validateOpenAIImagesModel(req.Model); err != nil {
+		return nil, err
+REDACTED
 	req.SizeTier = normalizeOpenAIImageSizeTier(req.Size)
 	req.RequiredCapability = classifyOpenAIImagesCapability(req)
 	return req, nil
@@ -214,7 +220,7 @@ REDACTED
 			continue
 	REDACTED
 
-		data, err := io.ReadAll(part)
+		data, err := io.ReadAll(io.LimitReader(part, openAIImageMaxUploadPartSize))
 		_ = part.Close()
 		if err != nil {
 			return fmt.Errorf("read multipart field %s: %w", name, err)
@@ -293,6 +299,21 @@ REDACTED
 		return
 REDACTED
 	req.Model = "gpt-image-2"
+REDACTED
+
+func isOpenAIImageGenerationModel(model string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "gpt-image-")
+REDACTED
+
+func validateOpenAIImagesModel(model string) error {
+	model = strings.TrimSpace(model)
+	if isOpenAIImageGenerationModel(model) {
+		return nil
+REDACTED
+	if model == "" {
+		return fmt.Errorf("images endpoint requires an image model")
+REDACTED
+	return fmt.Errorf("images endpoint requires an image model, got %q", model)
 REDACTED
 
 func normalizeOpenAIImagesEndpointPath(path string) string {
@@ -400,7 +421,21 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	if mapped := strings.TrimSpace(channelMappedModel); mapped != "" {
 		requestModel = mapped
 REDACTED
+	if err := validateOpenAIImagesModel(requestModel); err != nil {
+		return nil, err
+REDACTED
 	upstreamModel := account.GetMappedModel(requestModel)
+	if err := validateOpenAIImagesModel(upstreamModel); err != nil {
+		return nil, err
+REDACTED
+	logger.LegacyPrintf(
+		"service.openai_gateway",
+		"[OpenAI] Images request routing request_model=%s upstream_model=%s endpoint=%s account_type=%s",
+		strings.TrimSpace(parsed.Model),
+		upstreamModel,
+		parsed.Endpoint,
+		account.Type,
+	)
 	forwardBody, forwardContentType, err := rewriteOpenAIImagesModel(body, parsed.ContentType, upstreamModel)
 	if err != nil {
 		return nil, err
@@ -759,6 +794,17 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesOAuth(
 	if mapped := strings.TrimSpace(channelMappedModel); mapped != "" {
 		requestModel = mapped
 REDACTED
+	if err := validateOpenAIImagesModel(requestModel); err != nil {
+		return nil, err
+REDACTED
+	logger.LegacyPrintf(
+		"service.openai_gateway",
+		"[OpenAI] Images request routing request_model=%s endpoint=%s account_type=%s uploads=%d",
+		requestModel,
+		parsed.Endpoint,
+		account.Type,
+		len(parsed.Uploads),
+	)
 
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
@@ -844,8 +890,18 @@ REDACTED
 		return nil, err
 REDACTED
 	pointerInfos = mergeOpenAIImagePointerInfos(pointerInfos, nil)
+	logger.LegacyPrintf(
+		"service.openai_gateway",
+		"[OpenAI] Image extraction stream conversation_id=%s total_assets=%d file_service_assets=%d direct_assets=%d",
+		conversationID,
+		len(pointerInfos),
+		countOpenAIFileServicePointerInfos(pointerInfos),
+		countOpenAIDirectImageAssets(pointerInfos),
+	)
+	lifecycleCtx, releaseLifecycleCtx := detachOpenAIImageLifecycleContext(ctx, openAIImageLifecycleTimeout)
+	defer releaseLifecycleCtx()
 	if conversationID != "" && !hasOpenAIFileServicePointerInfos(pointerInfos) {
-		polledPointers, pollErr := pollOpenAIImageConversation(ctx, client, headers, conversationID)
+		polledPointers, pollErr := pollOpenAIImageConversation(lifecycleCtx, client, headers, conversationID)
 		if pollErr != nil {
 			return nil, s.wrapOpenAIImageBackendError(ctx, c, account, pollErr)
 	REDACTED
@@ -853,10 +909,11 @@ REDACTED
 REDACTED
 	pointerInfos = preferOpenAIFileServicePointerInfos(pointerInfos)
 	if len(pointerInfos) == 0 {
+		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Image extraction yielded no assets conversation_id=%s", conversationID)
 		return nil, fmt.Errorf("openai image conversation returned no downloadable images")
 REDACTED
 
-	responseBody, imageCount, err := buildOpenAIImageResponse(ctx, client, headers, conversationID, pointerInfos)
+	responseBody, imageCount, err := buildOpenAIImageResponse(lifecycleCtx, client, headers, conversationID, pointerInfos)
 	if err != nil {
 		return nil, s.wrapOpenAIImageBackendError(ctx, c, account, err)
 REDACTED
@@ -1283,8 +1340,11 @@ REDACTED
 REDACTED
 
 type openAIImagePointerInfo struct {
-	Pointer string
-	Prompt  string
+	Pointer     string
+	DownloadURL string
+	B64JSON     string
+	MimeType    string
+	Prompt      string
 REDACTED
 
 type openAIImageToolMessage struct {
@@ -1336,10 +1396,6 @@ func collectOpenAIImagePointers(body []byte) []openAIImagePointerInfo {
 	if len(body) == 0 {
 		return nil
 REDACTED
-	matches := openAIImagePointerMatches(body)
-	if len(matches) == 0 {
-		return nil
-REDACTED
 	prompt := ""
 	for _, path := range []string{
 		"message.metadata.dalle.prompt",
@@ -1351,11 +1407,12 @@ REDACTED {
 			break
 	REDACTED
 REDACTED
+	matches := openAIImagePointerMatches(body)
 	out := make([]openAIImagePointerInfo, 0, len(matches))
 	for _, pointer := range matches {
 		out = append(out, openAIImagePointerInfo{Pointer: pointer, Prompt: promptREDACTED)
 REDACTED
-	return out
+	return mergeOpenAIImagePointerInfos(out, collectOpenAIImageInlineAssets(body, prompt))
 REDACTED
 
 func openAIImagePointerMatches(body []byte) []string {
@@ -1394,25 +1451,70 @@ REDACTED
 	seen := make(map[string]openAIImagePointerInfo, len(existing)+len(next))
 	out := make([]openAIImagePointerInfo, 0, len(existing)+len(next))
 	for _, item := range existing {
-		seen[item.Pointer] = item
+		if key := item.identityKey(); key != "" {
+			seen[key] = item
+	REDACTED
 		out = append(out, item)
 REDACTED
 	for _, item := range next {
-		if existingItem, ok := seen[item.Pointer]; ok {
-			if existingItem.Prompt == "" && item.Prompt != "" {
+		key := item.identityKey()
+		if key == "" {
+			continue
+	REDACTED
+		if existingItem, ok := seen[key]; ok {
+			merged := mergeOpenAIImagePointerInfo(existingItem, item)
+			if merged != existingItem {
 				for i := range out {
-					if out[i].Pointer == item.Pointer {
-						out[i].Prompt = item.Prompt
+					if out[i].identityKey() == key {
+						out[i] = merged
 						break
 				REDACTED
 			REDACTED
+				seen[key] = merged
 		REDACTED
 			continue
 	REDACTED
-		seen[item.Pointer] = item
+		seen[key] = item
 		out = append(out, item)
 REDACTED
 	return out
+REDACTED
+
+func (i openAIImagePointerInfo) identityKey() string {
+	switch {
+	case strings.TrimSpace(i.Pointer) != "":
+		return "pointer:" + strings.TrimSpace(i.Pointer)
+	case strings.TrimSpace(i.DownloadURL) != "":
+		return "download:" + strings.TrimSpace(i.DownloadURL)
+	case strings.TrimSpace(i.B64JSON) != "":
+		b64 := strings.TrimSpace(i.B64JSON)
+		if len(b64) > 64 {
+			b64 = b64[:64]
+	REDACTED
+		return "b64:" + b64
+	default:
+		return ""
+REDACTED
+REDACTED
+
+func mergeOpenAIImagePointerInfo(existing, next openAIImagePointerInfo) openAIImagePointerInfo {
+	merged := existing
+	if strings.TrimSpace(merged.Pointer) == "" {
+		merged.Pointer = next.Pointer
+REDACTED
+	if strings.TrimSpace(merged.DownloadURL) == "" {
+		merged.DownloadURL = next.DownloadURL
+REDACTED
+	if strings.TrimSpace(merged.B64JSON) == "" {
+		merged.B64JSON = next.B64JSON
+REDACTED
+	if strings.TrimSpace(merged.MimeType) == "" {
+		merged.MimeType = next.MimeType
+REDACTED
+	if strings.TrimSpace(merged.Prompt) == "" {
+		merged.Prompt = next.Prompt
+REDACTED
+	return merged
 REDACTED
 
 func hasOpenAIFileServicePointerInfos(items []openAIImagePointerInfo) bool {
@@ -1422,6 +1524,26 @@ func hasOpenAIFileServicePointerInfos(items []openAIImagePointerInfo) bool {
 	REDACTED
 REDACTED
 	return false
+REDACTED
+
+func countOpenAIFileServicePointerInfos(items []openAIImagePointerInfo) int {
+	count := 0
+	for _, item := range items {
+		if strings.HasPrefix(item.Pointer, "file-service://") {
+			count++
+	REDACTED
+REDACTED
+	return count
+REDACTED
+
+func countOpenAIDirectImageAssets(items []openAIImagePointerInfo) int {
+	count := 0
+	for _, item := range items {
+		if strings.TrimSpace(item.DownloadURL) != "" || strings.TrimSpace(item.B64JSON) != "" {
+			count++
+	REDACTED
+REDACTED
+	return count
 REDACTED
 
 func preferOpenAIFileServicePointerInfos(items []openAIImagePointerInfo) []openAIImagePointerInfo {
@@ -1591,11 +1713,7 @@ func buildOpenAIImageResponse(
 REDACTED
 	items := make([]responseItem, 0, len(pointers))
 	for _, pointer := range pointers {
-		downloadURL, err := fetchOpenAIImageDownloadURL(ctx, client, headers, conversationID, pointer.Pointer)
-		if err != nil {
-			return nil, 0, err
-	REDACTED
-		data, err := downloadOpenAIImageBytes(ctx, client, headers, downloadURL)
+		data, err := resolveOpenAIImageBytes(ctx, client, headers, conversationID, pointer)
 		if err != nil {
 			return nil, 0, err
 	REDACTED
@@ -1613,6 +1731,136 @@ REDACTED
 		return nil, 0, err
 REDACTED
 	return body, len(items), nil
+REDACTED
+
+func resolveOpenAIImageBytes(
+	ctx context.Context,
+	client *req.Client,
+	headers http.Header,
+	conversationID string,
+	pointer openAIImagePointerInfo,
+) ([]byte, error) {
+	if normalized := normalizeOpenAIImageBase64(pointer.B64JSON); normalized != "" {
+		return base64.StdEncoding.DecodeString(normalized)
+REDACTED
+	if downloadURL := strings.TrimSpace(pointer.DownloadURL); downloadURL != "" {
+		return downloadOpenAIImageBytes(ctx, client, headers, downloadURL)
+REDACTED
+	if strings.TrimSpace(pointer.Pointer) == "" {
+		return nil, fmt.Errorf("image asset is missing pointer, url, and base64 data")
+REDACTED
+	downloadURL, err := fetchOpenAIImageDownloadURL(ctx, client, headers, conversationID, pointer.Pointer)
+	if err != nil {
+		return nil, err
+REDACTED
+	return downloadOpenAIImageBytes(ctx, client, headers, downloadURL)
+REDACTED
+
+func normalizeOpenAIImageBase64(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+REDACTED
+	if strings.HasPrefix(strings.ToLower(raw), "data:") {
+		if idx := strings.Index(raw, ","); idx >= 0 && idx+1 < len(raw) {
+			raw = raw[idx+1:]
+	REDACTED
+REDACTED
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimRight(raw, "=") + strings.Repeat("=", (4-len(raw)%4)%4)
+	if raw == "" {
+		return ""
+REDACTED
+	if _, err := base64.StdEncoding.DecodeString(raw); err != nil {
+		return ""
+REDACTED
+	return raw
+REDACTED
+
+func collectOpenAIImageInlineAssets(body []byte, fallbackPrompt string) []openAIImagePointerInfo {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return nil
+REDACTED
+	var decoded any
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		return nil
+REDACTED
+	var out []openAIImagePointerInfo
+	walkOpenAIImageInlineAssets(decoded, strings.TrimSpace(fallbackPrompt), &out)
+	return out
+REDACTED
+
+func walkOpenAIImageInlineAssets(node any, prompt string, out *[]openAIImagePointerInfo) {
+	switch value := node.(type) {
+	case map[string]any:
+		localPrompt := prompt
+		for _, key := range []string{"revised_prompt", "image_gen_title", "prompt"REDACTED {
+			if v, ok := value[key].(string); ok && strings.TrimSpace(v) != "" {
+				localPrompt = strings.TrimSpace(v)
+				break
+		REDACTED
+	REDACTED
+		item := openAIImagePointerInfo{
+			Prompt:      localPrompt,
+			Pointer:     firstNonEmptyString(value["asset_pointer"], value["pointer"]),
+			DownloadURL: firstNonEmptyString(value["download_url"], value["url"], value["image_url"]),
+			B64JSON:     firstNonEmptyString(value["b64_json"], value["base64"], value["image_base64"]),
+			MimeType:    firstNonEmptyString(value["mime_type"], value["mimeType"], value["content_type"]),
+	REDACTED
+		switch {
+		case strings.HasPrefix(strings.TrimSpace(item.Pointer), "file-service://"),
+			strings.HasPrefix(strings.TrimSpace(item.Pointer), "sediment://"),
+			isLikelyOpenAIImageDownloadURL(item.DownloadURL),
+			normalizeOpenAIImageBase64(item.B64JSON) != "":
+			*out = append(*out, item)
+	REDACTED
+		for _, child := range value {
+			walkOpenAIImageInlineAssets(child, localPrompt, out)
+	REDACTED
+	case []any:
+		for _, child := range value {
+			walkOpenAIImageInlineAssets(child, prompt, out)
+	REDACTED
+REDACTED
+REDACTED
+
+func firstNonEmptyString(values ...any) string {
+	for _, value := range values {
+		if s, ok := value.(string); ok && strings.TrimSpace(s) != "" {
+			return strings.TrimSpace(s)
+	REDACTED
+REDACTED
+	return ""
+REDACTED
+
+func isLikelyOpenAIImageDownloadURL(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+REDACTED
+	if strings.HasPrefix(strings.ToLower(raw), "data:image/") {
+		return true
+REDACTED
+	if !strings.HasPrefix(strings.ToLower(raw), "http://") && !strings.HasPrefix(strings.ToLower(raw), "https://") {
+		return false
+REDACTED
+	lower := strings.ToLower(raw)
+	return strings.Contains(lower, "/download") ||
+		strings.Contains(lower, ".png") ||
+		strings.Contains(lower, ".jpg") ||
+		strings.Contains(lower, ".jpeg") ||
+		strings.Contains(lower, ".webp")
+REDACTED
+
+func detachOpenAIImageLifecycleContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	base := context.Background()
+	if ctx != nil {
+		base = context.WithoutCancel(ctx)
+REDACTED
+	if timeout <= 0 {
+		return base, func() {REDACTED
+REDACTED
+	return context.WithTimeout(base, timeout)
 REDACTED
 
 func fetchOpenAIImageDownloadURL(
@@ -1706,7 +1954,7 @@ REDACTED()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, newOpenAIImageStatusError(resp, "download image bytes failed")
 REDACTED
-	return io.ReadAll(resp.Body)
+	return io.ReadAll(io.LimitReader(resp.Body, openAIImageMaxDownloadBytes))
 REDACTED
 
 func handleOpenAIImageBackendError(resp *req.Response) error {

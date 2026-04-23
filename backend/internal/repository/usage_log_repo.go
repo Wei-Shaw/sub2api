@@ -3080,7 +3080,7 @@ func (r *usageLogRepository) GetGroupStatsWithFilters(ctx context.Context, start
 	query := `
 		SELECT
 			COALESCE(ul.group_id, 0) as group_id,
-			COALESCE(g.name, '(无分组)') as group_name,
+			COALESCE(g.name, '') as group_name,
 			COUNT(*) as requests,
 			COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0) as total_tokens,
 			COALESCE(SUM(ul.total_cost), 0) as cost,

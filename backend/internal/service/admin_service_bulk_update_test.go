@@ -43,16 +43,6 @@ REDACTED
 	return nil
 REDACTED
 
-func (s *accountRepoStubForBulkUpdate) ListByGroup(_ context.Context, groupID int64) ([]Account, error) {
-	if err, ok := s.listByGroupErr[groupID]; ok {
-		return nil, err
-REDACTED
-	if rows, ok := s.listByGroupData[groupID]; ok {
-		return rows, nil
-REDACTED
-	return nil, nil
-REDACTED
-
 func (s *accountRepoStubForBulkUpdate) GetByIDs(_ context.Context, ids []int64) ([]*Account, error) {
 	s.getByIDsCalled = true
 	s.getByIDsIDs = append([]int64{REDACTED, ids...)
@@ -71,6 +61,16 @@ REDACTED
 		return account, nil
 REDACTED
 	return nil, errors.New("account not found")
+REDACTED
+
+func (s *accountRepoStubForBulkUpdate) ListByGroup(_ context.Context, groupID int64) ([]Account, error) {
+	if err, ok := s.listByGroupErr[groupID]; ok {
+		return nil, err
+REDACTED
+	if rows, ok := s.listByGroupData[groupID]; ok {
+		return rows, nil
+REDACTED
+	return nil, nil
 REDACTED
 
 // TestAdminService_BulkUpdateAccounts_AllSuccessIDs 验证批量更新成功时返回 success_ids/failed_ids。

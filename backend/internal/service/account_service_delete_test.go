@@ -58,10 +58,6 @@ func (s *accountRepoStub) FindByExtraField(ctx context.Context, key string, valu
 	panic("unexpected FindByExtraField call")
 REDACTED
 
-func (s *accountRepoStub) CountByTLSFingerprintProfile(ctx context.Context) (map[int64]int, error) {
-	panic("unexpected CountByTLSFingerprintProfile call")
-REDACTED
-
 func (s *accountRepoStub) ListCRSAccountIDs(ctx context.Context) (map[string]int64, error) {
 	panic("unexpected ListCRSAccountIDs call")
 REDACTED

@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -102,4 +103,57 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_ExplicitSizeRequiresNative
 REDACTED
 	require.NotNil(t, parsed)
 	require.Equal(t, OpenAIImagesCapabilityNative, parsed.RequiredCapability)
+REDACTED
+
+func TestOpenAIGatewayServiceParseOpenAIImagesRequest_RejectsNonImageModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-5.4","prompt":"draw a cat"REDACTED`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	svc := &OpenAIGatewayService{REDACTED
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.Nil(t, parsed)
+	require.ErrorContains(t, err, `images endpoint requires an image model, got "gpt-5.4"`)
+REDACTED
+
+func TestCollectOpenAIImagePointers_RecognizesDirectAssets(t *testing.T) {
+	items := collectOpenAIImagePointers([]byte(`{
+		"revised_prompt": "cat astronaut",
+		"parts": [
+			{"b64_json":"QUJD"REDACTED,
+			{"download_url":"https://files.example.com/image.png?sig=1"REDACTED,
+			{"asset_pointer":"file-service://file_123"REDACTED
+		]
+REDACTED`))
+
+	require.Len(t, items, 3)
+	var sawBase64, sawURL, sawPointer bool
+	for _, item := range items {
+		if item.B64JSON == "QUJD" {
+			sawBase64 = true
+			require.Equal(t, "cat astronaut", item.Prompt)
+	REDACTED
+		if item.DownloadURL == "https://files.example.com/image.png?sig=1" {
+			sawURL = true
+	REDACTED
+		if item.Pointer == "file-service://file_123" {
+			sawPointer = true
+	REDACTED
+REDACTED
+	require.True(t, sawBase64)
+	require.True(t, sawURL)
+	require.True(t, sawPointer)
+REDACTED
+
+func TestResolveOpenAIImageBytes_PrefersInlineBase64(t *testing.T) {
+	data, err := resolveOpenAIImageBytes(context.Background(), nil, nil, "", openAIImagePointerInfo{
+		B64JSON: "data:image/png;base64,QUJD",
+REDACTED)
+REDACTED
+	require.Equal(t, []byte("ABC"), data)
 REDACTED
