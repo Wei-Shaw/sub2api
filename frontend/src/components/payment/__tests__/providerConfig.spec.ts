@@ -12,9 +12,9 @@ describe('PROVIDER_CONFIG_FIELDS.wxpay', () => {
     expect(findField('certSerial')?.optional).toBeFalsy()
   })
 
-  it('exposes optional mp and H5 metadata fields for WeChat-specific flows', () => {
-    expect(findField('mpAppId')?.optional).toBe(true)
-    expect(findField('h5AppName')?.optional).toBe(true)
-    expect(findField('h5AppUrl')?.optional).toBe(true)
+  it('only keeps the simplified visible credential set in the admin form', () => {
+    expect(findField('mpAppId')).toBeUndefined()
+    expect(findField('h5AppName')).toBeUndefined()
+    expect(findField('h5AppUrl')).toBeUndefined()
   })
 })

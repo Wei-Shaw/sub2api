@@ -217,6 +217,42 @@ func TestApplyCodexOAuthTransform_NormalizeCodexTools_PreservesResponsesFunction
 	require.Equal(t, "bash", first["name"])
 }
 
+func TestNormalizeOpenAIResponsesImageGenerationTools_RewritesLegacyFields(t *testing.T) {
+	reqBody := map[string]any{
+		"tools": []any{
+			map[string]any{
+				"type":        "image_generation",
+				"format":      "png",
+				"compression": 60,
+			},
+		},
+	}
+
+	modified := normalizeOpenAIResponsesImageGenerationTools(reqBody)
+	require.True(t, modified)
+
+	tools, ok := reqBody["tools"].([]any)
+	require.True(t, ok)
+	first, ok := tools[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "png", first["output_format"])
+	require.Equal(t, 60, first["output_compression"])
+	_, hasFormat := first["format"]
+	require.False(t, hasFormat)
+	_, hasCompression := first["compression"]
+	require.False(t, hasCompression)
+}
+
+func TestValidateOpenAIResponsesImageModel_RejectsImageOnlyModel(t *testing.T) {
+	err := validateOpenAIResponsesImageModel(map[string]any{
+		"tools": []any{
+			map[string]any{"type": "image_generation"},
+		},
+	}, "gpt-image-2")
+
+	require.ErrorContains(t, err, `/v1/responses image_generation requests require a Responses-capable text model`)
+}
+
 func TestApplyCodexOAuthTransform_EmptyInput(t *testing.T) {
 	// 空 input 应保持为空且不触发异常。
 

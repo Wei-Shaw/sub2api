@@ -190,12 +190,14 @@ describe('buildCreateOrderPayload', () => {
       paymentType: 'alipay_direct',
       orderType: 'balance',
       origin: 'https://app.example.com/',
+      isMobile: true,
       isWechatBrowser: false,
     })).toEqual({
       amount: 88,
       payment_type: 'alipay',
       order_type: 'balance',
       return_url: 'https://app.example.com/payment/result',
+      is_mobile: true,
       payment_source: 'hosted_redirect',
     })
   })
@@ -207,6 +209,7 @@ describe('buildCreateOrderPayload', () => {
       orderType: 'subscription',
       planId: 7,
       origin: 'https://app.example.com',
+      isMobile: false,
       isWechatBrowser: true,
     })).toEqual({
       amount: 128,
@@ -214,6 +217,7 @@ describe('buildCreateOrderPayload', () => {
       order_type: 'subscription',
       plan_id: 7,
       return_url: 'https://app.example.com/payment/result',
+      is_mobile: false,
       payment_source: 'wechat_in_app_resume',
     })
   })

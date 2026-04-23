@@ -20,6 +20,9 @@ import (
 var (
 	ErrSubscriptionInvalid       = infraerrors.Forbidden("SUBSCRIPTION_INVALID", "subscription is invalid or expired")
 	ErrBillingServiceUnavailable = infraerrors.ServiceUnavailable("BILLING_SERVICE_ERROR", "Billing service temporarily unavailable. Please retry later.")
+	// RPM 超限错误。gateway_handler 负责映射为 HTTP 429。
+	ErrGroupRPMExceeded = infraerrors.TooManyRequests("GROUP_RPM_EXCEEDED", "group requests-per-minute limit exceeded")
+	ErrUserRPMExceeded  = infraerrors.TooManyRequests("USER_RPM_EXCEEDED", "user requests-per-minute limit exceeded")
 )
 
 // subscriptionCacheData 订阅缓存数据结构（内部使用）
@@ -87,6 +90,8 @@ type BillingCacheService struct {
 	userRepo              UserRepository
 	subRepo               UserSubscriptionRepository
 	apiKeyRateLimitLoader apiKeyRateLimitLoader
+	userRPMCache          UserRPMCache
+	userGroupRateRepo     UserGroupRateRepository
 	cfg                   *config.Config
 	circuitBreaker        *billingCircuitBreaker
 
@@ -104,12 +109,22 @@ type BillingCacheService struct {
 }
 
 // NewBillingCacheService 创建计费缓存服务
-func NewBillingCacheService(cache BillingCache, userRepo UserRepository, subRepo UserSubscriptionRepository, apiKeyRepo APIKeyRepository, cfg *config.Config) *BillingCacheService {
+func NewBillingCacheService(
+	cache BillingCache,
+	userRepo UserRepository,
+	subRepo UserSubscriptionRepository,
+	apiKeyRepo APIKeyRepository,
+	userRPMCache UserRPMCache,
+	userGroupRateRepo UserGroupRateRepository,
+	cfg *config.Config,
+) *BillingCacheService {
 	svc := &BillingCacheService{
 		cache:                 cache,
 		userRepo:              userRepo,
 		subRepo:               subRepo,
 		apiKeyRateLimitLoader: apiKeyRepo,
+		userRPMCache:          userRPMCache,
+		userGroupRateRepo:     userGroupRateRepo,
 		cfg:                   cfg,
 	}
 	svc.circuitBreaker = newBillingCircuitBreaker(cfg.Billing.CircuitBreaker)
@@ -661,6 +676,95 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 	if apiKey != nil && apiKey.HasRateLimits() {
 		if err := s.checkAPIKeyRateLimits(ctx, apiKey); err != nil {
 			return err
+		}
+	}
+
+	// RPM 限流：级联回落（Override → Group → User），放在最后以避免为注定失败的请求增加计数。
+	if err := s.checkRPM(ctx, user, group); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// checkRPM 执行并行 RPM 限流，所有适用的限制同时生效，任一超限即拒绝：
+//
+//  1. (用户, 分组) rpm_override       — 最细粒度：管理员为特定用户在特定分组设定的专属限额。
+//     override=0 表示该用户在该分组免检（绿灯），但 user 级全局上限仍然生效。
+//  2. group.rpm_limit                 — 分组级：该分组的统一 RPM 容量（仅当无 override 时生效）。
+//  3. user.rpm_limit                  — 用户级全局硬上限：无论 override/group 如何配置，始终生效。
+//
+// 与旧版"级联互斥"设计不同，新版确保 user.rpm_limit 作为全局天花板不会被 group 或 override 覆盖。
+// Redis 故障一律 fail-open（打 warning，不阻塞业务）。
+func (s *BillingCacheService) checkRPM(ctx context.Context, user *User, group *Group) error {
+	if s == nil || s.userRPMCache == nil || user == nil {
+		return nil
+	}
+
+	// ── 第一层：分组级检查（override 或 group.rpm_limit） ──
+	if group != nil {
+		// 解析 override：优先从 auth cache snapshot，nil 时回退 DB。
+		var override *int
+		if user.UserGroupRPMOverride != nil {
+			override = user.UserGroupRPMOverride
+		} else if s.userGroupRateRepo != nil {
+			dbOverride, err := s.userGroupRateRepo.GetRPMOverrideByUserAndGroup(ctx, user.ID, group.ID)
+			if err != nil {
+				logger.LegacyPrintf(
+					"service.billing_cache",
+					"Warning: rpm override lookup failed for user=%d group=%d: %v",
+					user.ID, group.ID, err,
+				)
+			} else {
+				override = dbOverride
+			}
+		}
+
+		if override != nil {
+			// override=0 → 该用户在该分组免检（但 user 级仍会在下面检查）。
+			if *override > 0 {
+				count, incErr := s.userRPMCache.IncrementUserGroupRPM(ctx, user.ID, group.ID)
+				if incErr != nil {
+					logger.LegacyPrintf(
+						"service.billing_cache",
+						"Warning: rpm increment (override) failed for user=%d group=%d: %v",
+						user.ID, group.ID, incErr,
+					)
+					// fail-open
+				} else if count > *override {
+					return ErrGroupRPMExceeded
+				}
+			}
+			// override 命中后跳过 group.rpm_limit（override 替代 group），但不 return——继续检查 user 级。
+		} else if group.RPMLimit > 0 {
+			// 无 override，检查 group.rpm_limit。
+			count, err := s.userRPMCache.IncrementUserGroupRPM(ctx, user.ID, group.ID)
+			if err != nil {
+				logger.LegacyPrintf(
+					"service.billing_cache",
+					"Warning: rpm increment (group) failed for user=%d group=%d: %v",
+					user.ID, group.ID, err,
+				)
+				// fail-open
+			} else if count > group.RPMLimit {
+				return ErrGroupRPMExceeded
+			}
+		}
+	}
+
+	// ── 第二层：用户级全局硬上限（始终生效） ──
+	if user.RPMLimit > 0 {
+		count, err := s.userRPMCache.IncrementUserRPM(ctx, user.ID)
+		if err != nil {
+			logger.LegacyPrintf(
+				"service.billing_cache",
+				"Warning: rpm increment (user) failed for user=%d: %v",
+				user.ID, err,
+			)
+			return nil // fail-open
+		}
+		if count > user.RPMLimit {
+			return ErrUserRPMExceeded
 		}
 	}
 

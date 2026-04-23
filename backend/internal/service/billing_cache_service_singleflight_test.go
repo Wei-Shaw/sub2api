@@ -100,7 +100,7 @@ func TestBillingCacheServiceGetUserBalance_Singleflight(t *testing.T) {
 		delay:   80 * time.Millisecond,
 		balance: 12.34,
 	}
-	svc := NewBillingCacheService(cache, userRepo, nil, nil, &config.Config{})
+	svc := NewBillingCacheService(cache, userRepo, nil, nil, nil, nil, &config.Config{})
 	t.Cleanup(svc.Stop)
 
 	const goroutines = 16

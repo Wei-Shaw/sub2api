@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -32,6 +33,7 @@ type AdminService interface {
 	UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*User, error)
 	GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int, sortBy, sortOrder string) ([]APIKey, int64, error)
 	GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error)
+	GetUserRPMStatus(ctx context.Context, userID int64) (*UserRPMStatus, error)
 	// GetUserBalanceHistory returns paginated balance/concurrency change records for a user.
 	// codeType is optional - pass empty string to return all types.
 	// Also returns totalRecharged (sum of all positive balance top-ups).
@@ -50,6 +52,8 @@ type AdminService interface {
 	GetGroupRateMultipliers(ctx context.Context, groupID int64) ([]UserGroupRateEntry, error)
 	ClearGroupRateMultipliers(ctx context.Context, groupID int64) error
 	BatchSetGroupRateMultipliers(ctx context.Context, groupID int64, entries []GroupRateMultiplierInput) error
+	ClearGroupRPMOverrides(ctx context.Context, groupID int64) error
+	BatchSetGroupRPMOverrides(ctx context.Context, groupID int64, entries []GroupRPMOverrideInput) error
 	UpdateGroupSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error
 
 	// API Key management (admin)
@@ -114,6 +118,7 @@ type CreateUserInput struct {
 	Notes         string
 	Balance       float64
 	Concurrency   int
+	RPMLimit      int
 	AllowedGroups []int64
 }
 
@@ -124,6 +129,7 @@ type UpdateUserInput struct {
 	Notes         *string
 	Balance       *float64 // 使用指针区分"未提供"和"设置为0"
 	Concurrency   *int     // 使用指针区分"未提供"和"设置为0"
+	RPMLimit      *int     // 使用指针区分"未提供"和"设置为0"
 	Status        string
 	AllowedGroups *[]int64 // 使用指针区分"未提供"和"设置为空数组"
 	// GroupRates 用户专属分组倍率配置
@@ -199,6 +205,8 @@ type CreateGroupInput struct {
 	RequireOAuthOnly            bool
 	RequirePrivacySet           bool
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig
+	// RPMLimit 分组 RPM 上限（0 = 不限制）
+	RPMLimit int
 	// 从指定分组复制账号（创建分组后在同一事务内绑定）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -234,6 +242,8 @@ type UpdateGroupInput struct {
 	RequireOAuthOnly            *bool
 	RequirePrivacySet           *bool
 	MessagesDispatchModelConfig *OpenAIMessagesDispatchModelConfig
+	// RPMLimit 分组 RPM 上限（0 = 不限制），nil 表示未提供不改动。
+	RPMLimit *int
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64
 }
@@ -315,6 +325,22 @@ type AdminUpdateAPIKeyGroupIDResult struct {
 // ReplaceUserGroupResult 分组替换操作的结果
 type ReplaceUserGroupResult struct {
 	MigratedKeys int64 // 迁移的 Key 数量
+}
+
+// UserRPMStatus describes a user's current per-minute RPM usage.
+type UserRPMStatus struct {
+	UserRPMUsed  int                  `json:"user_rpm_used"`
+	UserRPMLimit int                  `json:"user_rpm_limit"`
+	PerGroup     []UserGroupRPMStatus `json:"per_group"`
+}
+
+// UserGroupRPMStatus describes current per-minute RPM usage for one user/group pair.
+type UserGroupRPMStatus struct {
+	GroupID   int64  `json:"group_id"`
+	GroupName string `json:"group_name"`
+	Used      int    `json:"used"`
+	Limit     int    `json:"limit"`
+	Source    string `json:"source"` // "group" | "override"
 }
 
 // BulkUpdateAccountsResult is the aggregated response for bulk updates.
@@ -463,6 +489,8 @@ const (
 	proxyQualityClientUserAgent       = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
 )
 
+var ErrRPMStatusUnavailable = infraerrors.New(http.StatusNotImplemented, "RPM_STATUS_UNAVAILABLE", "RPM cache not available")
+
 // adminServiceImpl implements AdminService
 type adminServiceImpl struct {
 	userRepo             UserRepository
@@ -472,6 +500,7 @@ type adminServiceImpl struct {
 	apiKeyRepo           APIKeyRepository
 	redeemCodeRepo       RedeemCodeRepository
 	userGroupRateRepo    UserGroupRateRepository
+	userRPMCache         UserRPMCache
 	billingCacheService  *BillingCacheService
 	proxyProber          ProxyExitInfoProber
 	proxyLatencyCache    ProxyLatencyCache
@@ -496,6 +525,7 @@ func NewAdminService(
 	apiKeyRepo APIKeyRepository,
 	redeemCodeRepo RedeemCodeRepository,
 	userGroupRateRepo UserGroupRateRepository,
+	userRPMCache UserRPMCache,
 	billingCacheService *BillingCacheService,
 	proxyProber ProxyExitInfoProber,
 	proxyLatencyCache ProxyLatencyCache,
@@ -514,6 +544,7 @@ func NewAdminService(
 		apiKeyRepo:           apiKeyRepo,
 		redeemCodeRepo:       redeemCodeRepo,
 		userGroupRateRepo:    userGroupRateRepo,
+		userRPMCache:         userRPMCache,
 		billingCacheService:  billingCacheService,
 		proxyProber:          proxyProber,
 		proxyLatencyCache:    proxyLatencyCache,
@@ -617,6 +648,7 @@ func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInpu
 		Role:          RoleUser, // Always create as regular user, never admin
 		Balance:       input.Balance,
 		Concurrency:   input.Concurrency,
+		RPMLimit:      input.RPMLimit,
 		Status:        StatusActive,
 		AllowedGroups: input.AllowedGroups,
 	}
@@ -670,6 +702,7 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	oldConcurrency := user.Concurrency
 	oldStatus := user.Status
 	oldRole := user.Role
+	oldRPMLimit := user.RPMLimit
 
 	if input.Email != "" {
 		user.Email = input.Email
@@ -695,6 +728,10 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 		user.Concurrency = *input.Concurrency
 	}
 
+	if input.RPMLimit != nil {
+		user.RPMLimit = *input.RPMLimit
+	}
+
 	if input.AllowedGroups != nil {
 		user.AllowedGroups = *input.AllowedGroups
 	}
@@ -711,7 +748,9 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	}
 
 	if s.authCacheInvalidator != nil {
-		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole {
+		// RPMLimit 直接参与 billing_cache_service.checkRPM 的三级级联，
+		// 不失效缓存会让修改在一个 L2 TTL 内失去效果。
+		if user.Concurrency != oldConcurrency || user.Status != oldStatus || user.Role != oldRole || user.RPMLimit != oldRPMLimit {
 			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, user.ID)
 		}
 	}
@@ -831,6 +870,81 @@ func (s *adminServiceImpl) GetUserAPIKeys(ctx context.Context, userID int64, pag
 		return nil, 0, err
 	}
 	return keys, result.Total, nil
+}
+
+func (s *adminServiceImpl) GetUserRPMStatus(ctx context.Context, userID int64) (*UserRPMStatus, error) {
+	if s.userRPMCache == nil {
+		return nil, ErrRPMStatusUnavailable
+	}
+
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	userRPMUsed, err := s.userRPMCache.GetUserRPM(ctx, userID)
+	if err != nil {
+		logger.LegacyPrintf("service.admin", "failed to get user rpm: user_id=%d err=%v", userID, err)
+	}
+
+	keys, _, err := s.GetUserAPIKeys(ctx, userID, 1, 1000, "", "")
+	if err != nil {
+		return nil, err
+	}
+
+	groupIDSet := make(map[int64]struct{})
+	for _, key := range keys {
+		if key.GroupID != nil && *key.GroupID > 0 {
+			groupIDSet[*key.GroupID] = struct{}{}
+		}
+	}
+
+	groupIDs := make([]int64, 0, len(groupIDSet))
+	for groupID := range groupIDSet {
+		groupIDs = append(groupIDs, groupID)
+	}
+	sort.Slice(groupIDs, func(i, j int) bool { return groupIDs[i] < groupIDs[j] })
+
+	var perGroup []UserGroupRPMStatus
+	for _, groupID := range groupIDs {
+		used, getErr := s.userRPMCache.GetUserGroupRPM(ctx, userID, groupID)
+		if getErr != nil {
+			logger.LegacyPrintf("service.admin", "failed to get user group rpm: user_id=%d group_id=%d err=%v", userID, groupID, getErr)
+		}
+
+		entry := UserGroupRPMStatus{
+			GroupID: groupID,
+			Used:    used,
+		}
+
+		if s.groupRepo != nil {
+			if group, groupErr := s.groupRepo.GetByIDLite(ctx, groupID); groupErr == nil && group != nil {
+				entry.GroupName = group.Name
+				entry.Limit = group.RPMLimit
+				entry.Source = "group"
+			} else if groupErr != nil {
+				logger.LegacyPrintf("service.admin", "failed to get group rpm status metadata: group_id=%d err=%v", groupID, groupErr)
+			}
+		}
+
+		if s.userGroupRateRepo != nil {
+			override, overrideErr := s.userGroupRateRepo.GetRPMOverrideByUserAndGroup(ctx, userID, groupID)
+			if overrideErr != nil {
+				logger.LegacyPrintf("service.admin", "failed to get rpm override: user_id=%d group_id=%d err=%v", userID, groupID, overrideErr)
+			} else if override != nil {
+				entry.Limit = *override
+				entry.Source = "override"
+			}
+		}
+
+		perGroup = append(perGroup, entry)
+	}
+
+	return &UserRPMStatus{
+		UserRPMUsed:  userRPMUsed,
+		UserRPMLimit: user.RPMLimit,
+		PerGroup:     perGroup,
+	}, nil
 }
 
 func (s *adminServiceImpl) GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error) {
@@ -1314,6 +1428,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		RequirePrivacySet:               input.RequirePrivacySet,
 		DefaultMappedModel:              input.DefaultMappedModel,
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
+		RPMLimit:                        input.RPMLimit,
 	}
 	sanitizeGroupMessagesDispatchFields(group)
 	if err := s.groupRepo.Create(ctx, group); err != nil {
@@ -1548,10 +1663,17 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.MessagesDispatchModelConfig != nil {
 		group.MessagesDispatchModelConfig = normalizeOpenAIMessagesDispatchModelConfig(*input.MessagesDispatchModelConfig)
 	}
+	if input.RPMLimit != nil {
+		group.RPMLimit = *input.RPMLimit
+	}
 	sanitizeGroupMessagesDispatchFields(group)
 
 	if err := s.groupRepo.Update(ctx, group); err != nil {
 		return nil, err
+	}
+
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, id)
 	}
 
 	// 如果指定了复制账号的源分组，同步绑定（替换当前分组的账号）
@@ -1622,9 +1744,6 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		}
 	}
 
-	if s.authCacheInvalidator != nil {
-		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, id)
-	}
 	return group, nil
 }
 
@@ -1698,6 +1817,39 @@ func (s *adminServiceImpl) BatchSetGroupRateMultipliers(ctx context.Context, gro
 		}
 	}
 	return s.userGroupRateRepo.SyncGroupRateMultipliers(ctx, groupID, entries)
+}
+
+func (s *adminServiceImpl) ClearGroupRPMOverrides(ctx context.Context, groupID int64) error {
+	if s.userGroupRateRepo == nil {
+		return nil
+	}
+	if err := s.userGroupRateRepo.ClearGroupRPMOverrides(ctx, groupID); err != nil {
+		return err
+	}
+	// RPM override 已嵌入 auth cache snapshot (v7)，变更后必须失效相关缓存。
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, groupID)
+	}
+	return nil
+}
+
+func (s *adminServiceImpl) BatchSetGroupRPMOverrides(ctx context.Context, groupID int64, entries []GroupRPMOverrideInput) error {
+	if s.userGroupRateRepo == nil {
+		return nil
+	}
+	for _, e := range entries {
+		if e.RPMOverride != nil && *e.RPMOverride < 0 {
+			return infraerrors.BadRequest("INVALID_RPM_OVERRIDE", fmt.Sprintf("rpm_override must be >= 0 (user_id=%d)", e.UserID))
+		}
+	}
+	if err := s.userGroupRateRepo.SyncGroupRPMOverrides(ctx, groupID, entries); err != nil {
+		return err
+	}
+	// RPM override 已嵌入 auth cache snapshot (v7)，变更后必须失效相关缓存。
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByGroupID(ctx, groupID)
+	}
+	return nil
 }
 
 func (s *adminServiceImpl) UpdateGroupSortOrders(ctx context.Context, updates []GroupSortOrderUpdate) error {

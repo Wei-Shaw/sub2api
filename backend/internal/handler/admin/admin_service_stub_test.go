@@ -183,6 +183,17 @@ func (s *stubAdminService) GetUserUsageStats(ctx context.Context, userID int64, 
 	return map[string]any{"user_id": userID}, nil
 }
 
+func (s *stubAdminService) GetUserRPMStatus(ctx context.Context, userID int64) (*service.UserRPMStatus, error) {
+	user, err := s.GetUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return &service.UserRPMStatus{
+		UserRPMUsed:  0,
+		UserRPMLimit: user.RPMLimit,
+	}, nil
+}
+
 func (s *stubAdminService) BindUserAuthIdentity(ctx context.Context, userID int64, input service.AdminBindAuthIdentityInput) (*service.AdminBoundAuthIdentity, error) {
 	s.boundAuthIdentityFor = userID
 	copied := input
@@ -273,6 +284,14 @@ func (s *stubAdminService) ClearGroupRateMultipliers(_ context.Context, _ int64)
 }
 
 func (s *stubAdminService) BatchSetGroupRateMultipliers(_ context.Context, _ int64, _ []service.GroupRateMultiplierInput) error {
+	return nil
+}
+
+func (s *stubAdminService) ClearGroupRPMOverrides(_ context.Context, _ int64) error {
+	return nil
+}
+
+func (s *stubAdminService) BatchSetGroupRPMOverrides(_ context.Context, _ int64, _ []service.GroupRPMOverrideInput) error {
 	return nil
 }
 
