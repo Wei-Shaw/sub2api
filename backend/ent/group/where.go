@@ -190,6 +190,11 @@ func DefaultMappedModel(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldDefaultMappedModel, v))
 REDACTED
 
+// RpmLimit applies equality check predicate on the "rpm_limit" field. It's identical to RpmLimitEQ.
+func RpmLimit(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldRpmLimit, v))
+REDACTED
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldCreatedAt, v))
@@ -1318,6 +1323,46 @@ REDACTED
 // DefaultMappedModelContainsFold applies the ContainsFold predicate on the "default_mapped_model" field.
 func DefaultMappedModelContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldDefaultMappedModel, v))
+REDACTED
+
+// RpmLimitEQ applies the EQ predicate on the "rpm_limit" field.
+func RpmLimitEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldRpmLimit, v))
+REDACTED
+
+// RpmLimitNEQ applies the NEQ predicate on the "rpm_limit" field.
+func RpmLimitNEQ(v int) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldRpmLimit, v))
+REDACTED
+
+// RpmLimitIn applies the In predicate on the "rpm_limit" field.
+func RpmLimitIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldIn(FieldRpmLimit, vs...))
+REDACTED
+
+// RpmLimitNotIn applies the NotIn predicate on the "rpm_limit" field.
+func RpmLimitNotIn(vs ...int) predicate.Group {
+	return predicate.Group(sql.FieldNotIn(FieldRpmLimit, vs...))
+REDACTED
+
+// RpmLimitGT applies the GT predicate on the "rpm_limit" field.
+func RpmLimitGT(v int) predicate.Group {
+	return predicate.Group(sql.FieldGT(FieldRpmLimit, v))
+REDACTED
+
+// RpmLimitGTE applies the GTE predicate on the "rpm_limit" field.
+func RpmLimitGTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldGTE(FieldRpmLimit, v))
+REDACTED
+
+// RpmLimitLT applies the LT predicate on the "rpm_limit" field.
+func RpmLimitLT(v int) predicate.Group {
+	return predicate.Group(sql.FieldLT(FieldRpmLimit, v))
+REDACTED
+
+// RpmLimitLTE applies the LTE predicate on the "rpm_limit" field.
+func RpmLimitLTE(v int) predicate.Group {
+	return predicate.Group(sql.FieldLTE(FieldRpmLimit, v))
 REDACTED
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

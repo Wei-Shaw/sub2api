@@ -1167,6 +1167,7 @@ REDACTED
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
 	updates[SettingKeyDefaultBalance] = strconv.FormatFloat(settings.DefaultBalance, 'f', 8, 64)
+	updates[SettingKeyDefaultUserRPMLimit] = strconv.Itoa(settings.DefaultUserRPMLimit)
 	defaultSubsJSON, err := json.Marshal(settings.DefaultSubscriptions)
 	if err != nil {
 		return nil, fmt.Errorf("marshal default subscriptions: %w", err)
@@ -1538,6 +1539,18 @@ REDACTED
 	return s.cfg.Default.UserBalance
 REDACTED
 
+// GetDefaultUserRPMLimit 获取新用户默认 RPM 限制（0 = 不限制）。未配置则返回 0。
+func (s *SettingService) GetDefaultUserRPMLimit(ctx context.Context) int {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyDefaultUserRPMLimit)
+	if err != nil || value == "" {
+		return 0
+REDACTED
+	if v, err := strconv.Atoi(value); err == nil && v >= 0 {
+		return v
+REDACTED
+	return 0
+REDACTED
+
 // GetDefaultSubscriptions 获取新用户默认订阅配置列表。
 func (s *SettingService) GetDefaultSubscriptions(ctx context.Context) []DefaultSubscriptionSetting {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyDefaultSubscriptions)
@@ -1706,6 +1719,7 @@ REDACTED
 		SettingKeyOIDCConnectUserInfoUsernamePath:          "",
 		SettingKeyDefaultConcurrency:                       strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:                           strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
+		SettingKeyDefaultUserRPMLimit:                      "0",
 		SettingKeyDefaultSubscriptions:                     "[]",
 		SettingKeyAuthSourceDefaultEmailBalance:            "0",
 		SettingKeyAuthSourceDefaultEmailConcurrency:        "5",
@@ -1820,6 +1834,10 @@ REDACTED
 		result.DefaultConcurrency = concurrency
 REDACTED else {
 		result.DefaultConcurrency = s.cfg.Default.UserConcurrency
+REDACTED
+
+	if rpm, err := strconv.Atoi(settings[SettingKeyDefaultUserRPMLimit]); err == nil && rpm >= 0 {
+		result.DefaultUserRPMLimit = rpm
 REDACTED
 
 	// 解析浮点数类型

@@ -4425,6 +4425,9 @@ REDACTED
 // RecordUsage records usage and deducts balance
 func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRecordUsageInput) error {
 	result := input.Result
+	if s.rateLimitService != nil && input != nil && input.Account != nil && input.Account.Platform == PlatformOpenAI {
+		s.rateLimitService.ResetOpenAI403Counter(ctx, input.Account.ID)
+REDACTED
 
 	// 跳过所有 token 均为零的用量记录——上游未返回 usage 时不应写入数据库
 	if result.Usage.InputTokens == 0 && result.Usage.OutputTokens == 0 &&
@@ -4622,12 +4625,6 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	serviceTier string,
 ) (*CostBreakdown, error) {
 	if result != nil && result.ImageCount > 0 {
-		if hasOpenAIImageUsageTokens(result) {
-			cost, err := s.calculateOpenAIImageTokenCost(ctx, apiKey, billingModel, multiplier, tokens, serviceTier, result.ImageSize)
-			if err == nil {
-				return cost, nil
-		REDACTED
-	REDACTED
 		return s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, multiplier), nil
 REDACTED
 	if s.resolver != nil && apiKey.Group != nil {
@@ -4646,32 +4643,6 @@ REDACTED
 	return s.billingService.CalculateCostWithServiceTier(billingModel, tokens, multiplier, serviceTier)
 REDACTED
 
-func (s *OpenAIGatewayService) calculateOpenAIImageTokenCost(
-	ctx context.Context,
-	apiKey *APIKey,
-	billingModel string,
-	multiplier float64,
-	tokens UsageTokens,
-	serviceTier string,
-	sizeTier string,
-) (*CostBreakdown, error) {
-	if s.resolver != nil && apiKey.Group != nil {
-		gid := apiKey.Group.ID
-		return s.billingService.CalculateCostUnified(CostInput{
-			Ctx:            ctx,
-			Model:          billingModel,
-			GroupID:        &gid,
-			Tokens:         tokens,
-			RequestCount:   1,
-			SizeTier:       sizeTier,
-			RateMultiplier: multiplier,
-			ServiceTier:    serviceTier,
-			Resolver:       s.resolver,
-	REDACTED)
-REDACTED
-	return s.billingService.CalculateCostWithServiceTier(billingModel, tokens, multiplier, serviceTier)
-REDACTED
-
 func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	ctx context.Context,
 	billingModel string,
@@ -4679,7 +4650,8 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	result *OpenAIForwardResult,
 	multiplier float64,
 ) *CostBreakdown {
-	if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved != nil {
+	if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved != nil &&
+		(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage) {
 		gid := apiKey.Group.ID
 		cost, err := s.billingService.CalculateCostUnified(CostInput{
 			Ctx:            ctx,
@@ -4718,17 +4690,6 @@ REDACTED
 		return resolved
 REDACTED
 	return nil
-REDACTED
-
-func hasOpenAIImageUsageTokens(result *OpenAIForwardResult) bool {
-	if result == nil {
-		return false
-REDACTED
-	return result.Usage.InputTokens > 0 ||
-		result.Usage.OutputTokens > 0 ||
-		result.Usage.CacheCreationInputTokens > 0 ||
-		result.Usage.CacheReadInputTokens > 0 ||
-		result.Usage.ImageOutputTokens > 0
 REDACTED
 
 // ParseCodexRateLimitHeaders extracts Codex usage limits from response headers.

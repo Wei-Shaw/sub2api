@@ -89,6 +89,10 @@ func (s *userGroupRateRepoStubForListUsers) GetByUserAndGroup(_ context.Context,
 	panic("unexpected GetByUserAndGroup call")
 REDACTED
 
+func (s *userGroupRateRepoStubForListUsers) GetRPMOverrideByUserAndGroup(_ context.Context, _, _ int64) (*int, error) {
+	panic("unexpected GetRPMOverrideByUserAndGroup call")
+REDACTED
+
 func (s *userGroupRateRepoStubForListUsers) SyncUserGroupRates(_ context.Context, userID int64, rates map[int64]*float64) error {
 	panic("unexpected SyncUserGroupRates call")
 REDACTED
@@ -99,6 +103,14 @@ REDACTED
 
 func (s *userGroupRateRepoStubForListUsers) SyncGroupRateMultipliers(_ context.Context, _ int64, _ []GroupRateMultiplierInput) error {
 	panic("unexpected SyncGroupRateMultipliers call")
+REDACTED
+
+func (s *userGroupRateRepoStubForListUsers) SyncGroupRPMOverrides(_ context.Context, _ int64, _ []GroupRPMOverrideInput) error {
+	panic("unexpected SyncGroupRPMOverrides call")
+REDACTED
+
+func (s *userGroupRateRepoStubForListUsers) ClearGroupRPMOverrides(_ context.Context, _ int64) error {
+	panic("unexpected ClearGroupRPMOverrides call")
 REDACTED
 
 func (s *userGroupRateRepoStubForListUsers) DeleteByGroupID(_ context.Context, _ int64) error {

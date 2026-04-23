@@ -1014,6 +1014,8 @@ export default {
     description: 'Manage your account information and settings',
     accountBalance: 'Account Balance',
     concurrencyLimit: 'Concurrency Limit',
+    rpmLimit: 'RPM Limit',
+    rpmUnlimited: 'Unlimited',
     memberSince: 'Member Since',
     overviewTitle: 'Account Overview',
     overviewDescription: 'Check account status, profile sources, and common actions at a glance.',
@@ -1610,6 +1612,11 @@ export default {
       copyPassword: 'Copy password',
       creating: 'Creating...',
       updating: 'Updating...',
+      form: {
+        rpmLimit: 'Requests Per Minute (RPM)',
+        rpmLimitPlaceholder: '0 = unlimited',
+        rpmLimitHint: 'Max requests per minute for this user; 0 = unlimited. Acts as a fallback only when the group has no rpm_limit set.'
+      REDACTED,
       columns: {
         user: 'User',
         id: 'ID',
@@ -1824,6 +1831,10 @@ export default {
         name: 'Name',
         platform: 'Platform',
         rateMultiplier: 'Rate Multiplier',
+        rpmOverride: 'RPM Override',
+        rpmOverrideHint: 'Per-user RPM cap in this group; empty = group default; 0 = unlimited',
+        rateDefault: 'default',
+        rpmDefault: 'default',
         type: 'Type',
         accounts: 'Accounts',
         capacity: 'Capacity',
@@ -1850,7 +1861,10 @@ export default {
         platform: 'Platform',
         rateMultiplier: 'Rate Multiplier',
         status: 'Status',
-        exclusive: 'Exclusive Group'
+        exclusive: 'Exclusive Group',
+        rpmLimit: 'Requests Per Minute (RPM)',
+        rpmLimitPlaceholder: '0 = unlimited',
+        rpmLimitHint: 'Max requests per minute for each user in this group; 0 = unlimited. Once set, it takes over per-user rate limiting in this group (overrides the user-level rpm_limit fallback).'
       REDACTED,
       enterGroupName: 'Enter group name',
       optionalDescription: 'Optional description',
@@ -1882,6 +1896,12 @@ export default {
       rateMultipliers: 'Rate Multipliers',
       rateMultipliersTitle: 'Group Rate Multipliers',
       addUserRate: 'Add User Rate Multiplier',
+      rpmOverrides: 'RPM Overrides',
+      rpmOverridesTitle: 'Group RPM Overrides',
+      addUserRpm: 'Add User RPM Override',
+      noRpmOverrides: 'No users have an RPM override yet',
+      rpmSaved: 'RPM overrides saved',
+      groupRpmDefault: 'Group default RPM',
       searchUserPlaceholder: 'Search user email...',
       noRateMultipliers: 'No user rate multipliers configured',
       rateUpdated: 'Rate multiplier updated',
@@ -3058,6 +3078,13 @@ export default {
             'Option 1: Copy the complete URL\n(http://localhost:xxx/auth/callback?code=...)\nOption 2: Copy only the code parameter value',
           authCodeHint:
             'You can copy the entire URL or just the code parameter value, the system will auto-detect',
+          failedToGenerateUrl: 'Failed to generate OpenAI auth URL',
+          failedToExchangeCode: 'Failed to exchange OpenAI auth code',
+          failedToValidateRT: 'Failed to validate refresh token',
+          errors: {
+            OPENAI_OAUTH_PROXY_REQUIRED:
+              'No proxy is configured and this server could not reach OpenAI directly, so the OpenAI OAuth request failed. Select a proxy that can access OpenAI and retry; if the authorization code has expired, regenerate the authorization URL.'
+          REDACTED,
           // Refresh Token auth
           refreshTokenAuth: 'Manual RT Input',
           refreshTokenDesc: 'Enter your existing OpenAI Refresh Token(s). Supports batch input (one per line). The system will automatically validate and create accounts.',
@@ -4806,6 +4833,8 @@ export default {
         defaultBalanceHint: 'Initial balance for new users',
         defaultConcurrency: 'Default Concurrency',
         defaultConcurrencyHint: 'Maximum concurrent requests for new users',
+        defaultUserRpmLimit: 'Default User RPM Limit',
+        defaultUserRpmLimitHint: 'Default max requests per minute for new users; 0 = unlimited. Only applied at new user creation.',
         defaultSubscriptions: 'Default Subscriptions',
         defaultSubscriptionsHint: 'Auto-assign these subscriptions when a new user is created or registered',
         addDefaultSubscription: 'Add Default Subscription',

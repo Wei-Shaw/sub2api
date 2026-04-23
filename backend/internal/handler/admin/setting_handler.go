@@ -185,6 +185,7 @@ REDACTED
 		CustomEndpoints:                        dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		DefaultConcurrency:                     settings.DefaultConcurrency,
 		DefaultBalance:                         settings.DefaultBalance,
+		DefaultUserRPMLimit:                    settings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   defaultSubscriptions,
 		EnableModelFallback:                    settings.EnableModelFallback,
 		FallbackModelAnthropic:                 settings.FallbackModelAnthropic,
@@ -337,6 +338,7 @@ type UpdateSettingsRequest struct {
 	// 默认配置
 	DefaultConcurrency                       int                               `json:"default_concurrency"`
 	DefaultBalance                           float64                           `json:"default_balance"`
+	DefaultUserRPMLimit                      int                               `json:"default_user_rpm_limit"`
 	DefaultSubscriptions                     []dto.DefaultSubscriptionSetting  `json:"default_subscriptions"`
 	AuthSourceDefaultEmailBalance            *float64                          `json:"auth_source_default_email_balance"`
 	AuthSourceDefaultEmailConcurrency        *int                              `json:"auth_source_default_email_concurrency"`
@@ -1117,6 +1119,7 @@ REDACTED
 		CustomEndpoints:                  customEndpointsJSON,
 		DefaultConcurrency:               req.DefaultConcurrency,
 		DefaultBalance:                   req.DefaultBalance,
+		DefaultUserRPMLimit:              req.DefaultUserRPMLimit,
 		DefaultSubscriptions:             defaultSubscriptions,
 		EnableModelFallback:              req.EnableModelFallback,
 		FallbackModelAnthropic:           req.FallbackModelAnthropic,
@@ -1430,6 +1433,7 @@ REDACTED
 		CustomEndpoints:                        dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		DefaultConcurrency:                     updatedSettings.DefaultConcurrency,
 		DefaultBalance:                         updatedSettings.DefaultBalance,
+		DefaultUserRPMLimit:                    updatedSettings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   updatedDefaultSubscriptions,
 		EnableModelFallback:                    updatedSettings.EnableModelFallback,
 		FallbackModelAnthropic:                 updatedSettings.FallbackModelAnthropic,

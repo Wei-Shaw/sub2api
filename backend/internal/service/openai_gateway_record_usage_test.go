@@ -1098,3 +1098,50 @@ REDACTED
 	require.NotNil(t, usageRepo.lastLog.BillingMode)
 	require.Equal(t, string(BillingModeImage), *usageRepo.lastLog.BillingMode)
 REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_ImageUsesPerImageBillingEvenWithUsageTokens(t *testing.T) {
+	imagePrice := 0.02
+	groupID := int64(12)
+
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_image_per_request",
+			Model:     "gpt-image-2",
+			Usage: OpenAIUsage{
+				InputTokens:       1110,
+				OutputTokens:      1756,
+				ImageOutputTokens: 1756,
+		REDACTED,
+			ImageCount: 2,
+			ImageSize:  "1K",
+			Duration:   time.Second,
+	REDACTED,
+		APIKey: &APIKey{
+			ID:      1008,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:             groupID,
+				RateMultiplier: 1.0,
+				ImagePrice1K:   &imagePrice,
+		REDACTED,
+	REDACTED,
+		User:    &User{ID: 2008REDACTED,
+		Account: &Account{ID: 3008REDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+	require.NotNil(t, usageRepo.lastLog.BillingMode)
+	require.Equal(t, string(BillingModeImage), *usageRepo.lastLog.BillingMode)
+	require.Equal(t, 2, usageRepo.lastLog.ImageCount)
+	require.InDelta(t, 0.04, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 0.04, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, 0.0, usageRepo.lastLog.InputCost, 1e-12)
+	require.InDelta(t, 0.0, usageRepo.lastLog.OutputCost, 1e-12)
+	require.InDelta(t, 0.0, usageRepo.lastLog.ImageOutputCost, 1e-12)
+REDACTED

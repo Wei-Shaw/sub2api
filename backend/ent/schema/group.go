@@ -145,6 +145,11 @@ func (Group) Fields() []ent.Field {
 			Default(domain.OpenAIMessagesDispatchModelConfig{REDACTED).
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"REDACTED).
 			Comment("OpenAI Messages 调度模型配置：按 Claude 系列/精确模型映射到目标 GPT 模型"),
+
+		// 分组级每分钟请求数上限（0 = 不限制）。设置后优先于用户级兜底生效。
+		field.Int("rpm_limit").
+			Default(0).
+			Comment("分组 RPM 上限，0 表示不限制；设置后接管该分组用户的限流"),
 REDACTED
 REDACTED
 
