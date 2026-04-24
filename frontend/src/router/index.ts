@@ -422,6 +422,17 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/service-quotas',
+    name: 'AdminServiceQuotas',
+    component: () => import('@/views/admin/ServiceQuotaView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Service Quota',
+      titleKey: 'nav.serviceQuota'
+    }
+  },
+  {
     path: '/admin/accounts',
     name: 'AdminAccounts',
     component: () => import('@/views/admin/AccountsView.vue'),

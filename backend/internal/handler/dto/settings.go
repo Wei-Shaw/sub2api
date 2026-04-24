@@ -115,6 +115,7 @@ type SystemSettings struct {
 	UsageLimitEnabled         bool    `json:"usage_limit_enabled"`
 	DefaultUsageLimitEnabled  bool    `json:"default_usage_limit_enabled"`
 	DefaultDailyUsageLimitUSD float64 `json:"default_daily_usage_limit_usd"`
+	ServiceQuotaEnabled       bool    `json:"service_quota_enabled"`
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
@@ -248,6 +249,7 @@ type PublicSettings struct {
 	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
 
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+	ServiceQuotaEnabled      bool `json:"service_quota_enabled"`
 }
 
 // OverloadCooldownSettings 529过载冷却配置 DTO

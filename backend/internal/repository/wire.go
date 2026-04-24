@@ -92,6 +92,7 @@ var ProviderSet = wire.NewSet(
 	NewChannelMonitorRepository,
 	NewChannelMonitorRequestTemplateRepository,
 	NewUserUsageLimitRuleRepository,
+	NewServiceQuotaRuleRepository,
 
 	// Cache implementations
 	NewGatewayCache,
@@ -119,6 +120,7 @@ var ProviderSet = wire.NewSet(
 	NewRefreshTokenCache,
 	NewErrorPassthroughCache,
 	NewTLSFingerprintProfileCache,
+	NewServiceQuotaLimiter,
 
 	// Encryptors
 	NewAESEncryptor,

@@ -54,6 +54,7 @@ type BillingCacheService struct {
 	// 用 atomic.Pointer 保证 init-time-only 注入 + 任意 goroutine 热路径读取无 data race；
 	// 为 nil（未注入）时所有配额逻辑短路返回，不影响现有行为。实现在 billing_cache_service_quota.go。
 	quotaServicePtr atomic.Pointer[quotaServiceBox]
+	serviceQuota    ServiceQuotaService
 
 	cacheWriteChan     chan cacheWriteTask
 	cacheWriteWg       sync.WaitGroup
@@ -77,7 +78,12 @@ func NewBillingCacheService(
 	userRPMCache UserRPMCache,
 	userGroupRateRepo UserGroupRateRepository,
 	cfg *config.Config,
+	serviceQuotas ...ServiceQuotaService,
 ) *BillingCacheService {
+	var serviceQuota ServiceQuotaService
+	if len(serviceQuotas) > 0 {
+		serviceQuota = serviceQuotas[0]
+	}
 	svc := &BillingCacheService{
 		cache:                 cache,
 		userRepo:              userRepo,
@@ -86,6 +92,7 @@ func NewBillingCacheService(
 		userRPMCache:          userRPMCache,
 		userGroupRateRepo:     userGroupRateRepo,
 		cfg:                   cfg,
+		serviceQuota:          serviceQuota,
 	}
 	svc.circuitBreaker = newBillingCircuitBreaker(cfg.Billing.CircuitBreaker)
 	svc.startCacheWriteWorkers()
@@ -96,12 +103,33 @@ func NewBillingCacheService(
 // 余额模式：检查缓存余额 > 0
 // 订阅模式：检查缓存用量未超过限额（Group限额从参数传入）
 func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription) error {
+	return s.CheckBillingEligibilityForRequest(ctx, user, apiKey, group, subscription, ServiceQuotaCheckRequest{})
+}
+
+func (s *BillingCacheService) CheckBillingEligibilityForRequest(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, quotaReq ServiceQuotaCheckRequest) error {
 	// 简易模式：跳过所有计费检查
 	if s.cfg.RunMode == config.RunModeSimple {
 		return nil
 	}
 	if s.circuitBreaker != nil && !s.circuitBreaker.Allow() {
 		return ErrBillingServiceUnavailable
+	}
+	if s.serviceQuota != nil && user != nil {
+		quotaReq.UserID = user.ID
+		if group != nil {
+			quotaReq.GroupID = group.ID
+			quotaReq.Platform = group.Platform
+		}
+		lease, err := s.serviceQuota.PreCheck(ctx, quotaReq)
+		if err != nil {
+			return err
+		}
+		if lease != nil && lease.Release != nil {
+			go func() {
+				<-ctx.Done()
+				lease.Release()
+			}()
+		}
 	}
 
 	// 判断计费模式

@@ -239,6 +239,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ChannelMonitorEnabled:                  settings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds:   settings.ChannelMonitorDefaultIntervalSeconds,
 		AvailableChannelsEnabled:               settings.AvailableChannelsEnabled,
+		ServiceQuotaEnabled:                    settings.ServiceQuotaEnabled,
 		UsageLimitEnabled:                      settings.UsageLimitEnabled,
 		DefaultUsageLimitEnabled:               settings.DefaultUsageLimitEnabled,
 		DefaultDailyUsageLimitUSD:              settings.DefaultDailyUsageLimitUSD,
@@ -367,6 +368,7 @@ type UpdateSettingsRequest struct {
 	UsageLimitEnabled         *bool    `json:"usage_limit_enabled"`
 	DefaultUsageLimitEnabled  *bool    `json:"default_usage_limit_enabled"`
 	DefaultDailyUsageLimitUSD *float64 `json:"default_daily_usage_limit_usd"`
+	ServiceQuotaEnabled       *bool    `json:"service_quota_enabled"`
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
@@ -1146,6 +1148,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.DefaultDailyUsageLimitUSD
 		}(),
+		ServiceQuotaEnabled: func() bool {
+			if req.ServiceQuotaEnabled != nil {
+				return *req.ServiceQuotaEnabled
+			}
+			return previousSettings.ServiceQuotaEnabled
+		}(),
 		EnableModelFallback:         req.EnableModelFallback,
 		FallbackModelAnthropic:      req.FallbackModelAnthropic,
 		FallbackModelOpenAI:         req.FallbackModelOpenAI,
@@ -1511,6 +1519,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorEnabled:                  updatedSettings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds:   updatedSettings.ChannelMonitorDefaultIntervalSeconds,
 		AvailableChannelsEnabled:               updatedSettings.AvailableChannelsEnabled,
+		ServiceQuotaEnabled:                    updatedSettings.ServiceQuotaEnabled,
 	}
 	response.Success(c, systemSettingsResponseData(payload, updatedAuthSourceDefaults))
 }
@@ -1875,6 +1884,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.AvailableChannelsEnabled != after.AvailableChannelsEnabled {
 		changed = append(changed, "available_channels_enabled")
+	}
+	if before.ServiceQuotaEnabled != after.ServiceQuotaEnabled {
+		changed = append(changed, "service_quota_enabled")
 	}
 	changed = appendAuthSourceDefaultChanges(changed, beforeAuthSourceDefaults, afterAuthSourceDefaults)
 	return changed

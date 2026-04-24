@@ -113,6 +113,7 @@ type SystemSettings struct {
 	UsageLimitEnabled         bool    // 总开关
 	DefaultUsageLimitEnabled  bool    // 用户 usage_limit_enabled=nil 时的回退
 	DefaultDailyUsageLimitUSD float64 // 新建用户默认 daily_usage_limit_usd（0=不下发）
+	ServiceQuotaEnabled       bool
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
@@ -229,6 +230,7 @@ type PublicSettings struct {
 
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+	ServiceQuotaEnabled      bool `json:"service_quota_enabled"`
 }
 
 type WeChatConnectOAuthConfig struct {

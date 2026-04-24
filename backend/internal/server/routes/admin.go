@@ -91,6 +91,21 @@ func RegisterAdminRoutes(
 
 		// 渠道监控
 		registerChannelMonitorRoutes(admin, h)
+
+		registerServiceQuotaRoutes(admin, h)
+	}
+}
+
+func registerServiceQuotaRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h.Admin.ServiceQuota == nil {
+		return
+	}
+	quotas := admin.Group("/service-quotas")
+	{
+		quotas.GET("", h.Admin.ServiceQuota.List)
+		quotas.POST("", h.Admin.ServiceQuota.Create)
+		quotas.PUT("/:id", h.Admin.ServiceQuota.Update)
+		quotas.DELETE("/:id", h.Admin.ServiceQuota.Delete)
 	}
 }
 
