@@ -658,12 +658,14 @@ func filterCodexInput(input []any, preserveReferences bool) []any {
 		REDACTED
 	REDACTED
 
+		if !isCodexToolCallItemType(typ) {
+			ensureCopy()
+			delete(newItem, "call_id")
+	REDACTED
+
 		if !preserveReferences {
 			ensureCopy()
 			delete(newItem, "id")
-			if !isCodexToolCallItemType(typ) {
-				delete(newItem, "call_id")
-		REDACTED
 	REDACTED
 
 		filtered = append(filtered, newItem)
@@ -672,10 +674,20 @@ REDACTED
 REDACTED
 
 func isCodexToolCallItemType(typ string) bool {
-	if typ == "" {
+	switch typ {
+	case "function_call",
+		"tool_call",
+		"local_shell_call",
+		"tool_search_call",
+		"custom_tool_call",
+		"function_call_output",
+		"mcp_tool_call_output",
+		"custom_tool_call_output",
+		"tool_search_output":
+		return true
+	default:
 		return false
 REDACTED
-	return strings.HasSuffix(typ, "_call") || strings.HasSuffix(typ, "_call_output")
 REDACTED
 
 func normalizeCodexTools(reqBody map[string]any) bool {
