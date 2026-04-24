@@ -768,6 +768,33 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_NonOverlayReserv
 	}
 }
 
+func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_UnknownModelProjectionMissFailsClosed(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(30)
+	responseID := "resp_prev_projection_miss_unknown_reserve"
+	reserveAccount := newOpenAIReserveCandidateAccountForTest(42, 1, 20)
+	cache := newOpenAIAffinityGatewayCacheStub()
+	store := NewOpenAIWSStateStore(cache)
+	cfg := newOpenAIWSV2TestConfig()
+	snapshotCache := &openAISnapshotCacheStub{accountsByID: map[int64]*Account{reserveAccount.ID: &reserveAccount}, openAIStateMiss: true}
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{reserveAccount}},
+		cache:              cache,
+		cfg:                cfg,
+		schedulerSnapshot:  &SchedulerSnapshotService{cache: snapshotCache},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+		openaiWSStateStore: store,
+	}
+	binding := &openAIAffinityBinding{BoundAccountID: reserveAccount.ID, AffinityDomain: string(TargetGroupExhausted), SelectedGroup: openAISelectedGroupReserve}
+
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, responseID, reserveAccount.ID, time.Hour))
+	cache.setAffinityBinding(t, openAIResponseAffinityBindingNamespace, groupID, responseID, binding, time.Hour)
+
+	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, responseID, "gpt-5.unknown", TargetGroupExhausted, nil)
+	require.ErrorIs(t, err, ErrSchedulerCacheNotReady)
+	require.Nil(t, selection)
+}
+
 func newOpenAIWSV2TestConfig() *config.Config {
 	cfg := &config.Config{}
 	cfg.Gateway.OpenAIWS.Enabled = true

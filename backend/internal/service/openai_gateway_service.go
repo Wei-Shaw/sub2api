@@ -1948,15 +1948,59 @@ func (s *OpenAIGatewayService) getOpenAIProjectionView(ctx context.Context, grou
 	}, nil
 }
 
-func (s *OpenAIGatewayService) getOpenAIProjectionViewWithLegacyFallback(ctx context.Context, groupID *int64, requestedModel string) *openAIProjectionViewResult {
+func (s *OpenAIGatewayService) openAIProjectionSourceKnowsModel(ctx context.Context, groupID *int64, requestedModel string) (bool, error) {
+	if s == nil || s.schedulerSnapshot == nil {
+		return false, ErrSchedulerCacheNotReady
+	}
+	canonicalModel := NormalizeOpenAIProjectionModelKey(requestedModel)
+	if canonicalModel == "" {
+		return false, ErrSchedulerCacheNotReady
+	}
+	if getNormalizedCodexModel(canonicalModel) != "" || normalizeCodexModel(canonicalModel) == canonicalModel {
+		return true, nil
+	}
+	repo := s.openAIProjectionAccountRepo()
+	if repo == nil {
+		return false, ErrSchedulerCacheNotReady
+	}
+	snapshot := s.schedulerSnapshot
+	if snapshot.accountRepo == nil {
+		cloned := *snapshot
+		cloned.accountRepo = repo
+		snapshot = &cloned
+	}
+	bucket := snapshot.bucketFor(groupID, PlatformOpenAI, SchedulerModeSingle)
+	inputs, err := snapshot.loadOpenAIProjectionInputs(ctx, bucket)
+	if err != nil {
+		return false, err
+	}
+	for _, model := range canonicalizeOpenAIProjectionCatalog(inputs.CanonicalCatalog) {
+		if model == canonicalModel {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (s *OpenAIGatewayService) getOpenAIProjectionViewWithLegacyFallback(ctx context.Context, groupID *int64, requestedModel string) (*openAIProjectionViewResult, bool, error) {
 	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" {
-		return nil
+		return nil, true, nil
 	}
 	projectionView, err := s.getOpenAIProjectionView(ctx, groupID, requestedModel)
-	if err != nil {
-		return nil
+	if err == nil {
+		return projectionView, false, nil
 	}
-	return projectionView
+	if !errors.Is(err, ErrSchedulerCacheNotReady) {
+		return nil, false, err
+	}
+	sourceKnowsModel, sourceErr := s.openAIProjectionSourceKnowsModel(ctx, groupID, requestedModel)
+	if sourceErr != nil {
+		return nil, false, err
+	}
+	if !sourceKnowsModel {
+		return nil, false, ErrSchedulerCacheNotReady
+	}
+	return nil, true, nil
 }
 
 func (s *OpenAIGatewayService) loadOpenAIProjectionAccounts(ctx context.Context, state *OpenAISchedulerBucketState, ids []int64) ([]Account, error) {
@@ -2293,10 +2337,15 @@ func (s *OpenAIGatewayService) resolveFreshOpenAIExhaustedAccount(ctx context.Co
 		return nil
 	}
 	projectionView := (*openAIProjectionViewResult)(nil)
+	allowLegacyFallback := true
 	if s != nil && s.schedulerSnapshot != nil && strings.TrimSpace(requestedModel) != "" {
-		projectionView = s.getOpenAIProjectionViewWithLegacyFallback(ctx, groupID, requestedModel)
+		var err error
+		projectionView, allowLegacyFallback, err = s.getOpenAIProjectionViewWithLegacyFallback(ctx, groupID, requestedModel)
+		if err != nil {
+			return nil
+		}
 	}
-	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" || projectionView == nil {
+	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" || (projectionView == nil && allowLegacyFallback) {
 		fresh := account
 		if s != nil && s.schedulerSnapshot != nil {
 			current, err := s.getSchedulableAccount(ctx, account.ID)
@@ -2309,6 +2358,9 @@ func (s *OpenAIGatewayService) resolveFreshOpenAIExhaustedAccount(ctx context.Co
 			return nil
 		}
 		return fresh
+	}
+	if projectionView == nil {
+		return nil
 	}
 	if !projectionView.containsExhausted(account.ID) {
 		return nil
@@ -2345,10 +2397,15 @@ func (s *OpenAIGatewayService) resolveFreshOpenAIReserveAccount(ctx context.Cont
 		return nil
 	}
 	projectionView := (*openAIProjectionViewResult)(nil)
+	allowLegacyFallback := true
 	if s != nil && s.schedulerSnapshot != nil && strings.TrimSpace(requestedModel) != "" {
-		projectionView = s.getOpenAIProjectionViewWithLegacyFallback(ctx, groupID, requestedModel)
+		var err error
+		projectionView, allowLegacyFallback, err = s.getOpenAIProjectionViewWithLegacyFallback(ctx, groupID, requestedModel)
+		if err != nil {
+			return nil
+		}
 	}
-	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" || projectionView == nil {
+	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" || (projectionView == nil && allowLegacyFallback) {
 		fresh := account
 		if s != nil && s.schedulerSnapshot != nil {
 			current, err := s.getSchedulableAccount(ctx, account.ID)
@@ -2364,6 +2421,9 @@ func (s *OpenAIGatewayService) resolveFreshOpenAIReserveAccount(ctx context.Cont
 			return nil
 		}
 		return fresh
+	}
+	if projectionView == nil {
+		return nil
 	}
 	if !projectionView.containsReserve(account.ID) {
 		return nil
@@ -2554,10 +2614,15 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIExhaustedAccountFromDB(ctx c
 		return nil
 	}
 	projectionView := (*openAIProjectionViewResult)(nil)
+	allowLegacyFallback := true
 	if s != nil && s.schedulerSnapshot != nil && strings.TrimSpace(requestedModel) != "" {
-		projectionView = s.getOpenAIProjectionViewWithLegacyFallback(ctx, groupID, requestedModel)
+		var err error
+		projectionView, allowLegacyFallback, err = s.getOpenAIProjectionViewWithLegacyFallback(ctx, groupID, requestedModel)
+		if err != nil {
+			return nil
+		}
 	}
-	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" || projectionView == nil {
+	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" || (projectionView == nil && allowLegacyFallback) {
 		if s == nil || s.schedulerSnapshot == nil || s.accountRepo == nil {
 			return account
 		}
@@ -2569,6 +2634,9 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIExhaustedAccountFromDB(ctx c
 			return nil
 		}
 		return latest
+	}
+	if projectionView == nil {
+		return nil
 	}
 	if !projectionView.containsExhausted(account.ID) {
 		return nil
@@ -2592,10 +2660,15 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIReserveAccountFromDB(ctx con
 		return nil
 	}
 	projectionView := (*openAIProjectionViewResult)(nil)
+	allowLegacyFallback := true
 	if s != nil && s.schedulerSnapshot != nil && strings.TrimSpace(requestedModel) != "" {
-		projectionView = s.getOpenAIProjectionViewWithLegacyFallback(ctx, groupID, requestedModel)
+		var err error
+		projectionView, allowLegacyFallback, err = s.getOpenAIProjectionViewWithLegacyFallback(ctx, groupID, requestedModel)
+		if err != nil {
+			return nil
+		}
 	}
-	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" || projectionView == nil {
+	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" || (projectionView == nil && allowLegacyFallback) {
 		if s == nil || s.schedulerSnapshot == nil || s.accountRepo == nil {
 			return account
 		}
@@ -2610,6 +2683,9 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIReserveAccountFromDB(ctx con
 			return nil
 		}
 		return latest
+	}
+	if projectionView == nil {
+		return nil
 	}
 	if !projectionView.containsReserve(account.ID) {
 		return nil

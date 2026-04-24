@@ -694,7 +694,10 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	selectedGroup := resolveOpenAISelectedGroupFromBindingOrAccount(affinityBinding, account)
 	legacyReserveAffinityHit := false
 	if req.RequestedModel != "" && s.service != nil && s.service.schedulerSnapshot != nil {
-		projectionView = s.service.getOpenAIProjectionViewWithLegacyFallback(ctx, req.GroupID, req.RequestedModel)
+		projectionView, _, err = s.service.getOpenAIProjectionViewWithLegacyFallback(ctx, req.GroupID, req.RequestedModel)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if projectionView != nil {
 		if affinityBinding != nil && !projectionView.bindingMatches(affinityBinding) {
@@ -1055,13 +1058,17 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		projectionView  *openAIProjectionViewResult
 		err             error
 	)
+	allowLegacyFallback := true
 	if req.RequestedModel != "" && s.service != nil && s.service.schedulerSnapshot != nil {
-		projectionView = s.service.getOpenAIProjectionViewWithLegacyFallback(ctx, req.GroupID, req.RequestedModel)
+		projectionView, allowLegacyFallback, err = s.service.getOpenAIProjectionViewWithLegacyFallback(ctx, req.GroupID, req.RequestedModel)
+		if err != nil {
+			return nil, "", 0, 0, 0, nil, err
+		}
 	}
 	if req.TargetGroup == TargetGroupExhausted {
 		if projectionView != nil {
 			accounts, reserveAccounts, err = s.service.listOpenAIExhaustedWithReserveOverlay(ctx, req.GroupID, req.RequestedModel)
-		} else if req.RequestedModel != "" && s.service != nil && s.service.schedulerSnapshot != nil {
+		} else if allowLegacyFallback && req.RequestedModel != "" && s.service != nil && s.service.schedulerSnapshot != nil {
 			accounts, err = s.service.listSchedulableAccounts(ctx, req.GroupID, req.TargetGroup)
 			if err == nil {
 				reserveAccounts, err = s.service.listCurrentOpenAILegacyReserveOverlay(ctx, req.GroupID, req.RequestedModel)

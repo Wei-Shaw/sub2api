@@ -3848,8 +3848,12 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 	selectedGroup := resolveOpenAISelectedGroupFromBindingOrAccount(affinityBinding, account)
 	legacyReserveAffinityHit := false
 	var projectionView *openAIProjectionViewResult
+	allowLegacyFallback := true
 	if requestedModel != "" && s.schedulerSnapshot != nil {
-		projectionView = s.getOpenAIProjectionViewWithLegacyFallback(ctx, groupID, requestedModel)
+		projectionView, allowLegacyFallback, err = s.getOpenAIProjectionViewWithLegacyFallback(ctx, groupID, requestedModel)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	if projectionView != nil {
 		if affinityBinding != nil && !projectionView.bindingMatches(affinityBinding) {
@@ -3870,6 +3874,9 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 			}
 		}
 	} else {
+		if !allowLegacyFallback {
+			return nil, nil, ErrSchedulerCacheNotReady
+		}
 		reserveAffinityBinding := isOpenAIReserveAffinityBinding(affinityBinding)
 		legacyReserveAffinityHit = reserveAffinityBinding && targetGroup == TargetGroupExhausted && account.IsOpenAIReserveCandidate()
 		if reserveAffinityBinding && targetGroup == TargetGroupExhausted && !account.IsOpenAIReserveCandidate() && !account.MatchesTargetGroup(TargetGroupExhausted) {
