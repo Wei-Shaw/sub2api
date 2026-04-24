@@ -18,6 +18,65 @@ type OpenAIModelCapabilitySnapshot struct {
 	DefaultAllow   bool
 }
 
+type OpenAIProjectionInputs struct {
+	Bucket            SchedulerBucket
+	CanonicalCatalog  []string
+	AccountsAll       []Account
+	ExhaustedBroadIDs map[int64]struct{}
+	CapabilityByID    map[int64]OpenAIModelCapabilitySnapshot
+}
+
+type OpenAIModelRoleView struct {
+	CanonicalModel     string
+	ExhaustedBaseIDs   []int64
+	ReserveOverflowIDs []int64
+}
+
+type OpenAIModelSubsetProjection struct {
+	Bucket            SchedulerBucket
+	AccountReserveIDs map[int64]struct{}
+	Models            map[string]OpenAIModelRoleView
+}
+
+type openAIProjectionModelMembers struct {
+	exhausted []Account
+	active    []Account
+}
+
+func (p *OpenAIModelSubsetProjection) ViewForModel(model string) OpenAIModelRoleView {
+	canonical := NormalizeOpenAIProjectionModelKey(model)
+	if p == nil || p.Models == nil {
+		return OpenAIModelRoleView{CanonicalModel: canonical}
+	}
+	if view, ok := p.Models[canonical]; ok {
+		return view
+	}
+	return OpenAIModelRoleView{CanonicalModel: canonical}
+}
+
+func BuildOpenAIModelSubsetProjection(inputs *OpenAIProjectionInputs) *OpenAIModelSubsetProjection {
+	projection := &OpenAIModelSubsetProjection{
+		AccountReserveIDs: make(map[int64]struct{}),
+		Models:            make(map[string]OpenAIModelRoleView),
+	}
+	if inputs == nil {
+		return projection
+	}
+	projection.Bucket = inputs.Bucket
+
+	catalog := canonicalizeOpenAIProjectionCatalog(inputs.CanonicalCatalog)
+	if len(catalog) == 0 {
+		return projection
+	}
+	catalogSet := stringSliceToSet(catalog)
+	localViews, supportedModels := buildOpenAIModelRoleViews(inputs, catalog, catalogSet)
+	for accountID := range collectOpenAIReserveIDs(localViews) {
+		projection.AccountReserveIDs[accountID] = struct{}{}
+	}
+	projection.Models = liftModelSubsetReserveIdentities(localViews, supportedModels)
+	return projection
+}
+
 func BuildOpenAICanonicalModelCatalog(accounts []Account, explicitCapabilityModels []string, configuredModels []string) []string {
 	catalog := make(map[string]struct{})
 	addOpenAICanonicalModels(catalog, explicitCapabilityModels...)
@@ -219,4 +278,121 @@ func stringSliceToSet(values []string) map[string]struct{} {
 		set[value] = struct{}{}
 	}
 	return set
+}
+
+func canonicalizeOpenAIProjectionCatalog(models []string) []string {
+	set := make(map[string]struct{}, len(models))
+	for _, model := range models {
+		if canonical := NormalizeOpenAIProjectionModelKey(model); canonical != "" {
+			set[canonical] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(set))
+	for model := range set {
+		out = append(out, model)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func buildOpenAIModelRoleViews(inputs *OpenAIProjectionInputs, catalog []string, catalogSet map[string]struct{}) (map[string]OpenAIModelRoleView, map[int64][]string) {
+	views := make(map[string]OpenAIModelRoleView, len(catalog))
+	members := make(map[string]*openAIProjectionModelMembers, len(catalog))
+	for _, model := range catalog {
+		views[model] = OpenAIModelRoleView{CanonicalModel: model}
+		members[model] = &openAIProjectionModelMembers{}
+	}
+
+	supportedModels := make(map[int64][]string)
+	for _, account := range inputs.AccountsAll {
+		snapshot, ok := inputs.CapabilityByID[account.ID]
+		if !ok {
+			snapshot = buildOpenAIModelCapabilitySnapshot(account)
+		}
+
+		supported := make([]string, 0, len(catalog))
+		for _, model := range catalog {
+			if !account.SupportsProjectionModel(model, snapshot, catalogSet) {
+				continue
+			}
+			supported = append(supported, model)
+			if account.IsSchedulableForTargetGroup(TargetGroupExhausted) {
+				members[model].exhausted = append(members[model].exhausted, account)
+				continue
+			}
+			if account.IsSchedulableForTargetGroup(TargetGroupActive) {
+				members[model].active = append(members[model].active, account)
+			}
+		}
+		if len(supported) > 0 {
+			supportedModels[account.ID] = supported
+		}
+	}
+
+	for _, model := range catalog {
+		member := members[model]
+		view := views[model]
+		view.ExhaustedBaseIDs = sortedOpenAIProjectionIDs(member.exhausted)
+		view.ReserveOverflowIDs = sortedOpenAIProjectionIDs(buildOpenAIReserveOverflowPool(member.active, member.exhausted))
+		views[model] = view
+	}
+	return views, supportedModels
+}
+
+func collectOpenAIReserveIDs(local map[string]OpenAIModelRoleView) map[int64]struct{} {
+	reserve := make(map[int64]struct{})
+	for _, view := range local {
+		for _, accountID := range view.ReserveOverflowIDs {
+			reserve[accountID] = struct{}{}
+		}
+	}
+	return reserve
+}
+
+func liftModelSubsetReserveIdentities(local map[string]OpenAIModelRoleView, supportedModels map[int64][]string) map[string]OpenAIModelRoleView {
+	lifted := make(map[string]OpenAIModelRoleView, len(local))
+	for model, view := range local {
+		lifted[model] = OpenAIModelRoleView{
+			CanonicalModel:     view.CanonicalModel,
+			ExhaustedBaseIDs:   append([]int64(nil), view.ExhaustedBaseIDs...),
+			ReserveOverflowIDs: append([]int64(nil), view.ReserveOverflowIDs...),
+		}
+	}
+
+	for accountID := range collectOpenAIReserveIDs(local) {
+		for _, model := range supportedModels[accountID] {
+			view, ok := lifted[model]
+			if !ok || containsOpenAIProjectionID(view.ExhaustedBaseIDs, accountID) {
+				continue
+			}
+			if !containsOpenAIProjectionID(view.ReserveOverflowIDs, accountID) {
+				view.ReserveOverflowIDs = append(view.ReserveOverflowIDs, accountID)
+				sort.Slice(view.ReserveOverflowIDs, func(i, j int) bool {
+					return view.ReserveOverflowIDs[i] < view.ReserveOverflowIDs[j]
+				})
+			}
+			lifted[model] = view
+		}
+	}
+	return lifted
+}
+
+func sortedOpenAIProjectionIDs(accounts []Account) []int64 {
+	ids := make([]int64, 0, len(accounts))
+	for _, account := range accounts {
+		ids = append(ids, account.ID)
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		return ids[i] < ids[j]
+	})
+	return ids
+}
+
+func containsOpenAIProjectionID(ids []int64, target int64) bool {
+	for _, id := range ids {
+		if id == target {
+			return true
+		}
+	}
+	return false
 }

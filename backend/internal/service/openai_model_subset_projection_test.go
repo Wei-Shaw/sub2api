@@ -3,10 +3,59 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func newOpenAIProjectionActiveAccount(id int64, concurrency int, usedPercent float64, models []string) Account {
+	return Account{
+		ID:          id,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: concurrency,
+		Credentials: map[string]any{"plan_type": "free"},
+		Extra: map[string]any{
+			openAICapabilityExplicitModelsExtraKey: models,
+			"codex_7d_used_percent":                usedPercent,
+		},
+	}
+}
+
+func newOpenAIProjectionExhaustedAccount(id int64, concurrency int, models []string) Account {
+	return Account{
+		ID:          id,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: concurrency,
+		Extra: map[string]any{
+			openAICapabilityExplicitModelsExtraKey: models,
+			"quota_limit":                          float64(100),
+			"quota_used":                           float64(100),
+		},
+	}
+}
+
+func projectionAccountIDs(accounts []Account) []int64 {
+	ids := make([]int64, 0, len(accounts))
+	for _, account := range accounts {
+		ids = append(ids, account.ID)
+	}
+	return ids
+}
+
+func projectionReserveIDSlice(reserve map[int64]struct{}) []int64 {
+	ids := make([]int64, 0, len(reserve))
+	for id := range reserve {
+		ids = append(ids, id)
+	}
+	return ids
+}
 
 func TestBuildOpenAICanonicalModelCatalog_UsesFiniteSources(t *testing.T) {
 	t.Parallel()
@@ -201,6 +250,150 @@ func TestNormalizeOpenAIProjectionModelKey_ReusesCompatNormalization(t *testing.
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.want, NormalizeOpenAIProjectionModelKey(tt.input))
+		})
+	}
+}
+
+func TestLoadOpenAIProjectionInputs_PreservesBroadSourceExhaustedMembers(t *testing.T) {
+	t.Parallel()
+
+	active := newOpenAIProjectionActiveAccount(101, 1, 10, []string{"gpt-5.4"})
+	exhausted := newOpenAIProjectionExhaustedAccount(102, 1, []string{"gpt-5.4"})
+
+	svc := &SchedulerSnapshotService{
+		accountRepo: splitPoolOpenAIAccountRepo{
+			ungrouped: []Account{active},
+			broad:     []Account{active, exhausted},
+		},
+	}
+
+	inputs, err := svc.loadOpenAIProjectionInputs(context.Background(), SchedulerBucket{Platform: PlatformOpenAI, Mode: SchedulerModeSingle})
+	require.NoError(t, err)
+	require.ElementsMatch(t, []int64{101, 102}, projectionAccountIDs(inputs.AccountsAll))
+	require.Contains(t, inputs.ExhaustedBroadIDs, int64(102))
+	require.NotContains(t, inputs.ExhaustedBroadIDs, int64(101))
+	require.Contains(t, inputs.CanonicalCatalog, "gpt-5.4")
+	require.Contains(t, inputs.CapabilityByID, int64(102))
+}
+
+func TestBuildOpenAIModelSubsetProjection_NewModelTwoAccountsPromotesReserve(t *testing.T) {
+	t.Parallel()
+
+	inputs := &OpenAIProjectionInputs{
+		Bucket:           SchedulerBucket{GroupID: 2, Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+		CanonicalCatalog: []string{"gpt-5.6"},
+		AccountsAll: []Account{
+			newOpenAIProjectionActiveAccount(1, 1, 10, []string{"gpt-5.6"}),
+			newOpenAIProjectionActiveAccount(2, 1, 20, []string{"gpt-5.6"}),
+		},
+	}
+
+	projection := BuildOpenAIModelSubsetProjection(inputs)
+	view := projection.ViewForModel("gpt-5.6")
+
+	require.Empty(t, view.ExhaustedBaseIDs)
+	require.NotEmpty(t, view.ReserveOverflowIDs)
+	require.NotEmpty(t, projection.AccountReserveIDs)
+	for _, id := range view.ReserveOverflowIDs {
+		_, ok := projection.AccountReserveIDs[id]
+		require.True(t, ok)
+	}
+}
+
+func TestBuildOpenAIModelSubsetProjection_AsymmetricMatrixLiftsReserveAcrossSupportedModels(t *testing.T) {
+	t.Parallel()
+
+	accountA := newOpenAIProjectionActiveAccount(1, 1, 10, []string{"gpt-5.6", "gpt-5.4"})
+	accountB := newOpenAIProjectionExhaustedAccount(2, 1, []string{"gpt-5.6"})
+	accountC := newOpenAIProjectionActiveAccount(3, 2, 90, []string{"gpt-5.4"})
+
+	projection := BuildOpenAIModelSubsetProjection(&OpenAIProjectionInputs{
+		Bucket:           SchedulerBucket{GroupID: 2, Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+		CanonicalCatalog: []string{"gpt-5.4", "gpt-5.6"},
+		AccountsAll:      []Account{accountA, accountB, accountC},
+	})
+
+	view56 := projection.ViewForModel("gpt-5.6")
+	view54 := projection.ViewForModel("gpt-5.4")
+
+	require.ElementsMatch(t, []int64{2}, view56.ExhaustedBaseIDs)
+	require.ElementsMatch(t, []int64{1}, view56.ReserveOverflowIDs)
+	require.ElementsMatch(t, []int64{1, 3}, view54.ReserveOverflowIDs)
+	require.NotContains(t, view54.ReserveOverflowIDs, int64(2))
+	require.NotContains(t, view54.ExhaustedBaseIDs, int64(1))
+	require.ElementsMatch(t, []int64{1, 3}, projectionReserveIDSlice(projection.AccountReserveIDs))
+}
+
+func TestBuildOpenAIModelSubsetProjection_ExhaustedEmptyMeansOneHundredPercent(t *testing.T) {
+	t.Parallel()
+
+	projection := BuildOpenAIModelSubsetProjection(&OpenAIProjectionInputs{
+		Bucket:           SchedulerBucket{GroupID: 2, Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+		CanonicalCatalog: []string{"gpt-5.6"},
+		AccountsAll: []Account{
+			newOpenAIProjectionActiveAccount(11, 1, 15, []string{"gpt-5.6"}),
+		},
+	})
+
+	view := projection.ViewForModel("gpt-5.6")
+	require.Empty(t, view.ExhaustedBaseIDs)
+	require.ElementsMatch(t, []int64{11}, view.ReserveOverflowIDs)
+	_, ok := projection.AccountReserveIDs[11]
+	require.True(t, ok)
+}
+
+func TestBuildOpenAIModelSubsetProjection_ReserveThresholdMatrix(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		accounts      []Account
+		wantExhausted []int64
+		wantReserve   []int64
+	}{
+		{
+			name: "exhausted_capacity_already_covers_sixty_percent",
+			accounts: []Account{
+				newOpenAIProjectionExhaustedAccount(21, 2, []string{"gpt-5.6"}),
+				newOpenAIProjectionActiveAccount(22, 1, 10, []string{"gpt-5.6"}),
+			},
+			wantExhausted: []int64{21},
+			wantReserve:   nil,
+		},
+		{
+			name: "reserve_fills_remaining_capacity_gap",
+			accounts: []Account{
+				newOpenAIProjectionExhaustedAccount(31, 1, []string{"gpt-5.6"}),
+				newOpenAIProjectionActiveAccount(32, 1, 10, []string{"gpt-5.6"}),
+				newOpenAIProjectionActiveAccount(33, 2, 90, []string{"gpt-5.6"}),
+			},
+			wantExhausted: []int64{31},
+			wantReserve:   []int64{33},
+		},
+		{
+			name: "exhausted_empty_is_treated_as_one_hundred_percent",
+			accounts: []Account{
+				newOpenAIProjectionActiveAccount(41, 1, 15, []string{"gpt-5.6"}),
+			},
+			wantExhausted: nil,
+			wantReserve:   []int64{41},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			projection := BuildOpenAIModelSubsetProjection(&OpenAIProjectionInputs{
+				Bucket:           SchedulerBucket{GroupID: 2, Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+				CanonicalCatalog: []string{"gpt-5.6"},
+				AccountsAll:      tt.accounts,
+			})
+
+			view := projection.ViewForModel("gpt-5.6")
+			require.ElementsMatch(t, tt.wantExhausted, view.ExhaustedBaseIDs)
+			require.ElementsMatch(t, tt.wantReserve, view.ReserveOverflowIDs)
+			for _, exhaustedID := range view.ExhaustedBaseIDs {
+				require.NotContains(t, view.ReserveOverflowIDs, exhaustedID)
+			}
 		})
 	}
 }

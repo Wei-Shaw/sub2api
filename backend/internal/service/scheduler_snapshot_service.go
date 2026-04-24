@@ -672,6 +672,103 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 	return s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, bucket.Platform)
 }
 
+func (s *SchedulerSnapshotService) loadOpenAIProjectionInputs(ctx context.Context, bucket SchedulerBucket) (*OpenAIProjectionInputs, error) {
+	inputs := &OpenAIProjectionInputs{
+		Bucket:            bucket,
+		ExhaustedBroadIDs: make(map[int64]struct{}),
+		CapabilityByID:    make(map[int64]OpenAIModelCapabilitySnapshot),
+	}
+	if s == nil {
+		return inputs, nil
+	}
+	if bucket.Platform != PlatformOpenAI {
+		return inputs, nil
+	}
+
+	accounts, err := s.loadAccountsFromDB(ctx, bucket, bucket.Mode == SchedulerModeMixed)
+	if err != nil {
+		return nil, err
+	}
+	broad, err := s.loadOpenAIProjectionBroadSource(ctx, bucket)
+	if err != nil {
+		return nil, err
+	}
+
+	merged := make([]Account, 0, len(accounts)+len(broad))
+	baseIndex := make(map[int64]int, len(accounts))
+	for _, account := range accounts {
+		baseIndex[account.ID] = len(merged)
+		merged = append(merged, account)
+	}
+	for _, account := range broad {
+		if !account.IsOpenAI() {
+			continue
+		}
+		if idx, ok := baseIndex[account.ID]; ok {
+			merged[idx] = account
+			if account.IsSchedulableForTargetGroup(TargetGroupExhausted) {
+				inputs.ExhaustedBroadIDs[account.ID] = struct{}{}
+			} else {
+				delete(inputs.ExhaustedBroadIDs, account.ID)
+			}
+			continue
+		}
+		if !account.IsSchedulableForTargetGroup(TargetGroupExhausted) {
+			continue
+		}
+		baseIndex[account.ID] = len(merged)
+		merged = append(merged, account)
+		inputs.ExhaustedBroadIDs[account.ID] = struct{}{}
+	}
+
+	inputs.AccountsAll = merged
+	inputs.CanonicalCatalog = BuildOpenAICanonicalModelCatalog(merged, nil, nil)
+	for _, account := range merged {
+		inputs.CapabilityByID[account.ID] = buildOpenAIModelCapabilitySnapshot(account)
+	}
+	return inputs, nil
+}
+
+func (s *SchedulerSnapshotService) loadOpenAIProjectionBroadSource(ctx context.Context, bucket SchedulerBucket) ([]Account, error) {
+	if s == nil || s.accountRepo == nil {
+		return nil, nil
+	}
+
+	groupID := bucket.GroupID
+	if s.isRunModeSimple() {
+		groupID = 0
+	}
+	if groupID > 0 {
+		accounts, err := s.accountRepo.ListByGroup(ctx, groupID)
+		if err != nil {
+			return nil, err
+		}
+		filtered := make([]Account, 0, len(accounts))
+		for _, account := range accounts {
+			if account.Platform == PlatformOpenAI {
+				filtered = append(filtered, account)
+			}
+		}
+		return filtered, nil
+	}
+
+	accounts, err := s.accountRepo.ListByPlatform(ctx, PlatformOpenAI)
+	if err != nil {
+		return nil, err
+	}
+	if s.isRunModeSimple() {
+		return accounts, nil
+	}
+
+	filtered := make([]Account, 0, len(accounts))
+	for _, account := range accounts {
+		if len(account.AccountGroups) == 0 && len(account.GroupIDs) == 0 && len(account.Groups) == 0 {
+			filtered = append(filtered, account)
+		}
+	}
+	return filtered, nil
+}
+
 func (s *SchedulerSnapshotService) bucketFor(groupID *int64, platform string, mode string) SchedulerBucket {
 	return SchedulerBucket{
 		GroupID:  s.normalizeGroupID(groupID),
