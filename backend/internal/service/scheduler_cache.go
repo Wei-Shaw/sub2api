@@ -22,13 +22,14 @@ type SchedulerBucket struct {
 
 type OpenAISchedulerBucketState struct {
 	Accounts          []*Account                   `json:"accounts"`
+	ProjectionAccounts []*Account                  `json:"projection_accounts"`
 	Projection        *OpenAIModelSubsetProjection `json:"projection"`
 	ProjectionVersion int64                        `json:"projection_version"`
 	BuiltAt           time.Time                    `json:"built_at"`
 }
 
 func (s *OpenAISchedulerBucketState) IsComplete() bool {
-	return s != nil && s.Accounts != nil && s.Projection != nil && s.ProjectionVersion > 0 && !s.BuiltAt.IsZero()
+	return s != nil && s.Accounts != nil && s.ProjectionAccounts != nil && s.Projection != nil && s.ProjectionVersion > 0 && !s.BuiltAt.IsZero()
 }
 
 func (b SchedulerBucket) String() string {

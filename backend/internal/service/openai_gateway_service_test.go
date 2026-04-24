@@ -1206,6 +1206,99 @@ func TestOpenAIGatewayService_ProjectionMissFailsClosedWithoutLiveReserveFallbac
 	require.ErrorIs(t, err, ErrSchedulerCacheNotReady)
 }
 
+func TestOpenAIGatewayService_LoadOpenAIProjectionAccounts_UsesBundleWithoutGetAccountFallback(t *testing.T) {
+	ctx := context.Background()
+	state := newOpenAIBucketStateForTest([]Account{
+		{
+			ID:          6501,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Credentials: map[string]any{"model_mapping": map[string]any{"gpt-5.6": "gpt-5.6"}},
+		},
+		{
+			ID:          6502,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Credentials: map[string]any{"plan_type": "free", "model_mapping": map[string]any{"gpt-5.6": "gpt-5.6"}},
+			Extra:       map[string]any{"codex_7d_used_percent": 20.0},
+		},
+	}, 7, map[string]OpenAIModelRoleView{
+		"gpt-5.6": {
+			CanonicalModel:     "gpt-5.6",
+			ExhaustedBaseIDs:   []int64{6501},
+			ReserveOverflowIDs: []int64{6502},
+		},
+	})
+	state.Accounts = []*Account{state.Accounts[0]}
+	snapshotCache := &openAISnapshotCacheStub{
+		accountsByID: map[int64]*Account{
+			6501: state.ProjectionAccounts[0],
+			6502: state.ProjectionAccounts[1],
+		},
+		openAIState: state,
+	}
+	svc := &OpenAIGatewayService{schedulerSnapshot: &SchedulerSnapshotService{cache: snapshotCache}}
+
+	exhaustedAccounts, reserveAccounts, err := svc.listOpenAIExhaustedWithReserveOverlay(ctx, nil, "gpt-5.6")
+	require.NoError(t, err)
+	require.Len(t, exhaustedAccounts, 1)
+	require.Len(t, reserveAccounts, 1)
+	require.Equal(t, int64(6501), exhaustedAccounts[0].ID)
+	require.Equal(t, int64(6502), reserveAccounts[0].ID)
+	require.Zero(t, snapshotCache.getAccountCalls)
+}
+
+func TestOpenAIGatewayService_LoadOpenAIProjectionAccounts_FailsClosedWhenBundleMissingProjectionParticipants(t *testing.T) {
+	ctx := context.Background()
+	state := newOpenAIBucketStateForTest([]Account{
+		{
+			ID:          6601,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Credentials: map[string]any{"model_mapping": map[string]any{"gpt-5.6": "gpt-5.6"}},
+		},
+		{
+			ID:          6602,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Credentials: map[string]any{"plan_type": "free", "model_mapping": map[string]any{"gpt-5.6": "gpt-5.6"}},
+			Extra:       map[string]any{"codex_7d_used_percent": 20.0},
+		},
+	}, 7, map[string]OpenAIModelRoleView{
+		"gpt-5.6": {
+			CanonicalModel:     "gpt-5.6",
+			ExhaustedBaseIDs:   []int64{6601},
+			ReserveOverflowIDs: []int64{6602},
+		},
+	})
+	state.Accounts = []*Account{state.Accounts[0]}
+	state.ProjectionAccounts = []*Account{state.ProjectionAccounts[0]}
+	snapshotCache := &openAISnapshotCacheStub{
+		accountsByID: map[int64]*Account{
+			6601: state.Accounts[0],
+			6602: {ID: 6602, Platform: PlatformOpenAI},
+		},
+		openAIState: state,
+	}
+	svc := &OpenAIGatewayService{schedulerSnapshot: &SchedulerSnapshotService{cache: snapshotCache}}
+
+	_, _, err := svc.listOpenAIExhaustedWithReserveOverlay(ctx, nil, "gpt-5.6")
+	require.ErrorIs(t, err, ErrSchedulerCacheNotReady)
+	require.Zero(t, snapshotCache.getAccountCalls)
+}
+
 func TestOpenAIGatewayService_GenerateSessionHash_AttachesLegacyHashToContext(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()

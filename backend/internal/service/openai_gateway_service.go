@@ -59,7 +59,10 @@ const (
 	codexCLIVersion                    = "0.104.0"
 	// Codex 限额快照仅用于后台展示/诊断，不需要每个成功请求都立即落库。
 	openAICodexSnapshotPersistMinInterval = 30 * time.Second
+	openAIUnknownModelRefreshRequestTTL   = 5 * time.Minute
 )
+
+const openAIUnknownModelRefreshRequestNamespace = "openai_unknown_model_refresh_request"
 
 // OpenAI allowed headers whitelist (for non-passthrough).
 var openaiAllowedHeaders = map[string]bool{
@@ -1799,49 +1802,78 @@ func shouldRefreshOpenAIProjectionCatalogForAccount(account Account, canonicalMo
 	return wildcardRulesSupportProjectionModel(snapshot.WildcardRules, canonicalModel)
 }
 
-func (s *OpenAIGatewayService) refreshUnknownOpenAIProjectionCatalog(ctx context.Context, bucket SchedulerBucket, requestedModel string) (bool, error) {
-	repo := s.openAIProjectionAccountRepo()
-	if repo == nil || s == nil || s.schedulerSnapshot == nil {
-		return false, nil
+type openAIUnknownModelRefreshRequest struct {
+	Bucket      string    `json:"bucket"`
+	Model       string    `json:"model"`
+	AccountIDs  []int64   `json:"account_ids"`
+	RequestedAt time.Time `json:"requested_at"`
+}
+
+func openAIUnknownModelRefreshRequestKey(bucket SchedulerBucket, canonicalModel string) string {
+	return bucket.String() + ":" + canonicalModel
+}
+
+func (s *OpenAIGatewayService) loadOpenAIProjectionInputsForModelMiss(ctx context.Context, bucket SchedulerBucket, requestedModel string) (*OpenAIProjectionInputs, string, bool, error) {
+	if s == nil || s.schedulerSnapshot == nil {
+		return nil, "", false, ErrSchedulerCacheNotReady
 	}
 	canonicalModel := NormalizeOpenAIProjectionModelKey(requestedModel)
 	if canonicalModel == "" {
-		return false, nil
+		return nil, "", false, nil
 	}
 	inputs, err := s.schedulerSnapshot.loadOpenAIProjectionInputs(ctx, bucket)
 	if err != nil {
-		return false, err
+		return nil, canonicalModel, false, err
 	}
-	if inputs == nil || len(inputs.AccountsAll) == 0 {
+	if inputs == nil {
+		return nil, canonicalModel, false, nil
+	}
+	for _, model := range canonicalizeOpenAIProjectionCatalog(inputs.CanonicalCatalog) {
+		if model == canonicalModel {
+			return inputs, canonicalModel, true, nil
+		}
+	}
+	return inputs, canonicalModel, false, nil
+}
+
+func (s *OpenAIGatewayService) requestUnknownOpenAIProjectionRefresh(ctx context.Context, bucket SchedulerBucket, canonicalModel string, accounts []Account) (bool, error) {
+	if s == nil || s.cache == nil || canonicalModel == "" || len(accounts) == 0 {
 		return false, nil
 	}
-
-	mutated := false
-	refreshedAt := time.Now().UTC().Format(time.RFC3339)
-	for _, account := range inputs.AccountsAll {
-		if !account.IsOpenAI() {
-			continue
-		}
-		if openAICatalogModelsContain(account, canonicalModel) {
+	cache := s.openAICompanionBindingCache()
+	if cache == nil {
+		return false, nil
+	}
+	candidateIDs := make([]int64, 0, len(accounts))
+	for _, account := range accounts {
+		if !account.IsOpenAI() || openAICatalogModelsContain(account, canonicalModel) {
 			continue
 		}
 		if !shouldRefreshOpenAIProjectionCatalogForAccount(account, canonicalModel) {
 			continue
 		}
-		nextCatalog := canonicalizeOpenAIProjectionCatalog(append(
-			parseOpenAIProjectionStringSlice(account.Extra[openAICapabilityCatalogModelsExtraKey]),
-			canonicalModel,
-		))
-		if err := repo.UpdateExtra(ctx, account.ID, map[string]any{
-			openAICapabilityCatalogModelsExtraKey:           nextCatalog,
-			openAICapabilityLastRefreshAtExtraKey:           refreshedAt,
-			openAICapabilityLastSuccessfulRefreshAtExtraKey: refreshedAt,
-		}); err != nil {
-			return false, err
-		}
-		mutated = true
+		candidateIDs = append(candidateIDs, account.ID)
 	}
-	return mutated, nil
+	if len(candidateIDs) == 0 {
+		return false, nil
+	}
+	bindingKey := openAIUnknownModelRefreshRequestKey(bucket, canonicalModel)
+	if _, err := cache.GetOpenAICompanionBinding(ctx, bucket.GroupID, openAIUnknownModelRefreshRequestNamespace, bindingKey); err == nil {
+		return true, nil
+	}
+	payload, err := json.Marshal(openAIUnknownModelRefreshRequest{
+		Bucket:      bucket.String(),
+		Model:       canonicalModel,
+		AccountIDs:  candidateIDs,
+		RequestedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		return false, err
+	}
+	if err := cache.SetOpenAICompanionBinding(ctx, bucket.GroupID, openAIUnknownModelRefreshRequestNamespace, bindingKey, string(payload), openAIUnknownModelRefreshRequestTTL); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *OpenAIGatewayService) getOpenAIProjectionView(ctx context.Context, groupID *int64, requestedModel string) (*openAIProjectionViewResult, error) {
@@ -1873,11 +1905,19 @@ func (s *OpenAIGatewayService) getOpenAIProjectionView(ctx context.Context, grou
 	}
 	view, ok := state.Projection.ViewForModel(requestedModel)
 	if !ok {
-		shouldRefresh, err := s.refreshUnknownOpenAIProjectionCatalog(ctx, bucket, requestedModel)
+		inputs, canonicalModel, sourceKnowsModel, err := s.loadOpenAIProjectionInputsForModelMiss(ctx, bucket, requestedModel)
 		if err != nil {
 			return nil, err
 		}
-		if !shouldRefresh {
+		if !sourceKnowsModel {
+			accountsAll := []Account(nil)
+			if inputs != nil {
+				accountsAll = inputs.AccountsAll
+			}
+			_, err = s.requestUnknownOpenAIProjectionRefresh(ctx, bucket, canonicalModel, accountsAll)
+			if err != nil {
+				return nil, err
+			}
 			return nil, ErrSchedulerCacheNotReady
 		}
 		var hit bool
@@ -1904,8 +1944,11 @@ func (s *OpenAIGatewayService) loadOpenAIProjectionAccounts(ctx context.Context,
 	if state == nil {
 		return nil, ErrSchedulerCacheNotReady
 	}
-	byID := make(map[int64]Account, len(state.Accounts))
-	for _, account := range state.Accounts {
+	if state.ProjectionAccounts == nil {
+		return nil, ErrSchedulerCacheNotReady
+	}
+	byID := make(map[int64]Account, len(state.ProjectionAccounts))
+	for _, account := range state.ProjectionAccounts {
 		if account == nil {
 			continue
 		}
@@ -1917,14 +1960,7 @@ func (s *OpenAIGatewayService) loadOpenAIProjectionAccounts(ctx context.Context,
 			out = append(out, account)
 			continue
 		}
-		if s == nil || s.schedulerSnapshot == nil {
-			return nil, ErrSchedulerCacheNotReady
-		}
-		account, err := s.schedulerSnapshot.GetAccount(ctx, accountID)
-		if err != nil || account == nil {
-			return nil, ErrSchedulerCacheNotReady
-		}
-		out = append(out, *account)
+		return nil, ErrSchedulerCacheNotReady
 	}
 	return out, nil
 }

@@ -186,6 +186,13 @@ func TestSchedulerSnapshotHydration_PreservesOpenAIProjectionFields(t *testing.T
 					Status:      StatusActive,
 					Schedulable: true,
 				}},
+				ProjectionAccounts: []*Account{{
+					ID:          7,
+					Platform:    PlatformOpenAI,
+					Type:        AccountTypeAPIKey,
+					Status:      StatusActive,
+					Schedulable: true,
+				}},
 				Projection: &OpenAIModelSubsetProjection{
 					Bucket:            bucket,
 					AccountReserveIDs: map[int64]struct{}{7: {}},
@@ -209,6 +216,8 @@ func TestSchedulerSnapshotHydration_PreservesOpenAIProjectionFields(t *testing.T
 	require.NotNil(t, state)
 	require.Equal(t, int64(7), state.ProjectionVersion)
 	require.True(t, state.BuiltAt.Equal(builtAt))
+	require.Len(t, state.ProjectionAccounts, 1)
+	require.Equal(t, int64(7), state.ProjectionAccounts[0].ID)
 	view, found := state.Projection.ViewForModel("gpt-5.4")
 	require.True(t, found)
 	require.Equal(t, []int64{7}, view.ReserveOverflowIDs)

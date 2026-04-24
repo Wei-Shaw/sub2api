@@ -385,25 +385,38 @@ func decodeCachedAccount(val any) (*service.Account, error) {
 
 func buildStoredOpenAIBucketState(state *service.OpenAISchedulerBucketState, version int64, builtAt time.Time) (*service.OpenAISchedulerBucketState, []service.Account) {
 	storedAccounts := make([]*service.Account, 0)
+	storedProjectionAccounts := make([]*service.Account, 0)
 	fullAccounts := make([]service.Account, 0)
-	if state != nil {
-		storedAccounts = make([]*service.Account, 0, len(state.Accounts))
-		fullAccounts = make([]service.Account, 0, len(state.Accounts))
-		for _, account := range state.Accounts {
+	seen := make(map[int64]struct{})
+	appendAccounts := func(accounts []*service.Account) []*service.Account {
+		stored := make([]*service.Account, 0, len(accounts))
+		for _, account := range accounts {
 			if account == nil {
 				continue
 			}
-			fullAccounts = append(fullAccounts, *account)
+			if _, ok := seen[account.ID]; !ok {
+				seen[account.ID] = struct{}{}
+				fullAccounts = append(fullAccounts, *account)
+			}
 			meta := buildSchedulerMetadataAccount(*account)
 			metaCopy := meta
-			storedAccounts = append(storedAccounts, &metaCopy)
+			stored = append(stored, &metaCopy)
 		}
+		if stored == nil {
+			return []*service.Account{}
+		}
+		return stored
+	}
+	if state != nil {
+		storedAccounts = appendAccounts(state.Accounts)
+		storedProjectionAccounts = appendAccounts(state.ProjectionAccounts)
 	}
 	return &service.OpenAISchedulerBucketState{
-		Accounts:          storedAccounts,
-		Projection:        state.Projection,
-		ProjectionVersion: version,
-		BuiltAt:           builtAt,
+		Accounts:           storedAccounts,
+		ProjectionAccounts: storedProjectionAccounts,
+		Projection:         state.Projection,
+		ProjectionVersion:  version,
+		BuiltAt:            builtAt,
 	}, fullAccounts
 }
 
@@ -555,6 +568,11 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"window_cost_sticky_reserve",
 		"codex_7d_used_percent",
 		"codex_primary_used_percent",
+		"openai_capability_explicit_models",
+		"openai_capability_wildcard_rules",
+		"openai_capability_default_allow",
+		"openai_capability_catalog_models",
+		"openai_capability_last_successful_refresh_at",
 		"max_sessions",
 		"session_idle_timeout_minutes",
 		"openai_oauth_responses_websockets_v2_enabled",

@@ -21,6 +21,7 @@ type openAISnapshotCacheStub struct {
 	accountsByID     map[int64]*Account
 	openAIState      *OpenAISchedulerBucketState
 	openAIStateMiss  bool
+	getAccountCalls  int
 }
 
 func (s *openAISnapshotCacheStub) GetSnapshot(ctx context.Context, bucket SchedulerBucket) ([]*Account, bool, error) {
@@ -60,6 +61,7 @@ func (s *openAISnapshotCacheStub) GetOpenAIBucketState(ctx context.Context, buck
 }
 
 func (s *openAISnapshotCacheStub) GetAccount(ctx context.Context, accountID int64) (*Account, error) {
+	s.getAccountCalls++
 	if s.accountsByID == nil {
 		if s.openAIState == nil {
 			return nil, nil
@@ -3105,7 +3107,8 @@ func newOpenAIBucketStateForTest(accounts []Account, projectionVersion int64, mo
 		}
 	}
 	return &OpenAISchedulerBucketState{
-		Accounts: accountPtrs,
+		Accounts:           accountPtrs,
+		ProjectionAccounts: append([]*Account(nil), accountPtrs...),
 		Projection: &OpenAIModelSubsetProjection{
 			Bucket:            SchedulerBucket{Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
 			AccountReserveIDs: accountReserveIDs,

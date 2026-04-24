@@ -795,8 +795,9 @@ func (s *SchedulerSnapshotService) publishBucketSnapshot(ctx context.Context, bu
 		return err
 	}
 	state := &OpenAISchedulerBucketState{
-		Accounts:   ptrAccounts(accounts),
-		Projection: BuildOpenAIModelSubsetProjection(inputs),
+		Accounts:           ptrAccounts(accounts),
+		ProjectionAccounts: ptrAccounts(inputs.AccountsAll),
+		Projection:         BuildOpenAIModelSubsetProjection(inputs),
 	}
 	return s.cache.SetOpenAIBucketState(ctx, bucket, state)
 }
