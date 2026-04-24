@@ -6109,7 +6109,12 @@ async function saveSettings() {
     // Save web search emulation config separately (errors handled internally)
     const wsOk = await saveWebSearchConfig();
     // Refresh cached settings so sidebar/header update immediately
-    adminSettingsStore.setServiceQuotaEnabledLocal(form.service_quota_enabled);
+    appStore.patchPublicSettings({
+      channel_monitor_enabled: form.channel_monitor_enabled,
+      available_channels_enabled: form.available_channels_enabled,
+      service_quota_enabled: form.service_quota_enabled,
+      payment_enabled: form.payment_enabled,
+    });
     await appStore.fetchPublicSettings(true);
     await adminSettingsStore.fetch(true);
     if (wsOk) {

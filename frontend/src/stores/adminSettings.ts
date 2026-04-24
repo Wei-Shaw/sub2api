@@ -49,7 +49,6 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
   const opsRealtimeMonitoringEnabled = ref(readCachedBool('ops_realtime_monitoring_enabled_cached', true))
   const opsQueryModeDefault = ref(readCachedString('ops_query_mode_default_cached', 'auto'))
   const paymentEnabled = ref(readCachedBool('payment_enabled_cached', false))
-  const serviceQuotaEnabled = ref(readCachedBool('service_quota_enabled_cached', false))
   const customMenuItems = ref<CustomMenuItem[]>([])
 
   async function fetch(force = false): Promise<void> {
@@ -76,9 +75,6 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
       paymentEnabled.value = paymentConfigResp.data?.enabled ?? false
       writeCachedBool('payment_enabled_cached', paymentEnabled.value)
 
-      serviceQuotaEnabled.value = settings.service_quota_enabled ?? false
-      writeCachedBool('service_quota_enabled_cached', serviceQuotaEnabled.value)
-
       loaded.value = true
     } catch (err) {
       // Keep cached/default value: do not "flip" the UI based on a transient fetch failure.
@@ -104,12 +100,6 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
   function setPaymentEnabledLocal(value: boolean) {
     paymentEnabled.value = value
     writeCachedBool('payment_enabled_cached', value)
-    loaded.value = true
-  }
-
-  function setServiceQuotaEnabledLocal(value: boolean) {
-    serviceQuotaEnabled.value = value
-    writeCachedBool('service_quota_enabled_cached', value)
     loaded.value = true
   }
 
@@ -150,13 +140,11 @@ export const useAdminSettingsStore = defineStore('adminSettings', () => {
     opsRealtimeMonitoringEnabled,
     opsQueryModeDefault,
     paymentEnabled,
-    serviceQuotaEnabled,
     customMenuItems,
     fetch,
     setOpsMonitoringEnabledLocal,
     setOpsRealtimeMonitoringEnabledLocal,
     setPaymentEnabledLocal,
-    setServiceQuotaEnabledLocal,
     setOpsQueryModeDefaultLocal
   }
 })
