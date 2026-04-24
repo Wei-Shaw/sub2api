@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -153,6 +154,9 @@ REDACTED
 	if normalizeCodexTools(reqBody) {
 		result.Modified = true
 REDACTED
+	if normalizeCodexToolChoice(reqBody) {
+		result.Modified = true
+REDACTED
 
 	if v, ok := reqBody["prompt_cache_key"].(string); ok {
 		result.PromptCacheKey = strings.TrimSpace(v)
@@ -173,6 +177,14 @@ REDACTED
 
 	// 续链场景保留 item_reference 与 id，避免 call_id 上下文丢失。
 	if input, ok := reqBody["input"].([]any); ok {
+		if normalizedInput, modified := normalizeCodexToolRoleMessages(input); modified {
+			input = normalizedInput
+			result.Modified = true
+	REDACTED
+		if normalizedInput, modified := normalizeCodexMessageContentText(input); modified {
+			input = normalizedInput
+			result.Modified = true
+	REDACTED
 		input = filterCodexInput(input, needsToolContinuation)
 		reqBody["input"] = input
 		result.Modified = true
@@ -195,6 +207,183 @@ REDACTED else if inputStr, ok := reqBody["input"].(string); ok {
 REDACTED
 
 	return result
+REDACTED
+
+func normalizeCodexToolChoice(reqBody map[string]any) bool {
+	choice, ok := reqBody["tool_choice"]
+	if !ok || choice == nil {
+		return false
+REDACTED
+	choiceMap, ok := choice.(map[string]any)
+	if !ok {
+		return false
+REDACTED
+	choiceType := strings.TrimSpace(firstNonEmptyString(choiceMap["type"]))
+	if choiceType == "" || codexToolsContainType(reqBody["tools"], choiceType) {
+		return false
+REDACTED
+	reqBody["tool_choice"] = "auto"
+	return true
+REDACTED
+
+func codexToolsContainType(rawTools any, toolType string) bool {
+	tools, ok := rawTools.([]any)
+	if !ok || strings.TrimSpace(toolType) == "" {
+		return false
+REDACTED
+	for _, rawTool := range tools {
+		tool, ok := rawTool.(map[string]any)
+		if !ok {
+			continue
+	REDACTED
+		if strings.TrimSpace(firstNonEmptyString(tool["type"])) == toolType {
+			return true
+	REDACTED
+REDACTED
+	return false
+REDACTED
+
+func normalizeCodexToolRoleMessages(input []any) ([]any, bool) {
+	if len(input) == 0 {
+		return input, false
+REDACTED
+
+	modified := false
+	normalized := make([]any, 0, len(input))
+	for _, item := range input {
+		m, ok := item.(map[string]any)
+		if !ok {
+			normalized = append(normalized, item)
+			continue
+	REDACTED
+		role, _ := m["role"].(string)
+		if strings.TrimSpace(role) != "tool" {
+			normalized = append(normalized, item)
+			continue
+	REDACTED
+
+		callID := firstNonEmptyString(m["call_id"], m["tool_call_id"], m["id"])
+		callID = strings.TrimSpace(callID)
+		if callID == "" {
+			// Responses does not accept role:"tool". If no call id is available,
+			// preserve the text as a user message instead of sending invalid input.
+			fallback := make(map[string]any, len(m))
+			for key, value := range m {
+				fallback[key] = value
+		REDACTED
+			fallback["role"] = "user"
+			delete(fallback, "tool_call_id")
+			normalized = append(normalized, fallback)
+			modified = true
+			continue
+	REDACTED
+
+		output := extractTextFromContent(m["content"])
+		if output == "" {
+			if value, ok := m["output"].(string); ok {
+				output = value
+		REDACTED
+	REDACTED
+		if output == "" && m["content"] != nil {
+			if b, err := json.Marshal(m["content"]); err == nil {
+				output = string(b)
+		REDACTED
+	REDACTED
+
+		normalized = append(normalized, map[string]any{
+			"type":    "function_call_output",
+			"call_id": callID,
+			"output":  output,
+	REDACTED)
+		modified = true
+REDACTED
+	if !modified {
+		return input, false
+REDACTED
+	return normalized, true
+REDACTED
+
+func normalizeCodexMessageContentText(input []any) ([]any, bool) {
+	if len(input) == 0 {
+		return input, false
+REDACTED
+
+	modified := false
+	normalized := make([]any, 0, len(input))
+	for _, item := range input {
+		m, ok := item.(map[string]any)
+		if !ok || strings.TrimSpace(firstNonEmptyString(m["type"])) != "message" {
+			normalized = append(normalized, item)
+			continue
+	REDACTED
+		parts, ok := m["content"].([]any)
+		if !ok {
+			normalized = append(normalized, item)
+			continue
+	REDACTED
+
+		var newItem map[string]any
+		var newParts []any
+		ensureItemCopy := func() {
+			if newItem != nil {
+				return
+		REDACTED
+			newItem = make(map[string]any, len(m))
+			for key, value := range m {
+				newItem[key] = value
+		REDACTED
+			newParts = make([]any, len(parts))
+			copy(newParts, parts)
+	REDACTED
+
+		for i, rawPart := range parts {
+			part, ok := rawPart.(map[string]any)
+			if !ok {
+				continue
+		REDACTED
+			text, hasText := part["text"]
+			if !hasText {
+				continue
+		REDACTED
+			if _, ok := text.(string); ok {
+				continue
+		REDACTED
+
+			ensureItemCopy()
+			newPart := make(map[string]any, len(part))
+			for key, value := range part {
+				newPart[key] = value
+		REDACTED
+			newPart["text"] = stringifyCodexContentText(text)
+			newParts[i] = newPart
+			modified = true
+	REDACTED
+
+		if newItem != nil {
+			newItem["content"] = newParts
+			normalized = append(normalized, newItem)
+			continue
+	REDACTED
+		normalized = append(normalized, item)
+REDACTED
+	if !modified {
+		return input, false
+REDACTED
+	return normalized, true
+REDACTED
+
+func stringifyCodexContentText(value any) string {
+	switch v := value.(type) {
+	case string:
+		return v
+	case nil:
+		return ""
+	default:
+		if b, err := json.Marshal(v); err == nil {
+			return string(b)
+	REDACTED
+		return fmt.Sprint(v)
+REDACTED
 REDACTED
 
 func normalizeCodexModel(model string) string {
@@ -729,6 +918,22 @@ func filterCodexInput(input []any, preserveReferences bool) []any {
 			delete(newItem, "call_id")
 	REDACTED
 
+		if codexInputItemRequiresName(typ) {
+			if strings.TrimSpace(firstNonEmptyString(m["name"])) == "" {
+				name := firstNonEmptyString(m["tool_name"])
+				if name == "" {
+					if function, ok := m["function"].(map[string]any); ok {
+						name = firstNonEmptyString(function["name"])
+				REDACTED
+			REDACTED
+				if name == "" {
+					name = "tool"
+			REDACTED
+				ensureCopy()
+				newItem["name"] = name
+		REDACTED
+	REDACTED
+
 		if !preserveReferences {
 			ensureCopy()
 			delete(newItem, "id")
@@ -750,6 +955,15 @@ func isCodexToolCallItemType(typ string) bool {
 		"mcp_tool_call_output",
 		"custom_tool_call_output",
 		"tool_search_output":
+		return true
+	default:
+		return false
+REDACTED
+REDACTED
+
+func codexInputItemRequiresName(typ string) bool {
+	switch strings.TrimSpace(typ) {
+	case "function_call", "custom_tool_call", "mcp_tool_call":
 		return true
 	default:
 		return false
