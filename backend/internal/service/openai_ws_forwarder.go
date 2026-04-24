@@ -3850,6 +3850,8 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 	var projectionView *openAIProjectionViewResult
 	if requestedModel != "" && s.schedulerSnapshot != nil {
 		projectionView = s.getOpenAIProjectionViewWithLegacyFallback(ctx, groupID, requestedModel)
+	}
+	if projectionView != nil {
 		if affinityBinding != nil && !projectionView.bindingMatches(affinityBinding) {
 			deleteOpenAIWSResponseAffinityBinding(ctx, store, derefGroupID(groupID), responseID)
 			affinityBinding = nil

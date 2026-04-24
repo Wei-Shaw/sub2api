@@ -695,6 +695,8 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	legacyReserveAffinityHit := false
 	if req.RequestedModel != "" && s.service != nil && s.service.schedulerSnapshot != nil {
 		projectionView = s.service.getOpenAIProjectionViewWithLegacyFallback(ctx, req.GroupID, req.RequestedModel)
+	}
+	if projectionView != nil {
 		if affinityBinding != nil && !projectionView.bindingMatches(affinityBinding) {
 			_ = s.service.deleteOpenAIStickyAffinityBinding(ctx, req.GroupID, sessionHash)
 			affinityBinding = nil
@@ -1057,7 +1059,16 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		projectionView = s.service.getOpenAIProjectionViewWithLegacyFallback(ctx, req.GroupID, req.RequestedModel)
 	}
 	if req.TargetGroup == TargetGroupExhausted {
-		accounts, reserveAccounts, err = s.service.listOpenAIExhaustedWithReserveOverlay(ctx, req.GroupID, req.RequestedModel)
+		if projectionView != nil {
+			accounts, reserveAccounts, err = s.service.listOpenAIExhaustedWithReserveOverlay(ctx, req.GroupID, req.RequestedModel)
+		} else if req.RequestedModel != "" && s.service != nil && s.service.schedulerSnapshot != nil {
+			accounts, err = s.service.listSchedulableAccounts(ctx, req.GroupID, req.TargetGroup)
+			if err == nil {
+				reserveAccounts, err = s.service.listCurrentOpenAILegacyReserveOverlay(ctx, req.GroupID, req.RequestedModel)
+			}
+		} else {
+			accounts, reserveAccounts, err = s.service.listOpenAIExhaustedWithReserveOverlay(ctx, req.GroupID, req.RequestedModel)
+		}
 	} else {
 		accounts, err = s.service.listSchedulableAccounts(ctx, req.GroupID, req.TargetGroup)
 		if err == nil && (req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive) {

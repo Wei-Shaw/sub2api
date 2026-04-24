@@ -2292,7 +2292,11 @@ func (s *OpenAIGatewayService) resolveFreshOpenAIExhaustedAccount(ctx context.Co
 	if account == nil {
 		return nil
 	}
-	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" {
+	projectionView := (*openAIProjectionViewResult)(nil)
+	if s != nil && s.schedulerSnapshot != nil && strings.TrimSpace(requestedModel) != "" {
+		projectionView = s.getOpenAIProjectionViewWithLegacyFallback(ctx, groupID, requestedModel)
+	}
+	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" || projectionView == nil {
 		fresh := account
 		if s != nil && s.schedulerSnapshot != nil {
 			current, err := s.getSchedulableAccount(ctx, account.ID)
@@ -2306,8 +2310,7 @@ func (s *OpenAIGatewayService) resolveFreshOpenAIExhaustedAccount(ctx context.Co
 		}
 		return fresh
 	}
-	projectionView, err := s.getOpenAIProjectionView(ctx, groupID, requestedModel)
-	if err != nil || !projectionView.containsExhausted(account.ID) {
+	if !projectionView.containsExhausted(account.ID) {
 		return nil
 	}
 
@@ -2341,7 +2344,11 @@ func (s *OpenAIGatewayService) resolveFreshOpenAIReserveAccount(ctx context.Cont
 	if account == nil {
 		return nil
 	}
-	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" {
+	projectionView := (*openAIProjectionViewResult)(nil)
+	if s != nil && s.schedulerSnapshot != nil && strings.TrimSpace(requestedModel) != "" {
+		projectionView = s.getOpenAIProjectionViewWithLegacyFallback(ctx, groupID, requestedModel)
+	}
+	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" || projectionView == nil {
 		fresh := account
 		if s != nil && s.schedulerSnapshot != nil {
 			current, err := s.getSchedulableAccount(ctx, account.ID)
@@ -2358,8 +2365,7 @@ func (s *OpenAIGatewayService) resolveFreshOpenAIReserveAccount(ctx context.Cont
 		}
 		return fresh
 	}
-	projectionView, err := s.getOpenAIProjectionView(ctx, groupID, requestedModel)
-	if err != nil || !projectionView.containsReserve(account.ID) {
+	if !projectionView.containsReserve(account.ID) {
 		return nil
 	}
 
@@ -2547,7 +2553,11 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIExhaustedAccountFromDB(ctx c
 	if account == nil {
 		return nil
 	}
-	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" {
+	projectionView := (*openAIProjectionViewResult)(nil)
+	if s != nil && s.schedulerSnapshot != nil && strings.TrimSpace(requestedModel) != "" {
+		projectionView = s.getOpenAIProjectionViewWithLegacyFallback(ctx, groupID, requestedModel)
+	}
+	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" || projectionView == nil {
 		if s == nil || s.schedulerSnapshot == nil || s.accountRepo == nil {
 			return account
 		}
@@ -2560,8 +2570,7 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIExhaustedAccountFromDB(ctx c
 		}
 		return latest
 	}
-	projectionView, err := s.getOpenAIProjectionView(ctx, groupID, requestedModel)
-	if err != nil || !projectionView.containsExhausted(account.ID) {
+	if !projectionView.containsExhausted(account.ID) {
 		return nil
 	}
 	if s.schedulerSnapshot == nil || s.accountRepo == nil {
@@ -2582,7 +2591,11 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIReserveAccountFromDB(ctx con
 	if account == nil {
 		return nil
 	}
-	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" {
+	projectionView := (*openAIProjectionViewResult)(nil)
+	if s != nil && s.schedulerSnapshot != nil && strings.TrimSpace(requestedModel) != "" {
+		projectionView = s.getOpenAIProjectionViewWithLegacyFallback(ctx, groupID, requestedModel)
+	}
+	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" || projectionView == nil {
 		if s == nil || s.schedulerSnapshot == nil || s.accountRepo == nil {
 			return account
 		}
@@ -2598,8 +2611,7 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIReserveAccountFromDB(ctx con
 		}
 		return latest
 	}
-	projectionView, err := s.getOpenAIProjectionView(ctx, groupID, requestedModel)
-	if err != nil || !projectionView.containsReserve(account.ID) {
+	if !projectionView.containsReserve(account.ID) {
 		return nil
 	}
 	if s.schedulerSnapshot == nil || s.accountRepo == nil {

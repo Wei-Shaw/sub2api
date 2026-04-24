@@ -126,6 +126,52 @@ func TestPreviousResponseReserveBindingStillMatchesExhaustedClass(t *testing.T) 
 	require.Equal(t, string(TargetGroupExhausted), selection.SelectedGroup)
 }
 
+func TestPreviousResponseReserveBindingStillMatchesExhaustedClass_OnProjectionMiss(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(2801)
+	responseID := "resp_prev_reserve_exhausted_projection_miss"
+	reserveAccount := Account{
+		ID:          341,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{"plan_type": "free"},
+		Extra: map[string]any{
+			"codex_7d_used_percent":                        20.0,
+			"openai_oauth_responses_websockets_v2_enabled": true,
+		},
+	}
+	snapshotCache := &openAISnapshotCacheStub{accountsByID: map[int64]*Account{reserveAccount.ID: &reserveAccount}, openAIStateMiss: true}
+	cache := newOpenAIAffinityGatewayCacheStub()
+	store := NewOpenAIWSStateStore(cache)
+	cfg := newOpenAIWSV2TestConfig()
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{reserveAccount}},
+		cache:              cache,
+		cfg:                cfg,
+		schedulerSnapshot:  &SchedulerSnapshotService{cache: snapshotCache},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+		openaiWSStateStore: store,
+	}
+	binding := &openAIAffinityBinding{BoundAccountID: reserveAccount.ID, AffinityDomain: string(TargetGroupExhausted), SelectedGroup: openAISelectedGroupReserve}
+
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, responseID, reserveAccount.ID, time.Hour))
+	cache.setAffinityBinding(t, openAIResponseAffinityBindingNamespace, groupID, responseID, binding, time.Hour)
+
+	selection, selectedBinding, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, responseID, "gpt-5.1", TargetGroupExhausted, nil)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, reserveAccount.ID, selection.Account.ID)
+	require.NotNil(t, selectedBinding)
+	require.Equal(t, openAISelectedGroupReserve, selectedBinding.SelectedGroup)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
 func TestPreviousResponseReserveBindingReadsSameProjectionKeyAsSysModel(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(280)
