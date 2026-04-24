@@ -3972,78 +3972,78 @@ export default {
 
 
     serviceQuota: {
-      title: '????',
-      description: '??????? RPM?TPM?TPD?????????????',
-      createRule: '????',
-      editRule: '????????',
-      deleteRule: '????????',
-      emptyTitle: '????????',
-      emptyDescription: '???????????????????????',
-      userId: '?? ID?{id}',
-      loadError: '??????????',
-      saveSuccess: '?????????',
-      saveError: '??????????',
-      deleteSuccess: '?????????',
-      deleteError: '??????????',
-      deleteConfirm: '???? {type} ??????????????',
+      title: '服务配额',
+      description: '在现有用户配额之上，额外管理 RPM、TPM、TPD、每日美元消费以及并发请求等规则。',
+      createRule: '新建规则',
+      editRule: '编辑服务配额规则',
+      deleteRule: '删除服务配额规则',
+      emptyTitle: '暂无服务配额规则',
+      emptyDescription: '创建第一条规则，在现有配额之上叠加限制。',
+      userId: '用户 ID：{id}',
+      loadError: '加载服务配额规则失败',
+      saveSuccess: '服务配额规则已保存',
+      saveError: '保存服务配额规则失败',
+      deleteSuccess: '服务配额规则已删除',
+      deleteError: '删除服务配额规则失败',
+      deleteConfirm: '删除该 {type} 规则？删除后立即停止生效。',
       filters: {
-        allTypes: '????',
-        allScopes: '?????',
-        allTargets: '??????',
-        allStatus: '????'
+        allTypes: '全部类型',
+        allScopes: '全部范围',
+        allTargets: '全部目标模式',
+        allStatus: '全部状态'
       },
       columns: {
-        status: '??',
-        scope: '???',
-        type: '??',
-        targetMode: '????',
-        window: '??',
-        limit: '??',
-        actions: '??'
+        status: '状态',
+        scope: '范围',
+        type: '类型',
+        targetMode: '目标模式',
+        window: '窗口',
+        limit: '限额',
+        actions: '操作'
       },
       scopes: {
-        global: '??',
-        platform: '??',
-        group: '??',
-        account: '??',
-        model: '??'
+        global: '全局',
+        platform: '渠道',
+        group: '分组',
+        account: '账号',
+        model: '模型'
       },
       scopeDetails: {
-        platform: '???{value}',
-        group: '???{value}',
-        account: '???{value}',
-        model: '???{value}',
-        allRequests: '????'
+        platform: '渠道：{value}',
+        group: '分组：{value}',
+        account: '账号：{value}',
+        model: '模型：{value}',
+        allRequests: '所有请求'
       },
       limiters: {
         rpm: 'RPM',
         tpm: 'TPM',
         tpd: 'TPD',
-        dailyUsd: '??????',
-        concurrency: '?????'
+        dailyUsd: '每日美元消费',
+        concurrency: '并发请求'
       },
       targets: {
-        user: '??????',
-        perUser: '?????',
-        shared: '????',
-        default: '????'
+        user: '指定用户',
+        perUser: '按用户',
+        shared: '全局共享',
+        default: '默认规则'
       },
       windows: {
-        fixed: '????',
-        rolling: '????',
-        none: '???'
+        fixed: '固定窗口',
+        rolling: '滑动窗口',
+        none: '不设窗口'
       },
       form: {
-        scopeLevel: '?????',
-        scopeMatching: '?????',
-        platform: '??/??',
-        platformPlaceholder: '? anthropic / openai / gemini',
-        groupId: '?? ID',
-        accountId: '?? ID',
-        modelPattern: '????',
-        modelPatternPlaceholder: '? claude-opus-*',
-        targetUserId: '???? ID',
-        required: '??'
+        scopeLevel: '范围层级',
+        scopeMatching: '范围匹配',
+        platform: '渠道 / 平台',
+        platformPlaceholder: '例如 anthropic / openai / gemini',
+        groupId: '分组 ID',
+        accountId: '账号 ID',
+        modelPattern: '模型通配符',
+        modelPatternPlaceholder: '例如 claude-opus-*',
+        targetUserId: '绑定用户 ID',
+        required: '必填'
       }
     },
 
@@ -4941,6 +4941,13 @@ export default {
           configureLink: '前往 渠道管理 > 渠道定价 配置模型价格',
           enabled: '启用可用渠道',
           enabledHint: '关闭后用户端侧边栏入口隐藏，接口返回空数组。',
+        },
+        serviceQuota: {
+          title: '服务配额',
+          description: '开启后显示服务配额菜单，并在现有用户配额之上叠加检查 RPM / TPM / TPD / 每日美元 / 并发请求规则。',
+          configureLink: '进入服务配额规则管理',
+          enabled: '启用服务配额',
+          enabledHint: '关闭时不执行服务配额规则。',
         },
       },
       emailTabDisabledTitle: '邮箱验证未启用',

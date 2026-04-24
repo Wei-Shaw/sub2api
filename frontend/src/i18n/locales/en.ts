@@ -4771,6 +4771,13 @@ export default {
           enabled: 'Enable Available Channels',
           enabledHint: 'When off, the sidebar entry is hidden and the endpoint returns an empty list.',
         },
+        serviceQuota: {
+          title: 'Service Quota',
+          description: 'When enabled, the Service Quota menu becomes visible and every request is additionally checked against RPM / TPM / TPD / Daily USD / Concurrency rules on top of the existing user quotas.',
+          configureLink: 'Go to service quota rule management',
+          enabled: 'Enable Service Quota',
+          enabledHint: 'When off, service quota rules are not evaluated.',
+        },
       },
       emailTabDisabledTitle: 'Email Verification Not Enabled',
       emailTabDisabledHint: 'Enable email verification in the Security tab to configure SMTP settings.',
