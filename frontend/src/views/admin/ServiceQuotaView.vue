@@ -9,28 +9,28 @@
       </template>
 
       <template #filters>
-        <div class="flex flex-wrap-reverse items-start justify-between gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
-          <div class="flex flex-1 flex-wrap items-center gap-3">
-            <select v-model="filters.limiter" class="input w-auto">
+        <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+          <div class="flex flex-wrap items-center gap-3">
+            <select v-model="filters.limiter" class="input w-auto min-w-[160px]">
               <option value="">{{ t('admin.serviceQuota.filters.allTypes') }}</option>
               <option v-for="item in limiterOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
             </select>
-            <select v-model="filters.counterMode" class="input w-auto">
+            <select v-model="filters.counterMode" class="input w-auto min-w-[160px]">
               <option value="">{{ t('admin.serviceQuota.filters.allCounterModes') }}</option>
               <option v-for="item in counterModeOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
             </select>
-            <select v-model="filters.fallback" class="input w-auto">
+            <select v-model="filters.fallback" class="input w-auto min-w-[160px]">
               <option value="">{{ t('admin.serviceQuota.filters.allFallback') }}</option>
               <option value="true">{{ t('admin.serviceQuota.fallback.yes') }}</option>
               <option value="false">{{ t('admin.serviceQuota.fallback.no') }}</option>
             </select>
-            <select v-model="filters.enabled" class="input w-auto">
+            <select v-model="filters.enabled" class="input w-auto min-w-[160px]">
               <option value="">{{ t('admin.serviceQuota.filters.allStatus') }}</option>
               <option value="true">{{ t('common.enabled') }}</option>
               <option value="false">{{ t('common.disabled') }}</option>
             </select>
           </div>
-          <div class="flex items-center gap-3">
+          <div class="flex shrink-0 items-center gap-3">
             <button class="btn btn-secondary" type="button" :disabled="loading" @click="load">
               <Icon name="refresh" size="sm" class="mr-2" />
               {{ t('common.refresh') }}
