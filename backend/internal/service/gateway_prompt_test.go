@@ -378,16 +378,27 @@ REDACTED
 			err := json.Unmarshal(result, &parsed)
 		REDACTED
 
-			// system 应为 array 格式: [{type: "text", text: "...", cache_control: {type: "ephemeral"REDACTEDREDACTED]
+			// system 应为 array 格式，对齐真实 Claude Code CLI 的 2-block 形态：
+			//   [0] billing attribution block (x-anthropic-billing-header: cc_version=...;)
+			//   [1] Claude Code prompt block (带 cache_control)
 			systemArr, ok := parsed["system"].([]any)
 			require.True(t, ok, "system should be an array, got %T", parsed["system"])
-			require.Len(t, systemArr, 1, "system array should have exactly 1 block")
-			systemBlock, ok := systemArr[0].(map[string]any)
+			require.Len(t, systemArr, 2, "system array should have exactly 2 blocks (billing + cc prompt)")
+
+			billingBlock, ok := systemArr[0].(map[string]any)
+			require.True(t, ok)
+			require.Equal(t, "text", billingBlock["type"])
+			require.Contains(t, billingBlock["text"], "x-anthropic-billing-header:")
+			require.Contains(t, billingBlock["text"], "cc_version=")
+			require.Contains(t, billingBlock["text"], "cc_entrypoint=cli")
+			require.Contains(t, billingBlock["text"], "cch=00000")
+
+			systemBlock, ok := systemArr[1].(map[string]any)
 			require.True(t, ok)
 			require.Equal(t, "text", systemBlock["type"])
 			require.Equal(t, tt.wantSystemText, systemBlock["text"])
 			cc, ok := systemBlock["cache_control"].(map[string]any)
-			require.True(t, ok, "system block should have cache_control")
+			require.True(t, ok, "cc prompt block should have cache_control")
 			require.Equal(t, "ephemeral", cc["type"])
 
 			// 检查 messages
