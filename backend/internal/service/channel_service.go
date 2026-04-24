@@ -141,17 +141,23 @@ const (
 // ChannelService 渠道管理服务
 type ChannelService struct {
 	repo                 ChannelRepository
+	groupRepo            GroupRepository
 	authCacheInvalidator APIKeyAuthCacheInvalidator
+	pricingService       *PricingService // 用于「可用渠道」展示时回落到全局定价；可为 nil（测试场景）
 
 	cache   atomic.Value // *channelCache
 	cacheSF singleflight.Group
 REDACTED
 
-// NewChannelService 创建渠道服务实例
-func NewChannelService(repo ChannelRepository, authCacheInvalidator APIKeyAuthCacheInvalidator) *ChannelService {
+// NewChannelService 创建渠道服务实例。
+// pricingService 仅供 ListAvailable 在渠道未配置定价时回落到全局 LiteLLM 数据；
+// 计费热路径走独立的 ModelPricingResolver，与此参数无关。可传 nil。
+func NewChannelService(repo ChannelRepository, groupRepo GroupRepository, authCacheInvalidator APIKeyAuthCacheInvalidator, pricingService *PricingService) *ChannelService {
 	s := &ChannelService{
 		repo:                 repo,
+		groupRepo:            groupRepo,
 		authCacheInvalidator: authCacheInvalidator,
+		pricingService:       pricingService,
 REDACTED
 	return s
 REDACTED
@@ -299,6 +305,9 @@ REDACTED
 REDACTED
 
 // populateChannelCache 将渠道列表和分组平台映射填充到缓存快照中。
+// 装填时对每个 Channel 统一归一化 BillingModelSource，让缓存命中的所有下游
+// （gateway routing / billing / 未来任何 cache-backed 读路径）都拿到已归一化的实体，
+// 避免"每个出口各自记得 normalize"反模式。
 func populateChannelCache(channels []Channel, groupPlatforms map[int64]string) *channelCache {
 	cache := newEmptyChannelCache()
 	cache.groupPlatform = groupPlatforms
@@ -306,6 +315,7 @@ func populateChannelCache(channels []Channel, groupPlatforms map[int64]string) *
 	cache.loadedAt = time.Now()
 
 	for i := range channels {
+		channels[i].normalizeBillingModelSource()
 		ch := &channels[i]
 		cache.byID[ch.ID] = ch
 		for _, gid := range ch.GroupIDs {
@@ -516,13 +526,12 @@ REDACTED
 // resolveMapping 基于已查找的渠道信息解析模型映射。
 // antigravity 分组依次尝试所有匹配平台，确保跨平台同名映射各自独立。
 func resolveMapping(lk *channelLookup, groupID int64, model string) ChannelMappingResult {
+	// lk.channel 来自已装填的缓存，BillingModelSource 已在 populateChannelCache 阶段归一化，
+	// 这里无需重复兜底。
 	result := ChannelMappingResult{
 		MappedModel:        model,
 		ChannelID:          lk.channel.ID,
 		BillingModelSource: lk.channel.BillingModelSource,
-REDACTED
-	if result.BillingModelSource == "" {
-		result.BillingModelSource = BillingModelSourceChannelMapped
 REDACTED
 
 	modelLower := strings.ToLower(model)
@@ -684,9 +693,7 @@ REDACTED
 		ApplyPricingToAccountStats: input.ApplyPricingToAccountStats,
 		AccountStatsPricingRules:   input.AccountStatsPricingRules,
 REDACTED
-	if channel.BillingModelSource == "" {
-		channel.BillingModelSource = BillingModelSourceChannelMapped
-REDACTED
+	channel.normalizeBillingModelSource()
 
 	if err := validateChannelConfig(channel.ModelPricing, channel.ModelMapping); err != nil {
 		return nil, err
@@ -702,12 +709,23 @@ REDACTED
 REDACTED
 
 	s.invalidateCache()
-	return s.repo.GetByID(ctx, channel.ID)
+	created, err := s.repo.GetByID(ctx, channel.ID)
+	if err != nil {
+		return nil, err
+REDACTED
+	created.normalizeBillingModelSource()
+	return created, nil
 REDACTED
 
-// GetByID 获取渠道详情
+// GetByID 获取渠道详情。返回前统一把空 BillingModelSource 回填为 ChannelMapped，
+// 让所有 handler 无需重复处理历史空值。
 func (s *ChannelService) GetByID(ctx context.Context, id int64) (*Channel, error) {
-	return s.repo.GetByID(ctx, id)
+	ch, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+REDACTED
+	ch.normalizeBillingModelSource()
+	return ch, nil
 REDACTED
 
 // Update 更新渠道
@@ -739,7 +757,12 @@ REDACTED
 	s.invalidateCache()
 	s.invalidateAuthCacheForGroups(ctx, oldGroupIDs, channel.GroupIDs)
 
-	return s.repo.GetByID(ctx, id)
+	updated, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+REDACTED
+	updated.normalizeBillingModelSource()
+	return updated, nil
 REDACTED
 
 // applyUpdateInput 将更新请求的字段应用到渠道实体上。
@@ -857,7 +880,14 @@ REDACTED
 
 // List 获取渠道列表
 func (s *ChannelService) List(ctx context.Context, params pagination.PaginationParams, status, search string) ([]Channel, *pagination.PaginationResult, error) {
-	return s.repo.List(ctx, params, status, search)
+	channels, res, err := s.repo.List(ctx, params, status, search)
+	if err != nil {
+		return nil, nil, err
+REDACTED
+	for i := range channels {
+		channels[i].normalizeBillingModelSource()
+REDACTED
+	return channels, res, nil
 REDACTED
 
 // modelEntry 表示一个模型模式条目（用于冲突检测）
@@ -884,12 +914,7 @@ REDACTED
 
 // toModelEntry 将模型名转换为 modelEntry
 func toModelEntry(pattern string) modelEntry {
-	lower := strings.ToLower(pattern)
-	isWild := strings.HasSuffix(lower, "*")
-	prefix := lower
-	if isWild {
-		prefix = strings.TrimSuffix(lower, "*")
-REDACTED
+	prefix, isWild := splitWildcardSuffix(strings.ToLower(pattern))
 	return modelEntry{pattern: pattern, prefix: prefix, wildcard: isWildREDACTED
 REDACTED
 

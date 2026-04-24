@@ -245,6 +245,7 @@ export default {
   // Common
   common: {
     loading: 'Loading...',
+    submitting: 'Submitting...',
     justNow: 'just now',
     save: 'Save',
     saved: 'Saved successfully',
@@ -272,6 +273,7 @@ export default {
     no: 'No',
     all: 'All',
     none: 'None',
+    selectAll: 'Select all',
     noData: 'No data',
     expand: 'Expand',
     collapse: 'Collapse',
@@ -306,6 +308,12 @@ export default {
     saving: 'Saving...',
     selectedCount: '({countREDACTED selected)',
     refresh: 'Refresh',
+    autoRefresh: {
+      title: 'Auto Refresh',
+      enable: 'Enable auto refresh',
+      countdown: 'Auto refresh: {secondsREDACTEDs',
+      seconds: '{nREDACTED seconds',
+    REDACTED,
     view: 'View',
     settings: 'Settings',
     chooseFile: 'Choose File',
@@ -342,6 +350,7 @@ export default {
     users: 'Users',
     groups: 'Groups',
     channels: 'Channels',
+    availableChannels: 'Available Channels',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
     proxies: 'Proxies',
@@ -363,7 +372,11 @@ export default {
     orderManagement: 'Orders',
     paymentDashboard: 'Payment Dashboard',
     paymentConfig: 'Payment Config',
-    paymentPlans: 'Plans'
+    paymentPlans: 'Plans',
+    channelManagement: 'Channels',
+    channelPricing: 'Channel Pricing',
+    channelMonitor: 'Channel Monitor',
+    channelStatus: 'Channel Status',
   REDACTED,
 
   // Auth
@@ -844,6 +857,119 @@ export default {
     exportExcelFailed: 'Failed to export usage data',
     imageUnit: ' images',
     userAgent: 'User-Agent'
+  REDACTED,
+
+  // Shared keys for channel monitor (admin + user views)
+  monitorCommon: {
+    status: {
+      operational: 'Operational',
+      degraded: 'Degraded',
+      failed: 'Failed',
+      error: 'Error',
+      unknown: '-'
+    REDACTED,
+    providers: {
+      openai: 'OpenAI',
+      anthropic: 'Anthropic',
+      gemini: 'Gemini'
+    REDACTED,
+    extraModelsHeader: 'Extra Models',
+    extraModelsEmpty: 'No extra models',
+    latencyEmpty: '-',
+    availabilityPrefix: 'Availability',
+    dialogLatency: 'Dialog Latency',
+    endpointPing: 'Endpoint PING',
+    history60pts: 'HISTORY ({nREDACTED PTS)',
+    nextUpdateIn: 'NEXT UPDATE IN {nREDACTEDs',
+    past: 'PAST',
+    now: 'NOW',
+    maintenancePaused: 'Maintenance · timeline paused',
+    extraModelsCount: '+ {nREDACTED models',
+    pollEvery: '{nREDACTEDs polling',
+    updatedAt: 'Updated {timeREDACTED',
+    relativeSecondsAgo: '{nREDACTEDs ago',
+    relativeMinutesAgo: '{nREDACTEDm ago',
+    relativeHoursAgo: '{nREDACTEDh ago',
+    relativeDaysAgo: '{nREDACTEDd ago'
+  REDACTED,
+
+  // Channel Status (user-facing read-only view)
+  channelStatus: {
+    title: 'Channel Status',
+    description: 'Inspect channel availability, latency and recent status',
+    searchPlaceholder: 'Search channels...',
+    allProviders: 'All Providers',
+    loadError: 'Failed to load channel status',
+    detailLoadError: 'Failed to load channel detail',
+    detailTitle: 'Channel Detail',
+    closeDetail: 'Close',
+    windowTab: {
+      '7d': '7 days',
+      '15d': '15 days',
+      '30d': '30 days'
+    REDACTED,
+    overall: {
+      operational: 'OPERATIONAL',
+      degraded: 'DEGRADED',
+      unavailable: 'UNAVAILABLE'
+    REDACTED,
+    columns: {
+      name: 'Name',
+      provider: 'Provider',
+      groupName: 'Group',
+      primaryModel: 'Primary Model',
+      availability7d: '7d Availability',
+      latency: 'Latency (ms)'
+    REDACTED,
+    detailColumns: {
+      model: 'Model',
+      latestStatus: 'Latest Status',
+      latestLatency: 'Latest Latency (ms)',
+      availability7d: '7d Availability',
+      availability15d: '15d Availability',
+      availability30d: '30d Availability',
+      avgLatency7d: '7d Avg Latency (ms)'
+    REDACTED,
+    empty: {
+      title: 'No channels available',
+      description: 'No monitored channels have been configured yet.'
+    REDACTED
+  REDACTED,
+
+  // Available Channels (user-facing)
+  availableChannels: {
+    title: 'Available Channels',
+    description: 'Channels you can access, along with their supported models and pricing',
+    searchPlaceholder: 'Search channels or models...',
+    empty: 'No available channels',
+    noModels: 'No models configured',
+    noPricing: 'Pricing not configured',
+    exclusive: 'Exclusive',
+    public: 'Public',
+    exclusiveTooltip: 'Exclusive groups granted to you by an admin',
+    publicTooltip: 'Groups open to all users',
+    columns: {
+      name: 'Channel',
+      description: 'Description',
+      platform: 'Platform',
+      groups: 'Your Accessible Groups',
+      supportedModels: 'Supported Models'
+    REDACTED,
+    pricing: {
+      billingMode: 'Billing Mode',
+      billingModeToken: 'Per Token',
+      billingModePerRequest: 'Per Request',
+      billingModeImage: 'Per Image',
+      inputPrice: 'Input',
+      outputPrice: 'Output',
+      cacheWritePrice: 'Cache Write',
+      cacheReadPrice: 'Cache Read',
+      imageOutputPrice: 'Image Output',
+      perRequestPrice: 'Per Request',
+      intervals: 'Tiered Pricing',
+      unitPerMillion: '/ 1M tokens',
+      unitPerRequest: '/ request'
+    REDACTED
   REDACTED,
 
   // Redeem
@@ -1917,6 +2043,46 @@ export default {
       REDACTED
     REDACTED,
 
+    // Available Channels (aggregated read-only view)
+    availableChannels: {
+      title: 'Available Channels',
+      description: 'Aggregated view: each channel with its linked groups and supported models (wildcards expanded)',
+      searchPlaceholder: 'Search channels or models...',
+      columns: {
+        name: 'Channel',
+        status: 'Status',
+        billingSource: 'Billing Model Source',
+        groups: 'Linked Groups',
+        supportedModels: 'Supported Models'
+      REDACTED,
+      empty: 'No data',
+      noGroups: 'No linked groups',
+      noModels: 'No model mapping configured',
+      noPricing: 'Pricing not configured',
+      statusActive: 'Active',
+      statusDisabled: 'Disabled',
+      billingSource: {
+        requested: 'Requested model',
+        upstream: 'Upstream model',
+        channel_mapped: 'Channel-mapped model'
+      REDACTED,
+      pricing: {
+        billingMode: 'Billing Mode',
+        billingModeToken: 'Per Token',
+        billingModePerRequest: 'Per Request',
+        billingModeImage: 'Per Image',
+        inputPrice: 'Input',
+        outputPrice: 'Output',
+        cacheWritePrice: 'Cache Write',
+        cacheReadPrice: 'Cache Read',
+        imageOutputPrice: 'Image Output',
+        perRequestPrice: 'Per Request',
+        intervals: 'Tiered Pricing',
+        unitPerMillion: '/ 1M tokens',
+        unitPerRequest: '/ request'
+      REDACTED
+    REDACTED,
+
     // Channel Management
     channels: {
       title: 'Channel Management',
@@ -2031,6 +2197,130 @@ export default {
         ruleModelPricing: 'Model Pricing',
         noGroupsInChannel: 'No groups selected in platform tabs above',
         unnamed: 'Unnamed'
+      REDACTED
+    REDACTED,
+
+    // Channel Monitor
+    channelMonitor: {
+      title: 'Channel Monitor',
+      description: 'Monitor channel availability, latency and status',
+      searchPlaceholder: 'Search monitor name...',
+      allProviders: 'All Providers',
+      allStatus: 'All Status',
+      enabledFilter: 'Enabled',
+      onlyEnabled: 'Enabled only',
+      onlyDisabled: 'Disabled only',
+      createButton: 'Create Monitor',
+      createTitle: 'Create Channel Monitor',
+      editTitle: 'Edit Channel Monitor',
+      runNow: 'Run Now',
+      runSuccess: 'Check completed',
+      runFailed: 'Check failed',
+      apiKeyDecryptFailed: 'API Key decryption failed. Please re-edit this monitor with a fresh key.',
+      createSuccess: 'Monitor created',
+      updateSuccess: 'Monitor updated',
+      deleteSuccess: 'Monitor deleted',
+      loadError: 'Failed to load monitors',
+      deleteConfirm: 'Are you sure you want to delete monitor "{nameREDACTED"? This action cannot be undone.',
+      nameRequired: 'Please enter a monitor name',
+      primaryModelRequired: 'Please enter a primary model',
+      columns: {
+        name: 'Name',
+        provider: 'Provider',
+        primaryModel: 'Primary Model',
+        availability7d: '7d Availability',
+        latency: 'Latency (ms)',
+        enabled: 'Enabled',
+        actions: 'Actions'
+      REDACTED,
+      form: {
+        name: 'Name',
+        namePlaceholder: 'Enter monitor name',
+        provider: 'Platform',
+        endpoint: 'Endpoint',
+        endpointPlaceholder: 'https://api.example.com',
+        useCurrentDomain: 'Use current service',
+        apiKey: 'API Key',
+        apiKeyPlaceholder: 'Enter API Key',
+        apiKeyEditPlaceholder: 'Leave blank to keep current key',
+        useMyKey: 'Use my key',
+        selectKeyTitle: 'Select my API Key',
+        selectKeyHint: 'Only your active, non-expired keys are listed.',
+        noActiveKey: 'No active API keys available',
+        primaryModel: 'Primary Model',
+        primaryModelPlaceholder: 'gpt-4o-mini',
+        extraModels: 'Extra Models',
+        extraModelsPlaceholder: 'Press Enter to add extra model',
+        groupName: 'Group Name',
+        groupNamePlaceholder: 'Optional, used to group rows in user view',
+        intervalSeconds: 'Interval (seconds)',
+        intervalSecondsHint: 'Range: 15 - 3600 seconds',
+        enabled: 'Enable monitor',
+        kindRequired: 'Please select a provider'
+      REDACTED,
+      runResultTitle: 'Check Result',
+      noMonitorsYet: 'No monitors yet',
+      createFirstMonitor: 'Create your first monitor to track channel availability',
+      advanced: {
+        section: 'Advanced (optional)',
+        sectionHint: 'Customize request headers and body to bypass upstream client-detection (e.g. "only Claude Code clients allowed").',
+        headers: 'Custom request headers',
+        headersPlaceholder: 'User-Agent: claude-cli/1.0.83 (external, cli)\nx-app: cli\nanthropic-beta: claude-code-20250219',
+        headerNamePlaceholder: 'Header name',
+        headerValuePlaceholder: 'Value',
+        headerAddRow: 'Add header',
+        headerNameInvalid: 'Header name cannot contain whitespace or colon: {nameREDACTED',
+        headersHint: 'Merged on top of adapter defaults (user wins). Hop-by-hop headers (Host / Content-Length / ...) are ignored.',
+        headersParseError: 'Cannot parse line: {lineREDACTED',
+        bodyMode: 'Body handling',
+        bodyModeOff: 'Default',
+        bodyModeMerge: 'Merge',
+        bodyModeReplace: 'Replace',
+        bodyModeHintOff: 'Use the adapter default body (includes challenge validation).',
+        bodyModeHintMerge: 'Shallow-merge with the default body; user fields win but model / messages / contents are protected (use Replace to change those).',
+        bodyModeHintReplace: 'Use the JSON below as the complete body. Challenge validation is skipped; HTTP 2xx + non-empty response text is treated as operational.',
+        bodyJson: 'Body JSON',
+        bodyJsonFormat: 'Format',
+        bodyJsonHint: 'Parsed on blur. Empty means no override.',
+        bodyJsonError: 'JSON parse failed',
+        bodyJsonObjectError: 'Body must be a JSON object (no arrays or primitives)'
+      REDACTED,
+      templateField: {
+        label: 'Request template',
+        none: 'No template',
+        placeholder: 'Pick a template (filtered by current provider)',
+        applyHint: 'Picking a template copies its headers and body to this monitor (snapshot). Later template edits are not auto-synced.'
+      REDACTED,
+      template: {
+        manageButton: 'Templates',
+        managerTitle: 'Request template manager',
+        createButton: 'New template',
+        emptyState: 'No templates for this provider yet',
+        missingName: 'Template name is required',
+        createSuccess: 'Template created',
+        updateSuccess: 'Template updated',
+        deleteSuccess: 'Template deleted',
+        applyButton: 'Apply to monitors',
+        applyTooltip: 'Overwrite snapshot fields on associated monitors',
+        applyTitle: 'Apply template',
+        applyConfirm: 'Apply',
+        applyConfirmMessage: 'Overwrite {nREDACTED associated monitor(s) with the current configuration of "{nameREDACTED"? Any local customizations on those monitors will be discarded.',
+        applySuccess: 'Applied to {nREDACTED monitor(s)',
+        applyPickerTitle: 'Apply template "{nameREDACTED"',
+        applyPickerHint: 'Select which monitors to overwrite (all selected by default). Any local customizations will be discarded.',
+        applyPickerEmpty: 'No monitors are currently associated to this template',
+        applyPickerConfirm: 'Apply to {nREDACTED monitor(s)',
+        selectNone: 'Select none',
+        selectedCount: 'Selected {nREDACTED / {totalREDACTED',
+        deleteConfirm: 'Delete template "{nameREDACTED"? {nREDACTED associated monitor(s) will be disassociated but keep their current snapshot and continue running.',
+        associatedCount: '{nREDACTED associated monitor(s)',
+        headersSummary: '{nREDACTED custom header(s)',
+        form: {
+          name: 'Template name',
+          namePlaceholder: 'e.g. Claude Code mimicry',
+          description: 'Description',
+          descriptionPlaceholder: 'Optional: what this template is for, capture date, etc.'
+        REDACTED
       REDACTED
     REDACTED,
 
@@ -4406,12 +4696,31 @@ export default {
       description: 'Manage registration, email verification, default values, and SMTP settings',
       tabs: {
         general: 'General',
+        features: 'Feature Switches',
         security: 'Security',
         users: 'Users',
         gateway: 'Gateway',
         email: 'Email',
         backup: 'Backup',
         payment: 'Payment',
+      REDACTED,
+      features: {
+        channelMonitor: {
+          title: 'Channel Monitor',
+          description: 'Periodically probe configured channels and surface availability / latency to users. Turning it off stops the scheduler and returns an empty list on the user page.',
+          configureLink: 'Configure monitors in Channel Management > Channel Monitor',
+          enabled: 'Enable Channel Monitor',
+          enabledHint: 'Disabling stops background checks; existing history is preserved.',
+          defaultInterval: 'Default check interval (seconds)',
+          defaultIntervalHint: 'Pre-fills the interval when creating a new monitor; each monitor can override it. Range 15 – 3600.',
+        REDACTED,
+        availableChannels: {
+          title: 'Available Channels',
+          description: 'Show logged-in users an aggregate view of the channels, models and pricing they can access. Disabled by default.',
+          configureLink: 'Configure model pricing in Channel Management > Channel Pricing',
+          enabled: 'Enable Available Channels',
+          enabledHint: 'When off, the sidebar entry is hidden and the endpoint returns an empty list.',
+        REDACTED,
       REDACTED,
       emailTabDisabledTitle: 'Email Verification Not Enabled',
       emailTabDisabledHint: 'Enable email verification in the Security tab to configure SMTP settings.',

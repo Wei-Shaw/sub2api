@@ -245,6 +245,7 @@ export default {
   // Common
   common: {
     loading: '加载中...',
+    submitting: '提交中...',
     justNow: '刚刚',
     save: '保存',
     saved: '保存成功',
@@ -272,6 +273,7 @@ export default {
     no: '否',
     all: '全部',
     none: '无',
+    selectAll: '全选',
     noData: '暂无数据',
     expand: '展开',
     collapse: '收起',
@@ -306,6 +308,12 @@ export default {
     saving: '保存中...',
     selectedCount: '（已选 {countREDACTED 个）',
     refresh: '刷新',
+    autoRefresh: {
+      title: '自动刷新',
+      enable: '启用自动刷新',
+      countdown: '自动刷新: {secondsREDACTEDs',
+      seconds: '{nREDACTED 秒',
+    REDACTED,
     view: '查看',
     settings: '设置',
     chooseFile: '选择文件',
@@ -342,6 +350,7 @@ export default {
     users: '用户管理',
     groups: '分组管理',
     channels: '渠道管理',
+    availableChannels: '可用渠道',
     subscriptions: '订阅管理',
     accounts: '账号管理',
     proxies: 'IP管理',
@@ -363,7 +372,11 @@ export default {
     orderManagement: '订单管理',
     paymentDashboard: '支付概览',
     paymentConfig: '支付配置',
-    paymentPlans: '订阅套餐'
+    paymentPlans: '订阅套餐',
+    channelManagement: '渠道管理',
+    channelPricing: '渠道定价',
+    channelMonitor: '渠道监控',
+    channelStatus: '渠道状态',
   REDACTED,
 
   // Auth
@@ -848,6 +861,119 @@ export default {
     exportExcelFailed: '使用数据导出失败',
     imageUnit: '张',
     userAgent: 'User-Agent'
+  REDACTED,
+
+  // Shared keys for channel monitor (admin + user views)
+  monitorCommon: {
+    status: {
+      operational: '正常',
+      degraded: '降级',
+      failed: '失败',
+      error: '错误',
+      unknown: '-'
+    REDACTED,
+    providers: {
+      openai: 'OpenAI',
+      anthropic: 'Anthropic',
+      gemini: 'Gemini'
+    REDACTED,
+    extraModelsHeader: '附加模型',
+    extraModelsEmpty: '无附加模型',
+    latencyEmpty: '-',
+    availabilityPrefix: '可用性',
+    dialogLatency: '对话延迟',
+    endpointPing: '端点 PING',
+    history60pts: '近 {nREDACTED 次记录',
+    nextUpdateIn: '{nREDACTEDs 后刷新',
+    past: 'PAST',
+    now: 'NOW',
+    maintenancePaused: '维护中 · 已暂停时间线采集',
+    extraModelsCount: '+ {nREDACTED 模型',
+    pollEvery: '{nREDACTEDs 轮询',
+    updatedAt: '更新于 {timeREDACTED',
+    relativeSecondsAgo: '{nREDACTED 秒前',
+    relativeMinutesAgo: '{nREDACTED 分钟前',
+    relativeHoursAgo: '{nREDACTED 小时前',
+    relativeDaysAgo: '{nREDACTED 天前'
+  REDACTED,
+
+  // Channel Status (user-facing read-only view)
+  channelStatus: {
+    title: '渠道状态',
+    description: '查看渠道可用性、延迟和近期状态',
+    searchPlaceholder: '搜索渠道...',
+    allProviders: '全部供应商',
+    loadError: '加载渠道状态失败',
+    detailLoadError: '加载渠道详情失败',
+    detailTitle: '渠道详情',
+    closeDetail: '关闭',
+    windowTab: {
+      '7d': '7 天',
+      '15d': '15 天',
+      '30d': '30 天'
+    REDACTED,
+    overall: {
+      operational: 'OPERATIONAL',
+      degraded: 'DEGRADED',
+      unavailable: 'UNAVAILABLE'
+    REDACTED,
+    columns: {
+      name: '名称',
+      provider: '供应商',
+      groupName: '分组',
+      primaryModel: '主模型',
+      availability7d: '7 天可用率',
+      latency: '延迟 (ms)'
+    REDACTED,
+    detailColumns: {
+      model: '模型',
+      latestStatus: '最新状态',
+      latestLatency: '最新延迟 (ms)',
+      availability7d: '7 天可用率',
+      availability15d: '15 天可用率',
+      availability30d: '30 天可用率',
+      avgLatency7d: '7 天平均延迟 (ms)'
+    REDACTED,
+    empty: {
+      title: '暂无可显示的渠道',
+      description: '管理员尚未配置可监控的渠道。'
+    REDACTED
+  REDACTED,
+
+  // Available Channels (user-facing)
+  availableChannels: {
+    title: '可用渠道',
+    description: '查看您可访问的渠道与其支持的模型、定价',
+    searchPlaceholder: '搜索渠道或模型...',
+    empty: '暂无可用渠道',
+    noModels: '未配置模型',
+    noPricing: '未配置定价',
+    exclusive: '专属',
+    public: '公开',
+    exclusiveTooltip: '管理员授权给你的专属分组',
+    publicTooltip: '对所有用户公开的分组',
+    columns: {
+      name: '渠道名',
+      description: '描述',
+      platform: '平台',
+      groups: '我可访问的分组',
+      supportedModels: '支持模型'
+    REDACTED,
+    pricing: {
+      billingMode: '计费模式',
+      billingModeToken: '按 Token',
+      billingModePerRequest: '按次',
+      billingModeImage: '按图片',
+      inputPrice: '输入',
+      outputPrice: '输出',
+      cacheWritePrice: '缓存写入',
+      cacheReadPrice: '缓存读取',
+      imageOutputPrice: '图片输出',
+      perRequestPrice: '每次请求',
+      intervals: '阶梯定价',
+      unitPerMillion: '/ 1M token',
+      unitPerRequest: '/ 次'
+    REDACTED
   REDACTED,
 
   // Redeem
@@ -1994,6 +2120,46 @@ export default {
       REDACTED
     REDACTED,
 
+    // Available Channels (aggregated read-only view)
+    availableChannels: {
+      title: '可用渠道',
+      description: '按渠道聚合查看关联分组与支持模型（已展开通配符）',
+      searchPlaceholder: '搜索渠道或模型...',
+      columns: {
+        name: '渠道名',
+        status: '状态',
+        billingSource: '计费模型来源',
+        groups: '关联分组',
+        supportedModels: '支持模型'
+      REDACTED,
+      empty: '暂无数据',
+      noGroups: '未关联分组',
+      noModels: '未配置模型映射',
+      noPricing: '未配置定价',
+      statusActive: '启用',
+      statusDisabled: '停用',
+      billingSource: {
+        requested: '请求模型',
+        upstream: '上游模型',
+        channel_mapped: '映射后模型'
+      REDACTED,
+      pricing: {
+        billingMode: '计费模式',
+        billingModeToken: '按 Token',
+        billingModePerRequest: '按次',
+        billingModeImage: '按图片',
+        inputPrice: '输入',
+        outputPrice: '输出',
+        cacheWritePrice: '缓存写入',
+        cacheReadPrice: '缓存读取',
+        imageOutputPrice: '图片输出',
+        perRequestPrice: '每次请求',
+        intervals: '阶梯定价',
+        unitPerMillion: '/ 1M token',
+        unitPerRequest: '/ 次'
+      REDACTED
+    REDACTED,
+
     // Channel Management
     channels: {
       title: '渠道管理',
@@ -2108,6 +2274,130 @@ export default {
         ruleModelPricing: '模型定价',
         noGroupsInChannel: '上方平台标签页中未选择分组',
         unnamed: '未命名'
+      REDACTED
+    REDACTED,
+
+    // Channel Monitor
+    channelMonitor: {
+      title: '渠道监控',
+      description: '监测各渠道的可用性、延迟和状态',
+      searchPlaceholder: '搜索监控名称...',
+      allProviders: '全部供应商',
+      allStatus: '全部状态',
+      enabledFilter: '启用状态',
+      onlyEnabled: '仅启用',
+      onlyDisabled: '仅禁用',
+      createButton: '新增监控',
+      createTitle: '新增渠道监控',
+      editTitle: '编辑渠道监控',
+      runNow: '立即检测',
+      runSuccess: '检测完成',
+      runFailed: '检测失败',
+      apiKeyDecryptFailed: 'API Key 解密失败，请重新编辑该监控并填入新的 Key',
+      createSuccess: '监控创建成功',
+      updateSuccess: '监控更新成功',
+      deleteSuccess: '监控删除成功',
+      loadError: '加载监控列表失败',
+      deleteConfirm: '确定要删除监控「{nameREDACTED」吗？此操作不可撤销。',
+      nameRequired: '请输入监控名称',
+      primaryModelRequired: '请输入主模型',
+      columns: {
+        name: '名称',
+        provider: '供应商',
+        primaryModel: '主模型',
+        availability7d: '7 天可用率',
+        latency: '延迟 (ms)',
+        enabled: '启用',
+        actions: '操作'
+      REDACTED,
+      form: {
+        name: '名称',
+        namePlaceholder: '输入监控名称',
+        provider: '平台',
+        endpoint: '上游地址',
+        endpointPlaceholder: 'https://api.example.com',
+        useCurrentDomain: '使用当前服务',
+        apiKey: 'API Key',
+        apiKeyPlaceholder: '请输入 API Key',
+        apiKeyEditPlaceholder: '留空表示不修改',
+        useMyKey: '使用我的 Key',
+        selectKeyTitle: '选择我的 API Key',
+        selectKeyHint: '仅显示当前账号下处于「启用」状态且未过期的 Key。',
+        noActiveKey: '没有可用的启用状态 Key',
+        primaryModel: '主模型',
+        primaryModelPlaceholder: 'gpt-4o-mini',
+        extraModels: '附加模型',
+        extraModelsPlaceholder: '回车添加附加模型',
+        groupName: '分组名称',
+        groupNamePlaceholder: '可选，用于在用户视图中聚合显示',
+        intervalSeconds: '检测间隔 (秒)',
+        intervalSecondsHint: '范围：15 - 3600 秒',
+        enabled: '启用监控',
+        kindRequired: '请选择供应商'
+      REDACTED,
+      runResultTitle: '检测结果',
+      noMonitorsYet: '暂无监控',
+      createFirstMonitor: '创建第一个监控来跟踪渠道可用性',
+      advanced: {
+        section: '高级（可选）',
+        sectionHint: '自定义请求头和请求体，用于突破上游的客户端识别限制（如仅允许 Claude Code 客户端）。',
+        headers: '自定义请求头',
+        headersPlaceholder: 'User-Agent: claude-cli/1.0.83 (external, cli)\nx-app: cli\nanthropic-beta: claude-code-20250219',
+        headerNamePlaceholder: 'Header 名',
+        headerValuePlaceholder: 'Value',
+        headerAddRow: '添加 Header',
+        headerNameInvalid: 'Header 名不能包含空格或冒号：{nameREDACTED',
+        headersHint: '与默认请求头合并，用户值优先。hop-by-hop 类 header（Host/Content-Length/...）会被忽略。',
+        headersParseError: '无法解析这一行：{lineREDACTED',
+        bodyMode: '请求体处理',
+        bodyModeOff: '默认',
+        bodyModeMerge: '合并',
+        bodyModeReplace: '覆盖',
+        bodyModeHintOff: '使用 adapter 默认请求体（带 challenge 数学题校验）。',
+        bodyModeHintMerge: '与默认请求体浅合并，用户字段优先；但 model / messages / contents 会被保护不允许覆盖（动这些字段请用「覆盖」模式）。',
+        bodyModeHintReplace: '完全用下方 JSON 作为请求体。注意：此模式下跳过 challenge 校验，改为 HTTP 2xx + 响应文本非空即视为可用。',
+        bodyJson: 'Body JSON',
+        bodyJsonFormat: '格式化',
+        bodyJsonHint: '失焦时自动解析校验。留空等价于没有覆盖。',
+        bodyJsonError: 'JSON 解析失败',
+        bodyJsonObjectError: '请求体必须是一个 JSON 对象（不能是数组或基本类型）'
+      REDACTED,
+      templateField: {
+        label: '请求模板',
+        none: '不使用模板',
+        placeholder: '选择一个模板（按当前平台过滤）',
+        applyHint: '选中模板后，会把模板的请求头和请求体拷贝到此监控（快照）。后续模板变动不自动同步。'
+      REDACTED,
+      template: {
+        manageButton: '模板管理',
+        managerTitle: '请求模板管理',
+        createButton: '新建模板',
+        emptyState: '当前平台下还没有请求模板',
+        missingName: '请输入模板名称',
+        createSuccess: '模板创建成功',
+        updateSuccess: '模板更新成功',
+        deleteSuccess: '模板删除成功',
+        applyButton: '应用到关联监控',
+        applyTooltip: '把当前模板配置覆盖到所有关联的监控上',
+        applyTitle: '应用模板',
+        applyConfirm: '确认应用',
+        applyConfirmMessage: '将把模板「{nameREDACTED」的当前配置覆盖到 {nREDACTED 个关联监控。监控本地已编辑的自定义修改会被丢弃，是否继续？',
+        applySuccess: '已应用到 {nREDACTED 个监控',
+        applyPickerTitle: '应用模板「{nameREDACTED」',
+        applyPickerHint: '勾选要覆盖请求头/请求体的监控（默认全选）。监控本地已编辑的自定义修改会被丢弃。',
+        applyPickerEmpty: '当前模板没有关联监控',
+        applyPickerConfirm: '应用到 {nREDACTED 个监控',
+        selectNone: '全不选',
+        selectedCount: '已选 {nREDACTED / {totalREDACTED',
+        deleteConfirm: '确定要删除模板「{nameREDACTED」吗？{nREDACTED 个关联监控会解除关联但保留自己的快照继续工作。',
+        associatedCount: '{nREDACTED 个关联监控',
+        headersSummary: '{nREDACTED 个自定义请求头',
+        form: {
+          name: '模板名称',
+          namePlaceholder: '例：Claude Code 伪装',
+          description: '说明',
+          descriptionPlaceholder: '可选：说明这个模板的用途和来源（抓包日期等）'
+        REDACTED
       REDACTED
     REDACTED,
 
@@ -4569,12 +4859,31 @@ export default {
       description: '管理注册、邮箱验证、默认值和 SMTP 设置',
       tabs: {
         general: '通用设置',
+        features: '功能开关',
         security: '安全与认证',
         users: '用户默认值',
         gateway: '网关服务',
         email: '邮件设置',
         backup: '数据备份',
         payment: '支付设置',
+      REDACTED,
+      features: {
+        channelMonitor: {
+          title: '渠道监控',
+          description: '定期对配置的渠道发起健康检查，向用户展示可用性与延迟。关闭后调度器停止扫描，用户端列表为空。',
+          configureLink: '前往 渠道管理 > 渠道监控 配置监控项',
+          enabled: '启用渠道监控',
+          enabledHint: '关闭后后台不再执行定时检测，已有数据保留。',
+          defaultInterval: '默认检测间隔（秒）',
+          defaultIntervalHint: '新建渠道监控时表单的默认值，可被单个渠道覆盖。范围 15 – 3600 秒。',
+        REDACTED,
+        availableChannels: {
+          title: '可用渠道',
+          description: '向已登录用户展示他们能访问的渠道、模型和定价聚合视图。默认关闭。',
+          configureLink: '前往 渠道管理 > 渠道定价 配置模型价格',
+          enabled: '启用可用渠道',
+          enabledHint: '关闭后用户端侧边栏入口隐藏，接口返回空数组。',
+        REDACTED,
       REDACTED,
       emailTabDisabledTitle: '邮箱验证未启用',
       emailTabDisabledHint: '请在「安全与认证」选项卡中启用邮箱验证后，再配置 SMTP 设置。',

@@ -61,7 +61,7 @@
           <template #cell-key="{ value, row REDACTED">
             <div class="flex items-center gap-2">
               <code class="code text-xs">
-                {{ maskKey(value) REDACTEDREDACTED
+                {{ maskApiKey(value) REDACTEDREDACTED
               </code>
               <button
                 @click="copyToClipboard(value, row.id)"
@@ -1072,6 +1072,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import type { Column REDACTED from '@/components/common/types'
 import type { BatchApiKeyUsageStats REDACTED from '@/api/usage'
 import { formatDateTime REDACTED from '@/utils/format'
+import { maskApiKey REDACTED from '@/utils/maskApiKey'
 
 // Helper to format date for datetime-local input
 const formatDateTimeLocal = (isoDate: string): string => {
@@ -1259,11 +1260,6 @@ const filteredGroupOptions = computed(() => {
       (opt.description && opt.description.toLowerCase().includes(query))
   REDACTED)
 REDACTED)
-
-const maskKey = (key: string): string => {
-  if (key.length <= 12) return key
-  return `${key.slice(0, 8)REDACTED...${key.slice(-4)REDACTED`
-REDACTED
 
 const copyToClipboard = async (text: string, keyId: number) => {
   const success = await clipboardCopy(text, t('keys.copied'))

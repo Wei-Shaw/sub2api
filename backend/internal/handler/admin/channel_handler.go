@@ -158,9 +158,6 @@ REDACTED
 		UpdatedAt:      ch.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 REDACTED
 	resp.BillingModelSource = ch.BillingModelSource
-	if resp.BillingModelSource == "" {
-		resp.BillingModelSource = service.BillingModelSourceChannelMapped
-REDACTED
 	if resp.GroupIDs == nil {
 		resp.GroupIDs = []int64{REDACTED
 REDACTED
