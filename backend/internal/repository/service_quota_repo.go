@@ -78,7 +78,9 @@ func (r *serviceQuotaRuleRepository) Create(ctx context.Context, input service.S
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	rule.TargetUserIDs = dedupUserIDs(input.TargetUserIDs)
+	if err := r.loadRuleUsers(ctx, []*service.ServiceQuotaRule{rule}); err != nil {
+		return nil, err
+	}
 	return rule, nil
 }
 
@@ -103,7 +105,9 @@ func (r *serviceQuotaRuleRepository) Update(ctx context.Context, id int64, input
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	rule.TargetUserIDs = dedupUserIDs(input.TargetUserIDs)
+	if err := r.loadRuleUsers(ctx, []*service.ServiceQuotaRule{rule}); err != nil {
+		return nil, err
+	}
 	return rule, nil
 }
 
@@ -116,6 +120,47 @@ func (r *serviceQuotaRuleRepository) Delete(ctx context.Context, id int64) error
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+// FetchAccountScope 返回账号所属的 platform 及其所属的 group ID 列表，用于 scope 一致性校验。
+func (r *serviceQuotaRuleRepository) FetchAccountScope(ctx context.Context, accountID int64) (*service.AccountScopeInfo, error) {
+	info := &service.AccountScopeInfo{}
+	err := r.db.QueryRowContext(ctx, `SELECT platform FROM accounts WHERE id = $1`, accountID).Scan(&info.Platform)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	rows, err := r.db.QueryContext(ctx, `SELECT group_id FROM account_groups WHERE account_id = $1`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var gid int64
+		if err := rows.Scan(&gid); err != nil {
+			return nil, err
+		}
+		info.GroupIDs = append(info.GroupIDs, gid)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return info, nil
+}
+
+// FetchGroupScope 返回分组的 platform。
+func (r *serviceQuotaRuleRepository) FetchGroupScope(ctx context.Context, groupID int64) (*service.GroupScopeInfo, error) {
+	info := &service.GroupScopeInfo{}
+	err := r.db.QueryRowContext(ctx, `SELECT platform FROM groups WHERE id = $1`, groupID).Scan(&info.Platform)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return info, nil
 }
 
 // loadRuleUsers 批量补齐每条规则的绑定用户列表。
@@ -138,7 +183,7 @@ func (r *serviceQuotaRuleRepository) loadRuleUsers(ctx context.Context, rules []
 		placeholders[i] = fmt.Sprintf("$%d", i+1)
 		args[i] = id
 	}
-	query := fmt.Sprintf(`SELECT rule_id, user_id FROM service_quota_rule_users WHERE rule_id IN (%s) ORDER BY rule_id, user_id`, strings.Join(placeholders, ","))
+	query := fmt.Sprintf(`SELECT ru.rule_id, ru.user_id, COALESCE(u.email, '') FROM service_quota_rule_users ru LEFT JOIN users u ON u.id = ru.user_id WHERE ru.rule_id IN (%s) ORDER BY ru.rule_id, ru.user_id`, strings.Join(placeholders, ","))
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return err
@@ -146,11 +191,13 @@ func (r *serviceQuotaRuleRepository) loadRuleUsers(ctx context.Context, rules []
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var ruleID, userID int64
-		if err := rows.Scan(&ruleID, &userID); err != nil {
+		var email string
+		if err := rows.Scan(&ruleID, &userID, &email); err != nil {
 			return err
 		}
 		if rule, ok := index[ruleID]; ok {
 			rule.TargetUserIDs = append(rule.TargetUserIDs, userID)
+			rule.TargetUsers = append(rule.TargetUsers, service.ServiceQuotaRuleUserRef{ID: userID, Email: email})
 		}
 	}
 	return rows.Err()

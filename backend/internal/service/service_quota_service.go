@@ -37,6 +37,9 @@ func (s *serviceQuotaService) CreateRule(ctx context.Context, input ServiceQuota
 	if err := normalizeServiceQuotaRule(&input); err != nil {
 		return nil, err
 	}
+	if err := s.validateScopeLinkage(ctx, input); err != nil {
+		return nil, err
+	}
 	return s.repo.Create(ctx, input)
 }
 
@@ -44,7 +47,90 @@ func (s *serviceQuotaService) UpdateRule(ctx context.Context, id int64, input Se
 	if err := normalizeServiceQuotaRule(&input); err != nil {
 		return nil, err
 	}
+	if err := s.validateScopeLinkage(ctx, input); err != nil {
+		return nil, err
+	}
 	return s.repo.Update(ctx, id, input)
+}
+
+// validateScopeLinkage 校验 scope 字段之间的链路一致性：
+//   - 同时填 account_id 和 group_id：account 必须属于 group（account_groups 中间表命中）
+//   - 同时填 account_id 和 platform：account.platform 必须与 platform 一致
+//   - 同时填 group_id 和 platform：group.platform 必须与 platform 一致
+func (s *serviceQuotaService) validateScopeLinkage(ctx context.Context, input ServiceQuotaRuleInput) error {
+	platform := trimPlatform(input.Platform)
+
+	var accountInfo *AccountScopeInfo
+	if input.AccountID != nil && *input.AccountID > 0 {
+		info, err := s.repo.FetchAccountScope(ctx, *input.AccountID)
+		if err != nil {
+			return err
+		}
+		if info == nil {
+			return pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_ACCOUNT_NOT_FOUND", "account not found").WithMetadata(map[string]string{
+				"account_id": strconv.FormatInt(*input.AccountID, 10),
+			})
+		}
+		accountInfo = info
+	}
+
+	var groupInfo *GroupScopeInfo
+	if input.GroupID != nil && *input.GroupID > 0 {
+		info, err := s.repo.FetchGroupScope(ctx, *input.GroupID)
+		if err != nil {
+			return err
+		}
+		if info == nil {
+			return pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_GROUP_NOT_FOUND", "group not found").WithMetadata(map[string]string{
+				"group_id": strconv.FormatInt(*input.GroupID, 10),
+			})
+		}
+		groupInfo = info
+	}
+
+	if accountInfo != nil && input.GroupID != nil && *input.GroupID > 0 {
+		found := false
+		for _, gid := range accountInfo.GroupIDs {
+			if gid == *input.GroupID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_MISMATCH", "account is not a member of the specified group").WithMetadata(map[string]string{
+				"field":      "account_id",
+				"account_id": strconv.FormatInt(*input.AccountID, 10),
+				"group_id":   strconv.FormatInt(*input.GroupID, 10),
+			})
+		}
+	}
+
+	if accountInfo != nil && platform != "" && !strings.EqualFold(accountInfo.Platform, platform) {
+		return pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_MISMATCH", "account platform does not match the specified platform").WithMetadata(map[string]string{
+			"field":             "account_id",
+			"account_id":        strconv.FormatInt(*input.AccountID, 10),
+			"account_platform":  accountInfo.Platform,
+			"expected_platform": platform,
+		})
+	}
+
+	if groupInfo != nil && platform != "" && !strings.EqualFold(groupInfo.Platform, platform) {
+		return pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_MISMATCH", "group platform does not match the specified platform").WithMetadata(map[string]string{
+			"field":             "group_id",
+			"group_id":          strconv.FormatInt(*input.GroupID, 10),
+			"group_platform":    groupInfo.Platform,
+			"expected_platform": platform,
+		})
+	}
+
+	return nil
+}
+
+func trimPlatform(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return strings.TrimSpace(*p)
 }
 
 func (s *serviceQuotaService) DeleteRule(ctx context.Context, id int64) error {

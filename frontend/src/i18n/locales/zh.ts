@@ -246,6 +246,10 @@ export default {
   common: {
     loading: '加载中...',
     submitting: '提交中...',
+    userSearch: {
+      typeToSearch: '输入邮箱开始搜索',
+      noMatches: '未找到匹配用户'
+    },
     justNow: '刚刚',
     save: '保存',
     saved: '保存成功',

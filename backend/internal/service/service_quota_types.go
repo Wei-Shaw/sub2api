@@ -51,22 +51,30 @@ var (
 //   - 只设置 Platform   → 该平台所有请求
 //   - GroupID+AccountID → 该分组下使用该账号的请求（链路级）
 //   - 其它组合以此类推，多个字段之间是 AND 关系
+//
+// ServiceQuotaRuleUserRef 是绑定用户的轻量引用，用于前端 chip 展示（规则只在 counter_mode=user 时携带此字段）。
+type ServiceQuotaRuleUserRef struct {
+	ID    int64  `json:"id"`
+	Email string `json:"email"`
+}
+
 type ServiceQuotaRule struct {
-	ID            int64     `json:"id"`
-	Enabled       bool      `json:"enabled"`
-	Platform      *string   `json:"platform,omitempty"`
-	GroupID       *int64    `json:"group_id,omitempty"`
-	AccountID     *int64    `json:"account_id,omitempty"`
-	ModelPattern  *string   `json:"model_pattern,omitempty"`
-	LimiterType   string    `json:"limiter_type"`
-	CounterMode   string    `json:"counter_mode"`
-	IsFallback    bool      `json:"is_fallback"`
-	TargetUserIDs []int64   `json:"target_user_ids,omitempty"`
-	WindowMode    string    `json:"window_mode"`
-	LimitValue    float64   `json:"limit_value"`
-	CurrentUsage  *float64  `json:"current_usage,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID            int64                     `json:"id"`
+	Enabled       bool                      `json:"enabled"`
+	Platform      *string                   `json:"platform,omitempty"`
+	GroupID       *int64                    `json:"group_id,omitempty"`
+	AccountID     *int64                    `json:"account_id,omitempty"`
+	ModelPattern  *string                   `json:"model_pattern,omitempty"`
+	LimiterType   string                    `json:"limiter_type"`
+	CounterMode   string                    `json:"counter_mode"`
+	IsFallback    bool                      `json:"is_fallback"`
+	TargetUserIDs []int64                   `json:"target_user_ids,omitempty"`
+	TargetUsers   []ServiceQuotaRuleUserRef `json:"target_users,omitempty"`
+	WindowMode    string                    `json:"window_mode"`
+	LimitValue    float64                   `json:"limit_value"`
+	CurrentUsage  *float64                  `json:"current_usage,omitempty"`
+	CreatedAt     time.Time                 `json:"created_at"`
+	UpdatedAt     time.Time                 `json:"updated_at"`
 }
 
 type ServiceQuotaRuleInput struct {
@@ -106,11 +114,23 @@ type ServiceQuotaLease struct {
 	Release func()
 }
 
+// AccountScopeInfo / GroupScopeInfo 用于 scope 链路一致性校验：下级必须是上级的子孙。
+type AccountScopeInfo struct {
+	Platform string
+	GroupIDs []int64
+}
+
+type GroupScopeInfo struct {
+	Platform string
+}
+
 type ServiceQuotaRuleRepository interface {
 	List(ctx context.Context, filter ServiceQuotaListFilter) ([]*ServiceQuotaRule, error)
 	Create(ctx context.Context, input ServiceQuotaRuleInput) (*ServiceQuotaRule, error)
 	Update(ctx context.Context, id int64, input ServiceQuotaRuleInput) (*ServiceQuotaRule, error)
 	Delete(ctx context.Context, id int64) error
+	FetchAccountScope(ctx context.Context, accountID int64) (*AccountScopeInfo, error)
+	FetchGroupScope(ctx context.Context, groupID int64) (*GroupScopeInfo, error)
 }
 
 type ServiceQuotaLimiter interface {

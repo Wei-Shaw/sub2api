@@ -1,5 +1,10 @@
 import apiClient from '@/api/client'
 
+export interface ServiceQuotaRuleUserRef {
+  id: number
+  email: string
+}
+
 export interface ServiceQuotaRule {
   id: number
   enabled: boolean
@@ -11,6 +16,7 @@ export interface ServiceQuotaRule {
   counter_mode: string
   is_fallback: boolean
   target_user_ids?: number[] | null
+  target_users?: ServiceQuotaRuleUserRef[] | null
   window_mode: string
   limit_value: number
   current_usage?: number | null
@@ -18,7 +24,7 @@ export interface ServiceQuotaRule {
   updated_at: string
 }
 
-export type ServiceQuotaRuleInput = Omit<ServiceQuotaRule, 'id' | 'current_usage' | 'created_at' | 'updated_at'>
+export type ServiceQuotaRuleInput = Omit<ServiceQuotaRule, 'id' | 'current_usage' | 'created_at' | 'updated_at' | 'target_users'>
 
 export async function listServiceQuotaRules(): Promise<ServiceQuotaRule[]> {
   const { data } = await apiClient.get<{ items: ServiceQuotaRule[] }>('/admin/service-quotas')

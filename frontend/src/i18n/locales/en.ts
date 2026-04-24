@@ -246,6 +246,10 @@ export default {
   common: {
     loading: 'Loading...',
     submitting: 'Submitting...',
+    userSearch: {
+      typeToSearch: 'Type an email to search',
+      noMatches: 'No matching users'
+    },
     justNow: 'just now',
     save: 'Save',
     saved: 'Saved successfully',

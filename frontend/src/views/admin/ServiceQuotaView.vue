@@ -2,10 +2,33 @@
   <AppLayout>
     <TablePageLayout>
       <template #actions>
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ t('admin.serviceQuota.title') }}</h1>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.serviceQuota.description') }}</p>
+        <div>
+          <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">{{ t('admin.serviceQuota.title') }}</h1>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.serviceQuota.description') }}</p>
+        </div>
+      </template>
+
+      <template #filters>
+        <div class="flex flex-wrap-reverse items-start justify-between gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+          <div class="flex flex-1 flex-wrap items-center gap-3">
+            <select v-model="filters.limiter" class="input w-auto">
+              <option value="">{{ t('admin.serviceQuota.filters.allTypes') }}</option>
+              <option v-for="item in limiterOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
+            </select>
+            <select v-model="filters.counterMode" class="input w-auto">
+              <option value="">{{ t('admin.serviceQuota.filters.allCounterModes') }}</option>
+              <option v-for="item in counterModeOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
+            </select>
+            <select v-model="filters.fallback" class="input w-auto">
+              <option value="">{{ t('admin.serviceQuota.filters.allFallback') }}</option>
+              <option value="true">{{ t('admin.serviceQuota.fallback.yes') }}</option>
+              <option value="false">{{ t('admin.serviceQuota.fallback.no') }}</option>
+            </select>
+            <select v-model="filters.enabled" class="input w-auto">
+              <option value="">{{ t('admin.serviceQuota.filters.allStatus') }}</option>
+              <option value="true">{{ t('common.enabled') }}</option>
+              <option value="false">{{ t('common.disabled') }}</option>
+            </select>
           </div>
           <div class="flex items-center gap-3">
             <button class="btn btn-secondary" type="button" :disabled="loading" @click="load">
@@ -17,29 +40,6 @@
               {{ t('admin.serviceQuota.createRule') }}
             </button>
           </div>
-        </div>
-      </template>
-
-      <template #filters>
-        <div class="grid gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800 md:grid-cols-4">
-          <select v-model="filters.limiter" class="input">
-            <option value="">{{ t('admin.serviceQuota.filters.allTypes') }}</option>
-            <option v-for="item in limiterOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
-          </select>
-          <select v-model="filters.counterMode" class="input">
-            <option value="">{{ t('admin.serviceQuota.filters.allCounterModes') }}</option>
-            <option v-for="item in counterModeOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
-          </select>
-          <select v-model="filters.fallback" class="input">
-            <option value="">{{ t('admin.serviceQuota.filters.allFallback') }}</option>
-            <option value="true">{{ t('admin.serviceQuota.fallback.yes') }}</option>
-            <option value="false">{{ t('admin.serviceQuota.fallback.no') }}</option>
-          </select>
-          <select v-model="filters.enabled" class="input">
-            <option value="">{{ t('admin.serviceQuota.filters.allStatus') }}</option>
-            <option value="true">{{ t('common.enabled') }}</option>
-            <option value="false">{{ t('common.disabled') }}</option>
-          </select>
         </div>
       </template>
 
@@ -138,15 +138,30 @@
           <div class="grid gap-4 md:grid-cols-2">
             <label class="form-field">
               <span class="input-label">{{ t('admin.serviceQuota.form.platform') }}</span>
-              <input v-model="form.platform" class="input" :placeholder="t('admin.serviceQuota.form.platformPlaceholder')" />
+              <select v-model="form.platform" class="input">
+                <option :value="null">{{ t('common.optional') }}</option>
+                <option v-for="p in platformOptions" :key="p" :value="p">{{ p }}</option>
+              </select>
             </label>
             <label class="form-field">
               <span class="input-label">{{ t('admin.serviceQuota.form.groupId') }}</span>
-              <input v-model.number="form.group_id" class="input" min="1" type="number" :placeholder="t('common.optional')" />
+              <EntitySearchSelect
+                v-model="form.group_id"
+                :placeholder="t('common.optional')"
+                :search="searchGroups"
+                :resolve-label="resolveGroupLabel"
+                :reset-token="form.platform ?? ''"
+              />
             </label>
             <label class="form-field">
               <span class="input-label">{{ t('admin.serviceQuota.form.accountId') }}</span>
-              <input v-model.number="form.account_id" class="input" min="1" type="number" :placeholder="t('common.optional')" />
+              <EntitySearchSelect
+                v-model="form.account_id"
+                :placeholder="t('common.optional')"
+                :search="searchAccounts"
+                :resolve-label="resolveAccountLabel"
+                :reset-token="`${form.platform ?? ''}:${form.group_id ?? ''}`"
+              />
             </label>
             <label class="form-field">
               <span class="input-label">{{ t('admin.serviceQuota.form.modelPattern') }}</span>
@@ -156,11 +171,14 @@
         </div>
 
         <div class="grid gap-4 md:grid-cols-3">
-          <label v-if="form.counter_mode === 'user'" class="form-field md:col-span-3">
+          <div v-if="form.counter_mode === 'user'" class="form-field md:col-span-3">
             <span class="input-label">{{ t('admin.serviceQuota.form.targetUserIds') }}</span>
-            <input v-model="targetUserIdsInput" class="input" type="text" :placeholder="t('admin.serviceQuota.form.targetUserIdsPlaceholder')" required />
+            <UserMultiSelect
+              v-model="selectedTargetUsers"
+              :placeholder="t('admin.serviceQuota.form.targetUserIdsPlaceholder')"
+            />
             <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.serviceQuota.form.targetUserIdsRequired') }}</span>
-          </label>
+          </div>
           <label class="form-field flex items-center gap-2">
             <input v-model="form.is_fallback" type="checkbox" class="h-4 w-4 rounded border-gray-300" />
             <span class="text-sm">
@@ -215,9 +233,13 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'
+import UserMultiSelect from '@/components/common/UserMultiSelect.vue'
+import EntitySearchSelect, { type EntitySearchItem } from '@/components/common/EntitySearchSelect.vue'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import type { Column } from '@/components/common/types'
+import adminAPI from '@/api/admin'
+import type { SimpleUser } from '@/api/admin/usage'
 import { createServiceQuotaRule, deleteServiceQuotaRule, listServiceQuotaRules, updateServiceQuotaRule, type ServiceQuotaRule, type ServiceQuotaRuleInput } from '@/api/admin/serviceQuota'
 
 const { t } = useI18n()
@@ -235,6 +257,8 @@ const counterModeOptions = computed(() => [
   { value: 'per_user', label: t('admin.serviceQuota.counterModes.perUser') },
   { value: 'shared', label: t('admin.serviceQuota.counterModes.shared') },
 ])
+
+const platformOptions = ['anthropic', 'openai', 'gemini', 'antigravity']
 
 const columns = computed<Column[]>(() => [
   { key: 'enabled', label: t('admin.serviceQuota.columns.status') },
@@ -255,7 +279,7 @@ const editingID = ref<number | null>(null)
 const deletingRule = ref<ServiceQuotaRule | null>(null)
 const filters = reactive({ limiter: '', counterMode: '', fallback: '', enabled: '' })
 const form = reactive<ServiceQuotaRuleInput>(blankRule())
-const targetUserIdsInput = ref('')
+const selectedTargetUsers = ref<SimpleUser[]>([])
 
 const filteredRules = computed(() => rules.value.filter((rule) => {
   if (filters.limiter && rule.limiter_type !== filters.limiter) return false
@@ -284,7 +308,7 @@ function blankRule(): ServiceQuotaRuleInput {
 function resetForm(rule?: ServiceQuotaRule) {
   Object.assign(form, blankRule(), rule || {})
   editingID.value = rule?.id ?? null
-  targetUserIdsInput.value = (rule?.target_user_ids || []).join(',')
+  selectedTargetUsers.value = (rule?.target_users || []).map((u) => ({ id: u.id, email: u.email }))
 }
 
 function optionLabel(options: Array<{ value: string; label: string }>, value: string): string {
@@ -350,15 +374,6 @@ function limiterBadgeClass(value: string): string {
   return classes[value] || 'badge-gray'
 }
 
-function parseUserIds(raw: string): number[] {
-  return raw
-    .split(/[,\s]+/)
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0)
-    .map((part) => Number(part))
-    .filter((n) => Number.isFinite(n) && n > 0)
-}
-
 function normalizePayload(): ServiceQuotaRuleInput {
   const payload = { ...form }
   payload.platform = cleanText(payload.platform)
@@ -366,7 +381,7 @@ function normalizePayload(): ServiceQuotaRuleInput {
   payload.group_id = cleanNumber(payload.group_id)
   payload.account_id = cleanNumber(payload.account_id)
   if (payload.counter_mode === 'user') {
-    payload.target_user_ids = parseUserIds(targetUserIdsInput.value)
+    payload.target_user_ids = selectedTargetUsers.value.map((u) => u.id)
   } else {
     payload.target_user_ids = null
   }
@@ -376,6 +391,46 @@ function normalizePayload(): ServiceQuotaRuleInput {
 
 function cleanText(value?: string | null): string | null { return value && value.trim() ? value.trim() : null }
 function cleanNumber(value?: number | null): number | null { return value && value > 0 ? value : null }
+
+async function searchGroups(keyword: string, signal: AbortSignal): Promise<EntitySearchItem[]> {
+  const res = await adminAPI.groups.list(1, 20, { search: keyword || undefined }, { signal })
+  return res.items.map((g) => ({
+    id: g.id,
+    label: g.name,
+    sub: g.platform || '',
+  }))
+}
+
+async function resolveGroupLabel(id: number): Promise<EntitySearchItem | null> {
+  try {
+    const res = await adminAPI.groups.getById(id)
+    return { id: res.id, label: res.name, sub: res.platform || '' }
+  } catch {
+    return null
+  }
+}
+
+async function searchAccounts(keyword: string, signal: AbortSignal): Promise<EntitySearchItem[]> {
+  const filters: Record<string, string> = {}
+  if (keyword) filters.search = keyword
+  if (form.platform) filters.platform = form.platform
+  if (form.group_id) filters.group = String(form.group_id)
+  const res = await adminAPI.accounts.list(1, 20, filters, { signal })
+  return res.items.map((a) => ({
+    id: a.id,
+    label: a.name,
+    sub: a.platform || '',
+  }))
+}
+
+async function resolveAccountLabel(id: number): Promise<EntitySearchItem | null> {
+  try {
+    const res = await adminAPI.accounts.getById(id)
+    return { id: res.id, label: res.name, sub: res.platform || '' }
+  } catch {
+    return null
+  }
+}
 
 async function load() {
   loading.value = true
