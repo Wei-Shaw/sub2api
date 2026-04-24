@@ -6,6 +6,60 @@ import { resolve } from 'node:path'
 
 const { openaiModelsMock } = vi.hoisted(() => ({
   openaiModelsMock: {
+  'gpt-5.5': {
+    id: 'gpt-5.5',
+    name: 'GPT-5.5',
+    attachment: true,
+    reasoning: true,
+    tool_call: true,
+    structured_output: true,
+    temperature: false,
+    modalities: {
+      input: ['text', 'image', 'pdf'],
+      output: ['text']
+    },
+    limit: {
+      context: 1050000,
+      input: 922000,
+      output: 128000
+    },
+    cost: {
+      input: 3,
+      output: 18,
+      cache_read: 0.3
+    },
+    release_date: '2026-04-23'
+  },
+  'gpt-5.5-fast': {
+    id: 'gpt-5.5-fast',
+    name: 'GPT-5.5 Fast',
+    attachment: true,
+    reasoning: true,
+    tool_call: true,
+    structured_output: true,
+    temperature: false,
+    modalities: {
+      input: ['text', 'image', 'pdf'],
+      output: ['text']
+    },
+    limit: {
+      context: 1050000,
+      input: 922000,
+      output: 128000
+    },
+    cost: {
+      input: 6,
+      output: 36,
+      cache_read: 0.6
+    },
+    release_date: '2026-04-23',
+    options: {
+      serviceTier: 'priority'
+    },
+    headers: {
+      'x-test-header': 'gpt-5.5-fast-mode'
+    }
+  },
   'gpt-5.4': {
     id: 'gpt-5.4',
     name: 'GPT-5.4',
@@ -267,6 +321,10 @@ describe('UseKeyModal', () => {
     expect(codeBlock.exists()).toBe(true)
     expect(codeBlock.text()).toContain('"sub2api-openai"')
     expect(codeBlock.text()).toContain('"baseURL": "https://example.com/v1"')
+    expect(codeBlock.text()).toContain('"gpt-5.5"')
+    expect(codeBlock.text()).toContain('"gpt-5.5-fast"')
+    expect(codeBlock.text()).toContain('"gpt-5.5-Sys"')
+    expect(codeBlock.text()).toContain('"gpt-5.5-fast-Sys"')
     expect(codeBlock.text()).toContain('"gpt-5.4-fast"')
     expect(codeBlock.text()).toContain('"gpt-5.4-Sys"')
     expect(codeBlock.text()).toContain('"gpt-5.4-fast-Sys"')
@@ -282,9 +340,14 @@ describe('UseKeyModal', () => {
     const gpt54Sys = models['gpt-5.4-Sys']
     const gpt54FastSys = models['gpt-5.4-fast-Sys']
     const gpt54Mini = models['gpt-5.4-mini']
+    const gpt55 = models['gpt-5.5']
+    const gpt55Fast = models['gpt-5.5-fast']
+    const gpt55Sys = models['gpt-5.5-Sys']
+    const gpt55FastSys = models['gpt-5.5-fast-Sys']
     const gpt54Variants = gpt54.variants ?? {}
     const gpt54SysVariants = gpt54Sys.variants ?? {}
     const gpt54MiniVariants = gpt54Mini.variants ?? {}
+    const gpt55Variants = gpt55.variants ?? {}
 
     expect(sub2apiProvider).toBeDefined()
     expect(sub2apiProvider.npm).toBe('@ai-sdk/openai')
@@ -293,6 +356,10 @@ describe('UseKeyModal', () => {
     expect(gpt54Fast).toBeDefined()
     expect(gpt54Sys).toBeDefined()
     expect(gpt54FastSys).toBeDefined()
+    expect(gpt55).toBeDefined()
+    expect(gpt55Fast).toBeDefined()
+    expect(gpt55Sys).toBeDefined()
+    expect(gpt55FastSys).toBeDefined()
     expect(gpt54.attachment).toBe(true)
     expect(gpt54.modalities.input).toEqual(expect.arrayContaining(['text', 'image', 'pdf']))
     expect(gpt54.modalities.output).toEqual(['text'])
@@ -300,6 +367,10 @@ describe('UseKeyModal', () => {
     expect(gpt54Fast.id).toBe('gpt-5.4')
     expect(gpt54Sys.id).toBe('gpt-5.4-Sys')
     expect(gpt54FastSys.id).toBe('gpt-5.4-Sys')
+    expect(gpt55.id).toBe('gpt-5.5')
+    expect(gpt55Fast.id).toBe('gpt-5.5')
+    expect(gpt55Sys.id).toBe('gpt-5.5-Sys')
+    expect(gpt55FastSys.id).toBe('gpt-5.5-Sys')
     expect(gpt54.cost.context_over_200k).toBeUndefined()
     expect(gpt54Fast.cost.context_over_200k).toBeUndefined()
     expect(gpt54Mini.cost.context_over_200k).toBeUndefined()
@@ -320,11 +391,23 @@ describe('UseKeyModal', () => {
     expect(gpt54FastSys.headers['x-test-header']).toBe('fast-mode')
     expect(gpt54Mini.options.builtin_tools).toBeUndefined()
     expect(gpt54Mini.options.metadata.builtin_tools).toEqual({ web_search: true })
+    expect(gpt55.options.metadata.builtin_tools).toEqual({ web_search: true })
+    expect(gpt55Fast.options.serviceTier).toBe('priority')
+    expect(gpt55Fast.options.metadata.builtin_tools).toEqual({ web_search: true })
+    expect(gpt55Fast.headers['x-test-header']).toBe('gpt-5.5-fast-mode')
+    expect(gpt55Sys.options.metadata.builtin_tools).toEqual({ web_search: true })
+    expect(gpt55FastSys.options.serviceTier).toBe('priority')
+    expect(gpt55FastSys.options.metadata.builtin_tools).toEqual({ web_search: true })
+    expect(gpt55FastSys.headers['x-test-header']).toBe('gpt-5.5-fast-mode')
     expect(gpt54.tools).toBeUndefined()
     expect(gpt54Fast.tools).toBeUndefined()
     expect(gpt54Sys.tools).toBeUndefined()
     expect(gpt54FastSys.tools).toBeUndefined()
     expect(gpt54Mini.tools).toBeUndefined()
+    expect(gpt55.tools).toBeUndefined()
+    expect(gpt55Fast.tools).toBeUndefined()
+    expect(gpt55Sys.tools).toBeUndefined()
+    expect(gpt55FastSys.tools).toBeUndefined()
     expect(gpt54Variants['low-fast']).toBeUndefined()
     expect(gpt54Variants['medium-fast']).toBeUndefined()
     expect(gpt54Variants['high-fast']).toBeUndefined()
@@ -332,6 +415,12 @@ describe('UseKeyModal', () => {
     expect(Object.keys(gpt54Variants).some((variant) => variant.endsWith('-fast'))).toBe(false)
     expect(Object.keys(gpt54SysVariants).some((variant) => variant.endsWith('-fast'))).toBe(false)
     expect(Object.keys(gpt54MiniVariants).some((variant) => variant.endsWith('-fast'))).toBe(false)
+    expect(gpt55Variants.none).toBeDefined()
+    expect(gpt55Variants.low).toBeDefined()
+    expect(gpt55Variants.medium).toBeDefined()
+    expect(gpt55Variants.high).toBeDefined()
+    expect(gpt55Variants.xhigh).toBeDefined()
+    expect(Object.keys(gpt55Variants).some((variant) => variant.endsWith('-fast'))).toBe(false)
     expect(gpt54Fast.options.serviceTier).not.toBe('wrong-from-raw')
     expect(gpt54Fast.headers['x-test-header']).not.toBe('wrong-raw-header')
     expect(gpt54FastSys.options.serviceTier).not.toBe('wrong-from-raw')

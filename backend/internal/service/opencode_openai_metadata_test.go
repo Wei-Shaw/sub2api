@@ -211,9 +211,14 @@ func TestFilterOpenCodeOpenAIModelsForCodexOAuth(t *testing.T) {
 	models := map[string]OpenCodeOpenAIModel{
 		"gpt-4o":             {ID: "gpt-4o", Name: "GPT-4o"},
 		"gpt-4o-fast":        {ID: "gpt-4o-fast", Name: "GPT-4o Fast"},
+		"gpt-5.3":            {ID: "gpt-5.3", Name: "GPT-5.3"},
+		"gpt-5.3-fast":       {ID: "gpt-5.3-fast", Name: "GPT-5.3 Fast"},
 		"gpt-5.4":            {ID: "gpt-5.4", Name: "GPT-5.4"},
 		"gpt-5.4-fast":       {ID: "gpt-5.4-fast", Name: "GPT-5.4 Fast"},
 		"gpt-5.4-mini":       {ID: "gpt-5.4-mini", Name: "GPT-5.4 Mini"},
+		"gpt-5.5":            {ID: "gpt-5.5", Name: "GPT-5.5"},
+		"gpt-5.5-fast":       {ID: "gpt-5.5-fast", Name: "GPT-5.5 Fast"},
+		"gpt-5.10":           {ID: "gpt-5.10", Name: "GPT-5.10"},
 		"gpt-5.2":            {ID: "gpt-5.2", Name: "GPT-5.2"},
 		"gpt-5.1-codex":      {ID: "gpt-5.1-codex", Name: "GPT-5.1 Codex"},
 		"gpt-5.3-codex":      {ID: "gpt-5.3-codex", Name: "GPT-5.3 Codex"},
@@ -228,12 +233,17 @@ func TestFilterOpenCodeOpenAIModelsForCodexOAuth(t *testing.T) {
 	require.Contains(t, filtered, "gpt-5.4")
 	require.Contains(t, filtered, "gpt-5.4-fast")
 	require.Contains(t, filtered, "gpt-5.4-mini")
+	require.Contains(t, filtered, "gpt-5.5")
+	require.Contains(t, filtered, "gpt-5.5-fast")
+	require.Contains(t, filtered, "gpt-5.10")
 	require.Contains(t, filtered, "gpt-5.2")
 	require.Contains(t, filtered, "gpt-5.1-codex")
 	require.Contains(t, filtered, "gpt-5.3-codex")
 	require.Contains(t, filtered, "codex-mini-latest")
 	require.NotContains(t, filtered, "gpt-4o")
 	require.NotContains(t, filtered, "gpt-4o-fast")
+	require.NotContains(t, filtered, "gpt-5.3")
+	require.NotContains(t, filtered, "gpt-5.3-fast")
 }
 
 func requireOpenCodeModelOptions(t *testing.T, model OpenCodeOpenAIModel) map[string]any {

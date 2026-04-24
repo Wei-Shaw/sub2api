@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +16,8 @@ const (
 	openCodeModelsDevURL = "https://models.dev/api.json"
 	openCodeModelsTTL    = 15 * time.Minute
 )
+
+var openCodeCodexOAuthVersionIDPattern = regexp.MustCompile(`^gpt-(\d+)\.(\d+)$`)
 
 type OpenCodeOpenAIModel struct {
 	ID               string                        `json:"id"`
@@ -204,7 +208,28 @@ func shouldAllowOpenCodeOpenAIModelForCodexOAuth(id string, allowed map[string]s
 	if strings.HasSuffix(id, "-fast") {
 		return shouldAllowOpenCodeOpenAIModelForCodexOAuth(strings.TrimSuffix(id, "-fast"), allowed)
 	}
-	return false
+	return isOpenCodeCodexOAuthVersionAboveGPT54(id)
+}
+
+func isOpenCodeCodexOAuthVersionAboveGPT54(id string) bool {
+	matches := openCodeCodexOAuthVersionIDPattern.FindStringSubmatch(id)
+	if len(matches) != 3 {
+		return false
+	}
+
+	major, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return false
+	}
+	minor, err := strconv.Atoi(matches[2])
+	if err != nil {
+		return false
+	}
+
+	if major != 5 {
+		return major > 5
+	}
+	return minor > 4
 }
 
 func shouldKeepOpenCodeOpenAIModel(id string, raw map[string]any) bool {
