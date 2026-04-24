@@ -694,10 +694,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	selectedGroup := resolveOpenAISelectedGroupFromBindingOrAccount(affinityBinding, account)
 	legacyReserveAffinityHit := false
 	if req.RequestedModel != "" && s.service != nil && s.service.schedulerSnapshot != nil {
-		projectionView, err = s.service.getOpenAIProjectionView(ctx, req.GroupID, req.RequestedModel)
-		if err != nil {
-			return nil, err
-		}
+		projectionView = s.service.getOpenAIProjectionViewWithLegacyFallback(ctx, req.GroupID, req.RequestedModel)
 		if affinityBinding != nil && !projectionView.bindingMatches(affinityBinding) {
 			_ = s.service.deleteOpenAIStickyAffinityBinding(ctx, req.GroupID, sessionHash)
 			affinityBinding = nil
@@ -1057,10 +1054,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		err             error
 	)
 	if req.RequestedModel != "" && s.service != nil && s.service.schedulerSnapshot != nil {
-		projectionView, err = s.service.getOpenAIProjectionView(ctx, req.GroupID, req.RequestedModel)
-		if err != nil {
-			return nil, "", 0, 0, 0, nil, err
-		}
+		projectionView = s.service.getOpenAIProjectionViewWithLegacyFallback(ctx, req.GroupID, req.RequestedModel)
 	}
 	if req.TargetGroup == TargetGroupExhausted {
 		accounts, reserveAccounts, err = s.service.listOpenAIExhaustedWithReserveOverlay(ctx, req.GroupID, req.RequestedModel)

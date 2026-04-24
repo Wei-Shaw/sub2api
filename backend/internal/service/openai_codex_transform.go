@@ -5,25 +5,13 @@ import (
 	"strings"
 )
 
-func isExplicitGPT5MinorModel(model string) bool {
+func isExplicitGPT55Model(model string) bool {
 	if model == "" {
 		return false
 	}
 	normalized := strings.ToLower(strings.TrimSpace(model))
 	normalized = strings.ReplaceAll(normalized, " ", "-")
-	if !strings.HasPrefix(normalized, "gpt-5.") {
-		return false
-	}
-	minor := strings.TrimPrefix(normalized, "gpt-5.")
-	if minor == "" {
-		return false
-	}
-	for _, ch := range minor {
-		if ch < '0' || ch > '9' {
-			return false
-		}
-	}
-	return true
+	return normalized == "gpt-5.5"
 }
 
 var codexModelMap = map[string]string{
@@ -294,7 +282,7 @@ func normalizeCodexModel(model string) string {
 	if strings.Contains(normalized, "gpt-5.1") || strings.Contains(normalized, "gpt 5.1") {
 		return "gpt-5.1"
 	}
-	if isExplicitGPT5MinorModel(normalized) {
+	if isExplicitGPT55Model(normalized) {
 		return strings.ReplaceAll(normalized, " ", "-")
 	}
 	if strings.Contains(normalized, "codex") {

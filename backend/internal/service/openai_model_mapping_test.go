@@ -117,6 +117,23 @@ func TestNormalizeCodexModel_PreservesNewGPT55Model(t *testing.T) {
 	}
 }
 
+func TestNormalizeCodexModel_UnknownMinorFallsBackToGPT51(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]string{
+		"gpt-5.6":  "gpt-5.1",
+		"GPT-5.99": "gpt-5.1",
+	}
+
+	for input, want := range tests {
+		t.Run(input, func(t *testing.T) {
+			if got := normalizeCodexModel(input); got != want {
+				t.Fatalf("normalizeCodexModel(%q) = %q, want %q", input, got, want)
+			}
+		})
+	}
+}
+
 func TestNormalizeOpenAIModelForUpstream(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -161,6 +178,24 @@ func TestNormalizeOpenAIModelForUpstream_OAuthPreservesGPT55(t *testing.T) {
 		"gpt-5.5":     "gpt-5.5",
 		"GPT-5.5":     "gpt-5.5",
 		"GPT-5.5-Sys": "gpt-5.5",
+	}
+
+	for input, want := range tests {
+		t.Run(input, func(t *testing.T) {
+			if got := normalizeOpenAIModelForUpstream(account, input); got != want {
+				t.Fatalf("normalizeOpenAIModelForUpstream(%q) = %q, want %q", input, got, want)
+			}
+		})
+	}
+}
+
+func TestNormalizeOpenAIModelForUpstream_OAuthUnknownMinorFallsBackToGPT51(t *testing.T) {
+	t.Parallel()
+
+	account := &Account{Type: AccountTypeOAuth}
+	tests := map[string]string{
+		"gpt-5.6":     "gpt-5.1",
+		"GPT-5.6-Sys": "gpt-5.1",
 	}
 
 	for input, want := range tests {

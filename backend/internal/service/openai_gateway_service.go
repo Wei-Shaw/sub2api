@@ -1948,6 +1948,17 @@ func (s *OpenAIGatewayService) getOpenAIProjectionView(ctx context.Context, grou
 	}, nil
 }
 
+func (s *OpenAIGatewayService) getOpenAIProjectionViewWithLegacyFallback(ctx context.Context, groupID *int64, requestedModel string) *openAIProjectionViewResult {
+	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" {
+		return nil
+	}
+	projectionView, err := s.getOpenAIProjectionView(ctx, groupID, requestedModel)
+	if err != nil {
+		return nil
+	}
+	return projectionView
+}
+
 func (s *OpenAIGatewayService) loadOpenAIProjectionAccounts(ctx context.Context, state *OpenAISchedulerBucketState, ids []int64) ([]Account, error) {
 	if state == nil {
 		return nil, ErrSchedulerCacheNotReady
