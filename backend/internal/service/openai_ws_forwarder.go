@@ -3873,6 +3873,10 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 			return nil, nil, nil
 		}
+		if (targetGroup == TargetGroupAny || targetGroup == TargetGroupActive) && s.isCurrentOpenAIReserveOverlayAccount(ctx, groupID, requestedModel, account) {
+			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+			return nil, nil, nil
+		}
 		if !account.MatchesTargetGroup(targetGroup) && !legacyReserveAffinityHit {
 			return nil, nil, nil
 		}
@@ -3915,9 +3919,9 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 			_ = bindOpenAIWSResponseAffinityBinding(ctx, store, derefGroupID(groupID), responseID, binding, s.openAIWSResponseStickyTTL())
 		}
 		return &AccountSelectionResult{
-			Account:     account,
-			Acquired:    true,
-			ReleaseFunc: result.ReleaseFunc,
+			Account:       account,
+			Acquired:      true,
+			ReleaseFunc:   result.ReleaseFunc,
 			SelectedGroup: selectedGroup,
 		}, binding, nil
 	}

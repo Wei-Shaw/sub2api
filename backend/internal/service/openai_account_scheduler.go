@@ -1067,7 +1067,11 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	} else {
 		accounts, err = s.service.listSchedulableAccounts(ctx, req.GroupID, req.TargetGroup)
 		if err == nil && (req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive) {
-			_, reserveAccounts, err = s.service.listOpenAIExhaustedWithReserveOverlay(ctx, req.GroupID, req.RequestedModel)
+			if projectionView != nil {
+				_, reserveAccounts, err = s.service.listOpenAIExhaustedWithReserveOverlay(ctx, req.GroupID, req.RequestedModel)
+			} else {
+				reserveAccounts, err = s.service.listCurrentOpenAILegacyReserveOverlay(ctx, req.GroupID, req.RequestedModel)
+			}
 		}
 	}
 	if err != nil {

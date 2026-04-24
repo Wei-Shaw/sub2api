@@ -2053,11 +2053,7 @@ func buildOpenAIReservePool(activeAccounts []Account, exhaustedAccounts []Accoun
 	return reservePool
 }
 
-func buildOpenAIReserveOverflowPool(activeAccounts []Account, exhaustedAccounts []Account) []Account {
-	reserveCandidates := buildOpenAIReserveCandidatePool(activeAccounts)
-	if len(reserveCandidates) == 0 {
-		reserveCandidates = buildOpenAIModelSubsetReserveCandidatePool(activeAccounts)
-	}
+func buildOpenAIReserveOverflowPoolFromCandidates(reserveCandidates []Account, exhaustedAccounts []Account) []Account {
 	if len(reserveCandidates) == 0 {
 		return nil
 	}
@@ -2088,6 +2084,18 @@ func buildOpenAIReserveOverflowPool(activeAccounts []Account, exhaustedAccounts 
 		}
 	}
 	return reservePool
+}
+
+func buildOpenAILegacyReserveOverflowPool(activeAccounts []Account, exhaustedAccounts []Account) []Account {
+	return buildOpenAIReserveOverflowPoolFromCandidates(buildOpenAIReserveCandidatePool(activeAccounts), exhaustedAccounts)
+}
+
+func buildOpenAIReserveOverflowPool(activeAccounts []Account, exhaustedAccounts []Account) []Account {
+	reserveCandidates := buildOpenAIReserveCandidatePool(activeAccounts)
+	if len(reserveCandidates) == 0 {
+		reserveCandidates = buildOpenAIModelSubsetReserveCandidatePool(activeAccounts)
+	}
+	return buildOpenAIReserveOverflowPoolFromCandidates(reserveCandidates, exhaustedAccounts)
 }
 
 func shouldRouteExhaustedOverflowToReserve(exhaustedAccounts []Account, reserveAccounts []Account, loadMap map[int64]*AccountLoadInfo) bool {
@@ -2363,11 +2371,61 @@ func (s *OpenAIGatewayService) isCurrentOpenAIReserveOverlayAccount(ctx context.
 	if s == nil || account == nil || !account.IsOpenAIReserveCandidate() {
 		return false
 	}
-	projectionView, err := s.getOpenAIProjectionView(ctx, groupID, requestedModel)
+	if s.schedulerSnapshot != nil {
+		projectionView, err := s.getOpenAIProjectionView(ctx, groupID, requestedModel)
+		if err == nil {
+			return projectionView.containsReserve(account.ID)
+		}
+	}
+	reserveAccounts, err := s.listCurrentOpenAILegacyReserveOverlay(ctx, groupID, requestedModel)
 	if err != nil {
 		return false
 	}
-	return projectionView.containsReserve(account.ID)
+	for _, reserveAccount := range reserveAccounts {
+		if reserveAccount.ID == account.ID {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *OpenAIGatewayService) listCurrentOpenAILegacyReserveOverlay(ctx context.Context, groupID *int64, requestedModel string) ([]Account, error) {
+	repo := s.openAIProjectionAccountRepo()
+	if s == nil || repo == nil {
+		return nil, ErrSchedulerCacheNotReady
+	}
+	var (
+		accounts []Account
+		err      error
+	)
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		accounts, err = repo.ListSchedulableByPlatform(ctx, PlatformOpenAI)
+	} else if groupID != nil {
+		accounts, err = repo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, PlatformOpenAI)
+	} else {
+		accounts, err = repo.ListSchedulableUngroupedByPlatform(ctx, PlatformOpenAI)
+	}
+	if err != nil {
+		return nil, err
+	}
+	activeAccounts := make([]Account, 0, len(accounts))
+	exhaustedAccounts := make([]Account, 0, len(accounts))
+	for _, candidate := range accounts {
+		if !candidate.IsOpenAI() {
+			continue
+		}
+		if requestedModel != "" && !candidate.IsModelSupported(requestedModel) {
+			continue
+		}
+		if candidate.IsSchedulableForTargetGroup(TargetGroupExhausted) {
+			exhaustedAccounts = append(exhaustedAccounts, candidate)
+			continue
+		}
+		if candidate.IsSchedulableForTargetGroup(TargetGroupActive) {
+			activeAccounts = append(activeAccounts, candidate)
+		}
+	}
+	return buildOpenAILegacyReserveOverflowPool(activeAccounts, exhaustedAccounts), nil
 }
 
 func (s *OpenAIGatewayService) isOpenAIReservePreviousResponseAnchor(ctx context.Context, groupID *int64, requestedModel string, previousResponseID string) bool {
