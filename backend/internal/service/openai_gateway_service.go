@@ -1799,31 +1799,30 @@ func shouldRefreshOpenAIProjectionCatalogForAccount(account Account, canonicalMo
 	return wildcardRulesSupportProjectionModel(snapshot.WildcardRules, canonicalModel)
 }
 
-func (s *OpenAIGatewayService) refreshUnknownOpenAIProjectionCatalog(ctx context.Context, groupID *int64, requestedModel string) (bool, error) {
+func (s *OpenAIGatewayService) refreshUnknownOpenAIProjectionCatalog(ctx context.Context, bucket SchedulerBucket, requestedModel string) (bool, error) {
 	repo := s.openAIProjectionAccountRepo()
-	if repo == nil {
+	if repo == nil || s == nil || s.schedulerSnapshot == nil {
 		return false, nil
 	}
 	canonicalModel := NormalizeOpenAIProjectionModelKey(requestedModel)
 	if canonicalModel == "" {
 		return false, nil
 	}
-	accounts, err := s.listOpenAIAccountsFromBroadSource(ctx, groupID)
+	inputs, err := s.schedulerSnapshot.loadOpenAIProjectionInputs(ctx, bucket)
 	if err != nil {
 		return false, err
 	}
-	if len(accounts) == 0 {
+	if inputs == nil || len(inputs.AccountsAll) == 0 {
 		return false, nil
 	}
 
-	rebuiltSource := false
+	mutated := false
 	refreshedAt := time.Now().UTC().Format(time.RFC3339)
-	for _, account := range accounts {
+	for _, account := range inputs.AccountsAll {
 		if !account.IsOpenAI() {
 			continue
 		}
 		if openAICatalogModelsContain(account, canonicalModel) {
-			rebuiltSource = true
 			continue
 		}
 		if !shouldRefreshOpenAIProjectionCatalogForAccount(account, canonicalModel) {
@@ -1840,9 +1839,9 @@ func (s *OpenAIGatewayService) refreshUnknownOpenAIProjectionCatalog(ctx context
 		}); err != nil {
 			return false, err
 		}
-		rebuiltSource = true
+		mutated = true
 	}
-	return rebuiltSource, nil
+	return mutated, nil
 }
 
 func (s *OpenAIGatewayService) getOpenAIProjectionView(ctx context.Context, groupID *int64, requestedModel string) (*openAIProjectionViewResult, error) {
@@ -1874,7 +1873,7 @@ func (s *OpenAIGatewayService) getOpenAIProjectionView(ctx context.Context, grou
 	}
 	view, ok := state.Projection.ViewForModel(requestedModel)
 	if !ok {
-		shouldRefresh, err := s.refreshUnknownOpenAIProjectionCatalog(ctx, groupID, requestedModel)
+		shouldRefresh, err := s.refreshUnknownOpenAIProjectionCatalog(ctx, bucket, requestedModel)
 		if err != nil {
 			return nil, err
 		}

@@ -366,3 +366,37 @@ func TestProjectionVersion_ChangesAtomicallyWithBucketState(t *testing.T) {
 	require.Contains(t, unknownView.ReserveOverflowIDs, account.ID)
 	require.Equal(t, after.ProjectionVersion, view.state.ProjectionVersion)
 }
+
+func TestUnknownModel_CatalogSourceOutsideProjectionInputsDoesNotCauseVersionThrash(t *testing.T) {
+	ctx := context.Background()
+	projectionAccount := newOpenAIProjectionActiveAccount(401, 1, 20, []string{"gpt-5.4"})
+	projectionAccount.Credentials["model_mapping"] = map[string]any{}
+	projectionAccount.Extra[openAICapabilityExplicitModelsExtraKey] = []string{"gpt-5.4"}
+
+	broadOnlyAccount := newOpenAIProjectionActiveAccount(402, 1, 20, nil)
+	broadOnlyAccount.Credentials["model_mapping"] = map[string]any{}
+	broadOnlyAccount.Schedulable = false
+	broadOnlyAccount.Extra[openAICapabilityCatalogModelsExtraKey] = []string{"gpt-5.unknown"}
+
+	repo := newMutableOpenAIProjectionRepo([]Account{projectionAccount, broadOnlyAccount})
+	cache := &openAIBucketStateCacheRecorder{}
+	snapshot := NewSchedulerSnapshotService(cache, nil, repo, nil, nil)
+	gateway := &OpenAIGatewayService{schedulerSnapshot: snapshot, accountRepo: repo}
+
+	_, _, err := snapshot.ListSchedulableAccounts(ctx, nil, PlatformOpenAI, false)
+	require.NoError(t, err)
+	baseline := cache.openAIState.ProjectionVersion
+	require.Zero(t, repo.updateExtraCalls)
+
+	_, err = gateway.getOpenAIProjectionView(ctx, nil, "gpt-5.unknown")
+	require.ErrorIs(t, err, ErrSchedulerCacheNotReady)
+	require.Zero(t, repo.updateExtraCalls)
+	require.Equal(t, baseline, cache.openAIState.ProjectionVersion)
+
+	_, err = gateway.getOpenAIProjectionView(ctx, nil, "gpt-5.unknown")
+	require.ErrorIs(t, err, ErrSchedulerCacheNotReady)
+	require.Zero(t, repo.updateExtraCalls)
+	require.Equal(t, baseline, cache.openAIState.ProjectionVersion)
+	_, ok := cache.openAIState.Projection.ViewForModel("gpt-5.unknown")
+	require.False(t, ok)
+}
