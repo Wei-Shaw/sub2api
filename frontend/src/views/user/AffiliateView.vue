@@ -1,0 +1,201 @@
+<template>
+  <AppLayout>
+    <div class="space-y-6">
+      <div v-if="loading" class="flex justify-center py-12">
+        <div
+          class="h-8 w-8 animate-spin rounded-full border-2 border-primary-500 border-t-transparent"
+        ></div>
+      </div>
+
+      <template v-else-if="detail">
+        <div class="grid gap-4 md:grid-cols-3">
+          <div class="card p-5">
+            <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('affiliate.stats.invitedUsers') REDACTEDREDACTED</p>
+            <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
+              {{ formatCount(detail.aff_count) REDACTEDREDACTED
+            </p>
+          </div>
+          <div class="card p-5">
+            <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('affiliate.stats.availableQuota') REDACTEDREDACTED</p>
+            <p class="mt-2 text-2xl font-semibold text-emerald-600 dark:text-emerald-400">
+              {{ formatCurrency(detail.aff_quota) REDACTEDREDACTED
+            </p>
+          </div>
+          <div class="card p-5">
+            <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('affiliate.stats.totalQuota') REDACTEDREDACTED</p>
+            <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
+              {{ formatCurrency(detail.aff_history_quota) REDACTEDREDACTED
+            </p>
+          </div>
+        </div>
+
+        <div class="card p-6">
+          <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('affiliate.title') REDACTEDREDACTED</h3>
+          <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('affiliate.description') REDACTEDREDACTED</p>
+
+          <div class="mt-5 grid gap-4 md:grid-cols-2">
+            <div class="space-y-2">
+              <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('affiliate.yourCode') REDACTEDREDACTED</p>
+              <div class="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-dark-700 dark:bg-dark-900">
+                <code class="flex-1 truncate text-sm font-semibold text-gray-900 dark:text-white">{{ detail.aff_code REDACTEDREDACTED</code>
+                <button class="btn btn-secondary btn-sm" @click="copyCode">
+                  <Icon name="copy" size="sm" />
+                  <span>{{ t('affiliate.copyCode') REDACTEDREDACTED</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              <p class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('affiliate.inviteLink') REDACTEDREDACTED</p>
+              <div class="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-dark-700 dark:bg-dark-900">
+                <code class="flex-1 truncate text-sm text-gray-700 dark:text-gray-300">{{ inviteLink REDACTEDREDACTED</code>
+                <button class="btn btn-secondary btn-sm" @click="copyInviteLink">
+                  <Icon name="copy" size="sm" />
+                  <span>{{ t('affiliate.copyLink') REDACTEDREDACTED</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-5 rounded-xl border border-primary-200 bg-primary-50 p-4 dark:border-primary-900/40 dark:bg-primary-900/20">
+            <p class="text-sm font-medium text-primary-800 dark:text-primary-200">{{ t('affiliate.tips.title') REDACTEDREDACTED</p>
+            <ul class="mt-2 space-y-1 text-sm text-primary-700 dark:text-primary-300">
+              <li>1. {{ t('affiliate.tips.line1') REDACTEDREDACTED</li>
+              <li>2. {{ t('affiliate.tips.line2') REDACTEDREDACTED</li>
+              <li>3. {{ t('affiliate.tips.line3') REDACTEDREDACTED</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card p-6">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('affiliate.transfer.title') REDACTEDREDACTED</h3>
+              <p class="mt-1 text-sm text-gray-500 dark:text-dark-400">{{ t('affiliate.transfer.description') REDACTEDREDACTED</p>
+            </div>
+            <button
+              class="btn btn-primary"
+              :disabled="transferring || detail.aff_quota <= 0"
+              @click="transferQuota"
+            >
+              <Icon v-if="transferring" name="refresh" size="sm" class="animate-spin" />
+              <Icon v-else name="dollar" size="sm" />
+              <span>{{ transferring ? t('affiliate.transfer.transferring') : t('affiliate.transfer.button') REDACTEDREDACTED</span>
+            </button>
+          </div>
+          <p v-if="detail.aff_quota <= 0" class="mt-3 text-sm text-amber-600 dark:text-amber-400">
+            {{ t('affiliate.transfer.empty') REDACTEDREDACTED
+          </p>
+        </div>
+
+        <div class="card p-6">
+          <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('affiliate.invitees.title') REDACTEDREDACTED</h3>
+          <div v-if="detail.invitees.length === 0" class="mt-4 rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-dark-700 dark:text-dark-400">
+            {{ t('affiliate.invitees.empty') REDACTEDREDACTED
+          </div>
+          <div v-else class="mt-4 overflow-x-auto">
+            <table class="w-full min-w-[560px] text-left text-sm">
+              <thead>
+                <tr class="border-b border-gray-200 text-gray-500 dark:border-dark-700 dark:text-dark-400">
+                  <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.email') REDACTEDREDACTED</th>
+                  <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.username') REDACTEDREDACTED</th>
+                  <th class="px-3 py-2 font-medium">{{ t('affiliate.invitees.columns.joinedAt') REDACTEDREDACTED</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="item in detail.invitees"
+                  :key="item.user_id"
+                  class="border-b border-gray-100 last:border-b-0 dark:border-dark-800"
+                >
+                  <td class="px-3 py-3 text-gray-900 dark:text-white">{{ item.email || '-' REDACTEDREDACTED</td>
+                  <td class="px-3 py-3 text-gray-700 dark:text-gray-300">{{ item.username || '-' REDACTEDREDACTED</td>
+                  <td class="px-3 py-3 text-gray-700 dark:text-gray-300">{{ formatDateTime(item.created_at) || '-' REDACTEDREDACTED</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </template>
+    </div>
+  </AppLayout>
+</template>
+
+<script setup lang="ts">
+import { computed, onMounted, ref REDACTED from 'vue'
+import { useI18n REDACTED from 'vue-i18n'
+import AppLayout from '@/components/layout/AppLayout.vue'
+import Icon from '@/components/icons/Icon.vue'
+import userAPI from '@/api/user'
+import type { UserAffiliateDetail REDACTED from '@/types'
+import { useAppStore REDACTED from '@/stores/app'
+import { useAuthStore REDACTED from '@/stores/auth'
+import { useClipboard REDACTED from '@/composables/useClipboard'
+import { formatCurrency, formatDateTime REDACTED from '@/utils/format'
+import { extractApiErrorMessage REDACTED from '@/utils/apiError'
+
+const { t REDACTED = useI18n()
+const appStore = useAppStore()
+const authStore = useAuthStore()
+const { copyToClipboard REDACTED = useClipboard()
+
+const loading = ref(true)
+const transferring = ref(false)
+const detail = ref<UserAffiliateDetail | null>(null)
+
+const inviteLink = computed(() => {
+  if (!detail.value) return ''
+  if (typeof window === 'undefined') return `/register?aff=${encodeURIComponent(detail.value.aff_code)REDACTED`
+  return `${window.location.originREDACTED/register?aff=${encodeURIComponent(detail.value.aff_code)REDACTED`
+REDACTED)
+
+function formatCount(value: number): string {
+  return value.toLocaleString()
+REDACTED
+
+async function loadAffiliateDetail(silent = false): Promise<void> {
+  if (!silent) {
+    loading.value = true
+  REDACTED
+  try {
+    detail.value = await userAPI.getAffiliateDetail()
+  REDACTED catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('affiliate.loadFailed')))
+  REDACTED finally {
+    if (!silent) {
+      loading.value = false
+    REDACTED
+  REDACTED
+REDACTED
+
+async function copyCode(): Promise<void> {
+  if (!detail.value?.aff_code) return
+  await copyToClipboard(detail.value.aff_code, t('affiliate.codeCopied'))
+REDACTED
+
+async function copyInviteLink(): Promise<void> {
+  if (!inviteLink.value) return
+  await copyToClipboard(inviteLink.value, t('affiliate.linkCopied'))
+REDACTED
+
+async function transferQuota(): Promise<void> {
+  if (!detail.value || detail.value.aff_quota <= 0 || transferring.value) return
+  transferring.value = true
+  try {
+    const resp = await userAPI.transferAffiliateQuota()
+    appStore.showSuccess(t('affiliate.transfer.success', { amount: formatCurrency(resp.transferred_quota) REDACTED))
+    await Promise.all([
+      loadAffiliateDetail(true),
+      authStore.refreshUser().catch(() => undefined),
+    ])
+  REDACTED catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('affiliate.transferFailed')))
+  REDACTED finally {
+    transferring.value = false
+  REDACTED
+REDACTED
+
+onMounted(() => {
+  void loadAffiliateDetail()
+REDACTED)
+</script>

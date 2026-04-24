@@ -122,6 +122,29 @@ export interface RegisterRequest {
   turnstile_token?: string
   promo_code?: string
   invitation_code?: string
+  aff_code?: string
+REDACTED
+
+export interface AffiliateInvitee {
+  user_id: number
+  email: string
+  username: string
+  created_at?: string
+REDACTED
+
+export interface UserAffiliateDetail {
+  user_id: number
+  aff_code: string
+  inviter_id?: number | null
+  aff_count: number
+  aff_quota: number
+  aff_history_quota: number
+  invitees: AffiliateInvitee[]
+REDACTED
+
+export interface AffiliateTransferResponse {
+  transferred_quota: number
+  balance: number
 REDACTED
 
 export interface SendVerifyCodeRequest {

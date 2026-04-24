@@ -346,6 +346,7 @@ export default {
     apiKeys: 'API Keys',
     usage: 'Usage',
     redeem: 'Redeem',
+    affiliate: 'Affiliate Rebates',
     profile: 'Profile',
     users: 'Users',
     groups: 'Groups',
@@ -969,6 +970,47 @@ export default {
       intervals: 'Tiered Pricing',
       unitPerMillion: '/ 1M tokens',
       unitPerRequest: '/ request'
+    REDACTED
+  REDACTED,
+
+  affiliate: {
+    title: 'Affiliate Rebates',
+    description: 'Invite new users and convert your rebate quota into account balance',
+    yourCode: 'Your Affiliate Code',
+    inviteLink: 'Invite Link',
+    copyCode: 'Copy Code',
+    copyLink: 'Copy Link',
+    codeCopied: 'Affiliate code copied',
+    linkCopied: 'Invite link copied',
+    loadFailed: 'Failed to load affiliate data',
+    transferFailed: 'Failed to transfer affiliate quota',
+    stats: {
+      invitedUsers: 'Invited Users',
+      availableQuota: 'Available Rebate Quota',
+      totalQuota: 'Historical Rebate Quota'
+    REDACTED,
+    transfer: {
+      title: 'Transfer Rebate Quota',
+      description: 'Move available rebate quota into your account balance',
+      button: 'Transfer to Balance',
+      transferring: 'Transferring...',
+      empty: 'No available rebate quota',
+      success: '{amountREDACTED has been transferred to your balance'
+    REDACTED,
+    invitees: {
+      title: 'Invited Users',
+      empty: 'No invited users yet',
+      columns: {
+        email: 'Email',
+        username: 'Username',
+        joinedAt: 'Joined At'
+      REDACTED
+    REDACTED,
+    tips: {
+      title: 'How It Works',
+      line1: 'Share your affiliate code or invite link with new users.',
+      line2: 'When invitees recharge, you receive rebate quota based on the configured rate.',
+      line3: 'Transfer rebate quota to balance at any time.'
     REDACTED
   REDACTED,
 
@@ -4837,6 +4879,9 @@ export default {
         description: 'Default values for new users',
         defaultBalance: 'Default Balance',
         defaultBalanceHint: 'Initial balance for new users',
+        affiliateRebateRate: 'Affiliate Rebate Rate',
+        affiliateRebateRateHint:
+          'Rebate percentage credited to inviter after recharge (0-100%, e.g. 10 means 10%)',
         defaultConcurrency: 'Default Concurrency',
         defaultConcurrencyHint: 'Maximum concurrent requests for new users',
         defaultUserRpmLimit: 'Default User RPM Limit',
