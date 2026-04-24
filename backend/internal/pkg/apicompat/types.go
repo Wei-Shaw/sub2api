@@ -82,10 +82,18 @@ REDACTED
 
 // AnthropicTool describes a tool available to the model.
 type AnthropicTool struct {
-	Type        string          `json:"type,omitempty"` // e.g. "web_search_20250305" for server tools
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	InputSchema json.RawMessage `json:"input_schema"` // JSON Schema object
+	Type         string                 `json:"type,omitempty"` // e.g. "web_search_20250305" for server tools
+	Name         string                 `json:"name"`
+	Description  string                 `json:"description,omitempty"`
+	InputSchema  json.RawMessage        `json:"input_schema"` // JSON Schema object
+	CacheControl *AnthropicCacheControl `json:"cache_control,omitempty"`
+REDACTED
+
+// AnthropicCacheControl 对应 Anthropic API 的 cache_control 字段。
+// ttl 默认由调用方决定；本项目策略见 claude.DefaultCacheControlTTL。
+type AnthropicCacheControl struct {
+	Type string `json:"type"`          // "ephemeral"
+	TTL  string `json:"ttl,omitempty"` // "5m" / "1h" / 省略=默认 5m（由 Anthropic 判定）
 REDACTED
 
 // AnthropicResponse is the non-streaming response from POST /v1/messages.

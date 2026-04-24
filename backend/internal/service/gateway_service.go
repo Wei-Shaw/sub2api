@@ -850,6 +850,7 @@ REDACTED
 
 type anthropicCacheControlPayload struct {
 	Type string `json:"type"`
+	TTL  string `json:"ttl,omitempty"`
 REDACTED
 
 type anthropicSystemTextBlockPayload struct {
@@ -898,7 +899,10 @@ func marshalAnthropicSystemTextBlock(text string, includeCacheControl bool) ([]b
 		Text: text,
 REDACTED
 	if includeCacheControl {
-		block.CacheControl = &anthropicCacheControlPayload{Type: "ephemeral"REDACTED
+		block.CacheControl = &anthropicCacheControlPayload{
+			Type: "ephemeral",
+			TTL:  claude.DefaultCacheControlTTL,
+	REDACTED
 REDACTED
 	return json.Marshal(block)
 REDACTED
@@ -3856,7 +3860,7 @@ REDACTED
 		{
 			"type":          "text",
 			"text":          claudeCodeSystemPrompt,
-			"cache_control": map[string]string{"type": "ephemeral"REDACTED,
+			"cache_control": map[string]string{"type": "ephemeral", "ttl": claude.DefaultCacheControlTTLREDACTED,
 	REDACTED,
 REDACTED
 	out, ok := setJSONValueBytes(body, "system", claudeCodeSystemBlock)
