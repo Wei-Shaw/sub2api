@@ -36,7 +36,7 @@ func (r *serviceQuotaRuleRepository) List(ctx context.Context, filter service.Se
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := []*service.ServiceQuotaRule{}
 	for rows.Next() {
 		rule, err := scanServiceQuotaRule(rows)

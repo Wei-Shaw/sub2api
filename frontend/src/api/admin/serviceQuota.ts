@@ -13,11 +13,12 @@ export interface ServiceQuotaRule {
   target_user_id?: number | null
   window_mode: string
   limit_value: number
+  current_usage?: number | null
   created_at: string
   updated_at: string
 }
 
-export type ServiceQuotaRuleInput = Omit<ServiceQuotaRule, 'id' | 'created_at' | 'updated_at'>
+export type ServiceQuotaRuleInput = Omit<ServiceQuotaRule, 'id' | 'current_usage' | 'created_at' | 'updated_at'>
 
 export async function listServiceQuotaRules(): Promise<ServiceQuotaRule[]> {
   const { data } = await apiClient.get<{ items: ServiceQuotaRule[] }>('/admin/service-quotas')

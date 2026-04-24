@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -22,7 +23,14 @@ func NewServiceQuotaService(repo ServiceQuotaRuleRepository, settings quotaSetti
 }
 
 func (s *serviceQuotaService) ListRules(ctx context.Context, filter ServiceQuotaListFilter) ([]*ServiceQuotaRule, error) {
-	return s.repo.List(ctx, filter)
+	rules, err := s.repo.List(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	for _, rule := range rules {
+		s.fillCurrentUsage(ctx, rule)
+	}
+	return rules, nil
 }
 
 func (s *serviceQuotaService) CreateRule(ctx context.Context, input ServiceQuotaRuleInput) (*ServiceQuotaRule, error) {
@@ -87,7 +95,10 @@ func (s *serviceQuotaService) Record(ctx context.Context, req ServiceQuotaRecord
 		if delta <= 0 {
 			continue
 		}
-		_, _ = s.limiter.Increment(ctx, s.counterKey(req.ServiceQuotaCheckRequest, rule), delta, serviceQuotaWindow(rule), rule.WindowMode)
+		key := s.counterKey(req.ServiceQuotaCheckRequest, rule)
+		if _, err := s.limiter.Increment(ctx, key, delta, serviceQuotaWindow(rule), rule.WindowMode); err != nil {
+			s.logLimiterFailure("record", rule, key, err)
+		}
 	}
 }
 
@@ -117,6 +128,7 @@ func (s *serviceQuotaService) acquireConcurrency(ctx context.Context, req Servic
 	key := s.counterKey(req, rule)
 	ok, err := s.limiter.Acquire(ctx, key, member, int64(rule.LimitValue))
 	if err != nil {
+		s.logLimiterFailure("acquire_concurrency", rule, key, err)
 		return nil
 	}
 	if !ok {
@@ -127,14 +139,18 @@ func (s *serviceQuotaService) acquireConcurrency(ctx context.Context, req Servic
 		if prev != nil {
 			prev()
 		}
-		_ = s.limiter.Release(context.Background(), key, member)
+		if rerr := s.limiter.Release(context.Background(), key, member); rerr != nil {
+			s.logLimiterFailure("release_concurrency", rule, key, rerr)
+		}
 	}
 	return nil
 }
 
 func (s *serviceQuotaService) checkRPM(ctx context.Context, req ServiceQuotaCheckRequest, rule *ServiceQuotaRule) error {
-	used, err := s.limiter.Increment(ctx, s.counterKey(req, rule), 1, time.Minute, rule.WindowMode)
+	key := s.counterKey(req, rule)
+	used, err := s.limiter.Increment(ctx, key, 1, time.Minute, rule.WindowMode)
 	if err != nil {
+		s.logLimiterFailure("check_rpm", rule, key, err)
 		return nil
 	}
 	if used > rule.LimitValue {
@@ -144,14 +160,63 @@ func (s *serviceQuotaService) checkRPM(ctx context.Context, req ServiceQuotaChec
 }
 
 func (s *serviceQuotaService) checkDeferred(ctx context.Context, req ServiceQuotaCheckRequest, rule *ServiceQuotaRule) error {
-	used, err := s.limiter.Current(ctx, s.counterKey(req, rule), serviceQuotaWindow(rule), rule.WindowMode)
+	key := s.counterKey(req, rule)
+	used, err := s.limiter.Current(ctx, key, serviceQuotaWindow(rule), rule.WindowMode)
 	if err != nil {
+		s.logLimiterFailure("check_deferred", rule, key, err)
 		return nil
 	}
 	if used >= rule.LimitValue {
 		return serviceQuotaExceeded(rule, used)
 	}
 	return nil
+}
+
+// fillCurrentUsage best-effort annotates a rule with its current usage for the
+// admin list response. Only global-scope counters (target_mode=shared or a
+// specific user) and non-concurrency limiters are resolvable with a single
+// lookup; per_user/default rules are sharded per request user and are left as
+// nil rather than paying the cost of scanning every per-user key.
+func (s *serviceQuotaService) fillCurrentUsage(ctx context.Context, rule *ServiceQuotaRule) {
+	if rule == nil || s.limiter == nil {
+		return
+	}
+	if rule.LimiterType == ServiceQuotaLimiterConcurrency {
+		return
+	}
+	var target string
+	switch rule.TargetMode {
+	case ServiceQuotaTargetShared:
+		target = "shared"
+	case ServiceQuotaTargetUser:
+		if rule.TargetUserID == nil {
+			return
+		}
+		target = strconv.FormatInt(*rule.TargetUserID, 10)
+	default:
+		return
+	}
+	key := fmt.Sprintf("svcquota:%d:%s:%s", rule.ID, rule.LimiterType, target)
+	used, err := s.limiter.Current(ctx, key, serviceQuotaWindow(rule), rule.WindowMode)
+	if err != nil {
+		s.logLimiterFailure("current_usage", rule, key, err)
+		return
+	}
+	rule.CurrentUsage = &used
+}
+
+// Fail-open is intentional: when Redis is unreachable we allow the request
+// through rather than return 5xx, but we must surface the degradation so the
+// operator knows service quota rules are silently inert.
+func (s *serviceQuotaService) logLimiterFailure(op string, rule *ServiceQuotaRule, key string, err error) {
+	slog.Warn("service quota limiter unavailable, rule not enforced",
+		"op", op,
+		"rule_id", rule.ID,
+		"limiter_type", rule.LimiterType,
+		"window_mode", rule.WindowMode,
+		"key", key,
+		"error", err,
+	)
 }
 
 func (s *serviceQuotaService) counterKey(req ServiceQuotaCheckRequest, rule *ServiceQuotaRule) string {

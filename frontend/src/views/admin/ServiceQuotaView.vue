@@ -298,8 +298,14 @@ function windowLabel(rule: ServiceQuotaRule): string {
 }
 
 function formatLimit(rule: ServiceQuotaRule): string {
-  if (rule.limiter_type === 'daily_usd') return `$${Number(rule.limit_value).toFixed(6).replace(/\.0+$/, '')}`
-  return String(rule.limit_value)
+  const limit = formatLimitValue(rule, rule.limit_value)
+  if (rule.current_usage === undefined || rule.current_usage === null) return limit
+  return `${formatLimitValue(rule, rule.current_usage)} / ${limit}`
+}
+
+function formatLimitValue(rule: ServiceQuotaRule, value: number): string {
+  if (rule.limiter_type === 'daily_usd') return `$${Number(value).toFixed(6).replace(/\.?0+$/, '')}`
+  return String(value)
 }
 
 function limiterBadgeClass(value: string): string {
