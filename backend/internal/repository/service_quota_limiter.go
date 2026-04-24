@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -12,6 +14,8 @@ import (
 )
 
 type serviceQuotaLimiter struct{ rdb *redis.Client }
+
+var rollingMemberSeq atomic.Uint64
 
 func NewServiceQuotaLimiter(rdb *redis.Client) service.ServiceQuotaLimiter {
 	return &serviceQuotaLimiter{rdb: rdb}
@@ -22,10 +26,14 @@ func (l *serviceQuotaLimiter) Current(ctx context.Context, key string, window ti
 		return 0, nil
 	}
 	if mode == service.ServiceQuotaWindowRolling {
-		now := time.Now().UnixMilli()
-		_, _ = l.rdb.ZRemRangeByScore(ctx, key, "-inf", strconv.FormatInt(now-window.Milliseconds(), 10)).Result()
-		count, err := l.rdb.ZCard(ctx, key).Result()
-		return float64(count), err
+		nowMs := time.Now().UnixMilli()
+		cutoff := strconv.FormatInt(nowMs-window.Milliseconds(), 10)
+		_, _ = l.rdb.ZRemRangeByScore(ctx, key, "-inf", cutoff).Result()
+		members, err := l.rdb.ZRange(ctx, key, 0, -1).Result()
+		if err != nil {
+			return 0, err
+		}
+		return sumRollingMembers(members), nil
 	}
 	val, err := l.rdb.Get(ctx, key).Result()
 	if errors.Is(err, redis.Nil) {
@@ -42,15 +50,19 @@ func (l *serviceQuotaLimiter) Increment(ctx context.Context, key string, delta f
 		return 0, nil
 	}
 	if mode == service.ServiceQuotaWindowRolling {
-		now := time.Now().UnixMilli()
-		member := fmt.Sprintf("%d:%f", now, delta)
+		now := time.Now()
+		nowMs := now.UnixMilli()
+		cutoff := strconv.FormatInt(nowMs-window.Milliseconds(), 10)
+		member := rollingMember(now, delta)
 		pipe := l.rdb.TxPipeline()
-		pipe.ZRemRangeByScore(ctx, key, "-inf", strconv.FormatInt(now-window.Milliseconds(), 10))
-		pipe.ZAdd(ctx, key, redis.Z{Score: float64(now), Member: member})
+		pipe.ZRemRangeByScore(ctx, key, "-inf", cutoff)
+		pipe.ZAdd(ctx, key, redis.Z{Score: float64(nowMs), Member: member})
 		pipe.Expire(ctx, key, window*2)
-		card := pipe.ZCard(ctx, key)
-		_, err := pipe.Exec(ctx)
-		return float64(card.Val()), err
+		rangeCmd := pipe.ZRange(ctx, key, 0, -1)
+		if _, err := pipe.Exec(ctx); err != nil {
+			return 0, err
+		}
+		return sumRollingMembers(rangeCmd.Val()), nil
 	}
 	val, err := l.rdb.IncrByFloat(ctx, key, delta).Result()
 	if err != nil {
@@ -58,6 +70,31 @@ func (l *serviceQuotaLimiter) Increment(ctx context.Context, key string, delta f
 	}
 	_ = l.rdb.ExpireNX(ctx, key, fixedWindowTTL(window)).Err()
 	return val, nil
+}
+
+func rollingMember(now time.Time, delta float64) string {
+	seq := rollingMemberSeq.Add(1)
+	return fmt.Sprintf("%d:%d:%s", now.UnixNano(), seq, strconv.FormatFloat(delta, 'f', -1, 64))
+}
+
+// Members use the layout "<ts>:<seq>:<delta>" so the rolling window's true
+// aggregate (tokens, USD) is the sum of parsed deltas — a plain ZCARD would
+// only count events. Unparseable residue from an older encoding degrades to
+// zero instead of breaking reads.
+func sumRollingMembers(members []string) float64 {
+	var sum float64
+	for _, m := range members {
+		idx := strings.LastIndex(m, ":")
+		if idx < 0 {
+			continue
+		}
+		v, err := strconv.ParseFloat(m[idx+1:], 64)
+		if err != nil {
+			continue
+		}
+		sum += v
+	}
+	return sum
 }
 
 func (l *serviceQuotaLimiter) Acquire(ctx context.Context, key, member string, limit int64) (bool, error) {
