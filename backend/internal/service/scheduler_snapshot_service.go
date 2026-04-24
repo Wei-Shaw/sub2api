@@ -177,6 +177,22 @@ func (s *SchedulerSnapshotService) GetOpenAIBucketState(ctx context.Context, buc
 	return state, true, nil
 }
 
+func (s *SchedulerSnapshotService) RefreshOpenAIBucketState(ctx context.Context, bucket SchedulerBucket, reason string) (*OpenAISchedulerBucketState, bool, error) {
+	if s == nil {
+		return nil, false, ErrSchedulerCacheNotReady
+	}
+	if bucket.Platform != PlatformOpenAI {
+		return nil, false, nil
+	}
+	if s.cache == nil || s.accountRepo == nil {
+		return nil, false, ErrSchedulerCacheNotReady
+	}
+	if err := s.rebuildBucket(ctx, bucket, reason); err != nil {
+		return nil, false, err
+	}
+	return s.GetOpenAIBucketState(ctx, bucket)
+}
+
 // GetGroupByID 获取分组信息（供调度器使用）
 func (s *SchedulerSnapshotService) GetGroupByID(ctx context.Context, groupID int64) (*Group, error) {
 	if s.groupRepo == nil {

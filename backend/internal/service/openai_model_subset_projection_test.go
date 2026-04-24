@@ -1,4 +1,4 @@
-//go:build unit
+//go:build unit || integration
 
 package service
 
@@ -203,6 +203,41 @@ func TestProjectionModelReachability_DefaultAllowRejectsCatalogOutsideModel(t *t
 	catalog := map[string]struct{}{"gpt-5.8-preview": {}}
 
 	require.False(t, account.SupportsProjectionModel("gpt-5.9-preview", snapshot, catalog))
+}
+
+func TestUnknownModel_EmptyMappingAndWildcardRemainConservativelyExcluded(t *testing.T) {
+	t.Parallel()
+
+	accounts := []Account{
+		{
+			ID:          901,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Credentials: map[string]any{
+				"plan_type":     "free",
+				"model_mapping": map[string]any{},
+			},
+			Extra: map[string]any{
+				openAICapabilityWildcardRulesExtraKey: []string{"gpt-5.*"},
+			},
+		},
+	}
+
+	projection := BuildOpenAIModelSubsetProjection(&OpenAIProjectionInputs{
+		Bucket:           SchedulerBucket{Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+		CanonicalCatalog: BuildOpenAICanonicalModelCatalog(accounts, nil, nil),
+		AccountsAll:      accounts,
+		CapabilityByID: map[int64]OpenAIModelCapabilitySnapshot{
+			accounts[0].ID: buildOpenAIModelCapabilitySnapshot(accounts[0]),
+		},
+	})
+
+	_, ok := projection.ViewForModel("gpt-5.unknown")
+	require.False(t, ok)
+	require.Empty(t, projection.AccountReserveIDs)
 }
 
 func TestProjectionModelReachability_GroupConfiguredModelsProvideSupportProof(t *testing.T) {

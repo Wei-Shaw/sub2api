@@ -1774,16 +1774,42 @@ func (s *OpenAIGatewayService) getOpenAIProjectionView(ctx context.Context, grou
 		return nil, ErrSchedulerCacheNotReady
 	}
 	bucket := s.schedulerSnapshot.bucketFor(groupID, PlatformOpenAI, SchedulerModeSingle)
-	state, hit, err := s.schedulerSnapshot.GetOpenAIBucketState(ctx, bucket)
+	loadState := func(reason string) (*OpenAISchedulerBucketState, error) {
+		state, hit, err := s.schedulerSnapshot.GetOpenAIBucketState(ctx, bucket)
+		if err != nil {
+			return nil, err
+		}
+		if hit && state != nil && state.Projection != nil {
+			return state, nil
+		}
+		state, hit, err = s.schedulerSnapshot.RefreshOpenAIBucketState(ctx, bucket, reason)
+		if err != nil {
+			return nil, err
+		}
+		if !hit || state == nil || state.Projection == nil {
+			return nil, ErrSchedulerCacheNotReady
+		}
+		return state, nil
+	}
+
+	state, err := loadState("openai_projection_cache_miss")
 	if err != nil {
 		return nil, err
 	}
-	if !hit || state == nil || state.Projection == nil {
-		return nil, ErrSchedulerCacheNotReady
-	}
 	view, ok := state.Projection.ViewForModel(requestedModel)
 	if !ok {
-		return nil, ErrSchedulerCacheNotReady
+		var hit bool
+		state, hit, err = s.schedulerSnapshot.RefreshOpenAIBucketState(ctx, bucket, "openai_projection_model_miss")
+		if err != nil {
+			return nil, err
+		}
+		if !hit || state == nil || state.Projection == nil {
+			return nil, ErrSchedulerCacheNotReady
+		}
+		view, ok = state.Projection.ViewForModel(requestedModel)
+		if !ok {
+			return nil, ErrSchedulerCacheNotReady
+		}
 	}
 	return &openAIProjectionViewResult{
 		state:          state,
@@ -2208,12 +2234,12 @@ func (s *OpenAIGatewayService) isOpenAIReservePreviousResponseAnchor(ctx context
 		return false
 	}
 	binding, ok := getOpenAIWSResponseAffinityBinding(store, derefGroupID(groupID), responseID)
-	if ok && isOpenAIReserveAffinityBinding(binding) {
-		return true
-	}
 	accountID, err := store.GetResponseAccount(ctx, derefGroupID(groupID), responseID)
 	if err != nil || accountID <= 0 {
 		return false
+	}
+	if ok && isOpenAIReserveAffinityBinding(binding) && (strings.TrimSpace(requestedModel) == "" || s.schedulerSnapshot == nil) {
+		return true
 	}
 	projectionView, err := s.getOpenAIProjectionView(ctx, groupID, requestedModel)
 	if err != nil {

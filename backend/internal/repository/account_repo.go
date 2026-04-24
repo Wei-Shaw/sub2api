@@ -64,6 +64,19 @@ var schedulerNeutralExtraKeys = map[string]struct{}{
 	"session_window_utilization": {},
 }
 
+var projectionRelevantExtraKeys = map[string]struct{}{
+	"codex_7d_used_percent":                        {},
+	"codex_primary_used_percent":                   {},
+	"openai_capability_explicit_models":            {},
+	"openai_capability_wildcard_rules":             {},
+	"openai_capability_default_allow":              {},
+	"openai_capability_catalog_models":             {},
+	"openai_capability_snapshot_updated_at":        {},
+	"openai_capability_snapshot_refreshed_at":      {},
+	"openai_capability_last_refresh_at":            {},
+	"openai_capability_last_successful_refresh_at": {},
+}
+
 // NewAccountRepository 创建账户仓储实例。
 // 这是对外暴露的构造函数，返回接口类型以便于依赖注入。
 func NewAccountRepository(client *dbent.Client, sqlDB *sql.DB, schedulerCache service.SchedulerCache) service.AccountRepository {
@@ -411,7 +424,7 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 	if err != nil {
 		return translatePersistenceError(err, service.ErrAccountNotFound, nil)
 	}
-	r.syncSchedulerAccountSnapshot(ctx, id)
+	r.notifySchedulerAccountChanged(ctx, id, "credentials update")
 	return nil
 }
 
@@ -749,6 +762,16 @@ func (r *accountRepository) syncSchedulerAccountSnapshot(ctx context.Context, ac
 	}
 }
 
+func (r *accountRepository) notifySchedulerAccountChanged(ctx context.Context, accountID int64, reason string) {
+	if accountID <= 0 {
+		return
+	}
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &accountID, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue %s failed: account=%d err=%v", reason, accountID, err)
+	}
+	r.syncSchedulerAccountSnapshot(ctx, accountID)
+}
+
 func (r *accountRepository) syncSchedulerAccountSnapshots(ctx context.Context, accountIDs []int64) {
 	if r == nil || r.schedulerCache == nil || len(accountIDs) == 0 {
 		return
@@ -1055,10 +1078,7 @@ func (r *accountRepository) SetRateLimited(ctx context.Context, id int64, resetA
 	if err != nil {
 		return err
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue rate limit failed: account=%d err=%v", id, err)
-	}
-	r.syncSchedulerAccountSnapshot(ctx, id)
+	r.notifySchedulerAccountChanged(ctx, id, "rate limit")
 	return nil
 }
 
@@ -1136,10 +1156,7 @@ func (r *accountRepository) SetTempUnschedulable(ctx context.Context, id int64, 
 	if err != nil {
 		return err
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue temp unschedulable failed: account=%d err=%v", id, err)
-	}
-	r.syncSchedulerAccountSnapshot(ctx, id)
+	r.notifySchedulerAccountChanged(ctx, id, "temp unschedulable")
 	return nil
 }
 
@@ -1155,9 +1172,7 @@ func (r *accountRepository) ClearTempUnschedulable(ctx context.Context, id int64
 	if err != nil {
 		return err
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue clear temp unschedulable failed: account=%d err=%v", id, err)
-	}
+	r.notifySchedulerAccountChanged(ctx, id, "clear temp unschedulable")
 	return nil
 }
 
@@ -1171,10 +1186,7 @@ func (r *accountRepository) ClearRateLimit(ctx context.Context, id int64) error 
 	if err != nil {
 		return err
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue clear rate limit failed: account=%d err=%v", id, err)
-	}
-	r.syncSchedulerAccountSnapshot(ctx, id)
+	r.notifySchedulerAccountChanged(ctx, id, "clear rate limit")
 	return nil
 }
 
@@ -1257,12 +1269,7 @@ func (r *accountRepository) SetSchedulable(ctx context.Context, id int64, schedu
 	if err != nil {
 		return err
 	}
-	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue schedulable change failed: account=%d err=%v", id, err)
-	}
-	if !schedulable {
-		r.syncSchedulerAccountSnapshot(ctx, id)
-	}
+	r.notifySchedulerAccountChanged(ctx, id, "schedulable change")
 	return nil
 }
 
@@ -1322,9 +1329,7 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 		return service.ErrAccountNotFound
 	}
 	if shouldEnqueueSchedulerOutboxForExtraUpdates(updates) {
-		if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
-			logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue extra update failed: account=%d err=%v", id, err)
-		}
+		r.notifySchedulerAccountChanged(ctx, id, "extra update")
 	} else {
 		// 观测型 extra 字段不需要触发 bucket 重建，但仍同步单账号快照，
 		// 让 sticky session / GetAccount 命中缓存时也能读到最新数据，
@@ -1339,12 +1344,26 @@ func shouldEnqueueSchedulerOutboxForExtraUpdates(updates map[string]any) bool {
 		return false
 	}
 	for key := range updates {
+		if isProjectionRelevantExtraKey(key) {
+			return true
+		}
 		if isSchedulerNeutralExtraKey(key) {
 			continue
 		}
 		return true
 	}
 	return false
+}
+
+func isProjectionRelevantExtraKey(key string) bool {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return false
+	}
+	if _, ok := projectionRelevantExtraKeys[key]; ok {
+		return true
+	}
+	return strings.HasPrefix(key, "openai_capability_")
 }
 
 func isSchedulerNeutralExtraKey(key string) bool {

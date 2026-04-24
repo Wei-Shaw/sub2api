@@ -9,8 +9,10 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/accountgroup"
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -93,6 +95,208 @@ func (s *AccountRepoSuite) SetupTest() {
 
 func TestAccountRepoSuite(t *testing.T) {
 	suite.Run(t, new(AccountRepoSuite))
+}
+
+type projectionRefreshHarness struct {
+	ctx      context.Context
+	client   *dbent.Client
+	repo     *accountRepository
+	snapshot *service.SchedulerSnapshotService
+	bucket   service.SchedulerBucket
+}
+
+func newProjectionRefreshHarness(t *testing.T, seedAccounts ...*service.Account) *projectionRefreshHarness {
+	t.Helper()
+
+	ctx := context.Background()
+	client := testEntClient(t)
+	for _, account := range seedAccounts {
+		mustCreateAccount(t, client, account)
+	}
+
+	cache := NewSchedulerCache(testRedis(t))
+	outboxRepo := NewSchedulerOutboxRepository(integrationDB)
+	watermark, err := outboxRepo.MaxID(ctx)
+	require.NoError(t, err)
+	require.NoError(t, cache.SetOutboxWatermark(ctx, watermark))
+
+	repo := newAccountRepositoryWithSQL(client, integrationDB, cache)
+	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.OutboxPollIntervalSeconds = 1
+	snapshot := service.NewSchedulerSnapshotService(cache, outboxRepo, repo, nil, cfg)
+	snapshot.Start()
+	t.Cleanup(snapshot.Stop)
+
+	h := &projectionRefreshHarness{
+		ctx:      ctx,
+		client:   client,
+		repo:     repo,
+		snapshot: snapshot,
+		bucket:   service.SchedulerBucket{GroupID: 0, Platform: service.PlatformOpenAI, Mode: service.SchedulerModeSingle},
+	}
+	_ = h.waitForVersionAbove(t, 0)
+	return h
+}
+
+func (h *projectionRefreshHarness) currentState(t *testing.T) *service.OpenAISchedulerBucketState {
+	t.Helper()
+
+	state, hit, err := h.snapshot.GetOpenAIBucketState(h.ctx, h.bucket)
+	require.NoError(t, err)
+	require.True(t, hit)
+	require.NotNil(t, state)
+	return state
+}
+
+func (h *projectionRefreshHarness) waitForVersionAbove(t *testing.T, previous int64) *service.OpenAISchedulerBucketState {
+	t.Helper()
+
+	var next *service.OpenAISchedulerBucketState
+	require.Eventually(t, func() bool {
+		state, hit, err := h.snapshot.GetOpenAIBucketState(h.ctx, h.bucket)
+		if err != nil || !hit || state == nil {
+			return false
+		}
+		next = state
+		return state.ProjectionVersion > previous
+	}, 5*time.Second, 100*time.Millisecond)
+	require.NotNil(t, next)
+	return next
+}
+
+func TestUpdateCredentials_TriggersProjectionRefresh(t *testing.T) {
+	account := &service.Account{
+		Name:     "projection-refresh-credentials",
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeOAuth,
+		Credentials: map[string]any{
+			"plan_type":     "free",
+			"model_mapping": map[string]any{"gpt-5.4": "gpt-5.4"},
+		},
+	}
+	h := newProjectionRefreshHarness(t, account)
+	before := h.currentState(t).ProjectionVersion
+
+	err := h.repo.UpdateCredentials(h.ctx, account.ID, map[string]any{
+		"model_mapping": map[string]any{"gpt-5.4": "gpt-5.4-mini"},
+	})
+	require.NoError(t, err)
+	state := h.waitForVersionAbove(t, before)
+	view, ok := state.Projection.ViewForModel("gpt-5.4-mini")
+	require.True(t, ok)
+	require.Contains(t, view.ReserveOverflowIDs, account.ID)
+}
+
+func TestUpdateExtra_CodexSnapshotFieldsTriggerProjectionRefresh(t *testing.T) {
+	account := &service.Account{
+		Name:     "projection-refresh-extra",
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeOAuth,
+		Credentials: map[string]any{"plan_type": "free", "model_mapping": map[string]any{"gpt-5.4": "gpt-5.4"}},
+		Extra:       map[string]any{"codex_7d_used_percent": 20.0},
+	}
+	h := newProjectionRefreshHarness(t, account)
+	before := h.currentState(t).ProjectionVersion
+
+	err := h.repo.UpdateExtra(h.ctx, account.ID, map[string]any{
+		"codex_7d_used_percent":        100.0,
+		"codex_7d_reset_after_seconds": 3600,
+	})
+	require.NoError(t, err)
+	state := h.waitForVersionAbove(t, before)
+	view, ok := state.Projection.ViewForModel("gpt-5.4")
+	require.True(t, ok)
+	require.Contains(t, view.ExhaustedBaseIDs, account.ID)
+}
+
+func TestSetSchedulable_TriggersProjectionRefresh(t *testing.T) {
+	account := &service.Account{
+		Name:        "projection-refresh-schedulable",
+		Platform:    service.PlatformOpenAI,
+		Schedulable: false,
+		Credentials: map[string]any{"model_mapping": map[string]any{"gpt-5.4": "gpt-5.4"}},
+	}
+	h := newProjectionRefreshHarness(t, account)
+	before := h.currentState(t).ProjectionVersion
+
+	err := h.repo.SetSchedulable(h.ctx, account.ID, true)
+	require.NoError(t, err)
+	state := h.waitForVersionAbove(t, before)
+	_, ok := state.Projection.ViewForModel("gpt-5.4")
+	require.True(t, ok)
+}
+
+func TestSetTempUnschedulable_TriggersProjectionRefresh(t *testing.T) {
+	account := &service.Account{
+		Name:     "projection-refresh-temp-set",
+		Platform: service.PlatformOpenAI,
+		Credentials: map[string]any{"model_mapping": map[string]any{"gpt-5.4": "gpt-5.4"}},
+	}
+	h := newProjectionRefreshHarness(t, account)
+	before := h.currentState(t).ProjectionVersion
+	until := time.Now().Add(15 * time.Minute).UTC().Truncate(time.Second)
+
+	err := h.repo.SetTempUnschedulable(h.ctx, account.ID, until, `{"rule":"429"}`)
+	require.NoError(t, err)
+	state := h.waitForVersionAbove(t, before)
+	_, ok := state.Projection.ViewForModel("gpt-5.4")
+	require.True(t, ok)
+}
+
+func TestClearTempUnschedulable_TriggersProjectionRefresh(t *testing.T) {
+	until := time.Now().Add(15 * time.Minute).UTC().Truncate(time.Second)
+	account := &service.Account{
+		Name:                   "projection-refresh-temp-clear",
+		Platform:               service.PlatformOpenAI,
+		Credentials:            map[string]any{"model_mapping": map[string]any{"gpt-5.4": "gpt-5.4"}},
+		TempUnschedulableUntil: &until,
+		TempUnschedulableReason: `{"rule":"429"}`,
+	}
+	h := newProjectionRefreshHarness(t, account)
+	before := h.currentState(t).ProjectionVersion
+
+	err := h.repo.ClearTempUnschedulable(h.ctx, account.ID)
+	require.NoError(t, err)
+	state := h.waitForVersionAbove(t, before)
+	_, ok := state.Projection.ViewForModel("gpt-5.4")
+	require.True(t, ok)
+}
+
+func TestSetRateLimited_TriggersProjectionRefresh(t *testing.T) {
+	account := &service.Account{
+		Name:     "projection-refresh-rate-set",
+		Platform: service.PlatformOpenAI,
+		Credentials: map[string]any{"model_mapping": map[string]any{"gpt-5.4": "gpt-5.4"}},
+	}
+	h := newProjectionRefreshHarness(t, account)
+	before := h.currentState(t).ProjectionVersion
+	resetAt := time.Now().Add(10 * time.Minute).UTC().Truncate(time.Second)
+
+	err := h.repo.SetRateLimited(h.ctx, account.ID, resetAt)
+	require.NoError(t, err)
+	state := h.waitForVersionAbove(t, before)
+	_, ok := state.Projection.ViewForModel("gpt-5.4")
+	require.True(t, ok)
+}
+
+func TestClearRateLimited_TriggersProjectionRefresh(t *testing.T) {
+	until := time.Now().Add(10 * time.Minute).UTC().Truncate(time.Second)
+	account := &service.Account{
+		Name:             "projection-refresh-rate-clear",
+		Platform:         service.PlatformOpenAI,
+		Credentials:      map[string]any{"model_mapping": map[string]any{"gpt-5.4": "gpt-5.4"}},
+		RateLimitedAt:    &until,
+		RateLimitResetAt: &until,
+		OverloadUntil:    &until,
+	}
+	h := newProjectionRefreshHarness(t, account)
+	before := h.currentState(t).ProjectionVersion
+
+	err := h.repo.ClearRateLimit(h.ctx, account.ID)
+	require.NoError(t, err)
+	state := h.waitForVersionAbove(t, before)
+	_, ok := state.Projection.ViewForModel("gpt-5.4")
+	require.True(t, ok)
 }
 
 // --- Create / GetByID / Update / Delete ---
@@ -871,7 +1075,7 @@ func (s *AccountRepoSuite) TestUpdateExtra_ExhaustedCodexSnapshotSyncsSchedulerC
 	var count int
 	err = scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM scheduler_outbox", nil, &count)
 	s.Require().NoError(err)
-	s.Require().Equal(0, count)
+	s.Require().Equal(1, count)
 	s.Require().Len(cacheRecorder.setAccounts, 1)
 	s.Require().Equal(account.ID, cacheRecorder.setAccounts[0].ID)
 	s.Require().Equal(service.StatusActive, cacheRecorder.setAccounts[0].Status)
