@@ -1506,6 +1506,107 @@ func TestSelectByLoadBalance_ExhaustedEmptyTreatsUsageAsFullAndUsesReserve(t *te
 	}
 }
 
+func TestSelectByLoadBalance_ExhaustedEmptyUsesPaidTierModelSubsetReserve(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(13016)
+	activeTeam := newOpenAIProjectionPaidTierAccount(3116, 10, "team", []string{"gpt-5.5"})
+	projection := BuildOpenAIModelSubsetProjection(&OpenAIProjectionInputs{
+		Bucket:           SchedulerBucket{GroupID: groupID, Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+		CanonicalCatalog: []string{"gpt-5.5"},
+		AccountsAll:      []Account{activeTeam},
+	})
+	loadMap := map[int64]*AccountLoadInfo{
+		activeTeam.ID: {AccountID: activeTeam.ID, CurrentConcurrency: 0, LoadRate: 0},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.LBTopK = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 1
+	svc := &OpenAIGatewayService{
+		accountRepo:       stubOpenAIAccountRepo{accounts: []Account{activeTeam}},
+		cache:             &stubGatewayCache{sessionBindings: map[string]int64{}},
+		cfg:               cfg,
+		schedulerSnapshot: &SchedulerSnapshotService{cache: &openAISnapshotCacheStub{openAIState: newOpenAIBucketStateForTest([]Account{activeTeam}, 11, projection.Models)}},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{loadMap: loadMap}),
+	}
+
+	selection, decision, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"session_hash_exhausted_empty_paid_tier_reserve",
+		"gpt-5.5",
+		TargetGroupExhausted,
+		nil,
+		OpenAIUpstreamTransportAny,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, activeTeam.ID, selection.Account.ID)
+	require.Equal(t, "reserve", requireDecisionStringField(t, decision, "SelectedGroup"))
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestSelectByLoadBalance_GPT55ProjectionTreatsCaseAndSysAsEquivalent(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(13017)
+	activeTeam := newOpenAIProjectionPaidTierAccount(3117, 10, "team", []string{"gpt-5.5"})
+	activeTeam.Credentials["model_mapping"] = map[string]any{"gpt-5.5": "gpt-5.5"}
+	projection := BuildOpenAIModelSubsetProjection(&OpenAIProjectionInputs{
+		Bucket:           SchedulerBucket{GroupID: groupID, Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+		CanonicalCatalog: []string{"gpt-5.5"},
+		AccountsAll:      []Account{activeTeam},
+	})
+	loadMap := map[int64]*AccountLoadInfo{
+		activeTeam.ID: {AccountID: activeTeam.ID, CurrentConcurrency: 0, LoadRate: 0},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.LBTopK = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 1
+	svc := &OpenAIGatewayService{
+		accountRepo:       stubOpenAIAccountRepo{accounts: []Account{activeTeam}},
+		cache:             &stubGatewayCache{sessionBindings: map[string]int64{}},
+		cfg:               cfg,
+		schedulerSnapshot: &SchedulerSnapshotService{cache: &openAISnapshotCacheStub{openAIState: newOpenAIBucketStateForTest([]Account{activeTeam}, 12, projection.Models)}},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{loadMap: loadMap}),
+	}
+
+	tests := []struct {
+		name     string
+		model    string
+		target   AccountTargetGroup
+		wantGroup string
+	}{
+		{name: "active uppercase", model: "GPT-5.5", target: TargetGroupActive, wantGroup: string(TargetGroupActive)},
+		{name: "exhausted uppercase sys", model: "GPT-5.5-Sys", target: TargetGroupExhausted, wantGroup: "reserve"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			selection, decision, err := svc.SelectAccountWithScheduler(
+				ctx,
+				&groupID,
+				"",
+				"session_hash_gpt55_case_equivalent_"+tt.name,
+				tt.model,
+				tt.target,
+				nil,
+				OpenAIUpstreamTransportAny,
+			)
+			require.NoError(t, err)
+			require.NotNil(t, selection)
+			require.NotNil(t, selection.Account)
+			require.Equal(t, activeTeam.ID, selection.Account.ID)
+			require.Equal(t, tt.wantGroup, requireDecisionStringField(t, decision, "SelectedGroup"))
+			if selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+		})
+	}
+}
+
 func TestSelectByLoadBalance_ExhaustedBelowThresholdDoesNotUseReserve(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(1302)

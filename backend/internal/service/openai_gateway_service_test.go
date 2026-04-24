@@ -1164,6 +1164,30 @@ func TestOpenAIGatewayService_ListOpenAIExhaustedWithReserveOverlay_UsesProjecti
 	require.Equal(t, projectionReserve.ID, reserveAccounts[0].ID)
 }
 
+func TestOpenAIGatewayService_ListOpenAIExhaustedWithReserveOverlay_GPT55SubsetPromotesReserve(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(4225)
+	activeTeam := newOpenAIProjectionPaidTierAccount(6310, 1, "team", []string{"gpt-5.5"})
+	projection := BuildOpenAIModelSubsetProjection(&OpenAIProjectionInputs{
+		Bucket:           SchedulerBucket{GroupID: groupID, Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+		CanonicalCatalog: []string{"gpt-5.5"},
+		AccountsAll:      []Account{activeTeam},
+	})
+	snapshotCache := &openAISnapshotCacheStub{
+		openAIState: newOpenAIBucketStateForTest([]Account{activeTeam}, 11, projection.Models),
+	}
+	svc := &OpenAIGatewayService{
+		cfg:               &config.Config{},
+		schedulerSnapshot: &SchedulerSnapshotService{cache: snapshotCache},
+	}
+
+	exhaustedAccounts, reserveAccounts, err := svc.listOpenAIExhaustedWithReserveOverlay(ctx, &groupID, "gpt-5.5")
+	require.NoError(t, err)
+	require.Empty(t, exhaustedAccounts)
+	require.Len(t, reserveAccounts, 1)
+	require.Equal(t, activeTeam.ID, reserveAccounts[0].ID)
+}
+
 func TestOpenAIGatewayService_ProjectionMissFailsClosedWithoutLiveReserveFallback(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(423)

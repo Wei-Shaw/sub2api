@@ -25,6 +25,21 @@ func newOpenAIProjectionActiveAccount(id int64, concurrency int, usedPercent flo
 	}
 }
 
+func newOpenAIProjectionPaidTierAccount(id int64, concurrency int, planType string, models []string) Account {
+	return Account{
+		ID:          id,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: concurrency,
+		Credentials: map[string]any{"plan_type": planType},
+		Extra: map[string]any{
+			openAICapabilityExplicitModelsExtraKey: models,
+		},
+	}
+}
+
 func newOpenAIProjectionExhaustedAccount(id int64, concurrency int, models []string) Account {
 	return Account{
 		ID:          id,
@@ -428,6 +443,25 @@ func TestBuildOpenAIModelSubsetProjection_ExhaustedEmptyMeansOneHundredPercent(t
 	require.Empty(t, view.ExhaustedBaseIDs)
 	require.ElementsMatch(t, []int64{11}, view.ReserveOverflowIDs)
 	_, reserveOK := projection.AccountReserveIDs[11]
+	require.True(t, reserveOK)
+}
+
+func TestBuildOpenAIModelSubsetProjection_PaidTierOnlyGPT55PromotesReserve(t *testing.T) {
+	t.Parallel()
+
+	projection := BuildOpenAIModelSubsetProjection(&OpenAIProjectionInputs{
+		Bucket:           SchedulerBucket{GroupID: 2, Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+		CanonicalCatalog: []string{"gpt-5.5"},
+		AccountsAll: []Account{
+			newOpenAIProjectionPaidTierAccount(51, 1, "team", []string{"gpt-5.5"}),
+		},
+	})
+
+	view, ok := projection.ViewForModel("gpt-5.5")
+	require.True(t, ok)
+	require.Empty(t, view.ExhaustedBaseIDs)
+	require.ElementsMatch(t, []int64{51}, view.ReserveOverflowIDs)
+	_, reserveOK := projection.AccountReserveIDs[51]
 	require.True(t, reserveOK)
 }
 

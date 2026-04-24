@@ -3853,7 +3853,7 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 			deleteOpenAIWSResponseAffinityBinding(ctx, store, derefGroupID(groupID), responseID)
 			affinityBinding = nil
 		}
-		selectedGroup = projectionView.selectedGroupForAccount(accountID)
+		selectedGroup = projectionView.selectedGroupForTarget(accountID, targetGroup)
 		switch targetGroup {
 		case TargetGroupExhausted:
 			if selectedGroup != openAISelectedGroupReserve && selectedGroup != string(TargetGroupExhausted) {

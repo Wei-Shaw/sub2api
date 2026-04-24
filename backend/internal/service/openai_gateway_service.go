@@ -1746,6 +1746,14 @@ func (r *openAIProjectionViewResult) selectedGroupForAccount(accountID int64) st
 	return string(TargetGroupActive)
 }
 
+func (r *openAIProjectionViewResult) selectedGroupForTarget(accountID int64, targetGroup AccountTargetGroup) string {
+	selectedGroup := r.selectedGroupForAccount(accountID)
+	if r != nil && normalizeTargetGroup(targetGroup) != TargetGroupExhausted && selectedGroup == openAISelectedGroupReserve && len(r.view.ExhaustedBaseIDs) == 0 {
+		return string(TargetGroupActive)
+	}
+	return selectedGroup
+}
+
 func (r *openAIProjectionViewResult) bindingMatches(binding *openAIAffinityBinding) bool {
 	if r == nil || binding == nil {
 		return false
@@ -1983,6 +1991,25 @@ func buildOpenAIReserveCandidatePool(accounts []Account) []Account {
 	return pool
 }
 
+func buildOpenAIModelSubsetReserveCandidatePool(accounts []Account) []Account {
+	pool := make([]Account, 0, len(accounts))
+	for _, account := range accounts {
+		if !account.IsOpenAI() || !account.IsSchedulableForTargetGroup(TargetGroupActive) {
+			continue
+		}
+		pool = append(pool, account)
+	}
+	sort.SliceStable(pool, func(i, j int) bool {
+		iScore := pool[i].OpenAIRemainingQuotaScore()
+		jScore := pool[j].OpenAIRemainingQuotaScore()
+		if iScore != jScore {
+			return iScore > jScore
+		}
+		return pool[i].ID < pool[j].ID
+	})
+	return pool
+}
+
 func calculateOpenAIConcurrentCapacity(accounts []Account) int {
 	total := 0
 	for _, account := range accounts {
@@ -2028,6 +2055,9 @@ func buildOpenAIReservePool(activeAccounts []Account, exhaustedAccounts []Accoun
 
 func buildOpenAIReserveOverflowPool(activeAccounts []Account, exhaustedAccounts []Account) []Account {
 	reserveCandidates := buildOpenAIReserveCandidatePool(activeAccounts)
+	if len(reserveCandidates) == 0 {
+		reserveCandidates = buildOpenAIModelSubsetReserveCandidatePool(activeAccounts)
+	}
 	if len(reserveCandidates) == 0 {
 		return nil
 	}
