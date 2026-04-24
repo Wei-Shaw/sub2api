@@ -99,6 +99,22 @@ func (c *openAIBucketStateCacheRecorder) SetOutboxWatermark(ctx context.Context,
 	return nil
 }
 
+type mixedReadOpenAIAccountRepo struct {
+	stubOpenAIAccountRepo
+	projectionAccounts []Account
+	broadAccounts      []Account
+	schedulableCalls   int
+}
+
+func (r *mixedReadOpenAIAccountRepo) ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]Account, error) {
+	r.schedulableCalls++
+	return append([]Account(nil), r.projectionAccounts...), nil
+}
+
+func (r *mixedReadOpenAIAccountRepo) ListByGroup(ctx context.Context, groupID int64) ([]Account, error) {
+	return append([]Account(nil), r.broadAccounts...), nil
+}
+
 func TestOpenAIModelSubsetProjectionIntegration_RebuildBucketPublishesSingleBundle(t *testing.T) {
 	cache := &openAIBucketStateCacheRecorder{}
 	svc := NewSchedulerSnapshotService(
@@ -128,6 +144,28 @@ func TestOpenAIModelSubsetProjectionIntegration_RebuildBucketPublishesSingleBund
 	require.NotNil(t, cache.openAIState.Projection)
 	require.Equal(t, cache.assignedVersion, cache.openAIState.ProjectionVersion)
 	require.True(t, cache.openAIState.BuiltAt.Equal(cache.assignedBuiltAt))
+}
+
+func TestOpenAIModelSubsetProjectionIntegration_PublishBucketSnapshotUsesSamePrimarySnapshotForAccountsAndProjection(t *testing.T) {
+	bucket := SchedulerBucket{GroupID: 2, Platform: PlatformOpenAI, Mode: SchedulerModeSingle}
+	primaryAccounts := []Account{newOpenAIProjectionExhaustedAccount(1, 1, []string{"gpt-5.4"})}
+	repo := &mixedReadOpenAIAccountRepo{
+		projectionAccounts: []Account{newOpenAIProjectionExhaustedAccount(2, 1, []string{"gpt-5.4"})},
+		broadAccounts:      append([]Account(nil), primaryAccounts...),
+	}
+	cache := &openAIBucketStateCacheRecorder{}
+	svc := NewSchedulerSnapshotService(cache, nil, repo, nil, nil)
+
+	require.NoError(t, svc.publishBucketSnapshot(context.Background(), bucket, primaryAccounts))
+	require.Zero(t, repo.schedulableCalls)
+	require.NotNil(t, cache.openAIState)
+	require.Len(t, cache.openAIState.Accounts, 1)
+	require.Equal(t, int64(1), cache.openAIState.Accounts[0].ID)
+
+	view, ok := cache.openAIState.Projection.ViewForModel("gpt-5.4")
+	require.True(t, ok)
+	require.Equal(t, []int64{1}, view.ExhaustedBaseIDs)
+	require.Empty(t, view.ReserveOverflowIDs)
 }
 
 func TestOpenAIModelSubsetProjectionIntegration_ListSchedulableAccountsPublishesBundleOnFallback(t *testing.T) {

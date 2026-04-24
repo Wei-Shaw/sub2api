@@ -690,6 +690,14 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 }
 
 func (s *SchedulerSnapshotService) loadOpenAIProjectionInputs(ctx context.Context, bucket SchedulerBucket) (*OpenAIProjectionInputs, error) {
+	accounts, err := s.loadAccountsFromDB(ctx, bucket, bucket.Mode == SchedulerModeMixed)
+	if err != nil {
+		return nil, err
+	}
+	return s.buildOpenAIProjectionInputs(ctx, bucket, accounts)
+}
+
+func (s *SchedulerSnapshotService) buildOpenAIProjectionInputs(ctx context.Context, bucket SchedulerBucket, primaryAccounts []Account) (*OpenAIProjectionInputs, error) {
 	inputs := &OpenAIProjectionInputs{
 		Bucket:            bucket,
 		ExhaustedBroadIDs: make(map[int64]struct{}),
@@ -702,16 +710,12 @@ func (s *SchedulerSnapshotService) loadOpenAIProjectionInputs(ctx context.Contex
 		return inputs, nil
 	}
 
-	accounts, err := s.loadAccountsFromDB(ctx, bucket, bucket.Mode == SchedulerModeMixed)
-	if err != nil {
-		return nil, err
-	}
 	broad, err := s.loadOpenAIProjectionBroadSource(ctx, bucket)
 	if err != nil {
 		return nil, err
 	}
 
-	merged, exhaustedBroadIDs := mergeOpenAIExhaustedAccountsFromBroadSource(accounts, broad)
+	merged, exhaustedBroadIDs := mergeOpenAIExhaustedAccountsFromBroadSource(primaryAccounts, broad)
 	inputs.AccountsAll = merged
 	inputs.ExhaustedBroadIDs = exhaustedBroadIDs
 	inputs.CanonicalCatalog = BuildOpenAICanonicalModelCatalog(merged, nil, nil)
@@ -769,7 +773,8 @@ func (s *SchedulerSnapshotService) publishBucketSnapshot(ctx context.Context, bu
 		return s.cache.SetSnapshot(ctx, bucket, accounts)
 	}
 
-	inputs, err := s.loadOpenAIProjectionInputs(ctx, bucket)
+	// The bundle's Accounts and Projection must come from the same primary snapshot.
+	inputs, err := s.buildOpenAIProjectionInputs(ctx, bucket, accounts)
 	if err != nil {
 		return err
 	}
