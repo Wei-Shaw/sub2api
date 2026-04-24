@@ -86,3 +86,72 @@ func TestSchedulerCacheSnapshotUsesSlimMetadataButKeepsFullAccount(t *testing.T)
 	require.Equal(t, "secret-access-token", full.GetCredential("access_token"))
 	require.Equal(t, strings.Repeat("x", 4096), full.GetCredential("huge_blob"))
 }
+
+func TestSchedulerCache_OpenAIBucketStatePublishesAtomically(t *testing.T) {
+	ctx := context.Background()
+	rdb := testRedis(t)
+	cache := NewSchedulerCache(rdb)
+	bucket := service.SchedulerBucket{GroupID: 2, Platform: service.PlatformOpenAI, Mode: service.SchedulerModeSingle}
+
+	stateV1 := &service.OpenAISchedulerBucketState{
+		Accounts: []*service.Account{{
+			ID:          201,
+			Platform:    service.PlatformOpenAI,
+			Type:        service.AccountTypeAPIKey,
+			Status:      service.StatusActive,
+			Schedulable: true,
+			Credentials: map[string]any{"model_mapping": map[string]any{"gpt-5.4": "gpt-5.4"}},
+		}},
+		Projection: &service.OpenAIModelSubsetProjection{
+			Bucket:            bucket,
+			AccountReserveIDs: map[int64]struct{}{},
+			Models: map[string]service.OpenAIModelRoleView{
+				"gpt-5.4": {CanonicalModel: "gpt-5.4", ExhaustedBaseIDs: []int64{201}},
+			},
+		},
+	}
+	require.NoError(t, cache.SetOpenAIBucketState(ctx, bucket, stateV1))
+
+	gotV1, hit, err := cache.GetOpenAIBucketState(ctx, bucket)
+	require.NoError(t, err)
+	require.True(t, hit)
+	require.NotNil(t, gotV1)
+	require.Equal(t, int64(201), gotV1.Accounts[0].ID)
+	require.Greater(t, gotV1.ProjectionVersion, int64(0))
+	require.False(t, gotV1.BuiltAt.IsZero())
+
+	stateV2 := &service.OpenAISchedulerBucketState{
+		Accounts: []*service.Account{{
+			ID:          202,
+			Platform:    service.PlatformOpenAI,
+			Type:        service.AccountTypeAPIKey,
+			Status:      service.StatusActive,
+			Schedulable: true,
+			Credentials: map[string]any{"model_mapping": map[string]any{"gpt-5.5": "gpt-5.5"}},
+		}},
+		Projection: &service.OpenAIModelSubsetProjection{
+			Bucket:            bucket,
+			AccountReserveIDs: map[int64]struct{}{202: {}},
+			Models: map[string]service.OpenAIModelRoleView{
+				"gpt-5.5": {CanonicalModel: "gpt-5.5", ReserveOverflowIDs: []int64{202}},
+			},
+		},
+	}
+	require.NoError(t, cache.SetOpenAIBucketState(ctx, bucket, stateV2))
+
+	gotV2, hit, err := cache.GetOpenAIBucketState(ctx, bucket)
+	require.NoError(t, err)
+	require.True(t, hit)
+	require.NotNil(t, gotV2)
+	require.Equal(t, int64(202), gotV2.Accounts[0].ID)
+	view, ok := gotV2.Projection.ViewForModel("gpt-5.5")
+	require.True(t, ok)
+	require.Equal(t, []int64{202}, view.ReserveOverflowIDs)
+	require.Greater(t, gotV2.ProjectionVersion, gotV1.ProjectionVersion)
+
+	snapshot, hit, err := cache.GetSnapshot(ctx, bucket)
+	require.NoError(t, err)
+	require.True(t, hit)
+	require.Len(t, snapshot, 1)
+	require.Equal(t, int64(202), snapshot[0].ID)
+}

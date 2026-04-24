@@ -130,6 +130,15 @@ func storeOpenAIRoutingSnapshot(c *gin.Context, input service.OpenAIRoutingSnaps
 		existing.SelectedGroup = built.SelectedGroup
 		existing.ScheduleLayer = built.ScheduleLayer
 		existing.Sticky = built.Sticky
+		if built.ProjectionVersion > 0 {
+			existing.ProjectionVersion = built.ProjectionVersion
+		}
+		if strings.TrimSpace(built.ProjectionModelKey) != "" {
+			existing.ProjectionModelKey = built.ProjectionModelKey
+		}
+		if !built.ProjectionBuiltAt.IsZero() {
+			existing.ProjectionBuiltAt = built.ProjectionBuiltAt
+		}
 		existing.SelectedAccountID = built.SelectedAccountID
 		existing.SelectedAccountName = built.SelectedAccountName
 		existing.RequestedModel = built.RequestedModel
@@ -152,13 +161,16 @@ func storeOpenAIRoutingSnapshotFromDecision(
 	effectiveModel string,
 ) *service.OpenAIRoutingSnapshot {
 	input := service.OpenAIRoutingSnapshotInput{
-		TargetGroup:    targetGroup,
-		SelectedGroup:  scheduleDecision.SelectedGroup,
-		ScheduleLayer:  scheduleDecision.Layer,
-		Sticky:         scheduleDecision.Sticky,
-		Account:        account,
-		RequestedModel: requestedModel,
-		EffectiveModel: effectiveModel,
+		TargetGroup:        targetGroup,
+		SelectedGroup:      scheduleDecision.SelectedGroup,
+		ScheduleLayer:      scheduleDecision.Layer,
+		Sticky:             scheduleDecision.Sticky,
+		ProjectionVersion:  scheduleDecision.ProjectionVersion,
+		ProjectionModelKey: scheduleDecision.ProjectionModelKey,
+		ProjectionBuiltAt:  scheduleDecision.ProjectionBuiltAt,
+		Account:            account,
+		RequestedModel:     requestedModel,
+		EffectiveModel:     effectiveModel,
 	}
 	return storeOpenAIRoutingSnapshot(c, input)
 }

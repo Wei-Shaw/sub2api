@@ -19,11 +19,28 @@ type openAISnapshotCacheStub struct {
 	SchedulerCache
 	snapshotAccounts []*Account
 	accountsByID     map[int64]*Account
+	openAIState      *OpenAISchedulerBucketState
+	openAIStateMiss  bool
+	getAccountCalls  int
 }
 
 func (s *openAISnapshotCacheStub) GetSnapshot(ctx context.Context, bucket SchedulerBucket) ([]*Account, bool, error) {
 	if len(s.snapshotAccounts) == 0 {
-		return nil, false, nil
+		if s.openAIState == nil {
+			return nil, false, nil
+		}
+		out := make([]*Account, 0, len(s.openAIState.Accounts))
+		for _, account := range s.openAIState.Accounts {
+			if account == nil {
+				continue
+			}
+			cloned := *account
+			out = append(out, &cloned)
+		}
+		if len(out) == 0 {
+			return nil, false, nil
+		}
+		return out, true, nil
 	}
 	out := make([]*Account, 0, len(s.snapshotAccounts))
 	for _, account := range s.snapshotAccounts {
@@ -36,8 +53,25 @@ func (s *openAISnapshotCacheStub) GetSnapshot(ctx context.Context, bucket Schedu
 	return out, true, nil
 }
 
+func (s *openAISnapshotCacheStub) GetOpenAIBucketState(ctx context.Context, bucket SchedulerBucket) (*OpenAISchedulerBucketState, bool, error) {
+	if s.openAIStateMiss || s.openAIState == nil {
+		return nil, false, nil
+	}
+	return s.openAIState, true, nil
+}
+
 func (s *openAISnapshotCacheStub) GetAccount(ctx context.Context, accountID int64) (*Account, error) {
+	s.getAccountCalls++
 	if s.accountsByID == nil {
+		if s.openAIState == nil {
+			return nil, nil
+		}
+		for _, account := range s.openAIState.Accounts {
+			if account != nil && account.ID == accountID {
+				cloned := *account
+				return &cloned, nil
+			}
+		}
 		return nil, nil
 	}
 	account := s.accountsByID[accountID]
@@ -1722,6 +1756,71 @@ func TestSelectByLoadBalance_TargetGroupActiveNeverSelectsReserve(t *testing.T) 
 	}
 }
 
+func TestSelectByLoadBalance_TargetGroupAnyStillRejectsOverlayReserveFromProjection(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(13070)
+	overlayReserve := Account{
+		ID:          37041,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 4,
+		Credentials: map[string]any{"model_mapping": map[string]any{"gpt-5.6": "gpt-5.6"}},
+	}
+	activeAccount := Account{
+		ID:          37042,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 4,
+		Credentials: map[string]any{"model_mapping": map[string]any{"gpt-5.6": "gpt-5.6"}},
+	}
+	snapshotCache := &openAISnapshotCacheStub{
+		snapshotAccounts: []*Account{&overlayReserve, &activeAccount},
+		openAIState: newOpenAIBucketStateForTest([]Account{overlayReserve, activeAccount}, 7, map[string]OpenAIModelRoleView{
+			"gpt-5.6": {
+				CanonicalModel:     "gpt-5.6",
+				ReserveOverflowIDs: []int64{overlayReserve.ID},
+			},
+		}),
+	}
+	loadMap := map[int64]*AccountLoadInfo{
+		overlayReserve.ID: {AccountID: overlayReserve.ID, CurrentConcurrency: 0, LoadRate: 0},
+		activeAccount.ID:  {AccountID: activeAccount.ID, CurrentConcurrency: 0, LoadRate: 10},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.LBTopK = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 1
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{overlayReserve, activeAccount}},
+		cache:              &stubGatewayCache{sessionBindings: map[string]int64{}},
+		cfg:                cfg,
+		schedulerSnapshot:  &SchedulerSnapshotService{cache: snapshotCache},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{loadMap: loadMap}),
+	}
+
+	selection, decision, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"session_hash_projection_overlay_reject",
+		"gpt-5.6",
+		TargetGroupAny,
+		nil,
+		OpenAIUpstreamTransportAny,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, activeAccount.ID, selection.Account.ID)
+	require.Equal(t, string(TargetGroupActive), requireDecisionStringField(t, decision, "SelectedGroup"))
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
 func TestSelectByLoadBalance_ReserveSelectedGroupWritesSharedAndAffinitySticky(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(1308)
@@ -1850,6 +1949,74 @@ func TestStickyReserveBindingStillMatchesExhaustedClass(t *testing.T) {
 	require.Equal(t, string(TargetGroupExhausted), requireStickyAffinityBindingStringField(t, decision, "AffinityDomain"))
 	require.Equal(t, openAISelectedGroupReserve, requireStickyAffinityBindingStringField(t, decision, "SelectedGroup"))
 	require.Equal(t, int64(3932), sharedCache.sessionBindings["openai:"+sessionHash])
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestStickyReserveBinding_ProjectionVersionMismatchRebinds(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(13170)
+	sessionHash := "session_hash_projection_version_mismatch"
+	exhaustedAccount := newOpenAIExhaustedAccountForTest(39341, 10)
+	exhaustedAccount.Credentials["model_mapping"] = map[string]any{"gpt-5.4": "gpt-5.4"}
+	reserveAccount := newOpenAIReserveCandidateAccountForTest(39342, 10, 20)
+	reserveAccount.Credentials["model_mapping"] = map[string]any{"gpt-5.4": "gpt-5.4"}
+	snapshotCache := &openAISnapshotCacheStub{
+		snapshotAccounts: []*Account{&reserveAccount},
+		accountsByID: map[int64]*Account{
+			exhaustedAccount.ID: &exhaustedAccount,
+			reserveAccount.ID:   &reserveAccount,
+		},
+		openAIState: newOpenAIBucketStateForTest([]Account{exhaustedAccount, reserveAccount}, 2, map[string]OpenAIModelRoleView{
+			"gpt-5.4": {
+				CanonicalModel:   "gpt-5.4",
+				ExhaustedBaseIDs: []int64{exhaustedAccount.ID},
+			},
+		}),
+	}
+	sharedCache := newOpenAIAffinityGatewayCacheStub()
+	sharedCache.sessionBindings["openai:"+sessionHash] = reserveAccount.ID
+	sharedCache.setAffinityBinding(t, openAIStickyAffinityBindingNamespace, groupID, "openai:"+sessionHash, &openAIAffinityBinding{
+		BoundAccountID:   reserveAccount.ID,
+		AffinityDomain:   string(TargetGroupExhausted),
+		SelectedGroup:    openAISelectedGroupReserve,
+		ProjectionVersion: 1,
+		ProjectionModelKey: "gpt-5.4",
+	}, time.Hour)
+	loadMap := map[int64]*AccountLoadInfo{
+		exhaustedAccount.ID: {AccountID: exhaustedAccount.ID, CurrentConcurrency: 1, LoadRate: 10},
+		reserveAccount.ID:   {AccountID: reserveAccount.ID, CurrentConcurrency: 0, LoadRate: 0},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.LBTopK = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 1
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{exhaustedAccount, reserveAccount}},
+		cache:              sharedCache,
+		cfg:                cfg,
+		schedulerSnapshot:  &SchedulerSnapshotService{cache: snapshotCache},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{loadMap: loadMap}),
+	}
+
+	selection, decision, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		sessionHash,
+		"gpt-5.4",
+		TargetGroupExhausted,
+		nil,
+		OpenAIUpstreamTransportAny,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, exhaustedAccount.ID, selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	require.Equal(t, string(TargetGroupExhausted), requireDecisionStringField(t, decision, "SelectedGroup"))
+	require.Equal(t, exhaustedAccount.ID, sharedCache.sessionBindings["openai:"+sessionHash])
+	require.False(t, sharedCache.hasAffinityBinding(openAIStickyAffinityBindingNamespace, groupID, "openai:"+sessionHash))
 	if selection.ReleaseFunc != nil {
 		selection.ReleaseFunc()
 	}
@@ -2061,6 +2228,69 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseNonOver
 	}
 }
 
+func TestPreviousResponseNonOverlayReserveCandidateStillAcceptedForAny(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(13171)
+	sessionHash := "session_hash_prev_projection_any_non_overlay"
+	responseID := "resp_prev_projection_any_non_overlay"
+	exhaustedBase := newOpenAIExhaustedAccountForTest(39350, 1)
+	exhaustedBase.Credentials["model_mapping"] = map[string]any{"gpt-4.1": "gpt-4.1"}
+	activeReserve := newOpenAIReserveCandidateAccountForTest(39351, 1, 20)
+	activeReserve.Credentials["model_mapping"] = map[string]any{"gpt-5.1": "gpt-5.1"}
+	activeAccount := Account{ID: 39352, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Credentials: map[string]any{"model_mapping": map[string]any{"gpt-5.1": "gpt-5.1"}}}
+	snapshotCache := &openAISnapshotCacheStub{
+		snapshotAccounts: []*Account{&exhaustedBase, &activeReserve, &activeAccount},
+		accountsByID: map[int64]*Account{
+			exhaustedBase.ID: &exhaustedBase,
+			activeReserve.ID: &activeReserve,
+			activeAccount.ID: &activeAccount,
+		},
+		openAIState: newOpenAIBucketStateForTest([]Account{exhaustedBase, activeReserve, activeAccount}, 8, map[string]OpenAIModelRoleView{
+			"gpt-5.1": {
+				CanonicalModel: "gpt-5.1",
+			},
+		}),
+	}
+	cache := &stubGatewayCache{sessionBindings: map[string]int64{}}
+	cfg := newOpenAIWSV2TestConfig()
+	cfg.Gateway.OpenAIWS.LBTopK = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 1
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{exhaustedBase, activeReserve, activeAccount}},
+		cache:              cache,
+		cfg:                cfg,
+		schedulerSnapshot:  &SchedulerSnapshotService{cache: snapshotCache},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{loadMap: map[int64]*AccountLoadInfo{39350: {AccountID: 39350, LoadRate: 90}, 39351: {AccountID: 39351, LoadRate: 40}, 39352: {AccountID: 39352, LoadRate: 10}}}),
+	}
+	store := svc.getOpenAIWSStateStore()
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, responseID, activeReserve.ID, time.Hour))
+
+	selection, decision, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		responseID,
+		sessionHash,
+		"gpt-5.1",
+		TargetGroupAny,
+		nil,
+		OpenAIUpstreamTransportAny,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, activeReserve.ID, selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerPreviousResponse, decision.Layer)
+	require.True(t, decision.StickyPreviousHit)
+	require.Equal(t, string(TargetGroupActive), requireDecisionStringField(t, decision, "SelectedGroup"))
+	require.Equal(t, activeReserve.ID, cache.sessionBindings["openai:"+sessionHash])
+	accountID, getErr := store.GetResponseAccount(ctx, groupID, responseID)
+	require.NoError(t, getErr)
+	require.Equal(t, activeReserve.ID, accountID)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
 func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseReserveRejectedForActive(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(1314)
@@ -2172,6 +2402,69 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseNonOver
 	require.Equal(t, "active", requireDecisionStringField(t, decision, "SelectedGroup"))
 	require.Equal(t, activeReserve.ID, cache.sessionBindings["openai:"+sessionHash])
 	accountID, getErr := store.GetResponseAccount(ctx, groupID, "resp_prev_active_non_overlay")
+	require.NoError(t, getErr)
+	require.Equal(t, activeReserve.ID, accountID)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestPreviousResponseNonOverlayReserveCandidateStillAcceptedForActive(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(13172)
+	sessionHash := "session_hash_prev_projection_active_non_overlay"
+	responseID := "resp_prev_projection_active_non_overlay"
+	exhaustedBase := newOpenAIExhaustedAccountForTest(39360, 1)
+	exhaustedBase.Credentials["model_mapping"] = map[string]any{"gpt-4.1": "gpt-4.1"}
+	activeReserve := newOpenAIReserveCandidateAccountForTest(39361, 1, 20)
+	activeReserve.Credentials["model_mapping"] = map[string]any{"gpt-5.1": "gpt-5.1"}
+	activeAccount := Account{ID: 39362, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Credentials: map[string]any{"model_mapping": map[string]any{"gpt-5.1": "gpt-5.1"}}}
+	snapshotCache := &openAISnapshotCacheStub{
+		snapshotAccounts: []*Account{&exhaustedBase, &activeReserve, &activeAccount},
+		accountsByID: map[int64]*Account{
+			exhaustedBase.ID: &exhaustedBase,
+			activeReserve.ID: &activeReserve,
+			activeAccount.ID: &activeAccount,
+		},
+		openAIState: newOpenAIBucketStateForTest([]Account{exhaustedBase, activeReserve, activeAccount}, 9, map[string]OpenAIModelRoleView{
+			"gpt-5.1": {
+				CanonicalModel: "gpt-5.1",
+			},
+		}),
+	}
+	cache := &stubGatewayCache{sessionBindings: map[string]int64{}}
+	cfg := newOpenAIWSV2TestConfig()
+	cfg.Gateway.OpenAIWS.LBTopK = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 1
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{exhaustedBase, activeReserve, activeAccount}},
+		cache:              cache,
+		cfg:                cfg,
+		schedulerSnapshot:  &SchedulerSnapshotService{cache: snapshotCache},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{loadMap: map[int64]*AccountLoadInfo{39360: {AccountID: 39360, LoadRate: 90}, 39361: {AccountID: 39361, LoadRate: 40}, 39362: {AccountID: 39362, LoadRate: 10}}}),
+	}
+	store := svc.getOpenAIWSStateStore()
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, responseID, activeReserve.ID, time.Hour))
+
+	selection, decision, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		responseID,
+		sessionHash,
+		"gpt-5.1",
+		TargetGroupActive,
+		nil,
+		OpenAIUpstreamTransportAny,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, activeReserve.ID, selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerPreviousResponse, decision.Layer)
+	require.True(t, decision.StickyPreviousHit)
+	require.Equal(t, string(TargetGroupActive), requireDecisionStringField(t, decision, "SelectedGroup"))
+	require.Equal(t, activeReserve.ID, cache.sessionBindings["openai:"+sessionHash])
+	accountID, getErr := store.GetResponseAccount(ctx, groupID, responseID)
 	require.NoError(t, getErr)
 	require.Equal(t, activeReserve.ID, accountID)
 	if selection.ReleaseFunc != nil {
@@ -2764,11 +3057,65 @@ func newOpenAIReserveSelectionServiceForTest(accounts []Account, loadMap map[int
 	cfg := &config.Config{}
 	cfg.Gateway.OpenAIWS.LBTopK = 1
 	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 1
+	exhaustedAccounts := make([]Account, 0, len(accounts))
+	activeAccounts := make([]Account, 0, len(accounts))
+	accountPtrs := make([]*Account, 0, len(accounts))
+	accountsByID := make(map[int64]*Account, len(accounts))
+	for i := range accounts {
+		cloned := accounts[i]
+		accountPtrs = append(accountPtrs, &cloned)
+		accountsByID[cloned.ID] = &cloned
+		if cloned.MatchesTargetGroup(TargetGroupExhausted) {
+			exhaustedAccounts = append(exhaustedAccounts, cloned)
+			continue
+		}
+		activeAccounts = append(activeAccounts, cloned)
+	}
+	projectionState := newOpenAIBucketStateForTest(accounts, 1, map[string]OpenAIModelRoleView{
+		"gpt-5.1": {
+			CanonicalModel:     "gpt-5.1",
+			ExhaustedBaseIDs:   sortedOpenAIProjectionIDs(exhaustedAccounts),
+			ReserveOverflowIDs: sortedOpenAIProjectionIDs(buildOpenAIReserveOverflowPool(activeAccounts, exhaustedAccounts)),
+		},
+	})
 	return &OpenAIGatewayService{
 		accountRepo:        stubOpenAIAccountRepo{accounts: accounts},
 		cache:              &stubGatewayCache{sessionBindings: map[string]int64{}},
 		cfg:                cfg,
+		schedulerSnapshot:  &SchedulerSnapshotService{cache: &openAISnapshotCacheStub{snapshotAccounts: accountPtrs, accountsByID: accountsByID, openAIState: projectionState}},
 		concurrencyService: NewConcurrencyService(stubConcurrencyCache{loadMap: loadMap}),
+	}
+}
+
+func newOpenAIBucketStateForTest(accounts []Account, projectionVersion int64, models map[string]OpenAIModelRoleView) *OpenAISchedulerBucketState {
+	accountPtrs := make([]*Account, 0, len(accounts))
+	for i := range accounts {
+		cloned := accounts[i]
+		accountPtrs = append(accountPtrs, &cloned)
+	}
+	projectionModels := make(map[string]OpenAIModelRoleView, len(models))
+	accountReserveIDs := make(map[int64]struct{})
+	for model, view := range models {
+		canonical := NormalizeOpenAIProjectionModelKey(model)
+		if canonical == "" {
+			continue
+		}
+		view.CanonicalModel = canonical
+		projectionModels[canonical] = view
+		for _, accountID := range view.ReserveOverflowIDs {
+			accountReserveIDs[accountID] = struct{}{}
+		}
+	}
+	return &OpenAISchedulerBucketState{
+		Accounts:           accountPtrs,
+		ProjectionAccounts: append([]*Account(nil), accountPtrs...),
+		Projection: &OpenAIModelSubsetProjection{
+			Bucket:            SchedulerBucket{Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+			AccountReserveIDs: accountReserveIDs,
+			Models:            projectionModels,
+		},
+		ProjectionVersion: projectionVersion,
+		BuiltAt:           time.Unix(1_716_000_000, 0).UTC(),
 	}
 }
 

@@ -126,6 +126,146 @@ func TestPreviousResponseReserveBindingStillMatchesExhaustedClass(t *testing.T) 
 	require.Equal(t, string(TargetGroupExhausted), selection.SelectedGroup)
 }
 
+func TestPreviousResponseReserveBindingReadsSameProjectionKeyAsSysModel(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(280)
+	responseID := "resp_prev_reserve_projection_sys"
+	reserveAccount := Account{
+		ID:          340,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"plan_type":      "free",
+			"model_mapping": map[string]any{"gpt-5.4": "gpt-5.4"},
+		},
+		Extra: map[string]any{
+			"codex_7d_used_percent":                        20.0,
+			"openai_oauth_responses_websockets_v2_enabled": true,
+		},
+	}
+	snapshotCache := &openAISnapshotCacheStub{
+		accountsByID: map[int64]*Account{reserveAccount.ID: &reserveAccount},
+		openAIState: newOpenAIBucketStateForTest([]Account{reserveAccount}, 7, map[string]OpenAIModelRoleView{
+			"gpt-5.4": {
+				CanonicalModel:     "gpt-5.4",
+				ReserveOverflowIDs: []int64{reserveAccount.ID},
+			},
+		}),
+	}
+	cache := newOpenAIAffinityGatewayCacheStub()
+	store := NewOpenAIWSStateStore(cache)
+	cfg := newOpenAIWSV2TestConfig()
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{reserveAccount}},
+		cache:              cache,
+		cfg:                cfg,
+		schedulerSnapshot:  &SchedulerSnapshotService{cache: snapshotCache},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+		openaiWSStateStore: store,
+	}
+	binding := &openAIAffinityBinding{
+		BoundAccountID:    reserveAccount.ID,
+		AffinityDomain:    string(TargetGroupExhausted),
+		SelectedGroup:     openAISelectedGroupReserve,
+		ProjectionVersion: 7,
+		ProjectionModelKey: "gpt-5.4",
+	}
+
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, responseID, reserveAccount.ID, time.Hour))
+	cache.setAffinityBinding(t, openAIResponseAffinityBindingNamespace, groupID, responseID, binding, time.Hour)
+
+	selection, selectedBinding, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, responseID, "gpt-5.4-Sys", TargetGroupExhausted, nil)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, reserveAccount.ID, selection.Account.ID)
+	require.NotNil(t, selectedBinding)
+	require.Equal(t, openAISelectedGroupReserve, selectedBinding.SelectedGroup)
+	require.Equal(t, int64(7), selectedBinding.ProjectionVersion)
+	require.Equal(t, "gpt-5.4", selectedBinding.ProjectionModelKey)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestStickyReserveBinding_RebindsOnProjectionVersionChange(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(281)
+	sessionHash := "session_hash_projection_rebind"
+	cache := newOpenAIAffinityGatewayCacheStub()
+	svc := &OpenAIGatewayService{cache: cache}
+	cache.setAffinityBinding(t, openAIStickyAffinityBindingNamespace, groupID, "openai:"+sessionHash, &openAIAffinityBinding{
+		BoundAccountID:    340,
+		AffinityDomain:    string(TargetGroupExhausted),
+		SelectedGroup:     openAISelectedGroupReserve,
+		ProjectionVersion: 7,
+		ProjectionModelKey: "gpt-5.4",
+		ProjectionBuiltAt: ptrTime(time.Unix(1_716_000_000, 0).UTC()),
+	}, time.Hour)
+
+	require.NoError(t, svc.BindOpenAIStickySession(ctx, &groupID, sessionHash, 340, openAISelectedGroupReserve))
+
+	binding := cache.mustGetAffinityBinding(t, openAIStickyAffinityBindingNamespace, groupID, "openai:"+sessionHash)
+	require.Equal(t, int64(340), binding.BoundAccountID)
+	require.Equal(t, string(TargetGroupExhausted), binding.AffinityDomain)
+	require.Equal(t, openAISelectedGroupReserve, binding.SelectedGroup)
+	require.Zero(t, binding.ProjectionVersion)
+	require.Empty(t, binding.ProjectionModelKey)
+	require.Nil(t, binding.ProjectionBuiltAt)
+}
+
+func TestPreviousResponseReserveBinding_InvalidatesWhenProjectionVersionChanges(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(282)
+	responseID := "resp_prev_projection_version_invalidated"
+	account := Account{
+		ID:          341,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"plan_type":     "free",
+			"model_mapping": map[string]any{"gpt-5.4": "gpt-5.4"},
+		},
+		Extra: map[string]any{
+			"codex_7d_used_percent":                        20.0,
+			"openai_oauth_responses_websockets_v2_enabled": true,
+		},
+	}
+	snapshotCache := &openAISnapshotCacheStub{
+		accountsByID: map[int64]*Account{account.ID: &account},
+		openAIState: newOpenAIBucketStateForTest([]Account{account}, 8, map[string]OpenAIModelRoleView{
+			"gpt-5.4": {
+				CanonicalModel:     "gpt-5.4",
+				ReserveOverflowIDs: []int64{account.ID},
+			},
+		}),
+	}
+	cache := newOpenAIAffinityGatewayCacheStub()
+	store := NewOpenAIWSStateStore(cache)
+	svc := &OpenAIGatewayService{
+		cache:              cache,
+		schedulerSnapshot:  &SchedulerSnapshotService{cache: snapshotCache},
+		openaiWSStateStore: store,
+	}
+
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, responseID, account.ID, time.Hour))
+	cache.setAffinityBinding(t, openAIResponseAffinityBindingNamespace, groupID, responseID, &openAIAffinityBinding{
+		BoundAccountID:    account.ID,
+		AffinityDomain:    string(TargetGroupExhausted),
+		SelectedGroup:     openAISelectedGroupReserve,
+		ProjectionVersion: 7,
+		ProjectionModelKey: "gpt-5.4",
+	}, time.Hour)
+
+	require.False(t, svc.isOpenAIReservePreviousResponseAnchor(ctx, &groupID, "gpt-5.4", responseID))
+}
+
 func TestResponseAffinityBindingSyncsTTLAndDelete(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(29)

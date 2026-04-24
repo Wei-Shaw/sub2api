@@ -19,6 +19,27 @@ func NormalizeOpenAICompatRequestedModel(model string) string {
 	return normalized
 }
 
+func NormalizeOpenAIProjectionModelKey(model string) string {
+	trimmed := strings.TrimSpace(StripSysSuffix(model))
+	if trimmed == "" {
+		return ""
+	}
+
+	modelID := openAICompatModelID(trimmed)
+	if modelID == "" {
+		return ""
+	}
+	if mapped := getNormalizedCodexModel(modelID); mapped != "" {
+		return mapped
+	}
+	if baseModel, _, ok := splitOpenAICompatReasoningBaseModel(modelID); ok {
+		if mapped := getNormalizedCodexModel(baseModel); mapped != "" {
+			return mapped
+		}
+	}
+	return strings.ToLower(strings.TrimSpace(modelID))
+}
+
 func applyOpenAICompatModelNormalization(req *apicompat.AnthropicRequest) {
 	if req == nil {
 		return
@@ -50,45 +71,74 @@ func applyOpenAICompatModelNormalization(req *apicompat.AnthropicRequest) {
 }
 
 func splitOpenAICompatReasoningModel(model string) (normalizedModel string, reasoningEffort string, ok bool) {
+	baseModel, reasoningEffort, ok := splitOpenAICompatReasoningBaseModel(model)
+	if !ok {
+		return strings.TrimSpace(model), "", false
+	}
+	return normalizeCodexModel(baseModel), reasoningEffort, true
+}
+
+func splitOpenAICompatReasoningBaseModel(model string) (baseModel string, reasoningEffort string, ok bool) {
 	trimmed := strings.TrimSpace(model)
 	if trimmed == "" {
 		return "", "", false
 	}
 
-	modelID := trimmed
-	if strings.Contains(modelID, "/") {
-		parts := strings.Split(modelID, "/")
-		modelID = parts[len(parts)-1]
-	}
-	modelID = strings.TrimSpace(modelID)
+	modelID := openAICompatModelID(trimmed)
 	if !strings.HasPrefix(strings.ToLower(modelID), "gpt-") {
 		return trimmed, "", false
 	}
 
-	parts := strings.FieldsFunc(strings.ToLower(modelID), func(r rune) bool {
-		switch r {
-		case '-', '_', ' ':
-			return true
-		default:
-			return false
+	lowerModelID := strings.ToLower(modelID)
+	for _, suffix := range []struct {
+		match  string
+		effort string
+	}{
+		{match: "-extrahigh", effort: "xhigh"},
+		{match: "_extrahigh", effort: "xhigh"},
+		{match: " extrahigh", effort: "xhigh"},
+		{match: "-xhigh", effort: "xhigh"},
+		{match: "_xhigh", effort: "xhigh"},
+		{match: " xhigh", effort: "xhigh"},
+		{match: "-minimal", effort: ""},
+		{match: "_minimal", effort: ""},
+		{match: " minimal", effort: ""},
+		{match: "-none", effort: ""},
+		{match: "_none", effort: ""},
+		{match: " none", effort: ""},
+		{match: "-medium", effort: "medium"},
+		{match: "_medium", effort: "medium"},
+		{match: " medium", effort: "medium"},
+		{match: "-high", effort: "high"},
+		{match: "_high", effort: "high"},
+		{match: " high", effort: "high"},
+		{match: "-low", effort: "low"},
+		{match: "_low", effort: "low"},
+		{match: " low", effort: "low"},
+	} {
+		if !strings.HasSuffix(lowerModelID, suffix.match) {
+			continue
 		}
-	})
-	if len(parts) == 0 {
-		return trimmed, "", false
+		baseModel = strings.TrimSpace(modelID[:len(modelID)-len(suffix.match)])
+		if baseModel == "" {
+			return trimmed, "", false
+		}
+		return baseModel, suffix.effort, true
 	}
 
-	last := strings.NewReplacer("-", "", "_", "", " ", "").Replace(parts[len(parts)-1])
-	switch last {
-	case "none", "minimal":
-	case "low", "medium", "high":
-		reasoningEffort = last
-	case "xhigh", "extrahigh":
-		reasoningEffort = "xhigh"
-	default:
-		return trimmed, "", false
-	}
+	return trimmed, "", false
+}
 
-	return normalizeCodexModel(modelID), reasoningEffort, true
+func openAICompatModelID(model string) string {
+	modelID := strings.TrimSpace(model)
+	if modelID == "" {
+		return ""
+	}
+	if strings.Contains(modelID, "/") {
+		parts := strings.Split(modelID, "/")
+		modelID = parts[len(parts)-1]
+	}
+	return strings.TrimSpace(modelID)
 }
 
 func openAIReasoningEffortToClaudeOutputEffort(effort string) string {

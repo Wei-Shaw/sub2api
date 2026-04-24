@@ -20,6 +20,18 @@ type SchedulerBucket struct {
 	Mode     string
 }
 
+type OpenAISchedulerBucketState struct {
+	Accounts          []*Account                   `json:"accounts"`
+	ProjectionAccounts []*Account                  `json:"projection_accounts"`
+	Projection        *OpenAIModelSubsetProjection `json:"projection"`
+	ProjectionVersion int64                        `json:"projection_version"`
+	BuiltAt           time.Time                    `json:"built_at"`
+}
+
+func (s *OpenAISchedulerBucketState) IsComplete() bool {
+	return s != nil && s.Accounts != nil && s.ProjectionAccounts != nil && s.Projection != nil && s.ProjectionVersion > 0 && !s.BuiltAt.IsZero()
+}
+
 func (b SchedulerBucket) String() string {
 	return fmt.Sprintf("%d:%s:%s", b.GroupID, b.Platform, b.Mode)
 }
@@ -49,6 +61,10 @@ type SchedulerCache interface {
 	GetSnapshot(ctx context.Context, bucket SchedulerBucket) ([]*Account, bool, error)
 	// SetSnapshot 写入快照并切换激活版本。
 	SetSnapshot(ctx context.Context, bucket SchedulerBucket, accounts []Account) error
+	// GetOpenAIBucketState 读取 OpenAI bucket 的单一 bundle。
+	GetOpenAIBucketState(ctx context.Context, bucket SchedulerBucket) (*OpenAISchedulerBucketState, bool, error)
+	// SetOpenAIBucketState 原子发布 OpenAI bucket 的单一 bundle。
+	SetOpenAIBucketState(ctx context.Context, bucket SchedulerBucket, state *OpenAISchedulerBucketState) error
 	// GetAccount 获取单账号快照。
 	GetAccount(ctx context.Context, accountID int64) (*Account, error)
 	// SetAccount 写入单账号快照（包含不可调度状态）。

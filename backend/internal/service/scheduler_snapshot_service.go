@@ -131,7 +131,7 @@ func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, 
 	}
 
 	if s.cache != nil {
-		if err := s.cache.SetSnapshot(fallbackCtx, bucket, accounts); err != nil {
+		if err := s.publishBucketSnapshot(fallbackCtx, bucket, accounts); err != nil {
 			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] cache write failed: bucket=%s err=%v", bucket.String(), err)
 		}
 	}
@@ -158,6 +158,39 @@ func (s *SchedulerSnapshotService) GetAccount(ctx context.Context, accountID int
 	fallbackCtx, cancel := s.withFallbackTimeout(ctx)
 	defer cancel()
 	return s.accountRepo.GetByID(fallbackCtx, accountID)
+}
+
+func (s *SchedulerSnapshotService) GetOpenAIBucketState(ctx context.Context, bucket SchedulerBucket) (*OpenAISchedulerBucketState, bool, error) {
+	if s == nil || s.cache == nil {
+		return nil, false, ErrSchedulerCacheNotReady
+	}
+	if bucket.Platform != PlatformOpenAI {
+		return nil, false, nil
+	}
+	state, hit, err := s.cache.GetOpenAIBucketState(ctx, bucket)
+	if err != nil {
+		return nil, false, err
+	}
+	if !hit || !state.IsComplete() {
+		return nil, false, nil
+	}
+	return state, true, nil
+}
+
+func (s *SchedulerSnapshotService) RefreshOpenAIBucketState(ctx context.Context, bucket SchedulerBucket, reason string) (*OpenAISchedulerBucketState, bool, error) {
+	if s == nil {
+		return nil, false, ErrSchedulerCacheNotReady
+	}
+	if bucket.Platform != PlatformOpenAI {
+		return nil, false, nil
+	}
+	if s.cache == nil || s.accountRepo == nil {
+		return nil, false, ErrSchedulerCacheNotReady
+	}
+	if err := s.rebuildBucket(ctx, bucket, reason); err != nil {
+		return nil, false, err
+	}
+	return s.GetOpenAIBucketState(ctx, bucket)
 }
 
 // GetGroupByID 获取分组信息（供调度器使用）
@@ -553,7 +586,7 @@ func (s *SchedulerSnapshotService) rebuildBucket(ctx context.Context, bucket Sch
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] rebuild failed: bucket=%s reason=%s err=%v", bucket.String(), reason, err)
 		return err
 	}
-	if err := s.cache.SetSnapshot(rebuildCtx, bucket, accounts); err != nil {
+	if err := s.publishBucketSnapshot(rebuildCtx, bucket, accounts); err != nil {
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] rebuild cache failed: bucket=%s reason=%s err=%v", bucket.String(), reason, err)
 		return err
 	}
@@ -670,6 +703,103 @@ func (s *SchedulerSnapshotService) loadAccountsFromDB(ctx context.Context, bucke
 		return s.accountRepo.ListSchedulableByPlatform(ctx, bucket.Platform)
 	}
 	return s.accountRepo.ListSchedulableUngroupedByPlatform(ctx, bucket.Platform)
+}
+
+func (s *SchedulerSnapshotService) loadOpenAIProjectionInputs(ctx context.Context, bucket SchedulerBucket) (*OpenAIProjectionInputs, error) {
+	accounts, err := s.loadAccountsFromDB(ctx, bucket, bucket.Mode == SchedulerModeMixed)
+	if err != nil {
+		return nil, err
+	}
+	return s.buildOpenAIProjectionInputs(ctx, bucket, accounts)
+}
+
+func (s *SchedulerSnapshotService) buildOpenAIProjectionInputs(ctx context.Context, bucket SchedulerBucket, primaryAccounts []Account) (*OpenAIProjectionInputs, error) {
+	inputs := &OpenAIProjectionInputs{
+		Bucket:            bucket,
+		ExhaustedBroadIDs: make(map[int64]struct{}),
+		CapabilityByID:    make(map[int64]OpenAIModelCapabilitySnapshot),
+	}
+	if s == nil {
+		return inputs, nil
+	}
+	if bucket.Platform != PlatformOpenAI {
+		return inputs, nil
+	}
+
+	broad, err := s.loadOpenAIProjectionBroadSource(ctx, bucket)
+	if err != nil {
+		return nil, err
+	}
+
+	merged, exhaustedBroadIDs := mergeOpenAIExhaustedAccountsFromBroadSource(primaryAccounts, broad)
+	inputs.AccountsAll = merged
+	inputs.ExhaustedBroadIDs = exhaustedBroadIDs
+	inputs.CanonicalCatalog = BuildOpenAICanonicalModelCatalog(merged, nil, nil)
+	for _, account := range merged {
+		inputs.CapabilityByID[account.ID] = buildOpenAIModelCapabilitySnapshot(account)
+	}
+	return inputs, nil
+}
+
+func (s *SchedulerSnapshotService) loadOpenAIProjectionBroadSource(ctx context.Context, bucket SchedulerBucket) ([]Account, error) {
+	if s == nil || s.accountRepo == nil {
+		return nil, nil
+	}
+
+	groupID := bucket.GroupID
+	if s.isRunModeSimple() {
+		groupID = 0
+	}
+	if groupID > 0 {
+		accounts, err := s.accountRepo.ListByGroup(ctx, groupID)
+		if err != nil {
+			return nil, err
+		}
+		filtered := make([]Account, 0, len(accounts))
+		for _, account := range accounts {
+			if account.Platform == PlatformOpenAI {
+				filtered = append(filtered, account)
+			}
+		}
+		return filtered, nil
+	}
+
+	accounts, err := s.accountRepo.ListByPlatform(ctx, PlatformOpenAI)
+	if err != nil {
+		return nil, err
+	}
+	if s.isRunModeSimple() {
+		return accounts, nil
+	}
+
+	filtered := make([]Account, 0, len(accounts))
+	for _, account := range accounts {
+		if len(account.AccountGroups) == 0 && len(account.GroupIDs) == 0 && len(account.Groups) == 0 {
+			filtered = append(filtered, account)
+		}
+	}
+	return filtered, nil
+}
+
+func (s *SchedulerSnapshotService) publishBucketSnapshot(ctx context.Context, bucket SchedulerBucket, accounts []Account) error {
+	if s == nil || s.cache == nil {
+		return ErrSchedulerCacheNotReady
+	}
+	if bucket.Platform != PlatformOpenAI {
+		return s.cache.SetSnapshot(ctx, bucket, accounts)
+	}
+
+	// The bundle's Accounts and Projection must come from the same primary snapshot.
+	inputs, err := s.buildOpenAIProjectionInputs(ctx, bucket, accounts)
+	if err != nil {
+		return err
+	}
+	state := &OpenAISchedulerBucketState{
+		Accounts:           ptrAccounts(accounts),
+		ProjectionAccounts: ptrAccounts(inputs.AccountsAll),
+		Projection:         BuildOpenAIModelSubsetProjection(inputs),
+	}
+	return s.cache.SetOpenAIBucketState(ctx, bucket, state)
 }
 
 func (s *SchedulerSnapshotService) bucketFor(groupID *int64, platform string, mode string) SchedulerBucket {
@@ -834,6 +964,18 @@ func derefAccounts(accounts []*Account) []Account {
 			continue
 		}
 		out = append(out, *account)
+	}
+	return out
+}
+
+func ptrAccounts(accounts []Account) []*Account {
+	out := make([]*Account, 0, len(accounts))
+	for i := range accounts {
+		account := accounts[i]
+		out = append(out, &account)
+	}
+	if out == nil {
+		return []*Account{}
 	}
 	return out
 }

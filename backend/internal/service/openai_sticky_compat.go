@@ -427,5 +427,6 @@ func (s *OpenAIGatewayService) bindOpenAIStickySessionAffinity(ctx context.Conte
 }
 
 func (s *OpenAIGatewayService) BindOpenAIStickySession(ctx context.Context, groupID *int64, sessionHash string, accountID int64, selectedGroup string) error {
-	return s.bindOpenAIStickySessionAffinity(ctx, groupID, sessionHash, newOpenAIAffinityBinding(accountID, selectedGroup))
+	binding := newOpenAIAffinityBinding(accountID, selectedGroup)
+	return s.bindOpenAIStickySessionAffinity(ctx, groupID, sessionHash, binding)
 }

@@ -3841,14 +3841,41 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return nil, nil, nil
 	}
-	reserveAffinityBinding := isOpenAIReserveAffinityBinding(affinityBinding)
-	if reserveAffinityBinding && targetGroup == TargetGroupExhausted && !account.IsOpenAIReserveCandidate() && !account.MatchesTargetGroup(TargetGroupExhausted) {
-		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
-		return nil, nil, nil
-	}
-	reserveAffinityHit := reserveAffinityBinding && targetGroup == TargetGroupExhausted && account.IsOpenAIReserveCandidate()
-	if !account.MatchesTargetGroup(targetGroup) && !reserveAffinityHit {
-		return nil, nil, nil
+	selectedGroup := resolveOpenAISelectedGroupFromBindingOrAccount(affinityBinding, account)
+	legacyReserveAffinityHit := false
+	var projectionView *openAIProjectionViewResult
+	if requestedModel != "" && s.schedulerSnapshot != nil {
+		projectionView, err = s.getOpenAIProjectionView(ctx, groupID, requestedModel)
+		if err != nil {
+			return nil, nil, err
+		}
+		if affinityBinding != nil && !projectionView.bindingMatches(affinityBinding) {
+			deleteOpenAIWSResponseAffinityBinding(ctx, store, derefGroupID(groupID), responseID)
+			affinityBinding = nil
+		}
+		selectedGroup = projectionView.selectedGroupForAccount(accountID)
+		switch targetGroup {
+		case TargetGroupExhausted:
+			if selectedGroup != openAISelectedGroupReserve && selectedGroup != string(TargetGroupExhausted) {
+				_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+				return nil, nil, nil
+			}
+		default:
+			if selectedGroup == openAISelectedGroupReserve {
+				_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+				return nil, nil, nil
+			}
+		}
+	} else {
+		reserveAffinityBinding := isOpenAIReserveAffinityBinding(affinityBinding)
+		legacyReserveAffinityHit = reserveAffinityBinding && targetGroup == TargetGroupExhausted && account.IsOpenAIReserveCandidate()
+		if reserveAffinityBinding && targetGroup == TargetGroupExhausted && !account.IsOpenAIReserveCandidate() && !account.MatchesTargetGroup(TargetGroupExhausted) {
+			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+			return nil, nil, nil
+		}
+		if !account.MatchesTargetGroup(targetGroup) && !legacyReserveAffinityHit {
+			return nil, nil, nil
+		}
 	}
 	// 非 WSv2 场景（如 force_http/全局关闭）不应使用 previous_response_id 粘连，
 	// 以保持“回滚到 HTTP”后的历史行为一致性。
@@ -3859,18 +3886,14 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return nil, nil, nil
 	}
-	if !account.IsSchedulableForTargetGroup(targetGroup) && !reserveAffinityHit {
+	if projectionView == nil && !account.IsSchedulableForTargetGroup(targetGroup) && !legacyReserveAffinityHit {
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return nil, nil, nil
 	}
-	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
+	if requestedModel != "" && (projectionView == nil || selectedGroup == string(TargetGroupActive)) && !account.IsModelSupported(requestedModel) {
 		return nil, nil, nil
 	}
-	if reserveAffinityHit {
-		account = s.recheckSelectedOpenAIReserveAccountFromDB(ctx, account, requestedModel)
-	} else {
-		account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel, targetGroup)
-	}
+	account = s.recheckSelectedProjectedOpenAIAccountFromDB(ctx, groupID, account, requestedModel, selectedGroup, targetGroup)
 	if account == nil {
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return nil, nil, nil
@@ -3878,27 +3901,33 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 
 	result, acquireErr := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 	if acquireErr == nil && result.Acquired {
-		selectedGroup := resolveOpenAISelectedGroupFromBindingOrAccount(affinityBinding, account)
+		binding := newOpenAIAffinityBinding(accountID, selectedGroup)
+		if projectionView != nil {
+			binding = projectionView.newAffinityBinding(accountID, selectedGroup)
+		}
 		logOpenAIWSBindResponseAccountWarn(
 			derefGroupID(groupID),
 			accountID,
 			responseID,
 			store.BindResponseAccount(ctx, derefGroupID(groupID), responseID, accountID, s.openAIWSResponseStickyTTL()),
 		)
-		if affinityBinding != nil {
-			_ = bindOpenAIWSResponseAffinityBinding(ctx, store, derefGroupID(groupID), responseID, newOpenAIAffinityBinding(accountID, selectedGroup), s.openAIWSResponseStickyTTL())
+		if binding != nil {
+			_ = bindOpenAIWSResponseAffinityBinding(ctx, store, derefGroupID(groupID), responseID, binding, s.openAIWSResponseStickyTTL())
 		}
 		return &AccountSelectionResult{
 			Account:     account,
 			Acquired:    true,
 			ReleaseFunc: result.ReleaseFunc,
 			SelectedGroup: selectedGroup,
-		}, newOpenAIAffinityBinding(accountID, selectedGroup), nil
+		}, binding, nil
 	}
 
 	cfg := s.schedulingConfig()
 	if s.concurrencyService != nil {
-		selectedGroup := resolveOpenAISelectedGroupFromBindingOrAccount(affinityBinding, account)
+		binding := newOpenAIAffinityBinding(accountID, selectedGroup)
+		if projectionView != nil {
+			binding = projectionView.newAffinityBinding(accountID, selectedGroup)
+		}
 		return &AccountSelectionResult{
 			Account: account,
 			WaitPlan: &AccountWaitPlan{
@@ -3908,7 +3937,7 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 				MaxWaiting:     cfg.StickySessionMaxWaiting,
 			},
 			SelectedGroup: selectedGroup,
-		}, newOpenAIAffinityBinding(accountID, selectedGroup), nil
+		}, binding, nil
 	}
 	return nil, nil, nil
 }

@@ -20,6 +20,7 @@ const (
 	schedulerReadyPrefix        = "sched:ready:"
 	schedulerVersionPrefix      = "sched:ver:"
 	schedulerSnapshotPrefix     = "sched:"
+	schedulerOpenAIStatePrefix  = "sched:openai:"
 	schedulerLockPrefix         = "sched:lock:"
 
 	defaultSchedulerSnapshotMGetChunkSize  = 128
@@ -51,25 +52,17 @@ func newSchedulerCacheWithChunkSizes(rdb *redis.Client, mgetChunkSize, writeChun
 }
 
 func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.SchedulerBucket) ([]*service.Account, bool, error) {
-	readyKey := schedulerBucketKey(schedulerReadyPrefix, bucket)
-	readyVal, err := c.rdb.Get(ctx, readyKey).Result()
-	if err == redis.Nil {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, err
-	}
-	if readyVal != "1" {
-		return nil, false, nil
+	if bucket.Platform == service.PlatformOpenAI {
+		state, hit, err := c.GetOpenAIBucketState(ctx, bucket)
+		if err != nil || !hit {
+			return nil, hit, err
+		}
+		return state.Accounts, true, nil
 	}
 
-	activeKey := schedulerBucketKey(schedulerActivePrefix, bucket)
-	activeVal, err := c.rdb.Get(ctx, activeKey).Result()
-	if err == redis.Nil {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, err
+	activeVal, hit, err := c.loadBucketActiveVersion(ctx, bucket)
+	if err != nil || !hit {
+		return nil, hit, err
 	}
 
 	snapshotKey := schedulerSnapshotKey(bucket, activeVal)
@@ -107,7 +100,89 @@ func (c *schedulerCache) GetSnapshot(ctx context.Context, bucket service.Schedul
 	return accounts, true, nil
 }
 
+func (c *schedulerCache) GetOpenAIBucketState(ctx context.Context, bucket service.SchedulerBucket) (*service.OpenAISchedulerBucketState, bool, error) {
+	if bucket.Platform != service.PlatformOpenAI {
+		return nil, false, nil
+	}
+
+	activeVal, hit, err := c.loadBucketActiveVersion(ctx, bucket)
+	if err != nil || !hit {
+		return nil, hit, err
+	}
+
+	payload, err := c.rdb.Get(ctx, schedulerOpenAIStateKey(bucket, activeVal)).Bytes()
+	if err == redis.Nil {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+
+	var state service.OpenAISchedulerBucketState
+	if err := json.Unmarshal(payload, &state); err != nil {
+		return nil, false, err
+	}
+	if !state.IsComplete() {
+		return nil, false, nil
+	}
+	return &state, true, nil
+}
+
+func (c *schedulerCache) SetOpenAIBucketState(ctx context.Context, bucket service.SchedulerBucket, state *service.OpenAISchedulerBucketState) error {
+	if bucket.Platform != service.PlatformOpenAI {
+		return fmt.Errorf("openai bucket state only supports openai buckets: %s", bucket.String())
+	}
+	if state == nil || state.Projection == nil {
+		return fmt.Errorf("openai bucket state incomplete: %s", bucket.String())
+	}
+
+	activeKey := schedulerBucketKey(schedulerActivePrefix, bucket)
+	oldActive, _ := c.rdb.Get(ctx, activeKey).Result()
+
+	versionKey := schedulerBucketKey(schedulerVersionPrefix, bucket)
+	version, err := c.rdb.Incr(ctx, versionKey).Result()
+	if err != nil {
+		return err
+	}
+
+	builtAt := time.Now().UTC()
+	versionStr := strconv.FormatInt(version, 10)
+	storedState, accounts := buildStoredOpenAIBucketState(state, version, builtAt)
+	if err := c.writeAccounts(ctx, accounts); err != nil {
+		return err
+	}
+	payload, err := json.Marshal(storedState)
+	if err != nil {
+		return err
+	}
+
+	pipe := c.rdb.Pipeline()
+	pipe.Set(ctx, schedulerOpenAIStateKey(bucket, versionStr), payload, 0)
+	pipe.Set(ctx, activeKey, versionStr, 0)
+	pipe.Set(ctx, schedulerBucketKey(schedulerReadyPrefix, bucket), "1", 0)
+	pipe.SAdd(ctx, schedulerBucketSetKey, bucket.String())
+	if _, err := pipe.Exec(ctx); err != nil {
+		return err
+	}
+
+	state.ProjectionVersion = version
+	state.BuiltAt = builtAt
+	if state.Accounts == nil {
+		state.Accounts = []*service.Account{}
+	}
+
+	if oldActive != "" && oldActive != versionStr {
+		_ = c.rdb.Del(ctx, schedulerOpenAIStateKey(bucket, oldActive), schedulerSnapshotKey(bucket, oldActive)).Err()
+	}
+
+	return nil
+}
+
 func (c *schedulerCache) SetSnapshot(ctx context.Context, bucket service.SchedulerBucket, accounts []service.Account) error {
+	if bucket.Platform == service.PlatformOpenAI {
+		return fmt.Errorf("openai snapshots must be published via bucket state: %s", bucket.String())
+	}
+
 	activeKey := schedulerBucketKey(schedulerActivePrefix, bucket)
 	oldActive, _ := c.rdb.Get(ctx, activeKey).Result()
 
@@ -275,6 +350,10 @@ func schedulerSnapshotKey(bucket service.SchedulerBucket, version string) string
 	return fmt.Sprintf("%s%d:%s:%s:v%s", schedulerSnapshotPrefix, bucket.GroupID, bucket.Platform, bucket.Mode, version)
 }
 
+func schedulerOpenAIStateKey(bucket service.SchedulerBucket, version string) string {
+	return fmt.Sprintf("%s%d:%s:%s:v%s", schedulerOpenAIStatePrefix, bucket.GroupID, bucket.Platform, bucket.Mode, version)
+}
+
 func schedulerAccountKey(id string) string {
 	return schedulerAccountPrefix + id
 }
@@ -302,6 +381,69 @@ func decodeCachedAccount(val any) (*service.Account, error) {
 		return nil, err
 	}
 	return &account, nil
+}
+
+func buildStoredOpenAIBucketState(state *service.OpenAISchedulerBucketState, version int64, builtAt time.Time) (*service.OpenAISchedulerBucketState, []service.Account) {
+	storedAccounts := make([]*service.Account, 0)
+	storedProjectionAccounts := make([]*service.Account, 0)
+	fullAccounts := make([]service.Account, 0)
+	seen := make(map[int64]struct{})
+	appendAccounts := func(accounts []*service.Account) []*service.Account {
+		stored := make([]*service.Account, 0, len(accounts))
+		for _, account := range accounts {
+			if account == nil {
+				continue
+			}
+			if _, ok := seen[account.ID]; !ok {
+				seen[account.ID] = struct{}{}
+				fullAccounts = append(fullAccounts, *account)
+			}
+			meta := buildSchedulerMetadataAccount(*account)
+			metaCopy := meta
+			stored = append(stored, &metaCopy)
+		}
+		if stored == nil {
+			return []*service.Account{}
+		}
+		return stored
+	}
+	if state != nil {
+		storedAccounts = appendAccounts(state.Accounts)
+		storedProjectionAccounts = appendAccounts(state.ProjectionAccounts)
+	}
+	return &service.OpenAISchedulerBucketState{
+		Accounts:           storedAccounts,
+		ProjectionAccounts: storedProjectionAccounts,
+		Projection:         state.Projection,
+		ProjectionVersion:  version,
+		BuiltAt:            builtAt,
+	}, fullAccounts
+}
+
+func (c *schedulerCache) loadBucketActiveVersion(ctx context.Context, bucket service.SchedulerBucket) (string, bool, error) {
+	readyKey := schedulerBucketKey(schedulerReadyPrefix, bucket)
+	readyVal, err := c.rdb.Get(ctx, readyKey).Result()
+	if err == redis.Nil {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if readyVal != "1" {
+		return "", false, nil
+	}
+
+	activeVal, err := c.rdb.Get(ctx, schedulerBucketKey(schedulerActivePrefix, bucket)).Result()
+	if err == redis.Nil {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if activeVal == "" {
+		return "", false, nil
+	}
+	return activeVal, true, nil
 }
 
 func (c *schedulerCache) writeAccounts(ctx context.Context, accounts []service.Account) error {
@@ -426,6 +568,11 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"window_cost_sticky_reserve",
 		"codex_7d_used_percent",
 		"codex_primary_used_percent",
+		"openai_capability_explicit_models",
+		"openai_capability_wildcard_rules",
+		"openai_capability_default_allow",
+		"openai_capability_catalog_models",
+		"openai_capability_last_successful_refresh_at",
 		"max_sessions",
 		"session_idle_timeout_minutes",
 		"openai_oauth_responses_websockets_v2_enabled",

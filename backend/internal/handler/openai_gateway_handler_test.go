@@ -785,6 +785,46 @@ func TestStoreOpenAIRoutingSnapshotFromDecision_SelectedGroup(t *testing.T) {
 	require.Same(t, snap, getOpenAIRoutingSnapshot(c))
 }
 
+func TestStoreOpenAIRoutingSnapshotFromDecision_ProjectionMetadataFlowsToAffinityBinding(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	account := &service.Account{ID: 6611, Name: "projection-acc"}
+	builtAt := time.Unix(1_716_000_789, 0).UTC()
+	snap := storeOpenAIRoutingSnapshotFromDecision(
+		c,
+		service.TargetGroupAny,
+		service.OpenAIAccountScheduleDecision{
+			Layer:              "load_balance",
+			SelectedGroup:      string(service.TargetGroupActive),
+			ProjectionVersion:  11,
+			ProjectionModelKey: "gpt-5.4-Sys",
+			ProjectionBuiltAt:  builtAt,
+		},
+		account,
+		"gpt-5.4-Sys",
+		"gpt-5.4",
+	)
+
+	require.NotNil(t, snap)
+	require.Equal(t, int64(11), snap.ProjectionVersion)
+	require.Equal(t, "gpt-5.4", snap.ProjectionModelKey)
+	require.True(t, snap.ProjectionBuiltAt.Equal(builtAt))
+
+	binding := service.GetOpenAIRoutingAffinityBinding(c)
+	require.NotNil(t, binding)
+	bindingValue := reflect.ValueOf(binding).Elem()
+	require.Equal(t, int64(11), bindingValue.FieldByName("ProjectionVersion").Int())
+	require.Equal(t, "gpt-5.4", bindingValue.FieldByName("ProjectionModelKey").String())
+	builtAtField := bindingValue.FieldByName("ProjectionBuiltAt")
+	require.True(t, builtAtField.IsValid())
+	require.False(t, builtAtField.IsNil())
+	gotBuiltAt, ok := builtAtField.Elem().Interface().(time.Time)
+	require.True(t, ok)
+	require.True(t, gotBuiltAt.Equal(builtAt))
+}
+
 func TestResolveOpenAIScheduleSessionSource_StickyContentFallback(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
