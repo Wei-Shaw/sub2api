@@ -13,6 +13,8 @@ type OpenAIRoutingSnapshot struct {
 	SelectedGroup       string
 	ScheduleLayer       string
 	Sticky              *openAIStickyEval
+	ProjectionVersion   int64
+	ProjectionModelKey  string
 	SelectedAccountID   *int64
 	SelectedAccountName *string
 	RequestedModel      string
@@ -26,6 +28,8 @@ type OpenAIRoutingSnapshotInput struct {
 	SelectedGroup  string
 	ScheduleLayer  string
 	Sticky         *openAIStickyEval
+	ProjectionVersion  int64
+	ProjectionModelKey string
 	Account        *Account
 	RequestedModel string
 	EffectiveModel string
@@ -47,8 +51,18 @@ func NewOpenAIRoutingSnapshot(input OpenAIRoutingSnapshotInput) *OpenAIRoutingSn
 		SelectedGroup:  selectedGroup,
 		ScheduleLayer:  strings.TrimSpace(input.ScheduleLayer),
 		Sticky:         cloneOpenAIStickyEval(input.Sticky),
+		ProjectionVersion: input.ProjectionVersion,
+		ProjectionModelKey: NormalizeOpenAIProjectionModelKey(input.ProjectionModelKey),
 		RequestedModel: strings.TrimSpace(input.RequestedModel),
 		EffectiveModel: strings.TrimSpace(input.EffectiveModel),
+	}
+	if snapshot.Sticky != nil && snapshot.Sticky.AffinityBinding != nil {
+		if snapshot.ProjectionVersion == 0 {
+			snapshot.ProjectionVersion = snapshot.Sticky.AffinityBinding.ProjectionVersion
+		}
+		if snapshot.ProjectionModelKey == "" {
+			snapshot.ProjectionModelKey = NormalizeOpenAIProjectionModelKey(snapshot.Sticky.AffinityBinding.ProjectionModelKey)
+		}
 	}
 	if input.Account != nil {
 		accountID := input.Account.ID
@@ -71,7 +85,13 @@ func buildOpenAIRoutingAffinityBinding(snapshot *OpenAIRoutingSnapshot) *openAIA
 	if snapshot == nil || snapshot.SelectedAccountID == nil {
 		return nil
 	}
-	return newOpenAIAffinityBinding(*snapshot.SelectedAccountID, snapshot.SelectedGroup)
+	binding := newOpenAIAffinityBinding(*snapshot.SelectedAccountID, snapshot.SelectedGroup)
+	if binding == nil {
+		return nil
+	}
+	binding.ProjectionVersion = snapshot.ProjectionVersion
+	binding.ProjectionModelKey = NormalizeOpenAIProjectionModelKey(snapshot.ProjectionModelKey)
+	return binding
 }
 
 func BindOpenAIRoutingAffinityBinding(c *gin.Context, snapshot *OpenAIRoutingSnapshot) {

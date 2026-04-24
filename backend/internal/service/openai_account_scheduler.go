@@ -69,9 +69,11 @@ type OpenAIAccountScheduleRequest struct {
 }
 
 type openAIAffinityBinding struct {
-	BoundAccountID int64  `json:"bound_account_id"`
-	AffinityDomain string `json:"affinity_domain"`
-	SelectedGroup  string `json:"selected_group"`
+	BoundAccountID    int64  `json:"bound_account_id"`
+	AffinityDomain    string `json:"affinity_domain"`
+	SelectedGroup     string `json:"selected_group"`
+	ProjectionVersion int64  `json:"projection_version,omitempty"`
+	ProjectionModelKey string `json:"projection_model_key,omitempty"`
 }
 
 type openAIStickyEval struct {
@@ -92,6 +94,7 @@ func cloneOpenAIAffinityBinding(binding *openAIAffinityBinding) *openAIAffinityB
 	cloned := *binding
 	cloned.AffinityDomain = normalizeOpenAIAffinityDomain(cloned.AffinityDomain)
 	cloned.SelectedGroup = normalizeOpenAISelectedGroup(cloned.SelectedGroup)
+	cloned.ProjectionModelKey = NormalizeOpenAIProjectionModelKey(cloned.ProjectionModelKey)
 	return &cloned
 }
 
@@ -472,59 +475,50 @@ func (s *defaultOpenAIAccountScheduler) Select(
 
 	previousResponseID := req.PreviousResponseID
 	if previousResponseID != "" {
-		if (req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive) &&
-			s.service.isOpenAIReservePreviousResponseAnchor(ctx, req.GroupID, previousResponseID) {
-			s.service.deleteOpenAIWSResponseAccount(ctx, req.GroupID, previousResponseID)
-		} else {
-			selection, affinityBinding, err := s.service.SelectAccountByPreviousResponseID(
-				ctx,
-				req.GroupID,
-				previousResponseID,
-				req.RequestedModel,
-				req.TargetGroup,
-				req.ExcludedIDs,
-			)
-			if err != nil {
-				return nil, decision, err
+		selection, affinityBinding, err := s.service.SelectAccountByPreviousResponseID(
+			ctx,
+			req.GroupID,
+			previousResponseID,
+			req.RequestedModel,
+			req.TargetGroup,
+			req.ExcludedIDs,
+		)
+		if err != nil {
+			return nil, decision, err
+		}
+		if selection != nil && selection.Account != nil {
+			if !s.isAccountTransportCompatible(selection.Account, req.RequiredTransport) {
+				selection = nil
 			}
-			if selection != nil && selection.Account != nil {
-				if !s.isAccountTransportCompatible(selection.Account, req.RequiredTransport) {
-					selection = nil
+		}
+		if selection != nil && selection.Account != nil {
+			decision.Layer = openAIAccountScheduleLayerPreviousResponse
+			decision.StickyPreviousHit = true
+			if decision.Sticky != nil {
+				var previousBoundAccountID int64
+				if decision.Sticky.BoundAccountID != nil {
+					previousBoundAccountID = *decision.Sticky.BoundAccountID
 				}
+				decision.Sticky.setAffinityBinding(affinityBinding)
+				if previousBoundAccountID > 0 {
+					decision.Sticky.setBoundAccountID(previousBoundAccountID)
+				}
+				decision.Sticky.setEvalResult(openAIStickyEvalResultBypassedPreviousResponse)
 			}
-			if selection != nil && selection.Account != nil {
-				if (req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive) &&
-					s.service.isCurrentOpenAIReserveOverlayAccount(ctx, req.GroupID, selection.Account) {
-					s.service.deleteOpenAIWSResponseAccount(ctx, req.GroupID, previousResponseID)
-					selection = nil
-				}
-			}
-			if selection != nil && selection.Account != nil {
-				decision.Layer = openAIAccountScheduleLayerPreviousResponse
-				decision.StickyPreviousHit = true
-				if decision.Sticky != nil {
-					var previousBoundAccountID int64
-					if decision.Sticky.BoundAccountID != nil {
-						previousBoundAccountID = *decision.Sticky.BoundAccountID
-					}
-					decision.Sticky.setAffinityBinding(affinityBinding)
-					if previousBoundAccountID > 0 {
-						decision.Sticky.setBoundAccountID(previousBoundAccountID)
-					}
-					decision.Sticky.setEvalResult(openAIStickyEvalResultBypassedPreviousResponse)
-				}
-				decision.SelectedAccountID = selection.Account.ID
-				decision.SelectedAccountType = selection.Account.Type
+			decision.SelectedAccountID = selection.Account.ID
+			decision.SelectedAccountType = selection.Account.Type
+			decision.SelectedGroup = normalizeOpenAISelectedGroup(selection.SelectedGroup)
+			if decision.SelectedGroup == "" {
 				decision.SelectedGroup = resolveOpenAISelectedGroupFromBindingOrAccount(affinityBinding, selection.Account)
-				if decision.Sticky != nil {
-					decision.Sticky.SelectedAccountChanged = decision.Sticky.BoundAccountID != nil && *decision.Sticky.BoundAccountID != decision.SelectedAccountID
-					decision.Sticky.finalizeSelectedAccount(decision.SelectedAccountID)
-				}
-				if req.SessionHash != "" {
-					_ = s.service.bindOpenAIStickySessionAffinity(ctx, req.GroupID, req.SessionHash, newOpenAIAffinityBinding(selection.Account.ID, decision.SelectedGroup))
-				}
-				return selection, decision, nil
 			}
+			if decision.Sticky != nil {
+				decision.Sticky.SelectedAccountChanged = decision.Sticky.BoundAccountID != nil && *decision.Sticky.BoundAccountID != decision.SelectedAccountID
+				decision.Sticky.finalizeSelectedAccount(decision.SelectedAccountID)
+			}
+			if req.SessionHash != "" {
+				_ = s.service.bindOpenAIStickySessionAffinity(ctx, req.GroupID, req.SessionHash, affinityBinding)
+			}
+			return selection, decision, nil
 		}
 	}
 
@@ -537,7 +531,10 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		decision.StickySessionHit = true
 		decision.SelectedAccountID = selection.Account.ID
 		decision.SelectedAccountType = selection.Account.Type
-		decision.SelectedGroup = resolveOpenAISelectedGroupFromBindingOrAccount(decision.Sticky.AffinityBinding, selection.Account)
+		decision.SelectedGroup = normalizeOpenAISelectedGroup(selection.SelectedGroup)
+		if decision.SelectedGroup == "" {
+			decision.SelectedGroup = resolveOpenAISelectedGroupFromBindingOrAccount(decision.Sticky.AffinityBinding, selection.Account)
+		}
 		return selection, decision, nil
 	}
 
@@ -634,6 +631,23 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
 		return nil, nil
 	}
+	var projectionView *openAIProjectionViewResult
+	selectedGroup := resolveOpenAISelectedGroupFromBindingOrAccount(affinityBinding, account)
+	legacyReserveAffinityHit := false
+	if req.RequestedModel != "" && s.service != nil && s.service.schedulerSnapshot != nil {
+		projectionView, err = s.service.getOpenAIProjectionView(ctx, req.GroupID, req.RequestedModel)
+		if err != nil {
+			return nil, err
+		}
+		if affinityBinding != nil && !projectionView.bindingMatches(affinityBinding) {
+			_ = s.service.deleteOpenAIStickyAffinityBinding(ctx, req.GroupID, sessionHash)
+			affinityBinding = nil
+			if sticky != nil {
+				sticky.setAffinityBinding(nil)
+			}
+		}
+		selectedGroup = projectionView.selectedGroupForAccount(account.ID)
+	}
 	if isOpenAIReserveAffinityBinding(affinityBinding) && normalizeTargetGroup(req.TargetGroup) != TargetGroupExhausted {
 		if sticky != nil {
 			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
@@ -641,27 +655,48 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
 		return nil, nil
 	}
-	reserveAffinityBinding := isOpenAIReserveAffinityBinding(affinityBinding)
-	if reserveAffinityBinding && !account.IsOpenAIReserveCandidate() && !account.MatchesTargetGroup(TargetGroupExhausted) {
-		if sticky != nil {
-			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
+	if projectionView != nil {
+		switch normalizeTargetGroup(req.TargetGroup) {
+		case TargetGroupExhausted:
+			if selectedGroup != openAISelectedGroupReserve && selectedGroup != string(TargetGroupExhausted) {
+				if sticky != nil {
+					sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
+				}
+				_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
+				return nil, nil
+			}
+		default:
+			if selectedGroup == openAISelectedGroupReserve {
+				if sticky != nil {
+					sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
+				}
+				_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
+				return nil, nil
+			}
 		}
-		_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
-		return nil, nil
-	}
-	reserveAffinityHit := reserveAffinityBinding && account.IsOpenAIReserveCandidate()
-	if (req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive) && s.service.isCurrentOpenAIReserveOverlayAccount(ctx, req.GroupID, account) {
-		if sticky != nil {
-			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
+	} else {
+		reserveAffinityBinding := isOpenAIReserveAffinityBinding(affinityBinding)
+		legacyReserveAffinityHit = reserveAffinityBinding && account.IsOpenAIReserveCandidate()
+		if reserveAffinityBinding && !account.IsOpenAIReserveCandidate() && !account.MatchesTargetGroup(TargetGroupExhausted) {
+			if sticky != nil {
+				sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
+			}
+			_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
+			return nil, nil
 		}
-		_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
-		return nil, nil
-	}
-	if !account.MatchesTargetGroup(req.TargetGroup) && !reserveAffinityHit {
-		if sticky != nil {
-			sticky.setEvalResult(openAIStickyEvalResultMissBindingRestricted)
+		if (req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive) && s.service.isCurrentOpenAIReserveOverlayAccount(ctx, req.GroupID, req.RequestedModel, account) {
+			if sticky != nil {
+				sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
+			}
+			_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
+			return nil, nil
 		}
-		return nil, nil
+		if !account.MatchesTargetGroup(req.TargetGroup) && !legacyReserveAffinityHit {
+			if sticky != nil {
+				sticky.setEvalResult(openAIStickyEvalResultMissBindingRestricted)
+			}
+			return nil, nil
+		}
 	}
 	if shouldClearStickySessionForTargetGroup(account, req.RequestedModel, req.TargetGroup) {
 		if sticky != nil {
@@ -670,14 +705,14 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
 		return nil, nil
 	}
-	if !account.IsSchedulableForTargetGroup(req.TargetGroup) && !reserveAffinityHit {
+	if projectionView == nil && !account.IsSchedulableForTargetGroup(req.TargetGroup) && !legacyReserveAffinityHit {
 		if sticky != nil {
 			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
 		}
 		_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
 		return nil, nil
 	}
-	if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
+	if req.RequestedModel != "" && (projectionView == nil || selectedGroup == string(TargetGroupActive)) && !account.IsModelSupported(req.RequestedModel) {
 		if sticky != nil {
 			sticky.setEvalResult(openAIStickyEvalResultMissBindingRestricted)
 		}
@@ -690,11 +725,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
 		return nil, nil
 	}
-	if reserveAffinityHit {
-		account = s.service.recheckSelectedOpenAIReserveAccountFromDB(ctx, account, req.RequestedModel)
-	} else {
-		account = s.service.recheckSelectedOpenAIAccountFromDB(ctx, account, req.RequestedModel, req.TargetGroup)
-	}
+	account = s.service.recheckSelectedProjectedOpenAIAccountFromDB(ctx, req.GroupID, account, req.RequestedModel, selectedGroup, req.TargetGroup)
 	if account == nil {
 		if sticky != nil {
 			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
@@ -705,12 +736,15 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 
 	result, acquireErr := s.service.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 	if acquireErr == nil && result.Acquired {
-		selectedGroup := resolveOpenAISelectedGroupFromBindingOrAccount(sticky.AffinityBinding, account)
 		if sticky != nil {
 			sticky.setEvalResult(openAIStickyEvalResultHit)
 		}
 		if req.SessionHash != "" {
-			_ = s.service.bindOpenAIStickySessionAffinity(ctx, req.GroupID, sessionHash, newOpenAIAffinityBinding(account.ID, selectedGroup))
+			binding := newOpenAIAffinityBinding(account.ID, selectedGroup)
+			if projectionView != nil {
+				binding = projectionView.newAffinityBinding(account.ID, selectedGroup)
+			}
+			_ = s.service.bindOpenAIStickySessionAffinity(ctx, req.GroupID, sessionHash, binding)
 		}
 		return &AccountSelectionResult{
 			Account:       account,
@@ -723,7 +757,6 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	cfg := s.service.schedulingConfig()
 	// WaitPlan.MaxConcurrency 使用 Concurrency（非 EffectiveLoadFactor），因为 WaitPlan 控制的是 Redis 实际并发槽位等待。
 	if s.service.concurrencyService != nil {
-		selectedGroup := resolveOpenAISelectedGroupFromBindingOrAccount(sticky.AffinityBinding, account)
 		if sticky != nil {
 			sticky.setEvalResult(openAIStickyEvalResultHit)
 		}
@@ -953,14 +986,21 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	var (
 		accounts        []Account
 		reserveAccounts []Account
+		projectionView  *openAIProjectionViewResult
 		err             error
 	)
+	if req.RequestedModel != "" && s.service != nil && s.service.schedulerSnapshot != nil {
+		projectionView, err = s.service.getOpenAIProjectionView(ctx, req.GroupID, req.RequestedModel)
+		if err != nil {
+			return nil, "", 0, 0, 0, err
+		}
+	}
 	if req.TargetGroup == TargetGroupExhausted {
-		accounts, reserveAccounts, err = s.service.listOpenAIExhaustedWithReserveOverlay(ctx, req.GroupID)
+		accounts, reserveAccounts, err = s.service.listOpenAIExhaustedWithReserveOverlay(ctx, req.GroupID, req.RequestedModel)
 	} else {
 		accounts, err = s.service.listSchedulableAccounts(ctx, req.GroupID, req.TargetGroup)
 		if err == nil && (req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive) {
-			_, reserveAccounts, err = s.service.listOpenAIExhaustedWithReserveOverlay(ctx, req.GroupID)
+			_, reserveAccounts, err = s.service.listOpenAIExhaustedWithReserveOverlay(ctx, req.GroupID, req.RequestedModel)
 		}
 	}
 	if err != nil {
@@ -1161,22 +1201,11 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	rankedCandidates := selectTopKOpenAICandidates(candidates, topK)
 	selectionOrder := buildOpenAIWeightedSelectionOrder(rankedCandidates, req)
 	prepareCandidate := func(candidate openAIAccountCandidateScore) *Account {
-		if candidate.selectedGroup == openAISelectedGroupReserve {
-			fresh := s.service.resolveFreshOpenAIReserveAccount(ctx, candidate.account, req.RequestedModel)
-			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
-				return nil
-			}
-			fresh = s.service.recheckSelectedOpenAIReserveAccountFromDB(ctx, fresh, req.RequestedModel)
-			if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
-				return nil
-			}
-			return fresh
-		}
-		fresh := s.service.resolveFreshSchedulableOpenAIAccount(ctx, candidate.account, req.RequestedModel, req.TargetGroup)
+		fresh := s.service.resolveFreshProjectedOpenAIAccount(ctx, req.GroupID, candidate.account, req.RequestedModel, candidate.selectedGroup, req.TargetGroup)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
 			return nil
 		}
-		fresh = s.service.recheckSelectedOpenAIAccountFromDB(ctx, fresh, req.RequestedModel, req.TargetGroup)
+		fresh = s.service.recheckSelectedProjectedOpenAIAccountFromDB(ctx, req.GroupID, fresh, req.RequestedModel, candidate.selectedGroup, req.TargetGroup)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) {
 			return nil
 		}
@@ -1195,7 +1224,11 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		}
 		if result != nil && result.Acquired {
 			if req.SessionHash != "" {
-				_ = s.service.bindOpenAIStickySessionAffinity(ctx, req.GroupID, req.SessionHash, newOpenAIAffinityBinding(fresh.ID, candidate.selectedGroup))
+				binding := newOpenAIAffinityBinding(fresh.ID, candidate.selectedGroup)
+				if projectionView != nil {
+					binding = projectionView.newAffinityBinding(fresh.ID, candidate.selectedGroup)
+				}
+				_ = s.service.bindOpenAIStickySessionAffinity(ctx, req.GroupID, req.SessionHash, binding)
 			}
 			return &AccountSelectionResult{
 				Account:       fresh,

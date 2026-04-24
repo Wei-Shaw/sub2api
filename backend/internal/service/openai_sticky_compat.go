@@ -427,5 +427,12 @@ func (s *OpenAIGatewayService) bindOpenAIStickySessionAffinity(ctx context.Conte
 }
 
 func (s *OpenAIGatewayService) BindOpenAIStickySession(ctx context.Context, groupID *int64, sessionHash string, accountID int64, selectedGroup string) error {
-	return s.bindOpenAIStickySessionAffinity(ctx, groupID, sessionHash, newOpenAIAffinityBinding(accountID, selectedGroup))
+	binding := newOpenAIAffinityBinding(accountID, selectedGroup)
+	if existing := s.getOpenAIStickyAffinityBinding(ctx, groupID, sessionHash); existing != nil && binding != nil {
+		if existing.BoundAccountID == binding.BoundAccountID && normalizeOpenAISelectedGroup(existing.SelectedGroup) == normalizeOpenAISelectedGroup(binding.SelectedGroup) {
+			binding.ProjectionVersion = existing.ProjectionVersion
+			binding.ProjectionModelKey = existing.ProjectionModelKey
+		}
+	}
+	return s.bindOpenAIStickySessionAffinity(ctx, groupID, sessionHash, binding)
 }
