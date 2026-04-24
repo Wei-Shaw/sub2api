@@ -289,6 +289,38 @@ REDACTED
 	require.Equal(t, "fc1", item["call_id"])
 REDACTED
 
+func TestApplyCodexOAuthTransform_PreservesMCPToolCallIDAndName(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.4",
+		"input": []any{
+			map[string]any{
+				"type":      "mcp_tool_call",
+				"call_id":   "call_abc",
+				"name":      "remote_tool",
+				"arguments": "{REDACTED",
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	applyCodexOAuthTransform(reqBody, true, false)
+
+	input, ok := reqBody["input"].([]any)
+	require.True(t, ok)
+	require.Len(t, input, 1)
+	item, ok := input[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "mcp_tool_call", item["type"])
+	require.Equal(t, "remote_tool", item["name"])
+	require.Equal(t, "fcabc", item["call_id"])
+REDACTED
+
+func TestCodexInputItemRequiresNameTypesAllowCallID(t *testing.T) {
+	for _, typ := range []string{"function_call", "custom_tool_call", "mcp_tool_call"REDACTED {
+		require.True(t, codexInputItemRequiresName(typ), typ)
+		require.True(t, isCodexToolCallItemType(typ), typ)
+REDACTED
+REDACTED
+
 func TestApplyCodexOAuthTransform_ExplicitStoreFalsePreserved(t *testing.T) {
 	// 续链场景：显式 store=false 不再强制为 true，保持 false。
 
