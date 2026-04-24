@@ -4155,12 +4155,14 @@ REDACTED
 	REDACTED)
 REDACTED
 
-	isClaudeCode := isClaudeCodeRequest(ctx, c, parsed)
-	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCode
+	// OAuth 账号无条件走完整 mimicry，与 Parrot 对齐。
+	// 不再检查 isClaudeCodeRequest —— 即使客户端自称 Claude Code（opencode 等
+	// 第三方工具会伪装 UA / X-App / system prompt），它的伪装往往不完整（缺 billing
+	// block / 工具名混淆 / cache 策略等），被 Anthropic 判为 third-party。
+	// 无条件覆盖不会对真正的 Claude Code 造成问题，因为我们的伪装更完整。
+	shouldMimicClaudeCode := account.IsOAuth()
 
 	if shouldMimicClaudeCode {
-		// 非 Claude Code 客户端：将 system 替换为 Claude Code 标识，原始 system 迁移至 messages
-		// 条件：1) OAuth/SetupToken 账号  2) 不是 Claude Code 客户端  3) 不是 Haiku 模型  4) system 中还没有 Claude Code 提示词
 		systemRewritten := false
 		if !strings.Contains(strings.ToLower(reqModel), "haiku") &&
 			!systemIncludesClaudeCodePrompt(parsed.System) {
@@ -8386,8 +8388,7 @@ REDACTED
 	// Pre-filter: strip empty text blocks to prevent upstream 400.
 	body = StripEmptyTextBlocks(body)
 
-	isClaudeCode := isClaudeCodeRequest(ctx, c, parsed)
-	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCode
+	shouldMimicClaudeCode := account.IsOAuth()
 
 	if shouldMimicClaudeCode {
 		normalizeOpts := claudeOAuthNormalizeOptions{stripSystemCacheControl: trueREDACTED
