@@ -28,8 +28,6 @@ func BuildOpenAICanonicalModelCatalog(accounts []Account, explicitCapabilityMode
 		for model := range snapshot.ExplicitModels {
 			catalog[model] = struct{}{}
 		}
-		addOpenAICanonicalModelsFromMapping(catalog, account.GetModelMapping())
-		addOpenAICanonicalModelsFromGroups(catalog, account.Groups)
 	}
 
 	models := make([]string, 0, len(catalog))
@@ -50,19 +48,24 @@ func buildOpenAIModelCapabilitySnapshot(account Account) OpenAIModelCapabilitySn
 	snapshot := OpenAIModelCapabilitySnapshot{
 		ExplicitModels: make(map[string]struct{}),
 	}
+	for requestedModel, mappedModel := range account.GetModelMapping() {
+		if strings.Contains(requestedModel, "*") {
+			addOpenAIProjectionWildcardRule(&snapshot, requestedModel)
+		} else {
+			addOpenAIProjectionExplicitModel(&snapshot, requestedModel)
+		}
+		addOpenAIProjectionExplicitModel(&snapshot, mappedModel)
+	}
+	addOpenAIProjectionGroupModels(&snapshot, account.Groups)
 	if account.Extra == nil {
 		return snapshot
 	}
 
 	for _, model := range parseOpenAIProjectionStringSlice(account.Extra[openAICapabilityExplicitModelsExtraKey]) {
-		if canonical := NormalizeOpenAIProjectionModelKey(model); canonical != "" {
-			snapshot.ExplicitModels[canonical] = struct{}{}
-		}
+		addOpenAIProjectionExplicitModel(&snapshot, model)
 	}
 	for _, rule := range parseOpenAIProjectionStringSlice(account.Extra[openAICapabilityWildcardRulesExtraKey]) {
-		if normalized := normalizeOpenAIProjectionPattern(rule); normalized != "" {
-			snapshot.WildcardRules = append(snapshot.WildcardRules, normalized)
-		}
+		addOpenAIProjectionWildcardRule(&snapshot, rule)
 	}
 	snapshot.DefaultAllow = parseOpenAIProjectionBool(account.Extra[openAICapabilityDefaultAllowExtraKey])
 	return snapshot
@@ -79,46 +82,45 @@ func addOpenAICanonicalModels(catalog map[string]struct{}, models ...string) {
 	}
 }
 
-func addOpenAICanonicalModelsFromMapping(catalog map[string]struct{}, mapping map[string]string) {
-	for requestedModel, mappedModel := range mapping {
-		if !strings.Contains(requestedModel, "*") {
-			addOpenAICanonicalModels(catalog, requestedModel)
-		}
-		addOpenAICanonicalModels(catalog, mappedModel)
-	}
-}
-
-func addOpenAICanonicalModelsFromGroups(catalog map[string]struct{}, groups []*Group) {
+func addOpenAIProjectionGroupModels(snapshot *OpenAIModelCapabilitySnapshot, groups []*Group) {
 	for _, group := range groups {
 		if group == nil {
 			continue
 		}
-		addOpenAICanonicalModels(catalog, group.DefaultMappedModel)
+		addOpenAIProjectionExplicitModel(snapshot, group.DefaultMappedModel)
 		if !group.AllowMessagesDispatch {
 			continue
 		}
-
-		cfg := normalizeOpenAIMessagesDispatchModelConfig(group.MessagesDispatchModelConfig)
-		addOpenAICanonicalModels(catalog, cfg.OpusMappedModel, cfg.SonnetMappedModel, cfg.HaikuMappedModel)
-		for _, mappedModel := range cfg.ExactModelMappings {
-			addOpenAICanonicalModels(catalog, mappedModel)
+		addOpenAIProjectionExplicitModel(snapshot, group.MessagesDispatchModelConfig.OpusMappedModel)
+		addOpenAIProjectionExplicitModel(snapshot, group.MessagesDispatchModelConfig.SonnetMappedModel)
+		addOpenAIProjectionExplicitModel(snapshot, group.MessagesDispatchModelConfig.HaikuMappedModel)
+		for _, mappedModel := range group.MessagesDispatchModelConfig.ExactModelMappings {
+			addOpenAIProjectionExplicitModel(snapshot, mappedModel)
 		}
 	}
 }
 
-func mappingSupportsProjectionModel(mapping map[string]string, canonicalModel string) bool {
-	if canonicalModel == "" || len(mapping) == 0 {
-		return false
+func addOpenAIProjectionExplicitModel(snapshot *OpenAIModelCapabilitySnapshot, model string) {
+	if snapshot == nil {
+		return
 	}
-	for requestedModel, mappedModel := range mapping {
-		if NormalizeOpenAIProjectionModelKey(mappedModel) == canonicalModel {
-			return true
-		}
-		if projectionPatternMatches(requestedModel, canonicalModel) {
-			return true
-		}
+	if canonical := NormalizeOpenAIProjectionModelKey(model); canonical != "" {
+		snapshot.ExplicitModels[canonical] = struct{}{}
 	}
-	return false
+}
+
+func addOpenAIProjectionWildcardRule(snapshot *OpenAIModelCapabilitySnapshot, rule string) {
+	if snapshot == nil {
+		return
+	}
+	if normalized := normalizeOpenAIProjectionPattern(rule); normalized != "" {
+		for _, existing := range snapshot.WildcardRules {
+			if existing == normalized {
+				return
+			}
+		}
+		snapshot.WildcardRules = append(snapshot.WildcardRules, normalized)
+	}
 }
 
 func wildcardRulesSupportProjectionModel(rules []string, canonicalModel string) bool {

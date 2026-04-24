@@ -733,9 +733,6 @@ func (a *Account) SupportsProjectionModel(model string, snapshot OpenAIModelCapa
 	if _, ok := snapshot.ExplicitModels[canonicalModel]; ok {
 		return true
 	}
-	if mappingSupportsProjectionModel(a.GetModelMapping(), canonicalModel) {
-		return true
-	}
 	if wildcardRulesSupportProjectionModel(snapshot.WildcardRules, canonicalModel) {
 		return true
 	}

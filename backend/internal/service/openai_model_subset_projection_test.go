@@ -53,6 +53,28 @@ func TestBuildOpenAICanonicalModelCatalog_UsesFiniteSources(t *testing.T) {
 	require.NotContains(t, catalog, "gpt-unknown-live")
 }
 
+func TestBuildOpenAICanonicalModelCatalog_PreservesExplicitConfiguredUnknownModel(t *testing.T) {
+	t.Parallel()
+
+	accounts := []Account{
+		{
+			Groups: []*Group{
+				{
+					AllowMessagesDispatch: true,
+					MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
+						OpusMappedModel: "gpt-5.9-high",
+					},
+				},
+			},
+		},
+	}
+
+	catalog := BuildOpenAICanonicalModelCatalog(accounts, nil, nil)
+
+	require.Contains(t, catalog, "gpt-5.9-high")
+	require.NotContains(t, catalog, "gpt-5.9")
+}
+
 func TestProjectionModelReachability_UnknownModelNeedsExplicitCapability(t *testing.T) {
 	t.Parallel()
 
@@ -94,6 +116,73 @@ func TestProjectionModelReachability_ExplicitCapabilityOverridesConservativeDefa
 	require.True(t, accountSupportsProjectionModel(account, "gpt-5.6"))
 }
 
+func TestProjectionModelReachability_WildcardRulesAllowCatalogModel(t *testing.T) {
+	t.Parallel()
+
+	account := Account{Extra: map[string]any{"openai_capability_wildcard_rules": []string{"gpt-5.7-*"}}}
+	snapshot := buildOpenAIModelCapabilitySnapshot(account)
+	catalog := map[string]struct{}{"gpt-5.7-preview": {}}
+
+	require.True(t, account.SupportsProjectionModel("gpt-5.7-preview", snapshot, catalog))
+}
+
+func TestProjectionModelReachability_WildcardRulesRejectCatalogOutsideModel(t *testing.T) {
+	t.Parallel()
+
+	account := Account{Extra: map[string]any{"openai_capability_wildcard_rules": []string{"gpt-5.7-*"}}}
+	snapshot := buildOpenAIModelCapabilitySnapshot(account)
+	catalog := map[string]struct{}{"gpt-5.7-preview": {}}
+
+	require.False(t, account.SupportsProjectionModel("gpt-5.8-preview", snapshot, catalog))
+}
+
+func TestProjectionModelReachability_DefaultAllowAllowsCatalogModel(t *testing.T) {
+	t.Parallel()
+
+	account := Account{Extra: map[string]any{"openai_capability_default_allow": true}}
+	snapshot := buildOpenAIModelCapabilitySnapshot(account)
+	catalog := map[string]struct{}{"gpt-5.8-preview": {}}
+
+	require.True(t, account.SupportsProjectionModel("gpt-5.8-preview", snapshot, catalog))
+}
+
+func TestProjectionModelReachability_DefaultAllowRejectsCatalogOutsideModel(t *testing.T) {
+	t.Parallel()
+
+	account := Account{Extra: map[string]any{"openai_capability_default_allow": true}}
+	snapshot := buildOpenAIModelCapabilitySnapshot(account)
+	catalog := map[string]struct{}{"gpt-5.8-preview": {}}
+
+	require.False(t, account.SupportsProjectionModel("gpt-5.9-preview", snapshot, catalog))
+}
+
+func TestProjectionModelReachability_GroupConfiguredModelsProvideSupportProof(t *testing.T) {
+	t.Parallel()
+
+	account := Account{
+		Groups: []*Group{{DefaultMappedModel: "gpt-5.2-high"}},
+	}
+
+	require.True(t, accountSupportsProjectionModel(account, "gpt-5.2"))
+}
+
+func TestProjectionModelReachability_MessagesDispatchConfiguredModelsProvideSupportProof(t *testing.T) {
+	t.Parallel()
+
+	account := Account{
+		Groups: []*Group{
+			{
+				AllowMessagesDispatch: true,
+				MessagesDispatchModelConfig: OpenAIMessagesDispatchModelConfig{
+					OpusMappedModel: "gpt-5.9-high",
+				},
+			},
+		},
+	}
+
+	require.True(t, accountSupportsProjectionModel(account, "gpt-5.9-high"))
+}
+
 func TestNormalizeOpenAIProjectionModelKey_ReusesCompatNormalization(t *testing.T) {
 	t.Parallel()
 
@@ -106,6 +195,7 @@ func TestNormalizeOpenAIProjectionModelKey_ReusesCompatNormalization(t *testing.
 		{name: "compat reasoning and sys", input: " gpt-5.4-xhigh-Sys ", want: "gpt-5.4"},
 		{name: "codex alias and sys", input: "gpt-5.3-codex-spark-high-Sys", want: "gpt-5.3-codex"},
 		{name: "unknown model preserved", input: "gpt-5.6-Sys", want: "gpt-5.6"},
+		{name: "unknown compat-like suffix preserved conservatively", input: "gpt-5.9-high-Sys", want: "gpt-5.9-high"},
 	}
 
 	for _, tt := range tests {

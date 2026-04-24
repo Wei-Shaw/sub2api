@@ -29,11 +29,13 @@ func NormalizeOpenAIProjectionModelKey(model string) string {
 	if modelID == "" {
 		return ""
 	}
-	if baseModel, _, ok := splitOpenAICompatReasoningBaseModel(modelID); ok {
-		modelID = baseModel
-	}
 	if mapped := getNormalizedCodexModel(modelID); mapped != "" {
 		return mapped
+	}
+	if baseModel, _, ok := splitOpenAICompatReasoningBaseModel(modelID); ok {
+		if mapped := getNormalizedCodexModel(baseModel); mapped != "" {
+			return mapped
+		}
 	}
 	return strings.ToLower(strings.TrimSpace(modelID))
 }
