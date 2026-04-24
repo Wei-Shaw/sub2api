@@ -3806,6 +3806,83 @@ export default {
       failedToLoadUsages: 'Failed to load usage records'
     },
 
+
+    serviceQuota: {
+      title: 'Service Quota',
+      description: 'Manage layered RPM, TPM, TPD, daily USD spend, and concurrent request rules.',
+      createRule: 'Create Rule',
+      editRule: 'Edit Service Quota Rule',
+      deleteRule: 'Delete Service Quota Rule',
+      emptyTitle: 'No service quota rules yet',
+      emptyDescription: 'Create the first rule to add checks on top of the existing limits.',
+      userId: 'User ID: {id}',
+      loadError: 'Failed to load service quota rules',
+      saveSuccess: 'Service quota rule saved',
+      saveError: 'Failed to save service quota rule',
+      deleteSuccess: 'Service quota rule deleted',
+      deleteError: 'Failed to delete service quota rule',
+      deleteConfirm: 'Delete the {type} rule? It will stop taking effect immediately.',
+      filters: {
+        allTypes: 'All Types',
+        allScopes: 'All Scopes',
+        allTargets: 'All Target Modes',
+        allStatus: 'All Status'
+      },
+      columns: {
+        status: 'Status',
+        scope: 'Scope',
+        type: 'Type',
+        targetMode: 'Target Mode',
+        window: 'Window',
+        limit: 'Limit',
+        actions: 'Actions'
+      },
+      scopes: {
+        global: 'Global',
+        platform: 'Channel',
+        group: 'Group',
+        account: 'Account',
+        model: 'Model'
+      },
+      scopeDetails: {
+        platform: 'Channel: {value}',
+        group: 'Group: {value}',
+        account: 'Account: {value}',
+        model: 'Model: {value}',
+        allRequests: 'All requests'
+      },
+      limiters: {
+        rpm: 'RPM',
+        tpm: 'TPM',
+        tpd: 'TPD',
+        dailyUsd: 'Daily USD Spend',
+        concurrency: 'Concurrent Requests'
+      },
+      targets: {
+        user: 'Specific User',
+        perUser: 'Per User',
+        shared: 'Shared Global',
+        default: 'Default Rule'
+      },
+      windows: {
+        fixed: 'Fixed Window',
+        rolling: 'Rolling Window',
+        none: 'No Window'
+      },
+      form: {
+        scopeLevel: 'Scope Level',
+        scopeMatching: 'Scope Matching',
+        platform: 'Channel / Platform',
+        platformPlaceholder: 'e.g. anthropic / openai / gemini',
+        groupId: 'Group ID',
+        accountId: 'Account ID',
+        modelPattern: 'Model Pattern',
+        modelPatternPlaceholder: 'e.g. claude-opus-*',
+        targetUserId: 'Bound User ID',
+        required: 'Required'
+      }
+    },
+
     // Usage Records
     usage: {
       title: 'Usage Records',
