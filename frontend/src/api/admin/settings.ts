@@ -481,6 +481,7 @@ export interface SystemSettings {
 
   // Available Channels feature switch
   available_channels_enabled: boolean;
+  service_quota_enabled: boolean;
 }
 
 export interface UpdateSettingsRequest {
