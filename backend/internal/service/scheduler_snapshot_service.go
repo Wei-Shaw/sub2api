@@ -131,7 +131,7 @@ func (s *SchedulerSnapshotService) ListSchedulableAccounts(ctx context.Context, 
 	}
 
 	if s.cache != nil {
-		if err := s.cache.SetSnapshot(fallbackCtx, bucket, accounts); err != nil {
+		if err := s.publishBucketSnapshot(fallbackCtx, bucket, accounts); err != nil {
 			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] cache write failed: bucket=%s err=%v", bucket.String(), err)
 		}
 	}
@@ -158,6 +158,23 @@ func (s *SchedulerSnapshotService) GetAccount(ctx context.Context, accountID int
 	fallbackCtx, cancel := s.withFallbackTimeout(ctx)
 	defer cancel()
 	return s.accountRepo.GetByID(fallbackCtx, accountID)
+}
+
+func (s *SchedulerSnapshotService) GetOpenAIBucketState(ctx context.Context, bucket SchedulerBucket) (*OpenAISchedulerBucketState, bool, error) {
+	if s == nil || s.cache == nil {
+		return nil, false, ErrSchedulerCacheNotReady
+	}
+	if bucket.Platform != PlatformOpenAI {
+		return nil, false, nil
+	}
+	state, hit, err := s.cache.GetOpenAIBucketState(ctx, bucket)
+	if err != nil {
+		return nil, false, err
+	}
+	if !hit || !state.IsComplete() {
+		return nil, false, nil
+	}
+	return state, true, nil
 }
 
 // GetGroupByID 获取分组信息（供调度器使用）
@@ -553,7 +570,7 @@ func (s *SchedulerSnapshotService) rebuildBucket(ctx context.Context, bucket Sch
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] rebuild failed: bucket=%s reason=%s err=%v", bucket.String(), reason, err)
 		return err
 	}
-	if err := s.cache.SetSnapshot(rebuildCtx, bucket, accounts); err != nil {
+	if err := s.publishBucketSnapshot(rebuildCtx, bucket, accounts); err != nil {
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] rebuild cache failed: bucket=%s reason=%s err=%v", bucket.String(), reason, err)
 		return err
 	}
@@ -744,6 +761,25 @@ func (s *SchedulerSnapshotService) loadOpenAIProjectionBroadSource(ctx context.C
 	return filtered, nil
 }
 
+func (s *SchedulerSnapshotService) publishBucketSnapshot(ctx context.Context, bucket SchedulerBucket, accounts []Account) error {
+	if s == nil || s.cache == nil {
+		return ErrSchedulerCacheNotReady
+	}
+	if bucket.Platform != PlatformOpenAI {
+		return s.cache.SetSnapshot(ctx, bucket, accounts)
+	}
+
+	inputs, err := s.loadOpenAIProjectionInputs(ctx, bucket)
+	if err != nil {
+		return err
+	}
+	state := &OpenAISchedulerBucketState{
+		Accounts:   ptrAccounts(accounts),
+		Projection: BuildOpenAIModelSubsetProjection(inputs),
+	}
+	return s.cache.SetOpenAIBucketState(ctx, bucket, state)
+}
+
 func (s *SchedulerSnapshotService) bucketFor(groupID *int64, platform string, mode string) SchedulerBucket {
 	return SchedulerBucket{
 		GroupID:  s.normalizeGroupID(groupID),
@@ -906,6 +942,18 @@ func derefAccounts(accounts []*Account) []Account {
 			continue
 		}
 		out = append(out, *account)
+	}
+	return out
+}
+
+func ptrAccounts(accounts []Account) []*Account {
+	out := make([]*Account, 0, len(accounts))
+	for i := range accounts {
+		account := accounts[i]
+		out = append(out, &account)
+	}
+	if out == nil {
+		return []*Account{}
 	}
 	return out
 }

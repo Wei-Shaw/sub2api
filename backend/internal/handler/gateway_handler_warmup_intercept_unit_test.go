@@ -34,6 +34,12 @@ func (f *fakeSchedulerCache) GetSnapshot(_ context.Context, _ service.SchedulerB
 func (f *fakeSchedulerCache) SetSnapshot(_ context.Context, _ service.SchedulerBucket, _ []service.Account) error {
 	return nil
 }
+func (f *fakeSchedulerCache) GetOpenAIBucketState(_ context.Context, _ service.SchedulerBucket) (*service.OpenAISchedulerBucketState, bool, error) {
+	return nil, false, nil
+}
+func (f *fakeSchedulerCache) SetOpenAIBucketState(_ context.Context, _ service.SchedulerBucket, _ *service.OpenAISchedulerBucketState) error {
+	return nil
+}
 func (f *fakeSchedulerCache) GetAccount(_ context.Context, id int64) (*service.Account, error) {
 	for _, account := range f.accounts {
 		if account != nil && account.ID == id {

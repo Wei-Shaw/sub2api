@@ -6,11 +6,14 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 type snapshotHydrationCache struct {
-	snapshot []*Account
-	accounts map[int64]*Account
+	snapshot     []*Account
+	accounts     map[int64]*Account
+	openAIStates map[string]*OpenAISchedulerBucketState
 }
 
 func (c *snapshotHydrationCache) GetSnapshot(ctx context.Context, bucket SchedulerBucket) ([]*Account, bool, error) {
@@ -18,6 +21,18 @@ func (c *snapshotHydrationCache) GetSnapshot(ctx context.Context, bucket Schedul
 }
 
 func (c *snapshotHydrationCache) SetSnapshot(ctx context.Context, bucket SchedulerBucket, accounts []Account) error {
+	return nil
+}
+
+func (c *snapshotHydrationCache) GetOpenAIBucketState(ctx context.Context, bucket SchedulerBucket) (*OpenAISchedulerBucketState, bool, error) {
+	if c.openAIStates == nil {
+		return nil, false, nil
+	}
+	state, ok := c.openAIStates[bucket.String()]
+	return state, ok, nil
+}
+
+func (c *snapshotHydrationCache) SetOpenAIBucketState(ctx context.Context, bucket SchedulerBucket, state *OpenAISchedulerBucketState) error {
 	return nil
 }
 
@@ -156,4 +171,45 @@ func TestGatewaySelectAccountWithLoadAwareness_HydratesSelectedAccountFromSchedu
 	if got := result.Account.GetCredential("api_key"); got != "anthropic-live-key" {
 		t.Fatalf("expected hydrated api key, got %q", got)
 	}
+}
+
+func TestSchedulerSnapshotHydration_PreservesOpenAIProjectionFields(t *testing.T) {
+	bucket := SchedulerBucket{GroupID: 2, Platform: PlatformOpenAI, Mode: SchedulerModeSingle}
+	builtAt := time.Unix(1_715_000_000, 0).UTC()
+	cache := &snapshotHydrationCache{
+		openAIStates: map[string]*OpenAISchedulerBucketState{
+			bucket.String(): {
+				Accounts: []*Account{{
+					ID:          7,
+					Platform:    PlatformOpenAI,
+					Type:        AccountTypeAPIKey,
+					Status:      StatusActive,
+					Schedulable: true,
+				}},
+				Projection: &OpenAIModelSubsetProjection{
+					Bucket:            bucket,
+					AccountReserveIDs: map[int64]struct{}{7: {}},
+					Models: map[string]OpenAIModelRoleView{
+						"gpt-5.4": {
+							CanonicalModel:     "gpt-5.4",
+							ReserveOverflowIDs: []int64{7},
+						},
+					},
+				},
+				ProjectionVersion: 7,
+				BuiltAt:           builtAt,
+			},
+		},
+	}
+
+	schedulerSnapshot := NewSchedulerSnapshotService(cache, nil, nil, nil, nil)
+	state, ok, err := schedulerSnapshot.GetOpenAIBucketState(context.Background(), bucket)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.NotNil(t, state)
+	require.Equal(t, int64(7), state.ProjectionVersion)
+	require.True(t, state.BuiltAt.Equal(builtAt))
+	view, found := state.Projection.ViewForModel("gpt-5.4")
+	require.True(t, found)
+	require.Equal(t, []int64{7}, view.ReserveOverflowIDs)
 }

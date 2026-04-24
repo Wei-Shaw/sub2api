@@ -34,6 +34,14 @@ func (s *schedulerCacheRecorder) SetSnapshot(ctx context.Context, bucket service
 	return nil
 }
 
+func (s *schedulerCacheRecorder) GetOpenAIBucketState(ctx context.Context, bucket service.SchedulerBucket) (*service.OpenAISchedulerBucketState, bool, error) {
+	return nil, false, nil
+}
+
+func (s *schedulerCacheRecorder) SetOpenAIBucketState(ctx context.Context, bucket service.SchedulerBucket, state *service.OpenAISchedulerBucketState) error {
+	return nil
+}
+
 func (s *schedulerCacheRecorder) GetAccount(ctx context.Context, accountID int64) (*service.Account, error) {
 	if s.accounts == nil {
 		return nil, nil
