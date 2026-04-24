@@ -1765,6 +1765,7 @@ func (r *openAIProjectionViewResult) newAffinityBinding(accountID int64, selecte
 	}
 	binding.ProjectionVersion = r.state.ProjectionVersion
 	binding.ProjectionModelKey = r.canonicalModel
+	binding.ProjectionBuiltAt = cloneOpenAIProjectionBuiltAt(&r.state.BuiltAt)
 	return binding
 }
 

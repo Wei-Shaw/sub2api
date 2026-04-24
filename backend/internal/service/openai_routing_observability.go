@@ -2,6 +2,7 @@ package service
 
 import (
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -15,6 +16,7 @@ type OpenAIRoutingSnapshot struct {
 	Sticky              *openAIStickyEval
 	ProjectionVersion   int64
 	ProjectionModelKey  string
+	ProjectionBuiltAt   time.Time
 	SelectedAccountID   *int64
 	SelectedAccountName *string
 	RequestedModel      string
@@ -24,15 +26,16 @@ type OpenAIRoutingSnapshot struct {
 }
 
 type OpenAIRoutingSnapshotInput struct {
-	TargetGroup    AccountTargetGroup
-	SelectedGroup  string
-	ScheduleLayer  string
-	Sticky         *openAIStickyEval
+	TargetGroup        AccountTargetGroup
+	SelectedGroup      string
+	ScheduleLayer      string
+	Sticky             *openAIStickyEval
 	ProjectionVersion  int64
 	ProjectionModelKey string
-	Account        *Account
-	RequestedModel string
-	EffectiveModel string
+	ProjectionBuiltAt  time.Time
+	Account            *Account
+	RequestedModel     string
+	EffectiveModel     string
 }
 
 func NewOpenAIRoutingSnapshot(input OpenAIRoutingSnapshotInput) *OpenAIRoutingSnapshot {
@@ -47,14 +50,15 @@ func NewOpenAIRoutingSnapshot(input OpenAIRoutingSnapshotInput) *OpenAIRoutingSn
 	}
 
 	snapshot := &OpenAIRoutingSnapshot{
-		TargetGroup:    string(normalizeTargetGroup(input.TargetGroup)),
-		SelectedGroup:  selectedGroup,
-		ScheduleLayer:  strings.TrimSpace(input.ScheduleLayer),
-		Sticky:         cloneOpenAIStickyEval(input.Sticky),
-		ProjectionVersion: input.ProjectionVersion,
+		TargetGroup:        string(normalizeTargetGroup(input.TargetGroup)),
+		SelectedGroup:      selectedGroup,
+		ScheduleLayer:      strings.TrimSpace(input.ScheduleLayer),
+		Sticky:             cloneOpenAIStickyEval(input.Sticky),
+		ProjectionVersion:  input.ProjectionVersion,
 		ProjectionModelKey: NormalizeOpenAIProjectionModelKey(input.ProjectionModelKey),
-		RequestedModel: strings.TrimSpace(input.RequestedModel),
-		EffectiveModel: strings.TrimSpace(input.EffectiveModel),
+		ProjectionBuiltAt:  normalizeOpenAIProjectionBuiltAt(input.ProjectionBuiltAt),
+		RequestedModel:     strings.TrimSpace(input.RequestedModel),
+		EffectiveModel:     strings.TrimSpace(input.EffectiveModel),
 	}
 	if snapshot.Sticky != nil && snapshot.Sticky.AffinityBinding != nil {
 		if snapshot.ProjectionVersion == 0 {
@@ -62,6 +66,9 @@ func NewOpenAIRoutingSnapshot(input OpenAIRoutingSnapshotInput) *OpenAIRoutingSn
 		}
 		if snapshot.ProjectionModelKey == "" {
 			snapshot.ProjectionModelKey = NormalizeOpenAIProjectionModelKey(snapshot.Sticky.AffinityBinding.ProjectionModelKey)
+		}
+		if snapshot.ProjectionBuiltAt.IsZero() {
+			snapshot.ProjectionBuiltAt = derefOpenAIProjectionBuiltAt(snapshot.Sticky.AffinityBinding.ProjectionBuiltAt)
 		}
 	}
 	if input.Account != nil {
@@ -91,6 +98,7 @@ func buildOpenAIRoutingAffinityBinding(snapshot *OpenAIRoutingSnapshot) *openAIA
 	}
 	binding.ProjectionVersion = snapshot.ProjectionVersion
 	binding.ProjectionModelKey = NormalizeOpenAIProjectionModelKey(snapshot.ProjectionModelKey)
+	binding.ProjectionBuiltAt = cloneOpenAIProjectionBuiltAt(&snapshot.ProjectionBuiltAt)
 	return binding
 }
 

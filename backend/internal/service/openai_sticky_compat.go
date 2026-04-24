@@ -432,6 +432,7 @@ func (s *OpenAIGatewayService) BindOpenAIStickySession(ctx context.Context, grou
 		if existing.BoundAccountID == binding.BoundAccountID && normalizeOpenAISelectedGroup(existing.SelectedGroup) == normalizeOpenAISelectedGroup(binding.SelectedGroup) {
 			binding.ProjectionVersion = existing.ProjectionVersion
 			binding.ProjectionModelKey = existing.ProjectionModelKey
+			binding.ProjectionBuiltAt = cloneOpenAIProjectionBuiltAt(existing.ProjectionBuiltAt)
 		}
 	}
 	return s.bindOpenAIStickySessionAffinity(ctx, groupID, sessionHash, binding)

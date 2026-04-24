@@ -69,11 +69,12 @@ type OpenAIAccountScheduleRequest struct {
 }
 
 type openAIAffinityBinding struct {
-	BoundAccountID    int64  `json:"bound_account_id"`
-	AffinityDomain    string `json:"affinity_domain"`
-	SelectedGroup     string `json:"selected_group"`
-	ProjectionVersion int64  `json:"projection_version,omitempty"`
-	ProjectionModelKey string `json:"projection_model_key,omitempty"`
+	BoundAccountID     int64      `json:"bound_account_id"`
+	AffinityDomain     string     `json:"affinity_domain"`
+	SelectedGroup      string     `json:"selected_group"`
+	ProjectionVersion  int64      `json:"projection_version,omitempty"`
+	ProjectionModelKey string     `json:"projection_model_key,omitempty"`
+	ProjectionBuiltAt  *time.Time `json:"projection_built_at,omitempty"`
 }
 
 type openAIStickyEval struct {
@@ -95,7 +96,30 @@ func cloneOpenAIAffinityBinding(binding *openAIAffinityBinding) *openAIAffinityB
 	cloned.AffinityDomain = normalizeOpenAIAffinityDomain(cloned.AffinityDomain)
 	cloned.SelectedGroup = normalizeOpenAISelectedGroup(cloned.SelectedGroup)
 	cloned.ProjectionModelKey = NormalizeOpenAIProjectionModelKey(cloned.ProjectionModelKey)
+	cloned.ProjectionBuiltAt = cloneOpenAIProjectionBuiltAt(binding.ProjectionBuiltAt)
 	return &cloned
+}
+
+func normalizeOpenAIProjectionBuiltAt(builtAt time.Time) time.Time {
+	if builtAt.IsZero() {
+		return time.Time{}
+	}
+	return builtAt.UTC()
+}
+
+func cloneOpenAIProjectionBuiltAt(builtAt *time.Time) *time.Time {
+	if builtAt == nil || builtAt.IsZero() {
+		return nil
+	}
+	normalized := builtAt.UTC()
+	return &normalized
+}
+
+func derefOpenAIProjectionBuiltAt(builtAt *time.Time) time.Time {
+	if builtAt == nil {
+		return time.Time{}
+	}
+	return normalizeOpenAIProjectionBuiltAt(*builtAt)
 }
 
 func normalizeOpenAISelectedGroup(group string) string {
@@ -171,6 +195,38 @@ type OpenAIAccountScheduleDecision struct {
 	SelectedAccountID   int64
 	SelectedAccountType string
 	SelectedGroup       string
+	ProjectionVersion   int64
+	ProjectionModelKey  string
+	ProjectionBuiltAt   time.Time
+}
+
+func (d *OpenAIAccountScheduleDecision) setProjectionMetadata(version int64, modelKey string, builtAt time.Time) {
+	if d == nil {
+		return
+	}
+	if version > 0 {
+		d.ProjectionVersion = version
+	}
+	if normalizedModelKey := NormalizeOpenAIProjectionModelKey(modelKey); normalizedModelKey != "" {
+		d.ProjectionModelKey = normalizedModelKey
+	}
+	if normalizedBuiltAt := normalizeOpenAIProjectionBuiltAt(builtAt); !normalizedBuiltAt.IsZero() {
+		d.ProjectionBuiltAt = normalizedBuiltAt
+	}
+}
+
+func (d *OpenAIAccountScheduleDecision) setProjectionMetadataFromBinding(binding *openAIAffinityBinding) {
+	if binding == nil {
+		return
+	}
+	d.setProjectionMetadata(binding.ProjectionVersion, binding.ProjectionModelKey, derefOpenAIProjectionBuiltAt(binding.ProjectionBuiltAt))
+}
+
+func (d *OpenAIAccountScheduleDecision) setProjectionMetadataFromView(view *openAIProjectionViewResult) {
+	if view == nil || view.state == nil {
+		return
+	}
+	d.setProjectionMetadata(view.state.ProjectionVersion, view.canonicalModel, view.state.BuiltAt)
 }
 
 func normalizeOpenAIStickySessionSource(source string) string {
@@ -515,6 +571,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 				decision.Sticky.SelectedAccountChanged = decision.Sticky.BoundAccountID != nil && *decision.Sticky.BoundAccountID != decision.SelectedAccountID
 				decision.Sticky.finalizeSelectedAccount(decision.SelectedAccountID)
 			}
+			decision.setProjectionMetadataFromBinding(affinityBinding)
 			if req.SessionHash != "" {
 				_ = s.service.bindOpenAIStickySessionAffinity(ctx, req.GroupID, req.SessionHash, affinityBinding)
 			}
@@ -535,15 +592,17 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		if decision.SelectedGroup == "" {
 			decision.SelectedGroup = resolveOpenAISelectedGroupFromBindingOrAccount(decision.Sticky.AffinityBinding, selection.Account)
 		}
+		decision.setProjectionMetadataFromBinding(decision.Sticky.AffinityBinding)
 		return selection, decision, nil
 	}
 
-	selection, selectedGroup, candidateCount, topK, loadSkew, err := s.selectByLoadBalance(ctx, req)
+	selection, selectedGroup, candidateCount, topK, loadSkew, projectionView, err := s.selectByLoadBalance(ctx, req)
 	decision.Layer = openAIAccountScheduleLayerLoadBalance
 	decision.CandidateCount = candidateCount
 	decision.TopK = topK
 	decision.LoadSkew = loadSkew
 	decision.SelectedGroup = selectedGroup
+	decision.setProjectionMetadataFromView(projectionView)
 	if err != nil {
 		return nil, decision, err
 	}
@@ -744,6 +803,9 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 			if projectionView != nil {
 				binding = projectionView.newAffinityBinding(account.ID, selectedGroup)
 			}
+			if sticky != nil {
+				sticky.setAffinityBinding(binding)
+			}
 			_ = s.service.bindOpenAIStickySessionAffinity(ctx, req.GroupID, sessionHash, binding)
 		}
 		return &AccountSelectionResult{
@@ -759,6 +821,11 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	if s.service.concurrencyService != nil {
 		if sticky != nil {
 			sticky.setEvalResult(openAIStickyEvalResultHit)
+			binding := newOpenAIAffinityBinding(account.ID, selectedGroup)
+			if projectionView != nil {
+				binding = projectionView.newAffinityBinding(account.ID, selectedGroup)
+			}
+			sticky.setAffinityBinding(binding)
 		}
 		return &AccountSelectionResult{
 			Account: account,
@@ -982,7 +1049,7 @@ func buildOpenAIWeightedSelectionOrder(
 func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	ctx context.Context,
 	req OpenAIAccountScheduleRequest,
-) (*AccountSelectionResult, string, int, int, float64, error) {
+) (*AccountSelectionResult, string, int, int, float64, *openAIProjectionViewResult, error) {
 	var (
 		accounts        []Account
 		reserveAccounts []Account
@@ -992,7 +1059,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	if req.RequestedModel != "" && s.service != nil && s.service.schedulerSnapshot != nil {
 		projectionView, err = s.service.getOpenAIProjectionView(ctx, req.GroupID, req.RequestedModel)
 		if err != nil {
-			return nil, "", 0, 0, 0, err
+			return nil, "", 0, 0, 0, nil, err
 		}
 	}
 	if req.TargetGroup == TargetGroupExhausted {
@@ -1004,10 +1071,10 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		}
 	}
 	if err != nil {
-		return nil, "", 0, 0, 0, err
+		return nil, "", 0, 0, 0, projectionView, err
 	}
 	if len(accounts) == 0 && !(req.TargetGroup == TargetGroupExhausted && len(reserveAccounts) > 0) {
-		return nil, "", 0, 0, 0, errors.New("no available OpenAI accounts")
+		return nil, "", 0, 0, 0, projectionView, errors.New("no available OpenAI accounts")
 	}
 
 	// require_privacy_set: 获取分组信息
@@ -1079,7 +1146,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		appendFilteredAccount(&reserveAccounts[i], openAISelectedGroupReserve, &reserveFiltered, &reserveFilteredValues)
 	}
 	if len(filtered) == 0 && !(req.TargetGroup == TargetGroupExhausted && len(reserveFiltered) > 0) {
-		return nil, "", 0, 0, 0, errors.New("no available OpenAI accounts")
+		return nil, "", 0, 0, 0, projectionView, errors.New("no available OpenAI accounts")
 	}
 
 	loadMap := map[int64]*AccountLoadInfo{}
@@ -1117,7 +1184,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		}
 	}
 	if len(participants) == 0 {
-		return nil, "", 0, 0, 0, errors.New("no available OpenAI accounts")
+		return nil, "", 0, 0, 0, projectionView, errors.New("no available OpenAI accounts")
 	}
 
 	minPriority, maxPriority := participants[0].Priority, participants[0].Priority
@@ -1220,7 +1287,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		}
 		result, acquireErr := s.service.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
 		if acquireErr != nil {
-			return nil, fallbackSelectedGroup, len(candidates), topK, loadSkew, acquireErr
+			return nil, fallbackSelectedGroup, len(candidates), topK, loadSkew, projectionView, acquireErr
 		}
 		if result != nil && result.Acquired {
 			if req.SessionHash != "" {
@@ -1235,7 +1302,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 				Acquired:      true,
 				ReleaseFunc:   result.ReleaseFunc,
 				SelectedGroup: candidate.selectedGroup,
-			}, candidate.selectedGroup, len(candidates), topK, loadSkew, nil
+			}, candidate.selectedGroup, len(candidates), topK, loadSkew, projectionView, nil
 		}
 	}
 
@@ -1255,10 +1322,10 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 				MaxWaiting:     cfg.FallbackMaxWaiting,
 			},
 			SelectedGroup: candidate.selectedGroup,
-		}, candidate.selectedGroup, len(candidates), topK, loadSkew, nil
+		}, candidate.selectedGroup, len(candidates), topK, loadSkew, projectionView, nil
 	}
 
-	return nil, fallbackSelectedGroup, len(candidates), topK, loadSkew, ErrNoAvailableAccounts
+	return nil, fallbackSelectedGroup, len(candidates), topK, loadSkew, projectionView, ErrNoAvailableAccounts
 }
 
 func resolveOpenAISelectedGroupFromAccount(account *Account) string {
