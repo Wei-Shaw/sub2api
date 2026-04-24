@@ -135,14 +135,11 @@
 
         <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
           <div class="mb-3 text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.serviceQuota.form.scopeMatching') }}</div>
+          <div class="mb-4">
+            <span class="input-label mb-2 block">{{ t('admin.serviceQuota.form.platform') }}</span>
+            <PlatformPicker v-model="form.platform" />
+          </div>
           <div class="grid gap-4 md:grid-cols-2">
-            <label class="form-field">
-              <span class="input-label">{{ t('admin.serviceQuota.form.platform') }}</span>
-              <select v-model="form.platform" class="input">
-                <option :value="null">{{ t('common.optional') }}</option>
-                <option v-for="p in platformOptions" :key="p" :value="p">{{ p }}</option>
-              </select>
-            </label>
             <label class="form-field">
               <span class="input-label">{{ t('admin.serviceQuota.form.groupId') }}</span>
               <EntitySearchSelect
@@ -163,9 +160,20 @@
                 :reset-token="`${form.platform ?? ''}:${form.group_id ?? ''}`"
               />
             </label>
-            <label class="form-field">
+            <label class="form-field md:col-span-2">
               <span class="input-label">{{ t('admin.serviceQuota.form.modelPattern') }}</span>
-              <input v-model="form.model_pattern" class="input" :placeholder="t('admin.serviceQuota.form.modelPatternPlaceholder')" />
+              <input
+                v-model="form.model_pattern"
+                class="input"
+                :placeholder="t('admin.serviceQuota.form.modelPatternPlaceholder')"
+                list="service-quota-model-suggestions"
+              />
+              <datalist id="service-quota-model-suggestions">
+                <option v-for="m in availableModels" :key="m" :value="m" />
+              </datalist>
+              <span v-if="availableModels.length > 0" class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.serviceQuota.form.modelSuggestionHint', { count: availableModels.length }) }}
+              </span>
             </label>
           </div>
         </div>
@@ -235,11 +243,13 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'
 import UserMultiSelect from '@/components/common/UserMultiSelect.vue'
 import EntitySearchSelect, { type EntitySearchItem } from '@/components/common/EntitySearchSelect.vue'
+import PlatformPicker from '@/components/common/PlatformPicker.vue'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import type { Column } from '@/components/common/types'
 import adminAPI from '@/api/admin'
 import type { SimpleUser } from '@/api/admin/usage'
+import type { GroupPlatform } from '@/types'
 import { createServiceQuotaRule, deleteServiceQuotaRule, listServiceQuotaRules, updateServiceQuotaRule, type ServiceQuotaRule, type ServiceQuotaRuleInput } from '@/api/admin/serviceQuota'
 
 const { t } = useI18n()
@@ -258,7 +268,35 @@ const counterModeOptions = computed(() => [
   { value: 'shared', label: t('admin.serviceQuota.counterModes.shared') },
 ])
 
-const platformOptions = ['anthropic', 'openai', 'gemini', 'antigravity']
+const availableModels = ref<string[]>([])
+
+async function refreshAvailableModels() {
+  if (form.account_id) {
+    try {
+      const list = await adminAPI.accounts.getAvailableModels(form.account_id)
+      availableModels.value = (list || []).map((m: { id?: string; display_name?: string }) => m.id || m.display_name || '').filter(Boolean)
+      return
+    } catch {
+      availableModels.value = []
+    }
+  }
+  availableModels.value = defaultModelsForPlatform(form.platform)
+}
+
+function defaultModelsForPlatform(platform?: string | null): string[] {
+  switch (platform) {
+    case 'anthropic':
+      return ['claude-opus-4-6', 'claude-opus-4-5', 'claude-sonnet-4-6', 'claude-sonnet-4-5', 'claude-haiku-4-5']
+    case 'openai':
+      return ['gpt-5.2', 'gpt-5.1', 'gpt-5', 'gpt-4.1', 'gpt-4o', 'gpt-4o-mini', 'o3', 'o3-mini']
+    case 'gemini':
+      return ['gemini-3-pro', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash']
+    case 'antigravity':
+      return ['gemini-3-pro-antigravity', 'gemini-2.5-pro-antigravity']
+    default:
+      return []
+  }
+}
 
 const columns = computed<Column[]>(() => [
   { key: 'enabled', label: t('admin.serviceQuota.columns.status') },
@@ -291,6 +329,10 @@ const filteredRules = computed(() => rules.value.filter((rule) => {
 
 watch(() => form.limiter_type, (value) => {
   if (value === 'concurrency') form.window_mode = 'fixed'
+})
+
+watch([() => form.platform, () => form.account_id], () => {
+  refreshAvailableModels()
 })
 
 function blankRule(): ServiceQuotaRuleInput {
@@ -393,7 +435,10 @@ function cleanText(value?: string | null): string | null { return value && value
 function cleanNumber(value?: number | null): number | null { return value && value > 0 ? value : null }
 
 async function searchGroups(keyword: string, signal: AbortSignal): Promise<EntitySearchItem[]> {
-  const res = await adminAPI.groups.list(1, 20, { search: keyword || undefined }, { signal })
+  const filters: { search?: string; platform?: GroupPlatform } = {}
+  if (keyword) filters.search = keyword
+  if (form.platform) filters.platform = form.platform as GroupPlatform
+  const res = await adminAPI.groups.list(1, 20, filters, { signal })
   return res.items.map((g) => ({
     id: g.id,
     label: g.name,
