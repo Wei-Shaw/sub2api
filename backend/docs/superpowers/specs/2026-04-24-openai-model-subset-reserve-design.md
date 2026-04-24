@@ -31,11 +31,35 @@
 
 ## 核心语义
 
+### 0. 投影维度必须使用规范化后的模型键
+
+这次设计里的“模型子集”不能直接用原始请求模型字符串做 key，而必须使用和当前 OpenAI 调度一致的规范化模型键。
+
+最小要求：
+
+1. 先去掉 exhausted-class / compat 里已有的语义后缀影响，例如 `-Sys`。
+2. 再走当前 OpenAI compat 归一化链，保证 `gpt-X-Sys`、compat reasoning 后缀模型、Codex 归一化模型不会被拆成不同投影维度。
+3. 投影的最小 key 应是：
+   - `scheduler bucket`
+   - `canonical routing model`
+
+否则实现会重新退回“请求来时临时现算模型键”的旧问题。
+
+另外，“可路由模型集合”必须是有限且可刷新的目录，而不是实现阶段临时取巧：
+
+1. 需要新增一份 OpenAI canonical model catalog，作为投影层唯一允许遍历/展开的模型目录。
+2. 这份 catalog 至少归并以下来源：
+   - capability snapshot 中显式列出的模型
+   - `model_mapping` 中显式出现的 canonical key / value
+   - 组或渠道层显式配置过的默认/强制模型
+3. wildcard / 默认允许规则只允许在这份有限 catalog 上做离线展开。
+4. 对 catalog 之外的未知新模型，请求阶段不能直接按 live wildcard 临时推 reserve；必须走“保守排除 + 触发能力/目录刷新”的受控路径。
+
 ### 1. 模型子集先于账号静态分桶
 
 对 OpenAI exhausted / reserve 的推导，不再从“全量账号静态分桶”出发，而是先建立模型可达视角：
 
-1. 对每个可路由模型 `M`，取出“支持 `M` 的账号子集”。
+1. 对每个规范化后的可路由模型 `M`，取出“支持 `M` 的账号子集”。
 2. exhausted / reserve 的容量规则只在这个子集内计算。
 3. exhausted-class 请求在消费候选池时，看到的是“该模型子集下的 exhausted / reserve 结果”，而不是账号整体静态标签。
 
@@ -68,13 +92,19 @@
 
 该投影层输入：
 
-1. 当前可调度的 OpenAI 账号集合。
+1. 保留当前 exhausted 语义所需的 OpenAI 账号全集，而不是只取 active/schedulable 快照成员。
 2. 每个账号的 exhausted / active 基础状态。
-3. 每个账号的模型可达信息：
-   - `IsModelSupported`
+3. 每个账号的模型能力快照：
    - model mapping
-   - 新模型访问权限
+   - 显式模型权限/能力列表
+   - wildcard / 默认允许规则（如果存在）
 4. 每个账号的 schedulable / temp-unsched / rate-limit 等状态。
+
+这里特别要求：
+
+1. “无 mapping => 支持全部模型”不能继续作为投影层的默认语义。
+2. 对未知新模型，如果账号能力来源不能明确证明其可达，投影层必须走保守排除，而不是乐观纳入。
+3. 换句话说，投影层需要一份可刷新、可缓存、可进入 snapshot 的 OpenAI 模型能力快照，而不是直接复用今天请求热路径里偏宽松的 `IsModelSupported` 兜底语义。
 
 该投影层输出：
 
@@ -82,6 +112,7 @@
 2. reserve overflow 池。
 3. 每个账号是否被提升为 reserve。
 4. 每个账号支持的模型集合下，对应应消费的角色视图。
+5. `projection_version` / `built_at`，用于请求侧与运维侧确认消费的是哪一版投影。
 
 ### 2. 生成流程
 
@@ -92,7 +123,7 @@
 
 具体顺序：
 
-1. 遍历可路由模型集合。
+1. 遍历规范化后的可路由模型集合。
 2. 对每个模型，取支持该模型的账号子集。
 3. 在这个子集内计算：
    - exhausted 基础池
@@ -104,6 +135,11 @@
 
 1. reserve 来源受模型可达性约束。
 2. reserve 最终对账号保持全模型一致。
+
+这里有两个必须保持的不变量：
+
+1. “全模型一致 reserve”只作用于已在某个模型子集里被判为 reserve overflow candidate 的账号。
+2. 不会把 exhausted 基础池账号改写成 reserve；同一模型子集里，同一账号不能同时落在 exhausted 基础池和 reserve overflow 池里。
 
 ### 3. 请求阶段只消费投影结果
 
@@ -123,6 +159,16 @@
 2. 但它不会再被“全局 exhausted/reserve 为空”这种静态结果提前卡死。
 3. 新模型只被少量账号支持时，仍能通过子集重算产出合法 reserve overflow 候选。
 
+这条“只消费投影结果”不只约束主选路，还约束所有请求期消费者：
+
+1. 普通 load-balance 选路。
+2. active/any 路径里对 reserve 的排斥逻辑。
+3. sticky 命中后的账号校验。
+4. `previous_response_id` / continuation 锚点校验。
+5. failover 复核路径。
+
+任何请求期代码都不得再根据账号当前 live 状态临时推导 reserve 身份；若旧 sticky / previous_response binding 与当前 projection 不一致，必须失效或重绑。
+
 ## 重算触发机制
 
 这套投影必须是**状态变化驱动的整体重算结果**，而不是请求时现算。
@@ -138,6 +184,15 @@
 
 实现上应尽量复用现有 scheduler snapshot / outbox 事件链，让“账号状态变更 -> 派生角色重算 -> 路由视图刷新”保持同一套刷新机制。
 
+这里必须明确成“真实写路径矩阵”，至少包括：
+
+1. `UpdateCredentials` 类写路径。
+2. `UpdateExtra` 中会影响 exhausted / reserve 推导的字段，例如 Codex 配额快照、模型能力相关字段。
+3. 任何会改变 `IsExhausted`、模型可达性、schedulable、temp-unsched 状态的同步路径。
+4. snapshot 重建与 outbox worker。
+
+特别注意：当前一些 `extra` 字段今天仍被视为 scheduler-neutral。实现本设计时，凡是会影响 OpenAI 模型子集投影的字段，都不能继续走 scheduler-neutral 旁路，而必须进入 projection 刷新链。
+
 ## 数据与状态
 
 ### 1. 新增派生投影状态
@@ -148,7 +203,8 @@
 2. 模型到候选池的映射：
    - exhausted 基础池
    - reserve overflow 池
-3. 生成版本或时间戳。
+3. `projection_version`。
+4. `built_at` 时间戳。
 
 ### 2. 存储边界
 
@@ -158,7 +214,8 @@
 
 1. 作为 scheduler snapshot 的扩展派生结果一起缓存。
 2. 随 snapshot/outbox 重建而更新。
-3. 保证请求阶段只读，不在热路径重新做全量模型子集推导。
+3. 以 `scheduler bucket` 为单位原子发布，避免请求看到半新半旧的混合视图。
+4. 保证请求阶段只读，不在热路径重新做全量模型子集推导。
 
 ## 观测性
 
@@ -169,14 +226,18 @@
    - 参与账号数
    - 模型子集数
    - 最终 reserve 账号数
+   - `projection_version`
+   - `built_at`
 2. 关键账号角色变化日志：
    - `account_id`
    - 旧角色
    - 新角色
    - 触发原因
+   - `promoted_by_models`
 3. 请求命中日志仍保留现有：
    - `routing_target_group`
    - `routing_selected_group`
+   - `projection_version`
    - 但应能解释这是基于模型子集投影后的结果
 
 ## 测试计划
@@ -188,22 +249,37 @@
 1. 新模型只被 2 个账号支持时：
    - 在该模型子集里会重算 reserve
    - 至少 1 个账号会进入 reserve overflow 池
-2. 某账号一旦因任一模型子集进入 reserve：
+2. 未知新模型 + 空 mapping / 无 mapping / 宽 wildcard 账号场景：
+   - 只有 capability snapshot 能明确证明支持该模型的账号才能进入该模型子集
+   - 其余账号即使在旧热路径 `IsModelSupported` 下会被视为“支持全部模型”，在投影层也必须被保守排除
+3. 某账号一旦因任一模型子集进入 reserve：
    - 在自己支持的所有模型子集里都保持 reserve 身份
-3. `exhausted=0 => 100%` 规则在模型子集上继续成立。
-4. 账号状态变化后，投影会整体重算。
-5. 新模型访问权限变化后，投影会整体重算。
-6. temp-unsched / schedulable 变化后，投影会整体重算。
+4. 使用不对称矩阵测试：至少覆盖 `3 账号 x 2 模型`，其中某账号在模型 A 子集里被提升为 reserve 后，在它支持的模型 B 子集里也必须呈现 reserve。
+5. 不支持某模型的账号，不能因为“全模型一致 reserve”被泄漏到该模型子集。
+6. `exhausted=0 => 100%` 规则在模型子集上继续成立。
+7. 账号状态变化后，投影会整体重算。
+8. 新模型访问权限变化后，投影会整体重算。
+9. temp-unsched / schedulable 变化后，投影会整体重算。
+10. 投影字段能被 snapshot/cache 序列化并正确 hydration。
 
 ### 回归测试
 
 必须确认以下行为不回归：
 
 1. reserve 仍然只是 exhausted overflow 子组。
-2. exhausted / reserve / active / `-Sys` 语义不回归。
-3. sticky / previous_response / exhausted-reserve overlay 语义不被打穿。
-4. exhausted-class 请求不会被偷偷降成 active / any。
-5. 请求阶段不重新现算 reserve，而是只消费投影结果。
+2. overflow > 阈值时走 reserve；overflow <= 阈值时仍走 exhausted。
+3. exhausted 子集为空时按 100% 处理并继续走 reserve 规则。
+4. reserve 达阈值后，仍按现有 exhausted/reserve 共同参与规则处理。
+5. active/any 路径不会误选 reserve。
+6. exhausted / reserve / active / `-Sys` 语义不回归。
+7. sticky / previous_response / exhausted-reserve overlay 至少拆成以下 4 组显式回归：
+   - overlay reserve 在 `active/any` 请求下必须拒绝
+   - non-overlay reserve candidate 在 `active/any` 请求下仍可命中，但 `selected_group` 保持 `active`
+   - reserve affinity 只对 `exhausted` 请求有效，不能把 `active/any` 请求锚进 reserve
+   - 账号后来真正 exhausted 后，命中组应从 `reserve` 回落为 `exhausted`
+8. exhausted-class 请求不会被偷偷降成 active / any。
+9. 请求阶段不重新现算 reserve，而是只消费投影结果。
+10. `gpt-X-Sys` 与其规范化基模型读取同一投影键，但 exhausted-class 外部语义保持不变。
 
 ### 线上验证
 
@@ -215,6 +291,9 @@
 2. 账号状态变化场景：
    - 配额或模型权限变化后，reserve 视图会刷新
    - 不会长期保留旧 reserve 结果
+3. 版本验证：
+   - 账号状态变化后 `projection_version` 递增
+   - 请求命中日志能看到消费的是新版投影
 
 ## 风险与缓解
 
