@@ -418,7 +418,7 @@
               <div class="flex items-center gap-1.5">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('admin.users.today') }}:</span>
                 <span class="font-medium text-gray-900 dark:text-white">
-                  ${{ (usageStats[row.id]?.today_actual_cost ?? 0).toFixed(4) }}<template v-if="row.daily_usage_limit_usd != null && row.daily_usage_limit_usd > 0"><span class="text-xs text-gray-400"> / {{ formatCurrency(row.daily_usage_limit_usd) }}</span></template>
+                  ${{ (usageStats[row.id]?.today_actual_cost ?? 0).toFixed(4) }}
                 </span>
               </div>
               <div class="mt-0.5 flex items-center gap-1.5">
@@ -427,17 +427,6 @@
                   ${{ (usageStats[row.id]?.total_actual_cost ?? 0).toFixed(4) }}
                 </span>
               </div>
-            </div>
-          </template>
-
-          <template #cell-quota="{ row }">
-            <div class="text-sm">
-              <template v-if="row.daily_usage_limit_usd != null && row.daily_usage_limit_usd > 0">
-                <div class="text-gray-900 dark:text-white">{{ formatCurrency(row.daily_usage_limit_usd) }}</div>
-              </template>
-              <template v-else>
-                <div class="text-gray-400">{{ t('userQuota.columnEmpty') }}</div>
-              </template>
             </div>
           </template>
 
@@ -600,8 +589,6 @@
                 {{ t('admin.users.balanceHistory') }}
               </button>
 
-              <!-- Adjust Quota Limit — per-user daily quota (#1750) 已停用，入口隐藏 -->
-
               <div class="my-1 border-t border-gray-100 dark:border-dark-700"></div>
 
               <!-- Delete (not for admin) -->
@@ -636,7 +623,7 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
-import { formatDateTime, formatCurrency } from '@/utils/format'
+import { formatDateTime } from '@/utils/format'
 import Icon from '@/components/icons/Icon.vue'
 
 const { t } = useI18n()
@@ -723,7 +710,6 @@ const allColumns = computed<Column[]>(() => [
   { key: 'subscriptions', label: t('admin.users.columns.subscriptions'), sortable: false },
   { key: 'balance', label: t('admin.users.columns.balance'), sortable: true },
   { key: 'usage', label: t('admin.users.columns.usage'), sortable: false },
-  { key: 'quota', label: t('userQuota.column'), sortable: false },
   { key: 'concurrency', label: t('admin.users.columns.concurrency'), sortable: true },
   { key: 'status', label: t('admin.users.columns.status'), sortable: true },
   { key: 'last_active_at', label: t('admin.users.columns.lastActive'), sortable: true },
@@ -1138,8 +1124,6 @@ const balanceOperation = ref<'add' | 'subtract'>('add')
 // Balance History modal state
 const showBalanceHistoryModal = ref(false)
 const balanceHistoryUser = ref<AdminUser | null>(null)
-
-// per-user daily quota (#1750) 已停用，相关 modal / handler / state 已移除入口。
 
 // 计算剩余天数
 const getDaysRemaining = (expiresAt: string): number => {

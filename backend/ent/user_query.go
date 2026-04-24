@@ -27,7 +27,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
-	"github.com/Wei-Shaw/sub2api/ent/userusagelimitrule"
 )
 
 // UserQuery is the builder for querying User entities.
@@ -49,7 +48,6 @@ type UserQuery struct {
 	withPaymentOrders         *PaymentOrderQuery
 	withAuthIdentities        *AuthIdentityQuery
 	withPendingAuthSessions   *PendingAuthSessionQuery
-	withUsageLimitRules       *UserUsageLimitRuleQuery
 	withUserAllowedGroups     *UserAllowedGroupQuery
 	modifiers                 []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
@@ -352,28 +350,6 @@ func (_q *UserQuery) QueryPendingAuthSessions() *PendingAuthSessionQuery {
 	return query
 }
 
-// QueryUsageLimitRules chains the current query on the "usage_limit_rules" edge.
-func (_q *UserQuery) QueryUsageLimitRules() *UserUsageLimitRuleQuery {
-	query := (&UserUsageLimitRuleClient{config: _q.config}).Query()
-	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
-		if err := _q.prepareQuery(ctx); err != nil {
-			return nil, err
-		}
-		selector := _q.sqlQuery(ctx)
-		if err := selector.Err(); err != nil {
-			return nil, err
-		}
-		step := sqlgraph.NewStep(
-			sqlgraph.From(user.Table, user.FieldID, selector),
-			sqlgraph.To(userusagelimitrule.Table, userusagelimitrule.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, user.UsageLimitRulesTable, user.UsageLimitRulesColumn),
-		)
-		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
-		return fromU, nil
-	}
-	return query
-}
-
 // QueryUserAllowedGroups chains the current query on the "user_allowed_groups" edge.
 func (_q *UserQuery) QueryUserAllowedGroups() *UserAllowedGroupQuery {
 	query := (&UserAllowedGroupClient{config: _q.config}).Query()
@@ -600,7 +576,6 @@ func (_q *UserQuery) Clone() *UserQuery {
 		withPaymentOrders:         _q.withPaymentOrders.Clone(),
 		withAuthIdentities:        _q.withAuthIdentities.Clone(),
 		withPendingAuthSessions:   _q.withPendingAuthSessions.Clone(),
-		withUsageLimitRules:       _q.withUsageLimitRules.Clone(),
 		withUserAllowedGroups:     _q.withUserAllowedGroups.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
@@ -740,17 +715,6 @@ func (_q *UserQuery) WithPendingAuthSessions(opts ...func(*PendingAuthSessionQue
 	return _q
 }
 
-// WithUsageLimitRules tells the query-builder to eager-load the nodes that are connected to
-// the "usage_limit_rules" edge. The optional arguments are used to configure the query builder of the edge.
-func (_q *UserQuery) WithUsageLimitRules(opts ...func(*UserUsageLimitRuleQuery)) *UserQuery {
-	query := (&UserUsageLimitRuleClient{config: _q.config}).Query()
-	for _, opt := range opts {
-		opt(query)
-	}
-	_q.withUsageLimitRules = query
-	return _q
-}
-
 // WithUserAllowedGroups tells the query-builder to eager-load the nodes that are connected to
 // the "user_allowed_groups" edge. The optional arguments are used to configure the query builder of the edge.
 func (_q *UserQuery) WithUserAllowedGroups(opts ...func(*UserAllowedGroupQuery)) *UserQuery {
@@ -840,7 +804,7 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 	var (
 		nodes       = []*User{}
 		_spec       = _q.querySpec()
-		loadedTypes = [14]bool{
+		loadedTypes = [13]bool{
 			_q.withAPIKeys != nil,
 			_q.withRedeemCodes != nil,
 			_q.withSubscriptions != nil,
@@ -853,7 +817,6 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 			_q.withPaymentOrders != nil,
 			_q.withAuthIdentities != nil,
 			_q.withPendingAuthSessions != nil,
-			_q.withUsageLimitRules != nil,
 			_q.withUserAllowedGroups != nil,
 		}
 	)
@@ -963,13 +926,6 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 			func(n *User, e *PendingAuthSession) {
 				n.Edges.PendingAuthSessions = append(n.Edges.PendingAuthSessions, e)
 			}); err != nil {
-			return nil, err
-		}
-	}
-	if query := _q.withUsageLimitRules; query != nil {
-		if err := _q.loadUsageLimitRules(ctx, query, nodes,
-			func(n *User) { n.Edges.UsageLimitRules = []*UserUsageLimitRule{} },
-			func(n *User, e *UserUsageLimitRule) { n.Edges.UsageLimitRules = append(n.Edges.UsageLimitRules, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -1378,36 +1334,6 @@ func (_q *UserQuery) loadPendingAuthSessions(ctx context.Context, query *Pending
 		node, ok := nodeids[*fk]
 		if !ok {
 			return fmt.Errorf(`unexpected referenced foreign-key "target_user_id" returned %v for node %v`, *fk, n.ID)
-		}
-		assign(node, n)
-	}
-	return nil
-}
-func (_q *UserQuery) loadUsageLimitRules(ctx context.Context, query *UserUsageLimitRuleQuery, nodes []*User, init func(*User), assign func(*User, *UserUsageLimitRule)) error {
-	fks := make([]driver.Value, 0, len(nodes))
-	nodeids := make(map[int64]*User)
-	for i := range nodes {
-		fks = append(fks, nodes[i].ID)
-		nodeids[nodes[i].ID] = nodes[i]
-		if init != nil {
-			init(nodes[i])
-		}
-	}
-	if len(query.ctx.Fields) > 0 {
-		query.ctx.AppendFieldOnce(userusagelimitrule.FieldUserID)
-	}
-	query.Where(predicate.UserUsageLimitRule(func(s *sql.Selector) {
-		s.Where(sql.InValues(s.C(user.UsageLimitRulesColumn), fks...))
-	}))
-	neighbors, err := query.All(ctx)
-	if err != nil {
-		return err
-	}
-	for _, n := range neighbors {
-		fk := n.UserID
-		node, ok := nodeids[fk]
-		if !ok {
-			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
 		}
 		assign(node, n)
 	}

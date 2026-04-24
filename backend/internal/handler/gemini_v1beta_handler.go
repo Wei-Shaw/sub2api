@@ -637,7 +637,7 @@ func googleError(c *gin.Context, status int, message string) {
 }
 
 // googleErrorWithReason 带 reason + metadata 的 Google API 格式错误响应
-// （feature issue #1750：配额超限等场景要求前端能取到 metadata 和 reason 做 i18n 渲染）
+// （配额超限等场景要求前端能取到 metadata 和 reason 做 i18n 渲染）
 func googleErrorWithReason(c *gin.Context, status int, reason, message string, metadata map[string]string) {
 	body := gin.H{
 		"error": gin.H{

@@ -170,16 +170,6 @@ func RpmLimit(v int) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldRpmLimit, v))
 }
 
-// UsageLimitEnabled applies equality check predicate on the "usage_limit_enabled" field. It's identical to UsageLimitEnabledEQ.
-func UsageLimitEnabled(v bool) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldUsageLimitEnabled, v))
-}
-
-// DailyUsageLimitUsd applies equality check predicate on the "daily_usage_limit_usd" field. It's identical to DailyUsageLimitUsdEQ.
-func DailyUsageLimitUsd(v float64) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldDailyUsageLimitUsd, v))
-}
-
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldCreatedAt, v))
@@ -1350,76 +1340,6 @@ func RpmLimitLTE(v int) predicate.User {
 	return predicate.User(sql.FieldLTE(FieldRpmLimit, v))
 }
 
-// UsageLimitEnabledEQ applies the EQ predicate on the "usage_limit_enabled" field.
-func UsageLimitEnabledEQ(v bool) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldUsageLimitEnabled, v))
-}
-
-// UsageLimitEnabledNEQ applies the NEQ predicate on the "usage_limit_enabled" field.
-func UsageLimitEnabledNEQ(v bool) predicate.User {
-	return predicate.User(sql.FieldNEQ(FieldUsageLimitEnabled, v))
-}
-
-// UsageLimitEnabledIsNil applies the IsNil predicate on the "usage_limit_enabled" field.
-func UsageLimitEnabledIsNil() predicate.User {
-	return predicate.User(sql.FieldIsNull(FieldUsageLimitEnabled))
-}
-
-// UsageLimitEnabledNotNil applies the NotNil predicate on the "usage_limit_enabled" field.
-func UsageLimitEnabledNotNil() predicate.User {
-	return predicate.User(sql.FieldNotNull(FieldUsageLimitEnabled))
-}
-
-// DailyUsageLimitUsdEQ applies the EQ predicate on the "daily_usage_limit_usd" field.
-func DailyUsageLimitUsdEQ(v float64) predicate.User {
-	return predicate.User(sql.FieldEQ(FieldDailyUsageLimitUsd, v))
-}
-
-// DailyUsageLimitUsdNEQ applies the NEQ predicate on the "daily_usage_limit_usd" field.
-func DailyUsageLimitUsdNEQ(v float64) predicate.User {
-	return predicate.User(sql.FieldNEQ(FieldDailyUsageLimitUsd, v))
-}
-
-// DailyUsageLimitUsdIn applies the In predicate on the "daily_usage_limit_usd" field.
-func DailyUsageLimitUsdIn(vs ...float64) predicate.User {
-	return predicate.User(sql.FieldIn(FieldDailyUsageLimitUsd, vs...))
-}
-
-// DailyUsageLimitUsdNotIn applies the NotIn predicate on the "daily_usage_limit_usd" field.
-func DailyUsageLimitUsdNotIn(vs ...float64) predicate.User {
-	return predicate.User(sql.FieldNotIn(FieldDailyUsageLimitUsd, vs...))
-}
-
-// DailyUsageLimitUsdGT applies the GT predicate on the "daily_usage_limit_usd" field.
-func DailyUsageLimitUsdGT(v float64) predicate.User {
-	return predicate.User(sql.FieldGT(FieldDailyUsageLimitUsd, v))
-}
-
-// DailyUsageLimitUsdGTE applies the GTE predicate on the "daily_usage_limit_usd" field.
-func DailyUsageLimitUsdGTE(v float64) predicate.User {
-	return predicate.User(sql.FieldGTE(FieldDailyUsageLimitUsd, v))
-}
-
-// DailyUsageLimitUsdLT applies the LT predicate on the "daily_usage_limit_usd" field.
-func DailyUsageLimitUsdLT(v float64) predicate.User {
-	return predicate.User(sql.FieldLT(FieldDailyUsageLimitUsd, v))
-}
-
-// DailyUsageLimitUsdLTE applies the LTE predicate on the "daily_usage_limit_usd" field.
-func DailyUsageLimitUsdLTE(v float64) predicate.User {
-	return predicate.User(sql.FieldLTE(FieldDailyUsageLimitUsd, v))
-}
-
-// DailyUsageLimitUsdIsNil applies the IsNil predicate on the "daily_usage_limit_usd" field.
-func DailyUsageLimitUsdIsNil() predicate.User {
-	return predicate.User(sql.FieldIsNull(FieldDailyUsageLimitUsd))
-}
-
-// DailyUsageLimitUsdNotNil applies the NotNil predicate on the "daily_usage_limit_usd" field.
-func DailyUsageLimitUsdNotNil() predicate.User {
-	return predicate.User(sql.FieldNotNull(FieldDailyUsageLimitUsd))
-}
-
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.
 func HasAPIKeys() predicate.User {
 	return predicate.User(func(s *sql.Selector) {
@@ -1688,29 +1608,6 @@ func HasPendingAuthSessions() predicate.User {
 func HasPendingAuthSessionsWith(preds ...predicate.PendingAuthSession) predicate.User {
 	return predicate.User(func(s *sql.Selector) {
 		step := newPendingAuthSessionsStep()
-		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
-			for _, p := range preds {
-				p(s)
-			}
-		})
-	})
-}
-
-// HasUsageLimitRules applies the HasEdge predicate on the "usage_limit_rules" edge.
-func HasUsageLimitRules() predicate.User {
-	return predicate.User(func(s *sql.Selector) {
-		step := sqlgraph.NewStep(
-			sqlgraph.From(Table, FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, UsageLimitRulesTable, UsageLimitRulesColumn),
-		)
-		sqlgraph.HasNeighbors(s, step)
-	})
-}
-
-// HasUsageLimitRulesWith applies the HasEdge predicate on the "usage_limit_rules" edge with a given conditions (other predicates).
-func HasUsageLimitRulesWith(preds ...predicate.UserUsageLimitRule) predicate.User {
-	return predicate.User(func(s *sql.Selector) {
-		step := newUsageLimitRulesStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

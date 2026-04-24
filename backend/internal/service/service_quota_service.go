@@ -14,11 +14,11 @@ import (
 
 type serviceQuotaService struct {
 	repo     ServiceQuotaRuleRepository
-	settings quotaSettingsProvider
+	settings *SettingService
 	limiter  ServiceQuotaLimiter
 }
 
-func NewServiceQuotaService(repo ServiceQuotaRuleRepository, settings quotaSettingsProvider, limiter ServiceQuotaLimiter) ServiceQuotaService {
+func NewServiceQuotaService(repo ServiceQuotaRuleRepository, settings *SettingService, limiter ServiceQuotaLimiter) ServiceQuotaService {
 	return &serviceQuotaService{repo: repo, settings: settings, limiter: limiter}
 }
 

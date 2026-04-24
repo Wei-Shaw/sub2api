@@ -31,9 +31,15 @@ const (
 	ServiceQuotaWindowRolling = "rolling"
 )
 
-var ErrServiceQuotaExceeded = infraerrors.TooManyRequests(
-	"SERVICE_QUOTA_EXCEEDED",
-	"service quota exceeded",
+var (
+	ErrServiceQuotaExceeded = infraerrors.TooManyRequests(
+		"SERVICE_QUOTA_EXCEEDED",
+		"service quota exceeded",
+	)
+	ErrServiceQuotaRuleNotFound = infraerrors.NotFound(
+		"SERVICE_QUOTA_RULE_NOT_FOUND",
+		"service quota rule not found",
+	)
 )
 
 type ServiceQuotaRule struct {

@@ -50,31 +50,13 @@ type RateLimitCache interface {
 	InvalidateAPIKeyRateLimit(ctx context.Context, keyID int64) error
 }
 
-// QuotaCache 用户每日配额缓存操作（feature issue #1750）
-//
-// QuotaService 只依赖此接口；BillingCacheService 的 quota 相关热路径同样只需此接口。
-// 与 BillingCache 的完整接口解耦后，quota 相关测试 stub 只需实现 5 个方法，无需为
-// 全部 15 个 BillingCache 方法打桩。
-type QuotaCache interface {
-	// 读今日总已用；缓存 miss 返回 0, nil
-	GetQuotaUsedTotal(ctx context.Context, userID int64, date string) (float64, error)
-	// 读某规则今日已用；缓存 miss 返回 0, nil
-	GetQuotaUsedRule(ctx context.Context, userID, ruleID int64, date string) (float64, error)
-	// Lua 原子：INCRBYFLOAT + EXPIRE（TTL = QuotaUsageTTL）
-	IncrQuotaUsedTotal(ctx context.Context, userID int64, date string, delta float64) error
-	IncrQuotaUsedRule(ctx context.Context, userID, ruleID int64, date string, delta float64) error
-	// 用户配额配置缓存失效（改配置时调用）
-	InvalidateQuotaConfig(ctx context.Context, userID int64) error
-}
-
-// BillingCache 计费服务的完整缓存接口（4 个关注点的组合）。
+// BillingCache 计费服务的完整缓存接口（3 个关注点的组合）。
 // 保留该聚合接口是为了兼容现有消费者（如 *BillingCacheService）；新代码应尽量依赖
-// 更窄的子接口（BalanceCache / SubscriptionCache / RateLimitCache / QuotaCache）。
+// 更窄的子接口（BalanceCache / SubscriptionCache / RateLimitCache）。
 type BillingCache interface {
 	BalanceCache
 	SubscriptionCache
 	RateLimitCache
-	QuotaCache
 }
 
 // ModelPricing 模型价格配置（per-token价格，与LiteLLM格式一致）

@@ -1206,14 +1206,6 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	u.SetFloat(SettingKeyDefaultBalance, settings.DefaultBalance)
 	u.SetInt(SettingKeyDefaultUserRPMLimit, settings.DefaultUserRPMLimit)
 
-	// 用户每日配额限制（feature issue #1750）
-	u.SetBool(SettingKeyUsageLimitEnabled, settings.UsageLimitEnabled)
-	u.SetBool(SettingKeyDefaultUsageLimitEnabled, settings.DefaultUsageLimitEnabled)
-	if settings.DefaultDailyUsageLimitUSD < 0 {
-		settings.DefaultDailyUsageLimitUSD = 0
-	}
-	u.SetFloat(SettingKeyDefaultDailyUsageLimitUSD, settings.DefaultDailyUsageLimitUSD)
-
 	defaultSubsJSON, err := json.Marshal(settings.DefaultSubscriptions)
 	if err != nil {
 		return nil, fmt.Errorf("marshal default subscriptions: %w", err)
@@ -1719,16 +1711,6 @@ func (s *SettingService) GetFloat(ctx context.Context, key string) (float64, err
 	return v, nil
 }
 
-// GetDefaultDailyUsageLimitUSD 获取新建用户默认的每日配额（feature issue #1750）。
-// 0 或未设置代表不下发（用户 daily_usage_limit_usd 保持 nil=不限）。
-func (s *SettingService) GetDefaultDailyUsageLimitUSD(ctx context.Context) float64 {
-	v, _ := s.GetFloat(ctx, SettingKeyDefaultDailyUsageLimitUSD)
-	if v < 0 {
-		return 0
-	}
-	return v
-}
-
 // InitializeDefaultSettings 初始化默认设置
 func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 	// 检查是否已有设置
@@ -1935,13 +1917,6 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.DefaultBalance = s.cfg.Default.UserBalance
 	}
 	result.DefaultSubscriptions = parseDefaultSubscriptions(settings[SettingKeyDefaultSubscriptions])
-
-	// 用户每日配额限制（feature issue #1750）
-	result.UsageLimitEnabled = settings[SettingKeyUsageLimitEnabled] == "true"
-	result.DefaultUsageLimitEnabled = settings[SettingKeyDefaultUsageLimitEnabled] == "true"
-	if v, err := strconv.ParseFloat(settings[SettingKeyDefaultDailyUsageLimitUSD], 64); err == nil && v >= 0 {
-		result.DefaultDailyUsageLimitUSD = v
-	}
 
 	// 敏感信息直接返回，方便测试连接时使用
 	result.SMTPPassword = settings[SettingKeySMTPPassword]

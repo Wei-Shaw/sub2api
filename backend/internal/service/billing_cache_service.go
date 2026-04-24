@@ -50,11 +50,7 @@ type BillingCacheService struct {
 	cfg                   *config.Config
 	circuitBreaker        *billingCircuitBreaker
 
-	// quotaService 用户每日配额（feature issue #1750），通过 SetQuotaService 注入。
-	// 用 atomic.Pointer 保证 init-time-only 注入 + 任意 goroutine 热路径读取无 data race；
-	// 为 nil（未注入）时所有配额逻辑短路返回，不影响现有行为。实现在 billing_cache_service_quota.go。
-	quotaServicePtr atomic.Pointer[quotaServiceBox]
-	serviceQuota    ServiceQuotaService
+	serviceQuota ServiceQuotaService
 
 	cacheWriteChan     chan cacheWriteTask
 	cacheWriteWg       sync.WaitGroup
@@ -143,8 +139,6 @@ func (s *BillingCacheService) CheckBillingEligibilityForRequest(ctx context.Cont
 		if err := s.checkBalanceEligibility(ctx, user.ID); err != nil {
 			return err
 		}
-		// per-user daily quota (#1750) 已停用，统一由 service quota 规则承担。
-		// 保留 checkQuotaEligibility 实现作为历史代码，后续批次单独清理。
 	}
 
 	// Check API Key rate limits (applies to both billing modes)

@@ -250,7 +250,6 @@ func (m *mockUserRepo) WithUserProfileIdentityTx(ctx context.Context, fn func(tx
 	m.getByIDUser = txState.getByIDUser
 	m.upsertAvatarArgs = txState.upsertAvatarArgs
 	m.deleteAvatarIDs = txState.deleteAvatarIDs
-func (m *mockUserRepo) UpdateUsageLimit(context.Context, int64, *bool, *float64) error {
 	return nil
 }
 

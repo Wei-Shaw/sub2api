@@ -212,13 +212,6 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		RPMLimit:     defaultRPMLimit,
 		Status:       StatusActive,
 	}
-	// 默认每日配额（feature issue #1750）：读 default_daily_usage_limit_usd，> 0 才写入；
-	// usage_limit_enabled 保持 nil 以跟随全局默认。
-	if s.settingService != nil {
-		if v := s.settingService.GetDefaultDailyUsageLimitUSD(ctx); v > 0 {
-			user.DailyUsageLimitUSD = &v
-		}
-	}
 
 	if err := s.userRepo.Create(ctx, user); err != nil {
 		// 优先检查邮箱冲突错误（竞态条件下可能发生）
@@ -512,11 +505,6 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 				SignupSource: signupSource,
 			}
 			// 默认每日配额（feature issue #1750）
-			if s.settingService != nil {
-				if v := s.settingService.GetDefaultDailyUsageLimitUSD(ctx); v > 0 {
-					newUser.DailyUsageLimitUSD = &v
-				}
-			}
 
 			if err := s.userRepo.Create(ctx, newUser); err != nil {
 				if errors.Is(err, ErrEmailExists) {
@@ -634,11 +622,6 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				SignupSource: signupSource,
 			}
 			// 默认每日配额（feature issue #1750）
-			if s.settingService != nil {
-				if v := s.settingService.GetDefaultDailyUsageLimitUSD(ctx); v > 0 {
-					newUser.DailyUsageLimitUSD = &v
-				}
-			}
 
 			if s.entClient != nil && invitationRedeemCode != nil {
 				tx, err := s.entClient.Tx(ctx)

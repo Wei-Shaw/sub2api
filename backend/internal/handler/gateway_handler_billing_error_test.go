@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -9,19 +10,21 @@ import (
 )
 
 func TestBillingErrorDetails_MapsGroupRPMExceededToTooManyRequests(t *testing.T) {
-	status, code, msg, retryAfter := billingErrorDetails(service.ErrGroupRPMExceeded)
+	status, code, msg, md := billingErrorDetails(service.ErrGroupRPMExceeded)
 	require.Equal(t, http.StatusTooManyRequests, status)
 	require.Equal(t, "rate_limit_exceeded", code)
 	require.NotEmpty(t, msg)
+	retryAfter, _ := strconv.Atoi(md["retry_after"])
 	require.Greater(t, retryAfter, 0, "RPM exceeded should return positive Retry-After")
 	require.LessOrEqual(t, retryAfter, 60)
 }
 
 func TestBillingErrorDetails_MapsUserRPMExceededToTooManyRequests(t *testing.T) {
-	status, code, msg, retryAfter := billingErrorDetails(service.ErrUserRPMExceeded)
+	status, code, msg, md := billingErrorDetails(service.ErrUserRPMExceeded)
 	require.Equal(t, http.StatusTooManyRequests, status)
 	require.Equal(t, "rate_limit_exceeded", code)
 	require.NotEmpty(t, msg)
+	retryAfter, _ := strconv.Atoi(md["retry_after"])
 	require.Greater(t, retryAfter, 0, "RPM exceeded should return positive Retry-After")
 	require.LessOrEqual(t, retryAfter, 60)
 }
@@ -40,10 +43,10 @@ func TestBillingErrorDetails_APIKeyRateLimitStillMaps(t *testing.T) {
 }
 
 func TestBillingErrorDetails_BillingServiceUnavailableMapsTo503(t *testing.T) {
-	status, code, _, retryAfter := billingErrorDetails(service.ErrBillingServiceUnavailable)
+	status, code, _, md := billingErrorDetails(service.ErrBillingServiceUnavailable)
 	require.Equal(t, http.StatusServiceUnavailable, status)
 	require.Equal(t, "billing_service_error", code)
-	require.Equal(t, 0, retryAfter, "non-RPM errors should not set Retry-After")
+	require.Nil(t, md, "non-RPM errors should not set Retry-After metadata")
 }
 
 func TestBillingErrorDetails_UnknownErrorFallsBackTo403(t *testing.T) {

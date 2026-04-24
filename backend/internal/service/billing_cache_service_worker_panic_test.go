@@ -109,7 +109,7 @@ func (p *panickingBillingCache) InvalidateQuotaConfig(ctx context.Context, userI
 // 为此用 cacheWriteWorkerCount 次 panic 任务 + 1 次正常任务 确保所有 worker 都过一次 panic 路径。
 func TestCacheWriteWorker_PanicRecovery(t *testing.T) {
 	cache := &panickingBillingCache{}
-	svc := NewBillingCacheService(cache, nil, nil, nil, &config.Config{})
+	svc := NewBillingCacheService(cache, nil, nil, nil, nil, nil, &config.Config{})
 	t.Cleanup(svc.Stop)
 
 	// 第一次入队触发 panic（DeductUserBalance 只 panic 一次）。

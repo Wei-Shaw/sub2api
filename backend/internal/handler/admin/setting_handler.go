@@ -240,9 +240,6 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ChannelMonitorDefaultIntervalSeconds:   settings.ChannelMonitorDefaultIntervalSeconds,
 		AvailableChannelsEnabled:               settings.AvailableChannelsEnabled,
 		ServiceQuotaEnabled:                    settings.ServiceQuotaEnabled,
-		UsageLimitEnabled:                      settings.UsageLimitEnabled,
-		DefaultUsageLimitEnabled:               settings.DefaultUsageLimitEnabled,
-		DefaultDailyUsageLimitUSD:              settings.DefaultDailyUsageLimitUSD,
 	}
 	response.Success(c, systemSettingsResponseData(payload, authSourceDefaults))
 }
@@ -364,11 +361,7 @@ type UpdateSettingsRequest struct {
 	AuthSourceDefaultWeChatGrantOnFirstBind  *bool                             `json:"auth_source_default_wechat_grant_on_first_bind"`
 	ForceEmailOnThirdPartySignup             *bool                             `json:"force_email_on_third_party_signup"`
 
-	// 用户每日配额限制（feature issue #1750）
-	UsageLimitEnabled         *bool    `json:"usage_limit_enabled"`
-	DefaultUsageLimitEnabled  *bool    `json:"default_usage_limit_enabled"`
-	DefaultDailyUsageLimitUSD *float64 `json:"default_daily_usage_limit_usd"`
-	ServiceQuotaEnabled       *bool    `json:"service_quota_enabled"`
+	ServiceQuotaEnabled *bool `json:"service_quota_enabled"`
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
@@ -1129,25 +1122,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		DefaultBalance:                   req.DefaultBalance,
 		DefaultUserRPMLimit:              req.DefaultUserRPMLimit,
 		DefaultSubscriptions:             defaultSubscriptions,
-		// 用户每日配额限制（feature issue #1750）
-		UsageLimitEnabled: func() bool {
-			if req.UsageLimitEnabled != nil {
-				return *req.UsageLimitEnabled
-			}
-			return previousSettings.UsageLimitEnabled
-		}(),
-		DefaultUsageLimitEnabled: func() bool {
-			if req.DefaultUsageLimitEnabled != nil {
-				return *req.DefaultUsageLimitEnabled
-			}
-			return previousSettings.DefaultUsageLimitEnabled
-		}(),
-		DefaultDailyUsageLimitUSD: func() float64 {
-			if req.DefaultDailyUsageLimitUSD != nil {
-				return *req.DefaultDailyUsageLimitUSD
-			}
-			return previousSettings.DefaultDailyUsageLimitUSD
-		}(),
 		ServiceQuotaEnabled: func() bool {
 			if req.ServiceQuotaEnabled != nil {
 				return *req.ServiceQuotaEnabled

@@ -49,7 +49,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
-	"github.com/Wei-Shaw/sub2api/ent/userusagelimitrule"
 
 	stdsql "database/sql"
 )
@@ -127,8 +126,6 @@ type Client struct {
 	UserAttributeValue *UserAttributeValueClient
 	// UserSubscription is the client for interacting with the UserSubscription builders.
 	UserSubscription *UserSubscriptionClient
-	// UserUsageLimitRule is the client for interacting with the UserUsageLimitRule builders.
-	UserUsageLimitRule *UserUsageLimitRuleClient
 }
 
 // NewClient creates a new client configured with the given options.
@@ -174,7 +171,6 @@ func (c *Client) init() {
 	c.UserAttributeDefinition = NewUserAttributeDefinitionClient(c.config)
 	c.UserAttributeValue = NewUserAttributeValueClient(c.config)
 	c.UserSubscription = NewUserSubscriptionClient(c.config)
-	c.UserUsageLimitRule = NewUserUsageLimitRuleClient(c.config)
 }
 
 type (
@@ -301,7 +297,6 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 		UserAttributeDefinition:       NewUserAttributeDefinitionClient(cfg),
 		UserAttributeValue:            NewUserAttributeValueClient(cfg),
 		UserSubscription:              NewUserSubscriptionClient(cfg),
-		UserUsageLimitRule:            NewUserUsageLimitRuleClient(cfg),
 	}, nil
 }
 
@@ -355,7 +350,6 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 		UserAttributeDefinition:       NewUserAttributeDefinitionClient(cfg),
 		UserAttributeValue:            NewUserAttributeValueClient(cfg),
 		UserSubscription:              NewUserSubscriptionClient(cfg),
-		UserUsageLimitRule:            NewUserUsageLimitRuleClient(cfg),
 	}, nil
 }
 
@@ -394,7 +388,7 @@ func (c *Client) Use(hooks ...Hook) {
 		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
 		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
 		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserSubscription, c.UserUsageLimitRule,
+		c.UserSubscription,
 	} {
 		n.Use(hooks...)
 	}
@@ -413,7 +407,7 @@ func (c *Client) Intercept(interceptors ...Interceptor) {
 		c.PromoCodeUsage, c.Proxy, c.RedeemCode, c.SecuritySecret, c.Setting,
 		c.SubscriptionPlan, c.TLSFingerprintProfile, c.UsageCleanupTask, c.UsageLog,
 		c.User, c.UserAllowedGroup, c.UserAttributeDefinition, c.UserAttributeValue,
-		c.UserSubscription, c.UserUsageLimitRule,
+		c.UserSubscription,
 	} {
 		n.Intercept(interceptors...)
 	}
@@ -490,8 +484,6 @@ func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 		return c.UserAttributeValue.mutate(ctx, m)
 	case *UserSubscriptionMutation:
 		return c.UserSubscription.mutate(ctx, m)
-	case *UserUsageLimitRuleMutation:
-		return c.UserUsageLimitRule.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
 	}
@@ -5349,22 +5341,6 @@ func (c *UserClient) QueryPendingAuthSessions(_m *User) *PendingAuthSessionQuery
 	return query
 }
 
-// QueryUsageLimitRules queries the usage_limit_rules edge of a User.
-func (c *UserClient) QueryUsageLimitRules(_m *User) *UserUsageLimitRuleQuery {
-	query := (&UserUsageLimitRuleClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(user.Table, user.FieldID, id),
-			sqlgraph.To(userusagelimitrule.Table, userusagelimitrule.FieldID),
-			sqlgraph.Edge(sqlgraph.O2M, false, user.UsageLimitRulesTable, user.UsageLimitRulesColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
 // QueryUserAllowedGroups queries the user_allowed_groups edge of a User.
 func (c *UserClient) QueryUserAllowedGroups(_m *User) *UserAllowedGroupQuery {
 	query := (&UserAllowedGroupClient{config: c.config}).Query()
@@ -6039,155 +6015,6 @@ func (c *UserSubscriptionClient) mutate(ctx context.Context, m *UserSubscription
 	}
 }
 
-// UserUsageLimitRuleClient is a client for the UserUsageLimitRule schema.
-type UserUsageLimitRuleClient struct {
-	config
-}
-
-// NewUserUsageLimitRuleClient returns a client for the UserUsageLimitRule from the given config.
-func NewUserUsageLimitRuleClient(c config) *UserUsageLimitRuleClient {
-	return &UserUsageLimitRuleClient{config: c}
-}
-
-// Use adds a list of mutation hooks to the hooks stack.
-// A call to `Use(f, g, h)` equals to `userusagelimitrule.Hooks(f(g(h())))`.
-func (c *UserUsageLimitRuleClient) Use(hooks ...Hook) {
-	c.hooks.UserUsageLimitRule = append(c.hooks.UserUsageLimitRule, hooks...)
-}
-
-// Intercept adds a list of query interceptors to the interceptors stack.
-// A call to `Intercept(f, g, h)` equals to `userusagelimitrule.Intercept(f(g(h())))`.
-func (c *UserUsageLimitRuleClient) Intercept(interceptors ...Interceptor) {
-	c.inters.UserUsageLimitRule = append(c.inters.UserUsageLimitRule, interceptors...)
-}
-
-// Create returns a builder for creating a UserUsageLimitRule entity.
-func (c *UserUsageLimitRuleClient) Create() *UserUsageLimitRuleCreate {
-	mutation := newUserUsageLimitRuleMutation(c.config, OpCreate)
-	return &UserUsageLimitRuleCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// CreateBulk returns a builder for creating a bulk of UserUsageLimitRule entities.
-func (c *UserUsageLimitRuleClient) CreateBulk(builders ...*UserUsageLimitRuleCreate) *UserUsageLimitRuleCreateBulk {
-	return &UserUsageLimitRuleCreateBulk{config: c.config, builders: builders}
-}
-
-// MapCreateBulk creates a bulk creation builder from the given slice. For each item in the slice, the function creates
-// a builder and applies setFunc on it.
-func (c *UserUsageLimitRuleClient) MapCreateBulk(slice any, setFunc func(*UserUsageLimitRuleCreate, int)) *UserUsageLimitRuleCreateBulk {
-	rv := reflect.ValueOf(slice)
-	if rv.Kind() != reflect.Slice {
-		return &UserUsageLimitRuleCreateBulk{err: fmt.Errorf("calling to UserUsageLimitRuleClient.MapCreateBulk with wrong type %T, need slice", slice)}
-	}
-	builders := make([]*UserUsageLimitRuleCreate, rv.Len())
-	for i := 0; i < rv.Len(); i++ {
-		builders[i] = c.Create()
-		setFunc(builders[i], i)
-	}
-	return &UserUsageLimitRuleCreateBulk{config: c.config, builders: builders}
-}
-
-// Update returns an update builder for UserUsageLimitRule.
-func (c *UserUsageLimitRuleClient) Update() *UserUsageLimitRuleUpdate {
-	mutation := newUserUsageLimitRuleMutation(c.config, OpUpdate)
-	return &UserUsageLimitRuleUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOne returns an update builder for the given entity.
-func (c *UserUsageLimitRuleClient) UpdateOne(_m *UserUsageLimitRule) *UserUsageLimitRuleUpdateOne {
-	mutation := newUserUsageLimitRuleMutation(c.config, OpUpdateOne, withUserUsageLimitRule(_m))
-	return &UserUsageLimitRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// UpdateOneID returns an update builder for the given id.
-func (c *UserUsageLimitRuleClient) UpdateOneID(id int64) *UserUsageLimitRuleUpdateOne {
-	mutation := newUserUsageLimitRuleMutation(c.config, OpUpdateOne, withUserUsageLimitRuleID(id))
-	return &UserUsageLimitRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// Delete returns a delete builder for UserUsageLimitRule.
-func (c *UserUsageLimitRuleClient) Delete() *UserUsageLimitRuleDelete {
-	mutation := newUserUsageLimitRuleMutation(c.config, OpDelete)
-	return &UserUsageLimitRuleDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
-}
-
-// DeleteOne returns a builder for deleting the given entity.
-func (c *UserUsageLimitRuleClient) DeleteOne(_m *UserUsageLimitRule) *UserUsageLimitRuleDeleteOne {
-	return c.DeleteOneID(_m.ID)
-}
-
-// DeleteOneID returns a builder for deleting the given entity by its id.
-func (c *UserUsageLimitRuleClient) DeleteOneID(id int64) *UserUsageLimitRuleDeleteOne {
-	builder := c.Delete().Where(userusagelimitrule.ID(id))
-	builder.mutation.id = &id
-	builder.mutation.op = OpDeleteOne
-	return &UserUsageLimitRuleDeleteOne{builder}
-}
-
-// Query returns a query builder for UserUsageLimitRule.
-func (c *UserUsageLimitRuleClient) Query() *UserUsageLimitRuleQuery {
-	return &UserUsageLimitRuleQuery{
-		config: c.config,
-		ctx:    &QueryContext{Type: TypeUserUsageLimitRule},
-		inters: c.Interceptors(),
-	}
-}
-
-// Get returns a UserUsageLimitRule entity by its id.
-func (c *UserUsageLimitRuleClient) Get(ctx context.Context, id int64) (*UserUsageLimitRule, error) {
-	return c.Query().Where(userusagelimitrule.ID(id)).Only(ctx)
-}
-
-// GetX is like Get, but panics if an error occurs.
-func (c *UserUsageLimitRuleClient) GetX(ctx context.Context, id int64) *UserUsageLimitRule {
-	obj, err := c.Get(ctx, id)
-	if err != nil {
-		panic(err)
-	}
-	return obj
-}
-
-// QueryUser queries the user edge of a UserUsageLimitRule.
-func (c *UserUsageLimitRuleClient) QueryUser(_m *UserUsageLimitRule) *UserQuery {
-	query := (&UserClient{config: c.config}).Query()
-	query.path = func(context.Context) (fromV *sql.Selector, _ error) {
-		id := _m.ID
-		step := sqlgraph.NewStep(
-			sqlgraph.From(userusagelimitrule.Table, userusagelimitrule.FieldID, id),
-			sqlgraph.To(user.Table, user.FieldID),
-			sqlgraph.Edge(sqlgraph.M2O, true, userusagelimitrule.UserTable, userusagelimitrule.UserColumn),
-		)
-		fromV = sqlgraph.Neighbors(_m.driver.Dialect(), step)
-		return fromV, nil
-	}
-	return query
-}
-
-// Hooks returns the client hooks.
-func (c *UserUsageLimitRuleClient) Hooks() []Hook {
-	return c.hooks.UserUsageLimitRule
-}
-
-// Interceptors returns the client interceptors.
-func (c *UserUsageLimitRuleClient) Interceptors() []Interceptor {
-	return c.inters.UserUsageLimitRule
-}
-
-func (c *UserUsageLimitRuleClient) mutate(ctx context.Context, m *UserUsageLimitRuleMutation) (Value, error) {
-	switch m.Op() {
-	case OpCreate:
-		return (&UserUsageLimitRuleCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdate:
-		return (&UserUsageLimitRuleUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpUpdateOne:
-		return (&UserUsageLimitRuleUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
-	case OpDelete, OpDeleteOne:
-		return (&UserUsageLimitRuleDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
-	default:
-		return nil, fmt.Errorf("ent: unknown UserUsageLimitRule mutation op: %q", m.Op())
-	}
-}
-
 // hooks and interceptors per client, for fast access.
 type (
 	hooks struct {
@@ -6198,8 +6025,7 @@ type (
 		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
 		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
 		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserSubscription,
-		UserUsageLimitRule []ent.Hook
+		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Hook
 	}
 	inters struct {
 		APIKey, Account, AccountGroup, Announcement, AnnouncementRead, AuthIdentity,
@@ -6209,8 +6035,7 @@ type (
 		PaymentOrder, PaymentProviderInstance, PendingAuthSession, PromoCode,
 		PromoCodeUsage, Proxy, RedeemCode, SecuritySecret, Setting, SubscriptionPlan,
 		TLSFingerprintProfile, UsageCleanupTask, UsageLog, User, UserAllowedGroup,
-		UserAttributeDefinition, UserAttributeValue, UserSubscription,
-		UserUsageLimitRule []ent.Interceptor
+		UserAttributeDefinition, UserAttributeValue, UserSubscription []ent.Interceptor
 	}
 )
 

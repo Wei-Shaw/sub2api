@@ -107,11 +107,6 @@ export interface AdminUser extends User {
   group_rates?: Record<number, number>
   // 当前并发数（仅管理员列表接口返回）
   current_concurrency?: number
-  // 用户每日配额限制（feature issue #1750；契约 §1.1 / §0.5）
-  // null/undefined 表示"跟随全局"，true/false 表示强制覆盖
-  usage_limit_enabled?: boolean | null
-  // 每日总限额（USD）；null/undefined 表示"不限"
-  daily_usage_limit_usd?: number | null
 }
 
 export interface LoginRequest {

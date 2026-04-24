@@ -8,7 +8,6 @@
         <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <div class="lg:col-span-2"><UserDashboardRecentUsage :data="recentUsage" :loading="loadingUsage" /></div>
           <div class="lg:col-span-1 space-y-6">
-            <QuotaStatusCard />
             <UserDashboardQuickActions />
           </div>
         </div>
@@ -22,7 +21,6 @@ import { ref, computed, onMounted } from 'vue'; import { useAuthStore } from '@/
 import AppLayout from '@/components/layout/AppLayout.vue'; import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import UserDashboardStats from '@/components/user/dashboard/UserDashboardStats.vue'; import UserDashboardCharts from '@/components/user/dashboard/UserDashboardCharts.vue'
 import UserDashboardRecentUsage from '@/components/user/dashboard/UserDashboardRecentUsage.vue'; import UserDashboardQuickActions from '@/components/user/dashboard/UserDashboardQuickActions.vue'
-import QuotaStatusCard from '@/components/user/QuotaStatusCard.vue'
 import type { UsageLog, TrendDataPoint, ModelStat } from '@/types'
 
 const authStore = useAuthStore(); const user = computed(() => authStore.user)

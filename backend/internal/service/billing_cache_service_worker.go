@@ -21,8 +21,6 @@ const (
 	cacheWriteUpdateSubscriptionUsage
 	cacheWriteDeductBalance
 	cacheWriteUpdateRateLimitUsage
-	// cacheWriteIncrQuotaUsage feature issue #1750：配额用量累加任务
-	cacheWriteIncrQuotaUsage
 )
 
 // 异步缓存写入工作池配置
@@ -165,8 +163,6 @@ func (s *BillingCacheService) runCacheWriteTask(task cacheWriteTask) {
 		s.processDeductBalanceTask(ctx, task)
 	case cacheWriteUpdateRateLimitUsage:
 		s.processUpdateRateLimitUsageTask(ctx, task)
-	case cacheWriteIncrQuotaUsage:
-		s.processQuotaUsageTask(ctx, task)
 	}
 }
 
@@ -183,8 +179,6 @@ func cacheWriteKindName(kind cacheWriteKind) string {
 		return "deduct_balance"
 	case cacheWriteUpdateRateLimitUsage:
 		return "update_rate_limit_usage"
-	case cacheWriteIncrQuotaUsage:
-		return "incr_quota_usage"
 	default:
 		return "unknown"
 	}

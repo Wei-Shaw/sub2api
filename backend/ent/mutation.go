@@ -47,7 +47,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
-	"github.com/Wei-Shaw/sub2api/ent/userusagelimitrule"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
@@ -94,7 +93,6 @@ const (
 	TypeUserAttributeDefinition       = "UserAttributeDefinition"
 	TypeUserAttributeValue            = "UserAttributeValue"
 	TypeUserSubscription              = "UserSubscription"
-	TypeUserUsageLimitRule            = "UserUsageLimitRule"
 )
 
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
@@ -37457,9 +37455,6 @@ type UserMutation struct {
 	addtotal_recharged            *float64
 	rpm_limit                     *int
 	addrpm_limit                  *int
-	usage_limit_enabled           *bool
-	daily_usage_limit_usd         *float64
-	adddaily_usage_limit_usd      *float64
 	clearedFields                 map[string]struct{}
 	api_keys                      map[int64]struct{}
 	removedapi_keys               map[int64]struct{}
@@ -37497,9 +37492,6 @@ type UserMutation struct {
 	pending_auth_sessions         map[int64]struct{}
 	removedpending_auth_sessions  map[int64]struct{}
 	clearedpending_auth_sessions  bool
-	usage_limit_rules             map[int64]struct{}
-	removedusage_limit_rules      map[int64]struct{}
-	clearedusage_limit_rules      bool
 	done                          bool
 	oldValue                      func(context.Context) (*User, error)
 	predicates                    []predicate.User
@@ -38610,125 +38602,6 @@ func (m *UserMutation) ResetRpmLimit() {
 	m.addrpm_limit = nil
 }
 
-// SetUsageLimitEnabled sets the "usage_limit_enabled" field.
-func (m *UserMutation) SetUsageLimitEnabled(b bool) {
-	m.usage_limit_enabled = &b
-}
-
-// UsageLimitEnabled returns the value of the "usage_limit_enabled" field in the mutation.
-func (m *UserMutation) UsageLimitEnabled() (r bool, exists bool) {
-	v := m.usage_limit_enabled
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldUsageLimitEnabled returns the old "usage_limit_enabled" field's value of the User entity.
-// If the User object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UserMutation) OldUsageLimitEnabled(ctx context.Context) (v *bool, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldUsageLimitEnabled is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldUsageLimitEnabled requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldUsageLimitEnabled: %w", err)
-	}
-	return oldValue.UsageLimitEnabled, nil
-}
-
-// ClearUsageLimitEnabled clears the value of the "usage_limit_enabled" field.
-func (m *UserMutation) ClearUsageLimitEnabled() {
-	m.usage_limit_enabled = nil
-	m.clearedFields[user.FieldUsageLimitEnabled] = struct{}{}
-}
-
-// UsageLimitEnabledCleared returns if the "usage_limit_enabled" field was cleared in this mutation.
-func (m *UserMutation) UsageLimitEnabledCleared() bool {
-	_, ok := m.clearedFields[user.FieldUsageLimitEnabled]
-	return ok
-}
-
-// ResetUsageLimitEnabled resets all changes to the "usage_limit_enabled" field.
-func (m *UserMutation) ResetUsageLimitEnabled() {
-	m.usage_limit_enabled = nil
-	delete(m.clearedFields, user.FieldUsageLimitEnabled)
-}
-
-// SetDailyUsageLimitUsd sets the "daily_usage_limit_usd" field.
-func (m *UserMutation) SetDailyUsageLimitUsd(f float64) {
-	m.daily_usage_limit_usd = &f
-	m.adddaily_usage_limit_usd = nil
-}
-
-// DailyUsageLimitUsd returns the value of the "daily_usage_limit_usd" field in the mutation.
-func (m *UserMutation) DailyUsageLimitUsd() (r float64, exists bool) {
-	v := m.daily_usage_limit_usd
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldDailyUsageLimitUsd returns the old "daily_usage_limit_usd" field's value of the User entity.
-// If the User object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UserMutation) OldDailyUsageLimitUsd(ctx context.Context) (v *float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldDailyUsageLimitUsd is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldDailyUsageLimitUsd requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldDailyUsageLimitUsd: %w", err)
-	}
-	return oldValue.DailyUsageLimitUsd, nil
-}
-
-// AddDailyUsageLimitUsd adds f to the "daily_usage_limit_usd" field.
-func (m *UserMutation) AddDailyUsageLimitUsd(f float64) {
-	if m.adddaily_usage_limit_usd != nil {
-		*m.adddaily_usage_limit_usd += f
-	} else {
-		m.adddaily_usage_limit_usd = &f
-	}
-}
-
-// AddedDailyUsageLimitUsd returns the value that was added to the "daily_usage_limit_usd" field in this mutation.
-func (m *UserMutation) AddedDailyUsageLimitUsd() (r float64, exists bool) {
-	v := m.adddaily_usage_limit_usd
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ClearDailyUsageLimitUsd clears the value of the "daily_usage_limit_usd" field.
-func (m *UserMutation) ClearDailyUsageLimitUsd() {
-	m.daily_usage_limit_usd = nil
-	m.adddaily_usage_limit_usd = nil
-	m.clearedFields[user.FieldDailyUsageLimitUsd] = struct{}{}
-}
-
-// DailyUsageLimitUsdCleared returns if the "daily_usage_limit_usd" field was cleared in this mutation.
-func (m *UserMutation) DailyUsageLimitUsdCleared() bool {
-	_, ok := m.clearedFields[user.FieldDailyUsageLimitUsd]
-	return ok
-}
-
-// ResetDailyUsageLimitUsd resets all changes to the "daily_usage_limit_usd" field.
-func (m *UserMutation) ResetDailyUsageLimitUsd() {
-	m.daily_usage_limit_usd = nil
-	m.adddaily_usage_limit_usd = nil
-	delete(m.clearedFields, user.FieldDailyUsageLimitUsd)
-}
-
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *UserMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -39377,60 +39250,6 @@ func (m *UserMutation) ResetPendingAuthSessions() {
 	m.removedpending_auth_sessions = nil
 }
 
-// AddUsageLimitRuleIDs adds the "usage_limit_rules" edge to the UserUsageLimitRule entity by ids.
-func (m *UserMutation) AddUsageLimitRuleIDs(ids ...int64) {
-	if m.usage_limit_rules == nil {
-		m.usage_limit_rules = make(map[int64]struct{})
-	}
-	for i := range ids {
-		m.usage_limit_rules[ids[i]] = struct{}{}
-	}
-}
-
-// ClearUsageLimitRules clears the "usage_limit_rules" edge to the UserUsageLimitRule entity.
-func (m *UserMutation) ClearUsageLimitRules() {
-	m.clearedusage_limit_rules = true
-}
-
-// UsageLimitRulesCleared reports if the "usage_limit_rules" edge to the UserUsageLimitRule entity was cleared.
-func (m *UserMutation) UsageLimitRulesCleared() bool {
-	return m.clearedusage_limit_rules
-}
-
-// RemoveUsageLimitRuleIDs removes the "usage_limit_rules" edge to the UserUsageLimitRule entity by IDs.
-func (m *UserMutation) RemoveUsageLimitRuleIDs(ids ...int64) {
-	if m.removedusage_limit_rules == nil {
-		m.removedusage_limit_rules = make(map[int64]struct{})
-	}
-	for i := range ids {
-		delete(m.usage_limit_rules, ids[i])
-		m.removedusage_limit_rules[ids[i]] = struct{}{}
-	}
-}
-
-// RemovedUsageLimitRules returns the removed IDs of the "usage_limit_rules" edge to the UserUsageLimitRule entity.
-func (m *UserMutation) RemovedUsageLimitRulesIDs() (ids []int64) {
-	for id := range m.removedusage_limit_rules {
-		ids = append(ids, id)
-	}
-	return
-}
-
-// UsageLimitRulesIDs returns the "usage_limit_rules" edge IDs in the mutation.
-func (m *UserMutation) UsageLimitRulesIDs() (ids []int64) {
-	for id := range m.usage_limit_rules {
-		ids = append(ids, id)
-	}
-	return
-}
-
-// ResetUsageLimitRules resets all changes to the "usage_limit_rules" edge.
-func (m *UserMutation) ResetUsageLimitRules() {
-	m.usage_limit_rules = nil
-	m.clearedusage_limit_rules = false
-	m.removedusage_limit_rules = nil
-}
-
 // Where appends a list predicates to the UserMutation builder.
 func (m *UserMutation) Where(ps ...predicate.User) {
 	m.predicates = append(m.predicates, ps...)
@@ -39465,7 +39284,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 25)
+	fields := make([]string, 0, 23)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 	}
@@ -39535,12 +39354,6 @@ func (m *UserMutation) Fields() []string {
 	if m.rpm_limit != nil {
 		fields = append(fields, user.FieldRpmLimit)
 	}
-	if m.usage_limit_enabled != nil {
-		fields = append(fields, user.FieldUsageLimitEnabled)
-	}
-	if m.daily_usage_limit_usd != nil {
-		fields = append(fields, user.FieldDailyUsageLimitUsd)
-	}
 	return fields
 }
 
@@ -39595,10 +39408,6 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.TotalRecharged()
 	case user.FieldRpmLimit:
 		return m.RpmLimit()
-	case user.FieldUsageLimitEnabled:
-		return m.UsageLimitEnabled()
-	case user.FieldDailyUsageLimitUsd:
-		return m.DailyUsageLimitUsd()
 	}
 	return nil, false
 }
@@ -39654,10 +39463,6 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldTotalRecharged(ctx)
 	case user.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
-	case user.FieldUsageLimitEnabled:
-		return m.OldUsageLimitEnabled(ctx)
-	case user.FieldDailyUsageLimitUsd:
-		return m.OldDailyUsageLimitUsd(ctx)
 	}
 	return nil, fmt.Errorf("unknown User field %s", name)
 }
@@ -39828,20 +39633,6 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRpmLimit(v)
 		return nil
-	case user.FieldUsageLimitEnabled:
-		v, ok := value.(bool)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetUsageLimitEnabled(v)
-		return nil
-	case user.FieldDailyUsageLimitUsd:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetDailyUsageLimitUsd(v)
-		return nil
 	}
 	return fmt.Errorf("unknown User field %s", name)
 }
@@ -39865,9 +39656,6 @@ func (m *UserMutation) AddedFields() []string {
 	if m.addrpm_limit != nil {
 		fields = append(fields, user.FieldRpmLimit)
 	}
-	if m.adddaily_usage_limit_usd != nil {
-		fields = append(fields, user.FieldDailyUsageLimitUsd)
-	}
 	return fields
 }
 
@@ -39886,8 +39674,6 @@ func (m *UserMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedTotalRecharged()
 	case user.FieldRpmLimit:
 		return m.AddedRpmLimit()
-	case user.FieldDailyUsageLimitUsd:
-		return m.AddedDailyUsageLimitUsd()
 	}
 	return nil, false
 }
@@ -39932,13 +39718,6 @@ func (m *UserMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddRpmLimit(v)
 		return nil
-	case user.FieldDailyUsageLimitUsd:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddDailyUsageLimitUsd(v)
-		return nil
 	}
 	return fmt.Errorf("unknown User numeric field %s", name)
 }
@@ -39964,12 +39743,6 @@ func (m *UserMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(user.FieldBalanceNotifyThreshold) {
 		fields = append(fields, user.FieldBalanceNotifyThreshold)
-	}
-	if m.FieldCleared(user.FieldUsageLimitEnabled) {
-		fields = append(fields, user.FieldUsageLimitEnabled)
-	}
-	if m.FieldCleared(user.FieldDailyUsageLimitUsd) {
-		fields = append(fields, user.FieldDailyUsageLimitUsd)
 	}
 	return fields
 }
@@ -40002,12 +39775,6 @@ func (m *UserMutation) ClearField(name string) error {
 		return nil
 	case user.FieldBalanceNotifyThreshold:
 		m.ClearBalanceNotifyThreshold()
-		return nil
-	case user.FieldUsageLimitEnabled:
-		m.ClearUsageLimitEnabled()
-		return nil
-	case user.FieldDailyUsageLimitUsd:
-		m.ClearDailyUsageLimitUsd()
 		return nil
 	}
 	return fmt.Errorf("unknown User nullable field %s", name)
@@ -40086,19 +39853,13 @@ func (m *UserMutation) ResetField(name string) error {
 	case user.FieldRpmLimit:
 		m.ResetRpmLimit()
 		return nil
-	case user.FieldUsageLimitEnabled:
-		m.ResetUsageLimitEnabled()
-		return nil
-	case user.FieldDailyUsageLimitUsd:
-		m.ResetDailyUsageLimitUsd()
-		return nil
 	}
 	return fmt.Errorf("unknown User field %s", name)
 }
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 13)
+	edges := make([]string, 0, 12)
 	if m.api_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -40134,9 +39895,6 @@ func (m *UserMutation) AddedEdges() []string {
 	}
 	if m.pending_auth_sessions != nil {
 		edges = append(edges, user.EdgePendingAuthSessions)
-	}
-	if m.usage_limit_rules != nil {
-		edges = append(edges, user.EdgeUsageLimitRules)
 	}
 	return edges
 }
@@ -40217,19 +39975,13 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
-	case user.EdgeUsageLimitRules:
-		ids := make([]ent.Value, 0, len(m.usage_limit_rules))
-		for id := range m.usage_limit_rules {
-			ids = append(ids, id)
-		}
-		return ids
 	}
 	return nil
 }
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 13)
+	edges := make([]string, 0, 12)
 	if m.removedapi_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -40265,9 +40017,6 @@ func (m *UserMutation) RemovedEdges() []string {
 	}
 	if m.removedpending_auth_sessions != nil {
 		edges = append(edges, user.EdgePendingAuthSessions)
-	}
-	if m.removedusage_limit_rules != nil {
-		edges = append(edges, user.EdgeUsageLimitRules)
 	}
 	return edges
 }
@@ -40348,19 +40097,13 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
-	case user.EdgeUsageLimitRules:
-		ids := make([]ent.Value, 0, len(m.removedusage_limit_rules))
-		for id := range m.removedusage_limit_rules {
-			ids = append(ids, id)
-		}
-		return ids
 	}
 	return nil
 }
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 13)
+	edges := make([]string, 0, 12)
 	if m.clearedapi_keys {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -40397,9 +40140,6 @@ func (m *UserMutation) ClearedEdges() []string {
 	if m.clearedpending_auth_sessions {
 		edges = append(edges, user.EdgePendingAuthSessions)
 	}
-	if m.clearedusage_limit_rules {
-		edges = append(edges, user.EdgeUsageLimitRules)
-	}
 	return edges
 }
 
@@ -40431,8 +40171,6 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 		return m.clearedauth_identities
 	case user.EdgePendingAuthSessions:
 		return m.clearedpending_auth_sessions
-	case user.EdgeUsageLimitRules:
-		return m.clearedusage_limit_rules
 	}
 	return false
 }
@@ -40484,9 +40222,6 @@ func (m *UserMutation) ResetEdge(name string) error {
 		return nil
 	case user.EdgePendingAuthSessions:
 		m.ResetPendingAuthSessions()
-		return nil
-	case user.EdgeUsageLimitRules:
-		m.ResetUsageLimitRules()
 		return nil
 	}
 	return fmt.Errorf("unknown User edge %s", name)
@@ -44359,706 +44094,4 @@ func (m *UserSubscriptionMutation) ResetEdge(name string) error {
 		return nil
 	}
 	return fmt.Errorf("unknown UserSubscription edge %s", name)
-}
-
-// UserUsageLimitRuleMutation represents an operation that mutates the UserUsageLimitRule nodes in the graph.
-type UserUsageLimitRuleMutation struct {
-	config
-	op                 Op
-	typ                string
-	id                 *int64
-	created_at         *time.Time
-	updated_at         *time.Time
-	group_ids          *[]int64
-	appendgroup_ids    []int64
-	daily_limit_usd    *float64
-	adddaily_limit_usd *float64
-	period             *string
-	clearedFields      map[string]struct{}
-	user               *int64
-	cleareduser        bool
-	done               bool
-	oldValue           func(context.Context) (*UserUsageLimitRule, error)
-	predicates         []predicate.UserUsageLimitRule
-}
-
-var _ ent.Mutation = (*UserUsageLimitRuleMutation)(nil)
-
-// userusagelimitruleOption allows management of the mutation configuration using functional options.
-type userusagelimitruleOption func(*UserUsageLimitRuleMutation)
-
-// newUserUsageLimitRuleMutation creates new mutation for the UserUsageLimitRule entity.
-func newUserUsageLimitRuleMutation(c config, op Op, opts ...userusagelimitruleOption) *UserUsageLimitRuleMutation {
-	m := &UserUsageLimitRuleMutation{
-		config:        c,
-		op:            op,
-		typ:           TypeUserUsageLimitRule,
-		clearedFields: make(map[string]struct{}),
-	}
-	for _, opt := range opts {
-		opt(m)
-	}
-	return m
-}
-
-// withUserUsageLimitRuleID sets the ID field of the mutation.
-func withUserUsageLimitRuleID(id int64) userusagelimitruleOption {
-	return func(m *UserUsageLimitRuleMutation) {
-		var (
-			err   error
-			once  sync.Once
-			value *UserUsageLimitRule
-		)
-		m.oldValue = func(ctx context.Context) (*UserUsageLimitRule, error) {
-			once.Do(func() {
-				if m.done {
-					err = errors.New("querying old values post mutation is not allowed")
-				} else {
-					value, err = m.Client().UserUsageLimitRule.Get(ctx, id)
-				}
-			})
-			return value, err
-		}
-		m.id = &id
-	}
-}
-
-// withUserUsageLimitRule sets the old UserUsageLimitRule of the mutation.
-func withUserUsageLimitRule(node *UserUsageLimitRule) userusagelimitruleOption {
-	return func(m *UserUsageLimitRuleMutation) {
-		m.oldValue = func(context.Context) (*UserUsageLimitRule, error) {
-			return node, nil
-		}
-		m.id = &node.ID
-	}
-}
-
-// Client returns a new `ent.Client` from the mutation. If the mutation was
-// executed in a transaction (ent.Tx), a transactional client is returned.
-func (m UserUsageLimitRuleMutation) Client() *Client {
-	client := &Client{config: m.config}
-	client.init()
-	return client
-}
-
-// Tx returns an `ent.Tx` for mutations that were executed in transactions;
-// it returns an error otherwise.
-func (m UserUsageLimitRuleMutation) Tx() (*Tx, error) {
-	if _, ok := m.driver.(*txDriver); !ok {
-		return nil, errors.New("ent: mutation is not running in a transaction")
-	}
-	tx := &Tx{config: m.config}
-	tx.init()
-	return tx, nil
-}
-
-// ID returns the ID value in the mutation. Note that the ID is only available
-// if it was provided to the builder or after it was returned from the database.
-func (m *UserUsageLimitRuleMutation) ID() (id int64, exists bool) {
-	if m.id == nil {
-		return
-	}
-	return *m.id, true
-}
-
-// IDs queries the database and returns the entity ids that match the mutation's predicate.
-// That means, if the mutation is applied within a transaction with an isolation level such
-// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
-// or updated by the mutation.
-func (m *UserUsageLimitRuleMutation) IDs(ctx context.Context) ([]int64, error) {
-	switch {
-	case m.op.Is(OpUpdateOne | OpDeleteOne):
-		id, exists := m.ID()
-		if exists {
-			return []int64{id}, nil
-		}
-		fallthrough
-	case m.op.Is(OpUpdate | OpDelete):
-		return m.Client().UserUsageLimitRule.Query().Where(m.predicates...).IDs(ctx)
-	default:
-		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
-	}
-}
-
-// SetCreatedAt sets the "created_at" field.
-func (m *UserUsageLimitRuleMutation) SetCreatedAt(t time.Time) {
-	m.created_at = &t
-}
-
-// CreatedAt returns the value of the "created_at" field in the mutation.
-func (m *UserUsageLimitRuleMutation) CreatedAt() (r time.Time, exists bool) {
-	v := m.created_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldCreatedAt returns the old "created_at" field's value of the UserUsageLimitRule entity.
-// If the UserUsageLimitRule object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UserUsageLimitRuleMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
-	}
-	return oldValue.CreatedAt, nil
-}
-
-// ResetCreatedAt resets all changes to the "created_at" field.
-func (m *UserUsageLimitRuleMutation) ResetCreatedAt() {
-	m.created_at = nil
-}
-
-// SetUpdatedAt sets the "updated_at" field.
-func (m *UserUsageLimitRuleMutation) SetUpdatedAt(t time.Time) {
-	m.updated_at = &t
-}
-
-// UpdatedAt returns the value of the "updated_at" field in the mutation.
-func (m *UserUsageLimitRuleMutation) UpdatedAt() (r time.Time, exists bool) {
-	v := m.updated_at
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldUpdatedAt returns the old "updated_at" field's value of the UserUsageLimitRule entity.
-// If the UserUsageLimitRule object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UserUsageLimitRuleMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
-	}
-	return oldValue.UpdatedAt, nil
-}
-
-// ResetUpdatedAt resets all changes to the "updated_at" field.
-func (m *UserUsageLimitRuleMutation) ResetUpdatedAt() {
-	m.updated_at = nil
-}
-
-// SetUserID sets the "user_id" field.
-func (m *UserUsageLimitRuleMutation) SetUserID(i int64) {
-	m.user = &i
-}
-
-// UserID returns the value of the "user_id" field in the mutation.
-func (m *UserUsageLimitRuleMutation) UserID() (r int64, exists bool) {
-	v := m.user
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldUserID returns the old "user_id" field's value of the UserUsageLimitRule entity.
-// If the UserUsageLimitRule object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UserUsageLimitRuleMutation) OldUserID(ctx context.Context) (v int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldUserID requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
-	}
-	return oldValue.UserID, nil
-}
-
-// ResetUserID resets all changes to the "user_id" field.
-func (m *UserUsageLimitRuleMutation) ResetUserID() {
-	m.user = nil
-}
-
-// SetGroupIds sets the "group_ids" field.
-func (m *UserUsageLimitRuleMutation) SetGroupIds(i []int64) {
-	m.group_ids = &i
-	m.appendgroup_ids = nil
-}
-
-// GroupIds returns the value of the "group_ids" field in the mutation.
-func (m *UserUsageLimitRuleMutation) GroupIds() (r []int64, exists bool) {
-	v := m.group_ids
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldGroupIds returns the old "group_ids" field's value of the UserUsageLimitRule entity.
-// If the UserUsageLimitRule object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UserUsageLimitRuleMutation) OldGroupIds(ctx context.Context) (v []int64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldGroupIds is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldGroupIds requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldGroupIds: %w", err)
-	}
-	return oldValue.GroupIds, nil
-}
-
-// AppendGroupIds adds i to the "group_ids" field.
-func (m *UserUsageLimitRuleMutation) AppendGroupIds(i []int64) {
-	m.appendgroup_ids = append(m.appendgroup_ids, i...)
-}
-
-// AppendedGroupIds returns the list of values that were appended to the "group_ids" field in this mutation.
-func (m *UserUsageLimitRuleMutation) AppendedGroupIds() ([]int64, bool) {
-	if len(m.appendgroup_ids) == 0 {
-		return nil, false
-	}
-	return m.appendgroup_ids, true
-}
-
-// ResetGroupIds resets all changes to the "group_ids" field.
-func (m *UserUsageLimitRuleMutation) ResetGroupIds() {
-	m.group_ids = nil
-	m.appendgroup_ids = nil
-}
-
-// SetDailyLimitUsd sets the "daily_limit_usd" field.
-func (m *UserUsageLimitRuleMutation) SetDailyLimitUsd(f float64) {
-	m.daily_limit_usd = &f
-	m.adddaily_limit_usd = nil
-}
-
-// DailyLimitUsd returns the value of the "daily_limit_usd" field in the mutation.
-func (m *UserUsageLimitRuleMutation) DailyLimitUsd() (r float64, exists bool) {
-	v := m.daily_limit_usd
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldDailyLimitUsd returns the old "daily_limit_usd" field's value of the UserUsageLimitRule entity.
-// If the UserUsageLimitRule object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UserUsageLimitRuleMutation) OldDailyLimitUsd(ctx context.Context) (v float64, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldDailyLimitUsd is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldDailyLimitUsd requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldDailyLimitUsd: %w", err)
-	}
-	return oldValue.DailyLimitUsd, nil
-}
-
-// AddDailyLimitUsd adds f to the "daily_limit_usd" field.
-func (m *UserUsageLimitRuleMutation) AddDailyLimitUsd(f float64) {
-	if m.adddaily_limit_usd != nil {
-		*m.adddaily_limit_usd += f
-	} else {
-		m.adddaily_limit_usd = &f
-	}
-}
-
-// AddedDailyLimitUsd returns the value that was added to the "daily_limit_usd" field in this mutation.
-func (m *UserUsageLimitRuleMutation) AddedDailyLimitUsd() (r float64, exists bool) {
-	v := m.adddaily_limit_usd
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// ResetDailyLimitUsd resets all changes to the "daily_limit_usd" field.
-func (m *UserUsageLimitRuleMutation) ResetDailyLimitUsd() {
-	m.daily_limit_usd = nil
-	m.adddaily_limit_usd = nil
-}
-
-// SetPeriod sets the "period" field.
-func (m *UserUsageLimitRuleMutation) SetPeriod(s string) {
-	m.period = &s
-}
-
-// Period returns the value of the "period" field in the mutation.
-func (m *UserUsageLimitRuleMutation) Period() (r string, exists bool) {
-	v := m.period
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
-// OldPeriod returns the old "period" field's value of the UserUsageLimitRule entity.
-// If the UserUsageLimitRule object wasn't provided to the builder, the object is fetched from the database.
-// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *UserUsageLimitRuleMutation) OldPeriod(ctx context.Context) (v string, err error) {
-	if !m.op.Is(OpUpdateOne) {
-		return v, errors.New("OldPeriod is only allowed on UpdateOne operations")
-	}
-	if m.id == nil || m.oldValue == nil {
-		return v, errors.New("OldPeriod requires an ID field in the mutation")
-	}
-	oldValue, err := m.oldValue(ctx)
-	if err != nil {
-		return v, fmt.Errorf("querying old value for OldPeriod: %w", err)
-	}
-	return oldValue.Period, nil
-}
-
-// ResetPeriod resets all changes to the "period" field.
-func (m *UserUsageLimitRuleMutation) ResetPeriod() {
-	m.period = nil
-}
-
-// ClearUser clears the "user" edge to the User entity.
-func (m *UserUsageLimitRuleMutation) ClearUser() {
-	m.cleareduser = true
-	m.clearedFields[userusagelimitrule.FieldUserID] = struct{}{}
-}
-
-// UserCleared reports if the "user" edge to the User entity was cleared.
-func (m *UserUsageLimitRuleMutation) UserCleared() bool {
-	return m.cleareduser
-}
-
-// UserIDs returns the "user" edge IDs in the mutation.
-// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
-// UserID instead. It exists only for internal usage by the builders.
-func (m *UserUsageLimitRuleMutation) UserIDs() (ids []int64) {
-	if id := m.user; id != nil {
-		ids = append(ids, *id)
-	}
-	return
-}
-
-// ResetUser resets all changes to the "user" edge.
-func (m *UserUsageLimitRuleMutation) ResetUser() {
-	m.user = nil
-	m.cleareduser = false
-}
-
-// Where appends a list predicates to the UserUsageLimitRuleMutation builder.
-func (m *UserUsageLimitRuleMutation) Where(ps ...predicate.UserUsageLimitRule) {
-	m.predicates = append(m.predicates, ps...)
-}
-
-// WhereP appends storage-level predicates to the UserUsageLimitRuleMutation builder. Using this method,
-// users can use type-assertion to append predicates that do not depend on any generated package.
-func (m *UserUsageLimitRuleMutation) WhereP(ps ...func(*sql.Selector)) {
-	p := make([]predicate.UserUsageLimitRule, len(ps))
-	for i := range ps {
-		p[i] = ps[i]
-	}
-	m.Where(p...)
-}
-
-// Op returns the operation name.
-func (m *UserUsageLimitRuleMutation) Op() Op {
-	return m.op
-}
-
-// SetOp allows setting the mutation operation.
-func (m *UserUsageLimitRuleMutation) SetOp(op Op) {
-	m.op = op
-}
-
-// Type returns the node type of this mutation (UserUsageLimitRule).
-func (m *UserUsageLimitRuleMutation) Type() string {
-	return m.typ
-}
-
-// Fields returns all fields that were changed during this mutation. Note that in
-// order to get all numeric fields that were incremented/decremented, call
-// AddedFields().
-func (m *UserUsageLimitRuleMutation) Fields() []string {
-	fields := make([]string, 0, 6)
-	if m.created_at != nil {
-		fields = append(fields, userusagelimitrule.FieldCreatedAt)
-	}
-	if m.updated_at != nil {
-		fields = append(fields, userusagelimitrule.FieldUpdatedAt)
-	}
-	if m.user != nil {
-		fields = append(fields, userusagelimitrule.FieldUserID)
-	}
-	if m.group_ids != nil {
-		fields = append(fields, userusagelimitrule.FieldGroupIds)
-	}
-	if m.daily_limit_usd != nil {
-		fields = append(fields, userusagelimitrule.FieldDailyLimitUsd)
-	}
-	if m.period != nil {
-		fields = append(fields, userusagelimitrule.FieldPeriod)
-	}
-	return fields
-}
-
-// Field returns the value of a field with the given name. The second boolean
-// return value indicates that this field was not set, or was not defined in the
-// schema.
-func (m *UserUsageLimitRuleMutation) Field(name string) (ent.Value, bool) {
-	switch name {
-	case userusagelimitrule.FieldCreatedAt:
-		return m.CreatedAt()
-	case userusagelimitrule.FieldUpdatedAt:
-		return m.UpdatedAt()
-	case userusagelimitrule.FieldUserID:
-		return m.UserID()
-	case userusagelimitrule.FieldGroupIds:
-		return m.GroupIds()
-	case userusagelimitrule.FieldDailyLimitUsd:
-		return m.DailyLimitUsd()
-	case userusagelimitrule.FieldPeriod:
-		return m.Period()
-	}
-	return nil, false
-}
-
-// OldField returns the old value of the field from the database. An error is
-// returned if the mutation operation is not UpdateOne, or the query to the
-// database failed.
-func (m *UserUsageLimitRuleMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
-	switch name {
-	case userusagelimitrule.FieldCreatedAt:
-		return m.OldCreatedAt(ctx)
-	case userusagelimitrule.FieldUpdatedAt:
-		return m.OldUpdatedAt(ctx)
-	case userusagelimitrule.FieldUserID:
-		return m.OldUserID(ctx)
-	case userusagelimitrule.FieldGroupIds:
-		return m.OldGroupIds(ctx)
-	case userusagelimitrule.FieldDailyLimitUsd:
-		return m.OldDailyLimitUsd(ctx)
-	case userusagelimitrule.FieldPeriod:
-		return m.OldPeriod(ctx)
-	}
-	return nil, fmt.Errorf("unknown UserUsageLimitRule field %s", name)
-}
-
-// SetField sets the value of a field with the given name. It returns an error if
-// the field is not defined in the schema, or if the type mismatched the field
-// type.
-func (m *UserUsageLimitRuleMutation) SetField(name string, value ent.Value) error {
-	switch name {
-	case userusagelimitrule.FieldCreatedAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetCreatedAt(v)
-		return nil
-	case userusagelimitrule.FieldUpdatedAt:
-		v, ok := value.(time.Time)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetUpdatedAt(v)
-		return nil
-	case userusagelimitrule.FieldUserID:
-		v, ok := value.(int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetUserID(v)
-		return nil
-	case userusagelimitrule.FieldGroupIds:
-		v, ok := value.([]int64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetGroupIds(v)
-		return nil
-	case userusagelimitrule.FieldDailyLimitUsd:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetDailyLimitUsd(v)
-		return nil
-	case userusagelimitrule.FieldPeriod:
-		v, ok := value.(string)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.SetPeriod(v)
-		return nil
-	}
-	return fmt.Errorf("unknown UserUsageLimitRule field %s", name)
-}
-
-// AddedFields returns all numeric fields that were incremented/decremented during
-// this mutation.
-func (m *UserUsageLimitRuleMutation) AddedFields() []string {
-	var fields []string
-	if m.adddaily_limit_usd != nil {
-		fields = append(fields, userusagelimitrule.FieldDailyLimitUsd)
-	}
-	return fields
-}
-
-// AddedField returns the numeric value that was incremented/decremented on a field
-// with the given name. The second boolean return value indicates that this field
-// was not set, or was not defined in the schema.
-func (m *UserUsageLimitRuleMutation) AddedField(name string) (ent.Value, bool) {
-	switch name {
-	case userusagelimitrule.FieldDailyLimitUsd:
-		return m.AddedDailyLimitUsd()
-	}
-	return nil, false
-}
-
-// AddField adds the value to the field with the given name. It returns an error if
-// the field is not defined in the schema, or if the type mismatched the field
-// type.
-func (m *UserUsageLimitRuleMutation) AddField(name string, value ent.Value) error {
-	switch name {
-	case userusagelimitrule.FieldDailyLimitUsd:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddDailyLimitUsd(v)
-		return nil
-	}
-	return fmt.Errorf("unknown UserUsageLimitRule numeric field %s", name)
-}
-
-// ClearedFields returns all nullable fields that were cleared during this
-// mutation.
-func (m *UserUsageLimitRuleMutation) ClearedFields() []string {
-	return nil
-}
-
-// FieldCleared returns a boolean indicating if a field with the given name was
-// cleared in this mutation.
-func (m *UserUsageLimitRuleMutation) FieldCleared(name string) bool {
-	_, ok := m.clearedFields[name]
-	return ok
-}
-
-// ClearField clears the value of the field with the given name. It returns an
-// error if the field is not defined in the schema.
-func (m *UserUsageLimitRuleMutation) ClearField(name string) error {
-	return fmt.Errorf("unknown UserUsageLimitRule nullable field %s", name)
-}
-
-// ResetField resets all changes in the mutation for the field with the given name.
-// It returns an error if the field is not defined in the schema.
-func (m *UserUsageLimitRuleMutation) ResetField(name string) error {
-	switch name {
-	case userusagelimitrule.FieldCreatedAt:
-		m.ResetCreatedAt()
-		return nil
-	case userusagelimitrule.FieldUpdatedAt:
-		m.ResetUpdatedAt()
-		return nil
-	case userusagelimitrule.FieldUserID:
-		m.ResetUserID()
-		return nil
-	case userusagelimitrule.FieldGroupIds:
-		m.ResetGroupIds()
-		return nil
-	case userusagelimitrule.FieldDailyLimitUsd:
-		m.ResetDailyLimitUsd()
-		return nil
-	case userusagelimitrule.FieldPeriod:
-		m.ResetPeriod()
-		return nil
-	}
-	return fmt.Errorf("unknown UserUsageLimitRule field %s", name)
-}
-
-// AddedEdges returns all edge names that were set/added in this mutation.
-func (m *UserUsageLimitRuleMutation) AddedEdges() []string {
-	edges := make([]string, 0, 1)
-	if m.user != nil {
-		edges = append(edges, userusagelimitrule.EdgeUser)
-	}
-	return edges
-}
-
-// AddedIDs returns all IDs (to other nodes) that were added for the given edge
-// name in this mutation.
-func (m *UserUsageLimitRuleMutation) AddedIDs(name string) []ent.Value {
-	switch name {
-	case userusagelimitrule.EdgeUser:
-		if id := m.user; id != nil {
-			return []ent.Value{*id}
-		}
-	}
-	return nil
-}
-
-// RemovedEdges returns all edge names that were removed in this mutation.
-func (m *UserUsageLimitRuleMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 1)
-	return edges
-}
-
-// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
-// the given name in this mutation.
-func (m *UserUsageLimitRuleMutation) RemovedIDs(name string) []ent.Value {
-	return nil
-}
-
-// ClearedEdges returns all edge names that were cleared in this mutation.
-func (m *UserUsageLimitRuleMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 1)
-	if m.cleareduser {
-		edges = append(edges, userusagelimitrule.EdgeUser)
-	}
-	return edges
-}
-
-// EdgeCleared returns a boolean which indicates if the edge with the given name
-// was cleared in this mutation.
-func (m *UserUsageLimitRuleMutation) EdgeCleared(name string) bool {
-	switch name {
-	case userusagelimitrule.EdgeUser:
-		return m.cleareduser
-	}
-	return false
-}
-
-// ClearEdge clears the value of the edge with the given name. It returns an error
-// if that edge is not defined in the schema.
-func (m *UserUsageLimitRuleMutation) ClearEdge(name string) error {
-	switch name {
-	case userusagelimitrule.EdgeUser:
-		m.ClearUser()
-		return nil
-	}
-	return fmt.Errorf("unknown UserUsageLimitRule unique edge %s", name)
-}
-
-// ResetEdge resets all changes to the edge with the given name in this mutation.
-// It returns an error if the edge is not defined in the schema.
-func (m *UserUsageLimitRuleMutation) ResetEdge(name string) error {
-	switch name {
-	case userusagelimitrule.EdgeUser:
-		m.ResetUser()
-		return nil
-	}
-	return fmt.Errorf("unknown UserUsageLimitRule edge %s", name)
 }

@@ -1319,7 +1319,7 @@ func (h *GatewayHandler) handleStreamingAwareError(c *gin.Context, status int, e
 	h.handleStreamingAwareErrorWithMetadata(c, status, errType, message, nil, streamStarted)
 }
 
-// handleStreamingAwareErrorWithMetadata 带 metadata 的错误处理（feature issue #1750）
+// handleStreamingAwareErrorWithMetadata 带 metadata 的错误处理
 // metadata 在非流式响应中作为 JSON 字段透传；流式场景下为避免破坏 SSE schema 只作为 error 对象字段追加。
 func (h *GatewayHandler) handleStreamingAwareErrorWithMetadata(c *gin.Context, status int, errType, message string, metadata map[string]string, streamStarted bool) {
 	if ra, ok := metadata["retry_after"]; ok && ra != "" {
@@ -1746,7 +1746,7 @@ func sendMockInterceptResponse(c *gin.Context, model string, interceptType Inter
 
 // billingErrorDetails 将计费错误转换为 HTTP 响应参数。
 // 返回 status + code（error type）+ message + metadata（可为 nil）。
-// 配额超限（feature issue #1750）必须通过 metadata 透传 scope/limit/used/reset_at 给前端 i18n。
+// 配额超限必须通过 metadata 透传 scope/limit/used/reset_at 给前端 i18n。
 func billingErrorDetails(err error) (status int, code, message string, metadata map[string]string) {
 	if errors.Is(err, service.ErrBillingServiceUnavailable) {
 		msg := pkgerrors.Message(err)
@@ -1768,14 +1768,6 @@ func billingErrorDetails(err error) (status int, code, message string, metadata 
 		msg := pkgerrors.Message(err)
 		retrySeconds := 60 - int(time.Now().Unix()%60)
 		return http.StatusTooManyRequests, "rate_limit_exceeded", msg, map[string]string{"retry_after": strconv.Itoa(retrySeconds)}
-	}
-	if errors.Is(err, service.ErrQuotaExceeded) {
-		app := pkgerrors.FromError(err)
-		var md map[string]string
-		if app != nil {
-			md = app.Metadata
-		}
-		return http.StatusTooManyRequests, "USAGE_QUOTA_EXCEEDED", pkgerrors.Message(err), md
 	}
 	if errors.Is(err, service.ErrServiceQuotaExceeded) {
 		app := pkgerrors.FromError(err)

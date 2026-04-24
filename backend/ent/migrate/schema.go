@@ -1449,8 +1449,6 @@ var (
 		{Name: "balance_notify_extra_emails", Type: field.TypeString, Default: "[]", SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "total_recharged", Type: field.TypeFloat64, Default: 0, SchemaType: map[string]string{"postgres": "decimal(20,8)"}},
 		{Name: "rpm_limit", Type: field.TypeInt, Default: 0},
-		{Name: "usage_limit_enabled", Type: field.TypeBool, Nullable: true},
-		{Name: "daily_usage_limit_usd", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
 	}
 	// UsersTable holds the schema information for the "users" table.
 	UsersTable = &schema.Table{
@@ -1678,37 +1676,6 @@ var (
 			},
 		},
 	}
-	// UserUsageLimitRulesColumns holds the columns for the "user_usage_limit_rules" table.
-	UserUsageLimitRulesColumns = []*schema.Column{
-		{Name: "id", Type: field.TypeInt64, Increment: true},
-		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
-		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
-		{Name: "group_ids", Type: field.TypeJSON, SchemaType: map[string]string{"postgres": "jsonb"}},
-		{Name: "daily_limit_usd", Type: field.TypeFloat64, SchemaType: map[string]string{"postgres": "numeric(20,8)"}},
-		{Name: "period", Type: field.TypeString, Size: 16, Default: "daily"},
-		{Name: "user_id", Type: field.TypeInt64},
-	}
-	// UserUsageLimitRulesTable holds the schema information for the "user_usage_limit_rules" table.
-	UserUsageLimitRulesTable = &schema.Table{
-		Name:       "user_usage_limit_rules",
-		Columns:    UserUsageLimitRulesColumns,
-		PrimaryKey: []*schema.Column{UserUsageLimitRulesColumns[0]},
-		ForeignKeys: []*schema.ForeignKey{
-			{
-				Symbol:     "user_usage_limit_rules_users_usage_limit_rules",
-				Columns:    []*schema.Column{UserUsageLimitRulesColumns[6]},
-				RefColumns: []*schema.Column{UsersColumns[0]},
-				OnDelete:   schema.NoAction,
-			},
-		},
-		Indexes: []*schema.Index{
-			{
-				Name:    "userusagelimitrule_user_id",
-				Unique:  false,
-				Columns: []*schema.Column{UserUsageLimitRulesColumns[6]},
-			},
-		},
-	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
 		APIKeysTable,
@@ -1745,7 +1712,6 @@ var (
 		UserAttributeDefinitionsTable,
 		UserAttributeValuesTable,
 		UserSubscriptionsTable,
-		UserUsageLimitRulesTable,
 	}
 )
 
@@ -1883,9 +1849,5 @@ func init() {
 	UserSubscriptionsTable.ForeignKeys[2].RefTable = UsersTable
 	UserSubscriptionsTable.Annotation = &entsql.Annotation{
 		Table: "user_subscriptions",
-	}
-	UserUsageLimitRulesTable.ForeignKeys[0].RefTable = UsersTable
-	UserUsageLimitRulesTable.Annotation = &entsql.Annotation{
-		Table: "user_usage_limit_rules",
 	}
 }

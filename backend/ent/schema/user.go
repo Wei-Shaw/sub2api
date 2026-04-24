@@ -112,17 +112,6 @@ func (User) Fields() []ent.Field {
 		// 用户级每分钟请求数上限（0 = 不限制）。仅当所在分组未设置 rpm_limit 时作为兜底生效。
 		field.Int("rpm_limit").
 			Default(0),
-
-		field.Bool("usage_limit_enabled").
-			Optional().
-			Nillable().
-			Comment("用户级配额启用状态；nil=跟随全局默认，true/false=强制覆盖"),
-
-		field.Float("daily_usage_limit_usd").
-			SchemaType(map[string]string{dialect.Postgres: "numeric(20,8)"}).
-			Optional().
-			Nillable().
-			Comment("用户每日总配额上限（USD）；nil=不限"),
 	}
 }
 
@@ -142,7 +131,6 @@ func (User) Edges() []ent.Edge {
 		edge.To("auth_identities", AuthIdentity.Type).
 			Annotations(entsql.OnDelete(entsql.Cascade)),
 		edge.To("pending_auth_sessions", PendingAuthSession.Type),
-		edge.To("usage_limit_rules", UserUsageLimitRule.Type),
 	}
 }
 

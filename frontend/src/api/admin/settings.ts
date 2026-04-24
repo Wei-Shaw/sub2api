@@ -332,10 +332,6 @@ export interface SystemSettings {
   auth_source_default_wechat_grant_on_signup?: boolean;
   auth_source_default_wechat_grant_on_first_bind?: boolean;
   force_email_on_third_party_signup?: boolean;
-  // 用户每日配额限制（feature issue #1750）
-  usage_limit_enabled: boolean;
-  default_usage_limit_enabled: boolean;
-  default_daily_usage_limit_usd: number;
   // OEM settings
   site_name: string;
   site_logo: string;
@@ -600,9 +596,6 @@ export interface UpdateSettingsRequest {
   enable_fingerprint_unification?: boolean;
   enable_metadata_passthrough?: boolean;
   enable_cch_signing?: boolean;
-  usage_limit_enabled?: boolean;
-  default_usage_limit_enabled?: boolean;
-  default_daily_usage_limit_usd?: number;
   // Payment configuration
   payment_enabled?: boolean;
   payment_min_amount?: number;

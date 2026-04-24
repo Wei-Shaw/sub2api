@@ -84,7 +84,7 @@ func scanServiceQuotaRule(scanner serviceQuotaScanner) (*service.ServiceQuotaRul
 	err := scanner.Scan(&rule.ID, &rule.Enabled, &rule.ScopeLevel, &platform, &groupID, &accountID, &model, &rule.LimiterType, &rule.TargetMode, &targetUserID, &rule.WindowMode, &rule.LimitValue, &rule.CreatedAt, &rule.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, service.ErrQuotaRuleNotFound
+			return nil, service.ErrServiceQuotaRuleNotFound
 		}
 		return nil, err
 	}

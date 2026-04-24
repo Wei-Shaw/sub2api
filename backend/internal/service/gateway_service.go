@@ -7485,13 +7485,6 @@ func finalizePostUsageBilling(p *postUsageBillingParams, deps *billingDeps, resu
 		}
 	} else if p.Cost.ActualCost > 0 && p.User != nil {
 		deps.billingCacheService.QueueDeductBalance(p.User.ID, p.Cost.ActualCost)
-		// 用户每日配额累加（feature issue #1750）：只在余额扣费分支累加，订阅不累加
-		// groupID 可能为 nil，此时只累加总用量，不累加规则用量
-		var groupID int64
-		if p.APIKey != nil && p.APIKey.GroupID != nil {
-			groupID = *p.APIKey.GroupID
-		}
-		deps.billingCacheService.QueueIncrQuotaUsage(p.User.ID, groupID, p.Cost.ActualCost)
 	}
 
 	if p.Cost.ActualCost > 0 && p.APIKey != nil && p.APIKey.HasRateLimits() {

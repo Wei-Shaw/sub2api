@@ -111,11 +111,7 @@ type SystemSettings struct {
 	DefaultUserRPMLimit  int                          `json:"default_user_rpm_limit"`
 	DefaultSubscriptions []DefaultSubscriptionSetting `json:"default_subscriptions"`
 
-	// 用户每日配额限制（feature issue #1750）
-	UsageLimitEnabled         bool    `json:"usage_limit_enabled"`
-	DefaultUsageLimitEnabled  bool    `json:"default_usage_limit_enabled"`
-	DefaultDailyUsageLimitUSD float64 `json:"default_daily_usage_limit_usd"`
-	ServiceQuotaEnabled       bool    `json:"service_quota_enabled"`
+	ServiceQuotaEnabled bool `json:"service_quota_enabled"`
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`

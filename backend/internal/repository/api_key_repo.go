@@ -672,8 +672,6 @@ func userEntityToService(u *dbent.User) *service.User {
 		BalanceNotifyThreshold:     u.BalanceNotifyThreshold,
 		TotalRecharged:             u.TotalRecharged,
 		RPMLimit:                   u.RpmLimit,
-		UsageLimitEnabled:          u.UsageLimitEnabled,
-		DailyUsageLimitUSD:         u.DailyUsageLimitUsd,
 		CreatedAt:                  u.CreatedAt,
 		UpdatedAt:                  u.UpdatedAt,
 	}

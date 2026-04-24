@@ -979,29 +979,3 @@ func (r *userRepository) DisableTotp(ctx context.Context, userID int64) error {
 	}
 	return nil
 }
-
-// UpdateUsageLimit 更新用户每日配额字段（feature issue #1750）
-//
-// 三态：
-//   - enabled=nil → 清空 usage_limit_enabled（跟随全局默认）
-//   - enabled=*true/*false → 写入布尔
-//   - dailyUsageLimitUSD=nil → 清空（不限）
-//   - dailyUsageLimitUSD=*v → 写入 v
-func (r *userRepository) UpdateUsageLimit(ctx context.Context, userID int64, enabled *bool, dailyUsageLimitUSD *float64) error {
-	client := clientFromContext(ctx, r.client)
-	update := client.User.UpdateOneID(userID)
-	if enabled == nil {
-		update = update.ClearUsageLimitEnabled()
-	} else {
-		update = update.SetUsageLimitEnabled(*enabled)
-	}
-	if dailyUsageLimitUSD == nil {
-		update = update.ClearDailyUsageLimitUsd()
-	} else {
-		update = update.SetDailyUsageLimitUsd(*dailyUsageLimitUSD)
-	}
-	if _, err := update.Save(ctx); err != nil {
-		return translatePersistenceError(err, service.ErrUserNotFound, nil)
-	}
-	return nil
-}

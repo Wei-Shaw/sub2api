@@ -280,7 +280,7 @@ func (h *GatewayHandler) chatCompletionsErrorResponse(c *gin.Context, status int
 }
 
 // chatCompletionsErrorResponseWithMetadata 带 metadata + reason 的 CC 格式错误响应
-// （feature issue #1750：配额超限等场景要求前端能取到 metadata 和 reason 做 i18n 渲染）
+// （配额超限等场景要求前端能取到 metadata 和 reason 做 i18n 渲染）
 func (h *GatewayHandler) chatCompletionsErrorResponseWithMetadata(c *gin.Context, status int, errType, message string, metadata map[string]string) {
 	body := gin.H{
 		"reason": errType,

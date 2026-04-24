@@ -37,7 +37,6 @@ func ProvideAdminHandlers(
 	channelMonitorHandler *admin.ChannelMonitorHandler,
 	channelMonitorTemplateHandler *admin.ChannelMonitorRequestTemplateHandler,
 	paymentHandler *admin.PaymentHandler,
-	quotaHandler *admin.QuotaHandler,
 	serviceQuotaHandler *admin.ServiceQuotaHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
@@ -69,22 +68,8 @@ func ProvideAdminHandlers(
 		ChannelMonitor:         channelMonitorHandler,
 		ChannelMonitorTemplate: channelMonitorTemplateHandler,
 		Payment:                paymentHandler,
-		Quota:                  quotaHandler,
 		ServiceQuota:           serviceQuotaHandler,
 	}
-}
-
-// ProvideUserHandler 在构造后调用 SetQuotaService 注入 quota 依赖（feature issue #1750）。
-func ProvideUserHandler(
-	userService *service.UserService,
-	authService *service.AuthService,
-	emailService *service.EmailService,
-	emailCache service.EmailCache,
-	quotaService service.QuotaService,
-) *UserHandler {
-	h := NewUserHandler(userService, authService, emailService, emailCache)
-	h.quotaService = quotaService
-	return h
 }
 
 // ProvideSystemHandler creates admin.SystemHandler with UpdateService
@@ -186,7 +171,6 @@ var ProviderSet = wire.NewSet(
 	admin.NewChannelMonitorHandler,
 	admin.NewChannelMonitorRequestTemplateHandler,
 	admin.NewPaymentHandler,
-	admin.NewQuotaHandler,
 	admin.NewServiceQuotaHandler,
 
 	// AdminHandlers and Handlers constructors

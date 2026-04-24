@@ -286,7 +286,7 @@ func (h *GatewayHandler) responsesErrorResponse(c *gin.Context, status int, code
 }
 
 // responsesErrorResponseWithMetadata 带 metadata + reason 的 Responses 格式错误响应
-// （feature issue #1750：配额超限等场景要求前端能取到 metadata 和 reason 做 i18n 渲染）
+// （配额超限等场景要求前端能取到 metadata 和 reason 做 i18n 渲染）
 func (h *GatewayHandler) responsesErrorResponseWithMetadata(c *gin.Context, status int, code, message string, metadata map[string]string) {
 	body := gin.H{
 		"reason": code,

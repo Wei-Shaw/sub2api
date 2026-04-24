@@ -24,7 +24,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
-	"github.com/Wei-Shaw/sub2api/ent/userusagelimitrule"
 )
 
 // UserUpdate is the builder for updating User entities.
@@ -411,53 +410,6 @@ func (_u *UserUpdate) AddRpmLimit(v int) *UserUpdate {
 	return _u
 }
 
-// SetUsageLimitEnabled sets the "usage_limit_enabled" field.
-func (_u *UserUpdate) SetUsageLimitEnabled(v bool) *UserUpdate {
-	_u.mutation.SetUsageLimitEnabled(v)
-	return _u
-}
-
-// SetNillableUsageLimitEnabled sets the "usage_limit_enabled" field if the given value is not nil.
-func (_u *UserUpdate) SetNillableUsageLimitEnabled(v *bool) *UserUpdate {
-	if v != nil {
-		_u.SetUsageLimitEnabled(*v)
-	}
-	return _u
-}
-
-// ClearUsageLimitEnabled clears the value of the "usage_limit_enabled" field.
-func (_u *UserUpdate) ClearUsageLimitEnabled() *UserUpdate {
-	_u.mutation.ClearUsageLimitEnabled()
-	return _u
-}
-
-// SetDailyUsageLimitUsd sets the "daily_usage_limit_usd" field.
-func (_u *UserUpdate) SetDailyUsageLimitUsd(v float64) *UserUpdate {
-	_u.mutation.ResetDailyUsageLimitUsd()
-	_u.mutation.SetDailyUsageLimitUsd(v)
-	return _u
-}
-
-// SetNillableDailyUsageLimitUsd sets the "daily_usage_limit_usd" field if the given value is not nil.
-func (_u *UserUpdate) SetNillableDailyUsageLimitUsd(v *float64) *UserUpdate {
-	if v != nil {
-		_u.SetDailyUsageLimitUsd(*v)
-	}
-	return _u
-}
-
-// AddDailyUsageLimitUsd adds value to the "daily_usage_limit_usd" field.
-func (_u *UserUpdate) AddDailyUsageLimitUsd(v float64) *UserUpdate {
-	_u.mutation.AddDailyUsageLimitUsd(v)
-	return _u
-}
-
-// ClearDailyUsageLimitUsd clears the value of the "daily_usage_limit_usd" field.
-func (_u *UserUpdate) ClearDailyUsageLimitUsd() *UserUpdate {
-	_u.mutation.ClearDailyUsageLimitUsd()
-	return _u
-}
-
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *UserUpdate) AddAPIKeyIDs(ids ...int64) *UserUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -636,21 +588,6 @@ func (_u *UserUpdate) AddPendingAuthSessions(v ...*PendingAuthSession) *UserUpda
 		ids[i] = v[i].ID
 	}
 	return _u.AddPendingAuthSessionIDs(ids...)
-}
-
-// AddUsageLimitRuleIDs adds the "usage_limit_rules" edge to the UserUsageLimitRule entity by IDs.
-func (_u *UserUpdate) AddUsageLimitRuleIDs(ids ...int64) *UserUpdate {
-	_u.mutation.AddUsageLimitRuleIDs(ids...)
-	return _u
-}
-
-// AddUsageLimitRules adds the "usage_limit_rules" edges to the UserUsageLimitRule entity.
-func (_u *UserUpdate) AddUsageLimitRules(v ...*UserUsageLimitRule) *UserUpdate {
-	ids := make([]int64, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.AddUsageLimitRuleIDs(ids...)
 }
 
 // Mutation returns the UserMutation object of the builder.
@@ -910,27 +847,6 @@ func (_u *UserUpdate) RemovePendingAuthSessions(v ...*PendingAuthSession) *UserU
 	return _u.RemovePendingAuthSessionIDs(ids...)
 }
 
-// ClearUsageLimitRules clears all "usage_limit_rules" edges to the UserUsageLimitRule entity.
-func (_u *UserUpdate) ClearUsageLimitRules() *UserUpdate {
-	_u.mutation.ClearUsageLimitRules()
-	return _u
-}
-
-// RemoveUsageLimitRuleIDs removes the "usage_limit_rules" edge to UserUsageLimitRule entities by IDs.
-func (_u *UserUpdate) RemoveUsageLimitRuleIDs(ids ...int64) *UserUpdate {
-	_u.mutation.RemoveUsageLimitRuleIDs(ids...)
-	return _u
-}
-
-// RemoveUsageLimitRules removes "usage_limit_rules" edges to UserUsageLimitRule entities.
-func (_u *UserUpdate) RemoveUsageLimitRules(v ...*UserUsageLimitRule) *UserUpdate {
-	ids := make([]int64, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.RemoveUsageLimitRuleIDs(ids...)
-}
-
 // Save executes the query and returns the number of nodes affected by the update operation.
 func (_u *UserUpdate) Save(ctx context.Context) (int, error) {
 	if err := _u.defaults(); err != nil {
@@ -1118,21 +1034,6 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(user.FieldRpmLimit, field.TypeInt, value)
-	}
-	if value, ok := _u.mutation.UsageLimitEnabled(); ok {
-		_spec.SetField(user.FieldUsageLimitEnabled, field.TypeBool, value)
-	}
-	if _u.mutation.UsageLimitEnabledCleared() {
-		_spec.ClearField(user.FieldUsageLimitEnabled, field.TypeBool)
-	}
-	if value, ok := _u.mutation.DailyUsageLimitUsd(); ok {
-		_spec.SetField(user.FieldDailyUsageLimitUsd, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedDailyUsageLimitUsd(); ok {
-		_spec.AddField(user.FieldDailyUsageLimitUsd, field.TypeFloat64, value)
-	}
-	if _u.mutation.DailyUsageLimitUsdCleared() {
-		_spec.ClearField(user.FieldDailyUsageLimitUsd, field.TypeFloat64)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1679,51 +1580,6 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(pendingauthsession.FieldID, field.TypeInt64),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Add = append(_spec.Edges.Add, edge)
-	}
-	if _u.mutation.UsageLimitRulesCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.UsageLimitRulesTable,
-			Columns: []string{user.UsageLimitRulesColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(userusagelimitrule.FieldID, field.TypeInt64),
-			},
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.RemovedUsageLimitRulesIDs(); len(nodes) > 0 && !_u.mutation.UsageLimitRulesCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.UsageLimitRulesTable,
-			Columns: []string{user.UsageLimitRulesColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(userusagelimitrule.FieldID, field.TypeInt64),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.UsageLimitRulesIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.UsageLimitRulesTable,
-			Columns: []string{user.UsageLimitRulesColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(userusagelimitrule.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -2122,53 +1978,6 @@ func (_u *UserUpdateOne) AddRpmLimit(v int) *UserUpdateOne {
 	return _u
 }
 
-// SetUsageLimitEnabled sets the "usage_limit_enabled" field.
-func (_u *UserUpdateOne) SetUsageLimitEnabled(v bool) *UserUpdateOne {
-	_u.mutation.SetUsageLimitEnabled(v)
-	return _u
-}
-
-// SetNillableUsageLimitEnabled sets the "usage_limit_enabled" field if the given value is not nil.
-func (_u *UserUpdateOne) SetNillableUsageLimitEnabled(v *bool) *UserUpdateOne {
-	if v != nil {
-		_u.SetUsageLimitEnabled(*v)
-	}
-	return _u
-}
-
-// ClearUsageLimitEnabled clears the value of the "usage_limit_enabled" field.
-func (_u *UserUpdateOne) ClearUsageLimitEnabled() *UserUpdateOne {
-	_u.mutation.ClearUsageLimitEnabled()
-	return _u
-}
-
-// SetDailyUsageLimitUsd sets the "daily_usage_limit_usd" field.
-func (_u *UserUpdateOne) SetDailyUsageLimitUsd(v float64) *UserUpdateOne {
-	_u.mutation.ResetDailyUsageLimitUsd()
-	_u.mutation.SetDailyUsageLimitUsd(v)
-	return _u
-}
-
-// SetNillableDailyUsageLimitUsd sets the "daily_usage_limit_usd" field if the given value is not nil.
-func (_u *UserUpdateOne) SetNillableDailyUsageLimitUsd(v *float64) *UserUpdateOne {
-	if v != nil {
-		_u.SetDailyUsageLimitUsd(*v)
-	}
-	return _u
-}
-
-// AddDailyUsageLimitUsd adds value to the "daily_usage_limit_usd" field.
-func (_u *UserUpdateOne) AddDailyUsageLimitUsd(v float64) *UserUpdateOne {
-	_u.mutation.AddDailyUsageLimitUsd(v)
-	return _u
-}
-
-// ClearDailyUsageLimitUsd clears the value of the "daily_usage_limit_usd" field.
-func (_u *UserUpdateOne) ClearDailyUsageLimitUsd() *UserUpdateOne {
-	_u.mutation.ClearDailyUsageLimitUsd()
-	return _u
-}
-
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *UserUpdateOne) AddAPIKeyIDs(ids ...int64) *UserUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -2347,21 +2156,6 @@ func (_u *UserUpdateOne) AddPendingAuthSessions(v ...*PendingAuthSession) *UserU
 		ids[i] = v[i].ID
 	}
 	return _u.AddPendingAuthSessionIDs(ids...)
-}
-
-// AddUsageLimitRuleIDs adds the "usage_limit_rules" edge to the UserUsageLimitRule entity by IDs.
-func (_u *UserUpdateOne) AddUsageLimitRuleIDs(ids ...int64) *UserUpdateOne {
-	_u.mutation.AddUsageLimitRuleIDs(ids...)
-	return _u
-}
-
-// AddUsageLimitRules adds the "usage_limit_rules" edges to the UserUsageLimitRule entity.
-func (_u *UserUpdateOne) AddUsageLimitRules(v ...*UserUsageLimitRule) *UserUpdateOne {
-	ids := make([]int64, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.AddUsageLimitRuleIDs(ids...)
 }
 
 // Mutation returns the UserMutation object of the builder.
@@ -2621,27 +2415,6 @@ func (_u *UserUpdateOne) RemovePendingAuthSessions(v ...*PendingAuthSession) *Us
 	return _u.RemovePendingAuthSessionIDs(ids...)
 }
 
-// ClearUsageLimitRules clears all "usage_limit_rules" edges to the UserUsageLimitRule entity.
-func (_u *UserUpdateOne) ClearUsageLimitRules() *UserUpdateOne {
-	_u.mutation.ClearUsageLimitRules()
-	return _u
-}
-
-// RemoveUsageLimitRuleIDs removes the "usage_limit_rules" edge to UserUsageLimitRule entities by IDs.
-func (_u *UserUpdateOne) RemoveUsageLimitRuleIDs(ids ...int64) *UserUpdateOne {
-	_u.mutation.RemoveUsageLimitRuleIDs(ids...)
-	return _u
-}
-
-// RemoveUsageLimitRules removes "usage_limit_rules" edges to UserUsageLimitRule entities.
-func (_u *UserUpdateOne) RemoveUsageLimitRules(v ...*UserUsageLimitRule) *UserUpdateOne {
-	ids := make([]int64, len(v))
-	for i := range v {
-		ids[i] = v[i].ID
-	}
-	return _u.RemoveUsageLimitRuleIDs(ids...)
-}
-
 // Where appends a list predicates to the UserUpdate builder.
 func (_u *UserUpdateOne) Where(ps ...predicate.User) *UserUpdateOne {
 	_u.mutation.Where(ps...)
@@ -2859,21 +2632,6 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(user.FieldRpmLimit, field.TypeInt, value)
-	}
-	if value, ok := _u.mutation.UsageLimitEnabled(); ok {
-		_spec.SetField(user.FieldUsageLimitEnabled, field.TypeBool, value)
-	}
-	if _u.mutation.UsageLimitEnabledCleared() {
-		_spec.ClearField(user.FieldUsageLimitEnabled, field.TypeBool)
-	}
-	if value, ok := _u.mutation.DailyUsageLimitUsd(); ok {
-		_spec.SetField(user.FieldDailyUsageLimitUsd, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedDailyUsageLimitUsd(); ok {
-		_spec.AddField(user.FieldDailyUsageLimitUsd, field.TypeFloat64, value)
-	}
-	if _u.mutation.DailyUsageLimitUsdCleared() {
-		_spec.ClearField(user.FieldDailyUsageLimitUsd, field.TypeFloat64)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -3420,51 +3178,6 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(pendingauthsession.FieldID, field.TypeInt64),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Add = append(_spec.Edges.Add, edge)
-	}
-	if _u.mutation.UsageLimitRulesCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.UsageLimitRulesTable,
-			Columns: []string{user.UsageLimitRulesColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(userusagelimitrule.FieldID, field.TypeInt64),
-			},
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.RemovedUsageLimitRulesIDs(); len(nodes) > 0 && !_u.mutation.UsageLimitRulesCleared() {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.UsageLimitRulesTable,
-			Columns: []string{user.UsageLimitRulesColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(userusagelimitrule.FieldID, field.TypeInt64),
-			},
-		}
-		for _, k := range nodes {
-			edge.Target.Nodes = append(edge.Target.Nodes, k)
-		}
-		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
-	}
-	if nodes := _u.mutation.UsageLimitRulesIDs(); len(nodes) > 0 {
-		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2M,
-			Inverse: false,
-			Table:   user.UsageLimitRulesTable,
-			Columns: []string{user.UsageLimitRulesColumn},
-			Bidi:    false,
-			Target: &sqlgraph.EdgeTarget{
-				IDSpec: sqlgraph.NewFieldSpec(userusagelimitrule.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

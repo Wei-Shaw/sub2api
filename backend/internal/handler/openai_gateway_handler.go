@@ -794,7 +794,7 @@ func (h *OpenAIGatewayHandler) anthropicErrorResponse(c *gin.Context, status int
 }
 
 // anthropicErrorResponseWithMetadata 带 metadata + reason 的 Anthropic 格式错误响应
-// （feature issue #1750：配额超限等场景要求前端能取到 metadata 和 reason 做 i18n 渲染）
+// （配额超限等场景要求前端能取到 metadata 和 reason 做 i18n 渲染）
 func (h *OpenAIGatewayHandler) anthropicErrorResponseWithMetadata(c *gin.Context, status int, errType, message string, metadata map[string]string) {
 	body := gin.H{
 		"type":   "error",
@@ -1523,7 +1523,7 @@ func (h *OpenAIGatewayHandler) handleStreamingAwareError(c *gin.Context, status 
 	h.handleStreamingAwareErrorWithMetadata(c, status, errType, message, nil, streamStarted)
 }
 
-// handleStreamingAwareErrorWithMetadata 带 metadata + reason 的错误响应（feature issue #1750）
+// handleStreamingAwareErrorWithMetadata 带 metadata + reason 的错误响应
 func (h *OpenAIGatewayHandler) handleStreamingAwareErrorWithMetadata(c *gin.Context, status int, errType, message string, metadata map[string]string, streamStarted bool) {
 	if streamStarted {
 		// Stream already started, send error as SSE event then close
@@ -1567,7 +1567,7 @@ func (h *OpenAIGatewayHandler) errorResponse(c *gin.Context, status int, errType
 	h.errorResponseWithMetadata(c, status, errType, message, nil)
 }
 
-// errorResponseWithMetadata 带 metadata + reason 的错误响应（feature issue #1750）
+// errorResponseWithMetadata 带 metadata + reason 的错误响应
 func (h *OpenAIGatewayHandler) errorResponseWithMetadata(c *gin.Context, status int, errType, message string, metadata map[string]string) {
 	body := gin.H{
 		"reason": errType,
