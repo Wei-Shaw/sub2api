@@ -74,10 +74,11 @@ func BuildOpenAIModelSubsetProjection(inputs *OpenAIProjectionInputs) *OpenAIMod
 	}
 	catalogSet := stringSliceToSet(catalog)
 	localViews, supportedModels := buildOpenAIModelRoleViews(inputs, catalog, catalogSet)
-	for accountID := range collectOpenAIReserveIDs(localViews) {
+	liftableReserveIDs := collectOpenAIReserveIDs(localViews, inputs.AccountsAll)
+	for accountID := range liftableReserveIDs {
 		projection.AccountReserveIDs[accountID] = struct{}{}
 	}
-	projection.Models = liftModelSubsetReserveIdentities(localViews, supportedModels)
+	projection.Models = liftModelSubsetReserveIdentities(localViews, supportedModels, liftableReserveIDs)
 	return projection
 }
 
@@ -344,17 +345,26 @@ func buildOpenAIModelRoleViews(inputs *OpenAIProjectionInputs, catalog []string,
 	return views, supportedModels
 }
 
-func collectOpenAIReserveIDs(local map[string]OpenAIModelRoleView) map[int64]struct{} {
+func collectOpenAIReserveIDs(local map[string]OpenAIModelRoleView, accounts []Account) map[int64]struct{} {
+	classicReserveCandidates := make(map[int64]struct{}, len(accounts))
+	for _, account := range accounts {
+		if account.IsOpenAIReserveCandidate() {
+			classicReserveCandidates[account.ID] = struct{}{}
+		}
+	}
 	reserve := make(map[int64]struct{})
 	for _, view := range local {
 		for _, accountID := range view.ReserveOverflowIDs {
+			if _, ok := classicReserveCandidates[accountID]; !ok {
+				continue
+			}
 			reserve[accountID] = struct{}{}
 		}
 	}
 	return reserve
 }
 
-func liftModelSubsetReserveIdentities(local map[string]OpenAIModelRoleView, supportedModels map[int64][]string) map[string]OpenAIModelRoleView {
+func liftModelSubsetReserveIdentities(local map[string]OpenAIModelRoleView, supportedModels map[int64][]string, reserveIDs map[int64]struct{}) map[string]OpenAIModelRoleView {
 	lifted := make(map[string]OpenAIModelRoleView, len(local))
 	for model, view := range local {
 		lifted[model] = OpenAIModelRoleView{
@@ -364,7 +374,7 @@ func liftModelSubsetReserveIdentities(local map[string]OpenAIModelRoleView, supp
 		}
 	}
 
-	for accountID := range collectOpenAIReserveIDs(local) {
+	for accountID := range reserveIDs {
 		for _, model := range supportedModels[accountID] {
 			view, ok := lifted[model]
 			if !ok || containsOpenAIProjectionID(view.ExhaustedBaseIDs, accountID) {
