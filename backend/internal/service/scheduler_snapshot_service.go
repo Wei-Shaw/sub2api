@@ -694,34 +694,9 @@ func (s *SchedulerSnapshotService) loadOpenAIProjectionInputs(ctx context.Contex
 		return nil, err
 	}
 
-	merged := make([]Account, 0, len(accounts)+len(broad))
-	baseIndex := make(map[int64]int, len(accounts))
-	for _, account := range accounts {
-		baseIndex[account.ID] = len(merged)
-		merged = append(merged, account)
-	}
-	for _, account := range broad {
-		if !account.IsOpenAI() {
-			continue
-		}
-		if idx, ok := baseIndex[account.ID]; ok {
-			merged[idx] = account
-			if account.IsSchedulableForTargetGroup(TargetGroupExhausted) {
-				inputs.ExhaustedBroadIDs[account.ID] = struct{}{}
-			} else {
-				delete(inputs.ExhaustedBroadIDs, account.ID)
-			}
-			continue
-		}
-		if !account.IsSchedulableForTargetGroup(TargetGroupExhausted) {
-			continue
-		}
-		baseIndex[account.ID] = len(merged)
-		merged = append(merged, account)
-		inputs.ExhaustedBroadIDs[account.ID] = struct{}{}
-	}
-
+	merged, exhaustedBroadIDs := mergeOpenAIExhaustedAccountsFromBroadSource(accounts, broad)
 	inputs.AccountsAll = merged
+	inputs.ExhaustedBroadIDs = exhaustedBroadIDs
 	inputs.CanonicalCatalog = BuildOpenAICanonicalModelCatalog(merged, nil, nil)
 	for _, account := range merged {
 		inputs.CapabilityByID[account.ID] = buildOpenAIModelCapabilitySnapshot(account)

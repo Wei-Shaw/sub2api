@@ -43,15 +43,15 @@ type openAIProjectionModelMembers struct {
 	active    []Account
 }
 
-func (p *OpenAIModelSubsetProjection) ViewForModel(model string) OpenAIModelRoleView {
+func (p *OpenAIModelSubsetProjection) ViewForModel(model string) (OpenAIModelRoleView, bool) {
 	canonical := NormalizeOpenAIProjectionModelKey(model)
-	if p == nil || p.Models == nil {
-		return OpenAIModelRoleView{CanonicalModel: canonical}
+	if canonical == "" || p == nil || p.Models == nil {
+		return OpenAIModelRoleView{CanonicalModel: canonical}, false
 	}
 	if view, ok := p.Models[canonical]; ok {
-		return view
+		return view, true
 	}
-	return OpenAIModelRoleView{CanonicalModel: canonical}
+	return OpenAIModelRoleView{CanonicalModel: canonical}, false
 }
 
 func BuildOpenAIModelSubsetProjection(inputs *OpenAIProjectionInputs) *OpenAIModelSubsetProjection {
@@ -395,4 +395,38 @@ func containsOpenAIProjectionID(ids []int64, target int64) bool {
 		}
 	}
 	return false
+}
+
+func mergeOpenAIExhaustedAccountsFromBroadSource(base []Account, broad []Account) ([]Account, map[int64]struct{}) {
+	merged := make([]Account, 0, len(base)+len(broad))
+	baseIndex := make(map[int64]int, len(base))
+	exhaustedBroadIDs := make(map[int64]struct{})
+
+	for _, account := range base {
+		baseIndex[account.ID] = len(merged)
+		merged = append(merged, account)
+	}
+
+	for _, account := range broad {
+		if !account.IsOpenAI() {
+			continue
+		}
+		if idx, ok := baseIndex[account.ID]; ok {
+			merged[idx] = account
+			if account.IsSchedulableForTargetGroup(TargetGroupExhausted) {
+				exhaustedBroadIDs[account.ID] = struct{}{}
+			} else {
+				delete(exhaustedBroadIDs, account.ID)
+			}
+			continue
+		}
+		if !account.IsSchedulableForTargetGroup(TargetGroupExhausted) {
+			continue
+		}
+		baseIndex[account.ID] = len(merged)
+		merged = append(merged, account)
+		exhaustedBroadIDs[account.ID] = struct{}{}
+	}
+
+	return merged, exhaustedBroadIDs
 }

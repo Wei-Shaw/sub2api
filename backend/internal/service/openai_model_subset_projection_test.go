@@ -276,6 +276,42 @@ func TestLoadOpenAIProjectionInputs_PreservesBroadSourceExhaustedMembers(t *test
 	require.Contains(t, inputs.CapabilityByID, int64(102))
 }
 
+func TestMergeOpenAIExhaustedAccountsFromBroadSource_PreservesExpectedMergeSemantics(t *testing.T) {
+	t.Parallel()
+
+	base := []Account{
+		newOpenAIProjectionActiveAccount(201, 1, 10, []string{"gpt-5.4"}),
+		newOpenAIProjectionExhaustedAccount(202, 1, []string{"gpt-5.4"}),
+	}
+	broad := []Account{
+		newOpenAIProjectionExhaustedAccount(201, 1, []string{"gpt-5.4"}),
+		newOpenAIProjectionActiveAccount(202, 1, 10, []string{"gpt-5.4"}),
+		newOpenAIProjectionExhaustedAccount(203, 1, []string{"gpt-5.4"}),
+		newOpenAIProjectionActiveAccount(204, 1, 10, []string{"gpt-5.4"}),
+		{ID: 205, Platform: PlatformAnthropic, Status: StatusActive, Schedulable: true},
+	}
+
+	merged, exhaustedBroadIDs := mergeOpenAIExhaustedAccountsFromBroadSource(base, broad)
+
+	require.ElementsMatch(t, []int64{201, 202, 203}, projectionAccountIDs(merged))
+	require.Contains(t, exhaustedBroadIDs, int64(201))
+	require.Contains(t, exhaustedBroadIDs, int64(203))
+	require.NotContains(t, exhaustedBroadIDs, int64(202))
+
+	byID := make(map[int64]Account, len(merged))
+	for _, account := range merged {
+		byID[account.ID] = account
+	}
+	account201 := byID[201]
+	account202 := byID[202]
+	account203 := byID[203]
+	require.True(t, account201.IsExhausted())
+	require.False(t, account202.IsExhausted())
+	require.True(t, account203.IsExhausted())
+	_, exists := byID[204]
+	require.False(t, exists)
+}
+
 func TestBuildOpenAIModelSubsetProjection_NewModelTwoAccountsPromotesReserve(t *testing.T) {
 	t.Parallel()
 
@@ -289,8 +325,9 @@ func TestBuildOpenAIModelSubsetProjection_NewModelTwoAccountsPromotesReserve(t *
 	}
 
 	projection := BuildOpenAIModelSubsetProjection(inputs)
-	view := projection.ViewForModel("gpt-5.6")
+	view, ok := projection.ViewForModel("gpt-5.6")
 
+	require.True(t, ok)
 	require.Empty(t, view.ExhaustedBaseIDs)
 	require.NotEmpty(t, view.ReserveOverflowIDs)
 	require.NotEmpty(t, projection.AccountReserveIDs)
@@ -313,9 +350,11 @@ func TestBuildOpenAIModelSubsetProjection_AsymmetricMatrixLiftsReserveAcrossSupp
 		AccountsAll:      []Account{accountA, accountB, accountC},
 	})
 
-	view56 := projection.ViewForModel("gpt-5.6")
-	view54 := projection.ViewForModel("gpt-5.4")
+	view56, ok56 := projection.ViewForModel("gpt-5.6")
+	view54, ok54 := projection.ViewForModel("gpt-5.4")
 
+	require.True(t, ok56)
+	require.True(t, ok54)
 	require.ElementsMatch(t, []int64{2}, view56.ExhaustedBaseIDs)
 	require.ElementsMatch(t, []int64{1}, view56.ReserveOverflowIDs)
 	require.ElementsMatch(t, []int64{1, 3}, view54.ReserveOverflowIDs)
@@ -335,11 +374,34 @@ func TestBuildOpenAIModelSubsetProjection_ExhaustedEmptyMeansOneHundredPercent(t
 		},
 	})
 
-	view := projection.ViewForModel("gpt-5.6")
+	view, ok := projection.ViewForModel("gpt-5.6")
+	require.True(t, ok)
 	require.Empty(t, view.ExhaustedBaseIDs)
 	require.ElementsMatch(t, []int64{11}, view.ReserveOverflowIDs)
-	_, ok := projection.AccountReserveIDs[11]
+	_, reserveOK := projection.AccountReserveIDs[11]
+	require.True(t, reserveOK)
+}
+
+func TestBuildOpenAIModelSubsetProjection_ViewForModelDistinguishesMissingViewFromEmptyView(t *testing.T) {
+	t.Parallel()
+
+	projection := BuildOpenAIModelSubsetProjection(&OpenAIProjectionInputs{
+		Bucket:           SchedulerBucket{GroupID: 2, Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+		CanonicalCatalog: []string{"gpt-5.6"},
+	})
+
+	view, ok := projection.ViewForModel("gpt-5.6")
 	require.True(t, ok)
+	require.Equal(t, "gpt-5.6", view.CanonicalModel)
+	require.Empty(t, view.ExhaustedBaseIDs)
+	require.Empty(t, view.ReserveOverflowIDs)
+
+	_, ok = projection.ViewForModel("gpt-5.4")
+	require.False(t, ok)
+
+	var nilProjection *OpenAIModelSubsetProjection
+	_, ok = nilProjection.ViewForModel("gpt-5.6")
+	require.False(t, ok)
 }
 
 func TestBuildOpenAIModelSubsetProjection_ReserveThresholdMatrix(t *testing.T) {
@@ -388,7 +450,8 @@ func TestBuildOpenAIModelSubsetProjection_ReserveThresholdMatrix(t *testing.T) {
 				AccountsAll:      tt.accounts,
 			})
 
-			view := projection.ViewForModel("gpt-5.6")
+			view, ok := projection.ViewForModel("gpt-5.6")
+			require.True(t, ok)
 			require.ElementsMatch(t, tt.wantExhausted, view.ExhaustedBaseIDs)
 			require.ElementsMatch(t, tt.wantReserve, view.ReserveOverflowIDs)
 			for _, exhaustedID := range view.ExhaustedBaseIDs {

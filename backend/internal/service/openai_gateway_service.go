@@ -1929,28 +1929,7 @@ func (s *OpenAIGatewayService) mergeExhaustedFromBroadSource(ctx context.Context
 	if err != nil {
 		return nil, fmt.Errorf("query accounts failed: %w", err)
 	}
-
-	seen := make(map[int64]struct{}, len(base))
-	baseIndex := make(map[int64]int, len(base))
-	merged := make([]Account, 0, len(base)+len(broad))
-	for _, acc := range base {
-		baseIndex[acc.ID] = len(merged)
-		merged = append(merged, acc)
-		seen[acc.ID] = struct{}{}
-	}
-	for _, acc := range broad {
-		if _, exists := seen[acc.ID]; exists {
-			if idx, ok := baseIndex[acc.ID]; ok && acc.IsOpenAI() {
-				merged[idx] = acc
-			}
-			continue
-		}
-		if !acc.IsOpenAI() || !acc.IsSchedulableForTargetGroup(TargetGroupExhausted) {
-			continue
-		}
-		merged = append(merged, acc)
-		seen[acc.ID] = struct{}{}
-	}
+	merged, _ := mergeOpenAIExhaustedAccountsFromBroadSource(base, broad)
 	return merged, nil
 }
 
