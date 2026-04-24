@@ -722,6 +722,26 @@ func (a *Account) IsModelSupported(requestedModel string) bool {
 	return normalized != requestedModel && mappingSupportsRequestedModel(mapping, normalized)
 }
 
+func (a *Account) SupportsProjectionModel(model string, snapshot OpenAIModelCapabilitySnapshot, catalog map[string]struct{}) bool {
+	canonicalModel := NormalizeOpenAIProjectionModelKey(model)
+	if canonicalModel == "" {
+		return false
+	}
+	if _, ok := catalog[canonicalModel]; !ok {
+		return false
+	}
+	if _, ok := snapshot.ExplicitModels[canonicalModel]; ok {
+		return true
+	}
+	if mappingSupportsProjectionModel(a.GetModelMapping(), canonicalModel) {
+		return true
+	}
+	if wildcardRulesSupportProjectionModel(snapshot.WildcardRules, canonicalModel) {
+		return true
+	}
+	return snapshot.DefaultAllow
+}
+
 // GetMappedModel 获取映射后的模型名（支持通配符，最长优先匹配）
 // 如果未配置 mapping，返回原始模型名
 func (a *Account) GetMappedModel(requestedModel string) string {
