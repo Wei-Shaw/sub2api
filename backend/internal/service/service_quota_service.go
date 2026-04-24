@@ -56,7 +56,7 @@ func (s *serviceQuotaService) PreCheck(ctx context.Context, req ServiceQuotaChec
 	if !ok || len(rules) == 0 {
 		return nil, nil
 	}
-	rules = applyServiceQuotaDefaultOverride(rules)
+	rules = applyServiceQuotaFallbackOverride(rules)
 	lease := &ServiceQuotaLease{}
 	for _, rule := range rules {
 		if rule.LimiterType == ServiceQuotaLimiterConcurrency {
@@ -90,7 +90,7 @@ func (s *serviceQuotaService) Record(ctx context.Context, req ServiceQuotaRecord
 	if !ok || len(rules) == 0 {
 		return
 	}
-	for _, rule := range applyServiceQuotaDefaultOverride(rules) {
+	for _, rule := range applyServiceQuotaFallbackOverride(rules) {
 		delta := serviceQuotaRecordDelta(rule.LimiterType, req)
 		if delta <= 0 {
 			continue
@@ -173,10 +173,9 @@ func (s *serviceQuotaService) checkDeferred(ctx context.Context, req ServiceQuot
 }
 
 // fillCurrentUsage best-effort annotates a rule with its current usage for the
-// admin list response. Only global-scope counters (target_mode=shared or a
-// specific user) and non-concurrency limiters are resolvable with a single
-// lookup; per_user/default rules are sharded per request user and are left as
-// nil rather than paying the cost of scanning every per-user key.
+// admin list response. Only shared-counter rules resolve with a single lookup;
+// per-user and multi-user sharded rules are left as nil rather than scanning
+// every per-user key (N lookups per rule × M rules).
 func (s *serviceQuotaService) fillCurrentUsage(ctx context.Context, rule *ServiceQuotaRule) {
 	if rule == nil || s.limiter == nil {
 		return
@@ -184,19 +183,10 @@ func (s *serviceQuotaService) fillCurrentUsage(ctx context.Context, rule *Servic
 	if rule.LimiterType == ServiceQuotaLimiterConcurrency {
 		return
 	}
-	var target string
-	switch rule.TargetMode {
-	case ServiceQuotaTargetShared:
-		target = "shared"
-	case ServiceQuotaTargetUser:
-		if rule.TargetUserID == nil {
-			return
-		}
-		target = strconv.FormatInt(*rule.TargetUserID, 10)
-	default:
+	if rule.CounterMode != ServiceQuotaCounterModeShared {
 		return
 	}
-	key := fmt.Sprintf("svcquota:%d:%s:%s", rule.ID, rule.LimiterType, target)
+	key := fmt.Sprintf("svcquota:%d:%s:shared", rule.ID, rule.LimiterType)
 	used, err := s.limiter.Current(ctx, key, serviceQuotaWindow(rule), rule.WindowMode)
 	if err != nil {
 		s.logLimiterFailure("current_usage", rule, key, err)
@@ -221,7 +211,7 @@ func (s *serviceQuotaService) logLimiterFailure(op string, rule *ServiceQuotaRul
 
 func (s *serviceQuotaService) counterKey(req ServiceQuotaCheckRequest, rule *ServiceQuotaRule) string {
 	target := "shared"
-	if rule.TargetMode == ServiceQuotaTargetUser || rule.TargetMode == ServiceQuotaTargetPerUser || rule.TargetMode == ServiceQuotaTargetDefault {
+	if rule.CounterMode == ServiceQuotaCounterModeUser || rule.CounterMode == ServiceQuotaCounterModePerUser {
 		target = strconv.FormatInt(req.UserID, 10)
 	}
 	return fmt.Sprintf("svcquota:%d:%s:%s", rule.ID, rule.LimiterType, target)
@@ -237,11 +227,13 @@ func normalizeServiceQuotaRule(input *ServiceQuotaRuleInput) error {
 	if input == nil || input.LimitValue <= 0 {
 		return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_RULE", "invalid service quota rule")
 	}
-	if input.ScopeLevel == "" {
-		input.ScopeLevel = ServiceQuotaScopeGlobal
+	if input.CounterMode == "" {
+		input.CounterMode = ServiceQuotaCounterModePerUser
 	}
-	if input.TargetMode == "" {
-		input.TargetMode = ServiceQuotaTargetPerUser
+	switch input.CounterMode {
+	case ServiceQuotaCounterModeUser, ServiceQuotaCounterModePerUser, ServiceQuotaCounterModeShared:
+	default:
+		return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_COUNTER_MODE", "invalid counter_mode")
 	}
 	if input.WindowMode == "" || input.LimiterType == ServiceQuotaLimiterConcurrency {
 		input.WindowMode = ServiceQuotaWindowFixed
@@ -250,10 +242,33 @@ func normalizeServiceQuotaRule(input *ServiceQuotaRuleInput) error {
 		enabled := true
 		input.Enabled = &enabled
 	}
-	if input.TargetMode == ServiceQuotaTargetUser && input.TargetUserID == nil {
-		return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_TARGET", "target_user_id is required")
+	input.TargetUserIDs = sanitizeTargetUserIDs(input.TargetUserIDs)
+	if input.CounterMode == ServiceQuotaCounterModeUser && len(input.TargetUserIDs) == 0 {
+		return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_TARGET", "target_user_ids is required when counter_mode=user")
+	}
+	if input.CounterMode != ServiceQuotaCounterModeUser {
+		input.TargetUserIDs = nil
 	}
 	return nil
+}
+
+func sanitizeTargetUserIDs(ids []int64) []int64 {
+	if len(ids) == 0 {
+		return nil
+	}
+	seen := make(map[int64]struct{}, len(ids))
+	out := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
 }
 
 func serviceQuotaRuleMatches(rule *ServiceQuotaRule, req ServiceQuotaCheckRequest) bool {
@@ -276,7 +291,15 @@ func serviceQuotaRuleMatches(rule *ServiceQuotaRule, req ServiceQuotaCheckReques
 }
 
 func serviceQuotaTargetMatches(rule *ServiceQuotaRule, userID int64) bool {
-	return rule.TargetMode != ServiceQuotaTargetUser || (rule.TargetUserID != nil && *rule.TargetUserID == userID)
+	if rule.CounterMode != ServiceQuotaCounterModeUser {
+		return true
+	}
+	for _, id := range rule.TargetUserIDs {
+		if id == userID {
+			return true
+		}
+	}
+	return false
 }
 
 func serviceQuotaModelMatches(pattern, model string) bool {
@@ -288,16 +311,19 @@ func serviceQuotaModelMatches(pattern, model string) bool {
 	return err == nil && ok
 }
 
-func applyServiceQuotaDefaultOverride(rules []*ServiceQuotaRule) []*ServiceQuotaRule {
-	nonDefault := map[string]bool{}
+// applyServiceQuotaFallbackOverride 在已匹配的规则集中处理 is_fallback 语义：
+// 若同一 limiter_type 存在任何非 fallback 规则，则丢弃该 limiter_type 的所有 fallback 规则。
+// 匹配时的 scope 层级判断已由 serviceQuotaRuleMatches 完成，这里只看是否有更具体（非 fallback）规则生效。
+func applyServiceQuotaFallbackOverride(rules []*ServiceQuotaRule) []*ServiceQuotaRule {
+	hasConcrete := map[string]bool{}
 	for _, rule := range rules {
-		if rule.TargetMode != ServiceQuotaTargetDefault {
-			nonDefault[rule.LimiterType] = true
+		if !rule.IsFallback {
+			hasConcrete[rule.LimiterType] = true
 		}
 	}
 	out := rules[:0]
 	for _, rule := range rules {
-		if rule.TargetMode == ServiceQuotaTargetDefault && nonDefault[rule.LimiterType] {
+		if rule.IsFallback && hasConcrete[rule.LimiterType] {
 			continue
 		}
 		out = append(out, rule)

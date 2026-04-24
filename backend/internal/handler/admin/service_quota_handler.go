@@ -21,7 +21,6 @@ func (h *ServiceQuotaHandler) List(c *gin.Context) {
 		return
 	}
 	filter := service.ServiceQuotaListFilter{
-		ScopeLevel:  c.Query("scope_level"),
 		LimiterType: c.Query("limiter_type"),
 	}
 	if raw := c.Query("enabled"); raw != "" {

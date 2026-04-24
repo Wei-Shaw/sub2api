@@ -3824,15 +3824,16 @@ export default {
       deleteConfirm: 'Delete the {type} rule? It will stop taking effect immediately.',
       filters: {
         allTypes: 'All Types',
-        allScopes: 'All Scopes',
-        allTargets: 'All Target Modes',
+        allCounterModes: 'All Counter Modes',
+        allFallback: 'All Fallback States',
         allStatus: 'All Status'
       },
       columns: {
         status: 'Status',
         scope: 'Scope',
         type: 'Type',
-        targetMode: 'Target Mode',
+        counterMode: 'Counter Mode',
+        fallback: 'Fallback',
         window: 'Window',
         limit: 'Limit',
         actions: 'Actions'
@@ -3858,11 +3859,21 @@ export default {
         dailyUsd: 'Daily USD Spend',
         concurrency: 'Concurrent Requests'
       },
-      targets: {
-        user: 'Specific User',
+      counterModes: {
+        user: 'Specific Users',
         perUser: 'Per User',
-        shared: 'Shared Global',
-        default: 'Default Rule'
+        shared: 'Shared Global'
+      },
+      counterModeHints: {
+        user: 'Applies only to the listed users; each user has an independent counter',
+        perUser: 'Applies to all users in scope; one counter per user_id',
+        shared: 'Applies to all users in scope; everyone shares the same counter'
+      },
+      fallback: {
+        label: 'Fallback Rule',
+        hint: 'Only takes effect when no other non-fallback rule of the same limiter type matches',
+        yes: 'Fallback',
+        no: 'Regular'
       },
       windows: {
         fixed: 'Fixed Window',
@@ -3870,15 +3881,18 @@ export default {
         none: 'No Window'
       },
       form: {
-        scopeLevel: 'Scope Level',
-        scopeMatching: 'Scope Matching',
+        scopeMatching: 'Scope Filters (any combination; leave blank to skip that dimension)',
         platform: 'Channel / Platform',
         platformPlaceholder: 'e.g. anthropic / openai / gemini',
         groupId: 'Group ID',
         accountId: 'Account ID',
         modelPattern: 'Model Pattern',
         modelPatternPlaceholder: 'e.g. claude-opus-*',
-        targetUserId: 'Bound User ID',
+        counterMode: 'Counter Mode',
+        fallback: 'Fallback Rule',
+        targetUserIds: 'Bound User IDs',
+        targetUserIdsPlaceholder: 'Comma-separated user IDs, e.g. 1,2,3',
+        targetUserIdsRequired: 'Required when counter mode is "Specific Users"',
         required: 'Required'
       }
     },

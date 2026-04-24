@@ -3988,15 +3988,16 @@ export default {
       deleteConfirm: '删除该 {type} 规则？删除后立即停止生效。',
       filters: {
         allTypes: '全部类型',
-        allScopes: '全部范围',
-        allTargets: '全部目标模式',
+        allCounterModes: '全部计数模式',
+        allFallback: '全部兜底状态',
         allStatus: '全部状态'
       },
       columns: {
         status: '状态',
         scope: '范围',
         type: '类型',
-        targetMode: '目标模式',
+        counterMode: '计数模式',
+        fallback: '兜底',
         window: '窗口',
         limit: '限额',
         actions: '操作'
@@ -4022,11 +4023,21 @@ export default {
         dailyUsd: '每日美元消费',
         concurrency: '并发请求'
       },
-      targets: {
+      counterModes: {
         user: '指定用户',
         perUser: '按用户',
-        shared: '全局共享',
-        default: '默认规则'
+        shared: '全局共享'
+      },
+      counterModeHints: {
+        user: '只对指定的用户列表生效，每人独立计数',
+        perUser: '对 scope 内所有用户生效，按 user_id 分片计数',
+        shared: '对 scope 内所有用户生效，共享同一个计数器'
+      },
+      fallback: {
+        label: '兜底规则',
+        hint: '仅在同一 limiter 类型没有其他非兜底规则命中时生效',
+        yes: '兜底',
+        no: '常规'
       },
       windows: {
         fixed: '固定窗口',
@@ -4034,15 +4045,18 @@ export default {
         none: '不设窗口'
       },
       form: {
-        scopeLevel: '范围层级',
-        scopeMatching: '范围匹配',
+        scopeMatching: '范围匹配（任意组合，留空表示不限制该维度）',
         platform: '渠道 / 平台',
         platformPlaceholder: '例如 anthropic / openai / gemini',
         groupId: '分组 ID',
         accountId: '账号 ID',
         modelPattern: '模型通配符',
         modelPatternPlaceholder: '例如 claude-opus-*',
-        targetUserId: '绑定用户 ID',
+        counterMode: '计数模式',
+        fallback: '兜底规则',
+        targetUserIds: '绑定用户 ID',
+        targetUserIdsPlaceholder: '逗号分隔的用户 ID，例如 1,2,3',
+        targetUserIdsRequired: '计数模式为"指定用户"时必填',
         required: '必填'
       }
     },

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <AppLayout>
     <TablePageLayout>
       <template #actions>
@@ -26,13 +26,14 @@
             <option value="">{{ t('admin.serviceQuota.filters.allTypes') }}</option>
             <option v-for="item in limiterOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
           </select>
-          <select v-model="filters.scope" class="input">
-            <option value="">{{ t('admin.serviceQuota.filters.allScopes') }}</option>
-            <option v-for="item in scopeOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
+          <select v-model="filters.counterMode" class="input">
+            <option value="">{{ t('admin.serviceQuota.filters.allCounterModes') }}</option>
+            <option v-for="item in counterModeOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
           </select>
-          <select v-model="filters.target" class="input">
-            <option value="">{{ t('admin.serviceQuota.filters.allTargets') }}</option>
-            <option v-for="item in targetOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
+          <select v-model="filters.fallback" class="input">
+            <option value="">{{ t('admin.serviceQuota.filters.allFallback') }}</option>
+            <option value="true">{{ t('admin.serviceQuota.fallback.yes') }}</option>
+            <option value="false">{{ t('admin.serviceQuota.fallback.no') }}</option>
           </select>
           <select v-model="filters.enabled" class="input">
             <option value="">{{ t('admin.serviceQuota.filters.allStatus') }}</option>
@@ -52,7 +53,7 @@
 
           <template #cell-scope="{ row }">
             <div class="space-y-1">
-              <div class="font-medium text-gray-900 dark:text-white">{{ scopeLabel(row.scope_level) }}</div>
+              <div class="font-medium text-gray-900 dark:text-white">{{ scopePrimaryLabel(row) }}</div>
               <div class="max-w-md truncate text-xs text-gray-500 dark:text-gray-400">{{ scopeDetail(row) }}</div>
             </div>
           </template>
@@ -61,13 +62,19 @@
             <span :class="['badge', limiterBadgeClass(row.limiter_type)]">{{ limiterLabel(row.limiter_type) }}</span>
           </template>
 
-          <template #cell-target_mode="{ row }">
+          <template #cell-counter_mode="{ row }">
             <div class="space-y-1">
-              <div class="text-sm font-medium text-gray-900 dark:text-white">{{ targetLabel(row.target_mode) }}</div>
-              <div v-if="row.target_user_id" class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.serviceQuota.userId', { id: row.target_user_id }) }}
+              <div class="text-sm font-medium text-gray-900 dark:text-white">{{ counterModeLabel(row.counter_mode) }}</div>
+              <div v-if="row.counter_mode === 'user' && row.target_user_ids?.length" class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.serviceQuota.userId', { id: row.target_user_ids.join(', ') }) }}
               </div>
             </div>
+          </template>
+
+          <template #cell-is_fallback="{ row }">
+            <span :class="['badge', row.is_fallback ? 'badge-yellow' : 'badge-gray']">
+              {{ row.is_fallback ? t('admin.serviceQuota.fallback.yes') : t('admin.serviceQuota.fallback.no') }}
+            </span>
           </template>
 
           <template #cell-window_mode="{ row }">
@@ -118,16 +125,11 @@
             </select>
           </label>
           <label class="form-field">
-            <span class="input-label">{{ t('admin.serviceQuota.form.scopeLevel') }}</span>
-            <select v-model="form.scope_level" class="input">
-              <option v-for="item in scopeOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
+            <span class="input-label">{{ t('admin.serviceQuota.form.counterMode') }}</span>
+            <select v-model="form.counter_mode" class="input">
+              <option v-for="item in counterModeOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
             </select>
-          </label>
-          <label class="form-field">
-            <span class="input-label">{{ t('admin.serviceQuota.columns.targetMode') }}</span>
-            <select v-model="form.target_mode" class="input">
-              <option v-for="item in targetOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
-            </select>
+            <span class="text-xs text-gray-500 dark:text-gray-400">{{ counterModeHint(form.counter_mode) }}</span>
           </label>
         </div>
 
@@ -154,9 +156,17 @@
         </div>
 
         <div class="grid gap-4 md:grid-cols-3">
-          <label v-if="form.target_mode === 'user'" class="form-field">
-            <span class="input-label">{{ t('admin.serviceQuota.form.targetUserId') }}</span>
-            <input v-model.number="form.target_user_id" class="input" min="1" type="number" :placeholder="t('admin.serviceQuota.form.required')" />
+          <label v-if="form.counter_mode === 'user'" class="form-field md:col-span-3">
+            <span class="input-label">{{ t('admin.serviceQuota.form.targetUserIds') }}</span>
+            <input v-model="targetUserIdsInput" class="input" type="text" :placeholder="t('admin.serviceQuota.form.targetUserIdsPlaceholder')" required />
+            <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.serviceQuota.form.targetUserIdsRequired') }}</span>
+          </label>
+          <label class="form-field flex items-center gap-2">
+            <input v-model="form.is_fallback" type="checkbox" class="h-4 w-4 rounded border-gray-300" />
+            <span class="text-sm">
+              <span class="font-medium text-gray-900 dark:text-white">{{ t('admin.serviceQuota.form.fallback') }}</span>
+              <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.serviceQuota.fallback.hint') }}</span>
+            </span>
           </label>
           <label v-if="form.limiter_type !== 'concurrency'" class="form-field">
             <span class="input-label">{{ t('admin.serviceQuota.columns.window') }}</span>
@@ -213,13 +223,6 @@ import { createServiceQuotaRule, deleteServiceQuotaRule, listServiceQuotaRules, 
 const { t } = useI18n()
 const appStore = useAppStore()
 
-const scopeOptions = computed(() => [
-  { value: 'global', label: t('admin.serviceQuota.scopes.global') },
-  { value: 'platform', label: t('admin.serviceQuota.scopes.platform') },
-  { value: 'group', label: t('admin.serviceQuota.scopes.group') },
-  { value: 'account', label: t('admin.serviceQuota.scopes.account') },
-  { value: 'model', label: t('admin.serviceQuota.scopes.model') },
-])
 const limiterOptions = computed(() => [
   { value: 'rpm', label: t('admin.serviceQuota.limiters.rpm') },
   { value: 'tpm', label: t('admin.serviceQuota.limiters.tpm') },
@@ -227,18 +230,18 @@ const limiterOptions = computed(() => [
   { value: 'daily_usd', label: t('admin.serviceQuota.limiters.dailyUsd') },
   { value: 'concurrency', label: t('admin.serviceQuota.limiters.concurrency') },
 ])
-const targetOptions = computed(() => [
-  { value: 'user', label: t('admin.serviceQuota.targets.user') },
-  { value: 'per_user', label: t('admin.serviceQuota.targets.perUser') },
-  { value: 'shared', label: t('admin.serviceQuota.targets.shared') },
-  { value: 'default', label: t('admin.serviceQuota.targets.default') },
+const counterModeOptions = computed(() => [
+  { value: 'user', label: t('admin.serviceQuota.counterModes.user') },
+  { value: 'per_user', label: t('admin.serviceQuota.counterModes.perUser') },
+  { value: 'shared', label: t('admin.serviceQuota.counterModes.shared') },
 ])
 
 const columns = computed<Column[]>(() => [
   { key: 'enabled', label: t('admin.serviceQuota.columns.status') },
   { key: 'scope', label: t('admin.serviceQuota.columns.scope') },
   { key: 'limiter_type', label: t('admin.serviceQuota.columns.type') },
-  { key: 'target_mode', label: t('admin.serviceQuota.columns.targetMode') },
+  { key: 'counter_mode', label: t('admin.serviceQuota.columns.counterMode') },
+  { key: 'is_fallback', label: t('admin.serviceQuota.columns.fallback') },
   { key: 'window_mode', label: t('admin.serviceQuota.columns.window') },
   { key: 'limit_value', label: t('admin.serviceQuota.columns.limit') },
   { key: 'actions', label: t('admin.serviceQuota.columns.actions') },
@@ -250,13 +253,14 @@ const saving = ref(false)
 const showDialog = ref(false)
 const editingID = ref<number | null>(null)
 const deletingRule = ref<ServiceQuotaRule | null>(null)
-const filters = reactive({ limiter: '', scope: '', target: '', enabled: '' })
+const filters = reactive({ limiter: '', counterMode: '', fallback: '', enabled: '' })
 const form = reactive<ServiceQuotaRuleInput>(blankRule())
+const targetUserIdsInput = ref('')
 
 const filteredRules = computed(() => rules.value.filter((rule) => {
   if (filters.limiter && rule.limiter_type !== filters.limiter) return false
-  if (filters.scope && rule.scope_level !== filters.scope) return false
-  if (filters.target && rule.target_mode !== filters.target) return false
+  if (filters.counterMode && rule.counter_mode !== filters.counterMode) return false
+  if (filters.fallback && String(rule.is_fallback) !== filters.fallback) return false
   if (filters.enabled && String(rule.enabled) !== filters.enabled) return false
   return true
 }))
@@ -266,21 +270,48 @@ watch(() => form.limiter_type, (value) => {
 })
 
 function blankRule(): ServiceQuotaRuleInput {
-  return { enabled: true, scope_level: 'global', limiter_type: 'rpm', target_mode: 'per_user', window_mode: 'fixed', limit_value: 60 }
+  return {
+    enabled: true,
+    limiter_type: 'rpm',
+    counter_mode: 'per_user',
+    is_fallback: false,
+    target_user_ids: null,
+    window_mode: 'fixed',
+    limit_value: 60,
+  }
 }
 
 function resetForm(rule?: ServiceQuotaRule) {
   Object.assign(form, blankRule(), rule || {})
   editingID.value = rule?.id ?? null
+  targetUserIdsInput.value = (rule?.target_user_ids || []).join(',')
 }
 
 function optionLabel(options: Array<{ value: string; label: string }>, value: string): string {
   return options.find((item) => item.value === value)?.label || value
 }
 
-function scopeLabel(value: string): string { return optionLabel(scopeOptions.value, value) }
 function limiterLabel(value: string): string { return optionLabel(limiterOptions.value, value) }
-function targetLabel(value: string): string { return optionLabel(targetOptions.value, value) }
+
+function scopePrimaryLabel(rule: ServiceQuotaRule): string {
+  const fields = [rule.model_pattern, rule.account_id, rule.group_id, rule.platform]
+  const hit = fields.find((v) => v !== null && v !== undefined && v !== '')
+  if (hit === rule.model_pattern) return t('admin.serviceQuota.scopes.model')
+  if (hit === rule.account_id) return t('admin.serviceQuota.scopes.account')
+  if (hit === rule.group_id) return t('admin.serviceQuota.scopes.group')
+  if (hit === rule.platform) return t('admin.serviceQuota.scopes.platform')
+  return t('admin.serviceQuota.scopes.global')
+}
+function counterModeLabel(value: string): string { return optionLabel(counterModeOptions.value, value) }
+
+function counterModeHint(value: string): string {
+  const map: Record<string, string> = {
+    user: t('admin.serviceQuota.counterModeHints.user'),
+    per_user: t('admin.serviceQuota.counterModeHints.perUser'),
+    shared: t('admin.serviceQuota.counterModeHints.shared'),
+  }
+  return map[value] || ''
+}
 
 function scopeDetail(rule: ServiceQuotaRule): string {
   const parts = [
@@ -319,14 +350,26 @@ function limiterBadgeClass(value: string): string {
   return classes[value] || 'badge-gray'
 }
 
+function parseUserIds(raw: string): number[] {
+  return raw
+    .split(/[,\s]+/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+    .map((part) => Number(part))
+    .filter((n) => Number.isFinite(n) && n > 0)
+}
+
 function normalizePayload(): ServiceQuotaRuleInput {
   const payload = { ...form }
   payload.platform = cleanText(payload.platform)
   payload.model_pattern = cleanText(payload.model_pattern)
   payload.group_id = cleanNumber(payload.group_id)
   payload.account_id = cleanNumber(payload.account_id)
-  payload.target_user_id = cleanNumber(payload.target_user_id)
-  if (payload.target_mode !== 'user') payload.target_user_id = null
+  if (payload.counter_mode === 'user') {
+    payload.target_user_ids = parseUserIds(targetUserIdsInput.value)
+  } else {
+    payload.target_user_ids = null
+  }
   if (payload.limiter_type === 'concurrency') payload.window_mode = 'fixed'
   return payload
 }
@@ -403,4 +446,3 @@ onMounted(load)
   @apply rounded-lg p-1.5 text-gray-500 transition-colors dark:text-gray-400;
 }
 </style>
-

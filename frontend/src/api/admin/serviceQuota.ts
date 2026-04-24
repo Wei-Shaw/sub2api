@@ -3,14 +3,14 @@ import apiClient from '@/api/client'
 export interface ServiceQuotaRule {
   id: number
   enabled: boolean
-  scope_level: string
   platform?: string | null
   group_id?: number | null
   account_id?: number | null
   model_pattern?: string | null
   limiter_type: string
-  target_mode: string
-  target_user_id?: number | null
+  counter_mode: string
+  is_fallback: boolean
+  target_user_ids?: number[] | null
   window_mode: string
   limit_value: number
   current_usage?: number | null
