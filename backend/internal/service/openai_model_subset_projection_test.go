@@ -124,6 +124,20 @@ func TestBuildOpenAICanonicalModelCatalog_PreservesExplicitConfiguredUnknownMode
 	require.NotContains(t, catalog, "gpt-5.9")
 }
 
+func TestBuildOpenAICanonicalModelCatalog_UsesCatalogModelsFromExtra(t *testing.T) {
+	t.Parallel()
+
+	accounts := []Account{{
+		Extra: map[string]any{
+			openAICapabilityCatalogModelsExtraKey: []string{"gpt-5.unknown-Sys"},
+		},
+	}}
+
+	catalog := BuildOpenAICanonicalModelCatalog(accounts, nil, nil)
+
+	require.Contains(t, catalog, "gpt-5.unknown")
+}
+
 func TestProjectionModelReachability_UnknownModelNeedsExplicitCapability(t *testing.T) {
 	t.Parallel()
 

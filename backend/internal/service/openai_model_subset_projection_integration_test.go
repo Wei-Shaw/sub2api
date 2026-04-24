@@ -112,17 +112,17 @@ type mixedReadOpenAIAccountRepo struct {
 
 type mutableOpenAIProjectionRepo struct {
 	stubOpenAIAccountRepo
-	accounts []Account
+	accounts         []Account
+	updateExtraCalls int
+	lastExtraByID    map[int64]map[string]any
 }
 
 func newMutableOpenAIProjectionRepo(accounts []Account) *mutableOpenAIProjectionRepo {
-	r := &mutableOpenAIProjectionRepo{}
-	r.setAccounts(accounts)
+	r := &mutableOpenAIProjectionRepo{
+		accounts: append([]Account(nil), accounts...),
+		lastExtraByID: make(map[int64]map[string]any),
+	}
 	return r
-}
-
-func (r *mutableOpenAIProjectionRepo) setAccounts(accounts []Account) {
-	r.accounts = append([]Account(nil), accounts...)
 }
 
 func (r *mutableOpenAIProjectionRepo) schedulableAccounts(platform string) []Account {
@@ -170,6 +170,28 @@ func (r *mutableOpenAIProjectionRepo) GetByID(ctx context.Context, id int64) (*A
 		}
 	}
 	return nil, nil
+}
+
+func (r *mutableOpenAIProjectionRepo) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
+	r.updateExtraCalls++
+	clonedUpdates := make(map[string]any, len(updates))
+	for key, value := range updates {
+		clonedUpdates[key] = value
+	}
+	r.lastExtraByID[id] = clonedUpdates
+	for i := range r.accounts {
+		if r.accounts[i].ID != id {
+			continue
+		}
+		if r.accounts[i].Extra == nil {
+			r.accounts[i].Extra = map[string]any{}
+		}
+		for key, value := range updates {
+			r.accounts[i].Extra[key] = value
+		}
+		return nil
+	}
+	return nil
 }
 
 func (r *mixedReadOpenAIAccountRepo) ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]Account, error) {
@@ -285,37 +307,38 @@ func TestUnknownModel_IsConservativelyExcludedUntilCapabilitySnapshotRefresh(t *
 	repo := newMutableOpenAIProjectionRepo([]Account{account})
 	cache := &openAIBucketStateCacheRecorder{}
 	snapshot := NewSchedulerSnapshotService(cache, nil, repo, nil, nil)
-	gateway := &OpenAIGatewayService{schedulerSnapshot: snapshot}
+	gateway := &OpenAIGatewayService{schedulerSnapshot: snapshot, accountRepo: repo}
 
 	_, _, err := snapshot.ListSchedulableAccounts(ctx, nil, PlatformOpenAI, false)
 	require.NoError(t, err)
 	baseline := cache.openAIState.ProjectionVersion
-
-	_, err = gateway.getOpenAIProjectionView(ctx, nil, "gpt-5.unknown")
-	require.ErrorIs(t, err, ErrSchedulerCacheNotReady)
-	require.Greater(t, cache.openAIState.ProjectionVersion, baseline)
-	missVersion := cache.openAIState.ProjectionVersion
 	_, ok := cache.openAIState.Projection.ViewForModel("gpt-5.unknown")
 	require.False(t, ok)
-
-	account.Extra[openAICapabilityExplicitModelsExtraKey] = []string{"gpt-5.unknown"}
-	repo.setAccounts([]Account{account})
+	require.Zero(t, repo.updateExtraCalls)
 
 	view, err := gateway.getOpenAIProjectionView(ctx, nil, "gpt-5.unknown")
 	require.NoError(t, err)
 	require.NotNil(t, view)
-	require.Greater(t, cache.openAIState.ProjectionVersion, missVersion)
 	require.Equal(t, "gpt-5.unknown", view.canonicalModel)
+	require.Equal(t, 1, repo.updateExtraCalls)
+	require.Equal(t, []string{"gpt-5.unknown"}, repo.lastExtraByID[account.ID][openAICapabilityCatalogModelsExtraKey])
+	require.NotEmpty(t, repo.lastExtraByID[account.ID][openAICapabilityLastRefreshAtExtraKey])
+	require.NotEmpty(t, repo.lastExtraByID[account.ID][openAICapabilityLastSuccessfulRefreshAtExtraKey])
+	require.Greater(t, cache.openAIState.ProjectionVersion, baseline)
+	require.Equal(t, []string{"gpt-5.unknown"}, cache.openAIState.Accounts[0].Extra[openAICapabilityCatalogModelsExtraKey])
 	require.Contains(t, view.view.ReserveOverflowIDs, account.ID)
 }
 
 func TestProjectionVersion_ChangesAtomicallyWithBucketState(t *testing.T) {
 	ctx := context.Background()
 	account := newOpenAIProjectionActiveAccount(302, 1, 20, []string{"gpt-5.4"})
+	account.Credentials["model_mapping"] = map[string]any{}
+	account.Extra[openAICapabilityExplicitModelsExtraKey] = nil
+	account.Extra[openAICapabilityWildcardRulesExtraKey] = []string{"gpt-5.*"}
 	repo := newMutableOpenAIProjectionRepo([]Account{account})
 	cache := &openAIBucketStateCacheRecorder{}
 	snapshot := NewSchedulerSnapshotService(cache, nil, repo, nil, nil)
-	gateway := &OpenAIGatewayService{schedulerSnapshot: snapshot}
+	gateway := &OpenAIGatewayService{schedulerSnapshot: snapshot, accountRepo: repo}
 
 	_, _, err := snapshot.ListSchedulableAccounts(ctx, nil, PlatformOpenAI, false)
 	require.NoError(t, err)
@@ -325,9 +348,6 @@ func TestProjectionVersion_ChangesAtomicallyWithBucketState(t *testing.T) {
 	_, ok := before.Projection.ViewForModel("gpt-5.unknown")
 	require.False(t, ok)
 
-	account.Extra[openAICapabilityExplicitModelsExtraKey] = []string{"gpt-5.4", "gpt-5.unknown"}
-	repo.setAccounts([]Account{account})
-
 	view, err := gateway.getOpenAIProjectionView(ctx, nil, "gpt-5.unknown")
 	require.NoError(t, err)
 	require.NotNil(t, view)
@@ -335,8 +355,12 @@ func TestProjectionVersion_ChangesAtomicallyWithBucketState(t *testing.T) {
 	after := cache.openAIState
 	require.NotNil(t, after)
 	require.Greater(t, after.ProjectionVersion, beforeVersion)
+	require.Equal(t, 1, repo.updateExtraCalls)
+	require.Equal(t, []string{"gpt-5.unknown"}, repo.lastExtraByID[account.ID][openAICapabilityCatalogModelsExtraKey])
+	require.NotEmpty(t, repo.lastExtraByID[account.ID][openAICapabilityLastRefreshAtExtraKey])
+	require.NotEmpty(t, repo.lastExtraByID[account.ID][openAICapabilityLastSuccessfulRefreshAtExtraKey])
 	require.Len(t, after.Accounts, 1)
-	require.Equal(t, []string{"gpt-5.4", "gpt-5.unknown"}, after.Accounts[0].Extra[openAICapabilityExplicitModelsExtraKey])
+	require.Equal(t, []string{"gpt-5.unknown"}, after.Accounts[0].Extra[openAICapabilityCatalogModelsExtraKey])
 	unknownView, ok := after.Projection.ViewForModel("gpt-5.unknown")
 	require.True(t, ok)
 	require.Contains(t, unknownView.ReserveOverflowIDs, account.ID)

@@ -1769,6 +1769,82 @@ func (r *openAIProjectionViewResult) newAffinityBinding(accountID int64, selecte
 	return binding
 }
 
+func (s *OpenAIGatewayService) openAIProjectionAccountRepo() AccountRepository {
+	if s == nil {
+		return nil
+	}
+	if s.accountRepo != nil {
+		return s.accountRepo
+	}
+	if s.schedulerSnapshot != nil {
+		return s.schedulerSnapshot.accountRepo
+	}
+	return nil
+}
+
+func openAICatalogModelsContain(account Account, canonicalModel string) bool {
+	for _, model := range canonicalizeOpenAIProjectionCatalog(parseOpenAIProjectionStringSlice(account.Extra[openAICapabilityCatalogModelsExtraKey])) {
+		if model == canonicalModel {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldRefreshOpenAIProjectionCatalogForAccount(account Account, canonicalModel string) bool {
+	snapshot := buildOpenAIModelCapabilitySnapshot(account)
+	if snapshot.DefaultAllow {
+		return true
+	}
+	return wildcardRulesSupportProjectionModel(snapshot.WildcardRules, canonicalModel)
+}
+
+func (s *OpenAIGatewayService) refreshUnknownOpenAIProjectionCatalog(ctx context.Context, groupID *int64, requestedModel string) (bool, error) {
+	repo := s.openAIProjectionAccountRepo()
+	if repo == nil {
+		return false, nil
+	}
+	canonicalModel := NormalizeOpenAIProjectionModelKey(requestedModel)
+	if canonicalModel == "" {
+		return false, nil
+	}
+	accounts, err := s.listOpenAIAccountsFromBroadSource(ctx, groupID)
+	if err != nil {
+		return false, err
+	}
+	if len(accounts) == 0 {
+		return false, nil
+	}
+
+	rebuiltSource := false
+	refreshedAt := time.Now().UTC().Format(time.RFC3339)
+	for _, account := range accounts {
+		if !account.IsOpenAI() {
+			continue
+		}
+		if openAICatalogModelsContain(account, canonicalModel) {
+			rebuiltSource = true
+			continue
+		}
+		if !shouldRefreshOpenAIProjectionCatalogForAccount(account, canonicalModel) {
+			continue
+		}
+		nextCatalog := canonicalizeOpenAIProjectionCatalog(append(
+			parseOpenAIProjectionStringSlice(account.Extra[openAICapabilityCatalogModelsExtraKey]),
+			canonicalModel,
+		))
+		if err := repo.UpdateExtra(ctx, account.ID, map[string]any{
+			openAICapabilityCatalogModelsExtraKey:           nextCatalog,
+			openAICapabilityLastRefreshAtExtraKey:           refreshedAt,
+			openAICapabilityLastSuccessfulRefreshAtExtraKey: refreshedAt,
+		}); err != nil {
+			return false, err
+		}
+		rebuiltSource = true
+	}
+	return rebuiltSource, nil
+}
+
 func (s *OpenAIGatewayService) getOpenAIProjectionView(ctx context.Context, groupID *int64, requestedModel string) (*openAIProjectionViewResult, error) {
 	if s == nil || s.schedulerSnapshot == nil {
 		return nil, ErrSchedulerCacheNotReady
@@ -1798,6 +1874,13 @@ func (s *OpenAIGatewayService) getOpenAIProjectionView(ctx context.Context, grou
 	}
 	view, ok := state.Projection.ViewForModel(requestedModel)
 	if !ok {
+		shouldRefresh, err := s.refreshUnknownOpenAIProjectionCatalog(ctx, groupID, requestedModel)
+		if err != nil {
+			return nil, err
+		}
+		if !shouldRefresh {
+			return nil, ErrSchedulerCacheNotReady
+		}
 		var hit bool
 		state, hit, err = s.schedulerSnapshot.RefreshOpenAIBucketState(ctx, bucket, "openai_projection_model_miss")
 		if err != nil {
@@ -2057,14 +2140,15 @@ func (s *OpenAIGatewayService) mergeExhaustedFromBroadSource(ctx context.Context
 }
 
 func (s *OpenAIGatewayService) listOpenAIAccountsFromBroadSource(ctx context.Context, groupID *int64) ([]Account, error) {
-	if s == nil || s.accountRepo == nil {
+	repo := s.openAIProjectionAccountRepo()
+	if s == nil || repo == nil {
 		return nil, nil
 	}
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		return s.accountRepo.ListByPlatform(ctx, PlatformOpenAI)
+		return repo.ListByPlatform(ctx, PlatformOpenAI)
 	}
 	if groupID != nil {
-		accounts, err := s.accountRepo.ListByGroup(ctx, *groupID)
+		accounts, err := repo.ListByGroup(ctx, *groupID)
 		if err != nil {
 			return nil, err
 		}
@@ -2076,7 +2160,7 @@ func (s *OpenAIGatewayService) listOpenAIAccountsFromBroadSource(ctx context.Con
 		}
 		return filtered, nil
 	}
-	accounts, err := s.accountRepo.ListByPlatform(ctx, PlatformOpenAI)
+	accounts, err := repo.ListByPlatform(ctx, PlatformOpenAI)
 	if err != nil {
 		return nil, err
 	}

@@ -10,6 +10,10 @@ const (
 	openAICapabilityExplicitModelsExtraKey = "openai_capability_explicit_models"
 	openAICapabilityWildcardRulesExtraKey  = "openai_capability_wildcard_rules"
 	openAICapabilityDefaultAllowExtraKey   = "openai_capability_default_allow"
+	openAICapabilityCatalogModelsExtraKey  = "openai_capability_catalog_models"
+
+	openAICapabilityLastRefreshAtExtraKey           = "openai_capability_last_refresh_at"
+	openAICapabilityLastSuccessfulRefreshAtExtraKey = "openai_capability_last_successful_refresh_at"
 )
 
 type OpenAIModelCapabilitySnapshot struct {
@@ -87,6 +91,7 @@ func BuildOpenAICanonicalModelCatalog(accounts []Account, explicitCapabilityMode
 		for model := range snapshot.ExplicitModels {
 			catalog[model] = struct{}{}
 		}
+		addOpenAICanonicalModels(catalog, parseOpenAIProjectionStringSlice(account.Extra[openAICapabilityCatalogModelsExtraKey])...)
 	}
 
 	models := make([]string, 0, len(catalog))
