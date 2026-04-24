@@ -1197,8 +1197,7 @@ func (s *GatewayService) applyClaudeCodeOAuthMimicryToBody(
 REDACTED
 
 	systemRewritten := false
-	if !strings.Contains(strings.ToLower(model), "haiku") &&
-		!systemIncludesClaudeCodePrompt(systemRaw) {
+	if !strings.Contains(strings.ToLower(model), "haiku") {
 		body = rewriteSystemForNonClaudeCode(body, systemRaw)
 		systemRewritten = true
 REDACTED
@@ -4163,9 +4162,13 @@ REDACTED
 	shouldMimicClaudeCode := account.IsOAuth()
 
 	if shouldMimicClaudeCode {
+		// 与 Parrot 对齐：OAuth 账号无条件重写 system（即使客户端已发了 Claude Code
+		// 风格的 system prompt）。原因：第三方工具（opencode 等）会发 "You are Claude
+		// Code..." system prompt 但缺少 billing attribution block，导致 Anthropic
+		// 检测到"有 CC prompt 但无 billing block"的不一致而判为 third-party。
+		// Parrot 的 transform_request 从不检查客户端 system 内容，直接覆盖。
 		systemRewritten := false
-		if !strings.Contains(strings.ToLower(reqModel), "haiku") &&
-			!systemIncludesClaudeCodePrompt(parsed.System) {
+		if !strings.Contains(strings.ToLower(reqModel), "haiku") {
 			body = rewriteSystemForNonClaudeCode(body, parsed.System)
 			systemRewritten = true
 	REDACTED
@@ -5766,13 +5769,19 @@ REDACTED else {
 		setHeaderRaw(req.Header, "x-api-key", token)
 REDACTED
 
-	// 白名单透传headers（恢复真实 wire casing）
-	for key, values := range clientHeaders {
-		lowerKey := strings.ToLower(key)
-		if allowedHeaders[lowerKey] {
-			wireKey := resolveWireCasing(key)
-			for _, v := range values {
-				addHeaderRaw(req.Header, wireKey, v)
+	// 白名单透传 headers
+	// OAuth mimicry 路径：跳过客户端 header 透传，与 Parrot 对齐。
+	// Parrot 的 build_upstream_headers 只发 9 个精确 header，不透传任何客户端 header。
+	// 透传客户端 header 会引入不一致的 x-stainless-* / anthropic-beta / user-agent /
+	// x-claude-code-session-id 等值，和我们注入的伪装 header 冲突，被 Anthropic 判 third-party。
+	if !(tokenType == "oauth" && mimicClaudeCode) {
+		for key, values := range clientHeaders {
+			lowerKey := strings.ToLower(key)
+			if allowedHeaders[lowerKey] {
+				wireKey := resolveWireCasing(key)
+				for _, v := range values {
+					addHeaderRaw(req.Header, wireKey, v)
+			REDACTED
 		REDACTED
 	REDACTED
 REDACTED
