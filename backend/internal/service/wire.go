@@ -547,8 +547,8 @@ func ProvideQuotaService(
 	billingCacheService *BillingCacheService,
 ) QuotaService {
 	qs := NewQuotaService(ruleRepo, userRepo, userRepo, groupRepo, settingService, billingCache)
-	if billingCacheService != nil {
-		billingCacheService.SetQuotaService(qs)
-	}
+	// per-user daily quota (#1750) 已停用：不把 QuotaChecker 塞给 BillingCacheService，
+	// 使热路径再也读不到 QuotaChecker，SetQuotaService 的 hook 点仍保留以便未来重启。
+	_ = billingCacheService
 	return qs
 }

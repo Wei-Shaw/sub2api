@@ -137,6 +137,8 @@ func (s *BillingCacheService) processQuotaUsageTask(ctx context.Context, task ca
 // 任何 Resolve / Redis 读取错误都返回 nil 放行，
 // 与 checkAPIKeyRateLimits "Don't block requests on DB errors" 对齐。
 // 配额只是软限制，宁可短暂漏扣也不阻断付费请求。
+//
+//nolint:unused // per-user daily quota (#1750) 已停用，热路径调用已移除；保留实现便于未来重启或审计
 func (s *BillingCacheService) checkQuotaEligibility(ctx context.Context, userID int64, group *Group) error {
 	qs := s.quotaService()
 	if qs == nil || userID <= 0 {

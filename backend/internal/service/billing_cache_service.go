@@ -143,11 +143,8 @@ func (s *BillingCacheService) CheckBillingEligibilityForRequest(ctx context.Cont
 		if err := s.checkBalanceEligibility(ctx, user.ID); err != nil {
 			return err
 		}
-		// 用户每日配额检查（仅余额模式，订阅模式由 group 限额独立控制）
-		// 契约 §10：fail open 策略见 checkQuotaEligibility 注释
-		if err := s.checkQuotaEligibility(ctx, user.ID, group); err != nil {
-			return err
-		}
+		// per-user daily quota (#1750) 已停用，统一由 service quota 规则承担。
+		// 保留 checkQuotaEligibility 实现作为历史代码，后续批次单独清理。
 	}
 
 	// Check API Key rate limits (applies to both billing modes)

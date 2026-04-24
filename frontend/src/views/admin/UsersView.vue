@@ -600,14 +600,7 @@
                 {{ t('admin.users.balanceHistory') }}
               </button>
 
-              <!-- Adjust Quota Limit -->
-              <button
-                @click="handleAdjustQuota(user); closeActionMenu()"
-                class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
-              >
-                <Icon name="chart" size="sm" class="text-gray-400" :stroke-width="2" />
-                {{ t('userQuota.adjustLimit') }}
-              </button>
+              <!-- Adjust Quota Limit — per-user daily quota (#1750) 已停用，入口隐藏 -->
 
               <div class="my-1 border-t border-gray-100 dark:border-dark-700"></div>
 
@@ -633,7 +626,6 @@
     <UserAllowedGroupsModal :show="showAllowedGroupsModal" :user="allowedGroupsUser" @close="closeAllowedGroupsModal" @success="loadUsers" />
     <UserBalanceModal :show="showBalanceModal" :user="balanceUser" :operation="balanceOperation" @close="closeBalanceModal" @success="loadUsers" />
     <UserBalanceHistoryModal :show="showBalanceHistoryModal" :user="balanceHistoryUser" @close="closeBalanceHistoryModal" @deposit="handleDepositFromHistory" @withdraw="handleWithdrawFromHistory" />
-    <UserQuotaLimitModal :show="showQuotaModal" :user="quotaModalUser" @close="closeQuotaModal" @success="loadUsers" />
     <GroupReplaceModal :show="showGroupReplaceModal" :user="groupReplaceUser" :old-group="groupReplaceOldGroup" :all-groups="allGroups" @close="closeGroupReplaceModal" @success="loadUsers" />
     <UserAttributesConfigModal :show="showAttributesModal" @close="handleAttributesModalClose" />
   </AppLayout>
@@ -669,7 +661,6 @@ import UserAllowedGroupsModal from '@/components/admin/user/UserAllowedGroupsMod
 import UserBalanceModal from '@/components/admin/user/UserBalanceModal.vue'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
 import GroupReplaceModal from '@/components/admin/user/GroupReplaceModal.vue'
-import UserQuotaLimitModal from '@/components/admin/user/UserQuotaLimitModal.vue'
 
 const appStore = useAppStore()
 
@@ -1148,19 +1139,7 @@ const balanceOperation = ref<'add' | 'subtract'>('add')
 const showBalanceHistoryModal = ref(false)
 const balanceHistoryUser = ref<AdminUser | null>(null)
 
-// Quota limit modal state（feature issue #1750）
-const showQuotaModal = ref(false)
-const quotaModalUser = ref<AdminUser | null>(null)
-
-const handleAdjustQuota = (user: AdminUser) => {
-  quotaModalUser.value = user
-  showQuotaModal.value = true
-}
-
-const closeQuotaModal = () => {
-  showQuotaModal.value = false
-  quotaModalUser.value = null
-}
+// per-user daily quota (#1750) 已停用，相关 modal / handler / state 已移除入口。
 
 // 计算剩余天数
 const getDaysRemaining = (expiresAt: string): number => {
