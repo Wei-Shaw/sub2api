@@ -1188,7 +1188,6 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 				s.sendEvent(c, TestEvent{Type: "content", Text: deltaREDACTED)
 		REDACTED
 		case "response.completed", "response.done":
-			seenCompleted = true
 			s.sendEvent(c, TestEvent{Type: "test_complete", Success: trueREDACTED)
 			return nil
 		case "response.failed":

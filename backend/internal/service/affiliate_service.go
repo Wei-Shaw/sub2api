@@ -78,12 +78,12 @@ type AffiliateInvitee struct {
 REDACTED
 
 type AffiliateDetail struct {
-	UserID          int64              `json:"user_id"`
-	AffCode         string             `json:"aff_code"`
-	InviterID       *int64             `json:"inviter_id,omitempty"`
-	AffCount        int                `json:"aff_count"`
-	AffQuota        float64            `json:"aff_quota"`
-	AffHistoryQuota float64            `json:"aff_history_quota"`
+	UserID          int64   `json:"user_id"`
+	AffCode         string  `json:"aff_code"`
+	InviterID       *int64  `json:"inviter_id,omitempty"`
+	AffCount        int     `json:"aff_count"`
+	AffQuota        float64 `json:"aff_quota"`
+	AffHistoryQuota float64 `json:"aff_history_quota"`
 	// EffectiveRebateRatePercent 是当前用户作为邀请人时实际生效的返利比例：
 	// 优先用户自己的专属比例（aff_rebate_rate_percent），否则回退到全局比例。
 	// 用于在用户的 /affiliate 页面直观展示「分享后能拿到多少」。
