@@ -1108,6 +1108,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	for _, account := range reserveAccounts {
 		reserveOverlayIDs[account.ID] = struct{}{}
 	}
+	canUseReserveForTarget := projectionView != nil && (req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive)
 	rebuildLoadReq := func(primary []Account, reserve []Account) []AccountWithConcurrency {
 		rebuilt := make([]AccountWithConcurrency, 0, len(primary)+len(reserve))
 		for _, account := range primary {
@@ -1137,9 +1138,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		} else {
 			if req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive {
 				if _, reserved := reserveOverlayIDs[account.ID]; reserved {
-					if projectionView == nil || len(projectionView.view.ExhaustedBaseIDs) > 0 {
-						return
-					}
+					return
 				}
 			}
 			if !account.MatchesTargetGroup(req.TargetGroup) {
@@ -1196,7 +1195,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			loadReq = rebuildLoadReq(filteredValues, reserveFilteredValues)
 		}
 	}
-	if len(filtered) == 0 && !(req.TargetGroup == TargetGroupExhausted && len(reserveFiltered) > 0) {
+	if len(filtered) == 0 && !(req.TargetGroup == TargetGroupExhausted && len(reserveFiltered) > 0) && !(canUseReserveForTarget && len(reserveFiltered) > 0) {
 		return nil, "", 0, 0, 0, projectionView, errors.New("no available OpenAI accounts")
 	}
 
@@ -1227,6 +1226,16 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			for _, account := range reserveFiltered {
 				participantGroups[account.ID] = openAISelectedGroupReserve
 			}
+		}
+	}
+	if canUseReserveForTarget && len(reserveFiltered) > 0 {
+		participants = append(append([]*Account{}, filtered...), reserveFiltered...)
+		participantGroups = make(map[int64]string, len(participants))
+		for _, account := range filtered {
+			participantGroups[account.ID] = resolveOpenAISelectedGroupFromAccount(account)
+		}
+		for _, account := range reserveFiltered {
+			participantGroups[account.ID] = openAISelectedGroupReserve
 		}
 	}
 	if len(participantGroups) == 0 {

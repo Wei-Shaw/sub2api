@@ -3841,10 +3841,6 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return nil, nil, nil
 	}
-	if (targetGroup == TargetGroupAny || targetGroup == TargetGroupActive) && s.isCurrentOpenAIReserveOverlayAccount(ctx, groupID, requestedModel, account) {
-		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
-		return nil, nil, nil
-	}
 	selectedGroup := resolveOpenAISelectedGroupFromBindingOrAccount(affinityBinding, account)
 	legacyReserveAffinityHit := false
 	var projectionView *openAIProjectionViewResult
@@ -3867,15 +3863,14 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 				_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 				return nil, nil, nil
 			}
-		default:
-			if selectedGroup == openAISelectedGroupReserve {
-				_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
-				return nil, nil, nil
-			}
 		}
 	} else {
 		if !allowLegacyFallback {
 			return nil, nil, ErrSchedulerCacheNotReady
+		}
+		if (targetGroup == TargetGroupAny || targetGroup == TargetGroupActive) && s.isCurrentOpenAIReserveOverlayAccount(ctx, groupID, requestedModel, account) {
+			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+			return nil, nil, nil
 		}
 		reserveAffinityBinding := isOpenAIReserveAffinityBinding(affinityBinding)
 		legacyReserveAffinityHit = reserveAffinityBinding && targetGroup == TargetGroupExhausted && account.IsOpenAIReserveCandidate()

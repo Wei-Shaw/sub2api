@@ -1773,7 +1773,7 @@ func TestReservePoolReleasesHighestRemainingQuotaBackToActive(t *testing.T) {
 	}
 }
 
-func TestSelectByLoadBalance_TargetGroupAnyNeverSelectsReserve(t *testing.T) {
+func TestSelectByLoadBalance_TargetGroupAnyCanSelectReserve(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(1306)
 	accounts := []Account{
@@ -1799,7 +1799,7 @@ func TestSelectByLoadBalance_TargetGroupAnyNeverSelectsReserve(t *testing.T) {
 		ctx,
 		&groupID,
 		"",
-		"session_hash_any_never_reserve",
+		"session_hash_any_can_reserve",
 		"gpt-5.1",
 		TargetGroupAny,
 		nil,
@@ -1808,14 +1808,14 @@ func TestSelectByLoadBalance_TargetGroupAnyNeverSelectsReserve(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, selection)
 	require.NotNil(t, selection.Account)
-	require.Equal(t, int64(3603), selection.Account.ID)
-	require.Equal(t, "active", requireDecisionStringField(t, decision, "SelectedGroup"))
+	require.Equal(t, int64(3602), selection.Account.ID)
+	require.Equal(t, openAISelectedGroupReserve, requireDecisionStringField(t, decision, "SelectedGroup"))
 	if selection.ReleaseFunc != nil {
 		selection.ReleaseFunc()
 	}
 }
 
-func TestSelectByLoadBalance_TargetGroupActiveNeverSelectsReserve(t *testing.T) {
+func TestSelectByLoadBalance_TargetGroupActiveCanSelectReserve(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(1307)
 	accounts := []Account{
@@ -1841,7 +1841,7 @@ func TestSelectByLoadBalance_TargetGroupActiveNeverSelectsReserve(t *testing.T) 
 		ctx,
 		&groupID,
 		"",
-		"session_hash_active_never_reserve",
+		"session_hash_active_can_reserve",
 		"gpt-5.1",
 		TargetGroupActive,
 		nil,
@@ -1850,14 +1850,14 @@ func TestSelectByLoadBalance_TargetGroupActiveNeverSelectsReserve(t *testing.T) 
 	require.NoError(t, err)
 	require.NotNil(t, selection)
 	require.NotNil(t, selection.Account)
-	require.Equal(t, int64(3703), selection.Account.ID)
-	require.Equal(t, "active", requireDecisionStringField(t, decision, "SelectedGroup"))
+	require.Equal(t, int64(3702), selection.Account.ID)
+	require.Equal(t, openAISelectedGroupReserve, requireDecisionStringField(t, decision, "SelectedGroup"))
 	if selection.ReleaseFunc != nil {
 		selection.ReleaseFunc()
 	}
 }
 
-func TestSelectByLoadBalance_TargetGroupAnyStillRejectsOverlayReserveFromProjection(t *testing.T) {
+func TestSelectByLoadBalance_TargetGroupAnyCanSelectReserveFromProjection(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(13070)
 	overlayReserve := Account{
@@ -1906,7 +1906,7 @@ func TestSelectByLoadBalance_TargetGroupAnyStillRejectsOverlayReserveFromProject
 		ctx,
 		&groupID,
 		"",
-		"session_hash_projection_overlay_reject",
+		"session_hash_projection_overlay_accept",
 		"gpt-5.6",
 		TargetGroupAny,
 		nil,
@@ -1915,10 +1915,52 @@ func TestSelectByLoadBalance_TargetGroupAnyStillRejectsOverlayReserveFromProject
 	require.NoError(t, err)
 	require.NotNil(t, selection)
 	require.NotNil(t, selection.Account)
-	require.Equal(t, activeAccount.ID, selection.Account.ID)
-	require.Equal(t, string(TargetGroupActive), requireDecisionStringField(t, decision, "SelectedGroup"))
+	require.Equal(t, overlayReserve.ID, selection.Account.ID)
+	require.Equal(t, openAISelectedGroupReserve, requireDecisionStringField(t, decision, "SelectedGroup"))
 	if selection.ReleaseFunc != nil {
 		selection.ReleaseFunc()
+	}
+}
+
+func TestSelectByLoadBalance_ReserveSelectedGroupWritesReserveForActiveAny(t *testing.T) {
+	ctx := context.Background()
+	accounts := []Account{
+		newOpenAIReserveCandidateAccountForTest(37051, 4, 20),
+	}
+	loadMap := map[int64]*AccountLoadInfo{
+		37051: {AccountID: 37051, CurrentConcurrency: 0, LoadRate: 0},
+	}
+
+	for _, tc := range []struct {
+		name        string
+		groupID     int64
+		targetGroup AccountTargetGroup
+	}{
+		{name: "any_reserve_only", groupID: 13071, targetGroup: TargetGroupAny},
+		{name: "active_reserve_only", groupID: 13072, targetGroup: TargetGroupActive},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := newOpenAIReserveSelectionServiceForTest(accounts, loadMap)
+
+			selection, decision, err := svc.SelectAccountWithScheduler(
+				ctx,
+				&tc.groupID,
+				"",
+				"session_hash_"+tc.name,
+				"gpt-5.1",
+				tc.targetGroup,
+				nil,
+				OpenAIUpstreamTransportAny,
+			)
+			require.NoError(t, err)
+			require.NotNil(t, selection)
+			require.NotNil(t, selection.Account)
+			require.Equal(t, int64(37051), selection.Account.ID)
+			require.Equal(t, openAISelectedGroupReserve, requireDecisionStringField(t, decision, "SelectedGroup"))
+			if selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+		})
 	}
 }
 
@@ -2313,7 +2355,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseReserve
 	require.False(t, bound)
 }
 
-func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseReserveRejectedForAny(t *testing.T) {
+func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseReserveAcceptedForAny(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(1313)
 	sessionHash := "session_hash_previous_response_any_reserve"
@@ -2337,10 +2379,22 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseReserve
 	cfg := newOpenAIWSV2TestConfig()
 	cfg.Gateway.OpenAIWS.LBTopK = 1
 	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 1
+	snapshotCache := &openAISnapshotCacheStub{
+		snapshotAccounts: []*Account{&exhaustedBase, &overlayReserve, &activeReserve, &activeAccount},
+		accountsByID:     map[int64]*Account{3913: &exhaustedBase, 3914: &overlayReserve, 3915: &activeReserve, 3916: &activeAccount},
+		openAIState: newOpenAIBucketStateForTest([]Account{exhaustedBase, overlayReserve, activeReserve, activeAccount}, 10, map[string]OpenAIModelRoleView{
+			"gpt-5.1": {
+				CanonicalModel:     "gpt-5.1",
+				ExhaustedBaseIDs:   []int64{exhaustedBase.ID},
+				ReserveOverflowIDs: []int64{overlayReserve.ID},
+			},
+		}),
+	}
 	svc := &OpenAIGatewayService{
 		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{exhaustedBase, overlayReserve, activeReserve, activeAccount}},
 		cache:              cache,
 		cfg:                cfg,
+		schedulerSnapshot:  &SchedulerSnapshotService{cache: snapshotCache},
 		concurrencyService: NewConcurrencyService(stubConcurrencyCache{loadMap: map[int64]*AccountLoadInfo{3913: {AccountID: 3913, LoadRate: 90}, 3914: {AccountID: 3914, LoadRate: 0}, 3915: {AccountID: 3915, LoadRate: 40}, 3916: {AccountID: 3916, LoadRate: 10}}}),
 	}
 	store := svc.getOpenAIWSStateStore()
@@ -2359,14 +2413,14 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseReserve
 	require.NoError(t, err)
 	require.NotNil(t, selection)
 	require.NotNil(t, selection.Account)
-	require.Equal(t, activeAccount.ID, selection.Account.ID)
-	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
-	require.False(t, decision.StickyPreviousHit)
-	require.Equal(t, "active", requireDecisionStringField(t, decision, "SelectedGroup"))
-	require.Equal(t, activeAccount.ID, cache.sessionBindings["openai:"+sessionHash])
+	require.Equal(t, overlayReserve.ID, selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerPreviousResponse, decision.Layer)
+	require.True(t, decision.StickyPreviousHit)
+	require.Equal(t, openAISelectedGroupReserve, requireDecisionStringField(t, decision, "SelectedGroup"))
+	require.Equal(t, overlayReserve.ID, cache.sessionBindings["openai:"+sessionHash])
 	accountID, getErr := store.GetResponseAccount(ctx, groupID, "resp_prev_any_reserve")
 	require.NoError(t, getErr)
-	require.Zero(t, accountID)
+	require.Equal(t, overlayReserve.ID, accountID)
 	if selection.ReleaseFunc != nil {
 		selection.ReleaseFunc()
 	}
@@ -2494,7 +2548,7 @@ func TestPreviousResponseNonOverlayReserveCandidateStillAcceptedForAny(t *testin
 	}
 }
 
-func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseReserveRejectedForActive(t *testing.T) {
+func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseReserveAcceptedForActive(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(1314)
 	sessionHash := "session_hash_previous_response_active_reserve"
@@ -2518,10 +2572,22 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseReserve
 	cfg := newOpenAIWSV2TestConfig()
 	cfg.Gateway.OpenAIWS.LBTopK = 1
 	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 1
+	snapshotCache := &openAISnapshotCacheStub{
+		snapshotAccounts: []*Account{&exhaustedBase, &overlayReserve, &activeReserve, &activeAccount},
+		accountsByID:     map[int64]*Account{3917: &exhaustedBase, 3915: &overlayReserve, 3916: &activeReserve, 3918: &activeAccount},
+		openAIState: newOpenAIBucketStateForTest([]Account{exhaustedBase, overlayReserve, activeReserve, activeAccount}, 11, map[string]OpenAIModelRoleView{
+			"gpt-5.1": {
+				CanonicalModel:     "gpt-5.1",
+				ExhaustedBaseIDs:   []int64{exhaustedBase.ID},
+				ReserveOverflowIDs: []int64{overlayReserve.ID},
+			},
+		}),
+	}
 	svc := &OpenAIGatewayService{
 		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{exhaustedBase, overlayReserve, activeReserve, activeAccount}},
 		cache:              cache,
 		cfg:                cfg,
+		schedulerSnapshot:  &SchedulerSnapshotService{cache: snapshotCache},
 		concurrencyService: NewConcurrencyService(stubConcurrencyCache{loadMap: map[int64]*AccountLoadInfo{3917: {AccountID: 3917, LoadRate: 90}, 3915: {AccountID: 3915, LoadRate: 0}, 3916: {AccountID: 3916, LoadRate: 40}, 3918: {AccountID: 3918, LoadRate: 10}}}),
 	}
 	store := svc.getOpenAIWSStateStore()
@@ -2540,14 +2606,14 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseReserve
 	require.NoError(t, err)
 	require.NotNil(t, selection)
 	require.NotNil(t, selection.Account)
-	require.Equal(t, activeAccount.ID, selection.Account.ID)
-	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
-	require.False(t, decision.StickyPreviousHit)
-	require.Equal(t, "active", requireDecisionStringField(t, decision, "SelectedGroup"))
-	require.Equal(t, activeAccount.ID, cache.sessionBindings["openai:"+sessionHash])
+	require.Equal(t, overlayReserve.ID, selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerPreviousResponse, decision.Layer)
+	require.True(t, decision.StickyPreviousHit)
+	require.Equal(t, openAISelectedGroupReserve, requireDecisionStringField(t, decision, "SelectedGroup"))
+	require.Equal(t, overlayReserve.ID, cache.sessionBindings["openai:"+sessionHash])
 	accountID, getErr := store.GetResponseAccount(ctx, groupID, "resp_prev_active_reserve")
 	require.NoError(t, getErr)
-	require.Zero(t, accountID)
+	require.Equal(t, overlayReserve.ID, accountID)
 	if selection.ReleaseFunc != nil {
 		selection.ReleaseFunc()
 	}
@@ -2612,7 +2678,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseNonOver
 	}
 }
 
-func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseReserveRejectedForAny_ProjectionMissFallsBackToLegacyOverlay(t *testing.T) {
+func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseReserveProjectionMissFallsBackForAny(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(13131)
 	sessionHash := "session_hash_previous_response_any_reserve_projection_miss"
@@ -2724,7 +2790,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseNonOver
 	}
 }
 
-func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseReserveRejectedForActive_ProjectionMissFallsBackToLegacyOverlay(t *testing.T) {
+func TestOpenAIGatewayService_SelectAccountWithScheduler_PreviousResponseReserveProjectionMissFallsBackForActive(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(13141)
 	sessionHash := "session_hash_previous_response_active_reserve_projection_miss"

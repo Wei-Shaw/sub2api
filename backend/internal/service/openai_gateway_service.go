@@ -1747,11 +1747,7 @@ func (r *openAIProjectionViewResult) selectedGroupForAccount(accountID int64) st
 }
 
 func (r *openAIProjectionViewResult) selectedGroupForTarget(accountID int64, targetGroup AccountTargetGroup) string {
-	selectedGroup := r.selectedGroupForAccount(accountID)
-	if r != nil && normalizeTargetGroup(targetGroup) != TargetGroupExhausted && selectedGroup == openAISelectedGroupReserve && len(r.view.ExhaustedBaseIDs) == 0 {
-		return string(TargetGroupActive)
-	}
-	return selectedGroup
+	return r.selectedGroupForAccount(accountID)
 }
 
 func (r *openAIProjectionViewResult) bindingMatches(binding *openAIAffinityBinding) bool {
