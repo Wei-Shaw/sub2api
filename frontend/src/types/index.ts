@@ -139,6 +139,8 @@ export interface UserAffiliateDetail {
   aff_count: number
   aff_quota: number
   aff_history_quota: number
+  /** 当前用户作为邀请人时实际生效的返利比例（专属覆盖全局）。0-100。 */
+  effective_rebate_rate_percent: number
   invitees: AffiliateInvitee[]
 REDACTED
 
@@ -212,6 +214,7 @@ export interface PublicSettings {
   channel_monitor_enabled: boolean
   channel_monitor_default_interval_seconds: number
   available_channels_enabled: boolean
+  affiliate_enabled: boolean
 REDACTED
 
 export interface AuthResponse {

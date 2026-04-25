@@ -294,6 +294,8 @@ func queryAffiliateByUserID(ctx context.Context, client affiliateQueryExecer, us
 	rows, err := client.QueryContext(ctx, `
 SELECT user_id,
        aff_code,
+       aff_code_custom,
+       aff_rebate_rate_percent,
        inviter_id,
        aff_count,
        aff_quota::double precision,
@@ -315,9 +317,12 @@ REDACTED
 
 	var out service.AffiliateSummary
 	var inviterID sql.NullInt64
+	var rebateRate sql.NullFloat64
 	if err := rows.Scan(
 		&out.UserID,
 		&out.AffCode,
+		&out.AffCodeCustom,
+		&rebateRate,
 		&inviterID,
 		&out.AffCount,
 		&out.AffQuota,
@@ -330,6 +335,10 @@ REDACTED
 	if inviterID.Valid {
 		out.InviterID = &inviterID.Int64
 REDACTED
+	if rebateRate.Valid {
+		v := rebateRate.Float64
+		out.AffRebateRatePercent = &v
+REDACTED
 	return &out, nil
 REDACTED
 
@@ -337,6 +346,8 @@ func queryAffiliateByCode(ctx context.Context, client affiliateQueryExecer, code
 	rows, err := client.QueryContext(ctx, `
 SELECT user_id,
        aff_code,
+       aff_code_custom,
+       aff_rebate_rate_percent,
        inviter_id,
        aff_count,
        aff_quota::double precision,
@@ -360,9 +371,12 @@ REDACTED
 
 	var out service.AffiliateSummary
 	var inviterID sql.NullInt64
+	var rebateRate sql.NullFloat64
 	if err := rows.Scan(
 		&out.UserID,
 		&out.AffCode,
+		&out.AffCodeCustom,
+		&rebateRate,
 		&inviterID,
 		&out.AffCount,
 		&out.AffQuota,
@@ -374,6 +388,10 @@ REDACTED
 REDACTED
 	if inviterID.Valid {
 		out.InviterID = &inviterID.Int64
+REDACTED
+	if rebateRate.Valid {
+		v := rebateRate.Float64
+		out.AffRebateRatePercent = &v
 REDACTED
 	return &out, nil
 REDACTED
@@ -417,4 +435,230 @@ func isAffiliateUniqueViolation(err error) bool {
 		return string(pqErr.Code) == "23505"
 REDACTED
 	return false
+REDACTED
+
+// UpdateUserAffCode 改写用户的邀请码（自定义专属邀请码）。
+// 唯一性冲突返回 ErrAffiliateCodeTaken。
+func (r *affiliateRepository) UpdateUserAffCode(ctx context.Context, userID int64, newCode string) error {
+	if userID <= 0 {
+		return service.ErrUserNotFound
+REDACTED
+	code := strings.ToUpper(strings.TrimSpace(newCode))
+	if code == "" {
+		return service.ErrAffiliateCodeInvalid
+REDACTED
+
+	return r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
+		if _, err := ensureUserAffiliateWithClient(txCtx, txClient, userID); err != nil {
+			return err
+	REDACTED
+		res, err := txClient.ExecContext(txCtx, `
+UPDATE user_affiliates
+SET aff_code = $1,
+    aff_code_custom = true,
+    updated_at = NOW()
+WHERE user_id = $2`, code, userID)
+		if err != nil {
+			if isAffiliateUniqueViolation(err) {
+				return service.ErrAffiliateCodeTaken
+		REDACTED
+			return fmt.Errorf("update aff_code: %w", err)
+	REDACTED
+		affected, _ := res.RowsAffected()
+		if affected == 0 {
+			return service.ErrUserNotFound
+	REDACTED
+		return nil
+REDACTED)
+REDACTED
+
+// ResetUserAffCode 把 aff_code 还原为系统随机码，并清除 aff_code_custom 标记。
+func (r *affiliateRepository) ResetUserAffCode(ctx context.Context, userID int64) (string, error) {
+	if userID <= 0 {
+		return "", service.ErrUserNotFound
+REDACTED
+	var newCode string
+	err := r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
+		if _, err := ensureUserAffiliateWithClient(txCtx, txClient, userID); err != nil {
+			return err
+	REDACTED
+		for i := 0; i < affiliateCodeMaxAttempts; i++ {
+			candidate, codeErr := generateAffiliateCode()
+			if codeErr != nil {
+				return codeErr
+		REDACTED
+			res, err := txClient.ExecContext(txCtx, `
+UPDATE user_affiliates
+SET aff_code = $1,
+    aff_code_custom = false,
+    updated_at = NOW()
+WHERE user_id = $2`, candidate, userID)
+			if err != nil {
+				if isAffiliateUniqueViolation(err) {
+					continue
+			REDACTED
+				return fmt.Errorf("reset aff_code: %w", err)
+		REDACTED
+			affected, _ := res.RowsAffected()
+			if affected == 0 {
+				return service.ErrUserNotFound
+		REDACTED
+			newCode = candidate
+			return nil
+	REDACTED
+		return fmt.Errorf("reset aff_code: exhausted attempts")
+REDACTED)
+	if err != nil {
+		return "", err
+REDACTED
+	return newCode, nil
+REDACTED
+
+// SetUserRebateRate 设置或清除用户专属返利比例。ratePercent==nil 表示清除（沿用全局）。
+func (r *affiliateRepository) SetUserRebateRate(ctx context.Context, userID int64, ratePercent *float64) error {
+	if userID <= 0 {
+		return service.ErrUserNotFound
+REDACTED
+	return r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
+		if _, err := ensureUserAffiliateWithClient(txCtx, txClient, userID); err != nil {
+			return err
+	REDACTED
+		// nullableArg lets us use a single UPDATE for both "set value" and
+		// "clear" cases — database/sql converts nil interface{REDACTED to SQL NULL.
+		res, err := txClient.ExecContext(txCtx, `
+UPDATE user_affiliates
+SET aff_rebate_rate_percent = $1,
+    updated_at = NOW()
+WHERE user_id = $2`, nullableArg(ratePercent), userID)
+		if err != nil {
+			return fmt.Errorf("set aff_rebate_rate_percent: %w", err)
+	REDACTED
+		affected, _ := res.RowsAffected()
+		if affected == 0 {
+			return service.ErrUserNotFound
+	REDACTED
+		return nil
+REDACTED)
+REDACTED
+
+// BatchSetUserRebateRate 批量为多个用户设置专属比例（nil 清除）。
+func (r *affiliateRepository) BatchSetUserRebateRate(ctx context.Context, userIDs []int64, ratePercent *float64) error {
+	if len(userIDs) == 0 {
+		return nil
+REDACTED
+	return r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
+		for _, uid := range userIDs {
+			if uid <= 0 {
+				continue
+		REDACTED
+			if _, err := ensureUserAffiliateWithClient(txCtx, txClient, uid); err != nil {
+				return err
+		REDACTED
+	REDACTED
+		_, err := txClient.ExecContext(txCtx, `
+UPDATE user_affiliates
+SET aff_rebate_rate_percent = $1,
+    updated_at = NOW()
+WHERE user_id = ANY($2)`, nullableArg(ratePercent), pq.Array(userIDs))
+		if err != nil {
+			return fmt.Errorf("batch set aff_rebate_rate_percent: %w", err)
+	REDACTED
+		return nil
+REDACTED)
+REDACTED
+
+// nullableArg unwraps a *float64 into an interface{REDACTED suitable for SQL parameter
+// binding: nil pointer → SQL NULL, non-nil → the float value.
+func nullableArg(v *float64) any {
+	if v == nil {
+		return nil
+REDACTED
+	return *v
+REDACTED
+
+// ListUsersWithCustomSettings 列出有专属配置（自定义码或专属比例）的用户。
+//
+// 单一查询同时处理"无搜索"与"按邮箱/用户名模糊搜索"：
+// 空 search 时拼接出的 LIKE 模式为 "%%"，匹配所有行；非空时按 ILIKE 子串匹配。
+// 这避免了为两种情况维护两份 SQL 模板。
+func (r *affiliateRepository) ListUsersWithCustomSettings(ctx context.Context, filter service.AffiliateAdminFilter) ([]service.AffiliateAdminEntry, int64, error) {
+	page := filter.Page
+	if page < 1 {
+		page = 1
+REDACTED
+	pageSize := filter.PageSize
+	if pageSize <= 0 || pageSize > 200 {
+		pageSize = 20
+REDACTED
+	offset := (page - 1) * pageSize
+	likePattern := "%" + strings.TrimSpace(filter.Search) + "%"
+
+	const baseFrom = `
+FROM user_affiliates ua
+JOIN users u ON u.id = ua.user_id
+WHERE (ua.aff_code_custom = true OR ua.aff_rebate_rate_percent IS NOT NULL)
+  AND (u.email ILIKE $1 OR u.username ILIKE $1)`
+
+	client := clientFromContext(ctx, r.client)
+
+	total, err := scanInt64(ctx, client, "SELECT COUNT(*)"+baseFrom, likePattern)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count affiliate admin entries: %w", err)
+REDACTED
+
+	listQuery := `
+SELECT ua.user_id,
+       COALESCE(u.email, ''),
+       COALESCE(u.username, ''),
+       ua.aff_code,
+       ua.aff_code_custom,
+       ua.aff_rebate_rate_percent,
+       ua.aff_count` + baseFrom + `
+ORDER BY ua.updated_at DESC
+LIMIT $2 OFFSET $3`
+
+	rows, err := client.QueryContext(ctx, listQuery, likePattern, pageSize, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list affiliate admin entries: %w", err)
+REDACTED
+	defer func() { _ = rows.Close() REDACTED()
+
+	entries := make([]service.AffiliateAdminEntry, 0)
+	for rows.Next() {
+		var e service.AffiliateAdminEntry
+		var rebate sql.NullFloat64
+		if err := rows.Scan(&e.UserID, &e.Email, &e.Username, &e.AffCode,
+			&e.AffCodeCustom, &rebate, &e.AffCount); err != nil {
+			return nil, 0, err
+	REDACTED
+		if rebate.Valid {
+			v := rebate.Float64
+			e.AffRebateRatePercent = &v
+	REDACTED
+		entries = append(entries, e)
+REDACTED
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+REDACTED
+	return entries, total, nil
+REDACTED
+
+// scanInt64 runs a query expected to return a single int64 column (e.g. COUNT).
+func scanInt64(ctx context.Context, client affiliateQueryExecer, query string, args ...any) (int64, error) {
+	rows, err := client.QueryContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+REDACTED
+	defer func() { _ = rows.Close() REDACTED()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return 0, err
+	REDACTED
+		return 0, nil
+REDACTED
+	var v int64
+	if err := rows.Scan(&v); err != nil {
+		return 0, err
+REDACTED
+	return v, nil
 REDACTED

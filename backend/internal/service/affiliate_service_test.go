@@ -4,51 +4,82 @@ package service
 
 import (
 	"context"
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
-type affiliateSettingRepoStub struct {
-	value string
-	err   error
-REDACTED
-
-func (s *affiliateSettingRepoStub) Get(context.Context, string) (*Setting, error) { return nil, s.err REDACTED
-func (s *affiliateSettingRepoStub) GetValue(context.Context, string) (string, error) {
-	if s.err != nil {
-		return "", s.err
-REDACTED
-	return s.value, nil
-REDACTED
-func (s *affiliateSettingRepoStub) Set(context.Context, string, string) error { return s.err REDACTED
-func (s *affiliateSettingRepoStub) GetMultiple(context.Context, []string) (map[string]string, error) {
-	if s.err != nil {
-		return nil, s.err
-REDACTED
-	return map[string]string{REDACTED, nil
-REDACTED
-func (s *affiliateSettingRepoStub) SetMultiple(context.Context, map[string]string) error {
-	return s.err
-REDACTED
-func (s *affiliateSettingRepoStub) GetAll(context.Context) (map[string]string, error) {
-	if s.err != nil {
-		return nil, s.err
-REDACTED
-	return map[string]string{REDACTED, nil
-REDACTED
-func (s *affiliateSettingRepoStub) Delete(context.Context, string) error { return s.err REDACTED
-
-func TestAffiliateRebateRatePercentSemantics(t *testing.T) {
+// TestResolveRebateRatePercent_PerUserOverride verifies that per-inviter
+// AffRebateRatePercent overrides the global rate, that NULL falls back to the
+// global rate, and that out-of-range exclusive rates are clamped silently.
+//
+// SettingService is left nil here so globalRebateRatePercent returns the
+// documented default (AffiliateRebateRateDefault = 20%) — this exercises the
+// fallback path without spinning up a settings stub.
+func TestResolveRebateRatePercent_PerUserOverride(t *testing.T) {
 	t.Parallel()
+	svc := &AffiliateService{REDACTED
 
-	svc := &AffiliateService{settingRepo: &affiliateSettingRepoStub{value: "1"REDACTEDREDACTED
-	rate := svc.loadAffiliateRebateRatePercent(context.Background())
-	require.Equal(t, 1.0, rate)
+	// nil exclusive rate → falls back to global default (20%)
+	require.InDelta(t, AffiliateRebateRateDefault,
+		svc.resolveRebateRatePercent(context.Background(), &AffiliateSummary{REDACTED), 1e-9)
 
-	svc.settingRepo = &affiliateSettingRepoStub{value: "0.2"REDACTED
-	rate = svc.loadAffiliateRebateRatePercent(context.Background())
-	require.Equal(t, 0.2, rate)
+	// exclusive rate set → overrides global
+	rate := 50.0
+	require.InDelta(t, 50.0,
+		svc.resolveRebateRatePercent(context.Background(), &AffiliateSummary{AffRebateRatePercent: &rateREDACTED), 1e-9)
+
+	// exclusive rate 0 → returns 0 (no rebate, intentional)
+	zero := 0.0
+	require.InDelta(t, 0.0,
+		svc.resolveRebateRatePercent(context.Background(), &AffiliateSummary{AffRebateRatePercent: &zeroREDACTED), 1e-9)
+
+	// exclusive rate above max → clamped to Max
+	tooHigh := 250.0
+	require.InDelta(t, AffiliateRebateRateMax,
+		svc.resolveRebateRatePercent(context.Background(), &AffiliateSummary{AffRebateRatePercent: &tooHighREDACTED), 1e-9)
+
+	// exclusive rate below min → clamped to Min
+	tooLow := -5.0
+	require.InDelta(t, AffiliateRebateRateMin,
+		svc.resolveRebateRatePercent(context.Background(), &AffiliateSummary{AffRebateRatePercent: &tooLowREDACTED), 1e-9)
+REDACTED
+
+// TestIsEnabled_NilSettingServiceReturnsDefault verifies that IsEnabled
+// safely handles a nil settingService dependency by returning the default
+// (off). This protects callers from nil-pointer crashes in misconfigured
+// environments.
+func TestIsEnabled_NilSettingServiceReturnsDefault(t *testing.T) {
+	t.Parallel()
+	svc := &AffiliateService{REDACTED
+	require.False(t, svc.IsEnabled(context.Background()))
+	require.Equal(t, AffiliateEnabledDefault, svc.IsEnabled(context.Background()))
+REDACTED
+
+// TestValidateExclusiveRate_BoundaryAndInvalid covers the validator used by
+// admin-facing rate setters: nil is always valid (clear), in-range values
+// are accepted, NaN/Inf and out-of-range values produce a typed BadRequest.
+func TestValidateExclusiveRate_BoundaryAndInvalid(t *testing.T) {
+	t.Parallel()
+	require.NoError(t, validateExclusiveRate(nil))
+
+	for _, v := range []float64{0, 0.01, 50, 99.99, 100REDACTED {
+		v := v
+		require.NoError(t, validateExclusiveRate(&v), "value %v should be valid", v)
+REDACTED
+
+	for _, v := range []float64{-0.01, 100.01, -100, 200REDACTED {
+		v := v
+		require.Error(t, validateExclusiveRate(&v), "value %v should be rejected", v)
+REDACTED
+
+	nan := math.NaN()
+	require.Error(t, validateExclusiveRate(&nan))
+	posInf := math.Inf(1)
+	require.Error(t, validateExclusiveRate(&posInf))
+	negInf := math.Inf(-1)
+	require.Error(t, validateExclusiveRate(&negInf))
 REDACTED
 
 func TestMaskEmail(t *testing.T) {
@@ -61,24 +92,33 @@ REDACTED
 func TestIsValidAffiliateCodeFormat(t *testing.T) {
 	t.Parallel()
 
+	// 邀请码格式校验同时服务于：
+	// 1) 系统自动生成的 12 位随机码（A-Z 去 I/O，2-9 去 0/1）
+	// 2) 管理员设置的自定义专属码（如 "VIP2026"、"NEW_USER-1"）
+	// 因此校验放宽到 [A-Z0-9_-]{4,32REDACTED（要求调用方先 ToUpper）。
 	cases := []struct {
 		name string
 		in   string
 		want bool
 REDACTED{
-		{"valid canonical", "ABCDEFGHJKLM", trueREDACTED,
+		{"valid canonical 12-char", "ABCDEFGHJKLM", trueREDACTED,
 		{"valid all digits 2-9", "234567892345", trueREDACTED,
 		{"valid mixed", "A2B3C4D5E6F7", trueREDACTED,
-		{"too short", "ABCDEFGHJKL", falseREDACTED,
-		{"too long", "ABCDEFGHJKLMN", falseREDACTED,
-		{"contains excluded letter I", "IBCDEFGHJKLM", falseREDACTED,
-		{"contains excluded letter O", "OBCDEFGHJKLM", falseREDACTED,
-		{"contains excluded digit 0", "0BCDEFGHJKLM", falseREDACTED,
-		{"contains excluded digit 1", "1BCDEFGHJKLM", falseREDACTED,
+		{"valid admin custom short", "VIP1", trueREDACTED,
+		{"valid admin custom with hyphen", "NEW-USER", trueREDACTED,
+		{"valid admin custom with underscore", "VIP_2026", trueREDACTED,
+		{"valid 32-char max", "ABCDEFGHIJKLMNOPQRSTUVWXYZ012345", trueREDACTED,
+		// Previously-excluded chars (I/O/0/1) are now allowed since admins may use them.
+		{"letter I now allowed", "IBCDEFGHJKLM", trueREDACTED,
+		{"letter O now allowed", "OBCDEFGHJKLM", trueREDACTED,
+		{"digit 0 now allowed", "0BCDEFGHJKLM", trueREDACTED,
+		{"digit 1 now allowed", "1BCDEFGHJKLM", trueREDACTED,
+		{"too short (3 chars)", "ABC", falseREDACTED,
+		{"too long (33 chars)", "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456", falseREDACTED,
 		{"lowercase rejected (caller must ToUpper first)", "abcdefghjklm", falseREDACTED,
 		{"empty", "", falseREDACTED,
-		{"12-byte utf8 non-ascii", "ÄÄÄÄÄÄ", falseREDACTED, // 6×2 bytes = 12 bytes, bytes out of charset
-		{"ascii punctuation", "ABCDEFGHJK.M", falseREDACTED,
+		{"utf8 non-ascii", "ÄÄÄÄÄÄ", falseREDACTED, // bytes out of charset
+		{"ascii punctuation .", "ABCDEFGHJK.M", falseREDACTED,
 		{"whitespace", "ABCDEFGHJK M", falseREDACTED,
 REDACTED
 	for _, tc := range cases {

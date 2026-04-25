@@ -8,7 +8,23 @@
       </div>
 
       <template v-else-if="detail">
-        <div class="grid gap-4 md:grid-cols-3">
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <!-- 返利比例：用主色突出，让用户一眼看到「能拿多少」 -->
+          <div class="card relative overflow-hidden p-5">
+            <div class="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-primary-500/10"></div>
+            <div class="relative">
+              <p class="flex items-center gap-1.5 text-sm text-gray-500 dark:text-dark-400">
+                <Icon name="dollar" size="sm" class="text-primary-500" />
+                {{ t('affiliate.stats.rebateRate') REDACTEDREDACTED
+              </p>
+              <p class="mt-2 text-2xl font-semibold text-primary-600 dark:text-primary-400">
+                {{ formattedRebateRate REDACTEDREDACTED<span class="ml-0.5 text-base font-medium">%</span>
+              </p>
+              <p class="mt-1 text-xs text-gray-400 dark:text-dark-500">
+                {{ t('affiliate.stats.rebateRateHint') REDACTEDREDACTED
+              </p>
+            </div>
+          </div>
           <div class="card p-5">
             <p class="text-sm text-gray-500 dark:text-dark-400">{{ t('affiliate.stats.invitedUsers') REDACTEDREDACTED</p>
             <p class="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
@@ -61,7 +77,7 @@
             <p class="text-sm font-medium text-primary-800 dark:text-primary-200">{{ t('affiliate.tips.title') REDACTEDREDACTED</p>
             <ul class="mt-2 space-y-1 text-sm text-primary-700 dark:text-primary-300">
               <li>1. {{ t('affiliate.tips.line1') REDACTEDREDACTED</li>
-              <li>2. {{ t('affiliate.tips.line2') REDACTEDREDACTED</li>
+              <li>2. {{ t('affiliate.tips.line2', { rate: `${formattedRebateRateREDACTED%` REDACTED) REDACTEDREDACTED</li>
               <li>3. {{ t('affiliate.tips.line3') REDACTEDREDACTED</li>
             </ul>
           </div>
@@ -147,6 +163,14 @@ const inviteLink = computed(() => {
   if (!detail.value) return ''
   if (typeof window === 'undefined') return `/register?aff=${encodeURIComponent(detail.value.aff_code)REDACTED`
   return `${window.location.originREDACTED/register?aff=${encodeURIComponent(detail.value.aff_code)REDACTED`
+REDACTED)
+
+// Rebate rate is a percentage in the range [0, 100]; backend already clamps it.
+// We trim trailing zeros (e.g. 20.00 → "20", 12.50 → "12.5") for a cleaner UI.
+const formattedRebateRate = computed(() => {
+  const v = detail.value?.effective_rebate_rate_percent ?? 0
+  const rounded = Math.round(v * 100) / 100
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toString()
 REDACTED)
 
 function formatCount(value: number): string {

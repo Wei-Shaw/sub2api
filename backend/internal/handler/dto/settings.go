@@ -192,6 +192,9 @@ type SystemSettings struct {
 
 	// Available Channels feature switch (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+
+	// Affiliate (邀请返利) feature switch
+	AffiliateEnabled bool `json:"affiliate_enabled"`
 REDACTED
 
 type DefaultSubscriptionSetting struct {
@@ -244,6 +247,8 @@ type PublicSettings struct {
 	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
 
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+
+	AffiliateEnabled bool `json:"affiliate_enabled"`
 REDACTED
 
 // OverloadCooldownSettings 529过载冷却配置 DTO

@@ -182,3 +182,218 @@ REDACTED
 		"SELECT balance::double precision FROM users WHERE id = $1", u.ID)
 	require.InDelta(t, 3.21, persistedBalance, 1e-9)
 REDACTED
+
+// TestAffiliateRepository_AdminCustomCode covers the success path of admin
+// invite-code rewrite + reset within a shared test transaction:
+// - UpdateUserAffCode replaces aff_code, sets aff_code_custom=true, lookup works
+// - the old code can no longer be found
+// - ResetUserAffCode reverts aff_code_custom and assigns a new system-format code
+//
+// The conflict path (duplicate code → ErrAffiliateCodeTaken) lives in its own
+// test because a unique-violation aborts the surrounding Postgres tx, which
+// would poison subsequent assertions in the same transaction.
+func TestAffiliateRepository_AdminCustomCode(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	txCtx := dbent.NewTxContext(ctx, tx)
+	client := tx.Client()
+
+	repo := NewAffiliateRepository(client, integrationDB)
+
+	u := mustCreateUser(t, client, &service.User{
+		Email:        fmt.Sprintf("affiliate-custom-%d@example.com", time.Now().UnixNano()),
+		PasswordHash: "hash",
+		Role:         service.RoleUser,
+		Status:       service.StatusActive,
+REDACTED)
+
+	original, err := repo.EnsureUserAffiliate(txCtx, u.ID)
+REDACTED
+	require.False(t, original.AffCodeCustom, "system-generated codes start as non-custom")
+	originalCode := original.AffCode
+
+	// Rewrite to a custom code
+	customCode := fmt.Sprintf("VIP%09d", time.Now().UnixNano()%1_000_000_000)
+	require.NoError(t, repo.UpdateUserAffCode(txCtx, u.ID, customCode))
+
+	updated, err := repo.EnsureUserAffiliate(txCtx, u.ID)
+REDACTED
+	require.Equal(t, customCode, updated.AffCode)
+	require.True(t, updated.AffCodeCustom)
+
+	// Lookup by new custom code finds the user
+	byCode, err := repo.GetAffiliateByCode(txCtx, customCode)
+REDACTED
+	require.Equal(t, u.ID, byCode.UserID)
+
+	// Old system code should no longer match
+	_, err = repo.GetAffiliateByCode(txCtx, originalCode)
+	require.ErrorIs(t, err, service.ErrAffiliateProfileNotFound)
+
+	// Reset back to a fresh system code, clears custom flag
+	newSysCode, err := repo.ResetUserAffCode(txCtx, u.ID)
+REDACTED
+	require.NotEqual(t, customCode, newSysCode)
+
+	reset, err := repo.EnsureUserAffiliate(txCtx, u.ID)
+REDACTED
+	require.Equal(t, newSysCode, reset.AffCode)
+	require.False(t, reset.AffCodeCustom)
+
+	// The old custom code is now free again
+	_, err = repo.GetAffiliateByCode(txCtx, customCode)
+	require.ErrorIs(t, err, service.ErrAffiliateProfileNotFound)
+REDACTED
+
+// TestAffiliateRepository_AdminCustomCode_Conflict isolates the unique-violation
+// path. PostgreSQL aborts the enclosing tx when a unique constraint fires, so
+// this test must be the only assertion and run in its own tx — production
+// callers each have their own outer tx, so this matches real behavior.
+func TestAffiliateRepository_AdminCustomCode_Conflict(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	txCtx := dbent.NewTxContext(ctx, tx)
+	client := tx.Client()
+
+	repo := NewAffiliateRepository(client, integrationDB)
+
+	taker := mustCreateUser(t, client, &service.User{
+		Email:        fmt.Sprintf("affiliate-conflict-taker-%d@example.com", time.Now().UnixNano()),
+		PasswordHash: "hash",
+		Role:         service.RoleUser, Status: service.StatusActive,
+REDACTED)
+	requester := mustCreateUser(t, client, &service.User{
+		Email:        fmt.Sprintf("affiliate-conflict-req-%d@example.com", time.Now().UnixNano()),
+		PasswordHash: "hash",
+		Role:         service.RoleUser, Status: service.StatusActive,
+REDACTED)
+
+	takenCode := fmt.Sprintf("HOT%09d", time.Now().UnixNano()%1_000_000_000)
+	require.NoError(t, repo.UpdateUserAffCode(txCtx, taker.ID, takenCode))
+
+	// Now requester tries to grab the same code → conflict.
+	err := repo.UpdateUserAffCode(txCtx, requester.ID, takenCode)
+	require.ErrorIs(t, err, service.ErrAffiliateCodeTaken)
+REDACTED
+
+// TestAffiliateRepository_AdminRebateRate covers per-user exclusive rate
+// set/clear and the Batch variant including NULL semantics.
+func TestAffiliateRepository_AdminRebateRate(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	txCtx := dbent.NewTxContext(ctx, tx)
+	client := tx.Client()
+
+	repo := NewAffiliateRepository(client, integrationDB)
+
+	u1 := mustCreateUser(t, client, &service.User{
+		Email:        fmt.Sprintf("affiliate-rate-%d-a@example.com", time.Now().UnixNano()),
+		PasswordHash: "hash",
+		Role:         service.RoleUser,
+		Status:       service.StatusActive,
+REDACTED)
+	u2 := mustCreateUser(t, client, &service.User{
+		Email:        fmt.Sprintf("affiliate-rate-%d-b@example.com", time.Now().UnixNano()),
+		PasswordHash: "hash",
+		Role:         service.RoleUser,
+		Status:       service.StatusActive,
+REDACTED)
+
+	// Set exclusive rate for u1
+	rate := 42.5
+	require.NoError(t, repo.SetUserRebateRate(txCtx, u1.ID, &rate))
+
+	got, err := repo.EnsureUserAffiliate(txCtx, u1.ID)
+REDACTED
+	require.NotNil(t, got.AffRebateRatePercent)
+	require.InDelta(t, 42.5, *got.AffRebateRatePercent, 1e-9)
+
+	// Clear exclusive rate
+	require.NoError(t, repo.SetUserRebateRate(txCtx, u1.ID, nil))
+	cleared, err := repo.EnsureUserAffiliate(txCtx, u1.ID)
+REDACTED
+	require.Nil(t, cleared.AffRebateRatePercent)
+
+	// Batch set both users
+	batchRate := 15.0
+	require.NoError(t, repo.BatchSetUserRebateRate(txCtx, []int64{u1.ID, u2.IDREDACTED, &batchRate))
+
+	for _, uid := range []int64{u1.ID, u2.IDREDACTED {
+		v, err := repo.EnsureUserAffiliate(txCtx, uid)
+	REDACTED
+		require.NotNil(t, v.AffRebateRatePercent)
+		require.InDelta(t, 15.0, *v.AffRebateRatePercent, 1e-9)
+REDACTED
+
+	// Batch clear
+	require.NoError(t, repo.BatchSetUserRebateRate(txCtx, []int64{u1.ID, u2.IDREDACTED, nil))
+	for _, uid := range []int64{u1.ID, u2.IDREDACTED {
+		v, err := repo.EnsureUserAffiliate(txCtx, uid)
+	REDACTED
+		require.Nil(t, v.AffRebateRatePercent)
+REDACTED
+REDACTED
+
+// TestAffiliateRepository_ListUsersWithCustomSettings verifies the admin list
+// only includes users with at least one override applied.
+func TestAffiliateRepository_ListUsersWithCustomSettings(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	txCtx := dbent.NewTxContext(ctx, tx)
+	client := tx.Client()
+
+	repo := NewAffiliateRepository(client, integrationDB)
+
+	// User without any custom config — should NOT appear in the list.
+	plainEmail := fmt.Sprintf("affiliate-plain-%d@example.com", time.Now().UnixNano())
+	uPlain := mustCreateUser(t, client, &service.User{
+		Email: plainEmail, PasswordHash: "hash",
+		Role: service.RoleUser, Status: service.StatusActive,
+REDACTED)
+	_, err := repo.EnsureUserAffiliate(txCtx, uPlain.ID)
+REDACTED
+
+	// User with a custom code — should appear.
+	uCode := mustCreateUser(t, client, &service.User{
+		Email:        fmt.Sprintf("affiliate-codeonly-%d@example.com", time.Now().UnixNano()),
+		PasswordHash: "hash",
+		Role:         service.RoleUser, Status: service.StatusActive,
+REDACTED)
+	require.NoError(t, repo.UpdateUserAffCode(txCtx, uCode.ID, fmt.Sprintf("VIP%09d", time.Now().UnixNano()%1_000_000_000)))
+
+	// User with only an exclusive rate — should appear.
+	uRate := mustCreateUser(t, client, &service.User{
+		Email:        fmt.Sprintf("affiliate-rateonly-%d@example.com", time.Now().UnixNano()),
+		PasswordHash: "hash",
+		Role:         service.RoleUser, Status: service.StatusActive,
+REDACTED)
+	r := 33.3
+	require.NoError(t, repo.SetUserRebateRate(txCtx, uRate.ID, &r))
+
+	entries, total, err := repo.ListUsersWithCustomSettings(txCtx, service.AffiliateAdminFilter{
+		Page: 1, PageSize: 100,
+REDACTED)
+REDACTED
+
+	// Build a quick lookup to assert per-user attributes (other tests may have
+	// inserted custom rows in the same DB; we only care about our 3).
+	byUserID := make(map[int64]service.AffiliateAdminEntry, len(entries))
+	for _, e := range entries {
+		byUserID[e.UserID] = e
+REDACTED
+
+	require.NotContains(t, byUserID, uPlain.ID, "users without overrides must not appear")
+
+	codeEntry, ok := byUserID[uCode.ID]
+	require.True(t, ok, "custom-code user missing from list")
+	require.True(t, codeEntry.AffCodeCustom)
+	require.Nil(t, codeEntry.AffRebateRatePercent)
+
+	rateEntry, ok := byUserID[uRate.ID]
+	require.True(t, ok, "custom-rate user missing from list")
+	require.False(t, rateEntry.AffCodeCustom)
+	require.NotNil(t, rateEntry.AffRebateRatePercent)
+	require.InDelta(t, 33.3, *rateEntry.AffRebateRatePercent, 1e-9)
+
+	require.GreaterOrEqual(t, total, int64(2), "total must include at least our 2 custom rows")
+REDACTED

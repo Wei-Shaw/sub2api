@@ -23,6 +23,7 @@ const (
 	AffiliateRebateRateDefault = 20.0
 	AffiliateRebateRateMin     = 0.0
 	AffiliateRebateRateMax     = 100.0
+	AffiliateEnabledDefault    = false // 邀请返利总开关默认关闭
 )
 
 // Platform constants
@@ -94,6 +95,7 @@ const (
 	SettingKeyPasswordResetEnabled             = "password_reset_enabled"              // 是否启用忘记密码功能（需要先开启邮件验证）
 	SettingKeyFrontendURL                      = "frontend_url"                        // 前端基础URL，用于生成邮件中的重置密码链接
 	SettingKeyInvitationCodeEnabled            = "invitation_code_enabled"             // 是否启用邀请码注册
+	SettingKeyAffiliateEnabled                 = "affiliate_enabled"                   // 邀请返利功能总开关
 	SettingKeyAffiliateRebateRate              = "affiliate_rebate_rate"               // 邀请返利比例（百分比，0-100）
 
 	// 邮件服务设置

@@ -242,6 +242,8 @@ REDACTED
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
+
+		AffiliateEnabled: settings.AffiliateEnabled,
 REDACTED
 	response.Success(c, systemSettingsResponseData(payload, authSourceDefaults))
 REDACTED
@@ -441,6 +443,9 @@ type UpdateSettingsRequest struct {
 
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
+
+	// Affiliate (邀请返利) feature switch
+	AffiliateEnabled *bool `json:"affiliate_enabled"`
 REDACTED
 
 // UpdateSettings 更新系统设置
@@ -1265,6 +1270,12 @@ REDACTED
 		REDACTED
 			return previousSettings.AvailableChannelsEnabled
 	REDACTED(),
+		AffiliateEnabled: func() bool {
+			if req.AffiliateEnabled != nil {
+				return *req.AffiliateEnabled
+		REDACTED
+			return previousSettings.AffiliateEnabled
+	REDACTED(),
 REDACTED
 
 	authSourceDefaults := &service.AuthSourceDefaultSettings{
@@ -1502,6 +1513,8 @@ REDACTED
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
+
+		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 REDACTED
 	response.Success(c, systemSettingsResponseData(payload, updatedAuthSourceDefaults))
 REDACTED
@@ -1869,6 +1882,9 @@ REDACTED
 REDACTED
 	if before.AvailableChannelsEnabled != after.AvailableChannelsEnabled {
 		changed = append(changed, "available_channels_enabled")
+REDACTED
+	if before.AffiliateEnabled != after.AffiliateEnabled {
+		changed = append(changed, "affiliate_enabled")
 REDACTED
 	changed = appendAuthSourceDefaultChanges(changed, beforeAuthSourceDefaults, afterAuthSourceDefaults)
 	return changed
