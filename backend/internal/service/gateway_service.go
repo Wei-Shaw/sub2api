@@ -3718,16 +3718,6 @@ REDACTED
 	return claudeCliUserAgentRe.MatchString(userAgent)
 REDACTED
 
-func isClaudeCodeRequest(ctx context.Context, c *gin.Context, parsed *ParsedRequest) bool {
-	if IsClaudeCodeClient(ctx) {
-		return true
-REDACTED
-	if parsed == nil || c == nil {
-		return false
-REDACTED
-	return isClaudeCodeClient(c.GetHeader("User-Agent"), parsed.MetadataUserID)
-REDACTED
-
 // normalizeSystemParam 将 json.RawMessage 类型的 system 参数转为标准 Go 类型（string / []any / nil），
 // 避免 type switch 中 json.RawMessage（底层 []byte）无法匹配 case string / case []any / case nil 的问题。
 // 这是 Go 的 typed nil 陷阱：(json.RawMessage, nil) ≠ (nil, nil)。
@@ -5774,7 +5764,7 @@ REDACTED
 	// Parrot 的 build_upstream_headers 只发 9 个精确 header，不透传任何客户端 header。
 	// 透传客户端 header 会引入不一致的 x-stainless-* / anthropic-beta / user-agent /
 	// x-claude-code-session-id 等值，和我们注入的伪装 header 冲突，被 Anthropic 判 third-party。
-	if !(tokenType == "oauth" && mimicClaudeCode) {
+	if tokenType != "oauth" || !mimicClaudeCode {
 		for key, values := range clientHeaders {
 			lowerKey := strings.ToLower(key)
 			if allowedHeaders[lowerKey] {
