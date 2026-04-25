@@ -693,14 +693,18 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       REDACTED
     REDACTED
     const visibleMethod = normalizeVisibleMethod(requestType) || requestType
-    const stripeMethod = visibleMethod === 'wxpay' ? 'wechat_pay' : 'alipay'
+    // When user clicks the dedicated Stripe button, leave method blank so the
+    // landing page renders Stripe's full Payment Element (card/link/alipay/wxpay).
+    const stripeMethod = visibleMethod === 'stripe'
+      ? ''
+      : visibleMethod === 'wxpay' ? 'wechat_pay' : 'alipay'
     const stripeRouteUrl = result.client_secret
       ? router.resolve({
         path: '/payment/stripe',
         query: {
           order_id: String(result.order_id),
           client_secret: result.client_secret,
-          method: stripeMethod,
+          method: stripeMethod || undefined,
           resume_token: result.resume_token || undefined,
         REDACTED,
       REDACTED).href
