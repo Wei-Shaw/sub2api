@@ -489,6 +489,11 @@ func buildManifestEntry(inst *PluginInstance) map[string]any {
 
 // convertMenuItems 把 proto 菜单项递归转成可被前端直接消费的 map 列表。
 // 保持空列表语义: 输入为空时返回空切片,前端可统一按数组处理。
+//
+// `icon_svg` 和 `labels` 是 SDK 新引入的字段(参见 plugin.proto),让插件
+// 直接交付完整 SVG 与按 locale 分类的翻译文本,核心不再需要维护"图标名 ->
+// SVG"或"label_key -> 翻译"的映射表。旧的 `icon` / `label_key` 仍透传作为
+// 前端的 fallback,保留对早期插件的兼容性。
 func convertMenuItems(items []*pluginsdk.MenuItem) []map[string]any {
 	out := make([]map[string]any, 0, len(items))
 	for _, mi := range items {
@@ -499,11 +504,17 @@ func convertMenuItems(items []*pluginsdk.MenuItem) []map[string]any {
 			"path":                mi.GetPath(),
 			"label_key":           mi.GetLabelKey(),
 			"icon":                mi.GetIcon(),
+			"icon_svg":            mi.GetIconSvg(),
 			"section":             mi.GetSection(),
 			"sort_order":          mi.GetSortOrder(),
 			"requires_admin":      mi.GetRequiresAdmin(),
 			"hide_in_simple_mode": mi.GetHideInSimpleMode(),
 			"feature_flag":        mi.GetFeatureFlag(),
+			// labels: copy into a fresh map so JSON serialization always emits
+			// {} rather than null when the plugin supplied an empty map. nil
+			// is fine here because encoding/json renders it as null and the
+			// frontend treats null + empty as equivalent.
+			"labels": mi.GetLabels(),
 		}
 		if children := convertMenuItems(mi.GetChildren()); len(children) > 0 {
 			entry["children"] = children
