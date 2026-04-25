@@ -3988,35 +3988,30 @@ export default {
       emptyTitle: '暂无服务配额规则',
       emptyDescription: '创建第一条规则，在现有配额之上叠加限制。',
       userId: '用户 ID：{id}',
+      unnamedRule: '未命名规则 #{id}',
+      morePaths: '+{count} 条路径',
       loadError: '加载服务配额规则失败',
       saveSuccess: '服务配额规则已保存',
       saveError: '保存服务配额规则失败',
       deleteSuccess: '服务配额规则已删除',
       deleteError: '删除服务配额规则失败',
-      deleteConfirm: '删除该 {type} 规则？删除后立即停止生效。',
+      deleteConfirm: '删除规则 {name}？删除后立即停止生效。',
       filters: {
-        allTypes: '全部类型',
         allCounterModes: '全部计数模式',
         allFallback: '全部兜底状态',
         allStatus: '全部状态'
       },
       columns: {
         status: '状态',
-        scope: '范围',
-        type: '类型',
+        name: '名称',
+        limiters: '限流器',
+        paths: '路径',
         counterMode: '计数模式',
         fallback: '兜底',
+        type: '类型',
         window: '窗口',
         limit: '限额',
         actions: '操作'
-      },
-      scopes: {
-        global: '全局',
-        platform: '平台',
-        channel: '渠道',
-        group: '分组',
-        account: '账号',
-        model: '模型'
       },
       scopeDetails: {
         platform: '平台：{value}',
@@ -4045,7 +4040,7 @@ export default {
       },
       fallback: {
         label: '兜底规则',
-        hint: '仅在同一 limiter 类型没有其他非兜底规则命中时生效',
+        hint: '仅在同一 limiter 类型没有其他非兜底规则命中时生效（限流器粒度）',
         yes: '兜底',
         no: '常规'
       },
@@ -4055,27 +4050,35 @@ export default {
         none: '不设窗口'
       },
       form: {
-        scopeMatching: '范围匹配（任意组合，留空表示不限制该维度）',
-        platform: '平台',
-        platformPlaceholder: '例如 anthropic / openai / gemini',
-        channelId: '渠道',
-        groupId: '分组',
-        accountId: '账号 ID',
-        modelPattern: '模型通配符',
-        modelPatternPlaceholder: '例如 claude-opus-* 或直接选择下方模型',
-        modelSuggestionHint: '共 {count} 个建议模型可选（也可输入通配符模式）',
+        name: '规则名称',
+        namePlaceholder: '便于识别的备注，可留空',
         counterMode: '计数模式',
         fallback: '兜底规则',
         targetUserIds: '绑定用户 ID',
         targetUserIdsPlaceholder: '逗号分隔的用户 ID，例如 1,2,3',
         targetUserIdsRequired: '计数模式为"指定用户"时必填',
+        limitersTitle: '限流器（一条规则可同时配置多种）',
+        limitersHint: '同一类型只能配置一个；并发不支持窗口',
+        pathsTitle: '匹配路径（命中任意一条即生效）',
+        pathsHint: '每条路径按 平台 → 渠道 → 分组 → 账号 → 模型 单选；留空表示不限制该维度',
+        platform: '平台',
+        platformPlaceholder: '例如 anthropic / openai / gemini',
+        channelId: '渠道',
+        groupId: '分组',
+        accountId: '账号',
+        modelPattern: '模型通配符',
+        modelPatternPlaceholder: '例如 claude-opus-* 或具体模型名',
         required: '必填'
       },
-      batchMode: '批量',
-      batchRules: '批次 ({count} 条)',
-      batchLabel: '批次',
-      deleteBatch: '删除批次',
-      deleteBatchConfirm: '确认删除该批次的全部 {count} 条规则？'
+      limiterEditor: {
+        empty: '尚未添加限流器，点击下方按钮添加',
+        add: '添加限流器'
+      },
+      pathEditor: {
+        empty: '尚未添加路径，点击下方按钮添加',
+        add: '添加路径',
+        pathIndex: '路径 #{index}'
+      }
     },
 
     // Usage Records

@@ -25,22 +25,19 @@ func NewServiceQuotaService(repo ServiceQuotaRuleRepository, settings *SettingSe
 	return &serviceQuotaService{repo: repo, settings: settings, limiter: limiter, cache: cache}
 }
 
+// matchedQuotaRule 是 PreCheck/Record 用的中间态：把规则与本次请求实际命中的 path 列表绑在一起，
+// 后续按 path × limiter 做笛卡尔展开。
+type matchedQuotaRule struct {
+	rule  *ServiceQuotaRule
+	paths []ServiceQuotaPathDef
+}
+
 func (s *serviceQuotaService) ListRules(ctx context.Context, filter ServiceQuotaListFilter) ([]*ServiceQuotaRule, error) {
-	rules, err := s.repo.List(ctx, filter)
-	if err != nil {
-		return nil, err
-	}
-	for _, rule := range rules {
-		s.fillCurrentUsage(ctx, rule)
-	}
-	return rules, nil
+	return s.repo.List(ctx, filter)
 }
 
 func (s *serviceQuotaService) CreateRule(ctx context.Context, input ServiceQuotaRuleInput) (*ServiceQuotaRule, error) {
-	if err := normalizeServiceQuotaRule(&input); err != nil {
-		return nil, err
-	}
-	if err := s.validateScopeLinkage(ctx, input); err != nil {
+	if err := s.normalizeAndValidate(ctx, &input); err != nil {
 		return nil, err
 	}
 	rule, err := s.repo.Create(ctx, input)
@@ -51,28 +48,8 @@ func (s *serviceQuotaService) CreateRule(ctx context.Context, input ServiceQuota
 	return rule, nil
 }
 
-func (s *serviceQuotaService) CreateBatch(ctx context.Context, inputs []ServiceQuotaRuleInput) ([]*ServiceQuotaRule, error) {
-	for i := range inputs {
-		if err := normalizeServiceQuotaRule(&inputs[i]); err != nil {
-			return nil, err
-		}
-		if err := s.validateScopeLinkage(ctx, inputs[i]); err != nil {
-			return nil, err
-		}
-	}
-	rules, err := s.repo.CreateBatch(ctx, inputs)
-	if err != nil {
-		return nil, err
-	}
-	s.reloadCache(ctx)
-	return rules, nil
-}
-
 func (s *serviceQuotaService) UpdateRule(ctx context.Context, id int64, input ServiceQuotaRuleInput) (*ServiceQuotaRule, error) {
-	if err := normalizeServiceQuotaRule(&input); err != nil {
-		return nil, err
-	}
-	if err := s.validateScopeLinkage(ctx, input); err != nil {
+	if err := s.normalizeAndValidate(ctx, &input); err != nil {
 		return nil, err
 	}
 	rule, err := s.repo.Update(ctx, id, input)
@@ -83,104 +60,8 @@ func (s *serviceQuotaService) UpdateRule(ctx context.Context, id int64, input Se
 	return rule, nil
 }
 
-func (s *serviceQuotaService) UpdateBatch(ctx context.Context, batchID string, patch ServiceQuotaBatchPatch) error {
-	if _, err := s.repo.UpdateBatch(ctx, batchID, patch); err != nil {
-		return err
-	}
-	s.reloadCache(ctx)
-	return nil
-}
-
-// validateScopeLinkage 校验 scope 字段之间的链路一致性：
-//   - 同时填 account_id 和 group_id：account 必须属于 group（account_groups 中间表命中）
-//   - 同时填 account_id 和 platform：account.platform 必须与 platform 一致
-//   - 同时填 group_id 和 platform：group.platform 必须与 platform 一致
-func (s *serviceQuotaService) validateScopeLinkage(ctx context.Context, input ServiceQuotaRuleInput) error {
-	platform := trimPlatform(input.Platform)
-
-	var accountInfo *AccountScopeInfo
-	if input.AccountID != nil && *input.AccountID > 0 {
-		info, err := s.repo.FetchAccountScope(ctx, *input.AccountID)
-		if err != nil {
-			return err
-		}
-		if info == nil {
-			return pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_ACCOUNT_NOT_FOUND", "account not found").WithMetadata(map[string]string{
-				"account_id": strconv.FormatInt(*input.AccountID, 10),
-			})
-		}
-		accountInfo = info
-	}
-
-	var groupInfo *GroupScopeInfo
-	if input.GroupID != nil && *input.GroupID > 0 {
-		info, err := s.repo.FetchGroupScope(ctx, *input.GroupID)
-		if err != nil {
-			return err
-		}
-		if info == nil {
-			return pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_GROUP_NOT_FOUND", "group not found").WithMetadata(map[string]string{
-				"group_id": strconv.FormatInt(*input.GroupID, 10),
-			})
-		}
-		groupInfo = info
-	}
-
-	if accountInfo != nil && input.GroupID != nil && *input.GroupID > 0 {
-		found := false
-		for _, gid := range accountInfo.GroupIDs {
-			if gid == *input.GroupID {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_MISMATCH", "account is not a member of the specified group").WithMetadata(map[string]string{
-				"field":      "account_id",
-				"account_id": strconv.FormatInt(*input.AccountID, 10),
-				"group_id":   strconv.FormatInt(*input.GroupID, 10),
-			})
-		}
-	}
-
-	if accountInfo != nil && platform != "" && !strings.EqualFold(accountInfo.Platform, platform) {
-		return pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_MISMATCH", "account platform does not match the specified platform").WithMetadata(map[string]string{
-			"field":             "account_id",
-			"account_id":        strconv.FormatInt(*input.AccountID, 10),
-			"account_platform":  accountInfo.Platform,
-			"expected_platform": platform,
-		})
-	}
-
-	if groupInfo != nil && platform != "" && !strings.EqualFold(groupInfo.Platform, platform) {
-		return pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_MISMATCH", "group platform does not match the specified platform").WithMetadata(map[string]string{
-			"field":             "group_id",
-			"group_id":          strconv.FormatInt(*input.GroupID, 10),
-			"group_platform":    groupInfo.Platform,
-			"expected_platform": platform,
-		})
-	}
-
-	return nil
-}
-
-func trimPlatform(p *string) string {
-	if p == nil {
-		return ""
-	}
-	return strings.TrimSpace(*p)
-}
-
 func (s *serviceQuotaService) DeleteRule(ctx context.Context, id int64) error {
 	if err := s.repo.Delete(ctx, id); err != nil {
-		return err
-	}
-	s.reloadCache(ctx)
-	return nil
-}
-
-func (s *serviceQuotaService) DeleteBatch(ctx context.Context, batchID string) error {
-	if _, err := s.repo.DeleteBatch(ctx, batchID); err != nil {
 		return err
 	}
 	s.reloadCache(ctx)
@@ -193,34 +74,222 @@ func (s *serviceQuotaService) InvalidateEnabledCache(ctx context.Context) {
 	}
 }
 
+func (s *serviceQuotaService) normalizeAndValidate(ctx context.Context, input *ServiceQuotaRuleInput) error {
+	if input == nil {
+		return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_RULE", "invalid service quota rule")
+	}
+	if input.CounterMode == "" {
+		input.CounterMode = ServiceQuotaCounterModePerUser
+	}
+	switch input.CounterMode {
+	case ServiceQuotaCounterModeUser, ServiceQuotaCounterModePerUser, ServiceQuotaCounterModeShared:
+	default:
+		return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_COUNTER_MODE", "invalid counter_mode")
+	}
+	if input.Enabled == nil {
+		enabled := true
+		input.Enabled = &enabled
+	}
+	input.TargetUserIDs = sanitizeTargetUserIDs(input.TargetUserIDs)
+	if input.CounterMode == ServiceQuotaCounterModeUser && len(input.TargetUserIDs) == 0 {
+		return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_TARGET", "target_user_ids is required when counter_mode=user")
+	}
+	if input.CounterMode != ServiceQuotaCounterModeUser {
+		input.TargetUserIDs = nil
+	}
+	if err := normalizeLimiters(input); err != nil {
+		return err
+	}
+	if err := s.normalizePaths(ctx, input); err != nil {
+		return err
+	}
+	return nil
+}
+
+func normalizeLimiters(input *ServiceQuotaRuleInput) error {
+	if len(input.Limiters) == 0 {
+		return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_LIMITERS", "at least one limiter is required")
+	}
+	seen := make(map[string]struct{}, len(input.Limiters))
+	for i := range input.Limiters {
+		l := &input.Limiters[i]
+		switch l.LimiterType {
+		case ServiceQuotaLimiterRPM, ServiceQuotaLimiterTPM, ServiceQuotaLimiterTPD,
+			ServiceQuotaLimiterDailyUSD, ServiceQuotaLimiterConcurrency:
+		default:
+			return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_LIMITER_TYPE", "invalid limiter_type").WithMetadata(map[string]string{
+				"limiter_type": l.LimiterType,
+			})
+		}
+		if l.LimitValue <= 0 {
+			return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_LIMIT_VALUE", "limit_value must be > 0").WithMetadata(map[string]string{
+				"limiter_type": l.LimiterType,
+			})
+		}
+		if l.WindowMode == "" || l.LimiterType == ServiceQuotaLimiterConcurrency {
+			l.WindowMode = ServiceQuotaWindowFixed
+		}
+		switch l.WindowMode {
+		case ServiceQuotaWindowFixed, ServiceQuotaWindowRolling:
+		default:
+			return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_WINDOW_MODE", "invalid window_mode").WithMetadata(map[string]string{
+				"window_mode": l.WindowMode,
+			})
+		}
+		if _, dup := seen[l.LimiterType]; dup {
+			return pkgerrors.BadRequest("SERVICE_QUOTA_DUPLICATE_LIMITER", "duplicate limiter_type in rule").WithMetadata(map[string]string{
+				"limiter_type": l.LimiterType,
+			})
+		}
+		seen[l.LimiterType] = struct{}{}
+	}
+	return nil
+}
+
+// normalizePaths 校验每条 path 的链路一致性（账号属于分组、平台一致），并按 platform 小写归一化。
+func (s *serviceQuotaService) normalizePaths(ctx context.Context, input *ServiceQuotaRuleInput) error {
+	if len(input.Paths) == 0 {
+		return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_PATHS", "at least one path is required")
+	}
+	for i := range input.Paths {
+		p := &input.Paths[i]
+		if p.Platform != nil {
+			trimmed := strings.TrimSpace(*p.Platform)
+			if trimmed == "" {
+				p.Platform = nil
+			} else {
+				lower := strings.ToLower(trimmed)
+				p.Platform = &lower
+			}
+		}
+		if p.ModelPattern != nil {
+			trimmed := strings.TrimSpace(*p.ModelPattern)
+			if trimmed == "" {
+				p.ModelPattern = nil
+			} else {
+				p.ModelPattern = &trimmed
+			}
+		}
+		if err := s.validatePathLinkage(ctx, *p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validatePathLinkage 校验单条 path 内 account/group/platform 之间的隶属关系。
+func (s *serviceQuotaService) validatePathLinkage(ctx context.Context, path ServiceQuotaPathInput) error {
+	platform := ""
+	if path.Platform != nil {
+		platform = *path.Platform
+	}
+
+	var accountInfo *AccountScopeInfo
+	if path.AccountID != nil && *path.AccountID > 0 {
+		info, err := s.repo.FetchAccountScope(ctx, *path.AccountID)
+		if err != nil {
+			return err
+		}
+		if info == nil {
+			return pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_ACCOUNT_NOT_FOUND", "account not found").WithMetadata(map[string]string{
+				"account_id": strconv.FormatInt(*path.AccountID, 10),
+			})
+		}
+		accountInfo = info
+	}
+
+	var groupInfo *GroupScopeInfo
+	if path.GroupID != nil && *path.GroupID > 0 {
+		info, err := s.repo.FetchGroupScope(ctx, *path.GroupID)
+		if err != nil {
+			return err
+		}
+		if info == nil {
+			return pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_GROUP_NOT_FOUND", "group not found").WithMetadata(map[string]string{
+				"group_id": strconv.FormatInt(*path.GroupID, 10),
+			})
+		}
+		groupInfo = info
+	}
+
+	if accountInfo != nil && path.GroupID != nil && *path.GroupID > 0 {
+		found := false
+		for _, gid := range accountInfo.GroupIDs {
+			if gid == *path.GroupID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_MISMATCH", "account is not a member of the specified group").WithMetadata(map[string]string{
+				"account_id": strconv.FormatInt(*path.AccountID, 10),
+				"group_id":   strconv.FormatInt(*path.GroupID, 10),
+			})
+		}
+	}
+	if accountInfo != nil && platform != "" && !strings.EqualFold(accountInfo.Platform, platform) {
+		return pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_MISMATCH", "account platform does not match the specified platform").WithMetadata(map[string]string{
+			"account_id":        strconv.FormatInt(*path.AccountID, 10),
+			"account_platform":  accountInfo.Platform,
+			"expected_platform": platform,
+		})
+	}
+	if groupInfo != nil && platform != "" && !strings.EqualFold(groupInfo.Platform, platform) {
+		return pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_MISMATCH", "group platform does not match the specified platform").WithMetadata(map[string]string{
+			"group_id":          strconv.FormatInt(*path.GroupID, 10),
+			"group_platform":    groupInfo.Platform,
+			"expected_platform": platform,
+		})
+	}
+	return nil
+}
+
 func (s *serviceQuotaService) PreCheck(ctx context.Context, req ServiceQuotaCheckRequest) (*ServiceQuotaLease, error) {
-	rules, ok := s.matchedRules(ctx, req)
-	if !ok || len(rules) == 0 {
+	matched, ok := s.matchedRules(ctx, req)
+	if !ok || len(matched) == 0 {
 		return nil, nil
 	}
-	rules = applyServiceQuotaFallbackOverride(rules)
+	matched = applyServiceQuotaFallbackOverride(matched)
+
 	lease := &ServiceQuotaLease{}
-	for _, rule := range rules {
-		if rule.LimiterType == ServiceQuotaLimiterConcurrency {
-			if err := s.acquireConcurrency(ctx, req, rule, lease); err != nil {
-				lease.release()
-				return nil, err
+
+	// 三轮：concurrency → RPM → deferred(tpm/tpd/daily_usd)。先抢并发额度避免后续判断时占用未释放。
+	for _, m := range matched {
+		for _, p := range m.paths {
+			for _, lim := range m.rule.Limiters {
+				if lim.LimiterType != ServiceQuotaLimiterConcurrency {
+					continue
+				}
+				if err := s.acquireConcurrency(ctx, req, m.rule, p, lim, lease); err != nil {
+					lease.release()
+					return nil, err
+				}
 			}
 		}
 	}
-	for _, rule := range rules {
-		if rule.LimiterType == ServiceQuotaLimiterRPM {
-			if err := s.checkRPM(ctx, req, rule); err != nil {
-				lease.release()
-				return nil, err
+	for _, m := range matched {
+		for _, p := range m.paths {
+			for _, lim := range m.rule.Limiters {
+				if lim.LimiterType != ServiceQuotaLimiterRPM {
+					continue
+				}
+				if err := s.checkRPM(ctx, req, m.rule, p, lim); err != nil {
+					lease.release()
+					return nil, err
+				}
 			}
 		}
 	}
-	for _, rule := range rules {
-		if isDeferredServiceQuotaLimiter(rule.LimiterType) {
-			if err := s.checkDeferred(ctx, req, rule); err != nil {
-				lease.release()
-				return nil, err
+	for _, m := range matched {
+		for _, p := range m.paths {
+			for _, lim := range m.rule.Limiters {
+				if !isDeferredServiceQuotaLimiter(lim.LimiterType) {
+					continue
+				}
+				if err := s.checkDeferred(ctx, req, m.rule, p, lim); err != nil {
+					lease.release()
+					return nil, err
+				}
 			}
 		}
 	}
@@ -228,23 +297,27 @@ func (s *serviceQuotaService) PreCheck(ctx context.Context, req ServiceQuotaChec
 }
 
 func (s *serviceQuotaService) Record(ctx context.Context, req ServiceQuotaRecordRequest) {
-	rules, ok := s.matchedRules(ctx, req.ServiceQuotaCheckRequest)
-	if !ok || len(rules) == 0 {
+	matched, ok := s.matchedRules(ctx, req.ServiceQuotaCheckRequest)
+	if !ok || len(matched) == 0 {
 		return
 	}
-	for _, rule := range applyServiceQuotaFallbackOverride(rules) {
-		delta := serviceQuotaRecordDelta(rule.LimiterType, req)
-		if delta <= 0 {
-			continue
-		}
-		key := s.counterKey(req.ServiceQuotaCheckRequest, rule)
-		if _, err := s.limiter.Increment(ctx, key, delta, serviceQuotaWindow(rule), rule.WindowMode); err != nil {
-			s.logLimiterFailure("record", rule, key, err)
+	for _, m := range applyServiceQuotaFallbackOverride(matched) {
+		for _, p := range m.paths {
+			for _, lim := range m.rule.Limiters {
+				delta := serviceQuotaRecordDelta(lim.LimiterType, req)
+				if delta <= 0 {
+					continue
+				}
+				key := s.counterKey(req.ServiceQuotaCheckRequest, m.rule, p, lim)
+				if _, err := s.limiter.Increment(ctx, key, delta, serviceQuotaWindow(lim), lim.WindowMode); err != nil {
+					s.logLimiterFailure("record", m.rule, lim, key, err)
+				}
+			}
 		}
 	}
 }
 
-func (s *serviceQuotaService) matchedRules(ctx context.Context, req ServiceQuotaCheckRequest) ([]*ServiceQuotaRule, bool) {
+func (s *serviceQuotaService) matchedRules(ctx context.Context, req ServiceQuotaCheckRequest) ([]matchedQuotaRule, bool) {
 	if s == nil || s.repo == nil || s.settings == nil || s.limiter == nil || req.UserID <= 0 {
 		return nil, false
 	}
@@ -255,11 +328,16 @@ func (s *serviceQuotaService) matchedRules(ctx context.Context, req ServiceQuota
 	if rules == nil {
 		return nil, false
 	}
-	out := make([]*ServiceQuotaRule, 0, len(rules))
+	out := make([]matchedQuotaRule, 0, len(rules))
 	for _, rule := range rules {
-		if serviceQuotaRuleMatches(rule, req) {
-			out = append(out, rule)
+		if !rule.Enabled || !serviceQuotaTargetMatches(rule, req.UserID) {
+			continue
 		}
+		paths := findMatchingPaths(rule, req)
+		if len(paths) == 0 {
+			continue
+		}
+		out = append(out, matchedQuotaRule{rule: rule, paths: paths})
 	}
 	return out, true
 }
@@ -316,16 +394,16 @@ func (s *serviceQuotaService) reloadCache(ctx context.Context) {
 	_ = s.cache.SetRules(ctx, rules)
 }
 
-func (s *serviceQuotaService) acquireConcurrency(ctx context.Context, req ServiceQuotaCheckRequest, rule *ServiceQuotaRule, lease *ServiceQuotaLease) error {
+func (s *serviceQuotaService) acquireConcurrency(ctx context.Context, req ServiceQuotaCheckRequest, rule *ServiceQuotaRule, path ServiceQuotaPathDef, lim ServiceQuotaLimiterDef, lease *ServiceQuotaLease) error {
 	member := fmt.Sprintf("%d:%d", req.UserID, time.Now().UnixNano())
-	key := s.counterKey(req, rule)
-	ok, err := s.limiter.Acquire(ctx, key, member, int64(rule.LimitValue))
+	key := s.counterKey(req, rule, path, lim)
+	ok, err := s.limiter.Acquire(ctx, key, member, int64(lim.LimitValue))
 	if err != nil {
-		s.logLimiterFailure("acquire_concurrency", rule, key, err)
+		s.logLimiterFailure("acquire_concurrency", rule, lim, key, err)
 		return nil
 	}
 	if !ok {
-		return serviceQuotaExceeded(rule, 0)
+		return serviceQuotaExceeded(rule, lim, 0)
 	}
 	prev := lease.Release
 	lease.Release = func() {
@@ -333,116 +411,66 @@ func (s *serviceQuotaService) acquireConcurrency(ctx context.Context, req Servic
 			prev()
 		}
 		if rerr := s.limiter.Release(context.Background(), key, member); rerr != nil {
-			s.logLimiterFailure("release_concurrency", rule, key, rerr)
+			s.logLimiterFailure("release_concurrency", rule, lim, key, rerr)
 		}
 	}
 	return nil
 }
 
-func (s *serviceQuotaService) checkRPM(ctx context.Context, req ServiceQuotaCheckRequest, rule *ServiceQuotaRule) error {
-	key := s.counterKey(req, rule)
-	used, err := s.limiter.Increment(ctx, key, 1, time.Minute, rule.WindowMode)
+func (s *serviceQuotaService) checkRPM(ctx context.Context, req ServiceQuotaCheckRequest, rule *ServiceQuotaRule, path ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) error {
+	key := s.counterKey(req, rule, path, lim)
+	used, err := s.limiter.Increment(ctx, key, 1, time.Minute, lim.WindowMode)
 	if err != nil {
-		s.logLimiterFailure("check_rpm", rule, key, err)
+		s.logLimiterFailure("check_rpm", rule, lim, key, err)
 		return nil
 	}
-	if used > rule.LimitValue {
-		return serviceQuotaExceeded(rule, used)
+	if used > lim.LimitValue {
+		return serviceQuotaExceeded(rule, lim, used)
 	}
 	return nil
 }
 
-func (s *serviceQuotaService) checkDeferred(ctx context.Context, req ServiceQuotaCheckRequest, rule *ServiceQuotaRule) error {
-	key := s.counterKey(req, rule)
-	used, err := s.limiter.Current(ctx, key, serviceQuotaWindow(rule), rule.WindowMode)
+func (s *serviceQuotaService) checkDeferred(ctx context.Context, req ServiceQuotaCheckRequest, rule *ServiceQuotaRule, path ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) error {
+	key := s.counterKey(req, rule, path, lim)
+	used, err := s.limiter.Current(ctx, key, serviceQuotaWindow(lim), lim.WindowMode)
 	if err != nil {
-		s.logLimiterFailure("check_deferred", rule, key, err)
+		s.logLimiterFailure("check_deferred", rule, lim, key, err)
 		return nil
 	}
-	if used >= rule.LimitValue {
-		return serviceQuotaExceeded(rule, used)
+	if used >= lim.LimitValue {
+		return serviceQuotaExceeded(rule, lim, used)
 	}
 	return nil
-}
-
-// fillCurrentUsage best-effort annotates a rule with its current usage for the
-// admin list response. Only shared-counter rules resolve with a single lookup;
-// per-user and multi-user sharded rules are left as nil rather than scanning
-// every per-user key (N lookups per rule × M rules).
-func (s *serviceQuotaService) fillCurrentUsage(ctx context.Context, rule *ServiceQuotaRule) {
-	if rule == nil || s.limiter == nil {
-		return
-	}
-	if rule.LimiterType == ServiceQuotaLimiterConcurrency {
-		return
-	}
-	if rule.CounterMode != ServiceQuotaCounterModeShared {
-		return
-	}
-	key := fmt.Sprintf("svcquota:%d:%s:shared", rule.ID, rule.LimiterType)
-	used, err := s.limiter.Current(ctx, key, serviceQuotaWindow(rule), rule.WindowMode)
-	if err != nil {
-		s.logLimiterFailure("current_usage", rule, key, err)
-		return
-	}
-	rule.CurrentUsage = &used
 }
 
 // Fail-open is intentional: when Redis is unreachable we allow the request
 // through rather than return 5xx, but we must surface the degradation so the
 // operator knows service quota rules are silently inert.
-func (s *serviceQuotaService) logLimiterFailure(op string, rule *ServiceQuotaRule, key string, err error) {
+func (s *serviceQuotaService) logLimiterFailure(op string, rule *ServiceQuotaRule, lim ServiceQuotaLimiterDef, key string, err error) {
 	slog.Warn("service quota limiter unavailable, rule not enforced",
 		"op", op,
 		"rule_id", rule.ID,
-		"limiter_type", rule.LimiterType,
-		"window_mode", rule.WindowMode,
+		"limiter_id", lim.ID,
+		"limiter_type", lim.LimiterType,
+		"window_mode", lim.WindowMode,
 		"key", key,
 		"error", err,
 	)
 }
 
-func (s *serviceQuotaService) counterKey(req ServiceQuotaCheckRequest, rule *ServiceQuotaRule) string {
+// counterKey 返回 path × limiter 的独立计数 key。v2 前缀使旧 key 自然失效。
+func (s *serviceQuotaService) counterKey(req ServiceQuotaCheckRequest, rule *ServiceQuotaRule, path ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) string {
 	target := "shared"
 	if rule.CounterMode == ServiceQuotaCounterModeUser || rule.CounterMode == ServiceQuotaCounterModePerUser {
 		target = strconv.FormatInt(req.UserID, 10)
 	}
-	return fmt.Sprintf("svcquota:%d:%s:%s", rule.ID, rule.LimiterType, target)
+	return fmt.Sprintf("svcquota:v2:%d:%d:%s:%s", rule.ID, path.ID, lim.LimiterType, target)
 }
 
 func (l *ServiceQuotaLease) release() {
 	if l != nil && l.Release != nil {
 		l.Release()
 	}
-}
-
-func normalizeServiceQuotaRule(input *ServiceQuotaRuleInput) error {
-	if input == nil || input.LimitValue <= 0 {
-		return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_RULE", "invalid service quota rule")
-	}
-	if input.CounterMode == "" {
-		input.CounterMode = ServiceQuotaCounterModePerUser
-	}
-	switch input.CounterMode {
-	case ServiceQuotaCounterModeUser, ServiceQuotaCounterModePerUser, ServiceQuotaCounterModeShared:
-	default:
-		return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_COUNTER_MODE", "invalid counter_mode")
-	}
-	if input.WindowMode == "" || input.LimiterType == ServiceQuotaLimiterConcurrency {
-		input.WindowMode = ServiceQuotaWindowFixed
-	}
-	if input.Enabled == nil {
-		enabled := true
-		input.Enabled = &enabled
-	}
-	input.TargetUserIDs = sanitizeTargetUserIDs(input.TargetUserIDs)
-	if input.CounterMode == ServiceQuotaCounterModeUser && len(input.TargetUserIDs) == 0 {
-		return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_TARGET", "target_user_ids is required when counter_mode=user")
-	}
-	if input.CounterMode != ServiceQuotaCounterModeUser {
-		input.TargetUserIDs = nil
-	}
-	return nil
 }
 
 func sanitizeTargetUserIDs(ids []int64) []int64 {
@@ -464,28 +492,6 @@ func sanitizeTargetUserIDs(ids []int64) []int64 {
 	return out
 }
 
-func serviceQuotaRuleMatches(rule *ServiceQuotaRule, req ServiceQuotaCheckRequest) bool {
-	if rule == nil || !rule.Enabled || !serviceQuotaTargetMatches(rule, req.UserID) {
-		return false
-	}
-	if rule.Platform != nil && !strings.EqualFold(*rule.Platform, req.Platform) {
-		return false
-	}
-	if rule.ChannelID != nil && *rule.ChannelID != req.ChannelID {
-		return false
-	}
-	if rule.GroupID != nil && *rule.GroupID != req.GroupID {
-		return false
-	}
-	if rule.AccountID != nil && *rule.AccountID != req.AccountID {
-		return false
-	}
-	if rule.ModelPattern != nil && !serviceQuotaModelMatches(*rule.ModelPattern, req.Model) {
-		return false
-	}
-	return true
-}
-
 func serviceQuotaTargetMatches(rule *ServiceQuotaRule, userID int64) bool {
 	if rule.CounterMode != ServiceQuotaCounterModeUser {
 		return true
@@ -498,6 +504,37 @@ func serviceQuotaTargetMatches(rule *ServiceQuotaRule, userID int64) bool {
 	return false
 }
 
+// pathMatches 判断单条 path 是否命中请求。每个非 nil 字段都要相等，nil 视作不限制该维度。
+func pathMatches(path ServiceQuotaPathDef, req ServiceQuotaCheckRequest) bool {
+	if path.Platform != nil && !strings.EqualFold(*path.Platform, req.Platform) {
+		return false
+	}
+	if path.ChannelID != nil && *path.ChannelID != req.ChannelID {
+		return false
+	}
+	if path.GroupID != nil && *path.GroupID != req.GroupID {
+		return false
+	}
+	if path.AccountID != nil && *path.AccountID != req.AccountID {
+		return false
+	}
+	if path.ModelPattern != nil && !serviceQuotaModelMatches(*path.ModelPattern, req.Model) {
+		return false
+	}
+	return true
+}
+
+// findMatchingPaths 返回规则中命中本次请求的路径列表。规则必须至少有一条 path（由 normalizePaths 保证）。
+func findMatchingPaths(rule *ServiceQuotaRule, req ServiceQuotaCheckRequest) []ServiceQuotaPathDef {
+	out := make([]ServiceQuotaPathDef, 0, len(rule.Paths))
+	for _, p := range rule.Paths {
+		if pathMatches(p, req) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 func serviceQuotaModelMatches(pattern, model string) bool {
 	pattern = strings.TrimSpace(pattern)
 	if pattern == "" {
@@ -507,22 +544,38 @@ func serviceQuotaModelMatches(pattern, model string) bool {
 	return err == nil && ok
 }
 
-// applyServiceQuotaFallbackOverride 在已匹配的规则集中处理 is_fallback 语义：
-// 若同一 limiter_type 存在任何非 fallback 规则，则丢弃该 limiter_type 的所有 fallback 规则。
-// 匹配时的 scope 层级判断已由 serviceQuotaRuleMatches 完成，这里只看是否有更具体（非 fallback）规则生效。
-func applyServiceQuotaFallbackOverride(rules []*ServiceQuotaRule) []*ServiceQuotaRule {
-	hasConcrete := map[string]bool{}
-	for _, rule := range rules {
-		if !rule.IsFallback {
-			hasConcrete[rule.LimiterType] = true
-		}
-	}
-	out := rules[:0]
-	for _, rule := range rules {
-		if rule.IsFallback && hasConcrete[rule.LimiterType] {
+// applyServiceQuotaFallbackOverride 在限流器层级处理 is_fallback 语义：
+// 同一 limiter_type 若有任意非 fallback 规则命中并配置了该类型限流器，则丢弃 fallback 规则中该类型的限流器
+// （而不是整条 fallback 规则）。如果丢空了 fallback 规则的所有限流器，则该 fallback 规则整条被忽略。
+func applyServiceQuotaFallbackOverride(matched []matchedQuotaRule) []matchedQuotaRule {
+	covered := map[string]bool{}
+	for _, m := range matched {
+		if m.rule.IsFallback {
 			continue
 		}
-		out = append(out, rule)
+		for _, lim := range m.rule.Limiters {
+			covered[lim.LimiterType] = true
+		}
+	}
+	out := make([]matchedQuotaRule, 0, len(matched))
+	for _, m := range matched {
+		if !m.rule.IsFallback {
+			out = append(out, m)
+			continue
+		}
+		kept := make([]ServiceQuotaLimiterDef, 0, len(m.rule.Limiters))
+		for _, lim := range m.rule.Limiters {
+			if covered[lim.LimiterType] {
+				continue
+			}
+			kept = append(kept, lim)
+		}
+		if len(kept) == 0 {
+			continue
+		}
+		clone := *m.rule
+		clone.Limiters = kept
+		out = append(out, matchedQuotaRule{rule: &clone, paths: m.paths})
 	}
 	return out
 }
@@ -531,8 +584,8 @@ func isDeferredServiceQuotaLimiter(kind string) bool {
 	return kind == ServiceQuotaLimiterTPM || kind == ServiceQuotaLimiterTPD || kind == ServiceQuotaLimiterDailyUSD
 }
 
-func serviceQuotaWindow(rule *ServiceQuotaRule) time.Duration {
-	switch rule.LimiterType {
+func serviceQuotaWindow(lim ServiceQuotaLimiterDef) time.Duration {
+	switch lim.LimiterType {
 	case ServiceQuotaLimiterRPM, ServiceQuotaLimiterTPM:
 		return time.Minute
 	case ServiceQuotaLimiterTPD, ServiceQuotaLimiterDailyUSD:
@@ -553,11 +606,11 @@ func serviceQuotaRecordDelta(kind string, req ServiceQuotaRecordRequest) float64
 	}
 }
 
-func serviceQuotaExceeded(rule *ServiceQuotaRule, used float64) error {
+func serviceQuotaExceeded(rule *ServiceQuotaRule, lim ServiceQuotaLimiterDef, used float64) error {
 	return ErrServiceQuotaExceeded.WithMetadata(map[string]string{
 		"rule_id":      strconv.FormatInt(rule.ID, 10),
-		"limiter_type": rule.LimiterType,
-		"limit":        strconv.FormatFloat(rule.LimitValue, 'f', -1, 64),
+		"limiter_type": lim.LimiterType,
+		"limit":        strconv.FormatFloat(lim.LimitValue, 'f', -1, 64),
 		"used":         strconv.FormatFloat(used, 'f', -1, 64),
 	})
 }

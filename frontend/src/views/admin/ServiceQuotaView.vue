@@ -11,10 +11,6 @@
       <template #filters>
         <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
           <div class="flex flex-wrap items-center gap-3">
-            <select v-model="filters.limiter" class="input w-auto min-w-[160px]">
-              <option value="">{{ t('admin.serviceQuota.filters.allTypes') }}</option>
-              <option v-for="item in limiterOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
-            </select>
             <select v-model="filters.counterMode" class="input w-auto min-w-[160px]">
               <option value="">{{ t('admin.serviceQuota.filters.allCounterModes') }}</option>
               <option v-for="item in counterModeOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
@@ -51,24 +47,43 @@
             </span>
           </template>
 
-          <template #cell-scope="{ row }">
-            <div class="space-y-1">
-              <div class="flex items-center gap-2">
-                <span class="font-medium text-gray-900 dark:text-white">{{ scopePrimaryLabel(row) }}</span>
-                <span v-if="row.batch_id" class="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
-                  {{ t('admin.serviceQuota.batchRules', { count: batchCount(row.batch_id) }) }}
-                </span>
+          <template #cell-name="{ row }">
+            <div class="space-y-0.5">
+              <div class="font-medium text-gray-900 dark:text-white">
+                {{ row.name || t('admin.serviceQuota.unnamedRule', { id: row.id }) }}
               </div>
-              <div class="max-w-md truncate text-xs text-gray-500 dark:text-gray-400">{{ scopeDetail(row) }}</div>
+              <div class="text-xs text-gray-400">#{{ row.id }}</div>
             </div>
           </template>
 
-          <template #cell-limiter_type="{ row }">
-            <span :class="['badge', limiterBadgeClass(row.limiter_type)]">{{ limiterLabel(row.limiter_type) }}</span>
+          <template #cell-limiters="{ row }">
+            <div class="flex flex-wrap gap-1.5">
+              <span
+                v-for="lim in row.limiters"
+                :key="lim.id"
+                :class="['badge', limiterBadgeClass(lim.limiter_type)]"
+                :title="`${limiterLabel(lim.limiter_type)} = ${formatLimitValue(lim)}`"
+              >
+                {{ limiterLabel(lim.limiter_type) }}
+                <span class="ml-1 font-mono text-[10px] opacity-80">{{ formatLimitValue(lim) }}</span>
+              </span>
+            </div>
+          </template>
+
+          <template #cell-paths="{ row }">
+            <div class="space-y-1">
+              <div v-if="row.paths.length === 0" class="text-xs text-gray-400">{{ t('admin.serviceQuota.scopeDetails.allRequests') }}</div>
+              <div v-else>
+                <div class="text-sm text-gray-700 dark:text-gray-200">{{ pathSummary(row.paths[0]) }}</div>
+                <div v-if="row.paths.length > 1" class="text-xs text-gray-400">
+                  {{ t('admin.serviceQuota.morePaths', { count: row.paths.length - 1 }) }}
+                </div>
+              </div>
+            </div>
           </template>
 
           <template #cell-counter_mode="{ row }">
-            <div class="space-y-1">
+            <div class="space-y-0.5">
               <div class="text-sm font-medium text-gray-900 dark:text-white">{{ counterModeLabel(row.counter_mode) }}</div>
               <div v-if="row.counter_mode === 'user' && row.target_user_ids?.length" class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.serviceQuota.userId', { id: row.target_user_ids.join(', ') }) }}
@@ -82,14 +97,6 @@
             </span>
           </template>
 
-          <template #cell-window_mode="{ row }">
-            <span class="text-sm text-gray-700 dark:text-gray-300">{{ windowLabel(row) }}</span>
-          </template>
-
-          <template #cell-limit_value="{ row }">
-            <span class="font-mono text-sm font-semibold text-gray-900 dark:text-white">{{ formatLimit(row) }}</span>
-          </template>
-
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-1">
               <button class="action-btn hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20" type="button" :title="t('common.edit')" @click="openEdit(row)">
@@ -97,10 +104,6 @@
               </button>
               <button class="action-btn hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20" type="button" :title="t('common.delete')" @click="askDelete(row)">
                 <Icon name="trash" size="sm" />
-              </button>
-              <button v-if="row.batch_id" class="action-btn hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20" type="button" :title="t('admin.serviceQuota.deleteBatch')" @click="askDeleteBatch(row.batch_id)">
-                <Icon name="trash" size="sm" />
-                <span class="text-[10px]">{{ t('admin.serviceQuota.batchLabel') }}</span>
               </button>
             </div>
           </template>
@@ -118,19 +121,17 @@
     </TablePageLayout>
 
     <BaseDialog :show="showDialog" :title="editingID ? t('admin.serviceQuota.editRule') : t('admin.serviceQuota.createRule')" width="wide" @close="closeDialog">
-      <form id="service-quota-form" class="space-y-5" @submit.prevent="save">
-        <div class="grid gap-4 md:grid-cols-2">
+      <form id="service-quota-form" class="space-y-6" @submit.prevent="save">
+        <section class="grid gap-4 md:grid-cols-2">
+          <label class="form-field md:col-span-2">
+            <span class="input-label">{{ t('admin.serviceQuota.form.name') }}</span>
+            <input v-model="form.name" :placeholder="t('admin.serviceQuota.form.namePlaceholder')" class="input" maxlength="128" />
+          </label>
           <label class="form-field">
             <span class="input-label">{{ t('admin.serviceQuota.columns.status') }}</span>
             <select v-model="form.enabled" class="input">
               <option :value="true">{{ t('common.enabled') }}</option>
               <option :value="false">{{ t('common.disabled') }}</option>
-            </select>
-          </label>
-          <label class="form-field">
-            <span class="input-label">{{ t('admin.serviceQuota.columns.type') }}</span>
-            <select v-model="form.limiter_type" class="input">
-              <option v-for="item in limiterOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
             </select>
           </label>
           <label class="form-field">
@@ -140,105 +141,39 @@
             </select>
             <span class="text-xs text-gray-500 dark:text-gray-400">{{ counterModeHint(form.counter_mode) }}</span>
           </label>
-        </div>
-
-        <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
-          <div class="mb-3 text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.serviceQuota.form.scopeMatching') }}</div>
-          <div class="mb-4">
-            <span class="input-label mb-2 block">{{ t('admin.serviceQuota.form.platform') }}</span>
-            <PlatformPicker v-model="form.platform" />
-          </div>
-          <div class="grid gap-4 md:grid-cols-2">
-            <label class="form-field">
-              <span class="input-label">{{ t('admin.serviceQuota.form.channelId') }}</span>
-              <EntitySearchSelect
-                v-model="form.channel_id"
-                :placeholder="t('common.optional')"
-                :search="searchChannels"
-                :resolve-label="resolveChannelLabel"
-                :reset-token="form.platform ?? ''"
-              />
-            </label>
-            <label class="form-field">
-              <span class="input-label">{{ t('admin.serviceQuota.form.groupId') }}</span>
-              <EntitySearchSelect
-                v-model="form.group_id"
-                :placeholder="t('common.optional')"
-                :search="searchGroups"
-                :resolve-label="resolveGroupLabel"
-                :reset-token="`${form.platform ?? ''}:${form.channel_id ?? ''}`"
-              />
-            </label>
-            <div class="form-field">
-              <div class="flex items-center justify-between">
-                <span class="input-label">{{ t('admin.serviceQuota.form.accountId') }}</span>
-                <label v-if="!editingID" class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-                  <input v-model="batchMode" type="checkbox" class="h-3.5 w-3.5 rounded border-gray-300" />
-                  {{ t('admin.serviceQuota.batchMode') }}
-                </label>
-              </div>
-              <EntityMultiSearchSelect
-                v-if="batchMode && !editingID"
-                v-model="batchAccountIds"
-                :placeholder="t('common.optional')"
-                :search="searchAccounts"
-                :reset-token="`${form.platform ?? ''}:${form.group_id ?? ''}`"
-              />
-              <EntitySearchSelect
-                v-else
-                v-model="form.account_id"
-                :placeholder="t('common.optional')"
-                :search="searchAccounts"
-                :resolve-label="resolveAccountLabel"
-                :reset-token="`${form.platform ?? ''}:${form.group_id ?? ''}`"
-              />
-            </div>
-            <label class="form-field md:col-span-2">
-              <span class="input-label">{{ t('admin.serviceQuota.form.modelPattern') }}</span>
-              <input
-                v-model="form.model_pattern"
-                class="input"
-                :placeholder="t('admin.serviceQuota.form.modelPatternPlaceholder')"
-                list="service-quota-model-suggestions"
-              />
-              <datalist id="service-quota-model-suggestions">
-                <option v-for="m in availableModels" :key="m" :value="m" />
-              </datalist>
-              <span v-if="availableModels.length > 0" class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.serviceQuota.form.modelSuggestionHint', { count: availableModels.length }) }}
-              </span>
-            </label>
-          </div>
-        </div>
-
-        <div class="grid gap-4 md:grid-cols-3">
-          <div v-if="form.counter_mode === 'user'" class="form-field md:col-span-3">
-            <span class="input-label">{{ t('admin.serviceQuota.form.targetUserIds') }}</span>
-            <UserMultiSelect
-              v-model="selectedTargetUsers"
-              :placeholder="t('admin.serviceQuota.form.targetUserIdsPlaceholder')"
-            />
-            <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.serviceQuota.form.targetUserIdsRequired') }}</span>
-          </div>
-          <label class="form-field flex items-center gap-2">
+          <label class="form-field md:col-span-2 flex items-center gap-2">
             <input v-model="form.is_fallback" type="checkbox" class="h-4 w-4 rounded border-gray-300" />
             <span class="text-sm">
               <span class="font-medium text-gray-900 dark:text-white">{{ t('admin.serviceQuota.form.fallback') }}</span>
               <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.serviceQuota.fallback.hint') }}</span>
             </span>
           </label>
-          <label v-if="form.limiter_type !== 'concurrency'" class="form-field">
-            <span class="input-label">{{ t('admin.serviceQuota.columns.window') }}</span>
-            <select v-model="form.window_mode" class="input">
-              <option value="fixed">{{ t('admin.serviceQuota.windows.fixed') }}</option>
-              <option value="rolling">{{ t('admin.serviceQuota.windows.rolling') }}</option>
-            </select>
-          </label>
-          <label class="form-field">
-            <span class="input-label">{{ t('admin.serviceQuota.columns.limit') }}</span>
-            <input v-model.number="form.limit_value" class="input" min="0" step="0.000001" type="number" required />
-          </label>
-        </div>
+        </section>
+
+        <section v-if="form.counter_mode === 'user'" class="space-y-2">
+          <span class="input-label">{{ t('admin.serviceQuota.form.targetUserIds') }}</span>
+          <UserMultiSelect
+            v-model="selectedTargetUsers"
+            :placeholder="t('admin.serviceQuota.form.targetUserIdsPlaceholder')"
+          />
+          <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.serviceQuota.form.targetUserIdsRequired') }}</span>
+        </section>
+
+        <section class="space-y-2">
+          <div class="flex items-baseline justify-between">
+            <span class="input-label">{{ t('admin.serviceQuota.form.limitersTitle') }}</span>
+            <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.serviceQuota.form.limitersHint') }}</span>
+          </div>
+          <LimiterEditor v-model="form.limiters" />
+        </section>
+
+        <section class="space-y-2">
+          <div class="flex items-baseline justify-between">
+            <span class="input-label">{{ t('admin.serviceQuota.form.pathsTitle') }}</span>
+            <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.serviceQuota.form.pathsHint') }}</span>
+          </div>
+          <PathEditor v-model="form.paths" />
+        </section>
       </form>
 
       <template #footer>
@@ -254,29 +189,18 @@
     <ConfirmDialog
       :show="!!deletingRule"
       :title="t('admin.serviceQuota.deleteRule')"
-      :message="t('admin.serviceQuota.deleteConfirm', { type: deletingRule ? limiterLabel(deletingRule.limiter_type) : '' })"
+      :message="t('admin.serviceQuota.deleteConfirm', { name: deletingRule?.name || `#${deletingRule?.id}` })"
       :confirm-text="t('common.delete')"
       :cancel-text="t('common.cancel')"
       :danger="true"
       @confirm="confirmDelete"
       @cancel="deletingRule = null"
     />
-
-    <ConfirmDialog
-      :show="!!deletingBatchId"
-      :title="t('admin.serviceQuota.deleteBatch')"
-      :message="t('admin.serviceQuota.deleteBatchConfirm', { count: deletingBatchId ? batchCount(deletingBatchId) : 0 })"
-      :confirm-text="t('common.delete')"
-      :cancel-text="t('common.cancel')"
-      :danger="true"
-      @confirm="confirmDeleteBatch"
-      @cancel="deletingBatchId = null"
-    />
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -286,71 +210,39 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'
 import UserMultiSelect from '@/components/common/UserMultiSelect.vue'
-import EntitySearchSelect, { type EntitySearchItem } from '@/components/common/EntitySearchSelect.vue'
-import PlatformPicker from '@/components/common/PlatformPicker.vue'
+import LimiterEditor from '@/components/admin/LimiterEditor.vue'
+import PathEditor from '@/components/admin/PathEditor.vue'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import type { Column } from '@/components/common/types'
-import adminAPI from '@/api/admin'
 import type { SimpleUser } from '@/api/admin/usage'
-import type { GroupPlatform } from '@/types'
-import EntityMultiSearchSelect from '@/components/common/EntityMultiSearchSelect.vue'
-import { createBatchRules, createServiceQuotaRule, deleteBatch, deleteServiceQuotaRule, listServiceQuotaRules, updateServiceQuotaRule, type ServiceQuotaRule, type ServiceQuotaRuleInput } from '@/api/admin/serviceQuota'
+import {
+  createServiceQuotaRule,
+  deleteServiceQuotaRule,
+  listServiceQuotaRules,
+  updateServiceQuotaRule,
+  type ServiceQuotaLimiterDef,
+  type ServiceQuotaPathDef,
+  type ServiceQuotaRule,
+  type ServiceQuotaRuleInput,
+} from '@/api/admin/serviceQuota'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 
-const limiterOptions = computed(() => [
-  { value: 'rpm', label: t('admin.serviceQuota.limiters.rpm') },
-  { value: 'tpm', label: t('admin.serviceQuota.limiters.tpm') },
-  { value: 'tpd', label: t('admin.serviceQuota.limiters.tpd') },
-  { value: 'daily_usd', label: t('admin.serviceQuota.limiters.dailyUsd') },
-  { value: 'concurrency', label: t('admin.serviceQuota.limiters.concurrency') },
-])
 const counterModeOptions = computed(() => [
   { value: 'user', label: t('admin.serviceQuota.counterModes.user') },
   { value: 'per_user', label: t('admin.serviceQuota.counterModes.perUser') },
   { value: 'shared', label: t('admin.serviceQuota.counterModes.shared') },
 ])
 
-const availableModels = ref<string[]>([])
-
-async function refreshAvailableModels() {
-  if (form.account_id) {
-    try {
-      const list = await adminAPI.accounts.getAvailableModels(form.account_id)
-      availableModels.value = (list || []).map((m: { id?: string; display_name?: string }) => m.id || m.display_name || '').filter(Boolean)
-      return
-    } catch {
-      availableModels.value = []
-    }
-  }
-  availableModels.value = defaultModelsForPlatform(form.platform)
-}
-
-function defaultModelsForPlatform(platform?: string | null): string[] {
-  switch (platform) {
-    case 'anthropic':
-      return ['claude-opus-4-6', 'claude-opus-4-5', 'claude-sonnet-4-6', 'claude-sonnet-4-5', 'claude-haiku-4-5']
-    case 'openai':
-      return ['gpt-5.2', 'gpt-5.1', 'gpt-5', 'gpt-4.1', 'gpt-4o', 'gpt-4o-mini', 'o3', 'o3-mini']
-    case 'gemini':
-      return ['gemini-3-pro', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash']
-    case 'antigravity':
-      return ['gemini-3-pro-antigravity', 'gemini-2.5-pro-antigravity']
-    default:
-      return []
-  }
-}
-
 const columns = computed<Column[]>(() => [
   { key: 'enabled', label: t('admin.serviceQuota.columns.status') },
-  { key: 'scope', label: t('admin.serviceQuota.columns.scope') },
-  { key: 'limiter_type', label: t('admin.serviceQuota.columns.type') },
+  { key: 'name', label: t('admin.serviceQuota.columns.name') },
+  { key: 'limiters', label: t('admin.serviceQuota.columns.limiters') },
+  { key: 'paths', label: t('admin.serviceQuota.columns.paths') },
   { key: 'counter_mode', label: t('admin.serviceQuota.columns.counterMode') },
   { key: 'is_fallback', label: t('admin.serviceQuota.columns.fallback') },
-  { key: 'window_mode', label: t('admin.serviceQuota.columns.window') },
-  { key: 'limit_value', label: t('admin.serviceQuota.columns.limit') },
   { key: 'actions', label: t('admin.serviceQuota.columns.actions') },
 ])
 
@@ -360,101 +252,64 @@ const saving = ref(false)
 const showDialog = ref(false)
 const editingID = ref<number | null>(null)
 const deletingRule = ref<ServiceQuotaRule | null>(null)
-const filters = reactive({ limiter: '', counterMode: '', fallback: '', enabled: '' })
+const filters = reactive({ counterMode: '', fallback: '', enabled: '' })
 const form = reactive<ServiceQuotaRuleInput>(blankRule())
 const selectedTargetUsers = ref<SimpleUser[]>([])
-const batchMode = ref(false)
-const batchAccountIds = ref<number[]>([])
-const deletingBatchId = ref<string | null>(null)
 
 const filteredRules = computed(() => rules.value.filter((rule) => {
-  if (filters.limiter && rule.limiter_type !== filters.limiter) return false
   if (filters.counterMode && rule.counter_mode !== filters.counterMode) return false
   if (filters.fallback && String(rule.is_fallback) !== filters.fallback) return false
   if (filters.enabled && String(rule.enabled) !== filters.enabled) return false
   return true
 }))
 
-watch(() => form.limiter_type, (value) => {
-  if (value === 'concurrency') form.window_mode = 'fixed'
-})
-
-watch([() => form.platform, () => form.account_id], () => {
-  refreshAvailableModels()
-})
-
 function blankRule(): ServiceQuotaRuleInput {
   return {
     enabled: true,
-    limiter_type: 'rpm',
+    name: null,
     counter_mode: 'per_user',
     is_fallback: false,
     target_user_ids: null,
-    window_mode: 'fixed',
-    limit_value: 60,
+    limiters: [{ limiter_type: 'rpm', window_mode: 'fixed', limit_value: 60 }],
+    paths: [{ platform: null, channel_id: null, group_id: null, account_id: null, model_pattern: null }],
   }
 }
 
 function resetForm(rule?: ServiceQuotaRule) {
-  Object.assign(form, blankRule(), rule || {})
+  const initial = blankRule()
+  if (rule) {
+    initial.enabled = rule.enabled
+    initial.name = rule.name ?? null
+    initial.counter_mode = rule.counter_mode
+    initial.is_fallback = rule.is_fallback
+    initial.limiters = rule.limiters.map((l) => ({
+      limiter_type: l.limiter_type,
+      window_mode: l.window_mode,
+      limit_value: l.limit_value,
+    }))
+    initial.paths = rule.paths.map((p) => ({
+      platform: p.platform ?? null,
+      channel_id: p.channel_id ?? null,
+      group_id: p.group_id ?? null,
+      account_id: p.account_id ?? null,
+      model_pattern: p.model_pattern ?? null,
+    }))
+    initial.target_user_ids = rule.target_user_ids ?? null
+  }
+  Object.assign(form, initial)
   editingID.value = rule?.id ?? null
   selectedTargetUsers.value = (rule?.target_users || []).map((u) => ({ id: u.id, email: u.email }))
-  batchMode.value = false
-  batchAccountIds.value = []
 }
 
-function optionLabel(options: Array<{ value: string; label: string }>, value: string): string {
-  return options.find((item) => item.value === value)?.label || value
-}
-
-function limiterLabel(value: string): string { return optionLabel(limiterOptions.value, value) }
-
-function scopePrimaryLabel(rule: ServiceQuotaRule): string {
-  const fields = [rule.model_pattern, rule.account_id, rule.group_id, rule.channel_id, rule.platform]
-  const hit = fields.find((v) => v !== null && v !== undefined && v !== '')
-  if (hit === rule.model_pattern) return t('admin.serviceQuota.scopes.model')
-  if (hit === rule.account_id) return t('admin.serviceQuota.scopes.account')
-  if (hit === rule.group_id) return t('admin.serviceQuota.scopes.group')
-  if (hit === rule.channel_id) return t('admin.serviceQuota.scopes.channel')
-  if (hit === rule.platform) return t('admin.serviceQuota.scopes.platform')
-  return t('admin.serviceQuota.scopes.global')
-}
-function counterModeLabel(value: string): string { return optionLabel(counterModeOptions.value, value) }
-
-function counterModeHint(value: string): string {
+function limiterLabel(value: string): string {
   const map: Record<string, string> = {
-    user: t('admin.serviceQuota.counterModeHints.user'),
-    per_user: t('admin.serviceQuota.counterModeHints.perUser'),
-    shared: t('admin.serviceQuota.counterModeHints.shared'),
+    rpm: t('admin.serviceQuota.limiters.rpm'),
+    tpm: t('admin.serviceQuota.limiters.tpm'),
+    tpd: t('admin.serviceQuota.limiters.tpd'),
+    daily_usd: t('admin.serviceQuota.limiters.dailyUsd'),
+    concurrency: t('admin.serviceQuota.limiters.concurrency'),
   }
-  return map[value] || ''
-}
-
-function scopeDetail(rule: ServiceQuotaRule): string {
-  const parts = [
-    rule.platform && t('admin.serviceQuota.scopeDetails.platform', { value: rule.platform }),
-    rule.channel_id && t('admin.serviceQuota.scopeDetails.channel', { value: rule.channel_id }),
-    rule.group_id && t('admin.serviceQuota.scopeDetails.group', { value: rule.group_id }),
-    rule.account_id && t('admin.serviceQuota.scopeDetails.account', { value: rule.account_id }),
-    rule.model_pattern && t('admin.serviceQuota.scopeDetails.model', { value: rule.model_pattern }),
-  ].filter(Boolean)
-  return parts.length > 0 ? parts.join(' / ') : t('admin.serviceQuota.scopeDetails.allRequests')
-}
-
-function windowLabel(rule: ServiceQuotaRule): string {
-  if (rule.limiter_type === 'concurrency') return t('admin.serviceQuota.windows.none')
-  return rule.window_mode === 'rolling' ? t('admin.serviceQuota.windows.rolling') : t('admin.serviceQuota.windows.fixed')
-}
-
-function formatLimit(rule: ServiceQuotaRule): string {
-  const limit = formatLimitValue(rule, rule.limit_value)
-  if (rule.current_usage === undefined || rule.current_usage === null) return limit
-  return `${formatLimitValue(rule, rule.current_usage)} / ${limit}`
-}
-
-function formatLimitValue(rule: ServiceQuotaRule, value: number): string {
-  if (rule.limiter_type === 'daily_usd') return `$${Number(value).toFixed(6).replace(/\.?0+$/, '')}`
-  return String(value)
+  return map[value] || value
 }
 
 function limiterBadgeClass(value: string): string {
@@ -468,93 +323,70 @@ function limiterBadgeClass(value: string): string {
   return classes[value] || 'badge-gray'
 }
 
-function normalizePayload(): ServiceQuotaRuleInput {
-  const payload = { ...form }
-  payload.platform = cleanText(payload.platform)
-  payload.model_pattern = cleanText(payload.model_pattern)
-  payload.channel_id = cleanNumber(payload.channel_id)
-  payload.group_id = cleanNumber(payload.group_id)
-  payload.account_id = cleanNumber(payload.account_id)
-  if (payload.counter_mode === 'user') {
-    payload.target_user_ids = selectedTargetUsers.value.map((u) => u.id)
-  } else {
-    payload.target_user_ids = null
+function formatLimitValue(lim: ServiceQuotaLimiterDef): string {
+  if (lim.limiter_type === 'daily_usd') return `$${Number(lim.limit_value).toFixed(6).replace(/\.?0+$/, '')}`
+  return String(lim.limit_value)
+}
+
+function counterModeLabel(value: string): string {
+  return counterModeOptions.value.find((item) => item.value === value)?.label || value
+}
+
+function counterModeHint(value: string): string {
+  const map: Record<string, string> = {
+    user: t('admin.serviceQuota.counterModeHints.user'),
+    per_user: t('admin.serviceQuota.counterModeHints.perUser'),
+    shared: t('admin.serviceQuota.counterModeHints.shared'),
   }
-  if (payload.limiter_type === 'concurrency') payload.window_mode = 'fixed'
+  return map[value] || ''
+}
+
+function pathSummary(path: ServiceQuotaPathDef): string {
+  const parts: string[] = []
+  if (path.platform) parts.push(t('admin.serviceQuota.scopeDetails.platform', { value: path.platform }))
+  if (path.channel_id) parts.push(t('admin.serviceQuota.scopeDetails.channel', { value: path.channel_id }))
+  if (path.group_id) parts.push(t('admin.serviceQuota.scopeDetails.group', { value: path.group_id }))
+  if (path.account_id) parts.push(t('admin.serviceQuota.scopeDetails.account', { value: path.account_id }))
+  if (path.model_pattern) parts.push(t('admin.serviceQuota.scopeDetails.model', { value: path.model_pattern }))
+  return parts.length > 0 ? parts.join(' / ') : t('admin.serviceQuota.scopeDetails.allRequests')
+}
+
+function normalizePayload(): ServiceQuotaRuleInput {
+  const payload: ServiceQuotaRuleInput = {
+    enabled: form.enabled,
+    name: cleanText(form.name),
+    counter_mode: form.counter_mode,
+    is_fallback: form.is_fallback,
+    limiters: form.limiters.map((l) => ({
+      limiter_type: l.limiter_type,
+      window_mode: l.limiter_type === 'concurrency' ? 'fixed' : l.window_mode,
+      limit_value: Number(l.limit_value),
+    })),
+    paths: form.paths.map((p) => ({
+      platform: cleanText(p.platform),
+      channel_id: cleanNumber(p.channel_id),
+      group_id: cleanNumber(p.group_id),
+      account_id: cleanNumber(p.account_id),
+      model_pattern: cleanText(p.model_pattern),
+    })),
+    target_user_ids: form.counter_mode === 'user' ? selectedTargetUsers.value.map((u) => u.id) : null,
+  }
   return payload
 }
 
-function cleanText(value?: string | null): string | null { return value && value.trim() ? value.trim() : null }
-function cleanNumber(value?: number | null): number | null { return value && value > 0 ? value : null }
-
-async function searchChannels(keyword: string, signal: AbortSignal): Promise<EntitySearchItem[]> {
-  const filters: { search?: string } = {}
-  if (keyword) filters.search = keyword
-  const res = await adminAPI.channels.list(1, 20, filters, { signal })
-  return res.items.map((ch) => ({
-    id: ch.id,
-    label: ch.name,
-    sub: ch.status || '',
-  }))
+function cleanText(value?: string | null): string | null {
+  return value && value.trim() ? value.trim() : null
 }
 
-async function resolveChannelLabel(id: number): Promise<EntitySearchItem | null> {
-  try {
-    const res = await adminAPI.channels.getById(id)
-    return { id: res.id, label: res.name }
-  } catch {
-    return null
-  }
-}
-
-async function searchGroups(keyword: string, signal: AbortSignal): Promise<EntitySearchItem[]> {
-  const filters: { search?: string; platform?: GroupPlatform } = {}
-  if (keyword) filters.search = keyword
-  if (form.platform) filters.platform = form.platform as GroupPlatform
-  const res = await adminAPI.groups.list(1, 20, filters, { signal })
-  return res.items.map((g) => ({
-    id: g.id,
-    label: g.name,
-    sub: g.platform || '',
-  }))
-}
-
-async function resolveGroupLabel(id: number): Promise<EntitySearchItem | null> {
-  try {
-    const res = await adminAPI.groups.getById(id)
-    return { id: res.id, label: res.name, sub: res.platform || '' }
-  } catch {
-    return null
-  }
-}
-
-async function searchAccounts(keyword: string, signal: AbortSignal): Promise<EntitySearchItem[]> {
-  const filters: Record<string, string> = {}
-  if (keyword) filters.search = keyword
-  if (form.platform) filters.platform = form.platform
-  if (form.group_id) filters.group = String(form.group_id)
-  const res = await adminAPI.accounts.list(1, 20, filters, { signal })
-  return res.items.map((a) => ({
-    id: a.id,
-    label: a.name,
-    sub: a.platform || '',
-  }))
-}
-
-async function resolveAccountLabel(id: number): Promise<EntitySearchItem | null> {
-  try {
-    const res = await adminAPI.accounts.getById(id)
-    return { id: res.id, label: res.name, sub: res.platform || '' }
-  } catch {
-    return null
-  }
+function cleanNumber(value?: number | null): number | null {
+  return value && value > 0 ? value : null
 }
 
 async function load() {
   loading.value = true
   try {
     rules.value = await listServiceQuotaRules()
-  } catch (error) {
+  } catch (error: unknown) {
     appStore.showError(extractApiErrorMessage(error, t('admin.serviceQuota.loadError')))
   } finally {
     loading.value = false
@@ -581,40 +413,21 @@ async function save() {
     const payload = normalizePayload()
     if (editingID.value) {
       await updateServiceQuotaRule(editingID.value, payload)
-    } else if (batchMode.value && batchAccountIds.value.length > 1) {
-      const batchId = crypto.randomUUID()
-      const inputs = batchAccountIds.value.map((accountId) => ({
-        ...payload,
-        account_id: accountId,
-        batch_id: batchId,
-      }))
-      await createBatchRules(inputs)
     } else {
-      if (batchMode.value && batchAccountIds.value.length === 1) {
-        payload.account_id = batchAccountIds.value[0]
-      }
       await createServiceQuotaRule(payload)
     }
     appStore.showSuccess(t('admin.serviceQuota.saveSuccess'))
     showDialog.value = false
     await load()
-  } catch (error) {
+  } catch (error: unknown) {
     appStore.showError(extractApiErrorMessage(error, t('admin.serviceQuota.saveError')))
   } finally {
     saving.value = false
   }
 }
 
-function batchCount(batchId: string): number {
-  return rules.value.filter((r) => r.batch_id === batchId).length
-}
-
 function askDelete(rule: ServiceQuotaRule) {
   deletingRule.value = rule
-}
-
-function askDeleteBatch(batchId: string) {
-  deletingBatchId.value = batchId
 }
 
 async function confirmDelete() {
@@ -624,19 +437,7 @@ async function confirmDelete() {
     appStore.showSuccess(t('admin.serviceQuota.deleteSuccess'))
     deletingRule.value = null
     await load()
-  } catch (error) {
-    appStore.showError(extractApiErrorMessage(error, t('admin.serviceQuota.deleteError')))
-  }
-}
-
-async function confirmDeleteBatch() {
-  if (!deletingBatchId.value) return
-  try {
-    await deleteBatch(deletingBatchId.value)
-    appStore.showSuccess(t('admin.serviceQuota.deleteSuccess'))
-    deletingBatchId.value = null
-    await load()
-  } catch (error) {
+  } catch (error: unknown) {
     appStore.showError(extractApiErrorMessage(error, t('admin.serviceQuota.deleteError')))
   }
 }

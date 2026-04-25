@@ -104,9 +104,6 @@ func registerServiceQuotaRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		quotas.GET("", h.Admin.ServiceQuota.List)
 		quotas.POST("", h.Admin.ServiceQuota.Create)
-		quotas.POST("/batch", h.Admin.ServiceQuota.CreateBatch)
-		quotas.PUT("/batch/:batch_id", h.Admin.ServiceQuota.UpdateBatch)
-		quotas.DELETE("/batch/:batch_id", h.Admin.ServiceQuota.DeleteBatch)
 		quotas.PUT("/:id", h.Admin.ServiceQuota.Update)
 		quotas.DELETE("/:id", h.Admin.ServiceQuota.Delete)
 	}

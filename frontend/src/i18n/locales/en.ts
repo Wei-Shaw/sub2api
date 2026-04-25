@@ -3824,35 +3824,30 @@ export default {
       emptyTitle: 'No service quota rules yet',
       emptyDescription: 'Create the first rule to add checks on top of the existing limits.',
       userId: 'User ID: {id}',
+      unnamedRule: 'Unnamed rule #{id}',
+      morePaths: '+{count} more paths',
       loadError: 'Failed to load service quota rules',
       saveSuccess: 'Service quota rule saved',
       saveError: 'Failed to save service quota rule',
       deleteSuccess: 'Service quota rule deleted',
       deleteError: 'Failed to delete service quota rule',
-      deleteConfirm: 'Delete the {type} rule? It will stop taking effect immediately.',
+      deleteConfirm: 'Delete rule {name}? It will stop taking effect immediately.',
       filters: {
-        allTypes: 'All Types',
         allCounterModes: 'All Counter Modes',
         allFallback: 'All Fallback States',
         allStatus: 'All Status'
       },
       columns: {
         status: 'Status',
-        scope: 'Scope',
-        type: 'Type',
+        name: 'Name',
+        limiters: 'Limiters',
+        paths: 'Paths',
         counterMode: 'Counter Mode',
         fallback: 'Fallback',
+        type: 'Type',
         window: 'Window',
         limit: 'Limit',
         actions: 'Actions'
-      },
-      scopes: {
-        global: 'Global',
-        platform: 'Platform',
-        channel: 'Channel',
-        group: 'Group',
-        account: 'Account',
-        model: 'Model'
       },
       scopeDetails: {
         platform: 'Platform: {value}',
@@ -3881,7 +3876,7 @@ export default {
       },
       fallback: {
         label: 'Fallback Rule',
-        hint: 'Only takes effect when no other non-fallback rule of the same limiter type matches',
+        hint: 'Limiters are dropped when another non-fallback rule covers the same limiter type',
         yes: 'Fallback',
         no: 'Regular'
       },
@@ -3891,27 +3886,35 @@ export default {
         none: 'No Window'
       },
       form: {
-        scopeMatching: 'Scope Filters (any combination; leave blank to skip that dimension)',
-        platform: 'Platform',
-        platformPlaceholder: 'e.g. anthropic / openai / gemini',
-        channelId: 'Channel',
-        groupId: 'Group',
-        accountId: 'Account ID',
-        modelPattern: 'Model Pattern',
-        modelPatternPlaceholder: 'e.g. claude-opus-* or pick a suggestion below',
-        modelSuggestionHint: '{count} suggested models available (or enter a glob pattern)',
+        name: 'Rule Name',
+        namePlaceholder: 'Optional label for this rule',
         counterMode: 'Counter Mode',
         fallback: 'Fallback Rule',
         targetUserIds: 'Bound User IDs',
         targetUserIdsPlaceholder: 'Comma-separated user IDs, e.g. 1,2,3',
         targetUserIdsRequired: 'Required when counter mode is "Specific Users"',
+        limitersTitle: 'Limiters (a single rule can carry multiple)',
+        limitersHint: 'Each limiter type can appear once; concurrency has no window',
+        pathsTitle: 'Match Paths (rule fires when ANY path matches)',
+        pathsHint: 'Each path drills Platform -> Channel -> Group -> Account -> Model. Empty = no restriction on that dimension.',
+        platform: 'Platform',
+        platformPlaceholder: 'e.g. anthropic / openai / gemini',
+        channelId: 'Channel',
+        groupId: 'Group',
+        accountId: 'Account',
+        modelPattern: 'Model Pattern',
+        modelPatternPlaceholder: 'e.g. claude-opus-* or an exact model name',
         required: 'Required'
       },
-      batchMode: 'Batch',
-      batchRules: 'Batch ({count})',
-      batchLabel: 'Batch',
-      deleteBatch: 'Delete Batch',
-      deleteBatchConfirm: 'Delete all {count} rules in this batch?'
+      limiterEditor: {
+        empty: 'No limiter added yet. Click below to add one.',
+        add: 'Add Limiter'
+      },
+      pathEditor: {
+        empty: 'No path added yet. Click below to add one.',
+        add: 'Add Path',
+        pathIndex: 'Path #{index}'
+      }
     },
 
     // Usage Records
