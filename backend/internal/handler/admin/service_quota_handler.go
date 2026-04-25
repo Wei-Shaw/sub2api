@@ -79,6 +79,57 @@ func (h *ServiceQuotaHandler) Delete(c *gin.Context) {
 	response.Success(c, gin.H{"deleted": true})
 }
 
+func (h *ServiceQuotaHandler) CreateBatch(c *gin.Context) {
+	var body struct {
+		Rules []service.ServiceQuotaRuleInput `json:"rules"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	if len(body.Rules) == 0 {
+		response.BadRequest(c, "rules is required")
+		return
+	}
+	rules, err := h.svc.CreateBatch(c.Request.Context(), body.Rules)
+	if err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	response.Success(c, gin.H{"items": rules, "total": len(rules)})
+}
+
+func (h *ServiceQuotaHandler) UpdateBatch(c *gin.Context) {
+	batchID := c.Param("batch_id")
+	if batchID == "" {
+		response.BadRequest(c, "invalid batch_id")
+		return
+	}
+	var patch service.ServiceQuotaBatchPatch
+	if err := c.ShouldBindJSON(&patch); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	if err := h.svc.UpdateBatch(c.Request.Context(), batchID, patch); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	response.Success(c, gin.H{"updated": true})
+}
+
+func (h *ServiceQuotaHandler) DeleteBatch(c *gin.Context) {
+	batchID := c.Param("batch_id")
+	if batchID == "" {
+		response.BadRequest(c, "invalid batch_id")
+		return
+	}
+	if err := h.svc.DeleteBatch(c.Request.Context(), batchID); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	response.Success(c, gin.H{"deleted": true})
+}
+
 func parseServiceQuotaID(c *gin.Context) (int64, bool) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || id <= 0 {

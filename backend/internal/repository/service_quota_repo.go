@@ -17,9 +17,9 @@ func NewServiceQuotaRuleRepository(db *sql.DB) service.ServiceQuotaRuleRepositor
 	return &serviceQuotaRuleRepository{db: db}
 }
 
-const serviceQuotaColumns = `id, enabled, platform, group_id, account_id, model_pattern, limiter_type, counter_mode, is_fallback, window_mode, limit_value, created_at, updated_at`
+const serviceQuotaColumns = `id, enabled, platform, group_id, account_id, model_pattern, limiter_type, counter_mode, is_fallback, window_mode, limit_value, batch_id, created_at, updated_at`
 
-const serviceQuotaInsertSQL = `INSERT INTO service_quota_rules (enabled, platform, group_id, account_id, model_pattern, limiter_type, counter_mode, is_fallback, window_mode, limit_value) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING ` + serviceQuotaColumns
+const serviceQuotaInsertSQL = `INSERT INTO service_quota_rules (enabled, platform, group_id, account_id, model_pattern, limiter_type, counter_mode, is_fallback, window_mode, limit_value, batch_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING ` + serviceQuotaColumns
 
 const serviceQuotaUpdateSQL = `UPDATE service_quota_rules SET enabled=$1, platform=$2, group_id=$3, account_id=$4, model_pattern=$5, limiter_type=$6, counter_mode=$7, is_fallback=$8, window_mode=$9, limit_value=$10, updated_at=now() WHERE id=$11 RETURNING ` + serviceQuotaColumns
 
@@ -67,7 +67,7 @@ func (r *serviceQuotaRuleRepository) Create(ctx context.Context, input service.S
 	row := tx.QueryRowContext(ctx, serviceQuotaInsertSQL,
 		input.Enabled, input.Platform, input.GroupID, input.AccountID,
 		input.ModelPattern, input.LimiterType, input.CounterMode, input.IsFallback,
-		input.WindowMode, input.LimitValue)
+		input.WindowMode, input.LimitValue, input.BatchID)
 	rule, err := scanServiceQuotaRule(row)
 	if err != nil {
 		return nil, err
@@ -120,6 +120,72 @@ func (r *serviceQuotaRuleRepository) Delete(ctx context.Context, id int64) error
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+func (r *serviceQuotaRuleRepository) CreateBatch(ctx context.Context, inputs []service.ServiceQuotaRuleInput) ([]*service.ServiceQuotaRule, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	rules := make([]*service.ServiceQuotaRule, 0, len(inputs))
+	for _, input := range inputs {
+		row := tx.QueryRowContext(ctx, serviceQuotaInsertSQL,
+			input.Enabled, input.Platform, input.GroupID, input.AccountID,
+			input.ModelPattern, input.LimiterType, input.CounterMode, input.IsFallback,
+			input.WindowMode, input.LimitValue, input.BatchID)
+		rule, err := scanServiceQuotaRule(row)
+		if err != nil {
+			return nil, err
+		}
+		if err := replaceRuleUsersTx(ctx, tx, rule.ID, input.TargetUserIDs); err != nil {
+			return nil, err
+		}
+		rules = append(rules, rule)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	if err := r.loadRuleUsers(ctx, rules); err != nil {
+		return nil, err
+	}
+	return rules, nil
+}
+
+func (r *serviceQuotaRuleRepository) UpdateBatch(ctx context.Context, batchID string, patch service.ServiceQuotaBatchPatch) (int64, error) {
+	sets := []string{"updated_at = now()"}
+	args := []any{batchID}
+	idx := 2
+	if patch.Enabled != nil {
+		sets = append(sets, fmt.Sprintf("enabled = $%d", idx))
+		args = append(args, *patch.Enabled)
+		idx++
+	}
+	if patch.LimitValue != nil {
+		sets = append(sets, fmt.Sprintf("limit_value = $%d", idx))
+		args = append(args, *patch.LimitValue)
+		idx++
+	}
+	if patch.WindowMode != nil {
+		sets = append(sets, fmt.Sprintf("window_mode = $%d", idx))
+		args = append(args, *patch.WindowMode)
+		idx++
+	}
+	query := fmt.Sprintf("UPDATE service_quota_rules SET %s WHERE batch_id = $1", strings.Join(sets, ", "))
+	res, err := r.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+func (r *serviceQuotaRuleRepository) DeleteBatch(ctx context.Context, batchID string) (int64, error) {
+	res, err := r.db.ExecContext(ctx, `DELETE FROM service_quota_rules WHERE batch_id = $1`, batchID)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 // FetchAccountScope 返回账号所属的 platform 及其所属的 group ID 列表，用于 scope 一致性校验。
@@ -245,12 +311,12 @@ type serviceQuotaScanner interface{ Scan(dest ...any) error }
 
 func scanServiceQuotaRule(scanner serviceQuotaScanner) (*service.ServiceQuotaRule, error) {
 	var rule service.ServiceQuotaRule
-	var platform, model sql.NullString
+	var platform, model, batchID sql.NullString
 	var groupID, accountID sql.NullInt64
 	err := scanner.Scan(
 		&rule.ID, &rule.Enabled, &platform, &groupID, &accountID, &model,
 		&rule.LimiterType, &rule.CounterMode, &rule.IsFallback,
-		&rule.WindowMode, &rule.LimitValue, &rule.CreatedAt, &rule.UpdatedAt,
+		&rule.WindowMode, &rule.LimitValue, &batchID, &rule.CreatedAt, &rule.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -269,6 +335,9 @@ func scanServiceQuotaRule(scanner serviceQuotaScanner) (*service.ServiceQuotaRul
 	}
 	if model.Valid {
 		rule.ModelPattern = &model.String
+	}
+	if batchID.Valid {
+		rule.BatchID = &batchID.String
 	}
 	return &rule, nil
 }

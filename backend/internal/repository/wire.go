@@ -94,6 +94,7 @@ var ProviderSet = wire.NewSet(
 	NewServiceQuotaRuleRepository,
 
 	// Cache implementations
+	NewServiceQuotaCache,
 	NewGatewayCache,
 	NewBillingCache,
 	NewAPIKeyCache,

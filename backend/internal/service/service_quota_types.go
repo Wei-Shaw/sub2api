@@ -72,6 +72,7 @@ type ServiceQuotaRule struct {
 	TargetUsers   []ServiceQuotaRuleUserRef `json:"target_users,omitempty"`
 	WindowMode    string                    `json:"window_mode"`
 	LimitValue    float64                   `json:"limit_value"`
+	BatchID       *string                   `json:"batch_id,omitempty"`
 	CurrentUsage  *float64                  `json:"current_usage,omitempty"`
 	CreatedAt     time.Time                 `json:"created_at"`
 	UpdatedAt     time.Time                 `json:"updated_at"`
@@ -89,6 +90,14 @@ type ServiceQuotaRuleInput struct {
 	TargetUserIDs []int64 `json:"target_user_ids"`
 	WindowMode    string  `json:"window_mode"`
 	LimitValue    float64 `json:"limit_value"`
+	BatchID       *string `json:"batch_id,omitempty"`
+}
+
+// ServiceQuotaBatchPatch 用于批量更新同一 batch_id 下所有规则的非 scope 字段。
+type ServiceQuotaBatchPatch struct {
+	Enabled    *bool    `json:"enabled"`
+	LimitValue *float64 `json:"limit_value"`
+	WindowMode *string  `json:"window_mode"`
 }
 
 type ServiceQuotaListFilter struct {
@@ -127,8 +136,11 @@ type GroupScopeInfo struct {
 type ServiceQuotaRuleRepository interface {
 	List(ctx context.Context, filter ServiceQuotaListFilter) ([]*ServiceQuotaRule, error)
 	Create(ctx context.Context, input ServiceQuotaRuleInput) (*ServiceQuotaRule, error)
+	CreateBatch(ctx context.Context, inputs []ServiceQuotaRuleInput) ([]*ServiceQuotaRule, error)
 	Update(ctx context.Context, id int64, input ServiceQuotaRuleInput) (*ServiceQuotaRule, error)
+	UpdateBatch(ctx context.Context, batchID string, patch ServiceQuotaBatchPatch) (int64, error)
 	Delete(ctx context.Context, id int64) error
+	DeleteBatch(ctx context.Context, batchID string) (int64, error)
 	FetchAccountScope(ctx context.Context, accountID int64) (*AccountScopeInfo, error)
 	FetchGroupScope(ctx context.Context, groupID int64) (*GroupScopeInfo, error)
 }
@@ -140,11 +152,23 @@ type ServiceQuotaLimiter interface {
 	Release(ctx context.Context, key, member string) error
 }
 
+type ServiceQuotaCache interface {
+	GetRules(ctx context.Context) ([]*ServiceQuotaRule, bool, error)
+	SetRules(ctx context.Context, rules []*ServiceQuotaRule) error
+	GetEnabled(ctx context.Context) (*bool, error)
+	SetEnabled(ctx context.Context, enabled bool) error
+	Invalidate(ctx context.Context) error
+}
+
 type ServiceQuotaService interface {
 	ListRules(ctx context.Context, filter ServiceQuotaListFilter) ([]*ServiceQuotaRule, error)
 	CreateRule(ctx context.Context, input ServiceQuotaRuleInput) (*ServiceQuotaRule, error)
+	CreateBatch(ctx context.Context, inputs []ServiceQuotaRuleInput) ([]*ServiceQuotaRule, error)
 	UpdateRule(ctx context.Context, id int64, input ServiceQuotaRuleInput) (*ServiceQuotaRule, error)
+	UpdateBatch(ctx context.Context, batchID string, patch ServiceQuotaBatchPatch) error
 	DeleteRule(ctx context.Context, id int64) error
+	DeleteBatch(ctx context.Context, batchID string) error
+	InvalidateEnabledCache(ctx context.Context)
 	PreCheck(ctx context.Context, req ServiceQuotaCheckRequest) (*ServiceQuotaLease, error)
 	Record(ctx context.Context, req ServiceQuotaRecordRequest)
 }

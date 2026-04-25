@@ -19,12 +19,19 @@ export interface ServiceQuotaRule {
   target_users?: ServiceQuotaRuleUserRef[] | null
   window_mode: string
   limit_value: number
+  batch_id?: string | null
   current_usage?: number | null
   created_at: string
   updated_at: string
 }
 
 export type ServiceQuotaRuleInput = Omit<ServiceQuotaRule, 'id' | 'current_usage' | 'created_at' | 'updated_at' | 'target_users'>
+
+export interface ServiceQuotaBatchPatch {
+  enabled?: boolean
+  limit_value?: number
+  window_mode?: string
+}
 
 export async function listServiceQuotaRules(): Promise<ServiceQuotaRule[]> {
   const { data } = await apiClient.get<{ items: ServiceQuotaRule[] }>('/admin/service-quotas')
@@ -43,4 +50,17 @@ export async function updateServiceQuotaRule(id: number, input: ServiceQuotaRule
 
 export async function deleteServiceQuotaRule(id: number): Promise<void> {
   await apiClient.delete(`/admin/service-quotas/${id}`)
+}
+
+export async function createBatchRules(rules: ServiceQuotaRuleInput[]): Promise<ServiceQuotaRule[]> {
+  const { data } = await apiClient.post<{ items: ServiceQuotaRule[] }>('/admin/service-quotas/batch', { rules })
+  return data.items || []
+}
+
+export async function updateBatch(batchId: string, patch: ServiceQuotaBatchPatch): Promise<void> {
+  await apiClient.put(`/admin/service-quotas/batch/${batchId}`, patch)
+}
+
+export async function deleteBatch(batchId: string): Promise<void> {
+  await apiClient.delete(`/admin/service-quotas/batch/${batchId}`)
 }

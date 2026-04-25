@@ -391,6 +391,10 @@ func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupReposit
 	return svc
 }
 
+func ProvideServiceQuotaService(repo ServiceQuotaRuleRepository, settings *SettingService, limiter ServiceQuotaLimiter, cache ServiceQuotaCache) ServiceQuotaService {
+	return NewServiceQuotaService(repo, settings, limiter, cache)
+}
+
 // ProvideBillingCacheService wires BillingCacheService with its RPM dependencies.
 func ProvideBillingCacheService(
 	cache BillingCache,
@@ -422,7 +426,7 @@ var ProviderSet = wire.NewSet(
 	ProvidePricingService,
 	NewBillingService,
 	ProvideBillingCacheService,
-	NewServiceQuotaService,
+	ProvideServiceQuotaService,
 	NewAnnouncementService,
 	NewAdminService,
 	NewGatewayService,

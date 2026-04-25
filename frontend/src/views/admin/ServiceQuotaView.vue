@@ -53,7 +53,12 @@
 
           <template #cell-scope="{ row }">
             <div class="space-y-1">
-              <div class="font-medium text-gray-900 dark:text-white">{{ scopePrimaryLabel(row) }}</div>
+              <div class="flex items-center gap-2">
+                <span class="font-medium text-gray-900 dark:text-white">{{ scopePrimaryLabel(row) }}</span>
+                <span v-if="row.batch_id" class="rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
+                  {{ t('admin.serviceQuota.batchRules', { count: batchCount(row.batch_id) }) }}
+                </span>
+              </div>
               <div class="max-w-md truncate text-xs text-gray-500 dark:text-gray-400">{{ scopeDetail(row) }}</div>
             </div>
           </template>
@@ -92,6 +97,10 @@
               </button>
               <button class="action-btn hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20" type="button" :title="t('common.delete')" @click="askDelete(row)">
                 <Icon name="trash" size="sm" />
+              </button>
+              <button v-if="row.batch_id" class="action-btn hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20" type="button" :title="t('admin.serviceQuota.deleteBatch')" @click="askDeleteBatch(row.batch_id)">
+                <Icon name="trash" size="sm" />
+                <span class="text-[10px]">{{ t('admin.serviceQuota.batchLabel') }}</span>
               </button>
             </div>
           </template>
@@ -150,16 +159,30 @@
                 :reset-token="form.platform ?? ''"
               />
             </label>
-            <label class="form-field">
-              <span class="input-label">{{ t('admin.serviceQuota.form.accountId') }}</span>
+            <div class="form-field">
+              <div class="flex items-center justify-between">
+                <span class="input-label">{{ t('admin.serviceQuota.form.accountId') }}</span>
+                <label v-if="!editingID" class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  <input v-model="batchMode" type="checkbox" class="h-3.5 w-3.5 rounded border-gray-300" />
+                  {{ t('admin.serviceQuota.batchMode') }}
+                </label>
+              </div>
+              <EntityMultiSearchSelect
+                v-if="batchMode && !editingID"
+                v-model="batchAccountIds"
+                :placeholder="t('common.optional')"
+                :search="searchAccounts"
+                :reset-token="`${form.platform ?? ''}:${form.group_id ?? ''}`"
+              />
               <EntitySearchSelect
+                v-else
                 v-model="form.account_id"
                 :placeholder="t('common.optional')"
                 :search="searchAccounts"
                 :resolve-label="resolveAccountLabel"
                 :reset-token="`${form.platform ?? ''}:${form.group_id ?? ''}`"
               />
-            </label>
+            </div>
             <label class="form-field md:col-span-2">
               <span class="input-label">{{ t('admin.serviceQuota.form.modelPattern') }}</span>
               <input
@@ -228,6 +251,17 @@
       @confirm="confirmDelete"
       @cancel="deletingRule = null"
     />
+
+    <ConfirmDialog
+      :show="!!deletingBatchId"
+      :title="t('admin.serviceQuota.deleteBatch')"
+      :message="t('admin.serviceQuota.deleteBatchConfirm', { count: deletingBatchId ? batchCount(deletingBatchId) : 0 })"
+      :confirm-text="t('common.delete')"
+      :cancel-text="t('common.cancel')"
+      :danger="true"
+      @confirm="confirmDeleteBatch"
+      @cancel="deletingBatchId = null"
+    />
   </AppLayout>
 </template>
 
@@ -250,7 +284,8 @@ import type { Column } from '@/components/common/types'
 import adminAPI from '@/api/admin'
 import type { SimpleUser } from '@/api/admin/usage'
 import type { GroupPlatform } from '@/types'
-import { createServiceQuotaRule, deleteServiceQuotaRule, listServiceQuotaRules, updateServiceQuotaRule, type ServiceQuotaRule, type ServiceQuotaRuleInput } from '@/api/admin/serviceQuota'
+import EntityMultiSearchSelect from '@/components/common/EntityMultiSearchSelect.vue'
+import { createBatchRules, createServiceQuotaRule, deleteBatch, deleteServiceQuotaRule, listServiceQuotaRules, updateServiceQuotaRule, type ServiceQuotaRule, type ServiceQuotaRuleInput } from '@/api/admin/serviceQuota'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -318,6 +353,9 @@ const deletingRule = ref<ServiceQuotaRule | null>(null)
 const filters = reactive({ limiter: '', counterMode: '', fallback: '', enabled: '' })
 const form = reactive<ServiceQuotaRuleInput>(blankRule())
 const selectedTargetUsers = ref<SimpleUser[]>([])
+const batchMode = ref(false)
+const batchAccountIds = ref<number[]>([])
+const deletingBatchId = ref<string | null>(null)
 
 const filteredRules = computed(() => rules.value.filter((rule) => {
   if (filters.limiter && rule.limiter_type !== filters.limiter) return false
@@ -351,6 +389,8 @@ function resetForm(rule?: ServiceQuotaRule) {
   Object.assign(form, blankRule(), rule || {})
   editingID.value = rule?.id ?? null
   selectedTargetUsers.value = (rule?.target_users || []).map((u) => ({ id: u.id, email: u.email }))
+  batchMode.value = false
+  batchAccountIds.value = []
 }
 
 function optionLabel(options: Array<{ value: string; label: string }>, value: string): string {
@@ -506,8 +546,22 @@ async function save() {
   saving.value = true
   try {
     const payload = normalizePayload()
-    if (editingID.value) await updateServiceQuotaRule(editingID.value, payload)
-    else await createServiceQuotaRule(payload)
+    if (editingID.value) {
+      await updateServiceQuotaRule(editingID.value, payload)
+    } else if (batchMode.value && batchAccountIds.value.length > 1) {
+      const batchId = crypto.randomUUID()
+      const inputs = batchAccountIds.value.map((accountId) => ({
+        ...payload,
+        account_id: accountId,
+        batch_id: batchId,
+      }))
+      await createBatchRules(inputs)
+    } else {
+      if (batchMode.value && batchAccountIds.value.length === 1) {
+        payload.account_id = batchAccountIds.value[0]
+      }
+      await createServiceQuotaRule(payload)
+    }
     appStore.showSuccess(t('admin.serviceQuota.saveSuccess'))
     showDialog.value = false
     await load()
@@ -518,8 +572,16 @@ async function save() {
   }
 }
 
+function batchCount(batchId: string): number {
+  return rules.value.filter((r) => r.batch_id === batchId).length
+}
+
 function askDelete(rule: ServiceQuotaRule) {
   deletingRule.value = rule
+}
+
+function askDeleteBatch(batchId: string) {
+  deletingBatchId.value = batchId
 }
 
 async function confirmDelete() {
@@ -528,6 +590,18 @@ async function confirmDelete() {
     await deleteServiceQuotaRule(deletingRule.value.id)
     appStore.showSuccess(t('admin.serviceQuota.deleteSuccess'))
     deletingRule.value = null
+    await load()
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.serviceQuota.deleteError')))
+  }
+}
+
+async function confirmDeleteBatch() {
+  if (!deletingBatchId.value) return
+  try {
+    await deleteBatch(deletingBatchId.value)
+    appStore.showSuccess(t('admin.serviceQuota.deleteSuccess'))
+    deletingBatchId.value = null
     await load()
   } catch (error) {
     appStore.showError(extractApiErrorMessage(error, t('admin.serviceQuota.deleteError')))

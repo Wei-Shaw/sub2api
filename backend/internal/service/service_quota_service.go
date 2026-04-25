@@ -10,16 +10,19 @@ import (
 	"time"
 
 	pkgerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"golang.org/x/sync/singleflight"
 )
 
 type serviceQuotaService struct {
 	repo     ServiceQuotaRuleRepository
 	settings *SettingService
 	limiter  ServiceQuotaLimiter
+	cache    ServiceQuotaCache
+	sf       singleflight.Group
 }
 
-func NewServiceQuotaService(repo ServiceQuotaRuleRepository, settings *SettingService, limiter ServiceQuotaLimiter) ServiceQuotaService {
-	return &serviceQuotaService{repo: repo, settings: settings, limiter: limiter}
+func NewServiceQuotaService(repo ServiceQuotaRuleRepository, settings *SettingService, limiter ServiceQuotaLimiter, cache ServiceQuotaCache) ServiceQuotaService {
+	return &serviceQuotaService{repo: repo, settings: settings, limiter: limiter, cache: cache}
 }
 
 func (s *serviceQuotaService) ListRules(ctx context.Context, filter ServiceQuotaListFilter) ([]*ServiceQuotaRule, error) {
@@ -40,7 +43,29 @@ func (s *serviceQuotaService) CreateRule(ctx context.Context, input ServiceQuota
 	if err := s.validateScopeLinkage(ctx, input); err != nil {
 		return nil, err
 	}
-	return s.repo.Create(ctx, input)
+	rule, err := s.repo.Create(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	s.reloadCache(ctx)
+	return rule, nil
+}
+
+func (s *serviceQuotaService) CreateBatch(ctx context.Context, inputs []ServiceQuotaRuleInput) ([]*ServiceQuotaRule, error) {
+	for i := range inputs {
+		if err := normalizeServiceQuotaRule(&inputs[i]); err != nil {
+			return nil, err
+		}
+		if err := s.validateScopeLinkage(ctx, inputs[i]); err != nil {
+			return nil, err
+		}
+	}
+	rules, err := s.repo.CreateBatch(ctx, inputs)
+	if err != nil {
+		return nil, err
+	}
+	s.reloadCache(ctx)
+	return rules, nil
 }
 
 func (s *serviceQuotaService) UpdateRule(ctx context.Context, id int64, input ServiceQuotaRuleInput) (*ServiceQuotaRule, error) {
@@ -50,7 +75,20 @@ func (s *serviceQuotaService) UpdateRule(ctx context.Context, id int64, input Se
 	if err := s.validateScopeLinkage(ctx, input); err != nil {
 		return nil, err
 	}
-	return s.repo.Update(ctx, id, input)
+	rule, err := s.repo.Update(ctx, id, input)
+	if err != nil {
+		return nil, err
+	}
+	s.reloadCache(ctx)
+	return rule, nil
+}
+
+func (s *serviceQuotaService) UpdateBatch(ctx context.Context, batchID string, patch ServiceQuotaBatchPatch) error {
+	if _, err := s.repo.UpdateBatch(ctx, batchID, patch); err != nil {
+		return err
+	}
+	s.reloadCache(ctx)
+	return nil
 }
 
 // validateScopeLinkage 校验 scope 字段之间的链路一致性：
@@ -134,7 +172,25 @@ func trimPlatform(p *string) string {
 }
 
 func (s *serviceQuotaService) DeleteRule(ctx context.Context, id int64) error {
-	return s.repo.Delete(ctx, id)
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+	s.reloadCache(ctx)
+	return nil
+}
+
+func (s *serviceQuotaService) DeleteBatch(ctx context.Context, batchID string) error {
+	if _, err := s.repo.DeleteBatch(ctx, batchID); err != nil {
+		return err
+	}
+	s.reloadCache(ctx)
+	return nil
+}
+
+func (s *serviceQuotaService) InvalidateEnabledCache(ctx context.Context) {
+	if s.cache != nil {
+		_ = s.cache.Invalidate(ctx)
+	}
 }
 
 func (s *serviceQuotaService) PreCheck(ctx context.Context, req ServiceQuotaCheckRequest) (*ServiceQuotaLease, error) {
@@ -192,12 +248,11 @@ func (s *serviceQuotaService) matchedRules(ctx context.Context, req ServiceQuota
 	if s == nil || s.repo == nil || s.settings == nil || s.limiter == nil || req.UserID <= 0 {
 		return nil, false
 	}
-	enabled, err := s.settings.GetBool(ctx, SettingKeyServiceQuotaEnabled)
-	if err != nil || !enabled {
+	if !s.isEnabled(ctx) {
 		return nil, false
 	}
-	rules, err := s.repo.List(ctx, ServiceQuotaListFilter{})
-	if err != nil {
+	rules := s.loadRulesWithCache(ctx)
+	if rules == nil {
 		return nil, false
 	}
 	out := make([]*ServiceQuotaRule, 0, len(rules))
@@ -207,6 +262,58 @@ func (s *serviceQuotaService) matchedRules(ctx context.Context, req ServiceQuota
 		}
 	}
 	return out, true
+}
+
+func (s *serviceQuotaService) isEnabled(ctx context.Context) bool {
+	if s.cache != nil {
+		val, err := s.cache.GetEnabled(ctx)
+		if err == nil && val != nil {
+			return *val
+		}
+	}
+	enabled, err := s.settings.GetBool(ctx, SettingKeyServiceQuotaEnabled)
+	if err != nil {
+		return false
+	}
+	if s.cache != nil {
+		_ = s.cache.SetEnabled(ctx, enabled)
+	}
+	return enabled
+}
+
+func (s *serviceQuotaService) loadRulesWithCache(ctx context.Context) []*ServiceQuotaRule {
+	if s.cache != nil {
+		rules, hit, err := s.cache.GetRules(ctx)
+		if err == nil && hit {
+			return rules
+		}
+	}
+	val, err, _ := s.sf.Do("load_rules", func() (interface{}, error) {
+		rules, err := s.repo.List(ctx, ServiceQuotaListFilter{})
+		if err != nil {
+			return nil, err
+		}
+		if s.cache != nil {
+			_ = s.cache.SetRules(ctx, rules)
+		}
+		return rules, nil
+	})
+	if err != nil {
+		return nil
+	}
+	return val.([]*ServiceQuotaRule)
+}
+
+func (s *serviceQuotaService) reloadCache(ctx context.Context) {
+	if s.cache == nil {
+		return
+	}
+	rules, err := s.repo.List(ctx, ServiceQuotaListFilter{})
+	if err != nil {
+		_ = s.cache.Invalidate(ctx)
+		return
+	}
+	_ = s.cache.SetRules(ctx, rules)
 }
 
 func (s *serviceQuotaService) acquireConcurrency(ctx context.Context, req ServiceQuotaCheckRequest, rule *ServiceQuotaRule, lease *ServiceQuotaLease) error {

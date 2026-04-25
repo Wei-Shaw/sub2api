@@ -3899,7 +3899,12 @@ export default {
         targetUserIdsPlaceholder: 'Comma-separated user IDs, e.g. 1,2,3',
         targetUserIdsRequired: 'Required when counter mode is "Specific Users"',
         required: 'Required'
-      }
+      },
+      batchMode: 'Batch',
+      batchRules: 'Batch ({count})',
+      batchLabel: 'Batch',
+      deleteBatch: 'Delete Batch',
+      deleteBatchConfirm: 'Delete all {count} rules in this batch?'
     },
 
     // Usage Records

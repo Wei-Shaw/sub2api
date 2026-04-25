@@ -4063,7 +4063,12 @@ export default {
         targetUserIdsPlaceholder: '逗号分隔的用户 ID，例如 1,2,3',
         targetUserIdsRequired: '计数模式为"指定用户"时必填',
         required: '必填'
-      }
+      },
+      batchMode: '批量',
+      batchRules: '批次 ({count} 条)',
+      batchLabel: '批次',
+      deleteBatch: '删除批次',
+      deleteBatchConfirm: '确认删除该批次的全部 {count} 条规则？'
     },
 
     // Usage Records
