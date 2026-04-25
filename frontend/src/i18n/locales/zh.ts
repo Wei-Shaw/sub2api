@@ -250,6 +250,10 @@ export default {
       typeToSearch: '输入邮箱开始搜索',
       noMatches: '未找到匹配用户'
     },
+    entitySearch: {
+      typeToSearch: '输入关键字搜索',
+      noMatches: '无匹配结果'
+    },
     justNow: '刚刚',
     save: '保存',
     saved: '保存成功',

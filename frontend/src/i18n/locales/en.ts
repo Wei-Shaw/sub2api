@@ -250,6 +250,10 @@ export default {
       typeToSearch: 'Type an email to search',
       noMatches: 'No matching users'
     },
+    entitySearch: {
+      typeToSearch: 'Type to search',
+      noMatches: 'No matches found'
+    },
     justNow: 'just now',
     save: 'Save',
     saved: 'Saved successfully',

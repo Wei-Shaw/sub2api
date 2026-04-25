@@ -75,8 +75,9 @@ const props = defineProps<{
   placeholder?: string
   search: (keyword: string, signal: AbortSignal) => Promise<EntitySearchItem[]>
   resolveLabel?: (id: number) => Promise<EntitySearchItem | null>
-  // reset-token 变化时清空已选（用于 platform/group 变化后重置 account 选择）
   resetToken?: string | number
+  hintType?: string
+  hintNoMatch?: string
 }>()
 
 const emit = defineEmits<{
@@ -95,8 +96,8 @@ const selectedLabel = ref('')
 
 const emptyHint = computed(() =>
   keyword.value.trim().length === 0
-    ? t('common.userSearch.typeToSearch')
-    : t('common.userSearch.noMatches'),
+    ? (props.hintType || t('common.entitySearch.typeToSearch'))
+    : (props.hintNoMatch || t('common.entitySearch.noMatches')),
 )
 
 const runner = useKeyedDebouncedSearch<EntitySearchItem[]>({
