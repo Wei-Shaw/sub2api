@@ -332,6 +332,37 @@
 
       <!-- Usage data or unlimited flow -->
       <div class="space-y-1">
+        <div
+          v-if="showGeminiTodayStats && todayStats"
+          class="mb-0.5 flex items-center"
+        >
+          <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
+            <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
+              {{ formatKeyRequests REDACTEDREDACTED req
+            </span>
+            <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
+              {{ formatKeyTokens REDACTEDREDACTED
+            </span>
+            <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800" :title="t('usage.accountBilled')">
+              A ${{ formatKeyCost REDACTEDREDACTED
+            </span>
+            <span
+              v-if="todayStats.user_cost != null"
+              class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800"
+              :title="t('usage.userBilled')"
+            >
+              U ${{ formatKeyUserCost REDACTEDREDACTED
+            </span>
+          </div>
+        </div>
+        <div
+          v-else-if="showGeminiTodayStats && todayStatsLoading"
+          class="mb-0.5 flex items-center gap-1"
+        >
+          <div class="h-3 w-10 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-8 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-12 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        </div>
         <div v-if="loading" class="space-y-1">
           <div class="flex items-center gap-1">
             <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
@@ -510,6 +541,10 @@ const shouldFetchUsage = computed(() => {
     return props.account.type === 'oauth'
   REDACTED
   return false
+REDACTED)
+
+const showGeminiTodayStats = computed(() => {
+  return props.account.platform === 'gemini' && props.account.type === 'service_account'
 REDACTED)
 
 const geminiUsageAvailable = computed(() => {
