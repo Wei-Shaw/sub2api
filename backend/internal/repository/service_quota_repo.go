@@ -19,6 +19,20 @@ func NewServiceQuotaRuleRepository(db *sql.DB) service.ServiceQuotaRuleRepositor
 
 const serviceQuotaRuleColumns = `id, enabled, name, counter_mode, is_fallback, created_at, updated_at`
 
+// 5 张维度关联表的元信息：每张表有 (rule_id, <col>) 两列。
+type dimensionTable struct {
+	table  string
+	column string
+}
+
+var (
+	dimPlatforms = dimensionTable{"service_quota_rule_platforms", "platform"}
+	dimChannels  = dimensionTable{"service_quota_rule_channels", "channel_id"}
+	dimGroups    = dimensionTable{"service_quota_rule_groups", "group_id"}
+	dimAccounts  = dimensionTable{"service_quota_rule_accounts", "account_id"}
+	dimModels    = dimensionTable{"service_quota_rule_models", "model_pattern"}
+)
+
 func (r *serviceQuotaRuleRepository) List(ctx context.Context, filter service.ServiceQuotaListFilter) ([]*service.ServiceQuotaRule, error) {
 	query := `SELECT ` + serviceQuotaRuleColumns + ` FROM service_quota_rules WHERE 1=1`
 	args := []any{}
@@ -49,13 +63,7 @@ func (r *serviceQuotaRuleRepository) List(ctx context.Context, filter service.Se
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	if err := r.loadLimiters(ctx, out); err != nil {
-		return nil, err
-	}
-	if err := r.loadPaths(ctx, out); err != nil {
-		return nil, err
-	}
-	if err := r.loadRuleUsers(ctx, out); err != nil {
+	if err := r.loadAll(ctx, out); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -80,13 +88,7 @@ func (r *serviceQuotaRuleRepository) Create(ctx context.Context, input service.S
 	if err != nil {
 		return nil, err
 	}
-	if err := insertLimitersTx(ctx, tx, rule.ID, input.Limiters); err != nil {
-		return nil, err
-	}
-	if err := insertPathsTx(ctx, tx, rule.ID, input.Paths); err != nil {
-		return nil, err
-	}
-	if err := replaceRuleUsersTx(ctx, tx, rule.ID, input.TargetUserIDs); err != nil {
+	if err := writeRuleChildren(ctx, tx, rule.ID, input); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -115,19 +117,10 @@ func (r *serviceQuotaRuleRepository) Update(ctx context.Context, id int64, input
 		return nil, err
 	}
 
-	if _, err := tx.ExecContext(ctx, `DELETE FROM service_quota_limiters WHERE rule_id = $1`, rule.ID); err != nil {
+	if err := deleteRuleChildren(ctx, tx, rule.ID); err != nil {
 		return nil, err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM service_quota_paths WHERE rule_id = $1`, rule.ID); err != nil {
-		return nil, err
-	}
-	if err := insertLimitersTx(ctx, tx, rule.ID, input.Limiters); err != nil {
-		return nil, err
-	}
-	if err := insertPathsTx(ctx, tx, rule.ID, input.Paths); err != nil {
-		return nil, err
-	}
-	if err := replaceRuleUsersTx(ctx, tx, rule.ID, input.TargetUserIDs); err != nil {
+	if err := writeRuleChildren(ctx, tx, rule.ID, input); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -193,22 +186,48 @@ func (r *serviceQuotaRuleRepository) fetchByID(ctx context.Context, id int64) (*
 		return nil, err
 	}
 	rules := []*service.ServiceQuotaRule{rule}
-	if err := r.loadLimiters(ctx, rules); err != nil {
-		return nil, err
-	}
-	if err := r.loadPaths(ctx, rules); err != nil {
-		return nil, err
-	}
-	if err := r.loadRuleUsers(ctx, rules); err != nil {
+	if err := r.loadAll(ctx, rules); err != nil {
 		return nil, err
 	}
 	return rule, nil
 }
 
-func (r *serviceQuotaRuleRepository) loadLimiters(ctx context.Context, rules []*service.ServiceQuotaRule) error {
+func (r *serviceQuotaRuleRepository) loadAll(ctx context.Context, rules []*service.ServiceQuotaRule) error {
 	if len(rules) == 0 {
 		return nil
 	}
+	if err := r.loadLimiters(ctx, rules); err != nil {
+		return err
+	}
+	if err := r.loadStringDim(ctx, rules, dimPlatforms, func(rule *service.ServiceQuotaRule, v string) {
+		rule.Platforms = append(rule.Platforms, v)
+	}); err != nil {
+		return err
+	}
+	if err := r.loadStringDim(ctx, rules, dimModels, func(rule *service.ServiceQuotaRule, v string) {
+		rule.ModelPatterns = append(rule.ModelPatterns, v)
+	}); err != nil {
+		return err
+	}
+	if err := r.loadInt64Dim(ctx, rules, dimChannels, func(rule *service.ServiceQuotaRule, v int64) {
+		rule.ChannelIDs = append(rule.ChannelIDs, v)
+	}); err != nil {
+		return err
+	}
+	if err := r.loadInt64Dim(ctx, rules, dimGroups, func(rule *service.ServiceQuotaRule, v int64) {
+		rule.GroupIDs = append(rule.GroupIDs, v)
+	}); err != nil {
+		return err
+	}
+	if err := r.loadInt64Dim(ctx, rules, dimAccounts, func(rule *service.ServiceQuotaRule, v int64) {
+		rule.AccountIDs = append(rule.AccountIDs, v)
+	}); err != nil {
+		return err
+	}
+	return r.loadRuleUsers(ctx, rules)
+}
+
+func (r *serviceQuotaRuleRepository) loadLimiters(ctx context.Context, rules []*service.ServiceQuotaRule) error {
 	ids, index := indexRules(rules)
 	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(
 		`SELECT id, rule_id, limiter_type, window_mode, limit_value FROM service_quota_limiters WHERE rule_id IN (%s) ORDER BY rule_id, limiter_type`,
@@ -229,42 +248,46 @@ func (r *serviceQuotaRuleRepository) loadLimiters(ctx context.Context, rules []*
 	return rows.Err()
 }
 
-func (r *serviceQuotaRuleRepository) loadPaths(ctx context.Context, rules []*service.ServiceQuotaRule) error {
-	if len(rules) == 0 {
-		return nil
-	}
+// loadStringDim 通用加载 (rule_id, <string col>) 形态的维度表。
+func (r *serviceQuotaRuleRepository) loadStringDim(ctx context.Context, rules []*service.ServiceQuotaRule, dim dimensionTable, assign func(*service.ServiceQuotaRule, string)) error {
 	ids, index := indexRules(rules)
-	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(
-		`SELECT id, rule_id, platform, channel_id, group_id, account_id, model_pattern FROM service_quota_paths WHERE rule_id IN (%s) ORDER BY rule_id, id`,
-		joinPlaceholders(len(ids))), ids...)
+	query := fmt.Sprintf(`SELECT rule_id, %s FROM %s WHERE rule_id IN (%s) ORDER BY rule_id, %s`,
+		dim.column, dim.table, joinPlaceholders(len(ids)), dim.column)
+	rows, err := r.db.QueryContext(ctx, query, ids...)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
-		var def service.ServiceQuotaPathDef
-		var platform, model sql.NullString
-		var channelID, groupID, accountID sql.NullInt64
-		if err := rows.Scan(&def.ID, &def.RuleID, &platform, &channelID, &groupID, &accountID, &model); err != nil {
+		var ruleID int64
+		var value string
+		if err := rows.Scan(&ruleID, &value); err != nil {
 			return err
 		}
-		if platform.Valid {
-			def.Platform = &platform.String
+		if rule, ok := index[ruleID]; ok {
+			assign(rule, value)
 		}
-		if channelID.Valid {
-			def.ChannelID = &channelID.Int64
+	}
+	return rows.Err()
+}
+
+// loadInt64Dim 通用加载 (rule_id, <int64 col>) 形态的维度表。
+func (r *serviceQuotaRuleRepository) loadInt64Dim(ctx context.Context, rules []*service.ServiceQuotaRule, dim dimensionTable, assign func(*service.ServiceQuotaRule, int64)) error {
+	ids, index := indexRules(rules)
+	query := fmt.Sprintf(`SELECT rule_id, %s FROM %s WHERE rule_id IN (%s) ORDER BY rule_id, %s`,
+		dim.column, dim.table, joinPlaceholders(len(ids)), dim.column)
+	rows, err := r.db.QueryContext(ctx, query, ids...)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var ruleID, value int64
+		if err := rows.Scan(&ruleID, &value); err != nil {
+			return err
 		}
-		if groupID.Valid {
-			def.GroupID = &groupID.Int64
-		}
-		if accountID.Valid {
-			def.AccountID = &accountID.Int64
-		}
-		if model.Valid {
-			def.ModelPattern = &model.String
-		}
-		if rule, ok := index[def.RuleID]; ok {
-			rule.Paths = append(rule.Paths, def)
+		if rule, ok := index[ruleID]; ok {
+			assign(rule, value)
 		}
 	}
 	return rows.Err()
@@ -320,6 +343,47 @@ func joinPlaceholders(n int) string {
 	return strings.Join(parts, ",")
 }
 
+// writeRuleChildren 一次性写入限流器、5 个维度集合、用户绑定（事务内调用）。
+func writeRuleChildren(ctx context.Context, tx *sql.Tx, ruleID int64, input service.ServiceQuotaRuleInput) error {
+	if err := insertLimitersTx(ctx, tx, ruleID, input.Limiters); err != nil {
+		return err
+	}
+	if err := insertStringDimensionTx(ctx, tx, dimPlatforms, ruleID, input.Platforms); err != nil {
+		return err
+	}
+	if err := insertStringDimensionTx(ctx, tx, dimModels, ruleID, input.ModelPatterns); err != nil {
+		return err
+	}
+	if err := insertInt64DimensionTx(ctx, tx, dimChannels, ruleID, input.ChannelIDs); err != nil {
+		return err
+	}
+	if err := insertInt64DimensionTx(ctx, tx, dimGroups, ruleID, input.GroupIDs); err != nil {
+		return err
+	}
+	if err := insertInt64DimensionTx(ctx, tx, dimAccounts, ruleID, input.AccountIDs); err != nil {
+		return err
+	}
+	return replaceRuleUsersTx(ctx, tx, ruleID, input.TargetUserIDs)
+}
+
+// deleteRuleChildren 在 Update 前清空限流器和 5 张维度表（rule_users 由 replace 内部 DELETE+INSERT 处理）。
+func deleteRuleChildren(ctx context.Context, tx *sql.Tx, ruleID int64) error {
+	tables := []string{
+		"service_quota_limiters",
+		dimPlatforms.table,
+		dimModels.table,
+		dimChannels.table,
+		dimGroups.table,
+		dimAccounts.table,
+	}
+	for _, t := range tables {
+		if _, err := tx.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE rule_id = $1`, t), ruleID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func insertLimitersTx(ctx context.Context, tx *sql.Tx, ruleID int64, limiters []service.ServiceQuotaLimiterInput) error {
 	if len(limiters) == 0 {
 		return nil
@@ -336,18 +400,32 @@ func insertLimitersTx(ctx context.Context, tx *sql.Tx, ruleID int64, limiters []
 	return err
 }
 
-func insertPathsTx(ctx context.Context, tx *sql.Tx, ruleID int64, paths []service.ServiceQuotaPathInput) error {
-	if len(paths) == 0 {
+func insertStringDimensionTx(ctx context.Context, tx *sql.Tx, dim dimensionTable, ruleID int64, values []string) error {
+	if len(values) == 0 {
 		return nil
 	}
-	values := make([]string, len(paths))
-	args := make([]any, 0, len(paths)*6)
-	for i, p := range paths {
-		base := i * 6
-		values[i] = fmt.Sprintf("($%d,$%d,$%d,$%d,$%d,$%d)", base+1, base+2, base+3, base+4, base+5, base+6)
-		args = append(args, ruleID, p.Platform, p.ChannelID, p.GroupID, p.AccountID, p.ModelPattern)
+	rows := make([]string, len(values))
+	args := make([]any, 0, len(values)*2)
+	for i, v := range values {
+		rows[i] = fmt.Sprintf("($%d,$%d)", i*2+1, i*2+2)
+		args = append(args, ruleID, v)
 	}
-	query := `INSERT INTO service_quota_paths (rule_id, platform, channel_id, group_id, account_id, model_pattern) VALUES ` + strings.Join(values, ",")
+	query := fmt.Sprintf(`INSERT INTO %s (rule_id, %s) VALUES %s`, dim.table, dim.column, strings.Join(rows, ","))
+	_, err := tx.ExecContext(ctx, query, args...)
+	return err
+}
+
+func insertInt64DimensionTx(ctx context.Context, tx *sql.Tx, dim dimensionTable, ruleID int64, values []int64) error {
+	if len(values) == 0 {
+		return nil
+	}
+	rows := make([]string, len(values))
+	args := make([]any, 0, len(values)*2)
+	for i, v := range values {
+		rows[i] = fmt.Sprintf("($%d,$%d)", i*2+1, i*2+2)
+		args = append(args, ruleID, v)
+	}
+	query := fmt.Sprintf(`INSERT INTO %s (rule_id, %s) VALUES %s`, dim.table, dim.column, strings.Join(rows, ","))
 	_, err := tx.ExecContext(ctx, query, args...)
 	return err
 }

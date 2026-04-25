@@ -54,36 +54,18 @@ type ServiceQuotaLimiterInput struct {
 	LimitValue  float64 `json:"limit_value"`
 }
 
-// ServiceQuotaPathDef 路径定义：单向递进链 平台→渠道→分组→账号→模型，
-// 每层非 nil 才参与匹配，nil 视作不限制该维度。
-type ServiceQuotaPathDef struct {
-	ID           int64   `json:"id"`
-	RuleID       int64   `json:"rule_id"`
-	Platform     *string `json:"platform,omitempty"`
-	ChannelID    *int64  `json:"channel_id,omitempty"`
-	GroupID      *int64  `json:"group_id,omitempty"`
-	AccountID    *int64  `json:"account_id,omitempty"`
-	ModelPattern *string `json:"model_pattern,omitempty"`
-}
-
-type ServiceQuotaPathInput struct {
-	Platform     *string `json:"platform"`
-	ChannelID    *int64  `json:"channel_id"`
-	GroupID      *int64  `json:"group_id"`
-	AccountID    *int64  `json:"account_id"`
-	ModelPattern *string `json:"model_pattern"`
-}
-
 // ServiceQuotaRuleUserRef 是绑定用户的轻量引用，用于前端 chip 展示（规则只在 counter_mode=user 时携带此字段）。
 type ServiceQuotaRuleUserRef struct {
 	ID    int64  `json:"id"`
 	Email string `json:"email"`
 }
 
-// ServiceQuotaRule 一条层级规则。
+// ServiceQuotaRule 一条规则。
 //
-// 一条规则 = N 个限流器 × M 条路径 × 用户绑定。每个 path×limiter 组合在 Redis 中
-// 维护独立的计数器。CounterMode 与 IsFallback 正交：
+// 规则 = N 个限流器 × 5 个维度集合（platform/channel/group/account/model_pattern）× 用户绑定。
+// 维度匹配语义：每个非空维度必须包含本次请求的对应字段（AND-of-sets）。空维度视为不限制。
+//
+// CounterMode 与 IsFallback 正交：
 //   - CounterMode 决定计数 key 的分片方式
 //   - IsFallback=true 表示兜底规则：同一 limiter_type 有其他非 fallback 规则命中时该 limiter 自动让位
 type ServiceQuotaRule struct {
@@ -93,7 +75,11 @@ type ServiceQuotaRule struct {
 	CounterMode   string                    `json:"counter_mode"`
 	IsFallback    bool                      `json:"is_fallback"`
 	Limiters      []ServiceQuotaLimiterDef  `json:"limiters"`
-	Paths         []ServiceQuotaPathDef     `json:"paths"`
+	Platforms     []string                  `json:"platforms"`
+	ChannelIDs    []int64                   `json:"channel_ids"`
+	GroupIDs      []int64                   `json:"group_ids"`
+	AccountIDs    []int64                   `json:"account_ids"`
+	ModelPatterns []string                  `json:"model_patterns"`
 	TargetUserIDs []int64                   `json:"target_user_ids,omitempty"`
 	TargetUsers   []ServiceQuotaRuleUserRef `json:"target_users,omitempty"`
 	CreatedAt     time.Time                 `json:"created_at"`
@@ -106,7 +92,11 @@ type ServiceQuotaRuleInput struct {
 	CounterMode   string                     `json:"counter_mode"`
 	IsFallback    bool                       `json:"is_fallback"`
 	Limiters      []ServiceQuotaLimiterInput `json:"limiters"`
-	Paths         []ServiceQuotaPathInput    `json:"paths"`
+	Platforms     []string                   `json:"platforms"`
+	ChannelIDs    []int64                    `json:"channel_ids"`
+	GroupIDs      []int64                    `json:"group_ids"`
+	AccountIDs    []int64                    `json:"account_ids"`
+	ModelPatterns []string                   `json:"model_patterns"`
 	TargetUserIDs []int64                    `json:"target_user_ids"`
 }
 
@@ -134,7 +124,7 @@ type ServiceQuotaLease struct {
 	Release func()
 }
 
-// AccountScopeInfo / GroupScopeInfo 用于 path 链路一致性校验：下级必须是上级的子孙。
+// AccountScopeInfo / GroupScopeInfo 用于维度链路一致性校验：账号必须属于指定的分组/平台。
 type AccountScopeInfo struct {
 	Platform string
 	GroupIDs []int64

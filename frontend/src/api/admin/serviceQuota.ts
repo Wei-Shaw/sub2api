@@ -19,24 +19,6 @@ export interface ServiceQuotaLimiterInput {
   limit_value: number
 }
 
-export interface ServiceQuotaPathDef {
-  id: number
-  rule_id: number
-  platform?: string | null
-  channel_id?: number | null
-  group_id?: number | null
-  account_id?: number | null
-  model_pattern?: string | null
-}
-
-export interface ServiceQuotaPathInput {
-  platform?: string | null
-  channel_id?: number | null
-  group_id?: number | null
-  account_id?: number | null
-  model_pattern?: string | null
-}
-
 export interface ServiceQuotaRule {
   id: number
   enabled: boolean
@@ -44,7 +26,11 @@ export interface ServiceQuotaRule {
   counter_mode: string
   is_fallback: boolean
   limiters: ServiceQuotaLimiterDef[]
-  paths: ServiceQuotaPathDef[]
+  platforms: string[]
+  channel_ids: number[]
+  group_ids: number[]
+  account_ids: number[]
+  model_patterns: string[]
   target_user_ids?: number[] | null
   target_users?: ServiceQuotaRuleUserRef[] | null
   created_at: string
@@ -57,7 +43,11 @@ export interface ServiceQuotaRuleInput {
   counter_mode: string
   is_fallback: boolean
   limiters: ServiceQuotaLimiterInput[]
-  paths: ServiceQuotaPathInput[]
+  platforms: string[]
+  channel_ids: number[]
+  group_ids: number[]
+  account_ids: number[]
+  model_patterns: string[]
   target_user_ids?: number[] | null
 }
 
