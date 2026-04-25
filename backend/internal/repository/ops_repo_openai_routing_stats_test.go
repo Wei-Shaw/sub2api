@@ -40,7 +40,7 @@ func TestOpsRepositoryGetOpenAIRoutingStats_GroupsBySelectedGroupIncludingReserv
 		AddRow("exhausted", "exhausted", int64(4), int64(320), int64(200), int64(120), int64(2), int64(7)).
 		AddRow("exhausted", "reserve", int64(6), int64(540), int64(300), int64(240), int64(4), int64(9))
 
-	mock.ExpectQuery(`SELECT\s+LOWER\(COALESCE\(NULLIF\(ul\.routing_target_group, ''\), 'any'\)\) AS routing_target_group,\s+LOWER\(COALESCE\(NULLIF\(ul\.routing_selected_group, ''\), ul\.routing_target_group\)\) AS routing_selected_group`).
+	mock.ExpectQuery(`SELECT\s+LOWER\(COALESCE\(NULLIF\(ul\.routing_target_group, ''\), 'any'\)\) AS routing_target_group,\s+LOWER\(COALESCE\(NULLIF\(ul\.routing_selected_group, ''\), COALESCE\(NULLIF\(ul\.routing_target_group, ''\), 'any'\)\)\) AS routing_selected_group[\s\S]*LOWER\(COALESCE\(NULLIF\(ul\.routing_target_group, ''\), 'any'\)\) IN \('active','exhausted','any'\)[\s\S]*\(NULLIF\(ul\.routing_target_group, ''\) IS NOT NULL OR NULLIF\(ul\.routing_selected_group, ''\) IS NOT NULL\)`).
 		WithArgs(start, end, groupID, "openai").
 		WillReturnRows(rows)
 
@@ -101,7 +101,7 @@ func TestOpsRepositoryGetOpenAIRoutingStats_ReserveRoutingBreakdownIncludesAnyTa
 		AddRow("any", "reserve", int64(2), int64(200), int64(120), int64(80), int64(1), int64(2)).
 		AddRow("exhausted", "reserve", int64(4), int64(400), int64(240), int64(160), int64(2), int64(3))
 
-	mock.ExpectQuery(`SELECT\s+LOWER\(COALESCE\(NULLIF\(ul\.routing_target_group, ''\), 'any'\)\) AS routing_target_group,\s+LOWER\(COALESCE\(NULLIF\(ul\.routing_selected_group, ''\), ul\.routing_target_group\)\) AS routing_selected_group`).
+	mock.ExpectQuery(`SELECT\s+LOWER\(COALESCE\(NULLIF\(ul\.routing_target_group, ''\), 'any'\)\) AS routing_target_group,\s+LOWER\(COALESCE\(NULLIF\(ul\.routing_selected_group, ''\), COALESCE\(NULLIF\(ul\.routing_target_group, ''\), 'any'\)\)\) AS routing_selected_group[\s\S]*LOWER\(COALESCE\(NULLIF\(ul\.routing_target_group, ''\), 'any'\)\) IN \('active','exhausted','any'\)[\s\S]*\(NULLIF\(ul\.routing_target_group, ''\) IS NOT NULL OR NULLIF\(ul\.routing_selected_group, ''\) IS NOT NULL\)`).
 		WithArgs(start, end, "openai").
 		WillReturnRows(rows)
 
@@ -129,7 +129,7 @@ func TestOpsRepositoryGetOpenAIRoutingStats_EmptyResult(t *testing.T) {
 		EndTime:   end,
 	}
 
-	mock.ExpectQuery(`SELECT\s+LOWER\(COALESCE\(NULLIF\(ul\.routing_target_group, ''\), 'any'\)\) AS routing_target_group,\s+LOWER\(COALESCE\(NULLIF\(ul\.routing_selected_group, ''\), ul\.routing_target_group\)\) AS routing_selected_group`).
+	mock.ExpectQuery(`SELECT\s+LOWER\(COALESCE\(NULLIF\(ul\.routing_target_group, ''\), 'any'\)\) AS routing_target_group,\s+LOWER\(COALESCE\(NULLIF\(ul\.routing_selected_group, ''\), COALESCE\(NULLIF\(ul\.routing_target_group, ''\), 'any'\)\)\) AS routing_selected_group[\s\S]*LOWER\(COALESCE\(NULLIF\(ul\.routing_target_group, ''\), 'any'\)\) IN \('active','exhausted','any'\)[\s\S]*\(NULLIF\(ul\.routing_target_group, ''\) IS NOT NULL OR NULLIF\(ul\.routing_selected_group, ''\) IS NOT NULL\)`).
 		WithArgs(start, end).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"routing_target_group",

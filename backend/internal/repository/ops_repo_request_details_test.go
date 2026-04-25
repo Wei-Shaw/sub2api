@@ -180,7 +180,7 @@ func TestOpsRepositoryListRequestDetails_ReserveRoutingOnlyIncludesAnyTarget(t *
 	filter := &service.OpsRequestDetailFilter{Page: 1, PageSize: 10, OpenAIRoutingOnly: true}
 	createdAt := time.Date(2026, 4, 25, 12, 0, 0, 0, time.UTC)
 
-	mock.ExpectQuery("SELECT COUNT\\(1\\) FROM combined WHERE routing_target_group IN \\('active','exhausted','any'\\)").
+	mock.ExpectQuery("SELECT COUNT\\(1\\) FROM combined WHERE LOWER\\(COALESCE\\(NULLIF\\(routing_target_group,''\\), 'any'\\)\\) IN \\('active','exhausted','any'\\) AND \\(NULLIF\\(routing_target_group,''\\) IS NOT NULL OR NULLIF\\(routing_selected_group,''\\) IS NOT NULL\\)").
 		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(3)))
 
@@ -189,7 +189,7 @@ func TestOpsRepositoryListRequestDetails_ReserveRoutingOnlyIncludesAnyTarget(t *
 		AddRow("success", createdAt.Add(time.Second), "req-any-reserve", "openai", "gpt-5.5", "any", "reserve", "load_balance", int64(67), "acc-67", "gpt-5.5", int64(0), "", nil, nil, nil, nil, nil, nil, int64(100), nil, nil, nil, nil, nil, int64(1), int64(2), int64(67), int64(3), false).
 		AddRow("success", createdAt.Add(2*time.Second), "req-exhausted-reserve", "openai", "gpt-5.5-Sys", "exhausted", "reserve", "load_balance", int64(68), "acc-68", "gpt-5.5", int64(0), "", nil, nil, nil, nil, nil, nil, int64(100), nil, nil, nil, nil, nil, int64(1), int64(2), int64(68), int64(3), false)
 
-	mock.ExpectQuery("SELECT[\\s\\S]*FROM combined[\\s\\S]*WHERE routing_target_group IN \\('active','exhausted','any'\\)").
+	mock.ExpectQuery("SELECT[\\s\\S]*CASE WHEN NULLIF\\(ul\\.routing_target_group, ''\\) IS NULL AND NULLIF\\(ul\\.routing_selected_group, ''\\) IS NOT NULL THEN 'any'[\\s\\S]*CASE WHEN NULLIF\\(o\\.routing_target_group, ''\\) IS NULL AND NULLIF\\(o\\.routing_selected_group, ''\\) IS NOT NULL THEN 'any'[\\s\\S]*FROM combined[\\s\\S]*WHERE LOWER\\(COALESCE\\(NULLIF\\(routing_target_group,''\\), 'any'\\)\\) IN \\('active','exhausted','any'\\) AND \\(NULLIF\\(routing_target_group,''\\) IS NOT NULL OR NULLIF\\(routing_selected_group,''\\) IS NOT NULL\\)").
 		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), 10, 0).
 		WillReturnRows(rows)
 
@@ -203,6 +203,37 @@ func TestOpsRepositoryListRequestDetails_ReserveRoutingOnlyIncludesAnyTarget(t *
 	require.Equal(t, "reserve", items[1].RoutingSelectedGroup)
 	require.Equal(t, "exhausted", items[2].RoutingTargetGroup)
 	require.Equal(t, "reserve", items[2].RoutingSelectedGroup)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestOpsRepositoryListRequestDetails_ReserveRoutingOnlyNormalizesBlankAnyTarget(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &opsRepository{db: db}
+
+	filter := &service.OpsRequestDetailFilter{Page: 1, PageSize: 10, OpenAIRoutingOnly: true}
+	createdAt := time.Date(2026, 4, 25, 13, 0, 0, 0, time.UTC)
+
+	mock.ExpectQuery("SELECT COUNT\\(1\\) FROM combined WHERE LOWER\\(COALESCE\\(NULLIF\\(routing_target_group,''\\), 'any'\\)\\) IN \\('active','exhausted','any'\\) AND \\(NULLIF\\(routing_target_group,''\\) IS NOT NULL OR NULLIF\\(routing_selected_group,''\\) IS NOT NULL\\)").
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(3)))
+
+	rows := newOpsRequestDetailsRows().
+		AddRow("success", createdAt, "req-null-any-reserve", "openai", "gpt-5.5", "any", "reserve", "load_balance", int64(70), "acc-70", "gpt-5.5", int64(0), "", nil, nil, nil, nil, nil, nil, int64(100), nil, nil, nil, nil, nil, int64(1), int64(2), int64(70), int64(3), false).
+		AddRow("success", createdAt.Add(time.Second), "req-empty-any-reserve", "openai", "gpt-5.5", "any", "reserve", "load_balance", int64(71), "acc-71", "gpt-5.5", int64(0), "", nil, nil, nil, nil, nil, nil, int64(100), nil, nil, nil, nil, nil, int64(1), int64(2), int64(71), int64(3), false).
+		AddRow("success", createdAt.Add(2*time.Second), "req-explicit-any-reserve", "openai", "gpt-5.5", "any", "reserve", "load_balance", int64(72), "acc-72", "gpt-5.5", int64(0), "", nil, nil, nil, nil, nil, nil, int64(100), nil, nil, nil, nil, nil, int64(1), int64(2), int64(72), int64(3), false)
+
+	mock.ExpectQuery("SELECT[\\s\\S]*CASE WHEN NULLIF\\(ul\\.routing_target_group, ''\\) IS NULL AND NULLIF\\(ul\\.routing_selected_group, ''\\) IS NOT NULL THEN 'any'[\\s\\S]*FROM combined[\\s\\S]*WHERE LOWER\\(COALESCE\\(NULLIF\\(routing_target_group,''\\), 'any'\\)\\) IN \\('active','exhausted','any'\\) AND \\(NULLIF\\(routing_target_group,''\\) IS NOT NULL OR NULLIF\\(routing_selected_group,''\\) IS NOT NULL\\)").
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), 10, 0).
+		WillReturnRows(rows)
+
+	items, total, err := repo.ListRequestDetails(context.Background(), filter)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), total)
+	require.Len(t, items, 3)
+	for _, item := range items {
+		require.Equal(t, "any", item.RoutingTargetGroup)
+		require.Equal(t, "reserve", item.RoutingSelectedGroup)
+	}
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

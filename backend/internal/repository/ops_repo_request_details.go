@@ -58,7 +58,7 @@ func (r *opsRepository) ListRequestDetails(ctx context.Context, filter *service.
 			addCondition(fmt.Sprintf("model = $%d", len(args)+1), model)
 		}
 		if filter.OpenAIRoutingOnly {
-			addCondition("routing_target_group IN ('active','exhausted','any')")
+			addCondition("LOWER(COALESCE(NULLIF(routing_target_group,''), 'any')) IN ('active','exhausted','any') AND (NULLIF(routing_target_group,'') IS NOT NULL OR NULLIF(routing_selected_group,'') IS NOT NULL)")
 		}
 		if targetGroup := strings.TrimSpace(strings.ToLower(filter.RoutingTargetGroup)); targetGroup != "" {
 			addCondition(fmt.Sprintf("routing_target_group = $%d", len(args)+1), targetGroup)
@@ -107,7 +107,7 @@ WITH combined AS (
     ul.request_id AS request_id,
     COALESCE(NULLIF(g.platform, ''), NULLIF(a.platform, ''), '') AS platform,
 	  COALESCE(NULLIF(ul.requested_model, ''), ul.model) AS model,
-	  COALESCE(NULLIF(ul.routing_target_group, ''), '') AS routing_target_group,
+	  CASE WHEN NULLIF(ul.routing_target_group, '') IS NULL AND NULLIF(ul.routing_selected_group, '') IS NOT NULL THEN 'any' ELSE COALESCE(NULLIF(ul.routing_target_group, ''), '') END AS routing_target_group,
 	  COALESCE(NULLIF(ul.routing_selected_group, ''), '') AS routing_selected_group,
 	  COALESCE(NULLIF(ul.routing_schedule_layer, ''), '') AS routing_schedule_layer,
     COALESCE(ul.routing_selected_account_id, ul.account_id) AS routing_selected_account_id,
@@ -145,7 +145,7 @@ WITH combined AS (
     COALESCE(NULLIF(o.request_id,''), NULLIF(o.client_request_id,''), '') AS request_id,
     COALESCE(NULLIF(o.platform, ''), NULLIF(g.platform, ''), NULLIF(a.platform, ''), '') AS platform,
 	  COALESCE(NULLIF(o.routing_requested_model, ''), NULLIF(o.model, ''), '') AS model,
-	  COALESCE(NULLIF(o.routing_target_group, ''), '') AS routing_target_group,
+	  CASE WHEN NULLIF(o.routing_target_group, '') IS NULL AND NULLIF(o.routing_selected_group, '') IS NOT NULL THEN 'any' ELSE COALESCE(NULLIF(o.routing_target_group, ''), '') END AS routing_target_group,
 	  COALESCE(NULLIF(o.routing_selected_group, ''), '') AS routing_selected_group,
 	  COALESCE(NULLIF(o.routing_schedule_layer, ''), '') AS routing_schedule_layer,
     COALESCE(o.routing_selected_account_id, o.account_id) AS routing_selected_account_id,

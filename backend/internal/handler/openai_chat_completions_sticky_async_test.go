@@ -3,7 +3,9 @@ package handler
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -59,6 +61,26 @@ func TestCaptureOpenAIRoutingSnapshotForAsync_StickySessionClone(t *testing.T) {
 	require.Equal(t, "hit", capturedSticky.Elem().FieldByName("EvalResult").String())
 	require.False(t, capturedSticky.Elem().FieldByName("ParentSessionPresent").Bool())
 	require.Empty(t, capturedSticky.Elem().FieldByName("ParentSessionKey").String())
+}
+
+func TestCaptureOpenAIRoutingSnapshotForAsync_OpenAIGatewayHandlerUsageTasksUseCapturedSnapshot(t *testing.T) {
+	source, err := os.ReadFile("openai_gateway_handler.go")
+	require.NoError(t, err)
+
+	text := string(source)
+	require.NotContains(t, text, "RoutingSnapshot:    getOpenAIRoutingSnapshot(c)")
+	require.GreaterOrEqual(t, strings.Count(text, "RoutingSnapshot:    routingSnapshot"), 3)
+}
+
+func TestCaptureOpenAIRoutingSnapshotForAsync_OpenAIGatewayHandlerUsageTasksUseCapturedEndpoints(t *testing.T) {
+	source, err := os.ReadFile("openai_gateway_handler.go")
+	require.NoError(t, err)
+
+	text := string(source)
+	require.NotContains(t, text, "InboundEndpoint:    GetInboundEndpoint(c)")
+	require.NotContains(t, text, "UpstreamEndpoint:   GetUpstreamEndpoint(c")
+	require.GreaterOrEqual(t, strings.Count(text, "InboundEndpoint:    inboundEndpoint"), 3)
+	require.GreaterOrEqual(t, strings.Count(text, "UpstreamEndpoint:   upstreamEndpoint"), 3)
 }
 
 func TestCaptureOpenAIUsageEndpointsForAsync_EndpointValuesCloned(t *testing.T) {

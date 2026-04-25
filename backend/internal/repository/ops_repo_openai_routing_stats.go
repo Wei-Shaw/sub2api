@@ -30,12 +30,13 @@ func (r *opsRepository) GetOpenAIRoutingStats(ctx context.Context, filter *servi
 	}
 
 	join, where, args, _ := buildUsageWhere(dashboardFilter, dashboardFilter.StartTime, dashboardFilter.EndTime, 1)
-	where += " AND LOWER(COALESCE(ul.routing_target_group, '')) IN ('active','exhausted','any')"
+	where += " AND LOWER(COALESCE(NULLIF(ul.routing_target_group, ''), 'any')) IN ('active','exhausted','any')"
+	where += " AND (NULLIF(ul.routing_target_group, '') IS NOT NULL OR NULLIF(ul.routing_selected_group, '') IS NOT NULL)"
 
 	querySQL := `
 SELECT
   LOWER(COALESCE(NULLIF(ul.routing_target_group, ''), 'any')) AS routing_target_group,
-  LOWER(COALESCE(NULLIF(ul.routing_selected_group, ''), ul.routing_target_group)) AS routing_selected_group,
+  LOWER(COALESCE(NULLIF(ul.routing_selected_group, ''), COALESCE(NULLIF(ul.routing_target_group, ''), 'any'))) AS routing_selected_group,
   COUNT(*)::bigint AS request_count,
   COALESCE(SUM(COALESCE(ul.input_tokens, 0) + COALESCE(ul.output_tokens, 0)), 0)::bigint AS total_tokens,
   COALESCE(SUM(COALESCE(ul.input_tokens, 0)), 0)::bigint AS input_tokens,
@@ -45,8 +46,8 @@ SELECT
 FROM usage_logs ul
 ` + join + `
 ` + where + `
-GROUP BY LOWER(COALESCE(NULLIF(ul.routing_target_group, ''), 'any')), LOWER(COALESCE(NULLIF(ul.routing_selected_group, ''), ul.routing_target_group))
-ORDER BY LOWER(COALESCE(NULLIF(ul.routing_target_group, ''), 'any')) ASC, LOWER(COALESCE(NULLIF(ul.routing_selected_group, ''), ul.routing_target_group)) ASC`
+GROUP BY LOWER(COALESCE(NULLIF(ul.routing_target_group, ''), 'any')), LOWER(COALESCE(NULLIF(ul.routing_selected_group, ''), COALESCE(NULLIF(ul.routing_target_group, ''), 'any')))
+ORDER BY LOWER(COALESCE(NULLIF(ul.routing_target_group, ''), 'any')) ASC, LOWER(COALESCE(NULLIF(ul.routing_selected_group, ''), COALESCE(NULLIF(ul.routing_target_group, ''), 'any'))) ASC`
 
 	rows, err := r.db.QueryContext(ctx, querySQL, args...)
 	if err != nil {
