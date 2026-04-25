@@ -28,6 +28,22 @@
 - 这是本地产品能力，不是 upstream 原生内建配置。
 - 不要把它误改成 `provider.openai`，也不要假设 upstream 会直接消费我们的私有字段。
 
+5. OpenAI model-subset projection 语义
+- OpenAI exhausted / reserve 现在不是纯账号级静态分桶；本地主线已经引入“`scheduler bucket + canonical routing model`”维度的 projection。
+- 请求阶段必须消费预计算 projection 结果，不要在热路径重新 live derive reserve 身份。
+- 对 projection 参与账号，当前 bucket bundle 是自包含视图：
+  - `Accounts` = 主快照账号集
+  - `ProjectionAccounts` = projection 构建参与账号全集
+  - `Projection` / `ProjectionVersion` / `BuiltAt` = 同版发布
+- 后续同步 upstream 时，不要把这套 bundle/projection 结构回退成只存主快照账号，或重新引入 `GetAccount()/DB` 对 projection 账号的回退混读。
+
+6. OpenAI reserve active-overflow 语义
+- 当前本地主线语义已经修正为：`reserve` 首先是 active 身份，其次才是 exhausted overflow 身份。
+- `routing_target_group` 继续表示请求语义（`active / exhausted / any`），`routing_selected_group` 表示实际账号身份；命中 reserve 时统一写 `reserve`。
+- `active/any` 现在可以命中 reserve；`exhausted` 仍按原 overflow / 60% / `exhausted=0 => 100%` 规则消费 reserve。
+- reserve 身份的唯一来源必须是**当前 canonical projection view 的 `ReserveOverflowIDs`**，不是 live `IsOpenAIReserveCandidate()`，也不是 legacy overlay 临时推导。
+- 旧 binding 兼容规则也已是本地主线语义：`selected_group=reserve + affinity_domain=exhausted` 的历史 binding 在 projection 元数据仍匹配时必须可读；不要在同步 upstream 时把 active/any reserve binding 兼容逻辑删掉。
+
 ## OpenAI / Codex 兼容经验
 
 1. `tool_choice` 标准对象形态需要兼容转换
@@ -60,6 +76,15 @@
 - 只有在真正**还没开始向客户端发正文级事件**之前，streaming failover 才安全。
 - `response.created` / `response.in_progress` 这种前导事件也不能提前开流。
 - 一旦已经发出正文级事件，再自动切号重试就会污染输出语义。
+
+6. GPT-5.x / Codex 上游模型归一化的当前本地主线
+- `gpt-5.5` / `GPT-5.5-Sys` 这类已确认支持的新模型，不得再被 OAuth 上游归一化错误改写成 `gpt-5.1`。
+- 当前本地主线是：显式保留 `gpt-5.5`；未知未来 `gpt-5.x` minor 仍可按现有保守策略回落，不要在同步 upstream 时把“保留所有未知 minor”或“全部回退到 5.1”任一极端误带回来。
+
+7. unknown model 的当前边界
+- unknown model 仍然要 fail-closed；不能因为 active/any 放开 reserve 就重新 live 放开 unknown model。
+- 请求侧最多只能写受控的 refresh signal（如 `openai_unknown_model_refresh_request`），不能直接把 unknown model 当成 catalog success/source-of-truth 写入持久能力状态。
+- 如果后续真的接入外部/异步目录刷新，也要保持“请求侧发 signal，目录源刷新后再重建 projection”的边界。
 
 ## Token / 缓存统计口径
 
