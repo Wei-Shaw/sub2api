@@ -198,9 +198,30 @@ interface NavItem {
   children?: NavItem[]
 }
 
-// resolvePluginLabel 优先用 i18n 翻译 label_key；翻译缺失（vue-i18n 找不到 key 时
-// 默认返回 key 本身）则回退到插件 display_name + key 末段的 humanized 形式。
+// resolvePluginLabel 选择菜单项的显示文本,优先级：
+//   1. item.labels[当前 locale] —— 插件直接交付的翻译,核心无需感知
+//   2. item.labels.en —— 任何语言都接受英文兜底
+//   3. t(item.labelKey) —— 旧路径,核心 i18n 字典里若有翻译则用之
+//   4. labelKey 末段的 humanized 形式 + 插件 display_name
+// 这样新插件只需声明 labels 就能显示正确文本,不需要核心维护翻译表。
 function resolvePluginLabel(item: PluginNavItem): string {
+  const labels = item.labels || {}
+  const currentLocale = (locale.value || '').toLowerCase()
+  if (currentLocale) {
+    const exact = labels[currentLocale]
+    if (exact) {
+      return exact
+    }
+    // locale 形如 zh-CN / en-US 时,允许按主语言 (zh / en) 命中。
+    const primary = currentLocale.split(/[-_]/)[0]
+    if (primary && primary !== currentLocale && labels[primary]) {
+      return labels[primary]
+    }
+  }
+  if (labels.en) {
+    return labels.en
+  }
+
   const key = item.labelKey || item.label
   if (!key) {
     return item.pluginDisplayName || ''
@@ -237,7 +258,7 @@ function pluginItemsAsNavItems(items: PluginNavItem[]): NavItem[] {
   }))
 }
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const route = useRoute()
 const appStore = useAppStore()

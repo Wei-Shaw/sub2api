@@ -15,8 +15,14 @@ import type { Router, RouteRecordRaw } from 'vue-router'
 /** 插件菜单项,与后端 proto 中的 MenuItem 保持一致 */
 export interface PluginMenuItem {
   path: string
+  /** 旧字段：i18n key。新插件应留空并使用 labels。 */
   label_key: string
+  /** 旧字段：图标名或 SVG。新插件应使用 icon_svg。 */
   icon: string
+  /** 完整 SVG markup（含 <svg> 外层标签），由前端 v-html 直接注入。 */
+  icon_svg: string
+  /** locale -> 已翻译的菜单标签，如 {"zh": "渠道管理", "en": "Channel Management"}。 */
+  labels: Record<string, string>
   section: 'admin' | 'user' | string
   sort_order: number
   requires_admin: boolean
@@ -56,6 +62,8 @@ export interface PluginNavItem {
   pluginDisplayName: string
   /** 原始 label_key,sidebar 在渲染前会尝试 t(labelKey) */
   labelKey: string
+  /** 插件直接交付的 locale -> 翻译文本映射,sidebar 优先按当前 locale 取值 */
+  labels: Record<string, string>
   /** 原始 sort_order,合并到主菜单时用作排序权重 */
   sortOrder: number
   children?: PluginNavItem[]
@@ -228,6 +236,8 @@ function normalizeMenuItem(value: unknown): PluginMenuItem | null {
     path,
     label_key: stringField(value, 'label_key') || path,
     icon: stringField(value, 'icon'),
+    icon_svg: stringField(value, 'icon_svg'),
+    labels: normalizeStringMap(value['labels']),
     section: stringField(value, 'section') || 'user',
     sort_order: numberField(value, 'sort_order'),
     requires_admin: booleanField(value, 'requires_admin'),
@@ -266,20 +276,33 @@ function looksLikeSvg(value: string): boolean {
   return /^\s*<svg[\s>]/i.test(value)
 }
 
+// pickIconSvg 解析菜单项的图标。优先使用 SDK 新增的 icon_svg；为兼容老插件,
+// 当 icon_svg 为空但 icon 看起来像 SVG markup 时,把 icon 当 SVG 使用。
+function pickIconSvg(menu: PluginMenuItem): string | undefined {
+  if (menu.icon_svg && looksLikeSvg(menu.icon_svg)) {
+    return menu.icon_svg
+  }
+  if (menu.icon && looksLikeSvg(menu.icon)) {
+    return menu.icon
+  }
+  return undefined
+}
+
 function toNavItem(pluginName: string, pluginDisplayName: string, menu: PluginMenuItem): PluginNavItem {
   const labelKey = menu.label_key
-  const iconSvg = menu.icon && looksLikeSvg(menu.icon) ? menu.icon : undefined
   const item: PluginNavItem = {
     path: menu.path,
-    // label 的实际 i18n 解析放到 sidebar(调用 t(labelKey))。这里先存原始 key,
-    // 同时把 plugin display_name 也带上,便于翻译失败时兜底。
+    // label 的实际 i18n 解析放到 sidebar(基于 labels + t(labelKey))。
+    // 这里先存原始 key,同时把 plugin display_name 与 labels 一起带上,
+    // 便于 sidebar 根据当前 locale 选择翻译文本或在翻译失败时兜底。
     label: labelKey,
     icon: null,
-    iconSvg,
+    iconSvg: pickIconSvg(menu),
     hideInSimpleMode: menu.hide_in_simple_mode,
     pluginName,
     pluginDisplayName,
     labelKey,
+    labels: menu.labels,
     sortOrder: menu.sort_order,
   }
   if (menu.children && menu.children.length > 0) {
