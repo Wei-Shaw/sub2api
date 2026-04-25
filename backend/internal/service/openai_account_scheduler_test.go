@@ -1579,7 +1579,7 @@ func TestSelectByLoadBalance_GPT55ProjectionTreatsCaseAndSysAsEquivalent(t *test
 		target    AccountTargetGroup
 		wantGroup string
 	}{
-		{name: "active uppercase", model: "GPT-5.5", target: TargetGroupActive, wantGroup: string(TargetGroupActive)},
+		{name: "active uppercase", model: "GPT-5.5", target: TargetGroupActive, wantGroup: openAISelectedGroupReserve},
 		{name: "exhausted uppercase sys", model: "GPT-5.5-Sys", target: TargetGroupExhausted, wantGroup: "reserve"},
 	}
 
@@ -1604,6 +1604,253 @@ func TestSelectByLoadBalance_GPT55ProjectionTreatsCaseAndSysAsEquivalent(t *test
 				selection.ReleaseFunc()
 			}
 		})
+	}
+}
+
+func TestReserveSemanticShift_OldRejectAnyNowAccepts(t *testing.T) {
+	requireReserveSemanticShiftLoadBalanceAccepts(t, 42010, TargetGroupAny)
+}
+
+func TestReserveSemanticShift_OldRejectActiveNowAccepts(t *testing.T) {
+	requireReserveSemanticShiftLoadBalanceAccepts(t, 42011, TargetGroupActive)
+}
+
+func TestReserveSemanticShift_OldPreviousResponseReserveRejectedForAnyNowAccepts(t *testing.T) {
+	requireReserveSemanticShiftPreviousResponseAccepts(t, 42020, TargetGroupAny)
+}
+
+func TestReserveSemanticShift_OldPreviousResponseReserveRejectedForActiveNowAccepts(t *testing.T) {
+	requireReserveSemanticShiftPreviousResponseAccepts(t, 42021, TargetGroupActive)
+}
+
+func TestReserveSemanticShift_GPT54SysAndGPT55SysDoNotRegress(t *testing.T) {
+	ctx := context.Background()
+
+	for _, tc := range []struct {
+		name           string
+		groupID        int64
+		accountID      int64
+		requestedModel string
+		canonicalModel string
+	}{
+		{name: "gpt54_sys", groupID: 42030, accountID: 42031, requestedModel: "GPT-5.4-Sys", canonicalModel: "gpt-5.4"},
+		{name: "gpt55_sys", groupID: 42032, accountID: 42033, requestedModel: "GPT-5.5-Sys", canonicalModel: "gpt-5.5"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			account := newOpenAIProjectionPaidTierAccount(tc.accountID, 4, "team", []string{tc.canonicalModel})
+			account.Credentials["model_mapping"] = map[string]any{tc.canonicalModel: tc.canonicalModel}
+			projection := BuildOpenAIModelSubsetProjection(&OpenAIProjectionInputs{
+				Bucket:           SchedulerBucket{GroupID: tc.groupID, Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+				CanonicalCatalog: []string{tc.canonicalModel},
+				AccountsAll:      []Account{account},
+			})
+			loadMap := map[int64]*AccountLoadInfo{account.ID: {AccountID: account.ID, CurrentConcurrency: 0, LoadRate: 0}}
+			cfg := &config.Config{}
+			cfg.Gateway.OpenAIWS.LBTopK = 1
+			cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 1
+			svc := &OpenAIGatewayService{
+				accountRepo:        stubOpenAIAccountRepo{accounts: []Account{account}},
+				cache:              &stubGatewayCache{sessionBindings: map[string]int64{}},
+				cfg:                cfg,
+				schedulerSnapshot:  &SchedulerSnapshotService{cache: &openAISnapshotCacheStub{openAIState: newOpenAIBucketStateForTest([]Account{account}, 42, projection.Models)}},
+				concurrencyService: NewConcurrencyService(stubConcurrencyCache{loadMap: loadMap}),
+			}
+
+			selection, decision, err := svc.SelectAccountWithScheduler(ctx, &tc.groupID, "", "session_hash_"+tc.name, tc.requestedModel, TargetGroupExhausted, nil, OpenAIUpstreamTransportAny)
+			require.NoError(t, err)
+			require.NotNil(t, selection)
+			require.NotNil(t, selection.Account)
+			require.Equal(t, account.ID, selection.Account.ID)
+			require.Equal(t, openAISelectedGroupReserve, requireDecisionStringField(t, decision, "SelectedGroup"))
+			require.Equal(t, int64(42), decision.ProjectionVersion)
+			require.Equal(t, tc.canonicalModel, decision.ProjectionModelKey)
+
+			snapshot := NewOpenAIRoutingSnapshot(OpenAIRoutingSnapshotInput{
+				TargetGroup:        TargetGroupExhausted,
+				SelectedGroup:      decision.SelectedGroup,
+				ScheduleLayer:      decision.Layer,
+				ProjectionVersion:  decision.ProjectionVersion,
+				ProjectionModelKey: decision.ProjectionModelKey,
+				ProjectionBuiltAt:  decision.ProjectionBuiltAt,
+				Account:            selection.Account,
+				RequestedModel:     tc.requestedModel,
+				EffectiveModel:     tc.canonicalModel,
+			})
+			require.Equal(t, string(TargetGroupExhausted), snapshot.TargetGroup)
+			require.Equal(t, openAISelectedGroupReserve, snapshot.SelectedGroup)
+			require.Equal(t, tc.canonicalModel, snapshot.ProjectionModelKey)
+			if selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+		})
+	}
+}
+
+func TestReserveSemanticShift_GPT55ActiveHitsReserveAndReturnsSelectedReserve(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(42040)
+	account := newOpenAIProjectionPaidTierAccount(42041, 4, "team", []string{"gpt-5.5"})
+	account.Credentials["model_mapping"] = map[string]any{"gpt-5.5": "gpt-5.5"}
+	projection := BuildOpenAIModelSubsetProjection(&OpenAIProjectionInputs{
+		Bucket:           SchedulerBucket{GroupID: groupID, Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+		CanonicalCatalog: []string{"gpt-5.5"},
+		AccountsAll:      []Account{account},
+	})
+	loadMap := map[int64]*AccountLoadInfo{account.ID: {AccountID: account.ID, CurrentConcurrency: 0, LoadRate: 0}}
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.LBTopK = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 1
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{account}},
+		cache:              &stubGatewayCache{sessionBindings: map[string]int64{}},
+		cfg:                cfg,
+		schedulerSnapshot:  &SchedulerSnapshotService{cache: &openAISnapshotCacheStub{openAIState: newOpenAIBucketStateForTest([]Account{account}, 43, projection.Models)}},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{loadMap: loadMap}),
+	}
+
+	selection, decision, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", "session_hash_gpt55_active_reserve", "gpt-5.5", TargetGroupActive, nil, OpenAIUpstreamTransportAny)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, account.ID, selection.Account.ID)
+	require.Equal(t, openAISelectedGroupReserve, requireDecisionStringField(t, decision, "SelectedGroup"))
+	require.Equal(t, "gpt-5.5", decision.ProjectionModelKey)
+
+	snapshot := NewOpenAIRoutingSnapshot(OpenAIRoutingSnapshotInput{
+		TargetGroup:        TargetGroupActive,
+		SelectedGroup:      decision.SelectedGroup,
+		ScheduleLayer:      decision.Layer,
+		ProjectionVersion:  decision.ProjectionVersion,
+		ProjectionModelKey: decision.ProjectionModelKey,
+		ProjectionBuiltAt:  decision.ProjectionBuiltAt,
+		Account:            selection.Account,
+		RequestedModel:     "gpt-5.5",
+		EffectiveModel:     "gpt-5.5",
+	})
+	require.Equal(t, string(TargetGroupActive), snapshot.TargetGroup)
+	require.Equal(t, openAISelectedGroupReserve, snapshot.SelectedGroup)
+	require.Equal(t, "gpt-5.5", snapshot.ProjectionModelKey)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestReserveSemanticShift_OldReserveSharedStickyBindingRejectedForAnyNowAccepts(t *testing.T) {
+	requireReserveSemanticShiftLegacyStickyAccepts(t, 42050, TargetGroupAny)
+}
+
+func TestReserveSemanticShift_OldReserveSharedStickyBindingRejectedForActiveNowAccepts(t *testing.T) {
+	requireReserveSemanticShiftLegacyStickyAccepts(t, 42051, TargetGroupActive)
+}
+
+func requireReserveSemanticShiftLoadBalanceAccepts(t *testing.T, groupID int64, targetGroup AccountTargetGroup) {
+	t.Helper()
+	ctx := context.Background()
+	exhaustedBase := newOpenAIExhaustedAccountForTest(groupID*10+1, 4)
+	reserveAccount := newOpenAIReserveCandidateAccountForTest(groupID*10+2, 4, 20)
+	activeAccount := Account{ID: groupID*10 + 3, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 4}
+	accounts := []Account{exhaustedBase, reserveAccount, activeAccount}
+	svc := newOpenAIProjectedReserveBindingServiceForTest(newOpenAIAffinityGatewayCacheStub(), accounts, 44, map[int64]*AccountLoadInfo{
+		exhaustedBase.ID:  {AccountID: exhaustedBase.ID, CurrentConcurrency: 3, LoadRate: 90},
+		reserveAccount.ID: {AccountID: reserveAccount.ID, CurrentConcurrency: 0, LoadRate: 0},
+		activeAccount.ID:  {AccountID: activeAccount.ID, CurrentConcurrency: 0, LoadRate: 80},
+	})
+
+	selection, decision, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", fmt.Sprintf("session_hash_shift_lb_%d", groupID), "gpt-5.1", targetGroup, nil, OpenAIUpstreamTransportAny)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, reserveAccount.ID, selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	require.Equal(t, openAISelectedGroupReserve, requireDecisionStringField(t, decision, "SelectedGroup"))
+	require.Equal(t, int64(44), decision.ProjectionVersion)
+	require.Equal(t, "gpt-5.1", decision.ProjectionModelKey)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func requireReserveSemanticShiftPreviousResponseAccepts(t *testing.T, groupID int64, targetGroup AccountTargetGroup) {
+	t.Helper()
+	ctx := context.Background()
+	exhaustedBase := newOpenAIExhaustedAccountForTest(groupID*10+1, 4)
+	reserveAccount := newOpenAIReserveCandidateAccountForTest(groupID*10+2, 4, 20)
+	activeAccount := Account{ID: groupID*10 + 3, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 4}
+	accounts := []Account{exhaustedBase, reserveAccount, activeAccount}
+	cache := newOpenAIAffinityGatewayCacheStub()
+	svc := newOpenAIProjectedReserveBindingServiceForTest(cache, accounts, 45, map[int64]*AccountLoadInfo{
+		exhaustedBase.ID:  {AccountID: exhaustedBase.ID, CurrentConcurrency: 3, LoadRate: 90},
+		reserveAccount.ID: {AccountID: reserveAccount.ID, CurrentConcurrency: 0, LoadRate: 0},
+		activeAccount.ID:  {AccountID: activeAccount.ID, CurrentConcurrency: 0, LoadRate: 80},
+	})
+	responseID := fmt.Sprintf("resp_shift_prev_%d", groupID)
+	sessionHash := fmt.Sprintf("session_hash_shift_prev_%d", groupID)
+	projectionBuiltAt := time.Unix(1_716_000_000, 0).UTC()
+	store := svc.getOpenAIWSStateStore()
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, responseID, reserveAccount.ID, time.Hour))
+	cache.setAffinityBinding(t, openAIResponseAffinityBindingNamespace, groupID, responseID, &openAIAffinityBinding{
+		BoundAccountID:     reserveAccount.ID,
+		AffinityDomain:     openAISelectedGroupReserve,
+		SelectedGroup:      openAISelectedGroupReserve,
+		ProjectionVersion:  45,
+		ProjectionModelKey: "gpt-5.1",
+		ProjectionBuiltAt:  &projectionBuiltAt,
+	}, time.Hour)
+
+	selection, decision, err := svc.SelectAccountWithScheduler(ctx, &groupID, responseID, sessionHash, "gpt-5.1", targetGroup, nil, OpenAIUpstreamTransportAny)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, reserveAccount.ID, selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerPreviousResponse, decision.Layer)
+	require.True(t, decision.StickyPreviousHit)
+	require.Equal(t, openAISelectedGroupReserve, requireDecisionStringField(t, decision, "SelectedGroup"))
+	require.Equal(t, openAISelectedGroupReserve, requireStickyAffinityBindingStringField(t, decision, "AffinityDomain"))
+	require.Equal(t, int64(45), decision.ProjectionVersion)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func requireReserveSemanticShiftLegacyStickyAccepts(t *testing.T, groupID int64, targetGroup AccountTargetGroup) {
+	t.Helper()
+	ctx := context.Background()
+	exhaustedBase := newOpenAIExhaustedAccountForTest(groupID*10+1, 4)
+	reserveAccount := newOpenAIReserveCandidateAccountForTest(groupID*10+2, 4, 20)
+	activeAccount := Account{ID: groupID*10 + 3, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 4}
+	accounts := []Account{exhaustedBase, reserveAccount, activeAccount}
+	cache := newOpenAIAffinityGatewayCacheStub()
+	sessionHash := fmt.Sprintf("session_hash_shift_sticky_%d", groupID)
+	projectionBuiltAt := time.Unix(1_716_000_000, 0).UTC()
+	cache.sessionBindings["openai:"+sessionHash] = reserveAccount.ID
+	cache.setAffinityBinding(t, openAIStickyAffinityBindingNamespace, groupID, "openai:"+sessionHash, &openAIAffinityBinding{
+		BoundAccountID:     reserveAccount.ID,
+		AffinityDomain:     string(TargetGroupExhausted),
+		SelectedGroup:      openAISelectedGroupReserve,
+		ProjectionVersion:  46,
+		ProjectionModelKey: "gpt-5.1",
+		ProjectionBuiltAt:  &projectionBuiltAt,
+	}, time.Hour)
+	svc := newOpenAIProjectedReserveBindingServiceForTest(cache, accounts, 46, map[int64]*AccountLoadInfo{
+		exhaustedBase.ID:  {AccountID: exhaustedBase.ID, CurrentConcurrency: 0, LoadRate: 0},
+		reserveAccount.ID: {AccountID: reserveAccount.ID, CurrentConcurrency: 3, LoadRate: 95},
+		activeAccount.ID:  {AccountID: activeAccount.ID, CurrentConcurrency: 0, LoadRate: 0},
+	})
+
+	selection, decision, err := svc.SelectAccountWithScheduler(ctx, &groupID, "", sessionHash, "gpt-5.1", targetGroup, nil, OpenAIUpstreamTransportAny)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, reserveAccount.ID, selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerSessionSticky, decision.Layer)
+	require.True(t, decision.StickySessionHit)
+	require.Equal(t, openAISelectedGroupReserve, requireDecisionStringField(t, decision, "SelectedGroup"))
+	require.Equal(t, openAISelectedGroupReserve, requireStickyAffinityBindingStringField(t, decision, "AffinityDomain"))
+	require.Equal(t, 0, cache.deletedSessions["openai:"+sessionHash])
+	storedBinding := cache.mustGetAffinityBinding(t, openAIStickyAffinityBindingNamespace, groupID, "openai:"+sessionHash)
+	require.Equal(t, openAISelectedGroupReserve, storedBinding.AffinityDomain)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
 	}
 }
 

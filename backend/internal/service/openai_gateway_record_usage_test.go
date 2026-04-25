@@ -476,6 +476,54 @@ func TestUsageAndOps_ReserveTargetsPersistTargetAndSelectedGroupInUsage(t *testi
 	}
 }
 
+func TestUsageAndOps_AnyReserveCarriesRequestIDAndRoutingSnapshotToUsage(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+
+	requestCtx := context.WithValue(context.Background(), ctxkey.ClientRequestID, "req-any-reserve-observable")
+	snapshot := NewOpenAIRoutingSnapshot(OpenAIRoutingSnapshotInput{
+		TargetGroup:        TargetGroupAny,
+		SelectedGroup:      openAISelectedGroupReserve,
+		ScheduleLayer:      string(openAIAccountScheduleLayerLoadBalance),
+		ProjectionVersion:  55,
+		ProjectionModelKey: "gpt-5.5",
+		ProjectionBuiltAt:  time.Unix(1_716_000_555, 0).UTC(),
+		Account:            &Account{ID: 5501, Name: "reserve-5501"},
+		RequestedModel:     "gpt-5.5",
+		EffectiveModel:     "gpt-5.5",
+	})
+
+	err := svc.RecordUsage(requestCtx, &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "upstream-volatile-any-reserve",
+			Usage: OpenAIUsage{
+				InputTokens:  21,
+				OutputTokens: 7,
+			},
+			Model:    "gpt-5.5",
+			Duration: time.Second,
+		},
+		APIKey:          &APIKey{ID: 1001},
+		User:            &User{ID: 2001},
+		Account:         &Account{ID: 5501},
+		RoutingSnapshot: snapshot,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "client:req-any-reserve-observable", usageRepo.lastLog.RequestID)
+	require.NotNil(t, usageRepo.lastLog.RoutingTargetGroup)
+	require.Equal(t, "any", *usageRepo.lastLog.RoutingTargetGroup)
+	require.NotNil(t, usageRepo.lastLog.RoutingSelectedGroup)
+	require.Equal(t, openAISelectedGroupReserve, *usageRepo.lastLog.RoutingSelectedGroup)
+	require.Equal(t, snapshot.SelectedAccountID, usageRepo.lastLog.RoutingSelectedAccountID)
+	require.Equal(t, snapshot.SelectedAccountName, usageRepo.lastLog.RoutingSelectedAccountName)
+	require.NotNil(t, usageRepo.lastLog.RoutingEffectiveModel)
+	require.Equal(t, "gpt-5.5", *usageRepo.lastLog.RoutingEffectiveModel)
+}
+
 func TestOpenAIGatewayServiceRecordUsage_IncludesEndpointMetadata(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}
