@@ -117,7 +117,7 @@ REDACTED
 		Save(context.Background())
 REDACTED
 
-	paymentSvc := service.NewPaymentService(client, payment.NewRegistry(), nil, nil, nil, nil, nil, nil)
+	paymentSvc := service.NewPaymentService(client, payment.NewRegistry(), nil, nil, nil, nil, nil, nil, nil)
 	h := NewPaymentHandler(paymentSvc, nil, nil)
 
 	recorder := httptest.NewRecorder()
@@ -215,7 +215,7 @@ REDACTED)
 REDACTED
 
 	configSvc := service.NewPaymentConfigService(client, nil, []byte("REDACTED"))
-	paymentSvc := service.NewPaymentService(client, payment.NewRegistry(), nil, nil, nil, configSvc, nil, nil)
+	paymentSvc := service.NewPaymentService(client, payment.NewRegistry(), nil, nil, nil, configSvc, nil, nil, nil)
 	h := NewPaymentHandler(paymentSvc, nil, nil)
 
 	recorder := httptest.NewRecorder()
@@ -302,7 +302,7 @@ REDACTED)
 REDACTED
 
 	configSvc := service.NewPaymentConfigService(client, nil, []byte("REDACTED"))
-	paymentSvc := service.NewPaymentService(client, payment.NewRegistry(), nil, nil, nil, configSvc, nil, nil)
+	paymentSvc := service.NewPaymentService(client, payment.NewRegistry(), nil, nil, nil, configSvc, nil, nil, nil)
 	h := NewPaymentHandler(paymentSvc, nil, nil)
 
 	recorder := httptest.NewRecorder()
@@ -342,7 +342,7 @@ REDACTED
 	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(drv)))
 	t.Cleanup(func() { _ = client.Close() REDACTED)
 
-	paymentSvc := service.NewPaymentService(client, payment.NewRegistry(), nil, nil, nil, nil, nil, nil)
+	paymentSvc := service.NewPaymentService(client, payment.NewRegistry(), nil, nil, nil, nil, nil, nil, nil)
 	h := NewPaymentHandler(paymentSvc, nil, nil)
 
 	recorder := httptest.NewRecorder()

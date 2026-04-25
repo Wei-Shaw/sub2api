@@ -80,6 +80,76 @@ REDACTED
 	require.Equal(t, 1, ledgerCount)
 REDACTED
 
+// TestAffiliateRepository_AccrueQuota_ReusesOuterTransaction guards the
+// cross-layer tx propagation invariant: when AccrueQuota is called with a ctx
+// that already carries a transaction (via dbent.NewTxContext), repo.withTx
+// must reuse that tx rather than opening a nested one. If this invariant
+// breaks, AccrueQuota would commit independently and survive a rollback of
+// the outer tx, which would violate payment_fulfillment's all-or-nothing
+// semantics.
+func TestAffiliateRepository_AccrueQuota_ReusesOuterTransaction(t *testing.T) {
+	ctx := context.Background()
+
+	outerTx, err := integrationEntClient.Tx(ctx)
+	require.NoError(t, err, "begin outer tx")
+	// Defensive cleanup: if any require.* below fires before the explicit
+	// Rollback, this prevents the tx from leaking until container teardown.
+	// Rollback is idempotent at the driver level (extra rollback returns an
+	// error we ignore).
+	t.Cleanup(func() { _ = outerTx.Rollback() REDACTED)
+	client := outerTx.Client()
+	txCtx := dbent.NewTxContext(ctx, outerTx)
+
+	inviter := mustCreateUser(t, client, &service.User{
+		Email:        fmt.Sprintf("affiliate-inviter-%d@example.com", time.Now().UnixNano()),
+		PasswordHash: "hash",
+		Role:         service.RoleUser,
+		Status:       service.StatusActive,
+		Concurrency:  5,
+REDACTED)
+	invitee := mustCreateUser(t, client, &service.User{
+		Email:        fmt.Sprintf("affiliate-invitee-%d@example.com", time.Now().UnixNano()+1),
+		PasswordHash: "hash",
+		Role:         service.RoleUser,
+		Status:       service.StatusActive,
+		Concurrency:  5,
+REDACTED)
+
+	repo := NewAffiliateRepository(client, integrationDB)
+	_, err = repo.EnsureUserAffiliate(txCtx, inviter.ID)
+REDACTED
+	_, err = repo.EnsureUserAffiliate(txCtx, invitee.ID)
+REDACTED
+
+	bound, err := repo.BindInviter(txCtx, invitee.ID, inviter.ID)
+REDACTED
+	require.True(t, bound, "invitee must bind to inviter")
+
+	applied, err := repo.AccrueQuota(txCtx, inviter.ID, invitee.ID, 3.5)
+REDACTED
+	require.True(t, applied, "AccrueQuota must report applied=true")
+
+	// Visible inside the outer tx.
+	innerQuota := querySingleFloat(t, txCtx, client,
+		"SELECT aff_quota::double precision FROM user_affiliates WHERE user_id = $1", inviter.ID)
+	require.InDelta(t, 3.5, innerQuota, 1e-9)
+
+	// Roll back the outer tx; if AccrueQuota had opened its own inner tx and
+	// committed it, the rows would still be visible to the global client.
+	require.NoError(t, outerTx.Rollback())
+
+	rows, err := integrationEntClient.QueryContext(ctx,
+		"SELECT COUNT(*) FROM user_affiliates WHERE user_id IN ($1, $2)",
+		inviter.ID, invitee.ID)
+REDACTED
+	defer func() { _ = rows.Close() REDACTED()
+	require.True(t, rows.Next())
+	var postRollbackCount int
+	require.NoError(t, rows.Scan(&postRollbackCount))
+	require.Equal(t, 0, postRollbackCount,
+		"AccrueQuota must propagate the outer tx — found persisted rows after rollback")
+REDACTED
+
 func TestAffiliateRepository_TransferQuotaToBalance_EmptyQuota(t *testing.T) {
 	ctx := context.Background()
 	tx := testEntTx(t)

@@ -80,18 +80,6 @@ func ProvideSettingHandler(settingService *service.SettingService, buildInfo Bui
 	return NewSettingHandler(settingService, buildInfo.Version)
 REDACTED
 
-func ProvideUserHandler(
-	userService *service.UserService,
-	authService *service.AuthService,
-	emailService *service.EmailService,
-	emailCache service.EmailCache,
-	affiliateService *service.AffiliateService,
-) *UserHandler {
-	handler := NewUserHandler(userService, authService, emailService, emailCache)
-	handler.SetAffiliateService(affiliateService)
-	return handler
-REDACTED
-
 // ProvideHandlers creates the Handlers struct
 func ProvideHandlers(
 	authHandler *AuthHandler,
@@ -137,7 +125,7 @@ REDACTED
 var ProviderSet = wire.NewSet(
 	// Top-level handlers
 	NewAuthHandler,
-	ProvideUserHandler,
+	NewUserHandler,
 	NewAPIKeyHandler,
 	NewUsageHandler,
 	NewRedeemHandler,

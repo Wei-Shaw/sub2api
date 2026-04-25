@@ -57,3 +57,35 @@ func TestMaskEmail(t *testing.T) {
 	require.Equal(t, "x***@d***", maskEmail("x@domain"))
 	require.Equal(t, "", maskEmail(""))
 REDACTED
+
+func TestIsValidAffiliateCodeFormat(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		in   string
+		want bool
+REDACTED{
+		{"valid canonical", "ABCDEFGHJKLM", trueREDACTED,
+		{"valid all digits 2-9", "234567892345", trueREDACTED,
+		{"valid mixed", "A2B3C4D5E6F7", trueREDACTED,
+		{"too short", "ABCDEFGHJKL", falseREDACTED,
+		{"too long", "ABCDEFGHJKLMN", falseREDACTED,
+		{"contains excluded letter I", "IBCDEFGHJKLM", falseREDACTED,
+		{"contains excluded letter O", "OBCDEFGHJKLM", falseREDACTED,
+		{"contains excluded digit 0", "0BCDEFGHJKLM", falseREDACTED,
+		{"contains excluded digit 1", "1BCDEFGHJKLM", falseREDACTED,
+		{"lowercase rejected (caller must ToUpper first)", "abcdefghjklm", falseREDACTED,
+		{"empty", "", falseREDACTED,
+		{"12-byte utf8 non-ascii", "ÄÄÄÄÄÄ", falseREDACTED, // 6×2 bytes = 12 bytes, bytes out of charset
+		{"ascii punctuation", "ABCDEFGHJK.M", falseREDACTED,
+		{"whitespace", "ABCDEFGHJK M", falseREDACTED,
+REDACTED
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, isValidAffiliateCodeFormat(tc.in))
+	REDACTED)
+REDACTED
+REDACTED

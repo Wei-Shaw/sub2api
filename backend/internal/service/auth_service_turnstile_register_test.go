@@ -54,6 +54,7 @@ REDACTED
 		nil, // emailQueueService
 		nil, // promoService
 		nil, // defaultSubAssigner
+		nil, // affiliateService
 	)
 REDACTED
 

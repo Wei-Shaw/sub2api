@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
-	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -28,20 +27,15 @@ func NewUserHandler(
 	authService *service.AuthService,
 	emailService *service.EmailService,
 	emailCache service.EmailCache,
+	affiliateService *service.AffiliateService,
 ) *UserHandler {
 	return &UserHandler{
-		userService:  userService,
-		authService:  authService,
-		emailService: emailService,
-		emailCache:   emailCache,
+		userService:      userService,
+		authService:      authService,
+		emailService:     emailService,
+		emailCache:       emailCache,
+		affiliateService: affiliateService,
 REDACTED
-REDACTED
-
-func (h *UserHandler) SetAffiliateService(affiliateService *service.AffiliateService) {
-	if h == nil {
-		return
-REDACTED
-	h.affiliateService = affiliateService
 REDACTED
 
 // ChangePasswordRequest represents the change password request payload
@@ -168,13 +162,6 @@ REDACTED
 	response.Success(c, profileResp)
 REDACTED
 
-func (h *UserHandler) affiliateServiceOrErr() (*service.AffiliateService, error) {
-	if h == nil || h.affiliateService == nil {
-		return nil, infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
-REDACTED
-	return h.affiliateService, nil
-REDACTED
-
 // GetAffiliate returns the current user's affiliate details.
 // GET /api/v1/user/aff
 func (h *UserHandler) GetAffiliate(c *gin.Context) {
@@ -184,13 +171,7 @@ func (h *UserHandler) GetAffiliate(c *gin.Context) {
 		return
 REDACTED
 
-	affiliateSvc, err := h.affiliateServiceOrErr()
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-REDACTED
-
-	detail, err := affiliateSvc.GetAffiliateDetail(c.Request.Context(), subject.UserID)
+	detail, err := h.affiliateService.GetAffiliateDetail(c.Request.Context(), subject.UserID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -207,13 +188,7 @@ func (h *UserHandler) TransferAffiliateQuota(c *gin.Context) {
 		return
 REDACTED
 
-	affiliateSvc, err := h.affiliateServiceOrErr()
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-REDACTED
-
-	transferred, balance, err := affiliateSvc.TransferAffiliateQuota(c.Request.Context(), subject.UserID)
+	transferred, balance, err := h.affiliateService.TransferAffiliateQuota(c.Request.Context(), subject.UserID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

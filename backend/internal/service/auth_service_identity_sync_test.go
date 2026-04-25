@@ -137,7 +137,7 @@ REDACTED
 		values: settings,
 REDACTED, cfg)
 
-	svc := service.NewAuthService(client, repo, nil, nil, cfg, settingSvc, nil, nil, nil, nil, defaultSubAssigner)
+	svc := service.NewAuthService(client, repo, nil, nil, cfg, settingSvc, nil, nil, nil, nil, defaultSubAssigner, nil)
 	return svc, repo, client
 REDACTED
 

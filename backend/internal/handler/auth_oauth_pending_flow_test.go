@@ -2210,6 +2210,7 @@ REDACTED
 		nil,
 		nil,
 		options.defaultSubAssigner,
+		nil,
 	)
 	userSvc := service.NewUserService(userRepo, nil, nil, nil)
 	var totpSvc *service.TotpService
