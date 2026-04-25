@@ -81,7 +81,14 @@ message FrontendManifest {
 
 message MenuItem {
   string path = 1;
+  // label_key is the legacy i18n key. New plugins should leave this empty and
+  // populate `labels` instead so the core does not need a translation table for
+  // every plugin. Kept for backward compatibility.
   string label_key = 2;
+  // icon is the legacy icon hint. Historically this was an icon name (e.g.
+  // "puzzle-piece") that the core had to map to an SVG. New plugins should
+  // populate `icon_svg` instead. For tolerance, the frontend treats `icon` as
+  // raw SVG markup if it begins with `<svg`.
   string icon = 3;
   string section = 4;           // "admin" / "user"
   int32 sort_order = 5;
@@ -89,6 +96,16 @@ message MenuItem {
   bool hide_in_simple_mode = 7;
   string feature_flag = 8;
   repeated MenuItem children = 9;
+  // icon_svg is a complete SVG markup string (including the outer <svg> tag)
+  // that the frontend can inject directly via v-html. Letting plugins ship the
+  // SVG removes the need for the core to maintain an icon-name -> SVG table.
+  string icon_svg = 10;
+  // labels maps a locale code (e.g. "zh", "en") to the already-translated
+  // menu label. The frontend picks the entry matching the user's current
+  // locale, falling back to "en" if present, then to label_key as a last
+  // resort. This removes the need for the core's i18n bundle to contain every
+  // plugin's translations.
+  map<string, string> labels = 11;
 }
 
 message RouteDefinition {

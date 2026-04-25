@@ -527,18 +527,35 @@ func (x *FrontendManifest) GetI18NNamespaces() []string {
 }
 
 type MenuItem struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Path             string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
-	LabelKey         string                 `protobuf:"bytes,2,opt,name=label_key,json=labelKey,proto3" json:"label_key,omitempty"`
-	Icon             string                 `protobuf:"bytes,3,opt,name=icon,proto3" json:"icon,omitempty"`
-	Section          string                 `protobuf:"bytes,4,opt,name=section,proto3" json:"section,omitempty"` // "admin" / "user"
-	SortOrder        int32                  `protobuf:"varint,5,opt,name=sort_order,json=sortOrder,proto3" json:"sort_order,omitempty"`
-	RequiresAdmin    bool                   `protobuf:"varint,6,opt,name=requires_admin,json=requiresAdmin,proto3" json:"requires_admin,omitempty"`
-	HideInSimpleMode bool                   `protobuf:"varint,7,opt,name=hide_in_simple_mode,json=hideInSimpleMode,proto3" json:"hide_in_simple_mode,omitempty"`
-	FeatureFlag      string                 `protobuf:"bytes,8,opt,name=feature_flag,json=featureFlag,proto3" json:"feature_flag,omitempty"`
-	Children         []*MenuItem            `protobuf:"bytes,9,rep,name=children,proto3" json:"children,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Path  string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	// label_key is the legacy i18n key. New plugins should leave this empty and
+	// populate `labels` instead so the core does not need a translation table for
+	// every plugin. Kept for backward compatibility.
+	LabelKey string `protobuf:"bytes,2,opt,name=label_key,json=labelKey,proto3" json:"label_key,omitempty"`
+	// icon is the legacy icon hint. Historically this was an icon name (e.g.
+	// "puzzle-piece") that the core had to map to an SVG. New plugins should
+	// populate `icon_svg` instead. For tolerance, the frontend treats `icon` as
+	// raw SVG markup if it begins with `<svg`.
+	Icon             string      `protobuf:"bytes,3,opt,name=icon,proto3" json:"icon,omitempty"`
+	Section          string      `protobuf:"bytes,4,opt,name=section,proto3" json:"section,omitempty"` // "admin" / "user"
+	SortOrder        int32       `protobuf:"varint,5,opt,name=sort_order,json=sortOrder,proto3" json:"sort_order,omitempty"`
+	RequiresAdmin    bool        `protobuf:"varint,6,opt,name=requires_admin,json=requiresAdmin,proto3" json:"requires_admin,omitempty"`
+	HideInSimpleMode bool        `protobuf:"varint,7,opt,name=hide_in_simple_mode,json=hideInSimpleMode,proto3" json:"hide_in_simple_mode,omitempty"`
+	FeatureFlag      string      `protobuf:"bytes,8,opt,name=feature_flag,json=featureFlag,proto3" json:"feature_flag,omitempty"`
+	Children         []*MenuItem `protobuf:"bytes,9,rep,name=children,proto3" json:"children,omitempty"`
+	// icon_svg is a complete SVG markup string (including the outer <svg> tag)
+	// that the frontend can inject directly via v-html. Letting plugins ship the
+	// SVG removes the need for the core to maintain an icon-name -> SVG table.
+	IconSvg string `protobuf:"bytes,10,opt,name=icon_svg,json=iconSvg,proto3" json:"icon_svg,omitempty"`
+	// labels maps a locale code (e.g. "zh", "en") to the already-translated
+	// menu label. The frontend picks the entry matching the user's current
+	// locale, falling back to "en" if present, then to label_key as a last
+	// resort. This removes the need for the core's i18n bundle to contain every
+	// plugin's translations.
+	Labels        map[string]string `protobuf:"bytes,11,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *MenuItem) Reset() {
@@ -630,6 +647,20 @@ func (x *MenuItem) GetFeatureFlag() string {
 func (x *MenuItem) GetChildren() []*MenuItem {
 	if x != nil {
 		return x.Children
+	}
+	return nil
+}
+
+func (x *MenuItem) GetIconSvg() string {
+	if x != nil {
+		return x.IconSvg
+	}
+	return ""
+}
+
+func (x *MenuItem) GetLabels() map[string]string {
+	if x != nil {
+		return x.Labels
 	}
 	return nil
 }
@@ -747,7 +778,7 @@ const file_plugin_proto_rawDesc = "" +
 	"\n" +
 	"menu_items\x18\x03 \x03(\v2\x13.pluginsdk.MenuItemR\tmenuItems\x122\n" +
 	"\x06routes\x18\x04 \x03(\v2\x1a.pluginsdk.RouteDefinitionR\x06routes\x12'\n" +
-	"\x0fi18n_namespaces\x18\x05 \x03(\tR\x0ei18nNamespaces\"\xb2\x02\n" +
+	"\x0fi18n_namespaces\x18\x05 \x03(\tR\x0ei18nNamespaces\"\xc1\x03\n" +
 	"\bMenuItem\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x1b\n" +
 	"\tlabel_key\x18\x02 \x01(\tR\blabelKey\x12\x12\n" +
@@ -758,7 +789,13 @@ const file_plugin_proto_rawDesc = "" +
 	"\x0erequires_admin\x18\x06 \x01(\bR\rrequiresAdmin\x12-\n" +
 	"\x13hide_in_simple_mode\x18\a \x01(\bR\x10hideInSimpleMode\x12!\n" +
 	"\ffeature_flag\x18\b \x01(\tR\vfeatureFlag\x12/\n" +
-	"\bchildren\x18\t \x03(\v2\x13.pluginsdk.MenuItemR\bchildren\"\xd3\x01\n" +
+	"\bchildren\x18\t \x03(\v2\x13.pluginsdk.MenuItemR\bchildren\x12\x19\n" +
+	"\bicon_svg\x18\n" +
+	" \x01(\tR\aiconSvg\x127\n" +
+	"\x06labels\x18\v \x03(\v2\x1f.pluginsdk.MenuItem.LabelsEntryR\x06labels\x1a9\n" +
+	"\vLabelsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd3\x01\n" +
 	"\x0fRouteDefinition\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12%\n" +
@@ -786,7 +823,7 @@ func file_plugin_proto_rawDescGZIP() []byte {
 	return file_plugin_proto_rawDescData
 }
 
-var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
 var file_plugin_proto_goTypes = []any{
 	(*PluginInitRequest)(nil),     // 0: pluginsdk.PluginInitRequest
 	(*PluginInitResponse)(nil),    // 1: pluginsdk.PluginInitResponse
@@ -799,8 +836,9 @@ var file_plugin_proto_goTypes = []any{
 	(*MenuItem)(nil),              // 8: pluginsdk.MenuItem
 	(*RouteDefinition)(nil),       // 9: pluginsdk.RouteDefinition
 	nil,                           // 10: pluginsdk.PluginInitRequest.ConfigEntry
-	nil,                           // 11: pluginsdk.RouteDefinition.MetaEntry
-	(*emptypb.Empty)(nil),         // 12: google.protobuf.Empty
+	nil,                           // 11: pluginsdk.MenuItem.LabelsEntry
+	nil,                           // 12: pluginsdk.RouteDefinition.MetaEntry
+	(*emptypb.Empty)(nil),         // 13: google.protobuf.Empty
 }
 var file_plugin_proto_depIdxs = []int32{
 	10, // 0: pluginsdk.PluginInitRequest.config:type_name -> pluginsdk.PluginInitRequest.ConfigEntry
@@ -810,22 +848,23 @@ var file_plugin_proto_depIdxs = []int32{
 	8,  // 4: pluginsdk.FrontendManifest.menu_items:type_name -> pluginsdk.MenuItem
 	9,  // 5: pluginsdk.FrontendManifest.routes:type_name -> pluginsdk.RouteDefinition
 	8,  // 6: pluginsdk.MenuItem.children:type_name -> pluginsdk.MenuItem
-	11, // 7: pluginsdk.RouteDefinition.meta:type_name -> pluginsdk.RouteDefinition.MetaEntry
-	0,  // 8: pluginsdk.PluginLifecycle.Init:input_type -> pluginsdk.PluginInitRequest
-	12, // 9: pluginsdk.PluginLifecycle.GetManifest:input_type -> google.protobuf.Empty
-	12, // 10: pluginsdk.PluginLifecycle.HealthCheck:input_type -> google.protobuf.Empty
-	12, // 11: pluginsdk.PluginLifecycle.Shutdown:input_type -> google.protobuf.Empty
-	3,  // 12: pluginsdk.PluginLifecycle.GetFrontendBundle:input_type -> pluginsdk.FrontendBundleRequest
-	1,  // 13: pluginsdk.PluginLifecycle.Init:output_type -> pluginsdk.PluginInitResponse
-	5,  // 14: pluginsdk.PluginLifecycle.GetManifest:output_type -> pluginsdk.ManifestResponse
-	2,  // 15: pluginsdk.PluginLifecycle.HealthCheck:output_type -> pluginsdk.HealthResponse
-	12, // 16: pluginsdk.PluginLifecycle.Shutdown:output_type -> google.protobuf.Empty
-	4,  // 17: pluginsdk.PluginLifecycle.GetFrontendBundle:output_type -> pluginsdk.FileChunk
-	13, // [13:18] is the sub-list for method output_type
-	8,  // [8:13] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	11, // 7: pluginsdk.MenuItem.labels:type_name -> pluginsdk.MenuItem.LabelsEntry
+	12, // 8: pluginsdk.RouteDefinition.meta:type_name -> pluginsdk.RouteDefinition.MetaEntry
+	0,  // 9: pluginsdk.PluginLifecycle.Init:input_type -> pluginsdk.PluginInitRequest
+	13, // 10: pluginsdk.PluginLifecycle.GetManifest:input_type -> google.protobuf.Empty
+	13, // 11: pluginsdk.PluginLifecycle.HealthCheck:input_type -> google.protobuf.Empty
+	13, // 12: pluginsdk.PluginLifecycle.Shutdown:input_type -> google.protobuf.Empty
+	3,  // 13: pluginsdk.PluginLifecycle.GetFrontendBundle:input_type -> pluginsdk.FrontendBundleRequest
+	1,  // 14: pluginsdk.PluginLifecycle.Init:output_type -> pluginsdk.PluginInitResponse
+	5,  // 15: pluginsdk.PluginLifecycle.GetManifest:output_type -> pluginsdk.ManifestResponse
+	2,  // 16: pluginsdk.PluginLifecycle.HealthCheck:output_type -> pluginsdk.HealthResponse
+	13, // 17: pluginsdk.PluginLifecycle.Shutdown:output_type -> google.protobuf.Empty
+	4,  // 18: pluginsdk.PluginLifecycle.GetFrontendBundle:output_type -> pluginsdk.FileChunk
+	14, // [14:19] is the sub-list for method output_type
+	9,  // [9:14] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_plugin_proto_init() }
@@ -839,7 +878,7 @@ func file_plugin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_plugin_proto_rawDesc), len(file_plugin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   12,
+			NumMessages:   13,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -60,16 +60,30 @@ type FrontendManifest struct {
 }
 
 // MenuItemDecl is a sidebar/menu entry contributed by the plugin.
+//
+// Plugins should prefer the new `IconSVG` and `Labels` fields over the legacy
+// `Icon` (icon name) and `LabelKey` (i18n key) so that the core never has to
+// maintain a registry of plugin icons or translations. See pluginsdk.Labels
+// and the Icon* constants for ergonomic helpers.
 type MenuItemDecl struct {
 	Path             string
-	LabelKey         string
-	Icon             string
+	LabelKey         string // legacy: i18n key resolved by the core. Prefer Labels.
+	Icon             string // legacy: icon name. Prefer IconSVG.
 	Section          string // SectionAdmin or SectionUser
 	SortOrder        int
 	RequiresAdmin    bool
 	HideInSimpleMode bool
 	FeatureFlag      string
 	Children         []MenuItemDecl
+
+	// IconSVG is the complete SVG markup (including the outer <svg> tag) the
+	// frontend will inject directly. Use one of the Icon* constants in this
+	// package or supply your own.
+	IconSVG string
+	// Labels maps a locale code to the already-translated menu label, e.g.
+	// {"zh": "渠道管理", "en": "Channel Management"}. The frontend chooses the
+	// entry matching the user's current locale, falling back to "en".
+	Labels map[string]string
 }
 
 // RouteDecl is a Vue Router route definition contributed by the plugin.
@@ -136,6 +150,13 @@ func menuItemsToProto(items []MenuItemDecl) []*pb.MenuItem {
 	}
 	out := make([]*pb.MenuItem, 0, len(items))
 	for _, item := range items {
+		var labels map[string]string
+		if len(item.Labels) > 0 {
+			labels = make(map[string]string, len(item.Labels))
+			for k, v := range item.Labels {
+				labels[k] = v
+			}
+		}
 		out = append(out, &pb.MenuItem{
 			Path:             item.Path,
 			LabelKey:         item.LabelKey,
@@ -146,6 +167,8 @@ func menuItemsToProto(items []MenuItemDecl) []*pb.MenuItem {
 			HideInSimpleMode: item.HideInSimpleMode,
 			FeatureFlag:      item.FeatureFlag,
 			Children:         menuItemsToProto(item.Children),
+			IconSvg:          item.IconSVG,
+			Labels:           labels,
 		})
 	}
 	return out
