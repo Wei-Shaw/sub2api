@@ -69,8 +69,8 @@ func (p *HelloPlugin) Manifest() *pluginsdk.Manifest {
 			MenuItems: []pluginsdk.MenuItemDecl{
 				{
 					Path:      "/admin/plugins/hello-world",
-					LabelKey:  "Hello World",
-					Icon:      "puzzle-piece",
+					IconSVG:   pluginsdk.IconPuzzle,
+					Labels:    pluginsdk.Labels("Hello World", "Hello World"),
 					Section:   pluginsdk.SectionAdmin,
 					SortOrder: 999,
 				},
