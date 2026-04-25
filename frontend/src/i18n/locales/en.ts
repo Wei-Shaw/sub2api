@@ -854,7 +854,7 @@ export default {
     imageUnitPrice: 'Per-image price',
     cacheRead: 'Read',
     cacheWrite: 'Write',
-    cacheHit: 'Cache hit',
+    cacheHit: 'Cache read',
     cacheCreate: 'Cache write',
     cacheHitRate: 'Cache hit rate',
     serviceTier: 'Service tier',

@@ -858,7 +858,7 @@ export default {
     imageUnitPrice: '单张价格',
     cacheRead: '读取',
     cacheWrite: '写入',
-    cacheHit: '缓存命中',
+    cacheHit: '缓存读取',
     cacheCreate: '缓存写入',
     cacheHitRate: '缓存命中率',
     serviceTier: '服务档位',
