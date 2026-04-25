@@ -1746,6 +1746,14 @@ func (r *openAIProjectionViewResult) selectedGroupForAccount(accountID int64) st
 	return string(TargetGroupActive)
 }
 
+func (r *openAIProjectionViewResult) selectedGroupForTarget(accountID int64, targetGroup AccountTargetGroup) string {
+	selectedGroup := r.selectedGroupForAccount(accountID)
+	if r != nil && normalizeTargetGroup(targetGroup) != TargetGroupExhausted && selectedGroup == openAISelectedGroupReserve && len(r.view.ExhaustedBaseIDs) == 0 {
+		return string(TargetGroupActive)
+	}
+	return selectedGroup
+}
+
 func (r *openAIProjectionViewResult) bindingMatches(binding *openAIAffinityBinding) bool {
 	if r == nil || binding == nil {
 		return false
@@ -1940,6 +1948,61 @@ func (s *OpenAIGatewayService) getOpenAIProjectionView(ctx context.Context, grou
 	}, nil
 }
 
+func (s *OpenAIGatewayService) openAIProjectionSourceKnowsModel(ctx context.Context, groupID *int64, requestedModel string) (bool, error) {
+	if s == nil || s.schedulerSnapshot == nil {
+		return false, ErrSchedulerCacheNotReady
+	}
+	canonicalModel := NormalizeOpenAIProjectionModelKey(requestedModel)
+	if canonicalModel == "" {
+		return false, ErrSchedulerCacheNotReady
+	}
+	if getNormalizedCodexModel(canonicalModel) != "" || normalizeCodexModel(canonicalModel) == canonicalModel {
+		return true, nil
+	}
+	repo := s.openAIProjectionAccountRepo()
+	if repo == nil {
+		return false, ErrSchedulerCacheNotReady
+	}
+	snapshot := s.schedulerSnapshot
+	if snapshot.accountRepo == nil {
+		cloned := *snapshot
+		cloned.accountRepo = repo
+		snapshot = &cloned
+	}
+	bucket := snapshot.bucketFor(groupID, PlatformOpenAI, SchedulerModeSingle)
+	inputs, err := snapshot.loadOpenAIProjectionInputs(ctx, bucket)
+	if err != nil {
+		return false, err
+	}
+	for _, model := range canonicalizeOpenAIProjectionCatalog(inputs.CanonicalCatalog) {
+		if model == canonicalModel {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (s *OpenAIGatewayService) getOpenAIProjectionViewWithLegacyFallback(ctx context.Context, groupID *int64, requestedModel string) (*openAIProjectionViewResult, bool, error) {
+	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" {
+		return nil, true, nil
+	}
+	projectionView, err := s.getOpenAIProjectionView(ctx, groupID, requestedModel)
+	if err == nil {
+		return projectionView, false, nil
+	}
+	if !errors.Is(err, ErrSchedulerCacheNotReady) {
+		return nil, false, err
+	}
+	sourceKnowsModel, sourceErr := s.openAIProjectionSourceKnowsModel(ctx, groupID, requestedModel)
+	if sourceErr != nil {
+		return nil, false, err
+	}
+	if !sourceKnowsModel {
+		return nil, false, ErrSchedulerCacheNotReady
+	}
+	return nil, true, nil
+}
+
 func (s *OpenAIGatewayService) loadOpenAIProjectionAccounts(ctx context.Context, state *OpenAISchedulerBucketState, ids []int64) ([]Account, error) {
 	if state == nil {
 		return nil, ErrSchedulerCacheNotReady
@@ -1971,6 +2034,25 @@ func buildOpenAIReserveCandidatePool(accounts []Account) []Account {
 		if account.IsOpenAIReserveCandidate() {
 			pool = append(pool, account)
 		}
+	}
+	sort.SliceStable(pool, func(i, j int) bool {
+		iScore := pool[i].OpenAIRemainingQuotaScore()
+		jScore := pool[j].OpenAIRemainingQuotaScore()
+		if iScore != jScore {
+			return iScore > jScore
+		}
+		return pool[i].ID < pool[j].ID
+	})
+	return pool
+}
+
+func buildOpenAIModelSubsetReserveCandidatePool(accounts []Account) []Account {
+	pool := make([]Account, 0, len(accounts))
+	for _, account := range accounts {
+		if !account.IsOpenAI() || !account.IsSchedulableForTargetGroup(TargetGroupActive) {
+			continue
+		}
+		pool = append(pool, account)
 	}
 	sort.SliceStable(pool, func(i, j int) bool {
 		iScore := pool[i].OpenAIRemainingQuotaScore()
@@ -2026,8 +2108,7 @@ func buildOpenAIReservePool(activeAccounts []Account, exhaustedAccounts []Accoun
 	return reservePool
 }
 
-func buildOpenAIReserveOverflowPool(activeAccounts []Account, exhaustedAccounts []Account) []Account {
-	reserveCandidates := buildOpenAIReserveCandidatePool(activeAccounts)
+func buildOpenAIReserveOverflowPoolFromCandidates(reserveCandidates []Account, exhaustedAccounts []Account) []Account {
 	if len(reserveCandidates) == 0 {
 		return nil
 	}
@@ -2058,6 +2139,18 @@ func buildOpenAIReserveOverflowPool(activeAccounts []Account, exhaustedAccounts 
 		}
 	}
 	return reservePool
+}
+
+func buildOpenAILegacyReserveOverflowPool(activeAccounts []Account, exhaustedAccounts []Account) []Account {
+	return buildOpenAIReserveOverflowPoolFromCandidates(buildOpenAIReserveCandidatePool(activeAccounts), exhaustedAccounts)
+}
+
+func buildOpenAIReserveOverflowPool(activeAccounts []Account, exhaustedAccounts []Account) []Account {
+	reserveCandidates := buildOpenAIReserveCandidatePool(activeAccounts)
+	if len(reserveCandidates) == 0 {
+		reserveCandidates = buildOpenAIModelSubsetReserveCandidatePool(activeAccounts)
+	}
+	return buildOpenAIReserveOverflowPoolFromCandidates(reserveCandidates, exhaustedAccounts)
 }
 
 func shouldRouteExhaustedOverflowToReserve(exhaustedAccounts []Account, reserveAccounts []Account, loadMap map[int64]*AccountLoadInfo) bool {
@@ -2243,7 +2336,16 @@ func (s *OpenAIGatewayService) resolveFreshOpenAIExhaustedAccount(ctx context.Co
 	if account == nil {
 		return nil
 	}
-	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" {
+	projectionView := (*openAIProjectionViewResult)(nil)
+	allowLegacyFallback := true
+	if s != nil && s.schedulerSnapshot != nil && strings.TrimSpace(requestedModel) != "" {
+		var err error
+		projectionView, allowLegacyFallback, err = s.getOpenAIProjectionViewWithLegacyFallback(ctx, groupID, requestedModel)
+		if err != nil {
+			return nil
+		}
+	}
+	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" || (projectionView == nil && allowLegacyFallback) {
 		fresh := account
 		if s != nil && s.schedulerSnapshot != nil {
 			current, err := s.getSchedulableAccount(ctx, account.ID)
@@ -2257,8 +2359,10 @@ func (s *OpenAIGatewayService) resolveFreshOpenAIExhaustedAccount(ctx context.Co
 		}
 		return fresh
 	}
-	projectionView, err := s.getOpenAIProjectionView(ctx, groupID, requestedModel)
-	if err != nil || !projectionView.containsExhausted(account.ID) {
+	if projectionView == nil {
+		return nil
+	}
+	if !projectionView.containsExhausted(account.ID) {
 		return nil
 	}
 
@@ -2292,7 +2396,16 @@ func (s *OpenAIGatewayService) resolveFreshOpenAIReserveAccount(ctx context.Cont
 	if account == nil {
 		return nil
 	}
-	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" {
+	projectionView := (*openAIProjectionViewResult)(nil)
+	allowLegacyFallback := true
+	if s != nil && s.schedulerSnapshot != nil && strings.TrimSpace(requestedModel) != "" {
+		var err error
+		projectionView, allowLegacyFallback, err = s.getOpenAIProjectionViewWithLegacyFallback(ctx, groupID, requestedModel)
+		if err != nil {
+			return nil
+		}
+	}
+	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" || (projectionView == nil && allowLegacyFallback) {
 		fresh := account
 		if s != nil && s.schedulerSnapshot != nil {
 			current, err := s.getSchedulableAccount(ctx, account.ID)
@@ -2309,8 +2422,10 @@ func (s *OpenAIGatewayService) resolveFreshOpenAIReserveAccount(ctx context.Cont
 		}
 		return fresh
 	}
-	projectionView, err := s.getOpenAIProjectionView(ctx, groupID, requestedModel)
-	if err != nil || !projectionView.containsReserve(account.ID) {
+	if projectionView == nil {
+		return nil
+	}
+	if !projectionView.containsReserve(account.ID) {
 		return nil
 	}
 
@@ -2333,11 +2448,61 @@ func (s *OpenAIGatewayService) isCurrentOpenAIReserveOverlayAccount(ctx context.
 	if s == nil || account == nil || !account.IsOpenAIReserveCandidate() {
 		return false
 	}
-	projectionView, err := s.getOpenAIProjectionView(ctx, groupID, requestedModel)
+	if s.schedulerSnapshot != nil {
+		projectionView, err := s.getOpenAIProjectionView(ctx, groupID, requestedModel)
+		if err == nil {
+			return projectionView.containsReserve(account.ID)
+		}
+	}
+	reserveAccounts, err := s.listCurrentOpenAILegacyReserveOverlay(ctx, groupID, requestedModel)
 	if err != nil {
 		return false
 	}
-	return projectionView.containsReserve(account.ID)
+	for _, reserveAccount := range reserveAccounts {
+		if reserveAccount.ID == account.ID {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *OpenAIGatewayService) listCurrentOpenAILegacyReserveOverlay(ctx context.Context, groupID *int64, requestedModel string) ([]Account, error) {
+	repo := s.openAIProjectionAccountRepo()
+	if s == nil || repo == nil {
+		return nil, ErrSchedulerCacheNotReady
+	}
+	var (
+		accounts []Account
+		err      error
+	)
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		accounts, err = repo.ListSchedulableByPlatform(ctx, PlatformOpenAI)
+	} else if groupID != nil {
+		accounts, err = repo.ListSchedulableByGroupIDAndPlatform(ctx, *groupID, PlatformOpenAI)
+	} else {
+		accounts, err = repo.ListSchedulableUngroupedByPlatform(ctx, PlatformOpenAI)
+	}
+	if err != nil {
+		return nil, err
+	}
+	activeAccounts := make([]Account, 0, len(accounts))
+	exhaustedAccounts := make([]Account, 0, len(accounts))
+	for _, candidate := range accounts {
+		if !candidate.IsOpenAI() {
+			continue
+		}
+		if requestedModel != "" && !candidate.IsModelSupported(requestedModel) {
+			continue
+		}
+		if candidate.IsSchedulableForTargetGroup(TargetGroupExhausted) {
+			exhaustedAccounts = append(exhaustedAccounts, candidate)
+			continue
+		}
+		if candidate.IsSchedulableForTargetGroup(TargetGroupActive) {
+			activeAccounts = append(activeAccounts, candidate)
+		}
+	}
+	return buildOpenAILegacyReserveOverflowPool(activeAccounts, exhaustedAccounts), nil
 }
 
 func (s *OpenAIGatewayService) isOpenAIReservePreviousResponseAnchor(ctx context.Context, groupID *int64, requestedModel string, previousResponseID string) bool {
@@ -2448,7 +2613,16 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIExhaustedAccountFromDB(ctx c
 	if account == nil {
 		return nil
 	}
-	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" {
+	projectionView := (*openAIProjectionViewResult)(nil)
+	allowLegacyFallback := true
+	if s != nil && s.schedulerSnapshot != nil && strings.TrimSpace(requestedModel) != "" {
+		var err error
+		projectionView, allowLegacyFallback, err = s.getOpenAIProjectionViewWithLegacyFallback(ctx, groupID, requestedModel)
+		if err != nil {
+			return nil
+		}
+	}
+	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" || (projectionView == nil && allowLegacyFallback) {
 		if s == nil || s.schedulerSnapshot == nil || s.accountRepo == nil {
 			return account
 		}
@@ -2461,8 +2635,10 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIExhaustedAccountFromDB(ctx c
 		}
 		return latest
 	}
-	projectionView, err := s.getOpenAIProjectionView(ctx, groupID, requestedModel)
-	if err != nil || !projectionView.containsExhausted(account.ID) {
+	if projectionView == nil {
+		return nil
+	}
+	if !projectionView.containsExhausted(account.ID) {
 		return nil
 	}
 	if s.schedulerSnapshot == nil || s.accountRepo == nil {
@@ -2483,7 +2659,16 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIReserveAccountFromDB(ctx con
 	if account == nil {
 		return nil
 	}
-	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" {
+	projectionView := (*openAIProjectionViewResult)(nil)
+	allowLegacyFallback := true
+	if s != nil && s.schedulerSnapshot != nil && strings.TrimSpace(requestedModel) != "" {
+		var err error
+		projectionView, allowLegacyFallback, err = s.getOpenAIProjectionViewWithLegacyFallback(ctx, groupID, requestedModel)
+		if err != nil {
+			return nil
+		}
+	}
+	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" || (projectionView == nil && allowLegacyFallback) {
 		if s == nil || s.schedulerSnapshot == nil || s.accountRepo == nil {
 			return account
 		}
@@ -2499,8 +2684,10 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIReserveAccountFromDB(ctx con
 		}
 		return latest
 	}
-	projectionView, err := s.getOpenAIProjectionView(ctx, groupID, requestedModel)
-	if err != nil || !projectionView.containsReserve(account.ID) {
+	if projectionView == nil {
+		return nil
+	}
+	if !projectionView.containsReserve(account.ID) {
 		return nil
 	}
 	if s.schedulerSnapshot == nil || s.accountRepo == nil {

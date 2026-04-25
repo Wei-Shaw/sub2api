@@ -5,6 +5,15 @@ import (
 	"strings"
 )
 
+func isExplicitGPT55Model(model string) bool {
+	if model == "" {
+		return false
+	}
+	normalized := strings.ToLower(strings.TrimSpace(model))
+	normalized = strings.ReplaceAll(normalized, " ", "-")
+	return normalized == "gpt-5.5"
+}
+
 var codexModelMap = map[string]string{
 	"gpt-5.4":                    "gpt-5.4",
 	"gpt-5.4-mini":               "gpt-5.4-mini",
@@ -273,6 +282,9 @@ func normalizeCodexModel(model string) string {
 	if strings.Contains(normalized, "gpt-5.1") || strings.Contains(normalized, "gpt 5.1") {
 		return "gpt-5.1"
 	}
+	if isExplicitGPT55Model(normalized) {
+		return strings.ReplaceAll(normalized, " ", "-")
+	}
 	if strings.Contains(normalized, "codex") {
 		return "gpt-5.1-codex"
 	}
@@ -285,7 +297,7 @@ func normalizeCodexModel(model string) string {
 
 func normalizeOpenAIModelForUpstream(account *Account, model string) string {
 	if account == nil || account.Type == AccountTypeOAuth {
-		return normalizeCodexModel(model)
+		return normalizeCodexModel(StripSysSuffix(model))
 	}
 	return strings.TrimSpace(model)
 }

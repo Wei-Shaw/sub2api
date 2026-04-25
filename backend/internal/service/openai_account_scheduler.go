@@ -694,10 +694,12 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	selectedGroup := resolveOpenAISelectedGroupFromBindingOrAccount(affinityBinding, account)
 	legacyReserveAffinityHit := false
 	if req.RequestedModel != "" && s.service != nil && s.service.schedulerSnapshot != nil {
-		projectionView, err = s.service.getOpenAIProjectionView(ctx, req.GroupID, req.RequestedModel)
+		projectionView, _, err = s.service.getOpenAIProjectionViewWithLegacyFallback(ctx, req.GroupID, req.RequestedModel)
 		if err != nil {
 			return nil, err
 		}
+	}
+	if projectionView != nil {
 		if affinityBinding != nil && !projectionView.bindingMatches(affinityBinding) {
 			_ = s.service.deleteOpenAIStickyAffinityBinding(ctx, req.GroupID, sessionHash)
 			affinityBinding = nil
@@ -705,7 +707,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 				sticky.setAffinityBinding(nil)
 			}
 		}
-		selectedGroup = projectionView.selectedGroupForAccount(account.ID)
+		selectedGroup = projectionView.selectedGroupForTarget(account.ID, req.TargetGroup)
 	}
 	if isOpenAIReserveAffinityBinding(affinityBinding) && normalizeTargetGroup(req.TargetGroup) != TargetGroupExhausted {
 		if sticky != nil {
@@ -1056,18 +1058,32 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		projectionView  *openAIProjectionViewResult
 		err             error
 	)
+	allowLegacyFallback := true
 	if req.RequestedModel != "" && s.service != nil && s.service.schedulerSnapshot != nil {
-		projectionView, err = s.service.getOpenAIProjectionView(ctx, req.GroupID, req.RequestedModel)
+		projectionView, allowLegacyFallback, err = s.service.getOpenAIProjectionViewWithLegacyFallback(ctx, req.GroupID, req.RequestedModel)
 		if err != nil {
 			return nil, "", 0, 0, 0, nil, err
 		}
 	}
 	if req.TargetGroup == TargetGroupExhausted {
-		accounts, reserveAccounts, err = s.service.listOpenAIExhaustedWithReserveOverlay(ctx, req.GroupID, req.RequestedModel)
+		if projectionView != nil {
+			accounts, reserveAccounts, err = s.service.listOpenAIExhaustedWithReserveOverlay(ctx, req.GroupID, req.RequestedModel)
+		} else if allowLegacyFallback && req.RequestedModel != "" && s.service != nil && s.service.schedulerSnapshot != nil {
+			accounts, err = s.service.listSchedulableAccounts(ctx, req.GroupID, req.TargetGroup)
+			if err == nil {
+				reserveAccounts, err = s.service.listCurrentOpenAILegacyReserveOverlay(ctx, req.GroupID, req.RequestedModel)
+			}
+		} else {
+			accounts, reserveAccounts, err = s.service.listOpenAIExhaustedWithReserveOverlay(ctx, req.GroupID, req.RequestedModel)
+		}
 	} else {
 		accounts, err = s.service.listSchedulableAccounts(ctx, req.GroupID, req.TargetGroup)
 		if err == nil && (req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive) {
-			_, reserveAccounts, err = s.service.listOpenAIExhaustedWithReserveOverlay(ctx, req.GroupID, req.RequestedModel)
+			if projectionView != nil {
+				_, reserveAccounts, err = s.service.listOpenAIExhaustedWithReserveOverlay(ctx, req.GroupID, req.RequestedModel)
+			} else {
+				reserveAccounts, err = s.service.listCurrentOpenAILegacyReserveOverlay(ctx, req.GroupID, req.RequestedModel)
+			}
 		}
 	}
 	if err != nil {
@@ -1092,6 +1108,16 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	for _, account := range reserveAccounts {
 		reserveOverlayIDs[account.ID] = struct{}{}
 	}
+	rebuildLoadReq := func(primary []Account, reserve []Account) []AccountWithConcurrency {
+		rebuilt := make([]AccountWithConcurrency, 0, len(primary)+len(reserve))
+		for _, account := range primary {
+			rebuilt = append(rebuilt, AccountWithConcurrency{ID: account.ID, MaxConcurrency: account.EffectiveLoadFactor()})
+		}
+		for _, account := range reserve {
+			rebuilt = append(rebuilt, AccountWithConcurrency{ID: account.ID, MaxConcurrency: account.EffectiveLoadFactor()})
+		}
+		return rebuilt
+	}
 	appendFilteredAccount := func(account *Account, selectedGroup string, out *[]*Account, outValues *[]Account) {
 		if account == nil {
 			return
@@ -1105,13 +1131,15 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			return
 		}
 		if selectedGroup == openAISelectedGroupReserve {
-			if !account.IsOpenAIReserveCandidate() {
+			if projectionView == nil && !account.IsOpenAIReserveCandidate() {
 				return
 			}
 		} else {
 			if req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive {
 				if _, reserved := reserveOverlayIDs[account.ID]; reserved {
-					return
+					if projectionView == nil || len(projectionView.view.ExhaustedBaseIDs) > 0 {
+						return
+					}
 				}
 			}
 			if !account.MatchesTargetGroup(req.TargetGroup) {
@@ -1144,6 +1172,29 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	}
 	for i := range reserveAccounts {
 		appendFilteredAccount(&reserveAccounts[i], openAISelectedGroupReserve, &reserveFiltered, &reserveFilteredValues)
+	}
+	if (req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive) && projectionView != nil && len(projectionView.view.ExhaustedBaseIDs) == 0 && len(filteredValues) > 0 {
+		hasNonReserveActive := false
+		for _, account := range filteredValues {
+			if _, reserved := reserveOverlayIDs[account.ID]; !reserved {
+				hasNonReserveActive = true
+				break
+			}
+		}
+		if hasNonReserveActive {
+			pruned := filtered[:0]
+			prunedValues := filteredValues[:0]
+			for i, account := range filteredValues {
+				if _, reserved := reserveOverlayIDs[account.ID]; reserved {
+					continue
+				}
+				pruned = append(pruned, filtered[i])
+				prunedValues = append(prunedValues, account)
+			}
+			filtered = pruned
+			filteredValues = prunedValues
+			loadReq = rebuildLoadReq(filteredValues, reserveFilteredValues)
+		}
 	}
 	if len(filtered) == 0 && !(req.TargetGroup == TargetGroupExhausted && len(reserveFiltered) > 0) {
 		return nil, "", 0, 0, 0, projectionView, errors.New("no available OpenAI accounts")

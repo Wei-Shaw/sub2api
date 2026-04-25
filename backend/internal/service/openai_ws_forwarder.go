@@ -3841,19 +3841,26 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return nil, nil, nil
 	}
+	if (targetGroup == TargetGroupAny || targetGroup == TargetGroupActive) && s.isCurrentOpenAIReserveOverlayAccount(ctx, groupID, requestedModel, account) {
+		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+		return nil, nil, nil
+	}
 	selectedGroup := resolveOpenAISelectedGroupFromBindingOrAccount(affinityBinding, account)
 	legacyReserveAffinityHit := false
 	var projectionView *openAIProjectionViewResult
+	allowLegacyFallback := true
 	if requestedModel != "" && s.schedulerSnapshot != nil {
-		projectionView, err = s.getOpenAIProjectionView(ctx, groupID, requestedModel)
+		projectionView, allowLegacyFallback, err = s.getOpenAIProjectionViewWithLegacyFallback(ctx, groupID, requestedModel)
 		if err != nil {
 			return nil, nil, err
 		}
+	}
+	if projectionView != nil {
 		if affinityBinding != nil && !projectionView.bindingMatches(affinityBinding) {
 			deleteOpenAIWSResponseAffinityBinding(ctx, store, derefGroupID(groupID), responseID)
 			affinityBinding = nil
 		}
-		selectedGroup = projectionView.selectedGroupForAccount(accountID)
+		selectedGroup = projectionView.selectedGroupForTarget(accountID, targetGroup)
 		switch targetGroup {
 		case TargetGroupExhausted:
 			if selectedGroup != openAISelectedGroupReserve && selectedGroup != string(TargetGroupExhausted) {
@@ -3867,6 +3874,9 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 			}
 		}
 	} else {
+		if !allowLegacyFallback {
+			return nil, nil, ErrSchedulerCacheNotReady
+		}
 		reserveAffinityBinding := isOpenAIReserveAffinityBinding(affinityBinding)
 		legacyReserveAffinityHit = reserveAffinityBinding && targetGroup == TargetGroupExhausted && account.IsOpenAIReserveCandidate()
 		if reserveAffinityBinding && targetGroup == TargetGroupExhausted && !account.IsOpenAIReserveCandidate() && !account.MatchesTargetGroup(TargetGroupExhausted) {
@@ -3915,9 +3925,9 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 			_ = bindOpenAIWSResponseAffinityBinding(ctx, store, derefGroupID(groupID), responseID, binding, s.openAIWSResponseStickyTTL())
 		}
 		return &AccountSelectionResult{
-			Account:     account,
-			Acquired:    true,
-			ReleaseFunc: result.ReleaseFunc,
+			Account:       account,
+			Acquired:      true,
+			ReleaseFunc:   result.ReleaseFunc,
 			SelectedGroup: selectedGroup,
 		}, binding, nil
 	}

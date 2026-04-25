@@ -25,6 +25,21 @@ func newOpenAIProjectionActiveAccount(id int64, concurrency int, usedPercent flo
 	}
 }
 
+func newOpenAIProjectionPaidTierAccount(id int64, concurrency int, planType string, models []string) Account {
+	return Account{
+		ID:          id,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: concurrency,
+		Credentials: map[string]any{"plan_type": planType},
+		Extra: map[string]any{
+			openAICapabilityExplicitModelsExtraKey: models,
+		},
+	}
+}
+
 func newOpenAIProjectionExhaustedAccount(id int64, concurrency int, models []string) Account {
 	return Account{
 		ID:          id,
@@ -429,6 +444,50 @@ func TestBuildOpenAIModelSubsetProjection_ExhaustedEmptyMeansOneHundredPercent(t
 	require.ElementsMatch(t, []int64{11}, view.ReserveOverflowIDs)
 	_, reserveOK := projection.AccountReserveIDs[11]
 	require.True(t, reserveOK)
+}
+
+func TestBuildOpenAIModelSubsetProjection_PaidTierOnlyGPT55PromotesReserve(t *testing.T) {
+	t.Parallel()
+
+	projection := BuildOpenAIModelSubsetProjection(&OpenAIProjectionInputs{
+		Bucket:           SchedulerBucket{GroupID: 2, Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+		CanonicalCatalog: []string{"gpt-5.5"},
+		AccountsAll: []Account{
+			newOpenAIProjectionPaidTierAccount(51, 1, "team", []string{"gpt-5.5"}),
+		},
+	})
+
+	view, ok := projection.ViewForModel("gpt-5.5")
+	require.True(t, ok)
+	require.Empty(t, view.ExhaustedBaseIDs)
+	require.ElementsMatch(t, []int64{51}, view.ReserveOverflowIDs)
+	_, reserveOK := projection.AccountReserveIDs[51]
+	require.False(t, reserveOK)
+}
+
+func TestBuildOpenAIModelSubsetProjection_PaidTierOnlyGPT55ReserveDoesNotLiftAcrossModels(t *testing.T) {
+	t.Parallel()
+
+	paidTier := newOpenAIProjectionPaidTierAccount(61, 1, "team", []string{"gpt-5.5", "gpt-5.4"})
+	exhausted54 := newOpenAIProjectionExhaustedAccount(62, 2, []string{"gpt-5.4"})
+
+	projection := BuildOpenAIModelSubsetProjection(&OpenAIProjectionInputs{
+		Bucket:           SchedulerBucket{GroupID: 2, Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+		CanonicalCatalog: []string{"gpt-5.4", "gpt-5.5"},
+		AccountsAll:      []Account{paidTier, exhausted54},
+	})
+
+	view55, ok55 := projection.ViewForModel("gpt-5.5")
+	view54, ok54 := projection.ViewForModel("gpt-5.4")
+
+	require.True(t, ok55)
+	require.True(t, ok54)
+	require.Empty(t, view55.ExhaustedBaseIDs)
+	require.ElementsMatch(t, []int64{61}, view55.ReserveOverflowIDs)
+	require.ElementsMatch(t, []int64{62}, view54.ExhaustedBaseIDs)
+	require.Empty(t, view54.ReserveOverflowIDs)
+	_, reserveOK := projection.AccountReserveIDs[61]
+	require.False(t, reserveOK)
 }
 
 func TestBuildOpenAIModelSubsetProjection_ViewForModelDistinguishesMissingViewFromEmptyView(t *testing.T) {

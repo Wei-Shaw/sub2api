@@ -674,6 +674,13 @@ func normalizeRequestedModelForLookup(platform, requestedModel string) string {
 	if trimmed == "" {
 		return ""
 	}
+	if platform == PlatformOpenAI {
+		normalized := strings.ToLower(strings.TrimSpace(StripSysSuffix(trimmed)))
+		if normalized == "" {
+			return ""
+		}
+		return normalized
+	}
 	if platform != PlatformGemini && platform != PlatformAntigravity {
 		return trimmed
 	}
