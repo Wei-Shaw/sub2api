@@ -47,6 +47,12 @@ type HelloPlugin struct {
 	ctx atomic.Pointer[pluginsdk.PluginContext]
 }
 
+// pluginRoutePrefix is the path prefix the core gateway uses when proxying
+// plugin endpoints to this plugin. The convention (per plugins/channel-management)
+// is that the manifest declares full paths including this prefix; the core
+// matches them verbatim, no prepending.
+const pluginRoutePrefix = "/api/v1/plugin/hello-world"
+
 func (p *HelloPlugin) Manifest() *pluginsdk.Manifest {
 	return &pluginsdk.Manifest{
 		Name:        "hello-world",
@@ -55,9 +61,9 @@ func (p *HelloPlugin) Manifest() *pluginsdk.Manifest {
 		Description: "A test plugin for the plugin system",
 		Author:      "Sub2API",
 		PluginEndpoints: []pluginsdk.EndpointDecl{
-			{Path: "/hello", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeNone},
-			{Path: "/db-test", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeAdmin},
-			{Path: "/redis-test", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeAdmin},
+			{Path: pluginRoutePrefix + "/hello", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeNone},
+			{Path: pluginRoutePrefix + "/db-test", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeAdmin},
+			{Path: pluginRoutePrefix + "/redis-test", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeAdmin},
 		},
 		Frontend: &pluginsdk.FrontendManifest{
 			MenuItems: []pluginsdk.MenuItemDecl{
@@ -92,9 +98,12 @@ func (p *HelloPlugin) Shutdown() error {
 // RegisterHTTP wires the three smoke-test routes onto the SDK-managed mux.
 // The paths are mounted at the root and MUST match what Manifest declared.
 func (p *HelloPlugin) RegisterHTTP(mux pluginsdk.HTTPMux) {
-	mux.Handle("/hello", http.HandlerFunc(p.handleHello))
-	mux.Handle("/db-test", http.HandlerFunc(p.handleDBTest))
-	mux.Handle("/redis-test", http.HandlerFunc(p.handleRedisTest))
+	// Plugin's HTTP server receives the original path (the core gateway does
+	// NOT strip the /api/v1/plugin/<name> prefix), so handlers must register
+	// at the full path that matches the manifest declarations above.
+	mux.Handle(pluginRoutePrefix+"/hello", http.HandlerFunc(p.handleHello))
+	mux.Handle(pluginRoutePrefix+"/db-test", http.HandlerFunc(p.handleDBTest))
+	mux.Handle(pluginRoutePrefix+"/redis-test", http.HandlerFunc(p.handleRedisTest))
 }
 
 func main() {
