@@ -17,11 +17,11 @@ func NewServiceQuotaRuleRepository(db *sql.DB) service.ServiceQuotaRuleRepositor
 	return &serviceQuotaRuleRepository{db: db}
 }
 
-const serviceQuotaColumns = `id, enabled, platform, group_id, account_id, model_pattern, limiter_type, counter_mode, is_fallback, window_mode, limit_value, batch_id, created_at, updated_at`
+const serviceQuotaColumns = `id, enabled, platform, channel_id, group_id, account_id, model_pattern, limiter_type, counter_mode, is_fallback, window_mode, limit_value, batch_id, created_at, updated_at`
 
-const serviceQuotaInsertSQL = `INSERT INTO service_quota_rules (enabled, platform, group_id, account_id, model_pattern, limiter_type, counter_mode, is_fallback, window_mode, limit_value, batch_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING ` + serviceQuotaColumns
+const serviceQuotaInsertSQL = `INSERT INTO service_quota_rules (enabled, platform, channel_id, group_id, account_id, model_pattern, limiter_type, counter_mode, is_fallback, window_mode, limit_value, batch_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING ` + serviceQuotaColumns
 
-const serviceQuotaUpdateSQL = `UPDATE service_quota_rules SET enabled=$1, platform=$2, group_id=$3, account_id=$4, model_pattern=$5, limiter_type=$6, counter_mode=$7, is_fallback=$8, window_mode=$9, limit_value=$10, updated_at=now() WHERE id=$11 RETURNING ` + serviceQuotaColumns
+const serviceQuotaUpdateSQL = `UPDATE service_quota_rules SET enabled=$1, platform=$2, channel_id=$3, group_id=$4, account_id=$5, model_pattern=$6, limiter_type=$7, counter_mode=$8, is_fallback=$9, window_mode=$10, limit_value=$11, updated_at=now() WHERE id=$12 RETURNING ` + serviceQuotaColumns
 
 func (r *serviceQuotaRuleRepository) List(ctx context.Context, filter service.ServiceQuotaListFilter) ([]*service.ServiceQuotaRule, error) {
 	query := `SELECT ` + serviceQuotaColumns + ` FROM service_quota_rules WHERE 1=1`
@@ -65,7 +65,7 @@ func (r *serviceQuotaRuleRepository) Create(ctx context.Context, input service.S
 	defer func() { _ = tx.Rollback() }()
 
 	row := tx.QueryRowContext(ctx, serviceQuotaInsertSQL,
-		input.Enabled, input.Platform, input.GroupID, input.AccountID,
+		input.Enabled, input.Platform, input.ChannelID, input.GroupID, input.AccountID,
 		input.ModelPattern, input.LimiterType, input.CounterMode, input.IsFallback,
 		input.WindowMode, input.LimitValue, input.BatchID)
 	rule, err := scanServiceQuotaRule(row)
@@ -92,7 +92,7 @@ func (r *serviceQuotaRuleRepository) Update(ctx context.Context, id int64, input
 	defer func() { _ = tx.Rollback() }()
 
 	row := tx.QueryRowContext(ctx, serviceQuotaUpdateSQL,
-		input.Enabled, input.Platform, input.GroupID, input.AccountID,
+		input.Enabled, input.Platform, input.ChannelID, input.GroupID, input.AccountID,
 		input.ModelPattern, input.LimiterType, input.CounterMode, input.IsFallback,
 		input.WindowMode, input.LimitValue, id)
 	rule, err := scanServiceQuotaRule(row)
@@ -312,9 +312,9 @@ type serviceQuotaScanner interface{ Scan(dest ...any) error }
 func scanServiceQuotaRule(scanner serviceQuotaScanner) (*service.ServiceQuotaRule, error) {
 	var rule service.ServiceQuotaRule
 	var platform, model, batchID sql.NullString
-	var groupID, accountID sql.NullInt64
+	var channelID, groupID, accountID sql.NullInt64
 	err := scanner.Scan(
-		&rule.ID, &rule.Enabled, &platform, &groupID, &accountID, &model,
+		&rule.ID, &rule.Enabled, &platform, &channelID, &groupID, &accountID, &model,
 		&rule.LimiterType, &rule.CounterMode, &rule.IsFallback,
 		&rule.WindowMode, &rule.LimitValue, &batchID, &rule.CreatedAt, &rule.UpdatedAt,
 	)
@@ -326,6 +326,9 @@ func scanServiceQuotaRule(scanner serviceQuotaScanner) (*service.ServiceQuotaRul
 	}
 	if platform.Valid {
 		rule.Platform = &platform.String
+	}
+	if channelID.Valid {
+		rule.ChannelID = &channelID.Int64
 	}
 	if groupID.Valid {
 		rule.GroupID = &groupID.Int64

@@ -9,6 +9,7 @@ export interface ServiceQuotaRule {
   id: number
   enabled: boolean
   platform?: string | null
+  channel_id?: number | null
   group_id?: number | null
   account_id?: number | null
   model_pattern?: string | null

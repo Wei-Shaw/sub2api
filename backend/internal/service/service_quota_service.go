@@ -471,6 +471,9 @@ func serviceQuotaRuleMatches(rule *ServiceQuotaRule, req ServiceQuotaCheckReques
 	if rule.Platform != nil && !strings.EqualFold(*rule.Platform, req.Platform) {
 		return false
 	}
+	if rule.ChannelID != nil && *rule.ChannelID != req.ChannelID {
+		return false
+	}
 	if rule.GroupID != nil && *rule.GroupID != req.GroupID {
 		return false
 	}

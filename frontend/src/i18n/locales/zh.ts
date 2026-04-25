@@ -4008,13 +4008,15 @@ export default {
       },
       scopes: {
         global: '全局',
-        platform: '渠道',
+        platform: '平台',
+        channel: '渠道',
         group: '分组',
         account: '账号',
         model: '模型'
       },
       scopeDetails: {
-        platform: '渠道：{value}',
+        platform: '平台：{value}',
+        channel: '渠道：{value}',
         group: '分组：{value}',
         account: '账号：{value}',
         model: '模型：{value}',
@@ -4050,9 +4052,10 @@ export default {
       },
       form: {
         scopeMatching: '范围匹配（任意组合，留空表示不限制该维度）',
-        platform: '渠道 / 平台',
+        platform: '平台',
         platformPlaceholder: '例如 anthropic / openai / gemini',
-        groupId: '分组 ID',
+        channelId: '渠道',
+        groupId: '分组',
         accountId: '账号 ID',
         modelPattern: '模型通配符',
         modelPatternPlaceholder: '例如 claude-opus-* 或直接选择下方模型',

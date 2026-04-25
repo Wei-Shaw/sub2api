@@ -62,6 +62,7 @@ type ServiceQuotaRule struct {
 	ID            int64                     `json:"id"`
 	Enabled       bool                      `json:"enabled"`
 	Platform      *string                   `json:"platform,omitempty"`
+	ChannelID     *int64                    `json:"channel_id,omitempty"`
 	GroupID       *int64                    `json:"group_id,omitempty"`
 	AccountID     *int64                    `json:"account_id,omitempty"`
 	ModelPattern  *string                   `json:"model_pattern,omitempty"`
@@ -81,6 +82,7 @@ type ServiceQuotaRule struct {
 type ServiceQuotaRuleInput struct {
 	Enabled       *bool   `json:"enabled"`
 	Platform      *string `json:"platform"`
+	ChannelID     *int64  `json:"channel_id"`
 	GroupID       *int64  `json:"group_id"`
 	AccountID     *int64  `json:"account_id"`
 	ModelPattern  *string `json:"model_pattern"`
@@ -108,6 +110,7 @@ type ServiceQuotaListFilter struct {
 type ServiceQuotaCheckRequest struct {
 	UserID    int64
 	Platform  string
+	ChannelID int64
 	GroupID   int64
 	AccountID int64
 	Model     string

@@ -150,13 +150,23 @@
           </div>
           <div class="grid gap-4 md:grid-cols-2">
             <label class="form-field">
+              <span class="input-label">{{ t('admin.serviceQuota.form.channelId') }}</span>
+              <EntitySearchSelect
+                v-model="form.channel_id"
+                :placeholder="t('common.optional')"
+                :search="searchChannels"
+                :resolve-label="resolveChannelLabel"
+                :reset-token="form.platform ?? ''"
+              />
+            </label>
+            <label class="form-field">
               <span class="input-label">{{ t('admin.serviceQuota.form.groupId') }}</span>
               <EntitySearchSelect
                 v-model="form.group_id"
                 :placeholder="t('common.optional')"
                 :search="searchGroups"
                 :resolve-label="resolveGroupLabel"
-                :reset-token="form.platform ?? ''"
+                :reset-token="`${form.platform ?? ''}:${form.channel_id ?? ''}`"
               />
             </label>
             <div class="form-field">
@@ -400,11 +410,12 @@ function optionLabel(options: Array<{ value: string; label: string }>, value: st
 function limiterLabel(value: string): string { return optionLabel(limiterOptions.value, value) }
 
 function scopePrimaryLabel(rule: ServiceQuotaRule): string {
-  const fields = [rule.model_pattern, rule.account_id, rule.group_id, rule.platform]
+  const fields = [rule.model_pattern, rule.account_id, rule.group_id, rule.channel_id, rule.platform]
   const hit = fields.find((v) => v !== null && v !== undefined && v !== '')
   if (hit === rule.model_pattern) return t('admin.serviceQuota.scopes.model')
   if (hit === rule.account_id) return t('admin.serviceQuota.scopes.account')
   if (hit === rule.group_id) return t('admin.serviceQuota.scopes.group')
+  if (hit === rule.channel_id) return t('admin.serviceQuota.scopes.channel')
   if (hit === rule.platform) return t('admin.serviceQuota.scopes.platform')
   return t('admin.serviceQuota.scopes.global')
 }
@@ -422,6 +433,7 @@ function counterModeHint(value: string): string {
 function scopeDetail(rule: ServiceQuotaRule): string {
   const parts = [
     rule.platform && t('admin.serviceQuota.scopeDetails.platform', { value: rule.platform }),
+    rule.channel_id && t('admin.serviceQuota.scopeDetails.channel', { value: rule.channel_id }),
     rule.group_id && t('admin.serviceQuota.scopeDetails.group', { value: rule.group_id }),
     rule.account_id && t('admin.serviceQuota.scopeDetails.account', { value: rule.account_id }),
     rule.model_pattern && t('admin.serviceQuota.scopeDetails.model', { value: rule.model_pattern }),
@@ -460,6 +472,7 @@ function normalizePayload(): ServiceQuotaRuleInput {
   const payload = { ...form }
   payload.platform = cleanText(payload.platform)
   payload.model_pattern = cleanText(payload.model_pattern)
+  payload.channel_id = cleanNumber(payload.channel_id)
   payload.group_id = cleanNumber(payload.group_id)
   payload.account_id = cleanNumber(payload.account_id)
   if (payload.counter_mode === 'user') {
@@ -473,6 +486,26 @@ function normalizePayload(): ServiceQuotaRuleInput {
 
 function cleanText(value?: string | null): string | null { return value && value.trim() ? value.trim() : null }
 function cleanNumber(value?: number | null): number | null { return value && value > 0 ? value : null }
+
+async function searchChannels(keyword: string, signal: AbortSignal): Promise<EntitySearchItem[]> {
+  const filters: { search?: string } = {}
+  if (keyword) filters.search = keyword
+  const res = await adminAPI.channels.list(1, 20, filters, { signal })
+  return res.items.map((ch) => ({
+    id: ch.id,
+    label: ch.name,
+    sub: ch.status || '',
+  }))
+}
+
+async function resolveChannelLabel(id: number): Promise<EntitySearchItem | null> {
+  try {
+    const res = await adminAPI.channels.getById(id)
+    return { id: res.id, label: res.name }
+  } catch {
+    return null
+  }
+}
 
 async function searchGroups(keyword: string, signal: AbortSignal): Promise<EntitySearchItem[]> {
   const filters: { search?: string; platform?: GroupPlatform } = {}

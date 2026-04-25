@@ -497,7 +497,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					ForceCacheBilling:   fs.ForceCacheBilling,
 					APIKeyService:       h.apiKeyService,
 					ChannelUsageFields:  channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
-					ServiceQuotaRequest: service.ServiceQuotaCheckRequest{Model: reqModel, AccountID: account.ID},
+					ServiceQuotaRequest: service.ServiceQuotaCheckRequest{Model: reqModel, AccountID: account.ID, ChannelID: channelMapping.ChannelID},
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.gateway.messages"),
@@ -852,7 +852,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					ForceCacheBilling:   fs.ForceCacheBilling,
 					APIKeyService:       h.apiKeyService,
 					ChannelUsageFields:  channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
-					ServiceQuotaRequest: service.ServiceQuotaCheckRequest{Model: reqModel, AccountID: account.ID},
+					ServiceQuotaRequest: service.ServiceQuotaCheckRequest{Model: reqModel, AccountID: account.ID, ChannelID: channelMapping.ChannelID},
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.gateway.messages"),

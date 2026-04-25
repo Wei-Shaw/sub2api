@@ -3844,13 +3844,15 @@ export default {
       },
       scopes: {
         global: 'Global',
-        platform: 'Channel',
+        platform: 'Platform',
+        channel: 'Channel',
         group: 'Group',
         account: 'Account',
         model: 'Model'
       },
       scopeDetails: {
-        platform: 'Channel: {value}',
+        platform: 'Platform: {value}',
+        channel: 'Channel: {value}',
         group: 'Group: {value}',
         account: 'Account: {value}',
         model: 'Model: {value}',
@@ -3886,9 +3888,10 @@ export default {
       },
       form: {
         scopeMatching: 'Scope Filters (any combination; leave blank to skip that dimension)',
-        platform: 'Channel / Platform',
+        platform: 'Platform',
         platformPlaceholder: 'e.g. anthropic / openai / gemini',
-        groupId: 'Group ID',
+        channelId: 'Channel',
+        groupId: 'Group',
         accountId: 'Account ID',
         modelPattern: 'Model Pattern',
         modelPatternPlaceholder: 'e.g. claude-opus-* or pick a suggestion below',
