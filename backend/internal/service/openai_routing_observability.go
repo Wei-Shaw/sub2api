@@ -50,7 +50,7 @@ func NewOpenAIRoutingSnapshot(input OpenAIRoutingSnapshotInput) *OpenAIRoutingSn
 	}
 
 	snapshot := &OpenAIRoutingSnapshot{
-		TargetGroup:        string(normalizeTargetGroup(input.TargetGroup)),
+		TargetGroup:        openAIRoutingTargetGroupValue(input.TargetGroup),
 		SelectedGroup:      selectedGroup,
 		ScheduleLayer:      strings.TrimSpace(input.ScheduleLayer),
 		Sticky:             cloneOpenAIStickyEval(input.Sticky),
@@ -78,6 +78,17 @@ func NewOpenAIRoutingSnapshot(input OpenAIRoutingSnapshotInput) *OpenAIRoutingSn
 		snapshot.SelectedAccountName = &accountName
 	}
 	return snapshot
+}
+
+func openAIRoutingTargetGroupValue(group AccountTargetGroup) string {
+	switch normalizeTargetGroup(group) {
+	case TargetGroupActive:
+		return string(TargetGroupActive)
+	case TargetGroupExhausted:
+		return string(TargetGroupExhausted)
+	default:
+		return "any"
+	}
 }
 
 func (s *OpenAIRoutingSnapshot) RecordFailover(reason string) {

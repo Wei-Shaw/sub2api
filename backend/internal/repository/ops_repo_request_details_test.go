@@ -172,3 +172,71 @@ func TestOpsRepositoryListRequestDetails_FiltersRoutingSelectedGroup(t *testing.
 	require.Equal(t, int64(0), total)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestOpsRepositoryListRequestDetails_ReserveRoutingOnlyIncludesAnyTarget(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &opsRepository{db: db}
+
+	filter := &service.OpsRequestDetailFilter{Page: 1, PageSize: 10, OpenAIRoutingOnly: true}
+	createdAt := time.Date(2026, 4, 25, 12, 0, 0, 0, time.UTC)
+
+	mock.ExpectQuery("SELECT COUNT\\(1\\) FROM combined WHERE routing_target_group IN \\('active','exhausted','any'\\)").
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(3)))
+
+	rows := newOpsRequestDetailsRows().
+		AddRow("success", createdAt, "req-active-reserve", "openai", "gpt-5.5", "active", "reserve", "load_balance", int64(66), "acc-66", "gpt-5.5", int64(0), "", nil, nil, nil, nil, nil, nil, int64(100), nil, nil, nil, nil, nil, int64(1), int64(2), int64(66), int64(3), false).
+		AddRow("success", createdAt.Add(time.Second), "req-any-reserve", "openai", "gpt-5.5", "any", "reserve", "load_balance", int64(67), "acc-67", "gpt-5.5", int64(0), "", nil, nil, nil, nil, nil, nil, int64(100), nil, nil, nil, nil, nil, int64(1), int64(2), int64(67), int64(3), false).
+		AddRow("success", createdAt.Add(2*time.Second), "req-exhausted-reserve", "openai", "gpt-5.5-Sys", "exhausted", "reserve", "load_balance", int64(68), "acc-68", "gpt-5.5", int64(0), "", nil, nil, nil, nil, nil, nil, int64(100), nil, nil, nil, nil, nil, int64(1), int64(2), int64(68), int64(3), false)
+
+	mock.ExpectQuery("SELECT[\\s\\S]*FROM combined[\\s\\S]*WHERE routing_target_group IN \\('active','exhausted','any'\\)").
+		WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg(), 10, 0).
+		WillReturnRows(rows)
+
+	items, total, err := repo.ListRequestDetails(context.Background(), filter)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), total)
+	require.Len(t, items, 3)
+	require.Equal(t, "active", items[0].RoutingTargetGroup)
+	require.Equal(t, "reserve", items[0].RoutingSelectedGroup)
+	require.Equal(t, "any", items[1].RoutingTargetGroup)
+	require.Equal(t, "reserve", items[1].RoutingSelectedGroup)
+	require.Equal(t, "exhausted", items[2].RoutingTargetGroup)
+	require.Equal(t, "reserve", items[2].RoutingSelectedGroup)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func newOpsRequestDetailsRows() *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"kind",
+		"created_at",
+		"request_id",
+		"platform",
+		"model",
+		"routing_target_group",
+		"routing_selected_group",
+		"routing_schedule_layer",
+		"routing_selected_account_id",
+		"routing_selected_account_name",
+		"routing_effective_model",
+		"routing_failover_count",
+		"routing_failover_final_reason",
+		"sticky_session_source",
+		"sticky_session_hash_present",
+		"sticky_eval_result",
+		"sticky_selected_account_changed",
+		"sticky_parent_session_present",
+		"sticky_parent_session_key",
+		"duration_ms",
+		"status_code",
+		"error_id",
+		"phase",
+		"severity",
+		"message",
+		"user_id",
+		"api_key_id",
+		"account_id",
+		"group_id",
+		"stream",
+	})
+}

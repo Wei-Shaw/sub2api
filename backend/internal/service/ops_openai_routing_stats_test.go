@@ -59,6 +59,36 @@ func TestOpsServiceGetOpenAIRoutingStats_GroupsByTargetGroup(t *testing.T) {
 	require.Equal(t, int64(120), resp.OutputTokensByGroup["exhausted"])
 }
 
+func TestUsageAndOps_ReserveTargetsExposeTargetSelectedBreakdownInStats(t *testing.T) {
+	now := time.Now().UTC()
+	repo := &openAIRoutingStatsRepoStub{
+		resp: &OpsOpenAIRoutingStatsResponse{
+			RequestCountByGroup: map[string]int64{"reserve": 9},
+			Breakdown: []OpsOpenAIRoutingStatsBreakdown{
+				{TargetGroup: "active", SelectedGroup: "reserve", RequestCount: 3},
+				{TargetGroup: "any", SelectedGroup: "reserve", RequestCount: 2},
+				{TargetGroup: "exhausted", SelectedGroup: "reserve", RequestCount: 4},
+			},
+		},
+	}
+	svc := &OpsService{opsRepo: repo}
+
+	resp, err := svc.GetOpenAIRoutingStats(context.Background(), &OpsOpenAIRoutingStatsFilter{
+		TimeRange: "1h",
+		StartTime: now.Add(-time.Hour),
+		EndTime:   now,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Len(t, resp.Breakdown, 3)
+	require.Equal(t, "active", resp.Breakdown[0].TargetGroup)
+	require.Equal(t, "reserve", resp.Breakdown[0].SelectedGroup)
+	require.Equal(t, "any", resp.Breakdown[1].TargetGroup)
+	require.Equal(t, "reserve", resp.Breakdown[1].SelectedGroup)
+	require.Equal(t, "exhausted", resp.Breakdown[2].TargetGroup)
+	require.Equal(t, "reserve", resp.Breakdown[2].SelectedGroup)
+}
+
 func TestOpsServiceGetOpenAIRoutingStats_Validation(t *testing.T) {
 	now := time.Now().UTC()
 

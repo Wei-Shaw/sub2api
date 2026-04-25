@@ -24,12 +24,24 @@ type OpsOpenAIRoutingStatsResponse struct {
 	Platform string `json:"platform,omitempty"`
 	GroupID  *int64 `json:"group_id,omitempty"`
 
-	RequestCountByGroup map[string]int64 `json:"request_count_by_group"`
-	TotalTokensByGroup  map[string]int64 `json:"total_tokens_by_group"`
-	InputTokensByGroup  map[string]int64 `json:"input_tokens_by_group"`
-	OutputTokensByGroup map[string]int64 `json:"output_tokens_by_group"`
-	RetriedRequestCountByGroup map[string]int64 `json:"retried_request_count_by_group"`
-	RetryCountByGroup          map[string]int64 `json:"retry_count_by_group"`
+	RequestCountByGroup        map[string]int64                 `json:"request_count_by_group"`
+	TotalTokensByGroup         map[string]int64                 `json:"total_tokens_by_group"`
+	InputTokensByGroup         map[string]int64                 `json:"input_tokens_by_group"`
+	OutputTokensByGroup        map[string]int64                 `json:"output_tokens_by_group"`
+	RetriedRequestCountByGroup map[string]int64                 `json:"retried_request_count_by_group"`
+	RetryCountByGroup          map[string]int64                 `json:"retry_count_by_group"`
+	Breakdown                  []OpsOpenAIRoutingStatsBreakdown `json:"breakdown"`
+}
+
+type OpsOpenAIRoutingStatsBreakdown struct {
+	TargetGroup         string `json:"target_group"`
+	SelectedGroup       string `json:"selected_group"`
+	RequestCount        int64  `json:"request_count"`
+	TotalTokens         int64  `json:"total_tokens"`
+	InputTokens         int64  `json:"input_tokens"`
+	OutputTokens        int64  `json:"output_tokens"`
+	RetriedRequestCount int64  `json:"retried_request_count"`
+	RetryCount          int64  `json:"retry_count"`
 }
 
 func GetOpsOpenAIRoutingStatsGroups() []string {
@@ -45,6 +57,7 @@ func NewOpsOpenAIRoutingStatsResponse() *OpsOpenAIRoutingStatsResponse {
 		OutputTokensByGroup:        make(map[string]int64, len(groups)),
 		RetriedRequestCountByGroup: make(map[string]int64, len(groups)),
 		RetryCountByGroup:          make(map[string]int64, len(groups)),
+		Breakdown:                  []OpsOpenAIRoutingStatsBreakdown{},
 	}
 	for _, group := range groups {
 		resp.RequestCountByGroup[group] = 0

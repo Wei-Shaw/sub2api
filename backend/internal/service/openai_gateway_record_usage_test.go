@@ -425,6 +425,57 @@ func TestOpenAIGatewayServiceRecordUsage_PersistsOpenAIRoutingSelectedGroupField
 	require.Equal(t, &snapshot.FailoverFinalReason, usageRepo.lastLog.RoutingFailoverFinalReason)
 }
 
+func TestUsageAndOps_ReserveTargetsPersistTargetAndSelectedGroupInUsage(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		targetGroup AccountTargetGroup
+		wantTarget  string
+	}{
+		{name: "active", targetGroup: TargetGroupActive, wantTarget: "active"},
+		{name: "any", targetGroup: TargetGroupAny, wantTarget: "any"},
+		{name: "exhausted", targetGroup: TargetGroupExhausted, wantTarget: "exhausted"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+			userRepo := &openAIRecordUsageUserRepoStub{}
+			subRepo := &openAIRecordUsageSubRepoStub{}
+			svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+
+			snapshot := NewOpenAIRoutingSnapshot(OpenAIRoutingSnapshotInput{
+				TargetGroup:    tc.targetGroup,
+				SelectedGroup:  openAISelectedGroupReserve,
+				ScheduleLayer:  string(openAIAccountScheduleLayerLoadBalance),
+				Account:        &Account{ID: 3101, Name: "reserve-3101"},
+				RequestedModel: "gpt-5.5",
+				EffectiveModel: "gpt-5.5",
+			})
+
+			err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+				Result: &OpenAIForwardResult{
+					RequestID: "resp_usage_reserve_" + tc.name,
+					Usage: OpenAIUsage{
+						InputTokens:  12,
+						OutputTokens: 3,
+					},
+					Model:    "gpt-5.5",
+					Duration: time.Second,
+				},
+				APIKey:          &APIKey{ID: 1001},
+				User:            &User{ID: 2001},
+				Account:         &Account{ID: 3101},
+				RoutingSnapshot: snapshot,
+			})
+
+			require.NoError(t, err)
+			require.NotNil(t, usageRepo.lastLog)
+			require.NotNil(t, usageRepo.lastLog.RoutingTargetGroup)
+			require.Equal(t, tc.wantTarget, *usageRepo.lastLog.RoutingTargetGroup)
+			require.NotNil(t, usageRepo.lastLog.RoutingSelectedGroup)
+			require.Equal(t, openAISelectedGroupReserve, *usageRepo.lastLog.RoutingSelectedGroup)
+		})
+	}
+}
+
 func TestOpenAIGatewayServiceRecordUsage_IncludesEndpointMetadata(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}

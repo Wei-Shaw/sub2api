@@ -58,7 +58,7 @@ func (r *opsRepository) ListRequestDetails(ctx context.Context, filter *service.
 			addCondition(fmt.Sprintf("model = $%d", len(args)+1), model)
 		}
 		if filter.OpenAIRoutingOnly {
-			addCondition("routing_target_group IN ('active','exhausted')")
+			addCondition("routing_target_group IN ('active','exhausted','any')")
 		}
 		if targetGroup := strings.TrimSpace(strings.ToLower(filter.RoutingTargetGroup)); targetGroup != "" {
 			addCondition(fmt.Sprintf("routing_target_group = $%d", len(args)+1), targetGroup)
