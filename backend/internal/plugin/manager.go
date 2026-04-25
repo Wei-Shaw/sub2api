@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -84,8 +85,9 @@ func (m *PluginManager) Start(ctx context.Context) error {
 		return err
 	}
 
-	// 从磁盘扫描插件,合并到 DB(磁盘上发现但 DB 没有的,创建一条 disabled 记录)。
-	if m.cfg.PluginsDir != "" {
+	// 从磁盘扫描插件,合并到 DB。Builtin 目录中的插件首次启动时按
+	// AutoEnableBuiltin 设置自动启用；Disk 目录的插件创建为 disabled。
+	if m.cfg.BuiltinDir != "" || m.cfg.PluginsDir != "" {
 		if err := m.syncFromDisk(ctx); err != nil {
 			m.logger.Warn("sync plugins from disk failed", "error", err)
 		}
@@ -142,9 +144,12 @@ func (m *PluginManager) startSDKServer() error {
 	return nil
 }
 
-// syncFromDisk 把磁盘上发现的插件登记到 DB(若不存在),保持启用状态不变。
+// syncFromDisk 把磁盘上发现的插件登记到 DB（若不存在）。
+// 来自 BuiltinDir 的插件在 AutoEnableBuiltin=true 时默认 enabled=true,
+// 来自 PluginsDir(用户目录)的插件默认 disabled,需通过 admin API 手动启用。
+// 已经在 DB 中存在的记录保持不变,不会反复 reset 用户后续手动操作的 enabled 状态。
 func (m *PluginManager) syncFromDisk(ctx context.Context) error {
-	discovered, err := DiscoverPlugins(m.cfg.PluginsDir)
+	discovered, err := DiscoverFromDirs(m.cfg.BuiltinDir, m.cfg.PluginsDir)
 	if err != nil {
 		return err
 	}
@@ -158,15 +163,19 @@ func (m *PluginManager) syncFromDisk(ctx context.Context) error {
 				"plugin", d.Name, "error", err)
 			continue
 		}
+		enabled := d.Builtin && m.cfg.AutoEnableBuiltin
 		newRec := &PluginRecord{
 			Name:    d.Name,
-			Enabled: false,
+			Enabled: enabled,
 			Config:  map[string]string{},
 		}
 		if err := m.repo.Create(ctx, newRec); err != nil {
 			m.logger.Warn("register discovered plugin failed",
 				"plugin", d.Name, "error", err)
+			continue
 		}
+		m.logger.Info("plugin registered",
+			"plugin", d.Name, "builtin", d.Builtin, "enabled", enabled)
 	}
 	return nil
 }
@@ -537,11 +546,17 @@ func (m *PluginManager) getOrCreateInstance(name, binPath string) *PluginInstanc
 }
 
 func (m *PluginManager) binaryPathFor(name string) string {
-	if m.cfg.PluginsDir == "" {
-		return ""
+	// BuiltinDir 优先（同名时官方版本覆盖用户版本）。
+	for _, dir := range []string{m.cfg.BuiltinDir, m.cfg.PluginsDir} {
+		if dir == "" {
+			continue
+		}
+		candidate := dir + string('/') + name + string('/') + pluginBinaryName(name)
+		if st, err := os.Stat(candidate); err == nil && !st.IsDir() {
+			return candidate
+		}
 	}
-	candidate := m.cfg.PluginsDir + string('/') + name + string('/') + pluginBinaryName(name)
-	return candidate
+	return ""
 }
 
 // handshakeMessage 是插件子进程通过 stdout 输出的握手 JSON。

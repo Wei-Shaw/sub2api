@@ -5,8 +5,17 @@ import "time"
 // Config 是插件子系统的运行时配置。
 // 现阶段在本地定义,后续会迁移到 internal/config 包中。
 type Config struct {
-	// PluginsDir 插件二进制扫描目录,通常是 {data_dir}/plugins
+	// BuiltinDir 镜像内置（官方）插件目录（默认 /app/plugins）。
+	// 该目录中的插件被视为"官方插件"，首次启动会自动启用（受 AutoEnableBuiltin 控制）。
+	BuiltinDir string
+
+	// PluginsDir 用户安装目录（通常是 {data_dir}/plugins）。
+	// 与 BuiltinDir 同名时 BuiltinDir 优先。
 	PluginsDir string
+
+	// AutoEnableBuiltin 控制 BuiltinDir 中发现的插件是否在首次启动时自动启用。
+	// 已被用户显式禁用的插件不会被再次自动启用（持久化到数据库）。
+	AutoEnableBuiltin bool
 
 	// SDKListenAddr 核心 SDK gRPC 服务器监听地址,例如 "127.0.0.1:50051" 或 "127.0.0.1:0"
 	SDKListenAddr string

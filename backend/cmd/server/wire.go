@@ -81,7 +81,9 @@ func provideServiceBuildInfo(buildInfo handler.BuildInfo) service.BuildInfo {
 func providePluginConfig(cfg *config.Config) plugin.Config {
 	pc := cfg.Plugins
 	out := plugin.DefaultConfig()
+	out.BuiltinDir = pc.BuiltinDir
 	out.PluginsDir = pc.Dir
+	out.AutoEnableBuiltin = pc.AutoEnableBuiltin
 	if pc.HealthInterval > 0 {
 		out.HealthInterval = time.Duration(pc.HealthInterval) * time.Second
 	}

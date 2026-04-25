@@ -169,12 +169,19 @@ type IdempotencyConfig struct {
 // PluginConfig æä»¶ç®¡çå¨å¨å±éç½®ã
 // æä»¶éè¿ gRPC å­è¿ç¨æ¹å¼å è½½ï¼æ¬éç½®æ§å¶å¯ç¨å¼å³ãæ«æç®å½ãå¥åº·æ£æ¥ä¸éå¯ç­ç¥ã
 type PluginConfig struct {
-	Enabled         bool                `yaml:"enabled" mapstructure:"enabled"`
-	Dir             string              `yaml:"dir" mapstructure:"dir"`
-	HealthInterval  int                 `yaml:"health_interval" mapstructure:"health_interval"`   // seconds
-	StartupTimeout  int                 `yaml:"startup_timeout" mapstructure:"startup_timeout"`   // seconds
-	ShutdownTimeout int                 `yaml:"shutdown_timeout" mapstructure:"shutdown_timeout"` // seconds
-	Restart         PluginRestartConfig `yaml:"restart" mapstructure:"restart"`
+	Enabled bool `yaml:"enabled" mapstructure:"enabled"`
+	// BuiltinDir 是镜像内置（随镜像发布的官方）插件目录，默认 /app/plugins。
+	// 该目录中的插件首次启动会被自动启用（受 AutoEnableBuiltin 控制）。
+	BuiltinDir string `yaml:"builtin_dir" mapstructure:"builtin_dir"`
+	// Dir 是用户安装目录，挂载在 data/plugins。同名插件 BuiltinDir 优先。
+	Dir string `yaml:"dir" mapstructure:"dir"`
+	// AutoEnableBuiltin 控制 BuiltinDir 中发现的插件是否在首次启动时自动启用。
+	// 用户后续可以通过 admin API 显式禁用，禁用状态会持久化到数据库。
+	AutoEnableBuiltin bool                `yaml:"auto_enable_builtin" mapstructure:"auto_enable_builtin"`
+	HealthInterval    int                 `yaml:"health_interval" mapstructure:"health_interval"`   // seconds
+	StartupTimeout    int                 `yaml:"startup_timeout" mapstructure:"startup_timeout"`   // seconds
+	ShutdownTimeout   int                 `yaml:"shutdown_timeout" mapstructure:"shutdown_timeout"` // seconds
+	Restart           PluginRestartConfig `yaml:"restart" mapstructure:"restart"`
 }
 
 // PluginRestartConfig æä»¶å­è¿ç¨å´©æºåçææ°éé¿éå¯ç­ç¥ã
@@ -1369,7 +1376,9 @@ func setDefaults() {
 
 	// Plugins (gRPC å­è¿ç¨æä»¶ç®¡çå¨)
 	viper.SetDefault("plugins.enabled", false)
+	viper.SetDefault("plugins.builtin_dir", "/app/plugins")
 	viper.SetDefault("plugins.dir", "data/plugins")
+	viper.SetDefault("plugins.auto_enable_builtin", true)
 	viper.SetDefault("plugins.health_interval", 10)
 	viper.SetDefault("plugins.startup_timeout", 30)
 	viper.SetDefault("plugins.shutdown_timeout", 10)

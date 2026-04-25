@@ -82,6 +82,44 @@ RUN VERSION_VALUE="${VERSION}" && \
     ./cmd/server
 
 # -----------------------------------------------------------------------------
+# Stage 2.5: Built-in Plugin Binaries
+# -----------------------------------------------------------------------------
+# Builds every official plugin under plugins/* into a Linux binary that lands
+# at /out/plugins/<name>/<name>. The final image copies this whole directory
+# into /app/plugins, which is the read-only "builtin plugin dir". Plugins
+# discovered there are auto-enabled on first start (see PluginManager).
+FROM ${GOLANG_IMAGE} AS plugin-builder
+
+ARG GOPROXY
+ARG GOSUMDB
+ENV GOPROXY=${GOPROXY}
+ENV GOSUMDB=${GOSUMDB}
+ENV CGO_ENABLED=0 GOOS=linux
+
+RUN apk add --no-cache git
+
+WORKDIR /src
+
+# plugin-sdk and plugin source code (each plugin has its own go.mod with a
+# local replace pointing at ../../plugin-sdk).
+COPY plugin-sdk/ /src/plugin-sdk/
+COPY plugins/ /src/plugins/
+
+# Build every plugin under plugins/<name>/. The convention is that each plugin
+# directory contains a main package buildable from its root.
+RUN set -eux; \
+    mkdir -p /out/plugins; \
+    for dir in /src/plugins/*/; do \
+      name="$(basename "$dir")"; \
+      if [ ! -f "$dir/go.mod" ]; then echo "skip $name (no go.mod)"; continue; fi; \
+      echo "=== building plugin: $name ==="; \
+      cd "$dir"; \
+      mkdir -p /out/plugins/"$name"; \
+      go build -trimpath -ldflags='-s -w' -o /out/plugins/"$name"/"$name" ./; \
+    done; \
+    ls -la /out/plugins/
+
+# -----------------------------------------------------------------------------
 # Stage 3: PostgreSQL Client (version-matched with docker-compose)
 # -----------------------------------------------------------------------------
 FROM ${POSTGRES_IMAGE} AS pg-client
@@ -126,7 +164,11 @@ WORKDIR /app
 COPY --from=backend-builder --chown=sub2api:sub2api /app/sub2api /app/sub2api
 COPY --from=backend-builder --chown=sub2api:sub2api /app/backend/resources /app/resources
 
-# Create data directory
+# Built-in plugins (read-only, ships with the image). PluginManager defaults
+# plugins.builtin_dir to /app/plugins and auto-enables anything found here.
+COPY --from=plugin-builder --chown=sub2api:sub2api /out/plugins /app/plugins
+
+# Create data directory (user-installed plugins, if any, live under data/plugins)
 RUN mkdir -p /app/data && chown sub2api:sub2api /app/data
 
 # Copy entrypoint script (fixes volume permissions then drops to sub2api)

@@ -13,6 +13,45 @@ import (
 type DiscoveredPlugin struct {
 	Name       string // 插件名称(目录名)
 	BinaryPath string // 可执行文件绝对路径
+	Builtin    bool   // true 表示来自 BuiltinDir（镜像内置官方插件）
+}
+
+// DiscoverFromDirs 依次扫描 builtinDir 和 userDir。同名插件 builtin 优先（覆盖）。
+// 任一目录为空字符串或不存在时被跳过。
+func DiscoverFromDirs(builtinDir, userDir string) ([]DiscoveredPlugin, error) {
+	seen := make(map[string]int) // name -> index in result
+	var result []DiscoveredPlugin
+
+	append1 := func(dir string, builtin bool) error {
+		if dir == "" {
+			return nil
+		}
+		list, err := DiscoverPlugins(dir)
+		if err != nil {
+			return err
+		}
+		for _, dp := range list {
+			dp.Builtin = builtin
+			if idx, ok := seen[dp.Name]; ok {
+				// 已在前一个目录扫到（builtin 优先），保留 builtin 版本。
+				if !result[idx].Builtin && builtin {
+					result[idx] = dp
+				}
+				continue
+			}
+			seen[dp.Name] = len(result)
+			result = append(result, dp)
+		}
+		return nil
+	}
+
+	if err := append1(builtinDir, true); err != nil {
+		return nil, fmt.Errorf("discover builtin: %w", err)
+	}
+	if err := append1(userDir, false); err != nil {
+		return nil, fmt.Errorf("discover user: %w", err)
+	}
+	return result, nil
 }
 
 // DiscoverPlugins 扫描 pluginsDir 下所有子目录,寻找与目录同名的可执行文件。
