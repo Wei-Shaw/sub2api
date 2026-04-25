@@ -334,6 +334,7 @@ export default {
   nav: {
     dashboard: '仪表盘',
     announcements: '公告',
+    plugins: '插件管理',
     apiKeys: 'API 密钥',
     usage: '使用记录',
     redeem: '兑换',
@@ -973,6 +974,22 @@ export default {
 
   // Admin
   admin: {
+    // Plugin Management
+    plugins: {
+      title: '插件管理',
+      description: '查看、启用或禁用已安装的插件',
+      empty: '当前没有已安装的插件',
+      name: '插件',
+      state: '状态',
+      builtin: '内置',
+      uptime: '启动时间',
+      enable: '启用',
+      disable: '禁用',
+      restart: '重启',
+      enableSuccess: '已启用 {name}',
+      disableSuccess: '已禁用 {name}',
+      restartSuccess: '已发起重启 {name}'
+    },
     // Dashboard
     dashboard: {
       title: '管理控制台',

@@ -334,6 +334,7 @@ export default {
   nav: {
     dashboard: 'Dashboard',
     announcements: 'Announcements',
+    plugins: 'Plugins',
     apiKeys: 'API Keys',
     usage: 'Usage',
     redeem: 'Redeem',
@@ -969,6 +970,22 @@ export default {
 
   // Admin
   admin: {
+    // Plugin Management
+    plugins: {
+      title: 'Plugin Management',
+      description: 'View, enable or disable installed plugins',
+      empty: 'No plugins installed',
+      name: 'Plugin',
+      state: 'State',
+      builtin: 'Built-in',
+      uptime: 'Started at',
+      enable: 'Enable',
+      disable: 'Disable',
+      restart: 'Restart',
+      enableSuccess: '{name} enabled',
+      disableSuccess: '{name} disabled',
+      restartSuccess: '{name} restart requested'
+    },
     // Dashboard
     dashboard: {
       title: 'Admin Dashboard',

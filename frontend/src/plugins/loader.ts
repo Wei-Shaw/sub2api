@@ -52,6 +52,10 @@ export interface PluginNavItem {
   hideInSimpleMode?: boolean
   /** 插件名,便于后续按插件维度做隐藏/排序 */
   pluginName: string
+  /** 插件 display_name,用于 i18n 找不到时的兜底显示 */
+  pluginDisplayName: string
+  /** 原始 label_key,sidebar 在渲染前会尝试 t(labelKey) */
+  labelKey: string
   /** 原始 sort_order,合并到主菜单时用作排序权重 */
   sortOrder: number
   children?: PluginNavItem[]
@@ -97,7 +101,7 @@ export function getPluginMenuItems(section: 'admin' | 'user'): PluginNavItem[] {
       if (menu.section !== section) {
         continue
       }
-      items.push(toNavItem(manifest.name, menu))
+      items.push(toNavItem(manifest.name, manifest.display_name, menu))
     }
   }
 
@@ -256,19 +260,30 @@ function normalizeRoutes(value: unknown): PluginRouteDefinition[] {
   return out
 }
 
-function toNavItem(pluginName: string, menu: PluginMenuItem): PluginNavItem {
+// looksLikeSvg 判断字符串是否为可注入的 SVG 标记。仅在以 <svg 起始时认为是真实
+// SVG markup,否则视为图标名/字体图标占位（当前没有图标库映射,只能丢弃）。
+function looksLikeSvg(value: string): boolean {
+  return /^\s*<svg[\s>]/i.test(value)
+}
+
+function toNavItem(pluginName: string, pluginDisplayName: string, menu: PluginMenuItem): PluginNavItem {
+  const labelKey = menu.label_key
+  const iconSvg = menu.icon && looksLikeSvg(menu.icon) ? menu.icon : undefined
   const item: PluginNavItem = {
     path: menu.path,
-    // label_key 暂时直接显示;真正的 i18n 解析放到后续迭代,届时由 plugin 提供 i18n 资源。
-    label: menu.label_key,
+    // label 的实际 i18n 解析放到 sidebar(调用 t(labelKey))。这里先存原始 key,
+    // 同时把 plugin display_name 也带上,便于翻译失败时兜底。
+    label: labelKey,
     icon: null,
-    iconSvg: menu.icon || undefined,
+    iconSvg,
     hideInSimpleMode: menu.hide_in_simple_mode,
     pluginName,
+    pluginDisplayName,
+    labelKey,
     sortOrder: menu.sort_order,
   }
   if (menu.children && menu.children.length > 0) {
-    item.children = menu.children.map((c) => toNavItem(pluginName, c))
+    item.children = menu.children.map((c) => toNavItem(pluginName, pluginDisplayName, c))
   }
   return item
 }
