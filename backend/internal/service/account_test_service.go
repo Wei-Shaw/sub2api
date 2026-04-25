@@ -1145,13 +1145,17 @@ REDACTED
 // processOpenAIStream processes the SSE stream from OpenAI Responses API
 func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader) error {
 	reader := bufio.NewReader(body)
+	seenCompleted := false
 
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
-				s.sendEvent(c, TestEvent{Type: "test_complete", Success: trueREDACTED)
-				return nil
+				if seenCompleted {
+					s.sendEvent(c, TestEvent{Type: "test_complete", Success: trueREDACTED)
+					return nil
+			REDACTED
+				return s.sendErrorAndEnd(c, "Stream ended before response.completed")
 		REDACTED
 			return s.sendErrorAndEnd(c, fmt.Sprintf("Stream read error: %s", err.Error()))
 	REDACTED
@@ -1163,8 +1167,11 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 
 		jsonStr := sseDataPrefix.ReplaceAllString(line, "")
 		if jsonStr == "[DONE]" {
-			s.sendEvent(c, TestEvent{Type: "test_complete", Success: trueREDACTED)
-			return nil
+			if seenCompleted {
+				s.sendEvent(c, TestEvent{Type: "test_complete", Success: trueREDACTED)
+				return nil
+		REDACTED
+			return s.sendErrorAndEnd(c, "Stream ended before response.completed")
 	REDACTED
 
 		var data map[string]any
@@ -1180,9 +1187,20 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 			if delta, ok := data["delta"].(string); ok && delta != "" {
 				s.sendEvent(c, TestEvent{Type: "content", Text: deltaREDACTED)
 		REDACTED
-		case "response.completed":
+		case "response.completed", "response.done":
+			seenCompleted = true
 			s.sendEvent(c, TestEvent{Type: "test_complete", Success: trueREDACTED)
 			return nil
+		case "response.failed":
+			errorMsg := "OpenAI response failed"
+			if responseData, ok := data["response"].(map[string]any); ok {
+				if errData, ok := responseData["error"].(map[string]any); ok {
+					if msg, ok := errData["message"].(string); ok && msg != "" {
+						errorMsg = msg
+				REDACTED
+			REDACTED
+		REDACTED
+			return s.sendErrorAndEnd(c, errorMsg)
 		case "error":
 			errorMsg := "Unknown error"
 			if errData, ok := data["error"].(map[string]any); ok {

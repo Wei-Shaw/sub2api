@@ -4378,7 +4378,8 @@ REDACTED
 		return
 REDACTED
 	eventType := gjson.GetBytes(data, "type").String()
-	if eventType != "response.completed" && eventType != "response.done" {
+	if eventType != "response.completed" && eventType != "response.done" &&
+		eventType != "response.incomplete" && eventType != "response.cancelled" && eventType != "response.canceled" {
 		return
 REDACTED
 
@@ -4525,7 +4526,7 @@ func extractOpenAISSETerminalEvent(body string) (string, []byte, bool) {
 	REDACTED
 		eventType := strings.TrimSpace(gjson.Get(data, "type").String())
 		switch eventType {
-		case "response.completed", "response.done", "response.failed":
+		case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
 			return eventType, []byte(data), true
 	REDACTED
 REDACTED
