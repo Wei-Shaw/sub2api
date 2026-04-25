@@ -1,0 +1,176 @@
+syntax = "proto3";
+
+package pluginsdk;
+
+option go_package = "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk";
+
+import "google/protobuf/empty.proto";
+
+// ============================================================
+// CoreSDK Services — 核心提供，插件调用
+// ============================================================
+
+// SQLProxy 代理 SQL 操作到核心连接池
+service SQLProxy {
+  rpc Query(SQLRequest) returns (SQLResponse);
+  rpc Exec(SQLRequest) returns (ExecResponse);
+  rpc BeginTx(BeginTxRequest) returns (TxResponse);
+  rpc TxQuery(TxSQLRequest) returns (SQLResponse);
+  rpc TxExec(TxSQLRequest) returns (ExecResponse);
+  rpc CommitTx(TxIDRequest) returns (google.protobuf.Empty);
+  rpc RollbackTx(TxIDRequest) returns (google.protobuf.Empty);
+}
+
+// RedisProxy 代理 Redis 操作到核心 Redis
+service RedisProxy {
+  rpc Get(RedisKeyRequest) returns (RedisValueResponse);
+  rpc Set(RedisSetRequest) returns (google.protobuf.Empty);
+  rpc SetEx(RedisSetExRequest) returns (google.protobuf.Empty);
+  rpc Del(RedisDelRequest) returns (google.protobuf.Empty);
+  rpc HGet(RedisHGetRequest) returns (RedisValueResponse);
+  rpc HSet(RedisHSetRequest) returns (google.protobuf.Empty);
+  rpc HGetAll(RedisKeyRequest) returns (RedisMapResponse);
+  rpc HDel(RedisHDelRequest) returns (google.protobuf.Empty);
+  rpc Publish(RedisPubRequest) returns (google.protobuf.Empty);
+  rpc Subscribe(RedisSubRequest) returns (stream RedisMessage);
+}
+
+// EventBus 核心事件总线
+service EventBus {
+  rpc Publish(EventRequest) returns (google.protobuf.Empty);
+  rpc Subscribe(EventFilter) returns (stream Event);
+}
+
+// ============================================================
+// SQL Messages
+// ============================================================
+
+message SQLRequest {
+  string query = 1;
+  repeated SQLValue args = 2;
+}
+
+message TxSQLRequest {
+  string tx_id = 1;
+  string query = 2;
+  repeated SQLValue args = 3;
+}
+
+message BeginTxRequest {
+  string isolation_level = 1; // "" | "read_committed" | "repeatable_read" | "serializable"
+  bool read_only = 2;
+}
+
+message TxResponse {
+  string tx_id = 1;
+}
+
+message TxIDRequest {
+  string tx_id = 1;
+}
+
+message SQLValue {
+  oneof value {
+    bool null = 1;
+    int64 int_value = 2;
+    double float_value = 3;
+    string string_value = 4;
+    bytes bytes_value = 5;
+    bool bool_value = 6;
+  }
+}
+
+message SQLResponse {
+  repeated string columns = 1;
+  repeated SQLRow rows = 2;
+}
+
+message SQLRow {
+  repeated SQLValue values = 1;
+}
+
+message ExecResponse {
+  int64 rows_affected = 1;
+  int64 last_insert_id = 2;
+}
+
+// ============================================================
+// Redis Messages
+// ============================================================
+
+message RedisKeyRequest {
+  string key = 1;
+}
+
+message RedisValueResponse {
+  bool exists = 1;
+  bytes value = 2;
+}
+
+message RedisSetRequest {
+  string key = 1;
+  bytes value = 2;
+}
+
+message RedisSetExRequest {
+  string key = 1;
+  bytes value = 2;
+  int64 ttl_seconds = 3;
+}
+
+message RedisDelRequest {
+  repeated string keys = 1;
+}
+
+message RedisHGetRequest {
+  string key = 1;
+  string field = 2;
+}
+
+message RedisHSetRequest {
+  string key = 1;
+  string field = 2;
+  bytes value = 3;
+}
+
+message RedisMapResponse {
+  map<string, bytes> fields = 1;
+}
+
+message RedisHDelRequest {
+  string key = 1;
+  repeated string fields = 2;
+}
+
+message RedisPubRequest {
+  string channel = 1;
+  bytes message = 2;
+}
+
+message RedisSubRequest {
+  repeated string channels = 1;
+}
+
+message RedisMessage {
+  string channel = 1;
+  bytes data = 2;
+}
+
+// ============================================================
+// Event Messages
+// ============================================================
+
+message EventRequest {
+  string topic = 1;
+  bytes payload = 2;
+}
+
+message EventFilter {
+  repeated string topics = 1;
+}
+
+message Event {
+  string topic = 1;
+  bytes payload = 2;
+  int64 timestamp = 3;
+}

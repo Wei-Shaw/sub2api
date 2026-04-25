@@ -8,6 +8,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/plugin"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -21,6 +22,7 @@ import (
 // ProviderSet 提供服务器层的依赖
 var ProviderSet = wire.NewSet(
 	ProvideRouter,
+	ProvidePluginRouter,
 	ProvideHTTPServer,
 )
 
@@ -36,6 +38,7 @@ func ProvideRouter(
 	opsService *service.OpsService,
 	settingService *service.SettingService,
 	redisClient *redis.Client,
+	pluginManager *plugin.PluginManager,
 ) *gin.Engine {
 	if cfg.Server.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
@@ -56,12 +59,28 @@ func ProvideRouter(
 		}
 	}
 
-	return SetupRouter(r, handlers, jwtAuth, adminAuth, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, redisClient)
+	return SetupRouter(r, handlers, jwtAuth, adminAuth, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, redisClient, pluginManager)
+}
+
+// ProvidePluginRouter 提供插件路由包装器。
+// 它包裹 gin.Engine，在请求到达 Gin 之前先匹配插件路由表。
+func ProvidePluginRouter(
+	router *gin.Engine,
+	jwtAuth middleware2.JWTAuthMiddleware,
+	adminAuth middleware2.AdminAuthMiddleware,
+	apiKeyAuth middleware2.APIKeyAuthMiddleware,
+) *plugin.PluginRouter {
+	return plugin.NewPluginRouter(
+		router,
+		gin.HandlerFunc(jwtAuth),
+		gin.HandlerFunc(adminAuth),
+		gin.HandlerFunc(apiKeyAuth),
+	)
 }
 
 // ProvideHTTPServer 提供 HTTP 服务器
-func ProvideHTTPServer(cfg *config.Config, router *gin.Engine) *http.Server {
-	httpHandler := http.Handler(router)
+func ProvideHTTPServer(cfg *config.Config, router *gin.Engine, pluginRouter *plugin.PluginRouter) *http.Server {
+	httpHandler := http.Handler(pluginRouter)
 
 	globalMaxSize := cfg.Server.MaxRequestBodySize
 	if globalMaxSize <= 0 {

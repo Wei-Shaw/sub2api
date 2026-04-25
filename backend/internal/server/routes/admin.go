@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// RegisterAdminRoutes 注册管理员路由
+// RegisterAdminRoutes æ³¨åç®¡çåè·¯ç±
 func RegisterAdminRoutes(
 	v1 *gin.RouterGroup,
 	h *handler.Handlers,
@@ -17,19 +17,19 @@ func RegisterAdminRoutes(
 	admin := v1.Group("/admin")
 	admin.Use(gin.HandlerFunc(adminAuth))
 	{
-		// 仪表盘
+		// ä»ªè¡¨ç
 		registerDashboardRoutes(admin, h)
 
-		// 用户管理
+		// ç¨æ·ç®¡ç
 		registerUserManagementRoutes(admin, h)
 
-		// 分组管理
+		// åç»ç®¡ç
 		registerGroupRoutes(admin, h)
 
-		// 账号管理
+		// è´¦å·ç®¡ç
 		registerAccountRoutes(admin, h)
 
-		// 公告管理
+		// å¬åç®¡ç
 		registerAnnouncementRoutes(admin, h)
 
 		// OpenAI OAuth
@@ -41,53 +41,56 @@ func RegisterAdminRoutes(
 		// Antigravity OAuth
 		registerAntigravityOAuthRoutes(admin, h)
 
-		// 代理管理
+		// ä»£çç®¡ç
 		registerProxyRoutes(admin, h)
 
-		// 卡密管理
+		// å¡å¯ç®¡ç
 		registerRedeemCodeRoutes(admin, h)
 
-		// 优惠码管理
+		// ä¼æ ç ç®¡ç
 		registerPromoCodeRoutes(admin, h)
 
-		// 系统设置
+		// ç³»ç»è®¾ç½®
 		registerSettingsRoutes(admin, h)
 
-		// 数据管理
+		// æ°æ®ç®¡ç
 		registerDataManagementRoutes(admin, h)
 
-		// 数据库备份恢复
+		// æ°æ®åºå¤ä»½æ¢å¤
 		registerBackupRoutes(admin, h)
 
-		// 运维监控（Ops）
+		// è¿ç»´çæ§ï¼Opsï¼
 		registerOpsRoutes(admin, h)
 
-		// 系统管理
+		// ç³»ç»ç®¡ç
 		registerSystemRoutes(admin, h)
 
-		// 订阅管理
+		// è®¢éç®¡ç
 		registerSubscriptionRoutes(admin, h)
 
-		// 使用记录管理
+		// ä½¿ç¨è®°å½ç®¡ç
 		registerUsageRoutes(admin, h)
 
-		// 用户属性管理
+		// ç¨æ·å±æ§ç®¡ç
 		registerUserAttributeRoutes(admin, h)
 
-		// 错误透传规则管理
+		// éè¯¯éä¼ è§åç®¡ç
 		registerErrorPassthroughRoutes(admin, h)
 
-		// TLS 指纹模板管理
+		// TLS æçº¹æ¨¡æ¿ç®¡ç
 		registerTLSFingerprintProfileRoutes(admin, h)
 
-		// API Key 管理
+		// API Key ç®¡ç
 		registerAdminAPIKeyRoutes(admin, h)
 
-		// 定时测试计划
+		// å®æ¶æµè¯è®¡å
 		registerScheduledTestRoutes(admin, h)
 
-		// 渠道管理
-		registerChannelRoutes(admin, h)
+		// æ¸ éç®¡ç
+		// 渠道管理已迁移到 plugins/channel-management/，路由由插件注册
+
+		// 插件管理
+		registerPluginRoutes(admin, h)
 	}
 }
 
@@ -283,7 +286,7 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		accounts.POST("/batch-clear-error", h.Admin.Account.BatchClearError)
 		accounts.POST("/batch-refresh", h.Admin.Account.BatchRefresh)
 
-		// Antigravity 默认模型映射
+		// Antigravity é»è®¤æ¨¡åæ å°
 		accounts.GET("/antigravity/default-model-mapping", h.Admin.Account.GetAntigravityDefaultModelMapping)
 
 		// Claude OAuth routes
@@ -391,20 +394,20 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		adminSettings.PUT("", h.Admin.Setting.UpdateSettings)
 		adminSettings.POST("/test-smtp", h.Admin.Setting.TestSMTPConnection)
 		adminSettings.POST("/send-test-email", h.Admin.Setting.SendTestEmail)
-		// Admin API Key 管理
+		// Admin API Key ç®¡ç
 		adminSettings.GET("/admin-api-key", h.Admin.Setting.GetAdminAPIKey)
 		adminSettings.POST("/admin-api-key/regenerate", h.Admin.Setting.RegenerateAdminAPIKey)
 		adminSettings.DELETE("/admin-api-key", h.Admin.Setting.DeleteAdminAPIKey)
-		// 529过载冷却配置
+		// 529è¿è½½å·å´éç½®
 		adminSettings.GET("/overload-cooldown", h.Admin.Setting.GetOverloadCooldownSettings)
 		adminSettings.PUT("/overload-cooldown", h.Admin.Setting.UpdateOverloadCooldownSettings)
-		// 流超时处理配置
+		// æµè¶æ¶å¤çéç½®
 		adminSettings.GET("/stream-timeout", h.Admin.Setting.GetStreamTimeoutSettings)
 		adminSettings.PUT("/stream-timeout", h.Admin.Setting.UpdateStreamTimeoutSettings)
-		// 请求整流器配置
+		// è¯·æ±æ´æµå¨éç½®
 		adminSettings.GET("/rectifier", h.Admin.Setting.GetRectifierSettings)
 		adminSettings.PUT("/rectifier", h.Admin.Setting.UpdateRectifierSettings)
-		// Beta 策略配置
+		// Beta ç­ç¥éç½®
 		adminSettings.GET("/beta-policy", h.Admin.Setting.GetBetaPolicySettings)
 		adminSettings.PUT("/beta-policy", h.Admin.Setting.UpdateBetaPolicySettings)
 	}
@@ -436,23 +439,23 @@ func registerDataManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 func registerBackupRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	backup := admin.Group("/backups")
 	{
-		// S3 存储配置
+		// S3 å­å¨éç½®
 		backup.GET("/s3-config", h.Admin.Backup.GetS3Config)
 		backup.PUT("/s3-config", h.Admin.Backup.UpdateS3Config)
 		backup.POST("/s3-config/test", h.Admin.Backup.TestS3Connection)
 
-		// 定时备份配置
+		// å®æ¶å¤ä»½éç½®
 		backup.GET("/schedule", h.Admin.Backup.GetSchedule)
 		backup.PUT("/schedule", h.Admin.Backup.UpdateSchedule)
 
-		// 备份操作
+		// å¤ä»½æä½
 		backup.POST("", h.Admin.Backup.CreateBackup)
 		backup.GET("", h.Admin.Backup.ListBackups)
 		backup.GET("/:id", h.Admin.Backup.GetBackup)
 		backup.DELETE("/:id", h.Admin.Backup.DeleteBackup)
 		backup.GET("/:id/download-url", h.Admin.Backup.GetDownloadURL)
 
-		// 恢复操作
+		// æ¢å¤æä½
 		backup.POST("/:id/restore", h.Admin.Backup.RestoreBackup)
 	}
 }
@@ -481,10 +484,10 @@ func registerSubscriptionRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		subscriptions.DELETE("/:id", h.Admin.Subscription.Revoke)
 	}
 
-	// 分组下的订阅列表
+	// åç»ä¸çè®¢éåè¡¨
 	admin.GET("/groups/:id/subscriptions", h.Admin.Subscription.ListByGroup)
 
-	// 用户下的订阅列表
+	// ç¨æ·ä¸çè®¢éåè¡¨
 	admin.GET("/users/:id/subscriptions", h.Admin.Subscription.ListByUser)
 }
 
@@ -547,14 +550,15 @@ func registerTLSFingerprintProfileRoutes(admin *gin.RouterGroup, h *handler.Hand
 	}
 }
 
-func registerChannelRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
-	channels := admin.Group("/channels")
+
+func registerPluginRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	plugins := admin.Group("/plugins")
 	{
-		channels.GET("", h.Admin.Channel.List)
-		channels.GET("/model-pricing", h.Admin.Channel.GetModelDefaultPricing)
-		channels.GET("/:id", h.Admin.Channel.GetByID)
-		channels.POST("", h.Admin.Channel.Create)
-		channels.PUT("/:id", h.Admin.Channel.Update)
-		channels.DELETE("/:id", h.Admin.Channel.Delete)
+		plugins.GET("", h.Admin.Plugin.List)
+		plugins.GET("/:name", h.Admin.Plugin.Get)
+		plugins.POST("/:name/enable", h.Admin.Plugin.Enable)
+		plugins.POST("/:name/disable", h.Admin.Plugin.Disable)
+		plugins.POST("/:name/restart", h.Admin.Plugin.Restart)
+		plugins.PUT("/:name/config", h.Admin.Plugin.UpdateConfig)
 	}
 }

@@ -460,7 +460,7 @@ var ProviderSet = wire.NewSet(
 	ProvideScheduledTestService,
 	ProvideScheduledTestRunnerService,
 	NewGroupCapacityService,
-	NewChannelService,
+	// NewChannelService 已迁移到 plugins/channel-management/
 	NewModelPricingResolver,
 	ProvidePaymentConfigService,
 	NewPaymentService,

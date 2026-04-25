@@ -1,0 +1,175 @@
+package pluginsdk
+
+import (
+	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+)
+
+// Authentication kinds accepted by the core gateway. They are mirrored as
+// strings on EndpointDecl.AuthType because the proto API uses bare strings.
+const (
+	AuthTypeAdmin  = "admin"
+	AuthTypeUser   = "user"
+	AuthTypeAPIKey = "apikey"
+	AuthTypeNone   = "none"
+)
+
+// Section names used for grouping menu items in the frontend.
+const (
+	SectionAdmin = "admin"
+	SectionUser  = "user"
+)
+
+// Manifest is the Go-level representation of pluginsdk.ManifestResponse.
+// Plugins build and return this from Plugin.Manifest(); the SDK converts it
+// to the proto type when the core calls GetManifest.
+type Manifest struct {
+	Name        string
+	DisplayName string
+	Version     string
+	Description string
+	Author      string
+
+	// GatewayEndpoints declare HTTP routes that the core's gateway should
+	// forward to this plugin. They are typically user-facing API paths.
+	GatewayEndpoints []EndpointDecl
+	// PluginEndpoints declare HTTP routes that the plugin serves on its own
+	// HTTP server (admin/management paths).
+	PluginEndpoints []EndpointDecl
+
+	Frontend *FrontendManifest
+
+	// MigrationFiles is an optional list of SQL migration filenames the
+	// plugin ships with. The core handles applying them.
+	MigrationFiles []string
+}
+
+// EndpointDecl describes a single HTTP endpoint declaration.
+type EndpointDecl struct {
+	Path     string
+	Methods  []string
+	AuthType string // one of AuthType* constants
+}
+
+// FrontendManifest describes the plugin's frontend integration.
+type FrontendManifest struct {
+	EntryJS        string
+	EntryCSS       string
+	MenuItems      []MenuItemDecl
+	Routes         []RouteDecl
+	I18nNamespaces []string
+}
+
+// MenuItemDecl is a sidebar/menu entry contributed by the plugin.
+type MenuItemDecl struct {
+	Path             string
+	LabelKey         string
+	Icon             string
+	Section          string // SectionAdmin or SectionUser
+	SortOrder        int
+	RequiresAdmin    bool
+	HideInSimpleMode bool
+	FeatureFlag      string
+	Children         []MenuItemDecl
+}
+
+// RouteDecl is a Vue Router route definition contributed by the plugin.
+type RouteDecl struct {
+	Path          string
+	Name          string
+	ComponentPath string
+	Meta          map[string]string
+}
+
+// toProto converts a Manifest into its protobuf wire form. It tolerates a nil
+// receiver and a nil Frontend so plugins can leave optional sections empty.
+func (m *Manifest) toProto() *pb.ManifestResponse {
+	if m == nil {
+		return &pb.ManifestResponse{}
+	}
+	resp := &pb.ManifestResponse{
+		Name:             m.Name,
+		DisplayName:      m.DisplayName,
+		Version:          m.Version,
+		Description:      m.Description,
+		Author:           m.Author,
+		GatewayEndpoints: endpointsToProto(m.GatewayEndpoints),
+		PluginEndpoints:  endpointsToProto(m.PluginEndpoints),
+		MigrationFiles:   append([]string(nil), m.MigrationFiles...),
+	}
+	if m.Frontend != nil {
+		resp.Frontend = m.Frontend.toProto()
+	}
+	return resp
+}
+
+func endpointsToProto(decls []EndpointDecl) []*pb.EndpointDeclaration {
+	if len(decls) == 0 {
+		return nil
+	}
+	out := make([]*pb.EndpointDeclaration, 0, len(decls))
+	for _, d := range decls {
+		out = append(out, &pb.EndpointDeclaration{
+			Path:     d.Path,
+			Methods:  append([]string(nil), d.Methods...),
+			AuthType: d.AuthType,
+		})
+	}
+	return out
+}
+
+func (f *FrontendManifest) toProto() *pb.FrontendManifest {
+	if f == nil {
+		return nil
+	}
+	return &pb.FrontendManifest{
+		EntryJs:        f.EntryJS,
+		EntryCss:       f.EntryCSS,
+		MenuItems:      menuItemsToProto(f.MenuItems),
+		Routes:         routesToProto(f.Routes),
+		I18NNamespaces: append([]string(nil), f.I18nNamespaces...),
+	}
+}
+
+func menuItemsToProto(items []MenuItemDecl) []*pb.MenuItem {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]*pb.MenuItem, 0, len(items))
+	for _, item := range items {
+		out = append(out, &pb.MenuItem{
+			Path:             item.Path,
+			LabelKey:         item.LabelKey,
+			Icon:             item.Icon,
+			Section:          item.Section,
+			SortOrder:        int32(item.SortOrder),
+			RequiresAdmin:    item.RequiresAdmin,
+			HideInSimpleMode: item.HideInSimpleMode,
+			FeatureFlag:      item.FeatureFlag,
+			Children:         menuItemsToProto(item.Children),
+		})
+	}
+	return out
+}
+
+func routesToProto(routes []RouteDecl) []*pb.RouteDefinition {
+	if len(routes) == 0 {
+		return nil
+	}
+	out := make([]*pb.RouteDefinition, 0, len(routes))
+	for _, r := range routes {
+		var meta map[string]string
+		if len(r.Meta) > 0 {
+			meta = make(map[string]string, len(r.Meta))
+			for k, v := range r.Meta {
+				meta[k] = v
+			}
+		}
+		out = append(out, &pb.RouteDefinition{
+			Path:          r.Path,
+			Name:          r.Name,
+			ComponentPath: r.ComponentPath,
+			Meta:          meta,
+		})
+	}
+	return out
+}

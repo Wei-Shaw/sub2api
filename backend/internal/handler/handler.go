@@ -30,8 +30,9 @@ type AdminHandlers struct {
 	TLSFingerprintProfile *admin.TLSFingerprintProfileHandler
 	APIKey                *admin.AdminAPIKeyHandler
 	ScheduledTest         *admin.ScheduledTestHandler
-	Channel               *admin.ChannelHandler
+	// Channel handler 已迁移到 plugins/channel-management/
 	Payment               *admin.PaymentHandler
+	Plugin                *admin.PluginHandler
 }
 
 // Handlers contains all HTTP handlers

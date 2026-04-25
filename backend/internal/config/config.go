@@ -83,6 +83,7 @@ type Config struct {
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
+	Plugins                 PluginConfig                  `mapstructure:"plugins"`
 }
 
 type LogConfig struct {
@@ -163,6 +164,24 @@ type IdempotencyConfig struct {
 	CleanupIntervalSeconds int `mapstructure:"cleanup_interval_seconds"`
 	// CleanupBatchSize 每次清理的最大记录数。
 	CleanupBatchSize int `mapstructure:"cleanup_batch_size"`
+}
+
+// PluginConfig æä»¶ç®¡çå¨å¨å±éç½®ã
+// æä»¶éè¿ gRPC å­è¿ç¨æ¹å¼å è½½ï¼æ¬éç½®æ§å¶å¯ç¨å¼å³ãæ«æç®å½ãå¥åº·æ£æ¥ä¸éå¯ç­ç¥ã
+type PluginConfig struct {
+	Enabled         bool                `yaml:"enabled" mapstructure:"enabled"`
+	Dir             string              `yaml:"dir" mapstructure:"dir"`
+	HealthInterval  int                 `yaml:"health_interval" mapstructure:"health_interval"`   // seconds
+	StartupTimeout  int                 `yaml:"startup_timeout" mapstructure:"startup_timeout"`   // seconds
+	ShutdownTimeout int                 `yaml:"shutdown_timeout" mapstructure:"shutdown_timeout"` // seconds
+	Restart         PluginRestartConfig `yaml:"restart" mapstructure:"restart"`
+}
+
+// PluginRestartConfig æä»¶å­è¿ç¨å´©æºåçææ°éé¿éå¯ç­ç¥ã
+type PluginRestartConfig struct {
+	MaxRetries int `yaml:"max_retries" mapstructure:"max_retries"`
+	MaxDelay   int `yaml:"max_delay" mapstructure:"max_delay"`     // seconds
+	ResetAfter int `yaml:"reset_after" mapstructure:"reset_after"` // seconds
 }
 
 type LinuxDoConnectConfig struct {
@@ -1347,6 +1366,16 @@ func setDefaults() {
 	viper.SetDefault("idempotency.max_stored_response_len", 64*1024)
 	viper.SetDefault("idempotency.cleanup_interval_seconds", 60)
 	viper.SetDefault("idempotency.cleanup_batch_size", 500)
+
+	// Plugins (gRPC å­è¿ç¨æä»¶ç®¡çå¨)
+	viper.SetDefault("plugins.enabled", false)
+	viper.SetDefault("plugins.dir", "data/plugins")
+	viper.SetDefault("plugins.health_interval", 10)
+	viper.SetDefault("plugins.startup_timeout", 30)
+	viper.SetDefault("plugins.shutdown_timeout", 10)
+	viper.SetDefault("plugins.restart.max_retries", 10)
+	viper.SetDefault("plugins.restart.max_delay", 300)
+	viper.SetDefault("plugins.restart.reset_after", 600)
 
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久

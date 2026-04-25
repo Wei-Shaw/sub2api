@@ -32,14 +32,20 @@ type PublicSettingsProvider interface {
 	GetPublicSettingsForInjection(ctx context.Context) (any, error)
 }
 
+// PluginManifestProvider provides plugin manifests for frontend injection
+type PluginManifestProvider interface {
+	GetPluginManifestsJSON() []byte
+}
+
 // FrontendServer serves the embedded frontend with settings injection
 type FrontendServer struct {
-	distFS      fs.FS
-	fileServer  http.Handler
-	baseHTML    []byte
-	cache       *HTMLCache
-	settings    PublicSettingsProvider
-	overrideDir string // local file override directory
+	distFS          fs.FS
+	fileServer      http.Handler
+	baseHTML        []byte
+	cache           *HTMLCache
+	settings        PublicSettingsProvider
+	pluginManifests PluginManifestProvider
+	overrideDir     string // local file override directory
 }
 
 // NewFrontendServer creates a new frontend server with settings injection
@@ -72,6 +78,13 @@ func NewFrontendServer(settingsProvider PublicSettingsProvider) (*FrontendServer
 		settings:    settingsProvider,
 		overrideDir: filepath.Join("data", "public"),
 	}, nil
+}
+
+// SetPluginManifestProvider sets the provider for plugin manifests.
+// Called after FrontendServer construction when PluginManager is available.
+func (s *FrontendServer) SetPluginManifestProvider(p PluginManifestProvider) {
+	s.pluginManifests = p
+	s.InvalidateCache()
 }
 
 // InvalidateCache invalidates the HTML cache (call when settings change)
@@ -199,15 +212,25 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 }
 
 func (s *FrontendServer) injectSettings(settingsJSON []byte) []byte {
-	// Create the script tag to inject with nonce placeholder
-	// The placeholder will be replaced with actual nonce at request time
 	script := []byte(`<script nonce="` + NonceHTMLPlaceholder + `">window.__APP_CONFIG__=` + string(settingsJSON) + `;</script>`)
 
-	// Inject before </head>
-	headClose := []byte("</head>")
-	result := bytes.Replace(s.baseHTML, headClose, append(script, headClose...), 1)
+	// Inject plugin manifests if available
+	var pluginScript []byte
+	if s.pluginManifests != nil {
+		if manifestJSON := s.pluginManifests.GetPluginManifestsJSON(); len(manifestJSON) > 0 {
+			pluginScript = []byte(`<script nonce="` + NonceHTMLPlaceholder + `">window.__PLUGIN_MANIFESTS__=` + string(manifestJSON) + `;</script>`)
+		}
+	}
 
-	// Replace <title> with custom site name so the browser tab shows it immediately
+	headClose := []byte("</head>")
+	var injection []byte
+	injection = append(injection, script...)
+	if len(pluginScript) > 0 {
+		injection = append(injection, pluginScript...)
+	}
+	injection = append(injection, headClose...)
+	result := bytes.Replace(s.baseHTML, headClose, injection, 1)
+
 	result = injectSiteTitle(result, settingsJSON)
 
 	return result

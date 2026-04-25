@@ -2,6 +2,7 @@ package handler
 
 import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
+	"github.com/Wei-Shaw/sub2api/internal/plugin"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/google/wire"
@@ -33,8 +34,8 @@ func ProvideAdminHandlers(
 	tlsFingerprintProfileHandler *admin.TLSFingerprintProfileHandler,
 	apiKeyHandler *admin.AdminAPIKeyHandler,
 	scheduledTestHandler *admin.ScheduledTestHandler,
-	channelHandler *admin.ChannelHandler,
 	paymentHandler *admin.PaymentHandler,
+	pluginHandler *admin.PluginHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
 		Dashboard:             dashboardHandler,
@@ -61,8 +62,8 @@ func ProvideAdminHandlers(
 		TLSFingerprintProfile: tlsFingerprintProfileHandler,
 		APIKey:                apiKeyHandler,
 		ScheduledTest:         scheduledTestHandler,
-		Channel:               channelHandler,
 		Payment:               paymentHandler,
+		Plugin:                pluginHandler,
 	}
 }
 
@@ -74,6 +75,18 @@ func ProvideSystemHandler(updateService *service.UpdateService, lockService *ser
 // ProvideSettingHandler creates SettingHandler with version from BuildInfo
 func ProvideSettingHandler(settingService *service.SettingService, buildInfo BuildInfo) *SettingHandler {
 	return NewSettingHandler(settingService, buildInfo.Version)
+}
+
+// ProvidePluginHandler creates admin.PluginHandler.
+//
+// 当插件功能未启用(plugins.enabled=false)时,manager 为 nil,
+// handler 内部的 requireManager 守卫会让所有插件 API 返回 503,
+// 不影响其他 admin 路由。
+func ProvidePluginHandler(manager *plugin.PluginManager) *admin.PluginHandler {
+	if manager == nil {
+		return admin.NewPluginHandler(nil)
+	}
+	return admin.NewPluginHandler(manager)
 }
 
 // ProvideHandlers creates the Handlers struct
@@ -155,8 +168,9 @@ var ProviderSet = wire.NewSet(
 	admin.NewTLSFingerprintProfileHandler,
 	admin.NewAdminAPIKeyHandler,
 	admin.NewScheduledTestHandler,
-	admin.NewChannelHandler,
+	// admin.NewChannelHandler 已迁移到 plugins/channel-management/
 	admin.NewPaymentHandler,
+	ProvidePluginHandler,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,

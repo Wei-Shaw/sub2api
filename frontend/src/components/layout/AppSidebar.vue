@@ -187,6 +187,7 @@ import { useI18n } from 'vue-i18n'
 import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
 import VersionBadge from '@/components/common/VersionBadge.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
+import { getPluginMenuItems, type PluginNavItem } from '@/plugins/loader'
 
 interface NavItem {
   path: string
@@ -195,6 +196,18 @@ interface NavItem {
   iconSvg?: string
   hideInSimpleMode?: boolean
   children?: NavItem[]
+}
+
+// 把插件菜单项转成 NavItem,丢弃只供排序使用的元数据字段。
+function pluginItemsAsNavItems(items: PluginNavItem[]): NavItem[] {
+  return items.map((item) => ({
+    path: item.path,
+    label: item.label,
+    icon: item.icon,
+    iconSvg: item.iconSvg,
+    hideInSimpleMode: item.hideInSimpleMode,
+    children: item.children ? pluginItemsAsNavItems(item.children) : undefined,
+  }))
 }
 
 const { t } = useI18n()
@@ -601,9 +614,14 @@ const userNavItems = computed((): NavItem[] => {
       icon: null,
       iconSvg: item.icon_svg,
     })),
+    ...pluginItemsAsNavItems(pluginUserNavItems.value),
   ]
   return authStore.isSimpleMode ? items.filter(item => !item.hideInSimpleMode) : items
 })
+
+// 插件菜单项,启动时从 window.__PLUGIN_MANIFESTS__ 读取一次,后续不会变化。
+const pluginAdminNavItems = computed(() => getPluginMenuItems('admin'))
+const pluginUserNavItems = computed(() => getPluginMenuItems('user'))
 
 // Personal navigation items (for admin's "My Account" section, without Dashboard)
 const personalNavItems = computed((): NavItem[] => {
@@ -639,6 +657,7 @@ const personalNavItems = computed((): NavItem[] => {
       icon: null,
       iconSvg: item.icon_svg,
     })),
+    ...pluginItemsAsNavItems(pluginUserNavItems.value),
   ]
   return authStore.isSimpleMode ? items.filter(item => !item.hideInSimpleMode) : items
 })
@@ -700,6 +719,17 @@ const adminNavItems = computed((): NavItem[] => {
     for (const cm of customMenuItemsForAdmin.value) {
       filtered.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
     }
+    // 简易模式下,只追加未声明 hide_in_simple_mode 的插件菜单。
+    for (const pl of pluginAdminNavItems.value) {
+      if (pl.hideInSimpleMode) continue
+      filtered.push({
+        path: pl.path,
+        label: pl.label,
+        icon: pl.icon,
+        iconSvg: pl.iconSvg,
+        children: pl.children ? pluginItemsAsNavItems(pl.children) : undefined,
+      })
+    }
     return filtered
   }
 
@@ -707,6 +737,10 @@ const adminNavItems = computed((): NavItem[] => {
   // Add admin custom menu items after settings
   for (const cm of customMenuItemsForAdmin.value) {
     baseItems.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
+  }
+  // 插件菜单追加在最后,与自定义菜单同级。
+  for (const pl of pluginItemsAsNavItems(pluginAdminNavItems.value)) {
+    baseItems.push(pl)
   }
   return baseItems
 })

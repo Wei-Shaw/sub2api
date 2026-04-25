@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	"github.com/Wei-Shaw/sub2api/internal/plugin"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/server"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -24,8 +25,9 @@ import (
 )
 
 type Application struct {
-	Server  *http.Server
-	Cleanup func()
+	Server        *http.Server
+	PluginManager *plugin.PluginManager
+	Cleanup       func()
 }
 
 func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
@@ -52,8 +54,12 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		// Cleanup function provider
 		provideCleanup,
 
+		// Plugin subsystem
+		providePluginConfig,
+		providePluginManager,
+
 		// Application struct
-		wire.Struct(new(Application), "Server", "Cleanup"),
+		wire.Struct(new(Application), "Server", "PluginManager", "Cleanup"),
 	)
 	return nil, nil
 }
@@ -67,6 +73,53 @@ func provideServiceBuildInfo(buildInfo handler.BuildInfo) service.BuildInfo {
 		Version:   buildInfo.Version,
 		BuildType: buildInfo.BuildType,
 	}
+}
+
+// providePluginConfig 把核心 config.PluginConfig 翻译成 plugin.Config。
+// 当 cfg.Plugins.Enabled=false 时,此 provider 仍会返回有效配置,
+// 由 providePluginManager 决定是否真正实例化 manager。
+func providePluginConfig(cfg *config.Config) plugin.Config {
+	pc := cfg.Plugins
+	out := plugin.DefaultConfig()
+	out.PluginsDir = pc.Dir
+	if pc.HealthInterval > 0 {
+		out.HealthInterval = time.Duration(pc.HealthInterval) * time.Second
+	}
+	if pc.ShutdownTimeout > 0 {
+		out.ShutdownTimeout = time.Duration(pc.ShutdownTimeout) * time.Second
+	}
+	if pc.Restart.MaxRetries > 0 {
+		out.Restart.MaxRetries = pc.Restart.MaxRetries
+	}
+	if pc.Restart.MaxDelay > 0 {
+		out.Restart.MaxDelay = time.Duration(pc.Restart.MaxDelay) * time.Second
+	}
+	if pc.Restart.ResetAfter > 0 {
+		out.Restart.ResetAfter = time.Duration(pc.Restart.ResetAfter) * time.Second
+	}
+	return out
+}
+
+// providePluginManager 创建 PluginManager,在 plugins.enabled=false 时返回 nil。
+// 调用方(handler/frontend)需兼容 nil 情况。
+//
+// 注:此 provider 不接受 PluginRouter,因为 router 依赖 engine,
+// engine 又依赖 handlers (含 pluginHandler),会形成循环依赖。
+// router 由 wire 树构建完成后通过 BindRouter 后绑定。
+func providePluginManager(
+	cfg *config.Config,
+	entClient *ent.Client,
+	rdb *redis.Client,
+	pluginCfg plugin.Config,
+) (*plugin.PluginManager, error) {
+	if !cfg.Plugins.Enabled {
+		return nil, nil
+	}
+	db, err := repository.ProvideSQLDB(entClient)
+	if err != nil {
+		return nil, err
+	}
+	return plugin.NewPluginManager(db, rdb, pluginCfg, nil)
 }
 
 func provideCleanup(
@@ -97,6 +150,7 @@ func provideCleanup(
 	scheduledTestRunner *service.ScheduledTestRunnerService,
 	backupSvc *service.BackupService,
 	paymentOrderExpiry *service.PaymentOrderExpiryService,
+	pluginManager *plugin.PluginManager,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -109,6 +163,12 @@ func provideCleanup(
 
 		// 应用层清理步骤可并行执行，基础设施资源（Redis/Ent）最后按顺序关闭。
 		parallelSteps := []cleanupStep{
+			{"PluginManager", func() error {
+				if pluginManager != nil {
+					pluginManager.ShutdownAll(ctx)
+				}
+				return nil
+			}},
 			{"OpsScheduledReportService", func() error {
 				if opsScheduledReport != nil {
 					opsScheduledReport.Stop()

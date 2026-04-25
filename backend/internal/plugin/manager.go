@@ -1,0 +1,984 @@
+package plugin
+
+import (
+	"bufio"
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net"
+	"os/exec"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/redis/go-redis/v9"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/emptypb"
+
+	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+)
+
+// PluginManager 是插件子系统的协调器,负责:
+//   - 发现 / 启动 / 停止插件子进程
+//   - 维护 PluginInstance 状态,执行 gRPC handshake 与 manifest 拉取
+//   - 把插件路由注入 PluginRouter
+//   - 触发健康监控与自动重启
+type PluginManager struct {
+	mu        sync.RWMutex
+	plugins   map[string]*PluginInstance
+	repo      *PluginRepository
+	router    *PluginRouter
+	sdkServer *SDKServer
+	sdkAddr   string // SDK gRPC 实际监听地址(含端口)
+	sdkLn     net.Listener
+	sdkGRPC   *grpc.Server
+	cfg       Config
+	db        *sql.DB
+	logger    *slog.Logger
+}
+
+// NewPluginManager 构造 manager。
+// 注意:此函数不启动 SDK gRPC 服务,需调用 Start 才会监听端口与启用插件。
+func NewPluginManager(db *sql.DB, rdb *redis.Client, cfg Config, router *PluginRouter) (*PluginManager, error) {
+	if db == nil {
+		return nil, errors.New("nil sql db")
+	}
+	// router 允许为 nil:wire 树中 PluginManager 可能先于 PluginRouter 创建,
+	// 调用方负责在 Start 之前调用 BindRouter 注入。
+	cfg = cfg.withDefaults()
+
+	repo := NewPluginRepository(db)
+	sdk := NewSDKServer(db, rdb)
+
+	return &PluginManager{
+		plugins:   make(map[string]*PluginInstance),
+		repo:      repo,
+		router:    router,
+		sdkServer: sdk,
+		cfg:       cfg,
+		db:        db,
+		logger:    slog.Default().With("component", "plugin_manager"),
+	}, nil
+}
+
+// Start 启动 SDK gRPC 服务并加载所有 enabled 插件。
+// ctx 仅用于初始的 SDK 启动与 enabled 插件加载,不影响后续插件的健康监控。
+func (m *PluginManager) Start(ctx context.Context) error {
+	m.mu.RLock()
+	router := m.router
+	m.mu.RUnlock()
+	if router == nil {
+		return errors.New("plugin manager: router not bound; call BindRouter before Start")
+	}
+	if err := m.repo.EnsureSchema(ctx); err != nil {
+		// 表不存在时回退到 EnsureSchema;若仍失败则视为致命。
+		return err
+	}
+
+	if err := m.startSDKServer(); err != nil {
+		return err
+	}
+
+	// 从磁盘扫描插件,合并到 DB(磁盘上发现但 DB 没有的,创建一条 disabled 记录)。
+	if m.cfg.PluginsDir != "" {
+		if err := m.syncFromDisk(ctx); err != nil {
+			m.logger.Warn("sync plugins from disk failed", "error", err)
+		}
+	}
+
+	records, err := m.repo.List(ctx)
+	if err != nil {
+		return fmt.Errorf("list plugins: %w", err)
+	}
+	for _, rec := range records {
+		if !rec.Enabled {
+			continue
+		}
+		if err := m.EnablePlugin(ctx, rec.Name); err != nil {
+			m.logger.Error("auto enable plugin failed",
+				"plugin", rec.Name,
+				"error", err,
+			)
+		}
+	}
+	return nil
+}
+
+// BindRouter 在 wire 树构建完成后,把 PluginRouter 绑定到 manager。
+// 必须在 Start 之前调用;重复调用会覆盖已有 router。
+//
+// 该方法存在的原因:wire 创建顺序中 PluginManager 先于 PluginRouter,
+// 否则会形成 handler->manager->router->engine->handlers 的循环依赖。
+func (m *PluginManager) BindRouter(router *PluginRouter) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.router = router
+}
+
+// startSDKServer 监听 SDK gRPC 端口并启动 grpc.Server。
+func (m *PluginManager) startSDKServer() error {
+	ln, err := net.Listen("tcp", m.cfg.SDKListenAddr)
+	if err != nil {
+		return fmt.Errorf("listen sdk addr %s: %w", m.cfg.SDKListenAddr, err)
+	}
+	m.sdkLn = ln
+	m.sdkAddr = ln.Addr().String()
+
+	srv := grpc.NewServer()
+	m.sdkServer.RegisterServices(srv)
+	m.sdkGRPC = srv
+
+	go func() {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+			m.logger.Error("sdk grpc server stopped", "error", err)
+		}
+	}()
+	m.logger.Info("sdk grpc server listening", "addr", m.sdkAddr)
+	return nil
+}
+
+// syncFromDisk 把磁盘上发现的插件登记到 DB(若不存在),保持启用状态不变。
+func (m *PluginManager) syncFromDisk(ctx context.Context) error {
+	discovered, err := DiscoverPlugins(m.cfg.PluginsDir)
+	if err != nil {
+		return err
+	}
+	for _, d := range discovered {
+		_, err := m.repo.Get(ctx, d.Name)
+		if err == nil {
+			continue
+		}
+		if !errors.Is(err, ErrPluginNotFound) {
+			m.logger.Warn("get plugin from db failed",
+				"plugin", d.Name, "error", err)
+			continue
+		}
+		newRec := &PluginRecord{
+			Name:    d.Name,
+			Enabled: false,
+			Config:  map[string]string{},
+		}
+		if err := m.repo.Create(ctx, newRec); err != nil {
+			m.logger.Warn("register discovered plugin failed",
+				"plugin", d.Name, "error", err)
+		}
+	}
+	return nil
+}
+
+// ShutdownAll 优雅关闭所有插件,然后停止 SDK gRPC。
+func (m *PluginManager) ShutdownAll(ctx context.Context) {
+	m.mu.RLock()
+	names := make([]string, 0, len(m.plugins))
+	for name := range m.plugins {
+		names = append(names, name)
+	}
+	m.mu.RUnlock()
+
+	var wg sync.WaitGroup
+	for _, name := range names {
+		wg.Add(1)
+		go func(n string) {
+			defer wg.Done()
+			if err := m.stopInstance(ctx, n, false); err != nil {
+				m.logger.Warn("shutdown plugin failed", "plugin", n, "error", err)
+			}
+		}(name)
+	}
+	wg.Wait()
+
+	if m.sdkGRPC != nil {
+		m.sdkGRPC.GracefulStop()
+	}
+	if m.sdkServer != nil {
+		m.sdkServer.Stop()
+	}
+}
+
+// EnablePlugin 启动指定插件。已经在运行则视为无操作并返回成功。
+func (m *PluginManager) EnablePlugin(ctx context.Context, name string) error {
+	rec, err := m.repo.Get(ctx, name)
+	if err != nil {
+		return err
+	}
+
+	binPath := m.binaryPathFor(name)
+	if binPath == "" {
+		return fmt.Errorf("plugin binary not found for %s", name)
+	}
+
+	inst := m.getOrCreateInstance(name, binPath)
+
+	inst.mu.Lock()
+	if inst.State == StateRunning || inst.State == StateStarting {
+		inst.mu.Unlock()
+		// 持久化 enabled=true,即便已经在运行。
+		_ = m.repo.SetEnabled(ctx, name, true)
+		return nil
+	}
+	if err := inst.transitionTo(StateStarting); err != nil {
+		inst.mu.Unlock()
+		return err
+	}
+	cfgCopy := copyConfig(rec.Config)
+	inst.mu.Unlock()
+
+	if err := m.spawnAndConnect(ctx, inst, cfgCopy); err != nil {
+		inst.mu.Lock()
+		_ = inst.transitionTo(StateErrored)
+		inst.LastError = err
+		inst.mu.Unlock()
+		return err
+	}
+
+	if err := m.repo.SetEnabled(ctx, name, true); err != nil {
+		m.logger.Warn("persist enabled flag failed", "plugin", name, "error", err)
+	}
+	return nil
+}
+
+// DisablePlugin 停止指定插件,并将 DB 中的 enabled 字段置为 false。
+func (m *PluginManager) DisablePlugin(ctx context.Context, name string) error {
+	if err := m.stopInstance(ctx, name, true); err != nil {
+		return err
+	}
+	if err := m.repo.SetEnabled(ctx, name, false); err != nil {
+		return err
+	}
+	return nil
+}
+
+// RestartPlugin 先停后启。
+func (m *PluginManager) RestartPlugin(ctx context.Context, name string) error {
+	if err := m.stopInstance(ctx, name, false); err != nil {
+		m.logger.Warn("restart: stop step failed", "plugin", name, "error", err)
+	}
+	return m.EnablePlugin(ctx, name)
+}
+
+// ListPlugins 返回所有已注册插件的运行时信息。
+func (m *PluginManager) ListPlugins(ctx context.Context) ([]PluginInfo, error) {
+	records, err := m.repo.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]PluginInfo, 0, len(records))
+	for _, rec := range records {
+		m.mu.RLock()
+		inst, ok := m.plugins[rec.Name]
+		m.mu.RUnlock()
+
+		var info PluginInfo
+		if ok {
+			info = inst.SnapshotInfo()
+		} else {
+			info = PluginInfo{
+				Name:  rec.Name,
+				State: StateRegistered.String(),
+			}
+		}
+		mergeRecordIntoInfo(&info, rec)
+		out = append(out, info)
+	}
+	return out, nil
+}
+
+// GetPlugin 返回单个插件的信息。
+func (m *PluginManager) GetPlugin(ctx context.Context, name string) (*PluginInfo, error) {
+	rec, err := m.repo.Get(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	m.mu.RLock()
+	inst, ok := m.plugins[name]
+	m.mu.RUnlock()
+
+	var info PluginInfo
+	if ok {
+		info = inst.SnapshotInfo()
+	} else {
+		info = PluginInfo{
+			Name:  rec.Name,
+			State: StateRegistered.String(),
+		}
+	}
+	mergeRecordIntoInfo(&info, *rec)
+	return &info, nil
+}
+
+// mergeRecordIntoInfo 把数据库字段(Enabled/SortOrder/Description/Config 等)填入 info,
+// 同时在运行时 manifest 缺失 DisplayName/Version 时回退到数据库记录。
+func mergeRecordIntoInfo(info *PluginInfo, rec PluginRecord) {
+	info.Enabled = rec.Enabled
+	info.SortOrder = rec.SortOrder
+	info.Description = rec.Description
+	if info.DisplayName == "" {
+		info.DisplayName = rec.DisplayName
+	}
+	if info.Version == "" {
+		info.Version = rec.Version
+	}
+	info.Config = configToAny(rec.Config)
+}
+
+// configToAny 把存储层的 map[string]string 转成 API 暴露的 map[string]any。
+// 配置为空时返回 nil,避免 API 输出空对象。
+func configToAny(in map[string]string) map[string]any {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+// SDKAddr 返回 SDK gRPC 实际监听地址,主要用于测试与诊断。
+func (m *PluginManager) SDKAddr() string {
+	return m.sdkAddr
+}
+
+// =============================================================
+// Admin handler 适配方法
+//
+// PluginHandler (internal/handler/admin) 通过最小化接口与 manager 交互,
+// 命名风格为短动词(List/Get/Enable/Disable/Restart/UpdateConfig)。
+// 这里通过适配方法转发到主实现, 避免上层因命名差异而依赖具体类型。
+// =============================================================
+
+// List 是 ListPlugins 的别名,实现 admin.PluginManager 接口。
+func (m *PluginManager) List(ctx context.Context) ([]PluginInfo, error) {
+	return m.ListPlugins(ctx)
+}
+
+// Get 是 GetPlugin 的别名,实现 admin.PluginManager 接口。
+func (m *PluginManager) Get(ctx context.Context, name string) (*PluginInfo, error) {
+	return m.GetPlugin(ctx, name)
+}
+
+// Enable 是 EnablePlugin 的别名,实现 admin.PluginManager 接口。
+func (m *PluginManager) Enable(ctx context.Context, name string) error {
+	return m.EnablePlugin(ctx, name)
+}
+
+// Disable 是 DisablePlugin 的别名,实现 admin.PluginManager 接口。
+func (m *PluginManager) Disable(ctx context.Context, name string) error {
+	return m.DisablePlugin(ctx, name)
+}
+
+// Restart 是 RestartPlugin 的别名,实现 admin.PluginManager 接口。
+func (m *PluginManager) Restart(ctx context.Context, name string) error {
+	return m.RestartPlugin(ctx, name)
+}
+
+// UpdateConfig 持久化插件的配置 JSON。
+//
+// 当前实现只更新数据库,**不会**自动重启插件子进程,
+// 是否需要重启由调用方根据具体配置项决定;插件可以在 Init 时拉取最新配置,
+// 或通过自定义 RPC 在运行时热加载。
+//
+// 因为存储层使用 map[string]string,这里把 any 值统一序列化为字符串形式:
+// 简单类型走 fmt.Sprintf("%v"),复合类型(map/slice)走 json.Marshal,
+// 保证 round-trip 时配置语义不丢失。
+func (m *PluginManager) UpdateConfig(ctx context.Context, name string, cfg map[string]any) error {
+	strCfg, err := configToString(cfg)
+	if err != nil {
+		return err
+	}
+	return m.repo.UpdateConfig(ctx, name, strCfg)
+}
+
+// configToString 把 admin API 收到的 map[string]any 转成存储层的 map[string]string。
+// 复合值序列化为 JSON 以便后续读取时还原。
+func configToString(in map[string]any) (map[string]string, error) {
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		switch val := v.(type) {
+		case nil:
+			out[k] = ""
+		case string:
+			out[k] = val
+		case bool, int, int32, int64, float32, float64:
+			out[k] = fmt.Sprintf("%v", val)
+		default:
+			b, err := json.Marshal(val)
+			if err != nil {
+				return nil, fmt.Errorf("marshal config key %q: %w", k, err)
+			}
+			out[k] = string(b)
+		}
+	}
+	return out, nil
+}
+
+// GetPluginManifestsJSON 返回所有正在运行插件的前端清单(menu_items + routes),
+// 用于 FrontendServer 注入 window.__PLUGIN_MANIFESTS__。
+//
+// 仅 StateRunning 且声明了 frontend manifest 的插件会被包含;
+// 失败/未启动/无前端的插件直接跳过,避免前端拿到半成品配置。
+//
+// 输出始终是合法 JSON: 无可用插件时返回 "[]" 而非 nil,
+// 让 FrontendServer 的注入逻辑无需特判长度。
+func (m *PluginManager) GetPluginManifestsJSON() []byte {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	manifests := make([]map[string]any, 0, len(m.plugins))
+	for _, inst := range m.plugins {
+		entry := buildManifestEntry(inst)
+		if entry == nil {
+			continue
+		}
+		manifests = append(manifests, entry)
+	}
+	if len(manifests) == 0 {
+		return []byte("[]")
+	}
+	data, err := json.Marshal(manifests)
+	if err != nil {
+		// 这里 manifests 全部是基本类型,理论上不会序列化失败;
+		// 退回空数组而非 panic,避免影响前端首屏。
+		m.logger.Error("marshal plugin manifests failed", "error", err)
+		return []byte("[]")
+	}
+	return data
+}
+
+// buildManifestEntry 在持有 m.mu 读锁的前提下构造单个插件的 manifest 项。
+// 实例未运行或没有 manifest 时返回 nil。
+func buildManifestEntry(inst *PluginInstance) map[string]any {
+	inst.mu.Lock()
+	defer inst.mu.Unlock()
+
+	if inst.State != StateRunning || inst.Manifest == nil {
+		return nil
+	}
+	frontend := inst.Manifest.GetFrontend()
+	entry := map[string]any{
+		"name":         inst.Manifest.GetName(),
+		"display_name": inst.Manifest.GetDisplayName(),
+		"version":      inst.Manifest.GetVersion(),
+		"description":  inst.Manifest.GetDescription(),
+		"menu_items":   convertMenuItems(frontend.GetMenuItems()),
+		"routes":       convertRoutes(frontend.GetRoutes()),
+	}
+	if entryJS := frontend.GetEntryJs(); entryJS != "" {
+		entry["entry_js"] = entryJS
+	}
+	if entryCSS := frontend.GetEntryCss(); entryCSS != "" {
+		entry["entry_css"] = entryCSS
+	}
+	return entry
+}
+
+// convertMenuItems 把 proto 菜单项递归转成可被前端直接消费的 map 列表。
+// 保持空列表语义: 输入为空时返回空切片,前端可统一按数组处理。
+func convertMenuItems(items []*pluginsdk.MenuItem) []map[string]any {
+	out := make([]map[string]any, 0, len(items))
+	for _, mi := range items {
+		if mi == nil {
+			continue
+		}
+		entry := map[string]any{
+			"path":                mi.GetPath(),
+			"label_key":           mi.GetLabelKey(),
+			"icon":                mi.GetIcon(),
+			"section":             mi.GetSection(),
+			"sort_order":          mi.GetSortOrder(),
+			"requires_admin":      mi.GetRequiresAdmin(),
+			"hide_in_simple_mode": mi.GetHideInSimpleMode(),
+			"feature_flag":        mi.GetFeatureFlag(),
+		}
+		if children := convertMenuItems(mi.GetChildren()); len(children) > 0 {
+			entry["children"] = children
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+// convertRoutes 把 proto 路由定义转成前端可消费的 map 列表。
+func convertRoutes(routes []*pluginsdk.RouteDefinition) []map[string]any {
+	out := make([]map[string]any, 0, len(routes))
+	for _, r := range routes {
+		if r == nil {
+			continue
+		}
+		out = append(out, map[string]any{
+			"path":           r.GetPath(),
+			"name":           r.GetName(),
+			"component_path": r.GetComponentPath(),
+			"meta":           r.GetMeta(),
+		})
+	}
+	return out
+}
+
+// =============================================================
+// 内部实现
+// =============================================================
+
+func (m *PluginManager) getOrCreateInstance(name, binPath string) *PluginInstance {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if inst, ok := m.plugins[name]; ok {
+		return inst
+	}
+	inst := NewPluginInstance(name, binPath, NewRestartPolicy(m.cfg.Restart))
+	m.plugins[name] = inst
+	return inst
+}
+
+func (m *PluginManager) binaryPathFor(name string) string {
+	if m.cfg.PluginsDir == "" {
+		return ""
+	}
+	candidate := m.cfg.PluginsDir + string('/') + name + string('/') + pluginBinaryName(name)
+	return candidate
+}
+
+// handshakeMessage 是插件子进程通过 stdout 输出的握手 JSON。
+type handshakeMessage struct {
+	GRPCAddr string `json:"grpc_addr"`
+	HTTPAddr string `json:"http_addr"`
+}
+
+// spawnAndConnect 启动子进程,读取握手,连接 gRPC,跑迁移,注册路由,启动健康监控。
+// 任一步失败会清理已创建资源并返回错误。
+func (m *PluginManager) spawnAndConnect(parentCtx context.Context, inst *PluginInstance, pluginConfig map[string]string) error {
+	procCtx, cancelProc := context.WithCancel(context.Background())
+
+	cmd := exec.CommandContext(procCtx, inst.BinaryPath)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		cancelProc()
+		return fmt.Errorf("stdout pipe: %w", err)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		cancelProc()
+		return fmt.Errorf("stderr pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		cancelProc()
+		return fmt.Errorf("start plugin process: %w", err)
+	}
+
+	// 后台转发 stderr 到日志,便于排查启动问题。
+	go forwardStderr(stderr, inst.Name)
+
+	hs, err := readHandshake(stdout, m.cfg.HandshakeTimeout)
+	if err != nil {
+		cancelProc()
+		_ = cmd.Wait()
+		return fmt.Errorf("read handshake: %w", err)
+	}
+
+	conn, lifecycle, err := dialPlugin(parentCtx, hs.GRPCAddr, m.cfg.GRPCDialTimeout)
+	if err != nil {
+		cancelProc()
+		_ = cmd.Wait()
+		return err
+	}
+
+	// 调用 Init 把 SDK 地址和插件配置传给子进程。
+	initCtx, cancelInit := context.WithTimeout(parentCtx, m.cfg.ManifestTimeout)
+	initResp, initErr := lifecycle.Init(initCtx, &pluginsdk.PluginInitRequest{
+		SdkAddress: m.sdkAddr,
+		Config:     pluginConfig,
+	})
+	cancelInit()
+	if initErr != nil {
+		_ = conn.Close()
+		cancelProc()
+		_ = cmd.Wait()
+		return fmt.Errorf("plugin init rpc: %w", initErr)
+	}
+	if initResp != nil && !initResp.Success {
+		_ = conn.Close()
+		cancelProc()
+		_ = cmd.Wait()
+		return fmt.Errorf("plugin init reported failure: %s", initResp.Error)
+	}
+
+	// 拉取 manifest。
+	manifestCtx, cancelManifest := context.WithTimeout(parentCtx, m.cfg.ManifestTimeout)
+	manifest, err := lifecycle.GetManifest(manifestCtx, &emptypb.Empty{})
+	cancelManifest()
+	if err != nil {
+		_ = conn.Close()
+		cancelProc()
+		_ = cmd.Wait()
+		return fmt.Errorf("get manifest: %w", err)
+	}
+
+	// 跑迁移(若声明了文件)。当前实现假定迁移文件由插件自己 embed,核心仅记录已应用列表。
+	// 真正读取 SQL 内容的逻辑后续会通过 GetFrontendBundle 之外的 RPC 提供;此处仅打印日志。
+	if len(manifest.GetMigrationFiles()) > 0 {
+		m.logger.Info("plugin declared migrations",
+			"plugin", inst.Name,
+			"count", len(manifest.GetMigrationFiles()),
+		)
+	}
+
+	entries := buildRouteEntries(inst.Name, manifest, hs.HTTPAddr)
+	newTable := m.router.CurrentTable().AddPlugin(inst.Name, entries)
+	m.router.SwapRouteTable(newTable)
+
+	// 健康监控独立 ctx,不受 parentCtx 影响。
+	healthCtx, healthCancel := context.WithCancel(context.Background())
+	monitor := NewHealthMonitor(m.cfg.HealthInterval, m.cfg.HealthFailThreshold)
+
+	inst.mu.Lock()
+	inst.Cmd = cmd
+	inst.CancelFunc = cancelProc
+	inst.GRPCAddr = hs.GRPCAddr
+	inst.HTTPAddr = hs.HTTPAddr
+	inst.GRPCConn = conn
+	inst.LifecycleStub = lifecycle
+	inst.Manifest = manifest
+	inst.StartedAt = time.Now()
+	inst.HealthCancel = healthCancel
+	if err := inst.transitionTo(StateRunning); err != nil {
+		inst.mu.Unlock()
+		// 不太可能发生,但保留 defensive 处理。
+		healthCancel()
+		_ = conn.Close()
+		cancelProc()
+		_ = cmd.Wait()
+		return err
+	}
+	inst.mu.Unlock()
+
+	go monitor.Monitor(healthCtx, inst, func() {
+		m.handleUnhealthy(inst)
+	})
+
+	go m.waitProcessExit(inst)
+
+	return nil
+}
+
+// stopInstance 优雅停止某个插件:Shutdown RPC -> 等待退出 -> SIGKILL -> 清理。
+// markRegistered 决定是否把状态置为 StateRegistered(true)还是保持当前状态(false,通常是重启场景)。
+func (m *PluginManager) stopInstance(ctx context.Context, name string, markRegistered bool) error {
+	m.mu.RLock()
+	inst, ok := m.plugins[name]
+	m.mu.RUnlock()
+	if !ok {
+		return nil
+	}
+
+	inst.mu.Lock()
+	state := inst.State
+	cmd := inst.Cmd
+	stub := inst.LifecycleStub
+	cancelProc := inst.CancelFunc
+	inst.CleanupHealth()
+	inst.mu.Unlock()
+
+	if state == StateRegistered {
+		return nil
+	}
+
+	// 优雅 Shutdown RPC。
+	if stub != nil {
+		shutdownCtx, cancel := context.WithTimeout(ctx, m.cfg.ShutdownTimeout)
+		_, err := stub.Shutdown(shutdownCtx, &emptypb.Empty{})
+		cancel()
+		if err != nil {
+			m.logger.Warn("plugin shutdown rpc failed",
+				"plugin", name, "error", err)
+		}
+	}
+
+	// 等待进程退出,超时则 cancel context 触发 kill。
+	if cmd != nil {
+		done := make(chan error, 1)
+		go func() { done <- cmd.Wait() }()
+		select {
+		case <-done:
+		case <-time.After(m.cfg.ProcessExitTimeout):
+			if cancelProc != nil {
+				cancelProc()
+			}
+			<-done
+		}
+	}
+
+	// 移除路由,关闭连接,更新状态。
+	newTable := m.router.CurrentTable().RemovePlugin(name)
+	m.router.SwapRouteTable(newTable)
+
+	inst.mu.Lock()
+	inst.CloseGRPC()
+	inst.Cmd = nil
+	inst.CancelFunc = nil
+	inst.GRPCAddr = ""
+	inst.HTTPAddr = ""
+	if markRegistered {
+		// 强制回到 Registered;不严格走 transition 校验,确保 disable 总能完成。
+		inst.State = StateRegistered
+	}
+	inst.mu.Unlock()
+	return nil
+}
+
+// waitProcessExit 等待插件进程退出,触发自动重启决策。
+func (m *PluginManager) waitProcessExit(inst *PluginInstance) {
+	cmd := inst.Cmd
+	if cmd == nil {
+		return
+	}
+	err := cmd.Wait()
+
+	inst.mu.Lock()
+	currentState := inst.State
+	if err != nil {
+		inst.LastError = fmt.Errorf("process exited: %w", err)
+	}
+	inst.mu.Unlock()
+
+	if currentState == StateRegistered || currentState == StateStarting {
+		// 主动 stop 触发的退出,无需重启。
+		return
+	}
+
+	m.logger.Warn("plugin process exited unexpectedly",
+		"plugin", inst.Name,
+		"error", err,
+	)
+	m.scheduleRestart(inst)
+}
+
+// handleUnhealthy 由 HealthMonitor 在连续失败时回调。
+func (m *PluginManager) handleUnhealthy(inst *PluginInstance) {
+	m.logger.Warn("plugin unhealthy, scheduling restart",
+		"plugin", inst.Name,
+	)
+	// 健康检查失败时,先杀进程让 waitProcessExit 触发重启路径。
+	inst.mu.Lock()
+	cancel := inst.CancelFunc
+	inst.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+// scheduleRestart 根据 RestartPolicy 决定是否重启,以及重启前的等待时长。
+func (m *PluginManager) scheduleRestart(inst *PluginInstance) {
+	inst.mu.Lock()
+	if inst.restartPolicy == nil {
+		inst.mu.Unlock()
+		return
+	}
+	policy := inst.restartPolicy
+	if !inst.StartedAt.IsZero() && policy.ShouldReset(time.Since(inst.StartedAt)) {
+		inst.RestartCount = 0
+	}
+	delay, ok := policy.NextDelay(inst.RestartCount)
+	if !ok {
+		_ = inst.transitionTo(StateErrored)
+		inst.mu.Unlock()
+		m.logger.Error("plugin reached max restart attempts, giving up",
+			"plugin", inst.Name,
+			"max_retries", policy.MaxRetries(),
+		)
+		return
+	}
+	inst.RestartCount++
+	_ = inst.transitionTo(StateRestarting)
+	name := inst.Name
+	inst.mu.Unlock()
+
+	m.logger.Info("scheduling plugin restart",
+		"plugin", name,
+		"delay", delay.String(),
+	)
+
+	go func() {
+		time.Sleep(delay)
+		// 用后台 ctx 启动,不与外部 enable 操作冲突。
+		ctx, cancel := context.WithTimeout(context.Background(), m.cfg.HandshakeTimeout+m.cfg.GRPCDialTimeout+m.cfg.ManifestTimeout+10*time.Second)
+		defer cancel()
+
+		// 直接 spawnAndConnect,跳过 EnablePlugin 中的 DB 写入(避免覆盖手动 disable)。
+		inst.mu.Lock()
+		if inst.State != StateRestarting {
+			inst.mu.Unlock()
+			return
+		}
+		if err := inst.transitionTo(StateStarting); err != nil {
+			inst.mu.Unlock()
+			return
+		}
+		inst.mu.Unlock()
+
+		rec, err := m.repo.Get(ctx, name)
+		if err != nil {
+			m.logger.Error("restart: load plugin record failed",
+				"plugin", name, "error", err)
+			inst.mu.Lock()
+			_ = inst.transitionTo(StateErrored)
+			inst.LastError = err
+			inst.mu.Unlock()
+			return
+		}
+		if !rec.Enabled {
+			// DB 里已经被禁用,放弃重启。
+			inst.mu.Lock()
+			_ = inst.transitionTo(StateRegistered)
+			inst.mu.Unlock()
+			return
+		}
+		if err := m.spawnAndConnect(ctx, inst, copyConfig(rec.Config)); err != nil {
+			inst.mu.Lock()
+			_ = inst.transitionTo(StateErrored)
+			inst.LastError = err
+			inst.mu.Unlock()
+			m.logger.Error("plugin restart failed",
+				"plugin", name, "error", err)
+			// 继续按策略再次重启。
+			m.scheduleRestart(inst)
+		}
+	}()
+}
+
+// =============================================================
+// 工具函数
+// =============================================================
+
+func copyConfig(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func forwardStderr(r io.Reader, pluginName string) {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 4*1024), 1024*1024)
+	for scanner.Scan() {
+		slog.Warn("plugin stderr",
+			"plugin", pluginName,
+			"line", scanner.Text(),
+		)
+	}
+}
+
+// readHandshake 从插件 stdout 第一行读取握手 JSON,带超时。
+func readHandshake(r io.Reader, timeout time.Duration) (handshakeMessage, error) {
+	type result struct {
+		hs  handshakeMessage
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		scanner := bufio.NewScanner(r)
+		scanner.Buffer(make([]byte, 0, 4*1024), 64*1024)
+		if !scanner.Scan() {
+			err := scanner.Err()
+			if err == nil {
+				err = errors.New("plugin closed stdout before handshake")
+			}
+			ch <- result{err: err}
+			return
+		}
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			ch <- result{err: errors.New("empty handshake line")}
+			return
+		}
+		var hs handshakeMessage
+		if err := json.Unmarshal([]byte(line), &hs); err != nil {
+			ch <- result{err: fmt.Errorf("decode handshake: %w (raw=%q)", err, line)}
+			return
+		}
+		if hs.GRPCAddr == "" {
+			ch <- result{err: errors.New("handshake missing grpc_addr")}
+			return
+		}
+		ch <- result{hs: hs}
+	}()
+
+	select {
+	case r := <-ch:
+		return r.hs, r.err
+	case <-time.After(timeout):
+		return handshakeMessage{}, fmt.Errorf("handshake timeout after %s", timeout)
+	}
+}
+
+// dialPlugin 拨号到插件 gRPC server,失败时关闭未完成的资源。
+func dialPlugin(ctx context.Context, addr string, timeout time.Duration) (*grpc.ClientConn, pluginsdk.PluginLifecycleClient, error) {
+	dialCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	conn, err := grpc.DialContext(dialCtx, addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(),
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("dial plugin grpc %s: %w", addr, err)
+	}
+	return conn, pluginsdk.NewPluginLifecycleClient(conn), nil
+}
+
+// buildRouteEntries 把 manifest 中声明的 endpoint 转换成 RouteEntry。
+// gateway_endpoints 与 plugin_endpoints 的差异通过 IsGateway 字段标记。
+func buildRouteEntries(pluginName string, manifest *pluginsdk.ManifestResponse, httpAddr string) []RouteEntry {
+	if manifest == nil || httpAddr == "" {
+		return nil
+	}
+	proxyURL := normalizeProxyURL(httpAddr)
+
+	entries := make([]RouteEntry, 0, len(manifest.GatewayEndpoints)+len(manifest.PluginEndpoints))
+	entries = append(entries, expandEndpoints(pluginName, manifest.GatewayEndpoints, proxyURL, true)...)
+	entries = append(entries, expandEndpoints(pluginName, manifest.PluginEndpoints, proxyURL, false)...)
+	return entries
+}
+
+func expandEndpoints(pluginName string, decls []*pluginsdk.EndpointDeclaration, proxyURL string, isGateway bool) []RouteEntry {
+	out := make([]RouteEntry, 0, len(decls))
+	for _, ep := range decls {
+		if ep == nil || ep.GetPath() == "" {
+			continue
+		}
+		methods := ep.GetMethods()
+		if len(methods) == 0 {
+			methods = []string{"*"}
+		}
+		auth := ep.GetAuthType()
+		if auth == "" {
+			auth = AuthTypeNone
+		}
+		for _, mth := range methods {
+			out = append(out, RouteEntry{
+				Method:     strings.ToUpper(mth),
+				PathPrefix: ep.GetPath(),
+				PluginName: pluginName,
+				AuthType:   auth,
+				ProxyURL:   proxyURL,
+				IsGateway:  isGateway,
+			})
+		}
+	}
+	return out
+}
+
+// normalizeProxyURL 把 host:port 形式补成 http://host:port。
+func normalizeProxyURL(addr string) string {
+	if strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://") {
+		return addr
+	}
+	return "http://" + addr
+}

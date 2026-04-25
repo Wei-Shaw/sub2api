@@ -1,7 +1,11 @@
 package service
 
 import (
+	"context"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 	"sort"
 	"strings"
 	"time"
@@ -275,4 +279,92 @@ type ChannelUsageFields struct {
 	ChannelMappedModel string // 渠道映射后的模型名（无映射时等于 OriginalModel）
 	BillingModelSource string // 计费模型来源："requested" / "upstream" / "channel_mapped"
 	ModelMappingChain  string // 映射链描述，如 "a→b→c"
+}
+
+// ChannelMappingResult 渠道映射查找结果
+type ChannelMappingResult struct {
+	MappedModel        string // 映射后的模型名（无映射时等于原始模型名）
+	ChannelID          int64  // 渠道 ID（0 = 无渠道关联）
+	Mapped             bool   // 是否发生了映射
+	BillingModelSource string // 计费模型来源
+}
+
+// BuildModelMappingChain 根据映射结果和上游实际模型构建映射链描述
+func (r ChannelMappingResult) BuildModelMappingChain(reqModel, upstreamModel string) string {
+	if !r.Mapped {
+		if upstreamModel != "" && upstreamModel != reqModel {
+			return reqModel + "→" + upstreamModel
+		}
+		return ""
+	}
+	if upstreamModel != "" && upstreamModel != r.MappedModel {
+		return reqModel + "→" + r.MappedModel + "→" + upstreamModel
+	}
+	return reqModel + "→" + r.MappedModel
+}
+
+// ToUsageFields 将渠道映射结果转为使用记录字段
+func (r ChannelMappingResult) ToUsageFields(reqModel, upstreamModel string) ChannelUsageFields {
+	channelMappedModel := reqModel
+	if r.Mapped {
+		channelMappedModel = r.MappedModel
+	}
+	return ChannelUsageFields{
+		ChannelID:          r.ChannelID,
+		OriginalModel:      reqModel,
+		ChannelMappedModel: channelMappedModel,
+		BillingModelSource: r.BillingModelSource,
+		ModelMappingChain:  r.BuildModelMappingChain(reqModel, upstreamModel),
+	}
+}
+
+// ChannelService 渠道服务存根。
+// 渠道管理已迁移到 plugins/channel-management/。此存根仅用于保持核心代码编译通过，
+// 调用任何方法都返回零值（无渠道、无映射、无限制），由插件层覆盖实际行为。
+type ChannelService struct{}
+
+// ResolveChannelMapping 存根：返回原模型，无映射
+func (s *ChannelService) ResolveChannelMapping(_ context.Context, _ int64, model string) ChannelMappingResult {
+	return ChannelMappingResult{MappedModel: model}
+}
+
+// ResolveChannelMappingAndRestrict 存根：返回原模型，无限制
+func (s *ChannelService) ResolveChannelMappingAndRestrict(_ context.Context, _ *int64, model string) (ChannelMappingResult, bool) {
+	return ChannelMappingResult{MappedModel: model}, false
+}
+
+// IsModelRestricted 存根：始终返回 false（不限制）
+func (s *ChannelService) IsModelRestricted(_ context.Context, _ int64, _ string) bool {
+	return false
+}
+
+// GetChannelForGroup 存根：始终返回 nil（无渠道关联）
+func (s *ChannelService) GetChannelForGroup(_ context.Context, _ int64) (*Channel, error) {
+	return nil, nil
+}
+
+// GetChannelModelPricing 存根：始终返回 nil（无定价信息）
+func (s *ChannelService) GetChannelModelPricing(_ context.Context, _ int64, _ string) *ChannelModelPricing {
+	return nil
+}
+
+// ReplaceModelInBody 替换请求体 JSON 中的 model 字段。
+// 这是一个通用工具函数，gateway 在执行渠道映射后用它改写上游请求。
+func ReplaceModelInBody(body []byte, newModel string) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	if current := gjson.GetBytes(body, "model"); current.Exists() && current.String() == newModel {
+		return body
+	}
+	newBody, err := sjson.SetBytes(body, "model", newModel)
+	if err != nil {
+		return body
+	}
+	return newBody
+}
+
+// List 存根：始终返回空渠道列表（无渠道）
+func (s *ChannelService) List(_ context.Context, _ pagination.PaginationParams, _, _ string) ([]Channel, *pagination.PaginationResult, error) {
+	return nil, &pagination.PaginationResult{}, nil
 }

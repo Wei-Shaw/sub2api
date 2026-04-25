@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package pluginsdk;
+
+option go_package = "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk";
+
+import "google/protobuf/empty.proto";
+
+// ============================================================
+// PluginLifecycle — 插件提供，核心调用（仅生命周期管理）
+// ============================================================
+
+service PluginLifecycle {
+  rpc Init(PluginInitRequest) returns (PluginInitResponse);
+  rpc GetManifest(google.protobuf.Empty) returns (ManifestResponse);
+  rpc HealthCheck(google.protobuf.Empty) returns (HealthResponse);
+  rpc Shutdown(google.protobuf.Empty) returns (google.protobuf.Empty);
+  rpc GetFrontendBundle(FrontendBundleRequest) returns (stream FileChunk);
+}
+
+// ============================================================
+// Lifecycle Messages
+// ============================================================
+
+message PluginInitRequest {
+  string sdk_address = 1;
+  map<string, string> config = 2;
+}
+
+message PluginInitResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message HealthResponse {
+  bool healthy = 1;
+  string message = 2;
+}
+
+message FrontendBundleRequest {
+  string path = 1;
+}
+
+message FileChunk {
+  bytes data = 1;
+  string filename = 2;
+  bool eof = 3;
+}
+
+// ============================================================
+// Manifest
+// ============================================================
+
+message ManifestResponse {
+  string name = 1;
+  string display_name = 2;
+  string version = 3;
+  string description = 4;
+  string author = 5;
+
+  repeated EndpointDeclaration gateway_endpoints = 10;
+  repeated EndpointDeclaration plugin_endpoints = 11;
+  FrontendManifest frontend = 20;
+
+  repeated string migration_files = 30;
+}
+
+message EndpointDeclaration {
+  string path = 1;
+  repeated string methods = 2;
+  string auth_type = 3; // "admin" / "user" / "apikey" / "none"
+}
+
+message FrontendManifest {
+  string entry_js = 1;
+  string entry_css = 2;
+  repeated MenuItem menu_items = 3;
+  repeated RouteDefinition routes = 4;
+  repeated string i18n_namespaces = 5;
+}
+
+message MenuItem {
+  string path = 1;
+  string label_key = 2;
+  string icon = 3;
+  string section = 4;           // "admin" / "user"
+  int32 sort_order = 5;
+  bool requires_admin = 6;
+  bool hide_in_simple_mode = 7;
+  string feature_flag = 8;
+  repeated MenuItem children = 9;
+}
+
+message RouteDefinition {
+  string path = 1;
+  string name = 2;
+  string component_path = 3;
+  map<string, string> meta = 4;
+}

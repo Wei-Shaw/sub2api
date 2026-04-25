@@ -1,0 +1,450 @@
+package pluginsdk
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"log/slog"
+	"net"
+	"net/http"
+	"os"
+	"os/signal"
+	"sync"
+	"sync/atomic"
+	"syscall"
+	"time"
+
+	sdkdriver "github.com/Wei-Shaw/sub2api/plugin-sdk/driver"
+	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/emptypb"
+)
+
+// HandshakeProtocolVersion is the version number written into the
+// handshake JSON line. The core uses it to gate behaviour when SDK and core
+// drift apart.
+const HandshakeProtocolVersion = 1
+
+// frontendChunkSize is how many bytes the SDK ships per FileChunk message
+// during GetFrontendBundle. 64KiB is a balance between per-message overhead
+// and gRPC max-message-size limits.
+const frontendChunkSize = 64 * 1024
+
+// Handshake is the JSON the SDK writes to stdout once it is ready to accept
+// the core's gRPC calls. The core reads exactly one line and expects this
+// schema.
+type Handshake struct {
+	Protocol int    `json:"protocol"`
+	GRPCAddr string `json:"grpc_addr"`
+	HTTPAddr string `json:"http_addr"`
+	PID      int    `json:"pid"`
+}
+
+// runOptions are the knobs Run honours. They are populated from command-line
+// flags so plugins do not need to parse anything themselves.
+type runOptions struct {
+	coreSDKAddr  string
+	grpcListen   string
+	httpListen   string
+	logLevel     string
+	disableHTTP  bool
+	shutdownWait time.Duration
+}
+
+func parseFlags() runOptions {
+	fs := flag.NewFlagSet("plugin-sdk", flag.ExitOnError)
+	opts := runOptions{}
+	fs.StringVar(&opts.coreSDKAddr, "core-sdk-addr", "", "address of the core SDK gRPC server")
+	fs.StringVar(&opts.grpcListen, "grpc-listen", "127.0.0.1:0", "address the plugin gRPC server binds to")
+	fs.StringVar(&opts.httpListen, "http-listen", "127.0.0.1:0", "address the plugin HTTP server binds to")
+	fs.StringVar(&opts.logLevel, "log-level", "info", "log level: debug|info|warn|error")
+	fs.BoolVar(&opts.disableHTTP, "no-http", false, "do not start the HTTP server")
+	fs.DurationVar(&opts.shutdownWait, "shutdown-wait", 10*time.Second, "max time to wait for graceful shutdown")
+	_ = fs.Parse(os.Args[1:])
+	return opts
+}
+
+// Run is the main entry point a plugin's main() invokes. It blocks until
+// the core asks the plugin to shut down or until the process receives
+// SIGINT/SIGTERM.
+func Run(p Plugin) error {
+	if p == nil {
+		return errors.New("pluginsdk.Run: plugin is nil")
+	}
+	opts := parseFlags()
+	logger := newLogger(opts.logLevel, p.Manifest())
+
+	grpcLn, err := net.Listen("tcp", opts.grpcListen)
+	if err != nil {
+		return fmt.Errorf("pluginsdk: bind grpc listener: %w", err)
+	}
+	var httpLn net.Listener
+	if !opts.disableHTTP {
+		httpLn, err = net.Listen("tcp", opts.httpListen)
+		if err != nil {
+			_ = grpcLn.Close()
+			return fmt.Errorf("pluginsdk: bind http listener: %w", err)
+		}
+	}
+
+	mux := http.NewServeMux()
+	if reg, ok := p.(HTTPRegistrar); ok && httpLn != nil {
+		reg.RegisterHTTP(httpMuxAdapter{mux})
+	}
+
+	httpAddr := ""
+	if httpLn != nil {
+		httpAddr = httpLn.Addr().String()
+	}
+	r := &runner{
+		plugin: p,
+		logger: logger,
+		opts:   opts,
+		hs: Handshake{
+			Protocol: HandshakeProtocolVersion,
+			GRPCAddr: grpcLn.Addr().String(),
+			HTTPAddr: httpAddr,
+			PID:      os.Getpid(),
+		},
+		shutdown: make(chan struct{}),
+	}
+
+	grpcSrv := grpc.NewServer()
+	pb.RegisterPluginLifecycleServer(grpcSrv, r)
+
+	httpSrv := &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	serveErr := make(chan error, 2)
+	go func() {
+		if err := grpcSrv.Serve(grpcLn); err != nil {
+			serveErr <- fmt.Errorf("grpc server: %w", err)
+		}
+	}()
+	if httpLn != nil {
+		go func() {
+			if err := httpSrv.Serve(httpLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				serveErr <- fmt.Errorf("http server: %w", err)
+			}
+		}()
+	}
+
+	if err := writeHandshake(r.hs); err != nil {
+		grpcSrv.Stop()
+		if httpLn != nil {
+			_ = httpSrv.Close()
+		}
+		return fmt.Errorf("pluginsdk: write handshake: %w", err)
+	}
+
+	logger.Info("plugin ready",
+		"grpc_addr", r.hs.GRPCAddr,
+		"http_addr", r.hs.HTTPAddr,
+		"pid", r.hs.PID,
+	)
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case err := <-serveErr:
+		logger.Error("transport terminated", "error", err)
+	case sig := <-sigCh:
+		logger.Info("signal received", "signal", sig.String())
+	case <-r.shutdown:
+		logger.Info("shutdown requested by core")
+	}
+
+	r.gracefulShutdown(grpcSrv, httpSrv)
+	return nil
+}
+
+func writeHandshake(h Handshake) error {
+	data, err := json.Marshal(h)
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	if _, err := os.Stdout.Write(data); err != nil {
+		return err
+	}
+	return nil
+}
+
+func newLogger(level string, m *Manifest) *slog.Logger {
+	var lvl slog.Level
+	switch level {
+	case "debug":
+		lvl = slog.LevelDebug
+	case "warn":
+		lvl = slog.LevelWarn
+	case "error":
+		lvl = slog.LevelError
+	default:
+		lvl = slog.LevelInfo
+	}
+	h := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: lvl})
+	logger := slog.New(h)
+	if m != nil && m.Name != "" {
+		logger = logger.With("plugin", m.Name)
+	}
+	return logger
+}
+
+// httpMuxAdapter adapts *http.ServeMux to the SDK HTTPMux interface so
+// plugins are not coupled to the concrete mux type.
+type httpMuxAdapter struct{ mux *http.ServeMux }
+
+func (a httpMuxAdapter) Handle(pattern string, handler interface{}) {
+	switch h := handler.(type) {
+	case http.Handler:
+		a.mux.Handle(pattern, h)
+	case func(http.ResponseWriter, *http.Request):
+		a.mux.HandleFunc(pattern, h)
+	default:
+		panic(fmt.Sprintf("pluginsdk: unsupported handler type %T for pattern %s", handler, pattern))
+	}
+}
+
+// runner ties together the PluginLifecycle gRPC service and the lifecycle of
+// the plugin's resources.
+type runner struct {
+	pb.UnimplementedPluginLifecycleServer
+
+	plugin Plugin
+	logger *slog.Logger
+	opts   runOptions
+	hs     Handshake
+
+	initOnce sync.Once
+	initErr  error
+	ctxImpl  *pluginCtx
+	closing  atomic.Bool
+	shutdown chan struct{}
+
+	coreConn *grpc.ClientConn
+}
+
+// Init is called by the core after reading the handshake. It opens the
+// reverse gRPC connection back to the core, builds a PluginContext, and
+// hands control to Plugin.Init.
+func (r *runner) Init(ctx context.Context, req *pb.PluginInitRequest) (*pb.PluginInitResponse, error) {
+	r.initOnce.Do(func() {
+		addr := req.GetSdkAddress()
+		if addr == "" {
+			addr = r.opts.coreSDKAddr
+		}
+		if addr == "" {
+			r.initErr = errors.New("pluginsdk: core SDK address is empty")
+			return
+		}
+		conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			r.initErr = fmt.Errorf("pluginsdk: dial core: %w", err)
+			return
+		}
+		r.coreConn = conn
+
+		sqlClient := pb.NewSQLProxyClient(conn)
+		redisClient := pb.NewRedisProxyClient(conn)
+		sdkdriver.Register(sqlClient)
+		db, err := sql.Open(sdkdriver.DriverName, "")
+		if err != nil {
+			r.initErr = fmt.Errorf("pluginsdk: open sql: %w", err)
+			return
+		}
+
+		cfgCopy := make(map[string]string, len(req.GetConfig()))
+		for k, v := range req.GetConfig() {
+			cfgCopy[k] = v
+		}
+
+		r.ctxImpl = &pluginCtx{
+			db:     db,
+			redis:  &redisAdapter{inner: sdkdriver.NewRedisClient(redisClient, r.logger)},
+			logger: r.logger,
+			config: cfgCopy,
+		}
+
+		if err := r.plugin.Init(r.ctxImpl); err != nil {
+			r.initErr = err
+			return
+		}
+	})
+
+	if r.initErr != nil {
+		return &pb.PluginInitResponse{Success: false, Error: r.initErr.Error()}, nil
+	}
+	_ = ctx
+	return &pb.PluginInitResponse{Success: true}, nil
+}
+
+// GetManifest reflects the plugin's static description back to the core.
+func (r *runner) GetManifest(_ context.Context, _ *emptypb.Empty) (*pb.ManifestResponse, error) {
+	m := r.plugin.Manifest()
+	return m.toProto(), nil
+}
+
+// HealthCheck delegates to the optional HealthChecker interface; otherwise
+// the SDK reports healthy=true.
+func (r *runner) HealthCheck(_ context.Context, _ *emptypb.Empty) (*pb.HealthResponse, error) {
+	if hc, ok := r.plugin.(HealthChecker); ok {
+		ok2, msg := hc.HealthCheck()
+		return &pb.HealthResponse{Healthy: ok2, Message: msg}, nil
+	}
+	return &pb.HealthResponse{Healthy: true}, nil
+}
+
+// Shutdown asks the plugin to release resources and then signals Run to
+// exit. The actual exit happens in gracefulShutdown so the gRPC server
+// has time to send the response.
+func (r *runner) Shutdown(_ context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
+	if r.closing.CompareAndSwap(false, true) {
+		close(r.shutdown)
+	}
+	return &emptypb.Empty{}, nil
+}
+
+// GetFrontendBundle streams a single file from the plugin's frontend assets.
+// The file path semantics are defined by the plugin's
+// FrontendBundleProvider implementation.
+func (r *runner) GetFrontendBundle(req *pb.FrontendBundleRequest, stream grpc.ServerStreamingServer[pb.FileChunk]) error {
+	provider, ok := r.plugin.(FrontendBundleProvider)
+	if !ok {
+		return errors.New("pluginsdk: plugin does not provide a frontend bundle")
+	}
+	data, err := provider.OpenFrontendFile(req.GetPath())
+	if err != nil {
+		return err
+	}
+	for offset := 0; offset < len(data); offset += frontendChunkSize {
+		end := offset + frontendChunkSize
+		if end > len(data) {
+			end = len(data)
+		}
+		chunk := &pb.FileChunk{
+			Data:     data[offset:end],
+			Filename: req.GetPath(),
+			Eof:      end == len(data),
+		}
+		if err := stream.Send(chunk); err != nil {
+			return err
+		}
+	}
+	if len(data) == 0 {
+		return stream.Send(&pb.FileChunk{Filename: req.GetPath(), Eof: true})
+	}
+	return nil
+}
+
+// gracefulShutdown runs the plugin's Shutdown hook, closes the gRPC client
+// to the core, then stops the HTTP/gRPC servers.
+func (r *runner) gracefulShutdown(grpcSrv *grpc.Server, httpSrv *http.Server) {
+	ctx, cancel := context.WithTimeout(context.Background(), r.opts.shutdownWait)
+	defer cancel()
+
+	if err := r.plugin.Shutdown(); err != nil {
+		r.logger.Error("plugin shutdown returned error", "error", err)
+	}
+	if r.ctxImpl != nil && r.ctxImpl.db != nil {
+		if err := r.ctxImpl.db.Close(); err != nil {
+			r.logger.Warn("close sql.DB", "error", err)
+		}
+	}
+	if r.coreConn != nil {
+		if err := r.coreConn.Close(); err != nil {
+			r.logger.Warn("close core gRPC conn", "error", err)
+		}
+	}
+
+	if httpSrv != nil {
+		_ = httpSrv.Shutdown(ctx)
+	}
+	stopped := make(chan struct{})
+	go func() {
+		grpcSrv.GracefulStop()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-ctx.Done():
+		grpcSrv.Stop()
+	}
+}
+
+// pluginCtx is the concrete implementation of PluginContext returned to the
+// plugin during Init.
+type pluginCtx struct {
+	db     *sql.DB
+	redis  RedisClient
+	logger *slog.Logger
+	config map[string]string
+}
+
+func (c *pluginCtx) DB() *sql.DB          { return c.db }
+func (c *pluginCtx) Redis() RedisClient   { return c.redis }
+func (c *pluginCtx) Logger() *slog.Logger { return c.logger }
+func (c *pluginCtx) Config() map[string]string {
+	out := make(map[string]string, len(c.config))
+	for k, v := range c.config {
+		out[k] = v
+	}
+	return out
+}
+
+// redisAdapter bridges the driver-package RedisClient (which uses its own
+// RedisMsg type to avoid an import cycle) onto the public pluginsdk
+// RedisClient interface.
+type redisAdapter struct{ inner *sdkdriver.RedisClient }
+
+func (a *redisAdapter) Get(ctx context.Context, key string) (string, error) {
+	return a.inner.Get(ctx, key)
+}
+func (a *redisAdapter) Set(ctx context.Context, key string, value string) error {
+	return a.inner.Set(ctx, key, value)
+}
+func (a *redisAdapter) SetEx(ctx context.Context, key string, value string, ttl time.Duration) error {
+	return a.inner.SetEx(ctx, key, value, ttl)
+}
+func (a *redisAdapter) Del(ctx context.Context, keys ...string) error {
+	return a.inner.Del(ctx, keys...)
+}
+func (a *redisAdapter) HGet(ctx context.Context, key, field string) (string, error) {
+	return a.inner.HGet(ctx, key, field)
+}
+func (a *redisAdapter) HSet(ctx context.Context, key, field, value string) error {
+	return a.inner.HSet(ctx, key, field, value)
+}
+func (a *redisAdapter) HGetAll(ctx context.Context, key string) (map[string]string, error) {
+	return a.inner.HGetAll(ctx, key)
+}
+func (a *redisAdapter) HDel(ctx context.Context, key string, fields ...string) error {
+	return a.inner.HDel(ctx, key, fields...)
+}
+func (a *redisAdapter) Publish(ctx context.Context, channel string, message []byte) error {
+	return a.inner.Publish(ctx, channel, message)
+}
+func (a *redisAdapter) Subscribe(ctx context.Context, channels ...string) (<-chan RedisMsg, error) {
+	src, err := a.inner.Subscribe(ctx, channels...)
+	if err != nil {
+		return nil, err
+	}
+	out := make(chan RedisMsg, cap(src))
+	go func() {
+		defer close(out)
+		for m := range src {
+			select {
+			case out <- RedisMsg{Channel: m.Channel, Data: m.Data}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return out, nil
+}

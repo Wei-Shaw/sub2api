@@ -9,6 +9,7 @@ import { useAppStore } from '@/stores/app'
 import { useAdminSettingsStore } from '@/stores/adminSettings'
 import { useNavigationLoadingState } from '@/composables/useNavigationLoading'
 import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
+import { registerPluginRoutes } from '@/plugins/loader'
 import { resolveDocumentTitle } from './title'
 
 /**
@@ -509,6 +510,10 @@ const router = createRouter({
     return { top: 0 }
   }
 })
+
+// 注册插件路由(必须在 createRouter 之后、首次导航之前调用)。
+// vue-router 在动态添加时按精确度匹配,因此插件路由的优先级会高于 catch-all 404,无需调整顺序。
+registerPluginRoutes(router)
 
 /**
  * Navigation guard: Authentication check

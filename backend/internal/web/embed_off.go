@@ -25,6 +25,14 @@ func NewFrontendServer(settingsProvider PublicSettingsProvider) (*FrontendServer
 	return nil, errors.New("frontend not embedded")
 }
 
+// PluginManifestProvider is a stub interface for non-embed builds
+type PluginManifestProvider interface {
+	GetPluginManifestsJSON() []byte
+}
+
+// SetPluginManifestProvider is a no-op for non-embed builds
+func (s *FrontendServer) SetPluginManifestProvider(p PluginManifestProvider) {}
+
 // InvalidateCache is a no-op for non-embed builds
 func (s *FrontendServer) InvalidateCache() {}
 
