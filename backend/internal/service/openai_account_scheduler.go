@@ -22,6 +22,7 @@ const (
 	openAISelectedGroupReserve                 = "reserve"
 	openAIAffinityDomainActive                 = "active"
 	openAIAffinityDomainExhausted              = "exhausted"
+	openAIAffinityDomainReserve                = "reserve"
 )
 
 const (
@@ -139,6 +140,8 @@ func normalizeOpenAISelectedGroup(group string) string {
 
 func normalizeOpenAIAffinityDomain(domain string) string {
 	switch strings.ToLower(strings.TrimSpace(domain)) {
+	case openAIAffinityDomainReserve:
+		return openAIAffinityDomainReserve
 	case openAIAffinityDomainExhausted:
 		return openAIAffinityDomainExhausted
 	default:
@@ -156,7 +159,9 @@ func newOpenAIAffinityBinding(accountID int64, selectedGroup string) *openAIAffi
 		SelectedGroup:  selectedGroup,
 		AffinityDomain: openAIAffinityDomainActive,
 	}
-	if selectedGroup == string(TargetGroupExhausted) || selectedGroup == openAISelectedGroupReserve {
+	if selectedGroup == openAISelectedGroupReserve {
+		binding.AffinityDomain = openAIAffinityDomainReserve
+	} else if selectedGroup == string(TargetGroupExhausted) {
 		binding.AffinityDomain = openAIAffinityDomainExhausted
 	}
 	return binding
@@ -166,15 +171,16 @@ func isOpenAIReserveAffinityBinding(binding *openAIAffinityBinding) bool {
 	if binding == nil {
 		return false
 	}
+	domain := normalizeOpenAIAffinityDomain(binding.AffinityDomain)
 	return binding.BoundAccountID > 0 &&
-		normalizeOpenAIAffinityDomain(binding.AffinityDomain) == openAIAffinityDomainExhausted &&
-		normalizeOpenAISelectedGroup(binding.SelectedGroup) == openAISelectedGroupReserve
+		normalizeOpenAISelectedGroup(binding.SelectedGroup) == openAISelectedGroupReserve &&
+		(domain == openAIAffinityDomainReserve || domain == openAIAffinityDomainExhausted)
 }
 
 func resolveOpenAISelectedGroupFromBindingOrAccount(binding *openAIAffinityBinding, account *Account) string {
 	if binding != nil {
 		if selectedGroup := normalizeOpenAISelectedGroup(binding.SelectedGroup); selectedGroup != "" {
-			if selectedGroup == openAISelectedGroupReserve && account != nil && account.MatchesTargetGroup(TargetGroupExhausted) {
+			if selectedGroup == openAISelectedGroupReserve && account != nil && !account.IsOpenAIReserveCandidate() && account.MatchesTargetGroup(TargetGroupExhausted) {
 				return string(TargetGroupExhausted)
 			}
 			return selectedGroup
@@ -709,13 +715,6 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		}
 		selectedGroup = projectionView.selectedGroupForTarget(account.ID, req.TargetGroup)
 	}
-	if isOpenAIReserveAffinityBinding(affinityBinding) && normalizeTargetGroup(req.TargetGroup) != TargetGroupExhausted {
-		if sticky != nil {
-			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
-		}
-		_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
-		return nil, nil
-	}
 	if projectionView != nil {
 		switch normalizeTargetGroup(req.TargetGroup) {
 		case TargetGroupExhausted:
@@ -726,18 +725,10 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 				_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
 				return nil, nil
 			}
-		default:
-			if selectedGroup == openAISelectedGroupReserve {
-				if sticky != nil {
-					sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
-				}
-				_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
-				return nil, nil
-			}
 		}
 	} else {
 		reserveAffinityBinding := isOpenAIReserveAffinityBinding(affinityBinding)
-		legacyReserveAffinityHit = reserveAffinityBinding && account.IsOpenAIReserveCandidate()
+		legacyReserveAffinityHit = reserveAffinityBinding && req.TargetGroup == TargetGroupExhausted && account.IsOpenAIReserveCandidate()
 		if reserveAffinityBinding && !account.IsOpenAIReserveCandidate() && !account.MatchesTargetGroup(TargetGroupExhausted) {
 			if sticky != nil {
 				sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
@@ -745,7 +736,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 			_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
 			return nil, nil
 		}
-		if (req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive) && s.service.isCurrentOpenAIReserveOverlayAccount(ctx, req.GroupID, req.RequestedModel, account) {
+		if (req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive) && s.service.isOpenAILegacyReserveOverlayAccount(ctx, req.GroupID, req.RequestedModel, account) {
 			if sticky != nil {
 				sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
 			}
@@ -1108,6 +1099,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	for _, account := range reserveAccounts {
 		reserveOverlayIDs[account.ID] = struct{}{}
 	}
+	canUseReserveForTarget := projectionView != nil && (req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive)
 	rebuildLoadReq := func(primary []Account, reserve []Account) []AccountWithConcurrency {
 		rebuilt := make([]AccountWithConcurrency, 0, len(primary)+len(reserve))
 		for _, account := range primary {
@@ -1137,9 +1129,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		} else {
 			if req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive {
 				if _, reserved := reserveOverlayIDs[account.ID]; reserved {
-					if projectionView == nil || len(projectionView.view.ExhaustedBaseIDs) > 0 {
-						return
-					}
+					return
 				}
 			}
 			if !account.MatchesTargetGroup(req.TargetGroup) {
@@ -1196,7 +1186,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			loadReq = rebuildLoadReq(filteredValues, reserveFilteredValues)
 		}
 	}
-	if len(filtered) == 0 && !(req.TargetGroup == TargetGroupExhausted && len(reserveFiltered) > 0) {
+	if len(filtered) == 0 && !(req.TargetGroup == TargetGroupExhausted && len(reserveFiltered) > 0) && !(canUseReserveForTarget && len(reserveFiltered) > 0) {
 		return nil, "", 0, 0, 0, projectionView, errors.New("no available OpenAI accounts")
 	}
 
@@ -1227,6 +1217,16 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			for _, account := range reserveFiltered {
 				participantGroups[account.ID] = openAISelectedGroupReserve
 			}
+		}
+	}
+	if canUseReserveForTarget && len(reserveFiltered) > 0 {
+		participants = append(append([]*Account{}, filtered...), reserveFiltered...)
+		participantGroups = make(map[int64]string, len(participants))
+		for _, account := range filtered {
+			participantGroups[account.ID] = resolveOpenAISelectedGroupFromAccount(account)
+		}
+		for _, account := range reserveFiltered {
+			participantGroups[account.ID] = openAISelectedGroupReserve
 		}
 	}
 	if len(participantGroups) == 0 {

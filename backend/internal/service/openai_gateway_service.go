@@ -1747,11 +1747,7 @@ func (r *openAIProjectionViewResult) selectedGroupForAccount(accountID int64) st
 }
 
 func (r *openAIProjectionViewResult) selectedGroupForTarget(accountID int64, targetGroup AccountTargetGroup) string {
-	selectedGroup := r.selectedGroupForAccount(accountID)
-	if r != nil && normalizeTargetGroup(targetGroup) != TargetGroupExhausted && selectedGroup == openAISelectedGroupReserve && len(r.view.ExhaustedBaseIDs) == 0 {
-		return string(TargetGroupActive)
-	}
-	return selectedGroup
+	return r.selectedGroupForAccount(accountID)
 }
 
 func (r *openAIProjectionViewResult) bindingMatches(binding *openAIAffinityBinding) bool {
@@ -1763,6 +1759,11 @@ func (r *openAIProjectionViewResult) bindingMatches(binding *openAIAffinityBindi
 	}
 	if strings.TrimSpace(binding.ProjectionModelKey) != "" {
 		if NormalizeOpenAIProjectionModelKey(binding.ProjectionModelKey) != r.canonicalModel {
+			return false
+		}
+	}
+	if builtAt := derefOpenAIProjectionBuiltAt(binding.ProjectionBuiltAt); !builtAt.IsZero() {
+		if normalizeOpenAIProjectionBuiltAt(r.state.BuiltAt) != builtAt {
 			return false
 		}
 	}
@@ -2384,7 +2385,7 @@ func (s *OpenAIGatewayService) resolveFreshOpenAIExhaustedAccount(ctx context.Co
 func (s *OpenAIGatewayService) resolveFreshProjectedOpenAIAccount(ctx context.Context, groupID *int64, account *Account, requestedModel string, selectedGroup string, targetGroup AccountTargetGroup) *Account {
 	switch normalizeOpenAISelectedGroup(selectedGroup) {
 	case openAISelectedGroupReserve:
-		return s.resolveFreshOpenAIReserveAccount(ctx, groupID, account, requestedModel)
+		return s.resolveFreshOpenAIReserveAccount(ctx, groupID, account, requestedModel, targetGroup)
 	case string(TargetGroupExhausted):
 		return s.resolveFreshOpenAIExhaustedAccount(ctx, groupID, account, requestedModel)
 	default:
@@ -2392,20 +2393,22 @@ func (s *OpenAIGatewayService) resolveFreshProjectedOpenAIAccount(ctx context.Co
 	}
 }
 
-func (s *OpenAIGatewayService) resolveFreshOpenAIReserveAccount(ctx context.Context, groupID *int64, account *Account, requestedModel string) *Account {
+func (s *OpenAIGatewayService) resolveFreshOpenAIReserveAccount(ctx context.Context, groupID *int64, account *Account, requestedModel string, targetGroup AccountTargetGroup) *Account {
 	if account == nil {
 		return nil
 	}
+	requestedModel = strings.TrimSpace(requestedModel)
+	targetGroup = normalizeTargetGroup(targetGroup)
 	projectionView := (*openAIProjectionViewResult)(nil)
 	allowLegacyFallback := true
-	if s != nil && s.schedulerSnapshot != nil && strings.TrimSpace(requestedModel) != "" {
+	if s != nil && s.schedulerSnapshot != nil && requestedModel != "" {
 		var err error
 		projectionView, allowLegacyFallback, err = s.getOpenAIProjectionViewWithLegacyFallback(ctx, groupID, requestedModel)
 		if err != nil {
 			return nil
 		}
 	}
-	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" || (projectionView == nil && allowLegacyFallback) {
+	resolveLegacyReserve := func() *Account {
 		fresh := account
 		if s != nil && s.schedulerSnapshot != nil {
 			current, err := s.getSchedulableAccount(ctx, account.ID)
@@ -2422,7 +2425,13 @@ func (s *OpenAIGatewayService) resolveFreshOpenAIReserveAccount(ctx context.Cont
 		}
 		return fresh
 	}
+	if s == nil || s.schedulerSnapshot == nil || requestedModel == "" {
+		return resolveLegacyReserve()
+	}
 	if projectionView == nil {
+		if allowLegacyFallback && targetGroup == TargetGroupExhausted {
+			return resolveLegacyReserve()
+		}
 		return nil
 	}
 	if !projectionView.containsReserve(account.ID) {
@@ -2438,21 +2447,39 @@ func (s *OpenAIGatewayService) resolveFreshOpenAIReserveAccount(ctx context.Cont
 		fresh = current
 	}
 
-	if !fresh.IsOpenAI() || shouldClearStickySessionForTargetGroup(fresh, requestedModel, TargetGroupExhausted) {
+	if !isCurrentOpenAIReserveSelectionValid(fresh, requestedModel, targetGroup) {
 		return nil
 	}
 	return fresh
+}
+
+func isCurrentOpenAIReserveSelectionValid(account *Account, requestedModel string, targetGroup AccountTargetGroup) bool {
+	if account == nil || !account.IsOpenAI() {
+		return false
+	}
+	if !account.IsSchedulableForTargetGroup(TargetGroupActive) {
+		return false
+	}
+	return !shouldClearStickySessionForTargetGroup(account, requestedModel, targetGroup)
 }
 
 func (s *OpenAIGatewayService) isCurrentOpenAIReserveOverlayAccount(ctx context.Context, groupID *int64, requestedModel string, account *Account) bool {
 	if s == nil || account == nil || !account.IsOpenAIReserveCandidate() {
 		return false
 	}
-	if s.schedulerSnapshot != nil {
-		projectionView, err := s.getOpenAIProjectionView(ctx, groupID, requestedModel)
-		if err == nil {
-			return projectionView.containsReserve(account.ID)
-		}
+	if s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" {
+		return false
+	}
+	projectionView, err := s.getOpenAIProjectionView(ctx, groupID, requestedModel)
+	if err != nil {
+		return false
+	}
+	return projectionView.containsReserve(account.ID)
+}
+
+func (s *OpenAIGatewayService) isOpenAILegacyReserveOverlayAccount(ctx context.Context, groupID *int64, requestedModel string, account *Account) bool {
+	if s == nil || account == nil || !account.IsOpenAIReserveCandidate() {
+		return false
 	}
 	reserveAccounts, err := s.listCurrentOpenAILegacyReserveOverlay(ctx, groupID, requestedModel)
 	if err != nil {
@@ -2535,11 +2562,7 @@ func (s *OpenAIGatewayService) isOpenAIReservePreviousResponseAnchor(ctx context
 	if projectionView.containsReserve(accountID) {
 		return true
 	}
-	account, err := s.getSchedulableAccount(ctx, accountID)
-	if err != nil || account == nil {
-		return false
-	}
-	return s.isCurrentOpenAIReserveOverlayAccount(ctx, groupID, requestedModel, account)
+	return false
 }
 
 func (s *OpenAIGatewayService) deleteOpenAIWSResponseAccount(ctx context.Context, groupID *int64, previousResponseID string) {
@@ -2655,20 +2678,22 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIExhaustedAccountFromDB(ctx c
 	return latest
 }
 
-func (s *OpenAIGatewayService) recheckSelectedOpenAIReserveAccountFromDB(ctx context.Context, groupID *int64, account *Account, requestedModel string) *Account {
+func (s *OpenAIGatewayService) recheckSelectedOpenAIReserveAccountFromDB(ctx context.Context, groupID *int64, account *Account, requestedModel string, targetGroup AccountTargetGroup) *Account {
 	if account == nil {
 		return nil
 	}
+	requestedModel = strings.TrimSpace(requestedModel)
+	targetGroup = normalizeTargetGroup(targetGroup)
 	projectionView := (*openAIProjectionViewResult)(nil)
 	allowLegacyFallback := true
-	if s != nil && s.schedulerSnapshot != nil && strings.TrimSpace(requestedModel) != "" {
+	if s != nil && s.schedulerSnapshot != nil && requestedModel != "" {
 		var err error
 		projectionView, allowLegacyFallback, err = s.getOpenAIProjectionViewWithLegacyFallback(ctx, groupID, requestedModel)
 		if err != nil {
 			return nil
 		}
 	}
-	if s == nil || s.schedulerSnapshot == nil || strings.TrimSpace(requestedModel) == "" || (projectionView == nil && allowLegacyFallback) {
+	recheckLegacyReserve := func() *Account {
 		if s == nil || s.schedulerSnapshot == nil || s.accountRepo == nil {
 			return account
 		}
@@ -2684,7 +2709,13 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIReserveAccountFromDB(ctx con
 		}
 		return latest
 	}
+	if s == nil || s.schedulerSnapshot == nil || requestedModel == "" {
+		return recheckLegacyReserve()
+	}
 	if projectionView == nil {
+		if allowLegacyFallback && targetGroup == TargetGroupExhausted {
+			return recheckLegacyReserve()
+		}
 		return nil
 	}
 	if !projectionView.containsReserve(account.ID) {
@@ -2698,7 +2729,7 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIReserveAccountFromDB(ctx con
 	if err != nil || latest == nil {
 		return nil
 	}
-	if !latest.IsOpenAI() || shouldClearStickySessionForTargetGroup(latest, requestedModel, TargetGroupExhausted) {
+	if !isCurrentOpenAIReserveSelectionValid(latest, requestedModel, targetGroup) {
 		return nil
 	}
 	return latest
@@ -2707,7 +2738,7 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIReserveAccountFromDB(ctx con
 func (s *OpenAIGatewayService) recheckSelectedProjectedOpenAIAccountFromDB(ctx context.Context, groupID *int64, account *Account, requestedModel string, selectedGroup string, targetGroup AccountTargetGroup) *Account {
 	switch normalizeOpenAISelectedGroup(selectedGroup) {
 	case openAISelectedGroupReserve:
-		return s.recheckSelectedOpenAIReserveAccountFromDB(ctx, groupID, account, requestedModel)
+		return s.recheckSelectedOpenAIReserveAccountFromDB(ctx, groupID, account, requestedModel, targetGroup)
 	case string(TargetGroupExhausted):
 		return s.recheckSelectedOpenAIExhaustedAccountFromDB(ctx, groupID, account, requestedModel)
 	default:

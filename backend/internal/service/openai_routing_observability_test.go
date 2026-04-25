@@ -52,6 +52,44 @@ func TestOpenAIRoutingSnapshot_RecordFailover(t *testing.T) {
 	}
 }
 
+func TestOpenAIRoutingSnapshot_ReserveTargetsKeepRequestTargetAndSelectedReserve(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		targetGroup AccountTargetGroup
+		wantTarget  string
+	}{
+		{name: "active", targetGroup: TargetGroupActive, wantTarget: "active"},
+		{name: "any", targetGroup: TargetGroupAny, wantTarget: "any"},
+		{name: "exhausted", targetGroup: TargetGroupExhausted, wantTarget: "exhausted"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			snap := NewOpenAIRoutingSnapshot(OpenAIRoutingSnapshotInput{
+				TargetGroup:   tc.targetGroup,
+				SelectedGroup: openAISelectedGroupReserve,
+				Account:       &Account{ID: 7001, Name: "reserve-7001"},
+			})
+
+			if snap.TargetGroup != tc.wantTarget {
+				t.Fatalf("target group = %q, want %q", snap.TargetGroup, tc.wantTarget)
+			}
+			if snap.SelectedGroup != openAISelectedGroupReserve {
+				t.Fatalf("selected group = %q", snap.SelectedGroup)
+			}
+
+			binding := buildOpenAIRoutingAffinityBinding(snap)
+			if binding == nil {
+				t.Fatal("affinity binding is nil")
+			}
+			if binding.SelectedGroup != openAISelectedGroupReserve {
+				t.Fatalf("binding selected group = %q", binding.SelectedGroup)
+			}
+			if binding.AffinityDomain != openAISelectedGroupReserve {
+				t.Fatalf("binding affinity domain = %q", binding.AffinityDomain)
+			}
+		})
+	}
+}
+
 func TestOpenAIRoutingSnapshot_ProjectionMetadataFromInput(t *testing.T) {
 	builtAt := time.Unix(1_716_000_123, 0).UTC()
 	snap := NewOpenAIRoutingSnapshot(OpenAIRoutingSnapshotInput{

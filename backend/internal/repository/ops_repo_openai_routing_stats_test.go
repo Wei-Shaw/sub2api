@@ -27,6 +27,7 @@ func TestOpsRepositoryGetOpenAIRoutingStats_GroupsBySelectedGroupIncludingReserv
 	}
 
 	rows := sqlmock.NewRows([]string{
+		"routing_target_group",
 		"routing_selected_group",
 		"request_count",
 		"total_tokens",
@@ -35,11 +36,11 @@ func TestOpsRepositoryGetOpenAIRoutingStats_GroupsBySelectedGroupIncludingReserv
 		"retried_request_count",
 		"retry_count",
 	}).
-		AddRow("active", int64(10), int64(1200), int64(700), int64(500), int64(3), int64(5)).
-		AddRow("exhausted", int64(4), int64(320), int64(200), int64(120), int64(2), int64(7)).
-		AddRow("reserve", int64(6), int64(540), int64(300), int64(240), int64(4), int64(9))
+		AddRow("active", "active", int64(10), int64(1200), int64(700), int64(500), int64(3), int64(5)).
+		AddRow("exhausted", "exhausted", int64(4), int64(320), int64(200), int64(120), int64(2), int64(7)).
+		AddRow("exhausted", "reserve", int64(6), int64(540), int64(300), int64(240), int64(4), int64(9))
 
-	mock.ExpectQuery(`SELECT\s+LOWER\(COALESCE\(NULLIF\(ul\.routing_selected_group, ''\), ul\.routing_target_group\)\) AS routing_selected_group`).
+	mock.ExpectQuery(`SELECT\s+LOWER\(COALESCE\(NULLIF\(ul\.routing_target_group, ''\), 'any'\)\) AS routing_target_group,\s+LOWER\(COALESCE\(NULLIF\(ul\.routing_selected_group, ''\), COALESCE\(NULLIF\(ul\.routing_target_group, ''\), 'any'\)\)\) AS routing_selected_group[\s\S]*LOWER\(COALESCE\(NULLIF\(ul\.routing_target_group, ''\), 'any'\)\) IN \('active','exhausted','any'\)[\s\S]*\(NULLIF\(ul\.routing_target_group, ''\) IS NOT NULL OR NULLIF\(ul\.routing_selected_group, ''\) IS NOT NULL\)`).
 		WithArgs(start, end, groupID, "openai").
 		WillReturnRows(rows)
 
@@ -72,6 +73,50 @@ func TestOpsRepositoryGetOpenAIRoutingStats_GroupsBySelectedGroupIncludingReserv
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestOpsRepositoryGetOpenAIRoutingStats_ReserveRoutingBreakdownIncludesAnyTarget(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &opsRepository{db: db}
+
+	start := time.Date(2026, 4, 25, 0, 0, 0, 0, time.UTC)
+	end := start.Add(time.Hour)
+
+	filter := &service.OpsOpenAIRoutingStatsFilter{
+		TimeRange: "1h",
+		StartTime: start,
+		EndTime:   end,
+		Platform:  "openai",
+	}
+
+	rows := sqlmock.NewRows([]string{
+		"routing_target_group",
+		"routing_selected_group",
+		"request_count",
+		"total_tokens",
+		"input_tokens",
+		"output_tokens",
+		"retried_request_count",
+		"retry_count",
+	}).
+		AddRow("active", "reserve", int64(3), int64(300), int64(180), int64(120), int64(1), int64(1)).
+		AddRow("any", "reserve", int64(2), int64(200), int64(120), int64(80), int64(1), int64(2)).
+		AddRow("exhausted", "reserve", int64(4), int64(400), int64(240), int64(160), int64(2), int64(3))
+
+	mock.ExpectQuery(`SELECT\s+LOWER\(COALESCE\(NULLIF\(ul\.routing_target_group, ''\), 'any'\)\) AS routing_target_group,\s+LOWER\(COALESCE\(NULLIF\(ul\.routing_selected_group, ''\), COALESCE\(NULLIF\(ul\.routing_target_group, ''\), 'any'\)\)\) AS routing_selected_group[\s\S]*LOWER\(COALESCE\(NULLIF\(ul\.routing_target_group, ''\), 'any'\)\) IN \('active','exhausted','any'\)[\s\S]*\(NULLIF\(ul\.routing_target_group, ''\) IS NOT NULL OR NULLIF\(ul\.routing_selected_group, ''\) IS NOT NULL\)`).
+		WithArgs(start, end, "openai").
+		WillReturnRows(rows)
+
+	resp, err := repo.GetOpenAIRoutingStats(context.Background(), filter)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	require.Equal(t, int64(9), resp.RequestCountByGroup["reserve"])
+	require.Len(t, resp.Breakdown, 3)
+	require.Equal(t, service.OpsOpenAIRoutingStatsBreakdown{TargetGroup: "active", SelectedGroup: "reserve", RequestCount: 3, TotalTokens: 300, InputTokens: 180, OutputTokens: 120, RetriedRequestCount: 1, RetryCount: 1}, resp.Breakdown[0])
+	require.Equal(t, service.OpsOpenAIRoutingStatsBreakdown{TargetGroup: "any", SelectedGroup: "reserve", RequestCount: 2, TotalTokens: 200, InputTokens: 120, OutputTokens: 80, RetriedRequestCount: 1, RetryCount: 2}, resp.Breakdown[1])
+	require.Equal(t, service.OpsOpenAIRoutingStatsBreakdown{TargetGroup: "exhausted", SelectedGroup: "reserve", RequestCount: 4, TotalTokens: 400, InputTokens: 240, OutputTokens: 160, RetriedRequestCount: 2, RetryCount: 3}, resp.Breakdown[2])
+
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestOpsRepositoryGetOpenAIRoutingStats_EmptyResult(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := &opsRepository{db: db}
@@ -84,9 +129,10 @@ func TestOpsRepositoryGetOpenAIRoutingStats_EmptyResult(t *testing.T) {
 		EndTime:   end,
 	}
 
-	mock.ExpectQuery(`SELECT\s+LOWER\(COALESCE\(NULLIF\(ul\.routing_selected_group, ''\), ul\.routing_target_group\)\) AS routing_selected_group`).
+	mock.ExpectQuery(`SELECT\s+LOWER\(COALESCE\(NULLIF\(ul\.routing_target_group, ''\), 'any'\)\) AS routing_target_group,\s+LOWER\(COALESCE\(NULLIF\(ul\.routing_selected_group, ''\), COALESCE\(NULLIF\(ul\.routing_target_group, ''\), 'any'\)\)\) AS routing_selected_group[\s\S]*LOWER\(COALESCE\(NULLIF\(ul\.routing_target_group, ''\), 'any'\)\) IN \('active','exhausted','any'\)[\s\S]*\(NULLIF\(ul\.routing_target_group, ''\) IS NOT NULL OR NULLIF\(ul\.routing_selected_group, ''\) IS NOT NULL\)`).
 		WithArgs(start, end).
 		WillReturnRows(sqlmock.NewRows([]string{
+			"routing_target_group",
 			"routing_selected_group",
 			"request_count",
 			"total_tokens",
