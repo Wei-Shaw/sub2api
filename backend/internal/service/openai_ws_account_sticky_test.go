@@ -284,6 +284,50 @@ func TestWSContinuationReserveBindingAcceptedForActiveAny(t *testing.T) {
 	}
 }
 
+func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_ReserveRecheckRejectsStaleExhaustedForActiveAny(t *testing.T) {
+	ctx := context.Background()
+	exhaustedBase := newOpenAIExhaustedAccountForTest(43013, 4)
+	projectedReserve := newOpenAIReserveCandidateAccountForTest(43014, 4, 20)
+	currentReserve := projectedReserve
+	currentReserve.Extra = cloneJSONObject(projectedReserve.Extra)
+	currentReserve.Extra["codex_7d_used_percent"] = 100.0
+
+	for _, tc := range []struct {
+		name        string
+		groupID     int64
+		targetGroup AccountTargetGroup
+	}{
+		{name: "any", groupID: 43015, targetGroup: TargetGroupAny},
+		{name: "active", groupID: 43016, targetGroup: TargetGroupActive},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			responseID := "resp_ws_continuation_stale_reserve_" + tc.name
+			cache := newOpenAIAffinityGatewayCacheStub()
+			svc := newOpenAIProjectedReserveRecheckServiceForTest(cache, []Account{exhaustedBase, projectedReserve}, []Account{exhaustedBase, currentReserve}, 33, map[int64]*AccountLoadInfo{
+				exhaustedBase.ID:    {AccountID: exhaustedBase.ID, CurrentConcurrency: 3, LoadRate: 90},
+				projectedReserve.ID: {AccountID: projectedReserve.ID, CurrentConcurrency: 0, LoadRate: 0},
+			})
+			store := svc.getOpenAIWSStateStore()
+			require.NoError(t, store.BindResponseAccount(ctx, tc.groupID, responseID, projectedReserve.ID, time.Hour))
+			cache.setAffinityBinding(t, openAIResponseAffinityBindingNamespace, tc.groupID, responseID, &openAIAffinityBinding{
+				BoundAccountID:     projectedReserve.ID,
+				AffinityDomain:     openAISelectedGroupReserve,
+				SelectedGroup:      openAISelectedGroupReserve,
+				ProjectionVersion:  33,
+				ProjectionModelKey: "gpt-5.1",
+			}, time.Hour)
+
+			selection, binding, err := svc.SelectAccountByPreviousResponseID(ctx, &tc.groupID, responseID, "gpt-5.1", tc.targetGroup, nil)
+			require.NoError(t, err)
+			require.Nil(t, selection)
+			require.Nil(t, binding)
+			boundAccountID, getErr := store.GetResponseAccount(ctx, tc.groupID, responseID)
+			require.NoError(t, getErr)
+			require.Zero(t, boundAccountID)
+		})
+	}
+}
+
 func TestWSContinuationReserveBindingAcceptedForExhaustedWritesReserveDomain(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(43012)

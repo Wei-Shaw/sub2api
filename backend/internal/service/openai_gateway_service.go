@@ -2447,10 +2447,20 @@ func (s *OpenAIGatewayService) resolveFreshOpenAIReserveAccount(ctx context.Cont
 		fresh = current
 	}
 
-	if !fresh.IsOpenAI() || shouldClearStickySessionForTargetGroup(fresh, requestedModel, TargetGroupExhausted) {
+	if !isCurrentOpenAIReserveSelectionValid(fresh, requestedModel, targetGroup) {
 		return nil
 	}
 	return fresh
+}
+
+func isCurrentOpenAIReserveSelectionValid(account *Account, requestedModel string, targetGroup AccountTargetGroup) bool {
+	if account == nil || !account.IsOpenAI() {
+		return false
+	}
+	if !account.IsSchedulableForTargetGroup(TargetGroupActive) {
+		return false
+	}
+	return !shouldClearStickySessionForTargetGroup(account, requestedModel, targetGroup)
 }
 
 func (s *OpenAIGatewayService) isCurrentOpenAIReserveOverlayAccount(ctx context.Context, groupID *int64, requestedModel string, account *Account) bool {
@@ -2719,7 +2729,7 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIReserveAccountFromDB(ctx con
 	if err != nil || latest == nil {
 		return nil
 	}
-	if !latest.IsOpenAI() || shouldClearStickySessionForTargetGroup(latest, requestedModel, TargetGroupExhausted) {
+	if !isCurrentOpenAIReserveSelectionValid(latest, requestedModel, targetGroup) {
 		return nil
 	}
 	return latest

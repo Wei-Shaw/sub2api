@@ -1964,6 +1964,119 @@ func TestSelectByLoadBalance_ReserveSelectedGroupWritesReserveForActiveAny(t *te
 	}
 }
 
+func TestSelectByLoadBalance_ActiveAnyReserveRecheckRejectsStaleReserveState(t *testing.T) {
+	ctx := context.Background()
+	exhaustedBase := newOpenAIExhaustedAccountForTest(37061, 4)
+	projectedReserve := newOpenAIReserveCandidateAccountForTest(37062, 4, 20)
+	loadMap := map[int64]*AccountLoadInfo{
+		exhaustedBase.ID:    {AccountID: exhaustedBase.ID, CurrentConcurrency: 3, LoadRate: 90},
+		projectedReserve.ID: {AccountID: projectedReserve.ID, CurrentConcurrency: 0, LoadRate: 0},
+	}
+	rateLimitReset := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+
+	for _, tc := range []struct {
+		name           string
+		groupID        int64
+		targetGroup    AccountTargetGroup
+		currentReserve Account
+	}{
+		{
+			name:        "any_exhausted",
+			groupID:     13073,
+			targetGroup: TargetGroupAny,
+			currentReserve: func() Account {
+				account := projectedReserve
+				account.Extra = cloneJSONObject(projectedReserve.Extra)
+				account.Extra["codex_7d_used_percent"] = 100.0
+				return account
+			}(),
+		},
+		{
+			name:        "active_exhausted",
+			groupID:     13074,
+			targetGroup: TargetGroupActive,
+			currentReserve: func() Account {
+				account := projectedReserve
+				account.Extra = cloneJSONObject(projectedReserve.Extra)
+				account.Extra["codex_7d_used_percent"] = 100.0
+				return account
+			}(),
+		},
+		{
+			name:        "any_model_limited",
+			groupID:     13075,
+			targetGroup: TargetGroupAny,
+			currentReserve: func() Account {
+				account := projectedReserve
+				account.Extra = cloneJSONObject(projectedReserve.Extra)
+				account.Extra[modelRateLimitsKey] = map[string]any{"gpt-5.1": map[string]any{"rate_limit_reset_at": rateLimitReset}}
+				return account
+			}(),
+		},
+		{
+			name:        "active_model_limited",
+			groupID:     13076,
+			targetGroup: TargetGroupActive,
+			currentReserve: func() Account {
+				account := projectedReserve
+				account.Extra = cloneJSONObject(projectedReserve.Extra)
+				account.Extra[modelRateLimitsKey] = map[string]any{"gpt-5.1": map[string]any{"rate_limit_reset_at": rateLimitReset}}
+				return account
+			}(),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := newOpenAIProjectedReserveRecheckServiceForTest(nil, []Account{exhaustedBase, projectedReserve}, []Account{exhaustedBase, tc.currentReserve}, 31, loadMap)
+
+			selection, _, err := svc.SelectAccountWithScheduler(ctx, &tc.groupID, "", "session_hash_stale_reserve_"+tc.name, "gpt-5.1", tc.targetGroup, nil, OpenAIUpstreamTransportAny)
+			require.ErrorIs(t, err, ErrNoAvailableAccounts)
+			require.Nil(t, selection)
+		})
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_StickyReserveRecheckRejectsStaleExhaustedForActiveAny(t *testing.T) {
+	ctx := context.Background()
+	exhaustedBase := newOpenAIExhaustedAccountForTest(37071, 4)
+	projectedReserve := newOpenAIReserveCandidateAccountForTest(37072, 4, 20)
+	currentReserve := projectedReserve
+	currentReserve.Extra = cloneJSONObject(projectedReserve.Extra)
+	currentReserve.Extra["codex_7d_used_percent"] = 100.0
+	loadMap := map[int64]*AccountLoadInfo{
+		exhaustedBase.ID:    {AccountID: exhaustedBase.ID, CurrentConcurrency: 3, LoadRate: 90},
+		projectedReserve.ID: {AccountID: projectedReserve.ID, CurrentConcurrency: 0, LoadRate: 0},
+	}
+
+	for _, tc := range []struct {
+		name        string
+		groupID     int64
+		targetGroup AccountTargetGroup
+	}{
+		{name: "any", groupID: 13077, targetGroup: TargetGroupAny},
+		{name: "active", groupID: 13078, targetGroup: TargetGroupActive},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sessionHash := "session_hash_sticky_stale_reserve_" + tc.name
+			cache := newOpenAIAffinityGatewayCacheStub()
+			cache.sessionBindings["openai:"+sessionHash] = projectedReserve.ID
+			cache.setAffinityBinding(t, openAIStickyAffinityBindingNamespace, tc.groupID, "openai:"+sessionHash, &openAIAffinityBinding{
+				BoundAccountID:     projectedReserve.ID,
+				AffinityDomain:     openAISelectedGroupReserve,
+				SelectedGroup:      openAISelectedGroupReserve,
+				ProjectionVersion:  32,
+				ProjectionModelKey: "gpt-5.1",
+			}, time.Hour)
+			svc := newOpenAIProjectedReserveRecheckServiceForTest(cache, []Account{exhaustedBase, projectedReserve}, []Account{exhaustedBase, currentReserve}, 32, loadMap)
+
+			selection, decision, err := svc.SelectAccountWithScheduler(ctx, &tc.groupID, "", sessionHash, "gpt-5.1", tc.targetGroup, nil, OpenAIUpstreamTransportAny)
+			require.ErrorIs(t, err, ErrNoAvailableAccounts)
+			require.Nil(t, selection)
+			require.False(t, decision.StickySessionHit)
+			require.Equal(t, 1, cache.deletedSessions["openai:"+sessionHash])
+		})
+	}
+}
+
 func TestSelectByLoadBalance_ReserveSelectedGroupWritesSharedAndAffinitySticky(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(1308)
@@ -4062,6 +4175,48 @@ func newOpenAIProjectedReserveBindingServiceForTest(cache *openAIAffinityGateway
 		cache:              cache,
 		cfg:                cfg,
 		schedulerSnapshot:  &SchedulerSnapshotService{cache: &openAISnapshotCacheStub{snapshotAccounts: accountPtrs, accountsByID: accountsByID, openAIState: newOpenAIBucketStateForTest(accounts, projectionVersion, map[string]OpenAIModelRoleView{"gpt-5.1": {CanonicalModel: "gpt-5.1", ExhaustedBaseIDs: sortedOpenAIProjectionIDs(exhaustedAccounts), ReserveOverflowIDs: sortedOpenAIProjectionIDs(reserveAccounts)}})}},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{loadMap: loadMap}),
+	}
+}
+
+func newOpenAIProjectedReserveRecheckServiceForTest(cache *openAIAffinityGatewayCacheStub, projectedAccounts []Account, currentAccounts []Account, projectionVersion int64, loadMap map[int64]*AccountLoadInfo) *OpenAIGatewayService {
+	if cache == nil {
+		cache = newOpenAIAffinityGatewayCacheStub()
+	}
+	cfg := newOpenAIWSV2TestConfig()
+	cfg.Gateway.OpenAIWS.LBTopK = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 1
+	exhaustedAccounts := make([]Account, 0, len(projectedAccounts))
+	reserveAccounts := make([]Account, 0, len(projectedAccounts))
+	projectedPtrs := make([]*Account, 0, len(projectedAccounts))
+	accountsByID := make(map[int64]*Account, len(currentAccounts))
+	for i := range projectedAccounts {
+		cloned := projectedAccounts[i]
+		projectedPtrs = append(projectedPtrs, &cloned)
+		if cloned.MatchesTargetGroup(TargetGroupExhausted) {
+			exhaustedAccounts = append(exhaustedAccounts, cloned)
+		}
+		if cloned.IsOpenAIReserveCandidate() {
+			reserveAccounts = append(reserveAccounts, cloned)
+		}
+	}
+	for i := range currentAccounts {
+		cloned := currentAccounts[i]
+		accountsByID[cloned.ID] = &cloned
+	}
+	return &OpenAIGatewayService{
+		accountRepo: stubOpenAIAccountRepo{accounts: currentAccounts},
+		cache:       cache,
+		cfg:         cfg,
+		schedulerSnapshot: &SchedulerSnapshotService{cache: &openAISnapshotCacheStub{
+			snapshotAccounts: projectedPtrs,
+			accountsByID:     accountsByID,
+			openAIState: newOpenAIBucketStateForTest(projectedAccounts, projectionVersion, map[string]OpenAIModelRoleView{"gpt-5.1": {
+				CanonicalModel:     "gpt-5.1",
+				ExhaustedBaseIDs:   sortedOpenAIProjectionIDs(exhaustedAccounts),
+				ReserveOverflowIDs: sortedOpenAIProjectionIDs(reserveAccounts),
+			}}),
+		}},
 		concurrencyService: NewConcurrencyService(stubConcurrencyCache{loadMap: loadMap}),
 	}
 }
