@@ -2993,6 +2993,22 @@ export default {
         responsesWebsocketsV2PassthroughHint: '当前已开启自动透传：仅影响 HTTP 透传链路，不影响 WS mode。',
         codexCLIOnly: '仅允许 Codex 官方客户端',
         codexCLIOnlyDesc: '仅对 OpenAI OAuth 生效。开启后仅允许 Codex 官方客户端家族访问；关闭后完全绕过并保持原逻辑。',
+        compactMode: 'Compact 模式',
+        compactModeDesc:
+          '控制本账号在 /responses/compact 调度中的参与方式。Auto 跟随探测结果，Force On 强制允许，Force Off 强制排除。',
+        compactModeAuto: '自动',
+        compactModeForceOn: '强制开启',
+        compactModeForceOff: '强制关闭',
+        compactModelMapping: 'Compact 专属模型映射',
+        compactModelMappingDesc:
+          '仅在 /responses/compact 请求中生效。当上游 compact 端点需要特殊 compact 模型时使用。',
+        compactSupported: '支持 Compact',
+        compactUnsupported: '不支持 Compact',
+        compactUnknown: 'Compact 未知',
+        compactLastChecked: '最近探测',
+        testMode: '测试模式',
+        testModeDefault: '常规请求',
+        testModeCompact: 'Compact 探测',
         modelRestrictionDisabledByPassthrough: '已开启自动透传：模型白名单/映射不会生效。',
       REDACTED,
       anthropic: {

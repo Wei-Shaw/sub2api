@@ -130,6 +130,74 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestResolveOpenAICompactForwardModel(t *testing.T) {
+	tests := []struct {
+		name          string
+		account       *Account
+		model         string
+		expectedModel string
+REDACTED{
+		{
+			name:          "nil account keeps original model",
+			account:       nil,
+			model:         "gpt-5.4",
+			expectedModel: "gpt-5.4",
+	REDACTED,
+		{
+			name: "missing compact mapping keeps original model",
+			account: &Account{
+		REDACTEDREDACTED,
+		REDACTED,
+			model:         "gpt-5.4",
+			expectedModel: "gpt-5.4",
+	REDACTED,
+		{
+			name: "exact compact mapping overrides model",
+			account: &Account{
+		REDACTED
+					"compact_model_mapping": map[string]any{
+						"gpt-5.4": "gpt-5.4-openai-compact",
+				REDACTED,
+			REDACTED,
+		REDACTED,
+			model:         "gpt-5.4",
+			expectedModel: "gpt-5.4-openai-compact",
+	REDACTED,
+		{
+			name: "wildcard compact mapping overrides model",
+			account: &Account{
+		REDACTED
+					"compact_model_mapping": map[string]any{
+						"gpt-5.*": "gpt-5-openai-compact",
+				REDACTED,
+			REDACTED,
+		REDACTED,
+			model:         "gpt-5.4",
+			expectedModel: "gpt-5-openai-compact",
+	REDACTED,
+		{
+			name: "passthrough compact mapping remains unchanged",
+			account: &Account{
+		REDACTED
+					"compact_model_mapping": map[string]any{
+						"gpt-5.4": "gpt-5.4",
+				REDACTED,
+			REDACTED,
+		REDACTED,
+			model:         "gpt-5.4",
+			expectedModel: "gpt-5.4",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := resolveOpenAICompactForwardModel(tt.account, tt.model); got != tt.expectedModel {
+				t.Fatalf("resolveOpenAICompactForwardModel(...) = %q, want %q", got, tt.expectedModel)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestNormalizeCodexModel(t *testing.T) {
 	cases := map[string]string{
 		"gpt-5.3-codex-spark":       "gpt-5.3-codex-spark",

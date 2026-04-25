@@ -1,0 +1,195 @@
+package service
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/stretchr/testify/require"
+)
+
+// TestOpenAIGatewayService_SelectAccountWithScheduler_CompactPrefersSupportedOverUnknown
+// 验证 compact 调度时显式支持 (tier=2) 优先于未探测 (tier=1)。
+func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactPrefersSupportedOverUnknown(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(91001)
+	accounts := []Account{
+		{
+			ID:          71001,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    0,
+			Extra:       map[string]any{REDACTED, // unknown
+	REDACTED,
+		{
+			ID:          71002,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    0,
+			Extra:       map[string]any{"openai_compact_supported": trueREDACTED, // tier=2
+	REDACTED,
+REDACTED
+	cfg := &config.Config{REDACTED
+	cfg.Gateway.Scheduling.LoadBatchEnabled = false
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accountsREDACTED,
+		cache:              &schedulerTestGatewayCache{REDACTED,
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{REDACTED),
+REDACTED
+
+	selection, _, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"",
+		"gpt-5.4",
+		nil,
+		OpenAIUpstreamTransportAny,
+		true,
+	)
+REDACTED
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(71002), selection.Account.ID, "compact-supported account should win over unknown")
+REDACTED
+
+// TestOpenAIGatewayService_SelectAccountWithScheduler_CompactRejectsExplicitlyUnsupported
+// 验证 force_off / 已探测不支持 (tier=0) 的账号不会被 compact 请求选中。
+func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactRejectsExplicitlyUnsupported(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(91002)
+	accounts := []Account{
+		{
+			ID:          71010,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    0,
+			Extra:       map[string]any{"openai_compact_mode": OpenAICompactModeForceOffREDACTED,
+	REDACTED,
+		{
+			ID:          71011,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    0,
+			Extra:       map[string]any{"openai_compact_supported": falseREDACTED,
+	REDACTED,
+REDACTED
+	cfg := &config.Config{REDACTED
+	cfg.Gateway.Scheduling.LoadBatchEnabled = false
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accountsREDACTED,
+		cache:              &schedulerTestGatewayCache{REDACTED,
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{REDACTED),
+REDACTED
+
+	selection, _, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"",
+		"gpt-5.4",
+		nil,
+		OpenAIUpstreamTransportAny,
+		true,
+	)
+REDACTED
+	require.True(t, errors.Is(err, ErrNoAvailableCompactAccounts), "compact-only accounts should rejected explicitly unsupported and return compact error")
+	require.Nil(t, selection)
+REDACTED
+
+// TestOpenAIGatewayService_SelectAccountWithScheduler_CompactFallsBackToUnknown
+// 验证当没有"已知支持"账号时，compact 请求会回退到"未探测"账号。
+func TestOpenAIGatewayService_SelectAccountWithScheduler_CompactFallsBackToUnknown(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(91003)
+	accounts := []Account{
+		{
+			ID:          71020,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    0,
+			Extra:       map[string]any{"openai_compact_supported": falseREDACTED, // tier=0
+	REDACTED,
+		{
+			ID:          71021,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    0,
+			Extra:       map[string]any{REDACTED, // unknown -> tier=1
+	REDACTED,
+REDACTED
+	cfg := &config.Config{REDACTED
+	cfg.Gateway.Scheduling.LoadBatchEnabled = false
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accountsREDACTED,
+		cache:              &schedulerTestGatewayCache{REDACTED,
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{REDACTED),
+REDACTED
+
+	selection, _, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"",
+		"gpt-5.4",
+		nil,
+		OpenAIUpstreamTransportAny,
+		true,
+	)
+REDACTED
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(71021), selection.Account.ID, "unknown account should be picked when no supported account available")
+REDACTED
+
+// TestOpenAICompactSupportTier 验证 tier 分类逻辑。
+func TestOpenAICompactSupportTier(t *testing.T) {
+	tests := []struct {
+		name    string
+		account *Account
+		want    int
+REDACTED{
+		{name: "nil", account: nil, want: 0REDACTED,
+		{name: "non openai", account: &Account{Platform: PlatformAnthropicREDACTED, want: 0REDACTED,
+		{name: "openai unknown", account: &Account{Platform: PlatformOpenAI, Extra: map[string]any{REDACTEDREDACTED, want: 1REDACTED,
+		{name: "openai supported", account: &Account{Platform: PlatformOpenAI, Extra: map[string]any{"openai_compact_supported": trueREDACTEDREDACTED, want: 2REDACTED,
+		{name: "openai unsupported", account: &Account{Platform: PlatformOpenAI, Extra: map[string]any{"openai_compact_supported": falseREDACTEDREDACTED, want: 0REDACTED,
+		{name: "force on", account: &Account{Platform: PlatformOpenAI, Extra: map[string]any{"openai_compact_mode": OpenAICompactModeForceOnREDACTEDREDACTED, want: 2REDACTED,
+		{name: "force off overrides probe true", account: &Account{Platform: PlatformOpenAI, Extra: map[string]any{"openai_compact_mode": OpenAICompactModeForceOff, "openai_compact_supported": trueREDACTEDREDACTED, want: 0REDACTED,
+REDACTED
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := openAICompactSupportTier(tt.account); got != tt.want {
+				t.Fatalf("openAICompactSupportTier(...) = %d, want %d", got, tt.want)
+		REDACTED
+	REDACTED)
+REDACTED
+REDACTED

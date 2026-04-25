@@ -54,6 +54,7 @@ REDACTED
 		"gpt-5.1",
 		nil,
 		OpenAIUpstreamTransportResponsesWebsocketV2,
+		false,
 	)
 REDACTED
 	require.NotNil(t, selection)

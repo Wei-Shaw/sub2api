@@ -1107,7 +1107,7 @@ REDACTED
 		_, _ = pw.Write([]byte("data: {\"type\":\"response.in_progress\",\"response\":{REDACTEDREDACTED\n\n"))
 REDACTED()
 
-	_, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1REDACTED, time.Now())
+	_, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1REDACTED, time.Now(), "", "")
 	_ = pr.Close()
 	if err == nil || !strings.Contains(err.Error(), "missing terminal event") {
 		t.Fatalf("expected missing terminal event error, got %v", err)
@@ -1139,7 +1139,7 @@ REDACTED
 		_, _ = pw.Write([]byte("data: {\"type\":\"response.done\",\"response\":{\"usage\":{\"input_tokens\":2,\"output_tokens\":3,\"input_tokens_details\":{\"cached_tokens\":1REDACTEDREDACTEDREDACTEDREDACTED\n\n"))
 REDACTED()
 
-	result, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1REDACTED, time.Now())
+	result, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1REDACTED, time.Now(), "", "")
 	_ = pr.Close()
 REDACTED
 	require.NotNil(t, result)
