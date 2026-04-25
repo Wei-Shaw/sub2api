@@ -9,6 +9,11 @@ import (
 )
 
 func TestIsClaudeCodeClient(t *testing.T) {
+	// 合法的 legacy 格式 metadata.user_id（64位 hex + account uuid + session uuid）
+	legacyUserID := "user_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2_account_550e8400-e29b-41d4-a716-446655440000_session_123e4567-e89b-12d3-a456-426614174000"
+	// 合法的 JSON 格式 metadata.user_id（2.1.78+ 版本）
+	jsonUserID := `{"device_id":"a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2","account_uuid":"550e8400-e29b-41d4-a716-446655440000","session_id":"123e4567-e89b-12d3-a456-426614174000"REDACTED`
+
 	tests := []struct {
 		name           string
 		userAgent      string
@@ -16,15 +21,21 @@ func TestIsClaudeCodeClient(t *testing.T) {
 		want           bool
 REDACTED{
 		{
-			name:           "Claude Code client",
+			name:           "Claude Code client with legacy user_id",
 			userAgent:      "claude-cli/1.0.62 (darwin; arm64)",
-			metadataUserID: "session_123e4567-e89b-12d3-a456-426614174000",
+			metadataUserID: legacyUserID,
 			want:           true,
 	REDACTED,
 		{
-			name:           "Claude Code without version suffix",
-			userAgent:      "claude-cli/2.0.0",
-			metadataUserID: "session_abc",
+			name:           "Claude Code client with JSON user_id",
+			userAgent:      "claude-cli/2.1.92 (external, cli)",
+			metadataUserID: jsonUserID,
+			want:           true,
+	REDACTED,
+		{
+			name:           "Claude Code case insensitive UA",
+			userAgent:      "Claude-CLI/2.0.0",
+			metadataUserID: legacyUserID,
 			want:           true,
 	REDACTED,
 		{
@@ -34,21 +45,33 @@ REDACTED{
 			want:           false,
 	REDACTED,
 		{
-			name:           "Different user agent",
+			name:           "Claude CLI UA with invalid user_id format",
+			userAgent:      "claude-cli/2.0.0",
+			metadataUserID: "fake-user-id-12345",
+			want:           false,
+	REDACTED,
+		{
+			name:           "Different user agent with valid user_id",
 			userAgent:      "curl/7.68.0",
-			metadataUserID: "user123",
+			metadataUserID: legacyUserID,
 			want:           false,
 	REDACTED,
 		{
 			name:           "Empty user agent",
 			userAgent:      "",
-			metadataUserID: "user123",
+			metadataUserID: legacyUserID,
 			want:           false,
 	REDACTED,
 		{
 			name:           "Similar but not Claude CLI",
 			userAgent:      "claude-api/1.0.0",
-			metadataUserID: "user123",
+			metadataUserID: legacyUserID,
+			want:           false,
+	REDACTED,
+		{
+			name:           "Opencode spoofing UA with arbitrary user_id",
+			userAgent:      "claude-cli/2.1.92",
+			metadataUserID: "session_abc",
 			want:           false,
 	REDACTED,
 REDACTED
