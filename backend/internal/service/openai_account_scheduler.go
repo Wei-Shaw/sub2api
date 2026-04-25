@@ -22,6 +22,7 @@ const (
 	openAISelectedGroupReserve                 = "reserve"
 	openAIAffinityDomainActive                 = "active"
 	openAIAffinityDomainExhausted              = "exhausted"
+	openAIAffinityDomainReserve                = "reserve"
 )
 
 const (
@@ -139,6 +140,8 @@ func normalizeOpenAISelectedGroup(group string) string {
 
 func normalizeOpenAIAffinityDomain(domain string) string {
 	switch strings.ToLower(strings.TrimSpace(domain)) {
+	case openAIAffinityDomainReserve:
+		return openAIAffinityDomainReserve
 	case openAIAffinityDomainExhausted:
 		return openAIAffinityDomainExhausted
 	default:
@@ -156,7 +159,9 @@ func newOpenAIAffinityBinding(accountID int64, selectedGroup string) *openAIAffi
 		SelectedGroup:  selectedGroup,
 		AffinityDomain: openAIAffinityDomainActive,
 	}
-	if selectedGroup == string(TargetGroupExhausted) || selectedGroup == openAISelectedGroupReserve {
+	if selectedGroup == openAISelectedGroupReserve {
+		binding.AffinityDomain = openAIAffinityDomainReserve
+	} else if selectedGroup == string(TargetGroupExhausted) {
 		binding.AffinityDomain = openAIAffinityDomainExhausted
 	}
 	return binding
@@ -166,15 +171,16 @@ func isOpenAIReserveAffinityBinding(binding *openAIAffinityBinding) bool {
 	if binding == nil {
 		return false
 	}
+	domain := normalizeOpenAIAffinityDomain(binding.AffinityDomain)
 	return binding.BoundAccountID > 0 &&
-		normalizeOpenAIAffinityDomain(binding.AffinityDomain) == openAIAffinityDomainExhausted &&
-		normalizeOpenAISelectedGroup(binding.SelectedGroup) == openAISelectedGroupReserve
+		normalizeOpenAISelectedGroup(binding.SelectedGroup) == openAISelectedGroupReserve &&
+		(domain == openAIAffinityDomainReserve || domain == openAIAffinityDomainExhausted)
 }
 
 func resolveOpenAISelectedGroupFromBindingOrAccount(binding *openAIAffinityBinding, account *Account) string {
 	if binding != nil {
 		if selectedGroup := normalizeOpenAISelectedGroup(binding.SelectedGroup); selectedGroup != "" {
-			if selectedGroup == openAISelectedGroupReserve && account != nil && account.MatchesTargetGroup(TargetGroupExhausted) {
+			if selectedGroup == openAISelectedGroupReserve && account != nil && !account.IsOpenAIReserveCandidate() && account.MatchesTargetGroup(TargetGroupExhausted) {
 				return string(TargetGroupExhausted)
 			}
 			return selectedGroup
@@ -709,25 +715,10 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		}
 		selectedGroup = projectionView.selectedGroupForTarget(account.ID, req.TargetGroup)
 	}
-	if isOpenAIReserveAffinityBinding(affinityBinding) && normalizeTargetGroup(req.TargetGroup) != TargetGroupExhausted {
-		if sticky != nil {
-			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
-		}
-		_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
-		return nil, nil
-	}
 	if projectionView != nil {
 		switch normalizeTargetGroup(req.TargetGroup) {
 		case TargetGroupExhausted:
 			if selectedGroup != openAISelectedGroupReserve && selectedGroup != string(TargetGroupExhausted) {
-				if sticky != nil {
-					sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
-				}
-				_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
-				return nil, nil
-			}
-		default:
-			if selectedGroup == openAISelectedGroupReserve {
 				if sticky != nil {
 					sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
 				}

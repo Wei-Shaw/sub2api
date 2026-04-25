@@ -101,7 +101,7 @@ func TestPreviousResponseReserveBindingStillMatchesExhaustedClass(t *testing.T) 
 	require.Equal(t, reserveAccount.ID, selection.Account.ID)
 	require.NotNil(t, selectedBinding)
 	require.Equal(t, reserveAccount.ID, selectedBinding.BoundAccountID)
-	require.Equal(t, string(TargetGroupExhausted), selectedBinding.AffinityDomain)
+	require.Equal(t, openAISelectedGroupReserve, selectedBinding.AffinityDomain)
 	require.Equal(t, openAISelectedGroupReserve, selectedBinding.SelectedGroup)
 	storedBinding := cache.mustGetAffinityBinding(t, openAIResponseAffinityBindingNamespace, groupID, responseID)
 	require.Equal(t, openAISelectedGroupReserve, storedBinding.SelectedGroup)
@@ -237,6 +237,87 @@ func TestPreviousResponseReserveBindingReadsSameProjectionKeyAsSysModel(t *testi
 	}
 }
 
+func TestWSContinuationReserveBindingAcceptedForActiveAny(t *testing.T) {
+	ctx := context.Background()
+	exhaustedBase := newOpenAIExhaustedAccountForTest(43001, 4)
+	reserveAccount := newOpenAIReserveCandidateAccountForTest(43002, 4, 20)
+	activeAccount := Account{ID: 43003, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 4}
+	accounts := []Account{exhaustedBase, reserveAccount, activeAccount}
+
+	for _, tc := range []struct {
+		name        string
+		groupID     int64
+		targetGroup AccountTargetGroup
+	}{
+		{name: "any", groupID: 43010, targetGroup: TargetGroupAny},
+		{name: "active", groupID: 43011, targetGroup: TargetGroupActive},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			responseID := "resp_ws_continuation_reserve_" + tc.name
+			cache := newOpenAIAffinityGatewayCacheStub()
+			svc := newOpenAIProjectedReserveBindingServiceForTest(cache, accounts, 25, map[int64]*AccountLoadInfo{
+				exhaustedBase.ID:  {AccountID: exhaustedBase.ID, CurrentConcurrency: 3, LoadRate: 90},
+				reserveAccount.ID: {AccountID: reserveAccount.ID, CurrentConcurrency: 0, LoadRate: 0},
+				activeAccount.ID:  {AccountID: activeAccount.ID, CurrentConcurrency: 0, LoadRate: 80},
+			})
+			store := svc.getOpenAIWSStateStore()
+			require.NoError(t, store.BindResponseAccount(ctx, tc.groupID, responseID, reserveAccount.ID, time.Hour))
+
+			selection, binding, err := svc.SelectAccountByPreviousResponseID(ctx, &tc.groupID, responseID, "gpt-5.1", tc.targetGroup, nil)
+			require.NoError(t, err)
+			require.NotNil(t, selection)
+			require.NotNil(t, selection.Account)
+			require.Equal(t, reserveAccount.ID, selection.Account.ID)
+			require.Equal(t, openAISelectedGroupReserve, selection.SelectedGroup)
+			require.NotNil(t, binding)
+			require.Equal(t, reserveAccount.ID, binding.BoundAccountID)
+			require.Equal(t, openAISelectedGroupReserve, binding.SelectedGroup)
+			require.Equal(t, openAISelectedGroupReserve, binding.AffinityDomain)
+			require.Equal(t, int64(25), binding.ProjectionVersion)
+			require.Equal(t, "gpt-5.1", binding.ProjectionModelKey)
+			storedBinding := cache.mustGetAffinityBinding(t, openAIResponseAffinityBindingNamespace, tc.groupID, responseID)
+			require.Equal(t, openAISelectedGroupReserve, storedBinding.AffinityDomain)
+			if selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+		})
+	}
+}
+
+func TestWSContinuationReserveBindingAcceptedForExhaustedWritesReserveDomain(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(43012)
+	responseID := "resp_ws_continuation_reserve_exhausted"
+	exhaustedBase := newOpenAIExhaustedAccountForTest(43101, 4)
+	reserveAccount := newOpenAIReserveCandidateAccountForTest(43102, 4, 20)
+	activeAccount := Account{ID: 43103, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 4}
+	accounts := []Account{exhaustedBase, reserveAccount, activeAccount}
+	cache := newOpenAIAffinityGatewayCacheStub()
+	svc := newOpenAIProjectedReserveBindingServiceForTest(cache, accounts, 26, map[int64]*AccountLoadInfo{
+		exhaustedBase.ID:  {AccountID: exhaustedBase.ID, CurrentConcurrency: 3, LoadRate: 90},
+		reserveAccount.ID: {AccountID: reserveAccount.ID, CurrentConcurrency: 0, LoadRate: 0},
+		activeAccount.ID:  {AccountID: activeAccount.ID, CurrentConcurrency: 0, LoadRate: 80},
+	})
+	store := svc.getOpenAIWSStateStore()
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, responseID, reserveAccount.ID, time.Hour))
+
+	selection, binding, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, responseID, "gpt-5.1", TargetGroupExhausted, nil)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, reserveAccount.ID, selection.Account.ID)
+	require.Equal(t, openAISelectedGroupReserve, selection.SelectedGroup)
+	require.NotNil(t, binding)
+	require.Equal(t, openAISelectedGroupReserve, binding.SelectedGroup)
+	require.Equal(t, openAISelectedGroupReserve, binding.AffinityDomain)
+	require.Equal(t, int64(26), binding.ProjectionVersion)
+	storedBinding := cache.mustGetAffinityBinding(t, openAIResponseAffinityBindingNamespace, groupID, responseID)
+	require.Equal(t, openAISelectedGroupReserve, storedBinding.AffinityDomain)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
 func TestStickyReserveBinding_RebindsOnProjectionVersionChange(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(281)
@@ -256,7 +337,7 @@ func TestStickyReserveBinding_RebindsOnProjectionVersionChange(t *testing.T) {
 
 	binding := cache.mustGetAffinityBinding(t, openAIStickyAffinityBindingNamespace, groupID, "openai:"+sessionHash)
 	require.Equal(t, int64(340), binding.BoundAccountID)
-	require.Equal(t, string(TargetGroupExhausted), binding.AffinityDomain)
+	require.Equal(t, openAISelectedGroupReserve, binding.AffinityDomain)
 	require.Equal(t, openAISelectedGroupReserve, binding.SelectedGroup)
 	require.Zero(t, binding.ProjectionVersion)
 	require.Empty(t, binding.ProjectionModelKey)
@@ -716,7 +797,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_ExhaustedRateLim
 	}
 }
 
-func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_ReserveRejectedForAnyOnProjectionMiss(t *testing.T) {
+func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_ReserveProjectionMissFailsClosedForAny(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(28)
 	exhaustedBase := Account{ID: 34, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Extra: map[string]any{"quota_limit": float64(100), "quota_used": float64(100), "openai_apikey_responses_websockets_v2_enabled": true}}

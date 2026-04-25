@@ -1762,6 +1762,11 @@ func (r *openAIProjectionViewResult) bindingMatches(binding *openAIAffinityBindi
 			return false
 		}
 	}
+	if builtAt := derefOpenAIProjectionBuiltAt(binding.ProjectionBuiltAt); !builtAt.IsZero() {
+		if normalizeOpenAIProjectionBuiltAt(r.state.BuiltAt) != builtAt {
+			return false
+		}
+	}
 	return true
 }
 
