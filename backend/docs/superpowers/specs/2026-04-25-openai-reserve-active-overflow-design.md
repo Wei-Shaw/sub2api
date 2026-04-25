@@ -67,6 +67,11 @@
 - 一个账号如果当前身份是 reserve，`active/any` 可以正常命中它。
 - exhausted-class 也仍然可以在 overflow 条件下命中它。
 
+这里的“当前身份是 reserve”必须有唯一来源：
+
+- 只能来自**当前请求模型规范化后对应的 canonical model projection view** 中的 `ReserveOverflowIDs`
+- 不能在请求期再根据 live `IsOpenAIReserveCandidate`、legacy overlay 推导或其他运行时账号状态临时计算
+
 ### 2. target_group 与 selected_group
 
 请求语义与账号身份继续分层：
@@ -182,6 +187,23 @@ reserve 既然是 active 基础身份的一部分，那么 binding 语义也必�
 
 1. 不再因为请求是 `active/any` 就自动拒绝该 binding。
 2. 只要 binding 对应账号当前仍是 reserve，且版本/模型键一致，就允许继续命中。
+
+### 4. 旧 binding 兼容
+
+线上已存在旧格式 reserve binding，可能表现为：
+
+- `selected_group=reserve`
+- `affinity_domain=exhausted`
+
+这类旧 binding 在以下条件同时满足时必须继续可读：
+
+1. 账号当前仍在该 canonical model projection 的 `ReserveOverflowIDs` 中。
+2. `projection_version` / `projection_model_key` / `projection_built_at` 校验通过。
+
+也就是说：
+
+- 旧的 `affinity_domain=exhausted` 不能单独成为拒绝或清理 reserve binding 的理由。
+- 新实现可以把新写入统一改成 `affinity_domain=reserve`，但读取侧必须兼容旧格式。
 
 ## 观测与解释层
 
