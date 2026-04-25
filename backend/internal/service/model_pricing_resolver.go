@@ -39,22 +39,23 @@ type ResolvedPricing struct {
 // ModelPricingResolver 统一模型定价解析器。
 // 解析链：Channel → LiteLLM → Fallback。
 type ModelPricingResolver struct {
-	channelService *ChannelService
-	billingService *BillingService
+	channelCacheReader *ChannelCacheReader
+	billingService     *BillingService
 }
 
 // NewModelPricingResolver 创建定价解析器实例
-func NewModelPricingResolver(channelService *ChannelService, billingService *BillingService) *ModelPricingResolver {
+func NewModelPricingResolver(channelCacheReader *ChannelCacheReader, billingService *BillingService) *ModelPricingResolver {
 	return &ModelPricingResolver{
-		channelService: channelService,
-		billingService: billingService,
+		channelCacheReader: channelCacheReader,
+		billingService:     billingService,
 	}
 }
 
 // PricingInput 定价解析输入
 type PricingInput struct {
-	Model   string
-	GroupID *int64 // nil 表示不检查渠道
+	Model    string
+	GroupID  *int64 // nil 表示不检查渠道
+	Platform string // 渠道键按 (groupID, platform) 分区，空字符串等价于跳过渠道覆盖
 }
 
 // Resolve 解析模型定价。
@@ -71,9 +72,9 @@ func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) 
 		SupportsCacheBreakdown: basePricing != nil && basePricing.SupportsCacheBreakdown,
 	}
 
-	// 2. 如果有 GroupID，尝试渠道覆盖
-	if input.GroupID != nil {
-		r.applyChannelOverrides(ctx, *input.GroupID, input.Model, resolved)
+	// 2. 如果有 GroupID + Platform，尝试渠道覆盖
+	if input.GroupID != nil && input.Platform != "" {
+		r.applyChannelOverrides(ctx, *input.GroupID, input.Platform, input.Model, resolved)
 	}
 
 	return resolved
@@ -91,8 +92,8 @@ func (r *ModelPricingResolver) resolveBasePricing(model string) (*ModelPricing, 
 }
 
 // applyChannelOverrides 应用渠道定价覆盖
-func (r *ModelPricingResolver) applyChannelOverrides(ctx context.Context, groupID int64, model string, resolved *ResolvedPricing) {
-	chPricing := r.channelService.GetChannelModelPricing(ctx, groupID, model)
+func (r *ModelPricingResolver) applyChannelOverrides(ctx context.Context, groupID int64, platform, model string, resolved *ResolvedPricing) {
+	chPricing := r.channelCacheReader.GetChannelModelPricing(ctx, groupID, platform, model)
 	if chPricing == nil {
 		return
 	}

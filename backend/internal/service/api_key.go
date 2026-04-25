@@ -66,6 +66,15 @@ func (k *APIKey) IsActive() bool {
 	return k.Status == StatusActive
 }
 
+// GroupPlatform 返回关联分组的平台名（如 "anthropic"/"openai"）；无分组时返回 ""。
+// 用于查询渠道缓存（按 (groupID, platform) 分区）。
+func (k *APIKey) GroupPlatform() string {
+	if k == nil || k.Group == nil {
+		return ""
+	}
+	return k.Group.Platform
+}
+
 // HasRateLimits returns true if any rate limit window is configured
 func (k *APIKey) HasRateLimits() bool {
 	return k.RateLimit5h > 0 || k.RateLimit1d > 0 || k.RateLimit7d > 0

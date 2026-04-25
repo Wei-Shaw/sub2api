@@ -166,7 +166,7 @@ func newTestGatewayHandler(t *testing.T, group *service.Group, accounts []*servi
 		nil, // digestStore
 		nil, // settingService
 		nil, // tlsFPProfileService
-		nil, // channelService
+		nil, // channelCacheReader
 		nil, // resolver
 	)
 

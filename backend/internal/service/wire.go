@@ -461,6 +461,8 @@ var ProviderSet = wire.NewSet(
 	ProvideScheduledTestRunnerService,
 	NewGroupCapacityService,
 	// NewChannelService 已迁移到 plugins/channel-management/
+	// 渠道数据通过 ChannelCacheReader 从 Redis 直接读取（由插件侧 CacheWriter 维护）
+	NewChannelCacheReader,
 	NewModelPricingResolver,
 	ProvidePaymentConfigService,
 	NewPaymentService,

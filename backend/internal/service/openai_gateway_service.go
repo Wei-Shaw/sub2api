@@ -326,7 +326,7 @@ type OpenAIGatewayService struct {
 	toolCorrector         *CodexToolCorrector
 	openaiWSResolver      OpenAIWSProtocolResolver
 	resolver              *ModelPricingResolver
-	channelService        *ChannelService
+	channelCacheReader    *ChannelCacheReader
 
 	openaiWSPoolOnce              sync.Once
 	openaiWSStateStoreOnce        sync.Once
@@ -363,7 +363,7 @@ func NewOpenAIGatewayService(
 	deferredService *DeferredService,
 	openAITokenProvider *OpenAITokenProvider,
 	resolver *ModelPricingResolver,
-	channelService *ChannelService,
+	channelCacheReader *ChannelCacheReader,
 ) *OpenAIGatewayService {
 	svc := &OpenAIGatewayService{
 		accountRepo:         accountRepo,
@@ -392,7 +392,7 @@ func NewOpenAIGatewayService(
 		toolCorrector:         NewCodexToolCorrector(),
 		openaiWSResolver:      NewOpenAIWSProtocolResolver(cfg),
 		resolver:              resolver,
-		channelService:        channelService,
+		channelCacheReader:    channelCacheReader,
 		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
 		codexSnapshotThrottle: newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
 	}
@@ -400,67 +400,63 @@ func NewOpenAIGatewayService(
 	return svc
 }
 
-// ResolveChannelMapping 解析渠道级模型映射（代理到 ChannelService）
-func (s *OpenAIGatewayService) ResolveChannelMapping(ctx context.Context, groupID int64, model string) ChannelMappingResult {
-	if s.channelService == nil {
+// ResolveChannelMapping 解析渠道级模型映射（代理到 ChannelCacheReader）
+func (s *OpenAIGatewayService) ResolveChannelMapping(ctx context.Context, groupID int64, platform, model string) ChannelMappingResult {
+	if s.channelCacheReader == nil {
 		return ChannelMappingResult{MappedModel: model}
 	}
-	return s.channelService.ResolveChannelMapping(ctx, groupID, model)
+	return s.channelCacheReader.ResolveChannelMapping(ctx, groupID, platform, model)
 }
 
-// IsModelRestricted 检查模型是否被渠道限制（代理到 ChannelService）
-func (s *OpenAIGatewayService) IsModelRestricted(ctx context.Context, groupID int64, model string) bool {
-	if s.channelService == nil {
+// IsModelRestricted 检查模型是否被渠道限制（代理到 ChannelCacheReader）
+func (s *OpenAIGatewayService) IsModelRestricted(ctx context.Context, groupID int64, platform, model string) bool {
+	if s.channelCacheReader == nil {
 		return false
 	}
-	return s.channelService.IsModelRestricted(ctx, groupID, model)
+	return s.channelCacheReader.IsModelRestricted(ctx, groupID, platform, model)
 }
 
 // ResolveChannelMappingAndRestrict 解析渠道映射。
 // 模型限制检查已移至调度阶段，restricted 始终返回 false。
-func (s *OpenAIGatewayService) ResolveChannelMappingAndRestrict(ctx context.Context, groupID *int64, model string) (ChannelMappingResult, bool) {
-	if s.channelService == nil {
+func (s *OpenAIGatewayService) ResolveChannelMappingAndRestrict(ctx context.Context, groupID *int64, platform, model string) (ChannelMappingResult, bool) {
+	if s.channelCacheReader == nil {
 		return ChannelMappingResult{MappedModel: model}, false
 	}
-	return s.channelService.ResolveChannelMappingAndRestrict(ctx, groupID, model)
+	return s.channelCacheReader.ResolveChannelMappingAndRestrict(ctx, groupID, platform, model)
 }
 
-func (s *OpenAIGatewayService) checkChannelPricingRestriction(ctx context.Context, groupID *int64, requestedModel string) bool {
-	if groupID == nil || s.channelService == nil || requestedModel == "" {
+func (s *OpenAIGatewayService) checkChannelPricingRestriction(ctx context.Context, groupID *int64, platform, requestedModel string) bool {
+	if groupID == nil || s.channelCacheReader == nil || requestedModel == "" || platform == "" {
 		return false
 	}
-	mapping := s.channelService.ResolveChannelMapping(ctx, *groupID, requestedModel)
+	mapping := s.channelCacheReader.ResolveChannelMapping(ctx, *groupID, platform, requestedModel)
 	billingModel := billingModelForRestriction(mapping.BillingModelSource, requestedModel, mapping.MappedModel)
 	if billingModel == "" {
 		return false
 	}
-	return s.channelService.IsModelRestricted(ctx, *groupID, billingModel)
+	return s.channelCacheReader.IsModelRestricted(ctx, *groupID, platform, billingModel)
 }
 
 func (s *OpenAIGatewayService) isUpstreamModelRestrictedByChannel(ctx context.Context, groupID int64, account *Account, requestedModel string) bool {
-	if s.channelService == nil {
+	if s.channelCacheReader == nil || account == nil {
 		return false
 	}
 	upstreamModel := resolveOpenAIForwardModel(account, requestedModel, "")
 	if upstreamModel == "" {
 		return false
 	}
-	return s.channelService.IsModelRestricted(ctx, groupID, upstreamModel)
+	return s.channelCacheReader.IsModelRestricted(ctx, groupID, account.Platform, upstreamModel)
 }
 
-func (s *OpenAIGatewayService) needsUpstreamChannelRestrictionCheck(ctx context.Context, groupID *int64) bool {
-	if groupID == nil || s.channelService == nil {
+func (s *OpenAIGatewayService) needsUpstreamChannelRestrictionCheck(ctx context.Context, groupID *int64, platform string) bool {
+	if groupID == nil || s.channelCacheReader == nil || platform == "" {
 		return false
 	}
-	ch, err := s.channelService.GetChannelForGroup(ctx, *groupID)
-	if err != nil {
-		slog.Warn("failed to check openai channel upstream restriction", "group_id", *groupID, "error", err)
+	meta, ok := s.channelCacheReader.GetChannelMeta(ctx, *groupID, platform)
+	if !ok || !meta.RestrictModels {
 		return false
 	}
-	if ch == nil || !ch.RestrictModels {
-		return false
-	}
-	return ch.BillingModelSource == BillingModelSourceUpstream
+	return meta.BillingModelSource == BillingModelSourceUpstream
 }
 
 // ReplaceModelInBody 替换请求体中的 JSON model 字段（通用 gjson/sjson 实现）。
@@ -1206,7 +1202,7 @@ func (s *OpenAIGatewayService) SelectAccountForModelWithExclusions(ctx context.C
 }
 
 func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, stickyAccountID int64) (*Account, error) {
-	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
+	if s.checkChannelPricingRestriction(ctx, groupID, PlatformOpenAI, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",
 			"group_id", derefGroupID(groupID),
 			"model", requestedModel)
@@ -1294,7 +1290,7 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
 	}
-	if groupID != nil && s.needsUpstreamChannelRestrictionCheck(ctx, groupID) &&
+	if groupID != nil && s.needsUpstreamChannelRestrictionCheck(ctx, groupID, PlatformOpenAI) &&
 		s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel) {
 		_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 		return nil
@@ -1313,7 +1309,7 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 // Returns nil if no available account.
 func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *int64, accounts []Account, requestedModel string, excludedIDs map[int64]struct{}) *Account {
 	var selected *Account
-	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
+	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID, PlatformOpenAI)
 
 	for i := range accounts {
 		acc := &accounts[i]
@@ -1386,7 +1382,7 @@ func (s *OpenAIGatewayService) isBetterAccount(candidate, current *Account) bool
 
 // SelectAccountWithLoadAwareness selects an account with load-awareness and wait plan.
 func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*AccountSelectionResult, error) {
-	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
+	if s.checkChannelPricingRestriction(ctx, groupID, PlatformOpenAI, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",
 			"group_id", derefGroupID(groupID),
 			"model", requestedModel)
@@ -1394,7 +1390,7 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 	}
 
 	cfg := s.schedulingConfig()
-	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
+	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID, PlatformOpenAI)
 	var stickyAccountID int64
 	if sessionHash != "" && s.cache != nil {
 		if accountID, err := s.getStickySessionAccountID(ctx, groupID, sessionHash); err == nil {
@@ -4475,6 +4471,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			Ctx:            ctx,
 			Model:          billingModel,
 			GroupID:        &gid,
+			Platform:       apiKey.Group.Platform,
 			Tokens:         tokens,
 			RequestCount:   1,
 			RateMultiplier: multiplier,

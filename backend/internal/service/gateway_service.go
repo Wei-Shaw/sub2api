@@ -565,7 +565,7 @@ type GatewayService struct {
 	responseHeaderFilter  *responseheaders.CompiledHeaderFilter
 	debugModelRouting     atomic.Bool
 	debugClaudeMimic      atomic.Bool
-	channelService        *ChannelService
+	channelCacheReader    *ChannelCacheReader
 	resolver              *ModelPricingResolver
 	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
@@ -596,7 +596,7 @@ func NewGatewayService(
 	digestStore *DigestSessionStore,
 	settingService *SettingService,
 	tlsFPProfileService *TLSFingerprintProfileService,
-	channelService *ChannelService,
+	channelCacheReader *ChannelCacheReader,
 	resolver *ModelPricingResolver,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
@@ -630,7 +630,7 @@ func NewGatewayService(
 		modelsListCacheTTL:   modelsListTTL,
 		responseHeaderFilter: compileResponseHeaderFilter(cfg),
 		tlsFPProfileService:  tlsFPProfileService,
-		channelService:       channelService,
+		channelCacheReader:   channelCacheReader,
 		resolver:             resolver,
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
@@ -1181,7 +1181,7 @@ func (s *GatewayService) SelectAccountForModelWithExclusions(ctx context.Context
 
 	// Claude Code 限制可能已将 groupID 解析为 fallback group，
 	// 渠道限制预检查必须使用解析后的分组。
-	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
+	if s.checkChannelPricingRestriction(ctx, groupID, platform, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",
 			"group_id", derefGroupID(groupID),
 			"model", requestedModel)
@@ -1234,7 +1234,11 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 	// Claude Code 限制可能已将 groupID 解析为 fallback group，
 	// 渠道限制预检查必须使用解析后的分组。
-	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
+	groupPlatform := ""
+	if group != nil {
+		groupPlatform = group.Platform
+	}
+	if s.checkChannelPricingRestriction(ctx, groupID, groupPlatform, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",
 			"group_id", derefGroupID(groupID),
 			"model", requestedModel)
@@ -2881,7 +2885,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 	// 3. 按优先级+最久未用选择（考虑模型支持）
 	// needsUpstreamCheck 仅在主选择循环中使用；粘性会话命中时跳过此检查，
 	// 因为粘性会话优先保持连接一致性，且 upstream 计费基准极少使用。
-	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
+	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID, platform)
 	var selected *Account
 	for i := range accounts {
 		acc := &accounts[i]
@@ -3138,7 +3142,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 
 	// 3. 按优先级+最久未用选择（考虑模型支持和混合调度）
 	// needsUpstreamCheck 仅在主选择循环中使用；粘性会话命中时跳过此检查。
-	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
+	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID, nativePlatform)
 	var selected *Account
 	for i := range accounts {
 		acc := &accounts[i]
@@ -7798,7 +7802,11 @@ func (s *GatewayService) resolveChannelPricing(ctx context.Context, billingModel
 		return nil
 	}
 	gid := apiKey.Group.ID
-	resolved := s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: &gid})
+	resolved := s.resolver.Resolve(ctx, PricingInput{
+		Model:    billingModel,
+		GroupID:  &gid,
+		Platform: apiKey.Group.Platform,
+	})
 	if resolved.Source == PricingSourceChannel {
 		return resolved
 	}
@@ -7988,12 +7996,12 @@ func optionalSubscriptionID(subscription *UserSubscription) *int64 {
 	return nil
 }
 
-// ResolveChannelMapping 委托渠道服务解析模型映射
-func (s *GatewayService) ResolveChannelMapping(ctx context.Context, groupID int64, model string) ChannelMappingResult {
-	if s.channelService == nil {
+// ResolveChannelMapping 委托渠道缓存解析模型映射
+func (s *GatewayService) ResolveChannelMapping(ctx context.Context, groupID int64, platform, model string) ChannelMappingResult {
+	if s.channelCacheReader == nil {
 		return ChannelMappingResult{MappedModel: model}
 	}
-	return s.channelService.ResolveChannelMapping(ctx, groupID, model)
+	return s.channelCacheReader.ResolveChannelMapping(ctx, groupID, platform, model)
 }
 
 // ReplaceModelInBody 替换请求体中的模型名（导出供 handler 使用）
@@ -8002,35 +8010,35 @@ func (s *GatewayService) ReplaceModelInBody(body []byte, newModel string) []byte
 }
 
 // IsModelRestricted 检查模型是否被渠道限制
-func (s *GatewayService) IsModelRestricted(ctx context.Context, groupID int64, model string) bool {
-	if s.channelService == nil {
+func (s *GatewayService) IsModelRestricted(ctx context.Context, groupID int64, platform, model string) bool {
+	if s.channelCacheReader == nil {
 		return false
 	}
-	return s.channelService.IsModelRestricted(ctx, groupID, model)
+	return s.channelCacheReader.IsModelRestricted(ctx, groupID, platform, model)
 }
 
 // ResolveChannelMappingAndRestrict 解析渠道映射。
 // 模型限制检查已移至调度阶段（checkChannelPricingRestriction），restricted 始终返回 false。
-func (s *GatewayService) ResolveChannelMappingAndRestrict(ctx context.Context, groupID *int64, model string) (ChannelMappingResult, bool) {
-	if s.channelService == nil {
+func (s *GatewayService) ResolveChannelMappingAndRestrict(ctx context.Context, groupID *int64, platform, model string) (ChannelMappingResult, bool) {
+	if s.channelCacheReader == nil {
 		return ChannelMappingResult{MappedModel: model}, false
 	}
-	return s.channelService.ResolveChannelMappingAndRestrict(ctx, groupID, model)
+	return s.channelCacheReader.ResolveChannelMappingAndRestrict(ctx, groupID, platform, model)
 }
 
 // checkChannelPricingRestriction 根据渠道计费基准检查模型是否受定价列表限制。
 // 供调度阶段预检查（requested / channel_mapped）。
 // upstream 需逐账号检查，此处返回 false。
-func (s *GatewayService) checkChannelPricingRestriction(ctx context.Context, groupID *int64, requestedModel string) bool {
-	if groupID == nil || s.channelService == nil || requestedModel == "" {
+func (s *GatewayService) checkChannelPricingRestriction(ctx context.Context, groupID *int64, platform, requestedModel string) bool {
+	if groupID == nil || s.channelCacheReader == nil || requestedModel == "" || platform == "" {
 		return false
 	}
-	mapping := s.channelService.ResolveChannelMapping(ctx, *groupID, requestedModel)
+	mapping := s.channelCacheReader.ResolveChannelMapping(ctx, *groupID, platform, requestedModel)
 	billingModel := billingModelForRestriction(mapping.BillingModelSource, requestedModel, mapping.MappedModel)
 	if billingModel == "" {
 		return false
 	}
-	return s.channelService.IsModelRestricted(ctx, *groupID, billingModel)
+	return s.channelCacheReader.IsModelRestricted(ctx, *groupID, platform, billingModel)
 }
 
 // billingModelForRestriction 根据计费基准确定限制检查使用的模型。
@@ -8051,14 +8059,14 @@ func billingModelForRestriction(source, requestedModel, channelMappedModel strin
 // isUpstreamModelRestrictedByChannel 检查账号映射后的上游模型是否受渠道定价限制。
 // 仅在 BillingModelSource="upstream" 且 RestrictModels=true 时由调度循环调用。
 func (s *GatewayService) isUpstreamModelRestrictedByChannel(ctx context.Context, groupID int64, account *Account, requestedModel string) bool {
-	if s.channelService == nil {
+	if s.channelCacheReader == nil || account == nil {
 		return false
 	}
 	upstreamModel := resolveAccountUpstreamModel(account, requestedModel)
 	if upstreamModel == "" {
 		return false
 	}
-	return s.channelService.IsModelRestricted(ctx, groupID, upstreamModel)
+	return s.channelCacheReader.IsModelRestricted(ctx, groupID, account.Platform, upstreamModel)
 }
 
 // resolveAccountUpstreamModel 确定账号将请求模型映射为什么上游模型。
@@ -8070,29 +8078,26 @@ func resolveAccountUpstreamModel(account *Account, requestedModel string) string
 }
 
 // needsUpstreamChannelRestrictionCheck 判断是否需要在调度循环中逐账号检查上游模型的渠道限制。
-func (s *GatewayService) needsUpstreamChannelRestrictionCheck(ctx context.Context, groupID *int64) bool {
-	if groupID == nil || s.channelService == nil {
+func (s *GatewayService) needsUpstreamChannelRestrictionCheck(ctx context.Context, groupID *int64, platform string) bool {
+	if groupID == nil || s.channelCacheReader == nil || platform == "" {
 		return false
 	}
-	ch, err := s.channelService.GetChannelForGroup(ctx, *groupID)
-	if err != nil {
-		slog.Warn("failed to check channel upstream restriction", "group_id", *groupID, "error", err)
+	meta, ok := s.channelCacheReader.GetChannelMeta(ctx, *groupID, platform)
+	if !ok || !meta.RestrictModels {
 		return false
 	}
-	if ch == nil || !ch.RestrictModels {
-		return false
-	}
-	return ch.BillingModelSource == BillingModelSourceUpstream
+	return meta.BillingModelSource == BillingModelSourceUpstream
 }
 
 // isStickyAccountUpstreamRestricted 检查粘性会话命中的账号是否受 upstream 渠道限制。
 // 合并 needsUpstreamChannelRestrictionCheck + isUpstreamModelRestrictedByChannel 两步调用，
 // 供 sticky session 条件链使用，避免内联多个函数调用导致行过长。
+// platform 取自 account.Platform（粘性账号的渠道键就在该平台维度下）。
 func (s *GatewayService) isStickyAccountUpstreamRestricted(ctx context.Context, groupID *int64, account *Account, requestedModel string) bool {
-	if groupID == nil {
+	if groupID == nil || account == nil {
 		return false
 	}
-	if !s.needsUpstreamChannelRestrictionCheck(ctx, groupID) {
+	if !s.needsUpstreamChannelRestrictionCheck(ctx, groupID, account.Platform) {
 		return false
 	}
 	return s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel)

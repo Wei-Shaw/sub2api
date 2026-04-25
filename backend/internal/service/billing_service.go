@@ -416,6 +416,7 @@ type CostInput struct {
 	Ctx            context.Context
 	Model          string
 	GroupID        *int64 // 用于渠道定价查找
+	Platform       string // 渠道键按 (groupID, platform) 分区；空字符串等价于跳过渠道覆盖
 	Tokens         UsageTokens
 	RequestCount   int    // 按次计费时使用
 	SizeTier       string // 按次/图片模式的层级标签（"1K","2K","4K","HD" 等）
@@ -437,8 +438,9 @@ func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, 
 	resolved := input.Resolved
 	if resolved == nil {
 		resolved = input.Resolver.Resolve(input.Ctx, PricingInput{
-			Model:   input.Model,
-			GroupID: input.GroupID,
+			Model:    input.Model,
+			GroupID:  input.GroupID,
+			Platform: input.Platform,
 		})
 	}
 
