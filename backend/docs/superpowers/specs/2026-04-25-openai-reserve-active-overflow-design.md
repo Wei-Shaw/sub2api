@@ -36,6 +36,22 @@
 4. 不修改 `routing_target_group` 的外部语义。
 5. 不借这次设计放开 unknown-model 或 projection miss 的 live fallback。
 
+## 与旧 spec 的覆盖关系
+
+本 spec 明确覆盖并替换以下旧消费语义：
+
+1. `2026-04-15-openai-reserve-group-design.md` 中“reserve 不作为普通 any/active 流量候选来源”的消费结论。
+2. `2026-04-24-openai-model-subset-reserve-design.md` 中这些消费侧约束：
+   - active/any 拒绝 overlay reserve
+   - reserve affinity 只对 exhausted 有效
+   - active/any 命中 non-overlay reserve 时 `selected_group` 保持 `active`
+
+但以下旧事实继续保留：
+
+1. reserve 不是新的 `target_group`。
+2. reserve 的生成仍然沿用当前 overflow / 60% / `exhausted=0 => 100%` 规则。
+3. projection miss / unknown-model 仍 fail-closed。
+
 ## 核心语义
 
 ### 1. reserve 的新定义
@@ -92,6 +108,7 @@
 2. 不再把 overlay reserve 当作 `active/any` 的异常 guardrail 去拒绝。
 3. 命中后观测统一写：
    - `routing_selected_group=reserve`
+4. active/any 可消费 reserve，并不改变 exhausted 对 reserve 的 overflow 优先级；两类流量只是共享账号与并发槽位，不改变 `target_group` 语义。
 
 ### 2. exhausted 路径
 
@@ -109,18 +126,48 @@
 2. unknown-model 仍必须保守排除，直到目录/能力源显式更新。
 3. 不允许因为“reserve 现在也属于 active”而重新引入 live reserve 推导。
 
+更细的边界如下：
+
+1. source-known model 的 projection miss，只能走当前已明确允许的受控 fallback。
+2. unknown-model miss 必须 fail-closed，只能触发 refresh request，不能因为 active/any 放宽 reserve 而被临时放行。
+3. cache-not-ready / projection unavailable 也不得通过 live reserve 推导来放宽 active/any。
+
 ## sticky / previous_response / continuation
 
 ### 1. 绑定语义
 
 reserve 既然是 active 基础身份的一部分，那么 binding 语义也必须放宽：
 
-1. `active/any` 请求命中的 reserve，可以继续按 `reserve` 身份绑定。
-2. exhausted 请求命中的 reserve，也继续按 `reserve` 身份绑定。
-3. 后续命中校验的核心从：
+1. `active` 请求命中的 reserve，可以继续按 `reserve` 身份绑定。
+2. `any` 请求命中的 reserve，也继续按 `reserve` 身份绑定。
+3. exhausted 请求命中的 reserve，也继续按 `reserve` 身份绑定。
+4. 后续命中校验的核心从：
    - “reserve 只允许 exhausted 命中”
    转为：
    - “当前 binding 的 reserve 身份是否仍与账号当前身份一致”
+
+### 1.1 binding 字段矩阵
+
+后续实现和测试必须锁住以下写入规则：
+
+1. active 命中 reserve：
+   - `target_group=active`
+   - `selected_group=reserve`
+   - `affinity_domain=reserve`
+2. any 命中 reserve：
+   - `target_group=any`
+   - `selected_group=reserve`
+   - `affinity_domain=reserve`
+3. exhausted overflow 命中 reserve：
+   - `target_group=exhausted`
+   - `selected_group=reserve`
+   - `affinity_domain=reserve`
+
+并且在这三种场景里，都必须继续携带：
+
+- `projection_version`
+- `projection_model_key`
+- `projection_built_at`
 
 ### 2. 版本一致性
 
@@ -157,7 +204,9 @@ reserve 既然是 active 基础身份的一部分，那么 binding 语义也必�
 3. active/any 命中 reserve 时：
    - `routing_selected_group=reserve`
    - affinity / sticky / `previous_response` 绑定也写 `reserve`
-4. sticky / `previous_response` 不再因“reserve 只允许 exhausted”而误拒绝 active/any 命中。
+   - `affinity_domain=reserve`
+4. sticky / `previous_response` / WS continuation 不再因“reserve 只允许 exhausted”而误拒绝 active/any 命中。
+5. 同一账号若既在 primary active 池中又具备 reserve 身份，active/any 命中后仍统一按 reserve 身份记录，不得写成 `selected_group=active`。
 
 ### 必保留行为
 
@@ -166,16 +215,40 @@ reserve 既然是 active 基础身份的一部分，那么 binding 语义也必�
 3. projection miss / unknown-model 仍 fail-closed。
 4. `GPT-5.4-Sys` / `GPT-5.5-Sys` 当前已经修好的链路不回归。
 
+### 旧行为反转矩阵
+
+后续测试与实现计划必须显式反转这些旧断言：
+
+1. `TargetGroupAnyNeverSelectsReserve` 不再成立。
+2. `TargetGroupActiveNeverSelectsReserve` 不再成立。
+3. `PreviousResponseReserveRejectedForAny/Active` 不再成立。
+4. `ReserveSharedStickyBindingRejectedForAny/Active` 不再成立。
+5. active/any 命中 reserve 时，`selected_group` 不再写 `active`，而统一写 `reserve`。
+
 ### 回归矩阵
 
 至少要覆盖：
 
-1. `active + reserve` 命中。
-2. `any + reserve` 命中。
-3. `exhausted + reserve overflow` 命中。
-4. `previous_response + active + reserve` 继续命中。
-5. `sticky + any + reserve` 继续命中。
-6. projection miss 下，active/any 对 reserve 的放宽**不能**连带放宽 unknown-model / cache-not-ready 的 fail-closed 边界。
+1. `load-balance + active + reserve` 命中。
+2. `load-balance + any + reserve` 命中。
+3. `load-balance + exhausted + reserve overflow` 命中。
+4. `sticky + active + reserve` 命中。
+5. `sticky + any + reserve` 命中。
+6. `sticky + exhausted + reserve` 命中。
+7. `previous_response + active + reserve` 命中。
+8. `previous_response + any + reserve` 命中。
+9. `previous_response + exhausted + reserve` 命中。
+10. `WS continuation + active/any/exhausted + reserve` 命中。
+11. projection miss 下，active/any 对 reserve 的放宽**不能**连带放宽 unknown-model / cache-not-ready 的 fail-closed 边界。
+12. `GPT-5.4-Sys` / `GPT-5.5-Sys` / plain `gpt-5.5` 三条链路同时验证不回归。
+
+### 观测回归
+
+至少还要验证：
+
+1. usage / request details / ops 中，`routing_target_group` 保持原始请求语义。
+2. usage / request details / ops 中，凡命中 reserve 的请求都写 `routing_selected_group=reserve`。
+3. active/any 命中 reserve 与 exhausted overflow 命中 reserve，在观测上可被区分。
 
 ## 风险与缓解
 
