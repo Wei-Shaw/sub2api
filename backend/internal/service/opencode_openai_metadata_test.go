@@ -168,6 +168,60 @@ func TestExtractOpenCodeOpenAIModels_MaterializesFastModes(t *testing.T) {
 	require.Equal(t, "fast-mode", requireOpenCodeModelHeaders(t, models["gpt-5.4-fast"])["x-test-header"])
 }
 
+func TestExtractOpenCodeOpenAIModels_RestrictsGPT55CodexOAuthLimit(t *testing.T) {
+	payload := map[string]any{
+		"openai": map[string]any{
+			"models": map[string]any{
+				"gpt-5.5": map[string]any{
+					"id":        "gpt-5.5",
+					"name":      "GPT-5.5",
+					"limit":     map[string]any{"context": 1050000, "input": 922000, "output": 128000},
+					"cost":      map[string]any{"input": 3.0, "output": 18.0, "cache_read": 0.3},
+					"reasoning": true,
+					"experimental": map[string]any{
+						"modes": map[string]any{
+							"fast": map[string]any{
+								"provider": map[string]any{
+									"body": map[string]any{"service_tier": "priority"},
+								},
+							},
+						},
+					},
+				},
+				"gpt-5.4": map[string]any{
+					"id":    "gpt-5.4",
+					"name":  "GPT-5.4",
+					"limit": map[string]any{"context": 1050000, "input": 922000, "output": 128000},
+					"experimental": map[string]any{
+						"modes": map[string]any{
+							"fast": map[string]any{
+								"provider": map[string]any{
+									"body": map[string]any{"service_tier": "priority"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	models, err := extractOpenCodeOpenAIModels(payload)
+
+	require.NoError(t, err)
+	require.Equal(t, 400000, models["gpt-5.5"].Limit.Context)
+	require.Equal(t, 272000, models["gpt-5.5"].Limit.Input)
+	require.Equal(t, 128000, models["gpt-5.5"].Limit.Output)
+	require.Equal(t, 400000, models["gpt-5.5-fast"].Limit.Context)
+	require.Equal(t, 272000, models["gpt-5.5-fast"].Limit.Input)
+	require.Equal(t, 128000, models["gpt-5.5-fast"].Limit.Output)
+	require.Equal(t, "priority", requireOpenCodeModelOptions(t, models["gpt-5.5-fast"])["serviceTier"])
+	require.Equal(t, 1050000, models["gpt-5.4"].Limit.Context)
+	require.Equal(t, 922000, models["gpt-5.4"].Limit.Input)
+	require.Equal(t, 1050000, models["gpt-5.4-fast"].Limit.Context)
+	require.Equal(t, 922000, models["gpt-5.4-fast"].Limit.Input)
+}
+
 func TestOpenCodeMetadataServiceGetOpenAIModels_UsesCacheOnFailure(t *testing.T) {
 	ok := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/api.json", r.URL.Path)

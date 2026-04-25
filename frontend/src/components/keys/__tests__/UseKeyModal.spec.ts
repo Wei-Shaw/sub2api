@@ -19,8 +19,8 @@ const { openaiModelsMock } = vi.hoisted(() => ({
       output: ['text']
     },
     limit: {
-      context: 1050000,
-      input: 922000,
+      context: 400000,
+      input: 272000,
       output: 128000
     },
     cost: {
@@ -43,8 +43,8 @@ const { openaiModelsMock } = vi.hoisted(() => ({
       output: ['text']
     },
     limit: {
-      context: 1050000,
-      input: 922000,
+      context: 400000,
+      input: 272000,
       output: 128000
     },
     cost: {
@@ -371,6 +371,10 @@ describe('UseKeyModal', () => {
     expect(gpt55Fast.id).toBe('gpt-5.5')
     expect(gpt55Sys.id).toBe('gpt-5.5-Sys')
     expect(gpt55FastSys.id).toBe('gpt-5.5-Sys')
+    expect(gpt55.limit).toMatchObject({ context: 400000, input: 272000, output: 128000 })
+    expect(gpt55Fast.limit).toMatchObject({ context: 400000, input: 272000, output: 128000 })
+    expect(gpt55Sys.limit).toMatchObject({ context: 400000, input: 272000, output: 128000 })
+    expect(gpt55FastSys.limit).toMatchObject({ context: 400000, input: 272000, output: 128000 })
     expect(gpt54.cost.context_over_200k).toBeUndefined()
     expect(gpt54Fast.cost.context_over_200k).toBeUndefined()
     expect(gpt54Mini.cost.context_over_200k).toBeUndefined()

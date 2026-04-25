@@ -19,6 +19,12 @@ const (
 
 var openCodeCodexOAuthVersionIDPattern = regexp.MustCompile(`^gpt-(\d+)\.(\d+)$`)
 
+var openCodeGPT55CodexOAuthLimit = OpenCodeOpenAIModelLimit{
+	Context: 400000,
+	Input:   272000,
+	Output:  128000,
+}
+
 type OpenCodeOpenAIModel struct {
 	ID               string                        `json:"id"`
 	Name             string                        `json:"name"`
@@ -192,10 +198,18 @@ func filterOpenCodeOpenAIModelsForCodexOAuth(src map[string]OpenCodeOpenAIModel)
 	out := map[string]OpenCodeOpenAIModel{}
 	for id, model := range src {
 		if shouldAllowOpenCodeOpenAIModelForCodexOAuth(id, allowed) {
+			model = applyOpenCodeCodexOAuthModelOverrides(id, model)
 			out[id] = model
 		}
 	}
 	return out
+}
+
+func applyOpenCodeCodexOAuthModelOverrides(id string, model OpenCodeOpenAIModel) OpenCodeOpenAIModel {
+	if strings.Contains(id, "gpt-5.5") {
+		model.Limit = openCodeGPT55CodexOAuthLimit
+	}
+	return model
 }
 
 func shouldAllowOpenCodeOpenAIModelForCodexOAuth(id string, allowed map[string]struct{}) bool {
