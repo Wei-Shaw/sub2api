@@ -1117,6 +1117,46 @@ REDACTED
 	require.Empty(t, rec.Body.String())
 REDACTED
 
+func TestOpenAIStreamingPreambleKeepaliveUsesDownstreamIdle(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{
+		Gateway: config.GatewayConfig{
+			StreamDataIntervalTimeout: 0,
+			StreamKeepaliveInterval:   1,
+			MaxLineSize:               defaultMaxLineSize,
+	REDACTED,
+REDACTED
+	svc := &OpenAIGatewayService{cfg: cfgREDACTED
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       pr,
+		Header:     http.Header{REDACTED,
+REDACTED
+
+	go func() {
+		defer func() { _ = pw.Close() REDACTED()
+		_, _ = pw.Write([]byte("data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\"REDACTEDREDACTED\n\n"))
+		for i := 0; i < 6; i++ {
+			time.Sleep(250 * time.Millisecond)
+			_, _ = pw.Write([]byte("data: {\"type\":\"response.in_progress\",\"response\":{\"id\":\"resp_1\"REDACTEDREDACTED\n\n"))
+	REDACTED
+		_, _ = pw.Write([]byte("data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":1,\"output_tokens\":2REDACTEDREDACTEDREDACTED\n\n"))
+REDACTED()
+
+	result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"REDACTED, time.Now(), "model", "model")
+	_ = pr.Close()
+REDACTED
+	require.NotNil(t, result)
+	require.Contains(t, rec.Body.String(), ":\n\n")
+	require.Contains(t, rec.Body.String(), "response.completed")
+REDACTED
+
 func TestOpenAIStreamingPolicyResponseFailedBeforeOutputPassesThrough(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
