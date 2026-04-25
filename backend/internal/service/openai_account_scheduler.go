@@ -728,7 +728,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		}
 	} else {
 		reserveAffinityBinding := isOpenAIReserveAffinityBinding(affinityBinding)
-		legacyReserveAffinityHit = reserveAffinityBinding && account.IsOpenAIReserveCandidate()
+		legacyReserveAffinityHit = reserveAffinityBinding && req.TargetGroup == TargetGroupExhausted && account.IsOpenAIReserveCandidate()
 		if reserveAffinityBinding && !account.IsOpenAIReserveCandidate() && !account.MatchesTargetGroup(TargetGroupExhausted) {
 			if sticky != nil {
 				sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
@@ -736,7 +736,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 			_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
 			return nil, nil
 		}
-		if (req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive) && s.service.isCurrentOpenAIReserveOverlayAccount(ctx, req.GroupID, req.RequestedModel, account) {
+		if (req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive) && s.service.isOpenAILegacyReserveOverlayAccount(ctx, req.GroupID, req.RequestedModel, account) {
 			if sticky != nil {
 				sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
 			}

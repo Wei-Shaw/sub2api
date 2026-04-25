@@ -3868,7 +3868,7 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 		if !allowLegacyFallback {
 			return nil, nil, ErrSchedulerCacheNotReady
 		}
-		if (targetGroup == TargetGroupAny || targetGroup == TargetGroupActive) && s.isCurrentOpenAIReserveOverlayAccount(ctx, groupID, requestedModel, account) {
+		if (targetGroup == TargetGroupAny || targetGroup == TargetGroupActive) && s.isOpenAILegacyReserveOverlayAccount(ctx, groupID, requestedModel, account) {
 			_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 			return nil, nil, nil
 		}

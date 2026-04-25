@@ -1188,7 +1188,7 @@ func TestOpenAIGatewayService_ListOpenAIExhaustedWithReserveOverlay_GPT55SubsetP
 	require.Equal(t, activeTeam.ID, reserveAccounts[0].ID)
 }
 
-func TestOpenAIGatewayService_IsCurrentOpenAIReserveOverlayAccount_ProjectionMissFallsBackToLegacyOverlay(t *testing.T) {
+func TestOpenAIGatewayService_IsCurrentOpenAIReserveOverlayAccount_ProjectionMissDoesNotUseLegacyOverlay(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(4226)
 	exhaustedBase := Account{
@@ -1220,8 +1220,39 @@ func TestOpenAIGatewayService_IsCurrentOpenAIReserveOverlayAccount_ProjectionMis
 	require.NoError(t, err)
 	require.NotNil(t, activeReserveFromSnapshot)
 
-	require.True(t, svc.isCurrentOpenAIReserveOverlayAccount(ctx, &groupID, "gpt-5.1", overlayFromSnapshot))
+	require.False(t, svc.isCurrentOpenAIReserveOverlayAccount(ctx, &groupID, "gpt-5.1", overlayFromSnapshot))
 	require.False(t, svc.isCurrentOpenAIReserveOverlayAccount(ctx, &groupID, "gpt-5.1", activeReserveFromSnapshot))
+}
+
+func TestOpenAIGatewayService_IsCurrentOpenAIReserveOverlayAccount_CacheNotReadyDoesNotUseLegacyOverlay(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(4227)
+	exhaustedBase := Account{
+		ID:          6321,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Extra: map[string]any{
+			"quota_limit": float64(100),
+			"quota_used":  float64(100),
+		},
+	}
+	reserveAccount := newOpenAIReserveCandidateAccountForTest(6322, 1, 20)
+	snapshotCache := &openAISnapshotCacheStub{
+		accountsByID: map[int64]*Account{6321: &exhaustedBase, 6322: &reserveAccount},
+	}
+	svc := &OpenAIGatewayService{
+		accountRepo:       stubOpenAIAccountRepo{accounts: []Account{exhaustedBase, reserveAccount}},
+		cfg:               &config.Config{},
+		schedulerSnapshot: &SchedulerSnapshotService{cache: snapshotCache},
+	}
+
+	reserveFromSnapshot, err := svc.getSchedulableAccount(ctx, reserveAccount.ID)
+	require.NoError(t, err)
+	require.NotNil(t, reserveFromSnapshot)
+	require.False(t, svc.isCurrentOpenAIReserveOverlayAccount(ctx, &groupID, "gpt-5.1", reserveFromSnapshot))
 }
 
 func TestOpenAIGatewayService_ProjectionMissFailsClosedWithoutLiveReserveFallback(t *testing.T) {
