@@ -51,11 +51,19 @@ RUN apk add --no-cache git ca-certificates tzdata
 
 WORKDIR /app/backend
 
-# Copy go mod files first (better caching)
+# Copy plugin-sdk module first (referenced via replace directive in backend/go.mod)
+# Only go.mod/go.sum + source structure are needed for `go mod download` to resolve;
+# placed before the backend mod download so layer caching works for typical edits.
+COPY plugin-sdk/go.mod plugin-sdk/go.sum /app/plugin-sdk/
+
+# Copy backend go.mod files (better caching)
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 
-# Copy backend source first
+# Copy plugin-sdk source (after mod download so source-only edits do not bust cache)
+COPY plugin-sdk/ /app/plugin-sdk/
+
+# Copy backend source
 COPY backend/ ./
 
 # Copy frontend dist from previous stage (must be after backend copy to avoid being overwritten)

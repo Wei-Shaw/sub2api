@@ -156,6 +156,37 @@ git push origin main
 
 > 数据库服务器运维手册：`db-clicodeplus:/root/README.md`
 
+### 运行时资源限制（非正式环境）
+
+**所有非正式环境（Beta / OpenAI / Star / Test 等）的容器都必须在 `docker-compose.override.yml` 中显式声明 `deploy.resources.limits`**，避免单个测试环境吃光服务器资源。推荐额度：
+
+| 服务 | cpus 上限 | mem 上限 |
+|------|-----------|----------|
+| sub2api 应用容器 | 1.5 | 1.5G ~ 2G |
+| postgres（自带容器） | 0.5 | 512M |
+| redis（自带容器） | 0.3 | 256M |
+
+示例（Test 环境实际使用）：
+
+```yaml
+services:
+  sub2api:
+    deploy:
+      resources:
+        limits: { cpus: "1.5", memory: 1536M }
+        reservations: { cpus: "0.5", memory: 512M }
+  postgres:
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 512M }
+  redis:
+    deploy:
+      resources:
+        limits: { cpus: "0.3", memory: 256M }
+```
+
+> 共用外部数据库的环境（Beta/OpenAI/Star 当前形态）只需限制 `sub2api` 容器；自带 PG/Redis 容器（Test）必须把三者全部限制。
+
 ### 构建器说明
 
 生产服务器上配置了资源限制的 Docker buildx 构建器 `limited-builder`，**所有构建操作必须使用此构建器**：
@@ -178,16 +209,25 @@ ssh clicodeplus "docker buildx create --name limited-builder --driver docker-con
 
 ### 部署环境说明
 
-| 环境 | 目录（生产服务器） | 端口 | 数据库 | Redis DB | 容器名 |
-|------|------|------|--------|----------|--------|
-| 正式 | `/root/sub2api` | 8080 | `sub2api` | 0 | `sub2api` |
-| Beta | `/root/sub2api-beta` | 8084 | `beta` | 2 | `sub2api-beta` |
-| OpenAI | `/root/sub2api-openai` | 8083 | `openai` | 3 | `sub2api-openai` |
-| Star | `/root/sub2api-star` | 8086 | `star` | 4 | `sub2api-star` |
+| 环境 | 目录（生产服务器） | 端口 | 数据库 | Redis DB | 容器名 | 数据来源 |
+|------|------|------|--------|----------|--------|----------|
+| 正式 | `/root/sub2api` | 8080 | `sub2api` | 0 | `sub2api` | 外部 db.clicodeplus.com |
+| Beta | `/root/sub2api-beta` | 8084 | `beta` | 2 | `sub2api-beta` | 外部 db.clicodeplus.com |
+| OpenAI | `/root/sub2api-openai` | 8083 | `openai` | 3 | `sub2api-openai` | 外部 db.clicodeplus.com |
+| Star | `/root/sub2api-star` | 8086 | `star` | 4 | `sub2api-star` | 外部 db.clicodeplus.com |
+| **Test** | **`/root/sub2api-plugin`** | **8087** | **容器 PG（用户 `plugin`）** | **0（独立）** | **`sub2api-test`** | **自带容器（隔离）** |
+
+> **Test 环境（test.clicodeplus.com）特例**：
+> - 用于验证插件系统（gRPC SDK 方案，分支 `feature/plugin-grpc`），与正式/Beta/OpenAI/Star 完全隔离
+> - **PG/Redis 都是独立容器**，不连接 `db.clicodeplus.com`，不会污染其他环境数据
+> - Compose project 名 `sub2api-test`，容器名 `sub2api-test` / `sub2api-test-postgres` / `sub2api-test-redis`
+> - 镜像 tag `sub2api:test`（与正式 `latest`、beta `:beta` 区分）
+> - Caddy 已预配 `test.clicodeplus.com → localhost:8087`（同时 `pay.beta.clicodeplus.com` 也复用 8087）
+> - 备份位置：`/root/sub2api-plugin-backup/`（保留切换前的 `.env` 和 git HEAD 快照，可回滚）
 
 ### 外部数据库与 Redis
 
-所有环境（正式、Beta、OpenAI、Star）共用 `db.clicodeplus.com` 上的 **PostgreSQL 16** 和 **Redis 7**，不使用容器内数据库或 Redis。
+正式、Beta、OpenAI、Star 共用 `db.clicodeplus.com` 上的 **PostgreSQL 16** 和 **Redis 7**，不使用容器内数据库或 Redis（Test 环境不在此列，详见上表）。
 
 **PostgreSQL**（端口 5432，TLS 加密，scram-sha-256 认证）：
 
