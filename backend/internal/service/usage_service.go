@@ -42,14 +42,16 @@ type CreateUsageLogRequest struct {
 
 // UsageStats 使用统计
 type UsageStats struct {
-	TotalRequests     int64   `json:"total_requests"`
-	TotalInputTokens  int64   `json:"total_input_tokens"`
-	TotalOutputTokens int64   `json:"total_output_tokens"`
-	TotalCacheTokens  int64   `json:"total_cache_tokens"`
-	TotalTokens       int64   `json:"total_tokens"`
-	TotalCost         float64 `json:"total_cost"`
-	TotalActualCost   float64 `json:"total_actual_cost"`
-	AverageDurationMs float64 `json:"average_duration_ms"`
+	TotalRequests            int64   `json:"total_requests"`
+	TotalInputTokens         int64   `json:"total_input_tokens"`
+	TotalOutputTokens        int64   `json:"total_output_tokens"`
+	TotalCacheTokens         int64   `json:"total_cache_tokens"`
+	TotalCacheReadTokens     int64   `json:"total_cache_read_tokens"`
+	TotalCacheCreationTokens int64   `json:"total_cache_creation_tokens"`
+	TotalTokens              int64   `json:"total_tokens"`
+	TotalCost                float64 `json:"total_cost"`
+	TotalActualCost          float64 `json:"total_actual_cost"`
+	AverageDurationMs        float64 `json:"average_duration_ms"`
 }
 
 // UsageService 使用统计服务
@@ -189,16 +191,7 @@ func (s *UsageService) GetStatsByUser(ctx context.Context, userID int64, startTi
 		return nil, fmt.Errorf("get user stats: %w", err)
 	}
 
-	return &UsageStats{
-		TotalRequests:     stats.TotalRequests,
-		TotalInputTokens:  stats.TotalInputTokens,
-		TotalOutputTokens: stats.TotalOutputTokens,
-		TotalCacheTokens:  stats.TotalCacheTokens,
-		TotalTokens:       stats.TotalTokens,
-		TotalCost:         stats.TotalCost,
-		TotalActualCost:   stats.TotalActualCost,
-		AverageDurationMs: stats.AverageDurationMs,
-	}, nil
+	return toServiceUsageStats(stats), nil
 }
 
 // GetStatsByAPIKey 获取API Key的使用统计
@@ -208,16 +201,7 @@ func (s *UsageService) GetStatsByAPIKey(ctx context.Context, apiKeyID int64, sta
 		return nil, fmt.Errorf("get api key stats: %w", err)
 	}
 
-	return &UsageStats{
-		TotalRequests:     stats.TotalRequests,
-		TotalInputTokens:  stats.TotalInputTokens,
-		TotalOutputTokens: stats.TotalOutputTokens,
-		TotalCacheTokens:  stats.TotalCacheTokens,
-		TotalTokens:       stats.TotalTokens,
-		TotalCost:         stats.TotalCost,
-		TotalActualCost:   stats.TotalActualCost,
-		AverageDurationMs: stats.AverageDurationMs,
-	}, nil
+	return toServiceUsageStats(stats), nil
 }
 
 // GetStatsByAccount 获取账号的使用统计
@@ -227,16 +211,7 @@ func (s *UsageService) GetStatsByAccount(ctx context.Context, accountID int64, s
 		return nil, fmt.Errorf("get account stats: %w", err)
 	}
 
-	return &UsageStats{
-		TotalRequests:     stats.TotalRequests,
-		TotalInputTokens:  stats.TotalInputTokens,
-		TotalOutputTokens: stats.TotalOutputTokens,
-		TotalCacheTokens:  stats.TotalCacheTokens,
-		TotalTokens:       stats.TotalTokens,
-		TotalCost:         stats.TotalCost,
-		TotalActualCost:   stats.TotalActualCost,
-		AverageDurationMs: stats.AverageDurationMs,
-	}, nil
+	return toServiceUsageStats(stats), nil
 }
 
 // GetStatsByModel 获取模型的使用统计
@@ -246,16 +221,27 @@ func (s *UsageService) GetStatsByModel(ctx context.Context, modelName string, st
 		return nil, fmt.Errorf("get model stats: %w", err)
 	}
 
+	return toServiceUsageStats(stats), nil
+}
+
+// toServiceUsageStats converts repo-layer UsageStats to service-layer UsageStats.
+// Centralizes the field-by-field mapping to avoid duplication across GetStatsBy* methods.
+func toServiceUsageStats(stats *usagestats.UsageStats) *UsageStats {
+	if stats == nil {
+		return &UsageStats{}
+	}
 	return &UsageStats{
-		TotalRequests:     stats.TotalRequests,
-		TotalInputTokens:  stats.TotalInputTokens,
-		TotalOutputTokens: stats.TotalOutputTokens,
-		TotalCacheTokens:  stats.TotalCacheTokens,
-		TotalTokens:       stats.TotalTokens,
-		TotalCost:         stats.TotalCost,
-		TotalActualCost:   stats.TotalActualCost,
-		AverageDurationMs: stats.AverageDurationMs,
-	}, nil
+		TotalRequests:            stats.TotalRequests,
+		TotalInputTokens:         stats.TotalInputTokens,
+		TotalOutputTokens:        stats.TotalOutputTokens,
+		TotalCacheTokens:         stats.TotalCacheTokens,
+		TotalCacheReadTokens:     stats.TotalCacheReadTokens,
+		TotalCacheCreationTokens: stats.TotalCacheCreationTokens,
+		TotalTokens:              stats.TotalTokens,
+		TotalCost:                stats.TotalCost,
+		TotalActualCost:          stats.TotalActualCost,
+		AverageDurationMs:        stats.AverageDurationMs,
+	}
 }
 
 // GetDailyStats 获取每日使用统计（最近N天）

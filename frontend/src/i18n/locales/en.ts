@@ -252,7 +252,11 @@ export default {
     },
     entitySearch: {
       typeToSearch: 'Type to search',
+      typeOrFocus: 'Type a keyword or focus to browse',
       noMatches: 'No matches found'
+    },
+    tagInput: {
+      enterToAdd: 'Press Enter to add'
     },
     justNow: 'just now',
     save: 'Save',
@@ -850,6 +854,9 @@ export default {
     imageUnitPrice: 'Per-image price',
     cacheRead: 'Read',
     cacheWrite: 'Write',
+    cacheHit: 'Cache hit',
+    cacheCreate: 'Cache write',
+    cacheHitRate: 'Cache hit rate',
     serviceTier: 'Service tier',
     serviceTierPriority: 'Fast',
     serviceTierFlex: 'Flex',
@@ -3825,7 +3832,6 @@ export default {
       emptyDescription: 'Create the first rule to add checks on top of the existing limits.',
       userId: 'User ID: {id}',
       unnamedRule: 'Unnamed rule #{id}',
-      morePaths: '+{count} more paths',
       loadError: 'Failed to load service quota rules',
       saveSuccess: 'Service quota rule saved',
       saveError: 'Failed to save service quota rule',
@@ -3841,7 +3847,7 @@ export default {
         status: 'Status',
         name: 'Name',
         limiters: 'Limiters',
-        paths: 'Paths',
+        dimensions: 'Dimensions',
         counterMode: 'Counter Mode',
         fallback: 'Fallback',
         type: 'Type',
@@ -3855,6 +3861,9 @@ export default {
         group: 'Group: {value}',
         account: 'Account: {value}',
         model: 'Model: {value}',
+        channelCount: 'Channels x{count}',
+        groupCount: 'Groups x{count}',
+        accountCount: 'Accounts x{count}',
         allRequests: 'All requests'
       },
       limiters: {
@@ -3895,25 +3904,25 @@ export default {
         targetUserIdsRequired: 'Required when counter mode is "Specific Users"',
         limitersTitle: 'Limiters (a single rule can carry multiple)',
         limitersHint: 'Each limiter type can appear once; concurrency has no window',
-        pathsTitle: 'Match Paths (rule fires when ANY path matches)',
-        pathsHint: 'Each path drills Platform -> Channel -> Group -> Account -> Model. Empty = no restriction on that dimension.',
-        platform: 'Platform',
-        platformPlaceholder: 'e.g. anthropic / openai / gemini',
-        channelId: 'Channel',
-        groupId: 'Group',
-        accountId: 'Account',
-        modelPattern: 'Model Pattern',
-        modelPatternPlaceholder: 'e.g. claude-opus-* or an exact model name',
+        dimensionsTitle: 'Dimensions (5-way AND match; empty = no restriction)',
+        dimensionsHint: 'Each dimension is independent: rule fires when the request value is contained in every non-empty set',
         required: 'Required'
       },
       limiterEditor: {
         empty: 'No limiter added yet. Click below to add one.',
         add: 'Add Limiter'
       },
-      pathEditor: {
-        empty: 'No path added yet. Click below to add one.',
-        add: 'Add Path',
-        pathIndex: 'Path #{index}'
+      dimensions: {
+        platforms: 'Platforms',
+        platformsAll: 'None selected = no platform restriction',
+        channels: 'Channels',
+        channelsPlaceholder: 'Search channels (empty = no channel restriction)',
+        groups: 'Groups',
+        groupsPlaceholder: 'Search groups (empty = no group restriction)',
+        accounts: 'Accounts',
+        accountsPlaceholder: 'Search accounts (empty = no account restriction)',
+        modelPatterns: 'Model Patterns',
+        modelPatternsPlaceholder: 'Press Enter to add, e.g. claude-opus-*'
       }
     },
 

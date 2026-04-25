@@ -252,7 +252,11 @@ export default {
     },
     entitySearch: {
       typeToSearch: '输入关键字搜索',
+      typeOrFocus: '输入关键字或聚焦查看默认列表',
       noMatches: '无匹配结果'
+    },
+    tagInput: {
+      enterToAdd: '回车添加'
     },
     justNow: '刚刚',
     save: '保存',
@@ -854,6 +858,9 @@ export default {
     imageUnitPrice: '单张价格',
     cacheRead: '读取',
     cacheWrite: '写入',
+    cacheHit: '缓存命中',
+    cacheCreate: '缓存写入',
+    cacheHitRate: '缓存命中率',
     serviceTier: '服务档位',
     serviceTierPriority: 'Fast',
     serviceTierFlex: 'Flex',
@@ -3989,7 +3996,6 @@ export default {
       emptyDescription: '创建第一条规则，在现有配额之上叠加限制。',
       userId: '用户 ID：{id}',
       unnamedRule: '未命名规则 #{id}',
-      morePaths: '+{count} 条路径',
       loadError: '加载服务配额规则失败',
       saveSuccess: '服务配额规则已保存',
       saveError: '保存服务配额规则失败',
@@ -4005,7 +4011,7 @@ export default {
         status: '状态',
         name: '名称',
         limiters: '限流器',
-        paths: '路径',
+        dimensions: '维度',
         counterMode: '计数模式',
         fallback: '兜底',
         type: '类型',
@@ -4019,6 +4025,9 @@ export default {
         group: '分组：{value}',
         account: '账号：{value}',
         model: '模型：{value}',
+        channelCount: '渠道 ×{count}',
+        groupCount: '分组 ×{count}',
+        accountCount: '账号 ×{count}',
         allRequests: '所有请求'
       },
       limiters: {
@@ -4059,25 +4068,25 @@ export default {
         targetUserIdsRequired: '计数模式为"指定用户"时必填',
         limitersTitle: '限流器（一条规则可同时配置多种）',
         limitersHint: '同一类型只能配置一个；并发不支持窗口',
-        pathsTitle: '匹配路径（命中任意一条即生效）',
-        pathsHint: '每条路径按 平台 → 渠道 → 分组 → 账号 → 模型 单选；留空表示不限制该维度',
-        platform: '平台',
-        platformPlaceholder: '例如 anthropic / openai / gemini',
-        channelId: '渠道',
-        groupId: '分组',
-        accountId: '账号',
-        modelPattern: '模型通配符',
-        modelPatternPlaceholder: '例如 claude-opus-* 或具体模型名',
+        dimensionsTitle: '维度（5 维 AND 匹配，留空表示不限制该维度）',
+        dimensionsHint: '每个维度独立判断：集合内任一值匹配请求即视为该维度通过',
         required: '必填'
       },
       limiterEditor: {
         empty: '尚未添加限流器，点击下方按钮添加',
         add: '添加限流器'
       },
-      pathEditor: {
-        empty: '尚未添加路径，点击下方按钮添加',
-        add: '添加路径',
-        pathIndex: '路径 #{index}'
+      dimensions: {
+        platforms: '平台',
+        platformsAll: '未选 = 不限制平台',
+        channels: '渠道',
+        channelsPlaceholder: '搜索渠道（留空表示不限制渠道）',
+        groups: '分组',
+        groupsPlaceholder: '搜索分组（留空表示不限制分组）',
+        accounts: '账号',
+        accountsPlaceholder: '搜索账号（留空表示不限制账号）',
+        modelPatterns: '模型通配符',
+        modelPatternsPlaceholder: '回车添加，例如 claude-opus-*'
       }
     },
 

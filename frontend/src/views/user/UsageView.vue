@@ -29,7 +29,7 @@
             <div class="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/30">
               <Icon name="cube" size="md" class="text-amber-600 dark:text-amber-400" />
             </div>
-            <div>
+            <div class="min-w-0 flex-1">
               <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
                 {{ t('usage.totalTokens') }}
               </p>
@@ -38,7 +38,14 @@
               </p>
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('usage.in') }}: {{ formatTokens(usageStats?.total_input_tokens || 0) }} /
-                {{ t('usage.out') }}: {{ formatTokens(usageStats?.total_output_tokens || 0) }}
+                <span class="text-sky-600 dark:text-sky-400">{{ t('usage.cacheHit') }}: {{ formatTokens(usageStats?.total_cache_read_tokens || 0) }}</span>
+                <template v-if="(usageStats?.total_cache_creation_tokens || 0) > 0">
+                  / <span class="text-amber-600 dark:text-amber-400">{{ t('usage.cacheCreate') }}: {{ formatTokens(usageStats?.total_cache_creation_tokens || 0) }}</span>
+                </template>
+                / {{ t('usage.out') }}: {{ formatTokens(usageStats?.total_output_tokens || 0) }}
+              </p>
+              <p class="text-xs text-gray-400 dark:text-gray-500">
+                {{ t('usage.cacheHitRate') }}: {{ cacheHitRateLabel }}
               </p>
             </div>
           </div>
@@ -543,6 +550,16 @@ const tokenTooltipData = ref<UsageLog | null>(null)
 
 // Usage stats from API
 const usageStats = ref<UsageStatsResponse | null>(null)
+
+// 缓存命中率 = cache_read / (input + cache_read)
+// 分母为 0（无任何输入）时显示 '-'
+const cacheHitRateLabel = computed(() => {
+  const cacheRead = usageStats.value?.total_cache_read_tokens || 0
+  const input = usageStats.value?.total_input_tokens || 0
+  const denominator = input + cacheRead
+  if (denominator <= 0) return '-'
+  return `${((cacheRead / denominator) * 100).toFixed(1)}%`
+})
 
 const columns = computed<Column[]>(() => [
   { key: 'api_key', label: t('usage.apiKeyFilter'), sortable: false },
