@@ -54,9 +54,14 @@ export interface HostI18n {
   /** 当前 locale，reactive。 */
   currentLocale: Ref<string>
   /**
-   * 注册插件自己的 i18n namespace。
-   * messages 形如 `{ en: { foo: 'bar' }, zh: { foo: '巴' } }` —— 顶层 key 是 locale code。
-   * 插件后续可通过 `t('${namespace}.foo')` 访问。
+   * 注册插件自己的 i18n messages, 扁平合并到 host vue-i18n 实例。
+   *
+   * - `namespace` 仅做幂等去重 key (同一 plugin 重复 install 时跳过重复 merge), 不会成为
+   *   message 树的一层。
+   * - `messages` 形如 `{ en: { admin: { channels: { ... } } }, zh: { ... } }` —— 顶层 key
+   *   是 locale code, 二层及以下原样 deep-merge 到对应 locale 下。
+   * - 插件后续可直接 `t('admin.channels.title')` 访问 (无需 namespace 前缀)。
+   * - 同名 key 与 host 冲突时 vue-i18n 走 deep-merge 默认覆盖语义。
    */
   registerNamespace(namespace: string, messages: Record<string, Record<string, unknown>>): void
 }

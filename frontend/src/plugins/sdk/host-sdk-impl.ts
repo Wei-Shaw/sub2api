@@ -114,16 +114,28 @@ function createI18n(): HostI18n {
     return i18n.global.t(key)
   }
 
+  // namespacesRegistered 用于幂等去重: 同一 namespace 重复注册 (例如热重载或重新 mount)
+  // 时只 merge 一次, 避免 mergeLocaleMessage 在同一 key 上叠加多份。
+  const namespacesRegistered = new Set<string>()
+
   function registerNamespace(namespace: string, messages: Record<string, Record<string, unknown>>): void {
     if (!namespace) {
       return
     }
+    if (namespacesRegistered.has(namespace)) {
+      return
+    }
+    namespacesRegistered.add(namespace)
+    // 扁平 merge 策略 (DESIGN §5 决议):
+    //   - namespace 仅作为 dedup key, 不作为 i18n message 的 key 包裹层
+    //   - messages[locale] 顶层结构原样 deep-merge 到 vue-i18n 该 locale 下
+    //   - 这样插件可以直接复用 host 已有的 key (如 admin.channels.*) 或贡献新 key,
+    //     无需在调用 t() 时强制写 namespace 前缀
     for (const [locale, ns] of Object.entries(messages)) {
       if (!ns || typeof ns !== 'object') {
         continue
       }
-      // mergeLocaleMessage 不会覆盖已存在的同名 key，相同 namespace 重复注册会被静默合并
-      i18n.global.mergeLocaleMessage(locale, { [namespace]: ns })
+      i18n.global.mergeLocaleMessage(locale, ns as Record<string, unknown>)
     }
   }
 
