@@ -211,6 +211,23 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 	c.Abort()
 }
 
+// pluginImportMap maps bare specifiers (vue / pinia / 等) to host-served ESM
+// proxy modules under /api/v1/plugin-assets/__shared__/<name>.js. The proxy
+// modules re-export the host's already-loaded singletons via window globals
+// (see frontend/src/plugins/sdk/expose-runtime.ts), so plugin bundles 与
+// host 共享同一份 vue / pinia / vue-router / vue-i18n / axios 实例.
+//
+// 浏览器原生 importmap 支持: 主流浏览器自 2023 起均支持; 旧 Edge / 老 webview
+// 没有 polyfill, 此时 plugin entry 的 `import { ... } from 'vue'` 会失败,
+// loader-runtime.ts 把错误捕获并显示 PluginView error state.
+const pluginImportMap = `<script type="importmap">{"imports":{` +
+	`"vue":"/api/v1/plugin-assets/__shared__/vue.js",` +
+	`"vue-router":"/api/v1/plugin-assets/__shared__/vue-router.js",` +
+	`"vue-i18n":"/api/v1/plugin-assets/__shared__/vue-i18n.js",` +
+	`"pinia":"/api/v1/plugin-assets/__shared__/pinia.js",` +
+	`"axios":"/api/v1/plugin-assets/__shared__/axios.js"` +
+	`}}</script>`
+
 func (s *FrontendServer) injectSettings(settingsJSON []byte) []byte {
 	script := []byte(`<script nonce="` + NonceHTMLPlaceholder + `">window.__APP_CONFIG__=` + string(settingsJSON) + `;</script>`)
 
@@ -228,6 +245,11 @@ func (s *FrontendServer) injectSettings(settingsJSON []byte) []byte {
 	if len(pluginScript) > 0 {
 		injection = append(injection, pluginScript...)
 	}
+	// importmap 必须出现在任何 <script type="module"> 之前 (W3C importmap spec).
+	// </head> 是页面所有 <script> 的最早可能位置, 所以放这里足够安全.
+	// 注: importmap script 不需要 CSP nonce (浏览器对 type=importmap 单独处理),
+	// 但保险起见仍走 head close 替换.
+	injection = append(injection, []byte(pluginImportMap)...)
 	injection = append(injection, headClose...)
 	result := bytes.Replace(s.baseHTML, headClose, injection, 1)
 
