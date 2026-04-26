@@ -1375,7 +1375,10 @@ func setDefaults() {
 	viper.SetDefault("idempotency.cleanup_batch_size", 500)
 
 	// Plugins (gRPC å­è¿ç¨æä»¶ç®¡çå¨)
-	viper.SetDefault("plugins.enabled", false)
+	// Default to enabled now that the plugin system is GA. Operators who
+	// need to disable it (e.g. air-gapped builds without builtin plugins)
+	// can still set PLUGINS_ENABLED=false / plugins.enabled=false explicitly.
+	viper.SetDefault("plugins.enabled", true)
 	viper.SetDefault("plugins.builtin_dir", "/app/plugins")
 	viper.SetDefault("plugins.dir", "data/plugins")
 	viper.SetDefault("plugins.auto_enable_builtin", true)

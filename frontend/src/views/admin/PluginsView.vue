@@ -104,10 +104,15 @@ interface PluginInfo {
   version?: string
   description?: string
   enabled: boolean
+  sort_order?: number
   state?: string
+  grpc_addr?: string
+  http_addr?: string
+  restart_count?: number
   builtin?: boolean
   started_at?: string
   last_error?: string
+  config?: Record<string, unknown>
 }
 
 const { t } = useI18n()
@@ -122,8 +127,8 @@ async function reload() {
   loading.value = true
   loadError.value = ''
   try {
-    const resp = await apiClient.get('/api/v1/admin/plugins')
-    const list = (resp.data?.data || resp.data || []) as PluginInfo[]
+    const resp = await apiClient.get('/admin/plugins')
+    const list = (resp.data?.items || []) as PluginInfo[]
     plugins.value = Array.isArray(list) ? list : []
   } catch (err: unknown) {
     loadError.value = extractApiErrorMessage(err, t('common.error'))
@@ -135,7 +140,7 @@ async function reload() {
 async function act(name: string, action: 'enable' | 'disable' | 'restart') {
   busy[name] = true
   try {
-    await apiClient.post(`/api/v1/admin/plugins/${name}/${action}`)
+    await apiClient.post(`/admin/plugins/${name}/${action}`)
     appStore.showSuccess(t(`admin.plugins.${action}Success`, { name }))
     await reload()
   } catch (err: unknown) {

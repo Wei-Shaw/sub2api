@@ -66,12 +66,8 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 					RequiresAdmin: true,
 					Children: []pluginsdk.MenuItemDecl{
 						{
-							Path: "/admin/channels",
-							// TODO(plugin-sdk): switch to pluginsdk.IconTag once
-							// the SDK ships verified outline-tag SVG path data.
-							// Until then, reuse IconBranchFork so the child
-							// menu still has a recognisable icon.
-							IconSVG:       pluginsdk.IconBranchFork,
+							Path:          "/admin/channels",
+							IconSVG:       pluginsdk.IconTag,
 							Labels:        pluginsdk.Labels("渠道定价", "Channel Pricing"),
 							Section:       pluginsdk.SectionAdmin,
 							SortOrder:     210,
