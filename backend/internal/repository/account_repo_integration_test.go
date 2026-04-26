@@ -355,6 +355,41 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 			},
 		},
 		{
+			name: "filter_by_status_active_excluding_quota_stopped_with_empty_model_keeps_matching_accounts",
+			setup: func(client *dbent.Client) {
+				mustCreateAccount(s.T(), client, &service.Account{
+					Name:        "quota-ok",
+					Platform:    service.PlatformOpenAI,
+					Type:        service.AccountTypeOAuth,
+					Status:      service.StatusActive,
+					Schedulable: true,
+					Extra: map[string]any{
+						"openai_quota_strategy":               "prefer_7d",
+						"openai_quota_stop_threshold_percent": 10,
+						"codex_7d_used_percent":               23,
+					},
+				})
+				mustCreateAccount(s.T(), client, &service.Account{
+					Name:        "quota-stopped",
+					Platform:    service.PlatformOpenAI,
+					Type:        service.AccountTypeOAuth,
+					Status:      service.StatusActive,
+					Schedulable: true,
+					Extra: map[string]any{
+						"openai_quota_strategy":               "prefer_7d",
+						"openai_quota_stop_threshold_percent": 10,
+						"codex_7d_used_percent":               97,
+					},
+				})
+			},
+			status:    service.AccountStatusFilterActiveExcludingQuotaStopped,
+			model:     "",
+			wantCount: 1,
+			validate: func(accounts []service.Account) {
+				s.Require().Equal("quota-ok", accounts[0].Name)
+			},
+		},
+		{
 			name: "filter_by_search",
 			setup: func(client *dbent.Client) {
 				mustCreateAccount(s.T(), client, &service.Account{Name: "alpha-account"})

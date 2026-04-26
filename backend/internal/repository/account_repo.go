@@ -586,8 +586,9 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 		filtered := make([]service.Account, 0, len(outAccounts))
 		now := time.Now()
 		for i := range outAccounts {
+			matchesModel := strings.TrimSpace(model) == "" || service.IsAccountSupportedForModelFilter(&outAccounts[i], model)
 			if service.MatchesAccountListStatusFilter(&outAccounts[i], normalizedStatus, now) &&
-				service.IsAccountSupportedForModelFilter(&outAccounts[i], model) &&
+				matchesModel &&
 				service.MatchesOpenAIQuotaStrategyFilter(&outAccounts[i], quotaStrategy) {
 				filtered = append(filtered, outAccounts[i])
 			}
