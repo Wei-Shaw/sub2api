@@ -94,11 +94,7 @@ const focused = ref(false)
 const showDropdown = ref(false)
 const selectedLabel = ref('')
 
-const emptyHint = computed(() =>
-  keyword.value.trim().length === 0
-    ? (props.hintType || t('common.entitySearch.typeToSearch'))
-    : (props.hintNoMatch || t('common.entitySearch.noMatches')),
-)
+const emptyHint = computed(() => props.hintNoMatch || t('common.entitySearch.noMatches'))
 
 const runner = useKeyedDebouncedSearch<EntitySearchItem[]>({
   delay: 300,
@@ -143,13 +139,12 @@ watch(
   },
 )
 
+// focus 即拉一次（含空关键词）：未输入时返回前 N 条，输入后由 onInput 防抖刷新
 function onFocus() {
   focused.value = true
   showDropdown.value = true
-  if (keyword.value.trim()) {
-    loading.value = true
-    runner.trigger('entity', keyword.value)
-  }
+  loading.value = true
+  runner.trigger('entity', keyword.value)
 }
 
 function onBlur() {

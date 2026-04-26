@@ -4011,7 +4011,7 @@ export default {
         status: '状态',
         name: '名称',
         limiters: '限流器',
-        dimensions: '维度',
+        paths: '路径',
         counterMode: '计数模式',
         fallback: '兜底',
         type: '类型',
@@ -4068,25 +4068,25 @@ export default {
         targetUserIdsRequired: '计数模式为"指定用户"时必填',
         limitersTitle: '限流器（一条规则可同时配置多种）',
         limitersHint: '同一类型只能配置一个；并发不支持窗口',
-        dimensionsTitle: '维度（5 维 AND 匹配，留空表示不限制该维度）',
-        dimensionsHint: '每个维度独立判断：集合内任一值匹配请求即视为该维度通过',
+        pathsTitle: '匹配路径（命中任意一条即生效）',
+        pathsHint: '每条路径按 平台 → 渠道 → 分组 → 账号 → 模型 单选；留空表示不限制该维度',
+        platform: '平台',
+        platformPlaceholder: '例如 anthropic / openai / gemini',
+        channelId: '渠道',
+        groupId: '分组',
+        accountId: '账号',
+        modelPattern: '模型通配符',
+        modelPatternPlaceholder: '例如 claude-opus-* 或精确模型名',
         required: '必填'
       },
       limiterEditor: {
         empty: '尚未添加限流器，点击下方按钮添加',
         add: '添加限流器'
       },
-      dimensions: {
-        platforms: '平台',
-        platformsAll: '未选 = 不限制平台',
-        channels: '渠道',
-        channelsPlaceholder: '搜索渠道（留空表示不限制渠道）',
-        groups: '分组',
-        groupsPlaceholder: '搜索分组（留空表示不限制分组）',
-        accounts: '账号',
-        accountsPlaceholder: '搜索账号（留空表示不限制账号）',
-        modelPatterns: '模型通配符',
-        modelPatternsPlaceholder: '回车添加，例如 claude-opus-*'
+      pathEditor: {
+        empty: '尚未添加路径，点击下方按钮添加',
+        add: '添加路径',
+        pathIndex: '路径 #{index}'
       }
     },
 

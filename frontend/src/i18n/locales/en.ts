@@ -3847,7 +3847,7 @@ export default {
         status: 'Status',
         name: 'Name',
         limiters: 'Limiters',
-        dimensions: 'Dimensions',
+        paths: 'Paths',
         counterMode: 'Counter Mode',
         fallback: 'Fallback',
         type: 'Type',
@@ -3904,25 +3904,25 @@ export default {
         targetUserIdsRequired: 'Required when counter mode is "Specific Users"',
         limitersTitle: 'Limiters (a single rule can carry multiple)',
         limitersHint: 'Each limiter type can appear once; concurrency has no window',
-        dimensionsTitle: 'Dimensions (5-way AND match; empty = no restriction)',
-        dimensionsHint: 'Each dimension is independent: rule fires when the request value is contained in every non-empty set',
+        pathsTitle: 'Match Paths (rule fires when ANY path matches)',
+        pathsHint: 'Each path drills Platform → Channel → Group → Account → Model. Empty = no restriction on that dimension.',
+        platform: 'Platform',
+        platformPlaceholder: 'e.g. anthropic / openai / gemini',
+        channelId: 'Channel',
+        groupId: 'Group',
+        accountId: 'Account',
+        modelPattern: 'Model Pattern',
+        modelPatternPlaceholder: 'e.g. claude-opus-* or an exact model name',
         required: 'Required'
       },
       limiterEditor: {
         empty: 'No limiter added yet. Click below to add one.',
         add: 'Add Limiter'
       },
-      dimensions: {
-        platforms: 'Platforms',
-        platformsAll: 'None selected = no platform restriction',
-        channels: 'Channels',
-        channelsPlaceholder: 'Search channels (empty = no channel restriction)',
-        groups: 'Groups',
-        groupsPlaceholder: 'Search groups (empty = no group restriction)',
-        accounts: 'Accounts',
-        accountsPlaceholder: 'Search accounts (empty = no account restriction)',
-        modelPatterns: 'Model Patterns',
-        modelPatternsPlaceholder: 'Press Enter to add, e.g. claude-opus-*'
+      pathEditor: {
+        empty: 'No path added yet. Click below to add one.',
+        add: 'Add Path',
+        pathIndex: 'Path #{index}'
       }
     },
 
