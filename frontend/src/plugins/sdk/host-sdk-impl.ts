@@ -9,7 +9,7 @@
  *   - 测试时可直接 import { createHostSdk } 并喂 mock store/router；
  *   - 主入口 main.ts 只负责一行 `attachHostSdkToWindow(...)` 的副作用调用。
  */
-import { ref, watch, type Ref, type WritableComputedRef } from 'vue'
+import { computed, defineComponent, h, onMounted, onUnmounted, ref, watch, type Ref, type WritableComputedRef } from 'vue'
 import type { Router } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { i18n, getLocale } from '@/i18n'
@@ -26,6 +26,7 @@ import {
   type HostTheme,
   type HostAuth,
   type HostHttp,
+  type HostVue,
   type ThemeMode,
   type FontSize,
 } from './host-sdk'
@@ -172,6 +173,10 @@ function createHttp(): HostHttp {
   return { apiClient }
 }
 
+function createVue(): HostVue {
+  return { h, defineComponent, ref, computed, watch, onMounted, onUnmounted }
+}
+
 /** 工厂函数：组装一个新的 HostSdk 实例。需要 router 已经创建。 */
 export function createHostSdk(router: Router): HostSdk {
   return {
@@ -183,5 +188,6 @@ export function createHostSdk(router: Router): HostSdk {
     router: createRouter(router),
     auth: createAuth(),
     http: createHttp(),
+    vue: createVue(),
   }
 }

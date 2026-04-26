@@ -96,6 +96,26 @@ export interface HostHttp {
 }
 
 /**
+ * 暴露 host 的 Vue 运行时给插件使用, 让插件 bundle 不需要打包 Vue.
+ * 仅暴露常用 API; 插件需要更多 Vue 接口时, 应自己引入 vue (但会增加 bundle 体积).
+ */
+export interface HostVue {
+  /** Vue 的 h() 渲染函数. */
+  h: typeof import('vue').h
+  /** 定义组件. */
+  defineComponent: typeof import('vue').defineComponent
+  /** ref(). */
+  ref: typeof import('vue').ref
+  /** computed(). */
+  computed: typeof import('vue').computed
+  /** watch(). */
+  watch: typeof import('vue').watch
+  /** onMounted / onUnmounted. */
+  onMounted: typeof import('vue').onMounted
+  onUnmounted: typeof import('vue').onUnmounted
+}
+
+/**
  * 插件 entry bundle 必须 default export 的契约对象。
  *
  * 调用 install 后期望返回插件提供的 components/routes，
@@ -133,6 +153,8 @@ export interface HostSdk {
   router: HostRouter
   auth: HostAuth
   http: HostHttp
+  /** Host 的 Vue 运行时. 插件可借用避免重复打包 Vue. */
+  vue: HostVue
 }
 
 declare global {
