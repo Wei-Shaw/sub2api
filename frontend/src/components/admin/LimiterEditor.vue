@@ -5,7 +5,7 @@
     </div>
     <div
       v-for="(item, index) in modelValue"
-      :key="index"
+      :key="item.uid ?? index"
       class="grid grid-cols-1 items-end gap-3 rounded-lg border border-gray-200 p-3 sm:grid-cols-[160px_1fr_140px_auto] dark:border-dark-700"
     >
       <label class="form-field">
@@ -23,7 +23,7 @@
         <input
           :value="item.limit_value"
           type="number"
-          min="0"
+          min="1"
           step="0.000001"
           class="input"
           required
@@ -112,15 +112,20 @@ function pickFirstAvailableType(): string {
   return next?.value || 'rpm'
 }
 
+function blankLimiter(limiter_type: string): ServiceQuotaLimiterInput {
+  return {
+    uid: crypto.randomUUID(),
+    limiter_type,
+    window_mode: 'fixed',
+    limit_value: defaultLimitFor(limiter_type),
+  }
+}
+
 function add() {
   const limiter_type = pickFirstAvailableType()
   const newList: ServiceQuotaLimiterInput[] = [
     ...props.modelValue,
-    {
-      limiter_type,
-      window_mode: limiter_type === 'concurrency' ? 'fixed' : 'fixed',
-      limit_value: defaultLimitFor(limiter_type),
-    },
+    blankLimiter(limiter_type),
   ]
   emit('update:modelValue', newList)
 }

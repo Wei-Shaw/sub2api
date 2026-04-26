@@ -391,8 +391,14 @@ func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupReposit
 	return svc
 }
 
-func ProvideServiceQuotaService(repo ServiceQuotaRuleRepository, settings *SettingService, limiter ServiceQuotaLimiter, cache ServiceQuotaCache) ServiceQuotaService {
-	return NewServiceQuotaService(repo, settings, limiter, cache)
+// ProvideServiceQuotaService 注入服务限额服务。userRepo 自动满足 ServiceQuotaUserChecker
+// 接口（仅依赖其 ExistsByIDs 方法），用于 Create/Update 时校验 target_user_ids 是否存在。
+func ProvideServiceQuotaService(repo ServiceQuotaRuleRepository, settings *SettingService, limiter ServiceQuotaLimiter, cache ServiceQuotaCache, userRepo UserRepository) ServiceQuotaService {
+	var users ServiceQuotaUserChecker
+	if checker, ok := userRepo.(ServiceQuotaUserChecker); ok {
+		users = checker
+	}
+	return NewServiceQuotaService(repo, settings, limiter, cache, users)
 }
 
 // ProvideBillingCacheService wires BillingCacheService with its RPM dependencies.

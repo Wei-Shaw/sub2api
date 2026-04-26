@@ -116,13 +116,17 @@ watch(
       selectedLabel.value = ''
       return
     }
-    if (props.resolveLabel) {
-      try {
-        const item = await props.resolveLabel(id)
-        selectedLabel.value = item?.label ?? ''
-      } catch {
-        selectedLabel.value = ''
-      }
+    if (!props.resolveLabel) return
+    // 捕获本次 modelValue 作为 token，async 完成后比对，
+    // 防止旧 resolveLabel 在 modelValue 已被更新/清空后写回过期 label
+    const token = id
+    try {
+      const item = await props.resolveLabel(id)
+      if (props.modelValue !== token) return
+      selectedLabel.value = item?.label ?? ''
+    } catch {
+      if (props.modelValue !== token) return
+      selectedLabel.value = ''
     }
   },
   { immediate: true },
@@ -169,7 +173,8 @@ function select(item: EntitySearchItem) {
   emit('update:modelValue', item.id)
   selectedLabel.value = item.label
   keyword.value = ''
-  results.value = []
+  // 保留 results：下次 focus 时用户仍能看到包含已选项的列表，
+  // 避免新搜索的前 N 条不含已选项导致看不到选中态
   showDropdown.value = false
   focused.value = false
 }

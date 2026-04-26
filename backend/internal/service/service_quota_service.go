@@ -2,14 +2,19 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/metrics"
 	pkgerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/lib/pq"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -18,11 +23,28 @@ type serviceQuotaService struct {
 	settings *SettingService
 	limiter  ServiceQuotaLimiter
 	cache    ServiceQuotaCache
+	users    ServiceQuotaUserChecker
 	sf       singleflight.Group
 }
 
-func NewServiceQuotaService(repo ServiceQuotaRuleRepository, settings *SettingService, limiter ServiceQuotaLimiter, cache ServiceQuotaCache) ServiceQuotaService {
-	return &serviceQuotaService{repo: repo, settings: settings, limiter: limiter, cache: cache}
+// NewServiceQuotaService 构造服务限额服务。
+//
+// users 用于在 Create/Update 时校验 target_user_ids 引用的用户是否存在；
+// 允许传 nil（生产代码不会，但旧测试桩可能不提供），nil 时跳过用户存在性检查。
+func NewServiceQuotaService(
+	repo ServiceQuotaRuleRepository,
+	settings *SettingService,
+	limiter ServiceQuotaLimiter,
+	cache ServiceQuotaCache,
+	users ServiceQuotaUserChecker,
+) ServiceQuotaService {
+	return &serviceQuotaService{
+		repo:     repo,
+		settings: settings,
+		limiter:  limiter,
+		cache:    cache,
+		users:    users,
+	}
 }
 
 // matchedQuotaRule 是 PreCheck/Record 用的中间态：把规则与本次请求实际命中的 path 列表绑在一起，
@@ -42,7 +64,7 @@ func (s *serviceQuotaService) CreateRule(ctx context.Context, input ServiceQuota
 	}
 	rule, err := s.repo.Create(ctx, input)
 	if err != nil {
-		return nil, err
+		return nil, translateServiceQuotaPersistenceError(err)
 	}
 	s.reloadCache(ctx)
 	return rule, nil
@@ -54,7 +76,7 @@ func (s *serviceQuotaService) UpdateRule(ctx context.Context, id int64, input Se
 	}
 	rule, err := s.repo.Update(ctx, id, input)
 	if err != nil {
-		return nil, err
+		return nil, translateServiceQuotaPersistenceError(err)
 	}
 	s.reloadCache(ctx)
 	return rule, nil
@@ -62,10 +84,34 @@ func (s *serviceQuotaService) UpdateRule(ctx context.Context, id int64, input Se
 
 func (s *serviceQuotaService) DeleteRule(ctx context.Context, id int64) error {
 	if err := s.repo.Delete(ctx, id); err != nil {
-		return err
+		return translateServiceQuotaPersistenceError(err)
 	}
 	s.reloadCache(ctx)
 	return nil
+}
+
+// translateServiceQuotaPersistenceError 把 repo 层透传的数据库错误翻译成业务层 ApplicationError，
+// 让 handler 通过 response.ErrorFrom 自动得到正确的 HTTP 状态：
+//   - sql.ErrNoRows → 404 ErrServiceQuotaRuleNotFound（Update/Delete 找不到规则）
+//   - PostgreSQL 23505（unique_violation，例如 service_quota_paths 的 path 重复 / rule_users 重复）→ 409 Conflict
+//   - 其他原样透传，由全局错误处理走 500
+func translateServiceQuotaPersistenceError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrServiceQuotaRuleNotFound.WithCause(err)
+	}
+	var pgErr *pq.Error
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return pkgerrors.Conflict(
+			"SERVICE_QUOTA_CONFLICT",
+			"service quota rule conflicts with an existing record",
+		).WithMetadata(map[string]string{
+			"constraint": pgErr.Constraint,
+		}).WithCause(err)
+	}
+	return fmt.Errorf("service_quota: persistence error: %w", err)
 }
 
 func (s *serviceQuotaService) InvalidateEnabledCache(ctx context.Context) {
@@ -97,6 +143,9 @@ func (s *serviceQuotaService) normalizeAndValidate(ctx context.Context, input *S
 	if input.CounterMode != ServiceQuotaCounterModeUser {
 		input.TargetUserIDs = nil
 	}
+	if err := s.validateTargetUserIDsExist(ctx, input.TargetUserIDs); err != nil {
+		return err
+	}
 	if err := normalizeLimiters(input); err != nil {
 		return err
 	}
@@ -104,6 +153,41 @@ func (s *serviceQuotaService) normalizeAndValidate(ctx context.Context, input *S
 		return err
 	}
 	return nil
+}
+
+// validateTargetUserIDsExist 检查 target_user_ids 中每个 ID 在 users 表中（且未软删除）实际存在。
+// 缺失任何 ID 时返回 BadRequest，并在 metadata.missing_ids 给出排序后的逗号分隔列表，
+// 让前端可以高亮错误的用户输入；外部 checker 不可用时（s.users == nil）跳过校验。
+//
+// 调用前 ids 已经过 sanitizeTargetUserIDs 去重 + 去 <=0。
+func (s *serviceQuotaService) validateTargetUserIDsExist(ctx context.Context, ids []int64) error {
+	if s == nil || s.users == nil || len(ids) == 0 {
+		return nil
+	}
+	exists, err := s.users.ExistsByIDs(ctx, ids)
+	if err != nil {
+		return fmt.Errorf("service_quota: validate target_user_ids: %w", err)
+	}
+	missing := make([]int64, 0)
+	for _, id := range ids {
+		if !exists[id] {
+			missing = append(missing, id)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	sort.Slice(missing, func(i, j int) bool { return missing[i] < missing[j] })
+	parts := make([]string, len(missing))
+	for i, id := range missing {
+		parts[i] = strconv.FormatInt(id, 10)
+	}
+	return pkgerrors.BadRequest(
+		"SERVICE_QUOTA_INVALID_TARGET_USERS",
+		"some target_user_ids do not refer to existing users",
+	).WithMetadata(map[string]string{
+		"missing_ids": strings.Join(parts, ","),
+	})
 }
 
 func normalizeLimiters(input *ServiceQuotaRuleInput) error {
@@ -454,12 +538,14 @@ func (s *serviceQuotaService) acquireConcurrency(ctx context.Context, req Servic
 	key := s.counterKey(req, rule, path, lim)
 	ok, err := s.limiter.Acquire(ctx, key, member, int64(lim.LimitValue))
 	if err != nil {
-		s.logLimiterFailure("acquire_concurrency", rule, lim, key, err)
+		s.recordFailOpen(rule, lim, "acquire_concurrency", key, err)
 		return nil
 	}
 	if !ok {
+		recordPreCheckResult(rule, lim, metrics.ServiceQuotaPreCheckResultDenied)
 		return serviceQuotaExceeded(rule, lim, 0)
 	}
+	recordPreCheckResult(rule, lim, metrics.ServiceQuotaPreCheckResultAllowed)
 	prev := lease.Release
 	lease.Release = func() {
 		if prev != nil {
@@ -481,12 +567,14 @@ func (s *serviceQuotaService) checkRPM(ctx context.Context, req ServiceQuotaChec
 		// rolling window 通过追加一条 delta=-1 的 member 与原 +1 在 sumRollingMembers 求和时
 		// 相互抵消，等价于回滚。任何回退失败都忽略，不阻塞主流程。
 		_, _ = s.limiter.Increment(ctx, key, -1, time.Minute, lim.WindowMode)
-		s.logLimiterFailure("check_rpm", rule, lim, key, err)
+		s.recordFailOpen(rule, lim, "check_rpm", key, err)
 		return nil
 	}
 	if used > lim.LimitValue {
+		recordPreCheckResult(rule, lim, metrics.ServiceQuotaPreCheckResultDenied)
 		return serviceQuotaExceeded(rule, lim, used)
 	}
+	recordPreCheckResult(rule, lim, metrics.ServiceQuotaPreCheckResultAllowed)
 	return nil
 }
 
@@ -494,13 +582,38 @@ func (s *serviceQuotaService) checkDeferred(ctx context.Context, req ServiceQuot
 	key := s.counterKey(req, rule, path, lim)
 	used, err := s.limiter.Current(ctx, key, serviceQuotaWindow(lim), lim.WindowMode)
 	if err != nil {
-		s.logLimiterFailure("check_deferred", rule, lim, key, err)
+		s.recordFailOpen(rule, lim, "check_deferred", key, err)
 		return nil
 	}
 	if used >= lim.LimitValue {
+		recordPreCheckResult(rule, lim, metrics.ServiceQuotaPreCheckResultDenied)
 		return serviceQuotaExceeded(rule, lim, used)
 	}
+	recordPreCheckResult(rule, lim, metrics.ServiceQuotaPreCheckResultAllowed)
 	return nil
+}
+
+// recordFailOpen 在限流器报错降级时同时落日志 + 累加 metrics。
+//
+// reason 区分 timeout（context.DeadlineExceeded / context.Canceled）和 redis_error（其他），
+// 让运维侧能区分网络超时与 redis 连接 / Lua 脚本异常。
+func (s *serviceQuotaService) recordFailOpen(rule *ServiceQuotaRule, lim ServiceQuotaLimiterDef, op, key string, err error) {
+	s.logLimiterFailure(op, rule, lim, key, err)
+	reason := metrics.ServiceQuotaFailOpenReasonRedisError
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		reason = metrics.ServiceQuotaFailOpenReasonTimeout
+	}
+	metrics.ServiceQuotaFailOpenTotal.WithLabelValues(lim.LimiterType, reason).Inc()
+	recordPreCheckResult(rule, lim, metrics.ServiceQuotaPreCheckResultFailOpen)
+}
+
+// recordPreCheckResult 把 (rule, limiter, result) 三元组的一次判定累加到 PreCheck 指标桶。
+func recordPreCheckResult(rule *ServiceQuotaRule, lim ServiceQuotaLimiterDef, result string) {
+	ruleID := "0"
+	if rule != nil {
+		ruleID = strconv.FormatInt(rule.ID, 10)
+	}
+	metrics.ServiceQuotaPreCheckTotal.WithLabelValues(ruleID, lim.LimiterType, result).Inc()
 }
 
 // Fail-open is intentional: when Redis is unreachable we allow the request
@@ -666,11 +779,48 @@ func serviceQuotaRecordDelta(kind string, req ServiceQuotaRecordRequest) float64
 	}
 }
 
+// serviceQuotaExceeded 构造 429 拒绝错误。
+//
+// metadata 必须携带足够字段让前端在不发二次请求的前提下定位是哪条规则的哪个 limiter 超了：
+//   - rule_id：规则 ID
+//   - rule_name：规则可读名（缺省 fallback 为 "unnamed-{id}"）
+//   - limiter_type：rpm/tpm/tpd/daily_usd/concurrency
+//   - limiter_window：fixed/rolling/none（concurrency 没有窗口语义，统一返回 "none"）
+//   - limit_value：阈值
+//   - limit：阈值（保留旧 key 以兼容老前端）
+//   - used：当前已用量
 func serviceQuotaExceeded(rule *ServiceQuotaRule, lim ServiceQuotaLimiterDef, used float64) error {
 	return ErrServiceQuotaExceeded.WithMetadata(map[string]string{
-		"rule_id":      strconv.FormatInt(rule.ID, 10),
-		"limiter_type": lim.LimiterType,
-		"limit":        strconv.FormatFloat(lim.LimitValue, 'f', -1, 64),
-		"used":         strconv.FormatFloat(used, 'f', -1, 64),
+		"rule_id":        strconv.FormatInt(rule.ID, 10),
+		"rule_name":      ruleDisplayName(rule),
+		"limiter_type":   lim.LimiterType,
+		"limiter_window": limiterWindowLabel(lim),
+		"limit_value":    strconv.FormatFloat(lim.LimitValue, 'f', -1, 64),
+		"limit":          strconv.FormatFloat(lim.LimitValue, 'f', -1, 64),
+		"used":           strconv.FormatFloat(used, 'f', -1, 64),
 	})
+}
+
+// ruleDisplayName 返回规则的展示名，rule.Name 为 nil 或空字符串时回退为 "unnamed-{id}"。
+func ruleDisplayName(rule *ServiceQuotaRule) string {
+	if rule == nil {
+		return "unnamed-0"
+	}
+	if rule.Name != nil {
+		if name := strings.TrimSpace(*rule.Name); name != "" {
+			return name
+		}
+	}
+	return "unnamed-" + strconv.FormatInt(rule.ID, 10)
+}
+
+// limiterWindowLabel 返回前端可消费的 window 标签：concurrency 没有窗口语义统一为 "none"。
+func limiterWindowLabel(lim ServiceQuotaLimiterDef) string {
+	if lim.LimiterType == ServiceQuotaLimiterConcurrency {
+		return "none"
+	}
+	if lim.WindowMode == "" {
+		return ServiceQuotaWindowFixed
+	}
+	return lim.WindowMode
 }

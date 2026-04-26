@@ -9,6 +9,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// ServiceQuotaHandler 服务限额规则的 admin HTTP 入口。
+//
+// 错误处理统一走 response.ErrorFrom：service 层用 ApplicationError 表达
+// 业务语义（404 NotFound / 409 Conflict / 400 BadRequest / 429 TooManyRequests），
+// handler 不再吞错误码兜底为 400。
 type ServiceQuotaHandler struct{ svc service.ServiceQuotaService }
 
 func NewServiceQuotaHandler(svc service.ServiceQuotaService) *ServiceQuotaHandler {
@@ -29,13 +34,17 @@ func (h *ServiceQuotaHandler) List(c *gin.Context) {
 	}
 	rules, err := h.svc.ListRules(c.Request.Context(), filter)
 	if err != nil {
-		response.Error(c, http.StatusInternalServerError, err.Error())
+		response.ErrorFrom(c, err)
 		return
 	}
 	response.Success(c, gin.H{"items": rules, "total": len(rules)})
 }
 
 func (h *ServiceQuotaHandler) Create(c *gin.Context) {
+	if h.svc == nil {
+		response.Error(c, http.StatusNotFound, "service quota unavailable")
+		return
+	}
 	var req service.ServiceQuotaRuleInput
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, err.Error())
@@ -43,13 +52,17 @@ func (h *ServiceQuotaHandler) Create(c *gin.Context) {
 	}
 	rule, err := h.svc.CreateRule(c.Request.Context(), req)
 	if err != nil {
-		response.Error(c, http.StatusBadRequest, err.Error())
+		response.ErrorFrom(c, err)
 		return
 	}
 	response.Success(c, rule)
 }
 
 func (h *ServiceQuotaHandler) Update(c *gin.Context) {
+	if h.svc == nil {
+		response.Error(c, http.StatusNotFound, "service quota unavailable")
+		return
+	}
 	id, ok := parseServiceQuotaID(c)
 	if !ok {
 		return
@@ -61,19 +74,23 @@ func (h *ServiceQuotaHandler) Update(c *gin.Context) {
 	}
 	rule, err := h.svc.UpdateRule(c.Request.Context(), id, req)
 	if err != nil {
-		response.Error(c, http.StatusBadRequest, err.Error())
+		response.ErrorFrom(c, err)
 		return
 	}
 	response.Success(c, rule)
 }
 
 func (h *ServiceQuotaHandler) Delete(c *gin.Context) {
+	if h.svc == nil {
+		response.Error(c, http.StatusNotFound, "service quota unavailable")
+		return
+	}
 	id, ok := parseServiceQuotaID(c)
 	if !ok {
 		return
 	}
 	if err := h.svc.DeleteRule(c.Request.Context(), id); err != nil {
-		response.Error(c, http.StatusBadRequest, err.Error())
+		response.ErrorFrom(c, err)
 		return
 	}
 	response.Success(c, gin.H{"deleted": true})

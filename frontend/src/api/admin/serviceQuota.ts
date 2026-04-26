@@ -17,6 +17,8 @@ export interface ServiceQuotaLimiterInput {
   limiter_type: string
   window_mode: string
   limit_value: number
+  // 仅前端使用：v-for stable key，提交前会被 strip 掉，不会发到 backend
+  uid?: string
 }
 
 export interface ServiceQuotaPathDef {
@@ -35,6 +37,8 @@ export interface ServiceQuotaPathInput {
   group_id?: number | null
   account_id?: number | null
   model_pattern?: string | null
+  // 仅前端使用：v-for stable key，提交前会被 strip 掉，不会发到 backend
+  uid?: string
 }
 
 export interface ServiceQuotaRule {

@@ -5,7 +5,7 @@
     </div>
     <div
       v-for="(item, index) in modelValue"
-      :key="index"
+      :key="item.uid ?? index"
       class="rounded-lg border border-gray-200 p-3 dark:border-dark-700"
     >
       <div class="mb-3 flex items-center justify-between">
@@ -59,7 +59,7 @@
               :placeholder="t('common.optional')"
               :search="(kw, signal) => searchAccounts(kw, signal, item.platform, item.group_id)"
               :resolve-label="resolveAccountLabel"
-              :reset-token="`${item.platform ?? ''}:${item.group_id ?? ''}`"
+              :reset-token="`${item.platform ?? ''}:${item.channel_id ?? ''}:${item.group_id ?? ''}`"
               @update:model-value="updateField(index, 'account_id', $event)"
             />
           </label>
@@ -103,6 +103,7 @@ const emit = defineEmits<{
 
 function blankPath(): ServiceQuotaPathInput {
   return {
+    uid: crypto.randomUUID(),
     platform: null,
     channel_id: null,
     group_id: null,
@@ -127,6 +128,9 @@ function updateField<K extends keyof ServiceQuotaPathInput>(index: number, key: 
   // 改平台时清空下游字段（渠道/分组/账号/模型）
   if (key === 'platform') {
     updated.channel_id = null
+    updated.group_id = null
+    updated.account_id = null
+  } else if (key === 'channel_id') {
     updated.group_id = null
     updated.account_id = null
   } else if (key === 'group_id') {

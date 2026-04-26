@@ -74,7 +74,7 @@
             <div v-if="row.paths.length === 0" class="text-xs text-gray-400">
               {{ t('admin.serviceQuota.scopeDetails.allRequests') }}
             </div>
-            <div v-else class="space-y-0.5">
+            <div v-else class="max-h-32 space-y-0.5 overflow-auto">
               <div
                 v-for="(path, i) in row.paths"
                 :key="i"
@@ -273,8 +273,8 @@ function blankRule(): ServiceQuotaRuleInput {
     counter_mode: 'per_user',
     is_fallback: false,
     target_user_ids: null,
-    limiters: [{ limiter_type: 'rpm', window_mode: 'fixed', limit_value: 60 }],
-    paths: [{ platform: null, channel_id: null, group_id: null, account_id: null, model_pattern: null }],
+    limiters: [{ uid: crypto.randomUUID(), limiter_type: 'rpm', window_mode: 'fixed', limit_value: 60 }],
+    paths: [{ uid: crypto.randomUUID(), platform: null, channel_id: null, group_id: null, account_id: null, model_pattern: null }],
   }
 }
 
@@ -286,11 +286,13 @@ function resetForm(rule?: ServiceQuotaRule) {
     initial.counter_mode = rule.counter_mode
     initial.is_fallback = rule.is_fallback
     initial.limiters = rule.limiters.map((l) => ({
+      uid: crypto.randomUUID(),
       limiter_type: l.limiter_type,
       window_mode: l.window_mode,
       limit_value: l.limit_value,
     }))
     initial.paths = rule.paths.map((p) => ({
+      uid: crypto.randomUUID(),
       platform: p.platform ?? null,
       channel_id: p.channel_id ?? null,
       group_id: p.group_id ?? null,
@@ -358,11 +360,18 @@ function pathSummary(path: ServiceQuotaPathDef): string {
 }
 
 function normalizePayload(): ServiceQuotaRuleInput {
+  // 限额必须 > 0：阻止意外提交 limit_value=0 导致规则永久拒绝请求
+  for (const l of form.limiters) {
+    if (!(Number(l.limit_value) > 0)) {
+      throw new Error(t('admin.serviceQuota.errors.limitValueMustBePositive'))
+    }
+  }
   const payload: ServiceQuotaRuleInput = {
     enabled: form.enabled,
     name: cleanText(form.name),
     counter_mode: form.counter_mode,
     is_fallback: form.is_fallback,
+    // 注意：strip 掉 uid（仅前端用于 v-for stable key）
     limiters: form.limiters.map((l) => ({
       limiter_type: l.limiter_type,
       window_mode: l.limiter_type === 'concurrency' ? 'fixed' : l.window_mode,

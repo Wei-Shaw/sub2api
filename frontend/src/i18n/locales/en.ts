@@ -3923,6 +3923,9 @@ export default {
         empty: 'No path added yet. Click below to add one.',
         add: 'Add Path',
         pathIndex: 'Path #{index}'
+      },
+      errors: {
+        limitValueMustBePositive: 'Limit value must be greater than 0'
       }
     },
 

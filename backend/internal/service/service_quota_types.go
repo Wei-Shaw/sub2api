@@ -153,6 +153,15 @@ type ServiceQuotaRuleRepository interface {
 	FetchGroupScope(ctx context.Context, groupID int64) (*GroupScopeInfo, error)
 }
 
+// ServiceQuotaUserChecker 是 service quota 在校验 target_user_ids 时使用的最小化用户存在性检查接口。
+//
+// 单独抽出小接口（接口隔离原则）避免侵入庞大的 UserRepository，同时让 *userRepository
+// 自动满足该接口（duck typing）。返回值与 group_repo.ExistsByIDs 对齐：map[id]exists，
+// 缺失 ID 由调用方按需收集。
+type ServiceQuotaUserChecker interface {
+	ExistsByIDs(ctx context.Context, ids []int64) (map[int64]bool, error)
+}
+
 type ServiceQuotaLimiter interface {
 	Current(ctx context.Context, key string, window time.Duration, mode string) (float64, error)
 	Increment(ctx context.Context, key string, delta float64, window time.Duration, mode string) (float64, error)

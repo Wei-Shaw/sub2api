@@ -66,7 +66,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	serviceQuotaRuleRepository := repository.NewServiceQuotaRuleRepository(db)
 	serviceQuotaLimiter := repository.NewServiceQuotaLimiter(redisClient)
 	serviceQuotaCache := repository.NewServiceQuotaCache(redisClient)
-	serviceQuotaService := service.NewServiceQuotaService(serviceQuotaRuleRepository, settingService, serviceQuotaLimiter, serviceQuotaCache)
+	serviceQuotaService := service.ProvideServiceQuotaService(serviceQuotaRuleRepository, settingService, serviceQuotaLimiter, serviceQuotaCache, userRepository)
 	billingCacheService := service.ProvideBillingCacheService(billingCache, userRepository, userSubscriptionRepository, apiKeyRepository, userRPMCache, userGroupRateRepository, configConfig, serviceQuotaService)
 	apiKeyCache := repository.NewAPIKeyCache(redisClient)
 	apiKeyService := service.NewAPIKeyService(apiKeyRepository, userRepository, groupRepository, userSubscriptionRepository, userGroupRateRepository, apiKeyCache, configConfig)

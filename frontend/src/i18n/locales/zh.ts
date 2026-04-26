@@ -4087,6 +4087,9 @@ export default {
         empty: '尚未添加路径，点击下方按钮添加',
         add: '添加路径',
         pathIndex: '路径 #{index}'
+      },
+      errors: {
+        limitValueMustBePositive: '限额必须 > 0'
       }
     },
 
