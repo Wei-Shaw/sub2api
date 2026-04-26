@@ -19,6 +19,20 @@ const (
 	SectionUser  = "user"
 )
 
+// Capability identifiers a plugin may declare in Manifest.Capabilities.
+//
+// The SDK server treats these as fine-grained permissions: a plugin lacking
+// a capability is rejected when it tries to use the corresponding feature.
+// Adding a new capability requires updating both the SDK and the core's
+// allow-list (backend/internal/plugin/grpc_server.go).
+const (
+	// CapabilityRedisRawKeys lets PluginContext.Redis().Raw() bypass the
+	// per-plugin Redis key namespace. Required for plugins that intentionally
+	// share keys with other components (e.g. the channel-management plugin
+	// writes the gateway cache contract documented in GATEWAY_CACHE_SPEC.md).
+	CapabilityRedisRawKeys = "redis_raw_keys"
+)
+
 // Manifest is the Go-level representation of pluginsdk.ManifestResponse.
 // Plugins build and return this from Plugin.Manifest(); the SDK converts it
 // to the proto type when the core calls GetManifest.
@@ -41,6 +55,12 @@ type Manifest struct {
 	// MigrationFiles is an optional list of SQL migration filenames the
 	// plugin ships with. The core handles applying them.
 	MigrationFiles []string
+
+	// Capabilities lists the privileged SDK features this plugin needs. See
+	// the Capability* constants. The core checks each entry against an
+	// allow-list and only forwards the approved ones to the plugin runtime
+	// via PluginInitRequest.capabilities.
+	Capabilities []string
 }
 
 // EndpointDecl describes a single HTTP endpoint declaration.
@@ -109,6 +129,7 @@ func (m *Manifest) toProto() *pb.ManifestResponse {
 		GatewayEndpoints: endpointsToProto(m.GatewayEndpoints),
 		PluginEndpoints:  endpointsToProto(m.PluginEndpoints),
 		MigrationFiles:   append([]string(nil), m.MigrationFiles...),
+		Capabilities:     append([]string(nil), m.Capabilities...),
 	}
 	if m.Frontend != nil {
 		resp.Frontend = m.Frontend.toProto()

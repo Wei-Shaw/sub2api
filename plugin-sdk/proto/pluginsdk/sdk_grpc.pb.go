@@ -354,6 +354,7 @@ var SQLProxy_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
+	RedisProxy_Do_FullMethodName        = "/pluginsdk.RedisProxy/Do"
 	RedisProxy_Get_FullMethodName       = "/pluginsdk.RedisProxy/Get"
 	RedisProxy_Set_FullMethodName       = "/pluginsdk.RedisProxy/Set"
 	RedisProxy_SetEx_FullMethodName     = "/pluginsdk.RedisProxy/SetEx"
@@ -370,8 +371,20 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// RedisProxy 代理 Redis 操作到核心 Redis
+// # RedisProxy 代理 Redis 操作到核心 Redis
+//
+// New code should use Do() — it is the go-redis style universal entry point
+// that supports virtually every Redis command without adding a new RPC per
+// command. The typed RPCs below are retained for backward compatibility with
+// already-built plugin binaries; new SDK clients route them through Do() too.
 type RedisProxyClient interface {
+	// Do executes an arbitrary Redis command. This mirrors go-redis's Cmdable.Do
+	// and lets the SDK expose the full Redis command surface without bloating
+	// this proto. Args[0] is the command name (case-insensitive); subsequent
+	// args are the command arguments encoded as raw bytes.
+	Do(ctx context.Context, in *DoRequest, opts ...grpc.CallOption) (*DoReply, error)
+	// Legacy typed RPCs — DEPRECATED: prefer Do(). Existing plugin binaries
+	// still call these, so the core must keep them serving.
 	Get(ctx context.Context, in *RedisKeyRequest, opts ...grpc.CallOption) (*RedisValueResponse, error)
 	Set(ctx context.Context, in *RedisSetRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	SetEx(ctx context.Context, in *RedisSetExRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
@@ -390,6 +403,16 @@ type redisProxyClient struct {
 
 func NewRedisProxyClient(cc grpc.ClientConnInterface) RedisProxyClient {
 	return &redisProxyClient{cc}
+}
+
+func (c *redisProxyClient) Do(ctx context.Context, in *DoRequest, opts ...grpc.CallOption) (*DoReply, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DoReply)
+	err := c.cc.Invoke(ctx, RedisProxy_Do_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *redisProxyClient) Get(ctx context.Context, in *RedisKeyRequest, opts ...grpc.CallOption) (*RedisValueResponse, error) {
@@ -505,8 +528,20 @@ type RedisProxy_SubscribeClient = grpc.ServerStreamingClient[RedisMessage]
 // All implementations must embed UnimplementedRedisProxyServer
 // for forward compatibility.
 //
-// RedisProxy 代理 Redis 操作到核心 Redis
+// # RedisProxy 代理 Redis 操作到核心 Redis
+//
+// New code should use Do() — it is the go-redis style universal entry point
+// that supports virtually every Redis command without adding a new RPC per
+// command. The typed RPCs below are retained for backward compatibility with
+// already-built plugin binaries; new SDK clients route them through Do() too.
 type RedisProxyServer interface {
+	// Do executes an arbitrary Redis command. This mirrors go-redis's Cmdable.Do
+	// and lets the SDK expose the full Redis command surface without bloating
+	// this proto. Args[0] is the command name (case-insensitive); subsequent
+	// args are the command arguments encoded as raw bytes.
+	Do(context.Context, *DoRequest) (*DoReply, error)
+	// Legacy typed RPCs — DEPRECATED: prefer Do(). Existing plugin binaries
+	// still call these, so the core must keep them serving.
 	Get(context.Context, *RedisKeyRequest) (*RedisValueResponse, error)
 	Set(context.Context, *RedisSetRequest) (*emptypb.Empty, error)
 	SetEx(context.Context, *RedisSetExRequest) (*emptypb.Empty, error)
@@ -527,6 +562,9 @@ type RedisProxyServer interface {
 // pointer dereference when methods are called.
 type UnimplementedRedisProxyServer struct{}
 
+func (UnimplementedRedisProxyServer) Do(context.Context, *DoRequest) (*DoReply, error) {
+	return nil, status.Error(codes.Unimplemented, "method Do not implemented")
+}
 func (UnimplementedRedisProxyServer) Get(context.Context, *RedisKeyRequest) (*RedisValueResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Get not implemented")
 }
@@ -576,6 +614,24 @@ func RegisterRedisProxyServer(s grpc.ServiceRegistrar, srv RedisProxyServer) {
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&RedisProxy_ServiceDesc, srv)
+}
+
+func _RedisProxy_Do_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RedisProxyServer).Do(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RedisProxy_Do_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RedisProxyServer).Do(ctx, req.(*DoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _RedisProxy_Get_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -758,6 +814,10 @@ var RedisProxy_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "pluginsdk.RedisProxy",
 	HandlerType: (*RedisProxyServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Do",
+			Handler:    _RedisProxy_Do_Handler,
+		},
 		{
 			MethodName: "Get",
 			Handler:    _RedisProxy_Get_Handler,

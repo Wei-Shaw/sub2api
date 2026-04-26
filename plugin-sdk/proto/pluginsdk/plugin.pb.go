@@ -23,9 +23,19 @@ const (
 )
 
 type PluginInitRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SdkAddress    string                 `protobuf:"bytes,1,opt,name=sdk_address,json=sdkAddress,proto3" json:"sdk_address,omitempty"`
-	Config        map[string]string      `protobuf:"bytes,2,rep,name=config,proto3" json:"config,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	SdkAddress string                 `protobuf:"bytes,1,opt,name=sdk_address,json=sdkAddress,proto3" json:"sdk_address,omitempty"`
+	Config     map[string]string      `protobuf:"bytes,2,rep,name=config,proto3" json:"config,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// plugin_name is the unique plugin identifier the core uses to scope SDK
+	// resources (e.g. Redis key namespace). The SDK echoes it back to the core
+	// via gRPC metadata on every SDK call so the server can apply per-plugin
+	// policy without having to peer at TCP source addresses.
+	PluginName string `protobuf:"bytes,3,opt,name=plugin_name,json=pluginName,proto3" json:"plugin_name,omitempty"`
+	// capabilities lists the privileged SDK features this plugin is allowed to
+	// use (e.g. "redis_raw_keys" for cross-plugin Redis access). Capabilities
+	// must be declared in the plugin's Manifest; the core forwards the subset
+	// it has approved. Anything not in this list is rejected by the SDK server.
+	Capabilities  []string `protobuf:"bytes,4,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -70,6 +80,20 @@ func (x *PluginInitRequest) GetSdkAddress() string {
 func (x *PluginInitRequest) GetConfig() map[string]string {
 	if x != nil {
 		return x.Config
+	}
+	return nil
+}
+
+func (x *PluginInitRequest) GetPluginName() string {
+	if x != nil {
+		return x.PluginName
+	}
+	return ""
+}
+
+func (x *PluginInitRequest) GetCapabilities() []string {
+	if x != nil {
+		return x.Capabilities
 	}
 	return nil
 }
@@ -293,8 +317,16 @@ type ManifestResponse struct {
 	PluginEndpoints  []*EndpointDeclaration `protobuf:"bytes,11,rep,name=plugin_endpoints,json=pluginEndpoints,proto3" json:"plugin_endpoints,omitempty"`
 	Frontend         *FrontendManifest      `protobuf:"bytes,20,opt,name=frontend,proto3" json:"frontend,omitempty"`
 	MigrationFiles   []string               `protobuf:"bytes,30,rep,name=migration_files,json=migrationFiles,proto3" json:"migration_files,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// capabilities declares the privileged SDK features this plugin requires.
+	// The core checks each entry against an allow-list and forwards the
+	// approved subset back via PluginInitRequest.capabilities. Known values:
+	//   - "redis_raw_keys": allow PluginContext.Redis().Raw() to bypass the
+	//     default per-plugin key namespace. Required for plugins that need to
+	//     read/write keys defined by other components (e.g. the gateway cache
+	//     contract written by channel-management).
+	Capabilities  []string `protobuf:"bytes,40,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ManifestResponse) Reset() {
@@ -386,6 +418,13 @@ func (x *ManifestResponse) GetFrontend() *FrontendManifest {
 func (x *ManifestResponse) GetMigrationFiles() []string {
 	if x != nil {
 		return x.MigrationFiles
+	}
+	return nil
+}
+
+func (x *ManifestResponse) GetCapabilities() []string {
+	if x != nil {
+		return x.Capabilities
 	}
 	return nil
 }
@@ -737,11 +776,14 @@ var File_plugin_proto protoreflect.FileDescriptor
 
 const file_plugin_proto_rawDesc = "" +
 	"\n" +
-	"\fplugin.proto\x12\tpluginsdk\x1a\x1bgoogle/protobuf/empty.proto\"\xb1\x01\n" +
+	"\fplugin.proto\x12\tpluginsdk\x1a\x1bgoogle/protobuf/empty.proto\"\xf6\x01\n" +
 	"\x11PluginInitRequest\x12\x1f\n" +
 	"\vsdk_address\x18\x01 \x01(\tR\n" +
 	"sdkAddress\x12@\n" +
-	"\x06config\x18\x02 \x03(\v2(.pluginsdk.PluginInitRequest.ConfigEntryR\x06config\x1a9\n" +
+	"\x06config\x18\x02 \x03(\v2(.pluginsdk.PluginInitRequest.ConfigEntryR\x06config\x12\x1f\n" +
+	"\vplugin_name\x18\x03 \x01(\tR\n" +
+	"pluginName\x12\"\n" +
+	"\fcapabilities\x18\x04 \x03(\tR\fcapabilities\x1a9\n" +
 	"\vConfigEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"D\n" +
@@ -756,7 +798,7 @@ const file_plugin_proto_rawDesc = "" +
 	"\tFileChunk\x12\x12\n" +
 	"\x04data\x18\x01 \x01(\fR\x04data\x12\x1a\n" +
 	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x10\n" +
-	"\x03eof\x18\x03 \x01(\bR\x03eof\"\x97\x03\n" +
+	"\x03eof\x18\x03 \x01(\bR\x03eof\"\xbb\x03\n" +
 	"\x10ManifestResponse\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x18\n" +
@@ -767,7 +809,8 @@ const file_plugin_proto_rawDesc = "" +
 	" \x03(\v2\x1e.pluginsdk.EndpointDeclarationR\x10gatewayEndpoints\x12I\n" +
 	"\x10plugin_endpoints\x18\v \x03(\v2\x1e.pluginsdk.EndpointDeclarationR\x0fpluginEndpoints\x127\n" +
 	"\bfrontend\x18\x14 \x01(\v2\x1b.pluginsdk.FrontendManifestR\bfrontend\x12'\n" +
-	"\x0fmigration_files\x18\x1e \x03(\tR\x0emigrationFiles\"`\n" +
+	"\x0fmigration_files\x18\x1e \x03(\tR\x0emigrationFiles\x12\"\n" +
+	"\fcapabilities\x18( \x03(\tR\fcapabilities\"`\n" +
 	"\x13EndpointDeclaration\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x18\n" +
 	"\amethods\x18\x02 \x03(\tR\amethods\x12\x1b\n" +

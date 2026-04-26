@@ -39,6 +39,16 @@ type SDKServer struct {
 	txMu sync.Mutex
 	txs  map[string]*activeTx
 
+	// capabilities tracks which plugin holds which privileged SDK features
+	// (e.g. redis_raw_keys). Populated by the manager via RegisterPlugin
+	// once GetManifest has been processed.
+	capabilities *pluginCapabilityRegistry
+
+	// knownPlugins is the set of plugin names the manager has registered.
+	// It exists so the metadata-based caller identity check can reject
+	// arbitrary names supplied by something that is not actually a plugin.
+	knownPlugins *knownPluginsRegistry
+
 	stop context.CancelFunc
 }
 
@@ -52,9 +62,11 @@ type activeTx struct {
 // 调用方应在程序退出前调用 Stop() 释放资源。
 func NewSDKServer(db *sql.DB, rdb *redis.Client) *SDKServer {
 	s := &SDKServer{
-		db:    db,
-		redis: rdb,
-		txs:   make(map[string]*activeTx),
+		db:           db,
+		redis:        rdb,
+		txs:          make(map[string]*activeTx),
+		capabilities: newPluginCapabilityRegistry(),
+		knownPlugins: newKnownPluginsRegistry(),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.stop = cancel
@@ -357,8 +369,18 @@ func execResultToResponse(res sql.Result) *pluginsdk.ExecResponse {
 }
 
 // ============================================================
-// RedisProxy 实现
+// RedisProxy 实现 (legacy typed RPCs)
 // ============================================================
+//
+// 这些方法保留是为了兼容旧 SDK 二进制。**新代码应通过 Do() 调用**，由 Do()
+// 负责命名空间、能力检查等安全控制。
+//
+// 这里的 legacy 方法把 key 当作原始字符串透传给 Redis，不做命名空间校验，
+// 因为旧 SDK 客户端自己手动拼接 `plugin:<name>:` 前缀（见 channel-management
+// 的 cache_writer.go 和 hello-world 的旧版 main.go）。如果在这里再加一层
+// 前缀会出现 `plugin:foo:plugin:foo:bar` 的双重前缀。
+//
+// 当所有插件都升级到使用 Do() 的 SDK 后，这些方法可以删除。
 
 func (s *SDKServer) Get(ctx context.Context, req *pluginsdk.RedisKeyRequest) (*pluginsdk.RedisValueResponse, error) {
 	if s.redis == nil {

@@ -25,6 +25,16 @@ service PluginLifecycle {
 message PluginInitRequest {
   string sdk_address = 1;
   map<string, string> config = 2;
+  // plugin_name is the unique plugin identifier the core uses to scope SDK
+  // resources (e.g. Redis key namespace). The SDK echoes it back to the core
+  // via gRPC metadata on every SDK call so the server can apply per-plugin
+  // policy without having to peer at TCP source addresses.
+  string plugin_name = 3;
+  // capabilities lists the privileged SDK features this plugin is allowed to
+  // use (e.g. "redis_raw_keys" for cross-plugin Redis access). Capabilities
+  // must be declared in the plugin's Manifest; the core forwards the subset
+  // it has approved. Anything not in this list is rejected by the SDK server.
+  repeated string capabilities = 4;
 }
 
 message PluginInitResponse {
@@ -63,6 +73,15 @@ message ManifestResponse {
   FrontendManifest frontend = 20;
 
   repeated string migration_files = 30;
+
+  // capabilities declares the privileged SDK features this plugin requires.
+  // The core checks each entry against an allow-list and forwards the
+  // approved subset back via PluginInitRequest.capabilities. Known values:
+  //   - "redis_raw_keys": allow PluginContext.Redis().Raw() to bypass the
+  //     default per-plugin key namespace. Required for plugins that need to
+  //     read/write keys defined by other components (e.g. the gateway cache
+  //     contract written by channel-management).
+  repeated string capabilities = 40;
 }
 
 message EndpointDeclaration {
