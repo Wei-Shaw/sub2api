@@ -21,8 +21,14 @@ import (
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
+
+// callerMetadataKey is the gRPC header the SDK attaches to every call so the
+// core can identify which plugin issued it. Must match
+// backend/internal/plugin/grpc_server_redis_do.go.
+const callerMetadataKey = "x-sub2api-plugin"
 
 // HandshakeProtocolVersion is the version number written into the
 // handshake JSON line. The core uses it to gate behaviour when SDK and core
@@ -165,6 +171,45 @@ func Run(p Plugin) error {
 	return nil
 }
 
+// callerIdentityUnaryInterceptor returns a gRPC client interceptor that
+// attaches the plugin's name as `x-sub2api-plugin` metadata on every unary
+// call to the core. The core uses this to enforce per-plugin Redis key
+// namespaces and capability checks.
+//
+// pluginName is captured at Init time so all subsequent calls send the
+// same identity. Plugins cannot rotate their identity at runtime — and
+// should not, since capabilities are bound to the name.
+func callerIdentityUnaryInterceptor(pluginName string) grpc.UnaryClientInterceptor {
+	return func(
+		ctx context.Context,
+		method string,
+		req, reply interface{},
+		cc *grpc.ClientConn,
+		invoker grpc.UnaryInvoker,
+		opts ...grpc.CallOption,
+	) error {
+		ctx = metadata.AppendToOutgoingContext(ctx, callerMetadataKey, pluginName)
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
+}
+
+// callerIdentityStreamInterceptor mirrors the unary version for streaming
+// RPCs (e.g. Subscribe). Without it the server would not see the metadata
+// header on long-lived streams and would treat them as anonymous.
+func callerIdentityStreamInterceptor(pluginName string) grpc.StreamClientInterceptor {
+	return func(
+		ctx context.Context,
+		desc *grpc.StreamDesc,
+		cc *grpc.ClientConn,
+		method string,
+		streamer grpc.Streamer,
+		opts ...grpc.CallOption,
+	) (grpc.ClientStream, error) {
+		ctx = metadata.AppendToOutgoingContext(ctx, callerMetadataKey, pluginName)
+		return streamer(ctx, desc, cc, method, opts...)
+	}
+}
+
 func writeHandshake(h Handshake) error {
 	data, err := json.Marshal(h)
 	if err != nil {
@@ -244,7 +289,22 @@ func (r *runner) Init(ctx context.Context, req *pb.PluginInitRequest) (*pb.Plugi
 			r.initErr = errors.New("pluginsdk: core SDK address is empty")
 			return
 		}
-		conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+
+		// Resolve the plugin name early so the metadata interceptor can use
+		// it on every outgoing SDK call. Falls back to the manifest's Name
+		// when the core has not populated PluginInitRequest.plugin_name yet.
+		pluginName := req.GetPluginName()
+		if pluginName == "" {
+			if m := r.plugin.Manifest(); m != nil {
+				pluginName = m.Name
+			}
+		}
+
+		conn, err := grpc.NewClient(addr,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithUnaryInterceptor(callerIdentityUnaryInterceptor(pluginName)),
+			grpc.WithStreamInterceptor(callerIdentityStreamInterceptor(pluginName)),
+		)
 		if err != nil {
 			r.initErr = fmt.Errorf("pluginsdk: dial core: %w", err)
 			return
@@ -265,16 +325,11 @@ func (r *runner) Init(ctx context.Context, req *pb.PluginInitRequest) (*pb.Plugi
 			cfgCopy[k] = v
 		}
 
-		// Determine the plugin name + capabilities the core has approved.
-		// We cross-check against what the plugin self-declared in its
-		// Manifest so a misconfigured core cannot grant capabilities that
-		// the plugin source has not opted into.
-		pluginName := req.GetPluginName()
-		if pluginName == "" {
-			if m := r.plugin.Manifest(); m != nil {
-				pluginName = m.Name
-			}
-		}
+		// pluginName was resolved above for the metadata interceptor; reuse
+		// it. Determine which capabilities the core has approved by scanning
+		// the request — we cross-check below if the plugin self-declared a
+		// capability the core did not grant, so a misconfigured operator
+		// cannot silently bypass plugin-side intent.
 		approved := req.GetCapabilities()
 		rawAllowed := false
 		for _, c := range approved {

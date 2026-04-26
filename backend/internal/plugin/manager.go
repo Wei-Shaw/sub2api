@@ -427,6 +427,39 @@ func configToString(in map[string]any) (map[string]string, error) {
 	return out, nil
 }
 
+// allowedPluginCapabilities is the universe of capabilities the core honours.
+// Any value outside this set is rejected even if a plugin requests it. Adding
+// a new capability requires both an entry here and the corresponding
+// enforcement in the SDK server (e.g. grpc_server.go).
+var allowedPluginCapabilities = map[string]struct{}{
+	"redis_raw_keys": {},
+}
+
+// approveCapabilities filters the capabilities a plugin requested in its
+// manifest down to the subset the core is willing to grant. Unknown values
+// are dropped with a warning so operators can spot typos in plugin manifests.
+//
+// The returned slice is what we forward to the plugin via PluginInitRequest;
+// it doubles as the authoritative list the SDK server uses to police Do
+// requests with raw_key=true.
+func approveCapabilities(pluginName string, requested []string, logger *slog.Logger) []string {
+	if len(requested) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(requested))
+	for _, c := range requested {
+		if _, ok := allowedPluginCapabilities[c]; !ok {
+			if logger != nil {
+				logger.Warn("plugin requested unknown capability — ignored",
+					"plugin", pluginName, "capability", c)
+			}
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
 // GetPluginManifestsJSON 返回所有正在运行插件的前端清单(menu_items + routes),
 // 用于 FrontendServer 注入 window.__PLUGIN_MANIFESTS__。
 //
@@ -615,27 +648,9 @@ func (m *PluginManager) spawnAndConnect(parentCtx context.Context, inst *PluginI
 		return err
 	}
 
-	// 调用 Init 把 SDK 地址和插件配置传给子进程。
-	initCtx, cancelInit := context.WithTimeout(parentCtx, m.cfg.ManifestTimeout)
-	initResp, initErr := lifecycle.Init(initCtx, &pluginsdk.PluginInitRequest{
-		SdkAddress: m.sdkAddr,
-		Config:     pluginConfig,
-	})
-	cancelInit()
-	if initErr != nil {
-		_ = conn.Close()
-		cancelProc()
-		_ = cmd.Wait()
-		return fmt.Errorf("plugin init rpc: %w", initErr)
-	}
-	if initResp != nil && !initResp.Success {
-		_ = conn.Close()
-		cancelProc()
-		_ = cmd.Wait()
-		return fmt.Errorf("plugin init reported failure: %s", initResp.Error)
-	}
-
-	// 拉取 manifest。
+	// 先拉取 manifest（GetManifest 不依赖 Init 注入的 PluginContext，可以
+	// 独立调用），这样我们能在 Init 时把核心批准的 capabilities 一并下发，
+	// 让 SDK 在构建 RedisClient 时就知道是否允许 Raw key 访问。
 	manifestCtx, cancelManifest := context.WithTimeout(parentCtx, m.cfg.ManifestTimeout)
 	manifest, err := lifecycle.GetManifest(manifestCtx, &emptypb.Empty{})
 	cancelManifest()
@@ -644,6 +659,36 @@ func (m *PluginManager) spawnAndConnect(parentCtx context.Context, inst *PluginI
 		cancelProc()
 		_ = cmd.Wait()
 		return fmt.Errorf("get manifest: %w", err)
+	}
+
+	// 把 manifest 声明的 capabilities 与核心 allow-list 取交集,作为最终授权。
+	approvedCaps := approveCapabilities(inst.Name, manifest.GetCapabilities(), m.logger)
+
+	// 在 SDKServer 上注册插件 → 授权 capabilities 的映射,后续 Redis Do 会查询。
+	m.sdkServer.RegisterPlugin(inst.Name, approvedCaps)
+
+	// 调用 Init 把 SDK 地址、插件配置、plugin_name 与已批准的 capabilities 传给子进程。
+	initCtx, cancelInit := context.WithTimeout(parentCtx, m.cfg.ManifestTimeout)
+	initResp, initErr := lifecycle.Init(initCtx, &pluginsdk.PluginInitRequest{
+		SdkAddress:   m.sdkAddr,
+		Config:       pluginConfig,
+		PluginName:   inst.Name,
+		Capabilities: approvedCaps,
+	})
+	cancelInit()
+	if initErr != nil {
+		m.sdkServer.UnregisterPlugin(inst.Name)
+		_ = conn.Close()
+		cancelProc()
+		_ = cmd.Wait()
+		return fmt.Errorf("plugin init rpc: %w", initErr)
+	}
+	if initResp != nil && !initResp.Success {
+		m.sdkServer.UnregisterPlugin(inst.Name)
+		_ = conn.Close()
+		cancelProc()
+		_ = cmd.Wait()
+		return fmt.Errorf("plugin init reported failure: %s", initResp.Error)
 	}
 
 	// 跑迁移(若声明了文件)。当前实现假定迁移文件由插件自己 embed,核心仅记录已应用列表。
@@ -740,9 +785,10 @@ func (m *PluginManager) stopInstance(ctx context.Context, name string, markRegis
 		}
 	}
 
-	// 移除路由,关闭连接,更新状态。
+	// 移除路由,关闭连接,撤销 SDK 端的 capability 授权。
 	newTable := m.router.CurrentTable().RemovePlugin(name)
 	m.router.SwapRouteTable(newTable)
+	m.sdkServer.UnregisterPlugin(name)
 
 	inst.mu.Lock()
 	inst.CloseGRPC()

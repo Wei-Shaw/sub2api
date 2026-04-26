@@ -39,6 +39,16 @@ type SDKServer struct {
 	txMu sync.Mutex
 	txs  map[string]*activeTx
 
+	// capabilities tracks which plugin holds which privileged SDK features
+	// (e.g. redis_raw_keys). Populated by the manager via RegisterPlugin
+	// once GetManifest has been processed.
+	capabilities *pluginCapabilityRegistry
+
+	// knownPlugins is the set of plugin names the manager has registered.
+	// It exists so the metadata-based caller identity check can reject
+	// arbitrary names supplied by something that is not actually a plugin.
+	knownPlugins *knownPluginsRegistry
+
 	stop context.CancelFunc
 }
 
@@ -52,9 +62,11 @@ type activeTx struct {
 // 调用方应在程序退出前调用 Stop() 释放资源。
 func NewSDKServer(db *sql.DB, rdb *redis.Client) *SDKServer {
 	s := &SDKServer{
-		db:    db,
-		redis: rdb,
-		txs:   make(map[string]*activeTx),
+		db:           db,
+		redis:        rdb,
+		txs:          make(map[string]*activeTx),
+		capabilities: newPluginCapabilityRegistry(),
+		knownPlugins: newKnownPluginsRegistry(),
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.stop = cancel
