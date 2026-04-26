@@ -224,6 +224,39 @@ func TestSettingService_UpdateSettings_TablePreferences(t *testing.T) {
 	require.Equal(t, "[20,100]", repo.updates[SettingKeyTablePageSizeOptions])
 }
 
+func TestSettingService_UpdateSettings_DefaultProxyID(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+	defaultProxyID := int64(42)
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		DefaultProxyID: &defaultProxyID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "42", repo.updates[SettingKeyDefaultProxyID])
+
+	err = svc.UpdateSettings(context.Background(), &SystemSettings{
+		DefaultProxyID: nil,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "", repo.updates[SettingKeyDefaultProxyID])
+}
+
+func TestSettingService_ParseSettings_DefaultProxyID(t *testing.T) {
+	svc := NewSettingService(&settingUpdateRepoStub{}, &config.Config{})
+
+	got := svc.parseSettings(map[string]string{
+		SettingKeyDefaultProxyID: "88",
+	})
+	require.NotNil(t, got.DefaultProxyID)
+	require.EqualValues(t, 88, *got.DefaultProxyID)
+
+	got = svc.parseSettings(map[string]string{
+		SettingKeyDefaultProxyID: "",
+	})
+	require.Nil(t, got.DefaultProxyID)
+}
+
 func TestSettingService_UpdateSettings_PaymentVisibleMethodsAndAdvancedScheduler(t *testing.T) {
 	repo := &settingUpdateRepoStub{}
 	svc := NewSettingService(repo, &config.Config{})

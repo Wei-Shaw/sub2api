@@ -39,8 +39,8 @@ const (
 )
 
 const (
-	GB = 1024 * 1024 * 1024
-	TB = 1024 * GB
+	GB int64 = 1024 * 1024 * 1024
+	TB int64 = 1024 * GB
 
 	StorageTierUnlimited = 100 * TB // 100TB
 	StorageTierAIPremium = 2 * TB   // 2TB

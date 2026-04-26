@@ -2441,6 +2441,9 @@
       <div>
         <label class="input-label">{{ t('admin.accounts.proxy') }}</label>
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
+        <p v-if="defaultProxyId != null && form.proxy_id === defaultProxyId" class="input-hint">
+          {{ t('admin.accounts.defaultProxyAppliedHint') }}
+        </p>
       </div>
 
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -2506,6 +2509,88 @@
               ]"
             />
           </button>
+        </div>
+      </div>
+
+      <div
+        v-if="form.platform === 'openai' && accountCategory === 'oauth-based'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.openai.quotaStrategy') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.quotaStrategyDesc') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            @click="openAIQuotaStrategyEnabled = !openAIQuotaStrategyEnabled"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              openAIQuotaStrategyEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+            ]"
+          >
+            <span
+              :class="[
+                'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                openAIQuotaStrategyEnabled ? 'translate-x-5' : 'translate-x-0'
+              ]"
+            />
+          </button>
+        </div>
+
+        <div
+          :class="!openAIQuotaStrategyEnabled && 'pointer-events-none opacity-50'"
+          class="mt-3 space-y-3"
+        >
+          <div>
+            <label class="input-label text-xs">{{ t('admin.accounts.openai.quotaStrategyMode') }}</label>
+            <div class="flex gap-2">
+              <button
+                type="button"
+                @click="openAIQuotaStrategy = 'prefer_5h'"
+                :class="[
+                  'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-all',
+                  openAIQuotaStrategy === 'prefer_5h'
+                    ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+                ]"
+              >
+                {{ t('admin.accounts.openai.quotaStrategyPrefer5h') }}
+              </button>
+              <button
+                type="button"
+                @click="openAIQuotaStrategy = 'prefer_7d'"
+                :class="[
+                  'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-all',
+                  openAIQuotaStrategy === 'prefer_7d'
+                    ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+                ]"
+              >
+                {{ t('admin.accounts.openai.quotaStrategyPrefer7d') }}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label class="input-label text-xs" for="create-openai-quota-stop-threshold">
+              {{ t('admin.accounts.openai.quotaStopThreshold') }}
+            </label>
+            <input
+              id="create-openai-quota-stop-threshold"
+              v-model.number="openAIQuotaStopThresholdPercent"
+              type="number"
+              min="1"
+              max="100"
+              class="input"
+              @input="openAIQuotaStopThresholdPercent = normalizeQuotaStopThreshold(openAIQuotaStopThresholdPercent)"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.quotaStopThresholdDesc') }}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -3282,9 +3367,13 @@ const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
+const openAIQuotaStrategyEnabled = ref(true)
+const openAIQuotaStrategy = ref<'prefer_5h' | 'prefer_7d'>('prefer_7d')
+const openAIQuotaStopThresholdPercent = ref(10)
 const anthropicPassthroughEnabled = ref(false)
 const webSearchEmulationMode = ref('default')
 const webSearchGlobalEnabled = ref(false)
+const defaultProxyId = ref<number | null>(null)
 const {
   globalEnabled: quotaNotifyGlobalEnabled,
   state: quotaNotifyState,
@@ -3538,11 +3627,50 @@ const canExchangeCode = computed(() => {
   return authCode.trim() && oauth.sessionId.value && !oauth.loading.value
 })
 
+const normalizeQuotaStopThreshold = (value: number) => {
+  if (!Number.isFinite(value)) {
+    return 10
+  }
+  return Math.min(100, Math.max(1, Math.trunc(value)))
+}
+
+const resolveDefaultProxyId = () => {
+  if (defaultProxyId.value == null) {
+    return null
+  }
+  const matched = props.proxies.find((proxy) => proxy.id === defaultProxyId.value && proxy.status === 'active')
+  return matched ? matched.id : null
+}
+
+const applyDefaultProxySelection = () => {
+  if (form.proxy_id != null) {
+    return
+  }
+  const resolved = resolveDefaultProxyId()
+  if (resolved != null) {
+    form.proxy_id = resolved
+  }
+}
+
+const loadCreateDefaults = async () => {
+  try {
+    const settings = await adminAPI.settings.getSettings()
+    defaultProxyId.value =
+      typeof settings.default_proxy_id === 'number' && settings.default_proxy_id > 0
+        ? settings.default_proxy_id
+        : null
+    applyDefaultProxySelection()
+  } catch {
+    defaultProxyId.value = null
+  }
+}
+
 // Watchers
 watch(
   () => props.show,
   (newVal) => {
     if (newVal) {
+      loadCreateDefaults()
       // Load TLS fingerprint profiles
       adminAPI.tlsFingerprintProfiles.list()
         .then(profiles => { tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name })) })
@@ -3563,6 +3691,15 @@ watch(
       }
     } else {
       resetForm()
+    }
+  }
+)
+
+watch(
+  () => props.proxies,
+  () => {
+    if (props.show) {
+      applyDefaultProxySelection()
     }
   }
 )
@@ -3648,6 +3785,9 @@ watch(
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
       codexCLIOnlyEnabled.value = false
+      openAIQuotaStrategyEnabled.value = true
+      openAIQuotaStrategy.value = 'prefer_7d'
+      openAIQuotaStopThresholdPercent.value = 10
     }
     if (newPlatform !== 'anthropic') {
       anthropicPassthroughEnabled.value = false
@@ -4045,6 +4185,9 @@ const resetForm = () => {
   openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
+  openAIQuotaStrategyEnabled.value = true
+  openAIQuotaStrategy.value = 'prefer_7d'
+  openAIQuotaStopThresholdPercent.value = 10
   anthropicPassthroughEnabled.value = false
   webSearchEmulationMode.value = 'default'
   // Reset quota control state
@@ -4127,6 +4270,13 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
     extra.openai_compact_mode = openAICompactMode.value
   } else {
     delete extra.openai_compact_mode
+  }
+  if (accountCategory.value === 'oauth-based' && openAIQuotaStrategyEnabled.value) {
+    extra.openai_quota_strategy = openAIQuotaStrategy.value
+    extra.openai_quota_stop_threshold_percent = normalizeQuotaStopThreshold(openAIQuotaStopThresholdPercent.value)
+  } else {
+    delete extra.openai_quota_strategy
+    delete extra.openai_quota_stop_threshold_percent
   }
 
   return Object.keys(extra).length > 0 ? extra : undefined

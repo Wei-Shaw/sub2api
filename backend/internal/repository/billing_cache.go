@@ -33,7 +33,7 @@ func jitteredTTL() time.Duration {
 	if billingCacheJitter <= 0 {
 		return billingCacheTTL
 	}
-	jitter := time.Duration(rand.IntN(int(billingCacheJitter)))
+	jitter := time.Duration(rand.Int64N(int64(billingCacheJitter)))
 	return billingCacheTTL - jitter
 }
 
