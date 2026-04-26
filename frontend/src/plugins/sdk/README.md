@@ -23,7 +23,7 @@ plugin frontend bundles served via `/api/v1/plugin-assets/<plugin>/<path>`.
 
 ```ts
 // entry.js — must be a valid ESM module
-import type { HostSdk, PluginRuntimeAssets } from '@sub2api/host-sdk' // not real, types are documented below
+import type { HostSdk, PluginRuntimeAssets } from '@sub2api/plugin-sdk'
 
 export function install(sdk: HostSdk): PluginRuntimeAssets {
   // ...
