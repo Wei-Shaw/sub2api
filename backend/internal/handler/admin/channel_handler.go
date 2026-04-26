@@ -2,6 +2,7 @@ package admin
 
 import (
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -17,11 +18,18 @@ import (
 type ChannelHandler struct {
 	channelService *service.ChannelService
 	billingService *service.BillingService
+	// serviceQuotaSvc 用于在删除 channel 后失效 Redis 中缓存的服务限额规则快照。
+	// FK CASCADE 会自动删除 service_quota_paths 中的关联引用，但缓存（5min TTL）不会感知。
+	serviceQuotaSvc service.ServiceQuotaService
 }
 
 // NewChannelHandler creates a new admin channel handler
-func NewChannelHandler(channelService *service.ChannelService, billingService *service.BillingService) *ChannelHandler {
-	return &ChannelHandler{channelService: channelService, billingService: billingService}
+func NewChannelHandler(channelService *service.ChannelService, billingService *service.BillingService, serviceQuotaSvc service.ServiceQuotaService) *ChannelHandler {
+	return &ChannelHandler{
+		channelService:  channelService,
+		billingService:  billingService,
+		serviceQuotaSvc: serviceQuotaSvc,
+	}
 }
 
 // --- Request / Response types ---
@@ -469,6 +477,16 @@ func (h *ChannelHandler) Delete(c *gin.Context) {
 	if err := h.channelService.Delete(c.Request.Context(), id); err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+
+	// FK CASCADE 已在 DB 层删除 service_quota_paths 中引用本 channel 的关联行，
+	// 但服务限额缓存（Redis 5min TTL）需要手动失效，避免后续 PreCheck 拿到陈旧规则。
+	// 缓存重载失败不影响主删除流程，仅记日志。
+	if h.serviceQuotaSvc != nil {
+		if err := h.serviceQuotaSvc.ReloadCache(c.Request.Context()); err != nil {
+			slog.WarnContext(c.Request.Context(), "failed to reload service quota cache after channel deletion",
+				"channel_id", id, "err", err)
+		}
 	}
 
 	response.Success(c, gin.H{"message": "Channel deleted successfully"})

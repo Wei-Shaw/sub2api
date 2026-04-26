@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -22,13 +23,17 @@ type UserWithConcurrency struct {
 type UserHandler struct {
 	adminService       service.AdminService
 	concurrencyService *service.ConcurrencyService
+	// serviceQuotaSvc 用于在删除 user 后失效服务限额缓存
+	// （FK CASCADE 自动删除 service_quota_rule_users 中的引用，但缓存不感知）。
+	serviceQuotaSvc service.ServiceQuotaService
 }
 
 // NewUserHandler creates a new admin user handler
-func NewUserHandler(adminService service.AdminService, concurrencyService *service.ConcurrencyService) *UserHandler {
+func NewUserHandler(adminService service.AdminService, concurrencyService *service.ConcurrencyService, serviceQuotaSvc service.ServiceQuotaService) *UserHandler {
 	return &UserHandler{
 		adminService:       adminService,
 		concurrencyService: concurrencyService,
+		serviceQuotaSvc:    serviceQuotaSvc,
 	}
 }
 
@@ -305,6 +310,16 @@ func (h *UserHandler) Delete(c *gin.Context) {
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+
+	// FK CASCADE 已删除 service_quota_rule_users 中引用本 user 的关联行，
+	// 但服务限额规则缓存（Redis 5min TTL）需要手动失效。
+	// 缓存重载失败不影响主删除流程，仅记日志。
+	if h.serviceQuotaSvc != nil {
+		if err := h.serviceQuotaSvc.ReloadCache(c.Request.Context()); err != nil {
+			slog.WarnContext(c.Request.Context(), "failed to reload service quota cache after user deletion",
+				"user_id", userID, "err", err)
+		}
 	}
 
 	response.Success(c, gin.H{"message": "User deleted successfully"})

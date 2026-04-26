@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -20,6 +21,8 @@ type GroupHandler struct {
 	adminService         service.AdminService
 	dashboardService     *service.DashboardService
 	groupCapacityService *service.GroupCapacityService
+	// serviceQuotaSvc 用于在删除 group 后失效服务限额缓存（FK CASCADE 自动删除关联，但缓存不感知）。
+	serviceQuotaSvc service.ServiceQuotaService
 }
 
 type optionalLimitField struct {
@@ -72,11 +75,12 @@ func (f optionalLimitField) ToServiceInput() *float64 {
 }
 
 // NewGroupHandler creates a new admin group handler
-func NewGroupHandler(adminService service.AdminService, dashboardService *service.DashboardService, groupCapacityService *service.GroupCapacityService) *GroupHandler {
+func NewGroupHandler(adminService service.AdminService, dashboardService *service.DashboardService, groupCapacityService *service.GroupCapacityService, serviceQuotaSvc service.ServiceQuotaService) *GroupHandler {
 	return &GroupHandler{
 		adminService:         adminService,
 		dashboardService:     dashboardService,
 		groupCapacityService: groupCapacityService,
+		serviceQuotaSvc:      serviceQuotaSvc,
 	}
 }
 
@@ -342,6 +346,16 @@ func (h *GroupHandler) Delete(c *gin.Context) {
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+
+	// FK CASCADE 已删除 service_quota_paths 中引用本 group 的关联行，
+	// 但服务限额规则缓存（Redis 5min TTL）需要手动失效。
+	// 缓存重载失败不影响主删除流程，仅记日志。
+	if h.serviceQuotaSvc != nil {
+		if err := h.serviceQuotaSvc.ReloadCache(c.Request.Context()); err != nil {
+			slog.WarnContext(c.Request.Context(), "failed to reload service quota cache after group deletion",
+				"group_id", groupID, "err", err)
+		}
 	}
 
 	response.Success(c, gin.H{"message": "Group deleted successfully"})

@@ -58,6 +58,8 @@ type AccountHandler struct {
 	sessionLimitCache       service.SessionLimitCache
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
+	// serviceQuotaSvc 用于在删除 account 后失效服务限额缓存（FK CASCADE 自动删除关联，但缓存不感知）。
+	serviceQuotaSvc service.ServiceQuotaService
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -75,6 +77,7 @@ func NewAccountHandler(
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
+	serviceQuotaSvc service.ServiceQuotaService,
 ) *AccountHandler {
 	return &AccountHandler{
 		adminService:            adminService,
@@ -90,6 +93,7 @@ func NewAccountHandler(
 		sessionLimitCache:       sessionLimitCache,
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
+		serviceQuotaSvc:         serviceQuotaSvc,
 	}
 }
 
@@ -643,6 +647,16 @@ func (h *AccountHandler) Delete(c *gin.Context) {
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+
+	// FK CASCADE 已删除 service_quota_paths 中引用本 account 的关联行，
+	// 但服务限额规则缓存（Redis 5min TTL）需要手动失效。
+	// 缓存重载失败不影响主删除流程，仅记日志。
+	if h.serviceQuotaSvc != nil {
+		if err := h.serviceQuotaSvc.ReloadCache(c.Request.Context()); err != nil {
+			slog.WarnContext(c.Request.Context(), "failed to reload service quota cache after account deletion",
+				"account_id", accountID, "err", err)
+		}
 	}
 
 	response.Success(c, gin.H{"message": "Account deleted successfully"})

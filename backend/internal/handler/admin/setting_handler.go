@@ -60,10 +60,13 @@ type SettingHandler struct {
 	opsService           *service.OpsService
 	paymentConfigService *service.PaymentConfigService
 	paymentService       *service.PaymentService
+	// serviceQuotaSvc 用于在 service_quota_enabled 总开关变更时失效 Redis 缓存。
+	// 没有它，开关切换后 ServiceQuota 中的 5min 启用快照缓存仍会返回旧值。
+	serviceQuotaSvc service.ServiceQuotaService
 }
 
 // NewSettingHandler 创建系统设置处理器
-func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService) *SettingHandler {
+func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService, serviceQuotaSvc service.ServiceQuotaService) *SettingHandler {
 	return &SettingHandler{
 		settingService:       settingService,
 		emailService:         emailService,
@@ -71,6 +74,7 @@ func NewSettingHandler(settingService *service.SettingService, emailService *ser
 		opsService:           opsService,
 		paymentConfigService: paymentConfigService,
 		paymentService:       paymentService,
+		serviceQuotaSvc:      serviceQuotaSvc,
 	}
 }
 
@@ -1333,6 +1337,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 
 	h.auditSettingsUpdate(c, previousSettings, settings, previousAuthSourceDefaults, authSourceDefaults, req)
+
+	// service_quota_enabled 总开关变化后，需要立即失效 Redis 缓存中的启用快照。
+	// 否则在缓存 TTL（5min）内，ServiceQuotaService 的 PreCheck 仍会读取旧值，
+	// 造成开关切换后 5 分钟内行为不一致。
+	if h.serviceQuotaSvc != nil && previousSettings != nil &&
+		previousSettings.ServiceQuotaEnabled != settings.ServiceQuotaEnabled {
+		h.serviceQuotaSvc.InvalidateEnabledCache(c.Request.Context())
+	}
 
 	// 重新获取设置返回
 	updatedSettings, err := h.settingService.GetAllSettings(c.Request.Context())

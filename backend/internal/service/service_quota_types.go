@@ -160,11 +160,18 @@ type ServiceQuotaLimiter interface {
 	Release(ctx context.Context, key, member string) error
 }
 
+// ServiceQuotaCache 抽象服务限额规则与开关的缓存层。
+//
+// 读路径（GetRules / GetEnabled）未命中时由 service 层自行通过 singleflight
+// 加载并调用 SetRules / SetEnabled 回填，写路径只调 Invalidate* 把 key 删掉，
+// 让其他实例下次读时重新拉取，避免多实例间陈旧数据的不一致窗口。
 type ServiceQuotaCache interface {
 	GetRules(ctx context.Context) ([]*ServiceQuotaRule, bool, error)
 	SetRules(ctx context.Context, rules []*ServiceQuotaRule) error
+	InvalidateRules(ctx context.Context) error
 	GetEnabled(ctx context.Context) (*bool, error)
 	SetEnabled(ctx context.Context, enabled bool) error
+	InvalidateEnabled(ctx context.Context) error
 	Invalidate(ctx context.Context) error
 }
 
@@ -174,6 +181,10 @@ type ServiceQuotaService interface {
 	UpdateRule(ctx context.Context, id int64, input ServiceQuotaRuleInput) (*ServiceQuotaRule, error)
 	DeleteRule(ctx context.Context, id int64) error
 	InvalidateEnabledCache(ctx context.Context)
+	// ReloadCache 失效规则缓存，让所有实例下次读时重新拉取数据库。
+	// 用于 handler 层在删除 channel/group/account/user 等关联实体后
+	// 主动让服务限额规则缓存失效。
+	ReloadCache(ctx context.Context) error
 	PreCheck(ctx context.Context, req ServiceQuotaCheckRequest) (*ServiceQuotaLease, error)
 	Record(ctx context.Context, req ServiceQuotaRecordRequest)
 }

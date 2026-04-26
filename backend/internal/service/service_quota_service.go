@@ -146,11 +146,15 @@ func normalizeLimiters(input *ServiceQuotaRuleInput) error {
 	return nil
 }
 
-// normalizePaths 校验每条 path 的链路一致性（账号属于分组、平台一致），并按 platform 小写归一化。
+// normalizePaths 校验每条 path 的链路一致性（账号属于分组、平台一致），
+// 按 platform 小写归一化，并对同一规则内 5 字段
+// （platform/channel_id/group_id/account_id/model_pattern）完全相同的 path 做提前去重，
+// 避免 DB 唯一约束在写入时返回 23505，让前端拿到 500 而非可读的 BadRequest。
 func (s *serviceQuotaService) normalizePaths(ctx context.Context, input *ServiceQuotaRuleInput) error {
 	if len(input.Paths) == 0 {
 		return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_PATHS", "at least one path is required")
 	}
+	seen := make(map[string]int, len(input.Paths))
 	for i := range input.Paths {
 		p := &input.Paths[i]
 		if p.Platform != nil {
@@ -173,8 +177,47 @@ func (s *serviceQuotaService) normalizePaths(ctx context.Context, input *Service
 		if err := s.validatePathLinkage(ctx, *p); err != nil {
 			return err
 		}
+		key := serviceQuotaPathSignature(*p)
+		if prev, dup := seen[key]; dup {
+			return pkgerrors.BadRequest(
+				"SERVICE_QUOTA_PATH_DUPLICATE",
+				"duplicate path: same combination of platform/channel_id/group_id/account_id/model_pattern",
+			).WithMetadata(map[string]string{
+				"path_index":         strconv.Itoa(i),
+				"duplicate_of_index": strconv.Itoa(prev),
+				"signature":          key,
+			})
+		}
+		seen[key] = i
 	}
 	return nil
+}
+
+// serviceQuotaPathSignature 为同一规则内的 path 生成稳定签名，
+// nil 字段统一用 "_NIL_" 占位以便与显式空值/0 区分。
+func serviceQuotaPathSignature(p ServiceQuotaPathInput) string {
+	const nilToken = "_NIL_"
+	platform := nilToken
+	if p.Platform != nil {
+		platform = *p.Platform
+	}
+	channelID := nilToken
+	if p.ChannelID != nil {
+		channelID = strconv.FormatInt(*p.ChannelID, 10)
+	}
+	groupID := nilToken
+	if p.GroupID != nil {
+		groupID = strconv.FormatInt(*p.GroupID, 10)
+	}
+	accountID := nilToken
+	if p.AccountID != nil {
+		accountID = strconv.FormatInt(*p.AccountID, 10)
+	}
+	modelPattern := nilToken
+	if p.ModelPattern != nil {
+		modelPattern = *p.ModelPattern
+	}
+	return strings.Join([]string{platform, channelID, groupID, accountID, modelPattern}, "|")
 }
 
 // validatePathLinkage 校验单条 path 内 account/group/platform 之间的隶属关系。
@@ -382,16 +425,28 @@ func (s *serviceQuotaService) loadRulesWithCache(ctx context.Context) []*Service
 	return val.([]*ServiceQuotaRule)
 }
 
+// reloadCache 是写路径在写完 DB 后的缓存失效入口。多实例部署下只能 Del 缓存
+// （而不是主动 SetRules），让其他实例下次读时通过 singleflight 重新拉取，
+// 否则其他实例仍会持有最长达 serviceQuotaCacheTTL 的旧规则。
 func (s *serviceQuotaService) reloadCache(ctx context.Context) {
 	if s.cache == nil {
 		return
 	}
-	rules, err := s.repo.List(ctx, ServiceQuotaListFilter{})
-	if err != nil {
-		_ = s.cache.Invalidate(ctx)
-		return
+	if err := s.cache.InvalidateRules(ctx); err != nil {
+		slog.Warn("invalidate service quota rules cache failed", "error", err)
 	}
-	_ = s.cache.SetRules(ctx, rules)
+}
+
+// ReloadCache 暴露给 handler 层在删除 channel/group/account/user 等
+// 上游实体后主动失效服务限额规则缓存，下次读时会重新从 DB 拉取。
+//
+// 实现上仅 Del key，不重新 SELECT 数据库再 SetRules——后者会回到
+// "实例 A 立即覆盖、实例 B 仍持旧值" 的旧语义，违背任务 #3 的修复初衷。
+func (s *serviceQuotaService) ReloadCache(ctx context.Context) error {
+	if s.cache == nil {
+		return nil
+	}
+	return s.cache.Invalidate(ctx)
 }
 
 func (s *serviceQuotaService) acquireConcurrency(ctx context.Context, req ServiceQuotaCheckRequest, rule *ServiceQuotaRule, path ServiceQuotaPathDef, lim ServiceQuotaLimiterDef, lease *ServiceQuotaLease) error {
