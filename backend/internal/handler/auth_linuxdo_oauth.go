@@ -435,6 +435,7 @@ REDACTED
 
 type completeLinuxDoOAuthRequest struct {
 	InvitationCode   string `json:"invitation_code" binding:"required"`
+	AffCode          string `json:"aff_code,omitempty"`
 	AdoptDisplayName *bool  `json:"adopt_display_name,omitempty"`
 	AdoptAvatar      *bool  `json:"adopt_avatar,omitempty"`
 REDACTED
@@ -518,7 +519,7 @@ REDACTED)
 		response.ErrorFrom(c, err)
 		return
 REDACTED
-	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode)
+	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode, req.AffCode)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

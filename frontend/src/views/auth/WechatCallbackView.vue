@@ -340,6 +340,11 @@ import {
   type OAuthTokenResponse,
   type PendingOAuthExchangeResponse
 REDACTED from '@/api/auth'
+import {
+  clearAllAffiliateReferralCodes,
+  loadOAuthAffiliateCode,
+  oauthAffiliatePayload
+REDACTED from '@/utils/oauthAffiliate'
 
 const route = useRoute()
 const router = useRouter()
@@ -802,6 +807,7 @@ async function finalizeCompletion(completion: PendingOAuthExchangeResponse, redi
   if (getOAuthCompletionKind(completion) === 'bind') {
     const bindRedirect = sanitizeRedirectPath(completion.redirect || '/profile')
     clearPendingAuthSession()
+    clearAllAffiliateReferralCodes()
     appStore.showSuccess(bindSuccessMessage)
     await router.replace(bindRedirect)
     return
@@ -813,6 +819,7 @@ async function finalizeCompletion(completion: PendingOAuthExchangeResponse, redi
 
   persistOAuthTokenContext(completion)
   await authStore.setToken(completion.access_token)
+  clearAllAffiliateReferralCodes()
   appStore.showSuccess(t('auth.loginSuccess'))
   await router.replace(redirect)
 REDACTED
@@ -861,18 +868,20 @@ async function handleSubmitInvitation() {
 
   isSubmitting.value = true
   try {
+    const affCode = loadOAuthAffiliateCode()
+    const decision = currentAdoptionDecision()
     const completion: PendingWeChatCompletion = legacyPendingOAuthToken.value
       ? (
           await apiClient.post<PendingWeChatCompletion>('/auth/oauth/wechat/complete-registration', {
             pending_oauth_token: legacyPendingOAuthToken.value,
             invitation_code: invitationCode.value.trim(),
-            ...serializeAdoptionDecision(currentAdoptionDecision())
+            ...oauthAffiliatePayload(affCode),
+            ...serializeAdoptionDecision(decision)
           REDACTED)
         ).data
-      : await completeWeChatOAuthRegistration(
-          invitationCode.value.trim(),
-          currentAdoptionDecision()
-        )
+      : affCode
+        ? await completeWeChatOAuthRegistration(invitationCode.value.trim(), decision, affCode)
+        : await completeWeChatOAuthRegistration(invitationCode.value.trim(), decision)
     await finalizePendingAccountResponse(completion)
   REDACTED catch (e: unknown) {
     const err = e as { message?: string; response?: { data?: { message?: string REDACTED REDACTED REDACTED
@@ -907,6 +916,7 @@ async function handleCreateAccount(payload: PendingOAuthCreateAccountPayload) {
       password: payload.password,
       verify_code: payload.verifyCode || undefined,
       invitation_code: payload.invitationCode || undefined,
+      ...oauthAffiliatePayload(loadOAuthAffiliateCode()),
       ...serializeAdoptionDecision(currentAdoptionDecision())
     REDACTED)
     await finalizePendingAccountResponse(data)
@@ -955,6 +965,7 @@ async function handleSubmitTotpChallenge() {
     REDACTED)
     persistOAuthTokenContext(completion)
     await authStore.setToken(completion.access_token)
+    clearAllAffiliateReferralCodes()
     appStore.showSuccess(t('auth.loginSuccess'))
     await router.replace(redirectTo.value)
   REDACTED catch (e: unknown) {
@@ -1015,6 +1026,7 @@ onMounted(async () => {
     if (legacyLogin) {
       persistOAuthTokenContext(legacyLogin)
       await authStore.setToken(legacyLogin.access_token)
+      clearAllAffiliateReferralCodes()
       appStore.showSuccess(t('auth.loginSuccess'))
       await router.replace(redirect)
       return
