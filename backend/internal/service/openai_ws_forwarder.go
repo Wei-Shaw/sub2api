@@ -3803,6 +3803,7 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 	requestedModel string,
 	targetGroup AccountTargetGroup,
 	excludedIDs map[int64]struct{},
+	requireCompact bool,
 ) (*AccountSelectionResult, *openAIAffinityBinding, error) {
 	if s == nil {
 		return nil, nil, nil
@@ -3900,6 +3901,11 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 	}
 	account = s.recheckSelectedProjectedOpenAIAccountFromDB(ctx, groupID, account, requestedModel, selectedGroup, targetGroup)
 	if account == nil {
+		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+		return nil, nil, nil
+	}
+	// 兜底：若上游 compact 能力刚被探测为不支持，但 sticky 还在，需要主动放弃。
+	if requireCompact && openAICompactSupportTier(account) == 0 {
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return nil, nil, nil
 	}

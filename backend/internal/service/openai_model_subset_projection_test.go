@@ -107,7 +107,7 @@ func TestBuildOpenAICanonicalModelCatalog_UsesFiniteSources(t *testing.T) {
 	require.ElementsMatch(t, []string{
 		"gpt-5.1-codex-max",
 		"gpt-5.2",
-		"gpt-5.3-codex",
+		"gpt-5.3-codex-spark",
 		"gpt-5.4",
 		"gpt-5.4-mini",
 		"gpt-5.4-nano",
@@ -296,7 +296,7 @@ func TestProjectionModelReachability_MessagesDispatchConfiguredModelsProvideSupp
 	require.True(t, accountSupportsProjectionModel(account, "gpt-5.9-high"))
 }
 
-func TestNormalizeOpenAIProjectionModelKey_ReusesCompatNormalization(t *testing.T) {
+func TestNormalizeOpenAIProjectionModelKey_PreservesProjectionIdentity(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -306,7 +306,9 @@ func TestNormalizeOpenAIProjectionModelKey_ReusesCompatNormalization(t *testing.
 	}{
 		{name: "sys suffix", input: "gpt-5.4-Sys", want: "gpt-5.4"},
 		{name: "compat reasoning and sys", input: " gpt-5.4-xhigh-Sys ", want: "gpt-5.4"},
-		{name: "codex alias and sys", input: "gpt-5.3-codex-spark-high-Sys", want: "gpt-5.3-codex"},
+		{name: "codex spark reasoning and sys", input: "gpt-5.3-codex-spark-high-Sys", want: "gpt-5.3-codex-spark"},
+		{name: "removed upstream model preserved for projection", input: "gpt-5.1", want: "gpt-5.1"},
+		{name: "legacy codex max reasoning preserved for projection", input: "gpt-5.1-codex-max-high-Sys", want: "gpt-5.1-codex-max"},
 		{name: "unknown model preserved", input: "gpt-5.6-Sys", want: "gpt-5.6"},
 		{name: "unknown compat-like suffix preserved conservatively", input: "gpt-5.9-high-Sys", want: "gpt-5.9-high"},
 	}

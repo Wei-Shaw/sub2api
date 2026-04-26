@@ -37,7 +37,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_Hit(t *testing.T
 
 	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_prev_1", account.ID, time.Hour))
 
-	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_1", "gpt-5.1", TargetGroupAny, nil)
+	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_1", "gpt-5.1", TargetGroupAny, nil, false)
 	require.NoError(t, err)
 	require.NotNil(t, selection)
 	require.NotNil(t, selection.Account)
@@ -94,7 +94,7 @@ func TestPreviousResponseReserveBindingStillMatchesExhaustedClass(t *testing.T) 
 	require.NoError(t, store.BindResponseAccount(ctx, groupID, responseID, reserveAccount.ID, time.Hour))
 	cache.setAffinityBinding(t, openAIResponseAffinityBindingNamespace, groupID, responseID, binding, time.Hour)
 
-	selection, selectedBinding, err := readerSvc.SelectAccountByPreviousResponseID(ctx, &groupID, responseID, "gpt-5.1", TargetGroupExhausted, nil)
+	selection, selectedBinding, err := readerSvc.SelectAccountByPreviousResponseID(ctx, &groupID, responseID, "gpt-5.1", TargetGroupExhausted, nil, false)
 	require.NoError(t, err)
 	require.NotNil(t, selection)
 	require.NotNil(t, selection.Account)
@@ -105,7 +105,7 @@ func TestPreviousResponseReserveBindingStillMatchesExhaustedClass(t *testing.T) 
 	require.Equal(t, openAISelectedGroupReserve, selectedBinding.SelectedGroup)
 	storedBinding := cache.mustGetAffinityBinding(t, openAIResponseAffinityBindingNamespace, groupID, responseID)
 	require.Equal(t, openAISelectedGroupReserve, storedBinding.SelectedGroup)
-	selection, selectedBinding, err = writerSvc.SelectAccountByPreviousResponseID(ctx, &groupID, responseID, "gpt-5.1", TargetGroupExhausted, nil)
+	selection, selectedBinding, err = writerSvc.SelectAccountByPreviousResponseID(ctx, &groupID, responseID, "gpt-5.1", TargetGroupExhausted, nil, false)
 	require.NoError(t, err)
 	require.NotNil(t, selection)
 	require.NotNil(t, selectedBinding)
@@ -116,7 +116,7 @@ func TestPreviousResponseReserveBindingStillMatchesExhaustedClass(t *testing.T) 
 
 	// 被动耗尽后仍应命中，但当前实际命中组应回落为 exhausted，而不是继续保留 reserve 标签。
 	reserveAccount.Extra["codex_7d_used_percent"] = 100.0
-	selection, selectedBinding, err = readerSvc.SelectAccountByPreviousResponseID(ctx, &groupID, responseID, "gpt-5.1", TargetGroupExhausted, nil)
+	selection, selectedBinding, err = readerSvc.SelectAccountByPreviousResponseID(ctx, &groupID, responseID, "gpt-5.1", TargetGroupExhausted, nil, false)
 	require.NoError(t, err)
 	require.NotNil(t, selection)
 	require.NotNil(t, selection.Account)
@@ -160,7 +160,7 @@ func TestPreviousResponseReserveBindingStillMatchesExhaustedClass_OnProjectionMi
 	require.NoError(t, store.BindResponseAccount(ctx, groupID, responseID, reserveAccount.ID, time.Hour))
 	cache.setAffinityBinding(t, openAIResponseAffinityBindingNamespace, groupID, responseID, binding, time.Hour)
 
-	selection, selectedBinding, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, responseID, "gpt-5.1", TargetGroupExhausted, nil)
+	selection, selectedBinding, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, responseID, "gpt-5.1", TargetGroupExhausted, nil, false)
 	require.NoError(t, err)
 	require.NotNil(t, selection)
 	require.NotNil(t, selection.Account)
@@ -223,7 +223,7 @@ func TestPreviousResponseReserveBindingReadsSameProjectionKeyAsSysModel(t *testi
 	require.NoError(t, store.BindResponseAccount(ctx, groupID, responseID, reserveAccount.ID, time.Hour))
 	cache.setAffinityBinding(t, openAIResponseAffinityBindingNamespace, groupID, responseID, binding, time.Hour)
 
-	selection, selectedBinding, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, responseID, "gpt-5.4-Sys", TargetGroupExhausted, nil)
+	selection, selectedBinding, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, responseID, "gpt-5.4-Sys", TargetGroupExhausted, nil, false)
 	require.NoError(t, err)
 	require.NotNil(t, selection)
 	require.NotNil(t, selection.Account)
@@ -263,7 +263,7 @@ func TestWSContinuationReserveBindingAcceptedForActiveAny(t *testing.T) {
 			store := svc.getOpenAIWSStateStore()
 			require.NoError(t, store.BindResponseAccount(ctx, tc.groupID, responseID, reserveAccount.ID, time.Hour))
 
-			selection, binding, err := svc.SelectAccountByPreviousResponseID(ctx, &tc.groupID, responseID, "gpt-5.1", tc.targetGroup, nil)
+			selection, binding, err := svc.SelectAccountByPreviousResponseID(ctx, &tc.groupID, responseID, "gpt-5.1", tc.targetGroup, nil, false)
 			require.NoError(t, err)
 			require.NotNil(t, selection)
 			require.NotNil(t, selection.Account)
@@ -317,7 +317,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_ReserveRecheckRe
 				ProjectionModelKey: "gpt-5.1",
 			}, time.Hour)
 
-			selection, binding, err := svc.SelectAccountByPreviousResponseID(ctx, &tc.groupID, responseID, "gpt-5.1", tc.targetGroup, nil)
+			selection, binding, err := svc.SelectAccountByPreviousResponseID(ctx, &tc.groupID, responseID, "gpt-5.1", tc.targetGroup, nil, false)
 			require.NoError(t, err)
 			require.Nil(t, selection)
 			require.Nil(t, binding)
@@ -345,7 +345,7 @@ func TestWSContinuationReserveBindingAcceptedForExhaustedWritesReserveDomain(t *
 	store := svc.getOpenAIWSStateStore()
 	require.NoError(t, store.BindResponseAccount(ctx, groupID, responseID, reserveAccount.ID, time.Hour))
 
-	selection, binding, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, responseID, "gpt-5.1", TargetGroupExhausted, nil)
+	selection, binding, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, responseID, "gpt-5.1", TargetGroupExhausted, nil, false)
 	require.NoError(t, err)
 	require.NotNil(t, selection)
 	require.NotNil(t, selection.Account)
@@ -476,7 +476,7 @@ func TestResponseAffinityBindingSyncsTTLAndDelete(t *testing.T) {
 	oldSessionExpiry := cache.sessionExpiry(oldResponseKey)
 	oldAffinityExpiry := cache.affinityExpiry(openAIResponseAffinityBindingNamespace, groupID, responseID)
 
-	selection, selectedBinding, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, responseID, "gpt-5.1", TargetGroupExhausted, nil)
+	selection, selectedBinding, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, responseID, "gpt-5.1", TargetGroupExhausted, nil, false)
 	require.NoError(t, err)
 	require.NotNil(t, selection)
 	require.NotNil(t, selectedBinding)
@@ -495,7 +495,7 @@ func TestResponseAffinityBindingSyncsTTLAndDelete(t *testing.T) {
 		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
 		openaiWSStateStore: NewOpenAIWSStateStore(cache),
 	}
-	selection, _, err = disabledSvc.SelectAccountByPreviousResponseID(ctx, &groupID, responseID, "gpt-5.1", TargetGroupExhausted, nil)
+	selection, _, err = disabledSvc.SelectAccountByPreviousResponseID(ctx, &groupID, responseID, "gpt-5.1", TargetGroupExhausted, nil, false)
 	require.NoError(t, err)
 	require.Nil(t, selection)
 	freshStore := NewOpenAIWSStateStore(cache)
@@ -534,7 +534,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_RateLimitedMiss(
 
 	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_prev_rl", account.ID, time.Hour))
 
-	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_rl", "gpt-5.1", TargetGroupAny, nil)
+	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_rl", "gpt-5.1", TargetGroupAny, nil, false)
 	require.NoError(t, err)
 	require.Nil(t, selection, "限额中的账号不应继续命中 previous_response_id 粘连")
 	boundAccountID, getErr := store.GetResponseAccount(ctx, groupID, "resp_prev_rl")
@@ -586,7 +586,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_DBRuntimeRecheck
 
 	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_prev_db_rl", dbAccount.ID, time.Hour))
 
-	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_db_rl", "gpt-5.1", TargetGroupAny, nil)
+	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_db_rl", "gpt-5.1", TargetGroupAny, nil, false)
 	require.NoError(t, err)
 	require.Nil(t, selection, "DB 中已限流的账号不应继续命中 previous_response_id 粘连")
 	boundAccountID, getErr := store.GetResponseAccount(ctx, groupID, "resp_prev_db_rl")
@@ -621,7 +621,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_Excluded(t *test
 
 	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_prev_2", account.ID, time.Hour))
 
-	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_2", "gpt-5.1", TargetGroupAny, map[int64]struct{}{account.ID: {}})
+	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_2", "gpt-5.1", TargetGroupAny, map[int64]struct{}{account.ID: {}}, false)
 	require.NoError(t, err)
 	require.Nil(t, selection)
 }
@@ -654,7 +654,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_ForceHTTPIgnored
 
 	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_prev_force_http", account.ID, time.Hour))
 
-	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_force_http", "gpt-5.1", TargetGroupAny, nil)
+	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_force_http", "gpt-5.1", TargetGroupAny, nil, false)
 	require.NoError(t, err)
 	require.Nil(t, selection, "force_http 场景应忽略 previous_response_id 粘连")
 	boundAccountID, getErr := store.GetResponseAccount(ctx, groupID, "resp_prev_force_http")
@@ -718,7 +718,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_BusyKeepsSticky(
 
 	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_prev_busy", 21, time.Hour))
 
-	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_busy", "gpt-5.1", TargetGroupAny, nil)
+	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_busy", "gpt-5.1", TargetGroupAny, nil, false)
 	require.NoError(t, err)
 	require.NotNil(t, selection)
 	require.NotNil(t, selection.Account)
@@ -756,7 +756,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_TargetGroupMisma
 
 	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_prev_target_group_mismatch", account.ID, time.Hour))
 
-	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_target_group_mismatch", "gpt-5.1", TargetGroupExhausted, nil)
+	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_target_group_mismatch", "gpt-5.1", TargetGroupExhausted, nil, false)
 	require.NoError(t, err)
 	require.Nil(t, selection)
 	boundAccountID, getErr := store.GetResponseAccount(ctx, groupID, "resp_prev_target_group_mismatch")
@@ -790,7 +790,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_UnschedulableCle
 
 	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_prev_unsched", account.ID, time.Hour))
 
-	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_unsched", "gpt-5.1", TargetGroupAny, nil)
+	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_unsched", "gpt-5.1", TargetGroupAny, nil, false)
 	require.NoError(t, err)
 	require.Nil(t, selection)
 	boundAccountID, getErr := store.GetResponseAccount(ctx, groupID, "resp_prev_unsched")
@@ -828,7 +828,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_ExhaustedRateLim
 
 	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_prev_exhausted_rl", account.ID, time.Hour))
 
-	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_exhausted_rl", "gpt-5.1", TargetGroupExhausted, nil)
+	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_exhausted_rl", "gpt-5.1", TargetGroupExhausted, nil, false)
 	require.NoError(t, err)
 	require.NotNil(t, selection)
 	require.NotNil(t, selection.Account)
@@ -860,7 +860,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_ReserveProjectio
 	require.False(t, svc.isCurrentOpenAIReserveOverlayAccount(ctx, &groupID, "gpt-5.1", overlayFromSnapshot))
 	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_prev_projection_miss_any_reserve", overlayReserve.ID, time.Hour))
 
-	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_projection_miss_any_reserve", "gpt-5.1", TargetGroupAny, nil)
+	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_projection_miss_any_reserve", "gpt-5.1", TargetGroupAny, nil, false)
 	require.NoError(t, err)
 	require.Nil(t, selection)
 	boundAccountID, getErr := store.GetResponseAccount(ctx, groupID, "resp_prev_projection_miss_any_reserve")
@@ -883,7 +883,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_NonOverlayReserv
 
 	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_prev_projection_miss_any_non_overlay", activeReserve.ID, time.Hour))
 
-	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_projection_miss_any_non_overlay", "gpt-5.1", TargetGroupAny, nil)
+	selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_projection_miss_any_non_overlay", "gpt-5.1", TargetGroupAny, nil, false)
 	require.NoError(t, err)
 	require.NotNil(t, selection)
 	require.NotNil(t, selection.Account)
@@ -938,7 +938,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_ReserveAffinityP
 				SelectedGroup:  openAISelectedGroupReserve,
 			}, time.Hour)
 
-			selection, binding, err := svc.SelectAccountByPreviousResponseID(ctx, &tc.groupID, responseID, "gpt-5.1", tc.targetGroup, nil)
+			selection, binding, err := svc.SelectAccountByPreviousResponseID(ctx, &tc.groupID, responseID, "gpt-5.1", tc.targetGroup, nil, false)
 			require.NoError(t, err)
 			require.Nil(t, selection)
 			require.Nil(t, binding)
@@ -981,7 +981,7 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_UnknownModelProj
 			require.NoError(t, store.BindResponseAccount(ctx, tc.groupID, responseID, reserveAccount.ID, time.Hour))
 			cache.setAffinityBinding(t, openAIResponseAffinityBindingNamespace, tc.groupID, responseID, binding, time.Hour)
 
-			selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &tc.groupID, responseID, "gpt-5.unknown", tc.targetGroup, nil)
+			selection, _, err := svc.SelectAccountByPreviousResponseID(ctx, &tc.groupID, responseID, "gpt-5.unknown", tc.targetGroup, nil, false)
 			require.ErrorIs(t, err, ErrSchedulerCacheNotReady)
 			require.Nil(t, selection)
 		})

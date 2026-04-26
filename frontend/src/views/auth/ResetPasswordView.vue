@@ -13,16 +13,16 @@
 
       <!-- Invalid Link State -->
       <div v-if="isInvalidLink" class="space-y-6">
-        <div class="rounded-xl border border-red-200 bg-red-50 p-6 dark:border-red-800/50 dark:bg-red-900/20">
+        <div class="rounded-xl border border-amber-200 bg-amber-50 p-6 dark:border-amber-800/50 dark:bg-amber-900/20">
           <div class="flex flex-col items-center gap-4 text-center">
-            <div class="flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-800/50">
-              <Icon name="exclamationCircle" size="lg" class="text-red-600 dark:text-red-400" />
+            <div class="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-800/50">
+              <Icon name="exclamationCircle" size="lg" class="text-amber-600 dark:text-amber-400" />
             </div>
             <div>
-              <h3 class="text-lg font-semibold text-red-800 dark:text-red-200">
+              <h3 class="text-lg font-semibold text-amber-800 dark:text-amber-200">
                 {{ t('auth.invalidResetLink') }}
               </h3>
-              <p class="mt-2 text-sm text-red-700 dark:text-red-300">
+              <p class="mt-2 text-sm text-amber-700 dark:text-amber-300">
                 {{ t('auth.invalidResetLinkHint') }}
               </p>
             </div>
@@ -119,9 +119,6 @@
               <Icon v-else name="eye" size="md" />
             </button>
           </div>
-          <p v-if="errors.password" class="input-error-text">
-            {{ errors.password }}
-          </p>
         </div>
 
         <!-- Confirm Password Input -->
@@ -153,27 +150,7 @@
               <Icon v-else name="eye" size="md" />
             </button>
           </div>
-          <p v-if="errors.confirmPassword" class="input-error-text">
-            {{ errors.confirmPassword }}
-          </p>
         </div>
-
-        <!-- Error Message -->
-        <transition name="fade">
-          <div
-            v-if="errorMessage"
-            class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20"
-          >
-            <div class="flex items-start gap-3">
-              <div class="flex-shrink-0">
-                <Icon name="exclamationCircle" size="md" class="text-red-500" />
-              </div>
-              <p class="text-sm text-red-700 dark:text-red-400">
-                {{ errorMessage }}
-              </p>
-            </div>
-          </div>
-        </transition>
 
         <!-- Submit Button -->
         <button
@@ -223,7 +200,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { AuthLayout } from '@/components/layout'
@@ -260,6 +237,16 @@ const errors = reactive({
   confirmPassword: ''
 })
 
+const validationToastMessage = computed(
+  () => errors.password || errors.confirmPassword || ''
+)
+
+watch(validationToastMessage, (value, previousValue) => {
+  if (value && value !== previousValue) {
+    appStore.showError(value)
+  }
+})
+
 // Check if the reset link is valid (has email and token)
 const isInvalidLink = computed(() => !email.value || !token.value)
 
@@ -269,6 +256,10 @@ onMounted(() => {
   // Get email and token from URL query parameters
   email.value = (route.query.email as string) || ''
   token.value = (route.query.token as string) || ''
+
+  if (!email.value || !token.value) {
+    appStore.showError(t('auth.invalidResetLink'))
+  }
 })
 
 // ==================== Validation ====================

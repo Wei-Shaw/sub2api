@@ -25,6 +25,11 @@ func newGatewayRoutesTestRouter() *gin.Engine {
 			OpenAIGateway: &handler.OpenAIGatewayHandler{},
 		},
 		servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
+			groupID := int64(1)
+			c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
+				GroupID: &groupID,
+				Group:   &service.Group{Platform: service.PlatformOpenAI},
+			})
 			c.Next()
 		}),
 		nil,
@@ -40,7 +45,12 @@ func newGatewayRoutesTestRouter() *gin.Engine {
 func TestGatewayRoutesOpenAIResponsesCompactPathIsRegistered(t *testing.T) {
 	router := newGatewayRoutesTestRouter()
 
-	for _, path := range []string{"/v1/responses/compact", "/responses/compact"} {
+	for _, path := range []string{
+		"/v1/responses/compact",
+		"/responses/compact",
+		"/backend-api/codex/responses",
+		"/backend-api/codex/responses/compact",
+	} {
 		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"gpt-5"}`))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
@@ -61,4 +71,22 @@ func TestGetEffectivePlatform_PrefersForcePlatform(t *testing.T) {
 	c.Set(string(servermiddleware.ContextKeyEffectivePlatform), service.PlatformOpenAI)
 	c.Set(string(servermiddleware.ContextKeyForcePlatform), service.PlatformAntigravity)
 	require.Equal(t, service.PlatformAntigravity, getEffectivePlatform(c))
+}
+
+func TestGatewayRoutesOpenAIImagesPathsAreRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter()
+
+	for _, path := range []string{
+		"/v1/images/generations",
+		"/v1/images/edits",
+		"/images/generations",
+		"/images/edits",
+	} {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"gpt-image-2","prompt":"draw a cat"}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+		require.NotEqual(t, http.StatusNotFound, w.Code, "path=%s should hit OpenAI images handler", path)
+	}
 }

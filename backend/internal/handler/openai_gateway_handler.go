@@ -104,6 +104,7 @@ func buildOpenAIAccountScheduleRequest(
 	targetGroup service.AccountTargetGroup,
 	excludedIDs map[int64]struct{},
 	requiredTransport service.OpenAIUpstreamTransport,
+	requireCompact bool,
 ) service.OpenAIAccountScheduleRequest {
 	trimmedPreviousResponseID := strings.TrimSpace(previousResponseID)
 	return service.OpenAIAccountScheduleRequest{
@@ -116,6 +117,7 @@ func buildOpenAIAccountScheduleRequest(
 		ParentSessionKey:     trimmedPreviousResponseID,
 		RequestedModel:       requestedModel,
 		RequiredTransport:    requiredTransport,
+		RequireCompact:       requireCompact,
 		ExcludedIDs:          excludedIDs,
 	}
 }
@@ -321,6 +323,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "previous_response_id must be a response.id (resp_*), not a message id")
 			return
 		}
+		reqLog.Warn("openai.request_validation_failed",
+			zap.String("reason", "previous_response_id_requires_wsv2"),
+		)
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "previous_response_id is only supported on Responses WebSocket v2")
+		return
 	}
 
 	setOpsRequestContext(c, reqModel, reqStream, body)
@@ -372,7 +379,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 2. Re-check billing eligibility after wait
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
 		reqLog.Info("openai.billing_eligibility_check_failed", zap.Error(err))
-		status, code, message := billingErrorDetails(err)
+		status, code, message, retryAfter := billingErrorDetails(err)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
 		h.handleStreamingAwareError(c, status, code, message, streamStarted)
 		return
 	}
@@ -380,6 +390,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// Generate session hash (header first; fallback to prompt_cache_key)
 	sessionHash := h.gatewayService.GenerateSessionHash(c, sessionHashBody)
 	sessionSource := resolveOpenAIScheduleSessionSource(c, sessionHashBody, sessionHash, "")
+	requireCompact := isOpenAIRemoteCompactPath(c)
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
@@ -401,6 +412,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				targetGroup,
 				failedAccountIDs,
 				service.OpenAIUpstreamTransportAny,
+				requireCompact,
 			),
 		)
 		if err != nil {
@@ -415,6 +427,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		}
 		storeOpenAIRoutingSnapshotFromDecision(c, targetGroup, scheduleDecision, selectedAccount, requestedModel, reqModel)
 		if err != nil || selection == nil || selection.Account == nil {
+			if errors.Is(err, service.ErrNoAvailableCompactAccounts) {
+				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "compact_not_supported", "No available OpenAI accounts support /responses/compact", streamStarted)
+				return
+			}
 			action := classifyResponsesSelectionFailure(err, selection, len(failedAccountIDs), lastFailoverErr)
 			switch action {
 			case responsesSelectionFailureActionTargetGroupAware:
@@ -756,7 +772,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
 		reqLog.Info("openai_messages.billing_eligibility_check_failed", zap.Error(err))
-		status, code, message := billingErrorDetails(err)
+		status, code, message, retryAfter := billingErrorDetails(err)
+		if retryAfter > 0 {
+			c.Header("Retry-After", strconv.Itoa(retryAfter))
+		}
 		h.anthropicStreamingAwareError(c, status, code, message, streamStarted)
 		return
 	}
@@ -805,6 +824,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				service.TargetGroupAny,
 				failedAccountIDs,
 				service.OpenAIUpstreamTransportAny,
+				false,
 			),
 		)
 		if err != nil {
@@ -1044,7 +1064,7 @@ func (h *OpenAIGatewayHandler) validateFunctionCallOutputRequest(c *gin.Context,
 		reqLog.Warn("openai.request_validation_failed",
 			zap.String("reason", "function_call_output_missing_call_id"),
 		)
-		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires call_id or previous_response_id; if relying on history, ensure store=true and reuse previous_response_id")
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires call_id on HTTP requests; continuation via previous_response_id is only supported on Responses WebSocket v2")
 		return false
 	}
 	if validation.HasItemReferenceForAllCallIDs {
@@ -1054,7 +1074,7 @@ func (h *OpenAIGatewayHandler) validateFunctionCallOutputRequest(c *gin.Context,
 	reqLog.Warn("openai.request_validation_failed",
 		zap.String("reason", "function_call_output_missing_item_reference"),
 	)
-	h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires item_reference ids matching each call_id, or previous_response_id/tool_call context; if relying on history, ensure store=true and reuse previous_response_id")
+	h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires item_reference ids matching each call_id on HTTP requests; continuation via previous_response_id is only supported on Responses WebSocket v2")
 	return false
 }
 
@@ -1485,6 +1505,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			service.TargetGroupAny,
 			nil,
 			service.OpenAIUpstreamTransportResponsesWebsocketV2,
+			false,
 		),
 	)
 	if err != nil {

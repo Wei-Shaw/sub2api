@@ -189,6 +189,13 @@
             <div class="flex flex-wrap items-center gap-1">
               <PlatformTypeBadge :platform="row.platform" :type="row.type" :plan-type="row.credentials?.plan_type" :privacy-mode="row.extra?.privacy_mode" :subscription-expires-at="row.credentials?.subscription_expires_at" />
               <span
+                v-if="getOpenAICompactLabel(row)"
+                :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', getOpenAICompactClass(row)]"
+                :title="getOpenAICompactTitle(row)"
+              >
+                {{ getOpenAICompactLabel(row) }}
+              </span>
+              <span
                 v-if="getAntigravityTierLabel(row)"
                 :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', getAntigravityTierClass(row)]"
               >
@@ -930,6 +937,43 @@ function getAntigravityTierLabel(row: any): string | null {
     case 'g1-ultra-tier': return t('admin.accounts.tier.ultra')
     default: return null
   }
+}
+
+function getOpenAICompactState(row: any): 'supported' | 'unsupported' | 'unknown' | null {
+  if (row.platform !== 'openai' || (row.type !== 'oauth' && row.type !== 'apikey')) return null
+  const extra = row.extra as Record<string, unknown> | undefined
+  const mode = typeof extra?.openai_compact_mode === 'string' ? extra.openai_compact_mode : 'auto'
+  if (mode === 'force_on') return 'supported'
+  if (mode === 'force_off') return 'unsupported'
+  if (typeof extra?.openai_compact_supported === 'boolean') {
+    return extra.openai_compact_supported ? 'supported' : 'unsupported'
+  }
+  return 'unknown'
+}
+
+function getOpenAICompactLabel(row: any): string | null {
+  switch (getOpenAICompactState(row)) {
+    case 'supported': return t('admin.accounts.openai.compactSupported')
+    case 'unsupported': return t('admin.accounts.openai.compactUnsupported')
+    case 'unknown': return t('admin.accounts.openai.compactUnknown')
+    default: return null
+  }
+}
+
+function getOpenAICompactClass(row: any): string {
+  switch (getOpenAICompactState(row)) {
+    case 'supported': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+    case 'unsupported': return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
+    case 'unknown': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+    default: return ''
+  }
+}
+
+function getOpenAICompactTitle(row: any): string {
+  const extra = row.extra as Record<string, unknown> | undefined
+  const checkedAt = typeof extra?.openai_compact_checked_at === 'string' ? extra.openai_compact_checked_at : ''
+  if (!checkedAt) return getOpenAICompactLabel(row) || ''
+  return `${getOpenAICompactLabel(row)} | ${t('admin.accounts.openai.compactLastChecked')}: ${formatDateTime(new Date(checkedAt))}`
 }
 
 function getAntigravityTierClass(row: any): string {

@@ -34,19 +34,67 @@ export interface NotifyEmailEntry {
 
 // ==================== User & Auth Types ====================
 
+export type UserAuthProvider = 'email' | 'linuxdo' | 'oidc' | 'wechat'
+
+export interface UserAuthBindingStatus {
+  bound?: boolean
+  bound_count?: number
+  provider?: UserAuthProvider | string
+  provider_key?: string | null
+  provider_subject?: string | null
+  issuer?: string | null
+  label?: string | null
+  provider_label?: string | null
+  display_name?: string | null
+  subject_hint?: string | null
+  verified_at?: string | null
+  bind_start_path?: string | null
+  can_bind?: boolean
+  can_unbind?: boolean
+  note_key?: string | null
+  note?: string | null
+  metadata?: Record<string, unknown>
+}
+
+export interface UserProfileSourceContext {
+  provider?: UserAuthProvider | string
+  source?: string | null
+  label?: string | null
+  provider_label?: string | null
+}
+
 export interface User {
   id: number
   username: string
   email: string
+  avatar_url?: string | null
+  avatar_source?: string | UserProfileSourceContext | null
+  username_source?: string | UserProfileSourceContext | null
+  display_name_source?: string | UserProfileSourceContext | null
+  nickname_source?: string | UserProfileSourceContext | null
+  profile_sources?: {
+    avatar?: string | UserProfileSourceContext | null
+    username?: string | UserProfileSourceContext | null
+    display_name?: string | UserProfileSourceContext | null
+    nickname?: string | UserProfileSourceContext | null
+  }
+  auth_bindings?: Partial<Record<UserAuthProvider, boolean | UserAuthBindingStatus>>
+  identity_bindings?: Partial<Record<UserAuthProvider, boolean | UserAuthBindingStatus>>
+  email_bound?: boolean
+  linuxdo_bound?: boolean
+  oidc_bound?: boolean
+  wechat_bound?: boolean
   role: 'admin' | 'user' // User role for authorization
   balance: number // User balance for API usage
   concurrency: number // Allowed concurrent requests
+  rpm_limit?: number // User-level RPM cap (0 = unlimited); effective as fallback when group has no rpm_limit
   status: 'active' | 'disabled' // Account status
   allowed_groups: number[] | null // Allowed group IDs (null = all non-exclusive groups)
   balance_notify_enabled: boolean
   balance_notify_threshold: number | null
   balance_notify_extra_emails: NotifyEmailEntry[]
   subscriptions?: UserSubscription[] // User's active subscriptions
+  last_active_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -54,6 +102,7 @@ export interface User {
 export interface AdminUser extends User {
   // 管理员备注（普通用户接口不返回）
   notes: string
+  last_used_at?: string | null
   // 用户专属分组倍率配置 (group_id -> rate_multiplier)
   group_rates?: Record<number, number>
   // 当前并发数（仅管理员列表接口返回）
@@ -73,11 +122,38 @@ export interface RegisterRequest {
   turnstile_token?: string
   promo_code?: string
   invitation_code?: string
+  aff_code?: string
+}
+
+export interface AffiliateInvitee {
+  user_id: number
+  email: string
+  username: string
+  created_at?: string
+}
+
+export interface UserAffiliateDetail {
+  user_id: number
+  aff_code: string
+  inviter_id?: number | null
+  aff_count: number
+  aff_quota: number
+  aff_history_quota: number
+  /** 当前用户作为邀请人时实际生效的返利比例（专属覆盖全局）。0-100。 */
+  effective_rebate_rate_percent: number
+  invitees: AffiliateInvitee[]
+}
+
+export interface AffiliateTransferResponse {
+  transferred_quota: number
+  balance: number
 }
 
 export interface SendVerifyCodeRequest {
   email: string
   turnstile_token?: string
+  pending_auth_token?: string
+  pending_oauth_token?: string
 }
 
 export interface SendVerifyCodeResponse {
@@ -103,6 +179,7 @@ export interface CustomEndpoint {
 export interface PublicSettings {
   registration_enabled: boolean
   email_verify_enabled: boolean
+  force_email_on_third_party_signup: boolean
   registration_email_suffix_whitelist: string[]
   promo_code_enabled: boolean
   password_reset_enabled: boolean
@@ -123,6 +200,10 @@ export interface PublicSettings {
   custom_menu_items: CustomMenuItem[]
   custom_endpoints: CustomEndpoint[]
   linuxdo_oauth_enabled: boolean
+  wechat_oauth_enabled: boolean
+  wechat_oauth_open_enabled?: boolean
+  wechat_oauth_mp_enabled?: boolean
+  wechat_oauth_mobile_enabled?: boolean
   oidc_oauth_enabled: boolean
   oidc_oauth_provider_name: string
   backend_mode_enabled: boolean
@@ -130,6 +211,10 @@ export interface PublicSettings {
   balance_low_notify_enabled: boolean
   account_quota_notify_enabled: boolean
   balance_low_notify_threshold: number
+  channel_monitor_enabled: boolean
+  channel_monitor_default_interval_seconds: number
+  available_channels_enabled: boolean
+  affiliate_enabled: boolean
 }
 
 export interface AuthResponse {
@@ -398,6 +483,7 @@ export interface Group {
   description: string | null
   platform: GroupPlatform
   rate_multiplier: number
+  rpm_limit?: number // Group-level RPM cap (0 = unlimited); overrides user-level rpm_limit when set
   is_exclusive: boolean
   status: 'active' | 'inactive'
   subscription_type: SubscriptionType
@@ -684,8 +770,8 @@ export interface Account {
   platform: AccountPlatform
   type: AccountType
   credentials?: Record<string, unknown>
-  // Extra fields including Codex usage and model-level rate limits (Antigravity smart retry)
-  extra?: (CodexUsageSnapshot & {
+  // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
+  extra?: (CodexUsageSnapshot & OpenAICompactState & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
   } & Record<string, unknown>)
@@ -855,6 +941,16 @@ export interface CodexUsageSnapshot {
   codex_7d_window_minutes?: number // 7d window in minutes (should be ~10080)
 
   codex_usage_updated_at?: string // Last update timestamp
+}
+
+export type OpenAICompactMode = 'auto' | 'force_on' | 'force_off'
+
+export interface OpenAICompactState {
+  openai_compact_mode?: OpenAICompactMode
+  openai_compact_supported?: boolean
+  openai_compact_checked_at?: string
+  openai_compact_last_status?: number
+  openai_compact_last_error?: string
 }
 
 export interface CreateAccountRequest {

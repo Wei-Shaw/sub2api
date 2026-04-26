@@ -2,10 +2,11 @@
   <div class="min-h-screen bg-gray-50 px-4 py-10 dark:bg-dark-900">
     <div class="mx-auto max-w-2xl">
       <div class="card p-6">
-        <h1 class="text-lg font-semibold text-gray-900 dark:text-white">OAuth Callback</h1>
+        <h1 class="text-lg font-semibold text-gray-900 dark:text-white">
+          {{ t('auth.oauth.callbackTitle') }}
+        </h1>
         <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
-          Copy the <code>code</code> (and <code>state</code> if needed) back to the admin
-          authorization flow.
+          {{ t('auth.oauth.callbackHint') }}
         </p>
 
         <div class="mt-6 space-y-4">
@@ -14,7 +15,7 @@
             <div class="flex gap-2">
               <input class="input flex-1 font-mono text-sm" :value="code" readonly />
               <button class="btn btn-secondary" type="button" :disabled="!code" @click="copy(code)">
-                Copy
+                {{ t('common.copy') }}
               </button>
             </div>
           </div>
@@ -29,7 +30,7 @@
                 :disabled="!state"
                 @click="copy(state)"
               >
-                Copy
+                {{ t('common.copy') }}
               </button>
             </div>
           </div>
@@ -44,16 +45,9 @@
                 :disabled="!fullUrl"
                 @click="copy(fullUrl)"
               >
-                Copy
+                {{ t('common.copy') }}
               </button>
             </div>
-          </div>
-
-          <div
-            v-if="error"
-            class="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-700 dark:bg-red-900/30"
-          >
-            <p class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
           </div>
         </div>
       </div>
@@ -62,14 +56,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { useClipboard } from '@/composables/useClipboard'
+import { useAppStore } from '@/stores'
 
 const route = useRoute()
 const { t } = useI18n()
 const { copyToClipboard } = useClipboard()
+const appStore = useAppStore()
 
 const code = computed(() => (route.query.code as string) || '')
 const state = computed(() => (route.query.state as string) || '')
@@ -82,8 +78,18 @@ const fullUrl = computed(() => {
   return window.location.href
 })
 
+watch(
+  error,
+  (message) => {
+    if (message) {
+      appStore.showError(message)
+    }
+  },
+  { immediate: true }
+)
+
 const copy = (value: string) => {
   if (!value) return
-  copyToClipboard(value, 'Copied')
+  copyToClipboard(value)
 }
 </script>

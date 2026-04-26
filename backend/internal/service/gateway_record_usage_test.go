@@ -64,7 +64,7 @@ func newGatewayChannelResolverForTest(t *testing.T, pricing []ChannelModelPricin
 			return map[int64]string{groupID: "anthropic"}, nil
 		},
 	}
-	cs := NewChannelService(repo, nil)
+	cs := NewChannelService(repo, nil, nil, nil)
 	bs := newTestBillingServiceForResolver()
 	return NewModelPricingResolver(cs, bs)
 }

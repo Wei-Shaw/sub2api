@@ -251,7 +251,7 @@ vi.mock('@/api/keys', () => ({
 import UseKeyModal from '../UseKeyModal.vue'
 
 describe('UseKeyModal', () => {
-  it('renders updated GPT-5.4 mini/nano names in OpenCode config', async () => {
+  it('renders GPT-5.4 mini entry in OpenCode config', async () => {
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
@@ -284,7 +284,7 @@ describe('UseKeyModal', () => {
     const codeBlock = wrapper.find('pre code')
     expect(codeBlock.exists()).toBe(true)
     expect(codeBlock.text()).toContain('"name": "GPT-5.4 Mini"')
-    expect(codeBlock.text()).toContain('"name": "GPT-5.4 Nano"')
+    expect(codeBlock.text()).not.toContain('"name": "GPT-5.4 Nano"')
   })
 
   it('renders sub2api-openai provider config with Sys models in OpenCode example', async () => {

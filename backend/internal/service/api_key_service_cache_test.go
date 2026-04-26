@@ -263,7 +263,7 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 		},
 	}
 
-	snapshot := svc.snapshotFromAPIKey(apiKey)
+	snapshot := svc.snapshotFromAPIKey(context.Background(), apiKey)
 	roundTrip := svc.snapshotToAPIKey(apiKey.Key, snapshot)
 
 	require.NotNil(t, roundTrip)

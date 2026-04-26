@@ -1,6 +1,8 @@
 package schema
 
 import (
+	"fmt"
+
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 
@@ -72,6 +74,24 @@ func (User) Fields() []ent.Field {
 		field.Time("totp_enabled_at").
 			Optional().
 			Nillable(),
+		field.String("signup_source").
+			Validate(func(value string) error {
+				switch value {
+				case "email", "linuxdo", "wechat", "oidc":
+					return nil
+				default:
+					return fmt.Errorf("must be one of email, linuxdo, wechat, oidc")
+				}
+			}).
+			Default("email"),
+		field.Time("last_login_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+		field.Time("last_active_at").
+			Optional().
+			Nillable().
+			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
 
 		// 余额不足通知
 		field.Bool("balance_notify_enabled").
@@ -87,6 +107,10 @@ func (User) Fields() []ent.Field {
 			Default("[]"),
 		field.Float("total_recharged").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			Default(0),
+
+		// 用户级每分钟请求数上限（0 = 不限制）。仅当所在分组未设置 rpm_limit 时作为兜底生效。
+		field.Int("rpm_limit").
 			Default(0),
 	}
 }
@@ -104,6 +128,9 @@ func (User) Edges() []ent.Edge {
 		edge.To("attribute_values", UserAttributeValue.Type),
 		edge.To("promo_code_usages", PromoCodeUsage.Type),
 		edge.To("payment_orders", PaymentOrder.Type),
+		edge.To("auth_identities", AuthIdentity.Type).
+			Annotations(entsql.OnDelete(entsql.Cascade)),
+		edge.To("pending_auth_sessions", PendingAuthSession.Type),
 	}
 }
 

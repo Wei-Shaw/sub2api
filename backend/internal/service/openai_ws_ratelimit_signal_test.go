@@ -19,8 +19,9 @@ import (
 
 type openAIWSRateLimitSignalRepo struct {
 	stubOpenAIAccountRepo
-	rateLimitCalls []time.Time
-	updateExtra    []map[string]any
+	rateLimitCalls      []time.Time
+	clearRateLimitCalls []int64
+	updateExtra         []map[string]any
 }
 
 type openAICodexSnapshotAsyncRepo struct {
@@ -36,6 +37,11 @@ type openAICodexExtraListRepo struct {
 
 func (r *openAIWSRateLimitSignalRepo) SetRateLimited(_ context.Context, _ int64, resetAt time.Time) error {
 	r.rateLimitCalls = append(r.rateLimitCalls, resetAt)
+	return nil
+}
+
+func (r *openAIWSRateLimitSignalRepo) ClearRateLimit(_ context.Context, id int64) error {
+	r.clearRateLimitCalls = append(r.clearRateLimitCalls, id)
 	return nil
 }
 
@@ -234,7 +240,8 @@ func TestOpenAIGatewayService_Forward_WSv2Handshake429PersistsRateLimit(t *testi
 	require.Nil(t, result)
 	require.Equal(t, http.StatusTooManyRequests, rec.Code)
 	require.Nil(t, upstream.lastReq, "WS 握手 429 不应回退到同账号 HTTP")
-	require.Len(t, repo.rateLimitCalls, 1)
+	require.Empty(t, repo.rateLimitCalls)
+	require.Equal(t, []int64{account.ID}, repo.clearRateLimitCalls)
 	require.NotEmpty(t, repo.updateExtra, "握手 429 的 x-codex 头应立即落库")
 	require.Contains(t, repo.updateExtra[0], "codex_usage_updated_at")
 }

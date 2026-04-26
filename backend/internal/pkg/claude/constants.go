@@ -4,6 +4,12 @@ package claude
 // Claude Code 客户端相关常量
 
 // Beta header 常量
+//
+// 这里的常量对齐真实 Claude Code CLI 的最新流量（截至 2026-04）。
+// 选型参考：与 Parrot (src/transform/cc_mimicry.py) 的 BETAS 保持一致，
+// 原因：Anthropic 上游会基于 anthropic-beta 的完整集合判定请求来源；
+// 缺少任何"官方 Claude Code 请求才会带"的 beta，都会被降级到第三方额度，
+// 对应报错：`Third-party apps now draw from your extra usage, not your plan limits.`
 const (
 	BetaOAuth                    = "oauth-2025-04-20"
 	BetaClaudeCode               = "claude-code-20250219"
@@ -12,6 +18,13 @@ const (
 	BetaTokenCounting            = "token-counting-2024-11-01"
 	BetaContext1M                = "context-1m-2025-08-07"
 	BetaFastMode                 = "fast-mode-2026-02-01"
+
+	// 新增（对齐官方 CLI 2.1.9x 以来的流量）
+	BetaPromptCachingScope = "prompt-caching-scope-2026-01-05"
+	BetaEffort             = "effort-2025-11-24"
+	BetaRedactThinking     = "redact-thinking-2026-02-12"
+	BetaContextManagement  = "context-management-2025-06-27"
+	BetaExtendedCacheTTL   = "extended-cache-ttl-2025-04-11"
 )
 
 // DroppedBetas 是转发时需要从 anthropic-beta header 中移除的 beta token 列表。
@@ -44,11 +57,43 @@ const APIKeyBetaHeader = BetaClaudeCode + "," + BetaInterleavedThinking + "," + 
 // APIKeyHaikuBetaHeader Haiku 模型在 API-key 账号下使用的 anthropic-beta header（不包含 oauth / claude-code）
 const APIKeyHaikuBetaHeader = BetaInterleavedThinking
 
+// DefaultCacheControlTTL 是网关代理为自己生成的 cache_control 块默认使用的 ttl。
+// 真实 Claude Code CLI 当前使用 "1h"，但本仓策略是"客户端透传 ttl 优先；
+// 客户端缺省时统一使用 5m"，这样既不浪费 1h 缓存额度，也保留客户端自定义能力。
+const DefaultCacheControlTTL = "5m"
+
+// CLICurrentVersion 是 sub2api 当前对外伪装的 Claude Code CLI 版本号（三段 semver）。
+// 用于 billing attribution block 中的 cc_version=X.Y.Z.{fp} 前缀以及 fingerprint 计算。
+// 必须与 DefaultHeaders["User-Agent"] 中的版本号严格一致；不一致会被 Anthropic 判第三方。
+const CLICurrentVersion = "2.1.92"
+
+// FullClaudeCodeMimicryBetas 返回最"像"真实 Claude Code CLI 的完整 beta 列表，
+// 用于 OAuth 账号伪装成 Claude Code 时使用。
+// 顺序与真实 CLI 抓包一致。
+//
+// 使用建议：
+//   - OAuth 账号 + 非 haiku：追加这整份列表，再按需保留 client 带来的 beta。
+//   - OAuth 账号 + haiku：Anthropic 对 haiku 不做 third-party 判定，使用 HaikuBetaHeader 即可。
+//   - API-key 账号：不要使用本函数，参见 APIKeyBetaHeader。
+func FullClaudeCodeMimicryBetas() []string {
+	return []string{
+		BetaClaudeCode,
+		BetaOAuth,
+		BetaInterleavedThinking,
+		BetaPromptCachingScope,
+		BetaEffort,
+		BetaRedactThinking,
+		BetaContextManagement,
+		BetaExtendedCacheTTL,
+	}
+}
+
 // DefaultHeaders 是 Claude Code 客户端默认请求头。
 var DefaultHeaders = map[string]string{
 	// Keep these in sync with recent Claude CLI traffic to reduce the chance
 	// that Claude Code-scoped OAuth credentials are rejected as "non-CLI" usage.
-	"User-Agent":                                "claude-cli/2.1.22 (external, cli)",
+	// 版本参考：对齐 Parrot (src/transform/cc_mimicry.py:49) 的 CLI_USER_AGENT。
+	"User-Agent":                                "claude-cli/2.1.92 (external, cli)",
 	"X-Stainless-Lang":                          "js",
 	"X-Stainless-Package-Version":               "0.70.0",
 	"X-Stainless-OS":                            "Linux",

@@ -6,6 +6,19 @@ vi.mock('@/stores/app', () => ({
   })
 }))
 
+vi.mock('vue-i18n', () => ({
+  useI18n: () => ({
+    t: (key: string) => {
+      const messages: Record<string, string> = {
+        'admin.accounts.oauth.openai.failedToExchangeCode': 'OpenAI 授权码兑换失败',
+        'admin.accounts.oauth.openai.errors.OPENAI_OAUTH_PROXY_REQUIRED':
+          '未设置代理，当前服务器无法直连 OpenAI，导致 OpenAI OAuth 请求失败。请先选择可访问 OpenAI 的代理后重试；如果授权码已失效，请重新生成授权链接。'
+      }
+      return messages[key] ?? key
+    }
+  })
+}))
+
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
@@ -17,6 +30,7 @@ vi.mock('@/api/admin', () => ({
 }))
 
 import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
+import { adminAPI } from '@/api/admin'
 
 describe('useOpenAIOAuth.buildCredentials', () => {
   it('should keep client_id when token response contains it', () => {
@@ -44,5 +58,23 @@ describe('useOpenAIOAuth.buildCredentials', () => {
     expect(Object.prototype.hasOwnProperty.call(creds, 'client_id')).toBe(false)
     expect(creds.access_token).toBe('at')
     expect(creds.refresh_token).toBe('rt')
+  })
+})
+
+describe('useOpenAIOAuth.exchangeAuthCode', () => {
+  it('shows a clear proxy hint when code exchange fails without a proxy', async () => {
+    vi.mocked(adminAPI.accounts.exchangeCode).mockRejectedValueOnce({
+      status: 502,
+      reason: 'OPENAI_OAUTH_PROXY_REQUIRED',
+      message: 'OpenAI OAuth token exchange failed: no proxy is configured.'
+    })
+    const oauth = useOpenAIOAuth()
+
+    const tokenInfo = await oauth.exchangeAuthCode('code', 'session-id', 'state')
+
+    expect(tokenInfo).toBeNull()
+    expect(oauth.error.value).toBe(
+      '未设置代理，当前服务器无法直连 OpenAI，导致 OpenAI OAuth 请求失败。请先选择可访问 OpenAI 的代理后重试；如果授权码已失效，请重新生成授权链接。'
+    )
   })
 })

@@ -51,6 +51,23 @@ type SystemSettings struct {
 	LinuxDoConnectClientSecretConfigured bool   `json:"linuxdo_connect_client_secret_configured"`
 	LinuxDoConnectRedirectURL            string `json:"linuxdo_connect_redirect_url"`
 
+	WeChatConnectEnabled                   bool   `json:"wechat_connect_enabled"`
+	WeChatConnectAppID                     string `json:"wechat_connect_app_id"`
+	WeChatConnectAppSecretConfigured       bool   `json:"wechat_connect_app_secret_configured"`
+	WeChatConnectOpenAppID                 string `json:"wechat_connect_open_app_id"`
+	WeChatConnectOpenAppSecretConfigured   bool   `json:"wechat_connect_open_app_secret_configured"`
+	WeChatConnectMPAppID                   string `json:"wechat_connect_mp_app_id"`
+	WeChatConnectMPAppSecretConfigured     bool   `json:"wechat_connect_mp_app_secret_configured"`
+	WeChatConnectMobileAppID               string `json:"wechat_connect_mobile_app_id"`
+	WeChatConnectMobileAppSecretConfigured bool   `json:"wechat_connect_mobile_app_secret_configured"`
+	WeChatConnectOpenEnabled               bool   `json:"wechat_connect_open_enabled"`
+	WeChatConnectMPEnabled                 bool   `json:"wechat_connect_mp_enabled"`
+	WeChatConnectMobileEnabled             bool   `json:"wechat_connect_mobile_enabled"`
+	WeChatConnectMode                      string `json:"wechat_connect_mode"`
+	WeChatConnectScopes                    string `json:"wechat_connect_scopes"`
+	WeChatConnectRedirectURL               string `json:"wechat_connect_redirect_url"`
+	WeChatConnectFrontendRedirectURL       string `json:"wechat_connect_frontend_redirect_url"`
+
 	OIDCConnectEnabled                bool   `json:"oidc_connect_enabled"`
 	OIDCConnectProviderName           string `json:"oidc_connect_provider_name"`
 	OIDCConnectClientID               string `json:"oidc_connect_client_id"`
@@ -91,6 +108,8 @@ type SystemSettings struct {
 
 	DefaultConcurrency   int                          `json:"default_concurrency"`
 	DefaultBalance       float64                      `json:"default_balance"`
+	AffiliateRebateRate  float64                      `json:"affiliate_rebate_rate"`
+	DefaultUserRPMLimit  int                          `json:"default_user_rpm_limit"`
 	DefaultSubscriptions []DefaultSubscriptionSetting `json:"default_subscriptions"`
 
 	// Model fallback configuration
@@ -127,6 +146,15 @@ type SystemSettings struct {
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool `json:"web_search_emulation_enabled"`
 
+	// Payment visible method routing
+	PaymentVisibleMethodAlipaySource  string `json:"payment_visible_method_alipay_source"`
+	PaymentVisibleMethodWxpaySource   string `json:"payment_visible_method_wxpay_source"`
+	PaymentVisibleMethodAlipayEnabled bool   `json:"payment_visible_method_alipay_enabled"`
+	PaymentVisibleMethodWxpayEnabled  bool   `json:"payment_visible_method_wxpay_enabled"`
+
+	// OpenAI account scheduling
+	OpenAIAdvancedSchedulerEnabled bool `json:"openai_advanced_scheduler_enabled"`
+
 	// Payment configuration
 	PaymentEnabled                   bool     `json:"payment_enabled"`
 	PaymentMinAmount                 float64  `json:"payment_min_amount"`
@@ -157,6 +185,16 @@ type SystemSettings struct {
 	BalanceLowNotifyRechargeURL string             `json:"balance_low_notify_recharge_url"`
 	AccountQuotaNotifyEnabled   bool               `json:"account_quota_notify_enabled"`
 	AccountQuotaNotifyEmails    []NotifyEmailEntry `json:"account_quota_notify_emails"`
+
+	// Channel Monitor feature switch
+	ChannelMonitorEnabled                bool `json:"channel_monitor_enabled"`
+	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
+
+	// Available Channels feature switch (user-facing aggregate view)
+	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+
+	// Affiliate (邀请返利) feature switch
+	AffiliateEnabled bool `json:"affiliate_enabled"`
 }
 
 type DefaultSubscriptionSetting struct {
@@ -167,6 +205,7 @@ type DefaultSubscriptionSetting struct {
 type PublicSettings struct {
 	RegistrationEnabled              bool             `json:"registration_enabled"`
 	EmailVerifyEnabled               bool             `json:"email_verify_enabled"`
+	ForceEmailOnThirdPartySignup     bool             `json:"force_email_on_third_party_signup"`
 	RegistrationEmailSuffixWhitelist []string         `json:"registration_email_suffix_whitelist"`
 	PromoCodeEnabled                 bool             `json:"promo_code_enabled"`
 	PasswordResetEnabled             bool             `json:"password_reset_enabled"`
@@ -189,6 +228,10 @@ type PublicSettings struct {
 	CustomMenuItems                  []CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints                  []CustomEndpoint `json:"custom_endpoints"`
 	LinuxDoOAuthEnabled              bool             `json:"linuxdo_oauth_enabled"`
+	WeChatOAuthEnabled               bool             `json:"wechat_oauth_enabled"`
+	WeChatOAuthOpenEnabled           bool             `json:"wechat_oauth_open_enabled"`
+	WeChatOAuthMPEnabled             bool             `json:"wechat_oauth_mp_enabled"`
+	WeChatOAuthMobileEnabled         bool             `json:"wechat_oauth_mobile_enabled"`
 	OIDCOAuthEnabled                 bool             `json:"oidc_oauth_enabled"`
 	OIDCOAuthProviderName            string           `json:"oidc_oauth_provider_name"`
 	SoraClientEnabled                bool             `json:"sora_client_enabled"`
@@ -199,6 +242,13 @@ type PublicSettings struct {
 	AccountQuotaNotifyEnabled        bool             `json:"account_quota_notify_enabled"`
 	BalanceLowNotifyThreshold        float64          `json:"balance_low_notify_threshold"`
 	BalanceLowNotifyRechargeURL      string           `json:"balance_low_notify_recharge_url"`
+
+	ChannelMonitorEnabled                bool `json:"channel_monitor_enabled"`
+	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
+
+	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+
+	AffiliateEnabled bool `json:"affiliate_enabled"`
 }
 
 // OverloadCooldownSettings 529过载冷却配置 DTO

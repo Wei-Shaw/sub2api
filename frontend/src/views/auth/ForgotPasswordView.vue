@@ -64,9 +64,6 @@
               :placeholder="t('auth.emailPlaceholder')"
             />
           </div>
-          <p v-if="errors.email" class="input-error-text">
-            {{ errors.email }}
-          </p>
         </div>
 
         <!-- Turnstile Widget -->
@@ -78,27 +75,7 @@
             @expire="onTurnstileExpire"
             @error="onTurnstileError"
           />
-          <p v-if="errors.turnstile" class="input-error-text mt-2 text-center">
-            {{ errors.turnstile }}
-          </p>
         </div>
-
-        <!-- Error Message -->
-        <transition name="fade">
-          <div
-            v-if="errorMessage"
-            class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20"
-          >
-            <div class="flex items-start gap-3">
-              <div class="flex-shrink-0">
-                <Icon name="exclamationCircle" size="md" class="text-red-500" />
-              </div>
-              <p class="text-sm text-red-700 dark:text-red-400">
-                {{ errorMessage }}
-              </p>
-            </div>
-          </div>
-        </transition>
 
         <!-- Submit Button -->
         <button
@@ -148,7 +125,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { computed, ref, reactive, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { AuthLayout } from '@/components/layout'
 import Icon from '@/components/icons/Icon.vue'
@@ -183,6 +160,14 @@ const formData = reactive({
 const errors = reactive({
   email: '',
   turnstile: ''
+})
+
+const validationToastMessage = computed(() => errors.email || errors.turnstile || '')
+
+watch(validationToastMessage, (value, previousValue) => {
+  if (value && value !== previousValue) {
+    appStore.showError(value)
+  }
 })
 
 // ==================== Lifecycle ====================

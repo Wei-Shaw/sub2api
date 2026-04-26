@@ -4,7 +4,19 @@
  */
 
 import { apiClient } from './client'
-import type { User, ChangePasswordRequest, NotifyEmailEntry } from '@/types'
+import {
+  resolveWeChatOAuthStartStrict,
+  prepareOAuthBindAccessTokenCookie,
+  type WeChatOAuthPublicSettings,
+} from './auth'
+import type {
+  User,
+  ChangePasswordRequest,
+  NotifyEmailEntry,
+  UserAuthProvider,
+  UserAffiliateDetail,
+  AffiliateTransferResponse
+} from '@/types'
 
 /**
  * Get current user profile
@@ -22,6 +34,7 @@ export async function getProfile(): Promise<User> {
  */
 export async function updateProfile(profile: {
   username?: string
+  avatar_url?: string | null
   balance_notify_enabled?: boolean
   balance_notify_threshold?: number | null
   balance_notify_extra_emails?: NotifyEmailEntry[]
@@ -83,6 +96,95 @@ export async function toggleNotifyEmail(email: string, disabled: boolean): Promi
   return data
 }
 
+export async function sendEmailBindingCode(email: string): Promise<void> {
+  await apiClient.post('/user/account-bindings/email/send-code', { email })
+}
+
+export async function bindEmailIdentity(payload: {
+  email: string
+  verify_code: string
+  password: string
+}): Promise<User> {
+  const { data } = await apiClient.post<User>('/user/account-bindings/email', payload)
+  return data
+}
+
+export async function unbindAuthIdentity(provider: BindableOAuthProvider): Promise<User> {
+  const { data } = await apiClient.delete<User>(`/user/account-bindings/${provider}`)
+  return data
+}
+
+export type BindableOAuthProvider = Exclude<UserAuthProvider, 'email'>
+
+interface BuildOAuthBindingStartURLOptions {
+  redirectTo?: string
+  wechatOAuthSettings?: WeChatOAuthPublicSettings | null
+}
+
+export function resolveWeChatOAuthMode(): 'open' | 'mp' {
+  if (typeof navigator === 'undefined') {
+    return 'open'
+  }
+  return /MicroMessenger/i.test(navigator.userAgent) ? 'mp' : 'open'
+}
+
+function resolveWeChatOAuthBindingMode(
+  settings?: WeChatOAuthPublicSettings | null
+): 'open' | 'mp' | null {
+  if (settings) {
+    return resolveWeChatOAuthStartStrict(settings).mode
+  }
+  return resolveWeChatOAuthMode()
+}
+
+export function buildOAuthBindingStartURL(
+  provider: BindableOAuthProvider,
+  options: BuildOAuthBindingStartURLOptions = {}
+): string | null {
+  const redirectTo = options.redirectTo?.trim() || '/profile'
+  const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
+  const normalized = apiBase.replace(/\/$/, '')
+  const params = new URLSearchParams({
+    redirect: redirectTo,
+    intent: 'bind_current_user'
+  })
+
+  if (provider === 'wechat') {
+    const mode = resolveWeChatOAuthBindingMode(options.wechatOAuthSettings)
+    if (!mode) {
+      return null
+    }
+    params.set('mode', mode)
+  }
+
+  return `${normalized}/auth/oauth/${provider}/bind/start?${params.toString()}`
+}
+
+export async function startOAuthBinding(
+  provider: BindableOAuthProvider,
+  options: BuildOAuthBindingStartURLOptions = {}
+): Promise<void> {
+  if (typeof window === 'undefined') {
+    return
+  }
+  const startURL = buildOAuthBindingStartURL(provider, options)
+  if (!startURL) {
+    return
+  }
+  await prepareOAuthBindAccessTokenCookie()
+  window.location.href = startURL
+}
+
+export async function getAffiliateDetail(): Promise<UserAffiliateDetail> {
+  const { data } = await apiClient.get<UserAffiliateDetail>('/user/aff')
+  return data
+}
+
+export async function transferAffiliateQuota(): Promise<AffiliateTransferResponse> {
+  const { data } = await apiClient.post<AffiliateTransferResponse>('/user/aff/transfer')
+  return data
+}
+
 export const userAPI = {
   getProfile,
   updateProfile,
@@ -90,7 +192,14 @@ export const userAPI = {
   sendNotifyEmailCode,
   verifyNotifyEmail,
   removeNotifyEmail,
-  toggleNotifyEmail
+  toggleNotifyEmail,
+  sendEmailBindingCode,
+  bindEmailIdentity,
+  unbindAuthIdentity,
+  buildOAuthBindingStartURL,
+  startOAuthBinding,
+  getAffiliateDetail,
+  transferAffiliateQuota
 }
 
 export default userAPI

@@ -29,15 +29,27 @@ func NormalizeOpenAIProjectionModelKey(model string) string {
 	if modelID == "" {
 		return ""
 	}
-	if mapped := getNormalizedCodexModel(modelID); mapped != "" {
-		return mapped
-	}
-	if baseModel, _, ok := splitOpenAICompatReasoningBaseModel(modelID); ok {
-		if mapped := getNormalizedCodexModel(baseModel); mapped != "" {
-			return mapped
+	canonical := strings.ToLower(strings.TrimSpace(modelID))
+	if baseModel, _, ok := splitOpenAICompatReasoningBaseModel(canonical); ok {
+		baseModel = strings.ToLower(strings.TrimSpace(openAICompatModelID(baseModel)))
+		if isKnownOpenAIProjectionReasoningBase(baseModel) {
+			return baseModel
 		}
 	}
-	return strings.ToLower(strings.TrimSpace(modelID))
+	return canonical
+}
+
+func isKnownOpenAIProjectionReasoningBase(modelID string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(modelID))
+	if normalized == "" {
+		return false
+	}
+	for key := range codexModelMap {
+		if strings.ToLower(key) == normalized {
+			return true
+		}
+	}
+	return false
 }
 
 func applyOpenAICompatModelNormalization(req *apicompat.AnthropicRequest) {

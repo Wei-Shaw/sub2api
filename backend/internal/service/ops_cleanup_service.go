@@ -36,11 +36,15 @@ return 0
 // - Scheduling: 5-field cron spec (minute hour dom month dow).
 // - Multi-instance: best-effort Redis leader lock so only one node runs cleanup.
 // - Safety: deletes in batches to avoid long transactions.
+//
+// 附带：在 runCleanupOnce 末尾调用 ChannelMonitorService.RunDailyMaintenance，
+// 统一共享 cron schedule + leader lock + heartbeat，避免再引一套调度。
 type OpsCleanupService struct {
-	opsRepo     OpsRepository
-	db          *sql.DB
-	redisClient *redis.Client
-	cfg         *config.Config
+	opsRepo           OpsRepository
+	db                *sql.DB
+	redisClient       *redis.Client
+	cfg               *config.Config
+	channelMonitorSvc *ChannelMonitorService
 
 	instanceID string
 
@@ -57,13 +61,15 @@ func NewOpsCleanupService(
 	db *sql.DB,
 	redisClient *redis.Client,
 	cfg *config.Config,
+	channelMonitorSvc *ChannelMonitorService,
 ) *OpsCleanupService {
 	return &OpsCleanupService{
-		opsRepo:     opsRepo,
-		db:          db,
-		redisClient: redisClient,
-		cfg:         cfg,
-		instanceID:  uuid.NewString(),
+		opsRepo:           opsRepo,
+		db:                db,
+		redisClient:       redisClient,
+		cfg:               cfg,
+		channelMonitorSvc: channelMonitorSvc,
+		instanceID:        uuid.NewString(),
 	}
 }
 
@@ -246,6 +252,15 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 			return out, err
 		}
 		out.dailyPreagg = n
+	}
+
+	// Channel monitor 每日维护（聚合昨日明细 + 软删过期明细/聚合）。
+	// 失败只记日志，不影响 ops 清理的成功状态（与 ops 各步骤风格一致）；
+	// 维护本身已经把每步错误打到 slog，heartbeat result 不再分项记录。
+	if s.channelMonitorSvc != nil {
+		if err := s.channelMonitorSvc.RunDailyMaintenance(ctx); err != nil {
+			logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] channel monitor maintenance failed: %v", err)
+		}
 	}
 
 	return out, nil

@@ -12,17 +12,23 @@ import "encoding/json"
 
 // AnthropicRequest is the request body for POST /v1/messages.
 type AnthropicRequest struct {
-	Model        string                 `json:"model"`
-	MaxTokens    int                    `json:"max_tokens"`
-	System       json.RawMessage        `json:"system,omitempty"` // string or []AnthropicContentBlock
-	Messages     []AnthropicMessage     `json:"messages"`
-	Tools        []AnthropicTool        `json:"tools,omitempty"`
-	Stream       bool                   `json:"stream,omitempty"`
-	Temperature  *float64               `json:"temperature,omitempty"`
-	TopP         *float64               `json:"top_p,omitempty"`
-	StopSeqs     []string               `json:"stop_sequences,omitempty"`
-	Thinking     *AnthropicThinking     `json:"thinking,omitempty"`
-	ToolChoice   json.RawMessage        `json:"tool_choice,omitempty"`
+	Model       string             `json:"model"`
+	MaxTokens   int                `json:"max_tokens"`
+	System      json.RawMessage    `json:"system,omitempty"` // string or []AnthropicContentBlock
+	Messages    []AnthropicMessage `json:"messages"`
+	Tools       []AnthropicTool    `json:"tools,omitempty"`
+	Stream      bool               `json:"stream,omitempty"`
+	Temperature *float64           `json:"temperature,omitempty"`
+	TopP        *float64           `json:"top_p,omitempty"`
+	StopSeqs    []string           `json:"stop_sequences,omitempty"`
+	Thinking    *AnthropicThinking `json:"thinking,omitempty"`
+	ToolChoice  json.RawMessage    `json:"tool_choice,omitempty"`
+	// Metadata 会被原样透传给上游。OAuth/Claude-Code 路径依赖 metadata.user_id
+	// 参与上游的"是否为官方 Claude Code 请求"判定；如果经由本结构体重新序列化
+	// 时丢弃该字段，网关侧后续的 metadata 重写(ensureClaudeOAuthMetadataUserID/
+	// RewriteUserIDWithMasking) 在 body 里拿不到起点，就无法重建一个合法的
+	// user_id，进而导致请求被归类为第三方 app。
+	Metadata     json.RawMessage        `json:"metadata,omitempty"`
 	OutputConfig *AnthropicOutputConfig `json:"output_config,omitempty"`
 }
 
@@ -76,10 +82,18 @@ type AnthropicImageSource struct {
 
 // AnthropicTool describes a tool available to the model.
 type AnthropicTool struct {
-	Type        string          `json:"type,omitempty"` // e.g. "web_search_20250305" for server tools
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
-	InputSchema json.RawMessage `json:"input_schema"` // JSON Schema object
+	Type         string                 `json:"type,omitempty"` // e.g. "web_search_20250305" for server tools
+	Name         string                 `json:"name"`
+	Description  string                 `json:"description,omitempty"`
+	InputSchema  json.RawMessage        `json:"input_schema"` // JSON Schema object
+	CacheControl *AnthropicCacheControl `json:"cache_control,omitempty"`
+}
+
+// AnthropicCacheControl 对应 Anthropic API 的 cache_control 字段。
+// ttl 默认由调用方决定；本项目策略见 claude.DefaultCacheControlTTL。
+type AnthropicCacheControl struct {
+	Type string `json:"type"`          // "ephemeral"
+	TTL  string `json:"ttl,omitempty"` // "5m" / "1h" / 省略=默认 5m（由 Anthropic 判定）
 }
 
 // AnthropicResponse is the non-streaming response from POST /v1/messages.

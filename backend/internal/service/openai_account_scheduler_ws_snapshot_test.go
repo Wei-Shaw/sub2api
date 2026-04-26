@@ -38,11 +38,12 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_UsesWSPassthroughSnapsh
 	cfg.Gateway.OpenAIWS.IngressModeDefault = OpenAIWSIngressModeCtxPool
 
 	svc := &OpenAIGatewayService{
-		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{*account}},
-		cache:              &stubGatewayCache{},
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{*account}},
+		cache:              &schedulerTestGatewayCache{},
 		cfg:                cfg,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
 		schedulerSnapshot:  &SchedulerSnapshotService{cache: snapshotCache},
-		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
 	}
 
 	selection, decision, err := svc.SelectAccountWithScheduler(
@@ -54,6 +55,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_UsesWSPassthroughSnapsh
 		TargetGroupAny,
 		nil,
 		OpenAIUpstreamTransportResponsesWebsocketV2,
+		false,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, selection)
