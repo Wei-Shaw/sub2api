@@ -8,36 +8,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// matchRules 模拟 matchedRules 的过滤步骤（不依赖 repo / redis），用于联合测试维度匹配 + fallback 让位逻辑。
-func matchRules(rules []*ServiceQuotaRule, req ServiceQuotaCheckRequest) []*ServiceQuotaRule {
-	out := make([]*ServiceQuotaRule, 0, len(rules))
+// matchRules 模拟 matchedRules 的过滤步骤（不依赖 repo / redis），用于联合测试 path 匹配 + fallback 让位逻辑。
+func matchRules(rules []*ServiceQuotaRule, req ServiceQuotaCheckRequest) []matchedQuotaRule {
+	out := make([]matchedQuotaRule, 0, len(rules))
 	for _, rule := range rules {
 		if !rule.Enabled || !serviceQuotaTargetMatches(rule, req.UserID) {
 			continue
 		}
-		if !dimensionMatches(rule, req) {
+		paths := findMatchingPaths(rule, req)
+		if len(paths) == 0 {
 			continue
 		}
-		out = append(out, rule)
+		out = append(out, matchedQuotaRule{rule: rule, paths: paths})
 	}
 	return applyServiceQuotaFallbackOverride(out)
 }
 
-type ruleOpt func(*ServiceQuotaRule)
-
-func withPlatforms(values ...string) ruleOpt {
-	return func(r *ServiceQuotaRule) { r.Platforms = values }
-}
-
-func withAccountIDs(values ...int64) ruleOpt {
-	return func(r *ServiceQuotaRule) { r.AccountIDs = values }
-}
-
-func withTargetUsers(values ...int64) ruleOpt {
-	return func(r *ServiceQuotaRule) { r.TargetUserIDs = values }
-}
-
-func ruleWith(id int64, fallback bool, counterMode string, limiterTypes []string, opts ...ruleOpt) *ServiceQuotaRule {
+func ruleWith(id int64, fallback bool, counterMode string, limiterTypes []string, paths []ServiceQuotaPathDef, targetUsers ...int64) *ServiceQuotaRule {
 	limiters := make([]ServiceQuotaLimiterDef, 0, len(limiterTypes))
 	for _, lt := range limiterTypes {
 		limiters = append(limiters, ServiceQuotaLimiterDef{
@@ -47,17 +34,18 @@ func ruleWith(id int64, fallback bool, counterMode string, limiterTypes []string
 			LimitValue:  60,
 		})
 	}
-	rule := &ServiceQuotaRule{
-		ID:          id,
-		Enabled:     true,
-		CounterMode: counterMode,
-		IsFallback:  fallback,
-		Limiters:    limiters,
+	if paths == nil {
+		paths = []ServiceQuotaPathDef{{RuleID: id}}
 	}
-	for _, opt := range opts {
-		opt(rule)
+	return &ServiceQuotaRule{
+		ID:            id,
+		Enabled:       true,
+		CounterMode:   counterMode,
+		IsFallback:    fallback,
+		Limiters:      limiters,
+		Paths:         paths,
+		TargetUserIDs: targetUsers,
 	}
-	return rule
 }
 
 func TestServiceQuotaTargetMatches_CounterModeUser_MultipleUsers(t *testing.T) {
@@ -84,121 +72,127 @@ func TestServiceQuotaTargetMatches_NonUserCounterMode_IgnoresTargetList(t *testi
 
 func TestApplyFallbackOverride_DropsFallbackLimiterWhenConcreteHasSameType(t *testing.T) {
 	t.Parallel()
-	fallback := ruleWith(1, true, ServiceQuotaCounterModeShared, []string{ServiceQuotaLimiterRPM, ServiceQuotaLimiterDailyUSD})
-	concrete := ruleWith(2, false, ServiceQuotaCounterModePerUser, []string{ServiceQuotaLimiterRPM})
-	out := applyServiceQuotaFallbackOverride([]*ServiceQuotaRule{fallback, concrete})
+	fallback := ruleWith(1, true, ServiceQuotaCounterModeShared, []string{ServiceQuotaLimiterRPM, ServiceQuotaLimiterDailyUSD}, nil)
+	concrete := ruleWith(2, false, ServiceQuotaCounterModePerUser, []string{ServiceQuotaLimiterRPM}, nil)
+	matched := []matchedQuotaRule{
+		{rule: fallback, paths: fallback.Paths},
+		{rule: concrete, paths: concrete.Paths},
+	}
+	out := applyServiceQuotaFallbackOverride(matched)
 	require.Len(t, out, 2)
 
-	concreteOut := findRule(out, 2)
+	// concrete unchanged
+	concreteOut := findMatchedRule(out, 2)
 	require.NotNil(t, concreteOut)
-	require.Len(t, concreteOut.Limiters, 1)
-	require.Equal(t, ServiceQuotaLimiterRPM, concreteOut.Limiters[0].LimiterType)
+	require.Len(t, concreteOut.rule.Limiters, 1)
+	require.Equal(t, ServiceQuotaLimiterRPM, concreteOut.rule.Limiters[0].LimiterType)
 
-	fallbackOut := findRule(out, 1)
+	// fallback keeps DailyUSD only (RPM dropped because concrete has it)
+	fallbackOut := findMatchedRule(out, 1)
 	require.NotNil(t, fallbackOut)
-	require.Len(t, fallbackOut.Limiters, 1)
-	require.Equal(t, ServiceQuotaLimiterDailyUSD, fallbackOut.Limiters[0].LimiterType)
+	require.Len(t, fallbackOut.rule.Limiters, 1)
+	require.Equal(t, ServiceQuotaLimiterDailyUSD, fallbackOut.rule.Limiters[0].LimiterType)
 }
 
 func TestApplyFallbackOverride_KeepsLoneFallback(t *testing.T) {
 	t.Parallel()
-	fallback := ruleWith(1, true, ServiceQuotaCounterModeShared, []string{ServiceQuotaLimiterRPM})
-	out := applyServiceQuotaFallbackOverride([]*ServiceQuotaRule{fallback})
+	fallback := ruleWith(1, true, ServiceQuotaCounterModeShared, []string{ServiceQuotaLimiterRPM}, nil)
+	out := applyServiceQuotaFallbackOverride([]matchedQuotaRule{{rule: fallback, paths: fallback.Paths}})
 	require.Len(t, out, 1)
-	require.Equal(t, int64(1), out[0].ID)
+	require.Equal(t, int64(1), out[0].rule.ID)
 }
 
 func TestApplyFallbackOverride_DropsFallbackEntirelyWhenAllLimitersSuperseded(t *testing.T) {
 	t.Parallel()
-	fallback := ruleWith(1, true, ServiceQuotaCounterModeShared, []string{ServiceQuotaLimiterRPM})
-	concrete := ruleWith(2, false, ServiceQuotaCounterModePerUser, []string{ServiceQuotaLimiterRPM})
-	out := applyServiceQuotaFallbackOverride([]*ServiceQuotaRule{fallback, concrete})
+	fallback := ruleWith(1, true, ServiceQuotaCounterModeShared, []string{ServiceQuotaLimiterRPM}, nil)
+	concrete := ruleWith(2, false, ServiceQuotaCounterModePerUser, []string{ServiceQuotaLimiterRPM}, nil)
+	out := applyServiceQuotaFallbackOverride([]matchedQuotaRule{
+		{rule: fallback, paths: fallback.Paths},
+		{rule: concrete, paths: concrete.Paths},
+	})
 	require.Len(t, out, 1)
-	require.Equal(t, int64(2), out[0].ID)
+	require.Equal(t, int64(2), out[0].rule.ID)
 }
 
-func TestDimensionMatches_AllEmpty_MatchesEverything(t *testing.T) {
+func TestPathMatches_NilFieldsMatchEverything(t *testing.T) {
 	t.Parallel()
-	rule := &ServiceQuotaRule{}
-	require.True(t, dimensionMatches(rule, ServiceQuotaCheckRequest{Platform: "anthropic", AccountID: 7}))
+	emptyPath := ServiceQuotaPathDef{}
+	req := ServiceQuotaCheckRequest{Platform: "anthropic", AccountID: 7}
+	require.True(t, pathMatches(emptyPath, req))
 }
 
-func TestDimensionMatches_PlatformSet_MustContainRequest(t *testing.T) {
+func TestPathMatches_PlatformMismatch(t *testing.T) {
 	t.Parallel()
-	rule := &ServiceQuotaRule{Platforms: []string{"anthropic", "openai"}}
-	require.True(t, dimensionMatches(rule, ServiceQuotaCheckRequest{Platform: "anthropic"}))
-	require.True(t, dimensionMatches(rule, ServiceQuotaCheckRequest{Platform: "OpenAI"})) // 大小写无关
-	require.False(t, dimensionMatches(rule, ServiceQuotaCheckRequest{Platform: "gemini"}))
+	plat := "anthropic"
+	path := ServiceQuotaPathDef{Platform: &plat}
+	require.True(t, pathMatches(path, ServiceQuotaCheckRequest{Platform: "anthropic"}))
+	require.False(t, pathMatches(path, ServiceQuotaCheckRequest{Platform: "openai"}))
 }
 
-func TestDimensionMatches_AccountAndModelGlob(t *testing.T) {
+func TestPathMatches_AccountAndModelGlob(t *testing.T) {
 	t.Parallel()
-	rule := &ServiceQuotaRule{AccountIDs: []int64{7}, ModelPatterns: []string{"claude-opus-*"}}
-	require.True(t, dimensionMatches(rule, ServiceQuotaCheckRequest{AccountID: 7, Model: "claude-opus-4-6"}))
-	require.False(t, dimensionMatches(rule, ServiceQuotaCheckRequest{AccountID: 8, Model: "claude-opus-4-6"}))
-	require.False(t, dimensionMatches(rule, ServiceQuotaCheckRequest{AccountID: 7, Model: "gpt-5"}))
-}
-
-func TestDimensionMatches_ModelPatterns_AnyMatchWins(t *testing.T) {
-	t.Parallel()
-	rule := &ServiceQuotaRule{ModelPatterns: []string{"claude-opus-*", "gpt-*"}}
-	require.True(t, dimensionMatches(rule, ServiceQuotaCheckRequest{Model: "claude-opus-4-6"}))
-	require.True(t, dimensionMatches(rule, ServiceQuotaCheckRequest{Model: "gpt-5"}))
-	require.False(t, dimensionMatches(rule, ServiceQuotaCheckRequest{Model: "gemini-2-flash"}))
+	acc := int64(7)
+	model := "claude-opus-*"
+	path := ServiceQuotaPathDef{AccountID: &acc, ModelPattern: &model}
+	require.True(t, pathMatches(path, ServiceQuotaCheckRequest{AccountID: 7, Model: "claude-opus-4-6"}))
+	require.False(t, pathMatches(path, ServiceQuotaCheckRequest{AccountID: 8, Model: "claude-opus-4-6"}))
+	require.False(t, pathMatches(path, ServiceQuotaCheckRequest{AccountID: 7, Model: "gpt-5"}))
 }
 
 func TestMatchRules_SharedFallback_WorksWhenNoConcreteRule(t *testing.T) {
 	t.Parallel()
-	rule := ruleWith(10, true, ServiceQuotaCounterModeShared, []string{ServiceQuotaLimiterRPM})
+	rule := ruleWith(10, true, ServiceQuotaCounterModeShared, []string{ServiceQuotaLimiterRPM}, nil)
 	matched := matchRules([]*ServiceQuotaRule{rule}, ServiceQuotaCheckRequest{UserID: 1, Platform: "anthropic"})
 	require.Len(t, matched, 1)
-	require.True(t, matched[0].IsFallback)
+	require.True(t, matched[0].rule.IsFallback)
 }
 
 func TestMatchRules_SharedFallback_RPMSupersededByPerUserConcrete(t *testing.T) {
 	t.Parallel()
-	fallback := ruleWith(1, true, ServiceQuotaCounterModeShared, []string{ServiceQuotaLimiterRPM})
-	concrete := ruleWith(2, false, ServiceQuotaCounterModePerUser, []string{ServiceQuotaLimiterRPM})
+	fallback := ruleWith(1, true, ServiceQuotaCounterModeShared, []string{ServiceQuotaLimiterRPM}, nil)
+	concrete := ruleWith(2, false, ServiceQuotaCounterModePerUser, []string{ServiceQuotaLimiterRPM}, nil)
 	matched := matchRules([]*ServiceQuotaRule{fallback, concrete}, ServiceQuotaCheckRequest{UserID: 1})
 	require.Len(t, matched, 1)
-	require.Equal(t, int64(2), matched[0].ID)
+	require.Equal(t, int64(2), matched[0].rule.ID)
 }
 
 func TestMatchRules_CounterModeUser_OnlyLetsInListedUsers(t *testing.T) {
 	t.Parallel()
-	rule := ruleWith(3, false, ServiceQuotaCounterModeUser, []string{ServiceQuotaLimiterRPM}, withTargetUsers(10, 20))
+	rule := ruleWith(3, false, ServiceQuotaCounterModeUser, []string{ServiceQuotaLimiterRPM}, nil, 10, 20)
 	require.Len(t, matchRules([]*ServiceQuotaRule{rule}, ServiceQuotaCheckRequest{UserID: 10}), 1)
 	require.Len(t, matchRules([]*ServiceQuotaRule{rule}, ServiceQuotaCheckRequest{UserID: 11}), 0)
 	require.Len(t, matchRules([]*ServiceQuotaRule{rule}, ServiceQuotaCheckRequest{UserID: 20}), 1)
 }
 
-func TestMatchRules_PlatformDimension_FiltersRules(t *testing.T) {
+func TestFindMatchingPaths_MultiplePaths(t *testing.T) {
 	t.Parallel()
-	rule := ruleWith(1, false, ServiceQuotaCounterModePerUser, []string{ServiceQuotaLimiterRPM},
-		withPlatforms("anthropic"))
-	require.Len(t, matchRules([]*ServiceQuotaRule{rule}, ServiceQuotaCheckRequest{UserID: 1, Platform: "anthropic"}), 1)
-	require.Empty(t, matchRules([]*ServiceQuotaRule{rule}, ServiceQuotaCheckRequest{UserID: 1, Platform: "gemini"}))
+	platA := "anthropic"
+	platO := "openai"
+	rule := &ServiceQuotaRule{
+		ID: 1, Enabled: true, CounterMode: ServiceQuotaCounterModePerUser,
+		Limiters: []ServiceQuotaLimiterDef{{LimiterType: ServiceQuotaLimiterRPM, LimitValue: 60, WindowMode: "fixed"}},
+		Paths: []ServiceQuotaPathDef{
+			{ID: 11, RuleID: 1, Platform: &platA},
+			{ID: 12, RuleID: 1, Platform: &platO},
+		},
+	}
+	matched := findMatchingPaths(rule, ServiceQuotaCheckRequest{Platform: "anthropic"})
+	require.Len(t, matched, 1)
+	require.Equal(t, int64(11), matched[0].ID)
+	matched = findMatchingPaths(rule, ServiceQuotaCheckRequest{Platform: "gemini"})
+	require.Empty(t, matched)
 }
 
-func TestMatchRules_AccountAndPlatformAreANDed(t *testing.T) {
-	t.Parallel()
-	rule := ruleWith(1, false, ServiceQuotaCounterModePerUser, []string{ServiceQuotaLimiterRPM},
-		withPlatforms("anthropic"), withAccountIDs(7))
-	// 同时满足 platform=anthropic 且 account=7 才命中
-	require.Len(t, matchRules([]*ServiceQuotaRule{rule}, ServiceQuotaCheckRequest{UserID: 1, Platform: "anthropic", AccountID: 7}), 1)
-	require.Empty(t, matchRules([]*ServiceQuotaRule{rule}, ServiceQuotaCheckRequest{UserID: 1, Platform: "anthropic", AccountID: 8}))
-	require.Empty(t, matchRules([]*ServiceQuotaRule{rule}, ServiceQuotaCheckRequest{UserID: 1, Platform: "openai", AccountID: 7}))
-}
-
-func TestCounterKey_V3Format_NoPathID(t *testing.T) {
+func TestCounterKey_V2Format_IncludesPathID(t *testing.T) {
 	t.Parallel()
 	svc := &serviceQuotaService{}
 	rule := &ServiceQuotaRule{ID: 1, CounterMode: ServiceQuotaCounterModePerUser}
+	path := ServiceQuotaPathDef{ID: 99, RuleID: 1}
 	lim := ServiceQuotaLimiterDef{LimiterType: ServiceQuotaLimiterRPM}
-	require.Equal(t, "svcquota:v3:1:rpm:42", svc.counterKey(ServiceQuotaCheckRequest{UserID: 42}, rule, lim))
+	require.Equal(t, "svcquota:v2:1:99:rpm:42", svc.counterKey(ServiceQuotaCheckRequest{UserID: 42}, rule, path, lim))
 
 	rule.CounterMode = ServiceQuotaCounterModeShared
-	require.Equal(t, "svcquota:v3:1:rpm:shared", svc.counterKey(ServiceQuotaCheckRequest{UserID: 42}, rule, lim))
+	require.Equal(t, "svcquota:v2:1:99:rpm:shared", svc.counterKey(ServiceQuotaCheckRequest{UserID: 42}, rule, path, lim))
 }
 
 func TestNormalizeLimiters_RejectsEmptyAndDuplicate(t *testing.T) {
@@ -239,27 +233,10 @@ func TestNormalizeLimiters_RejectsEmptyAndDuplicate(t *testing.T) {
 	})
 }
 
-func TestNormalizeDimensions_DedupAndLowercase(t *testing.T) {
-	t.Parallel()
-	input := &ServiceQuotaRuleInput{
-		Platforms:     []string{"Anthropic", "anthropic", "  OpenAI  ", ""},
-		ModelPatterns: []string{"claude-opus-*", "claude-opus-*", "  gpt-*  "},
-		ChannelIDs:    []int64{1, 1, 2, 0, -1},
-		GroupIDs:      []int64{5, 5},
-		AccountIDs:    []int64{7, 8, 7},
-	}
-	normalizeDimensions(input)
-	require.Equal(t, []string{"anthropic", "openai"}, input.Platforms)
-	require.Equal(t, []string{"claude-opus-*", "gpt-*"}, input.ModelPatterns)
-	require.Equal(t, []int64{1, 2}, input.ChannelIDs)
-	require.Equal(t, []int64{5}, input.GroupIDs)
-	require.Equal(t, []int64{7, 8}, input.AccountIDs)
-}
-
-func findRule(rules []*ServiceQuotaRule, id int64) *ServiceQuotaRule {
-	for _, r := range rules {
-		if r.ID == id {
-			return r
+func findMatchedRule(matched []matchedQuotaRule, id int64) *matchedQuotaRule {
+	for i := range matched {
+		if matched[i].rule.ID == id {
+			return &matched[i]
 		}
 	}
 	return nil

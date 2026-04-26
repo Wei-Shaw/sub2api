@@ -70,18 +70,18 @@
             </div>
           </template>
 
-          <template #cell-dimensions="{ row }">
-            <div v-if="dimensionSummary(row).length === 0" class="text-xs text-gray-400">
+          <template #cell-paths="{ row }">
+            <div v-if="row.paths.length === 0" class="text-xs text-gray-400">
               {{ t('admin.serviceQuota.scopeDetails.allRequests') }}
             </div>
-            <div v-else class="flex flex-wrap gap-1">
-              <span
-                v-for="(line, i) in dimensionSummary(row)"
+            <div v-else class="space-y-0.5">
+              <div
+                v-for="(path, i) in row.paths"
                 :key="i"
-                class="badge badge-gray text-xs"
+                class="font-mono text-xs text-gray-700 dark:text-gray-200"
               >
-                {{ line }}
-              </span>
+                {{ pathSummary(path) }}
+              </div>
             </div>
           </template>
 
@@ -170,53 +170,12 @@
           <LimiterEditor v-model="form.limiters" />
         </section>
 
-        <section class="space-y-4">
+        <section class="space-y-2">
           <div class="flex items-baseline justify-between">
-            <span class="input-label">{{ t('admin.serviceQuota.form.dimensionsTitle') }}</span>
-            <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.serviceQuota.form.dimensionsHint') }}</span>
+            <span class="input-label">{{ t('admin.serviceQuota.form.pathsTitle') }}</span>
+            <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.serviceQuota.form.pathsHint') }}</span>
           </div>
-
-          <div class="space-y-2">
-            <span class="input-label">{{ t('admin.serviceQuota.dimensions.platforms') }}</span>
-            <PlatformMultiPicker v-model="form.platforms" />
-          </div>
-
-          <div class="grid gap-3 md:grid-cols-2">
-            <div class="space-y-2">
-              <span class="input-label">{{ t('admin.serviceQuota.dimensions.channels') }}</span>
-              <EntityMultiSearchSelect
-                v-model="selectedChannels"
-                :placeholder="t('admin.serviceQuota.dimensions.channelsPlaceholder')"
-                :search="searchChannels"
-                search-key="quota-channels"
-              />
-            </div>
-            <div class="space-y-2">
-              <span class="input-label">{{ t('admin.serviceQuota.dimensions.groups') }}</span>
-              <EntityMultiSearchSelect
-                v-model="selectedGroups"
-                :placeholder="t('admin.serviceQuota.dimensions.groupsPlaceholder')"
-                :search="searchGroups"
-                search-key="quota-groups"
-              />
-            </div>
-            <div class="space-y-2">
-              <span class="input-label">{{ t('admin.serviceQuota.dimensions.accounts') }}</span>
-              <EntityMultiSearchSelect
-                v-model="selectedAccounts"
-                :placeholder="t('admin.serviceQuota.dimensions.accountsPlaceholder')"
-                :search="searchAccounts"
-                search-key="quota-accounts"
-              />
-            </div>
-            <div class="space-y-2">
-              <span class="input-label">{{ t('admin.serviceQuota.dimensions.modelPatterns') }}</span>
-              <StringTagInput
-                v-model="form.model_patterns"
-                :placeholder="t('admin.serviceQuota.dimensions.modelPatternsPlaceholder')"
-              />
-            </div>
-          </div>
+          <PathEditor v-model="form.paths" />
         </section>
       </form>
 
@@ -254,22 +213,19 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'
 import UserMultiSelect from '@/components/common/UserMultiSelect.vue'
-import EntityMultiSearchSelect from '@/components/common/EntityMultiSearchSelect.vue'
-import PlatformMultiPicker from '@/components/common/PlatformMultiPicker.vue'
-import StringTagInput from '@/components/common/StringTagInput.vue'
 import LimiterEditor from '@/components/admin/LimiterEditor.vue'
+import PathEditor from '@/components/admin/PathEditor.vue'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
-import adminAPI from '@/api/admin'
 import type { Column } from '@/components/common/types'
 import type { SimpleUser } from '@/api/admin/usage'
-import type { EntitySearchItem } from '@/components/common/EntitySearchSelect.vue'
 import {
   createServiceQuotaRule,
   deleteServiceQuotaRule,
   listServiceQuotaRules,
   updateServiceQuotaRule,
   type ServiceQuotaLimiterDef,
+  type ServiceQuotaPathDef,
   type ServiceQuotaRule,
   type ServiceQuotaRuleInput,
 } from '@/api/admin/serviceQuota'
@@ -287,7 +243,7 @@ const columns = computed<Column[]>(() => [
   { key: 'enabled', label: t('admin.serviceQuota.columns.status') },
   { key: 'name', label: t('admin.serviceQuota.columns.name') },
   { key: 'limiters', label: t('admin.serviceQuota.columns.limiters') },
-  { key: 'dimensions', label: t('admin.serviceQuota.columns.dimensions') },
+  { key: 'paths', label: t('admin.serviceQuota.columns.paths') },
   { key: 'counter_mode', label: t('admin.serviceQuota.columns.counterMode') },
   { key: 'is_fallback', label: t('admin.serviceQuota.columns.fallback') },
   { key: 'actions', label: t('admin.serviceQuota.columns.actions') },
@@ -302,9 +258,6 @@ const deletingRule = ref<ServiceQuotaRule | null>(null)
 const filters = reactive({ counterMode: '', fallback: '', enabled: '' })
 const form = reactive<ServiceQuotaRuleInput>(blankRule())
 const selectedTargetUsers = ref<SimpleUser[]>([])
-const selectedChannels = ref<EntitySearchItem[]>([])
-const selectedGroups = ref<EntitySearchItem[]>([])
-const selectedAccounts = ref<EntitySearchItem[]>([])
 
 const filteredRules = computed(() => rules.value.filter((rule) => {
   if (filters.counterMode && rule.counter_mode !== filters.counterMode) return false
@@ -321,11 +274,7 @@ function blankRule(): ServiceQuotaRuleInput {
     is_fallback: false,
     target_user_ids: null,
     limiters: [{ limiter_type: 'rpm', window_mode: 'fixed', limit_value: 60 }],
-    platforms: [],
-    channel_ids: [],
-    group_ids: [],
-    account_ids: [],
-    model_patterns: [],
+    paths: [{ platform: null, channel_id: null, group_id: null, account_id: null, model_pattern: null }],
   }
 }
 
@@ -341,51 +290,18 @@ function resetForm(rule?: ServiceQuotaRule) {
       window_mode: l.window_mode,
       limit_value: l.limit_value,
     }))
-    initial.platforms = [...(rule.platforms || [])]
-    initial.channel_ids = [...(rule.channel_ids || [])]
-    initial.group_ids = [...(rule.group_ids || [])]
-    initial.account_ids = [...(rule.account_ids || [])]
-    initial.model_patterns = [...(rule.model_patterns || [])]
+    initial.paths = rule.paths.map((p) => ({
+      platform: p.platform ?? null,
+      channel_id: p.channel_id ?? null,
+      group_id: p.group_id ?? null,
+      account_id: p.account_id ?? null,
+      model_pattern: p.model_pattern ?? null,
+    }))
     initial.target_user_ids = rule.target_user_ids ?? null
   }
   Object.assign(form, initial)
   editingID.value = rule?.id ?? null
   selectedTargetUsers.value = (rule?.target_users || []).map((u) => ({ id: u.id, email: u.email }))
-  selectedChannels.value = []
-  selectedGroups.value = []
-  selectedAccounts.value = []
-  if (rule) {
-    void hydrateEntitySelections(rule)
-  }
-}
-
-// 编辑现有规则时把 ID 列表反查为 EntitySearchItem 才能在多选框里展示标签。
-async function hydrateEntitySelections(rule: ServiceQuotaRule) {
-  const channelIds = rule.channel_ids || []
-  const groupIds = rule.group_ids || []
-  const accountIds = rule.account_ids || []
-  const [channels, groups, accounts] = await Promise.all([
-    Promise.all(channelIds.map((id) => safeFetch(() => adminAPI.channels.getById(id), id, (r) => r.name))),
-    Promise.all(groupIds.map((id) => safeFetch(() => adminAPI.groups.getById(id), id, (r) => r.name, (r) => r.platform))),
-    Promise.all(accountIds.map((id) => safeFetch(() => adminAPI.accounts.getById(id), id, (r) => r.name, (r) => r.platform))),
-  ])
-  selectedChannels.value = channels.filter((x): x is EntitySearchItem => x !== null)
-  selectedGroups.value = groups.filter((x): x is EntitySearchItem => x !== null)
-  selectedAccounts.value = accounts.filter((x): x is EntitySearchItem => x !== null)
-}
-
-async function safeFetch<T>(
-  loader: () => Promise<T>,
-  id: number,
-  labelOf: (r: T) => string,
-  subOf?: (r: T) => string | undefined,
-): Promise<EntitySearchItem | null> {
-  try {
-    const data = await loader()
-    return { id, label: labelOf(data), sub: subOf ? subOf(data) ?? '' : '' }
-  } catch {
-    return { id, label: `#${id}`, sub: '' }
-  }
 }
 
 function limiterLabel(value: string): string {
@@ -428,29 +344,21 @@ function counterModeHint(value: string): string {
   return map[value] || ''
 }
 
-// dimensionSummary 把 5 个维度集合压成简短 chip 文案，每个非空维度一段。
-function dimensionSummary(rule: ServiceQuotaRule): string[] {
-  const out: string[] = []
-  if (rule.platforms?.length) {
-    out.push(t('admin.serviceQuota.scopeDetails.platform', { value: rule.platforms.join(', ') }))
-  }
-  if (rule.channel_ids?.length) {
-    out.push(t('admin.serviceQuota.scopeDetails.channelCount', { count: rule.channel_ids.length }))
-  }
-  if (rule.group_ids?.length) {
-    out.push(t('admin.serviceQuota.scopeDetails.groupCount', { count: rule.group_ids.length }))
-  }
-  if (rule.account_ids?.length) {
-    out.push(t('admin.serviceQuota.scopeDetails.accountCount', { count: rule.account_ids.length }))
-  }
-  if (rule.model_patterns?.length) {
-    out.push(t('admin.serviceQuota.scopeDetails.model', { value: rule.model_patterns.join(', ') }))
-  }
-  return out
+// 每条 path 用 chevron 链式展示：平台 → 渠道 → 分组 → 账号 → 模型；空段填 '*'
+function pathSummary(path: ServiceQuotaPathDef): string {
+  const parts = [
+    path.platform || '*',
+    path.channel_id ? `ch#${path.channel_id}` : '*',
+    path.group_id ? `g#${path.group_id}` : '*',
+    path.account_id ? `acc#${path.account_id}` : '*',
+    path.model_pattern || '*',
+  ]
+  if (parts.every((p) => p === '*')) return t('admin.serviceQuota.scopeDetails.allRequests')
+  return parts.join(' → ')
 }
 
 function normalizePayload(): ServiceQuotaRuleInput {
-  return {
+  const payload: ServiceQuotaRuleInput = {
     enabled: form.enabled,
     name: cleanText(form.name),
     counter_mode: form.counter_mode,
@@ -460,17 +368,24 @@ function normalizePayload(): ServiceQuotaRuleInput {
       window_mode: l.limiter_type === 'concurrency' ? 'fixed' : l.window_mode,
       limit_value: Number(l.limit_value),
     })),
-    platforms: [...form.platforms],
-    channel_ids: selectedChannels.value.map((it) => it.id),
-    group_ids: selectedGroups.value.map((it) => it.id),
-    account_ids: selectedAccounts.value.map((it) => it.id),
-    model_patterns: form.model_patterns.map((p) => p.trim()).filter(Boolean),
+    paths: form.paths.map((p) => ({
+      platform: cleanText(p.platform),
+      channel_id: cleanNumber(p.channel_id),
+      group_id: cleanNumber(p.group_id),
+      account_id: cleanNumber(p.account_id),
+      model_pattern: cleanText(p.model_pattern),
+    })),
     target_user_ids: form.counter_mode === 'user' ? selectedTargetUsers.value.map((u) => u.id) : null,
   }
+  return payload
 }
 
 function cleanText(value?: string | null): string | null {
   return value && value.trim() ? value.trim() : null
+}
+
+function cleanNumber(value?: number | null): number | null {
+  return value && value > 0 ? value : null
 }
 
 async function load() {
@@ -531,27 +446,6 @@ async function confirmDelete() {
   } catch (error: unknown) {
     appStore.showError(extractApiErrorMessage(error, t('admin.serviceQuota.deleteError')))
   }
-}
-
-async function searchChannels(keyword: string, signal: AbortSignal): Promise<EntitySearchItem[]> {
-  const filters: { search?: string } = {}
-  if (keyword) filters.search = keyword
-  const res = await adminAPI.channels.list(1, 20, filters, { signal })
-  return res.items.map((ch) => ({ id: ch.id, label: ch.name, sub: ch.status || '' }))
-}
-
-async function searchGroups(keyword: string, signal: AbortSignal): Promise<EntitySearchItem[]> {
-  const filters: { search?: string } = {}
-  if (keyword) filters.search = keyword
-  const res = await adminAPI.groups.list(1, 20, filters, { signal })
-  return res.items.map((g) => ({ id: g.id, label: g.name, sub: g.platform || '' }))
-}
-
-async function searchAccounts(keyword: string, signal: AbortSignal): Promise<EntitySearchItem[]> {
-  const filters: Record<string, string> = {}
-  if (keyword) filters.search = keyword
-  const res = await adminAPI.accounts.list(1, 20, filters, { signal })
-  return res.items.map((a) => ({ id: a.id, label: a.name, sub: a.platform || '' }))
 }
 
 onMounted(load)
