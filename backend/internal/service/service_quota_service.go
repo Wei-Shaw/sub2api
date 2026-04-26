@@ -476,6 +476,11 @@ func (s *serviceQuotaService) checkRPM(ctx context.Context, req ServiceQuotaChec
 	key := s.counterKey(req, rule, path, lim)
 	used, err := s.limiter.Increment(ctx, key, 1, time.Minute, lim.WindowMode)
 	if err != nil {
+		// fail-open: Increment 报错时，已经 +1 的计数会成为下次请求的 “幽灵 +1”。
+		// best-effort 反向 Increment(-1) 抵消：fixed window 走 IncrByFloat(-1) 干净回退；
+		// rolling window 通过追加一条 delta=-1 的 member 与原 +1 在 sumRollingMembers 求和时
+		// 相互抵消，等价于回滚。任何回退失败都忽略，不阻塞主流程。
+		_, _ = s.limiter.Increment(ctx, key, -1, time.Minute, lim.WindowMode)
 		s.logLimiterFailure("check_rpm", rule, lim, key, err)
 		return nil
 	}

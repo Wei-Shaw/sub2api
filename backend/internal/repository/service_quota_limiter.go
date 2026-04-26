@@ -17,6 +17,54 @@ type serviceQuotaLimiter struct{ rdb *redis.Client }
 
 var rollingMemberSeq atomic.Uint64
 
+const (
+	// concurrencyAcquireLeakWindow 是 Acquire 槽位被认为泄漏（持有方崩溃未 Release）
+	// 后可被新请求自动回收的时长，单位秒；与历史值保持一致以避免行为漂移。
+	concurrencyAcquireLeakWindow = 300
+
+	// concurrencyAcquireKeyTTL 是 Acquire ZSET key 的过期时间，
+	// 超过这个时间没有新请求触达就让 Redis 自然清掉，避免长期空 key。
+	concurrencyAcquireKeyTTL = 10 * time.Minute
+)
+
+// concurrencyAcquireScript 把 Acquire 的 4 个步骤（清过期 → 计数 → ZADD → EXPIRE）
+// 合成一条 Lua 脚本以保证整体原子性。
+//
+// 不用 Pipeline / Tx 的原因：高并发下两个请求都看到 ZCARD = limit-1 时
+// 都会通过判定，最终 ZADD 后实际持有数会超过 limit。Lua 单线程执行可以杜绝
+// 这种 check-then-act 竞态。
+//
+// KEYS[1] = ZSET key（如 svcquota:v2:<rule>:<path>:concurrency:<target>）
+// ARGV[1] = 过期分数下限（now - leakWindow），ZREMRANGEBYSCORE 用
+// ARGV[2] = limit（最大并发数）
+// ARGV[3] = now（新槽位 score）
+// ARGV[4] = member（请求标识）
+// ARGV[5] = key 的 TTL（秒）
+//
+// 返回：1 = 已占用槽位；0 = 达到上限被拒。
+var concurrencyAcquireScript = redis.NewScript(`
+local key = KEYS[1]
+local cutoff = ARGV[1]
+local limit = tonumber(ARGV[2])
+local now = tonumber(ARGV[3])
+local member = ARGV[4]
+local ttl = tonumber(ARGV[5])
+
+redis.call('ZREMRANGEBYSCORE', key, '-inf', cutoff)
+
+local count = redis.call('ZCARD', key)
+if count >= limit then
+	return 0
+end
+
+redis.call('ZADD', key, now, member)
+redis.call('EXPIRE', key, ttl)
+return 1
+`)
+
+// NewServiceQuotaLimiter 构造一个基于 Redis 的服务限额 limiter。
+// 当 rdb 为 nil 时，所有方法都返回放行结果（fail-open），便于在没有 Redis
+// 的部署中静默降级而不阻塞主流程。
 func NewServiceQuotaLimiter(rdb *redis.Client) service.ServiceQuotaLimiter {
 	return &serviceQuotaLimiter{rdb: rdb}
 }
@@ -97,19 +145,32 @@ func sumRollingMembers(members []string) float64 {
 	return sum
 }
 
+// Acquire 以原子方式占用一个并发槽位。
+//
+// 执行 concurrencyAcquireScript（清过期 + 计数判定 + ZADD + EXPIRE 单条 Lua），
+// 杜绝旧实现里 ZCARD → ZADD 之间的 check-then-act 竞态。limit <= 0 时退化
+// 为放行，确保规则配置缺失不会卡住主流程。
 func (l *serviceQuotaLimiter) Acquire(ctx context.Context, key, member string, limit int64) (bool, error) {
 	if l == nil || l.rdb == nil || limit <= 0 {
 		return true, nil
 	}
 	now := time.Now().Unix()
-	_, _ = l.rdb.ZRemRangeByScore(ctx, key, "-inf", strconv.FormatInt(now-300, 10)).Result()
-	count, err := l.rdb.ZCard(ctx, key).Result()
-	if err != nil || count >= limit {
-		return false, err
+	cutoff := strconv.FormatInt(now-concurrencyAcquireLeakWindow, 10)
+	ttlSeconds := strconv.FormatInt(int64(concurrencyAcquireKeyTTL.Seconds()), 10)
+	res, err := concurrencyAcquireScript.Run(
+		ctx,
+		l.rdb,
+		[]string{key},
+		cutoff,
+		limit,
+		now,
+		member,
+		ttlSeconds,
+	).Int64()
+	if err != nil {
+		return false, fmt.Errorf("service quota limiter acquire: %w", err)
 	}
-	err = l.rdb.ZAdd(ctx, key, redis.Z{Score: float64(now), Member: member}).Err()
-	_ = l.rdb.Expire(ctx, key, 10*time.Minute).Err()
-	return err == nil, err
+	return res == 1, nil
 }
 
 func (l *serviceQuotaLimiter) Release(ctx context.Context, key, member string) error {

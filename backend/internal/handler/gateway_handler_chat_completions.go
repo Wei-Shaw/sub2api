@@ -134,7 +134,10 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	}
 
 	// 2. Re-check billing
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+	// quotaLease 持有 service quota concurrency 槽位（若规则匹配），handler 返回时统一释放。
+	quotaLease, err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription)
+	defer service.ReleaseQuotaLease(quotaLease)
+	if err != nil {
 		reqLog.Info("gateway.cc.billing_check_failed", zap.Error(err))
 		status, code, message, metadata := billingErrorDetails(err)
 		h.chatCompletionsErrorResponseWithMetadata(c, status, code, message, metadata)

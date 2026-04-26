@@ -241,7 +241,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}
 
 	// 2. 【新增】Wait后二次检查余额/订阅
-	if err := h.billingCacheService.CheckBillingEligibilityForRequest(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.ServiceQuotaCheckRequest{Model: reqModel}); err != nil {
+	// quotaLease 持有 service quota concurrency 槽位（若规则匹配），
+	// 必须 defer 释放，覆盖正常返回 / 选号失败 / 转发失败 / panic 等所有路径。
+	quotaLease, err := h.billingCacheService.CheckBillingEligibilityForRequest(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.ServiceQuotaCheckRequest{Model: reqModel})
+	defer service.ReleaseQuotaLease(quotaLease)
+	if err != nil {
 		reqLog.Info("gateway.billing_eligibility_check_failed", zap.Error(err))
 		status, code, message, metadata := billingErrorDetails(err)
 		h.handleStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
@@ -758,7 +762,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 							return
 						}
 						fallbackAPIKey := cloneAPIKeyWithGroup(apiKey, fallbackGroup)
-						if err := h.billingCacheService.CheckBillingEligibilityForRequest(c.Request.Context(), fallbackAPIKey.User, fallbackAPIKey, fallbackGroup, nil, service.ServiceQuotaCheckRequest{Model: reqModel}); err != nil {
+						// fallbackQuotaLease 与外层 quotaLease 是不同 scope（不同 group / 规则匹配），
+						// 这里 defer 与 handler 同生命周期；正常路径与外层 lease 串联释放，
+						// 错误路径同样靠 defer 兜底。
+						fallbackQuotaLease, err := h.billingCacheService.CheckBillingEligibilityForRequest(c.Request.Context(), fallbackAPIKey.User, fallbackAPIKey, fallbackGroup, nil, service.ServiceQuotaCheckRequest{Model: reqModel})
+						defer service.ReleaseQuotaLease(fallbackQuotaLease)
+						if err != nil {
 							status, code, message, metadata := billingErrorDetails(err)
 							h.handleStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
 							return
@@ -1500,7 +1509,10 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 
 	// 校验 billing eligibility（订阅/余额）
 	// 【注意】不计算并发，但需要校验订阅/余额
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+	// quotaLease 持有 service quota concurrency 槽位（若规则匹配），handler 返回时统一释放。
+	quotaLease, err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription)
+	defer service.ReleaseQuotaLease(quotaLease)
+	if err != nil {
 		status, code, message, metadata := billingErrorDetails(err)
 		h.errorResponseWithMetadata(c, status, code, message, metadata)
 		return

@@ -95,20 +95,37 @@ func NewBillingCacheService(
 	return svc
 }
 
-// CheckBillingEligibility 检查用户是否有资格发起请求
+// CheckBillingEligibility 检查用户是否有资格发起请求。
+//
 // 余额模式：检查缓存余额 > 0
 // 订阅模式：检查缓存用量未超过限额（Group限额从参数传入）
-func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription) error {
+//
+// 返回的 *ServiceQuotaLease 持有服务限额（concurrency 类）已抢占的槽位，
+// 调用方必须在请求结束（包括 error / panic 路径）时调用 lease.Release() 释放，
+// 否则槽位将累积直到 ZSET 5min 兜底回收，期间 limit 会被陈旧 member 撑爆。
+//
+// lease 可能为 nil（无规则匹配 / 服务限额未启用 / 仅命中非 concurrency 限流器），
+// 返回的 lease.Release 已用 sync.Once 保护，重复调用安全。
+//
+// 推荐用法：
+//
+//	lease, err := svc.CheckBillingEligibility(ctx, user, apiKey, group, sub)
+//	defer ReleaseQuotaLease(lease)
+//	if err != nil { return err }
+func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription) (*ServiceQuotaLease, error) {
 	return s.CheckBillingEligibilityForRequest(ctx, user, apiKey, group, subscription, ServiceQuotaCheckRequest{})
 }
 
-func (s *BillingCacheService) CheckBillingEligibilityForRequest(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, quotaReq ServiceQuotaCheckRequest) error {
+// CheckBillingEligibilityForRequest 同 CheckBillingEligibility，但额外接受 ServiceQuotaCheckRequest
+// 以便携带 model、channel 等服务限额匹配维度。返回 lease 的生命周期约定与
+// CheckBillingEligibility 一致，调用方必须 defer ReleaseQuotaLease(lease)。
+func (s *BillingCacheService) CheckBillingEligibilityForRequest(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, quotaReq ServiceQuotaCheckRequest) (lease *ServiceQuotaLease, err error) {
 	// 简易模式：跳过所有计费检查
 	if s.cfg.RunMode == config.RunModeSimple {
-		return nil
+		return nil, nil
 	}
 	if s.circuitBreaker != nil && !s.circuitBreaker.Allow() {
-		return ErrBillingServiceUnavailable
+		return nil, ErrBillingServiceUnavailable
 	}
 	if s.serviceQuota != nil && user != nil {
 		quotaReq.UserID = user.ID
@@ -116,44 +133,72 @@ func (s *BillingCacheService) CheckBillingEligibilityForRequest(ctx context.Cont
 			quotaReq.GroupID = group.ID
 			quotaReq.Platform = group.Platform
 		}
-		lease, err := s.serviceQuota.PreCheck(ctx, quotaReq)
-		if err != nil {
-			return err
+		acquired, perr := s.serviceQuota.PreCheck(ctx, quotaReq)
+		if perr != nil {
+			return nil, perr
 		}
-		if lease != nil && lease.Release != nil {
-			go func() {
-				<-ctx.Done()
-				lease.Release()
-			}()
-		}
+		// 把原始 Release 包成 once-safe，防止上层重复 defer 或 panic 路径双释放。
+		lease = wrapServiceQuotaLeaseOnce(acquired)
 	}
+
+	// 任何后续检查失败都要释放已抢占的 concurrency 槽位，
+	// 避免 PreCheck 通过、后续 RPM/余额校验失败时 lease 永远漏。
+	defer func() {
+		if err != nil && lease != nil {
+			lease.Release()
+			lease = nil
+		}
+	}()
 
 	// 判断计费模式
 	isSubscriptionMode := group != nil && group.IsSubscriptionType() && subscription != nil
 
 	if isSubscriptionMode {
-		if err := s.checkSubscriptionEligibility(ctx, user.ID, group, subscription); err != nil {
-			return err
+		if err = s.checkSubscriptionEligibility(ctx, user.ID, group, subscription); err != nil {
+			return nil, err
 		}
 	} else {
-		if err := s.checkBalanceEligibility(ctx, user.ID); err != nil {
-			return err
+		if err = s.checkBalanceEligibility(ctx, user.ID); err != nil {
+			return nil, err
 		}
 	}
 
 	// Check API Key rate limits (applies to both billing modes)
 	if apiKey != nil && apiKey.HasRateLimits() {
-		if err := s.checkAPIKeyRateLimits(ctx, apiKey); err != nil {
-			return err
+		if err = s.checkAPIKeyRateLimits(ctx, apiKey); err != nil {
+			return nil, err
 		}
 	}
 
 	// RPM 限流：级联回落（Override → Group → User），放在最后以避免为注定失败的请求增加计数。
-	if err := s.checkRPM(ctx, user, group); err != nil {
-		return err
+	if err = s.checkRPM(ctx, user, group); err != nil {
+		return nil, err
 	}
 
-	return nil
+	return lease, nil
+}
+
+// wrapServiceQuotaLeaseOnce 把 PreCheck 返回的 lease.Release 包成 sync.Once，
+// 调用方可放心在 defer 路径多次执行。lease 为 nil 或 Release 为 nil 时透传。
+func wrapServiceQuotaLeaseOnce(lease *ServiceQuotaLease) *ServiceQuotaLease {
+	if lease == nil || lease.Release == nil {
+		return lease
+	}
+	original := lease.Release
+	var once sync.Once
+	lease.Release = func() {
+		once.Do(original)
+	}
+	return lease
+}
+
+// ReleaseQuotaLease 安全释放 *ServiceQuotaLease，nil 友好。
+// 用于 caller 端 defer ReleaseQuotaLease(lease) 的便捷写法。
+func ReleaseQuotaLease(lease *ServiceQuotaLease) {
+	if lease == nil || lease.Release == nil {
+		return
+	}
+	lease.Release()
 }
 
 // checkRPM 执行并行 RPM 限流，所有适用的限制同时生效，任一超限即拒绝：

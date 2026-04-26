@@ -106,7 +106,10 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		defer userReleaseFunc()
 	}
 
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+	// quotaLease 持有 service quota concurrency 槽位（若规则匹配），handler 返回时统一释放。
+	quotaLease, err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription)
+	defer service.ReleaseQuotaLease(quotaLease)
+	if err != nil {
 		reqLog.Info("openai.images.billing_eligibility_check_failed", zap.Error(err))
 		status, code, message, metadata := billingErrorDetails(err)
 		h.handleStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
