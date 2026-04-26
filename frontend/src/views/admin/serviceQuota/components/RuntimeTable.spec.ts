@@ -93,17 +93,28 @@ describe('RuntimeTable', () => {
     expect(cols).not.toContain('scopeUser')
   })
 
-  it('exists=false 行在 usage cell 显示 notActive 文案', () => {
+  it('exists=false 行 usage cell 仍展示 0 / limit + 0% 进度条', () => {
     const wrapper = mount(RuntimeTable, {
-      props: { rows: [makeRow({ exists: false })], showInternal: true },
+      props: { rows: [makeRow({ exists: false, current: 0, utilization_pct: 0, limit_value: 60 })], showInternal: true },
       global: baseGlobal,
     })
-    // usage cell 在 exists=false 时直接显示 notActive
     const usageCell = wrapper.find('[data-test-cell="usage"]')
-    expect(usageCell.text()).toContain('admin.serviceQuotaMonitor.notActive')
-    // tags cell 也带 notActive 标签
+    expect(usageCell.text()).toContain('0 / 60')
+    expect(usageCell.text()).toContain('0%')
+    // 不再展示 notActive 文案；标签列也不再渲染 notActive badge
+    expect(usageCell.text()).not.toContain('admin.serviceQuotaMonitor.notActive')
     const tagsCell = wrapper.find('[data-test-cell="tags"]')
-    expect(tagsCell.text()).toContain('admin.serviceQuotaMonitor.notActive')
+    expect(tagsCell.text()).not.toContain('admin.serviceQuotaMonitor.notActive')
+  })
+
+  it('per_user_unbound 行 usage 显示 — / limit + 提示文案', () => {
+    const wrapper = mount(RuntimeTable, {
+      props: { rows: [makeRow({ per_user_unbound: true, exists: false, limit_value: 60, current: 0 })], showInternal: true },
+      global: baseGlobal,
+    })
+    const usageCell = wrapper.find('[data-test-cell="usage"]')
+    expect(usageCell.text()).toContain('— / 60')
+    expect(usageCell.text()).toContain('admin.serviceQuotaMonitor.perUserUnbound')
   })
 
   it('is_fallback=true 行显示兜底标签', () => {

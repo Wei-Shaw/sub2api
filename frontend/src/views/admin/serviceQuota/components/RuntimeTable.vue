@@ -29,27 +29,24 @@
     </template>
 
     <template #cell-usage="{ row }">
-      <div v-if="row.per_user_unbound" class="text-xs italic text-gray-400">
-        {{ t('admin.serviceQuotaMonitor.perUserUnbound') }}
-      </div>
-      <div v-else-if="!row.exists" class="text-xs text-gray-400">
-        {{ t('admin.serviceQuotaMonitor.notActive') }}
-      </div>
-      <div v-else class="space-y-1">
+      <div class="space-y-1">
         <div class="flex items-center gap-2 text-xs">
           <span class="font-mono font-medium text-gray-900 dark:text-white">
             {{ formatUsageNumbers(row) }}
           </span>
-          <span :class="['font-bold', getLoadTextClass(row.utilization_pct)]">
-            {{ Math.round(row.utilization_pct) }}%
+          <span :class="['font-bold', getLoadTextClass(displayUtilization(row))]">
+            {{ Math.round(displayUtilization(row)) }}%
           </span>
         </div>
         <div class="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
           <div
             class="h-full rounded-full transition-all duration-300"
-            :class="getLoadBarClass(row.utilization_pct)"
-            :style="getLoadBarStyle(row.utilization_pct)"
+            :class="getLoadBarClass(displayUtilization(row))"
+            :style="getLoadBarStyle(displayUtilization(row))"
           ></div>
+        </div>
+        <div v-if="row.per_user_unbound" class="text-[11px] italic text-gray-400">
+          {{ t('admin.serviceQuotaMonitor.perUserUnbound') }}
         </div>
       </div>
     </template>
@@ -73,12 +70,6 @@
           class="badge badge-yellow"
         >
           {{ t('admin.serviceQuotaMonitor.fallbackTag') }}
-        </span>
-        <span
-          v-if="!row.exists"
-          class="badge badge-gray"
-        >
-          {{ t('admin.serviceQuotaMonitor.notActive') }}
         </span>
       </div>
     </template>
@@ -154,10 +145,20 @@ function counterModeBadgeClass(mode: string): string {
 
 function formatUsageNumbers(row: LimiterRuntime): string {
   // daily_usd 是金额，保留 2 位；其他都是整数
-  if (row.limiter_type === 'daily_usd') {
-    return `${row.current.toFixed(2)} / ${row.limit_value.toFixed(2)}`
+  const isUsd = row.limiter_type === 'daily_usd'
+  const limitText = isUsd ? row.limit_value.toFixed(2) : String(Math.round(row.limit_value))
+  // per_user 占位行真实 current 取决于具体用户，未指定时显示 — 而非 0，避免误读
+  if (row.per_user_unbound) {
+    return `— / ${limitText}`
   }
-  return `${Math.round(row.current)} / ${Math.round(row.limit_value)}`
+  const currentText = isUsd ? row.current.toFixed(2) : String(Math.round(row.current))
+  return `${currentText} / ${limitText}`
+}
+
+/** per_user 占位行没有实际计数器，进度条与文字百分比按 0% 显示（灰条） */
+function displayUtilization(row: LimiterRuntime): number {
+  if (row.per_user_unbound) return 0
+  return row.utilization_pct
 }
 
 function formatPathSummary(summary: LimiterRuntimePathSummary | null | undefined): string {
