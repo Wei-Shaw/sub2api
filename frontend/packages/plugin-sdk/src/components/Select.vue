@@ -109,18 +109,15 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from './Icon.vue'
+import type { SelectOption } from '../types'
+
+// Re-export so callers that import { SelectOption } from this .vue still work.
+export type { SelectOption }
 
 const { t } = useI18n()
 
 // Instance ID for unique click-outside detection
 const instanceId = `select-${Math.random().toString(36).substring(2, 9)}`
-
-export interface SelectOption {
-  value: string | number | boolean | null
-  label: string
-  disabled?: boolean
-  [key: string]: unknown
-}
 
 interface Props {
   modelValue: string | number | boolean | null | undefined
