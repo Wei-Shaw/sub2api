@@ -22,7 +22,20 @@ service SQLProxy {
 }
 
 // RedisProxy 代理 Redis 操作到核心 Redis
+//
+// New code should use Do() — it is the go-redis style universal entry point
+// that supports virtually every Redis command without adding a new RPC per
+// command. The typed RPCs below are retained for backward compatibility with
+// already-built plugin binaries; new SDK clients route them through Do() too.
 service RedisProxy {
+  // Do executes an arbitrary Redis command. This mirrors go-redis's Cmdable.Do
+  // and lets the SDK expose the full Redis command surface without bloating
+  // this proto. Args[0] is the command name (case-insensitive); subsequent
+  // args are the command arguments encoded as raw bytes.
+  rpc Do(DoRequest) returns (DoReply);
+
+  // Legacy typed RPCs — DEPRECATED: prefer Do(). Existing plugin binaries
+  // still call these, so the core must keep them serving.
   rpc Get(RedisKeyRequest) returns (RedisValueResponse);
   rpc Set(RedisSetRequest) returns (google.protobuf.Empty);
   rpc SetEx(RedisSetExRequest) returns (google.protobuf.Empty);
@@ -154,6 +167,47 @@ message RedisSubRequest {
 message RedisMessage {
   string channel = 1;
   bytes data = 2;
+}
+
+// DoRequest carries an arbitrary Redis command + arguments. The SDK encodes
+// every argument as raw bytes so binary-safe values (BLOBs, packed structs)
+// pass through losslessly.
+//
+// raw_key controls whether the SDK server applies the per-plugin key
+// namespace before dispatching to Redis. Plugins must declare the
+// "redis_raw_keys" capability in their manifest to use raw_key=true; the
+// core rejects raw_key requests from plugins lacking the capability.
+message DoRequest {
+  // args is [command, arg1, arg2, ...]. command is case-insensitive.
+  repeated bytes args = 1;
+  // raw_key=true bypasses the per-plugin namespace prefix and lets the
+  // command hit keys defined outside the plugin's own namespace. Requires
+  // the "redis_raw_keys" capability.
+  bool raw_key = 2;
+  // key_positions lists the indices in `args` (1-based, into args excluding
+  // the command itself; index 0 is the first key arg) that contain Redis
+  // keys. The server uses this only to apply the namespace prefix; if empty
+  // the server falls back to the command's KEYS metadata. The SDK client is
+  // expected to populate this for non-trivial commands so the server does
+  // not have to know every Redis command's key layout.
+  repeated int32 key_positions = 3;
+}
+
+// DoReply mirrors the shape of a Redis RESP reply. Exactly one of the
+// payload fields (string_value, int_value, array, nil_value) is set
+// depending on `kind`; on a Redis-side error, kind="error" and the message
+// is in `error`. Network-level errors travel as gRPC status codes instead.
+message DoReply {
+  // kind is "string" | "int" | "array" | "nil" | "status" | "error".
+  // "status" is RESP simple strings (OK, PONG, …); SDK clients usually
+  // surface it as a string. "nil" maps to the redis.Nil sentinel.
+  string kind = 1;
+  bytes string_value = 2;
+  int64 int_value = 3;
+  repeated DoReply array = 4;
+  bool nil_value = 5;
+  string error = 6;
+  double float_value = 7;
 }
 
 // ============================================================

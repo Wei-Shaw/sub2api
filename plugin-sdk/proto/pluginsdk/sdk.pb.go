@@ -1176,6 +1176,183 @@ func (x *RedisMessage) GetData() []byte {
 	return nil
 }
 
+// DoRequest carries an arbitrary Redis command + arguments. The SDK encodes
+// every argument as raw bytes so binary-safe values (BLOBs, packed structs)
+// pass through losslessly.
+//
+// raw_key controls whether the SDK server applies the per-plugin key
+// namespace before dispatching to Redis. Plugins must declare the
+// "redis_raw_keys" capability in their manifest to use raw_key=true; the
+// core rejects raw_key requests from plugins lacking the capability.
+type DoRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// args is [command, arg1, arg2, ...]. command is case-insensitive.
+	Args [][]byte `protobuf:"bytes,1,rep,name=args,proto3" json:"args,omitempty"`
+	// raw_key=true bypasses the per-plugin namespace prefix and lets the
+	// command hit keys defined outside the plugin's own namespace. Requires
+	// the "redis_raw_keys" capability.
+	RawKey bool `protobuf:"varint,2,opt,name=raw_key,json=rawKey,proto3" json:"raw_key,omitempty"`
+	// key_positions lists the indices in `args` (1-based, into args excluding
+	// the command itself; index 0 is the first key arg) that contain Redis
+	// keys. The server uses this only to apply the namespace prefix; if empty
+	// the server falls back to the command's KEYS metadata. The SDK client is
+	// expected to populate this for non-trivial commands so the server does
+	// not have to know every Redis command's key layout.
+	KeyPositions  []int32 `protobuf:"varint,3,rep,packed,name=key_positions,json=keyPositions,proto3" json:"key_positions,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DoRequest) Reset() {
+	*x = DoRequest{}
+	mi := &file_sdk_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DoRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DoRequest) ProtoMessage() {}
+
+func (x *DoRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DoRequest.ProtoReflect.Descriptor instead.
+func (*DoRequest) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *DoRequest) GetArgs() [][]byte {
+	if x != nil {
+		return x.Args
+	}
+	return nil
+}
+
+func (x *DoRequest) GetRawKey() bool {
+	if x != nil {
+		return x.RawKey
+	}
+	return false
+}
+
+func (x *DoRequest) GetKeyPositions() []int32 {
+	if x != nil {
+		return x.KeyPositions
+	}
+	return nil
+}
+
+// DoReply mirrors the shape of a Redis RESP reply. Exactly one of the
+// payload fields (string_value, int_value, array, nil_value) is set
+// depending on `kind`; on a Redis-side error, kind="error" and the message
+// is in `error`. Network-level errors travel as gRPC status codes instead.
+type DoReply struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// kind is "string" | "int" | "array" | "nil" | "status" | "error".
+	// "status" is RESP simple strings (OK, PONG, …); SDK clients usually
+	// surface it as a string. "nil" maps to the redis.Nil sentinel.
+	Kind          string     `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
+	StringValue   []byte     `protobuf:"bytes,2,opt,name=string_value,json=stringValue,proto3" json:"string_value,omitempty"`
+	IntValue      int64      `protobuf:"varint,3,opt,name=int_value,json=intValue,proto3" json:"int_value,omitempty"`
+	Array         []*DoReply `protobuf:"bytes,4,rep,name=array,proto3" json:"array,omitempty"`
+	NilValue      bool       `protobuf:"varint,5,opt,name=nil_value,json=nilValue,proto3" json:"nil_value,omitempty"`
+	Error         string     `protobuf:"bytes,6,opt,name=error,proto3" json:"error,omitempty"`
+	FloatValue    float64    `protobuf:"fixed64,7,opt,name=float_value,json=floatValue,proto3" json:"float_value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DoReply) Reset() {
+	*x = DoReply{}
+	mi := &file_sdk_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DoReply) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DoReply) ProtoMessage() {}
+
+func (x *DoReply) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DoReply.ProtoReflect.Descriptor instead.
+func (*DoReply) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *DoReply) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *DoReply) GetStringValue() []byte {
+	if x != nil {
+		return x.StringValue
+	}
+	return nil
+}
+
+func (x *DoReply) GetIntValue() int64 {
+	if x != nil {
+		return x.IntValue
+	}
+	return 0
+}
+
+func (x *DoReply) GetArray() []*DoReply {
+	if x != nil {
+		return x.Array
+	}
+	return nil
+}
+
+func (x *DoReply) GetNilValue() bool {
+	if x != nil {
+		return x.NilValue
+	}
+	return false
+}
+
+func (x *DoReply) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *DoReply) GetFloatValue() float64 {
+	if x != nil {
+		return x.FloatValue
+	}
+	return 0
+}
+
 type EventRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Topic         string                 `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"`
@@ -1186,7 +1363,7 @@ type EventRequest struct {
 
 func (x *EventRequest) Reset() {
 	*x = EventRequest{}
-	mi := &file_sdk_proto_msgTypes[21]
+	mi := &file_sdk_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1198,7 +1375,7 @@ func (x *EventRequest) String() string {
 func (*EventRequest) ProtoMessage() {}
 
 func (x *EventRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[21]
+	mi := &file_sdk_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1211,7 +1388,7 @@ func (x *EventRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventRequest.ProtoReflect.Descriptor instead.
 func (*EventRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{21}
+	return file_sdk_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *EventRequest) GetTopic() string {
@@ -1237,7 +1414,7 @@ type EventFilter struct {
 
 func (x *EventFilter) Reset() {
 	*x = EventFilter{}
-	mi := &file_sdk_proto_msgTypes[22]
+	mi := &file_sdk_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1249,7 +1426,7 @@ func (x *EventFilter) String() string {
 func (*EventFilter) ProtoMessage() {}
 
 func (x *EventFilter) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[22]
+	mi := &file_sdk_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1262,7 +1439,7 @@ func (x *EventFilter) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventFilter.ProtoReflect.Descriptor instead.
 func (*EventFilter) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{22}
+	return file_sdk_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *EventFilter) GetTopics() []string {
@@ -1283,7 +1460,7 @@ type Event struct {
 
 func (x *Event) Reset() {
 	*x = Event{}
-	mi := &file_sdk_proto_msgTypes[23]
+	mi := &file_sdk_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1295,7 +1472,7 @@ func (x *Event) String() string {
 func (*Event) ProtoMessage() {}
 
 func (x *Event) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[23]
+	mi := &file_sdk_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1308,7 +1485,7 @@ func (x *Event) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Event.ProtoReflect.Descriptor instead.
 func (*Event) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{23}
+	return file_sdk_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *Event) GetTopic() string {
@@ -1409,7 +1586,20 @@ const file_sdk_proto_rawDesc = "" +
 	"\bchannels\x18\x01 \x03(\tR\bchannels\"<\n" +
 	"\fRedisMessage\x12\x18\n" +
 	"\achannel\x18\x01 \x01(\tR\achannel\x12\x12\n" +
-	"\x04data\x18\x02 \x01(\fR\x04data\">\n" +
+	"\x04data\x18\x02 \x01(\fR\x04data\"]\n" +
+	"\tDoRequest\x12\x12\n" +
+	"\x04args\x18\x01 \x03(\fR\x04args\x12\x17\n" +
+	"\araw_key\x18\x02 \x01(\bR\x06rawKey\x12#\n" +
+	"\rkey_positions\x18\x03 \x03(\x05R\fkeyPositions\"\xdb\x01\n" +
+	"\aDoReply\x12\x12\n" +
+	"\x04kind\x18\x01 \x01(\tR\x04kind\x12!\n" +
+	"\fstring_value\x18\x02 \x01(\fR\vstringValue\x12\x1b\n" +
+	"\tint_value\x18\x03 \x01(\x03R\bintValue\x12(\n" +
+	"\x05array\x18\x04 \x03(\v2\x12.pluginsdk.DoReplyR\x05array\x12\x1b\n" +
+	"\tnil_value\x18\x05 \x01(\bR\bnilValue\x12\x14\n" +
+	"\x05error\x18\x06 \x01(\tR\x05error\x12\x1f\n" +
+	"\vfloat_value\x18\a \x01(\x01R\n" +
+	"floatValue\">\n" +
 	"\fEventRequest\x12\x14\n" +
 	"\x05topic\x18\x01 \x01(\tR\x05topic\x12\x18\n" +
 	"\apayload\x18\x02 \x01(\fR\apayload\"%\n" +
@@ -1427,9 +1617,10 @@ const file_sdk_proto_rawDesc = "" +
 	"\x06TxExec\x12\x17.pluginsdk.TxSQLRequest\x1a\x17.pluginsdk.ExecResponse\x12:\n" +
 	"\bCommitTx\x12\x16.pluginsdk.TxIDRequest\x1a\x16.google.protobuf.Empty\x12<\n" +
 	"\n" +
-	"RollbackTx\x12\x16.pluginsdk.TxIDRequest\x1a\x16.google.protobuf.Empty2\x88\x05\n" +
+	"RollbackTx\x12\x16.pluginsdk.TxIDRequest\x1a\x16.google.protobuf.Empty2\xb8\x05\n" +
 	"\n" +
-	"RedisProxy\x12@\n" +
+	"RedisProxy\x12.\n" +
+	"\x02Do\x12\x14.pluginsdk.DoRequest\x1a\x12.pluginsdk.DoReply\x12@\n" +
 	"\x03Get\x12\x1a.pluginsdk.RedisKeyRequest\x1a\x1d.pluginsdk.RedisValueResponse\x129\n" +
 	"\x03Set\x12\x1a.pluginsdk.RedisSetRequest\x1a\x16.google.protobuf.Empty\x12=\n" +
 	"\x05SetEx\x12\x1c.pluginsdk.RedisSetExRequest\x1a\x16.google.protobuf.Empty\x129\n" +
@@ -1456,7 +1647,7 @@ func file_sdk_proto_rawDescGZIP() []byte {
 	return file_sdk_proto_rawDescData
 }
 
-var file_sdk_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_sdk_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_sdk_proto_goTypes = []any{
 	(*SQLRequest)(nil),         // 0: pluginsdk.SQLRequest
 	(*TxSQLRequest)(nil),       // 1: pluginsdk.TxSQLRequest
@@ -1479,61 +1670,66 @@ var file_sdk_proto_goTypes = []any{
 	(*RedisPubRequest)(nil),    // 18: pluginsdk.RedisPubRequest
 	(*RedisSubRequest)(nil),    // 19: pluginsdk.RedisSubRequest
 	(*RedisMessage)(nil),       // 20: pluginsdk.RedisMessage
-	(*EventRequest)(nil),       // 21: pluginsdk.EventRequest
-	(*EventFilter)(nil),        // 22: pluginsdk.EventFilter
-	(*Event)(nil),              // 23: pluginsdk.Event
-	nil,                        // 24: pluginsdk.RedisMapResponse.FieldsEntry
-	(*emptypb.Empty)(nil),      // 25: google.protobuf.Empty
+	(*DoRequest)(nil),          // 21: pluginsdk.DoRequest
+	(*DoReply)(nil),            // 22: pluginsdk.DoReply
+	(*EventRequest)(nil),       // 23: pluginsdk.EventRequest
+	(*EventFilter)(nil),        // 24: pluginsdk.EventFilter
+	(*Event)(nil),              // 25: pluginsdk.Event
+	nil,                        // 26: pluginsdk.RedisMapResponse.FieldsEntry
+	(*emptypb.Empty)(nil),      // 27: google.protobuf.Empty
 }
 var file_sdk_proto_depIdxs = []int32{
 	5,  // 0: pluginsdk.SQLRequest.args:type_name -> pluginsdk.SQLValue
 	5,  // 1: pluginsdk.TxSQLRequest.args:type_name -> pluginsdk.SQLValue
 	7,  // 2: pluginsdk.SQLResponse.rows:type_name -> pluginsdk.SQLRow
 	5,  // 3: pluginsdk.SQLRow.values:type_name -> pluginsdk.SQLValue
-	24, // 4: pluginsdk.RedisMapResponse.fields:type_name -> pluginsdk.RedisMapResponse.FieldsEntry
-	0,  // 5: pluginsdk.SQLProxy.Query:input_type -> pluginsdk.SQLRequest
-	0,  // 6: pluginsdk.SQLProxy.Exec:input_type -> pluginsdk.SQLRequest
-	2,  // 7: pluginsdk.SQLProxy.BeginTx:input_type -> pluginsdk.BeginTxRequest
-	1,  // 8: pluginsdk.SQLProxy.TxQuery:input_type -> pluginsdk.TxSQLRequest
-	1,  // 9: pluginsdk.SQLProxy.TxExec:input_type -> pluginsdk.TxSQLRequest
-	4,  // 10: pluginsdk.SQLProxy.CommitTx:input_type -> pluginsdk.TxIDRequest
-	4,  // 11: pluginsdk.SQLProxy.RollbackTx:input_type -> pluginsdk.TxIDRequest
-	9,  // 12: pluginsdk.RedisProxy.Get:input_type -> pluginsdk.RedisKeyRequest
-	11, // 13: pluginsdk.RedisProxy.Set:input_type -> pluginsdk.RedisSetRequest
-	12, // 14: pluginsdk.RedisProxy.SetEx:input_type -> pluginsdk.RedisSetExRequest
-	13, // 15: pluginsdk.RedisProxy.Del:input_type -> pluginsdk.RedisDelRequest
-	14, // 16: pluginsdk.RedisProxy.HGet:input_type -> pluginsdk.RedisHGetRequest
-	15, // 17: pluginsdk.RedisProxy.HSet:input_type -> pluginsdk.RedisHSetRequest
-	9,  // 18: pluginsdk.RedisProxy.HGetAll:input_type -> pluginsdk.RedisKeyRequest
-	17, // 19: pluginsdk.RedisProxy.HDel:input_type -> pluginsdk.RedisHDelRequest
-	18, // 20: pluginsdk.RedisProxy.Publish:input_type -> pluginsdk.RedisPubRequest
-	19, // 21: pluginsdk.RedisProxy.Subscribe:input_type -> pluginsdk.RedisSubRequest
-	21, // 22: pluginsdk.EventBus.Publish:input_type -> pluginsdk.EventRequest
-	22, // 23: pluginsdk.EventBus.Subscribe:input_type -> pluginsdk.EventFilter
-	6,  // 24: pluginsdk.SQLProxy.Query:output_type -> pluginsdk.SQLResponse
-	8,  // 25: pluginsdk.SQLProxy.Exec:output_type -> pluginsdk.ExecResponse
-	3,  // 26: pluginsdk.SQLProxy.BeginTx:output_type -> pluginsdk.TxResponse
-	6,  // 27: pluginsdk.SQLProxy.TxQuery:output_type -> pluginsdk.SQLResponse
-	8,  // 28: pluginsdk.SQLProxy.TxExec:output_type -> pluginsdk.ExecResponse
-	25, // 29: pluginsdk.SQLProxy.CommitTx:output_type -> google.protobuf.Empty
-	25, // 30: pluginsdk.SQLProxy.RollbackTx:output_type -> google.protobuf.Empty
-	10, // 31: pluginsdk.RedisProxy.Get:output_type -> pluginsdk.RedisValueResponse
-	25, // 32: pluginsdk.RedisProxy.Set:output_type -> google.protobuf.Empty
-	25, // 33: pluginsdk.RedisProxy.SetEx:output_type -> google.protobuf.Empty
-	25, // 34: pluginsdk.RedisProxy.Del:output_type -> google.protobuf.Empty
-	10, // 35: pluginsdk.RedisProxy.HGet:output_type -> pluginsdk.RedisValueResponse
-	25, // 36: pluginsdk.RedisProxy.HSet:output_type -> google.protobuf.Empty
-	16, // 37: pluginsdk.RedisProxy.HGetAll:output_type -> pluginsdk.RedisMapResponse
-	25, // 38: pluginsdk.RedisProxy.HDel:output_type -> google.protobuf.Empty
-	25, // 39: pluginsdk.RedisProxy.Publish:output_type -> google.protobuf.Empty
-	20, // 40: pluginsdk.RedisProxy.Subscribe:output_type -> pluginsdk.RedisMessage
-	25, // 41: pluginsdk.EventBus.Publish:output_type -> google.protobuf.Empty
-	23, // 42: pluginsdk.EventBus.Subscribe:output_type -> pluginsdk.Event
-	24, // [24:43] is the sub-list for method output_type
-	5,  // [5:24] is the sub-list for method input_type
-	5,  // [5:5] is the sub-list for extension type_name
-	5,  // [5:5] is the sub-list for extension extendee
-	0,  // [0:5] is the sub-list for field type_name
+	26, // 4: pluginsdk.RedisMapResponse.fields:type_name -> pluginsdk.RedisMapResponse.FieldsEntry
+	22, // 5: pluginsdk.DoReply.array:type_name -> pluginsdk.DoReply
+	0,  // 6: pluginsdk.SQLProxy.Query:input_type -> pluginsdk.SQLRequest
+	0,  // 7: pluginsdk.SQLProxy.Exec:input_type -> pluginsdk.SQLRequest
+	2,  // 8: pluginsdk.SQLProxy.BeginTx:input_type -> pluginsdk.BeginTxRequest
+	1,  // 9: pluginsdk.SQLProxy.TxQuery:input_type -> pluginsdk.TxSQLRequest
+	1,  // 10: pluginsdk.SQLProxy.TxExec:input_type -> pluginsdk.TxSQLRequest
+	4,  // 11: pluginsdk.SQLProxy.CommitTx:input_type -> pluginsdk.TxIDRequest
+	4,  // 12: pluginsdk.SQLProxy.RollbackTx:input_type -> pluginsdk.TxIDRequest
+	21, // 13: pluginsdk.RedisProxy.Do:input_type -> pluginsdk.DoRequest
+	9,  // 14: pluginsdk.RedisProxy.Get:input_type -> pluginsdk.RedisKeyRequest
+	11, // 15: pluginsdk.RedisProxy.Set:input_type -> pluginsdk.RedisSetRequest
+	12, // 16: pluginsdk.RedisProxy.SetEx:input_type -> pluginsdk.RedisSetExRequest
+	13, // 17: pluginsdk.RedisProxy.Del:input_type -> pluginsdk.RedisDelRequest
+	14, // 18: pluginsdk.RedisProxy.HGet:input_type -> pluginsdk.RedisHGetRequest
+	15, // 19: pluginsdk.RedisProxy.HSet:input_type -> pluginsdk.RedisHSetRequest
+	9,  // 20: pluginsdk.RedisProxy.HGetAll:input_type -> pluginsdk.RedisKeyRequest
+	17, // 21: pluginsdk.RedisProxy.HDel:input_type -> pluginsdk.RedisHDelRequest
+	18, // 22: pluginsdk.RedisProxy.Publish:input_type -> pluginsdk.RedisPubRequest
+	19, // 23: pluginsdk.RedisProxy.Subscribe:input_type -> pluginsdk.RedisSubRequest
+	23, // 24: pluginsdk.EventBus.Publish:input_type -> pluginsdk.EventRequest
+	24, // 25: pluginsdk.EventBus.Subscribe:input_type -> pluginsdk.EventFilter
+	6,  // 26: pluginsdk.SQLProxy.Query:output_type -> pluginsdk.SQLResponse
+	8,  // 27: pluginsdk.SQLProxy.Exec:output_type -> pluginsdk.ExecResponse
+	3,  // 28: pluginsdk.SQLProxy.BeginTx:output_type -> pluginsdk.TxResponse
+	6,  // 29: pluginsdk.SQLProxy.TxQuery:output_type -> pluginsdk.SQLResponse
+	8,  // 30: pluginsdk.SQLProxy.TxExec:output_type -> pluginsdk.ExecResponse
+	27, // 31: pluginsdk.SQLProxy.CommitTx:output_type -> google.protobuf.Empty
+	27, // 32: pluginsdk.SQLProxy.RollbackTx:output_type -> google.protobuf.Empty
+	22, // 33: pluginsdk.RedisProxy.Do:output_type -> pluginsdk.DoReply
+	10, // 34: pluginsdk.RedisProxy.Get:output_type -> pluginsdk.RedisValueResponse
+	27, // 35: pluginsdk.RedisProxy.Set:output_type -> google.protobuf.Empty
+	27, // 36: pluginsdk.RedisProxy.SetEx:output_type -> google.protobuf.Empty
+	27, // 37: pluginsdk.RedisProxy.Del:output_type -> google.protobuf.Empty
+	10, // 38: pluginsdk.RedisProxy.HGet:output_type -> pluginsdk.RedisValueResponse
+	27, // 39: pluginsdk.RedisProxy.HSet:output_type -> google.protobuf.Empty
+	16, // 40: pluginsdk.RedisProxy.HGetAll:output_type -> pluginsdk.RedisMapResponse
+	27, // 41: pluginsdk.RedisProxy.HDel:output_type -> google.protobuf.Empty
+	27, // 42: pluginsdk.RedisProxy.Publish:output_type -> google.protobuf.Empty
+	20, // 43: pluginsdk.RedisProxy.Subscribe:output_type -> pluginsdk.RedisMessage
+	27, // 44: pluginsdk.EventBus.Publish:output_type -> google.protobuf.Empty
+	25, // 45: pluginsdk.EventBus.Subscribe:output_type -> pluginsdk.Event
+	26, // [26:46] is the sub-list for method output_type
+	6,  // [6:26] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_sdk_proto_init() }
@@ -1555,7 +1751,7 @@ func file_sdk_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sdk_proto_rawDesc), len(file_sdk_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   25,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   3,
 		},
