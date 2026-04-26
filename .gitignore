@@ -102,6 +102,15 @@ backend/internal/web/dist/
 backend/internal/web/dist/*
 !backend/internal/web/dist/.keep
 
+# Plugin frontend dist: embedded into plugin Go binary via `//go:embed all:frontend/dist`,
+# so the directory must always have at least one file at lint/build time. Build artifacts
+# themselves come from the plugin-frontend-builder Docker stage (or `pnpm build` locally)
+# and should not be tracked.
+plugins/*/frontend/dist/
+!plugins/*/frontend/dist/
+plugins/*/frontend/dist/*
+!plugins/*/frontend/dist/.keep
+
 # 后端运行时缓存数据
 backend/data/
 

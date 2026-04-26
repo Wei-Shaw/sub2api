@@ -6,18 +6,9 @@
   "files": [
     "dist"
   ],
-  "main": "./dist/channel-management.js",
-  "module": "./dist/channel-management.js",
-  "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/channel-management.js"
-    }
-  },
   "scripts": {
-    "build": "vue-tsc -b && vite build",
-    "typecheck": "vue-tsc --noEmit"
+    "build": "vite build",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json"
   },
   "peerDependencies": {
     "axios": "^1.15.0",
