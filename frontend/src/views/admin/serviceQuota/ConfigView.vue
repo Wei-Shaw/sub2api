@@ -41,10 +41,8 @@
 
       <template #table>
         <DataTable :columns="columns" :data="filteredRules" :loading="loading">
-          <template #cell-enabled="{ value }">
-            <span :class="['badge', value ? 'badge-success' : 'badge-gray']">
-              {{ value ? t('common.enabled') : t('common.disabled') }}
-            </span>
+          <template #cell-enabled="{ row }">
+            <EnabledToggleCell :row="row" />
           </template>
 
           <template #cell-name="{ row }">
@@ -247,6 +245,7 @@ import Icon from '@/components/icons/Icon.vue'
 import UserMultiSelect from '@/components/common/UserMultiSelect.vue'
 import LimiterEditor from '@/components/admin/LimiterEditor.vue'
 import PathEditor from '@/components/admin/PathEditor.vue'
+import EnabledToggleCell from './components/EnabledToggleCell.vue'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import type { Column } from '@/components/common/types'
@@ -272,12 +271,12 @@ const counterModeOptions = computed(() => [
 ])
 
 const columns = computed<Column[]>(() => [
-  { key: 'enabled', label: t('admin.serviceQuota.columns.status') },
   { key: 'name', label: t('admin.serviceQuota.columns.name') },
   { key: 'limiters', label: t('admin.serviceQuota.columns.limiters') },
   { key: 'paths', label: t('admin.serviceQuota.columns.paths') },
   { key: 'counter_mode', label: t('admin.serviceQuota.columns.counterMode') },
   { key: 'is_fallback', label: t('admin.serviceQuota.columns.fallback') },
+  { key: 'enabled', label: t('admin.serviceQuota.columns.status') },
   { key: 'actions', label: t('admin.serviceQuota.columns.actions') },
 ])
 

@@ -49,6 +49,9 @@
           <div v-else-if="snapshot?.truncated" class="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
             {{ t('admin.serviceQuotaMonitor.truncated', { count: rows.length }) }}
           </div>
+          <div v-if="hasPerUserUnbound" class="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
+            {{ t('admin.serviceQuotaMonitor.perUserUnboundHint') }}
+          </div>
         </div>
       </template>
 
@@ -101,6 +104,7 @@ const secondsSinceUpdate = ref(0)
 let asOfTimer: ReturnType<typeof setInterval> | null = null
 
 const rows = computed<LimiterRuntime[]>(() => snapshot.value?.items ?? [])
+const hasPerUserUnbound = computed<boolean>(() => rows.value.some((row) => row.per_user_unbound === true))
 
 async function loadOnce(): Promise<void> {
   if (loading.value) return

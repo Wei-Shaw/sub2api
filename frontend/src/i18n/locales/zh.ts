@@ -4004,6 +4004,8 @@ export default {
       saveError: '保存服务配额规则失败',
       deleteSuccess: '服务配额规则已删除',
       deleteError: '删除服务配额规则失败',
+      toggleSuccess: '状态更新成功',
+      toggleError: '状态更新失败',
       deleteConfirm: '删除规则 {name}？删除后立即停止生效。',
       filters: {
         allCounterModes: '全部计数模式',
@@ -4104,6 +4106,8 @@ export default {
       truncated: '超过 {count} 条已截断',
       loadError: '加载限额监控失败',
       notActive: '未活跃',
+      perUserUnbound: '按用户独立计数 · 选择用户查看',
+      perUserUnboundHint: 'per_user 计数模式按用户独立维护，请在用户筛选器中选择具体用户查看实时用量',
       fallbackTag: '兜底',
       simplePath: '路径 #{index}',
       asOf: '数据更新于 {seconds} 秒前',

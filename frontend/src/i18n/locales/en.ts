@@ -3840,6 +3840,8 @@ export default {
       saveError: 'Failed to save service quota rule',
       deleteSuccess: 'Service quota rule deleted',
       deleteError: 'Failed to delete service quota rule',
+      toggleSuccess: 'Status updated',
+      toggleError: 'Failed to update status',
       deleteConfirm: 'Delete rule {name}? It will stop taking effect immediately.',
       filters: {
         allCounterModes: 'All Counter Modes',
@@ -3940,6 +3942,8 @@ export default {
       truncated: 'Showing first {count} entries (truncated)',
       loadError: 'Failed to load quota monitor',
       notActive: 'Idle',
+      perUserUnbound: 'Per-user · Select a user to view counts',
+      perUserUnboundHint: 'Per-user counters are tracked separately per user. Select a specific user in the filter above to view live counts.',
       fallbackTag: 'Fallback',
       simplePath: 'Path #{index}',
       asOf: 'Updated {seconds}s ago',

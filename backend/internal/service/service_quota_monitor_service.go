@@ -53,6 +53,10 @@ type MonitorSnapshot struct {
 //
 // 字段命名与前端 i18n 对齐；用户视角下 PathSummary/ScopeUserID/CounterMode 抹空。
 // PathIndex 是规则内 path 的 1-based 位置，方便前端按规则分组展示而无需依赖 PathID。
+//
+// PerUserUnbound=true 是 per_user 模式下 admin 未提供 user filter 时产生的"占位行"：
+// 当前 row 不对应任何具体用户的真实计数（Exists 始终为 false、Current 为 0），
+// 前端据此显示"请选择具体用户查看"的提示，避免用户误以为规则未生效。
 type LimiterRuntime struct {
 	RuleID         int64        `json:"rule_id"`
 	RuleName       string       `json:"rule_name"`
@@ -68,6 +72,7 @@ type LimiterRuntime struct {
 	ScopeUserID    *int64       `json:"scope_user_id,omitempty"`
 	IsFallback     bool         `json:"is_fallback"`
 	Exists         bool         `json:"exists"`
+	PerUserUnbound bool         `json:"per_user_unbound,omitempty"`
 }
 
 // PathSummary 是 admin 视角下 path 的轻量副本。nil 字段含义"不限制该维度"，与

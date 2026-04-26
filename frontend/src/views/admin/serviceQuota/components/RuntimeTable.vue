@@ -29,7 +29,10 @@
     </template>
 
     <template #cell-usage="{ row }">
-      <div v-if="!row.exists" class="text-xs text-gray-400">
+      <div v-if="row.per_user_unbound" class="text-xs italic text-gray-400">
+        {{ t('admin.serviceQuotaMonitor.perUserUnbound') }}
+      </div>
+      <div v-else-if="!row.exists" class="text-xs text-gray-400">
         {{ t('admin.serviceQuotaMonitor.notActive') }}
       </div>
       <div v-else class="space-y-1">
