@@ -3875,7 +3875,7 @@ export default {
       },
       counterModes: {
         user: 'Specific Users',
-        perUser: 'Per User',
+        perUser: 'All Users',
         shared: 'Shared Global'
       },
       counterModeHints: {

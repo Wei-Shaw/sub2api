@@ -4039,7 +4039,7 @@ export default {
       },
       counterModes: {
         user: '指定用户',
-        perUser: '按用户',
+        perUser: '所有用户',
         shared: '全局共享'
       },
       counterModeHints: {

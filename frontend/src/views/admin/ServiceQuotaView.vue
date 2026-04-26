@@ -163,19 +163,51 @@
         </section>
 
         <section class="space-y-2">
-          <div class="flex items-baseline justify-between">
-            <span class="input-label">{{ t('admin.serviceQuota.form.limitersTitle') }}</span>
+          <button
+            type="button"
+            class="flex w-full items-baseline justify-between text-left hover:opacity-80"
+            @click="limitersCollapsed = !limitersCollapsed"
+          >
+            <span class="input-label flex items-center gap-1">
+              <svg
+                class="h-3 w-3 shrink-0 transition-transform"
+                :class="{ '-rotate-90': limitersCollapsed }"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+              {{ t('admin.serviceQuota.form.limitersTitle') }}
+              <span v-if="limitersCollapsed" class="text-xs text-gray-400">({{ form.limiters.length }})</span>
+            </span>
             <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.serviceQuota.form.limitersHint') }}</span>
-          </div>
-          <LimiterEditor v-model="form.limiters" />
+          </button>
+          <LimiterEditor v-show="!limitersCollapsed" v-model="form.limiters" />
         </section>
 
         <section class="space-y-2">
-          <div class="flex items-baseline justify-between">
-            <span class="input-label">{{ t('admin.serviceQuota.form.pathsTitle') }}</span>
+          <button
+            type="button"
+            class="flex w-full items-baseline justify-between text-left hover:opacity-80"
+            @click="pathsCollapsed = !pathsCollapsed"
+          >
+            <span class="input-label flex items-center gap-1">
+              <svg
+                class="h-3 w-3 shrink-0 transition-transform"
+                :class="{ '-rotate-90': pathsCollapsed }"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+              {{ t('admin.serviceQuota.form.pathsTitle') }}
+              <span v-if="pathsCollapsed" class="text-xs text-gray-400">({{ form.paths.length }})</span>
+            </span>
             <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.serviceQuota.form.pathsHint') }}</span>
-          </div>
-          <PathEditor v-model="form.paths" />
+          </button>
+          <PathEditor v-show="!pathsCollapsed" v-model="form.paths" />
         </section>
       </form>
 
@@ -258,6 +290,8 @@ const deletingRule = ref<ServiceQuotaRule | null>(null)
 const filters = reactive({ counterMode: '', fallback: '', enabled: '' })
 const form = reactive<ServiceQuotaRuleInput>(blankRule())
 const selectedTargetUsers = ref<SimpleUser[]>([])
+const limitersCollapsed = ref(false)
+const pathsCollapsed = ref(false)
 
 const filteredRules = computed(() => rules.value.filter((rule) => {
   if (filters.counterMode && rule.counter_mode !== filters.counterMode) return false
