@@ -25,7 +25,9 @@ import apiKeysAPI from './apiKeys'
 import scheduledTestsAPI from './scheduledTests'
 import backupAPI from './backup'
 import tlsFingerprintProfileAPI from './tlsFingerprintProfile'
-import channelsAPI from './channels'
+// channelsAPI moved into channel-management plugin (plugins/channel-management/frontend).
+// Host code should not import it directly anymore; the plugin owns its own
+// http client wired via sdk.http.apiClient at install time.
 import adminPaymentAPI from './payment'
 
 /**
@@ -54,7 +56,6 @@ export const adminAPI = {
   scheduledTests: scheduledTestsAPI,
   backup: backupAPI,
   tlsFingerprintProfiles: tlsFingerprintProfileAPI,
-  channels: channelsAPI,
   payment: adminPaymentAPI
 }
 
@@ -81,7 +82,6 @@ export {
   scheduledTestsAPI,
   backupAPI,
   tlsFingerprintProfileAPI,
-  channelsAPI,
   adminPaymentAPI
 }
 
