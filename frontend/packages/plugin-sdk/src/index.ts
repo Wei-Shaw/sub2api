@@ -15,5 +15,6 @@ export { default as Toggle } from './components/Toggle.vue'
 export { default as PlatformIcon } from './components/PlatformIcon.vue'
 
 export type { Column } from './types'
+export type { SelectOption } from './components/Select.vue'
 
 export * as tablePreferences from './utils/tablePreferences'
