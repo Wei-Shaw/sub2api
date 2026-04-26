@@ -131,6 +131,8 @@ docs/*
 !docs/ACCOUNT_SCHEDULING_FLOW.md
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
+!docs/plugin-architecture/
+!docs/plugin-architecture/**
 .serena/
 
 # ===================
