@@ -47,6 +47,15 @@ export interface PluginManifest {
   description: string
   menu_items: PluginMenuItem[]
   routes: PluginRouteDefinition[]
+  /**
+   * 完整可访问的 entry.js URL (HTTP). 后端通过 /api/v1/plugin-assets/<plugin>/<file> 暴露.
+   * 旧后端不输出该字段时为空字符串, 前端按"无远程 entry"降级到占位页.
+   */
+  entry_js_url: string
+  /** 可选 entry.css URL, 与 entry_js_url 同源同前缀. */
+  entry_css_url: string
+  /** 'shared' / 'iframe', 默认 'shared'. */
+  isolation: 'shared' | 'iframe'
 }
 
 /** 给 AppSidebar 使用的菜单条目结构,字段命名与现有 NavItem 一致 */
@@ -188,6 +197,23 @@ export function registerPluginRoutes(router: Router): void {
   }
 }
 
+/**
+ * 按名字查找已注入的 plugin manifest. 用于 PluginView 在路由切换时拿到 entry_js_url.
+ * 没找到时返回 null. 不会读 window.__PLUGIN_MANIFESTS__ 多次, 而是每次都重新解析,
+ * 因为该全局变量是 SSR 注入只读的, 解析成本低且更安全.
+ */
+export function findPluginManifest(name: string): PluginManifest | null {
+  if (!name) {
+    return null
+  }
+  for (const m of getPluginManifests()) {
+    if (m.name === name) {
+      return m
+    }
+  }
+  return null
+}
+
 // ------------------------------------------------------------------
 // 内部工具
 // ------------------------------------------------------------------
@@ -200,6 +226,8 @@ function normalizeManifest(value: unknown): PluginManifest | null {
   if (!name) {
     return null
   }
+  const isolationRaw = stringField(value, 'isolation')
+  const isolation: 'shared' | 'iframe' = isolationRaw === 'iframe' ? 'iframe' : 'shared'
   return {
     name,
     display_name: stringField(value, 'display_name') || name,
@@ -207,6 +235,9 @@ function normalizeManifest(value: unknown): PluginManifest | null {
     description: stringField(value, 'description'),
     menu_items: normalizeMenuItems(value['menu_items']),
     routes: normalizeRoutes(value['routes']),
+    entry_js_url: stringField(value, 'entry_js_url'),
+    entry_css_url: stringField(value, 'entry_css_url'),
+    isolation,
   }
 }
 
