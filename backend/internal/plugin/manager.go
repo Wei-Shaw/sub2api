@@ -480,9 +480,13 @@ func buildManifestEntry(inst *PluginInstance) map[string]any {
 	}
 	if entryJS := frontend.GetEntryJs(); entryJS != "" {
 		entry["entry_js"] = entryJS
+		// entry_js_url 是前端实际访问的 HTTP 路径; 走核心代理 -> gRPC GetFrontendBundle.
+		// 路径里的 plugin name 使用 manifest.GetName(), 与 PluginInstance.Name 等价.
+		entry["entry_js_url"] = "/api/v1/plugin-assets/" + inst.Manifest.GetName() + "/" + entryJS
 	}
 	if entryCSS := frontend.GetEntryCss(); entryCSS != "" {
 		entry["entry_css"] = entryCSS
+		entry["entry_css_url"] = "/api/v1/plugin-assets/" + inst.Manifest.GetName() + "/" + entryCSS
 	}
 	return entry
 }

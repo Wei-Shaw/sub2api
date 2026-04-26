@@ -88,6 +88,10 @@ func SetupRouter(
 	// 注册路由
 	registerRoutes(r, handlers, jwtAuth, adminAuth, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, redisClient)
 
+	// 插件前端 bundle 代理: /api/v1/plugin-assets/:plugin/*path
+	// 需要 pluginManager 已就绪; 在 registerRoutes 之后单独挂载, 避免修改 registerRoutes 的签名.
+	routes.RegisterPluginAssetRoutes(r, pluginManager)
+
 	return r
 }
 
