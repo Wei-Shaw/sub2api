@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/ent/userdevice"
 )
 
 // RedeemCodeCreate is the builder for creating a RedeemCode entity.
@@ -192,6 +193,36 @@ func (_c *RedeemCodeCreate) SetUser(v *User) *RedeemCodeCreate {
 // SetGroup sets the "group" edge to the Group entity.
 func (_c *RedeemCodeCreate) SetGroup(v *Group) *RedeemCodeCreate {
 	return _c.SetGroupID(v.ID)
+}
+
+// AddClaimedDeviceIDs adds the "claimed_devices" edge to the UserDevice entity by IDs.
+func (_c *RedeemCodeCreate) AddClaimedDeviceIDs(ids ...int64) *RedeemCodeCreate {
+	_c.mutation.AddClaimedDeviceIDs(ids...)
+	return _c
+}
+
+// AddClaimedDevices adds the "claimed_devices" edges to the UserDevice entity.
+func (_c *RedeemCodeCreate) AddClaimedDevices(v ...*UserDevice) *RedeemCodeCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddClaimedDeviceIDs(ids...)
+}
+
+// AddLoginDeviceIDs adds the "login_devices" edge to the UserDevice entity by IDs.
+func (_c *RedeemCodeCreate) AddLoginDeviceIDs(ids ...int64) *RedeemCodeCreate {
+	_c.mutation.AddLoginDeviceIDs(ids...)
+	return _c
+}
+
+// AddLoginDevices adds the "login_devices" edges to the UserDevice entity.
+func (_c *RedeemCodeCreate) AddLoginDevices(v ...*UserDevice) *RedeemCodeCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddLoginDeviceIDs(ids...)
 }
 
 // Mutation returns the RedeemCodeMutation object of the builder.
@@ -381,6 +412,38 @@ func (_c *RedeemCodeCreate) createSpec() (*RedeemCode, *sqlgraph.CreateSpec) {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
 		_node.GroupID = &nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ClaimedDevicesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   redeemcode.ClaimedDevicesTable,
+			Columns: []string{redeemcode.ClaimedDevicesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userdevice.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.LoginDevicesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   redeemcode.LoginDevicesTable,
+			Columns: []string{redeemcode.LoginDevicesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(userdevice.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec

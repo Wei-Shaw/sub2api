@@ -43,6 +43,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/userattributedefinition"
 	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
+	"github.com/Wei-Shaw/sub2api/ent/userdevice"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
@@ -2365,6 +2366,94 @@ func init() {
 	userattributevalueDescValue := userattributevalueFields[2].Descriptor()
 	// userattributevalue.DefaultValue holds the default value on creation for the value field.
 	userattributevalue.DefaultValue = userattributevalueDescValue.Default.(string)
+	userdeviceFields := schema.UserDevice{}.Fields()
+	_ = userdeviceFields
+	// userdeviceDescDeviceHash is the schema descriptor for device_hash field.
+	userdeviceDescDeviceHash := userdeviceFields[1].Descriptor()
+	// userdevice.DeviceHashValidator is a validator for the "device_hash" field. It is called by the builders before save.
+	userdevice.DeviceHashValidator = func() func(string) error {
+		validators := userdeviceDescDeviceHash.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(device_hash string) error {
+			for _, fn := range fns {
+				if err := fn(device_hash); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// userdeviceDescFingerprintVersion is the schema descriptor for fingerprint_version field.
+	userdeviceDescFingerprintVersion := userdeviceFields[2].Descriptor()
+	// userdevice.DefaultFingerprintVersion holds the default value on creation for the fingerprint_version field.
+	userdevice.DefaultFingerprintVersion = userdeviceDescFingerprintVersion.Default.(int)
+	// userdeviceDescInstallID is the schema descriptor for install_id field.
+	userdeviceDescInstallID := userdeviceFields[3].Descriptor()
+	// userdevice.InstallIDValidator is a validator for the "install_id" field. It is called by the builders before save.
+	userdevice.InstallIDValidator = userdeviceDescInstallID.Validators[0].(func(string) error)
+	// userdeviceDescPlatform is the schema descriptor for platform field.
+	userdeviceDescPlatform := userdeviceFields[4].Descriptor()
+	// userdevice.PlatformValidator is a validator for the "platform" field. It is called by the builders before save.
+	userdevice.PlatformValidator = func() func(string) error {
+		validators := userdeviceDescPlatform.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(platform string) error {
+			for _, fn := range fns {
+				if err := fn(platform); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// userdeviceDescArch is the schema descriptor for arch field.
+	userdeviceDescArch := userdeviceFields[5].Descriptor()
+	// userdevice.ArchValidator is a validator for the "arch" field. It is called by the builders before save.
+	userdevice.ArchValidator = func() func(string) error {
+		validators := userdeviceDescArch.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(arch string) error {
+			for _, fn := range fns {
+				if err := fn(arch); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// userdeviceDescAppVersion is the schema descriptor for app_version field.
+	userdeviceDescAppVersion := userdeviceFields[6].Descriptor()
+	// userdevice.AppVersionValidator is a validator for the "app_version" field. It is called by the builders before save.
+	userdevice.AppVersionValidator = userdeviceDescAppVersion.Validators[0].(func(string) error)
+	// userdeviceDescStatus is the schema descriptor for status field.
+	userdeviceDescStatus := userdeviceFields[9].Descriptor()
+	// userdevice.DefaultStatus holds the default value on creation for the status field.
+	userdevice.DefaultStatus = userdeviceDescStatus.Default.(string)
+	// userdevice.StatusValidator is a validator for the "status" field. It is called by the builders before save.
+	userdevice.StatusValidator = userdeviceDescStatus.Validators[0].(func(string) error)
+	// userdeviceDescFirstClaimedAt is the schema descriptor for first_claimed_at field.
+	userdeviceDescFirstClaimedAt := userdeviceFields[10].Descriptor()
+	// userdevice.DefaultFirstClaimedAt holds the default value on creation for the first_claimed_at field.
+	userdevice.DefaultFirstClaimedAt = userdeviceDescFirstClaimedAt.Default.(func() time.Time)
+	// userdeviceDescCreatedAt is the schema descriptor for created_at field.
+	userdeviceDescCreatedAt := userdeviceFields[13].Descriptor()
+	// userdevice.DefaultCreatedAt holds the default value on creation for the created_at field.
+	userdevice.DefaultCreatedAt = userdeviceDescCreatedAt.Default.(func() time.Time)
+	// userdeviceDescUpdatedAt is the schema descriptor for updated_at field.
+	userdeviceDescUpdatedAt := userdeviceFields[14].Descriptor()
+	// userdevice.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	userdevice.DefaultUpdatedAt = userdeviceDescUpdatedAt.Default.(func() time.Time)
+	// userdevice.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	userdevice.UpdateDefaultUpdatedAt = userdeviceDescUpdatedAt.UpdateDefault.(func() time.Time)
 	userplatformquotaMixin := schema.UserPlatformQuota{}.Mixin()
 	userplatformquotaMixinHooks1 := userplatformquotaMixin[1].Hooks()
 	userplatformquota.Hooks[0] = userplatformquotaMixinHooks1[0]

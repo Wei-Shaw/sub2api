@@ -1932,6 +1932,78 @@ var (
 			},
 		},
 	}
+	// UserDevicesColumns holds the columns for the "user_devices" table.
+	UserDevicesColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "device_hash", Type: field.TypeString, Size: 64},
+		{Name: "fingerprint_version", Type: field.TypeInt, Default: 1},
+		{Name: "install_id", Type: field.TypeString, Nullable: true, Size: 128},
+		{Name: "platform", Type: field.TypeString, Size: 32},
+		{Name: "arch", Type: field.TypeString, Size: 16},
+		{Name: "app_version", Type: field.TypeString, Nullable: true, Size: 32},
+		{Name: "status", Type: field.TypeString, Size: 20, Default: "active"},
+		{Name: "first_claimed_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_claimed_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "last_login_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "claim_redeem_code_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "login_redeem_code_id", Type: field.TypeInt64},
+		{Name: "user_id", Type: field.TypeInt64},
+	}
+	// UserDevicesTable holds the schema information for the "user_devices" table.
+	UserDevicesTable = &schema.Table{
+		Name:       "user_devices",
+		Columns:    UserDevicesColumns,
+		PrimaryKey: []*schema.Column{UserDevicesColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "user_devices_redeem_codes_claimed_devices",
+				Columns:    []*schema.Column{UserDevicesColumns[13]},
+				RefColumns: []*schema.Column{RedeemCodesColumns[0]},
+				OnDelete:   schema.SetNull,
+			},
+			{
+				Symbol:     "user_devices_redeem_codes_login_devices",
+				Columns:    []*schema.Column{UserDevicesColumns[14]},
+				RefColumns: []*schema.Column{RedeemCodesColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "user_devices_users_devices",
+				Columns:    []*schema.Column{UserDevicesColumns[15]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "userdevice_device_hash",
+				Unique:  true,
+				Columns: []*schema.Column{UserDevicesColumns[1]},
+			},
+			{
+				Name:    "userdevice_claim_redeem_code_id",
+				Unique:  true,
+				Columns: []*schema.Column{UserDevicesColumns[13]},
+			},
+			{
+				Name:    "userdevice_login_redeem_code_id",
+				Unique:  true,
+				Columns: []*schema.Column{UserDevicesColumns[14]},
+			},
+			{
+				Name:    "userdevice_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{UserDevicesColumns[15]},
+			},
+			{
+				Name:    "userdevice_status",
+				Unique:  false,
+				Columns: []*schema.Column{UserDevicesColumns[7]},
+			},
+		},
+	}
 	// UserPlatformQuotasColumns holds the columns for the "user_platform_quotas" table.
 	UserPlatformQuotasColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -2107,6 +2179,7 @@ var (
 		UserAllowedGroupsTable,
 		UserAttributeDefinitionsTable,
 		UserAttributeValuesTable,
+		UserDevicesTable,
 		UserPlatformQuotasTable,
 		UserSubscriptionsTable,
 	}
@@ -2255,6 +2328,12 @@ func init() {
 	UserAttributeValuesTable.ForeignKeys[1].RefTable = UserAttributeDefinitionsTable
 	UserAttributeValuesTable.Annotation = &entsql.Annotation{
 		Table: "user_attribute_values",
+	}
+	UserDevicesTable.ForeignKeys[0].RefTable = RedeemCodesTable
+	UserDevicesTable.ForeignKeys[1].RefTable = RedeemCodesTable
+	UserDevicesTable.ForeignKeys[2].RefTable = UsersTable
+	UserDevicesTable.Annotation = &entsql.Annotation{
+		Table: "user_devices",
 	}
 	UserPlatformQuotasTable.ForeignKeys[0].RefTable = UsersTable
 	UserPlatformQuotasTable.Annotation = &entsql.Annotation{

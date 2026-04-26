@@ -85,6 +85,8 @@ func (RedeemCode) Edges() []ent.Edge {
 			Ref("redeem_codes").
 			Field("group_id").
 			Unique(),
+		edge.To("claimed_devices", UserDevice.Type),
+		edge.To("login_devices", UserDevice.Type),
 	}
 }
 

@@ -53,9 +53,13 @@ type RedeemCodeEdges struct {
 	User *User `json:"user,omitempty"`
 	// Group holds the value of the group edge.
 	Group *Group `json:"group,omitempty"`
+	// ClaimedDevices holds the value of the claimed_devices edge.
+	ClaimedDevices []*UserDevice `json:"claimed_devices,omitempty"`
+	// LoginDevices holds the value of the login_devices edge.
+	LoginDevices []*UserDevice `json:"login_devices,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [2]bool
+	loadedTypes [4]bool
 }
 
 // UserOrErr returns the User value or an error if the edge
@@ -78,6 +82,24 @@ func (e RedeemCodeEdges) GroupOrErr() (*Group, error) {
 		return nil, &NotFoundError{label: group.Label}
 	}
 	return nil, &NotLoadedError{edge: "group"}
+}
+
+// ClaimedDevicesOrErr returns the ClaimedDevices value or an error if the edge
+// was not loaded in eager-loading.
+func (e RedeemCodeEdges) ClaimedDevicesOrErr() ([]*UserDevice, error) {
+	if e.loadedTypes[2] {
+		return e.ClaimedDevices, nil
+	}
+	return nil, &NotLoadedError{edge: "claimed_devices"}
+}
+
+// LoginDevicesOrErr returns the LoginDevices value or an error if the edge
+// was not loaded in eager-loading.
+func (e RedeemCodeEdges) LoginDevicesOrErr() ([]*UserDevice, error) {
+	if e.loadedTypes[3] {
+		return e.LoginDevices, nil
+	}
+	return nil, &NotLoadedError{edge: "login_devices"}
 }
 
 // scanValues returns the types for scanning values from sql.Rows.
@@ -206,6 +228,16 @@ func (_m *RedeemCode) QueryUser() *UserQuery {
 // QueryGroup queries the "group" edge of the RedeemCode entity.
 func (_m *RedeemCode) QueryGroup() *GroupQuery {
 	return NewRedeemCodeClient(_m.config).QueryGroup(_m)
+}
+
+// QueryClaimedDevices queries the "claimed_devices" edge of the RedeemCode entity.
+func (_m *RedeemCode) QueryClaimedDevices() *UserDeviceQuery {
+	return NewRedeemCodeClient(_m.config).QueryClaimedDevices(_m)
+}
+
+// QueryLoginDevices queries the "login_devices" edge of the RedeemCode entity.
+func (_m *RedeemCode) QueryLoginDevices() *UserDeviceQuery {
+	return NewRedeemCodeClient(_m.config).QueryLoginDevices(_m)
 }
 
 // Update returns a builder for updating this RedeemCode.

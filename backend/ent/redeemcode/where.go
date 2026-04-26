@@ -706,6 +706,52 @@ func HasGroupWith(preds ...predicate.Group) predicate.RedeemCode {
 	})
 }
 
+// HasClaimedDevices applies the HasEdge predicate on the "claimed_devices" edge.
+func HasClaimedDevices() predicate.RedeemCode {
+	return predicate.RedeemCode(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ClaimedDevicesTable, ClaimedDevicesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasClaimedDevicesWith applies the HasEdge predicate on the "claimed_devices" edge with a given conditions (other predicates).
+func HasClaimedDevicesWith(preds ...predicate.UserDevice) predicate.RedeemCode {
+	return predicate.RedeemCode(func(s *sql.Selector) {
+		step := newClaimedDevicesStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasLoginDevices applies the HasEdge predicate on the "login_devices" edge.
+func HasLoginDevices() predicate.RedeemCode {
+	return predicate.RedeemCode(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, LoginDevicesTable, LoginDevicesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasLoginDevicesWith applies the HasEdge predicate on the "login_devices" edge with a given conditions (other predicates).
+func HasLoginDevicesWith(preds ...predicate.UserDevice) predicate.RedeemCode {
+	return predicate.RedeemCode(func(s *sql.Selector) {
+		step := newLoginDevicesStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // And groups predicates with the AND operator between them.
 func And(predicates ...predicate.RedeemCode) predicate.RedeemCode {
 	return predicate.RedeemCode(sql.AndPredicates(predicates...))
