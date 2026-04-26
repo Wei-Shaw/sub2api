@@ -716,13 +716,37 @@ func (s *serviceQuotaService) logLimiterFailure(op string, rule *ServiceQuotaRul
 	)
 }
 
-// counterKey 返回 path × limiter 的独立计数 key。v2 前缀使旧 key 自然失效。
-func (s *serviceQuotaService) counterKey(req ServiceQuotaCheckRequest, rule *ServiceQuotaRule, path ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) string {
-	target := "shared"
-	if rule.CounterMode == ServiceQuotaCounterModeUser || rule.CounterMode == ServiceQuotaCounterModePerUser {
-		target = strconv.FormatInt(req.UserID, 10)
+// serviceQuotaCounterKeyTargetShared 是 counter key 中"共享计数器"的目标段。
+// counter_mode=shared 与未指定 user 的旁路读取都用这个值，确保 counterKey 与
+// BuildServiceQuotaCounterKey 对同一逻辑路径输出完全相同的 Redis key。
+const serviceQuotaCounterKeyTargetShared = "shared"
+
+// BuildServiceQuotaCounterKey 拼接 path × limiter 的 Redis 计数 key。
+//
+// 入参 scopeUserID == nil → target 段写 "shared"；非 nil → 写 *scopeUserID。
+// 写路径（counterKey）内部根据 rule.CounterMode 判定要不要传 userID；只读路径
+// （Snapshot 类）可以直接显式构造 key，无需感知 rule 结构。
+//
+// v2 前缀与历史 counterKey 保持一致，让监控/快照与限流读写命中同一计数器。
+func BuildServiceQuotaCounterKey(ruleID, pathID int64, limiterType string, scopeUserID *int64) string {
+	target := serviceQuotaCounterKeyTargetShared
+	if scopeUserID != nil {
+		target = strconv.FormatInt(*scopeUserID, 10)
 	}
-	return fmt.Sprintf("svcquota:v2:%d:%d:%s:%s", rule.ID, path.ID, lim.LimiterType, target)
+	return fmt.Sprintf("svcquota:v2:%d:%d:%s:%s", ruleID, pathID, limiterType, target)
+}
+
+// counterKey 返回 path × limiter 的独立计数 key。v2 前缀使旧 key 自然失效。
+//
+// 内部委托给 BuildServiceQuotaCounterKey：counter_mode=user/per_user 时把
+// req.UserID 传进去，shared 时传 nil；保持与历史 key 完全一致。
+func (s *serviceQuotaService) counterKey(req ServiceQuotaCheckRequest, rule *ServiceQuotaRule, path ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) string {
+	var scopeUserID *int64
+	if rule.CounterMode == ServiceQuotaCounterModeUser || rule.CounterMode == ServiceQuotaCounterModePerUser {
+		uid := req.UserID
+		scopeUserID = &uid
+	}
+	return BuildServiceQuotaCounterKey(rule.ID, path.ID, lim.LimiterType, scopeUserID)
 }
 
 func (l *ServiceQuotaLease) release() {

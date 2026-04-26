@@ -132,17 +132,39 @@ func rollingMember(now time.Time, delta float64) string {
 func sumRollingMembers(members []string) float64 {
 	var sum float64
 	for _, m := range members {
-		idx := strings.LastIndex(m, ":")
-		if idx < 0 {
-			continue
-		}
-		v, err := strconv.ParseFloat(m[idx+1:], 64)
-		if err != nil {
-			continue
-		}
-		sum += v
+		sum += parseRollingMemberDelta(m)
 	}
 	return sum
+}
+
+// sumRollingZScores 解析 ZRangeByScoreWithScores 返回的 redis.Z 切片，把
+// member 末段 delta 累加。与 sumRollingMembers 共享同一解析规则
+// （parseRollingMemberDelta），避免快照路径与 Current/Increment 路径解耦。
+func sumRollingZScores(zs []redis.Z) float64 {
+	var sum float64
+	for _, z := range zs {
+		m, ok := z.Member.(string)
+		if !ok {
+			continue
+		}
+		sum += parseRollingMemberDelta(m)
+	}
+	return sum
+}
+
+// parseRollingMemberDelta 解析 "<ts>:<seq>:<delta>" 末段 float。
+// 任何格式问题（缺分隔符、ParseFloat 失败）都降级返回 0，与历史 sumRollingMembers
+// 行为保持一致——监控读路径不应因 legacy 残留 member 报错。
+func parseRollingMemberDelta(m string) float64 {
+	idx := strings.LastIndex(m, ":")
+	if idx < 0 {
+		return 0
+	}
+	v, err := strconv.ParseFloat(m[idx+1:], 64)
+	if err != nil {
+		return 0
+	}
+	return v
 }
 
 // Acquire 以原子方式占用一个并发槽位。

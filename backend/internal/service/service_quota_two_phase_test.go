@@ -103,6 +103,20 @@ func (f *fakeServiceQuotaLimiter) Release(_ context.Context, key, member string)
 	return nil
 }
 
+// Snapshot / SnapshotMany 是只读监控路径用的接口方法，两阶段 PreCheck 测试不依赖
+// 真实快照语义。返回零值即可——只要保证 fakeServiceQuotaLimiter 仍然实现
+// service.ServiceQuotaLimiter 接口，避免 wire 编译失败。
+func (f *fakeServiceQuotaLimiter) Snapshot(_ context.Context, _ string, _ time.Duration, _ string) (LimiterSnapshot, error) {
+	return LimiterSnapshot{}, nil
+}
+
+func (f *fakeServiceQuotaLimiter) SnapshotMany(_ context.Context, keys []SnapshotKey) ([]LimiterSnapshot, error) {
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	return make([]LimiterSnapshot, len(keys)), nil
+}
+
 // ─── Helpers ───
 
 // newQuotaServiceForTest 拼装一个 *serviceQuotaService，带最小能跑两阶段路径的依赖。

@@ -196,6 +196,38 @@ type ServiceQuotaLimiter interface {
 	Increment(ctx context.Context, key string, delta float64, window time.Duration, mode string) (float64, error)
 	Acquire(ctx context.Context, key, member string, limit int64) (bool, error)
 	Release(ctx context.Context, key, member string) error
+	// Snapshot 只读返回单个 key 的当前计数，不执行任何写入（区别于 Current 的 rolling
+	// 模式会顺带 ZRemRangeByScore）。监控页用它读取规则当前用量，必须保证多次调用幂等。
+	//
+	// mode 取值：ServiceQuotaWindowFixed / ServiceQuotaWindowRolling / ""（concurrency
+	// 路径走 SnapshotKey.IsConcurrency，mode 字段被忽略）。key 不存在时返回
+	// LimiterSnapshot{Current: 0, Exists: false}, nil；底层 Redis 错误以 error 返回。
+	Snapshot(ctx context.Context, key string, window time.Duration, mode string) (LimiterSnapshot, error)
+	// SnapshotMany 用单条 Redis Pipeline 批量获取多个 key 的快照，返回切片顺序
+	// 与入参 keys 一一对应。单 key 失败（除 redis.Nil 外）降级为 {0, false} 并打 warn 日志，
+	// 不让单条命令拖垮整个批次。
+	SnapshotMany(ctx context.Context, keys []SnapshotKey) ([]LimiterSnapshot, error)
+}
+
+// SnapshotKey 描述一个 limiter 的快照读取目标。
+//
+// 区分 IsConcurrency 与普通 fixed/rolling：concurrency 走 ZSET ZCount + 泄漏窗口，
+// 不依赖 mode 字符串；fixed / rolling 走 GET 或 ZRangeByScoreWithScores，由 Mode 决定。
+// Window 仅对 rolling 起作用（fixed/concurrency 自带固定窗口语义）。
+type SnapshotKey struct {
+	Key           string
+	Window        time.Duration
+	Mode          string
+	IsConcurrency bool
+}
+
+// LimiterSnapshot 单个 limiter 的只读快照。
+//
+// Exists=false 表示 key 在 Redis 中不存在（首次接入或已过期），调用方据此区分
+// "未启用" 与 "已启用但用量 0"。Current 始终是有效数值（不存在时为 0）。
+type LimiterSnapshot struct {
+	Current float64
+	Exists  bool
 }
 
 // ServiceQuotaCache 抽象服务限额规则与开关的缓存层。
