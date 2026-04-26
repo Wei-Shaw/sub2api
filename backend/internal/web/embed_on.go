@@ -225,8 +225,14 @@ const pluginImportMap = `<script type="importmap">{"imports":{` +
 	`"vue-router":"/api/v1/plugin-assets/__shared__/vue-router.js",` +
 	`"vue-i18n":"/api/v1/plugin-assets/__shared__/vue-i18n.js",` +
 	`"pinia":"/api/v1/plugin-assets/__shared__/pinia.js",` +
-	`"axios":"/api/v1/plugin-assets/__shared__/axios.js"` +
+	`"axios":"/api/v1/plugin-assets/__shared__/axios.js",` +
+	`"@sub2api/plugin-sdk":"/api/v1/plugin-assets/__shared__/plugin-sdk.js"` +
 	`}}</script>`
+
+// pluginSdkStylesheet 在所有页面 head 注入一份 SDK 共享样式表.
+// 体积约 12KB / 2KB gzip, 与 host 自身样式合并占比可忽略, 换取 plugin
+// 直接 import @sub2api/plugin-sdk 渲染时 scoped class 即时生效.
+const pluginSdkStylesheet = `<link rel="stylesheet" href="/api/v1/plugin-assets/__shared__/plugin-sdk.css">`
 
 func (s *FrontendServer) injectSettings(settingsJSON []byte) []byte {
 	script := []byte(`<script nonce="` + NonceHTMLPlaceholder + `">window.__APP_CONFIG__=` + string(settingsJSON) + `;</script>`)
@@ -250,6 +256,11 @@ func (s *FrontendServer) injectSettings(settingsJSON []byte) []byte {
 	// 注: importmap script 不需要 CSP nonce (浏览器对 type=importmap 单独处理),
 	// 但保险起见仍走 head close 替换.
 	injection = append(injection, []byte(pluginImportMap)...)
+	// plugin-sdk.css 提前注入: SDK 组件 (scoped data-v-* hash) 在 plugin import
+	// @sub2api/plugin-sdk 时由 importmap 取到 ESM bundle, 但 ESM 不会带样式.
+	// 这里通过 <link> 让浏览器加载 SDK 编译后的样式表, 让 plugin DOM 渲染时
+	// scoped class 命中. host 主 bundle 已含一份 host 副本样式 (不同 hash 不冲突).
+	injection = append(injection, []byte(pluginSdkStylesheet)...)
 	injection = append(injection, headClose...)
 	result := bytes.Replace(s.baseHTML, headClose, injection, 1)
 
@@ -376,4 +387,15 @@ func serveIndexHTML(c *gin.Context, fsys fs.FS) {
 func HasEmbeddedFrontend() bool {
 	_, err := frontendFS.ReadFile("dist/index.html")
 	return err == nil
+}
+
+// ReadEmbeddedAsset reads a file from the embedded frontend dist directory.
+// 用于 plugin assets 端点 (servePluginSharedAsset) 读取 host frontend 编译产物
+// (例如 plugin-sdk.js / plugin-sdk.css), 让 plugin frontend 通过 importmap
+// 共享 host 编译好的 SDK bundle.
+//
+// 参数 name 是 dist/ 下的相对路径 (如 "plugin-sdk.js"). 不允许 .. 越权,
+// 调用方需自行限制.
+func ReadEmbeddedAsset(name string) ([]byte, error) {
+	return frontendFS.ReadFile("dist/" + name)
 }

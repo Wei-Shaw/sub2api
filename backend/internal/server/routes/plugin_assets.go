@@ -1,11 +1,14 @@
 package routes
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/plugin"
+	"github.com/Wei-Shaw/sub2api/internal/web"
 	"github.com/gin-gonic/gin"
 )
 
@@ -185,8 +188,17 @@ export default m;
 }
 
 // servePluginSharedAsset 处理 /api/v1/plugin-assets/__shared__/<name>.js 形式
-// 的请求, 返回上面 sharedRuntimeReExport 中预生成的 ESM proxy. 找不到时 404.
+// 的请求, 返回 sharedRuntimeReExport 中预生成的 ESM proxy 或 host frontend
+// embed FS 中的编译产物 (如 plugin-sdk.js / plugin-sdk.css). 找不到时 404.
+//
+// plugin-sdk 特例: 该文件由 host vite (vite.sdk.config.ts) 编译输出到
+// frontend dist/, host 二进制 embed FS 内. 通过 importmap 把
+// `@sub2api/plugin-sdk` 映射到此端点, plugin frontend 直接 import 即可.
 func servePluginSharedAsset(c *gin.Context, asset string) {
+	if asset == "plugin-sdk.js" || asset == "plugin-sdk.css" {
+		servePluginSdkBundle(c, asset)
+		return
+	}
 	body, ok := sharedRuntimeReExport[asset]
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "shared runtime not registered: " + asset})
@@ -202,6 +214,30 @@ func servePluginSharedAsset(c *gin.Context, asset string) {
 	c.Header("ETag", etag)
 	c.Header("Cache-Control", pluginAssetCacheControl)
 	c.Data(http.StatusOK, "application/javascript; charset=utf-8", []byte(body))
+}
+
+// servePluginSdkBundle 从 host frontend embed FS 读取 plugin-sdk.{js,css}
+// 并返回. ETag 基于文件 SHA-256, 让浏览器在 host 重新编译后能正确 304/200.
+func servePluginSdkBundle(c *gin.Context, asset string) {
+	body, err := web.ReadEmbeddedAsset(asset)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "plugin-sdk bundle not embedded: " + err.Error()})
+		return
+	}
+	sum := sha256.Sum256(body)
+	etag := `"sdk-` + hex.EncodeToString(sum[:8]) + `"`
+	if match := c.GetHeader("If-None-Match"); match == etag {
+		c.Header("ETag", etag)
+		c.Status(http.StatusNotModified)
+		return
+	}
+	c.Header("ETag", etag)
+	c.Header("Cache-Control", pluginAssetCacheControl)
+	mime := "application/javascript; charset=utf-8"
+	if strings.HasSuffix(asset, ".css") {
+		mime = "text/css; charset=utf-8"
+	}
+	c.Data(http.StatusOK, mime, body)
 }
 
 // RegisterPluginAssetRoutes 挂载 /api/v1/plugin-assets/:plugin/*path,

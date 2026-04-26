@@ -14,6 +14,9 @@ importers:
       '@stripe/stripe-js':
         specifier: ^9.0.1
         version: 9.0.1
+      '@sub2api/plugin-sdk':
+        specifier: workspace:*
+        version: link:packages/plugin-sdk
       '@tanstack/vue-virtual':
         specifier: ^3.13.23
         version: 3.13.23(vue@3.5.26(typescript@5.6.3))
@@ -126,6 +129,15 @@ importers:
       vue-tsc:
         specifier: ^2.2.0
         version: 2.2.12(typescript@5.6.3)
+
+  packages/plugin-sdk:
+    dependencies:
+      lucide-vue-next:
+        specifier: ^0.300.0
+        version: 0.300.0(vue@3.5.26(typescript@5.6.3))
+      vue:
+        specifier: ^3.4.0
+        version: 3.5.26(typescript@5.6.3)
 
 packages:
 
@@ -3001,6 +3013,11 @@ packages:
     resolution: {integrity: sha512-82hOAu7y0dbVuFfmO4bYF1XEwYk/mEbM5E+b1jgci/udUBEE/R7LF5Ip0CCEmXe8AybRM8L+04eP+LGZeDvkiw==}
     peerDependencies:
       react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
+  lucide-vue-next@0.300.0:
+    resolution: {integrity: sha512-vhXSuZ3yYpeeDCQjOYBUTEb9itYfvUGLQf3ONGL3o340r3l9eG20Gh9XCYnc1IYQKYOvMtDRDYeykvbq/ymhhw==}
+    peerDependencies:
+      vue: '>=3.0.1'
 
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
@@ -7794,6 +7811,10 @@ snapshots:
   lucide-react@0.562.0(react@19.2.3):
     dependencies:
       react: 19.2.3
+
+  lucide-vue-next@0.300.0(vue@3.5.26(typescript@5.6.3)):
+    dependencies:
+      vue: 3.5.26(typescript@5.6.3)
 
   magic-string@0.30.21:
     dependencies:

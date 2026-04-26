@@ -1,52 +1,21 @@
 /**
- * Module shims for host frontend `@/...` imports.
+ * Host module type shims (V2 SDK 改造后).
  *
- * Plugin 通过 vite alias 把 `@` 指向 host frontend/src/, 让 ChannelsView.vue
- * 能复用 host 的通用组件 (DataTable / Select / ...) 与 store / API.
- * 然而 vue-tsc 严格类型检查时会沿着 import 链一路跟到 host 的 .vue / .ts,
- * 把 host 自身遗留的 type 警告暴露给 plugin typecheck.
+ * V2: plugin 通过 @sub2api/plugin-sdk 共享 UI 组件, 不再 import 任何 host @/
+ *     源码. 但仍需要少量 type-only shim:
  *
- * 这些 host 模块在 plugin 这边只关心"存在 + 可以渲染", 不需要精确类型;
- * 用宽松的 module shim 让 vue-tsc 跳过 host 文件的深度检查, 同时保留
- * plugin 自身代码的严格检查.
+ * 1. host-sdk.ts (HostSdk) 内部 import type { User } from '@/types' —— 跨
+ *    workspace type-only 引用, 我们给一个最小 User shape stub
+ * 2. SDK 包内的 DataTable.vue 用 @tanstack/vue-virtual, 该 dep 安装在 host
+ *    frontend, plugin 没有; 给一个 module shim 让 vue-tsc 通过
+ * 3. SDK utils/tablePreferences 引用 window.__APP_CONFIG__, 给全局 stub
+ *
+ * 这些 shim 仅用于 vue-tsc 类型检查; 运行时 vue-virtual 由 SDK 包源码
+ * 通过 host bundle 复用 (host frontend 已安装), tablePreferences 由
+ * host index.html 注入 __APP_CONFIG__.
  */
 
-declare module '@/components/common/*.vue' {
-  import type { DefineComponent } from 'vue'
-  const component: DefineComponent<Record<string, unknown>, Record<string, unknown>, unknown>
-  export default component
-}
-
-declare module '@/components/icons/*.vue' {
-  import type { DefineComponent } from 'vue'
-  const component: DefineComponent<Record<string, unknown>, Record<string, unknown>, unknown>
-  export default component
-}
-
-declare module '@/components/layout/*.vue' {
-  import type { DefineComponent } from 'vue'
-  const component: DefineComponent<Record<string, unknown>, Record<string, unknown>, unknown>
-  export default component
-}
-
-declare module '@/components/common/types' {
-  export interface Column {
-    key: string
-    label: string
-    sortable?: boolean
-    width?: string
-    align?: 'left' | 'center' | 'right'
-  }
-}
-
 declare module '@/types' {
-  export type GroupPlatform = string
-  export interface AdminGroup {
-    id: number
-    name: string
-    platform: GroupPlatform
-    [key: string]: unknown
-  }
   export interface User {
     id: number
     username: string
@@ -56,28 +25,13 @@ declare module '@/types' {
   }
 }
 
-declare module '@/api/admin' {
-  import type { AdminGroup } from '@/types'
-  export interface AdminAPIShape {
-    groups: {
-      getAll: () => Promise<AdminGroup[]>
-    }
-    [key: string]: unknown
-  }
-  export const adminAPI: AdminAPIShape
+declare module '@tanstack/vue-virtual' {
+  // SDK DataTable 只用了 useVirtualizer; 给宽松 any 类型 stub.
+  // 真实类型来自 host frontend/node_modules, plugin 没装该 dep, 仅靠 host 运行时复用.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  export function useVirtualizer(options: any): any
 }
 
-declare module '@/stores/app' {
-  export interface AppStoreShape {
-    showError: (msg: string, duration?: number) => void
-    showSuccess: (msg: string, duration?: number) => void
-    showWarning: (msg: string, duration?: number) => void
-    showInfo: (msg: string, duration?: number) => void
-    [key: string]: unknown
-  }
-  export function useAppStore(): AppStoreShape
-}
-
-declare module '@/composables/usePersistedPageSize' {
-  export function getPersistedPageSize(fallback?: number): number
+interface Window {
+  __APP_CONFIG__?: Record<string, unknown>
 }

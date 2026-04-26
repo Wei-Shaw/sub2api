@@ -1,0 +1,3 @@
+packages:
+  - '.'              # host frontend (root, 保留所有现有 scripts)
+  - 'packages/*'     # @sub2api/plugin-sdk 与未来潜在子包
