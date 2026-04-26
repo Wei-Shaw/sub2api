@@ -487,6 +487,22 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 					))
 				}),
 			)
+		case service.AccountStatusFilterActiveExcludingQuotaStopped:
+			q = q.Where(
+				dbaccount.StatusEQ(service.StatusActive),
+				dbaccount.SchedulableEQ(true),
+				dbaccount.Or(
+					dbaccount.RateLimitResetAtIsNil(),
+					dbaccount.RateLimitResetAtLTE(time.Now()),
+				),
+				dbpredicate.Account(func(s *entsql.Selector) {
+					col := s.C("temp_unschedulable_until")
+					s.Where(entsql.Or(
+						entsql.IsNull(col),
+						entsql.LTE(col, entsql.Expr("NOW()")),
+					))
+				}),
+			)
 		case "rate_limited":
 			q = q.Where(
 				dbaccount.StatusEQ(service.StatusActive),
@@ -551,6 +567,41 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 				s.Where(sqljson.ValueEQ(dbaccount.FieldExtra, privacyMode, path))
 			}
 		}))
+	}
+
+	normalizedStatus := strings.TrimSpace(status)
+	if normalizedStatus == service.AccountStatusFilterActiveExcludingQuotaStopped || strings.TrimSpace(model) != "" || strings.TrimSpace(quotaStrategy) != "" {
+		accountsQuery := q
+		for _, order := range accountListOrder(params) {
+			accountsQuery = accountsQuery.Order(order)
+		}
+		accounts, err := accountsQuery.All(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		outAccounts, err := r.accountsToService(ctx, accounts)
+		if err != nil {
+			return nil, nil, err
+		}
+		filtered := make([]service.Account, 0, len(outAccounts))
+		now := time.Now()
+		for i := range outAccounts {
+			if service.MatchesAccountListStatusFilter(&outAccounts[i], normalizedStatus, now) &&
+				service.IsAccountSupportedForModelFilter(&outAccounts[i], model) &&
+				service.MatchesOpenAIQuotaStrategyFilter(&outAccounts[i], quotaStrategy) {
+				filtered = append(filtered, outAccounts[i])
+			}
+		}
+		total := int64(len(filtered))
+		start := params.Offset()
+		if start >= len(filtered) {
+			return []service.Account{}, paginationResultFromTotal(total, params), nil
+		}
+		end := start + params.Limit()
+		if end > len(filtered) {
+			end = len(filtered)
+		}
+		return filtered[start:end], paginationResultFromTotal(total, params), nil
 	}
 
 	total, err := q.Count(ctx)

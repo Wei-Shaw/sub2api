@@ -1405,6 +1405,16 @@ const accountMatchesCurrentFilters = (account: Account) => {
   const filters = buildAccountQueryFilters()
   if (filters.platform && account.platform !== filters.platform) return false
   if (filters.type && account.type !== filters.type) return false
+  const strategy = String(account.extra?.openai_quota_strategy || '').trim()
+  const thresholdRaw = Number(account.extra?.openai_quota_stop_threshold_percent ?? 10)
+  const threshold = Number.isFinite(thresholdRaw) && thresholdRaw > 0 ? Math.min(100, thresholdRaw) : 10
+  const usedKey = strategy === 'prefer_5h' ? 'codex_5h_used_percent' : strategy === 'prefer_7d' ? 'codex_7d_used_percent' : ''
+  const usedRaw = usedKey ? Number(account.extra?.[usedKey] ?? Number.NaN) : Number.NaN
+  const usedPercent = Number.isFinite(usedRaw) ? Math.min(100, Math.max(0, usedRaw)) : Number.NaN
+  const remainingPercent = Number.isFinite(usedPercent) ? 100 - usedPercent : Number.NaN
+  const isQuotaStopped = (strategy === 'prefer_5h' || strategy === 'prefer_7d') &&
+    Number.isFinite(remainingPercent) &&
+    remainingPercent < threshold
   if (filters.status) {
     const now = Date.now()
     const rateLimitResetAt = account.rate_limit_reset_at ? new Date(account.rate_limit_reset_at).getTime() : Number.NaN
@@ -1414,6 +1424,8 @@ const accountMatchesCurrentFilters = (account: Account) => {
 
     if (filters.status === 'active') {
       if (account.status !== 'active' || isRateLimited || isTempUnschedulable || !account.schedulable) return false
+    } else if (filters.status === 'active_excluding_quota_stopped') {
+      if (account.status !== 'active' || isRateLimited || isTempUnschedulable || !account.schedulable || isQuotaStopped) return false
     } else if (filters.status === 'rate_limited') {
       if (account.status !== 'active' || !isRateLimited || isTempUnschedulable) return false
     } else if (filters.status === 'temp_unschedulable') {
@@ -1430,6 +1442,34 @@ const accountMatchesCurrentFilters = (account: Account) => {
       if (groupIds.length > 0) return false
     } else if (!groupIds.includes(Number(filters.group))) {
       return false
+    }
+  }
+  if (filters.model) {
+    const credentials = account.credentials as Record<string, unknown> | undefined
+    const geminiCredentials = credentials as { model_mapping?: Record<string, string> } | undefined
+    const modelMapping = geminiCredentials?.model_mapping
+    if (account.platform === 'gemini' && modelMapping && !Object.values(modelMapping).includes(filters.model)) {
+      return false
+    }
+  }
+  if (filters.quota_strategy) {
+    if (filters.quota_strategy === 'enabled') {
+      if (strategy !== 'prefer_5h' && strategy !== 'prefer_7d') return false
+    } else if (filters.quota_strategy === 'disabled') {
+      if (strategy === 'prefer_5h' || strategy === 'prefer_7d') return false
+    } else if (strategy !== filters.quota_strategy) {
+      return false
+    }
+  }
+  if (filters.proxy_filter) {
+    const proxyID = account.proxy_id
+    if (filters.proxy_filter === 'configured') {
+      if (!proxyID) return false
+    } else if (filters.proxy_filter === 'unconfigured') {
+      if (proxyID) return false
+    } else if (String(filters.proxy_filter).startsWith('proxy:')) {
+      const expectedProxyID = String(filters.proxy_filter).slice('proxy:'.length)
+      if (String(proxyID || '') !== expectedProxyID) return false
     }
   }
   const privacyMode = typeof account.extra?.privacy_mode === 'string' ? account.extra.privacy_mode : ''
