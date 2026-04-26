@@ -55,6 +55,11 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 			// Admin: model pricing helper
 			{Path: pluginRoutePrefix + "/admin/channels/model-pricing", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeAdmin},
 		},
+		// Capabilities — channel-management writes the gateway cache contract
+		// (channel:active, channel:by_id:*, …) which the core's
+		// ChannelCacheReader reads directly. Those keys live outside the
+		// per-plugin namespace, so we ask the core for raw key access.
+		Capabilities: []string{pluginsdk.CapabilityRedisRawKeys},
 		Frontend: &pluginsdk.FrontendManifest{
 			MenuItems: []pluginsdk.MenuItemDecl{
 				{
@@ -99,15 +104,27 @@ func (p *ChannelPlugin) Init(ctx pluginsdk.PluginContext) error {
 	svc := chService.NewChannelService(repo, nil)
 
 	// Wire the Redis cache writer that mirrors channel state to the
-	// gateway-side Redis cache (see GATEWAY_CACHE_SPEC.md). When Redis is
-	// unavailable the writer is left nil and CRUD becomes a no-op for the
-	// cache layer; the gateway then falls through its safe-degradation path.
+	// gateway-side Redis cache (see GATEWAY_CACHE_SPEC.md). The cache keys
+	// (channel:meta:*, plugin:channel:meta:*, etc.) are documented in
+	// GATEWAY_CACHE_SPEC.md and read by the core directly, so they must NOT
+	// receive the SDK's automatic per-plugin namespace. We obtain a raw twin
+	// of the Redis client to bypass it.
+	//
+	// If the core has not granted the redis_raw_keys capability (e.g. an
+	// operator rolled out the plugin before bumping the core version),
+	// Raw() returns nil and we leave the cache writer disabled instead of
+	// silently writing to the wrong keys.
 	if redis := ctx.Redis(); redis != nil {
-		cacheWriter := chService.NewCacheWriter(redis, svc.GroupPlatforms)
-		svc.SetCacheWriter(cacheWriter)
-		// Warm the cache asynchronously so the gateway has data immediately
-		// on cold start without blocking plugin startup.
-		go svc.RebuildAllCacheNow(context.Background())
+		raw := redis.Raw()
+		if raw == nil {
+			ctx.Logger().Warn("channel cache writer disabled: core did not grant redis_raw_keys capability — check plugin manifest is in sync with core")
+		} else {
+			cacheWriter := chService.NewCacheWriter(raw, svc.GroupPlatforms)
+			svc.SetCacheWriter(cacheWriter)
+			// Warm the cache asynchronously so the gateway has data immediately
+			// on cold start without blocking plugin startup.
+			go svc.RebuildAllCacheNow(context.Background())
+		}
 	} else {
 		ctx.Logger().Warn("channel cache writer disabled: redis client unavailable")
 	}

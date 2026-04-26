@@ -33,10 +33,12 @@ const (
 	dbTestTimeout    = 5 * time.Second
 	redisTestTimeout = 5 * time.Second
 
-	// redisTestKey is the namespaced key the /redis-test endpoint writes
-	// and reads back. Using a stable key (instead of time-based) makes the
-	// behaviour idempotent and easy to inspect from the core side.
-	redisTestKey = "plugin:hello-world:smoke-test"
+	// redisTestKey is the key the /redis-test endpoint writes and reads
+	// back. The SDK automatically prefixes it with `plugin:hello-world:`
+	// so the actual Redis key is `plugin:hello-world:smoke-test`. Plugins
+	// must NOT include the prefix manually any more — doing so would
+	// produce double-prefixed keys (plugin:hello-world:plugin:hello-world:…).
+	redisTestKey = "smoke-test"
 	redisTestTTL = 60 * time.Second
 )
 

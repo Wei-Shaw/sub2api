@@ -369,8 +369,18 @@ func execResultToResponse(res sql.Result) *pluginsdk.ExecResponse {
 }
 
 // ============================================================
-// RedisProxy 实现
+// RedisProxy 实现 (legacy typed RPCs)
 // ============================================================
+//
+// 这些方法保留是为了兼容旧 SDK 二进制。**新代码应通过 Do() 调用**，由 Do()
+// 负责命名空间、能力检查等安全控制。
+//
+// 这里的 legacy 方法把 key 当作原始字符串透传给 Redis，不做命名空间校验，
+// 因为旧 SDK 客户端自己手动拼接 `plugin:<name>:` 前缀（见 channel-management
+// 的 cache_writer.go 和 hello-world 的旧版 main.go）。如果在这里再加一层
+// 前缀会出现 `plugin:foo:plugin:foo:bar` 的双重前缀。
+//
+// 当所有插件都升级到使用 Do() 的 SDK 后，这些方法可以删除。
 
 func (s *SDKServer) Get(ctx context.Context, req *pluginsdk.RedisKeyRequest) (*pluginsdk.RedisValueResponse, error) {
 	if s.redis == nil {
