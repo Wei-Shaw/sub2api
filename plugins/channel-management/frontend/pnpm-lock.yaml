@@ -24,6 +24,9 @@ importers:
         specifier: ^4.2.5
         version: 4.6.4(vue@3.5.33(typescript@5.3.3))
     devDependencies:
+      '@sub2api/plugin-sdk':
+        specifier: file:../../../frontend/packages/plugin-sdk
+        version: file:../../../frontend/packages/plugin-sdk(lucide-vue-next@0.300.0(vue@3.5.33(typescript@5.3.3)))(vue@3.5.33(typescript@5.3.3))
       '@vitejs/plugin-vue':
         specifier: ^5.0.0
         version: 5.2.4(vite@5.4.21)(vue@3.5.33(typescript@5.3.3))
@@ -347,6 +350,12 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@sub2api/plugin-sdk@file:../../../frontend/packages/plugin-sdk':
+    resolution: {directory: ../../../frontend/packages/plugin-sdk, type: directory}
+    peerDependencies:
+      lucide-vue-next: ^0.300.0
+      vue: ^3.4.0
+
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
 
@@ -519,6 +528,11 @@ packages:
   he@1.2.0:
     resolution: {integrity: sha512-F/1DnUGPopORZi0ni+CvrCgHQ5FyEAHRLSApuYWMmrbSwoN2Mn/7k+Gl38gJnR7yyDZk6WLXwiGod1JOWNDKGw==}
     hasBin: true
+
+  lucide-vue-next@0.300.0:
+    resolution: {integrity: sha512-vhXSuZ3yYpeeDCQjOYBUTEb9itYfvUGLQf3ONGL3o340r3l9eG20Gh9XCYnc1IYQKYOvMtDRDYeykvbq/ymhhw==}
+    peerDependencies:
+      vue: '>=3.0.1'
 
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
@@ -832,6 +846,11 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.60.2':
     optional: true
 
+  '@sub2api/plugin-sdk@file:../../../frontend/packages/plugin-sdk(lucide-vue-next@0.300.0(vue@3.5.33(typescript@5.3.3)))(vue@3.5.33(typescript@5.3.3))':
+    dependencies:
+      lucide-vue-next: 0.300.0(vue@3.5.33(typescript@5.3.3))
+      vue: 3.5.33(typescript@5.3.3)
+
   '@types/estree@1.0.8': {}
 
   '@vitejs/plugin-vue@5.2.4(vite@5.4.21)(vue@3.5.33(typescript@5.3.3))':
@@ -1052,6 +1071,10 @@ snapshots:
       function-bind: 1.1.2
 
   he@1.2.0: {}
+
+  lucide-vue-next@0.300.0(vue@3.5.33(typescript@5.3.3)):
+    dependencies:
+      vue: 3.5.33(typescript@5.3.3)
 
   magic-string@0.30.21:
     dependencies:

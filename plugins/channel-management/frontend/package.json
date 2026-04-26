@@ -11,7 +11,6 @@
     "typecheck": "vue-tsc --noEmit -p tsconfig.json"
   },
   "peerDependencies": {
-    "@sub2api/plugin-sdk": "workspace:*",
     "axios": "^1.15.0",
     "pinia": "^2.1.7",
     "vue": "^3.4.0",
@@ -19,7 +18,7 @@
     "vue-router": "^4.2.5"
   },
   "devDependencies": {
-    "@sub2api/plugin-sdk": "workspace:*",
+    "@sub2api/plugin-sdk": "file:../../../frontend/packages/plugin-sdk",
     "@vitejs/plugin-vue": "^5.0.0",
     "typescript": "~5.3.0",
     "vite": "^5.0.0",
