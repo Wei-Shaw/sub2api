@@ -21,6 +21,7 @@ import type { HostSdk, PluginRuntimeAssets } from '../../../../frontend/src/plug
 import type { AxiosInstance } from 'axios'
 import ChannelsView from './views/ChannelsView.vue'
 import { setClient } from './api/client'
+import { setSdk } from './api/sdk'
 import enMessages from './i18n/en'
 import zhMessages from './i18n/zh'
 
@@ -35,6 +36,10 @@ function install(sdk: HostSdk): PluginRuntimeAssets {
   //    被视为不同 nominal type. 运行时是同一个 axios 实例 (importmap 共享),
   //    所以这里用 unknown 桥接是安全的.
   setClient(sdk.http.apiClient as unknown as AxiosInstance)
+
+  // 1b. 把整个 SDK 句柄存入 plugin module-scope 单例, 让视图层通过 getSdk() 取到
+  //     notify / auth / theme 等能力 (替代 V1 的 useAppStore/adminAPI 直引).
+  setSdk(sdk)
 
   // 2. 把插件 i18n keys 扁平合并到 host vue-i18n 实例. registerNamespace 是
   //    幂等的 (同 namespace 重复 install 不会叠加).

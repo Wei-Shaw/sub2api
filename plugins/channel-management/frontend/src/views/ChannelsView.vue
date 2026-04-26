@@ -1,7 +1,11 @@
 <template>
-  <AppLayout>
-    <TablePageLayout>
-      <template #filters>
+  <!-- V2 SDK 改造: AppLayout 删除 (plugin 已在 host PluginView 内, 不再套一层),
+       TablePageLayout 改为 inline div 容器 (B 类决议: plugin 只用 1 处, 自写更简单).
+       V1 的 #filters / #table / #pagination slot 用 .filters / .table-card / .pagination
+       分区类名替代; 视觉与 V1 一致 (固定 filters/pagination + 滚动 table-scroll-container). -->
+  <div class="plugin-channels-layout">
+    <!-- 固定: 搜索 + 操作 -->
+    <div class="layout-section-fixed">
         <div class="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
           <!-- Left: Search + Filters -->
           <div class="flex flex-1 flex-wrap items-center gap-3">
@@ -45,9 +49,11 @@
             </button>
           </div>
         </div>
-      </template>
+    </div>
 
-      <template #table>
+    <!-- 滚动: 表格 -->
+    <div class="layout-section-scrollable">
+      <div class="card table-scroll-container">
         <DataTable
           :columns="columns"
           :data="channels"
@@ -124,19 +130,19 @@
             />
           </template>
         </DataTable>
-      </template>
+      </div>
+    </div>
 
-      <template #pagination>
-        <Pagination
-          v-if="pagination.total > 0"
-          :page="pagination.page"
-          :total="pagination.total"
-          :page-size="pagination.page_size"
-          @update:page="handlePageChange"
-          @update:pageSize="handlePageSizeChange"
-        />
-      </template>
-    </TablePageLayout>
+    <!-- 固定: 分页 -->
+    <div v-if="pagination.total > 0" class="layout-section-fixed">
+      <Pagination
+        :page="pagination.page"
+        :total="pagination.total"
+        :page-size="pagination.page_size"
+        @update:page="handlePageChange"
+        @update:pageSize="handlePageSizeChange"
+      />
+    </div>
 
     <!-- Create/Edit Dialog -->
     <BaseDialog
@@ -416,36 +422,56 @@
       @confirm="confirmDelete"
       @cancel="showDeleteDialog = false"
     />
-  </AppLayout>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useAppStore } from '@/stores/app'
+import {
+  DataTable,
+  Pagination,
+  BaseDialog,
+  ConfirmDialog,
+  EmptyState,
+  Select,
+  Icon,
+  PlatformIcon,
+  Toggle,
+  type Column,
+} from '@sub2api/plugin-sdk'
 import channelsAPI from '../api/channels'
-import { adminAPI } from '@/api/admin' // host-provided: groups API
+import { getSdk } from '../api/sdk'
 import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest } from '../api/channels'
 import type { PricingFormEntry } from '../components/types'
 import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI, findModelConflict, validateIntervals } from '../components/types'
-import type { AdminGroup, GroupPlatform } from '@/types'
-import type { Column } from '@/components/common/types'
-import AppLayout from '@/components/layout/AppLayout.vue'
-import TablePageLayout from '@/components/layout/TablePageLayout.vue'
-import DataTable from '@/components/common/DataTable.vue'
-import Pagination from '@/components/common/Pagination.vue'
-import BaseDialog from '@/components/common/BaseDialog.vue'
-import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
-import EmptyState from '@/components/common/EmptyState.vue'
-import Select from '@/components/common/Select.vue'
-import Icon from '@/components/icons/Icon.vue'
-import PlatformIcon from '@/components/common/PlatformIcon.vue'
-import Toggle from '@/components/common/Toggle.vue'
 import PricingEntryCard from '../components/PricingEntryCard.vue'
-import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
+
+// ── 内联 host 业务类型 (业务字符串, 不进 SDK) ──
+type GroupPlatform = string
+interface AdminGroup {
+  id: number
+  name: string
+  platform: GroupPlatform
+  [key: string]: unknown
+}
+
+// ── 内联 getPersistedPageSize (D 类决议: 1 行 localStorage 足够) ──
+const PAGE_SIZE_STORAGE_KEY = 'table.pageSize'
+function getPersistedPageSize(fallback = 20): number {
+  const v = Number(localStorage.getItem(PAGE_SIZE_STORAGE_KEY))
+  return Number.isFinite(v) && v > 0 ? v : fallback
+}
 
 const { t } = useI18n()
-const appStore = useAppStore()
+const sdk = getSdk()
+// host 通知句柄, 兼容原 appStore.show* 调用语义
+const appStore = {
+  showError: (msg: string, duration?: number) => sdk.notify.error(msg, duration),
+  showSuccess: (msg: string, duration?: number) => sdk.notify.success(msg, duration),
+  showWarning: (msg: string, duration?: number) => sdk.notify.warning(msg, duration),
+  showInfo: (msg: string, duration?: number) => sdk.notify.info(msg, duration),
+}
 
 // ── Platform Section type ──
 interface PlatformSection {
@@ -802,7 +828,9 @@ async function loadChannels() {
 async function loadGroups() {
   groupsLoading.value = true
   try {
-    allGroups.value = await adminAPI.groups.getAll()
+    // 直接走 host axios. 等价于 V1 的 adminAPI.groups.getAll().
+    const response = await sdk.http.apiClient.get<AdminGroup[]>('/admin/groups/all')
+    allGroups.value = response.data
   } catch (error) {
     console.error('Error loading groups:', error)
   } finally {
@@ -1064,6 +1092,33 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* V2: 替代 host TablePageLayout 的固定/滚动分区. 与 host 视觉一致.
+   注意 plugin 已在 PluginView 内, AppLayout 已套, 不再用 100vh, 用 100% 适配父容器. */
+.plugin-channels-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  height: calc(100vh - 64px - 4rem);
+}
+
+.layout-section-fixed {
+  flex-shrink: 0;
+}
+
+.layout-section-scrollable {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.table-scroll-container {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
+}
+
 .channel-dialog-body {
   display: flex;
   flex-direction: column;

@@ -70,7 +70,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import Icon from '@/components/icons/Icon.vue'
+import { Icon } from '@sub2api/plugin-sdk'
 import type { IntervalFormEntry } from './types'
 import type { BillingMode } from '../api/channels'
 
