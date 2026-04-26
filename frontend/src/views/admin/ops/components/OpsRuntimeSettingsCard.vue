@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { opsAPI } from '@/api/admin/ops'
 import type { OpsAlertRuntimeSettings } from '../types'
-import BaseDialog from '@/components/common/BaseDialog.vue'
+import { BaseDialog } from '@sub2api/plugin-sdk'
 
 const { t } = useI18n()
 const appStore = useAppStore()

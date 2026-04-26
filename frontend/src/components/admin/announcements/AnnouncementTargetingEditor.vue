@@ -176,7 +176,7 @@ import type {
   AnnouncementOperator
 } from '@/types'
 
-import Select from '@/components/common/Select.vue'
+import { Select } from '@sub2api/plugin-sdk'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import Icon from '@/components/icons/Icon.vue'
 

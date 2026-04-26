@@ -14,6 +14,8 @@ export { default as EmptyState } from './components/EmptyState.vue'
 export { default as Toggle } from './components/Toggle.vue'
 export { default as PlatformIcon } from './components/PlatformIcon.vue'
 
-export type { Column } from './types'
+export type { Column, SelectOption } from './types'
 
 export * as tablePreferences from './utils/tablePreferences'
+
+export * from './host-sdk'

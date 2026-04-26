@@ -26,7 +26,7 @@ importers:
     devDependencies:
       '@sub2api/plugin-sdk':
         specifier: file:../../../frontend/packages/plugin-sdk
-        version: file:../../../frontend/packages/plugin-sdk(lucide-vue-next@0.300.0(vue@3.5.33(typescript@5.3.3)))(vue@3.5.33(typescript@5.3.3))
+        version: file:../../../frontend/packages/plugin-sdk(axios@1.15.2)(lucide-vue-next@0.300.0(vue@3.5.33(typescript@5.3.3)))(vue-router@4.6.4(vue@3.5.33(typescript@5.3.3)))(vue@3.5.33(typescript@5.3.3))
       '@vitejs/plugin-vue':
         specifier: ^5.0.0
         version: 5.2.4(vite@5.4.21)(vue@3.5.33(typescript@5.3.3))
@@ -353,8 +353,10 @@ packages:
   '@sub2api/plugin-sdk@file:../../../frontend/packages/plugin-sdk':
     resolution: {directory: ../../../frontend/packages/plugin-sdk, type: directory}
     peerDependencies:
+      axios: ^1.0.0
       lucide-vue-next: ^0.300.0
       vue: ^3.4.0
+      vue-router: ^4.0.0
 
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
@@ -846,10 +848,12 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.60.2':
     optional: true
 
-  '@sub2api/plugin-sdk@file:../../../frontend/packages/plugin-sdk(lucide-vue-next@0.300.0(vue@3.5.33(typescript@5.3.3)))(vue@3.5.33(typescript@5.3.3))':
+  '@sub2api/plugin-sdk@file:../../../frontend/packages/plugin-sdk(axios@1.15.2)(lucide-vue-next@0.300.0(vue@3.5.33(typescript@5.3.3)))(vue-router@4.6.4(vue@3.5.33(typescript@5.3.3)))(vue@3.5.33(typescript@5.3.3))':
     dependencies:
+      axios: 1.15.2
       lucide-vue-next: 0.300.0(vue@3.5.33(typescript@5.3.3))
       vue: 3.5.33(typescript@5.3.3)
+      vue-router: 4.6.4(vue@3.5.33(typescript@5.3.3))
 
   '@types/estree@1.0.8': {}
 

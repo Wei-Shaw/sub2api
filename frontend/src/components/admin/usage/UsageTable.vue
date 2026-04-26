@@ -338,11 +338,11 @@ import { formatCacheTokens, formatMultiplier } from '@/utils/formatters'
 import { formatTokenPricePerMillion } from '@/utils/usagePricing'
 import { getUsageServiceTierLabel } from '@/utils/usageServiceTier'
 import { resolveUsageRequestType } from '@/utils/usageRequestType'
-import DataTable from '@/components/common/DataTable.vue'
-import EmptyState from '@/components/common/EmptyState.vue'
+import { DataTable } from '@sub2api/plugin-sdk'
+import { EmptyState } from '@sub2api/plugin-sdk'
 import Icon from '@/components/icons/Icon.vue'
 import type { AdminUsageLog } from '@/types'
-import type { Column } from '@/components/common/types'
+import type { Column } from '@sub2api/plugin-sdk'
 
 interface Props {
   data: AdminUsageLog[]

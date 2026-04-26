@@ -435,8 +435,8 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import type { ErrorPassthroughRule } from '@/api/admin/errorPassthrough'
-import BaseDialog from '@/components/common/BaseDialog.vue'
-import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import { BaseDialog } from '@sub2api/plugin-sdk'
+import { ConfirmDialog } from '@sub2api/plugin-sdk'
 import Icon from '@/components/icons/Icon.vue'
 
 const props = defineProps<{

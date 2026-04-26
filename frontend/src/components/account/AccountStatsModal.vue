@@ -498,7 +498,7 @@ import {
   Filler
 } from 'chart.js'
 import { Line } from 'vue-chartjs'
-import BaseDialog from '@/components/common/BaseDialog.vue'
+import { BaseDialog } from '@sub2api/plugin-sdk'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'
 import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'

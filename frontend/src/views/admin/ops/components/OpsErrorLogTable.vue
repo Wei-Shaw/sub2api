@@ -212,7 +212,7 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import Pagination from '@/components/common/Pagination.vue'
+import { Pagination } from '@sub2api/plugin-sdk'
 import type { OpsErrorLog } from '@/api/admin/ops'
 import { getSeverityClass, formatDateTime } from '../utils/opsFormatters'
 

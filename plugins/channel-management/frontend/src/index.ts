@@ -17,7 +17,7 @@
  *   - install 时把插件的 i18n messages 扁平合并到 host vue-i18n 实例
  *   - install 时把 sdk.http.apiClient 注入 plugin 内部的 axios 单例 (api/client.ts)
  */
-import type { HostSdk, PluginRuntimeAssets } from '../../../../frontend/src/plugins/sdk/host-sdk'
+import type { HostSdk, PluginRuntimeAssets } from '@sub2api/plugin-sdk'
 import type { AxiosInstance } from 'axios'
 import ChannelsView from './views/ChannelsView.vue'
 import { setClient } from './api/client'

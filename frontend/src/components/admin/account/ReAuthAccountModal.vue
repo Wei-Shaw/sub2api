@@ -193,7 +193,7 @@ import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
 import type { Account } from '@/types'
-import BaseDialog from '@/components/common/BaseDialog.vue'
+import { BaseDialog } from '@sub2api/plugin-sdk'
 import Icon from '@/components/icons/Icon.vue'
 import OAuthAuthorizationFlow from '@/components/account/OAuthAuthorizationFlow.vue'
 

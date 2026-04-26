@@ -21,7 +21,7 @@
 
 import type { Component, defineAsyncComponent } from 'vue'
 import type { RouteRecordRaw } from 'vue-router'
-import type { HostSdk, PluginRuntimeAssets, PluginRuntimeModule } from './sdk/host-sdk'
+import type { HostSdk, PluginRuntimeAssets, PluginRuntimeModule } from '@sub2api/plugin-sdk'
 import { getHostSdk } from './sdk/host-sdk-window'
 
 export type PluginIsolationMode = 'shared' | 'iframe'

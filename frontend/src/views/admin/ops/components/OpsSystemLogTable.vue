@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { opsAPI, type OpsRuntimeLogConfig, type OpsSystemLog, type OpsSystemLogSinkHealth } from '@/api/admin/ops'
-import Pagination from '@/components/common/Pagination.vue'
-import Select from '@/components/common/Select.vue'
+import { Pagination } from '@sub2api/plugin-sdk'
+import { Select } from '@sub2api/plugin-sdk'
 import { useAppStore } from '@/stores'
 
 const appStore = useAppStore()

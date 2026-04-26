@@ -95,7 +95,7 @@
 import { ref, watch, onMounted } from 'vue'
 import { adminAPI } from '@/api/admin'
 import type { UserAttributeDefinition, UserAttributeValuesMap } from '@/types'
-import Select from '@/components/common/Select.vue'
+import { Select } from '@sub2api/plugin-sdk'
 
 interface Props {
   userId?: number

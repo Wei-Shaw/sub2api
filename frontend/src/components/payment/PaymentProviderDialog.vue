@@ -207,9 +207,9 @@
 <script setup lang="ts">
 import { reactive, computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import BaseDialog from '@/components/common/BaseDialog.vue'
-import Select from '@/components/common/Select.vue'
-import type { SelectOption } from '@/components/common/Select.vue'
+import { BaseDialog } from '@sub2api/plugin-sdk'
+import { Select } from '@sub2api/plugin-sdk'
+import type { SelectOption } from '@sub2api/plugin-sdk'
 import ToggleSwitch from './ToggleSwitch.vue'
 import type { ProviderInstance } from '@/types/payment'
 import type { TypeOption } from './providerConfig'

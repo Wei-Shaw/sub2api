@@ -27,7 +27,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { SubscriptionType, GroupPlatform } from '@/types'
-import PlatformIcon from './PlatformIcon.vue'
+import { PlatformIcon } from '@sub2api/plugin-sdk'
 
 interface Props {
   name: string
