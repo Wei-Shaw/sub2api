@@ -86,17 +86,21 @@ REDACTED
 	return bound, nil
 REDACTED
 
-func (r *affiliateRepository) AccrueQuota(ctx context.Context, inviterID, inviteeUserID int64, amount float64) (bool, error) {
+func (r *affiliateRepository) AccrueQuota(ctx context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int) (bool, error) {
 	if amount <= 0 {
 		return false, nil
 REDACTED
 
 	var applied bool
 	err := r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
-		res, err := txClient.ExecContext(txCtx,
-			"UPDATE user_affiliates SET aff_quota = aff_quota + $1, aff_history_quota = aff_history_quota + $1, updated_at = NOW() WHERE user_id = $2",
-			amount, inviterID,
-		)
+		// freezeHours > 0: add to frozen quota; == 0: add to available quota directly
+		var updateSQL string
+		if freezeHours > 0 {
+			updateSQL = "UPDATE user_affiliates SET aff_frozen_quota = aff_frozen_quota + $1, aff_history_quota = aff_history_quota + $1, updated_at = NOW() WHERE user_id = $2"
+	REDACTED else {
+			updateSQL = "UPDATE user_affiliates SET aff_quota = aff_quota + $1, aff_history_quota = aff_history_quota + $1, updated_at = NOW() WHERE user_id = $2"
+	REDACTED
+		res, err := txClient.ExecContext(txCtx, updateSQL, amount, inviterID)
 		if err != nil {
 			return err
 	REDACTED
@@ -106,10 +110,19 @@ REDACTED
 			return nil
 	REDACTED
 
-		if _, err = txClient.ExecContext(txCtx, `
+		if freezeHours > 0 {
+			if _, err = txClient.ExecContext(txCtx, `
+INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, frozen_until, created_at, updated_at)
+VALUES ($1, 'accrue', $2, $3, NOW() + make_interval(hours => $4), NOW(), NOW())`,
+				inviterID, amount, inviteeUserID, freezeHours); err != nil {
+				return fmt.Errorf("insert affiliate accrue ledger: %w", err)
+		REDACTED
+	REDACTED else {
+			if _, err = txClient.ExecContext(txCtx, `
 INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, created_at, updated_at)
 VALUES ($1, 'accrue', $2, $3, NOW(), NOW())`, inviterID, amount, inviteeUserID); err != nil {
-			return fmt.Errorf("insert affiliate accrue ledger: %w", err)
+				return fmt.Errorf("insert affiliate accrue ledger: %w", err)
+		REDACTED
 	REDACTED
 
 		applied = true
@@ -121,6 +134,76 @@ REDACTED
 	return applied, nil
 REDACTED
 
+func (r *affiliateRepository) GetAccruedRebateFromInvitee(ctx context.Context, inviterID, inviteeUserID int64) (float64, error) {
+	client := clientFromContext(ctx, r.client)
+	rows, err := client.QueryContext(ctx,
+		`SELECT COALESCE(SUM(amount), 0)::double precision FROM user_affiliate_ledger WHERE user_id = $1 AND source_user_id = $2 AND action = 'accrue'`,
+		inviterID, inviteeUserID)
+	if err != nil {
+		return 0, fmt.Errorf("query accrued rebate from invitee: %w", err)
+REDACTED
+	defer func() { _ = rows.Close() REDACTED()
+	var total float64
+	if rows.Next() {
+		if err := rows.Scan(&total); err != nil {
+			return 0, err
+	REDACTED
+REDACTED
+	return total, rows.Close()
+REDACTED
+
+func (r *affiliateRepository) ThawFrozenQuota(ctx context.Context, userID int64) (float64, error) {
+	var thawed float64
+	err := r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
+		var err error
+		thawed, err = thawFrozenQuotaTx(txCtx, txClient, userID)
+		return err
+REDACTED)
+	return thawed, err
+REDACTED
+
+// thawFrozenQuotaTx moves matured frozen quota to available quota within an existing tx.
+func thawFrozenQuotaTx(txCtx context.Context, txClient *dbent.Client, userID int64) (float64, error) {
+	rows, err := txClient.QueryContext(txCtx, `
+WITH matured AS (
+    UPDATE user_affiliate_ledger
+    SET frozen_until = NULL, updated_at = NOW()
+    WHERE user_id = $1
+      AND frozen_until IS NOT NULL
+      AND frozen_until <= NOW()
+    RETURNING amount
+)
+SELECT COALESCE(SUM(amount), 0) FROM matured`, userID)
+	if err != nil {
+		return 0, fmt.Errorf("thaw frozen quota: %w", err)
+REDACTED
+	defer func() { _ = rows.Close() REDACTED()
+
+	var thawed float64
+	if rows.Next() {
+		if err := rows.Scan(&thawed); err != nil {
+			return 0, err
+	REDACTED
+REDACTED
+	if err := rows.Close(); err != nil {
+		return 0, err
+REDACTED
+	if thawed <= 0 {
+		return 0, nil
+REDACTED
+
+	_, err = txClient.ExecContext(txCtx, `
+UPDATE user_affiliates
+SET aff_quota = aff_quota + $1,
+    aff_frozen_quota = GREATEST(aff_frozen_quota - $1, 0),
+    updated_at = NOW()
+WHERE user_id = $2`, thawed, userID)
+	if err != nil {
+		return 0, fmt.Errorf("move thawed quota: %w", err)
+REDACTED
+	return thawed, nil
+REDACTED
+
 func (r *affiliateRepository) TransferQuotaToBalance(ctx context.Context, userID int64) (float64, float64, error) {
 	var transferred float64
 	var newBalance float64
@@ -128,6 +211,11 @@ func (r *affiliateRepository) TransferQuotaToBalance(ctx context.Context, userID
 	err := r.withTx(ctx, func(txCtx context.Context, txClient *dbent.Client) error {
 		if _, err := ensureUserAffiliateWithClient(txCtx, txClient, userID); err != nil {
 			return err
+	REDACTED
+
+		// Thaw any matured frozen quota before transfer.
+		if _, err := thawFrozenQuotaTx(txCtx, txClient, userID); err != nil {
+			return fmt.Errorf("thaw before transfer: %w", err)
 	REDACTED
 
 		rows, err := txClient.QueryContext(txCtx, `
@@ -211,10 +299,16 @@ REDACTED
 SELECT ua.user_id,
        COALESCE(u.email, ''),
        COALESCE(u.username, ''),
-       ua.created_at
+       ua.created_at,
+       COALESCE(SUM(ual.amount), 0)::double precision AS total_rebate
 FROM user_affiliates ua
 LEFT JOIN users u ON u.id = ua.user_id
+LEFT JOIN user_affiliate_ledger ual
+       ON ual.user_id = $1
+      AND ual.source_user_id = ua.user_id
+      AND ual.action = 'accrue'
 WHERE ua.inviter_id = $1
+GROUP BY ua.user_id, u.email, u.username, ua.created_at
 ORDER BY ua.created_at DESC
 LIMIT $2`, inviterID, limit)
 	if err != nil {
@@ -226,7 +320,7 @@ REDACTED
 	for rows.Next() {
 		var item service.AffiliateInvitee
 		var createdAt time.Time
-		if err := rows.Scan(&item.UserID, &item.Email, &item.Username, &createdAt); err != nil {
+		if err := rows.Scan(&item.UserID, &item.Email, &item.Username, &createdAt, &item.TotalRebate); err != nil {
 			return nil, err
 	REDACTED
 		item.CreatedAt = &createdAt
@@ -299,6 +393,7 @@ SELECT user_id,
        inviter_id,
        aff_count,
        aff_quota::double precision,
+       aff_frozen_quota::double precision,
        aff_history_quota::double precision,
        created_at,
        updated_at
@@ -326,6 +421,7 @@ REDACTED
 		&inviterID,
 		&out.AffCount,
 		&out.AffQuota,
+		&out.AffFrozenQuota,
 		&out.AffHistoryQuota,
 		&out.CreatedAt,
 		&out.UpdatedAt,
@@ -351,6 +447,7 @@ SELECT user_id,
        inviter_id,
        aff_count,
        aff_quota::double precision,
+       aff_frozen_quota::double precision,
        aff_history_quota::double precision,
        created_at,
        updated_at
@@ -380,6 +477,7 @@ REDACTED
 		&inviterID,
 		&out.AffCount,
 		&out.AffQuota,
+		&out.AffFrozenQuota,
 		&out.AffHistoryQuota,
 		&out.CreatedAt,
 		&out.UpdatedAt,

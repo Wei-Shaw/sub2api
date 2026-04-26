@@ -186,6 +186,7 @@ import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { useAuthStore, useAppStore REDACTED from '@/stores'
 import { getPublicSettings, isTotp2FARequired, isWeChatWebOAuthEnabled REDACTED from '@/api/auth'
 import type { TotpLoginResponse REDACTED from '@/types'
+import { clearAllAffiliateReferralCodes REDACTED from '@/utils/oauthAffiliate'
 
 const { t REDACTED = useI18n()
 
@@ -355,6 +356,7 @@ async function handleLogin(): Promise<void> {
     REDACTED
 
     // Show success toast
+    clearAllAffiliateReferralCodes()
     appStore.showSuccess(t('auth.loginSuccess'))
 
     // Redirect to dashboard or intended route
@@ -397,6 +399,7 @@ async function handle2FAVerify(code: string): Promise<void> {
 
     // Close modal and show success
     show2FAModal.value = false
+    clearAllAffiliateReferralCodes()
     appStore.showSuccess(t('auth.loginSuccess'))
 
     // Redirect to dashboard or intended route

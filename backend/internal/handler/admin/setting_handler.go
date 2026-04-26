@@ -186,6 +186,9 @@ REDACTED
 		DefaultConcurrency:                     settings.DefaultConcurrency,
 		DefaultBalance:                         settings.DefaultBalance,
 		AffiliateRebateRate:                    settings.AffiliateRebateRate,
+		AffiliateRebateFreezeHours:             settings.AffiliateRebateFreezeHours,
+		AffiliateRebateDurationDays:            settings.AffiliateRebateDurationDays,
+		AffiliateRebatePerInviteeCap:           settings.AffiliateRebatePerInviteeCap,
 		DefaultUserRPMLimit:                    settings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   defaultSubscriptions,
 		EnableModelFallback:                    settings.EnableModelFallback,
@@ -342,6 +345,9 @@ type UpdateSettingsRequest struct {
 	DefaultConcurrency                       int                               `json:"default_concurrency"`
 	DefaultBalance                           float64                           `json:"default_balance"`
 	AffiliateRebateRate                      *float64                          `json:"affiliate_rebate_rate"`
+	AffiliateRebateFreezeHours               *int                              `json:"affiliate_rebate_freeze_hours"`
+	AffiliateRebateDurationDays              *int                              `json:"affiliate_rebate_duration_days"`
+	AffiliateRebatePerInviteeCap             *float64                          `json:"affiliate_rebate_per_invitee_cap"`
 	DefaultUserRPMLimit                      int                               `json:"default_user_rpm_limit"`
 	DefaultSubscriptions                     []dto.DefaultSubscriptionSetting  `json:"default_subscriptions"`
 	AuthSourceDefaultEmailBalance            *float64                          `json:"auth_source_default_email_balance"`
@@ -484,6 +490,33 @@ REDACTED
 REDACTED
 	if affiliateRebateRate > service.AffiliateRebateRateMax {
 		affiliateRebateRate = service.AffiliateRebateRateMax
+REDACTED
+	affiliateRebateFreezeHours := previousSettings.AffiliateRebateFreezeHours
+	if req.AffiliateRebateFreezeHours != nil {
+		affiliateRebateFreezeHours = *req.AffiliateRebateFreezeHours
+REDACTED
+	if affiliateRebateFreezeHours < 0 {
+		affiliateRebateFreezeHours = service.AffiliateRebateFreezeHoursDefault
+REDACTED
+	if affiliateRebateFreezeHours > service.AffiliateRebateFreezeHoursMax {
+		affiliateRebateFreezeHours = service.AffiliateRebateFreezeHoursMax
+REDACTED
+	affiliateRebateDurationDays := previousSettings.AffiliateRebateDurationDays
+	if req.AffiliateRebateDurationDays != nil {
+		affiliateRebateDurationDays = *req.AffiliateRebateDurationDays
+REDACTED
+	if affiliateRebateDurationDays < 0 {
+		affiliateRebateDurationDays = service.AffiliateRebateDurationDaysDefault
+REDACTED
+	if affiliateRebateDurationDays > service.AffiliateRebateDurationDaysMax {
+		affiliateRebateDurationDays = service.AffiliateRebateDurationDaysMax
+REDACTED
+	affiliateRebatePerInviteeCap := previousSettings.AffiliateRebatePerInviteeCap
+	if req.AffiliateRebatePerInviteeCap != nil {
+		affiliateRebatePerInviteeCap = *req.AffiliateRebatePerInviteeCap
+REDACTED
+	if affiliateRebatePerInviteeCap < 0 {
+		affiliateRebatePerInviteeCap = service.AffiliateRebatePerInviteeCapDefault
 REDACTED
 	// 通用表格配置：兼容旧客户端未传字段时保留当前值。
 	if req.TableDefaultPageSize <= 0 {
@@ -1137,6 +1170,9 @@ REDACTED
 		DefaultConcurrency:               req.DefaultConcurrency,
 		DefaultBalance:                   req.DefaultBalance,
 		AffiliateRebateRate:              affiliateRebateRate,
+		AffiliateRebateFreezeHours:       affiliateRebateFreezeHours,
+		AffiliateRebateDurationDays:      affiliateRebateDurationDays,
+		AffiliateRebatePerInviteeCap:     affiliateRebatePerInviteeCap,
 		DefaultUserRPMLimit:              req.DefaultUserRPMLimit,
 		DefaultSubscriptions:             defaultSubscriptions,
 		EnableModelFallback:              req.EnableModelFallback,
@@ -1458,6 +1494,9 @@ REDACTED
 		DefaultConcurrency:                     updatedSettings.DefaultConcurrency,
 		DefaultBalance:                         updatedSettings.DefaultBalance,
 		AffiliateRebateRate:                    updatedSettings.AffiliateRebateRate,
+		AffiliateRebateFreezeHours:             updatedSettings.AffiliateRebateFreezeHours,
+		AffiliateRebateDurationDays:            updatedSettings.AffiliateRebateDurationDays,
+		AffiliateRebatePerInviteeCap:           updatedSettings.AffiliateRebatePerInviteeCap,
 		DefaultUserRPMLimit:                    updatedSettings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   updatedDefaultSubscriptions,
 		EnableModelFallback:                    updatedSettings.EnableModelFallback,
@@ -1767,6 +1806,15 @@ REDACTED
 REDACTED
 	if before.AffiliateRebateRate != after.AffiliateRebateRate {
 		changed = append(changed, "affiliate_rebate_rate")
+REDACTED
+	if before.AffiliateRebateFreezeHours != after.AffiliateRebateFreezeHours {
+		changed = append(changed, "affiliate_rebate_freeze_hours")
+REDACTED
+	if before.AffiliateRebateDurationDays != after.AffiliateRebateDurationDays {
+		changed = append(changed, "affiliate_rebate_duration_days")
+REDACTED
+	if before.AffiliateRebatePerInviteeCap != after.AffiliateRebatePerInviteeCap {
+		changed = append(changed, "affiliate_rebate_per_invitee_cap")
 REDACTED
 	if !equalDefaultSubscriptions(before.DefaultSubscriptions, after.DefaultSubscriptions) {
 		changed = append(changed, "default_subscriptions")

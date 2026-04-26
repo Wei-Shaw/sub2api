@@ -33,9 +33,11 @@ import { useRoute REDACTED from 'vue-router'
 import { useI18n REDACTED from 'vue-i18n'
 import { resolveWeChatOAuthStart REDACTED from '@/api/auth'
 import { useAppStore REDACTED from '@/stores'
+import { resolveAffiliateReferralCode, storeOAuthAffiliateCode REDACTED from '@/utils/oauthAffiliate'
 
 const props = withDefaults(defineProps<{
   disabled?: boolean
+  affCode?: string
   showDivider?: boolean
 REDACTED>(), {
   showDivider: true,
@@ -84,6 +86,7 @@ function startLogin(): void {
     return
   REDACTED
   const redirectTo = (route.query.redirect as string) || '/dashboard'
+  storeOAuthAffiliateCode(resolveAffiliateReferralCode(props.affCode, route.query.aff, route.query.aff_code))
   const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
   const normalized = apiBase.replace(/\/$/, '')
   const mode = resolvedStart.value.mode

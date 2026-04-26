@@ -125,7 +125,7 @@ REDACTED
 REDACTED
 	require.True(t, bound, "invitee must bind to inviter")
 
-	applied, err := repo.AccrueQuota(txCtx, inviter.ID, invitee.ID, 3.5)
+	applied, err := repo.AccrueQuota(txCtx, inviter.ID, invitee.ID, 3.5, 0)
 REDACTED
 	require.True(t, applied, "AccrueQuota must report applied=true")
 
