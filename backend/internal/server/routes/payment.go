@@ -28,7 +28,9 @@ func RegisterPaymentRoutes(
 		authenticated.GET("/config", paymentHandler.GetPaymentConfig)
 		authenticated.GET("/checkout-info", paymentHandler.GetCheckoutInfo)
 		authenticated.GET("/plans", paymentHandler.GetPlans)
-		authenticated.GET("/channels", paymentHandler.GetChannels)
+		// /channels endpoint removed: ChannelService has been migrated to the
+		// channel-management plugin. No frontend page consumes this route;
+		// re-introduce as a plugin-served endpoint if needed.
 		authenticated.GET("/limits", paymentHandler.GetLimits)
 
 		orders := authenticated.Group("/orders")
