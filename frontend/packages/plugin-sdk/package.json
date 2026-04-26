@@ -12,6 +12,8 @@
   },
   "peerDependencies": {
     "vue": "^3.4.0",
-    "lucide-vue-next": "^0.300.0"
+    "lucide-vue-next": "^0.300.0",
+    "vue-router": "^4.0.0",
+    "axios": "^1.0.0"
   }
 }
