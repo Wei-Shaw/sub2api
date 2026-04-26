@@ -186,6 +186,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/quota-monitor',
+    name: 'UserQuotaMonitor',
+    component: () => import('@/views/user/QuotaMonitorView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'My Quotas',
+      titleKey: 'nav.myQuota',
+      descriptionKey: 'userQuotaMonitor.description'
+    }
+  },
+  {
     path: '/redeem',
     name: 'Redeem',
     component: () => import('@/views/user/RedeemView.vue'),

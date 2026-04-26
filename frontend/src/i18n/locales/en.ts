@@ -392,6 +392,7 @@ export default {
     serviceQuota: 'Service Quota',
     serviceQuotaMonitor: 'Quota Monitor',
     serviceQuotaConfig: 'Quota Rules',
+    myQuota: 'My Quotas',
   },
 
   // Auth
@@ -5776,6 +5777,17 @@ export default {
     resetIn: 'Resets in {time}',
     windowNotActive: 'Awaiting first use',
     usageOf: '{used} of {limit}'
+  },
+
+  // User Quota Monitor (user-side, reuses admin RuntimeTable)
+  userQuotaMonitor: {
+    title: 'My Quotas',
+    description: 'Real-time view of service limiters affecting you',
+    disabled: 'Service quota is currently disabled',
+    empty: 'You are not subject to any service quota rules right now',
+    truncated: 'Showing first {count} entries (truncated)',
+    loadError: 'Failed to load my quota',
+    refresh: 'Refresh'
   },
 
   // Onboarding Tour

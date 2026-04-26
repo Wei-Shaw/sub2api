@@ -392,6 +392,7 @@ export default {
     serviceQuota: '服务配额',
     serviceQuotaMonitor: '限额监控',
     serviceQuotaConfig: '限额配置',
+    myQuota: '我的限额',
   },
 
   // Auth
@@ -5943,6 +5944,17 @@ export default {
     resetIn: '{time} 后重置',
     windowNotActive: '等待首次使用',
     usageOf: '已用 {used} / {limit}'
+  },
+
+  // 用户端"我的限额"页（复用 admin RuntimeTable 的子集列）
+  userQuotaMonitor: {
+    title: '我的限额',
+    description: '实时查看您命中的服务限流器与当前用量',
+    disabled: '服务限额功能未启用',
+    empty: '暂未命中任何服务限流规则',
+    truncated: '超过 {count} 条已截断',
+    loadError: '加载我的限额失败',
+    refresh: '手动刷新'
   },
 
   // Onboarding Tour
