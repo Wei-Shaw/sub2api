@@ -241,16 +241,19 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}
 
 	// 2. 【新增】Wait后二次检查余额/订阅
-	// quotaLease 持有 service quota concurrency 槽位（若规则匹配），
-	// 必须 defer 释放，覆盖正常返回 / 选号失败 / 转发失败 / panic 等所有路径。
-	quotaLease, err := h.billingCacheService.CheckBillingEligibilityForRequest(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.ServiceQuotaCheckRequest{Model: reqModel})
-	defer service.ReleaseQuotaLease(quotaLease)
+	// billingTicket：两阶段计费检查（详见 service.BillingTicket 注释），caller 必须 defer Close。
+	// 选定 account 后通过 ticket.Consume 才按 channel/account scope 抢 service quota concurrency。
+	billingTicket, err := h.billingCacheService.PrepareBillingCheckForRequest(
+		c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription,
+		service.ServiceQuotaCheckRequest{Model: reqModel, ChannelID: channelMapping.ChannelID},
+	)
 	if err != nil {
 		reqLog.Info("gateway.billing_eligibility_check_failed", zap.Error(err))
 		status, code, message, metadata := billingErrorDetails(err)
 		h.handleStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
 		return
 	}
+	defer billingTicket.Close()
 
 	// 设置请求所属分组 ID（用于渠道级功能判断，如 WebSearch 模拟）
 	parsedReq.GroupID = apiKey.GroupID
@@ -406,6 +409,17 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 			// 账号槽位/等待计数需要在超时或断开时安全回收
 			accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
+
+			// service quota 第二阶段：基于选定的 channel/account 抢槽位 / 增 RPM。
+			if err := billingTicket.Consume(c.Request.Context(), channelMapping.ChannelID, account.ID); err != nil {
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				reqLog.Info("gateway.service_quota_consume_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+				status, code, message, metadata := billingErrorDetails(err)
+				h.handleStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
+				return
+			}
 
 			// 转发请求 - 根据账号平台分流
 			var result *service.ForwardResult
@@ -644,6 +658,19 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 账号槽位/等待计数需要在超时或断开时安全回收
 			accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
 
+			// service quota 第二阶段：基于选定的 channel/account 抢槽位 / 增 RPM。
+			// fallback 重试切换 account 时同一个 ticket 会再次 Consume，BillingTicket 会先释放
+			// 旧 lease 再抢新的，使 lease 始终对应当前生效的 channel/account。
+			if err := billingTicket.Consume(c.Request.Context(), channelMapping.ChannelID, account.ID); err != nil {
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				reqLog.Info("gateway.service_quota_consume_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+				status, code, message, metadata := billingErrorDetails(err)
+				h.handleStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
+				return
+			}
+
 			// ===== 用户消息串行队列 START =====
 			var queueRelease func()
 			umqMode := h.getUserMsgQueueMode(account, parsedReq)
@@ -762,16 +789,20 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 							return
 						}
 						fallbackAPIKey := cloneAPIKeyWithGroup(apiKey, fallbackGroup)
-						// fallbackQuotaLease 与外层 quotaLease 是不同 scope（不同 group / 规则匹配），
-						// 这里 defer 与 handler 同生命周期；正常路径与外层 lease 串联释放，
-						// 错误路径同样靠 defer 兜底。
-						fallbackQuotaLease, err := h.billingCacheService.CheckBillingEligibilityForRequest(c.Request.Context(), fallbackAPIKey.User, fallbackAPIKey, fallbackGroup, nil, service.ServiceQuotaCheckRequest{Model: reqModel})
-						defer service.ReleaseQuotaLease(fallbackQuotaLease)
+						// fallbackBillingTicket 与外层 billingTicket 是不同 scope（不同 group / 规则匹配），
+						// defer 与 handler 同生命周期。注意：fallback 重试回到外层 select-account 循环后，
+						// Consume 会基于新选定的 account 抢槽位；这里只完成"必到字段"检查。
+						// channelID 不带过去：channelMapping 来自原 group，不适用于 fallback group。
+						fallbackBillingTicket, err := h.billingCacheService.PrepareBillingCheckForRequest(
+							c.Request.Context(), fallbackAPIKey.User, fallbackAPIKey, fallbackGroup, nil,
+							service.ServiceQuotaCheckRequest{Model: reqModel},
+						)
 						if err != nil {
 							status, code, message, metadata := billingErrorDetails(err)
 							h.handleStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
 							return
 						}
+						defer fallbackBillingTicket.Close()
 						// 兜底重试按"直接请求兜底分组"处理：清除强制平台，允许按分组平台调度
 						ctx := context.WithValue(c.Request.Context(), ctxkey.ForcePlatform, "")
 						c.Request = c.Request.WithContext(ctx)
@@ -779,6 +810,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						currentSubscription = nil
 						fallbackUsed = true
 						retryWithFallback = true
+						// 切换到 fallbackBillingTicket：原 ticket 关闭释放任何已抢的 lease，
+						// 后续 select-account 循环会在选定新 account 后 Consume 在 fallback ticket 上。
+						// 外层 defer 仍指向原 ticket（once-safe，重复 Close 无害）。
+						billingTicket.Close()
+						billingTicket = fallbackBillingTicket
 						break
 					}
 					_ = h.antigravityGatewayService.WriteMappedClaudeError(c, account, promptTooLongErr.StatusCode, promptTooLongErr.RequestID, promptTooLongErr.Body)
@@ -1509,14 +1545,17 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 
 	// 校验 billing eligibility（订阅/余额）
 	// 【注意】不计算并发，但需要校验订阅/余额
-	// quotaLease 持有 service quota concurrency 槽位（若规则匹配），handler 返回时统一释放。
-	quotaLease, err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription)
-	defer service.ReleaseQuotaLease(quotaLease)
+	// billingTicket：两阶段计费检查（详见 service.BillingTicket 注释），caller 必须 defer Close。
+	billingTicket, err := h.billingCacheService.PrepareBillingCheckForRequest(
+		c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription,
+		service.ServiceQuotaCheckRequest{Model: parsedReq.Model},
+	)
 	if err != nil {
 		status, code, message, metadata := billingErrorDetails(err)
 		h.errorResponseWithMetadata(c, status, code, message, metadata)
 		return
 	}
+	defer billingTicket.Close()
 
 	// 计算粘性会话 hash
 	parsedReq.SessionContext = &service.SessionContext{
@@ -1534,6 +1573,14 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 		return
 	}
 	setOpsSelectedAccount(c, account.ID, account.Platform)
+
+	// service quota 第二阶段：count_tokens 不抢账号并发槽位，但服务限额仍要按 channel/account scope 检查。
+	if err := billingTicket.Consume(c.Request.Context(), 0, account.ID); err != nil {
+		reqLog.Info("gateway.count_tokens_service_quota_consume_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		status, code, message, metadata := billingErrorDetails(err)
+		h.errorResponseWithMetadata(c, status, code, message, metadata)
+		return
+	}
 
 	// 转发请求（不记录使用量）
 	if err := h.gatewayService.ForwardCountTokens(c.Request.Context(), c, account, parsedReq); err != nil {

@@ -371,15 +371,87 @@ func (s *serviceQuotaService) validatePathLinkage(ctx context.Context, path Serv
 	return nil
 }
 
+// PreCheck 兼容旧 caller 的一阶段入口。
+//
+// 新代码请使用 BillingCacheService.PrepareBillingCheck（caller 路由前）+
+// BillingTicket.Consume（选定 channel/account 后）的两阶段路径，参见
+// service_quota_types.go 中 ServiceQuotaService.PreCheckSelect / PreCheckAcquire 的注释。
+//
+// 内部实现：直接复用 PreCheckSelect → PreCheckAcquire，二者共享同一份匹配/抢槽位逻辑。
 func (s *serviceQuotaService) PreCheck(ctx context.Context, req ServiceQuotaCheckRequest) (*ServiceQuotaLease, error) {
-	matched, ok := s.matchedRules(ctx, req)
-	if !ok || len(matched) == 0 {
+	plan, err := s.PreCheckSelect(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if plan == nil {
+		return nil, nil
+	}
+	return s.PreCheckAcquire(ctx, plan, req.ChannelID, req.AccountID)
+}
+
+// PreCheckSelect 仅做规则级过滤（enabled、counter_mode=user 时 target_user_ids 命中），
+// 不做 path 匹配也不抢 concurrency / 增 rpm。返回 nil plan 表示"无规则需要参与本次请求"。
+//
+// 设计为只读、可在 caller 路由前调用——此时 ChannelID / AccountID 通常未知。
+func (s *serviceQuotaService) PreCheckSelect(ctx context.Context, req ServiceQuotaCheckRequest) (*ServiceQuotaPreCheckPlan, error) {
+	if s == nil || s.repo == nil || s.settings == nil || s.limiter == nil || req.UserID <= 0 {
+		return nil, nil
+	}
+	if !s.isEnabled(ctx) {
+		return nil, nil
+	}
+	rules := s.loadRulesWithCache(ctx)
+	if len(rules) == 0 {
+		return nil, nil
+	}
+	candidates := make([]*ServiceQuotaRule, 0, len(rules))
+	for _, rule := range rules {
+		if rule == nil || !rule.Enabled {
+			continue
+		}
+		if !serviceQuotaTargetMatches(rule, req.UserID) {
+			continue
+		}
+		candidates = append(candidates, rule)
+	}
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+	return &ServiceQuotaPreCheckPlan{
+		Rules:      candidates,
+		Req:        req,
+		PreparedAt: time.Now(),
+	}, nil
+}
+
+// PreCheckAcquire 在 caller 选定 channel + account 后调用，基于 plan 重新做 path 匹配
+// （含 channel/account 维度），按 concurrency → rpm → deferred 三轮判定，命中超限返回错误，
+// 否则返回已 acquire 的 *ServiceQuotaLease。
+//
+// plan == nil（PreCheckSelect 返回空）或匹配后无任何 path 命中时返回 (nil, nil)。
+// 任何超限错误会先释放本轮已抢的 concurrency 槽位再返回，调用方无需补偿。
+func (s *serviceQuotaService) PreCheckAcquire(ctx context.Context, plan *ServiceQuotaPreCheckPlan, channelID, accountID int64) (*ServiceQuotaLease, error) {
+	if plan == nil || len(plan.Rules) == 0 {
+		return nil, nil
+	}
+	req := plan.Req
+	req.ChannelID = channelID
+	req.AccountID = accountID
+
+	matched := make([]matchedQuotaRule, 0, len(plan.Rules))
+	for _, rule := range plan.Rules {
+		paths := findMatchingPaths(rule, req)
+		if len(paths) == 0 {
+			continue
+		}
+		matched = append(matched, matchedQuotaRule{rule: rule, paths: paths})
+	}
+	if len(matched) == 0 {
 		return nil, nil
 	}
 	matched = applyServiceQuotaFallbackOverride(matched)
 
 	lease := &ServiceQuotaLease{}
-
 	// 三轮：concurrency → RPM → deferred(tpm/tpd/daily_usd)。先抢并发额度避免后续判断时占用未释放。
 	for _, m := range matched {
 		for _, p := range m.paths {
@@ -421,6 +493,19 @@ func (s *serviceQuotaService) PreCheck(ctx context.Context, req ServiceQuotaChec
 		}
 	}
 	return lease, nil
+}
+
+// IsPreCheckTwoPhase 返回 service_quota.precheck_two_phase setting 的当前值。
+// 读取失败或 setting 缺失时一律返回 false（保守降级，沿用旧行为）。
+func (s *serviceQuotaService) IsPreCheckTwoPhase(ctx context.Context) bool {
+	if s == nil || s.settings == nil {
+		return false
+	}
+	enabled, err := s.settings.GetBool(ctx, SettingKeyServiceQuotaPreCheckTwoPhase)
+	if err != nil {
+		return false
+	}
+	return enabled
 }
 
 func (s *serviceQuotaService) Record(ctx context.Context, req ServiceQuotaRecordRequest) {

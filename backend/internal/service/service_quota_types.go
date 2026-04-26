@@ -10,6 +10,17 @@ import (
 const (
 	SettingKeyServiceQuotaEnabled = "service_quota_enabled"
 
+	// SettingKeyServiceQuotaPreCheckTwoPhase 控制 PreCheck 是否走两阶段路径
+	// （PreCheckSelect 在路由前选规则、PreCheckAcquire 在选定 channel/account 后抢槽位）。
+	//
+	// 默认 false（关闭）：CheckBillingEligibility 行为与历史版本完全一致，PreCheck 在 channel/account
+	// 还未确定时被一次性调用，account/channel scope 的 concurrency / rpm 限流器仍然失效。
+	//
+	// true（开启）：BillingTicket.Prepare 只调 PreCheckSelect 选规则，BillingTicket.Consume 在
+	// caller 选定 channel + account 后调用 PreCheckAcquire 才真正抢 concurrency / 增 rpm，
+	// account/channel scope 限流器从此生效。详见 BillingCacheService.PrepareBillingCheck。
+	SettingKeyServiceQuotaPreCheckTwoPhase = "service_quota.precheck_two_phase"
+
 	ServiceQuotaLimiterRPM         = "rpm"
 	ServiceQuotaLimiterTPM         = "tpm"
 	ServiceQuotaLimiterTPD         = "tpd"
@@ -134,6 +145,24 @@ type ServiceQuotaLease struct {
 	Release func()
 }
 
+// ServiceQuotaPreCheckPlan 是两阶段 PreCheck 的中间态。
+//
+// 阶段 A（PreCheckSelect）只做"必到字段"过滤——is_enabled、counter_mode=user 时 target_user_ids 命中——
+// 不做 path 匹配（channel_id / account_id 此时还未选定），返回的候选规则集合保留完整 path 列表，
+// 由阶段 B 在补全 channel/account 后再次 findMatchingPaths。
+//
+// Plan 持有原始 req 副本（不含 channel/account），让阶段 B 可基于同一 req 重建 ServiceQuotaCheckRequest；
+// rulesVersion 则记录读取时的规则 snapshot 序号，方便后续观测/测试。Plan 一定是只读的，跨 goroutine 共享安全。
+type ServiceQuotaPreCheckPlan struct {
+	// Rules 是阶段 A 选出的候选规则集合，包含全部 path（未按 channel/account 过滤）。
+	// 阶段 B 会按补全后的 req 再次做 path 匹配。
+	Rules []*ServiceQuotaRule
+	// Req 是阶段 A 调用时的请求快照。阶段 B 会在此基础上补 ChannelID/AccountID。
+	Req ServiceQuotaCheckRequest
+	// PreparedAt 记录 plan 创建时间，用于观测/调试，不参与匹配语义。
+	PreparedAt time.Time
+}
+
 // AccountScopeInfo / GroupScopeInfo 用于 path 链路一致性校验：下级必须是上级的子孙。
 type AccountScopeInfo struct {
 	Platform string
@@ -194,6 +223,23 @@ type ServiceQuotaService interface {
 	// 用于 handler 层在删除 channel/group/account/user 等关联实体后
 	// 主动让服务限额规则缓存失效。
 	ReloadCache(ctx context.Context) error
+	// PreCheck 为兼容旧 caller 保留的一阶段方法：内部等价于 PreCheckSelect + PreCheckAcquire，
+	// 但 ChannelID/AccountID 取自传入 req（caller 路由前调用时这两字段为 0）。
+	//
+	// 新代码请走 BillingCacheService.PrepareBillingCheck 两阶段路径。
 	PreCheck(ctx context.Context, req ServiceQuotaCheckRequest) (*ServiceQuotaLease, error)
+	// PreCheckSelect 在路由前调用，仅做规则级过滤（enabled / target_user_ids），返回候选规则与
+	// 计划上下文。不抢 concurrency、不增 RPM。
+	PreCheckSelect(ctx context.Context, req ServiceQuotaCheckRequest) (*ServiceQuotaPreCheckPlan, error)
+	// PreCheckAcquire 在 caller 选定 channel + account 后调用，基于 plan 候选规则做 path 匹配
+	// （含 channel/account 维度），按 concurrency → rpm → deferred 三轮判定，命中超限返回错误，
+	// 否则返回已 acquire 的 *ServiceQuotaLease（caller 必须 defer Release）。
+	//
+	// channelID/accountID == 0 表示 caller 未选定该维度（例如某些 fallback 路径或仅 group/platform
+	// 限定的请求）；此时只命中那些对应字段为 nil 的 path。
+	PreCheckAcquire(ctx context.Context, plan *ServiceQuotaPreCheckPlan, channelID, accountID int64) (*ServiceQuotaLease, error)
+	// IsPreCheckTwoPhase 返回是否启用两阶段 PreCheck（对应 setting service_quota.precheck_two_phase）。
+	// BillingTicket.Consume 据此决定是否在 caller 侧真正抢槽位。
+	IsPreCheckTwoPhase(ctx context.Context) bool
 	Record(ctx context.Context, req ServiceQuotaRecordRequest)
 }

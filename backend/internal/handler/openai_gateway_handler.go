@@ -226,15 +226,18 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 
 	// 2. Re-check billing eligibility after wait
-	// quotaLease 持有 service quota concurrency 槽位（若规则匹配），handler 返回时统一释放。
-	quotaLease, err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription)
-	defer service.ReleaseQuotaLease(quotaLease)
+	// billingTicket：两阶段计费检查（详见 service.BillingTicket 注释），caller 必须 defer Close。
+	billingTicket, err := h.billingCacheService.PrepareBillingCheckForRequest(
+		c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription,
+		service.ServiceQuotaCheckRequest{Model: reqModel, ChannelID: channelMapping.ChannelID},
+	)
 	if err != nil {
 		reqLog.Info("openai.billing_eligibility_check_failed", zap.Error(err))
 		status, code, message, metadata := billingErrorDetails(err)
 		h.handleStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
 		return
 	}
+	defer billingTicket.Close()
 
 	// Generate session hash (header first; fallback to prompt_cache_key)
 	sessionHash := h.gatewayService.GenerateSessionHash(c, sessionHashBody)
@@ -296,6 +299,17 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if !acquired {
+			return
+		}
+
+		// service quota 第二阶段：基于选定的 channel/account 抢槽位 / 增 RPM。
+		if err := billingTicket.Consume(c.Request.Context(), channelMapping.ChannelID, account.ID); err != nil {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			reqLog.Info("openai.service_quota_consume_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+			status, code, message, metadata := billingErrorDetails(err)
+			h.handleStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
 			return
 		}
 
@@ -595,15 +609,18 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		defer userReleaseFunc()
 	}
 
-	// quotaLease 持有 service quota concurrency 槽位（若规则匹配），handler 返回时统一释放。
-	quotaLease, err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription)
-	defer service.ReleaseQuotaLease(quotaLease)
+	// billingTicket：两阶段计费检查（详见 service.BillingTicket 注释），caller 必须 defer Close。
+	billingTicket, err := h.billingCacheService.PrepareBillingCheckForRequest(
+		c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription,
+		service.ServiceQuotaCheckRequest{Model: reqModel, ChannelID: channelMappingMsg.ChannelID},
+	)
 	if err != nil {
 		reqLog.Info("openai_messages.billing_eligibility_check_failed", zap.Error(err))
 		status, code, message, metadata := billingErrorDetails(err)
 		h.anthropicStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
 		return
 	}
+	defer billingTicket.Close()
 
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
 	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
@@ -676,6 +693,17 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if !acquired {
+			return
+		}
+
+		// service quota 第二阶段：基于选定的 channel/account 抢槽位 / 增 RPM。
+		if err := billingTicket.Consume(c.Request.Context(), channelMappingMsg.ChannelID, account.ID); err != nil {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			reqLog.Info("openai_messages.service_quota_consume_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+			status, code, message, metadata := billingErrorDetails(err)
+			h.anthropicStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
 			return
 		}
 
@@ -1164,16 +1192,18 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	currentUserRelease = wrapReleaseOnDone(ctx, userReleaseFunc)
 
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
-	// quotaLease 持有 service quota concurrency 槽位（若规则匹配）。
-	// websocket handler 在 return 时关闭整个连接，defer 释放即可覆盖
-	// 客户端断开 / 上游断开 / panic 等所有路径。
-	quotaLease, err := h.billingCacheService.CheckBillingEligibility(ctx, apiKey.User, apiKey, apiKey.Group, subscription)
-	defer service.ReleaseQuotaLease(quotaLease)
+	// billingTicket：两阶段计费检查。websocket handler 在 return 时关闭整个连接，
+	// defer ticket.Close() 覆盖客户端断开 / 上游断开 / panic 等所有路径。
+	billingTicket, err := h.billingCacheService.PrepareBillingCheckForRequest(
+		ctx, apiKey.User, apiKey, apiKey.Group, subscription,
+		service.ServiceQuotaCheckRequest{Model: reqModel, ChannelID: channelMappingWS.ChannelID},
+	)
 	if err != nil {
 		reqLog.Info("openai.websocket_billing_eligibility_check_failed", zap.Error(err))
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "billing check failed")
 		return
 	}
+	defer billingTicket.Close()
 
 	sessionHash := h.gatewayService.GenerateSessionHashWithFallback(
 		c,
@@ -1229,6 +1259,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	currentAccountRelease = wrapReleaseOnDone(ctx, accountReleaseFunc)
 	if err := h.gatewayService.BindStickySession(ctx, apiKey.GroupID, sessionHash, account.ID); err != nil {
 		reqLog.Warn("openai.websocket_bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+	}
+
+	// service quota 第二阶段：基于选定的 channel/account 抢槽位 / 增 RPM。
+	if err := billingTicket.Consume(ctx, channelMappingWS.ChannelID, account.ID); err != nil {
+		reqLog.Info("openai.websocket_service_quota_consume_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "service quota exceeded")
+		return
 	}
 
 	token, _, err := h.gatewayService.GetAccessToken(ctx, account)

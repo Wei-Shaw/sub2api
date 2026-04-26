@@ -139,15 +139,19 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	}
 
 	// 2. Re-check billing
-	// quotaLease 持有 service quota concurrency 槽位（若规则匹配），handler 返回时统一释放。
-	quotaLease, err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription)
-	defer service.ReleaseQuotaLease(quotaLease)
+	// billingTicket：两阶段计费检查的入场票，handler 必须在所有返回路径 defer Close。
+	// 选定 account 后 Consume 才会按 channel/account scope 抢 service quota concurrency。
+	billingTicket, err := h.billingCacheService.PrepareBillingCheckForRequest(
+		c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription,
+		service.ServiceQuotaCheckRequest{Model: reqModel, ChannelID: channelMapping.ChannelID},
+	)
 	if err != nil {
 		reqLog.Info("gateway.responses.billing_check_failed", zap.Error(err))
 		status, code, message, metadata := billingErrorDetails(err)
 		h.responsesErrorResponseWithMetadata(c, status, code, message, metadata)
 		return
 	}
+	defer billingTicket.Close()
 
 	// Parse request for session hash
 	parsedReq, _ := service.ParseGatewayRequest(body, "responses")
@@ -211,6 +215,17 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			}
 		}
 		accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
+
+		// 4.1 service quota 第二阶段：基于选定的 channel/account 抢槽位 / 增 RPM。
+		if err := billingTicket.Consume(c.Request.Context(), channelMapping.ChannelID, account.ID); err != nil {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			reqLog.Info("gateway.responses.service_quota_consume_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+			status, code, message, metadata := billingErrorDetails(err)
+			h.responsesErrorResponseWithMetadata(c, status, code, message, metadata)
+			return
+		}
 
 		// 5. Forward request
 		writerSizeBeforeForward := c.Writer.Size()

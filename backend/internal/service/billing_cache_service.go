@@ -107,7 +107,11 @@ func NewBillingCacheService(
 // lease 可能为 nil（无规则匹配 / 服务限额未启用 / 仅命中非 concurrency 限流器），
 // 返回的 lease.Release 已用 sync.Once 保护，重复调用安全。
 //
-// 推荐用法：
+// 兼容性：此方法保持单阶段语义，PreCheck 在 channel/account 未知时被一次性调用。
+// 新 caller 请改用 PrepareBillingCheck + BillingTicket.Consume 的两阶段 API，
+// 这样 channel / account scope 限流器才能在选定上游账号后真正生效。
+//
+// 推荐用法（旧）：
 //
 //	lease, err := svc.CheckBillingEligibility(ctx, user, apiKey, group, sub)
 //	defer ReleaseQuotaLease(lease)
@@ -119,7 +123,65 @@ func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user 
 // CheckBillingEligibilityForRequest 同 CheckBillingEligibility，但额外接受 ServiceQuotaCheckRequest
 // 以便携带 model、channel 等服务限额匹配维度。返回 lease 的生命周期约定与
 // CheckBillingEligibility 一致，调用方必须 defer ReleaseQuotaLease(lease)。
-func (s *BillingCacheService) CheckBillingEligibilityForRequest(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, quotaReq ServiceQuotaCheckRequest) (lease *ServiceQuotaLease, err error) {
+//
+// 内部走单阶段路径：Prepare → 立即 Consume(channelID=quotaReq.ChannelID, accountID=quotaReq.AccountID)，
+// 与 PrepareBillingCheck + Consume 的双阶段语义在 caller 路由前调用时等价。
+func (s *BillingCacheService) CheckBillingEligibilityForRequest(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, quotaReq ServiceQuotaCheckRequest) (*ServiceQuotaLease, error) {
+	ticket, err := s.prepareBillingCheckInternal(ctx, user, apiKey, group, subscription, quotaReq, true /* legacySinglePhase */)
+	if err != nil {
+		return nil, err
+	}
+	if ticket == nil {
+		return nil, nil
+	}
+	if err := ticket.Consume(ctx, quotaReq.ChannelID, quotaReq.AccountID); err != nil {
+		ticket.Close()
+		return nil, err
+	}
+	// 把 lease 从 ticket 拆出去，让旧 caller 沿用 defer ReleaseQuotaLease(lease) 协议。
+	// 这里不再调用 ticket.Close（lease 所有权转交 caller），其余字段无 lease 之外的资源。
+	lease := ticket.detachLease()
+	return lease, nil
+}
+
+// PrepareBillingCheck 是两阶段 PreCheck 的第一阶段入口。
+//
+// 在 caller 路由前调用：
+//   - 执行余额 / 订阅 / API Key 限速 / RPM 等不依赖 channel/account 的检查；
+//   - 通过 ServiceQuotaService.PreCheckSelect 选出候选规则但不抢 concurrency；
+//   - 返回的 *BillingTicket 必须由 caller 持有并在所有返回路径上 defer ticket.Close()。
+//
+// 后续 caller 选定 channel + account（路由完成）后，必须调用 ticket.Consume(ctx, channelID, accountID)
+// 才会真正按 channel/account scope 抢 concurrency / 增 RPM。
+//
+// feature flag service_quota.precheck_two_phase 关闭时（默认），ticket 在 Prepare 阶段就完成
+// PreCheck（沿用旧行为），Consume 退化为校验入参后立即返回 nil；caller 仍需 defer Close 释放 lease。
+//
+// 失败语义：返回 error 时 ticket==nil，caller 不需要也不应该 Close。
+//
+// 推荐用法：
+//
+//	ticket, err := billingCache.PrepareBillingCheck(ctx, user, apiKey, group, sub)
+//	if err != nil { return err }
+//	defer ticket.Close()
+//	// ... 选定 account / channel ...
+//	if err := ticket.Consume(ctx, channelID, accountID); err != nil { return err }
+func (s *BillingCacheService) PrepareBillingCheck(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription) (*BillingTicket, error) {
+	return s.PrepareBillingCheckForRequest(ctx, user, apiKey, group, subscription, ServiceQuotaCheckRequest{})
+}
+
+// PrepareBillingCheckForRequest 同 PrepareBillingCheck，但 caller 可以预先填好 model / 已知字段。
+// quotaReq 中 ChannelID / AccountID 可留 0（caller 通常路由前还不知道），后续由 ticket.Consume 补全。
+func (s *BillingCacheService) PrepareBillingCheckForRequest(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, quotaReq ServiceQuotaCheckRequest) (*BillingTicket, error) {
+	return s.prepareBillingCheckInternal(ctx, user, apiKey, group, subscription, quotaReq, false /* legacySinglePhase */)
+}
+
+// prepareBillingCheckInternal 是 PrepareBillingCheck / CheckBillingEligibility 共用的核心实现。
+//
+// legacySinglePhase=true 时模拟旧 CheckBillingEligibility 行为：忽略 feature flag，强制在 Prepare
+// 阶段就走旧 PreCheck（一次性匹配 + acquire），Consume 阶段不再做任何事。这让 CheckBillingEligibility
+// 调用 prepareBillingCheckInternal+Consume 后行为完全等价于历史版本。
+func (s *BillingCacheService) prepareBillingCheckInternal(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, quotaReq ServiceQuotaCheckRequest, legacySinglePhase bool) (ticket *BillingTicket, err error) {
 	// 简易模式：跳过所有计费检查
 	if s.cfg.RunMode == config.RunModeSimple {
 		return nil, nil
@@ -127,26 +189,46 @@ func (s *BillingCacheService) CheckBillingEligibilityForRequest(ctx context.Cont
 	if s.circuitBreaker != nil && !s.circuitBreaker.Allow() {
 		return nil, ErrBillingServiceUnavailable
 	}
-	if s.serviceQuota != nil && user != nil {
+
+	if user != nil {
 		quotaReq.UserID = user.ID
 		if group != nil {
 			quotaReq.GroupID = group.ID
 			quotaReq.Platform = group.Platform
 		}
-		acquired, perr := s.serviceQuota.PreCheck(ctx, quotaReq)
-		if perr != nil {
-			return nil, perr
+	}
+
+	twoPhase := !legacySinglePhase && s.serviceQuota != nil && s.serviceQuota.IsPreCheckTwoPhase(ctx)
+
+	t := &BillingTicket{
+		svc:          s,
+		quotaReq:     quotaReq,
+		twoPhase:     twoPhase,
+		legacyOneOff: legacySinglePhase,
+	}
+
+	if s.serviceQuota != nil && user != nil {
+		if twoPhase {
+			plan, perr := s.serviceQuota.PreCheckSelect(ctx, quotaReq)
+			if perr != nil {
+				return nil, perr
+			}
+			t.plan = plan
+		} else {
+			// 旧行为 / flag off：Prepare 阶段就完成完整 PreCheck，立即抢占 concurrency。
+			acquired, perr := s.serviceQuota.PreCheck(ctx, quotaReq)
+			if perr != nil {
+				return nil, perr
+			}
+			t.lease = wrapServiceQuotaLeaseOnce(acquired)
 		}
-		// 把原始 Release 包成 once-safe，防止上层重复 defer 或 panic 路径双释放。
-		lease = wrapServiceQuotaLeaseOnce(acquired)
 	}
 
 	// 任何后续检查失败都要释放已抢占的 concurrency 槽位，
 	// 避免 PreCheck 通过、后续 RPM/余额校验失败时 lease 永远漏。
 	defer func() {
-		if err != nil && lease != nil {
-			lease.Release()
-			lease = nil
+		if err != nil && t != nil {
+			t.Close()
 		}
 	}()
 
@@ -157,7 +239,7 @@ func (s *BillingCacheService) CheckBillingEligibilityForRequest(ctx context.Cont
 		if err = s.checkSubscriptionEligibility(ctx, user.ID, group, subscription); err != nil {
 			return nil, err
 		}
-	} else {
+	} else if user != nil {
 		if err = s.checkBalanceEligibility(ctx, user.ID); err != nil {
 			return nil, err
 		}
@@ -175,7 +257,7 @@ func (s *BillingCacheService) CheckBillingEligibilityForRequest(ctx context.Cont
 		return nil, err
 	}
 
-	return lease, nil
+	return t, nil
 }
 
 // wrapServiceQuotaLeaseOnce 把 PreCheck 返回的 lease.Release 包成 sync.Once，
