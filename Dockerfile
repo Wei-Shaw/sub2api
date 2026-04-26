@@ -82,6 +82,57 @@ RUN VERSION_VALUE="${VERSION}" && \
     ./cmd/server
 
 # -----------------------------------------------------------------------------
+# Stage 2.4: Plugin Frontend Builder
+# -----------------------------------------------------------------------------
+# Iterates over every plugins/<name>/frontend/ that has a package.json and
+# runs `pnpm install --frozen-lockfile && pnpm build`. Output dist/ is copied
+# to /out/plugin-frontend/<name>/dist so the plugin-builder stage can place it
+# back into /src/plugins/<name>/frontend/dist/ before `go build` so that
+# `//go:embed all:frontend/dist` finds the real bundle.
+#
+# Why a separate stage:
+#   - Plugin frontends are independent npm projects (independent lockfile,
+#     independent vite.config). They are NOT part of root pnpm-workspace.yaml
+#     to keep the host frontend's pnpm-lock free of plugin-side dependencies.
+#   - Cache mount on /pnpm-store keeps repeat builds fast.
+FROM ${NODE_IMAGE} AS plugin-frontend-builder
+
+WORKDIR /src
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
+ENV PNPM_HOME=/pnpm-store
+
+# Copy plugin source (deps + src). Host frontend node_modules also needs to be
+# accessible because plugin vite config falls back to host frontend/node_modules
+# for transitive deps (e.g. @tanstack/vue-virtual used by host common DataTable
+# that the plugin reuses via vite alias).
+COPY frontend/ /src/frontend/
+COPY plugins/ /src/plugins/
+
+# First install host frontend deps once so plugin builds can resolve into them.
+# Reuse the same pnpm cache mount as the plugin-frontend installs below.
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm-store \
+    set -eux; \
+    cd /src/frontend; \
+    pnpm install --frozen-lockfile
+
+# Iterate over plugins/*/frontend/, install + build each that has a package.json.
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm-store \
+    set -eux; \
+    mkdir -p /out/plugin-frontend; \
+    for dir in /src/plugins/*/frontend/; do \
+      [ -f "$dir/package.json" ] || { echo "skip $dir (no package.json)"; continue; }; \
+      name="$(basename "$(dirname "$dir")")"; \
+      echo "=== plugin frontend: $name ==="; \
+      cd "$dir"; \
+      pnpm install --frozen-lockfile; \
+      pnpm run build; \
+      mkdir -p "/out/plugin-frontend/$name"; \
+      cp -r dist "/out/plugin-frontend/$name/"; \
+    done; \
+    ls -laR /out/plugin-frontend/ || true
+
+# -----------------------------------------------------------------------------
 # Stage 2.5: Built-in Plugin Binaries
 # -----------------------------------------------------------------------------
 # Builds every official plugin under plugins/* into a Linux binary that lands
@@ -104,6 +155,21 @@ WORKDIR /src
 # local replace pointing at ../../plugin-sdk).
 COPY plugin-sdk/ /src/plugin-sdk/
 COPY plugins/ /src/plugins/
+
+# Pull the pre-built plugin frontend dist from plugin-frontend-builder so
+# `//go:embed all:frontend/dist` in each plugin's main.go finds real bundle
+# files. The for loop overwrites the .keep placeholder with the real dist.
+COPY --from=plugin-frontend-builder /out/plugin-frontend/ /tmp/plugin-frontend/
+RUN set -eux; \
+    if [ -d /tmp/plugin-frontend ]; then \
+      for d in /tmp/plugin-frontend/*/; do \
+        n="$(basename "$d")"; \
+        echo "=== injecting frontend dist for plugin: $n ==="; \
+        rm -rf "/src/plugins/$n/frontend/dist"; \
+        mkdir -p "/src/plugins/$n/frontend/dist"; \
+        cp -r "$d/dist/." "/src/plugins/$n/frontend/dist/"; \
+      done; \
+    fi
 
 # Build every plugin under plugins/<name>/. The convention is that each plugin
 # directory contains a main package buildable from its root.
