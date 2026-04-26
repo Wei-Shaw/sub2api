@@ -37,8 +37,8 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { PaymentOrder } from '@/types/payment'
-import type { Column } from '@/components/common/types'
-import DataTable from '@/components/common/DataTable.vue'
+import type { Column } from '@sub2api/plugin-sdk'
+import { DataTable } from '@sub2api/plugin-sdk'
 import OrderStatusBadge from '@/components/payment/OrderStatusBadge.vue'
 
 const { t } = useI18n()

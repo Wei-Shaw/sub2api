@@ -244,10 +244,10 @@ import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import type { GroupRateMultiplierEntry } from '@/api/admin/groups'
 import type { AdminGroup, AdminUser } from '@/types'
-import BaseDialog from '@/components/common/BaseDialog.vue'
-import Pagination from '@/components/common/Pagination.vue'
+import { BaseDialog } from '@sub2api/plugin-sdk'
+import { Pagination } from '@sub2api/plugin-sdk'
 import Icon from '@/components/icons/Icon.vue'
-import PlatformIcon from '@/components/common/PlatformIcon.vue'
+import { PlatformIcon } from '@sub2api/plugin-sdk'
 
 interface LocalEntry extends GroupRateMultiplierEntry {}
 

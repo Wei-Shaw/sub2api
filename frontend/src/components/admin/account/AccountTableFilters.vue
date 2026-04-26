@@ -16,7 +16,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'; import { useI18n } from 'vue-i18n'; import Select from '@/components/common/Select.vue'; import SearchInput from '@/components/common/SearchInput.vue'
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { Select } from '@sub2api/plugin-sdk'
+import SearchInput from '@/components/common/SearchInput.vue'
 import type { AdminGroup } from '@/types'
 const props = defineProps<{ searchQuery: string; filters: Record<string, any>; groups?: AdminGroup[] }>()
 const emit = defineEmits(['update:searchQuery', 'update:filters', 'change']); const { t } = useI18n()

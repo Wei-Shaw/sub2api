@@ -8,7 +8,7 @@ import type { OpsThroughputGroupBreakdownItem, OpsThroughputPlatformBreakdownIte
 import type { ChartState } from '../types'
 import { formatHistoryLabel, sumNumbers } from '../utils/opsFormatters'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
-import EmptyState from '@/components/common/EmptyState.vue'
+import { EmptyState } from '@sub2api/plugin-sdk'
 import { formatNumber } from '@/utils/format'
 
 ChartJS.register(Title, Tooltip, Legend, LineElement, LinearScale, PointElement, CategoryScale, Filler)

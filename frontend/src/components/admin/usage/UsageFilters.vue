@@ -171,7 +171,8 @@
 import { ref, onMounted, onUnmounted, toRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
-import Select, { type SelectOption } from '@/components/common/Select.vue'
+import { Select } from '@sub2api/plugin-sdk'
+import type { SelectOption } from '@sub2api/plugin-sdk'
 import type { SimpleApiKey, SimpleUser } from '@/api/admin/usage'
 
 type ModelValue = Record<string, any>
