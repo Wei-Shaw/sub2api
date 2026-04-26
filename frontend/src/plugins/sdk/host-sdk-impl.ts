@@ -1,0 +1,193 @@
+/**
+ * 把 Host SDK 接口连到 host 的 stores / i18n / router / notify。
+ *
+ * 拆分成 impl 与 window 注入两步：
+ *   - impl：把 reactive ref 挂上 host 的实际数据源
+ *   - window：保持 SSR-safe 的注入入口（仅在浏览器执行）
+ *
+ * 理由：
+ *   - 测试时可直接 import { createHostSdk } 并喂 mock store/router；
+ *   - 主入口 main.ts 只负责一行 `attachHostSdkToWindow(...)` 的副作用调用。
+ */
+import { computed, defineComponent, h, onMounted, onUnmounted, ref, watch, type Ref, type WritableComputedRef } from 'vue'
+import type { Router } from 'vue-router'
+import { storeToRefs } from 'pinia'
+import { i18n, getLocale } from '@/i18n'
+import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
+import { apiClient } from '@/api/client'
+import {
+  HOST_SDK_VERSION,
+  type HostFont,
+  type HostI18n,
+  type HostNotify,
+  type HostRouter,
+  type HostSdk,
+  type HostTheme,
+  type HostAuth,
+  type HostHttp,
+  type HostVue,
+  type ThemeMode,
+  type FontSize,
+} from './host-sdk'
+
+const THEME_STORAGE_KEY = 'theme'
+const DEFAULT_PRIMARY_COLOR = '#3b82f6' // tailwind blue-500，host 当前以 dark/light 切换为主，没有定制主色
+const DEFAULT_FONT_FAMILY =
+  'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+
+/**
+ * 创建主题能力。
+ *
+ * Host 主题状态当前散落在 main.ts 与 AppSidebar.vue 中（直接 `document.documentElement.classList.toggle('dark')`），
+ * 没有集中 store。这里通过 MutationObserver + ref 把 DOM 状态同步成 reactive，
+ * 让插件 watch `mode` 自动响应外部切换。
+ */
+function createTheme(): HostTheme {
+  const initialMode: ThemeMode = document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+  const mode = ref<ThemeMode>(initialMode)
+  const primaryColor = ref<string>(DEFAULT_PRIMARY_COLOR)
+
+  // 监听 DOM class 变化，让外部 host 通过 toggle('dark') 切换时插件也能感知。
+  if (typeof MutationObserver !== 'undefined') {
+    const observer = new MutationObserver(() => {
+      const next: ThemeMode = document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+      if (next !== mode.value) {
+        mode.value = next
+      }
+    })
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+  }
+
+  function set(next: ThemeMode): void {
+    mode.value = next
+    document.documentElement.classList.toggle('dark', next === 'dark')
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, next)
+    } catch {
+      // localStorage 不可用时忽略，主题只在当前会话生效
+    }
+  }
+
+  function toggle(): void {
+    set(mode.value === 'dark' ? 'light' : 'dark')
+  }
+
+  return { mode, primaryColor, toggle, set }
+}
+
+/**
+ * Font 能力当前 host 没有实现，仅暴露默认值供插件读取。
+ * 后续 host 增加字号选择器后，可在这里把 ref 接到对应 store。
+ */
+function createFont(): HostFont {
+  return {
+    size: ref<FontSize>('base'),
+    family: ref<string>(DEFAULT_FONT_FAMILY),
+  }
+}
+
+/**
+ * 创建 i18n 能力。
+ *
+ * - `t` 直接代理 `i18n.global.t`，保持 vue-i18n 行为一致。
+ * - `currentLocale` 把 vue-i18n 的 locale 包装成 vue ref，方便插件 watch。
+ * - `registerNamespace` 把插件交付的多语言资源 merge 到 vue-i18n。
+ */
+function createI18n(): HostI18n {
+  // i18n.global.locale 在 legacy:false 模式下是 WritableComputedRef<string>；这里只需要读。
+  const localeRef = i18n.global.locale as WritableComputedRef<string>
+  const currentLocale = ref<string>(localeRef.value || getLocale())
+
+  watch(
+    () => localeRef.value,
+    (next) => {
+      currentLocale.value = next
+    },
+    { immediate: false },
+  )
+
+  function t(key: string, params?: Record<string, unknown>): string {
+    if (params && Object.keys(params).length > 0) {
+      return i18n.global.t(key, params as Record<string, unknown>)
+    }
+    return i18n.global.t(key)
+  }
+
+  function registerNamespace(namespace: string, messages: Record<string, Record<string, unknown>>): void {
+    if (!namespace) {
+      return
+    }
+    for (const [locale, ns] of Object.entries(messages)) {
+      if (!ns || typeof ns !== 'object') {
+        continue
+      }
+      // mergeLocaleMessage 不会覆盖已存在的同名 key，相同 namespace 重复注册会被静默合并
+      i18n.global.mergeLocaleMessage(locale, { [namespace]: ns })
+    }
+  }
+
+  return { t, currentLocale, registerNamespace }
+}
+
+/**
+ * 创建通知能力。直接复用 useAppStore 暴露的 toast 方法。
+ *
+ * 注意：useAppStore 必须在 pinia 安装之后才能调用，因此 createHostSdk 也必须在
+ * main.ts 完成 `app.use(pinia)` 之后再执行。
+ */
+function createNotify(): HostNotify {
+  const appStore = useAppStore()
+  return {
+    success: (msg, duration) => appStore.showSuccess(msg, duration ?? 3000),
+    error: (msg, duration) => appStore.showError(msg, duration ?? 5000),
+    warning: (msg, duration) => appStore.showWarning(msg, duration ?? 4000),
+    info: (msg, duration) => appStore.showInfo(msg, duration ?? 3000),
+  }
+}
+
+/** 包装 vue-router 暴露给插件，避免插件直接持有 router 实例。 */
+function createRouter(router: Router): HostRouter {
+  return {
+    push: (path: string) => router.push(path),
+    back: () => router.back(),
+    currentRoute: router.currentRoute as Ref<HostRouter['currentRoute']['value']>,
+  }
+}
+
+/**
+ * 创建 auth 能力。直接 storeToRefs 拿到 user/isAdmin 等 reactive 引用。
+ */
+function createAuth(): HostAuth {
+  const authStore = useAuthStore()
+  // storeToRefs 返回的是 reactive computed/ref；此处需要用类型断言适配 HostAuth 的 Ref 形态
+  const refs = storeToRefs(authStore)
+  return {
+    user: refs.user as unknown as HostAuth['user'],
+    isAdmin: refs.isAdmin as unknown as HostAuth['isAdmin'],
+    isAuthenticated: refs.isAuthenticated as unknown as HostAuth['isAuthenticated'],
+  }
+}
+
+function createHttp(): HostHttp {
+  return { apiClient }
+}
+
+function createVue(): HostVue {
+  return { h, defineComponent, ref, computed, watch, onMounted, onUnmounted }
+}
+
+/** 工厂函数：组装一个新的 HostSdk 实例。需要 router 已经创建。 */
+export function createHostSdk(router: Router): HostSdk {
+  return {
+    version: HOST_SDK_VERSION,
+    theme: createTheme(),
+    font: createFont(),
+    i18n: createI18n(),
+    notify: createNotify(),
+    router: createRouter(router),
+    auth: createAuth(),
+    http: createHttp(),
+    vue: createVue(),
+  }
+}

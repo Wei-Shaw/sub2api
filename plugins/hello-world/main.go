@@ -11,17 +11,26 @@ package main
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
+	"path"
 	"sync/atomic"
 	"time"
 
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	sdkdriver "github.com/Wei-Shaw/sub2api/plugin-sdk/driver"
 )
+
+// frontendAssets 是插件预先编译好的前端 bundle.
+// 把整个 frontend/dist 目录嵌进二进制, 核心通过 GetFrontendBundle gRPC 流读取.
+//
+//go:embed all:frontend/dist
+var frontendAssets embed.FS
 
 const (
 	pluginVersion = "0.1.0"
@@ -66,6 +75,9 @@ func (p *HelloPlugin) Manifest() *pluginsdk.Manifest {
 			{Path: pluginRoutePrefix + "/redis-test", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeAdmin},
 		},
 		Frontend: &pluginsdk.FrontendManifest{
+			// EntryJS 路径相对于插件二进制内的 frontend bundle 根目录;
+			// 核心会把它拼接成 /api/v1/plugin-assets/hello-world/dist/entry.js 的 HTTP URL.
+			EntryJS: "dist/entry.js",
 			MenuItems: []pluginsdk.MenuItemDecl{
 				{
 					Path:      "/admin/plugins/hello-world",
@@ -75,6 +87,14 @@ func (p *HelloPlugin) Manifest() *pluginsdk.Manifest {
 					SortOrder: 999,
 				},
 			},
+			Routes: []pluginsdk.RouteDecl{
+				{
+					Path:          "/admin/plugins/hello-world",
+					Name:          "PluginHelloWorld",
+					ComponentPath: "HelloWorldView.vue",
+				},
+			},
+			I18nNamespaces: []string{"helloWorldPlugin"},
 		},
 	}
 }
@@ -104,6 +124,19 @@ func (p *HelloPlugin) RegisterHTTP(mux pluginsdk.HTTPMux) {
 	mux.Handle(pluginRoutePrefix+"/hello", http.HandlerFunc(p.handleHello))
 	mux.Handle(pluginRoutePrefix+"/db-test", http.HandlerFunc(p.handleDBTest))
 	mux.Handle(pluginRoutePrefix+"/redis-test", http.HandlerFunc(p.handleRedisTest))
+}
+
+// OpenFrontendFile 实现 pluginsdk.FrontendBundleProvider, 把核心的 GetFrontendBundle
+// 请求映射到嵌入式 FS. path 来自 manifest.Frontend.EntryJS / EntryCSS, 调用方已经在
+// 核心侧做过路径穿越校验; 这里只做最小化的兜底以防误用.
+func (p *HelloPlugin) OpenFrontendFile(rel string) ([]byte, error) {
+	clean := path.Clean("/" + rel)
+	if clean == "/" || clean == "/." {
+		return nil, fs.ErrInvalid
+	}
+	clean = clean[1:] // strip leading "/"
+	full := "frontend/" + clean
+	return frontendAssets.ReadFile(full)
 }
 
 func main() {

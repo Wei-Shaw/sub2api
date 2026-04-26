@@ -4,6 +4,7 @@ import App from './App.vue'
 import router from './router'
 import i18n, { initI18n } from './i18n'
 import { useAppStore } from '@/stores/app'
+import { attachHostSdkToWindow } from '@/plugins/sdk/host-sdk-window'
 import './style.css'
 
 function initThemeClass() {
@@ -36,6 +37,10 @@ async function bootstrap() {
 
   app.use(router)
   app.use(i18n)
+
+  // Pinia + i18n + router 都已安装,可以创建并挂载 host SDK 给插件 entry.js 使用。
+  // 必须在 router.isReady 之前完成,因为插件路由可能马上就被首屏导航命中。
+  attachHostSdkToWindow(router)
 
   // 等待路由器完成初始导航后再挂载，避免竞态条件导致的空白渲染
   await router.isReady()
