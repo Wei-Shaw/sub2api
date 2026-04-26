@@ -567,6 +567,46 @@
         </div>
       </div>
 
+      <!-- Vertex Service Account -->
+      <div v-if="(account.platform === 'gemini' || account.platform === 'anthropic') && account.type === 'service_account'" class="space-y-4">
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label class="input-label">Project ID</label>
+            <input
+              v-model="editVertexProjectId"
+              type="text"
+              class="input font-mono"
+              readonly
+              placeholder="从 JSON 自动读取"
+            />
+            <p class="input-hint">Service Account JSON 不在编辑页显示；需要更换 JSON 时请删除账号后重新创建。</p>
+          </div>
+          <div>
+            <label class="input-label">Location</label>
+            <select
+              v-model="editVertexLocation"
+              required
+              class="input font-mono"
+            >
+              <optgroup
+                v-for="group in vertexLocationOptions"
+                :key="group.label"
+                :label="group.label"
+              >
+                <option
+                  v-for="option in group.options"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label REDACTEDREDACTED
+                </option>
+              </optgroup>
+            </select>
+            <p class="input-hint">不同 Vertex 模型可用 location 可能不同，这里选择账号默认 endpoint location。</p>
+          </div>
+        </div>
+      </div>
+
       <!-- Bedrock fields (for bedrock type, both SigV4 and API Key modes) -->
       <div v-if="account.type === 'bedrock'" class="space-y-4">
         <!-- SigV4 fields -->
@@ -1987,6 +2027,55 @@ const editBedrockSessionToken = ref('')
 const editBedrockRegion = ref('')
 const editBedrockForceGlobal = ref(false)
 const editBedrockApiKeyValue = ref('')
+const editVertexProjectId = ref('')
+const editVertexClientEmail = ref('')
+const editVertexLocation = ref('us-central1')
+const vertexLocationOptions = [
+  {
+    label: 'Common',
+    options: [
+      { value: 'us-central1', label: 'us-central1 (Iowa)' REDACTED,
+      { value: 'global', label: 'global' REDACTED,
+      { value: 'us', label: 'us' REDACTED,
+      { value: 'eu', label: 'eu' REDACTED
+    ]
+  REDACTED,
+  {
+    label: 'United States',
+    options: [
+      { value: 'us-east1', label: 'us-east1 (South Carolina)' REDACTED,
+      { value: 'us-east4', label: 'us-east4 (Northern Virginia)' REDACTED,
+      { value: 'us-east5', label: 'us-east5 (Columbus)' REDACTED,
+      { value: 'us-south1', label: 'us-south1 (Dallas)' REDACTED,
+      { value: 'us-west1', label: 'us-west1 (Oregon)' REDACTED,
+      { value: 'us-west4', label: 'us-west4 (Las Vegas)' REDACTED
+    ]
+  REDACTED,
+  {
+    label: 'Europe',
+    options: [
+      { value: 'europe-west1', label: 'europe-west1 (Belgium)' REDACTED,
+      { value: 'europe-west2', label: 'europe-west2 (London)' REDACTED,
+      { value: 'europe-west3', label: 'europe-west3 (Frankfurt)' REDACTED,
+      { value: 'europe-west4', label: 'europe-west4 (Netherlands)' REDACTED,
+      { value: 'europe-west6', label: 'europe-west6 (Zurich)' REDACTED,
+      { value: 'europe-west8', label: 'europe-west8 (Milan)' REDACTED,
+      { value: 'europe-west9', label: 'europe-west9 (Paris)' REDACTED
+    ]
+  REDACTED,
+  {
+    label: 'Asia Pacific',
+    options: [
+      { value: 'asia-east1', label: 'asia-east1 (Taiwan)' REDACTED,
+      { value: 'asia-east2', label: 'asia-east2 (Hong Kong)' REDACTED,
+      { value: 'asia-northeast1', label: 'asia-northeast1 (Tokyo)' REDACTED,
+      { value: 'asia-northeast3', label: 'asia-northeast3 (Seoul)' REDACTED,
+      { value: 'asia-south1', label: 'asia-south1 (Mumbai)' REDACTED,
+      { value: 'asia-southeast1', label: 'asia-southeast1 (Singapore)' REDACTED,
+      { value: 'australia-southeast1', label: 'australia-southeast1 (Sydney)' REDACTED
+    ]
+  REDACTED
+] as const
 const isBedrockAPIKeyMode = computed(() =>
   props.account?.type === 'bedrock' &&
   (props.account?.credentials as Record<string, unknown>)?.auth_mode === 'apikey'
@@ -2246,6 +2335,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   const credentials = newAccount.credentials as Record<string, unknown> | undefined
   interceptWarmupRequests.value = credentials?.intercept_warmup_requests === true
   autoPauseOnExpired.value = newAccount.auto_pause_on_expired === true
+  editVertexProjectId.value = ''
+  editVertexClientEmail.value = ''
+  editVertexLocation.value = 'us-central1'
 
   // Load mixed scheduling setting (only for antigravity accounts)
   mixedScheduling.value = false
@@ -2467,6 +2559,11 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   REDACTED else if (newAccount.type === 'upstream' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
     editBaseUrl.value = (credentials.base_url as string) || ''
+  REDACTED else if ((newAccount.platform === 'gemini' || newAccount.platform === 'anthropic') && newAccount.type === 'service_account' && newAccount.credentials) {
+    const credentials = newAccount.credentials as Record<string, unknown>
+    editVertexProjectId.value = (credentials.project_id as string) || ''
+    editVertexClientEmail.value = (credentials.client_email as string) || ''
+    editVertexLocation.value = (credentials.location as string) || (credentials.vertex_location as string) || 'us-central1'
   REDACTED else {
     const platformDefaultUrl =
       newAccount.platform === 'openai'
@@ -3053,6 +3150,38 @@ const handleSubmit = async () => {
       // Add intercept warmup requests setting
       applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
 
+      if (!applyTempUnschedConfig(newCredentials)) {
+        return
+      REDACTED
+
+      updatePayload.credentials = newCredentials
+    REDACTED else if ((props.account.platform === 'gemini' || props.account.platform === 'anthropic') && props.account.type === 'service_account') {
+      const currentCredentials = (props.account.credentials as Record<string, unknown>) || {REDACTED
+      const newCredentials: Record<string, unknown> = { ...currentCredentials REDACTED
+
+      if (!editVertexProjectId.value.trim()) {
+        appStore.showError('Service Account JSON 缺少 project_id')
+        return
+      REDACTED
+      if (!editVertexClientEmail.value.trim()) {
+        appStore.showError('Service Account JSON 缺少 client_email')
+        return
+      REDACTED
+      if (!editVertexLocation.value.trim()) {
+        appStore.showError('请填写 Vertex location')
+        return
+      REDACTED
+
+      if (!currentCredentials.service_account_json && !currentCredentials.service_account) {
+        appStore.showError('请上传 Service Account JSON')
+        return
+      REDACTED
+      newCredentials.project_id = editVertexProjectId.value.trim()
+      newCredentials.client_email = editVertexClientEmail.value.trim()
+      newCredentials.location = editVertexLocation.value.trim()
+      newCredentials.tier_id = 'vertex'
+
+      applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
       if (!applyTempUnschedConfig(newCredentials)) {
         return
       REDACTED

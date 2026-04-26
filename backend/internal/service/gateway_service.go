@@ -3597,7 +3597,11 @@ REDACTED
 REDACTED
 	// OAuth/SetupToken 账号使用 Anthropic 标准映射（短ID → 长ID）
 	if account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
-		requestedModel = claude.NormalizeModelID(requestedModel)
+		if account.Type == AccountTypeServiceAccount {
+			requestedModel = normalizeVertexAnthropicModelID(claude.NormalizeModelID(requestedModel))
+	REDACTED else {
+			requestedModel = claude.NormalizeModelID(requestedModel)
+	REDACTED
 REDACTED
 	// 其他平台使用账户的模型支持检查
 	return account.IsModelSupported(requestedModel)
@@ -3617,6 +3621,18 @@ func (s *GatewayService) GetAccessToken(ctx context.Context, account *Account) (
 		return apiKey, "apikey", nil
 	case AccountTypeBedrock:
 		return "", "bedrock", nil // Bedrock 使用 SigV4 签名或 API Key，由 forwardBedrock 处理
+	case AccountTypeServiceAccount:
+		if account.Platform != PlatformAnthropic {
+			return "", "", fmt.Errorf("unsupported service account platform: %s", account.Platform)
+	REDACTED
+		if s.claudeTokenProvider == nil {
+			return "", "", errors.New("claude token provider not configured")
+	REDACTED
+		accessToken, err := s.claudeTokenProvider.GetAccessToken(ctx, account)
+		if err != nil {
+			return "", "", err
+	REDACTED
+		return accessToken, "service_account", nil
 	default:
 		return "", "", fmt.Errorf("unsupported account type: %s", account.Type)
 REDACTED
@@ -4217,6 +4233,18 @@ REDACTED
 		mappedModel = account.GetMappedModel(reqModel)
 		if mappedModel != reqModel {
 			mappingSource = "account"
+	REDACTED
+REDACTED
+	if mappingSource == "" && account.Platform == PlatformAnthropic && account.Type == AccountTypeServiceAccount {
+		if candidate, matched := account.ResolveMappedModel(reqModel); matched {
+			mappedModel = candidate
+			mappingSource = "account"
+	REDACTED else {
+			normalized := normalizeVertexAnthropicModelID(claude.NormalizeModelID(reqModel))
+			if normalized != reqModel {
+				mappedModel = normalized
+				mappingSource = "vertex"
+		REDACTED
 	REDACTED
 REDACTED
 	if mappingSource == "" && account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
@@ -5688,6 +5716,10 @@ REDACTED
 REDACTED
 
 func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string, reqStream bool, mimicClaudeCode bool) (*http.Request, error) {
+	if account.Platform == PlatformAnthropic && account.Type == AccountTypeServiceAccount {
+		return s.buildUpstreamRequestAnthropicVertex(ctx, c, account, body, token, modelID, reqStream)
+REDACTED
+
 	// 确定目标URL
 	targetURL := claudeAPIURL
 	if account.Type == AccountTypeAPIKey {
@@ -5870,6 +5902,60 @@ REDACTED
 	if s.debugClaudeMimicEnabled() {
 		logClaudeMimicDebug(req, body, account, tokenType, mimicClaudeCode)
 REDACTED
+
+	return req, nil
+REDACTED
+
+func (s *GatewayService) buildUpstreamRequestAnthropicVertex(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	token string,
+	modelID string,
+	reqStream bool,
+) (*http.Request, error) {
+	vertexBody, err := buildVertexAnthropicRequestBody(body)
+	if err != nil {
+		return nil, err
+REDACTED
+	setOpsUpstreamRequestBody(c, vertexBody)
+	fullURL, err := buildVertexAnthropicURL(account.VertexProjectID(), account.VertexLocation(modelID), modelID, reqStream)
+	if err != nil {
+		return nil, err
+REDACTED
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(vertexBody))
+	if err != nil {
+		return nil, err
+REDACTED
+
+	if c != nil && c.Request != nil {
+		for key, values := range c.Request.Header {
+			lowerKey := strings.ToLower(strings.TrimSpace(key))
+			if !allowedHeaders[lowerKey] || lowerKey == "anthropic-version" {
+				continue
+		REDACTED
+			wireKey := resolveWireCasing(key)
+			for _, v := range values {
+				addHeaderRaw(req.Header, wireKey, v)
+		REDACTED
+	REDACTED
+REDACTED
+
+	req.Header.Del("authorization")
+	req.Header.Del("x-api-key")
+	req.Header.Del("x-goog-api-key")
+	req.Header.Del("cookie")
+	req.Header.Del("anthropic-version")
+	setHeaderRaw(req.Header, "authorization", "Bearer "+token)
+	setHeaderRaw(req.Header, "content-type", "application/json")
+
+	s.debugLogGatewaySnapshot("UPSTREAM_FORWARD_VERTEX_ANTHROPIC", req.Header, vertexBody, map[string]string{
+		"url":        req.URL.String(),
+		"token_type": "service_account",
+		"model":      modelID,
+		"stream":     strconv.FormatBool(reqStream),
+REDACTED)
 
 	return req, nil
 REDACTED

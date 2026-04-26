@@ -137,7 +137,7 @@ func (p *testClaudeTokenProvider) GetAccessToken(ctx context.Context, account *A
 		return "", errors.New("account is nil")
 REDACTED
 	if account.Platform != PlatformAnthropic || account.Type != AccountTypeOAuth {
-		return "", errors.New("not an anthropic oauth account")
+		return "", errors.New("not an anthropic oauth or service account")
 REDACTED
 
 	cacheKey := ClaudeTokenCacheKey(account)
@@ -371,7 +371,7 @@ REDACTED
 
 	token, err := provider.GetAccessToken(context.Background(), account)
 REDACTED
-	require.Contains(t, err.Error(), "not an anthropic oauth account")
+	require.Contains(t, err.Error(), "not an anthropic oauth or service account")
 	require.Empty(t, token)
 REDACTED
 
@@ -385,7 +385,7 @@ REDACTED
 
 	token, err := provider.GetAccessToken(context.Background(), account)
 REDACTED
-	require.Contains(t, err.Error(), "not an anthropic oauth account")
+	require.Contains(t, err.Error(), "not an anthropic oauth or service account")
 	require.Empty(t, token)
 REDACTED
 
@@ -399,7 +399,7 @@ REDACTED
 
 	token, err := provider.GetAccessToken(context.Background(), account)
 REDACTED
-	require.Contains(t, err.Error(), "not an anthropic oauth account")
+	require.Contains(t, err.Error(), "not an anthropic oauth or service account")
 	require.Empty(t, token)
 REDACTED
 
