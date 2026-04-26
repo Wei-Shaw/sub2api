@@ -16,6 +16,6 @@ export interface MyQuotaSnapshot {
 
 /** 拉取本用户的服务限额运行时快照 */
 export async function getMyServiceQuota(): Promise<MyQuotaSnapshot> {
-  const { data } = await apiClient.get<MyQuotaSnapshot>('/user/service-quotas/my')
+  const { data } = await apiClient.get<MyQuotaSnapshot>('/service-quotas/my')
   return data
 }
