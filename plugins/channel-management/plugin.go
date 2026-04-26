@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"embed"
+	"io/fs"
 	"net/http"
+	"path"
 	"sync/atomic"
 
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
@@ -13,6 +16,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+// frontendAssets 是 channel-management 的 frontend bundle 嵌入式 FS.
+// CI / 本地 build 前必须先跑 `pnpm --filter @sub2api/plugin-channel-management build`,
+// 把 dist/entry.js + dist/entry.css 产出到 frontend/dist/, 否则该 embed 仅会
+// 拿到占位文件 (.keep), 运行时 OpenFrontendFile 会返回 fs.ErrNotExist.
+//
+//go:embed all:frontend/dist
+var frontendAssets embed.FS
 
 const (
 	pluginName        = "channel-management"
@@ -61,6 +72,12 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 		// per-plugin namespace, so we ask the core for raw key access.
 		Capabilities: []string{pluginsdk.CapabilityRedisRawKeys},
 		Frontend: &pluginsdk.FrontendManifest{
+			// EntryJS 路径相对于 plugin frontend 内的 dist/ 根, 核心拼成
+			// /api/v1/plugin-assets/channel-management/dist/entry.js 暴露给浏览器.
+			EntryJS: "dist/entry.js",
+			// CSS 与 JS 一同产出 (cssCodeSplit:false + assetFileNames=entry.[ext]),
+			// 声明给 host loader-runtime 注入 <link>.
+			EntryCSS: "dist/entry.css",
 			MenuItems: []pluginsdk.MenuItemDecl{
 				{
 					Path:          "/admin/channels",
@@ -79,6 +96,16 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 							RequiresAdmin: true,
 						},
 					},
+				},
+			},
+			Routes: []pluginsdk.RouteDecl{
+				{
+					// path 与 menu item path 一致, 让 vue-router 命中 PluginView,
+					// PluginView 通过 meta.componentPath 找到 install 返回的
+					// components 表里 "ChannelsView.vue" key 对应的组件.
+					Path:          "/admin/channels",
+					Name:          "AdminChannels",
+					ComponentPath: "ChannelsView.vue",
 				},
 			},
 			I18nNamespaces: []string{"channel-management"},
@@ -179,4 +206,20 @@ func (p *ChannelPlugin) HealthCheck() (bool, string) {
 		return false, "plugin not yet initialised"
 	}
 	return true, "ok"
+}
+
+// OpenFrontendFile implements pluginsdk.FrontendBundleProvider so the core can
+// fetch frontend assets (entry.js / entry.css / source maps / 等) over gRPC.
+//
+// path 来自 manifest.Frontend.EntryJS / EntryCSS 或 host /api/v1/plugin-assets
+// HTTP 请求带过来的相对 path. 调用方在核心侧已经做过路径穿越校验, 这里再做一次
+// 最小化的兜底以防误用.
+func (p *ChannelPlugin) OpenFrontendFile(rel string) ([]byte, error) {
+	clean := path.Clean("/" + rel)
+	if clean == "/" || clean == "/." {
+		return nil, fs.ErrInvalid
+	}
+	clean = clean[1:] // strip leading "/"
+	full := "frontend/" + clean
+	return frontendAssets.ReadFile(full)
 }

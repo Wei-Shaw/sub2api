@@ -34,18 +34,202 @@ const (
 	pluginAssetCacheControl = "public, max-age=300, must-revalidate"
 )
 
+// sharedRuntimeReExport 表名 -> 浏览器侧 ESM proxy 源码模板.
+// 每个文件输出 4-12 行 ESM, named exports 直接读取 window 上 host 已注入的
+// 单例 (frontend/src/plugins/sdk/expose-runtime.ts 在 main.ts 启动时挂上去),
+// default export 直接是整个 module 对象.
+//
+// 浏览器通过 <script type="importmap"> 把 'vue' / 'pinia' / 'vue-router' /
+// 'vue-i18n' / 'axios' 这五个 bare specifier 映射到这些文件的 URL 后,
+// plugin bundle 中所有 `import { defineComponent } from 'vue'` 会通过
+// 该 proxy 拿到 host 的 vue 单例, 与 host 自身使用同一份, 保证 reactive
+// 状态 / Pinia store / vue-router 实例可以跨 host & plugin 边界共享.
+var sharedRuntimeReExport = map[string]string{
+	"vue.js": `const m = window.__SUB2API_HOST_VUE__;
+if (!m) { throw new Error('host did not expose Vue runtime via __SUB2API_HOST_VUE__'); }
+export const h = m.h;
+export const defineComponent = m.defineComponent;
+export const ref = m.ref;
+export const computed = m.computed;
+export const watch = m.watch;
+export const watchEffect = m.watchEffect;
+export const onMounted = m.onMounted;
+export const onUnmounted = m.onUnmounted;
+export const onBeforeMount = m.onBeforeMount;
+export const onBeforeUnmount = m.onBeforeUnmount;
+export const onUpdated = m.onUpdated;
+export const onBeforeUpdate = m.onBeforeUpdate;
+export const reactive = m.reactive;
+export const readonly = m.readonly;
+export const shallowRef = m.shallowRef;
+export const shallowReactive = m.shallowReactive;
+export const toRefs = m.toRefs;
+export const toRef = m.toRef;
+export const toRaw = m.toRaw;
+export const isRef = m.isRef;
+export const isReactive = m.isReactive;
+export const isProxy = m.isProxy;
+export const markRaw = m.markRaw;
+export const provide = m.provide;
+export const inject = m.inject;
+export const nextTick = m.nextTick;
+export const createApp = m.createApp;
+export const defineAsyncComponent = m.defineAsyncComponent;
+export const Transition = m.Transition;
+export const TransitionGroup = m.TransitionGroup;
+export const Teleport = m.Teleport;
+export const KeepAlive = m.KeepAlive;
+export const Fragment = m.Fragment;
+export const Comment = m.Comment;
+export const Suspense = m.Suspense;
+export const openBlock = m.openBlock;
+export const createElementBlock = m.createElementBlock;
+export const createBlock = m.createBlock;
+export const createElementVNode = m.createElementVNode;
+export const createVNode = m.createVNode;
+export const createTextVNode = m.createTextVNode;
+export const createCommentVNode = m.createCommentVNode;
+export const createStaticVNode = m.createStaticVNode;
+export const createSlots = m.createSlots;
+export const renderList = m.renderList;
+export const renderSlot = m.renderSlot;
+export const resolveComponent = m.resolveComponent;
+export const resolveDirective = m.resolveDirective;
+export const resolveDynamicComponent = m.resolveDynamicComponent;
+export const withCtx = m.withCtx;
+export const withModifiers = m.withModifiers;
+export const withDirectives = m.withDirectives;
+export const withKeys = m.withKeys;
+export const normalizeClass = m.normalizeClass;
+export const normalizeStyle = m.normalizeStyle;
+export const toDisplayString = m.toDisplayString;
+export const useTemplateRef = m.useTemplateRef;
+export const getCurrentInstance = m.getCurrentInstance;
+export const getCurrentScope = m.getCurrentScope;
+export const onScopeDispose = m.onScopeDispose;
+export const triggerRef = m.triggerRef;
+export const unref = m.unref;
+export const version = m.version;
+export const Fragment_ = m.Fragment;
+export const vModelText = m.vModelText;
+export const vModelCheckbox = m.vModelCheckbox;
+export const vModelDynamic = m.vModelDynamic;
+export const vModelRadio = m.vModelRadio;
+export const vModelSelect = m.vModelSelect;
+export const vShow = m.vShow;
+export default m;
+`,
+	"vue-router.js": `const m = window.__SUB2API_HOST_VUE_ROUTER__;
+if (!m) { throw new Error('host did not expose vue-router via __SUB2API_HOST_VUE_ROUTER__'); }
+export const useRouter = m.useRouter;
+export const useRoute = m.useRoute;
+export const useLink = m.useLink;
+export const RouterLink = m.RouterLink;
+export const RouterView = m.RouterView;
+export const createRouter = m.createRouter;
+export const createWebHistory = m.createWebHistory;
+export const createWebHashHistory = m.createWebHashHistory;
+export const createMemoryHistory = m.createMemoryHistory;
+export const onBeforeRouteLeave = m.onBeforeRouteLeave;
+export const onBeforeRouteUpdate = m.onBeforeRouteUpdate;
+export default m;
+`,
+	"pinia.js": `const m = window.__SUB2API_HOST_PINIA__;
+if (!m) { throw new Error('host did not expose pinia via __SUB2API_HOST_PINIA__'); }
+export const createPinia = m.createPinia;
+export const setActivePinia = m.setActivePinia;
+export const getActivePinia = m.getActivePinia;
+export const defineStore = m.defineStore;
+export const storeToRefs = m.storeToRefs;
+export const acceptHMRUpdate = m.acceptHMRUpdate;
+export const mapStores = m.mapStores;
+export const mapState = m.mapState;
+export const mapActions = m.mapActions;
+export const mapGetters = m.mapGetters;
+export const PiniaVuePlugin = m.PiniaVuePlugin;
+export default m;
+`,
+	"vue-i18n.js": `const m = window.__SUB2API_HOST_VUE_I18N__;
+if (!m) { throw new Error('host did not expose vue-i18n via __SUB2API_HOST_VUE_I18N__'); }
+export const createI18n = m.createI18n;
+export const useI18n = m.useI18n;
+export const I18nInjectionKey = m.I18nInjectionKey;
+export const VERSION = m.VERSION;
+export default m;
+`,
+	"axios.js": `const m = window.__SUB2API_HOST_AXIOS__;
+if (!m) { throw new Error('host did not expose axios via __SUB2API_HOST_AXIOS__'); }
+// axios 主接口本身是个可调用对象 + 一组静态方法; ESM consumer 通常做
+//   import axios from 'axios'   => 用 default
+//   import { isAxiosError } from 'axios' => 用 named
+// 我们两侧都暴露.
+export const get = m.get?.bind(m);
+export const post = m.post?.bind(m);
+export const put = m.put?.bind(m);
+export const patch = m.patch?.bind(m);
+export const _delete = m.delete?.bind(m);
+export const request = m.request?.bind(m);
+export const create = m.create?.bind(m);
+export const all = m.all?.bind(m);
+export const spread = m.spread;
+export const isAxiosError = m.isAxiosError;
+export const isCancel = m.isCancel;
+export const CancelToken = m.CancelToken;
+export const Axios = m.Axios;
+export const AxiosError = m.AxiosError;
+export const AxiosHeaders = m.AxiosHeaders;
+export const HttpStatusCode = m.HttpStatusCode;
+export const VERSION = m.VERSION;
+export default m;
+`,
+}
+
+// servePluginSharedAsset 处理 /api/v1/plugin-assets/__shared__/<name>.js 形式
+// 的请求, 返回上面 sharedRuntimeReExport 中预生成的 ESM proxy. 找不到时 404.
+func servePluginSharedAsset(c *gin.Context, asset string) {
+	body, ok := sharedRuntimeReExport[asset]
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"code": 404, "message": "shared runtime not registered: " + asset})
+		return
+	}
+	// importmap 共享文件每次都返回相同内容, 用文件名作为 ETag 让浏览器走 304.
+	etag := `"shared-` + asset + `"`
+	if match := c.GetHeader("If-None-Match"); match == etag {
+		c.Header("ETag", etag)
+		c.Status(http.StatusNotModified)
+		return
+	}
+	c.Header("ETag", etag)
+	c.Header("Cache-Control", pluginAssetCacheControl)
+	c.Data(http.StatusOK, "application/javascript; charset=utf-8", []byte(body))
+}
+
 // RegisterPluginAssetRoutes 挂载 /api/v1/plugin-assets/:plugin/*path,
 // 把请求转换为 PluginManager.FetchFrontendAsset 拉到的字节流并返回给浏览器.
+//
+// 特殊保留 plugin 名 `__shared__` 用于浏览器 importmap 共享 vue/pinia/...
+// 五个 ESM proxy 模块 (见 sharedRuntimeReExport). 这条分支不依赖 PluginManager,
+// 所以即使插件系统初始化失败也仍可工作.
 //
 // pm 为 nil 时不注册任何路由; 这种场景出现在 PluginManager 初始化失败的降级路径,
 // 此时插件功能整体不可用, 路由也不应存在以免误导客户端.
 func RegisterPluginAssetRoutes(r *gin.Engine, pm *plugin.PluginManager) {
 	if pm == nil {
+		// 即使插件系统未启用, importmap 共享端点仍要可用——否则 host 注入的
+		// importmap 会指向 404, 浏览器在加载首屏 vue/pinia 时直接报错.
+		// 但实际不会走到这里: importmap 注入与 plugin manifest 注入互相独立,
+		// 注入侧只在有 plugin manifest 时才插 importmap, 这里不注册等同于约定.
 		return
 	}
 	r.GET("/api/v1/plugin-assets/:plugin/*path", func(c *gin.Context) {
 		pluginName := c.Param("plugin")
 		assetPath := strings.TrimPrefix(c.Param("path"), "/")
+
+		// 共享运行时模块特例: /api/v1/plugin-assets/__shared__/<name>.js
+		if pluginName == "__shared__" {
+			servePluginSharedAsset(c, assetPath)
+			return
+		}
 
 		asset, err := pm.FetchFrontendAsset(c.Request.Context(), pluginName, assetPath)
 		if err != nil {

@@ -336,18 +336,10 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'admin.groups.description'
     }
   },
-  {
-    path: '/admin/channels',
-    name: 'AdminChannels',
-    component: () => import('@/views/admin/ChannelsView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: true,
-      title: 'Channel Management',
-      titleKey: 'admin.channels.title',
-      descriptionKey: 'admin.channels.description'
-    }
-  },
+  // /admin/channels 路由由 channel-management 插件 manifest 通过
+  // registerPluginRoutes 在运行时动态注入. 已删除 host 静态实现 (见
+  // PLAN T6 + DESIGN §1). 兜底: 插件未启用时, 全局 catch-all 路由
+  // 走 NotFound 页面.
   {
     path: '/admin/subscriptions',
     name: 'AdminSubscriptions',
