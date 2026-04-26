@@ -390,6 +390,8 @@ export default {
     channelMonitor: 'Channel Monitor',
     channelStatus: 'Channel Status',
     serviceQuota: 'Service Quota',
+    serviceQuotaMonitor: 'Quota Monitor',
+    serviceQuotaConfig: 'Quota Rules',
   },
 
   // Auth
@@ -3926,6 +3928,38 @@ export default {
       },
       errors: {
         limitValueMustBePositive: 'Limit value must be greater than 0'
+      }
+    },
+
+    serviceQuotaMonitor: {
+      title: 'Quota Monitor',
+      description: 'Real-time view of current usage and load of all service limiters',
+      disabled: 'Service quota is disabled. Please enable it in Settings -> Features',
+      empty: 'No active service limiters',
+      truncated: 'Showing first {count} entries (truncated)',
+      loadError: 'Failed to load quota monitor',
+      notActive: 'Idle',
+      fallbackTag: 'Fallback',
+      simplePath: 'Path #{index}',
+      asOf: 'Updated {seconds}s ago',
+      refresh: 'Refresh',
+      filters: {
+        rule: 'Rule',
+        user: 'User',
+        channel: 'Channel',
+        group: 'Group',
+        account: 'Account',
+        platform: 'Platform',
+        clear: 'Clear filters'
+      },
+      columns: {
+        rule: 'Rule',
+        path: 'Path',
+        limiter: 'Type',
+        usage: 'Usage',
+        counterMode: 'Counter',
+        scopeUser: 'User',
+        tags: 'Tags'
       }
     },
 

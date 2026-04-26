@@ -83,3 +83,72 @@ export async function updateServiceQuotaRule(id: number, input: ServiceQuotaRule
 export async function deleteServiceQuotaRule(id: number): Promise<void> {
   await apiClient.delete(`/admin/service-quotas/${id}`)
 }
+
+// ==================== 限额监控（Phase B 后端契约） ====================
+
+/** 路径摘要：用于在监控行上显示 limiter 命中的路径维度。null 字段表示该维度不限制；
+ *  用户视角下后端会抹空所有字段，故全部 optional */
+export interface LimiterRuntimePathSummary {
+  platform?: string | null
+  channel_id?: number | null
+  group_id?: number | null
+  account_id?: number | null
+  model_pattern?: string | null
+}
+
+/**
+ * 单个 limiter 的运行时快照。
+ * snake_case 与后端 json tag 对齐。
+ */
+export interface LimiterRuntime {
+  rule_id: number
+  rule_name: string
+  path_id: number
+  path_index: number
+  path_summary?: LimiterRuntimePathSummary | null
+  limiter_type: string // rpm/tpm/tpd/daily_usd/concurrency
+  window_mode: string // fixed/rolling/none
+  limit_value: number
+  current: number
+  utilization_pct: number
+  counter_mode?: string // shared/user/per_user；用户视角下后端会抹空
+  scope_user_id?: number | null
+  is_fallback: boolean
+  exists: boolean
+}
+
+export interface ServiceQuotaMonitorSnapshot {
+  enabled: boolean
+  as_of_unix_ms: number
+  items: LimiterRuntime[]
+  truncated: boolean
+}
+
+export interface ServiceQuotaMonitorFilter {
+  rule_id?: number
+  user_id?: number
+  channel_id?: number
+  group_id?: number
+  account_id?: number
+  platform?: string
+}
+
+/**
+ * 拉取 admin 端服务限额监控快照
+ * 自动剔除空字符串/undefined/null 的 filter 字段，避免 ?rule_id= 这种空参
+ */
+export async function getServiceQuotaMonitorSnapshot(
+  filter: ServiceQuotaMonitorFilter
+): Promise<ServiceQuotaMonitorSnapshot> {
+  const params: Record<string, string | number> = {}
+  for (const [k, v] of Object.entries(filter)) {
+    if (v === undefined || v === null) continue
+    if (typeof v === 'string' && v.trim() === '') continue
+    params[k] = v
+  }
+  const { data } = await apiClient.get<ServiceQuotaMonitorSnapshot>(
+    '/admin/service-quotas/monitor',
+    { params }
+  )
+  return data
+}

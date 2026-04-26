@@ -390,6 +390,8 @@ export default {
     channelMonitor: '渠道监控',
     channelStatus: '渠道状态',
     serviceQuota: '服务配额',
+    serviceQuotaMonitor: '限额监控',
+    serviceQuotaConfig: '限额配置',
   },
 
   // Auth
@@ -4090,6 +4092,38 @@ export default {
       },
       errors: {
         limitValueMustBePositive: '限额必须 > 0'
+      }
+    },
+
+    serviceQuotaMonitor: {
+      title: '限额监控',
+      description: '实时查看所有服务限流器的当前用量与负载',
+      disabled: '服务限额未启用，请前往「设置 → 功能开关」开启',
+      empty: '当前没有活跃的服务限流器',
+      truncated: '超过 {count} 条已截断',
+      loadError: '加载限额监控失败',
+      notActive: '未活跃',
+      fallbackTag: '兜底',
+      simplePath: '路径 #{index}',
+      asOf: '数据更新于 {seconds} 秒前',
+      refresh: '手动刷新',
+      filters: {
+        rule: '规则',
+        user: '用户',
+        channel: '渠道',
+        group: '分组',
+        account: '账号',
+        platform: '平台',
+        clear: '清空筛选'
+      },
+      columns: {
+        rule: '规则',
+        path: '路径',
+        limiter: '限流类型',
+        usage: '用量',
+        counterMode: '计数模式',
+        scopeUser: '作用用户',
+        tags: '标签'
       }
     },
 

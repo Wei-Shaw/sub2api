@@ -423,13 +423,28 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/admin/service-quotas',
-    name: 'AdminServiceQuotas',
-    component: () => import('@/views/admin/ServiceQuotaView.vue'),
+    redirect: '/admin/service-quotas/monitor'
+  },
+  {
+    path: '/admin/service-quotas/monitor',
+    name: 'AdminServiceQuotaMonitor',
+    component: () => import('@/views/admin/serviceQuota/MonitorView.vue'),
     meta: {
       requiresAuth: true,
       requiresAdmin: true,
-      title: 'Service Quota',
-      titleKey: 'nav.serviceQuota'
+      title: 'Quota Monitor',
+      titleKey: 'nav.serviceQuotaMonitor'
+    }
+  },
+  {
+    path: '/admin/service-quotas/config',
+    name: 'AdminServiceQuotaConfig',
+    component: () => import('@/views/admin/serviceQuota/ConfigView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Quota Rules',
+      titleKey: 'nav.serviceQuotaConfig'
     }
   },
   {
