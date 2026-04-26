@@ -9,7 +9,7 @@
  *   - 视图文件可能在 install 之后立即被构造 (PluginView mount)
  *   - install 同步 setSdk + 视图 getSdk 比 provide 更直接, 不依赖 vue 上下文
  */
-import type { HostSdk } from '../../../../../frontend/src/plugins/sdk/host-sdk'
+import type { HostSdk } from '@sub2api/plugin-sdk'
 
 let sdk: HostSdk | null = null
 
