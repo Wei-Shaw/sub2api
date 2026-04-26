@@ -789,13 +789,20 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 							return
 						}
 						fallbackAPIKey := cloneAPIKeyWithGroup(apiKey, fallbackGroup)
+						// 切换 group 时必须重算 channelMapping：原 channelMapping 来自外层 group 的渠道
+						// 配置，channelID 与 model 映射规则都不适用于 fallback group。沿用旧 channelID
+						// 会让后续 BillingTicket.Consume 命中错误的 channel-scope 规则；沿用旧映射结果
+						// 还会用错误的 model 替换请求 body。这里在 PrepareBillingCheckForRequest 之前
+						// 重算，使 ChannelID 能正确传入 service quota 第一阶段检查。
+						fallbackChannelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(
+							c.Request.Context(), fallbackAPIKey.GroupID, reqModel,
+						)
 						// fallbackBillingTicket 与外层 billingTicket 是不同 scope（不同 group / 规则匹配），
 						// defer 与 handler 同生命周期。注意：fallback 重试回到外层 select-account 循环后，
 						// Consume 会基于新选定的 account 抢槽位；这里只完成"必到字段"检查。
-						// channelID 不带过去：channelMapping 来自原 group，不适用于 fallback group。
 						fallbackBillingTicket, err := h.billingCacheService.PrepareBillingCheckForRequest(
 							c.Request.Context(), fallbackAPIKey.User, fallbackAPIKey, fallbackGroup, nil,
-							service.ServiceQuotaCheckRequest{Model: reqModel},
+							service.ServiceQuotaCheckRequest{Model: reqModel, ChannelID: fallbackChannelMapping.ChannelID},
 						)
 						if err != nil {
 							status, code, message, metadata := billingErrorDetails(err)
@@ -810,6 +817,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						currentSubscription = nil
 						fallbackUsed = true
 						retryWithFallback = true
+						// 切换 channelMapping：后续 select-account 循环里的 Consume / model 替换 /
+						// RecordUsage 都依赖该变量，必须替换为 fallback group 的解析结果。
+						channelMapping = fallbackChannelMapping
 						// 切换到 fallbackBillingTicket：原 ticket 关闭释放任何已抢的 lease，
 						// 后续 select-account 循环会在选定新 account 后 Consume 在 fallback ticket 上。
 						// 外层 defer 仍指向原 ticket（once-safe，重复 Close 无害）。
@@ -1565,6 +1575,11 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	}
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
 
+	// 解析渠道级模型映射：count_tokens 不抢账号并发槽位，但服务限额仍要按 channel/account scope
+	// 检查，因此需要把 channelID 传给 BillingTicket.Consume（与主请求路径一致）。
+	// 仅做映射，restricted 检查已移至调度阶段，这里忽略 bool 返回值。
+	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, parsedReq.Model)
+
 	// 选择支持该模型的账号
 	account, err := h.gatewayService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, sessionHash, parsedReq.Model)
 	if err != nil {
@@ -1575,7 +1590,7 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	setOpsSelectedAccount(c, account.ID, account.Platform)
 
 	// service quota 第二阶段：count_tokens 不抢账号并发槽位，但服务限额仍要按 channel/account scope 检查。
-	if err := billingTicket.Consume(c.Request.Context(), 0, account.ID); err != nil {
+	if err := billingTicket.Consume(c.Request.Context(), channelMapping.ChannelID, account.ID); err != nil {
 		reqLog.Info("gateway.count_tokens_service_quota_consume_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 		status, code, message, metadata := billingErrorDetails(err)
 		h.errorResponseWithMetadata(c, status, code, message, metadata)

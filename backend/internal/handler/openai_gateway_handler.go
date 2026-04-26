@@ -1264,6 +1264,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	// service quota 第二阶段：基于选定的 channel/account 抢槽位 / 增 RPM。
 	if err := billingTicket.Consume(ctx, channelMappingWS.ChannelID, account.ID); err != nil {
 		reqLog.Info("openai.websocket_service_quota_consume_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		// HTTP 路径走 handleStreamingAwareErrorWithMetadata 透传 rule_id / limiter_type 等
+		// 给前端 i18n。WS 路径同样需要透传：Close frame 的 reason 受 123 字节限制无法承载
+		// metadata，这里先发一个 OpenAI Realtime 协议规范的 error text frame，再发 Close
+		// frame 兜底，确保客户端能拿到完整的限流规则上下文。
+		sendOpenAIWSBillingErrorEvent(ctx, wsConn, err)
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "service quota exceeded")
 		return
 	}
@@ -1674,6 +1679,37 @@ func closeOpenAIClientWS(conn *coderws.Conn, status coderws.StatusCode, reason s
 	}
 	_ = conn.Close(status, reason)
 	_ = conn.CloseNow()
+}
+
+// sendOpenAIWSBillingErrorEvent 在 WebSocket 关闭前发一个 OpenAI Realtime 协议规范的
+// `{"type":"error","error":{...}}` 文本帧，把 billingErrorDetails 解析出的
+// code / message / metadata（rule_id / limiter_type / limiter_window / limit_value 等）
+// 透传给客户端，保持与 HTTP 路径 handleStreamingAwareErrorWithMetadata 同等的可观测性。
+// metadata 字段名沿用 HTTP 错误响应 details 的 snake_case 约定，便于客户端 i18n 复用。
+func sendOpenAIWSBillingErrorEvent(ctx context.Context, conn *coderws.Conn, srcErr error) {
+	if conn == nil || srcErr == nil {
+		return
+	}
+	_, code, message, metadata := billingErrorDetails(srcErr)
+	errPayload := map[string]any{
+		"type":    code,
+		"code":    code,
+		"message": message,
+	}
+	if len(metadata) > 0 {
+		errPayload["metadata"] = metadata
+	}
+	frame := map[string]any{
+		"type":  "error",
+		"error": errPayload,
+	}
+	encoded, marshalErr := json.Marshal(frame)
+	if marshalErr != nil {
+		return
+	}
+	writeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	_ = conn.Write(writeCtx, coderws.MessageText, encoded)
 }
 
 func summarizeWSCloseErrorForLog(err error) (string, string) {
