@@ -54,3 +54,9 @@ func ServeEmbeddedFrontend() gin.HandlerFunc {
 func HasEmbeddedFrontend() bool {
 	return false
 }
+
+// ReadEmbeddedAsset is a stub for non-embed builds. Plugin SDK bundle is only
+// available when frontend is embedded.
+func ReadEmbeddedAsset(name string) ([]byte, error) {
+	return nil, errors.New("frontend not embedded")
+}

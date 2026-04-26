@@ -225,7 +225,8 @@ const pluginImportMap = `<script type="importmap">{"imports":{` +
 	`"vue-router":"/api/v1/plugin-assets/__shared__/vue-router.js",` +
 	`"vue-i18n":"/api/v1/plugin-assets/__shared__/vue-i18n.js",` +
 	`"pinia":"/api/v1/plugin-assets/__shared__/pinia.js",` +
-	`"axios":"/api/v1/plugin-assets/__shared__/axios.js"` +
+	`"axios":"/api/v1/plugin-assets/__shared__/axios.js",` +
+	`"@sub2api/plugin-sdk":"/api/v1/plugin-assets/__shared__/plugin-sdk.js"` +
 	`}}</script>`
 
 func (s *FrontendServer) injectSettings(settingsJSON []byte) []byte {
@@ -376,4 +377,15 @@ func serveIndexHTML(c *gin.Context, fsys fs.FS) {
 func HasEmbeddedFrontend() bool {
 	_, err := frontendFS.ReadFile("dist/index.html")
 	return err == nil
+}
+
+// ReadEmbeddedAsset reads a file from the embedded frontend dist directory.
+// 用于 plugin assets 端点 (servePluginSharedAsset) 读取 host frontend 编译产物
+// (例如 plugin-sdk.js / plugin-sdk.css), 让 plugin frontend 通过 importmap
+// 共享 host 编译好的 SDK bundle.
+//
+// 参数 name 是 dist/ 下的相对路径 (如 "plugin-sdk.js"). 不允许 .. 越权,
+// 调用方需自行限制.
+func ReadEmbeddedAsset(name string) ([]byte, error) {
+	return frontendFS.ReadFile("dist/" + name)
 }
