@@ -3898,6 +3898,56 @@
                 </p>
               </div>
 
+              <div>
+                <label class="input-label">
+                  {{ t('admin.settings.features.affiliate.freezeHours') }}
+                </label>
+                <input
+                  v-model.number="form.affiliate_rebate_freeze_hours"
+                  type="number"
+                  step="1"
+                  min="0"
+                  max="720"
+                  class="input"
+                />
+                <p class="mt-1 text-xs text-gray-400">
+                  {{ t('admin.settings.features.affiliate.freezeHoursDesc') }}
+                </p>
+              </div>
+
+              <div>
+                <label class="input-label">
+                  {{ t('admin.settings.features.affiliate.durationDays') }}
+                </label>
+                <input
+                  v-model.number="form.affiliate_rebate_duration_days"
+                  type="number"
+                  step="1"
+                  min="0"
+                  max="3650"
+                  class="input"
+                />
+                <p class="mt-1 text-xs text-gray-400">
+                  {{ t('admin.settings.features.affiliate.durationDaysDesc') }}
+                </p>
+              </div>
+
+              <div>
+                <label class="input-label">
+                  {{ t('admin.settings.features.affiliate.perInviteeCap') }}
+                </label>
+                <input
+                  v-model.number="form.affiliate_rebate_per_invitee_cap"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  class="input"
+                />
+                <p class="mt-1 text-xs text-gray-400">
+                  {{ t('admin.settings.features.affiliate.perInviteeCapDesc') }}
+                </p>
+              </div>
+
               <!-- 专属用户管理 -->
               <div class="border-t border-gray-100 pt-6 dark:border-dark-700">
                 <div class="mb-3 flex items-center justify-between">
@@ -5333,6 +5383,9 @@ const form = reactive<SettingsForm>({
   totp_encryption_key_configured: false,
   default_balance: 0,
   affiliate_rebate_rate: 20,
+  affiliate_rebate_freeze_hours: 0,
+  affiliate_rebate_duration_days: 0,
+  affiliate_rebate_per_invitee_cap: 0,
   default_concurrency: 1,
   default_subscriptions: [],
   force_email_on_third_party_signup: false,
@@ -6261,6 +6314,9 @@ async function saveSettings() {
         100,
         Math.max(0, Number(form.affiliate_rebate_rate) || 0),
       ),
+      affiliate_rebate_freeze_hours: Math.max(0, Math.min(720, Number(form.affiliate_rebate_freeze_hours) || 0)),
+      affiliate_rebate_duration_days: Math.max(0, Math.min(3650, Math.floor(Number(form.affiliate_rebate_duration_days) || 0))),
+      affiliate_rebate_per_invitee_cap: Math.max(0, Number(form.affiliate_rebate_per_invitee_cap) || 0),
       default_concurrency: form.default_concurrency,
       default_subscriptions: normalizedDefaultSubscriptions,
       force_email_on_third_party_signup: form.force_email_on_third_party_signup,

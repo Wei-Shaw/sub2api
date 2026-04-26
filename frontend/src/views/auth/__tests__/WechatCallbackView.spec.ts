@@ -172,6 +172,7 @@ describe('WechatCallbackView', () => {
     appStoreState.cachedPublicSettings = null
     appStoreState.publicSettingsLoaded = false
     localStorage.clear()
+    sessionStorage.clear()
     locationState.current = {
       href: 'http://localhost/auth/wechat/callback',
       hash: '',

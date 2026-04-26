@@ -15,17 +15,20 @@
         <LinuxDoOAuthSection
           v-if="linuxdoOAuthEnabled"
           :disabled="isLoading"
+          :aff-code="formData.aff_code"
           :show-divider="false"
         />
         <WechatOAuthSection
           v-if="wechatOAuthEnabled"
           :disabled="isLoading"
+          :aff-code="formData.aff_code"
           :show-divider="false"
         />
         <OidcOAuthSection
           v-if="oidcOAuthEnabled"
           :disabled="isLoading"
           :provider-name="oidcOAuthProviderName"
+          :aff-code="formData.aff_code"
           :show-divider="false"
         />
         <div class="flex items-center gap-3">
@@ -293,6 +296,11 @@ import {
   isRegistrationEmailSuffixAllowed,
   normalizeRegistrationEmailSuffixWhitelist
 } from '@/utils/registrationEmailPolicy'
+import {
+  clearAffiliateReferralCode,
+  loadAffiliateReferralCode,
+  resolveAffiliateReferralCode
+} from '@/utils/oauthAffiliate'
 
 const { t, locale } = useI18n()
 
@@ -378,9 +386,19 @@ watch(validationToastMessage, (value, previousValue) => {
   }
 })
 
+function syncAffiliateReferralCode(): string {
+  const code = resolveAffiliateReferralCode(route.query.aff, route.query.aff_code)
+  if (code) {
+    formData.aff_code = code
+  }
+  return code
+}
+
 // ==================== Lifecycle ====================
 
 onMounted(async () => {
+  syncAffiliateReferralCode()
+
   try {
     const settings = await getPublicSettings()
     registrationEnabled.value = settings.registration_enabled
@@ -407,16 +425,20 @@ onMounted(async () => {
         await validatePromoCodeDebounced(promoParam)
       }
     }
-    const affParam = (route.query.aff as string) || (route.query.aff_code as string)
-    if (affParam) {
-      formData.aff_code = affParam.trim()
-    }
+    syncAffiliateReferralCode()
   } catch (error) {
     console.error('Failed to load public settings:', error)
   } finally {
     settingsLoaded.value = true
   }
 })
+
+watch(
+  () => [route.query.aff, route.query.aff_code],
+  () => {
+    syncAffiliateReferralCode()
+  }
+)
 
 onUnmounted(() => {
   if (promoValidateTimeout) {
@@ -702,6 +724,11 @@ async function handleRegister(): Promise<void> {
   isLoading.value = true
 
   try {
+    const affCode = formData.aff_code.trim() || loadAffiliateReferralCode()
+    if (affCode) {
+      formData.aff_code = affCode
+    }
+
     // If email verification is enabled, redirect to verification page
     if (emailVerifyEnabled.value) {
       // Store registration data in sessionStorage
@@ -713,7 +740,7 @@ async function handleRegister(): Promise<void> {
           turnstile_token: turnstileToken.value,
           promo_code: formData.promo_code || undefined,
           invitation_code: formData.invitation_code || undefined,
-          ...(formData.aff_code ? { aff_code: formData.aff_code } : {})
+          ...(affCode ? { aff_code: affCode } : {})
         })
       )
 
@@ -729,8 +756,9 @@ async function handleRegister(): Promise<void> {
       turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined,
       promo_code: formData.promo_code || undefined,
       invitation_code: formData.invitation_code || undefined,
-      ...(formData.aff_code ? { aff_code: formData.aff_code } : {})
+      ...(affCode ? { aff_code: affCode } : {})
     })
+    clearAffiliateReferralCode()
 
     // Show success toast
     appStore.showSuccess(t('auth.accountCreatedSuccess', { siteName: siteName.value }))
