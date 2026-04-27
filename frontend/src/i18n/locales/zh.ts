@@ -982,6 +982,15 @@ export default {
       noPlugins: '当前没有插件注册过设置 schema',
       emptySchema: '该插件未声明任何可调字段',
       saveSuccess: '设置已保存',
+      // V5/W6 SETTINGS-V2:
+      deprecated: '已废弃',
+      deprecatedHint: '此字段已废弃，未来版本可能移除',
+      requiresReload: '保存此字段将重启此插件',
+      secretConfigured: '（已配置，留空保持原值，输空格清除）',
+      secretEmpty: '输入新值以设置该密钥',
+      backendOnly: '此字段仅由后端修改，无法在管理后台编辑',
+      schemaVersion: 'Schema 版本：{version}',
+      schemaVersionMismatch: '存储值的 schema 版本与当前不一致，部分值可能已过期',
     },
     // Plugin Management
     plugins: {

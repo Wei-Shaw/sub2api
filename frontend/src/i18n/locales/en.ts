@@ -978,6 +978,15 @@ export default {
       noPlugins: 'No plugin has registered a settings schema yet.',
       emptySchema: 'This plugin declares no tunable fields.',
       saveSuccess: 'Settings saved.',
+      // V5/W6 SETTINGS-V2:
+      deprecated: 'Deprecated',
+      deprecatedHint: 'This field is deprecated and may be removed in a future plugin version.',
+      requiresReload: 'Saving this field will reload the plugin.',
+      secretConfigured: '(configured — leave empty to keep, type space to clear)',
+      secretEmpty: 'Enter a value to set the secret',
+      backendOnly: 'This field is backend-only and cannot be edited from the admin UI.',
+      schemaVersion: 'Schema version: {version}',
+      schemaVersionMismatch: 'Stored schema version differs from current; some values may be stale.',
     },
     // Plugin Management
     plugins: {
