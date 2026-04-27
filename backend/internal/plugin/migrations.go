@@ -31,6 +31,10 @@ const pluginMigrationLockRetryInterval = 500 * time.Millisecond
 type MigrationFile struct {
 	Filename string
 	Content  []byte
+	// NonTransactional 标记此 SQL 含有 PostgreSQL 拒绝在显式事务里执行的语句
+	// (例如 CREATE INDEX CONCURRENTLY)。host 会跳过 BEGIN/COMMIT,直接在
+	// 连接上执行,并在记录到 plugin_migrations 表时使用独立语句。
+	NonTransactional bool
 }
 
 // RunPluginMigrations 在事务中按 filename 顺序执行插件的迁移。
@@ -102,6 +106,23 @@ func applyOnePluginMigration(ctx context.Context, db *sql.DB, pluginName string,
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("check plugin migration %s/%s: %w", pluginName, m.Filename, err)
+	}
+
+	if m.NonTransactional {
+		// 不允许在显式事务中执行(例如 CREATE INDEX CONCURRENTLY)。
+		// 直接在连接上执行 SQL,然后单独记录到 plugin_migrations 表。
+		// 失败时无法原子回滚,但已应用的语句会被 PostgreSQL 自身保留;
+		// 重新启动时 checksum 校验仍会跳过已记录的迁移。
+		if _, err := db.ExecContext(ctx, content); err != nil {
+			return fmt.Errorf("apply plugin migration %s/%s (non_transactional): %w", pluginName, m.Filename, err)
+		}
+		if _, err := db.ExecContext(ctx,
+			"INSERT INTO plugin_migrations (plugin_name, filename, checksum) VALUES ($1, $2, $3)",
+			pluginName, m.Filename, checksum,
+		); err != nil {
+			return fmt.Errorf("record plugin migration %s/%s (non_transactional): %w", pluginName, m.Filename, err)
+		}
+		return nil
 	}
 
 	tx, err := db.BeginTx(ctx, nil)

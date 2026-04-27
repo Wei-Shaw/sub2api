@@ -735,10 +735,32 @@ func (m *PluginManager) spawnAndConnect(parentCtx context.Context, inst *PluginI
 		return fmt.Errorf("plugin init reported failure: %s", initResp.Error)
 	}
 
-	// 跑迁移(若声明了文件)。当前实现假定迁移文件由插件自己 embed,核心仅记录已应用列表。
-	// 真正读取 SQL 内容的逻辑后续会通过 GetFrontendBundle 之外的 RPC 提供;此处仅打印日志。
-	if len(manifest.GetMigrationFiles()) > 0 {
-		m.logger.Info("plugin declared migrations",
+	// 跑插件迁移 (V5/W1)。manifest.migrations 是新版插件声明的 SQL 文件列表,
+	// 每条带有 sha256 pin。host 通过 PluginLifecycle.GetMigration 拉取 SQL body,
+	// 重新校验 checksum 后调用 RunPluginMigrations(advisory lock + 记录 plugin_migrations)。
+	//
+	// 失败语义 (V5-CURATE Q3): 默认阻塞插件启动 — 返回 error 让 EnablePlugin 失败,
+	// 上层会清理 instance 状态。escape hatch: PluginRecord.Config["skip_migration"]="true"
+	// 时跳过执行,用于线上紧急绕过有问题的迁移声明。
+	//
+	// 旧插件只填了 deprecated 的 migration_files 字段时,manifest.GetMigrations() 为空,
+	// fetchAndRunPluginMigrations 会直接返回 nil;这里保留旧的日志行为方便观察。
+	if shouldSkipPluginMigrations(pluginConfig) {
+		m.logger.Warn("plugin migrations skipped via skip_migration config",
+			"plugin", inst.Name,
+			"declared_count", len(manifest.GetMigrations()),
+		)
+	} else if len(manifest.GetMigrations()) > 0 {
+		if err := fetchAndRunPluginMigrations(parentCtx, m.db, lifecycle, manifest, inst.Name, m.logger); err != nil {
+			m.sdkServer.UnregisterPlugin(inst.Name)
+			_ = conn.Close()
+			cancelProc()
+			_ = cmd.Wait()
+			return fmt.Errorf("plugin migrations: %w", err)
+		}
+	} else if len(manifest.GetMigrationFiles()) > 0 {
+		// 兼容旧插件二进制:没有 sha256 pin,host 无法拉取 SQL,只记录日志。
+		m.logger.Info("plugin declared legacy migration_files (no sha256 pin, skipped)",
 			"plugin", inst.Name,
 			"count", len(manifest.GetMigrationFiles()),
 		)

@@ -16,6 +16,11 @@ service PluginLifecycle {
   rpc HealthCheck(google.protobuf.Empty) returns (HealthResponse);
   rpc Shutdown(google.protobuf.Empty) returns (google.protobuf.Empty);
   rpc GetFrontendBundle(FrontendBundleRequest) returns (stream FileChunk);
+  // GetMigration is used by the host to fetch the SQL body of one migration
+  // declared in ManifestResponse.migrations. The plugin keeps SQL in its own
+  // embed.FS; the host applies the file via plugin/migrations.go after
+  // verifying its checksum against the manifest declaration.
+  rpc GetMigration(GetMigrationRequest) returns (GetMigrationResponse);
 }
 
 // ============================================================
@@ -99,7 +104,17 @@ message ManifestResponse {
   repeated EndpointDeclaration plugin_endpoints = 11;
   FrontendManifest frontend = 20;
 
+  // DEPRECATED: legacy filename-only declaration. New plugins should populate
+  // `migrations` instead. The host ignores migration_files when migrations
+  // is non-empty.
   repeated string migration_files = 30;
+
+  // migrations declares the SQL migration files the plugin ships embedded.
+  // The host fetches each file body via PluginLifecycle.GetMigration and
+  // applies it through plugin/migrations.go (advisory lock + checksum check
+  // + plugin_migrations table). Files are applied in lexicographical order
+  // of `filename`.
+  repeated MigrationDecl migrations = 41;
 
   // capabilities declares the privileged SDK features this plugin requires.
   // The core checks each entry against an allow-list and forwards the
@@ -159,4 +174,38 @@ message RouteDefinition {
   string name = 2;
   string component_path = 3;
   map<string, string> meta = 4;
+}
+
+// MigrationDecl describes a single SQL migration that the plugin ships
+// embedded. The host pulls the body via PluginLifecycle.GetMigration and
+// re-verifies the SHA-256 against this declaration before executing.
+message MigrationDecl {
+  // Filename is applied in lexicographical order, e.g. "001_create_x.sql".
+  string filename          = 1;
+  // ChecksumSha256 is the hex-encoded SHA-256 of the SQL body the plugin
+  // intends to ship. The host treats a mismatch with the fetched body as
+  // a fatal startup error (drift = potential supply-chain tampering).
+  string checksum_sha256   = 2;
+  // NonTransactional marks migrations that contain statements PostgreSQL
+  // refuses to run inside an explicit transaction (e.g.
+  // CREATE INDEX CONCURRENTLY). The host applies these outside BEGIN/COMMIT.
+  bool   non_transactional = 3;
+}
+
+// GetMigrationRequest names the migration the host wishes to fetch. The
+// filename must match one declared in ManifestResponse.migrations.
+message GetMigrationRequest {
+  string filename = 1;
+}
+
+// GetMigrationResponse carries the raw SQL body. `sql` is bytes (not
+// string) so any plugin-side BOM or non-UTF8 trailing bytes survive
+// the round-trip; the host treats it as opaque text when executing.
+message GetMigrationResponse {
+  string filename          = 1;
+  bytes  sql               = 2;
+  // ChecksumSha256 is the SHA-256 of `sql` computed by the SDK; the host
+  // re-checks this against MigrationDecl.checksum_sha256 to reject drift.
+  string checksum_sha256   = 3;
+  bool   non_transactional = 4;
 }
