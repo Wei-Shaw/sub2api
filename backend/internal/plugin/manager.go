@@ -1099,6 +1099,21 @@ func (m *PluginManager) handlePluginSettingsEvents(pluginName string, ch <-chan 
 			timer = time.AfterFunc(reloadCoalesceWindow, fire)
 		}
 	}
+	// Channel closed. Two paths reach here (DESIGN §4.4 / §4.5):
+	//
+	//   - stopInstance unsubscribed us: normal shutdown / restart, no
+	//     follow-up needed because the plugin is on its way down.
+	//   - PluginSettingsService.dropAllSubscribersForPlugin closed every
+	//     subscriber after a schema_version bump. The plugin is expected
+	//     to be re-spawned (manifest reload), and spawnAndConnect will
+	//     install a fresh subscription on the next Subscribe call. We
+	//     intentionally do not auto-resubscribe here — that would race
+	//     against the in-flight UnregisterSchema / RegisterSchema
+	//     sequence and could leak stray goroutines holding stale plugin
+	//     state.
+	m.logger.Debug("plugin settings event stream closed",
+		"plugin", pluginName,
+	)
 }
 
 // reloadPlugin restarts a plugin in response to a settings change. Mirrors

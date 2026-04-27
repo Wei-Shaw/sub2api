@@ -112,6 +112,17 @@ func (s *SettingsExtensionServer) Get(
 //     namespace.
 //  4. Pump events until either the stream context is cancelled or the
 //     subscription channel is closed.
+//
+// V5/W6 SETTINGS-V2 close-stream-on-schema-version-change contract
+// (DESIGN §4.5): when the host's PluginSettingsService observes a
+// schema_version bump it closes every existing subscriber's channel
+// (dropAllSubscribersForPlugin). The for-loop below sees ok=false on
+// the next receive and returns nil, ending the gRPC stream with a
+// clean EOF. The SDK's runWatchLoop treats EOF as "reconnect" and
+// re-issues Watch, which triggers a fresh sendSnapshot carrying the
+// new schema_version metadata implicitly via the values it ships.
+// No special event kind is added to the proto — the SDK rebuild on
+// reconnect is the authoritative resync path.
 func (s *SettingsExtensionServer) Watch(
 	req *pb.SettingsWatchRequest, stream grpc.ServerStreamingServer[pb.SettingsChangeEvent],
 ) error {
