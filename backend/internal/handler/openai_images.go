@@ -117,12 +117,7 @@ REDACTED
 		return
 REDACTED
 
-	sessionHash := ""
-	if parsed.Multipart {
-		sessionHash = h.gatewayService.GenerateSessionHashWithFallback(c, nil, parsed.StickySessionSeed())
-REDACTED else {
-		sessionHash = h.gatewayService.GenerateSessionHash(c, body)
-REDACTED
+	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, body)
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
