@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Channel Monitor",
+  "description": "Periodic upstream-channel health checks (V5 W6).",
+  "type": "object",
+  "properties": {
+    "enabled": {
+      "type": "boolean",
+      "title": "Enable channel monitoring",
+      "description": "Master switch. When off, periodic checks halt and the user-facing /channel-status view returns an empty list.",
+      "default": true
+    },
+    "defaultIntervalSec": {
+      "type": "integer",
+      "title": "Default check interval (seconds)",
+      "description": "Pre-filled in the admin Create form. Per-monitor override still applies.",
+      "minimum": 15,
+      "maximum": 3600,
+      "default": 60
+    },
+    "templateMaxBodyKB": {
+      "type": "integer",
+      "title": "Max template body size (KB)",
+      "description": "Upper bound for body_override JSON size on request templates.",
+      "minimum": 1,
+      "maximum": 256,
+      "default": 16
+    },
+    "dailyRollupHourUTC": {
+      "type": "integer",
+      "title": "Daily rollup hour (UTC, 0-23)",
+      "description": "Informational — the host cron currently fires at 02:00 UTC. Reserved for future per-tenant overrides.",
+      "minimum": 0,
+      "maximum": 23,
+      "default": 2
+    }
+  },
+  "required": ["enabled"]
+}

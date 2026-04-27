@@ -60,10 +60,10 @@ type MonitorScheduler interface {
 	Unschedule(monitorID int64)
 }
 
-// CheckOptions configures one-off checker invocations triggered from the
-// admin "Run now" button. The full struct lands with the checker port; the
-// stub here records only the fields service.go currently references so the
-// package can build.
+// CheckOptions configures a single per-model probe. It carries the snapshot
+// fields the user / template captured: extra headers, body override mode,
+// and the body override payload. The Models field is reserved for future
+// expansion of the admin "Run now" UI.
 type CheckOptions struct {
 	Models           []string
 	ExtraHeaders     map[string]string
@@ -71,59 +71,9 @@ type CheckOptions struct {
 	BodyOverride     map[string]any
 }
 
-// pingEndpointOrigin is part of the checker port. The service calls it to
-// pre-warm latency measurement when the admin opens the configuration form.
-// Stub returns nil — real implementation lives in checker.go.
-func pingEndpointOrigin(ctx context.Context, endpoint string) *int {
-	_ = ctx
-	_ = endpoint
-	return nil
-}
-
-// runCheckForModel performs the per-model HTTP probe. Real implementation
-// lives in checker.go; stub returns an "operational" result with no latency
-// so the runner can wire end-to-end before the checker port lands.
-func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model string, opts *CheckOptions) *CheckResult {
-	_ = ctx
-	_ = provider
-	_ = endpoint
-	_ = apiKey
-	_ = opts
-	return &CheckResult{
-		Model:   model,
-		Status:  MonitorStatusError,
-		Message: "checker not yet ported (stub)",
-	}
-}
-
-// validateBodyModeParams / validateExtraHeaders / emptyHeadersIfNil /
-// defaultBodyMode were stubbed earlier; now that template_service.go has
-// been ported these functions live there. The stub bodies are gone.
-
-// stubs.go provides build-time stubs for symbols that will be filled in by
-// later commits as the checker / ssrf / runner files are ported. Keeping
-// them in one file makes it obvious which TODOs remain — and lets earlier
-// commits stay green so the V5 W6 staged migration can land incrementally.
-
-// isSupportedProvider returns true if p is one of the recognised provider
-// strings. Real implementation lives next to the provider adapter table in
-// checker.go, which has not been ported yet.
-func isSupportedProvider(p string) bool {
-	switch p {
-	case MonitorProviderOpenAI, MonitorProviderAnthropic, MonitorProviderGemini:
-		return true
-	}
-	return false
-}
-
-// isPrivateOrLoopbackHost is the SSRF guard's host classification. The real
-// version (152 lines, including DNS resolution + IP-range checks) lives in
-// channel_monitor_ssrf.go and will be replaced by the W4 SafeOutboundHTTP
-// SDK helper. Until that swap lands the validation step degrades to "always
-// allow" so existing host-side validators still compile — the actual check
-// will run inside SafeOutboundHTTP at request time.
-func isPrivateOrLoopbackHost(ctx context.Context, host string) (bool, error) {
-	_ = ctx
-	_ = host
-	return false, nil
-}
+// runCheckForModel / pingEndpointOrigin / isSupportedProvider /
+// isPrivateOrLoopbackHost are implemented in checker.go on top of the SDK's
+// SafeHTTPClient (W4). The legacy host-side channel_monitor_ssrf.go is
+// replaced wholesale by that SDK capability — the SSRF guard runs at every
+// dial inside SafeHTTPClient, so a per-host pre-validation hook is no
+// longer needed.

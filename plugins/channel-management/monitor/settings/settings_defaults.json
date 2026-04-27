@@ -1,0 +1,6 @@
+{
+  "enabled": true,
+  "defaultIntervalSec": 60,
+  "templateMaxBodyKB": 16,
+  "dailyRollupHourUTC": 2
+}
