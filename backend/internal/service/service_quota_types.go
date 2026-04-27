@@ -277,7 +277,8 @@ type ServiceQuotaPreCheckPlan struct {
 	PreparedAt time.Time
 }
 
-// AccountScopeInfo / GroupScopeInfo 用于 path 链路一致性校验：下级必须是上级的子孙。
+// AccountScopeInfo / GroupScopeInfo / ChannelScopeInfo 用于 path 链路一致性校验：
+// 下级必须是上级的子孙（account ⊂ group ⊂ platform；channel 服务的 platform/group 必须包含 path 指定值）。
 type AccountScopeInfo struct {
 	Platform string
 	GroupIDs []int64
@@ -287,6 +288,17 @@ type GroupScopeInfo struct {
 	Platform string
 }
 
+// ChannelScopeInfo 用于 path 校验 channel 的服务关系：
+//   - Platforms：channel 的 model_pricing 中出现过的所有 platform 集合（小写归一化）
+//   - GroupIDs：channel 通过 channel_groups 关联表绑定的所有 group_id
+//
+// path.channel_id 配合 path.platform 时，platform 必须出现在 ChannelScopeInfo.Platforms；
+// path.channel_id 配合 path.group_id 时，group_id 必须出现在 ChannelScopeInfo.GroupIDs。
+type ChannelScopeInfo struct {
+	Platforms []string
+	GroupIDs  []int64
+}
+
 type ServiceQuotaRuleRepository interface {
 	List(ctx context.Context, filter ServiceQuotaListFilter) ([]*ServiceQuotaRule, error)
 	Create(ctx context.Context, input ServiceQuotaRuleInput) (*ServiceQuotaRule, error)
@@ -294,6 +306,10 @@ type ServiceQuotaRuleRepository interface {
 	Delete(ctx context.Context, id int64) error
 	FetchAccountScope(ctx context.Context, accountID int64) (*AccountScopeInfo, error)
 	FetchGroupScope(ctx context.Context, groupID int64) (*GroupScopeInfo, error)
+	// FetchChannelScope 返回 channel 服务的 platform 集合与 group 集合，用于 validatePathLinkage
+	// 校验 path 中 channel↔platform、channel↔group 的隶属关系。channel 不存在时返回 nil（非 error），
+	// 与 FetchAccountScope/FetchGroupScope 行为一致——让 caller 用 nil 判断"未找到"。
+	FetchChannelScope(ctx context.Context, channelID int64) (*ChannelScopeInfo, error)
 }
 
 // ServiceQuotaUserChecker 是 service quota 在校验 target_user_ids 时使用的最小化用户存在性检查接口。

@@ -38,6 +38,9 @@ func (f *monitorFakeRepo) FetchAccountScope(_ context.Context, _ int64) (*Accoun
 func (f *monitorFakeRepo) FetchGroupScope(_ context.Context, _ int64) (*GroupScopeInfo, error) {
 	return nil, errors.New("not supported")
 }
+func (f *monitorFakeRepo) FetchChannelScope(_ context.Context, _ int64) (*ChannelScopeInfo, error) {
+	return nil, errors.New("not supported")
+}
 
 type monitorFakeLimiter struct {
 	mu        sync.Mutex

@@ -238,71 +238,170 @@ func serviceQuotaPathSignature(p ServiceQuotaPathInput) string {
 	return strings.Join([]string{platform, channelID, groupID, accountID, modelPattern}, "|")
 }
 
-// validatePathLinkage 校验单条 path 内 account/group/platform 之间的隶属关系。
+// validatePathLinkage 校验单条 path 内 channel/account/group/platform 之间的隶属关系。
+//
+// 校验维度（按出现先后短路）：
+//  1. account ↔ group：account 必须属于 path 指定 group
+//  2. account ↔ platform：account 平台必须等于 path 指定 platform
+//  3. group ↔ platform：group 平台必须等于 path 指定 platform
+//  4. channel ↔ platform：channel.model_pricing 必须服务 path 指定 platform
+//  5. channel ↔ group：channel.channel_groups 必须包含 path 指定 group
+//
+// 错误码 SERVICE_QUOTA_SCOPE_MISMATCH 统一 metadata 标 entity 字段（account/group/channel）
+// 让前端据此决定高亮哪个下拉框。channel 不存在返回 SERVICE_QUOTA_SCOPE_CHANNEL_NOT_FOUND，
+// 与 account/group not found 保持一致。
 func (s *serviceQuotaService) validatePathLinkage(ctx context.Context, path ServiceQuotaPathInput) error {
 	platform := ""
 	if path.Platform != nil {
 		platform = *path.Platform
 	}
 
-	var accountInfo *AccountScopeInfo
-	if path.AccountID != nil && *path.AccountID > 0 {
-		info, err := s.repo.FetchAccountScope(ctx, *path.AccountID)
-		if err != nil {
-			return err
-		}
-		if info == nil {
-			return pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_ACCOUNT_NOT_FOUND", "account not found").WithMetadata(map[string]string{
-				"account_id": strconv.FormatInt(*path.AccountID, 10),
-			})
-		}
-		accountInfo = info
+	accountInfo, err := s.fetchAccountScopeForPath(ctx, path)
+	if err != nil {
+		return err
+	}
+	groupInfo, err := s.fetchGroupScopeForPath(ctx, path)
+	if err != nil {
+		return err
+	}
+	channelInfo, err := s.fetchChannelScopeForPath(ctx, path)
+	if err != nil {
+		return err
 	}
 
-	var groupInfo *GroupScopeInfo
+	if err := validateAccountLinkage(path, platform, accountInfo); err != nil {
+		return err
+	}
+	if err := validateGroupLinkage(path, platform, groupInfo); err != nil {
+		return err
+	}
+	return validateChannelLinkage(path, platform, channelInfo)
+}
+
+func (s *serviceQuotaService) fetchAccountScopeForPath(ctx context.Context, path ServiceQuotaPathInput) (*AccountScopeInfo, error) {
+	if path.AccountID == nil || *path.AccountID <= 0 {
+		return nil, nil
+	}
+	info, err := s.repo.FetchAccountScope(ctx, *path.AccountID)
+	if err != nil {
+		return nil, err
+	}
+	if info == nil {
+		return nil, pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_ACCOUNT_NOT_FOUND", "account not found").WithMetadata(map[string]string{
+			"account_id": strconv.FormatInt(*path.AccountID, 10),
+		})
+	}
+	return info, nil
+}
+
+func (s *serviceQuotaService) fetchGroupScopeForPath(ctx context.Context, path ServiceQuotaPathInput) (*GroupScopeInfo, error) {
+	if path.GroupID == nil || *path.GroupID <= 0 {
+		return nil, nil
+	}
+	info, err := s.repo.FetchGroupScope(ctx, *path.GroupID)
+	if err != nil {
+		return nil, err
+	}
+	if info == nil {
+		return nil, pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_GROUP_NOT_FOUND", "group not found").WithMetadata(map[string]string{
+			"group_id": strconv.FormatInt(*path.GroupID, 10),
+		})
+	}
+	return info, nil
+}
+
+func (s *serviceQuotaService) fetchChannelScopeForPath(ctx context.Context, path ServiceQuotaPathInput) (*ChannelScopeInfo, error) {
+	if path.ChannelID == nil || *path.ChannelID <= 0 {
+		return nil, nil
+	}
+	info, err := s.repo.FetchChannelScope(ctx, *path.ChannelID)
+	if err != nil {
+		return nil, err
+	}
+	if info == nil {
+		return nil, pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_CHANNEL_NOT_FOUND", "channel not found").WithMetadata(map[string]string{
+			"channel_id": strconv.FormatInt(*path.ChannelID, 10),
+		})
+	}
+	return info, nil
+}
+
+func validateAccountLinkage(path ServiceQuotaPathInput, platform string, accountInfo *AccountScopeInfo) error {
+	if accountInfo == nil {
+		return nil
+	}
 	if path.GroupID != nil && *path.GroupID > 0 {
-		info, err := s.repo.FetchGroupScope(ctx, *path.GroupID)
-		if err != nil {
-			return err
-		}
-		if info == nil {
-			return pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_GROUP_NOT_FOUND", "group not found").WithMetadata(map[string]string{
-				"group_id": strconv.FormatInt(*path.GroupID, 10),
-			})
-		}
-		groupInfo = info
-	}
-
-	if accountInfo != nil && path.GroupID != nil && *path.GroupID > 0 {
-		found := false
-		for _, gid := range accountInfo.GroupIDs {
-			if gid == *path.GroupID {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !containsInt64(accountInfo.GroupIDs, *path.GroupID) {
 			return pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_MISMATCH", "account is not a member of the specified group").WithMetadata(map[string]string{
+				"entity":     "account_group",
 				"account_id": strconv.FormatInt(*path.AccountID, 10),
 				"group_id":   strconv.FormatInt(*path.GroupID, 10),
 			})
 		}
 	}
-	if accountInfo != nil && platform != "" && !strings.EqualFold(accountInfo.Platform, platform) {
+	if platform != "" && !strings.EqualFold(accountInfo.Platform, platform) {
 		return pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_MISMATCH", "account platform does not match the specified platform").WithMetadata(map[string]string{
+			"entity":            "account_platform",
 			"account_id":        strconv.FormatInt(*path.AccountID, 10),
 			"account_platform":  accountInfo.Platform,
 			"expected_platform": platform,
 		})
 	}
-	if groupInfo != nil && platform != "" && !strings.EqualFold(groupInfo.Platform, platform) {
+	return nil
+}
+
+func validateGroupLinkage(path ServiceQuotaPathInput, platform string, groupInfo *GroupScopeInfo) error {
+	if groupInfo == nil || platform == "" {
+		return nil
+	}
+	if !strings.EqualFold(groupInfo.Platform, platform) {
 		return pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_MISMATCH", "group platform does not match the specified platform").WithMetadata(map[string]string{
+			"entity":            "group_platform",
 			"group_id":          strconv.FormatInt(*path.GroupID, 10),
 			"group_platform":    groupInfo.Platform,
 			"expected_platform": platform,
 		})
 	}
 	return nil
+}
+
+// validateChannelLinkage 校验 channel 与 path.platform / path.group_id 的隶属关系：
+//   - channel ↔ platform：path.platform 必须出现在 channel.model_pricing 的 platform 集合中
+//   - channel ↔ group：path.group_id 必须出现在 channel_groups 关联表的集合中
+//
+// 注意 channel 服务多个 platform 是常见场景（同一渠道横跨 anthropic/openai 等），所以这里
+// 用 contains-check 而非 EqualFold 单值比较。
+func validateChannelLinkage(path ServiceQuotaPathInput, platform string, channelInfo *ChannelScopeInfo) error {
+	if channelInfo == nil {
+		return nil
+	}
+	if platform != "" && !containsStringFold(channelInfo.Platforms, platform) {
+		return pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_MISMATCH", "channel does not serve the specified platform").WithMetadata(map[string]string{
+			"entity":            "channel_platform",
+			"channel_id":        strconv.FormatInt(*path.ChannelID, 10),
+			"channel_platforms": strings.Join(channelInfo.Platforms, ","),
+			"expected_platform": platform,
+		})
+	}
+	if path.GroupID != nil && *path.GroupID > 0 && !containsInt64(channelInfo.GroupIDs, *path.GroupID) {
+		return pkgerrors.BadRequest("SERVICE_QUOTA_SCOPE_MISMATCH", "channel does not include the specified group").WithMetadata(map[string]string{
+			"entity":     "channel_group",
+			"channel_id": strconv.FormatInt(*path.ChannelID, 10),
+			"group_id":   strconv.FormatInt(*path.GroupID, 10),
+		})
+	}
+	return nil
+}
+
+// containsInt64 在 ops_retry.go 已存在，复用。
+
+func containsStringFold(haystack []string, needle string) bool {
+	for _, v := range haystack {
+		if strings.EqualFold(v, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func sanitizeTargetUserIDs(ids []int64) []int64 {

@@ -187,6 +187,60 @@ func (r *serviceQuotaRuleRepository) FetchGroupScope(ctx context.Context, groupI
 	return info, nil
 }
 
+// FetchChannelScope 收集 channel 服务的 platform 集合（来自 channel_model_pricing.platform，
+// 同 channel 多条 pricing 行可能横跨多个平台）与 group 集合（来自 channel_groups 关联表）。
+//
+// 与 FetchAccountScope/FetchGroupScope 风格一致：channel 不存在返回 (nil, nil) 让 caller
+// 把它翻成 BadRequest。channel 存在但没有 model_pricing / group 关联时返回空切片（非 nil），
+// 让 validatePathLinkage 的 contains-check 保持单一路径。
+func (r *serviceQuotaRuleRepository) FetchChannelScope(ctx context.Context, channelID int64) (*service.ChannelScopeInfo, error) {
+	var exists bool
+	err := r.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM channels WHERE id = $1)`, channelID).Scan(&exists)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, nil
+	}
+	info := &service.ChannelScopeInfo{}
+
+	// 同一 channel 的多条 pricing 行可能重复出现同一 platform，DISTINCT + LOWER 归一化。
+	platRows, err := r.db.QueryContext(ctx,
+		`SELECT DISTINCT LOWER(platform) FROM channel_model_pricing WHERE channel_id = $1 AND platform IS NOT NULL AND platform <> ''`,
+		channelID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = platRows.Close() }()
+	for platRows.Next() {
+		var p string
+		if err := platRows.Scan(&p); err != nil {
+			return nil, err
+		}
+		info.Platforms = append(info.Platforms, p)
+	}
+	if err := platRows.Err(); err != nil {
+		return nil, err
+	}
+
+	groupRows, err := r.db.QueryContext(ctx, `SELECT group_id FROM channel_groups WHERE channel_id = $1`, channelID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = groupRows.Close() }()
+	for groupRows.Next() {
+		var gid int64
+		if err := groupRows.Scan(&gid); err != nil {
+			return nil, err
+		}
+		info.GroupIDs = append(info.GroupIDs, gid)
+	}
+	if err := groupRows.Err(); err != nil {
+		return nil, err
+	}
+	return info, nil
+}
+
 func (r *serviceQuotaRuleRepository) fetchByID(ctx context.Context, id int64) (*service.ServiceQuotaRule, error) {
 	row := r.db.QueryRowContext(ctx, `SELECT `+serviceQuotaRuleColumns+` FROM service_quota_rules WHERE id = $1`, id)
 	rule, err := scanServiceQuotaRule(row)
