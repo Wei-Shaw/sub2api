@@ -64,6 +64,27 @@ type HelloPlugin struct {
 // matches them verbatim, no prepending.
 const pluginRoutePrefix = "/api/v1/plugin/hello-world"
 
+// helloWorldSettingsSchema is the V5/W3 SettingsExtension demo: a single
+// "greeting" string that the admin UI can edit. We embed the schema +
+// defaults as raw JSON so the example remains self-contained; production
+// plugins can also generate these from struct tags via a build-time tool.
+var (
+	helloWorldSettingsSchema = []byte(`{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Hello World Plugin Settings",
+  "type": "object",
+  "properties": {
+    "greeting": {
+      "type": "string",
+      "title": "Greeting",
+      "description": "The string returned by /api/v1/plugin/hello-world/hello.",
+      "default": "Hello"
+    }
+  }
+}`)
+	helloWorldSettingsDefaults = []byte(`{"greeting":"Hello"}`)
+)
+
 func (p *HelloPlugin) Manifest() *pluginsdk.Manifest {
 	return &pluginsdk.Manifest{
 		Name:        "hello-world",
@@ -97,6 +118,10 @@ func (p *HelloPlugin) Manifest() *pluginsdk.Manifest {
 				},
 			},
 			I18nNamespaces: []string{"helloWorldPlugin"},
+		},
+		SettingsSchema: &pluginsdk.SettingsSchemaDoc{
+			Schema:   helloWorldSettingsSchema,
+			Defaults: helloWorldSettingsDefaults,
 		},
 	}
 }
@@ -151,9 +176,22 @@ func main() {
 // HTTP handlers
 // ---------------------------------------------------------------------------
 
-func (p *HelloPlugin) handleHello(w http.ResponseWriter, _ *http.Request) {
+func (p *HelloPlugin) handleHello(w http.ResponseWriter, r *http.Request) {
+	greeting := "Hello"
+	if pctx := p.context(); pctx != nil {
+		// Pull the greeting from V5/W3 SettingsExtension. We fall back to
+		// the hard-coded default on any error so the smoke-test endpoint
+		// stays operational even when the host's plugin settings table is
+		// empty (e.g. immediately after install before defaults seed).
+		ctx, cancel := context.WithTimeout(r.Context(), dbTestTimeout)
+		defer cancel()
+		var got string
+		if err := pctx.Settings().GetTyped(ctx, "greeting", &got); err == nil && got != "" {
+			greeting = got
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]string{
-		"message": "Hello from plugin!",
+		"message": greeting + " from plugin!",
 		"version": pluginVersion,
 	})
 }
