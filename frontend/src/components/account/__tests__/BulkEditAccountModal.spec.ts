@@ -217,4 +217,41 @@ describe('BulkEditAccountModal', () => {
     REDACTED)
     expect(wrapper.text()).toContain('admin.accounts.openai.modelRestrictionDisabledByPassthrough')
   REDACTED)
+
+  it('filtered-results 模式下应提交 filters 而不是 account_ids', async () => {
+    const wrapper = mountModal({
+      accountIds: [],
+      target: {
+        mode: 'filtered',
+        filters: {
+          platform: 'openai',
+          type: 'oauth',
+          status: 'active',
+          group: '12',
+          search: 'bulk-target',
+          privacy_mode: 'training_set_cf_blocked'
+        REDACTED,
+        previewCount: 5,
+        selectedPlatforms: ['openai'],
+        selectedTypes: ['oauth']
+      REDACTED
+    REDACTED)
+
+    await wrapper.get('#bulk-edit-status-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith({
+      filters: {
+        platform: 'openai',
+        type: 'oauth',
+        status: 'active',
+        group: '12',
+        search: 'bulk-target',
+        privacy_mode: 'training_set_cf_blocked'
+      REDACTED,
+      status: 'active'
+    REDACTED)
+  REDACTED)
 REDACTED)
