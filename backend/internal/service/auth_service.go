@@ -83,6 +83,7 @@ type AuthService struct {
 	defaultSubAssigner       DefaultSubscriptionAssigner
 	userPlatformQuotaRepo    UserPlatformQuotaRepository
 	inviteBootstrapAPIKeySvc InviteBootstrapAPIKeyService
+	inviteLoginDeviceRepo    InviteLoginDeviceResolver
 	groupRepo                GroupRepository
 }
 
@@ -104,6 +105,11 @@ type InviteLoginInput struct {
 type InviteBootstrapAPIKeyService interface {
 	GetAvailableGroups(ctx context.Context, userID int64) ([]Group, error)
 	Create(ctx context.Context, userID int64, req CreateAPIKeyRequest) (*APIKey, error)
+}
+
+type InviteLoginDeviceResolver interface {
+	GetByLoginRedeemCodeID(ctx context.Context, codeID int64) (*UserDevice, error)
+	UpdateLastLoginAt(ctx context.Context, id int64, at time.Time) error
 }
 
 type InviteLoginResult struct {
@@ -154,12 +160,17 @@ func NewAuthService(
 		defaultSubAssigner:       defaultSubAssigner,
 		userPlatformQuotaRepo:    userPlatformQuotaRepo,
 		inviteBootstrapAPIKeySvc: nil,
+		inviteLoginDeviceRepo:    nil,
 		groupRepo:                nil,
 	}
 }
 
 func (s *AuthService) SetInviteBootstrapAPIKeyService(svc InviteBootstrapAPIKeyService) {
 	s.inviteBootstrapAPIKeySvc = svc
+}
+
+func (s *AuthService) SetInviteLoginDeviceResolver(repo InviteLoginDeviceResolver) {
+	s.inviteLoginDeviceRepo = repo
 }
 
 func (s *AuthService) SetInviteBootstrapGroupRepository(repo GroupRepository) {
@@ -516,9 +527,27 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 // InviteLogin handles device-bound invite login.
 // POST /api/v1/auth/invite-login
 func (s *AuthService) InviteLogin(ctx context.Context, input InviteLoginInput) (*InviteLoginResult, error) {
-	// Current backend-only split slice: device-bound invite-login keeps the new input boundary,
-	// but device-claim/device-hash enforcement is intentionally deferred until the V-Claw lane.
-	return s.completeInviteBootstrapLogin(ctx, NormalizeRedeemCode(input.InvitationCode))
+	invitationCode := NormalizeRedeemCode(input.InvitationCode)
+	if invitationCode == "" {
+		return nil, ErrInvitationCodeRequired
+	}
+
+	code, err := s.redeemRepo.GetByCode(ctx, invitationCode)
+	if err != nil {
+		if errors.Is(err, ErrRedeemCodeNotFound) {
+			return nil, ErrInvitationCodeInvalid
+		}
+		return nil, ErrServiceUnavailable
+	}
+	if code == nil {
+		return nil, ErrInvitationCodeInvalid
+	}
+
+	if code.Type == RedeemTypeDeviceLogin {
+		return s.completeDeviceInviteLogin(ctx, input, code)
+	}
+
+	return s.completeInviteBootstrapLogin(ctx, invitationCode)
 }
 
 // RedeemLogin handles the web redeem login.
