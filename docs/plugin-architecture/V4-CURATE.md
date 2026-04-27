@@ -70,15 +70,18 @@ message LogPushSummary {
 Go 端 SDK 替换默认 handler（`plugin-sdk/runner.go` 内）：
 
 ```go
-// pluginsdk.newRemoteSlogHandler 返回一个 fan-out handler：
-//   1. 主路：投递到 LogProxy gRPC stream（带 ringbuffer，500 条）
-//   2. fallback：当 ringbuffer 满或 stream 未建立时，写 os.Stderr（JSON）
+// pluginsdk.newRemoteSlogHandler 返回一个仅走 LogProxy 的 handler：
+//   - 单一通路：投递到 LogProxy gRPC stream（带 ringbuffer，500 条）
+//   - 无 stderr fallback —— plugin 日志必须经 host zap 记录，禁止分流。
+//   - ringbuffer 满则 drop-oldest，并以 atomic 累计 dropped_log_count，
+//     下一次成功 send 时附在一条 meta record 里报给 host。
 type remoteSlogHandler struct {
-    fallback slog.Handler          // os.Stderr JSON handler（始终可用）
-    queue    chan *pb.LogRecord    // size 500，drop oldest
-    once     sync.Once
+    queue        chan *pb.LogRecord // size 500，drop oldest
+    droppedCount atomic.Uint64
 }
 ```
+
+> **修订（用户反馈，2026-04）**：取消 stderr fallback。早期版本设计中 ringbuffer 满或 stream 未建立时会 fallback 到 stderr，但这会破坏"plugin 日志与 core 日志统一"的核心目标（部分日志走 host zap、部分走 stderr，sink 不一致）。改为：连接未建立 / 断开时 ringbuffer 持续缓冲，满了 drop-oldest，重连成功后随下一条 record 上报 dropped 计数。Plugin Shutdown 时尽力 flush（超时 2-3s）。
 
 Host 端实现（`backend/internal/plugin/log_proxy_server.go` 新文件）：
 
@@ -117,11 +120,11 @@ func (s *LogProxyServer) PushLogs(stream pb.LogProxy_PushLogsServer) error {
 
 | 场景 | 行为 |
 |---|---|
-| Stream 未建立（启动窗口期，Init 完成前的早期日志） | `remoteSlogHandler.fallback` 直接写 `os.Stderr` JSON，`forwardStderr` 兜底搬运（保持现有行为） |
-| ringbuffer 满（host 慢/宕） | drop **最旧**条目，记一条 `slog.Warn("log queue overflow", "dropped", N)` 走 fallback；不阻塞业务 |
-| stream 返回 error（host 重启 / 网络抖动） | 退避重连：`100ms → 1s → 5s → 30s`（cap 30s），重连期间所有日志走 fallback |
+| Stream 未建立（启动窗口期，Init 完成前的早期日志） | 写入 ringbuffer 等待，**禁止 fallback 到 stderr**（保持 sink 单一）；连接建立后随首批 record 一起发出 |
+| ringbuffer 满（host 慢/宕） | drop **最旧**条目，原子累加 `droppedCount`，下次成功 `Send` 时随下一条 record 上报给 host（host 端 zap 记 `WARN plugin log overflow dropped=N`）；不阻塞业务 |
+| stream 返回 error（host 重启 / 网络抖动） | 退避重连：`100ms → 1s → 5s → 30s`（cap 30s），重连期间所有日志继续 enqueue（满则 drop-oldest，不写 stderr） |
 | host 端解码失败（proto 字段越界等） | host 记 `zap.Warn("plugin log decode failed", ...)`，吞掉单条，不断 stream |
-| plugin Shutdown | SDK 在 `gracefulShutdown` 内 close queue，等待最多 2s 排空，未发完的强制丢弃（不能阻塞退出） |
+| plugin Shutdown | SDK 在 `gracefulShutdown` 内 close queue，等待最多 2-3s 排空 (best-effort)，未发完的强制丢弃（不能阻塞退出） |
 
 ### 1.6 Implementer 执行单
 
