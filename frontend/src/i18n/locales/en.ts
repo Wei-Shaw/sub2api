@@ -984,7 +984,38 @@ export default {
       restart: 'Restart',
       enableSuccess: '{name} enabled',
       disableSuccess: '{name} disabled',
-      restartSuccess: '{name} restart requested'
+      restartSuccess: '{name} restart requested',
+      // List & detail layout
+      listTitle: 'Installed plugins',
+      searchPlaceholder: 'Search plugins…',
+      noResults: 'No matching plugins',
+      selectPrompt: 'Select a plugin from the list',
+      selectPromptDescription: 'Click any plugin on the left to see its state, addresses, config and actions.',
+      // Detail card sections
+      overviewTitle: 'Overview',
+      metadataTitle: 'Runtime',
+      configTitle: 'Configuration',
+      configEmpty: 'This plugin exposes no configuration entries',
+      actionsTitle: 'Actions',
+      // Metadata fields
+      version: 'Version',
+      sortOrder: 'Order',
+      restartCount: 'Restarts',
+      grpcAddr: 'gRPC address',
+      httpAddr: 'HTTP address',
+      configKeys: 'Config entries',
+      configKeysCount: '{count} keys',
+      lastError: 'Last error',
+      // State labels
+      stateRunning: 'Running',
+      stateStarting: 'Starting',
+      stateRestarting: 'Restarting',
+      stateErrored: 'Errored',
+      stateDisabled: 'Disabled',
+      stateUnknown: 'Unknown',
+      // Tags
+      builtinTag: 'Built-in',
+      externalTag: 'External'
     },
     // Dashboard
     dashboard: {
