@@ -64,6 +64,8 @@ type fakeServiceQuotaLimiter struct {
 	// acquireCalls / incrementCalls 让测试能断言"PreCheckAcquire 是否真的按 channel/account scope 命中".
 	acquireCalls   []string
 	incrementCalls []string
+	// snapshotManyCalls 让测试断言 deferred 轮是否走批量路径（应只调用一次，长度 == deferred limiter 数）。
+	snapshotManyCalls [][]SnapshotKey
 }
 
 func newFakeLimiter() *fakeServiceQuotaLimiter {
@@ -120,10 +122,19 @@ func (f *fakeServiceQuotaLimiter) Snapshot(_ context.Context, _ string, _ time.D
 }
 
 func (f *fakeServiceQuotaLimiter) SnapshotMany(_ context.Context, keys []SnapshotKey) ([]LimiterSnapshot, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.snapshotManyCalls = append(f.snapshotManyCalls, append([]SnapshotKey(nil), keys...))
 	if len(keys) == 0 {
 		return nil, nil
 	}
-	return make([]LimiterSnapshot, len(keys)), nil
+	out := make([]LimiterSnapshot, len(keys))
+	for i, k := range keys {
+		if v, ok := f.counters[k.Key]; ok {
+			out[i] = LimiterSnapshot{Current: v, Exists: true}
+		}
+	}
+	return out, nil
 }
 
 // Reset 模拟 DEL：从内存 map 中清掉对应 key 的计数与并发集合。

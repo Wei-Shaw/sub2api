@@ -116,22 +116,27 @@ func (s *serviceQuotaService) PreCheckAcquire(ctx context.Context, plan *Service
 	// lease.Release 维持 nil。下游 BillingTicket.Close 已对 Release == nil 做 nil-safe。
 	lease := &ServiceQuotaLease{}
 	// 三轮：concurrency → RPM → deferred(tpm/tpd/daily_usd)。先抢并发额度避免后续判断时占用未释放。
-	steps := []limiterPhase{
-		{predicate: isConcurrencyLimiter, fn: func(rule *ServiceQuotaRule, p ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) error {
-			return s.acquireConcurrency(ctx, req, rule, p, lim, lease)
-		}},
-		{predicate: isRPMLimiter, fn: func(rule *ServiceQuotaRule, p ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) error {
-			return s.checkRPM(ctx, req, rule, p, lim)
-		}},
-		{predicate: isDeferredLimiter, fn: func(rule *ServiceQuotaRule, p ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) error {
-			return s.checkDeferred(ctx, req, rule, p, lim)
-		}},
-	}
-	for _, step := range steps {
+	//
+	// 前两轮（concurrency / RPM）必须逐个：concurrency 走 Lua 原子脚本 + 副作用 lease，
+	// RPM CountOnArrival=true 走 Increment + 失败回滚。两类操作都是写命令，pipeline 也不能合并。
+	//
+	// 第三轮（deferred）全是只读 Current → 把它改成"一次 SnapshotMany 批量读 + 逐个判超限"，
+	// 把 N 次 Redis round-trip 降到 1 次。
+	concurrencyStep := limiterPhase{predicate: isConcurrencyLimiter, fn: func(rule *ServiceQuotaRule, p ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) error {
+		return s.acquireConcurrency(ctx, req, rule, p, lim, lease)
+	}}
+	rpmStep := limiterPhase{predicate: isRPMLimiter, fn: func(rule *ServiceQuotaRule, p ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) error {
+		return s.checkRPM(ctx, req, rule, p, lim)
+	}}
+	for _, step := range []limiterPhase{concurrencyStep, rpmStep} {
 		if err := iterateLimiters(matched, step.predicate, step.fn); err != nil {
 			lease.release()
 			return nil, err
 		}
+	}
+	if err := s.checkDeferredBatch(ctx, req, matched); err != nil {
+		lease.release()
+		return nil, err
 	}
 	return lease, nil
 }
@@ -374,19 +379,83 @@ func (s *serviceQuotaService) checkRPMReadOnly(ctx context.Context, rule *Servic
 	return nil
 }
 
-func (s *serviceQuotaService) checkDeferred(ctx context.Context, req ServiceQuotaCheckRequest, rule *ServiceQuotaRule, path ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) error {
-	key := s.counterKey(req, rule, path, lim)
-	used, err := s.limiter.Current(ctx, key, serviceQuotaWindow(lim), lim.WindowMode)
-	if err != nil {
-		s.recordFailOpen(rule, lim, "check_deferred", key, err)
+// deferredCheckEntry 把 deferred 轮一次批读所需的 (rule, path, limiter, key, snapshotKey) 元组打包，
+// 让 dispatch 与 evaluate 两阶段共享同一索引，下标 i 对应 SnapshotMany 返回切片的第 i 个元素。
+type deferredCheckEntry struct {
+	rule        *ServiceQuotaRule
+	path        ServiceQuotaPathDef
+	limiter     ServiceQuotaLimiterDef
+	key         string
+	snapshotKey SnapshotKey
+}
+
+// checkDeferredBatch 是 PreCheckAcquire 第三轮的批量实现：
+// 把所有 (matched × paths × deferred-limiters) 收集成一个 SnapshotKey 切片，
+// 一次 SnapshotMany 把全部当前用量拿回来，再逐个判超限。
+//
+// 与逐个 checkDeferred 的等价性：
+//   - 命中超限走同一个 serviceQuotaExceeded（错误码、metadata 完全一致）
+//   - SnapshotMany 单条失败降级为 {0, false} 并记 warn —— 等价于 Current 失败时的 fail-open
+//     （recordFailOpen 在原路径会增计 metrics；批量路径下这部分降级在 limiter 层日志已记录，
+//     这里不再重复打 metrics 避免双计，与"批量 read fail-open"语义一致）
+//   - 短路返回首个超限错误，与 iterateLimiters 主循环短路语义保持一致
+//
+// 性能：N 个 deferred limiter 从 N 次 RTT 降到 1 次（pipeline）。matched / paths / limiters
+// 数量通常不大（< 50），列表预分配 cap=16 即可覆盖绝大多数场景。
+func (s *serviceQuotaService) checkDeferredBatch(ctx context.Context, req ServiceQuotaCheckRequest, matched []matchedQuotaRule) error {
+	entries := s.collectDeferredEntries(req, matched)
+	if len(entries) == 0 {
 		return nil
 	}
-	if used >= lim.LimitValue {
-		recordPreCheckResult(rule, lim, metrics.ServiceQuotaPreCheckResultDenied)
-		return serviceQuotaExceeded(rule, lim, used)
+	keys := make([]SnapshotKey, len(entries))
+	for i, e := range entries {
+		keys[i] = e.snapshotKey
 	}
-	recordPreCheckResult(rule, lim, metrics.ServiceQuotaPreCheckResultAllowed)
+	snaps, err := s.limiter.SnapshotMany(ctx, keys)
+	if err != nil {
+		// SnapshotMany 当前实现总返回 nil err（单条降级），保留这条防御让接口实现切换时不破语义。
+		for _, e := range entries {
+			s.recordFailOpen(e.rule, e.limiter, "check_deferred_batch", e.key, err)
+		}
+		return nil
+	}
+	for i, e := range entries {
+		used := snaps[i].Current
+		if used >= e.limiter.LimitValue {
+			recordPreCheckResult(e.rule, e.limiter, metrics.ServiceQuotaPreCheckResultDenied)
+			return serviceQuotaExceeded(e.rule, e.limiter, used)
+		}
+		recordPreCheckResult(e.rule, e.limiter, metrics.ServiceQuotaPreCheckResultAllowed)
+	}
 	return nil
+}
+
+// collectDeferredEntries 展开 matched × paths × deferred-limiters 笛卡尔积。
+// 与 iterateLimiters 同样的遍历顺序，让批量路径与逐个路径在"是否命中"上完全等价。
+func (s *serviceQuotaService) collectDeferredEntries(req ServiceQuotaCheckRequest, matched []matchedQuotaRule) []deferredCheckEntry {
+	out := make([]deferredCheckEntry, 0, 16)
+	for _, m := range matched {
+		for _, p := range m.paths {
+			for _, lim := range m.rule.Limiters {
+				if !isDeferredLimiter(lim) {
+					continue
+				}
+				key := s.counterKey(req, m.rule, p, lim)
+				out = append(out, deferredCheckEntry{
+					rule:    m.rule,
+					path:    p,
+					limiter: lim,
+					key:     key,
+					snapshotKey: SnapshotKey{
+						Key:    key,
+						Window: serviceQuotaWindow(lim),
+						Mode:   lim.WindowMode,
+					},
+				})
+			}
+		}
+	}
+	return out
 }
 
 // recordFailOpen 在限流器报错降级时同时落日志 + 累加 metrics。
