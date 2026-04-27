@@ -97,34 +97,8 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 }
 
 // validateBodyModeParams / validateExtraHeaders / emptyHeadersIfNil /
-// defaultBodyMode are tiny helpers that live in checker.go and template
-// service files in the original codebase. Provide local stubs so the main
-// service.go compiles; the real bodies will arrive when those files are
-// ported.
-func validateBodyModeParams(mode string, body map[string]any) error {
-	_ = mode
-	_ = body
-	return nil
-}
-
-func validateExtraHeaders(h map[string]string) error {
-	_ = h
-	return nil
-}
-
-func emptyHeadersIfNil(h map[string]string) map[string]string {
-	if h == nil {
-		return map[string]string{}
-	}
-	return h
-}
-
-func defaultBodyMode(mode string) string {
-	if mode == "" {
-		return MonitorBodyOverrideModeOff
-	}
-	return mode
-}
+// defaultBodyMode were stubbed earlier; now that template_service.go has
+// been ported these functions live there. The stub bodies are gone.
 
 // stubs.go provides build-time stubs for symbols that will be filled in by
 // later commits as the checker / ssrf / runner files are ported. Keeping
