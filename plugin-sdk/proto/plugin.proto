@@ -81,7 +81,26 @@ message ManifestResponse {
   //     default per-plugin key namespace. Required for plugins that need to
   //     read/write keys defined by other components (e.g. the gateway cache
   //     contract written by channel-management).
+  //   - "settings_extension": opt-in for the SettingsExtension SDK feature
+  //     (plugin-scoped settings stored by the host). When the plugin
+  //     populates settings_schema_json / settings_defaults_json the core
+  //     forwards the capability automatically; declaring it explicitly is
+  //     not required but harmless.
   repeated string capabilities = 40;
+
+  // settings_schema_json is a JSON Schema (Draft-07) document describing
+  // the plugin's admin-tunable configuration keys. The host parses and
+  // caches the schema, then renders it as a form on the admin Settings
+  // page (vue-json-schema-form). Writes from the admin UI are validated
+  // server-side against this schema. Empty bytes mean the plugin does
+  // not contribute any settings.
+  bytes settings_schema_json = 42;
+
+  // settings_defaults_json is a JSON object (string-keyed) carrying the
+  // default value for each top-level key declared in the schema. The
+  // host applies defaults when a key has not been written yet so plugins
+  // can rely on Settings.Get returning a value immediately after install.
+  bytes settings_defaults_json = 43;
 }
 
 message EndpointDeclaration {

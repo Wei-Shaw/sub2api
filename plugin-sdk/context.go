@@ -33,6 +33,12 @@ type PluginContext interface {
 	// Config returns the plain-string configuration map the core supplied in
 	// the Init request. The map is a copy; mutating it has no effect.
 	Config() map[string]string
+
+	// Settings returns the SettingsClient for this plugin's namespace.
+	// When the plugin has not declared a SettingsSchema in its manifest
+	// the returned client surfaces a clear error from every method
+	// instead of silently no-oping. See settings.go for the full surface.
+	Settings() SettingsClient
 }
 
 // RedisClient is the SDK's go-redis-style Redis client. It mirrors the

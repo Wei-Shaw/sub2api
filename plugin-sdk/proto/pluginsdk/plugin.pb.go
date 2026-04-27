@@ -324,9 +324,26 @@ type ManifestResponse struct {
 	//     default per-plugin key namespace. Required for plugins that need to
 	//     read/write keys defined by other components (e.g. the gateway cache
 	//     contract written by channel-management).
-	Capabilities  []string `protobuf:"bytes,40,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	//   - "settings_extension": opt-in for the SettingsExtension SDK feature
+	//     (plugin-scoped settings stored by the host). When the plugin
+	//     populates settings_schema_json / settings_defaults_json the core
+	//     forwards the capability automatically; declaring it explicitly is
+	//     not required but harmless.
+	Capabilities []string `protobuf:"bytes,40,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	// settings_schema_json is a JSON Schema (Draft-07) document describing
+	// the plugin's admin-tunable configuration keys. The host parses and
+	// caches the schema, then renders it as a form on the admin Settings
+	// page (vue-json-schema-form). Writes from the admin UI are validated
+	// server-side against this schema. Empty bytes mean the plugin does
+	// not contribute any settings.
+	SettingsSchemaJson []byte `protobuf:"bytes,42,opt,name=settings_schema_json,json=settingsSchemaJson,proto3" json:"settings_schema_json,omitempty"`
+	// settings_defaults_json is a JSON object (string-keyed) carrying the
+	// default value for each top-level key declared in the schema. The
+	// host applies defaults when a key has not been written yet so plugins
+	// can rely on Settings.Get returning a value immediately after install.
+	SettingsDefaultsJson []byte `protobuf:"bytes,43,opt,name=settings_defaults_json,json=settingsDefaultsJson,proto3" json:"settings_defaults_json,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *ManifestResponse) Reset() {
@@ -425,6 +442,20 @@ func (x *ManifestResponse) GetMigrationFiles() []string {
 func (x *ManifestResponse) GetCapabilities() []string {
 	if x != nil {
 		return x.Capabilities
+	}
+	return nil
+}
+
+func (x *ManifestResponse) GetSettingsSchemaJson() []byte {
+	if x != nil {
+		return x.SettingsSchemaJson
+	}
+	return nil
+}
+
+func (x *ManifestResponse) GetSettingsDefaultsJson() []byte {
+	if x != nil {
+		return x.SettingsDefaultsJson
 	}
 	return nil
 }
@@ -798,7 +829,7 @@ const file_plugin_proto_rawDesc = "" +
 	"\tFileChunk\x12\x12\n" +
 	"\x04data\x18\x01 \x01(\fR\x04data\x12\x1a\n" +
 	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x10\n" +
-	"\x03eof\x18\x03 \x01(\bR\x03eof\"\xbb\x03\n" +
+	"\x03eof\x18\x03 \x01(\bR\x03eof\"\xa3\x04\n" +
 	"\x10ManifestResponse\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x18\n" +
@@ -810,7 +841,9 @@ const file_plugin_proto_rawDesc = "" +
 	"\x10plugin_endpoints\x18\v \x03(\v2\x1e.pluginsdk.EndpointDeclarationR\x0fpluginEndpoints\x127\n" +
 	"\bfrontend\x18\x14 \x01(\v2\x1b.pluginsdk.FrontendManifestR\bfrontend\x12'\n" +
 	"\x0fmigration_files\x18\x1e \x03(\tR\x0emigrationFiles\x12\"\n" +
-	"\fcapabilities\x18( \x03(\tR\fcapabilities\"`\n" +
+	"\fcapabilities\x18( \x03(\tR\fcapabilities\x120\n" +
+	"\x14settings_schema_json\x18* \x01(\fR\x12settingsSchemaJson\x124\n" +
+	"\x16settings_defaults_json\x18+ \x01(\fR\x14settingsDefaultsJson\"`\n" +
 	"\x13EndpointDeclaration\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x18\n" +
 	"\amethods\x18\x02 \x03(\tR\amethods\x12\x1b\n" +

@@ -282,3 +282,61 @@ message Event {
   bytes payload = 2;
   int64 timestamp = 3;
 }
+
+// ============================================================
+// SettingsExtension — V5 W3
+// ============================================================
+//
+// SettingsExtension lets a plugin store and read its admin-configurable
+// runtime settings without needing its own dedicated database table. The
+// host owns persistence (plugin_settings table) and validates writes
+// against the JSON Schema the plugin declared in its manifest. The
+// per-plugin settings tab in the admin UI renders that schema directly,
+// so a new plugin only needs to ship a Draft-07 schema + defaults to get
+// a fully functional settings page.
+//
+// Trust model: the SDK server resolves the caller via the same
+// `x-sub2api-plugin` metadata header used elsewhere; a plugin can only
+// read/watch keys inside its own namespace. Cross-plugin settings access
+// is intentionally not supported here.
+service SettingsExtension {
+  // Get returns the current value (and revision) of a single key inside
+  // the calling plugin's namespace. Missing keys return exists=false
+  // rather than a gRPC error so plugins can probe without try/catch.
+  rpc Get(SettingsGetRequest) returns (SettingsGetResponse);
+
+  // Watch streams change events for keys inside the calling plugin's
+  // namespace. An empty key subscribes to every key in the namespace.
+  // The host MAY emit a synthetic "snapshot" event for each existing key
+  // immediately after subscription so the plugin sees the current state
+  // without an extra round-trip. Reconnect logic is the SDK's
+  // responsibility (exponential backoff, full re-sync on resume).
+  rpc Watch(SettingsWatchRequest) returns (stream SettingsChangeEvent);
+}
+
+message SettingsGetRequest {
+  string key = 1;
+}
+
+message SettingsGetResponse {
+  // value_json holds the JSON-encoded current value when exists=true.
+  bytes value_json = 1;
+  // exists is false when the key is not yet persisted (no admin save and
+  // no default) — callers should fall back to the schema default in that
+  // case rather than treating it as an error.
+  bool exists = 2;
+  // revision is monotonically increasing per (plugin, key); callers can
+  // use it to deduplicate rapid updates.
+  int64 revision = 3;
+}
+
+message SettingsWatchRequest {
+  // key="" subscribes to the entire plugin namespace.
+  string key = 1;
+}
+
+message SettingsChangeEvent {
+  string key = 1;
+  bytes value_json = 2;
+  int64 revision = 3;
+}
