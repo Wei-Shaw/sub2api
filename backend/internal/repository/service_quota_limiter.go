@@ -116,7 +116,9 @@ func (l *serviceQuotaLimiter) Increment(ctx context.Context, key string, delta f
 	if err != nil {
 		return 0, err
 	}
-	_ = l.rdb.ExpireNX(ctx, key, fixedWindowTTL(window)).Err()
+	// ExpireNX：仅在 key 还没有 TTL 时设置（第一次写入才装；后续写入维持原 TTL，
+	// 让对齐到 wall-clock 边界的语义在整窗口内稳定）。
+	_ = l.rdb.ExpireNX(ctx, key, fixedWindowTTL(time.Now(), window)).Err()
 	return val, nil
 }
 
@@ -246,9 +248,30 @@ func (l *serviceQuotaLimiter) ResetPattern(ctx context.Context, pattern string) 
 	}
 }
 
-func fixedWindowTTL(window time.Duration) time.Duration {
-	if window >= 24*time.Hour {
-		return 48 * time.Hour
+// fixedWindowTTL 返回当前 key 距离下一个 wall-clock window 边界的剩余时长，
+// 用作 ExpireNX 的 TTL 让"固定窗口"按整分钟/整小时/UTC 整天对齐。
+//
+// 算法：以 epoch（1970-01-01 UTC 00:00:00）为零点，把 now 切到最近的 window
+// 整数倍上，剩余距离即下一个边界的 TTL。
+//
+//   - RPM/TPM (window=1min)：对齐到下一个分钟整点（now=12:34:18 → TTL=42s）
+//   - 自定义短窗 (window=10s)：对齐到 epoch 起的 10s 网格
+//   - TPD/daily_usd (window=24h)：对齐到 UTC 当日 00:00（与上游 OpenAI/Anthropic
+//     billing 周期一致；不区分服务器本地时区）
+//
+// 上限保护：原实现对 >=24h 的窗口设 48h TTL 是为了防止 "key 被永久持有"；
+// 对齐后 24h 窗口 TTL 自然 ≤ 24h，不再需要这个 cap。但保留下界 1s 确保
+// IncrByFloat 紧跟 ExpireNX 之间即使发生时钟跳变也不会写出 0/负的 TTL。
+//
+// 边界 case：now 恰好落在边界（UnixNano % window == 0），此时 TTL == window
+// 而非 0——这一刻被视作"新窗口的起点"，整个窗口长度可用。
+func fixedWindowTTL(now time.Time, window time.Duration) time.Duration {
+	if window <= 0 {
+		return time.Second
 	}
-	return window
+	remainder := time.Duration(now.UnixNano() % int64(window))
+	if remainder == 0 {
+		return window
+	}
+	return window - remainder
 }
