@@ -17,7 +17,7 @@
               d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
             />
           </svg>
-          {{ t('admin.accounts.bulkEdit.selectionInfo', { count: accountIds.length REDACTED) REDACTEDREDACTED
+          {{ t('admin.accounts.bulkEdit.selectionInfo', { count: targetMode === 'filtered' ? targetPreviewCount : accountIds.length REDACTED) REDACTEDREDACTED
         </p>
       </div>
 
@@ -27,7 +27,7 @@
           <svg class="mr-1.5 inline h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
-          {{ t('admin.accounts.bulkEdit.mixedPlatformWarning', { platforms: selectedPlatforms.join(', ') REDACTED) REDACTEDREDACTED
+          {{ t('admin.accounts.bulkEdit.mixedPlatformWarning', { platforms: targetSelectedPlatforms.join(', ') REDACTED) REDACTEDREDACTED
         </p>
       </div>
 
@@ -227,7 +227,7 @@
 
               <ModelWhitelistSelector
                 v-model="allowedModels"
-                :platforms="selectedPlatforms"
+                :platforms="targetSelectedPlatforms"
               />
 
               <p class="text-xs text-gray-500 dark:text-gray-400">
@@ -933,6 +933,13 @@ interface Props {
   accountIds: number[]
   selectedPlatforms: AccountPlatform[]
   selectedTypes: AccountType[]
+  target?: {
+    mode: 'selected' | 'filtered'
+    filters?: Record<string, unknown>
+    previewCount?: number
+    selectedPlatforms?: AccountPlatform[]
+    selectedTypes?: AccountType[]
+  REDACTED
   proxies: ProxyConfig[]
   groups: AdminGroup[]
 REDACTED
@@ -947,40 +954,53 @@ const { t REDACTED = useI18n()
 const appStore = useAppStore()
 
 // Platform awareness
-const isMixedPlatform = computed(() => props.selectedPlatforms.length > 1)
+const targetMode = computed(() => props.target?.mode ?? 'selected')
+const targetPreviewCount = computed(() => props.target?.previewCount ?? props.accountIds.length)
+const targetSelectedPlatforms = computed(() => props.target?.selectedPlatforms ?? props.selectedPlatforms)
+const targetSelectedTypes = computed(() => props.target?.selectedTypes ?? props.selectedTypes)
+const isMixedPlatform = computed(() => targetSelectedPlatforms.value.length > 1)
 
 const allOpenAIPassthroughCapable = computed(() => {
   return (
-    props.selectedPlatforms.length === 1 &&
-    props.selectedPlatforms[0] === 'openai' &&
-    props.selectedTypes.length > 0 &&
-    props.selectedTypes.every(t => t === 'oauth' || t === 'apikey')
+    targetSelectedPlatforms.value.length === 1 &&
+    targetSelectedPlatforms.value[0] === 'openai' &&
+    targetSelectedTypes.value.length > 0 &&
+    targetSelectedTypes.value.every(t => t === 'oauth' || t === 'apikey')
   )
 REDACTED)
 
 const allOpenAIOAuth = computed(() => {
   return (
-    props.selectedPlatforms.length === 1 &&
-    props.selectedPlatforms[0] === 'openai' &&
-    props.selectedTypes.length > 0 &&
-    props.selectedTypes.every(t => t === 'oauth')
+    targetSelectedPlatforms.value.length === 1 &&
+    targetSelectedPlatforms.value[0] === 'openai' &&
+    targetSelectedTypes.value.length > 0 &&
+    targetSelectedTypes.value.every(t => t === 'oauth')
+  )
+REDACTED)
+
+const allOpenAIAPIKey = computed(() => {
+  return (
+    targetSelectedPlatforms.value.length === 1 &&
+    targetSelectedPlatforms.value[0] === 'openai' &&
+    targetSelectedTypes.value.length > 0 &&
+    targetSelectedTypes.value.every(t => t === 'apikey')
   )
 REDACTED)
 
 // 是否全部为 Anthropic OAuth/SetupToken（RPM 配置仅在此条件下显示）
 const allAnthropicOAuthOrSetupToken = computed(() => {
   return (
-    props.selectedPlatforms.length === 1 &&
-    props.selectedPlatforms[0] === 'anthropic' &&
-    props.selectedTypes.every(t => t === 'oauth' || t === 'setup-token')
+    targetSelectedPlatforms.value.length === 1 &&
+    targetSelectedPlatforms.value[0] === 'anthropic' &&
+    targetSelectedTypes.value.every(t => t === 'oauth' || t === 'setup-token')
   )
 REDACTED)
 
 const filteredPresets = computed(() => {
-  if (props.selectedPlatforms.length === 0) return []
+  if (targetSelectedPlatforms.value.length === 0) return []
 
   const dedupedPresets = new Map<string, ReturnType<typeof getPresetMappingsByPlatform>[number]>()
-  for (const platform of props.selectedPlatforms) {
+  for (const platform of targetSelectedPlatforms.value) {
     for (const preset of getPresetMappingsByPlatform(platform)) {
       const key = `${preset.fromREDACTED=>${preset.toREDACTED`
       if (!dedupedPresets.has(key)) {
@@ -1291,8 +1311,8 @@ const mixedChannelConfirmed = ref(false)
 const canPreCheck = () =>
   enableGroups.value &&
   groupIds.value.length > 0 &&
-  props.selectedPlatforms.length === 1 &&
-  (props.selectedPlatforms[0] === 'antigravity' || props.selectedPlatforms[0] === 'anthropic')
+  targetSelectedPlatforms.value.length === 1 &&
+  (targetSelectedPlatforms.value[0] === 'antigravity' || targetSelectedPlatforms.value[0] === 'anthropic')
 
 const handleClose = () => {
   showMixedChannelWarning.value = false
@@ -1309,7 +1329,7 @@ const preCheckMixedChannelRisk = async (built: Record<string, unknown>): Promise
 
   try {
     const result = await adminAPI.accounts.checkMixedChannelRisk({
-      platform: props.selectedPlatforms[0],
+      platform: targetSelectedPlatforms.value[0],
       group_ids: groupIds.value
     REDACTED)
     if (!result.has_risk) return true
@@ -1325,7 +1345,7 @@ const preCheckMixedChannelRisk = async (built: Record<string, unknown>): Promise
 REDACTED
 
 const handleSubmit = async () => {
-  if (props.accountIds.length === 0) {
+  if (targetMode.value === 'selected' && props.accountIds.length === 0) {
     appStore.showError(t('admin.accounts.bulkEdit.noSelection'))
     return
   REDACTED
@@ -1373,7 +1393,12 @@ const submitBulkUpdate = async (baseUpdates: Record<string, unknown>) => {
   submitting.value = true
 
   try {
-    const res = await adminAPI.accounts.bulkUpdate(props.accountIds, updates)
+    const res = targetMode.value === 'filtered' && props.target?.filters
+      ? await adminAPI.accounts.bulkUpdate({
+        filters: props.target.filters,
+        ...updates
+      REDACTED)
+      : await adminAPI.accounts.bulkUpdate(props.accountIds, updates)
     const success = res.success || 0
     const failed = res.failed || 0
 

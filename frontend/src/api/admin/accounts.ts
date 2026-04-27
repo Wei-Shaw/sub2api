@@ -370,8 +370,8 @@ REDACTED
  * @returns Success confirmation
  */
 export async function bulkUpdate(
-  accountIds: number[],
-  updates: Record<string, unknown>
+  accountIdsOrPayload: number[] | Record<string, unknown>,
+  updates?: Record<string, unknown>
 ): Promise<{
   success: number
   failed: number
@@ -379,16 +379,19 @@ export async function bulkUpdate(
   failed_ids?: number[]
   results: Array<{ account_id: number; success: boolean; error?: string REDACTED>
   REDACTED> {
+  const payload = Array.isArray(accountIdsOrPayload)
+    ? {
+        account_ids: accountIdsOrPayload,
+        ...(updates ?? {REDACTED)
+      REDACTED
+    : accountIdsOrPayload
   const { data REDACTED = await apiClient.post<{
     success: number
     failed: number
     success_ids?: number[]
     failed_ids?: number[]
     results: Array<{ account_id: number; success: boolean; error?: string REDACTED>
-  REDACTED>('/admin/accounts/bulk-update', {
-    account_ids: accountIds,
-    ...updates
-  REDACTED)
+  REDACTED>('/admin/accounts/bulk-update', payload)
   return data
 REDACTED
 
