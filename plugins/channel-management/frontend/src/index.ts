@@ -21,6 +21,7 @@ import type { HostSdk, PluginRuntimeAssets } from '@sub2api/plugin-sdk'
 import type { AxiosInstance } from 'axios'
 import './style.css'
 import ChannelsView from './views/ChannelsView.vue'
+import AvailableChannelsView from './views/user/AvailableChannelsView.vue'
 import { setClient } from './api/client'
 import { setSdk } from './api/sdk'
 import enMessages from './i18n/en'
@@ -55,6 +56,9 @@ function install(sdk: HostSdk): PluginRuntimeAssets {
   return {
     components: {
       'ChannelsView.vue': ChannelsView,
+      // V5 W9 — User-facing "Available Channels". manifest path:
+      //   plugin.go FrontendManifest.Routes[].ComponentPath = "AvailableChannelsView.vue"
+      'AvailableChannelsView.vue': AvailableChannelsView,
     },
   }
 }
