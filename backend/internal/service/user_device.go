@@ -57,6 +57,7 @@ func (d *UserDevice) IsActive() bool {
 type UserDeviceRepository interface {
 	GetByDeviceHash(ctx context.Context, deviceHash string) (*UserDevice, error)
 	GetByLoginRedeemCodeID(ctx context.Context, codeID int64) (*UserDevice, error)
+	GetByClaimRedeemCodeID(ctx context.Context, codeID int64) (*UserDevice, error)
 	Create(ctx context.Context, device *UserDevice) error
 	UpdateLastClaimedAt(ctx context.Context, id int64, at time.Time) error
 	UpdateLastLoginAt(ctx context.Context, id int64, at time.Time) error

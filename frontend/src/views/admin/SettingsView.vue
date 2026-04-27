@@ -12095,7 +12095,7 @@ watch(
 }
 
 .settings-tabs-scroll {
-  @apply overflow-x-auto overflow-y-hidden pb-1;
+  @apply overflow-x-auto overflow-y-hidden px-1 pb-1;
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
@@ -12105,11 +12105,14 @@ watch(
 }
 
 .settings-tabs {
-  @apply flex min-w-max items-center gap-1;
+  @apply inline-flex min-w-full flex-nowrap items-stretch gap-1.5 rounded-2xl border border-gray-100 bg-white/80 p-1 backdrop-blur-sm dark:border-dark-700/50 dark:bg-dark-800/80;
+  box-shadow:
+    0 1px 3px rgb(0 0 0 / 0.04),
+    0 1px 2px rgb(0 0 0 / 0.02);
 }
 
 .settings-tab {
-  @apply relative isolate flex h-10 min-w-[6.75rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-transparent px-3 text-sm font-medium text-gray-600 outline-none transition-colors duration-200 ease-out dark:text-gray-300;
+  @apply relative isolate inline-flex h-10 min-w-[6.75rem] shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-transparent px-3 text-sm font-medium leading-none text-gray-600 outline-none transition-colors duration-200 ease-out dark:text-gray-300;
 }
 
 @media (min-width: 768px) {

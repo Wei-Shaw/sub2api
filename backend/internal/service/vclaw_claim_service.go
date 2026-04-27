@@ -95,7 +95,20 @@ func (s *VClawClaimService) Claim(ctx context.Context, req VClawClaimRequest) (*
 	if err != nil || claimRedeemCode == nil {
 		return nil, ErrClaimCodeInvalid
 	}
-	if claimRedeemCode.Type != RedeemTypeDeviceClaim || claimRedeemCode.Status != StatusUnused {
+	if claimRedeemCode.Type != RedeemTypeDeviceClaim {
+		return nil, ErrClaimCodeInvalid
+	}
+	if claimRedeemCode.Status == StatusUsed {
+		binding, bindingErr := s.userDeviceRepo.GetByClaimRedeemCodeID(ctx, claimRedeemCode.ID)
+		if bindingErr != nil {
+			if errors.Is(bindingErr, ErrUserDeviceNotFound) {
+				return nil, ErrClaimCodeInvalid
+			}
+			return nil, ErrServiceUnavailable
+		}
+		return s.resumeExistingClaim(ctx, binding, now)
+	}
+	if claimRedeemCode.Status != StatusUnused {
 		return nil, ErrClaimCodeInvalid
 	}
 

@@ -45,6 +45,20 @@ func (r *userDeviceRepository) GetByLoginRedeemCodeID(ctx context.Context, codeI
 	return userDeviceEntityToService(device), nil
 }
 
+func (r *userDeviceRepository) GetByClaimRedeemCodeID(ctx context.Context, codeID int64) (*service.UserDevice, error) {
+	client := clientFromContext(ctx, r.client)
+	device, err := client.UserDevice.Query().
+		Where(userdevice.ClaimRedeemCodeID(codeID)).
+		WithUser().
+		WithClaimRedeemCode().
+		WithLoginRedeemCode().
+		Only(ctx)
+	if err != nil {
+		return nil, translatePersistenceError(err, service.ErrUserDeviceNotFound, nil)
+	}
+	return userDeviceEntityToService(device), nil
+}
+
 func (r *userDeviceRepository) Create(ctx context.Context, device *service.UserDevice) error {
 	if device == nil {
 		return nil
