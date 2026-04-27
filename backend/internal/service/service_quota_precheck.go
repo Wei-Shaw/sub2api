@@ -310,17 +310,48 @@ func (s *serviceQuotaService) acquireConcurrency(ctx context.Context, req Servic
 
 func (s *serviceQuotaService) checkRPM(ctx context.Context, req ServiceQuotaCheckRequest, rule *ServiceQuotaRule, path ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) error {
 	key := s.counterKey(req, rule, path, lim)
+	if lim.ShouldIncrementOnArrival() {
+		return s.checkRPMIncrement(ctx, rule, lim, key)
+	}
+	return s.checkRPMReadOnly(ctx, rule, lim, key)
+}
+
+// checkRPMIncrement 是 count_on_arrival=true 的旧"到达即计"路径：Increment(+1) → 判超限 → 失败回滚。
+//
+// fail-open: Increment 报错时，已经 +1 的计数会成为下次请求的 "幽灵 +1"。
+// best-effort 反向 Increment(-1) 抵消：fixed window 走 IncrByFloat(-1) 干净回退；
+// rolling window 通过追加一条 delta=-1 的 member 与原 +1 在 sumRollingMembers 求和时
+// 相互抵消，等价于回滚。任何回退失败都忽略，不阻塞主流程。
+func (s *serviceQuotaService) checkRPMIncrement(ctx context.Context, rule *ServiceQuotaRule, lim ServiceQuotaLimiterDef, key string) error {
 	used, err := s.limiter.Increment(ctx, key, 1, time.Minute, lim.WindowMode)
 	if err != nil {
-		// fail-open: Increment 报错时，已经 +1 的计数会成为下次请求的 “幽灵 +1”。
-		// best-effort 反向 Increment(-1) 抵消：fixed window 走 IncrByFloat(-1) 干净回退；
-		// rolling window 通过追加一条 delta=-1 的 member 与原 +1 在 sumRollingMembers 求和时
-		// 相互抵消，等价于回滚。任何回退失败都忽略，不阻塞主流程。
 		_, _ = s.limiter.Increment(ctx, key, -1, time.Minute, lim.WindowMode)
 		s.recordFailOpen(rule, lim, "check_rpm", key, err)
 		return nil
 	}
 	if used > lim.LimitValue {
+		recordPreCheckResult(rule, lim, metrics.ServiceQuotaPreCheckResultDenied)
+		return serviceQuotaExceeded(rule, lim, used)
+	}
+	recordPreCheckResult(rule, lim, metrics.ServiceQuotaPreCheckResultAllowed)
+	return nil
+}
+
+// checkRPMReadOnly 是 count_on_arrival=false 的"成功才计"路径：只读当前计数判超限，不写入。
+// 计数会在 Record 阶段（请求成功落账后）由 serviceQuotaRecordDelta 触发 +1。
+//
+// 与 checkDeferred 的区别：
+//   - checkDeferred 用 used >= LimitValue 判超限（TPM/TPD/daily_usd 是后置 token/usd 累加，
+//     此处只读"达到上限"即拒绝下一次请求）
+//   - checkRPMReadOnly 用 used >= LimitValue：当前请求若被允许则成功后会再 +1，与到达即计的
+//     "used > LimitValue" 拒绝点严格等价（已计 N 次，下次到达让 N+1 > limit 即拒）
+func (s *serviceQuotaService) checkRPMReadOnly(ctx context.Context, rule *ServiceQuotaRule, lim ServiceQuotaLimiterDef, key string) error {
+	used, err := s.limiter.Current(ctx, key, time.Minute, lim.WindowMode)
+	if err != nil {
+		s.recordFailOpen(rule, lim, "check_rpm_readonly", key, err)
+		return nil
+	}
+	if used >= lim.LimitValue {
 		recordPreCheckResult(rule, lim, metrics.ServiceQuotaPreCheckResultDenied)
 		return serviceQuotaExceeded(rule, lim, used)
 	}
@@ -440,7 +471,12 @@ func serviceQuotaWindow(lim ServiceQuotaLimiterDef) time.Duration {
 //   - 默认 {input, output, cache_creation}（DB DEFAULT + ServiceQuotaTokenComponentsDefault）
 //   - TokenComponents 为空时退化为默认值，向前兼容老规则
 //
-// daily_usd：按金额；其他 limiter type（rpm/concurrency）走单独路径，不入 Record。
+// daily_usd：按金额。
+//
+// RPM：仅当 CountOnArrival=false 时（"成功才计"语义）由 Record 阶段 +1；
+// CountOnArrival=true 时已在 PreCheckAcquire/checkRPMIncrement 写入，Record 不再重复计数。
+//
+// concurrency：不通过 Record 计数（走 Acquire/Release ZSET 路径）。
 func serviceQuotaRecordDelta(lim ServiceQuotaLimiterDef, req ServiceQuotaRecordRequest) float64 {
 	switch lim.LimiterType {
 	case ServiceQuotaLimiterTPM, ServiceQuotaLimiterTPD:
@@ -451,6 +487,11 @@ func serviceQuotaRecordDelta(lim ServiceQuotaLimiterDef, req ServiceQuotaRecordR
 		return float64(req.SumTokens(components))
 	case ServiceQuotaLimiterDailyUSD:
 		return req.Cost
+	case ServiceQuotaLimiterRPM:
+		if lim.ShouldIncrementOnRecord() {
+			return 1
+		}
+		return 0
 	default:
 		return 0
 	}

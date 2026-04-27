@@ -101,6 +101,9 @@ var (
 //
 // TokenComponents 仅对 TPM/TPD 有效，决定哪几种 token 计入计数（input/output/cache_creation/cache_read）。
 // 其他 limiter type 该字段为 nil；service 层会强制清洗。
+//
+// CountOnArrival 仅对 RPM 有效：true 表示请求到达即 +1（旧语义，迁移 137 把现存 RPM 行迁移成此值），
+// false 表示仅在请求成功后由 Record 阶段 +1（默认）。其他 limiter type 该字段恒为 false 且无意义。
 type ServiceQuotaLimiterDef struct {
 	ID              int64    `json:"id"`
 	RuleID          int64    `json:"rule_id"`
@@ -108,6 +111,7 @@ type ServiceQuotaLimiterDef struct {
 	WindowMode      string   `json:"window_mode"`
 	LimitValue      float64  `json:"limit_value"`
 	TokenComponents []string `json:"token_components,omitempty"`
+	CountOnArrival  bool     `json:"count_on_arrival,omitempty"`
 }
 
 type ServiceQuotaLimiterInput struct {
@@ -115,6 +119,38 @@ type ServiceQuotaLimiterInput struct {
 	WindowMode      string   `json:"window_mode"`
 	LimitValue      float64  `json:"limit_value"`
 	TokenComponents []string `json:"token_components,omitempty"`
+	CountOnArrival  *bool    `json:"count_on_arrival,omitempty"`
+}
+
+// ServiceQuotaLimiterTypeUsesCountOnArrival 判断 limiter type 是否使用 count_on_arrival 字段。
+// 仅 RPM 使用；其他类型 service 层会强制置零，避免管理员误填影响判定。
+func ServiceQuotaLimiterTypeUsesCountOnArrival(kind string) bool {
+	return kind == ServiceQuotaLimiterRPM
+}
+
+// ShouldIncrementOnArrival 决定 PreCheckAcquire 阶段是否需要对该 limiter +1：
+//   - 仅 RPM 受 CountOnArrival 控制：true → arrival 阶段 +1（旧语义，Record 不再重复）
+//   - 其他 limiter 走各自既有路径（concurrency=Acquire / TPM/TPD/daily_usd=Record），
+//     这里返回 false 表示 arrival 阶段不需要额外写入
+//
+// 抽到 receiver 是为了让 PreCheckAcquire/Record 共用同一判定，避免规则分散漂移。
+func (l ServiceQuotaLimiterDef) ShouldIncrementOnArrival() bool {
+	return l.LimiterType == ServiceQuotaLimiterRPM && l.CountOnArrival
+}
+
+// ShouldIncrementOnRecord 决定 Record 阶段（请求成功落账后）是否需要对该 limiter +1：
+//   - RPM 仅当 CountOnArrival=false 时由 Record 兜底 +1（"成功才计"语义）
+//   - TPM/TPD/daily_usd 天然由 Record 计数（与 CountOnArrival 无关）
+//   - concurrency 不通过 Record 计数
+func (l ServiceQuotaLimiterDef) ShouldIncrementOnRecord() bool {
+	switch l.LimiterType {
+	case ServiceQuotaLimiterRPM:
+		return !l.CountOnArrival
+	case ServiceQuotaLimiterTPM, ServiceQuotaLimiterTPD, ServiceQuotaLimiterDailyUSD:
+		return true
+	default:
+		return false
+	}
 }
 
 // ServiceQuotaPathDef 路径定义：单向递进链 平台→渠道→分组→账号→模型，

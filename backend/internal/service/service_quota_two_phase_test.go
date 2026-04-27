@@ -207,7 +207,10 @@ func ruleConcurrencyAccount(id, accountID int64, limit float64) *ServiceQuotaRul
 	}
 }
 
-// ruleRPMChannel 构造一个限定 channel_id 的 RPM 规则。
+// ruleRPMChannel 构造一个限定 channel_id 的 RPM 规则（旧"到达即计"语义：CountOnArrival=true）。
+//
+// 显式打开 CountOnArrival 是为了让既有断言（"channel 命中即触发 Increment"）继续成立——
+// 默认 CountOnArrival=false 时 PreCheckAcquire 走只读路径，不会调 Increment。
 func ruleRPMChannel(id, channelID int64, limit float64) *ServiceQuotaRule {
 	ch := channelID
 	return &ServiceQuotaRule{
@@ -215,7 +218,7 @@ func ruleRPMChannel(id, channelID int64, limit float64) *ServiceQuotaRule {
 		Enabled:     true,
 		CounterMode: ServiceQuotaCounterModePerUser,
 		Limiters: []ServiceQuotaLimiterDef{
-			{ID: id*100 + 1, RuleID: id, LimiterType: ServiceQuotaLimiterRPM, WindowMode: ServiceQuotaWindowFixed, LimitValue: limit},
+			{ID: id*100 + 1, RuleID: id, LimiterType: ServiceQuotaLimiterRPM, WindowMode: ServiceQuotaWindowFixed, LimitValue: limit, CountOnArrival: true},
 		},
 		Paths: []ServiceQuotaPathDef{
 			{ID: id*100 + 11, RuleID: id, ChannelID: &ch},

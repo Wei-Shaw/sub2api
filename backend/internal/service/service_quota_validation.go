@@ -120,8 +120,17 @@ func normalizeLimiters(input *ServiceQuotaRuleInput) error {
 		if err := normalizeLimiterTokenComponents(l); err != nil {
 			return err
 		}
+		normalizeLimiterCountOnArrival(l)
 	}
 	return nil
+}
+
+// normalizeLimiterCountOnArrival 归一化 count_on_arrival：仅 RPM 保留传入值，
+// 其他 limiter type 一律置 nil，避免管理员误填污染存储。
+func normalizeLimiterCountOnArrival(l *ServiceQuotaLimiterInput) {
+	if !ServiceQuotaLimiterTypeUsesCountOnArrival(l.LimiterType) {
+		l.CountOnArrival = nil
+	}
 }
 
 // normalizeLimiterTokenComponents 校验并归一化 token_components：
