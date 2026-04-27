@@ -7852,7 +7852,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		AccountRateMultiplier: accountRateMultiplier,
 		APIKeyService:         input.APIKeyService,
 		ServiceQuotaRequest:   input.ServiceQuotaRequest,
-		TokenCount:            int64(usageLog.TotalTokens()),
+		TokenCount:            int64(usageLog.QuotaTokens()),
 	}, s.billingDeps(), s.usageBillingRepo)
 
 	if billingErr != nil {

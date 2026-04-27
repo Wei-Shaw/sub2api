@@ -179,6 +179,20 @@ func (u *UsageLog) TotalTokens() int {
 	return u.InputTokens + u.OutputTokens + u.CacheCreationTokens + u.CacheReadTokens
 }
 
+// QuotaTokens 返回服务限额（TPM/TPD）计数用的 token 数。
+//
+// 公式：input + cache_creation + output（剔除 cache_read）
+//   - 与 Anthropic 3.7+ ITPM(input + cache_creation) + OTPM(output) 双桶之和一致
+//   - 与 Bedrock Claude 3.7+ 公式 InputTokenCount + CacheWriteInputTokens + OutputTokenCount
+//     一致（我们不做 Bedrock 的 5x output burndown：直连官方 API 没有这个倍率）
+//   - 与 OpenAI / Gemini 单桶一致；它们额外把 cache_read 也算进去，我们略松，鼓励 prompt cache
+//
+// 注意：与 TotalTokens() 区分——后者含 cache_read，用于报表 / 审计 / 计费展示。
+// 限流要"严"，统计要"全"，两者不应共用一个口径。
+func (u *UsageLog) QuotaTokens() int {
+	return u.InputTokens + u.OutputTokens + u.CacheCreationTokens
+}
+
 func (u *UsageLog) EffectiveRequestType() RequestType {
 	if u == nil {
 		return RequestTypeUnknown
