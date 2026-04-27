@@ -37,6 +37,41 @@ import (
 // hard-coded default" rather than a hard error.
 var ErrSettingNotFound = errors.New("pluginsdk: setting not found")
 
+// ErrSchemaVersionMismatch is the sentinel returned by SettingsClient.GetTyped
+// when the stored value was written under a schema_version that differs from
+// the schema_version the plugin currently declares. Callers should treat it
+// as "the plugin upgraded its schema and the stored value may not unmarshal
+// into the current Go type" — typically the right reaction is to fall back
+// to the schema default and trigger a one-time migration.
+//
+// Use errors.Is to detect it; the concrete type SchemaVersionMismatchError
+// carries the two version strings if the caller wants to log them.
+var ErrSchemaVersionMismatch = errors.New("pluginsdk: settings schema version mismatch")
+
+// SchemaVersionMismatchError is returned wrapped in ErrSchemaVersionMismatch
+// when a Get / GetTyped finds a value written under an older schema version.
+// Inspect its fields to log the precise drift; use errors.Is to branch.
+type SchemaVersionMismatchError struct {
+	Key                  string
+	StoredSchemaVersion  string
+	CurrentSchemaVersion string
+	UnderlyingErr        error
+}
+
+func (e *SchemaVersionMismatchError) Error() string {
+	return fmt.Sprintf(
+		"pluginsdk: settings %q stored under schema_version=%q, current schema_version=%q (underlying: %v)",
+		e.Key, e.StoredSchemaVersion, e.CurrentSchemaVersion, e.UnderlyingErr,
+	)
+}
+
+func (e *SchemaVersionMismatchError) Unwrap() error { return e.UnderlyingErr }
+
+// Is implements errors.Is so callers can `if errors.Is(err, ErrSchemaVersionMismatch)`.
+func (e *SchemaVersionMismatchError) Is(target error) bool {
+	return target == ErrSchemaVersionMismatch
+}
+
 // settingsCacheTTL is how long a cached value stays fresh in the absence
 // of a Watch event. Watch updates invalidate cache eagerly so this TTL
 // matters only when the watch stream is unhealthy.
