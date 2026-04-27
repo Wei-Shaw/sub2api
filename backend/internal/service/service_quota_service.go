@@ -137,18 +137,31 @@ func (s *serviceQuotaService) IsPreCheckTwoPhase(ctx context.Context) bool {
 }
 
 func (s *serviceQuotaService) isEnabled(ctx context.Context) bool {
-	if s.cache != nil {
-		val, err := s.cache.GetEnabled(ctx)
+	return serviceQuotaIsEnabled(ctx, s.cache, s.settings)
+}
+
+// serviceQuotaIsEnabled 是 PreCheck/Record 与 Monitor 共享的"读总开关 + fail-open"实现。
+//
+// 读路径优先级：
+//  1. cache 命中（GetEnabled 返回非 nil 且无 error）→ 直接用
+//  2. cache 未命中或错误 → 走 SettingService 拉 DB；失败 fail-open 返回 false（与历史一致）
+//  3. cache 非 nil 时回填 setting 值，让下次直接命中
+//
+// 抽出包级函数避免 isEnabled / snapshotEnabled 两份完全相同的实现漂移；
+// 任何一边新增逻辑（例如 metrics、tracing）都必须在这里改一次而不是两次。
+func serviceQuotaIsEnabled(ctx context.Context, cache ServiceQuotaCache, settings *SettingService) bool {
+	if cache != nil {
+		val, err := cache.GetEnabled(ctx)
 		if err == nil && val != nil {
 			return *val
 		}
 	}
-	enabled, err := s.settings.GetBool(ctx, SettingKeyServiceQuotaEnabled)
+	enabled, err := settings.GetBool(ctx, SettingKeyServiceQuotaEnabled)
 	if err != nil {
 		return false
 	}
-	if s.cache != nil {
-		_ = s.cache.SetEnabled(ctx, enabled)
+	if cache != nil {
+		_ = cache.SetEnabled(ctx, enabled)
 	}
 	return enabled
 }

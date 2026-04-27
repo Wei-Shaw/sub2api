@@ -166,23 +166,11 @@ func (s *serviceQuotaMonitorService) Snapshot(ctx context.Context, filter Monito
 	}, nil
 }
 
-// snapshotEnabled 复用 PreCheck 的 fail-open 语义：读取 settings 失败时按 false 处理，
-// 与 serviceQuotaService.isEnabled 一致；缓存命中优先级更高。
+// snapshotEnabled 委托给 serviceQuotaIsEnabled 包级函数，与 PreCheck/Record 共享同一份
+// "读 cache 优先 + fail-open 走 settings + 回填 cache" 实现。任何一边新增逻辑都必须改 helper
+// 而不是 fork 一份新副本。
 func (s *serviceQuotaMonitorService) snapshotEnabled(ctx context.Context) bool {
-	if s.cache != nil {
-		val, err := s.cache.GetEnabled(ctx)
-		if err == nil && val != nil {
-			return *val
-		}
-	}
-	enabled, err := s.settings.GetBool(ctx, SettingKeyServiceQuotaEnabled)
-	if err != nil {
-		return false
-	}
-	if s.cache != nil {
-		_ = s.cache.SetEnabled(ctx, enabled)
-	}
-	return enabled
+	return serviceQuotaIsEnabled(ctx, s.cache, s.settings)
 }
 
 // loadRules 走 ServiceQuotaCache（与 PreCheck 共享），未命中时 List 并回填。
