@@ -20,12 +20,52 @@ export interface PluginSettingsListResponse {
   items: string[]
 }
 
+/**
+ * PropertyMetaResponse mirrors backend `service.PropertyMetadata` wire shape
+ * returned in `properties_meta`. Field names use snake_case to match the
+ * JSON payload — no client-side mapping is performed.
+ *
+ * V5/W6 SETTINGS-V2: every field is optional because older hosts do not
+ * emit this sidecar. Consumers (buildPropDescriptors) default unset values
+ * to `{ visibility: 'frontend', deprecated: '', requires_reload: false }`.
+ */
+export interface PropertyMetaResponse {
+  visibility?: 'frontend' | 'backend' | 'secret'
+  deprecated?: string
+  requires_reload?: boolean
+}
+
 export interface PluginSettingsSchemaInfo {
   plugin: string
   schema: JSONSchema
   defaults: Record<string, unknown>
   values: Record<string, unknown>
   updated_at?: string
+
+  // V5/W6 SETTINGS-V2 fields. All optional so the type stays compatible with
+  // older host responses that do not emit them. Consumers must default
+  // missing values (see plugin-settings-widgets/buildPropDescriptors.ts).
+
+  /**
+   * `plugin_settings_schemas.schema_version`. Empty when the plugin did not
+   * declare one (the host normalises missing versions to `"0"`, but the
+   * pre-W3-A host omits the field entirely).
+   */
+  schema_version?: string
+
+  /**
+   * Per top-level property metadata. Keys match `schema.properties`; absent
+   * keys default to `{visibility:'frontend', deprecated:'', requires_reload:false}`.
+   */
+  properties_meta?: Record<string, PropertyMetaResponse>
+
+  /**
+   * Names of properties whose `visibility === 'secret'` AND have a stored
+   * value (so the UI can show "configured" placeholder vs "empty"). The
+   * matching entries in `values` are JSON `null`. Empty array when no
+   * secrets are configured.
+   */
+  secret_keys?: string[]
 }
 
 export interface PluginSettingsUpdateResult {
