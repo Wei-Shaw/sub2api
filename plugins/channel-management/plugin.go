@@ -56,6 +56,15 @@ const (
 	// front so the host SPA router has the entry as soon as the
 	// frontend bundle is rebuilt.
 	availableChannelsFrontendPath = "/available-channels"
+
+	// channelMonitorAdminFrontendPath is the admin-facing route for the
+	// Channel Monitor management view (V5 W7). The Vue component
+	// ChannelMonitorView.vue ships with W7.1.
+	channelMonitorAdminFrontendPath = "/admin/monitor"
+
+	// channelStatusFrontendPath is the user-facing read-only "channel
+	// status" view (V5 W7.3).
+	channelStatusFrontendPath = "/channel-status"
 )
 
 // ChannelPlugin is the channel-management plugin entry point. It owns the
@@ -170,6 +179,25 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 					SortOrder:     200,
 					RequiresAdmin: false,
 				},
+				// Admin "Channel Monitor" entry — Vue component
+				// ChannelMonitorView.vue is added in V5 W7.1.
+				{
+					Path:          channelMonitorAdminFrontendPath,
+					IconSVG:       pluginsdk.IconCog,
+					Labels:        pluginsdk.Labels("渠道监控", "Channel Monitor"),
+					Section:       pluginsdk.SectionAdmin,
+					SortOrder:     220,
+					RequiresAdmin: true,
+				},
+				// User-facing read-only "Channel Status" view (V5 W7.3).
+				{
+					Path:          channelStatusFrontendPath,
+					IconSVG:       pluginsdk.IconCog,
+					Labels:        pluginsdk.Labels("渠道状态", "Channel Status"),
+					Section:       pluginsdk.SectionUser,
+					SortOrder:     210,
+					RequiresAdmin: false,
+				},
 			},
 			Routes: []pluginsdk.RouteDecl{
 				{
@@ -188,6 +216,18 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 					Path:          availableChannelsFrontendPath,
 					Name:          "UserAvailableChannels",
 					ComponentPath: "AvailableChannelsView.vue",
+				},
+				// Admin Channel Monitor route (V5 W7).
+				{
+					Path:          channelMonitorAdminFrontendPath,
+					Name:          "AdminChannelMonitor",
+					ComponentPath: "ChannelMonitorView.vue",
+				},
+				// User-facing Channel Status route (V5 W7.3).
+				{
+					Path:          channelStatusFrontendPath,
+					Name:          "UserChannelStatus",
+					ComponentPath: "ChannelStatusView.vue",
 				},
 			},
 			I18nNamespaces: []string{"channel-management"},
