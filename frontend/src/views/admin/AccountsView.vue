@@ -318,7 +318,7 @@
       :account-ids="selIds"
       :selected-platforms="selPlatforms"
       :selected-types="selTypes"
-      :target="bulkEditTarget"
+      :target="bulkEditTarget ?? undefined"
       :proxies="proxies"
       :groups="groups"
       @close="showBulkEdit = false"
@@ -1262,6 +1262,7 @@ const handleBulkToggleSchedulable = async (schedulable: boolean) => {
 REDACTED
 const buildBulkEditFilterSnapshot = () => {
   const rawParams = toRaw(params) as Record<string, unknown>
+  const sortOrder: AccountSortOrder = rawParams.sort_order === 'desc' ? 'desc' : 'asc'
   return {
     platform: typeof rawParams.platform === 'string' ? rawParams.platform : '',
     type: typeof rawParams.type === 'string' ? rawParams.type : '',
@@ -1270,7 +1271,7 @@ const buildBulkEditFilterSnapshot = () => {
     search: typeof rawParams.search === 'string' ? rawParams.search : '',
     privacy_mode: typeof rawParams.privacy_mode === 'string' ? rawParams.privacy_mode : '',
     sort_by: typeof rawParams.sort_by === 'string' ? rawParams.sort_by : '',
-    sort_order: rawParams.sort_order === 'desc' ? 'desc' : 'asc'
+    sort_order: sortOrder
   REDACTED
 REDACTED
 
