@@ -280,10 +280,10 @@ func (c *settingsClient) runWatchLoop(ctx context.Context) {
 				c.logger.Warn("settings watch stream open failed; will retry",
 					"plugin", c.pluginName, "error", err, "backoff", backoff)
 			}
-			if !sleepCtx(ctx, backoff) {
+			if !settingsSleepCtx(ctx, backoff) {
 				return
 			}
-			backoff = nextBackoff(backoff)
+			backoff = settingsNextBackoff(backoff)
 			continue
 		}
 		// Reset backoff after a successful open.
@@ -340,7 +340,7 @@ func (c *settingsClient) applyEvent(evt *pb.SettingsChangeEvent) {
 	}
 }
 
-func sleepCtx(ctx context.Context, d time.Duration) bool {
+func settingsSleepCtx(ctx context.Context, d time.Duration) bool {
 	t := time.NewTimer(d)
 	defer t.Stop()
 	select {
@@ -351,7 +351,7 @@ func sleepCtx(ctx context.Context, d time.Duration) bool {
 	}
 }
 
-func nextBackoff(cur time.Duration) time.Duration {
+func settingsNextBackoff(cur time.Duration) time.Duration {
 	next := cur * 3
 	if next > settingsWatchMaxBackoff {
 		return settingsWatchMaxBackoff

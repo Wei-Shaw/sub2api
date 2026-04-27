@@ -36,6 +36,7 @@ func ProvideAdminHandlers(
 	scheduledTestHandler *admin.ScheduledTestHandler,
 	paymentHandler *admin.PaymentHandler,
 	pluginHandler *admin.PluginHandler,
+	pluginSettingsHandler *admin.PluginSettingsHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
 		Dashboard:             dashboardHandler,
@@ -64,6 +65,7 @@ func ProvideAdminHandlers(
 		ScheduledTest:         scheduledTestHandler,
 		Payment:               paymentHandler,
 		Plugin:                pluginHandler,
+		PluginSettings:        pluginSettingsHandler,
 	}
 }
 
@@ -171,8 +173,21 @@ var ProviderSet = wire.NewSet(
 	// admin.NewChannelHandler 已迁移到 plugins/channel-management/
 	admin.NewPaymentHandler,
 	ProvidePluginHandler,
+	ProvidePluginSettingsHandler,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,
 	ProvideHandlers,
 )
+
+// ProvidePluginSettingsHandler creates admin.PluginSettingsHandler.
+//
+// 当插件功能未启用时,settingsService 可能为 nil,
+// handler 内部的 requireService 守卫会让所有接口返回 503,
+// 不影响其他 admin 路由。
+func ProvidePluginSettingsHandler(settingsService *service.PluginSettingsService) *admin.PluginSettingsHandler {
+	if settingsService == nil {
+		return admin.NewPluginSettingsHandler(nil)
+	}
+	return admin.NewPluginSettingsHandler(settingsService)
+}
