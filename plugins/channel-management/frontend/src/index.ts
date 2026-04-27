@@ -19,6 +19,7 @@
  */
 import type { HostSdk, PluginRuntimeAssets } from '@sub2api/plugin-sdk'
 import type { AxiosInstance } from 'axios'
+import './style.css'
 import ChannelsView from './views/ChannelsView.vue'
 import { setClient } from './api/client'
 import { setSdk } from './api/sdk'
