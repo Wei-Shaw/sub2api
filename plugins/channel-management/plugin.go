@@ -14,6 +14,10 @@ import (
 	chRepo "github.com/Wei-Shaw/sub2api/plugins/channel-management/repository"
 	chService "github.com/Wei-Shaw/sub2api/plugins/channel-management/service"
 
+	monitorHandler "github.com/Wei-Shaw/sub2api/plugins/channel-management/monitor/handler"
+	monitorRepo "github.com/Wei-Shaw/sub2api/plugins/channel-management/monitor/repository"
+	monitorService "github.com/Wei-Shaw/sub2api/plugins/channel-management/monitor/service"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -24,6 +28,15 @@ import (
 //
 //go:embed all:frontend/dist
 var frontendAssets embed.FS
+
+// monitorMigrations embeds the channel-monitor SQL migration files so the host
+// can fetch them via PluginLifecycle.GetMigration and apply them under the
+// MigrationRunner advisory-lock + plugin_migrations bookkeeping path. See
+// V5-DESIGN §1 (W1 MigrationRunnerCapability) and V5-DESIGN §6.1 (W6 Channel
+// Monitor migration playbook).
+//
+//go:embed migrations/*.sql
+var monitorMigrations embed.FS
 
 const (
 	pluginName        = "channel-management"
@@ -48,6 +61,13 @@ type ChannelPlugin struct {
 	engine *gin.Engine
 
 	channelHandler *chHandler.ChannelHandler
+
+	// monitor* fields back the channel-monitor sub-feature ported in V5 W6.
+	// They are nil until Init wires them so HealthCheck can disambiguate
+	// freshly-spawned vs initialised processes.
+	monitorService      *monitorService.ChannelMonitorService
+	monitorAdminHandler *monitorHandler.AdminHandler
+	monitorUserHandler  *monitorHandler.UserHandler
 }
 
 // Manifest declares the plugin's capabilities to the core. Endpoint paths are
@@ -65,12 +85,42 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 			{Path: pluginRoutePrefix + "/admin/channels/:id", Methods: []string{http.MethodGet, http.MethodPut, http.MethodDelete}, AuthType: pluginsdk.AuthTypeAdmin},
 			// Admin: model pricing helper
 			{Path: pluginRoutePrefix + "/admin/channels/model-pricing", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeAdmin},
+
+			// Admin: channel-monitor CRUD + run-now + history (V5 W6)
+			{Path: pluginRoutePrefix + "/admin/monitors", Methods: []string{http.MethodGet, http.MethodPost}, AuthType: pluginsdk.AuthTypeAdmin},
+			{Path: pluginRoutePrefix + "/admin/monitors/:id", Methods: []string{http.MethodGet, http.MethodPut, http.MethodDelete}, AuthType: pluginsdk.AuthTypeAdmin},
+			{Path: pluginRoutePrefix + "/admin/monitors/:id/run", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeAdmin},
+			{Path: pluginRoutePrefix + "/admin/monitors/:id/history", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeAdmin},
+			// User-facing channel monitor read-only endpoints
+			{Path: pluginRoutePrefix + "/monitors", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
+			{Path: pluginRoutePrefix + "/monitors/:id", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
 		},
 		// Capabilities — channel-management writes the gateway cache contract
 		// (channel:active, channel:by_id:*, …) which the core's
 		// ChannelCacheReader reads directly. Those keys live outside the
 		// per-plugin namespace, so we ask the core for raw key access.
-		Capabilities: []string{pluginsdk.CapabilityRedisRawKeys},
+		//
+		// CapabilitySecretEncryption / CapabilityJobScheduler /
+		// CapabilitySettingsExtension are required by the channel-monitor
+		// sub-feature (W6): api_key encryption, periodic check scheduling, and
+		// the admin-tunable feature flag / interval defaults.
+		Capabilities: []string{
+			pluginsdk.CapabilityRedisRawKeys,
+			pluginsdk.CapabilitySecretEncryption,
+			pluginsdk.CapabilityJobScheduler,
+			pluginsdk.CapabilitySettingsExtension,
+		},
+		// MigrationFiles enumerates the SQL files shipped under
+		// plugins/channel-management/migrations/. The host calls back through
+		// GetMigration to fetch each body and applies them in order. New files
+		// must be appended (never reordered) so historical checksums remain
+		// stable. See V5-DESIGN §1 (W1) for the full lifecycle.
+		MigrationFiles: []string{
+			"001_add_channel_monitors.sql",
+			"002_add_channel_monitor_aggregation.sql",
+			"003_drop_channel_monitor_deleted_at.sql",
+			"004_add_channel_monitor_request_templates.sql",
+		},
 		Frontend: &pluginsdk.FrontendManifest{
 			// EntryJS 路径相对于 plugin frontend 内的 dist/ 根, 核心拼成
 			// /api/v1/plugin-assets/channel-management/dist/entry.js 暴露给浏览器.
@@ -154,6 +204,22 @@ func (p *ChannelPlugin) Init(ctx pluginsdk.PluginContext) error {
 
 	p.channelHandler = chHandler.NewChannelHandler(svc, nil)
 
+	// Wire the channel-monitor sub-feature (V5 W6). Repository / handler are
+	// stub-backed for now (every method returns ErrNotPorted) so HTTP routes
+	// respond 501 — the wiring smoke-tests the manifest, capabilities, and
+	// migration declarations end-to-end while the heavier implementations
+	// land in subsequent commits.
+	monRepo := monitorRepo.NewChannelMonitorRepository(ctx.DB())
+	var monEncryptor monitorService.SecretEncryptor
+	if secrets := ctx.Secrets(); secrets != nil {
+		monEncryptor = monitorService.NewSDKSecretEncryptor(context.Background(), secrets)
+	} else {
+		ctx.Logger().Warn("channel-monitor encryption disabled: SDK Secrets() unavailable; api keys will fail to encrypt — check CapabilitySecretEncryption is in plugin manifest")
+	}
+	p.monitorService = monitorService.NewChannelMonitorService(monRepo, monEncryptor)
+	p.monitorAdminHandler = monitorHandler.NewAdminHandler(p.monitorService)
+	p.monitorUserHandler = monitorHandler.NewUserHandler(p.monitorService)
+
 	p.registerRoutes()
 
 	ctx.Logger().Info("channel-management plugin initialised", "version", pluginVersion)
@@ -196,6 +262,27 @@ func (p *ChannelPlugin) registerRoutes() {
 		channels.GET("/:id", p.channelHandler.GetByID)
 		channels.PUT("/:id", p.channelHandler.Update)
 		channels.DELETE("/:id", p.channelHandler.Delete)
+
+		// Channel monitor admin routes (V5 W6). Each method currently returns
+		// 501 except List, which short-circuits to an empty page so the admin
+		// UI's smoke-test passes once the frontend lands.
+		if p.monitorAdminHandler != nil {
+			monitors := admin.Group("/monitors")
+			monitors.GET("", p.monitorAdminHandler.List)
+			monitors.POST("", p.monitorAdminHandler.Create)
+			monitors.GET("/:id", p.monitorAdminHandler.GetByID)
+			monitors.PUT("/:id", p.monitorAdminHandler.Update)
+			monitors.DELETE("/:id", p.monitorAdminHandler.Delete)
+			monitors.POST("/:id/run", p.monitorAdminHandler.RunNow)
+			monitors.GET("/:id/history", p.monitorAdminHandler.History)
+		}
+	}
+
+	// User-facing channel monitor routes.
+	if p.monitorUserHandler != nil {
+		users := p.engine.Group(pluginRoutePrefix + "/monitors")
+		users.GET("", p.monitorUserHandler.List)
+		users.GET("/:id", p.monitorUserHandler.GetStatus)
 	}
 }
 
@@ -206,6 +293,16 @@ func (p *ChannelPlugin) HealthCheck() (bool, string) {
 		return false, "plugin not yet initialised"
 	}
 	return true, "ok"
+}
+
+// readMonitorMigration is the lookup the SDK runner will call once the
+// MigrationProvider extension lands (V5/W1 SDK-side wiring). It returns the
+// SQL body for a migration file shipped under plugins/channel-management/
+// migrations/ or fs.ErrNotExist if the filename is unknown. Keeping the
+// helper here ensures the monitorMigrations FS is never optimised out and
+// makes it trivial to wire to a SDK-level callback when the API stabilises.
+func readMonitorMigration(filename string) ([]byte, error) {
+	return monitorMigrations.ReadFile("migrations/" + filename)
 }
 
 // OpenFrontendFile implements pluginsdk.FrontendBundleProvider so the core can
