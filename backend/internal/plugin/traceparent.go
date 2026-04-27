@@ -7,7 +7,9 @@ import (
 )
 
 // W3C traceparent header has the layout:
-//   version "-" trace-id "-" parent-id "-" trace-flags
+//
+//	version "-" trace-id "-" parent-id "-" trace-flags
+//
 // version is 2 hex chars, trace-id is 32 hex chars (16 bytes), parent-id is
 // 16 hex chars (8 bytes), trace-flags is 2 hex chars. Total length is always
 // 55 chars including the 3 dashes. We support only version "00".

@@ -294,4 +294,3 @@ func shutdownRemoteSlogSender(h *remoteSlogHandler, done <-chan struct{}) {
 	case <-time.After(remoteSlogShutdownDrain):
 	}
 }
-

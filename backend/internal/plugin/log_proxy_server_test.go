@@ -93,9 +93,9 @@ func TestReplayToZap_DroppedRecordEmitsWarning(t *testing.T) {
 	log := zap.New(core)
 
 	rec := &pluginsdk.LogRecord{
-		Level:                  0,
-		Msg:                    "with-drops",
-		DroppedSinceLastSend:   17,
+		Level:                0,
+		Msg:                  "with-drops",
+		DroppedSinceLastSend: 17,
 	}
 	replayToZap(log, "p", rec)
 
