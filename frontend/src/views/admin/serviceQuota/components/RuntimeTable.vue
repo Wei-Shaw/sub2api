@@ -47,26 +47,29 @@
             <PathChevron :summary="row.path_summary" :show-internal="showInternal" />
           </td>
 
-          <!-- 用量：chip(limiter type) + 数字/% + 细进度条 + 状态文字
-               chip 的颜色按 limiter type 区分（紫=RPM 蓝=TPM 靛=TPD 绿=daily_usd 黄=concurrency） -->
+          <!-- 用量：chip(limiter type) + [进度条+数字+% 重叠在一列] + 状态文字
+               进度条作为半透明背景条横向填充，数字与百分比覆盖在上层左右两端，
+               让一眼就能从颜色饱满度判断负载，从文字看到精确值——节省横向空间。 -->
           <td class="px-4 py-3 text-xs whitespace-nowrap">
             <div class="flex items-center gap-2.5">
               <span :class="['inline-flex items-center justify-center rounded-md px-2 py-0.5 text-[11px] font-semibold min-w-[44px]', limiterChipClass(row.limiter_type)]">
                 {{ formatLimiter(row.limiter_type) }}
               </span>
-              <div class="h-1 w-16 shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
+              <div class="relative h-5 w-44 overflow-hidden rounded-md bg-gray-100 dark:bg-dark-700">
                 <div
-                  class="h-full rounded-full transition-all duration-300"
-                  :class="getLoadBarClass(row.utilization_pct)"
+                  class="absolute inset-y-0 left-0 transition-all duration-300"
+                  :class="getLoadBarOverlayClass(row.utilization_pct)"
                   :style="getLoadBarStyle(row.utilization_pct)"
                 ></div>
+                <div class="absolute inset-0 flex items-center justify-between px-2 text-[11px] font-mono">
+                  <span class="font-semibold text-gray-700 dark:text-gray-200 tabular-nums">
+                    {{ formatUsageNumbers(row) }}
+                  </span>
+                  <span :class="['font-bold tabular-nums', getLoadTextClass(row.utilization_pct)]">
+                    {{ Math.round(row.utilization_pct) }}%
+                  </span>
+                </div>
               </div>
-              <span :class="['font-bold tabular-nums', getLoadTextClass(row.utilization_pct)]">
-                {{ Math.round(row.utilization_pct) }}%
-              </span>
-              <span class="font-mono text-[11px] text-gray-500 dark:text-gray-400">
-                {{ formatUsageNumbers(row) }}
-              </span>
               <span class="text-[11px] text-gray-400">{{ statusText(row) }}</span>
             </div>
           </td>
@@ -120,7 +123,9 @@ import { useI18n } from 'vue-i18n'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { LimiterRuntime } from '@/api/admin/serviceQuota'
-import { getLoadBarClass, getLoadBarStyle, getLoadTextClass } from '@/utils/loadIndicator'
+import { getLoadBarOverlayClass, getLoadBarStyle, getLoadTextClass } from '@/utils/loadIndicator'
+import { limiterChipClass } from '@/utils/limiterColors'
+import { formatThousands } from '@/utils/format'
 import PathChevron from './PathChevron.vue'
 import { useEntityName } from './entityNames'
 
@@ -221,19 +226,6 @@ function formatLimiter(type: string): string {
   return t(`admin.serviceQuota.limiters.${key}`, type.toUpperCase())
 }
 
-// limiterChipClass 按 limiter type 返回 chip 的浅色背景 + 文字色，
-// 让用量列首眼能区分是哪个 limiter（替代独立的 limiter 列）。
-function limiterChipClass(type: string): string {
-  switch (type) {
-    case 'rpm': return 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300'
-    case 'tpm': return 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300'
-    case 'tpd': return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300'
-    case 'daily_usd': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
-    case 'concurrency': return 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
-    default: return 'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-300'
-  }
-}
-
 // scopeUserName 通过 useEntityName 异步解析 user_id → 用户名（display_name/username/email），
 // 首屏先显示占位 #id，回填后自动刷新；hover title 上保留 #id 方便管理员对齐。
 function scopeUserName(id: number): string {
@@ -267,11 +259,11 @@ function counterModeBadgeClass(mode: string | undefined): string {
   return 'badge-gray'
 }
 
-// daily_usd 是金额，保留 2 位；其他都是整数。
+// daily_usd 是金额，保留 2 位；其他都是整数。整数部分用美式千分位（5,000 / 2,000,000）。
 function formatUsageNumbers(row: LimiterRuntime): string {
   const isUsd = row.limiter_type === 'daily_usd'
-  const limitText = isUsd ? row.limit_value.toFixed(2) : String(Math.round(row.limit_value))
-  const currentText = isUsd ? row.current.toFixed(2) : String(Math.round(row.current))
+  const limitText = isUsd ? row.limit_value.toFixed(2) : formatThousands(Math.round(row.limit_value))
+  const currentText = isUsd ? row.current.toFixed(2) : formatThousands(Math.round(row.current))
   return `${currentText} / ${limitText}`
 }
 

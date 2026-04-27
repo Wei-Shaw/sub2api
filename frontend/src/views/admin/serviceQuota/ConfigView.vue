@@ -54,16 +54,17 @@
             </div>
           </template>
 
+          <!-- 一个限流器一行：chip 用统一颜色（与监控页 / 用户限额页同一套），值用千分位 -->
           <template #cell-limiters="{ row }">
-            <div class="flex flex-wrap gap-1.5">
+            <div class="flex flex-col gap-1">
               <span
                 v-for="lim in row.limiters"
                 :key="lim.id"
-                :class="['badge', limiterBadgeClass(lim.limiter_type)]"
+                :class="['inline-flex w-fit items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-semibold', limiterChipClass(lim.limiter_type)]"
                 :title="`${limiterLabel(lim.limiter_type)} = ${formatLimitValue(lim)}`"
               >
-                {{ limiterLabel(lim.limiter_type) }}
-                <span class="ml-1 font-mono text-[10px] opacity-80">{{ formatLimitValue(lim) }}</span>
+                <span>{{ limiterLabel(lim.limiter_type) }}</span>
+                <span class="font-mono opacity-80">{{ formatLimitValue(lim) }}</span>
               </span>
             </div>
           </template>
@@ -249,6 +250,8 @@ import PathChevron from './components/PathChevron.vue'
 import type { PathSummary } from './components/pathRender'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { limiterChipClass } from '@/utils/limiterColors'
+import { formatThousands } from '@/utils/format'
 import type { Column } from '@/components/common/types'
 import type { SimpleUser } from '@/api/admin/usage'
 import {
@@ -358,20 +361,10 @@ function limiterLabel(value: string): string {
   return map[value] || value
 }
 
-function limiterBadgeClass(value: string): string {
-  const classes: Record<string, string> = {
-    rpm: 'badge-blue',
-    tpm: 'badge-purple',
-    tpd: 'badge-indigo',
-    daily_usd: 'badge-green',
-    concurrency: 'badge-yellow',
-  }
-  return classes[value] || 'badge-gray'
-}
-
 function formatLimitValue(lim: ServiceQuotaLimiterDef): string {
   if (lim.limiter_type === 'daily_usd') return `$${Number(lim.limit_value).toFixed(6).replace(/\.?0+$/, '')}`
-  return String(lim.limit_value)
+  // 整数限额（rpm/tpm/tpd/concurrency）用美式千分位逗号
+  return formatThousands(Math.round(lim.limit_value))
 }
 
 function counterModeLabel(value: string): string {

@@ -243,6 +243,20 @@ export function formatNumberLocaleString(num: number): string {
 }
 
 /**
+ * 美式千分位逗号格式化（强制 en-US locale，不随浏览器语言变化）。
+ *
+ * 适用于"始终用 1,234,567 这种风格"的场景——比如限额配置/监控里的限流值，
+ * 后端是与货币/单位无关的纯数字，统一千分位逗号让管理员一眼看清量级。
+ *
+ * 与 formatNumberLocaleString 的区别：后者跟随浏览器 locale，可能渲染成
+ * 1.234.567（德语）/ 1 234 567（法语）等；本函数固定 en-US。
+ */
+export function formatThousands(num: number): string {
+  if (!Number.isFinite(num)) return '0'
+  return num.toLocaleString('en-US')
+}
+
+/**
  * 格式化金额（固定小数位，不带货币符号）
  * @param amount 金额
  * @param fractionDigits 小数位数，默认 4

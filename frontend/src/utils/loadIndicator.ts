@@ -41,6 +41,19 @@ export function getLoadBarStyle(loadPct: number): string {
 }
 
 /**
+ * 进度条填充色 class（半透明版）
+ *
+ * 用于"文字与进度条重叠"的样式：填充条用 30%(亮模式) / 40%(暗模式) 透明度，
+ * 让覆盖在上层的数字/百分比文字始终可读。与 getLoadBarClass 同色阶但弱化。
+ */
+export function getLoadBarOverlayClass(loadPct: number): string {
+  if (Number.isFinite(loadPct) && loadPct >= RED_THRESHOLD) return 'bg-red-500/30 dark:bg-red-500/40'
+  if (Number.isFinite(loadPct) && loadPct >= ORANGE_THRESHOLD) return 'bg-orange-500/30 dark:bg-orange-500/40'
+  if (Number.isFinite(loadPct) && loadPct >= YELLOW_THRESHOLD) return 'bg-yellow-500/30 dark:bg-yellow-500/40'
+  return 'bg-green-500/30 dark:bg-green-500/40'
+}
+
+/**
  * 数值文字的颜色 class
  */
 export function getLoadTextClass(loadPct: number): string {
