@@ -38,6 +38,18 @@ var frontendAssets embed.FS
 //go:embed migrations/*.sql
 var monitorMigrations embed.FS
 
+// monitorSettingsSchemaJSON / monitorSettingsDefaultsJSON embed the
+// channel-monitor settings schema + defaults declared via the V5 W3
+// SettingsExtensionCapability. The host renders the schema as a tab on
+// the admin Settings page; runtime.LoadMonitorRuntime reads the values
+// back via SettingsClient.GetTyped at request time.
+//
+//go:embed monitor/settings/settings_schema.json
+var monitorSettingsSchemaJSON []byte
+
+//go:embed monitor/settings/settings_defaults.json
+var monitorSettingsDefaultsJSON []byte
+
 const (
 	pluginName        = "channel-management"
 	pluginDisplayName = "Channel Management"
@@ -146,6 +158,10 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 			{Filename: "002_add_channel_monitor_aggregation.sql", ChecksumSha256: "4e6b3e94aaed169dd7a6a4e69aa61794779e943d617b78540210bba93063abfc"},
 			{Filename: "003_drop_channel_monitor_deleted_at.sql", ChecksumSha256: "2f5c2f951c2b59ed706841135de6458093a52eff970d852aec5dd60d99f868d4"},
 			{Filename: "004_add_channel_monitor_request_templates.sql", ChecksumSha256: "a35f2e016afe5fe4019a2aad70184eb20104c8c248a60e5ba763ebd888280ca1"},
+		},
+		SettingsSchema: &pluginsdk.SettingsSchemaDoc{
+			Schema:   monitorSettingsSchemaJSON,
+			Defaults: monitorSettingsDefaultsJSON,
 		},
 		Frontend: &pluginsdk.FrontendManifest{
 			// EntryJS 路径相对于 plugin frontend 内的 dist/ 根, 核心拼成
@@ -296,7 +312,7 @@ func (p *ChannelPlugin) Init(ctx pluginsdk.PluginContext) error {
 	}
 	p.monitorService = monitorService.NewChannelMonitorService(monRepo, monEncryptor)
 	p.monitorAdminHandler = monitorHandler.NewAdminHandler(p.monitorService)
-	p.monitorUserHandler = monitorHandler.NewUserHandler(p.monitorService)
+	p.monitorUserHandler = monitorHandler.NewUserHandler(p.monitorService, ctx.Settings())
 
 	// Register the channel-monitor JobScheduler specs (V5 W6 step 3). The
 	// host fires monitor.run every 60s on each replica and the leader-only

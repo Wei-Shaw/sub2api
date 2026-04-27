@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	"github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/response"
 	"github.com/Wei-Shaw/sub2api/plugins/channel-management/monitor/dto"
 	monitorservice "github.com/Wei-Shaw/sub2api/plugins/channel-management/monitor/service"
@@ -15,11 +16,26 @@ import (
 // users. The plugin mounts it under /api/v1/plugin/channel-management/monitors.
 type UserHandler struct {
 	monitorService *monitorservice.ChannelMonitorService
+	settings       pluginsdk.SettingsClient
 }
 
-// NewUserHandler builds the user handler.
-func NewUserHandler(svc *monitorservice.ChannelMonitorService) *UserHandler {
-	return &UserHandler{monitorService: svc}
+// NewUserHandler builds the user handler. settings is optional — passing
+// nil disables the runtime feature flag check (the user list is always
+// returned). Production wires the SDK SettingsClient so the admin can
+// flip the master switch without redeploying.
+func NewUserHandler(svc *monitorservice.ChannelMonitorService, settings pluginsdk.SettingsClient) *UserHandler {
+	return &UserHandler{monitorService: svc, settings: settings}
+}
+
+// featureEnabled returns the runtime "enabled" master switch. nil settings
+// (older host without W3) is treated as enabled to preserve backwards
+// compatibility — operators upgrading from V4 won't suddenly lose access.
+func (h *UserHandler) featureEnabled(ctx *gin.Context) bool {
+	if h.settings == nil {
+		return true
+	}
+	rt := monitorservice.LoadMonitorRuntime(ctx.Request.Context(), h.settings)
+	return rt.Enabled
 }
 
 // --- Response shapes ---
@@ -126,6 +142,10 @@ func (h *UserHandler) List(c *gin.Context) {
 		response.ErrorWithDetails(c, http.StatusServiceUnavailable, "monitor service unavailable", "MONITOR_DISABLED", nil)
 		return
 	}
+	if !h.featureEnabled(c) {
+		response.Success(c, gin.H{"items": []channelMonitorUserListItem{}})
+		return
+	}
 	views, err := h.monitorService.ListUserView(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -142,6 +162,10 @@ func (h *UserHandler) List(c *gin.Context) {
 func (h *UserHandler) GetStatus(c *gin.Context) {
 	if h.monitorService == nil {
 		response.ErrorWithDetails(c, http.StatusServiceUnavailable, "monitor service unavailable", "MONITOR_DISABLED", nil)
+		return
+	}
+	if !h.featureEnabled(c) {
+		response.ErrorFrom(c, monitorservice.ErrChannelMonitorNotFound)
 		return
 	}
 	id, ok := ParseChannelMonitorID(c)
