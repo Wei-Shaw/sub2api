@@ -551,7 +551,6 @@ func registerTLSFingerprintProfileRoutes(admin *gin.RouterGroup, h *handler.Hand
 	}
 }
 
-
 func registerPluginRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	plugins := admin.Group("/plugins")
 	{

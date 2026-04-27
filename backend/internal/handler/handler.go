@@ -31,9 +31,9 @@ type AdminHandlers struct {
 	APIKey                *admin.AdminAPIKeyHandler
 	ScheduledTest         *admin.ScheduledTestHandler
 	// Channel handler 已迁移到 plugins/channel-management/
-	Payment               *admin.PaymentHandler
-	Plugin                *admin.PluginHandler
-	PluginSettings        *admin.PluginSettingsHandler
+	Payment        *admin.PaymentHandler
+	Plugin         *admin.PluginHandler
+	PluginSettings *admin.PluginSettingsHandler
 }
 
 // Handlers contains all HTTP handlers
