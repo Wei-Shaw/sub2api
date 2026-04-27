@@ -221,7 +221,7 @@ func TestSnapshot_AdminFilter_ByUserID(t *testing.T) {
 
 // 用户视角下 PathSummary 不再被全局抹空：仍暴露 platform / model_pattern
 // 给用户看到自己被限流的"业务路径"，但 channel/group/account 内部拓扑必须为 nil。
-// CounterMode 与 ScopeUserID 仍抹空（admin 专属字段）。
+// CounterMode 保留（前端按此区分全局 vs 用户独立限额，渲染"全"badge）；ScopeUserID 抹空（admin 专属）。
 func TestSnapshot_UserScope_PathSummaryHidesInternalTopologyOnly(t *testing.T) {
 	rule := ruleSimple(1, ServiceQuotaCounterModeUser, ServiceQuotaLimiterRPM, 100, []int64{7})
 	rule.Paths[0].Platform = ptrStringMonitor("openai")
@@ -249,7 +249,8 @@ func TestSnapshot_UserScope_PathSummaryHidesInternalTopologyOnly(t *testing.T) {
 	require.Nil(t, ps.ChannelID, "channel_id 不能暴露给用户")
 	require.Nil(t, ps.GroupID, "group_id 不能暴露给用户")
 	require.Nil(t, ps.AccountID, "account_id 不能暴露给用户")
-	require.Equal(t, "", snap.Items[0].CounterMode)
+	require.Equal(t, ServiceQuotaCounterModeUser, snap.Items[0].CounterMode,
+		"counter_mode 保留：前端按此区分全局 vs 用户独立限额")
 	require.Nil(t, snap.Items[0].ScopeUserID)
 	// 最小信息暴露：rule_id 是 admin 内部关键字（用于 ResetCounter），is_fallback 是规则编排细节。
 	// 用户视角下 JSON 必须把这两个字段抹空。
@@ -273,6 +274,20 @@ func TestSnapshot_UserScope_BlanksFallbackRuleIdentity(t *testing.T) {
 	require.Len(t, snap.Items, 1)
 	require.Equal(t, int64(0), snap.Items[0].RuleID)
 	require.False(t, snap.Items[0].IsFallback, "即使 rule.IsFallback=true，user scope 输出也必须为 false")
+}
+
+// TestSnapshot_UserScope_CounterModeShared 验证 shared 规则的 user 视角也保留 counter_mode：
+// 前端据此渲染"全局共享限额"（"全"badge）vs 用户独立限额的区别。
+func TestSnapshot_UserScope_CounterModeShared(t *testing.T) {
+	rule := ruleSimple(9, ServiceQuotaCounterModeShared, ServiceQuotaLimiterRPM, 100, nil)
+	svc := newMonitorService(t, true, []*ServiceQuotaRule{rule}, nil)
+	snap, err := svc.Snapshot(context.Background(), MonitorSnapshotFilter{
+		UserScope: &MonitorUserScope{UserID: 999},
+	})
+	require.NoError(t, err)
+	require.Len(t, snap.Items, 1)
+	require.Equal(t, ServiceQuotaCounterModeShared, snap.Items[0].CounterMode,
+		"shared 规则在 user 视角必须返回 counter_mode='shared'，让前端能渲染全局 badge")
 }
 
 // TestSnapshot_AdminScope_KeepsRuleIdentity 反向验证：admin 视角下 rule_id 与 is_fallback 必须保留，

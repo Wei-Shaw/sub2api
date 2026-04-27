@@ -293,9 +293,11 @@ func buildLimiterRuntime(row plannedRow, snap LimiterSnapshot, userScope bool) L
 		Exists:         snap.Exists,
 		ResetAtUnixMs:  snap.ResetAtUnixMs,
 	}
+	// counter_mode 是规则的 enum 类型描述（'shared' / 'user' / 'per_user'），不属于敏感字段：
+	// admin 端公开，user 端也需要它来区分"全局共享限额"和"用户独立限额"（前端按此渲染"全"badge）。
+	rt.CounterMode = row.rule.CounterMode
 	if !userScope {
 		rt.PathSummary = pathSummaryFrom(row.path)
-		rt.CounterMode = row.rule.CounterMode
 		rt.ScopeUserID = row.scopeUserID
 	} else {
 		// user 视角下仍透出 platform 与 model_pattern，让用户能看到自己被
