@@ -31,6 +31,12 @@ const (
 	// share keys with other components (e.g. the channel-management plugin
 	// writes the gateway cache contract documented in GATEWAY_CACHE_SPEC.md).
 	CapabilityRedisRawKeys = "redis_raw_keys"
+
+	// CapabilityJobScheduler grants access to PluginContext.Jobs() for
+	// declaring scheduled work (interval / cron / fixed_delay). The host owns
+	// the schedule clock and per-(plugin, job) leader lock; the plugin owns
+	// the handler. See V5-DESIGN §2 (W2 JobSchedulerCapability).
+	CapabilityJobScheduler = "job_scheduler"
 )
 
 // Manifest is the Go-level representation of pluginsdk.ManifestResponse.

@@ -33,6 +33,13 @@ type PluginContext interface {
 	// Config returns the plain-string configuration map the core supplied in
 	// the Init request. The map is a copy; mutating it has no effect.
 	Config() map[string]string
+
+	// Jobs returns the JobScheduler client for declaring scheduled work.
+	// Plugins must register every spec from inside Plugin.Init(); the SDK
+	// opens the Subscribe stream once Init() returns. Returns nil if the
+	// plugin process was started without a JobScheduler endpoint (host
+	// versions older than V5).
+	Jobs() JobsClient
 }
 
 // RedisClient is the SDK's go-redis-style Redis client. It mirrors the
