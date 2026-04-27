@@ -25,6 +25,15 @@ import (
 //go:embed all:frontend/dist
 var frontendAssets embed.FS
 
+// monitorMigrations embeds the channel-monitor SQL migration files so the host
+// can fetch them via PluginLifecycle.GetMigration and apply them under the
+// MigrationRunner advisory-lock + plugin_migrations bookkeeping path. See
+// V5-DESIGN §1 (W1 MigrationRunnerCapability) and V5-DESIGN §6.1 (W6 Channel
+// Monitor migration playbook).
+//
+//go:embed migrations/*.sql
+var monitorMigrations embed.FS
+
 const (
 	pluginName        = "channel-management"
 	pluginDisplayName = "Channel Management"
@@ -70,7 +79,28 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 		// (channel:active, channel:by_id:*, …) which the core's
 		// ChannelCacheReader reads directly. Those keys live outside the
 		// per-plugin namespace, so we ask the core for raw key access.
-		Capabilities: []string{pluginsdk.CapabilityRedisRawKeys},
+		//
+		// CapabilitySecretEncryption / CapabilityJobScheduler /
+		// CapabilitySettingsExtension are required by the channel-monitor
+		// sub-feature (W6): api_key encryption, periodic check scheduling, and
+		// the admin-tunable feature flag / interval defaults.
+		Capabilities: []string{
+			pluginsdk.CapabilityRedisRawKeys,
+			pluginsdk.CapabilitySecretEncryption,
+			pluginsdk.CapabilityJobScheduler,
+			pluginsdk.CapabilitySettingsExtension,
+		},
+		// MigrationFiles enumerates the SQL files shipped under
+		// plugins/channel-management/migrations/. The host calls back through
+		// GetMigration to fetch each body and applies them in order. New files
+		// must be appended (never reordered) so historical checksums remain
+		// stable. See V5-DESIGN §1 (W1) for the full lifecycle.
+		MigrationFiles: []string{
+			"001_add_channel_monitors.sql",
+			"002_add_channel_monitor_aggregation.sql",
+			"003_drop_channel_monitor_deleted_at.sql",
+			"004_add_channel_monitor_request_templates.sql",
+		},
 		Frontend: &pluginsdk.FrontendManifest{
 			// EntryJS 路径相对于 plugin frontend 内的 dist/ 根, 核心拼成
 			// /api/v1/plugin-assets/channel-management/dist/entry.js 暴露给浏览器.
@@ -206,6 +236,16 @@ func (p *ChannelPlugin) HealthCheck() (bool, string) {
 		return false, "plugin not yet initialised"
 	}
 	return true, "ok"
+}
+
+// readMonitorMigration is the lookup the SDK runner will call once the
+// MigrationProvider extension lands (V5/W1 SDK-side wiring). It returns the
+// SQL body for a migration file shipped under plugins/channel-management/
+// migrations/ or fs.ErrNotExist if the filename is unknown. Keeping the
+// helper here ensures the monitorMigrations FS is never optimised out and
+// makes it trivial to wire to a SDK-level callback when the API stabilises.
+func readMonitorMigration(filename string) ([]byte, error) {
+	return monitorMigrations.ReadFile("migrations/" + filename)
 }
 
 // OpenFrontendFile implements pluginsdk.FrontendBundleProvider so the core can
