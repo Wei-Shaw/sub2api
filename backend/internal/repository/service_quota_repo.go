@@ -393,11 +393,12 @@ func upsertPathsTx(ctx context.Context, tx *sql.Tx, ruleID int64, paths []servic
 		values[i] = fmt.Sprintf("($%d,$%d,$%d,$%d,$%d,$%d)", base+1, base+2, base+3, base+4, base+5, base+6)
 		args = append(args, ruleID, p.Platform, p.ChannelID, p.GroupID, p.AccountID, p.ModelPattern)
 	}
-	// 用唯一索引 idx_service_quota_paths_unique（含 COALESCE 折叠 NULL）做冲突推断，
+	// ON CONFLICT 用列+表达式形式匹配唯一索引 idx_service_quota_paths_unique（含 COALESCE 折叠 NULL）做冲突推断，
 	// 命中时 DO NOTHING：5 字段身份完全一致 → 保留旧行 + 旧 id，让 Redis 计数延续。
+	// 注：unique index（不是 constraint）只能用列+表达式形式推断；ON CONFLICT ON CONSTRAINT <index_name> 在 PG 里会失败。
 	query := `INSERT INTO service_quota_paths (rule_id, platform, channel_id, group_id, account_id, model_pattern) VALUES ` +
 		strings.Join(values, ",") +
-		` ON CONFLICT ON CONSTRAINT idx_service_quota_paths_unique DO NOTHING`
+		` ON CONFLICT (rule_id, COALESCE(platform, ''), COALESCE(channel_id, 0), COALESCE(group_id, 0), COALESCE(account_id, 0), COALESCE(model_pattern, '')) DO NOTHING`
 	_, err := tx.ExecContext(ctx, query, args...)
 	return err
 }
