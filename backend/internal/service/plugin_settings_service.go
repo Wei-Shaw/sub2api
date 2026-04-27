@@ -459,7 +459,7 @@ func (s *PluginSettingsService) GetAll(
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make(map[string]json.RawMessage)
 	for rows.Next() {
 		var k, v string
@@ -671,7 +671,7 @@ func (s *PluginSettingsService) ListPlugins(ctx context.Context) ([]string, erro
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]string, 0)
 	for rows.Next() {
 		var n string

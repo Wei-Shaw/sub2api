@@ -190,7 +190,8 @@ func injectRequestContext(req *http.Request, authCtx *gin.Context, pluginName st
 
 func (r *PluginRouter) getOrCreateProxy(key string, target *url.URL) *httputil.ReverseProxy {
 	if v, ok := r.proxies.Load(key); ok {
-		return v.(*httputil.ReverseProxy)
+		rp, _ := v.(*httputil.ReverseProxy)
+		return rp
 	}
 	proxy := httputil.NewSingleHostReverseProxy(target)
 	// 覆写 Director,设置 req.Host 为目标 host,确保上游 server 正确处理。
@@ -200,7 +201,8 @@ func (r *PluginRouter) getOrCreateProxy(key string, target *url.URL) *httputil.R
 		req.Host = target.Host
 	}
 	actual, _ := r.proxies.LoadOrStore(key, proxy)
-	return actual.(*httputil.ReverseProxy)
+	rp, _ := actual.(*httputil.ReverseProxy)
+	return rp
 }
 
 // hop-by-hop 头列表来自 RFC 7230 §6.1。

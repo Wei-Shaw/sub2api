@@ -129,7 +129,8 @@ func (s *SecretEncryptionServer) RegisterServices(g *grpc.Server) {
 // hits return the same bytes the SDK would derive.
 func (s *SecretEncryptionServer) deriveKey(pluginName string) ([]byte, error) {
 	if v, ok := s.perPluginKey.Load(pluginName); ok {
-		return v.([]byte), nil
+		key, _ := v.([]byte)
+		return key, nil
 	}
 	info := []byte(secretEncryptionInfoPrefix + pluginName)
 	salt := []byte(pluginName)

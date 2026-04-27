@@ -198,7 +198,7 @@ func (s *SDKServer) Query(ctx context.Context, req *pluginsdk.SQLRequest) (*plug
 	if err != nil {
 		return nil, fmt.Errorf("plugin sql query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanRowsToResponse(rows)
 }
 
@@ -549,7 +549,7 @@ func (s *SDKServer) Subscribe(req *pluginsdk.RedisSubRequest, stream grpc.Server
 	}
 
 	pubsub := s.redis.Subscribe(stream.Context(), channels...)
-	defer pubsub.Close()
+	defer func() { _ = pubsub.Close() }()
 
 	ch := pubsub.Channel()
 	for {
@@ -617,7 +617,7 @@ func (s *SDKServer) eventBusSubscribe(req *pluginsdk.EventFilter, stream grpc.Se
 	}
 
 	pubsub := s.redis.Subscribe(stream.Context(), channels...)
-	defer pubsub.Close()
+	defer func() { _ = pubsub.Close() }()
 
 	msgCh := pubsub.Channel()
 	for {
