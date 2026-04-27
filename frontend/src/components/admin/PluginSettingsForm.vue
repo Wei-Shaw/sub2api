@@ -1,6 +1,9 @@
 <template>
   <div class="space-y-4">
-    <div v-if="!schemaProperties || schemaProperties.length === 0" class="text-sm text-gray-500 dark:text-gray-400">
+    <div
+      v-if="!schemaProperties.length"
+      class="text-sm text-gray-500 dark:text-gray-400"
+    >
       {{ t('admin.pluginSettings.emptySchema') }}
     </div>
     <div
@@ -8,64 +11,36 @@
       :key="prop.key"
       class="rounded-md border border-gray-200 dark:border-gray-700 p-4"
     >
-      <div class="flex items-start justify-between gap-4">
-        <div class="flex-1">
-          <label class="block text-sm font-medium text-gray-900 dark:text-gray-100">
-            {{ prop.title || prop.key }}
-          </label>
-          <p
-            v-if="prop.description"
-            class="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
-          >
-            {{ prop.description }}
-          </p>
-        </div>
-      </div>
-
-      <div class="mt-3">
-        <input
-          v-if="prop.type === 'boolean'"
-          type="checkbox"
-          class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
-          :checked="Boolean(localValues[prop.key])"
-          @change="(e) => onChange(prop, (e.target as HTMLInputElement).checked)"
-        />
-
-        <select
-          v-else-if="prop.enumValues"
-          class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-sm"
-          :value="String(localValues[prop.key] ?? '')"
-          @change="(e) => onChange(prop, (e.target as HTMLSelectElement).value)"
+      <DeprecatedBadge v-if="prop.deprecated" :message="prop.deprecated">
+        <template #label>
+          <span>{{ prop.title || prop.key }}</span>
+        </template>
+        <p
+          v-if="prop.description"
+          class="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
         >
-          <option v-for="opt in prop.enumValues" :key="String(opt)" :value="String(opt)">
-            {{ String(opt) }}
-          </option>
-        </select>
-
-        <input
-          v-else-if="prop.type === 'number' || prop.type === 'integer'"
-          type="number"
-          class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-sm"
-          :value="numberValue(prop.key)"
-          :step="prop.type === 'integer' ? 1 : 'any'"
-          @input="(e) => onNumberInput(prop, (e.target as HTMLInputElement).value)"
+          {{ prop.description }}
+        </p>
+      </DeprecatedBadge>
+      <template v-else>
+        <label class="block text-sm font-medium text-gray-900 dark:text-gray-100">
+          {{ prop.title || prop.key }}
+        </label>
+        <p
+          v-if="prop.description"
+          class="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
+        >
+          {{ prop.description }}
+        </p>
+      </template>
+      <div class="mt-3">
+        <component
+          :is="resolveWidget(prop)"
+          :prop="prop"
+          :model-value="localValues[prop.key]"
+          @update:model-value="(v: unknown) => onChange(prop, v)"
         />
-
-        <input
-          v-else-if="prop.type === 'string'"
-          type="text"
-          class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 text-sm"
-          :value="String(localValues[prop.key] ?? '')"
-          @input="(e) => onChange(prop, (e.target as HTMLInputElement).value)"
-        />
-
-        <textarea
-          v-else
-          rows="4"
-          class="block w-full rounded-md font-mono text-xs border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
-          :value="rawJson(localValues[prop.key])"
-          @input="(e) => onJsonInput(prop, (e.target as HTMLTextAreaElement).value)"
-        />
+        <RequiresReloadBadge v-if="prop.requiresReload" />
         <p
           v-if="errors[prop.key]"
           class="mt-1 text-xs text-red-600 dark:text-red-400"
@@ -73,7 +48,6 @@
           {{ errors[prop.key] }}
         </p>
       </div>
-
       <div class="mt-3 flex justify-end">
         <button
           type="button"
@@ -89,17 +63,35 @@
 </template>
 
 <script setup lang="ts">
+// SETTINGS-V2 plugin settings form. Reads PluginSettingsSchemaInfo from the
+// admin API and renders one row per top-level schema property using the
+// widget map (resolveWidget) + decorators from
+// @/components/admin/plugin-settings-widgets. Backend-only fields are
+// filtered out client-side; the host also rejects writes server-side.
+//
+// DESIGN §5.6 — dirty/save/error orchestration only. Widget rendering rules
+// live in plugin-settings-widgets/index.ts. The deprecated wrapper renders
+// the label inside its own slot (strikethrough + badge); the plain branch
+// renders the same label outside any wrapper. The widget body, error and
+// save button are shared between both branches via straight markup.
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { pluginSettingsApi, type PluginSettingsSchemaInfo } from '@/api/admin/pluginSettings'
+import {
+  pluginSettingsApi,
+  type PluginSettingsSchemaInfo,
+} from '@/api/admin/pluginSettings'
+import {
+  DeprecatedBadge,
+  RequiresReloadBadge,
+  buildPropDescriptors,
+  resolveWidget,
+  type PropDescriptor,
+} from '@/components/admin/plugin-settings-widgets'
 import { useAppStore } from '@/stores'
 import { extractApiErrorMessage } from '@/utils/apiError'
 
-const props = defineProps<{
-  info: PluginSettingsSchemaInfo
-}>()
-
+const props = defineProps<{ info: PluginSettingsSchemaInfo }>()
 const emit = defineEmits<{
   (e: 'updated', key: string, value: unknown): void
 }>()
@@ -107,34 +99,11 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const appStore = useAppStore()
 
-interface PropDescriptor {
-  key: string
-  type?: string
-  title?: string
-  description?: string
-  enumValues?: unknown[]
-}
-
-const schemaProperties = computed<PropDescriptor[]>(() => {
-  const schema = props.info.schema as Record<string, unknown> | undefined
-  if (!schema || typeof schema !== 'object') return []
-  const propsMap = schema['properties'] as Record<string, Record<string, unknown>> | undefined
-  if (!propsMap) return []
-  return Object.keys(propsMap)
-    .sort()
-    .map((key) => {
-      const node = propsMap[key] || {}
-      const enumVals = Array.isArray(node['enum']) ? (node['enum'] as unknown[]) : undefined
-      return {
-        key,
-        type: typeof node['type'] === 'string' ? (node['type'] as string) : undefined,
-        title: typeof node['title'] === 'string' ? (node['title'] as string) : undefined,
-        description:
-          typeof node['description'] === 'string' ? (node['description'] as string) : undefined,
-        enumValues: enumVals,
-      }
-    })
-})
+const schemaProperties = computed<PropDescriptor[]>(() =>
+  // DESIGN §5.4: backend-only fields are not rendered. Server-side
+  // validation still rejects writes for defence in depth.
+  buildPropDescriptors(props.info).filter((p) => p.visibility !== 'backend'),
+)
 
 const localValues = reactive<Record<string, unknown>>({ ...(props.info.values ?? {}) })
 const dirty = reactive<Record<string, boolean>>({})
@@ -148,68 +117,31 @@ watch(
     Object.assign(localValues, next.values ?? {})
     Object.keys(dirty).forEach((k) => delete dirty[k])
     Object.keys(errors).forEach((k) => delete errors[k])
-  }
+  },
 )
 
-function rawJson(v: unknown): string {
-  if (v === undefined) return ''
-  try {
-    return JSON.stringify(v, null, 2)
-  } catch {
-    return String(v)
-  }
-}
-
-function numberValue(key: string): string {
-  const v = localValues[key]
-  if (typeof v === 'number') return String(v)
-  if (typeof v === 'string') return v
-  return ''
-}
-
-function onChange(prop: PropDescriptor, raw: unknown) {
-  let value: unknown = raw
-  if (prop.type === 'integer' && typeof raw === 'string') {
-    const n = Number.parseInt(raw, 10)
-    value = Number.isNaN(n) ? raw : n
-  } else if (prop.type === 'number' && typeof raw === 'string') {
-    const n = Number.parseFloat(raw)
-    value = Number.isNaN(n) ? raw : n
-  } else if (prop.enumValues && typeof raw === 'string') {
-    const match = prop.enumValues.find((opt) => String(opt) === raw)
-    if (match !== undefined) value = match
-  }
-  localValues[prop.key] = value
+function onChange(prop: PropDescriptor, v: unknown) {
+  localValues[prop.key] = v
   dirty[prop.key] = true
   delete errors[prop.key]
 }
 
-function onNumberInput(prop: PropDescriptor, raw: string) {
-  onChange(prop, raw)
-}
-
-function onJsonInput(prop: PropDescriptor, raw: string) {
-  if (raw.trim() === '') {
-    localValues[prop.key] = ''
-    dirty[prop.key] = true
-    return
-  }
-  try {
-    localValues[prop.key] = JSON.parse(raw)
-    delete errors[prop.key]
-  } catch (err) {
-    errors[prop.key] = err instanceof Error ? err.message : String(err)
-  }
-  dirty[prop.key] = true
-}
-
 async function save(prop: PropDescriptor) {
   if (errors[prop.key]) return
+  // SETTINGS-V2 secret semantics (DESIGN §5.6): empty input on a NOT-yet
+  // configured secret means "user did not type anything" — skip the request.
+  // Empty input on a configured secret falls through to the regular PUT,
+  // which the backend interprets as "delete row".
+  const value = localValues[prop.key]
+  if (prop.visibility === 'secret' && value === '' && !prop.isConfigured) {
+    dirty[prop.key] = false
+    return
+  }
   saving.value = prop.key
   try {
-    await pluginSettingsApi.update(props.info.plugin, prop.key, localValues[prop.key])
+    await pluginSettingsApi.update(props.info.plugin, prop.key, value)
     dirty[prop.key] = false
-    emit('updated', prop.key, localValues[prop.key])
+    emit('updated', prop.key, value)
     appStore.showSuccess(t('admin.pluginSettings.saveSuccess'))
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))
