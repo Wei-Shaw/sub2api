@@ -1,45 +1,47 @@
 <template>
-  <div class="plugin-view">
-    <header class="plugin-view__header">
-      <h1 class="plugin-view__title">
-        {{ displayName || pluginName }}
-      </h1>
-      <p v-if="componentPath" class="plugin-view__subtitle">
-        {{ componentPath }}
-      </p>
-    </header>
-
-    <section class="plugin-view__body">
-      <!-- 加载中 -->
-      <div v-if="state === 'loading'" class="plugin-view__placeholder">
-        <p class="plugin-view__placeholder-text">{{ loadingText }}</p>
-      </div>
-
-      <!-- 加载失败 / 没有 entry_js_url 的旧插件 / 找不到组件: 显示错误 + 重试 -->
-      <div v-else-if="state === 'error'" class="plugin-view__placeholder">
-        <p class="plugin-view__placeholder-text">{{ errorText }}</p>
-        <p v-if="errorDetail" class="plugin-view__placeholder-meta">
-          <code>{{ errorDetail }}</code>
+  <AppLayout>
+    <div class="plugin-view">
+      <header class="plugin-view__header">
+        <h1 class="plugin-view__title">
+          {{ displayName || pluginName }}
+        </h1>
+        <p v-if="componentPath" class="plugin-view__subtitle">
+          {{ componentPath }}
         </p>
-        <button v-if="canRetry" type="button" class="plugin-view__retry" @click="retry">
-          {{ retryText }}
-        </button>
-      </div>
+      </header>
 
-      <!-- 占位: 没有 entry_js_url 时降级到旧版占位 -->
-      <div v-else-if="state === 'placeholder'" class="plugin-view__placeholder">
-        <p class="plugin-view__placeholder-text">{{ placeholderText }}</p>
-        <p v-if="pageName" class="plugin-view__placeholder-meta">
-          page: <code>{{ pageName }}</code>
-        </p>
-      </div>
+      <section class="plugin-view__body">
+        <!-- 加载中 -->
+        <div v-if="state === 'loading'" class="plugin-view__placeholder">
+          <p class="plugin-view__placeholder-text">{{ loadingText }}</p>
+        </div>
 
-      <!-- 真渲染插件页面 -->
-      <keep-alive v-else-if="state === 'ready' && resolvedComponent">
-        <component :is="resolvedComponent" />
-      </keep-alive>
-    </section>
-  </div>
+        <!-- 加载失败 / 没有 entry_js_url 的旧插件 / 找不到组件: 显示错误 + 重试 -->
+        <div v-else-if="state === 'error'" class="plugin-view__placeholder">
+          <p class="plugin-view__placeholder-text">{{ errorText }}</p>
+          <p v-if="errorDetail" class="plugin-view__placeholder-meta">
+            <code>{{ errorDetail }}</code>
+          </p>
+          <button v-if="canRetry" type="button" class="plugin-view__retry" @click="retry">
+            {{ retryText }}
+          </button>
+        </div>
+
+        <!-- 占位: 没有 entry_js_url 时降级到旧版占位 -->
+        <div v-else-if="state === 'placeholder'" class="plugin-view__placeholder">
+          <p class="plugin-view__placeholder-text">{{ placeholderText }}</p>
+          <p v-if="pageName" class="plugin-view__placeholder-meta">
+            page: <code>{{ pageName }}</code>
+          </p>
+        </div>
+
+        <!-- 真渲染插件页面 -->
+        <keep-alive v-else-if="state === 'ready' && resolvedComponent">
+          <component :is="resolvedComponent" />
+        </keep-alive>
+      </section>
+    </div>
+  </AppLayout>
 </template>
 
 <script setup lang="ts">
@@ -47,6 +49,7 @@ import { computed, ref, shallowRef, watch, type Component } from 'vue'
 import { useRoute } from 'vue-router'
 import { findPluginManifest } from '@/plugins/loader'
 import { loadPluginEntry, resolvePluginComponent, unloadPlugin } from '@/plugins/loader-runtime'
+import AppLayout from '@/components/layout/AppLayout.vue'
 
 /**
  * PluginView 是插件页面的真实容器。
@@ -160,7 +163,7 @@ function stringMeta(key: string): string {
 
 <style scoped>
 .plugin-view {
-  padding: 1.5rem;
+  /* AppLayout's <main> already provides p-4 md:p-6 lg:p-8; avoid double padding. */
   display: flex;
   flex-direction: column;
   gap: 1rem;

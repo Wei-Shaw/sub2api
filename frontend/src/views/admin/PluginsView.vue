@@ -1,5 +1,6 @@
 <template>
-  <div class="space-y-4 p-6">
+  <AppLayout>
+    <div class="space-y-4">
     <div class="flex items-center justify-between">
       <div>
         <h1 class="text-xl font-semibold">{{ t('admin.plugins.title') }}</h1>
@@ -88,13 +89,15 @@
         </tbody>
       </table>
     </div>
-  </div>
+    </div>
+  </AppLayout>
 </template>
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { apiClient } from '@/api/client'
+import AppLayout from '@/components/layout/AppLayout.vue'
 import { useAppStore } from '@/stores'
 import { extractApiErrorMessage } from '@/utils/apiError'
 
