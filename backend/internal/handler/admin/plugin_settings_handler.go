@@ -104,10 +104,29 @@ func (h *PluginSettingsHandler) Get(c *gin.Context) {
 	response.Success(c, info)
 }
 
-// Update writes a single key after schema validation. Validation failures
-// return 422 so the UI can map them to a per-field error message; missing
-// schemas return 409 because the plugin is expected to register a schema
-// before the admin can edit anything.
+// errcode constants — wire-format string codes returned in the response
+// metadata.code field. See SETTINGS-V2-DESIGN §7.2 / 附录 F.
+const (
+	errcodePluginSettingsSchemaMissing    = "PLUGIN_SETTINGS_SCHEMA_MISSING"
+	errcodePluginSettingsValidationFailed = "PLUGIN_SETTINGS_VALIDATION_FAILED"
+	errcodePluginSettingsBackendOnly      = "PLUGIN_SETTINGS_BACKEND_ONLY"
+)
+
+// Update writes a single key after schema validation.
+//
+// Status codes (DESIGN §7.2 / 附录 F):
+//
+//	422 — PLUGIN_SETTINGS_VALIDATION_FAILED (schema rejection; UI maps to per-field error)
+//	409 — PLUGIN_SETTINGS_SCHEMA_MISSING (plugin not yet registered a schema; admin must wait for restart)
+//	403 — PLUGIN_SETTINGS_BACKEND_ONLY (visibility=backend; UI hides the input but
+//	      a stale tab may still POST — server is the source of truth)
+//
+// V5/W6 SETTINGS-V2: writes go through SetByKeyWithSource(SetSourceAdmin)
+// so the service can reject visibility=backend keys against admin
+// callers. SetByKey (the backward-compat shim) already forwards to
+// SetSourceAdmin but this handler invokes the explicit form per
+// DESIGN §4.7 to make the source visible at the call site and avoid
+// silent regressions if the shim's default ever changes.
 func (h *PluginSettingsHandler) Update(c *gin.Context) {
 	if !h.requireService(c) {
 		return
@@ -125,22 +144,11 @@ func (h *PluginSettingsHandler) Update(c *gin.Context) {
 		response.BadRequest(c, "invalid request: "+err.Error())
 		return
 	}
-	rev, err := h.service.SetByKey(c.Request.Context(), pluginName, key, req.Value)
+	rev, err := h.service.SetByKeyWithSource(
+		c.Request.Context(), pluginName, key, req.Value, service.SetSourceAdmin,
+	)
 	if err != nil {
-		var ve *service.ErrPluginSettingsValidation
-		if errors.As(err, &ve) {
-			response.ErrorWithDetails(c, http.StatusUnprocessableEntity,
-				"plugin settings validation failed", ve.Reason, map[string]string{
-					"plugin": pluginName,
-					"key":    key,
-				})
-			return
-		}
-		if errors.Is(err, service.ErrPluginSettingsSchemaMissing) {
-			response.Error(c, http.StatusConflict, "plugin schema not registered; restart the plugin first")
-			return
-		}
-		response.InternalError(c, err.Error())
+		h.writeUpdateError(c, pluginName, key, err)
 		return
 	}
 	response.Success(c, gin.H{
@@ -149,6 +157,42 @@ func (h *PluginSettingsHandler) Update(c *gin.Context) {
 		"value":    req.Value,
 		"revision": rev,
 	})
+}
+
+// writeUpdateError translates service-layer errors into the SETTINGS-V2
+// errcode + HTTP status table (DESIGN §7.2 / 附录 F). The errcode string
+// rides in the metadata.code field so the front-end can map to an i18n
+// key without parsing the English message.
+func (h *PluginSettingsHandler) writeUpdateError(c *gin.Context, pluginName, key string, err error) {
+	var ve *service.ErrPluginSettingsValidation
+	if errors.As(err, &ve) {
+		response.ErrorWithDetails(c, http.StatusUnprocessableEntity,
+			"plugin settings validation failed", ve.Reason, map[string]string{
+				"code":   errcodePluginSettingsValidationFailed,
+				"plugin": pluginName,
+				"key":    key,
+			})
+		return
+	}
+	var be *service.ErrPluginSettingsBackendOnly
+	if errors.As(err, &be) {
+		response.ErrorWithDetails(c, http.StatusForbidden,
+			"plugin settings key is backend-only", "", map[string]string{
+				"code":   errcodePluginSettingsBackendOnly,
+				"plugin": pluginName,
+				"key":    key,
+			})
+		return
+	}
+	if errors.Is(err, service.ErrPluginSettingsSchemaMissing) {
+		response.ErrorWithDetails(c, http.StatusConflict,
+			"plugin schema not registered", "", map[string]string{
+				"code":   errcodePluginSettingsSchemaMissing,
+				"plugin": pluginName,
+			})
+		return
+	}
+	response.InternalError(c, err.Error())
 }
 
 func (h *PluginSettingsHandler) requireService(c *gin.Context) bool {
