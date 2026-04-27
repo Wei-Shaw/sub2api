@@ -32,6 +32,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -166,12 +167,33 @@ type PluginSettingsChange struct {
 // PluginSettingsSchemaInfo is the admin-facing description of a plugin's
 // current schema + values. The handler returns this from GET; the UI
 // renders the schema with vue-json-schema-form (or the fallback).
+//
+// V5/W6 SETTINGS-V2 fields (SchemaVersion / PropertiesMeta / SecretKeys)
+// expose the per-property marker triple recorded in
+// plugin_settings_schemas.properties_meta plus the schema_version stamp
+// so the admin UI widget map can pick the correct widget per property.
+// See DESIGN §4.6.
 type PluginSettingsSchemaInfo struct {
 	Plugin    string                     `json:"plugin"`
 	Schema    json.RawMessage            `json:"schema"`
 	Defaults  json.RawMessage            `json:"defaults"`
-	Values    map[string]json.RawMessage `json:"values"`
+	Values    map[string]json.RawMessage `json:"values"` // secret keys → null
 	UpdatedAt time.Time                  `json:"updated_at"`
+
+	// SchemaVersion mirrors plugin_settings_schemas.schema_version.
+	// "0" (schemaVersionUndeclared) when the plugin omitted the field.
+	SchemaVersion string `json:"schema_version"`
+
+	// PropertiesMeta is the marker triple per top-level property. Keys
+	// match Schema's top-level properties; absent keys default to
+	// {visibility:"frontend", deprecated:"", requires_reload:false}.
+	PropertiesMeta map[string]PropertyMetadata `json:"properties_meta"`
+
+	// SecretKeys is the sorted list of properties with visibility=="secret"
+	// that have a stored value (so the UI can render "已配置"). Values for
+	// these keys in the Values map are masked to JSON null. Empty slice
+	// when no secrets are configured.
+	SecretKeys []string `json:"secret_keys"`
 }
 
 // PluginSettingsService owns persistence + validation + fan-out.
@@ -598,11 +620,45 @@ func (s *PluginSettingsService) SchemaInfo(
 	if err != nil {
 		return nil, err
 	}
+
+	// V5/W6 SETTINGS-V2: surface schema_version + properties_meta from the
+	// in-memory cache populated by RegisterSchemaWithInput / DB reload above.
+	// Mask secret values to JSON null and emit a sorted SecretKeys list so
+	// the admin UI can render "已配置" without ever seeing the secret bytes
+	// (DESIGN §4.6).
+	s.mu.RLock()
+	schemaVersion := s.schemaVersions[pluginName]
+	cachedMeta := s.propertiesMeta[pluginName]
+	s.mu.RUnlock()
+	metaCopy := make(map[string]PropertyMetadata, len(cachedMeta))
+	for k, v := range cachedMeta {
+		metaCopy[k] = v
+	}
+	if schemaVersion == "" {
+		schemaVersion = schemaVersionUndeclared
+	}
+	secretKeys := make([]string, 0)
+	for prop, m := range metaCopy {
+		if m.Visibility != PropertyVisibilitySecret {
+			continue
+		}
+		if _, ok := values[prop]; ok {
+			secretKeys = append(secretKeys, prop)
+		}
+	}
+	sort.Strings(secretKeys) // deterministic order for tests + UI diffs
+	for _, k := range secretKeys {
+		values[k] = json.RawMessage("null")
+	}
+
 	return &PluginSettingsSchemaInfo{
-		Plugin:   pluginName,
-		Schema:   rawSchema,
-		Defaults: rawDefaults,
-		Values:   values,
+		Plugin:         pluginName,
+		Schema:         rawSchema,
+		Defaults:       rawDefaults,
+		Values:         values,
+		SchemaVersion:  schemaVersion,
+		PropertiesMeta: metaCopy,
+		SecretKeys:     secretKeys,
 	}, nil
 }
 

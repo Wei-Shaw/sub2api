@@ -3,13 +3,22 @@
 // V5 W3 — REST endpoints the admin UI uses to discover and edit
 // plugin-scoped settings. Three endpoints suffice:
 //
-//   GET  /api/v1/admin/plugin-settings                     — list namespaces (one per plugin)
-//   GET  /api/v1/admin/plugin-settings/:plugin             — schema + current values
-//   PUT  /api/v1/admin/plugin-settings/:plugin/:key        — update a single key (validated)
+//	GET  /api/v1/admin/plugin-settings                     — list namespaces (one per plugin)
+//	GET  /api/v1/admin/plugin-settings/:plugin             — schema + current values
+//	PUT  /api/v1/admin/plugin-settings/:plugin/:key        — update a single key (validated)
 //
 // We deliberately update one key at a time because the UI form widgets
 // (vue-json-schema-form) commit per-property and partial saves are easier
 // to reason about than the all-or-nothing alternative.
+//
+// V5/W6 SETTINGS-V2 (W3-A):
+//   - GET response carries `schema_version` and `properties_meta` (per-property
+//     marker triple visibility/deprecated/requires_reload) so the UI widget
+//     map can pick the correct widget per property. The fields are populated
+//     by service.SchemaInfo (DESIGN §4.6).
+//   - PUT explicitly forwards SetSourceAdmin and translates the new
+//     ErrPluginSettingsBackendOnly into HTTP 403 with errcode
+//     PLUGIN_SETTINGS_BACKEND_ONLY. Other errcodes follow DESIGN §7.2 / §F.
 package admin
 
 import (
@@ -65,6 +74,16 @@ func (h *PluginSettingsHandler) List(c *gin.Context) {
 
 // Get returns the schema + current values for one plugin. 404 when the
 // plugin has not registered anything.
+//
+// V5/W6 SETTINGS-V2: the JSON body inherits the new fields from
+// service.PluginSettingsSchemaInfo:
+//
+//	schema_version  string                      — schema_version stamp ("0" when undeclared)
+//	properties_meta map[string]{visibility,deprecated,requires_reload}
+//	secret_keys     []string                    — sorted keys whose values were masked to null
+//
+// Field shape and JSON tags are owned by the service struct so the wire
+// contract stays in lockstep with persistence. See DESIGN §4.6 / 附录 D.
 func (h *PluginSettingsHandler) Get(c *gin.Context) {
 	if !h.requireService(c) {
 		return
