@@ -35,8 +35,9 @@ async function fetchName(kind: EntityKind, id: number): Promise<string> {
   }
   if (kind === 'user') {
     const u = await adminAPI.users.getById(id)
-    // 优先 username（用户在系统内的标识符），缺失退化到 email，最后 #id 占位
-    return u.username || u.email || fallback(kind, id)
+    // 监控/配置页绑定用户列以邮箱为主标识：管理员习惯用邮箱区分账号，
+    // username 在多账号体系中可能重复或缺失。email 缺失才退化到 username。
+    return u.email || u.username || fallback(kind, id)
   }
   const a = await adminAPI.accounts.getById(id)
   return a.name || fallback(kind, id)
