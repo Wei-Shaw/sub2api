@@ -2,11 +2,14 @@ package pluginsdk
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -20,8 +23,10 @@ import (
 	sdkdriver "github.com/Wei-Shaw/sub2api/plugin-sdk/driver"
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -502,6 +507,62 @@ func (r *runner) Shutdown(_ context.Context, _ *emptypb.Empty) (*emptypb.Empty, 
 		close(r.shutdown)
 	}
 	return &emptypb.Empty{}, nil
+}
+
+// GetMigration returns the SQL body for a migration the plugin declared in
+// Manifest.Migrations. The host calls this immediately after Init for every
+// MigrationDecl entry, re-verifies the SHA-256 against the manifest pin,
+// and applies the body under MigrationRunner's advisory lock.
+//
+// The dispatch is to the plugin's MigrationProvider implementation. Plugins
+// that declare migrations but forget to implement the provider receive
+// codes.FailedPrecondition so the bug surfaces at startup instead of being
+// masked by the proto-generated codes.Unimplemented default. The SDK also
+// computes the SHA-256 here so the host can cross-check the SDK-reported
+// checksum against the manifest pin (a third tripwire on top of the
+// host-side recomputation in fetchAndRunPluginMigrations).
+func (r *runner) GetMigration(_ context.Context, req *pb.GetMigrationRequest) (*pb.GetMigrationResponse, error) {
+	provider, ok := r.plugin.(MigrationProvider)
+	if !ok {
+		return nil, status.Errorf(codes.FailedPrecondition,
+			"pluginsdk: plugin does not implement MigrationProvider — declare Manifest.Migrations together with OpenMigration",
+		)
+	}
+	filename := req.GetFilename()
+	if filename == "" {
+		return nil, status.Error(codes.InvalidArgument, "pluginsdk: GetMigration filename is empty")
+	}
+
+	// Look up the matching declaration so we can echo back NonTransactional
+	// without forcing the plugin to keep the flag in two places. The SDK does
+	// not validate the filename against the manifest beyond this lookup —
+	// the host has already pinned what to fetch by filename and applies
+	// whichever subset of declarations it cares about.
+	var nonTx bool
+	if m := r.plugin.Manifest(); m != nil {
+		for _, decl := range m.Migrations {
+			if decl.Filename == filename {
+				nonTx = decl.NonTransactional
+				break
+			}
+		}
+	}
+
+	body, err := provider.OpenMigration(filename)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, status.Errorf(codes.NotFound, "pluginsdk: migration %q not found", filename)
+		}
+		return nil, status.Errorf(codes.Internal, "pluginsdk: open migration %q: %v", filename, err)
+	}
+
+	sum := sha256.Sum256(body)
+	return &pb.GetMigrationResponse{
+		Filename:         filename,
+		Sql:              body,
+		ChecksumSha256:   hex.EncodeToString(sum[:]),
+		NonTransactional: nonTx,
+	}, nil
 }
 
 // GetFrontendBundle streams a single file from the plugin's frontend assets.

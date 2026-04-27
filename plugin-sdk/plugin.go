@@ -61,3 +61,24 @@ type HTTPMux interface {
 type FrontendBundleProvider interface {
 	OpenFrontendFile(path string) (data []byte, err error)
 }
+
+// MigrationProvider is an optional interface a Plugin may implement to ship
+// SQL migration files. The host fetches each declared file body via
+// PluginLifecycle.GetMigration; the SDK runner dispatches that RPC to
+// OpenMigration. The provider is typically backed by an embed.FS rooted at
+// the plugin's migrations/ directory.
+//
+// `filename` is the same string the plugin declared in
+// Manifest.Migrations[*].Filename and matches the SQL file name on disk
+// (e.g. "001_create_x.sql"). Implementations should return fs.ErrNotExist
+// for unknown filenames so callers can distinguish a missing file from a
+// generic read error.
+//
+// A plugin that declares Manifest.Migrations MUST implement this interface;
+// the SDK returns codes.FailedPrecondition for GetMigration calls that
+// arrive at a plugin without a MigrationProvider, surfacing the wiring bug
+// instead of letting the host see codes.Unimplemented and skip the
+// migrations silently.
+type MigrationProvider interface {
+	OpenMigration(filename string) (data []byte, err error)
+}
