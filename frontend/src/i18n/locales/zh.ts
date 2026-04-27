@@ -988,7 +988,38 @@ export default {
       restart: '重启',
       enableSuccess: '已启用 {name}',
       disableSuccess: '已禁用 {name}',
-      restartSuccess: '已发起重启 {name}'
+      restartSuccess: '已发起重启 {name}',
+      // List & detail layout
+      listTitle: '已安装插件',
+      searchPlaceholder: '搜索插件…',
+      noResults: '没有匹配的插件',
+      selectPrompt: '从左侧选择一个插件',
+      selectPromptDescription: '点击列表中的任意插件以查看其状态、地址、配置和操作。',
+      // Detail card sections
+      overviewTitle: '概览',
+      metadataTitle: '元数据',
+      configTitle: '配置',
+      configEmpty: '该插件未提供任何配置项',
+      actionsTitle: '操作',
+      // Metadata fields
+      version: '版本',
+      sortOrder: '排序',
+      restartCount: '重启次数',
+      grpcAddr: 'gRPC 地址',
+      httpAddr: 'HTTP 地址',
+      configKeys: '配置项',
+      configKeysCount: '{count} 项',
+      lastError: '最近错误',
+      // State labels
+      stateRunning: '运行中',
+      stateStarting: '启动中',
+      stateRestarting: '重启中',
+      stateErrored: '异常',
+      stateDisabled: '已禁用',
+      stateUnknown: '未知',
+      // Tags
+      builtinTag: '内置',
+      externalTag: '外部'
     },
     // Dashboard
     dashboard: {
