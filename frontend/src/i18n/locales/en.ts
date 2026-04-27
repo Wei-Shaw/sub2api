@@ -3969,6 +3969,7 @@ export default {
         rule: 'Rule',
         path: 'Path',
         limiter: 'Type',
+        window: 'Window',
         usage: 'Usage',
         counterMode: 'Limit Mode',
         scopeUser: 'User',

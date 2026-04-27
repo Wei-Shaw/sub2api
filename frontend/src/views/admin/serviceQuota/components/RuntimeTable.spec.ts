@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { h } from 'vue'
 import RuntimeTable from './RuntimeTable.vue'
 import type { LimiterRuntime } from '@/api/admin/serviceQuota'
 
@@ -22,6 +21,11 @@ vi.mock('./PathChevron.vue', () => ({
   },
 }))
 
+const stubs = {
+  EmptyState: { template: '<div data-test="empty">empty</div>' },
+  Icon: { template: '<span data-test="icon" />' },
+}
+
 function makeRow(overrides: Partial<LimiterRuntime>): LimiterRuntime {
   return {
     rule_id: 1,
@@ -42,116 +46,148 @@ function makeRow(overrides: Partial<LimiterRuntime>): LimiterRuntime {
   }
 }
 
-/**
- * Stub DataTable: 直接渲染所有 row × column 的 cell-<key> slot
- * 这样 spec 不依赖真实 DataTable 的 virtualScroll/ResizeObserver 行为
- */
-const dataTableStub = {
-  props: ['columns', 'data', 'loading'],
-  setup(props: { columns: { key: string; label: string }[]; data: Record<string, unknown>[] }, ctx: { slots: Record<string, (s: unknown) => unknown> }) {
-    return () => {
-      const headers = props.columns.map((col) =>
-        h('th', { 'data-test-col': col.key }, col.label)
-      )
-      const rows = (props.data || []).map((row, idx) =>
-        h(
-          'tr',
-          { 'data-test-row': idx },
-          props.columns.map((col) => {
-            const slot = ctx.slots[`cell-${col.key}`]
-            return h('td', { 'data-test-cell': col.key }, slot ? [slot({ row, value: (row as Record<string, unknown>)[col.key] })] : '')
-          })
-        )
-      )
-      // 也渲染 empty slot 以便空表测试
-      const emptyChildren = (props.data || []).length === 0 && ctx.slots.empty ? [ctx.slots.empty(undefined)] : []
-      return h('div', { 'data-test': 'datatable-stub' }, [
-        h('table', [h('thead', [h('tr', headers)]), h('tbody', rows)]),
-        ...emptyChildren,
-      ])
-    }
-  },
-}
-
-const baseGlobal = {
-  stubs: {
-    DataTable: dataTableStub,
-    EmptyState: { template: '<div data-test="empty">empty</div>' },
-  },
-}
-
 describe('RuntimeTable', () => {
-  it('admin 视角 (showInternal=true) 渲染 7 列表头（限流类型/窗口/重置 合并进 usage；末列为操作列）', () => {
+  it('admin 视角 (showInternal=true) 渲染 9 列表头（rule/path/limiter/window/usage/mode/user/tags/actions）', () => {
     const wrapper = mount(RuntimeTable, {
       props: { rows: [makeRow({})], showInternal: true },
-      global: baseGlobal,
+      global: { stubs },
     })
-    const cols = wrapper.findAll('[data-test-col]').map((th) => th.attributes('data-test-col'))
-    expect(cols).toEqual(['rule', 'path', 'usage', 'counterMode', 'scopeUser', 'tags', 'actions'])
+    const headers = wrapper.findAll('thead th').map((th) => th.text())
+    expect(headers).toEqual([
+      'admin.serviceQuotaMonitor.columns.rule',
+      'admin.serviceQuotaMonitor.columns.path',
+      'admin.serviceQuotaMonitor.columns.limiter',
+      'admin.serviceQuotaMonitor.columns.window',
+      'admin.serviceQuotaMonitor.columns.usage',
+      'admin.serviceQuotaMonitor.columns.counterMode',
+      'admin.serviceQuotaMonitor.columns.scopeUser',
+      'admin.serviceQuotaMonitor.columns.tags',
+      'admin.serviceQuotaMonitor.columns.actions',
+    ])
   })
 
-  it('用户视角 (showInternal=false) 隐藏内部列', () => {
+  it('用户视角 (showInternal=false) 隐藏 counterMode/scopeUser/actions 三列', () => {
     const wrapper = mount(RuntimeTable, {
       props: { rows: [makeRow({})], showInternal: false },
-      global: baseGlobal,
+      global: { stubs },
     })
-    const cols = wrapper.findAll('[data-test-col]').map((th) => th.attributes('data-test-col'))
-    expect(cols).toEqual(['rule', 'path', 'usage', 'tags'])
-    expect(cols).not.toContain('counterMode')
-    expect(cols).not.toContain('scopeUser')
+    const headers = wrapper.findAll('thead th').map((th) => th.text())
+    expect(headers).toEqual([
+      'admin.serviceQuotaMonitor.columns.rule',
+      'admin.serviceQuotaMonitor.columns.path',
+      'admin.serviceQuotaMonitor.columns.limiter',
+      'admin.serviceQuotaMonitor.columns.window',
+      'admin.serviceQuotaMonitor.columns.usage',
+      'admin.serviceQuotaMonitor.columns.tags',
+    ])
+  })
+
+  it('rows 为空时渲染 EmptyState', () => {
+    const wrapper = mount(RuntimeTable, {
+      props: { rows: [], showInternal: true },
+      global: { stubs },
+    })
+    expect(wrapper.find('[data-test="empty"]').exists()).toBe(true)
   })
 
   it('exists=false 行 usage cell 仍展示 0 / limit + 0% 进度条', () => {
     const wrapper = mount(RuntimeTable, {
       props: { rows: [makeRow({ exists: false, current: 0, utilization_pct: 0, limit_value: 60 })], showInternal: true },
-      global: baseGlobal,
+      global: { stubs },
     })
-    const usageCell = wrapper.find('[data-test-cell="usage"]')
-    expect(usageCell.text()).toContain('0 / 60')
-    expect(usageCell.text()).toContain('0%')
+    expect(wrapper.text()).toContain('0 / 60')
+    expect(wrapper.text()).toContain('0%')
   })
 
   it('reset_at_unix_ms > 0 + exists 时展示倒计时文案', () => {
     const future = Date.now() + 60_000
     const wrapper = mount(RuntimeTable, {
       props: { rows: [makeRow({ reset_at_unix_ms: future })], showInternal: true },
-      global: baseGlobal,
+      global: { stubs },
     })
-    const usageCell = wrapper.find('[data-test-cell="usage"]')
-    expect(usageCell.text()).toContain('admin.serviceQuotaMonitor.resetIn')
+    expect(wrapper.text()).toContain('admin.serviceQuotaMonitor.resetIn')
   })
 
-  it('reset_at_unix_ms 为 0 或 exists=false 时不渲染倒计时', () => {
+  it('reset_at_unix_ms 为 0 时不渲染倒计时', () => {
     const wrapper = mount(RuntimeTable, {
       props: { rows: [makeRow({ reset_at_unix_ms: 0 })], showInternal: true },
-      global: baseGlobal,
+      global: { stubs },
     })
-    expect(wrapper.find('[data-test-cell="usage"]').text()).not.toContain('admin.serviceQuotaMonitor.resetIn')
+    expect(wrapper.text()).not.toContain('admin.serviceQuotaMonitor.resetIn')
   })
 
   it('is_fallback=true 行显示兜底标签', () => {
     const wrapper = mount(RuntimeTable, {
       props: { rows: [makeRow({ is_fallback: true })], showInternal: true },
-      global: baseGlobal,
+      global: { stubs },
     })
-    const tagsCell = wrapper.find('[data-test-cell="tags"]')
-    expect(tagsCell.text()).toContain('admin.serviceQuotaMonitor.fallbackTag')
+    expect(wrapper.text()).toContain('admin.serviceQuotaMonitor.fallbackTag')
   })
 
   it('path 单元格通过 PathChevron 渲染（透传 platform 字段）', () => {
     const wrapper = mount(RuntimeTable, {
       props: { rows: [makeRow({ path_summary: { platform: 'openai' } })], showInternal: true },
-      global: baseGlobal,
+      global: { stubs },
     })
-    const pathCell = wrapper.find('[data-test-cell="path"]')
-    expect(pathCell.find('[data-test="path-chevron"]').text()).toContain('platform=openai')
+    expect(wrapper.find('[data-test="path-chevron"]').text()).toContain('platform=openai')
   })
 
-  it('rows 为空时渲染 EmptyState 插槽', () => {
+  // 核心 rowspan 测试：3 条同 rule 同 path 不同 limiter 的行，
+  // rule td 应该只渲染 1 次且 rowspan=3；path td 同。
+  it('同 rule 同 path 多 limiter 时，rule/path td rowspan 合并', () => {
+    const rows = [
+      makeRow({ rule_id: 1, path_id: 10, limiter_type: 'rpm' }),
+      makeRow({ rule_id: 1, path_id: 10, limiter_type: 'tpm' }),
+      makeRow({ rule_id: 1, path_id: 10, limiter_type: 'concurrency' }),
+    ]
     const wrapper = mount(RuntimeTable, {
-      props: { rows: [], showInternal: true },
-      global: baseGlobal,
+      props: { rows, showInternal: true },
+      global: { stubs },
     })
-    expect(wrapper.find('[data-test="empty"]').exists()).toBe(true)
+    const allRows = wrapper.findAll('tbody tr')
+    expect(allRows.length).toBe(3)
+    // 只有第一行渲染 rule/path td（rowspan=3）；后两行的 rule/path td 不应该出现
+    const firstRowTds = allRows[0].findAll('td')
+    expect(firstRowTds[0].attributes('rowspan')).toBe('3') // rule
+    expect(firstRowTds[1].attributes('rowspan')).toBe('3') // path
+    // 第二行/第三行的第 1 个 td 应该是 limiter 列（因为 rule/path 被 rowspan 占了）
+    const secondRowFirstCell = allRows[1].findAll('td')[0]
+    expect(secondRowFirstCell.text()).toContain('admin.serviceQuota.limiters.tpm')
+  })
+
+  it('同 rule 不同 path 时，rule td rowspan 跨 path，path td 各自独立', () => {
+    const rows = [
+      makeRow({ rule_id: 1, path_id: 10, limiter_type: 'rpm' }),
+      makeRow({ rule_id: 1, path_id: 11, limiter_type: 'rpm' }),
+    ]
+    const wrapper = mount(RuntimeTable, {
+      props: { rows, showInternal: true },
+      global: { stubs },
+    })
+    const allRows = wrapper.findAll('tbody tr')
+    const firstRowTds = allRows[0].findAll('td')
+    expect(firstRowTds[0].attributes('rowspan')).toBe('2') // rule 跨 2 行
+    expect(firstRowTds[1].attributes('rowspan')).toBe('1') // 该 path 仅 1 行，rowspan=1（vue 仍会渲染该属性）
+    // 第二行不渲染 rule td，但渲染 path td（独立 path）
+    const secondRowTds = allRows[1].findAll('td')
+    // 第一个 td 应该是 path（因为 rule 被 rowspan 占了）
+    expect(secondRowTds[0].find('[data-test="path-chevron"]').exists()).toBe(true)
+  })
+
+  it('点击重置按钮 emit reset 事件并带上 row', async () => {
+    const row = makeRow({ rule_id: 7, path_id: 11, limiter_type: 'rpm' })
+    const wrapper = mount(RuntimeTable, {
+      props: { rows: [row], showInternal: true },
+      global: { stubs },
+    })
+    const btn = wrapper.find('button')
+    await btn.trigger('click')
+    const emitted = wrapper.emitted('reset')
+    expect(emitted).toBeTruthy()
+    // 第一次 emit 的第一个参数应该等于 row（_ruleSpan/_pathSpan/_key 是装饰字段，row 原始字段都在）
+    const payload = emitted![0][0] as LimiterRuntime
+    expect(payload.rule_id).toBe(7)
+    expect(payload.path_id).toBe(11)
+    expect(payload.limiter_type).toBe('rpm')
   })
 })

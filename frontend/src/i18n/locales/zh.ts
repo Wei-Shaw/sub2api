@@ -4133,6 +4133,7 @@ export default {
         rule: '规则',
         path: '路径',
         limiter: '限流类型',
+        window: '窗口',
         usage: '用量',
         counterMode: '限制模式',
         scopeUser: '作用用户',
