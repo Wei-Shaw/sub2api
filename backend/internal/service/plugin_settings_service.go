@@ -360,7 +360,22 @@ func (s *PluginSettingsService) UnregisterSchema(pluginName string) {
 	s.mu.Unlock()
 }
 
-// GetByKey reads one key. Missing keys return (nil, 0, sql.ErrNoRows).
+// GetByKey reads one key. With V5/W6 SETTINGS-V2 read-time fallback:
+//
+//  1. If a row exists in plugin_settings, return its value + revision.
+//     The stored row always wins, even when the plugin has registered a
+//     newer schema with a different default — admin intent persists
+//     across schema upgrades (DESIGN §6.3).
+//  2. Else if the plugin's cached schema defaults contain the key,
+//     return the default with revision=0. revision=0 is the sentinel
+//     for "synthetic default" so callers can distinguish it from a real
+//     write (which always carries revision >= 1).
+//  3. Else return (nil, 0, sql.ErrNoRows) so the gRPC server can map
+//     it to Exists=false.
+//
+// This makes startup-time seedDefaults a hot-path optimisation rather
+// than a correctness requirement: even if seeding has not run yet (e.g.
+// it failed transiently), plugin reads still succeed.
 func (s *PluginSettingsService) GetByKey(
 	ctx context.Context, pluginName, key string,
 ) (json.RawMessage, int64, error) {
@@ -370,10 +385,44 @@ func (s *PluginSettingsService) GetByKey(
 	`, pluginName, key)
 	var raw string
 	var rev int64
-	if err := row.Scan(&raw, &rev); err != nil {
+	switch err := row.Scan(&raw, &rev); {
+	case err == nil:
+		return json.RawMessage(raw), rev, nil
+	case errors.Is(err, sql.ErrNoRows):
+		// Fall through to the schema default lookup below.
+	default:
 		return nil, 0, err
 	}
-	return json.RawMessage(raw), rev, nil
+
+	if def, ok := s.lookupDefault(pluginName, key); ok {
+		return def, 0, nil
+	}
+	return nil, 0, sql.ErrNoRows
+}
+
+// lookupDefault returns the schema default for (plugin, key) from the
+// cached defaults map. Returns (nil, false) when the plugin is unknown,
+// has no defaults, or has no entry for this specific key.
+//
+// The cache is populated by RegisterSchemaWithInput (and by SchemaInfo's
+// lazy reload after a host restart). Returning the bytes by copy keeps
+// callers from mutating the cache.
+func (s *PluginSettingsService) lookupDefault(plugin, key string) (json.RawMessage, bool) {
+	s.mu.RLock()
+	rawDefaults := s.defaults[plugin]
+	s.mu.RUnlock()
+	if len(rawDefaults) == 0 {
+		return nil, false
+	}
+	var defaults map[string]json.RawMessage
+	if err := json.Unmarshal(rawDefaults, &defaults); err != nil {
+		return nil, false
+	}
+	v, ok := defaults[key]
+	if !ok {
+		return nil, false
+	}
+	return append(json.RawMessage(nil), v...), true
 }
 
 // GetAll returns every key for the plugin (admin GET). Empty when the
