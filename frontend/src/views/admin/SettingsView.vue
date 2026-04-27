@@ -12095,7 +12095,7 @@ watch(
 }
 
 .settings-tabs-scroll {
-  @apply overflow-x-auto;
+  @apply overflow-x-auto overflow-y-hidden pb-1;
   -ms-overflow-style: none;
   scrollbar-width: none;
 }

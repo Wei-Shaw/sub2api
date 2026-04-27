@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { defineComponent, h } from "vue";
+import { defineComponent, h, nextTick } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
 
 import SettingsView from "../SettingsView.vue";
@@ -586,6 +586,145 @@ async function openUsersTab(wrapper: ReturnType<typeof mountView>) {
   await usersTabButton?.trigger("click");
   await flushPromises();
 }
+
+function getUsersTabToggles(wrapper: ReturnType<typeof mountView>) {
+  const sections = wrapper.findAll(".card");
+  const registrationCard = sections.find((node) =>
+    node.text().includes("admin.settings.registration.title"),
+  );
+
+  expect(registrationCard).toBeDefined();
+  return registrationCard?.findAll("input.toggle-stub") ?? [];
+}
+
+function getSettingsTabs(wrapper: ReturnType<typeof mountView>) {
+  return wrapper.findAll("button").filter((node) => {
+    const text = node.text();
+    return text.includes("admin.settings.tabs.");
+  });
+}
+
+async function setViewport(width: number) {
+  window.innerWidth = width;
+  window.dispatchEvent(new Event("resize"));
+  await nextTick();
+}
+
+describe("admin SettingsView registration and tab layout", () => {
+  beforeEach(() => {
+    getSettings.mockReset();
+    updateSettings.mockReset();
+    getWebSearchEmulationConfig.mockReset();
+    updateWebSearchEmulationConfig.mockReset();
+    getAdminApiKey.mockReset();
+    getOverloadCooldownSettings.mockReset();
+    getStreamTimeoutSettings.mockReset();
+    getRectifierSettings.mockReset();
+    getBetaPolicySettings.mockReset();
+    getGroups.mockReset();
+    listProxies.mockReset();
+    getProviders.mockReset();
+    updateProvider.mockReset();
+    createProvider.mockReset();
+    deleteProvider.mockReset();
+    fetchPublicSettings.mockReset();
+    adminSettingsFetch.mockReset();
+    showError.mockReset();
+    showSuccess.mockReset();
+    localeRef.value = "zh-CN";
+
+    getSettings.mockResolvedValue({ ...baseSettingsResponse });
+    updateSettings.mockImplementation(async (payload) => ({
+      ...baseSettingsResponse,
+      ...payload,
+    }));
+    getWebSearchEmulationConfig.mockResolvedValue({
+      enabled: false,
+      providers: [],
+    });
+    updateWebSearchEmulationConfig.mockResolvedValue({
+      enabled: false,
+      providers: [],
+    });
+    getAdminApiKey.mockResolvedValue({
+      exists: false,
+      masked_key: "",
+    });
+    getOverloadCooldownSettings.mockResolvedValue({
+      enabled: true,
+      cooldown_minutes: 10,
+    });
+    getStreamTimeoutSettings.mockResolvedValue({
+      enabled: true,
+      action: "temp_unsched",
+      temp_unsched_minutes: 5,
+      threshold_count: 3,
+      threshold_window_minutes: 10,
+    });
+    getRectifierSettings.mockResolvedValue({
+      enabled: true,
+      thinking_signature_enabled: true,
+      thinking_budget_enabled: true,
+      apikey_signature_enabled: false,
+      apikey_signature_patterns: [],
+    });
+    getBetaPolicySettings.mockResolvedValue({
+      rules: [],
+    });
+    getGroups.mockResolvedValue([]);
+    listProxies.mockResolvedValue({
+      items: [],
+    });
+    getProviders.mockResolvedValue({
+      data: [],
+    });
+    fetchPublicSettings.mockResolvedValue(undefined);
+    adminSettingsFetch.mockResolvedValue(undefined);
+  });
+
+  it("keeps the settings tabs in a single horizontal row on narrow screens", async () => {
+    await setViewport(390);
+    const wrapper = mountView();
+
+    await flushPromises();
+
+    const tabs = getSettingsTabs(wrapper);
+    expect(tabs.length).toBeGreaterThan(5);
+    for (const tab of tabs) {
+      expect(tab.classes()).toContain("settings-tab");
+      expect(tab.classes()).not.toContain("flex-1");
+    }
+
+    const nav = wrapper.find("nav.settings-tabs");
+    expect(nav.exists()).toBe(true);
+    expect(nav.attributes("aria-label")).toBe("Settings sections");
+
+    const scrollContainer = wrapper.find(".settings-tabs-scroll");
+    expect(scrollContainer.exists()).toBe(true);
+  });
+
+  it("submits registration and invitation toggles from the users tab", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openUsersTab(wrapper);
+
+    const toggles = getUsersTabToggles(wrapper);
+    expect(toggles.length).toBeGreaterThanOrEqual(5);
+
+    await toggles[0]?.setValue(false);
+    await toggles[3]?.setValue(true);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    const payload = updateSettings.mock.calls[0]?.[0];
+    expect(payload).toMatchObject({
+      registration_enabled: false,
+      invitation_code_enabled: true,
+    });
+  });
+});
 
 describe("admin SettingsView payment visible method controls", () => {
   beforeEach(() => {
