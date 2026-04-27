@@ -54,6 +54,60 @@ service EventBus {
   rpc Subscribe(EventFilter) returns (stream Event);
 }
 
+// LogProxy aggregates structured plugin logs (slog.Records) into the host
+// zap logger. The plugin maintains a single client-streaming RPC for its
+// lifetime and pushes each log record as a typed message; the host replays
+// the record into zap so trace_id / request_id / level / time are preserved
+// in the unified log sink.
+//
+// Failure model (set by V4 user feedback):
+//   - Channel-bounded fire-and-forget on the SDK side (cap 256, drop-on-full)
+//   - No stderr fallback — plugin logs MUST land in the host zap stream or be
+//     dropped (with a counter reported on the next successful send)
+//   - Reconnect uses exponential backoff (100ms..30s); records during the
+//     gap are dropped, not buffered
+service LogProxy {
+  rpc PushLogs(stream LogRecord) returns (LogPushSummary);
+}
+
+message LogRecord {
+  // unix nano timestamp; fixed64 to avoid varint expansion of large values.
+  fixed64 time_unix_nano = 1;
+  // slog.Level numeric value: Debug=-4, Info=0, Warn=4, Error=8.
+  int32 level = 2;
+  string msg = 3;
+  // attrs are flattened: nested groups join keys with "." (matches the host
+  // slog→zap handler convention).
+  repeated LogAttr attrs = 4;
+  // Optional source location; plugin SDK fills these from runtime.Callers.
+  string source_file = 5;
+  int32 source_line = 6;
+  // dropped_since_last_send is non-zero only on the first record sent after
+  // a (re)connect. It tells the host how many records were dropped while
+  // the channel was full or the stream was down, so observability stays
+  // honest even though the records themselves are lost.
+  uint64 dropped_since_last_send = 7;
+}
+
+message LogAttr {
+  string key = 1;
+  // Covers the major slog.Kind values; complex Any values are JSON-encoded
+  // by the SDK and dropped into bytes_value with key suffix ".json".
+  oneof value {
+    string string_value = 10;
+    int64 int_value = 11;
+    double float_value = 12;
+    bool bool_value = 13;
+    fixed64 time_unix_nano = 14;
+    int64 duration_nanos = 15;
+    bytes bytes_value = 16;
+  }
+}
+
+message LogPushSummary {
+  uint64 received = 1;
+}
+
 // ============================================================
 // SQL Messages
 // ============================================================
