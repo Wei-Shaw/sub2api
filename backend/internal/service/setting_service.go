@@ -3259,6 +3259,84 @@ REDACTED
 	return s.settingRepo.Set(ctx, SettingKeyBetaPolicySettings, string(data))
 REDACTED
 
+// GetOpenAIFastPolicySettings 获取 OpenAI fast 策略配置
+func (s *SettingService) GetOpenAIFastPolicySettings(ctx context.Context) (*OpenAIFastPolicySettings, error) {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyOpenAIFastPolicySettings)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return DefaultOpenAIFastPolicySettings(), nil
+	REDACTED
+		return nil, fmt.Errorf("get openai fast policy settings: %w", err)
+REDACTED
+	if value == "" {
+		return DefaultOpenAIFastPolicySettings(), nil
+REDACTED
+
+	var settings OpenAIFastPolicySettings
+	if err := json.Unmarshal([]byte(value), &settings); err != nil {
+		// JSON 损坏时静默 fallback 到默认配置会让策略意外失效（管理员配
+		// 置的 block/filter 规则被忽略）。记录 Warn 让运维能在出现异常
+		// 行为时定位到 settings 表里的脏数据。
+		slog.Warn("failed to unmarshal openai fast policy settings, falling back to defaults",
+			"error", err,
+			"key", SettingKeyOpenAIFastPolicySettings)
+		return DefaultOpenAIFastPolicySettings(), nil
+REDACTED
+
+	return &settings, nil
+REDACTED
+
+// SetOpenAIFastPolicySettings 设置 OpenAI fast 策略配置
+func (s *SettingService) SetOpenAIFastPolicySettings(ctx context.Context, settings *OpenAIFastPolicySettings) error {
+	if settings == nil {
+		return fmt.Errorf("settings cannot be nil")
+REDACTED
+
+	validActions := map[string]bool{
+		BetaPolicyActionPass: true, BetaPolicyActionFilter: true, BetaPolicyActionBlock: true,
+REDACTED
+	validScopes := map[string]bool{
+		BetaPolicyScopeAll: true, BetaPolicyScopeOAuth: true, BetaPolicyScopeAPIKey: true, BetaPolicyScopeBedrock: true,
+REDACTED
+	validTiers := map[string]bool{
+		OpenAIFastTierAny: true, OpenAIFastTierPriority: true, OpenAIFastTierFlex: true,
+REDACTED
+
+	for i, rule := range settings.Rules {
+		tier := strings.ToLower(strings.TrimSpace(rule.ServiceTier))
+		if tier == "" {
+			tier = OpenAIFastTierAny
+	REDACTED
+		if !validTiers[tier] {
+			return fmt.Errorf("rule[%d]: invalid service_tier %q", i, rule.ServiceTier)
+	REDACTED
+		settings.Rules[i].ServiceTier = tier
+		if !validActions[rule.Action] {
+			return fmt.Errorf("rule[%d]: invalid action %q", i, rule.Action)
+	REDACTED
+		if !validScopes[rule.Scope] {
+			return fmt.Errorf("rule[%d]: invalid scope %q", i, rule.Scope)
+	REDACTED
+		for j, pattern := range rule.ModelWhitelist {
+			trimmed := strings.TrimSpace(pattern)
+			if trimmed == "" {
+				return fmt.Errorf("rule[%d]: model_whitelist[%d] cannot be empty", i, j)
+		REDACTED
+			settings.Rules[i].ModelWhitelist[j] = trimmed
+	REDACTED
+		if rule.FallbackAction != "" && !validActions[rule.FallbackAction] {
+			return fmt.Errorf("rule[%d]: invalid fallback_action %q", i, rule.FallbackAction)
+	REDACTED
+REDACTED
+
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("marshal openai fast policy settings: %w", err)
+REDACTED
+
+	return s.settingRepo.Set(ctx, SettingKeyOpenAIFastPolicySettings, string(data))
+REDACTED
+
 // SetStreamTimeoutSettings 设置流超时处理配置
 func (s *SettingService) SetStreamTimeoutSettings(ctx context.Context, settings *StreamTimeoutSettings) error {
 	if settings == nil {
