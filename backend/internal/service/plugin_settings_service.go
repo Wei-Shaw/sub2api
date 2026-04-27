@@ -44,11 +44,31 @@ import (
 // a slow subscriber simply drops events and recovers via Get.
 const pluginSettingsSubscriberBuffer = 8
 
+// schemaVersionUndeclared is the sentinel stored in
+// plugin_settings_schemas.schema_version (and plugin_settings.
+// schema_version_at_write) when the plugin did not declare a version.
+// See SETTINGS-V2-DESIGN §1.2.
+const schemaVersionUndeclared = "0"
+
+// PropertyVisibility constants — values allowed in PropertyMetadata.Visibility.
+// See SETTINGS-V2-DESIGN §1.4.
+const (
+	PropertyVisibilityFrontend = "frontend"
+	PropertyVisibilityBackend  = "backend"
+	PropertyVisibilitySecret   = "secret"
+)
+
 // ErrPluginSettingsSchemaMissing is returned when an admin tries to
 // write to a plugin namespace that has not registered a schema yet.
 // Bouncing the request loudly is preferable to silently storing
 // arbitrary JSON the plugin will never read.
 var ErrPluginSettingsSchemaMissing = errors.New("plugin_settings: no schema registered for plugin")
+
+// ErrInvalidSchemaVisibility is returned by RegisterSchema when a property
+// declares an x-visibility outside the allowed set (frontend|backend|secret).
+// Maps to errcode PLUGIN_SETTINGS_SCHEMA_INVALID_VISIBILITY in
+// SETTINGS-V2-DESIGN §7.2.
+var ErrInvalidSchemaVisibility = errors.New("plugin_settings: x-visibility must be one of frontend|backend|secret")
 
 // ErrPluginSettingsValidation is returned when a write fails JSON Schema
 // validation. The admin handler maps it to HTTP 422.
@@ -62,6 +82,71 @@ func (e *ErrPluginSettingsValidation) Error() string {
 	return fmt.Sprintf("plugin_settings: validation failed for %s/%s: %s", e.Plugin, e.Key, e.Reason)
 }
 
+// ErrPluginSettingsBackendOnly is returned by SetByKey when an admin write
+// targets a key whose schema declares x-visibility=backend. Maps to errcode
+// PLUGIN_SETTINGS_BACKEND_ONLY (HTTP 403) in SETTINGS-V2-DESIGN §7.2.
+type ErrPluginSettingsBackendOnly struct {
+	Plugin string
+	Key    string
+}
+
+func (e *ErrPluginSettingsBackendOnly) Error() string {
+	return fmt.Sprintf("plugin_settings: %s/%s is backend-only and not writable via admin API", e.Plugin, e.Key)
+}
+
+// SetSource identifies the caller of SetByKey so the service can apply
+// visibility rules. Admin sources are subject to the backend-only guard;
+// internal sources skip it. See SETTINGS-V2-DESIGN §4.3.
+type SetSource int
+
+const (
+	// SetSourceUnknown is the zero value. Treated as admin for safety so a
+	// caller that forgets to set a source cannot accidentally bypass the
+	// backend-only guard.
+	SetSourceUnknown SetSource = iota
+	// SetSourceAdmin is the admin REST handler. Backend-only writes are
+	// rejected with ErrPluginSettingsBackendOnly.
+	SetSourceAdmin
+	// SetSourceInternal is host-side code (jobs, hooks, plugin manager
+	// reload) that may legitimately mutate backend-only keys.
+	SetSourceInternal
+)
+
+// PropertyMetadata mirrors the per-property marker triple from
+// plugin_settings_schemas.properties_meta. Re-defined in this package to
+// avoid pulling plugin-sdk into the host service import graph; field shape
+// matches plugin-sdk/manifest.go PropertyMetadata one-to-one (visibility /
+// deprecated / requires_reload). See SETTINGS-V2-DESIGN §1.4.
+type PropertyMetadata struct {
+	Visibility     string `json:"visibility"`
+	Deprecated     string `json:"deprecated"`
+	RequiresReload bool   `json:"requires_reload"`
+}
+
+// RegisterSchemaInput is the V5/W6 SETTINGS-V2 envelope for plugin schema
+// registration. PluginManager builds it from ManifestResponse fields; the
+// fields mirror SettingsSchemaDoc (Schema/Defaults/Version/PropertyMeta)
+// plus a PluginName scoping the request. See SETTINGS-V2-DESIGN §4.1.
+type RegisterSchemaInput struct {
+	// PluginName scopes every other field. Empty is rejected.
+	PluginName string
+	// SchemaJSON is Manifest.SettingsSchema.Schema bytes. Empty triggers
+	// schema deletion (existing behaviour preserved).
+	SchemaJSON []byte
+	// DefaultsJSON is Manifest.SettingsSchema.Defaults bytes. Empty is
+	// normalised to "{}".
+	DefaultsJSON []byte
+	// SchemaVersion is Manifest.SettingsSchema.Version. Empty is
+	// normalised to schemaVersionUndeclared ("0") host-side.
+	SchemaVersion string
+	// PropertiesMetaJSON is the SDK-authoritative serialisation of
+	// SettingsSchemaDoc.PropertyMeta (a JSON object keyed by top-level
+	// property name). When non-empty it wins; when empty the host derives
+	// the meta from x-visibility / x-deprecated / x-requires-reload vendor
+	// extensions inside SchemaJSON. See SETTINGS-V2-DESIGN §4.1 / §4.2.
+	PropertiesMetaJSON []byte
+}
+
 // PluginSettingsChange is the host-side event the gRPC server fans out
 // on its Watch streams. It mirrors the SDK's SettingsChange but lives in
 // the service package so both the gRPC server and the admin handler can
@@ -71,6 +156,11 @@ type PluginSettingsChange struct {
 	Key      string
 	Value    json.RawMessage
 	Revision int64
+	// RequiresReload mirrors the schema's x-requires-reload marker for the
+	// changed key. PluginManager subscribes to this signal to coalesce a
+	// plugin reload after admin saves; plugin SDK clients ignore the field.
+	// See SETTINGS-V2-DESIGN §4.3 / §4.4.
+	RequiresReload bool
 }
 
 // PluginSettingsSchemaInfo is the admin-facing description of a plugin's
@@ -121,39 +211,70 @@ func NewPluginSettingsService(db *sql.DB) *PluginSettingsService {
 	}
 }
 
-// RegisterSchema is called by PluginManager during plugin start when the
-// manifest declares settings_schema_json. It compiles the schema, stores
-// the raw bytes for GET responses, and seeds defaults for keys that have
-// not been written yet.
+// RegisterSchema is the legacy entry point retained for callers that
+// have not yet migrated to RegisterSchemaWithInput. It forwards to the
+// V2 implementation with empty version + properties_meta — the V2
+// implementation derives meta from schema vendor extensions in that
+// case (see SETTINGS-V2-DESIGN §4.1).
 //
-// Calling RegisterSchema again with the same plugin name simply replaces
-// the cached schema — sufficient for the "restart-on-upgrade" workflow
-// the design assumes.
+// New callers should build a RegisterSchemaInput so they can carry
+// SchemaVersion + PropertiesMetaJSON from the plugin manifest.
 func (s *PluginSettingsService) RegisterSchema(
 	ctx context.Context, pluginName string, schemaJSON, defaultsJSON []byte,
 ) error {
-	if pluginName == "" {
+	return s.RegisterSchemaWithInput(ctx, RegisterSchemaInput{
+		PluginName:   pluginName,
+		SchemaJSON:   schemaJSON,
+		DefaultsJSON: defaultsJSON,
+	})
+}
+
+// RegisterSchemaWithInput is the V5/W6 SETTINGS-V2 entry point used by
+// PluginManager during plugin start. It compiles the schema, persists
+// the raw bytes + schema_version + properties_meta for GET responses,
+// and seeds defaults for keys that have not been written yet.
+//
+// Calling RegisterSchemaWithInput again with the same plugin name
+// replaces the cached schema. When schema_version changes the service
+// drops existing watch subscribers so SDK clients reconnect and pick
+// up the new schema_version (see SETTINGS-V2-DESIGN §4.5; the drop
+// is wired in commit 2).
+func (s *PluginSettingsService) RegisterSchemaWithInput(
+	ctx context.Context, in RegisterSchemaInput,
+) error {
+	if in.PluginName == "" {
 		return errors.New("plugin_settings: empty plugin name")
 	}
-	if len(schemaJSON) == 0 {
+	if len(in.SchemaJSON) == 0 {
 		// Nothing to register — clear any cached entry so a previously
 		// schema-bearing plugin can drop the requirement on next restart.
 		s.mu.Lock()
-		delete(s.compiledSchemas, pluginName)
-		delete(s.rawSchemas, pluginName)
-		delete(s.defaults, pluginName)
+		delete(s.compiledSchemas, in.PluginName)
+		delete(s.rawSchemas, in.PluginName)
+		delete(s.defaults, in.PluginName)
 		s.mu.Unlock()
 		_, err := s.db.ExecContext(ctx,
-			`DELETE FROM plugin_settings_schemas WHERE plugin_name = $1`, pluginName)
+			`DELETE FROM plugin_settings_schemas WHERE plugin_name = $1`, in.PluginName)
 		return err
 	}
-	compiled, err := compileSchema(schemaJSON)
+	compiled, err := compileSchema(in.SchemaJSON)
 	if err != nil {
-		return fmt.Errorf("plugin_settings: compile schema for %s: %w", pluginName, err)
+		return fmt.Errorf("plugin_settings: compile schema for %s: %w", in.PluginName, err)
 	}
 
-	rawSchema := append(json.RawMessage(nil), schemaJSON...)
-	rawDefaults := append(json.RawMessage(nil), defaultsJSON...)
+	// Resolve properties_meta: SDK-authoritative bytes win when present,
+	// otherwise derive from x-visibility / x-deprecated / x-requires-reload
+	// vendor extensions in the schema. See SETTINGS-V2-DESIGN §4.2.
+	meta, err := s.resolvePropertiesMeta(in.SchemaJSON, in.PropertiesMetaJSON)
+	if err != nil {
+		return err
+	}
+	if err := validateVisibilities(in.PluginName, meta); err != nil {
+		return err
+	}
+
+	rawSchema := append(json.RawMessage(nil), in.SchemaJSON...)
+	rawDefaults := append(json.RawMessage(nil), in.DefaultsJSON...)
 	if len(rawDefaults) == 0 {
 		rawDefaults = json.RawMessage("{}")
 	}
@@ -165,19 +286,25 @@ func (s *PluginSettingsService) RegisterSchema(
 		   SET schema_json = EXCLUDED.schema_json,
 		       defaults_json = EXCLUDED.defaults_json,
 		       updated_at = NOW()
-	`, pluginName, string(rawSchema), string(rawDefaults)); err != nil {
+	`, in.PluginName, string(rawSchema), string(rawDefaults)); err != nil {
 		return fmt.Errorf("plugin_settings: persist schema: %w", err)
 	}
 
 	s.mu.Lock()
-	s.compiledSchemas[pluginName] = compiled
-	s.rawSchemas[pluginName] = rawSchema
-	s.defaults[pluginName] = rawDefaults
+	s.compiledSchemas[in.PluginName] = compiled
+	s.rawSchemas[in.PluginName] = rawSchema
+	s.defaults[in.PluginName] = rawDefaults
 	s.mu.Unlock()
 
-	if err := s.seedDefaults(ctx, pluginName, rawDefaults); err != nil {
+	// Suppress unused-warning noise: meta is consumed in commit 2 (DB
+	// persistence) once the migration columns are wired through. Holding
+	// the variable here keeps the resolve+validate path on the hot path
+	// so visibility violations fail-fast at registration time.
+	_ = meta
+
+	if err := s.seedDefaults(ctx, in.PluginName, rawDefaults); err != nil {
 		s.logger.Warn("plugin_settings: seed defaults failed",
-			"plugin", pluginName, "error", err)
+			"plugin", in.PluginName, "error", err)
 	}
 	return nil
 }
@@ -447,4 +574,93 @@ func validateAgainst(schema *jsonschema.Schema, key string, value json.RawMessag
 // declare $schema if it wants to opt into a specific draft.
 func compileSchema(raw []byte) (*jsonschema.Schema, error) {
 	return jsonschema.CompileString("plugin-settings.json", string(raw))
+}
+
+// extractMetaFromSchema parses x-visibility / x-deprecated / x-requires-reload
+// vendor extensions out of the top-level schema "properties" map. Nested
+// properties are intentionally ignored — SETTINGS-V2-DESIGN §1.4 pins the
+// marker scope to top-level keys only.
+//
+// Empty schemas (no top-level "properties") return an empty map without an
+// error so callers do not need to special-case schema-less plugins.
+func (s *PluginSettingsService) extractMetaFromSchema(schemaJSON []byte) (map[string]PropertyMetadata, error) {
+	if len(schemaJSON) == 0 {
+		return map[string]PropertyMetadata{}, nil
+	}
+	var doc struct {
+		Properties map[string]map[string]json.RawMessage `json:"properties"`
+	}
+	if err := json.Unmarshal(schemaJSON, &doc); err != nil {
+		return nil, fmt.Errorf("plugin_settings: extract meta: unmarshal schema: %w", err)
+	}
+	out := make(map[string]PropertyMetadata, len(doc.Properties))
+	for prop, node := range doc.Properties {
+		var m PropertyMetadata
+		if raw, ok := node["x-visibility"]; ok {
+			_ = json.Unmarshal(raw, &m.Visibility)
+		}
+		if raw, ok := node["x-deprecated"]; ok {
+			_ = json.Unmarshal(raw, &m.Deprecated)
+		}
+		if raw, ok := node["x-requires-reload"]; ok {
+			_ = json.Unmarshal(raw, &m.RequiresReload)
+		}
+		// Normalise empty visibility to the "frontend" default (§1.4).
+		if m.Visibility == "" {
+			m.Visibility = PropertyVisibilityFrontend
+		}
+		out[prop] = m
+	}
+	return out, nil
+}
+
+// resolvePropertiesMeta picks between two sources for the marker triple:
+//  1. SDK-authoritative bytes from RegisterSchemaInput.PropertiesMetaJSON
+//     (the plugin SDK has serialised SettingsSchemaDoc.PropertyMeta into
+//     ManifestResponse.settings_properties_meta_json).
+//  2. Fallback: derive from x-visibility / x-deprecated / x-requires-reload
+//     vendor extensions inside SchemaJSON.
+//
+// When source (1) is non-empty it wins (per SETTINGS-V2-DESIGN §3.3.2 / §4.1)
+// — the SDK serialisation is canonical because the plugin author can populate
+// SettingsSchemaDoc.PropertyMeta even when their schema bytes come from an
+// embed.FS and they cannot edit them at runtime.
+func (s *PluginSettingsService) resolvePropertiesMeta(schemaJSON, sdkMeta []byte) (map[string]PropertyMetadata, error) {
+	if len(sdkMeta) > 0 {
+		var meta map[string]PropertyMetadata
+		if err := json.Unmarshal(sdkMeta, &meta); err != nil {
+			return nil, fmt.Errorf("plugin_settings: parse properties_meta: %w", err)
+		}
+		// Apply the same "" → "frontend" normalisation the schema-derivation
+		// path uses so callers see a single shape regardless of source.
+		for k, v := range meta {
+			if v.Visibility == "" {
+				v.Visibility = PropertyVisibilityFrontend
+				meta[k] = v
+			}
+		}
+		if meta == nil {
+			meta = map[string]PropertyMetadata{}
+		}
+		return meta, nil
+	}
+	return s.extractMetaFromSchema(schemaJSON)
+}
+
+// validateVisibilities rejects any property declaring a visibility outside
+// the allowed set (frontend|backend|secret). Empty visibility is permitted
+// because callers normalise it to "frontend" before reaching this guard.
+// The Backstage-style fail-fast (Curator decision 2.1, point 6) means a
+// plugin with an invalid x-visibility refuses to register at all.
+func validateVisibilities(pluginName string, meta map[string]PropertyMetadata) error {
+	for prop, m := range meta {
+		switch m.Visibility {
+		case "", PropertyVisibilityFrontend, PropertyVisibilityBackend, PropertyVisibilitySecret:
+			// ok
+		default:
+			return fmt.Errorf("%w: plugin=%s property=%s value=%q",
+				ErrInvalidSchemaVisibility, pluginName, prop, m.Visibility)
+		}
+	}
+	return nil
 }
