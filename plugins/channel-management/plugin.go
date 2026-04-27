@@ -121,16 +121,22 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 			pluginsdk.CapabilityJobScheduler,
 			pluginsdk.CapabilitySettingsExtension,
 		},
-		// MigrationFiles enumerates the SQL files shipped under
-		// plugins/channel-management/migrations/. The host calls back through
-		// GetMigration to fetch each body and applies them in order. New files
-		// must be appended (never reordered) so historical checksums remain
-		// stable. See V5-DESIGN §1 (W1) for the full lifecycle.
-		MigrationFiles: []string{
-			"001_add_channel_monitors.sql",
-			"002_add_channel_monitor_aggregation.sql",
-			"003_drop_channel_monitor_deleted_at.sql",
-			"004_add_channel_monitor_request_templates.sql",
+		// Migrations enumerates the SQL files shipped under
+		// plugins/channel-management/migrations/. The host calls
+		// PluginLifecycle.GetMigration for each entry, re-verifies the
+		// SHA-256 against the bytes returned by OpenMigration below, and
+		// applies them in lexicographical order under the
+		// plugin_migrations advisory lock.
+		//
+		// Append-only: never reorder or rewrite an existing file in place
+		// — the checksum pin is part of plugin_migrations history. To fix a
+		// shipped migration, add a new follow-up file that corrects state.
+		// See V5-DESIGN §1 (W1) for the full lifecycle.
+		Migrations: []pluginsdk.MigrationDecl{
+			{Filename: "001_add_channel_monitors.sql", ChecksumSha256: "0f91517a747bf9b604a2e1c98e7f602d70cd14d43233cb16bebc379384336302"},
+			{Filename: "002_add_channel_monitor_aggregation.sql", ChecksumSha256: "4e6b3e94aaed169dd7a6a4e69aa61794779e943d617b78540210bba93063abfc"},
+			{Filename: "003_drop_channel_monitor_deleted_at.sql", ChecksumSha256: "2f5c2f951c2b59ed706841135de6458093a52eff970d852aec5dd60d99f868d4"},
+			{Filename: "004_add_channel_monitor_request_templates.sql", ChecksumSha256: "a35f2e016afe5fe4019a2aad70184eb20104c8c248a60e5ba763ebd888280ca1"},
 		},
 		Frontend: &pluginsdk.FrontendManifest{
 			// EntryJS 路径相对于 plugin frontend 内的 dist/ 根, 核心拼成
@@ -343,13 +349,14 @@ func (p *ChannelPlugin) HealthCheck() (bool, string) {
 	return true, "ok"
 }
 
-// readMonitorMigration is the lookup the SDK runner will call once the
-// MigrationProvider extension lands (V5/W1 SDK-side wiring). It returns the
-// SQL body for a migration file shipped under plugins/channel-management/
-// migrations/ or fs.ErrNotExist if the filename is unknown. Keeping the
-// helper here ensures the monitorMigrations FS is never optimised out and
-// makes it trivial to wire to a SDK-level callback when the API stabilises.
-func readMonitorMigration(filename string) ([]byte, error) {
+// OpenMigration implements pluginsdk.MigrationProvider so the SDK runner
+// can serve migration bodies to the host's MigrationRunner via
+// PluginLifecycle.GetMigration. Each filename listed in
+// Manifest.Migrations is resolved against the embedded monitorMigrations FS
+// rooted at plugins/channel-management/migrations/. Unknown filenames
+// surface as fs.ErrNotExist so the SDK can translate them into
+// codes.NotFound.
+func (p *ChannelPlugin) OpenMigration(filename string) ([]byte, error) {
 	return monitorMigrations.ReadFile("migrations/" + filename)
 }
 
