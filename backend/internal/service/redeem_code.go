@@ -84,6 +84,10 @@ func redeemCodePrefix(codeType string) (string, error) {
 		return "SUB", nil
 	case RedeemTypeInvitation:
 		return "INV", nil
+	case RedeemTypeDeviceClaim:
+		return "DCL", nil
+	case RedeemTypeDeviceLogin:
+		return "DLG", nil
 	case RedeemTypeConcurrency, AdjustmentTypeAdminConcurrency:
 		return "CON", nil
 	default:
