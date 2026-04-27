@@ -223,23 +223,65 @@ func writeHandshake(h Handshake) error {
 }
 
 func newLogger(level string, m *Manifest) *slog.Logger {
-	var lvl slog.Level
-	switch level {
-	case "debug":
-		lvl = slog.LevelDebug
-	case "warn":
-		lvl = slog.LevelWarn
-	case "error":
-		lvl = slog.LevelError
-	default:
-		lvl = slog.LevelInfo
-	}
+	lvl := parseLogLevel(level)
 	h := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: lvl})
 	logger := slog.New(h)
 	if m != nil && m.Name != "" {
 		logger = logger.With("plugin", m.Name)
 	}
 	return logger
+}
+
+// parseLogLevel turns the operator-facing log level flag into a slog.Level.
+// Unknown values fall back to Info so a typo cannot silently disable logs.
+func parseLogLevel(level string) slog.Level {
+	switch level {
+	case "debug":
+		return slog.LevelDebug
+	case "warn":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
+}
+
+// startRemoteLogger replaces the SDK's stderr slog handler with one that
+// pushes records into a LogProxy client-streaming RPC. The previous logger
+// (and slog.Default) are rewired so plugin-side slog calls go through the
+// remote handler immediately.
+//
+// Failure path: if the SDK cannot create the channel/handler the function
+// returns without changing anything; the existing stderr logger keeps
+// working as a last-resort surface (only happens on misconfigured SDK
+// init, never under normal lifecycle).
+func (r *runner) startRemoteLogger(conn *grpc.ClientConn, level slog.Level) {
+	if conn == nil || r == nil {
+		return
+	}
+	handler := newRemoteSlogHandler(level)
+	r.remoteLogHandler = handler
+
+	// Preserve the manifest-level "plugin" attr the early logger added so
+	// host-side records still carry the plugin name even though we are
+	// switching the underlying handler.
+	logger := slog.New(handler)
+	if m := r.plugin.Manifest(); m != nil && m.Name != "" {
+		logger = logger.With("plugin", m.Name)
+	}
+	r.logger = logger
+	slog.SetDefault(logger)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	r.remoteLogCancel = cancel
+	r.remoteLogDone = make(chan struct{})
+
+	client := pb.NewLogProxyClient(conn)
+	go func() {
+		defer close(r.remoteLogDone)
+		runRemoteSlogSender(ctx, client, handler, nil)
+	}()
 }
 
 // httpMuxAdapter adapts *http.ServeMux to the SDK HTTPMux interface so
@@ -274,6 +316,14 @@ type runner struct {
 	shutdown chan struct{}
 
 	coreConn *grpc.ClientConn
+
+	// remoteLogHandler / remoteLogCancel / remoteLogDone manage the LogProxy
+	// client-streaming RPC that ships plugin slog records into the host zap
+	// pipeline. They are populated lazily inside Init once the SDK
+	// connection is up.
+	remoteLogHandler *remoteSlogHandler
+	remoteLogCancel  context.CancelFunc
+	remoteLogDone    chan struct{}
 }
 
 // Init is called by the core after reading the handshake. It opens the
@@ -310,6 +360,12 @@ func (r *runner) Init(ctx context.Context, req *pb.PluginInitRequest) (*pb.Plugi
 			return
 		}
 		r.coreConn = conn
+
+		// Swap the early stderr slog handler for a LogProxy handler so all
+		// subsequent logs flow into host zap with full structure preserved.
+		// The early stderr handler stays only for handshake-window logs
+		// (before this point) and any post-shutdown emergency lines.
+		r.startRemoteLogger(conn, parseLogLevel(r.opts.logLevel))
 
 		sqlClient := pb.NewSQLProxyClient(conn)
 		redisClient := pb.NewRedisProxyClient(conn)
@@ -426,6 +482,16 @@ func (r *runner) gracefulShutdown(grpcSrv *grpc.Server, httpSrv *http.Server) {
 	if err := r.plugin.Shutdown(); err != nil {
 		r.logger.Error("plugin shutdown returned error", "error", err)
 	}
+
+	// Drain the LogProxy sender best-effort BEFORE closing the SDK conn so
+	// the host receives whatever is still in the buffered channel.
+	if r.remoteLogHandler != nil {
+		shutdownRemoteSlogSender(r.remoteLogHandler, r.remoteLogDone)
+		if r.remoteLogCancel != nil {
+			r.remoteLogCancel()
+		}
+	}
+
 	if r.ctxImpl != nil && r.ctxImpl.db != nil {
 		if err := r.ctxImpl.db.Close(); err != nil {
 			r.logger.Warn("close sql.DB", "error", err)
