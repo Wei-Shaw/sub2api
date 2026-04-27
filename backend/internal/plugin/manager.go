@@ -553,6 +553,10 @@ var allowedPluginCapabilities = map[string]struct{}{
 	// JobScheduler stream RPC. Default-allow because scheduling work is
 	// not a privileged cross-plugin operation — see V5-DESIGN §2.7.
 	"job_scheduler": {},
+	// settings_extension lets a plugin register a JSON-Schema-described
+	// settings tab in the admin SettingsView and read its persisted values
+	// via SDK Settings(). See V5-DESIGN §W3 (SettingsExtensionCapability).
+	"settings_extension": {}, // pluginsdk.CapabilitySettingsExtension — V5 W3
 }
 
 // defaultOutboundBlockedCIDRs is the host-side default block list pushed to
