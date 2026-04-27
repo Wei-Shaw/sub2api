@@ -29,7 +29,13 @@ service PluginLifecycle {
 
 message PluginInitRequest {
   string sdk_address = 1;
-  map<string, string> config = 2;
+  // reserved: was `map<string, string> config = 2;` — host-only ops fields
+  // were dropped from the SDK in V5/W6 SETTINGS-V2 (see docs/plugin-
+  // architecture/SETTINGS-V2-DESIGN.md §3). The host still uses
+  // PluginRecord.Config for ops escape hatches but it is no longer wired
+  // through the plugin process. Do NOT reuse field number 2 or name "config".
+  reserved 2;
+  reserved "config";
   // plugin_name is the unique plugin identifier the core uses to scope SDK
   // resources (e.g. Redis key namespace). The SDK echoes it back to the core
   // via gRPC metadata on every SDK call so the server can apply per-plugin
@@ -143,6 +149,25 @@ message ManifestResponse {
   // host applies defaults when a key has not been written yet so plugins
   // can rely on Settings.Get returning a value immediately after install.
   bytes settings_defaults_json = 43;
+
+  // settings_schema_version mirrors Manifest.SettingsSchema.Version (see
+  // SETTINGS-V2-DESIGN §3.3). Plugins should bump this whenever a property's
+  // type changes shape; the host stamps the value into
+  // plugin_settings.schema_version_at_write on every write so plugin SDKs
+  // can detect stale values via SchemaVersionMismatchError. Empty string is
+  // normalised to "0" host-side.
+  string settings_schema_version = 44;
+
+  // settings_properties_meta_json is a JSON object keyed by top-level
+  // schema property name. Each value is the marker triple
+  // {visibility, deprecated, requires_reload} — see SETTINGS-V2-DESIGN
+  // §1.4 for the precise shape. The plugin SDK derives this from the
+  // SettingsSchemaDoc.PropertyMeta map; plugins may also set the markers
+  // inline as JSON Schema vendor extensions (`x-visibility` etc.) and
+  // leave this field empty — the host will re-derive it from
+  // settings_schema_json. When both sources disagree, this field wins
+  // (it is the SDK's authoritative serialization).
+  bytes settings_properties_meta_json = 45;
 }
 
 message EndpointDeclaration {

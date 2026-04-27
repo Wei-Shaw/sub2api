@@ -458,6 +458,17 @@ message SettingsGetResponse {
   // revision is monotonically increasing per (plugin, key); callers can
   // use it to deduplicate rapid updates.
   int64 revision = 3;
+
+  // stored_schema_version is plugin_settings.schema_version_at_write — the
+  // schema version that was active when the row was last written. Empty
+  // when exists=false. See SETTINGS-V2-DESIGN §1.5 for semantics.
+  string stored_schema_version = 4;
+
+  // current_schema_version is plugin_settings_schemas.schema_version — the
+  // schema version the plugin most recently registered. The plugin SDK
+  // compares stored vs current to raise SchemaVersionMismatchError when
+  // they disagree. Empty string is normalised to "0" by both sides.
+  string current_schema_version = 5;
 }
 
 message SettingsWatchRequest {
@@ -469,4 +480,11 @@ message SettingsChangeEvent {
   string key = 1;
   bytes value_json = 2;
   int64 revision = 3;
+
+  // requires_reload mirrors the plugin's `x-requires-reload` schema marker
+  // for this key. The host PluginManager subscribes and triggers a plugin
+  // process reload when it receives a true. Plugins themselves may ignore
+  // this field — it is only meaningful to the host. See SETTINGS-V2-DESIGN
+  // §4.4 for the reload state machine.
+  bool requires_reload = 4;
 }
