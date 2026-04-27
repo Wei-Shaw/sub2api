@@ -144,7 +144,13 @@ async function save(prop: PropDescriptor) {
     emit('updated', prop.key, value)
     appStore.showSuccess(t('admin.pluginSettings.saveSuccess'))
   } catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+    // Map well-known SETTINGS-V2 errcodes to i18n strings; all other codes
+    // fall through to the backend's English `message`.
+    appStore.showError(
+      extractApiErrorMessage(err, t('common.error'), {
+        PLUGIN_SETTINGS_BACKEND_ONLY: t('admin.pluginSettings.backendOnly'),
+      }),
+    )
   } finally {
     saving.value = null
   }

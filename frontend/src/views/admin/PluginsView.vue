@@ -155,7 +155,7 @@
       </div>
     </div>
 
-    <!-- Detail modal -->
+    <!-- Detail modal: 详情 + 设置 (tab 切换, 设置按需加载) -->
     <BaseDialog
       v-if="detailPlugin"
       :show="!!detailPlugin"
@@ -163,7 +163,57 @@
       width="wide"
       @close="closeDetail"
     >
-      <div class="space-y-5">
+      <div class="-mt-2 flex gap-1 border-b border-gray-200 dark:border-dark-700">
+        <button
+          type="button"
+          class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors"
+          :class="activeTab === 'detail'
+            ? 'border-primary-500 text-primary-700 dark:text-primary-300'
+            : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+          @click="setTab('detail')"
+        >
+          {{ t('admin.plugins.tabDetail') }}
+        </button>
+        <button
+          type="button"
+          class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors"
+          :class="activeTab === 'settings'
+            ? 'border-primary-500 text-primary-700 dark:text-primary-300'
+            : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
+          @click="setTab('settings')"
+        >
+          {{ t('admin.plugins.tabSettings') }}
+        </button>
+      </div>
+
+      <div v-if="activeTab === 'settings'" class="pt-4">
+        <div v-if="settingsLoading" class="text-sm text-gray-500 dark:text-gray-400">
+          {{ t('common.loading') }}
+        </div>
+        <div
+          v-else-if="!settingsInfo"
+          class="rounded-md border border-dashed border-gray-300 bg-gray-50/60 p-4 text-sm text-gray-500 dark:border-dark-600 dark:bg-dark-800/40 dark:text-gray-400"
+        >
+          {{ t('admin.plugins.settingsNotDeclared') }}
+        </div>
+        <template v-else>
+          <!-- SETTINGS-V2 schema version banner (DESIGN §5.5). Older hosts
+               that have not yet rolled out W3-A omit the field; we hide
+               the badge in that case. -->
+          <div
+            v-if="settingsInfo.schema_version"
+            class="mb-3 inline-flex items-center rounded bg-gray-100 px-2 py-0.5 text-xs font-mono text-gray-600 dark:bg-dark-700 dark:text-gray-300"
+          >
+            {{ t('admin.pluginSettings.schemaVersion', { version: settingsInfo.schema_version }) }}
+          </div>
+          <PluginSettingsForm
+            :info="settingsInfo"
+            @updated="onSettingsUpdated"
+          />
+        </template>
+      </div>
+
+      <div v-else class="space-y-5 pt-4">
         <!-- Basic info -->
         <section>
           <h4 class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
@@ -300,6 +350,11 @@ import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { BaseDialog, EmptyState, Icon } from '@sub2api/plugin-sdk'
 import { apiClient } from '@/api/client'
+import {
+  pluginSettingsApi,
+  type PluginSettingsSchemaInfo,
+} from '@/api/admin/pluginSettings'
+import PluginSettingsForm from '@/components/admin/PluginSettingsForm.vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import { useAppStore } from '@/stores'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -347,6 +402,13 @@ const detailPlugin = computed<PluginInfo | undefined>(() =>
 const nowMs = ref<number>(Date.now())
 let uptimeTimer: ReturnType<typeof setInterval> | null = null
 
+// Detail dialog tab state. Settings 是 W3 SettingsExtension 暴露的可调字段,
+// 没声明 schema 的插件 (即 list API 不返回的) 显示"未声明可配置项"空态.
+type DetailTab = 'detail' | 'settings'
+const activeTab = ref<DetailTab>('detail')
+const settingsLoading = ref(false)
+const settingsInfo = ref<PluginSettingsSchemaInfo | null>(null)
+
 const detailConfigEntries = computed<{ key: string; display: string }[]>(() => {
   const cfg = detailPlugin.value?.config
   if (!cfg) return []
@@ -391,10 +453,39 @@ async function act(name: string, action: PluginAction) {
 
 function openDetail(name: string) {
   detailName.value = name
+  activeTab.value = 'detail'
+  settingsInfo.value = null
 }
 
 function closeDetail() {
   detailName.value = ''
+  settingsInfo.value = null
+}
+
+function setTab(tab: DetailTab) {
+  activeTab.value = tab
+  if (tab === 'settings' && detailName.value) {
+    void loadSettings(detailName.value)
+  }
+}
+
+async function loadSettings(name: string) {
+  settingsLoading.value = true
+  try {
+    settingsInfo.value = await pluginSettingsApi.get(name)
+  } catch {
+    // 404 / 权限不足等都按"未声明" 处理. 真实错误会通过浏览器控制台和 toast
+    // 路径暴露 (apiClient 拦截器), 这里只用 null 触发 fallback UI.
+    settingsInfo.value = null
+  } finally {
+    settingsLoading.value = false
+  }
+}
+
+function onSettingsUpdated(key: string, value: unknown) {
+  if (settingsInfo.value) {
+    settingsInfo.value.values[key] = value
+  }
 }
 
 function dotClass(state?: string, enabled?: boolean): string {
