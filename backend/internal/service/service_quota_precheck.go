@@ -111,7 +111,11 @@ func (s *serviceQuotaService) PreCheckAcquire(ctx context.Context, plan *Service
 		return nil, nil
 	}
 
-	lease := &ServiceQuotaLease{}
+	// 初始化 no-op Release：当 matched rules 仅含 RPM/deferred 而无 concurrency limiter 时，
+	// acquireConcurrency 不会被调用，Release 仍为 nil。下游 BillingTicket.Close() 直接调
+	// t.lease.Release()（非 nil-safe），会 panic。给 Release 一个空 func，acquireConcurrency
+	// 包装 prev 时会顺带调用一次 no-op，幂等无害。
+	lease := &ServiceQuotaLease{Release: func() {}}
 	// 三轮：concurrency → RPM → deferred(tpm/tpd/daily_usd)。先抢并发额度避免后续判断时占用未释放。
 	steps := []limiterPhase{
 		{predicate: isConcurrencyLimiter, fn: func(rule *ServiceQuotaRule, p ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) error {
