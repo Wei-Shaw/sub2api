@@ -12,7 +12,7 @@
  */
 import { useI18n } from 'vue-i18n'
 import type { LimiterRuntime } from '@/api/admin/serviceQuota'
-import { formatThousands } from '@/utils/format'
+import { formatThousands, formatDailyUsd } from '@/utils/format'
 
 export interface UseQuotaMonitorFormatResult {
   formatLimiter: (type: string) => string
@@ -48,11 +48,11 @@ export function useQuotaMonitorFormat(): UseQuotaMonitorFormatResult {
     return 'badge-gray'
   }
 
-  // daily_usd 是金额，保留 2 位；其他都是整数。整数部分用美式千分位（5,000 / 2,000,000）。
+  // daily_usd 是金额，至少 2 位小数 + 千分位；其他都是整数 + 千分位（5,000 / 2,000,000）。
   function formatUsageNumbers(row: LimiterRuntime): string {
     const isUsd = row.limiter_type === 'daily_usd'
-    const limitText = isUsd ? row.limit_value.toFixed(2) : formatThousands(Math.round(row.limit_value))
-    const currentText = isUsd ? row.current.toFixed(2) : formatThousands(Math.round(row.current))
+    const limitText = isUsd ? formatDailyUsd(row.limit_value, 2) : formatThousands(Math.round(row.limit_value))
+    const currentText = isUsd ? formatDailyUsd(row.current, 2) : formatThousands(Math.round(row.current))
     return `${currentText} / ${limitText}`
   }
 

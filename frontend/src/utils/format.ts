@@ -267,6 +267,41 @@ export function formatCostFixed(amount: number, fractionDigits: number = 4): str
 }
 
 /**
+ * service-quota daily_usd 限额展示：美式千分位 + 最多 6 位小数（去尾零）。
+ *
+ * 与 formatCurrency 的差异：
+ *   - 这里的 daily_usd 已经是"美元金额数值"，本身就是 service-quota 限额配置场景，
+ *     不走 IEEE 754 误差消除（输入由用户在 NumericInput 里直接录入）
+ *   - 不固定 2 位小数（限额可能是 0.05 这种小金额）
+ *   - 强制 en-US locale，与 formatThousands 一致（避免随浏览器语言变成
+ *     "100.000,00" 等欧式风格，让管理员一眼对齐量级）
+ *
+ * minimumFractionDigits 默认 0（去尾零）；监控页用量列传 2，让 `0.00 / 50.00` 对齐。
+ *
+ * 示例：
+ *   formatDailyUsd(100000)        → "100,000"
+ *   formatDailyUsd(1234.56)       → "1,234.56"
+ *   formatDailyUsd(0.05)          → "0.05"
+ *   formatDailyUsd(0)             → "0"
+ *   formatDailyUsd(100000, 2)     → "100,000.00"
+ *   formatDailyUsd(0, 2)          → "0.00"
+ *
+ * 调用方负责前缀 "$"（监控页 chip 不带符号、配置页 limit chip 带 $）。
+ */
+export function formatDailyUsd(amount: number | null | undefined, minimumFractionDigits: number = 0): string {
+  if (amount === null || amount === undefined || !Number.isFinite(Number(amount))) {
+    return (0).toLocaleString('en-US', {
+      minimumFractionDigits,
+      maximumFractionDigits: Math.max(minimumFractionDigits, 6),
+    })
+  }
+  return Number(amount).toLocaleString('en-US', {
+    minimumFractionDigits,
+    maximumFractionDigits: Math.max(minimumFractionDigits, 6),
+  })
+}
+
+/**
  * 格式化 token 数量（>=1M 显示为 M，>=1K 显示为 K，保留 1 位小数）
  * @param tokens token 数量
  * @returns 格式化后的字符串，如 "950", "1.2K", "3.5M"

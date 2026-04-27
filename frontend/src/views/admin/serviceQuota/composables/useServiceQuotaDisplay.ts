@@ -20,7 +20,7 @@ import {
 } from '@/api/admin/serviceQuota'
 import { useEntityName } from '@/components/serviceQuota/entityNames'
 import type { PathSummary } from '@/components/serviceQuota/pathRender'
-import { formatThousands } from '@/utils/format'
+import { formatThousands, formatDailyUsd } from '@/utils/format'
 
 export interface CounterModeOption {
   value: string
@@ -61,10 +61,9 @@ export function useServiceQuotaDisplay(): UseServiceQuotaDisplayResult {
     return map[value] || value
   }
 
-  // daily_usd 用 6 位小数 + 去尾零（避免误差遮蔽小金额；和 RuleEditDialog/监控页一致）
-  // 其他类型整数千分位
+  // daily_usd 走 formatDailyUsd（千分位 + 最多 6 位小数去尾零）；其他类型整数千分位
   function formatLimitValue(lim: ServiceQuotaLimiterDef): string {
-    if (lim.limiter_type === 'daily_usd') return `$${Number(lim.limit_value).toFixed(6).replace(/\.?0+$/, '')}`
+    if (lim.limiter_type === 'daily_usd') return `$${formatDailyUsd(lim.limit_value)}`
     return formatThousands(Math.round(lim.limit_value))
   }
 
