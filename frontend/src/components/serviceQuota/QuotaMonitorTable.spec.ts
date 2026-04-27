@@ -124,12 +124,20 @@ describe('QuotaMonitorTable', () => {
     expect(wrapper.text()).toContain('admin.serviceQuotaMonitor.statusActive')
   })
 
-  it('is_fallback=true 行显示兜底标签', () => {
+  it('is_fallback=true 行显示"是"badge', () => {
     const wrapper = mount(QuotaMonitorTable, {
       props: { rows: [makeRow({ is_fallback: true })], showInternal: true },
       global: { stubs },
     })
-    expect(wrapper.text()).toContain('admin.serviceQuotaMonitor.fallbackTag')
+    expect(wrapper.text()).toContain('admin.serviceQuota.fallback.yes')
+  })
+
+  it('is_fallback=false 行显示"否"badge（避免空白单元格被误读为"默认"）', () => {
+    const wrapper = mount(QuotaMonitorTable, {
+      props: { rows: [makeRow({ is_fallback: false })], showInternal: true },
+      global: { stubs },
+    })
+    expect(wrapper.text()).toContain('admin.serviceQuota.fallback.no')
   })
 
   it('path 单元格通过 PathChevron 渲染（透传 platform 字段）', () => {

@@ -93,10 +93,11 @@
             <span v-else :title="`#${row.scope_user_id}`">{{ scopeUserName(row.scope_user_id) }}</span>
           </td>
 
-          <!-- 是否默认（admin only）：default 规则用黄色 badge 标识 -->
+          <!-- 是否默认（admin only）：fallback=true 显示"是"黄色 badge，
+               否则显示"否"灰色 badge——避免空白单元格让用户以为"所有行都是默认" -->
           <td v-if="showInternal" class="px-4 py-3 whitespace-nowrap">
-            <span v-if="row.is_fallback" class="badge badge-yellow">
-              {{ t('admin.serviceQuotaMonitor.fallbackTag') }}
+            <span :class="['badge', row.is_fallback ? 'badge-yellow' : 'badge-gray']">
+              {{ row.is_fallback ? t('admin.serviceQuota.fallback.yes') : t('admin.serviceQuota.fallback.no') }}
             </span>
           </td>
 
