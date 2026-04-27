@@ -134,20 +134,20 @@ REDACTED
 
 // BulkUpdateAccountsRequest represents the payload for bulk editing accounts
 type BulkUpdateAccountsRequest struct {
-	AccountIDs              []int64        `json:"account_ids"`
+	AccountIDs              []int64                   `json:"account_ids"`
 	Filters                 *BulkUpdateAccountFilters `json:"filters"`
-	Name                    string         `json:"name"`
-	ProxyID                 *int64         `json:"proxy_id"`
-	Concurrency             *int           `json:"concurrency"`
-	Priority                *int           `json:"priority"`
-	RateMultiplier          *float64       `json:"rate_multiplier"`
-	LoadFactor              *int           `json:"load_factor"`
-	Status                  string         `json:"status" binding:"omitempty,oneof=active inactive error"`
-	Schedulable             *bool          `json:"schedulable"`
-	GroupIDs                *[]int64       `json:"group_ids"`
-	Credentials             map[string]any `json:"credentials"`
-	Extra                   map[string]any `json:"extra"`
-	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
+	Name                    string                    `json:"name"`
+	ProxyID                 *int64                    `json:"proxy_id"`
+	Concurrency             *int                      `json:"concurrency"`
+	Priority                *int                      `json:"priority"`
+	RateMultiplier          *float64                  `json:"rate_multiplier"`
+	LoadFactor              *int                      `json:"load_factor"`
+	Status                  string                    `json:"status" binding:"omitempty,oneof=active inactive error"`
+	Schedulable             *bool                     `json:"schedulable"`
+	GroupIDs                *[]int64                  `json:"group_ids"`
+	Credentials             map[string]any            `json:"credentials"`
+	Extra                   map[string]any            `json:"extra"`
+	ConfirmMixedChannelRisk *bool                     `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 REDACTED
 
 type BulkUpdateAccountFilters struct {
