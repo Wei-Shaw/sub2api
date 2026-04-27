@@ -37,7 +37,54 @@ const (
 
 	ServiceQuotaWindowFixed   = "fixed"
 	ServiceQuotaWindowRolling = "rolling"
+
+	// ServiceQuotaTokenComponent* 决定 TPM/TPD 限流器把哪几种 token 计入计数。
+	// 仅 TPM/TPD 使用此配置；RPM/concurrency/daily_usd 忽略。
+	//
+	// 默认值（ServiceQuotaTokenComponentsDefault）= {input, output, cache_creation}：
+	//   - 与 Anthropic 3.7+ ITPM(input+cache_creation) + OTPM(output) 双桶之和一致
+	//   - 与 Bedrock Claude 3.7+ 公式 InputTokenCount + CacheWriteInputTokens + OutputTokenCount 一致
+	//   - 剔除 cache_read：鼓励 prompt cache，与 Anthropic 3.7+/Bedrock 3.7+/Groq 一致
+	//   - 与 OpenAI/Gemini 单桶相比略松（它们也算 cache_read）
+	ServiceQuotaTokenComponentInput         = "input"
+	ServiceQuotaTokenComponentOutput        = "output"
+	ServiceQuotaTokenComponentCacheCreation = "cache_creation"
+	ServiceQuotaTokenComponentCacheRead     = "cache_read"
 )
+
+// ServiceQuotaTokenComponentsDefault 是 TPM/TPD 限流器 token_components 字段的默认值，
+// 与 DB DEFAULT 一致。新建限流器若未传该字段则采用此默认。
+var ServiceQuotaTokenComponentsDefault = []string{
+	ServiceQuotaTokenComponentInput,
+	ServiceQuotaTokenComponentOutput,
+	ServiceQuotaTokenComponentCacheCreation,
+}
+
+// ServiceQuotaTokenComponentsAll 是全部合法 token component 值，用于校验 input。
+var ServiceQuotaTokenComponentsAll = []string{
+	ServiceQuotaTokenComponentInput,
+	ServiceQuotaTokenComponentOutput,
+	ServiceQuotaTokenComponentCacheCreation,
+	ServiceQuotaTokenComponentCacheRead,
+}
+
+// IsValidServiceQuotaTokenComponent 判断字符串是否是合法 token component。
+func IsValidServiceQuotaTokenComponent(s string) bool {
+	switch s {
+	case ServiceQuotaTokenComponentInput,
+		ServiceQuotaTokenComponentOutput,
+		ServiceQuotaTokenComponentCacheCreation,
+		ServiceQuotaTokenComponentCacheRead:
+		return true
+	}
+	return false
+}
+
+// ServiceQuotaLimiterTypeUsesTokenComponents 判断 limiter type 是否使用 token_components 字段。
+// 仅 TPM/TPD；其他类型应忽略此字段（service 层会强制置 nil）。
+func ServiceQuotaLimiterTypeUsesTokenComponents(kind string) bool {
+	return kind == ServiceQuotaLimiterTPM || kind == ServiceQuotaLimiterTPD
+}
 
 var (
 	ErrServiceQuotaExceeded = infraerrors.TooManyRequests(
@@ -51,18 +98,23 @@ var (
 )
 
 // ServiceQuotaLimiterDef 单个限流器：一条规则可以挂多种类型（RPM、TPD 等）。
+//
+// TokenComponents 仅对 TPM/TPD 有效，决定哪几种 token 计入计数（input/output/cache_creation/cache_read）。
+// 其他 limiter type 该字段为 nil；service 层会强制清洗。
 type ServiceQuotaLimiterDef struct {
-	ID          int64   `json:"id"`
-	RuleID      int64   `json:"rule_id"`
-	LimiterType string  `json:"limiter_type"`
-	WindowMode  string  `json:"window_mode"`
-	LimitValue  float64 `json:"limit_value"`
+	ID              int64    `json:"id"`
+	RuleID          int64    `json:"rule_id"`
+	LimiterType     string   `json:"limiter_type"`
+	WindowMode      string   `json:"window_mode"`
+	LimitValue      float64  `json:"limit_value"`
+	TokenComponents []string `json:"token_components,omitempty"`
 }
 
 type ServiceQuotaLimiterInput struct {
-	LimiterType string  `json:"limiter_type"`
-	WindowMode  string  `json:"window_mode"`
-	LimitValue  float64 `json:"limit_value"`
+	LimiterType     string   `json:"limiter_type"`
+	WindowMode      string   `json:"window_mode"`
+	LimitValue      float64  `json:"limit_value"`
+	TokenComponents []string `json:"token_components,omitempty"`
 }
 
 // ServiceQuotaPathDef 路径定义：单向递进链 平台→渠道→分组→账号→模型，
@@ -135,10 +187,36 @@ type ServiceQuotaCheckRequest struct {
 	Model     string
 }
 
+// ServiceQuotaRecordRequest 一次 LLM 调用结束后的限额计费快照。
+//
+// 拆四个 token 字段（不再用单一 Tokens int64）让 TPM/TPD 限流器按各自 token_components
+// 配置自由选择计入项。Cost 单位美元，仅 daily_usd 限流器使用。
 type ServiceQuotaRecordRequest struct {
 	ServiceQuotaCheckRequest
-	Tokens int64
-	Cost   float64
+	InputTokens         int64
+	OutputTokens        int64
+	CacheCreationTokens int64
+	CacheReadTokens     int64
+	Cost                float64
+}
+
+// SumTokens 按指定 components 求和。components 为空或 nil 时返回 0；
+// 未识别值跳过（向前兼容老配置）。
+func (r ServiceQuotaRecordRequest) SumTokens(components []string) int64 {
+	var sum int64
+	for _, c := range components {
+		switch c {
+		case ServiceQuotaTokenComponentInput:
+			sum += r.InputTokens
+		case ServiceQuotaTokenComponentOutput:
+			sum += r.OutputTokens
+		case ServiceQuotaTokenComponentCacheCreation:
+			sum += r.CacheCreationTokens
+		case ServiceQuotaTokenComponentCacheRead:
+			sum += r.CacheReadTokens
+		}
+	}
+	return sum
 }
 
 type ServiceQuotaLease struct {

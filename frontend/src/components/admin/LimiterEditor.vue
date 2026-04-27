@@ -6,50 +6,81 @@
     <div
       v-for="(item, index) in modelValue"
       :key="item.uid ?? index"
-      class="grid grid-cols-1 items-end gap-3 rounded-lg border border-gray-200 p-3 sm:grid-cols-[160px_1fr_140px_auto] dark:border-dark-700"
+      class="rounded-lg border border-gray-200 p-3 dark:border-dark-700"
     >
-      <label class="form-field">
-        <span class="input-label">{{ t('admin.serviceQuota.columns.type') }}</span>
-        <select
-          :value="item.limiter_type"
-          class="input"
-          @change="updateField(index, 'limiter_type', ($event.target as HTMLSelectElement).value)"
+      <div class="grid grid-cols-1 items-end gap-3 sm:grid-cols-[160px_1fr_140px_auto]">
+        <label class="form-field">
+          <span class="input-label">{{ t('admin.serviceQuota.columns.type') }}</span>
+          <select
+            :value="item.limiter_type"
+            class="input"
+            @change="updateField(index, 'limiter_type', ($event.target as HTMLSelectElement).value)"
+          >
+            <option v-for="opt in availableTypes(item.limiter_type)" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          </select>
+        </label>
+        <label class="form-field">
+          <span class="input-label">{{ t('admin.serviceQuota.columns.limit') }}</span>
+          <input
+            :value="item.limit_value"
+            type="number"
+            min="1"
+            step="0.000001"
+            class="input"
+            required
+            @input="updateField(index, 'limit_value', Number(($event.target as HTMLInputElement).value))"
+          />
+        </label>
+        <label v-if="item.limiter_type !== 'concurrency'" class="form-field">
+          <span class="input-label">{{ t('admin.serviceQuota.columns.window') }}</span>
+          <select
+            :value="item.window_mode"
+            class="input"
+            @change="updateField(index, 'window_mode', ($event.target as HTMLSelectElement).value)"
+          >
+            <option value="fixed">{{ t('admin.serviceQuota.windows.fixed') }}</option>
+            <option value="rolling">{{ t('admin.serviceQuota.windows.rolling') }}</option>
+          </select>
+        </label>
+        <div v-else class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.serviceQuota.windows.none') }}</div>
+        <button
+          type="button"
+          class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+          :title="t('common.delete')"
+          @click="remove(index)"
         >
-          <option v-for="opt in availableTypes(item.limiter_type)" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-        </select>
-      </label>
-      <label class="form-field">
-        <span class="input-label">{{ t('admin.serviceQuota.columns.limit') }}</span>
-        <input
-          :value="item.limit_value"
-          type="number"
-          min="1"
-          step="0.000001"
-          class="input"
-          required
-          @input="updateField(index, 'limit_value', Number(($event.target as HTMLInputElement).value))"
-        />
-      </label>
-      <label v-if="item.limiter_type !== 'concurrency'" class="form-field">
-        <span class="input-label">{{ t('admin.serviceQuota.columns.window') }}</span>
-        <select
-          :value="item.window_mode"
-          class="input"
-          @change="updateField(index, 'window_mode', ($event.target as HTMLSelectElement).value)"
+          <Icon name="trash" size="sm" />
+        </button>
+      </div>
+
+      <!-- TPM/TPD 才显示 token components 选择；其他类型隐藏。
+           至少 1 项校验：未勾选时显示红字提示，提交侧由父组件统一阻断。 -->
+      <div v-if="usesTokenComponents(item.limiter_type)" class="mt-3 border-t border-gray-100 pt-3 dark:border-dark-700">
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <span class="text-xs font-medium text-gray-600 dark:text-gray-300">
+            {{ t('admin.serviceQuota.tokenComponents.title') }}
+          </span>
+          <label
+            v-for="comp in TOKEN_COMPONENTS_ALL"
+            :key="comp"
+            class="inline-flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-200 cursor-pointer"
+          >
+            <input
+              type="checkbox"
+              class="h-3.5 w-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              :checked="(item.token_components ?? TOKEN_COMPONENTS_DEFAULT).includes(comp)"
+              @change="toggleTokenComponent(index, comp, ($event.target as HTMLInputElement).checked)"
+            />
+            <span>{{ t('admin.serviceQuota.tokenComponents.' + comp) }}</span>
+          </label>
+        </div>
+        <div
+          v-if="(item.token_components ?? TOKEN_COMPONENTS_DEFAULT).length === 0"
+          class="mt-1 text-xs text-red-500"
         >
-          <option value="fixed">{{ t('admin.serviceQuota.windows.fixed') }}</option>
-          <option value="rolling">{{ t('admin.serviceQuota.windows.rolling') }}</option>
-        </select>
-      </label>
-      <div v-else class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.serviceQuota.windows.none') }}</div>
-      <button
-        type="button"
-        class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
-        :title="t('common.delete')"
-        @click="remove(index)"
-      >
-        <Icon name="trash" size="sm" />
-      </button>
+          {{ t('admin.serviceQuota.tokenComponents.minOneRequired') }}
+        </div>
+      </div>
     </div>
     <button
       type="button"
@@ -67,7 +98,13 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
-import type { ServiceQuotaLimiterInput } from '@/api/admin/serviceQuota'
+import {
+  type ServiceQuotaLimiterInput,
+  type TokenComponent,
+  TOKEN_COMPONENTS_ALL,
+  TOKEN_COMPONENTS_DEFAULT,
+  limiterUsesTokenComponents,
+} from '@/api/admin/serviceQuota'
 
 const { t } = useI18n()
 
@@ -95,6 +132,10 @@ function availableTypes(currentType: string) {
   return allTypes.value.filter((opt) => opt.value === currentType || !usedTypes.value.has(opt.value))
 }
 
+function usesTokenComponents(limiterType: string): boolean {
+  return limiterUsesTokenComponents(limiterType)
+}
+
 function defaultLimitFor(type: string): number {
   switch (type) {
     case 'rpm': return 60
@@ -113,12 +154,16 @@ function pickFirstAvailableType(): string {
 }
 
 function blankLimiter(limiter_type: string): ServiceQuotaLimiterInput {
-  return {
+  const out: ServiceQuotaLimiterInput = {
     uid: crypto.randomUUID(),
     limiter_type,
     window_mode: 'fixed',
     limit_value: defaultLimitFor(limiter_type),
   }
+  if (limiterUsesTokenComponents(limiter_type)) {
+    out.token_components = [...TOKEN_COMPONENTS_DEFAULT]
+  }
+  return out
 }
 
 function add() {
@@ -142,7 +187,36 @@ function updateField<K extends keyof ServiceQuotaLimiterInput>(index: number, ke
   if (key === 'limiter_type' && value === 'concurrency') {
     next.window_mode = 'fixed'
   }
+  // limiter_type 切换时同步 token_components：
+  //   - 切到 TPM/TPD 且没有 token_components → 填默认（input/output/cache_creation）
+  //   - 切到非 TPM/TPD → 删字段，避免提交垃圾数据（后端会清洗，前端也清干净）
+  if (key === 'limiter_type') {
+    const newType = value as string
+    if (limiterUsesTokenComponents(newType)) {
+      if (!next.token_components || next.token_components.length === 0) {
+        next.token_components = [...TOKEN_COMPONENTS_DEFAULT]
+      }
+    } else {
+      delete next.token_components
+    }
+  }
   newList[index] = next
+  emit('update:modelValue', newList)
+}
+
+// toggleTokenComponent 单个勾选/取消，按 TOKEN_COMPONENTS_ALL 顺序去重，
+// 允许暂时为空（让 UI 显示红字提示），父组件提交侧统一拦截。
+function toggleTokenComponent(index: number, comp: TokenComponent, checked: boolean) {
+  const newList = props.modelValue.slice()
+  const current = new Set(newList[index].token_components ?? TOKEN_COMPONENTS_DEFAULT)
+  if (checked) {
+    current.add(comp)
+  } else {
+    current.delete(comp)
+  }
+  // 按 TOKEN_COMPONENTS_ALL 固定顺序输出，便于 diff 与展示稳定
+  const ordered = TOKEN_COMPONENTS_ALL.filter((c) => current.has(c))
+  newList[index] = { ...newList[index], token_components: ordered }
   emit('update:modelValue', newList)
 }
 </script>

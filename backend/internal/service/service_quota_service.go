@@ -226,7 +226,41 @@ func normalizeLimiters(input *ServiceQuotaRuleInput) error {
 			})
 		}
 		seen[l.LimiterType] = struct{}{}
+		if err := normalizeLimiterTokenComponents(l); err != nil {
+			return err
+		}
 	}
+	return nil
+}
+
+// normalizeLimiterTokenComponents 校验并归一化 token_components：
+//   - TPM/TPD：至少 1 项；只允许 4 个合法值；空时填充默认值
+//   - 其他类型：强制置 nil（DB 仍存默认值，但 API 层对外不暴露这个字段）
+func normalizeLimiterTokenComponents(l *ServiceQuotaLimiterInput) error {
+	if !ServiceQuotaLimiterTypeUsesTokenComponents(l.LimiterType) {
+		l.TokenComponents = nil
+		return nil
+	}
+	if len(l.TokenComponents) == 0 {
+		l.TokenComponents = append([]string(nil), ServiceQuotaTokenComponentsDefault...)
+		return nil
+	}
+	seen := make(map[string]struct{}, len(l.TokenComponents))
+	out := make([]string, 0, len(l.TokenComponents))
+	for _, c := range l.TokenComponents {
+		if !IsValidServiceQuotaTokenComponent(c) {
+			return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_TOKEN_COMPONENT", "invalid token_component").WithMetadata(map[string]string{
+				"limiter_type":    l.LimiterType,
+				"token_component": c,
+			})
+		}
+		if _, dup := seen[c]; dup {
+			continue
+		}
+		seen[c] = struct{}{}
+		out = append(out, c)
+	}
+	l.TokenComponents = out
 	return nil
 }
 
@@ -516,7 +550,7 @@ func (s *serviceQuotaService) Record(ctx context.Context, req ServiceQuotaRecord
 	for _, m := range applyServiceQuotaFallbackOverride(matched) {
 		for _, p := range m.paths {
 			for _, lim := range m.rule.Limiters {
-				delta := serviceQuotaRecordDelta(lim.LimiterType, req)
+				delta := serviceQuotaRecordDelta(lim, req)
 				if delta <= 0 {
 					continue
 				}
@@ -877,10 +911,21 @@ func serviceQuotaWindow(lim ServiceQuotaLimiterDef) time.Duration {
 	}
 }
 
-func serviceQuotaRecordDelta(kind string, req ServiceQuotaRecordRequest) float64 {
-	switch kind {
+// serviceQuotaRecordDelta 计算单个 limiter 在一次请求中要增加的计数。
+//
+// TPM/TPD：按 limiter.TokenComponents 求和——每个限流器可独立选择 input/output/cache_creation/cache_read 子集。
+//   - 默认 {input, output, cache_creation}（DB DEFAULT + ServiceQuotaTokenComponentsDefault）
+//   - TokenComponents 为空时退化为默认值，向前兼容老规则
+//
+// daily_usd：按金额；其他 limiter type（rpm/concurrency）走单独路径，不入 Record。
+func serviceQuotaRecordDelta(lim ServiceQuotaLimiterDef, req ServiceQuotaRecordRequest) float64 {
+	switch lim.LimiterType {
 	case ServiceQuotaLimiterTPM, ServiceQuotaLimiterTPD:
-		return float64(req.Tokens)
+		components := lim.TokenComponents
+		if len(components) == 0 {
+			components = ServiceQuotaTokenComponentsDefault
+		}
+		return float64(req.SumTokens(components))
 	case ServiceQuotaLimiterDailyUSD:
 		return req.Cost
 	default:

@@ -241,3 +241,123 @@ func findMatchedRule(matched []matchedQuotaRule, id int64) *matchedQuotaRule {
 	}
 	return nil
 }
+
+// TestServiceQuotaRecordDelta_TokenComponents 覆盖 TPM/TPD 按 token_components 求和的各种组合：
+//   - 默认（input+output+cache_creation）排除 cache_read
+//   - 仅 input
+//   - 仅 cache_read（极端：只想限缓存读取）
+//   - 全选 4 项
+//   - 空 components → 退化为默认
+//   - 非 TPM/TPD limiter（如 daily_usd）：不看 TokenComponents，按 Cost 计
+func TestServiceQuotaRecordDelta_TokenComponents(t *testing.T) {
+	t.Parallel()
+
+	req := ServiceQuotaRecordRequest{
+		InputTokens:         100,
+		OutputTokens:        50,
+		CacheCreationTokens: 30,
+		CacheReadTokens:     1000,
+		Cost:                0.42,
+	}
+
+	cases := []struct {
+		name      string
+		lim       ServiceQuotaLimiterDef
+		wantDelta float64
+	}{
+		{
+			name:      "tpm 默认 = input+output+cache_creation",
+			lim:       ServiceQuotaLimiterDef{LimiterType: ServiceQuotaLimiterTPM, TokenComponents: ServiceQuotaTokenComponentsDefault},
+			wantDelta: 180,
+		},
+		{
+			name:      "tpm 仅 input",
+			lim:       ServiceQuotaLimiterDef{LimiterType: ServiceQuotaLimiterTPM, TokenComponents: []string{ServiceQuotaTokenComponentInput}},
+			wantDelta: 100,
+		},
+		{
+			name:      "tpm 仅 cache_read",
+			lim:       ServiceQuotaLimiterDef{LimiterType: ServiceQuotaLimiterTPM, TokenComponents: []string{ServiceQuotaTokenComponentCacheRead}},
+			wantDelta: 1000,
+		},
+		{
+			name:      "tpd 全选 4 项",
+			lim:       ServiceQuotaLimiterDef{LimiterType: ServiceQuotaLimiterTPD, TokenComponents: ServiceQuotaTokenComponentsAll},
+			wantDelta: 1180,
+		},
+		{
+			name:      "tpm 空 components 退化为默认",
+			lim:       ServiceQuotaLimiterDef{LimiterType: ServiceQuotaLimiterTPM, TokenComponents: nil},
+			wantDelta: 180,
+		},
+		{
+			name:      "daily_usd 不看 TokenComponents，按 Cost 计",
+			lim:       ServiceQuotaLimiterDef{LimiterType: ServiceQuotaLimiterDailyUSD, TokenComponents: []string{ServiceQuotaTokenComponentInput}},
+			wantDelta: 0.42,
+		},
+		{
+			name:      "rpm 不入 Record（应返回 0）",
+			lim:       ServiceQuotaLimiterDef{LimiterType: ServiceQuotaLimiterRPM},
+			wantDelta: 0,
+		},
+		{
+			name:      "concurrency 不入 Record（应返回 0）",
+			lim:       ServiceQuotaLimiterDef{LimiterType: ServiceQuotaLimiterConcurrency},
+			wantDelta: 0,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := serviceQuotaRecordDelta(tc.lim, req)
+			require.InDelta(t, tc.wantDelta, got, 1e-9)
+		})
+	}
+}
+
+// TestNormalizeLimiterTokenComponents 校验 normalize 行为：去重、非法值报错、非 TPM/TPD 强制清空。
+func TestNormalizeLimiterTokenComponents(t *testing.T) {
+	t.Parallel()
+
+	t.Run("tpm 重复值去重", func(t *testing.T) {
+		t.Parallel()
+		l := &ServiceQuotaLimiterInput{
+			LimiterType:     ServiceQuotaLimiterTPM,
+			TokenComponents: []string{"input", "input", "output"},
+		}
+		require.NoError(t, normalizeLimiterTokenComponents(l))
+		require.Equal(t, []string{"input", "output"}, l.TokenComponents)
+	})
+
+	t.Run("tpm 非法值报错", func(t *testing.T) {
+		t.Parallel()
+		l := &ServiceQuotaLimiterInput{
+			LimiterType:     ServiceQuotaLimiterTPM,
+			TokenComponents: []string{"input", "bogus"},
+		}
+		err := normalizeLimiterTokenComponents(l)
+		require.Error(t, err)
+	})
+
+	t.Run("rpm 强制清空 TokenComponents", func(t *testing.T) {
+		t.Parallel()
+		l := &ServiceQuotaLimiterInput{
+			LimiterType:     ServiceQuotaLimiterRPM,
+			TokenComponents: []string{"input"}, // 用户误传也要被洗掉
+		}
+		require.NoError(t, normalizeLimiterTokenComponents(l))
+		require.Nil(t, l.TokenComponents)
+	})
+
+	t.Run("tpm 空数组填充默认", func(t *testing.T) {
+		t.Parallel()
+		l := &ServiceQuotaLimiterInput{
+			LimiterType:     ServiceQuotaLimiterTPM,
+			TokenComponents: nil,
+		}
+		require.NoError(t, normalizeLimiterTokenComponents(l))
+		require.Equal(t, ServiceQuotaTokenComponentsDefault, l.TokenComponents)
+	})
+}

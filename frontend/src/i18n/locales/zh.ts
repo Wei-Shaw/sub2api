@@ -4088,6 +4088,14 @@ export default {
         empty: '尚未添加限流器，点击下方按钮添加',
         add: '添加限流器'
       },
+      tokenComponents: {
+        title: '计入项',
+        input: '输入',
+        output: '输出',
+        cache_creation: '缓存写入',
+        cache_read: '缓存读取',
+        minOneRequired: '至少勾选 1 项'
+      },
       pathEditor: {
         empty: '尚未添加路径，点击下方按钮添加',
         add: '添加路径',

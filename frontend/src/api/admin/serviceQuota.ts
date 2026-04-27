@@ -5,18 +5,58 @@ export interface ServiceQuotaRuleUserRef {
   email: string
 }
 
+/**
+ * TokenComponent 与后端 ServiceQuotaTokenComponent* 常量保持一致。
+ *
+ * 仅 TPM/TPD 限流器使用此配置；决定哪几种 token 计入限流计数。
+ * 默认 = TOKEN_COMPONENTS_DEFAULT（与 Anthropic 3.7+ / Bedrock 3.7+ 口径对齐：
+ * input + output + cache_creation，剔除 cache_read）。
+ */
+export const TokenComponent = {
+  Input: 'input',
+  Output: 'output',
+  CacheCreation: 'cache_creation',
+  CacheRead: 'cache_read',
+} as const
+
+export type TokenComponent = (typeof TokenComponent)[keyof typeof TokenComponent]
+
+/** 与后端 ServiceQuotaTokenComponentsDefault 一致 */
+export const TOKEN_COMPONENTS_DEFAULT: TokenComponent[] = [
+  TokenComponent.Input,
+  TokenComponent.Output,
+  TokenComponent.CacheCreation,
+]
+
+/** 全部合法 component；UI 校验 + checkbox 渲染顺序 */
+export const TOKEN_COMPONENTS_ALL: TokenComponent[] = [
+  TokenComponent.Input,
+  TokenComponent.Output,
+  TokenComponent.CacheCreation,
+  TokenComponent.CacheRead,
+]
+
+/** TPM/TPD 限流器才用 token_components 字段；其他类型后端会忽略 */
+export function limiterUsesTokenComponents(limiterType: string): boolean {
+  return limiterType === 'tpm' || limiterType === 'tpd'
+}
+
 export interface ServiceQuotaLimiterDef {
   id: number
   rule_id: number
   limiter_type: string
   window_mode: string
   limit_value: number
+  /** 仅 TPM/TPD 返回；其他类型后端置 null/缺省 */
+  token_components?: TokenComponent[] | null
 }
 
 export interface ServiceQuotaLimiterInput {
   limiter_type: string
   window_mode: string
   limit_value: number
+  /** 仅 TPM/TPD 提交；其他类型 strip 掉 */
+  token_components?: TokenComponent[]
   // 仅前端使用：v-for stable key，提交前会被 strip 掉，不会发到 backend
   uid?: string
 }

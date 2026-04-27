@@ -256,7 +256,10 @@ import {
   deleteServiceQuotaRule,
   listServiceQuotaRules,
   updateServiceQuotaRule,
+  limiterUsesTokenComponents,
+  TOKEN_COMPONENTS_DEFAULT,
   type ServiceQuotaLimiterDef,
+  type ServiceQuotaLimiterInput,
   type ServiceQuotaPathDef,
   type ServiceQuotaRule,
   type ServiceQuotaRuleInput,
@@ -324,6 +327,10 @@ function resetForm(rule?: ServiceQuotaRule) {
       limiter_type: l.limiter_type,
       window_mode: l.window_mode,
       limit_value: l.limit_value,
+      // TPM/TPD 才有 token_components；后端可能返回 null/undefined，统一展开成数组
+      token_components: limiterUsesTokenComponents(l.limiter_type)
+        ? (l.token_components ?? TOKEN_COMPONENTS_DEFAULT).slice()
+        : undefined,
     }))
     initial.paths = rule.paths.map((p) => ({
       uid: crypto.randomUUID(),
@@ -399,6 +406,13 @@ function normalizePayload(): ServiceQuotaRuleInput {
     if (!(Number(l.limit_value) > 0)) {
       throw new Error(t('admin.serviceQuota.errors.limitValueMustBePositive'))
     }
+    // TPM/TPD 必须至少勾 1 项 token component；提交侧拦截，避免后端 400
+    if (limiterUsesTokenComponents(l.limiter_type)) {
+      const comps = l.token_components ?? TOKEN_COMPONENTS_DEFAULT
+      if (comps.length === 0) {
+        throw new Error(t('admin.serviceQuota.tokenComponents.minOneRequired'))
+      }
+    }
   }
   const payload: ServiceQuotaRuleInput = {
     enabled: form.enabled,
@@ -406,11 +420,18 @@ function normalizePayload(): ServiceQuotaRuleInput {
     counter_mode: form.counter_mode,
     is_fallback: form.is_fallback,
     // 注意：strip 掉 uid（仅前端用于 v-for stable key）
-    limiters: form.limiters.map((l) => ({
-      limiter_type: l.limiter_type,
-      window_mode: l.limiter_type === 'concurrency' ? 'fixed' : l.window_mode,
-      limit_value: Number(l.limit_value),
-    })),
+    limiters: form.limiters.map((l) => {
+      const out: ServiceQuotaLimiterInput = {
+        limiter_type: l.limiter_type,
+        window_mode: l.limiter_type === 'concurrency' ? 'fixed' : l.window_mode,
+        limit_value: Number(l.limit_value),
+      }
+      // 只有 TPM/TPD 才提交 token_components；其他类型不带，让后端自然走默认/忽略路径
+      if (limiterUsesTokenComponents(l.limiter_type)) {
+        out.token_components = (l.token_components ?? TOKEN_COMPONENTS_DEFAULT).slice()
+      }
+      return out
+    }),
     paths: form.paths.map((p) => ({
       platform: cleanText(p.platform),
       channel_id: cleanNumber(p.channel_id),

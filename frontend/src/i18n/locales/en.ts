@@ -3924,6 +3924,14 @@ export default {
         empty: 'No limiter added yet. Click below to add one.',
         add: 'Add Limiter'
       },
+      tokenComponents: {
+        title: 'Counted Tokens',
+        input: 'Input',
+        output: 'Output',
+        cache_creation: 'Cache Write',
+        cache_read: 'Cache Read',
+        minOneRequired: 'Select at least 1 item'
+      },
       pathEditor: {
         empty: 'No path added yet. Click below to add one.',
         add: 'Add Path',

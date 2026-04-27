@@ -7277,6 +7277,9 @@ type usageLogBestEffortWriter interface {
 }
 
 // postUsageBillingParams 统一扣费所需的参数
+//
+// 4 个 Token 字段分开传，便于 service quota TPM/TPD 限流器按各自 token_components
+// 配置自由选择计入项；下游 Record 调用直接用这 4 个值组装 ServiceQuotaRecordRequest。
 type postUsageBillingParams struct {
 	Cost                  *CostBreakdown
 	User                  *User
@@ -7288,7 +7291,10 @@ type postUsageBillingParams struct {
 	AccountRateMultiplier float64
 	APIKeyService         APIKeyQuotaUpdater
 	ServiceQuotaRequest   ServiceQuotaCheckRequest
-	TokenCount            int64
+	InputTokens           int64
+	OutputTokens          int64
+	CacheCreationTokens   int64
+	CacheReadTokens       int64
 }
 
 func (p *postUsageBillingParams) shouldDeductAPIKeyQuota() bool {
@@ -7504,7 +7510,10 @@ func finalizePostUsageBilling(p *postUsageBillingParams, deps *billingDeps, resu
 		}
 		deps.billingCacheService.serviceQuota.Record(context.Background(), ServiceQuotaRecordRequest{
 			ServiceQuotaCheckRequest: req,
-			Tokens:                   p.TokenCount,
+			InputTokens:              p.InputTokens,
+			OutputTokens:             p.OutputTokens,
+			CacheCreationTokens:      p.CacheCreationTokens,
+			CacheReadTokens:          p.CacheReadTokens,
 			Cost:                     p.Cost.ActualCost,
 		})
 	}
@@ -7852,7 +7861,10 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		AccountRateMultiplier: accountRateMultiplier,
 		APIKeyService:         input.APIKeyService,
 		ServiceQuotaRequest:   input.ServiceQuotaRequest,
-		TokenCount:            int64(usageLog.QuotaTokens()),
+		InputTokens:           int64(usageLog.InputTokens),
+		OutputTokens:          int64(usageLog.OutputTokens),
+		CacheCreationTokens:   int64(usageLog.CacheCreationTokens),
+		CacheReadTokens:       int64(usageLog.CacheReadTokens),
 	}, s.billingDeps(), s.usageBillingRepo)
 
 	if billingErr != nil {

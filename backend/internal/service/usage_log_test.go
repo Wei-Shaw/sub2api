@@ -111,19 +111,3 @@ func TestUsageLogSyncRequestTypeAndLegacyFieldsNilReceiver(t *testing.T) {
 	log.SyncRequestTypeAndLegacyFields()
 }
 
-// TestUsageLogQuotaTokens 验证 TPM/TPD 限流口径：
-//   - input + cache_creation + output 全部计入
-//   - cache_read 不计入（与 Anthropic 3.7+ / Bedrock 3.7+ / Groq 一致）
-//   - 与 TotalTokens() 区分，后者含 cache_read
-func TestUsageLogQuotaTokens(t *testing.T) {
-	t.Parallel()
-
-	log := &UsageLog{
-		InputTokens:         100,
-		OutputTokens:        50,
-		CacheCreationTokens: 30,
-		CacheReadTokens:     1000, // 故意大值确认未被计入限流
-	}
-	require.Equal(t, 180, log.QuotaTokens(), "QuotaTokens 应为 input+cache_creation+output=180")
-	require.Equal(t, 1180, log.TotalTokens(), "TotalTokens 仍含 cache_read=1180")
-}

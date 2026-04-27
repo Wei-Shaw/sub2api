@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/lib/pq"
+
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -210,7 +212,7 @@ func (r *serviceQuotaRuleRepository) loadLimiters(ctx context.Context, rules []*
 	}
 	ids, index := indexRules(rules)
 	rows, err := r.db.QueryContext(ctx, fmt.Sprintf(
-		`SELECT id, rule_id, limiter_type, window_mode, limit_value FROM service_quota_limiters WHERE rule_id IN (%s) ORDER BY rule_id, limiter_type`,
+		`SELECT id, rule_id, limiter_type, window_mode, limit_value, token_components FROM service_quota_limiters WHERE rule_id IN (%s) ORDER BY rule_id, limiter_type`,
 		joinPlaceholders(len(ids))), ids...)
 	if err != nil {
 		return err
@@ -218,8 +220,13 @@ func (r *serviceQuotaRuleRepository) loadLimiters(ctx context.Context, rules []*
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var def service.ServiceQuotaLimiterDef
-		if err := rows.Scan(&def.ID, &def.RuleID, &def.LimiterType, &def.WindowMode, &def.LimitValue); err != nil {
+		var components pq.StringArray
+		if err := rows.Scan(&def.ID, &def.RuleID, &def.LimiterType, &def.WindowMode, &def.LimitValue, &components); err != nil {
 			return err
+		}
+		// 仅 TPM/TPD 暴露 token_components；其他类型忽略 DB 默认值，对外保持 nil。
+		if service.ServiceQuotaLimiterTypeUsesTokenComponents(def.LimiterType) {
+			def.TokenComponents = []string(components)
 		}
 		if rule, ok := index[def.RuleID]; ok {
 			rule.Limiters = append(rule.Limiters, def)
@@ -337,15 +344,21 @@ func upsertLimitersTx(ctx context.Context, tx *sql.Tx, ruleID int64, limiters []
 		return nil
 	}
 	values := make([]string, len(limiters))
-	args := make([]any, 0, len(limiters)*4)
+	args := make([]any, 0, len(limiters)*5)
 	for i, l := range limiters {
-		base := i * 4
-		values[i] = fmt.Sprintf("($%d,$%d,$%d,$%d)", base+1, base+2, base+3, base+4)
-		args = append(args, ruleID, l.LimiterType, l.WindowMode, l.LimitValue)
+		base := i * 5
+		values[i] = fmt.Sprintf("($%d,$%d,$%d,$%d,$%d)", base+1, base+2, base+3, base+4, base+5)
+		// 非 TPM/TPD 的 limiter 强制 token_components 为默认值（DB 层 NOT NULL，
+		// 入口侧传任意值都会被这里覆盖成默认；service 层暴露给前端时再清空）。
+		components := l.TokenComponents
+		if !service.ServiceQuotaLimiterTypeUsesTokenComponents(l.LimiterType) || len(components) == 0 {
+			components = service.ServiceQuotaTokenComponentsDefault
+		}
+		args = append(args, ruleID, l.LimiterType, l.WindowMode, l.LimitValue, pq.StringArray(components))
 	}
-	query := `INSERT INTO service_quota_limiters (rule_id, limiter_type, window_mode, limit_value) VALUES ` +
+	query := `INSERT INTO service_quota_limiters (rule_id, limiter_type, window_mode, limit_value, token_components) VALUES ` +
 		strings.Join(values, ",") +
-		` ON CONFLICT (rule_id, limiter_type) DO UPDATE SET window_mode = EXCLUDED.window_mode, limit_value = EXCLUDED.limit_value`
+		` ON CONFLICT (rule_id, limiter_type) DO UPDATE SET window_mode = EXCLUDED.window_mode, limit_value = EXCLUDED.limit_value, token_components = EXCLUDED.token_components`
 	_, err := tx.ExecContext(ctx, query, args...)
 	return err
 }
