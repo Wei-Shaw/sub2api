@@ -157,12 +157,8 @@ export function decidePaymentLaunch(
     let stripeMethod: StripeVisibleMethod = ''
     if (visibleMethod === 'wxpay') stripeMethod = 'wechat_pay'
     else if (visibleMethod === 'alipay') stripeMethod = 'alipay'
-    // Use the popup window only for the desktop Stripe-Alipay flow (which
-    // historically opens Alipay's checkout in a popup). All other Stripe
-    // entry points (mobile, WeChat Pay, generic Stripe button) go full-page.
-    const kind: PaymentLaunchKind = stripeMethod === 'alipay' && !context.isMobile
-      ? 'stripe_popup'
-      : 'stripe_route'
+    // Stripe 桌面端统一走 popup（小窗），与历史行为一致；移动端 fallback 全页跳转。
+    const kind: PaymentLaunchKind = context.isMobile ? 'stripe_route' : 'stripe_popup'
     const payUrl = kind === 'stripe_popup'
       ? context.stripePopupUrl || context.stripeRouteUrl || ''
       : context.stripeRouteUrl || context.stripePopupUrl || ''

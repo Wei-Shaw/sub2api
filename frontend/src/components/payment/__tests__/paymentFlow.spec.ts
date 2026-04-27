@@ -192,19 +192,34 @@ describe('decidePaymentLaunch', () => {
     expect(decision.paymentState.orderType).toBe('subscription')
   })
 
-  it('routes generic Stripe selection through the route flow with no preset sub-method', () => {
+  it('routes generic Stripe selection through the popup flow on desktop with no preset sub-method', () => {
     const decision = decidePaymentLaunch(createOrderResult({
       client_secret: 'cs_stripe_generic',
     }), {
       visibleMethod: 'stripe',
       orderType: 'balance',
       isMobile: false,
+      stripePopupUrl: '/payment/stripe?order_id=101&client_secret=cs_stripe_generic&popup=1',
+      stripeRouteUrl: '/payment/stripe?order_id=101&client_secret=cs_stripe_generic',
+    })
+
+    expect(decision.kind).toBe('stripe_popup')
+    expect(decision.stripeMethod).toBe('')
+    expect(decision.paymentState.payUrl).toContain('popup=1')
+  })
+
+  it('falls back to route flow on mobile for generic Stripe', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      client_secret: 'cs_stripe_generic',
+    }), {
+      visibleMethod: 'stripe',
+      orderType: 'balance',
+      isMobile: true,
       stripeRouteUrl: '/payment/stripe?order_id=101&client_secret=cs_stripe_generic',
     })
 
     expect(decision.kind).toBe('stripe_route')
     expect(decision.stripeMethod).toBe('')
-    expect(decision.paymentState.payUrl).toContain('/payment/stripe')
   })
 })
 

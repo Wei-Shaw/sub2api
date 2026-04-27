@@ -701,23 +701,25 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     let stripeMethod: '' | 'alipay' | 'wechat_pay' = ''
     if (visibleMethod === 'wxpay') stripeMethod = 'wechat_pay'
     else if (visibleMethod === 'alipay') stripeMethod = 'alipay'
+    const stripeBaseQuery = {
+      order_id: String(result.order_id),
+      client_secret: result.client_secret,
+      method: stripeMethod || undefined,
+      resume_token: result.resume_token || undefined,
+    }
     const stripeRouteUrl = result.client_secret
-      ? router.resolve({
-        path: '/payment/stripe',
-        query: {
-          order_id: String(result.order_id),
-          client_secret: result.client_secret,
-          method: stripeMethod || undefined,
-          resume_token: result.resume_token || undefined,
-        },
-      }).href
+      ? router.resolve({ path: '/payment/stripe', query: stripeBaseQuery }).href
+      : ''
+    // popup=1 让 StripePaymentView 在新弹窗内不渲染 AppLayout，纯净支付页
+    const stripePopupUrl = result.client_secret
+      ? router.resolve({ path: '/payment/stripe', query: { ...stripeBaseQuery, popup: '1' } }).href
       : ''
     const decision = decidePaymentLaunch(result, {
       visibleMethod,
       orderType,
       isMobile: isMobileDevice(),
       isWechatBrowser: typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
-      stripePopupUrl: stripeRouteUrl,
+      stripePopupUrl,
       stripeRouteUrl,
     })
 
