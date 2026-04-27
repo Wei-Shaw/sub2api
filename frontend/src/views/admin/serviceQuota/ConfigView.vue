@@ -166,13 +166,13 @@
       :cancel-text="t('common.cancel')"
       :danger="true"
       @confirm="confirmDelete"
-      @cancel="deletingRule = null"
+      @cancel="cancelDelete"
     />
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -183,29 +183,29 @@ import Icon from '@/components/icons/Icon.vue'
 import EnabledToggleCell from './components/EnabledToggleCell.vue'
 import PathChevron from '@/components/serviceQuota/PathChevron.vue'
 import RuleEditDialog from './components/RuleEditDialog.vue'
-import { useEntityName } from '@/components/serviceQuota/entityNames'
-import type { PathSummary } from '@/components/serviceQuota/pathRender'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { limiterChipClass } from '@/utils/limiterColors'
-import { formatThousands } from '@/utils/format'
 import type { Column } from '@/components/common/types'
 import {
-  deleteServiceQuotaRule,
   listServiceQuotaRules,
-  type ServiceQuotaLimiterDef,
-  type ServiceQuotaPathDef,
   type ServiceQuotaRule,
 } from '@/api/admin/serviceQuota'
+import { useServiceQuotaFilters } from './composables/useServiceQuotaFilters'
+import { useRuleDeleteDialog } from './composables/useRuleDeleteDialog'
+import { useServiceQuotaDisplay } from './composables/useServiceQuotaDisplay'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 
-const counterModeOptions = computed(() => [
-  { value: 'user', label: t('admin.serviceQuota.counterModes.user') },
-  { value: 'per_user', label: t('admin.serviceQuota.counterModes.perUser') },
-  { value: 'shared', label: t('admin.serviceQuota.counterModes.shared') },
-])
+const {
+  counterModeOptions,
+  limiterLabel,
+  formatLimitValue,
+  counterModeLabel,
+  targetUsersFor,
+  pathDefToSummary,
+} = useServiceQuotaDisplay()
 
 const columns = computed<Column[]>(() => [
   { key: 'name', label: t('admin.serviceQuota.columns.name') },
@@ -225,68 +225,9 @@ const rules = ref<ServiceQuotaRule[]>([])
 const loading = ref(false)
 const showDialog = ref(false)
 const editingRule = ref<ServiceQuotaRule | null>(null)
-const deletingRule = ref<ServiceQuotaRule | null>(null)
-const filters = reactive({ counterMode: '', fallback: '', enabled: '' })
 
-const filteredRules = computed(() => rules.value.filter((rule) => {
-  if (filters.counterMode && rule.counter_mode !== filters.counterMode) return false
-  if (filters.fallback && String(rule.is_fallback) !== filters.fallback) return false
-  if (filters.enabled && String(rule.enabled) !== filters.enabled) return false
-  return true
-}))
-
-function limiterLabel(value: string): string {
-  const map: Record<string, string> = {
-    rpm: t('admin.serviceQuota.limiters.rpm'),
-    tpm: t('admin.serviceQuota.limiters.tpm'),
-    tpd: t('admin.serviceQuota.limiters.tpd'),
-    daily_usd: t('admin.serviceQuota.limiters.dailyUsd'),
-    concurrency: t('admin.serviceQuota.limiters.concurrency'),
-  }
-  return map[value] || value
-}
-
-function formatLimitValue(lim: ServiceQuotaLimiterDef): string {
-  if (lim.limiter_type === 'daily_usd') return `$${Number(lim.limit_value).toFixed(6).replace(/\.?0+$/, '')}`
-  // 整数限额（rpm/tpm/tpd/concurrency）用美式千分位逗号
-  return formatThousands(Math.round(lim.limit_value))
-}
-
-function counterModeLabel(value: string): string {
-  return counterModeOptions.value.find((item) => item.value === value)?.label || value
-}
-
-// 把规则的 target_users / target_user_ids 整理为 chip 数据：
-//   - 后端在 target_users 里返回 {id,email}，优先用 email 当 label
-//   - 老数据可能只有 target_user_ids，无 target_users，回退到 useEntityName 异步解析
-//   - 异步解析的占位为 "#id"，名称回填后会自动重渲（Vue 自动追踪 ref.value）
-interface TargetUserDisplay {
-  id: number
-  label: string
-}
-
-function targetUsersFor(rule: ServiceQuotaRule): TargetUserDisplay[] {
-  if (rule.counter_mode !== 'user') return []
-  // target_users 已带 email：直接使用，避免触发 N 次 useEntityName 请求
-  if (rule.target_users && rule.target_users.length > 0) {
-    return rule.target_users.map((u) => ({ id: u.id, label: u.email || `#${u.id}` }))
-  }
-  const ids = rule.target_user_ids || []
-  return ids.map((id) => ({ id, label: useEntityName('user', id).value || `#${id}` }))
-}
-
-// 复用 RuntimeTable 的 PathChevron 渲染：把 ServiceQuotaPathDef 适配成 PathSummary。
-// 复用 PathChevron 让监控页与配置页对"全部 nil 视为通配 / 平台 chip / chevron 链"
-// 三个语义保持一致——避免一处修改另一处漂移（复用原则）。
-function pathDefToSummary(path: ServiceQuotaPathDef): PathSummary {
-  return {
-    platform: path.platform ?? null,
-    channel_id: path.channel_id ?? null,
-    group_id: path.group_id ?? null,
-    account_id: path.account_id ?? null,
-    model_pattern: path.model_pattern ?? null,
-  }
-}
+const { filters, filteredRules } = useServiceQuotaFilters(rules)
+const { deletingRule, askDelete, cancelDelete, confirmDelete } = useRuleDeleteDialog(load)
 
 async function load() {
   loading.value = true
@@ -307,22 +248,6 @@ function openCreate() {
 function openEdit(rule: ServiceQuotaRule) {
   editingRule.value = rule
   showDialog.value = true
-}
-
-function askDelete(rule: ServiceQuotaRule) {
-  deletingRule.value = rule
-}
-
-async function confirmDelete() {
-  if (!deletingRule.value) return
-  try {
-    await deleteServiceQuotaRule(deletingRule.value.id)
-    appStore.showSuccess(t('admin.serviceQuota.deleteSuccess'))
-    deletingRule.value = null
-    await load()
-  } catch (error: unknown) {
-    appStore.showError(extractApiErrorMessage(error, t('admin.serviceQuota.deleteError')))
-  }
 }
 
 onMounted(load)
