@@ -35,6 +35,33 @@ message PluginInitRequest {
   // must be declared in the plugin's Manifest; the core forwards the subset
   // it has approved. Anything not in this list is rejected by the SDK server.
   repeated string capabilities = 4;
+  // outbound_defaults conveys the host's global outbound HTTP policy (SSRF
+  // block-list, allowed-host list, redirect / timeout / body caps). The SDK
+  // caches these on Init so plugin code can call NewSafeHTTPClient without
+  // re-fetching them. Plugins may layer per-call overrides on top via
+  // OutboundConfig. See V5-DESIGN §W4 (SafeOutboundHTTPCapability).
+  OutboundDefaults outbound_defaults = 50;
+}
+
+// OutboundDefaults is the host-side global outbound HTTP policy delivered to
+// plugins at Init time. All fields are optional; the SDK fills sane defaults
+// (RFC1918 + link-local + loopback + CGNAT block, 30s timeout, 1MiB body cap,
+// 3 redirects) when the host leaves them empty.
+message OutboundDefaults {
+  // blocked_cidrs lists CIDR ranges the SDK MUST refuse to dial. Empty means
+  // "use SDK defaults" — the SDK never falls back to "no block list".
+  repeated string blocked_cidrs = 1;
+  // allowed_hosts is an optional global allow-list of hostnames. When
+  // non-empty the SDK rejects any host not in the list. Empty means "no
+  // host-level allow-list" (block-list still applies).
+  repeated string allowed_hosts = 2;
+  // max_redirects caps the number of HTTP redirects followed. 0 → SDK
+  // default (3).
+  int32 max_redirects = 3;
+  // timeout_nanos is the per-request timeout. 0 → SDK default (30s).
+  int64 timeout_nanos = 4;
+  // max_body_bytes caps response body size. 0 → SDK default (1 MiB).
+  int64 max_body_bytes = 5;
 }
 
 message PluginInitResponse {

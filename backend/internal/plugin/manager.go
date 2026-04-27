@@ -432,7 +432,39 @@ func configToString(in map[string]any) (map[string]string, error) {
 // a new capability requires both an entry here and the corresponding
 // enforcement in the SDK server (e.g. grpc_server.go).
 var allowedPluginCapabilities = map[string]struct{}{
-	"redis_raw_keys": {},
+	"redis_raw_keys":     {},
+	"safe_outbound_http": {},
+}
+
+// defaultOutboundBlockedCIDRs is the host-side default block list pushed to
+// every plugin at Init time. Plugins can layer ExtraBlockedCIDRs on top via
+// pluginsdk.OutboundConfig but cannot remove entries. See V5-DESIGN §W4.
+var defaultOutboundBlockedCIDRs = []string{
+	"127.0.0.0/8",    // IPv4 loopback
+	"10.0.0.0/8",     // RFC1918
+	"172.16.0.0/12",  // RFC1918
+	"192.168.0.0/16", // RFC1918
+	"169.254.0.0/16", // link-local (cloud metadata 169.254.169.254)
+	"100.64.0.0/10",  // CGNAT
+	"0.0.0.0/8",      // "this network"
+	"224.0.0.0/4",    // multicast
+	"::1/128",        // IPv6 loopback
+	"fc00::/7",       // IPv6 ULA
+	"fe80::/10",      // IPv6 link-local
+}
+
+// buildOutboundDefaults produces the OutboundDefaults the core pushes to a
+// plugin at Init. V5 keeps this as a pure-default helper — once W3
+// SettingsExtension lands, the admin-configured block/allow-lists will be
+// merged in here.
+func (m *PluginManager) buildOutboundDefaults() *pluginsdk.OutboundDefaults {
+	return &pluginsdk.OutboundDefaults{
+		BlockedCidrs: defaultOutboundBlockedCIDRs,
+		AllowedHosts: nil, // empty = no global host allow-list
+		MaxRedirects: 3,
+		TimeoutNanos: int64(30 * time.Second),
+		MaxBodyBytes: 1 << 20, // 1 MiB
+	}
 }
 
 // approveCapabilities filters the capabilities a plugin requested in its
@@ -674,10 +706,11 @@ func (m *PluginManager) spawnAndConnect(parentCtx context.Context, inst *PluginI
 	// 调用 Init 把 SDK 地址、插件配置、plugin_name 与已批准的 capabilities 传给子进程。
 	initCtx, cancelInit := context.WithTimeout(parentCtx, m.cfg.ManifestTimeout)
 	initResp, initErr := lifecycle.Init(initCtx, &pluginsdk.PluginInitRequest{
-		SdkAddress:   m.sdkAddr,
-		Config:       pluginConfig,
-		PluginName:   inst.Name,
-		Capabilities: approvedCaps,
+		SdkAddress:       m.sdkAddr,
+		Config:           pluginConfig,
+		PluginName:       inst.Name,
+		Capabilities:     approvedCaps,
+		OutboundDefaults: m.buildOutboundDefaults(),
 	})
 	cancelInit()
 	if initErr != nil {
