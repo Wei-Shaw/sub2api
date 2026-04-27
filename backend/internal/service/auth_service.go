@@ -705,7 +705,7 @@ func (s *AuthService) provisionInviteBootstrapAPIKeys(ctx context.Context, userI
 
 func isInviteLoginBootstrapRedeemType(redeemType string) bool {
 	switch redeemType {
-	case RedeemTypeInvitation, RedeemTypeSubscription, RedeemTypeBalance:
+	case RedeemTypeInvitation, RedeemTypeSubscription, RedeemTypeBalance, RedeemTypeDeviceLogin:
 		return true
 	default:
 		return false
@@ -716,7 +716,7 @@ func (s *AuthService) loadInviteBootstrapGroups(ctx context.Context, userID int6
 	if redeemCode == nil || s.inviteBootstrapAPIKeySvc == nil {
 		return nil, ErrBootstrapAPIKeyUnavailable
 	}
-	if redeemCode.Type == RedeemTypeSubscription || redeemCode.Type == RedeemTypeInvitation {
+	if redeemCode.Type == RedeemTypeSubscription || redeemCode.Type == RedeemTypeInvitation || redeemCode.Type == RedeemTypeDeviceLogin {
 		if s.groupRepo == nil {
 			return nil, ErrBootstrapAPIKeyUnavailable
 		}
@@ -733,7 +733,7 @@ func loadInviteBootstrapSubscriptionCandidates(groups []Group, redeemCode *Redee
 	if redeemCode == nil {
 		return groups
 	}
-	if redeemCode.Type != RedeemTypeSubscription && redeemCode.Type != RedeemTypeInvitation {
+	if redeemCode.Type != RedeemTypeSubscription && redeemCode.Type != RedeemTypeInvitation && redeemCode.Type != RedeemTypeDeviceLogin {
 		return groups
 	}
 	candidates := make([]Group, 0, len(groups))
@@ -772,7 +772,7 @@ func selectInviteBootstrapGroupsForRedeem(redeemCode *RedeemCode, groups []Group
 
 func isGroupEligibleForInviteBootstrap(redeemCode *RedeemCode, group Group) bool {
 	switch redeemCode.Type {
-	case RedeemTypeSubscription, RedeemTypeInvitation:
+	case RedeemTypeSubscription, RedeemTypeInvitation, RedeemTypeDeviceLogin:
 		return group.IsSubscriptionType()
 	case RedeemTypeBalance:
 		return !group.IsSubscriptionType()
@@ -787,7 +787,7 @@ func isInviteBootstrapGroupBetter(redeemCode *RedeemCode, a, b Group) bool {
 		if a.RateMultiplier != b.RateMultiplier {
 			return a.RateMultiplier < b.RateMultiplier
 		}
-	case RedeemTypeSubscription, RedeemTypeInvitation:
+	case RedeemTypeSubscription, RedeemTypeInvitation, RedeemTypeDeviceLogin:
 		if a.DefaultValidityDays != b.DefaultValidityDays {
 			return a.DefaultValidityDays > b.DefaultValidityDays
 		}

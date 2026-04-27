@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,6 +21,74 @@ type inviteBootstrapAPIKeyServiceStub struct {
 	groups       []Group
 	createdKeys  []*APIKey
 	createErrors map[int64]error
+}
+
+type inviteBootstrapGroupRepoStub struct {
+	groups []Group
+}
+
+func (s *inviteBootstrapGroupRepoStub) Create(context.Context, *Group) error {
+	panic("unexpected Create call")
+}
+
+func (s *inviteBootstrapGroupRepoStub) GetByID(context.Context, int64) (*Group, error) {
+	panic("unexpected GetByID call")
+}
+
+func (s *inviteBootstrapGroupRepoStub) GetByIDLite(context.Context, int64) (*Group, error) {
+	panic("unexpected GetByIDLite call")
+}
+
+func (s *inviteBootstrapGroupRepoStub) Update(context.Context, *Group) error {
+	panic("unexpected Update call")
+}
+
+func (s *inviteBootstrapGroupRepoStub) Delete(context.Context, int64) error {
+	panic("unexpected Delete call")
+}
+
+func (s *inviteBootstrapGroupRepoStub) DeleteCascade(context.Context, int64) ([]int64, error) {
+	panic("unexpected DeleteCascade call")
+}
+
+func (s *inviteBootstrapGroupRepoStub) List(context.Context, pagination.PaginationParams) ([]Group, *pagination.PaginationResult, error) {
+	panic("unexpected List call")
+}
+
+func (s *inviteBootstrapGroupRepoStub) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *bool) ([]Group, *pagination.PaginationResult, error) {
+	panic("unexpected ListWithFilters call")
+}
+
+func (s *inviteBootstrapGroupRepoStub) ListActive(context.Context) ([]Group, error) {
+	return append([]Group(nil), s.groups...), nil
+}
+
+func (s *inviteBootstrapGroupRepoStub) ListActiveByPlatform(context.Context, string) ([]Group, error) {
+	panic("unexpected ListActiveByPlatform call")
+}
+
+func (s *inviteBootstrapGroupRepoStub) ExistsByName(context.Context, string) (bool, error) {
+	panic("unexpected ExistsByName call")
+}
+
+func (s *inviteBootstrapGroupRepoStub) GetAccountCount(context.Context, int64) (int64, int64, error) {
+	panic("unexpected GetAccountCount call")
+}
+
+func (s *inviteBootstrapGroupRepoStub) DeleteAccountGroupsByGroupID(context.Context, int64) (int64, error) {
+	panic("unexpected DeleteAccountGroupsByGroupID call")
+}
+
+func (s *inviteBootstrapGroupRepoStub) GetAccountIDsByGroupIDs(context.Context, []int64) ([]int64, error) {
+	panic("unexpected GetAccountIDsByGroupIDs call")
+}
+
+func (s *inviteBootstrapGroupRepoStub) BindAccountsToGroup(context.Context, int64, []int64) error {
+	panic("unexpected BindAccountsToGroup call")
+}
+
+func (s *inviteBootstrapGroupRepoStub) UpdateSortOrders(context.Context, []GroupSortOrderUpdate) error {
+	panic("unexpected UpdateSortOrders call")
 }
 
 func (s *inviteBootstrapAPIKeyServiceStub) GetAvailableGroups(context.Context, int64) ([]Group, error) {
@@ -115,6 +184,9 @@ func newAuthServiceForInviteLoginTest(
 	authService.SetInviteLoginDeviceResolver(userDeviceRepo)
 	if bootstrapSvc != nil {
 		authService.SetInviteBootstrapAPIKeyService(bootstrapSvc)
+		if stub, ok := bootstrapSvc.(*inviteBootstrapAPIKeyServiceStub); ok {
+			authService.SetInviteBootstrapGroupRepository(&inviteBootstrapGroupRepoStub{groups: stub.groups})
+		}
 	}
 	return authService
 }
@@ -156,10 +228,12 @@ func TestAuthServiceInviteLoginAcceptsDeviceLoginCode(t *testing.T) {
 	}
 	bootstrapSvc := &inviteBootstrapAPIKeyServiceStub{
 		groups: []Group{{
-			ID:                 101,
-			Platform:           "openai",
-			Status:             StatusActive,
-			ActiveAccountCount: 1,
+			ID:                  101,
+			Platform:            "openai",
+			Status:              StatusActive,
+			SubscriptionType:    SubscriptionTypeSubscription,
+			DefaultValidityDays: 30,
+			ActiveAccountCount:  1,
 		}},
 	}
 	authService := newAuthServiceForInviteLoginTest(
