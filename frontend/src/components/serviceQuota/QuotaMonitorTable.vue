@@ -120,7 +120,8 @@
                 :title="t('admin.serviceQuotaMonitor.resetTitle')"
                 @click="emit('reset', row)"
               >
-                <Icon name="trash" size="sm" />
+                <!-- 重置 = 计数器回零（循环箭头）；trash 是删除规则的语义，与"counter 回零"无关 -->
+                <Icon name="sync" size="sm" />
                 <span class="text-xs">{{ t('admin.serviceQuotaMonitor.reset') }}</span>
               </button>
             </div>
