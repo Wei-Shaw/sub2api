@@ -2,6 +2,8 @@ package pluginsdk
 
 import (
 	"encoding/json"
+	"fmt"
+	"log/slog"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
@@ -117,6 +119,10 @@ type Manifest struct {
 // plugin should treat the schema as immutable for the lifetime of a given
 // plugin version. Bumping the plugin version + restarting is the supported
 // upgrade path when the schema changes shape.
+//
+// V5/W6 SETTINGS-V2 added Version and PropertyMeta to support marker-driven
+// admin UI features (visibility / deprecated / requires_reload). See
+// docs/plugin-architecture/SETTINGS-V2-DESIGN.md §3.3 for the full spec.
 type SettingsSchemaDoc struct {
 	// Schema is a JSON Schema Draft-07 document. The top level should be an
 	// object with a `properties` map; each property describes one setting.
@@ -130,6 +136,66 @@ type SettingsSchemaDoc struct {
 	// the schema avoids forcing the host to re-walk the schema tree for
 	// every plugin install.
 	Defaults json.RawMessage
+
+	// Version is the plugin's self-declared schema version, e.g. "1.0.0".
+	// The host stamps it into plugin_settings.schema_version_at_write on
+	// every write so the plugin SDK's GetTyped can detect stale values
+	// (SchemaVersionMismatchError). Empty is normalised to "0" host-side.
+	//
+	// Semantic versioning is RECOMMENDED but not enforced — the host
+	// treats it as an opaque string and only checks for equality. The
+	// plugin owns the comparison logic when it wants ordering.
+	Version string `json:"version,omitempty"`
+
+	// PropertyMeta carries per-property markers (visibility / deprecated /
+	// requires_reload) keyed by the top-level property name. The SDK
+	// serialises this map into ManifestResponse.settings_properties_meta_json.
+	//
+	// Plugins may declare the markers inline as JSON Schema vendor extensions
+	// (`x-visibility`, `x-deprecated`, `x-requires-reload`) on the schema
+	// node itself instead of populating this map. Both work; when both are
+	// present this map wins (per SETTINGS-V2-DESIGN §3.3.2).
+	PropertyMeta map[string]PropertyMetadata `json:"property_meta,omitempty"`
+}
+
+// PropertyMetadata is the marker triple SETTINGS-V2 attaches to one
+// top-level schema property. All three fields default to the zero value;
+// `Visibility == ""` is normalised to "frontend" by the host.
+type PropertyMetadata struct {
+	// Visibility is one of "frontend" | "backend" | "secret". Empty defaults
+	// to "frontend" host-side. See SETTINGS-V2-DESIGN §4.2 for read/write
+	// semantics.
+	Visibility string `json:"visibility,omitempty"`
+
+	// Deprecated, if non-empty, marks the field as deprecated. The string
+	// is the human-readable migration message ("use foo instead"). Admin
+	// UI renders strikethrough + warning tag. Empty means not deprecated.
+	Deprecated string `json:"deprecated,omitempty"`
+
+	// RequiresReload=true means the host should reload the plugin process
+	// after admin saves this key. See SETTINGS-V2-DESIGN §4.4 for the
+	// reload state machine.
+	RequiresReload bool `json:"requires_reload,omitempty"`
+}
+
+// validatePropertyMeta checks that every PropertyMetadata.Visibility value
+// in meta is one of the allowed strings ("" | "frontend" | "backend" |
+// "secret"). It returns the first violation as an error.
+//
+// Per SETTINGS-V2-DESIGN §3.3.1 this helper exists so the SDK can fail-fast
+// on obviously broken plugin manifests; the host's
+// PluginSettingsService.RegisterSchema (W2-B) will run an equivalent check
+// as a defence-in-depth measure.
+func validatePropertyMeta(meta map[string]PropertyMetadata) error {
+	for prop, m := range meta {
+		switch m.Visibility {
+		case "", "frontend", "backend", "secret":
+			// ok
+		default:
+			return fmt.Errorf("pluginsdk: SettingsSchemaDoc.PropertyMeta[%q].Visibility=%q must be one of frontend|backend|secret", prop, m.Visibility)
+		}
+	}
+	return nil
 }
 
 // EndpointDecl describes a single HTTP endpoint declaration.
@@ -238,6 +304,31 @@ func (m *Manifest) toProto() *pb.ManifestResponse {
 		// removes a footgun where authors forget the constant.
 		if resp.SettingsSchemaJson != nil && !containsCap(caps, CapabilitySettingsExtension) {
 			caps = append(caps, CapabilitySettingsExtension)
+		}
+		// V5/W6 SETTINGS-V2: ship version + per-property markers so the
+		// host does not need to re-walk the schema for every admin GET.
+		resp.SettingsSchemaVersion = m.SettingsSchema.Version
+
+		if len(m.SettingsSchema.PropertyMeta) > 0 {
+			// Surface invalid Visibility values via the plugin's logger so
+			// the author notices during local development. The host's
+			// RegisterSchema (W2-B) will reject the manifest as the final
+			// defence; emitting nil here keeps the host able to derive
+			// markers from schema_json alone.
+			if err := validatePropertyMeta(m.SettingsSchema.PropertyMeta); err != nil {
+				slog.Default().Warn("plugin-sdk: PropertyMeta validation failed", "error", err)
+			}
+			metaBytes, err := json.Marshal(m.SettingsSchema.PropertyMeta)
+			if err != nil {
+				// Falling back to nil keeps the host able to derive markers
+				// from schema_json alone; the plugin author saw the error
+				// in their logs via slog.Default since toProto runs at
+				// manifest send time.
+				slog.Default().Warn("plugin-sdk: marshal PropertyMeta failed", "error", err)
+				resp.SettingsPropertiesMetaJson = nil
+			} else {
+				resp.SettingsPropertiesMetaJson = metaBytes
+			}
 		}
 	}
 	resp.Capabilities = caps
