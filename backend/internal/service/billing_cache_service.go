@@ -508,6 +508,18 @@ REDACTED
 	return nil
 REDACTED
 
+// InvalidateAPIKeyRateLimit invalidates the Redis rate-limit usage cache for an API key.
+func (s *BillingCacheService) InvalidateAPIKeyRateLimit(ctx context.Context, keyID int64) error {
+	if s.cache == nil {
+		return nil
+REDACTED
+	if err := s.cache.InvalidateAPIKeyRateLimit(ctx, keyID); err != nil {
+		logger.LegacyPrintf("service.billing_cache", "Warning: invalidate api key rate limit cache failed for key %d: %v", keyID, err)
+		return err
+REDACTED
+	return nil
+REDACTED
+
 // ============================================
 // API Key 限速缓存方法
 // ============================================

@@ -22,12 +22,13 @@ func NewAdminAPIKeyHandler(adminService service.AdminService) *AdminAPIKeyHandle
 REDACTED
 REDACTED
 
-// AdminUpdateAPIKeyGroupRequest represents the request to update an API key's group
+// AdminUpdateAPIKeyGroupRequest represents the request to update an API key.
 type AdminUpdateAPIKeyGroupRequest struct {
-	GroupID *int64 `json:"group_id"` // nil=不修改, 0=解绑, >0=绑定到目标分组
+	GroupID             *int64 `json:"group_id"`               // nil=不修改, 0=解绑, >0=绑定到目标分组
+	ResetRateLimitUsage *bool  `json:"reset_rate_limit_usage"` // true=重置 5h/1d/7d 限速用量
 REDACTED
 
-// UpdateGroup handles updating an API key's group binding
+// UpdateGroup handles updating an API key's admin-managed fields.
 // PUT /api/v1/admin/api-keys/:id
 func (h *AdminAPIKeyHandler) UpdateGroup(c *gin.Context) {
 	keyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
@@ -42,10 +43,22 @@ REDACTED
 		return
 REDACTED
 
+	var resetKey *service.APIKey
+	if req.ResetRateLimitUsage != nil && *req.ResetRateLimitUsage {
+		resetKey, err = h.adminService.AdminResetAPIKeyRateLimitUsage(c.Request.Context(), keyID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+	REDACTED
+REDACTED
+
 	result, err := h.adminService.AdminUpdateAPIKeyGroupID(c.Request.Context(), keyID, req.GroupID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+REDACTED
+	if resetKey != nil && req.GroupID == nil {
+		result.APIKey = resetKey
 REDACTED
 
 	resp := struct {
