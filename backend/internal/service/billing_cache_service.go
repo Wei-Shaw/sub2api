@@ -428,3 +428,19 @@ func (s *BillingCacheService) checkSubscriptionEligibility(ctx context.Context, 
 
 	return nil
 }
+
+// RecordServiceQuotaUsage 收敛 ServiceQuota.Record 调用，让 gateway / 任何其他 caller
+// 不必再穿透 BillingCacheService.serviceQuota 这个内部字段。
+//
+// 入口 nil-guard：BillingCacheService 自身可能为 nil（早期初始化路径）；serviceQuota
+// 也可能未注入（旧测试桩或部署不开启）。两种情况都视作"无规则"静默 no-op，与 Record
+// 内部一直以来的语义一致。
+//
+// Record 本身不返回 error（fail-open 设计：限流器不可用时落日志 + metrics，但请求继续），
+// 因此这里也不返回 error。
+func (s *BillingCacheService) RecordServiceQuotaUsage(ctx context.Context, req ServiceQuotaRecordRequest) {
+	if s == nil || s.serviceQuota == nil {
+		return
+	}
+	s.serviceQuota.Record(ctx, req)
+}

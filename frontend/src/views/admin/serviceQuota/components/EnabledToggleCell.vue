@@ -33,6 +33,12 @@ function buildPayload(row: ServiceQuotaRule, enabled: boolean): ServiceQuotaRule
       limiter_type: l.limiter_type,
       window_mode: l.window_mode,
       limit_value: l.limit_value,
+      // 守卫透传 token_components：仅 TPM/TPD 会有该字段；
+      // 不带的话后端 normalizeLimiterTokenComponents 会回填默认值，
+      // 导致用户在编辑里取消勾选的 component 通过 toggle 又被恢复。
+      ...(l.token_components && l.token_components.length > 0
+        ? { token_components: [...l.token_components] }
+        : {}),
     })),
     paths: row.paths.map((p) => ({
       platform: p.platform ?? null,
@@ -52,7 +58,11 @@ async function onToggle(next: boolean) {
   try {
     const updated = await updateServiceQuotaRule(props.row.id, buildPayload(props.row, next))
     Object.assign(props.row, updated)
-    appStore.showSuccess(t('admin.serviceQuota.toggleSuccess'))
+    // 后端在 enabled 翻转时会清空该规则下所有 limiter 计数器（counter reset），
+    // toast 里同时提示一下，避免用户疑惑"刚被限流的为什么又能进了"。
+    appStore.showSuccess(
+      `${t('admin.serviceQuota.toggleSuccess')} · ${t('admin.serviceQuota.counterResetOnToggle')}`
+    )
   } catch (err: unknown) {
     props.row.enabled = prev
     appStore.showError(extractApiErrorMessage(err, t('admin.serviceQuota.toggleError')))

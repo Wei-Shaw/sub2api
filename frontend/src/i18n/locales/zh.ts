@@ -4006,6 +4006,7 @@ export default {
       deleteError: '删除服务配额规则失败',
       toggleSuccess: '状态更新成功',
       toggleError: '状态更新失败',
+      counterResetOnToggle: '已重置该规则的限流计数',
       deleteConfirm: '删除规则 {name}？删除后立即停止生效。',
       filters: {
         allCounterModes: '全部计数模式',
@@ -4136,7 +4137,7 @@ export default {
         window: '窗口',
         usage: '用量',
         counterMode: '限制模式',
-        scopeUser: '作用用户',
+        scopeUser: '用户',
         isFallback: '是否默认',
         actions: '操作'
       },

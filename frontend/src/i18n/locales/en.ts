@@ -3842,6 +3842,7 @@ export default {
       deleteError: 'Failed to delete service quota rule',
       toggleSuccess: 'Status updated',
       toggleError: 'Failed to update status',
+      counterResetOnToggle: 'Counter reset for this rule',
       deleteConfirm: 'Delete rule {name}? It will stop taking effect immediately.',
       filters: {
         allCounterModes: 'All Counter Modes',

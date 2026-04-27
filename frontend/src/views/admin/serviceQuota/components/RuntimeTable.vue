@@ -100,26 +100,28 @@
             </span>
           </td>
 
-          <!-- 操作（admin only）：刷新单条 + 重置（图标 + 文字） -->
+          <!-- 操作（admin only）：刷新单条 + 重置。
+               样式与账号管理 / 用户管理一致：图标 + 文字纵向叠放、灰色基调、无边框无底色，
+               危险动作（重置）hover 时切到红色（与 AccountsView 删除按钮同款），项目惯例。 -->
           <td v-if="showInternal" class="px-4 py-3 whitespace-nowrap">
             <div class="flex items-center gap-1">
               <button
                 type="button"
-                class="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-gray-200"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
                 :title="t('admin.serviceQuotaMonitor.refreshTitle')"
                 @click="emit('refresh', row)"
               >
-                <Icon name="refresh" size="xs" />
-                <span>{{ t('admin.serviceQuotaMonitor.refresh') }}</span>
+                <Icon name="refresh" size="sm" />
+                <span class="text-xs">{{ t('admin.serviceQuotaMonitor.refresh') }}</span>
               </button>
               <button
                 type="button"
-                class="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-orange-600 transition-colors hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-900/20"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
                 :title="t('admin.serviceQuotaMonitor.resetTitle')"
                 @click="emit('reset', row)"
               >
-                <Icon name="trash" size="xs" />
-                <span>{{ t('admin.serviceQuotaMonitor.reset') }}</span>
+                <Icon name="trash" size="sm" />
+                <span class="text-xs">{{ t('admin.serviceQuotaMonitor.reset') }}</span>
               </button>
             </div>
           </td>

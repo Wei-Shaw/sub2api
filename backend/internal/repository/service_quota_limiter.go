@@ -214,6 +214,38 @@ func (l *serviceQuotaLimiter) Reset(ctx context.Context, key string) error {
 	return l.rdb.Del(ctx, key).Err()
 }
 
+// resetPatternScanCount 是 SCAN 单次 COUNT 提示值，控制每次 SCAN 命令返回的批量大小。
+// 选 256 是常规折衷：太小会拉长批数（多次 RTT），太大会让单次 SCAN 阻塞 redis 主线程过久。
+const resetPatternScanCount = 256
+
+// ResetPattern 通过 SCAN+DEL 批量清理 pattern 命中的所有 limiter key。
+//
+// 用法见 service.ServiceQuotaLimiter.ResetPattern 接口注释。底层用非阻塞的 SCAN 游标
+// 而非 KEYS（KEYS 会阻塞主线程），分批 DEL（每批最多 resetPatternScanCount 条）。
+// 任何中途错误立即返回，已删除的批次不会回滚——按 best-effort 语义可接受
+// （上层调用方仅 log warn）。
+func (l *serviceQuotaLimiter) ResetPattern(ctx context.Context, pattern string) error {
+	if l == nil || l.rdb == nil || pattern == "" {
+		return nil
+	}
+	var cursor uint64
+	for {
+		keys, next, err := l.rdb.Scan(ctx, cursor, pattern, resetPatternScanCount).Result()
+		if err != nil {
+			return fmt.Errorf("service quota limiter scan %q: %w", pattern, err)
+		}
+		if len(keys) > 0 {
+			if err := l.rdb.Del(ctx, keys...).Err(); err != nil {
+				return fmt.Errorf("service quota limiter del batch (pattern=%q, n=%d): %w", pattern, len(keys), err)
+			}
+		}
+		if next == 0 {
+			return nil
+		}
+		cursor = next
+	}
+}
+
 func fixedWindowTTL(window time.Duration) time.Duration {
 	if window >= 24*time.Hour {
 		return 48 * time.Hour

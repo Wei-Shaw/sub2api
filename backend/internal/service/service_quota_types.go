@@ -289,6 +289,17 @@ type ServiceQuotaLimiter interface {
 	// fixed/rolling/concurrency 三种实现共用同一 DEL；concurrency 已在飞请求的
 	// Release 是幂等的，无副作用。
 	Reset(ctx context.Context, key string) error
+	// ResetPattern 通过 SCAN+DEL 批量清理符合 pattern 的所有 limiter key（counter key 公式见
+	// BuildServiceQuotaCounterKey）。用于以下两类管理员操作的"事务后善后"路径：
+	//   - 规则被删除（DeleteRule） → pattern = svcquota:v2:<rule_id>:*
+	//   - limiter window_mode 切换 fixed↔rolling → pattern = svcquota:v2:<rule_id>:*:<limiter_type>:*
+	//
+	// 不写入 counterKey 公式（避免破坏 BuildServiceQuotaCounterKey 单点实现），
+	// 而是依赖 SCAN 在持有该前缀语义的 service 层调用方组装 pattern 后传入。
+	//
+	// 失败按 best-effort 语义返回 error 给调用方：调用方通常 log warn 但不阻塞业务
+	// （Redis TTL 仍会兜底清理，只是窗口更长）。pattern 为空字符串时直接返回 nil 不做任何动作。
+	ResetPattern(ctx context.Context, pattern string) error
 }
 
 // SnapshotKey 描述一个 limiter 的快照读取目标。

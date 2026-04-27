@@ -7309,6 +7309,38 @@ func (p *postUsageBillingParams) shouldUpdateAccountQuota() bool {
 	return p.Cost.TotalCost > 0 && p.Account.IsAPIKeyOrBedrock() && p.Account.HasAnyQuotaLimit()
 }
 
+// buildServiceQuotaRecordRequest 从 postUsageBillingParams 装配 ServiceQuotaRecordRequest。
+//
+// 返回 ok=false 表示"本次请求不需要写服务限额计数"——目前唯一硬约束是 p.User == nil
+// （未鉴权或异常路径），因为所有 limiter 计数 key 都需要 UserID 以做 per-user/shared 区分。
+//
+// 注意 ServiceQuotaRequest 已在 caller 路径就装填了 platform / channel / model 等字段，
+// 这里只补上随响应才确定的 UserID/GroupID/Platform/AccountID 覆盖（同 APIKey 的 group 一致）。
+func buildServiceQuotaRecordRequest(p *postUsageBillingParams) (ServiceQuotaRecordRequest, bool) {
+	if p == nil || p.User == nil || p.Cost == nil {
+		return ServiceQuotaRecordRequest{}, false
+	}
+	req := p.ServiceQuotaRequest
+	req.UserID = p.User.ID
+	if p.APIKey != nil && p.APIKey.GroupID != nil {
+		req.GroupID = *p.APIKey.GroupID
+	}
+	if p.APIKey != nil && p.APIKey.Group != nil {
+		req.Platform = p.APIKey.Group.Platform
+	}
+	if p.Account != nil {
+		req.AccountID = p.Account.ID
+	}
+	return ServiceQuotaRecordRequest{
+		ServiceQuotaCheckRequest: req,
+		InputTokens:              p.InputTokens,
+		OutputTokens:             p.OutputTokens,
+		CacheCreationTokens:      p.CacheCreationTokens,
+		CacheReadTokens:          p.CacheReadTokens,
+		Cost:                     p.Cost.ActualCost,
+	}, true
+}
+
 // postUsageBilling is the legacy fallback billing path used when the unified
 // billing repo is unavailable (nil). Production uses applyUsageBilling → repo.Apply
 // for atomic billing. This path only runs in tests or degraded mode.
@@ -7496,26 +7528,8 @@ func finalizePostUsageBilling(p *postUsageBillingParams, deps *billingDeps, resu
 	if p.Cost.ActualCost > 0 && p.APIKey != nil && p.APIKey.HasRateLimits() {
 		deps.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(p.APIKey.ID, p.Cost.ActualCost)
 	}
-	if deps.billingCacheService != nil && deps.billingCacheService.serviceQuota != nil && p.User != nil {
-		req := p.ServiceQuotaRequest
-		req.UserID = p.User.ID
-		if p.APIKey != nil && p.APIKey.GroupID != nil {
-			req.GroupID = *p.APIKey.GroupID
-		}
-		if p.APIKey != nil && p.APIKey.Group != nil {
-			req.Platform = p.APIKey.Group.Platform
-		}
-		if p.Account != nil {
-			req.AccountID = p.Account.ID
-		}
-		deps.billingCacheService.serviceQuota.Record(context.Background(), ServiceQuotaRecordRequest{
-			ServiceQuotaCheckRequest: req,
-			InputTokens:              p.InputTokens,
-			OutputTokens:             p.OutputTokens,
-			CacheCreationTokens:      p.CacheCreationTokens,
-			CacheReadTokens:          p.CacheReadTokens,
-			Cost:                     p.Cost.ActualCost,
-		})
+	if record, ok := buildServiceQuotaRecordRequest(p); ok && deps.billingCacheService != nil {
+		deps.billingCacheService.RecordServiceQuotaUsage(context.Background(), record)
 	}
 
 	deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)

@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -125,6 +126,49 @@ func (f *fakeServiceQuotaLimiter) Reset(_ context.Context, key string) error {
 	delete(f.counters, key)
 	delete(f.concurrency, key)
 	return nil
+}
+
+// ResetPattern 模拟 SCAN+DEL：把 pattern 翻译为简单前缀（仅支持末尾 `*` 与中间 `*` 通配）匹配，
+// 删除所有命中的 counter / concurrency key。测试不验证 SCAN 语义，仅保证接口实现完整。
+func (f *fakeServiceQuotaLimiter) ResetPattern(_ context.Context, pattern string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for k := range f.counters {
+		if matchesGlobPattern(k, pattern) {
+			delete(f.counters, k)
+		}
+	}
+	for k := range f.concurrency {
+		if matchesGlobPattern(k, pattern) {
+			delete(f.concurrency, k)
+		}
+	}
+	return nil
+}
+
+// matchesGlobPattern 是 SCAN MATCH glob 的最小子集匹配：仅支持 `*` 通配（不支持 `?`、`[]`），
+// 足够覆盖 service quota 的 pattern 形态（svcquota:v2:<rule>:* 或 svcquota:v2:<rule>:*:<type>:*）。
+func matchesGlobPattern(s, pattern string) bool {
+	if pattern == "" {
+		return false
+	}
+	parts := strings.Split(pattern, "*")
+	if len(parts) == 1 {
+		return s == pattern
+	}
+	if !strings.HasPrefix(s, parts[0]) {
+		return false
+	}
+	cur := len(parts[0])
+	for i := 1; i < len(parts)-1; i++ {
+		idx := strings.Index(s[cur:], parts[i])
+		if idx < 0 {
+			return false
+		}
+		cur += idx + len(parts[i])
+	}
+	last := parts[len(parts)-1]
+	return strings.HasSuffix(s[cur:], last)
 }
 
 // ─── Helpers ───
