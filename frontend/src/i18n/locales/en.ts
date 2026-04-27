@@ -3987,6 +3987,7 @@ export default {
         accountId: 'Account',
         modelPattern: 'Model Pattern',
         modelPatternPlaceholder: 'e.g. claude-opus-* or an exact model name',
+        modelPatternHint: 'Wildcard * supported, e.g. claude-* matches all claude models on this platform',
         required: 'Required'
       },
       limiterEditor: {

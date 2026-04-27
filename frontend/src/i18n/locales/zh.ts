@@ -4151,6 +4151,7 @@ export default {
         accountId: '账号',
         modelPattern: '模型通配符',
         modelPatternPlaceholder: '例如 claude-opus-* 或精确模型名',
+        modelPatternHint: '支持通配符 *，例如 claude-* 匹配该平台下所有 claude 模型',
         required: '必填'
       },
       limiterEditor: {
