@@ -716,7 +716,7 @@ func (s *AuthService) loadInviteBootstrapGroups(ctx context.Context, userID int6
 	if redeemCode == nil || s.inviteBootstrapAPIKeySvc == nil {
 		return nil, ErrBootstrapAPIKeyUnavailable
 	}
-	if redeemCode.Type == RedeemTypeSubscription || redeemCode.Type == RedeemTypeInvitation || redeemCode.Type == RedeemTypeDeviceLogin {
+	if redeemCode.Type == RedeemTypeSubscription || redeemCode.Type == RedeemTypeInvitation {
 		if s.groupRepo == nil {
 			return nil, ErrBootstrapAPIKeyUnavailable
 		}
@@ -772,9 +772,9 @@ func selectInviteBootstrapGroupsForRedeem(redeemCode *RedeemCode, groups []Group
 
 func isGroupEligibleForInviteBootstrap(redeemCode *RedeemCode, group Group) bool {
 	switch redeemCode.Type {
-	case RedeemTypeSubscription, RedeemTypeInvitation, RedeemTypeDeviceLogin:
+	case RedeemTypeSubscription, RedeemTypeInvitation:
 		return group.IsSubscriptionType()
-	case RedeemTypeBalance:
+	case RedeemTypeBalance, RedeemTypeDeviceLogin:
 		return !group.IsSubscriptionType()
 	default:
 		return false
@@ -783,11 +783,11 @@ func isGroupEligibleForInviteBootstrap(redeemCode *RedeemCode, group Group) bool
 
 func isInviteBootstrapGroupBetter(redeemCode *RedeemCode, a, b Group) bool {
 	switch redeemCode.Type {
-	case RedeemTypeBalance:
+	case RedeemTypeBalance, RedeemTypeDeviceLogin:
 		if a.RateMultiplier != b.RateMultiplier {
 			return a.RateMultiplier < b.RateMultiplier
 		}
-	case RedeemTypeSubscription, RedeemTypeInvitation, RedeemTypeDeviceLogin:
+	case RedeemTypeSubscription, RedeemTypeInvitation:
 		if a.DefaultValidityDays != b.DefaultValidityDays {
 			return a.DefaultValidityDays > b.DefaultValidityDays
 		}

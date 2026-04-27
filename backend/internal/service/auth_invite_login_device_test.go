@@ -227,22 +227,44 @@ func TestAuthServiceInviteLoginAcceptsDeviceLoginCode(t *testing.T) {
 		},
 	}
 	bootstrapSvc := &inviteBootstrapAPIKeyServiceStub{
-		groups: []Group{{
-			ID:                  101,
-			Platform:            "openai",
-			Status:              StatusActive,
-			SubscriptionType:    SubscriptionTypeSubscription,
-			DefaultValidityDays: 30,
-			ActiveAccountCount:  1,
-		}},
+		groups: []Group{
+			{
+				ID:                 101,
+				Platform:           "openai",
+				Status:             StatusActive,
+				SubscriptionType:   SubscriptionTypeStandard,
+				RateMultiplier:     0.8,
+				ActiveAccountCount: 1,
+			},
+			{
+				ID:                 102,
+				Platform:           "openai",
+				Status:             StatusActive,
+				SubscriptionType:   SubscriptionTypeStandard,
+				RateMultiplier:     1.1,
+				ActiveAccountCount: 1,
+			},
+			{
+				ID:                 103,
+				Platform:           "anthropic",
+				Status:             StatusActive,
+				SubscriptionType:   SubscriptionTypeStandard,
+				RateMultiplier:     0.9,
+				ActiveAccountCount: 1,
+			},
+		},
 	}
 	authService := newAuthServiceForInviteLoginTest(
 		userRepo,
 		&redeemCodeRepoStub{codesByCode: map[string]*RedeemCode{loginCode: loginRedeem}},
 		userDeviceRepo,
-		map[string]string{SettingKeyRegistrationEnabled: "false"},
+		map[string]string{
+			SettingKeyRegistrationEnabled:  "false",
+			SettingKeyDefaultSubscriptions: `[{"group_id":101,"validity_days":30}]`,
+		},
 		bootstrapSvc,
 	)
+	authService.defaultSubAssigner = &defaultSubscriptionAssignerStub{}
 
 	result, err := authService.InviteLogin(context.Background(), InviteLoginInput{
 		InvitationCode: loginCode,
@@ -257,10 +279,16 @@ func TestAuthServiceInviteLoginAcceptsDeviceLoginCode(t *testing.T) {
 	require.NotNil(t, result.User)
 	require.Equal(t, int64(51), result.User.ID)
 	require.Equal(t, []int64{2}, userDeviceRepo.updatedLoginIDs)
-	require.Len(t, result.BootstrapAPIKeys, 1)
-	require.Equal(t, "openai", result.BootstrapAPIKeys[0].Platform)
-	require.Equal(t, "sk-bootstrap-bootstrap-openai", result.BootstrapAPIKeys[0].Key)
-	require.Len(t, bootstrapSvc.createdKeys, 1)
+	require.Len(t, result.BootstrapAPIKeys, 2)
+	require.Equal(t, "anthropic", result.BootstrapAPIKeys[0].Platform)
+	require.NotEmpty(t, result.BootstrapAPIKeys[0].Key)
+	require.Equal(t, "openai", result.BootstrapAPIKeys[1].Platform)
+	require.NotEmpty(t, result.BootstrapAPIKeys[1].Key)
+	require.Len(t, bootstrapSvc.createdKeys, 2)
+	require.NotNil(t, bootstrapSvc.createdKeys[0].GroupID)
+	require.NotNil(t, bootstrapSvc.createdKeys[1].GroupID)
+	require.Equal(t, int64(103), *bootstrapSvc.createdKeys[0].GroupID)
+	require.Equal(t, int64(101), *bootstrapSvc.createdKeys[1].GroupID)
 }
 
 func TestAuthServiceInviteLoginRejectsDeviceMismatch(t *testing.T) {
