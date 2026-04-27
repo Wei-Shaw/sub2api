@@ -35,6 +35,14 @@ const (
 	// proxying plugin endpoints to this plugin. It MUST match the prefix
 	// declared in PluginEndpoints below.
 	pluginRoutePrefix = "/api/v1/plugin/" + pluginName
+
+	// availableChannelsFrontendPath is the user-facing route the SPA
+	// registers for the "available channels" view. The matching
+	// frontend component file (AvailableChannelsView.vue) ships with
+	// W9 of the plugin migration; the manifest declares the route up
+	// front so the host SPA router has the entry as soon as the
+	// frontend bundle is rebuilt.
+	availableChannelsFrontendPath = "/available-channels"
 )
 
 // ChannelPlugin is the channel-management plugin entry point. It owns the
@@ -47,7 +55,8 @@ type ChannelPlugin struct {
 	// before Init) can hand it to the SDK and Init can plug services into it.
 	engine *gin.Engine
 
-	channelHandler *chHandler.ChannelHandler
+	channelHandler          *chHandler.ChannelHandler
+	availableChannelHandler *chHandler.AvailableChannelHandler
 }
 
 // Manifest declares the plugin's capabilities to the core. Endpoint paths are
@@ -65,6 +74,8 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 			{Path: pluginRoutePrefix + "/admin/channels/:id", Methods: []string{http.MethodGet, http.MethodPut, http.MethodDelete}, AuthType: pluginsdk.AuthTypeAdmin},
 			// Admin: model pricing helper
 			{Path: pluginRoutePrefix + "/admin/channels/model-pricing", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeAdmin},
+			// User: available channels (read-only, scoped by V4 X-Plugin-User-* headers)
+			{Path: pluginRoutePrefix + "/available-channels", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
 		},
 		// Capabilities — channel-management writes the gateway cache contract
 		// (channel:active, channel:by_id:*, …) which the core's
@@ -97,6 +108,18 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 						},
 					},
 				},
+				// User-facing "available channels" entry. The actual Vue
+				// component is added in W9; declaring the menu item now lets
+				// the host SPA pick it up the moment the frontend bundle
+				// rebuilds, with no further backend change required.
+				{
+					Path:          availableChannelsFrontendPath,
+					IconSVG:       pluginsdk.IconBranchFork,
+					Labels:        pluginsdk.Labels("可用渠道", "Available Channels"),
+					Section:       pluginsdk.SectionUser,
+					SortOrder:     200,
+					RequiresAdmin: false,
+				},
 			},
 			Routes: []pluginsdk.RouteDecl{
 				{
@@ -106,6 +129,15 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 					Path:          "/admin/channels",
 					Name:          "AdminChannels",
 					ComponentPath: "ChannelsView.vue",
+				},
+				// User-facing route — same dance as the menu item: the file
+				// AvailableChannelsView.vue is created in W9, but the route
+				// declaration is harmless until then because vue-router will
+				// simply 404 when the component map is empty.
+				{
+					Path:          availableChannelsFrontendPath,
+					Name:          "UserAvailableChannels",
+					ComponentPath: "AvailableChannelsView.vue",
 				},
 			},
 			I18nNamespaces: []string{"channel-management"},
@@ -154,6 +186,14 @@ func (p *ChannelPlugin) Init(ctx pluginsdk.PluginContext) error {
 
 	p.channelHandler = chHandler.NewChannelHandler(svc, nil)
 
+	// Wire the user-facing "available channels" view (V5 / W8). It reuses
+	// the same channel repository for ListAll and adds a small read-only
+	// repository for groups + user permissions. The user identity is
+	// derived from V4 X-Plugin-User-* request headers inside the handler.
+	availableRepo := chRepo.NewAvailableChannelsRepository(ctx.DB())
+	availableSvc := chService.NewAvailableChannelsService(repo, availableRepo)
+	p.availableChannelHandler = chHandler.NewAvailableChannelHandler(availableSvc)
+
 	p.registerRoutes()
 
 	ctx.Logger().Info("channel-management plugin initialised", "version", pluginVersion)
@@ -196,6 +236,14 @@ func (p *ChannelPlugin) registerRoutes() {
 		channels.GET("/:id", p.channelHandler.GetByID)
 		channels.PUT("/:id", p.channelHandler.Update)
 		channels.DELETE("/:id", p.channelHandler.Delete)
+	}
+	// User-facing read-only endpoint. The host gateway routes
+	// /api/v1/plugin/channel-management/available-channels to this engine
+	// and the manifest declares it as AuthTypeUser, so the host
+	// authenticates the caller before it gets here; we just project the
+	// V4 X-Plugin-User-* headers into the response shape.
+	if p.availableChannelHandler != nil {
+		p.engine.GET(pluginRoutePrefix+"/available-channels", p.availableChannelHandler.List)
 	}
 }
 
