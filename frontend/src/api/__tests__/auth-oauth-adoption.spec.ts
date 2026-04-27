@@ -74,6 +74,26 @@ describe('oauth adoption auth api', () => {
     })
   })
 
+  it('posts affiliate code when completing linuxdo oauth registration', async () => {
+    const { completeLinuxDoOAuthRegistration } = await import('@/api/auth')
+
+    await completeLinuxDoOAuthRegistration(
+      'invite-code',
+      {
+        adoptDisplayName: true,
+        adoptAvatar: false
+      },
+      ' AFF123 '
+    )
+
+    expect(post).toHaveBeenCalledWith('/auth/oauth/linuxdo/complete-registration', {
+      invitation_code: 'invite-code',
+      aff_code: 'AFF123',
+      adopt_display_name: true,
+      adopt_avatar: false
+    })
+  })
+
   it('posts oidc invitation completion with adoption decisions', async () => {
     const { completeOIDCOAuthRegistration } = await import('@/api/auth')
 
@@ -131,6 +151,26 @@ describe('oauth adoption auth api', () => {
       invitation_code: 'invite-code',
       adopt_display_name: false,
       adopt_avatar: false
+    })
+  })
+
+  it('posts affiliate code when creating pending wechat oauth account', async () => {
+    const { createPendingWeChatOAuthAccount } = await import('@/api/auth')
+
+    await createPendingWeChatOAuthAccount(
+      'invite-code',
+      {
+        adoptDisplayName: false,
+        adoptAvatar: true
+      },
+      'WXAFF'
+    )
+
+    expect(post).toHaveBeenCalledWith('/auth/oauth/wechat/complete-registration', {
+      invitation_code: 'invite-code',
+      aff_code: 'WXAFF',
+      adopt_display_name: false,
+      adopt_avatar: true
     })
   })
 

@@ -358,6 +358,7 @@ export default {
     apiKeys: 'API Keys',
     usage: 'Usage',
     redeem: 'Redeem',
+    affiliate: 'Affiliate Rebates',
     profile: 'Profile',
     users: 'Users',
     groups: 'Groups',
@@ -988,6 +989,53 @@ export default {
       intervals: 'Tiered Pricing',
       unitPerMillion: '/ 1M tokens',
       unitPerRequest: '/ request'
+    }
+  },
+
+  affiliate: {
+    title: 'Affiliate Rebates',
+    description: 'Invite new users and convert your rebate quota into account balance',
+    yourCode: 'Your Affiliate Code',
+    inviteLink: 'Invite Link',
+    copyCode: 'Copy Code',
+    copyLink: 'Copy Link',
+    codeCopied: 'Affiliate code copied',
+    linkCopied: 'Invite link copied',
+    loadFailed: 'Failed to load affiliate data',
+    transferFailed: 'Failed to transfer affiliate quota',
+    stats: {
+      rebateRate: 'My Rebate Rate',
+      rebateRateHint: 'What you earn each time an invitee recharges',
+      invitedUsers: 'Invited Users',
+      availableQuota: 'Available Rebate Quota',
+      frozenQuota: 'Frozen',
+      frozenQuotaHint: 'Recently earned rebates pending release',
+      totalQuota: 'Historical Rebate Quota'
+    },
+    transfer: {
+      title: 'Transfer Rebate Quota',
+      description: 'Move available rebate quota into your account balance',
+      button: 'Transfer to Balance',
+      transferring: 'Transferring...',
+      empty: 'No available rebate quota',
+      success: '{amount} has been transferred to your balance'
+    },
+    invitees: {
+      title: 'Invited Users',
+      empty: 'No invited users yet',
+      columns: {
+        email: 'Email',
+        username: 'Username',
+        rebate: 'Rebate',
+        joinedAt: 'Joined At'
+      }
+    },
+    tips: {
+      title: 'How It Works',
+      line1: 'Share your affiliate code or invite link with new users.',
+      line2: 'When invitees recharge, you receive {rate} of the recharge as rebate quota.',
+      line3: 'Transfer rebate quota to balance at any time.',
+      line4: 'Newly earned rebates may have a waiting period before they can be transferred.'
     }
   },
 
@@ -2815,6 +2863,22 @@ export default {
         codexCLIOnly: 'Codex official clients only',
         codexCLIOnlyDesc:
           'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',
+        compactMode: 'Compact mode',
+        compactModeDesc:
+          'Controls how this account participates in /responses/compact routing. Auto follows probe results, Force On always allows, Force Off always excludes.',
+        compactModeAuto: 'Auto',
+        compactModeForceOn: 'Force On',
+        compactModeForceOff: 'Force Off',
+        compactModelMapping: 'Compact-only model mapping',
+        compactModelMappingDesc:
+          'Only applies to /responses/compact. Use this when the upstream compact endpoint requires a special compact model.',
+        compactSupported: 'Compact supported',
+        compactUnsupported: 'Compact unsupported',
+        compactUnknown: 'Compact unknown',
+        compactLastChecked: 'Last compact probe',
+        testMode: 'Test mode',
+        testModeDefault: 'Default request',
+        testModeCompact: 'Compact probe',
         modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model whitelist/mapping will not take effect.',
       },
       anthropic: {
@@ -4882,6 +4946,61 @@ export default {
           enabled: 'Enable Service Quota',
           enabledHint: 'When off, service quota rules are not evaluated.',
         },
+        affiliate: {
+          title: 'Affiliate (Invite Rebate)',
+          description: 'Existing users invite new ones; the inviter earns a percentage rebate on the invitee’s recharges. Disabled by default.',
+          enabled: 'Enable Affiliate',
+          enabledHint: 'When off, the affiliate menu is hidden, the aff parameter is ignored at signup, and new recharges generate no rebate. Existing rebate balances can still be transferred.',
+          rebateRate: 'Global Rebate Rate',
+          rebateRateHint: 'Default percentage given back to the inviter on recharges (0-100, e.g. 10 = 10%).',
+          freezeHours: 'Rebate Freeze Period (hours)',
+          freezeHoursDesc: 'New rebates will be frozen for this period before becoming available for withdrawal. 0 = no freeze.',
+          durationDays: 'Rebate Duration (days)',
+          durationDaysDesc: 'Rebate relationship expires after this many days since invitee registration. 0 = permanent.',
+          perInviteeCap: 'Per-Invitee Rebate Cap',
+          perInviteeCapDesc: 'Maximum total rebate from a single invitee. 0 = no limit.',
+          customUsers: {
+            title: 'Per-User Overrides',
+            description: 'Set a custom invite code or exclusive rebate rate for specific users. Lists only users that have an override applied.',
+            addButton: 'Add Custom User',
+            searchPlaceholder: 'Search by email or username',
+            batchButton: 'Batch Set Rate ({count} selected)',
+            empty: 'No users with custom affiliate settings yet',
+            customBadge: 'custom',
+            useGlobal: 'use global',
+            resetTitle: 'Reset Custom Settings',
+            resetMessage: 'Reset all custom settings for {email}?\n• The exclusive rebate rate will be cleared (fall back to the global rate)\n• The invite code will be regenerated as a new system code (previously shared links will stop working)',
+            totalLabel: '{total} total',
+            col: {
+              email: 'Email',
+              username: 'Username',
+              code: 'Invite Code',
+              rate: 'Custom Rate',
+              actions: 'Actions',
+            },
+          },
+          modal: {
+            addTitle: 'Add Custom User',
+            editTitle: 'Edit Custom Settings',
+            userLabel: 'User',
+            userPlaceholder: 'Search by email or username',
+            changeUser: 'Change user',
+            codeLabel: 'Custom Invite Code (optional)',
+            codePlaceholder: 'e.g. VIP2026',
+            codeHint: '4-32 characters; A-Z, 0-9, underscore, dash. Leave empty to keep current. Input is upper-cased.',
+            rateLabel: 'Exclusive Rebate Rate (optional)',
+            ratePlaceholder: 'e.g. 30',
+            rateHint: '0-100. Leave empty (in edit mode) to clear and fall back to the global rate.',
+            errorBadRate: 'Please enter a number between 0 and 100',
+            errorEmpty: 'Fill at least one: custom invite code or exclusive rebate rate',
+          },
+          batchModal: {
+            title: 'Batch Set Rate ({count} users selected)',
+            hint: 'Apply the same exclusive rebate rate to all selected users.',
+            placeholder: 'e.g. 30',
+            clearHint: 'Submitting empty will clear the exclusive rate for selected users.',
+          },
+        },
       },
       emailTabDisabledTitle: 'Email Verification Not Enabled',
       emailTabDisabledHint: 'Enable email verification in the Security tab to configure SMTP settings.',
@@ -4998,6 +5117,9 @@ export default {
         description: 'Default values for new users',
         defaultBalance: 'Default Balance',
         defaultBalanceHint: 'Initial balance for new users',
+        affiliateRebateRate: 'Affiliate Rebate Rate',
+        affiliateRebateRateHint:
+          'Rebate percentage credited to inviter after recharge (0-100%, e.g. 10 means 10%)',
         defaultConcurrency: 'Default Concurrency',
         defaultConcurrencyHint: 'Maximum concurrent requests for new users',
         defaultUserRpmLimit: 'Default User RPM Limit',

@@ -175,6 +175,7 @@ func (s *AuthService) FinalizeOAuthEmailAccount(
 	user *User,
 	invitationCode string,
 	signupSource string,
+	affiliateCode string,
 ) error {
 	if s == nil || user == nil || user.ID <= 0 {
 		return ErrServiceUnavailable
@@ -194,6 +195,7 @@ func (s *AuthService) FinalizeOAuthEmailAccount(
 	s.updateOAuthSignupSource(ctx, user.ID, signupSource)
 	grantPlan := s.resolveSignupGrantPlan(ctx, signupSource)
 	s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by signup defaults")
+	s.bindOAuthAffiliate(ctx, user.ID, affiliateCode)
 	return nil
 }
 

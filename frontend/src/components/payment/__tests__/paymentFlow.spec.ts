@@ -33,7 +33,7 @@ function createOrderResult(overrides: Partial<CreateOrderResult> = {}): CreateOr
 }
 
 describe('getVisibleMethods', () => {
-  it('filters hidden provider methods and normalizes aliases', () => {
+  it('normalizes provider aliases and keeps stripe as a top-level method', () => {
     const visible = getVisibleMethods({
       alipay_direct: methodLimit({ single_min: 5 }),
       wxpay: methodLimit({ single_max: 100 }),
@@ -45,15 +45,6 @@ describe('getVisibleMethods', () => {
       wxpay: methodLimit({ single_max: 100 }),
       stripe: methodLimit({ fee_rate: 3 }),
     })
-  })
-
-  it('exposes Stripe as a first-class visible method when the backend returns it', () => {
-    const visible = getVisibleMethods({
-      stripe: methodLimit({ single_min: 1, single_max: 1000, fee_rate: 3 }),
-    })
-
-    expect(Object.keys(visible)).toEqual(['stripe'])
-    expect(visible.stripe.single_max).toBe(1000)
   })
 
   it('prefers canonical visible methods over aliases when both exist', () => {
@@ -84,6 +75,19 @@ describe('decidePaymentLaunch', () => {
     expect(decision.stripeMethod).toBe('alipay')
     expect(decision.recovery.resumeToken).toBe('resume-1')
     expect(decision.recovery.outTradeNo).toBe('')
+  })
+
+  it('routes Stripe button click to the full Payment Element without a preselected sub-method', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      client_secret: 'cs_test',
+    }), {
+      visibleMethod: 'stripe',
+      orderType: 'balance',
+      isMobile: false,
+    })
+
+    expect(decision.kind).toBe('stripe_route')
+    expect(decision.stripeMethod).toBeUndefined()
   })
 
   it('uses Stripe route flow for mobile WeChat client secret', () => {
@@ -190,36 +194,6 @@ describe('decidePaymentLaunch', () => {
     expect(decision.kind).toBe('wechat_jsapi')
     expect(decision.jsapi?.appId).toBe('wx123')
     expect(decision.paymentState.orderType).toBe('subscription')
-  })
-
-  it('routes generic Stripe selection through the popup flow on desktop with no preset sub-method', () => {
-    const decision = decidePaymentLaunch(createOrderResult({
-      client_secret: 'cs_stripe_generic',
-    }), {
-      visibleMethod: 'stripe',
-      orderType: 'balance',
-      isMobile: false,
-      stripePopupUrl: '/payment/stripe?order_id=101&client_secret=cs_stripe_generic&popup=1',
-      stripeRouteUrl: '/payment/stripe?order_id=101&client_secret=cs_stripe_generic',
-    })
-
-    expect(decision.kind).toBe('stripe_popup')
-    expect(decision.stripeMethod).toBe('')
-    expect(decision.paymentState.payUrl).toContain('popup=1')
-  })
-
-  it('falls back to route flow on mobile for generic Stripe', () => {
-    const decision = decidePaymentLaunch(createOrderResult({
-      client_secret: 'cs_stripe_generic',
-    }), {
-      visibleMethod: 'stripe',
-      orderType: 'balance',
-      isMobile: true,
-      stripeRouteUrl: '/payment/stripe?order_id=101&client_secret=cs_stripe_generic',
-    })
-
-    expect(decision.kind).toBe('stripe_route')
-    expect(decision.stripeMethod).toBe('')
   })
 })
 

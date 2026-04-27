@@ -390,7 +390,7 @@ func convertResponsesToAnthropicTools(tools []ResponsesTool) []AnthropicTool {
 	var out []AnthropicTool
 	for _, t := range tools {
 		switch t.Type {
-		case "web_search":
+		case "web_search", "google_search", "web_search_20250305":
 			out = append(out, AnthropicTool{
 				Type: "web_search_20250305",
 				Name: "web_search",

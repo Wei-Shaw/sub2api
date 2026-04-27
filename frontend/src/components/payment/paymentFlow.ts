@@ -18,11 +18,7 @@ const VISIBLE_METHOD_ALIASES = {
 } as const
 
 export type VisiblePaymentMethod = 'alipay' | 'wxpay' | 'stripe'
-// Stripe sub-method routed to /payment/stripe?method=...
-//  - 'alipay' / 'wechat_pay' : direct confirm with one specific Stripe sub-method
-//  - '' (empty)              : let StripePaymentView render the full Payment Element
-//                              so the user can pick card / link / etc. in the Stripe UI.
-export type StripeVisibleMethod = 'alipay' | 'wechat_pay' | ''
+export type StripeVisibleMethod = 'alipay' | 'wechat_pay'
 export type PaymentLaunchKind =
   | 'qr_waiting'
   | 'redirect_waiting'
@@ -149,16 +145,15 @@ export function decidePaymentLaunch(
   }, context.now)
 
   if (baseState.clientSecret) {
-    // Resolve Stripe sub-method from the visible method:
-    //  - wxpay  -> wechat_pay (Stripe-side identifier)
-    //  - alipay -> alipay
-    //  - stripe -> '' (empty: render the full Payment Element so the user
-    //               can choose card / link / etc. inside Stripe's hosted UI)
-    let stripeMethod: StripeVisibleMethod = ''
-    if (visibleMethod === 'wxpay') stripeMethod = 'wechat_pay'
-    else if (visibleMethod === 'alipay') stripeMethod = 'alipay'
-    // Stripe 桌面端统一走 popup（小窗），与历史行为一致；移动端 fallback 全页跳转。
-    const kind: PaymentLaunchKind = context.isMobile ? 'stripe_route' : 'stripe_popup'
+    // visibleMethod === 'stripe' means the user clicked the dedicated Stripe button
+    // and should land on the full Payment Element to choose a sub-method themselves.
+    const isStripeButton = visibleMethod === 'stripe'
+    const stripeMethod: StripeVisibleMethod | undefined = isStripeButton
+      ? undefined
+      : visibleMethod === 'wxpay' ? 'wechat_pay' : 'alipay'
+    const kind: PaymentLaunchKind = stripeMethod === 'alipay' && !context.isMobile
+      ? 'stripe_popup'
+      : 'stripe_route'
     const payUrl = kind === 'stripe_popup'
       ? context.stripePopupUrl || context.stripeRouteUrl || ''
       : context.stripeRouteUrl || context.stripePopupUrl || ''

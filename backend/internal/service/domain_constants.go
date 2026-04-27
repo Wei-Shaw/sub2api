@@ -18,6 +18,19 @@ const (
 	RoleUser  = domain.RoleUser
 )
 
+// Affiliate rebate settings
+const (
+	AffiliateRebateRateDefault          = 20.0
+	AffiliateRebateRateMin              = 0.0
+	AffiliateRebateRateMax              = 100.0
+	AffiliateEnabledDefault             = false // 邀请返利总开关默认关闭
+	AffiliateRebateFreezeHoursDefault   = 0     // 0 = 不冻结（向后兼容）
+	AffiliateRebateFreezeHoursMax       = 720   // 最大 30 天
+	AffiliateRebateDurationDaysDefault  = 0     // 0 = 永久有效
+	AffiliateRebateDurationDaysMax      = 3650  // ~10 年
+	AffiliateRebatePerInviteeCapDefault = 0.0   // 0 = 无上限
+)
+
 // Platform constants
 const (
 	PlatformAnthropic   = domain.PlatformAnthropic
@@ -87,6 +100,11 @@ const (
 	SettingKeyPasswordResetEnabled             = "password_reset_enabled"              // 是否启用忘记密码功能（需要先开启邮件验证）
 	SettingKeyFrontendURL                      = "frontend_url"                        // 前端基础URL，用于生成邮件中的重置密码链接
 	SettingKeyInvitationCodeEnabled            = "invitation_code_enabled"             // 是否启用邀请码注册
+	SettingKeyAffiliateEnabled                 = "affiliate_enabled"                   // 邀请返利功能总开关
+	SettingKeyAffiliateRebateRate              = "affiliate_rebate_rate"               // 邀请返利比例（百分比，0-100）
+	SettingKeyAffiliateRebateFreezeHours       = "affiliate_rebate_freeze_hours"       // 返利冻结期（小时，0=不冻结）
+	SettingKeyAffiliateRebateDurationDays      = "affiliate_rebate_duration_days"      // 返利有效期（天，0=永久）
+	SettingKeyAffiliateRebatePerInviteeCap     = "affiliate_rebate_per_invitee_cap"    // 单人返利上限（0=无上限）
 
 	// 邮件服务设置
 	SettingKeySMTPHost     = "smtp_host"      // SMTP服务器地址

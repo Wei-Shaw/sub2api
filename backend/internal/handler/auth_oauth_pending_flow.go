@@ -67,6 +67,7 @@ type createPendingOAuthAccountRequest struct {
 	VerifyCode       string `json:"verify_code,omitempty"`
 	Password         string `json:"password" binding:"required,min=6"`
 	InvitationCode   string `json:"invitation_code,omitempty"`
+	AffCode          string `json:"aff_code,omitempty"`
 	AdoptDisplayName *bool  `json:"adopt_display_name,omitempty"`
 	AdoptAvatar      *bool  `json:"adopt_avatar,omitempty"`
 }
@@ -1751,6 +1752,7 @@ func (h *AuthHandler) createPendingOAuthAccount(c *gin.Context, provider string)
 		user,
 		strings.TrimSpace(req.InvitationCode),
 		strings.TrimSpace(session.ProviderType),
+		strings.TrimSpace(req.AffCode),
 	); err != nil {
 		_ = tx.Rollback()
 		if rollbackCreatedUser(err) {

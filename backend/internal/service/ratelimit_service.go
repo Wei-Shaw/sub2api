@@ -931,7 +931,7 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 
 // calculateOpenAI429ResetTime 从 OpenAI 429 响应头计算正确的重置时间
 // 返回 nil 表示无法从响应头中确定重置时间
-func (s *RateLimitService) calculateOpenAI429ResetTime(headers http.Header) *time.Time {
+func calculateOpenAI429ResetTime(headers http.Header) *time.Time {
 	snapshot := ParseCodexRateLimitHeaders(headers)
 	if snapshot == nil {
 		return nil
@@ -975,6 +975,10 @@ func (s *RateLimitService) calculateOpenAI429ResetTime(headers http.Header) *tim
 	}
 
 	return nil
+}
+
+func (s *RateLimitService) calculateOpenAI429ResetTime(headers http.Header) *time.Time {
+	return calculateOpenAI429ResetTime(headers)
 }
 
 // anthropic429Result holds the parsed Anthropic 429 rate-limit information.
