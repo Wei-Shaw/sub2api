@@ -83,9 +83,11 @@
             </span>
           </td>
 
-          <!-- 作用用户（admin only） -->
-          <td v-if="showInternal" class="px-4 py-3 font-mono text-xs text-gray-700 dark:text-gray-200 whitespace-nowrap">
-            {{ row.scope_user_id == null ? '—' : `#${row.scope_user_id}` }}
+          <!-- 作用用户（admin only）：通过 useEntityName 异步解析为用户名（display_name/nickname/username/email/#id 优先级）。
+               未限定（shared/未指定具体用户）显示 — -->
+          <td v-if="showInternal" class="px-4 py-3 text-xs text-gray-700 dark:text-gray-200 whitespace-nowrap">
+            <span v-if="row.scope_user_id == null">—</span>
+            <span v-else :title="`#${row.scope_user_id}`">{{ scopeUserName(row.scope_user_id) }}</span>
           </td>
 
           <!-- 标签 -->
@@ -120,6 +122,7 @@ import Icon from '@/components/icons/Icon.vue'
 import type { LimiterRuntime } from '@/api/admin/serviceQuota'
 import { getLoadBarClass, getLoadBarStyle, getLoadTextClass } from '@/utils/loadIndicator'
 import PathChevron from './PathChevron.vue'
+import { useEntityName } from './entityNames'
 
 interface ColumnDef {
   key: string
@@ -229,6 +232,12 @@ function limiterChipClass(type: string): string {
     case 'concurrency': return 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
     default: return 'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-300'
   }
+}
+
+// scopeUserName 通过 useEntityName 异步解析 user_id → 用户名（display_name/username/email），
+// 首屏先显示占位 #id，回填后自动刷新；hover title 上保留 #id 方便管理员对齐。
+function scopeUserName(id: number): string {
+  return useEntityName('user', id).value
 }
 
 // statusText 给用量列尾部的状态短文案：

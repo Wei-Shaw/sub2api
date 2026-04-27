@@ -21,6 +21,16 @@ vi.mock('./PathChevron.vue', () => ({
   },
 }))
 
+// scopeUserName 走 useEntityName('user', id)；测试不联网，统一 reject 让占位 #id 保留。
+vi.mock('@/api/admin', () => ({
+  default: {
+    channels: { getById: () => Promise.reject(new Error('mocked')) },
+    groups: { getById: () => Promise.reject(new Error('mocked')) },
+    accounts: { getById: () => Promise.reject(new Error('mocked')) },
+    users: { getById: () => Promise.reject(new Error('mocked')) },
+  },
+}))
+
 const stubs = {
   EmptyState: { template: '<div data-test="empty">empty</div>' },
   Icon: { template: '<span data-test="icon" />' },

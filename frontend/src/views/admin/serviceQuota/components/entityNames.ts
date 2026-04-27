@@ -12,7 +12,7 @@
 import { ref, type Ref } from 'vue'
 import adminAPI from '@/api/admin'
 
-export type EntityKind = 'channel' | 'group' | 'account'
+export type EntityKind = 'channel' | 'group' | 'account' | 'user'
 
 const cache = new Map<string, Ref<string>>()
 const inFlight = new Set<string>()
@@ -20,6 +20,7 @@ const inFlight = new Set<string>()
 function fallback(kind: EntityKind, id: number): string {
   if (kind === 'channel') return `ch#${id}`
   if (kind === 'group') return `g#${id}`
+  if (kind === 'user') return `#${id}`
   return `acc#${id}`
 }
 
@@ -31,6 +32,11 @@ async function fetchName(kind: EntityKind, id: number): Promise<string> {
   if (kind === 'group') {
     const g = await adminAPI.groups.getById(id)
     return g.name || fallback(kind, id)
+  }
+  if (kind === 'user') {
+    const u = await adminAPI.users.getById(id)
+    // 优先 username（用户在系统内的标识符），缺失退化到 email，最后 #id 占位
+    return u.username || u.email || fallback(kind, id)
   }
   const a = await adminAPI.accounts.getById(id)
   return a.name || fallback(kind, id)
