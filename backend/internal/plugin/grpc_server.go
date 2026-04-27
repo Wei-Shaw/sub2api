@@ -49,6 +49,12 @@ type SDKServer struct {
 	// arbitrary names supplied by something that is not actually a plugin.
 	knownPlugins *knownPluginsRegistry
 
+	// secrets handles the SecretEncryption gRPC service (V5 W5). Nil when
+	// the host does not have a master key configured — gRPC will refuse
+	// the SecretEncryption methods with Unimplemented in that case rather
+	// than crashing on a nil dereference.
+	secrets *SecretEncryptionServer
+
 	stop context.CancelFunc
 }
 
@@ -60,7 +66,11 @@ type activeTx struct {
 
 // NewSDKServer 构造 SDK 服务实例,并启动事务清理 goroutine。
 // 调用方应在程序退出前调用 Stop() 释放资源。
-func NewSDKServer(db *sql.DB, rdb *redis.Client) *SDKServer {
+//
+// secretMasterKeyHex 是 V5 W5 SecretEncryption 服务的主密钥（32 字节 hex）。
+// 传空串表示禁用 SecretEncryption 服务（gRPC 端不会注册 service，调用插件会得到
+// Unimplemented），通常在自动化测试或显式关闭加密能力时使用。
+func NewSDKServer(db *sql.DB, rdb *redis.Client, secretMasterKeyHex string) (*SDKServer, error) {
 	s := &SDKServer{
 		db:           db,
 		redis:        rdb,
@@ -68,10 +78,17 @@ func NewSDKServer(db *sql.DB, rdb *redis.Client) *SDKServer {
 		capabilities: newPluginCapabilityRegistry(),
 		knownPlugins: newKnownPluginsRegistry(),
 	}
+	if secretMasterKeyHex != "" {
+		secrets, err := NewSecretEncryptionServer(secretMasterKeyHex, s.resolveCaller, slog.Default().With("component", "plugin_secret_encryption"))
+		if err != nil {
+			return nil, fmt.Errorf("init secret encryption server: %w", err)
+		}
+		s.secrets = secrets
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.stop = cancel
 	go s.cleanupLoop(ctx)
-	return s
+	return s, nil
 }
 
 // Stop 取消后台 goroutine 并回滚所有未完成事务。
@@ -93,6 +110,9 @@ func (s *SDKServer) RegisterServices(grpcServer *grpc.Server) {
 	pluginsdk.RegisterRedisProxyServer(grpcServer, s)
 	pluginsdk.RegisterEventBusServer(grpcServer, &eventBusAdapter{srv: s})
 	pluginsdk.RegisterLogProxyServer(grpcServer, NewLogProxyServer(s))
+	if s.secrets != nil {
+		s.secrets.RegisterServices(grpcServer)
+	}
 }
 
 // cleanupLoop 周期性回滚超时事务。
