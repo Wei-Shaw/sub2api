@@ -47,34 +47,33 @@
             <PathChevron :summary="row.path_summary" :show-internal="showInternal" />
           </td>
 
-          <!-- 限流类型 -->
-          <td class="px-4 py-3 text-xs text-gray-900 dark:text-white whitespace-nowrap">
-            <span class="font-medium">{{ formatLimiter(row.limiter_type) }}</span>
-          </td>
-
-          <!-- 窗口模式（独立列） -->
-          <td class="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-            {{ formatWindow(row.window_mode) }}
-          </td>
-
-          <!-- 用量：单行紧凑（数字·% / 进度条 / 重置时间） -->
+          <!-- 用量：chip(limiter type) + 数字/% + 细进度条 + 状态文字
+               chip 的颜色按 limiter type 区分（紫=RPM 蓝=TPM 靛=TPD 绿=daily_usd 黄=concurrency） -->
           <td class="px-4 py-3 text-xs whitespace-nowrap">
-            <div class="flex items-center gap-3">
-              <span class="font-mono text-gray-700 dark:text-gray-200">{{ formatUsageNumbers(row) }}</span>
-              <span :class="['font-bold w-10 text-right', getLoadTextClass(row.utilization_pct)]">
-                {{ Math.round(row.utilization_pct) }}%
+            <div class="flex items-center gap-2.5">
+              <span :class="['inline-flex items-center justify-center rounded-md px-2 py-0.5 text-[11px] font-semibold min-w-[44px]', limiterChipClass(row.limiter_type)]">
+                {{ formatLimiter(row.limiter_type) }}
               </span>
-              <div class="h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
+              <div class="h-1 w-16 shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
                 <div
                   class="h-full rounded-full transition-all duration-300"
                   :class="getLoadBarClass(row.utilization_pct)"
                   :style="getLoadBarStyle(row.utilization_pct)"
                 ></div>
               </div>
-              <span v-if="resetSeconds(row) !== null" class="text-[11px] text-gray-400">
-                {{ t('admin.serviceQuotaMonitor.resetIn', { seconds: resetSeconds(row) }) }}
+              <span :class="['font-bold tabular-nums', getLoadTextClass(row.utilization_pct)]">
+                {{ Math.round(row.utilization_pct) }}%
               </span>
+              <span class="font-mono text-[11px] text-gray-500 dark:text-gray-400">
+                {{ formatUsageNumbers(row) }}
+              </span>
+              <span class="text-[11px] text-gray-400">{{ statusText(row) }}</span>
             </div>
+          </td>
+
+          <!-- 窗口模式（独立列，放在用量列之后） -->
+          <td class="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+            {{ formatWindow(row.window_mode) }}
           </td>
 
           <!-- 限制模式（admin only） -->
@@ -154,14 +153,14 @@ const emit = defineEmits<{
 const { t } = useI18n()
 
 // 列定义放 computed 让 i18n 切换语言时表头自动重渲。
-// admin 视角 = 9 列；用户视角 = 6 列（隐藏 counterMode / scopeUser / actions）。
+// 限流类型已并入用量列的 chip，不再独立成列；窗口列放到用量列之后。
+// admin 视角 = 8 列；用户视角 = 5 列（隐藏 counterMode / scopeUser / actions）。
 const columns = computed<ColumnDef[]>(() => {
   const base: ColumnDef[] = [
     { key: 'rule', label: t('admin.serviceQuotaMonitor.columns.rule') },
     { key: 'path', label: t('admin.serviceQuotaMonitor.columns.path') },
-    { key: 'limiter', label: t('admin.serviceQuotaMonitor.columns.limiter') },
-    { key: 'window', label: t('admin.serviceQuotaMonitor.columns.window') },
     { key: 'usage', label: t('admin.serviceQuotaMonitor.columns.usage') },
+    { key: 'window', label: t('admin.serviceQuotaMonitor.columns.window') },
   ]
   if (props.showInternal) {
     base.push(
@@ -217,6 +216,30 @@ const displayRows = computed<DecoratedRow[]>(() => {
 function formatLimiter(type: string): string {
   const key = type === 'daily_usd' ? 'dailyUsd' : type
   return t(`admin.serviceQuota.limiters.${key}`, type.toUpperCase())
+}
+
+// limiterChipClass 按 limiter type 返回 chip 的浅色背景 + 文字色，
+// 让用量列首眼能区分是哪个 limiter（替代独立的 limiter 列）。
+function limiterChipClass(type: string): string {
+  switch (type) {
+    case 'rpm': return 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300'
+    case 'tpm': return 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300'
+    case 'tpd': return 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300'
+    case 'daily_usd': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
+    case 'concurrency': return 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
+    default: return 'bg-gray-100 text-gray-700 dark:bg-gray-500/20 dark:text-gray-300'
+  }
+}
+
+// statusText 给用量列尾部的状态短文案：
+//   - 有 reset_at 且 key 存在 → "重置: Xs 后"
+//   - 否则 → "现在"（活跃但无窗口/未触发）
+function statusText(row: LimiterRuntime): string {
+  const sec = resetSeconds(row)
+  if (sec !== null) {
+    return t('admin.serviceQuotaMonitor.resetIn', { seconds: sec })
+  }
+  return t('admin.serviceQuotaMonitor.statusActive')
 }
 
 function formatWindow(mode: string): string {

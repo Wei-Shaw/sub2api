@@ -4140,6 +4140,7 @@ export default {
         tags: '标签',
         actions: '操作'
       },
+      statusActive: '现在',
       reset: '重置',
       resetConfirmTitle: '确认重置该限流器计数？',
       resetConfirmMessage: '将清空规则「{rule}」的 {limiter} 当前计数。已用完的 quota 将立即恢复，已并发占用的槽位会被释放（在飞请求 Release 时自动跳过空 key）。该操作不可撤销。',

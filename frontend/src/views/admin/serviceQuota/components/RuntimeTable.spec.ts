@@ -47,7 +47,7 @@ function makeRow(overrides: Partial<LimiterRuntime>): LimiterRuntime {
 }
 
 describe('RuntimeTable', () => {
-  it('admin 视角 (showInternal=true) 渲染 9 列表头（rule/path/limiter/window/usage/mode/user/tags/actions）', () => {
+  it('admin 视角 (showInternal=true) 渲染 8 列表头（限流类型 chip 进 usage；窗口在 usage 后）', () => {
     const wrapper = mount(RuntimeTable, {
       props: { rows: [makeRow({})], showInternal: true },
       global: { stubs },
@@ -56,9 +56,8 @@ describe('RuntimeTable', () => {
     expect(headers).toEqual([
       'admin.serviceQuotaMonitor.columns.rule',
       'admin.serviceQuotaMonitor.columns.path',
-      'admin.serviceQuotaMonitor.columns.limiter',
-      'admin.serviceQuotaMonitor.columns.window',
       'admin.serviceQuotaMonitor.columns.usage',
+      'admin.serviceQuotaMonitor.columns.window',
       'admin.serviceQuotaMonitor.columns.counterMode',
       'admin.serviceQuotaMonitor.columns.scopeUser',
       'admin.serviceQuotaMonitor.columns.tags',
@@ -75,9 +74,8 @@ describe('RuntimeTable', () => {
     expect(headers).toEqual([
       'admin.serviceQuotaMonitor.columns.rule',
       'admin.serviceQuotaMonitor.columns.path',
-      'admin.serviceQuotaMonitor.columns.limiter',
-      'admin.serviceQuotaMonitor.columns.window',
       'admin.serviceQuotaMonitor.columns.usage',
+      'admin.serviceQuotaMonitor.columns.window',
       'admin.serviceQuotaMonitor.columns.tags',
     ])
   })
@@ -108,12 +106,13 @@ describe('RuntimeTable', () => {
     expect(wrapper.text()).toContain('admin.serviceQuotaMonitor.resetIn')
   })
 
-  it('reset_at_unix_ms 为 0 时不渲染倒计时', () => {
+  it('reset_at_unix_ms 为 0 时不渲染倒计时（改显示 statusActive）', () => {
     const wrapper = mount(RuntimeTable, {
       props: { rows: [makeRow({ reset_at_unix_ms: 0 })], showInternal: true },
       global: { stubs },
     })
     expect(wrapper.text()).not.toContain('admin.serviceQuotaMonitor.resetIn')
+    expect(wrapper.text()).toContain('admin.serviceQuotaMonitor.statusActive')
   })
 
   it('is_fallback=true 行显示兜底标签', () => {
@@ -150,7 +149,8 @@ describe('RuntimeTable', () => {
     const firstRowTds = allRows[0].findAll('td')
     expect(firstRowTds[0].attributes('rowspan')).toBe('3') // rule
     expect(firstRowTds[1].attributes('rowspan')).toBe('3') // path
-    // 第二行/第三行的第 1 个 td 应该是 limiter 列（因为 rule/path 被 rowspan 占了）
+    // 第二行/第三行的第 1 个 td 应该是 usage 列（因为 rule/path 被 rowspan 占了）
+    // usage cell 内含 limiter chip 文字
     const secondRowFirstCell = allRows[1].findAll('td')[0]
     expect(secondRowFirstCell.text()).toContain('admin.serviceQuota.limiters.tpm')
   })

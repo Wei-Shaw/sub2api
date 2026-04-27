@@ -3976,6 +3976,7 @@ export default {
         tags: 'Tags',
         actions: 'Actions'
       },
+      statusActive: 'Now',
       reset: 'Reset',
       resetConfirmTitle: 'Reset this limiter counter?',
       resetConfirmMessage: 'This will clear the {limiter} counter for rule "{rule}". Exhausted quota becomes available immediately; concurrency slots are released (in-flight Release safely skips missing keys). This action cannot be undone.',
