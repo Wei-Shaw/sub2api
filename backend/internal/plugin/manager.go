@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -1333,18 +1334,39 @@ func readHandshake(r io.Reader, timeout time.Duration) (handshakeMessage, error)
 }
 
 // dialPlugin 拨号到插件 gRPC server,失败时关闭未完成的资源。
+//
+// grpc v1.79+ 已弃用 grpc.DialContext + grpc.WithBlock。这里改用
+// grpc.NewClient(lazy) + 显式 Connect() + WaitForStateChange 轮询,
+// 保持原有"在 timeout 内等待连接 Ready,失败则返回错误"的同步语义。
+// 紧随其后的 GetManifest/Init RPC 才不会因连接未就绪而立即拿到 Unavailable。
 func dialPlugin(ctx context.Context, addr string, timeout time.Duration) (*grpc.ClientConn, pluginsdk.PluginLifecycleClient, error) {
-	dialCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	conn, err := grpc.DialContext(dialCtx, addr,
+	conn, err := grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("dial plugin grpc %s: %w", addr, err)
 	}
-	return conn, pluginsdk.NewPluginLifecycleClient(conn), nil
+
+	dialCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	// NewClient 是 lazy 的,显式触发连接。
+	conn.Connect()
+	for {
+		state := conn.GetState()
+		if state == connectivity.Ready {
+			return conn, pluginsdk.NewPluginLifecycleClient(conn), nil
+		}
+		if state == connectivity.Shutdown {
+			_ = conn.Close()
+			return nil, nil, fmt.Errorf("dial plugin grpc %s: connection shutdown", addr)
+		}
+		if !conn.WaitForStateChange(dialCtx, state) {
+			// dialCtx 超时或被取消。
+			_ = conn.Close()
+			return nil, nil, fmt.Errorf("dial plugin grpc %s: %w", addr, dialCtx.Err())
+		}
+	}
 }
 
 // buildRouteEntries 把 manifest 中声明的 endpoint 转换成 RouteEntry。

@@ -2,13 +2,14 @@ package plugin
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os/exec"
 	"sync"
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
@@ -92,8 +93,10 @@ func (inst *PluginInstance) CloseGRPC() {
 		return
 	}
 	if err := inst.GRPCConn.Close(); err != nil {
-		// 关闭已经断开的连接通常会拿到 ErrClientConnClosing,无需视为错误。
-		if !errors.Is(err, grpc.ErrClientConnClosing) {
+		// 关闭已经断开的连接通常会拿到 codes.Canceled (旧 ErrClientConnClosing
+		// sentinel 等价值),无需视为错误。grpc v1.79+ 已弃用 ErrClientConnClosing
+		// 并建议改用 status code 检查。
+		if status.Code(err) != codes.Canceled {
 			inst.LastError = fmt.Errorf("close grpc conn: %w", err)
 		}
 	}
