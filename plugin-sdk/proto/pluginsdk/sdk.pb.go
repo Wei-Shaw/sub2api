@@ -1827,6 +1827,183 @@ func (x *Event) GetTimestamp() int64 {
 	return 0
 }
 
+type EncryptRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Plaintext     []byte                 `protobuf:"bytes,1,opt,name=plaintext,proto3" json:"plaintext,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EncryptRequest) Reset() {
+	*x = EncryptRequest{}
+	mi := &file_sdk_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EncryptRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EncryptRequest) ProtoMessage() {}
+
+func (x *EncryptRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EncryptRequest.ProtoReflect.Descriptor instead.
+func (*EncryptRequest) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *EncryptRequest) GetPlaintext() []byte {
+	if x != nil {
+		return x.Plaintext
+	}
+	return nil
+}
+
+// ciphertext layout = nonce(12 bytes) || ciphertext || tag(16 bytes).
+type EncryptResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ciphertext    []byte                 `protobuf:"bytes,1,opt,name=ciphertext,proto3" json:"ciphertext,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EncryptResponse) Reset() {
+	*x = EncryptResponse{}
+	mi := &file_sdk_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EncryptResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EncryptResponse) ProtoMessage() {}
+
+func (x *EncryptResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EncryptResponse.ProtoReflect.Descriptor instead.
+func (*EncryptResponse) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *EncryptResponse) GetCiphertext() []byte {
+	if x != nil {
+		return x.Ciphertext
+	}
+	return nil
+}
+
+type DecryptRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ciphertext    []byte                 `protobuf:"bytes,1,opt,name=ciphertext,proto3" json:"ciphertext,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DecryptRequest) Reset() {
+	*x = DecryptRequest{}
+	mi := &file_sdk_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DecryptRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DecryptRequest) ProtoMessage() {}
+
+func (x *DecryptRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DecryptRequest.ProtoReflect.Descriptor instead.
+func (*DecryptRequest) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *DecryptRequest) GetCiphertext() []byte {
+	if x != nil {
+		return x.Ciphertext
+	}
+	return nil
+}
+
+type DecryptResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Plaintext     []byte                 `protobuf:"bytes,1,opt,name=plaintext,proto3" json:"plaintext,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DecryptResponse) Reset() {
+	*x = DecryptResponse{}
+	mi := &file_sdk_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DecryptResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DecryptResponse) ProtoMessage() {}
+
+func (x *DecryptResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DecryptResponse.ProtoReflect.Descriptor instead.
+func (*DecryptResponse) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *DecryptResponse) GetPlaintext() []byte {
+	if x != nil {
+		return x.Plaintext
+	}
+	return nil
+}
+
 var File_sdk_proto protoreflect.FileDescriptor
 
 const file_sdk_proto_rawDesc = "" +
@@ -1952,7 +2129,19 @@ const file_sdk_proto_rawDesc = "" +
 	"\x05Event\x12\x14\n" +
 	"\x05topic\x18\x01 \x01(\tR\x05topic\x12\x18\n" +
 	"\apayload\x18\x02 \x01(\fR\apayload\x12\x1c\n" +
-	"\ttimestamp\x18\x03 \x01(\x03R\ttimestamp2\xa9\x03\n" +
+	"\ttimestamp\x18\x03 \x01(\x03R\ttimestamp\".\n" +
+	"\x0eEncryptRequest\x12\x1c\n" +
+	"\tplaintext\x18\x01 \x01(\fR\tplaintext\"1\n" +
+	"\x0fEncryptResponse\x12\x1e\n" +
+	"\n" +
+	"ciphertext\x18\x01 \x01(\fR\n" +
+	"ciphertext\"0\n" +
+	"\x0eDecryptRequest\x12\x1e\n" +
+	"\n" +
+	"ciphertext\x18\x01 \x01(\fR\n" +
+	"ciphertext\"/\n" +
+	"\x0fDecryptResponse\x12\x1c\n" +
+	"\tplaintext\x18\x01 \x01(\fR\tplaintext2\xa9\x03\n" +
 	"\bSQLProxy\x126\n" +
 	"\x05Query\x12\x15.pluginsdk.SQLRequest\x1a\x16.pluginsdk.SQLResponse\x126\n" +
 	"\x04Exec\x12\x15.pluginsdk.SQLRequest\x1a\x17.pluginsdk.ExecResponse\x12;\n" +
@@ -1979,7 +2168,10 @@ const file_sdk_proto_rawDesc = "" +
 	"\aPublish\x12\x17.pluginsdk.EventRequest\x1a\x16.google.protobuf.Empty\x127\n" +
 	"\tSubscribe\x12\x16.pluginsdk.EventFilter\x1a\x10.pluginsdk.Event0\x012I\n" +
 	"\bLogProxy\x12=\n" +
-	"\bPushLogs\x12\x14.pluginsdk.LogRecord\x1a\x19.pluginsdk.LogPushSummary(\x01B8Z6github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdkb\x06proto3"
+	"\bPushLogs\x12\x14.pluginsdk.LogRecord\x1a\x19.pluginsdk.LogPushSummary(\x012\x96\x01\n" +
+	"\x10SecretEncryption\x12@\n" +
+	"\aEncrypt\x12\x19.pluginsdk.EncryptRequest\x1a\x1a.pluginsdk.EncryptResponse\x12@\n" +
+	"\aDecrypt\x12\x19.pluginsdk.DecryptRequest\x1a\x1a.pluginsdk.DecryptResponseB8Z6github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdkb\x06proto3"
 
 var (
 	file_sdk_proto_rawDescOnce sync.Once
@@ -1993,7 +2185,7 @@ func file_sdk_proto_rawDescGZIP() []byte {
 	return file_sdk_proto_rawDescData
 }
 
-var file_sdk_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
+var file_sdk_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
 var file_sdk_proto_goTypes = []any{
 	(*LogRecord)(nil),          // 0: pluginsdk.LogRecord
 	(*LogAttr)(nil),            // 1: pluginsdk.LogAttr
@@ -2024,8 +2216,12 @@ var file_sdk_proto_goTypes = []any{
 	(*EventRequest)(nil),       // 26: pluginsdk.EventRequest
 	(*EventFilter)(nil),        // 27: pluginsdk.EventFilter
 	(*Event)(nil),              // 28: pluginsdk.Event
-	nil,                        // 29: pluginsdk.RedisMapResponse.FieldsEntry
-	(*emptypb.Empty)(nil),      // 30: google.protobuf.Empty
+	(*EncryptRequest)(nil),     // 29: pluginsdk.EncryptRequest
+	(*EncryptResponse)(nil),    // 30: pluginsdk.EncryptResponse
+	(*DecryptRequest)(nil),     // 31: pluginsdk.DecryptRequest
+	(*DecryptResponse)(nil),    // 32: pluginsdk.DecryptResponse
+	nil,                        // 33: pluginsdk.RedisMapResponse.FieldsEntry
+	(*emptypb.Empty)(nil),      // 34: google.protobuf.Empty
 }
 var file_sdk_proto_depIdxs = []int32{
 	1,  // 0: pluginsdk.LogRecord.attrs:type_name -> pluginsdk.LogAttr
@@ -2033,7 +2229,7 @@ var file_sdk_proto_depIdxs = []int32{
 	8,  // 2: pluginsdk.TxSQLRequest.args:type_name -> pluginsdk.SQLValue
 	10, // 3: pluginsdk.SQLResponse.rows:type_name -> pluginsdk.SQLRow
 	8,  // 4: pluginsdk.SQLRow.values:type_name -> pluginsdk.SQLValue
-	29, // 5: pluginsdk.RedisMapResponse.fields:type_name -> pluginsdk.RedisMapResponse.FieldsEntry
+	33, // 5: pluginsdk.RedisMapResponse.fields:type_name -> pluginsdk.RedisMapResponse.FieldsEntry
 	25, // 6: pluginsdk.DoReply.array:type_name -> pluginsdk.DoReply
 	3,  // 7: pluginsdk.SQLProxy.Query:input_type -> pluginsdk.SQLRequest
 	3,  // 8: pluginsdk.SQLProxy.Exec:input_type -> pluginsdk.SQLRequest
@@ -2056,29 +2252,33 @@ var file_sdk_proto_depIdxs = []int32{
 	26, // 25: pluginsdk.EventBus.Publish:input_type -> pluginsdk.EventRequest
 	27, // 26: pluginsdk.EventBus.Subscribe:input_type -> pluginsdk.EventFilter
 	0,  // 27: pluginsdk.LogProxy.PushLogs:input_type -> pluginsdk.LogRecord
-	9,  // 28: pluginsdk.SQLProxy.Query:output_type -> pluginsdk.SQLResponse
-	11, // 29: pluginsdk.SQLProxy.Exec:output_type -> pluginsdk.ExecResponse
-	6,  // 30: pluginsdk.SQLProxy.BeginTx:output_type -> pluginsdk.TxResponse
-	9,  // 31: pluginsdk.SQLProxy.TxQuery:output_type -> pluginsdk.SQLResponse
-	11, // 32: pluginsdk.SQLProxy.TxExec:output_type -> pluginsdk.ExecResponse
-	30, // 33: pluginsdk.SQLProxy.CommitTx:output_type -> google.protobuf.Empty
-	30, // 34: pluginsdk.SQLProxy.RollbackTx:output_type -> google.protobuf.Empty
-	25, // 35: pluginsdk.RedisProxy.Do:output_type -> pluginsdk.DoReply
-	13, // 36: pluginsdk.RedisProxy.Get:output_type -> pluginsdk.RedisValueResponse
-	30, // 37: pluginsdk.RedisProxy.Set:output_type -> google.protobuf.Empty
-	30, // 38: pluginsdk.RedisProxy.SetEx:output_type -> google.protobuf.Empty
-	30, // 39: pluginsdk.RedisProxy.Del:output_type -> google.protobuf.Empty
-	13, // 40: pluginsdk.RedisProxy.HGet:output_type -> pluginsdk.RedisValueResponse
-	30, // 41: pluginsdk.RedisProxy.HSet:output_type -> google.protobuf.Empty
-	19, // 42: pluginsdk.RedisProxy.HGetAll:output_type -> pluginsdk.RedisMapResponse
-	30, // 43: pluginsdk.RedisProxy.HDel:output_type -> google.protobuf.Empty
-	30, // 44: pluginsdk.RedisProxy.Publish:output_type -> google.protobuf.Empty
-	23, // 45: pluginsdk.RedisProxy.Subscribe:output_type -> pluginsdk.RedisMessage
-	30, // 46: pluginsdk.EventBus.Publish:output_type -> google.protobuf.Empty
-	28, // 47: pluginsdk.EventBus.Subscribe:output_type -> pluginsdk.Event
-	2,  // 48: pluginsdk.LogProxy.PushLogs:output_type -> pluginsdk.LogPushSummary
-	28, // [28:49] is the sub-list for method output_type
-	7,  // [7:28] is the sub-list for method input_type
+	29, // 28: pluginsdk.SecretEncryption.Encrypt:input_type -> pluginsdk.EncryptRequest
+	31, // 29: pluginsdk.SecretEncryption.Decrypt:input_type -> pluginsdk.DecryptRequest
+	9,  // 30: pluginsdk.SQLProxy.Query:output_type -> pluginsdk.SQLResponse
+	11, // 31: pluginsdk.SQLProxy.Exec:output_type -> pluginsdk.ExecResponse
+	6,  // 32: pluginsdk.SQLProxy.BeginTx:output_type -> pluginsdk.TxResponse
+	9,  // 33: pluginsdk.SQLProxy.TxQuery:output_type -> pluginsdk.SQLResponse
+	11, // 34: pluginsdk.SQLProxy.TxExec:output_type -> pluginsdk.ExecResponse
+	34, // 35: pluginsdk.SQLProxy.CommitTx:output_type -> google.protobuf.Empty
+	34, // 36: pluginsdk.SQLProxy.RollbackTx:output_type -> google.protobuf.Empty
+	25, // 37: pluginsdk.RedisProxy.Do:output_type -> pluginsdk.DoReply
+	13, // 38: pluginsdk.RedisProxy.Get:output_type -> pluginsdk.RedisValueResponse
+	34, // 39: pluginsdk.RedisProxy.Set:output_type -> google.protobuf.Empty
+	34, // 40: pluginsdk.RedisProxy.SetEx:output_type -> google.protobuf.Empty
+	34, // 41: pluginsdk.RedisProxy.Del:output_type -> google.protobuf.Empty
+	13, // 42: pluginsdk.RedisProxy.HGet:output_type -> pluginsdk.RedisValueResponse
+	34, // 43: pluginsdk.RedisProxy.HSet:output_type -> google.protobuf.Empty
+	19, // 44: pluginsdk.RedisProxy.HGetAll:output_type -> pluginsdk.RedisMapResponse
+	34, // 45: pluginsdk.RedisProxy.HDel:output_type -> google.protobuf.Empty
+	34, // 46: pluginsdk.RedisProxy.Publish:output_type -> google.protobuf.Empty
+	23, // 47: pluginsdk.RedisProxy.Subscribe:output_type -> pluginsdk.RedisMessage
+	34, // 48: pluginsdk.EventBus.Publish:output_type -> google.protobuf.Empty
+	28, // 49: pluginsdk.EventBus.Subscribe:output_type -> pluginsdk.Event
+	2,  // 50: pluginsdk.LogProxy.PushLogs:output_type -> pluginsdk.LogPushSummary
+	30, // 51: pluginsdk.SecretEncryption.Encrypt:output_type -> pluginsdk.EncryptResponse
+	32, // 52: pluginsdk.SecretEncryption.Decrypt:output_type -> pluginsdk.DecryptResponse
+	30, // [30:53] is the sub-list for method output_type
+	7,  // [7:30] is the sub-list for method input_type
 	7,  // [7:7] is the sub-list for extension type_name
 	7,  // [7:7] is the sub-list for extension extendee
 	0,  // [0:7] is the sub-list for field type_name
@@ -2112,9 +2312,9 @@ func file_sdk_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sdk_proto_rawDesc), len(file_sdk_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   30,
+			NumMessages:   34,
 			NumExtensions: 0,
-			NumServices:   4,
+			NumServices:   5,
 		},
 		GoTypes:           file_sdk_proto_goTypes,
 		DependencyIndexes: file_sdk_proto_depIdxs,

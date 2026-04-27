@@ -54,7 +54,10 @@ func NewPluginManager(db *sql.DB, rdb *redis.Client, cfg Config, router *PluginR
 	cfg = cfg.withDefaults()
 
 	repo := NewPluginRepository(db)
-	sdk := NewSDKServer(db, rdb)
+	sdk, err := NewSDKServer(db, rdb, cfg.SecretEncryptionMasterKeyHex)
+	if err != nil {
+		return nil, fmt.Errorf("init plugin SDK server: %w", err)
+	}
 
 	return &PluginManager{
 		plugins:   make(map[string]*PluginInstance),
@@ -431,9 +434,14 @@ func configToString(in map[string]any) (map[string]string, error) {
 // Any value outside this set is rejected even if a plugin requests it. Adding
 // a new capability requires both an entry here and the corresponding
 // enforcement in the SDK server (e.g. grpc_server.go).
+//
+// Keep these strings literal (not pluginsdk constants) to avoid pulling the
+// SDK package into manager.go's already-large import set. Each entry MUST
+// match the corresponding pluginsdk.Capability* constant.
 var allowedPluginCapabilities = map[string]struct{}{
-	"redis_raw_keys":     {},
-	"safe_outbound_http": {},
+	"redis_raw_keys":     {}, // pluginsdk.CapabilityRedisRawKeys
+	"safe_outbound_http": {}, // pluginsdk.CapabilitySafeOutboundHTTP — V5 W4
+	"secret_encryption":  {}, // pluginsdk.CapabilitySecretEncryption — V5 W5
 }
 
 // defaultOutboundBlockedCIDRs is the host-side default block list pushed to
@@ -464,8 +472,7 @@ func (m *PluginManager) buildOutboundDefaults() *pluginsdk.OutboundDefaults {
 		MaxRedirects: 3,
 		TimeoutNanos: int64(30 * time.Second),
 		MaxBodyBytes: 1 << 20, // 1 MiB
-	}
-}
+	}}
 
 // approveCapabilities filters the capabilities a plugin requested in its
 // manifest down to the subset the core is willing to grant. Unknown values

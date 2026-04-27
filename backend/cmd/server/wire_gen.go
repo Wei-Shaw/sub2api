@@ -39,6 +39,10 @@ func providePluginConfig(cfg *config.Config) plugin.Config {
 	out.BuiltinDir = pc.BuiltinDir
 	out.PluginsDir = pc.Dir
 	out.AutoEnableBuiltin = pc.AutoEnableBuiltin
+	// V5 W5: reuse the host's existing 32-byte AES master key for plugin
+	// SecretEncryption derivations. The host validates the key length /
+	// hex shape during config load (see internal/config/config.go).
+	out.SecretEncryptionMasterKeyHex = cfg.Totp.EncryptionKey
 	if pc.HealthInterval > 0 {
 		out.HealthInterval = time.Duration(pc.HealthInterval) * time.Second
 	}

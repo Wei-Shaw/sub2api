@@ -43,6 +43,12 @@ type Config struct {
 
 	// Restart 重启策略配置。
 	Restart RestartConfig
+
+	// SecretEncryptionMasterKeyHex 是 V5 W5 SecretEncryption 服务的主密钥
+	// （hex 编码，必须解码后正好 32 字节）。复用 cfg.Totp.EncryptionKey 即可，
+	// host 在派生 plugin 子密钥时保留主密钥不出进程。空串 = 禁用加密服务，
+	// 调用插件会得到 Unimplemented。
+	SecretEncryptionMasterKeyHex string
 }
 
 // DefaultConfig 返回一份合理的默认配置。

@@ -31,6 +31,14 @@ const (
 	// share keys with other components (e.g. the channel-management plugin
 	// writes the gateway cache contract documented in GATEWAY_CACHE_SPEC.md).
 	CapabilityRedisRawKeys = "redis_raw_keys"
+
+	// CapabilitySecretEncryption authorises a plugin to call
+	// PluginContext.Secrets().Encrypt/Decrypt. The host derives a
+	// per-plugin key from its master key on first use and uses AES-256-GCM
+	// with the plugin name as AAD. Plugins lacking this capability receive
+	// a nil SecretEncryptor from PluginContext.Secrets() — see V5-DESIGN
+	// §5 for the full design.
+	CapabilitySecretEncryption = "secret_encryption"
 )
 
 // Manifest is the Go-level representation of pluginsdk.ManifestResponse.
