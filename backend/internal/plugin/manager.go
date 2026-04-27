@@ -844,11 +844,14 @@ func (m *PluginManager) spawnAndConnect(parentCtx context.Context, inst *PluginI
 		}
 	}
 
-	// 调用 Init 把 SDK 地址、插件配置、plugin_name 与已批准的 capabilities 传给子进程。
+	// 调用 Init 把 SDK 地址、plugin_name 与已批准的 capabilities 传给子进程。
+	// V5/W6 SETTINGS-V2: PluginInitRequest.config (proto field 2) is
+	// reserved — pluginConfig stays host-side only (e.g. skip_migration);
+	// it is no longer wired into the plugin process. See
+	// SETTINGS-V2-DESIGN §3 (decision 1).
 	initCtx, cancelInit := context.WithTimeout(parentCtx, m.cfg.ManifestTimeout)
 	initResp, initErr := lifecycle.Init(initCtx, &pluginsdk.PluginInitRequest{
 		SdkAddress:       m.sdkAddr,
-		Config:           pluginConfig,
 		PluginName:       inst.Name,
 		Capabilities:     approvedCaps,
 		OutboundDefaults: m.buildOutboundDefaults(),

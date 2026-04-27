@@ -2509,9 +2509,18 @@ type SettingsGetResponse struct {
 	Exists bool `protobuf:"varint,2,opt,name=exists,proto3" json:"exists,omitempty"`
 	// revision is monotonically increasing per (plugin, key); callers can
 	// use it to deduplicate rapid updates.
-	Revision      int64 `protobuf:"varint,3,opt,name=revision,proto3" json:"revision,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Revision int64 `protobuf:"varint,3,opt,name=revision,proto3" json:"revision,omitempty"`
+	// stored_schema_version is plugin_settings.schema_version_at_write — the
+	// schema version that was active when the row was last written. Empty
+	// when exists=false. See SETTINGS-V2-DESIGN §1.5 for semantics.
+	StoredSchemaVersion string `protobuf:"bytes,4,opt,name=stored_schema_version,json=storedSchemaVersion,proto3" json:"stored_schema_version,omitempty"`
+	// current_schema_version is plugin_settings_schemas.schema_version — the
+	// schema version the plugin most recently registered. The plugin SDK
+	// compares stored vs current to raise SchemaVersionMismatchError when
+	// they disagree. Empty string is normalised to "0" by both sides.
+	CurrentSchemaVersion string `protobuf:"bytes,5,opt,name=current_schema_version,json=currentSchemaVersion,proto3" json:"current_schema_version,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *SettingsGetResponse) Reset() {
@@ -2565,6 +2574,20 @@ func (x *SettingsGetResponse) GetRevision() int64 {
 	return 0
 }
 
+func (x *SettingsGetResponse) GetStoredSchemaVersion() string {
+	if x != nil {
+		return x.StoredSchemaVersion
+	}
+	return ""
+}
+
+func (x *SettingsGetResponse) GetCurrentSchemaVersion() string {
+	if x != nil {
+		return x.CurrentSchemaVersion
+	}
+	return ""
+}
+
 type SettingsWatchRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// key="" subscribes to the entire plugin namespace.
@@ -2611,12 +2634,18 @@ func (x *SettingsWatchRequest) GetKey() string {
 }
 
 type SettingsChangeEvent struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Key           string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	ValueJson     []byte                 `protobuf:"bytes,2,opt,name=value_json,json=valueJson,proto3" json:"value_json,omitempty"`
-	Revision      int64                  `protobuf:"varint,3,opt,name=revision,proto3" json:"revision,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Key       string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	ValueJson []byte                 `protobuf:"bytes,2,opt,name=value_json,json=valueJson,proto3" json:"value_json,omitempty"`
+	Revision  int64                  `protobuf:"varint,3,opt,name=revision,proto3" json:"revision,omitempty"`
+	// requires_reload mirrors the plugin's `x-requires-reload` schema marker
+	// for this key. The host PluginManager subscribes and triggers a plugin
+	// process reload when it receives a true. Plugins themselves may ignore
+	// this field — it is only meaningful to the host. See SETTINGS-V2-DESIGN
+	// §4.4 for the reload state machine.
+	RequiresReload bool `protobuf:"varint,4,opt,name=requires_reload,json=requiresReload,proto3" json:"requires_reload,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *SettingsChangeEvent) Reset() {
@@ -2668,6 +2697,13 @@ func (x *SettingsChangeEvent) GetRevision() int64 {
 		return x.Revision
 	}
 	return 0
+}
+
+func (x *SettingsChangeEvent) GetRequiresReload() bool {
+	if x != nil {
+		return x.RequiresReload
+	}
+	return false
 }
 
 var File_sdk_proto protoreflect.FileDescriptor
@@ -2842,19 +2878,22 @@ const file_sdk_proto_rawDesc = "" +
 	"\rManualTrigger\x12\x19\n" +
 	"\bjob_name\x18\x01 \x01(\tR\ajobName\"&\n" +
 	"\x12SettingsGetRequest\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\"h\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\"\xd2\x01\n" +
 	"\x13SettingsGetResponse\x12\x1d\n" +
 	"\n" +
 	"value_json\x18\x01 \x01(\fR\tvalueJson\x12\x16\n" +
 	"\x06exists\x18\x02 \x01(\bR\x06exists\x12\x1a\n" +
-	"\brevision\x18\x03 \x01(\x03R\brevision\"(\n" +
+	"\brevision\x18\x03 \x01(\x03R\brevision\x122\n" +
+	"\x15stored_schema_version\x18\x04 \x01(\tR\x13storedSchemaVersion\x124\n" +
+	"\x16current_schema_version\x18\x05 \x01(\tR\x14currentSchemaVersion\"(\n" +
 	"\x14SettingsWatchRequest\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\"b\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\"\x8b\x01\n" +
 	"\x13SettingsChangeEvent\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x1d\n" +
 	"\n" +
 	"value_json\x18\x02 \x01(\fR\tvalueJson\x12\x1a\n" +
-	"\brevision\x18\x03 \x01(\x03R\brevision2\xa9\x03\n" +
+	"\brevision\x18\x03 \x01(\x03R\brevision\x12'\n" +
+	"\x0frequires_reload\x18\x04 \x01(\bR\x0erequiresReload2\xa9\x03\n" +
 	"\bSQLProxy\x126\n" +
 	"\x05Query\x12\x15.pluginsdk.SQLRequest\x1a\x16.pluginsdk.SQLResponse\x126\n" +
 	"\x04Exec\x12\x15.pluginsdk.SQLRequest\x1a\x17.pluginsdk.ExecResponse\x12;\n" +

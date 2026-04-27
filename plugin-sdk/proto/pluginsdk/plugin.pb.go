@@ -25,7 +25,6 @@ const (
 type PluginInitRequest struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
 	SdkAddress string                 `protobuf:"bytes,1,opt,name=sdk_address,json=sdkAddress,proto3" json:"sdk_address,omitempty"`
-	Config     map[string]string      `protobuf:"bytes,2,rep,name=config,proto3" json:"config,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// plugin_name is the unique plugin identifier the core uses to scope SDK
 	// resources (e.g. Redis key namespace). The SDK echoes it back to the core
 	// via gRPC metadata on every SDK call so the server can apply per-plugin
@@ -81,13 +80,6 @@ func (x *PluginInitRequest) GetSdkAddress() string {
 		return x.SdkAddress
 	}
 	return ""
-}
-
-func (x *PluginInitRequest) GetConfig() map[string]string {
-	if x != nil {
-		return x.Config
-	}
-	return nil
 }
 
 func (x *PluginInitRequest) GetPluginName() string {
@@ -453,8 +445,25 @@ type ManifestResponse struct {
 	// host applies defaults when a key has not been written yet so plugins
 	// can rely on Settings.Get returning a value immediately after install.
 	SettingsDefaultsJson []byte `protobuf:"bytes,43,opt,name=settings_defaults_json,json=settingsDefaultsJson,proto3" json:"settings_defaults_json,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// settings_schema_version mirrors Manifest.SettingsSchema.Version (see
+	// SETTINGS-V2-DESIGN §3.3). Plugins should bump this whenever a property's
+	// type changes shape; the host stamps the value into
+	// plugin_settings.schema_version_at_write on every write so plugin SDKs
+	// can detect stale values via SchemaVersionMismatchError. Empty string is
+	// normalised to "0" host-side.
+	SettingsSchemaVersion string `protobuf:"bytes,44,opt,name=settings_schema_version,json=settingsSchemaVersion,proto3" json:"settings_schema_version,omitempty"`
+	// settings_properties_meta_json is a JSON object keyed by top-level
+	// schema property name. Each value is the marker triple
+	// {visibility, deprecated, requires_reload} — see SETTINGS-V2-DESIGN
+	// §1.4 for the precise shape. The plugin SDK derives this from the
+	// SettingsSchemaDoc.PropertyMeta map; plugins may also set the markers
+	// inline as JSON Schema vendor extensions (`x-visibility` etc.) and
+	// leave this field empty — the host will re-derive it from
+	// settings_schema_json. When both sources disagree, this field wins
+	// (it is the SDK's authoritative serialization).
+	SettingsPropertiesMetaJson []byte `protobuf:"bytes,45,opt,name=settings_properties_meta_json,json=settingsPropertiesMetaJson,proto3" json:"settings_properties_meta_json,omitempty"`
+	unknownFields              protoimpl.UnknownFields
+	sizeCache                  protoimpl.SizeCache
 }
 
 func (x *ManifestResponse) Reset() {
@@ -574,6 +583,20 @@ func (x *ManifestResponse) GetSettingsSchemaJson() []byte {
 func (x *ManifestResponse) GetSettingsDefaultsJson() []byte {
 	if x != nil {
 		return x.SettingsDefaultsJson
+	}
+	return nil
+}
+
+func (x *ManifestResponse) GetSettingsSchemaVersion() string {
+	if x != nil {
+		return x.SettingsSchemaVersion
+	}
+	return ""
+}
+
+func (x *ManifestResponse) GetSettingsPropertiesMetaJson() []byte {
+	if x != nil {
+		return x.SettingsPropertiesMetaJson
 	}
 	return nil
 }
@@ -1114,18 +1137,14 @@ var File_plugin_proto protoreflect.FileDescriptor
 
 const file_plugin_proto_rawDesc = "" +
 	"\n" +
-	"\fplugin.proto\x12\tpluginsdk\x1a\x1bgoogle/protobuf/empty.proto\"\xc0\x02\n" +
+	"\fplugin.proto\x12\tpluginsdk\x1a\x1bgoogle/protobuf/empty.proto\"\xd1\x01\n" +
 	"\x11PluginInitRequest\x12\x1f\n" +
 	"\vsdk_address\x18\x01 \x01(\tR\n" +
-	"sdkAddress\x12@\n" +
-	"\x06config\x18\x02 \x03(\v2(.pluginsdk.PluginInitRequest.ConfigEntryR\x06config\x12\x1f\n" +
+	"sdkAddress\x12\x1f\n" +
 	"\vplugin_name\x18\x03 \x01(\tR\n" +
 	"pluginName\x12\"\n" +
 	"\fcapabilities\x18\x04 \x03(\tR\fcapabilities\x12H\n" +
-	"\x11outbound_defaults\x182 \x01(\v2\x1b.pluginsdk.OutboundDefaultsR\x10outboundDefaults\x1a9\n" +
-	"\vConfigEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xcc\x01\n" +
+	"\x11outbound_defaults\x182 \x01(\v2\x1b.pluginsdk.OutboundDefaultsR\x10outboundDefaultsJ\x04\b\x02\x10\x03R\x06config\"\xcc\x01\n" +
 	"\x10OutboundDefaults\x12#\n" +
 	"\rblocked_cidrs\x18\x01 \x03(\tR\fblockedCidrs\x12#\n" +
 	"\rallowed_hosts\x18\x02 \x03(\tR\fallowedHosts\x12#\n" +
@@ -1143,7 +1162,7 @@ const file_plugin_proto_rawDesc = "" +
 	"\tFileChunk\x12\x12\n" +
 	"\x04data\x18\x01 \x01(\fR\x04data\x12\x1a\n" +
 	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x10\n" +
-	"\x03eof\x18\x03 \x01(\bR\x03eof\"\xdd\x04\n" +
+	"\x03eof\x18\x03 \x01(\bR\x03eof\"\xd8\x05\n" +
 	"\x10ManifestResponse\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x18\n" +
@@ -1160,7 +1179,9 @@ const file_plugin_proto_rawDesc = "" +
 	"migrations\x12\"\n" +
 	"\fcapabilities\x18( \x03(\tR\fcapabilities\x120\n" +
 	"\x14settings_schema_json\x18* \x01(\fR\x12settingsSchemaJson\x124\n" +
-	"\x16settings_defaults_json\x18+ \x01(\fR\x14settingsDefaultsJson\"`\n" +
+	"\x16settings_defaults_json\x18+ \x01(\fR\x14settingsDefaultsJson\x126\n" +
+	"\x17settings_schema_version\x18, \x01(\tR\x15settingsSchemaVersion\x12A\n" +
+	"\x1dsettings_properties_meta_json\x18- \x01(\fR\x1asettingsPropertiesMetaJson\"`\n" +
 	"\x13EndpointDeclaration\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x18\n" +
 	"\amethods\x18\x02 \x03(\tR\amethods\x12\x1b\n" +
@@ -1228,7 +1249,7 @@ func file_plugin_proto_rawDescGZIP() []byte {
 	return file_plugin_proto_rawDescData
 }
 
-var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_plugin_proto_goTypes = []any{
 	(*PluginInitRequest)(nil),     // 0: pluginsdk.PluginInitRequest
 	(*OutboundDefaults)(nil),      // 1: pluginsdk.OutboundDefaults
@@ -1244,40 +1265,38 @@ var file_plugin_proto_goTypes = []any{
 	(*MigrationDecl)(nil),         // 11: pluginsdk.MigrationDecl
 	(*GetMigrationRequest)(nil),   // 12: pluginsdk.GetMigrationRequest
 	(*GetMigrationResponse)(nil),  // 13: pluginsdk.GetMigrationResponse
-	nil,                           // 14: pluginsdk.PluginInitRequest.ConfigEntry
-	nil,                           // 15: pluginsdk.MenuItem.LabelsEntry
-	nil,                           // 16: pluginsdk.RouteDefinition.MetaEntry
-	(*emptypb.Empty)(nil),         // 17: google.protobuf.Empty
+	nil,                           // 14: pluginsdk.MenuItem.LabelsEntry
+	nil,                           // 15: pluginsdk.RouteDefinition.MetaEntry
+	(*emptypb.Empty)(nil),         // 16: google.protobuf.Empty
 }
 var file_plugin_proto_depIdxs = []int32{
-	14, // 0: pluginsdk.PluginInitRequest.config:type_name -> pluginsdk.PluginInitRequest.ConfigEntry
-	1,  // 1: pluginsdk.PluginInitRequest.outbound_defaults:type_name -> pluginsdk.OutboundDefaults
-	7,  // 2: pluginsdk.ManifestResponse.gateway_endpoints:type_name -> pluginsdk.EndpointDeclaration
-	7,  // 3: pluginsdk.ManifestResponse.plugin_endpoints:type_name -> pluginsdk.EndpointDeclaration
-	8,  // 4: pluginsdk.ManifestResponse.frontend:type_name -> pluginsdk.FrontendManifest
-	11, // 5: pluginsdk.ManifestResponse.migrations:type_name -> pluginsdk.MigrationDecl
-	9,  // 6: pluginsdk.FrontendManifest.menu_items:type_name -> pluginsdk.MenuItem
-	10, // 7: pluginsdk.FrontendManifest.routes:type_name -> pluginsdk.RouteDefinition
-	9,  // 8: pluginsdk.MenuItem.children:type_name -> pluginsdk.MenuItem
-	15, // 9: pluginsdk.MenuItem.labels:type_name -> pluginsdk.MenuItem.LabelsEntry
-	16, // 10: pluginsdk.RouteDefinition.meta:type_name -> pluginsdk.RouteDefinition.MetaEntry
-	0,  // 11: pluginsdk.PluginLifecycle.Init:input_type -> pluginsdk.PluginInitRequest
-	17, // 12: pluginsdk.PluginLifecycle.GetManifest:input_type -> google.protobuf.Empty
-	17, // 13: pluginsdk.PluginLifecycle.HealthCheck:input_type -> google.protobuf.Empty
-	17, // 14: pluginsdk.PluginLifecycle.Shutdown:input_type -> google.protobuf.Empty
-	4,  // 15: pluginsdk.PluginLifecycle.GetFrontendBundle:input_type -> pluginsdk.FrontendBundleRequest
-	12, // 16: pluginsdk.PluginLifecycle.GetMigration:input_type -> pluginsdk.GetMigrationRequest
-	2,  // 17: pluginsdk.PluginLifecycle.Init:output_type -> pluginsdk.PluginInitResponse
-	6,  // 18: pluginsdk.PluginLifecycle.GetManifest:output_type -> pluginsdk.ManifestResponse
-	3,  // 19: pluginsdk.PluginLifecycle.HealthCheck:output_type -> pluginsdk.HealthResponse
-	17, // 20: pluginsdk.PluginLifecycle.Shutdown:output_type -> google.protobuf.Empty
-	5,  // 21: pluginsdk.PluginLifecycle.GetFrontendBundle:output_type -> pluginsdk.FileChunk
-	13, // 22: pluginsdk.PluginLifecycle.GetMigration:output_type -> pluginsdk.GetMigrationResponse
-	17, // [17:23] is the sub-list for method output_type
-	11, // [11:17] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	1,  // 0: pluginsdk.PluginInitRequest.outbound_defaults:type_name -> pluginsdk.OutboundDefaults
+	7,  // 1: pluginsdk.ManifestResponse.gateway_endpoints:type_name -> pluginsdk.EndpointDeclaration
+	7,  // 2: pluginsdk.ManifestResponse.plugin_endpoints:type_name -> pluginsdk.EndpointDeclaration
+	8,  // 3: pluginsdk.ManifestResponse.frontend:type_name -> pluginsdk.FrontendManifest
+	11, // 4: pluginsdk.ManifestResponse.migrations:type_name -> pluginsdk.MigrationDecl
+	9,  // 5: pluginsdk.FrontendManifest.menu_items:type_name -> pluginsdk.MenuItem
+	10, // 6: pluginsdk.FrontendManifest.routes:type_name -> pluginsdk.RouteDefinition
+	9,  // 7: pluginsdk.MenuItem.children:type_name -> pluginsdk.MenuItem
+	14, // 8: pluginsdk.MenuItem.labels:type_name -> pluginsdk.MenuItem.LabelsEntry
+	15, // 9: pluginsdk.RouteDefinition.meta:type_name -> pluginsdk.RouteDefinition.MetaEntry
+	0,  // 10: pluginsdk.PluginLifecycle.Init:input_type -> pluginsdk.PluginInitRequest
+	16, // 11: pluginsdk.PluginLifecycle.GetManifest:input_type -> google.protobuf.Empty
+	16, // 12: pluginsdk.PluginLifecycle.HealthCheck:input_type -> google.protobuf.Empty
+	16, // 13: pluginsdk.PluginLifecycle.Shutdown:input_type -> google.protobuf.Empty
+	4,  // 14: pluginsdk.PluginLifecycle.GetFrontendBundle:input_type -> pluginsdk.FrontendBundleRequest
+	12, // 15: pluginsdk.PluginLifecycle.GetMigration:input_type -> pluginsdk.GetMigrationRequest
+	2,  // 16: pluginsdk.PluginLifecycle.Init:output_type -> pluginsdk.PluginInitResponse
+	6,  // 17: pluginsdk.PluginLifecycle.GetManifest:output_type -> pluginsdk.ManifestResponse
+	3,  // 18: pluginsdk.PluginLifecycle.HealthCheck:output_type -> pluginsdk.HealthResponse
+	16, // 19: pluginsdk.PluginLifecycle.Shutdown:output_type -> google.protobuf.Empty
+	5,  // 20: pluginsdk.PluginLifecycle.GetFrontendBundle:output_type -> pluginsdk.FileChunk
+	13, // 21: pluginsdk.PluginLifecycle.GetMigration:output_type -> pluginsdk.GetMigrationResponse
+	16, // [16:22] is the sub-list for method output_type
+	10, // [10:16] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_plugin_proto_init() }
@@ -1291,7 +1310,7 @@ func file_plugin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_plugin_proto_rawDesc), len(file_plugin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
