@@ -452,8 +452,29 @@ func (s *PluginSettingsService) GetAll(
 // SetByKey validates value against the plugin's schema, then upserts.
 // On success the new revision is returned and a PluginSettingsChange is
 // fanned out to subscribers.
+//
+// Backward-compat shim: this signature predates the V5/W6 SETTINGS-V2
+// SetSource argument. It now forwards to SetByKeyWithSource with
+// SetSourceAdmin so legacy callers (notably the admin handler before
+// W3-A migrates) implicitly opt into the backend-only guard. New
+// callers should invoke SetByKeyWithSource directly with the explicit
+// source value (DESIGN §4.3).
 func (s *PluginSettingsService) SetByKey(
 	ctx context.Context, pluginName, key string, value json.RawMessage,
+) (int64, error) {
+	return s.SetByKeyWithSource(ctx, pluginName, key, value, SetSourceAdmin)
+}
+
+// SetByKeyWithSource is the V5/W6 SETTINGS-V2 entry point used by the
+// admin handler (SetSourceAdmin) and host-internal code (SetSourceInternal).
+// Visibility=backend keys reject admin writes with
+// ErrPluginSettingsBackendOnly; internal sources skip the guard.
+//
+// The current schema_version is stamped into
+// plugin_settings.schema_version_at_write so a later plugin SDK Get can
+// detect stale values via SchemaVersionMismatchError.
+func (s *PluginSettingsService) SetByKeyWithSource(
+	ctx context.Context, pluginName, key string, value json.RawMessage, source SetSource,
 ) (int64, error) {
 	if pluginName == "" || key == "" {
 		return 0, errors.New("plugin_settings: empty plugin or key")
@@ -461,32 +482,58 @@ func (s *PluginSettingsService) SetByKey(
 
 	s.mu.RLock()
 	compiled, ok := s.compiledSchemas[pluginName]
+	meta := s.propertiesMeta[pluginName]
+	schemaVersion := s.schemaVersions[pluginName]
 	s.mu.RUnlock()
 	if !ok {
 		return 0, ErrPluginSettingsSchemaMissing
 	}
+
+	// V5/W6 SETTINGS-V2: enforce backend-only visibility against admin
+	// sources. SetSourceUnknown is treated as admin so a caller that
+	// forgot to set the source cannot bypass the guard.
+	if source != SetSourceInternal {
+		if propMeta, ok := meta[key]; ok && propMeta.Visibility == PropertyVisibilityBackend {
+			return 0, &ErrPluginSettingsBackendOnly{Plugin: pluginName, Key: key}
+		}
+	}
+
 	if err := validateAgainst(compiled, key, value); err != nil {
 		return 0, err
 	}
+	if schemaVersion == "" {
+		schemaVersion = schemaVersionUndeclared
+	}
 
 	row := s.db.QueryRowContext(ctx, `
-		INSERT INTO plugin_settings (plugin_name, key, value_json, revision, updated_at)
-		VALUES ($1, $2, $3::jsonb, 1, NOW())
+		INSERT INTO plugin_settings (plugin_name, key, value_json, revision, schema_version_at_write, updated_at)
+		VALUES ($1, $2, $3::jsonb, 1, $4, NOW())
 		ON CONFLICT (plugin_name, key) DO UPDATE
-		   SET value_json = EXCLUDED.value_json,
-		       revision   = plugin_settings.revision + 1,
-		       updated_at = NOW()
+		   SET value_json              = EXCLUDED.value_json,
+		       revision                 = plugin_settings.revision + 1,
+		       schema_version_at_write  = EXCLUDED.schema_version_at_write,
+		       updated_at               = NOW()
 		RETURNING revision
-	`, pluginName, key, string(value))
+	`, pluginName, key, string(value), schemaVersion)
 	var rev int64
 	if err := row.Scan(&rev); err != nil {
 		return 0, fmt.Errorf("plugin_settings: upsert: %w", err)
 	}
+
+	// Mirror the schema's x-requires-reload marker into the change event
+	// so the PluginManager reload watcher (W2-C) can decide whether to
+	// restart the plugin process.
+	requiresReload := false
+	if propMeta, ok := meta[key]; ok {
+		requiresReload = propMeta.RequiresReload
+	}
+
 	s.notify(PluginSettingsChange{
-		Plugin:   pluginName,
-		Key:      key,
-		Value:    append(json.RawMessage(nil), value...),
-		Revision: rev,
+		Plugin:         pluginName,
+		Key:            key,
+		Value:          append(json.RawMessage(nil), value...),
+		Revision:       rev,
+		RequiresReload: requiresReload,
 	})
 	return rev, nil
 }
