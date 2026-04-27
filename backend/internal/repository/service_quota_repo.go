@@ -195,50 +195,66 @@ func (r *serviceQuotaRuleRepository) FetchGroupScope(ctx context.Context, groupI
 // 让 validatePathLinkage 的 contains-check 保持单一路径。
 func (r *serviceQuotaRuleRepository) FetchChannelScope(ctx context.Context, channelID int64) (*service.ChannelScopeInfo, error) {
 	var exists bool
-	err := r.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM channels WHERE id = $1)`, channelID).Scan(&exists)
-	if err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM channels WHERE id = $1)`, channelID).Scan(&exists); err != nil {
 		return nil, err
 	}
 	if !exists {
 		return nil, nil
 	}
-	info := &service.ChannelScopeInfo{}
 
-	// 同一 channel 的多条 pricing 行可能重复出现同一 platform，DISTINCT + LOWER 归一化。
-	platRows, err := r.db.QueryContext(ctx,
+	platforms, err := queryStringList(ctx, r.db,
+		// 同一 channel 的多条 pricing 行可能重复出现同一 platform，DISTINCT + LOWER 归一化。
 		`SELECT DISTINCT LOWER(platform) FROM channel_model_pricing WHERE channel_id = $1 AND platform IS NOT NULL AND platform <> ''`,
 		channelID)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = platRows.Close() }()
-	for platRows.Next() {
-		var p string
-		if err := platRows.Scan(&p); err != nil {
-			return nil, err
-		}
-		info.Platforms = append(info.Platforms, p)
-	}
-	if err := platRows.Err(); err != nil {
-		return nil, err
-	}
-
-	groupRows, err := r.db.QueryContext(ctx, `SELECT group_id FROM channel_groups WHERE channel_id = $1`, channelID)
+	groupIDs, err := queryInt64List(ctx, r.db,
+		`SELECT group_id FROM channel_groups WHERE channel_id = $1`,
+		channelID)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = groupRows.Close() }()
-	for groupRows.Next() {
-		var gid int64
-		if err := groupRows.Scan(&gid); err != nil {
-			return nil, err
-		}
-		info.GroupIDs = append(info.GroupIDs, gid)
-	}
-	if err := groupRows.Err(); err != nil {
+	return &service.ChannelScopeInfo{Platforms: platforms, GroupIDs: groupIDs}, nil
+}
+
+// queryStringList 跑一条 "SELECT 单列 string" 的查询，把所有行收集成 []string。
+// 空结果返回 nil 而非空切片（与原 append-style 行为一致），调用方按是否 nil 判定"无数据"。
+//
+// 抽出公共扫描辅助是为了让多个 repo 方法共享，避免 rows.Next/Scan/append 三段重复代码。
+func queryStringList(ctx context.Context, db *sql.DB, query string, args ...any) ([]string, error) {
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
 		return nil, err
 	}
-	return info, nil
+	defer func() { _ = rows.Close() }()
+	var out []string
+	for rows.Next() {
+		var v string
+		if err := rows.Scan(&v); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+// queryInt64List 与 queryStringList 同款，目标列为 int64（如 group_id / user_id 等）。
+func queryInt64List(ctx context.Context, db *sql.DB, query string, args ...any) ([]int64, error) {
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []int64
+	for rows.Next() {
+		var v int64
+		if err := rows.Scan(&v); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
 }
 
 func (r *serviceQuotaRuleRepository) fetchByID(ctx context.Context, id int64) (*service.ServiceQuotaRule, error) {
