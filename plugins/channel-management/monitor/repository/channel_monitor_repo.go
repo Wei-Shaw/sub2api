@@ -27,13 +27,6 @@ import (
 	"github.com/lib/pq"
 )
 
-// ErrNotPorted is preserved for any remaining stubs in this package while the
-// V5 W6 port lands incrementally. The channel-monitor repo itself no longer
-// returns this sentinel — every method has a real query body — but keeping
-// the variable around avoids a churn of imports in template_repo.go and
-// keeps the porting note historically reachable.
-var ErrNotPorted = errors.New("channel-monitor repository: method not yet ported from upstream commit 09fd83ab")
-
 // channelMonitorRepository is the channel-monitor data access implementation.
 // db is the SDK-provided handle whose driver proxies queries through gRPC
 // back to the host's connection pool.
