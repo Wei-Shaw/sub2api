@@ -245,24 +245,40 @@ func (s *FrontendServer) injectSettings(settingsJSON []byte) []byte {
 		}
 	}
 
+	// 1) importmap 必须出现在第一个 <script type="module"> 之前 (W3C importmap spec).
+	//    Vite 生产构建会把 host 主 bundle 的 <script type="module"> 放在 <head> 内部,
+	//    位置早于 </head>. 之前我们把 importmap 也注入到 </head> 之前, 结果浏览器
+	//    在解析到 importmap 时 host module script 已经开始 fetch, importmap 失效,
+	//    plugin entry 里的 `import 'vue'` 因找不到 specifier 而抛 Failed to resolve.
+	//    修复: 把 importmap 提前到 <head> 标签之后立刻插入, 保证早于任何 module script.
+	//    (importmap script 不需要 CSP nonce, 浏览器对 type=importmap 单独处理.)
+	headOpen := []byte("<head>")
+	headOpenIdx := bytes.Index(s.baseHTML, headOpen)
+	var afterHeadOpen []byte
+	if headOpenIdx >= 0 {
+		afterHeadOpen = make([]byte, 0, len(s.baseHTML)+len(pluginImportMap))
+		afterHeadOpen = append(afterHeadOpen, s.baseHTML[:headOpenIdx+len(headOpen)]...)
+		afterHeadOpen = append(afterHeadOpen, []byte(pluginImportMap)...)
+		afterHeadOpen = append(afterHeadOpen, s.baseHTML[headOpenIdx+len(headOpen):]...)
+	} else {
+		afterHeadOpen = s.baseHTML
+	}
+
+	// 2) 其他注入物 (app config script / plugin manifests / plugin-sdk.css link)
+	//    继续放在 </head> 之前. 它们不需要在 module script 之前出现.
 	headClose := []byte("</head>")
 	var injection []byte
 	injection = append(injection, script...)
 	if len(pluginScript) > 0 {
 		injection = append(injection, pluginScript...)
 	}
-	// importmap 必须出现在任何 <script type="module"> 之前 (W3C importmap spec).
-	// </head> 是页面所有 <script> 的最早可能位置, 所以放这里足够安全.
-	// 注: importmap script 不需要 CSP nonce (浏览器对 type=importmap 单独处理),
-	// 但保险起见仍走 head close 替换.
-	injection = append(injection, []byte(pluginImportMap)...)
-	// plugin-sdk.css 提前注入: SDK 组件 (scoped data-v-* hash) 在 plugin import
+	// plugin-sdk.css 注入: SDK 组件 (scoped data-v-* hash) 在 plugin import
 	// @sub2api/plugin-sdk 时由 importmap 取到 ESM bundle, 但 ESM 不会带样式.
 	// 这里通过 <link> 让浏览器加载 SDK 编译后的样式表, 让 plugin DOM 渲染时
 	// scoped class 命中. host 主 bundle 已含一份 host 副本样式 (不同 hash 不冲突).
 	injection = append(injection, []byte(pluginSdkStylesheet)...)
 	injection = append(injection, headClose...)
-	result := bytes.Replace(s.baseHTML, headClose, injection, 1)
+	result := bytes.Replace(afterHeadOpen, headClose, injection, 1)
 
 	result = injectSiteTitle(result, settingsJSON)
 

@@ -174,7 +174,37 @@ func TestFrontendServer_InjectSettings(t *testing.T) {
 		// Should contain the script with nonce placeholder
 		assert.Contains(t, string(result), `<script nonce="__CSP_NONCE_VALUE__">`)
 		assert.Contains(t, string(result), `window.__APP_CONFIG__={"test":"data"};`)
-		assert.Contains(t, string(result), `</script></head>`)
+		// app-config script and plugin-sdk.css link still injected before </head>
+		assert.Contains(t, string(result), `<link rel="stylesheet" href="/api/v1/plugin-assets/__shared__/plugin-sdk.css"></head>`)
+	})
+
+	// Bug 4 regression: importmap MUST be injected before the first <script type="module">,
+	// otherwise plugin entry's `import 'vue'` fails at runtime ("Failed to resolve module specifier").
+	// Vite emits the module script inside <head> (early), so we inject importmap right after <head>.
+	t.Run("importmap_injected_before_first_module_script", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]string{"key": "value"},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		result := server.injectSettings([]byte(`{}`))
+
+		importmapIdx := bytes.Index(result, []byte(`<script type="importmap">`))
+		moduleScriptIdx := bytes.Index(result, []byte(`<script type="module"`))
+		require.NotEqual(t, -1, importmapIdx, "importmap should be injected")
+		// moduleScriptIdx may be -1 in test environments without a built host bundle;
+		// when present, importmap must come first.
+		if moduleScriptIdx != -1 {
+			assert.Less(t, importmapIdx, moduleScriptIdx, "importmap must precede first <script type=module>")
+		}
+
+		// importmap must appear inside <head>, immediately after the opening <head> tag.
+		headOpenIdx := bytes.Index(result, []byte("<head>"))
+		require.NotEqual(t, -1, headOpenIdx)
+		assert.Equal(t, headOpenIdx+len("<head>"), importmapIdx,
+			"importmap should be the first content after <head>")
 	})
 
 	t.Run("injects_before_head_close", func(t *testing.T) {
