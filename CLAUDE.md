@@ -420,6 +420,99 @@ GET  /api/v1/admin/groups/all
 
 ---
 
+## 工程原则（最高优先级·所有改动适用）
+
+> 这四条原则凌驾于下文所有细节规范之上。函数行数、文件大小、命名约定都是这四条原则的具体落地手段，**不是**目的本身。每次改动都必须先回答"是否违反复用 / 解耦 / 封装 / 抽象"，再去抠行数。
+
+### 1. 复用（Reuse）
+
+**定义**：同一概念只在一处实现；其它调用点按相同入参调用同一函数 / 类型 / 常量。**禁止**复制粘贴 + 微调产生平行实现。
+
+强调点：
+- 业务公式（key 拼接、状态机、金额换算等）只允许有**一个权威实现**；其余调用方必须 import，不准重写
+- 字段映射（金额 / 状态枚举 / 路径摘要 / 错误码）**前后端各自的常量文件必须同步**，不准前端写一份后端写一份再各自漂移
+- 测试 fixture（`fakeRepo`、构造函数、测试帮助函数）也要复用，不准每个 test file 各自 copy 一份 mock
+
+**反例 ❌**：
+- ❌ `service_quota_service.go` 用 `BuildServiceQuotaCounterKey` 拼 redis key，但 `service_quota_monitor_service.go` 自己写 `fmt.Sprintf("quota:counter:%s:...")` 拼一遍 —— 两边公式漂移后 Snapshot 永远读不到 PreCheck 写入的 key
+- ❌ admin `RuntimeTable.vue` 与 user `QuotaMonitor.vue` 各自实现 path chevron 渲染 / 百分比着色逻辑，改一次得改两份且容易漏
+
+**正例 ✅**：
+- ✅ `backend/internal/service/service_quota_monitor_helpers.go` 中的 `BuildServiceQuotaCounterKey` 单点实现，`service_quota_service.go`（PreCheck/Acquire）与 `service_quota_monitor_service.go`（Snapshot）共用同一函数
+- ✅ `frontend/src/utils/loadIndicator.ts` 提供的着色 / 等级 / 文案三函数让 `OpsConcurrencyCard.vue` 与 `RuntimeTable.vue` 共用同一套 UI 规则
+
+**应用领域**：网关三平台（OpenAI / Anthropic / Antigravity）共有的 limiter / billing / record 链路必须复用同一套管道；不允许每平台各写一遍 PreCheck → Acquire → Forward → Record 的 30 行代码。
+
+### 2. 解耦（Decouple）
+
+**定义**：模块只与"该模块职责"相关；跨职责的逻辑不能混进某个模块的内部。依赖通过参数 / 接口注入，不在函数体里拉单例。
+
+强调点：
+- 业务逻辑不嵌进 handler；handler 只负责协议适配（HTTP / SSE / WS 编解码、状态码映射）
+- 限流 / 计费 / 审计这类横切关注点必须走统一 pipeline 或 middleware，不允许散落在具体 gateway handler 的 `if quotaSvc != nil { ... }` 分支里
+- 跨包依赖通过接口（小接口）注入；禁止 `import` 另一个 handler / service 的私有辅助函数
+
+**反例 ❌**：
+- ❌ `openai_gateway_handler.go` 里出现 `if quotaSvc != nil { if quotaSvc.Enabled() { plan, err := quotaSvc.PreCheck(...); if err != nil { ... } } }` 的零散判断 —— 业务规则被埋进协议适配层，新增平台必须再抄一遍
+- ❌ `user_service_quota_handler.go` 直接 import admin handler 的私有 helper，把"管理员视图"和"用户视图"耦合死
+
+**正例 ✅**：
+- ✅ JWT 鉴权解耦到独立中间件（`backend/internal/middleware/`），handler 只读 `ctx` 里的 user 信息
+- ✅ `ServiceQuotaService` 与 `ServiceQuotaMonitorService` 是两个独立接口：写路径（Acquire/Release）和读路径（Snapshot）解耦，互不持有对方实现
+
+**应用领域**：限流接入网关必须走 hook / pipeline；**不允许**在 `gateway_handler.go` / `openai_gateway_handler.go` / `antigravity_gateway_handler.go` 里散落 `quotaSvc.PreCheck(...)` 调用。
+
+### 3. 封装（Encapsulate）
+
+**定义**：对外暴露最小且清晰的接口；内部状态、实现细节、复杂多步流程不外泄。复杂状态用对象封装，调用方只面向稳定动词。
+
+强调点：
+- 对外只导出"做什么"的方法名，不暴露"怎么做"的内部步骤
+- 复杂多步流程（如 lease → plan → consume → release）封装成单一对象，调用方只看到 `Acquire / Consume / Close` 三个方法
+- 工具函数尽量挂到拥有数据的类型上作 receiver method，不要漂浮成全局函数让多个无关包随便引用
+- 错误对外用 const 错误码 + metadata；调用方只识 code 不解析 message 文本
+
+**反例 ❌**：
+- ❌ 业务函数里直接 `redis.Cmdable.Eval(...)` 操作 lua 脚本，绕过 repo 层 —— 缓存换实现时所有调用方都得改
+- ❌ handler 读取 service 内部 `sync.Once` / `map[string]chan` / 内部计数器字段
+- ❌ 让外部包修改 `*PaymentService` 的公共字段来"配置"行为；正确做法是构造期注入
+
+**正例 ✅**：
+- ✅ `backend/internal/service/billing_cache_service_ticket.go` 用 `BillingTicket` 封装 plan / lease / release 三段式生命周期，网关只调 `Acquire / Consume / Close`，看不到 lua 脚本和 redis 细节
+- ✅ `frontend/src/components/common/DataTable.vue` 封装分页 / 排序 / 选择 / loading 状态，slot API 只暴露列模板，使用方不接触内部 ref
+
+**应用领域**：限流接入用 `BillingTicket`（或更高层 `BillingHookPipeline`）封装；网关代码**不应该**看到 `PreCheckSelect` / `PreCheckAcquire` / `RecordUsage` 这些底层接口的存在。
+
+### 4. 抽象（Abstract）
+
+**定义**：找出共性提炼接口 / 管道；让差异通过参数、回调、适配器表达，**不是**在主流程里写 `switch platform` 或 `if rpm else if tpm`。
+
+强调点：
+- 当发现 3 处以上 handler / service 在做同一系列步骤 → 抽象成 pipeline，每个具体场景只填 hook 函数
+- 接口定义最小化（接口隔离原则）；可扩展性体现在"新增一个实现只填 callback，不动主流程"
+- 抽象点必须写注释说明 invariant（主流程承诺什么）和扩展方式（新增实现要实现哪些方法）
+
+**反例 ❌**：
+- ❌ `openai_gateway_handler.go` / `gateway_handler.go`（Anthropic）/ `antigravity_gateway_handler.go` 各自一份 30 行的 `PreCheck → Acquire → Forward → Record` 流程，新增 limiter 类型要改 3 个文件
+- ❌ 每加一种 limiter 类型（rpm / tpm / tpd / concurrency / ...）都在 `service_quota_service.go` 主函数里加一个 `case`，主流程越写越长
+
+**正例 ✅**：
+- ✅ `ServiceQuotaLimiter` 接口（`Snapshot / SnapshotMany / Acquire / Release / Increment`）让 fixed-window / rolling-window / concurrency 三种实现走同一调用面，主流程不关心具体类型
+- ✅ 网关请求生命周期抽象成 `pre-flight (Acquire) → forward → post-flight (Record)` 三阶段 pipeline，平台差异通过 hook（`modelResolver` / `tokenizer` / `costCalculator`）注入；新增平台只增一个 platform adapter，不改主流程
+
+**应用领域**：网关请求生命周期 = **pre-flight → forward → post-flight** 三阶段抽象，平台差异（OpenAI / Anthropic / Antigravity）通过 hook 注入；**新增平台只增加一个 platform adapter**，不允许 fork 主流程。
+
+---
+
+> **违反原则的代码不予合并。** 若已合并需重构追溯。Code review 必须明确列出该 PR 在四条原则上各自的取舍：
+>
+> - [ ] **复用**：是否引入了与现有公式 / 工具 / 常量的"平行实现"？是否 import 了已有的单点实现而不是 copy？
+> - [ ] **解耦**：跨职责依赖是否通过接口 / 中间件 / 参数注入？handler 是否只做协议适配？
+> - [ ] **封装**：内部状态、复杂多步流程是否对外暴露成单一对象 / 方法？调用方是否只看到稳定动词而非底层细节？
+> - [ ] **抽象**：共性是否被提炼成 pipeline / 接口？差异是否通过适配器 / 回调表达，而不是主流程里的 `switch` / `if` 分支？
+
+---
+
 ## Go / 前端代码规范
 
 ### 函数与结构
