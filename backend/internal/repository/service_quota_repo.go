@@ -218,6 +218,28 @@ func (r *serviceQuotaRuleRepository) FetchChannelScope(ctx context.Context, chan
 	return &service.ChannelScopeInfo{Platforms: platforms, GroupIDs: groupIDs}, nil
 }
 
+// FetchPathIDsByOwner 查 service_quota_paths 中引用某 owner（channel/group/account）的所有 path_id。
+//
+// 用于 admin 删除 channel/group/account 前快照受影响 path_ids → 删 DB → 异步清 Redis 残留 counter key。
+// CASCADE 删完就查不到了，所以必须严格按"先快照 → 再 DELETE"顺序。
+//
+// owner 必须是 ServiceQuotaPathOwner* 常量之一，否则返回错误（防 SQL 注入：列名不能从外部直传）。
+func (r *serviceQuotaRuleRepository) FetchPathIDsByOwner(ctx context.Context, owner string, ownerID int64) ([]int64, error) {
+	switch owner {
+	case service.ServiceQuotaPathOwnerChannel,
+		service.ServiceQuotaPathOwnerGroup,
+		service.ServiceQuotaPathOwnerAccount:
+	default:
+		return nil, fmt.Errorf("FetchPathIDsByOwner: unsupported owner %q", owner)
+	}
+	if ownerID <= 0 {
+		return nil, nil
+	}
+	// owner 已经被白名单校验过，不会触发 SQL 注入；这里用 fmt.Sprintf 拼列名。
+	query := fmt.Sprintf(`SELECT id FROM service_quota_paths WHERE %s = $1`, owner)
+	return queryInt64List(ctx, r.db, query, ownerID)
+}
+
 // queryStringList 跑一条 "SELECT 单列 string" 的查询，把所有行收集成 []string。
 // 空结果返回 nil 而非空切片（与原 append-style 行为一致），调用方按是否 nil 判定"无数据"。
 //

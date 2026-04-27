@@ -41,6 +41,9 @@ func (r *validationFakeRepo) FetchGroupScope(_ context.Context, id int64) (*Grou
 func (r *validationFakeRepo) FetchChannelScope(_ context.Context, id int64) (*ChannelScopeInfo, error) {
 	return r.channels[id], nil
 }
+func (r *validationFakeRepo) FetchPathIDsByOwner(_ context.Context, _ string, _ int64) ([]int64, error) {
+	return nil, nil
+}
 
 // ptrInt64/ptrString 在同 package 已存在（payment_config_plans_validation_test.go / admin_service_group_test.go），复用即可。
 

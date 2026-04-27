@@ -320,6 +320,10 @@ func (h *UserHandler) Delete(c *gin.Context) {
 			slog.WarnContext(c.Request.Context(), "failed to reload service quota cache after user deletion",
 				"user_id", userID, "err", err)
 		}
+		// 清理 Redis 中以 user_id 结尾的 counter key（counter_mode=user / per_user 写出的 user-scoped 计数）：
+		// FK CASCADE 不会清 Redis，user_id 复用时新用户会继承旧用户的计数。fire-and-forget 异步执行，
+		// 单条失败仅 warn 不阻塞 admin 响应。
+		h.serviceQuotaSvc.ResetCountersForUser(c.Request.Context(), userID)
 	}
 
 	response.Success(c, gin.H{"message": "User deleted successfully"})

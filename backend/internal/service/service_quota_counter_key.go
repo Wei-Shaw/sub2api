@@ -94,6 +94,64 @@ func (s *serviceQuotaService) resetAllCountersForRule(ctx context.Context, ruleI
 	}
 }
 
+// ResetCountersForUser 实现 ServiceQuotaService 接口：fire-and-forget 清理某用户的全部 counter key。
+//
+// pattern: "svcquota:v2:*:*:*:<user_id>"——永远不会误命中 shared key（target=shared，
+// glob 不会让数字 user_id 匹配 "shared"）。复用 task #15 的 goAsync helper：
+// 用 context.WithoutCancel 解除 admin 请求 cancel 联动 + 顶层 panic recover。
+func (s *serviceQuotaService) ResetCountersForUser(ctx context.Context, userID int64) {
+	if s == nil || s.limiter == nil || userID <= 0 {
+		return
+	}
+	pattern := BuildServiceQuotaCounterKeyPatternForUser(userID)
+	s.goAsync(ctx, "reset_counters_user_delete", userID, func(asyncCtx context.Context) {
+		if err := s.limiter.ResetPattern(asyncCtx, pattern); err != nil {
+			slog.Warn("service quota: reset counters on user delete failed",
+				"user_id", userID,
+				"pattern", pattern,
+				"error", err,
+			)
+		}
+	})
+}
+
+// SnapshotPathIDsByOwner 同步查 path_ids 用于"删 DB 前快照"。失败返回 error，调用方决定是否继续（不吞错避免静默漏清）。
+func (s *serviceQuotaService) SnapshotPathIDsByOwner(ctx context.Context, owner string, ownerID int64) ([]int64, error) {
+	if s == nil || s.repo == nil {
+		return nil, nil
+	}
+	return s.repo.FetchPathIDsByOwner(ctx, owner, ownerID)
+}
+
+// ResetCountersForPaths 实现 ServiceQuotaService 接口：fire-and-forget 清理一批 path_id 的全部 counter key。
+//
+// 单条 path 一次 ResetPattern("svcquota:v2:*:<path_id>:*:*")；批量调用顺序无关，单条失败只 warn。
+// 整批包在一个 goroutine 里减少调度开销（path 多时仍然顺序跑，频次低无所谓延迟）。
+//
+// 调用方约定：必须先快照 pathIDs 再删 DB——否则 FK CASCADE 删完 service_quota_paths
+// 就查不到 path_ids 了。snapshot 拷贝由调用方在外部做（goroutine 接收的是值而非引用）。
+func (s *serviceQuotaService) ResetCountersForPaths(ctx context.Context, pathIDs []int64) {
+	if s == nil || s.limiter == nil || len(pathIDs) == 0 {
+		return
+	}
+	pathIDsCopy := append([]int64(nil), pathIDs...)
+	s.goAsync(ctx, "reset_counters_paths_delete", 0, func(asyncCtx context.Context) {
+		for _, pathID := range pathIDsCopy {
+			if pathID <= 0 {
+				continue
+			}
+			pattern := BuildServiceQuotaCounterKeyPatternForPath(pathID)
+			if err := s.limiter.ResetPattern(asyncCtx, pattern); err != nil {
+				slog.Warn("service quota: reset counters on path-owner delete failed",
+					"path_id", pathID,
+					"pattern", pattern,
+					"error", err,
+				)
+			}
+		}
+	})
+}
+
 // ResetLimiterCounter 用 BuildServiceQuotaCounterKey 重建 Redis key 后调 limiter.Reset。
 //
 // 不做规则有效性二次校验（前端传过来的就是当前监控页 row 上看到的 ID）；如果规则
@@ -149,6 +207,26 @@ func BuildServiceQuotaCounterKeyPattern(ruleID int64, limiterType *string) strin
 		return fmt.Sprintf("svcquota:v2:%d:*", ruleID)
 	}
 	return fmt.Sprintf("svcquota:v2:%d:*:%s:*", ruleID, *limiterType)
+}
+
+// BuildServiceQuotaCounterKeyPatternForUser 匹配某 user 在所有规则/path/limiter 下的 counter key。
+//
+// 用于 user 被删除时清理 counter_mode=user / per_user 写出的 user-scoped 计数：
+// 实际 key 形态是 svcquota:v2:<rule>:<path>:<type>:<user_id>，所以 pattern 用
+// "前 4 段全 wildcard + 末段 user_id" 即可命中所有规则的该用户计数器。
+//
+// 不会误命中 shared key（target=shared），因为 user_id 是十进制数，glob "shared" 永远不等于。
+func BuildServiceQuotaCounterKeyPatternForUser(userID int64) string {
+	return fmt.Sprintf("svcquota:v2:*:*:*:%d", userID)
+}
+
+// BuildServiceQuotaCounterKeyPatternForPath 匹配某 path 在所有规则/limiter/scope 下的 counter key。
+//
+// 用于 channel/group/account 被删除导致 path 行被 CASCADE 清掉时，配合预查到的 path_id
+// 清理残留 Redis 计数：key 形态 svcquota:v2:<rule>:<path>:<type>:<scope>，
+// 把 path_id 段定死、其他全 wildcard。
+func BuildServiceQuotaCounterKeyPatternForPath(pathID int64) string {
+	return fmt.Sprintf("svcquota:v2:*:%d:*:*", pathID)
 }
 
 // counterKey 返回 path × limiter 的独立计数 key。v2 前缀使旧 key 自然失效。

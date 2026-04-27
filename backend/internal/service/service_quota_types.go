@@ -38,6 +38,12 @@ const (
 	ServiceQuotaWindowFixed   = "fixed"
 	ServiceQuotaWindowRolling = "rolling"
 
+	// ServiceQuotaPathOwner* 是 FetchPathIDsByOwner 的 owner 维度，对应 service_quota_paths 表的字段名。
+	// 用常量代替魔法字符串避免拼错（service 层与 repo 层共享）。
+	ServiceQuotaPathOwnerChannel = "channel_id"
+	ServiceQuotaPathOwnerGroup   = "group_id"
+	ServiceQuotaPathOwnerAccount = "account_id"
+
 	// ServiceQuotaTokenComponent* 决定 TPM/TPD 限流器把哪几种 token 计入计数。
 	// 仅 TPM/TPD 使用此配置；RPM/concurrency/daily_usd 忽略。
 	//
@@ -310,6 +316,13 @@ type ServiceQuotaRuleRepository interface {
 	// 校验 path 中 channel↔platform、channel↔group 的隶属关系。channel 不存在时返回 nil（非 error），
 	// 与 FetchAccountScope/FetchGroupScope 行为一致——让 caller 用 nil 判断"未找到"。
 	FetchChannelScope(ctx context.Context, channelID int64) (*ChannelScopeInfo, error)
+	// FetchPathIDsByOwner 返回 service_quota_paths 中所有引用指定 owner（channel/group/account/user）的 path_id。
+	//
+	// 用于 admin 删除资源前快照受影响的 path_ids，再异步清 Redis 残留 counter key。
+	// CASCADE 删完后查不到，所以必须 "先快照 → 再 DELETE"。
+	//
+	// owner 为 ServiceQuotaPathOwner* 中的常量。
+	FetchPathIDsByOwner(ctx context.Context, owner string, ownerID int64) ([]int64, error)
 }
 
 // ServiceQuotaUserChecker 是 service quota 在校验 target_user_ids 时使用的最小化用户存在性检查接口。
@@ -431,4 +444,22 @@ type ServiceQuotaService interface {
 	// 用于管理员手动重置：路径不存在或 limiter 缺失时返回 404 让 handler 透传 HTTP 状态。
 	// scopeUserID == nil 对应 shared / per_user 未限定用户的情况；非 nil 对应 user 模式或 per_user 指定用户。
 	ResetLimiterCounter(ctx context.Context, ruleID, pathID int64, limiterType string, scopeUserID *int64) error
+	// ResetCountersForUser 清理某用户在所有规则下的残留 counter key（counter_mode=user / per_user 写出的 user-scoped 计数）。
+	// 用于 admin 删除 user 时 fire-and-forget 调用：DB CASCADE 已清 service_quota_rule_users，
+	// 这里把 Redis 中以该 user_id 结尾的 counter key 也清掉，避免复用 user_id 时新用户继承旧用户的计数。
+	// 失败仅 warn 不抛（与其他 reset 一致），TTL 自然兜底。
+	ResetCountersForUser(ctx context.Context, userID int64)
+	// ResetCountersForPaths 清理一批 path_id 在所有规则/limiter 下的残留 counter key。
+	// 用于 admin 删除 channel/group/account 前先快照受影响的 path_ids，再异步调用此方法清 Redis；
+	// 调用顺序必须是 "先快照 → 再删 DB"，否则 CASCADE 删完查不到 path_ids。
+	// 失败仅 warn 不抛，TTL 自然兜底。
+	ResetCountersForPaths(ctx context.Context, pathIDs []int64)
+	// SnapshotPathIDsByOwner 同步查询当前 service_quota_paths 中引用指定 owner（channel/group/account）的 path_id 列表。
+	//
+	// 必须在 admin 调 DeleteChannel/Group/Account 之前调用——CASCADE 删完后 paths 行就消失了。
+	// 返回 nil/empty 列表时调用方可以省去后续 ResetCountersForPaths 调用。
+	//
+	// owner 必须是 ServiceQuotaPathOwnerChannel / Group / Account 之一。失败返回 error（与 reset 系列的 fail-open 不同：
+	// 这是"读快照"路径，错误不能吞，否则后续 reset 拿到的就是空列表 → 静默漏清）。
+	SnapshotPathIDsByOwner(ctx context.Context, owner string, ownerID int64) ([]int64, error)
 }

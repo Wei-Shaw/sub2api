@@ -51,6 +51,10 @@ func (f *fakeServiceQuotaRepo) FetchChannelScope(_ context.Context, _ int64) (*C
 	return nil, errors.New("fakeServiceQuotaRepo: FetchChannelScope not supported")
 }
 
+func (f *fakeServiceQuotaRepo) FetchPathIDsByOwner(_ context.Context, _ string, _ int64) ([]int64, error) {
+	return nil, nil
+}
+
 // fakeServiceQuotaLimiter 是内存版限流器，用 map 存计数 / 并发槽位，方便观察 PreCheckAcquire
 // 在 channel/account scope 是否真的命中。
 type fakeServiceQuotaLimiter struct {

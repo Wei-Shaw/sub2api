@@ -41,6 +41,9 @@ func (f *monitorFakeRepo) FetchGroupScope(_ context.Context, _ int64) (*GroupSco
 func (f *monitorFakeRepo) FetchChannelScope(_ context.Context, _ int64) (*ChannelScopeInfo, error) {
 	return nil, errors.New("not supported")
 }
+func (f *monitorFakeRepo) FetchPathIDsByOwner(_ context.Context, _ string, _ int64) ([]int64, error) {
+	return nil, nil
+}
 
 type monitorFakeLimiter struct {
 	mu        sync.Mutex
