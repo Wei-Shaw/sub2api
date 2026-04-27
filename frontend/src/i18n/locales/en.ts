@@ -3962,7 +3962,7 @@ export default {
         path: 'Path',
         limiter: 'Type',
         usage: 'Usage',
-        counterMode: 'Counter',
+        counterMode: 'Limit Mode',
         scopeUser: 'User',
         tags: 'Tags'
       }

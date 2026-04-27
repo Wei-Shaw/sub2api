@@ -4126,7 +4126,7 @@ export default {
         path: '路径',
         limiter: '限流类型',
         usage: '用量',
-        counterMode: '计数模式',
+        counterMode: '限制模式',
         scopeUser: '作用用户',
         tags: '标签'
       }

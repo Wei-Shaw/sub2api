@@ -81,13 +81,13 @@ const baseGlobal = {
 }
 
 describe('RuntimeTable', () => {
-  it('admin 视角 (showInternal=true) 渲染 7 列表头', () => {
+  it('admin 视角 (showInternal=true) 渲染 6 列表头（limiter 已合并进 usage）', () => {
     const wrapper = mount(RuntimeTable, {
       props: { rows: [makeRow({})], showInternal: true },
       global: baseGlobal,
     })
     const cols = wrapper.findAll('[data-test-col]').map((th) => th.attributes('data-test-col'))
-    expect(cols).toEqual(['rule', 'path', 'limiter', 'usage', 'counterMode', 'scopeUser', 'tags'])
+    expect(cols).toEqual(['rule', 'path', 'usage', 'counterMode', 'scopeUser', 'tags'])
   })
 
   it('用户视角 (showInternal=false) 隐藏内部列', () => {
@@ -96,7 +96,7 @@ describe('RuntimeTable', () => {
       global: baseGlobal,
     })
     const cols = wrapper.findAll('[data-test-col]').map((th) => th.attributes('data-test-col'))
-    expect(cols).toEqual(['rule', 'path', 'limiter', 'usage', 'tags'])
+    expect(cols).toEqual(['rule', 'path', 'usage', 'tags'])
     expect(cols).not.toContain('counterMode')
     expect(cols).not.toContain('scopeUser')
   })

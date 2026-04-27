@@ -1,29 +1,25 @@
 <template>
   <DataTable :columns="columns" :data="rows" :loading="loading">
     <template #cell-rule="{ row }">
-      <div class="space-y-0.5">
-        <div class="font-medium text-gray-900 dark:text-white">{{ row.rule_name || `#${row.rule_id}` }}</div>
-        <div class="text-xs text-gray-400">#{{ row.rule_id }}</div>
-      </div>
+      <div class="font-medium text-gray-900 dark:text-white">{{ row.rule_name || `#${row.rule_id}` }}</div>
     </template>
 
     <template #cell-path="{ row }">
       <PathChevron :summary="row.path_summary" :show-internal="showInternal" />
     </template>
 
-    <template #cell-limiter="{ row }">
-      <div class="space-y-0.5">
-        <div class="text-sm font-medium text-gray-900 dark:text-white">{{ formatLimiter(row.limiter_type) }}</div>
-        <div class="text-xs text-gray-400">{{ formatWindow(row.window_mode) }}</div>
-      </div>
-    </template>
-
+    <!-- limiter / 用量 / 重置时间合并到一列：
+         第一行 RPM·窗口模式
+         第二行 当前/限额 + 百分比 + 进度条
+         第三行 重置: Xs 后（按需） -->
     <template #cell-usage="{ row }">
-      <div class="space-y-1">
+      <div class="space-y-1 min-w-[180px]">
+        <div class="flex items-baseline gap-2 text-xs">
+          <span class="font-medium text-gray-900 dark:text-white">{{ formatLimiter(row.limiter_type) }}</span>
+          <span class="text-gray-400">{{ formatWindow(row.window_mode) }}</span>
+        </div>
         <div class="flex items-center gap-2 text-xs">
-          <span class="font-mono font-medium text-gray-900 dark:text-white">
-            {{ formatUsageNumbers(row) }}
-          </span>
+          <span class="font-mono text-gray-700 dark:text-gray-200">{{ formatUsageNumbers(row) }}</span>
           <span :class="['font-bold', getLoadTextClass(row.utilization_pct)]">
             {{ Math.round(row.utilization_pct) }}%
           </span>
@@ -99,11 +95,11 @@ const { t } = useI18n()
 
 // 列配置：showInternal=false（用户视角）会隐藏 counterMode / scopeUser 两列。
 // 列定义放 computed 里，让 i18n 切换语言时自动重新渲染表头。
+// limiter 类型与窗口模式合并到 usage 列展示，不再单独占列。
 const columns = computed<Column[]>(() => {
   const base: Column[] = [
     { key: 'rule', label: t('admin.serviceQuotaMonitor.columns.rule') },
     { key: 'path', label: t('admin.serviceQuotaMonitor.columns.path') },
-    { key: 'limiter', label: t('admin.serviceQuotaMonitor.columns.limiter') },
     { key: 'usage', label: t('admin.serviceQuotaMonitor.columns.usage') },
   ]
   if (props.showInternal) {

@@ -21,6 +21,16 @@ vi.mock('@/i18n', () => ({
   },
 }))
 
+// admin API mock：useEntityName 调用 channels/groups/accounts.getById；
+// 测试不联网，统一返回 reject 让占位 ch#id / g#id / acc#id 保留。
+vi.mock('@/api/admin', () => ({
+  default: {
+    channels: { getById: () => Promise.reject(new Error('mocked')) },
+    groups: { getById: () => Promise.reject(new Error('mocked')) },
+    accounts: { getById: () => Promise.reject(new Error('mocked')) },
+  },
+}))
+
 const stubs = {
   PlatformIcon: { template: '<span data-test="platform-icon" />' },
   Icon: { template: '<span data-test="chevron" />' },

@@ -14,22 +14,30 @@
     </span>
     <span v-else class="text-gray-400">*</span>
   </div>
-  <!-- admin 视角 → 平台 chip + chevron 链：channel/group/account/model_pattern 缺则灰色 *。 -->
+  <!-- admin 视角 → 平台 chip + chevron 链：channel/group/account/model_pattern 缺则灰色 *。
+       整链文字（含 chevron 与 channel/group/account/model 名称）都取平台主色，
+       让一行扫一眼就能识别归属平台；缺失维度统一灰色 *。 -->
   <div v-else class="flex flex-wrap items-center gap-1 text-xs">
-    <template v-for="(seg, idx) in segments" :key="idx">
-      <Icon v-if="idx > 0" name="chevronRight" size="xs" class="text-gray-300 dark:text-gray-600" />
+    <template v-for="(seg, idx) in renderedSegments" :key="idx">
+      <Icon
+        v-if="idx > 0"
+        name="chevronRight"
+        size="xs"
+        :class="platformColor || 'text-gray-300 dark:text-gray-600'"
+      />
       <span
-        v-if="seg.kind === 'platform' && seg.value"
-        :class="['inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium', platformTextClass(seg.value)]"
+        v-if="seg.kind === 'platform' && seg.text"
+        :class="['inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium', platformTextClass(seg.text)]"
       >
-        <PlatformIcon :platform="seg.value as GroupPlatform" size="xs" />
-        <span>{{ formatPlatformLabel(seg.value) }}</span>
+        <PlatformIcon :platform="seg.text as GroupPlatform" size="xs" />
+        <span>{{ formatPlatformLabel(seg.text) }}</span>
       </span>
       <span
-        v-else-if="seg.value"
-        class="font-mono text-[11px] text-gray-500 dark:text-gray-400"
+        v-else-if="seg.text"
+        :class="['inline-block max-w-[8rem] truncate font-mono text-[11px] align-middle', platformColor || 'text-gray-500 dark:text-gray-400']"
+        :title="seg.text"
       >
-        {{ seg.value }}
+        {{ seg.text }}
       </span>
       <span v-else class="text-gray-400">*</span>
     </template>
@@ -49,6 +57,13 @@ import {
   formatPlatformLabel,
   type PathSummary,
 } from './pathRender'
+import { useEntityName } from './entityNames'
+
+interface RenderedSegment {
+  kind: 'platform' | 'channel' | 'group' | 'account' | 'model'
+  /** 渲染文本：空字符串走灰色 * 占位分支。 */
+  text: string
+}
 
 const props = withDefaults(
   defineProps<{
@@ -64,12 +79,27 @@ const { t } = useI18n()
 
 const isAllStar = computed<boolean>(() => isPathAllStar(props.summary))
 
+// 平台主色：用于 chevron 箭头与 channel/group/account/model 文字。
+// 平台缺失（混合规则）则不上色，沿用默认灰色，避免误导用户。
+const platformColor = computed<string>(() =>
+  props.summary?.platform ? platformTextClass(props.summary.platform) : ''
+)
+
 // 5 段链：platform | channel | group | account | model_pattern
-const segments = computed(() => {
-  const s = props.summary
-  return [
-    { kind: 'platform' as const, value: s?.platform || '' },
-    ...pathTailSegments(s),
-  ]
+// channel/group/account 通过 useEntityName 异步解析为名称（首屏先落 ch#id 占位）。
+const renderedSegments = computed<RenderedSegment[]>(() => {
+  const platform = props.summary?.platform || ''
+  const tail = pathTailSegments(props.summary).map((seg): RenderedSegment => {
+    if (seg.kind === 'model') {
+      return { kind: 'model', text: seg.literal }
+    }
+    if (seg.entityId == null) {
+      return { kind: seg.kind, text: '' }
+    }
+    // 读取 ref.value 让 computed 追踪：名称解析回填后会自动重新渲染。
+    const r = useEntityName(seg.kind, seg.entityId)
+    return { kind: seg.kind, text: r.value }
+  })
+  return [{ kind: 'platform', text: platform }, ...tail]
 })
 </script>

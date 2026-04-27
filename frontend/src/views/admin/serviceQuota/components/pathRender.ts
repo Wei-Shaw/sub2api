@@ -35,20 +35,26 @@ export function isPathAllStar(summary: PathSummary | null | undefined): boolean 
 
 export interface PathSegment {
   kind: 'channel' | 'group' | 'account' | 'model'
-  /** 显示文本：空字符串表示该段未限定（前端按规则渲染灰色 *） */
-  value: string
+  /** channel/group/account 段：实体 id；为 null 表示该维度未限定（渲染灰色 *）。
+   *  model 段恒为 null，字面值在 literal 字段。 */
+  entityId: number | null
+  /** model 段的字面值；其他段恒为空字符串，由 PathChevron 通过 useEntityName 解析。 */
+  literal: string
 }
 
 /**
  * pathTailSegments 返回 path 平台之后的 4 段（channel / group / account / model_pattern）。
  * 不含 platform：平台段单独走 chip 渲染逻辑。
+ *
+ * 故意不在这里把 channel_id 拼成 "ch#42" —— PathChevron 会用 useEntityName 异步
+ * 解析成真实名称；本函数只透传 id 让上层决定怎么渲染。
  */
 export function pathTailSegments(summary: PathSummary | null | undefined): PathSegment[] {
   return [
-    { kind: 'channel', value: summary?.channel_id ? `ch#${summary.channel_id}` : '' },
-    { kind: 'group', value: summary?.group_id ? `g#${summary.group_id}` : '' },
-    { kind: 'account', value: summary?.account_id ? `acc#${summary.account_id}` : '' },
-    { kind: 'model', value: summary?.model_pattern || '' },
+    { kind: 'channel', entityId: summary?.channel_id ?? null, literal: '' },
+    { kind: 'group', entityId: summary?.group_id ?? null, literal: '' },
+    { kind: 'account', entityId: summary?.account_id ?? null, literal: '' },
+    { kind: 'model', entityId: null, literal: summary?.model_pattern || '' },
   ]
 }
 
