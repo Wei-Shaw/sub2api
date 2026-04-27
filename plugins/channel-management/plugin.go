@@ -48,6 +48,14 @@ const (
 	// proxying plugin endpoints to this plugin. It MUST match the prefix
 	// declared in PluginEndpoints below.
 	pluginRoutePrefix = "/api/v1/plugin/" + pluginName
+
+	// availableChannelsFrontendPath is the user-facing route the SPA
+	// registers for the "available channels" view. The matching
+	// frontend component file (AvailableChannelsView.vue) ships with
+	// W9 of the plugin migration; the manifest declares the route up
+	// front so the host SPA router has the entry as soon as the
+	// frontend bundle is rebuilt.
+	availableChannelsFrontendPath = "/available-channels"
 )
 
 // ChannelPlugin is the channel-management plugin entry point. It owns the
@@ -60,7 +68,8 @@ type ChannelPlugin struct {
 	// before Init) can hand it to the SDK and Init can plug services into it.
 	engine *gin.Engine
 
-	channelHandler *chHandler.ChannelHandler
+	channelHandler          *chHandler.ChannelHandler
+	availableChannelHandler *chHandler.AvailableChannelHandler
 
 	// monitor* fields back the channel-monitor sub-feature ported in V5 W6.
 	// They are nil until Init wires them so HealthCheck can disambiguate
@@ -94,6 +103,8 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 			// User-facing channel monitor read-only endpoints
 			{Path: pluginRoutePrefix + "/monitors", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
 			{Path: pluginRoutePrefix + "/monitors/:id", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
+			// User: available channels (read-only, scoped by V4 X-Plugin-User-* headers, V5 W8)
+			{Path: pluginRoutePrefix + "/available-channels", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
 		},
 		// Capabilities — channel-management writes the gateway cache contract
 		// (channel:active, channel:by_id:*, …) which the core's
@@ -147,6 +158,18 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 						},
 					},
 				},
+				// User-facing "available channels" entry. The actual Vue
+				// component is added in W9; declaring the menu item now lets
+				// the host SPA pick it up the moment the frontend bundle
+				// rebuilds, with no further backend change required.
+				{
+					Path:          availableChannelsFrontendPath,
+					IconSVG:       pluginsdk.IconBranchFork,
+					Labels:        pluginsdk.Labels("可用渠道", "Available Channels"),
+					Section:       pluginsdk.SectionUser,
+					SortOrder:     200,
+					RequiresAdmin: false,
+				},
 			},
 			Routes: []pluginsdk.RouteDecl{
 				{
@@ -156,6 +179,15 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 					Path:          "/admin/channels",
 					Name:          "AdminChannels",
 					ComponentPath: "ChannelsView.vue",
+				},
+				// User-facing route — same dance as the menu item: the file
+				// AvailableChannelsView.vue is created in W9, but the route
+				// declaration is harmless until then because vue-router will
+				// simply 404 when the component map is empty.
+				{
+					Path:          availableChannelsFrontendPath,
+					Name:          "UserAvailableChannels",
+					ComponentPath: "AvailableChannelsView.vue",
 				},
 			},
 			I18nNamespaces: []string{"channel-management"},
@@ -220,6 +252,14 @@ func (p *ChannelPlugin) Init(ctx pluginsdk.PluginContext) error {
 	p.monitorAdminHandler = monitorHandler.NewAdminHandler(p.monitorService)
 	p.monitorUserHandler = monitorHandler.NewUserHandler(p.monitorService)
 
+	// Wire the user-facing "available channels" view (V5 W8). It reuses the
+	// same channel repository for ListAll and adds a small read-only
+	// repository for groups + user permissions. The user identity is
+	// derived from V4 X-Plugin-User-* request headers inside the handler.
+	availableRepo := chRepo.NewAvailableChannelsRepository(ctx.DB())
+	availableSvc := chService.NewAvailableChannelsService(repo, availableRepo)
+	p.availableChannelHandler = chHandler.NewAvailableChannelHandler(availableSvc)
+
 	p.registerRoutes()
 
 	ctx.Logger().Info("channel-management plugin initialised", "version", pluginVersion)
@@ -283,6 +323,14 @@ func (p *ChannelPlugin) registerRoutes() {
 		users := p.engine.Group(pluginRoutePrefix + "/monitors")
 		users.GET("", p.monitorUserHandler.List)
 		users.GET("/:id", p.monitorUserHandler.GetStatus)
+	}
+	// User-facing read-only endpoint. The host gateway routes
+	// /api/v1/plugin/channel-management/available-channels to this engine
+	// and the manifest declares it as AuthTypeUser, so the host
+	// authenticates the caller before it gets here; we just project the
+	// V4 X-Plugin-User-* headers into the response shape.
+	if p.availableChannelHandler != nil {
+		p.engine.GET(pluginRoutePrefix+"/available-channels", p.availableChannelHandler.List)
 	}
 }
 
