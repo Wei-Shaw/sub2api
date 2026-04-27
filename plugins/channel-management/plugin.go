@@ -298,6 +298,17 @@ func (p *ChannelPlugin) Init(ctx pluginsdk.PluginContext) error {
 	p.monitorAdminHandler = monitorHandler.NewAdminHandler(p.monitorService)
 	p.monitorUserHandler = monitorHandler.NewUserHandler(p.monitorService)
 
+	// Register the channel-monitor JobScheduler specs (V5 W6 step 3). The
+	// host fires monitor.run every 60s on each replica and the leader-only
+	// monitor.daily-rollup once per day. The runner replaces the legacy
+	// in-process ticker pool — concurrency, leader election and history
+	// are all owned by the host.
+	jobRunner := monitorService.NewMonitorJobRunner(p.monitorService, ctx.Jobs(), ctx.Logger())
+	if err := jobRunner.Register(); err != nil {
+		ctx.Logger().Warn("channel-monitor: job registration failed; periodic checks disabled", "error", err)
+	}
+	p.monitorService.SetScheduler(jobRunner)
+
 	// Wire the user-facing "available channels" view (V5 W8). It reuses the
 	// same channel repository for ListAll and adds a small read-only
 	// repository for groups + user permissions. The user identity is
