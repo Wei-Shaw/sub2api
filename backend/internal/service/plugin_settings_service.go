@@ -180,9 +180,11 @@ type PluginSettingsService struct {
 	logger *slog.Logger
 
 	mu              sync.RWMutex
-	compiledSchemas map[string]*jsonschema.Schema // by plugin name
-	rawSchemas      map[string]json.RawMessage    // last raw schema bytes for GET
-	defaults        map[string]json.RawMessage    // last raw defaults for GET
+	compiledSchemas map[string]*jsonschema.Schema          // by plugin name
+	rawSchemas      map[string]json.RawMessage             // last raw schema bytes for GET
+	defaults        map[string]json.RawMessage             // last raw defaults for GET
+	schemaVersions  map[string]string                      // per-plugin schema version, normalised to "0" when undeclared (V5/W6 SETTINGS-V2)
+	propertiesMeta  map[string]map[string]PropertyMetadata // per-plugin {prop -> {visibility,deprecated,requires_reload}} (V5/W6 SETTINGS-V2)
 
 	subMu sync.Mutex
 	subs  map[string][]*pluginSettingsSubscriber
@@ -207,6 +209,8 @@ func NewPluginSettingsService(db *sql.DB) *PluginSettingsService {
 		compiledSchemas: make(map[string]*jsonschema.Schema),
 		rawSchemas:      make(map[string]json.RawMessage),
 		defaults:        make(map[string]json.RawMessage),
+		schemaVersions:  make(map[string]string),
+		propertiesMeta:  make(map[string]map[string]PropertyMetadata),
 		subs:            make(map[string][]*pluginSettingsSubscriber),
 	}
 }
@@ -273,6 +277,19 @@ func (s *PluginSettingsService) RegisterSchemaWithInput(
 		return err
 	}
 
+	// Normalise the schema version: empty → "0" sentinel (DESIGN §1.2).
+	schemaVersion := in.SchemaVersion
+	if schemaVersion == "" {
+		schemaVersion = schemaVersionUndeclared
+	}
+
+	// Marshal meta back to JSON for persistence. The host always writes
+	// `{}` (never SQL NULL) so handlers do not need to nil-check.
+	metaJSON, err := json.Marshal(meta)
+	if err != nil {
+		return fmt.Errorf("plugin_settings: marshal properties_meta: %w", err)
+	}
+
 	rawSchema := append(json.RawMessage(nil), in.SchemaJSON...)
 	rawDefaults := append(json.RawMessage(nil), in.DefaultsJSON...)
 	if len(rawDefaults) == 0 {
@@ -280,13 +297,16 @@ func (s *PluginSettingsService) RegisterSchemaWithInput(
 	}
 
 	if _, err := s.db.ExecContext(ctx, `
-		INSERT INTO plugin_settings_schemas (plugin_name, schema_json, defaults_json, updated_at)
-		VALUES ($1, $2, $3, NOW())
+		INSERT INTO plugin_settings_schemas
+			(plugin_name, schema_json, defaults_json, schema_version, properties_meta, updated_at)
+		VALUES ($1, $2::jsonb, $3::jsonb, $4, $5::jsonb, NOW())
 		ON CONFLICT (plugin_name) DO UPDATE
-		   SET schema_json = EXCLUDED.schema_json,
-		       defaults_json = EXCLUDED.defaults_json,
-		       updated_at = NOW()
-	`, in.PluginName, string(rawSchema), string(rawDefaults)); err != nil {
+		   SET schema_json     = EXCLUDED.schema_json,
+		       defaults_json   = EXCLUDED.defaults_json,
+		       schema_version  = EXCLUDED.schema_version,
+		       properties_meta = EXCLUDED.properties_meta,
+		       updated_at      = NOW()
+	`, in.PluginName, string(rawSchema), string(rawDefaults), schemaVersion, string(metaJSON)); err != nil {
 		return fmt.Errorf("plugin_settings: persist schema: %w", err)
 	}
 
@@ -294,13 +314,9 @@ func (s *PluginSettingsService) RegisterSchemaWithInput(
 	s.compiledSchemas[in.PluginName] = compiled
 	s.rawSchemas[in.PluginName] = rawSchema
 	s.defaults[in.PluginName] = rawDefaults
+	s.schemaVersions[in.PluginName] = schemaVersion
+	s.propertiesMeta[in.PluginName] = meta
 	s.mu.Unlock()
-
-	// Suppress unused-warning noise: meta is consumed in commit 2 (DB
-	// persistence) once the migration columns are wired through. Holding
-	// the variable here keeps the resolve+validate path on the hot path
-	// so visibility violations fail-fast at registration time.
-	_ = meta
 
 	if err := s.seedDefaults(ctx, in.PluginName, rawDefaults); err != nil {
 		s.logger.Warn("plugin_settings: seed defaults failed",
@@ -339,6 +355,8 @@ func (s *PluginSettingsService) UnregisterSchema(pluginName string) {
 	delete(s.compiledSchemas, pluginName)
 	delete(s.rawSchemas, pluginName)
 	delete(s.defaults, pluginName)
+	delete(s.schemaVersions, pluginName)
+	delete(s.propertiesMeta, pluginName)
 	s.mu.Unlock()
 }
 
@@ -435,14 +453,17 @@ func (s *PluginSettingsService) SchemaInfo(
 	s.mu.RUnlock()
 	if !ok {
 		// Maybe the host process restarted; load from DB so the admin UI
-		// still works without bouncing the plugin.
-		var schemaStr, defaultsStr string
+		// still works without bouncing the plugin. We pull the V5/W6
+		// SETTINGS-V2 columns (schema_version, properties_meta) at the
+		// same time so the cache is fully populated for downstream calls.
+		var schemaStr, defaultsStr, schemaVersionStr, propertiesMetaStr string
 		var updated time.Time
 		row := s.db.QueryRowContext(ctx, `
-			SELECT schema_json::text, defaults_json::text, updated_at
+			SELECT schema_json::text, defaults_json::text, schema_version,
+			       properties_meta::text, updated_at
 			FROM plugin_settings_schemas WHERE plugin_name = $1
 		`, pluginName)
-		if err := row.Scan(&schemaStr, &defaultsStr, &updated); err != nil {
+		if err := row.Scan(&schemaStr, &defaultsStr, &schemaVersionStr, &propertiesMetaStr, &updated); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return nil, nil
 			}
@@ -450,12 +471,30 @@ func (s *PluginSettingsService) SchemaInfo(
 		}
 		rawSchema = json.RawMessage(schemaStr)
 		rawDefaults = json.RawMessage(defaultsStr)
+		// Decode properties_meta back into the cache shape; tolerate
+		// malformed rows by falling back to the schema-derived map so
+		// admin UI still renders even if the column was hand-edited.
+		meta := make(map[string]PropertyMetadata)
+		if propertiesMetaStr != "" && propertiesMetaStr != "null" {
+			if err := json.Unmarshal([]byte(propertiesMetaStr), &meta); err != nil {
+				s.logger.Warn("plugin_settings: properties_meta decode failed; deriving from schema",
+					"plugin", pluginName, "error", err)
+				if derived, derr := s.extractMetaFromSchema(rawSchema); derr == nil {
+					meta = derived
+				}
+			}
+		}
+		if schemaVersionStr == "" {
+			schemaVersionStr = schemaVersionUndeclared
+		}
 		// Compile lazily so subsequent SetByKey calls work.
 		if compiled, err := compileSchema(rawSchema); err == nil {
 			s.mu.Lock()
 			s.compiledSchemas[pluginName] = compiled
 			s.rawSchemas[pluginName] = rawSchema
 			s.defaults[pluginName] = rawDefaults
+			s.schemaVersions[pluginName] = schemaVersionStr
+			s.propertiesMeta[pluginName] = meta
 			s.mu.Unlock()
 		}
 	}
