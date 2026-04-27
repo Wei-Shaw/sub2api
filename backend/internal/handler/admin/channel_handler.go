@@ -474,6 +474,11 @@ func (h *ChannelHandler) Delete(c *gin.Context) {
 		return
 	}
 
+	// 必须在 DELETE 之前快照受影响的 path_ids：FK CASCADE 删完 service_quota_paths
+	// 之后就查不到了，导致后续 ResetCountersForPaths 拿到空列表 → 静默漏清 Redis。
+	// 失败仅记日志、继续删除流程（清理是 best-effort，TTL 兜底）。
+	pathIDs := snapshotPathIDsForOwner(c, h.serviceQuotaSvc, service.ServiceQuotaPathOwnerChannel, id)
+
 	if err := h.channelService.Delete(c.Request.Context(), id); err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -487,6 +492,8 @@ func (h *ChannelHandler) Delete(c *gin.Context) {
 			slog.WarnContext(c.Request.Context(), "failed to reload service quota cache after channel deletion",
 				"channel_id", id, "err", err)
 		}
+		// 异步清 Redis 残留 counter key（path_id 段定死、其他 wildcard）。
+		h.serviceQuotaSvc.ResetCountersForPaths(c.Request.Context(), pathIDs)
 	}
 
 	response.Success(c, gin.H{"message": "Channel deleted successfully"})

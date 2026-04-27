@@ -10,11 +10,13 @@ package admin
 // 后续 PR 里逐步替换私有实现，避免一次性触及大面积 diff。
 
 import (
+	"log/slog"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 
 	pkgerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 // ParseInt64Param 解析 gin path 参数为 int64，解析失败返回结构化 BadRequest。
@@ -46,4 +48,26 @@ func BindJSONOrError(c *gin.Context, req any, invalidCode string) error {
 			WithMetadata(map[string]string{"reason": err.Error()})
 	}
 	return nil
+}
+
+// snapshotPathIDsForOwner 在删除 channel/group/account 之前抓一份 service_quota_paths.id 快照。
+//
+// 为什么必须先抓：FK CASCADE 在 DELETE channel/group/account 时连带删 service_quota_paths
+// 的引用行，删完之后查不到，导致后续 ResetCountersForPaths 拿到空列表 → Redis 残留 counter key
+// 静默漏清。所以约定调用顺序为 "snapshot → delete → reset"。
+//
+// 失败仅 warn 不抛：清理 Redis 计数是 best-effort（TTL 仍兜底），不能因为这个查询失败
+// 阻塞主删除流程。serviceQuotaSvc 为 nil 时直接返回 nil（service quota 模块未启用）。
+func snapshotPathIDsForOwner(c *gin.Context, serviceQuotaSvc service.ServiceQuotaService, owner string, ownerID int64) []int64 {
+	if serviceQuotaSvc == nil {
+		return nil
+	}
+	pathIDs, err := serviceQuotaSvc.SnapshotPathIDsByOwner(c.Request.Context(), owner, ownerID)
+	if err != nil {
+		// 静默漏清比阻塞主删除流程更糟，所以只 warn；后续 ResetCountersForPaths 拿空列表自然 noop。
+		slog.WarnContext(c.Request.Context(), "snapshotPathIDsForOwner failed",
+			"owner", owner, "owner_id", ownerID, "err", err)
+		return nil
+	}
+	return pathIDs
 }

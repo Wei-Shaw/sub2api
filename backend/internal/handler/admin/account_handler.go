@@ -643,6 +643,9 @@ func (h *AccountHandler) Delete(c *gin.Context) {
 		return
 	}
 
+	// 必须在 DELETE 之前快照受影响的 path_ids（FK CASCADE 删完查不到）。
+	pathIDs := snapshotPathIDsForOwner(c, h.serviceQuotaSvc, service.ServiceQuotaPathOwnerAccount, accountID)
+
 	err = h.adminService.DeleteAccount(c.Request.Context(), accountID)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -657,6 +660,8 @@ func (h *AccountHandler) Delete(c *gin.Context) {
 			slog.WarnContext(c.Request.Context(), "failed to reload service quota cache after account deletion",
 				"account_id", accountID, "err", err)
 		}
+		// 异步清 Redis 残留 counter key（避免 account_id 复用时新账号继承旧 counter）。
+		h.serviceQuotaSvc.ResetCountersForPaths(c.Request.Context(), pathIDs)
 	}
 
 	response.Success(c, gin.H{"message": "Account deleted successfully"})

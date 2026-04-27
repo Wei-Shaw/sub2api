@@ -342,6 +342,9 @@ func (h *GroupHandler) Delete(c *gin.Context) {
 		return
 	}
 
+	// 必须在 DELETE 之前快照受影响的 path_ids（FK CASCADE 删完查不到）。
+	pathIDs := snapshotPathIDsForOwner(c, h.serviceQuotaSvc, service.ServiceQuotaPathOwnerGroup, groupID)
+
 	err = h.adminService.DeleteGroup(c.Request.Context(), groupID)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -356,6 +359,8 @@ func (h *GroupHandler) Delete(c *gin.Context) {
 			slog.WarnContext(c.Request.Context(), "failed to reload service quota cache after group deletion",
 				"group_id", groupID, "err", err)
 		}
+		// 异步清 Redis 残留 counter key（避免 group_id 复用时新 group 继承旧 counter）。
+		h.serviceQuotaSvc.ResetCountersForPaths(c.Request.Context(), pathIDs)
 	}
 
 	response.Success(c, gin.H{"message": "Group deleted successfully"})
