@@ -3941,7 +3941,11 @@ export default {
         tpm: 'TPM',
         tpd: 'TPD',
         dailyUsd: 'Daily USD Spend',
-        concurrency: 'Concurrent Requests'
+        concurrency: 'Concurrent Requests',
+        rpmCountOnArrival: {
+          label: 'Count on request arrival',
+          help: 'Off by default; only successful requests count toward RPM. When enabled, RPM increments as soon as the request is routed.'
+        }
       },
       counterModes: {
         user: 'Specific Users',

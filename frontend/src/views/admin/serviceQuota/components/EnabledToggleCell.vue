@@ -46,6 +46,11 @@ function buildPayload(row: ServiceQuotaRule, enabled: boolean): ServiceQuotaRule
       ...(l.token_components && l.token_components.length > 0
         ? { token_components: [...l.token_components] }
         : {}),
+      // 同理透传 count_on_arrival：仅 RPM 有；不带的话翻转 enabled 时
+      // 会把用户配置的 "请求到达即计入" 复位为后端默认值。
+      ...(l.limiter_type === 'rpm' && typeof l.count_on_arrival === 'boolean'
+        ? { count_on_arrival: l.count_on_arrival }
+        : {}),
     })),
     paths: row.paths.map((p) => ({
       platform: p.platform ?? null,

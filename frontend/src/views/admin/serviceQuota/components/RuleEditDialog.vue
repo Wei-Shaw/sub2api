@@ -166,6 +166,8 @@ function resetForm(rule: ServiceQuotaRule | null) {
       token_components: limiterUsesTokenComponents(l.limiter_type)
         ? (l.token_components ?? TOKEN_COMPONENTS_DEFAULT).slice()
         : undefined,
+      // RPM 才有 count_on_arrival；后端默认 false
+      count_on_arrival: l.limiter_type === 'rpm' ? l.count_on_arrival === true : undefined,
     }))
     initial.paths = rule.paths.map((p) => ({
       uid: crypto.randomUUID(),
@@ -227,6 +229,10 @@ function normalizePayload(): ServiceQuotaRuleInput {
       // 只有 TPM/TPD 才提交 token_components；其他类型不带，让后端自然走默认/忽略路径
       if (limiterUsesTokenComponents(l.limiter_type)) {
         out.token_components = (l.token_components ?? TOKEN_COMPONENTS_DEFAULT).slice()
+      }
+      // 只有 RPM 才提交 count_on_arrival；缺省 false 与后端一致
+      if (l.limiter_type === 'rpm') {
+        out.count_on_arrival = l.count_on_arrival === true
       }
       return out
     }),

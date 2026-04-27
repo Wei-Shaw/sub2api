@@ -81,6 +81,24 @@
           {{ t('admin.serviceQuota.tokenComponents.minOneRequired') }}
         </div>
       </div>
+
+      <!-- 仅 RPM 显示"请求到达即计入" toggle；默认 false（仅成功请求计入）。 -->
+      <div v-if="usesCountOnArrival(item.limiter_type)" class="mt-3 border-t border-gray-100 pt-3 dark:border-dark-700">
+        <label class="inline-flex items-start gap-2 text-xs text-gray-700 dark:text-gray-200 cursor-pointer">
+          <input
+            type="checkbox"
+            class="mt-0.5 h-3.5 w-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            :checked="item.count_on_arrival === true"
+            @change="updateField(index, 'count_on_arrival', ($event.target as HTMLInputElement).checked)"
+          />
+          <span class="flex flex-col gap-0.5">
+            <span class="font-medium">{{ t('admin.serviceQuota.limiters.rpmCountOnArrival.label') }}</span>
+            <span class="text-[11px] text-gray-500 dark:text-gray-400">
+              {{ t('admin.serviceQuota.limiters.rpmCountOnArrival.help') }}
+            </span>
+          </span>
+        </label>
+      </div>
     </div>
     <button
       type="button"
@@ -136,6 +154,11 @@ function usesTokenComponents(limiterType: string): boolean {
   return limiterUsesTokenComponents(limiterType)
 }
 
+// count_on_arrival 仅对 RPM 有意义；切到其他 limiter 类型时会被 strip 掉。
+function usesCountOnArrival(limiterType: string): boolean {
+  return limiterType === 'rpm'
+}
+
 function defaultLimitFor(type: string): number {
   switch (type) {
     case 'rpm': return 60
@@ -162,6 +185,9 @@ function blankLimiter(limiter_type: string): ServiceQuotaLimiterInput {
   }
   if (limiterUsesTokenComponents(limiter_type)) {
     out.token_components = [...TOKEN_COMPONENTS_DEFAULT]
+  }
+  if (limiter_type === 'rpm') {
+    out.count_on_arrival = false
   }
   return out
 }
@@ -198,6 +224,14 @@ function updateField<K extends keyof ServiceQuotaLimiterInput>(index: number, ke
       }
     } else {
       delete next.token_components
+    }
+    // count_on_arrival 同理：仅 RPM 保留；切到其他类型 strip 掉
+    if (newType === 'rpm') {
+      if (next.count_on_arrival === undefined) {
+        next.count_on_arrival = false
+      }
+    } else {
+      delete next.count_on_arrival
     }
   }
   newList[index] = next

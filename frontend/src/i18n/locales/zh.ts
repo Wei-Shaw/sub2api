@@ -4105,7 +4105,11 @@ export default {
         tpm: 'TPM',
         tpd: 'TPD',
         dailyUsd: '每日美元消费',
-        concurrency: '并发请求'
+        concurrency: '并发请求',
+        rpmCountOnArrival: {
+          label: '请求到达即计入',
+          help: '默认关闭，仅成功请求计入；开启后请求被路由到账号即 +1，避免高并发超额'
+        }
       },
       counterModes: {
         user: '指定用户',

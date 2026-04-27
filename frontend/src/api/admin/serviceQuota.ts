@@ -49,6 +49,11 @@ export interface ServiceQuotaLimiterDef {
   limit_value: number
   /** 仅 TPM/TPD 返回；其他类型后端置 null/缺省 */
   token_components?: TokenComponent[] | null
+  /**
+   * 仅 RPM 限流器使用：true 表示请求到达即计入 RPM；false（默认）仅成功请求计入。
+   * 其他 limiter 类型后端忽略此字段。
+   */
+  count_on_arrival?: boolean
 }
 
 export interface ServiceQuotaLimiterInput {
@@ -57,6 +62,8 @@ export interface ServiceQuotaLimiterInput {
   limit_value: number
   /** 仅 TPM/TPD 提交；其他类型 strip 掉 */
   token_components?: TokenComponent[]
+  /** 仅 RPM 提交；其他类型 strip 掉 */
+  count_on_arrival?: boolean
   // 仅前端使用：v-for stable key，提交前会被 strip 掉，不会发到 backend
   uid?: string
 }
