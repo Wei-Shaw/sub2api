@@ -843,8 +843,37 @@ function handleMenuItemClick(itemPath: string) {
   }
 }
 
+// collectAllNavPaths 收集当前所有 sidebar nav 项及其 children 的 path 集合,
+// 用于判断"最长前缀匹配"。包含 admin / personal / user / 子菜单全部条目。
+function collectAllNavPaths(): string[] {
+  const out: string[] = []
+  const lists = [adminNavItems.value, personalNavItems.value, userNavItems.value]
+  for (const list of lists) {
+    for (const item of list) {
+      out.push(item.path)
+      if (item.children) {
+        for (const child of item.children) {
+          out.push(child.path)
+        }
+      }
+    }
+  }
+  return out
+}
+
+// isActive 判断当前 nav item 是否应该高亮。
+// 决策：使用"最长前缀匹配"——只有当前 path 是 route.path 的最长可用 nav 前缀时才返回 true。
+// 这样既保留"访问深层路由时父菜单仍高亮"的体验,又避免父子菜单同时高亮(bug 修复)。
+//   - 严格相等 → 始终 true
+//   - startsWith 命中,但存在更长的 nav path 也命中 → false (让那个更具体的项独占高亮)
+//   - startsWith 命中,且无更长匹配 → true
 function isActive(path: string): boolean {
-  return route.path === path || route.path.startsWith(path + '/')
+  if (route.path === path) return true
+  if (!route.path.startsWith(path + '/')) return false
+  const allPaths = collectAllNavPaths()
+  return !allPaths.some(
+    (p) => p !== path && p.length > path.length && (route.path === p || route.path.startsWith(p + '/'))
+  )
 }
 
 function isGroupActive(item: NavItem): boolean {
