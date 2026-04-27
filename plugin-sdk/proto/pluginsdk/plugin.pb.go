@@ -35,9 +35,15 @@ type PluginInitRequest struct {
 	// use (e.g. "redis_raw_keys" for cross-plugin Redis access). Capabilities
 	// must be declared in the plugin's Manifest; the core forwards the subset
 	// it has approved. Anything not in this list is rejected by the SDK server.
-	Capabilities  []string `protobuf:"bytes,4,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Capabilities []string `protobuf:"bytes,4,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	// outbound_defaults conveys the host's global outbound HTTP policy (SSRF
+	// block-list, allowed-host list, redirect / timeout / body caps). The SDK
+	// caches these on Init so plugin code can call NewSafeHTTPClient without
+	// re-fetching them. Plugins may layer per-call overrides on top via
+	// OutboundConfig. See V5-DESIGN §W4 (SafeOutboundHTTPCapability).
+	OutboundDefaults *OutboundDefaults `protobuf:"bytes,50,opt,name=outbound_defaults,json=outboundDefaults,proto3" json:"outbound_defaults,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *PluginInitRequest) Reset() {
@@ -98,6 +104,102 @@ func (x *PluginInitRequest) GetCapabilities() []string {
 	return nil
 }
 
+func (x *PluginInitRequest) GetOutboundDefaults() *OutboundDefaults {
+	if x != nil {
+		return x.OutboundDefaults
+	}
+	return nil
+}
+
+// OutboundDefaults is the host-side global outbound HTTP policy delivered to
+// plugins at Init time. All fields are optional; the SDK fills sane defaults
+// (RFC1918 + link-local + loopback + CGNAT block, 30s timeout, 1MiB body cap,
+// 3 redirects) when the host leaves them empty.
+type OutboundDefaults struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// blocked_cidrs lists CIDR ranges the SDK MUST refuse to dial. Empty means
+	// "use SDK defaults" — the SDK never falls back to "no block list".
+	BlockedCidrs []string `protobuf:"bytes,1,rep,name=blocked_cidrs,json=blockedCidrs,proto3" json:"blocked_cidrs,omitempty"`
+	// allowed_hosts is an optional global allow-list of hostnames. When
+	// non-empty the SDK rejects any host not in the list. Empty means "no
+	// host-level allow-list" (block-list still applies).
+	AllowedHosts []string `protobuf:"bytes,2,rep,name=allowed_hosts,json=allowedHosts,proto3" json:"allowed_hosts,omitempty"`
+	// max_redirects caps the number of HTTP redirects followed. 0 → SDK
+	// default (3).
+	MaxRedirects int32 `protobuf:"varint,3,opt,name=max_redirects,json=maxRedirects,proto3" json:"max_redirects,omitempty"`
+	// timeout_nanos is the per-request timeout. 0 → SDK default (30s).
+	TimeoutNanos int64 `protobuf:"varint,4,opt,name=timeout_nanos,json=timeoutNanos,proto3" json:"timeout_nanos,omitempty"`
+	// max_body_bytes caps response body size. 0 → SDK default (1 MiB).
+	MaxBodyBytes  int64 `protobuf:"varint,5,opt,name=max_body_bytes,json=maxBodyBytes,proto3" json:"max_body_bytes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OutboundDefaults) Reset() {
+	*x = OutboundDefaults{}
+	mi := &file_plugin_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OutboundDefaults) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OutboundDefaults) ProtoMessage() {}
+
+func (x *OutboundDefaults) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OutboundDefaults.ProtoReflect.Descriptor instead.
+func (*OutboundDefaults) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *OutboundDefaults) GetBlockedCidrs() []string {
+	if x != nil {
+		return x.BlockedCidrs
+	}
+	return nil
+}
+
+func (x *OutboundDefaults) GetAllowedHosts() []string {
+	if x != nil {
+		return x.AllowedHosts
+	}
+	return nil
+}
+
+func (x *OutboundDefaults) GetMaxRedirects() int32 {
+	if x != nil {
+		return x.MaxRedirects
+	}
+	return 0
+}
+
+func (x *OutboundDefaults) GetTimeoutNanos() int64 {
+	if x != nil {
+		return x.TimeoutNanos
+	}
+	return 0
+}
+
+func (x *OutboundDefaults) GetMaxBodyBytes() int64 {
+	if x != nil {
+		return x.MaxBodyBytes
+	}
+	return 0
+}
+
 type PluginInitResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
@@ -108,7 +210,7 @@ type PluginInitResponse struct {
 
 func (x *PluginInitResponse) Reset() {
 	*x = PluginInitResponse{}
-	mi := &file_plugin_proto_msgTypes[1]
+	mi := &file_plugin_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -120,7 +222,7 @@ func (x *PluginInitResponse) String() string {
 func (*PluginInitResponse) ProtoMessage() {}
 
 func (x *PluginInitResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[1]
+	mi := &file_plugin_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -133,7 +235,7 @@ func (x *PluginInitResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PluginInitResponse.ProtoReflect.Descriptor instead.
 func (*PluginInitResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{1}
+	return file_plugin_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *PluginInitResponse) GetSuccess() bool {
@@ -160,7 +262,7 @@ type HealthResponse struct {
 
 func (x *HealthResponse) Reset() {
 	*x = HealthResponse{}
-	mi := &file_plugin_proto_msgTypes[2]
+	mi := &file_plugin_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -172,7 +274,7 @@ func (x *HealthResponse) String() string {
 func (*HealthResponse) ProtoMessage() {}
 
 func (x *HealthResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[2]
+	mi := &file_plugin_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -185,7 +287,7 @@ func (x *HealthResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HealthResponse.ProtoReflect.Descriptor instead.
 func (*HealthResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{2}
+	return file_plugin_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *HealthResponse) GetHealthy() bool {
@@ -211,7 +313,7 @@ type FrontendBundleRequest struct {
 
 func (x *FrontendBundleRequest) Reset() {
 	*x = FrontendBundleRequest{}
-	mi := &file_plugin_proto_msgTypes[3]
+	mi := &file_plugin_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -223,7 +325,7 @@ func (x *FrontendBundleRequest) String() string {
 func (*FrontendBundleRequest) ProtoMessage() {}
 
 func (x *FrontendBundleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[3]
+	mi := &file_plugin_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -236,7 +338,7 @@ func (x *FrontendBundleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FrontendBundleRequest.ProtoReflect.Descriptor instead.
 func (*FrontendBundleRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{3}
+	return file_plugin_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *FrontendBundleRequest) GetPath() string {
@@ -257,7 +359,7 @@ type FileChunk struct {
 
 func (x *FileChunk) Reset() {
 	*x = FileChunk{}
-	mi := &file_plugin_proto_msgTypes[4]
+	mi := &file_plugin_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -269,7 +371,7 @@ func (x *FileChunk) String() string {
 func (*FileChunk) ProtoMessage() {}
 
 func (x *FileChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[4]
+	mi := &file_plugin_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -282,7 +384,7 @@ func (x *FileChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileChunk.ProtoReflect.Descriptor instead.
 func (*FileChunk) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{4}
+	return file_plugin_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *FileChunk) GetData() []byte {
@@ -331,7 +433,7 @@ type ManifestResponse struct {
 
 func (x *ManifestResponse) Reset() {
 	*x = ManifestResponse{}
-	mi := &file_plugin_proto_msgTypes[5]
+	mi := &file_plugin_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -343,7 +445,7 @@ func (x *ManifestResponse) String() string {
 func (*ManifestResponse) ProtoMessage() {}
 
 func (x *ManifestResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[5]
+	mi := &file_plugin_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -356,7 +458,7 @@ func (x *ManifestResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ManifestResponse.ProtoReflect.Descriptor instead.
 func (*ManifestResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{5}
+	return file_plugin_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ManifestResponse) GetName() string {
@@ -440,7 +542,7 @@ type EndpointDeclaration struct {
 
 func (x *EndpointDeclaration) Reset() {
 	*x = EndpointDeclaration{}
-	mi := &file_plugin_proto_msgTypes[6]
+	mi := &file_plugin_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -452,7 +554,7 @@ func (x *EndpointDeclaration) String() string {
 func (*EndpointDeclaration) ProtoMessage() {}
 
 func (x *EndpointDeclaration) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[6]
+	mi := &file_plugin_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -465,7 +567,7 @@ func (x *EndpointDeclaration) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EndpointDeclaration.ProtoReflect.Descriptor instead.
 func (*EndpointDeclaration) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{6}
+	return file_plugin_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *EndpointDeclaration) GetPath() string {
@@ -502,7 +604,7 @@ type FrontendManifest struct {
 
 func (x *FrontendManifest) Reset() {
 	*x = FrontendManifest{}
-	mi := &file_plugin_proto_msgTypes[7]
+	mi := &file_plugin_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -514,7 +616,7 @@ func (x *FrontendManifest) String() string {
 func (*FrontendManifest) ProtoMessage() {}
 
 func (x *FrontendManifest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[7]
+	mi := &file_plugin_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -527,7 +629,7 @@ func (x *FrontendManifest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FrontendManifest.ProtoReflect.Descriptor instead.
 func (*FrontendManifest) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{7}
+	return file_plugin_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *FrontendManifest) GetEntryJs() string {
@@ -599,7 +701,7 @@ type MenuItem struct {
 
 func (x *MenuItem) Reset() {
 	*x = MenuItem{}
-	mi := &file_plugin_proto_msgTypes[8]
+	mi := &file_plugin_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -611,7 +713,7 @@ func (x *MenuItem) String() string {
 func (*MenuItem) ProtoMessage() {}
 
 func (x *MenuItem) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[8]
+	mi := &file_plugin_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -624,7 +726,7 @@ func (x *MenuItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MenuItem.ProtoReflect.Descriptor instead.
 func (*MenuItem) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{8}
+	return file_plugin_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *MenuItem) GetPath() string {
@@ -716,7 +818,7 @@ type RouteDefinition struct {
 
 func (x *RouteDefinition) Reset() {
 	*x = RouteDefinition{}
-	mi := &file_plugin_proto_msgTypes[9]
+	mi := &file_plugin_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -728,7 +830,7 @@ func (x *RouteDefinition) String() string {
 func (*RouteDefinition) ProtoMessage() {}
 
 func (x *RouteDefinition) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[9]
+	mi := &file_plugin_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -741,7 +843,7 @@ func (x *RouteDefinition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteDefinition.ProtoReflect.Descriptor instead.
 func (*RouteDefinition) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{9}
+	return file_plugin_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *RouteDefinition) GetPath() string {
@@ -776,17 +878,24 @@ var File_plugin_proto protoreflect.FileDescriptor
 
 const file_plugin_proto_rawDesc = "" +
 	"\n" +
-	"\fplugin.proto\x12\tpluginsdk\x1a\x1bgoogle/protobuf/empty.proto\"\xf6\x01\n" +
+	"\fplugin.proto\x12\tpluginsdk\x1a\x1bgoogle/protobuf/empty.proto\"\xc0\x02\n" +
 	"\x11PluginInitRequest\x12\x1f\n" +
 	"\vsdk_address\x18\x01 \x01(\tR\n" +
 	"sdkAddress\x12@\n" +
 	"\x06config\x18\x02 \x03(\v2(.pluginsdk.PluginInitRequest.ConfigEntryR\x06config\x12\x1f\n" +
 	"\vplugin_name\x18\x03 \x01(\tR\n" +
 	"pluginName\x12\"\n" +
-	"\fcapabilities\x18\x04 \x03(\tR\fcapabilities\x1a9\n" +
+	"\fcapabilities\x18\x04 \x03(\tR\fcapabilities\x12H\n" +
+	"\x11outbound_defaults\x182 \x01(\v2\x1b.pluginsdk.OutboundDefaultsR\x10outboundDefaults\x1a9\n" +
 	"\vConfigEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"D\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xcc\x01\n" +
+	"\x10OutboundDefaults\x12#\n" +
+	"\rblocked_cidrs\x18\x01 \x03(\tR\fblockedCidrs\x12#\n" +
+	"\rallowed_hosts\x18\x02 \x03(\tR\fallowedHosts\x12#\n" +
+	"\rmax_redirects\x18\x03 \x01(\x05R\fmaxRedirects\x12#\n" +
+	"\rtimeout_nanos\x18\x04 \x01(\x03R\ftimeoutNanos\x12$\n" +
+	"\x0emax_body_bytes\x18\x05 \x01(\x03R\fmaxBodyBytes\"D\n" +
 	"\x12PluginInitResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
 	"\x05error\x18\x02 \x01(\tR\x05error\"D\n" +
@@ -866,48 +975,50 @@ func file_plugin_proto_rawDescGZIP() []byte {
 	return file_plugin_proto_rawDescData
 }
 
-var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_plugin_proto_goTypes = []any{
 	(*PluginInitRequest)(nil),     // 0: pluginsdk.PluginInitRequest
-	(*PluginInitResponse)(nil),    // 1: pluginsdk.PluginInitResponse
-	(*HealthResponse)(nil),        // 2: pluginsdk.HealthResponse
-	(*FrontendBundleRequest)(nil), // 3: pluginsdk.FrontendBundleRequest
-	(*FileChunk)(nil),             // 4: pluginsdk.FileChunk
-	(*ManifestResponse)(nil),      // 5: pluginsdk.ManifestResponse
-	(*EndpointDeclaration)(nil),   // 6: pluginsdk.EndpointDeclaration
-	(*FrontendManifest)(nil),      // 7: pluginsdk.FrontendManifest
-	(*MenuItem)(nil),              // 8: pluginsdk.MenuItem
-	(*RouteDefinition)(nil),       // 9: pluginsdk.RouteDefinition
-	nil,                           // 10: pluginsdk.PluginInitRequest.ConfigEntry
-	nil,                           // 11: pluginsdk.MenuItem.LabelsEntry
-	nil,                           // 12: pluginsdk.RouteDefinition.MetaEntry
-	(*emptypb.Empty)(nil),         // 13: google.protobuf.Empty
+	(*OutboundDefaults)(nil),      // 1: pluginsdk.OutboundDefaults
+	(*PluginInitResponse)(nil),    // 2: pluginsdk.PluginInitResponse
+	(*HealthResponse)(nil),        // 3: pluginsdk.HealthResponse
+	(*FrontendBundleRequest)(nil), // 4: pluginsdk.FrontendBundleRequest
+	(*FileChunk)(nil),             // 5: pluginsdk.FileChunk
+	(*ManifestResponse)(nil),      // 6: pluginsdk.ManifestResponse
+	(*EndpointDeclaration)(nil),   // 7: pluginsdk.EndpointDeclaration
+	(*FrontendManifest)(nil),      // 8: pluginsdk.FrontendManifest
+	(*MenuItem)(nil),              // 9: pluginsdk.MenuItem
+	(*RouteDefinition)(nil),       // 10: pluginsdk.RouteDefinition
+	nil,                           // 11: pluginsdk.PluginInitRequest.ConfigEntry
+	nil,                           // 12: pluginsdk.MenuItem.LabelsEntry
+	nil,                           // 13: pluginsdk.RouteDefinition.MetaEntry
+	(*emptypb.Empty)(nil),         // 14: google.protobuf.Empty
 }
 var file_plugin_proto_depIdxs = []int32{
-	10, // 0: pluginsdk.PluginInitRequest.config:type_name -> pluginsdk.PluginInitRequest.ConfigEntry
-	6,  // 1: pluginsdk.ManifestResponse.gateway_endpoints:type_name -> pluginsdk.EndpointDeclaration
-	6,  // 2: pluginsdk.ManifestResponse.plugin_endpoints:type_name -> pluginsdk.EndpointDeclaration
-	7,  // 3: pluginsdk.ManifestResponse.frontend:type_name -> pluginsdk.FrontendManifest
-	8,  // 4: pluginsdk.FrontendManifest.menu_items:type_name -> pluginsdk.MenuItem
-	9,  // 5: pluginsdk.FrontendManifest.routes:type_name -> pluginsdk.RouteDefinition
-	8,  // 6: pluginsdk.MenuItem.children:type_name -> pluginsdk.MenuItem
-	11, // 7: pluginsdk.MenuItem.labels:type_name -> pluginsdk.MenuItem.LabelsEntry
-	12, // 8: pluginsdk.RouteDefinition.meta:type_name -> pluginsdk.RouteDefinition.MetaEntry
-	0,  // 9: pluginsdk.PluginLifecycle.Init:input_type -> pluginsdk.PluginInitRequest
-	13, // 10: pluginsdk.PluginLifecycle.GetManifest:input_type -> google.protobuf.Empty
-	13, // 11: pluginsdk.PluginLifecycle.HealthCheck:input_type -> google.protobuf.Empty
-	13, // 12: pluginsdk.PluginLifecycle.Shutdown:input_type -> google.protobuf.Empty
-	3,  // 13: pluginsdk.PluginLifecycle.GetFrontendBundle:input_type -> pluginsdk.FrontendBundleRequest
-	1,  // 14: pluginsdk.PluginLifecycle.Init:output_type -> pluginsdk.PluginInitResponse
-	5,  // 15: pluginsdk.PluginLifecycle.GetManifest:output_type -> pluginsdk.ManifestResponse
-	2,  // 16: pluginsdk.PluginLifecycle.HealthCheck:output_type -> pluginsdk.HealthResponse
-	13, // 17: pluginsdk.PluginLifecycle.Shutdown:output_type -> google.protobuf.Empty
-	4,  // 18: pluginsdk.PluginLifecycle.GetFrontendBundle:output_type -> pluginsdk.FileChunk
-	14, // [14:19] is the sub-list for method output_type
-	9,  // [9:14] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	11, // 0: pluginsdk.PluginInitRequest.config:type_name -> pluginsdk.PluginInitRequest.ConfigEntry
+	1,  // 1: pluginsdk.PluginInitRequest.outbound_defaults:type_name -> pluginsdk.OutboundDefaults
+	7,  // 2: pluginsdk.ManifestResponse.gateway_endpoints:type_name -> pluginsdk.EndpointDeclaration
+	7,  // 3: pluginsdk.ManifestResponse.plugin_endpoints:type_name -> pluginsdk.EndpointDeclaration
+	8,  // 4: pluginsdk.ManifestResponse.frontend:type_name -> pluginsdk.FrontendManifest
+	9,  // 5: pluginsdk.FrontendManifest.menu_items:type_name -> pluginsdk.MenuItem
+	10, // 6: pluginsdk.FrontendManifest.routes:type_name -> pluginsdk.RouteDefinition
+	9,  // 7: pluginsdk.MenuItem.children:type_name -> pluginsdk.MenuItem
+	12, // 8: pluginsdk.MenuItem.labels:type_name -> pluginsdk.MenuItem.LabelsEntry
+	13, // 9: pluginsdk.RouteDefinition.meta:type_name -> pluginsdk.RouteDefinition.MetaEntry
+	0,  // 10: pluginsdk.PluginLifecycle.Init:input_type -> pluginsdk.PluginInitRequest
+	14, // 11: pluginsdk.PluginLifecycle.GetManifest:input_type -> google.protobuf.Empty
+	14, // 12: pluginsdk.PluginLifecycle.HealthCheck:input_type -> google.protobuf.Empty
+	14, // 13: pluginsdk.PluginLifecycle.Shutdown:input_type -> google.protobuf.Empty
+	4,  // 14: pluginsdk.PluginLifecycle.GetFrontendBundle:input_type -> pluginsdk.FrontendBundleRequest
+	2,  // 15: pluginsdk.PluginLifecycle.Init:output_type -> pluginsdk.PluginInitResponse
+	6,  // 16: pluginsdk.PluginLifecycle.GetManifest:output_type -> pluginsdk.ManifestResponse
+	3,  // 17: pluginsdk.PluginLifecycle.HealthCheck:output_type -> pluginsdk.HealthResponse
+	14, // 18: pluginsdk.PluginLifecycle.Shutdown:output_type -> google.protobuf.Empty
+	5,  // 19: pluginsdk.PluginLifecycle.GetFrontendBundle:output_type -> pluginsdk.FileChunk
+	15, // [15:20] is the sub-list for method output_type
+	10, // [10:15] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_plugin_proto_init() }
@@ -921,7 +1032,7 @@ func file_plugin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_plugin_proto_rawDesc), len(file_plugin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

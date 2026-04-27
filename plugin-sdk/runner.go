@@ -381,6 +381,10 @@ func (r *runner) Init(ctx context.Context, req *pb.PluginInitRequest) (*pb.Plugi
 			cfgCopy[k] = v
 		}
 
+		// Capture the host's outbound HTTP defaults so NewSafeHTTPClient
+		// can layer per-call configs on top without re-fetching them.
+		setOutboundDefaultsFromInit(req.GetOutboundDefaults())
+
 		// pluginName was resolved above for the metadata interceptor; reuse
 		// it. Determine which capabilities the core has approved by scanning
 		// the request — we cross-check below if the plugin self-declared a
