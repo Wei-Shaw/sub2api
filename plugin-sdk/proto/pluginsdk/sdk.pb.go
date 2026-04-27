@@ -1827,6 +1827,457 @@ func (x *Event) GetTimestamp() int64 {
 	return 0
 }
 
+// JobMessage is the union of plugin → host frames on the Subscribe stream.
+type JobMessage struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Msg:
+	//
+	//	*JobMessage_Register
+	//	*JobMessage_Ack
+	//	*JobMessage_Manual
+	Msg           isJobMessage_Msg `protobuf_oneof:"msg"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JobMessage) Reset() {
+	*x = JobMessage{}
+	mi := &file_sdk_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobMessage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobMessage) ProtoMessage() {}
+
+func (x *JobMessage) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobMessage.ProtoReflect.Descriptor instead.
+func (*JobMessage) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *JobMessage) GetMsg() isJobMessage_Msg {
+	if x != nil {
+		return x.Msg
+	}
+	return nil
+}
+
+func (x *JobMessage) GetRegister() *JobRegistration {
+	if x != nil {
+		if x, ok := x.Msg.(*JobMessage_Register); ok {
+			return x.Register
+		}
+	}
+	return nil
+}
+
+func (x *JobMessage) GetAck() *JobAck {
+	if x != nil {
+		if x, ok := x.Msg.(*JobMessage_Ack); ok {
+			return x.Ack
+		}
+	}
+	return nil
+}
+
+func (x *JobMessage) GetManual() *ManualTrigger {
+	if x != nil {
+		if x, ok := x.Msg.(*JobMessage_Manual); ok {
+			return x.Manual
+		}
+	}
+	return nil
+}
+
+type isJobMessage_Msg interface {
+	isJobMessage_Msg()
+}
+
+type JobMessage_Register struct {
+	Register *JobRegistration `protobuf:"bytes,1,opt,name=register,proto3,oneof"`
+}
+
+type JobMessage_Ack struct {
+	Ack *JobAck `protobuf:"bytes,2,opt,name=ack,proto3,oneof"`
+}
+
+type JobMessage_Manual struct {
+	Manual *ManualTrigger `protobuf:"bytes,3,opt,name=manual,proto3,oneof"`
+}
+
+func (*JobMessage_Register) isJobMessage_Msg() {}
+
+func (*JobMessage_Ack) isJobMessage_Msg() {}
+
+func (*JobMessage_Manual) isJobMessage_Msg() {}
+
+// JobRegistration is the first frame the plugin sends after opening the
+// stream. It declares every job the plugin will respond to. Re-registering
+// after a reconnect replaces the previous spec set entirely.
+type JobRegistration struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Specs         []*JobSpec             `protobuf:"bytes,1,rep,name=specs,proto3" json:"specs,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JobRegistration) Reset() {
+	*x = JobRegistration{}
+	mi := &file_sdk_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobRegistration) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobRegistration) ProtoMessage() {}
+
+func (x *JobRegistration) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobRegistration.ProtoReflect.Descriptor instead.
+func (*JobRegistration) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *JobRegistration) GetSpecs() []*JobSpec {
+	if x != nil {
+		return x.Specs
+	}
+	return nil
+}
+
+// JobSpec defines one scheduled job. Exactly one of interval_nanos,
+// cron_spec, or fixed_delay_nanos is populated; the remainder are zero.
+type JobSpec struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// kind is "interval" | "cron" | "fixed_delay". Mirrors the populated trigger
+	// field so the host can dispatch without sniffing the union manually.
+	Kind          string `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	IntervalNanos int64  `protobuf:"varint,3,opt,name=interval_nanos,json=intervalNanos,proto3" json:"interval_nanos,omitempty"`
+	// cron_spec uses robfig/cron/v3 syntax. 5 fields = standard, 6 fields with
+	// seconds is allowed when the host enables WithSeconds.
+	CronSpec        string `protobuf:"bytes,4,opt,name=cron_spec,json=cronSpec,proto3" json:"cron_spec,omitempty"`
+	FixedDelayNanos int64  `protobuf:"varint,5,opt,name=fixed_delay_nanos,json=fixedDelayNanos,proto3" json:"fixed_delay_nanos,omitempty"`
+	// leader_only=true means the host only fires this trigger on the node
+	// holding the per-(plugin, job) leader lock. Used for daily rollups and
+	// other singleton work.
+	LeaderOnly bool `protobuf:"varint,6,opt,name=leader_only,json=leaderOnly,proto3" json:"leader_only,omitempty"`
+	// concurrency is the cap on parallel handler runs for THIS job in the
+	// plugin process. <=0 is treated as 1.
+	Concurrency int32 `protobuf:"varint,7,opt,name=concurrency,proto3" json:"concurrency,omitempty"`
+	// timeout_nanos is the per-trigger wall-clock limit. The plugin SDK
+	// cancels the handler ctx when it elapses. <=0 falls back to 5min.
+	TimeoutNanos  int64 `protobuf:"varint,8,opt,name=timeout_nanos,json=timeoutNanos,proto3" json:"timeout_nanos,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JobSpec) Reset() {
+	*x = JobSpec{}
+	mi := &file_sdk_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobSpec) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobSpec) ProtoMessage() {}
+
+func (x *JobSpec) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobSpec.ProtoReflect.Descriptor instead.
+func (*JobSpec) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *JobSpec) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *JobSpec) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *JobSpec) GetIntervalNanos() int64 {
+	if x != nil {
+		return x.IntervalNanos
+	}
+	return 0
+}
+
+func (x *JobSpec) GetCronSpec() string {
+	if x != nil {
+		return x.CronSpec
+	}
+	return ""
+}
+
+func (x *JobSpec) GetFixedDelayNanos() int64 {
+	if x != nil {
+		return x.FixedDelayNanos
+	}
+	return 0
+}
+
+func (x *JobSpec) GetLeaderOnly() bool {
+	if x != nil {
+		return x.LeaderOnly
+	}
+	return false
+}
+
+func (x *JobSpec) GetConcurrency() int32 {
+	if x != nil {
+		return x.Concurrency
+	}
+	return 0
+}
+
+func (x *JobSpec) GetTimeoutNanos() int64 {
+	if x != nil {
+		return x.TimeoutNanos
+	}
+	return 0
+}
+
+// JobTrigger is the host → plugin push that asks the plugin to run a handler.
+type JobTrigger struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	JobName string                 `protobuf:"bytes,1,opt,name=job_name,json=jobName,proto3" json:"job_name,omitempty"`
+	// trigger_id is a host-generated ULID; the plugin echoes it in JobAck so
+	// the host can correlate runs even when the plugin re-orders ack delivery.
+	TriggerId        string `protobuf:"bytes,2,opt,name=trigger_id,json=triggerId,proto3" json:"trigger_id,omitempty"`
+	FireTimeUnixNano int64  `protobuf:"varint,3,opt,name=fire_time_unix_nano,json=fireTimeUnixNano,proto3" json:"fire_time_unix_nano,omitempty"`
+	// manual=true marks triggers initiated by an admin "Run now" call so the
+	// plugin can adjust logging / metrics if it cares; otherwise indistinguishable
+	// from a scheduled trigger.
+	Manual        bool `protobuf:"varint,4,opt,name=manual,proto3" json:"manual,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JobTrigger) Reset() {
+	*x = JobTrigger{}
+	mi := &file_sdk_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobTrigger) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobTrigger) ProtoMessage() {}
+
+func (x *JobTrigger) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobTrigger.ProtoReflect.Descriptor instead.
+func (*JobTrigger) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *JobTrigger) GetJobName() string {
+	if x != nil {
+		return x.JobName
+	}
+	return ""
+}
+
+func (x *JobTrigger) GetTriggerId() string {
+	if x != nil {
+		return x.TriggerId
+	}
+	return ""
+}
+
+func (x *JobTrigger) GetFireTimeUnixNano() int64 {
+	if x != nil {
+		return x.FireTimeUnixNano
+	}
+	return 0
+}
+
+func (x *JobTrigger) GetManual() bool {
+	if x != nil {
+		return x.Manual
+	}
+	return false
+}
+
+// JobAck is the plugin → host completion record for one trigger.
+type JobAck struct {
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	TriggerId string                 `protobuf:"bytes,1,opt,name=trigger_id,json=triggerId,proto3" json:"trigger_id,omitempty"`
+	Success   bool                   `protobuf:"varint,2,opt,name=success,proto3" json:"success,omitempty"`
+	// error is set when success=false. Free-form, surfaced in admin job history.
+	Error string `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	// duration_nanos is the wall-clock time the handler took (success or not).
+	DurationNanos int64 `protobuf:"varint,4,opt,name=duration_nanos,json=durationNanos,proto3" json:"duration_nanos,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *JobAck) Reset() {
+	*x = JobAck{}
+	mi := &file_sdk_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *JobAck) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*JobAck) ProtoMessage() {}
+
+func (x *JobAck) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use JobAck.ProtoReflect.Descriptor instead.
+func (*JobAck) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *JobAck) GetTriggerId() string {
+	if x != nil {
+		return x.TriggerId
+	}
+	return ""
+}
+
+func (x *JobAck) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *JobAck) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *JobAck) GetDurationNanos() int64 {
+	if x != nil {
+		return x.DurationNanos
+	}
+	return 0
+}
+
+// ManualTrigger is an admin "Run now" invocation flowing plugin→host. The
+// host translates it into a JobTrigger and pushes it back to the plugin via
+// the same Subscribe stream.
+type ManualTrigger struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	JobName       string                 `protobuf:"bytes,1,opt,name=job_name,json=jobName,proto3" json:"job_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ManualTrigger) Reset() {
+	*x = ManualTrigger{}
+	mi := &file_sdk_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ManualTrigger) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ManualTrigger) ProtoMessage() {}
+
+func (x *ManualTrigger) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ManualTrigger.ProtoReflect.Descriptor instead.
+func (*ManualTrigger) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *ManualTrigger) GetJobName() string {
+	if x != nil {
+		return x.JobName
+	}
+	return ""
+}
+
 var File_sdk_proto protoreflect.FileDescriptor
 
 const file_sdk_proto_rawDesc = "" +
@@ -1952,7 +2403,40 @@ const file_sdk_proto_rawDesc = "" +
 	"\x05Event\x12\x14\n" +
 	"\x05topic\x18\x01 \x01(\tR\x05topic\x12\x18\n" +
 	"\apayload\x18\x02 \x01(\fR\apayload\x12\x1c\n" +
-	"\ttimestamp\x18\x03 \x01(\x03R\ttimestamp2\xa9\x03\n" +
+	"\ttimestamp\x18\x03 \x01(\x03R\ttimestamp\"\xa8\x01\n" +
+	"\n" +
+	"JobMessage\x128\n" +
+	"\bregister\x18\x01 \x01(\v2\x1a.pluginsdk.JobRegistrationH\x00R\bregister\x12%\n" +
+	"\x03ack\x18\x02 \x01(\v2\x11.pluginsdk.JobAckH\x00R\x03ack\x122\n" +
+	"\x06manual\x18\x03 \x01(\v2\x18.pluginsdk.ManualTriggerH\x00R\x06manualB\x05\n" +
+	"\x03msg\";\n" +
+	"\x0fJobRegistration\x12(\n" +
+	"\x05specs\x18\x01 \x03(\v2\x12.pluginsdk.JobSpecR\x05specs\"\x89\x02\n" +
+	"\aJobSpec\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\x12%\n" +
+	"\x0einterval_nanos\x18\x03 \x01(\x03R\rintervalNanos\x12\x1b\n" +
+	"\tcron_spec\x18\x04 \x01(\tR\bcronSpec\x12*\n" +
+	"\x11fixed_delay_nanos\x18\x05 \x01(\x03R\x0ffixedDelayNanos\x12\x1f\n" +
+	"\vleader_only\x18\x06 \x01(\bR\n" +
+	"leaderOnly\x12 \n" +
+	"\vconcurrency\x18\a \x01(\x05R\vconcurrency\x12#\n" +
+	"\rtimeout_nanos\x18\b \x01(\x03R\ftimeoutNanos\"\x8d\x01\n" +
+	"\n" +
+	"JobTrigger\x12\x19\n" +
+	"\bjob_name\x18\x01 \x01(\tR\ajobName\x12\x1d\n" +
+	"\n" +
+	"trigger_id\x18\x02 \x01(\tR\ttriggerId\x12-\n" +
+	"\x13fire_time_unix_nano\x18\x03 \x01(\x03R\x10fireTimeUnixNano\x12\x16\n" +
+	"\x06manual\x18\x04 \x01(\bR\x06manual\"~\n" +
+	"\x06JobAck\x12\x1d\n" +
+	"\n" +
+	"trigger_id\x18\x01 \x01(\tR\ttriggerId\x12\x18\n" +
+	"\asuccess\x18\x02 \x01(\bR\asuccess\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\x12%\n" +
+	"\x0eduration_nanos\x18\x04 \x01(\x03R\rdurationNanos\"*\n" +
+	"\rManualTrigger\x12\x19\n" +
+	"\bjob_name\x18\x01 \x01(\tR\ajobName2\xa9\x03\n" +
 	"\bSQLProxy\x126\n" +
 	"\x05Query\x12\x15.pluginsdk.SQLRequest\x1a\x16.pluginsdk.SQLResponse\x126\n" +
 	"\x04Exec\x12\x15.pluginsdk.SQLRequest\x1a\x17.pluginsdk.ExecResponse\x12;\n" +
@@ -1979,7 +2463,9 @@ const file_sdk_proto_rawDesc = "" +
 	"\aPublish\x12\x17.pluginsdk.EventRequest\x1a\x16.google.protobuf.Empty\x127\n" +
 	"\tSubscribe\x12\x16.pluginsdk.EventFilter\x1a\x10.pluginsdk.Event0\x012I\n" +
 	"\bLogProxy\x12=\n" +
-	"\bPushLogs\x12\x14.pluginsdk.LogRecord\x1a\x19.pluginsdk.LogPushSummary(\x01B8Z6github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdkb\x06proto3"
+	"\bPushLogs\x12\x14.pluginsdk.LogRecord\x1a\x19.pluginsdk.LogPushSummary(\x012M\n" +
+	"\fJobScheduler\x12=\n" +
+	"\tSubscribe\x12\x15.pluginsdk.JobMessage\x1a\x15.pluginsdk.JobTrigger(\x010\x01B8Z6github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdkb\x06proto3"
 
 var (
 	file_sdk_proto_rawDescOnce sync.Once
@@ -1993,7 +2479,7 @@ func file_sdk_proto_rawDescGZIP() []byte {
 	return file_sdk_proto_rawDescData
 }
 
-var file_sdk_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
+var file_sdk_proto_msgTypes = make([]protoimpl.MessageInfo, 36)
 var file_sdk_proto_goTypes = []any{
 	(*LogRecord)(nil),          // 0: pluginsdk.LogRecord
 	(*LogAttr)(nil),            // 1: pluginsdk.LogAttr
@@ -2024,8 +2510,14 @@ var file_sdk_proto_goTypes = []any{
 	(*EventRequest)(nil),       // 26: pluginsdk.EventRequest
 	(*EventFilter)(nil),        // 27: pluginsdk.EventFilter
 	(*Event)(nil),              // 28: pluginsdk.Event
-	nil,                        // 29: pluginsdk.RedisMapResponse.FieldsEntry
-	(*emptypb.Empty)(nil),      // 30: google.protobuf.Empty
+	(*JobMessage)(nil),         // 29: pluginsdk.JobMessage
+	(*JobRegistration)(nil),    // 30: pluginsdk.JobRegistration
+	(*JobSpec)(nil),            // 31: pluginsdk.JobSpec
+	(*JobTrigger)(nil),         // 32: pluginsdk.JobTrigger
+	(*JobAck)(nil),             // 33: pluginsdk.JobAck
+	(*ManualTrigger)(nil),      // 34: pluginsdk.ManualTrigger
+	nil,                        // 35: pluginsdk.RedisMapResponse.FieldsEntry
+	(*emptypb.Empty)(nil),      // 36: google.protobuf.Empty
 }
 var file_sdk_proto_depIdxs = []int32{
 	1,  // 0: pluginsdk.LogRecord.attrs:type_name -> pluginsdk.LogAttr
@@ -2033,55 +2525,61 @@ var file_sdk_proto_depIdxs = []int32{
 	8,  // 2: pluginsdk.TxSQLRequest.args:type_name -> pluginsdk.SQLValue
 	10, // 3: pluginsdk.SQLResponse.rows:type_name -> pluginsdk.SQLRow
 	8,  // 4: pluginsdk.SQLRow.values:type_name -> pluginsdk.SQLValue
-	29, // 5: pluginsdk.RedisMapResponse.fields:type_name -> pluginsdk.RedisMapResponse.FieldsEntry
+	35, // 5: pluginsdk.RedisMapResponse.fields:type_name -> pluginsdk.RedisMapResponse.FieldsEntry
 	25, // 6: pluginsdk.DoReply.array:type_name -> pluginsdk.DoReply
-	3,  // 7: pluginsdk.SQLProxy.Query:input_type -> pluginsdk.SQLRequest
-	3,  // 8: pluginsdk.SQLProxy.Exec:input_type -> pluginsdk.SQLRequest
-	5,  // 9: pluginsdk.SQLProxy.BeginTx:input_type -> pluginsdk.BeginTxRequest
-	4,  // 10: pluginsdk.SQLProxy.TxQuery:input_type -> pluginsdk.TxSQLRequest
-	4,  // 11: pluginsdk.SQLProxy.TxExec:input_type -> pluginsdk.TxSQLRequest
-	7,  // 12: pluginsdk.SQLProxy.CommitTx:input_type -> pluginsdk.TxIDRequest
-	7,  // 13: pluginsdk.SQLProxy.RollbackTx:input_type -> pluginsdk.TxIDRequest
-	24, // 14: pluginsdk.RedisProxy.Do:input_type -> pluginsdk.DoRequest
-	12, // 15: pluginsdk.RedisProxy.Get:input_type -> pluginsdk.RedisKeyRequest
-	14, // 16: pluginsdk.RedisProxy.Set:input_type -> pluginsdk.RedisSetRequest
-	15, // 17: pluginsdk.RedisProxy.SetEx:input_type -> pluginsdk.RedisSetExRequest
-	16, // 18: pluginsdk.RedisProxy.Del:input_type -> pluginsdk.RedisDelRequest
-	17, // 19: pluginsdk.RedisProxy.HGet:input_type -> pluginsdk.RedisHGetRequest
-	18, // 20: pluginsdk.RedisProxy.HSet:input_type -> pluginsdk.RedisHSetRequest
-	12, // 21: pluginsdk.RedisProxy.HGetAll:input_type -> pluginsdk.RedisKeyRequest
-	20, // 22: pluginsdk.RedisProxy.HDel:input_type -> pluginsdk.RedisHDelRequest
-	21, // 23: pluginsdk.RedisProxy.Publish:input_type -> pluginsdk.RedisPubRequest
-	22, // 24: pluginsdk.RedisProxy.Subscribe:input_type -> pluginsdk.RedisSubRequest
-	26, // 25: pluginsdk.EventBus.Publish:input_type -> pluginsdk.EventRequest
-	27, // 26: pluginsdk.EventBus.Subscribe:input_type -> pluginsdk.EventFilter
-	0,  // 27: pluginsdk.LogProxy.PushLogs:input_type -> pluginsdk.LogRecord
-	9,  // 28: pluginsdk.SQLProxy.Query:output_type -> pluginsdk.SQLResponse
-	11, // 29: pluginsdk.SQLProxy.Exec:output_type -> pluginsdk.ExecResponse
-	6,  // 30: pluginsdk.SQLProxy.BeginTx:output_type -> pluginsdk.TxResponse
-	9,  // 31: pluginsdk.SQLProxy.TxQuery:output_type -> pluginsdk.SQLResponse
-	11, // 32: pluginsdk.SQLProxy.TxExec:output_type -> pluginsdk.ExecResponse
-	30, // 33: pluginsdk.SQLProxy.CommitTx:output_type -> google.protobuf.Empty
-	30, // 34: pluginsdk.SQLProxy.RollbackTx:output_type -> google.protobuf.Empty
-	25, // 35: pluginsdk.RedisProxy.Do:output_type -> pluginsdk.DoReply
-	13, // 36: pluginsdk.RedisProxy.Get:output_type -> pluginsdk.RedisValueResponse
-	30, // 37: pluginsdk.RedisProxy.Set:output_type -> google.protobuf.Empty
-	30, // 38: pluginsdk.RedisProxy.SetEx:output_type -> google.protobuf.Empty
-	30, // 39: pluginsdk.RedisProxy.Del:output_type -> google.protobuf.Empty
-	13, // 40: pluginsdk.RedisProxy.HGet:output_type -> pluginsdk.RedisValueResponse
-	30, // 41: pluginsdk.RedisProxy.HSet:output_type -> google.protobuf.Empty
-	19, // 42: pluginsdk.RedisProxy.HGetAll:output_type -> pluginsdk.RedisMapResponse
-	30, // 43: pluginsdk.RedisProxy.HDel:output_type -> google.protobuf.Empty
-	30, // 44: pluginsdk.RedisProxy.Publish:output_type -> google.protobuf.Empty
-	23, // 45: pluginsdk.RedisProxy.Subscribe:output_type -> pluginsdk.RedisMessage
-	30, // 46: pluginsdk.EventBus.Publish:output_type -> google.protobuf.Empty
-	28, // 47: pluginsdk.EventBus.Subscribe:output_type -> pluginsdk.Event
-	2,  // 48: pluginsdk.LogProxy.PushLogs:output_type -> pluginsdk.LogPushSummary
-	28, // [28:49] is the sub-list for method output_type
-	7,  // [7:28] is the sub-list for method input_type
-	7,  // [7:7] is the sub-list for extension type_name
-	7,  // [7:7] is the sub-list for extension extendee
-	0,  // [0:7] is the sub-list for field type_name
+	30, // 7: pluginsdk.JobMessage.register:type_name -> pluginsdk.JobRegistration
+	33, // 8: pluginsdk.JobMessage.ack:type_name -> pluginsdk.JobAck
+	34, // 9: pluginsdk.JobMessage.manual:type_name -> pluginsdk.ManualTrigger
+	31, // 10: pluginsdk.JobRegistration.specs:type_name -> pluginsdk.JobSpec
+	3,  // 11: pluginsdk.SQLProxy.Query:input_type -> pluginsdk.SQLRequest
+	3,  // 12: pluginsdk.SQLProxy.Exec:input_type -> pluginsdk.SQLRequest
+	5,  // 13: pluginsdk.SQLProxy.BeginTx:input_type -> pluginsdk.BeginTxRequest
+	4,  // 14: pluginsdk.SQLProxy.TxQuery:input_type -> pluginsdk.TxSQLRequest
+	4,  // 15: pluginsdk.SQLProxy.TxExec:input_type -> pluginsdk.TxSQLRequest
+	7,  // 16: pluginsdk.SQLProxy.CommitTx:input_type -> pluginsdk.TxIDRequest
+	7,  // 17: pluginsdk.SQLProxy.RollbackTx:input_type -> pluginsdk.TxIDRequest
+	24, // 18: pluginsdk.RedisProxy.Do:input_type -> pluginsdk.DoRequest
+	12, // 19: pluginsdk.RedisProxy.Get:input_type -> pluginsdk.RedisKeyRequest
+	14, // 20: pluginsdk.RedisProxy.Set:input_type -> pluginsdk.RedisSetRequest
+	15, // 21: pluginsdk.RedisProxy.SetEx:input_type -> pluginsdk.RedisSetExRequest
+	16, // 22: pluginsdk.RedisProxy.Del:input_type -> pluginsdk.RedisDelRequest
+	17, // 23: pluginsdk.RedisProxy.HGet:input_type -> pluginsdk.RedisHGetRequest
+	18, // 24: pluginsdk.RedisProxy.HSet:input_type -> pluginsdk.RedisHSetRequest
+	12, // 25: pluginsdk.RedisProxy.HGetAll:input_type -> pluginsdk.RedisKeyRequest
+	20, // 26: pluginsdk.RedisProxy.HDel:input_type -> pluginsdk.RedisHDelRequest
+	21, // 27: pluginsdk.RedisProxy.Publish:input_type -> pluginsdk.RedisPubRequest
+	22, // 28: pluginsdk.RedisProxy.Subscribe:input_type -> pluginsdk.RedisSubRequest
+	26, // 29: pluginsdk.EventBus.Publish:input_type -> pluginsdk.EventRequest
+	27, // 30: pluginsdk.EventBus.Subscribe:input_type -> pluginsdk.EventFilter
+	0,  // 31: pluginsdk.LogProxy.PushLogs:input_type -> pluginsdk.LogRecord
+	29, // 32: pluginsdk.JobScheduler.Subscribe:input_type -> pluginsdk.JobMessage
+	9,  // 33: pluginsdk.SQLProxy.Query:output_type -> pluginsdk.SQLResponse
+	11, // 34: pluginsdk.SQLProxy.Exec:output_type -> pluginsdk.ExecResponse
+	6,  // 35: pluginsdk.SQLProxy.BeginTx:output_type -> pluginsdk.TxResponse
+	9,  // 36: pluginsdk.SQLProxy.TxQuery:output_type -> pluginsdk.SQLResponse
+	11, // 37: pluginsdk.SQLProxy.TxExec:output_type -> pluginsdk.ExecResponse
+	36, // 38: pluginsdk.SQLProxy.CommitTx:output_type -> google.protobuf.Empty
+	36, // 39: pluginsdk.SQLProxy.RollbackTx:output_type -> google.protobuf.Empty
+	25, // 40: pluginsdk.RedisProxy.Do:output_type -> pluginsdk.DoReply
+	13, // 41: pluginsdk.RedisProxy.Get:output_type -> pluginsdk.RedisValueResponse
+	36, // 42: pluginsdk.RedisProxy.Set:output_type -> google.protobuf.Empty
+	36, // 43: pluginsdk.RedisProxy.SetEx:output_type -> google.protobuf.Empty
+	36, // 44: pluginsdk.RedisProxy.Del:output_type -> google.protobuf.Empty
+	13, // 45: pluginsdk.RedisProxy.HGet:output_type -> pluginsdk.RedisValueResponse
+	36, // 46: pluginsdk.RedisProxy.HSet:output_type -> google.protobuf.Empty
+	19, // 47: pluginsdk.RedisProxy.HGetAll:output_type -> pluginsdk.RedisMapResponse
+	36, // 48: pluginsdk.RedisProxy.HDel:output_type -> google.protobuf.Empty
+	36, // 49: pluginsdk.RedisProxy.Publish:output_type -> google.protobuf.Empty
+	23, // 50: pluginsdk.RedisProxy.Subscribe:output_type -> pluginsdk.RedisMessage
+	36, // 51: pluginsdk.EventBus.Publish:output_type -> google.protobuf.Empty
+	28, // 52: pluginsdk.EventBus.Subscribe:output_type -> pluginsdk.Event
+	2,  // 53: pluginsdk.LogProxy.PushLogs:output_type -> pluginsdk.LogPushSummary
+	32, // 54: pluginsdk.JobScheduler.Subscribe:output_type -> pluginsdk.JobTrigger
+	33, // [33:55] is the sub-list for method output_type
+	11, // [11:33] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_sdk_proto_init() }
@@ -2106,15 +2604,20 @@ func file_sdk_proto_init() {
 		(*SQLValue_BytesValue)(nil),
 		(*SQLValue_BoolValue)(nil),
 	}
+	file_sdk_proto_msgTypes[29].OneofWrappers = []any{
+		(*JobMessage_Register)(nil),
+		(*JobMessage_Ack)(nil),
+		(*JobMessage_Manual)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sdk_proto_rawDesc), len(file_sdk_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   30,
+			NumMessages:   36,
 			NumExtensions: 0,
-			NumServices:   4,
+			NumServices:   5,
 		},
 		GoTypes:           file_sdk_proto_goTypes,
 		DependencyIndexes: file_sdk_proto_depIdxs,

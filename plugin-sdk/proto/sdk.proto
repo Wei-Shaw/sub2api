@@ -282,3 +282,106 @@ message Event {
   bytes payload = 2;
   int64 timestamp = 3;
 }
+
+// ============================================================
+// JobScheduler — W2 V5 capability
+// ============================================================
+//
+// JobScheduler lets plugins declare scheduled work (interval / cron /
+// fixed_delay) and have the host fire triggers at the appropriate times.
+// Handlers run inside the plugin process; the host owns the scheduling clock,
+// leader-only coordination, and persistence of job history.
+//
+// Wire model:
+//   Plugin opens one bidirectional stream per process lifetime via Subscribe.
+//   The first message MUST be a JobMessage carrying JobRegistration with the
+//   plugin's full set of JobSpecs. The host then pushes JobTrigger frames as
+//   each spec fires; the plugin runs its handler and sends back a JobAck per
+//   trigger. Admin-initiated "Run now" is delivered as ManualTrigger over the
+//   same plugin→host channel and is fanned out to the plugin via JobTrigger
+//   with manual=true.
+//
+// Failure model:
+//   - Stream broken → plugin reconnects with exponential backoff (1s/3s/9s
+//     capped at 30s) and re-sends Register. Triggers missed during the gap
+//     are NOT replayed — semantics match "fire-and-forget at-most-once".
+//   - leader_only specs only fire on the node that holds the leader lock
+//     (per-(plugin, job) key). Other nodes receive nothing.
+//   - Per-plugin concurrency is enforced on the SDK side; over-cap triggers
+//     are immediately Acked with success=false and error="concurrency limit
+//     reached" so the host history records the throttle.
+service JobScheduler {
+  // Subscribe is the single bidirectional stream a plugin uses for the
+  // lifetime of its connection. See file-level doc for the protocol.
+  rpc Subscribe(stream JobMessage) returns (stream JobTrigger);
+}
+
+// JobMessage is the union of plugin → host frames on the Subscribe stream.
+message JobMessage {
+  oneof msg {
+    JobRegistration register = 1;
+    JobAck          ack      = 2;
+    ManualTrigger   manual   = 3;
+  }
+}
+
+// JobRegistration is the first frame the plugin sends after opening the
+// stream. It declares every job the plugin will respond to. Re-registering
+// after a reconnect replaces the previous spec set entirely.
+message JobRegistration {
+  repeated JobSpec specs = 1;
+}
+
+// JobSpec defines one scheduled job. Exactly one of interval_nanos,
+// cron_spec, or fixed_delay_nanos is populated; the remainder are zero.
+message JobSpec {
+  string name              = 1;
+  // kind is "interval" | "cron" | "fixed_delay". Mirrors the populated trigger
+  // field so the host can dispatch without sniffing the union manually.
+  string kind              = 2;
+  int64  interval_nanos    = 3;
+  // cron_spec uses robfig/cron/v3 syntax. 5 fields = standard, 6 fields with
+  // seconds is allowed when the host enables WithSeconds.
+  string cron_spec         = 4;
+  int64  fixed_delay_nanos = 5;
+  // leader_only=true means the host only fires this trigger on the node
+  // holding the per-(plugin, job) leader lock. Used for daily rollups and
+  // other singleton work.
+  bool   leader_only       = 6;
+  // concurrency is the cap on parallel handler runs for THIS job in the
+  // plugin process. <=0 is treated as 1.
+  int32  concurrency       = 7;
+  // timeout_nanos is the per-trigger wall-clock limit. The plugin SDK
+  // cancels the handler ctx when it elapses. <=0 falls back to 5min.
+  int64  timeout_nanos     = 8;
+}
+
+// JobTrigger is the host → plugin push that asks the plugin to run a handler.
+message JobTrigger {
+  string job_name            = 1;
+  // trigger_id is a host-generated ULID; the plugin echoes it in JobAck so
+  // the host can correlate runs even when the plugin re-orders ack delivery.
+  string trigger_id          = 2;
+  int64  fire_time_unix_nano = 3;
+  // manual=true marks triggers initiated by an admin "Run now" call so the
+  // plugin can adjust logging / metrics if it cares; otherwise indistinguishable
+  // from a scheduled trigger.
+  bool   manual              = 4;
+}
+
+// JobAck is the plugin → host completion record for one trigger.
+message JobAck {
+  string trigger_id     = 1;
+  bool   success        = 2;
+  // error is set when success=false. Free-form, surfaced in admin job history.
+  string error          = 3;
+  // duration_nanos is the wall-clock time the handler took (success or not).
+  int64  duration_nanos = 4;
+}
+
+// ManualTrigger is an admin "Run now" invocation flowing plugin→host. The
+// host translates it into a JobTrigger and pushes it back to the plugin via
+// the same Subscribe stream.
+message ManualTrigger {
+  string job_name = 1;
+}

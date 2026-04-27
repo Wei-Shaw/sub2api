@@ -1133,3 +1133,161 @@ var LogProxy_ServiceDesc = grpc.ServiceDesc{
 	},
 	Metadata: "sdk.proto",
 }
+
+const (
+	JobScheduler_Subscribe_FullMethodName = "/pluginsdk.JobScheduler/Subscribe"
+)
+
+// JobSchedulerClient is the client API for JobScheduler service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// ============================================================
+// JobScheduler — W2 V5 capability
+// ============================================================
+//
+// JobScheduler lets plugins declare scheduled work (interval / cron /
+// fixed_delay) and have the host fire triggers at the appropriate times.
+// Handlers run inside the plugin process; the host owns the scheduling clock,
+// leader-only coordination, and persistence of job history.
+//
+// Wire model:
+//
+//	Plugin opens one bidirectional stream per process lifetime via Subscribe.
+//	The first message MUST be a JobMessage carrying JobRegistration with the
+//	plugin's full set of JobSpecs. The host then pushes JobTrigger frames as
+//	each spec fires; the plugin runs its handler and sends back a JobAck per
+//	trigger. Admin-initiated "Run now" is delivered as ManualTrigger over the
+//	same plugin→host channel and is fanned out to the plugin via JobTrigger
+//	with manual=true.
+//
+// Failure model:
+//   - Stream broken → plugin reconnects with exponential backoff (1s/3s/9s
+//     capped at 30s) and re-sends Register. Triggers missed during the gap
+//     are NOT replayed — semantics match "fire-and-forget at-most-once".
+//   - leader_only specs only fire on the node that holds the leader lock
+//     (per-(plugin, job) key). Other nodes receive nothing.
+//   - Per-plugin concurrency is enforced on the SDK side; over-cap triggers
+//     are immediately Acked with success=false and error="concurrency limit
+//     reached" so the host history records the throttle.
+type JobSchedulerClient interface {
+	// Subscribe is the single bidirectional stream a plugin uses for the
+	// lifetime of its connection. See file-level doc for the protocol.
+	Subscribe(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[JobMessage, JobTrigger], error)
+}
+
+type jobSchedulerClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewJobSchedulerClient(cc grpc.ClientConnInterface) JobSchedulerClient {
+	return &jobSchedulerClient{cc}
+}
+
+func (c *jobSchedulerClient) Subscribe(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[JobMessage, JobTrigger], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &JobScheduler_ServiceDesc.Streams[0], JobScheduler_Subscribe_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[JobMessage, JobTrigger]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type JobScheduler_SubscribeClient = grpc.BidiStreamingClient[JobMessage, JobTrigger]
+
+// JobSchedulerServer is the server API for JobScheduler service.
+// All implementations must embed UnimplementedJobSchedulerServer
+// for forward compatibility.
+//
+// ============================================================
+// JobScheduler — W2 V5 capability
+// ============================================================
+//
+// JobScheduler lets plugins declare scheduled work (interval / cron /
+// fixed_delay) and have the host fire triggers at the appropriate times.
+// Handlers run inside the plugin process; the host owns the scheduling clock,
+// leader-only coordination, and persistence of job history.
+//
+// Wire model:
+//
+//	Plugin opens one bidirectional stream per process lifetime via Subscribe.
+//	The first message MUST be a JobMessage carrying JobRegistration with the
+//	plugin's full set of JobSpecs. The host then pushes JobTrigger frames as
+//	each spec fires; the plugin runs its handler and sends back a JobAck per
+//	trigger. Admin-initiated "Run now" is delivered as ManualTrigger over the
+//	same plugin→host channel and is fanned out to the plugin via JobTrigger
+//	with manual=true.
+//
+// Failure model:
+//   - Stream broken → plugin reconnects with exponential backoff (1s/3s/9s
+//     capped at 30s) and re-sends Register. Triggers missed during the gap
+//     are NOT replayed — semantics match "fire-and-forget at-most-once".
+//   - leader_only specs only fire on the node that holds the leader lock
+//     (per-(plugin, job) key). Other nodes receive nothing.
+//   - Per-plugin concurrency is enforced on the SDK side; over-cap triggers
+//     are immediately Acked with success=false and error="concurrency limit
+//     reached" so the host history records the throttle.
+type JobSchedulerServer interface {
+	// Subscribe is the single bidirectional stream a plugin uses for the
+	// lifetime of its connection. See file-level doc for the protocol.
+	Subscribe(grpc.BidiStreamingServer[JobMessage, JobTrigger]) error
+	mustEmbedUnimplementedJobSchedulerServer()
+}
+
+// UnimplementedJobSchedulerServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedJobSchedulerServer struct{}
+
+func (UnimplementedJobSchedulerServer) Subscribe(grpc.BidiStreamingServer[JobMessage, JobTrigger]) error {
+	return status.Error(codes.Unimplemented, "method Subscribe not implemented")
+}
+func (UnimplementedJobSchedulerServer) mustEmbedUnimplementedJobSchedulerServer() {}
+func (UnimplementedJobSchedulerServer) testEmbeddedByValue()                      {}
+
+// UnsafeJobSchedulerServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to JobSchedulerServer will
+// result in compilation errors.
+type UnsafeJobSchedulerServer interface {
+	mustEmbedUnimplementedJobSchedulerServer()
+}
+
+func RegisterJobSchedulerServer(s grpc.ServiceRegistrar, srv JobSchedulerServer) {
+	// If the following call panics, it indicates UnimplementedJobSchedulerServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&JobScheduler_ServiceDesc, srv)
+}
+
+func _JobScheduler_Subscribe_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(JobSchedulerServer).Subscribe(&grpc.GenericServerStream[JobMessage, JobTrigger]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type JobScheduler_SubscribeServer = grpc.BidiStreamingServer[JobMessage, JobTrigger]
+
+// JobScheduler_ServiceDesc is the grpc.ServiceDesc for JobScheduler service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var JobScheduler_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "pluginsdk.JobScheduler",
+	HandlerType: (*JobSchedulerServer)(nil),
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Subscribe",
+			Handler:       _JobScheduler_Subscribe_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
+	Metadata: "sdk.proto",
+}
