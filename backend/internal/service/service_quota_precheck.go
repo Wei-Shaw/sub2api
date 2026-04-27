@@ -11,6 +11,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/metrics"
 )
+
 // matchedQuotaRule 是 PreCheck/Record 用的中间态：把规则与本次请求实际命中的 path 列表绑在一起，
 // 后续按 path × limiter 做笛卡尔展开。
 type matchedQuotaRule struct {
@@ -423,7 +424,6 @@ func applyServiceQuotaFallbackOverride(matched []matchedQuotaRule) []matchedQuot
 	}
 	return out
 }
-
 
 func serviceQuotaWindow(lim ServiceQuotaLimiterDef) time.Duration {
 	switch lim.LimiterType {

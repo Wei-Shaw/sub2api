@@ -11,6 +11,7 @@ import (
 	"github.com/lib/pq"
 	"golang.org/x/sync/singleflight"
 )
+
 type serviceQuotaService struct {
 	repo     ServiceQuotaRuleRepository
 	settings *SettingService
@@ -159,7 +160,7 @@ func (s *serviceQuotaService) loadRulesWithCache(ctx context.Context) []*Service
 			return rules
 		}
 	}
-	val, err, _ := s.sf.Do("load_rules", func() (interface{}, error) {
+	val, err, _ := s.sf.Do("load_rules", func() (any, error) {
 		rules, err := s.repo.List(ctx, ServiceQuotaListFilter{})
 		if err != nil {
 			return nil, err
@@ -172,7 +173,8 @@ func (s *serviceQuotaService) loadRulesWithCache(ctx context.Context) []*Service
 	if err != nil {
 		return nil
 	}
-	return val.([]*ServiceQuotaRule)
+	rules, _ := val.([]*ServiceQuotaRule)
+	return rules
 }
 
 // reloadCache 是写路径在写完 DB 后的缓存失效入口。多实例部署下只能 Del 缓存

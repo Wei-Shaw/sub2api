@@ -40,7 +40,7 @@ func ParseInt64Param(c *gin.Context, name string, invalidCode string) (int64, er
 //
 // invalidCode 与 ParseInt64Param 同源（如 errReasonQuotaInvalidRequest），
 // metadata.reason 保留 gin binding 的具体字段级报错，方便前后端联调。
-func BindJSONOrError(c *gin.Context, req interface{}, invalidCode string) error {
+func BindJSONOrError(c *gin.Context, req any, invalidCode string) error {
 	if err := c.ShouldBindJSON(req); err != nil {
 		return pkgerrors.BadRequest(invalidCode, "invalid request body").
 			WithMetadata(map[string]string{"reason": err.Error()})

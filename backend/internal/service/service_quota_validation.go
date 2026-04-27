@@ -10,6 +10,7 @@ import (
 
 	pkgerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
+
 func (s *serviceQuotaService) normalizeAndValidate(ctx context.Context, input *ServiceQuotaRuleInput) error {
 	if input == nil {
 		return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_RULE", "invalid service quota rule")

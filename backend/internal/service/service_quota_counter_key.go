@@ -8,6 +8,7 @@ import (
 
 	pkgerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
+
 // snapshotRuleLimiterModes 取规则 update 前的 limiter_type → window_mode 映射。
 // 通过 loadRulesWithCache 复用现有缓存，找不到该规则时返回 nil（视作"无旧 limiter"）。
 func (s *serviceQuotaService) snapshotRuleLimiterModes(ctx context.Context, ruleID int64) map[string]string {
