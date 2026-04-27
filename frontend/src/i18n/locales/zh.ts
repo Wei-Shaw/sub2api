@@ -4174,7 +4174,14 @@ export default {
         pathIndex: '路径 #{index}'
       },
       errors: {
-        limitValueMustBePositive: '限额必须 > 0'
+        limitValueMustBePositive: '限额必须 > 0',
+        formInvalid: '表单存在错误，请修正后再保存',
+        REQUIRED: '必填',
+        INVALID_VALUE: '取值无效',
+        MUST_BE_POSITIVE: '必须 > 0',
+        TARGET_USERS_REQUIRED: '请至少选择 1 个用户',
+        TOKEN_COMPONENTS_REQUIRED: '至少勾选 1 项',
+        PLATFORM_REQUIRED: '平台必填'
       }
     },
 

@@ -4010,7 +4010,14 @@ export default {
         pathIndex: 'Path #{index}'
       },
       errors: {
-        limitValueMustBePositive: 'Limit value must be greater than 0'
+        limitValueMustBePositive: 'Limit value must be greater than 0',
+        formInvalid: 'The form contains errors, please fix them before saving',
+        REQUIRED: 'Required',
+        INVALID_VALUE: 'Invalid value',
+        MUST_BE_POSITIVE: 'Must be greater than 0',
+        TARGET_USERS_REQUIRED: 'Select at least 1 user',
+        TOKEN_COMPONENTS_REQUIRED: 'Select at least 1 item',
+        PLATFORM_REQUIRED: 'Platform is required'
       }
     },
 

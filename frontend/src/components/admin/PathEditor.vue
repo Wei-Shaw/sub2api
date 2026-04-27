@@ -23,11 +23,17 @@
       </div>
       <div class="space-y-3">
         <div>
-          <span class="input-label mb-2 block">{{ t('admin.serviceQuota.form.platform') }}</span>
+          <RequiredLabel :label="t('admin.serviceQuota.form.platform')" required class="mb-2 block" />
           <PlatformPicker
             :model-value="item.platform"
             @update:model-value="updateField(index, 'platform', $event)"
           />
+          <span
+            v-if="errorFor(`paths[${index}].platform`)"
+            class="mt-1 block text-xs text-red-500"
+          >
+            {{ t('admin.serviceQuota.errors.' + errorFor(`paths[${index}].platform`)) }}
+          </span>
         </div>
         <div class="grid gap-3 md:grid-cols-2">
           <label class="form-field">
@@ -99,20 +105,31 @@ import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import EntitySearchSelect, { type EntitySearchItem } from '@/components/common/EntitySearchSelect.vue'
 import PlatformPicker from '@/components/common/PlatformPicker.vue'
+import RequiredLabel from '@/components/common/RequiredLabel.vue'
 import adminAPI from '@/api/admin'
 import type { Channel } from '@/api/admin/channels'
 import type { GroupPlatform } from '@/types'
 import type { ServiceQuotaPathInput } from '@/api/admin/serviceQuota'
+import type { ValidationError } from '@/utils/validateServiceQuota'
 
 const { t } = useI18n()
 
-const props = defineProps<{
-  modelValue: ServiceQuotaPathInput[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    modelValue: ServiceQuotaPathInput[]
+    /** 父组件传入的校验错误（路径与 validateServiceQuotaRule 输出对齐） */
+    errors?: ValidationError[]
+  }>(),
+  { errors: () => [] },
+)
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: ServiceQuotaPathInput[]): void
 }>()
+
+function errorFor(path: string): string {
+  return props.errors.find((e) => e.path === path)?.code || ''
+}
 
 // channel cache：搜索 / resolveLabel 都会写入；
 // modelOptionsFor 只在 cache 命中时返回模型 datalist，避免组件内额外网络请求。

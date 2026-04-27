@@ -10,7 +10,7 @@
     >
       <div class="grid grid-cols-1 items-end gap-3 sm:grid-cols-[160px_1fr_140px_auto]">
         <label class="form-field">
-          <span class="input-label">{{ t('admin.serviceQuota.columns.type') }}</span>
+          <RequiredLabel :label="t('admin.serviceQuota.columns.type')" required />
           <select
             :value="item.limiter_type"
             class="input"
@@ -20,19 +20,23 @@
           </select>
         </label>
         <label class="form-field">
-          <span class="input-label">{{ t('admin.serviceQuota.columns.limit') }}</span>
-          <input
-            :value="item.limit_value"
-            type="number"
-            min="1"
-            step="0.000001"
-            class="input"
-            required
-            @input="updateField(index, 'limit_value', Number(($event.target as HTMLInputElement).value))"
+          <RequiredLabel :label="t('admin.serviceQuota.columns.limit')" required />
+          <NumericInput
+            :model-value="item.limit_value ?? null"
+            :min="0"
+            :step="getLimitStep(item.limiter_type)"
+            :has-error="!!errorFor(`limiters[${index}].limit_value`)"
+            @update:model-value="updateField(index, 'limit_value', $event as number)"
           />
+          <span
+            v-if="errorFor(`limiters[${index}].limit_value`)"
+            class="text-xs text-red-500"
+          >
+            {{ t('admin.serviceQuota.errors.' + errorFor(`limiters[${index}].limit_value`)) }}
+          </span>
         </label>
         <label v-if="item.limiter_type !== 'concurrency'" class="form-field">
-          <span class="input-label">{{ t('admin.serviceQuota.columns.window') }}</span>
+          <RequiredLabel :label="t('admin.serviceQuota.columns.window')" required />
           <select
             :value="item.window_mode"
             class="input"
@@ -75,7 +79,7 @@
           </label>
         </div>
         <div
-          v-if="(item.token_components ?? TOKEN_COMPONENTS_DEFAULT).length === 0"
+          v-if="errorFor(`limiters[${index}].token_components`) || (item.token_components ?? TOKEN_COMPONENTS_DEFAULT).length === 0"
           class="mt-1 text-xs text-red-500"
         >
           {{ t('admin.serviceQuota.tokenComponents.minOneRequired') }}
@@ -116,6 +120,8 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
+import NumericInput from '@/components/common/NumericInput.vue'
+import RequiredLabel from '@/components/common/RequiredLabel.vue'
 import {
   type ServiceQuotaLimiterInput,
   type TokenComponent,
@@ -123,16 +129,32 @@ import {
   TOKEN_COMPONENTS_DEFAULT,
   limiterUsesTokenComponents,
 } from '@/api/admin/serviceQuota'
+import type { ValidationError } from '@/utils/validateServiceQuota'
 
 const { t } = useI18n()
 
-const props = defineProps<{
-  modelValue: ServiceQuotaLimiterInput[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    modelValue: ServiceQuotaLimiterInput[]
+    /** 父组件传入的校验错误（路径与 validateServiceQuotaRule 输出对齐） */
+    errors?: ValidationError[]
+  }>(),
+  { errors: () => [] },
+)
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: ServiceQuotaLimiterInput[]): void
 }>()
+
+// errorFor(path) 返回该字段第一条 error.code，没有则空字符串
+function errorFor(path: string): string {
+  return props.errors.find((e) => e.path === path)?.code || ''
+}
+
+// daily_usd 是金额（小数）；其他都是整数（rpm/tpm/tpd/concurrency）
+function getLimitStep(limiterType: string): number {
+  return limiterType === 'daily_usd' ? 0.01 : 1
+}
 
 const allTypes = computed(() => [
   { value: 'rpm', label: t('admin.serviceQuota.limiters.rpm') },
