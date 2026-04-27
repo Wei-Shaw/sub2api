@@ -25,6 +25,7 @@
             :model-value="item.limit_value ?? null"
             :min="0"
             :step="getLimitStep(item.limiter_type)"
+            :integer="!isDailyUsd(item.limiter_type)"
             :has-error="!!errorFor(`limiters[${index}].limit_value`)"
             @update:model-value="updateField(index, 'limit_value', $event as number)"
           />
@@ -153,7 +154,12 @@ function errorFor(path: string): string {
 
 // daily_usd 是金额（小数）；其他都是整数（rpm/tpm/tpd/concurrency）
 function getLimitStep(limiterType: string): number {
-  return limiterType === 'daily_usd' ? 0.01 : 1
+  return isDailyUsd(limiterType) ? 0.01 : 1
+}
+
+// daily_usd 单独走小数；其他类型业务上必须整数（避免 IEEE754 浮点累积误差）
+function isDailyUsd(limiterType: string): boolean {
+  return limiterType === 'daily_usd'
 }
 
 const allTypes = computed(() => [
@@ -254,6 +260,10 @@ function updateField<K extends keyof ServiceQuotaLimiterInput>(index: number, ke
       }
     } else {
       delete next.count_on_arrival
+    }
+    // 切到整数型时归位非整数老值（如老数据 999999.999997 切到 tpm 时 → 1000000）
+    if (!isDailyUsd(newType) && typeof next.limit_value === 'number' && !Number.isInteger(next.limit_value)) {
+      next.limit_value = Math.round(next.limit_value)
     }
   }
   newList[index] = next

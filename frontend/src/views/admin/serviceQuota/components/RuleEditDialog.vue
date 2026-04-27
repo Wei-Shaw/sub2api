@@ -185,7 +185,10 @@ function resetForm(rule: ServiceQuotaRule | null) {
       uid: crypto.randomUUID(),
       limiter_type: l.limiter_type,
       window_mode: l.window_mode,
-      limit_value: l.limit_value,
+      // 整数型 limiter（rpm/tpm/tpd/concurrency）老数据可能是 999999.999997
+      // 这种 IEEE754 误差残留：编辑前 round 一次，避免编辑框直接呈现毛刺值；
+      // daily_usd 保留原小数（金额需要小数精度）
+      limit_value: l.limiter_type === 'daily_usd' ? l.limit_value : Math.round(l.limit_value),
       // TPM/TPD 才有 token_components；后端可能返回 null/undefined，统一展开成数组
       token_components: limiterUsesTokenComponents(l.limiter_type)
         ? (l.token_components ?? TOKEN_COMPONENTS_DEFAULT).slice()
@@ -234,10 +237,14 @@ function normalizePayload(): ServiceQuotaRuleInput {
     is_fallback: form.is_fallback,
     // 注意：strip 掉 uid（仅前端用于 v-for stable key）
     limiters: form.limiters.map((l) => {
+      const rawLimit = Number(l.limit_value)
+      // 整数型 limiter 提交前最后一次 round 防御：保证写入 DB 的总是整数，
+      // 避免任何上游路径泄漏 IEEE754 误差。daily_usd 保留小数。
+      const limitValue = l.limiter_type === 'daily_usd' ? rawLimit : Math.round(rawLimit)
       const out: ServiceQuotaLimiterInput = {
         limiter_type: l.limiter_type,
         window_mode: l.limiter_type === 'concurrency' ? 'fixed' : l.window_mode,
-        limit_value: Number(l.limit_value),
+        limit_value: limitValue,
       }
       // 只有 TPM/TPD 才提交 token_components；其他类型不带，让后端自然走默认/忽略路径
       if (limiterUsesTokenComponents(l.limiter_type)) {
