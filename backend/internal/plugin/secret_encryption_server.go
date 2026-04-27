@@ -142,7 +142,8 @@ func (s *SecretEncryptionServer) deriveKey(pluginName string) ([]byte, error) {
 	// LoadOrStore handles the rare race where two goroutines derive
 	// concurrently — both compute the same value, only one wins the cache slot.
 	actual, _ := s.perPluginKey.LoadOrStore(pluginName, derived)
-	return actual.([]byte), nil
+	key, _ := actual.([]byte)
+	return key, nil
 }
 
 // newGCM is a small helper consolidating cipher construction. AES.NewCipher

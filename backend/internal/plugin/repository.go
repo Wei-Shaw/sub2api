@@ -75,7 +75,7 @@ func (r *PluginRepository) List(ctx context.Context) ([]PluginRecord, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query plugins: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]PluginRecord, 0)
 	for rows.Next() {

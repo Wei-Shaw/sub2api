@@ -1,3 +1,7 @@
+// V5/W6 ChannelCacheReader 是设计上 service 层直接读 Redis 的渠道缓存读取器:
+// plugin 端写入的 cache key 需要在核心 Gateway 热路径上低延迟读取(200ms 超时
+// 降级),引入 repository 抽象会增加调用栈与序列化开销且无业务收益。
+// 该文件是 .golangci.yml 中 service-no-repository 规则的合理例外。
 package service
 
 import (
@@ -9,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/redis/go-redis/v9" //nolint:depguard // 见文件顶部说明
 )
 
 // 本文件实现 ChannelCacheReader：核心 Gateway 从 Redis 直接读取渠道（pricing /

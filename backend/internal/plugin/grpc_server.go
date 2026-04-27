@@ -66,7 +66,6 @@ type SDKServer struct {
 type activeTx struct {
 	tx        *sql.Tx
 	startedAt time.Time
-	pluginID  string // 预留:未来可基于 grpc metadata 区分调用方
 }
 
 // NewSDKServer 构造 SDK 服务实例,并启动事务清理 goroutine。
@@ -253,7 +252,7 @@ func (s *SDKServer) TxQuery(ctx context.Context, req *pluginsdk.TxSQLRequest) (*
 	if err != nil {
 		return nil, fmt.Errorf("plugin tx query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanRowsToResponse(rows)
 }
 
