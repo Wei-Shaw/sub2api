@@ -42,7 +42,7 @@
       <template #table>
         <DataTable :columns="columns" :data="filteredRules" :loading="loading">
           <template #cell-enabled="{ row }">
-            <EnabledToggleCell :row="row" />
+            <EnabledToggleCell :row="row" @updated="load" />
           </template>
 
           <template #cell-name="{ row }">

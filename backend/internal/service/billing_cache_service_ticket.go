@@ -111,7 +111,10 @@ func (t *BillingTicket) Close() {
 	}
 	t.closed = true
 	if t.lease != nil {
-		t.lease.Release()
+		// matched rules 仅含 RPM/deferred 时 lease.Release 为 nil（无 concurrency 槽位需释放）。
+		if t.lease.Release != nil {
+			t.lease.Release()
+		}
 		t.lease = nil
 	}
 }

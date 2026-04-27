@@ -1,13 +1,14 @@
 <template>
   <div class="flex items-center gap-2">
-    <Toggle :modelValue="row.enabled" @update:modelValue="onToggle" />
+    <Toggle :modelValue="localEnabled" @update:modelValue="onToggle" />
     <span class="text-xs text-gray-500 dark:text-gray-400">
-      {{ row.enabled ? t('common.enabled') : t('common.disabled') }}
+      {{ localEnabled ? t('common.enabled') : t('common.disabled') }}
     </span>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Toggle from '@/components/common/Toggle.vue'
 import { useAppStore } from '@/stores/app'
@@ -19,8 +20,14 @@ import {
 } from '@/api/admin/serviceQuota'
 
 const props = defineProps<{ row: ServiceQuotaRule }>()
+const emit = defineEmits<{ (e: 'updated'): void }>()
 const { t } = useI18n()
 const appStore = useAppStore()
+
+// 本地镜像 props.row.enabled，避免直接 mutate prop（vue/no-mutating-props）。
+// 父组件收到 emit('updated') 后会 reload 列表，覆盖 localEnabled。
+const localEnabled = ref(props.row.enabled)
+watch(() => props.row.enabled, (v) => { localEnabled.value = v })
 
 // 把规则现有字段重组为 update 接口需要的 Input 形状（仅前端 uid 字段会被 strip）
 function buildPayload(row: ServiceQuotaRule, enabled: boolean): ServiceQuotaRuleInput {
@@ -52,19 +59,18 @@ function buildPayload(row: ServiceQuotaRule, enabled: boolean): ServiceQuotaRule
 }
 
 async function onToggle(next: boolean) {
-  const prev = props.row.enabled
-  // 乐观更新
-  props.row.enabled = next
+  const prev = localEnabled.value
+  localEnabled.value = next
   try {
-    const updated = await updateServiceQuotaRule(props.row.id, buildPayload(props.row, next))
-    Object.assign(props.row, updated)
+    await updateServiceQuotaRule(props.row.id, buildPayload(props.row, next))
+    emit('updated')
     // 后端在 enabled 翻转时会清空该规则下所有 limiter 计数器（counter reset），
     // toast 里同时提示一下，避免用户疑惑"刚被限流的为什么又能进了"。
     appStore.showSuccess(
       `${t('admin.serviceQuota.toggleSuccess')} · ${t('admin.serviceQuota.counterResetOnToggle')}`
     )
   } catch (err: unknown) {
-    props.row.enabled = prev
+    localEnabled.value = prev
     appStore.showError(extractApiErrorMessage(err, t('admin.serviceQuota.toggleError')))
   }
 }
