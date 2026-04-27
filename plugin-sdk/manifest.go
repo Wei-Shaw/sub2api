@@ -76,7 +76,23 @@ type Manifest struct {
 
 	// MigrationFiles is an optional list of SQL migration filenames the
 	// plugin ships with. The core handles applying them.
+	//
+	// Deprecated: prefer Migrations, which carries the SHA-256 pin the host
+	// re-verifies against the body fetched via PluginLifecycle.GetMigration.
+	// MigrationFiles entries arrive at the host without a checksum, so the
+	// host cannot apply them — they are logged for visibility only. New
+	// plugins should populate Migrations and implement MigrationProvider.
 	MigrationFiles []string
+
+	// Migrations declares the SQL migration files the plugin ships embedded.
+	// Each entry pins a SHA-256 checksum the host re-verifies against the
+	// body fetched via PluginLifecycle.GetMigration. The plugin must
+	// implement MigrationProvider so the SDK runner can serve those bodies.
+	//
+	// Files are applied in lexicographical order of Filename. Ordering and
+	// existing checksums are immutable once shipped: append-only edits keep
+	// historical plugin_migrations rows valid.
+	Migrations []MigrationDecl
 
 	// Capabilities lists the privileged SDK features this plugin needs. See
 	// the Capability* constants. The core checks each entry against an
@@ -121,6 +137,26 @@ type EndpointDecl struct {
 	Path     string
 	Methods  []string
 	AuthType string // one of AuthType* constants
+}
+
+// MigrationDecl describes a single SQL migration the plugin ships embedded.
+// The host fetches the body via PluginLifecycle.GetMigration and re-verifies
+// the SHA-256 against ChecksumSha256 before applying it. It mirrors the
+// pluginsdk.MigrationDecl proto message; see its docstring for the full
+// lifecycle.
+type MigrationDecl struct {
+	// Filename is applied in lexicographical order, e.g. "001_create_x.sql".
+	Filename string
+
+	// ChecksumSha256 is the hex-encoded SHA-256 of the SQL body the plugin
+	// intends to ship. The host treats a mismatch with the fetched body as
+	// a fatal startup error (drift = potential supply-chain tampering).
+	ChecksumSha256 string
+
+	// NonTransactional marks migrations that contain statements PostgreSQL
+	// refuses to run inside an explicit transaction (e.g.
+	// CREATE INDEX CONCURRENTLY). The host applies these outside BEGIN/COMMIT.
+	NonTransactional bool
 }
 
 // FrontendManifest describes the plugin's frontend integration.
@@ -183,6 +219,7 @@ func (m *Manifest) toProto() *pb.ManifestResponse {
 		GatewayEndpoints: endpointsToProto(m.GatewayEndpoints),
 		PluginEndpoints:  endpointsToProto(m.PluginEndpoints),
 		MigrationFiles:   append([]string(nil), m.MigrationFiles...),
+		Migrations:       migrationsToProto(m.Migrations),
 	}
 	if m.Frontend != nil {
 		resp.Frontend = m.Frontend.toProto()
@@ -226,6 +263,21 @@ func endpointsToProto(decls []EndpointDecl) []*pb.EndpointDeclaration {
 			Path:     d.Path,
 			Methods:  append([]string(nil), d.Methods...),
 			AuthType: d.AuthType,
+		})
+	}
+	return out
+}
+
+func migrationsToProto(decls []MigrationDecl) []*pb.MigrationDecl {
+	if len(decls) == 0 {
+		return nil
+	}
+	out := make([]*pb.MigrationDecl, 0, len(decls))
+	for _, d := range decls {
+		out = append(out, &pb.MigrationDecl{
+			Filename:         d.Filename,
+			ChecksumSha256:   d.ChecksumSha256,
+			NonTransactional: d.NonTransactional,
 		})
 	}
 	return out
