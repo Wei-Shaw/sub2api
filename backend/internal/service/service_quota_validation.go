@@ -88,39 +88,55 @@ func normalizeLimiters(input *ServiceQuotaRuleInput) error {
 	seen := make(map[string]struct{}, len(input.Limiters))
 	for i := range input.Limiters {
 		l := &input.Limiters[i]
-		switch l.LimiterType {
-		case ServiceQuotaLimiterRPM, ServiceQuotaLimiterTPM, ServiceQuotaLimiterTPD,
-			ServiceQuotaLimiterDailyUSD, ServiceQuotaLimiterConcurrency:
-		default:
-			return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_LIMITER_TYPE", "invalid limiter_type").WithMetadata(map[string]string{
-				"limiter_type": l.LimiterType,
-			})
-		}
-		if l.LimitValue <= 0 {
-			return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_LIMIT_VALUE", "limit_value must be > 0").WithMetadata(map[string]string{
-				"limiter_type": l.LimiterType,
-			})
-		}
-		if l.WindowMode == "" || l.LimiterType == ServiceQuotaLimiterConcurrency {
-			l.WindowMode = ServiceQuotaWindowFixed
-		}
-		switch l.WindowMode {
-		case ServiceQuotaWindowFixed, ServiceQuotaWindowRolling:
-		default:
-			return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_WINDOW_MODE", "invalid window_mode").WithMetadata(map[string]string{
-				"window_mode": l.WindowMode,
-			})
-		}
-		if _, dup := seen[l.LimiterType]; dup {
-			return pkgerrors.BadRequest("SERVICE_QUOTA_DUPLICATE_LIMITER", "duplicate limiter_type in rule").WithMetadata(map[string]string{
-				"limiter_type": l.LimiterType,
-			})
+		if err := validateLimiterType(l, seen); err != nil {
+			return err
 		}
 		seen[l.LimiterType] = struct{}{}
 		if err := normalizeLimiterTokenComponents(l); err != nil {
 			return err
 		}
 		normalizeLimiterCountOnArrival(l)
+	}
+	return nil
+}
+
+// validateLimiterType 校验单个 limiter 的"硬性"字段：
+//   - LimiterType 在合法枚举内
+//   - LimitValue > 0（rpm/tpm/tpd/concurrency/daily_usd 都要求严格正数）
+//   - WindowMode 合法（concurrency 强制为 fixed；空值默认 fixed）
+//   - 同 rule 内 LimiterType 不重复（seen 集合由调用方维护与回写，避免 helper 改副作用）
+//
+// 拆出来让 normalizeLimiters 主循环只剩 "校验 → 标记 seen → normalize" 三段，
+// 不再被 4 段 switch + if 撑成 ~30 行。WindowMode 的强制 fixed 写回 *l.WindowMode 是必要副作用，
+// 保留在 helper 内（与原 inline 逻辑等价）。
+func validateLimiterType(l *ServiceQuotaLimiterInput, seen map[string]struct{}) error {
+	switch l.LimiterType {
+	case ServiceQuotaLimiterRPM, ServiceQuotaLimiterTPM, ServiceQuotaLimiterTPD,
+		ServiceQuotaLimiterDailyUSD, ServiceQuotaLimiterConcurrency:
+	default:
+		return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_LIMITER_TYPE", "invalid limiter_type").WithMetadata(map[string]string{
+			"limiter_type": l.LimiterType,
+		})
+	}
+	if l.LimitValue <= 0 {
+		return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_LIMIT_VALUE", "limit_value must be > 0").WithMetadata(map[string]string{
+			"limiter_type": l.LimiterType,
+		})
+	}
+	if l.WindowMode == "" || l.LimiterType == ServiceQuotaLimiterConcurrency {
+		l.WindowMode = ServiceQuotaWindowFixed
+	}
+	switch l.WindowMode {
+	case ServiceQuotaWindowFixed, ServiceQuotaWindowRolling:
+	default:
+		return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_WINDOW_MODE", "invalid window_mode").WithMetadata(map[string]string{
+			"window_mode": l.WindowMode,
+		})
+	}
+	if _, dup := seen[l.LimiterType]; dup {
+		return pkgerrors.BadRequest("SERVICE_QUOTA_DUPLICATE_LIMITER", "duplicate limiter_type in rule").WithMetadata(map[string]string{
+			"limiter_type": l.LimiterType,
+		})
 	}
 	return nil
 }
