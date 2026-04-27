@@ -350,13 +350,23 @@ func (c *settingsClient) runWatchLoop(ctx context.Context) {
 			backoff = settingsNextBackoff(backoff)
 			continue
 		}
-		// Reset backoff after a successful open.
+		// Reset backoff after a successful open. The host's sendSnapshot
+		// fires a fresh per-key event for every value in the namespace as
+		// soon as the stream opens (see SETTINGS-V2-DESIGN §4.5 + INSPECT
+		// §2.4), so applyEvent below will re-prime the cache automatically
+		// — including the case where the host closed the previous stream
+		// because the plugin's schema_version changed.
 		backoff = settingsWatchInitialBackoff
 		for {
 			evt, err := stream.Recv()
 			if err != nil {
 				if ctx.Err() == nil && c.logger != nil {
-					c.logger.Warn("settings watch stream lost; will reconnect",
+					// EOF / Unavailable here may also mean the host closed
+					// the stream because schema_version changed (DESIGN
+					// §4.5 dropAllSubscribersForPlugin). Either way the
+					// outer loop reconnects and the host's snapshot
+					// re-primes our cache.
+					c.logger.Warn("settings watch stream lost; will reconnect and re-prime cache via host snapshot",
 						"plugin", c.pluginName, "error", err)
 				}
 				break
@@ -371,12 +381,35 @@ func (c *settingsClient) applyEvent(evt *pb.SettingsChangeEvent) {
 		return
 	}
 	val := append(json.RawMessage(nil), evt.GetValueJson()...)
+	// V5/W6 SETTINGS-V2 §3.5: Watch events do not carry schema_version,
+	// only the new value + a requires_reload marker. Preserve any cached
+	// schema_version from the previous Get so a subsequent GetTyped on
+	// the same key can still detect drift. The next Get RPC refreshes
+	// the versions if the schema actually changed.
+	prevStored := ""
+	prevCurrent := ""
+	if v, ok := c.cache.Load(evt.GetKey()); ok {
+		entry := v.(*cachedSetting)
+		prevStored = entry.storedSchemaVersion
+		prevCurrent = entry.currentSchemaVersion
+	}
 	c.cache.Store(evt.GetKey(), &cachedSetting{
-		value:     val,
-		revision:  evt.GetRevision(),
-		exists:    true,
-		fetchedAt: time.Now(),
+		value:                val,
+		revision:             evt.GetRevision(),
+		exists:               true,
+		fetchedAt:            time.Now(),
+		storedSchemaVersion:  prevStored,
+		currentSchemaVersion: prevCurrent,
 	})
+	if evt.GetRequiresReload() && c.logger != nil {
+		// V5/W6 SETTINGS-V2 §3.4.3: requires_reload is informational at
+		// the SDK layer — the host PluginManager owns the actual reload.
+		// Log it so plugin authors can correlate operator-initiated
+		// reloads with the change event in their own logs. Never panic
+		// or exit the process on this signal.
+		c.logger.Info("settings change marked requires_reload; host will reload plugin",
+			"plugin", c.pluginName, "key", evt.GetKey(), "revision", evt.GetRevision())
+	}
 	change := SettingsChange{Key: evt.GetKey(), Value: val, Revision: evt.GetRevision()}
 
 	c.subMu.Lock()
