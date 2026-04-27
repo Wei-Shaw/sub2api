@@ -134,6 +134,26 @@ func ServiceQuotaLimiterTypeUsesCountOnArrival(kind string) bool {
 	return kind == ServiceQuotaLimiterRPM
 }
 
+// ServiceQuotaLimiterTypeIsInteger 判断 limiter type 的 LimitValue 业务上是否必须为整数。
+//
+// rpm / tpm / tpd / concurrency 都是"次数 / 个数"语义，本就是整数；
+// daily_usd 是金额必须保留小数（精度由项目 CLAUDE.md 约定的 decimal 处理，本字段是 float64
+// 历史遗留，等彻底切 string-based 再大改）。
+//
+// service 层用此判定在 normalize 阶段对整数型做 math.Round，截断浮点漂移
+// （前端 NumericInput integer prop 是 UX 屏障；后端 round 是数据底线）。
+func ServiceQuotaLimiterTypeIsInteger(kind string) bool {
+	switch kind {
+	case ServiceQuotaLimiterRPM,
+		ServiceQuotaLimiterTPM,
+		ServiceQuotaLimiterTPD,
+		ServiceQuotaLimiterConcurrency:
+		return true
+	default:
+		return false
+	}
+}
+
 // ShouldIncrementOnArrival 决定 PreCheckAcquire 阶段是否需要对该 limiter +1：
 //   - 仅 RPM 受 CountOnArrival 控制：true → arrival 阶段 +1（旧语义，Record 不再重复）
 //   - 其他 limiter 走各自既有路径（concurrency=Acquire / TPM/TPD/daily_usd=Record），

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"math"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -99,8 +100,27 @@ func normalizeLimiters(input *ServiceQuotaRuleInput) error {
 			return err
 		}
 		normalizeLimiterCountOnArrival(l)
+		normalizeLimiterValue(l)
 	}
 	return nil
+}
+
+// normalizeLimiterValue 对整数型 limiter（rpm/tpm/tpd/concurrency）做 LimitValue 取整，
+// 截断浮点漂移让"1000000 来回往返不再变成 999999.999997"。
+//
+// daily_usd 是金额类型本身就允许小数，保持原值不动（项目 CLAUDE.md 强制金额走 decimal，
+// 但当前 storage / API 还是 float64，等彻底改 string-based 时再统一处理）。
+//
+// 这是数据底线：前端 NumericInput integer prop 是 UX 屏障，但任何来源（API 直调 / 旧客户端 /
+// 数据导入）传非整数都会被这里拉回整数，不让浮点污染落库。
+//
+// 用 math.Round（四舍五入）而非 math.Floor / math.Trunc：用户传 999.9 显然意图是 1000，
+// 而不是 999；项目里 IEEE 754 浮点漂移的实际场景都是 ±1e-9 量级，round 的结果与意图一致。
+func normalizeLimiterValue(l *ServiceQuotaLimiterInput) {
+	if !ServiceQuotaLimiterTypeIsInteger(l.LimiterType) {
+		return
+	}
+	l.LimitValue = math.Round(l.LimitValue)
 }
 
 // validateLimiterType 校验单个 limiter 的"硬性"字段：
