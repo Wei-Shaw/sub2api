@@ -739,22 +739,34 @@ func (s *PluginSettingsService) notify(change PluginSettingsChange) {
 	}
 }
 
-// validateAgainst runs jsonschema validation by reaching into the
-// top-level `properties` map for the supplied key. We validate one key
-// at a time because writes are key-scoped, but the schema is whole-object.
+// validateAgainst runs jsonschema validation against the sub-schema for
+// the supplied key. Writes are key-scoped (admin saves a single property
+// at a time), so we deliberately validate the value against the property's
+// own sub-schema instead of wrapping it into `{key: value}` and running
+// the whole-object validator — wrapping incorrectly triggers top-level
+// `required` arrays for properties that are not part of the partial save.
+//
+// See SETTINGS-V2-INSPECT §4 (table row for `validateAgainst`, line 114):
+// the wrapper approach lets `required` enforce on partial saves only when
+// the partial object happens to satisfy them. Symptom seen on test deploy:
+// `PUT /api/v1/admin/plugin-settings/channel-management/defaultIntervalSec`
+// with body `{"value": 120}` returned HTTP 422 because the schema's
+// top-level `required: ["enabled"]` could not be satisfied by the wrapper
+// `{"defaultIntervalSec": 120}`.
+//
+// The sub-schema validates the value's own constraints (type / minimum /
+// maximum / pattern / enum / format / etc.) without dragging in object-level
+// constraints that do not apply to a single-property write.
 func validateAgainst(schema *jsonschema.Schema, key string, value json.RawMessage) error {
-	// Compose a single-key object so the existing schema's `properties`
-	// constraint applies even when other required fields are missing.
-	wrapper := map[string]json.RawMessage{key: value}
-	wrapped, err := json.Marshal(wrapper)
-	if err != nil {
-		return &ErrPluginSettingsValidation{Key: key, Reason: "encode wrapper: " + err.Error()}
+	sub, ok := schema.Properties[key]
+	if !ok {
+		return &ErrPluginSettingsValidation{Key: key, Reason: "unknown property: " + key}
 	}
 	var doc any
-	if err := json.Unmarshal(wrapped, &doc); err != nil {
-		return &ErrPluginSettingsValidation{Key: key, Reason: "decode wrapper: " + err.Error()}
+	if err := json.Unmarshal(value, &doc); err != nil {
+		return &ErrPluginSettingsValidation{Key: key, Reason: "decode value: " + err.Error()}
 	}
-	if err := schema.Validate(doc); err != nil {
+	if err := sub.Validate(doc); err != nil {
 		return &ErrPluginSettingsValidation{Key: key, Reason: err.Error()}
 	}
 	return nil
