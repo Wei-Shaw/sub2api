@@ -242,20 +242,35 @@ func (s *serviceQuotaService) Record(ctx context.Context, req ServiceQuotaRecord
 	if !ok || len(matched) == 0 {
 		return
 	}
-	for _, m := range applyServiceQuotaFallbackOverride(matched) {
-		for _, p := range m.paths {
-			for _, lim := range m.rule.Limiters {
-				delta := serviceQuotaRecordDelta(lim, req)
-				if delta <= 0 {
-					continue
-				}
-				key := s.counterKey(req.ServiceQuotaCheckRequest, m.rule, p, lim)
-				if _, err := s.limiter.Increment(ctx, key, delta, serviceQuotaWindow(lim), lim.WindowMode); err != nil {
-					s.logLimiterFailure("record", m.rule, lim, key, err)
-				}
-			}
+	// 复用 PreCheckAcquire 同款 iterateLimiters：matched × paths × limiters 三层遍历用同一 helper，
+	// 让"哪些 limiter 在 Record 阶段写计数"的语义统一收敛到 isRecordCountedLimiter；fn 永远返回 nil
+	// （Record 单条失败只 log warn，不中止后续 limiter 的写入）。
+	final := applyServiceQuotaFallbackOverride(matched)
+	_ = iterateLimiters(final, isRecordCountedLimiter, func(rule *ServiceQuotaRule, p ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) error {
+		delta := serviceQuotaRecordDelta(lim, req)
+		if delta <= 0 {
+			// 例如 daily_usd cost=0 / RPM count_on_arrival=true 这两种"虽然类型路由到 Record 但本次无需写"的场景。
+			return nil
 		}
-	}
+		key := s.counterKey(req.ServiceQuotaCheckRequest, rule, p, lim)
+		if _, err := s.limiter.Increment(ctx, key, delta, serviceQuotaWindow(lim), lim.WindowMode); err != nil {
+			s.logLimiterFailure("record", rule, lim, key, err)
+		}
+		return nil
+	})
+}
+
+// isRecordCountedLimiter 判断 limiter 是否会被 Record 路径写计数。
+//
+// 直接复用 ServiceQuotaLimiterDef.ShouldIncrementOnRecord（task #1 引入的单点判定）：
+//   - TPM/TPD/daily_usd 恒 true
+//   - RPM 仅 CountOnArrival=false 时 true
+//   - concurrency 恒 false
+//
+// 与 isConcurrencyLimiter / isRPMLimiter / isDeferredLimiter 同样作为 iterateLimiters 的 predicate
+// 使用，让 PreCheckAcquire 的三轮判定与 Record 共用同一遍历骨架。
+func isRecordCountedLimiter(lim ServiceQuotaLimiterDef) bool {
+	return lim.ShouldIncrementOnRecord()
 }
 
 func (s *serviceQuotaService) matchedRules(ctx context.Context, req ServiceQuotaCheckRequest) ([]matchedQuotaRule, bool) {
