@@ -115,12 +115,26 @@
           </template>
 
           <template #cell-actions="{ row }">
+            <!-- 操作样式与监控页 RuntimeTable 一致：图标在上 / 文字在下，灰色基调，
+                 编辑 hover 切蓝色、删除 hover 切红色（与 AccountsView 同款） -->
             <div class="flex items-center gap-1">
-              <button class="action-btn hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20" type="button" :title="t('common.edit')" @click="openEdit(row)">
+              <button
+                type="button"
+                class="action-btn flex flex-col items-center gap-0.5 hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+                :title="t('common.edit')"
+                @click="openEdit(row)"
+              >
                 <Icon name="edit" size="sm" />
+                <span class="text-xs">{{ t('common.edit') }}</span>
               </button>
-              <button class="action-btn hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20" type="button" :title="t('common.delete')" @click="askDelete(row)">
+              <button
+                type="button"
+                class="action-btn flex flex-col items-center gap-0.5 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                :title="t('common.delete')"
+                @click="askDelete(row)"
+              >
                 <Icon name="trash" size="sm" />
+                <span class="text-xs">{{ t('common.delete') }}</span>
               </button>
             </div>
           </template>
