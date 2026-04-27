@@ -282,3 +282,33 @@ message Event {
   bytes payload = 2;
   int64 timestamp = 3;
 }
+
+// ============================================================
+// SecretEncryption — V5 W5
+// ============================================================
+//
+// SecretEncryption lets a plugin encrypt arbitrary plaintext blobs through
+// the host. The host derives a per-plugin key from its master key via
+// HKDF-SHA256 (salt=plugin_name, info="sub2api-plugin-secret-v1") and uses
+// AES-256-GCM with the plugin name as additional authenticated data (AAD)
+// to seal/open. The master key never leaves the host.
+//
+// Cross-plugin isolation is enforced two ways:
+//
+//   1. Each plugin gets a different derived key, so a ciphertext produced
+//      for plugin A cannot be opened with plugin B's derived key.
+//   2. AAD = plugin_name binds the ciphertext to the issuing plugin even
+//      if the derived keys ever collided.
+//
+// Plugins that hold the "secret_encryption" capability obtain a
+// SecretEncryptor via PluginContext.Secrets() in the SDK.
+service SecretEncryption {
+  rpc Encrypt(EncryptRequest) returns (EncryptResponse);
+  rpc Decrypt(DecryptRequest) returns (DecryptResponse);
+}
+
+message EncryptRequest  { bytes plaintext  = 1; }
+// ciphertext layout = nonce(12 bytes) || ciphertext || tag(16 bytes).
+message EncryptResponse { bytes ciphertext = 1; }
+message DecryptRequest  { bytes ciphertext = 1; }
+message DecryptResponse { bytes plaintext  = 1; }

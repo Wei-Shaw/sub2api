@@ -388,18 +388,31 @@ func (r *runner) Init(ctx context.Context, req *pb.PluginInitRequest) (*pb.Plugi
 		// cannot silently bypass plugin-side intent.
 		approved := req.GetCapabilities()
 		rawAllowed := false
+		secretsAllowed := false
 		for _, c := range approved {
-			if c == CapabilityRedisRawKeys {
+			switch c {
+			case CapabilityRedisRawKeys:
 				rawAllowed = true
-				break
+			case CapabilitySecretEncryption:
+				secretsAllowed = true
 			}
 		}
 
+		// Only construct the SecretEncryption client when the host
+		// approved the capability. A nil Secrets() is the SDK's way of
+		// saying "you forgot to declare it in your manifest" — better than
+		// a silent NotFound on the first Encrypt call.
+		var secrets SecretEncryptor
+		if secretsAllowed {
+			secrets = newSecretsClient(pb.NewSecretEncryptionClient(conn))
+		}
+
 		r.ctxImpl = &pluginCtx{
-			db:     db,
-			redis:  &redisAdapter{inner: sdkdriver.NewNamespacedRedisClient(redisClient, r.logger, pluginName, rawAllowed)},
-			logger: r.logger,
-			config: cfgCopy,
+			db:      db,
+			redis:   &redisAdapter{inner: sdkdriver.NewNamespacedRedisClient(redisClient, r.logger, pluginName, rawAllowed)},
+			logger:  r.logger,
+			config:  cfgCopy,
+			secrets: secrets,
 		}
 
 		if err := r.plugin.Init(r.ctxImpl); err != nil {
@@ -521,15 +534,17 @@ func (r *runner) gracefulShutdown(grpcSrv *grpc.Server, httpSrv *http.Server) {
 // pluginCtx is the concrete implementation of PluginContext returned to the
 // plugin during Init.
 type pluginCtx struct {
-	db     *sql.DB
-	redis  RedisClient
-	logger *slog.Logger
-	config map[string]string
+	db      *sql.DB
+	redis   RedisClient
+	logger  *slog.Logger
+	config  map[string]string
+	secrets SecretEncryptor
 }
 
-func (c *pluginCtx) DB() *sql.DB          { return c.db }
-func (c *pluginCtx) Redis() RedisClient   { return c.redis }
-func (c *pluginCtx) Logger() *slog.Logger { return c.logger }
+func (c *pluginCtx) DB() *sql.DB           { return c.db }
+func (c *pluginCtx) Redis() RedisClient    { return c.redis }
+func (c *pluginCtx) Logger() *slog.Logger  { return c.logger }
+func (c *pluginCtx) Secrets() SecretEncryptor { return c.secrets }
 func (c *pluginCtx) Config() map[string]string {
 	out := make(map[string]string, len(c.config))
 	for k, v := range c.config {

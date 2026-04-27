@@ -1133,3 +1133,183 @@ var LogProxy_ServiceDesc = grpc.ServiceDesc{
 	},
 	Metadata: "sdk.proto",
 }
+
+const (
+	SecretEncryption_Encrypt_FullMethodName = "/pluginsdk.SecretEncryption/Encrypt"
+	SecretEncryption_Decrypt_FullMethodName = "/pluginsdk.SecretEncryption/Decrypt"
+)
+
+// SecretEncryptionClient is the client API for SecretEncryption service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// ============================================================
+// SecretEncryption — V5 W5
+// ============================================================
+//
+// SecretEncryption lets a plugin encrypt arbitrary plaintext blobs through
+// the host. The host derives a per-plugin key from its master key via
+// HKDF-SHA256 (salt=plugin_name, info="sub2api-plugin-secret-v1") and uses
+// AES-256-GCM with the plugin name as additional authenticated data (AAD)
+// to seal/open. The master key never leaves the host.
+//
+// Cross-plugin isolation is enforced two ways:
+//
+//  1. Each plugin gets a different derived key, so a ciphertext produced
+//     for plugin A cannot be opened with plugin B's derived key.
+//  2. AAD = plugin_name binds the ciphertext to the issuing plugin even
+//     if the derived keys ever collided.
+//
+// Plugins that hold the "secret_encryption" capability obtain a
+// SecretEncryptor via PluginContext.Secrets() in the SDK.
+type SecretEncryptionClient interface {
+	Encrypt(ctx context.Context, in *EncryptRequest, opts ...grpc.CallOption) (*EncryptResponse, error)
+	Decrypt(ctx context.Context, in *DecryptRequest, opts ...grpc.CallOption) (*DecryptResponse, error)
+}
+
+type secretEncryptionClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewSecretEncryptionClient(cc grpc.ClientConnInterface) SecretEncryptionClient {
+	return &secretEncryptionClient{cc}
+}
+
+func (c *secretEncryptionClient) Encrypt(ctx context.Context, in *EncryptRequest, opts ...grpc.CallOption) (*EncryptResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EncryptResponse)
+	err := c.cc.Invoke(ctx, SecretEncryption_Encrypt_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *secretEncryptionClient) Decrypt(ctx context.Context, in *DecryptRequest, opts ...grpc.CallOption) (*DecryptResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DecryptResponse)
+	err := c.cc.Invoke(ctx, SecretEncryption_Decrypt_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// SecretEncryptionServer is the server API for SecretEncryption service.
+// All implementations must embed UnimplementedSecretEncryptionServer
+// for forward compatibility.
+//
+// ============================================================
+// SecretEncryption — V5 W5
+// ============================================================
+//
+// SecretEncryption lets a plugin encrypt arbitrary plaintext blobs through
+// the host. The host derives a per-plugin key from its master key via
+// HKDF-SHA256 (salt=plugin_name, info="sub2api-plugin-secret-v1") and uses
+// AES-256-GCM with the plugin name as additional authenticated data (AAD)
+// to seal/open. The master key never leaves the host.
+//
+// Cross-plugin isolation is enforced two ways:
+//
+//  1. Each plugin gets a different derived key, so a ciphertext produced
+//     for plugin A cannot be opened with plugin B's derived key.
+//  2. AAD = plugin_name binds the ciphertext to the issuing plugin even
+//     if the derived keys ever collided.
+//
+// Plugins that hold the "secret_encryption" capability obtain a
+// SecretEncryptor via PluginContext.Secrets() in the SDK.
+type SecretEncryptionServer interface {
+	Encrypt(context.Context, *EncryptRequest) (*EncryptResponse, error)
+	Decrypt(context.Context, *DecryptRequest) (*DecryptResponse, error)
+	mustEmbedUnimplementedSecretEncryptionServer()
+}
+
+// UnimplementedSecretEncryptionServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedSecretEncryptionServer struct{}
+
+func (UnimplementedSecretEncryptionServer) Encrypt(context.Context, *EncryptRequest) (*EncryptResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Encrypt not implemented")
+}
+func (UnimplementedSecretEncryptionServer) Decrypt(context.Context, *DecryptRequest) (*DecryptResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Decrypt not implemented")
+}
+func (UnimplementedSecretEncryptionServer) mustEmbedUnimplementedSecretEncryptionServer() {}
+func (UnimplementedSecretEncryptionServer) testEmbeddedByValue()                          {}
+
+// UnsafeSecretEncryptionServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to SecretEncryptionServer will
+// result in compilation errors.
+type UnsafeSecretEncryptionServer interface {
+	mustEmbedUnimplementedSecretEncryptionServer()
+}
+
+func RegisterSecretEncryptionServer(s grpc.ServiceRegistrar, srv SecretEncryptionServer) {
+	// If the following call panics, it indicates UnimplementedSecretEncryptionServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&SecretEncryption_ServiceDesc, srv)
+}
+
+func _SecretEncryption_Encrypt_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EncryptRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SecretEncryptionServer).Encrypt(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SecretEncryption_Encrypt_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SecretEncryptionServer).Encrypt(ctx, req.(*EncryptRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SecretEncryption_Decrypt_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DecryptRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SecretEncryptionServer).Decrypt(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SecretEncryption_Decrypt_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SecretEncryptionServer).Decrypt(ctx, req.(*DecryptRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// SecretEncryption_ServiceDesc is the grpc.ServiceDesc for SecretEncryption service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var SecretEncryption_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "pluginsdk.SecretEncryption",
+	HandlerType: (*SecretEncryptionServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Encrypt",
+			Handler:    _SecretEncryption_Encrypt_Handler,
+		},
+		{
+			MethodName: "Decrypt",
+			Handler:    _SecretEncryption_Decrypt_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "sdk.proto",
+}
