@@ -248,6 +248,41 @@ func TestSnapshot_UserScope_PathSummaryHidesInternalTopologyOnly(t *testing.T) {
 	require.Nil(t, ps.AccountID, "account_id 不能暴露给用户")
 	require.Equal(t, "", snap.Items[0].CounterMode)
 	require.Nil(t, snap.Items[0].ScopeUserID)
+	// 最小信息暴露：rule_id 是 admin 内部关键字（用于 ResetCounter），is_fallback 是规则编排细节。
+	// 用户视角下 JSON 必须把这两个字段抹空。
+	require.Equal(t, int64(0), snap.Items[0].RuleID, "rule_id 不能暴露给用户")
+	require.False(t, snap.Items[0].IsFallback, "is_fallback 不能暴露给用户")
+}
+
+// TestSnapshot_UserScope_BlanksFallbackRuleIdentity 单独验证 fallback 规则下 rule_id/is_fallback 也被抹空。
+//
+// 这条测试关键性在于：现有 PathSummary 测试用的 rule.IsFallback 默认 false（零值），
+// 即使不抹空也能巧合通过 require.False。这里显式构造 IsFallback=true 的规则，
+// 确认抹空逻辑真在执行而不是依赖零值。
+func TestSnapshot_UserScope_BlanksFallbackRuleIdentity(t *testing.T) {
+	rule := ruleSimple(7, ServiceQuotaCounterModeUser, ServiceQuotaLimiterRPM, 100, []int64{7})
+	rule.IsFallback = true
+	svc := newMonitorService(t, true, []*ServiceQuotaRule{rule}, nil)
+	snap, err := svc.Snapshot(context.Background(), MonitorSnapshotFilter{
+		UserScope: &MonitorUserScope{UserID: 7},
+	})
+	require.NoError(t, err)
+	require.Len(t, snap.Items, 1)
+	require.Equal(t, int64(0), snap.Items[0].RuleID)
+	require.False(t, snap.Items[0].IsFallback, "即使 rule.IsFallback=true，user scope 输出也必须为 false")
+}
+
+// TestSnapshot_AdminScope_KeepsRuleIdentity 反向验证：admin 视角下 rule_id 与 is_fallback 必须保留，
+// 防止抹空逻辑误把 admin 路径也清空。
+func TestSnapshot_AdminScope_KeepsRuleIdentity(t *testing.T) {
+	rule := ruleSimple(8, ServiceQuotaCounterModeShared, ServiceQuotaLimiterRPM, 100, nil)
+	rule.IsFallback = true
+	svc := newMonitorService(t, true, []*ServiceQuotaRule{rule}, nil)
+	snap, err := svc.Snapshot(context.Background(), MonitorSnapshotFilter{}) // 无 UserScope = admin 视角
+	require.NoError(t, err)
+	require.Len(t, snap.Items, 1)
+	require.Equal(t, int64(8), snap.Items[0].RuleID, "admin 视角必须保留 rule_id")
+	require.True(t, snap.Items[0].IsFallback, "admin 视角必须保留 is_fallback")
 }
 
 // 用户视角下 path 完全 wildcard（platform/model 都 nil）→ PathSummary 仍抹成 nil，

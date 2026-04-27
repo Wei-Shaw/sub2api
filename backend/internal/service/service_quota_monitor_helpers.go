@@ -302,6 +302,10 @@ func buildLimiterRuntime(row plannedRow, snap LimiterSnapshot, userScope bool) L
 		// 限流的"业务路径"；channel/group/account 是内部资源拓扑，故意不暴露
 		// （避免侧信道泄露平台架构信息）。
 		rt.PathSummary = pathSummaryFromForUser(row.path)
+		// 抹掉规则内部标识：rule_id 是 admin 才需要的内部关键字（用于 ResetCounter 等管理动作）；
+		// is_fallback 是规则编排细节，不应暴露给最终用户。最小信息暴露原则。
+		rt.RuleID = 0
+		rt.IsFallback = false
 	}
 	return rt
 }
