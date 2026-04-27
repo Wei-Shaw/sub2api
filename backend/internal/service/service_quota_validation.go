@@ -28,11 +28,14 @@ func (s *serviceQuotaService) normalizeAndValidate(ctx context.Context, input *S
 		input.Enabled = &enabled
 	}
 	input.TargetUserIDs = sanitizeTargetUserIDs(input.TargetUserIDs)
-	if input.CounterMode == ServiceQuotaCounterModeUser && len(input.TargetUserIDs) == 0 {
-		return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_TARGET", "target_user_ids is required when counter_mode=user")
-	}
 	if input.CounterMode != ServiceQuotaCounterModeUser {
 		input.TargetUserIDs = nil
+	}
+	// 先做字段级硬校验，一次性收集所有字段错误（前端按 metadata.fields JSON 渲染高亮）。
+	// 字段错误 reason = SERVICE_QUOTA_VALIDATION_ERROR，与旧 SERVICE_QUOTA_INVALID_TARGET 等单字段错误码区分；
+	// 旧错误码保留给"业务级校验"（链路 mismatch / 重复 path 等）。
+	if err := validateRuleFields(input); err != nil {
+		return err
 	}
 	if err := s.validateTargetUserIDsExist(ctx, input.TargetUserIDs); err != nil {
 		return err
