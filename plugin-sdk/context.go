@@ -30,10 +30,6 @@ type PluginContext interface {
 	// should use this rather than slog.Default to keep logs attributable.
 	Logger() *slog.Logger
 
-	// Config returns the plain-string configuration map the core supplied in
-	// the Init request. The map is a copy; mutating it has no effect.
-	Config() map[string]string
-
 	// Secrets returns the SecretEncryptor backed by the host's
 	// SecretEncryption gRPC service. Returns nil when the plugin did not
 	// declare CapabilitySecretEncryption — the SDK refuses to wire the

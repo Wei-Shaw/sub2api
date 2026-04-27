@@ -389,11 +389,6 @@ func (r *runner) Init(ctx context.Context, req *pb.PluginInitRequest) (*pb.Plugi
 			return
 		}
 
-		cfgCopy := make(map[string]string, len(req.GetConfig()))
-		for k, v := range req.GetConfig() {
-			cfgCopy[k] = v
-		}
-
 		// Capture the host's outbound HTTP defaults so NewSafeHTTPClient
 		// can layer per-call configs on top without re-fetching them.
 		setOutboundDefaultsFromInit(req.GetOutboundDefaults())
@@ -458,7 +453,6 @@ func (r *runner) Init(ctx context.Context, req *pb.PluginInitRequest) (*pb.Plugi
 			db:       db,
 			redis:    &redisAdapter{inner: sdkdriver.NewNamespacedRedisClient(redisClient, r.logger, pluginName, rawAllowed)},
 			logger:   r.logger,
-			config:   cfgCopy,
 			secrets:  secrets,
 			jobs:     jobs,
 			settings: settingsCli,
@@ -662,7 +656,6 @@ type pluginCtx struct {
 	db       *sql.DB
 	redis    RedisClient
 	logger   *slog.Logger
-	config   map[string]string
 	secrets  SecretEncryptor
 	jobs     JobsClient
 	settings SettingsClient
@@ -672,13 +665,6 @@ func (c *pluginCtx) DB() *sql.DB              { return c.db }
 func (c *pluginCtx) Redis() RedisClient       { return c.redis }
 func (c *pluginCtx) Logger() *slog.Logger     { return c.logger }
 func (c *pluginCtx) Secrets() SecretEncryptor { return c.secrets }
-func (c *pluginCtx) Config() map[string]string {
-	out := make(map[string]string, len(c.config))
-	for k, v := range c.config {
-		out[k] = v
-	}
-	return out
-}
 func (c *pluginCtx) Settings() SettingsClient {
 	if c.settings == nil {
 		return nilSettingsClient{}
