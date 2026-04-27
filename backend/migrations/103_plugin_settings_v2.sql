@@ -3,8 +3,6 @@
 -- visibility / deprecated / requires_reload markers and per-row schema
 -- version stamping. See docs/plugin-architecture/SETTINGS-V2-DESIGN.md §1.
 
-BEGIN;
-
 -- 1. plugin_settings_schemas: per-plugin schema row.
 -- schema_version mirrors Manifest.SettingsSchema.Version reported by the
 -- plugin. Sentinel '0' means "plugin did not declare a version" — treated
@@ -41,4 +39,3 @@ COMMENT ON COLUMN plugin_settings.schema_version_at_write IS
 CREATE INDEX IF NOT EXISTS idx_plugin_settings_schema_version_at_write
     ON plugin_settings (plugin_name, schema_version_at_write);
 
-COMMIT;
