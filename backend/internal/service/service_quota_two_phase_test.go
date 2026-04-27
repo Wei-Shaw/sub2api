@@ -117,6 +117,16 @@ func (f *fakeServiceQuotaLimiter) SnapshotMany(_ context.Context, keys []Snapsho
 	return make([]LimiterSnapshot, len(keys)), nil
 }
 
+// Reset 模拟 DEL：从内存 map 中清掉对应 key 的计数与并发集合。
+// 测试目前不直接断言 Reset 行为，但接口必须实现以让编译通过。
+func (f *fakeServiceQuotaLimiter) Reset(_ context.Context, key string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.counters, key)
+	delete(f.concurrency, key)
+	return nil
+}
+
 // ─── Helpers ───
 
 // newQuotaServiceForTest 拼装一个 *serviceQuotaService，带最小能跑两阶段路径的依赖。

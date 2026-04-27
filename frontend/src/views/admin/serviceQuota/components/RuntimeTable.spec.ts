@@ -81,13 +81,13 @@ const baseGlobal = {
 }
 
 describe('RuntimeTable', () => {
-  it('admin 视角 (showInternal=true) 渲染 6 列表头（limiter 已合并进 usage）', () => {
+  it('admin 视角 (showInternal=true) 渲染 7 列表头（限流类型/窗口/重置 合并进 usage；末列为操作列）', () => {
     const wrapper = mount(RuntimeTable, {
       props: { rows: [makeRow({})], showInternal: true },
       global: baseGlobal,
     })
     const cols = wrapper.findAll('[data-test-col]').map((th) => th.attributes('data-test-col'))
-    expect(cols).toEqual(['rule', 'path', 'usage', 'counterMode', 'scopeUser', 'tags'])
+    expect(cols).toEqual(['rule', 'path', 'usage', 'counterMode', 'scopeUser', 'tags', 'actions'])
   })
 
   it('用户视角 (showInternal=false) 隐藏内部列', () => {

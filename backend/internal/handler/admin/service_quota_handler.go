@@ -96,6 +96,35 @@ func (h *ServiceQuotaHandler) Delete(c *gin.Context) {
 	response.Success(c, gin.H{"deleted": true})
 }
 
+// ResetCounterRequest 是手动重置限额的请求体。
+//
+// scope_user_id 为 nil/0 表示 shared 计数（counter_mode=shared，
+// 或 per_user 在管理员视图未限定用户的情形）；非 nil 对应特定用户的
+// 独立计数（counter_mode=user 命中或 per_user 限定到某用户）。
+type ResetCounterRequest struct {
+	RuleID      int64  `json:"rule_id"`
+	PathID      int64  `json:"path_id"`
+	LimiterType string `json:"limiter_type"`
+	ScopeUserID *int64 `json:"scope_user_id,omitempty"`
+}
+
+func (h *ServiceQuotaHandler) ResetCounter(c *gin.Context) {
+	if h.svc == nil {
+		response.Error(c, http.StatusNotFound, "service quota unavailable")
+		return
+	}
+	var req ResetCounterRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	if err := h.svc.ResetLimiterCounter(c.Request.Context(), req.RuleID, req.PathID, req.LimiterType, req.ScopeUserID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"reset": true})
+}
+
 func parseServiceQuotaID(c *gin.Context) (int64, bool) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || id <= 0 {

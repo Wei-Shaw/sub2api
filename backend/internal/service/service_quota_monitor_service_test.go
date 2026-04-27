@@ -60,6 +60,7 @@ func (f *monitorFakeLimiter) Acquire(_ context.Context, _, _ string, _ int64) (b
 	return true, nil
 }
 func (f *monitorFakeLimiter) Release(_ context.Context, _, _ string) error { return nil }
+func (f *monitorFakeLimiter) Reset(_ context.Context, _ string) error       { return nil }
 
 func (f *monitorFakeLimiter) Snapshot(_ context.Context, key string, _ time.Duration, _ string) (LimiterSnapshot, error) {
 	f.mu.Lock()

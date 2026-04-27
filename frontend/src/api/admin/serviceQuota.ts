@@ -199,3 +199,18 @@ export async function getServiceQuotaMonitorSnapshot(
   )
   return data
 }
+
+/**
+ * 手动重置某个 limiter 的 Redis 计数器。
+ *
+ * scopeUserID 可选：shared 计数器（counter_mode=shared 或 per_user 未限定用户）传 null/undefined；
+ * 用户独立计数（counter_mode=user 命中或 per_user 限定到某用户）传该 user_id。
+ */
+export async function resetServiceQuotaCounter(payload: {
+  rule_id: number
+  path_id: number
+  limiter_type: string
+  scope_user_id?: number | null
+}): Promise<void> {
+  await apiClient.post('/admin/service-quotas/reset', payload)
+}

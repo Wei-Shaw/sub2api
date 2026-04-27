@@ -106,6 +106,8 @@ func registerServiceQuotaRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		quotas.POST("", h.Admin.ServiceQuota.Create)
 		quotas.PUT("/:id", h.Admin.ServiceQuota.Update)
 		quotas.DELETE("/:id", h.Admin.ServiceQuota.Delete)
+		// 手动重置 Redis 计数器（按 rule_id + path_id + limiter_type [+ scope_user_id]）
+		quotas.POST("/reset", h.Admin.ServiceQuota.ResetCounter)
 		// 运行时监控（独立 handler，规则 CRUD 之外的只读快照入口）
 		if h.Admin.ServiceQuotaMonitor != nil {
 			quotas.GET("/monitor", h.Admin.ServiceQuotaMonitor.Snapshot)

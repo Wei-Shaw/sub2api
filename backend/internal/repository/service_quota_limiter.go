@@ -202,6 +202,18 @@ func (l *serviceQuotaLimiter) Release(ctx context.Context, key, member string) e
 	return l.rdb.ZRem(ctx, key, member).Err()
 }
 
+// Reset 直接 DEL 整个 limiter key，用于管理员手动重置计数。
+//
+// 三种 limiter（fixed STRING / rolling ZSET / concurrency ZSET）共用同一 DEL：
+// fixed/rolling 计数立即归零；concurrency 槽位被强制清空（已在飞的请求 Release
+// 时再 ZRem 不存在的成员是 no-op，幂等无害）。
+func (l *serviceQuotaLimiter) Reset(ctx context.Context, key string) error {
+	if l == nil || l.rdb == nil {
+		return nil
+	}
+	return l.rdb.Del(ctx, key).Err()
+}
+
 func fixedWindowTTL(window time.Duration) time.Duration {
 	if window >= 24*time.Hour {
 		return 48 * time.Hour

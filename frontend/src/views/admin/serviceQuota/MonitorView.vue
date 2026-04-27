@@ -56,9 +56,20 @@
       </template>
 
       <template #table>
-        <RuntimeTable :rows="rows" :loading="loading" :show-internal="true" />
+        <RuntimeTable :rows="rows" :loading="loading" :show-internal="true" @reset="onResetRow" />
       </template>
     </TablePageLayout>
+
+    <ConfirmDialog
+      :show="!!pendingReset"
+      :title="t('admin.serviceQuotaMonitor.resetConfirmTitle')"
+      :message="resetConfirmMessage"
+      :confirm-text="t('admin.serviceQuotaMonitor.reset')"
+      :cancel-text="t('common.cancel')"
+      :danger="true"
+      @confirm="confirmReset"
+      @cancel="pendingReset = null"
+    />
   </AppLayout>
 </template>
 
@@ -71,8 +82,10 @@ import Icon from '@/components/icons/Icon.vue'
 import AutoRefreshButton from '@/components/common/AutoRefreshButton.vue'
 import FilterBar from './components/FilterBar.vue'
 import RuntimeTable from './components/RuntimeTable.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import {
   getServiceQuotaMonitorSnapshot,
+  resetServiceQuotaCounter,
   type LimiterRuntime,
   type ServiceQuotaMonitorFilter,
   type ServiceQuotaMonitorSnapshot,
@@ -114,6 +127,40 @@ const scopeHint = computed<string>(() => {
     ? t('admin.serviceQuotaMonitor.scopeHintWithUser')
     : t('admin.serviceQuotaMonitor.scopeHintNoUser')
 })
+
+// 重置流程：RuntimeTable emit('reset', row) → 弹 confirm → POST → 立刻刷新一次
+const pendingReset = ref<LimiterRuntime | null>(null)
+
+const resetConfirmMessage = computed<string>(() => {
+  const r = pendingReset.value
+  if (!r) return ''
+  return t('admin.serviceQuotaMonitor.resetConfirmMessage', {
+    rule: r.rule_name || `#${r.rule_id}`,
+    limiter: (r.limiter_type || '').toUpperCase(),
+  })
+})
+
+function onResetRow(row: LimiterRuntime): void {
+  pendingReset.value = row
+}
+
+async function confirmReset(): Promise<void> {
+  const row = pendingReset.value
+  pendingReset.value = null
+  if (!row) return
+  try {
+    await resetServiceQuotaCounter({
+      rule_id: row.rule_id,
+      path_id: row.path_id,
+      limiter_type: row.limiter_type,
+      scope_user_id: row.scope_user_id ?? null,
+    })
+    appStore.showSuccess(t('admin.serviceQuotaMonitor.resetSuccess'))
+    await loadOnce()
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('admin.serviceQuotaMonitor.resetError')))
+  }
+}
 
 async function loadOnce(): Promise<void> {
   if (loading.value) return

@@ -90,6 +90,30 @@ func (s *serviceQuotaService) DeleteRule(ctx context.Context, id int64) error {
 	return nil
 }
 
+// ResetLimiterCounter 用 BuildServiceQuotaCounterKey 重建 Redis key 后调 limiter.Reset。
+//
+// 不做规则有效性二次校验（前端传过来的就是当前监控页 row 上看到的 ID）；如果规则
+// 已被删除/限流器已被去掉，DEL 一个不存在的 key 也是 no-op，幂等无副作用。
+func (s *serviceQuotaService) ResetLimiterCounter(ctx context.Context, ruleID, pathID int64, limiterType string, scopeUserID *int64) error {
+	if s == nil || s.limiter == nil {
+		return pkgerrors.NotFound("SERVICE_QUOTA_UNAVAILABLE", "service quota limiter is not available")
+	}
+	if ruleID <= 0 || pathID <= 0 {
+		return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_RESET_TARGET", "rule_id and path_id are required")
+	}
+	switch limiterType {
+	case ServiceQuotaLimiterRPM, ServiceQuotaLimiterTPM, ServiceQuotaLimiterTPD,
+		ServiceQuotaLimiterDailyUSD, ServiceQuotaLimiterConcurrency:
+	default:
+		return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_LIMITER_TYPE", "invalid limiter_type")
+	}
+	key := BuildServiceQuotaCounterKey(ruleID, pathID, limiterType, scopeUserID)
+	if err := s.limiter.Reset(ctx, key); err != nil {
+		return fmt.Errorf("service_quota: reset counter %s: %w", key, err)
+	}
+	return nil
+}
+
 // translateServiceQuotaPersistenceError 把 repo 层透传的数据库错误翻译成业务层 ApplicationError，
 // 让 handler 通过 response.ErrorFrom 自动得到正确的 HTTP 状态：
 //   - sql.ErrNoRows → 404 ErrServiceQuotaRuleNotFound（Update/Delete 找不到规则）

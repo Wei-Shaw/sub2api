@@ -3972,8 +3972,14 @@ export default {
         usage: 'Usage',
         counterMode: 'Limit Mode',
         scopeUser: 'User',
-        tags: 'Tags'
-      }
+        tags: 'Tags',
+        actions: 'Actions'
+      },
+      reset: 'Reset',
+      resetConfirmTitle: 'Reset this limiter counter?',
+      resetConfirmMessage: 'This will clear the {limiter} counter for rule "{rule}". Exhausted quota becomes available immediately; concurrency slots are released (in-flight Release safely skips missing keys). This action cannot be undone.',
+      resetSuccess: 'Limiter counter reset',
+      resetError: 'Reset failed'
     },
 
     // Usage Records

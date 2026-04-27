@@ -285,6 +285,10 @@ type ServiceQuotaLimiter interface {
 	// 与入参 keys 一一对应。单 key 失败（除 redis.Nil 外）降级为 {0, false} 并打 warn 日志，
 	// 不让单条命令拖垮整个批次。
 	SnapshotMany(ctx context.Context, keys []SnapshotKey) ([]LimiterSnapshot, error)
+	// Reset 直接删除 limiter key，让计数立即归零。用于管理员手动重置场景。
+	// fixed/rolling/concurrency 三种实现共用同一 DEL；concurrency 已在飞请求的
+	// Release 是幂等的，无副作用。
+	Reset(ctx context.Context, key string) error
 }
 
 // SnapshotKey 描述一个 limiter 的快照读取目标。
@@ -360,4 +364,8 @@ type ServiceQuotaService interface {
 	// BillingTicket.Consume 据此决定是否在 caller 侧真正抢槽位。
 	IsPreCheckTwoPhase(ctx context.Context) bool
 	Record(ctx context.Context, req ServiceQuotaRecordRequest)
+	// ResetLimiterCounter 直接清空指定 (rule_id, path_id, limiter_type, scope_user_id) 的 Redis 计数器。
+	// 用于管理员手动重置：路径不存在或 limiter 缺失时返回 404 让 handler 透传 HTTP 状态。
+	// scopeUserID == nil 对应 shared / per_user 未限定用户的情况；非 nil 对应 user 模式或 per_user 指定用户。
+	ResetLimiterCounter(ctx context.Context, ruleID, pathID int64, limiterType string, scopeUserID *int64) error
 }
