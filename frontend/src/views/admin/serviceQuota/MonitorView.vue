@@ -56,7 +56,13 @@
       </template>
 
       <template #table>
-        <RuntimeTable :rows="rows" :loading="loading" :show-internal="true" @reset="onResetRow" />
+        <RuntimeTable
+          :rows="rows"
+          :loading="loading"
+          :show-internal="true"
+          @reset="onResetRow"
+          @refresh="onRefreshRow"
+        />
       </template>
     </TablePageLayout>
 
@@ -142,6 +148,13 @@ const resetConfirmMessage = computed<string>(() => {
 
 function onResetRow(row: LimiterRuntime): void {
   pendingReset.value = row
+}
+
+// 刷新单个 limiter 行：当前后端 Snapshot 是 batch 接口（一次拉所有 limiter，一次 redis pipeline），
+// 所以"刷新这一行"等同于"整页 loadOnce"——成本和"全表刷新"几乎一样。
+// 这样实现保持简单；将来若 limiter 数 >>5000 想减少传输，再加单条 GET 接口。
+function onRefreshRow(_row: LimiterRuntime): void {
+  loadOnce()
 }
 
 async function confirmReset(): Promise<void> {

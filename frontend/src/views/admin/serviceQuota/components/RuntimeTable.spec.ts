@@ -57,7 +57,7 @@ function makeRow(overrides: Partial<LimiterRuntime>): LimiterRuntime {
 }
 
 describe('RuntimeTable', () => {
-  it('admin 视角 (showInternal=true) 渲染 8 列表头（限流类型 chip 进 usage；窗口在 usage 后）', () => {
+  it('admin 视角 (showInternal=true) 渲染 8 列表头（含 是否默认 + 操作）', () => {
     const wrapper = mount(RuntimeTable, {
       props: { rows: [makeRow({})], showInternal: true },
       global: { stubs },
@@ -70,12 +70,12 @@ describe('RuntimeTable', () => {
       'admin.serviceQuotaMonitor.columns.window',
       'admin.serviceQuotaMonitor.columns.counterMode',
       'admin.serviceQuotaMonitor.columns.scopeUser',
-      'admin.serviceQuotaMonitor.columns.tags',
+      'admin.serviceQuotaMonitor.columns.isFallback',
       'admin.serviceQuotaMonitor.columns.actions',
     ])
   })
 
-  it('用户视角 (showInternal=false) 隐藏 counterMode/scopeUser/actions 三列', () => {
+  it('用户视角 (showInternal=false) 隐藏 counterMode/scopeUser/isFallback/actions 四列', () => {
     const wrapper = mount(RuntimeTable, {
       props: { rows: [makeRow({})], showInternal: false },
       global: { stubs },
@@ -86,7 +86,6 @@ describe('RuntimeTable', () => {
       'admin.serviceQuotaMonitor.columns.path',
       'admin.serviceQuotaMonitor.columns.usage',
       'admin.serviceQuotaMonitor.columns.window',
-      'admin.serviceQuotaMonitor.columns.tags',
     ])
   })
 
@@ -184,20 +183,22 @@ describe('RuntimeTable', () => {
     expect(secondRowTds[0].find('[data-test="path-chevron"]').exists()).toBe(true)
   })
 
-  it('点击重置按钮 emit reset 事件并带上 row', async () => {
+  it('操作列：点击刷新按钮 emit refresh、点击重置按钮 emit reset', async () => {
     const row = makeRow({ rule_id: 7, path_id: 11, limiter_type: 'rpm' })
     const wrapper = mount(RuntimeTable, {
       props: { rows: [row], showInternal: true },
       global: { stubs },
     })
-    const btn = wrapper.find('button')
-    await btn.trigger('click')
-    const emitted = wrapper.emitted('reset')
-    expect(emitted).toBeTruthy()
-    // 第一次 emit 的第一个参数应该等于 row（_ruleSpan/_pathSpan/_key 是装饰字段，row 原始字段都在）
-    const payload = emitted![0][0] as LimiterRuntime
-    expect(payload.rule_id).toBe(7)
-    expect(payload.path_id).toBe(11)
-    expect(payload.limiter_type).toBe('rpm')
+    const buttons = wrapper.findAll('button')
+    // 操作列两个按钮：第 1 个 refresh，第 2 个 reset
+    expect(buttons.length).toBeGreaterThanOrEqual(2)
+    await buttons[0].trigger('click')
+    await buttons[1].trigger('click')
+    expect(wrapper.emitted('refresh')).toBeTruthy()
+    expect(wrapper.emitted('reset')).toBeTruthy()
+    const refreshPayload = wrapper.emitted('refresh')![0][0] as LimiterRuntime
+    expect(refreshPayload.rule_id).toBe(7)
+    const resetPayload = wrapper.emitted('reset')![0][0] as LimiterRuntime
+    expect(resetPayload.limiter_type).toBe('rpm')
   })
 })

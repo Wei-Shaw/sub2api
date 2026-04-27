@@ -93,23 +93,35 @@
             <span v-else :title="`#${row.scope_user_id}`">{{ scopeUserName(row.scope_user_id) }}</span>
           </td>
 
-          <!-- 标签 -->
-          <td class="px-4 py-3 whitespace-nowrap">
+          <!-- 是否默认（admin only）：default 规则用黄色 badge 标识 -->
+          <td v-if="showInternal" class="px-4 py-3 whitespace-nowrap">
             <span v-if="row.is_fallback" class="badge badge-yellow">
               {{ t('admin.serviceQuotaMonitor.fallbackTag') }}
             </span>
           </td>
 
-          <!-- 操作（admin only）：重置 -->
+          <!-- 操作（admin only）：刷新单条 + 重置（图标 + 文字） -->
           <td v-if="showInternal" class="px-4 py-3 whitespace-nowrap">
-            <button
-              type="button"
-              class="rounded p-1.5 text-gray-500 transition-colors hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-orange-900/20"
-              :title="t('admin.serviceQuotaMonitor.reset')"
-              @click="emit('reset', row)"
-            >
-              <Icon name="refresh" size="sm" />
-            </button>
+            <div class="flex items-center gap-1">
+              <button
+                type="button"
+                class="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-gray-200"
+                :title="t('admin.serviceQuotaMonitor.refreshTitle')"
+                @click="emit('refresh', row)"
+              >
+                <Icon name="refresh" size="xs" />
+                <span>{{ t('admin.serviceQuotaMonitor.refresh') }}</span>
+              </button>
+              <button
+                type="button"
+                class="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-orange-600 transition-colors hover:bg-orange-50 dark:text-orange-400 dark:hover:bg-orange-900/20"
+                :title="t('admin.serviceQuotaMonitor.resetTitle')"
+                @click="emit('reset', row)"
+              >
+                <Icon name="trash" size="xs" />
+                <span>{{ t('admin.serviceQuotaMonitor.reset') }}</span>
+              </button>
+            </div>
           </td>
         </tr>
       </tbody>
@@ -156,13 +168,15 @@ const props = withDefaults(
 const emit = defineEmits<{
   /** 重置按钮：父组件接管 confirm + API + 刷新 */
   (e: 'reset', row: LimiterRuntime): void
+  /** 刷新按钮：父组件触发整页 loadOnce 拉最新快照 */
+  (e: 'refresh', row: LimiterRuntime): void
 }>()
 
 const { t } = useI18n()
 
 // 列定义放 computed 让 i18n 切换语言时表头自动重渲。
 // 限流类型已并入用量列的 chip，不再独立成列；窗口列放到用量列之后。
-// admin 视角 = 8 列；用户视角 = 5 列（隐藏 counterMode / scopeUser / actions）。
+// admin 视角 = 8 列（含 是否默认 / 操作）；user 视角 = 4 列（不显示 是否默认）。
 const columns = computed<ColumnDef[]>(() => {
   const base: ColumnDef[] = [
     { key: 'rule', label: t('admin.serviceQuotaMonitor.columns.rule') },
@@ -173,12 +187,10 @@ const columns = computed<ColumnDef[]>(() => {
   if (props.showInternal) {
     base.push(
       { key: 'counterMode', label: t('admin.serviceQuotaMonitor.columns.counterMode') },
-      { key: 'scopeUser', label: t('admin.serviceQuotaMonitor.columns.scopeUser') }
+      { key: 'scopeUser', label: t('admin.serviceQuotaMonitor.columns.scopeUser') },
+      { key: 'isFallback', label: t('admin.serviceQuotaMonitor.columns.isFallback') },
+      { key: 'actions', label: t('admin.serviceQuotaMonitor.columns.actions') }
     )
-  }
-  base.push({ key: 'tags', label: t('admin.serviceQuotaMonitor.columns.tags') })
-  if (props.showInternal) {
-    base.push({ key: 'actions', label: t('admin.serviceQuotaMonitor.columns.actions') })
   }
   return base
 })

@@ -76,10 +76,10 @@ describe('PathChevron', () => {
     expect((wrapper.text().match(/\*/g) || []).length).toBeGreaterThanOrEqual(4)
   })
 
-  it('用户视角 (showInternal=false)：只渲染 platform chip 不暴露 channel/group/account', () => {
+  it('用户视角 (showInternal=false)：渲染 platform + model 但隐藏 channel/group/account', () => {
     const wrapper = mount(PathChevron, {
       props: {
-        summary: { platform: 'openai', channel_id: 99, group_id: 88, account_id: 77 },
+        summary: { platform: 'openai', channel_id: 99, group_id: 88, account_id: 77, model_pattern: 'gpt-*' },
         showInternal: false,
       },
       global: { stubs },
@@ -88,5 +88,22 @@ describe('PathChevron', () => {
     expect(wrapper.text()).not.toContain('ch#99')
     expect(wrapper.text()).not.toContain('g#88')
     expect(wrapper.text()).not.toContain('acc#77')
+    // model_pattern 仍然展示给用户
+    expect(wrapper.text()).toContain('gpt-*')
+    // 只剩 platform → model 一个 chevron 分隔
+    expect(wrapper.findAll('[data-test="chevron"]').length).toBe(1)
+  })
+
+  it('用户视角无 model_pattern：渲染 platform > * （model 段为占位）', () => {
+    const wrapper = mount(PathChevron, {
+      props: {
+        summary: { platform: 'openai', channel_id: 99, group_id: 88, account_id: 77 },
+        showInternal: false,
+      },
+      global: { stubs },
+    })
+    expect(wrapper.findAll('[data-test="platform-icon"]').length).toBe(1)
+    // 仍有一个 chevron（platform → model 占位 *）
+    expect(wrapper.findAll('[data-test="chevron"]').length).toBe(1)
   })
 })

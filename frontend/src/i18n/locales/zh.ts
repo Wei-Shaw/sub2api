@@ -4009,7 +4009,7 @@ export default {
       deleteConfirm: '删除规则 {name}？删除后立即停止生效。',
       filters: {
         allCounterModes: '全部计数模式',
-        allFallback: '全部兜底状态',
+        allFallback: '全部默认状态',
         allStatus: '全部状态'
       },
       columns: {
@@ -4018,7 +4018,7 @@ export default {
         limiters: '限流器',
         paths: '路径',
         counterMode: '计数模式',
-        fallback: '兜底',
+        fallback: '是否默认',
         type: '类型',
         window: '窗口',
         limit: '限额',
@@ -4053,9 +4053,9 @@ export default {
         shared: '对 scope 内所有用户生效，共享同一个计数器'
       },
       fallback: {
-        label: '兜底规则',
-        hint: '仅在同一 limiter 类型没有其他非兜底规则命中时生效（限流器粒度）',
-        yes: '兜底',
+        label: '默认规则',
+        hint: '仅在同一 limiter 类型没有其他非默认规则命中时生效（限流器粒度）',
+        yes: '默认',
         no: '常规'
       },
       windows: {
@@ -4067,7 +4067,7 @@ export default {
         name: '规则名称',
         namePlaceholder: '便于识别的备注，可留空',
         counterMode: '计数模式',
-        fallback: '兜底规则',
+        fallback: '默认规则',
         targetUserIds: '绑定用户 ID',
         targetUserIdsPlaceholder: '逗号分隔的用户 ID，例如 1,2,3',
         targetUserIdsRequired: '计数模式为"指定用户"时必填',
@@ -4114,12 +4114,12 @@ export default {
       truncated: '超过 {count} 条已截断',
       loadError: '加载限额监控失败',
       notActive: '未活跃',
-      fallbackTag: '兜底',
+      fallbackTag: '默认',
       resetIn: '重置: {seconds}s 后',
       scopeHintNoUser: '未选择用户：显示「指定用户」与「全局共享」规则；选择用户后还可看到「按用户独立」实时计数',
       scopeHintWithUser: '已选用户：显示该用户被指定的规则、全局共享规则与该用户的独立计数',
       asOf: '数据更新于 {seconds} 秒前',
-      refresh: '手动刷新',
+      refresh: '刷新',
       filters: {
         rule: '规则',
         user: '用户',
@@ -4137,11 +4137,13 @@ export default {
         usage: '用量',
         counterMode: '限制模式',
         scopeUser: '作用用户',
-        tags: '标签',
+        isFallback: '是否默认',
         actions: '操作'
       },
       statusActive: '现在',
+      refreshTitle: '刷新这个限流器的最新计数',
       reset: '重置',
+      resetTitle: '清空这个限流器的当前计数',
       resetConfirmTitle: '确认重置该限流器计数？',
       resetConfirmMessage: '将清空规则「{rule}」的 {limiter} 当前计数。已用完的 quota 将立即恢复，已并发占用的槽位会被释放（在飞请求 Release 时自动跳过空 key）。该操作不可撤销。',
       resetSuccess: '已重置该限流器计数',

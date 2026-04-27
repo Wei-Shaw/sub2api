@@ -297,11 +297,16 @@ func buildLimiterRuntime(row plannedRow, snap LimiterSnapshot, userScope bool) L
 		rt.PathSummary = pathSummaryFrom(row.path)
 		rt.CounterMode = row.rule.CounterMode
 		rt.ScopeUserID = row.scopeUserID
+	} else {
+		// user 视角下仍透出 platform 与 model_pattern，让用户能看到自己被
+		// 限流的"业务路径"；channel/group/account 是内部资源拓扑，故意不暴露
+		// （避免侧信道泄露平台架构信息）。
+		rt.PathSummary = pathSummaryFromForUser(row.path)
 	}
 	return rt
 }
 
-// pathSummaryFrom 把 ServiceQuotaPathDef 浅拷贝成 PathSummary（前端对外契约）。
+// pathSummaryFrom 把 ServiceQuotaPathDef 浅拷贝成 PathSummary（admin 视角，5 维都暴露）。
 func pathSummaryFrom(p ServiceQuotaPathDef) *PathSummary {
 	return &PathSummary{
 		Platform:     p.Platform,
@@ -309,6 +314,21 @@ func pathSummaryFrom(p ServiceQuotaPathDef) *PathSummary {
 		GroupID:      p.GroupID,
 		AccountID:    p.AccountID,
 		ModelPattern: p.ModelPattern,
+	}
+}
+
+// pathSummaryFromForUser 是用户视角的 PathSummary：仅暴露 platform 与 model_pattern。
+//
+// 当两者都为 nil 时（即 path 完全 wildcard），返回 nil 让前端 isPathAllStar
+// 走"所有请求"分支；否则返回对象，让用户能看到平台 chip 和模型限制。
+func pathSummaryFromForUser(p ServiceQuotaPathDef) *PathSummary {
+	if p.Platform == nil && p.ModelPattern == nil {
+		return nil
+	}
+	return &PathSummary{
+		Platform:     p.Platform,
+		ModelPattern: p.ModelPattern,
+		// ChannelID / GroupID / AccountID 故意不设——内部资源拓扑不向用户暴露
 	}
 }
 

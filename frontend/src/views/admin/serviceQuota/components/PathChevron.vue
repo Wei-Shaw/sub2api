@@ -3,20 +3,10 @@
   <div v-if="isAllStar" class="text-xs text-gray-400">
     {{ t('admin.serviceQuota.scopeDetails.allRequests') }}
   </div>
-  <!-- showInternal=false 用户视角 → 仅展示平台 chip（隐藏 channel/group/account 内部拓扑） -->
-  <div v-else-if="!showInternal" class="flex flex-wrap items-center gap-1 text-xs">
-    <span
-      v-if="summary?.platform"
-      :class="['inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium', platformTextClass(summary.platform)]"
-    >
-      <PlatformIcon :platform="summary.platform as GroupPlatform" size="xs" />
-      <span>{{ formatPlatformLabel(summary.platform) }}</span>
-    </span>
-    <span v-else class="text-gray-400">*</span>
-  </div>
-  <!-- admin 视角 → 平台 chip + chevron 链：channel/group/account/model_pattern 缺则灰色 *。
-       整链文字（含 chevron 与 channel/group/account/model 名称）都取平台主色，
-       让一行扫一眼就能识别归属平台；缺失维度统一灰色 *。 -->
+  <!-- 平台 chip + chevron 链：showInternal 决定是否展示 channel/group/account 段。
+       admin 视角全 5 段；user 视角只保留 platform + model（隐藏内部资源拓扑）。
+       整链文字（chevron / 名称 / model_pattern）取平台主色，扫一眼能识别归属平台；
+       缺失维度统一灰色 *。 -->
   <div v-else class="flex flex-wrap items-center gap-1 text-xs">
     <template v-for="(seg, idx) in renderedSegments" :key="idx">
       <Icon
@@ -87,6 +77,8 @@ const platformColor = computed<string>(() =>
 
 // 5 段链：platform | channel | group | account | model_pattern
 // channel/group/account 通过 useEntityName 异步解析为名称（首屏先落 ch#id 占位）。
+// user 视角下过滤掉 channel/group/account 段（避免泄露内部资源拓扑），
+// 仅保留 platform + model_pattern；admin 视角全 5 段。
 const renderedSegments = computed<RenderedSegment[]>(() => {
   const platform = props.summary?.platform || ''
   const tail = pathTailSegments(props.summary).map((seg): RenderedSegment => {
@@ -100,6 +92,9 @@ const renderedSegments = computed<RenderedSegment[]>(() => {
     const r = useEntityName(seg.kind, seg.entityId)
     return { kind: seg.kind, text: r.value }
   })
-  return [{ kind: 'platform', text: platform }, ...tail]
+  const filteredTail = props.showInternal
+    ? tail
+    : tail.filter((s) => s.kind === 'model')
+  return [{ kind: 'platform', text: platform }, ...filteredTail]
 })
 </script>

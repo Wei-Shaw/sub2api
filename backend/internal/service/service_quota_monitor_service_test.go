@@ -212,18 +212,52 @@ func TestSnapshot_AdminFilter_ByUserID(t *testing.T) {
 	require.Equal(t, int64(6), *snap.Items[0].ScopeUserID)
 }
 
-func TestSnapshot_UserScope_HidesPathSummary(t *testing.T) {
+// 用户视角下 PathSummary 不再被全局抹空：仍暴露 platform / model_pattern
+// 给用户看到自己被限流的"业务路径"，但 channel/group/account 内部拓扑必须为 nil。
+// CounterMode 与 ScopeUserID 仍抹空（admin 专属字段）。
+func TestSnapshot_UserScope_PathSummaryHidesInternalTopologyOnly(t *testing.T) {
 	rule := ruleSimple(1, ServiceQuotaCounterModeUser, ServiceQuotaLimiterRPM, 100, []int64{7})
 	rule.Paths[0].Platform = ptrStringMonitor("openai")
+	model := "gpt-*"
+	rule.Paths[0].ModelPattern = &model
+	channelID := int64(42)
+	rule.Paths[0].ChannelID = &channelID
+	groupID := int64(11)
+	rule.Paths[0].GroupID = &groupID
+	accountID := int64(99)
+	rule.Paths[0].AccountID = &accountID
+
 	svc := newMonitorService(t, true, []*ServiceQuotaRule{rule}, nil)
 	snap, err := svc.Snapshot(context.Background(), MonitorSnapshotFilter{
 		UserScope: &MonitorUserScope{UserID: 7},
 	})
 	require.NoError(t, err)
 	require.Len(t, snap.Items, 1)
-	require.Nil(t, snap.Items[0].PathSummary)
+	ps := snap.Items[0].PathSummary
+	require.NotNil(t, ps)
+	require.NotNil(t, ps.Platform)
+	require.Equal(t, "openai", *ps.Platform)
+	require.NotNil(t, ps.ModelPattern)
+	require.Equal(t, "gpt-*", *ps.ModelPattern)
+	require.Nil(t, ps.ChannelID, "channel_id 不能暴露给用户")
+	require.Nil(t, ps.GroupID, "group_id 不能暴露给用户")
+	require.Nil(t, ps.AccountID, "account_id 不能暴露给用户")
 	require.Equal(t, "", snap.Items[0].CounterMode)
 	require.Nil(t, snap.Items[0].ScopeUserID)
+}
+
+// 用户视角下 path 完全 wildcard（platform/model 都 nil）→ PathSummary 仍抹成 nil，
+// 让前端走"所有请求"分支显示。
+func TestSnapshot_UserScope_AllWildcardPathReturnsNilSummary(t *testing.T) {
+	rule := ruleSimple(1, ServiceQuotaCounterModeUser, ServiceQuotaLimiterRPM, 100, []int64{7})
+	// rule.Paths[0] 默认所有字段 nil（全 wildcard）
+	svc := newMonitorService(t, true, []*ServiceQuotaRule{rule}, nil)
+	snap, err := svc.Snapshot(context.Background(), MonitorSnapshotFilter{
+		UserScope: &MonitorUserScope{UserID: 7},
+	})
+	require.NoError(t, err)
+	require.Len(t, snap.Items, 1)
+	require.Nil(t, snap.Items[0].PathSummary, "全 wildcard path 应返回 nil 让前端走 allRequests 分支")
 }
 
 func TestSnapshot_UserScope_KeepsShared(t *testing.T) {

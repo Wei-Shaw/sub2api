@@ -3845,7 +3845,7 @@ export default {
       deleteConfirm: 'Delete rule {name}? It will stop taking effect immediately.',
       filters: {
         allCounterModes: 'All Counter Modes',
-        allFallback: 'All Fallback States',
+        allFallback: 'All Default States',
         allStatus: 'All Status'
       },
       columns: {
@@ -3854,7 +3854,7 @@ export default {
         limiters: 'Limiters',
         paths: 'Paths',
         counterMode: 'Counter Mode',
-        fallback: 'Fallback',
+        fallback: 'Is Default',
         type: 'Type',
         window: 'Window',
         limit: 'Limit',
@@ -3889,9 +3889,9 @@ export default {
         shared: 'Applies to all users in scope; everyone shares the same counter'
       },
       fallback: {
-        label: 'Fallback Rule',
-        hint: 'Limiters are dropped when another non-fallback rule covers the same limiter type',
-        yes: 'Fallback',
+        label: 'Default Rule',
+        hint: 'Limiters are dropped when another non-default rule covers the same limiter type',
+        yes: 'Default',
         no: 'Regular'
       },
       windows: {
@@ -3903,7 +3903,7 @@ export default {
         name: 'Rule Name',
         namePlaceholder: 'Optional label for this rule',
         counterMode: 'Counter Mode',
-        fallback: 'Fallback Rule',
+        fallback: 'Default Rule',
         targetUserIds: 'Bound User IDs',
         targetUserIdsPlaceholder: 'Comma-separated user IDs, e.g. 1,2,3',
         targetUserIdsRequired: 'Required when counter mode is "Specific Users"',
@@ -3950,7 +3950,7 @@ export default {
       truncated: 'Showing first {count} entries (truncated)',
       loadError: 'Failed to load quota monitor',
       notActive: 'Idle',
-      fallbackTag: 'Fallback',
+      fallbackTag: 'Default',
       resetIn: 'Resets in {seconds}s',
       scopeHintNoUser: 'No user selected: showing per-user-targeted rules and shared rules; pick a user to also see per_user live counters',
       scopeHintWithUser: 'User selected: showing rules targeting this user, shared rules, and this user\'s per_user counters',
@@ -3973,11 +3973,13 @@ export default {
         usage: 'Usage',
         counterMode: 'Limit Mode',
         scopeUser: 'User',
-        tags: 'Tags',
+        isFallback: 'Is Default',
         actions: 'Actions'
       },
       statusActive: 'Now',
+      refreshTitle: 'Refresh this limiter counter',
       reset: 'Reset',
+      resetTitle: 'Clear this limiter counter',
       resetConfirmTitle: 'Reset this limiter counter?',
       resetConfirmMessage: 'This will clear the {limiter} counter for rule "{rule}". Exhausted quota becomes available immediately; concurrency slots are released (in-flight Release safely skips missing keys). This action cannot be undone.',
       resetSuccess: 'Limiter counter reset',
