@@ -70,15 +70,26 @@ message LogPushSummary {
 Go 端 SDK 替换默认 handler（`plugin-sdk/runner.go` 内）：
 
 ```go
-// pluginsdk.newRemoteSlogHandler 返回一个 fan-out handler：
-//   1. 主路：投递到 LogProxy gRPC stream（带 ringbuffer，500 条）
-//   2. fallback：当 ringbuffer 满或 stream 未建立时，写 os.Stderr（JSON）
+// pluginsdk.newRemoteSlogHandler 返回一个 fire-and-forget 的 LogProxy handler：
+//   - 单一通路：通过普通 buffered channel（容量 256）投递到 LogProxy gRPC stream
+//   - non-blocking send：plugin 调 slog 永不阻塞，channel 满则丢弃
+//   - 无 stderr fallback —— plugin 日志必须经 host zap 记录，禁止分流
+//   - 连接未建立 / 已断开期间 channel record 也直接丢，不缓存等重连
+//   - atomic counter 跟踪丢弃数；重连成功后随下一条 record 上报 host 一次后清零
 type remoteSlogHandler struct {
-    fallback slog.Handler          // os.Stderr JSON handler（始终可用）
-    queue    chan *pb.LogRecord    // size 500，drop oldest
-    once     sync.Once
+    ch           chan *pb.LogRecord // cap=256, non-blocking send
+    droppedCount atomic.Uint64
 }
 ```
+
+> **修订（用户反馈，2026-04）**：从 ringbuffer + drop-oldest 简化为 buffered channel + drop-on-full（fire-and-forget）。
+>
+> - 取消 stderr fallback，所有日志必须经 host zap 才不会分流
+> - 不再做 ringbuffer 缓冲等重连：channel 满或 stream 未连通时直接 drop 并 atomic 累计
+> - 重连成功后只做一件事：send 一条 meta record 上报累计丢弃数，counter 清零
+> - Plugin Shutdown 时 close channel，goroutine drain 剩余 record，2s 超时强制退出
+>
+> 简单是美，整个 SDK 端实现 ≈ 100 行。
 
 Host 端实现（`backend/internal/plugin/log_proxy_server.go` 新文件）：
 
@@ -117,11 +128,12 @@ func (s *LogProxyServer) PushLogs(stream pb.LogProxy_PushLogsServer) error {
 
 | 场景 | 行为 |
 |---|---|
-| Stream 未建立（启动窗口期，Init 完成前的早期日志） | `remoteSlogHandler.fallback` 直接写 `os.Stderr` JSON，`forwardStderr` 兜底搬运（保持现有行为） |
-| ringbuffer 满（host 慢/宕） | drop **最旧**条目，记一条 `slog.Warn("log queue overflow", "dropped", N)` 走 fallback；不阻塞业务 |
-| stream 返回 error（host 重启 / 网络抖动） | 退避重连：`100ms → 1s → 5s → 30s`（cap 30s），重连期间所有日志走 fallback |
+| Stream 未建立（启动窗口期，Init 完成前的早期日志） | 直接丢弃 + 累加 `droppedCount`，**禁止 fallback 到 stderr**（保持 sink 单一） |
+| channel 满（host 慢 / consume goroutine 跟不上） | non-blocking `select{ ch <- rec: default: counter++ }` 走 default 分支丢弃，原子累加 `droppedCount`；plugin 调 slog 永不阻塞 |
+| stream 返回 error（host 重启 / 网络抖动） | 关闭当前 stream，触发后台 reconnect goroutine 退避重连：`100ms → 1s → 5s → 30s`（cap 30s）；重连期间从 channel 来的 record **直接丢弃 + counter++**，不再缓存 |
+| 重连成功 | 第一条发送 meta record `{"dropped_since_last_send": N}`，把累计 dropped 数报给 host 后 `droppedCount.Store(0)`，恢复正常发送 |
 | host 端解码失败（proto 字段越界等） | host 记 `zap.Warn("plugin log decode failed", ...)`，吞掉单条，不断 stream |
-| plugin Shutdown | SDK 在 `gracefulShutdown` 内 close queue，等待最多 2s 排空，未发完的强制丢弃（不能阻塞退出） |
+| plugin Shutdown | SDK 在 `gracefulShutdown` 内 close channel，goroutine drain 剩余 record，最多等 2s，未发完的强制退出 |
 
 ### 1.6 Implementer 执行单
 

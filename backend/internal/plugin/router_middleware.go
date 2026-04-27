@@ -10,8 +10,22 @@ import (
 	"sync/atomic"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
+)
+
+// Header names exposed to plugins. They are also documented in
+// plugin-sdk/README.md. New plugin authors should rely on these constants via
+// the SDK's RequestMetadata helper rather than parsing them by hand.
+const (
+	HeaderPluginUserID    = "X-Plugin-User-ID"
+	HeaderPluginUserRole  = "X-Plugin-User-Role"
+	HeaderPluginName      = "X-Plugin-Name"
+	HeaderPluginRequestID = "X-Plugin-Request-ID"
+	HeaderPluginAPIKeyID  = "X-Plugin-API-Key-ID"
+	HeaderPluginClientIP  = "X-Plugin-Client-IP"
+	HeaderTraceparent     = "traceparent"
 )
 
 // PluginRouter 是核心 HTTP 入口的包装层。
@@ -117,7 +131,8 @@ func (r *PluginRouter) runAuthMiddleware(w http.ResponseWriter, req *http.Reques
 }
 
 // proxyTo 把请求反向代理到插件进程。
-// 在转发前会清除 hop-by-hop header,并补充 X-Plugin-User-* 头便于插件识别调用者。
+// 在转发前会清除 hop-by-hop header,并补充 X-Plugin-* / traceparent 头便于
+// 插件识别调用者并串联跨进程日志/追踪。
 func (r *PluginRouter) proxyTo(w http.ResponseWriter, req *http.Request, authCtx *gin.Context, entry *RouteEntry) {
 	target, err := url.Parse(entry.ProxyURL)
 	if err != nil {
@@ -126,22 +141,51 @@ func (r *PluginRouter) proxyTo(w http.ResponseWriter, req *http.Request, authCtx
 	}
 
 	proxy := r.getOrCreateProxy(entry.ProxyURL, target)
-
-	// 注入用户上下文头,使插件不必再次解析 JWT/APIKey。
-	if authCtx != nil {
-		if subject, ok := middleware.GetAuthSubjectFromContext(authCtx); ok && subject.UserID > 0 {
-			req.Header.Set("X-Plugin-User-ID", strconv.FormatInt(subject.UserID, 10))
-		}
-		if role, ok := middleware.GetUserRoleFromContext(authCtx); ok && role != "" {
-			req.Header.Set("X-Plugin-User-Role", role)
-		}
-	}
-	req.Header.Set("X-Plugin-Name", entry.PluginName)
+	injectRequestContext(req, authCtx, entry.PluginName)
 
 	// 移除 hop-by-hop header,避免误传给插件 HTTP server。
 	stripHopByHopHeaders(req.Header)
 
 	proxy.ServeHTTP(w, req)
+}
+
+// injectRequestContext 将 plugin 关心的上下文头写入 req:
+//   - X-Plugin-User-ID / X-Plugin-User-Role: 来自鉴权中间件捕获的 gin.Context
+//   - X-Plugin-API-Key-ID: 仅 APIKey 鉴权路径有,只暴露 ID 不暴露 raw key
+//   - X-Plugin-Client-IP: gin.Context.ClientIP() (已尊重 trust proxy)
+//   - X-Plugin-Name: 插件名 (用于 plugin 多实例区分)
+//   - X-Plugin-Request-ID: 优先透传上游, 否则生成 UUID v4
+//   - traceparent: W3C Trace Context, 合法则透传, 非法/缺失则生成新值
+//
+// 注意: 不透传任何敏感原始凭据(JWT body、raw API key)。
+func injectRequestContext(req *http.Request, authCtx *gin.Context, pluginName string) {
+	if authCtx != nil {
+		if subject, ok := middleware.GetAuthSubjectFromContext(authCtx); ok && subject.UserID > 0 {
+			req.Header.Set(HeaderPluginUserID, strconv.FormatInt(subject.UserID, 10))
+		}
+		if role, ok := middleware.GetUserRoleFromContext(authCtx); ok && role != "" {
+			req.Header.Set(HeaderPluginUserRole, role)
+		}
+		if apiKey, ok := middleware.GetAPIKeyFromContext(authCtx); ok && apiKey != nil && apiKey.ID > 0 {
+			req.Header.Set(HeaderPluginAPIKeyID, strconv.FormatInt(apiKey.ID, 10))
+		}
+		if ip := authCtx.ClientIP(); ip != "" {
+			req.Header.Set(HeaderPluginClientIP, ip)
+		}
+	}
+	req.Header.Set(HeaderPluginName, pluginName)
+
+	// request id：上游 (前端 / gateway) 已带就透传，否则在 proxy 边界生成。
+	if req.Header.Get(HeaderPluginRequestID) == "" {
+		req.Header.Set(HeaderPluginRequestID, uuid.NewString())
+	}
+
+	// traceparent：合法则 pass-through，非法则重写。host 自身不创建 span。
+	if !isValidTraceparent(req.Header.Get(HeaderTraceparent)) {
+		if tp := newTraceparent(); tp != "" {
+			req.Header.Set(HeaderTraceparent, tp)
+		}
+	}
 }
 
 func (r *PluginRouter) getOrCreateProxy(key string, target *url.URL) *httputil.ReverseProxy {

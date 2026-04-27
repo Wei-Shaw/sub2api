@@ -1,0 +1,11 @@
+/*
+ * Plugin entry stylesheet.
+ *
+ * Imported from src/index.ts so vite + postcss + tailwindcss compile any
+ * primary-/accent-/dark-/shadow-/btn- utility classes referenced by the
+ * plugin SFCs into dist/entry.css. The shared preset
+ * (@sub2api/plugin-sdk/tailwind-preset.cjs) keeps tokens aligned with host.
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
