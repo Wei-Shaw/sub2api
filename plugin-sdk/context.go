@@ -40,6 +40,12 @@ type PluginContext interface {
 	// client in that case so a forgotten manifest entry surfaces as an
 	// obvious nil-pointer instead of silent passthrough.
 	Secrets() SecretEncryptor
+	// Jobs returns the JobScheduler client for declaring scheduled work.
+	// Plugins must register every spec from inside Plugin.Init(); the SDK
+	// opens the Subscribe stream once Init() returns. Returns nil if the
+	// plugin process was started without a JobScheduler endpoint (host
+	// versions older than V5).
+	Jobs() JobsClient
 }
 
 // RedisClient is the SDK's go-redis-style Redis client. It mirrors the
@@ -47,7 +53,7 @@ type PluginContext interface {
 // in practice. Internally every method routes through the core's RedisProxy
 // gRPC service.
 //
-// Key namespacing
+// # Key namespacing
 //
 // By default keys are silently prefixed with `plugin:<plugin_name>:` so a
 // plugin cannot accidentally clobber another plugin's data. Plugins that
@@ -55,7 +61,7 @@ type PluginContext interface {
 // by channel-management) declare the CapabilityRedisRawKeys capability in
 // their manifest and call Raw() to obtain a non-namespacing twin.
 //
-// Cmder helpers
+// # Cmder helpers
 //
 // Read-style methods that returned simple values in v0 (Get, HGet, …) keep
 // their original (string, error) shape so existing plugins compile

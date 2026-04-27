@@ -55,7 +55,12 @@ type SDKServer struct {
 	// than crashing on a nil dereference.
 	secrets *SecretEncryptionServer
 
-	stop context.CancelFunc
+	// jobScheduler is the optional V5 W2 JobScheduler service. The manager
+	// attaches it after construction (see PluginManager.startSDKServer) so
+	// SDKServer stays dependency-free of the concrete scheduler type.
+	// RegisterServices only registers the gRPC service when this is non-nil.
+	jobScheduler *JobSchedulerServer
+	stop         context.CancelFunc
 }
 
 type activeTx struct {
@@ -105,6 +110,10 @@ func (s *SDKServer) Stop() {
 }
 
 // RegisterServices 把所有 SDK 服务注册到 grpcServer。
+//
+// JobScheduler 是 V5 W2 引入的可选服务,只有 manager 在 startSDKServer 中
+// 通过 AttachJobScheduler 注入实例后才会注册。这样旧部署或未声明
+// CapabilityJobScheduler 的插件不会因为缺少 scheduler 实现而启动失败。
 func (s *SDKServer) RegisterServices(grpcServer *grpc.Server) {
 	pluginsdk.RegisterSQLProxyServer(grpcServer, s)
 	pluginsdk.RegisterRedisProxyServer(grpcServer, s)
@@ -113,6 +122,23 @@ func (s *SDKServer) RegisterServices(grpcServer *grpc.Server) {
 	if s.secrets != nil {
 		s.secrets.RegisterServices(grpcServer)
 	}
+	if s.jobScheduler != nil {
+		pluginsdk.RegisterJobSchedulerServer(grpcServer, s.jobScheduler)
+	}
+}
+
+// AttachJobScheduler binds a JobSchedulerServer onto this SDKServer. Must be
+// called BEFORE RegisterServices so the gRPC dispatcher learns about the
+// service. Calling twice replaces the previous scheduler — the manager only
+// does this in tests; production builds set it once at startup.
+func (s *SDKServer) AttachJobScheduler(js *JobSchedulerServer) {
+	s.jobScheduler = js
+}
+
+// JobScheduler returns the attached scheduler, or nil if none has been
+// installed. Exposed so admin handlers (W2.4) can call ManualFire.
+func (s *SDKServer) JobScheduler() *JobSchedulerServer {
+	return s.jobScheduler
 }
 
 // cleanupLoop 周期性回滚超时事务。

@@ -39,6 +39,11 @@ const (
 	// a nil SecretEncryptor from PluginContext.Secrets() — see V5-DESIGN
 	// §5 for the full design.
 	CapabilitySecretEncryption = "secret_encryption"
+	// CapabilityJobScheduler grants access to PluginContext.Jobs() for
+	// declaring scheduled work (interval / cron / fixed_delay). The host owns
+	// the schedule clock and per-(plugin, job) leader lock; the plugin owns
+	// the handler. See V5-DESIGN §2 (W2 JobSchedulerCapability).
+	CapabilityJobScheduler = "job_scheduler"
 )
 
 // Manifest is the Go-level representation of pluginsdk.ManifestResponse.

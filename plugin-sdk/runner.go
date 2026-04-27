@@ -324,6 +324,11 @@ type runner struct {
 	remoteLogHandler *remoteSlogHandler
 	remoteLogCancel  context.CancelFunc
 	remoteLogDone    chan struct{}
+
+	// jobsClient is the JobScheduler client created in Init; gracefulShutdown
+	// stops its run loop before tearing down the gRPC conn so in-flight
+	// Subscribe streams close cleanly.
+	jobsClient *jobsClient
 }
 
 // Init is called by the core after reading the handshake. It opens the
@@ -411,18 +416,34 @@ func (r *runner) Init(ctx context.Context, req *pb.PluginInitRequest) (*pb.Plugi
 			secrets = newSecretsClient(pb.NewSecretEncryptionClient(conn))
 		}
 
+		// Build the JobScheduler client. The dial closure opens a fresh
+		// Subscribe stream each time the run loop reconnects so we never reuse
+		// a half-broken stream across retries.
+		jobsConn := conn
+		jobScheduler := pb.NewJobSchedulerClient(jobsConn)
+		jobs := newJobsClient(pluginName, r.logger, func(ctx context.Context) (pb.JobScheduler_SubscribeClient, error) {
+			return jobScheduler.Subscribe(ctx)
+		})
+
 		r.ctxImpl = &pluginCtx{
 			db:      db,
 			redis:   &redisAdapter{inner: sdkdriver.NewNamespacedRedisClient(redisClient, r.logger, pluginName, rawAllowed)},
 			logger:  r.logger,
 			config:  cfgCopy,
 			secrets: secrets,
+			jobs:    jobs,
 		}
 
 		if err := r.plugin.Init(r.ctxImpl); err != nil {
 			r.initErr = err
 			return
 		}
+
+		// Plugin.Init has finished registering every spec; kick off the
+		// Subscribe loop so the host starts firing triggers. Loop ctx is
+		// independent from the Init RPC ctx — it lives until shutdown.
+		r.jobsClient = jobs
+		jobs.start(context.Background())
 	})
 
 	if r.initErr != nil {
@@ -500,6 +521,13 @@ func (r *runner) gracefulShutdown(grpcSrv *grpc.Server, httpSrv *http.Server) {
 		r.logger.Error("plugin shutdown returned error", "error", err)
 	}
 
+	// Stop the JobScheduler run loop BEFORE closing the SDK conn so the
+	// reconnect loop does not fire one last Subscribe against a dead conn
+	// and bleed warning logs.
+	if r.jobsClient != nil {
+		r.jobsClient.stop()
+	}
+
 	// Drain the LogProxy sender best-effort BEFORE closing the SDK conn so
 	// the host receives whatever is still in the buffered channel.
 	if r.remoteLogHandler != nil {
@@ -543,11 +571,12 @@ type pluginCtx struct {
 	logger  *slog.Logger
 	config  map[string]string
 	secrets SecretEncryptor
+	jobs    JobsClient
 }
 
-func (c *pluginCtx) DB() *sql.DB           { return c.db }
-func (c *pluginCtx) Redis() RedisClient    { return c.redis }
-func (c *pluginCtx) Logger() *slog.Logger  { return c.logger }
+func (c *pluginCtx) DB() *sql.DB              { return c.db }
+func (c *pluginCtx) Redis() RedisClient       { return c.redis }
+func (c *pluginCtx) Logger() *slog.Logger     { return c.logger }
 func (c *pluginCtx) Secrets() SecretEncryptor { return c.secrets }
 func (c *pluginCtx) Config() map[string]string {
 	out := make(map[string]string, len(c.config))
@@ -556,6 +585,10 @@ func (c *pluginCtx) Config() map[string]string {
 	}
 	return out
 }
+
+// Jobs returns the JobScheduler client. May be nil if the SDK runner did
+// not wire one (older host or jobs feature not yet enabled).
+func (c *pluginCtx) Jobs() JobsClient { return c.jobs }
 
 // redisAdapter bridges the driver-package RedisClient onto the public
 // pluginsdk.RedisClient interface. Most methods are direct pass-throughs;
