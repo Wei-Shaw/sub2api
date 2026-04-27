@@ -143,10 +143,12 @@ type settingsClient struct {
 }
 
 type cachedSetting struct {
-	value     json.RawMessage
-	revision  int64
-	exists    bool
-	fetchedAt time.Time
+	value                json.RawMessage
+	revision             int64
+	exists               bool
+	fetchedAt            time.Time
+	storedSchemaVersion  string // V5/W6 SETTINGS-V2: schema_version active when written
+	currentSchemaVersion string // V5/W6 SETTINGS-V2: schema_version the plugin currently declares
 }
 
 type settingSubscription struct {
@@ -241,10 +243,12 @@ func (c *settingsClient) Get(ctx context.Context, key string) (json.RawMessage, 
 	}
 	val := append(json.RawMessage(nil), resp.GetValueJson()...)
 	c.cache.Store(key, &cachedSetting{
-		value:     val,
-		revision:  resp.GetRevision(),
-		exists:    true,
-		fetchedAt: time.Now(),
+		value:                val,
+		revision:             resp.GetRevision(),
+		exists:               true,
+		fetchedAt:            time.Now(),
+		storedSchemaVersion:  resp.GetStoredSchemaVersion(),
+		currentSchemaVersion: resp.GetCurrentSchemaVersion(),
 	})
 	return val, nil
 }
@@ -255,7 +259,32 @@ func (c *settingsClient) GetTyped(ctx context.Context, key string, out any) erro
 		return err
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
-		return fmt.Errorf("pluginsdk: settings unmarshal %q: %w", key, err)
+		// V5/W6 SETTINGS-V2 §3.4.4: look up cached schema_version to attach
+		// precise drift info. Get already cached the values from the RPC.
+		var stored, current string
+		if v, ok := c.cache.Load(key); ok {
+			entry := v.(*cachedSetting)
+			stored = entry.storedSchemaVersion
+			current = entry.currentSchemaVersion
+		}
+		// Normalise empty strings to "0" so callers can compare without
+		// special-casing pre-V2 hosts.
+		if stored == "" {
+			stored = "0"
+		}
+		if current == "" {
+			current = "0"
+		}
+		underlying := fmt.Errorf("pluginsdk: settings unmarshal %q: %w", key, err)
+		if stored != current {
+			return &SchemaVersionMismatchError{
+				Key:                  key,
+				StoredSchemaVersion:  stored,
+				CurrentSchemaVersion: current,
+				UnderlyingErr:        underlying,
+			}
+		}
+		return underlying
 	}
 	return nil
 }
