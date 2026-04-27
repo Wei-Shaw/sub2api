@@ -251,59 +251,105 @@ func TestSnapshot_UserScope_FiltersToTargetUsers(t *testing.T) {
 	require.Len(t, snap2.Items, 1)
 }
 
-// TestSnapshot_PerUserMode_NoUserFilter_EmitsPlaceholder 验证新行为：
-// admin 不带 user filter 也会 emit 一条占位行（PerUserUnbound=true、Exists=false、
-// ScopeUserID=nil），让前端能展示规则并提示用户选择具体用户查看实时计数。
-//
-// 同时验证 SnapshotMany 不会误命中已有的 shared 计数器：fake limiter 预置一个
-// shared key 的高用量值，占位行返回的 Current 仍必须是 0。
-func TestSnapshot_PerUserMode_NoUserFilter_EmitsPlaceholder(t *testing.T) {
+// TestSnapshot_AdminNoFilter_PerUserSkipped 验证新语义：admin 无 user filter 时
+// per_user 规则完全不展开（不再产生占位行）。fake limiter 预置 shared 风格的 key，
+// 验证 SnapshotMany 不会因为有遗留计数器而误命中。
+func TestSnapshot_AdminNoFilter_PerUserSkipped(t *testing.T) {
 	rule := ruleSimple(1, ServiceQuotaCounterModePerUser, ServiceQuotaLimiterRPM, 100, nil)
 	limiter := newMonitorFakeLimiter()
-	// 预置 shared 风格的 key，验证哨兵 key 不会与之冲突
 	sharedKey := BuildServiceQuotaCounterKey(rule.ID, rule.Paths[0].ID, ServiceQuotaLimiterRPM, nil)
 	limiter.snapshots[sharedKey] = LimiterSnapshot{Current: 999, Exists: true}
 	svc := newMonitorService(t, true, []*ServiceQuotaRule{rule}, limiter)
 
 	snap, err := svc.Snapshot(context.Background(), MonitorSnapshotFilter{})
 	require.NoError(t, err)
+	require.Empty(t, snap.Items, "per_user 规则在 admin 无 user filter 时不应展开任何行")
+}
+
+// TestSnapshot_AdminNoFilter_UserModeExpandedToTargets 验证新语义：admin 无 user filter
+// 时 user 模式按 TargetUserIDs 展开 N 行（每个目标用户 1 行）。
+func TestSnapshot_AdminNoFilter_UserModeExpandedToTargets(t *testing.T) {
+	rule := ruleSimple(1, ServiceQuotaCounterModeUser, ServiceQuotaLimiterRPM, 100, []int64{5, 7})
+	svc := newMonitorService(t, true, []*ServiceQuotaRule{rule}, nil)
+	snap, err := svc.Snapshot(context.Background(), MonitorSnapshotFilter{})
+	require.NoError(t, err)
+	require.Len(t, snap.Items, 2)
+	scopeUsers := []int64{}
+	for _, item := range snap.Items {
+		require.NotNil(t, item.ScopeUserID)
+		scopeUsers = append(scopeUsers, *item.ScopeUserID)
+	}
+	require.ElementsMatch(t, []int64{5, 7}, scopeUsers)
+}
+
+// TestSnapshot_AdminNoFilter_SharedKeptSingle 验证新语义：shared 模式 1 行，
+// scope_user_id=nil（target=shared）。
+func TestSnapshot_AdminNoFilter_SharedKeptSingle(t *testing.T) {
+	rule := ruleSimple(1, ServiceQuotaCounterModeShared, ServiceQuotaLimiterRPM, 100, nil)
+	svc := newMonitorService(t, true, []*ServiceQuotaRule{rule}, nil)
+	snap, err := svc.Snapshot(context.Background(), MonitorSnapshotFilter{})
+	require.NoError(t, err)
 	require.Len(t, snap.Items, 1)
-	require.True(t, snap.Items[0].PerUserUnbound)
-	require.False(t, snap.Items[0].Exists)
-	require.Equal(t, 0.0, snap.Items[0].Current)
 	require.Nil(t, snap.Items[0].ScopeUserID)
 }
 
-// TestSnapshot_PerUserMode_WithUserFilter_NotPlaceholder 验证：
-// admin 提供 user_id filter 时仍按真实 user 展开，不打 PerUserUnbound 标志。
-func TestSnapshot_PerUserMode_WithUserFilter_NotPlaceholder(t *testing.T) {
+// TestSnapshot_AdminWithUserFilter_PerUserExpandedToFilterUser 验证：admin 提供
+// user_id filter 时 per_user 规则按 filter user 展开 1 行。
+func TestSnapshot_AdminWithUserFilter_PerUserExpandedToFilterUser(t *testing.T) {
 	rule := ruleSimple(1, ServiceQuotaCounterModePerUser, ServiceQuotaLimiterRPM, 100, nil)
 	svc := newMonitorService(t, true, []*ServiceQuotaRule{rule}, nil)
-	snap, err := svc.Snapshot(context.Background(), MonitorSnapshotFilter{UserID: ptrInt64Monitor(7)})
+	snap, err := svc.Snapshot(context.Background(), MonitorSnapshotFilter{UserID: ptrInt64Monitor(42)})
 	require.NoError(t, err)
 	require.Len(t, snap.Items, 1)
-	require.False(t, snap.Items[0].PerUserUnbound)
 	require.NotNil(t, snap.Items[0].ScopeUserID)
-	require.Equal(t, int64(7), *snap.Items[0].ScopeUserID)
+	require.Equal(t, int64(42), *snap.Items[0].ScopeUserID)
 }
 
-// TestBuildSnapshotKeys_PerUserUnbound_UsesSentinelKey 验证占位行生成的 key
-// 包含 _per_user_unbound 后缀，从而与真实计数 key 不冲突。
-func TestBuildSnapshotKeys_PerUserUnbound_UsesSentinelKey(t *testing.T) {
-	rule := ruleSimple(42, ServiceQuotaCounterModePerUser, ServiceQuotaLimiterRPM, 100, nil)
-	rows := []plannedRow{{
-		rule:           rule,
-		path:           rule.Paths[0],
-		pathIndex:      1,
-		limiter:        rule.Limiters[0],
-		scopeUserID:    nil,
-		perUserUnbound: true,
-	}}
-	keys := buildSnapshotKeys(rows)
-	require.Len(t, keys, 1)
-	require.Contains(t, keys[0].Key, "_per_user_unbound")
-	// 与真实 shared key 不一致
-	require.NotEqual(t, BuildServiceQuotaCounterKey(rule.ID, rule.Paths[0].ID, ServiceQuotaLimiterRPM, nil), keys[0].Key)
+// TestSnapshot_AdminWithUserFilter_UserModeOnlyIfTargeted 验证：admin 带 user filter
+// 时 user 模式只在 filter user 是 TargetUserIDs 之一才返回 1 行；否则不返回。
+func TestSnapshot_AdminWithUserFilter_UserModeOnlyIfTargeted(t *testing.T) {
+	t.Run("filter user not in target", func(t *testing.T) {
+		rule := ruleSimple(1, ServiceQuotaCounterModeUser, ServiceQuotaLimiterRPM, 100, []int64{5, 7})
+		svc := newMonitorService(t, true, []*ServiceQuotaRule{rule}, nil)
+		snap, err := svc.Snapshot(context.Background(), MonitorSnapshotFilter{UserID: ptrInt64Monitor(42)})
+		require.NoError(t, err)
+		require.Empty(t, snap.Items)
+	})
+	t.Run("filter user in target", func(t *testing.T) {
+		rule := ruleSimple(1, ServiceQuotaCounterModeUser, ServiceQuotaLimiterRPM, 100, []int64{5, 42})
+		svc := newMonitorService(t, true, []*ServiceQuotaRule{rule}, nil)
+		snap, err := svc.Snapshot(context.Background(), MonitorSnapshotFilter{UserID: ptrInt64Monitor(42)})
+		require.NoError(t, err)
+		require.Len(t, snap.Items, 1)
+		require.NotNil(t, snap.Items[0].ScopeUserID)
+		require.Equal(t, int64(42), *snap.Items[0].ScopeUserID)
+	})
+}
+
+// TestSnapshot_AdminWithUserFilter_SharedAlwaysIncluded 验证：shared 规则不受 user filter
+// 影响，admin 带 user filter 时仍返回 1 行（让 admin 知道全局共享池占用）。
+func TestSnapshot_AdminWithUserFilter_SharedAlwaysIncluded(t *testing.T) {
+	rule := ruleSimple(1, ServiceQuotaCounterModeShared, ServiceQuotaLimiterRPM, 100, nil)
+	svc := newMonitorService(t, true, []*ServiceQuotaRule{rule}, nil)
+	snap, err := svc.Snapshot(context.Background(), MonitorSnapshotFilter{UserID: ptrInt64Monitor(42)})
+	require.NoError(t, err)
+	require.Len(t, snap.Items, 1)
+	require.Nil(t, snap.Items[0].ScopeUserID)
+}
+
+// TestSnapshot_BuildLimiterRuntime_TransparentResetAt 验证 LimiterRuntime 透传
+// LimiterSnapshot.ResetAtUnixMs（来自 repo 层 PTTL / now+window 推算）。
+func TestSnapshot_BuildLimiterRuntime_TransparentResetAt(t *testing.T) {
+	rule := ruleSimple(1, ServiceQuotaCounterModeShared, ServiceQuotaLimiterRPM, 100, nil)
+	limiter := newMonitorFakeLimiter()
+	key := BuildServiceQuotaCounterKey(rule.ID, rule.Paths[0].ID, ServiceQuotaLimiterRPM, nil)
+	expectedReset := time.Now().Add(60 * time.Second).UnixMilli()
+	limiter.snapshots[key] = LimiterSnapshot{Current: 5, Exists: true, ResetAtUnixMs: expectedReset}
+	svc := newMonitorService(t, true, []*ServiceQuotaRule{rule}, limiter)
+	snap, err := svc.Snapshot(context.Background(), MonitorSnapshotFilter{})
+	require.NoError(t, err)
+	require.Len(t, snap.Items, 1)
+	require.Equal(t, expectedReset, snap.Items[0].ResetAtUnixMs)
 }
 
 func TestSnapshot_HardCap_Truncated(t *testing.T) {

@@ -4106,10 +4106,10 @@ export default {
       truncated: '超过 {count} 条已截断',
       loadError: '加载限额监控失败',
       notActive: '未活跃',
-      perUserUnbound: '按用户独立计数 · 选择用户查看',
-      perUserUnboundHint: 'per_user 计数模式按用户独立维护，请在用户筛选器中选择具体用户查看实时用量',
       fallbackTag: '兜底',
-      simplePath: '路径 #{index}',
+      resetIn: '重置: {seconds}s 后',
+      scopeHintNoUser: '未选择用户：显示「指定用户」与「全局共享」规则；选择用户后还可看到「按用户独立」实时计数',
+      scopeHintWithUser: '已选用户：显示该用户被指定的规则、全局共享规则与该用户的独立计数',
       asOf: '数据更新于 {seconds} 秒前',
       refresh: '手动刷新',
       filters: {

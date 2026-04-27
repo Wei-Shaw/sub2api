@@ -225,9 +225,17 @@ type SnapshotKey struct {
 //
 // Exists=false 表示 key 在 Redis 中不存在（首次接入或已过期），调用方据此区分
 // "未启用" 与 "已启用但用量 0"。Current 始终是有效数值（不存在时为 0）。
+//
+// ResetAtUnixMs 表示该计数器"自然清零"的 Unix 毫秒时间戳：
+//   - fixed window：key 真实 PTTL 推算（now + PTTL）；PTTL=-1（永久）按 0 处理
+//   - rolling window：now + 窗口长度（窗口右端是固定的相对当前时刻）
+//   - concurrency / key 不存在：0
+//
+// 前端展示"X 秒后重置"用：max(0, ceil((ResetAtUnixMs - now)/1000))。
 type LimiterSnapshot struct {
-	Current float64
-	Exists  bool
+	Current       float64
+	Exists        bool
+	ResetAtUnixMs int64
 }
 
 // ServiceQuotaCache 抽象服务限额规则与开关的缓存层。

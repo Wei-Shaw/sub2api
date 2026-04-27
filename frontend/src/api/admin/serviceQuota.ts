@@ -100,8 +100,11 @@ export interface LimiterRuntimePathSummary {
  * 单个 limiter 的运行时快照。
  * snake_case 与后端 json tag 对齐。
  *
- * per_user_unbound=true 表示：counter_mode=per_user 且 admin 未提供 user 筛选时
- * 后端返回的"占位行"。该行 exists 恒为 false，前端应展示提示而非真实数字与进度条。
+ * reset_at_unix_ms 是该计数器/窗口下次"自然清零"的 Unix 毫秒时间戳：
+ *   - fixed window：key 真实 PTTL 推算
+ *   - rolling window：now + 窗口长度（窗口右端）
+ *   - concurrency 或 key 不存在：0
+ * 前端展示"X 秒后重置"用：max(0, ceil((reset_at_unix_ms - Date.now())/1000))。
  */
 export interface LimiterRuntime {
   rule_id: number
@@ -118,7 +121,7 @@ export interface LimiterRuntime {
   scope_user_id?: number | null
   is_fallback: boolean
   exists: boolean
-  per_user_unbound?: boolean
+  reset_at_unix_ms?: number
 }
 
 export interface ServiceQuotaMonitorSnapshot {

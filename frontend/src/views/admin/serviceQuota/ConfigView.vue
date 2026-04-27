@@ -72,14 +72,13 @@
             <div v-if="row.paths.length === 0" class="text-xs text-gray-400">
               {{ t('admin.serviceQuota.scopeDetails.allRequests') }}
             </div>
-            <div v-else class="max-h-32 space-y-0.5 overflow-auto">
-              <div
+            <div v-else class="max-h-32 space-y-1 overflow-auto">
+              <PathChevron
                 v-for="(path, i) in row.paths"
                 :key="i"
-                class="font-mono text-xs text-gray-700 dark:text-gray-200"
-              >
-                {{ pathSummary(path) }}
-              </div>
+                :summary="pathDefToSummary(path)"
+                show-internal
+              />
             </div>
           </template>
 
@@ -246,6 +245,8 @@ import UserMultiSelect from '@/components/common/UserMultiSelect.vue'
 import LimiterEditor from '@/components/admin/LimiterEditor.vue'
 import PathEditor from '@/components/admin/PathEditor.vue'
 import EnabledToggleCell from './components/EnabledToggleCell.vue'
+import PathChevron from './components/PathChevron.vue'
+import type { PathSummary } from './components/pathRender'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import type { Column } from '@/components/common/types'
@@ -379,17 +380,17 @@ function counterModeHint(value: string): string {
   return map[value] || ''
 }
 
-// 每条 path 用 chevron 链式展示：平台 → 渠道 → 分组 → 账号 → 模型；空段填 '*'
-function pathSummary(path: ServiceQuotaPathDef): string {
-  const parts = [
-    path.platform || '*',
-    path.channel_id ? `ch#${path.channel_id}` : '*',
-    path.group_id ? `g#${path.group_id}` : '*',
-    path.account_id ? `acc#${path.account_id}` : '*',
-    path.model_pattern || '*',
-  ]
-  if (parts.every((p) => p === '*')) return t('admin.serviceQuota.scopeDetails.allRequests')
-  return parts.join(' → ')
+// 复用 RuntimeTable 的 PathChevron 渲染：把 ServiceQuotaPathDef 适配成 PathSummary。
+// 复用 PathChevron 让监控页与配置页对"全部 nil 视为通配 / 平台 chip / chevron 链"
+// 三个语义保持一致——避免一处修改另一处漂移（复用原则）。
+function pathDefToSummary(path: ServiceQuotaPathDef): PathSummary {
+  return {
+    platform: path.platform ?? null,
+    channel_id: path.channel_id ?? null,
+    group_id: path.group_id ?? null,
+    account_id: path.account_id ?? null,
+    model_pattern: path.model_pattern ?? null,
+  }
 }
 
 function normalizePayload(): ServiceQuotaRuleInput {

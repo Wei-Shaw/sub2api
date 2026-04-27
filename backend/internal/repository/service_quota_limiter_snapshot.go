@@ -42,9 +42,13 @@ func (l *serviceQuotaLimiter) snapshotByMode(ctx context.Context, sk service.Sna
 //
 // 比 Current 的 rolling 实现少一次 ZRemRangeByScore：未来 Increment 自然会清掉过期
 // member，监控读不应承担清理职责。
+//
+// ResetAtUnixMs 用 now + window 表示窗口右端。rolling 模式下任何写入都会推后窗口右端，
+// 但快照时刻的"最早可能清零时间"就是当前 now + window。
 func (l *serviceQuotaLimiter) snapshotRolling(ctx context.Context, key string, window time.Duration) (service.LimiterSnapshot, error) {
 	nowMs := time.Now().UnixMilli()
 	cutoff := nowMs - window.Milliseconds()
+	resetAt := nowMs + window.Milliseconds()
 	res, err := l.rdb.ZRangeByScoreWithScores(ctx, key, &redis.ZRangeBy{
 		Min: fmt.Sprintf("(%d", cutoff),
 		Max: "+inf",
@@ -58,10 +62,13 @@ func (l *serviceQuotaLimiter) snapshotRolling(ctx context.Context, key string, w
 	if len(res) == 0 {
 		return service.LimiterSnapshot{}, nil
 	}
-	return service.LimiterSnapshot{Current: sumRollingZScores(res), Exists: true}, nil
+	return service.LimiterSnapshot{Current: sumRollingZScores(res), Exists: true, ResetAtUnixMs: resetAt}, nil
 }
 
-// snapshotFixed 用 GET 读 fixed-window 计数器；不存在返回 {0,false}，其他 err 透传。
+// snapshotFixed 用 GET + PTTL 读 fixed-window 计数器；不存在返回 {0,false}，其他 err 透传。
+//
+// ResetAtUnixMs 由 PTTL 推算：>0 → now + ttl；==-1（永久 key，理论不该出现）按 0 兜底；
+// ==-2（key 不存在）→ 已经在 Get 阶段被 redis.Nil 短路，进不到 PTTL。
 func (l *serviceQuotaLimiter) snapshotFixed(ctx context.Context, key string) (service.LimiterSnapshot, error) {
 	val, err := l.rdb.Get(ctx, key).Float64()
 	if err != nil {
@@ -70,7 +77,21 @@ func (l *serviceQuotaLimiter) snapshotFixed(ctx context.Context, key string) (se
 		}
 		return service.LimiterSnapshot{}, err
 	}
-	return service.LimiterSnapshot{Current: val, Exists: true}, nil
+	return service.LimiterSnapshot{
+		Current:       val,
+		Exists:        true,
+		ResetAtUnixMs: fixedResetAtUnixMs(ctx, l.rdb, key),
+	}, nil
+}
+
+// fixedResetAtUnixMs 读取 key 的 PTTL 并换算成 Unix 毫秒时间戳。
+// PTTL>0 → now + ttl；PTTL<=0（永久 / 已过期 / 错误）一律返回 0，让前端隐藏倒计时。
+func fixedResetAtUnixMs(ctx context.Context, rdb redis.Cmdable, key string) int64 {
+	ttl, err := rdb.PTTL(ctx, key).Result()
+	if err != nil || ttl <= 0 {
+		return 0
+	}
+	return time.Now().Add(ttl).UnixMilli()
 }
 
 // snapshotConcurrency 用 ZCount 在 (cutoff, +inf] 范围内统计当前持有的并发槽位。
@@ -120,16 +141,25 @@ func (l *serviceQuotaLimiter) SnapshotMany(ctx context.Context, keys []service.S
 
 // snapshotCmder 是 SnapshotMany Pipeline 内每条命令的统一句柄，便于 collect 时
 // 按 limiter 类型区分解析方式。Mode 同 SnapshotKey.Mode；IsConcurrency 用于走 ZCount。
+//
+// rollingResetAtMs 是该行 rolling 模式下计算好的窗口右端（now + window），保存下来
+// 让 collect 阶段不必重新算时间——避免 dispatch 与 collect 之间窗口推进引起的轻微漂移。
+// fixed 模式下 PTTL 必须额外发一条命令，因此持有 ttl PTTL 句柄。
 type snapshotCmder struct {
-	mode          string
-	isConcurrency bool
-	zcount        *redis.IntCmd
-	zrangeScores  *redis.ZSliceCmd
-	get           *redis.StringCmd
+	mode             string
+	isConcurrency    bool
+	zcount           *redis.IntCmd
+	zrangeScores     *redis.ZSliceCmd
+	get              *redis.StringCmd
+	pttl             *redis.DurationCmd
+	rollingResetAtMs int64
 }
 
 // dispatchSnapshotCmds 为每个 SnapshotKey 派发对应的 Redis 命令并保存句柄。
 // 不在这里读结果，统一由 collectSnapshotResults 处理，便于错误降级集中。
+//
+// fixed 模式额外发一条 PTTL 命令拿过期时刻；rolling/concurrency 不需要（rolling 由
+// dispatch 时刻 now+window 推算，concurrency 不展示倒计时）。
 func dispatchSnapshotCmds(ctx context.Context, pipe redis.Pipeliner, keys []service.SnapshotKey) []snapshotCmder {
 	cmders := make([]snapshotCmder, len(keys))
 	for i, sk := range keys {
@@ -145,8 +175,10 @@ func dispatchSnapshotCmds(ctx context.Context, pipe redis.Pipeliner, keys []serv
 				Min: fmt.Sprintf("(%d", cutoff),
 				Max: "+inf",
 			})
+			c.rollingResetAtMs = nowMs + sk.Window.Milliseconds()
 		default:
 			c.get = pipe.Get(ctx, sk.Key)
+			c.pttl = pipe.PTTL(ctx, sk.Key)
 		}
 		cmders[i] = c
 	}
@@ -169,6 +201,9 @@ func collectSnapshotResults(ctx context.Context, keys []service.SnapshotKey, cmd
 
 // readSnapshotCmd 把单条 Pipeline 命令的结果转成 LimiterSnapshot。
 // redis.Nil 视为 key 不存在 → {0,false}, nil；其他 err 直接返回。
+//
+// ResetAtUnixMs：concurrency 恒为 0；rolling 用 dispatch 阶段缓存的窗口右端；
+// fixed 用 PTTL 推算（PTTL<=0 / err 时返回 0，前端隐藏倒计时）。
 func readSnapshotCmd(c snapshotCmder) (service.LimiterSnapshot, error) {
 	switch {
 	case c.isConcurrency:
@@ -194,7 +229,7 @@ func readSnapshotCmd(c snapshotCmder) (service.LimiterSnapshot, error) {
 		if len(zs) == 0 {
 			return service.LimiterSnapshot{}, nil
 		}
-		return service.LimiterSnapshot{Current: sumRollingZScores(zs), Exists: true}, nil
+		return service.LimiterSnapshot{Current: sumRollingZScores(zs), Exists: true, ResetAtUnixMs: c.rollingResetAtMs}, nil
 	default:
 		val, err := c.get.Float64()
 		if errors.Is(err, redis.Nil) {
@@ -205,8 +240,21 @@ func readSnapshotCmd(c snapshotCmder) (service.LimiterSnapshot, error) {
 			// 工具污染）；统一交给 caller 走降级 + warn，不直接 panic。
 			return service.LimiterSnapshot{}, err
 		}
-		return service.LimiterSnapshot{Current: val, Exists: true}, nil
+		return service.LimiterSnapshot{Current: val, Exists: true, ResetAtUnixMs: pipelinePTTLToUnixMs(c.pttl)}, nil
 	}
+}
+
+// pipelinePTTLToUnixMs 把 Pipeline 内的 PTTL 命令结果换算成 Unix 毫秒时间戳。
+// 错误 / PTTL<=0（永久 key 或已过期）均返回 0，与 fixedResetAtUnixMs 行为一致。
+func pipelinePTTLToUnixMs(cmd *redis.DurationCmd) int64 {
+	if cmd == nil {
+		return 0
+	}
+	ttl, err := cmd.Result()
+	if err != nil || ttl <= 0 {
+		return 0
+	}
+	return time.Now().Add(ttl).UnixMilli()
 }
 
 // logSnapshotCmdError 把单条 SnapshotMany 命令的错误结构化记到 warn。

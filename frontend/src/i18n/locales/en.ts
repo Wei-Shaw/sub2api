@@ -3942,10 +3942,10 @@ export default {
       truncated: 'Showing first {count} entries (truncated)',
       loadError: 'Failed to load quota monitor',
       notActive: 'Idle',
-      perUserUnbound: 'Per-user · Select a user to view counts',
-      perUserUnboundHint: 'Per-user counters are tracked separately per user. Select a specific user in the filter above to view live counts.',
       fallbackTag: 'Fallback',
-      simplePath: 'Path #{index}',
+      resetIn: 'Resets in {seconds}s',
+      scopeHintNoUser: 'No user selected: showing per-user-targeted rules and shared rules; pick a user to also see per_user live counters',
+      scopeHintWithUser: 'User selected: showing rules targeting this user, shared rules, and this user\'s per_user counters',
       asOf: 'Updated {seconds}s ago',
       refresh: 'Refresh',
       filters: {

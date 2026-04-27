@@ -40,6 +40,9 @@
       <template #filters>
         <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800">
           <FilterBar :model-value="filter" @update:model-value="onFilterChange" />
+          <div class="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
+            {{ scopeHint }}
+          </div>
           <div v-if="errorMessage" class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-900/20 dark:text-red-400">
             {{ errorMessage }}
           </div>
@@ -48,9 +51,6 @@
           </div>
           <div v-else-if="snapshot?.truncated" class="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
             {{ t('admin.serviceQuotaMonitor.truncated', { count: rows.length }) }}
-          </div>
-          <div v-if="hasPerUserUnbound" class="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
-            {{ t('admin.serviceQuotaMonitor.perUserUnboundHint') }}
           </div>
         </div>
       </template>
@@ -104,7 +104,16 @@ const secondsSinceUpdate = ref(0)
 let asOfTimer: ReturnType<typeof setInterval> | null = null
 
 const rows = computed<LimiterRuntime[]>(() => snapshot.value?.items ?? [])
-const hasPerUserUnbound = computed<boolean>(() => rows.value.some((row) => row.per_user_unbound === true))
+
+// scopeHint 根据 filter.user_id 是否存在切换文案：
+//   - 未选用户：解释能看到"指定用户" + "全局共享" 规则；选择用户后可看 per_user
+//   - 已选用户：解释当前展示该用户被指定的规则、shared、以及该用户的 per_user 计数
+// 与监控展开语义（scopeUsersForRule）一一对应，避免用户对"为什么 per_user 没显示"困惑。
+const scopeHint = computed<string>(() => {
+  return filter.value.user_id
+    ? t('admin.serviceQuotaMonitor.scopeHintWithUser')
+    : t('admin.serviceQuotaMonitor.scopeHintNoUser')
+})
 
 async function loadOnce(): Promise<void> {
   if (loading.value) return

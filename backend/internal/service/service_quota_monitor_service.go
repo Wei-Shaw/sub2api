@@ -54,9 +54,12 @@ type MonitorSnapshot struct {
 // 字段命名与前端 i18n 对齐；用户视角下 PathSummary/ScopeUserID/CounterMode 抹空。
 // PathIndex 是规则内 path 的 1-based 位置，方便前端按规则分组展示而无需依赖 PathID。
 //
-// PerUserUnbound=true 是 per_user 模式下 admin 未提供 user filter 时产生的"占位行"：
-// 当前 row 不对应任何具体用户的真实计数（Exists 始终为 false、Current 为 0），
-// 前端据此显示"请选择具体用户查看"的提示，避免用户误以为规则未生效。
+// ResetAtUnixMs 表示当前计数器/窗口下次"自然清零"的 Unix 毫秒时间戳：
+//   - fixed window：key 真实 PTTL 推算的过期时刻
+//   - rolling window：now + 窗口长度（窗口右端，与 PreCheck 算 cutoff 的方式对齐）
+//   - concurrency 或 key 不存在：0（前端据此隐藏倒计时）
+//
+// 前端用 max(0, ceil((reset_at - now)/1000)) 显示"X 秒后重置"，刷新一次即更新。
 type LimiterRuntime struct {
 	RuleID         int64        `json:"rule_id"`
 	RuleName       string       `json:"rule_name"`
@@ -72,7 +75,7 @@ type LimiterRuntime struct {
 	ScopeUserID    *int64       `json:"scope_user_id,omitempty"`
 	IsFallback     bool         `json:"is_fallback"`
 	Exists         bool         `json:"exists"`
-	PerUserUnbound bool         `json:"per_user_unbound,omitempty"`
+	ResetAtUnixMs  int64        `json:"reset_at_unix_ms,omitempty"`
 }
 
 // PathSummary 是 admin 视角下 path 的轻量副本。nil 字段含义"不限制该维度"，与

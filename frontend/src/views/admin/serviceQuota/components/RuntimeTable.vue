@@ -8,17 +8,7 @@
     </template>
 
     <template #cell-path="{ row }">
-      <div v-if="!showInternal" class="text-xs text-gray-700 dark:text-gray-200">
-        {{ t('admin.serviceQuotaMonitor.simplePath', { index: row.path_index }) }}
-      </div>
-      <div v-else class="space-y-0.5">
-        <div class="text-xs font-medium text-gray-700 dark:text-gray-200">
-          {{ t('admin.serviceQuotaMonitor.simplePath', { index: row.path_index }) }}
-        </div>
-        <div class="font-mono text-[11px] text-gray-500 dark:text-gray-400">
-          {{ formatPathSummary(row.path_summary) }}
-        </div>
-      </div>
+      <PathChevron :summary="row.path_summary" :show-internal="showInternal" />
     </template>
 
     <template #cell-limiter="{ row }">
@@ -34,19 +24,19 @@
           <span class="font-mono font-medium text-gray-900 dark:text-white">
             {{ formatUsageNumbers(row) }}
           </span>
-          <span :class="['font-bold', getLoadTextClass(displayUtilization(row))]">
-            {{ Math.round(displayUtilization(row)) }}%
+          <span :class="['font-bold', getLoadTextClass(row.utilization_pct)]">
+            {{ Math.round(row.utilization_pct) }}%
           </span>
         </div>
         <div class="h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-700">
           <div
             class="h-full rounded-full transition-all duration-300"
-            :class="getLoadBarClass(displayUtilization(row))"
-            :style="getLoadBarStyle(displayUtilization(row))"
+            :class="getLoadBarClass(row.utilization_pct)"
+            :style="getLoadBarStyle(row.utilization_pct)"
           ></div>
         </div>
-        <div v-if="row.per_user_unbound" class="text-[11px] italic text-gray-400">
-          {{ t('admin.serviceQuotaMonitor.perUserUnbound') }}
+        <div v-if="resetSeconds(row) !== null" class="text-[11px] text-gray-400">
+          {{ t('admin.serviceQuotaMonitor.resetIn', { seconds: resetSeconds(row) }) }}
         </div>
       </div>
     </template>
@@ -88,8 +78,9 @@ import { useI18n } from 'vue-i18n'
 import DataTable from '@/components/common/DataTable.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import type { Column } from '@/components/common/types'
-import type { LimiterRuntime, LimiterRuntimePathSummary } from '@/api/admin/serviceQuota'
+import type { LimiterRuntime } from '@/api/admin/serviceQuota'
 import { getLoadBarClass, getLoadBarStyle, getLoadTextClass } from '@/utils/loadIndicator'
+import PathChevron from './PathChevron.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -106,6 +97,8 @@ const props = withDefaults(
 
 const { t } = useI18n()
 
+// 列配置：showInternal=false（用户视角）会隐藏 counterMode / scopeUser 两列。
+// 列定义放 computed 里，让 i18n 切换语言时自动重新渲染表头。
 const columns = computed<Column[]>(() => {
   const base: Column[] = [
     { key: 'rule', label: t('admin.serviceQuotaMonitor.columns.rule') },
@@ -132,43 +125,32 @@ function formatWindow(mode: string): string {
   return t(`admin.serviceQuota.windows.${mode}`, mode)
 }
 
-function formatCounterMode(mode: string): string {
+function formatCounterMode(mode: string | undefined): string {
+  if (!mode) return ''
   const key = mode === 'per_user' ? 'perUser' : mode
   return t(`admin.serviceQuota.counterModes.${key}`, mode)
 }
 
-function counterModeBadgeClass(mode: string): string {
+function counterModeBadgeClass(mode: string | undefined): string {
   if (mode === 'shared') return 'badge-info'
   if (mode === 'user') return 'badge-success'
   return 'badge-gray'
 }
 
+// daily_usd 是金额，保留 2 位；其他都是整数。
 function formatUsageNumbers(row: LimiterRuntime): string {
-  // daily_usd 是金额，保留 2 位；其他都是整数
   const isUsd = row.limiter_type === 'daily_usd'
   const limitText = isUsd ? row.limit_value.toFixed(2) : String(Math.round(row.limit_value))
-  // per_user 占位行真实 current 取决于具体用户，未指定时显示 — 而非 0，避免误读
-  if (row.per_user_unbound) {
-    return `— / ${limitText}`
-  }
   const currentText = isUsd ? row.current.toFixed(2) : String(Math.round(row.current))
   return `${currentText} / ${limitText}`
 }
 
-/** per_user 占位行没有实际计数器，进度条与文字百分比按 0% 显示（灰条） */
-function displayUtilization(row: LimiterRuntime): number {
-  if (row.per_user_unbound) return 0
-  return row.utilization_pct
-}
-
-function formatPathSummary(summary: LimiterRuntimePathSummary | null | undefined): string {
-  if (!summary) return t('admin.serviceQuota.scopeDetails.allRequests')
-  const parts: string[] = []
-  if (summary.platform) parts.push(`platform=${summary.platform}`)
-  if (summary.channel_id != null) parts.push(`channel=${summary.channel_id}`)
-  if (summary.group_id != null) parts.push(`group=${summary.group_id}`)
-  if (summary.account_id != null) parts.push(`account=${summary.account_id}`)
-  if (summary.model_pattern) parts.push(`model=${summary.model_pattern}`)
-  return parts.length === 0 ? t('admin.serviceQuota.scopeDetails.allRequests') : parts.join(' / ')
+// 倒计时：reset_at_unix_ms <= 0 或缺失 / key 不存在 → 不显示。
+// 客户端用 Date.now() 计算相对秒数，无需 1s tick；下次刷新拿到新 reset_at 自然刷新。
+function resetSeconds(row: LimiterRuntime): number | null {
+  const resetAt = row.reset_at_unix_ms
+  if (!resetAt || resetAt <= 0) return null
+  if (!row.exists) return null
+  return Math.max(0, Math.ceil((resetAt - Date.now()) / 1000))
 }
 </script>

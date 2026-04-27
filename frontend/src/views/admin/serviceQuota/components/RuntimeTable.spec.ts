@@ -14,6 +14,14 @@ vi.mock('vue-i18n', async () => {
   }
 })
 
+// PathChevron 内部用 i18n.global，不在测试中直接渲染——stub 掉避免依赖 i18n 实例。
+vi.mock('./PathChevron.vue', () => ({
+  default: {
+    props: ['summary', 'showInternal'],
+    template: '<div data-test="path-chevron">platform={{ summary?.platform || "" }}</div>',
+  },
+}))
+
 function makeRow(overrides: Partial<LimiterRuntime>): LimiterRuntime {
   return {
     rule_id: 1,
@@ -101,20 +109,24 @@ describe('RuntimeTable', () => {
     const usageCell = wrapper.find('[data-test-cell="usage"]')
     expect(usageCell.text()).toContain('0 / 60')
     expect(usageCell.text()).toContain('0%')
-    // 不再展示 notActive 文案；标签列也不再渲染 notActive badge
-    expect(usageCell.text()).not.toContain('admin.serviceQuotaMonitor.notActive')
-    const tagsCell = wrapper.find('[data-test-cell="tags"]')
-    expect(tagsCell.text()).not.toContain('admin.serviceQuotaMonitor.notActive')
   })
 
-  it('per_user_unbound 行 usage 显示 — / limit + 提示文案', () => {
+  it('reset_at_unix_ms > 0 + exists 时展示倒计时文案', () => {
+    const future = Date.now() + 60_000
     const wrapper = mount(RuntimeTable, {
-      props: { rows: [makeRow({ per_user_unbound: true, exists: false, limit_value: 60, current: 0 })], showInternal: true },
+      props: { rows: [makeRow({ reset_at_unix_ms: future })], showInternal: true },
       global: baseGlobal,
     })
     const usageCell = wrapper.find('[data-test-cell="usage"]')
-    expect(usageCell.text()).toContain('— / 60')
-    expect(usageCell.text()).toContain('admin.serviceQuotaMonitor.perUserUnbound')
+    expect(usageCell.text()).toContain('admin.serviceQuotaMonitor.resetIn')
+  })
+
+  it('reset_at_unix_ms 为 0 或 exists=false 时不渲染倒计时', () => {
+    const wrapper = mount(RuntimeTable, {
+      props: { rows: [makeRow({ reset_at_unix_ms: 0 })], showInternal: true },
+      global: baseGlobal,
+    })
+    expect(wrapper.find('[data-test-cell="usage"]').text()).not.toContain('admin.serviceQuotaMonitor.resetIn')
   })
 
   it('is_fallback=true 行显示兜底标签', () => {
@@ -126,15 +138,13 @@ describe('RuntimeTable', () => {
     expect(tagsCell.text()).toContain('admin.serviceQuotaMonitor.fallbackTag')
   })
 
-  it('用户视角下路径列只显示简化 "Path #N" 文本', () => {
+  it('path 单元格通过 PathChevron 渲染（透传 platform 字段）', () => {
     const wrapper = mount(RuntimeTable, {
-      props: { rows: [makeRow({ path_index: 3 })], showInternal: false },
+      props: { rows: [makeRow({ path_summary: { platform: 'openai' } })], showInternal: true },
       global: baseGlobal,
     })
     const pathCell = wrapper.find('[data-test-cell="path"]')
-    expect(pathCell.text()).toContain('admin.serviceQuotaMonitor.simplePath')
-    // 不应渲染 path_summary 详情（formatPathSummary 输出含 platform=anthropic）
-    expect(pathCell.text()).not.toContain('platform=anthropic')
+    expect(pathCell.find('[data-test="path-chevron"]').text()).toContain('platform=openai')
   })
 
   it('rows 为空时渲染 EmptyState 插槽', () => {

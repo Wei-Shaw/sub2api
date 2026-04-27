@@ -80,10 +80,12 @@ func (r *serviceQuotaRuleRepository) Create(ctx context.Context, input service.S
 	if err != nil {
 		return nil, err
 	}
-	if err := insertLimitersTx(ctx, tx, rule.ID, input.Limiters); err != nil {
+	// Create 与 Update 共用同一组 upsert helper（复用原则）：Create 时空表无冲突，
+	// upsert 退化为普通 INSERT；Update 时 ON CONFLICT 保留旧 id 让计数延续。
+	if err := upsertLimitersTx(ctx, tx, rule.ID, input.Limiters); err != nil {
 		return nil, err
 	}
-	if err := insertPathsTx(ctx, tx, rule.ID, input.Paths); err != nil {
+	if err := upsertPathsTx(ctx, tx, rule.ID, input.Paths); err != nil {
 		return nil, err
 	}
 	if err := replaceRuleUsersTx(ctx, tx, rule.ID, input.TargetUserIDs); err != nil {
@@ -115,16 +117,13 @@ func (r *serviceQuotaRuleRepository) Update(ctx context.Context, id int64, input
 		return nil, err
 	}
 
-	if _, err := tx.ExecContext(ctx, `DELETE FROM service_quota_limiters WHERE rule_id = $1`, rule.ID); err != nil {
+	// 走 upsert 而非 DELETE+INSERT，让"调整 limit_value / 字段未变的 path"保留原 id。
+	// 计数 key 公式 svcquota:v2:<rule>:<path>:<limiter_type>:<target> 含 path_id，
+	// 旧实现会重置已有 Redis 计数；upsert 后内容相同的 path/limiter id 稳定，计数延续。
+	if err := upsertLimitersTx(ctx, tx, rule.ID, input.Limiters); err != nil {
 		return nil, err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM service_quota_paths WHERE rule_id = $1`, rule.ID); err != nil {
-		return nil, err
-	}
-	if err := insertLimitersTx(ctx, tx, rule.ID, input.Limiters); err != nil {
-		return nil, err
-	}
-	if err := insertPathsTx(ctx, tx, rule.ID, input.Paths); err != nil {
+	if err := upsertPathsTx(ctx, tx, rule.ID, input.Paths); err != nil {
 		return nil, err
 	}
 	if err := replaceRuleUsersTx(ctx, tx, rule.ID, input.TargetUserIDs); err != nil {
@@ -320,7 +319,20 @@ func joinPlaceholders(n int) string {
 	return strings.Join(parts, ",")
 }
 
-func insertLimitersTx(ctx context.Context, tx *sql.Tx, ruleID int64, limiters []service.ServiceQuotaLimiterInput) error {
+// upsertLimitersTx 用"按 (rule_id, limiter_type) 内容稳定 id"语义写入 limiters。
+//
+// 流程：
+//  1. 删除新清单中不再出现的 limiter_type（保留输入中存在的 type 的 id）
+//  2. ON CONFLICT (rule_id, limiter_type) DO UPDATE 把 limit_value/window_mode 更新到位
+//
+// 这样 user 改 RPM=60 → RPM=600 时 limiter id 不变（虽然 counterKey 公式不含 limiter_id，
+// 但保留 id 仍然是 reuse 原则的体现，避免无意义的 id 自增 burn）。
+//
+// 输入空 limiters 时清空规则下所有 limiter（统一在 deleteRemovedLimitersTx 里处理）。
+func upsertLimitersTx(ctx context.Context, tx *sql.Tx, ruleID int64, limiters []service.ServiceQuotaLimiterInput) error {
+	if err := deleteRemovedLimitersTx(ctx, tx, ruleID, limiters); err != nil {
+		return err
+	}
 	if len(limiters) == 0 {
 		return nil
 	}
@@ -331,12 +343,46 @@ func insertLimitersTx(ctx context.Context, tx *sql.Tx, ruleID int64, limiters []
 		values[i] = fmt.Sprintf("($%d,$%d,$%d,$%d)", base+1, base+2, base+3, base+4)
 		args = append(args, ruleID, l.LimiterType, l.WindowMode, l.LimitValue)
 	}
-	query := `INSERT INTO service_quota_limiters (rule_id, limiter_type, window_mode, limit_value) VALUES ` + strings.Join(values, ",")
+	query := `INSERT INTO service_quota_limiters (rule_id, limiter_type, window_mode, limit_value) VALUES ` +
+		strings.Join(values, ",") +
+		` ON CONFLICT (rule_id, limiter_type) DO UPDATE SET window_mode = EXCLUDED.window_mode, limit_value = EXCLUDED.limit_value`
 	_, err := tx.ExecContext(ctx, query, args...)
 	return err
 }
 
-func insertPathsTx(ctx context.Context, tx *sql.Tx, ruleID int64, paths []service.ServiceQuotaPathInput) error {
+// deleteRemovedLimitersTx 把"新输入清单里没有的 limiter_type"从 DB 删除。
+// 拆出来便于 upsertLimitersTx 保持 ≤30 行。
+func deleteRemovedLimitersTx(ctx context.Context, tx *sql.Tx, ruleID int64, limiters []service.ServiceQuotaLimiterInput) error {
+	if len(limiters) == 0 {
+		_, err := tx.ExecContext(ctx, `DELETE FROM service_quota_limiters WHERE rule_id = $1`, ruleID)
+		return err
+	}
+	args := []any{ruleID}
+	placeholders := make([]string, len(limiters))
+	for i, l := range limiters {
+		args = append(args, l.LimiterType)
+		placeholders[i] = fmt.Sprintf("$%d", i+2)
+	}
+	query := `DELETE FROM service_quota_limiters WHERE rule_id = $1 AND limiter_type NOT IN (` + strings.Join(placeholders, ",") + `)`
+	_, err := tx.ExecContext(ctx, query, args...)
+	return err
+}
+
+// upsertPathsTx 用"按 (rule_id, platform, channel_id, group_id, account_id, model_pattern)
+// 唯一索引 idx_service_quota_paths_unique 内容稳定 id"语义写入 paths。
+// 该索引内部用 COALESCE 把 NULL 折叠为零值参与去重，5 字段完全一致即视作"同一条 path"。
+//
+// 流程：
+//  1. 删除新清单中不再出现的 path（按所有 5 个字段比对，NULL 折叠为零值）
+//  2. ON CONFLICT 命中已有 unique index 时不更新任何字段（path 5 个字段就是身份本身，
+//     保留旧 id 即可——这是"保留计数"的关键，因为 counterKey 公式含 path_id）
+//
+// 注意 unique index 用 COALESCE 把 NULL 折叠为零值参与去重，所以 ON CONFLICT 子句要写
+// "ON CONSTRAINT idx_service_quota_paths_unique"——索引本身是唯一约束。
+func upsertPathsTx(ctx context.Context, tx *sql.Tx, ruleID int64, paths []service.ServiceQuotaPathInput) error {
+	if err := deleteRemovedPathsTx(ctx, tx, ruleID, paths); err != nil {
+		return err
+	}
 	if len(paths) == 0 {
 		return nil
 	}
@@ -347,7 +393,43 @@ func insertPathsTx(ctx context.Context, tx *sql.Tx, ruleID int64, paths []servic
 		values[i] = fmt.Sprintf("($%d,$%d,$%d,$%d,$%d,$%d)", base+1, base+2, base+3, base+4, base+5, base+6)
 		args = append(args, ruleID, p.Platform, p.ChannelID, p.GroupID, p.AccountID, p.ModelPattern)
 	}
-	query := `INSERT INTO service_quota_paths (rule_id, platform, channel_id, group_id, account_id, model_pattern) VALUES ` + strings.Join(values, ",")
+	// 用唯一索引 idx_service_quota_paths_unique（含 COALESCE 折叠 NULL）做冲突推断，
+	// 命中时 DO NOTHING：5 字段身份完全一致 → 保留旧行 + 旧 id，让 Redis 计数延续。
+	query := `INSERT INTO service_quota_paths (rule_id, platform, channel_id, group_id, account_id, model_pattern) VALUES ` +
+		strings.Join(values, ",") +
+		` ON CONFLICT ON CONSTRAINT idx_service_quota_paths_unique DO NOTHING`
+	_, err := tx.ExecContext(ctx, query, args...)
+	return err
+}
+
+// deleteRemovedPathsTx 把"新输入清单里没有的 path 组合"从 DB 删除。
+// NULL 字段统一用 COALESCE 折叠成零值，与 idx_service_quota_paths_unique 的语义一致。
+//
+// 没有合适的 NOT IN 多列写法时用 NOT EXISTS + 临时 VALUES 子查询：可读性比连串 OR 高，
+// 也不会被 SQL 注入（参数走占位符）。
+func deleteRemovedPathsTx(ctx context.Context, tx *sql.Tx, ruleID int64, paths []service.ServiceQuotaPathInput) error {
+	if len(paths) == 0 {
+		_, err := tx.ExecContext(ctx, `DELETE FROM service_quota_paths WHERE rule_id = $1`, ruleID)
+		return err
+	}
+	values := make([]string, len(paths))
+	args := []any{ruleID}
+	for i, p := range paths {
+		base := i*5 + 2
+		values[i] = fmt.Sprintf("($%d::varchar, $%d::bigint, $%d::bigint, $%d::bigint, $%d::varchar)",
+			base, base+1, base+2, base+3, base+4)
+		args = append(args, p.Platform, p.ChannelID, p.GroupID, p.AccountID, p.ModelPattern)
+	}
+	query := `DELETE FROM service_quota_paths
+		WHERE rule_id = $1
+		AND NOT EXISTS (
+			SELECT 1 FROM (VALUES ` + strings.Join(values, ",") + `) AS keep(platform, channel_id, group_id, account_id, model_pattern)
+			WHERE COALESCE(service_quota_paths.platform, '')      = COALESCE(keep.platform, '')
+			  AND COALESCE(service_quota_paths.channel_id, 0)     = COALESCE(keep.channel_id, 0)
+			  AND COALESCE(service_quota_paths.group_id, 0)       = COALESCE(keep.group_id, 0)
+			  AND COALESCE(service_quota_paths.account_id, 0)     = COALESCE(keep.account_id, 0)
+			  AND COALESCE(service_quota_paths.model_pattern, '') = COALESCE(keep.model_pattern, '')
+		)`
 	_, err := tx.ExecContext(ctx, query, args...)
 	return err
 }

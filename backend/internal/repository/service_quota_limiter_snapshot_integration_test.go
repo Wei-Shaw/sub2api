@@ -32,6 +32,65 @@ func (s *ServiceQuotaLimiterSnapshotSuite) SetupTest() {
 	s.limiter = NewServiceQuotaLimiter(s.rdb)
 }
 
+// Test_Snapshot_Rolling_ResetAtUnixMs 验证 rolling 快照返回的 ResetAtUnixMs ≈ now+window。
+// 拆出来避免 Test_Snapshot_Rolling_RespectsWindow 同时校验过多内容。
+func (s *ServiceQuotaLimiterSnapshotSuite) Test_Snapshot_Rolling_ResetAtUnixMs() {
+	const (
+		key    = "svcquota:test:snapshot:rolling:reset"
+		window = 30 * time.Second
+	)
+	_, err := s.limiter.Increment(s.ctx, key, 1, window, service.ServiceQuotaWindowRolling)
+	s.RequireNoError(err)
+	beforeMs := time.Now().UnixMilli()
+	snap, err := s.limiter.Snapshot(s.ctx, key, window, service.ServiceQuotaWindowRolling)
+	s.RequireNoError(err)
+	require.True(s.T(), snap.Exists)
+	require.InDelta(s.T(),
+		float64(beforeMs+window.Milliseconds()),
+		float64(snap.ResetAtUnixMs),
+		1500, "rolling ResetAtUnixMs 应 ≈ now + window，容差 1.5s")
+}
+
+// Test_Snapshot_Fixed_ResetAtUnixMs 验证 fixed 快照返回的 ResetAtUnixMs ≈ now+ttl。
+func (s *ServiceQuotaLimiterSnapshotSuite) Test_Snapshot_Fixed_ResetAtUnixMs() {
+	const (
+		key    = "svcquota:test:snapshot:fixed:reset"
+		window = 60 * time.Second
+	)
+	_, err := s.limiter.Increment(s.ctx, key, 1, window, service.ServiceQuotaWindowFixed)
+	s.RequireNoError(err)
+	beforeMs := time.Now().UnixMilli()
+	snap, err := s.limiter.Snapshot(s.ctx, key, window, service.ServiceQuotaWindowFixed)
+	s.RequireNoError(err)
+	require.True(s.T(), snap.Exists)
+	require.InDelta(s.T(),
+		float64(beforeMs+window.Milliseconds()),
+		float64(snap.ResetAtUnixMs),
+		1500, "fixed ResetAtUnixMs 应 ≈ now + ttl，容差 1.5s")
+}
+
+// Test_Snapshot_Concurrency_ResetAtUnixMs 验证 concurrency 快照 ResetAtUnixMs 始终为 0。
+func (s *ServiceQuotaLimiterSnapshotSuite) Test_Snapshot_Concurrency_ResetAtUnixMs() {
+	const key = "svcquota:test:snapshot:concurrency:reset"
+	ok, err := s.limiter.Acquire(s.ctx, key, "m1", 10)
+	s.RequireNoError(err)
+	require.True(s.T(), ok)
+	snap, err := s.limiter.Snapshot(s.ctx, key, 0, "")
+	s.RequireNoError(err)
+	require.True(s.T(), snap.Exists)
+	require.Zero(s.T(), snap.ResetAtUnixMs, "concurrency 快照不展示倒计时 → ResetAtUnixMs=0")
+}
+
+// Test_Snapshot_Missing_ResetAtUnixMs 验证 key 不存在时 ResetAtUnixMs=0。
+func (s *ServiceQuotaLimiterSnapshotSuite) Test_Snapshot_Missing_ResetAtUnixMs() {
+	for _, mode := range []string{service.ServiceQuotaWindowFixed, service.ServiceQuotaWindowRolling} {
+		snap, err := s.limiter.Snapshot(s.ctx, "svcquota:test:snapshot:missing:"+mode, time.Minute, mode)
+		s.RequireNoError(err)
+		require.False(s.T(), snap.Exists, "mode=%s missing key Exists=false", mode)
+		require.Zero(s.T(), snap.ResetAtUnixMs, "mode=%s missing key ResetAtUnixMs=0", mode)
+	}
+}
+
 // Test_Snapshot_Rolling_RespectsWindow 验证 rolling 快照只统计 window 内的 member，
 // 且多次 Snapshot 不修改 ZSET（与 Current 相比少了 ZRemRangeByScore 副作用）。
 func (s *ServiceQuotaLimiterSnapshotSuite) Test_Snapshot_Rolling_RespectsWindow() {
