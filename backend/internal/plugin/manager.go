@@ -74,13 +74,20 @@ type PluginManager struct {
 // PluginSettingsRegistrar is the minimal surface PluginManager needs from
 // service.PluginSettingsService.
 //
-// V5/W6 SETTINGS-V2: Subscribe lets PluginManager observe value-change
-// events for a single plugin so it can coalesce reload triggers when a
-// key with x-requires-reload=true is updated (DESIGN §4.4). Subscribe
-// only watches one (plugin, key) pair per call; passing key="" subscribes
-// to the whole namespace, which is the mode the manager uses.
+// V5/W6 SETTINGS-V2:
+//   - RegisterSchemaWithInput is the aggregate-input form (DESIGN §4.1)
+//     that carries schema_version + properties_meta from the manifest.
+//     PluginManager calls this exclusively; the legacy RegisterSchema
+//     wrapper is preserved on the concrete service but not surfaced
+//     here because every code path the manager owns now ships the v2
+//     fields.
+//   - Subscribe lets PluginManager observe value-change events for a
+//     single plugin so it can coalesce reload triggers when a key with
+//     x-requires-reload=true is updated (DESIGN §4.4). Subscribe only
+//     watches one (plugin, key) pair per call; passing key="" subscribes
+//     to the whole namespace, which is the mode the manager uses.
 type PluginSettingsRegistrar interface {
-	RegisterSchema(ctx context.Context, pluginName string, schemaJSON, defaultsJSON []byte) error
+	RegisterSchemaWithInput(ctx context.Context, in service.RegisterSchemaInput) error
 	UnregisterSchema(pluginName string)
 	Subscribe(pluginName, key string) (<-chan service.PluginSettingsChange, func())
 }
@@ -838,8 +845,18 @@ func (m *PluginManager) spawnAndConnect(parentCtx context.Context, inst *PluginI
 	// internally; we only skip when the plugin did not ship a schema.
 	if m.settingsService != nil && len(manifest.GetSettingsSchemaJson()) > 0 {
 		regCtx, cancelReg := context.WithTimeout(parentCtx, m.cfg.ManifestTimeout)
-		err := m.settingsService.RegisterSchema(regCtx, inst.Name,
-			manifest.GetSettingsSchemaJson(), manifest.GetSettingsDefaultsJson())
+		// V5/W6 SETTINGS-V2 (DESIGN §4.1): pass the full manifest envelope
+		// — schema_version + properties_meta_json — so the service can
+		// (1) detect schema_version bumps and drop existing watchers,
+		// (2) prefer the SDK-authoritative properties_meta over re-deriving
+		// it from x-* vendor extensions inside the schema bytes.
+		err := m.settingsService.RegisterSchemaWithInput(regCtx, service.RegisterSchemaInput{
+			PluginName:         inst.Name,
+			SchemaJSON:         manifest.GetSettingsSchemaJson(),
+			DefaultsJSON:       manifest.GetSettingsDefaultsJson(),
+			SchemaVersion:      manifest.GetSettingsSchemaVersion(),
+			PropertiesMetaJSON: manifest.GetSettingsPropertiesMetaJson(),
+		})
 		cancelReg()
 		if err != nil {
 			m.sdkServer.UnregisterPlugin(inst.Name)
