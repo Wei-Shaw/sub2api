@@ -335,6 +335,7 @@ export default {
     dashboard: 'Dashboard',
     announcements: 'Announcements',
     plugins: 'Plugins',
+    pluginSettings: 'Plugin Settings',
     apiKeys: 'API Keys',
     usage: 'Usage',
     redeem: 'Redeem',
@@ -970,6 +971,14 @@ export default {
 
   // Admin
   admin: {
+    // Plugin Settings
+    pluginSettings: {
+      title: 'Plugin Settings',
+      description: 'Inspect and edit the runtime settings each plugin exposes.',
+      noPlugins: 'No plugin has registered a settings schema yet.',
+      emptySchema: 'This plugin declares no tunable fields.',
+      saveSuccess: 'Settings saved.',
+    },
     // Plugin Management
     plugins: {
       title: 'Plugin Management',
