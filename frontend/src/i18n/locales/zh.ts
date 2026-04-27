@@ -335,6 +335,7 @@ export default {
     dashboard: '仪表盘',
     announcements: '公告',
     plugins: '插件管理',
+    pluginSettings: '插件设置',
     apiKeys: 'API 密钥',
     usage: '使用记录',
     redeem: '兑换',
@@ -974,6 +975,14 @@ export default {
 
   // Admin
   admin: {
+    // Plugin Settings
+    pluginSettings: {
+      title: '插件设置',
+      description: '查看并修改各插件已注册的可调配置项',
+      noPlugins: '当前没有插件注册过设置 schema',
+      emptySchema: '该插件未声明任何可调字段',
+      saveSuccess: '设置已保存',
+    },
     // Plugin Management
     plugins: {
       title: '插件管理',

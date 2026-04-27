@@ -321,6 +321,8 @@ type runner struct {
 	// client-streaming RPC that ships plugin slog records into the host zap
 	// pipeline. They are populated lazily inside Init once the SDK
 	// connection is up.
+	settingsImpl *settingsClient
+
 	remoteLogHandler *remoteSlogHandler
 	remoteLogCancel  context.CancelFunc
 	remoteLogDone    chan struct{}
@@ -374,6 +376,7 @@ func (r *runner) Init(ctx context.Context, req *pb.PluginInitRequest) (*pb.Plugi
 
 		sqlClient := pb.NewSQLProxyClient(conn)
 		redisClient := pb.NewRedisProxyClient(conn)
+		settingsExtClient := pb.NewSettingsExtensionClient(conn)
 		sdkdriver.Register(sqlClient)
 		db, err := sql.Open(sdkdriver.DriverName, "")
 		if err != nil {
@@ -425,13 +428,35 @@ func (r *runner) Init(ctx context.Context, req *pb.PluginInitRequest) (*pb.Plugi
 			return jobScheduler.Subscribe(ctx)
 		})
 
+		// SettingsExtension capability is enabled either by explicit opt-in
+		// or by the plugin shipping a SettingsSchemaDoc in its manifest.
+		// nilSettingsClient surfaces a clear error if the plugin tries to
+		// use Settings() without declaring the capability, so debugging is
+		// straightforward.
+		settingsEnabled := false
+		for _, c := range approved {
+			if c == CapabilitySettingsExtension {
+				settingsEnabled = true
+				break
+			}
+		}
+
+		var settingsCli SettingsClient = nilSettingsClient{}
+		if settingsEnabled {
+			realClient := newSettingsClient(settingsExtClient, pluginName, r.logger)
+			realClient.startWatchLoop()
+			settingsCli = realClient
+			r.settingsImpl = realClient
+		}
+
 		r.ctxImpl = &pluginCtx{
-			db:      db,
-			redis:   &redisAdapter{inner: sdkdriver.NewNamespacedRedisClient(redisClient, r.logger, pluginName, rawAllowed)},
-			logger:  r.logger,
-			config:  cfgCopy,
-			secrets: secrets,
-			jobs:    jobs,
+			db:       db,
+			redis:    &redisAdapter{inner: sdkdriver.NewNamespacedRedisClient(redisClient, r.logger, pluginName, rawAllowed)},
+			logger:   r.logger,
+			config:   cfgCopy,
+			secrets:  secrets,
+			jobs:     jobs,
+			settings: settingsCli,
 		}
 
 		if err := r.plugin.Init(r.ctxImpl); err != nil {
@@ -537,6 +562,13 @@ func (r *runner) gracefulShutdown(grpcSrv *grpc.Server, httpSrv *http.Server) {
 		}
 	}
 
+	if r.settingsImpl != nil {
+		// Stop the long-lived watch goroutine before tearing down the gRPC
+		// connection so we do not log spurious cancelled-stream errors on
+		// the way out.
+		r.settingsImpl.stopWatchLoop()
+	}
+
 	if r.ctxImpl != nil && r.ctxImpl.db != nil {
 		if err := r.ctxImpl.db.Close(); err != nil {
 			r.logger.Warn("close sql.DB", "error", err)
@@ -566,12 +598,13 @@ func (r *runner) gracefulShutdown(grpcSrv *grpc.Server, httpSrv *http.Server) {
 // pluginCtx is the concrete implementation of PluginContext returned to the
 // plugin during Init.
 type pluginCtx struct {
-	db      *sql.DB
-	redis   RedisClient
-	logger  *slog.Logger
-	config  map[string]string
-	secrets SecretEncryptor
-	jobs    JobsClient
+	db       *sql.DB
+	redis    RedisClient
+	logger   *slog.Logger
+	config   map[string]string
+	secrets  SecretEncryptor
+	jobs     JobsClient
+	settings SettingsClient
 }
 
 func (c *pluginCtx) DB() *sql.DB              { return c.db }
@@ -584,6 +617,12 @@ func (c *pluginCtx) Config() map[string]string {
 		out[k] = v
 	}
 	return out
+}
+func (c *pluginCtx) Settings() SettingsClient {
+	if c.settings == nil {
+		return nilSettingsClient{}
+	}
+	return c.settings
 }
 
 // Jobs returns the JobScheduler client. May be nil if the SDK runner did

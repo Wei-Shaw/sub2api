@@ -1469,3 +1469,197 @@ var JobScheduler_ServiceDesc = grpc.ServiceDesc{
 	},
 	Metadata: "sdk.proto",
 }
+
+const (
+	SettingsExtension_Get_FullMethodName   = "/pluginsdk.SettingsExtension/Get"
+	SettingsExtension_Watch_FullMethodName = "/pluginsdk.SettingsExtension/Watch"
+)
+
+// SettingsExtensionClient is the client API for SettingsExtension service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// SettingsExtension — V5 W3
+// ============================================================
+//
+// SettingsExtension lets a plugin store and read its admin-configurable
+// runtime settings without needing its own dedicated database table. The
+// host owns persistence (plugin_settings table) and validates writes
+// against the JSON Schema the plugin declared in its manifest. The
+// per-plugin settings tab in the admin UI renders that schema directly,
+// so a new plugin only needs to ship a Draft-07 schema + defaults to get
+// a fully functional settings page.
+//
+// Trust model: the SDK server resolves the caller via the same
+// `x-sub2api-plugin` metadata header used elsewhere; a plugin can only
+// read/watch keys inside its own namespace. Cross-plugin settings access
+// is intentionally not supported here.
+type SettingsExtensionClient interface {
+	// Get returns the current value (and revision) of a single key inside
+	// the calling plugin's namespace. Missing keys return exists=false
+	// rather than a gRPC error so plugins can probe without try/catch.
+	Get(ctx context.Context, in *SettingsGetRequest, opts ...grpc.CallOption) (*SettingsGetResponse, error)
+	// Watch streams change events for keys inside the calling plugin's
+	// namespace. An empty key subscribes to every key in the namespace.
+	// The host MAY emit a synthetic "snapshot" event for each existing key
+	// immediately after subscription so the plugin sees the current state
+	// without an extra round-trip. Reconnect logic is the SDK's
+	// responsibility (exponential backoff, full re-sync on resume).
+	Watch(ctx context.Context, in *SettingsWatchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SettingsChangeEvent], error)
+}
+
+type settingsExtensionClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewSettingsExtensionClient(cc grpc.ClientConnInterface) SettingsExtensionClient {
+	return &settingsExtensionClient{cc}
+}
+
+func (c *settingsExtensionClient) Get(ctx context.Context, in *SettingsGetRequest, opts ...grpc.CallOption) (*SettingsGetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SettingsGetResponse)
+	err := c.cc.Invoke(ctx, SettingsExtension_Get_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *settingsExtensionClient) Watch(ctx context.Context, in *SettingsWatchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SettingsChangeEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &SettingsExtension_ServiceDesc.Streams[0], SettingsExtension_Watch_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[SettingsWatchRequest, SettingsChangeEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type SettingsExtension_WatchClient = grpc.ServerStreamingClient[SettingsChangeEvent]
+
+// SettingsExtensionServer is the server API for SettingsExtension service.
+// All implementations must embed UnimplementedSettingsExtensionServer
+// for forward compatibility.
+//
+// SettingsExtension — V5 W3
+// ============================================================
+//
+// SettingsExtension lets a plugin store and read its admin-configurable
+// runtime settings without needing its own dedicated database table. The
+// host owns persistence (plugin_settings table) and validates writes
+// against the JSON Schema the plugin declared in its manifest. The
+// per-plugin settings tab in the admin UI renders that schema directly,
+// so a new plugin only needs to ship a Draft-07 schema + defaults to get
+// a fully functional settings page.
+//
+// Trust model: the SDK server resolves the caller via the same
+// `x-sub2api-plugin` metadata header used elsewhere; a plugin can only
+// read/watch keys inside its own namespace. Cross-plugin settings access
+// is intentionally not supported here.
+type SettingsExtensionServer interface {
+	// Get returns the current value (and revision) of a single key inside
+	// the calling plugin's namespace. Missing keys return exists=false
+	// rather than a gRPC error so plugins can probe without try/catch.
+	Get(context.Context, *SettingsGetRequest) (*SettingsGetResponse, error)
+	// Watch streams change events for keys inside the calling plugin's
+	// namespace. An empty key subscribes to every key in the namespace.
+	// The host MAY emit a synthetic "snapshot" event for each existing key
+	// immediately after subscription so the plugin sees the current state
+	// without an extra round-trip. Reconnect logic is the SDK's
+	// responsibility (exponential backoff, full re-sync on resume).
+	Watch(*SettingsWatchRequest, grpc.ServerStreamingServer[SettingsChangeEvent]) error
+	mustEmbedUnimplementedSettingsExtensionServer()
+}
+
+// UnimplementedSettingsExtensionServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedSettingsExtensionServer struct{}
+
+func (UnimplementedSettingsExtensionServer) Get(context.Context, *SettingsGetRequest) (*SettingsGetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Get not implemented")
+}
+func (UnimplementedSettingsExtensionServer) Watch(*SettingsWatchRequest, grpc.ServerStreamingServer[SettingsChangeEvent]) error {
+	return status.Error(codes.Unimplemented, "method Watch not implemented")
+}
+func (UnimplementedSettingsExtensionServer) mustEmbedUnimplementedSettingsExtensionServer() {}
+func (UnimplementedSettingsExtensionServer) testEmbeddedByValue()                           {}
+
+// UnsafeSettingsExtensionServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to SettingsExtensionServer will
+// result in compilation errors.
+type UnsafeSettingsExtensionServer interface {
+	mustEmbedUnimplementedSettingsExtensionServer()
+}
+
+func RegisterSettingsExtensionServer(s grpc.ServiceRegistrar, srv SettingsExtensionServer) {
+	// If the following call panics, it indicates UnimplementedSettingsExtensionServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&SettingsExtension_ServiceDesc, srv)
+}
+
+func _SettingsExtension_Get_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SettingsGetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SettingsExtensionServer).Get(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SettingsExtension_Get_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SettingsExtensionServer).Get(ctx, req.(*SettingsGetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SettingsExtension_Watch_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(SettingsWatchRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(SettingsExtensionServer).Watch(m, &grpc.GenericServerStream[SettingsWatchRequest, SettingsChangeEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type SettingsExtension_WatchServer = grpc.ServerStreamingServer[SettingsChangeEvent]
+
+// SettingsExtension_ServiceDesc is the grpc.ServiceDesc for SettingsExtension service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var SettingsExtension_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "pluginsdk.SettingsExtension",
+	HandlerType: (*SettingsExtensionServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Get",
+			Handler:    _SettingsExtension_Get_Handler,
+		},
+	},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Watch",
+			Handler:       _SettingsExtension_Watch_Handler,
+			ServerStreams: true,
+		},
+	},
+	Metadata: "sdk.proto",
+}

@@ -1,6 +1,8 @@
 package pluginsdk
 
 import (
+	"encoding/json"
+
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
@@ -44,6 +46,13 @@ const (
 	// the schedule clock and per-(plugin, job) leader lock; the plugin owns
 	// the handler. See V5-DESIGN §2 (W2 JobSchedulerCapability).
 	CapabilityJobScheduler = "job_scheduler"
+	// CapabilitySettingsExtension opts the plugin into the V5
+	// SettingsExtension SDK feature. The host validates schema-bearing
+	// manifests and wires up Settings.Get / Watch only for plugins that
+	// declare this capability (or supply a non-empty SettingsSchema in
+	// their Manifest, which the SDK upgrades to this capability
+	// automatically). Declaring it explicitly is harmless.
+	CapabilitySettingsExtension = "settings_extension"
 )
 
 // Manifest is the Go-level representation of pluginsdk.ManifestResponse.
@@ -74,6 +83,37 @@ type Manifest struct {
 	// allow-list and only forwards the approved ones to the plugin runtime
 	// via PluginInitRequest.capabilities.
 	Capabilities []string
+
+	// SettingsSchema is the optional JSON Schema (Draft-07) describing the
+	// plugin's admin-tunable runtime settings. When set, the host renders
+	// it as a tab on the admin Settings page. Leaving it empty means the
+	// plugin contributes no settings. See SettingsSchemaDoc for the
+	// preferred construction helper.
+	SettingsSchema *SettingsSchemaDoc
+}
+
+// SettingsSchemaDoc bundles a JSON Schema and its default values into the
+// shape the SDK ships in the manifest. Both fields are stored as raw JSON so
+// plugins can compose them however they like (literal strings, embed.FS
+// bytes, generated structs marshalled at startup).
+//
+// The host is the source of truth once the manifest has been received; the
+// plugin should treat the schema as immutable for the lifetime of a given
+// plugin version. Bumping the plugin version + restarting is the supported
+// upgrade path when the schema changes shape.
+type SettingsSchemaDoc struct {
+	// Schema is a JSON Schema Draft-07 document. The top level should be an
+	// object with a `properties` map; each property describes one setting.
+	// Use the standard `default`, `title`, `description`, `enum` keywords —
+	// the admin form renderer (vue-json-schema-form) consumes them directly.
+	Schema json.RawMessage
+
+	// Defaults is a JSON object whose keys mirror the top-level properties
+	// in Schema and whose values are the default the host should seed when
+	// no admin save has happened yet. Marshalling defaults separately from
+	// the schema avoids forcing the host to re-walk the schema tree for
+	// every plugin install.
+	Defaults json.RawMessage
 }
 
 // EndpointDecl describes a single HTTP endpoint declaration.
@@ -133,6 +173,7 @@ func (m *Manifest) toProto() *pb.ManifestResponse {
 	if m == nil {
 		return &pb.ManifestResponse{}
 	}
+	caps := append([]string(nil), m.Capabilities...)
 	resp := &pb.ManifestResponse{
 		Name:             m.Name,
 		DisplayName:      m.DisplayName,
@@ -142,12 +183,37 @@ func (m *Manifest) toProto() *pb.ManifestResponse {
 		GatewayEndpoints: endpointsToProto(m.GatewayEndpoints),
 		PluginEndpoints:  endpointsToProto(m.PluginEndpoints),
 		MigrationFiles:   append([]string(nil), m.MigrationFiles...),
-		Capabilities:     append([]string(nil), m.Capabilities...),
 	}
 	if m.Frontend != nil {
 		resp.Frontend = m.Frontend.toProto()
 	}
+	if m.SettingsSchema != nil {
+		// Copy bytes defensively so later mutations on the plugin side cannot
+		// race with a transmission already in flight.
+		if len(m.SettingsSchema.Schema) > 0 {
+			resp.SettingsSchemaJson = append([]byte(nil), m.SettingsSchema.Schema...)
+		}
+		if len(m.SettingsSchema.Defaults) > 0 {
+			resp.SettingsDefaultsJson = append([]byte(nil), m.SettingsSchema.Defaults...)
+		}
+		// Implicitly opt the plugin into SettingsExtension when it ships a
+		// schema. The host's allow-list still has the final say but this
+		// removes a footgun where authors forget the constant.
+		if resp.SettingsSchemaJson != nil && !containsCap(caps, CapabilitySettingsExtension) {
+			caps = append(caps, CapabilitySettingsExtension)
+		}
+	}
+	resp.Capabilities = caps
 	return resp
+}
+
+func containsCap(caps []string, want string) bool {
+	for _, c := range caps {
+		if c == want {
+			return true
+		}
+	}
+	return false
 }
 
 func endpointsToProto(decls []EndpointDecl) []*pb.EndpointDeclaration {

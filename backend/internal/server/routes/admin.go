@@ -91,6 +91,7 @@ func RegisterAdminRoutes(
 
 		// 插件管理
 		registerPluginRoutes(admin, h)
+		registerPluginSettingsRoutes(admin, h)
 	}
 }
 
@@ -560,5 +561,20 @@ func registerPluginRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		plugins.POST("/:name/disable", h.Admin.Plugin.Disable)
 		plugins.POST("/:name/restart", h.Admin.Plugin.Restart)
 		plugins.PUT("/:name/config", h.Admin.Plugin.UpdateConfig)
+	}
+}
+
+// registerPluginSettingsRoutes wires the V5/W3 plugin settings admin REST
+// surface. Endpoints:
+//
+//	GET  /api/v1/admin/plugin-settings                       — list namespaces
+//	GET  /api/v1/admin/plugin-settings/:plugin               — schema + values
+//	PUT  /api/v1/admin/plugin-settings/:plugin/:key          — update value
+func registerPluginSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	settings := admin.Group("/plugin-settings")
+	{
+		settings.GET("", h.Admin.PluginSettings.List)
+		settings.GET("/:plugin", h.Admin.PluginSettings.Get)
+		settings.PUT("/:plugin/:key", h.Admin.PluginSettings.Update)
 	}
 }

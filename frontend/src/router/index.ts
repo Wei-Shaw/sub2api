@@ -389,6 +389,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/plugin-settings',
+    name: 'AdminPluginSettings',
+    component: () => import('@/views/admin/PluginSettingsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Plugin Settings',
+      titleKey: 'admin.pluginSettings.title',
+      descriptionKey: 'admin.pluginSettings.description'
+    }
+  },
+  {
     path: '/admin/proxies',
     name: 'AdminProxies',
     component: () => import('@/views/admin/ProxiesView.vue'),

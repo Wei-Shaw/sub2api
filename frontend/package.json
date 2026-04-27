@@ -16,9 +16,9 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@sub2api/plugin-sdk": "workspace:*",
     "@lobehub/icons": "^4.0.2",
     "@stripe/stripe-js": "^9.0.1",
+    "@sub2api/plugin-sdk": "workspace:*",
     "@tanstack/vue-virtual": "^3.13.23",
     "@vueuse/core": "^10.7.0",
     "axios": "^1.15.0",

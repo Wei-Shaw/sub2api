@@ -771,6 +771,7 @@ const adminNavItems = computed((): NavItem[] => {
         ]
       : []),
     { path: '/admin/plugins', label: t('nav.plugins'), icon: PluginIcon, hideInSimpleMode: true },
+    { path: '/admin/plugin-settings', label: t('nav.pluginSettings'), icon: PluginIcon, hideInSimpleMode: true },
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon }
   ]
 

@@ -57,6 +57,32 @@ type PluginManager struct {
 	// means "log-only", which is the default until the W2.4 admin handler
 	// installs a DB-backed implementation via SetJobHistoryRecorder.
 	jobHistory JobHistoryRecorder
+	// settingsService is the host-side store for plugin SettingsExtension
+	// schemas + values. Set via SetSettingsService before Start; nil is
+	// allowed and disables the capability for every plugin (the SDK side
+	// returns a clear error rather than silently no-oping).
+	settingsService PluginSettingsRegistrar
+	// settingsServer is the gRPC service that bridges SDK calls to the
+	// settingsService. Lazily registered when settingsService is non-nil
+	// so that running without the plugin settings subsystem incurs no
+	// additional gRPC services.
+	settingsServer SettingsExtensionRegistrar
+}
+
+// PluginSettingsRegistrar is the minimal surface PluginManager needs from
+// service.PluginSettingsService. Defined as an interface here so the
+// plugin package does not have to import the service package directly,
+// keeping the dependency graph one-way (service -> plugin would create a
+// cycle if anything in service ever needed plugin types).
+type PluginSettingsRegistrar interface {
+	RegisterSchema(ctx context.Context, pluginName string, schemaJSON, defaultsJSON []byte) error
+	UnregisterSchema(pluginName string)
+}
+
+// SettingsExtensionRegistrar is the minimal surface PluginManager needs to
+// attach the SettingsExtension gRPC service to the SDK's grpc.Server.
+type SettingsExtensionRegistrar interface {
+	Register(grpcServer *grpc.Server)
 }
 
 // NewPluginManager 构造 manager。
@@ -194,6 +220,9 @@ func (m *PluginManager) startSDKServer() error {
 
 	srv := grpc.NewServer()
 	m.sdkServer.RegisterServices(srv)
+	if m.settingsServer != nil {
+		m.settingsServer.Register(srv)
+	}
 	m.sdkGRPC = srv
 
 	go func() {
@@ -793,6 +822,24 @@ func (m *PluginManager) spawnAndConnect(parentCtx context.Context, inst *PluginI
 	// 在 SDKServer 上注册插件 → 授权 capabilities 的映射,后续 Redis Do 会查询。
 	m.sdkServer.RegisterPlugin(inst.Name, approvedCaps)
 
+	// V5/W3 SettingsExtension: persist the plugin's schema + defaults so
+	// the admin UI can render the form and so reads have something to
+	// fall back to. The registrar handles the missing-service case
+	// internally; we only skip when the plugin did not ship a schema.
+	if m.settingsService != nil && len(manifest.GetSettingsSchemaJson()) > 0 {
+		regCtx, cancelReg := context.WithTimeout(parentCtx, m.cfg.ManifestTimeout)
+		err := m.settingsService.RegisterSchema(regCtx, inst.Name,
+			manifest.GetSettingsSchemaJson(), manifest.GetSettingsDefaultsJson())
+		cancelReg()
+		if err != nil {
+			m.sdkServer.UnregisterPlugin(inst.Name)
+			_ = conn.Close()
+			cancelProc()
+			_ = cmd.Wait()
+			return fmt.Errorf("plugin settings register schema: %w", err)
+		}
+	}
+
 	// 调用 Init 把 SDK 地址、插件配置、plugin_name 与已批准的 capabilities 传给子进程。
 	initCtx, cancelInit := context.WithTimeout(parentCtx, m.cfg.ManifestTimeout)
 	initResp, initErr := lifecycle.Init(initCtx, &pluginsdk.PluginInitRequest{
@@ -938,6 +985,9 @@ func (m *PluginManager) stopInstance(ctx context.Context, name string, markRegis
 	newTable := m.router.CurrentTable().RemovePlugin(name)
 	m.router.SwapRouteTable(newTable)
 	m.sdkServer.UnregisterPlugin(name)
+	if m.settingsService != nil {
+		m.settingsService.UnregisterSchema(name)
+	}
 
 	inst.mu.Lock()
 	inst.CloseGRPC()
@@ -1203,3 +1253,31 @@ func normalizeProxyURL(addr string) string {
 	}
 	return "http://" + addr
 }
+
+// SetSettings wires the host-side plugin settings subsystem into the
+// manager. Pass nil to disable; the SDK side returns a clear error
+// rather than silently no-oping.
+//
+// The manager constructs the SettingsExtension gRPC server itself so it
+// can pass the SDKServer's resolveCaller function value, keeping caller
+// identity consistent with the rest of the SDK surface.
+//
+// Must be called before Start; calling it after has no effect on the
+// already-running gRPC server's service list.
+func (m *PluginManager) SetSettings(svc PluginSettingsRegistrar, builder SettingsExtensionBuilder) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.settingsService = svc
+	if svc != nil && builder != nil {
+		m.settingsServer = builder(m.sdkServer.ResolveCaller)
+	} else {
+		m.settingsServer = nil
+	}
+}
+
+// SettingsExtensionBuilder is the callback the wire layer supplies; it
+// receives the manager's resolveCaller function and returns a
+// SettingsExtensionRegistrar ready to attach to the SDK gRPC server.
+// We use a builder pattern instead of a direct dependency so the manager
+// owns when the SDKServer's identity-resolution function is captured.
+type SettingsExtensionBuilder func(resolver func(context.Context) string) SettingsExtensionRegistrar
