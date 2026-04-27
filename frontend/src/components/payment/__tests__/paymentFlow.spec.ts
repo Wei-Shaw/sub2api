@@ -43,7 +43,17 @@ describe('getVisibleMethods', () => {
     expect(visible).toEqual({
       alipay: methodLimit({ single_min: 5 }),
       wxpay: methodLimit({ single_max: 100 }),
+      stripe: methodLimit({ fee_rate: 3 }),
     })
+  })
+
+  it('exposes Stripe as a first-class visible method when the backend returns it', () => {
+    const visible = getVisibleMethods({
+      stripe: methodLimit({ single_min: 1, single_max: 1000, fee_rate: 3 }),
+    })
+
+    expect(Object.keys(visible)).toEqual(['stripe'])
+    expect(visible.stripe.single_max).toBe(1000)
   })
 
   it('prefers canonical visible methods over aliases when both exist', () => {
@@ -180,6 +190,21 @@ describe('decidePaymentLaunch', () => {
     expect(decision.kind).toBe('wechat_jsapi')
     expect(decision.jsapi?.appId).toBe('wx123')
     expect(decision.paymentState.orderType).toBe('subscription')
+  })
+
+  it('routes generic Stripe selection through the route flow with no preset sub-method', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      client_secret: 'cs_stripe_generic',
+    }), {
+      visibleMethod: 'stripe',
+      orderType: 'balance',
+      isMobile: false,
+      stripeRouteUrl: '/payment/stripe?order_id=101&client_secret=cs_stripe_generic',
+    })
+
+    expect(decision.kind).toBe('stripe_route')
+    expect(decision.stripeMethod).toBe('')
+    expect(decision.paymentState.payUrl).toContain('/payment/stripe')
   })
 })
 

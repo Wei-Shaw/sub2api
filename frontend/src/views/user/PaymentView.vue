@@ -694,14 +694,20 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       }
     }
     const visibleMethod = normalizeVisibleMethod(requestType) || requestType
-    const stripeMethod = visibleMethod === 'wxpay' ? 'wechat_pay' : 'alipay'
+    // Resolve Stripe sub-method from the visible method:
+    //  - wxpay  -> 'wechat_pay'
+    //  - alipay -> 'alipay'
+    //  - stripe -> '' (empty: StripePaymentView renders the full Payment Element)
+    let stripeMethod: '' | 'alipay' | 'wechat_pay' = ''
+    if (visibleMethod === 'wxpay') stripeMethod = 'wechat_pay'
+    else if (visibleMethod === 'alipay') stripeMethod = 'alipay'
     const stripeRouteUrl = result.client_secret
       ? router.resolve({
         path: '/payment/stripe',
         query: {
           order_id: String(result.order_id),
           client_secret: result.client_secret,
-          method: stripeMethod,
+          method: stripeMethod || undefined,
           resume_token: result.resume_token || undefined,
         },
       }).href
@@ -885,14 +891,20 @@ async function attemptMobileQrFallback(err: unknown, context: MobileQrFallbackCo
       isWechatBrowser: false,
     })
     const result = await paymentStore.createOrder(payload) as CreateOrderResult & { resume_token?: string }
-    const stripeMethod = visibleMethod === 'wxpay' ? 'wechat_pay' : 'alipay'
+    // Resolve Stripe sub-method from the visible method:
+    //  - wxpay  -> 'wechat_pay'
+    //  - alipay -> 'alipay'
+    //  - stripe -> '' (empty: StripePaymentView renders the full Payment Element)
+    let stripeMethod: '' | 'alipay' | 'wechat_pay' = ''
+    if (visibleMethod === 'wxpay') stripeMethod = 'wechat_pay'
+    else if (visibleMethod === 'alipay') stripeMethod = 'alipay'
     const stripeRouteUrl = result.client_secret
       ? router.resolve({
         path: '/payment/stripe',
         query: {
           order_id: String(result.order_id),
           client_secret: result.client_secret,
-          method: stripeMethod,
+          method: stripeMethod || undefined,
           resume_token: result.resume_token || undefined,
         },
       }).href

@@ -412,3 +412,72 @@ describe('PaymentView WeChat JSAPI flow', () => {
     expect(window.localStorage.getItem(PAYMENT_RECOVERY_STORAGE_KEY)).toContain('weixin://wxpay/bizpayurl?pr=fallback-native')
   })
 })
+
+
+function checkoutInfoStripeOnlyFixture() {
+  return {
+    data: {
+      methods: {
+        stripe: {
+          daily_limit: 0,
+          daily_used: 0,
+          daily_remaining: 0,
+          single_min: 1,
+          single_max: 5000,
+          fee_rate: 3,
+          available: true,
+        },
+      },
+      global_min: 1,
+      global_max: 5000,
+      plans: [],
+      balance_disabled: false,
+      balance_recharge_multiplier: 1,
+      recharge_fee_rate: 0,
+      help_text: '',
+      help_image_url: '',
+      stripe_publishable_key: 'pk_test_stripe',
+    },
+  }
+}
+
+describe('PaymentView Stripe-only checkout', () => {
+  beforeEach(() => {
+    routeState.path = '/payment'
+    routeState.query = {}
+    routerReplace.mockReset().mockResolvedValue(undefined)
+    routerPush.mockReset().mockResolvedValue(undefined)
+    routerResolve.mockClear()
+    createOrder.mockReset()
+    refreshUser.mockReset()
+    fetchActiveSubscriptions.mockReset().mockResolvedValue(undefined)
+    showError.mockReset()
+    showInfo.mockReset()
+    showWarning.mockReset()
+    getCheckoutInfo.mockReset().mockResolvedValue(checkoutInfoStripeOnlyFixture())
+    bridgeInvoke.mockReset()
+    window.localStorage.clear()
+  })
+
+  it('keeps Stripe in enabledMethods so the recharge UI is reachable', async () => {
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+    await flushPromises()
+
+    // Reach into the component instance to verify the visible-methods pipeline
+    // includes Stripe when the backend returns methods = { stripe: ... }.
+    const vm = wrapper.vm as unknown as {
+      enabledMethods: string[]
+      selectedMethod: string
+    }
+    expect(vm.enabledMethods).toContain('stripe')
+    // First-method auto-selection should land on stripe (the only option).
+    expect(vm.selectedMethod).toBe('stripe')
+  })
+})
