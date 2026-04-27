@@ -316,7 +316,16 @@ type ManifestResponse struct {
 	GatewayEndpoints []*EndpointDeclaration `protobuf:"bytes,10,rep,name=gateway_endpoints,json=gatewayEndpoints,proto3" json:"gateway_endpoints,omitempty"`
 	PluginEndpoints  []*EndpointDeclaration `protobuf:"bytes,11,rep,name=plugin_endpoints,json=pluginEndpoints,proto3" json:"plugin_endpoints,omitempty"`
 	Frontend         *FrontendManifest      `protobuf:"bytes,20,opt,name=frontend,proto3" json:"frontend,omitempty"`
-	MigrationFiles   []string               `protobuf:"bytes,30,rep,name=migration_files,json=migrationFiles,proto3" json:"migration_files,omitempty"`
+	// DEPRECATED: legacy filename-only declaration. New plugins should populate
+	// `migrations` instead. The host ignores migration_files when migrations
+	// is non-empty.
+	MigrationFiles []string `protobuf:"bytes,30,rep,name=migration_files,json=migrationFiles,proto3" json:"migration_files,omitempty"`
+	// migrations declares the SQL migration files the plugin ships embedded.
+	// The host fetches each file body via PluginLifecycle.GetMigration and
+	// applies it through plugin/migrations.go (advisory lock + checksum check
+	// + plugin_migrations table). Files are applied in lexicographical order
+	// of `filename`.
+	Migrations []*MigrationDecl `protobuf:"bytes,41,rep,name=migrations,proto3" json:"migrations,omitempty"`
 	// capabilities declares the privileged SDK features this plugin requires.
 	// The core checks each entry against an allow-list and forwards the
 	// approved subset back via PluginInitRequest.capabilities. Known values:
@@ -418,6 +427,13 @@ func (x *ManifestResponse) GetFrontend() *FrontendManifest {
 func (x *ManifestResponse) GetMigrationFiles() []string {
 	if x != nil {
 		return x.MigrationFiles
+	}
+	return nil
+}
+
+func (x *ManifestResponse) GetMigrations() []*MigrationDecl {
+	if x != nil {
+		return x.Migrations
 	}
 	return nil
 }
@@ -772,6 +788,195 @@ func (x *RouteDefinition) GetMeta() map[string]string {
 	return nil
 }
 
+// MigrationDecl describes a single SQL migration that the plugin ships
+// embedded. The host pulls the body via PluginLifecycle.GetMigration and
+// re-verifies the SHA-256 against this declaration before executing.
+type MigrationDecl struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Filename is applied in lexicographical order, e.g. "001_create_x.sql".
+	Filename string `protobuf:"bytes,1,opt,name=filename,proto3" json:"filename,omitempty"`
+	// ChecksumSha256 is the hex-encoded SHA-256 of the SQL body the plugin
+	// intends to ship. The host treats a mismatch with the fetched body as
+	// a fatal startup error (drift = potential supply-chain tampering).
+	ChecksumSha256 string `protobuf:"bytes,2,opt,name=checksum_sha256,json=checksumSha256,proto3" json:"checksum_sha256,omitempty"`
+	// NonTransactional marks migrations that contain statements PostgreSQL
+	// refuses to run inside an explicit transaction (e.g.
+	// CREATE INDEX CONCURRENTLY). The host applies these outside BEGIN/COMMIT.
+	NonTransactional bool `protobuf:"varint,3,opt,name=non_transactional,json=nonTransactional,proto3" json:"non_transactional,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *MigrationDecl) Reset() {
+	*x = MigrationDecl{}
+	mi := &file_plugin_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MigrationDecl) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MigrationDecl) ProtoMessage() {}
+
+func (x *MigrationDecl) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MigrationDecl.ProtoReflect.Descriptor instead.
+func (*MigrationDecl) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *MigrationDecl) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+func (x *MigrationDecl) GetChecksumSha256() string {
+	if x != nil {
+		return x.ChecksumSha256
+	}
+	return ""
+}
+
+func (x *MigrationDecl) GetNonTransactional() bool {
+	if x != nil {
+		return x.NonTransactional
+	}
+	return false
+}
+
+// GetMigrationRequest names the migration the host wishes to fetch. The
+// filename must match one declared in ManifestResponse.migrations.
+type GetMigrationRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Filename      string                 `protobuf:"bytes,1,opt,name=filename,proto3" json:"filename,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetMigrationRequest) Reset() {
+	*x = GetMigrationRequest{}
+	mi := &file_plugin_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetMigrationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetMigrationRequest) ProtoMessage() {}
+
+func (x *GetMigrationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetMigrationRequest.ProtoReflect.Descriptor instead.
+func (*GetMigrationRequest) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *GetMigrationRequest) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+// GetMigrationResponse carries the raw SQL body. `sql` is bytes (not
+// string) so any plugin-side BOM or non-UTF8 trailing bytes survive
+// the round-trip; the host treats it as opaque text when executing.
+type GetMigrationResponse struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Filename string                 `protobuf:"bytes,1,opt,name=filename,proto3" json:"filename,omitempty"`
+	Sql      []byte                 `protobuf:"bytes,2,opt,name=sql,proto3" json:"sql,omitempty"`
+	// ChecksumSha256 is the SHA-256 of `sql` computed by the SDK; the host
+	// re-checks this against MigrationDecl.checksum_sha256 to reject drift.
+	ChecksumSha256   string `protobuf:"bytes,3,opt,name=checksum_sha256,json=checksumSha256,proto3" json:"checksum_sha256,omitempty"`
+	NonTransactional bool   `protobuf:"varint,4,opt,name=non_transactional,json=nonTransactional,proto3" json:"non_transactional,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *GetMigrationResponse) Reset() {
+	*x = GetMigrationResponse{}
+	mi := &file_plugin_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetMigrationResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetMigrationResponse) ProtoMessage() {}
+
+func (x *GetMigrationResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetMigrationResponse.ProtoReflect.Descriptor instead.
+func (*GetMigrationResponse) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *GetMigrationResponse) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
+func (x *GetMigrationResponse) GetSql() []byte {
+	if x != nil {
+		return x.Sql
+	}
+	return nil
+}
+
+func (x *GetMigrationResponse) GetChecksumSha256() string {
+	if x != nil {
+		return x.ChecksumSha256
+	}
+	return ""
+}
+
+func (x *GetMigrationResponse) GetNonTransactional() bool {
+	if x != nil {
+		return x.NonTransactional
+	}
+	return false
+}
+
 var File_plugin_proto protoreflect.FileDescriptor
 
 const file_plugin_proto_rawDesc = "" +
@@ -798,7 +1003,7 @@ const file_plugin_proto_rawDesc = "" +
 	"\tFileChunk\x12\x12\n" +
 	"\x04data\x18\x01 \x01(\fR\x04data\x12\x1a\n" +
 	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x10\n" +
-	"\x03eof\x18\x03 \x01(\bR\x03eof\"\xbb\x03\n" +
+	"\x03eof\x18\x03 \x01(\bR\x03eof\"\xf5\x03\n" +
 	"\x10ManifestResponse\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x18\n" +
@@ -809,7 +1014,10 @@ const file_plugin_proto_rawDesc = "" +
 	" \x03(\v2\x1e.pluginsdk.EndpointDeclarationR\x10gatewayEndpoints\x12I\n" +
 	"\x10plugin_endpoints\x18\v \x03(\v2\x1e.pluginsdk.EndpointDeclarationR\x0fpluginEndpoints\x127\n" +
 	"\bfrontend\x18\x14 \x01(\v2\x1b.pluginsdk.FrontendManifestR\bfrontend\x12'\n" +
-	"\x0fmigration_files\x18\x1e \x03(\tR\x0emigrationFiles\x12\"\n" +
+	"\x0fmigration_files\x18\x1e \x03(\tR\x0emigrationFiles\x128\n" +
+	"\n" +
+	"migrations\x18) \x03(\v2\x18.pluginsdk.MigrationDeclR\n" +
+	"migrations\x12\"\n" +
 	"\fcapabilities\x18( \x03(\tR\fcapabilities\"`\n" +
 	"\x13EndpointDeclaration\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x18\n" +
@@ -846,13 +1054,25 @@ const file_plugin_proto_rawDesc = "" +
 	"\x04meta\x18\x04 \x03(\v2$.pluginsdk.RouteDefinition.MetaEntryR\x04meta\x1a7\n" +
 	"\tMetaEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x012\xe7\x02\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x81\x01\n" +
+	"\rMigrationDecl\x12\x1a\n" +
+	"\bfilename\x18\x01 \x01(\tR\bfilename\x12'\n" +
+	"\x0fchecksum_sha256\x18\x02 \x01(\tR\x0echecksumSha256\x12+\n" +
+	"\x11non_transactional\x18\x03 \x01(\bR\x10nonTransactional\"1\n" +
+	"\x13GetMigrationRequest\x12\x1a\n" +
+	"\bfilename\x18\x01 \x01(\tR\bfilename\"\x9a\x01\n" +
+	"\x14GetMigrationResponse\x12\x1a\n" +
+	"\bfilename\x18\x01 \x01(\tR\bfilename\x12\x10\n" +
+	"\x03sql\x18\x02 \x01(\fR\x03sql\x12'\n" +
+	"\x0fchecksum_sha256\x18\x03 \x01(\tR\x0echecksumSha256\x12+\n" +
+	"\x11non_transactional\x18\x04 \x01(\bR\x10nonTransactional2\xb8\x03\n" +
 	"\x0fPluginLifecycle\x12C\n" +
 	"\x04Init\x12\x1c.pluginsdk.PluginInitRequest\x1a\x1d.pluginsdk.PluginInitResponse\x12B\n" +
 	"\vGetManifest\x12\x16.google.protobuf.Empty\x1a\x1b.pluginsdk.ManifestResponse\x12@\n" +
 	"\vHealthCheck\x12\x16.google.protobuf.Empty\x1a\x19.pluginsdk.HealthResponse\x12:\n" +
 	"\bShutdown\x12\x16.google.protobuf.Empty\x1a\x16.google.protobuf.Empty\x12M\n" +
-	"\x11GetFrontendBundle\x12 .pluginsdk.FrontendBundleRequest\x1a\x14.pluginsdk.FileChunk0\x01B8Z6github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdkb\x06proto3"
+	"\x11GetFrontendBundle\x12 .pluginsdk.FrontendBundleRequest\x1a\x14.pluginsdk.FileChunk0\x01\x12O\n" +
+	"\fGetMigration\x12\x1e.pluginsdk.GetMigrationRequest\x1a\x1f.pluginsdk.GetMigrationResponseB8Z6github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdkb\x06proto3"
 
 var (
 	file_plugin_proto_rawDescOnce sync.Once
@@ -866,7 +1086,7 @@ func file_plugin_proto_rawDescGZIP() []byte {
 	return file_plugin_proto_rawDescData
 }
 
-var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_plugin_proto_goTypes = []any{
 	(*PluginInitRequest)(nil),     // 0: pluginsdk.PluginInitRequest
 	(*PluginInitResponse)(nil),    // 1: pluginsdk.PluginInitResponse
@@ -878,36 +1098,42 @@ var file_plugin_proto_goTypes = []any{
 	(*FrontendManifest)(nil),      // 7: pluginsdk.FrontendManifest
 	(*MenuItem)(nil),              // 8: pluginsdk.MenuItem
 	(*RouteDefinition)(nil),       // 9: pluginsdk.RouteDefinition
-	nil,                           // 10: pluginsdk.PluginInitRequest.ConfigEntry
-	nil,                           // 11: pluginsdk.MenuItem.LabelsEntry
-	nil,                           // 12: pluginsdk.RouteDefinition.MetaEntry
-	(*emptypb.Empty)(nil),         // 13: google.protobuf.Empty
+	(*MigrationDecl)(nil),         // 10: pluginsdk.MigrationDecl
+	(*GetMigrationRequest)(nil),   // 11: pluginsdk.GetMigrationRequest
+	(*GetMigrationResponse)(nil),  // 12: pluginsdk.GetMigrationResponse
+	nil,                           // 13: pluginsdk.PluginInitRequest.ConfigEntry
+	nil,                           // 14: pluginsdk.MenuItem.LabelsEntry
+	nil,                           // 15: pluginsdk.RouteDefinition.MetaEntry
+	(*emptypb.Empty)(nil),         // 16: google.protobuf.Empty
 }
 var file_plugin_proto_depIdxs = []int32{
-	10, // 0: pluginsdk.PluginInitRequest.config:type_name -> pluginsdk.PluginInitRequest.ConfigEntry
+	13, // 0: pluginsdk.PluginInitRequest.config:type_name -> pluginsdk.PluginInitRequest.ConfigEntry
 	6,  // 1: pluginsdk.ManifestResponse.gateway_endpoints:type_name -> pluginsdk.EndpointDeclaration
 	6,  // 2: pluginsdk.ManifestResponse.plugin_endpoints:type_name -> pluginsdk.EndpointDeclaration
 	7,  // 3: pluginsdk.ManifestResponse.frontend:type_name -> pluginsdk.FrontendManifest
-	8,  // 4: pluginsdk.FrontendManifest.menu_items:type_name -> pluginsdk.MenuItem
-	9,  // 5: pluginsdk.FrontendManifest.routes:type_name -> pluginsdk.RouteDefinition
-	8,  // 6: pluginsdk.MenuItem.children:type_name -> pluginsdk.MenuItem
-	11, // 7: pluginsdk.MenuItem.labels:type_name -> pluginsdk.MenuItem.LabelsEntry
-	12, // 8: pluginsdk.RouteDefinition.meta:type_name -> pluginsdk.RouteDefinition.MetaEntry
-	0,  // 9: pluginsdk.PluginLifecycle.Init:input_type -> pluginsdk.PluginInitRequest
-	13, // 10: pluginsdk.PluginLifecycle.GetManifest:input_type -> google.protobuf.Empty
-	13, // 11: pluginsdk.PluginLifecycle.HealthCheck:input_type -> google.protobuf.Empty
-	13, // 12: pluginsdk.PluginLifecycle.Shutdown:input_type -> google.protobuf.Empty
-	3,  // 13: pluginsdk.PluginLifecycle.GetFrontendBundle:input_type -> pluginsdk.FrontendBundleRequest
-	1,  // 14: pluginsdk.PluginLifecycle.Init:output_type -> pluginsdk.PluginInitResponse
-	5,  // 15: pluginsdk.PluginLifecycle.GetManifest:output_type -> pluginsdk.ManifestResponse
-	2,  // 16: pluginsdk.PluginLifecycle.HealthCheck:output_type -> pluginsdk.HealthResponse
-	13, // 17: pluginsdk.PluginLifecycle.Shutdown:output_type -> google.protobuf.Empty
-	4,  // 18: pluginsdk.PluginLifecycle.GetFrontendBundle:output_type -> pluginsdk.FileChunk
-	14, // [14:19] is the sub-list for method output_type
-	9,  // [9:14] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	10, // 4: pluginsdk.ManifestResponse.migrations:type_name -> pluginsdk.MigrationDecl
+	8,  // 5: pluginsdk.FrontendManifest.menu_items:type_name -> pluginsdk.MenuItem
+	9,  // 6: pluginsdk.FrontendManifest.routes:type_name -> pluginsdk.RouteDefinition
+	8,  // 7: pluginsdk.MenuItem.children:type_name -> pluginsdk.MenuItem
+	14, // 8: pluginsdk.MenuItem.labels:type_name -> pluginsdk.MenuItem.LabelsEntry
+	15, // 9: pluginsdk.RouteDefinition.meta:type_name -> pluginsdk.RouteDefinition.MetaEntry
+	0,  // 10: pluginsdk.PluginLifecycle.Init:input_type -> pluginsdk.PluginInitRequest
+	16, // 11: pluginsdk.PluginLifecycle.GetManifest:input_type -> google.protobuf.Empty
+	16, // 12: pluginsdk.PluginLifecycle.HealthCheck:input_type -> google.protobuf.Empty
+	16, // 13: pluginsdk.PluginLifecycle.Shutdown:input_type -> google.protobuf.Empty
+	3,  // 14: pluginsdk.PluginLifecycle.GetFrontendBundle:input_type -> pluginsdk.FrontendBundleRequest
+	11, // 15: pluginsdk.PluginLifecycle.GetMigration:input_type -> pluginsdk.GetMigrationRequest
+	1,  // 16: pluginsdk.PluginLifecycle.Init:output_type -> pluginsdk.PluginInitResponse
+	5,  // 17: pluginsdk.PluginLifecycle.GetManifest:output_type -> pluginsdk.ManifestResponse
+	2,  // 18: pluginsdk.PluginLifecycle.HealthCheck:output_type -> pluginsdk.HealthResponse
+	16, // 19: pluginsdk.PluginLifecycle.Shutdown:output_type -> google.protobuf.Empty
+	4,  // 20: pluginsdk.PluginLifecycle.GetFrontendBundle:output_type -> pluginsdk.FileChunk
+	12, // 21: pluginsdk.PluginLifecycle.GetMigration:output_type -> pluginsdk.GetMigrationResponse
+	16, // [16:22] is the sub-list for method output_type
+	10, // [10:16] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_plugin_proto_init() }
@@ -921,7 +1147,7 @@ func file_plugin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_plugin_proto_rawDesc), len(file_plugin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

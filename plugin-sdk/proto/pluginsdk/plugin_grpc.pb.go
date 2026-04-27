@@ -25,6 +25,7 @@ const (
 	PluginLifecycle_HealthCheck_FullMethodName       = "/pluginsdk.PluginLifecycle/HealthCheck"
 	PluginLifecycle_Shutdown_FullMethodName          = "/pluginsdk.PluginLifecycle/Shutdown"
 	PluginLifecycle_GetFrontendBundle_FullMethodName = "/pluginsdk.PluginLifecycle/GetFrontendBundle"
+	PluginLifecycle_GetMigration_FullMethodName      = "/pluginsdk.PluginLifecycle/GetMigration"
 )
 
 // PluginLifecycleClient is the client API for PluginLifecycle service.
@@ -36,6 +37,11 @@ type PluginLifecycleClient interface {
 	HealthCheck(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*HealthResponse, error)
 	Shutdown(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	GetFrontendBundle(ctx context.Context, in *FrontendBundleRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[FileChunk], error)
+	// GetMigration is used by the host to fetch the SQL body of one migration
+	// declared in ManifestResponse.migrations. The plugin keeps SQL in its own
+	// embed.FS; the host applies the file via plugin/migrations.go after
+	// verifying its checksum against the manifest declaration.
+	GetMigration(ctx context.Context, in *GetMigrationRequest, opts ...grpc.CallOption) (*GetMigrationResponse, error)
 }
 
 type pluginLifecycleClient struct {
@@ -105,6 +111,16 @@ func (c *pluginLifecycleClient) GetFrontendBundle(ctx context.Context, in *Front
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type PluginLifecycle_GetFrontendBundleClient = grpc.ServerStreamingClient[FileChunk]
 
+func (c *pluginLifecycleClient) GetMigration(ctx context.Context, in *GetMigrationRequest, opts ...grpc.CallOption) (*GetMigrationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetMigrationResponse)
+	err := c.cc.Invoke(ctx, PluginLifecycle_GetMigration_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PluginLifecycleServer is the server API for PluginLifecycle service.
 // All implementations must embed UnimplementedPluginLifecycleServer
 // for forward compatibility.
@@ -114,6 +130,11 @@ type PluginLifecycleServer interface {
 	HealthCheck(context.Context, *emptypb.Empty) (*HealthResponse, error)
 	Shutdown(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
 	GetFrontendBundle(*FrontendBundleRequest, grpc.ServerStreamingServer[FileChunk]) error
+	// GetMigration is used by the host to fetch the SQL body of one migration
+	// declared in ManifestResponse.migrations. The plugin keeps SQL in its own
+	// embed.FS; the host applies the file via plugin/migrations.go after
+	// verifying its checksum against the manifest declaration.
+	GetMigration(context.Context, *GetMigrationRequest) (*GetMigrationResponse, error)
 	mustEmbedUnimplementedPluginLifecycleServer()
 }
 
@@ -138,6 +159,9 @@ func (UnimplementedPluginLifecycleServer) Shutdown(context.Context, *emptypb.Emp
 }
 func (UnimplementedPluginLifecycleServer) GetFrontendBundle(*FrontendBundleRequest, grpc.ServerStreamingServer[FileChunk]) error {
 	return status.Error(codes.Unimplemented, "method GetFrontendBundle not implemented")
+}
+func (UnimplementedPluginLifecycleServer) GetMigration(context.Context, *GetMigrationRequest) (*GetMigrationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetMigration not implemented")
 }
 func (UnimplementedPluginLifecycleServer) mustEmbedUnimplementedPluginLifecycleServer() {}
 func (UnimplementedPluginLifecycleServer) testEmbeddedByValue()                         {}
@@ -243,6 +267,24 @@ func _PluginLifecycle_GetFrontendBundle_Handler(srv interface{}, stream grpc.Ser
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type PluginLifecycle_GetFrontendBundleServer = grpc.ServerStreamingServer[FileChunk]
 
+func _PluginLifecycle_GetMigration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetMigrationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PluginLifecycleServer).GetMigration(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PluginLifecycle_GetMigration_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PluginLifecycleServer).GetMigration(ctx, req.(*GetMigrationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PluginLifecycle_ServiceDesc is the grpc.ServiceDesc for PluginLifecycle service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -265,6 +307,10 @@ var PluginLifecycle_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Shutdown",
 			Handler:    _PluginLifecycle_Shutdown_Handler,
+		},
+		{
+			MethodName: "GetMigration",
+			Handler:    _PluginLifecycle_GetMigration_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
