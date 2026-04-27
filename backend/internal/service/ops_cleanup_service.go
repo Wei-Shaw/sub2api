@@ -4,11 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/leaderlock"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -23,13 +25,6 @@ const (
 )
 
 var opsCleanupCronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-
-var opsCleanupReleaseScript = redis.NewScript(`
-if redis.call("GET", KEYS[1]) == ARGV[1] then
-  return redis.call("DEL", KEYS[1])
-end
-return 0
-`)
 
 // OpsCleanupService periodically deletes old ops data to prevent unbounded DB growth.
 //
@@ -48,8 +43,6 @@ type OpsCleanupService struct {
 
 	startOnce sync.Once
 	stopOnce  sync.Once
-
-	warnNoRedisOnce sync.Once
 }
 
 func NewOpsCleanupService(
@@ -309,41 +302,24 @@ func (s *OpsCleanupService) tryAcquireLeaderLock(ctx context.Context) (func(), b
 	if s == nil {
 		return nil, false
 	}
-	// In simple run mode, assume single instance.
-	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
-		return nil, true
-	}
+	// Delegate to the shared leaderlock helper so the plugin JobScheduler
+	// (V5 W2) can reuse the same Redis-first / DB-fallback semantics without
+	// pulling in internal/service.
+	return s.leaderLockProvider().TryAcquire(ctx, opsCleanupLeaderLockKeyDefault)
+}
 
-	key := opsCleanupLeaderLockKeyDefault
-	ttl := opsCleanupLeaderLockTTLDefault
-
-	// Prefer Redis leader lock when available, but avoid stampeding the DB when Redis is flaky by
-	// falling back to a DB advisory lock.
-	if s.redisClient != nil {
-		ok, err := s.redisClient.SetNX(ctx, key, s.instanceID, ttl).Result()
-		if err == nil {
-			if !ok {
-				return nil, false
-			}
-			return func() {
-				_, _ = opsCleanupReleaseScript.Run(ctx, s.redisClient, []string{key}, s.instanceID).Result()
-			}, true
-		}
-		// Redis error: fall back to DB advisory lock.
-		s.warnNoRedisOnce.Do(func() {
-			logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] leader lock SetNX failed; falling back to DB advisory lock: %v", err)
-		})
-	} else {
-		s.warnNoRedisOnce.Do(func() {
-			logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] redis not configured; using DB advisory lock")
-		})
-	}
-
-	release, ok := tryAcquireDBAdvisoryLock(ctx, s.db, hashAdvisoryLockID(key))
-	if !ok {
-		return nil, false
-	}
-	return release, true
+// leaderLockProvider lazily constructs the underlying provider. Kept as a
+// method (rather than a struct field initialised in NewOpsCleanupService) to
+// avoid disturbing existing callers and tests that construct the service
+// directly without going through wire.
+func (s *OpsCleanupService) leaderLockProvider() leaderlock.Provider {
+	simple := s.cfg != nil && s.cfg.RunMode == config.RunModeSimple
+	return leaderlock.New(s.redisClient, s.db, leaderlock.Config{
+		InstanceID:     s.instanceID,
+		TTL:            opsCleanupLeaderLockTTLDefault,
+		SingleInstance: simple,
+		Logger:         slog.Default().With("component", "ops_cleanup_leader_lock"),
+	})
 }
 
 func (s *OpsCleanupService) recordHeartbeatSuccess(runAt time.Time, duration time.Duration, counts opsCleanupDeletedCounts) {
