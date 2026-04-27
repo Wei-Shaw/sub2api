@@ -10,6 +10,8 @@ func TestNormalizeOpenAIBuiltinTools(t *testing.T) {
 	t.Parallel()
 
 	webSearch := []map[string]any{{"type": "web_search"}}
+	imageGeneration := map[string]any{"type": "image_generation", "model": "gpt-image-2", "output_format": "png"}
+	webSearchAndImageGeneration := []map[string]any{{"type": "web_search"}, imageGeneration}
 
 	tests := []struct {
 		name string
@@ -27,9 +29,9 @@ func TestNormalizeOpenAIBuiltinTools(t *testing.T) {
 			want: webSearch,
 		},
 		{
-			name: "string slice keeps supported builtin tool only",
+			name: "string slice keeps supported builtin tools",
 			raw:  []string{"web_search", "image_generation"},
-			want: webSearch,
+			want: webSearchAndImageGeneration,
 		},
 		{
 			name: "any slice accepts web search tool object",
@@ -42,9 +44,28 @@ func TestNormalizeOpenAIBuiltinTools(t *testing.T) {
 			want: webSearch,
 		},
 		{
-			name: "map requires explicit true value",
+			name: "map accepts explicit true values",
 			raw:  map[string]any{"web_search": true, "image_generation": true},
-			want: webSearch,
+			want: webSearchAndImageGeneration,
+		},
+		{
+			name: "map accepts configured image generation tool",
+			raw: map[string]any{"image_generation": map[string]any{
+				"model":              "gpt-image-2",
+				"size":               "1024x1024",
+				"quality":            "low",
+				"output_format":      "webp",
+				"output_compression": 75,
+				"ignored":            "drop-me",
+			}},
+			want: []map[string]any{{
+				"type":               "image_generation",
+				"model":              "gpt-image-2",
+				"size":               "1024x1024",
+				"quality":            "low",
+				"output_format":      "webp",
+				"output_compression": 75,
+			}},
 		},
 		{
 			name: "false returns nil",

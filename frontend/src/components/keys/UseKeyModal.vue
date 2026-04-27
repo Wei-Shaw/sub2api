@@ -694,6 +694,18 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     }
   }
 
+  const openCodeBuiltinToolsForModel = (id: string) => ({
+    web_search: true,
+    ...(id.toLowerCase().startsWith('gpt-5.5')
+      ? {
+          image_generation: {
+            model: 'gpt-image-2',
+            output_format: 'png'
+          }
+        }
+      : {})
+  })
+
   // Mirrors the upstream runtime-derived model set, not the UI custom-provider
   // form output.
   // upstream repo: anomalyco/opencode
@@ -723,7 +735,7 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
               ...(normalizedOptions ?? {}),
               metadata: {
                 ...(normalizedMetadata ?? {}),
-                builtin_tools: { web_search: true }
+                builtin_tools: openCodeBuiltinToolsForModel(id)
               },
               store: false
             },

@@ -71,10 +71,6 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 
 	promptCacheKey = strings.TrimSpace(promptCacheKey)
 	compatPromptCacheInjected := false
-	if promptCacheKey == "" && account.Type == AccountTypeOAuth && shouldAutoInjectPromptCacheKeyForCompat(upstreamModel) {
-		promptCacheKey = deriveCompatPromptCacheKey(&chatReq, upstreamModel)
-		compatPromptCacheInjected = promptCacheKey != ""
-	}
 
 	// 3. Build the upstream (Responses API) body.
 	//
@@ -99,6 +95,18 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		responsesBody, err = sjson.SetBytes(body, "model", upstreamModel)
 		if err != nil {
 			return nil, fmt.Errorf("rewrite model in responses-shape body: %w", err)
+		}
+		if gjson.GetBytes(responsesBody, "builtin_tools").Exists() || gjson.GetBytes(responsesBody, "metadata.builtin_tools").Exists() {
+			var rawReqBody map[string]any
+			if err := json.Unmarshal(responsesBody, &rawReqBody); err != nil {
+				return nil, fmt.Errorf("unmarshal responses-shape body for builtin tools: %w", err)
+			}
+			if applyOpenAIBuiltinToolsRequestPathTransform(c, rawReqBody) {
+				responsesBody, err = json.Marshal(rawReqBody)
+				if err != nil {
+					return nil, fmt.Errorf("marshal responses-shape body after builtin tools: %w", err)
+				}
+			}
 		}
 		// Strip Responses API parameters that no Codex upstream accepts.
 		// Because this branch forwards the raw body (the normal path rebuilds
@@ -136,6 +144,14 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		if err != nil {
 			return nil, fmt.Errorf("marshal responses request: %w", err)
 		}
+	}
+	if promptCacheKey == "" && account.Type == AccountTypeOAuth && shouldAutoInjectPromptCacheKeyForCompat(upstreamModel) {
+		if isResponsesShape {
+			promptCacheKey = deriveCompatPromptCacheKeyFromResponsesBody(responsesBody, upstreamModel)
+		} else {
+			promptCacheKey = deriveCompatPromptCacheKey(&chatReq, upstreamModel)
+		}
+		compatPromptCacheInjected = promptCacheKey != ""
 	}
 
 	logFields := []zap.Field{
@@ -680,6 +696,16 @@ func applyOpenAICompatBuiltinToolsAugmentation(req *apicompat.ChatCompletionsReq
 	stripOpenAICompatBuiltinToolsCarrier(req)
 	augmented := normalizeOpenAIBuiltinTools(raw)
 	if len(augmented) == 0 {
+		return true
+	}
+	addWebSearch := false
+	for _, tool := range augmented {
+		if strings.TrimSpace(fmt.Sprint(tool["type"])) == "web_search" {
+			addWebSearch = true
+			break
+		}
+	}
+	if !addWebSearch {
 		return true
 	}
 	for _, tool := range req.Tools {

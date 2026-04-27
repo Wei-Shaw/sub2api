@@ -605,6 +605,93 @@ func TestForwardResponsesRequest_MetadataBuiltinToolsAugmentsAndStripsPrivateFie
 	require.Equal(t, "web_search", tools[1].(map[string]any)["type"])
 }
 
+func TestForwardResponsesRequest_ImageGenerationBuiltinToolsAugmentsConfiguredTool(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.5-Sys","builtin_tools":{"image_generation":{"model":"gpt-image-2","size":"1024x1024","quality":"low","output_format":"png","partial_images":1,"ignored":"drop-me"}},"tools":[{"type":"function","name":"get_weather","parameters":{"type":"object"}}]}`)
+	c, _ := newOpenAITestContext(t, "/v1/responses", body)
+	upstream := &stubHTTPUpstream{}
+	svc := newOpenAITestGatewayService(upstream)
+	account := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "test-key"},
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+
+	upstreamBody := decodeJSONMap(t, upstream.lastBody)
+	require.NotContains(t, upstreamBody, "builtin_tools")
+
+	tools := upstreamBody["tools"].([]any)
+	require.Len(t, tools, 2)
+	require.Equal(t, "function", tools[0].(map[string]any)["type"])
+	imageTool := tools[1].(map[string]any)
+	require.Equal(t, "image_generation", imageTool["type"])
+	require.Equal(t, "gpt-image-2", imageTool["model"])
+	require.Equal(t, "1024x1024", imageTool["size"])
+	require.Equal(t, "low", imageTool["quality"])
+	require.Equal(t, "png", imageTool["output_format"])
+	require.Equal(t, float64(1), imageTool["partial_images"])
+	require.NotContains(t, imageTool, "ignored")
+}
+
+func TestForwardResponsesRequest_OAuthImageGenerationBuiltinToolChoicePreserved(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.5-Sys","instructions":"draw with native image tool","input":"draw a cat","builtin_tools":{"image_generation":{"model":"gpt-image-2","output_format":"png"}},"tool_choice":{"type":"image_generation"}}`)
+	c, _ := newOpenAITestContext(t, "/v1/responses", body)
+	upstream := &stubHTTPUpstream{}
+	svc := newOpenAITestGatewayService(upstream)
+	account := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+
+	upstreamBody := decodeJSONMap(t, upstream.lastBody)
+	require.NotContains(t, upstreamBody, "builtin_tools")
+	require.NotContains(t, upstreamBody, "metadata")
+
+	choice, ok := upstreamBody["tool_choice"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "image_generation", choice["type"])
+
+	tools := upstreamBody["tools"].([]any)
+	require.Len(t, tools, 1)
+	imageTool := tools[0].(map[string]any)
+	require.Equal(t, "image_generation", imageTool["type"])
+	require.Equal(t, "gpt-image-2", imageTool["model"])
+	require.Equal(t, "png", imageTool["output_format"])
+}
+
+func TestForwardResponsesRequest_BuiltinToolsArrayAddsWebSearchAndImageGeneration(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.5-Sys","metadata":{"builtin_tools":["web_search","image_generation"]},"tools":[{"type":"function","name":"get_weather","parameters":{"type":"object"}}]}`)
+	c, _ := newOpenAITestContext(t, "/v1/responses", body)
+	upstream := &stubHTTPUpstream{}
+	svc := newOpenAITestGatewayService(upstream)
+	account := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "test-key"},
+	}
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+
+	upstreamBody := decodeJSONMap(t, upstream.lastBody)
+	require.NotContains(t, upstreamBody, "metadata")
+
+	tools := upstreamBody["tools"].([]any)
+	require.Len(t, tools, 3)
+	require.Equal(t, "function", tools[0].(map[string]any)["type"])
+	require.Equal(t, "web_search", tools[1].(map[string]any)["type"])
+	imageTool := tools[2].(map[string]any)
+	require.Equal(t, "image_generation", imageTool["type"])
+	require.Equal(t, "gpt-image-2", imageTool["model"])
+	require.Equal(t, "png", imageTool["output_format"])
+}
+
 func TestApplyOpenAIBuiltinToolsAugmentation_DoesNotDuplicateExistingWebSearch(t *testing.T) {
 	reqBody := map[string]any{
 		"builtin_tools": []any{"web_search", "code_interpreter"},
@@ -623,6 +710,27 @@ func TestApplyOpenAIBuiltinToolsAugmentation_DoesNotDuplicateExistingWebSearch(t
 	require.Equal(t, "function", tools[0].(map[string]any)["type"])
 	require.Equal(t, "get_weather", tools[0].(map[string]any)["name"])
 	require.Equal(t, "web_search", tools[1].(map[string]any)["type"])
+}
+
+func TestApplyOpenAIBuiltinToolsAugmentation_DoesNotDuplicateExistingImageGeneration(t *testing.T) {
+	reqBody := map[string]any{
+		"builtin_tools": map[string]any{"image_generation": true},
+		"tools": []any{
+			map[string]any{"type": "function", "name": "get_weather"},
+			map[string]any{"type": "image_generation", "model": "gpt-image-2", "output_format": "webp"},
+		},
+	}
+
+	changed := applyOpenAIBuiltinToolsAugmentation(reqBody)
+	require.True(t, changed)
+	require.NotContains(t, reqBody, "builtin_tools")
+
+	tools := reqBody["tools"].([]any)
+	require.Len(t, tools, 2)
+	require.Equal(t, "function", tools[0].(map[string]any)["type"])
+	imageTool := tools[1].(map[string]any)
+	require.Equal(t, "image_generation", imageTool["type"])
+	require.Equal(t, "webp", imageTool["output_format"])
 }
 
 func TestApplyOpenAIBuiltinToolsAugmentation_InvalidToolsOnlyStripsPrivateField(t *testing.T) {
@@ -802,6 +910,21 @@ func TestChatCompletionsBuiltinTools_DoesNotDuplicateExistingWebSearch(t *testin
 	require.Equal(t, "web_search", req.Tools[1].Type)
 }
 
+func TestChatCompletionsBuiltinTools_ImageGenerationOnlyDoesNotAddWebSearch(t *testing.T) {
+	req := &apicompat.ChatCompletionsRequest{
+		BuiltinTools: map[string]any{"image_generation": true},
+		Tools: []apicompat.ChatTool{
+			{Type: "function", Function: &apicompat.ChatFunction{Name: "get_weather"}},
+		},
+	}
+
+	changed := applyOpenAICompatBuiltinToolsAugmentation(req)
+	require.True(t, changed)
+	require.Nil(t, req.BuiltinTools)
+	require.Len(t, req.Tools, 1)
+	require.Equal(t, "function", req.Tools[0].Type)
+}
+
 func TestToolChoiceWhenObjectBuiltinToolsAdded_ForwardAsChatCompletionsPreservesRawChoice(t *testing.T) {
 	body := []byte(`{"model":"gpt-5.4","messages":[{"role":"user","content":"hello"}],"builtin_tools":{"web_search":true},"tool_choice":"auto"}`)
 	c, rec := newOpenAITestContext(t, "/v1/chat/completions", body)
@@ -867,6 +990,86 @@ func TestToolChoiceWhenMetadataBuiltinToolsAdded_ForwardAsChatCompletionsPreserv
 	tools := upstreamBody["tools"].([]any)
 	require.Len(t, tools, 1)
 	require.Equal(t, "web_search", tools[0].(map[string]any)["type"])
+}
+
+func TestResponsesShapeChatCompletionsBuiltinToolsAugmentsAndStripsPrivateField(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.5-Sys","input":[{"role":"user","content":"draw a cat"}],"builtin_tools":{"image_generation":true},"tools":[{"type":"function","name":"get_weather","parameters":{"type":"object"}}],"tool_choice":{"type":"image_generation"}}`)
+	c, rec := newOpenAITestContext(t, "/v1/chat/completions", body)
+	upstream := &stubHTTPUpstream{
+		response: &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+				`data: {"type":"response.completed","response":{"id":"resp_1","object":"response","model":"gpt-5.5","status":"completed","output":[{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":1,"output_tokens":1}}}`,
+				`data: [DONE]`,
+			}, "\n") + "\n")),
+		},
+	}
+	svc := newOpenAITestGatewayService(upstream)
+	account := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "test-key"},
+	}
+
+	_, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	upstreamBody := decodeJSONMap(t, upstream.lastBody)
+	require.NotContains(t, upstreamBody, "builtin_tools")
+
+	choice, ok := upstreamBody["tool_choice"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "image_generation", choice["type"])
+
+	tools := upstreamBody["tools"].([]any)
+	require.Len(t, tools, 2)
+	require.Equal(t, "function", tools[0].(map[string]any)["type"])
+	require.Equal(t, "get_weather", tools[0].(map[string]any)["name"])
+	imageTool := tools[1].(map[string]any)
+	require.Equal(t, "image_generation", imageTool["type"])
+	require.Equal(t, "gpt-image-2", imageTool["model"])
+	require.Equal(t, "png", imageTool["output_format"])
+}
+
+func TestResponsesShapeChatCompletionsBuiltinToolsMatchesExplicitToolPromptCacheKey(t *testing.T) {
+	forward := func(t *testing.T, body []byte) map[string]any {
+		t.Helper()
+		c, rec := newOpenAITestContext(t, "/v1/chat/completions", body)
+		upstream := &stubHTTPUpstream{
+			response: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+					`data: {"type":"response.completed","response":{"id":"resp_1","object":"response","model":"gpt-5.4","status":"completed","output":[{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":1,"output_tokens":1}}}`,
+					`data: [DONE]`,
+				}, "\n") + "\n")),
+			},
+		}
+		svc := newOpenAITestGatewayService(upstream)
+		account := &Account{
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeOAuth,
+			Credentials: map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
+		}
+
+		_, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, rec.Code)
+		return decodeJSONMap(t, upstream.lastBody)
+	}
+
+	explicitToolBody := []byte(`{"model":"gpt-5.4","instructions":"draw with native image tool","input":[{"role":"user","content":"draw a cat"}],"tools":[{"type":"image_generation","model":"gpt-image-2","output_format":"png"}],"tool_choice":{"type":"image_generation"}}`)
+	builtinToolBody := []byte(`{"model":"gpt-5.4","instructions":"draw with native image tool","input":[{"role":"user","content":"draw a cat"}],"builtin_tools":{"image_generation":true},"tool_choice":{"type":"image_generation"}}`)
+
+	explicitUpstream := forward(t, explicitToolBody)
+	builtinUpstream := forward(t, builtinToolBody)
+
+	require.Equal(t, explicitUpstream["prompt_cache_key"], builtinUpstream["prompt_cache_key"])
+	require.NotEmpty(t, builtinUpstream["prompt_cache_key"])
+	require.NotContains(t, builtinUpstream, "builtin_tools")
+	require.Equal(t, explicitUpstream["tools"], builtinUpstream["tools"])
 }
 
 func TestChatCompletionsBuiltinTools_AugmentsWebSearchAndPreservesFunctionTool(t *testing.T) {

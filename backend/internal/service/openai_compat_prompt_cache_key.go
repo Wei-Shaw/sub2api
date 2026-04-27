@@ -76,6 +76,75 @@ func deriveCompatPromptCacheKey(req *apicompat.ChatCompletionsRequest, mappedMod
 	return compatPromptCacheKeyPrefix + hashSensitiveValueForLog(strings.Join(seedParts, "|"))
 }
 
+func deriveCompatPromptCacheKeyFromResponsesBody(body []byte, mappedModel string) string {
+	if len(body) == 0 {
+		return ""
+	}
+
+	var req map[string]any
+	if err := json.Unmarshal(body, &req); err != nil {
+		return ""
+	}
+
+	normalizedModel := normalizeCodexModel(strings.TrimSpace(mappedModel))
+	if normalizedModel == "" {
+		normalizedModel = normalizeCodexModel(firstNonEmptyString(req["model"]))
+	}
+	if normalizedModel == "" {
+		normalizedModel = firstNonEmptyString(req["model"])
+	}
+
+	seedParts := []string{"model=" + normalizedModel}
+	if reasoning, ok := req["reasoning"].(map[string]any); ok {
+		if effort := firstNonEmptyString(reasoning["effort"]); effort != "" {
+			seedParts = append(seedParts, "reasoning_effort="+effort)
+		}
+	}
+	if choice, ok := req["tool_choice"]; ok && choice != nil {
+		seedParts = append(seedParts, "tool_choice="+normalizeCompatSeedValue(choice))
+	}
+	if tools, ok := req["tools"]; ok && tools != nil {
+		seedParts = append(seedParts, "tools="+normalizeCompatSeedValue(tools))
+	}
+	if instructions := firstNonEmptyString(req["instructions"]); instructions != "" {
+		seedParts = append(seedParts, "system="+normalizeCompatSeedValue(instructions))
+	}
+
+	firstUserCaptured := false
+	switch input := req["input"].(type) {
+	case string:
+		if strings.TrimSpace(input) != "" {
+			seedParts = append(seedParts, "first_user="+normalizeCompatSeedValue(input))
+		}
+	case []any:
+		for _, rawItem := range input {
+			item, ok := rawItem.(map[string]any)
+			if !ok {
+				continue
+			}
+			switch strings.TrimSpace(firstNonEmptyString(item["role"])) {
+			case "system":
+				seedParts = append(seedParts, "system="+normalizeCompatSeedValue(item["content"]))
+			case "user":
+				if !firstUserCaptured {
+					seedParts = append(seedParts, "first_user="+normalizeCompatSeedValue(item["content"]))
+					firstUserCaptured = true
+				}
+			}
+		}
+	}
+
+	return compatPromptCacheKeyPrefix + hashSensitiveValueForLog(strings.Join(seedParts, "|"))
+}
+
+func normalizeCompatSeedValue(v any) string {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return normalizeCompatSeedJSON(raw)
+}
+
 func normalizeCompatSeedJSON(v json.RawMessage) string {
 	if len(v) == 0 {
 		return ""

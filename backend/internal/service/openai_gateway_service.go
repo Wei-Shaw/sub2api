@@ -3160,6 +3160,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		markPatchSet("instructions", "You are a helpful coding assistant.")
 	}
 
+	if applyOpenAIBuiltinToolsRequestPathTransform(c, reqBody) {
+		bodyModified = true
+		disablePatch()
+	}
+
 	if isCodexCLI && ensureOpenAIResponsesImageGenerationTool(reqBody) {
 		bodyModified = true
 		disablePatch()
@@ -3294,11 +3299,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if codexResult.PromptCacheKey != "" {
 			promptCacheKey = codexResult.PromptCacheKey
 		}
-	}
-
-	if applyOpenAIBuiltinToolsRequestPathTransform(c, reqBody) {
-		bodyModified = true
-		disablePatch()
 	}
 
 	// Handle max_output_tokens based on platform and account type
@@ -6901,11 +6901,15 @@ func applyOpenAIBuiltinToolsAugmentation(reqBody map[string]any) bool {
 			return true
 		}
 	}
-	if hasOpenAIBuiltinTool(existing, "web_search") {
-		return true
+	for _, tool := range augmented {
+		toolType := strings.TrimSpace(fmt.Sprint(tool["type"]))
+		if toolType == "" || hasOpenAIBuiltinTool(existing, toolType) {
+			continue
+		}
+		existing = append(existing, tool)
 	}
 
-	reqBody["tools"] = append(existing, augmented[0])
+	reqBody["tools"] = existing
 	return true
 }
 

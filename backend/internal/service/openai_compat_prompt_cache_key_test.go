@@ -98,7 +98,7 @@ func TestDeriveCompatPromptCacheKey_IncludesAugmentedBuiltinTools(t *testing.T) 
 	require.Equal(t, explicitKey, builtinKey)
 }
 
-func TestDeriveCompatPromptCacheKey_BuiltinToolsOnlyAffectsSupportedWebSearch(t *testing.T) {
+func TestDeriveCompatPromptCacheKey_BuiltinToolsAffectsSupportedTools(t *testing.T) {
 	base := &apicompat.ChatCompletionsRequest{
 		Model: "gpt-5.4",
 		Messages: []apicompat.ChatMessage{
@@ -106,14 +106,19 @@ func TestDeriveCompatPromptCacheKey_BuiltinToolsOnlyAffectsSupportedWebSearch(t 
 		},
 	}
 	withUnsupported := *base
-	withUnsupported.BuiltinTools = []any{"image_generation"}
+	withUnsupported.BuiltinTools = []any{"code_interpreter"}
 	withWebSearch := *base
 	withWebSearch.BuiltinTools = []any{"web_search", "image_generation"}
+	withImageGeneration := *base
+	withImageGeneration.BuiltinTools = []any{"image_generation"}
 
 	baseKey := deriveCompatPromptCacheKey(base, "gpt-5.4")
 	unsupportedKey := deriveCompatPromptCacheKey(&withUnsupported, "gpt-5.4")
 	webSearchKey := deriveCompatPromptCacheKey(&withWebSearch, "gpt-5.4")
+	imageGenerationKey := deriveCompatPromptCacheKey(&withImageGeneration, "gpt-5.4")
 
 	require.Equal(t, baseKey, unsupportedKey)
 	require.NotEqual(t, baseKey, webSearchKey)
+	require.NotEqual(t, baseKey, imageGenerationKey)
+	require.NotEqual(t, webSearchKey, imageGenerationKey)
 }
