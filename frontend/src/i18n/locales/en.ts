@@ -3919,12 +3919,14 @@ export default {
         limiters: 'Limiters',
         paths: 'Paths',
         counterMode: 'Counter Mode',
+        targetUsers: 'Bound Users',
         fallback: 'Is Default',
         type: 'Type',
         window: 'Window',
         limit: 'Limit',
         actions: 'Actions'
       },
+      targetUsersOverflow: '+{count} more',
       scopeDetails: {
         platform: 'Platform: {value}',
         channel: 'Channel: {value}',

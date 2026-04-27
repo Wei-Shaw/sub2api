@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
-import RuntimeTable from './RuntimeTable.vue'
+import QuotaMonitorTable from './QuotaMonitorTable.vue'
 import type { LimiterRuntime } from '@/api/admin/serviceQuota'
 
 vi.mock('vue-i18n', async () => {
@@ -56,9 +56,9 @@ function makeRow(overrides: Partial<LimiterRuntime>): LimiterRuntime {
   }
 }
 
-describe('RuntimeTable', () => {
+describe('QuotaMonitorTable', () => {
   it('admin 视角 (showInternal=true) 渲染 8 列表头（含 是否默认 + 操作）', () => {
-    const wrapper = mount(RuntimeTable, {
+    const wrapper = mount(QuotaMonitorTable, {
       props: { rows: [makeRow({})], showInternal: true },
       global: { stubs },
     })
@@ -76,7 +76,7 @@ describe('RuntimeTable', () => {
   })
 
   it('用户视角 (showInternal=false) 隐藏 counterMode/scopeUser/isFallback/actions 四列', () => {
-    const wrapper = mount(RuntimeTable, {
+    const wrapper = mount(QuotaMonitorTable, {
       props: { rows: [makeRow({})], showInternal: false },
       global: { stubs },
     })
@@ -90,7 +90,7 @@ describe('RuntimeTable', () => {
   })
 
   it('rows 为空时渲染 EmptyState', () => {
-    const wrapper = mount(RuntimeTable, {
+    const wrapper = mount(QuotaMonitorTable, {
       props: { rows: [], showInternal: true },
       global: { stubs },
     })
@@ -98,7 +98,7 @@ describe('RuntimeTable', () => {
   })
 
   it('exists=false 行 usage cell 仍展示 0 / limit + 0% 进度条', () => {
-    const wrapper = mount(RuntimeTable, {
+    const wrapper = mount(QuotaMonitorTable, {
       props: { rows: [makeRow({ exists: false, current: 0, utilization_pct: 0, limit_value: 60 })], showInternal: true },
       global: { stubs },
     })
@@ -108,7 +108,7 @@ describe('RuntimeTable', () => {
 
   it('reset_at_unix_ms > 0 + exists 时展示倒计时文案', () => {
     const future = Date.now() + 60_000
-    const wrapper = mount(RuntimeTable, {
+    const wrapper = mount(QuotaMonitorTable, {
       props: { rows: [makeRow({ reset_at_unix_ms: future })], showInternal: true },
       global: { stubs },
     })
@@ -116,7 +116,7 @@ describe('RuntimeTable', () => {
   })
 
   it('reset_at_unix_ms 为 0 时不渲染倒计时（改显示 statusActive）', () => {
-    const wrapper = mount(RuntimeTable, {
+    const wrapper = mount(QuotaMonitorTable, {
       props: { rows: [makeRow({ reset_at_unix_ms: 0 })], showInternal: true },
       global: { stubs },
     })
@@ -125,7 +125,7 @@ describe('RuntimeTable', () => {
   })
 
   it('is_fallback=true 行显示兜底标签', () => {
-    const wrapper = mount(RuntimeTable, {
+    const wrapper = mount(QuotaMonitorTable, {
       props: { rows: [makeRow({ is_fallback: true })], showInternal: true },
       global: { stubs },
     })
@@ -133,7 +133,7 @@ describe('RuntimeTable', () => {
   })
 
   it('path 单元格通过 PathChevron 渲染（透传 platform 字段）', () => {
-    const wrapper = mount(RuntimeTable, {
+    const wrapper = mount(QuotaMonitorTable, {
       props: { rows: [makeRow({ path_summary: { platform: 'openai' } })], showInternal: true },
       global: { stubs },
     })
@@ -148,7 +148,7 @@ describe('RuntimeTable', () => {
       makeRow({ rule_id: 1, path_id: 10, limiter_type: 'tpm' }),
       makeRow({ rule_id: 1, path_id: 10, limiter_type: 'concurrency' }),
     ]
-    const wrapper = mount(RuntimeTable, {
+    const wrapper = mount(QuotaMonitorTable, {
       props: { rows, showInternal: true },
       global: { stubs },
     })
@@ -169,7 +169,7 @@ describe('RuntimeTable', () => {
       makeRow({ rule_id: 1, path_id: 10, limiter_type: 'rpm' }),
       makeRow({ rule_id: 1, path_id: 11, limiter_type: 'rpm' }),
     ]
-    const wrapper = mount(RuntimeTable, {
+    const wrapper = mount(QuotaMonitorTable, {
       props: { rows, showInternal: true },
       global: { stubs },
     })
@@ -185,7 +185,7 @@ describe('RuntimeTable', () => {
 
   it('操作列：点击刷新按钮 emit refresh、点击重置按钮 emit reset', async () => {
     const row = makeRow({ rule_id: 7, path_id: 11, limiter_type: 'rpm' })
-    const wrapper = mount(RuntimeTable, {
+    const wrapper = mount(QuotaMonitorTable, {
       props: { rows: [row], showInternal: true },
       global: { stubs },
     })

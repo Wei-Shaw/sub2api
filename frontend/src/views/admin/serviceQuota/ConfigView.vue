@@ -84,11 +84,27 @@
           </template>
 
           <template #cell-counter_mode="{ row }">
-            <div class="space-y-0.5">
-              <div class="text-sm font-medium text-gray-900 dark:text-white">{{ counterModeLabel(row.counter_mode) }}</div>
-              <div v-if="row.counter_mode === 'user' && row.target_user_ids?.length" class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.serviceQuota.userId', { id: row.target_user_ids.join(', ') }) }}
-              </div>
+            <div class="text-sm font-medium text-gray-900 dark:text-white">{{ counterModeLabel(row.counter_mode) }}</div>
+          </template>
+
+          <template #cell-target_users="{ row }">
+            <div v-if="row.counter_mode !== 'user'" class="text-xs text-gray-400">—</div>
+            <div v-else-if="!targetUsersFor(row).length" class="text-xs text-gray-400">—</div>
+            <div v-else class="flex flex-wrap items-center gap-1">
+              <span
+                v-for="u in targetUsersFor(row).slice(0, TARGET_USERS_VISIBLE_LIMIT)"
+                :key="u.id"
+                class="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700 dark:bg-dark-700 dark:text-gray-200"
+                :title="`#${u.id}`"
+              >
+                {{ u.label }}
+              </span>
+              <span
+                v-if="targetUsersFor(row).length > TARGET_USERS_VISIBLE_LIMIT"
+                class="text-[11px] text-gray-500 dark:text-gray-400"
+              >
+                {{ t('admin.serviceQuota.targetUsersOverflow', { count: targetUsersFor(row).length - TARGET_USERS_VISIBLE_LIMIT }) }}
+              </span>
             </div>
           </template>
 
@@ -151,9 +167,10 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'
 import EnabledToggleCell from './components/EnabledToggleCell.vue'
-import PathChevron from './components/PathChevron.vue'
+import PathChevron from '@/components/serviceQuota/PathChevron.vue'
 import RuleEditDialog from './components/RuleEditDialog.vue'
-import type { PathSummary } from './components/pathRender'
+import { useEntityName } from '@/components/serviceQuota/entityNames'
+import type { PathSummary } from '@/components/serviceQuota/pathRender'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { limiterChipClass } from '@/utils/limiterColors'
@@ -181,10 +198,14 @@ const columns = computed<Column[]>(() => [
   { key: 'limiters', label: t('admin.serviceQuota.columns.limiters') },
   { key: 'paths', label: t('admin.serviceQuota.columns.paths') },
   { key: 'counter_mode', label: t('admin.serviceQuota.columns.counterMode') },
+  { key: 'target_users', label: t('admin.serviceQuota.columns.targetUsers') },
   { key: 'is_fallback', label: t('admin.serviceQuota.columns.fallback') },
   { key: 'enabled', label: t('admin.serviceQuota.columns.status') },
   { key: 'actions', label: t('admin.serviceQuota.columns.actions') },
 ])
+
+// 限制单元格 chip 数量，避免一屏挤十几个用户名；超出折叠为 "等 N 人"
+const TARGET_USERS_VISIBLE_LIMIT = 3
 
 const rules = ref<ServiceQuotaRule[]>([])
 const loading = ref(false)
@@ -219,6 +240,25 @@ function formatLimitValue(lim: ServiceQuotaLimiterDef): string {
 
 function counterModeLabel(value: string): string {
   return counterModeOptions.value.find((item) => item.value === value)?.label || value
+}
+
+// 把规则的 target_users / target_user_ids 整理为 chip 数据：
+//   - 后端在 target_users 里返回 {id,email}，优先用 email 当 label
+//   - 老数据可能只有 target_user_ids，无 target_users，回退到 useEntityName 异步解析
+//   - 异步解析的占位为 "#id"，名称回填后会自动重渲（Vue 自动追踪 ref.value）
+interface TargetUserDisplay {
+  id: number
+  label: string
+}
+
+function targetUsersFor(rule: ServiceQuotaRule): TargetUserDisplay[] {
+  if (rule.counter_mode !== 'user') return []
+  // target_users 已带 email：直接使用，避免触发 N 次 useEntityName 请求
+  if (rule.target_users && rule.target_users.length > 0) {
+    return rule.target_users.map((u) => ({ id: u.id, label: u.email || `#${u.id}` }))
+  }
+  const ids = rule.target_user_ids || []
+  return ids.map((id) => ({ id, label: useEntityName('user', id).value || `#${id}` }))
 }
 
 // 复用 RuntimeTable 的 PathChevron 渲染：把 ServiceQuotaPathDef 适配成 PathSummary。

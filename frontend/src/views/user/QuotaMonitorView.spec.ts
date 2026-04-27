@@ -43,7 +43,7 @@ const stubs = {
     props: ['title'],
     template: '<div data-test="empty-state">{{ title }}</div>',
   },
-  RuntimeTable: {
+  QuotaMonitorTable: {
     props: ['rows', 'loading', 'showInternal'],
     template:
       '<div data-test="runtime-table">rows={{ rows.length }} internal={{ showInternal }}</div>',
@@ -91,7 +91,7 @@ describe('QuotaMonitorView', () => {
     vi.useRealTimers()
   })
 
-  it('挂载后渲染 RuntimeTable，rows.length=2，showInternal=false', async () => {
+  it('挂载后渲染 QuotaMonitorTable，rows.length=2，showInternal=false', async () => {
     const wrapper = mount(QuotaMonitorView, { global: { stubs } })
     await flushPromises()
     expect(getMyServiceQuotaMock).toHaveBeenCalledTimes(1)
@@ -101,7 +101,7 @@ describe('QuotaMonitorView', () => {
     wrapper.unmount()
   })
 
-  it('enabled=false 时显示 disabled 文案，不渲染 RuntimeTable', async () => {
+  it('enabled=false 时显示 disabled 文案，不渲染 QuotaMonitorTable', async () => {
     getMyServiceQuotaMock.mockResolvedValueOnce(makeSnapshot({ enabled: false, items: [] }))
     const wrapper = mount(QuotaMonitorView, { global: { stubs } })
     await flushPromises()

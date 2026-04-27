@@ -48,7 +48,7 @@
       />
 
       <template v-else>
-        <RuntimeTable :rows="rows" :loading="loading" :show-internal="false" />
+        <QuotaMonitorTable :rows="rows" :loading="loading" :show-internal="false" />
         <p
           v-if="snapshot?.truncated"
           class="rounded-lg bg-amber-50 px-4 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
@@ -67,7 +67,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import AutoRefreshButton from '@/components/common/AutoRefreshButton.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import RuntimeTable from '@/views/admin/serviceQuota/components/RuntimeTable.vue'
+import QuotaMonitorTable from '@/components/serviceQuota/QuotaMonitorTable.vue'
 import { getMyServiceQuota, type MyQuotaSnapshot } from '@/api/serviceQuota'
 import type { LimiterRuntime } from '@/api/admin/serviceQuota'
 import { useAppStore } from '@/stores/app'

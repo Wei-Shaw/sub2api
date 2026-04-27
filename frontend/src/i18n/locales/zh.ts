@@ -4083,12 +4083,14 @@ export default {
         limiters: '限流器',
         paths: '路径',
         counterMode: '计数模式',
+        targetUsers: '绑定用户',
         fallback: '是否默认',
         type: '类型',
         window: '窗口',
         limit: '限额',
         actions: '操作'
       },
+      targetUsersOverflow: '等 {count} 人',
       scopeDetails: {
         platform: '平台：{value}',
         channel: '渠道：{value}',

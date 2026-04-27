@@ -56,7 +56,7 @@
       </template>
 
       <template #table>
-        <RuntimeTable
+        <QuotaMonitorTable
           :rows="rows"
           :loading="loading"
           :show-internal="true"
@@ -87,7 +87,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import AutoRefreshButton from '@/components/common/AutoRefreshButton.vue'
 import FilterBar from './components/FilterBar.vue'
-import RuntimeTable from './components/RuntimeTable.vue'
+import QuotaMonitorTable from '@/components/serviceQuota/QuotaMonitorTable.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import {
   getServiceQuotaMonitorSnapshot,
