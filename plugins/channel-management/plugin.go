@@ -171,6 +171,10 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 			// 声明给 host loader-runtime 注入 <link>.
 			EntryCSS: "dist/entry.css",
 			MenuItems: []pluginsdk.MenuItemDecl{
+				// Admin "渠道管理" parent — owns 渠道定价 (channel CRUD/pricing in
+				// ChannelsView) 和 渠道监控 (V5 W7 ChannelMonitorView). V5 整体迁移
+				// 到插件后, host sidebar 已删除硬编码 /admin/channels 顶级项,
+				// 由 plugin 提供唯一入口.
 				{
 					Path:          "/admin/channels",
 					IconSVG:       pluginsdk.IconBranchFork,
@@ -187,6 +191,14 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 							SortOrder:     210,
 							RequiresAdmin: true,
 						},
+						{
+							Path:          channelMonitorAdminFrontendPath,
+							IconSVG:       pluginsdk.IconCog,
+							Labels:        pluginsdk.Labels("渠道监控", "Channel Monitor"),
+							Section:       pluginsdk.SectionAdmin,
+							SortOrder:     220,
+							RequiresAdmin: true,
+						},
 					},
 				},
 				// User-facing "available channels" entry. The actual Vue
@@ -200,16 +212,6 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 					Section:       pluginsdk.SectionUser,
 					SortOrder:     200,
 					RequiresAdmin: false,
-				},
-				// Admin "Channel Monitor" entry — Vue component
-				// ChannelMonitorView.vue is added in V5 W7.1.
-				{
-					Path:          channelMonitorAdminFrontendPath,
-					IconSVG:       pluginsdk.IconCog,
-					Labels:        pluginsdk.Labels("渠道监控", "Channel Monitor"),
-					Section:       pluginsdk.SectionAdmin,
-					SortOrder:     220,
-					RequiresAdmin: true,
 				},
 				// User-facing read-only "Channel Status" view (V5 W7.3).
 				{

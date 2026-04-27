@@ -1,1 +1,0 @@
-Placeholder so `//go:embed all:frontend/dist` always has a match. Real bundle is produced by `pnpm build` (locally) or the plugin-frontend-builder Docker stage.
