@@ -1,5 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "sub2api.io/schema/plugin-settings-v1",
   "title": "Channel Monitor",
   "description": "Periodic upstream-channel health checks (V5 W6).",
   "type": "object",
@@ -16,7 +17,8 @@
       "description": "Pre-filled in the admin Create form. Per-monitor override still applies.",
       "minimum": 15,
       "maximum": 3600,
-      "default": 60
+      "default": 60,
+      "x-requires-reload": true
     },
     "templateMaxBodyKB": {
       "type": "integer",
@@ -32,8 +34,25 @@
       "description": "Informational — the host cron currently fires at 02:00 UTC. Reserved for future per-tenant overrides.",
       "minimum": 0,
       "maximum": 23,
-      "default": 2
+      "default": 2,
+      "x-deprecated": "Reserved for future use; current cron is hard-coded to 02:00 UTC. Will be repurposed in V7."
+    },
+    "internalUpstreamProbeKey": {
+      "type": "string",
+      "title": "Internal upstream probe key (DEMO secret)",
+      "description": "Demo of x-visibility:secret. Used only for SETTINGS-V2 smoke testing — leave empty in production.",
+      "x-visibility": "secret"
+    },
+    "_internalCacheTTLSec": {
+      "type": "integer",
+      "title": "Internal monitor cache TTL (seconds)",
+      "description": "Backend-only — controls in-memory monitor cache TTL. Not editable from admin UI. Demo of x-visibility:backend.",
+      "minimum": 5,
+      "maximum": 600,
+      "default": 60,
+      "x-visibility": "backend"
     }
   },
-  "required": ["enabled"]
+  "required": ["enabled"],
+  "x-schema-version": "1.0.0"
 }

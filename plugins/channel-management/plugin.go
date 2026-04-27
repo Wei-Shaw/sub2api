@@ -162,6 +162,9 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 		SettingsSchema: &pluginsdk.SettingsSchemaDoc{
 			Schema:   monitorSettingsSchemaJSON,
 			Defaults: monitorSettingsDefaultsJSON,
+			Version:  "1.0.0", // V5/W6 SETTINGS-V2 demo
+			// PropertyMeta 留空 — 让 host 从 schema vendor extensions 反向推导,
+			// 这样 plugin author 不需要重复声明 (INDUSTRY §3 行 4 决策).
 		},
 		Frontend: &pluginsdk.FrontendManifest{
 			// EntryJS 路径相对于 plugin frontend 内的 dist/ 根, 核心拼成
