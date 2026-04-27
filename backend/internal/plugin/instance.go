@@ -36,6 +36,13 @@ type PluginInstance struct {
 	StartedAt     time.Time
 	HealthCancel  context.CancelFunc
 	restartPolicy *RestartPolicy
+
+	// settingsUnsubscribe releases the PluginSettingsService subscription
+	// that PluginManager opens after RegisterSchema succeeds. Set in
+	// spawnAndConnect, called from stopInstance. nil when the plugin did
+	// not register a schema (or the host had no settings service wired).
+	// V5/W6 SETTINGS-V2 — see DESIGN §4.4.
+	settingsUnsubscribe func()
 }
 
 // NewPluginInstance 构造新的插件实例,初始状态为 StateRegistered。

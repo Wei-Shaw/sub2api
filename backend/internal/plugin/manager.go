@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,6 +24,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/leaderlock"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
@@ -70,13 +72,17 @@ type PluginManager struct {
 }
 
 // PluginSettingsRegistrar is the minimal surface PluginManager needs from
-// service.PluginSettingsService. Defined as an interface here so the
-// plugin package does not have to import the service package directly,
-// keeping the dependency graph one-way (service -> plugin would create a
-// cycle if anything in service ever needed plugin types).
+// service.PluginSettingsService.
+//
+// V5/W6 SETTINGS-V2: Subscribe lets PluginManager observe value-change
+// events for a single plugin so it can coalesce reload triggers when a
+// key with x-requires-reload=true is updated (DESIGN §4.4). Subscribe
+// only watches one (plugin, key) pair per call; passing key="" subscribes
+// to the whole namespace, which is the mode the manager uses.
 type PluginSettingsRegistrar interface {
 	RegisterSchema(ctx context.Context, pluginName string, schemaJSON, defaultsJSON []byte) error
 	UnregisterSchema(pluginName string)
+	Subscribe(pluginName, key string) (<-chan service.PluginSettingsChange, func())
 }
 
 // SettingsExtensionRegistrar is the minimal surface PluginManager needs to
@@ -842,6 +848,16 @@ func (m *PluginManager) spawnAndConnect(parentCtx context.Context, inst *PluginI
 			_ = cmd.Wait()
 			return fmt.Errorf("plugin settings register schema: %w", err)
 		}
+
+		// V5/W6 SETTINGS-V2 (DESIGN §4.4): subscribe to value-change events
+		// so RequiresReload-flagged updates can trigger a coalesced reload.
+		// Empty key = whole namespace. The unsubscribe is captured on the
+		// instance and invoked from stopInstance — see DESIGN §4.4 cleanup.
+		ch, unsubscribe := m.settingsService.Subscribe(inst.Name, "")
+		inst.mu.Lock()
+		inst.settingsUnsubscribe = unsubscribe
+		inst.mu.Unlock()
+		go m.handlePluginSettingsEvents(inst.Name, ch)
 	}
 
 	// 调用 Init 把 SDK 地址、plugin_name 与已批准的 capabilities 传给子进程。
@@ -992,6 +1008,18 @@ func (m *PluginManager) stopInstance(ctx context.Context, name string, markRegis
 	newTable := m.router.CurrentTable().RemovePlugin(name)
 	m.router.SwapRouteTable(newTable)
 	m.sdkServer.UnregisterPlugin(name)
+
+	// V5/W6 SETTINGS-V2: release the per-plugin settings subscription
+	// before unregistering the schema so the handler goroutine drains
+	// cleanly. The subscription is recreated by the next spawnAndConnect.
+	inst.mu.Lock()
+	settingsUnsub := inst.settingsUnsubscribe
+	inst.settingsUnsubscribe = nil
+	inst.mu.Unlock()
+	if settingsUnsub != nil {
+		settingsUnsub()
+	}
+
 	if m.settingsService != nil {
 		m.settingsService.UnregisterSchema(name)
 	}
@@ -1008,6 +1036,82 @@ func (m *PluginManager) stopInstance(ctx context.Context, name string, markRegis
 	}
 	inst.mu.Unlock()
 	return nil
+}
+
+// reloadCoalesceWindow caps how often a plugin can be reloaded in response
+// to RequiresReload settings changes (DESIGN §4.4). Multiple events arriving
+// within this window collapse into a single reload, protecting plugins from
+// rapid-fire admin saves that would otherwise restart the process every few
+// seconds. Pin to 2 seconds — DESIGN constant, do not vary per environment.
+const reloadCoalesceWindow = 2 * time.Second
+
+// handlePluginSettingsEvents drains the per-plugin settings change channel
+// and triggers a plugin reload when any change carries RequiresReload=true.
+//
+// Lifecycle:
+//   - Started from spawnAndConnect after a successful Subscribe.
+//   - Exits when the channel is closed. Two paths close the channel:
+//     1. stopInstance calls the unsubscribe func captured on the instance
+//     (normal shutdown / restart). The handler simply returns.
+//     2. PluginSettingsService.dropAllSubscribersForPlugin closes every
+//     subscriber as part of a schema_version change (DESIGN §4.5). The
+//     plugin is expected to restart shortly after — when spawnAndConnect
+//     runs again, a fresh subscription + handler are established. The
+//     manager does NOT auto-resubscribe because the dropped subscription
+//     coincides with a plugin-level lifecycle transition.
+//   - Pending reload timers are stopped on exit so we never fire a reload
+//     for a stopped plugin.
+func (m *PluginManager) handlePluginSettingsEvents(pluginName string, ch <-chan service.PluginSettingsChange) {
+	// pendingReason holds the most recent key that triggered a coalesced
+	// reload. atomic.Value lets the AfterFunc closure (which runs on its
+	// own goroutine) read the freshest reason without racing the for-loop
+	// writing new events. The DESIGN §4.4 pseudocode glosses over the
+	// concurrent access — this typed wrapper closes the gap.
+	var (
+		pendingReason atomic.Value // string
+		timer         *time.Timer
+	)
+	defer func() {
+		if timer != nil {
+			timer.Stop()
+		}
+	}()
+	fire := func() {
+		reason, _ := pendingReason.Load().(string)
+		m.reloadPlugin(context.Background(), pluginName, reason)
+	}
+	for change := range ch {
+		if !change.RequiresReload {
+			continue
+		}
+		pendingReason.Store("settings_change:" + change.Key)
+		if timer == nil {
+			timer = time.AfterFunc(reloadCoalesceWindow, fire)
+			continue
+		}
+		// Reset returns false when the timer has already fired (its
+		// AfterFunc goroutine has at least started). In that case the
+		// previous reload is already in flight; we allocate a new Timer
+		// so the next pending event still gets a fresh coalesce window.
+		// The fire closure reads pendingReason atomically, so the reload
+		// always reports the freshest key.
+		if !timer.Reset(reloadCoalesceWindow) {
+			timer = time.AfterFunc(reloadCoalesceWindow, fire)
+		}
+	}
+}
+
+// reloadPlugin restarts a plugin in response to a settings change. Mirrors
+// RestartPlugin but logs the originating reason for traceability. Errors
+// are logged and swallowed — the manager will eventually retry through the
+// normal restart-on-unhealthy path if the reload leaves the plugin broken.
+func (m *PluginManager) reloadPlugin(ctx context.Context, name, reason string) {
+	m.logger.Info("plugin reload triggered by settings change",
+		"plugin", name, "reason", reason)
+	if err := m.RestartPlugin(ctx, name); err != nil {
+		m.logger.Error("plugin reload failed",
+			"plugin", name, "reason", reason, "error", err)
+	}
 }
 
 // waitProcessExit 等待插件进程退出,触发自动重启决策。
