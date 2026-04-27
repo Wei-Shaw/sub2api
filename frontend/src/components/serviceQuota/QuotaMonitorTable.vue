@@ -29,13 +29,21 @@
 
         <!-- 数据行：rule/path 用 rowspan 真合并跨多 limiter 行 -->
         <tr v-else v-for="row in displayRows" :key="row._key" class="hover:bg-gray-50 dark:hover:bg-dark-800">
-          <!-- 规则：rule 组首条才渲染 td，rowspan = 该 rule 的总行数 -->
+          <!-- 规则：rule 组首条才渲染 td，rowspan = 该 rule 的总行数。
+               counter_mode != 'user' 时（shared / per_user）追加"全"badge，
+               让用户视角能区分"全局适用规则"和"指定到我的规则"——admin 视角
+               有"限制模式"列展示得更详细，badge 也加上无害（双重表达）。 -->
           <td
             v-if="row._ruleSpan > 0"
             :rowspan="row._ruleSpan"
             class="px-4 py-3 align-middle text-sm font-medium text-gray-900 dark:text-white whitespace-nowrap"
           >
-            {{ row.rule_name || `#${row.rule_id}` }}
+            <span>{{ row.rule_name || `#${row.rule_id}` }}</span>
+            <span
+              v-if="isGlobalRule(row.counter_mode)"
+              class="badge badge-blue ml-1.5"
+              :title="t('admin.serviceQuota.counterModeHints.' + (row.counter_mode === 'per_user' ? 'perUser' : row.counter_mode))"
+            >{{ t('common.global') }}</span>
           </td>
 
           <!-- 路径：(rule, path) 组首条才渲染 td，rowspan = 该 path 的总行数 -->
@@ -205,6 +213,15 @@ const displayRows = useQuotaMonitorRows(toRef(props, 'rows'))
 // 首屏先显示占位 #id，回填后自动刷新；hover title 上保留 #id 方便管理员对齐。
 function scopeUserName(id: number): string {
   return useEntityName('user', id).value
+}
+
+// isGlobalRule 判断规则是否"全局适用"（非指定用户）：
+//   - shared / per_user：全局规则（区别仅在计数器分片方式：共享 vs 按用户分片）
+//   - user：仅指定用户列表生效，非全局
+//   - 后端可能在 user 视角抹空 counter_mode（旧版本）；空值视为不显示 badge
+//     （Task #24 后端已修复透传，但保留兜底防御老前端缓存）
+function isGlobalRule(mode: string | undefined): boolean {
+  return mode === 'shared' || mode === 'per_user'
 }
 </script>
 

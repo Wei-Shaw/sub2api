@@ -284,6 +284,7 @@ export default {
     yes: '是',
     no: '否',
     all: '全部',
+    global: '全',
     none: '无',
     selectAll: '全选',
     noData: '暂无数据',

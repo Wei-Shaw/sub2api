@@ -140,6 +140,31 @@ describe('QuotaMonitorTable', () => {
     expect(wrapper.text()).toContain('admin.serviceQuota.fallback.no')
   })
 
+  it('counter_mode="shared" 时规则名后渲染"全"badge（common.global）', () => {
+    const wrapper = mount(QuotaMonitorTable, {
+      // user 视角：showInternal=false，没有 counterMode 列，badge 是唯一区分线索
+      props: { rows: [makeRow({ counter_mode: 'shared' })], showInternal: false },
+      global: { stubs },
+    })
+    expect(wrapper.text()).toContain('common.global')
+  })
+
+  it('counter_mode="per_user" 时规则名后也渲染"全"badge（适用所有用户）', () => {
+    const wrapper = mount(QuotaMonitorTable, {
+      props: { rows: [makeRow({ counter_mode: 'per_user' })], showInternal: false },
+      global: { stubs },
+    })
+    expect(wrapper.text()).toContain('common.global')
+  })
+
+  it('counter_mode="user" 时规则名后不渲染"全"badge（指定用户规则）', () => {
+    const wrapper = mount(QuotaMonitorTable, {
+      props: { rows: [makeRow({ counter_mode: 'user' })], showInternal: false },
+      global: { stubs },
+    })
+    expect(wrapper.text()).not.toContain('common.global')
+  })
+
   it('path 单元格通过 PathChevron 渲染（透传 platform 字段）', () => {
     const wrapper = mount(QuotaMonitorTable, {
       props: { rows: [makeRow({ path_summary: { platform: 'openai' } })], showInternal: true },
