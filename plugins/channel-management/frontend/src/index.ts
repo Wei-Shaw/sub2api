@@ -23,6 +23,7 @@ import './style.css'
 import ChannelsView from './views/ChannelsView.vue'
 import AvailableChannelsView from './views/user/AvailableChannelsView.vue'
 import ChannelMonitorView from './views/admin/ChannelMonitorView.vue'
+import ChannelStatusView from './views/user/ChannelStatusView.vue'
 import { setClient } from './api/client'
 import { setSdk } from './api/sdk'
 import enMessages from './i18n/en'
@@ -62,6 +63,8 @@ function install(sdk: HostSdk): PluginRuntimeAssets {
       'AvailableChannelsView.vue': AvailableChannelsView,
       // V5 W7.1 — Admin Channel Monitor list view.
       'ChannelMonitorView.vue': ChannelMonitorView,
+      // V5 W7.3 — User-facing read-only Channel Status view.
+      'ChannelStatusView.vue': ChannelStatusView,
     },
   }
 }
