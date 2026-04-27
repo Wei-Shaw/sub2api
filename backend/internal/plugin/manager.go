@@ -16,11 +16,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/leaderlock"
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
@@ -41,6 +43,20 @@ type PluginManager struct {
 	cfg       Config
 	db        *sql.DB
 	logger    *slog.Logger
+
+	// instanceID identifies this host process for leader-lock contention.
+	// Generated once per manager so a restart releases the lease only via
+	// TTL expiry, never accidentally because two managers share an ID.
+	instanceID string
+
+	// jobScheduler holds the V5 W2 JobScheduler service so admin handlers
+	// (W2.4) can call ManualFire without going through the SDKServer.
+	jobScheduler *JobSchedulerServer
+
+	// jobHistory is the persistence sink for plugin job runs. Optional; nil
+	// means "log-only", which is the default until the W2.4 admin handler
+	// installs a DB-backed implementation via SetJobHistoryRecorder.
+	jobHistory JobHistoryRecorder
 }
 
 // NewPluginManager 构造 manager。
@@ -57,14 +73,37 @@ func NewPluginManager(db *sql.DB, rdb *redis.Client, cfg Config, router *PluginR
 	sdk := NewSDKServer(db, rdb)
 
 	return &PluginManager{
-		plugins:   make(map[string]*PluginInstance),
-		repo:      repo,
-		router:    router,
-		sdkServer: sdk,
-		cfg:       cfg,
-		db:        db,
-		logger:    slog.Default().With("component", "plugin_manager"),
+		plugins:    make(map[string]*PluginInstance),
+		repo:       repo,
+		router:     router,
+		sdkServer:  sdk,
+		cfg:        cfg,
+		db:         db,
+		logger:     slog.Default().With("component", "plugin_manager"),
+		instanceID: uuid.NewString(),
 	}, nil
+}
+
+// SetJobHistoryRecorder installs the persistence sink the JobScheduler uses
+// to record runs. Wire-tree usage: admin handler builds a DB-backed
+// JobHistoryRecorder and calls this BEFORE PluginManager.Start so the
+// scheduler picks it up at construction time. Calling after Start is a
+// programmer error (the scheduler captures the recorder by value at
+// startSDKServer) but is non-fatal — only future restarts will pick up the
+// new value.
+func (m *PluginManager) SetJobHistoryRecorder(rec JobHistoryRecorder) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.jobHistory = rec
+}
+
+// JobScheduler returns the active JobScheduler so admin handlers can call
+// ManualFire / inspect schedulers. nil before Start has wired the SDK gRPC
+// server.
+func (m *PluginManager) JobScheduler() *JobSchedulerServer {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.jobScheduler
 }
 
 // Start 启动 SDK gRPC 服务并加载所有 enabled 插件。
@@ -123,6 +162,11 @@ func (m *PluginManager) BindRouter(router *PluginRouter) {
 }
 
 // startSDKServer 监听 SDK gRPC 端口并启动 grpc.Server。
+//
+// 这里同时初始化 V5 W2 引入的 JobSchedulerServer:scheduler 与 SDKServer
+// 共享同一个 Redis client(通过 leaderlock helper 复用 OpsCleanupService 的
+// 锁实现),并把 caller 解析委托给 SDKServer.resolveCaller,确保 plugin
+// metadata 头与 RedisProxy/EventBus 等服务用同一套身份识别。
 func (m *PluginManager) startSDKServer() error {
 	ln, err := net.Listen("tcp", m.cfg.SDKListenAddr)
 	if err != nil {
@@ -130,6 +174,20 @@ func (m *PluginManager) startSDKServer() error {
 	}
 	m.sdkLn = ln
 	m.sdkAddr = ln.Addr().String()
+
+	// Construct the JobScheduler before RegisterServices so the gRPC
+	// service descriptor is registered. m.jobHistory may be nil (no admin
+	// handler configured yet) — the scheduler tolerates that and just
+	// skips persistence.
+	leaderProvider := m.buildLeaderLockProvider()
+	jobScheduler := NewJobSchedulerServer(
+		m.sdkServer.resolveCaller,
+		leaderProvider,
+		m.jobHistory,
+		m.logger,
+	)
+	m.sdkServer.AttachJobScheduler(jobScheduler)
+	m.jobScheduler = jobScheduler
 
 	srv := grpc.NewServer()
 	m.sdkServer.RegisterServices(srv)
@@ -142,6 +200,21 @@ func (m *PluginManager) startSDKServer() error {
 	}()
 	m.logger.Info("sdk grpc server listening", "addr", m.sdkAddr)
 	return nil
+}
+
+// buildLeaderLockProvider mints a leaderlock.Provider sharing the manager's
+// Redis client (when present) with a stable per-process instance ID. We pull
+// the Redis client off SDKServer because the manager no longer keeps a
+// reference of its own — see NewPluginManager.
+func (m *PluginManager) buildLeaderLockProvider() leaderlock.Provider {
+	return leaderlock.New(m.sdkServer.redis, m.db, leaderlock.Config{
+		InstanceID: m.instanceID,
+		TTL:        jobLeaderLockTTL,
+		// SingleInstance is intentionally false: even in simple mode we
+		// take the Redis lease so subsequent multi-replica deploys do not
+		// silently double-fire jobs. The SetNX cost is negligible.
+		Logger: m.logger.With("component", "plugin_job_leader_lock"),
+	})
 }
 
 // syncFromDisk 把磁盘上发现的插件登记到 DB（若不存在）。
@@ -203,6 +276,11 @@ func (m *PluginManager) ShutdownAll(ctx context.Context) {
 
 	if m.sdkGRPC != nil {
 		m.sdkGRPC.GracefulStop()
+	}
+	// Stop the JobScheduler before SDKServer so per-plugin schedulers can
+	// flush pending acks while their RecordRun sink is still alive.
+	if m.jobScheduler != nil {
+		m.jobScheduler.Stop()
 	}
 	if m.sdkServer != nil {
 		m.sdkServer.Stop()
@@ -433,6 +511,10 @@ func configToString(in map[string]any) (map[string]string, error) {
 // enforcement in the SDK server (e.g. grpc_server.go).
 var allowedPluginCapabilities = map[string]struct{}{
 	"redis_raw_keys": {},
+	// job_scheduler is the V5 W2 capability granting access to the
+	// JobScheduler stream RPC. Default-allow because scheduling work is
+	// not a privileged cross-plugin operation — see V5-DESIGN §2.7.
+	"job_scheduler": {},
 }
 
 // approveCapabilities filters the capabilities a plugin requested in its
