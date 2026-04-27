@@ -92,6 +92,7 @@ func (s *SDKServer) RegisterServices(grpcServer *grpc.Server) {
 	pluginsdk.RegisterSQLProxyServer(grpcServer, s)
 	pluginsdk.RegisterRedisProxyServer(grpcServer, s)
 	pluginsdk.RegisterEventBusServer(grpcServer, &eventBusAdapter{srv: s})
+	pluginsdk.RegisterLogProxyServer(grpcServer, NewLogProxyServer(s))
 }
 
 // cleanupLoop 周期性回滚超时事务。
