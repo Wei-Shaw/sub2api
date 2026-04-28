@@ -578,44 +578,6 @@ func normalizeOpenAIResponsesImageGenerationTools(reqBody map[string]any) bool {
 	return modified
 }
 
-func ensureOpenAIResponsesImageGenerationTool(reqBody map[string]any) bool {
-	if len(reqBody) == 0 {
-		return false
-	}
-	if isCodexSparkModel(firstNonEmptyString(reqBody["model"])) {
-		return false
-	}
-
-	tool := map[string]any{
-		"type":          "image_generation",
-		"output_format": "png",
-	}
-
-	rawTools, ok := reqBody["tools"]
-	if !ok || rawTools == nil {
-		reqBody["tools"] = []any{tool}
-		return true
-	}
-
-	tools, ok := rawTools.([]any)
-	if !ok {
-		reqBody["tools"] = []any{tool}
-		return true
-	}
-	for _, rawTool := range tools {
-		toolMap, ok := rawTool.(map[string]any)
-		if !ok {
-			continue
-		}
-		if strings.TrimSpace(firstNonEmptyString(toolMap["type"])) == "image_generation" {
-			return false
-		}
-	}
-
-	reqBody["tools"] = append(tools, tool)
-	return true
-}
-
 func applyCodexImageGenerationBridgeInstructions(reqBody map[string]any) bool {
 	if len(reqBody) == 0 || !hasOpenAIImageGenerationTool(reqBody) {
 		return false

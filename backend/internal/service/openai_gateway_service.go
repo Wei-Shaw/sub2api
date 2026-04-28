@@ -339,6 +339,7 @@ type OpenAIGatewayService struct {
 	toolCorrector         *CodexToolCorrector
 	openaiWSResolver      OpenAIWSProtocolResolver
 	balanceNotifyService  *BalanceNotifyService
+	generatedImageStore   *OpenAIGeneratedImageStore
 
 	openaiWSPoolOnce              sync.Once
 	openaiWSStateStoreOnce        sync.Once
@@ -377,6 +378,7 @@ func NewOpenAIGatewayService(
 	resolver *ModelPricingResolver,
 	channelService *ChannelService,
 	balanceNotifyService *BalanceNotifyService,
+	generatedImageStore *OpenAIGeneratedImageStore,
 ) *OpenAIGatewayService {
 	svc := &OpenAIGatewayService{
 		accountRepo:         accountRepo,
@@ -407,6 +409,7 @@ func NewOpenAIGatewayService(
 		resolver:              resolver,
 		channelService:        channelService,
 		balanceNotifyService:  balanceNotifyService,
+		generatedImageStore:   generatedImageStore,
 		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
 		codexSnapshotThrottle: newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
 	}
@@ -3165,12 +3168,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		disablePatch()
 	}
 
-	if isCodexCLI && ensureOpenAIResponsesImageGenerationTool(reqBody) {
-		bodyModified = true
-		disablePatch()
-		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Injected /responses image_generation tool for Codex client")
-	}
-
 	if normalizeOpenAIResponsesImageGenerationTools(reqBody) {
 		bodyModified = true
 		disablePatch()
@@ -3224,6 +3221,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			upstreamModel,
 			account.Type,
 		)
+	}
+	if isOpenCodeResponsesClient(c) {
+		changed, rehydrateErr := rehydrateOpenCodeGeneratedImageMarkers(ctx, reqBody, s.generatedImageStore, openCodeImageRehydrateOptions{MaxImages: 3})
+		if rehydrateErr != nil {
+			return nil, rehydrateErr
+		}
+		if changed {
+			bodyModified = true
+			disablePatch()
+		}
 	}
 	if err := validateCodexSparkInput(reqBody, upstreamModel); err != nil {
 		setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
@@ -5133,6 +5140,11 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	sawResponseInProgress := false
 	sawSubstantiveEvent := false
 	openCodeClient := isOpenCodeResponsesClient(c)
+	openCodeImageOpts := openCodeImageRewriteOptions{}
+	if openCodeClient {
+		openCodeImageOpts.BaseURL = resolveOpenCodeImageDownloadBaseURL(c, s.cfg)
+		openCodeImageOpts.RewrittenImageMessages = make(map[string]map[string]any)
+	}
 	pendingOpenCodeFrame := make([]string, 0, 4)
 	localRequestID := strings.TrimSpace(c.Writer.Header().Get("X-Request-Id"))
 	startStream := func() error {
@@ -5270,7 +5282,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		return resultWithUsage(), fmt.Errorf("stream read error: %w", scanErr), true
 	}
 	processOpenCodeSSEFrame := func(frameLines []string, queueDrained bool) (*openaiStreamingResult, error, bool) {
-		frameBody, data, hasData, keep := filterOpenCodeResponsesSSEFrame(frameLines)
+		frameBody, data, hasData, keep := filterOpenCodeResponsesSSEFrameWithImages(ctx, frameLines, s.generatedImageStore, openCodeImageOpts)
 		if !keep {
 			return nil, nil, false
 		}
@@ -5289,7 +5301,12 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			return nil, nil, false
 		}
 
-		switch strings.TrimSpace(gjson.Get(data, "type").String()) {
+		frameEventType := openCodeSSEFrameEventType(frameLines)
+		eventType := strings.TrimSpace(gjson.Get(data, "type").String())
+		if eventType == "" {
+			eventType = frameEventType
+		}
+		switch eventType {
 		case "response.created":
 			sawResponseCreated = true
 		case "response.in_progress":
@@ -5305,29 +5322,50 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		if needModelReplace && mappedModel != "" && strings.Contains(data, mappedModel) {
 			replacedLine := s.replaceModelInSSELine("data: "+data, mappedModel, originalModel)
 			if replacedData, ok := extractOpenAISSEDataLine(replacedLine); ok {
+				oldData := data
 				data = replacedData
-				frameBody = rebuildSSEFrameWithData(frameLines, data)
+				frameBody = replaceSSEFrameDataPayload(frameBody, oldData, data, frameLines)
+				eventType = strings.TrimSpace(gjson.Get(data, "type").String())
+				if eventType == "" {
+					eventType = frameEventType
+				}
 			}
 		}
 
 		dataBytes := []byte(data)
-		if openAIStreamEventIsTerminal(data) {
+		if openAIStreamEventIsTerminal(data) || isOpenAITerminalResponseEventType(eventType) {
 			sawTerminalEvent = true
 		}
+		forceFlushFailedEvent := false
+		if eventType == "response.failed" {
+			failedMessage = extractOpenAISSEErrorMessage(dataBytes)
+			if !openAIStreamClientOutputStarted(c, clientOutputStarted) && openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
+				sawFailedEvent = true
+				return resultWithUsage(), s.newOpenAIStreamFailoverError(c, account, false, upstreamRequestID, dataBytes, failedMessage), true
+			}
+			forceFlushFailedEvent = true
+			sawFailedEvent = true
+		}
 		if correctedData, corrected := s.toolCorrector.CorrectToolCallsInSSEBytes(dataBytes); corrected {
+			oldData := data
 			dataBytes = correctedData
 			data = string(correctedData)
-			frameBody = rebuildSSEFrameWithData(frameLines, data)
+			frameBody = replaceSSEFrameDataPayload(frameBody, oldData, data, frameLines)
+			eventType = strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
+			if eventType == "" {
+				eventType = frameEventType
+			}
 		}
+		startsClientOutput := forceFlushFailedEvent || openAIStreamDataStartsClientOutput(data, eventType)
 
 		if !clientDisconnected {
-			if !streamStarted && !openAIResponsesEventStartsClientStream(data) {
-				s.parseSSEUsageBytes(dataBytes, usage)
+			if !clientOutputStarted && !startsClientOutput {
+				s.parseSSEUsageBytesWithEventType(dataBytes, eventType, usage)
 				return nil, nil, false
 			}
 			sawSubstantiveEvent = true
-			shouldFlush := queueDrained
-			if firstTokenMs == nil && data != "" && data != "[DONE]" {
+			shouldFlush := queueDrained && (clientOutputStarted || startsClientOutput)
+			if firstTokenMs == nil && startsClientOutput && data != "" && data != "[DONE]" {
 				shouldFlush = true
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
@@ -5339,14 +5377,22 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			if _, err := bufferedWriter.WriteString(frameBody); err != nil {
 				clientDisconnected = true
 				logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming, continuing to drain upstream for billing")
-			} else if shouldFlush {
-				if err := flushBuffered(); err != nil {
-					clientDisconnected = true
-					logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming flush, continuing to drain upstream for billing")
+			} else {
+				if startsClientOutput {
+					clientOutputStarted = true
+					lastDownstreamWriteAt = time.Now()
+				}
+				if shouldFlush {
+					if err := flushBuffered(); err != nil {
+						clientDisconnected = true
+						logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming flush, continuing to drain upstream for billing")
+					} else if startsClientOutput {
+						lastDownstreamWriteAt = time.Now()
+					}
 				}
 			}
 		}
-		s.parseSSEUsageBytes(dataBytes, usage)
+		s.parseSSEUsageBytesWithEventType(dataBytes, eventType, usage)
 		return nil, nil, false
 	}
 
@@ -5662,6 +5708,10 @@ func (s *OpenAIGatewayService) parseSSEUsage(data string, usage *OpenAIUsage) {
 }
 
 func (s *OpenAIGatewayService) parseSSEUsageBytes(data []byte, usage *OpenAIUsage) {
+	s.parseSSEUsageBytesWithEventType(data, strings.TrimSpace(gjson.GetBytes(data, "type").String()), usage)
+}
+
+func (s *OpenAIGatewayService) parseSSEUsageBytesWithEventType(data []byte, eventType string, usage *OpenAIUsage) {
 	if usage == nil || len(data) == 0 || bytes.Equal(data, []byte("[DONE]")) {
 		return
 	}
@@ -5669,7 +5719,6 @@ func (s *OpenAIGatewayService) parseSSEUsageBytes(data []byte, usage *OpenAIUsag
 	if len(data) < 72 {
 		return
 	}
-	eventType := gjson.GetBytes(data, "type").String()
 	if eventType != "response.completed" && eventType != "response.done" &&
 		eventType != "response.incomplete" && eventType != "response.cancelled" && eventType != "response.canceled" {
 		return
@@ -5961,9 +6010,11 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	}
 	usage := &usageValue
 	if isOpenCodeResponsesClient(c) {
-		filteredBody, changed, err := sanitizeOpenCodeResponsesOutput(body)
+		filteredBody, changed, err := rewriteOpenCodeImageGenerationOutput(ctx, body, s.generatedImageStore, openCodeImageRewriteOptions{
+			BaseURL: resolveOpenCodeImageDownloadBaseURL(c, s.cfg),
+		})
 		if err != nil {
-			return nil, fmt.Errorf("sanitize openai responses output: %w", err)
+			return nil, fmt.Errorf("rewrite opencode image generation output: %w", err)
 		}
 		if changed {
 			body = filteredBody
@@ -6025,7 +6076,14 @@ func (s *OpenAIGatewayService) handleSSEToJSONForAccount(resp *http.Response, c 
 			// When the terminal event has an empty output array, reconstruct
 			// output from accumulated delta events so the client gets full content.
 			// gjson Array() returns empty slice for null, missing, or empty arrays.
-			if outputJSON, reconstructed := reconstructResponseOutputFromSSE(bodyText); reconstructed {
+			var outputJSON []byte
+			var reconstructed bool
+			if isOpenCodeClient {
+				outputJSON, reconstructed = reconstructOpenCodeResponseOutputFromSSE(bodyText)
+			} else {
+				outputJSON, reconstructed = reconstructResponseOutputFromSSE(bodyText)
+			}
+			if reconstructed {
 				if patched, err := sjson.SetRawBytes(finalResponse, "output", outputJSON); err == nil {
 					finalResponse = patched
 				}
@@ -6033,9 +6091,11 @@ func (s *OpenAIGatewayService) handleSSEToJSONForAccount(resp *http.Response, c 
 		}
 		body = finalResponse
 		if isOpenCodeClient {
-			filteredBody, changed, err := sanitizeOpenCodeResponsesOutput(body)
+			filteredBody, changed, err := rewriteOpenCodeImageGenerationOutput(c.Request.Context(), body, s.generatedImageStore, openCodeImageRewriteOptions{
+				BaseURL: resolveOpenCodeImageDownloadBaseURL(c, s.cfg),
+			})
 			if err != nil {
-				return nil, fmt.Errorf("sanitize openai responses sse output: %w", err)
+				return nil, fmt.Errorf("rewrite opencode image generation sse output: %w", err)
 			}
 			if changed {
 				body = filteredBody
@@ -6059,6 +6119,9 @@ func (s *OpenAIGatewayService) handleSSEToJSONForAccount(resp *http.Response, c 
 				msg = "Upstream compact response failed"
 			}
 			return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
+		}
+		if isOpenCodeClient && containsOpenCodeImageGenerationSSE(bodyText) {
+			return nil, s.writeOpenAINonStreamingProtocolError(resp, c, "Upstream returned image generation events without a terminal response")
 		}
 		usage = s.parseSSEUsageFromBody(bodyText)
 		if originalModel != mappedModel {
@@ -6090,12 +6153,24 @@ func (s *OpenAIGatewayService) handleOAuthSSEToJSON(resp *http.Response, c *gin.
 
 func extractOpenAISSETerminalEvent(body string) (string, []byte, bool) {
 	lines := strings.Split(body, "\n")
+	currentEventType := ""
 	for _, line := range lines {
+		if line == "" {
+			currentEventType = ""
+			continue
+		}
+		if eventType, ok := extractSSEEventLine(line); ok {
+			currentEventType = eventType
+			continue
+		}
 		data, ok := extractOpenAISSEDataLine(line)
 		if !ok || data == "" || data == "[DONE]" {
 			continue
 		}
 		eventType := strings.TrimSpace(gjson.Get(data, "type").String())
+		if eventType == "" {
+			eventType = currentEventType
+		}
 		switch eventType {
 		case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
 			return eventType, []byte(data), true
@@ -6135,7 +6210,16 @@ func (s *OpenAIGatewayService) writeOpenAINonStreamingProtocolError(resp *http.R
 
 func extractCodexFinalResponse(body string) ([]byte, bool) {
 	lines := strings.Split(body, "\n")
+	currentEventType := ""
 	for _, line := range lines {
+		if line == "" {
+			currentEventType = ""
+			continue
+		}
+		if eventType, ok := extractSSEEventLine(line); ok {
+			currentEventType = eventType
+			continue
+		}
 		data, ok := extractOpenAISSEDataLine(line)
 		if !ok {
 			continue
@@ -6144,7 +6228,10 @@ func extractCodexFinalResponse(body string) ([]byte, bool) {
 			continue
 		}
 		eventType := gjson.Get(data, "type").String()
-		if eventType == "response.done" || eventType == "response.completed" {
+		if eventType == "" {
+			eventType = currentEventType
+		}
+		if isOpenAITerminalResponseEventType(eventType) && eventType != "response.failed" {
 			if response := gjson.Get(data, "response"); response.Exists() && response.Type == gjson.JSON && response.Raw != "" {
 				return []byte(response.Raw), true
 			}
@@ -6157,6 +6244,70 @@ func extractCodexFinalResponse(body string) ([]byte, bool) {
 // returns a JSON-encoded output array reconstructed from accumulated deltas.
 // Returns (nil, false) if no content was found in deltas.
 func reconstructResponseOutputFromSSE(bodyText string) ([]byte, bool) {
+	return reconstructResponseOutputFromSSEWithOptions(bodyText, false)
+}
+
+func reconstructOpenCodeResponseOutputFromSSE(bodyText string) ([]byte, bool) {
+	return reconstructResponseOutputFromSSEWithOptions(bodyText, true)
+}
+
+func reconstructResponseOutputFromSSEWithOptions(bodyText string, includeImageWithoutResult bool) ([]byte, bool) {
+	if !includeImageWithoutResult {
+		return reconstructResponseOutputFromSSELegacy(bodyText)
+	}
+
+	acc := apicompat.NewBufferedResponseAccumulator()
+	currentEventType := ""
+	for _, line := range strings.Split(bodyText, "\n") {
+		if line == "" {
+			currentEventType = ""
+			continue
+		}
+		if eventType, ok := extractSSEEventLine(line); ok {
+			currentEventType = eventType
+			continue
+		}
+		data, ok := extractOpenAISSEDataLine(line)
+		if !ok || data == "" || data == "[DONE]" {
+			continue
+		}
+		var event apicompat.ResponsesStreamEvent
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			continue
+		}
+		if event.Type == "" {
+			event.Type = currentEventType
+			if event.Type == "" {
+				event.Type = inferImageGenerationStreamEventType(&event)
+			}
+		}
+		acc.ProcessEvent(&event)
+	}
+
+	indexed := acc.BuildIndexedOutput()
+	if len(indexed) == 0 {
+		return nil, false
+	}
+	output := make([]json.RawMessage, 0, len(indexed))
+	for _, indexedItem := range indexed {
+		raw, err := json.Marshal(indexedItem.Item)
+		if err != nil {
+			return nil, false
+		}
+		output = append(output, raw)
+	}
+	if len(output) == 0 {
+		return nil, false
+	}
+
+	outputJSON, err := json.Marshal(output)
+	if err != nil {
+		return nil, false
+	}
+	return outputJSON, true
+}
+
+func reconstructResponseOutputFromSSELegacy(bodyText string) ([]byte, bool) {
 	acc := apicompat.NewBufferedResponseAccumulator()
 	imageOutputs := make([]json.RawMessage, 0, 1)
 	seenImages := make(map[string]struct{})
@@ -6166,7 +6317,7 @@ func reconstructResponseOutputFromSSE(bodyText string) ([]byte, bool) {
 		if !ok || data == "" || data == "[DONE]" {
 			continue
 		}
-		if imageOutput, ok := extractImageGenerationOutputFromSSEData([]byte(data), seenImages); ok {
+		if imageOutput, ok := extractImageGenerationOutputFromSSEDataWithOptions([]byte(data), seenImages, false); ok {
 			imageOutputs = append(imageOutputs, imageOutput)
 		}
 		var event apicompat.ResponsesStreamEvent
@@ -6196,6 +6347,55 @@ func reconstructResponseOutputFromSSE(bodyText string) ([]byte, bool) {
 		return nil, false
 	}
 	return outputJSON, true
+}
+
+func containsOpenCodeImageGenerationSSE(bodyText string) bool {
+	currentEventType := ""
+	for _, line := range strings.Split(bodyText, "\n") {
+		if line == "" {
+			currentEventType = ""
+			continue
+		}
+		if eventType, ok := extractSSEEventLine(line); ok {
+			currentEventType = eventType
+			if strings.HasPrefix(currentEventType, "response.image_generation_call.") {
+				return true
+			}
+			continue
+		}
+		data, ok := extractOpenAISSEDataLine(line)
+		if !ok || data == "" || data == "[DONE]" {
+			continue
+		}
+		if !gjson.Valid(data) {
+			if containsMalformedOpenCodeImageSSEMarker(data) {
+				return true
+			}
+			continue
+		}
+		if gjson.Get(data, "partial_image_b64").Exists() {
+			return true
+		}
+		if gjson.Get(data, "item.type").String() == "image_generation_call" {
+			return true
+		}
+		for _, item := range gjson.Get(data, "response.output").Array() {
+			if item.Get("type").String() == "image_generation_call" {
+				return true
+			}
+		}
+		eventType := strings.TrimSpace(gjson.Get(data, "type").String())
+		if eventType == "" {
+			eventType = currentEventType
+		}
+		if strings.HasPrefix(eventType, "response.image_generation_call.") {
+			return true
+		}
+		if (eventType == "response.output_item.added" || eventType == "response.output_item.done") && gjson.Get(data, "item.type").String() == "image_generation_call" {
+			return true
+		}
+	}
+	return false
 }
 
 func shouldSupplementOAuthNonCompactResponses(c *gin.Context, account *Account) bool {
@@ -6274,7 +6474,16 @@ func mergeCompletedResponsesOutputFromSSE(finalResponse []byte, bodyText string,
 
 func buildCanonicalOutputMapsFromSSE(bodyText string) ([]canonicalResponsesOutputSlot, bool, error) {
 	acc := apicompat.NewBufferedResponseAccumulator()
+	currentEventType := ""
 	for _, line := range strings.Split(bodyText, "\n") {
+		if line == "" {
+			currentEventType = ""
+			continue
+		}
+		if eventType, ok := extractSSEEventLine(line); ok {
+			currentEventType = eventType
+			continue
+		}
 		data, ok := extractOpenAISSEDataLine(line)
 		if !ok || data == "" || data == "[DONE]" {
 			continue
@@ -6283,6 +6492,12 @@ func buildCanonicalOutputMapsFromSSE(bodyText string) ([]canonicalResponsesOutpu
 		var event apicompat.ResponsesStreamEvent
 		if err := json.Unmarshal([]byte(data), &event); err != nil {
 			continue
+		}
+		if event.Type == "" {
+			event.Type = currentEventType
+			if event.Type == "" {
+				event.Type = inferImageGenerationStreamEventType(&event)
+			}
 		}
 		acc.ProcessEvent(&event)
 	}
@@ -6304,6 +6519,16 @@ func buildCanonicalOutputMapsFromSSE(bodyText string) ([]canonicalResponsesOutpu
 		})
 	}
 	return canonical, true, nil
+}
+
+func inferImageGenerationStreamEventType(event *apicompat.ResponsesStreamEvent) string {
+	if event == nil || event.Item == nil || event.Item.Type != "image_generation_call" {
+		return ""
+	}
+	if strings.TrimSpace(event.Item.Result) != "" || strings.TrimSpace(event.Item.Status) == "completed" {
+		return "response.output_item.done"
+	}
+	return ""
 }
 
 func mergeTerminalOutputWithCanonical(finalResponse map[string]any, canonical []canonicalResponsesOutputSlot) (bool, error) {
@@ -6564,7 +6789,7 @@ func responsesOutputStableKey(item map[string]any) string {
 			return ""
 		}
 		return itemType + ":" + callID
-	case "message", "reasoning", "web_search_call":
+	case "message", "reasoning", "web_search_call", "image_generation_call":
 		id := strings.TrimSpace(asStringMaybe(item["id"]))
 		if id == "" {
 			return ""
@@ -6647,6 +6872,10 @@ func jsonInt64Value(value any) (int64, bool) {
 }
 
 func extractImageGenerationOutputFromSSEData(data []byte, seen map[string]struct{}) (json.RawMessage, bool) {
+	return extractImageGenerationOutputFromSSEDataWithOptions(data, seen, false)
+}
+
+func extractImageGenerationOutputFromSSEDataWithOptions(data []byte, seen map[string]struct{}, includeWithoutResult bool) (json.RawMessage, bool) {
 	if len(data) == 0 || !gjson.ValidBytes(data) {
 		return nil, false
 	}
@@ -6657,12 +6886,17 @@ func extractImageGenerationOutputFromSSEData(data []byte, seen map[string]struct
 	if !item.Exists() || !item.IsObject() || item.Get("type").String() != "image_generation_call" {
 		return nil, false
 	}
-	if strings.TrimSpace(item.Get("result").String()) == "" {
+	result := strings.TrimSpace(item.Get("result").String())
+	if result == "" && !includeWithoutResult {
 		return nil, false
 	}
 	key := strings.TrimSpace(item.Get("id").String())
 	if key == "" {
-		key = strings.TrimSpace(item.Get("output_format").String()) + "|" + strings.TrimSpace(item.Get("result").String())
+		if result == "" {
+			key = "no_result|" + strings.TrimSpace(gjson.GetBytes(data, "output_index").String())
+		} else {
+			key = strings.TrimSpace(item.Get("output_format").String()) + "|" + result
+		}
 	}
 	if key != "" && seen != nil {
 		if _, exists := seen[key]; exists {

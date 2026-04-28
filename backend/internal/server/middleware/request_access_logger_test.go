@@ -11,7 +11,10 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
 )
+
+const testGeneratedImageLogID = "img_abcdefghijklmnopqrstuvwxyzABCDEF"
 
 type testLogSink struct {
 	mu     sync.Mutex
@@ -112,6 +115,41 @@ func TestRequestLogger_KeepIncomingRequestID(t *testing.T) {
 	}
 }
 
+func TestRequestLogger_RedactsGeneratedImageFilename(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	sink := initMiddlewareTestLogger(t)
+
+	r := gin.New()
+	r.Use(RequestLogger())
+	r.GET("/sub2api/generated-images/:filename", func(c *gin.Context) {
+		logger.FromContext(c.Request.Context()).Info("probe request log path")
+		c.Status(http.StatusOK)
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/sub2api/generated-images/img_abcdefghijklmnopqrstuvwxyzABCDEF.png", nil)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d", w.Code)
+	}
+
+	for _, event := range sink.list() {
+		if event == nil || event.Message != "probe request log path" {
+			continue
+		}
+		if got := event.Fields["path"]; got != "/sub2api/generated-images/[redacted]" {
+			t.Fatalf("path=%q, want generated image filename redacted", got)
+		}
+		return
+	}
+	t.Fatalf("probe log event not found")
+}
+
+func TestRedactGeneratedImagePathForLogs(t *testing.T) {
+	require.Equal(t, "/sub2api/generated-images/[redacted]", redactGeneratedImagePathForLogs("/sub2api/generated-images/"+testGeneratedImageLogID+".png"))
+	require.Equal(t, "/v1/responses", redactGeneratedImagePathForLogs("/v1/responses"))
+}
+
 func TestLogger_AccessLogIncludesCoreFields(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	sink := initMiddlewareTestLogger(t)
@@ -178,6 +216,35 @@ func TestLogger_AccessLogIncludesCoreFields(t *testing.T) {
 	if !found {
 		t.Fatalf("access log event not found")
 	}
+}
+
+func TestLogger_RedactsGeneratedImageFilenameInAccessLog(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	sink := initMiddlewareTestLogger(t)
+
+	r := gin.New()
+	r.Use(Logger())
+	r.GET("/sub2api/generated-images/:filename", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/sub2api/generated-images/img_abcdefghijklmnopqrstuvwxyzABCDEF.png", nil)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d", w.Code)
+	}
+
+	for _, event := range sink.list() {
+		if event == nil || event.Message != "http request completed" {
+			continue
+		}
+		if got := event.Fields["path"]; got != "/sub2api/generated-images/[redacted]" {
+			t.Fatalf("path=%q, want generated image filename redacted", got)
+		}
+		return
+	}
+	t.Fatalf("access log event not found")
 }
 
 func TestLogger_HealthPathSkipped(t *testing.T) {

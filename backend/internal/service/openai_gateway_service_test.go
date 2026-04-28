@@ -579,6 +579,45 @@ func TestForwardResponsesRequest_ObjectBuiltinToolsAugmentsAndStripsPrivateField
 	require.Equal(t, "required", upstreamBody["tool_choice"])
 }
 
+func TestForwardResponsesRequest_NonOpenCodeDoesNotRehydrateGeneratedImageMarker(t *testing.T) {
+	store := newTestStoreWithImage(t, testImageID, "png", pngBytes)
+	body := []byte(`{"model":"gpt-5.5","input":"sub2api-image://` + testImageID + `"}`)
+	c, _ := newOpenAITestContext(t, "/v1/responses", body)
+	c.Request.Header.Set("User-Agent", "curl/8.0")
+	upstream := &stubHTTPUpstream{}
+	svc := newOpenAITestGatewayService(upstream)
+	svc.generatedImageStore = store
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+
+	require.NoError(t, err)
+	require.Contains(t, string(upstream.lastBody), "sub2api-image://"+testImageID)
+	require.NotContains(t, string(upstream.lastBody), "data:image")
+}
+
+func TestForwardResponsesRequest_OpenCodeRehydrateRedactsOpsUpstreamBody(t *testing.T) {
+	store := newTestStoreWithImage(t, testImageID, "png", pngBytes)
+	body := []byte(`{"model":"gpt-5.5","input":"sub2api-image://` + testImageID + `"}`)
+	c, _ := newOpenAITestContext(t, "/v1/responses", body)
+	c.Request.Header.Set("User-Agent", "opencode/1.0")
+	upstream := &stubHTTPUpstream{}
+	svc := newOpenAITestGatewayService(upstream)
+	svc.generatedImageStore = store
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+
+	require.NoError(t, err)
+	v, ok := c.Get(OpsUpstreamRequestBodyKey)
+	require.True(t, ok)
+	opsBody := string(v.([]byte))
+	require.NotContains(t, opsBody, "data:image")
+	require.NotContains(t, opsBody, pngB64)
+	require.Contains(t, opsBody, "[redacted-input-image]")
+	require.Contains(t, string(upstream.lastBody), "data:image/png;base64,")
+}
+
 func TestForwardResponsesRequest_MetadataBuiltinToolsAugmentsAndStripsPrivateField(t *testing.T) {
 	body := []byte(`{"model":"gpt-5.4","metadata":{"builtin_tools":{"web_search":true},"trace_id":"trace-1","client":"opencode"},"tool_choice":"required","tools":[{"type":"function","name":"get_weather","parameters":{"type":"object"}}]}`)
 	c, _ := newOpenAITestContext(t, "/v1/responses", body)
@@ -603,6 +642,84 @@ func TestForwardResponsesRequest_MetadataBuiltinToolsAugmentsAndStripsPrivateFie
 	require.Equal(t, "function", tools[0].(map[string]any)["type"])
 	require.Equal(t, "get_weather", tools[0].(map[string]any)["name"])
 	require.Equal(t, "web_search", tools[1].(map[string]any)["type"])
+}
+
+func TestForwardResponsesRequest_OpenCodeMetadataImageGenerationCarrierAddsToolAndStripsMetadata(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.5-Sys","metadata":{"builtin_tools":{"image_generation":{"model":"gpt-image-2","size":"1024x1024","output_format":"png"}},"client":"opencode"},"tools":[{"type":"function","name":"get_weather","parameters":{"type":"object"}}]}`)
+	c, _ := newOpenAITestContext(t, "/v1/responses", body)
+	c.Request.Header.Set("User-Agent", "opencode/1.0")
+	upstream := &stubHTTPUpstream{}
+	svc := newOpenAITestGatewayService(upstream)
+	svc.generatedImageStore = newTestOpenAIGeneratedImageStore(t, fixedNow)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+	_, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+
+	upstreamBody := decodeJSONMap(t, upstream.lastBody)
+	require.NotContains(t, upstreamBody, "metadata")
+	tools := upstreamBody["tools"].([]any)
+	require.Len(t, tools, 2)
+	imageTool := tools[1].(map[string]any)
+	require.Equal(t, "image_generation", imageTool["type"])
+	require.Equal(t, "gpt-image-2", imageTool["model"])
+	require.Equal(t, "1024x1024", imageTool["size"])
+	require.Equal(t, "png", imageTool["output_format"])
+}
+
+func TestForwardResponsesRequest_CodexWithoutCarrierDoesNotInjectImageGenerationTool(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.5-Sys","tools":[{"type":"function","name":"get_weather","parameters":{"type":"object"}}]}`)
+	c, _ := newOpenAITestContext(t, "/v1/responses", body)
+	c.Request.Header.Set("User-Agent", "Codex Desktop/1.2.3")
+	upstream := &stubHTTPUpstream{}
+	svc := newOpenAITestGatewayService(upstream)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+	_, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+
+	upstreamBody := decodeJSONMap(t, upstream.lastBody)
+	tools := upstreamBody["tools"].([]any)
+	require.Len(t, tools, 1)
+	require.Equal(t, "function", tools[0].(map[string]any)["type"])
+}
+
+func TestForwardResponsesRequest_OpenCodeWithoutCarrierDoesNotInjectImageGenerationTool(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.5-Sys","tools":[{"type":"function","name":"get_weather","parameters":{"type":"object"}}]}`)
+	c, _ := newOpenAITestContext(t, "/v1/responses", body)
+	c.Request.Header.Set("User-Agent", "opencode/1.0")
+	upstream := &stubHTTPUpstream{}
+	svc := newOpenAITestGatewayService(upstream)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+	_, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+
+	upstreamBody := decodeJSONMap(t, upstream.lastBody)
+	tools := upstreamBody["tools"].([]any)
+	require.Len(t, tools, 1)
+	require.Equal(t, "function", tools[0].(map[string]any)["type"])
+}
+
+func TestForwardResponsesRequest_OpenCodeAndCodexWithoutCarrierOrToolsDoNotInjectImageGenerationTool(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		userAgent string
+	}{
+		{name: "opencode", userAgent: "opencode/1.0"},
+		{name: "codex", userAgent: "Codex Desktop/1.2.3"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte(`{"model":"gpt-5.5-Sys","input":"draw a cat"}`)
+			c, _ := newOpenAITestContext(t, "/v1/responses", body)
+			c.Request.Header.Set("User-Agent", tc.userAgent)
+			upstream := &stubHTTPUpstream{}
+			svc := newOpenAITestGatewayService(upstream)
+			account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+			_, err := svc.Forward(context.Background(), c, account, body)
+			require.NoError(t, err)
+
+			upstreamBody := decodeJSONMap(t, upstream.lastBody)
+			require.NotContains(t, upstreamBody, "tools")
+		})
+	}
 }
 
 func TestForwardResponsesRequest_ImageGenerationBuiltinToolsAugmentsConfiguredTool(t *testing.T) {
@@ -3087,6 +3204,33 @@ func TestOpenAINonStreamingContentTypeDefault(t *testing.T) {
 	if !strings.Contains(rec.Header().Get("Content-Type"), "application/json") {
 		t.Fatalf("expected default Content-Type, got %q", rec.Header().Get("Content-Type"))
 	}
+}
+
+func TestHandleSSEToJSON_NonOpenCodePreservesImageGenerationResultFromDone(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	svc := &OpenAIGatewayService{cfg: &config.Config{}}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`event: response.output_item.done`,
+			`data: {"type":"response.output_item.done","output_index":0,"item":{"id":"ig_123","type":"image_generation_call","status":"completed","result":"aGVsbG8=","revised_prompt":"draw a cat","output_format":"png"}}`,
+			``,
+			`event: response.completed`,
+			`data: {"type":"response.completed","response":{"id":"resp_img","model":"gpt-5.5","output":[],"usage":{"input_tokens":7,"output_tokens":9,"output_tokens_details":{"image_tokens":4}}}}`,
+			``,
+			`data: [DONE]`,
+		}, "\n"))),
+	}
+
+	_, err := svc.handleNonStreamingResponse(c.Request.Context(), resp, c, &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}, "gpt-5.5", "gpt-5.5")
+	require.NoError(t, err)
+	require.Equal(t, "image_generation_call", gjson.Get(rec.Body.String(), "output.0.type").String())
+	require.Equal(t, "aGVsbG8=", gjson.Get(rec.Body.String(), "output.0.result").String())
 }
 
 func TestOpenAIStreamingHeadersOverride(t *testing.T) {

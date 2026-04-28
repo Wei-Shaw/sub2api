@@ -16,7 +16,7 @@ func Logger() gin.HandlerFunc {
 		startTime := time.Now()
 
 		// 请求路径
-		path := c.Request.URL.Path
+		path := redactSensitiveRequestPath(c.Request.URL.Path)
 
 		// 处理请求
 		c.Next()

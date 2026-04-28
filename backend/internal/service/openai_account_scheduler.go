@@ -1745,6 +1745,9 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerRequest(
 		req.ParentSessionPresent = true
 	}
 	scheduler := s.getOpenAIAccountScheduler(ctx)
+	if scheduler == nil && s.shouldUseDefaultOpenAIProjectionScheduler(req) {
+		scheduler = newDefaultOpenAIAccountScheduler(s, nil)
+	}
 	if scheduler == nil && shouldUseDefaultOpenAIAccountScheduler(req) {
 		scheduler = newDefaultOpenAIAccountScheduler(s, nil)
 	}
@@ -1803,6 +1806,13 @@ func shouldUseDefaultOpenAIAccountScheduler(req OpenAIAccountScheduleRequest) bo
 		req.RequiredTransport != OpenAIUpstreamTransportAny ||
 		req.RequiredImageCapability != "" ||
 		req.PreviousResponseID != ""
+}
+
+func (s *OpenAIGatewayService) shouldUseDefaultOpenAIProjectionScheduler(req OpenAIAccountScheduleRequest) bool {
+	return s != nil &&
+		s.schedulerSnapshot != nil &&
+		req.TargetGroup == TargetGroupAny &&
+		strings.TrimSpace(req.RequestedModel) != ""
 }
 
 func cloneExcludedAccountIDs(excludedIDs map[int64]struct{}) map[int64]struct{} {

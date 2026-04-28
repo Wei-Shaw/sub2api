@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"database/sql"
+	"os"
+	"path/filepath"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -183,6 +185,37 @@ func ProvideConcurrencyService(cache ConcurrencyCache, accountRepo AccountReposi
 		svc.StartSlotCleanupWorker(accountRepo, cfg.Gateway.Scheduling.SlotCleanupInterval)
 	}
 	return svc
+}
+
+func ProvideOpenAIGeneratedImageStore(cfg *config.Config) *OpenAIGeneratedImageStore {
+	store := NewOpenAIGeneratedImageStore(resolveOpenAIGeneratedImageRoot(cfg))
+	if _, err := store.Cleanup(context.Background(), store.cleanupLimit); err != nil {
+		logger.LegacyPrintf("service.openai_generated_images", "startup cleanup failed: %v", err)
+	}
+	return store
+}
+
+func resolveOpenAIGeneratedImageRoot(_ *config.Config) string {
+	dataDir := resolveOpenAIGeneratedImageDataDir()
+	return filepath.Join(dataDir, "openai-generated-images")
+}
+
+func resolveOpenAIGeneratedImageDataDir() string {
+	if dir := os.Getenv("DATA_DIR"); dir != "" {
+		return dir
+	}
+
+	dockerDataDir := "/app/data"
+	if info, err := os.Stat(dockerDataDir); err == nil && info.IsDir() {
+		if f, err := os.CreateTemp(dockerDataDir, ".write_test"); err == nil {
+			name := f.Name()
+			_ = f.Close()
+			_ = os.Remove(name)
+			return dockerDataDir
+		}
+	}
+
+	return "."
 }
 
 // ProvideUserMessageQueueService 创建用户消息串行队列服务并启动清理 worker
@@ -425,6 +458,7 @@ var ProviderSet = wire.NewSet(
 	NewAdminService,
 	NewGatewayService,
 	NewOpenAIGatewayService,
+	ProvideOpenAIGeneratedImageStore,
 	NewOAuthService,
 	NewOpenAIOAuthService,
 	NewGeminiOAuthService,

@@ -251,7 +251,7 @@ type ResponsesIncompleteDetails struct {
 
 // ResponsesOutput is one output item in a Responses API response.
 type ResponsesOutput struct {
-	Type string `json:"type"` // "message" | "reasoning" | "function_call" | "web_search_call"
+	Type string `json:"type"` // "message" | "reasoning" | "function_call" | "web_search_call" | "image_generation_call"
 
 	// type=message
 	ID      string                 `json:"id,omitempty"`
@@ -270,6 +270,14 @@ type ResponsesOutput struct {
 
 	// type=web_search_call
 	Action *WebSearchAction `json:"action,omitempty"`
+
+	// type=image_generation_call
+	Result        string `json:"result,omitempty"`
+	RevisedPrompt string `json:"revised_prompt,omitempty"`
+	OutputFormat  string `json:"output_format,omitempty"`
+	Quality       string `json:"quality,omitempty"`
+	Size          string `json:"size,omitempty"`
+	Background    string `json:"background,omitempty"`
 }
 
 // WebSearchAction describes the search action in a web_search_call output item.
