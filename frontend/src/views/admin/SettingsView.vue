@@ -630,84 +630,84 @@
                       + {{ t("admin.settings.rectifier.addPattern") }}
                     </button>
                   </div>
-                </div>
 
-                <!-- Advisor Tool Rectifier -->
-                <div class="flex items-center justify-between">
-                  <div>
-                    <label
-                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                      >{{
-                        t("admin.settings.rectifier.advisorTool")
-                      }}</label
-                    >
-                    <p class="text-xs text-gray-500 dark:text-gray-400">
-                      {{ t("admin.settings.rectifier.advisorToolHint") }}
-                    </p>
+                  <!-- Advisor Tool Rectifier -->
+                  <div class="flex items-center justify-between">
+                    <div>
+                      <label
+                        class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >{{
+                          t("admin.settings.rectifier.advisorTool")
+                        }}</label
+                      >
+                      <p class="text-xs text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.rectifier.advisorToolHint") }}
+                      </p>
+                    </div>
+                    <Toggle v-model="rectifierForm.advisor_tool_enabled" />
                   </div>
-                  <Toggle v-model="rectifierForm.advisor_tool_enabled" />
-                </div>
 
-                <!-- Advisor Tool Custom Patterns -->
-                <div
-                  v-if="rectifierForm.advisor_tool_enabled"
-                  class="ml-4 space-y-3 border-l-2 border-gray-200 pl-4 dark:border-dark-600"
-                >
-                  <div>
-                    <label
-                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
-                      >{{
-                        t("admin.settings.rectifier.advisorToolPatterns")
-                      }}</label
-                    >
-                    <p class="text-xs text-gray-500 dark:text-gray-400">
-                      {{
-                        t("admin.settings.rectifier.advisorToolPatternsHint")
-                      }}
-                    </p>
-                  </div>
+                  <!-- Advisor Tool Custom Patterns -->
                   <div
-                    v-for="(_, index) in rectifierForm.advisor_tool_patterns"
-                    :key="index"
-                    class="flex items-center gap-2"
+                    v-if="rectifierForm.advisor_tool_enabled"
+                    class="ml-4 space-y-3 border-l-2 border-gray-200 pl-4 dark:border-dark-600"
                   >
-                    <input
-                      v-model="rectifierForm.advisor_tool_patterns[index]"
-                      type="text"
-                      class="input input-sm flex-1"
-                      :placeholder="
-                        t('admin.settings.rectifier.advisorToolPatternPlaceholder')
-                      "
-                    />
+                    <div>
+                      <label
+                        class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                        >{{
+                          t("admin.settings.rectifier.advisorToolPatterns")
+                        }}</label
+                      >
+                      <p class="text-xs text-gray-500 dark:text-gray-400">
+                        {{
+                          t("admin.settings.rectifier.advisorToolPatternsHint")
+                        }}
+                      </p>
+                    </div>
+                    <div
+                      v-for="(_, index) in rectifierForm.advisor_tool_patterns"
+                      :key="index"
+                      class="flex items-center gap-2"
+                    >
+                      <input
+                        v-model="rectifierForm.advisor_tool_patterns[index]"
+                        type="text"
+                        class="input input-sm flex-1"
+                        :placeholder="
+                          t('admin.settings.rectifier.advisorToolPatternPlaceholder')
+                        "
+                      />
+                      <button
+                        type="button"
+                        @click="
+                          rectifierForm.advisor_tool_patterns.splice(index, 1)
+                        "
+                        class="btn btn-ghost btn-xs text-red-500 hover:text-red-700"
+                      >
+                        <svg
+                          class="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    </div>
                     <button
                       type="button"
-                      @click="
-                        rectifierForm.advisor_tool_patterns.splice(index, 1)
-                      "
-                      class="btn btn-ghost btn-xs text-red-500 hover:text-red-700"
+                      @click="rectifierForm.advisor_tool_patterns.push('')"
+                      class="btn btn-ghost btn-xs text-primary-600 dark:text-primary-400"
                     >
-                      <svg
-                        class="h-4 w-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
+                      + {{ t("admin.settings.rectifier.addPattern") }}
                     </button>
                   </div>
-                  <button
-                    type="button"
-                    @click="rectifierForm.advisor_tool_patterns.push('')"
-                    class="btn btn-ghost btn-xs text-primary-600 dark:text-primary-400"
-                  >
-                    + {{ t("admin.settings.rectifier.addPattern") }}
-                  </button>
                 </div>
 
                 <!-- Save Button -->
