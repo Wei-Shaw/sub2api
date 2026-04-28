@@ -340,6 +340,8 @@ type RectifierSettings struct {
 	ThinkingBudgetEnabled    bool     `json:"thinking_budget_enabled"`    // Thinking Budget 整流
 	APIKeySignatureEnabled   bool     `json:"apikey_signature_enabled"`   // API Key 签名整流开关
 	APIKeySignaturePatterns  []string `json:"apikey_signature_patterns"`  // API Key 自定义匹配关键词
+	AdvisorToolEnabled       bool     `json:"advisor_tool_enabled"`       // Advisor Tool 整流开关
+	AdvisorToolPatterns      []string `json:"advisor_tool_patterns"`      // Advisor Tool 自定义匹配关键词
 }
 
 // DefaultRectifierSettings 返回默认的整流器配置（全部启用）
@@ -348,6 +350,8 @@ func DefaultRectifierSettings() *RectifierSettings {
 		Enabled:                  true,
 		ThinkingSignatureEnabled: true,
 		ThinkingBudgetEnabled:    true,
+		AdvisorToolEnabled:       true,
+		AdvisorToolPatterns:      []string{DefaultAdvisorToolPattern},
 	}
 }
 

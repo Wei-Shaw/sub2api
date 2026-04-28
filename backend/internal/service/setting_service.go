@@ -3233,6 +3233,12 @@ func (s *SettingService) GetRectifierSettings(ctx context.Context) (*RectifierSe
 		return DefaultRectifierSettings(), nil
 	}
 
+	// AdvisorToolPatterns 字段不存在（升级前保存的旧 JSON）时注入内置默认关键词，
+	// 让用户首次打开整流器面板就能看到匹配规则；用户已显式保存的空切片不会被覆盖。
+	if settings.AdvisorToolPatterns == nil {
+		settings.AdvisorToolPatterns = []string{DefaultAdvisorToolPattern}
+	}
+
 	return &settings, nil
 }
 
@@ -3266,6 +3272,15 @@ func (s *SettingService) IsBudgetRectifierEnabled(ctx context.Context) bool {
 		return true // fail-open: 查询失败时默认启用
 	}
 	return settings.Enabled && settings.ThinkingBudgetEnabled
+}
+
+// IsAdvisorToolRectifierEnabled 判断 Advisor Tool 整流是否启用（总开关 && Advisor Tool 子开关）
+func (s *SettingService) IsAdvisorToolRectifierEnabled(ctx context.Context) bool {
+	settings, err := s.GetRectifierSettings(ctx)
+	if err != nil {
+		return true // fail-open: 查询失败时默认启用
+	}
+	return settings.Enabled && settings.AdvisorToolEnabled
 }
 
 // GetBetaPolicySettings 获取 Beta 策略配置

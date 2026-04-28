@@ -632,6 +632,84 @@
                   </div>
                 </div>
 
+                <!-- Advisor Tool Rectifier -->
+                <div class="flex items-center justify-between">
+                  <div>
+                    <label
+                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >{{
+                        t("admin.settings.rectifier.advisorTool")
+                      }}</label
+                    >
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.rectifier.advisorToolHint") }}
+                    </p>
+                  </div>
+                  <Toggle v-model="rectifierForm.advisor_tool_enabled" />
+                </div>
+
+                <!-- Advisor Tool Custom Patterns -->
+                <div
+                  v-if="rectifierForm.advisor_tool_enabled"
+                  class="ml-4 space-y-3 border-l-2 border-gray-200 pl-4 dark:border-dark-600"
+                >
+                  <div>
+                    <label
+                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                      >{{
+                        t("admin.settings.rectifier.advisorToolPatterns")
+                      }}</label
+                    >
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                      {{
+                        t("admin.settings.rectifier.advisorToolPatternsHint")
+                      }}
+                    </p>
+                  </div>
+                  <div
+                    v-for="(_, index) in rectifierForm.advisor_tool_patterns"
+                    :key="index"
+                    class="flex items-center gap-2"
+                  >
+                    <input
+                      v-model="rectifierForm.advisor_tool_patterns[index]"
+                      type="text"
+                      class="input input-sm flex-1"
+                      :placeholder="
+                        t('admin.settings.rectifier.advisorToolPatternPlaceholder')
+                      "
+                    />
+                    <button
+                      type="button"
+                      @click="
+                        rectifierForm.advisor_tool_patterns.splice(index, 1)
+                      "
+                      class="btn btn-ghost btn-xs text-red-500 hover:text-red-700"
+                    >
+                      <svg
+                        class="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    @click="rectifierForm.advisor_tool_patterns.push('')"
+                    class="btn btn-ghost btn-xs text-primary-600 dark:text-primary-400"
+                  >
+                    + {{ t("admin.settings.rectifier.addPattern") }}
+                  </button>
+                </div>
+
                 <!-- Save Button -->
                 <div
                   class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700"
@@ -5346,12 +5424,16 @@ const streamTimeoutForm = reactive({
 // Rectifier 状态
 const rectifierLoading = ref(true);
 const rectifierSaving = ref(false);
+const DEFAULT_ADVISOR_TOOL_PATTERN =
+  "Unexpected value(s) `advisor-tool-2026-03-01` for the `anthropic-beta` header.";
 const rectifierForm = reactive({
   enabled: true,
   thinking_signature_enabled: true,
   thinking_budget_enabled: true,
   apikey_signature_enabled: false,
   apikey_signature_patterns: [] as string[],
+  advisor_tool_enabled: true,
+  advisor_tool_patterns: [DEFAULT_ADVISOR_TOOL_PATTERN] as string[],
 });
 
 // Beta Policy 状态
@@ -6768,6 +6850,9 @@ async function loadRectifierSettings() {
     if (!Array.isArray(rectifierForm.apikey_signature_patterns)) {
       rectifierForm.apikey_signature_patterns = [];
     }
+    if (!Array.isArray(rectifierForm.advisor_tool_patterns)) {
+      rectifierForm.advisor_tool_patterns = [];
+    }
   } catch (_error: unknown) {
     // Silent fail - settings will use defaults
   } finally {
@@ -6786,10 +6871,17 @@ async function saveRectifierSettings() {
       apikey_signature_patterns: rectifierForm.apikey_signature_patterns.filter(
         (p) => p.trim() !== "",
       ),
+      advisor_tool_enabled: rectifierForm.advisor_tool_enabled,
+      advisor_tool_patterns: rectifierForm.advisor_tool_patterns.filter(
+        (p) => p.trim() !== "",
+      ),
     });
     Object.assign(rectifierForm, updated);
     if (!Array.isArray(rectifierForm.apikey_signature_patterns)) {
       rectifierForm.apikey_signature_patterns = [];
+    }
+    if (!Array.isArray(rectifierForm.advisor_tool_patterns)) {
+      rectifierForm.advisor_tool_patterns = [];
     }
     appStore.showSuccess(t("admin.settings.rectifier.saved"));
   } catch (error: unknown) {

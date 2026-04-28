@@ -279,6 +279,8 @@ type RectifierSettings struct {
 	ThinkingBudgetEnabled    bool     `json:"thinking_budget_enabled"`
 	APIKeySignatureEnabled   bool     `json:"apikey_signature_enabled"`
 	APIKeySignaturePatterns  []string `json:"apikey_signature_patterns"`
+	AdvisorToolEnabled       bool     `json:"advisor_tool_enabled"`
+	AdvisorToolPatterns      []string `json:"advisor_tool_patterns"`
 }
 
 // BetaPolicyRule Beta 策略规则 DTO

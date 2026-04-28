@@ -4432,25 +4432,31 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				// 不是签名错误（或整流器已关闭），继续检查 budget 约束
 				errMsg := extractUpstreamErrorMessage(respBody)
 				if isThinkingBudgetConstraintError(errMsg) && s.settingService.IsBudgetRectifierEnabled(ctx) {
-					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-						Platform:           account.Platform,
-						AccountID:          account.ID,
-						AccountName:        account.Name,
-						UpstreamStatusCode: resp.StatusCode,
-						UpstreamRequestID:  resp.Header.Get("x-request-id"),
-						UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
-						Kind:               "budget_constraint_error",
-						Message:            errMsg,
-						Detail: func() string {
-							if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-								return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
-							}
-							return ""
-						}(),
-					})
-
 					rectifiedBody, applied := RectifyThinkingBudget(body)
+					switch {
+					case !applied:
+						logger.LegacyPrintf("service.gateway", "Account %d: budget rectifier matched error but body did not change, skipping retry", account.ID)
+					case time.Since(retryStart) >= maxRetryElapsed:
+						logger.LegacyPrintf("service.gateway", "Account %d: budget rectifier matched error but retry budget exhausted, skipping retry", account.ID)
+					}
 					if applied && time.Since(retryStart) < maxRetryElapsed {
+						appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+							Platform:           account.Platform,
+							AccountID:          account.ID,
+							AccountName:        account.Name,
+							UpstreamStatusCode: resp.StatusCode,
+							UpstreamRequestID:  resp.Header.Get("x-request-id"),
+							UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
+							Kind:               "budget_constraint_error",
+							Message:            errMsg,
+							Detail: func() string {
+								if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+									return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+								}
+								return ""
+							}(),
+						})
+
 						logger.LegacyPrintf("service.gateway", "Account %d: detected budget_tokens constraint error, retrying with rectified budget (budget_tokens=%d, max_tokens=%d)", account.ID, BudgetRectifyBudgetTokens, BudgetRectifyMaxTokens)
 						budgetRetryCtx, releaseBudgetRetryCtx := detachStreamUpstreamContext(ctx, reqStream)
 						budgetRetryReq, buildErr := s.buildUpstreamRequest(budgetRetryCtx, c, account, rectifiedBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
@@ -4467,6 +4473,66 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 							logger.LegacyPrintf("service.gateway", "Account %d: budget rectifier retry failed: %v", account.ID, retryErr)
 						} else {
 							logger.LegacyPrintf("service.gateway", "Account %d: budget rectifier retry build failed: %v", account.ID, buildErr)
+						}
+					}
+				} else if s.shouldRectifyAdvisorToolError(ctx, respBody) {
+					// Advisor Tool 整流：上游不识别 advisor-tool-2026-03-01 beta header 时，
+					// 剥离 anthropic-beta 中的该 token 并删除 tools[] 里 type=advisor_20260301 的工具后重试。
+					rectifiedBody, bodyApplied := RectifyAdvisorTool(body)
+					// 触发条件：body 里有 advisor 工具（已剥）或客户端 header 里带 advisor-tool token（待剥）。
+					// 大小写不敏感比较以防御客户端发送 `Advisor-Tool-2026-03-01` 等变体。
+					headerHasAdvisor := containsBetaTokenIgnoreCase(c.GetHeader("anthropic-beta"), AdvisorBetaToken)
+					switch {
+					case !bodyApplied && !headerHasAdvisor:
+						logger.LegacyPrintf("service.gateway", "Account %d: advisor-tool rectifier matched error but body+header have no advisor token, skipping retry", account.ID)
+					case time.Since(retryStart) >= maxRetryElapsed:
+						logger.LegacyPrintf("service.gateway", "Account %d: advisor-tool rectifier matched error but retry budget exhausted, skipping retry", account.ID)
+					}
+					if (bodyApplied || headerHasAdvisor) && time.Since(retryStart) < maxRetryElapsed {
+						appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+							Platform:           account.Platform,
+							AccountID:          account.ID,
+							AccountName:        account.Name,
+							UpstreamStatusCode: resp.StatusCode,
+							UpstreamRequestID:  resp.Header.Get("x-request-id"),
+							UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
+							Kind:               "advisor_tool_unsupported",
+							Message:            extractUpstreamErrorMessage(respBody),
+							Detail: func() string {
+								if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+									return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+								}
+								return ""
+							}(),
+						})
+
+						logger.LegacyPrintf("service.gateway", "Account %d: detected advisor-tool unsupported, retrying without %s beta+tool", account.ID, AdvisorBetaToken)
+						advisorRetryCtx, releaseAdvisorRetryCtx := detachStreamUpstreamContext(ctx, reqStream)
+						advisorRetryReq, buildErr := s.buildUpstreamRequest(advisorRetryCtx, c, account, rectifiedBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
+						releaseAdvisorRetryCtx()
+						if buildErr == nil {
+							// 剥离 advisor token；若剥完 anthropic-beta 变空则删除整个 header，避免发送空值。
+							// 注意必须用 delHeaderRaw 而非 Header.Del——后者仅删 canonical 形式，
+							// 而 anthropic-beta 在本项目以小写 wire casing 存储，会留下幽灵 entry。
+							if v := getHeaderRaw(advisorRetryReq.Header, "anthropic-beta"); v != "" {
+								stripped := stripBetaTokenIgnoreCase(v, AdvisorBetaToken)
+								if stripped == "" {
+									delHeaderRaw(advisorRetryReq.Header, "anthropic-beta")
+								} else {
+									setHeaderRaw(advisorRetryReq.Header, "anthropic-beta", stripped)
+								}
+							}
+							advisorRetryResp, retryErr := s.httpUpstream.DoWithTLS(advisorRetryReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
+							if retryErr == nil {
+								resp = advisorRetryResp
+								break
+							}
+							if advisorRetryResp != nil && advisorRetryResp.Body != nil {
+								_ = advisorRetryResp.Body.Close()
+							}
+							logger.LegacyPrintf("service.gateway", "Account %d: advisor-tool rectifier retry failed: %v", account.ID, retryErr)
+						} else {
+							logger.LegacyPrintf("service.gateway", "Account %d: advisor-tool rectifier retry build failed: %v", account.ID, buildErr)
 						}
 					}
 				}
@@ -6186,6 +6252,43 @@ func containsBetaToken(header, token string) bool {
 	return false
 }
 
+// containsBetaTokenIgnoreCase 大小写不敏感版本，用于 advisor-tool 整流路径——
+// 客户端理论上可能发送 `Advisor-Tool-2026-03-01` 等大小写变体，与 stripBetaTokenIgnoreCase 配套。
+func containsBetaTokenIgnoreCase(header, token string) bool {
+	if header == "" || token == "" {
+		return false
+	}
+	lowerToken := strings.ToLower(token)
+	for _, p := range strings.Split(header, ",") {
+		if strings.EqualFold(strings.TrimSpace(p), lowerToken) {
+			return true
+		}
+	}
+	return false
+}
+
+// stripBetaTokenIgnoreCase 从逗号分隔的 anthropic-beta header 中大小写不敏感地剥除单个 token。
+// 与 stripBetaTokens 不同（后者大小写敏感），专用于 advisor 整流防御客户端大小写变体。
+// 剥完所有 token 时返回空串，调用方应 Header.Del 而不是 Set 空值。
+func stripBetaTokenIgnoreCase(header, token string) string {
+	if header == "" || token == "" {
+		return header
+	}
+	parts := strings.Split(header, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if strings.EqualFold(p, token) {
+			continue
+		}
+		out = append(out, p)
+	}
+	return strings.Join(out, ",")
+}
+
 func filterBetaTokens(tokens []string, filterSet map[string]struct{}) []string {
 	if len(tokens) == 0 || len(filterSet) == 0 {
 		return tokens
@@ -6347,6 +6450,19 @@ func (s *GatewayService) isSignatureErrorPattern(ctx context.Context, account *A
 		return matchSignaturePatterns(respBody, settings.APIKeySignaturePatterns)
 	}
 	return false
+}
+
+// shouldRectifyAdvisorToolError 判断是否应触发 advisor-tool 整流（剥 header + tool 后重试）。
+// 仅当总开关 + advisor-tool 子开关均开启，且响应体匹配内置或自定义关键词时返回 true。
+func (s *GatewayService) shouldRectifyAdvisorToolError(ctx context.Context, respBody []byte) bool {
+	if s.settingService == nil {
+		return false
+	}
+	settings, err := s.settingService.GetRectifierSettings(ctx)
+	if err != nil || !settings.Enabled || !settings.AdvisorToolEnabled {
+		return false
+	}
+	return IsAdvisorToolUnsupportedError(respBody, settings.AdvisorToolPatterns)
 }
 
 // matchSignaturePatterns 检查响应体是否匹配自定义关键词列表（不区分大小写）。

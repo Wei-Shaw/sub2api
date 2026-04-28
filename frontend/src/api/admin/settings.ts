@@ -853,6 +853,8 @@ export interface RectifierSettings {
   thinking_budget_enabled: boolean;
   apikey_signature_enabled: boolean;
   apikey_signature_patterns: string[];
+  advisor_tool_enabled: boolean;
+  advisor_tool_patterns: string[];
 }
 
 /**

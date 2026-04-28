@@ -5796,6 +5796,13 @@ export default {
         apikeyPatternsHint:
           '额外的关键词，匹配响应体中的内容（不区分大小写）。内置规则始终生效，此处用于补充额外匹配。',
         apikeyPatternPlaceholder: '例如：thinking_error 或 签名无效',
+        advisorTool: 'Advisor Tool 整流',
+        advisorToolHint:
+          '当上游不识别 advisor-tool-2026-03-01 beta header 时，自动剥离该 header 与 advisor 工具定义并重试（内置规则始终生效）',
+        advisorToolPatterns: '自定义匹配关键词',
+        advisorToolPatternsHint:
+          '额外的关键词，匹配响应体中的内容（不区分大小写）。内置规则始终生效，此处用于补充额外匹配。',
+        advisorToolPatternPlaceholder: '例如：advisor-tool 或 not supported',
         addPattern: '添加关键词',
         saved: '整流器设置保存成功',
         saveFailed: '保存整流器设置失败'

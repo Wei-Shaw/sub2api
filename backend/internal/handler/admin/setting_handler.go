@@ -2468,12 +2468,18 @@ func (h *SettingHandler) GetRectifierSettings(c *gin.Context) {
 	if patterns == nil {
 		patterns = []string{}
 	}
+	advisorPatterns := settings.AdvisorToolPatterns
+	if advisorPatterns == nil {
+		advisorPatterns = []string{}
+	}
 	response.Success(c, dto.RectifierSettings{
 		Enabled:                  settings.Enabled,
 		ThinkingSignatureEnabled: settings.ThinkingSignatureEnabled,
 		ThinkingBudgetEnabled:    settings.ThinkingBudgetEnabled,
 		APIKeySignatureEnabled:   settings.APIKeySignatureEnabled,
 		APIKeySignaturePatterns:  patterns,
+		AdvisorToolEnabled:       settings.AdvisorToolEnabled,
+		AdvisorToolPatterns:      advisorPatterns,
 	})
 }
 
@@ -2484,6 +2490,8 @@ type UpdateRectifierSettingsRequest struct {
 	ThinkingBudgetEnabled    bool     `json:"thinking_budget_enabled"`
 	APIKeySignatureEnabled   bool     `json:"apikey_signature_enabled"`
 	APIKeySignaturePatterns  []string `json:"apikey_signature_patterns"`
+	AdvisorToolEnabled       bool     `json:"advisor_tool_enabled"`
+	AdvisorToolPatterns      []string `json:"advisor_tool_patterns"`
 }
 
 // UpdateRectifierSettings 更新请求整流器配置
@@ -2496,23 +2504,15 @@ func (h *SettingHandler) UpdateRectifierSettings(c *gin.Context) {
 	}
 
 	// 校验并清理自定义匹配关键词
-	const maxPatterns = 50
-	const maxPatternLen = 500
-	if len(req.APIKeySignaturePatterns) > maxPatterns {
-		response.BadRequest(c, "Too many signature patterns (max 50)")
+	cleanedSigPatterns, sigErr := cleanRectifierPatterns(req.APIKeySignaturePatterns)
+	if sigErr != nil {
+		response.BadRequest(c, sigErr.Error())
 		return
 	}
-	var cleanedPatterns []string
-	for _, p := range req.APIKeySignaturePatterns {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-		if len(p) > maxPatternLen {
-			response.BadRequest(c, "Signature pattern too long (max 500 characters)")
-			return
-		}
-		cleanedPatterns = append(cleanedPatterns, p)
+	cleanedAdvisorPatterns, advisorErr := cleanRectifierPatterns(req.AdvisorToolPatterns)
+	if advisorErr != nil {
+		response.BadRequest(c, advisorErr.Error())
+		return
 	}
 
 	settings := &service.RectifierSettings{
@@ -2520,7 +2520,9 @@ func (h *SettingHandler) UpdateRectifierSettings(c *gin.Context) {
 		ThinkingSignatureEnabled: req.ThinkingSignatureEnabled,
 		ThinkingBudgetEnabled:    req.ThinkingBudgetEnabled,
 		APIKeySignatureEnabled:   req.APIKeySignatureEnabled,
-		APIKeySignaturePatterns:  cleanedPatterns,
+		APIKeySignaturePatterns:  cleanedSigPatterns,
+		AdvisorToolEnabled:       req.AdvisorToolEnabled,
+		AdvisorToolPatterns:      cleanedAdvisorPatterns,
 	}
 
 	if err := h.settingService.SetRectifierSettings(c.Request.Context(), settings); err != nil {
@@ -2539,13 +2541,44 @@ func (h *SettingHandler) UpdateRectifierSettings(c *gin.Context) {
 	if updatedPatterns == nil {
 		updatedPatterns = []string{}
 	}
+	updatedAdvisorPatterns := updatedSettings.AdvisorToolPatterns
+	if updatedAdvisorPatterns == nil {
+		updatedAdvisorPatterns = []string{}
+	}
 	response.Success(c, dto.RectifierSettings{
 		Enabled:                  updatedSettings.Enabled,
 		ThinkingSignatureEnabled: updatedSettings.ThinkingSignatureEnabled,
 		ThinkingBudgetEnabled:    updatedSettings.ThinkingBudgetEnabled,
 		APIKeySignatureEnabled:   updatedSettings.APIKeySignatureEnabled,
 		APIKeySignaturePatterns:  updatedPatterns,
+		AdvisorToolEnabled:       updatedSettings.AdvisorToolEnabled,
+		AdvisorToolPatterns:      updatedAdvisorPatterns,
 	})
+}
+
+const (
+	rectifierMaxPatterns   = 50
+	rectifierMaxPatternLen = 500
+)
+
+func cleanRectifierPatterns(input []string) ([]string, error) {
+	if len(input) > rectifierMaxPatterns {
+		return nil, fmt.Errorf("too many patterns (max %d)", rectifierMaxPatterns)
+	}
+	// 始终返回非 nil 切片，区分"用户清空"（[]）与"字段不存在"（nil），
+	// 让 GetRectifierSettings 仅对 nil 注入默认值。
+	cleaned := make([]string, 0, len(input))
+	for _, p := range input {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if len(p) > rectifierMaxPatternLen {
+			return nil, fmt.Errorf("pattern too long (max %d characters)", rectifierMaxPatternLen)
+		}
+		cleaned = append(cleaned, p)
+	}
+	return cleaned, nil
 }
 
 // GetBetaPolicySettings 获取 Beta 策略配置

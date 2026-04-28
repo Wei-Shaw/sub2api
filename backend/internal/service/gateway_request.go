@@ -7,6 +7,7 @@ import (
 	"math"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"unsafe"
 
@@ -1054,4 +1055,68 @@ func RectifyThinkingBudget(body []byte) ([]byte, bool) {
 	}
 
 	return modified, changed
+}
+
+// =========================
+// Advisor Tool Rectifier
+// =========================
+
+const (
+	// AdvisorBetaToken 是 Anthropic Advisor Tool 功能的 anthropic-beta header 值。
+	// 客户端（如新版 Claude Code CLI）会默认携带此 token；当上游网关（Bedrock /
+	// Vertex / 第三方中转）尚未支持该 beta 时会返回 400。
+	AdvisorBetaToken = "advisor-tool-2026-03-01"
+	// AdvisorToolType 是 advisor 工具在 tools 数组中的 type 字段值，与 beta header 配套使用。
+	AdvisorToolType = "advisor_20260301"
+	// DefaultAdvisorToolPattern 是 advisor-tool 整流默认匹配关键词，
+	// 与上游典型报错完全一致，用户首次打开整流器面板时会看到这一行被预置。
+	DefaultAdvisorToolPattern = "Unexpected value(s) `advisor-tool-2026-03-01` for the `anthropic-beta` header."
+)
+
+// IsAdvisorToolUnsupportedError 检测是否是上游不支持 advisor-tool beta header 的错误。
+// 典型上游报错：
+//
+//	"Unexpected value(s) `advisor-tool-2026-03-01` for the `anthropic-beta` header.
+//	 Please consult our documentation at docs.claude.com or try again without the header."
+//
+// patterns 为管理员配置的额外匹配关键词（不区分大小写），与内置匹配 OR 关系。
+func IsAdvisorToolUnsupportedError(respBody []byte, patterns []string) bool {
+	msg := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
+	if msg == "" {
+		return false
+	}
+	if strings.Contains(msg, AdvisorBetaToken) && strings.Contains(msg, "anthropic-beta") {
+		return true
+	}
+	return matchSignaturePatterns(respBody, patterns)
+}
+
+// RectifyAdvisorTool 从请求体的 tools 数组中移除 type=advisor_20260301 的条目。
+// 返回 (修改后的 body, 是否发生改动)。
+func RectifyAdvisorTool(body []byte) ([]byte, bool) {
+	tools := gjson.GetBytes(body, "tools")
+	if !tools.IsArray() {
+		return body, false
+	}
+
+	var indices []int
+	tools.ForEach(func(key, value gjson.Result) bool {
+		if value.Get("type").String() == AdvisorToolType {
+			indices = append(indices, int(key.Int()))
+		}
+		return true
+	})
+	if len(indices) == 0 {
+		return body, false
+	}
+
+	modified := body
+	// 倒序删除，避免下标偏移
+	for i := len(indices) - 1; i >= 0; i-- {
+		path := "tools." + strconv.Itoa(indices[i])
+		if result, err := sjson.DeleteBytes(modified, path); err == nil {
+			modified = result
+		}
+	}
+	return modified, true
 }

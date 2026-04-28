@@ -5630,6 +5630,13 @@ export default {
         apikeyPatternsHint:
           'Additional keywords matched against the response body (case-insensitive). Built-in patterns always apply; use these for supplementary matching.',
         apikeyPatternPlaceholder: 'e.g., thinking_error',
+        advisorTool: 'Advisor Tool Rectifier',
+        advisorToolHint:
+          'Automatically strip the advisor-tool-2026-03-01 beta header and the advisor tool definition, then retry, when upstream does not recognise this beta (built-in patterns always apply)',
+        advisorToolPatterns: 'Custom Match Patterns',
+        advisorToolPatternsHint:
+          'Additional keywords matched against the response body (case-insensitive). Built-in patterns always apply; use these for supplementary matching.',
+        advisorToolPatternPlaceholder: 'e.g., advisor-tool',
         addPattern: 'Add Pattern',
         saved: 'Rectifier settings saved',
         saveFailed: 'Failed to save rectifier settings'
