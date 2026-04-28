@@ -5945,9 +5945,22 @@ export default {
     description: 'Real-time view of service limiters affecting you',
     disabled: 'Service quota is currently disabled',
     empty: 'You are not subject to any service quota rules right now',
+    emptyAfterFilter: 'No limiters match the current filters',
     truncated: 'Showing first {count} entries (truncated)',
     loadError: 'Failed to load my quota',
-    refresh: 'Refresh'
+    refresh: 'Refresh',
+    filters: {
+      rule: 'Rule',
+      platform: 'Platform',
+      scope: 'Scope',
+      scopeGlobal: 'Global only',
+      scopeMine: 'Mine only',
+      limiterType: 'Limiter Type',
+      status: 'Status',
+      statusExceeded: 'Exceeded',
+      statusHealthy: 'Healthy',
+      reset: 'Reset filters'
+    }
   },
 
   // Onboarding Tour

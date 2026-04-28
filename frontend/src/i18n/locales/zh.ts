@@ -6111,9 +6111,22 @@ export default {
     description: '实时查看您命中的服务限流器与当前用量',
     disabled: '服务限额功能未启用',
     empty: '暂未命中任何服务限流规则',
+    emptyAfterFilter: '当前筛选条件下没有匹配的限流器',
     truncated: '超过 {count} 条已截断',
     loadError: '加载我的限额失败',
-    refresh: '手动刷新'
+    refresh: '手动刷新',
+    filters: {
+      rule: '规则',
+      platform: '平台',
+      scope: '限额范围',
+      scopeGlobal: '仅全局共享',
+      scopeMine: '仅我的独立',
+      limiterType: '限流类型',
+      status: '状态',
+      statusExceeded: '已超限',
+      statusHealthy: '健康',
+      reset: '重置筛选'
+    }
   },
 
   // Onboarding Tour
