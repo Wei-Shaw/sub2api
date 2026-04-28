@@ -82,7 +82,10 @@ func TestServiceQuotaHandler_Create_InvalidBody(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	body := readQuotaError(t, w)
 	require.Equal(t, "INVALID_REQUEST_BODY", body.Reason)
-	require.NotEmpty(t, body.Metadata["reason"], "metadata.reason 应保留 gin binding 原始错误")
+	// task #33 升级后：binding_error 保留 gin 原始报错（开发者排查用），fields 是字段级错误数组。
+	// 非 validator 错（JSON 语法错）时 fields 为空 / "null"，count=0；前端走兜底文案。
+	require.NotEmpty(t, body.Metadata["binding_error"], "metadata.binding_error 应保留 gin binding 原始错误")
+	require.Contains(t, body.Metadata, "count", "metadata.count 字段应总是存在")
 }
 
 // TestServiceQuotaHandler_Update_InvalidID 验证 path id 解析失败返回 INVALID_ID + metadata 含原值。
