@@ -49,6 +49,12 @@ type Config struct {
 	// host 在派生 plugin 子密钥时保留主密钥不出进程。空串 = 禁用加密服务，
 	// 调用插件会得到 Unimplemented。
 	SecretEncryptionMasterKeyHex string
+
+	// AllowNonLoopbackPluginAddr 允许 plugin handshake 上报非 loopback 地址。
+	// 默认 false（强制 loopback,生产唯一安全配置）— 防止恶意/被替换的 plugin
+	// binary 把 gRPC/HTTP 监听绑定到 0.0.0.0 让同机其他容器/进程接管 plugin
+	// 通道。仅供 e2e 测试中 host 与 plugin 跨容器联调时设为 true。
+	AllowNonLoopbackPluginAddr bool
 }
 
 // DefaultConfig 返回一份合理的默认配置。

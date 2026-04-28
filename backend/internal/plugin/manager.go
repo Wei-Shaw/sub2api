@@ -814,6 +814,27 @@ func (m *PluginManager) spawnAndConnect(parentCtx context.Context, inst *PluginI
 		return fmt.Errorf("read handshake: %w", err)
 	}
 
+	// Reject plugin gRPC/HTTP addresses that are not on the loopback interface.
+	// SDK default is "127.0.0.1:0" so this is a no-op for any plugin built with
+	// pluginsdk.Run; the check fires only when a third-party/replaced binary
+	// hand-rolled handshake tries to expose the plugin channel cross-tenant.
+	if !m.cfg.AllowNonLoopbackPluginAddr {
+		if err := validateLoopbackAddr(hs.GRPCAddr, false); err != nil {
+			cancelProc()
+			_ = cmd.Wait()
+			slog.Error("plugin grpc_addr rejected: not loopback",
+				"plugin", inst.Name, "grpc_addr", hs.GRPCAddr, "error", err)
+			return fmt.Errorf("plugin grpc_addr not loopback: %w", err)
+		}
+		if err := validateLoopbackAddr(hs.HTTPAddr, true); err != nil {
+			cancelProc()
+			_ = cmd.Wait()
+			slog.Error("plugin http_addr rejected: not loopback",
+				"plugin", inst.Name, "http_addr", hs.HTTPAddr, "error", err)
+			return fmt.Errorf("plugin http_addr not loopback: %w", err)
+		}
+	}
+
 	conn, lifecycle, err := dialPlugin(parentCtx, hs.GRPCAddr, m.cfg.GRPCDialTimeout)
 	if err != nil {
 		cancelProc()
