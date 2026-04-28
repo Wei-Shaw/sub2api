@@ -44,6 +44,18 @@ type PluginInstance struct {
 	// not register a schema (or the host had no settings service wired).
 	// V5/W6 SETTINGS-V2 — see DESIGN §4.4.
 	settingsUnsubscribe func()
+
+	// Exited closes after waitProcessExit returns from cmd.Wait(). Lets
+	// stopInstance wait for the process to actually exit *without* calling
+	// cmd.Wait() a second time — the first Wait() reaps the child, any
+	// subsequent Wait() returns "waitid: no child processes" which then
+	// gets stamped onto LastError and surfaces as a confusing error in the
+	// admin UI after a clean disable.
+	//
+	// Set in spawnAndConnect right before launching the wait goroutine,
+	// closed by waitProcessExit. nil for instances that have not been
+	// spawned yet (StateRegistered).
+	Exited chan struct{}
 }
 
 // NewPluginInstance 构造新的插件实例,初始状态为 StateRegistered。

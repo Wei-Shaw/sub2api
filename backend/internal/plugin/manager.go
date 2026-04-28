@@ -1043,6 +1043,11 @@ func (m *PluginManager) spawnAndConnect(parentCtx context.Context, inst *PluginI
 	inst.Manifest = manifest
 	inst.StartedAt = time.Now()
 	inst.HealthCancel = healthCancel
+	// Re-arm the exited channel for this spawn — Exited is one-shot per process,
+	// stopInstance and waitProcessExit synchronize on it. A previous spawn's
+	// already-closed chan would let stopInstance return immediately before the
+	// new process actually exits.
+	inst.Exited = make(chan struct{})
 	if err := inst.transitionTo(StateRunning); err != nil {
 		inst.mu.Unlock()
 		// 不太可能发生,但保留 defensive 处理。
@@ -1078,6 +1083,12 @@ func (m *PluginManager) stopInstance(ctx context.Context, name string, markRegis
 	cmd := inst.Cmd
 	stub := inst.LifecycleStub
 	cancelProc := inst.CancelFunc
+	exited := inst.Exited
+	// 把 state 提前置为 Registered, 防止 waitProcessExit 把这次主动 stop
+	// 的 exit 当成 unexpected 后写 LastError + 触发 scheduleRestart.
+	if markRegistered {
+		inst.State = StateRegistered
+	}
 	inst.CleanupHealth()
 	inst.mu.Unlock()
 
@@ -1096,17 +1107,16 @@ func (m *PluginManager) stopInstance(ctx context.Context, name string, markRegis
 		}
 	}
 
-	// 等待进程退出,超时则 cancel context 触发 kill。
-	if cmd != nil {
-		done := make(chan error, 1)
-		go func() { done <- cmd.Wait() }()
+	// 等待进程退出 — 通过 inst.Exited (waitProcessExit 完成时 close), 不再
+	// 自己调 cmd.Wait. 超时则 cancel context 触发 kill, 然后再等 Exited.
+	if cmd != nil && exited != nil {
 		select {
-		case <-done:
+		case <-exited:
 		case <-time.After(m.cfg.ProcessExitTimeout):
 			if cancelProc != nil {
 				cancelProc()
 			}
-			<-done
+			<-exited
 		}
 	}
 
@@ -1136,10 +1146,8 @@ func (m *PluginManager) stopInstance(ctx context.Context, name string, markRegis
 	inst.CancelFunc = nil
 	inst.GRPCAddr = ""
 	inst.HTTPAddr = ""
-	if markRegistered {
-		// 强制回到 Registered;不严格走 transition 校验,确保 disable 总能完成。
-		inst.State = StateRegistered
-	}
+	inst.Exited = nil
+	// State 已经在函数开头根据 markRegistered 置为 Registered, 这里不再重复.
 	inst.mu.Unlock()
 	return nil
 }
@@ -1236,19 +1244,37 @@ func (m *PluginManager) reloadPlugin(ctx context.Context, name, reason string) {
 }
 
 // waitProcessExit 等待插件进程退出,触发自动重启决策。
+//
+// 这是 cmd.Wait() 的*唯一*调用点 — Go 的 exec.Cmd.Wait() 不可重入, 第二次
+// 调用 (在 OS 已经 reap child 之后) 会返回 "waitid: no child processes",
+// 那个错误一旦冒泡到 LastError 就会在 admin UI 上显示"插件禁用报错". 所以
+// stopInstance 改为 select <-inst.Exited 等待进程退出, 而不是再调 Wait().
 func (m *PluginManager) waitProcessExit(inst *PluginInstance) {
+	inst.mu.Lock()
 	cmd := inst.Cmd
+	exited := inst.Exited
+	inst.mu.Unlock()
 	if cmd == nil {
+		if exited != nil {
+			close(exited)
+		}
 		return
 	}
 	err := cmd.Wait()
 
 	inst.mu.Lock()
 	currentState := inst.State
-	if err != nil {
+	// 只在非主动 stop 路径下记录错误. 主动 stop (StateRegistered/StateStarting)
+	// 时 cmd.Wait 即使返回非 nil 也是预期路径 (e.g. cancelProc kill), 不应
+	// 污染 LastError.
+	if err != nil && currentState != StateRegistered && currentState != StateStarting {
 		inst.LastError = fmt.Errorf("process exited: %w", err)
 	}
 	inst.mu.Unlock()
+
+	if exited != nil {
+		close(exited)
+	}
 
 	if currentState == StateRegistered || currentState == StateStarting {
 		// 主动 stop 触发的退出,无需重启。
