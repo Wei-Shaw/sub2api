@@ -6455,7 +6455,6 @@ func (s *GatewayService) isSignatureErrorPattern(ctx context.Context, account *A
 // shouldRectifyAdvisorToolError 判断是否应触发 advisor-tool 整流（剥 header + tool 后重试）。
 // 仅当总开关 + advisor-tool 子开关均开启，且响应体匹配内置或自定义关键词时返回 true。
 func (s *GatewayService) shouldRectifyAdvisorToolError(ctx context.Context, respBody []byte) bool {
-	logger.LegacyPrintf("service.gateway", "[ADVISOR_DEBUG] check: bodyLen=%d bodyHead=%q", len(respBody), truncateString(string(respBody), 200))
 	if s.settingService == nil {
 		return false
 	}
