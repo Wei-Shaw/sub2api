@@ -5637,6 +5637,7 @@ export default {
       rectifier: {
         title: 'Request Rectifier',
         description: 'Automatically fix request parameters and retry when upstream returns specific errors',
+        passthroughNotice: "Note: When an account has \"Anthropic API Key Passthrough\" enabled, rectifiers do NOT take effect for that account — passthrough preserves the original request body as-is.",
         enabled: 'Enable Request Rectifier',
         enabledHint: 'Master switch - disabling turns off all rectification features',
         thinkingSignature: 'Thinking Signature Rectifier',

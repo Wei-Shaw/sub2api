@@ -5803,6 +5803,7 @@ export default {
       rectifier: {
         title: '请求整流器',
         description: '当上游返回特定错误时，自动修正请求参数并重试，提高请求成功率',
+        passthroughNotice: '注意：账号级别开启「自动透传（仅替换认证）」后，整流器对该账号不生效——透传保留原始请求体不做改写。',
         enabled: '启用请求整流器',
         enabledHint: '总开关，关闭后所有整流功能均不生效',
         thinkingSignature: 'Thinking 签名整流',
