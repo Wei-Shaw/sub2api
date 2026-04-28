@@ -359,6 +359,20 @@ export default {
     }
   },
 
+  // 通用字段校验错误码 → i18n 文案。
+  // 任意 dialog 走 fieldErrorI18nKeys(code, moduleNamespace) 时，先查模块专属
+  // namespace（如 admin.serviceQuota.errors.*），未命中回退到本通用 namespace。
+  validation: {
+    fieldErrors: {
+      REQUIRED: '必填',
+      MIN: '值过小',
+      MAX: '值过大',
+      ONEOF: '取值不在允许范围',
+      MUST_BE_POSITIVE: '必须为正数',
+      INVALID_VALUE: '取值无效'
+    }
+  },
+
   // Navigation
   nav: {
     dashboard: '仪表盘',

@@ -360,6 +360,21 @@ export default {
     }
   },
 
+  // Generic field-level validation error codes → i18n labels.
+  // Dialogs go through fieldErrorI18nKeys(code, moduleNamespace): module-specific
+  // namespace (e.g. admin.serviceQuota.errors.*) is tried first, then this generic
+  // namespace as a fallback.
+  validation: {
+    fieldErrors: {
+      REQUIRED: 'Required',
+      MIN: 'Value too small',
+      MAX: 'Value too large',
+      ONEOF: 'Value not allowed',
+      MUST_BE_POSITIVE: 'Must be positive',
+      INVALID_VALUE: 'Invalid value'
+    }
+  },
+
   // Navigation
   nav: {
     dashboard: 'Dashboard',
