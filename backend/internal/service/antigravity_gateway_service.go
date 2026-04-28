@@ -4206,6 +4206,7 @@ func filterEmptyPartsFromGeminiRequest(body []byte) ([]byte, error) {
 // ForwardUpstream 使用 base_url + /v1/messages + 双 header 认证透传上游 Claude 请求
 func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
 	startTime := time.Now()
+	retryStart := startTime
 	sessionID := getSessionID(c)
 	prefix := logPrefix(sessionID, account.Name)
 
@@ -4230,23 +4231,10 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 	// 构建上游请求 URL
 	upstreamURL := baseURL + "/v1/messages"
 
-	// 创建请求
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(body))
+	// 构建初始上游请求
+	req, err := s.buildUpstreamForwardRequest(ctx, c, upstreamURL, apiKey, body)
 	if err != nil {
-		return nil, fmt.Errorf("create upstream request: %w", err)
-	}
-
-	// 设置请求头
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("x-api-key", apiKey) // Claude API 兼容
-
-	// 透传 Claude 相关 headers
-	if v := c.GetHeader("anthropic-version"); v != "" {
-		req.Header.Set("anthropic-version", v)
-	}
-	if v := c.GetHeader("anthropic-beta"); v != "" {
-		req.Header.Set("anthropic-beta", v)
+		return nil, err
 	}
 
 	// 代理 URL
@@ -4267,6 +4255,22 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 
+		// Advisor Tool 整流：上游不支持 advisor-tool-2026-03-01 beta header 时，
+		// 剥 header + 删 body advisor 工具后单次重试。仅在 400 上触发。
+		if resp.StatusCode == http.StatusBadRequest && s.shouldRectifyAdvisorToolError(ctx, respBody) {
+			if retryResp, retried := s.advisorRetryUpstream(ctx, c, account, prefix, upstreamURL, apiKey, body, respBody, resp, proxyURL, retryStart); retried {
+				_ = resp.Body.Close()
+				resp = retryResp
+				defer func() { _ = resp.Body.Close() }()
+				if resp.StatusCode < 400 {
+					// advisor 重试成功：跳到成功处理流程
+					return s.handleUpstreamSuccessResponse(c, resp, &claudeReq, originalModel, startTime, prefix)
+				}
+				// 重试仍然失败：读取新 body 并继续走错误透传分支
+				respBody, _ = io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			}
+		}
+
 		// 429 错误时标记账号限流
 		if resp.StatusCode == http.StatusTooManyRequests {
 			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, originalModel, 0, "", false)
@@ -4282,7 +4286,19 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 		}, nil
 	}
 
-	// 处理成功响应（流式/非流式）
+	return s.handleUpstreamSuccessResponse(c, resp, &claudeReq, originalModel, startTime, prefix)
+}
+
+// handleUpstreamSuccessResponse 处理 ForwardUpstream 的成功响应（流式/非流式），返回计费结果。
+// 提取为独立方法以便 advisor 整流重试成功后复用同一份成功响应处理逻辑。
+func (s *AntigravityGatewayService) handleUpstreamSuccessResponse(
+	c *gin.Context,
+	resp *http.Response,
+	claudeReq *antigravity.ClaudeRequest,
+	originalModel string,
+	startTime time.Time,
+	prefix string,
+) (*ForwardResult, error) {
 	var usage *ClaudeUsage
 	var firstTokenMs *int
 	var clientDisconnect bool
@@ -4318,6 +4334,9 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 	duration := time.Since(startTime)
 	logger.LegacyPrintf("service.antigravity_gateway", "%s status=success duration_ms=%d", prefix, duration.Milliseconds())
 
+	if usage == nil {
+		usage = &ClaudeUsage{}
+	}
 	return &ForwardResult{
 		Model:            originalModel,
 		Stream:           claudeReq.Stream,
@@ -4331,6 +4350,135 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 			CacheCreationInputTokens: usage.CacheCreationInputTokens,
 		},
 	}, nil
+}
+
+// buildUpstreamForwardRequest 构建 ForwardUpstream 透传上游 Claude 请求。
+// 提取为独立方法以便 advisor 整流重试时复用同一份请求构建逻辑。
+func (s *AntigravityGatewayService) buildUpstreamForwardRequest(
+	ctx context.Context,
+	c *gin.Context,
+	upstreamURL string,
+	apiKey string,
+	body []byte,
+) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create upstream request: %w", err)
+	}
+
+	// 设置请求头
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("x-api-key", apiKey) // Claude API 兼容
+
+	// 透传 Claude 相关 headers
+	if v := c.GetHeader("anthropic-version"); v != "" {
+		req.Header.Set("anthropic-version", v)
+	}
+	if v := c.GetHeader("anthropic-beta"); v != "" {
+		req.Header.Set("anthropic-beta", v)
+	}
+
+	return req, nil
+}
+
+// shouldRectifyAdvisorToolError 判断 ForwardUpstream 是否应触发 advisor-tool 整流。
+// 与 GatewayService.shouldRectifyAdvisorToolError 的判定语义保持一致：
+// 总开关 + advisor-tool 子开关均开启，且响应体匹配内置或自定义关键词时返回 true。
+// 复用同一份匹配实现 IsAdvisorToolUnsupportedError 与同一份配置 GetRectifierSettings，
+// 避免与主 Forward 路径形成平行实现。AntigravityGatewayService 不持有 GatewayService 引用，
+// 故无法直接调用其方法；但底层依赖（settings + matcher）完全复用，公式不漂移。
+func (s *AntigravityGatewayService) shouldRectifyAdvisorToolError(ctx context.Context, respBody []byte) bool {
+	if s.settingService == nil {
+		return false
+	}
+	settings, err := s.settingService.GetRectifierSettings(ctx)
+	if err != nil || !settings.Enabled || !settings.AdvisorToolEnabled {
+		return false
+	}
+	return IsAdvisorToolUnsupportedError(respBody, settings.AdvisorToolPatterns)
+}
+
+// advisorRetryUpstream 在 ForwardUpstream 收到 400 + advisor 错误时执行单次重试：
+//  1. 重写 body：删除 tools[] 中 type=advisor_20260301 的工具
+//  2. 重写 header：从 anthropic-beta 中剥离 advisor-tool token（剥空则删除整个 header）
+//  3. 受 maxRetryElapsed 时间预算约束；触发条件：body 含 advisor 工具或 header 含 advisor token
+//
+// 返回 (retryResp, true) 表示已发起重试（无论上游是否成功），retryResp 由调用方接管 Body 关闭；
+// 返回 (nil, false) 表示未触发重试（无可改写内容、超出预算或重试本身请求失败）。
+func (s *AntigravityGatewayService) advisorRetryUpstream(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	prefix string,
+	upstreamURL string,
+	apiKey string,
+	body []byte,
+	respBody []byte,
+	originalResp *http.Response,
+	proxyURL string,
+	retryStart time.Time,
+) (*http.Response, bool) {
+	rectifiedBody, bodyApplied := RectifyAdvisorTool(body)
+	headerHasAdvisor := containsBetaTokenIgnoreCase(getHeaderRaw(c.Request.Header, "anthropic-beta"), AdvisorBetaToken)
+
+	switch {
+	case !bodyApplied && !headerHasAdvisor:
+		logger.LegacyPrintf("service.antigravity_gateway", "%s account %d: advisor-tool rectifier matched error but body+header have no advisor token, skipping retry", prefix, account.ID)
+		return nil, false
+	case time.Since(retryStart) >= maxRetryElapsed:
+		logger.LegacyPrintf("service.antigravity_gateway", "%s account %d: advisor-tool rectifier matched error but retry budget exhausted, skipping retry", prefix, account.ID)
+		return nil, false
+	}
+
+	logBody, maxBytes := s.getLogConfig()
+	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		Platform:           account.Platform,
+		AccountID:          account.ID,
+		AccountName:        account.Name,
+		UpstreamStatusCode: originalResp.StatusCode,
+		UpstreamRequestID:  originalResp.Header.Get("x-request-id"),
+		UpstreamURL:        safeUpstreamURL(upstreamURL),
+		Passthrough:        true,
+		Kind:               "advisor_tool_unsupported",
+		Message:            extractUpstreamErrorMessage(respBody),
+		Detail: func() string {
+			if logBody {
+				return truncateString(string(respBody), maxBytes)
+			}
+			return ""
+		}(),
+	})
+
+	logger.LegacyPrintf("service.antigravity_gateway", "%s account %d: detected advisor-tool unsupported (forward_upstream), retrying without %s beta+tool", prefix, account.ID, AdvisorBetaToken)
+
+	retryReq, err := s.buildUpstreamForwardRequest(ctx, c, upstreamURL, apiKey, rectifiedBody)
+	if err != nil {
+		logger.LegacyPrintf("service.antigravity_gateway", "%s account %d: advisor-tool rectifier retry build failed: %v", prefix, account.ID, err)
+		return nil, false
+	}
+
+	// 剥离 advisor token；若剥完 anthropic-beta 变空则删除整个 header，避免发送空值。
+	// 注意必须用 delHeaderRaw 而非 Header.Del——后者仅删 canonical 形式，
+	// 而 anthropic-beta 在本项目以小写 wire casing 存储，会留下幽灵 entry。
+	if v := getHeaderRaw(retryReq.Header, "anthropic-beta"); v != "" {
+		stripped := stripBetaTokenIgnoreCase(v, AdvisorBetaToken)
+		if stripped == "" {
+			delHeaderRaw(retryReq.Header, "anthropic-beta")
+		} else {
+			setHeaderRaw(retryReq.Header, "anthropic-beta", stripped)
+		}
+	}
+
+	retryResp, retryErr := s.httpUpstream.Do(retryReq, proxyURL, account.ID, account.Concurrency)
+	if retryErr != nil {
+		if retryResp != nil && retryResp.Body != nil {
+			_ = retryResp.Body.Close()
+		}
+		logger.LegacyPrintf("service.antigravity_gateway", "%s account %d: advisor-tool rectifier retry failed: %v", prefix, account.ID, retryErr)
+		return nil, false
+	}
+	return retryResp, true
 }
 
 // streamUpstreamResponse 透传上游 SSE 流并提取 Claude usage
