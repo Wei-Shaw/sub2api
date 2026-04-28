@@ -2737,6 +2737,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useAppStore } from "@/stores/app";
+import { extractI18nErrorMessage } from "@/utils/apiError";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { adminAPI } from "@/api/admin";
 import type { AdminGroup, GroupPlatform, SubscriptionType } from "@/types";
@@ -3559,9 +3560,9 @@ const handleCreateGroup = async () => {
     if (onboardingStore.isCurrentStep('[data-tour="group-form-submit"]')) {
       onboardingStore.nextStep(500);
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     appStore.showError(
-      error.response?.data?.detail || t("admin.groups.failedToCreate"),
+      extractI18nErrorMessage(error, t, "common.errors", t("admin.groups.failedToCreate")),
     );
     console.error("Error creating group:", error);
     // Don't advance tour on error
@@ -3680,9 +3681,9 @@ const handleUpdateGroup = async () => {
     appStore.showSuccess(t("admin.groups.groupUpdated"));
     closeEditModal();
     loadGroups();
-  } catch (error: any) {
+  } catch (error: unknown) {
     appStore.showError(
-      error.response?.data?.detail || t("admin.groups.failedToUpdate"),
+      extractI18nErrorMessage(error, t, "common.errors", t("admin.groups.failedToUpdate")),
     );
     console.error("Error updating group:", error);
   } finally {
@@ -3738,9 +3739,9 @@ const confirmDelete = async () => {
     showDeleteDialog.value = false;
     deletingGroup.value = null;
     loadGroups();
-  } catch (error: any) {
+  } catch (error: unknown) {
     appStore.showError(
-      error.response?.data?.detail || t("admin.groups.failedToDelete"),
+      extractI18nErrorMessage(error, t, "common.errors", t("admin.groups.failedToDelete")),
     );
     console.error("Error deleting group:", error);
   }
@@ -3847,9 +3848,9 @@ const saveSortOrder = async () => {
     appStore.showSuccess(t("admin.groups.sortOrderUpdated"));
     closeSortModal();
     loadGroups();
-  } catch (error: any) {
+  } catch (error: unknown) {
     appStore.showError(
-      error.response?.data?.detail || t("admin.groups.failedToUpdateSortOrder"),
+      extractI18nErrorMessage(error, t, "common.errors", t("admin.groups.failedToUpdateSortOrder")),
     );
     console.error("Error updating sort order:", error);
   } finally {
