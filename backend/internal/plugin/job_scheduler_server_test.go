@@ -343,3 +343,53 @@ func TestStop_NilSafe(t *testing.T) {
 	var srv *JobSchedulerServer
 	srv.Stop()
 }
+
+// TestExpirePending_PreservesFiredAt verifies that on shutdown, pending
+// triggers are recorded with their original fire timestamp (not "now") and
+// that Duration is computed against the real fired_at. This regression
+// previously logged FiredAt = AckedAt = stop_time and Duration = 0, which
+// silently zeroed the audit/billing data for any in-flight job at shutdown.
+func TestExpirePending_PreservesFiredAt(t *testing.T) {
+	t.Parallel()
+	hist := &recordingHistory{}
+	ps := newPluginScheduler("p", alwaysLeader{}, hist, nil, context.Background())
+
+	// Inject one pending trigger as if a job had just fired.
+	before := time.Now()
+	ps.fire("tick", false)
+
+	// Allow some wall clock to pass so we can distinguish FiredAt from AckedAt.
+	time.Sleep(15 * time.Millisecond)
+
+	ps.expirePending("plugin disconnected")
+
+	runs := hist.snapshot()
+	if len(runs) != 1 {
+		t.Fatalf("expected 1 history record, got %d", len(runs))
+	}
+	rec := runs[0]
+	if rec.Success {
+		t.Fatalf("expected Success=false, got %+v", rec)
+	}
+	if rec.Error != "plugin disconnected" {
+		t.Fatalf("expected Error=%q, got %q", "plugin disconnected", rec.Error)
+	}
+	if rec.JobName != "tick" {
+		t.Fatalf("expected JobName=tick, got %q", rec.JobName)
+	}
+	// FiredAt must be the original fire timestamp (close to `before`),
+	// not the expirePending call time.
+	if rec.FiredAt.Before(before) || rec.FiredAt.After(before.Add(50*time.Millisecond)) {
+		t.Fatalf("FiredAt out of range: before=%v firedAt=%v", before, rec.FiredAt)
+	}
+	if !rec.AckedAt.After(rec.FiredAt) {
+		t.Fatalf("AckedAt (%v) should be after FiredAt (%v)", rec.AckedAt, rec.FiredAt)
+	}
+	if rec.Duration < 10*time.Millisecond {
+		t.Fatalf("Duration too small (%v); expected >= 10ms", rec.Duration)
+	}
+	expectedDuration := rec.AckedAt.Sub(rec.FiredAt)
+	if rec.Duration != expectedDuration {
+		t.Fatalf("Duration=%v should equal AckedAt-FiredAt=%v", rec.Duration, expectedDuration)
+	}
+}

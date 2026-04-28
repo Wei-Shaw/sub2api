@@ -531,18 +531,19 @@ func (ps *pluginScheduler) expirePending(reason string) {
 	pending := ps.pending
 	ps.pending = make(map[string]*pendingTrigger)
 	ps.pendingMu.Unlock()
+	now := time.Now()
 	for id, pt := range pending {
 		ps.recordHistory(JobRunRecord{
 			PluginName: ps.pluginName,
 			JobName:    pt.jobName,
 			TriggerID:  id,
-			FiredAt:    time.Now(),
-			AckedAt:    time.Now(),
+			FiredAt:    pt.firedAt,
+			AckedAt:    now,
 			Success:    false,
 			Manual:     pt.manual,
 			Error:      reason,
+			Duration:   now.Sub(pt.firedAt),
 		})
-		_ = pt
 	}
 }
 
