@@ -237,11 +237,20 @@ const pluginSdkStylesheet = `<link rel="stylesheet" href="/api/v1/plugin-assets/
 func (s *FrontendServer) injectSettings(settingsJSON []byte) []byte {
 	script := []byte(`<script nonce="` + NonceHTMLPlaceholder + `">window.__APP_CONFIG__=` + string(settingsJSON) + `;</script>`)
 
-	// Inject plugin manifests if available
+	// Plugin-related injections only fire when a plugin manifest provider is
+	// wired AND has at least one plugin to expose. Without active plugins:
+	//   - importmap: pointing at /api/v1/plugin-assets/__shared__/* would 404
+	//     because RegisterPluginAssetRoutes early-returns when pm == nil.
+	//   - plugin-sdk.css: same 404 path.
+	//   - manifests script: nothing to expose.
+	// Conditional injection keeps a host with no plugins serving a clean HTML
+	// shell that does not trigger spurious 404s on first load.
 	var pluginScript []byte
+	hasPlugins := false
 	if s.pluginManifests != nil {
 		if manifestJSON := s.pluginManifests.GetPluginManifestsJSON(); len(manifestJSON) > 0 {
 			pluginScript = []byte(`<script nonce="` + NonceHTMLPlaceholder + `">window.__PLUGIN_MANIFESTS__=` + string(manifestJSON) + `;</script>`)
+			hasPlugins = true
 		}
 	}
 
@@ -252,16 +261,16 @@ func (s *FrontendServer) injectSettings(settingsJSON []byte) []byte {
 	//    plugin entry 里的 `import 'vue'` 因找不到 specifier 而抛 Failed to resolve.
 	//    修复: 把 importmap 提前到 <head> 标签之后立刻插入, 保证早于任何 module script.
 	//    (importmap script 同样受 CSP script-src 约束, 浏览器无 unsafe-inline 时必须有 nonce, 否则被静默丢弃 → bare specifier 解析失败.)
-	headOpen := []byte("<head>")
-	headOpenIdx := bytes.Index(s.baseHTML, headOpen)
-	var afterHeadOpen []byte
-	if headOpenIdx >= 0 {
-		afterHeadOpen = make([]byte, 0, len(s.baseHTML)+len(pluginImportMap))
-		afterHeadOpen = append(afterHeadOpen, s.baseHTML[:headOpenIdx+len(headOpen)]...)
-		afterHeadOpen = append(afterHeadOpen, []byte(pluginImportMap)...)
-		afterHeadOpen = append(afterHeadOpen, s.baseHTML[headOpenIdx+len(headOpen):]...)
-	} else {
-		afterHeadOpen = s.baseHTML
+	afterHeadOpen := s.baseHTML
+	if hasPlugins {
+		headOpen := []byte("<head>")
+		headOpenIdx := bytes.Index(s.baseHTML, headOpen)
+		if headOpenIdx >= 0 {
+			afterHeadOpen = make([]byte, 0, len(s.baseHTML)+len(pluginImportMap))
+			afterHeadOpen = append(afterHeadOpen, s.baseHTML[:headOpenIdx+len(headOpen)]...)
+			afterHeadOpen = append(afterHeadOpen, []byte(pluginImportMap)...)
+			afterHeadOpen = append(afterHeadOpen, s.baseHTML[headOpenIdx+len(headOpen):]...)
+		}
 	}
 
 	// 2) 其他注入物 (app config script / plugin manifests / plugin-sdk.css link)
@@ -272,11 +281,13 @@ func (s *FrontendServer) injectSettings(settingsJSON []byte) []byte {
 	if len(pluginScript) > 0 {
 		injection = append(injection, pluginScript...)
 	}
-	// plugin-sdk.css 注入: SDK 组件 (scoped data-v-* hash) 在 plugin import
-	// @sub2api/plugin-sdk 时由 importmap 取到 ESM bundle, 但 ESM 不会带样式.
-	// 这里通过 <link> 让浏览器加载 SDK 编译后的样式表, 让 plugin DOM 渲染时
-	// scoped class 命中. host 主 bundle 已含一份 host 副本样式 (不同 hash 不冲突).
-	injection = append(injection, []byte(pluginSdkStylesheet)...)
+	if hasPlugins {
+		// plugin-sdk.css: SDK 组件 (scoped data-v-* hash) 在 plugin import
+		// @sub2api/plugin-sdk 时由 importmap 取到 ESM bundle, 但 ESM 不会带样式.
+		// <link> 让浏览器加载 SDK 编译后的样式表, plugin DOM 渲染时 scoped class
+		// 命中. host 主 bundle 已含一份 host 副本样式 (不同 hash 不冲突).
+		injection = append(injection, []byte(pluginSdkStylesheet)...)
+	}
 	injection = append(injection, headClose...)
 	result := bytes.Replace(afterHeadOpen, headClose, injection, 1)
 

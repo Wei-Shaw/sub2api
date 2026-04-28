@@ -5,9 +5,15 @@
  * 在浏览器侧通过 importmap (`@sub2api/plugin-sdk` → /api/v1/plugin-assets/__shared__/plugin-sdk.js)
  * 提供给 plugin frontend bundle 使用.
  *
- * Externals:
- *   - vue / vue-i18n 由 plugin importmap (host singleton) 共享, 不打入 SDK bundle.
- *   - 其余 (@tanstack/vue-virtual 等) 一律 inline, plugin 只需依赖 importmap 这两个 specifier.
+ * Externals 必须与 backend `pluginImportMap` 暴露的 host singleton 严格一致:
+ *   vue / vue-i18n / vue-router / pinia / axios
+ *
+ * 任何 importmap 暴露但 externals 没标的 specifier 都是「埋雷」 — SDK 后续若加入
+ * 该 specifier 的值层 import, 会被 inline 进 bundle 形成第二份实例, host/plugin
+ * 两侧 useRouter() / store / axios 拦截器全部失配. 保持 5 个 singleton 全 external,
+ * 让契约面对齐, 而不是依赖「当前 SDK 没用到所以没爆」的运气.
+ *
+ * 不在此列的库 (@tanstack/vue-virtual 等) 一律 inline, plugin 不需要额外 importmap entry.
  *
  * emptyOutDir:false 防止覆盖 host frontend 的主 bundle.
  */
@@ -35,8 +41,7 @@ export default defineConfig({
       fileName: () => 'plugin-sdk.js',
     },
     rollupOptions: {
-      // vue / vue-i18n 由 host importmap 共享 (singleton); 其余 (@tanstack/vue-virtual 等) 全部 bundle 进 plugin-sdk.js, 避免 plugin 侧 bare specifier 解析失败.
-      external: ['vue', 'vue-i18n'],
+      external: ['vue', 'vue-i18n', 'vue-router', 'pinia', 'axios'],
       output: {
         inlineDynamicImports: true,
         assetFileNames: (assetInfo) => {

@@ -159,6 +159,15 @@ func (m *mockSettingsProvider) GetPublicSettingsForInjection(ctx context.Context
 	return m.settings, m.err
 }
 
+// mockPluginManifests implements PluginManifestProvider for testing.
+// Returning a non-empty JSON activates plugin-related HTML injections
+// (importmap, plugin-sdk.css link, manifests script). Empty/nil disables them.
+type mockPluginManifests struct {
+	json []byte
+}
+
+func (m *mockPluginManifests) GetPluginManifestsJSON() []byte { return m.json }
+
 func TestFrontendServer_InjectSettings(t *testing.T) {
 	t.Run("injects_settings_with_nonce_placeholder", func(t *testing.T) {
 		provider := &mockSettingsProvider{
@@ -167,6 +176,7 @@ func TestFrontendServer_InjectSettings(t *testing.T) {
 
 		server, err := NewFrontendServer(provider)
 		require.NoError(t, err)
+		server.SetPluginManifestProvider(&mockPluginManifests{json: []byte(`[{"name":"x"}]`)})
 
 		settingsJSON := []byte(`{"test":"data"}`)
 		result := server.injectSettings(settingsJSON)
@@ -174,8 +184,32 @@ func TestFrontendServer_InjectSettings(t *testing.T) {
 		// Should contain the script with nonce placeholder
 		assert.Contains(t, string(result), `<script nonce="__CSP_NONCE_VALUE__">`)
 		assert.Contains(t, string(result), `window.__APP_CONFIG__={"test":"data"};`)
-		// app-config script and plugin-sdk.css link still injected before </head>
+		// With active plugins, plugin-sdk.css link must be injected before </head>.
 		assert.Contains(t, string(result), `<link rel="stylesheet" href="/api/v1/plugin-assets/__shared__/plugin-sdk.css"></head>`)
+	})
+
+	// Without active plugins, importmap / plugin-sdk.css link / manifests script
+	// MUST NOT be injected — they would 404 against /api/v1/plugin-assets/__shared__/*
+	// because RegisterPluginAssetRoutes returns early when PluginManager is nil.
+	t.Run("no_plugin_injections_when_manifests_empty", func(t *testing.T) {
+		provider := &mockSettingsProvider{settings: map[string]string{"k": "v"}}
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+		// Two cases: (a) no provider set; (b) provider with empty JSON.
+		cases := []func(){
+			func() {},
+			func() { server.SetPluginManifestProvider(&mockPluginManifests{json: nil}) },
+		}
+		for _, setup := range cases {
+			setup()
+			result := server.injectSettings([]byte(`{}`))
+			assert.NotContains(t, string(result), `<script type="importmap"`,
+				"importmap must not be injected without plugins")
+			assert.NotContains(t, string(result), `plugin-sdk.css`,
+				"plugin-sdk.css link must not be injected without plugins")
+			assert.NotContains(t, string(result), `__PLUGIN_MANIFESTS__`,
+				"manifests script must not be injected without plugins")
+		}
 	})
 
 	// Bug 4 regression: importmap MUST be injected before the first <script type="module">,
@@ -188,6 +222,7 @@ func TestFrontendServer_InjectSettings(t *testing.T) {
 
 		server, err := NewFrontendServer(provider)
 		require.NoError(t, err)
+		server.SetPluginManifestProvider(&mockPluginManifests{json: []byte(`[{"name":"x"}]`)})
 
 		result := server.injectSettings([]byte(`{}`))
 
