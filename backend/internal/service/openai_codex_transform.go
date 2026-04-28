@@ -853,6 +853,14 @@ func filterCodexInput(input []any, preserveReferences bool) []any {
 	REDACTED
 		typ, _ := m["type"].(string)
 
+		// chatgpt.com codex backend (OAuth path) does not persist reasoning
+		// items because applyCodexOAuthTransform forces store=false. Any rs_*
+		// reference replayed in input is guaranteed to 404 upstream
+		// ("Item with id 'rs_...' not found"). Drop reasoning items entirely.
+		if typ == "reasoning" {
+			continue
+	REDACTED
+
 		// 仅修正真正的 tool/function call 标识，避免误改普通 message/reasoning id；
 		// 若 item_reference 指向 legacy call_* 标识，则仅修正该引用本身。
 		fixCallIDPrefix := func(id string) string {
