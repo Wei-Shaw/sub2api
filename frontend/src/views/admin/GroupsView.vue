@@ -3365,15 +3365,18 @@ const loadGroups = async () => {
     pagination.pages = response.pages;
     loadUsageSummary();
     loadCapacitySummary();
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errInfo = error as { name?: string; code?: string }
     if (
       signal.aborted ||
-      error?.name === "AbortError" ||
-      error?.code === "ERR_CANCELED"
+      errInfo?.name === "AbortError" ||
+      errInfo?.code === "ERR_CANCELED"
     ) {
       return;
     }
-    appStore.showError(t("admin.groups.failedToLoad"));
+    appStore.showError(
+      extractI18nErrorMessage(error, t, "common.errors", t("admin.groups.failedToLoad")),
+    );
     console.error("Error loading groups:", error);
   } finally {
     if (abortController === currentController && !signal.aborted) {

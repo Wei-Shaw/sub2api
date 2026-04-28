@@ -375,7 +375,16 @@ export default {
       INVALID_SETTING_KEY: 'Invalid setting key',
       SETTING_REQUIRED: 'Setting required',
       TURNSTILE_SITE_KEY_REQUIRED: 'Turnstile Site Key required',
-      TURNSTILE_SECRET_REQUIRED: 'Turnstile Secret required'
+      TURNSTILE_SECRET_REQUIRED: 'Turnstile Secret required',
+      // Account additions (audit 8: backend uses these reasons but frontend missed translation)
+      INVALID_RATE_MULTIPLIER: 'Invalid rate multiplier',
+      ACCOUNT_IDS_REQUIRED: 'Account IDs required',
+      INVALID_EXTRA_FIELD: 'Invalid extra field',
+      NO_UPDATES_PROVIDED: 'No updates provided',
+      PRIVACY_UNSUPPORTED: 'Privacy setting unsupported',
+      MISSING_ACCESS_TOKEN: 'Missing access token',
+      TIER_REFRESH_UNSUPPORTED: 'Tier refresh unsupported',
+      TOTP_ENCRYPTION_KEY_MISSING: 'TOTP encryption key missing'
     }
   },
 

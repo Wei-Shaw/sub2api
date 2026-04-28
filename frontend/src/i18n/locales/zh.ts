@@ -374,7 +374,16 @@ export default {
       INVALID_SETTING_KEY: '设置项无效',
       SETTING_REQUIRED: '设置项必填',
       TURNSTILE_SITE_KEY_REQUIRED: 'Turnstile Site Key 必填',
-      TURNSTILE_SECRET_REQUIRED: 'Turnstile Secret 必填'
+      TURNSTILE_SECRET_REQUIRED: 'Turnstile Secret 必填',
+      // Account 补充（audit 8 发现 backend 已用但前端未翻译）
+      INVALID_RATE_MULTIPLIER: '倍率参数无效',
+      ACCOUNT_IDS_REQUIRED: '账号 ID 列表必填',
+      INVALID_EXTRA_FIELD: '扩展字段无效',
+      NO_UPDATES_PROVIDED: '未提供更新内容',
+      PRIVACY_UNSUPPORTED: '该账号不支持隐私设置',
+      MISSING_ACCESS_TOKEN: '缺少 access token',
+      TIER_REFRESH_UNSUPPORTED: '该账号不支持等级刷新',
+      TOTP_ENCRYPTION_KEY_MISSING: 'TOTP 加密密钥未配置'
     }
   },
 
