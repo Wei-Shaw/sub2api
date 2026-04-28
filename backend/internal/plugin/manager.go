@@ -71,6 +71,17 @@ type PluginManager struct {
 	// so that running without the plugin settings subsystem incurs no
 	// additional gRPC services.
 	settingsServer SettingsExtensionRegistrar
+	// frontendCacheInvalidator clears the FrontendServer HTML cache so the
+	// next first-byte response carries an up-to-date __PLUGIN_MANIFESTS__
+	// payload. Wired in via SetFrontendCacheInvalidator from server/router.go
+	// once both PluginManager and FrontendServer are constructed. Optional —
+	// nil means "skip" (e.g. embedded frontend disabled at build time).
+	//
+	// Must be called whenever the active set of plugins or any plugin's
+	// manifest changes (enable/disable/restart), otherwise the SSR-cached
+	// HTML returned to subsequent reloads still references the old plugin
+	// list and the frontend Sidebar / vue-router pick up stale state.
+	frontendCacheInvalidator func()
 }
 
 // PluginSettingsRegistrar is the minimal surface PluginManager needs from
@@ -126,6 +137,27 @@ func NewPluginManager(db *sql.DB, rdb *redis.Client, cfg Config, router *PluginR
 		logger:     slog.Default().With("component", "plugin_manager"),
 		instanceID: uuid.NewString(),
 	}, nil
+}
+
+// SetFrontendCacheInvalidator wires a callback the manager invokes whenever
+// the active plugin set or any plugin's manifest changes. server/router.go
+// passes FrontendServer.InvalidateCache so the next HTML render reflects the
+// current plugin list.
+func (m *PluginManager) SetFrontendCacheInvalidator(fn func()) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.frontendCacheInvalidator = fn
+}
+
+// invalidateFrontendCache fires the registered invalidator if any. Safe to
+// call from any goroutine; the callback is expected to be cheap and idempotent.
+func (m *PluginManager) invalidateFrontendCache() {
+	m.mu.RLock()
+	fn := m.frontendCacheInvalidator
+	m.mu.RUnlock()
+	if fn != nil {
+		fn()
+	}
 }
 
 // SetJobHistoryRecorder installs the persistence sink the JobScheduler uses
@@ -376,6 +408,9 @@ func (m *PluginManager) EnablePlugin(ctx context.Context, name string) error {
 	if err := m.repo.SetEnabled(ctx, name, true); err != nil {
 		m.logger.Warn("persist enabled flag failed", "plugin", name, "error", err)
 	}
+	// Plugin manifest is now part of GetPluginManifestsJSON output; drop the
+	// frontend HTML cache so the next reload sees this plugin in sidebar/router.
+	m.invalidateFrontendCache()
 	return nil
 }
 
@@ -390,6 +425,9 @@ func (m *PluginManager) DisablePlugin(ctx context.Context, name string) error {
 	if err := m.repo.SetEnabled(ctx, name, false); err != nil {
 		return err
 	}
+	// Plugin removed from GetPluginManifestsJSON output; invalidate so the
+	// next reload removes its sidebar/router entries.
+	m.invalidateFrontendCache()
 	return nil
 }
 

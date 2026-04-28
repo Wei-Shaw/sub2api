@@ -78,6 +78,12 @@ func SetupRouter(
 			})
 			if pluginManager != nil {
 				frontendServer.SetPluginManifestProvider(pluginManager)
+				// Plugin enable/disable changes the manifest set the frontend
+				// HTML cache embedded into __PLUGIN_MANIFESTS__. Without this
+				// hook the cache keeps the SSR snapshot from process start and
+				// every plugin admin operation requires a backend restart to
+				// surface in the sidebar / vue-router.
+				pluginManager.SetFrontendCacheInvalidator(frontendServer.InvalidateCache)
 			}
 			r.Use(frontendServer.Middleware())
 		}
