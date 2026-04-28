@@ -41,7 +41,7 @@ async function bootstrap() {
 
   // Pinia + i18n + router 都已安装,可以创建并挂载 host SDK 给插件 entry.js 使用。
   // 必须在 router.isReady 之前完成,因为插件路由可能马上就被首屏导航命中。
-  attachHostSdkToWindow(router)
+  attachHostSdkToWindow(router, pinia)
 
   // 把 vue / pinia / vue-router / vue-i18n / axios 单例暴露到 window 上,
   // 让 plugin entry.js (通过 importmap → /__shared__/<name>.js → window

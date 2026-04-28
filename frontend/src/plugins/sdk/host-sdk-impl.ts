@@ -9,9 +9,21 @@
  *   - 测试时可直接 import { createHostSdk } 并喂 mock store/router；
  *   - 主入口 main.ts 只负责一行 `attachHostSdkToWindow(...)` 的副作用调用。
  */
-import { computed, defineComponent, h, onMounted, onUnmounted, ref, watch, type Ref, type WritableComputedRef } from 'vue'
+import {
+  computed,
+  createApp,
+  defineComponent,
+  h,
+  onMounted,
+  onUnmounted,
+  ref,
+  watch,
+  type Component,
+  type Ref,
+  type WritableComputedRef,
+} from 'vue'
 import type { Router } from 'vue-router'
-import { storeToRefs } from 'pinia'
+import { storeToRefs, type Pinia } from 'pinia'
 import { i18n, getLocale } from '@/i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
@@ -22,11 +34,14 @@ import {
   type HostI18n,
   type HostNotify,
   type HostRouter,
+  type HostRuntime,
+  type HostRuntimeAppOptions,
   type HostSdk,
   type HostTheme,
   type HostAuth,
   type HostHttp,
   type HostVue,
+  type PluginAppInstance,
   type ThemeMode,
   type FontSize,
 } from './host-sdk'
@@ -189,8 +204,64 @@ function createVue(): HostVue {
   return { h, defineComponent, ref, computed, watch, onMounted, onUnmounted }
 }
 
-/** 工厂函数：组装一个新的 HostSdk 实例。需要 router 已经创建。 */
-export function createHostSdk(router: Router): HostSdk {
+/**
+ * 创建 host runtime 能力. 内部 closure 持有 host pinia 实例, 让 plugin 通过
+ * sdk.runtime.createApp 拿到一个已经 use(pinia)/use(i18n) 的独立 Vue app.
+ *
+ * 关键不变量:
+ *   - 多个 plugin 共享同一个 pinia 实例 — store registry 是全局的, 但 store
+ *     state 仍按 store id 组织, 不会因为 plugin 启动而互相覆盖
+ *   - i18n 也是同一个实例, 让 sdk.i18n.t 在 plugin app 内的 useI18n() 也能用
+ *   - 错误隔离: app.config.errorHandler 兜住 plugin 渲染抛错, 不冒泡到 host 主 app
+ */
+function createRuntime(pinia: Pinia): HostRuntime {
+  function createPluginApp(
+    rootComponent: Component,
+    target: Element,
+    options?: HostRuntimeAppOptions,
+  ): PluginAppInstance {
+    const app = createApp(rootComponent)
+    app.use(pinia)
+    app.use(i18n)
+    if (options?.components) {
+      for (const [name, component] of Object.entries(options.components)) {
+        app.component(name, component)
+      }
+    }
+    app.config.errorHandler = (err, instance, info) => {
+      if (options?.onError) {
+        options.onError(err, instance, info)
+        return
+      }
+      // 默认: 让 plugin 错误以 toast 形式呈现, 不污染 host 状态.
+      const message = err instanceof Error ? err.message : String(err)
+      // eslint-disable-next-line no-console
+      console.error('[plugin runtime] vue error', message, info, err)
+      try {
+        const appStore = useAppStore()
+        appStore.showError(`Plugin error: ${message}`)
+      } catch {
+        // useAppStore 失败 (理论上不会, pinia 已 use), 静默
+      }
+    }
+    app.mount(target)
+    return {
+      app,
+      unmount(): void {
+        app.unmount()
+      },
+    }
+  }
+  return { createApp: createPluginApp }
+}
+
+/**
+ * 工厂函数：组装一个新的 HostSdk 实例。需要 router 与 pinia 已经创建.
+ *
+ * pinia 必须显式传入而不是 useStore() 模式, 因为 createHostSdk 调用时机要求
+ * pinia 实例对象本身可被 plugin runtime 复用 (app.use(pinia)).
+ */
+export function createHostSdk(router: Router, pinia: Pinia): HostSdk {
   return {
     version: HOST_SDK_VERSION,
     theme: createTheme(),
@@ -201,5 +272,6 @@ export function createHostSdk(router: Router): HostSdk {
     auth: createAuth(),
     http: createHttp(),
     vue: createVue(),
+    runtime: createRuntime(pinia),
   }
 }

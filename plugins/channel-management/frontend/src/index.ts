@@ -1,24 +1,45 @@
 /**
- * Channel Management plugin frontend runtime entry.
+ * Channel Management plugin frontend runtime entry (V2 — Shadow DOM 协议).
  *
- * 契约 (与 frontend/src/plugins/loader-runtime.ts 对齐):
+ * 契约 (与 frontend/src/plugins/loader-runtime.ts + mount-plugin.ts 对齐):
  *   - default export 必须是 { install(sdk) }
- *   - install 返回 { components: Record<componentPath, Component> }
- *   - host 在用户访问 manifest 中声明的路由 (/admin/channels) 时, 通过
- *     PluginView 按 component_path 找到对应组件并渲染
+ *   - install 返回 { mount(shadowRoot, ctx) -> PluginInstance }
+ *   - mount 在收到的 ShadowRoot 内挂 plugin Vue app
+ *   - PluginInstance.unmount 由 host 在路由切换 / 卸载时调用
  *
- * 共享上下文:
- *   - vue / vue-router / pinia / vue-i18n / axios 由 host 通过 importmap 暴露
- *     (见 frontend/src/plugins/sdk/expose-runtime.ts 与
- *      backend/internal/server/routes/plugin_assets.go 的 __shared__ 端点)
- *   - host 的 toast / auth / theme 通过 sdk.notify / sdk.auth / sdk.theme 访问
+ * 共享上下文 (importmap 提供):
+ *   - vue / vue-router / vue-i18n / pinia / axios — 与 host 同一份 singleton
+ *   - @sub2api/plugin-sdk — host 编译的 SDK bundle (含共享组件)
+ *
+ * Plugin Vue app 通过 sdk.runtime.createApp 创建:
+ *   - 自动 use(host pinia) — 共享 store registry
+ *   - 自动 use(host i18n) — 共享 message dictionary
+ *   - 自动注册 SDK 共享组件全局
+ *   - 自动设置 errorHandler 走 sdk.notify.error
  *
  * 副作用:
- *   - install 时把插件的 i18n messages 扁平合并到 host vue-i18n 实例
- *   - install 时把 sdk.http.apiClient 注入 plugin 内部的 axios 单例 (api/client.ts)
+ *   - install 时把 plugin i18n messages 扁平合并到 host vue-i18n 实例
+ *   - install 时把 sdk.http.apiClient 注入 plugin 内部 axios 单例
  */
-import type { HostSdk, PluginRuntimeAssets } from '@sub2api/plugin-sdk'
+import type {
+  HostSdk,
+  PluginInstance,
+  PluginRuntimeAssets,
+  PluginRuntimeContext,
+} from '@sub2api/plugin-sdk'
+import {
+  Icon,
+  DataTable,
+  BaseDialog,
+  ConfirmDialog,
+  Select,
+  Pagination,
+  EmptyState,
+  Toggle,
+  PlatformIcon,
+} from '@sub2api/plugin-sdk'
 import type { AxiosInstance } from 'axios'
+import type { Component } from 'vue'
 import './style.css'
 import ChannelsView from './views/ChannelsView.vue'
 import AvailableChannelsView from './views/user/AvailableChannelsView.vue'
@@ -32,9 +53,29 @@ import zhMessages from './i18n/zh'
 /** plugin 内部 dedup key, 与后端 manifest.I18nNamespaces 中的 namespace 名对齐. */
 const I18N_NAMESPACE = 'channel-management'
 
+/** componentPath -> 对应的 Vue view 组件. */
+const VIEWS: Record<string, Component> = {
+  'ChannelsView.vue': ChannelsView,
+  'AvailableChannelsView.vue': AvailableChannelsView,
+  'ChannelMonitorView.vue': ChannelMonitorView,
+  'ChannelStatusView.vue': ChannelStatusView,
+}
+
+/** 注册到 plugin app 的 SDK 共享组件全局, 让 plugin SFC 不用每个文件都 import. */
+const SDK_GLOBAL_COMPONENTS: Record<string, Component> = {
+  Icon,
+  DataTable,
+  BaseDialog,
+  ConfirmDialog,
+  Select,
+  Pagination,
+  EmptyState,
+  Toggle,
+  PlatformIcon,
+}
+
 function install(sdk: HostSdk): PluginRuntimeAssets {
-  // 1. 注入 host axios 实例, 让 plugin 内部 channels API 调用复用 host 的
-  //    auth header / 错误拦截器.
+  // 1. 注入 host axios 实例 — plugin channels API 调用复用 host 的 auth header / 错误拦截器.
   //    类型断言: host 与 plugin 各自 resolve axios 类型 (host frontend node_modules
   //    与 plugin node_modules 的小版本可能不同), TS 严格模式下两份 InternalAxiosRequestConfig
   //    被视为不同 nominal type. 运行时是同一个 axios 实例 (importmap 共享),
@@ -42,29 +83,54 @@ function install(sdk: HostSdk): PluginRuntimeAssets {
   setClient(sdk.http.apiClient as unknown as AxiosInstance)
 
   // 1b. 把整个 SDK 句柄存入 plugin module-scope 单例, 让视图层通过 getSdk() 取到
-  //     notify / auth / theme 等能力 (替代 V1 的 useAppStore/adminAPI 直引).
+  //     notify / auth / theme 等能力.
   setSdk(sdk)
 
-  // 2. 把插件 i18n keys 扁平合并到 host vue-i18n 实例. registerNamespace 是
+  // 2. plugin i18n keys 扁平合并到 host vue-i18n 实例. registerNamespace 是
   //    幂等的 (同 namespace 重复 install 不会叠加).
   sdk.i18n.registerNamespace(I18N_NAMESPACE, {
     en: enMessages,
     zh: zhMessages,
   })
 
-  // 3. 返回组件清单. component_path 必须与 plugin.go FrontendManifest.Routes
-  //    中声明的 ComponentPath 对齐 (manifest 决定 host PluginView 用哪个 key
-  //    取组件).
+  // 3. V2 协议: 返回 mount 函数, 由 host 在 ShadowRoot 内调用.
   return {
-    components: {
-      'ChannelsView.vue': ChannelsView,
-      // V5 W9 — User-facing "Available Channels". manifest path:
-      //   plugin.go FrontendManifest.Routes[].ComponentPath = "AvailableChannelsView.vue"
-      'AvailableChannelsView.vue': AvailableChannelsView,
-      // V5 W7.1 — Admin Channel Monitor list view.
-      'ChannelMonitorView.vue': ChannelMonitorView,
-      // V5 W7.3 — User-facing read-only Channel Status view.
-      'ChannelStatusView.vue': ChannelStatusView,
+    mount(shadowRoot: ShadowRoot, ctx: PluginRuntimeContext): PluginInstance {
+      const view = VIEWS[ctx.componentPath]
+      if (!view) {
+        // 未知 componentPath — 渲染降级文案到 shadow root.
+        const fallback = document.createElement('div')
+        fallback.style.padding = '2rem'
+        fallback.style.color = '#dc2626'
+        fallback.textContent = `[channel-management] unknown component: ${ctx.componentPath || '(empty)'}`
+        // mount-plugin 已经创建了 .plugin-shadow-root div, 我们 append 到它里面.
+        const root = shadowRoot.querySelector('.plugin-shadow-root') as HTMLElement | null
+        if (root) {
+          root.appendChild(fallback)
+        } else {
+          shadowRoot.appendChild(fallback)
+        }
+        return {
+          unmount(): void {
+            fallback.remove()
+          },
+        }
+      }
+
+      // mount-plugin 已经在 shadow root 里创建了 .plugin-shadow-root 容器.
+      const target = shadowRoot.querySelector('.plugin-shadow-root') as HTMLElement | null
+      if (!target) {
+        throw new Error('[channel-management] plugin-shadow-root container not found in shadow root')
+      }
+
+      const instance = sdk.runtime.createApp(view, target, {
+        components: SDK_GLOBAL_COMPONENTS,
+      })
+      return {
+        unmount(): void {
+          instance.unmount()
+        },
+      }
     },
   }
 }

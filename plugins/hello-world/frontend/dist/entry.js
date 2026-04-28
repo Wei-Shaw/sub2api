@@ -1,10 +1,15 @@
-// hello-world plugin frontend entry — hand-written ESM (no bundler).
+// hello-world plugin frontend entry (V2 — Shadow DOM 协议).
+// hand-written ESM (no bundler).
 //
 // 这个文件是插件 frontend bundle 的契约样板:
 //   - default export 必须是 { install(sdk) }
-//   - install 返回 { components: { [componentPath]: Component } }
-//   - 渲染时使用 sdk.vue.{ defineComponent, h, ref, computed, watch }, 避免重复打包 Vue
-//   - 使用 sdk.i18n / sdk.notify / sdk.theme / sdk.auth 验证 host 能力都能跑通
+//   - install 返回 { mount(shadowRoot, ctx) -> PluginInstance }
+//   - mount 在 host 给的 ShadowRoot 内通过 sdk.runtime.createApp 起独立 Vue app
+//   - PluginInstance.unmount 由 host 在路由切换 / 卸载时调用
+//
+// 共享上下文 (importmap):
+//   - vue / pinia / vue-router / vue-i18n / axios — 与 host 同一份 singleton
+//   - @sub2api/plugin-sdk — host 编译的 SDK bundle
 
 const HELLO_NAMESPACE = 'helloWorldPlugin'
 
@@ -38,7 +43,7 @@ function install(sdk) {
   const { defineComponent, h, computed } = sdk.vue
   const t = (key, params) => sdk.i18n.t(`${HELLO_NAMESPACE}.${key}`, params)
 
-  // 2. 定义一个最小化的演示组件, 仅用 h() 渲染, 不依赖 SFC.
+  // 2. 定义 plugin root component (用 h() 渲染, 不依赖 SFC).
   const HelloWorldView = defineComponent({
     name: 'HelloWorldPluginView',
     setup() {
@@ -122,10 +127,20 @@ function install(sdk) {
     },
   })
 
+  // 3. V2 协议: 返回 mount 函数, 由 host 在 ShadowRoot 内调用.
   return {
-    components: {
-      // key 与 manifest.routes[].component_path 对齐.
-      'HelloWorldView.vue': HelloWorldView,
+    mount(shadowRoot, _ctx) {
+      // mount-plugin 在 shadow root 里已经创建了 .plugin-shadow-root 容器.
+      const target = shadowRoot.querySelector('.plugin-shadow-root')
+      if (!target) {
+        throw new Error('[hello-world] plugin-shadow-root container not found')
+      }
+      const instance = sdk.runtime.createApp(HelloWorldView, target)
+      return {
+        unmount() {
+          instance.unmount()
+        },
+      }
     },
   }
 }

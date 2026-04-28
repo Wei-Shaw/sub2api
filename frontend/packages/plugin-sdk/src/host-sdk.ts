@@ -11,9 +11,19 @@
  * 兼容性：
  *   - `version` 字段表示 SDK 协议版本，插件可以据此做 feature gating。
  *   - 后续新增能力请追加字段（小版本），删改字段必须升大版本。
+ *
+ * V2 (Shadow DOM) 协议 — 当前主线:
+ *   - install(sdk) 返回 PluginRuntimeAssets, 必须包含 mount(shadowRoot, ctx)
+ *   - host PluginView 给每个 plugin route 创建独立 ShadowRoot, 调 plugin.mount
+ *   - plugin 通过 sdk.runtime.createApp(rootComponent, targetEl) 获得已 wire 好
+ *     pinia/i18n 的独立 Vue app, 把它挂到 shadow root 内的 div
+ *   - plugin 卸载由 host 调返回的 PluginInstance.unmount() 触发
+ *
+ *   设计目的: 让 plugin DOM 与 host DOM / CSS / Vue tree 物理隔离, plugin 渲染
+ *   抛错 / 注入全局样式都不会影响 host 主页面.
  */
-import type { Component, Ref } from 'vue'
-import type { RouteLocationNormalizedLoaded, RouteRecordRaw } from 'vue-router'
+import type { App, Component, Ref } from 'vue'
+import type { RouteLocationNormalizedLoaded } from 'vue-router'
 import type { AxiosInstance } from 'axios'
 
 /**
@@ -135,30 +145,88 @@ export interface HostVue {
 }
 
 /**
- * 插件 entry bundle 必须 default export 的契约对象。
+ * createApp 选项, 给 plugin 控制全局 component / 错误边界.
+ */
+export interface HostRuntimeAppOptions {
+  /** 额外的全局组件 (例如 plugin 想把 SDK 共享组件 Icon/DataTable 等批量注册). */
+  components?: Record<string, Component>
+  /**
+   * 错误处理. 不传时默认走 sdk.notify.error, 保证错误不静默吞掉.
+   * 抛错的 plugin component 不会冒泡到 host 主 app, 因为是独立 createApp 实例.
+   */
+  onError?: (err: unknown, instance: unknown, info: string) => void
+}
+
+/**
+ * Plugin 通过 sdk.runtime.createApp 获得的实例句柄. host 卸载时调 unmount().
+ */
+export interface PluginAppInstance {
+  /** 真正的 Vue App 实例, 仅供 plugin 内部高级用法 (如 provide/inject). */
+  app: App
+  /** 卸载. host 不需要直接调用 — host 调 PluginRuntimeAssets.mount 返回的 PluginInstance.unmount(). */
+  unmount(): void
+}
+
+/**
+ * Host runtime 能力. 让 plugin 不需要自己 createApp / use(pinia) / use(i18n).
  *
- * 调用 install 后期望返回插件提供的 components/routes，
- * runtime loader 会把 routes 注入 vue-router、components 缓存供 PluginView 渲染。
+ * createApp 的实现内部:
+ *   1) 用 host 的 vue.createApp (importmap 共享, 与 host main app 是同一个 createApp 函数)
+ *   2) app.use(host pinia)  — 共享 store registry
+ *   3) app.use(host i18n)   — 共享 message dictionary
+ *   4) 注册 options.components 为全局组件
+ *   5) 设置 app.config.errorHandler 走 sdk.notify.error (除非 options.onError 覆盖)
+ *   6) app.mount(target)
+ *
+ * target 可以是 ShadowRoot 内的 Element. CSS 样式由 caller (mount-plugin) 注入到
+ * shadow root, 此处不负责样式.
+ */
+export interface HostRuntime {
+  createApp(rootComponent: Component, target: Element, options?: HostRuntimeAppOptions): PluginAppInstance
+}
+
+/**
+ * Host 在调 plugin.mount 时传给 plugin 的上下文.
+ * plugin 据此决定渲染哪个 view (同一 plugin 多个路由复用一份 entry bundle, 由 componentPath 区分).
+ */
+export interface PluginRuntimeContext {
+  /** 对齐 manifest.routes[].component_path 的值. */
+  componentPath: string
+  /** 当前路由对象的浅快照. plugin 可读 query / params, 不应直接 mutate. */
+  route: RouteLocationNormalizedLoaded
+  /** plugin 名, 主要用于 plugin 内部 logging. */
+  pluginName: string
+}
+
+/**
+ * Host 调 plugin.mount 后获得的句柄. host 切路由时会调 unmount().
+ */
+export interface PluginInstance {
+  unmount(): void
+}
+
+/**
+ * 插件 entry bundle 必须 default export 的契约对象 (V2).
+ *
+ *   default export { install }
+ *   install(sdk) -> PluginRuntimeAssets
+ *   assets.mount(shadowRoot, ctx) -> PluginInstance
  */
 export interface PluginRuntimeModule {
-  /**
-   * 插件初始化钩子。
-   * @param sdk host 暴露的 SDK 对象
-   * @returns 该插件提供的运行时资产；目前用到的字段是 `components`（按 component_path 索引）
-   *          以及可选的 `routes`（追加注入 vue-router）。
-   */
   install(sdk: HostSdk): PluginRuntimeAssets | Promise<PluginRuntimeAssets>
 }
 
-/** install 返回的资产清单。 */
+/** install 返回的资产清单 (V2). */
 export interface PluginRuntimeAssets {
   /**
-   * 由 component_path（manifest.routes[].component_path 的值）索引的 Vue 组件。
-   * 当 host 命中带有 `meta.componentPath` 的路由时，会按这个映射查表渲染。
+   * Host 给 plugin 一个独立 ShadowRoot, 让 plugin 在内部完成自己的 createApp + mount.
+   * 返回 PluginInstance, host 切路由 / 卸载时调 unmount().
+   *
+   * Implementation note: plugin 通常借助 sdk.runtime.createApp 完成此步, 而不是
+   * 自己 import { createApp } from 'vue' (后者也能用, importmap 共享同一份 vue,
+   * 但需要自己 use pinia/i18n).
    */
-  components?: Record<string, Component>
-  /** 额外追加的 vue-router 路由（默认情况下 host 不会自动注入）。 */
-  routes?: RouteRecordRaw[]
+  mount(shadowRoot: ShadowRoot, ctx: PluginRuntimeContext): PluginInstance | Promise<PluginInstance>
 }
 
 /** Host SDK 完整接口。 */
@@ -174,6 +242,8 @@ export interface HostSdk {
   http: HostHttp
   /** Host 的 Vue 运行时. 插件可借用避免重复打包 Vue. */
   vue: HostVue
+  /** Host 提供的 Vue app 工厂, 自动 use pinia/i18n + 注册全局组件. */
+  runtime: HostRuntime
 }
 
 declare global {

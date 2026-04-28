@@ -161,7 +161,8 @@ func (m *mockSettingsProvider) GetPublicSettingsForInjection(ctx context.Context
 
 // mockPluginManifests implements PluginManifestProvider for testing.
 // Returning a non-empty JSON activates plugin-related HTML injections
-// (importmap, plugin-sdk.css link, manifests script). Empty/nil disables them.
+// (importmap + manifests script). Empty/nil disables them.
+// V2 (Shadow DOM) 不再向 head 注入 plugin-sdk.css.
 type mockPluginManifests struct {
 	json []byte
 }
@@ -184,11 +185,12 @@ func TestFrontendServer_InjectSettings(t *testing.T) {
 		// Should contain the script with nonce placeholder
 		assert.Contains(t, string(result), `<script nonce="__CSP_NONCE_VALUE__">`)
 		assert.Contains(t, string(result), `window.__APP_CONFIG__={"test":"data"};`)
-		// With active plugins, plugin-sdk.css link must be injected before </head>.
-		assert.Contains(t, string(result), `<link rel="stylesheet" href="/api/v1/plugin-assets/__shared__/plugin-sdk.css"></head>`)
+		// V2: plugin-sdk.css 不再注入 host head, 改由 plugin shadow root 内 mount-plugin 注入.
+		assert.NotContains(t, string(result), `plugin-sdk.css`,
+			"V2 (Shadow DOM): plugin-sdk.css must not be injected to host head — mount-plugin handles it inside plugin ShadowRoot")
 	})
 
-	// Without active plugins, importmap / plugin-sdk.css link / manifests script
+	// Without active plugins, importmap / manifests script
 	// MUST NOT be injected — they would 404 against /api/v1/plugin-assets/__shared__/*
 	// because RegisterPluginAssetRoutes returns early when PluginManager is nil.
 	t.Run("no_plugin_injections_when_manifests_empty", func(t *testing.T) {
@@ -205,8 +207,6 @@ func TestFrontendServer_InjectSettings(t *testing.T) {
 			result := server.injectSettings([]byte(`{}`))
 			assert.NotContains(t, string(result), `<script type="importmap"`,
 				"importmap must not be injected without plugins")
-			assert.NotContains(t, string(result), `plugin-sdk.css`,
-				"plugin-sdk.css link must not be injected without plugins")
 			assert.NotContains(t, string(result), `__PLUGIN_MANIFESTS__`,
 				"manifests script must not be injected without plugins")
 		}

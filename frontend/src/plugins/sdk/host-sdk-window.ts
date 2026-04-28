@@ -7,6 +7,7 @@
  *   - 插件可以通过 `window.__SUB2API_HOST_SDK__` 同步取到 SDK，无需异步等待。
  */
 import type { Router } from 'vue-router'
+import type { Pinia } from 'pinia'
 import { HOST_SDK_GLOBAL_KEY, type HostSdk } from './host-sdk'
 import { createHostSdk } from './host-sdk-impl'
 
@@ -16,12 +17,16 @@ let installedSdk: HostSdk | null = null
  * 创建 host sdk 实例并挂到 window。重复调用是 idempotent 的：第二次会返回已挂载的实例。
  *
  * 主入口（main.ts）应在 router 安装之后调用一次，把 sdk 暴露给后续动态加载的插件。
+ *
+ * pinia 实例必须显式传入: sdk.runtime.createApp 内部会 app.use(pinia) 让 plugin
+ * 子 app 与 host 共享 store registry. 不能在 createHostSdk 内 useStore — 那只读
+ * 当前 active pinia, 我们要对象本身.
  */
-export function attachHostSdkToWindow(router: Router): HostSdk {
+export function attachHostSdkToWindow(router: Router, pinia: Pinia): HostSdk {
   if (installedSdk) {
     return installedSdk
   }
-  const sdk = createHostSdk(router)
+  const sdk = createHostSdk(router, pinia)
   installedSdk = sdk
   if (typeof window !== 'undefined') {
     window[HOST_SDK_GLOBAL_KEY] = sdk

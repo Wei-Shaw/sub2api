@@ -223,10 +223,10 @@ const pluginImportMap = `<script type="importmap" nonce="__CSP_NONCE_VALUE__">{"
 	`"@sub2api/plugin-sdk":"/api/v1/plugin-assets/__shared__/plugin-sdk.js"` +
 	`}}</script>`
 
-// pluginSdkStylesheet 在所有页面 head 注入一份 SDK 共享样式表.
-// 体积约 12KB / 2KB gzip, 与 host 自身样式合并占比可忽略, 换取 plugin
-// 直接 import @sub2api/plugin-sdk 渲染时 scoped class 即时生效.
-const pluginSdkStylesheet = `<link rel="stylesheet" href="/api/v1/plugin-assets/__shared__/plugin-sdk.css">`
+// V2 (Shadow DOM) 协议下不再向 host head 注入 plugin-sdk.css —
+// 改由 frontend/src/plugins/mount-plugin.ts 在每个 plugin 的独立 ShadowRoot 内
+// 通过 <link> 注入. 这样 SDK 共享样式只作用于 plugin shadow tree, 不污染 host UI.
+// 端点 /api/v1/plugin-assets/__shared__/plugin-sdk.css 仍然保留, 由 plugin 端按需拉取.
 
 func (s *FrontendServer) injectSettings(settingsJSON []byte) []byte {
 	script := []byte(`<script nonce="` + NonceHTMLPlaceholder + `">window.__APP_CONFIG__=` + string(settingsJSON) + `;</script>`)
@@ -267,20 +267,13 @@ func (s *FrontendServer) injectSettings(settingsJSON []byte) []byte {
 		}
 	}
 
-	// 2) 其他注入物 (app config script / plugin manifests / plugin-sdk.css link)
-	//    继续放在 </head> 之前. 它们不需要在 module script 之前出现.
+	// 2) 其他注入物 (app config script / plugin manifests script).
+	//    plugin-sdk.css 在 V2 不再注入 host head, 改由 mount-plugin 在 ShadowRoot 内注入.
 	headClose := []byte("</head>")
 	var injection []byte
 	injection = append(injection, script...)
 	if len(pluginScript) > 0 {
 		injection = append(injection, pluginScript...)
-	}
-	if hasPlugins {
-		// plugin-sdk.css: SDK 组件 (scoped data-v-* hash) 在 plugin import
-		// @sub2api/plugin-sdk 时由 importmap 取到 ESM bundle, 但 ESM 不会带样式.
-		// <link> 让浏览器加载 SDK 编译后的样式表, plugin DOM 渲染时 scoped class
-		// 命中. host 主 bundle 已含一份 host 副本样式 (不同 hash 不冲突).
-		injection = append(injection, []byte(pluginSdkStylesheet)...)
 	}
 	injection = append(injection, headClose...)
 	result := bytes.Replace(afterHeadOpen, headClose, injection, 1)

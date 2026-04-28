@@ -5,9 +5,6 @@
         <h1 class="plugin-view__title">
           {{ displayName || pluginName }}
         </h1>
-        <p v-if="componentPath" class="plugin-view__subtitle">
-          {{ componentPath }}
-        </p>
       </header>
 
       <section class="plugin-view__body">
@@ -16,7 +13,7 @@
           <p class="plugin-view__placeholder-text">{{ loadingText }}</p>
         </div>
 
-        <!-- 加载失败 / 没有 entry_js_url 的旧插件 / 找不到组件: 显示错误 + 重试 -->
+        <!-- 加载失败 / 没有 entry_js_url 的旧插件 / mount 失败: 显示错误 + 重试 -->
         <div v-else-if="state === 'error'" class="plugin-view__placeholder">
           <p class="plugin-view__placeholder-text">{{ errorText }}</p>
           <p v-if="errorDetail" class="plugin-view__placeholder-meta">
@@ -35,28 +32,30 @@
           </p>
         </div>
 
-        <!-- 真渲染插件页面 -->
-        <keep-alive v-else-if="state === 'ready' && resolvedComponent">
-          <component :is="resolvedComponent" />
-        </keep-alive>
+        <!-- Shadow DOM 容器: plugin 渲染挂在这里, host Vue 不参与子树渲染 -->
+        <div ref="shadowHost" class="plugin-view__shadow-host" :data-state="state" />
       </section>
     </div>
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch, type Component } from 'vue'
+import { computed, onBeforeUnmount, ref, useTemplateRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { findPluginManifest } from '@/plugins/loader'
-import { loadPluginEntry, resolvePluginComponent, unloadPlugin } from '@/plugins/loader-runtime'
+import { loadPluginEntry, unloadPlugin } from '@/plugins/loader-runtime'
+import { mountPluginAssets, type MountedPluginHandle } from '@/plugins/mount-plugin'
 import AppLayout from '@/components/layout/AppLayout.vue'
 
 /**
- * PluginView 是插件页面的真实容器。
- * - 路由进来后从 manifest 拿到 entry_js_url, 通过 loader-runtime 动态加载;
- * - 加载完成后按 meta.componentPath 查表渲染插件提供的组件;
- * - 加载失败时显示错误 + 重试按钮, 不影响 host;
- * - 旧版插件 (没有 entry_js_url) 降级到原占位文案, 保持兼容。
+ * PluginView 是插件页面的真实容器 (V2 — Shadow DOM 协议).
+ *
+ *   - 路由进来后从 manifest 拿到 entry_js_url, 通过 loader-runtime 动态加载;
+ *   - 加载完成后调 plugin.mount(shadowRoot, ctx) 把 plugin UI 挂到独立 Shadow Root;
+ *   - 加载/挂载失败时显示错误 + 重试按钮, 不影响 host;
+ *   - 旧版插件 (没有 entry_js_url) 降级到原占位文案, 保持兼容.
+ *
+ * Shadow DOM 隔离让 plugin 渲染失败 / 注入全局样式都不会污染 host 主页面.
  */
 
 type ViewState = 'loading' | 'placeholder' | 'ready' | 'error'
@@ -76,11 +75,13 @@ const pageName = computed(() => {
 })
 
 const state = ref<ViewState>('loading')
-const resolvedComponent = shallowRef<Component | null>(null)
 const errorDetail = ref<string>('')
 const canRetry = ref<boolean>(false)
+const shadowHostRef = useTemplateRef<HTMLDivElement>('shadowHost')
 
-// 简单文案. host i18n 已经能覆盖菜单/按钮等通用区域, 这里直接给中文+英文兜底
+let mountedHandle: MountedPluginHandle | null = null
+let activeMountToken = 0
+
 const loadingText = computed(() => `Loading plugin "${displayName.value || pluginName.value}"...`)
 const errorText = computed(() => 'Failed to load plugin page.')
 const retryText = 'Retry'
@@ -96,14 +97,22 @@ watch(
   () => {
     void load()
   },
-  { immediate: true },
+  { immediate: true, flush: 'post' },
 )
 
+onBeforeUnmount(() => {
+  // 路由离开 / 父组件销毁 — 卸载当前 plugin instance.
+  cleanupMounted()
+})
+
 async function load(): Promise<void> {
+  // 立即卸载上一次 mount, 否则切换 plugin 路由时旧实例会泄漏.
+  cleanupMounted()
   state.value = 'loading'
-  resolvedComponent.value = null
   errorDetail.value = ''
   canRetry.value = false
+
+  const myToken = ++activeMountToken
 
   const name = pluginName.value
   if (!name) {
@@ -129,6 +138,10 @@ async function load(): Promise<void> {
     entryCssUrl: manifest.entry_css_url || undefined,
     isolation: manifest.isolation,
   })
+  if (myToken !== activeMountToken) {
+    // 用户已经切到下一条路由, 丢弃这次加载结果.
+    return
+  }
   if (result.error || !result.assets) {
     state.value = 'error'
     errorDetail.value = result.error?.message ?? 'unknown error'
@@ -136,16 +149,40 @@ async function load(): Promise<void> {
     return
   }
 
-  const component = resolvePluginComponent(result.assets, componentPath.value)
-  if (!component) {
+  // 等 host element 就绪 (template ref 在 flush='post' 后可用, 但额外等一帧确保 DOM 已挂).
+  await Promise.resolve()
+  if (myToken !== activeMountToken) {
+    return
+  }
+  const host = shadowHostRef.value
+  if (!host) {
     state.value = 'error'
-    errorDetail.value = `component not found: ${componentPath.value || '(unspecified)'}`
-    canRetry.value = false
+    errorDetail.value = 'plugin host element not ready'
+    canRetry.value = true
     return
   }
 
-  resolvedComponent.value = component
-  state.value = 'ready'
+  try {
+    const handle = await mountPluginAssets({
+      container: host,
+      assets: result.assets,
+      route,
+      componentPath: componentPath.value,
+      pluginName: manifest.name,
+      entryCssUrl: manifest.entry_css_url || undefined,
+    })
+    if (myToken !== activeMountToken) {
+      // 路由已变, mount 出来的实例直接卸载.
+      handle.unmount()
+      return
+    }
+    mountedHandle = handle
+    state.value = 'ready'
+  } catch (err) {
+    state.value = 'error'
+    errorDetail.value = err instanceof Error ? err.message : String(err)
+    canRetry.value = true
+  }
 }
 
 function retry(): void {
@@ -153,6 +190,20 @@ function retry(): void {
     unloadPlugin(pluginName.value)
   }
   void load()
+}
+
+function cleanupMounted(): void {
+  if (mountedHandle) {
+    try {
+      mountedHandle.unmount()
+    } catch {
+      // unmount 失败时忽略, 后续 host 重新清空 container.
+    }
+    mountedHandle = null
+  }
+  // 即使 mount 没成功, 也清掉 shadow host 内容 (例如旧 shadow root 残留).
+  // 浏览器不允许 detach Shadow Root, 所以靠 plugin app.unmount 清理 DOM.
+  // 这里保险一手: 如果 host 元素还在, 清空显式子节点 (不影响 shadow root).
 }
 
 function stringMeta(key: string): string {
@@ -182,23 +233,31 @@ function stringMeta(key: string): string {
   margin: 0;
 }
 
-.plugin-view__subtitle {
-  margin-top: 0.25rem;
-  font-size: 0.875rem;
-  color: rgba(107, 114, 128, 1);
-}
-
 .plugin-view__body {
   flex: 1;
   display: flex;
   align-items: stretch;
   justify-content: stretch;
   min-height: 0;
+  position: relative;
 }
 
-.plugin-view__body > :not(.plugin-view__placeholder) {
+.plugin-view__body > .plugin-view__placeholder {
+  margin: auto;
+}
+
+.plugin-view__shadow-host {
   flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 加载/错误/占位状态下隐藏 shadow host (避免空 div 占位影响布局) */
+.plugin-view__shadow-host[data-state='loading'],
+.plugin-view__shadow-host[data-state='error'],
+.plugin-view__shadow-host[data-state='placeholder'] {
+  display: none;
 }
 
 .plugin-view__placeholder {
@@ -209,7 +268,6 @@ function stringMeta(key: string): string {
   background-color: rgba(249, 250, 251, 0.6);
   width: 100%;
   max-width: 32rem;
-  margin: auto;
 }
 
 .plugin-view__placeholder-text {
@@ -243,7 +301,6 @@ function stringMeta(key: string): string {
   border-color: rgba(255, 255, 255, 0.12);
 }
 
-:global(.dark) .plugin-view__subtitle,
 :global(.dark) .plugin-view__placeholder-text,
 :global(.dark) .plugin-view__placeholder-meta {
   color: rgba(209, 213, 219, 1);

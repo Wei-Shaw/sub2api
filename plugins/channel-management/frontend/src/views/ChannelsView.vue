@@ -1092,13 +1092,15 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* V2: 替代 host TablePageLayout 的固定/滚动分区. 与 host 视觉一致.
-   注意 plugin 已在 PluginView 内, AppLayout 已套, 不再用 100vh, 用 100% 适配父容器. */
+/* V2 Shadow DOM: plugin 在独立 ShadowRoot 内, parent (.plugin-shadow-root) 已是 100% 高度.
+   不再用 100vh — viewport 高度计算与 host 双层容器不一致, 会让表格被推出可视区, 同时
+   导致 host 自己的页面也变空白 (因为重复减去 header/padding). 用 100% 让父容器决定高度. */
 .plugin-channels-layout {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  height: calc(100vh - 64px - 4rem);
+  height: 100%;
+  min-height: 0;
 }
 
 .layout-section-fixed {
