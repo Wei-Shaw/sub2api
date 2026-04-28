@@ -991,9 +991,40 @@ REDACTED
 	var tc map[string]any
 	require.NoError(t, json.Unmarshal(resp.ToolChoice, &tc))
 	assert.Equal(t, "function", tc["type"])
-	fn, ok := tc["function"].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "get_weather", fn["name"])
+	assert.Equal(t, "get_weather", tc["name"])
+	assert.NotContains(t, tc, "function")
+REDACTED
+
+func TestResponsesToAnthropicRequest_ToolChoiceFunctionName(t *testing.T) {
+	req := &ResponsesRequest{
+		Model:      "gpt-5.2",
+		Input:      json.RawMessage(`[{"role":"user","content":"Hello"REDACTED]`),
+		ToolChoice: json.RawMessage(`{"type":"function","name":"get_weather"REDACTED`),
+REDACTED
+
+	resp, err := ResponsesToAnthropicRequest(req)
+REDACTED
+
+	var tc map[string]string
+	require.NoError(t, json.Unmarshal(resp.ToolChoice, &tc))
+	assert.Equal(t, "tool", tc["type"])
+	assert.Equal(t, "get_weather", tc["name"])
+REDACTED
+
+func TestResponsesToAnthropicRequest_ToolChoiceLegacyFunctionName(t *testing.T) {
+	req := &ResponsesRequest{
+		Model:      "gpt-5.2",
+		Input:      json.RawMessage(`[{"role":"user","content":"Hello"REDACTED]`),
+		ToolChoice: json.RawMessage(`{"type":"function","function":{"name":"get_weather"REDACTEDREDACTED`),
+REDACTED
+
+	resp, err := ResponsesToAnthropicRequest(req)
+REDACTED
+
+	var tc map[string]string
+	require.NoError(t, json.Unmarshal(resp.ToolChoice, &tc))
+	assert.Equal(t, "tool", tc["type"])
+	assert.Equal(t, "get_weather", tc["name"])
 REDACTED
 
 // ---------------------------------------------------------------------------

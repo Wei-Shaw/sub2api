@@ -249,6 +249,44 @@ REDACTED
 	require.Equal(t, "custom", choice["type"])
 REDACTED
 
+func TestApplyCodexOAuthTransform_NormalizesLegacyFunctionToolChoice(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.4",
+		"tools": []any{
+			map[string]any{"type": "function", "name": "shell"REDACTED,
+	REDACTED,
+		"tool_choice": map[string]any{
+			"type":     "function",
+			"function": map[string]any{"name": "shell"REDACTED,
+	REDACTED,
+REDACTED
+
+	applyCodexOAuthTransform(reqBody, true, false)
+
+	choice, ok := reqBody["tool_choice"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "function", choice["type"])
+	require.Equal(t, "shell", choice["name"])
+	require.NotContains(t, choice, "function")
+REDACTED
+
+func TestApplyCodexOAuthTransform_DowngradesMissingFunctionToolChoice(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.4",
+		"tools": []any{
+			map[string]any{"type": "function", "name": "shell"REDACTED,
+	REDACTED,
+		"tool_choice": map[string]any{
+			"type":     "function",
+			"function": map[string]any{"name": "missing"REDACTED,
+	REDACTED,
+REDACTED
+
+	applyCodexOAuthTransform(reqBody, true, false)
+
+	require.Equal(t, "auto", reqBody["tool_choice"])
+REDACTED
+
 func TestApplyCodexOAuthTransform_AddsFallbackNameForFunctionCallInput(t *testing.T) {
 	reqBody := map[string]any{
 		"model": "gpt-5.4",

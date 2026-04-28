@@ -75,7 +75,7 @@ REDACTED
 //	{"type":"auto"REDACTED            → "auto"
 //	{"type":"any"REDACTED             → "required"
 //	{"type":"none"REDACTED            → "none"
-//	{"type":"tool","name":"X"REDACTED → {"type":"function","function":{"name":"X"REDACTEDREDACTED
+//	{"type":"tool","name":"X"REDACTED → {"type":"function","name":"X"REDACTED
 func convertAnthropicToolChoiceToResponses(raw json.RawMessage) (json.RawMessage, error) {
 	var tc struct {
 		Type string `json:"type"`
@@ -94,8 +94,8 @@ REDACTED
 		return json.Marshal("none")
 	case "tool":
 		return json.Marshal(map[string]any{
-			"type":     "function",
-			"function": map[string]string{"name": tc.NameREDACTED,
+			"type": "function",
+			"name": tc.Name,
 	REDACTED)
 	default:
 		// Pass through unknown types as-is

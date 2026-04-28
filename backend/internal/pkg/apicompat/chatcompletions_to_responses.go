@@ -420,7 +420,7 @@ REDACTED
 //
 //	"auto" → "auto"
 //	"none" → "none"
-//	{"name":"X"REDACTED → {"type":"function","function":{"name":"X"REDACTEDREDACTED
+//	{"name":"X"REDACTED → {"type":"function","name":"X"REDACTED
 func convertChatFunctionCallToToolChoice(raw json.RawMessage) (json.RawMessage, error) {
 	// Try string first ("auto", "none", etc.) — pass through as-is.
 	var s string
@@ -436,7 +436,7 @@ REDACTED
 		return nil, err
 REDACTED
 	return json.Marshal(map[string]any{
-		"type":     "function",
-		"function": map[string]string{"name": obj.NameREDACTED,
+		"type": "function",
+		"name": obj.Name,
 REDACTED)
 REDACTED
