@@ -18,9 +18,10 @@ import (
 
 // 错误码常量：与前端 i18n key（admin.group.errors.* 或 common.errors.*）对齐。
 // 走 PR-A 字段级错误协议（task #33）让前端 parseFieldErrors 直接消费 metadata.fields。
+//
+// INVALID_REQUEST_BODY 集中在 admin/common.go 的 errReasonInvalidRequestBody，本文件不再重复声明。
 const (
-	errReasonGroupInvalidID          = "INVALID_GROUP_ID"
-	errReasonGroupInvalidRequestBody = "INVALID_REQUEST_BODY"
+	errReasonGroupInvalidID = "INVALID_GROUP_ID"
 )
 
 // GroupHandler handles admin group management
@@ -247,7 +248,7 @@ func (h *GroupHandler) GetByID(c *gin.Context) {
 // POST /api/v1/admin/groups
 func (h *GroupHandler) Create(c *gin.Context) {
 	var req CreateGroupRequest
-	if err := BindJSONOrError(c, &req, errReasonGroupInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -298,7 +299,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 	}
 
 	var req UpdateGroupRequest
-	if err := BindJSONOrError(c, &req, errReasonGroupInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -496,7 +497,7 @@ func (h *GroupHandler) BatchSetGroupRateMultipliers(c *gin.Context) {
 	}
 
 	var req BatchSetGroupRateMultipliersRequest
-	if err := BindJSONOrError(c, &req, errReasonGroupInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -524,7 +525,7 @@ func (h *GroupHandler) BatchSetGroupRPMOverrides(c *gin.Context) {
 	}
 
 	var req BatchSetGroupRPMOverridesRequest
-	if err := BindJSONOrError(c, &req, errReasonGroupInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -566,7 +567,7 @@ type UpdateSortOrderRequest struct {
 // PUT /api/v1/admin/groups/sort-order
 func (h *GroupHandler) UpdateSortOrder(c *gin.Context) {
 	var req UpdateSortOrderRequest
-	if err := BindJSONOrError(c, &req, errReasonGroupInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

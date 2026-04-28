@@ -22,6 +22,17 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
+// admin 包内多个 handler 共享的通用错误码常量。
+//
+// 业务专属的 reason（如 INVALID_USER_ID / TURNSTILE_SITE_KEY_REQUIRED 等）放在各自
+// handler 顶部 const 块；这里只放跨 handler 一致语义的高频 reason，避免散落多份定义后漂移。
+//
+// 与前端 i18n 表对齐：common.errors.INVALID_REQUEST_BODY / common.errors.INVALID_ID。
+const (
+	errReasonInvalidRequestBody = "INVALID_REQUEST_BODY"
+	errReasonInvalidID          = "INVALID_ID"
+)
+
 // ParseInt64Param 解析 gin path 参数为 int64，解析失败返回字段级 ValidationFailed。
 //
 // invalidCode 是顶层 ApplicationError.Reason（例如 INVALID_ID），与前端 i18n 表对齐；

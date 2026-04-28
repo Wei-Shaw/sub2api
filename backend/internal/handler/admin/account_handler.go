@@ -34,9 +34,10 @@ import (
 // 错误码常量：与前端 i18n key（admin.account.errors.* / common.errors.*）对齐。
 // 走 PR-A 字段级错误协议（task #33）让前端 parseFieldErrors 直接消费 metadata.fields，
 // 不再依赖英文 message 文本做解析。
+// INVALID_REQUEST_BODY 是跨 handler 通用 reason，集中在 admin/common.go 定义为
+// errReasonInvalidRequestBody，本文件不再重复声明（避免漂移）。
 const (
 	errReasonAccountInvalidID              = "INVALID_ACCOUNT_ID"
-	errReasonAccountInvalidRequestBody     = "INVALID_REQUEST_BODY"
 	errReasonAccountInvalidRateMultiplier  = "INVALID_RATE_MULTIPLIER"
 	errReasonAccountIDsRequired            = "ACCOUNT_IDS_REQUIRED"
 	errReasonAccountInvalidExtraField      = "INVALID_EXTRA_FIELD"
@@ -479,7 +480,7 @@ func (h *AccountHandler) GetByID(c *gin.Context) {
 // POST /api/v1/admin/accounts/check-mixed-channel
 func (h *AccountHandler) CheckMixedChannel(c *gin.Context) {
 	var req CheckMixedChannelRequest
-	if err := BindJSONOrError(c, &req, errReasonAccountInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -523,7 +524,7 @@ func (h *AccountHandler) CheckMixedChannel(c *gin.Context) {
 // POST /api/v1/admin/accounts
 func (h *AccountHandler) Create(c *gin.Context) {
 	var req CreateAccountRequest
-	if err := BindJSONOrError(c, &req, errReasonAccountInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -599,7 +600,7 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	}
 
 	var req UpdateAccountRequest
-	if err := BindJSONOrError(c, &req, errReasonAccountInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -763,7 +764,7 @@ func (h *AccountHandler) RecoverState(c *gin.Context) {
 // POST /api/v1/admin/accounts/sync/crs
 func (h *AccountHandler) SyncFromCRS(c *gin.Context) {
 	var req SyncFromCRSRequest
-	if err := BindJSONOrError(c, &req, errReasonAccountInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -794,7 +795,7 @@ func (h *AccountHandler) SyncFromCRS(c *gin.Context) {
 // POST /api/v1/admin/accounts/sync/crs/preview
 func (h *AccountHandler) PreviewFromCRS(c *gin.Context) {
 	var req PreviewFromCRSRequest
-	if err := BindJSONOrError(c, &req, errReasonAccountInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -1030,7 +1031,7 @@ func (h *AccountHandler) BatchClearError(c *gin.Context) {
 	var req struct {
 		AccountIDs []int64 `json:"account_ids"`
 	}
-	if err := BindJSONOrError(c, &req, errReasonAccountInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -1098,7 +1099,7 @@ func (h *AccountHandler) BatchRefresh(c *gin.Context) {
 	var req struct {
 		AccountIDs []int64 `json:"account_ids"`
 	}
-	if err := BindJSONOrError(c, &req, errReasonAccountInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -1192,7 +1193,7 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 	var req struct {
 		Accounts []CreateAccountRequest `json:"accounts" binding:"required,min=1"`
 	}
-	if err := BindJSONOrError(c, &req, errReasonAccountInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -1313,7 +1314,7 @@ type BatchUpdateCredentialsRequest struct {
 // POST /api/v1/admin/accounts/batch-update-credentials
 func (h *AccountHandler) BatchUpdateCredentials(c *gin.Context) {
 	var req BatchUpdateCredentialsRequest
-	if err := BindJSONOrError(c, &req, errReasonAccountInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -1395,7 +1396,7 @@ func (h *AccountHandler) BatchUpdateCredentials(c *gin.Context) {
 // POST /api/v1/admin/accounts/bulk-update
 func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 	var req BulkUpdateAccountsRequest
-	if err := BindJSONOrError(c, &req, errReasonAccountInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -1517,7 +1518,7 @@ type ExchangeCodeRequest struct {
 // POST /api/v1/admin/accounts/exchange-code
 func (h *OAuthHandler) ExchangeCode(c *gin.Context) {
 	var req ExchangeCodeRequest
-	if err := BindJSONOrError(c, &req, errReasonAccountInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -1539,7 +1540,7 @@ func (h *OAuthHandler) ExchangeCode(c *gin.Context) {
 // POST /api/v1/admin/accounts/exchange-setup-token-code
 func (h *OAuthHandler) ExchangeSetupTokenCode(c *gin.Context) {
 	var req ExchangeCodeRequest
-	if err := BindJSONOrError(c, &req, errReasonAccountInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -1567,7 +1568,7 @@ type CookieAuthRequest struct {
 // POST /api/v1/admin/accounts/cookie-auth
 func (h *OAuthHandler) CookieAuth(c *gin.Context) {
 	var req CookieAuthRequest
-	if err := BindJSONOrError(c, &req, errReasonAccountInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -1589,7 +1590,7 @@ func (h *OAuthHandler) CookieAuth(c *gin.Context) {
 // POST /api/v1/admin/accounts/setup-token-cookie-auth
 func (h *OAuthHandler) SetupTokenCookieAuth(c *gin.Context) {
 	var req CookieAuthRequest
-	if err := BindJSONOrError(c, &req, errReasonAccountInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -1749,7 +1750,7 @@ type BatchTodayStatsRequest struct {
 // POST /api/v1/admin/accounts/today-stats/batch
 func (h *AccountHandler) GetBatchTodayStats(c *gin.Context) {
 	var req BatchTodayStatsRequest
-	if err := BindJSONOrError(c, &req, errReasonAccountInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -1806,7 +1807,7 @@ func (h *AccountHandler) SetSchedulable(c *gin.Context) {
 	}
 
 	var req SetSchedulableRequest
-	if err := BindJSONOrError(c, &req, errReasonAccountInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

@@ -14,11 +14,11 @@ import (
 )
 
 // 错误码常量：与前端 i18n key（admin.user.errors.* 或 common.errors.*）对齐。
-// 走 PR-A 字段级错误协议（task #33）让前端 parseFieldErrors 直接消费 metadata.fields，
-// 不再依赖英文 message 文本做解析。
+// 走 PR-A 字段级错误协议（task #33）让前端 parseFieldErrors 直接消费 metadata.fields。
+//
+// INVALID_REQUEST_BODY 集中在 admin/common.go 的 errReasonInvalidRequestBody，本文件不再重复声明。
 const (
-	errReasonUserInvalidID          = "INVALID_USER_ID"
-	errReasonUserInvalidRequestBody = "INVALID_REQUEST_BODY"
+	errReasonUserInvalidID = "INVALID_USER_ID"
 )
 
 // UserWithConcurrency wraps AdminUser with current concurrency info
@@ -213,7 +213,7 @@ func (h *UserHandler) BindAuthIdentity(c *gin.Context) {
 	}
 
 	var req BindUserAuthIdentityRequest
-	if err := BindJSONOrError(c, &req, errReasonUserInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -246,7 +246,7 @@ func (h *UserHandler) BindAuthIdentity(c *gin.Context) {
 // POST /api/v1/admin/users
 func (h *UserHandler) Create(c *gin.Context) {
 	var req CreateUserRequest
-	if err := BindJSONOrError(c, &req, errReasonUserInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -279,7 +279,7 @@ func (h *UserHandler) Update(c *gin.Context) {
 	}
 
 	var req UpdateUserRequest
-	if err := BindJSONOrError(c, &req, errReasonUserInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -347,7 +347,7 @@ func (h *UserHandler) UpdateBalance(c *gin.Context) {
 	}
 
 	var req UpdateBalanceRequest
-	if err := BindJSONOrError(c, &req, errReasonUserInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -471,7 +471,7 @@ func (h *UserHandler) ReplaceGroup(c *gin.Context) {
 	}
 
 	var req ReplaceGroupRequest
-	if err := BindJSONOrError(c, &req, errReasonUserInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}

@@ -19,12 +19,12 @@ func NewServiceQuotaHandler(svc service.ServiceQuotaService) *ServiceQuotaHandle
 }
 
 // 错误码常量：与前端 i18n key（admin.serviceQuota.errors.* / common.errors.*）对齐。
-// INVALID_REQUEST_BODY / INVALID_ID 是通用错误码，前端 i18n 时可放在 common.errors 命名空间复用。
+// INVALID_REQUEST_BODY / INVALID_ID 是通用错误码，集中在 admin/common.go 定义为
+// errReasonInvalidRequestBody / errReasonInvalidID 共享常量；本文件仅保留模块特定的 reason。
+//
 // SERVICE_QUOTA_UNAVAILABLE 是 service 模块未启用时的标识，前端按此引导用户去开启 setting。
 const (
 	errReasonServiceQuotaUnavailable = "SERVICE_QUOTA_UNAVAILABLE"
-	errReasonInvalidRequestBody      = "INVALID_REQUEST_BODY"
-	errReasonInvalidID               = "INVALID_ID"
 )
 
 // requireService 校验 svc 是否注册（service quota 模块未启用时返回结构化 NotFound）。
