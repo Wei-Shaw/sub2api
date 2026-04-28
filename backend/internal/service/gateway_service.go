@@ -4433,13 +4433,12 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				errMsg := extractUpstreamErrorMessage(respBody)
 				if isThinkingBudgetConstraintError(errMsg) && s.settingService.IsBudgetRectifierEnabled(ctx) {
 					rectifiedBody, applied := RectifyThinkingBudget(body)
-					switch {
-					case !applied:
+					if !applied {
 						logger.LegacyPrintf("service.gateway", "Account %d: budget rectifier matched error but body did not change, skipping retry", account.ID)
-					case time.Since(retryStart) >= maxRetryElapsed:
-						logger.LegacyPrintf("service.gateway", "Account %d: budget rectifier matched error but retry budget exhausted, skipping retry", account.ID)
 					}
-					if applied && time.Since(retryStart) < maxRetryElapsed {
+					// 单次重试，不与 signature 整流共享 retry budget——进到这里上游已返回 budget 错误，
+					// 不重试 = 必然失败；客户端断开由 DoWithTLS 内部 ctx 兜底。
+					if applied {
 						appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 							Platform:           account.Platform,
 							AccountID:          account.ID,
@@ -4482,13 +4481,12 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					// 触发条件：body 里有 advisor 工具（已剥）或客户端 header 里带 advisor-tool token（待剥）。
 					// 大小写不敏感比较以防御客户端发送 `Advisor-Tool-2026-03-01` 等变体。
 					headerHasAdvisor := containsBetaTokenIgnoreCase(getHeaderRaw(c.Request.Header, "anthropic-beta"), AdvisorBetaToken)
-					switch {
-					case !bodyApplied && !headerHasAdvisor:
+					if !bodyApplied && !headerHasAdvisor {
 						logger.LegacyPrintf("service.gateway", "Account %d: advisor-tool rectifier matched error but body+header have no advisor token, skipping retry", account.ID)
-					case time.Since(retryStart) >= maxRetryElapsed:
-						logger.LegacyPrintf("service.gateway", "Account %d: advisor-tool rectifier matched error but retry budget exhausted, skipping retry", account.ID)
 					}
-					if (bodyApplied || headerHasAdvisor) && time.Since(retryStart) < maxRetryElapsed {
+					// 单次重试，不与 signature 整流共享 retry budget——进到这里上游已确认是 advisor 错误，
+					// 不重试 = 必然失败；客户端断开由 DoWithTLS 内部 ctx 兜底。
+					if bodyApplied || headerHasAdvisor {
 						appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 							Platform:           account.Platform,
 							AccountID:          account.ID,
