@@ -57,6 +57,25 @@ const (
 	errReasonSettingWeChatRedirectURLRequired     = "WECHAT_REDIRECT_URL_REQUIRED"
 	errReasonSettingWeChatRedirectURLInvalid      = "WECHAT_REDIRECT_URL_INVALID"
 	errReasonSettingWeChatFrontendRedirectInvalid = "WECHAT_FRONTEND_REDIRECT_URL_INVALID"
+
+	// OIDC 单点登录配置（启用后必填字段 + URL 合法性 + scope/auth_method 枚举校验）。
+	errReasonSettingOIDCClientIDRequired           = "OIDC_CLIENT_ID_REQUIRED"
+	errReasonSettingOIDCClientSecretRequired       = "OIDC_CLIENT_SECRET_REQUIRED"
+	errReasonSettingOIDCIssuerURLRequired          = "OIDC_ISSUER_URL_REQUIRED"
+	errReasonSettingOIDCIssuerURLInvalid           = "OIDC_ISSUER_URL_INVALID"
+	errReasonSettingOIDCDiscoveryURLInvalid        = "OIDC_DISCOVERY_URL_INVALID"
+	errReasonSettingOIDCAuthorizeURLInvalid        = "OIDC_AUTHORIZE_URL_INVALID"
+	errReasonSettingOIDCTokenURLInvalid            = "OIDC_TOKEN_URL_INVALID"
+	errReasonSettingOIDCUserInfoURLInvalid         = "OIDC_USERINFO_URL_INVALID"
+	errReasonSettingOIDCRedirectURLRequired        = "OIDC_REDIRECT_URL_REQUIRED"
+	errReasonSettingOIDCRedirectURLInvalid         = "OIDC_REDIRECT_URL_INVALID"
+	errReasonSettingOIDCFrontendRedirectRequired   = "OIDC_FRONTEND_REDIRECT_URL_REQUIRED"
+	errReasonSettingOIDCFrontendRedirectInvalid    = "OIDC_FRONTEND_REDIRECT_URL_INVALID"
+	errReasonSettingOIDCScopesMissingOpenID        = "OIDC_SCOPES_MISSING_OPENID"
+	errReasonSettingOIDCTokenAuthMethodInvalid     = "OIDC_TOKEN_AUTH_METHOD_INVALID"
+	errReasonSettingOIDCClockSkewOutOfRange        = "OIDC_CLOCK_SKEW_OUT_OF_RANGE"
+	errReasonSettingOIDCAllowedSigningAlgsRequired = "OIDC_ALLOWED_SIGNING_ALGS_REQUIRED"
+	errReasonSettingOIDCJWKSURLInvalid             = "OIDC_JWKS_URL_INVALID"
 )
 
 // semverPattern 预编译 semver 格式校验正则
@@ -846,85 +865,85 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 
 		if req.OIDCConnectClientID == "" {
-			response.BadRequest(c, "OIDC Client ID is required when enabled")
+			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingOIDCClientIDRequired, "oidc client ID is required when enabled"))
 			return
 		}
 		if req.OIDCConnectIssuerURL == "" {
-			response.BadRequest(c, "OIDC Issuer URL is required when enabled")
+			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingOIDCIssuerURLRequired, "oidc issuer URL is required when enabled"))
 			return
 		}
 		if err := config.ValidateAbsoluteHTTPURL(req.OIDCConnectIssuerURL); err != nil {
-			response.BadRequest(c, "OIDC Issuer URL must be an absolute http(s) URL")
+			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingOIDCIssuerURLInvalid, "oidc issuer URL must be an absolute http(s) URL"))
 			return
 		}
 		if req.OIDCConnectDiscoveryURL != "" {
 			if err := config.ValidateAbsoluteHTTPURL(req.OIDCConnectDiscoveryURL); err != nil {
-				response.BadRequest(c, "OIDC Discovery URL must be an absolute http(s) URL")
+				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingOIDCDiscoveryURLInvalid, "oidc discovery URL must be an absolute http(s) URL"))
 				return
 			}
 		}
 		if req.OIDCConnectAuthorizeURL != "" {
 			if err := config.ValidateAbsoluteHTTPURL(req.OIDCConnectAuthorizeURL); err != nil {
-				response.BadRequest(c, "OIDC Authorize URL must be an absolute http(s) URL")
+				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingOIDCAuthorizeURLInvalid, "oidc authorize URL must be an absolute http(s) URL"))
 				return
 			}
 		}
 		if req.OIDCConnectTokenURL != "" {
 			if err := config.ValidateAbsoluteHTTPURL(req.OIDCConnectTokenURL); err != nil {
-				response.BadRequest(c, "OIDC Token URL must be an absolute http(s) URL")
+				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingOIDCTokenURLInvalid, "oidc token URL must be an absolute http(s) URL"))
 				return
 			}
 		}
 		if req.OIDCConnectUserInfoURL != "" {
 			if err := config.ValidateAbsoluteHTTPURL(req.OIDCConnectUserInfoURL); err != nil {
-				response.BadRequest(c, "OIDC UserInfo URL must be an absolute http(s) URL")
+				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingOIDCUserInfoURLInvalid, "oidc userinfo URL must be an absolute http(s) URL"))
 				return
 			}
 		}
 		if req.OIDCConnectRedirectURL == "" {
-			response.BadRequest(c, "OIDC Redirect URL is required when enabled")
+			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingOIDCRedirectURLRequired, "oidc redirect URL is required when enabled"))
 			return
 		}
 		if err := config.ValidateAbsoluteHTTPURL(req.OIDCConnectRedirectURL); err != nil {
-			response.BadRequest(c, "OIDC Redirect URL must be an absolute http(s) URL")
+			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingOIDCRedirectURLInvalid, "oidc redirect URL must be an absolute http(s) URL"))
 			return
 		}
 		if req.OIDCConnectFrontendRedirectURL == "" {
-			response.BadRequest(c, "OIDC Frontend Redirect URL is required when enabled")
+			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingOIDCFrontendRedirectRequired, "oidc frontend redirect URL is required when enabled"))
 			return
 		}
 		if err := config.ValidateFrontendRedirectURL(req.OIDCConnectFrontendRedirectURL); err != nil {
-			response.BadRequest(c, "OIDC Frontend Redirect URL is invalid")
+			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingOIDCFrontendRedirectInvalid, "oidc frontend redirect URL is invalid"))
 			return
 		}
 		if !scopesContainOpenID(req.OIDCConnectScopes) {
-			response.BadRequest(c, "OIDC scopes must contain openid")
+			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingOIDCScopesMissingOpenID, "oidc scopes must contain openid"))
 			return
 		}
 		switch req.OIDCConnectTokenAuthMethod {
 		case "", "client_secret_post", "client_secret_basic", "none":
 		default:
-			response.BadRequest(c, "OIDC Token Auth Method must be one of client_secret_post/client_secret_basic/none")
+			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingOIDCTokenAuthMethodInvalid, "oidc token auth method must be one of client_secret_post/client_secret_basic/none"))
 			return
 		}
 		if req.OIDCConnectClockSkewSeconds < 0 || req.OIDCConnectClockSkewSeconds > 600 {
-			response.BadRequest(c, "OIDC clock skew seconds must be between 0 and 600")
+			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingOIDCClockSkewOutOfRange, "oidc clock skew seconds must be between 0 and 600"))
 			return
 		}
 		if oidcValidateIDToken && req.OIDCConnectAllowedSigningAlgs == "" {
-			response.BadRequest(c, "OIDC Allowed Signing Algs is required when validate_id_token=true")
+			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingOIDCAllowedSigningAlgsRequired, "oidc allowed signing algs is required when validate_id_token=true"))
 			return
 		}
 		if req.OIDCConnectJWKSURL != "" {
 			if err := config.ValidateAbsoluteHTTPURL(req.OIDCConnectJWKSURL); err != nil {
-				response.BadRequest(c, "OIDC JWKS URL must be an absolute http(s) URL")
+				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingOIDCJWKSURLInvalid, "oidc jwks URL must be an absolute http(s) URL"))
 				return
 			}
 		}
 		if req.OIDCConnectTokenAuthMethod == "" || req.OIDCConnectTokenAuthMethod == "client_secret_post" || req.OIDCConnectTokenAuthMethod == "client_secret_basic" {
 			if req.OIDCConnectClientSecret == "" {
 				if previousSettings.OIDCConnectClientSecret == "" {
-					response.BadRequest(c, "OIDC Client Secret is required when enabled")
+					response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingOIDCClientSecretRequired, "oidc client secret is required when enabled"))
 					return
 				}
 				req.OIDCConnectClientSecret = previousSettings.OIDCConnectClientSecret
