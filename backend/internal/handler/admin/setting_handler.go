@@ -38,6 +38,25 @@ const (
 	errReasonSettingRectifierInvalid        = "RECTIFIER_SETTINGS_INVALID"
 	errReasonSettingBetaPolicyInvalid       = "BETA_POLICY_SETTINGS_INVALID"
 	errReasonSettingStreamTimeoutInvalid    = "STREAM_TIMEOUT_SETTINGS_INVALID"
+
+	// LinuxDo 第三方登录配置（启用后必填字段）。
+	errReasonSettingLinuxDoClientIDRequired     = "LINUXDO_CLIENT_ID_REQUIRED"
+	errReasonSettingLinuxDoClientSecretRequired = "LINUXDO_CLIENT_SECRET_REQUIRED"
+	errReasonSettingLinuxDoRedirectURLRequired  = "LINUXDO_REDIRECT_URL_REQUIRED"
+	errReasonSettingLinuxDoRedirectURLInvalid   = "LINUXDO_REDIRECT_URL_INVALID"
+
+	// WeChat 第三方登录配置（启用后必填字段 + 互斥规则）。
+	errReasonSettingWeChatModeConflict            = "WECHAT_MODE_CONFLICT"
+	errReasonSettingWeChatModeInvalid             = "WECHAT_MODE_INVALID"
+	errReasonSettingWeChatPCAppIDRequired         = "WECHAT_PC_APP_ID_REQUIRED"
+	errReasonSettingWeChatPCAppSecretRequired     = "WECHAT_PC_APP_SECRET_REQUIRED"
+	errReasonSettingWeChatMPAppIDRequired         = "WECHAT_MP_APP_ID_REQUIRED"
+	errReasonSettingWeChatMPAppSecretRequired     = "WECHAT_MP_APP_SECRET_REQUIRED"
+	errReasonSettingWeChatMobileAppIDRequired     = "WECHAT_MOBILE_APP_ID_REQUIRED"
+	errReasonSettingWeChatMobileAppSecretRequired = "WECHAT_MOBILE_APP_SECRET_REQUIRED"
+	errReasonSettingWeChatRedirectURLRequired     = "WECHAT_REDIRECT_URL_REQUIRED"
+	errReasonSettingWeChatRedirectURLInvalid      = "WECHAT_REDIRECT_URL_INVALID"
+	errReasonSettingWeChatFrontendRedirectInvalid = "WECHAT_FRONTEND_REDIRECT_URL_INVALID"
 )
 
 // semverPattern 预编译 semver 格式校验正则
@@ -622,22 +641,22 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		req.LinuxDoConnectRedirectURL = strings.TrimSpace(req.LinuxDoConnectRedirectURL)
 
 		if req.LinuxDoConnectClientID == "" {
-			response.BadRequest(c, "LinuxDo Client ID is required when enabled")
+			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingLinuxDoClientIDRequired, "linuxdo client ID is required when enabled"))
 			return
 		}
 		if req.LinuxDoConnectRedirectURL == "" {
-			response.BadRequest(c, "LinuxDo Redirect URL is required when enabled")
+			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingLinuxDoRedirectURLRequired, "linuxdo redirect URL is required when enabled"))
 			return
 		}
 		if err := config.ValidateAbsoluteHTTPURL(req.LinuxDoConnectRedirectURL); err != nil {
-			response.BadRequest(c, "LinuxDo Redirect URL must be an absolute http(s) URL")
+			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingLinuxDoRedirectURLInvalid, "linuxdo redirect URL must be an absolute http(s) URL"))
 			return
 		}
 
 		// 如果未提供 client_secret，则保留现有值（如有）。
 		if req.LinuxDoConnectClientSecret == "" {
 			if previousSettings.LinuxDoConnectClientSecret == "" {
-				response.BadRequest(c, "LinuxDo Client Secret is required when enabled")
+				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingLinuxDoClientSecretRequired, "linuxdo client secret is required when enabled"))
 				return
 			}
 			req.LinuxDoConnectClientSecret = previousSettings.LinuxDoConnectClientSecret
@@ -668,14 +687,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 
 		if req.WeChatConnectMPEnabled && req.WeChatConnectMobileEnabled {
-			response.BadRequest(c, "WeChat Official Account and Mobile App cannot be enabled at the same time")
+			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingWeChatModeConflict, "wechat official account and mobile app cannot be enabled at the same time"))
 			return
 		}
 		if req.WeChatConnectMode != "" {
 			switch req.WeChatConnectMode {
 			case "open", "mp", "mobile":
 			default:
-				response.BadRequest(c, "WeChat mode must be open, mp, or mobile")
+				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingWeChatModeInvalid, "wechat mode must be open, mp, or mobile"))
 				return
 			}
 		}
@@ -718,31 +737,31 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 		if req.WeChatConnectOpenEnabled {
 			if req.WeChatConnectOpenAppID == "" {
-				response.BadRequest(c, "WeChat PC App ID is required when enabled")
+				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingWeChatPCAppIDRequired, "wechat PC app ID is required when enabled"))
 				return
 			}
 			if req.WeChatConnectOpenAppSecret == "" {
-				response.BadRequest(c, "WeChat PC App Secret is required when enabled")
+				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingWeChatPCAppSecretRequired, "wechat PC app secret is required when enabled"))
 				return
 			}
 		}
 		if req.WeChatConnectMPEnabled {
 			if req.WeChatConnectMPAppID == "" {
-				response.BadRequest(c, "WeChat Official Account App ID is required when enabled")
+				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingWeChatMPAppIDRequired, "wechat official account app ID is required when enabled"))
 				return
 			}
 			if req.WeChatConnectMPAppSecret == "" {
-				response.BadRequest(c, "WeChat Official Account App Secret is required when enabled")
+				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingWeChatMPAppSecretRequired, "wechat official account app secret is required when enabled"))
 				return
 			}
 		}
 		if req.WeChatConnectMobileEnabled {
 			if req.WeChatConnectMobileAppID == "" {
-				response.BadRequest(c, "WeChat Mobile App ID is required when enabled")
+				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingWeChatMobileAppIDRequired, "wechat mobile app ID is required when enabled"))
 				return
 			}
 			if req.WeChatConnectMobileAppSecret == "" {
-				response.BadRequest(c, "WeChat Mobile App Secret is required when enabled")
+				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingWeChatMobileAppSecretRequired, "wechat mobile app secret is required when enabled"))
 				return
 			}
 		}
@@ -756,18 +775,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 		if req.WeChatConnectOpenEnabled || req.WeChatConnectMPEnabled {
 			if req.WeChatConnectRedirectURL == "" {
-				response.BadRequest(c, "WeChat Redirect URL is required when web oauth is enabled")
+				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingWeChatRedirectURLRequired, "wechat redirect URL is required when web oauth is enabled"))
 				return
 			}
 			if err := config.ValidateAbsoluteHTTPURL(req.WeChatConnectRedirectURL); err != nil {
-				response.BadRequest(c, "WeChat Redirect URL must be an absolute http(s) URL")
+				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingWeChatRedirectURLInvalid, "wechat redirect URL must be an absolute http(s) URL"))
 				return
 			}
 			if req.WeChatConnectFrontendRedirectURL == "" {
 				req.WeChatConnectFrontendRedirectURL = "/auth/wechat/callback"
 			}
 			if err := config.ValidateFrontendRedirectURL(req.WeChatConnectFrontendRedirectURL); err != nil {
-				response.BadRequest(c, "WeChat Frontend Redirect URL is invalid")
+				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingWeChatFrontendRedirectInvalid, "wechat frontend redirect URL is invalid"))
 				return
 			}
 		}
