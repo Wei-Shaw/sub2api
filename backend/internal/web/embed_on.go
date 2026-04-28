@@ -220,7 +220,7 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 // 浏览器原生 importmap 支持: 主流浏览器自 2023 起均支持; 旧 Edge / 老 webview
 // 没有 polyfill, 此时 plugin entry 的 `import { ... } from 'vue'` 会失败,
 // loader-runtime.ts 把错误捕获并显示 PluginView error state.
-const pluginImportMap = `<script type="importmap">{"imports":{` +
+const pluginImportMap = `<script type="importmap" nonce="__CSP_NONCE_VALUE__">{"imports":{` +
 	`"vue":"/api/v1/plugin-assets/__shared__/vue.js",` +
 	`"vue-router":"/api/v1/plugin-assets/__shared__/vue-router.js",` +
 	`"vue-i18n":"/api/v1/plugin-assets/__shared__/vue-i18n.js",` +
@@ -251,7 +251,7 @@ func (s *FrontendServer) injectSettings(settingsJSON []byte) []byte {
 	//    在解析到 importmap 时 host module script 已经开始 fetch, importmap 失效,
 	//    plugin entry 里的 `import 'vue'` 因找不到 specifier 而抛 Failed to resolve.
 	//    修复: 把 importmap 提前到 <head> 标签之后立刻插入, 保证早于任何 module script.
-	//    (importmap script 不需要 CSP nonce, 浏览器对 type=importmap 单独处理.)
+	//    (importmap script 同样受 CSP script-src 约束, 浏览器无 unsafe-inline 时必须有 nonce, 否则被静默丢弃 → bare specifier 解析失败.)
 	headOpen := []byte("<head>")
 	headOpenIdx := bytes.Index(s.baseHTML, headOpen)
 	var afterHeadOpen []byte

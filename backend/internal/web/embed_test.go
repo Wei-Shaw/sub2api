@@ -191,7 +191,7 @@ func TestFrontendServer_InjectSettings(t *testing.T) {
 
 		result := server.injectSettings([]byte(`{}`))
 
-		importmapIdx := bytes.Index(result, []byte(`<script type="importmap">`))
+		importmapIdx := bytes.Index(result, []byte(`<script type="importmap" nonce="__CSP_NONCE_VALUE__">`))
 		moduleScriptIdx := bytes.Index(result, []byte(`<script type="module"`))
 		require.NotEqual(t, -1, importmapIdx, "importmap should be injected")
 		// moduleScriptIdx may be -1 in test environments without a built host bundle;
