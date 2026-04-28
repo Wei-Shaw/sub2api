@@ -4864,7 +4864,18 @@ func normalizeOpenAICompactRequestBody(body []byte) ([]byte, bool, error) {
 REDACTED
 
 	normalized := []byte(`{REDACTED`)
-	for _, field := range []string{"model", "input", "instructions", "previous_response_id"REDACTED {
+	// Keep the current Codex /compact schema while still dropping request-scoped
+	// fields such as prompt_cache_key, store, and stream.
+	for _, field := range []string{
+		"model",
+		"input",
+		"instructions",
+		"tools",
+		"parallel_tool_calls",
+		"reasoning",
+		"text",
+		"previous_response_id",
+REDACTED {
 		value := gjson.GetBytes(body, field)
 		if !value.Exists() {
 			continue
