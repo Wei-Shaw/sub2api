@@ -13,6 +13,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// 错误码常量：与前端 i18n key（admin.user.errors.* 或 common.errors.*）对齐。
+// 走 PR-A 字段级错误协议（task #33）让前端 parseFieldErrors 直接消费 metadata.fields，
+// 不再依赖英文 message 文本做解析。
+const (
+	errReasonUserInvalidID          = "INVALID_USER_ID"
+	errReasonUserInvalidRequestBody = "INVALID_REQUEST_BODY"
+)
+
 // UserWithConcurrency wraps AdminUser with current concurrency info
 type UserWithConcurrency struct {
 	dto.AdminUser
@@ -180,9 +188,9 @@ func parseAttributeFilters(c *gin.Context) map[int64]string {
 // GetByID handles getting a user by ID
 // GET /api/v1/admin/users/:id
 func (h *UserHandler) GetByID(c *gin.Context) {
-	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	userID, err := ParseInt64Param(c, "id", errReasonUserInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid user ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -198,15 +206,15 @@ func (h *UserHandler) GetByID(c *gin.Context) {
 // BindAuthIdentity manually binds a canonical auth identity to a user.
 // POST /api/v1/admin/users/:id/auth-identities
 func (h *UserHandler) BindAuthIdentity(c *gin.Context) {
-	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	userID, err := ParseInt64Param(c, "id", errReasonUserInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid user ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
 	var req BindUserAuthIdentityRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonUserInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -238,8 +246,8 @@ func (h *UserHandler) BindAuthIdentity(c *gin.Context) {
 // POST /api/v1/admin/users
 func (h *UserHandler) Create(c *gin.Context) {
 	var req CreateUserRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonUserInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -264,15 +272,15 @@ func (h *UserHandler) Create(c *gin.Context) {
 // Update handles updating a user
 // PUT /api/v1/admin/users/:id
 func (h *UserHandler) Update(c *gin.Context) {
-	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	userID, err := ParseInt64Param(c, "id", errReasonUserInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid user ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
 	var req UpdateUserRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonUserInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -300,9 +308,9 @@ func (h *UserHandler) Update(c *gin.Context) {
 // Delete handles deleting a user
 // DELETE /api/v1/admin/users/:id
 func (h *UserHandler) Delete(c *gin.Context) {
-	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	userID, err := ParseInt64Param(c, "id", errReasonUserInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid user ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -332,15 +340,15 @@ func (h *UserHandler) Delete(c *gin.Context) {
 // UpdateBalance handles updating user balance
 // POST /api/v1/admin/users/:id/balance
 func (h *UserHandler) UpdateBalance(c *gin.Context) {
-	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	userID, err := ParseInt64Param(c, "id", errReasonUserInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid user ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
 	var req UpdateBalanceRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonUserInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -363,9 +371,9 @@ func (h *UserHandler) UpdateBalance(c *gin.Context) {
 // GetUserAPIKeys handles getting user's API keys
 // GET /api/v1/admin/users/:id/api-keys
 func (h *UserHandler) GetUserAPIKeys(c *gin.Context) {
-	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	userID, err := ParseInt64Param(c, "id", errReasonUserInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid user ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -389,9 +397,9 @@ func (h *UserHandler) GetUserAPIKeys(c *gin.Context) {
 // GetUserUsage handles getting user's usage statistics
 // GET /api/v1/admin/users/:id/usage
 func (h *UserHandler) GetUserUsage(c *gin.Context) {
-	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	userID, err := ParseInt64Param(c, "id", errReasonUserInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid user ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -411,9 +419,9 @@ func (h *UserHandler) GetUserUsage(c *gin.Context) {
 // Query params:
 //   - type: filter by record type (balance, admin_balance, concurrency, admin_concurrency, subscription)
 func (h *UserHandler) GetBalanceHistory(c *gin.Context) {
-	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	userID, err := ParseInt64Param(c, "id", errReasonUserInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid user ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -456,15 +464,15 @@ type ReplaceGroupRequest struct {
 // ReplaceGroup handles replacing a user's exclusive group
 // POST /api/v1/admin/users/:id/replace-group
 func (h *UserHandler) ReplaceGroup(c *gin.Context) {
-	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	userID, err := ParseInt64Param(c, "id", errReasonUserInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid user ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
 	var req ReplaceGroupRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonUserInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -482,9 +490,9 @@ func (h *UserHandler) ReplaceGroup(c *gin.Context) {
 // GetUserRPMStatus 返回指定用户当前分钟的 RPM 用量
 // GET /api/v1/admin/users/:id/rpm-status
 func (h *UserHandler) GetUserRPMStatus(c *gin.Context) {
-	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	userID, err := ParseInt64Param(c, "id", errReasonUserInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid user ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
