@@ -1005,6 +1005,10 @@ export default {
       enableSuccess: '{name} enabled',
       disableSuccess: '{name} disabled',
       restartSuccess: '{name} restart requested',
+      // Detail modal tabs
+      tabDetail: 'Details',
+      tabSettings: 'Settings',
+      settingsNotDeclared: 'This plugin has not declared any configurable settings',
       // Detail modal sections
       basicInfoTitle: 'Basic info',
       descriptionLabel: 'Description',

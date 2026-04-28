@@ -1009,6 +1009,10 @@ export default {
       enableSuccess: '已启用 {name}',
       disableSuccess: '已禁用 {name}',
       restartSuccess: '已发起重启 {name}',
+      // Detail modal tabs
+      tabDetail: '详情',
+      tabSettings: '设置',
+      settingsNotDeclared: '该插件未声明可配置项',
       // Detail modal sections
       basicInfoTitle: '基本信息',
       descriptionLabel: '描述',
