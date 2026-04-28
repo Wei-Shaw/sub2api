@@ -323,6 +323,7 @@ import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
 import { useTableLoader } from '@/composables/useTableLoader'
 import { useSwipeSelect, type SwipeSelectVirtualContext } from '@/composables/useSwipeSelect'
@@ -1093,9 +1094,11 @@ const handleBulkResetStatus = async () => {
       clearSelection()
     }
     reload()
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Failed to bulk reset status:', error)
-    appStore.showError(String(error))
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('common.error')),
+    )
   }
 }
 const handleBulkRefreshToken = async () => {
@@ -1109,9 +1112,11 @@ const handleBulkRefreshToken = async () => {
       clearSelection()
     }
     reload()
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Failed to bulk refresh token:', error)
-    appStore.showError(String(error))
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('common.error')),
+    )
   }
 }
 const updateSchedulableInList = (accountIds: number[], schedulable: boolean) => {
@@ -1348,8 +1353,10 @@ const handleExportData = async () => {
     link.click()
     URL.revokeObjectURL(url)
     appStore.showSuccess(t('admin.accounts.dataExported'))
-  } catch (error: any) {
-    appStore.showError(error?.message || t('admin.accounts.dataExportFailed'))
+  } catch (error: unknown) {
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('admin.accounts.dataExportFailed')),
+    )
   } finally {
     exportingData.value = false
     showExportDataDialog.value = false
@@ -1388,9 +1395,11 @@ const handleRecoverState = async (a: Account) => {
     patchAccountInList(updated)
     enterAutoRefreshSilentWindow()
     appStore.showSuccess(t('admin.accounts.recoverStateSuccess'))
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to recover account state:', error)
-    appStore.showError(error?.message || t('admin.accounts.recoverStateFailed'))
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('admin.accounts.recoverStateFailed')),
+    )
   }
 }
 const handleResetQuota = async (a: Account) => {
@@ -1409,9 +1418,11 @@ const handleSetPrivacy = async (a: Account) => {
     patchAccountInList(updated)
     enterAutoRefreshSilentWindow()
     appStore.showSuccess(t('common.success'))
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to set privacy:', error)
-    appStore.showError(error?.response?.data?.message || t('admin.accounts.privacyFailed'))
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('admin.accounts.privacyFailed')),
+    )
   }
 }
 const handleDelete = (a: Account) => { deletingAcc.value = a; showDeleteDialog.value = true }
