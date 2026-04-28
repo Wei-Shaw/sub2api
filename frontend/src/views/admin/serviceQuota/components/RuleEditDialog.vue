@@ -108,7 +108,7 @@ import PathEditor from '@/components/admin/PathEditor.vue'
 import RequiredLabel from '@/components/common/RequiredLabel.vue'
 import CollapsibleSection from './CollapsibleSection.vue'
 import { useAppStore } from '@/stores/app'
-import { extractApiErrorMessage } from '@/utils/apiError'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 import {
   validateServiceQuotaRule,
   parseServiceQuotaApiErrors,
@@ -310,9 +310,13 @@ async function save() {
     if (apiErrors && apiErrors.length > 0) {
       validationErrors.value = apiErrors
       appStore.showError(t('admin.serviceQuota.errors.formInvalid'))
-    } else {
-      appStore.showError(extractApiErrorMessage(error, t('admin.serviceQuota.saveError')))
+      return
     }
+    // 其他错误：优先按后端 reason 查 common.errors.* 本地化文案
+    // （如 INVALID_REQUEST_BODY / INVALID_ID / SERVICE_QUOTA_UNAVAILABLE），
+    // miss 则走 saveError 兜底；最后才退化到后端英文 message
+    const fallback = t('admin.serviceQuota.saveError')
+    appStore.showError(extractI18nErrorMessage(error, t, 'common.errors', fallback))
   } finally {
     saving.value = false
   }

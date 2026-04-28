@@ -355,7 +355,8 @@ export default {
     // looks up the localized label here.
     errors: {
       INVALID_REQUEST_BODY: 'Invalid request body',
-      INVALID_ID: 'Invalid resource ID'
+      INVALID_ID: 'Invalid resource ID',
+      SERVICE_QUOTA_UNAVAILABLE: 'Service quota feature unavailable'
     }
   },
 

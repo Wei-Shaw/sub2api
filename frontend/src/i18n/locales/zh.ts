@@ -354,7 +354,8 @@ export default {
     // handler 层统一返回 reason 后由前端按 reason 取该 key 渲染本地化提示。
     errors: {
       INVALID_REQUEST_BODY: '请求格式错误',
-      INVALID_ID: 'ID 无效'
+      INVALID_ID: 'ID 无效',
+      SERVICE_QUOTA_UNAVAILABLE: '服务限额功能暂不可用'
     }
   },
 

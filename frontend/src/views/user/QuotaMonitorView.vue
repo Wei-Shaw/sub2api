@@ -181,7 +181,7 @@ import { getMyServiceQuota, type MyQuotaSnapshot } from '@/api/serviceQuota'
 import type { LimiterRuntime } from '@/api/admin/serviceQuota'
 import type { GroupPlatform } from '@/types'
 import { useAppStore } from '@/stores/app'
-import { extractApiErrorMessage } from '@/utils/apiError'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 import { useUserQuotaFilters } from './composables/useUserQuotaFilters'
 
 const { t } = useI18n()
@@ -256,7 +256,9 @@ async function loadOnce(): Promise<void> {
     snapshot.value = await getMyServiceQuota()
     secondsSinceUpdate.value = 0
   } catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('userQuotaMonitor.loadError')))
+    appStore.showError(
+      extractI18nErrorMessage(err, t, 'common.errors', t('userQuotaMonitor.loadError')),
+    )
   } finally {
     loading.value = false
   }

@@ -12,7 +12,7 @@ import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Toggle from '@/components/common/Toggle.vue'
 import { useAppStore } from '@/stores/app'
-import { extractApiErrorMessage } from '@/utils/apiError'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 import {
   updateServiceQuotaRule,
   type ServiceQuotaRule,
@@ -76,7 +76,9 @@ async function onToggle(next: boolean) {
     )
   } catch (err: unknown) {
     localEnabled.value = prev
-    appStore.showError(extractApiErrorMessage(err, t('admin.serviceQuota.toggleError')))
+    appStore.showError(
+      extractI18nErrorMessage(err, t, 'common.errors', t('admin.serviceQuota.toggleError')),
+    )
   }
 }
 </script>

@@ -184,7 +184,7 @@ import EnabledToggleCell from './components/EnabledToggleCell.vue'
 import PathChevron from '@/components/serviceQuota/PathChevron.vue'
 import RuleEditDialog from './components/RuleEditDialog.vue'
 import { useAppStore } from '@/stores/app'
-import { extractApiErrorMessage } from '@/utils/apiError'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 import { limiterChipClass } from '@/utils/limiterColors'
 import type { Column } from '@/components/common/types'
 import {
@@ -234,7 +234,9 @@ async function load() {
   try {
     rules.value = await listServiceQuotaRules()
   } catch (error: unknown) {
-    appStore.showError(extractApiErrorMessage(error, t('admin.serviceQuota.loadError')))
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('admin.serviceQuota.loadError')),
+    )
   } finally {
     loading.value = false
   }

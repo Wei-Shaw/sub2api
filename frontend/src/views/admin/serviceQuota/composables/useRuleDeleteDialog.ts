@@ -13,7 +13,7 @@ import {
   type ServiceQuotaRule,
 } from '@/api/admin/serviceQuota'
 import { useAppStore } from '@/stores/app'
-import { extractApiErrorMessage } from '@/utils/apiError'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 
 export interface UseRuleDeleteDialogResult {
   deletingRule: Ref<ServiceQuotaRule | null>
@@ -44,7 +44,11 @@ export function useRuleDeleteDialog(onDeleted: () => void | Promise<void>): UseR
       deletingRule.value = null
       await onDeleted()
     } catch (error: unknown) {
-      appStore.showError(extractApiErrorMessage(error, t('admin.serviceQuota.deleteError')))
+      // 优先按后端 reason 查 common.errors.*（INVALID_ID / SERVICE_QUOTA_UNAVAILABLE 等），
+      // miss 则走 deleteError 兜底
+      appStore.showError(
+        extractI18nErrorMessage(error, t, 'common.errors', t('admin.serviceQuota.deleteError')),
+      )
     }
   }
 
