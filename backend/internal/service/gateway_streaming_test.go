@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -246,7 +245,15 @@ REDACTED
 	require.True(t, errors.As(err, &failoverErr), "未输出过字节时 stream read error 必须包成 UpstreamFailoverError，期望: %v", err)
 	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
 	require.True(t, failoverErr.RetryableOnSameAccount, "GOAWAY 类错误应允许同账号重试")
-	require.Contains(t, string(failoverErr.ResponseBody), "upstream stream disconnected")
+
+	// ResponseBody 必须是 Anthropic 标准 error 格式：
+	// 1) ExtractUpstreamErrorMessage 能正确从 error.message 提取消息（被 handleFailoverExhausted / ops 日志依赖）
+	// 2) error.type 标记为 upstream_disconnected
+	extractedMsg := ExtractUpstreamErrorMessage(failoverErr.ResponseBody)
+	require.NotEmpty(t, extractedMsg, "ExtractUpstreamErrorMessage 必须从 ResponseBody 取到非空 message，否则 ops 日志会丢失诊断信息")
+	require.Contains(t, extractedMsg, "upstream stream disconnected")
+	require.Contains(t, string(failoverErr.ResponseBody), `"type":"error"`)
+	require.Contains(t, string(failoverErr.ResponseBody), `"upstream_disconnected"`)
 
 	// 客户端应收不到任何 stream_read_error 事件，由 handler 层根据 failover 结果再决定
 	require.NotContains(t, rec.Body.String(), "stream_read_error")
@@ -282,9 +289,11 @@ REDACTED
 	var failoverErr *UpstreamFailoverError
 	require.False(t, errors.As(err, &failoverErr), "已经向客户端写过字节时不能再 failover")
 
-	// 客户端必须收到 stream_read_error 事件
+	// 客户端必须收到 Anthropic 标准格式的 SSE error 事件，error.type=stream_read_error，
+	// error.message 含具体根因（让 SDK 能解析、UI 能显示具体错误）
 	body := rec.Body.String()
-	require.True(t,
-		strings.Contains(body, "stream_read_error"),
-		"已开始流后必须发送 stream_read_error 事件给客户端，实际响应: %q", body)
+	require.Contains(t, body, "event: error\n", "必须按 Anthropic SSE 标准发送 error 事件帧")
+	require.Contains(t, body, `"type":"error"`, "data 必须含 type:error 顶层字段（Anthropic 标准）")
+	require.Contains(t, body, `"stream_read_error"`, "error.type 必须为 stream_read_error")
+	require.Contains(t, body, "upstream stream disconnected", "error.message 必须包含具体根因，Claude Code 等客户端才能显示有效错误文案")
 REDACTED

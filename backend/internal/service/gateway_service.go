@@ -6871,14 +6871,31 @@ REDACTED
 REDACTED
 	lastDataAt := time.Now()
 
-	// 仅发送一次错误事件，避免多次写入导致协议混乱（写失败时尽力通知客户端）
+	// 仅发送一次错误事件，避免多次写入导致协议混乱（写失败时尽力通知客户端）。
+	// 事件格式遵循 Anthropic SSE 标准：{"type":"error","error":{"type":<reason>,"message":<message>REDACTEDREDACTED
+	// 这样 Anthropic SDK / Claude Code 等客户端能按标准 error 类型解析，UI 能显示具体错误文案，
+	// 服务端 ExtractUpstreamErrorMessage 也能从透传的 body 中提取 message。
 	errorEventSent := false
-	sendErrorEvent := func(reason string) {
+	sendErrorEvent := func(reason, message string) {
 		if errorEventSent {
 			return
 	REDACTED
 		errorEventSent = true
-		_, _ = fmt.Fprintf(w, "event: error\ndata: {\"error\":\"%s\"REDACTED\n\n", reason)
+		if message == "" {
+			message = reason
+	REDACTED
+		body, err := json.Marshal(map[string]any{
+			"type": "error",
+			"error": map[string]string{
+				"type":    reason,
+				"message": message,
+		REDACTED,
+	REDACTED)
+		if err != nil {
+			// json.Marshal 不可能在已知 string-only 输入上失败，保守 fallback
+			body = []byte(fmt.Sprintf(`{"type":"error","error":{"type":%q,"message":%qREDACTEDREDACTED`, reason, message))
+	REDACTED
+		_, _ = fmt.Fprintf(w, "event: error\ndata: %s\n\n", body)
 		flusher.Flush()
 REDACTED
 
@@ -7038,16 +7055,21 @@ REDACTED
 				// 客户端未断开，正常的错误处理
 				if errors.Is(ev.err, bufio.ErrTooLong) {
 					logger.LegacyPrintf("service.gateway", "SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, ev.err)
-					sendErrorEvent("response_too_large")
+					sendErrorEvent("response_too_large", fmt.Sprintf("upstream SSE line exceeded %d bytes", maxLineSize))
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, ev.err
 			REDACTED
 				// 上游中途读错误（unexpected EOF / connection reset 等，常见于 HTTP/2 GOAWAY）：
 				// 若尚未向客户端写过任何字节，包成 UpstreamFailoverError 让 handler 层走 failover/重试。
 				// 已经开始写流时 SSE 协议无 resume，只能透传错误事件给客户端。
+				disconnectMsg := fmt.Sprintf("upstream stream disconnected: %s", ev.err)
 				if !c.Writer.Written() {
 					logger.LegacyPrintf("service.gateway", "Upstream stream read error before any client output (account=%d), failing over: %v", account.ID, ev.err)
-					body, _ := json.Marshal(map[string]string{
-						"error": fmt.Sprintf("upstream stream disconnected: %s", ev.err),
+					body, _ := json.Marshal(map[string]any{
+						"type": "error",
+						"error": map[string]string{
+							"type":    "upstream_disconnected",
+							"message": disconnectMsg,
+					REDACTED,
 				REDACTED)
 					return nil, &UpstreamFailoverError{
 						StatusCode:             http.StatusBadGateway,
@@ -7055,7 +7077,7 @@ REDACTED
 						RetryableOnSameAccount: true,
 				REDACTED
 			REDACTED
-				sendErrorEvent("stream_read_error")
+				sendErrorEvent("stream_read_error", disconnectMsg)
 				return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, fmt.Errorf("stream read error: %w", ev.err)
 		REDACTED
 			line := ev.line
@@ -7114,7 +7136,7 @@ REDACTED
 			if s.rateLimitService != nil {
 				s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
 		REDACTED
-			sendErrorEvent("stream_timeout")
+			sendErrorEvent("stream_timeout", fmt.Sprintf("upstream stream idle for %s", streamInterval))
 			return &streamingResult{usage: usage, firstTokenMs: firstTokenMsREDACTED, fmt.Errorf("stream data interval timeout")
 
 		case <-keepaliveCh:
