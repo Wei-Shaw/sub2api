@@ -4855,6 +4855,79 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 			return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 		}
 
+		// Advisor Tool 整流（透传分支兜底）：上游主动拒绝 advisor-tool-2026-03-01 beta header
+		// 时，剥 anthropic-beta 中的该 token 并删除 tools[] 里 type=advisor_20260301 的工具后
+		// 重试一次。这是上游主动拒绝时的兜底；正常情况下透传分支不改写 body / header，与
+		// "API Key 透传" 的语义不冲突——只有上游已经返回 advisor 错误时才触发。
+		// 注意：advisor 整流必须在通用 5xx 重试块之前执行，因为 400 不在通用重试范围内。
+		if resp.StatusCode == http.StatusBadRequest {
+			advisorRespBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+			_ = resp.Body.Close()
+			if s.shouldRectifyAdvisorToolError(ctx, advisorRespBody) {
+				rectifiedBody, bodyApplied := RectifyAdvisorTool(input.Body)
+				headerHasAdvisor := false
+				if c != nil && c.Request != nil {
+					headerHasAdvisor = containsBetaTokenIgnoreCase(getHeaderRaw(c.Request.Header, "anthropic-beta"), AdvisorBetaToken)
+				}
+				switch {
+				case !bodyApplied && !headerHasAdvisor:
+					logger.LegacyPrintf("service.gateway", "Anthropic passthrough account %d: advisor-tool rectifier matched error but body+header have no advisor token, skipping retry", account.ID)
+				case time.Since(retryStart) >= maxRetryElapsed:
+					logger.LegacyPrintf("service.gateway", "Anthropic passthrough account %d: advisor-tool rectifier matched error but retry budget exhausted, skipping retry", account.ID)
+				}
+				if (bodyApplied || headerHasAdvisor) && time.Since(retryStart) < maxRetryElapsed {
+					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+						Platform:           account.Platform,
+						AccountID:          account.ID,
+						AccountName:        account.Name,
+						UpstreamStatusCode: resp.StatusCode,
+						UpstreamRequestID:  resp.Header.Get("x-request-id"),
+						UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
+						Passthrough:        true,
+						Kind:               "advisor_tool_unsupported",
+						Message:            extractUpstreamErrorMessage(advisorRespBody),
+						Detail: func() string {
+							if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+								return truncateString(string(advisorRespBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+							}
+							return ""
+						}(),
+					})
+					logger.LegacyPrintf("service.gateway", "Anthropic passthrough account %d: detected advisor-tool unsupported, retrying without %s beta+tool", account.ID, AdvisorBetaToken)
+
+					advisorRetryCtx, releaseAdvisorRetryCtx := detachStreamUpstreamContext(ctx, input.RequestStream)
+					advisorRetryReq, buildErr := s.buildUpstreamRequestAnthropicAPIKeyPassthrough(advisorRetryCtx, c, account, rectifiedBody, token)
+					releaseAdvisorRetryCtx()
+					if buildErr == nil {
+						// 剥离 advisor token；若剥完 anthropic-beta 变空则删除整个 header，避免发送空值。
+						// 必须用 delHeaderRaw 而非 Header.Del——后者仅删 canonical 形式，
+						// anthropic-beta 在本项目以小写 wire casing 存储，会留下幽灵 entry。
+						if v := getHeaderRaw(advisorRetryReq.Header, "anthropic-beta"); v != "" {
+							stripped := stripBetaTokenIgnoreCase(v, AdvisorBetaToken)
+							if stripped == "" {
+								delHeaderRaw(advisorRetryReq.Header, "anthropic-beta")
+							} else {
+								setHeaderRaw(advisorRetryReq.Header, "anthropic-beta", stripped)
+							}
+						}
+						advisorRetryResp, retryErr := s.httpUpstream.DoWithTLS(advisorRetryReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+						if retryErr == nil {
+							resp = advisorRetryResp
+							break
+						}
+						if advisorRetryResp != nil && advisorRetryResp.Body != nil {
+							_ = advisorRetryResp.Body.Close()
+						}
+						logger.LegacyPrintf("service.gateway", "Anthropic passthrough account %d: advisor-tool rectifier retry failed: %v", account.ID, retryErr)
+					} else {
+						logger.LegacyPrintf("service.gateway", "Anthropic passthrough account %d: advisor-tool rectifier retry build failed: %v", account.ID, buildErr)
+					}
+				}
+			}
+			// 整流不触发 / 整流失败：恢复原 resp.Body，让下游 4xx / failover / handleErrorResponse 流程接管。
+			resp.Body = io.NopCloser(bytes.NewReader(advisorRespBody))
+		}
+
 		// 透传分支禁止 400 请求体降级重试（该重试会改写请求体）
 		if resp.StatusCode >= 400 && resp.StatusCode != 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
 			if attempt < maxRetryAttempts {
