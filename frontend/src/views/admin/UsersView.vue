@@ -279,16 +279,45 @@
           @sort="handleSort"
           @update:selected-keys="handleSelectedKeysUpdate"
         >
-          <template #cell-email="{ value }">
-            <div class="flex items-center gap-2">
+          <template #cell-email="{ value, row }">
+            <div class="flex min-w-0 items-center gap-2">
               <div
-                class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30"
+                class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30"
               >
                 <span class="text-sm font-medium text-primary-700 dark:text-primary-300">
                   {{ value.charAt(0).toUpperCase() }}
                 </span>
               </div>
-              <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+              <div class="flex min-w-0 flex-col gap-1">
+                <span
+                  class="block max-w-[14rem] truncate font-medium text-gray-900 dark:text-white sm:max-w-[18rem] lg:max-w-[22rem]"
+                  :title="value"
+                >
+                  {{ value }}
+                </span>
+                <div
+                  v-if="shouldShowRedeemCode(row)"
+                  class="flex min-w-0 items-center gap-1.5"
+                >
+                  <span
+                    class="inline-flex min-w-0 max-w-[12rem] items-center rounded-md bg-primary-50 px-1.5 py-0.5 text-xs font-medium text-primary-700 ring-1 ring-inset ring-primary-200 dark:bg-primary-900/20 dark:text-primary-300 dark:ring-primary-800"
+                    :title="row.primary_redeem_code || t('admin.users.inviteRedeemUser')"
+                  >
+                    <span class="mr-1 flex-shrink-0">({{ t('admin.users.redeemCode') }})</span>
+                    <span v-if="row.primary_redeem_code" class="truncate font-mono">{{ row.primary_redeem_code }}</span>
+                  </span>
+                  <button
+                    v-if="row.primary_redeem_code"
+                    type="button"
+                    class="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+                    :title="t('admin.users.copyRedeemCode')"
+                    :aria-label="t('admin.users.copyRedeemCode')"
+                    @click.stop="copyRedeemCode(row)"
+                  >
+                    <Icon name="copy" size="xs" :stroke-width="2" />
+                  </button>
+                </div>
+              </div>
             </div>
           </template>
 
@@ -1003,6 +1032,22 @@ const USAGE_COLUMN_PLATFORMS: Record<string, string | null> = {
   usage_antigravity: 'antigravity'
 }
 const PLATFORM_USAGE_COLUMNS = USAGE_COLUMN_KEYS.filter((k) => k !== 'usage')
+
+const shouldShowRedeemCode = (user: AdminUser) => Boolean(
+  user.primary_redeem_code || user.signup_source === 'invite' || user.primary_redeem_type === 'invitation'
+)
+
+const copyRedeemCode = async (user: AdminUser) => {
+  if (!user.primary_redeem_code) return
+
+  try {
+    await navigator.clipboard.writeText(user.primary_redeem_code)
+    appStore.showSuccess(t('admin.users.redeemCodeCopied'))
+  } catch (error) {
+    appStore.showError(t('admin.users.failedToCopyRedeemCode'))
+    console.error('Failed to copy redeem code:', error)
+  }
+}
 const hasVisibleUsageColumn = computed(
   () => !hiddenColumns.has('usage') || PLATFORM_USAGE_COLUMNS.some((k) => !hiddenColumns.has(k))
 )

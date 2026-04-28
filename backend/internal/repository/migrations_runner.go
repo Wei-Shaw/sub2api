@@ -103,7 +103,7 @@ func ApplyMigrations(ctx context.Context, db *sql.DB) error {
 	if err := applyMigrationsFS(ctx, db, migrations.UpstreamFS); err != nil {
 		return err
 	}
-	return applyMigrationNamespaces(ctx, db, migrations.LocalFS, "local/")
+	return applyMigrationNamespaces(ctx, db, migrations.LocalFS, "local/*.sql")
 }
 
 // applyMigrationsFS 是迁移执行的核心实现。
@@ -170,20 +170,22 @@ func applyMigrationNamespaces(ctx context.Context, db *sql.DB, fsys fs.FS, glob 
 		_ = pgAdvisoryUnlock(unlockCtx, lockConn)
 	}()
 
-	return applyMigrationsPatternUnlocked(ctx, lockConn, fsys, glob)
+	return applyMigrationsPatternUnlocked(ctx, lockConn, fsys, glob, false)
 }
 
 func applyMigrationsFSUnlocked(ctx context.Context, lockConn migrationConnection, fsys fs.FS) error {
-	return applyMigrationsPatternUnlocked(ctx, lockConn, fsys, "*.sql")
+	return applyMigrationsPatternUnlocked(ctx, lockConn, fsys, "*.sql", true)
 }
 
-func applyMigrationsPatternUnlocked(ctx context.Context, lockConn migrationConnection, fsys fs.FS, pattern string) error {
+func applyMigrationsPatternUnlocked(ctx context.Context, lockConn migrationConnection, fsys fs.FS, pattern string, alignAtlasBaseline bool) error {
 	if _, err := lockConn.ExecContext(ctx, schemaMigrationsTableDDL); err != nil {
 		return fmt.Errorf("create schema_migrations: %w", err)
 	}
 
-	if err := ensureAtlasBaselineAligned(ctx, lockConn, fsys); err != nil {
-		return err
+	if alignAtlasBaseline {
+		if err := ensureAtlasBaselineAligned(ctx, lockConn, fsys); err != nil {
+			return err
+		}
 	}
 
 	files, err := fs.Glob(fsys, pattern)

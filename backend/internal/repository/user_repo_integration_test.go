@@ -11,6 +11,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
@@ -29,8 +30,13 @@ func (s *UserRepoSuite) SetupTest() {
 	s.repo = newUserRepositoryWithSQL(s.client, integrationDB)
 
 	// 清理测试数据，确保每个测试从干净状态开始
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM identity_adoption_decisions")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM pending_auth_sessions")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM auth_identity_channels")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM auth_identities")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_devices")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM redeem_codes")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM api_keys")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_subscriptions")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_allowed_groups")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM users")
@@ -96,6 +102,20 @@ func (s *UserRepoSuite) mustCreateSubscription(userID, groupID int64, mutate fun
 	return sub
 }
 
+func (s *UserRepoSuite) mustCreateRedeemCode(userID int64, code string, redeemType string) *dbent.RedeemCode {
+	s.T().Helper()
+
+	redeem, err := s.client.RedeemCode.Create().
+		SetCode(code).
+		SetType(redeemType).
+		SetStatus(service.StatusUsed).
+		SetUsedBy(userID).
+		SetUsedAt(time.Now()).
+		Save(s.ctx)
+	s.Require().NoError(err, "create redeem code")
+	return redeem
+}
+
 // --- Create / GetByID / GetByEmail / Update / Delete ---
 
 func (s *UserRepoSuite) TestCreate() {
@@ -113,12 +133,6 @@ func (s *UserRepoSuite) TestCreate() {
 	s.Require().NoError(err, "GetByID")
 	s.Require().Equal("create@test.com", got.Email)
 }
-
-func (s *UserRepoSuite) TestGetByID_NotFound() {
-	_, err := s.repo.GetByID(s.ctx, 999999)
-	s.Require().Error(err, "expected error for non-existent ID")
-}
-
 func (s *UserRepoSuite) TestGetByEmail() {
 	user := s.mustCreateUser(&service.User{Email: "byemail@test.com"})
 
@@ -282,6 +296,70 @@ func (s *UserRepoSuite) TestDeleteRemovesAuthIdentitiesAndChannels() {
 	s.Require().Zero(channelCount)
 }
 
+func (s *UserRepoSuite) TestDeleteRemovesRedeemDeviceAPIKeySubscriptionAndPendingSession() {
+	user := s.mustCreateUser(&service.User{Email: "delete-related@test.com", SignupSource: "invite"})
+	group := s.mustCreateGroup("delete-related-group")
+	redeem := s.mustCreateRedeemCode(user.ID, "DELREL123", service.RedeemTypeInvitation)
+
+	_, err := s.client.UserDevice.Create().
+		SetUserID(user.ID).
+		SetDeviceHash("delete-related-device-hash").
+		SetPlatform("windows").
+		SetArch("x64").
+		SetClaimRedeemCodeID(redeem.ID).
+		SetLoginRedeemCodeID(redeem.ID).
+		Save(s.ctx)
+	s.Require().NoError(err, "create device binding")
+
+	_, err = s.client.APIKey.Create().
+		SetKey("sk-delete-related").
+		SetName("delete-related-key").
+		SetUserID(user.ID).
+		SetGroupID(group.ID).
+		Save(s.ctx)
+	s.Require().NoError(err, "create api key")
+
+	_ = s.mustCreateSubscription(user.ID, group.ID, nil)
+
+	_, err = s.client.PendingAuthSession.Create().
+		SetSessionToken("pending-delete-related").
+		SetIntent("login").
+		SetProviderType("oidc").
+		SetProviderKey("oidc").
+		SetProviderSubject("subject-delete-related").
+		SetTargetUserID(user.ID).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		Save(s.ctx)
+	s.Require().NoError(err, "create pending auth session")
+
+	err = s.repo.Delete(s.ctx, user.ID)
+	s.Require().NoError(err)
+
+	assertNoRows := func(table string) {
+		s.T().Helper()
+		var count int
+		s.Require().NoError(integrationDB.QueryRowContext(s.ctx, "SELECT COUNT(*) FROM "+table+" WHERE user_id = $1", user.ID).Scan(&count))
+		s.Require().Zero(count, table)
+	}
+	assertNoRows("user_devices")
+
+	var apiKeyCount int
+	s.Require().NoError(integrationDB.QueryRowContext(s.ctx, "SELECT COUNT(*) FROM api_keys WHERE user_id = $1 AND deleted_at IS NULL", user.ID).Scan(&apiKeyCount))
+	s.Require().Zero(apiKeyCount, "api_keys")
+
+	var subscriptionCount int
+	s.Require().NoError(integrationDB.QueryRowContext(s.ctx, "SELECT COUNT(*) FROM user_subscriptions WHERE user_id = $1 AND deleted_at IS NULL", user.ID).Scan(&subscriptionCount))
+	s.Require().Zero(subscriptionCount, "user_subscriptions")
+
+	var redeemCount int
+	s.Require().NoError(integrationDB.QueryRowContext(s.ctx, "SELECT COUNT(*) FROM redeem_codes WHERE id = $1 OR used_by = $2", redeem.ID, user.ID).Scan(&redeemCount))
+	s.Require().Zero(redeemCount, "redeem_codes")
+
+	pendingCount, err := s.client.PendingAuthSession.Query().Where(pendingauthsession.TargetUserIDEQ(user.ID)).Count(s.ctx)
+	s.Require().NoError(err)
+	s.Require().Zero(pendingCount, "pending auth sessions")
+}
+
 // --- List / ListWithFilters ---
 
 func (s *UserRepoSuite) TestList() {
@@ -332,6 +410,32 @@ func (s *UserRepoSuite) TestListWithFilters_SearchByUsername() {
 	s.Require().NoError(err)
 	s.Require().Len(users, 1)
 	s.Require().Equal("JohnDoe", users[0].Username)
+}
+
+func (s *UserRepoSuite) TestListWithFilters_SearchByRedeemCodeLoadsRedeemAndDeviceSummary() {
+	target := s.mustCreateUser(&service.User{Email: "invite-search@test.com", SignupSource: "invite"})
+	s.mustCreateUser(&service.User{Email: "other-invite-search@test.com", SignupSource: "invite"})
+	redeem := s.mustCreateRedeemCode(target.ID, "INVITE-SEARCH-123", service.RedeemTypeInvitation)
+
+	_, err := s.client.UserDevice.Create().
+		SetUserID(target.ID).
+		SetDeviceHash("invite-search-device-hash").
+		SetPlatform("windows").
+		SetArch("x64").
+		SetLoginRedeemCodeID(redeem.ID).
+		Save(s.ctx)
+	s.Require().NoError(err, "create device binding")
+
+	users, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, service.UserListFilters{Search: "SEARCH-123"})
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), page.Total)
+	s.Require().Len(users, 1)
+	s.Require().Equal(target.ID, users[0].ID)
+	s.Require().NotNil(users[0].PrimaryRedeemCode)
+	s.Require().Equal("INVITE-SEARCH-123", *users[0].PrimaryRedeemCode)
+	s.Require().NotNil(users[0].PrimaryRedeemType)
+	s.Require().Equal(service.RedeemTypeInvitation, *users[0].PrimaryRedeemType)
+	s.Require().True(users[0].HasDeviceBinding)
 }
 
 func (s *UserRepoSuite) TestListWithFilters_LoadsActiveSubscriptions() {

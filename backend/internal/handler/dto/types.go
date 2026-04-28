@@ -43,8 +43,11 @@ type User struct {
 type AdminUser struct {
 	User
 
-	Notes      string     `json:"notes"`
-	LastUsedAt *time.Time `json:"last_used_at"`
+	Notes             string     `json:"notes"`
+	LastUsedAt        *time.Time `json:"last_used_at"`
+	PrimaryRedeemCode *string    `json:"primary_redeem_code,omitempty"`
+	PrimaryRedeemType *string    `json:"primary_redeem_type,omitempty"`
+	HasDeviceBinding  bool       `json:"has_device_binding"`
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]rateMultiplier
 	GroupRates map[int64]float64 `json:"group_rates,omitempty"`

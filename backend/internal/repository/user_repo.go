@@ -10,15 +10,23 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
 	dbgroup "github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
+	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
+	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
+	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
+	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
+	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
+	"github.com/Wei-Shaw/sub2api/ent/userattributevalue"
+	"github.com/Wei-Shaw/sub2api/ent/userdevice"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -449,6 +457,14 @@ func (r *userRepository) Delete(ctx context.Context, id int64) error {
 
 // deleteUser 在给定 client（可能是外部事务 client）上删除用户及其身份关联记录，自身不开启/提交事务。
 func (r *userRepository) deleteUser(ctx context.Context, exec *dbent.Client, id int64) error {
+	exists, err := exec.User.Query().Where(dbuser.IDEQ(id)).Exist(ctx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+	if !exists {
+		return service.ErrUserNotFound
+	}
+
 	identityIDs, err := exec.AuthIdentity.Query().
 		Where(authidentity.UserIDEQ(id)).
 		IDs(ctx)
@@ -470,6 +486,73 @@ func (r *userRepository) deleteUser(ctx context.Context, exec *dbent.Client, id 
 		if _, err := exec.AuthIdentity.Delete().
 			Where(authidentity.UserIDEQ(id)).
 			Exec(ctx); err != nil {
+			return translatePersistenceError(err, service.ErrUserNotFound, nil)
+		}
+	}
+
+	redeemIDs, err := exec.RedeemCode.Query().Where(redeemcode.UsedByEQ(id)).IDs(ctx)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+	if len(redeemIDs) > 0 {
+		if _, err := exec.UserDevice.Delete().
+			Where(userdevice.Or(
+				userdevice.UserIDEQ(id),
+				userdevice.ClaimRedeemCodeIDIn(redeemIDs...),
+				userdevice.LoginRedeemCodeIDIn(redeemIDs...),
+			)).
+			Exec(ctx); err != nil {
+			return translatePersistenceError(err, service.ErrUserNotFound, nil)
+		}
+		if _, err := exec.RedeemCode.Delete().
+			Where(redeemcode.IDIn(redeemIDs...)).
+			Exec(ctx); err != nil {
+			return translatePersistenceError(err, service.ErrUserNotFound, nil)
+		}
+	} else if _, err := exec.UserDevice.Delete().Where(userdevice.UserIDEQ(id)).Exec(ctx); err != nil {
+		return translatePersistenceError(err, service.ErrUserNotFound, nil)
+	}
+
+	deleteOps := []func(context.Context) error{
+		func(ctx context.Context) error {
+			_, err := exec.PendingAuthSession.Delete().Where(pendingauthsession.TargetUserIDEQ(id)).Exec(ctx)
+			return err
+		},
+		func(ctx context.Context) error {
+			_, err := exec.APIKey.Delete().Where(apikey.UserIDEQ(id)).Exec(ctx)
+			return err
+		},
+		func(ctx context.Context) error {
+			_, err := exec.UserSubscription.Delete().Where(usersubscription.UserIDEQ(id)).Exec(ctx)
+			return err
+		},
+		func(ctx context.Context) error {
+			_, err := exec.UserAllowedGroup.Delete().Where(userallowedgroup.UserIDEQ(id)).Exec(ctx)
+			return err
+		},
+		func(ctx context.Context) error {
+			_, err := exec.UserAttributeValue.Delete().Where(userattributevalue.UserIDEQ(id)).Exec(ctx)
+			return err
+		},
+		func(ctx context.Context) error {
+			_, err := exec.AnnouncementRead.Delete().Where(announcementread.UserIDEQ(id)).Exec(ctx)
+			return err
+		},
+		func(ctx context.Context) error {
+			_, err := exec.PromoCodeUsage.Delete().Where(promocodeusage.UserIDEQ(id)).Exec(ctx)
+			return err
+		},
+		func(ctx context.Context) error {
+			_, err := exec.PaymentOrder.Delete().Where(paymentorder.UserIDEQ(id)).Exec(ctx)
+			return err
+		},
+		func(ctx context.Context) error {
+			_, err := exec.UsageLog.Delete().Where(usagelog.UserIDEQ(id)).Exec(ctx)
+			return err
+		},
+	}
+	for _, op := range deleteOps {
+		if err := op(ctx); err != nil {
 			return translatePersistenceError(err, service.ErrUserNotFound, nil)
 		}
 	}
@@ -510,6 +593,7 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 				dbuser.UsernameContainsFold(filters.Search),
 				dbuser.NotesContainsFold(filters.Search),
 				dbuser.HasAPIKeysWith(apikey.KeyContainsFold(filters.Search)),
+				dbuser.HasRedeemCodesWith(redeemcode.CodeContainsFold(filters.Search)),
 			),
 		)
 	}
@@ -606,6 +690,24 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 		if groups, ok := allowedGroupsByUser[id]; ok {
 			u.AllowedGroups = groups
 		}
+	}
+
+	redeemCodesByUser, redeemTypesByUser, err := r.loadPrimaryRedeemCodes(ctx, userIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	deviceBindingsByUser, err := r.loadUserDeviceBindings(ctx, userIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	for id, u := range userMap {
+		if code, ok := redeemCodesByUser[id]; ok {
+			u.PrimaryRedeemCode = code
+		}
+		if redeemType, ok := redeemTypesByUser[id]; ok {
+			u.PrimaryRedeemType = redeemType
+		}
+		u.HasDeviceBinding = deviceBindingsByUser[id]
 	}
 
 	return outUsers, paginationResultFromTotal(int64(total), params), nil
@@ -1338,6 +1440,54 @@ func (r *userRepository) syncUserAllowedGroupsWithClient(ctx context.Context, cl
 	}
 
 	return nil
+}
+
+func (r *userRepository) loadPrimaryRedeemCodes(ctx context.Context, userIDs []int64) (map[int64]*string, map[int64]*string, error) {
+	codesByUser := make(map[int64]*string, len(userIDs))
+	typesByUser := make(map[int64]*string, len(userIDs))
+	if len(userIDs) == 0 {
+		return codesByUser, typesByUser, nil
+	}
+
+	redeems, err := r.client.RedeemCode.Query().
+		Where(redeemcode.UsedByIn(userIDs...)).
+		Order(dbent.Desc(redeemcode.FieldUsedAt), dbent.Desc(redeemcode.FieldCreatedAt), dbent.Desc(redeemcode.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, redeem := range redeems {
+		if redeem.UsedBy == nil {
+			continue
+		}
+		userID := *redeem.UsedBy
+		if _, exists := codesByUser[userID]; exists {
+			continue
+		}
+		code := redeem.Code
+		redeemType := redeem.Type
+		codesByUser[userID] = &code
+		typesByUser[userID] = &redeemType
+	}
+	return codesByUser, typesByUser, nil
+}
+
+func (r *userRepository) loadUserDeviceBindings(ctx context.Context, userIDs []int64) (map[int64]bool, error) {
+	bindingsByUser := make(map[int64]bool, len(userIDs))
+	if len(userIDs) == 0 {
+		return bindingsByUser, nil
+	}
+
+	devices, err := r.client.UserDevice.Query().
+		Where(userdevice.UserIDIn(userIDs...)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, device := range devices {
+		bindingsByUser[device.UserID] = true
+	}
+	return bindingsByUser, nil
 }
 
 func applyUserEntityToService(dst *service.User, src *dbent.User) {
