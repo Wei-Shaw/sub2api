@@ -12,11 +12,23 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
+)
+
+// 错误码常量：与前端 i18n key（admin.setting.errors.* / common.errors.*）对齐。
+// 走 PR-A 字段级错误协议（task #33）。setting 业务级 BadRequest 数量很多（80+），
+// 本 commit 只把 binding 错和 Turnstile / TOTP 几条最显眼的业务错收口；其他业务文案
+// 留待 P1/P2 单独迁移，避免一次 commit 膨胀过大破坏业务逻辑零变化原则。
+const (
+	errReasonSettingInvalidRequestBody       = "INVALID_REQUEST_BODY"
+	errReasonSettingTurnstileSiteKeyRequired = "TURNSTILE_SITE_KEY_REQUIRED"
+	errReasonSettingTurnstileSecretRequired  = "TURNSTILE_SECRET_REQUIRED"
+	errReasonSettingTOTPKeyMissing           = "TOTP_ENCRYPTION_KEY_MISSING"
 )
 
 // semverPattern 预编译 semver 格式校验正则
@@ -462,8 +474,8 @@ type UpdateSettingsRequest struct {
 // PUT /api/v1/admin/settings
 func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	var req UpdateSettingsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonSettingInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -558,13 +570,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if req.TurnstileEnabled {
 		// 检查必填字段
 		if req.TurnstileSiteKey == "" {
-			response.BadRequest(c, "Turnstile Site Key is required when enabled")
+			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingTurnstileSiteKeyRequired, "turnstile site key is required when enabled"))
 			return
 		}
 		// 如果未提供 secret key，使用已保存的值（留空保留当前值）
 		if req.TurnstileSecretKey == "" {
 			if previousSettings.TurnstileSecretKey == "" {
-				response.BadRequest(c, "Turnstile Secret Key is required when enabled")
+				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingTurnstileSecretRequired, "turnstile secret key is required when enabled"))
 				return
 			}
 			req.TurnstileSecretKey = previousSettings.TurnstileSecretKey
@@ -586,7 +598,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if req.TotpEnabled && !previousSettings.TotpEnabled {
 		// 尝试启用 TOTP，检查加密密钥是否已手动配置
 		if !h.settingService.IsTotpEncryptionKeyConfigured() {
-			response.BadRequest(c, "Cannot enable TOTP: TOTP_ENCRYPTION_KEY environment variable must be configured first. Generate a key with 'openssl rand -hex 32' and set it in your environment.")
+			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingTOTPKeyMissing, "cannot enable TOTP: TOTP_ENCRYPTION_KEY environment variable must be configured first").
+				WithMetadata(map[string]string{
+					"hint": "Generate a key with 'openssl rand -hex 32' and set it in your environment.",
+				}))
 			return
 		}
 	}
@@ -2156,8 +2171,8 @@ type TestSMTPRequest struct {
 // POST /api/v1/admin/settings/test-smtp
 func (h *SettingHandler) TestSMTPConnection(c *gin.Context) {
 	var req TestSMTPRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonSettingInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -2224,8 +2239,8 @@ type SendTestEmailRequest struct {
 // POST /api/v1/admin/settings/send-test-email
 func (h *SettingHandler) SendTestEmail(c *gin.Context) {
 	var req SendTestEmailRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonSettingInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -2384,8 +2399,8 @@ type UpdateOverloadCooldownSettingsRequest struct {
 // PUT /api/v1/admin/settings/overload-cooldown
 func (h *SettingHandler) UpdateOverloadCooldownSettings(c *gin.Context) {
 	var req UpdateOverloadCooldownSettingsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonSettingInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -2464,8 +2479,8 @@ type UpdateRectifierSettingsRequest struct {
 // PUT /api/v1/admin/settings/rectifier
 func (h *SettingHandler) UpdateRectifierSettings(c *gin.Context) {
 	var req UpdateRectifierSettingsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonSettingInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -2547,8 +2562,8 @@ type UpdateBetaPolicySettingsRequest struct {
 // PUT /api/v1/admin/settings/beta-policy
 func (h *SettingHandler) UpdateBetaPolicySettings(c *gin.Context) {
 	var req UpdateBetaPolicySettingsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonSettingInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -2590,8 +2605,8 @@ type UpdateStreamTimeoutSettingsRequest struct {
 // PUT /api/v1/admin/settings/stream-timeout
 func (h *SettingHandler) UpdateStreamTimeoutSettings(c *gin.Context) {
 	var req UpdateStreamTimeoutSettingsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonSettingInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -2639,8 +2654,8 @@ func (h *SettingHandler) GetWebSearchEmulationConfig(c *gin.Context) {
 // PUT /api/v1/admin/settings/web-search-emulation
 func (h *SettingHandler) UpdateWebSearchEmulationConfig(c *gin.Context) {
 	var cfg service.WebSearchEmulationConfig
-	if err := c.ShouldBindJSON(&cfg); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &cfg, errReasonSettingInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -2664,8 +2679,8 @@ func (h *SettingHandler) ResetWebSearchUsage(c *gin.Context) {
 	var req struct {
 		ProviderType string `json:"provider_type"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonSettingInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 	if req.ProviderType == "" {
@@ -2685,8 +2700,8 @@ func (h *SettingHandler) TestWebSearchEmulation(c *gin.Context) {
 	var req struct {
 		Query string `json:"query"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonSettingInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 	if strings.TrimSpace(req.Query) == "" {
