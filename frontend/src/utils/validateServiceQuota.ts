@@ -17,6 +17,7 @@ import type {
   ServiceQuotaPathInput,
   ServiceQuotaRuleInput,
 } from '@/api/admin/serviceQuota'
+import { parseFieldErrors } from '@/utils/fieldErrors'
 
 /**
  * 校验错误码：与后端 SERVICE_QUOTA_VALIDATION_ERROR.details.fields[*].code 对齐。
@@ -132,37 +133,15 @@ export const SERVICE_QUOTA_VALIDATION_REASON = 'SERVICE_QUOTA_VALIDATION_ERROR'
 /**
  * 解析后端 service quota 字段校验错误响应。
  *
- * axios 拦截器（frontend/src/api/client.ts:97-103）把 API 错误统一转成：
- *   `{ status, code: <HTTP 数字>, reason, message, metadata }`
+ * 薄壳实现：实际解析逻辑在通用的 `parseFieldErrors`（utils/fieldErrors.ts），
+ * 本函数只绑定 service quota 专属 reason，让调用方零感知。
  *
- * 后端 validationFieldCollector.build() 把 fieldError[] 序列化为 JSON 字符串
- * 放进 metadata.fields（pkgerrors.Metadata 是 map[string]string，不能直接放数组）：
- *   `{ reason: "SERVICE_QUOTA_VALIDATION_ERROR", metadata: { fields: '[{...}]', count: '3' } }`
+ * ValidationError 与通用 FieldError 类型字段相同（path + code），TypeScript
+ * 结构兼容（duck typing），无需运行时转换。
  *
- * 任何不符合该形状的失败（网络错 / 401 / 5xx / metadata 缺失 / JSON 解析失败）
- * 返回 null，让调用方走 extractApiErrorMessage 兜底 toast。
+ * 任何不符合 envelope 形状的失败返回 null，让调用方走 extractApiErrorMessage
+ * 兜底 toast。
  */
 export function parseServiceQuotaApiErrors(err: unknown): ValidationError[] | null {
-  if (!err || typeof err !== 'object') return null
-  const e = err as Record<string, unknown>
-  if (e.reason !== SERVICE_QUOTA_VALIDATION_REASON) return null
-  const metadata = e.metadata
-  if (!metadata || typeof metadata !== 'object') return null
-  const raw = (metadata as Record<string, unknown>).fields
-  if (typeof raw !== 'string') return null
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    return null
-  }
-  if (!Array.isArray(parsed)) return null
-  const out: ValidationError[] = []
-  for (const f of parsed) {
-    if (!f || typeof f !== 'object') continue
-    const obj = f as Record<string, unknown>
-    if (typeof obj.path !== 'string' || typeof obj.code !== 'string') continue
-    out.push({ path: obj.path, code: obj.code })
-  }
-  return out
+  return parseFieldErrors(err, SERVICE_QUOTA_VALIDATION_REASON)
 }
