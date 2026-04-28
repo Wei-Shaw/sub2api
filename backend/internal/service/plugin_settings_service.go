@@ -305,6 +305,18 @@ func (s *PluginSettingsService) RegisterSchemaWithInput(
 		schemaVersion = schemaVersionUndeclared
 	}
 
+	// V5/W6 SETTINGS-V2 §4.5: capture the previous schema_version BEFORE we
+	// overwrite the in-memory cache so a bump can be detected and existing
+	// subscribers can be force-disconnected. prevVersion=="" means the
+	// service has not seen this plugin before in this process lifetime
+	// (cold start) — never drop on cold start because there are no
+	// subscribers yet to drop, and we do not want to disturb cache
+	// rehydration in SchemaInfo (which also leaves the entry empty until
+	// first read).
+	s.mu.RLock()
+	prevVersion := s.schemaVersions[in.PluginName]
+	s.mu.RUnlock()
+
 	// Marshal meta back to JSON for persistence. The host always writes
 	// `{}` (never SQL NULL) so handlers do not need to nil-check.
 	metaJSON, err := json.Marshal(meta)
@@ -339,6 +351,16 @@ func (s *PluginSettingsService) RegisterSchemaWithInput(
 	s.schemaVersions[in.PluginName] = schemaVersion
 	s.propertiesMeta[in.PluginName] = meta
 	s.mu.Unlock()
+
+	// Force every existing subscriber to reconnect when schema_version
+	// changed. SDK Watch loops detect the closed channel and re-snapshot
+	// under the new schema, satisfying DESIGN §4.5 ("schema-version bump
+	// requires fresh snapshot for correctness").
+	if prevVersion != "" && prevVersion != schemaVersion {
+		s.dropAllSubscribersForPlugin(in.PluginName)
+		s.logger.Info("plugin_settings: schema_version changed; dropped subscribers to force resync",
+			"plugin", in.PluginName, "prev", prevVersion, "current", schemaVersion)
+	}
 
 	if err := s.seedDefaults(ctx, in.PluginName, rawDefaults); err != nil {
 		s.logger.Warn("plugin_settings: seed defaults failed",
@@ -782,6 +804,27 @@ func (s *PluginSettingsService) Subscribe(
 		})
 	}
 	return sub.ch, cleanup
+}
+
+// dropAllSubscribersForPlugin closes every subscriber channel for the
+// named plugin and deletes the slice entry. Used when a schema_version
+// bump means existing watchers are reading values under a stale schema —
+// closing the channel triggers the gRPC server's "ok=false" branch which
+// ends the Watch stream cleanly. SDK runWatchLoop then reconnects and
+// requests a fresh snapshot (DESIGN §4.5).
+//
+// Safe to call when no subscribers exist (the map lookup returns nil).
+// Subscribe's cleanup func uses sync.Once and does not double-close
+// because dropAll deletes the slice entry; cleanup's lookup loop becomes
+// a no-op.
+func (s *PluginSettingsService) dropAllSubscribersForPlugin(pluginName string) {
+	s.subMu.Lock()
+	defer s.subMu.Unlock()
+	subs := s.subs[pluginName]
+	for _, sub := range subs {
+		close(sub.ch)
+	}
+	delete(s.subs, pluginName)
 }
 
 func (s *PluginSettingsService) notify(change PluginSettingsChange) {
