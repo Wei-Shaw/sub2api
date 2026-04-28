@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"net/http"
-
 	pkgerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -29,13 +27,16 @@ func NewUserServiceQuotaHandler(svc service.ServiceQuotaMonitorService) *UserSer
 // 缺失认证态返回 401，service 层错误透传 500 给前端。
 func (h *UserServiceQuotaHandler) MyQuota(c *gin.Context) {
 	if h == nil || h.svc == nil {
-		response.Error(c, http.StatusNotFound, "service quota monitor unavailable")
+		response.ErrorFrom(c, pkgerrors.NotFound(
+			"SERVICE_QUOTA_MONITOR_UNAVAILABLE",
+			"service quota monitor unavailable",
+		))
 		return
 	}
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok || subject.UserID <= 0 {
 		response.ErrorFrom(c, pkgerrors.Unauthorized(
-			"unauthenticated",
+			"UNAUTHENTICATED",
 			"authentication required",
 		))
 		return
@@ -45,7 +46,7 @@ func (h *UserServiceQuotaHandler) MyQuota(c *gin.Context) {
 	})
 	if err != nil {
 		response.ErrorFrom(c, pkgerrors.InternalServer(
-			"snapshot_failed",
+			"SNAPSHOT_FAILED",
 			"failed to load quota snapshot",
 		).WithCause(err))
 		return

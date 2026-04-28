@@ -383,7 +383,27 @@ export default {
       PRIVACY_UNSUPPORTED: '该账号不支持隐私设置',
       MISSING_ACCESS_TOKEN: '缺少 access token',
       TIER_REFRESH_UNSUPPORTED: '该账号不支持等级刷新',
-      TOTP_ENCRYPTION_KEY_MISSING: 'TOTP 加密密钥未配置'
+      TOTP_ENCRYPTION_KEY_MISSING: 'TOTP 加密密钥未配置',
+      // Service quota（handler 与 service 层 reason → 用户文案）
+      SERVICE_QUOTA_MONITOR_UNAVAILABLE: '限额监控暂不可用',
+      SERVICE_QUOTA_INVALID_RULE: '限额规则配置无效',
+      SERVICE_QUOTA_INVALID_COUNTER_MODE: '计数模式无效',
+      SERVICE_QUOTA_INVALID_LIMITERS: '请至少配置一个限流器',
+      SERVICE_QUOTA_INVALID_LIMITER_TYPE: '限流器类型无效',
+      SERVICE_QUOTA_INVALID_LIMIT_VALUE: '限额数值无效',
+      SERVICE_QUOTA_INVALID_WINDOW_MODE: '时间窗口模式无效',
+      SERVICE_QUOTA_DUPLICATE_LIMITER: '限流器配置重复',
+      SERVICE_QUOTA_INVALID_TOKEN_COMPONENT: 'Token 计费项无效',
+      SERVICE_QUOTA_INVALID_PATHS: '请至少配置一个路径',
+      SERVICE_QUOTA_SCOPE_ACCOUNT_NOT_FOUND: '指定的账号不存在',
+      SERVICE_QUOTA_SCOPE_GROUP_NOT_FOUND: '指定的分组不存在',
+      SERVICE_QUOTA_SCOPE_CHANNEL_NOT_FOUND: '指定的渠道不存在',
+      SERVICE_QUOTA_SCOPE_MISMATCH: '限制范围与规则不匹配',
+      SERVICE_QUOTA_INVALID_RESET_TARGET: '重置目标参数无效',
+      // 通用鉴权 / 监控错误
+      UNAUTHENTICATED: '请先登录',
+      SNAPSHOT_FAILED: '加载实时数据失败，请稍后重试',
+      INVALID_QUERY_PARAM: '查询参数无效'
     }
   },
 

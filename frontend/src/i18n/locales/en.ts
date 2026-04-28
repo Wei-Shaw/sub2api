@@ -384,7 +384,27 @@ export default {
       PRIVACY_UNSUPPORTED: 'Privacy setting unsupported',
       MISSING_ACCESS_TOKEN: 'Missing access token',
       TIER_REFRESH_UNSUPPORTED: 'Tier refresh unsupported',
-      TOTP_ENCRYPTION_KEY_MISSING: 'TOTP encryption key missing'
+      TOTP_ENCRYPTION_KEY_MISSING: 'TOTP encryption key missing',
+      // Service quota (handler & service-layer reasons -> user-facing text)
+      SERVICE_QUOTA_MONITOR_UNAVAILABLE: 'Quota monitor unavailable',
+      SERVICE_QUOTA_INVALID_RULE: 'Invalid service quota rule',
+      SERVICE_QUOTA_INVALID_COUNTER_MODE: 'Invalid counter mode',
+      SERVICE_QUOTA_INVALID_LIMITERS: 'At least one limiter is required',
+      SERVICE_QUOTA_INVALID_LIMITER_TYPE: 'Invalid limiter type',
+      SERVICE_QUOTA_INVALID_LIMIT_VALUE: 'Invalid limit value',
+      SERVICE_QUOTA_INVALID_WINDOW_MODE: 'Invalid window mode',
+      SERVICE_QUOTA_DUPLICATE_LIMITER: 'Duplicate limiter configuration',
+      SERVICE_QUOTA_INVALID_TOKEN_COMPONENT: 'Invalid token component',
+      SERVICE_QUOTA_INVALID_PATHS: 'At least one path is required',
+      SERVICE_QUOTA_SCOPE_ACCOUNT_NOT_FOUND: 'Account not found',
+      SERVICE_QUOTA_SCOPE_GROUP_NOT_FOUND: 'Group not found',
+      SERVICE_QUOTA_SCOPE_CHANNEL_NOT_FOUND: 'Channel not found',
+      SERVICE_QUOTA_SCOPE_MISMATCH: 'Scope mismatch',
+      SERVICE_QUOTA_INVALID_RESET_TARGET: 'Invalid reset target',
+      // Auth & monitor common
+      UNAUTHENTICATED: 'Please sign in first',
+      SNAPSHOT_FAILED: 'Failed to load runtime data, please retry',
+      INVALID_QUERY_PARAM: 'Invalid query parameter'
     }
   },
 
