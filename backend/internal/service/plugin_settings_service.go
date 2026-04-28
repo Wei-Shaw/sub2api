@@ -527,6 +527,27 @@ func (s *PluginSettingsService) SetByKeyWithSource(
 		schemaVersion = schemaVersionUndeclared
 	}
 
+	// Mirror the schema's x-requires-reload marker into the change event
+	// so the PluginManager reload watcher (W2-C) can decide whether to
+	// restart the plugin process.
+	requiresReload := false
+	propMeta, hasMeta := meta[key]
+	if hasMeta {
+		requiresReload = propMeta.RequiresReload
+	}
+
+	// SETTINGS-V2-INDUSTRY §3 row 11 + Curator decision 2 (Grafana write
+	// semantics): for visibility=secret properties, an empty JSON string
+	// ("") means "clear this secret". Delete the row instead of writing
+	// the literal "" so SchemaInfo's secret_keys list (derived from row
+	// existence) drops the key. Non-secret keys keep the literal "" so
+	// admin can still legitimately persist an empty string for ordinary
+	// text fields. Other falsy shapes (null / 0 / false / []) keep the
+	// UPSERT path — only the JSON string "" triggers the delete branch.
+	if hasMeta && propMeta.Visibility == PropertyVisibilitySecret && isEmptyJSONString(value) {
+		return s.deleteSecretAndNotify(ctx, pluginName, key, requiresReload)
+	}
+
 	row := s.db.QueryRowContext(ctx, `
 		INSERT INTO plugin_settings (plugin_name, key, value_json, revision, schema_version_at_write, updated_at)
 		VALUES ($1, $2, $3::jsonb, 1, $4, NOW())
@@ -542,18 +563,59 @@ func (s *PluginSettingsService) SetByKeyWithSource(
 		return 0, fmt.Errorf("plugin_settings: upsert: %w", err)
 	}
 
-	// Mirror the schema's x-requires-reload marker into the change event
-	// so the PluginManager reload watcher (W2-C) can decide whether to
-	// restart the plugin process.
-	requiresReload := false
-	if propMeta, ok := meta[key]; ok {
-		requiresReload = propMeta.RequiresReload
-	}
-
 	s.notify(PluginSettingsChange{
 		Plugin:         pluginName,
 		Key:            key,
 		Value:          append(json.RawMessage(nil), value...),
+		Revision:       rev,
+		RequiresReload: requiresReload,
+	})
+	return rev, nil
+}
+
+// isEmptyJSONString reports whether value is the JSON string "" (empty
+// string literal). It returns false for JSON null, numbers, booleans,
+// arrays, objects, or any non-empty string. Used by the secret-clear
+// branch in SetByKeyWithSource so the delete semantic only fires on the
+// exact shape admins emit when wiping a secret field.
+func isEmptyJSONString(value json.RawMessage) bool {
+	var s string
+	if err := json.Unmarshal(value, &s); err != nil {
+		return false
+	}
+	return s == ""
+}
+
+// deleteSecretAndNotify removes the (plugin, key) row and fans out a
+// change event with Value=null so subscribers (notably W2-C reload
+// coordination) observe the clear. The returned revision is the cleared
+// row's previous revision + 1 so callers see a monotonically increasing
+// number even across a delete; if the row did not exist we return 0
+// because there is no prior revision to advance from.
+func (s *PluginSettingsService) deleteSecretAndNotify(
+	ctx context.Context, pluginName, key string, requiresReload bool,
+) (int64, error) {
+	row := s.db.QueryRowContext(ctx, `
+		DELETE FROM plugin_settings
+		WHERE plugin_name = $1 AND key = $2
+		RETURNING revision
+	`, pluginName, key)
+	var prev int64
+	switch err := row.Scan(&prev); {
+	case err == nil:
+		// row existed and was deleted; advance revision.
+	case errors.Is(err, sql.ErrNoRows):
+		// no prior row; nothing to delete, but we still notify so a
+		// transient subscriber sees the clear intent.
+		prev = 0
+	default:
+		return 0, fmt.Errorf("plugin_settings: delete secret: %w", err)
+	}
+	rev := prev + 1
+	s.notify(PluginSettingsChange{
+		Plugin:         pluginName,
+		Key:            key,
+		Value:          json.RawMessage("null"),
 		Revision:       rev,
 		RequiresReload: requiresReload,
 	})
