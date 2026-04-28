@@ -356,7 +356,26 @@ export default {
     errors: {
       INVALID_REQUEST_BODY: 'Invalid request body',
       INVALID_ID: 'Invalid resource ID',
-      SERVICE_QUOTA_UNAVAILABLE: 'Service quota feature unavailable'
+      SERVICE_QUOTA_UNAVAILABLE: 'Service quota feature unavailable',
+      // Account
+      INVALID_ACCOUNT_ID: 'Invalid account ID',
+      ACCOUNT_NOT_FOUND: 'Account not found',
+      ACCOUNT_DUPLICATE: 'Account already exists',
+      // User
+      INVALID_USER_ID: 'Invalid user ID',
+      USER_NOT_FOUND: 'User not found',
+      EMAIL_INVALID: 'Invalid email format',
+      BALANCE_INVALID: 'Invalid balance value',
+      // Group
+      INVALID_GROUP_ID: 'Invalid group ID',
+      GROUP_NOT_FOUND: 'Group not found',
+      GROUP_DUPLICATE: 'Group name already exists',
+      INVALID_GROUP_FILTER: 'Invalid group filter',
+      // Setting
+      INVALID_SETTING_KEY: 'Invalid setting key',
+      SETTING_REQUIRED: 'Setting required',
+      TURNSTILE_SITE_KEY_REQUIRED: 'Turnstile Site Key required',
+      TURNSTILE_SECRET_REQUIRED: 'Turnstile Secret required'
     }
   },
 

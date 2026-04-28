@@ -355,7 +355,26 @@ export default {
     errors: {
       INVALID_REQUEST_BODY: '请求格式错误',
       INVALID_ID: 'ID 无效',
-      SERVICE_QUOTA_UNAVAILABLE: '服务限额功能暂不可用'
+      SERVICE_QUOTA_UNAVAILABLE: '服务限额功能暂不可用',
+      // Account
+      INVALID_ACCOUNT_ID: '账号 ID 无效',
+      ACCOUNT_NOT_FOUND: '账号不存在',
+      ACCOUNT_DUPLICATE: '账号已存在',
+      // User
+      INVALID_USER_ID: '用户 ID 无效',
+      USER_NOT_FOUND: '用户不存在',
+      EMAIL_INVALID: '邮箱格式错误',
+      BALANCE_INVALID: '余额数值无效',
+      // Group
+      INVALID_GROUP_ID: '分组 ID 无效',
+      GROUP_NOT_FOUND: '分组不存在',
+      GROUP_DUPLICATE: '分组名已存在',
+      INVALID_GROUP_FILTER: '分组筛选参数无效',
+      // Setting
+      INVALID_SETTING_KEY: '设置项无效',
+      SETTING_REQUIRED: '设置项必填',
+      TURNSTILE_SITE_KEY_REQUIRED: 'Turnstile Site Key 必填',
+      TURNSTILE_SECRET_REQUIRED: 'Turnstile Secret 必填'
     }
   },
 
