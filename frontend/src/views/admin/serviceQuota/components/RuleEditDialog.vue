@@ -20,10 +20,19 @@
         </label>
         <label class="form-field">
           <RequiredLabel :label="t('admin.serviceQuota.form.counterMode')" required />
-          <select v-model="form.counter_mode" class="input">
+          <select
+            v-model="form.counter_mode"
+            :class="['input', { 'border-red-400 focus:ring-red-500': !!errorFor('counter_mode') }]"
+          >
             <option v-for="item in counterModeOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
           </select>
           <span class="text-xs text-gray-500 dark:text-gray-400">{{ counterModeHint(form.counter_mode) }}</span>
+          <span
+            v-if="errorFor('counter_mode')"
+            class="block text-xs text-red-500"
+          >
+            {{ t('admin.serviceQuota.errors.' + errorFor('counter_mode')) }}
+          </span>
         </label>
         <label class="form-field md:col-span-2 flex items-center gap-2">
           <input v-model="form.is_fallback" type="checkbox" class="h-4 w-4 rounded border-gray-300" />

@@ -1,7 +1,19 @@
 <template>
   <div class="space-y-3">
-    <div v-if="modelValue.length === 0" class="rounded-lg border border-dashed border-gray-300 px-4 py-3 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400">
-      {{ t('admin.serviceQuota.pathEditor.empty') }}
+    <!-- 数组空时占位。errors.path='paths' 切红色 -->
+    <div
+      v-if="modelValue.length === 0"
+      :class="[
+        'rounded-lg border border-dashed px-4 py-3 text-center text-sm',
+        errorFor('paths')
+          ? 'border-red-400 bg-red-50 text-red-600 dark:border-red-500 dark:bg-red-900/10 dark:text-red-400'
+          : 'border-gray-300 text-gray-500 dark:border-dark-600 dark:text-gray-400',
+      ]"
+    >
+      <span v-if="errorFor('paths')">
+        {{ t('admin.serviceQuota.errors.' + errorFor('paths')) }} · {{ t('admin.serviceQuota.pathEditor.empty') }}
+      </span>
+      <span v-else>{{ t('admin.serviceQuota.pathEditor.empty') }}</span>
     </div>
     <div
       v-for="(item, index) in modelValue"

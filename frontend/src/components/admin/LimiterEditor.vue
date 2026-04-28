@@ -1,7 +1,20 @@
 <template>
   <div class="space-y-3">
-    <div v-if="modelValue.length === 0" class="rounded-lg border border-dashed border-gray-300 px-4 py-3 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400">
-      {{ t('admin.serviceQuota.limiterEditor.empty') }}
+    <!-- 数组空时占位提示。父组件提交校验后若 errors 命中 path='limiters' 切换为红色边框 + 红字
+         （让 user 看到"至少配置一个限流器"是必填错误，不只是占位） -->
+    <div
+      v-if="modelValue.length === 0"
+      :class="[
+        'rounded-lg border border-dashed px-4 py-3 text-center text-sm',
+        errorFor('limiters')
+          ? 'border-red-400 bg-red-50 text-red-600 dark:border-red-500 dark:bg-red-900/10 dark:text-red-400'
+          : 'border-gray-300 text-gray-500 dark:border-dark-600 dark:text-gray-400',
+      ]"
+    >
+      <span v-if="errorFor('limiters')">
+        {{ t('admin.serviceQuota.errors.' + errorFor('limiters')) }} · {{ t('admin.serviceQuota.limiterEditor.empty') }}
+      </span>
+      <span v-else>{{ t('admin.serviceQuota.limiterEditor.empty') }}</span>
     </div>
     <div
       v-for="(item, index) in modelValue"
@@ -13,11 +26,17 @@
           <RequiredLabel :label="t('admin.serviceQuota.columns.type')" required />
           <select
             :value="item.limiter_type"
-            class="input"
+            :class="['input', { 'border-red-400 focus:ring-red-500': !!errorFor(`limiters[${index}].limiter_type`) }]"
             @change="updateField(index, 'limiter_type', ($event.target as HTMLSelectElement).value)"
           >
             <option v-for="opt in availableTypes(item.limiter_type)" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
           </select>
+          <span
+            v-if="errorFor(`limiters[${index}].limiter_type`)"
+            class="text-xs text-red-500"
+          >
+            {{ t('admin.serviceQuota.errors.' + errorFor(`limiters[${index}].limiter_type`)) }}
+          </span>
         </label>
         <label class="form-field">
           <RequiredLabel :label="t('admin.serviceQuota.columns.limit')" required />
@@ -40,12 +59,18 @@
           <RequiredLabel :label="t('admin.serviceQuota.columns.window')" required />
           <select
             :value="item.window_mode"
-            class="input"
+            :class="['input', { 'border-red-400 focus:ring-red-500': !!errorFor(`limiters[${index}].window_mode`) }]"
             @change="updateField(index, 'window_mode', ($event.target as HTMLSelectElement).value)"
           >
             <option value="fixed">{{ t('admin.serviceQuota.windows.fixed') }}</option>
             <option value="rolling">{{ t('admin.serviceQuota.windows.rolling') }}</option>
           </select>
+          <span
+            v-if="errorFor(`limiters[${index}].window_mode`)"
+            class="text-xs text-red-500"
+          >
+            {{ t('admin.serviceQuota.errors.' + errorFor(`limiters[${index}].window_mode`)) }}
+          </span>
         </label>
         <div v-else class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.serviceQuota.windows.none') }}</div>
         <button
