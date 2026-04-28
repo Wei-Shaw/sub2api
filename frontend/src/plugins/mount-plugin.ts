@@ -61,19 +61,22 @@ export async function mountPluginAssets(opts: MountPluginAssetsOptions): Promise
     throw new Error(`plugin "${pluginName}" did not return a mount() function`)
   }
 
-  // 同一 container 复用时先清理上一次的 shadow root.
-  // attachShadow 不允许重复 attach, 所以我们用一个一次性 wrapper div 装载.
-  // PluginView 在 unmount 时会清理 wrapper.
-  while (container.firstChild) {
-    container.removeChild(container.firstChild)
-  }
-
   // 设置 host element 自身的 CSS — 让 shadow host 占满父级.
   container.style.display = 'block'
   container.style.flex = '1'
   container.style.minHeight = '0'
 
-  const shadow = container.attachShadow({ mode: 'open' })
+  // 同一 host element 多次 mount (路由切换 / retry / hot-reload) 时, 浏览器禁止
+  // 重复 attachShadow — 抛 "Shadow root cannot be created on a host which already
+  // hosts a shadow tree". 必须复用已有 shadowRoot, 仅清空内容.
+  let shadow = container.shadowRoot
+  if (shadow) {
+    while (shadow.firstChild) {
+      shadow.removeChild(shadow.firstChild)
+    }
+  } else {
+    shadow = container.attachShadow({ mode: 'open' })
+  }
 
   // Shadow Root 内 :host 样式 + minimal reset.
   //

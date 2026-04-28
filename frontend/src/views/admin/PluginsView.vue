@@ -444,6 +444,13 @@ async function act(name: string, action: PluginAction) {
     await apiClient.post(`/admin/plugins/${name}/${action}`)
     appStore.showSuccess(t(`admin.plugins.${action}Success`, { name }))
     await reload()
+    // enable/disable 改变 active plugin 集合 — sidebar 菜单 + router 路由都基于
+    // 启动时 SSR 注入的 window.__PLUGIN_MANIFESTS__, 不响应后续变更. 强制全页
+    // reload 让浏览器重新拿到新 manifest, 即时反映启用/禁用结果. restart 不影响
+    // manifest 内容, 不需要 reload.
+    if (action === 'enable' || action === 'disable') {
+      window.location.reload()
+    }
   } catch (err: unknown) {
     appStore.showError(extractApiErrorMessage(err, t('common.error')))
   } finally {

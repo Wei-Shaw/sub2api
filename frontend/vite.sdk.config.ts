@@ -25,6 +25,13 @@ export default defineConfig({
   plugins: [vue()],
   define: {
     __INTLIFY_JIT_COMPILATION__: true,
+    // SDK bundle 在浏览器侧执行 (importmap 提供给 plugin), 必须把 Node 全局 process.env
+    // 静态替换成字面量, 否则 "process is not defined" 会在 plugin install 时直接 throw.
+    // vue / vue-i18n / pinia 等的 source 在生产模式下都包含 `process.env.NODE_ENV` 判断,
+    // 它们的 host 主 bundle 由 vite build 时被替换, 但 SDK 这条 lib build 路径不替换.
+    'process.env.NODE_ENV': JSON.stringify('production'),
+    // bare `process.env` (没有进一步访问) 用空对象兜底, 防止运行时 ReferenceError.
+    'process.env': '{}',
   },
   build: {
     // host frontend 的主 build 输出在 ../backend/internal/web/dist (见 vite.config.ts).
