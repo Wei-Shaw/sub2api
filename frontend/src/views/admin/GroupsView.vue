@@ -3827,8 +3827,10 @@ const openSortModal = async () => {
       (a, b) => a.sort_order - b.sort_order,
     );
     showSortModal.value = true;
-  } catch (error) {
-    appStore.showError(t("admin.groups.failedToLoad"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractI18nErrorMessage(error, t, "common.errors", t("admin.groups.failedToLoad")),
+    );
     console.error("Error loading groups for sorting:", error);
   }
 };
