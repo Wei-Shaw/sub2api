@@ -339,7 +339,11 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 		assert.Contains(t, w2.Body.String(), `nonce="nonce2"`)
 	})
 
-	t.Run("sets_etag_header", func(t *testing.T) {
+	t.Run("does_not_set_etag_header", func(t *testing.T) {
+		// 回归测试: ETag 协商与 per-request CSP nonce 不兼容 — 一旦 304 命中,
+		// 浏览器会复用旧 body (含旧 nonce) + 新 CSP header (含新 nonce),
+		// 全部 inline script (importmap / __APP_CONFIG__ / __PLUGIN_MANIFESTS__)
+		// 被浏览器以 CSP 违规阻止. 因此 serveIndexHTML 不应再写 ETag.
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},
 		}
@@ -354,13 +358,12 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 
 		server.serveIndexHTML(c)
 
-		etag := w.Header().Get("ETag")
-		assert.NotEmpty(t, etag)
-		assert.True(t, strings.HasPrefix(etag, `"`))
-		assert.True(t, strings.HasSuffix(etag, `"`))
+		assert.Empty(t, w.Header().Get("ETag"))
 	})
 
-	t.Run("returns_304_for_matching_etag", func(t *testing.T) {
+	t.Run("always_returns_200_ignoring_if_none_match", func(t *testing.T) {
+		// 回归测试: 即便 client 携带 If-None-Match, 服务端也不能返回 304,
+		// 否则浏览器复用旧 body 与新 nonce 不匹配, 内联 script 被 CSP 阻止.
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},
 		}
@@ -368,7 +371,6 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 		server, err := NewFrontendServer(provider)
 		require.NoError(t, err)
 
-		// Use a real router for proper 304 handling
 		router := gin.New()
 		router.Use(func(c *gin.Context) {
 			c.Set(middleware.CSPNonceKey, "test-nonce")
@@ -376,24 +378,24 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 		})
 		router.Use(server.Middleware())
 
-		// First request to populate cache and get ETag
+		// 第一次请求填充缓存
 		w1 := httptest.NewRecorder()
 		req1 := httptest.NewRequest(http.MethodGet, "/", nil)
 		router.ServeHTTP(w1, req1)
-		etag := w1.Header().Get("ETag")
-		require.NotEmpty(t, etag)
+		require.Equal(t, http.StatusOK, w1.Code)
 
-		// Second request with If-None-Match
+		// 第二次请求带任意 If-None-Match — 必须仍然 200
 		w2 := httptest.NewRecorder()
 		req2 := httptest.NewRequest(http.MethodGet, "/", nil)
-		req2.Header.Set("If-None-Match", etag)
+		req2.Header.Set("If-None-Match", `"any-etag"`)
 		router.ServeHTTP(w2, req2)
 
-		assert.Equal(t, http.StatusNotModified, w2.Code)
-		assert.Empty(t, w2.Body.String())
+		assert.Equal(t, http.StatusOK, w2.Code)
+		assert.NotEmpty(t, w2.Body.String())
 	})
 
-	t.Run("sets_cache_control_header", func(t *testing.T) {
+	t.Run("sets_cache_control_no_store", func(t *testing.T) {
+		// 与 ETag 同源: per-request nonce 让 HTML 不可被任何中间环节缓存.
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},
 		}
@@ -408,7 +410,7 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 
 		server.serveIndexHTML(c)
 
-		assert.Equal(t, "no-cache", w.Header().Get("Cache-Control"))
+		assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
 	})
 
 	t.Run("fallback_on_settings_error", func(t *testing.T) {
