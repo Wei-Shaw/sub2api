@@ -6156,7 +6156,7 @@ async function loadSettings() {
   } catch (error: unknown) {
     loadFailed.value = true;
     appStore.showError(
-      extractApiErrorMessage(error, t("admin.settings.failedToLoad")),
+      extractI18nErrorMessage(error, t, "common.errors", t("admin.settings.failedToLoad")),
     );
   } finally {
     loading.value = false;
@@ -6560,7 +6560,7 @@ async function saveSettings() {
     }
   } catch (error: unknown) {
     appStore.showError(
-      extractApiErrorMessage(error, t("admin.settings.failedToSave")),
+      extractI18nErrorMessage(error, t, "common.errors", t("admin.settings.failedToSave")),
     );
   } finally {
     saving.value = false;
