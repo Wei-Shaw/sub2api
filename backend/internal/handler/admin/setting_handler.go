@@ -76,35 +76,6 @@ const (
 	errReasonSettingOIDCClockSkewOutOfRange        = "OIDC_CLOCK_SKEW_OUT_OF_RANGE"
 	errReasonSettingOIDCAllowedSigningAlgsRequired = "OIDC_ALLOWED_SIGNING_ALGS_REQUIRED"
 	errReasonSettingOIDCJWKSURLInvalid             = "OIDC_JWKS_URL_INVALID"
-
-	// Subscription / Frontend URL 配置。
-	errReasonSettingSubscriptionURLRequired = "SUBSCRIPTION_URL_REQUIRED"
-	errReasonSettingSubscriptionURLInvalid  = "SUBSCRIPTION_URL_INVALID"
-	errReasonSettingFrontendURLInvalid      = "FRONTEND_URL_INVALID"
-
-	// 自定义菜单项校验（数量上限 + 字段长度 + ID 合法性 + 重复检测）。
-	errReasonSettingCustomMenuTooMany           = "CUSTOM_MENU_TOO_MANY"
-	errReasonSettingCustomMenuLabelRequired     = "CUSTOM_MENU_LABEL_REQUIRED"
-	errReasonSettingCustomMenuLabelTooLong      = "CUSTOM_MENU_LABEL_TOO_LONG"
-	errReasonSettingCustomMenuURLRequired       = "CUSTOM_MENU_URL_REQUIRED"
-	errReasonSettingCustomMenuURLTooLong        = "CUSTOM_MENU_URL_TOO_LONG"
-	errReasonSettingCustomMenuURLInvalid        = "CUSTOM_MENU_URL_INVALID"
-	errReasonSettingCustomMenuVisibilityInvalid = "CUSTOM_MENU_VISIBILITY_INVALID"
-	errReasonSettingCustomMenuIconTooLarge      = "CUSTOM_MENU_ICON_TOO_LARGE"
-	errReasonSettingCustomMenuIDTooLong         = "CUSTOM_MENU_ID_TOO_LONG"
-	errReasonSettingCustomMenuIDInvalid         = "CUSTOM_MENU_ID_INVALID"
-	errReasonSettingCustomMenuIDDuplicate       = "CUSTOM_MENU_ID_DUPLICATE"
-	errReasonSettingCustomMenuSerializeFailed   = "CUSTOM_MENU_SERIALIZE_FAILED"
-
-	// 自定义 endpoint 校验（数量上限 + 字段长度 + URL 合法性）。
-	errReasonSettingCustomEndpointTooMany       = "CUSTOM_ENDPOINT_TOO_MANY"
-	errReasonSettingCustomEndpointNameRequired  = "CUSTOM_ENDPOINT_NAME_REQUIRED"
-	errReasonSettingCustomEndpointNameTooLong   = "CUSTOM_ENDPOINT_NAME_TOO_LONG"
-	errReasonSettingCustomEndpointURLRequired   = "CUSTOM_ENDPOINT_URL_REQUIRED"
-	errReasonSettingCustomEndpointURLTooLong    = "CUSTOM_ENDPOINT_URL_TOO_LONG"
-	errReasonSettingCustomEndpointURLInvalid    = "CUSTOM_ENDPOINT_URL_INVALID"
-	errReasonSettingCustomEndpointDescTooLong   = "CUSTOM_ENDPOINT_DESCRIPTION_TOO_LONG"
-	errReasonSettingCustomEndpointSerializeFail = "CUSTOM_ENDPOINT_SERIALIZE_FAILED"
 )
 
 // semverPattern 预编译 semver 格式校验正则
@@ -994,16 +965,16 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	// - 禁用时允许为空；若提供了 URL 也做基本校验，避免误配置
 	if purchaseEnabled {
 		if purchaseURL == "" {
-			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingSubscriptionURLRequired, "purchase subscription URL is required when enabled"))
+			response.BadRequest(c, "Purchase Subscription URL is required when enabled")
 			return
 		}
 		if err := config.ValidateAbsoluteHTTPURL(purchaseURL); err != nil {
-			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingSubscriptionURLInvalid, "purchase subscription URL must be an absolute http(s) URL"))
+			response.BadRequest(c, "Purchase Subscription URL must be an absolute http(s) URL")
 			return
 		}
 	} else if purchaseURL != "" {
 		if err := config.ValidateAbsoluteHTTPURL(purchaseURL); err != nil {
-			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingSubscriptionURLInvalid, "purchase subscription URL must be an absolute http(s) URL"))
+			response.BadRequest(c, "Purchase Subscription URL must be an absolute http(s) URL")
 			return
 		}
 	}
@@ -1012,7 +983,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	req.FrontendURL = strings.TrimSpace(req.FrontendURL)
 	if req.FrontendURL != "" {
 		if err := config.ValidateAbsoluteHTTPURL(req.FrontendURL); err != nil {
-			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingFrontendURLInvalid, "frontend URL must be an absolute http(s) URL"))
+			response.BadRequest(c, "Frontend URL must be an absolute http(s) URL")
 			return
 		}
 	}
@@ -1030,36 +1001,36 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if req.CustomMenuItems != nil {
 		items := *req.CustomMenuItems
 		if len(items) > maxCustomMenuItems {
-			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingCustomMenuTooMany, "too many custom menu items (max 20)"))
+			response.BadRequest(c, "Too many custom menu items (max 20)")
 			return
 		}
 		for i, item := range items {
 			if strings.TrimSpace(item.Label) == "" {
-				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingCustomMenuLabelRequired, "custom menu item label is required"))
+				response.BadRequest(c, "Custom menu item label is required")
 				return
 			}
 			if len(item.Label) > maxMenuItemLabelLen {
-				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingCustomMenuLabelTooLong, "custom menu item label is too long (max 50 characters)"))
+				response.BadRequest(c, "Custom menu item label is too long (max 50 characters)")
 				return
 			}
 			if strings.TrimSpace(item.URL) == "" {
-				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingCustomMenuURLRequired, "custom menu item URL is required"))
+				response.BadRequest(c, "Custom menu item URL is required")
 				return
 			}
 			if len(item.URL) > maxMenuItemURLLen {
-				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingCustomMenuURLTooLong, "custom menu item URL is too long (max 2048 characters)"))
+				response.BadRequest(c, "Custom menu item URL is too long (max 2048 characters)")
 				return
 			}
 			if err := config.ValidateAbsoluteHTTPURL(strings.TrimSpace(item.URL)); err != nil {
-				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingCustomMenuURLInvalid, "custom menu item URL must be an absolute http(s) URL"))
+				response.BadRequest(c, "Custom menu item URL must be an absolute http(s) URL")
 				return
 			}
 			if item.Visibility != "user" && item.Visibility != "admin" {
-				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingCustomMenuVisibilityInvalid, "custom menu item visibility must be 'user' or 'admin'"))
+				response.BadRequest(c, "Custom menu item visibility must be 'user' or 'admin'")
 				return
 			}
 			if len(item.IconSVG) > maxMenuItemIconSVGLen {
-				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingCustomMenuIconTooLarge, "custom menu item icon SVG is too large (max 10KB)"))
+				response.BadRequest(c, "Custom menu item icon SVG is too large (max 10KB)")
 				return
 			}
 			// Auto-generate ID if missing
@@ -1071,10 +1042,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				}
 				items[i].ID = id
 			} else if len(item.ID) > maxMenuItemIDLen {
-				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingCustomMenuIDTooLong, "custom menu item ID is too long (max 32 characters)"))
+				response.BadRequest(c, "Custom menu item ID is too long (max 32 characters)")
 				return
 			} else if !menuItemIDPattern.MatchString(item.ID) {
-				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingCustomMenuIDInvalid, "custom menu item ID contains invalid characters (only a-z, A-Z, 0-9, - and _ are allowed)"))
+				response.BadRequest(c, "Custom menu item ID contains invalid characters (only a-z, A-Z, 0-9, - and _ are allowed)")
 				return
 			}
 		}
@@ -1082,16 +1053,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		seen := make(map[string]struct{}, len(items))
 		for _, item := range items {
 			if _, exists := seen[item.ID]; exists {
-				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingCustomMenuIDDuplicate, "duplicate custom menu item ID").WithMetadata(map[string]string{
-					"id": item.ID,
-				}))
+				response.BadRequest(c, "Duplicate custom menu item ID: "+item.ID)
 				return
 			}
 			seen[item.ID] = struct{}{}
 		}
 		menuBytes, err := json.Marshal(items)
 		if err != nil {
-			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingCustomMenuSerializeFailed, "failed to serialize custom menu items"))
+			response.BadRequest(c, "Failed to serialize custom menu items")
 			return
 		}
 		customMenuJSON = string(menuBytes)
@@ -1109,38 +1078,38 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if req.CustomEndpoints != nil {
 		endpoints := *req.CustomEndpoints
 		if len(endpoints) > maxCustomEndpoints {
-			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingCustomEndpointTooMany, "too many custom endpoints (max 10)"))
+			response.BadRequest(c, "Too many custom endpoints (max 10)")
 			return
 		}
 		for _, ep := range endpoints {
 			if strings.TrimSpace(ep.Name) == "" {
-				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingCustomEndpointNameRequired, "custom endpoint name is required"))
+				response.BadRequest(c, "Custom endpoint name is required")
 				return
 			}
 			if len(ep.Name) > maxEndpointNameLen {
-				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingCustomEndpointNameTooLong, "custom endpoint name is too long (max 50 characters)"))
+				response.BadRequest(c, "Custom endpoint name is too long (max 50 characters)")
 				return
 			}
 			if strings.TrimSpace(ep.Endpoint) == "" {
-				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingCustomEndpointURLRequired, "custom endpoint URL is required"))
+				response.BadRequest(c, "Custom endpoint URL is required")
 				return
 			}
 			if len(ep.Endpoint) > maxEndpointURLLen {
-				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingCustomEndpointURLTooLong, "custom endpoint URL is too long (max 2048 characters)"))
+				response.BadRequest(c, "Custom endpoint URL is too long (max 2048 characters)")
 				return
 			}
 			if err := config.ValidateAbsoluteHTTPURL(strings.TrimSpace(ep.Endpoint)); err != nil {
-				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingCustomEndpointURLInvalid, "custom endpoint URL must be an absolute http(s) URL"))
+				response.BadRequest(c, "Custom endpoint URL must be an absolute http(s) URL")
 				return
 			}
 			if len(ep.Description) > maxEndpointDescriptionLen {
-				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingCustomEndpointDescTooLong, "custom endpoint description is too long (max 200 characters)"))
+				response.BadRequest(c, "Custom endpoint description is too long (max 200 characters)")
 				return
 			}
 		}
 		endpointBytes, err := json.Marshal(endpoints)
 		if err != nil {
-			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingCustomEndpointSerializeFail, "failed to serialize custom endpoints"))
+			response.BadRequest(c, "Failed to serialize custom endpoints")
 			return
 		}
 		customEndpointsJSON = string(endpointBytes)
