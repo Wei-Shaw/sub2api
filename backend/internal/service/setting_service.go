@@ -3274,15 +3274,6 @@ func (s *SettingService) IsBudgetRectifierEnabled(ctx context.Context) bool {
 	return settings.Enabled && settings.ThinkingBudgetEnabled
 }
 
-// IsAdvisorToolRectifierEnabled 判断 Advisor Tool 整流是否启用（总开关 && Advisor Tool 子开关）
-func (s *SettingService) IsAdvisorToolRectifierEnabled(ctx context.Context) bool {
-	settings, err := s.GetRectifierSettings(ctx)
-	if err != nil {
-		return true // fail-open: 查询失败时默认启用
-	}
-	return settings.Enabled && settings.AdvisorToolEnabled
-}
-
 // GetBetaPolicySettings 获取 Beta 策略配置
 func (s *SettingService) GetBetaPolicySettings(ctx context.Context) (*BetaPolicySettings, error) {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyBetaPolicySettings)

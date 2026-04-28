@@ -4,7 +4,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -92,33 +91,6 @@ func TestGetRectifierSettings_LegacyJSONUpgrade(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, got.AdvisorToolEnabled)
 		require.Equal(t, []string{DefaultAdvisorToolPattern}, got.AdvisorToolPatterns)
-	})
-}
-
-func TestIsAdvisorToolRectifierEnabled(t *testing.T) {
-	cases := []struct {
-		name string
-		json string
-		want bool
-	}{
-		{"both switches on", `{"enabled":true,"advisor_tool_enabled":true}`, true},
-		{"master off blocks subswitch", `{"enabled":false,"advisor_tool_enabled":true}`, false},
-		{"subswitch off blocks", `{"enabled":true,"advisor_tool_enabled":false}`, false},
-		{"both off", `{"enabled":false,"advisor_tool_enabled":false}`, false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			svc := NewSettingService(&advisorRepoStub{value: tc.json}, nil)
-			got := svc.IsAdvisorToolRectifierEnabled(context.Background())
-			require.Equal(t, tc.want, got)
-		})
-	}
-
-	t.Run("repo error returns fail-open true", func(t *testing.T) {
-		svc := NewSettingService(&advisorRepoStub{err: errors.New("db down")}, nil)
-		// fail-open 与现有 IsBudgetRectifierEnabled / IsSignatureRectifierEnabled 行为一致：查询失败时默认启用。
-		got := svc.IsAdvisorToolRectifierEnabled(context.Background())
-		require.True(t, got)
 	})
 }
 

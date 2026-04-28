@@ -4481,7 +4481,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					rectifiedBody, bodyApplied := RectifyAdvisorTool(body)
 					// 触发条件：body 里有 advisor 工具（已剥）或客户端 header 里带 advisor-tool token（待剥）。
 					// 大小写不敏感比较以防御客户端发送 `Advisor-Tool-2026-03-01` 等变体。
-					headerHasAdvisor := containsBetaTokenIgnoreCase(c.GetHeader("anthropic-beta"), AdvisorBetaToken)
+					headerHasAdvisor := containsBetaTokenIgnoreCase(getHeaderRaw(c.Request.Header, "anthropic-beta"), AdvisorBetaToken)
 					switch {
 					case !bodyApplied && !headerHasAdvisor:
 						logger.LegacyPrintf("service.gateway", "Account %d: advisor-tool rectifier matched error but body+header have no advisor token, skipping retry", account.ID)
