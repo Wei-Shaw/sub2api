@@ -13,7 +13,7 @@ func TestUpdateProfile_DoesNotReturnPartialSuccessFromEmailIdentityResync(t *tes
 	repo := &emailSyncRepoStub{
 		user: &User{
 			ID:          19,
-			Email:       "profile-before@example.com",
+			Email:       "invite-profile-before@invite-login.invalid",
 			Username:    "tester",
 			Concurrency: 2,
 		},

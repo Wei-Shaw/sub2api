@@ -926,7 +926,7 @@ func TestAPIContracts(t *testing.T) {
 					"openai_fast_policy_settings": {
 						"rules": []
 					},
-					"custom_menu_items": [],
+					"custom_menu_items": null,
 					"custom_endpoints": [],
 					"payment_enabled": false,
 					"payment_min_amount": 0,
@@ -1141,6 +1141,7 @@ func TestAPIContracts(t *testing.T) {
 					"custom_endpoints": [],
 					"default_concurrency": 0,
 					"default_balance": 0,
+					"device_claim_bonus_balance": 0,
 					"affiliate_rebate_rate": 20,
 					"affiliate_rebate_freeze_hours": 0,
 					"affiliate_rebate_duration_days": 0,
