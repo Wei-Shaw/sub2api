@@ -257,7 +257,9 @@ func (p *Paddle) doRequest(ctx context.Context, method, path string, payload any
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	limited := io.LimitReader(resp.Body, paddleMaxResponseSize)
 	respBody, err := io.ReadAll(limited)
 	if err != nil {
@@ -300,9 +302,15 @@ func verifyPaddleSignature(secret, rawBody, header string, now time.Time) error 
 		return fmt.Errorf("signature timestamp outside tolerance")
 	}
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(tsRaw))
-	mac.Write([]byte(":"))
-	mac.Write([]byte(rawBody))
+	if _, err := mac.Write([]byte(tsRaw)); err != nil {
+		return fmt.Errorf("write paddle timestamp into hmac: %w", err)
+	}
+	if _, err := mac.Write([]byte(":")); err != nil {
+		return fmt.Errorf("write paddle separator into hmac: %w", err)
+	}
+	if _, err := mac.Write([]byte(rawBody)); err != nil {
+		return fmt.Errorf("write paddle body into hmac: %w", err)
+	}
 	expected := mac.Sum(nil)
 	provided, err := hex.DecodeString(h1)
 	if err != nil {
