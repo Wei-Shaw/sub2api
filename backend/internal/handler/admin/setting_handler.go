@@ -105,18 +105,6 @@ const (
 	errReasonSettingCustomEndpointURLInvalid    = "CUSTOM_ENDPOINT_URL_INVALID"
 	errReasonSettingCustomEndpointDescTooLong   = "CUSTOM_ENDPOINT_DESCRIPTION_TOO_LONG"
 	errReasonSettingCustomEndpointSerializeFail = "CUSTOM_ENDPOINT_SERIALIZE_FAILED"
-
-	// SMTP 配置 + 测试。
-	errReasonSettingSMTPHostRequired     = "SMTP_HOST_REQUIRED"
-	errReasonSettingSMTPConnectionFailed = "SMTP_CONNECTION_FAILED"
-	errReasonSettingSMTPSendTestFailed   = "SMTP_SEND_TEST_FAILED"
-
-	// API key 签名 pattern 校验。
-	errReasonSettingSignaturePatternsTooMany = "SIGNATURE_PATTERNS_TOO_MANY"
-	errReasonSettingSignaturePatternTooLong  = "SIGNATURE_PATTERN_TOO_LONG"
-
-	// provider_type 必填。
-	errReasonSettingProviderTypeRequired = "PROVIDER_TYPE_REQUIRED"
 )
 
 // semverPattern 预编译 semver 格式校验正则
@@ -2292,7 +2280,7 @@ func (h *SettingHandler) TestSMTPConnection(c *gin.Context) {
 		password = savedConfig.Password
 	}
 	if req.SMTPHost == "" {
-		response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingSMTPHostRequired, "smtp host is required"))
+		response.BadRequest(c, "SMTP host is required")
 		return
 	}
 
@@ -2306,9 +2294,7 @@ func (h *SettingHandler) TestSMTPConnection(c *gin.Context) {
 
 	err := h.emailService.TestSMTPConnectionWithConfig(config)
 	if err != nil {
-		response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingSMTPConnectionFailed, "smtp connection test failed").WithCause(err).WithMetadata(map[string]string{
-			"cause": err.Error(),
-		}))
+		response.BadRequest(c, "SMTP connection test failed: "+err.Error())
 		return
 	}
 
@@ -2370,7 +2356,7 @@ func (h *SettingHandler) SendTestEmail(c *gin.Context) {
 		req.SMTPFromName = savedConfig.FromName
 	}
 	if req.SMTPHost == "" {
-		response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingSMTPHostRequired, "smtp host is required"))
+		response.BadRequest(c, "SMTP host is required")
 		return
 	}
 
@@ -2419,9 +2405,7 @@ func (h *SettingHandler) SendTestEmail(c *gin.Context) {
 `
 
 	if err := h.emailService.SendEmailWithConfig(config, req.Email, subject, body); err != nil {
-		response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingSMTPSendTestFailed, "failed to send test email").WithCause(err).WithMetadata(map[string]string{
-			"cause": err.Error(),
-		}))
+		response.BadRequest(c, "Failed to send test email: "+err.Error())
 		return
 	}
 
@@ -2584,7 +2568,7 @@ func (h *SettingHandler) UpdateRectifierSettings(c *gin.Context) {
 	const maxPatterns = 50
 	const maxPatternLen = 500
 	if len(req.APIKeySignaturePatterns) > maxPatterns {
-		response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingSignaturePatternsTooMany, "too many signature patterns (max 50)"))
+		response.BadRequest(c, "Too many signature patterns (max 50)")
 		return
 	}
 	var cleanedPatterns []string
@@ -2594,7 +2578,7 @@ func (h *SettingHandler) UpdateRectifierSettings(c *gin.Context) {
 			continue
 		}
 		if len(p) > maxPatternLen {
-			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingSignaturePatternTooLong, "signature pattern too long (max 500 characters)"))
+			response.BadRequest(c, "Signature pattern too long (max 500 characters)")
 			return
 		}
 		cleanedPatterns = append(cleanedPatterns, p)
@@ -2780,7 +2764,7 @@ func (h *SettingHandler) ResetWebSearchUsage(c *gin.Context) {
 		return
 	}
 	if req.ProviderType == "" {
-		response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingProviderTypeRequired, "provider_type is required"))
+		response.BadRequest(c, "provider_type is required")
 		return
 	}
 	if err := service.ResetWebSearchUsage(c.Request.Context(), req.ProviderType); err != nil {
