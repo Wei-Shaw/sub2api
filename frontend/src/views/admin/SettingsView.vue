@@ -5424,8 +5424,6 @@ const streamTimeoutForm = reactive({
 // Rectifier 状态
 const rectifierLoading = ref(true);
 const rectifierSaving = ref(false);
-const DEFAULT_ADVISOR_TOOL_PATTERN =
-  "Unexpected value(s) `advisor-tool-2026-03-01` for the `anthropic-beta` header.";
 const rectifierForm = reactive({
   enabled: true,
   thinking_signature_enabled: true,
@@ -5433,7 +5431,7 @@ const rectifierForm = reactive({
   apikey_signature_enabled: false,
   apikey_signature_patterns: [] as string[],
   advisor_tool_enabled: true,
-  advisor_tool_patterns: [DEFAULT_ADVISOR_TOOL_PATTERN] as string[],
+  advisor_tool_patterns: [] as string[],
 });
 
 // Beta Policy 状态
@@ -6863,19 +6861,31 @@ async function loadRectifierSettings() {
 async function saveRectifierSettings() {
   rectifierSaving.value = true;
   try {
-    const updated = await adminAPI.settings.updateRectifierSettings({
-      enabled: rectifierForm.enabled,
-      thinking_signature_enabled: rectifierForm.thinking_signature_enabled,
-      thinking_budget_enabled: rectifierForm.thinking_budget_enabled,
-      apikey_signature_enabled: rectifierForm.apikey_signature_enabled,
+    // 总开关 enabled=false 时，UI 隐藏所有子开关，但表单内仍保留旧值。
+    // 保存时强制把所有子开关一并置 false，避免下次开总开关时旧值自动恢复（违反用户预期）。
+    const enabled = rectifierForm.enabled;
+    const payload = {
+      enabled,
+      thinking_signature_enabled: enabled
+        ? rectifierForm.thinking_signature_enabled
+        : false,
+      thinking_budget_enabled: enabled
+        ? rectifierForm.thinking_budget_enabled
+        : false,
+      apikey_signature_enabled: enabled
+        ? rectifierForm.apikey_signature_enabled
+        : false,
       apikey_signature_patterns: rectifierForm.apikey_signature_patterns.filter(
         (p) => p.trim() !== "",
       ),
-      advisor_tool_enabled: rectifierForm.advisor_tool_enabled,
+      advisor_tool_enabled: enabled
+        ? rectifierForm.advisor_tool_enabled
+        : false,
       advisor_tool_patterns: rectifierForm.advisor_tool_patterns.filter(
         (p) => p.trim() !== "",
       ),
-    });
+    };
+    const updated = await adminAPI.settings.updateRectifierSettings(payload);
     Object.assign(rectifierForm, updated);
     if (!Array.isArray(rectifierForm.apikey_signature_patterns)) {
       rectifierForm.apikey_signature_patterns = [];
