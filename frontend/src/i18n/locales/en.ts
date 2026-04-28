@@ -349,6 +349,13 @@ export default {
         minutes: '{m}m',
         withSuffix: '{time} to lift'
       }
+    },
+    // Common error code → label mapping (aligned with backend pkgerrors.Reason):
+    // admin/user views share these keys; handler returns reason and frontend
+    // looks up the localized label here.
+    errors: {
+      INVALID_REQUEST_BODY: 'Invalid request body',
+      INVALID_ID: 'Invalid resource ID'
     }
   },
 

@@ -349,6 +349,12 @@ export default {
         minutes: '{m}m',
         withSuffix: '{time} 后解除'
       }
+    },
+    // 通用错误码 → 文案映射（与后端 pkgerrors.Reason 对齐）：admin/user 全站共用，
+    // handler 层统一返回 reason 后由前端按 reason 取该 key 渲染本地化提示。
+    errors: {
+      INVALID_REQUEST_BODY: '请求格式错误',
+      INVALID_ID: 'ID 无效'
     }
   },
 
