@@ -126,24 +126,39 @@ export function validateServiceQuotaRule(form: ServiceQuotaRuleInput): Validatio
   return { ok: errors.length === 0, errors }
 }
 
+/** reason 常量：后端 service_quota_field_validation.go ReasonServiceQuotaValidationError */
+export const SERVICE_QUOTA_VALIDATION_REASON = 'SERVICE_QUOTA_VALIDATION_ERROR'
+
 /**
- * 解析后端 SERVICE_QUOTA_VALIDATION_ERROR 响应：
- *   { code: "SERVICE_QUOTA_VALIDATION_ERROR", details: { fields: [{path, code}] } }
+ * 解析后端 service quota 字段校验错误响应。
  *
- * 错误形状参考 axios interceptor 转换后的 `{ status, code, message, details }`。
- * 任何不符合该形状的失败（网络错 / 401 / 5xx 文本错）返回 null，让调用方走
- * extractApiErrorMessage 兜底 toast。
+ * axios 拦截器（frontend/src/api/client.ts:97-103）把 API 错误统一转成：
+ *   `{ status, code: <HTTP 数字>, reason, message, metadata }`
+ *
+ * 后端 validationFieldCollector.build() 把 fieldError[] 序列化为 JSON 字符串
+ * 放进 metadata.fields（pkgerrors.Metadata 是 map[string]string，不能直接放数组）：
+ *   `{ reason: "SERVICE_QUOTA_VALIDATION_ERROR", metadata: { fields: '[{...}]', count: '3' } }`
+ *
+ * 任何不符合该形状的失败（网络错 / 401 / 5xx / metadata 缺失 / JSON 解析失败）
+ * 返回 null，让调用方走 extractApiErrorMessage 兜底 toast。
  */
 export function parseServiceQuotaApiErrors(err: unknown): ValidationError[] | null {
   if (!err || typeof err !== 'object') return null
   const e = err as Record<string, unknown>
-  if (e.code !== 'SERVICE_QUOTA_VALIDATION_ERROR') return null
-  const details = e.details
-  if (!details || typeof details !== 'object') return null
-  const fields = (details as Record<string, unknown>).fields
-  if (!Array.isArray(fields)) return null
+  if (e.reason !== SERVICE_QUOTA_VALIDATION_REASON) return null
+  const metadata = e.metadata
+  if (!metadata || typeof metadata !== 'object') return null
+  const raw = (metadata as Record<string, unknown>).fields
+  if (typeof raw !== 'string') return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return null
+  }
+  if (!Array.isArray(parsed)) return null
   const out: ValidationError[] = []
-  for (const f of fields) {
+  for (const f of parsed) {
     if (!f || typeof f !== 'object') continue
     const obj = f as Record<string, unknown>
     if (typeof obj.path !== 'string' || typeof obj.code !== 'string') continue
