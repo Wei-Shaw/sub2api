@@ -420,28 +420,52 @@ func (s *PluginSettingsService) UnregisterSchema(pluginName string) {
 // This makes startup-time seedDefaults a hot-path optimisation rather
 // than a correctness requirement: even if seeding has not run yet (e.g.
 // it failed transiently), plugin reads still succeed.
+// GetByKey returns (value, revision, storedSchemaVersion, currentSchemaVersion, error).
+//   - storedSchemaVersion: schema_version_at_write recorded on the
+//     plugin_settings row at write time. "0" when the row is missing
+//     and we fell back to a schema default.
+//   - currentSchemaVersion: the host's currently-cached schema_version
+//     for this plugin. "0" when the plugin has not registered a schema
+//     yet in this process lifetime.
+//
+// Both are normalised to "0" so callers (notably the gRPC Get response
+// and SDK SchemaVersionMismatchError) can compare them without nil
+// checks. Drift detection is layered on top: the SDK constructs
+// SchemaVersionMismatchError when stored != current, but only after a
+// type-decoded Get also fails — see plugin-sdk/settings.go GetTyped.
 func (s *PluginSettingsService) GetByKey(
 	ctx context.Context, pluginName, key string,
-) (json.RawMessage, int64, error) {
+) (json.RawMessage, int64, string, string, error) {
+	s.mu.RLock()
+	currentVersion := s.schemaVersions[pluginName]
+	s.mu.RUnlock()
+	if currentVersion == "" {
+		currentVersion = schemaVersionUndeclared
+	}
+
 	row := s.db.QueryRowContext(ctx, `
-		SELECT value_json::text, revision FROM plugin_settings
+		SELECT value_json::text, revision, schema_version_at_write FROM plugin_settings
 		WHERE plugin_name = $1 AND key = $2
 	`, pluginName, key)
-	var raw string
+	var raw, stored string
 	var rev int64
-	switch err := row.Scan(&raw, &rev); {
+	switch err := row.Scan(&raw, &rev, &stored); {
 	case err == nil:
-		return json.RawMessage(raw), rev, nil
+		if stored == "" {
+			stored = schemaVersionUndeclared
+		}
+		return json.RawMessage(raw), rev, stored, currentVersion, nil
 	case errors.Is(err, sql.ErrNoRows):
 		// Fall through to the schema default lookup below.
 	default:
-		return nil, 0, err
+		return nil, 0, "", "", err
 	}
 
 	if def, ok := s.lookupDefault(pluginName, key); ok {
-		return def, 0, nil
+		// Synthetic default has no recorded write version; report "0".
+		return def, 0, schemaVersionUndeclared, currentVersion, nil
 	}
-	return nil, 0, sql.ErrNoRows
+	return nil, 0, "", "", sql.ErrNoRows
 }
 
 // lookupDefault returns the schema default for (plugin, key) from the

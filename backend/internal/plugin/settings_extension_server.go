@@ -81,9 +81,14 @@ func (s *SettingsExtensionServer) Get(
 	if req.GetKey() == "" {
 		return nil, status.Error(codes.InvalidArgument, "settings: empty key")
 	}
-	val, rev, err := s.svc.GetByKey(ctx, pluginName, req.GetKey())
+	val, rev, stored, current, err := s.svc.GetByKey(ctx, pluginName, req.GetKey())
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			// Even on miss we surface current_schema_version so the SDK can
+			// attach drift context if a subsequent admin write lands. The
+			// service never returns ErrNoRows with a populated currentVersion
+			// before the row exists, so falling through to the empty
+			// CurrentSchemaVersion is correct.
 			return &pb.SettingsGetResponse{Exists: false}, nil
 		}
 		s.logger.Warn("settings get failed",
@@ -91,9 +96,11 @@ func (s *SettingsExtensionServer) Get(
 		return nil, status.Errorf(codes.Internal, "settings get: %v", err)
 	}
 	return &pb.SettingsGetResponse{
-		ValueJson: val,
-		Exists:    true,
-		Revision:  rev,
+		ValueJson:            val,
+		Exists:               true,
+		Revision:             rev,
+		StoredSchemaVersion:  stored,
+		CurrentSchemaVersion: current,
 	}, nil
 }
 
@@ -167,7 +174,10 @@ func (s *SettingsExtensionServer) sendSnapshot(
 	pluginName, key string,
 ) error {
 	if key != "" {
-		val, rev, err := s.svc.GetByKey(ctx, pluginName, key)
+		// SettingsChangeEvent has no schema_version fields by design
+		// (DESIGN §3.5: Watch carries values only; Get/snapshot carries
+		// versions). Drop the two trailing returns.
+		val, rev, _, _, err := s.svc.GetByKey(ctx, pluginName, key)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return nil
