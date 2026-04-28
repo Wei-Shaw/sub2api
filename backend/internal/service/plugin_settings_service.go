@@ -371,6 +371,16 @@ func (s *PluginSettingsService) RegisterSchemaWithInput(
 
 // seedDefaults writes default values for keys that do not exist yet.
 // Existing values (whether plugin- or admin-supplied) are left alone.
+//
+// V5/W6 SETTINGS-V2 invariants:
+//   - Secret-visibility keys are NEVER seeded. A secret with no row means
+//     "not configured / cleared by admin"; pre-populating from a manifest
+//     constant would silently undo admin clears on every plugin restart
+//     (the row is gone after clear, so ON CONFLICT DO NOTHING does not
+//     protect us). Operators must enter secrets explicitly.
+//   - schema_version_at_write is populated from the current cached
+//     schema_version so seeded rows do not appear as "stored=0,current=1"
+//     drift the moment we start surfacing the version fields on Get.
 func (s *PluginSettingsService) seedDefaults(
 	ctx context.Context, pluginName string, defaultsJSON json.RawMessage,
 ) error {
@@ -378,12 +388,22 @@ func (s *PluginSettingsService) seedDefaults(
 	if err := json.Unmarshal(defaultsJSON, &defaults); err != nil {
 		return fmt.Errorf("unmarshal defaults: %w", err)
 	}
+	s.mu.RLock()
+	meta := s.propertiesMeta[pluginName]
+	currentVersion := s.schemaVersions[pluginName]
+	s.mu.RUnlock()
+	if currentVersion == "" {
+		currentVersion = schemaVersionUndeclared
+	}
 	for key, val := range defaults {
+		if m, ok := meta[key]; ok && m.Visibility == PropertyVisibilitySecret {
+			continue
+		}
 		_, err := s.db.ExecContext(ctx, `
-			INSERT INTO plugin_settings (plugin_name, key, value_json, revision, updated_at)
-			VALUES ($1, $2, $3::jsonb, 1, NOW())
+			INSERT INTO plugin_settings (plugin_name, key, value_json, revision, schema_version_at_write, updated_at)
+			VALUES ($1, $2, $3::jsonb, 1, $4, NOW())
 			ON CONFLICT (plugin_name, key) DO NOTHING
-		`, pluginName, key, string(val))
+		`, pluginName, key, string(val), currentVersion)
 		if err != nil {
 			return fmt.Errorf("seed default %s/%s: %w", pluginName, key, err)
 		}
@@ -478,7 +498,15 @@ func (s *PluginSettingsService) GetByKey(
 func (s *PluginSettingsService) lookupDefault(plugin, key string) (json.RawMessage, bool) {
 	s.mu.RLock()
 	rawDefaults := s.defaults[plugin]
+	meta := s.propertiesMeta[plugin]
 	s.mu.RUnlock()
+	// V5/W6 SETTINGS-V2: never serve schema defaults for secret fields.
+	// A secret with no row means "cleared / not configured"; serving the
+	// manifest constant would silently undo admin clear and let plugins
+	// see a hard-coded fallback secret. Operators must explicitly write.
+	if m, ok := meta[key]; ok && m.Visibility == PropertyVisibilitySecret {
+		return nil, false
+	}
 	if len(rawDefaults) == 0 {
 		return nil, false
 	}
