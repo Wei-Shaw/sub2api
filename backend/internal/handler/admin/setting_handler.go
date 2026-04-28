@@ -21,14 +21,23 @@ import (
 )
 
 // 错误码常量：与前端 i18n key（admin.setting.errors.* / common.errors.*）对齐。
-// 走 PR-A 字段级错误协议（task #33）。setting 业务级 BadRequest 数量很多（80+），
-// 本 commit 只把 binding 错和 Turnstile / TOTP 几条最显眼的业务错收口；其他业务文案
-// 留待 P1/P2 单独迁移，避免一次 commit 膨胀过大破坏业务逻辑零变化原则。
+// 走 PR-A 字段级错误协议（task #33）。
+//
+// INVALID_REQUEST_BODY / INVALID_ID 是跨 handler 通用错误码，已提到 admin/common.go
+// 顶部（errReasonInvalidRequestBody / errReasonInvalidID）作为共享常量；这里的
+// errReasonSetting* 是 setting 模块特定的业务级 reason。
 const (
-	errReasonSettingInvalidRequestBody       = "INVALID_REQUEST_BODY"
 	errReasonSettingTurnstileSiteKeyRequired = "TURNSTILE_SITE_KEY_REQUIRED"
 	errReasonSettingTurnstileSecretRequired  = "TURNSTILE_SECRET_REQUIRED"
 	errReasonSettingTOTPKeyMissing           = "TOTP_ENCRYPTION_KEY_MISSING"
+
+	// service 层 SetXxxSettings 校验失败时的兜底 reason（保留 WithCause 的链路便于排查）。
+	// 这些 reason 没细分到具体字段，因为底层 service 校验可能涉及多字段组合规则；
+	// 前端仅提示"X 设置无效"层级即可。
+	errReasonSettingOverloadCooldownInvalid = "OVERLOAD_COOLDOWN_INVALID"
+	errReasonSettingRectifierInvalid        = "RECTIFIER_SETTINGS_INVALID"
+	errReasonSettingBetaPolicyInvalid       = "BETA_POLICY_SETTINGS_INVALID"
+	errReasonSettingStreamTimeoutInvalid    = "STREAM_TIMEOUT_SETTINGS_INVALID"
 )
 
 // semverPattern 预编译 semver 格式校验正则
@@ -474,7 +483,7 @@ type UpdateSettingsRequest struct {
 // PUT /api/v1/admin/settings
 func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	var req UpdateSettingsRequest
-	if err := BindJSONOrError(c, &req, errReasonSettingInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -2171,7 +2180,7 @@ type TestSMTPRequest struct {
 // POST /api/v1/admin/settings/test-smtp
 func (h *SettingHandler) TestSMTPConnection(c *gin.Context) {
 	var req TestSMTPRequest
-	if err := BindJSONOrError(c, &req, errReasonSettingInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -2239,7 +2248,7 @@ type SendTestEmailRequest struct {
 // POST /api/v1/admin/settings/send-test-email
 func (h *SettingHandler) SendTestEmail(c *gin.Context) {
 	var req SendTestEmailRequest
-	if err := BindJSONOrError(c, &req, errReasonSettingInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -2399,7 +2408,7 @@ type UpdateOverloadCooldownSettingsRequest struct {
 // PUT /api/v1/admin/settings/overload-cooldown
 func (h *SettingHandler) UpdateOverloadCooldownSettings(c *gin.Context) {
 	var req UpdateOverloadCooldownSettingsRequest
-	if err := BindJSONOrError(c, &req, errReasonSettingInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -2410,7 +2419,9 @@ func (h *SettingHandler) UpdateOverloadCooldownSettings(c *gin.Context) {
 	}
 
 	if err := h.settingService.SetOverloadCooldownSettings(c.Request.Context(), settings); err != nil {
-		response.BadRequest(c, err.Error())
+		// service 层校验错（如 cooldown_minutes 范围非法）：包成结构化 BadRequest 让前端按 reason i18n。
+		// WithCause 保留底层 error 链便于排查；前端只读 reason / metadata。
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingOverloadCooldownInvalid, "overload cooldown settings invalid").WithCause(err))
 		return
 	}
 
@@ -2479,7 +2490,7 @@ type UpdateRectifierSettingsRequest struct {
 // PUT /api/v1/admin/settings/rectifier
 func (h *SettingHandler) UpdateRectifierSettings(c *gin.Context) {
 	var req UpdateRectifierSettingsRequest
-	if err := BindJSONOrError(c, &req, errReasonSettingInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -2513,7 +2524,7 @@ func (h *SettingHandler) UpdateRectifierSettings(c *gin.Context) {
 	}
 
 	if err := h.settingService.SetRectifierSettings(c.Request.Context(), settings); err != nil {
-		response.BadRequest(c, err.Error())
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingRectifierInvalid, "rectifier settings invalid").WithCause(err))
 		return
 	}
 
@@ -2562,7 +2573,7 @@ type UpdateBetaPolicySettingsRequest struct {
 // PUT /api/v1/admin/settings/beta-policy
 func (h *SettingHandler) UpdateBetaPolicySettings(c *gin.Context) {
 	var req UpdateBetaPolicySettingsRequest
-	if err := BindJSONOrError(c, &req, errReasonSettingInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -2574,7 +2585,7 @@ func (h *SettingHandler) UpdateBetaPolicySettings(c *gin.Context) {
 
 	settings := &service.BetaPolicySettings{Rules: rules}
 	if err := h.settingService.SetBetaPolicySettings(c.Request.Context(), settings); err != nil {
-		response.BadRequest(c, err.Error())
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingBetaPolicyInvalid, "beta policy settings invalid").WithCause(err))
 		return
 	}
 
@@ -2605,7 +2616,7 @@ type UpdateStreamTimeoutSettingsRequest struct {
 // PUT /api/v1/admin/settings/stream-timeout
 func (h *SettingHandler) UpdateStreamTimeoutSettings(c *gin.Context) {
 	var req UpdateStreamTimeoutSettingsRequest
-	if err := BindJSONOrError(c, &req, errReasonSettingInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -2619,7 +2630,7 @@ func (h *SettingHandler) UpdateStreamTimeoutSettings(c *gin.Context) {
 	}
 
 	if err := h.settingService.SetStreamTimeoutSettings(c.Request.Context(), settings); err != nil {
-		response.BadRequest(c, err.Error())
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingStreamTimeoutInvalid, "stream timeout settings invalid").WithCause(err))
 		return
 	}
 
@@ -2654,7 +2665,7 @@ func (h *SettingHandler) GetWebSearchEmulationConfig(c *gin.Context) {
 // PUT /api/v1/admin/settings/web-search-emulation
 func (h *SettingHandler) UpdateWebSearchEmulationConfig(c *gin.Context) {
 	var cfg service.WebSearchEmulationConfig
-	if err := BindJSONOrError(c, &cfg, errReasonSettingInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &cfg, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -2679,7 +2690,7 @@ func (h *SettingHandler) ResetWebSearchUsage(c *gin.Context) {
 	var req struct {
 		ProviderType string `json:"provider_type"`
 	}
-	if err := BindJSONOrError(c, &req, errReasonSettingInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -2700,7 +2711,7 @@ func (h *SettingHandler) TestWebSearchEmulation(c *gin.Context) {
 	var req struct {
 		Query string `json:"query"`
 	}
-	if err := BindJSONOrError(c, &req, errReasonSettingInvalidRequestBody); err != nil {
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
