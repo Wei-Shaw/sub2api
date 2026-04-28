@@ -248,7 +248,49 @@ REDACTED
 
 		AffiliateEnabled: settings.AffiliateEnabled,
 REDACTED
+
+	// OpenAI fast policy (stored under a dedicated setting key)
+	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
+		slog.Error("openai_fast_policy_settings_get_failed", "error", err)
+REDACTED else if fastPolicy != nil {
+		payload.OpenAIFastPolicySettings = openaiFastPolicySettingsToDTO(fastPolicy)
+REDACTED
+
 	response.Success(c, systemSettingsResponseData(payload, authSourceDefaults))
+REDACTED
+
+// openaiFastPolicySettingsToDTO converts service -> dto for OpenAI fast policy.
+func openaiFastPolicySettingsToDTO(s *service.OpenAIFastPolicySettings) *dto.OpenAIFastPolicySettings {
+	if s == nil {
+		return nil
+REDACTED
+	rules := make([]dto.OpenAIFastPolicyRule, len(s.Rules))
+	for i, r := range s.Rules {
+		rules[i] = dto.OpenAIFastPolicyRule(r)
+REDACTED
+	return &dto.OpenAIFastPolicySettings{Rules: rulesREDACTED
+REDACTED
+
+// openaiFastPolicySettingsFromDTO converts dto -> service for OpenAI fast policy.
+//
+// 规范化 ServiceTier：在 DTO 进入 service 层之前统一把空字符串归一为
+// service.OpenAIFastTierAny ("all")，避免管理员保存时空串与 "all" 同时
+// 表达"匹配任意 tier"造成数据库取值的二义性。其它非空值原样透传，由
+// service.SetOpenAIFastPolicySettings 负责合法值校验。
+func openaiFastPolicySettingsFromDTO(s *dto.OpenAIFastPolicySettings) *service.OpenAIFastPolicySettings {
+	if s == nil {
+		return nil
+REDACTED
+	rules := make([]service.OpenAIFastPolicyRule, len(s.Rules))
+	for i, r := range s.Rules {
+		rules[i] = service.OpenAIFastPolicyRule(r)
+		tier := strings.ToLower(strings.TrimSpace(rules[i].ServiceTier))
+		if tier == "" {
+			tier = service.OpenAIFastTierAny
+	REDACTED
+		rules[i].ServiceTier = tier
+REDACTED
+	return &service.OpenAIFastPolicySettings{Rules: rulesREDACTED
 REDACTED
 
 // UpdateSettingsRequest 更新设置请求
@@ -452,6 +494,9 @@ type UpdateSettingsRequest struct {
 
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled *bool `json:"affiliate_enabled"`
+
+	// OpenAI fast/flex policy (optional, only updated when provided)
+	OpenAIFastPolicySettings *dto.OpenAIFastPolicySettings `json:"openai_fast_policy_settings,omitempty"`
 REDACTED
 
 // UpdateSettings 更新系统设置
@@ -1350,6 +1395,14 @@ REDACTED
 		return
 REDACTED
 
+	// Update OpenAI fast policy (stored under dedicated key, only when provided).
+	if req.OpenAIFastPolicySettings != nil {
+		if err := h.settingService.SetOpenAIFastPolicySettings(c.Request.Context(), openaiFastPolicySettingsFromDTO(req.OpenAIFastPolicySettings)); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+	REDACTED
+REDACTED
+
 	// Update payment configuration (integrated into system settings).
 	// Skip if no payment fields were provided (prevents accidental wipe).
 	if h.paymentConfigService != nil && hasPaymentFields(req) {
@@ -1554,6 +1607,11 @@ REDACTED
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
+REDACTED
+	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
+		slog.Error("openai_fast_policy_settings_get_failed", "error", err)
+REDACTED else if fastPolicy != nil {
+		payload.OpenAIFastPolicySettings = openaiFastPolicySettingsToDTO(fastPolicy)
 REDACTED
 	response.Success(c, systemSettingsResponseData(payload, updatedAuthSourceDefaults))
 REDACTED
