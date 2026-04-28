@@ -16,6 +16,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// 错误码常量：与前端 i18n key（admin.group.errors.* 或 common.errors.*）对齐。
+// 走 PR-A 字段级错误协议（task #33）让前端 parseFieldErrors 直接消费 metadata.fields。
+const (
+	errReasonGroupInvalidID          = "INVALID_GROUP_ID"
+	errReasonGroupInvalidRequestBody = "INVALID_REQUEST_BODY"
+)
+
 // GroupHandler handles admin group management
 type GroupHandler struct {
 	adminService         service.AdminService
@@ -221,9 +228,9 @@ func (h *GroupHandler) GetAll(c *gin.Context) {
 // GetByID handles getting a group by ID
 // GET /api/v1/admin/groups/:id
 func (h *GroupHandler) GetByID(c *gin.Context) {
-	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	groupID, err := ParseInt64Param(c, "id", errReasonGroupInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid group ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -240,8 +247,8 @@ func (h *GroupHandler) GetByID(c *gin.Context) {
 // POST /api/v1/admin/groups
 func (h *GroupHandler) Create(c *gin.Context) {
 	var req CreateGroupRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonGroupInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -284,15 +291,15 @@ func (h *GroupHandler) Create(c *gin.Context) {
 // Update handles updating a group
 // PUT /api/v1/admin/groups/:id
 func (h *GroupHandler) Update(c *gin.Context) {
-	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	groupID, err := ParseInt64Param(c, "id", errReasonGroupInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid group ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
 	var req UpdateGroupRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonGroupInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -336,9 +343,9 @@ func (h *GroupHandler) Update(c *gin.Context) {
 // Delete handles deleting a group
 // DELETE /api/v1/admin/groups/:id
 func (h *GroupHandler) Delete(c *gin.Context) {
-	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	groupID, err := ParseInt64Param(c, "id", errReasonGroupInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid group ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -369,9 +376,9 @@ func (h *GroupHandler) Delete(c *gin.Context) {
 // GetStats handles getting group statistics
 // GET /api/v1/admin/groups/:id/stats
 func (h *GroupHandler) GetStats(c *gin.Context) {
-	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	groupID, err := ParseInt64Param(c, "id", errReasonGroupInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid group ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -415,9 +422,9 @@ func (h *GroupHandler) GetCapacitySummary(c *gin.Context) {
 // GetGroupAPIKeys handles getting API keys in a group
 // GET /api/v1/admin/groups/:id/api-keys
 func (h *GroupHandler) GetGroupAPIKeys(c *gin.Context) {
-	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	groupID, err := ParseInt64Param(c, "id", errReasonGroupInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid group ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -439,9 +446,9 @@ func (h *GroupHandler) GetGroupAPIKeys(c *gin.Context) {
 // GetGroupRateMultipliers handles getting rate multipliers for users in a group
 // GET /api/v1/admin/groups/:id/rate-multipliers
 func (h *GroupHandler) GetGroupRateMultipliers(c *gin.Context) {
-	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	groupID, err := ParseInt64Param(c, "id", errReasonGroupInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid group ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -460,9 +467,9 @@ func (h *GroupHandler) GetGroupRateMultipliers(c *gin.Context) {
 // ClearGroupRateMultipliers handles clearing all rate multipliers for a group
 // DELETE /api/v1/admin/groups/:id/rate-multipliers
 func (h *GroupHandler) ClearGroupRateMultipliers(c *gin.Context) {
-	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	groupID, err := ParseInt64Param(c, "id", errReasonGroupInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid group ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -482,15 +489,15 @@ type BatchSetGroupRateMultipliersRequest struct {
 // BatchSetGroupRateMultipliers handles batch setting rate multipliers for a group
 // PUT /api/v1/admin/groups/:id/rate-multipliers
 func (h *GroupHandler) BatchSetGroupRateMultipliers(c *gin.Context) {
-	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	groupID, err := ParseInt64Param(c, "id", errReasonGroupInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid group ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
 	var req BatchSetGroupRateMultipliersRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonGroupInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -510,15 +517,15 @@ type BatchSetGroupRPMOverridesRequest struct {
 // BatchSetGroupRPMOverrides handles batch setting rpm_override for users in a group
 // PUT /api/v1/admin/groups/:id/rpm-overrides
 func (h *GroupHandler) BatchSetGroupRPMOverrides(c *gin.Context) {
-	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	groupID, err := ParseInt64Param(c, "id", errReasonGroupInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid group ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
 	var req BatchSetGroupRPMOverridesRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonGroupInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -533,9 +540,9 @@ func (h *GroupHandler) BatchSetGroupRPMOverrides(c *gin.Context) {
 // ClearGroupRPMOverrides handles clearing all rpm_override for a group
 // DELETE /api/v1/admin/groups/:id/rpm-overrides
 func (h *GroupHandler) ClearGroupRPMOverrides(c *gin.Context) {
-	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	groupID, err := ParseInt64Param(c, "id", errReasonGroupInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid group ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -559,8 +566,8 @@ type UpdateSortOrderRequest struct {
 // PUT /api/v1/admin/groups/sort-order
 func (h *GroupHandler) UpdateSortOrder(c *gin.Context) {
 	var req UpdateSortOrderRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonGroupInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
