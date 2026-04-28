@@ -6,8 +6,8 @@
  * 提供给 plugin frontend bundle 使用.
  *
  * Externals:
- *   - vue / lucide-vue-next 由 plugin importmap (vue) + host 自身 (lucide) 提供,
- *     不打入 SDK bundle.
+ *   - vue / vue-i18n 由 plugin importmap (host singleton) 共享, 不打入 SDK bundle.
+ *   - 其余 (@tanstack/vue-virtual 等) 一律 inline, plugin 只需依赖 importmap 这两个 specifier.
  *
  * emptyOutDir:false 防止覆盖 host frontend 的主 bundle.
  */
@@ -35,8 +35,8 @@ export default defineConfig({
       fileName: () => 'plugin-sdk.js',
     },
     rollupOptions: {
-      // vue 通过 plugin importmap 共享; lucide-vue-next host 自己 bundle, plugin 不需要也能通过 host 全局命名空间获得 (本 V2 阶段未涉及).
-      external: ['vue', 'vue-i18n', 'lucide-vue-next', '@tanstack/vue-virtual'],
+      // vue / vue-i18n 由 host importmap 共享 (singleton); 其余 (@tanstack/vue-virtual 等) 全部 bundle 进 plugin-sdk.js, 避免 plugin 侧 bare specifier 解析失败.
+      external: ['vue', 'vue-i18n'],
       output: {
         inlineDynamicImports: true,
         assetFileNames: (assetInfo) => {
