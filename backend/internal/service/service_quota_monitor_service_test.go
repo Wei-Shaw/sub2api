@@ -5,89 +5,12 @@ package service
 import (
 	"context"
 	"errors"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
-
-type monitorFakeRepo struct {
-	rules []*ServiceQuotaRule
-}
-
-func (f *monitorFakeRepo) List(_ context.Context, _ ServiceQuotaListFilter) ([]*ServiceQuotaRule, error) {
-	out := make([]*ServiceQuotaRule, len(f.rules))
-	copy(out, f.rules)
-	return out, nil
-}
-
-func (f *monitorFakeRepo) Create(_ context.Context, _ ServiceQuotaRuleInput) (*ServiceQuotaRule, error) {
-	return nil, errors.New("not supported")
-}
-func (f *monitorFakeRepo) Update(_ context.Context, _ int64, _ ServiceQuotaRuleInput) (*ServiceQuotaRule, error) {
-	return nil, errors.New("not supported")
-}
-func (f *monitorFakeRepo) Delete(_ context.Context, _ int64) error {
-	return errors.New("not supported")
-}
-func (f *monitorFakeRepo) FetchAccountScope(_ context.Context, _ int64) (*AccountScopeInfo, error) {
-	return nil, errors.New("not supported")
-}
-func (f *monitorFakeRepo) FetchGroupScope(_ context.Context, _ int64) (*GroupScopeInfo, error) {
-	return nil, errors.New("not supported")
-}
-func (f *monitorFakeRepo) FetchChannelScope(_ context.Context, _ int64) (*ChannelScopeInfo, error) {
-	return nil, errors.New("not supported")
-}
-func (f *monitorFakeRepo) FetchPathIDsByOwner(_ context.Context, _ string, _ int64) ([]int64, error) {
-	return nil, nil
-}
-
-type monitorFakeLimiter struct {
-	mu        sync.Mutex
-	snapshots map[string]LimiterSnapshot
-	manyErr   error
-	calls     [][]SnapshotKey
-}
-
-func newMonitorFakeLimiter() *monitorFakeLimiter {
-	return &monitorFakeLimiter{snapshots: map[string]LimiterSnapshot{}}
-}
-
-func (f *monitorFakeLimiter) Current(_ context.Context, _ string, _ time.Duration, _ string) (float64, error) {
-	return 0, nil
-}
-func (f *monitorFakeLimiter) Increment(_ context.Context, _ string, _ float64, _ time.Duration, _ string) (float64, error) {
-	return 0, nil
-}
-func (f *monitorFakeLimiter) Acquire(_ context.Context, _, _ string, _ int64) (bool, error) {
-	return true, nil
-}
-func (f *monitorFakeLimiter) Release(_ context.Context, _, _ string) error   { return nil }
-func (f *monitorFakeLimiter) Reset(_ context.Context, _ string) error        { return nil }
-func (f *monitorFakeLimiter) ResetPattern(_ context.Context, _ string) error { return nil }
-
-func (f *monitorFakeLimiter) Snapshot(_ context.Context, key string, _ time.Duration, _ string) (LimiterSnapshot, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.snapshots[key], nil
-}
-
-func (f *monitorFakeLimiter) SnapshotMany(_ context.Context, keys []SnapshotKey) ([]LimiterSnapshot, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.calls = append(f.calls, append([]SnapshotKey(nil), keys...))
-	if f.manyErr != nil {
-		return nil, f.manyErr
-	}
-	out := make([]LimiterSnapshot, len(keys))
-	for i, k := range keys {
-		out[i] = f.snapshots[k.Key]
-	}
-	return out, nil
-}
 
 type monitorFakeCache struct{}
 
@@ -101,7 +24,7 @@ func (monitorFakeCache) SetEnabled(_ context.Context, _ bool) error             
 func (monitorFakeCache) InvalidateEnabled(_ context.Context) error               { return nil }
 func (monitorFakeCache) Invalidate(_ context.Context) error                      { return nil }
 
-func newMonitorService(t *testing.T, enabled bool, rules []*ServiceQuotaRule, limiter *monitorFakeLimiter) ServiceQuotaMonitorService {
+func newMonitorService(t *testing.T, enabled bool, rules []*ServiceQuotaRule, limiter *fakeServiceQuotaLimiter) ServiceQuotaMonitorService {
 	t.Helper()
 	settingRepo := newMockSettingRepo()
 	if enabled {
@@ -110,9 +33,9 @@ func newMonitorService(t *testing.T, enabled bool, rules []*ServiceQuotaRule, li
 		settingRepo.data[SettingKeyServiceQuotaEnabled] = "false"
 	}
 	settings := NewSettingService(settingRepo, &config.Config{})
-	repo := &monitorFakeRepo{rules: rules}
+	repo := &fakeServiceQuotaRepo{rules: rules}
 	if limiter == nil {
-		limiter = newMonitorFakeLimiter()
+		limiter = newFakeLimiter()
 	}
 	return NewServiceQuotaMonitorService(repo, limiter, monitorFakeCache{}, settings)
 }
@@ -348,7 +271,7 @@ func TestSnapshot_UserScope_FiltersToTargetUsers(t *testing.T) {
 // 验证 SnapshotMany 不会因为有遗留计数器而误命中。
 func TestSnapshot_AdminNoFilter_PerUserSkipped(t *testing.T) {
 	rule := ruleSimple(1, ServiceQuotaCounterModePerUser, ServiceQuotaLimiterRPM, 100, nil)
-	limiter := newMonitorFakeLimiter()
+	limiter := newFakeLimiter()
 	sharedKey := BuildServiceQuotaCounterKey(rule.ID, rule.Paths[0].ID, ServiceQuotaLimiterRPM, nil)
 	limiter.snapshots[sharedKey] = LimiterSnapshot{Current: 999, Exists: true}
 	svc := newMonitorService(t, true, []*ServiceQuotaRule{rule}, limiter)
@@ -433,7 +356,7 @@ func TestSnapshot_AdminWithUserFilter_SharedAlwaysIncluded(t *testing.T) {
 // LimiterSnapshot.ResetAtUnixMs（来自 repo 层 PTTL / now+window 推算）。
 func TestSnapshot_BuildLimiterRuntime_TransparentResetAt(t *testing.T) {
 	rule := ruleSimple(1, ServiceQuotaCounterModeShared, ServiceQuotaLimiterRPM, 100, nil)
-	limiter := newMonitorFakeLimiter()
+	limiter := newFakeLimiter()
 	key := BuildServiceQuotaCounterKey(rule.ID, rule.Paths[0].ID, ServiceQuotaLimiterRPM, nil)
 	expectedReset := time.Now().Add(60 * time.Second).UnixMilli()
 	limiter.snapshots[key] = LimiterSnapshot{Current: 5, Exists: true, ResetAtUnixMs: expectedReset}
@@ -466,7 +389,7 @@ func TestSnapshot_HardCap_Truncated(t *testing.T) {
 
 func TestSnapshot_BuildCounterKey_MatchesPreCheck(t *testing.T) {
 	rule := ruleSimple(42, ServiceQuotaCounterModeUser, ServiceQuotaLimiterRPM, 100, []int64{7})
-	limiter := newMonitorFakeLimiter()
+	limiter := newFakeLimiter()
 	expectedKey := BuildServiceQuotaCounterKey(42, rule.Paths[0].ID, ServiceQuotaLimiterRPM, ptrInt64Monitor(7))
 	limiter.snapshots[expectedKey] = LimiterSnapshot{Current: 33, Exists: true}
 	svc := newMonitorService(t, true, []*ServiceQuotaRule{rule}, limiter)
@@ -476,13 +399,13 @@ func TestSnapshot_BuildCounterKey_MatchesPreCheck(t *testing.T) {
 	require.True(t, snap.Items[0].Exists)
 	require.InDelta(t, 33.0, snap.Items[0].Current, 1e-9)
 	require.InDelta(t, 33.0, snap.Items[0].UtilizationPct, 1e-9)
-	require.Len(t, limiter.calls, 1)
-	require.Equal(t, expectedKey, limiter.calls[0][0].Key)
+	require.Len(t, limiter.snapshotManyCalls, 1)
+	require.Equal(t, expectedKey, limiter.snapshotManyCalls[0][0].Key)
 }
 
 func TestSnapshot_LimiterError_FailSoft(t *testing.T) {
 	rule := ruleSimple(1, ServiceQuotaCounterModeShared, ServiceQuotaLimiterRPM, 100, nil)
-	limiter := newMonitorFakeLimiter()
+	limiter := newFakeLimiter()
 	limiter.manyErr = errors.New("redis down")
 	svc := newMonitorService(t, true, []*ServiceQuotaRule{rule}, limiter)
 	snap, err := svc.Snapshot(context.Background(), MonitorSnapshotFilter{})

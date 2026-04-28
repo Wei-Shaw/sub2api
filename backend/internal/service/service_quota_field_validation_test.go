@@ -163,7 +163,7 @@ func TestValidateRuleFields_NilInput(t *testing.T) {
 // validateRuleFields 失败时 normalizeAndValidate 必须立即返回，不会再走到链路一致性校验。
 func TestNormalizeAndValidate_FieldErrorsBubbleUp(t *testing.T) {
 	t.Parallel()
-	repo := &validationFakeRepo{}
+	repo := &fakeServiceQuotaRepo{}
 	svc := &serviceQuotaService{repo: repo}
 
 	// 没 platform → 应触发 PLATFORM_REQUIRED 字段错误（而不是后续的 mismatch 错误）。

@@ -12,38 +12,9 @@ import (
 	pkgerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
-// validationFakeRepo 仅实现 ServiceQuotaRuleRepository 中 Fetch*Scope 部分（其他写路径返回错误），
-// 通过 fixture 注入 channel/account/group 的 scope 信息，让 validatePathLinkage 单测脱离真实 DB。
-type validationFakeRepo struct {
-	accounts map[int64]*AccountScopeInfo
-	groups   map[int64]*GroupScopeInfo
-	channels map[int64]*ChannelScopeInfo
-}
-
-func (r *validationFakeRepo) List(_ context.Context, _ ServiceQuotaListFilter) ([]*ServiceQuotaRule, error) {
-	return nil, errors.New("validationFakeRepo: List not supported")
-}
-func (r *validationFakeRepo) Create(_ context.Context, _ ServiceQuotaRuleInput) (*ServiceQuotaRule, error) {
-	return nil, errors.New("validationFakeRepo: Create not supported")
-}
-func (r *validationFakeRepo) Update(_ context.Context, _ int64, _ ServiceQuotaRuleInput) (*ServiceQuotaRule, error) {
-	return nil, errors.New("validationFakeRepo: Update not supported")
-}
-func (r *validationFakeRepo) Delete(_ context.Context, _ int64) error {
-	return errors.New("validationFakeRepo: Delete not supported")
-}
-func (r *validationFakeRepo) FetchAccountScope(_ context.Context, id int64) (*AccountScopeInfo, error) {
-	return r.accounts[id], nil
-}
-func (r *validationFakeRepo) FetchGroupScope(_ context.Context, id int64) (*GroupScopeInfo, error) {
-	return r.groups[id], nil
-}
-func (r *validationFakeRepo) FetchChannelScope(_ context.Context, id int64) (*ChannelScopeInfo, error) {
-	return r.channels[id], nil
-}
-func (r *validationFakeRepo) FetchPathIDsByOwner(_ context.Context, _ string, _ int64) ([]int64, error) {
-	return nil, nil
-}
+// 共享的 fakeServiceQuotaRepo 在 service_quota_fakes_test.go 中定义；本文件仅
+// 通过 fixture 注入 channel/account/group 的 scope 信息，让 validatePathLinkage
+// 单测脱离真实 DB。
 
 // ptrInt64/ptrString 在同 package 已存在（payment_config_plans_validation_test.go / admin_service_group_test.go），复用即可。
 
@@ -60,7 +31,7 @@ func extractAppErrorMetadata(t *testing.T, err error) (string, map[string]string
 // TestValidatePathLinkage_ChannelPlatformMismatch：channel 不服务 path 指定 platform 时报错。
 func TestValidatePathLinkage_ChannelPlatformMismatch(t *testing.T) {
 	t.Parallel()
-	repo := &validationFakeRepo{
+	repo := &fakeServiceQuotaRepo{
 		channels: map[int64]*ChannelScopeInfo{
 			11: {Platforms: []string{"openai"}, GroupIDs: []int64{}},
 		},
@@ -81,7 +52,7 @@ func TestValidatePathLinkage_ChannelPlatformMismatch(t *testing.T) {
 // TestValidatePathLinkage_ChannelPlatformMatchesAfterFold：大小写不敏感，path 平台 ANTHROPIC 等价于 anthropic。
 func TestValidatePathLinkage_ChannelPlatformMatchesAfterFold(t *testing.T) {
 	t.Parallel()
-	repo := &validationFakeRepo{
+	repo := &fakeServiceQuotaRepo{
 		channels: map[int64]*ChannelScopeInfo{
 			12: {Platforms: []string{"anthropic"}, GroupIDs: []int64{}},
 		},
@@ -98,7 +69,7 @@ func TestValidatePathLinkage_ChannelPlatformMatchesAfterFold(t *testing.T) {
 // TestValidatePathLinkage_ChannelGroupMismatch：channel 不包含 path 指定 group 时报错。
 func TestValidatePathLinkage_ChannelGroupMismatch(t *testing.T) {
 	t.Parallel()
-	repo := &validationFakeRepo{
+	repo := &fakeServiceQuotaRepo{
 		channels: map[int64]*ChannelScopeInfo{
 			21: {Platforms: []string{"anthropic"}, GroupIDs: []int64{301, 302}},
 		},
@@ -124,7 +95,7 @@ func TestValidatePathLinkage_ChannelGroupMismatch(t *testing.T) {
 // 应该先在 platform 维度短路报错（按校验顺序）。
 func TestValidatePathLinkage_ChannelBothMismatch(t *testing.T) {
 	t.Parallel()
-	repo := &validationFakeRepo{
+	repo := &fakeServiceQuotaRepo{
 		channels: map[int64]*ChannelScopeInfo{
 			31: {Platforms: []string{"openai"}, GroupIDs: []int64{500}},
 		},
@@ -148,7 +119,7 @@ func TestValidatePathLinkage_ChannelBothMismatch(t *testing.T) {
 // TestValidatePathLinkage_ChannelHappyPath：channel 同时服务 platform 且包含 group 时通过校验。
 func TestValidatePathLinkage_ChannelHappyPath(t *testing.T) {
 	t.Parallel()
-	repo := &validationFakeRepo{
+	repo := &fakeServiceQuotaRepo{
 		channels: map[int64]*ChannelScopeInfo{
 			41: {Platforms: []string{"anthropic", "openai"}, GroupIDs: []int64{500, 501}},
 		},
@@ -169,7 +140,7 @@ func TestValidatePathLinkage_ChannelHappyPath(t *testing.T) {
 // TestValidatePathLinkage_ChannelNotFound：channel id 不存在时报 SERVICE_QUOTA_SCOPE_CHANNEL_NOT_FOUND。
 func TestValidatePathLinkage_ChannelNotFound(t *testing.T) {
 	t.Parallel()
-	repo := &validationFakeRepo{
+	repo := &fakeServiceQuotaRepo{
 		channels: map[int64]*ChannelScopeInfo{}, // 空 → 任意 id 查不到
 	}
 	svc := &serviceQuotaService{repo: repo}
@@ -186,7 +157,7 @@ func TestValidatePathLinkage_ChannelNotFound(t *testing.T) {
 // 也不会因为 channel 没有 model_pricing 而误报。
 func TestValidatePathLinkage_ChannelNilSkipped(t *testing.T) {
 	t.Parallel()
-	repo := &validationFakeRepo{}
+	repo := &fakeServiceQuotaRepo{}
 	svc := &serviceQuotaService{repo: repo}
 
 	require.NoError(t, svc.validatePathLinkage(context.Background(), ServiceQuotaPathInput{
@@ -197,7 +168,7 @@ func TestValidatePathLinkage_ChannelNilSkipped(t *testing.T) {
 // TestValidatePathLinkage_AccountChecksStillRun：原有 account/group 校验在加 channel 维度后仍生效。
 func TestValidatePathLinkage_AccountChecksStillRun(t *testing.T) {
 	t.Parallel()
-	repo := &validationFakeRepo{
+	repo := &fakeServiceQuotaRepo{
 		accounts: map[int64]*AccountScopeInfo{
 			77: {Platform: "openai", GroupIDs: []int64{1}},
 		},

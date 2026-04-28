@@ -9,41 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// advisorRepoStub 是只暴露 GetValue 的最小化 SettingRepository stub。
-type advisorRepoStub struct {
-	value string
-	err   error
-}
-
-func (s *advisorRepoStub) Get(ctx context.Context, key string) (*Setting, error) {
-	panic("unexpected Get call")
-}
-func (s *advisorRepoStub) GetValue(ctx context.Context, key string) (string, error) {
-	if s.err != nil {
-		return "", s.err
-	}
-	return s.value, nil
-}
-func (s *advisorRepoStub) Set(ctx context.Context, key, value string) error {
-	panic("unexpected Set call")
-}
-func (s *advisorRepoStub) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
-	panic("unexpected GetMultiple call")
-}
-func (s *advisorRepoStub) SetMultiple(ctx context.Context, settings map[string]string) error {
-	panic("unexpected SetMultiple call")
-}
-func (s *advisorRepoStub) GetAll(ctx context.Context) (map[string]string, error) {
-	panic("unexpected GetAll call")
-}
-func (s *advisorRepoStub) Delete(ctx context.Context, key string) error {
-	panic("unexpected Delete call")
-}
-
 func TestGetRectifierSettings_LegacyJSONUpgrade(t *testing.T) {
 	t.Run("legacy json without advisor fields gets default pattern injected", func(t *testing.T) {
 		legacyJSON := `{"enabled":true,"thinking_signature_enabled":true,"thinking_budget_enabled":true,"apikey_signature_enabled":false,"apikey_signature_patterns":[]}`
-		svc := NewSettingService(&advisorRepoStub{value: legacyJSON}, nil)
+		svc := NewSettingService(&settingRepoStub{values: map[string]string{SettingKeyRectifierSettings: legacyJSON}}, nil)
 
 		got, err := svc.GetRectifierSettings(context.Background())
 		require.NoError(t, err)
@@ -56,7 +25,7 @@ func TestGetRectifierSettings_LegacyJSONUpgrade(t *testing.T) {
 	t.Run("user-cleared empty array is preserved (not overwritten by default)", func(t *testing.T) {
 		// 用户故意清空 patterns 后保存的 JSON：advisor_tool_patterns: []
 		clearedJSON := `{"enabled":true,"advisor_tool_enabled":true,"advisor_tool_patterns":[]}`
-		svc := NewSettingService(&advisorRepoStub{value: clearedJSON}, nil)
+		svc := NewSettingService(&settingRepoStub{values: map[string]string{SettingKeyRectifierSettings: clearedJSON}}, nil)
 
 		got, err := svc.GetRectifierSettings(context.Background())
 		require.NoError(t, err)
@@ -66,7 +35,7 @@ func TestGetRectifierSettings_LegacyJSONUpgrade(t *testing.T) {
 
 	t.Run("explicit user patterns are preserved", func(t *testing.T) {
 		userJSON := `{"enabled":true,"advisor_tool_enabled":true,"advisor_tool_patterns":["foo","bar"]}`
-		svc := NewSettingService(&advisorRepoStub{value: userJSON}, nil)
+		svc := NewSettingService(&settingRepoStub{values: map[string]string{SettingKeyRectifierSettings: userJSON}}, nil)
 
 		got, err := svc.GetRectifierSettings(context.Background())
 		require.NoError(t, err)
@@ -74,7 +43,7 @@ func TestGetRectifierSettings_LegacyJSONUpgrade(t *testing.T) {
 	})
 
 	t.Run("setting not found falls back to defaults", func(t *testing.T) {
-		svc := NewSettingService(&advisorRepoStub{err: ErrSettingNotFound}, nil)
+		svc := NewSettingService(&settingRepoStub{err: ErrSettingNotFound}, nil)
 
 		got, err := svc.GetRectifierSettings(context.Background())
 		require.NoError(t, err)
@@ -85,7 +54,7 @@ func TestGetRectifierSettings_LegacyJSONUpgrade(t *testing.T) {
 	})
 
 	t.Run("invalid json falls back to defaults", func(t *testing.T) {
-		svc := NewSettingService(&advisorRepoStub{value: `{not valid`}, nil)
+		svc := NewSettingService(&settingRepoStub{values: map[string]string{SettingKeyRectifierSettings: `{not valid`}}, nil)
 
 		got, err := svc.GetRectifierSettings(context.Background())
 		require.NoError(t, err)
@@ -104,30 +73,28 @@ func TestShouldRectifyAdvisorToolError_GatewayService(t *testing.T) {
 	})
 
 	t.Run("master switch off returns false", func(t *testing.T) {
-		svc := NewSettingService(&advisorRepoStub{value: `{"enabled":false,"advisor_tool_enabled":true}`}, nil)
+		svc := NewSettingService(&settingRepoStub{values: map[string]string{SettingKeyRectifierSettings: `{"enabled":false,"advisor_tool_enabled":true}`}}, nil)
 		gw := &GatewayService{settingService: svc}
 		got := gw.shouldRectifyAdvisorToolError(context.Background(), body)
 		require.False(t, got)
 	})
 
 	t.Run("subswitch off returns false", func(t *testing.T) {
-		svc := NewSettingService(&advisorRepoStub{value: `{"enabled":true,"advisor_tool_enabled":false}`}, nil)
+		svc := NewSettingService(&settingRepoStub{values: map[string]string{SettingKeyRectifierSettings: `{"enabled":true,"advisor_tool_enabled":false}`}}, nil)
 		gw := &GatewayService{settingService: svc}
 		got := gw.shouldRectifyAdvisorToolError(context.Background(), body)
 		require.False(t, got)
 	})
 
 	t.Run("both switches on returns true on built-in match", func(t *testing.T) {
-		svc := NewSettingService(&advisorRepoStub{value: `{"enabled":true,"advisor_tool_enabled":true}`}, nil)
+		svc := NewSettingService(&settingRepoStub{values: map[string]string{SettingKeyRectifierSettings: `{"enabled":true,"advisor_tool_enabled":true}`}}, nil)
 		gw := &GatewayService{settingService: svc}
 		got := gw.shouldRectifyAdvisorToolError(context.Background(), body)
 		require.True(t, got)
 	})
 
 	t.Run("custom pattern matches when builtin does not", func(t *testing.T) {
-		svc := NewSettingService(&advisorRepoStub{
-			value: `{"enabled":true,"advisor_tool_enabled":true,"advisor_tool_patterns":["my-private-flag"]}`,
-		}, nil)
+		svc := NewSettingService(&settingRepoStub{values: map[string]string{SettingKeyRectifierSettings: `{"enabled":true,"advisor_tool_enabled":true,"advisor_tool_patterns":["my-private-flag"]}`}}, nil)
 		gw := &GatewayService{settingService: svc}
 		body := []byte(`{"error":{"message":"unsupported beta my-private-flag in vendor"}}`)
 		got := gw.shouldRectifyAdvisorToolError(context.Background(), body)
