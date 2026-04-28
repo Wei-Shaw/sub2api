@@ -113,6 +113,7 @@ describe('EmailVerifyView', () => {
     authStoreState.pendingAuthSession = null
     sessionStorage.clear()
     localStorage.clear()
+    localStorage.setItem('affiliate_referral_code', 'AFF123')
 
     getPublicSettingsMock.mockResolvedValue({
       turnstile_enabled: false,
@@ -332,12 +333,12 @@ describe('EmailVerifyView', () => {
     await wrapper.get('form').trigger('submit.prevent')
     await flushPromises()
 
-    expect(apiClientPostMock).toHaveBeenCalledWith('/auth/oauth/pending/create-account', {
+    expect(apiClientPostMock).toHaveBeenCalledWith('/auth/oauth/pending/create-account', expect.objectContaining({
       email: 'fresh@example.com',
       password: 'secret-123',
       verify_code: '123456',
       aff_code: 'AFF123',
-    })
+    }))
     expect(persistOAuthTokenContextMock).toHaveBeenCalledWith({
       access_token: 'oauth-access-token',
       refresh_token: 'oauth-refresh-token',

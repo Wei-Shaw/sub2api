@@ -165,10 +165,18 @@ describe('ImportDataModal', () => {
     await wrapper.find('form').trigger('submit')
     await flushPromises()
 
-    expect(adminAPI.accounts.importData).toHaveBeenCalledWith({
+    expect(adminAPI.accounts.importData).toHaveBeenCalledTimes(2)
+    expect(adminAPI.accounts.importData).toHaveBeenNthCalledWith(1, {
+      data: expect.objectContaining({
+        proxies: [],
+        accounts: [{ name: 'a' }]
+      }),
+      skip_default_group_bind: true
+    })
+    expect(adminAPI.accounts.importData).toHaveBeenNthCalledWith(2, {
       data: expect.objectContaining({
         proxies: [{ proxy_key: 'p' }],
-        accounts: [{ name: 'a' }, { name: 'b' }]
+        accounts: [{ name: 'b' }]
       }),
       skip_default_group_bind: true
     })
