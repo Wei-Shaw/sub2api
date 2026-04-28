@@ -30,6 +30,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/plugin"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -209,8 +210,8 @@ func (h *PluginSettingsHandler) parsePlugin(c *gin.Context) (string, bool) {
 		response.BadRequest(c, "plugin name is required")
 		return "", false
 	}
-	if len(name) > 64 {
-		response.BadRequest(c, "plugin name too long (max 64)")
+	if !plugin.IsValidPluginName(name) {
+		response.BadRequest(c, "plugin name contains invalid characters or is too long")
 		return "", false
 	}
 	return name, true

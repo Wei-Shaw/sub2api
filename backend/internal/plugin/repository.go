@@ -116,6 +116,11 @@ func (r *PluginRepository) Create(ctx context.Context, rec *PluginRecord) error 
 	if rec.Name == "" {
 		return errors.New("plugin name is required")
 	}
+	// DB 层兜底: 即便 admin handler / discovery 校验都失效, 这里挡住非法
+	// 名字, 防止它落进 plugins 表 (PRIMARY KEY) 后被 EnablePlugin 接管。
+	if !IsValidPluginName(rec.Name) {
+		return ErrInvalidPluginName
+	}
 	cfgJSON, err := marshalConfig(rec.Config)
 	if err != nil {
 		return err

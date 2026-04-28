@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -335,6 +336,9 @@ func (m *PluginManager) ShutdownAll(ctx context.Context) {
 
 // EnablePlugin 启动指定插件。已经在运行则视为无操作并返回成功。
 func (m *PluginManager) EnablePlugin(ctx context.Context, name string) error {
+	if !IsValidPluginName(name) {
+		return ErrInvalidPluginName
+	}
 	rec, err := m.repo.Get(ctx, name)
 	if err != nil {
 		return err
@@ -377,6 +381,9 @@ func (m *PluginManager) EnablePlugin(ctx context.Context, name string) error {
 
 // DisablePlugin 停止指定插件,并将 DB 中的 enabled 字段置为 false。
 func (m *PluginManager) DisablePlugin(ctx context.Context, name string) error {
+	if !IsValidPluginName(name) {
+		return ErrInvalidPluginName
+	}
 	if err := m.stopInstance(ctx, name, true); err != nil {
 		return err
 	}
@@ -388,6 +395,9 @@ func (m *PluginManager) DisablePlugin(ctx context.Context, name string) error {
 
 // RestartPlugin 先停后启。
 func (m *PluginManager) RestartPlugin(ctx context.Context, name string) error {
+	if !IsValidPluginName(name) {
+		return ErrInvalidPluginName
+	}
 	if err := m.stopInstance(ctx, name, false); err != nil {
 		m.logger.Warn("restart: stop step failed", "plugin", name, "error", err)
 	}
@@ -521,6 +531,9 @@ func (m *PluginManager) Restart(ctx context.Context, name string) error {
 // 简单类型走 fmt.Sprintf("%v"),复合类型(map/slice)走 json.Marshal,
 // 保证 round-trip 时配置语义不丢失。
 func (m *PluginManager) UpdateConfig(ctx context.Context, name string, cfg map[string]any) error {
+	if !IsValidPluginName(name) {
+		return ErrInvalidPluginName
+	}
 	strCfg, err := configToString(cfg)
 	if err != nil {
 		return err
@@ -763,12 +776,28 @@ func (m *PluginManager) getOrCreateInstance(name, binPath string) *PluginInstanc
 }
 
 func (m *PluginManager) binaryPathFor(name string) string {
+	// 名字校验作为 defense-in-depth: 即便 admin 入口已经挡过, 这里再过一遍能挡住
+	// disk discovery / repo.Create 这种非 HTTP 的注入路径。
+	if !IsValidPluginName(name) {
+		return ""
+	}
 	// BuiltinDir 优先（同名时官方版本覆盖用户版本）。
 	for _, dir := range []string{m.cfg.BuiltinDir, m.cfg.PluginsDir} {
 		if dir == "" {
 			continue
 		}
-		candidate := dir + string('/') + name + string('/') + pluginBinaryName(name)
+		absDir, err := filepath.Abs(dir)
+		if err != nil {
+			continue
+		}
+		candidate := filepath.Join(absDir, name, pluginBinaryName(name))
+		// rel 二次校验: 候选路径必须仍位于 absDir 之下。filepath.Join 已 Clean
+		// 路径, 但若 name 是绝对路径或注入了平台相关分隔符仍可能逃逸 — Rel
+		// 是最后一道关。
+		rel, err := filepath.Rel(absDir, candidate)
+		if err != nil || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+			continue
+		}
 		if st, err := os.Stat(candidate); err == nil && !st.IsDir() {
 			return candidate
 		}

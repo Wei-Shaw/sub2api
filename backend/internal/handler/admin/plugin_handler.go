@@ -167,14 +167,16 @@ func (h *PluginHandler) requireManager(c *gin.Context) bool {
 
 // parseName 提取并校验路径参数 :name。
 // 出错时已写入 400 响应，调用方直接 return。
+// 字符集 + 长度都通过 plugin.IsValidPluginName 统一控制，挡住路径穿越类
+// 输入 (foo/../bar / "..", 大写, NUL, unicode 等)。
 func (h *PluginHandler) parseName(c *gin.Context) (string, bool) {
 	name := strings.TrimSpace(c.Param("name"))
 	if name == "" {
 		response.BadRequest(c, "plugin name is required")
 		return "", false
 	}
-	if len(name) > 64 {
-		response.BadRequest(c, "plugin name too long (max 64)")
+	if !plugin.IsValidPluginName(name) {
+		response.BadRequest(c, "plugin name contains invalid characters or is too long")
 		return "", false
 	}
 	return name, true

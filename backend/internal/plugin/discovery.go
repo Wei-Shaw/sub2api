@@ -3,6 +3,7 @@ package plugin
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -89,6 +90,14 @@ func DiscoverPlugins(pluginsDir string) ([]DiscoveredPlugin, error) {
 		name := entry.Name()
 		// 忽略隐藏目录与临时目录,避免误启动备份文件。
 		if strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_") {
+			continue
+		}
+		// 字符集校验: 把不符合插件命名规范的目录视为不相关 (备份目录、操作员
+		// 误操作、共享挂载误装入等)。warn 但不阻塞 — discovery 永远不应该
+		// 因单个非法目录拒绝整个扫描。
+		if !IsValidPluginName(name) {
+			slog.Warn("plugin discovery: skipping directory with invalid name",
+				"dir", pluginsDir, "name", name)
 			continue
 		}
 
