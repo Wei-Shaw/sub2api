@@ -13,9 +13,9 @@ import (
 	pkgerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
-// extractFieldErrors 把 ApplicationError.Metadata.fields（JSON 字符串）解析回 fieldError 切片，
+// extractFieldErrors 把 ApplicationError.Metadata.fields（JSON 字符串）解析回 pkgerrors.FieldError 切片，
 // 让测试断言"哪个 path 触发哪个 code"，而不是依赖底层 metadata 序列化细节。
-func extractFieldErrors(t *testing.T, err error) []fieldError {
+func extractFieldErrors(t *testing.T, err error) []pkgerrors.FieldError {
 	t.Helper()
 	require.Error(t, err)
 	var appErr *pkgerrors.ApplicationError
@@ -23,20 +23,20 @@ func extractFieldErrors(t *testing.T, err error) []fieldError {
 	require.Equal(t, ReasonServiceQuotaValidationError, appErr.Reason,
 		"应是统一的字段级校验错误 reason")
 	require.NotEmpty(t, appErr.Metadata["fields"], "metadata.fields 必须存在")
-	var fields []fieldError
+	var fields []pkgerrors.FieldError
 	require.NoError(t, json.Unmarshal([]byte(appErr.Metadata["fields"]), &fields))
 	return fields
 }
 
-// containsFieldError 断言指定 path + code 出现在 fieldError 列表中。
-func containsFieldError(t *testing.T, fields []fieldError, path, code string) {
+// containsFieldError 断言指定 path + code 出现在 pkgerrors.FieldError 列表中。
+func containsFieldError(t *testing.T, fields []pkgerrors.FieldError, path, code string) {
 	t.Helper()
 	for _, fe := range fields {
 		if fe.Path == path && fe.Code == code {
 			return
 		}
 	}
-	t.Fatalf("expected fieldError {path=%q, code=%q} not found in %+v", path, code, fields)
+	t.Fatalf("expected pkgerrors.FieldError {path=%q, code=%q} not found in %+v", path, code, fields)
 }
 
 // validInput 构造一份完全合法的 input fixture，让各 case 仅修改触发错误的字段。
