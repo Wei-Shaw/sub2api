@@ -104,27 +104,12 @@ func (a *Account) EffectiveLoadFactor() int {
 	return 1
 }
 
+// IsSchedulable 报告账号当前是否可被调度（不含请求级 service_quota 上下文）。
+//
+// 旧 caller 直接调本方法即得"无额外约束"语义；需要叠加 service_quota 阻塞预测时
+// 走 IsSchedulableWith(sc)。两者共享同一份判定实现以避免规则漂移。
 func (a *Account) IsSchedulable() bool {
-	if !a.IsActive() || !a.Schedulable {
-		return false
-	}
-	now := time.Now()
-	if a.AutoPauseOnExpired && a.ExpiresAt != nil && !now.Before(*a.ExpiresAt) {
-		return false
-	}
-	if a.OverloadUntil != nil && now.Before(*a.OverloadUntil) {
-		return false
-	}
-	if a.RateLimitResetAt != nil && now.Before(*a.RateLimitResetAt) {
-		return false
-	}
-	if a.TempUnschedulableUntil != nil && now.Before(*a.TempUnschedulableUntil) {
-		return false
-	}
-	if a.IsAPIKeyOrBedrock() && a.IsQuotaExceeded() {
-		return false
-	}
-	return true
+	return a.IsSchedulableWith(nil)
 }
 
 func (a *Account) IsRateLimited() bool {
