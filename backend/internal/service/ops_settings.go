@@ -387,13 +387,15 @@ func normalizeOpsAdvancedSettings(cfg *OpsAdvancedSettings) {
 	if cfg.DataRetention.CleanupSchedule == "" {
 		cfg.DataRetention.CleanupSchedule = "0 2 * * *"
 	}
-	if cfg.DataRetention.ErrorLogRetentionDays <= 0 {
+	// 保留天数：0 表示每次定时清理全部（清空所有），> 0 表示按天数保留；
+	// 仅在拿到非法的负数时回填默认值，避免覆盖用户主动设的 0。
+	if cfg.DataRetention.ErrorLogRetentionDays < 0 {
 		cfg.DataRetention.ErrorLogRetentionDays = 30
 	}
-	if cfg.DataRetention.MinuteMetricsRetentionDays <= 0 {
+	if cfg.DataRetention.MinuteMetricsRetentionDays < 0 {
 		cfg.DataRetention.MinuteMetricsRetentionDays = 30
 	}
-	if cfg.DataRetention.HourlyMetricsRetentionDays <= 0 {
+	if cfg.DataRetention.HourlyMetricsRetentionDays < 0 {
 		cfg.DataRetention.HourlyMetricsRetentionDays = 30
 	}
 	// Normalize auto refresh interval (default 30 seconds)
@@ -406,14 +408,15 @@ func validateOpsAdvancedSettings(cfg *OpsAdvancedSettings) error {
 	if cfg == nil {
 		return errors.New("invalid config")
 	}
-	if cfg.DataRetention.ErrorLogRetentionDays < 1 || cfg.DataRetention.ErrorLogRetentionDays > 365 {
-		return errors.New("error_log_retention_days must be between 1 and 365")
+	// 保留天数：0 表示每次清理全部，1-365 表示按天数保留。
+	if cfg.DataRetention.ErrorLogRetentionDays < 0 || cfg.DataRetention.ErrorLogRetentionDays > 365 {
+		return errors.New("error_log_retention_days must be between 0 and 365")
 	}
-	if cfg.DataRetention.MinuteMetricsRetentionDays < 1 || cfg.DataRetention.MinuteMetricsRetentionDays > 365 {
-		return errors.New("minute_metrics_retention_days must be between 1 and 365")
+	if cfg.DataRetention.MinuteMetricsRetentionDays < 0 || cfg.DataRetention.MinuteMetricsRetentionDays > 365 {
+		return errors.New("minute_metrics_retention_days must be between 0 and 365")
 	}
-	if cfg.DataRetention.HourlyMetricsRetentionDays < 1 || cfg.DataRetention.HourlyMetricsRetentionDays > 365 {
-		return errors.New("hourly_metrics_retention_days must be between 1 and 365")
+	if cfg.DataRetention.HourlyMetricsRetentionDays < 0 || cfg.DataRetention.HourlyMetricsRetentionDays > 365 {
+		return errors.New("hourly_metrics_retention_days must be between 0 and 365")
 	}
 	if cfg.AutoRefreshIntervalSec < 15 || cfg.AutoRefreshIntervalSec > 300 {
 		return errors.New("auto_refresh_interval_seconds must be between 15 and 300")

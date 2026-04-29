@@ -5056,7 +5056,7 @@ export default {
         errorLogRetentionDays: '错误日志保留天数',
         minuteMetricsRetentionDays: '分钟指标保留天数',
         hourlyMetricsRetentionDays: '小时指标保留天数',
-        retentionDaysHint: '建议保留7-90天，过长会占用存储空间',
+        retentionDaysHint: '建议保留 7-90 天，过长会占用存储空间；填 0 表示每次定时清理时清空所有历史',
         aggregation: '预聚合任务',
         enableAggregation: '启用预聚合任务',
         aggregationHint: '预聚合可提升长时间窗口查询性能',
@@ -5087,7 +5087,7 @@ export default {
         autoRefreshCountdown: '自动刷新：{seconds}s',
         validation: {
           title: '请先修正以下问题',
-          retentionDaysRange: '保留天数必须在1-365天之间',
+          retentionDaysRange: '保留天数必须在 0-365 天之间（0 = 每次清理时清空所有）',
           slaMinPercentRange: 'SLA最低百分比必须在0-100之间',
           ttftP99MaxRange: 'TTFT P99最大值必须大于等于0',
           requestErrorRateMaxRange: '请求错误率最大值必须在0-100之间',

@@ -184,6 +184,22 @@ func (c opsCleanupDeletedCounts) String() string {
 	)
 }
 
+// opsCleanupCutoff 把"保留天数"翻译成 deleteOldRowsByID 用的 cutoff。
+//   - days < 0 → 跳过该项清理（ok=false），保留兼容老数据
+//   - days == 0 → 清空全部：用未来时刻作 cutoff，所有现有行都满足 column < cutoff
+//   - days > 0 → 保留最近 N 天，cutoff = now - N 天
+//
+// 选择 now+24h 而不是 TRUNCATE：复用同一批量删除路径，保留 batch + leader-lock + 错误处理一致性。
+func opsCleanupCutoff(now time.Time, days int) (time.Time, bool) {
+	if days < 0 {
+		return time.Time{}, false
+	}
+	if days == 0 {
+		return now.Add(24 * time.Hour), true
+	}
+	return now.AddDate(0, 0, -days), true
+}
+
 func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDeletedCounts, error) {
 	out := opsCleanupDeletedCounts{}
 	if s == nil || s.db == nil || s.cfg == nil {
@@ -195,8 +211,7 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 	now := time.Now().UTC()
 
 	// Error-like tables: error logs / retry attempts / alert events.
-	if days := s.cfg.Ops.Cleanup.ErrorLogRetentionDays; days > 0 {
-		cutoff := now.AddDate(0, 0, -days)
+	if cutoff, ok := opsCleanupCutoff(now, s.cfg.Ops.Cleanup.ErrorLogRetentionDays); ok {
 		n, err := deleteOldRowsByID(ctx, s.db, "ops_error_logs", "created_at", cutoff, batchSize, false)
 		if err != nil {
 			return out, err
@@ -229,8 +244,7 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 	}
 
 	// Minute-level metrics snapshots.
-	if days := s.cfg.Ops.Cleanup.MinuteMetricsRetentionDays; days > 0 {
-		cutoff := now.AddDate(0, 0, -days)
+	if cutoff, ok := opsCleanupCutoff(now, s.cfg.Ops.Cleanup.MinuteMetricsRetentionDays); ok {
 		n, err := deleteOldRowsByID(ctx, s.db, "ops_system_metrics", "created_at", cutoff, batchSize, false)
 		if err != nil {
 			return out, err
@@ -239,8 +253,7 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 	}
 
 	// Pre-aggregation tables (hourly/daily).
-	if days := s.cfg.Ops.Cleanup.HourlyMetricsRetentionDays; days > 0 {
-		cutoff := now.AddDate(0, 0, -days)
+	if cutoff, ok := opsCleanupCutoff(now, s.cfg.Ops.Cleanup.HourlyMetricsRetentionDays); ok {
 		n, err := deleteOldRowsByID(ctx, s.db, "ops_metrics_hourly", "bucket_start", cutoff, batchSize, false)
 		if err != nil {
 			return out, err
