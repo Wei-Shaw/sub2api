@@ -30,7 +30,6 @@ func TestBillingTicket_PreCheckPlan_TwoPhase_ReturnsPlan(t *testing.T) {
 	limiter := newFakeLimiter()
 	rule := ruleConcurrencyAccount(7, 7, 5)
 	repo := newMockSettingRepo()
-	repo.data[SettingKeyServiceQuotaPreCheckTwoPhase] = "true"
 	svc := newQuotaServiceForTest(t, []*ServiceQuotaRule{rule}, repo, limiter)
 
 	plan, err := svc.PreCheckSelect(context.Background(), ServiceQuotaCheckRequest{UserID: 42})
@@ -41,7 +40,6 @@ func TestBillingTicket_PreCheckPlan_TwoPhase_ReturnsPlan(t *testing.T) {
 		svc:      &BillingCacheService{serviceQuota: svc},
 		quotaReq: ServiceQuotaCheckRequest{UserID: 42},
 		plan:     plan,
-		twoPhase: true,
 	}
 	defer ticket.Close()
 
