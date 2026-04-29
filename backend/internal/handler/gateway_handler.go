@@ -254,6 +254,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 	defer billingTicket.Close()
+	c.Request = c.Request.WithContext(service.WithBillingTicket(c.Request.Context(), billingTicket))
 
 	// 设置请求所属分组 ID（用于渠道级功能判断，如 WebSearch 模拟）
 	parsedReq.GroupID = apiKey.GroupID
@@ -825,6 +826,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						// 外层 defer 仍指向原 ticket（once-safe，重复 Close 无害）。
 						billingTicket.Close()
 						billingTicket = fallbackBillingTicket
+						// 同步把新 ticket 写回 ctx，避免下一轮 select-account 循环里
+						// SelectAccountWithLoadAwareness 取到的还是已关闭的旧 ticket。
+						c.Request = c.Request.WithContext(service.WithBillingTicket(c.Request.Context(), billingTicket))
 						break
 					}
 					_ = h.antigravityGatewayService.WriteMappedClaudeError(c, account, promptTooLongErr.StatusCode, promptTooLongErr.RequestID, promptTooLongErr.Body)
@@ -1566,6 +1570,7 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 		return
 	}
 	defer billingTicket.Close()
+	c.Request = c.Request.WithContext(service.WithBillingTicket(c.Request.Context(), billingTicket))
 
 	// 计算粘性会话 hash
 	parsedReq.SessionContext = &service.SessionContext{

@@ -444,3 +444,29 @@ func (s *BillingCacheService) RecordServiceQuotaUsage(ctx context.Context, req S
 	}
 	s.serviceQuota.Record(ctx, req)
 }
+
+// FilterAccountsByServiceQuotaSchedulability 是 GatewayService 调度阶段调用的 facade：
+// 把 ticket 的 PreCheckPlan + 全局 ServiceQuotaService 引用收敛进 BillingCacheService，
+// 让网关代码不直接看到 ServiceQuotaService 接口（封装边界）。
+//
+// 行为分支：
+//   - BillingCacheService 为 nil / serviceQuota 未注入 / ticket nil / plan 空 → 返回原 accounts
+//   - 其余走 service.FilterAccountsByServiceQuotaSchedulability，命中 account-/channel-scope
+//     的候选被剔除，调用方据空切片返回 ErrNoAvailableAccounts。
+//
+// fail-open：底层 SnapshotForAccounts 内部已实现 Redis 错误吞错，本 facade 同样不抛 error。
+func (s *BillingCacheService) FilterAccountsByServiceQuotaSchedulability(
+	ctx context.Context,
+	ticket *BillingTicket,
+	base ServiceQuotaCheckRequest,
+	accounts []Account,
+) []Account {
+	if s == nil || s.serviceQuota == nil || ticket == nil {
+		return accounts
+	}
+	plan := ticket.PreCheckPlan()
+	if plan == nil {
+		return accounts
+	}
+	return FilterAccountsByServiceQuotaSchedulability(ctx, s.serviceQuota, plan, base, accounts)
+}

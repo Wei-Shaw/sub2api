@@ -9,6 +9,37 @@ import (
 // 内部 sentinel，不暴露给 HTTP 响应；上层应直接 panic? 不：返回 error 让 caller 走 fail-safe。
 var errBillingTicketClosed = errors.New("billing_ticket: consume after close")
 
+// billingTicketContextKeyType 是 *BillingTicket 在 ctx 中的 key 类型。
+// 用空 struct 类型避免与第三方 context key 字符串冲突。
+type billingTicketContextKeyType struct{}
+
+// billingTicketContextKey 是 *BillingTicket 在 ctx 中的 key 单例。
+var billingTicketContextKey = billingTicketContextKeyType{}
+
+// WithBillingTicket 把 *BillingTicket 注入 ctx，供下游调度阶段读取 PreCheckPlan
+// 做 service_quota 账号级预过滤（详见 SelectAccountWithLoadAwareness 内 quota 接入点）。
+//
+// caller 协议：handler 在 PrepareBillingCheckForRequest 成功后调用一次；ticket nil 时
+// 直接返回原 ctx（fast-path，无 ctx 包装开销）。
+func WithBillingTicket(ctx context.Context, ticket *BillingTicket) context.Context {
+	if ticket == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, billingTicketContextKey, ticket)
+}
+
+// BillingTicketFromContext 从 ctx 取出 *BillingTicket，无 ticket 时返回 nil。
+//
+// 设计权衡：返回 nil 而非 error 让 caller 一行 ticket.PreCheckPlan() 即可继续——
+// PreCheckPlan / Consume 的 nil-receiver 兼容路径已经覆盖"无 ticket"语义。
+func BillingTicketFromContext(ctx context.Context) *BillingTicket {
+	if ctx == nil {
+		return nil
+	}
+	t, _ := ctx.Value(billingTicketContextKey).(*BillingTicket)
+	return t
+}
+
 // BillingTicket 是 BillingCacheService 两阶段计费检查（Prepare → Consume）的状态载体。
 //
 // 设计目标：让 caller 在路由前完成余额 / 订阅 / RPM 等"必到字段"检查，但把对 channel/account
