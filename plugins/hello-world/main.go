@@ -92,6 +92,10 @@ func (p *HelloPlugin) Manifest() *pluginsdk.Manifest {
 		Version:     pluginVersion,
 		Description: "A test plugin for the plugin system",
 		Author:      "Sub2API",
+		// IconSVG opts the plugin into the V5/W7 admin-card custom icon path:
+		// the plugins management page renders this SVG next to DisplayName
+		// instead of the host's generic cube fallback.
+		IconSVG: pluginsdk.IconPuzzle,
 		PluginEndpoints: []pluginsdk.EndpointDecl{
 			{Path: pluginRoutePrefix + "/hello", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeNone},
 			{Path: pluginRoutePrefix + "/db-test", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeAdmin},
@@ -103,10 +107,14 @@ func (p *HelloPlugin) Manifest() *pluginsdk.Manifest {
 			EntryJS: "dist/entry.js",
 			MenuItems: []pluginsdk.MenuItemDecl{
 				{
-					Path:      "/admin/plugins/hello-world",
-					IconSVG:   pluginsdk.IconPuzzle,
-					Labels:    pluginsdk.Labels("Hello World", "Hello World"),
-					Section:   pluginsdk.SectionAdmin,
+					Path:    "/admin/plugins/hello-world",
+					IconSVG: pluginsdk.IconPuzzle,
+					Labels:  pluginsdk.Labels("Hello World", "Hello World"),
+					Section: pluginsdk.SectionAdmin,
+					// Placement DSL — hello-world 是测试插件，落在 admin/end 桶
+					// (低于业务主菜单和系统类菜单)。Order=100 是桶内相对位置；
+					// 与 SortOrder 无关，仅 mergeByPlacement 用。
+					Placement: &pluginsdk.Placement{Group: pluginsdk.PlacementAdminEnd, Order: 100},
 					SortOrder: 999,
 				},
 			},

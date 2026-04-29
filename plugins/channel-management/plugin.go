@@ -109,6 +109,9 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 		Version:     pluginVersion,
 		Description: pluginDescription,
 		Author:      "Sub2API",
+		// IconSVG opts the plugin card on the admin plugins page into using
+		// the channel/branch icon so the visual matches the sidebar entry.
+		IconSVG: pluginsdk.IconBranchFork,
 		PluginEndpoints: []pluginsdk.EndpointDecl{
 			// Admin: channel CRUD
 			{Path: pluginRoutePrefix + "/admin/channels", Methods: []string{http.MethodGet, http.MethodPost}, AuthType: pluginsdk.AuthTypeAdmin},
@@ -179,10 +182,14 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 				// 到插件后, host sidebar 已删除硬编码 /admin/channels 顶级项,
 				// 由 plugin 提供唯一入口.
 				{
-					Path:          "/admin/channels",
-					IconSVG:       pluginsdk.IconBranchFork,
-					Labels:        pluginsdk.Labels("渠道管理", "Channel Management"),
-					Section:       pluginsdk.SectionAdmin,
+					Path:    "/admin/channels",
+					IconSVG: pluginsdk.IconBranchFork,
+					Labels:  pluginsdk.Labels("渠道管理", "Channel Management"),
+					Section: pluginsdk.SectionAdmin,
+					// V5/W7 Placement DSL — 把渠道管理放在 admin/main 桶内
+					// /admin/groups (group=主菜单, host order≈3) 之后, 在统计
+					// /admin/announcements 之前; 65 留出空间给后续插件插入。
+					Placement:     &pluginsdk.Placement{Group: pluginsdk.PlacementAdminMain, Order: 65},
 					SortOrder:     200,
 					RequiresAdmin: true,
 					Children: []pluginsdk.MenuItemDecl{
@@ -209,19 +216,25 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 				// the host SPA pick it up the moment the frontend bundle
 				// rebuilds, with no further backend change required.
 				{
-					Path:          availableChannelsFrontendPath,
-					IconSVG:       pluginsdk.IconBranchFork,
-					Labels:        pluginsdk.Labels("可用渠道", "Available Channels"),
-					Section:       pluginsdk.SectionUser,
+					Path:    availableChannelsFrontendPath,
+					IconSVG: pluginsdk.IconBranchFork,
+					Labels:  pluginsdk.Labels("可用渠道", "Available Channels"),
+					Section: pluginsdk.SectionUser,
+					// Placement: user/main 桶内排在 50, 让"可用渠道"作为业务
+					// 主菜单的一部分跟在 host 的 dashboard/keys 等之后。
+					Placement:     &pluginsdk.Placement{Group: pluginsdk.PlacementUserMain, Order: 50},
 					SortOrder:     200,
 					RequiresAdmin: false,
 				},
 				// User-facing read-only "Channel Status" view (V5 W7.3).
 				{
-					Path:          channelStatusFrontendPath,
-					IconSVG:       pluginsdk.IconCog,
-					Labels:        pluginsdk.Labels("渠道状态", "Channel Status"),
-					Section:       pluginsdk.SectionUser,
+					Path:    channelStatusFrontendPath,
+					IconSVG: pluginsdk.IconCog,
+					Labels:  pluginsdk.Labels("渠道状态", "Channel Status"),
+					Section: pluginsdk.SectionUser,
+					// Placement: 渠道状态属于"次级信息", 落入 user/end 桶,
+					// 跟在 redeem/profile 后面但仍排在自定义菜单之前。
+					Placement:     &pluginsdk.Placement{Group: pluginsdk.PlacementUserEnd, Order: 10},
 					SortOrder:     210,
 					RequiresAdmin: false,
 				},
