@@ -136,13 +136,13 @@ const validation = computed(() => {
   // 验证高级设置
   if (advancedSettings.value) {
     const { error_log_retention_days, minute_metrics_retention_days, hourly_metrics_retention_days REDACTED = advancedSettings.value.data_retention
-    if (error_log_retention_days < 1 || error_log_retention_days > 365) {
+    if (error_log_retention_days < 0 || error_log_retention_days > 365) {
       errors.push(t('admin.ops.settings.validation.retentionDaysRange'))
     REDACTED
-    if (minute_metrics_retention_days < 1 || minute_metrics_retention_days > 365) {
+    if (minute_metrics_retention_days < 0 || minute_metrics_retention_days > 365) {
       errors.push(t('admin.ops.settings.validation.retentionDaysRange'))
     REDACTED
-    if (hourly_metrics_retention_days < 1 || hourly_metrics_retention_days > 365) {
+    if (hourly_metrics_retention_days < 0 || hourly_metrics_retention_days > 365) {
       errors.push(t('admin.ops.settings.validation.retentionDaysRange'))
     REDACTED
   REDACTED
@@ -431,7 +431,7 @@ REDACTED
                 <input
                   v-model.number="advancedSettings.data_retention.error_log_retention_days"
                   type="number"
-                  min="1"
+                  min="0"
                   max="365"
                   class="input"
                 />
@@ -441,7 +441,7 @@ REDACTED
                 <input
                   v-model.number="advancedSettings.data_retention.minute_metrics_retention_days"
                   type="number"
-                  min="1"
+                  min="0"
                   max="365"
                   class="input"
                 />
@@ -451,7 +451,7 @@ REDACTED
                 <input
                   v-model.number="advancedSettings.data_retention.hourly_metrics_retention_days"
                   type="number"
-                  min="1"
+                  min="0"
                   max="365"
                   class="input"
                 />
