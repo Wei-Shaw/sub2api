@@ -1396,6 +1396,18 @@ REDACTED
 	if s == nil || account == nil {
 		return false
 REDACTED
+	if requiredTransport == OpenAIUpstreamTransportResponsesWebsocketV2Ingress {
+		if s.cfg == nil || !s.cfg.Gateway.OpenAIWS.ModeRouterV2Enabled {
+			return s.getOpenAIWSProtocolResolver().Resolve(account).Transport == OpenAIUpstreamTransportResponsesWebsocketV2
+	REDACTED
+		mode := account.ResolveOpenAIResponsesWebSocketV2Mode(s.cfg.Gateway.OpenAIWS.IngressModeDefault)
+		switch mode {
+		case OpenAIWSIngressModeCtxPool, OpenAIWSIngressModePassthrough, OpenAIWSIngressModeHTTPBridge, OpenAIWSIngressModeShared, OpenAIWSIngressModeDedicated:
+			return true
+		default:
+			return false
+	REDACTED
+REDACTED
 	return s.getOpenAIWSProtocolResolver().Resolve(account).Transport == requiredTransport
 REDACTED
 
