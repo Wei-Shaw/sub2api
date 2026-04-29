@@ -20,6 +20,10 @@ export { default as TablePageLayout } from './components/TablePageLayout.vue'
 export { default as PageActions } from './components/PageActions.vue'
 export { default as FilterBar } from './components/FilterBar.vue'
 
+// Widgets (Plan B D2)
+export { default as SearchInput } from './components/SearchInput.vue'
+export { default as StatusBadge } from './components/StatusBadge.vue'
+
 export type { Column, SelectOption } from './types'
 
 export * as tablePreferences from './utils/tablePreferences'
