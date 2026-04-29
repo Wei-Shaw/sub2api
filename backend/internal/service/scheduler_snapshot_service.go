@@ -544,6 +544,9 @@ REDACTED
 	if !ok {
 		return nil
 REDACTED
+	defer func() {
+		_ = s.cache.UnlockBucket(ctx, bucket)
+REDACTED()
 
 	rebuildCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
