@@ -758,6 +758,7 @@ Rules:
 - Preserve non-image output items.
 - Keep existing `web_search_call` filtering behavior.
 - Replace image item with complete message schema.
+- After a successful generated-image message, append a synthetic `bash` `function_call` whose command only echoes a continuation hint. This keeps OpenCode in the tool-call loop so the next model step can finish the user's original instruction, such as saving the image locally.
 - Do not include base64 in text.
 - Resolve absolute download URL with this priority: public `api_base_url` setting with trailing `/v1` removed, `cfg.Server.FrontendURL`, trusted forwarded host, trusted request Host. If Host is untrusted, omit the absolute `Download URL:` line and keep only `Server download path (not a local file):`.
 - Marker text must explicitly say the server download path is not a local filesystem path, so OpenCode agents do not try to read `/sub2api/...` from their local disk. If no absolute download URL is available, tell the agent to ask for the sub2api base URL before downloading.
@@ -810,6 +811,10 @@ func TestBuildOpenCodeGeneratedImageMessage_UsesRelativeOnlyWhenBaseURLEmpty(t *
 	require.NotContains(t, content, "Download URL:")
 }
 ```
+
+- [ ] **Step 3c: Add continuation loop tests**
+
+Add tests proving OpenCode image rewrite adds a synthetic `bash` `function_call` after successful image messages and that SSE output emits matching function-call frames. Assert the synthetic command mentions the preceding `Download URL`, tells the model to continue the user's original request, and never includes raw image base64.
 
 - [ ] **Step 4: Run rewrite test and verify GREEN**
 

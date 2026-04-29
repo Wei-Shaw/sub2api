@@ -54,6 +54,7 @@ func rewriteOpenCodeImageGenerationOutput(ctx context.Context, body []byte, stor
 type openCodeImageGeneratedMessage struct {
 	OutputIndex int
 	Message     map[string]any
+	ToolCall    map[string]any
 	Record      *OpenAIGeneratedImageRecord
 }
 
@@ -85,6 +86,13 @@ func rewriteOpenCodeImageGenerationOutputItems(ctx context.Context, outputRaw []
 					return nil, nil, false, err
 				}
 				rewritten = append(rewritten, messageJSON)
+				if toolCall := buildOpenCodeImageContinuationToolCall(message); toolCall != nil {
+					toolCallJSON, err := json.Marshal(toolCall)
+					if err != nil {
+						return nil, nil, false, err
+					}
+					rewritten = append(rewritten, toolCallJSON)
+				}
 				changed = true
 				continue
 			}
@@ -99,12 +107,24 @@ func rewriteOpenCodeImageGenerationOutputItems(ctx context.Context, outputRaw []
 			return nil, nil, false, err
 		}
 		rewritten = append(rewritten, messageJSON)
+		var toolCall map[string]any
+		if rec != nil {
+			toolCall = buildOpenCodeImageContinuationToolCall(message)
+			if toolCall != nil {
+				toolCallJSON, err := json.Marshal(toolCall)
+				if err != nil {
+					return nil, nil, false, err
+				}
+				rewritten = append(rewritten, toolCallJSON)
+			}
+		}
 		if sourceItemID != "" && opts.RewrittenImageMessages != nil {
 			opts.RewrittenImageMessages[sourceItemID] = message
 		}
 		generated = append(generated, openCodeImageGeneratedMessage{
 			OutputIndex: idx,
 			Message:     message,
+			ToolCall:    toolCall,
 			Record:      rec,
 		})
 		changed = true
@@ -158,6 +178,33 @@ func buildOpenCodeGeneratedImageMessage(rec OpenAIGeneratedImageRecord, opts ope
 				"annotations": []any{},
 			},
 		},
+	}
+}
+
+func buildOpenCodeImageContinuationToolCall(message map[string]any) map[string]any {
+	messageJSON, err := json.Marshal(message)
+	if err != nil {
+		return nil
+	}
+	messageID := strings.TrimSpace(gjson.GetBytes(messageJSON, "id").String())
+	imageID := strings.TrimPrefix(messageID, "msg_sub2api_")
+	if imageID == messageID || validateOpenAIGeneratedImageID(imageID) != nil {
+		return nil
+	}
+	args, err := json.Marshal(map[string]any{
+		"command":     "echo \"sub2api generated image is ready; use the preceding Download URL if you need the file, and continue the user's original request\"",
+		"description": "Reports generated image availability",
+	})
+	if err != nil {
+		return nil
+	}
+	return map[string]any{
+		"id":        "fc_sub2api_" + imageID,
+		"type":      "function_call",
+		"status":    "completed",
+		"call_id":   "call_sub2api_" + imageID,
+		"name":      "bash",
+		"arguments": string(args),
 	}
 }
 

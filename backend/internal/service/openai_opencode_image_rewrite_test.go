@@ -250,6 +250,27 @@ func TestRewriteOpenCodeImageGenerationOutput_ReplacesImageCallWithMessage(t *te
 	require.NotContains(t, string(patched), pngB64)
 }
 
+func TestRewriteOpenCodeImageGenerationOutput_AddsContinuationToolCall(t *testing.T) {
+	store := newTestOpenAIGeneratedImageStore(t, fixedNow)
+	body := []byte(`{"id":"resp_1","output":[{"id":"ig_1","type":"image_generation_call","status":"completed","result":"` + pngB64 + `","output_format":"png"}],"usage":{"input_tokens":1,"output_tokens":2}}`)
+
+	patched, changed, err := rewriteOpenCodeImageGenerationOutput(context.Background(), body, store, openCodeImageRewriteOptions{BaseURL: "https://example.com"})
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, int64(2), gjson.GetBytes(patched, "output.#").Int())
+	require.Equal(t, "message", gjson.GetBytes(patched, "output.0.type").String())
+	require.Equal(t, "function_call", gjson.GetBytes(patched, "output.1.type").String())
+	require.Equal(t, "bash", gjson.GetBytes(patched, "output.1.name").String())
+	require.Contains(t, gjson.GetBytes(patched, "output.1.call_id").String(), "call_sub2api_img_")
+	require.Contains(t, gjson.GetBytes(patched, "output.0.content.0.text").String(), "Download URL: https://example.com/sub2api/generated-images/")
+	args := gjson.GetBytes(patched, "output.1.arguments").String()
+	require.True(t, gjson.Valid(args))
+	require.Contains(t, gjson.Get(args, "command").String(), "preceding Download URL")
+	require.Contains(t, gjson.Get(args, "command").String(), "continue the user's original request")
+	require.NotContains(t, args, pngB64)
+}
+
 func TestResolveOpenCodeImageDownloadBaseURL_PrefersConfiguredFrontendURL(t *testing.T) {
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
@@ -647,8 +668,10 @@ func TestHandleSSEToJSON_OpenCodePreservesOutputIndexOrderWhenReconstructingImag
 	require.NoError(t, err)
 	require.Equal(t, "message", gjson.Get(rec.Body.String(), "output.0.type").String())
 	require.Contains(t, gjson.Get(rec.Body.String(), "output.0.content.0.text").String(), "sub2api-image://img_")
-	require.Equal(t, "message", gjson.Get(rec.Body.String(), "output.1.type").String())
-	require.Equal(t, "ordinary text", gjson.Get(rec.Body.String(), "output.1.content.0.text").String())
+	require.Equal(t, "function_call", gjson.Get(rec.Body.String(), "output.1.type").String())
+	require.Equal(t, "bash", gjson.Get(rec.Body.String(), "output.1.name").String())
+	require.Equal(t, "message", gjson.Get(rec.Body.String(), "output.2.type").String())
+	require.Equal(t, "ordinary text", gjson.Get(rec.Body.String(), "output.2.content.0.text").String())
 	require.NotContains(t, rec.Body.String(), pngB64)
 }
 
@@ -683,6 +706,8 @@ func TestHandleSSEToJSON_OpenCodePreservesDoneOnlyNonImageOutputWhenReconstructi
 	require.Equal(t, "call_1", gjson.Get(rec.Body.String(), "output.0.call_id").String())
 	require.Equal(t, "message", gjson.Get(rec.Body.String(), "output.1.type").String())
 	require.Contains(t, gjson.Get(rec.Body.String(), "output.1.content.0.text").String(), "sub2api-image://img_")
+	require.Equal(t, "function_call", gjson.Get(rec.Body.String(), "output.2.type").String())
+	require.Equal(t, "bash", gjson.Get(rec.Body.String(), "output.2.name").String())
 	require.NotContains(t, rec.Body.String(), pngB64)
 }
 
