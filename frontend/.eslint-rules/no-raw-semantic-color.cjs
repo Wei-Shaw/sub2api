@@ -1,14 +1,17 @@
 'use strict'
 
 /**
- * Forbid raw Tailwind semantic colors (emerald/red/blue/amber/green/yellow/primary)
+ * Forbid raw Tailwind semantic colors (emerald/red/blue/amber/green/yellow)
  * in plugin Vue template `class` attributes.
  *
  * Use SDK semantic utility classes instead (.btn-primary, .btn-icon-danger,
  * .input-required, .badge-*, .card-highlight-* etc.).
  *
- * Brand color `purple-*` is intentionally NOT forbidden (used for platform
- * branding such as Antigravity).
+ * Brand colors `primary-*` and `purple-*` are intentionally NOT forbidden:
+ *   - primary-* is sub2api's Tailwind theme palette (defined in
+ *     frontend/packages/plugin-sdk/tailwind-preset.cjs), used as the brand
+ *     accent color across host and plugins.
+ *   - purple-* is reserved for platform branding (e.g. Antigravity).
  *
  * Scope: only static `class="..."` literals in <template>. Dynamic `:class`
  * bindings are not analysed because their values are JS expressions; helper
@@ -19,7 +22,7 @@
  * visitors (`Program` walking) only see the <script> AST.
  */
 
-const FORBIDDEN_COLORS = ['emerald', 'red', 'blue', 'amber', 'green', 'yellow', 'primary']
+const FORBIDDEN_COLORS = ['emerald', 'red', 'blue', 'amber', 'green', 'yellow']
 const SHADES = '50|100|200|300|400|500|600|700|800|900|950'
 const PATTERN = new RegExp(
   '\\b(?:' + FORBIDDEN_COLORS.join('|') + ')-(?:' + SHADES + ')\\b',

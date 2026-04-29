@@ -559,9 +559,14 @@ onMounted(loadChannels)
 - **Use Tailwind utilities** + the design tokens injected by the host.
   Plugin components should look identical to host components by default.
 - **Avoid raw Tailwind semantic colour classes** (`text-red-500`,
-  `bg-blue-100`, …). Prefer the semantic CSS variables that map to the
-  active theme. TODO (verify): the project repo does not yet have an
-  ESLint rule enforcing this — track manually for now.
+  `bg-blue-100`, …). Prefer SDK semantic utility classes (`.btn-primary`,
+  `.btn-icon-danger`, `.input-required`, `.badge-*`, `.card-highlight-*`).
+  Enforced by the custom ESLint rule
+  `frontend/.eslint-rules/no-raw-semantic-color.cjs`; run
+  `pnpm --filter sub2api-frontend run lint:plugins` to check. Forbidden
+  hues: `emerald|red|blue|amber|green|yellow`. Brand colours `primary-*`
+  (theme accent) and `purple-*` (Antigravity platform) are intentionally
+  allowed.
 - Do **not** ship `@tailwind base` in your plugin's CSS — preflight is
   injected into the shadow root by the host loader at mount time.
 
