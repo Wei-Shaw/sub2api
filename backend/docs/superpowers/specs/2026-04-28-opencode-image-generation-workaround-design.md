@@ -77,13 +77,12 @@ OpenCode 当前的问题是：它把 `image_generation_call` 映射成 provider-
 
 ```text
 Generated image: sub2api-image://img_abc123
-Download: https://example.com/sub2api/generated-images/img_abc123.png
-Download path: /sub2api/generated-images/img_abc123.png
-Format: png
-This generated image is available for download for up to 1 hour. If you need to keep it, save it to a local file now.
+Server download path (not a local file): /sub2api/generated-images/img_abc123.png
+Download URL: https://example.com/sub2api/generated-images/img_abc123.png
+Do not treat the server download path as a local filesystem path. To save the image locally, download it over HTTP from the sub2api server. If no Download URL is shown, ask for the sub2api base URL before downloading.
 ```
 
-marker 本身必须与域名无关，避免反向代理或域名变化导致上下文恢复失败。绝对下载链接的来源优先级是：`cfg.Server.FrontendURL`、已存在的站点公开 URL 设置、trusted forwarded host、request Host。只有在可信代理或可信 Host 场景下才从当前请求 Host 或 forwarded headers 推导；如果 Host 不可信，只输出相对下载路径，不输出由 Host 推导的绝对 URL。
+marker 本身必须与域名无关，避免反向代理或域名变化导致上下文恢复失败。绝对下载链接的来源优先级是：公开设置 `api_base_url` 去掉末尾 `/v1` 后的站点根地址、`cfg.Server.FrontendURL`、trusted forwarded host、trusted request Host。只有在可信代理或可信 Host 场景下才从当前请求 Host 或 forwarded headers 推导；如果 Host 不可信，只输出服务端相对下载路径，不输出由 Host 推导的绝对 URL。文案必须明确相对路径是 sub2api 服务器路径，不是 Agent 本地文件路径。
 
 ### 二、非流式普通 message schema
 
@@ -98,7 +97,7 @@ OpenCode 非流式路径中，替换后的 item 必须是完整合法的 Respons
   "content": [
     {
       "type": "output_text",
-      "text": "Generated image: sub2api-image://img_abc123\nDownload: https://example.com/sub2api/generated-images/img_abc123.png\nDownload path: /sub2api/generated-images/img_abc123.png\nFormat: png\nThis generated image is available for download for up to 1 hour. If you need to keep it, save it to a local file now.",
+      "text": "Generated image: sub2api-image://img_abc123\nServer download path (not a local file): /sub2api/generated-images/img_abc123.png\nDownload URL: https://example.com/sub2api/generated-images/img_abc123.png\nDo not treat the server download path as a local filesystem path. To save the image locally, download it over HTTP from the sub2api server. If no Download URL is shown, ask for the sub2api base URL before downloading.",
       "annotations": []
     }
   ]
@@ -246,13 +245,13 @@ event: response.content_part.added
 data: {"type":"response.content_part.added","item_id":"msg_sub2api_img_abc123","output_index":<synthetic_index>,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}
 
 event: response.output_text.delta
-data: {"type":"response.output_text.delta","item_id":"msg_sub2api_img_abc123","output_index":<synthetic_index>,"content_index":0,"delta":"Generated image: sub2api-image://img_abc123\nDownload: https://example.com/sub2api/generated-images/img_abc123.png\nDownload path: /sub2api/generated-images/img_abc123.png\nFormat: png\nThis generated image is available for download for up to 1 hour. If you need to keep it, save it to a local file now."}
+data: {"type":"response.output_text.delta","item_id":"msg_sub2api_img_abc123","output_index":<synthetic_index>,"content_index":0,"delta":"Generated image: sub2api-image://img_abc123\nServer download path (not a local file): /sub2api/generated-images/img_abc123.png\nDownload URL: https://example.com/sub2api/generated-images/img_abc123.png\nDo not treat the server download path as a local filesystem path. To save the image locally, download it over HTTP from the sub2api server. If no Download URL is shown, ask for the sub2api base URL before downloading."}
 
 event: response.output_text.done
-data: {"type":"response.output_text.done","item_id":"msg_sub2api_img_abc123","output_index":<synthetic_index>,"content_index":0,"text":"Generated image: sub2api-image://img_abc123\nDownload: https://example.com/sub2api/generated-images/img_abc123.png\nDownload path: /sub2api/generated-images/img_abc123.png\nFormat: png\nThis generated image is available for download for up to 1 hour. If you need to keep it, save it to a local file now."}
+data: {"type":"response.output_text.done","item_id":"msg_sub2api_img_abc123","output_index":<synthetic_index>,"content_index":0,"text":"Generated image: sub2api-image://img_abc123\nServer download path (not a local file): /sub2api/generated-images/img_abc123.png\nDownload URL: https://example.com/sub2api/generated-images/img_abc123.png\nDo not treat the server download path as a local filesystem path. To save the image locally, download it over HTTP from the sub2api server. If no Download URL is shown, ask for the sub2api base URL before downloading."}
 
 event: response.content_part.done
-data: {"type":"response.content_part.done","item_id":"msg_sub2api_img_abc123","output_index":<synthetic_index>,"content_index":0,"part":{"type":"output_text","text":"Generated image: sub2api-image://img_abc123\nDownload: https://example.com/sub2api/generated-images/img_abc123.png\nDownload path: /sub2api/generated-images/img_abc123.png\nFormat: png\nThis generated image is available for download for up to 1 hour. If you need to keep it, save it to a local file now.","annotations":[]}}
+data: {"type":"response.content_part.done","item_id":"msg_sub2api_img_abc123","output_index":<synthetic_index>,"content_index":0,"part":{"type":"output_text","text":"Generated image: sub2api-image://img_abc123\nServer download path (not a local file): /sub2api/generated-images/img_abc123.png\nDownload URL: https://example.com/sub2api/generated-images/img_abc123.png\nDo not treat the server download path as a local filesystem path. To save the image locally, download it over HTTP from the sub2api server. If no Download URL is shown, ask for the sub2api base URL before downloading.","annotations":[]}}
 
 event: response.output_item.done
 data: {"type":"response.output_item.done","output_index":<synthetic_index>,"item":{"id":"msg_sub2api_img_abc123","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"...","annotations":[]}]}}

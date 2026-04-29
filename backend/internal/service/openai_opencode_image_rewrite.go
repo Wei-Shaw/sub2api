@@ -19,6 +19,10 @@ type openCodeImageRewriteOptions struct {
 	RewrittenImageMessages map[string]map[string]any
 }
 
+type openCodePublicSettingsProvider interface {
+	GetPublicSettings(ctx context.Context) (*PublicSettings, error)
+}
+
 func rewriteOpenCodeImageGenerationOutput(ctx context.Context, body []byte, store *OpenAIGeneratedImageStore, opts openCodeImageRewriteOptions) ([]byte, bool, error) {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return body, false, nil
@@ -136,10 +140,11 @@ func buildOpenCodeImageGenerationMessageForRawItem(ctx context.Context, raw json
 
 func buildOpenCodeGeneratedImageMessage(rec OpenAIGeneratedImageRecord, opts openCodeImageRewriteOptions) map[string]any {
 	downloadPath := "/sub2api/generated-images/" + rec.Filename
-	text := "Generated image: sub2api-image://" + rec.ID + "\nDownload path: " + downloadPath
+	text := "Generated image: sub2api-image://" + rec.ID + "\nServer download path (not a local file): " + downloadPath
 	if baseURL := strings.TrimRight(strings.TrimSpace(opts.BaseURL), "/"); baseURL != "" {
-		text += "\nDownload: " + baseURL + downloadPath
+		text += "\nDownload URL: " + baseURL + downloadPath
 	}
+	text += "\nDo not treat the server download path as a local filesystem path. To save the image locally, download it over HTTP from the sub2api server. If no Download URL is shown, ask for the sub2api base URL before downloading."
 
 	return map[string]any{
 		"id":     "msg_sub2api_" + rec.ID,
@@ -176,6 +181,25 @@ func buildOpenCodeImageNoResultMessage(sourceItemID string) map[string]any {
 	}
 }
 
+func (s *OpenAIGatewayService) resolveOpenCodeImageDownloadBaseURL(ctx context.Context, c *gin.Context) string {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if s != nil && s.publicSettingsProvider != nil {
+		settings, err := s.publicSettingsProvider.GetPublicSettings(ctx)
+		if err == nil && settings != nil {
+			if baseURL := normalizeOpenCodeConfiguredBaseURL(settings.APIBaseURL, true); baseURL != "" {
+				return baseURL
+			}
+		}
+	}
+	var cfg *config.Config
+	if s != nil {
+		cfg = s.cfg
+	}
+	return resolveOpenCodeImageDownloadBaseURL(c, cfg)
+}
+
 func resolveOpenCodeImageDownloadBaseURL(c *gin.Context, cfg *config.Config) string {
 	if cfg == nil {
 		return ""
@@ -184,14 +208,33 @@ func resolveOpenCodeImageDownloadBaseURL(c *gin.Context, cfg *config.Config) str
 	if frontendURL == "" {
 		return resolveOpenCodeTrustedRequestBaseURL(c, cfg)
 	}
-	parsed, err := url.Parse(frontendURL)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+	return normalizeOpenCodeConfiguredBaseURL(frontendURL, false)
+}
+
+func normalizeOpenCodeConfiguredBaseURL(raw string, stripV1Suffix bool) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
 		return ""
 	}
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return ""
 	}
-	return strings.TrimRight(frontendURL, "/")
+	path := strings.TrimRight(parsed.Path, "/")
+	if stripV1Suffix {
+		switch {
+		case path == "/v1":
+			path = ""
+		case strings.HasSuffix(path, "/v1"):
+			path = strings.TrimSuffix(path, "/v1")
+		}
+	}
+	parsed.Path = path
+	parsed.RawPath = ""
+	return strings.TrimRight(parsed.String(), "/")
 }
 
 func resolveOpenCodeTrustedRequestBaseURL(c *gin.Context, cfg *config.Config) string {

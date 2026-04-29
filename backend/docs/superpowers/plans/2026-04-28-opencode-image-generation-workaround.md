@@ -33,7 +33,7 @@
 - Modify: `backend/internal/service/openai_gateway_service.go`
   - Wire rewrite/rehydrate into `/v1/responses` request and response paths; keep existing routing semantics untouched.
 - Modify: `backend/internal/service/wire.go`
-  - Provide one shared `OpenAIGeneratedImageStore` and run startup cleanup.
+  - Provide one shared `OpenAIGeneratedImageStore`, inject public settings into OpenAI gateway, and run startup cleanup.
 - Modify: `backend/internal/service/openai_gateway_service_test.go`
   - Replace stale auto-inject expectation with carrier-triggered behavior and OpenCode rewrite expectations.
 - Modify: `backend/internal/pkg/apicompat/types.go`
@@ -750,6 +750,7 @@ Implement:
 type openCodeImageRewriteOptions struct { BaseURL string }
 func rewriteOpenCodeImageGenerationOutput(ctx context.Context, body []byte, store *OpenAIGeneratedImageStore, opts openCodeImageRewriteOptions) ([]byte, bool, error)
 func buildOpenCodeGeneratedImageMessage(rec OpenAIGeneratedImageRecord, opts openCodeImageRewriteOptions) map[string]any
+func (s *OpenAIGatewayService) resolveOpenCodeImageDownloadBaseURL(ctx context.Context, c *gin.Context) string
 func resolveOpenCodeImageDownloadBaseURL(c *gin.Context, cfg *config.Config) string
 ```
 
@@ -758,12 +759,13 @@ Rules:
 - Keep existing `web_search_call` filtering behavior.
 - Replace image item with complete message schema.
 - Do not include base64 in text.
-- Resolve absolute download URL with this priority: `cfg.Server.FrontendURL`, existing public URL setting if available, trusted forwarded host, trusted request Host. If Host is untrusted, omit the absolute `Download:` line and keep only `Download path:`.
+- Resolve absolute download URL with this priority: public `api_base_url` setting with trailing `/v1` removed, `cfg.Server.FrontendURL`, trusted forwarded host, trusted request Host. If Host is untrusted, omit the absolute `Download URL:` line and keep only `Server download path (not a local file):`.
+- Marker text must explicitly say the server download path is not a local filesystem path, so OpenCode agents do not try to read `/sub2api/...` from their local disk. If no absolute download URL is available, tell the agent to ask for the sub2api base URL before downloading.
 - Do not trust arbitrary `Host`, `X-Forwarded-Host`, or `X-Forwarded-Proto` values. If no configured public base URL is available and the request is not from configured trusted proxy context, return an empty base URL and use relative-only marker text.
 
 - [ ] **Step 3b: Add URL builder tests**
 
-Add tests proving `resolveOpenCodeImageDownloadBaseURL` prefers `cfg.Server.FrontendURL`, rejects untrusted Host fallback by returning empty base URL, and allows relative-only marker text when base URL is empty:
+Add tests proving the gateway resolver prefers public `api_base_url` over `cfg.Server.FrontendURL` and removes a trailing `/v1`, while the config fallback still prefers `cfg.Server.FrontendURL`, rejects untrusted Host fallback by returning empty base URL, and allows relative-only marker text when base URL is empty:
 
 ```go
 func TestResolveOpenCodeImageDownloadBaseURL_PrefersConfiguredFrontendURL(t *testing.T) {
@@ -773,6 +775,21 @@ func TestResolveOpenCodeImageDownloadBaseURL_PrefersConfiguredFrontendURL(t *tes
 	cfg := &config.Config{}
 	cfg.Server.FrontendURL = "https://sub2api.example/app/"
 	require.Equal(t, "https://sub2api.example/app", resolveOpenCodeImageDownloadBaseURL(c, cfg))
+}
+
+func TestOpenAIGatewayResolveOpenCodeImageDownloadBaseURL_PrefersPublicAPIBaseURL(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Request.Host = "attacker.example"
+	cfg := &config.Config{}
+	cfg.Server.FrontendURL = "https://frontend.example/app/"
+	svc := &OpenAIGatewayService{
+		cfg: cfg,
+		publicSettingsProvider: &fakeOpenCodePublicSettingsProvider{
+			settings: &PublicSettings{APIBaseURL: "https://api.example.com/v1/"},
+		},
+	}
+	require.Equal(t, "https://api.example.com", svc.resolveOpenCodeImageDownloadBaseURL(context.Background(), c))
 }
 
 func TestResolveOpenCodeImageDownloadBaseURL_RejectsUntrustedHostFallback(t *testing.T) {
@@ -787,8 +804,10 @@ func TestBuildOpenCodeGeneratedImageMessage_UsesRelativeOnlyWhenBaseURLEmpty(t *
 	msg := buildOpenCodeGeneratedImageMessage(rec, openCodeImageRewriteOptions{})
 	content := msg["content"].([]any)[0].(map[string]any)["text"].(string)
 	require.Contains(t, content, "sub2api-image://img_abcdefghijklmnopqrstuvwxyzABCDEF")
-	require.Contains(t, content, "Download path: /sub2api/generated-images/img_abcdefghijklmnopqrstuvwxyzABCDEF.png")
-	require.NotContains(t, content, "Download: http")
+	require.Contains(t, content, "Server download path (not a local file): /sub2api/generated-images/img_abcdefghijklmnopqrstuvwxyzABCDEF.png")
+	require.Contains(t, content, "Do not treat the server download path as a local filesystem path.")
+	require.Contains(t, content, "If no Download URL is shown, ask for the sub2api base URL before downloading.")
+	require.NotContains(t, content, "Download URL:")
 }
 ```
 

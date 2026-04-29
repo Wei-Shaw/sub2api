@@ -317,29 +317,30 @@ var ErrNoAvailableCompactAccounts = errors.New("no available OpenAI accounts sup
 
 // OpenAIGatewayService handles OpenAI API gateway operations
 type OpenAIGatewayService struct {
-	accountRepo           AccountRepository
-	usageLogRepo          UsageLogRepository
-	usageBillingRepo      UsageBillingRepository
-	userRepo              UserRepository
-	userSubRepo           UserSubscriptionRepository
-	cache                 GatewayCache
-	cfg                   *config.Config
-	codexDetector         CodexClientRestrictionDetector
-	schedulerSnapshot     *SchedulerSnapshotService
-	concurrencyService    *ConcurrencyService
-	billingService        *BillingService
-	rateLimitService      *RateLimitService
-	billingCacheService   *BillingCacheService
-	resolver              *ModelPricingResolver
-	channelService        *ChannelService
-	userGroupRateResolver *userGroupRateResolver
-	httpUpstream          HTTPUpstream
-	deferredService       *DeferredService
-	openAITokenProvider   *OpenAITokenProvider
-	toolCorrector         *CodexToolCorrector
-	openaiWSResolver      OpenAIWSProtocolResolver
-	balanceNotifyService  *BalanceNotifyService
-	generatedImageStore   *OpenAIGeneratedImageStore
+	accountRepo            AccountRepository
+	usageLogRepo           UsageLogRepository
+	usageBillingRepo       UsageBillingRepository
+	userRepo               UserRepository
+	userSubRepo            UserSubscriptionRepository
+	cache                  GatewayCache
+	cfg                    *config.Config
+	codexDetector          CodexClientRestrictionDetector
+	schedulerSnapshot      *SchedulerSnapshotService
+	concurrencyService     *ConcurrencyService
+	billingService         *BillingService
+	rateLimitService       *RateLimitService
+	billingCacheService    *BillingCacheService
+	resolver               *ModelPricingResolver
+	channelService         *ChannelService
+	userGroupRateResolver  *userGroupRateResolver
+	httpUpstream           HTTPUpstream
+	deferredService        *DeferredService
+	openAITokenProvider    *OpenAITokenProvider
+	toolCorrector          *CodexToolCorrector
+	openaiWSResolver       OpenAIWSProtocolResolver
+	balanceNotifyService   *BalanceNotifyService
+	generatedImageStore    *OpenAIGeneratedImageStore
+	publicSettingsProvider openCodePublicSettingsProvider
 
 	openaiWSPoolOnce              sync.Once
 	openaiWSStateStoreOnce        sync.Once
@@ -379,6 +380,7 @@ func NewOpenAIGatewayService(
 	channelService *ChannelService,
 	balanceNotifyService *BalanceNotifyService,
 	generatedImageStore *OpenAIGeneratedImageStore,
+	publicSettingsProvider openCodePublicSettingsProvider,
 ) *OpenAIGatewayService {
 	svc := &OpenAIGatewayService{
 		accountRepo:         accountRepo,
@@ -401,17 +403,18 @@ func NewOpenAIGatewayService(
 			nil,
 			"service.openai_gateway",
 		),
-		httpUpstream:          httpUpstream,
-		deferredService:       deferredService,
-		openAITokenProvider:   openAITokenProvider,
-		toolCorrector:         NewCodexToolCorrector(),
-		openaiWSResolver:      NewOpenAIWSProtocolResolver(cfg),
-		resolver:              resolver,
-		channelService:        channelService,
-		balanceNotifyService:  balanceNotifyService,
-		generatedImageStore:   generatedImageStore,
-		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
-		codexSnapshotThrottle: newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
+		httpUpstream:           httpUpstream,
+		deferredService:        deferredService,
+		openAITokenProvider:    openAITokenProvider,
+		toolCorrector:          NewCodexToolCorrector(),
+		openaiWSResolver:       NewOpenAIWSProtocolResolver(cfg),
+		resolver:               resolver,
+		channelService:         channelService,
+		balanceNotifyService:   balanceNotifyService,
+		generatedImageStore:    generatedImageStore,
+		publicSettingsProvider: publicSettingsProvider,
+		responseHeaderFilter:   compileResponseHeaderFilter(cfg),
+		codexSnapshotThrottle:  newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
 	}
 	svc.logOpenAIWSModeBootstrap()
 	return svc
@@ -5142,7 +5145,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	openCodeClient := isOpenCodeResponsesClient(c)
 	openCodeImageOpts := openCodeImageRewriteOptions{}
 	if openCodeClient {
-		openCodeImageOpts.BaseURL = resolveOpenCodeImageDownloadBaseURL(c, s.cfg)
+		openCodeImageOpts.BaseURL = s.resolveOpenCodeImageDownloadBaseURL(c.Request.Context(), c)
 		openCodeImageOpts.RewrittenImageMessages = make(map[string]map[string]any)
 	}
 	pendingOpenCodeFrame := make([]string, 0, 4)
@@ -6011,7 +6014,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	usage := &usageValue
 	if isOpenCodeResponsesClient(c) {
 		filteredBody, changed, err := rewriteOpenCodeImageGenerationOutput(ctx, body, s.generatedImageStore, openCodeImageRewriteOptions{
-			BaseURL: resolveOpenCodeImageDownloadBaseURL(c, s.cfg),
+			BaseURL: s.resolveOpenCodeImageDownloadBaseURL(ctx, c),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("rewrite opencode image generation output: %w", err)
@@ -6092,7 +6095,7 @@ func (s *OpenAIGatewayService) handleSSEToJSONForAccount(resp *http.Response, c 
 		body = finalResponse
 		if isOpenCodeClient {
 			filteredBody, changed, err := rewriteOpenCodeImageGenerationOutput(c.Request.Context(), body, s.generatedImageStore, openCodeImageRewriteOptions{
-				BaseURL: resolveOpenCodeImageDownloadBaseURL(c, s.cfg),
+				BaseURL: s.resolveOpenCodeImageDownloadBaseURL(c.Request.Context(), c),
 			})
 			if err != nil {
 				return nil, fmt.Errorf("rewrite opencode image generation sse output: %w", err)

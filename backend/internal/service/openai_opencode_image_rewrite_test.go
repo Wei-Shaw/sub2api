@@ -19,6 +19,15 @@ import (
 
 const testImageID = "img_abcdefghijklmnopqrstuvwxyzABCDEF"
 
+type fakeOpenCodePublicSettingsProvider struct {
+	settings *PublicSettings
+	err      error
+}
+
+func (f *fakeOpenCodePublicSettingsProvider) GetPublicSettings(ctx context.Context) (*PublicSettings, error) {
+	return f.settings, f.err
+}
+
 func newTestStoreWithImage(t *testing.T, id string, format string, data []byte) *OpenAIGeneratedImageStore {
 	t.Helper()
 	store := newTestOpenAIGeneratedImageStore(t, fixedNow)
@@ -251,6 +260,38 @@ func TestResolveOpenCodeImageDownloadBaseURL_PrefersConfiguredFrontendURL(t *tes
 	require.Equal(t, "https://sub2api.example/app", resolveOpenCodeImageDownloadBaseURL(c, cfg))
 }
 
+func TestOpenAIGatewayResolveOpenCodeImageDownloadBaseURL_PrefersPublicAPIBaseURL(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Request.Host = "attacker.example"
+	cfg := &config.Config{}
+	cfg.Server.FrontendURL = "https://frontend.example/app/"
+	svc := &OpenAIGatewayService{
+		cfg: cfg,
+		publicSettingsProvider: &fakeOpenCodePublicSettingsProvider{
+			settings: &PublicSettings{APIBaseURL: "https://api.example.com/v1/"},
+		},
+	}
+
+	require.Equal(t, "https://api.example.com", svc.resolveOpenCodeImageDownloadBaseURL(context.Background(), c))
+}
+
+func TestOpenAIGatewayResolveOpenCodeImageDownloadBaseURL_FallsBackWhenPublicAPIBaseURLUnsafe(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Request.Host = "attacker.example"
+	cfg := &config.Config{}
+	cfg.Server.FrontendURL = "https://frontend.example/app/"
+	svc := &OpenAIGatewayService{
+		cfg: cfg,
+		publicSettingsProvider: &fakeOpenCodePublicSettingsProvider{
+			settings: &PublicSettings{APIBaseURL: "javascript:alert(1)"},
+		},
+	}
+
+	require.Equal(t, "https://frontend.example/app", svc.resolveOpenCodeImageDownloadBaseURL(context.Background(), c))
+}
+
 func TestResolveOpenCodeImageDownloadBaseURL_RejectsUntrustedHostFallback(t *testing.T) {
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
@@ -334,8 +375,26 @@ func TestBuildOpenCodeGeneratedImageMessage_UsesRelativeOnlyWhenBaseURLEmpty(t *
 	content := msg["content"].([]any)[0].(map[string]any)["text"].(string)
 
 	require.Contains(t, content, "sub2api-image://img_abcdefghijklmnopqrstuvwxyzABCDEF")
-	require.Contains(t, content, "Download path: /sub2api/generated-images/img_abcdefghijklmnopqrstuvwxyzABCDEF.png")
-	require.NotContains(t, content, "Download: http")
+	require.Contains(t, content, "Server download path (not a local file): /sub2api/generated-images/img_abcdefghijklmnopqrstuvwxyzABCDEF.png")
+	require.Contains(t, content, "Do not treat the server download path as a local filesystem path.")
+	require.Contains(t, content, "If no Download URL is shown, ask for the sub2api base URL before downloading.")
+	require.NotContains(t, content, "Download URL:")
+}
+
+func TestBuildOpenCodeGeneratedImageMessage_LabelsAbsoluteURLAsDownloadURL(t *testing.T) {
+	rec := OpenAIGeneratedImageRecord{
+		ID:        "img_abcdefghijklmnopqrstuvwxyzABCDEF",
+		Filename:  "img_abcdefghijklmnopqrstuvwxyzABCDEF.png",
+		Format:    "png",
+		MIME:      "image/png",
+		ExpiresAt: fixedNow.Add(time.Hour),
+	}
+
+	msg := buildOpenCodeGeneratedImageMessage(rec, openCodeImageRewriteOptions{BaseURL: "https://example.com/"})
+	content := msg["content"].([]any)[0].(map[string]any)["text"].(string)
+
+	require.Contains(t, content, "Download URL: https://example.com/sub2api/generated-images/img_abcdefghijklmnopqrstuvwxyzABCDEF.png")
+	require.NotContains(t, content, "Download: https://example.com")
 }
 
 func TestRewriteOpenCodeImageGenerationOutput_ImageCallWithoutResultBecomesText(t *testing.T) {

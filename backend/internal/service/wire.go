@@ -458,6 +458,7 @@ var ProviderSet = wire.NewSet(
 	NewAdminService,
 	NewGatewayService,
 	NewOpenAIGatewayService,
+	wire.Bind(new(openCodePublicSettingsProvider), new(*SettingService)),
 	ProvideOpenAIGeneratedImageStore,
 	NewOAuthService,
 	NewOpenAIOAuthService,
