@@ -1,96 +1,10 @@
 package service
 
 import (
-	"context"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
-
-const (
-	SettingKeyServiceQuotaEnabled = "service_quota_enabled"
-
-	// SettingKeyServiceQuotaPreCheckTwoPhase 控制 PreCheck 是否走两阶段路径
-	// （PreCheckSelect 在路由前选规则、PreCheckAcquire 在选定 channel/account 后抢槽位）。
-	//
-	// 默认 false（关闭）：CheckBillingEligibility 行为与历史版本完全一致，PreCheck 在 channel/account
-	// 还未确定时被一次性调用，account/channel scope 的 concurrency / rpm 限流器仍然失效。
-	//
-	// true（开启）：BillingTicket.Prepare 只调 PreCheckSelect 选规则，BillingTicket.Consume 在
-	// caller 选定 channel + account 后调用 PreCheckAcquire 才真正抢 concurrency / 增 rpm，
-	// account/channel scope 限流器从此生效。详见 BillingCacheService.PrepareBillingCheck。
-	SettingKeyServiceQuotaPreCheckTwoPhase = "service_quota_precheck_two_phase"
-
-	ServiceQuotaLimiterRPM         = "rpm"
-	ServiceQuotaLimiterTPM         = "tpm"
-	ServiceQuotaLimiterTPD         = "tpd"
-	ServiceQuotaLimiterDailyUSD    = "daily_usd"
-	ServiceQuotaLimiterConcurrency = "concurrency"
-
-	// ServiceQuotaCounterMode* 决定规则 Redis 计数 key 的分片方式：
-	//   - user     → 规则只对关联表中列出的用户生效，每个用户独立计数
-	//   - per_user → 对 scope 内所有用户生效，按 user_id 分片
-	//   - shared   → 对 scope 内所有用户生效，共享同一计数器
-	ServiceQuotaCounterModeUser    = "user"
-	ServiceQuotaCounterModePerUser = "per_user"
-	ServiceQuotaCounterModeShared  = "shared"
-
-	ServiceQuotaWindowFixed   = "fixed"
-	ServiceQuotaWindowRolling = "rolling"
-
-	// ServiceQuotaPathOwner* 是 FetchPathIDsByOwner 的 owner 维度，对应 service_quota_paths 表的字段名。
-	// 用常量代替魔法字符串避免拼错（service 层与 repo 层共享）。
-	ServiceQuotaPathOwnerChannel = "channel_id"
-	ServiceQuotaPathOwnerGroup   = "group_id"
-	ServiceQuotaPathOwnerAccount = "account_id"
-
-	// ServiceQuotaTokenComponent* 决定 TPM/TPD 限流器把哪几种 token 计入计数。
-	// 仅 TPM/TPD 使用此配置；RPM/concurrency/daily_usd 忽略。
-	//
-	// 默认值（ServiceQuotaTokenComponentsDefault）= {input, output, cache_creation}：
-	//   - 与 Anthropic 3.7+ ITPM(input+cache_creation) + OTPM(output) 双桶之和一致
-	//   - 与 Bedrock Claude 3.7+ 公式 InputTokenCount + CacheWriteInputTokens + OutputTokenCount 一致
-	//   - 剔除 cache_read：鼓励 prompt cache，与 Anthropic 3.7+/Bedrock 3.7+/Groq 一致
-	//   - 与 OpenAI/Gemini 单桶相比略松（它们也算 cache_read）
-	ServiceQuotaTokenComponentInput         = "input"
-	ServiceQuotaTokenComponentOutput        = "output"
-	ServiceQuotaTokenComponentCacheCreation = "cache_creation"
-	ServiceQuotaTokenComponentCacheRead     = "cache_read"
-)
-
-// ServiceQuotaTokenComponentsDefault 是 TPM/TPD 限流器 token_components 字段的默认值，
-// 与 DB DEFAULT 一致。新建限流器若未传该字段则采用此默认。
-var ServiceQuotaTokenComponentsDefault = []string{
-	ServiceQuotaTokenComponentInput,
-	ServiceQuotaTokenComponentOutput,
-	ServiceQuotaTokenComponentCacheCreation,
-}
-
-// ServiceQuotaTokenComponentsAll 是全部合法 token component 值，用于校验 input。
-var ServiceQuotaTokenComponentsAll = []string{
-	ServiceQuotaTokenComponentInput,
-	ServiceQuotaTokenComponentOutput,
-	ServiceQuotaTokenComponentCacheCreation,
-	ServiceQuotaTokenComponentCacheRead,
-}
-
-// IsValidServiceQuotaTokenComponent 判断字符串是否是合法 token component。
-func IsValidServiceQuotaTokenComponent(s string) bool {
-	switch s {
-	case ServiceQuotaTokenComponentInput,
-		ServiceQuotaTokenComponentOutput,
-		ServiceQuotaTokenComponentCacheCreation,
-		ServiceQuotaTokenComponentCacheRead:
-		return true
-	}
-	return false
-}
-
-// ServiceQuotaLimiterTypeUsesTokenComponents 判断 limiter type 是否使用 token_components 字段。
-// 仅 TPM/TPD；其他类型应忽略此字段（service 层会强制置 nil）。
-func ServiceQuotaLimiterTypeUsesTokenComponents(kind string) bool {
-	return kind == ServiceQuotaLimiterTPM || kind == ServiceQuotaLimiterTPD
-}
 
 var (
 	ErrServiceQuotaExceeded = infraerrors.TooManyRequests(
@@ -126,32 +40,6 @@ type ServiceQuotaLimiterInput struct {
 	LimitValue      float64  `json:"limit_value"`
 	TokenComponents []string `json:"token_components,omitempty"`
 	CountOnArrival  *bool    `json:"count_on_arrival,omitempty"`
-}
-
-// ServiceQuotaLimiterTypeUsesCountOnArrival 判断 limiter type 是否使用 count_on_arrival 字段。
-// 仅 RPM 使用；其他类型 service 层会强制置零，避免管理员误填影响判定。
-func ServiceQuotaLimiterTypeUsesCountOnArrival(kind string) bool {
-	return kind == ServiceQuotaLimiterRPM
-}
-
-// ServiceQuotaLimiterTypeIsInteger 判断 limiter type 的 LimitValue 业务上是否必须为整数。
-//
-// rpm / tpm / tpd / concurrency 都是"次数 / 个数"语义，本就是整数；
-// daily_usd 是金额必须保留小数（精度由项目 CLAUDE.md 约定的 decimal 处理，本字段是 float64
-// 历史遗留，等彻底切 string-based 再大改）。
-//
-// service 层用此判定在 normalize 阶段对整数型做 math.Round，截断浮点漂移
-// （前端 NumericInput integer prop 是 UX 屏障；后端 round 是数据底线）。
-func ServiceQuotaLimiterTypeIsInteger(kind string) bool {
-	switch kind {
-	case ServiceQuotaLimiterRPM,
-		ServiceQuotaLimiterTPM,
-		ServiceQuotaLimiterTPD,
-		ServiceQuotaLimiterConcurrency:
-		return true
-	default:
-		return false
-	}
 }
 
 // ShouldIncrementOnArrival 决定 PreCheckAcquire 阶段是否需要对该 limiter +1：
@@ -325,68 +213,6 @@ type ChannelScopeInfo struct {
 	GroupIDs  []int64
 }
 
-type ServiceQuotaRuleRepository interface {
-	List(ctx context.Context, filter ServiceQuotaListFilter) ([]*ServiceQuotaRule, error)
-	Create(ctx context.Context, input ServiceQuotaRuleInput) (*ServiceQuotaRule, error)
-	Update(ctx context.Context, id int64, input ServiceQuotaRuleInput) (*ServiceQuotaRule, error)
-	Delete(ctx context.Context, id int64) error
-	FetchAccountScope(ctx context.Context, accountID int64) (*AccountScopeInfo, error)
-	FetchGroupScope(ctx context.Context, groupID int64) (*GroupScopeInfo, error)
-	// FetchChannelScope 返回 channel 服务的 platform 集合与 group 集合，用于 validatePathLinkage
-	// 校验 path 中 channel↔platform、channel↔group 的隶属关系。channel 不存在时返回 nil（非 error），
-	// 与 FetchAccountScope/FetchGroupScope 行为一致——让 caller 用 nil 判断"未找到"。
-	FetchChannelScope(ctx context.Context, channelID int64) (*ChannelScopeInfo, error)
-	// FetchPathIDsByOwner 返回 service_quota_paths 中所有引用指定 owner（channel/group/account/user）的 path_id。
-	//
-	// 用于 admin 删除资源前快照受影响的 path_ids，再异步清 Redis 残留 counter key。
-	// CASCADE 删完后查不到，所以必须 "先快照 → 再 DELETE"。
-	//
-	// owner 为 ServiceQuotaPathOwner* 中的常量。
-	FetchPathIDsByOwner(ctx context.Context, owner string, ownerID int64) ([]int64, error)
-}
-
-// ServiceQuotaUserChecker 是 service quota 在校验 target_user_ids 时使用的最小化用户存在性检查接口。
-//
-// 单独抽出小接口（接口隔离原则）避免侵入庞大的 UserRepository，同时让 *userRepository
-// 自动满足该接口（duck typing）。返回值与 group_repo.ExistsByIDs 对齐：map[id]exists，
-// 缺失 ID 由调用方按需收集。
-type ServiceQuotaUserChecker interface {
-	ExistsByIDs(ctx context.Context, ids []int64) (map[int64]bool, error)
-}
-
-type ServiceQuotaLimiter interface {
-	Current(ctx context.Context, key string, window time.Duration, mode string) (float64, error)
-	Increment(ctx context.Context, key string, delta float64, window time.Duration, mode string) (float64, error)
-	Acquire(ctx context.Context, key, member string, limit int64) (bool, error)
-	Release(ctx context.Context, key, member string) error
-	// Snapshot 只读返回单个 key 的当前计数，不执行任何写入（区别于 Current 的 rolling
-	// 模式会顺带 ZRemRangeByScore）。监控页用它读取规则当前用量，必须保证多次调用幂等。
-	//
-	// mode 取值：ServiceQuotaWindowFixed / ServiceQuotaWindowRolling / ""（concurrency
-	// 路径走 SnapshotKey.IsConcurrency，mode 字段被忽略）。key 不存在时返回
-	// LimiterSnapshot{Current: 0, Exists: false}, nil；底层 Redis 错误以 error 返回。
-	Snapshot(ctx context.Context, key string, window time.Duration, mode string) (LimiterSnapshot, error)
-	// SnapshotMany 用单条 Redis Pipeline 批量获取多个 key 的快照，返回切片顺序
-	// 与入参 keys 一一对应。单 key 失败（除 redis.Nil 外）降级为 {0, false} 并打 warn 日志，
-	// 不让单条命令拖垮整个批次。
-	SnapshotMany(ctx context.Context, keys []SnapshotKey) ([]LimiterSnapshot, error)
-	// Reset 直接删除 limiter key，让计数立即归零。用于管理员手动重置场景。
-	// fixed/rolling/concurrency 三种实现共用同一 DEL；concurrency 已在飞请求的
-	// Release 是幂等的，无副作用。
-	Reset(ctx context.Context, key string) error
-	// ResetPattern 通过 SCAN+DEL 批量清理符合 pattern 的所有 limiter key（counter key 公式见
-	// BuildServiceQuotaCounterKey）。用于以下两类管理员操作的"事务后善后"路径：
-	//   - 规则被删除（DeleteRule） → pattern = svcquota:v2:<rule_id>:*
-	//   - limiter window_mode 切换 fixed↔rolling → pattern = svcquota:v2:<rule_id>:*:<limiter_type>:*
-	//
-	// 不写入 counterKey 公式（避免破坏 BuildServiceQuotaCounterKey 单点实现），
-	// 而是依赖 SCAN 在持有该前缀语义的 service 层调用方组装 pattern 后传入。
-	//
-	// 失败按 best-effort 语义返回 error 给调用方：调用方通常 log warn 但不阻塞业务
-	// （Redis TTL 仍会兜底清理，只是窗口更长）。pattern 为空字符串时直接返回 nil 不做任何动作。
-	ResetPattern(ctx context.Context, pattern string) error
-}
-
 // SnapshotKey 描述一个 limiter 的快照读取目标。
 //
 // 区分 IsConcurrency 与普通 fixed/rolling：concurrency 走 ZSET ZCount + 泄漏窗口，
@@ -414,72 +240,4 @@ type LimiterSnapshot struct {
 	Current       float64
 	Exists        bool
 	ResetAtUnixMs int64
-}
-
-// ServiceQuotaCache 抽象服务限额规则与开关的缓存层。
-//
-// 读路径（GetRules / GetEnabled）未命中时由 service 层自行通过 singleflight
-// 加载并调用 SetRules / SetEnabled 回填，写路径只调 Invalidate* 把 key 删掉，
-// 让其他实例下次读时重新拉取，避免多实例间陈旧数据的不一致窗口。
-type ServiceQuotaCache interface {
-	GetRules(ctx context.Context) ([]*ServiceQuotaRule, bool, error)
-	SetRules(ctx context.Context, rules []*ServiceQuotaRule) error
-	InvalidateRules(ctx context.Context) error
-	GetEnabled(ctx context.Context) (*bool, error)
-	SetEnabled(ctx context.Context, enabled bool) error
-	InvalidateEnabled(ctx context.Context) error
-	Invalidate(ctx context.Context) error
-}
-
-type ServiceQuotaService interface {
-	ListRules(ctx context.Context, filter ServiceQuotaListFilter) ([]*ServiceQuotaRule, error)
-	CreateRule(ctx context.Context, input ServiceQuotaRuleInput) (*ServiceQuotaRule, error)
-	UpdateRule(ctx context.Context, id int64, input ServiceQuotaRuleInput) (*ServiceQuotaRule, error)
-	DeleteRule(ctx context.Context, id int64) error
-	InvalidateEnabledCache(ctx context.Context)
-	// ReloadCache 失效规则缓存，让所有实例下次读时重新拉取数据库。
-	// 用于 handler 层在删除 channel/group/account/user 等关联实体后
-	// 主动让服务限额规则缓存失效。
-	ReloadCache(ctx context.Context) error
-	// PreCheck 为兼容旧 caller 保留的一阶段方法：内部等价于 PreCheckSelect + PreCheckAcquire，
-	// 但 ChannelID/AccountID 取自传入 req（caller 路由前调用时这两字段为 0）。
-	//
-	// 新代码请走 BillingCacheService.PrepareBillingCheck 两阶段路径。
-	PreCheck(ctx context.Context, req ServiceQuotaCheckRequest) (*ServiceQuotaLease, error)
-	// PreCheckSelect 在路由前调用，仅做规则级过滤（enabled / target_user_ids），返回候选规则与
-	// 计划上下文。不抢 concurrency、不增 RPM。
-	PreCheckSelect(ctx context.Context, req ServiceQuotaCheckRequest) (*ServiceQuotaPreCheckPlan, error)
-	// PreCheckAcquire 在 caller 选定 channel + account 后调用，基于 plan 候选规则做 path 匹配
-	// （含 channel/account 维度），按 concurrency → rpm → deferred 三轮判定，命中超限返回错误，
-	// 否则返回已 acquire 的 *ServiceQuotaLease（caller 必须 defer Release）。
-	//
-	// channelID/accountID == 0 表示 caller 未选定该维度（例如某些 fallback 路径或仅 group/platform
-	// 限定的请求）；此时只命中那些对应字段为 nil 的 path。
-	PreCheckAcquire(ctx context.Context, plan *ServiceQuotaPreCheckPlan, channelID, accountID int64) (*ServiceQuotaLease, error)
-	// IsPreCheckTwoPhase 返回是否启用两阶段 PreCheck（对应 setting service_quota_precheck_two_phase）。
-	// BillingTicket.Consume 据此决定是否在 caller 侧真正抢槽位。
-	IsPreCheckTwoPhase(ctx context.Context) bool
-	Record(ctx context.Context, req ServiceQuotaRecordRequest)
-	// ResetLimiterCounter 直接清空指定 (rule_id, path_id, limiter_type, scope_user_id) 的 Redis 计数器。
-	// 用于管理员手动重置：路径不存在或 limiter 缺失时返回 404 让 handler 透传 HTTP 状态。
-	// scopeUserID == nil 对应 shared / per_user 未限定用户的情况；非 nil 对应 user 模式或 per_user 指定用户。
-	ResetLimiterCounter(ctx context.Context, ruleID, pathID int64, limiterType string, scopeUserID *int64) error
-	// ResetCountersForUser 清理某用户在所有规则下的残留 counter key（counter_mode=user / per_user 写出的 user-scoped 计数）。
-	// 用于 admin 删除 user 时 fire-and-forget 调用：DB CASCADE 已清 service_quota_rule_users，
-	// 这里把 Redis 中以该 user_id 结尾的 counter key 也清掉，避免复用 user_id 时新用户继承旧用户的计数。
-	// 失败仅 warn 不抛（与其他 reset 一致），TTL 自然兜底。
-	ResetCountersForUser(ctx context.Context, userID int64)
-	// ResetCountersForPaths 清理一批 path_id 在所有规则/limiter 下的残留 counter key。
-	// 用于 admin 删除 channel/group/account 前先快照受影响的 path_ids，再异步调用此方法清 Redis；
-	// 调用顺序必须是 "先快照 → 再删 DB"，否则 CASCADE 删完查不到 path_ids。
-	// 失败仅 warn 不抛，TTL 自然兜底。
-	ResetCountersForPaths(ctx context.Context, pathIDs []int64)
-	// SnapshotPathIDsByOwner 同步查询当前 service_quota_paths 中引用指定 owner（channel/group/account）的 path_id 列表。
-	//
-	// 必须在 admin 调 DeleteChannel/Group/Account 之前调用——CASCADE 删完后 paths 行就消失了。
-	// 返回 nil/empty 列表时调用方可以省去后续 ResetCountersForPaths 调用。
-	//
-	// owner 必须是 ServiceQuotaPathOwnerChannel / Group / Account 之一。失败返回 error（与 reset 系列的 fail-open 不同：
-	// 这是"读快照"路径，错误不能吞，否则后续 reset 拿到的就是空列表 → 静默漏清）。
-	SnapshotPathIDsByOwner(ctx context.Context, owner string, ownerID int64) ([]int64, error)
 }
