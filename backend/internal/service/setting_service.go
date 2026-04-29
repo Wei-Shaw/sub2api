@@ -95,6 +95,18 @@ const gatewayForwardingCacheTTL = 60 * time.Second
 const gatewayForwardingErrorTTL = 5 * time.Second
 const gatewayForwardingDBTimeout = 5 * time.Second
 
+// RectifierSettingsCache 抽象 rectifier 配置的跨实例缓存层。
+//
+// 读路径（Get）未命中时 service 层从 DB 拉取后调 Set 回填；写路径只调 Invalidate
+// 把 key 删掉，让其他实例下次读时重新拉取，避免多实例间因 setting 修改产生的不
+// 一致窗口。TTL 固定由 Set 时写入（含随机抖动），读路径不刷新，保证 value 最
+// 多活一个 TTL 窗口后自然过期——这是"不更新 TTL"的契约。
+type RectifierSettingsCache interface {
+	Get(ctx context.Context) (*RectifierSettings, bool, error)
+	Set(ctx context.Context, settings *RectifierSettings) error
+	Invalidate(ctx context.Context) error
+}
+
 // DefaultSubscriptionGroupReader validates group references used by default subscriptions.
 type DefaultSubscriptionGroupReader interface {
 	GetByID(ctx context.Context, id int64) (*Group, error)
@@ -113,6 +125,7 @@ type SettingService struct {
 	onUpdate                func() // Callback when settings are updated (for cache invalidation)
 	version                 string // Application version
 	webSearchManagerBuilder WebSearchManagerBuilder
+	rectifierCache          RectifierSettingsCache // 可选：跨实例 rectifier 设置缓存，nil 时退化为直查 DB
 }
 
 type ProviderDefaultGrantSettings struct {
@@ -378,6 +391,12 @@ func (s *SettingService) SetDefaultSubscriptionGroupReader(reader DefaultSubscri
 // SetProxyRepository injects a proxy repo for resolving websearch provider proxy URLs.
 func (s *SettingService) SetProxyRepository(repo ProxyRepository) {
 	s.proxyRepo = repo
+}
+
+// SetRectifierSettingsCache injects the Redis-backed rectifier settings cache.
+// 未注入时 GetRectifierSettings 退化为每次直查 DB，保持向后兼容。
+func (s *SettingService) SetRectifierSettingsCache(cache RectifierSettingsCache) {
+	s.rectifierCache = cache
 }
 
 // GetAllSettings 获取所有系统设置
@@ -3216,7 +3235,32 @@ func (s *SettingService) GetClaudeCodeVersionBounds(ctx context.Context) (min, m
 }
 
 // GetRectifierSettings 获取请求整流器配置
+//
+// 跨实例缓存：优先读 Redis (RectifierSettingsCache)；命中直接返回，未命中走 DB
+// 后回填。写路径 (SetRectifierSettings) 主动 Invalidate，其他实例下次读就拿到
+// 新值。Cache TTL 由 Set 时定一次 (60s ± 10s)，读路径不刷新——保证 value 最多
+// 活一个 TTL 窗口。cache 未注入时退化为每次直查 DB。
 func (s *SettingService) GetRectifierSettings(ctx context.Context) (*RectifierSettings, error) {
+	if s.rectifierCache != nil {
+		if cached, ok, err := s.rectifierCache.Get(ctx); err == nil && ok && cached != nil {
+			return cached, nil
+		}
+	}
+
+	settings, err := s.loadRectifierSettingsFromDB(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if s.rectifierCache != nil {
+		_ = s.rectifierCache.Set(ctx, settings)
+	}
+	return settings, nil
+}
+
+// loadRectifierSettingsFromDB 是 GetRectifierSettings 的 DB 回退路径，供缓存 miss 时调用。
+// 同时被测试路径复用——直接测 DB 升级逻辑不经过缓存。
+func (s *SettingService) loadRectifierSettingsFromDB(ctx context.Context) (*RectifierSettings, error) {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyRectifierSettings)
 	if err != nil {
 		if errors.Is(err, ErrSettingNotFound) {
@@ -3243,6 +3287,9 @@ func (s *SettingService) GetRectifierSettings(ctx context.Context) (*RectifierSe
 }
 
 // SetRectifierSettings 设置请求整流器配置
+//
+// 写 DB 成功后主动 Invalidate 缓存——多实例部署下其他实例下次读 rectifier
+// 时会穿透到 DB 拿到新值，避免最长达 TTL 的陈旧数据窗口。
 func (s *SettingService) SetRectifierSettings(ctx context.Context, settings *RectifierSettings) error {
 	if settings == nil {
 		return fmt.Errorf("settings cannot be nil")
@@ -3253,7 +3300,14 @@ func (s *SettingService) SetRectifierSettings(ctx context.Context, settings *Rec
 		return fmt.Errorf("marshal rectifier settings: %w", err)
 	}
 
-	return s.settingRepo.Set(ctx, SettingKeyRectifierSettings, string(data))
+	if err := s.settingRepo.Set(ctx, SettingKeyRectifierSettings, string(data)); err != nil {
+		return err
+	}
+
+	if s.rectifierCache != nil {
+		_ = s.rectifierCache.Invalidate(ctx)
+	}
+	return nil
 }
 
 // IsSignatureRectifierEnabled 判断签名整流是否启用（总开关 && 签名子开关）
