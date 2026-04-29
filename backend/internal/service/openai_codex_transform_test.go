@@ -1088,6 +1088,27 @@ REDACTED
 		"prompt_cache_retention must be stripped before forwarding to Codex upstream")
 REDACTED
 
+func TestApplyCodexOAuthTransform_StripsChatGPTInternalUnsupportedFields(t *testing.T) {
+	reqBody := map[string]any{
+		"model":                  "gpt-5.4",
+		"user":                   "user_123",
+		"metadata":               map[string]any{"trace_id": "abc"REDACTED,
+		"prompt_cache_retention": "24h",
+		"safety_identifier":      "sid",
+		"stream_options":         map[string]any{"include_usage": trueREDACTED,
+		"input": []any{
+			map[string]any{"role": "user", "content": "hi"REDACTED,
+	REDACTED,
+REDACTED
+
+	result := applyCodexOAuthTransform(reqBody, true, false)
+
+	require.True(t, result.Modified)
+	for _, field := range openAIChatGPTInternalUnsupportedFields {
+		require.NotContains(t, reqBody, field)
+REDACTED
+REDACTED
+
 func TestApplyCodexOAuthTransform_ExtractsSystemMessages(t *testing.T) {
 	reqBody := map[string]any{
 		"model": "gpt-5.1",
