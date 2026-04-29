@@ -428,7 +428,8 @@ REDACTED
 //	"auto"                                     → {"type":"auto"REDACTED
 //	"required"                                 → {"type":"any"REDACTED
 //	"none"                                     → {"type":"none"REDACTED
-//	{"type":"function","function":{"name":"X"REDACTEDREDACTED → {"type":"tool","name":"X"REDACTED
+//	{"type":"function","name":"X"REDACTED                 → {"type":"tool","name":"X"REDACTED
+//	{"type":"function","function":{"name":"X"REDACTEDREDACTED     → {"type":"tool","name":"X"REDACTED // legacy
 func convertResponsesToAnthropicToolChoice(raw json.RawMessage) (json.RawMessage, error) {
 	// Try as string first
 	var s string
@@ -448,14 +449,22 @@ REDACTED
 	// Try as object with type=function
 	var tc struct {
 		Type     string `json:"type"`
+		Name     string `json:"name"`
 		Function struct {
 			Name string `json:"name"`
 	REDACTED `json:"function"`
 REDACTED
-	if err := json.Unmarshal(raw, &tc); err == nil && tc.Type == "function" && tc.Function.Name != "" {
+	if err := json.Unmarshal(raw, &tc); err == nil && tc.Type == "function" {
+		name := strings.TrimSpace(tc.Name)
+		if name == "" {
+			name = strings.TrimSpace(tc.Function.Name)
+	REDACTED
+		if name == "" {
+			return raw, nil
+	REDACTED
 		return json.Marshal(map[string]string{
 			"type": "tool",
-			"name": tc.Function.Name,
+			"name": name,
 	REDACTED)
 REDACTED
 
