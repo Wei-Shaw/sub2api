@@ -4921,17 +4921,18 @@ func (s *OpenAIGatewayService) replaceModelInResponseBody(body []byte, fromModel
 
 // OpenAIRecordUsageInput input for recording usage
 type OpenAIRecordUsageInput struct {
-	Result             *OpenAIForwardResult
-	APIKey             *APIKey
-	User               *User
-	Account            *Account
-	Subscription       *UserSubscription
-	InboundEndpoint    string
-	UpstreamEndpoint   string
-	UserAgent          string // 请求的 User-Agent
-	IPAddress          string // 请求的客户端 IP 地址
-	RequestPayloadHash string
-	APIKeyService      APIKeyQuotaUpdater
+	Result              *OpenAIForwardResult
+	APIKey              *APIKey
+	User                *User
+	Account             *Account
+	Subscription        *UserSubscription
+	InboundEndpoint     string
+	UpstreamEndpoint    string
+	UserAgent           string // 请求的 User-Agent
+	IPAddress           string // 请求的客户端 IP 地址
+	RequestPayloadHash  string
+	APIKeyService       APIKeyQuotaUpdater
+	ServiceQuotaRequest ServiceQuotaCheckRequest
 	ChannelUsageFields
 }
 
@@ -5116,6 +5117,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			IsSubscriptionBill:    isSubscriptionBilling,
 			AccountRateMultiplier: accountRateMultiplier,
 			APIKeyService:         input.APIKeyService,
+			ServiceQuotaRequest:   input.ServiceQuotaRequest,
+			InputTokens:           int64(actualInputTokens),
+			OutputTokens:          int64(result.Usage.OutputTokens),
+			CacheCreationTokens:   int64(result.Usage.CacheCreationInputTokens),
+			CacheReadTokens:       int64(result.Usage.CacheReadInputTokens),
 		}, s.billingDeps(), s.usageBillingRepo)
 		return err
 	}()
