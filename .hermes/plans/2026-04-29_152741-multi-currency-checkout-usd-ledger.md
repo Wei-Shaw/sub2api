@@ -829,7 +829,7 @@ python3 tools/secret_scan.py
    - Confirm paid VND order credits USD ledger amount from stored order, not live FX.
 4. **External FX auto-sync removed**
    - Checkout uses Admin-managed DB/settings rates only; no external API or scheduler path is kept.
-   - Enable auto FX later in staging with API key in environment only.
+   - Future rate-source changes must be a separate explicit design/PR; do not keep hidden API-key/provider fallback in this checkout flow.
 5. **Production**
    - Start with VND + existing CNY only.
    - Add KRW after provider decision/testing.
