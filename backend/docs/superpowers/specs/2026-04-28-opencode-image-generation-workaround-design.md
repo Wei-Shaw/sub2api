@@ -77,12 +77,12 @@ OpenCode 当前的问题是：它把 `image_generation_call` 映射成 provider-
 
 ```text
 Generated image: sub2api-image://img_abc123
-Download URL: https://example.com/sub2api/generated-images/img_abc123.png
+I'll download from URL: https://example.com/sub2api/generated-images/img_abc123.png
 ```
 
-marker 本身必须与域名无关，避免反向代理或域名变化导致上下文恢复失败。绝对下载链接的来源优先级是：公开设置 `api_base_url` 去掉末尾 `/v1` 后的站点根地址、`cfg.Server.FrontendURL`、trusted forwarded host、trusted request Host。只有在可信代理或可信 Host 场景下才从当前请求 Host 或 forwarded headers 推导；如果 Host 不可信，只输出 marker，不输出由 Host 推导的绝对 URL，也不把 `/sub2api/generated-images/...` 这种服务端相对路径写进 assistant 文本，避免误导 Agent 把它当成本地文件或不可见字节来源。
+marker 本身必须与域名无关，避免反向代理或域名变化导致上下文恢复失败。绝对下载链接的来源优先级是：公开设置 `api_base_url` 去掉末尾 `/v1` 后的站点根地址、`cfg.Server.FrontendURL`、trusted forwarded host、trusted request Host。只有在可信代理或可信 Host 场景下才从当前请求 Host 或 forwarded headers 推导；如果 Host 不可信，只输出 marker，不输出由 Host 推导的绝对 URL，也不把 `/sub2api/generated-images/...` 这种服务端相对路径写进 assistant 文本，避免误导 Agent 把它当成本地文件或不可见字节来源。绝对链接文案使用 `I'll download from URL:`，让下一轮模型把第一步理解为下载图片，而不是长期引用该 URL。
 
-OpenCode 的 agent loop 只有在 `finish == tool-calls` 或存在非 provider-executed tool part 时才会继续。纯 assistant text 会让 loop 结束，导致用户要求“生成后继续保存到本地文件”这类后续动作无法执行。因此，每个成功保存的图片 message 后还要追加一个合成的本地 `bash` `function_call`，命令仅 `echo` 一段 continuation 提示，不包含图片 base64，不直接写文件。该 tool call 的目的只是让 OpenCode 保持下一轮模型循环；真正是否下载、保存到哪里仍由下一轮模型根据用户原始指令和前面的图片引用决定。
+OpenCode 的 agent loop 只有在 `finish == tool-calls` 或存在非 provider-executed tool part 时才会继续。纯 assistant text 会让 loop 结束，导致用户要求“生成后继续保存到本地文件”这类后续动作无法执行。因此，每个成功保存的图片 message 后还要追加一个合成的本地 `bash` `function_call`，命令仅 `echo` 一段 continuation 提示，不包含图片 base64，不直接写文件。该 tool call 的目的只是让 OpenCode 保持下一轮模型循环，并明确要求模型立刻从前面的 `I'll download from URL` 链接下载图片、保存到本地 workspace、把 URL 视为短期 bearer capability，之后再用本地文件继续用户原始任务，不能只报告生成完成。
 
 ### 二、非流式普通 message schema
 
@@ -97,7 +97,7 @@ OpenCode 非流式路径中，替换后的 item 必须是完整合法的 Respons
   "content": [
     {
       "type": "output_text",
-      "text": "Generated image: sub2api-image://img_abc123\nDownload URL: https://example.com/sub2api/generated-images/img_abc123.png",
+      "text": "Generated image: sub2api-image://img_abc123\nI'll download from URL: https://example.com/sub2api/generated-images/img_abc123.png",
       "annotations": []
     }
   ]
@@ -113,7 +113,7 @@ OpenCode 非流式路径中，替换后的 item 必须是完整合法的 Respons
   "status": "completed",
   "call_id": "call_sub2api_img_abc123",
   "name": "bash",
-  "arguments": "{\"command\":\"echo \\\"sub2api generated image is ready; use the preceding generated image reference if needed, and continue the user's original request\\\"\",\"description\":\"Reports generated image availability\"}"
+  "arguments": "{\"command\":\"echo \\\"sub2api generated image is ready. Next action: immediately download the image from the preceding I'll download from URL link into the local workspace before any other work. That URL is short-lived and should not be treated as a durable reference. After saving the file, continue the user's original request using the local image. Do not stop after reporting that image generation is complete.\\\"\",\"description\":\"Reports generated image availability\"}"
 }
 ```
 
@@ -258,13 +258,13 @@ event: response.content_part.added
 data: {"type":"response.content_part.added","item_id":"msg_sub2api_img_abc123","output_index":<synthetic_index>,"content_index":0,"part":{"type":"output_text","text":"","annotations":[]}}
 
 event: response.output_text.delta
-data: {"type":"response.output_text.delta","item_id":"msg_sub2api_img_abc123","output_index":<synthetic_index>,"content_index":0,"delta":"Generated image: sub2api-image://img_abc123\nDownload URL: https://example.com/sub2api/generated-images/img_abc123.png"}
+data: {"type":"response.output_text.delta","item_id":"msg_sub2api_img_abc123","output_index":<synthetic_index>,"content_index":0,"delta":"Generated image: sub2api-image://img_abc123\nI'll download from URL: https://example.com/sub2api/generated-images/img_abc123.png"}
 
 event: response.output_text.done
-data: {"type":"response.output_text.done","item_id":"msg_sub2api_img_abc123","output_index":<synthetic_index>,"content_index":0,"text":"Generated image: sub2api-image://img_abc123\nDownload URL: https://example.com/sub2api/generated-images/img_abc123.png"}
+data: {"type":"response.output_text.done","item_id":"msg_sub2api_img_abc123","output_index":<synthetic_index>,"content_index":0,"text":"Generated image: sub2api-image://img_abc123\nI'll download from URL: https://example.com/sub2api/generated-images/img_abc123.png"}
 
 event: response.content_part.done
-data: {"type":"response.content_part.done","item_id":"msg_sub2api_img_abc123","output_index":<synthetic_index>,"content_index":0,"part":{"type":"output_text","text":"Generated image: sub2api-image://img_abc123\nDownload URL: https://example.com/sub2api/generated-images/img_abc123.png","annotations":[]}}
+data: {"type":"response.content_part.done","item_id":"msg_sub2api_img_abc123","output_index":<synthetic_index>,"content_index":0,"part":{"type":"output_text","text":"Generated image: sub2api-image://img_abc123\nI'll download from URL: https://example.com/sub2api/generated-images/img_abc123.png","annotations":[]}}
 
 event: response.output_item.done
 data: {"type":"response.output_item.done","output_index":<synthetic_index>,"item":{"id":"msg_sub2api_img_abc123","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"...","annotations":[]}]}}

@@ -263,10 +263,13 @@ func TestRewriteOpenCodeImageGenerationOutput_AddsContinuationToolCall(t *testin
 	require.Equal(t, "function_call", gjson.GetBytes(patched, "output.1.type").String())
 	require.Equal(t, "bash", gjson.GetBytes(patched, "output.1.name").String())
 	require.Contains(t, gjson.GetBytes(patched, "output.1.call_id").String(), "call_sub2api_img_")
-	require.Contains(t, gjson.GetBytes(patched, "output.0.content.0.text").String(), "Download URL: https://example.com/sub2api/generated-images/")
+	require.Contains(t, gjson.GetBytes(patched, "output.0.content.0.text").String(), "I'll download from URL: https://example.com/sub2api/generated-images/")
 	args := gjson.GetBytes(patched, "output.1.arguments").String()
 	require.True(t, gjson.Valid(args))
-	require.Contains(t, gjson.Get(args, "command").String(), "preceding generated image reference")
+	require.Contains(t, gjson.Get(args, "command").String(), "immediately download the image")
+	require.Contains(t, gjson.Get(args, "command").String(), "preceding I'll download from URL link")
+	require.Contains(t, gjson.Get(args, "command").String(), "short-lived")
+	require.Contains(t, gjson.Get(args, "command").String(), "Do not stop after reporting")
 	require.Contains(t, gjson.Get(args, "command").String(), "continue the user's original request")
 	require.NotContains(t, args, "Server download path")
 	require.NotContains(t, args, pngB64)
@@ -404,7 +407,7 @@ func TestBuildOpenCodeGeneratedImageMessage_UsesRelativeOnlyWhenBaseURLEmpty(t *
 	require.NotContains(t, content, "Download URL:")
 }
 
-func TestBuildOpenCodeGeneratedImageMessage_LabelsAbsoluteURLAsDownloadURL(t *testing.T) {
+func TestBuildOpenCodeGeneratedImageMessage_LabelsAbsoluteURLAsImmediateDownloadPrompt(t *testing.T) {
 	rec := OpenAIGeneratedImageRecord{
 		ID:        "img_abcdefghijklmnopqrstuvwxyzABCDEF",
 		Filename:  "img_abcdefghijklmnopqrstuvwxyzABCDEF.png",
@@ -416,10 +419,11 @@ func TestBuildOpenCodeGeneratedImageMessage_LabelsAbsoluteURLAsDownloadURL(t *te
 	msg := buildOpenCodeGeneratedImageMessage(rec, openCodeImageRewriteOptions{BaseURL: "https://example.com/"})
 	content := msg["content"].([]any)[0].(map[string]any)["text"].(string)
 
-	require.Contains(t, content, "Download URL: https://example.com/sub2api/generated-images/img_abcdefghijklmnopqrstuvwxyzABCDEF.png")
+	require.Contains(t, content, "I'll download from URL: https://example.com/sub2api/generated-images/img_abcdefghijklmnopqrstuvwxyzABCDEF.png")
 	require.NotContains(t, content, "Server download path")
 	require.NotContains(t, content, "Do not treat")
 	require.NotContains(t, content, "If no Download URL")
+	require.NotContains(t, content, "Download URL:")
 	require.NotContains(t, content, "Download: https://example.com")
 }
 

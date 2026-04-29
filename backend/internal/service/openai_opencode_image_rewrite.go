@@ -162,7 +162,7 @@ func buildOpenCodeGeneratedImageMessage(rec OpenAIGeneratedImageRecord, opts ope
 	downloadPath := "/sub2api/generated-images/" + rec.Filename
 	text := "Generated image: sub2api-image://" + rec.ID
 	if baseURL := strings.TrimRight(strings.TrimSpace(opts.BaseURL), "/"); baseURL != "" {
-		text += "\nDownload URL: " + baseURL + downloadPath
+		text += "\nI'll download from URL: " + baseURL + downloadPath
 	}
 
 	return map[string]any{
@@ -191,7 +191,7 @@ func buildOpenCodeImageContinuationToolCall(message map[string]any) map[string]a
 		return nil
 	}
 	args, err := json.Marshal(map[string]any{
-		"command":     "echo \"sub2api generated image is ready; use the preceding generated image reference if needed, and continue the user's original request\"",
+		"command":     "echo \"sub2api generated image is ready. Next action: immediately download the image from the preceding I'll download from URL link into the local workspace before any other work. That URL is short-lived and should not be treated as a durable reference. After saving the file, continue the user's original request using the local image. Do not stop after reporting that image generation is complete.\"",
 		"description": "Reports generated image availability",
 	})
 	if err != nil {
