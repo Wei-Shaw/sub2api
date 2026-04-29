@@ -23,6 +23,12 @@ export interface PluginMenuItem {
   icon_svg: string
   /** locale -> 已翻译的菜单标签，如 {"zh": "渠道管理", "en": "Channel Management"}。 */
   labels: Record<string, string>
+  /**
+   * locale -> 已翻译的菜单描述, 如 {"zh": "管理渠道", "en": "Manage channels"}。
+   * AppHeader 在 titleKey/labels 兜底链之后用 descriptions 渲染副标题, 让
+   * plugin view 可以省去 PluginPageLayout 自己的 title/description。
+   */
+  descriptions: Record<string, string>
   section: 'admin' | 'user' | string
   sort_order: number
   requires_admin: boolean
@@ -77,6 +83,8 @@ export interface PluginNavItem {
   labelKey: string
   /** 插件直接交付的 locale -> 翻译文本映射,sidebar 优先按当前 locale 取值 */
   labels: Record<string, string>
+  /** 插件直接交付的 locale -> 描述文本映射, AppHeader 兜底渲染副标题 */
+  descriptions?: Record<string, string>
   /** 原始 sort_order,合并到主菜单时用作排序权重 */
   sortOrder: number
   /** V5/W7 Placement DSL bucket，可选；缺省由消费方按 section 推导 fallback。 */
@@ -167,12 +175,14 @@ export function registerPluginRoutes(router: Router): void {
       if (!route.path) {
         continue
       }
-      // Header 标题兜底:
-      //   plugin 没填 RouteDecl.Meta.titleKey 时, 把同 path 的 menu item labels
-      //   (locale -> 翻译文本) 透传到 route.meta.pluginLabels, AppHeader 据此
-      //   按当前 i18n locale 选标题. 再往后还有 display_name 兜底.
+      // Header 标题/描述兜底:
+      //   plugin 没填 RouteDecl.Meta.titleKey/descriptionKey 时, 把同 path
+      //   的 menu item labels / descriptions 透传到 route.meta.pluginLabels
+      //   / pluginDescriptions, AppHeader 据此按当前 i18n locale 选标题与
+      //   副标题. 再往后还有 display_name 兜底.
       const matchedMenu = findMenuItemByPath(manifest.menu_items, route.path)
       const fallbackLabels = matchedMenu ? matchedMenu.labels : {}
+      const fallbackDescriptions = matchedMenu ? matchedMenu.descriptions : {}
       const record: RouteRecordRaw = {
         path: route.path,
         name: route.name || `Plugin_${manifest.name}_${route.path}`,
@@ -183,6 +193,7 @@ export function registerPluginRoutes(router: Router): void {
           pluginDisplayName: manifest.display_name,
           componentPath: route.component_path,
           pluginLabels: fallbackLabels,
+          pluginDescriptions: fallbackDescriptions,
           ...route.meta,
         },
       }
@@ -299,6 +310,7 @@ function normalizeMenuItem(value: unknown): PluginMenuItem | null {
     icon: stringField(value, 'icon'),
     icon_svg: stringField(value, 'icon_svg'),
     labels: normalizeStringMap(value['labels']),
+    descriptions: normalizeStringMap(value['descriptions']),
     section: stringField(value, 'section') || 'user',
     sort_order: numberField(value, 'sort_order'),
     requires_admin: booleanField(value, 'requires_admin'),
@@ -366,6 +378,10 @@ function toNavItem(pluginName: string, pluginDisplayName: string, menu: PluginMe
     pluginDisplayName,
     labelKey,
     labels: menu.labels,
+    // descriptions 在 sidebar 不直接使用 (sidebar 不显示副标题), 但保留是
+    // 为了与 labels 对称, 后续如有 tooltip / hover 等需求可直接读取。
+    // AppHeader 走 route.meta.pluginDescriptions, 不依赖 PluginNavItem。
+    descriptions: Object.keys(menu.descriptions || {}).length > 0 ? menu.descriptions : undefined,
     sortOrder: menu.sort_order,
     // V5/W7 Placement DSL — 透传给 sidebar mergeByPlacement 使用，缺省为
     // 空串时表示走 fallback bucket。

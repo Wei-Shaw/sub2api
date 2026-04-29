@@ -287,6 +287,16 @@ const pageDescription = computed(() => {
   if (descKey) {
     return t(descKey)
   }
+  // 插件兜底: 与 pageTitle 对称, 由 plugin loader 从 menu item descriptions
+  // (locale -> 翻译文本) 透传到 route.meta.pluginDescriptions. 当前 locale
+  // 命中即用, 否则按 zh -> en 退化. 让 plugin view 不需要在 PluginPageLayout
+  // 自己渲染 title/description, 与 host 页面统一。
+  const pluginDescriptions = route.meta.pluginDescriptions as Record<string, string> | undefined
+  if (pluginDescriptions) {
+    const cur = locale.value
+    const picked = pluginDescriptions[cur] || pluginDescriptions.zh || pluginDescriptions.en
+    if (picked) return picked
+  }
   return (route.meta.description as string) || ''
 })
 
