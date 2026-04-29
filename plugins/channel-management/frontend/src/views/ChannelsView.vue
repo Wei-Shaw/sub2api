@@ -1,29 +1,22 @@
 <template>
-  <!-- V2 SDK 改造: AppLayout 删除 (plugin 已在 host PluginView 内, 不再套一层),
-       TablePageLayout 改为 inline div 容器 (B 类决议: plugin 只用 1 处, 自写更简单).
-       V1 的 #filters / #table / #pagination slot 用 .filters / .table-card / .pagination
-       分区类名替代; 视觉与 V1 一致 (固定 filters/pagination + 滚动 table-scroll-container). -->
-  <div class="plugin-channels-layout">
-    <!-- 固定: 搜索 + 操作 -->
-    <div class="layout-section-fixed">
-        <div class="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
-          <!-- Left: Search + Filters -->
-          <div class="flex flex-1 flex-wrap items-center gap-3">
-            <div class="relative w-full sm:w-64">
-              <Icon
-                name="search"
-                size="md"
-                class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
-              />
-              <input
+  <!-- Plan B·D3: 用 SDK PluginPageLayout / TablePageLayout / FilterBar / PageActions
+       替换 V2 inline 容器; layout class 走 SDK components.css, 不再在 scoped style
+       重复定义 (避免 ShadowRoot 内多套尺寸). -->
+  <PluginPageLayout
+    :title="t('admin.channels.title', 'Channels')"
+    :description="t('admin.channels.description', 'Manage channels and custom model pricing')"
+  >
+    <TablePageLayout>
+      <template #filters>
+        <FilterBar>
+          <template #left>
+            <div class="w-full sm:w-64">
+              <SearchInput
                 v-model="searchQuery"
-                type="text"
                 :placeholder="t('admin.channels.searchChannels', 'Search channels...')"
-                class="input pl-10"
-                @input="handleSearch"
+                @search="handleSearchImmediate"
               />
             </div>
-
             <Select
               v-model="filters.status"
               :options="statusFilterOptions"
@@ -31,29 +24,28 @@
               class="w-40"
               @change="loadChannels"
             />
-          </div>
+          </template>
+        </FilterBar>
+      </template>
 
-          <!-- Right: Actions -->
-          <div class="flex w-full flex-shrink-0 flex-wrap items-center justify-end gap-3 lg:w-auto">
-            <button
-              @click="loadChannels"
-              :disabled="loading"
-              class="btn btn-secondary"
-              :title="t('common.refresh', 'Refresh')"
-            >
-              <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
-            </button>
-            <button @click="openCreateDialog" class="btn btn-primary">
-              <Icon name="plus" size="md" class="mr-2" />
-              {{ t('admin.channels.createChannel', 'Create Channel') }}
-            </button>
-          </div>
-        </div>
-    </div>
+      <template #actions>
+        <PageActions>
+          <button
+            @click="loadChannels"
+            :disabled="loading"
+            class="btn btn-secondary"
+            :title="t('common.refresh', 'Refresh')"
+          >
+            <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
+          </button>
+          <button @click="openCreateDialog" class="btn btn-primary">
+            <Icon name="plus" size="md" class="mr-2" />
+            {{ t('admin.channels.createChannel', 'Create Channel') }}
+          </button>
+        </PageActions>
+      </template>
 
-    <!-- 滚动: 表格 -->
-    <div class="layout-section-scrollable">
-      <div class="card table-scroll-container">
+      <template #table>
         <DataTable
           :columns="columns"
           :data="channels"
@@ -130,19 +122,18 @@
             />
           </template>
         </DataTable>
-      </div>
-    </div>
+      </template>
 
-    <!-- 固定: 分页 -->
-    <div v-if="pagination.total > 0" class="layout-section-fixed">
-      <Pagination
-        :page="pagination.page"
-        :total="pagination.total"
-        :page-size="pagination.page_size"
-        @update:page="handlePageChange"
-        @update:pageSize="handlePageSizeChange"
-      />
-    </div>
+      <template v-if="pagination.total > 0" #pagination>
+        <Pagination
+          :page="pagination.page"
+          :total="pagination.total"
+          :page-size="pagination.page_size"
+          @update:page="handlePageChange"
+          @update:pageSize="handlePageSizeChange"
+        />
+      </template>
+    </TablePageLayout>
 
     <!-- Create/Edit Dialog -->
     <BaseDialog
@@ -422,7 +413,7 @@
       @confirm="confirmDelete"
       @cancel="showDeleteDialog = false"
     />
-  </div>
+  </PluginPageLayout>
 </template>
 
 <script setup lang="ts">
@@ -438,6 +429,11 @@ import {
   Icon,
   PlatformIcon,
   Toggle,
+  PluginPageLayout,
+  TablePageLayout,
+  PageActions,
+  FilterBar,
+  SearchInput,
   type Column,
 } from '@sub2api/plugin-sdk'
 import channelsAPI from '../api/channels'
@@ -848,13 +844,10 @@ async function loadAllChannelsForConflict() {
   }
 }
 
-let searchTimeout: ReturnType<typeof setTimeout>
-function handleSearch() {
-  clearTimeout(searchTimeout)
-  searchTimeout = setTimeout(() => {
-    pagination.page = 1
-    loadChannels()
-  }, 300)
+// SearchInput 自带 300ms debounce, 直接在 @search 回调里 reset page + reload
+function handleSearchImmediate() {
+  pagination.page = 1
+  loadChannels()
 }
 
 function handlePageChange(page: number) {
@@ -1086,41 +1079,14 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  clearTimeout(searchTimeout)
   abortController?.abort()
 })
 </script>
 
 <style scoped>
-/* V2 Shadow DOM: plugin 在独立 ShadowRoot 内, parent (.plugin-shadow-root) 已是 100% 高度.
-   不再用 100vh — viewport 高度计算与 host 双层容器不一致, 会让表格被推出可视区, 同时
-   导致 host 自己的页面也变空白 (因为重复减去 header/padding). 用 100% 让父容器决定高度. */
-.plugin-channels-layout {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  height: 100%;
-  min-height: 0;
-}
-
-.layout-section-fixed {
-  flex-shrink: 0;
-}
-
-.layout-section-scrollable {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.table-scroll-container {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  height: 100%;
-}
-
+/* layout-* / table-scroll-container / plugin-channels-layout class 由 SDK
+   components.css 提供 (Plan B·D3), 这里只保留对话框和 channel-tab 相关的 plugin
+   独占样式. */
 .channel-dialog-body {
   display: flex;
   flex-direction: column;

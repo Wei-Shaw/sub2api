@@ -1,9 +1,10 @@
 <template>
-  <!-- V5 W7.3 — User-facing read-only Channel Status view (rich version).
-       Ported from host commit 09fd83ab. Uses plugin's shared
-       .plugin-channels-layout / .layout-section-fixed / .layout-section-scrollable
-       skeleton instead of the host's <AppLayout> wrapper. -->
-  <div class="plugin-channels-layout">
+  <!-- Plan B·D3: PluginPageLayout title/description (修复无标题区).
+       MonitorHero 内含状态条/窗口切换/刷新, 不需要再叠 FilterBar/PageActions. -->
+  <PluginPageLayout
+    :title="t('channelStatus.title')"
+    :description="t('channelStatus.description')"
+  >
     <div class="layout-section-fixed">
       <MonitorHero
         :overall-status="overallStatus"
@@ -33,12 +34,13 @@
       :title="detailTitle"
       @close="closeDetail"
     />
-  </div>
+  </PluginPageLayout>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { PluginPageLayout } from '@sub2api/plugin-sdk'
 import {
   list as listChannelMonitorViews,
   status as fetchChannelMonitorDetail,

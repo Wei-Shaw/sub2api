@@ -1,37 +1,34 @@
 <template>
-  <!-- V5 W9 — User-facing "Available Channels" page.
-       AppLayout / TablePageLayout 在 plugin runtime 已被 PluginView 包裹, 这里
-       直接用 .filters / .table-card / .pagination 分区类名替代 (与 ChannelsView.vue
-       一致, 用 V2 SDK 改造后的 layout pattern). -->
-  <div class="plugin-channels-layout">
+  <!-- Plan B·D3: PluginPageLayout title/description + FilterBar/PageActions
+       (无表格分页, default slot 直接渲染 AvailableChannelsTable). -->
+  <PluginPageLayout
+    :title="t('availableChannels.title')"
+    :description="t('availableChannels.description')"
+  >
+    <template #actions>
+      <PageActions>
+        <button
+          @click="loadChannels"
+          :disabled="loading"
+          class="btn btn-secondary"
+          :title="t('common.refresh', 'Refresh')"
+        >
+          <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
+        </button>
+      </PageActions>
+    </template>
+
     <div class="layout-section-fixed">
-      <div class="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
-        <div class="flex flex-1 flex-wrap items-center gap-3">
-          <div class="relative w-full sm:w-80">
-            <Icon
-              name="search"
-              size="md"
-              class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
-            />
-            <input
+      <FilterBar>
+        <template #left>
+          <div class="w-full sm:w-80">
+            <SearchInput
               v-model="searchQuery"
-              type="text"
               :placeholder="t('availableChannels.searchPlaceholder')"
-              class="input pl-10"
             />
           </div>
-        </div>
-        <div class="flex w-full flex-shrink-0 flex-wrap items-center justify-end gap-3 lg:w-auto">
-          <button
-            @click="loadChannels"
-            :disabled="loading"
-            class="btn btn-secondary"
-            :title="t('common.refresh', 'Refresh')"
-          >
-            <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
-          </button>
-        </div>
-      </div>
+        </template>
+      </FilterBar>
     </div>
 
     <div class="layout-section-scrollable">
@@ -46,13 +43,13 @@
         :empty-label="t('availableChannels.empty')"
       />
     </div>
-  </div>
+  </PluginPageLayout>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Icon } from '@sub2api/plugin-sdk'
+import { FilterBar, Icon, PageActions, PluginPageLayout, SearchInput } from '@sub2api/plugin-sdk'
 import AvailableChannelsTable from '../../components/channels/AvailableChannelsTable.vue'
 import userChannelsAPI, { type UserAvailableChannel } from '../../api/user/availableChannels'
 import { getSdk } from '../../api/sdk'

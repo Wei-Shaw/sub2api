@@ -1,41 +1,41 @@
 <template>
-  <!-- V5 W7.1 — admin Channel Monitor view, simplified port. AppLayout /
-       TablePageLayout 已被 PluginView 包裹, 此处与 ChannelsView.vue 一致使用
-       inline filters / scroll-table layout. -->
-  <div class="plugin-channels-layout">
-    <div class="layout-section-fixed">
-      <div class="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
-        <div class="flex flex-1 flex-wrap items-center gap-3">
-          <div class="relative w-full sm:w-64">
-            <Icon
-              name="search"
-              size="md"
-              class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+  <!-- Plan B·D3: 加上 PluginPageLayout title/description (修复用户反馈的"渠道监控
+       页面缺顶部标题区"); TablePageLayout + FilterBar + PageActions 复用 SDK 组件. -->
+  <PluginPageLayout
+    :title="t('admin.channelMonitor.title')"
+    :description="t('admin.channelMonitor.description')"
+  >
+    <TablePageLayout>
+      <template #filters>
+        <FilterBar>
+          <template #left>
+            <div class="w-full sm:w-64">
+              <SearchInput
+                v-model="searchQuery"
+                :placeholder="t('admin.channelMonitor.searchPlaceholder')"
+                @search="handleSearchImmediate"
+              />
+            </div>
+            <Select
+              v-model="providerFilter"
+              :options="providerFilterOptions"
+              :placeholder="t('admin.channelMonitor.allProviders')"
+              class="w-44"
+              @change="reload"
             />
-            <input
-              v-model="searchQuery"
-              type="text"
-              :placeholder="t('admin.channelMonitor.searchPlaceholder')"
-              class="input pl-10"
-              @input="handleSearch"
+            <Select
+              v-model="enabledFilter"
+              :options="enabledFilterOptions"
+              :placeholder="t('admin.channelMonitor.enabledFilter')"
+              class="w-40"
+              @change="reload"
             />
-          </div>
-          <Select
-            v-model="providerFilter"
-            :options="providerFilterOptions"
-            :placeholder="t('admin.channelMonitor.allProviders')"
-            class="w-44"
-            @change="reload"
-          />
-          <Select
-            v-model="enabledFilter"
-            :options="enabledFilterOptions"
-            :placeholder="t('admin.channelMonitor.enabledFilter')"
-            class="w-40"
-            @change="reload"
-          />
-        </div>
-        <div class="flex w-full flex-shrink-0 flex-wrap items-center justify-end gap-3 lg:w-auto">
+          </template>
+        </FilterBar>
+      </template>
+
+      <template #actions>
+        <PageActions>
           <button
             @click="reload"
             :disabled="loading"
@@ -48,12 +48,10 @@
             <Icon name="plus" size="md" class="mr-2" />
             {{ t('admin.channelMonitor.createButton') }}
           </button>
-        </div>
-      </div>
-    </div>
+        </PageActions>
+      </template>
 
-    <div class="layout-section-scrollable">
-      <div class="card table-scroll-container">
+      <template #table>
         <DataTable :columns="columns" :data="monitors" :loading="loading">
           <template #cell-name="{ value }">
             <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
@@ -129,17 +127,18 @@
             />
           </template>
         </DataTable>
-      </div>
-    </div>
+      </template>
 
-    <Pagination
-      v-if="pagination.total > 0"
-      :page="pagination.page"
-      :total="pagination.total"
-      :page-size="pagination.page_size"
-      @update:page="onPageChange"
-      @update:pageSize="onPageSizeChange"
-    />
+      <template v-if="pagination.total > 0" #pagination>
+        <Pagination
+          :page="pagination.page"
+          :total="pagination.total"
+          :page-size="pagination.page_size"
+          @update:page="onPageChange"
+          @update:pageSize="onPageSizeChange"
+        />
+      </template>
+    </TablePageLayout>
 
     <MonitorFormDialog
       :show="showDialog"
@@ -164,7 +163,7 @@
       @confirm="confirmDelete"
       @cancel="showDeleteDialog = false"
     />
-  </div>
+  </PluginPageLayout>
 </template>
 
 <script setup lang="ts">
@@ -185,9 +184,14 @@ import {
   ConfirmDialog,
   DataTable,
   EmptyState,
+  FilterBar,
   Icon,
+  PageActions,
   Pagination,
+  PluginPageLayout,
+  SearchInput,
   Select,
+  TablePageLayout,
   Toggle,
   type Column,
 } from '@sub2api/plugin-sdk'
@@ -262,7 +266,6 @@ const showRunResult = ref(false)
 const runResults = ref<CheckResult[]>([])
 
 let abortController: AbortController | null = null
-let searchTimeout: ReturnType<typeof setTimeout> | null = null
 
 const columns = computed<Column[]>(() => [
   { key: 'name', label: t('admin.channelMonitor.columns.name'), sortable: false },
@@ -331,12 +334,10 @@ async function reload() {
   }
 }
 
-function handleSearch() {
-  if (searchTimeout) clearTimeout(searchTimeout)
-  searchTimeout = setTimeout(() => {
-    pagination.page = 1
-    reload()
-  }, 300)
+// SearchInput 自带 300ms debounce, 这里只需 reset page + reload
+function handleSearchImmediate() {
+  pagination.page = 1
+  reload()
 }
 
 function onPageChange(page: number) {
@@ -412,7 +413,6 @@ async function confirmDelete() {
 
 onMounted(reload)
 onUnmounted(() => {
-  if (searchTimeout) clearTimeout(searchTimeout)
   abortController?.abort()
 })
 </script>
