@@ -270,7 +270,9 @@ function updateField<K extends keyof ServiceQuotaLimiterInput>(index: number, ke
   //   - 切到 TPM/TPD 且没有 token_components → 填默认（input/output/cache_creation）
   //   - 切到非 TPM/TPD → 删字段，避免提交垃圾数据（后端会清洗，前端也清干净）
   if (key === 'limiter_type') {
-    const newType = value as string
+    // value 在此分支对应 ServiceQuotaLimiterInput['limiter_type']（string）。
+    // 用 typeof narrow 处理泛型上下文，避免运行时拿到非字符串导致 helper 误判。
+    const newType: string = typeof value === 'string' ? value : ''
     if (limiterUsesTokenComponents(newType)) {
       if (!next.token_components || next.token_components.length === 0) {
         next.token_components = [...TOKEN_COMPONENTS_DEFAULT]
