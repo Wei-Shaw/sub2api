@@ -57,3 +57,24 @@ func Labels(zh, en string) map[string]string {
 	}
 	return out
 }
+
+// Descriptions is the description analogue of Labels — the same zh/en
+// shortcut, just for MenuItemDecl.Descriptions. The host AppHeader picks
+// the entry matching the user's current locale and renders it under the
+// page title, so plugin views can drop the per-view PluginPageLayout
+// title/description header.
+//
+// Example:
+//
+//	pluginsdk.Descriptions("监控渠道可用性、延迟和状态",
+//	    "Monitor channel availability, latency, and status")
+func Descriptions(zh, en string) map[string]string {
+	out := make(map[string]string, 2)
+	if zh != "" {
+		out["zh"] = zh
+	}
+	if en != "" {
+		out["en"] = en
+	}
+	return out
+}

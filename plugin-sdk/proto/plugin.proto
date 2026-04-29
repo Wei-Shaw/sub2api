@@ -234,6 +234,19 @@ message MenuItem {
   // items follow plugin-name then path). Mirrors sort_order semantics
   // but scoped to one Placement bucket.
   int32 placement_order = 13;
+
+  // descriptions maps a locale code (e.g. "zh", "en") to the already-
+  // translated menu description text the host AppHeader should render
+  // under the page title. Like `labels`, the frontend picks the entry
+  // matching the user's current locale, falling back to "en" then "zh".
+  // Empty map means "no description"; AppHeader leaves the description
+  // line empty rather than rendering placeholder text.
+  //
+  // Plugins ship descriptions through the manifest so plugin views no
+  // longer need to repeat title/description in a per-view
+  // PluginPageLayout header — the host AppHeader becomes the single
+  // source of truth, matching how host pages already work.
+  map<string, string> descriptions = 14;
 }
 
 message RouteDefinition {

@@ -792,8 +792,20 @@ type MenuItem struct {
 	// items follow plugin-name then path). Mirrors sort_order semantics
 	// but scoped to one Placement bucket.
 	PlacementOrder int32 `protobuf:"varint,13,opt,name=placement_order,json=placementOrder,proto3" json:"placement_order,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// descriptions maps a locale code (e.g. "zh", "en") to the already-
+	// translated menu description text the host AppHeader should render
+	// under the page title. Like `labels`, the frontend picks the entry
+	// matching the user's current locale, falling back to "en" then "zh".
+	// Empty map means "no description"; AppHeader leaves the description
+	// line empty rather than rendering placeholder text.
+	//
+	// Plugins ship descriptions through the manifest so plugin views no
+	// longer need to repeat title/description in a per-view
+	// PluginPageLayout header — the host AppHeader becomes the single
+	// source of truth, matching how host pages already work.
+	Descriptions  map[string]string `protobuf:"bytes,14,rep,name=descriptions,proto3" json:"descriptions,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *MenuItem) Reset() {
@@ -915,6 +927,13 @@ func (x *MenuItem) GetPlacementOrder() int32 {
 		return x.PlacementOrder
 	}
 	return 0
+}
+
+func (x *MenuItem) GetDescriptions() map[string]string {
+	if x != nil {
+		return x.Descriptions
+	}
+	return nil
 }
 
 type RouteDefinition struct {
@@ -1234,7 +1253,7 @@ const file_plugin_proto_rawDesc = "" +
 	"\n" +
 	"menu_items\x18\x03 \x03(\v2\x13.pluginsdk.MenuItemR\tmenuItems\x122\n" +
 	"\x06routes\x18\x04 \x03(\v2\x1a.pluginsdk.RouteDefinitionR\x06routes\x12'\n" +
-	"\x0fi18n_namespaces\x18\x05 \x03(\tR\x0ei18nNamespaces\"\x93\x04\n" +
+	"\x0fi18n_namespaces\x18\x05 \x03(\tR\x0ei18nNamespaces\"\x9f\x05\n" +
 	"\bMenuItem\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x1b\n" +
 	"\tlabel_key\x18\x02 \x01(\tR\blabelKey\x12\x12\n" +
@@ -1250,8 +1269,12 @@ const file_plugin_proto_rawDesc = "" +
 	" \x01(\tR\aiconSvg\x127\n" +
 	"\x06labels\x18\v \x03(\v2\x1f.pluginsdk.MenuItem.LabelsEntryR\x06labels\x12'\n" +
 	"\x0fplacement_group\x18\f \x01(\tR\x0eplacementGroup\x12'\n" +
-	"\x0fplacement_order\x18\r \x01(\x05R\x0eplacementOrder\x1a9\n" +
+	"\x0fplacement_order\x18\r \x01(\x05R\x0eplacementOrder\x12I\n" +
+	"\fdescriptions\x18\x0e \x03(\v2%.pluginsdk.MenuItem.DescriptionsEntryR\fdescriptions\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a?\n" +
+	"\x11DescriptionsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd3\x01\n" +
 	"\x0fRouteDefinition\x12\x12\n" +
@@ -1293,7 +1316,7 @@ func file_plugin_proto_rawDescGZIP() []byte {
 	return file_plugin_proto_rawDescData
 }
 
-var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_plugin_proto_goTypes = []any{
 	(*PluginInitRequest)(nil),     // 0: pluginsdk.PluginInitRequest
 	(*OutboundDefaults)(nil),      // 1: pluginsdk.OutboundDefaults
@@ -1310,8 +1333,9 @@ var file_plugin_proto_goTypes = []any{
 	(*GetMigrationRequest)(nil),   // 12: pluginsdk.GetMigrationRequest
 	(*GetMigrationResponse)(nil),  // 13: pluginsdk.GetMigrationResponse
 	nil,                           // 14: pluginsdk.MenuItem.LabelsEntry
-	nil,                           // 15: pluginsdk.RouteDefinition.MetaEntry
-	(*emptypb.Empty)(nil),         // 16: google.protobuf.Empty
+	nil,                           // 15: pluginsdk.MenuItem.DescriptionsEntry
+	nil,                           // 16: pluginsdk.RouteDefinition.MetaEntry
+	(*emptypb.Empty)(nil),         // 17: google.protobuf.Empty
 }
 var file_plugin_proto_depIdxs = []int32{
 	1,  // 0: pluginsdk.PluginInitRequest.outbound_defaults:type_name -> pluginsdk.OutboundDefaults
@@ -1323,24 +1347,25 @@ var file_plugin_proto_depIdxs = []int32{
 	10, // 6: pluginsdk.FrontendManifest.routes:type_name -> pluginsdk.RouteDefinition
 	9,  // 7: pluginsdk.MenuItem.children:type_name -> pluginsdk.MenuItem
 	14, // 8: pluginsdk.MenuItem.labels:type_name -> pluginsdk.MenuItem.LabelsEntry
-	15, // 9: pluginsdk.RouteDefinition.meta:type_name -> pluginsdk.RouteDefinition.MetaEntry
-	0,  // 10: pluginsdk.PluginLifecycle.Init:input_type -> pluginsdk.PluginInitRequest
-	16, // 11: pluginsdk.PluginLifecycle.GetManifest:input_type -> google.protobuf.Empty
-	16, // 12: pluginsdk.PluginLifecycle.HealthCheck:input_type -> google.protobuf.Empty
-	16, // 13: pluginsdk.PluginLifecycle.Shutdown:input_type -> google.protobuf.Empty
-	4,  // 14: pluginsdk.PluginLifecycle.GetFrontendBundle:input_type -> pluginsdk.FrontendBundleRequest
-	12, // 15: pluginsdk.PluginLifecycle.GetMigration:input_type -> pluginsdk.GetMigrationRequest
-	2,  // 16: pluginsdk.PluginLifecycle.Init:output_type -> pluginsdk.PluginInitResponse
-	6,  // 17: pluginsdk.PluginLifecycle.GetManifest:output_type -> pluginsdk.ManifestResponse
-	3,  // 18: pluginsdk.PluginLifecycle.HealthCheck:output_type -> pluginsdk.HealthResponse
-	16, // 19: pluginsdk.PluginLifecycle.Shutdown:output_type -> google.protobuf.Empty
-	5,  // 20: pluginsdk.PluginLifecycle.GetFrontendBundle:output_type -> pluginsdk.FileChunk
-	13, // 21: pluginsdk.PluginLifecycle.GetMigration:output_type -> pluginsdk.GetMigrationResponse
-	16, // [16:22] is the sub-list for method output_type
-	10, // [10:16] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	15, // 9: pluginsdk.MenuItem.descriptions:type_name -> pluginsdk.MenuItem.DescriptionsEntry
+	16, // 10: pluginsdk.RouteDefinition.meta:type_name -> pluginsdk.RouteDefinition.MetaEntry
+	0,  // 11: pluginsdk.PluginLifecycle.Init:input_type -> pluginsdk.PluginInitRequest
+	17, // 12: pluginsdk.PluginLifecycle.GetManifest:input_type -> google.protobuf.Empty
+	17, // 13: pluginsdk.PluginLifecycle.HealthCheck:input_type -> google.protobuf.Empty
+	17, // 14: pluginsdk.PluginLifecycle.Shutdown:input_type -> google.protobuf.Empty
+	4,  // 15: pluginsdk.PluginLifecycle.GetFrontendBundle:input_type -> pluginsdk.FrontendBundleRequest
+	12, // 16: pluginsdk.PluginLifecycle.GetMigration:input_type -> pluginsdk.GetMigrationRequest
+	2,  // 17: pluginsdk.PluginLifecycle.Init:output_type -> pluginsdk.PluginInitResponse
+	6,  // 18: pluginsdk.PluginLifecycle.GetManifest:output_type -> pluginsdk.ManifestResponse
+	3,  // 19: pluginsdk.PluginLifecycle.HealthCheck:output_type -> pluginsdk.HealthResponse
+	17, // 20: pluginsdk.PluginLifecycle.Shutdown:output_type -> google.protobuf.Empty
+	5,  // 21: pluginsdk.PluginLifecycle.GetFrontendBundle:output_type -> pluginsdk.FileChunk
+	13, // 22: pluginsdk.PluginLifecycle.GetMigration:output_type -> pluginsdk.GetMigrationResponse
+	17, // [17:23] is the sub-list for method output_type
+	11, // [11:17] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_plugin_proto_init() }
@@ -1354,7 +1379,7 @@ func file_plugin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_plugin_proto_rawDesc), len(file_plugin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

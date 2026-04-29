@@ -289,6 +289,17 @@ type MenuItemDecl struct {
 	// entry matching the user's current locale, falling back to "en".
 	Labels map[string]string
 
+	// Descriptions maps a locale code to the already-translated menu
+	// description text the host AppHeader renders under the page title,
+	// e.g. {"zh": "管理渠道和自定义模型定价", "en": "Manage channels..."}.
+	// Plugins ship descriptions through the manifest so plugin views no
+	// longer need to repeat title/description inside a per-view
+	// PluginPageLayout header — the host AppHeader becomes the single
+	// source of truth, matching how host pages already work. Empty map
+	// = no description (AppHeader leaves the line empty). Use the
+	// Descriptions helper to construct the common zh/en pair.
+	Descriptions map[string]string
+
 	// Placement opts this menu item into the V5/W7 Placement DSL: the host
 	// merges the item into the named sidebar bucket (Group) at the given
 	// Order rather than appending at the end of its Section. nil = legacy
@@ -438,6 +449,13 @@ func menuItemsToProto(items []MenuItemDecl) []*pb.MenuItem {
 				labels[k] = v
 			}
 		}
+		var descriptions map[string]string
+		if len(item.Descriptions) > 0 {
+			descriptions = make(map[string]string, len(item.Descriptions))
+			for k, v := range item.Descriptions {
+				descriptions[k] = v
+			}
+		}
 		mi := &pb.MenuItem{
 			Path:             item.Path,
 			LabelKey:         item.LabelKey,
@@ -450,6 +468,7 @@ func menuItemsToProto(items []MenuItemDecl) []*pb.MenuItem {
 			Children:         menuItemsToProto(item.Children),
 			IconSvg:          item.IconSVG,
 			Labels:           labels,
+			Descriptions:     descriptions,
 		}
 		// V5/W7 Placement DSL — only stamp the wire fields when the plugin
 		// opted in; leaving them zero preserves the legacy SortOrder path
