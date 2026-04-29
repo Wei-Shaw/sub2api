@@ -173,6 +173,59 @@ type ServiceQuotaLease struct {
 	Release func()
 }
 
+// ServiceQuotaPredictedBlock 是调度阶段批量预测出的"该账号已被服务限额阻塞"结果。
+//
+// 仅当 path 含 account_id（最高优先级）或 channel_id 时才会被标记 —— 这两类 scope
+// 切号才有意义；user / group / platform scope 命中后切号无解，留给 Consume 阶段返回 429。
+//
+// 模型维度天然支持：path.ModelPattern 与 req.Model 的匹配在 findMatchingPaths 已完成，
+// 此结构只描述"哪个规则的哪个 limiter 让该账号当前不可调度"，不再持有 path/model 信息。
+type ServiceQuotaPredictedBlock struct {
+	RuleID      int64
+	LimiterType string // rpm / tpm / tpd / daily_usd / concurrency
+	ScopeKind   string // account / channel
+	Used        float64
+	Limit       float64
+}
+
+// ServiceQuotaPredictedBlockScope* 是 ServiceQuotaPredictedBlock.ScopeKind 的取值集合。
+// 仅 account / channel 会出现在 SnapshotForAccounts 返回的 map；其他 scope 命中后切号无解，
+// 留给 Consume 阶段返回 429（与原生限流命中所有可调度账号 → 503 链路保持一致）。
+const (
+	ServiceQuotaPredictedBlockScopeAccount  = "account"
+	ServiceQuotaPredictedBlockScopeChannel  = "channel"
+	ServiceQuotaPredictedBlockScopeGroup    = "group"
+	ServiceQuotaPredictedBlockScopePlatform = "platform"
+	ServiceQuotaPredictedBlockScopeUser     = "user"
+)
+
+// serviceQuotaPathScopeKind 判定 path 的 scope 维度。
+//
+// 优先级（最高优先级铁律）：
+//  1. AccountID != nil       → account（**最高**，无视是否同时含 channel/group/platform/model）
+//  2. ChannelID != nil       → channel
+//  3. GroupID != nil         → group
+//  4. Platform != ""         → platform
+//  5. 否则                   → user
+//
+// 切号语义只对 account / channel 有意义：含 account → 跳过该账号；只含 channel → 跳过
+// 该 channel 的全部账号；其他 scope 命中后没有"切到另一个就好"的解，必须落到 Consume 429。
+func serviceQuotaPathScopeKind(path ServiceQuotaPathDef) string {
+	if path.AccountID != nil {
+		return ServiceQuotaPredictedBlockScopeAccount
+	}
+	if path.ChannelID != nil {
+		return ServiceQuotaPredictedBlockScopeChannel
+	}
+	if path.GroupID != nil {
+		return ServiceQuotaPredictedBlockScopeGroup
+	}
+	if path.Platform != nil && *path.Platform != "" {
+		return ServiceQuotaPredictedBlockScopePlatform
+	}
+	return ServiceQuotaPredictedBlockScopeUser
+}
+
 // ServiceQuotaPreCheckPlan 是两阶段 PreCheck 的中间态。
 //
 // 阶段 A（PreCheckSelect）只做"必到字段"过滤——is_enabled、counter_mode=user 时 target_user_ids 命中——

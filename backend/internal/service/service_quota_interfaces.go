@@ -125,6 +125,27 @@ type ServiceQuotaService interface {
 	// 调用顺序必须是 "先快照 → 再删 DB"，否则 CASCADE 删完查不到 path_ids。
 	// 失败仅 warn 不抛，TTL 自然兜底。
 	ResetCountersForPaths(ctx context.Context, pathIDs []int64)
+	// SnapshotForAccounts 在选号阶段批量预测哪些候选账号已被 service_quota 限额阻塞。
+	//
+	// 仅识别 account-scope（path 含 account_id）/ channel-scope（path 不含 account_id 但含 channel_id）
+	// 命中：这两类切号才有意义，调度循环可直接跳过对应账号。其他 scope（group / platform / user）
+	// 命中后切号无解，留给 Consume 阶段返回 429。
+	//
+	// base 是请求快照（user_id / platform / group_id / model 必填，channel_id / account_id 由
+	// candidates 维度展开），plan 是 PreCheckSelect 选出的候选规则集合，candidates 是当前可参与
+	// 调度的账号 ID 列表。
+	//
+	// 三层 short-circuit：feature disabled / plan == nil / candidates 空时全部返回 (nil, nil)。
+	// Redis 故障：fail-open 返回空 map + nil error（log warn + metric），不阻塞调度——
+	// 错放由 Consume 阶段兜底。
+	//
+	// 返回 map[accountID]*ServiceQuotaPredictedBlock：仅 account/channel scope 命中的账号才进 map。
+	SnapshotForAccounts(
+		ctx context.Context,
+		base ServiceQuotaCheckRequest,
+		plan *ServiceQuotaPreCheckPlan,
+		candidates []int64,
+	) (map[int64]*ServiceQuotaPredictedBlock, error)
 	// SnapshotPathIDsByOwner 同步查询当前 service_quota_paths 中引用指定 owner（channel/group/account）的 path_id 列表。
 	//
 	// 必须在 admin 调 DeleteChannel/Group/Account 之前调用——CASCADE 删完后 paths 行就消失了。
