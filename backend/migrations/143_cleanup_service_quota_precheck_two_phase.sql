@@ -1,0 +1,28 @@
+-- Migration 143: drop the obsolete service_quota_precheck_two_phase setting row.
+--
+-- Background:
+--   PR #2096 introduced a feature flag (service_quota_precheck_two_phase)
+--   gating the two-phase PreCheck path. With the flag off (default), the
+--   PrepareBillingCheckForRequest caller path collapsed into a single-phase
+--   PreCheck where ChannelID/AccountID were always 0 — meaning every quota
+--   rule whose path filters by account_id / channel_id silently failed to
+--   match and counters never incremented (production bug: rule 4 RPM
+--   count_on_arrival=true was permanently inert).
+--
+--   The follow-up refactor removes the flag entirely and always runs the
+--   two-phase path (PreCheckSelect on Prepare, PreCheckAcquire on
+--   ticket.Consume). The Go constant SettingKeyServiceQuotaPreCheckTwoPhase
+--   no longer exists, so the settings row is dead data.
+--
+-- Idempotency:
+--   - WHERE clause restricts the DELETE to the exact key, so on fresh
+--     deployments / installs that never wrote the flag this is a no-op
+--     (0 rows affected, not an error).
+--   - Migration 142 normalized the key to underscore-delimited form, so
+--     only the underscore variant needs to be cleaned up here.
+--
+-- Upstream:
+--   upstream/main never shipped service_quota before this refactor, so on
+--   stock upstream installs this migration is effectively a no-op.
+
+DELETE FROM settings WHERE key = 'service_quota_precheck_two_phase';
