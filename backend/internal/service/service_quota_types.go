@@ -19,7 +19,7 @@ const (
 	// true（开启）：BillingTicket.Prepare 只调 PreCheckSelect 选规则，BillingTicket.Consume 在
 	// caller 选定 channel + account 后调用 PreCheckAcquire 才真正抢 concurrency / 增 rpm，
 	// account/channel scope 限流器从此生效。详见 BillingCacheService.PrepareBillingCheck。
-	SettingKeyServiceQuotaPreCheckTwoPhase = "service_quota.precheck_two_phase"
+	SettingKeyServiceQuotaPreCheckTwoPhase = "service_quota_precheck_two_phase"
 
 	ServiceQuotaLimiterRPM         = "rpm"
 	ServiceQuotaLimiterTPM         = "tpm"
@@ -456,7 +456,7 @@ type ServiceQuotaService interface {
 	// channelID/accountID == 0 表示 caller 未选定该维度（例如某些 fallback 路径或仅 group/platform
 	// 限定的请求）；此时只命中那些对应字段为 nil 的 path。
 	PreCheckAcquire(ctx context.Context, plan *ServiceQuotaPreCheckPlan, channelID, accountID int64) (*ServiceQuotaLease, error)
-	// IsPreCheckTwoPhase 返回是否启用两阶段 PreCheck（对应 setting service_quota.precheck_two_phase）。
+	// IsPreCheckTwoPhase 返回是否启用两阶段 PreCheck（对应 setting service_quota_precheck_two_phase）。
 	// BillingTicket.Consume 据此决定是否在 caller 侧真正抢槽位。
 	IsPreCheckTwoPhase(ctx context.Context) bool
 	Record(ctx context.Context, req ServiceQuotaRecordRequest)

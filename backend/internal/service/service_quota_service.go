@@ -163,7 +163,7 @@ func (s *serviceQuotaService) InvalidateEnabledCache(ctx context.Context) {
 	}
 }
 
-// IsPreCheckTwoPhase 返回 service_quota.precheck_two_phase setting 的当前值。
+// IsPreCheckTwoPhase 返回 service_quota_precheck_two_phase setting 的当前值。
 // 读取失败或 setting 缺失时一律返回 false（保守降级，沿用旧行为）。
 func (s *serviceQuotaService) IsPreCheckTwoPhase(ctx context.Context) bool {
 	if s == nil || s.settings == nil {
