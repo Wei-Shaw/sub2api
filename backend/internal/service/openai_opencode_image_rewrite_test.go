@@ -266,8 +266,9 @@ func TestRewriteOpenCodeImageGenerationOutput_AddsContinuationToolCall(t *testin
 	require.Contains(t, gjson.GetBytes(patched, "output.0.content.0.text").String(), "Download URL: https://example.com/sub2api/generated-images/")
 	args := gjson.GetBytes(patched, "output.1.arguments").String()
 	require.True(t, gjson.Valid(args))
-	require.Contains(t, gjson.Get(args, "command").String(), "preceding Download URL")
+	require.Contains(t, gjson.Get(args, "command").String(), "preceding generated image reference")
 	require.Contains(t, gjson.Get(args, "command").String(), "continue the user's original request")
+	require.NotContains(t, args, "Server download path")
 	require.NotContains(t, args, pngB64)
 }
 
@@ -396,9 +397,10 @@ func TestBuildOpenCodeGeneratedImageMessage_UsesRelativeOnlyWhenBaseURLEmpty(t *
 	content := msg["content"].([]any)[0].(map[string]any)["text"].(string)
 
 	require.Contains(t, content, "sub2api-image://img_abcdefghijklmnopqrstuvwxyzABCDEF")
-	require.Contains(t, content, "Server download path (not a local file): /sub2api/generated-images/img_abcdefghijklmnopqrstuvwxyzABCDEF.png")
-	require.Contains(t, content, "Do not treat the server download path as a local filesystem path.")
-	require.Contains(t, content, "If no Download URL is shown, ask for the sub2api base URL before downloading.")
+	require.NotContains(t, content, "Server download path")
+	require.NotContains(t, content, "/sub2api/generated-images/")
+	require.NotContains(t, content, "Do not treat")
+	require.NotContains(t, content, "If no Download URL")
 	require.NotContains(t, content, "Download URL:")
 }
 
@@ -415,6 +417,9 @@ func TestBuildOpenCodeGeneratedImageMessage_LabelsAbsoluteURLAsDownloadURL(t *te
 	content := msg["content"].([]any)[0].(map[string]any)["text"].(string)
 
 	require.Contains(t, content, "Download URL: https://example.com/sub2api/generated-images/img_abcdefghijklmnopqrstuvwxyzABCDEF.png")
+	require.NotContains(t, content, "Server download path")
+	require.NotContains(t, content, "Do not treat")
+	require.NotContains(t, content, "If no Download URL")
 	require.NotContains(t, content, "Download: https://example.com")
 }
 

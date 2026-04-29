@@ -760,8 +760,8 @@ Rules:
 - Replace image item with complete message schema.
 - After a successful generated-image message, append a synthetic `bash` `function_call` whose command only echoes a continuation hint. This keeps OpenCode in the tool-call loop so the next model step can finish the user's original instruction, such as saving the image locally.
 - Do not include base64 in text.
-- Resolve absolute download URL with this priority: public `api_base_url` setting with trailing `/v1` removed, `cfg.Server.FrontendURL`, trusted forwarded host, trusted request Host. If Host is untrusted, omit the absolute `Download URL:` line and keep only `Server download path (not a local file):`.
-- Marker text must explicitly say the server download path is not a local filesystem path, so OpenCode agents do not try to read `/sub2api/...` from their local disk. If no absolute download URL is available, tell the agent to ask for the sub2api base URL before downloading.
+- Resolve absolute download URL with this priority: public `api_base_url` setting with trailing `/v1` removed, `cfg.Server.FrontendURL`, trusted forwarded host, trusted request Host. If Host is untrusted, omit the absolute `Download URL:` line and keep only the `sub2api-image://...` marker.
+- Do not expose `/sub2api/generated-images/...` server-relative paths in assistant text. They are not useful to the Agent and can be mistaken for local files or invisible server bytes.
 - Do not trust arbitrary `Host`, `X-Forwarded-Host`, or `X-Forwarded-Proto` values. If no configured public base URL is available and the request is not from configured trusted proxy context, return an empty base URL and use relative-only marker text.
 
 - [ ] **Step 3b: Add URL builder tests**
@@ -805,16 +805,17 @@ func TestBuildOpenCodeGeneratedImageMessage_UsesRelativeOnlyWhenBaseURLEmpty(t *
 	msg := buildOpenCodeGeneratedImageMessage(rec, openCodeImageRewriteOptions{})
 	content := msg["content"].([]any)[0].(map[string]any)["text"].(string)
 	require.Contains(t, content, "sub2api-image://img_abcdefghijklmnopqrstuvwxyzABCDEF")
-	require.Contains(t, content, "Server download path (not a local file): /sub2api/generated-images/img_abcdefghijklmnopqrstuvwxyzABCDEF.png")
-	require.Contains(t, content, "Do not treat the server download path as a local filesystem path.")
-	require.Contains(t, content, "If no Download URL is shown, ask for the sub2api base URL before downloading.")
+	require.NotContains(t, content, "Server download path")
+	require.NotContains(t, content, "/sub2api/generated-images/")
+	require.NotContains(t, content, "Do not treat")
+	require.NotContains(t, content, "If no Download URL")
 	require.NotContains(t, content, "Download URL:")
 }
 ```
 
 - [ ] **Step 3c: Add continuation loop tests**
 
-Add tests proving OpenCode image rewrite adds a synthetic `bash` `function_call` after successful image messages and that SSE output emits matching function-call frames. Assert the synthetic command mentions the preceding `Download URL`, tells the model to continue the user's original request, and never includes raw image base64.
+Add tests proving OpenCode image rewrite adds a synthetic `bash` `function_call` after successful image messages and that SSE output emits matching function-call frames. Assert the synthetic command mentions the preceding generated image reference, tells the model to continue the user's original request, and never includes raw image base64 or server-relative paths.
 
 - [ ] **Step 4: Run rewrite test and verify GREEN**
 

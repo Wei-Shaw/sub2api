@@ -160,11 +160,10 @@ func buildOpenCodeImageGenerationMessageForRawItem(ctx context.Context, raw json
 
 func buildOpenCodeGeneratedImageMessage(rec OpenAIGeneratedImageRecord, opts openCodeImageRewriteOptions) map[string]any {
 	downloadPath := "/sub2api/generated-images/" + rec.Filename
-	text := "Generated image: sub2api-image://" + rec.ID + "\nServer download path (not a local file): " + downloadPath
+	text := "Generated image: sub2api-image://" + rec.ID
 	if baseURL := strings.TrimRight(strings.TrimSpace(opts.BaseURL), "/"); baseURL != "" {
 		text += "\nDownload URL: " + baseURL + downloadPath
 	}
-	text += "\nDo not treat the server download path as a local filesystem path. To save the image locally, download it over HTTP from the sub2api server. If no Download URL is shown, ask for the sub2api base URL before downloading."
 
 	return map[string]any{
 		"id":     "msg_sub2api_" + rec.ID,
@@ -192,7 +191,7 @@ func buildOpenCodeImageContinuationToolCall(message map[string]any) map[string]a
 		return nil
 	}
 	args, err := json.Marshal(map[string]any{
-		"command":     "echo \"sub2api generated image is ready; use the preceding Download URL if you need the file, and continue the user's original request\"",
+		"command":     "echo \"sub2api generated image is ready; use the preceding generated image reference if needed, and continue the user's original request\"",
 		"description": "Reports generated image availability",
 	})
 	if err != nil {
