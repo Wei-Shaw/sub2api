@@ -10,6 +10,16 @@ export default {
   nav: {
     channels: 'Channels',
   },
+  common: {
+    refresh: 'Refresh',
+    loading: 'Loading...',
+    autoRefresh: {
+      title: 'Auto Refresh',
+      enable: 'Enable auto refresh',
+      countdown: 'Auto refresh: {seconds}s',
+      seconds: '{n} seconds',
+    },
+  },
   admin: {
     channels: {
       title: 'Channel Management',
@@ -189,6 +199,14 @@ export default {
     availabilityPrefix: 'Availability',
     dialogLatency: 'Dialog Latency',
     endpointPing: 'Endpoint PING',
+    history60pts: 'HISTORY ({n} PTS)',
+    nextUpdateIn: 'NEXT UPDATE IN {n}s',
+    past: 'PAST',
+    now: 'NOW',
+    maintenancePaused: 'Maintenance · timeline paused',
+    extraModelsCount: '+ {n} models',
+    pollEvery: '{n}s polling',
+    updatedAt: 'Updated {time}',
     relativeSecondsAgo: '{n}s ago',
     relativeMinutesAgo: '{n}m ago',
     relativeHoursAgo: '{n}h ago',
@@ -201,6 +219,19 @@ export default {
     searchPlaceholder: 'Search channels...',
     allProviders: 'All Providers',
     loadError: 'Failed to load channel status',
+    detailLoadError: 'Failed to load channel detail',
+    detailTitle: 'Channel Detail',
+    closeDetail: 'Close',
+    windowTab: {
+      '7d': '7 days',
+      '15d': '15 days',
+      '30d': '30 days',
+    },
+    overall: {
+      operational: 'OPERATIONAL',
+      degraded: 'DEGRADED',
+      unavailable: 'UNAVAILABLE',
+    },
     columns: {
       name: 'Name',
       provider: 'Provider',
@@ -208,6 +239,15 @@ export default {
       primaryModel: 'Primary Model',
       availability7d: '7d Availability',
       latency: 'Latency (ms)',
+    },
+    detailColumns: {
+      model: 'Model',
+      latestStatus: 'Latest Status',
+      latestLatency: 'Latest Latency (ms)',
+      availability7d: '7d Availability',
+      availability15d: '15d Availability',
+      availability30d: '30d Availability',
+      avgLatency7d: '7d Avg Latency (ms)',
     },
     empty: {
       title: 'No channels available',

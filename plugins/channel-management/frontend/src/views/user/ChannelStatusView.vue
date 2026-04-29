@@ -1,194 +1,109 @@
 <template>
-  <!-- V5 W7.3 — User-facing read-only Channel Status view.
-       简化版本: 09fd83ab host 的 ChannelStatusView 用 Hero + CardGrid + Timeline
-       chart + DetailDialog 重渲染, 总计 ~20 个组件 ~1500+ 行. plugin 端只保留
-       表格主干 (search + 平台筛选 + 列出可用率/延迟). 不带 chart, 不带自动刷新,
-       不带详情弹窗 -- 这些全部依赖 host 内部 composable (useAutoRefresh,
-       cachedPublicSettings) 与重型 timeline 组件, 后续 V5+ 可再补.
-       此页面已经覆盖了核心信息密度: 渠道 -> 平台 -> 主模型 -> 7d 可用率 -> 延迟. -->
+  <!-- V5 W7.3 — User-facing read-only Channel Status view (rich version).
+       Ported from host commit 09fd83ab. Uses plugin's shared
+       .plugin-channels-layout / .layout-section-fixed / .layout-section-scrollable
+       skeleton instead of the host's <AppLayout> wrapper. -->
   <div class="plugin-channels-layout">
     <div class="layout-section-fixed">
-      <div class="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
-        <div class="flex flex-1 flex-wrap items-center gap-3">
-          <div class="relative w-full sm:w-80">
-            <Icon
-              name="search"
-              size="md"
-              class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
-            />
-            <input
-              v-model="searchQuery"
-              type="text"
-              :placeholder="t('channelStatus.searchPlaceholder')"
-              class="input pl-10"
-            />
-          </div>
-          <Select
-            v-model="providerFilter"
-            :options="providerFilterOptions"
-            :placeholder="t('channelStatus.allProviders')"
-            class="w-44"
-          />
-        </div>
-        <div class="flex w-full flex-shrink-0 flex-wrap items-center justify-end gap-3 lg:w-auto">
-          <button
-            @click="reload"
-            :disabled="loading"
-            class="btn btn-secondary"
-            :title="t('common.refresh', 'Refresh')"
-          >
-            <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
-          </button>
-        </div>
-      </div>
+      <MonitorHero
+        :overall-status="overallStatus"
+        :interval-seconds="DEFAULT_INTERVAL_SECONDS"
+        :window="currentWindow"
+        :loading="loading"
+        :auto-refresh="autoRefresh"
+        @update:window="handleWindowChange"
+        @refresh="manualReload"
+      />
     </div>
 
     <div class="layout-section-scrollable">
-      <div class="card table-scroll-container">
-        <DataTable :columns="columns" :data="filteredItems" :loading="loading">
-          <template #cell-name="{ row }">
-            <div class="flex flex-col">
-              <span class="font-medium text-gray-900 dark:text-white">{{ row.name }}</span>
-              <span v-if="row.group_name" class="text-xs text-gray-500 dark:text-gray-400">
-                {{ row.group_name }}
-              </span>
-            </div>
-          </template>
-
-          <template #cell-provider="{ row }">
-            <span
-              class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium"
-              :class="providerBadgeClass(row.provider)"
-            >
-              {{ providerLabel(row.provider) }}
-            </span>
-          </template>
-
-          <template #cell-primary_model="{ row }">
-            <div class="flex flex-col">
-              <span class="text-sm text-gray-900 dark:text-gray-100">{{ row.primary_model }}</span>
-              <span
-                v-if="row.primary_status"
-                class="mt-0.5 inline-flex w-fit items-center rounded px-1.5 py-0.5 text-[10px] font-medium"
-                :class="statusBadgeClass(row.primary_status)"
-              >
-                {{ statusLabel(row.primary_status) }}
-              </span>
-            </div>
-          </template>
-
-          <template #cell-availability_7d="{ row }">
-            <span class="text-sm text-gray-900 dark:text-gray-100">
-              {{ formatPercent(row.availability_7d) }}
-            </span>
-          </template>
-
-          <template #cell-latency="{ row }">
-            <span class="text-sm text-gray-900 dark:text-gray-100">
-              {{ formatLatency(row.primary_latency_ms) }}
-            </span>
-          </template>
-
-          <template #empty>
-            <EmptyState
-              :title="t('channelStatus.empty.title')"
-              :description="t('channelStatus.empty.description')"
-            />
-          </template>
-        </DataTable>
-      </div>
+      <MonitorCardGrid
+        :items="items"
+        :window="currentWindow"
+        :countdown-seconds="countdown"
+        :loading="loading"
+        :detail-cache="detailCache"
+        @card-click="openDetail"
+      />
     </div>
+
+    <MonitorDetailDialog
+      :show="showDetail"
+      :monitor-id="detailTarget?.id ?? null"
+      :title="detailTitle"
+      @close="closeDetail"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-/**
- * V5 W7.3 — Read-only Channel Status table for end users.
- */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
-  DataTable,
-  EmptyState,
-  Icon,
-  Select,
-  type Column,
-} from '@sub2api/plugin-sdk'
-import {
-  channelMonitorUserAPI,
+  list as listChannelMonitorViews,
+  status as fetchChannelMonitorDetail,
   type UserMonitorView,
+  type UserMonitorDetail,
 } from '../../api/user/channelMonitor'
-import type { Provider } from '../../api/admin/channelMonitor'
-import { useChannelMonitorFormat } from '../../composables/useChannelMonitorFormat'
-import {
-  PROVIDER_OPENAI,
-  PROVIDER_ANTHROPIC,
-  PROVIDER_GEMINI,
-} from '../../utils/channelMonitorConstants'
+import MonitorHero, {
+  type MonitorWindow,
+  type OverallStatus,
+} from '../../components/user/monitor/MonitorHero.vue'
+import MonitorCardGrid from '../../components/user/monitor/MonitorCardGrid.vue'
+import MonitorDetailDialog from '../../components/user/MonitorDetailDialog.vue'
+import { DEFAULT_INTERVAL_SECONDS, STATUS_OPERATIONAL } from '../../utils/channelMonitorConstants'
+import { useAutoRefresh } from '../../composables/useAutoRefresh'
 import { getSdk } from '../../api/sdk'
 
 const { t } = useI18n()
 const sdk = getSdk()
-const {
-  providerLabel,
-  providerBadgeClass,
-  statusLabel,
-  statusBadgeClass,
-  formatLatency,
-  formatPercent,
-} = useChannelMonitorFormat()
 
+// ── State ──
 const items = ref<UserMonitorView[]>([])
 const loading = ref(false)
-const searchQuery = ref('')
-const providerFilter = ref<Provider | ''>('')
+const currentWindow = ref<MonitorWindow>('7d')
+const detailCache = reactive<Record<number, UserMonitorDetail>>({})
+const showDetail = ref(false)
+const detailTarget = ref<UserMonitorView | null>(null)
 
 let abortController: AbortController | null = null
 
-const columns = computed<Column[]>(() => [
-  { key: 'name', label: t('channelStatus.columns.name'), sortable: false },
-  { key: 'provider', label: t('channelStatus.columns.provider'), sortable: false },
-  { key: 'primary_model', label: t('channelStatus.columns.primaryModel'), sortable: false },
-  { key: 'availability_7d', label: t('channelStatus.columns.availability7d'), sortable: false },
-  { key: 'latency', label: t('channelStatus.columns.latency'), sortable: false },
-])
+const autoRefresh = useAutoRefresh({
+  storageKey: 'channel-status-auto-refresh',
+  intervals: [30, 60, 120] as const,
+  defaultInterval: DEFAULT_INTERVAL_SECONDS,
+  onRefresh: () => reload(true),
+  shouldPause: () => document.hidden || loading.value,
+})
+const countdown = autoRefresh.countdown
 
-const providerFilterOptions = computed(() => [
-  { value: '', label: t('channelStatus.allProviders') },
-  { value: PROVIDER_OPENAI, label: t('monitorCommon.providers.openai') },
-  { value: PROVIDER_ANTHROPIC, label: t('monitorCommon.providers.anthropic') },
-  { value: PROVIDER_GEMINI, label: t('monitorCommon.providers.gemini') },
-])
+// ── Computed ──
+const overallStatus = computed<OverallStatus>(() => {
+  if (items.value.length === 0) return 'operational'
+  for (const it of items.value) {
+    if (it.primary_status === 'failed' || it.primary_status === 'error') return 'degraded'
+    if (it.primary_status !== STATUS_OPERATIONAL) return 'degraded'
+  }
+  return 'operational'
+})
 
-const filteredItems = computed(() => {
-  const q = searchQuery.value.trim().toLowerCase()
-  const provider = providerFilter.value
-  return items.value.filter((it) => {
-    if (provider && it.provider !== provider) return false
-    if (!q) return true
-    return (
-      it.name.toLowerCase().includes(q) ||
-      it.primary_model.toLowerCase().includes(q) ||
-      (it.group_name || '').toLowerCase().includes(q)
-    )
-  })
+const detailTitle = computed(() => {
+  return detailTarget.value?.name || t('channelStatus.detailTitle')
 })
 
 function extractMessage(err: unknown, fallback: string): string {
-  if (err && typeof err === 'object' && 'message' in err) {
-    const m = (err as { message?: unknown }).message
-    if (typeof m === 'string' && m) return m
-  }
-  return fallback
+  const msg = err instanceof Error ? err.message : String(err)
+  return msg || fallback
 }
 
-async function reload() {
+// ── Loaders ──
+async function reload(silent = false) {
   if (abortController) abortController.abort()
   const ctrl = new AbortController()
   abortController = ctrl
-  loading.value = true
+  if (!silent) loading.value = true
   try {
-    const res = await channelMonitorUserAPI.list({ signal: ctrl.signal })
+    const res = await listChannelMonitorViews({ signal: ctrl.signal })
     if (ctrl.signal.aborted || abortController !== ctrl) return
     items.value = res.items || []
   } catch (err: unknown) {
@@ -197,14 +112,73 @@ async function reload() {
     sdk.notify.error(extractMessage(err, t('channelStatus.loadError')))
   } finally {
     if (abortController === ctrl) {
-      loading.value = false
+      if (!silent) loading.value = false
+      countdown.value = DEFAULT_INTERVAL_SECONDS
       abortController = null
     }
   }
 }
 
-onMounted(reload)
+async function manualReload() {
+  await reload(false)
+  // After base reload, refresh any cached detail records so non-7d availability
+  // values stay in sync without forcing the user to switch tabs again.
+  if (currentWindow.value !== '7d') {
+    await Promise.all(items.value.map(it => loadDetail(it.id, true)))
+  }
+}
+
+async function loadDetail(id: number, force = false) {
+  if (!force && detailCache[id]) return
+  try {
+    detailCache[id] = await fetchChannelMonitorDetail(id)
+  } catch (err: unknown) {
+    sdk.notify.error(extractMessage(err, t('channelStatus.detailLoadError')))
+  }
+}
+
+async function ensureDetailsForWindow() {
+  if (currentWindow.value === '7d') return
+  await Promise.all(items.value.map(it => loadDetail(it.id)))
+}
+
+// ── Handlers ──
+async function handleWindowChange(value: MonitorWindow) {
+  currentWindow.value = value
+  await ensureDetailsForWindow()
+}
+
+function openDetail(row: UserMonitorView) {
+  detailTarget.value = row
+  showDetail.value = true
+}
+
+function closeDetail() {
+  showDetail.value = false
+  detailTarget.value = null
+}
+
+watch(items, () => {
+  void ensureDetailsForWindow()
+})
+
+onMounted(() => {
+  void reload(false)
+  // Public-settings watch is intentionally not wired in plugin context;
+  // auto-refresh defaults to enabled on first visit, but we respect the
+  // user's persisted choice afterwards (localStorage as single source of truth).
+  const STORAGE_KEY = 'channel-status-auto-refresh'
+  let hasPersisted = false
+  try { hasPersisted = localStorage.getItem(STORAGE_KEY) !== null } catch { /* ignore */ }
+  if (!hasPersisted) {
+    autoRefresh.setEnabled(true)
+  } else if (autoRefresh.enabled.value) {
+    autoRefresh.start()
+    autoRefresh.resetCountdown()
+  }
+})
+
 onBeforeUnmount(() => {
-  abortController?.abort()
+  if (abortController) abortController.abort()
 })
 </script>

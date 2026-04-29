@@ -10,6 +10,16 @@ export default {
   nav: {
     channels: '渠道管理',
   },
+  common: {
+    refresh: '刷新',
+    loading: '加载中...',
+    autoRefresh: {
+      title: '自动刷新',
+      enable: '启用自动刷新',
+      countdown: '自动刷新: {seconds}s',
+      seconds: '{n} 秒',
+    },
+  },
   admin: {
     channels: {
       title: '渠道管理',
@@ -187,6 +197,14 @@ export default {
     availabilityPrefix: '可用率',
     dialogLatency: '对话延迟',
     endpointPing: '端点 PING',
+    history60pts: '近 {n} 次记录',
+    nextUpdateIn: '{n}s 后刷新',
+    past: 'PAST',
+    now: 'NOW',
+    maintenancePaused: '维护中 · 已暂停时间线采集',
+    extraModelsCount: '+ {n} 模型',
+    pollEvery: '{n}s 轮询',
+    updatedAt: '更新于 {time}',
     relativeSecondsAgo: '{n} 秒前',
     relativeMinutesAgo: '{n} 分钟前',
     relativeHoursAgo: '{n} 小时前',
@@ -199,6 +217,19 @@ export default {
     searchPlaceholder: '搜索渠道...',
     allProviders: '全部平台',
     loadError: '加载渠道状态失败',
+    detailLoadError: '加载渠道详情失败',
+    detailTitle: '渠道详情',
+    closeDetail: '关闭',
+    windowTab: {
+      '7d': '7 天',
+      '15d': '15 天',
+      '30d': '30 天',
+    },
+    overall: {
+      operational: 'OPERATIONAL',
+      degraded: 'DEGRADED',
+      unavailable: 'UNAVAILABLE',
+    },
     columns: {
       name: '名称',
       provider: '平台',
@@ -206,6 +237,15 @@ export default {
       primaryModel: '主模型',
       availability7d: '7 天可用率',
       latency: '延迟 (ms)',
+    },
+    detailColumns: {
+      model: '模型',
+      latestStatus: '最新状态',
+      latestLatency: '最新延迟 (ms)',
+      availability7d: '7 天可用率',
+      availability15d: '15 天可用率',
+      availability30d: '30 天可用率',
+      avgLatency7d: '7 天平均延迟 (ms)',
     },
     empty: {
       title: '暂无渠道',

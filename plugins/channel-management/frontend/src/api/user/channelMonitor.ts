@@ -19,6 +19,13 @@ export interface UserMonitorExtraModel {
   latency_ms: number | null
 }
 
+export interface MonitorTimelinePoint {
+  status: MonitorStatus
+  latency_ms: number | null
+  ping_latency_ms: number | null
+  checked_at: string
+}
+
 export interface UserMonitorView {
   id: number
   name: string
@@ -30,10 +37,29 @@ export interface UserMonitorView {
   primary_ping_latency_ms: number | null
   availability_7d: number
   extra_models: UserMonitorExtraModel[]
+  timeline?: MonitorTimelinePoint[]
 }
 
 export interface UserMonitorListResponse {
   items: UserMonitorView[]
+}
+
+export interface UserMonitorModelDetail {
+  model: string
+  latest_status: MonitorStatus
+  latest_latency_ms: number | null
+  availability_7d: number
+  availability_15d: number
+  availability_30d: number
+  avg_latency_7d_ms: number | null
+}
+
+export interface UserMonitorDetail {
+  id: number
+  name: string
+  provider: Provider
+  group_name: string
+  models: UserMonitorModelDetail[]
 }
 
 const BASE = '/plugin/channel-management/monitors'
@@ -47,8 +73,18 @@ export async function list(options?: {
   return data
 }
 
+/**
+ * Get detailed status (multi-window availability + latency) for a single monitor.
+ * Backend route: GET /plugin/channel-management/monitors/:id  (handler: UserHandler.GetStatus).
+ */
+export async function status(id: number): Promise<UserMonitorDetail> {
+  const { data } = await getClient().get<UserMonitorDetail>(`${BASE}/${id}`)
+  return data
+}
+
 export const channelMonitorUserAPI = {
   list,
+  status,
 }
 
 export default channelMonitorUserAPI
