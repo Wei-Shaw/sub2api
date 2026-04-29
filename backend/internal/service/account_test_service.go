@@ -64,6 +64,7 @@ REDACTED
 type AccountTestService struct {
 	accountRepo               AccountRepository
 	geminiTokenProvider       *GeminiTokenProvider
+	claudeTokenProvider       *ClaudeTokenProvider
 	antigravityGatewayService *AntigravityGatewayService
 	httpUpstream              HTTPUpstream
 	cfg                       *config.Config
@@ -74,6 +75,7 @@ REDACTED
 func NewAccountTestService(
 	accountRepo AccountRepository,
 	geminiTokenProvider *GeminiTokenProvider,
+	claudeTokenProvider *ClaudeTokenProvider,
 	antigravityGatewayService *AntigravityGatewayService,
 	httpUpstream HTTPUpstream,
 	cfg *config.Config,
@@ -82,6 +84,7 @@ func NewAccountTestService(
 	return &AccountTestService{
 		accountRepo:               accountRepo,
 		geminiTokenProvider:       geminiTokenProvider,
+		claudeTokenProvider:       claudeTokenProvider,
 		antigravityGatewayService: antigravityGatewayService,
 		httpUpstream:              httpUpstream,
 		cfg:                       cfg,
@@ -210,6 +213,9 @@ REDACTED
 	if account.IsBedrock() {
 		return s.testBedrockAccountConnection(c, ctx, account, testModelID)
 REDACTED
+	if account.Type == AccountTypeServiceAccount {
+		return s.testClaudeVertexServiceAccountConnection(c, ctx, account, testModelID)
+REDACTED
 
 	// Determine authentication method and API URL
 	var authToken string
@@ -310,6 +316,74 @@ REDACTED
 REDACTED
 
 	// Process SSE stream
+	return s.processClaudeStream(c, resp.Body)
+REDACTED
+
+func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Context, ctx context.Context, account *Account, testModelID string) error {
+	if mappedModel, matched := account.ResolveMappedModel(testModelID); matched {
+		testModelID = mappedModel
+REDACTED else {
+		testModelID = normalizeVertexAnthropicModelID(claude.NormalizeModelID(testModelID))
+REDACTED
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	payload, err := createTestPayload(testModelID)
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create test payload")
+REDACTED
+	payloadBytes, _ := json.Marshal(payload)
+	vertexBody, err := buildVertexAnthropicRequestBody(payloadBytes)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to create Vertex request body: %s", err.Error()))
+REDACTED
+
+	if s.claudeTokenProvider == nil {
+		return s.sendErrorAndEnd(c, "Claude token provider not configured")
+REDACTED
+	accessToken, err := s.claudeTokenProvider.GetAccessToken(ctx, account)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to get service account access token: %s", err.Error()))
+REDACTED
+
+	fullURL, err := buildVertexAnthropicURL(account.VertexProjectID(), account.VertexLocation(testModelID), testModelID, true)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to build Vertex URL: %s", err.Error()))
+REDACTED
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelIDREDACTED)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(vertexBody))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create request")
+REDACTED
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+REDACTED
+
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
+REDACTED
+	defer func() { _ = resp.Body.Close() REDACTED()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		errMsg := fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body))
+		if resp.StatusCode == http.StatusForbidden {
+			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+	REDACTED
+		return s.sendErrorAndEnd(c, errMsg)
+REDACTED
+
 	return s.processClaudeStream(c, resp.Body)
 REDACTED
 
@@ -711,8 +785,8 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 		testModelID = geminicli.DefaultTestModel
 REDACTED
 
-	// For API Key accounts with model mapping, map the model
-	if account.Type == AccountTypeAPIKey {
+	// For static upstream credentials with model mapping, map the model
+	if account.Type == AccountTypeAPIKey || account.Type == AccountTypeServiceAccount {
 		mapping := account.GetModelMapping()
 		if len(mapping) > 0 {
 			if mappedModel, exists := mapping[testModelID]; exists {
@@ -740,6 +814,8 @@ REDACTED
 		req, err = s.buildGeminiAPIKeyRequest(ctx, account, testModelID, payload)
 	case AccountTypeOAuth:
 		req, err = s.buildGeminiOAuthRequest(ctx, account, testModelID, payload)
+	case AccountTypeServiceAccount:
+		req, err = s.buildGeminiServiceAccountRequest(ctx, account, testModelID, payload)
 	default:
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported account type: %s", account.Type))
 REDACTED
@@ -891,6 +967,27 @@ REDACTED
 
 	// Code Assist mode (with project_id)
 	return s.buildCodeAssistRequest(ctx, accessToken, projectID, modelID, payload)
+REDACTED
+
+func (s *AccountTestService) buildGeminiServiceAccountRequest(ctx context.Context, account *Account, modelID string, payload []byte) (*http.Request, error) {
+	if s.geminiTokenProvider == nil {
+		return nil, fmt.Errorf("gemini token provider not configured")
+REDACTED
+	accessToken, err := s.geminiTokenProvider.GetAccessToken(ctx, account)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get service account access token: %w", err)
+REDACTED
+	fullURL, err := buildVertexGeminiURL(account.VertexProjectID(), account.VertexLocation(modelID), modelID, "streamGenerateContent", true)
+	if err != nil {
+		return nil, err
+REDACTED
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+REDACTED
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	return req, nil
 REDACTED
 
 // buildCodeAssistRequest builds request for Google Code Assist API (used by Gemini CLI and Antigravity)

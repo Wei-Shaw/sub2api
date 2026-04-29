@@ -153,7 +153,7 @@
       <!-- Account Type Selection (Anthropic) -->
       <div v-if="form.platform === 'anthropic'">
         <label class="input-label">{{ t('admin.accounts.accountType') REDACTEDREDACTED</label>
-        <div class="mt-2 grid grid-cols-3 gap-3" data-tour="account-form-type">
+        <div class="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4" data-tour="account-form-type">
           <button
             type="button"
             @click="accountCategory = 'oauth-based'"
@@ -244,6 +244,39 @@
             </div>
           </button>
 
+          <button
+            type="button"
+            @click="accountCategory = 'service_account'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountCategory === 'service_account'
+                ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
+                : 'border-gray-200 hover:border-sky-300 dark:border-dark-600 dark:hover:border-sky-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountCategory === 'service_account'
+                  ? 'bg-sky-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="cloud" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">Vertex</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">Service Account</span>
+            </div>
+          </button>
+
+        </div>
+
+        <div
+          v-if="accountCategory === 'service_account'"
+          class="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-800/40 dark:bg-sky-900/20 dark:text-sky-200"
+        >
+          <p>使用 Google Cloud Service Account JSON 通过 Vertex AI 调用 Anthropic Claude。建议配置模型映射，将客户端 Claude 模型名映射到 Vertex 模型 ID。</p>
         </div>
       </div>
 
@@ -302,6 +335,7 @@
               <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.responsesApi') REDACTEDREDACTED</span>
             </div>
           </button>
+
         </div>
       </div>
 
@@ -320,7 +354,7 @@
             {{ t('admin.accounts.gemini.helpButton') REDACTEDREDACTED
           </button>
         </div>
-        <div class="mt-2 grid grid-cols-2 gap-3" data-tour="account-form-type">
+        <div class="mt-2 grid grid-cols-3 gap-3" data-tour="account-form-type">
           <button
             type="button"
             @click="accountCategory = 'oauth-based'"
@@ -392,6 +426,36 @@
               </span>
             </div>
           </button>
+
+          <button
+            type="button"
+            @click="accountCategory = 'service_account'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountCategory === 'service_account'
+                ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
+                : 'border-gray-200 hover:border-sky-300 dark:border-dark-600 dark:hover:border-sky-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountCategory === 'service_account'
+                  ? 'bg-sky-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="cloud" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">
+                Vertex
+              </span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                Service Account
+              </span>
+            </div>
+          </button>
         </div>
 
         <div
@@ -409,6 +473,13 @@
               {{ t('admin.accounts.gemini.accountType.apiKeyLink') REDACTEDREDACTED
             </a>
           </div>
+        </div>
+
+        <div
+          v-if="accountCategory === 'service_account'"
+          class="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-800/40 dark:bg-sky-900/20 dark:text-sky-200"
+        >
+          <p>使用 Google Cloud Service Account JSON 访问 Vertex AI Gemini。建议将 Vertex 账号放入独立分组，避免和 AI Studio/Gemini OAuth 同模型混调。</p>
         </div>
 
         <!-- OAuth Type Selection (only show when oauth-based is selected) -->
@@ -610,7 +681,7 @@
         </div>
 
         <!-- Tier selection (used as fallback when auto-detection is unavailable/fails) -->
-        <div class="mt-4">
+        <div v-if="accountCategory !== 'service_account'" class="mt-4">
           <label class="input-label">{{ t('admin.accounts.gemini.tier.label') REDACTEDREDACTED</label>
           <div class="mt-2">
             <select
@@ -726,6 +797,96 @@
             placeholder="sk-..."
           />
           <p class="input-hint">{{ t('admin.accounts.upstream.apiKeyHint') REDACTEDREDACTED</p>
+        </div>
+      </div>
+
+      <!-- Vertex Service Account -->
+      <div v-if="(form.platform === 'gemini' || form.platform === 'anthropic') && accountCategory === 'service_account'" class="space-y-4">
+        <div>
+          <label class="input-label">Service Account JSON</label>
+          <input
+            ref="vertexServiceAccountFileInput"
+            type="file"
+            accept="application/json,.json"
+            class="hidden"
+            @change="handleVertexServiceAccountFile"
+          />
+          <div
+            :class="[
+              'rounded-lg border-2 border-dashed px-4 py-5 transition-colors',
+              vertexServiceAccountDragActive
+                ? 'border-sky-500 bg-sky-50 dark:border-sky-500 dark:bg-sky-900/20'
+                : 'border-gray-300 bg-gray-50 hover:border-sky-400 hover:bg-sky-50/60 dark:border-dark-500 dark:bg-dark-700/40 dark:hover:border-sky-600 dark:hover:bg-sky-900/10'
+            ]"
+            @dragenter.prevent="vertexServiceAccountDragActive = true"
+            @dragover.prevent="vertexServiceAccountDragActive = true"
+            @dragleave.prevent="vertexServiceAccountDragActive = false"
+            @drop.prevent="handleVertexServiceAccountDrop"
+          >
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+                  <Icon name="upload" size="sm" />
+                  <span>{{ vertexClientEmail ? '已读取 Service Account JSON' : '拖入 Service Account JSON' REDACTEDREDACTED</span>
+                </div>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ vertexClientEmail ? '密钥内容不会在表单中显示。' : '把 .json 文件拖到这里，或点击按钮选择文件。' REDACTEDREDACTED
+                </p>
+              </div>
+              <button
+                type="button"
+                class="btn btn-secondary shrink-0"
+                @click="vertexServiceAccountFileInput?.click()"
+              >
+                <Icon name="upload" size="sm" />
+                选择 JSON
+              </button>
+            </div>
+            <div
+              v-if="vertexClientEmail"
+              class="mt-3 rounded-md border border-sky-200 bg-white px-3 py-2 text-xs text-sky-900 dark:border-sky-800/50 dark:bg-dark-800 dark:text-sky-200"
+            >
+              <div class="truncate">Project ID: <span class="font-mono">{{ vertexProjectId REDACTEDREDACTED</span></div>
+              <div class="truncate">Client Email: <span class="font-mono">{{ vertexClientEmail REDACTEDREDACTED</span></div>
+            </div>
+          </div>
+          <p class="input-hint">上传或拖入 JSON 后会自动读取 project_id，密钥内容仅用于创建账号提交。</p>
+        </div>
+
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label class="input-label">Project ID</label>
+            <input
+              v-model="vertexProjectId"
+              type="text"
+              class="input font-mono"
+              readonly
+              placeholder="从 JSON 自动读取"
+            />
+          </div>
+          <div>
+            <label class="input-label">Location</label>
+            <select
+              v-model="vertexLocation"
+              required
+              class="input font-mono"
+            >
+              <optgroup
+                v-for="group in vertexLocationOptions"
+                :key="group.label"
+                :label="group.label"
+              >
+                <option
+                  v-for="option in group.options"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label REDACTEDREDACTED
+                </option>
+              </optgroup>
+            </select>
+            <p class="input-hint">不同 Vertex 模型可用 location 可能不同，这里选择账号默认 endpoint location。</p>
+          </div>
         </div>
       </div>
 
@@ -3085,7 +3246,7 @@ REDACTED
 // State
 const step = ref(1)
 const submitting = ref(false)
-const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock'>('oauth-based') // UI selection for account category
+const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_account'>('oauth-based') // UI selection for account category
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
@@ -3151,6 +3312,58 @@ const bedrockSessionToken = ref('')
 const bedrockRegion = ref('us-east-1')
 const bedrockForceGlobal = ref(false)
 const bedrockApiKeyValue = ref('')
+const vertexServiceAccountFileInput = ref<HTMLInputElement | null>(null)
+const vertexServiceAccountJson = ref('')
+const vertexProjectId = ref('')
+const vertexClientEmail = ref('')
+const vertexLocation = ref('global')
+const vertexServiceAccountDragActive = ref(false)
+const vertexLocationOptions = [
+  {
+    label: 'Common',
+    options: [
+      { value: 'us-central1', label: 'us-central1 (Iowa)' REDACTED,
+      { value: 'global', label: 'global' REDACTED,
+      { value: 'us', label: 'us' REDACTED,
+      { value: 'eu', label: 'eu' REDACTED
+    ]
+  REDACTED,
+  {
+    label: 'United States',
+    options: [
+      { value: 'us-east1', label: 'us-east1 (South Carolina)' REDACTED,
+      { value: 'us-east4', label: 'us-east4 (Northern Virginia)' REDACTED,
+      { value: 'us-east5', label: 'us-east5 (Columbus)' REDACTED,
+      { value: 'us-south1', label: 'us-south1 (Dallas)' REDACTED,
+      { value: 'us-west1', label: 'us-west1 (Oregon)' REDACTED,
+      { value: 'us-west4', label: 'us-west4 (Las Vegas)' REDACTED
+    ]
+  REDACTED,
+  {
+    label: 'Europe',
+    options: [
+      { value: 'europe-west1', label: 'europe-west1 (Belgium)' REDACTED,
+      { value: 'europe-west2', label: 'europe-west2 (London)' REDACTED,
+      { value: 'europe-west3', label: 'europe-west3 (Frankfurt)' REDACTED,
+      { value: 'europe-west4', label: 'europe-west4 (Netherlands)' REDACTED,
+      { value: 'europe-west6', label: 'europe-west6 (Zurich)' REDACTED,
+      { value: 'europe-west8', label: 'europe-west8 (Milan)' REDACTED,
+      { value: 'europe-west9', label: 'europe-west9 (Paris)' REDACTED
+    ]
+  REDACTED,
+  {
+    label: 'Asia Pacific',
+    options: [
+      { value: 'asia-east1', label: 'asia-east1 (Taiwan)' REDACTED,
+      { value: 'asia-east2', label: 'asia-east2 (Hong Kong)' REDACTED,
+      { value: 'asia-northeast1', label: 'asia-northeast1 (Tokyo)' REDACTED,
+      { value: 'asia-northeast3', label: 'asia-northeast3 (Seoul)' REDACTED,
+      { value: 'asia-south1', label: 'asia-south1 (Mumbai)' REDACTED,
+      { value: 'asia-southeast1', label: 'asia-southeast1 (Singapore)' REDACTED,
+      { value: 'australia-southeast1', label: 'australia-southeast1 (Sydney)' REDACTED
+    ]
+  REDACTED
+] as const
 const tempUnschedEnabled = ref(false)
 const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
 const getModelMappingKey = createStableObjectKeyResolver<ModelMapping>('create-model-mapping')
@@ -3397,7 +3610,7 @@ watch(
 
 // Sync form.type based on accountCategory, addMethod, and platform-specific type
 watch(
-  [accountCategory, addMethod, antigravityAccountType],
+  [accountCategory, addMethod, antigravityAccountType, () => form.platform],
   ([category, method, agType]) => {
     // Antigravity upstream 类型（实际创建为 apikey）
     if (form.platform === 'antigravity' && agType === 'upstream') {
@@ -3409,7 +3622,9 @@ watch(
       form.type = 'bedrock' as AccountType
       return
     REDACTED
-    if (category === 'oauth-based') {
+    if ((form.platform === 'gemini' || form.platform === 'anthropic') && category === 'service_account') {
+      form.type = 'service_account' as AccountType
+    REDACTED else if (category === 'oauth-based') {
       form.type = method as AccountType // 'oauth' or 'setup-token'
     REDACTED else {
       form.type = 'apikey'
@@ -3447,6 +3662,12 @@ watch(
       antigravityModelMappings.value = []
       antigravityModelRestrictionMode.value = 'mapping'
     REDACTED
+    if (newPlatform !== 'gemini' && newPlatform !== 'anthropic' && accountCategory.value === 'service_account') {
+      accountCategory.value = 'oauth-based'
+    REDACTED
+    if (newPlatform !== 'anthropic' && accountCategory.value === 'bedrock') {
+      accountCategory.value = 'oauth-based'
+    REDACTED
     // Reset Bedrock fields when switching platforms
     bedrockAccessKeyId.value = ''
     bedrockSecretAccessKey.value = ''
@@ -3455,6 +3676,10 @@ watch(
     bedrockForceGlobal.value = false
     bedrockAuthMode.value = 'sigv4'
     bedrockApiKeyValue.value = ''
+    vertexServiceAccountJson.value = ''
+    vertexProjectId.value = ''
+    vertexClientEmail.value = ''
+    vertexLocation.value = 'global'
     // Reset Anthropic/Antigravity-specific settings when switching to other platforms
     if (newPlatform !== 'anthropic' && newPlatform !== 'antigravity') {
       interceptWarmupRequests.value = false
@@ -3886,6 +4111,10 @@ const resetForm = () => {
   antigravityAccountType.value = 'oauth'
   upstreamBaseUrl.value = ''
   upstreamApiKey.value = ''
+  vertexServiceAccountJson.value = ''
+  vertexProjectId.value = ''
+  vertexClientEmail.value = ''
+  vertexLocation.value = 'global'
   tempUnschedEnabled.value = false
   tempUnschedRules.value = []
   geminiOAuthType.value = 'code_assist'
@@ -4009,6 +4238,52 @@ const normalizePoolModeRetryCount = (value: number) => {
   return normalized
 REDACTED
 
+const applyVertexServiceAccountJson = (value: string) => {
+  const raw = value.trim()
+  if (!raw) {
+    vertexProjectId.value = ''
+    vertexClientEmail.value = ''
+    return false
+  REDACTED
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    const projectId = typeof parsed.project_id === 'string' ? parsed.project_id.trim() : ''
+    const clientEmail = typeof parsed.client_email === 'string' ? parsed.client_email.trim() : ''
+    const privateKey = typeof parsed.private_key === 'string' ? parsed.private_key.trim() : ''
+    if (!projectId || !clientEmail || !privateKey) {
+      appStore.showError('Service Account JSON 缺少 project_id、client_email 或 private_key')
+      return false
+    REDACTED
+    vertexProjectId.value = projectId
+    vertexClientEmail.value = clientEmail
+    vertexServiceAccountJson.value = JSON.stringify(parsed)
+    return true
+  REDACTED catch {
+    appStore.showError('Service Account JSON 格式无效')
+    return false
+  REDACTED
+REDACTED
+
+const parseVertexServiceAccountJson = () => applyVertexServiceAccountJson(vertexServiceAccountJson.value)
+
+const handleVertexServiceAccountFile = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  try {
+    applyVertexServiceAccountJson(await file.text())
+  REDACTED finally {
+    input.value = ''
+  REDACTED
+REDACTED
+
+const handleVertexServiceAccountDrop = async (event: DragEvent) => {
+  vertexServiceAccountDragActive.value = false
+  const file = event.dataTransfer?.files?.[0]
+  if (!file) return
+  applyVertexServiceAccountJson(await file.text())
+REDACTED
+
 const handleSubmit = async () => {
   // For OAuth-based type, handle OAuth flow (goes to step 2)
   if (isOAuthFlow.value) {
@@ -4119,6 +4394,29 @@ const handleSubmit = async () => {
 
     const extra = buildAntigravityExtra()
     await createAccountAndFinish(form.platform, 'apikey', credentials, extra)
+    return
+  REDACTED
+
+  if ((form.platform === 'gemini' || form.platform === 'anthropic') && accountCategory.value === 'service_account') {
+    if (!form.name.trim()) {
+      appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
+      return
+    REDACTED
+    if (!parseVertexServiceAccountJson()) {
+      return
+    REDACTED
+    if (!vertexLocation.value.trim()) {
+      appStore.showError('请填写 Vertex location')
+      return
+    REDACTED
+    const credentials: Record<string, unknown> = {
+      service_account_json: vertexServiceAccountJson.value.trim(),
+      project_id: vertexProjectId.value.trim(),
+      client_email: vertexClientEmail.value.trim(),
+      location: vertexLocation.value.trim(),
+      tier_id: 'vertex'
+    REDACTED
+    await createAccountAndFinish(form.platform, 'service_account' as AccountType, credentials)
     return
   REDACTED
 
