@@ -7304,6 +7304,18 @@
                       {{ t("admin.settings.payment.orderTimeoutHint") }}
                     </p>
                   </div>
+                  <div class="min-w-96 flex-1">
+                    <label class="input-label">Payment currency capabilities JSON</label>
+                    <textarea
+                      v-model="form.payment_currency_capabilities"
+                      rows="5"
+                      class="input font-mono text-xs"
+                      placeholder='{"methods":{"sepay":["VND"]},"providers":{"paddle":["USD","KRW"]},"instances":{"123":["KRW"]}}'
+                    ></textarea>
+                    <p class="mt-0.5 text-xs text-gray-400">
+                      Configure provider/method/instance supported currencies. Checkout-info and quote/order validation use this payment setting instead of hardcoded gateway defaults.
+                    </p>
+                  </div>
                   <div class="min-w-64 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-dark-600 dark:bg-dark-800/60 dark:text-gray-300">
                     <div class="mb-1 font-medium text-gray-800 dark:text-gray-100">
                       FX status
@@ -8921,6 +8933,7 @@ const form = reactive<SettingsForm>({
   payment_ledger_currency: "USD",
   payment_allowed_currencies: ["USD", "CNY"],
   payment_manual_fx_rates: { USD: 1, CNY: 1 },
+  payment_currency_capabilities: "{}",
   payment_fx_status: {
     source: "manual",
     stale_after_seconds: 86400,
@@ -10606,6 +10619,7 @@ async function saveSettings() {
       payment_product_name_suffix: form.payment_product_name_suffix,
       payment_help_image_url: form.payment_help_image_url,
       payment_help_text: form.payment_help_text,
+      payment_currency_capabilities: form.payment_currency_capabilities || "{}",
       payment_cancel_rate_limit_enabled: form.payment_cancel_rate_limit_enabled,
       payment_cancel_rate_limit_max:
         Number(form.payment_cancel_rate_limit_max) || 10,

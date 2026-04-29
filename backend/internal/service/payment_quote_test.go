@@ -103,6 +103,7 @@ func TestPaymentQuoteRejectsUnsupportedPaymentCurrency(t *testing.T) {
 		SettingLedgerCurrency:           "USD",
 		SettingAllowedPaymentCurrencies: "USD,VND,CNY",
 		SettingManualFXRates:            `{"USD":1,"VND":0.000039215686,"CNY":0.139}`,
+		SettingCurrencyCapabilities:     `{"methods":{"sepay":["VND"]}}`,
 	}}
 	client := newPaymentConfigServiceTestClient(t)
 	_, err := client.PaymentProviderInstance.Create().
@@ -134,6 +135,7 @@ func TestPaymentQuoteDefaultsMissingSingleMethodCurrency(t *testing.T) {
 		SettingLedgerCurrency:           "USD",
 		SettingAllowedPaymentCurrencies: "USD,VND,CNY",
 		SettingManualFXRates:            `{"USD":1,"VND":0.000039215686,"CNY":0.139}`,
+		SettingCurrencyCapabilities:     `{"methods":{"sepay":["VND"]}}`,
 		SettingMinRechargeAmount:        "1",
 		SettingMaxRechargeAmount:        "1000",
 	}}
@@ -204,6 +206,7 @@ func TestPaymentQuoteSupportsConfiguredProviderCurrency(t *testing.T) {
 		SettingLedgerCurrency:           "USD",
 		SettingAllowedPaymentCurrencies: "USD",
 		SettingManualFXRates:            `{"USD":1,"KRW":0.00073}`,
+		SettingCurrencyCapabilities:     `{"providers":{"paddle":["KRW","USD"]}}`,
 		SettingMinRechargeAmount:        "1",
 		SettingMaxRechargeAmount:        "1000",
 	}}
@@ -211,7 +214,7 @@ func TestPaymentQuoteSupportsConfiguredProviderCurrency(t *testing.T) {
 	_, err := client.PaymentProviderInstance.Create().
 		SetProviderKey(payment.TypePaddle).
 		SetName("Paddle KRW/USD").
-		SetConfig(`{"allowed_payment_currencies":"KRW,USD"}`).
+		SetConfig("{}").
 		SetSupportedTypes(payment.TypePaddle).
 		SetEnabled(true).
 		Save(context.Background())

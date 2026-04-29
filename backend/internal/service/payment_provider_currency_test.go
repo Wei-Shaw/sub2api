@@ -10,7 +10,16 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
-func TestValidateProviderCurrencyUsesProviderCapabilityCatalog(t *testing.T) {
+func TestValidateProviderCurrencyUsesPaymentSettingsCapabilities(t *testing.T) {
+	capabilities := payment.CurrencyCapabilityConfig{
+		Providers: map[string][]string{
+			payment.TypeSepay:                           {"VND"},
+			payment.TypeWxpay:                           {"CNY"},
+			payment.TypeAlipay:                          {"CNY"},
+			payment.TypeStripe + ":" + payment.TypeLink: {"USD"},
+			payment.TypePaddle:                          {"USD"},
+		},
+	}
 	tests := []struct {
 		name        string
 		providerKey string
@@ -21,11 +30,11 @@ func TestValidateProviderCurrencyUsesProviderCapabilityCatalog(t *testing.T) {
 		{name: "wxpay cny", providerKey: payment.TypeWxpay, paymentType: payment.TypeWxpay, currency: "CNY"},
 		{name: "alipay direct cny", providerKey: payment.TypeAlipay, paymentType: payment.TypeAlipayDirect, currency: "CNY"},
 		{name: "stripe link usd", providerKey: payment.TypeStripe, paymentType: payment.TypeLink, currency: "USD"},
-		{name: "paddle default usd", providerKey: payment.TypePaddle, paymentType: payment.TypePaddle, currency: "USD"},
+		{name: "paddle usd", providerKey: payment.TypePaddle, paymentType: payment.TypePaddle, currency: "USD"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := validateProviderCurrency(tt.providerKey, tt.paymentType, tt.currency, nil); err != nil {
+			if err := validateProviderCurrency(tt.providerKey, tt.paymentType, tt.currency, nil, capabilities); err != nil {
 				t.Fatalf("validateProviderCurrency returned error: %v", err)
 			}
 		})
@@ -34,28 +43,36 @@ func TestValidateProviderCurrencyUsesProviderCapabilityCatalog(t *testing.T) {
 
 func TestValidateProviderCurrencyAllowsInstanceConfigOverride(t *testing.T) {
 	config := map[string]string{"allowed_payment_currencies": "KRW,USD"}
-	if err := validateProviderCurrency(payment.TypePaddle, payment.TypePaddle, "KRW", config); err != nil {
+	if err := validateProviderCurrency(payment.TypePaddle, payment.TypePaddle, "KRW", config, payment.CurrencyCapabilityConfig{}); err != nil {
 		t.Fatalf("validateProviderCurrency should allow configured Paddle KRW: %v", err)
 	}
 }
 
 func TestValidateProviderCurrencyRejectsUnsupportedCurrency(t *testing.T) {
+	capabilities := payment.CurrencyCapabilityConfig{
+		Providers: map[string][]string{
+			payment.TypeSepay: {"VND"},
+			payment.TypeWxpay: {"CNY"},
+			payment.TypeStripe + ":" + payment.TypeAlipay: {"CNY"},
+		},
+	}
 	tests := []struct {
-		name        string
-		providerKey string
-		paymentType string
-		currency    string
-		config      map[string]string
-		supported   string
+		name         string
+		providerKey  string
+		paymentType  string
+		currency     string
+		config       map[string]string
+		capabilities payment.CurrencyCapabilityConfig
+		supported    string
 	}{
-		{name: "sepay cny", providerKey: payment.TypeSepay, paymentType: payment.TypeSepay, currency: "CNY", supported: "VND"},
-		{name: "wxpay vnd", providerKey: payment.TypeWxpay, paymentType: payment.TypeWxpay, currency: "VND", supported: "CNY"},
-		{name: "stripe alipay vnd", providerKey: payment.TypeStripe, paymentType: payment.TypeAlipay, currency: "VND", supported: "CNY"},
+		{name: "sepay cny", providerKey: payment.TypeSepay, paymentType: payment.TypeSepay, currency: "CNY", capabilities: capabilities, supported: "VND"},
+		{name: "wxpay vnd", providerKey: payment.TypeWxpay, paymentType: payment.TypeWxpay, currency: "VND", capabilities: capabilities, supported: "CNY"},
+		{name: "stripe alipay vnd", providerKey: payment.TypeStripe, paymentType: payment.TypeAlipay, currency: "VND", capabilities: capabilities, supported: "CNY"},
 		{name: "paddle configured cny", providerKey: payment.TypePaddle, paymentType: payment.TypePaddle, currency: "CNY", config: map[string]string{"allowed_payment_currencies": "KRW,USD"}, supported: "KRW,USD"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateProviderCurrency(tt.providerKey, tt.paymentType, tt.currency, tt.config)
+			err := validateProviderCurrency(tt.providerKey, tt.paymentType, tt.currency, tt.config, tt.capabilities)
 			if err == nil {
 				t.Fatal("expected unsupported currency error")
 			}

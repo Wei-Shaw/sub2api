@@ -88,6 +88,10 @@ func ensureConfigAllowsPaymentCurrency(cfg *PaymentConfig, currency string) {
 	cfg.AllowedPaymentCurrencies = append(cfg.AllowedPaymentCurrencies, currency)
 }
 
-func selectionContextWithPaymentCurrency(ctx context.Context, currency string) context.Context {
-	return payment.WithPaymentCurrency(ctx, currency)
+func selectionContextWithPaymentCurrency(ctx context.Context, currency string, cfg *PaymentConfig) context.Context {
+	ctx = payment.WithPaymentCurrency(ctx, currency)
+	if cfg == nil {
+		return ctx
+	}
+	return payment.WithCurrencyCapabilities(ctx, cfg.CurrencyCapabilities)
 }

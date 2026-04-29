@@ -343,6 +343,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentLedgerCurrency:                                  paymentCfg.LedgerCurrency,
 		PaymentAllowedCurrencies:                               paymentCfg.AllowedPaymentCurrencies,
 		PaymentManualFXRates:                                   paymentCfg.ManualFXRates,
+		PaymentCurrencyCapabilities:                            paymentCurrencyCapabilitiesJSON(paymentCfg.CurrencyCapabilities),
 		PaymentFXStatus:                                        paymentFXStatusDTO(paymentCfg.FXStatus),
 		PaymentCancelRateLimitEnabled:                          paymentCfg.CancelRateLimitEnabled,
 		PaymentCancelRateLimitMax:                              paymentCfg.CancelRateLimitMax,

@@ -3,12 +3,24 @@ package payment
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strconv"
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 )
 
 type paymentCurrencyContextKey struct{}
+type currencyCapabilitiesContextKey struct{}
+
+// CurrencyCapabilityConfig is loaded from payment settings, not compiled code.
+// It lets admins define which currencies each payment method/provider/instance
+// can collect without code changes when new gateways or currencies are added.
+type CurrencyCapabilityConfig struct {
+	Methods   map[string][]string `json:"methods,omitempty"`
+	Providers map[string][]string `json:"providers,omitempty"`
+	Instances map[string][]string `json:"instances,omitempty"`
+}
 
 // WithPaymentCurrency constrains instance selection to providers that can collect
 // the requested payment currency. Empty currencies leave selection unchanged.
@@ -26,6 +38,20 @@ func paymentCurrencyFromContext(ctx context.Context) string {
 	}
 	currency, _ := ctx.Value(paymentCurrencyContextKey{}).(string)
 	return NormalizeCurrencyCode(currency)
+}
+
+// WithCurrencyCapabilities attaches settings-driven currency capabilities to the
+// selection context so the load balancer can filter concrete provider instances.
+func WithCurrencyCapabilities(ctx context.Context, capabilities CurrencyCapabilityConfig) context.Context {
+	return context.WithValue(ctx, currencyCapabilitiesContextKey{}, NormalizeCurrencyCapabilityConfig(capabilities))
+}
+
+func currencyCapabilitiesFromContext(ctx context.Context) CurrencyCapabilityConfig {
+	if ctx == nil {
+		return CurrencyCapabilityConfig{}
+	}
+	capabilities, _ := ctx.Value(currencyCapabilitiesContextKey{}).(CurrencyCapabilityConfig)
+	return NormalizeCurrencyCapabilityConfig(capabilities)
 }
 
 // NormalizeCurrencyCode normalizes ISO-like payment currency codes used across
@@ -56,72 +82,73 @@ func NormalizeCurrencyList(values []string) []string {
 	return out
 }
 
-// ProviderDefaultPaymentCurrencies is the provider capability catalog. Business
-// flows must ask this catalog/instance overrides instead of hardcoding a special
-// case such as "SePay == VND" in quote/order logic.
-func ProviderDefaultPaymentCurrencies(providerKey, paymentType string) []string {
-	providerKey = strings.TrimSpace(providerKey)
-	baseType := GetBasePaymentType(strings.TrimSpace(paymentType))
+func ParseCurrencyCapabilityConfig(raw string) (CurrencyCapabilityConfig, error) {
+	if strings.TrimSpace(raw) == "" {
+		return CurrencyCapabilityConfig{}, nil
+	}
+	var cfg CurrencyCapabilityConfig
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		return CurrencyCapabilityConfig{}, err
+	}
+	return NormalizeCurrencyCapabilityConfig(cfg), nil
+}
 
-	switch providerKey {
-	case TypeSepay:
-		return []string{"VND"}
-	case TypeAlipay, TypeWxpay, TypeEasyPay:
-		return []string{"CNY"}
-	case TypePaddle:
-		return []string{"USD"}
-	case TypeStripe:
-		switch baseType {
-		case TypeAlipay, TypeWxpay:
-			return []string{"CNY"}
-		case TypeCard, TypeLink, TypeStripe:
-			return []string{"USD"}
-		default:
-			return []string{"USD"}
+func NormalizeCurrencyCapabilityConfig(cfg CurrencyCapabilityConfig) CurrencyCapabilityConfig {
+	return CurrencyCapabilityConfig{
+		Methods:   normalizeCurrencyMap(cfg.Methods),
+		Providers: normalizeCurrencyMap(cfg.Providers),
+		Instances: normalizeCurrencyMap(cfg.Instances),
+	}
+}
+
+func MarshalCurrencyCapabilityConfig(cfg CurrencyCapabilityConfig) (string, error) {
+	cfg = NormalizeCurrencyCapabilityConfig(cfg)
+	if len(cfg.Methods) == 0 && len(cfg.Providers) == 0 && len(cfg.Instances) == 0 {
+		return "{}", nil
+	}
+	blob, err := json.Marshal(cfg)
+	if err != nil {
+		return "", err
+	}
+	return string(blob), nil
+}
+
+// InstancePaymentCurrencies resolves currencies accepted by a concrete provider
+// instance for a user-facing payment method. Resolution order:
+//  1. method-specific provider instance limits JSON override;
+//  2. provider instance config override;
+//  3. global payment settings instance override;
+//  4. global payment settings provider/method override;
+//  5. global payment settings method override.
+//
+// There is intentionally no compiled provider=>currency default here. If SePay
+// should accept VND or Paddle should accept KRW, that belongs in payment settings
+// or provider instance limits/config.
+func InstancePaymentCurrencies(inst *dbent.PaymentProviderInstance, paymentType string, config map[string]string, capabilities CurrencyCapabilityConfig) []string {
+	paymentType = strings.TrimSpace(paymentType)
+	if inst != nil {
+		if currencies := instanceLimitPaymentCurrencies(inst.Limits, inst.ProviderKey, paymentType); len(currencies) > 0 {
+			return currencies
+		}
+		if currencies := configPaymentCurrencies(config, paymentType); len(currencies) > 0 {
+			return currencies
+		}
+		if currencies := capabilityInstancePaymentCurrencies(capabilities, inst.ID); len(currencies) > 0 {
+			return currencies
+		}
+		if currencies := capabilityProviderPaymentCurrencies(capabilities, inst.ProviderKey, paymentType); len(currencies) > 0 {
+			return currencies
 		}
 	}
-
-	switch baseType {
-	case TypeSepay:
-		return []string{"VND"}
-	case TypeAlipay, TypeWxpay:
-		return []string{"CNY"}
-	case TypePaddle:
-		return []string{"USD"}
-	case TypeCard, TypeLink, TypeStripe:
-		return []string{"USD"}
-	default:
-		return nil
-	}
+	return capabilityMethodPaymentCurrencies(capabilities, paymentType)
 }
 
-// InstancePaymentCurrencies resolves the currencies accepted by a concrete
-// provider instance for a user-facing payment method. Resolution order:
-//  1. method-specific limits JSON override;
-//  2. provider config override;
-//  3. provider capability catalog default.
-//
-// The first two allow future gateways/currencies (e.g. Paddle KRW) without code
-// changes or schema migrations.
-func InstancePaymentCurrencies(inst *dbent.PaymentProviderInstance, paymentType string, config map[string]string) []string {
-	if inst == nil {
-		return ProviderDefaultPaymentCurrencies("", paymentType)
-	}
-	if currencies := instanceLimitPaymentCurrencies(inst.Limits, inst.ProviderKey, paymentType); len(currencies) > 0 {
-		return currencies
-	}
-	if currencies := configPaymentCurrencies(config, paymentType); len(currencies) > 0 {
-		return currencies
-	}
-	return ProviderDefaultPaymentCurrencies(inst.ProviderKey, paymentType)
-}
-
-func InstanceSupportsPaymentCurrency(inst *dbent.PaymentProviderInstance, paymentType string, currency string, config map[string]string) bool {
+func InstanceSupportsPaymentCurrency(inst *dbent.PaymentProviderInstance, paymentType string, currency string, config map[string]string, capabilities CurrencyCapabilityConfig) bool {
 	currency = NormalizeCurrencyCode(currency)
 	if currency == "" {
 		return true
 	}
-	currencies := InstancePaymentCurrencies(inst, paymentType, config)
+	currencies := InstancePaymentCurrencies(inst, paymentType, config, capabilities)
 	if len(currencies) == 0 {
 		return true
 	}
@@ -131,6 +158,72 @@ func InstanceSupportsPaymentCurrency(inst *dbent.PaymentProviderInstance, paymen
 		}
 	}
 	return false
+}
+
+func capabilityInstancePaymentCurrencies(cfg CurrencyCapabilityConfig, instanceID int64) []string {
+	if instanceID <= 0 || len(cfg.Instances) == 0 {
+		return nil
+	}
+	return cfg.Instances[strconv.FormatInt(instanceID, 10)]
+}
+
+func capabilityProviderPaymentCurrencies(cfg CurrencyCapabilityConfig, providerKey, paymentType string) []string {
+	if len(cfg.Providers) == 0 {
+		return nil
+	}
+	providerKey = strings.TrimSpace(providerKey)
+	paymentType = strings.TrimSpace(paymentType)
+	for _, key := range []string{
+		providerMethodKey(providerKey, paymentType),
+		providerMethodKey(providerKey, GetBasePaymentType(paymentType)),
+		providerKey,
+	} {
+		if currencies := cfg.Providers[key]; len(currencies) > 0 {
+			return currencies
+		}
+	}
+	return nil
+}
+
+func capabilityMethodPaymentCurrencies(cfg CurrencyCapabilityConfig, paymentType string) []string {
+	if len(cfg.Methods) == 0 {
+		return nil
+	}
+	paymentType = strings.TrimSpace(paymentType)
+	for _, key := range []string{paymentType, GetBasePaymentType(paymentType)} {
+		if currencies := cfg.Methods[key]; len(currencies) > 0 {
+			return currencies
+		}
+	}
+	return nil
+}
+
+func providerMethodKey(providerKey, paymentType string) string {
+	providerKey = strings.TrimSpace(providerKey)
+	paymentType = strings.TrimSpace(paymentType)
+	if providerKey == "" || paymentType == "" {
+		return ""
+	}
+	return providerKey + ":" + paymentType
+}
+
+func normalizeCurrencyMap(input map[string][]string) map[string][]string {
+	if len(input) == 0 {
+		return nil
+	}
+	out := make(map[string][]string, len(input))
+	for key, values := range input {
+		key = strings.TrimSpace(key)
+		currencies := NormalizeCurrencyList(values)
+		if key == "" || len(currencies) == 0 {
+			continue
+		}
+		out[key] = currencies
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func instanceLimitPaymentCurrencies(rawLimits, providerKey, paymentType string) []string {
@@ -233,4 +326,8 @@ func parseCurrencyListString(raw string) []string {
 		return NormalizeCurrencyList(list)
 	}
 	return NormalizeCurrencyList(strings.Split(raw, ","))
+}
+
+func CurrencyCapabilityConfigError(raw string, err error) error {
+	return fmt.Errorf("invalid currency capability config %q: %w", raw, err)
 }

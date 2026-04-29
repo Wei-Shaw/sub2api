@@ -8,7 +8,7 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
-func validateProviderCurrency(providerKey, paymentType, paymentCurrency string, config map[string]string) error {
+func validateProviderCurrency(providerKey, paymentType, paymentCurrency string, config map[string]string, capabilities payment.CurrencyCapabilityConfig) error {
 	currency := normalizeCurrencyCode(paymentCurrency, "")
 	if currency == "" {
 		return nil
@@ -16,11 +16,8 @@ func validateProviderCurrency(providerKey, paymentType, paymentCurrency string, 
 	providerKey = strings.TrimSpace(providerKey)
 	paymentType = strings.TrimSpace(paymentType)
 
-	supported := payment.ProviderDefaultPaymentCurrencies(providerKey, paymentType)
-	if len(config) > 0 {
-		inst := &dbent.PaymentProviderInstance{ProviderKey: providerKey}
-		supported = payment.InstancePaymentCurrencies(inst, paymentType, config)
-	}
+	inst := &dbent.PaymentProviderInstance{ProviderKey: providerKey}
+	supported := payment.InstancePaymentCurrencies(inst, paymentType, config, capabilities)
 	if len(supported) == 0 {
 		return nil
 	}

@@ -47,6 +47,7 @@ const (
 	SettingFXRatesSource                 = "PAYMENT_FX_RATES_SOURCE"
 	SettingFXRatesUpdatedAt              = "PAYMENT_FX_RATES_UPDATED_AT"
 	SettingFXRatesStaleAfterSeconds      = "PAYMENT_FX_RATES_STALE_AFTER_SECONDS"
+	SettingCurrencyCapabilities          = "PAYMENT_CURRENCY_CAPABILITIES_JSON"
 )
 
 // Default values for payment configuration settings.
@@ -72,20 +73,21 @@ type PaymentConfig struct {
 	BalanceDisabled           bool     `json:"balance_disabled"`
 	BalanceRechargeMultiplier float64  `json:"balance_recharge_multiplier"`
 	// SubscriptionUSDToCNYRate 为 0 时订阅换算关闭（兼容存量行为）。
-	SubscriptionUSDToCNYRate float64            `json:"subscription_usd_to_cny_rate"`
-	RechargeFeeRate          float64            `json:"recharge_fee_rate"`
-	LoadBalanceStrategy      string             `json:"load_balance_strategy"`
-	ProductNamePrefix        string             `json:"product_name_prefix"`
-	ProductNameSuffix        string             `json:"product_name_suffix"`
-	HelpImageURL             string             `json:"help_image_url"`
-	HelpText                 string             `json:"help_text"`
-	StripePublishableKey     string             `json:"stripe_publishable_key,omitempty"`
-	PaddleClientToken        string             `json:"paddle_client_token,omitempty"`
-	PaddleEnvironment        string             `json:"paddle_environment,omitempty"`
-	LedgerCurrency           string             `json:"ledger_currency"`
-	AllowedPaymentCurrencies []string           `json:"allowed_payment_currencies"`
-	ManualFXRates            map[string]float64 `json:"manual_fx_rates"`
-	FXStatus                 PaymentFXStatus    `json:"fx_status"`
+	SubscriptionUSDToCNYRate float64                          `json:"subscription_usd_to_cny_rate"`
+	RechargeFeeRate          float64                          `json:"recharge_fee_rate"`
+	LoadBalanceStrategy      string                           `json:"load_balance_strategy"`
+	ProductNamePrefix        string                           `json:"product_name_prefix"`
+	ProductNameSuffix        string                           `json:"product_name_suffix"`
+	HelpImageURL             string                           `json:"help_image_url"`
+	HelpText                 string                           `json:"help_text"`
+	StripePublishableKey     string                           `json:"stripe_publishable_key,omitempty"`
+	PaddleClientToken        string                           `json:"paddle_client_token,omitempty"`
+	PaddleEnvironment        string                           `json:"paddle_environment,omitempty"`
+	LedgerCurrency           string                           `json:"ledger_currency"`
+	AllowedPaymentCurrencies []string                         `json:"allowed_payment_currencies"`
+	ManualFXRates            map[string]float64               `json:"manual_fx_rates"`
+	CurrencyCapabilities     payment.CurrencyCapabilityConfig `json:"currency_capabilities"`
+	FXStatus                 PaymentFXStatus                  `json:"fx_status"`
 
 	// Cancel rate limit settings
 	CancelRateLimitEnabled bool   `json:"cancel_rate_limit_enabled"`
@@ -121,6 +123,7 @@ type UpdatePaymentConfigRequest struct {
 	LedgerCurrency            *string  `json:"ledger_currency"`
 	AllowedPaymentCurrencies  []string `json:"allowed_payment_currencies"`
 	ManualFXRates             *string  `json:"manual_fx_rates"`
+	CurrencyCapabilities      *string  `json:"currency_capabilities"`
 	FXRatesStaleAfterSeconds  *int     `json:"fx_rates_stale_after_seconds"`
 
 	// Cancel rate limit settings
@@ -247,6 +250,7 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 		SettingHelpImageURL, SettingHelpText,
 		SettingLedgerCurrency, SettingAllowedPaymentCurrencies, SettingManualFXRates,
 		SettingFXRatesSource, SettingFXRatesUpdatedAt, SettingFXRatesStaleAfterSeconds,
+		SettingCurrencyCapabilities,
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
 		SettingCancelWindowSize, SettingCancelWindowUnit, SettingCancelWindowMode,
 		SettingAlipayForceQRCode, SettingAlipayMobilePrecreateDeepLink,
@@ -284,6 +288,7 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		LedgerCurrency:            normalizeCurrencyCode(vals[SettingLedgerCurrency], defaultLedgerCurrency),
 		AllowedPaymentCurrencies:  parseCurrencyList(vals[SettingAllowedPaymentCurrencies], defaultPaymentCurrencyCSV),
 		ManualFXRates:             parseManualFXRates(vals[SettingManualFXRates]),
+		CurrencyCapabilities:      parseCurrencyCapabilities(vals[SettingCurrencyCapabilities]),
 
 		CancelRateLimitEnabled: vals[SettingCancelRateLimitOn] == "true",
 		CancelRateLimitMax:     pcParseInt(vals[SettingCancelRateLimitMax], 10),
@@ -411,6 +416,11 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 			return infraerrors.BadRequest("INVALID_MANUAL_FX_RATES", "manual fx rates must be a JSON object of currency=>rate")
 		}
 	}
+	if req.CurrencyCapabilities != nil {
+		if _, err := payment.ParseCurrencyCapabilityConfig(*req.CurrencyCapabilities); err != nil {
+			return infraerrors.BadRequest("INVALID_CURRENCY_CAPABILITIES", "currency capabilities must be a JSON object under payment settings")
+		}
+	}
 	if req.FXRatesStaleAfterSeconds != nil && *req.FXRatesStaleAfterSeconds <= 0 {
 		return infraerrors.BadRequest("INVALID_FX_STALE_AFTER", "fx stale threshold must be greater than 0")
 	}
@@ -441,6 +451,9 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 	}
 	if req.ManualFXRates != nil {
 		m[SettingManualFXRates] = normalizeManualFXRatesJSON(*req.ManualFXRates)
+	}
+	if req.CurrencyCapabilities != nil {
+		m[SettingCurrencyCapabilities] = normalizeCurrencyCapabilitiesJSON(*req.CurrencyCapabilities)
 	}
 	if req.FXRatesStaleAfterSeconds != nil {
 		m[SettingFXRatesStaleAfterSeconds] = formatPositiveInt(req.FXRatesStaleAfterSeconds)

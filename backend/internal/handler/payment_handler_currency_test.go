@@ -123,6 +123,7 @@ func TestPaymentCheckoutInfoExposesSepayVNDMethodCurrency(t *testing.T) {
 		service.SettingLedgerCurrency:           "USD",
 		service.SettingAllowedPaymentCurrencies: "CNY,USD",
 		service.SettingManualFXRates:            `{"USD":1,"CNY":1}`,
+		service.SettingCurrencyCapabilities:     `{"methods":{"sepay":["VND"]}}`,
 		service.SettingFXRatesSource:            "manual",
 		service.SettingFXRatesUpdatedAt:         time.Now().UTC().Format(time.RFC3339),
 	}}
@@ -181,7 +182,7 @@ func TestPaymentCheckoutInfoExposesConfiguredProviderCurrencies(t *testing.T) {
 	_, err = client.PaymentProviderInstance.Create().
 		SetProviderKey(payment.TypePaddle).
 		SetName("Paddle KRW/USD").
-		SetConfig(`{"allowed_payment_currencies":"KRW,USD"}`).
+		SetConfig("{}").
 		SetSupportedTypes(payment.TypePaddle).
 		SetEnabled(true).
 		Save(context.Background())
@@ -192,11 +193,12 @@ func TestPaymentCheckoutInfoExposesConfiguredProviderCurrencies(t *testing.T) {
 		service.SettingLedgerCurrency:           "USD",
 		service.SettingAllowedPaymentCurrencies: "USD",
 		service.SettingManualFXRates:            `{"USD":1,"KRW":0.00073}`,
+		service.SettingCurrencyCapabilities:     `{"providers":{"paddle":["KRW","USD"]}}`,
 		service.SettingFXRatesSource:            "manual",
 		service.SettingFXRatesUpdatedAt:         time.Now().UTC().Format(time.RFC3339),
 	}}
 	configSvc := service.NewPaymentConfigService(client, settings, []byte("0123456789abcdef0123456789abcdef"))
-	h := NewPaymentHandler(nil, configSvc, nil)
+	h := NewPaymentHandler(nil, configSvc)
 
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)

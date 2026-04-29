@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/payment"
 )
 
 func normalizeCurrencyCode(value, fallback string) string {
@@ -95,4 +97,24 @@ func normalizeManualFXRatesJSON(raw string) string {
 		return defaultManualFXRatesJSON
 	}
 	return string(blob)
+}
+
+func parseCurrencyCapabilities(raw string) payment.CurrencyCapabilityConfig {
+	parsed, err := payment.ParseCurrencyCapabilityConfig(raw)
+	if err != nil {
+		return payment.CurrencyCapabilityConfig{}
+	}
+	return parsed
+}
+
+func normalizeCurrencyCapabilitiesJSON(raw string) string {
+	parsed, err := payment.ParseCurrencyCapabilityConfig(raw)
+	if err != nil {
+		return "{}"
+	}
+	normalized, err := payment.MarshalCurrencyCapabilityConfig(parsed)
+	if err != nil {
+		return "{}"
+	}
+	return normalized
 }

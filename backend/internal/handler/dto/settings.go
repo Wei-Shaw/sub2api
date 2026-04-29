@@ -267,6 +267,7 @@ type SystemSettings struct {
 	PaymentLedgerCurrency            string             `json:"payment_ledger_currency"`
 	PaymentAllowedCurrencies         []string           `json:"payment_allowed_currencies"`
 	PaymentManualFXRates             map[string]float64 `json:"payment_manual_fx_rates"`
+	PaymentCurrencyCapabilities      string             `json:"payment_currency_capabilities"`
 	PaymentFXStatus                  PaymentFXStatus    `json:"payment_fx_status"`
 
 	// Cancel rate limit

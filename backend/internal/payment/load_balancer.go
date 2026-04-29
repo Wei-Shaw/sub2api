@@ -181,7 +181,7 @@ func (lb *DefaultLoadBalancer) filterByPaymentCurrency(ctx context.Context, inst
 			slog.Warn("skip instance with unreadable config during currency filtering", "instance_id", inst.ID, "error", err)
 			continue
 		}
-		if InstanceSupportsPaymentCurrency(inst, paymentType, currency, config) {
+		if InstanceSupportsPaymentCurrency(inst, paymentType, currency, config, currencyCapabilitiesFromContext(ctx)) {
 			matched = append(matched, inst)
 		}
 	}
