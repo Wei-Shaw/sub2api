@@ -234,16 +234,20 @@ func TestBufferOverflowDropsOldest(t *testing.T) {
 	}
 	waitForSubscribers(t, rig.publisher, 1)
 
-	const total = eventBufferSize * 4
+	// Burst publish at 100x buffer size in a tight loop. Consumer receives
+	// concurrently, but with this many events the buffer is virtually
+	// guaranteed to overflow at least once. We then scan up to `total`
+	// events for the first non-zero DroppedSinceLastSend marker.
+	const total = eventBufferSize * 100
 	for i := 0; i < total; i++ {
 		rig.publisher.PublishPaymentOrderCreated(&pb.PaymentOrderCreated{OrderId: int64(i)})
 	}
 
 	sawDrop := false
-	for i := 0; i < 16; i++ {
+	for i := 0; i < total; i++ {
 		evt, err := stream.Recv()
 		if err != nil {
-			t.Fatalf("recv: %v", err)
+			t.Fatalf("recv at %d: %v", i, err)
 		}
 		if evt.GetDroppedSinceLastSend() > 0 {
 			sawDrop = true
