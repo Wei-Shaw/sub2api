@@ -1003,6 +1003,7 @@ export default {
       disable: 'Disable',
       restart: 'Restart',
       detailButton: 'Details',
+      settingsButton: 'Settings',
       enableSuccess: '{name} enabled',
       disableSuccess: '{name} disabled',
       restartSuccess: '{name} restart requested',

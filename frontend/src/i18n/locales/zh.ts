@@ -1007,6 +1007,7 @@ export default {
       disable: '禁用',
       restart: '重启',
       detailButton: '详情',
+      settingsButton: '设置',
       enableSuccess: '已启用 {name}',
       disableSuccess: '已禁用 {name}',
       restartSuccess: '已发起重启 {name}',

@@ -131,6 +131,14 @@
                 {{ t('admin.plugins.detailButton') }}
               </button>
               <button
+                v-if="p.has_settings === true"
+                class="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200 dark:hover:bg-dark-700"
+                @click="openSettings(p.name)"
+              >
+                <Icon name="cog" size="xs" />
+                {{ t('admin.plugins.settingsButton') }}
+              </button>
+              <button
                 v-if="p.enabled"
                 class="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-60 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300 dark:hover:bg-amber-900/40"
                 :disabled="busy[p.name]"
@@ -476,6 +484,18 @@ function openDetail(name: string) {
   detailName.value = name
   activeTab.value = 'detail'
   settingsInfo.value = null
+}
+
+// Open detail modal pre-focused on the Settings tab. Equivalent to clicking
+// "详情" then switching tabs, but done atomically so the user lands on the
+// settings form directly. has_settings should be true at the call site
+// (button is hidden otherwise); we still defensively load — if schema is
+// missing the form falls back to the "settingsNotDeclared" empty state.
+function openSettings(name: string) {
+  detailName.value = name
+  activeTab.value = 'settings'
+  settingsInfo.value = null
+  void loadSettings(name)
 }
 
 function closeDetail() {
