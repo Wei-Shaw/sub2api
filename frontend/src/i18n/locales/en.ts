@@ -4648,7 +4648,7 @@ export default {
         errorLogRetentionDays: 'Error Log Retention Days',
         minuteMetricsRetentionDays: 'Minute Metrics Retention Days',
         hourlyMetricsRetentionDays: 'Hourly Metrics Retention Days',
-        retentionDaysHint: 'Recommended 7-90 days, longer periods will consume more storage',
+        retentionDaysHint: 'Recommended 7-90 days; longer periods consume more storage. Set to 0 to wipe all history on every scheduled cleanup',
         aggregation: 'Pre-aggregation Tasks',
         enableAggregation: 'Enable Pre-aggregation',
         aggregationHint: 'Pre-aggregation improves query performance for long time windows',
@@ -4678,7 +4678,7 @@ export default {
         autoRefreshCountdown: 'Auto refresh: {secondsREDACTEDs',
         validation: {
           title: 'Please fix the following issues',
-          retentionDaysRange: 'Retention days must be between 1-365 days',
+          retentionDaysRange: 'Retention days must be between 0 and 365 (0 = wipe all on every cleanup)',
           slaMinPercentRange: 'SLA minimum percentage must be between 0 and 100',
           ttftP99MaxRange: 'TTFT P99 maximum must be a number ≥ 0',
           requestErrorRateMaxRange: 'Request error rate maximum must be between 0 and 100',
