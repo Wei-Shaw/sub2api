@@ -337,7 +337,7 @@ func (r *userSubscriptionRepository) ResetMonthlyUsage(ctx context.Context, id i
 }
 
 // IncrementUsage 原子性地累加订阅用量。
-// 限额检查已在请求前由 BillingCacheService.CheckBillingEligibility 完成，
+// 限额检查已在请求前由 BillingCacheService.PrepareBillingCheck + BillingTicket.Consume 完成，
 // 此处仅负责记录实际消费，确保消费数据的完整性。
 func (r *userSubscriptionRepository) IncrementUsage(ctx context.Context, id int64, costUSD float64) error {
 	const updateSQL = `

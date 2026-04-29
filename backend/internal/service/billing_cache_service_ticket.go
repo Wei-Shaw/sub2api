@@ -57,14 +57,9 @@ func BillingTicketFromContext(ctx context.Context) *BillingTicket {
 //  4. 同一个 ticket 允许多次 Consume——在 fallback 重试切换账号时常见。
 //     Consume 内部检测到 lease 已存在会先释放再重新抢，使 lease 始终对应"当前生效的 channel/account"。
 //
-// 标准两阶段路径（PrepareBillingCheck 入口）：
+// 工作模型（统一走两阶段）：
 //   - Prepare 阶段只调 PreCheckSelect 选规则，不抢 concurrency；
 //   - Consume 阶段才调 PreCheckAcquire 按完整 channel/account 维度抢槽位 / 增 RPM。
-//
-// 兼容入口 CheckBillingEligibility（legacyOneOff=true）：
-//   - Prepare 阶段就完成旧 PreCheck（一次性 acquire），ticket 持有 lease；
-//   - Consume 退化为 noop（仅回填 ChannelID/AccountID）；
-//   - 行为与历史 CheckBillingEligibility 完全一致。
 //
 // 并发：BillingTicket 不要跨 goroutine 共享。每个请求一个 ticket，由 caller 的请求 goroutine 独占。
 type BillingTicket struct {
@@ -73,21 +68,16 @@ type BillingTicket struct {
 	plan     *ServiceQuotaPreCheckPlan
 	lease    *ServiceQuotaLease
 
-	// legacyOneOff=true 标记本 ticket 由 CheckBillingEligibility（兼容入口）创建，
-	// Prepare 阶段已完成 PreCheck（lease 持有），Consume 退化为 noop（仅回填 channel/account）；
-	// CheckBillingEligibility 调用 ticket.Consume 后会 detachLease 把所有权移交 caller。
-	legacyOneOff bool
-	closed       bool
+	closed bool
 }
 
 // Consume 完成两阶段计费检查的第二阶段：基于 caller 选定的 channel + account 抢 service quota
 // concurrency / 增 RPM。
 //
-// 行为分支：
-//   - legacyOneOff（兼容入口）：lease 已在 Prepare 时获得，本方法只回填 channel/account 后返回 nil。
-//   - 标准两阶段：基于 plan 调用 ServiceQuotaService.PreCheckAcquire；如本 ticket 已有 lease
-//     （上一次 Consume 抢的，常见于 fallback 切换账号），先 Release 再抢新的，使 lease 与当前
-//     channel/account 严格对应。
+// 基于 plan 调用 ServiceQuotaService.PreCheckAcquire；如本 ticket 已有 lease
+// （上一次 Consume 抢的，常见于 fallback 切换账号），先 Release 再抢新的，使 lease 与当前
+// channel/account 严格对应。plan==nil（PreCheckSelect 返回空，例如 service quota 未启用 /
+// user==nil）时 Consume 退化为只回填 channel/account 后返回 nil。
 //
 // 失败时不会更新 ticket.lease，caller 通过 defer ticket.Close() 兜底；不会 panic。
 //
@@ -99,13 +89,6 @@ func (t *BillingTicket) Consume(ctx context.Context, channelID, accountID int64)
 	}
 	if t.closed {
 		return errBillingTicketClosed
-	}
-	if t.legacyOneOff {
-		// 兼容入口：Prepare 已完成 PreCheck，无需再做。lease 已经持有（若有规则匹配）。
-		// 把入参里的 channel/account 也回填到 quotaReq，方便 detachLease 之外的观测。
-		t.quotaReq.ChannelID = channelID
-		t.quotaReq.AccountID = accountID
-		return nil
 	}
 	if t.svc == nil || t.svc.serviceQuota == nil || t.plan == nil {
 		// plan==nil：PreCheckSelect 返回空（无规则匹配 / service quota 未启用 / user==nil）。
@@ -171,15 +154,3 @@ func (t *BillingTicket) PreCheckPlan() *ServiceQuotaPreCheckPlan {
 	return t.plan
 }
 
-// detachLease 把 lease 所有权从 ticket 转移给 caller，并把 ticket 置为已关闭。
-// 仅供 CheckBillingEligibility 兼容路径使用——它需要返回原始 *ServiceQuotaLease 让旧 caller
-// 沿用 defer ReleaseQuotaLease(lease) 协议；ticket 在转移后不再持有任何资源。
-func (t *BillingTicket) detachLease() *ServiceQuotaLease {
-	if t == nil {
-		return nil
-	}
-	lease := t.lease
-	t.lease = nil
-	t.closed = true
-	return lease
-}

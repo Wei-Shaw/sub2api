@@ -17,24 +17,6 @@ type matchedQuotaRule struct {
 	paths []ServiceQuotaPathDef
 }
 
-// PreCheck 兼容旧 caller 的一阶段入口。
-//
-// 新代码请使用 BillingCacheService.PrepareBillingCheck（caller 路由前）+
-// BillingTicket.Consume（选定 channel/account 后）的两阶段路径，参见
-// service_quota_types.go 中 ServiceQuotaService.PreCheckSelect / PreCheckAcquire 的注释。
-//
-// 内部实现：直接复用 PreCheckSelect → PreCheckAcquire，二者共享同一份匹配/抢槽位逻辑。
-func (s *serviceQuotaService) PreCheck(ctx context.Context, req ServiceQuotaCheckRequest) (*ServiceQuotaLease, error) {
-	plan, err := s.PreCheckSelect(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if plan == nil {
-		return nil, nil
-	}
-	return s.PreCheckAcquire(ctx, plan, req.ChannelID, req.AccountID)
-}
-
 // PreCheckSelect 仅做规则级过滤（enabled、counter_mode=user 时 target_user_ids 命中），
 // 不做 path 匹配也不抢 concurrency / 增 rpm。返回 nil plan 表示"无规则需要参与本次请求"。
 //

@@ -171,42 +171,22 @@ func TestPreCheckAcquire_DifferentAccountSamRulePathMissesBecauseOfPathFilter(t 
 	require.Empty(t, limiter.acquireCalls)
 }
 
-func TestPreCheck_LegacySinglePhase_StillWorks(t *testing.T) {
-	t.Parallel()
-	limiter := newFakeLimiter()
-	rule := ruleConcurrencyAccount(5, 7, 1)
-	svc := newQuotaServiceForTest(t, []*ServiceQuotaRule{rule}, nil, limiter)
-
-	lease, err := svc.PreCheck(context.Background(), ServiceQuotaCheckRequest{UserID: 42, AccountID: 7})
-	require.NoError(t, err)
-	require.NotNil(t, lease)
-	require.Len(t, limiter.acquireCalls, 1)
-	lease.Release()
-}
-
-// TestBillingTicket_Consume_LegacyOneOff_NoOp 验证兼容入口（CheckBillingEligibility）
-// 走 legacyOneOff=true 分支：lease 已在 Prepare 阶段抢到，Consume 不会再次 Acquire。
-func TestBillingTicket_Consume_LegacyOneOff_NoOp(t *testing.T) {
+// TestBillingTicket_Consume_AfterClose_ReturnsError 验证 Close 后再调 Consume 必定返回 sentinel error。
+func TestBillingTicket_Consume_AfterClose_ReturnsError(t *testing.T) {
 	t.Parallel()
 	limiter := newFakeLimiter()
 	rule := ruleConcurrencyAccount(6, 7, 5)
 	repo := newMockSettingRepo()
 	svc := newQuotaServiceForTest(t, []*ServiceQuotaRule{rule}, repo, limiter)
 
-	ticket := &BillingTicket{
-		svc:          nil,
-		quotaReq:     ServiceQuotaCheckRequest{UserID: 42, AccountID: 7},
-		legacyOneOff: true,
-	}
-	lease, err := svc.PreCheck(context.Background(), ServiceQuotaCheckRequest{UserID: 42, AccountID: 7})
+	plan, err := svc.PreCheckSelect(context.Background(), ServiceQuotaCheckRequest{UserID: 42})
 	require.NoError(t, err)
-	require.NotNil(t, lease)
-	ticket.lease = wrapServiceQuotaLeaseOnce(lease)
 
-	acquireCallsBefore := len(limiter.acquireCalls)
-	require.NoError(t, ticket.Consume(context.Background(), 0, 7))
-	require.Equal(t, acquireCallsBefore, len(limiter.acquireCalls), "Consume on legacyOneOff ticket must not Acquire again")
-
+	ticket := &BillingTicket{
+		svc:      &BillingCacheService{serviceQuota: svc},
+		quotaReq: ServiceQuotaCheckRequest{UserID: 42},
+		plan:     plan,
+	}
 	ticket.Close()
 	require.Error(t, ticket.Consume(context.Background(), 0, 7))
 }

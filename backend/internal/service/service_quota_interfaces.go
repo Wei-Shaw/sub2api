@@ -92,11 +92,6 @@ type ServiceQuotaService interface {
 	// 用于 handler 层在删除 channel/group/account/user 等关联实体后
 	// 主动让服务限额规则缓存失效。
 	ReloadCache(ctx context.Context) error
-	// PreCheck 为兼容旧 caller 保留的一阶段方法：内部等价于 PreCheckSelect + PreCheckAcquire，
-	// 但 ChannelID/AccountID 取自传入 req（caller 路由前调用时这两字段为 0）。
-	//
-	// 新代码请走 BillingCacheService.PrepareBillingCheck 两阶段路径。
-	PreCheck(ctx context.Context, req ServiceQuotaCheckRequest) (*ServiceQuotaLease, error)
 	// PreCheckSelect 在路由前调用，仅做规则级过滤（enabled / target_user_ids），返回候选规则与
 	// 计划上下文。不抢 concurrency、不增 RPM。
 	PreCheckSelect(ctx context.Context, req ServiceQuotaCheckRequest) (*ServiceQuotaPreCheckPlan, error)
