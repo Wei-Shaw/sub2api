@@ -300,6 +300,7 @@ export default {
       easypay: 'EasyPay',
       alipay: 'Alipay',
       wxpay: 'WeChat Pay',
+      sepay: 'SePay',
       stripe: 'Stripe',
       airwallex: 'Airwallex',
       paddle: 'Paddle',

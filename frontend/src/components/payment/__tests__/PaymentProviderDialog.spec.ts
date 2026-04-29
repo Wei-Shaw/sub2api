@@ -63,8 +63,10 @@ function mountDialog(options: { editing?: ProviderInstance | null } = {}) {
         { value: 'easypay', label: 'EasyPay' },
         { value: 'alipay', label: 'Alipay' },
         { value: 'wxpay', label: 'WeChat Pay' },
+        { value: 'sepay', label: 'SePay' },
         { value: 'stripe', label: 'Stripe' },
         { value: 'airwallex', label: 'Airwallex' },
+        { value: 'paddle', label: 'Paddle' },
       ],
       enabledKeyOptions: [
         { value: 'easypay', label: 'EasyPay' },
@@ -75,6 +77,9 @@ function mountDialog(options: { editing?: ProviderInstance | null } = {}) {
       allPaymentTypes: [
         { value: 'alipay', label: 'Alipay' },
         { value: 'wxpay', label: 'WeChat Pay' },
+        { value: 'sepay', label: 'SePay' },
+        { value: 'stripe', label: 'Stripe' },
+        { value: 'paddle', label: 'Paddle' },
       ],
       redirectLabel: 'Redirect',
     },
