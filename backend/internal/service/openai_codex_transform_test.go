@@ -1,6 +1,8 @@
 package service
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -1129,6 +1131,57 @@ REDACTED
 		t.Run(tt.name, func(t *testing.T) {
 			result := isInstructionsEmpty(tt.reqBody)
 			require.Equal(t, tt.expected, result)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestFilterCodexInput_DropsReasoningItemsRegardlessOfPreserveReferences(t *testing.T) {
+	// Reasoning items in input[] reference rs_* IDs that were emitted by
+	// chatgpt.com under store=false (forced by applyCodexOAuthTransform).
+	// They are never persisted upstream, so forwarding them produces a
+	// guaranteed 404 ("Item with id 'rs_...' not found"). Drop them
+	// regardless of preserveReferences. See: Wei-Shaw/sub2api issue #1957.
+
+	build := func() []any {
+		return []any{
+			map[string]any{"type": "message", "id": "msg_0", "role": "user", "content": "hi"REDACTED,
+			map[string]any{
+				"type":    "reasoning",
+				"id":      "rs_0672f12450da0b9c0169f07220a6c08198b68c2455ced99344",
+				"summary": []any{REDACTED,
+		REDACTED,
+			map[string]any{"type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "tool"REDACTED,
+			map[string]any{"type": "function_call_output", "call_id": "call_1", "output": "{REDACTED"REDACTED,
+	REDACTED
+REDACTED
+
+	for _, preserve := range []bool{true, falseREDACTED {
+		preserve := preserve
+		t.Run(fmt.Sprintf("preserveReferences=%v", preserve), func(t *testing.T) {
+			filtered := filterCodexInput(build(), preserve)
+
+			for _, raw := range filtered {
+				item, ok := raw.(map[string]any)
+				require.True(t, ok)
+				require.NotEqual(t, "reasoning", item["type"],
+					"reasoning items must be dropped from input on the OAuth path")
+				if id, ok := item["id"].(string); ok {
+					require.False(t, strings.HasPrefix(id, "rs_"),
+						"no item carrying an rs_* id should survive the filter")
+			REDACTED
+		REDACTED
+
+			// Sanity check: the non-reasoning items should still be present.
+			gotTypes := make(map[string]int)
+			for _, raw := range filtered {
+				item, ok := raw.(map[string]any)
+				require.True(t, ok)
+				gotTypes[item["type"].(string)]++
+		REDACTED
+			require.Equal(t, 1, gotTypes["message"])
+			require.Equal(t, 1, gotTypes["function_call"])
+			require.Equal(t, 1, gotTypes["function_call_output"])
+			require.Equal(t, 0, gotTypes["reasoning"])
 	REDACTED)
 REDACTED
 REDACTED
