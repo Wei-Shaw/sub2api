@@ -207,3 +207,13 @@ func (f *fakeServiceQuotaLimiter) ResetPattern(_ context.Context, pattern string
 	}
 	return nil
 }
+
+// counterValue 锁内读取 counters[key]，返回 (value, exists)。
+// 测试代码必须用它代替直接 limiter.counters[k]，否则会与 goAsync
+// 后台任务同时写 map 触发 race。
+func (f *fakeServiceQuotaLimiter) counterValue(key string) (float64, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	v, ok := f.counters[key]
+	return v, ok
+}
