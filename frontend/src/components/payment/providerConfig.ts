@@ -174,8 +174,9 @@ export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
     { key: 'environment', label: 'Environment', sensitive: false, optional: true, defaultValue: 'sandbox' },
   ],
   sepay: [
-    { key: 'apiToken', label: 'API Token', sensitive: true },
-    { key: 'bankAccountId', label: 'Bank Account ID', sensitive: false },
+    { key: 'apiToken', label: '', sensitive: true },
+    { key: 'webhookApiKey', label: '', sensitive: true },
+    { key: 'bankAccountId', label: '', sensitive: false, optional: true },
   ],
 }
 

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	paymentprovider "github.com/Wei-Shaw/sub2api/internal/payment/provider"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -71,6 +72,12 @@ func (h *PaymentWebhookHandler) AirwallexWebhook(c *gin.Context) {
 // POST /api/v1/payment/webhook/paddle
 func (h *PaymentWebhookHandler) PaddleWebhook(c *gin.Context) {
 	h.handleNotify(c, payment.TypePaddle)
+}
+
+// SepayWebhook handles SePay bank-transfer webhook notifications.
+// POST /api/v1/payment/webhook/sepay
+func (h *PaymentWebhookHandler) SepayWebhook(c *gin.Context) {
+	h.handleNotify(c, payment.TypeSepay)
 }
 
 // handleNotify is the shared logic for all provider webhook handlers.
@@ -180,6 +187,17 @@ func extractOutTradeNo(rawBody, providerKey string) string {
 		}
 		if err := json.Unmarshal([]byte(rawBody), &payload); err == nil {
 			return strings.TrimSpace(payload.Data.CustomData.OrderID)
+		}
+	case payment.TypeSepay:
+		var payload struct {
+			Code    string `json:"code"`
+			Content string `json:"content"`
+		}
+		if err := json.Unmarshal([]byte(rawBody), &payload); err == nil {
+			if code := paymentprovider.NormalizeSepayOrderID(payload.Code); code != "" {
+				return code
+			}
+			return paymentprovider.ExtractSepayOrderIDFromContent(payload.Content)
 		}
 	}
 	// For other providers (Stripe, Alipay direct, WxPay direct), the registry

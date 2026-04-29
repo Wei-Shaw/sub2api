@@ -25,6 +25,9 @@ import (
 // Only validates enabled instances — a disabled instance may be a half-filled
 // draft the admin will complete later.
 func (s *PaymentConfigService) validateProviderConfig(providerKey string, config map[string]string) error {
+	if providerKey == payment.TypeSepay && strings.TrimSpace(config["webhookApiKey"]) == "" {
+		return infraerrors.BadRequest("VALIDATION_ERROR", "sepay webhookApiKey is required")
+	}
 	_, err := provider.CreateProvider(providerKey, "_validate_", config)
 	return err
 }

@@ -61,6 +61,22 @@ export interface RefundResult {
   subscription_days_deducted?: number
 }
 
+export interface SepayBankAccountOption {
+  id: string
+  bank_short_name: string
+  bank_full_name?: string
+  account_number: string
+  account_holder_name?: string
+  label: string
+}
+
+export interface ListSepayBankAccountsRequest {
+  apiToken?: string
+  apiBase?: string
+  providerId?: number
+}
+
+
 export const adminPaymentAPI = {
   // ==================== Config ====================
 
@@ -174,6 +190,11 @@ export const adminPaymentAPI = {
   /** Get all provider instances */
   getProviders() {
     return apiClient.get<ProviderInstance[]>('/admin/payment/providers')
+  },
+
+  /** Fetch SePay bank accounts for a temporary API token while configuring a provider. */
+  listSepayBankAccounts(data: ListSepayBankAccountsRequest) {
+    return apiClient.post<SepayBankAccountOption[]>('/admin/payment/providers/sepay/bank-accounts', data)
   },
 
   /** Create a provider instance */

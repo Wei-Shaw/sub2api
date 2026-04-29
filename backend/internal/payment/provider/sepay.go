@@ -3,12 +3,14 @@ package provider
 import (
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -25,21 +27,52 @@ const (
 	maxSepayResponseSize = 1 << 20
 )
 
+var (
+	sepayLegacyOrderCodePattern = regexp.MustCompile(`(?i)\bsub2_[a-z0-9]+\b`)
+	sepayTransferRefPattern     = regexp.MustCompile(`(?i)\bVC([0-9]{8}[a-z0-9]{8})\b`)
+	sepayOrderSuffixPattern     = regexp.MustCompile(`(?i)^([0-9]{8}[a-z0-9]{8})$`)
+)
+
 type Sepay struct {
 	instanceID string
 	config     map[string]string
 	httpClient *http.Client
 }
 
-type sepayBankAccount struct {
-	ID                string `json:"id"`
-	AccountNumber     string `json:"account_number"`
-	BankShortName     string `json:"bank_short_name"`
-	AccountHolderName string `json:"account_holder_name"`
+type sepayFlexibleString string
+
+func (s *sepayFlexibleString) UnmarshalJSON(data []byte) error {
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		*s = sepayFlexibleString(text)
+		return nil
+	}
+	var number json.Number
+	if err := json.Unmarshal(data, &number); err == nil {
+		*s = sepayFlexibleString(number.String())
+		return nil
+	}
+	if strings.EqualFold(strings.TrimSpace(string(data)), "null") {
+		*s = ""
+		return nil
+	}
+	return fmt.Errorf("unsupported SePay string value: %s", string(data))
+}
+
+type SepayBankAccount struct {
+	ID                sepayFlexibleString `json:"id"`
+	AccountNumber     string              `json:"account_number"`
+	BankShortName     string              `json:"bank_short_name"`
+	BankFullName      string              `json:"bank_full_name"`
+	AccountHolderName string              `json:"account_holder_name"`
+}
+
+func (a SepayBankAccount) IDString() string {
+	return strings.TrimSpace(string(a.ID))
 }
 
 func NewSepay(instanceID string, config map[string]string) (*Sepay, error) {
-	for _, k := range []string{"apiToken", "bankAccountId", "notifyUrl"} {
+	for _, k := range []string{"apiToken", "notifyUrl"} {
 		if strings.TrimSpace(config[k]) == "" {
 			return nil, fmt.Errorf("sepay config missing required key: %s", k)
 		}
@@ -80,7 +113,8 @@ func (s *Sepay) CreatePayment(ctx context.Context, req payment.CreatePaymentRequ
 	if err != nil {
 		return nil, fmt.Errorf("sepay create payment: %w", err)
 	}
-	qr, err := s.buildQRCodeURL(bankAccount, int64(math.Round(amount)), req.OrderID)
+	transferContent := buildSepayTransferContent(req.OrderID)
+	qr, err := s.buildQRCodeURL(bankAccount, int64(math.Round(amount)), transferContent)
 	if err != nil {
 		return nil, fmt.Errorf("sepay create payment: %w", err)
 	}
@@ -117,9 +151,16 @@ func (s *Sepay) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryO
 	}
 
 	wanted := strings.TrimSpace(tradeNo)
+	wantedTransferRef := buildSepayTransferReference(wanted)
 	wantedUpper := strings.ToUpper(wanted)
 	for _, tx := range resp.Transactions {
-		if strings.EqualFold(strings.TrimSpace(tx.Code), wanted) || strings.Contains(strings.ToUpper(tx.TransactionContent), wantedUpper) {
+		codeOrderID := normalizeSepayOrderID(tx.Code)
+		contentOrderID := extractSepayOrderCode(tx.TransactionContent)
+		contentUpper := strings.ToUpper(tx.TransactionContent)
+		if strings.EqualFold(codeOrderID, wanted) ||
+			strings.EqualFold(contentOrderID, wanted) ||
+			strings.Contains(contentUpper, wantedUpper) ||
+			(wantedTransferRef != "" && strings.Contains(strings.ToUpper(tx.TransactionContent), strings.ToUpper(wantedTransferRef))) {
 			trade := strings.TrimSpace(tx.ReferenceNumber)
 			if trade == "" {
 				trade = strings.TrimSpace(tx.ID)
@@ -140,8 +181,8 @@ func (s *Sepay) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryO
 func (s *Sepay) VerifyNotification(_ context.Context, rawBody string, headers map[string]string) (*payment.PaymentNotification, error) {
 	if apiKey := strings.TrimSpace(s.config["webhookApiKey"]); apiKey != "" {
 		auth := strings.TrimSpace(headers["authorization"])
-		const prefix = "Apikey "
-		if !strings.HasPrefix(auth, prefix) || strings.TrimSpace(strings.TrimPrefix(auth, prefix)) != apiKey {
+		scheme, token, ok := strings.Cut(auth, " ")
+		if !ok || !strings.EqualFold(scheme, "Apikey") || subtle.ConstantTimeCompare([]byte(strings.TrimSpace(token)), []byte(apiKey)) != 1 {
 			return nil, fmt.Errorf("sepay notification authorization mismatch")
 		}
 	}
@@ -156,9 +197,9 @@ func (s *Sepay) VerifyNotification(_ context.Context, rawBody string, headers ma
 	if err := json.Unmarshal([]byte(rawBody), &payload); err != nil {
 		return nil, fmt.Errorf("sepay parse notification: %w", err)
 	}
-	orderID := strings.TrimSpace(payload.Code)
+	orderID := normalizeSepayOrderID(payload.Code)
 	if orderID == "" {
-		orderID = strings.TrimSpace(payload.TransactionContent)
+		orderID = extractSepayOrderCode(payload.TransactionContent)
 	}
 	if orderID == "" || !strings.EqualFold(strings.TrimSpace(payload.TransferType), sepayTransferTypeIn) {
 		return nil, nil
@@ -186,43 +227,82 @@ func (s *Sepay) CancelPayment(_ context.Context, _ string) error {
 }
 
 func (s *Sepay) bankAccountEndpoint() string {
+	return s.sepayAPIBase() + "/bankaccounts/details/" + url.PathEscape(strings.TrimSpace(s.config["bankAccountId"]))
+}
+
+func (s *Sepay) bankAccountsEndpoint() string {
+	return s.sepayAPIBase() + "/bankaccounts/list"
+}
+
+func (s *Sepay) sepayAPIBase() string {
 	base := strings.TrimRight(strings.TrimSpace(s.config["apiBase"]), "/")
 	if base == "" {
 		base = sepayDefaultAPIBase
 	}
-	return base + "/bankaccounts/details/" + url.PathEscape(strings.TrimSpace(s.config["bankAccountId"]))
+	return base
 }
 
 func (s *Sepay) transactionsEndpoint(query url.Values) string {
-	base := strings.TrimRight(strings.TrimSpace(s.config["apiBase"]), "/")
-	if base == "" {
-		base = sepayDefaultAPIBase
-	}
-	endpoint := base + "/transactions/list"
+	endpoint := s.sepayAPIBase() + "/transactions/list"
 	if len(query) > 0 {
 		endpoint += "?" + query.Encode()
 	}
 	return endpoint
 }
 
-func (s *Sepay) getBankAccount(ctx context.Context) (*sepayBankAccount, error) {
+func (s *Sepay) getBankAccount(ctx context.Context) (*SepayBankAccount, error) {
+	if strings.TrimSpace(s.config["bankAccountId"]) == "" {
+		return s.discoverSingleBankAccount(ctx)
+	}
+
 	respBody, err := s.doRequest(ctx, http.MethodGet, s.bankAccountEndpoint(), nil)
 	if err != nil {
 		return nil, err
 	}
 	var resp struct {
-		BankAccount sepayBankAccount `json:"bankaccount"`
+		BankAccount SepayBankAccount `json:"bankaccount"`
 	}
 	if err := json.Unmarshal(respBody, &resp); err != nil {
 		return nil, fmt.Errorf("parse bank account response: %w", err)
 	}
-	if strings.TrimSpace(resp.BankAccount.AccountNumber) == "" || strings.TrimSpace(resp.BankAccount.BankShortName) == "" {
+	if !isUsableSepayBankAccount(resp.BankAccount) {
 		return nil, fmt.Errorf("bank account details missing account_number or bank_short_name")
 	}
 	return &resp.BankAccount, nil
 }
 
-func (s *Sepay) buildQRCodeURL(bankAccount *sepayBankAccount, amount int64, orderCode string) (string, error) {
+func (s *Sepay) discoverSingleBankAccount(ctx context.Context) (*SepayBankAccount, error) {
+	respBody, err := s.doRequest(ctx, http.MethodGet, s.bankAccountsEndpoint(), nil)
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		BankAccounts []SepayBankAccount `json:"bankaccounts"`
+	}
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return nil, fmt.Errorf("parse bank accounts response: %w", err)
+	}
+	usable := make([]SepayBankAccount, 0, len(resp.BankAccounts))
+	for _, account := range resp.BankAccounts {
+		if isUsableSepayBankAccount(account) {
+			usable = append(usable, account)
+		}
+	}
+	switch len(usable) {
+	case 0:
+		return nil, fmt.Errorf("no usable bank accounts returned by SePay")
+	case 1:
+		return &usable[0], nil
+	default:
+		return nil, fmt.Errorf("multiple bank accounts returned by SePay; configure bankAccountId explicitly")
+	}
+}
+
+func isUsableSepayBankAccount(account SepayBankAccount) bool {
+	return strings.TrimSpace(account.AccountNumber) != "" && strings.TrimSpace(account.BankShortName) != ""
+}
+
+func (s *Sepay) buildQRCodeURL(bankAccount *SepayBankAccount, amount int64, transferContent string) (string, error) {
 	if bankAccount == nil {
 		return "", fmt.Errorf("missing bank account")
 	}
@@ -238,9 +318,96 @@ func (s *Sepay) buildQRCodeURL(bankAccount *sepayBankAccount, amount int64, orde
 	query.Set("acc", strings.TrimSpace(bankAccount.AccountNumber))
 	query.Set("bank", strings.TrimSpace(bankAccount.BankShortName))
 	query.Set("amount", strconv.FormatInt(amount, 10))
-	query.Set("des", strings.TrimSpace(orderCode))
+	query.Set("des", strings.TrimSpace(transferContent))
 	parsed.RawQuery = query.Encode()
 	return parsed.String(), nil
+}
+
+func FetchSepayBankAccounts(ctx context.Context, config map[string]string) ([]SepayBankAccount, error) {
+	sepay, err := NewSepay("_bank_accounts_", config)
+	if err != nil {
+		return nil, err
+	}
+	return sepay.ListBankAccounts(ctx)
+}
+
+func (s *Sepay) ListBankAccounts(ctx context.Context) ([]SepayBankAccount, error) {
+	respBody, err := s.doRequest(ctx, http.MethodGet, s.bankAccountsEndpoint(), nil)
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		BankAccounts []SepayBankAccount `json:"bankaccounts"`
+	}
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return nil, fmt.Errorf("parse bank accounts response: %w", err)
+	}
+	return resp.BankAccounts, nil
+}
+
+func buildSepayTransferContent(orderID string) string {
+	ref := buildSepayTransferReference(orderID)
+	if ref == "" {
+		return strings.TrimSpace(orderID)
+	}
+	phrases := []string{
+		"Cam on VClaw",
+		"Nap vi VClaw",
+		"Gia han dich vu VClaw",
+		"Thanh toan dich vu VClaw",
+	}
+	checksum := 0
+	for _, ch := range orderID {
+		checksum += int(ch)
+	}
+	return phrases[checksum%len(phrases)] + " " + ref
+}
+
+func buildSepayTransferReference(orderID string) string {
+	suffix := strings.TrimSpace(orderID)
+	if strings.HasPrefix(strings.ToLower(suffix), "sub2_") {
+		suffix = suffix[len("sub2_"):]
+	}
+	if suffix == "" {
+		return ""
+	}
+	return "VC" + suffix
+}
+
+func NormalizeSepayOrderID(code string) string {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return ""
+	}
+	if legacy := sepayLegacyOrderCodePattern.FindString(code); legacy != "" {
+		return legacy
+	}
+	if match := sepayTransferRefPattern.FindStringSubmatch(code); len(match) == 2 {
+		return "sub2_" + match[1]
+	}
+	if match := sepayOrderSuffixPattern.FindStringSubmatch(code); len(match) == 2 {
+		return "sub2_" + match[1]
+	}
+	return ""
+}
+
+func ExtractSepayOrderIDFromContent(content string) string {
+	content = strings.TrimSpace(content)
+	if legacy := sepayLegacyOrderCodePattern.FindString(content); legacy != "" {
+		return legacy
+	}
+	if match := sepayTransferRefPattern.FindStringSubmatch(content); len(match) == 2 {
+		return "sub2_" + match[1]
+	}
+	return ""
+}
+
+func normalizeSepayOrderID(code string) string {
+	return NormalizeSepayOrderID(code)
+}
+
+func extractSepayOrderCode(content string) string {
+	return ExtractSepayOrderIDFromContent(content)
 }
 
 func (s *Sepay) doRequest(ctx context.Context, method, endpoint string, body []byte) ([]byte, error) {

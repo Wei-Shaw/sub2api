@@ -1,9 +1,17 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import PaymentProviderDialog from '@/components/payment/PaymentProviderDialog.vue'
 import { STRIPE_SDK_API_VERSION } from '@/components/payment/providerConfig'
 import type { ProviderInstance } from '@/types/payment'
+
+const listSepayBankAccountsMock = vi.hoisted(() => vi.fn())
+
+function findButtonByText(wrapper: VueWrapper, text: string) {
+  const button = wrapper.findAll('button').find(candidate => candidate.text() === text)
+  if (!button) throw new Error(`button not found: ${text}`)
+  return button
+}
 
 const messages: Record<string, string> = {
   'admin.settings.payment.providerConfig': 'Credentials',
@@ -15,6 +23,26 @@ const messages: Record<string, string> = {
   'admin.settings.payment.customMethodDisplayName': 'Display name',
   'admin.settings.payment.customMethodDisplayNamePlaceholder': '信用卡',
   'admin.settings.payment.paymentGuideTrigger': 'View payment guide',
+  'admin.settings.payment.field_bankAccountId': 'SePay bank account',
+  'admin.settings.payment.field_apiToken': 'SePay API Token',
+  'admin.settings.payment.field_webhookApiKey': 'SePay Webhook API Key',
+  'admin.settings.payment.sepayBankAccountPlaceholder': 'Select bank account',
+  'admin.settings.payment.sepayBankAccountHint': 'Load accounts from SePay.',
+  'admin.settings.payment.sepayGuideSummary': 'SePay needs API token for bank account discovery.',
+  'admin.settings.payment.sepayGuideNote': 'SePay webhook note.',
+  'admin.settings.payment.sepayGuideApiTokenTitle': 'API Token',
+  'admin.settings.payment.sepayGuideApiTokenOpen': 'Open SePay',
+  'admin.settings.payment.sepayGuideApiTokenCall': 'Call list accounts',
+  'admin.settings.payment.sepayGuideApiTokenFallback': 'Auto select single account',
+  'admin.settings.payment.sepayGuideWebhookTitle': 'Webhook',
+  'admin.settings.payment.sepayGuideWebhookOpen': 'Set callback URL',
+  'admin.settings.payment.sepayGuideWebhookCall': 'Verify webhook',
+  'admin.settings.payment.sepayGuideWebhookFallback': 'Fallback matching',
+  'admin.settings.payment.sepayLoadBankAccounts': 'Load accounts',
+  'admin.settings.payment.sepayGenerateWebhookApiKey': 'Generate webhook key',
+  'admin.settings.payment.sepayWebhookApiKeyHint': 'Generate in sub2api and paste into SePay.',
+  'admin.settings.payment.sepayWebhookTokenGenerationFailed': 'No crypto',
+  'admin.settings.payment.sepayStoredBankAccount': 'Stored account #{id}',
   'admin.settings.payment.alipayGuideSummary': 'Desktop prefers QR precreate and falls back to cashier; mobile prefers WAP checkout.',
   'admin.settings.payment.wxpayGuideSummary': 'Desktop prefers Native QR; mobile routes to JSAPI or H5 based on browser context.',
   'admin.settings.payment.airwallexGuideSummary': 'Use Payment Acceptance read/write only.',
@@ -25,15 +53,20 @@ const messages: Record<string, string> = {
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
-    t: (key: string, params?: Record<string, string>) => {
-      const message = messages[key] ?? key
-      if (!params) return message
-      return Object.entries(params).reduce(
-        (value, [name, replacement]) => value.replaceAll(`{${name}}`, replacement),
-        message,
-      )
+    t: (key: string, params?: Record<string, unknown>) => {
+      let value = messages[key] ?? key
+      for (const [paramKey, paramValue] of Object.entries(params || {})) {
+        value = value.replaceAll(`{${paramKey}}`, String(paramValue))
+      }
+      return value
     },
   }),
+}))
+
+vi.mock('@/api/admin/payment', () => ({
+  adminPaymentAPI: {
+    listSepayBankAccounts: listSepayBankAccountsMock,
+  },
 }))
 
 function providerFactory(overrides: Partial<ProviderInstance> = {}): ProviderInstance {
@@ -53,12 +86,15 @@ function providerFactory(overrides: Partial<ProviderInstance> = {}): ProviderIns
   }
 }
 
-function mountDialog(options: { editing?: ProviderInstance | null } = {}) {
+type MountDialogOptions = { editing?: ProviderInstance | null } & Partial<InstanceType<typeof PaymentProviderDialog>['$props']>
+
+function mountDialog(options: MountDialogOptions = {}) {
+  const { editing, ...props } = options
   return mount(PaymentProviderDialog, {
     props: {
       show: true,
       saving: false,
-      editing: options.editing ?? null,
+      editing: editing ?? null,
       allKeyOptions: [
         { value: 'easypay', label: 'EasyPay' },
         { value: 'alipay', label: 'Alipay' },
@@ -82,6 +118,7 @@ function mountDialog(options: { editing?: ProviderInstance | null } = {}) {
         { value: 'paddle', label: 'Paddle' },
       ],
       redirectLabel: 'Redirect',
+      ...props,
     },
     global: {
       stubs: {
@@ -90,7 +127,8 @@ function mountDialog(options: { editing?: ProviderInstance | null } = {}) {
         },
         Select: {
           props: ['modelValue', 'options', 'disabled'],
-          template: '<div />',
+          emits: ['update:modelValue', 'change'],
+          template: '<div class="select-stub"><span v-for="option in options" :key="option.value">{{ option.label }}</span></div>',
         },
         ToggleSwitch: {
           template: '<div />',
@@ -113,6 +151,7 @@ describe('PaymentProviderDialog payment guide', () => {
     ['alipay', 'admin.settings.payment.alipayGuideSummary'],
     ['wxpay', 'admin.settings.payment.wxpayGuideSummary'],
     ['airwallex', 'admin.settings.payment.airwallexGuideSummary'],
+    ['sepay', 'admin.settings.payment.sepayGuideSummary'],
   ])('shows the payment guide summary for %s', async (providerKey, summaryKey) => {
     const wrapper = mountDialog()
 
@@ -250,5 +289,72 @@ describe('PaymentProviderDialog payment guide', () => {
     await wrapper.find('form').trigger('submit.prevent')
 
     expect(wrapper.emitted('save')).toBeUndefined()
+  })
+})
+
+
+describe('PaymentProviderDialog SePay bank account selector', () => {
+  it('loads bank accounts from SePay and renders human-readable account labels', async () => {
+    listSepayBankAccountsMock.mockResolvedValueOnce({
+      data: [
+        {
+          id: '123',
+          bank_short_name: 'Vietcombank',
+          account_number: '0071000888888',
+          account_holder_name: 'NGUYEN VAN A',
+          label: 'Vietcombank · 0071000888888 · NGUYEN VAN A',
+        },
+      ],
+    })
+    const wrapper = mountDialog()
+
+    ;(wrapper.vm as unknown as { reset: (key: string) => void }).reset('sepay')
+    await nextTick()
+    await wrapper.find('input[type="password"]').setValue('sepay-token')
+    await findButtonByText(wrapper, 'Load accounts').trigger('click')
+    await flushPromises()
+    await nextTick()
+
+    expect(listSepayBankAccountsMock).toHaveBeenCalledWith({ apiToken: 'sepay-token' })
+    expect(wrapper.text()).toContain('Vietcombank · 0071000888888 · NGUYEN VAN A')
+  })
+
+  it('loads bank accounts with stored server token while editing an existing SePay provider', async () => {
+    listSepayBankAccountsMock.mockResolvedValueOnce({ data: [] })
+    const wrapper = mountDialog({
+      editing: {
+        id: 42,
+        provider_key: 'sepay',
+        name: 'SePay',
+        config: { bankAccountId: '123' },
+        supported_types: ['sepay'],
+        enabled: true,
+        payment_mode: 'qrcode',
+        refund_enabled: false,
+        allow_user_refund: false,
+        limits: '',
+        sort_order: 0,
+      },
+    })
+
+    ;(wrapper.vm as unknown as { reset: (key: string) => void }).reset('sepay')
+    await nextTick()
+    await findButtonByText(wrapper, 'Load accounts').trigger('click')
+    await flushPromises()
+
+    expect(listSepayBankAccountsMock).toHaveBeenCalledWith({ providerId: 42 })
+  })
+
+  it('generates a webhook API key for copying into SePay webhook settings', async () => {
+    const wrapper = mountDialog()
+
+    ;(wrapper.vm as unknown as { reset: (key: string) => void }).reset('sepay')
+    await nextTick()
+    await findButtonByText(wrapper, 'Generate webhook key').trigger('click')
+    await nextTick()
+
+    const values = wrapper.findAll('input').map(input => (input.element as HTMLInputElement).value)
+    expect(values.some(value => /^vcwh_[0-9a-f]{64}$/.test(value))).toBe(true)
+    expect(wrapper.text()).toContain('Generate in sub2api and paste into SePay.')
   })
 })

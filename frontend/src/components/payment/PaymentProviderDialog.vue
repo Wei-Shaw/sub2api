@@ -160,7 +160,7 @@
               <span v-else class="text-red-500"> *</span>
             </label>
             <textarea
-              v-if="field.sensitive && field.key.toLowerCase().includes('key') && field.key !== 'pkey'"
+              v-if="field.sensitive && isMultilineSecretField(field.key)"
               v-model="config[field.key]"
               rows="3"
               class="input font-mono text-xs"
@@ -171,26 +171,68 @@
               spellcheck="false"
               :placeholder="editing ? t('admin.accounts.leaveEmptyToKeep') : ''"
             />
-            <div v-else-if="field.sensitive" class="relative">
-              <input
-                :type="visibleFields[field.key] ? 'text' : 'password'"
-                v-model="config[field.key]"
-                class="input pr-10"
-                autocomplete="new-password"
-                data-1p-ignore
-                data-lpignore="true"
-                data-bwignore="true"
-                spellcheck="false"
-                :placeholder="editing ? t('admin.accounts.leaveEmptyToKeep') : (field.defaultValue || '')"
-              />
-              <button
-                type="button"
-                @click="visibleFields[field.key] = !visibleFields[field.key]"
-                class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-              >
-                <svg v-if="visibleFields[field.key]" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" /></svg>
-                <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-              </button>
+            <div v-else-if="field.sensitive" class="space-y-2">
+              <div class="flex gap-2">
+                <div class="relative min-w-0 flex-1">
+                  <input
+                    :type="visibleFields[field.key] ? 'text' : 'password'"
+                    v-model="config[field.key]"
+                    class="input pr-10"
+                    autocomplete="new-password"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-bwignore="true"
+                    spellcheck="false"
+                    :placeholder="editing ? t('admin.accounts.leaveEmptyToKeep') : (field.defaultValue || '')"
+                  />
+                  <button
+                    type="button"
+                    @click="visibleFields[field.key] = !visibleFields[field.key]"
+                    class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                  >
+                    <svg v-if="visibleFields[field.key]" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" /></svg>
+                    <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                  </button>
+                </div>
+                <button
+                  v-if="isSepayWebhookApiKeyField(field.key)"
+                  type="button"
+                  class="btn btn-secondary whitespace-nowrap"
+                  @click="generateSepayWebhookApiKey"
+                >
+                  {{ t('admin.settings.payment.sepayGenerateWebhookApiKey') }}
+                </button>
+              </div>
+              <p v-if="isSepayWebhookApiKeyField(field.key)" class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.payment.sepayWebhookApiKeyHint') }}
+              </p>
+            </div>
+            <div v-else-if="isSepayBankAccountField(field.key)" class="space-y-2">
+              <div class="flex gap-2">
+                <div class="min-w-0 flex-1">
+                  <Select
+                    v-model="config[field.key]"
+                    :options="sepayBankAccountSelectOptions"
+                    :placeholder="t('admin.settings.payment.sepayBankAccountPlaceholder')"
+                    :disabled="sepayBankAccountsLoading"
+                    searchable
+                  />
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-secondary whitespace-nowrap"
+                  :disabled="sepayBankAccountsLoading || !canLoadSepayBankAccounts"
+                  @click="loadSepayBankAccounts"
+                >
+                  {{ sepayBankAccountsLoading ? t('common.loading') : t('admin.settings.payment.sepayLoadBankAccounts') }}
+                </button>
+              </div>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.payment.sepayBankAccountHint') }}
+              </p>
+              <p v-if="sepayBankAccountsError" class="text-xs text-red-500">
+                {{ sepayBankAccountsError }}
+              </p>
             </div>
             <Select
               v-else-if="field.options?.length"
@@ -313,6 +355,8 @@ import Select from '@/components/common/Select.vue'
 import type { SelectOption } from '@/components/common/Select.vue'
 import ToggleSwitch from './ToggleSwitch.vue'
 import type { ProviderInstance } from '@/types/payment'
+import { adminPaymentAPI } from '@/api/admin/payment'
+import type { SepayBankAccountOption } from '@/api/admin/payment'
 import type { EasyPayCustomMethod, TypeOption } from './providerConfig'
 import {
   PROVIDER_CONFIG_FIELDS,
@@ -411,6 +455,9 @@ const returnBaseUrl = ref('')
 const limitsExpanded = ref(false)
 const visibleFields = reactive<Record<string, boolean>>({})
 const easyPayCustomMethods = reactive<EasyPayCustomMethod[]>([])
+const sepayBankAccounts = ref<SepayBankAccountOption[]>([])
+const sepayBankAccountsLoading = ref(false)
+const sepayBankAccountsError = ref('')
 
 // --- Computed ---
 const defaultBaseUrl = typeof window !== 'undefined' ? window.location.origin : ''
@@ -538,7 +585,45 @@ const paymentGuide = computed<PaymentGuide | null>(() => {
     }
   }
 
+  if (form.provider_key === 'sepay') {
+    return {
+      summary: t('admin.settings.payment.sepayGuideSummary'),
+      note: t('admin.settings.payment.sepayGuideNote'),
+      items: [
+        {
+          title: t('admin.settings.payment.sepayGuideApiTokenTitle'),
+          open: t('admin.settings.payment.sepayGuideApiTokenOpen'),
+          call: t('admin.settings.payment.sepayGuideApiTokenCall'),
+          fallback: t('admin.settings.payment.sepayGuideApiTokenFallback'),
+        },
+        {
+          title: t('admin.settings.payment.sepayGuideWebhookTitle'),
+          open: t('admin.settings.payment.sepayGuideWebhookOpen'),
+          call: t('admin.settings.payment.sepayGuideWebhookCall'),
+          fallback: t('admin.settings.payment.sepayGuideWebhookFallback'),
+        },
+      ],
+    }
+  }
+
   return null
+})
+
+const sepayBankAccountSelectOptions = computed<SelectOption[]>(() => {
+  const options = sepayBankAccounts.value.map(account => ({
+    value: account.id,
+    label: account.label || formatSepayBankAccountLabel(account),
+  }))
+  const current = (config.bankAccountId || '').trim()
+  if (current && !options.some(option => option.value === current)) {
+    options.unshift({ value: current, label: t('admin.settings.payment.sepayStoredBankAccount', { id: current }) })
+  }
+  return options
+})
+
+const canLoadSepayBankAccounts = computed(() => {
+  if (form.provider_key !== 'sepay') return false
+  return !!(config.apiToken || '').trim() || !!props.editing?.id
 })
 
 const limitableTypes = computed(() => {
@@ -588,6 +673,81 @@ function removeEasyPayCustomMethod(index: number) {
   easyPayCustomMethods.splice(index, 1)
 }
 
+function isSepayBankAccountField(key: string): boolean {
+  return form.provider_key === 'sepay' && key === 'bankAccountId'
+}
+
+function isSepayWebhookApiKeyField(key: string): boolean {
+  return form.provider_key === 'sepay' && key === 'webhookApiKey'
+}
+
+function isMultilineSecretField(key: string): boolean {
+  return ['privateKey', 'publicKey', 'alipayPublicKey'].includes(key)
+}
+
+function formatSepayBankAccountLabel(account: SepayBankAccountOption): string {
+  const parts = [account.bank_short_name, account.account_number, account.account_holder_name]
+    .map(part => (part || '').trim())
+    .filter(Boolean)
+  return parts.join(' · ') || account.id
+}
+
+function resetSepayBankAccounts() {
+  sepayBankAccounts.value = []
+  sepayBankAccountsError.value = ''
+  sepayBankAccountsLoading.value = false
+}
+
+function generateSepayWebhookApiKey() {
+  const cryptoObj = globalThis.crypto
+  if (!cryptoObj?.getRandomValues) {
+    emitValidationError(t('admin.settings.payment.sepayWebhookTokenGenerationFailed'))
+    return
+  }
+  const bytes = new Uint8Array(32)
+  cryptoObj.getRandomValues(bytes)
+  config.webhookApiKey = `vcwh_${Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')}`
+  visibleFields.webhookApiKey = true
+}
+
+function getErrorMessage(err: unknown): string {
+  if (err && typeof err === 'object' && 'message' in err) {
+    const message = (err as { message?: unknown }).message
+    if (typeof message === 'string' && message.trim()) return message
+  }
+  if (err instanceof Error && err.message.trim()) return err.message
+  return t('admin.settings.payment.sepayLoadBankAccountsFailed')
+}
+
+async function loadSepayBankAccounts() {
+  sepayBankAccountsError.value = ''
+  const apiToken = (config.apiToken || '').trim()
+  const providerId = props.editing?.id
+  if (!apiToken && !providerId) {
+    sepayBankAccountsError.value = t('admin.settings.payment.sepayApiTokenRequired')
+    return
+  }
+  sepayBankAccountsLoading.value = true
+  try {
+    const request = apiToken ? { apiToken } : { providerId }
+    const res = await adminPaymentAPI.listSepayBankAccounts(request)
+    const accounts = res.data || []
+    sepayBankAccounts.value = accounts
+    const current = (config.bankAccountId || '').trim()
+    if (accounts.length === 1 && !current) {
+      config.bankAccountId = accounts[0].id
+    }
+    if (accounts.length === 0) {
+      sepayBankAccountsError.value = t('admin.settings.payment.sepayNoBankAccounts')
+    }
+  } catch (err: unknown) {
+    sepayBankAccounts.value = []
+    sepayBankAccountsError.value = getErrorMessage(err)
+  } finally {
+    sepayBankAccountsLoading.value = false
+  }
+}
+
 function onKeyChange() {
   form.supported_types = [...(PROVIDER_SUPPORTED_TYPES[form.provider_key] || [])]
   form.payment_mode = defaultPaymentMode(form.provider_key)
@@ -603,6 +763,7 @@ function clearConfig() {
   returnBaseUrl.value = ''
   limitsExpanded.value = false
   easyPayCustomMethods.splice(0, easyPayCustomMethods.length)
+  resetSepayBankAccounts()
 }
 
 function applyDefaults() {

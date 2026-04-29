@@ -13,6 +13,10 @@ function findField(providerKey: string, key: string) {
   return fields.find(field => field.key === key)
 }
 
+function findSepayField(key: string) {
+  return findField('sepay', key)
+}
+
 describe('PROVIDER_CONFIG_FIELDS.wxpay', () => {
   it('keeps admin form validation aligned with backend-required credentials', () => {
     expect(findField('wxpay', 'publicKeyId')?.optional).toBeFalsy()
@@ -55,6 +59,15 @@ describe('PROVIDER_CONFIG_FIELDS.stripe', () => {
     expect(currency?.defaultValue).toBe('CNY')
     expect(currency?.hintKey).toBe('admin.settings.payment.field_paymentCurrencyHint')
     expect(currency?.options).toBe(PAYMENT_CURRENCY_OPTIONS)
+  })
+})
+
+describe('PROVIDER_CONFIG_FIELDS.sepay', () => {
+  it('requires SePay API credentials while keeping bank account ID user-friendly', () => {
+    expect(findSepayField('apiToken')?.optional).toBeFalsy()
+    expect(findSepayField('webhookApiKey')?.optional).toBeFalsy()
+    expect(findSepayField('webhookApiKey')?.sensitive).toBe(true)
+    expect(findSepayField('bankAccountId')?.optional).toBe(true)
   })
 })
 
