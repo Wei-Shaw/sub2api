@@ -5031,6 +5031,7 @@ export default {
           configureLink: 'Go to service quota rule management',
           enabled: 'Enable Service Quota',
           enabledHint: 'When off, service quota rules are not evaluated.',
+          unrelatedRpmWarning: '⚠ Note: User-level RPM / Concurrency limits are completely independent from this feature and do not affect each other. To loosen or tighten per-user limits, configure them separately under User Management / User Groups; enabling this toggle will NOT automatically lift any user-level limit.',
         },
         affiliate: {
           title: 'Affiliate (Invite Rebate)',

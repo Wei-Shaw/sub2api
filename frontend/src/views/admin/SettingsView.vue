@@ -3963,7 +3963,12 @@
                 </router-link>
               </p>
             </div>
-            <div class="p-6">
+            <div class="space-y-4 p-6">
+              <div
+                class="rounded-lg border border-red-300 bg-red-50 p-3 text-xs font-medium text-red-700 dark:border-red-800/60 dark:bg-red-900/20 dark:text-red-300"
+              >
+                {{ t("admin.settings.features.serviceQuota.unrelatedRpmWarning") }}
+              </div>
               <div class="flex items-center justify-between">
                 <div>
                   <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
