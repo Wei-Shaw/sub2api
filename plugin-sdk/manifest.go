@@ -186,6 +186,19 @@ type Manifest struct {
 	// receive via EventsExtension.Subscribe. See plugin-sdk/proto/sdk.proto
 	// for the list of available event types.
 	SubscribedEvents []string
+
+	// OwnedTables lists the host DB tables this plugin owns / reads / writes.
+	// Used by the SQL allow-list at runtime (P12·B-1): queries against tables
+	// not listed here (and not in the host-shared whitelist when the plugin
+	// holds db.core.read / db.core.write) are rejected with PERMISSION_DENIED.
+	//
+	// Naming: lowercase, snake_case table names, including the optional schema
+	// prefix (e.g. "channel_pricings", "channel_monitors").
+	//
+	// Plugins SHOULD list every table they create in migrations and any
+	// shared host table they read/write (the latter requires db.core.read or
+	// db.core.write capability).
+	OwnedTables []string
 }
 
 // Placement describes where on a sidebar a plugin's menu item should land.
@@ -408,6 +421,7 @@ func (m *Manifest) toProto() *pb.ManifestResponse {
 		Migrations:       migrationsToProto(m.Migrations),
 		IconSvg:          m.IconSVG,
 		SubscribedEvents: append([]string(nil), m.SubscribedEvents...),
+		OwnedTables:      append([]string(nil), m.OwnedTables...),
 	}
 	if m.Frontend != nil {
 		resp.Frontend = m.Frontend.toProto()

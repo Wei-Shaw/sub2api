@@ -181,8 +181,23 @@ message ManifestResponse {
   // to receive. Names use dotted lowercase (e.g. "payment.order.created").
   // Host validates against capability whitelist on Subscribe; high-frequency
   // events like "gateway.model.invoked" additionally require capability
-  // "events.gateway".
+  // "events.subscribe.gateway" (legacy alias: "events.gateway").
   repeated string subscribed_events = 47;
+
+  // owned_tables lists the host DB tables this plugin owns / reads / writes.
+  // The SQL gate (P12·B-1) rejects plugin SQL touching tables not listed
+  // here unless the plugin also holds db.core.read or db.core.write and
+  // the table is in the host shared whitelist.
+  //
+  // Naming: lowercase, snake_case table names (e.g. "channel_pricings",
+  // "channel_monitors"). Schema-qualified names (e.g. "public.foo") are
+  // matched literally; plugins should avoid schema prefixes unless they
+  // genuinely use a non-default schema.
+  //
+  // Plugins SHOULD list every table they CREATE in migrations and any
+  // shared host table they read/write (the latter requires db.core.read
+  // or db.core.write capability).
+  repeated string owned_tables = 48;
 }
 
 message EndpointDeclaration {

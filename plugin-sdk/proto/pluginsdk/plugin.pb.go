@@ -473,10 +473,24 @@ type ManifestResponse struct {
 	// to receive. Names use dotted lowercase (e.g. "payment.order.created").
 	// Host validates against capability whitelist on Subscribe; high-frequency
 	// events like "gateway.model.invoked" additionally require capability
-	// "events.gateway".
+	// "events.subscribe.gateway" (legacy alias: "events.gateway").
 	SubscribedEvents []string `protobuf:"bytes,47,rep,name=subscribed_events,json=subscribedEvents,proto3" json:"subscribed_events,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// owned_tables lists the host DB tables this plugin owns / reads / writes.
+	// The SQL gate (P12·B-1) rejects plugin SQL touching tables not listed
+	// here unless the plugin also holds db.core.read or db.core.write and
+	// the table is in the host shared whitelist.
+	//
+	// Naming: lowercase, snake_case table names (e.g. "channel_pricings",
+	// "channel_monitors"). Schema-qualified names (e.g. "public.foo") are
+	// matched literally; plugins should avoid schema prefixes unless they
+	// genuinely use a non-default schema.
+	//
+	// Plugins SHOULD list every table they CREATE in migrations and any
+	// shared host table they read/write (the latter requires db.core.read
+	// or db.core.write capability).
+	OwnedTables   []string `protobuf:"bytes,48,rep,name=owned_tables,json=ownedTables,proto3" json:"owned_tables,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ManifestResponse) Reset() {
@@ -624,6 +638,13 @@ func (x *ManifestResponse) GetIconSvg() string {
 func (x *ManifestResponse) GetSubscribedEvents() []string {
 	if x != nil {
 		return x.SubscribedEvents
+	}
+	return nil
+}
+
+func (x *ManifestResponse) GetOwnedTables() []string {
+	if x != nil {
+		return x.OwnedTables
 	}
 	return nil
 }
@@ -1235,7 +1256,7 @@ const file_plugin_proto_rawDesc = "" +
 	"\tFileChunk\x12\x12\n" +
 	"\x04data\x18\x01 \x01(\fR\x04data\x12\x1a\n" +
 	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x10\n" +
-	"\x03eof\x18\x03 \x01(\bR\x03eof\"\xa0\x06\n" +
+	"\x03eof\x18\x03 \x01(\bR\x03eof\"\xc3\x06\n" +
 	"\x10ManifestResponse\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x18\n" +
@@ -1256,7 +1277,8 @@ const file_plugin_proto_rawDesc = "" +
 	"\x17settings_schema_version\x18, \x01(\tR\x15settingsSchemaVersion\x12A\n" +
 	"\x1dsettings_properties_meta_json\x18- \x01(\fR\x1asettingsPropertiesMetaJson\x12\x19\n" +
 	"\bicon_svg\x18. \x01(\tR\aiconSvg\x12+\n" +
-	"\x11subscribed_events\x18/ \x03(\tR\x10subscribedEvents\"`\n" +
+	"\x11subscribed_events\x18/ \x03(\tR\x10subscribedEvents\x12!\n" +
+	"\fowned_tables\x180 \x03(\tR\vownedTables\"`\n" +
 	"\x13EndpointDeclaration\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x18\n" +
 	"\amethods\x18\x02 \x03(\tR\amethods\x12\x1b\n" +

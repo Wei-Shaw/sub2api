@@ -1011,6 +1011,10 @@ func (m *PluginManager) spawnAndConnect(parentCtx context.Context, inst *PluginI
 	// 在 SDKServer 上注册插件 → 授权 capabilities 的映射,后续 Redis Do 会查询。
 	m.sdkServer.RegisterPlugin(inst.Name, approvedCaps)
 
+	// P12·B-1 SQL gate: persist the manifest's owned_tables so SDKServer's
+	// SQLProxy can authorise plugin SQL against the per-plugin allow-list.
+	m.sdkServer.capabilities.SetTables(inst.Name, manifest.GetOwnedTables())
+
 	// Phase B: register the plugin manifest.SubscribedEvents so the
 	// EventsExtension server can validate Subscribe requests against
 	// what the plugin actually declared interest in.

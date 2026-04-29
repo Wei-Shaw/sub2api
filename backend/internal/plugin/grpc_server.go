@@ -60,7 +60,12 @@ type SDKServer struct {
 	// SDKServer stays dependency-free of the concrete scheduler type.
 	// RegisterServices only registers the gRPC service when this is non-nil.
 	jobScheduler *JobSchedulerServer
-	stop         context.CancelFunc
+
+	// sqlGate enforces the per-plugin table allow-list (P12·B-1) on every
+	// SQLProxy entry point. Always non-nil; gates on an empty plugin name
+	// no-op so internal / non-plugin callers retain full SQL access.
+	sqlGate *sqlGate
+	stop    context.CancelFunc
 }
 
 type activeTx struct {
@@ -75,12 +80,14 @@ type activeTx struct {
 // 传空串表示禁用 SecretEncryption 服务（gRPC 端不会注册 service，调用插件会得到
 // Unimplemented），通常在自动化测试或显式关闭加密能力时使用。
 func NewSDKServer(db *sql.DB, rdb *redis.Client, secretMasterKeyHex string) (*SDKServer, error) {
+	caps := newPluginCapabilityRegistry()
 	s := &SDKServer{
 		db:           db,
 		redis:        rdb,
 		txs:          make(map[string]*activeTx),
-		capabilities: newPluginCapabilityRegistry(),
+		capabilities: caps,
 		knownPlugins: newKnownPluginsRegistry(),
+		sqlGate:      newSQLGate(caps),
 	}
 	if secretMasterKeyHex != "" {
 		secrets, err := NewSecretEncryptionServer(secretMasterKeyHex, s.resolveCaller, slog.Default().With("component", "plugin_secret_encryption"))
@@ -192,6 +199,10 @@ func (s *SDKServer) Query(ctx context.Context, req *pluginsdk.SQLRequest) (*plug
 	if s.db == nil {
 		return nil, errors.New("sql db not configured")
 	}
+	pluginName := s.resolveCaller(ctx)
+	if err := s.sqlGate.Authorize(pluginName, req.GetQuery()); err != nil {
+		return nil, sqlGateStatus(err)
+	}
 	args := convertSQLValues(req.GetArgs())
 	rows, err := s.db.QueryContext(ctx, req.GetQuery(), args...)
 	if err != nil {
@@ -204,6 +215,10 @@ func (s *SDKServer) Query(ctx context.Context, req *pluginsdk.SQLRequest) (*plug
 func (s *SDKServer) Exec(ctx context.Context, req *pluginsdk.SQLRequest) (*pluginsdk.ExecResponse, error) {
 	if s.db == nil {
 		return nil, errors.New("sql db not configured")
+	}
+	pluginName := s.resolveCaller(ctx)
+	if err := s.sqlGate.Authorize(pluginName, req.GetQuery()); err != nil {
+		return nil, sqlGateStatus(err)
 	}
 	args := convertSQLValues(req.GetArgs())
 	res, err := s.db.ExecContext(ctx, req.GetQuery(), args...)
@@ -247,6 +262,10 @@ func (s *SDKServer) TxQuery(ctx context.Context, req *pluginsdk.TxSQLRequest) (*
 	if err != nil {
 		return nil, err
 	}
+	pluginName := s.resolveCaller(ctx)
+	if err := s.sqlGate.Authorize(pluginName, req.GetQuery()); err != nil {
+		return nil, sqlGateStatus(err)
+	}
 	args := convertSQLValues(req.GetArgs())
 	rows, err := tx.QueryContext(ctx, req.GetQuery(), args...)
 	if err != nil {
@@ -260,6 +279,10 @@ func (s *SDKServer) TxExec(ctx context.Context, req *pluginsdk.TxSQLRequest) (*p
 	tx, err := s.lookupTx(req.GetTxId())
 	if err != nil {
 		return nil, err
+	}
+	pluginName := s.resolveCaller(ctx)
+	if err := s.sqlGate.Authorize(pluginName, req.GetQuery()); err != nil {
+		return nil, sqlGateStatus(err)
 	}
 	args := convertSQLValues(req.GetArgs())
 	res, err := tx.ExecContext(ctx, req.GetQuery(), args...)

@@ -47,15 +47,20 @@ import (
 // explicitly approved at Init time.
 const callerMetadataKey = "x-sub2api-plugin"
 
-// pluginCapabilityRegistry tracks which plugins have which capabilities.
-// Keyed by plugin name; values are sets for O(1) membership checks.
+// pluginCapabilityRegistry tracks which plugins have which capabilities and
+// which DB tables they own. Keyed by plugin name; values are sets for O(1)
+// membership checks. The tables map drives the SQL gate (P12·B-1).
 type pluginCapabilityRegistry struct {
-	mu   sync.RWMutex
-	caps map[string]map[string]struct{}
+	mu     sync.RWMutex
+	caps   map[string]map[string]struct{}
+	tables map[string]map[string]struct{}
 }
 
 func newPluginCapabilityRegistry() *pluginCapabilityRegistry {
-	return &pluginCapabilityRegistry{caps: make(map[string]map[string]struct{})}
+	return &pluginCapabilityRegistry{
+		caps:   make(map[string]map[string]struct{}),
+		tables: make(map[string]map[string]struct{}),
+	}
 }
 
 // Set replaces the capability set for plugin name. Passing an empty slice
@@ -70,6 +75,22 @@ func (r *pluginCapabilityRegistry) Set(name string, capabilities []string) {
 	r.caps[name] = set
 }
 
+// SetTables replaces the owned-tables set for plugin name. Names are
+// lowercased for case-insensitive matching against parsed SQL.
+func (r *pluginCapabilityRegistry) SetTables(name string, tables []string) {
+	set := make(map[string]struct{}, len(tables))
+	for _, t := range tables {
+		t = strings.ToLower(strings.TrimSpace(t))
+		if t == "" {
+			continue
+		}
+		set[t] = struct{}{}
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.tables[name] = set
+}
+
 // Has returns true if plugin name has been granted the specified capability.
 func (r *pluginCapabilityRegistry) Has(name, capability string) bool {
 	r.mu.RLock()
@@ -82,12 +103,71 @@ func (r *pluginCapabilityRegistry) Has(name, capability string) bool {
 	return has
 }
 
+// OwnsTable returns true if plugin name declared the table in its manifest's
+// OwnedTables list. Comparison is case-insensitive.
+func (r *pluginCapabilityRegistry) OwnsTable(name, table string) bool {
+	table = strings.ToLower(strings.TrimSpace(table))
+	if table == "" {
+		return false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	set, ok := r.tables[name]
+	if !ok {
+		return false
+	}
+	_, has := set[table]
+	return has
+}
+
+// AllowedTable runs the SQL gate decision: a plugin may touch a table when
+//   1. it owns the table (declared in OwnedTables), OR
+//   2. it holds db.core.read (or db.core.write for writes) and the table
+//      is on the host shared whitelist.
+//
+// `forWrite=true` requires db.core.write for the host-shared branch and
+// db.own.write for the owned branch. Owned-table reads/writes also require
+// the corresponding db.own.read / db.own.write capability — both are
+// default-grant for now but enforcing makes the audit trail explicit.
+func (r *pluginCapabilityRegistry) AllowedTable(name, table string, forWrite bool) bool {
+	owns := r.OwnsTable(name, table)
+	if owns {
+		if forWrite {
+			return r.Has(name, "db.own.write")
+		}
+		return r.Has(name, "db.own.read")
+	}
+	if _, shared := hostSharedReadableTables[strings.ToLower(strings.TrimSpace(table))]; !shared {
+		return false
+	}
+	if forWrite {
+		return r.Has(name, "db.core.write")
+	}
+	return r.Has(name, "db.core.read")
+}
+
+// hostSharedReadableTables is the curated whitelist of host tables a plugin
+// may touch with the db.core.read / db.core.write capability. Adding a
+// table here is a security decision; only include tables whose schema is
+// stable and whose contents are safe to expose to plugin code.
+//
+// Notably absent: api_keys, sessions, password hashes, anything secret-bearing.
+var hostSharedReadableTables = map[string]struct{}{
+	"users":              {},
+	"user_subscriptions": {},
+	"user_allowed_groups": {},
+	"groups":             {},
+	"accounts":           {},
+	"payment_orders":     {},
+}
+
 // Forget drops the entry for plugin name. Called when a plugin is stopped
 // so its address space can be reused safely.
 func (r *pluginCapabilityRegistry) Forget(name string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	delete(r.caps, name)
+	delete(r.tables, name)
 }
 
 // knownPluginsRegistry stores the set of plugin names the manager has
