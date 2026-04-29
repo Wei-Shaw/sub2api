@@ -1,36 +1,31 @@
 <template>
-  <!-- Plan B·D3: 用 SDK PluginPageLayout / TablePageLayout / FilterBar / PageActions
-       替换 V2 inline 容器; layout class 走 SDK components.css, 不再在 scoped style
-       重复定义 (避免 ShadowRoot 内多套尺寸).
-
-       title/description 已上移到 manifest descriptions, host AppHeader 唯一
-       渲染页面标题区, view 不再重复 (修复"双重标题"问题). PluginPageLayout
-       继续作为 layout 容器使用。 -->
-  <PluginPageLayout>
-    <TablePageLayout>
-      <template #filters>
-        <FilterBar>
-          <template #left>
-            <div class="w-full sm:w-64">
-              <SearchInput
-                v-model="searchQuery"
-                :placeholder="t('admin.channels.searchChannels', 'Search channels...')"
-                @search="handleSearchImmediate"
-              />
-            </div>
-            <Select
-              v-model="filters.status"
-              :options="statusFilterOptions"
-              :placeholder="t('admin.channels.allStatus', 'All Status')"
-              class="w-40"
-              @change="loadChannels"
+  <!-- title/description 已上移到 channel-management manifest descriptions, host
+       AppHeader 唯一渲染标题区. View 抄 host AccountsView 写法: 直接以
+       TablePageLayout 为根, #filters slot 内一个 flex 行同时容纳筛选 + 操作,
+       不再使用 PluginPageLayout / FilterBar / PageActions 包装组件. -->
+  <TablePageLayout>
+    <template #filters>
+      <div class="flex flex-wrap-reverse items-start justify-between gap-3">
+        <!-- Filters -->
+        <div class="flex flex-1 flex-wrap items-center gap-3">
+          <div class="w-full sm:w-64">
+            <SearchInput
+              v-model="searchQuery"
+              :placeholder="t('admin.channels.searchChannels', 'Search channels...')"
+              @search="handleSearchImmediate"
             />
-          </template>
-        </FilterBar>
-      </template>
+          </div>
+          <Select
+            v-model="filters.status"
+            :options="statusFilterOptions"
+            :placeholder="t('admin.channels.allStatus', 'All Status')"
+            class="w-40"
+            @change="loadChannels"
+          />
+        </div>
 
-      <template #actions>
-        <PageActions>
+        <!-- Actions -->
+        <div class="flex flex-shrink-0 flex-wrap items-center gap-2">
           <button
             @click="loadChannels"
             :disabled="loading"
@@ -43,8 +38,10 @@
             <Icon name="plus" size="md" class="mr-2" />
             {{ t('admin.channels.createChannel', 'Create Channel') }}
           </button>
-        </PageActions>
-      </template>
+        </div>
+      </div>
+    </template>
+
 
       <template #table>
         <DataTable
@@ -414,7 +411,6 @@
       @confirm="confirmDelete"
       @cancel="showDeleteDialog = false"
     />
-  </PluginPageLayout>
 </template>
 
 <script setup lang="ts">
@@ -430,10 +426,7 @@ import {
   Icon,
   PlatformIcon,
   Toggle,
-  PluginPageLayout,
   TablePageLayout,
-  PageActions,
-  FilterBar,
   SearchInput,
   type Column,
 } from '@sub2api/plugin-sdk'

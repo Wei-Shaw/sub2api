@@ -1,39 +1,39 @@
 <template>
   <!-- title/description 已上移到 channel-management manifest descriptions,
-       host AppHeader 唯一渲染标题区. PluginPageLayout 继续作为 layout 容器使用,
-       TablePageLayout + FilterBar + PageActions 复用 SDK 组件. -->
-  <PluginPageLayout>
-    <TablePageLayout>
-      <template #filters>
-        <FilterBar>
-          <template #left>
-            <div class="w-full sm:w-64">
-              <SearchInput
-                v-model="searchQuery"
-                :placeholder="t('admin.channelMonitor.searchPlaceholder')"
-                @search="handleSearchImmediate"
-              />
-            </div>
-            <Select
-              v-model="providerFilter"
-              :options="providerFilterOptions"
-              :placeholder="t('admin.channelMonitor.allProviders')"
-              class="w-44"
-              @change="reload"
+       host AppHeader 唯一渲染标题区. View 直接以 TablePageLayout 为根, 抄
+       host AccountsView 写法: #filters slot 内一个 flex 行同时容纳筛选 + 操作,
+       不再使用 PluginPageLayout / FilterBar / PageActions 包装组件.
+       Dialogs 作为 sibling 渲染 (Vue 3 支持多 root). -->
+  <TablePageLayout>
+    <template #filters>
+      <div class="flex flex-wrap-reverse items-start justify-between gap-3">
+        <!-- Filters -->
+        <div class="flex flex-1 flex-wrap items-center gap-3">
+          <div class="w-full sm:w-64">
+            <SearchInput
+              v-model="searchQuery"
+              :placeholder="t('admin.channelMonitor.searchPlaceholder')"
+              @search="handleSearchImmediate"
             />
-            <Select
-              v-model="enabledFilter"
-              :options="enabledFilterOptions"
-              :placeholder="t('admin.channelMonitor.enabledFilter')"
-              class="w-40"
-              @change="reload"
-            />
-          </template>
-        </FilterBar>
-      </template>
+          </div>
+          <Select
+            v-model="providerFilter"
+            :options="providerFilterOptions"
+            :placeholder="t('admin.channelMonitor.allProviders')"
+            class="w-44"
+            @change="reload"
+          />
+          <Select
+            v-model="enabledFilter"
+            :options="enabledFilterOptions"
+            :placeholder="t('admin.channelMonitor.enabledFilter')"
+            class="w-40"
+            @change="reload"
+          />
+        </div>
 
-      <template #actions>
-        <PageActions>
+        <!-- Actions -->
+        <div class="flex flex-shrink-0 flex-wrap items-center gap-2">
           <button
             @click="reload"
             :disabled="loading"
@@ -46,127 +46,127 @@
             <Icon name="plus" size="md" class="mr-2" />
             {{ t('admin.channelMonitor.createButton') }}
           </button>
-        </PageActions>
-      </template>
+        </div>
+      </div>
+    </template>
 
-      <template #table>
-        <DataTable :columns="columns" :data="monitors" :loading="loading">
-          <template #cell-name="{ value }">
-            <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
-          </template>
+    <template #table>
+      <DataTable :columns="columns" :data="monitors" :loading="loading">
+        <template #cell-name="{ value }">
+          <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
+        </template>
 
-          <template #cell-provider="{ row }">
+        <template #cell-provider="{ row }">
+          <span
+            class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium"
+            :class="providerBadgeClass(row.provider)"
+          >
+            {{ providerLabel(row.provider) }}
+          </span>
+        </template>
+
+        <template #cell-primary_model="{ row }">
+          <div class="flex flex-col">
+            <span class="text-sm text-gray-900 dark:text-gray-100">{{ row.primary_model }}</span>
             <span
-              class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium"
-              :class="providerBadgeClass(row.provider)"
+              v-if="row.primary_status"
+              class="mt-0.5 inline-flex w-fit items-center rounded px-1.5 py-0.5 text-[10px] font-medium"
+              :class="statusBadgeClass(row.primary_status)"
             >
-              {{ providerLabel(row.provider) }}
+              {{ statusLabel(row.primary_status) }}
             </span>
-          </template>
+          </div>
+        </template>
 
-          <template #cell-primary_model="{ row }">
-            <div class="flex flex-col">
-              <span class="text-sm text-gray-900 dark:text-gray-100">{{ row.primary_model }}</span>
-              <span
-                v-if="row.primary_status"
-                class="mt-0.5 inline-flex w-fit items-center rounded px-1.5 py-0.5 text-[10px] font-medium"
-                :class="statusBadgeClass(row.primary_status)"
-              >
-                {{ statusLabel(row.primary_status) }}
-              </span>
-            </div>
-          </template>
+        <template #cell-availability_7d="{ row }">
+          <span class="text-sm text-gray-900 dark:text-gray-100">{{ formatAvailability(row) }}</span>
+        </template>
 
-          <template #cell-availability_7d="{ row }">
-            <span class="text-sm text-gray-900 dark:text-gray-100">{{ formatAvailability(row) }}</span>
-          </template>
+        <template #cell-latency="{ row }">
+          <span class="text-sm text-gray-900 dark:text-gray-100">{{ formatLatency(row.primary_latency_ms) }}</span>
+        </template>
 
-          <template #cell-latency="{ row }">
-            <span class="text-sm text-gray-900 dark:text-gray-100">{{ formatLatency(row.primary_latency_ms) }}</span>
-          </template>
+        <template #cell-enabled="{ row }">
+          <Toggle :modelValue="row.enabled" @update:modelValue="toggleEnabled(row)" />
+        </template>
 
-          <template #cell-enabled="{ row }">
-            <Toggle :modelValue="row.enabled" @update:modelValue="toggleEnabled(row)" />
-          </template>
+        <template #cell-actions="{ row }">
+          <div class="flex items-center gap-2">
+            <button
+              @click="handleRunNow(row)"
+              :disabled="runningId === row.id"
+              class="btn btn-xs btn-secondary"
+              :title="t('admin.channelMonitor.runNow')"
+            >
+              <Icon name="refresh" size="sm" :class="runningId === row.id ? 'animate-spin' : ''" />
+            </button>
+            <button
+              @click="openEditDialog(row)"
+              class="btn btn-xs btn-secondary"
+              :title="t('common.edit')"
+            >
+              <Icon name="edit" size="sm" />
+            </button>
+            <button
+              @click="handleDelete(row)"
+              class="btn btn-xs btn-danger"
+              :title="t('common.delete')"
+            >
+              <Icon name="trash" size="sm" />
+            </button>
+          </div>
+        </template>
 
-          <template #cell-actions="{ row }">
-            <div class="flex items-center gap-2">
-              <button
-                @click="handleRunNow(row)"
-                :disabled="runningId === row.id"
-                class="btn btn-xs btn-secondary"
-                :title="t('admin.channelMonitor.runNow')"
-              >
-                <Icon name="refresh" size="sm" :class="runningId === row.id ? 'animate-spin' : ''" />
-              </button>
-              <button
-                @click="openEditDialog(row)"
-                class="btn btn-xs btn-secondary"
-                :title="t('common.edit')"
-              >
-                <Icon name="edit" size="sm" />
-              </button>
-              <button
-                @click="handleDelete(row)"
-                class="btn btn-xs btn-danger"
-                :title="t('common.delete')"
-              >
-                <Icon name="trash" size="sm" />
-              </button>
-            </div>
-          </template>
+        <template #empty>
+          <EmptyState
+            :title="t('admin.channelMonitor.noMonitorsYet')"
+            :description="t('admin.channelMonitor.createFirstMonitor')"
+            :action-text="t('admin.channelMonitor.createButton')"
+            @action="openCreateDialog"
+          />
+        </template>
+      </DataTable>
+    </template>
 
-          <template #empty>
-            <EmptyState
-              :title="t('admin.channelMonitor.noMonitorsYet')"
-              :description="t('admin.channelMonitor.createFirstMonitor')"
-              :action-text="t('admin.channelMonitor.createButton')"
-              @action="openCreateDialog"
-            />
-          </template>
-        </DataTable>
-      </template>
+    <template v-if="pagination.total > 0" #pagination>
+      <Pagination
+        :page="pagination.page"
+        :total="pagination.total"
+        :page-size="pagination.page_size"
+        @update:page="onPageChange"
+        @update:pageSize="onPageSizeChange"
+      />
+    </template>
+  </TablePageLayout>
 
-      <template v-if="pagination.total > 0" #pagination>
-        <Pagination
-          :page="pagination.page"
-          :total="pagination.total"
-          :page-size="pagination.page_size"
-          @update:page="onPageChange"
-          @update:pageSize="onPageSizeChange"
-        />
-      </template>
-    </TablePageLayout>
+  <MonitorFormDialog
+    :show="showDialog"
+    :monitor="editing"
+    @close="closeDialog"
+    @saved="reload"
+  />
 
-    <MonitorFormDialog
-      :show="showDialog"
-      :monitor="editing"
-      @close="closeDialog"
-      @saved="reload"
-    />
+  <MonitorRunResultDialog
+    :show="showRunResult"
+    :results="runResults"
+    @close="showRunResult = false"
+  />
 
-    <MonitorRunResultDialog
-      :show="showRunResult"
-      :results="runResults"
-      @close="showRunResult = false"
-    />
-
-    <ConfirmDialog
-      :show="showDeleteDialog"
-      :title="t('common.delete')"
-      :message="deleteConfirmMessage"
-      :confirm-text="t('common.delete')"
-      :cancel-text="t('common.cancel')"
-      :danger="true"
-      @confirm="confirmDelete"
-      @cancel="showDeleteDialog = false"
-    />
-  </PluginPageLayout>
+  <ConfirmDialog
+    :show="showDeleteDialog"
+    :title="t('common.delete')"
+    :message="deleteConfirmMessage"
+    :confirm-text="t('common.delete')"
+    :cancel-text="t('common.cancel')"
+    :danger="true"
+    @confirm="confirmDelete"
+    @cancel="showDeleteDialog = false"
+  />
 </template>
 
 <script setup lang="ts">
 /**
- * V5 W7.1 — Channel Monitor admin list view (simplified port).
+ * V5 W7.1 — Channel Monitor admin list view (host AccountsView style port).
  *
  * 简化范围 (vs 09fd83ab host):
  *   - 删除 HelpTooltip + api_key_decrypt_failed 视觉提示 (decrypt_failed
@@ -182,11 +182,8 @@ import {
   ConfirmDialog,
   DataTable,
   EmptyState,
-  FilterBar,
   Icon,
-  PageActions,
   Pagination,
-  PluginPageLayout,
   SearchInput,
   Select,
   TablePageLayout,

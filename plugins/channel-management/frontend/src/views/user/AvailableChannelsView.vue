@@ -1,10 +1,22 @@
 <template>
   <!-- title/description 已上移到 channel-management manifest descriptions,
-       host AppHeader 唯一渲染标题区. PluginPageLayout 继续作为 layout 容器使用,
-       FilterBar/PageActions 仍由 view 提供。 -->
-  <PluginPageLayout>
-    <template #actions>
-      <PageActions>
+       host AppHeader 唯一渲染标题区. View 抄 host 写法: 用一个 flex-column
+       容器包住 [筛选+操作 一行] + [表格区], 不再使用 PluginPageLayout /
+       FilterBar / PageActions. AvailableChannelsTable 自带 card 样式, 因此
+       不通过 TablePageLayout 的 #table slot (会双重 card). -->
+  <div class="flex h-full min-h-0 flex-col gap-4">
+    <!-- Filters + Actions row (host AccountsView style) -->
+    <div class="flex flex-wrap-reverse items-start justify-between gap-3">
+      <div class="flex flex-1 flex-wrap items-center gap-3">
+        <div class="w-full sm:w-80">
+          <SearchInput
+            v-model="searchQuery"
+            :placeholder="t('availableChannels.searchPlaceholder')"
+          />
+        </div>
+      </div>
+
+      <div class="flex flex-shrink-0 flex-wrap items-center gap-2">
         <button
           @click="loadChannels"
           :disabled="loading"
@@ -13,23 +25,11 @@
         >
           <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
         </button>
-      </PageActions>
-    </template>
-
-    <div class="layout-section-fixed">
-      <FilterBar>
-        <template #left>
-          <div class="w-full sm:w-80">
-            <SearchInput
-              v-model="searchQuery"
-              :placeholder="t('availableChannels.searchPlaceholder')"
-            />
-          </div>
-        </template>
-      </FilterBar>
+      </div>
     </div>
 
-    <div class="layout-section-scrollable">
+    <!-- Scrollable table area -->
+    <div class="min-h-0 flex-1 overflow-auto">
       <AvailableChannelsTable
         :columns="columnLabels"
         :rows="filteredChannels"
@@ -41,13 +41,13 @@
         :empty-label="t('availableChannels.empty')"
       />
     </div>
-  </PluginPageLayout>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { FilterBar, Icon, PageActions, PluginPageLayout, SearchInput } from '@sub2api/plugin-sdk'
+import { Icon, SearchInput } from '@sub2api/plugin-sdk'
 import AvailableChannelsTable from '../../components/channels/AvailableChannelsTable.vue'
 import userChannelsAPI, { type UserAvailableChannel } from '../../api/user/availableChannels'
 import { getSdk } from '../../api/sdk'

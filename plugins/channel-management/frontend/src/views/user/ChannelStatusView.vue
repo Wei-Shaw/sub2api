@@ -1,9 +1,10 @@
 <template>
   <!-- title/description 已上移到 channel-management manifest descriptions,
-       host AppHeader 唯一渲染标题区. PluginPageLayout 继续作为 layout 容器使用,
-       MonitorHero 内含状态条/窗口切换/刷新, 不需要再叠 FilterBar/PageActions. -->
-  <PluginPageLayout>
-    <div class="layout-section-fixed">
+       host AppHeader 唯一渲染标题区. View 不再使用 PluginPageLayout 包装,
+       直接以 flex-column 容器渲染 MonitorHero + MonitorCardGrid (MonitorHero
+       内含状态条/窗口切换/刷新, 不需要再叠 FilterBar/PageActions). -->
+  <div class="flex h-full min-h-0 flex-col gap-4">
+    <div class="flex-shrink-0">
       <MonitorHero
         :overall-status="overallStatus"
         :interval-seconds="DEFAULT_INTERVAL_SECONDS"
@@ -15,7 +16,7 @@
       />
     </div>
 
-    <div class="layout-section-scrollable">
+    <div class="min-h-0 flex-1 overflow-auto">
       <MonitorCardGrid
         :items="items"
         :window="currentWindow"
@@ -32,13 +33,12 @@
       :title="detailTitle"
       @close="closeDetail"
     />
-  </PluginPageLayout>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PluginPageLayout } from '@sub2api/plugin-sdk'
 import {
   list as listChannelMonitorViews,
   status as fetchChannelMonitorDetail,
