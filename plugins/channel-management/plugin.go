@@ -133,17 +133,47 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 		// Capabilities — channel-management writes the gateway cache contract
 		// (channel:active, channel:by_id:*, …) which the core's
 		// ChannelCacheReader reads directly. Those keys live outside the
-		// per-plugin namespace, so we ask the core for raw key access.
+		// per-plugin namespace, so we ask the core for raw key access via
+		// CapabilityRedisRaw (P12·B-1 dotted naming).
 		//
-		// CapabilitySecretEncryption / CapabilityJobScheduler /
-		// CapabilitySettingsExtension are required by the channel-monitor
-		// sub-feature (W6): api_key encryption, periodic check scheduling, and
-		// the admin-tunable feature flag / interval defaults.
+		// CapabilitySecretsEncrypt / CapabilityJobsRegister /
+		// CapabilitySettingsOwnRead are required by the channel-monitor
+		// sub-feature (W6): api_key encryption, periodic check scheduling,
+		// and the admin-tunable feature flag / interval defaults.
+		//
+		// CapabilityDBOwnRead / CapabilityDBOwnWrite are mandatory under the
+		// SQL gate (P12·B-1) for queries against this plugin's owned tables.
+		// CapabilityDBCoreRead unlocks the host's shared whitelist (groups,
+		// user_allowed_groups, user_subscriptions) which available_channels_repo
+		// reads to compute per-user allowed channels.
 		Capabilities: []string{
-			pluginsdk.CapabilityRedisRawKeys,
-			pluginsdk.CapabilitySecretEncryption,
-			pluginsdk.CapabilityJobScheduler,
-			pluginsdk.CapabilitySettingsExtension,
+			pluginsdk.CapabilityRedisRaw,
+			pluginsdk.CapabilitySecretsEncrypt,
+			pluginsdk.CapabilityJobsRegister,
+			pluginsdk.CapabilitySettingsOwnRead,
+			pluginsdk.CapabilityDBOwnRead,
+			pluginsdk.CapabilityDBOwnWrite,
+			pluginsdk.CapabilityDBCoreRead,
+		},
+		// OwnedTables: the SQL gate (P12·B-1) consults this list to decide
+		// whether a plugin query is targeting its own tables vs the host
+		// shared whitelist. Every CREATE TABLE in plugins/channel-management/
+		// migrations/*.sql plus the channel CRUD tables already present in
+		// the host schema (channels, channel_groups, channel_model_pricing,
+		// channel_pricing_intervals — pre-existing tables this plugin took
+		// ownership of when V5 W6/W7 ported channel CRUD into the plugin).
+		OwnedTables: []string{
+			// pre-existing host tables this plugin now owns
+			"channels",
+			"channel_groups",
+			"channel_model_pricing",
+			"channel_pricing_intervals",
+			// tables created by plugins/channel-management/migrations/
+			"channel_monitors",
+			"channel_monitor_histories",
+			"channel_monitor_daily_rollups",
+			"channel_monitor_aggregation_watermark",
+			"channel_monitor_request_templates",
 		},
 		// Migrations enumerates the SQL files shipped under
 		// plugins/channel-management/migrations/. The host calls

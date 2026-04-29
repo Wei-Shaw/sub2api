@@ -107,6 +107,14 @@ func (p *HelloPlugin) Manifest() *pluginsdk.Manifest {
 			{Path: pluginRoutePrefix + "/db-test", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeAdmin},
 			{Path: pluginRoutePrefix + "/redis-test", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeAdmin},
 		},
+		// OwnedTables: hello-world ships no migrations and creates no tables;
+		// the explicit empty list is documentation for the P12·B-1 SQL gate.
+		// db-test / redis-test endpoints below run only the SDK's own self-test
+		// queries, which (db-test included) require either OwnedTables entries
+		// or a db.core.read declaration to pass the SQL gate. As written this
+		// plugin's db-test only succeeds against the host shared whitelist
+		// when the operator adds db.core.read to Capabilities.
+		OwnedTables: nil,
 		Frontend: &pluginsdk.FrontendManifest{
 			// EntryJS 路径相对于插件二进制内的 frontend bundle 根目录;
 			// 核心会把它拼接成 /api/v1/plugin-assets/hello-world/dist/entry.js 的 HTTP URL.
