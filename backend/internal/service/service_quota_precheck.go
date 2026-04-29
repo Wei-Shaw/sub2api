@@ -137,6 +137,7 @@ func (s *serviceQuotaService) matchedRulesForAcquire(ctx context.Context, plan *
 			continue
 		}
 		paths := findMatchingPaths(rule, req)
+		logPathMatchTrace("svcquota.acquire", rule, paths, req)
 		if len(paths) == 0 {
 			continue
 		}
@@ -146,6 +147,39 @@ func (s *serviceQuotaService) matchedRulesForAcquire(ctx context.Context, plan *
 		return nil
 	}
 	return applyServiceQuotaFallbackOverride(matched)
+}
+
+// logPathMatchTrace 在 acquire / record 路径输出 path 匹配诊断日志。
+//
+// 暂时使用 INFO 级别（增加单请求日志量）以诊断生产 rule 4 不计数等"path 不命中"问题；
+// 一旦真因定位下个 release 即应降级或删除（本函数集中一处便于摘除）。
+//
+// op 形如 "svcquota.acquire" / "svcquota.record"。paths 长度为 0 视为 miss，否则视为 match。
+func logPathMatchTrace(op string, rule *ServiceQuotaRule, paths []ServiceQuotaPathDef, req ServiceQuotaCheckRequest) {
+	if rule == nil {
+		return
+	}
+	if len(paths) == 0 {
+		slog.Info(op+".miss",
+			"rule_id", rule.ID,
+			"rule_name", rule.Name,
+			"req_platform", req.Platform,
+			"req_channel", req.ChannelID,
+			"req_account", req.AccountID,
+			"req_model", req.Model,
+			"path_count", len(rule.Paths),
+		)
+		return
+	}
+	slog.Info(op+".match",
+		"rule_id", rule.ID,
+		"rule_name", rule.Name,
+		"matched_paths", len(paths),
+		"req_platform", req.Platform,
+		"req_channel", req.ChannelID,
+		"req_account", req.AccountID,
+		"req_model", req.Model,
+	)
 }
 
 // latestEnabledByID 重新走 ServiceQuotaCache（未命中时 singleflight 拉 DB）取最新规则集合，
@@ -238,6 +272,7 @@ func (s *serviceQuotaService) matchedRules(ctx context.Context, req ServiceQuota
 			continue
 		}
 		paths := findMatchingPaths(rule, req)
+		logPathMatchTrace("svcquota.record", rule, paths, req)
 		if len(paths) == 0 {
 			continue
 		}
