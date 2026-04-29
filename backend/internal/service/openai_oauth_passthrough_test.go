@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -33,6 +34,21 @@ type httpUpstreamRecorder struct {
 	resp      *http.Response
 	responses []*http.Response
 	err       error
+REDACTED
+
+type errReadCloser struct {
+	err error
+REDACTED
+
+func (r errReadCloser) Read(_ []byte) (int, error) {
+	if r.err != nil {
+		return 0, r.err
+REDACTED
+	return 0, io.ErrUnexpectedEOF
+REDACTED
+
+func (r errReadCloser) Close() error {
+	return nil
 REDACTED
 
 func (u *httpUpstreamRecorder) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
@@ -447,7 +463,7 @@ REDACTED
 
 	require.False(t, gjson.GetBytes(upstream.lastBody, "store").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "stream").Exists())
-	require.Equal(t, "gpt-5.1-codex", gjson.GetBytes(upstream.lastBody, "model").String())
+	require.Equal(t, defaultOpenAICompactModel, gjson.GetBytes(upstream.lastBody, "model").String())
 	require.Equal(t, "compact me", gjson.GetBytes(upstream.lastBody, "input.0.text").String())
 	require.Equal(t, "local-test-instructions", strings.TrimSpace(gjson.GetBytes(upstream.lastBody, "instructions").String()))
 	require.Equal(t, "application/json", upstream.lastReq.Header.Get("Accept"))
@@ -799,7 +815,7 @@ REDACTED
 	require.Equal(t, "http_error", arr[len(arr)-1].Kind)
 REDACTED
 
-func TestOpenAIGatewayService_OpenAIPassthrough_429And529TriggerFailover(t *testing.T) {
+func TestOpenAIGatewayService_OpenAIPassthrough_RetryableStatusesTriggerFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	originalBody := []byte(`{"model":"gpt-5.2","stream":false,"instructions":"local-test-instructions","input":[{"type":"text","text":"hi"REDACTED]REDACTED`)
 
@@ -854,6 +870,36 @@ REDACTED{
 				require.Empty(t, repo.rateLimitCalls)
 				require.Len(t, repo.overloadCalls, 1)
 				require.WithinDuration(t, start.Add(10*time.Minute), repo.overloadCalls[0], 5*time.Second)
+		REDACTED,
+	REDACTED,
+		{
+			name:        "oauth_502_bad_gateway",
+			accountType: AccountTypeOAuth,
+			statusCode:  http.StatusBadGateway,
+			body:        `{"error":{"message":"bad gateway","type":"server_error"REDACTEDREDACTED`,
+			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
+				require.Empty(t, repo.rateLimitCalls)
+				require.Empty(t, repo.overloadCalls)
+		REDACTED,
+	REDACTED,
+		{
+			name:        "oauth_503_unavailable",
+			accountType: AccountTypeOAuth,
+			statusCode:  http.StatusServiceUnavailable,
+			body:        `{"error":{"message":"service unavailable","type":"server_error"REDACTEDREDACTED`,
+			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
+				require.Empty(t, repo.rateLimitCalls)
+				require.Empty(t, repo.overloadCalls)
+		REDACTED,
+	REDACTED,
+		{
+			name:        "oauth_504_gateway_timeout",
+			accountType: AccountTypeOAuth,
+			statusCode:  http.StatusGatewayTimeout,
+			body:        `{"error":{"message":"gateway timeout","type":"server_error"REDACTEDREDACTED`,
+			assertRepo: func(t *testing.T, repo *openAIPassthroughFailoverRepo, _ time.Time) {
+				require.Empty(t, repo.rateLimitCalls)
+				require.Empty(t, repo.overloadCalls)
 		REDACTED,
 	REDACTED,
 		{
@@ -921,7 +967,7 @@ REDACTED
 			var failoverErr *UpstreamFailoverError
 			require.ErrorAs(t, err, &failoverErr)
 			require.Equal(t, tc.statusCode, failoverErr.StatusCode)
-			require.False(t, c.Writer.Written(), "429/529 passthrough 应返回 failover 错误给上层换号，而不是直接向客户端写响应")
+			require.False(t, c.Writer.Written(), "retryable passthrough 错误应返回 failover 错误给上层换号，而不是直接向客户端写响应")
 
 			v, ok := c.Get(OpsUpstreamErrorsKey)
 			require.True(t, ok)
@@ -933,6 +979,64 @@ REDACTED
 			require.Equal(t, tc.statusCode, arr[len(arr)-1].UpstreamStatusCode)
 
 			tc.assertRepo(t, repo, start)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestOpenAIGatewayService_OpenAIPassthrough_CompactNetworkErrorsTriggerFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name string
+		resp *http.Response
+		err  error
+REDACTED{
+		{
+			name: "request_error",
+			err:  errors.New("stream disconnected before completion"),
+	REDACTED,
+		{
+			name: "read_error",
+			resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"REDACTED, "x-request-id": []string{"rid-compact"REDACTEDREDACTED,
+				Body:       errReadCloser{err: io.ErrUnexpectedEOFREDACTED,
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader(nil))
+			c.Request.Header.Set("User-Agent", "codex_cli_rs/0.1.0")
+
+			upstream := &httpUpstreamRecorder{resp: tt.resp, err: tt.errREDACTED
+			svc := &OpenAIGatewayService{
+				cfg:          &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: falseREDACTEDREDACTED,
+				httpUpstream: upstream,
+		REDACTED
+			account := &Account{
+				ID:             123,
+				Name:           "acc",
+				Platform:       PlatformOpenAI,
+				Type:           AccountTypeOAuth,
+				Concurrency:    1,
+				Credentials:    map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"REDACTED,
+				Extra:          map[string]any{"openai_passthrough": trueREDACTED,
+				Status:         StatusActive,
+				Schedulable:    true,
+				RateMultiplier: f64p(1),
+		REDACTED
+			body := []byte(`{"model":"gpt-5.5","instructions":"local-test-instructions","input":[{"type":"text","text":"compact me"REDACTED]REDACTED`)
+
+			_, err := svc.Forward(context.Background(), c, account, body)
+		REDACTED
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+			require.False(t, c.Writer.Written(), "compact 网络错误应交给外层 failover，而不是直接写回客户端")
 	REDACTED)
 REDACTED
 REDACTED
