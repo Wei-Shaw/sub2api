@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 	"log"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -286,6 +287,17 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		pluginManager.SetSettings(pluginSettingsService, func(resolver func(ctx context.Context) string) plugin.SettingsExtensionRegistrar {
 			return plugin.NewSettingsExtensionServer(pluginSettingsService, resolver)
 		})
+	}
+	if pluginManager != nil {
+		// Plugin Hook Phase B: register the event publisher with the plugin
+		// manager (so the EventsExtension gRPC service is wired) and inject
+		// the same publisher into every business service that emits events.
+		pluginEventPublisher := plugin.NewEventPublisher(slog.Default())
+		pluginManager.SetEvents(pluginEventPublisher)
+		paymentService.SetPluginEventPublisher(pluginEventPublisher)
+		authService.SetPluginEventPublisher(pluginEventPublisher)
+		antigravityGatewayService.SetPluginEventPublisher(pluginEventPublisher)
+		rateLimitService.SetPluginEventPublisher(pluginEventPublisher)
 	}
 	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, paymentHandler, pluginHandler, pluginSettingsHandler)
 	usageRecordWorkerPool := service.NewUsageRecordWorkerPool(configConfig)

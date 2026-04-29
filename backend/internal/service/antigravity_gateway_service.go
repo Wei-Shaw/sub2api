@@ -22,6 +22,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
@@ -885,6 +886,7 @@ type AntigravityGatewayService struct {
 	schedulerSnapshot   *SchedulerSnapshotService
 	internal500Cache    Internal500CounterCache // INTERNAL 500 渐进惩罚计数器
 	accountUsageService *AccountUsageService    // 共享 usage 缓存，用于积分余额检查
+	eventPublisher      PluginEventPublisher    // Plugin Hook Phase B; nil safe
 }
 
 func NewAntigravityGatewayService(
@@ -909,6 +911,11 @@ func NewAntigravityGatewayService(
 		internal500Cache:    internal500Cache,
 		accountUsageService: accountUsageService,
 	}
+}
+
+// SetPluginEventPublisher wires the Phase B event publisher.
+func (s *AntigravityGatewayService) SetPluginEventPublisher(p PluginEventPublisher) {
+	s.eventPublisher = p
 }
 
 // GetTokenProvider 返回 token provider
@@ -1763,13 +1770,32 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 		firstTokenMs = streamRes.firstTokenMs
 	}
 
+	// Plugin Hook Phase B: gateway.model.invoked (success). High-frequency;
+	// the SDK side requires events.gateway capability before subscribing.
+	duration := time.Since(startTime)
+	var promptTokens, completionTokens int64
+	if usage != nil {
+		promptTokens = int64(usage.InputTokens)
+		completionTokens = int64(usage.OutputTokens)
+	}
+	s.publishGatewayModelInvoked(&pb.GatewayModelInvoked{
+		RequestId:         requestID,
+		AccountId:         account.ID,
+		Platform:          account.Platform,
+		Model:             originalModel,
+		PromptTokens:      promptTokens,
+		CompletionTokens:  completionTokens,
+		StatusCode:        int32(http.StatusOK),
+		LatencyMs:         duration.Milliseconds(),
+		StartedAtUnixNano: startTime.UnixNano(),
+	})
 	return &ForwardResult{
 		RequestID:        requestID,
 		Usage:            *usage,
 		Model:            originalModel,
 		UpstreamModel:    billingModel,
 		Stream:           claudeReq.Stream,
-		Duration:         time.Since(startTime),
+		Duration:         duration,
 		FirstTokenMs:     firstTokenMs,
 		ClientDisconnect: clientDisconnect,
 	}, nil

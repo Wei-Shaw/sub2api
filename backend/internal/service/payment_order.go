@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/payment/provider"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
 // --- Order Creation ---
@@ -61,6 +62,23 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 			Save(ctx)
 		return nil, err
 	}
+	// Plugin Hook Phase B: payment.order.created. Non-blocking; safe when
+	// no plugin subscribes. plan_id is rendered as a string per proto
+	// schema (empty for non-subscription orders).
+	planIDStr := ""
+	if order.PlanID != nil {
+		planIDStr = strconv.FormatInt(*order.PlanID, 10)
+	}
+	s.publishPaymentOrderCreated(&pb.PaymentOrderCreated{
+		OrderId:           order.ID,
+		OutTradeNo:        order.OutTradeNo,
+		UserId:            order.UserID,
+		AmountCents:       int64(math.Round(order.Amount * 100)),
+		PlanId:            planIDStr,
+		ProviderKey:       order.PaymentType,
+		BizType:           order.OrderType,
+		CreatedAtUnixNano: order.CreatedAt.UnixNano(),
+	})
 	return resp, nil
 }
 

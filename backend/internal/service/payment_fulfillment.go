@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
 // --- Payment Notification & Fulfillment ---
@@ -217,6 +218,15 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 		return fmt.Errorf("mark completed: %w", err)
 	}
 	s.writeAuditLog(ctx, o.ID, auditAction, "system", map[string]any{"rechargeCode": o.RechargeCode, "amount": o.Amount})
+	// Plugin Hook Phase B: payment.order.fulfilled. Non-blocking.
+	s.publishPaymentOrderFulfilled(&pb.PaymentOrderFulfilled{
+		OrderId:             o.ID,
+		UserId:              o.UserID,
+		AmountCents:         int64(math.Round(o.Amount * 100)),
+		BizType:             o.OrderType,
+		AuditAction:         auditAction,
+		FulfilledAtUnixNano: now.UnixNano(),
+	})
 	return nil
 }
 

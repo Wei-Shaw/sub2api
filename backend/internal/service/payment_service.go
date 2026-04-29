@@ -165,10 +165,19 @@ type PaymentService struct {
 	configService   *PaymentConfigService
 	userRepo        UserRepository
 	groupRepo       GroupRepository
+	eventPublisher  PluginEventPublisher // Plugin Hook Phase B; nil safe
 }
 
 func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository) *PaymentService {
 	return &PaymentService{entClient: entClient, registry: registry, loadBalancer: loadBalancer, redeemService: redeemService, subscriptionSvc: subscriptionSvc, configService: configService, userRepo: userRepo, groupRepo: groupRepo}
+}
+
+// SetPluginEventPublisher wires the Phase B event publisher. Safe to call
+// at any point after construction; nil disables event emission. The
+// publisher itself MUST be non-blocking (the plugin package guarantees
+// this for *plugin.EventPublisher).
+func (s *PaymentService) SetPluginEventPublisher(p PluginEventPublisher) {
+	s.eventPublisher = p
 }
 
 // --- Provider Registry ---

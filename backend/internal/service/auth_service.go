@@ -17,6 +17,7 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 
+	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -71,6 +72,7 @@ type AuthService struct {
 	emailQueueService  *EmailQueueService
 	promoService       *PromoService
 	defaultSubAssigner DefaultSubscriptionAssigner
+	eventPublisher     PluginEventPublisher // Plugin Hook Phase B; nil safe
 }
 
 type DefaultSubscriptionAssigner interface {
@@ -104,6 +106,12 @@ func NewAuthService(
 		promoService:       promoService,
 		defaultSubAssigner: defaultSubAssigner,
 	}
+}
+
+// SetPluginEventPublisher wires the Phase B event publisher. Safe to call
+// at any point after construction; nil disables event emission.
+func (s *AuthService) SetPluginEventPublisher(p PluginEventPublisher) {
+	s.eventPublisher = p
 }
 
 // Register 用户注册，返回token和用户
@@ -232,6 +240,21 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 	if err != nil {
 		return "", nil, fmt.Errorf("generate token: %w", err)
 	}
+
+	// Plugin Hook Phase B: auth.user.registered. Non-blocking; emitted
+	// after the user row is committed and any default subscriptions and
+	// promo codes have been applied. We map any non-empty invitationCode
+	// to source="invitation"; otherwise source="register".
+	src := "register"
+	if invitationRedeemCode != nil {
+		src = "invitation"
+	}
+	s.publishAuthUserRegistered(&pb.AuthUserRegistered{
+		UserId:               user.ID,
+		Email:                user.Email,
+		Source:               src,
+		RegisteredAtUnixNano: time.Now().UnixNano(),
+	})
 
 	return token, user, nil
 }

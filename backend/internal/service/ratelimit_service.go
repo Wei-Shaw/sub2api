@@ -12,6 +12,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"github.com/tidwall/gjson"
 )
 
@@ -27,6 +28,7 @@ type RateLimitService struct {
 	tokenCacheInvalidator TokenCacheInvalidator
 	usageCacheMu          sync.RWMutex
 	usageCache            map[int64]*geminiUsageCacheEntry
+	eventPublisher        PluginEventPublisher // Plugin Hook Phase B; nil safe
 }
 
 // SuccessfulTestRecoveryResult 表示测试成功后恢复了哪些运行时状态。
@@ -77,6 +79,11 @@ func (s *RateLimitService) SetSettingService(settingService *SettingService) {
 // SetTokenCacheInvalidator 设置 token 缓存清理器（可选依赖）
 func (s *RateLimitService) SetTokenCacheInvalidator(invalidator TokenCacheInvalidator) {
 	s.tokenCacheInvalidator = invalidator
+}
+
+// SetPluginEventPublisher wires the Phase B event publisher.
+func (s *RateLimitService) SetPluginEventPublisher(p PluginEventPublisher) {
+	s.eventPublisher = p
 }
 
 // ErrorPolicyResult 表示错误策略检查的结果
@@ -824,6 +831,19 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 	}
 
 	slog.Info("account_rate_limited", "account_id", account.ID, "reset_at", resetAt)
+
+	// Plugin Hook Phase B: account.rate_limit.triggered. Other 429
+	// branches above (Anthropic windowed, OpenAI x-codex, Gemini parsed,
+	// 5-minute fallback) are handled by the same dispatch but currently
+	// emit only at this end-of-function path; expanding to every
+	// SetRateLimited callsite is tracked in Phase B follow-ups.
+	s.publishAccountRateLimitTriggered(&pb.AccountRateLimitTriggered{
+		AccountId:       account.ID,
+		Platform:        account.Platform,
+		Scope:           "account",
+		ResetAtUnixNano: resetAt.UnixNano(),
+		Reason:          "upstream 429",
+	})
 }
 
 // calculateOpenAI429ResetTime 从 OpenAI 429 响应头计算正确的重置时间
