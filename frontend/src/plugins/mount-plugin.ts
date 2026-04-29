@@ -31,6 +31,8 @@ import type {
   PluginRuntimeContext,
 } from '@sub2api/plugin-sdk'
 
+import { TAILWIND_SHADOW_PREFLIGHT } from './tailwind-shadow-preflight'
+
 /** SDK 共享样式表 URL — 后端 ServePluginSharedAsset 暴露. */
 const SDK_STYLESHEET_URL = '/api/v1/plugin-assets/__shared__/plugin-sdk.css'
 
@@ -102,6 +104,7 @@ export async function mountPluginAssets(opts: MountPluginAssetsOptions): Promise
     *, *::before, *::after {
       box-sizing: border-box;
     }
+    ${TAILWIND_SHADOW_PREFLIGHT}
     .plugin-shadow-root {
       width: 100%;
       height: 100%;
