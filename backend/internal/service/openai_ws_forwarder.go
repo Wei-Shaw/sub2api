@@ -1366,14 +1366,23 @@ REDACTED
 func shouldInferIngressFunctionCallOutputPreviousResponseID(
 	storeDisabled bool,
 	turn int,
-	hasFunctionCallOutput bool,
+	signals ToolContinuationSignals,
 	currentPreviousResponseID string,
 	expectedPreviousResponseID string,
 ) bool {
-	if !storeDisabled || turn <= 1 || !hasFunctionCallOutput {
+	if !storeDisabled || turn <= 1 || !signals.HasFunctionCallOutput {
 		return false
 REDACTED
 	if strings.TrimSpace(currentPreviousResponseID) != "" {
+		return false
+REDACTED
+	if signals.HasFunctionCallOutputMissingCallID {
+		return false
+REDACTED
+	// If the client already sent tool-call context or item_reference anchors,
+	// treat this as a full replay / self-contained continuation payload rather
+	// than downgrading it into an inferred delta continuation.
+	if signals.HasToolCallContext || signals.HasItemReferenceForAllCallIDs {
 		return false
 REDACTED
 	return strings.TrimSpace(expectedPreviousResponseID) != ""
@@ -3179,13 +3188,22 @@ REDACTED
 		skipBeforeTurn = false
 		currentPreviousResponseID := openAIWSPayloadStringFromRaw(currentPayload, "previous_response_id")
 		expectedPrev := strings.TrimSpace(lastTurnResponseID)
-		hasFunctionCallOutput := gjson.GetBytes(currentPayload, `input.#(type=="function_call_output")`).Exists()
+		toolSignals := ToolContinuationSignals{
+			HasFunctionCallOutput: gjson.GetBytes(currentPayload, `input.#(type=="function_call_output")`).Exists(),
+	REDACTED
+		if toolSignals.HasFunctionCallOutput {
+			var currentReqBody map[string]any
+			if err := json.Unmarshal(currentPayload, &currentReqBody); err == nil {
+				toolSignals = AnalyzeToolContinuationSignals(currentReqBody)
+		REDACTED
+	REDACTED
+		hasFunctionCallOutput := toolSignals.HasFunctionCallOutput
 		// store=false + function_call_output 场景必须有续链锚点。
 		// 若客户端未传 previous_response_id，优先回填上一轮响应 ID，避免上游报 call_id 无法关联。
 		if shouldInferIngressFunctionCallOutputPreviousResponseID(
 			storeDisabled,
 			turn,
-			hasFunctionCallOutput,
+			toolSignals,
 			currentPreviousResponseID,
 			expectedPrev,
 		) {
