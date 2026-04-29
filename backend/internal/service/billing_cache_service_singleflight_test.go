@@ -67,6 +67,22 @@ func (s *billingCacheMissStub) InvalidateAPIKeyRateLimit(ctx context.Context, ke
 	return nil
 }
 
+func (s *billingCacheMissStub) GetQuotaUsedTotal(ctx context.Context, userID int64, date string) (float64, error) {
+	return 0, nil
+}
+func (s *billingCacheMissStub) GetQuotaUsedRule(ctx context.Context, userID, ruleID int64, date string) (float64, error) {
+	return 0, nil
+}
+func (s *billingCacheMissStub) IncrQuotaUsedTotal(ctx context.Context, userID int64, date string, delta float64) error {
+	return nil
+}
+func (s *billingCacheMissStub) IncrQuotaUsedRule(ctx context.Context, userID, ruleID int64, date string, delta float64) error {
+	return nil
+}
+func (s *billingCacheMissStub) InvalidateQuotaConfig(ctx context.Context, userID int64) error {
+	return nil
+}
+
 type balanceLoadUserRepoStub struct {
 	mockUserRepo
 	calls   atomic.Int64
@@ -86,13 +102,21 @@ func (s *balanceLoadUserRepoStub) GetByID(ctx context.Context, id int64) (*User,
 	return &User{ID: id, Balance: s.balance}, nil
 }
 
+func (s *balanceLoadUserRepoStub) ListUserAuthIdentities(context.Context, int64) ([]UserAuthIdentityRecord, error) {
+	return nil, nil
+}
+
+func (s *balanceLoadUserRepoStub) UnbindUserAuthProvider(context.Context, int64, string) error {
+	return nil
+}
+
 func TestBillingCacheServiceGetUserBalance_Singleflight(t *testing.T) {
 	cache := &billingCacheMissStub{}
 	userRepo := &balanceLoadUserRepoStub{
 		delay:   80 * time.Millisecond,
 		balance: 12.34,
 	}
-	svc := NewBillingCacheService(cache, userRepo, nil, nil, &config.Config{})
+	svc := NewBillingCacheService(cache, userRepo, nil, nil, nil, nil, &config.Config{})
 	t.Cleanup(svc.Stop)
 
 	const goroutines = 16

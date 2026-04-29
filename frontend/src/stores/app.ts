@@ -6,6 +6,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { Toast, ToastType, PublicSettings } from '@/types'
+import { i18n } from '@/i18n'
 import {
   checkUpdates as checkUpdatesAPI,
   type VersionInfo,
@@ -209,7 +210,10 @@ export const useAppStore = defineStore('app', () => {
     try {
       return await operation()
     } catch (error) {
-      const message = errorMessage || (error as { message?: string }).message || 'An error occurred'
+      const message =
+        errorMessage ||
+        (error as { message?: string }).message ||
+        i18n.global.t('common.unknownError')
       showError(message)
       return null
     } finally {
@@ -316,6 +320,7 @@ export const useAppStore = defineStore('app', () => {
       return {
         registration_enabled: false,
         email_verify_enabled: false,
+        force_email_on_third_party_signup: false,
         registration_email_suffix_whitelist: [],
         promo_code_enabled: true,
         password_reset_enabled: false,
@@ -336,10 +341,22 @@ export const useAppStore = defineStore('app', () => {
         custom_menu_items: [],
         custom_endpoints: [],
         linuxdo_oauth_enabled: false,
+        wechat_oauth_enabled: false,
+        wechat_oauth_open_enabled: false,
+        wechat_oauth_mp_enabled: false,
+        wechat_oauth_mobile_enabled: false,
         oidc_oauth_enabled: false,
         oidc_oauth_provider_name: 'OIDC',
         backend_mode_enabled: false,
-        version: siteVersion.value
+        version: siteVersion.value,
+        balance_low_notify_enabled: false,
+        account_quota_notify_enabled: false,
+        balance_low_notify_threshold: 0,
+        channel_monitor_enabled: true,
+        channel_monitor_default_interval_seconds: 60,
+        available_channels_enabled: false,
+        service_quota_enabled: false,
+        affiliate_enabled: false,
       }
     }
 
@@ -367,6 +384,12 @@ export const useAppStore = defineStore('app', () => {
   function clearPublicSettingsCache(): void {
     publicSettingsLoaded.value = false
     cachedPublicSettings.value = null
+  }
+
+  function patchPublicSettings(patch: Partial<PublicSettings>): void {
+    const base = cachedPublicSettings.value || window.__APP_CONFIG__
+    if (!base) return
+    applySettings({ ...base, ...patch })
   }
 
   /**
@@ -437,6 +460,7 @@ export const useAppStore = defineStore('app', () => {
 
     // Public settings actions
     fetchPublicSettings,
+    patchPublicSettings,
     clearPublicSettingsCache,
     initFromInjectedConfig
   }

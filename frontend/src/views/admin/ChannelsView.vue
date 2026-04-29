@@ -166,8 +166,8 @@
             class="channel-tab group"
             :class="activeTab === section.platform ? 'channel-tab-active' : 'channel-tab-inactive'"
           >
-            <PlatformIcon :platform="section.platform" size="xs" :class="getPlatformTextColor(section.platform)" />
-            <span :class="getPlatformTextColor(section.platform)">{{ t('admin.groups.platforms.' + section.platform, section.platform) }}</span>
+            <PlatformIcon :platform="section.platform" size="xs" :class="platformTextClass(section.platform)" />
+            <span :class="platformTextClass(section.platform)">{{ t('admin.groups.platforms.' + section.platform, section.platform) }}</span>
           </button>
         </div>
 
@@ -246,9 +246,27 @@
                     class="h-3.5 w-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                     @change="togglePlatform(p)"
                   />
-                  <PlatformIcon :platform="p" size="xs" :class="getPlatformTextColor(p)" />
-                  <span :class="getPlatformTextColor(p)">{{ t('admin.groups.platforms.' + p, p) }}</span>
+                  <PlatformIcon :platform="p" size="xs" :class="platformTextClass(p)" />
+                  <span :class="platformTextClass(p)">{{ t('admin.groups.platforms.' + p, p) }}</span>
                 </label>
+              </div>
+            </div>
+
+            <!-- Apply Pricing to Account Stats (toggle only in basic settings) -->
+            <div class="border-t border-gray-200 pt-4 dark:border-dark-700">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.channels.form.applyPricingToAccountStats') }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.channels.form.applyPricingToAccountStatsDesc') }}
+                  </p>
+                </div>
+                <Toggle
+                  :modelValue="form.apply_pricing_to_account_stats"
+                  @update:modelValue="form.apply_pricing_to_account_stats = $event"
+                />
               </div>
             </div>
           </div>
@@ -292,9 +310,9 @@
                       class="h-3 w-3 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                       @change="toggleGroupInSection(sIdx, group.id)"
                     />
-                    <span :class="['font-medium', getPlatformTextColor(group.platform)]">{{ group.name }}</span>
+                    <span :class="['font-medium', platformTextClass(group.platform)]">{{ group.name }}</span>
                     <span
-                      :class="['rounded-full px-1 py-0 text-[10px]', getRateBadgeClass(group.platform)]"
+                      :class="['rounded-full px-1 py-0 text-[10px]', platformBadgeLightClass(group.platform)]"
                     >{{ group.rate_multiplier }}x</span>
                     <span class="text-[10px] text-gray-400">{{ group.account_count || 0 }}</span>
                     <span
@@ -303,6 +321,21 @@
                     >{{ getGroupInOtherChannelLabel(group.id) }}</span>
                   </label>
                 </div>
+              </div>
+            </div>
+
+            <!-- Web Search Emulation (Anthropic only, hidden when global disabled) -->
+            <div v-if="section.platform === 'anthropic' && webSearchGlobalEnabled" class="border-t border-gray-200 pt-3 dark:border-dark-600">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="text-xs font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.channels.form.webSearchEmulation') }}
+                  </label>
+                  <p class="mt-0.5 text-[11px] text-red-500 dark:text-red-400">
+                    {{ t('admin.channels.form.webSearchEmulationHint') }}
+                  </p>
+                </div>
+                <Toggle v-model="section.web_search_emulation" />
               </div>
             </div>
 
@@ -330,7 +363,7 @@
                     :value="srcModel"
                     type="text"
                     class="input flex-1 text-xs"
-                    :class="getPlatformTextColor(section.platform)"
+                    :class="platformTextClass(section.platform)"
                     :placeholder="t('admin.channels.form.mappingSource', 'Source model')"
                     @change="renameMappingKey(sIdx, srcModel, ($event.target as HTMLInputElement).value)"
                   />
@@ -339,7 +372,7 @@
                     :value="section.model_mapping[srcModel]"
                     type="text"
                     class="input flex-1 text-xs"
-                    :class="getPlatformTextColor(section.platform)"
+                    :class="platformTextClass(section.platform)"
                     :placeholder="t('admin.channels.form.mappingTarget', 'Target model')"
                     @input="section.model_mapping[srcModel] = ($event.target as HTMLInputElement).value"
                   />
@@ -377,6 +410,138 @@
                   @update="updatePricingEntry(sIdx, idx, $event)"
                   @remove="removePricingEntry(sIdx, idx)"
                 />
+              </div>
+            </div>
+
+            <!-- Account Stats Pricing Rules (per-platform, always visible) -->
+            <div class="mt-4 border-t border-gray-200 pt-4 dark:border-dark-700 space-y-3">
+              <div class="flex items-center justify-between">
+                <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.channels.form.accountStatsPricingRules') }}
+                </h4>
+                <button
+                  type="button"
+                  @click="addAccountStatsRule(sIdx)"
+                  class="rounded-lg border border-primary-300 px-3 py-1 text-xs font-medium text-primary-600 hover:bg-primary-50 dark:border-primary-600 dark:text-primary-400 dark:hover:bg-primary-900/20"
+                >
+                  + {{ t('admin.channels.form.addRule') }}
+                </button>
+              </div>
+
+              <!-- Filter rules for this platform's groups -->
+              <p
+                v-if="section.account_stats_pricing_rules.length === 0"
+                class="text-xs italic text-gray-400 dark:text-gray-500"
+              >
+                {{ t('admin.channels.form.noRulesConfigured') }}
+              </p>
+
+              <div
+                v-for="(rule, ruleIndex) in section.account_stats_pricing_rules"
+                :key="ruleIndex"
+                class="space-y-3 rounded-lg border border-gray-200 p-4 dark:border-dark-600"
+              >
+                <div class="flex items-center justify-between">
+                  <input
+                    v-model="rule.name"
+                    :placeholder="t('admin.channels.form.ruleName')"
+                    class="bg-transparent text-sm font-medium text-gray-700 placeholder-gray-400 outline-none dark:text-gray-300"
+                  />
+                  <button type="button" @click="removeAccountStatsRule(sIdx, ruleIndex)" class="text-xs text-red-500 hover:text-red-700">
+                    {{ t('common.delete') }}
+                  </button>
+                </div>
+
+                <div>
+                  <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.channels.form.ruleGroups') }}</label>
+                  <div class="mt-1 flex flex-wrap gap-1">
+                    <label
+                      v-for="gid in section.group_ids"
+                      :key="gid"
+                      class="inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors"
+                      :class="rule.group_ids.includes(gid)
+                        ? 'border-primary-300 bg-primary-50 dark:border-primary-700 dark:bg-primary-900/20'
+                        : 'border-gray-200 hover:bg-gray-50 dark:border-dark-600 dark:hover:bg-dark-700'"
+                    >
+                      <input type="checkbox" :checked="rule.group_ids.includes(gid)" class="h-3 w-3 rounded border-gray-300 text-primary-600 focus:ring-primary-500" @change="rule.group_ids.includes(gid) ? rule.group_ids.splice(rule.group_ids.indexOf(gid), 1) : rule.group_ids.push(gid)" />
+                      <span :class="['font-medium', platformTextClass(section.platform)]">{{ getGroupNameById(gid) }}</span>
+                    </label>
+                  </div>
+                  <p v-if="section.group_ids.length === 0" class="mt-1 text-xs text-gray-400">
+                    {{ t('admin.channels.form.noGroupsInChannel') }}
+                  </p>
+                </div>
+
+                <div>
+                  <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.channels.form.ruleAccounts') }}</label>
+                  <!-- Selected account chips -->
+                  <div class="mt-1 flex flex-wrap gap-1">
+                    <span
+                      v-for="accountId in rule.account_ids"
+                      :key="accountId"
+                      class="inline-flex items-center gap-1 rounded-md border border-primary-300 bg-primary-50 px-2 py-0.5 text-xs dark:border-primary-700 dark:bg-primary-900/20"
+                    >
+                      <span :class="['font-medium', platformTextClass(section.platform)]">{{ getRuleAccountLabel(accountId) }}</span>
+                      <button type="button" @click="removeRuleAccount(rule, accountId)" class="text-gray-400 hover:text-red-500">
+                        <Icon name="x" size="xs" />
+                      </button>
+                    </span>
+                  </div>
+                  <!-- Account search input -->
+                  <div class="relative mt-1 rule-account-search-container">
+                    <input
+                      v-model="ruleAccountSearchKeyword[`${section.platform}-${ruleIndex}`]"
+                      type="text"
+                      class="input text-sm"
+                      :placeholder="t('admin.channels.form.searchAccountPlaceholder')"
+                      @input="onRuleAccountSearchInput(section.platform, ruleIndex)"
+                      @focus="onRuleAccountSearchFocus(section.platform, ruleIndex)"
+                    />
+                    <!-- Search results dropdown -->
+                    <div
+                      v-if="showRuleAccountDropdown[`${section.platform}-${ruleIndex}`] && (ruleAccountSearchResults[`${section.platform}-${ruleIndex}`]?.length ?? 0) > 0"
+                      class="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-lg border bg-white shadow-lg dark:border-dark-600 dark:bg-dark-800"
+                    >
+                      <button
+                        v-for="account in ruleAccountSearchResults[`${section.platform}-${ruleIndex}`]"
+                        :key="account.id"
+                        type="button"
+                        @click="selectRuleAccount(rule, account, section.platform, ruleIndex)"
+                        class="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-dark-700"
+                        :class="{ 'opacity-50': rule.account_ids.includes(account.id) }"
+                        :disabled="rule.account_ids.includes(account.id)"
+                      >
+                        <span :class="platformTextClass(account.platform)">{{ account.name }}</span>
+                        <span class="ml-2 text-xs text-gray-400">#{{ account.id }}</span>
+                      </button>
+                    </div>
+                  </div>
+                  <p class="mt-1 text-xs text-gray-400">
+                    {{ t('admin.channels.form.ruleAccountsHint') }}
+                  </p>
+                </div>
+
+                <div>
+                  <div class="mb-1 flex items-center justify-between">
+                    <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.channels.form.ruleModelPricing') }}</label>
+                    <button type="button" @click="addRulePricingEntry(sIdx, ruleIndex)" class="text-xs text-primary-600 hover:text-primary-700">
+                      + {{ t('common.add') }}
+                    </button>
+                  </div>
+                  <div v-if="rule.pricing.length === 0" class="rounded border border-dashed border-gray-300 p-2 text-center text-xs text-gray-400 dark:border-dark-500">
+                    {{ t('admin.channels.form.noPricingRules') }}
+                  </div>
+                  <div v-else class="space-y-2">
+                    <PricingEntryCard
+                      v-for="(entry, pIdx) in rule.pricing"
+                      :key="pIdx"
+                      :entry="entry"
+                      :platform="section.platform"
+                      @update="rule.pricing.splice(pIdx, 1, $event)"
+                      @remove="removeRulePricingEntry(sIdx, ruleIndex, pIdx)"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -423,12 +588,14 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { extractApiErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
-import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest } from '@/api/admin/channels'
+import type { Channel, ChannelModelPricing, CreateChannelRequest, UpdateChannelRequest, AccountStatsPricingRule } from '@/api/admin/channels'
 import type { PricingFormEntry } from '@/components/admin/channel/types'
 import { mTokToPerToken, perTokenToMTok, apiIntervalsToForm, formIntervalsToAPI, findModelConflict, validateIntervals } from '@/components/admin/channel/types'
 import type { AdminGroup, GroupPlatform } from '@/types'
 import type { Column } from '@/components/common/types'
+import { platformTextClass, platformBadgeLightClass } from '@/utils/platformColors'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
@@ -442,9 +609,30 @@ import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import PricingEntryCard from '@/components/admin/channel/PricingEntryCard.vue'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
+import { useKeyedDebouncedSearch } from '@/composables/useKeyedDebouncedSearch'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+
+// Web Search global enabled state (loaded once on mount)
+const webSearchGlobalEnabled = ref(false)
+async function loadWebSearchGlobalState() {
+  try {
+    const cfg = await adminAPI.settings.getWebSearchEmulationConfig()
+    webSearchGlobalEnabled.value = cfg?.enabled === true && (cfg?.providers?.length ?? 0) > 0
+  } catch (err: unknown) {
+    console.warn('Failed to load web search global state:', err)
+    webSearchGlobalEnabled.value = false
+  }
+}
+
+// ── Form-level pricing rule type (per-platform) ──
+interface FormPricingRule {
+  name: string
+  group_ids: number[]
+  account_ids: number[]
+  pricing: PricingFormEntry[]
+}
 
 // ── Platform Section type ──
 interface PlatformSection {
@@ -454,6 +642,8 @@ interface PlatformSection {
   group_ids: number[]
   model_mapping: Record<string, string>
   model_pricing: PricingFormEntry[]
+  web_search_emulation: boolean
+  account_stats_pricing_rules: FormPricingRule[]
 }
 
 // ── Table columns ──
@@ -521,33 +711,14 @@ const form = reactive({
   status: 'active',
   restrict_models: false,
   billing_model_source: 'channel_mapped' as string,
-  platforms: [] as PlatformSection[]
+  platforms: [] as PlatformSection[],
+  apply_pricing_to_account_stats: false,
 })
 
 let abortController: AbortController | null = null
 
 // ── Platform config ──
 const platformOrder: GroupPlatform[] = ['anthropic', 'openai', 'gemini', 'antigravity']
-
-function getPlatformTextColor(platform: string): string {
-  switch (platform) {
-    case 'anthropic': return 'text-orange-600 dark:text-orange-400'
-    case 'openai': return 'text-emerald-600 dark:text-emerald-400'
-    case 'gemini': return 'text-blue-600 dark:text-blue-400'
-    case 'antigravity': return 'text-purple-600 dark:text-purple-400'
-    default: return 'text-gray-600 dark:text-gray-400'
-  }
-}
-
-function getRateBadgeClass(platform: string): string {
-  switch (platform) {
-    case 'anthropic': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-    case 'openai': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-    case 'gemini': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-    case 'antigravity': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-    default: return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
-  }
-}
 
 // ── Helpers ──
 function formatDate(value: string): string {
@@ -565,7 +736,9 @@ function addPlatformSection(platform: GroupPlatform) {
     collapsed: false,
     group_ids: [],
     model_mapping: {},
-    model_pricing: []
+    model_pricing: [],
+    web_search_emulation: false,
+    account_stats_pricing_rules: [],
   })
 }
 
@@ -678,11 +851,158 @@ function renameMappingKey(sectionIdx: number, oldKey: string, newKey: string) {
   mapping[newKey] = value
 }
 
+// ── Account Stats Pricing helpers ──
+function addAccountStatsRule(sectionIdx: number) {
+  form.platforms[sectionIdx].account_stats_pricing_rules.push({
+    name: '',
+    group_ids: [],
+    account_ids: [],
+    pricing: []
+  })
+}
+
+function addRulePricingEntry(sectionIdx: number, ruleIndex: number) {
+  form.platforms[sectionIdx].account_stats_pricing_rules[ruleIndex].pricing.push({
+    models: [],
+    billing_mode: 'token',
+    input_price: null,
+    output_price: null,
+    cache_write_price: null,
+    cache_read_price: null,
+    image_output_price: null,
+    per_request_price: null,
+    intervals: []
+  })
+}
+
+function removeAccountStatsRule(sectionIdx: number, ruleIndex: number) {
+  form.platforms[sectionIdx].account_stats_pricing_rules.splice(ruleIndex, 1)
+  // Clear all search state since indices shift after removal
+  ruleAccountSearchRunner.clearAll()
+  clearAllRuleAccountSearchState()
+}
+
+function removeRulePricingEntry(sectionIdx: number, ruleIndex: number, pricingIndex: number) {
+  form.platforms[sectionIdx].account_stats_pricing_rules[ruleIndex].pricing.splice(pricingIndex, 1)
+}
+
+function getGroupNameById(groupId: number): string {
+  const group = allGroups.value.find(g => g.id === groupId)
+  return group ? group.name : `#${groupId}`
+}
+
+// ── Account search for pricing rules ──
+interface SimpleAccount { id: number; name: string; platform: string }
+
+const ruleAccountSearchKeyword = ref<Record<string, string>>({})
+const ruleAccountSearchResults = ref<Record<string, SimpleAccount[]>>({})
+const showRuleAccountDropdown = ref<Record<string, boolean>>({})
+// Cache: account ID → name, populated when search results are selected
+const ruleAccountNameCache = ref<Record<number, string>>({})
+
+const ruleAccountSearchRunner = useKeyedDebouncedSearch<SimpleAccount[]>({
+  delay: 300,
+  search: async (keyword, { key, signal }) => {
+    const platform = key.split('-')[0]
+    const res = await adminAPI.accounts.list(1, 20, { platform, search: keyword }, { signal })
+    return res.items.map(a => ({ id: a.id, name: a.name, platform: a.platform }))
+  },
+  onSuccess: (key, result) => { ruleAccountSearchResults.value[key] = result },
+  onError: (key) => { ruleAccountSearchResults.value[key] = [] },
+})
+
+function onRuleAccountSearchInput(platform: string, ruleIndex: number) {
+  const key = `${platform}-${ruleIndex}`
+  showRuleAccountDropdown.value[key] = true
+  ruleAccountSearchRunner.trigger(key, ruleAccountSearchKeyword.value[key] || '')
+}
+
+function onRuleAccountSearchFocus(platform: string, ruleIndex: number) {
+  const key = `${platform}-${ruleIndex}`
+  showRuleAccountDropdown.value[key] = true
+  if (!ruleAccountSearchResults.value[key]?.length) {
+    ruleAccountSearchRunner.trigger(key, ruleAccountSearchKeyword.value[key] || '')
+  }
+}
+
+function selectRuleAccount(
+  rule: { account_ids: number[] },
+  account: SimpleAccount,
+  platform: string,
+  ruleIndex: number,
+) {
+  if (!rule.account_ids.includes(account.id)) {
+    rule.account_ids.push(account.id)
+    ruleAccountNameCache.value[account.id] = account.name
+  }
+  const key = `${platform}-${ruleIndex}`
+  ruleAccountSearchKeyword.value[key] = ''
+  showRuleAccountDropdown.value[key] = false
+}
+
+function removeRuleAccount(rule: { account_ids: number[] }, accountId: number) {
+  const idx = rule.account_ids.indexOf(accountId)
+  if (idx !== -1) rule.account_ids.splice(idx, 1)
+}
+
+function getRuleAccountLabel(accountId: number): string {
+  const name = ruleAccountNameCache.value[accountId]
+  return name ? `${name} #${accountId}` : `#${accountId}`
+}
+
+function handleRuleAccountClickOutside(event: MouseEvent) {
+  const target = event.target as HTMLElement
+  if (!target.closest('.rule-account-search-container')) {
+    Object.keys(showRuleAccountDropdown.value).forEach(key => {
+      showRuleAccountDropdown.value[key] = false
+    })
+  }
+}
+
+function clearAllRuleAccountSearchState() {
+  ruleAccountSearchKeyword.value = {}
+  ruleAccountSearchResults.value = {}
+  showRuleAccountDropdown.value = {}
+}
+
+function accountStatsRulesToAPI(): AccountStatsPricingRule[] {
+  const rules: AccountStatsPricingRule[] = []
+  for (const section of form.platforms) {
+    if (!section.enabled) continue
+    for (const rule of section.account_stats_pricing_rules) {
+      rules.push({
+        name: rule.name,
+        group_ids: rule.group_ids,
+        account_ids: rule.account_ids,
+        pricing: rule.pricing
+          .filter(p => p.models.length > 0)
+          .map(p => ({
+            platform: section.platform,
+            models: p.models,
+            billing_mode: p.billing_mode,
+            input_price: mTokToPerToken(p.input_price),
+            output_price: mTokToPerToken(p.output_price),
+            cache_write_price: mTokToPerToken(p.cache_write_price),
+            cache_read_price: mTokToPerToken(p.cache_read_price),
+            image_output_price: mTokToPerToken(p.image_output_price),
+            per_request_price: p.per_request_price != null && p.per_request_price !== '' ? Number(p.per_request_price) : null,
+            intervals: formIntervalsToAPI(p.intervals || [])
+          }))
+      })
+    }
+  }
+  return rules
+}
+
 // ── Form ↔ API conversion ──
-function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[], model_mapping: Record<string, Record<string, string>> } {
+function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[], model_mapping: Record<string, Record<string, string>>, features_config: Record<string, unknown> } {
   const group_ids: number[] = []
   const model_pricing: ChannelModelPricing[] = []
   const model_mapping: Record<string, Record<string, string>> = {}
+  // Preserve existing features_config fields not managed by the form
+  const featuresConfig: Record<string, unknown> = editingChannel.value?.features_config
+    ? { ...editingChannel.value.features_config }
+    : {}
 
   for (const section of form.platforms) {
     if (!section.enabled) continue
@@ -711,7 +1031,23 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
     }
   }
 
-  return { group_ids, model_pricing, model_mapping }
+  // Collect web_search_emulation (only anthropic platform supports it)
+  // Always write the key so that disabling in the UI correctly sets platform to false,
+  // rather than leaving a stale true value from the cloned features_config.
+  const wsEmulation: Record<string, boolean> = {}
+  for (const section of form.platforms) {
+    if (!section.enabled) continue
+    if (section.platform === 'anthropic') {
+      wsEmulation[section.platform] = !!section.web_search_emulation
+    }
+  }
+  if (Object.keys(wsEmulation).length > 0) {
+    featuresConfig.web_search_emulation = wsEmulation
+  } else {
+    delete featuresConfig.web_search_emulation
+  }
+
+  return { group_ids, model_pricing, model_mapping, features_config: featuresConfig }
 }
 
 function apiToForm(channel: Channel): PlatformSection[] {
@@ -755,13 +1091,20 @@ function apiToForm(channel: Channel): PlatformSection[] {
         intervals: apiIntervalsToForm(p.intervals || [])
       } as PricingFormEntry))
 
+    // Read web_search_emulation from features_config
+    const fc = channel.features_config
+    const wsEmulation = fc?.web_search_emulation as Record<string, boolean> | undefined
+    const webSearchEnabled = wsEmulation?.[platform] === true
+
     sections.push({
       platform,
       enabled: true,
       collapsed: false,
       group_ids: groupIds,
       model_mapping: { ...mapping },
-      model_pricing: pricing
+      model_pricing: pricing,
+      web_search_emulation: webSearchEnabled,
+      account_stats_pricing_rules: [],
     })
   }
 
@@ -786,10 +1129,10 @@ async function loadChannels() {
     if (ctrl.signal.aborted || abortController !== ctrl) return
     channels.value = response.items || []
     pagination.total = response.total
-  } catch (error: any) {
-    if (error?.name === 'AbortError' || error?.code === 'ERR_CANCELED') return
-    appStore.showError(t('admin.channels.loadError', 'Failed to load channels'))
-    console.error('Error loading channels:', error)
+  } catch (error: unknown) {
+    const e = error as { name?: string; code?: string }
+    if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return
+    appStore.showError(extractApiErrorMessage(error, t('admin.channels.loadError', 'Failed to load channels')))
   } finally {
     if (abortController === ctrl) {
       loading.value = false
@@ -854,7 +1197,11 @@ function resetForm() {
   form.restrict_models = false
   form.billing_model_source = 'channel_mapped'
   form.platforms = []
+  form.apply_pricing_to_account_stats = false
   activeTab.value = 'basic'
+  ruleAccountSearchRunner.clearAll()
+  clearAllRuleAccountSearchState()
+  ruleAccountNameCache.value = {}
 }
 
 async function openCreateDialog() {
@@ -871,10 +1218,90 @@ async function openEditDialog(channel: Channel) {
   form.status = channel.status
   form.restrict_models = channel.restrict_models || false
   form.billing_model_source = channel.billing_model_source || 'channel_mapped'
+  form.apply_pricing_to_account_stats = channel.apply_pricing_to_account_stats || false
   // Must load groups first so apiToForm can map groupID → platform
   await Promise.all([loadGroups(), loadAllChannelsForConflict()])
   form.platforms = apiToForm(channel)
+
+  // Distribute channel-level rules into per-platform sections
+  distributeRulesToPlatforms(channel.account_stats_pricing_rules || [])
+
+  // Populate ruleAccountNameCache for existing rule accounts
+  await populateRuleAccountNameCache()
+
   showDialog.value = true
+}
+
+/** Distribute flat channel-level rules into the matching platform section based on group_ids */
+function distributeRulesToPlatforms(apiRules: AccountStatsPricingRule[]) {
+  // Build groupID → platform lookup
+  const groupPlatformMap = new Map<number, GroupPlatform>()
+  for (const g of allGroups.value) {
+    groupPlatformMap.set(g.id, g.platform)
+  }
+
+  for (const apiRule of apiRules) {
+    // Infer platform from group_ids
+    const platforms = new Set<GroupPlatform>()
+    for (const gid of apiRule.group_ids || []) {
+      const p = groupPlatformMap.get(gid)
+      if (p) platforms.add(p)
+    }
+    // If pricing has a platform field, use that as fallback
+    if (platforms.size === 0 && apiRule.pricing?.length > 0) {
+      const p = apiRule.pricing[0].platform as GroupPlatform | undefined
+      if (p) platforms.add(p)
+    }
+    const targetPlatform = platforms.size >= 1 ? [...platforms][0] : null
+    if (!targetPlatform) continue
+
+    const section = form.platforms.find(s => s.platform === targetPlatform)
+    if (!section) continue
+
+    const formRule: FormPricingRule = {
+      name: apiRule.name || '',
+      group_ids: [...(apiRule.group_ids || [])],
+      account_ids: [...(apiRule.account_ids || [])],
+      pricing: (apiRule.pricing || []).map(p => ({
+        models: [...(p.models || [])],
+        billing_mode: p.billing_mode,
+        input_price: perTokenToMTok(p.input_price),
+        output_price: perTokenToMTok(p.output_price),
+        cache_write_price: perTokenToMTok(p.cache_write_price),
+        cache_read_price: perTokenToMTok(p.cache_read_price),
+        image_output_price: perTokenToMTok(p.image_output_price),
+        per_request_price: p.per_request_price,
+        intervals: apiIntervalsToForm(p.intervals || [])
+      } as PricingFormEntry))
+    }
+    section.account_stats_pricing_rules.push(formRule)
+  }
+}
+
+/** Populate ruleAccountNameCache by fetching account details for all account_ids in rules */
+async function populateRuleAccountNameCache() {
+  const allAccountIds = new Set<number>()
+  for (const section of form.platforms) {
+    for (const rule of section.account_stats_pricing_rules) {
+      for (const id of rule.account_ids) {
+        allAccountIds.add(id)
+      }
+    }
+  }
+  if (allAccountIds.size === 0) return
+
+  // Fetch account details in parallel (batch of individual getById calls)
+  const ids = [...allAccountIds]
+  const results = await Promise.allSettled(
+    ids.map(id => adminAPI.accounts.getById(id))
+  )
+  for (let i = 0; i < ids.length; i++) {
+    const result = results[i]
+    if (result.status === 'fulfilled') {
+      ruleAccountNameCache.value[ids[i]] = result.value.name
+    }
+    // If rejected, the cache won't have the name, so it'll show "#ID" which is acceptable
+  }
 }
 
 function closeDialog() {
@@ -961,7 +1388,7 @@ async function handleSubmit() {
       const intervalErr = validateIntervals(entry.intervals)
       if (intervalErr) {
         const platformLabel = t('admin.groups.platforms.' + section.platform, section.platform)
-        const modelLabel = entry.models.join(', ') || '未命名'
+        const modelLabel = entry.models.join(', ') || t('admin.channels.form.unnamed')
         appStore.showError(`${platformLabel} - ${modelLabel}: ${intervalErr}`)
         activeTab.value = section.platform
         return
@@ -969,7 +1396,7 @@ async function handleSubmit() {
     }
   }
 
-  const { group_ids, model_pricing, model_mapping } = formToAPI()
+  const { group_ids, model_pricing, model_mapping, features_config } = formToAPI()
 
   submitting.value = true
   try {
@@ -982,7 +1409,10 @@ async function handleSubmit() {
         model_pricing,
         model_mapping: Object.keys(model_mapping).length > 0 ? model_mapping : {},
         billing_model_source: form.billing_model_source,
-        restrict_models: form.restrict_models
+        restrict_models: form.restrict_models,
+        features_config,
+        apply_pricing_to_account_stats: form.apply_pricing_to_account_stats,
+        account_stats_pricing_rules: accountStatsRulesToAPI()
       }
       await adminAPI.channels.update(editingChannel.value.id, req)
       appStore.showSuccess(t('admin.channels.updateSuccess', 'Channel updated'))
@@ -994,19 +1424,20 @@ async function handleSubmit() {
         model_pricing,
         model_mapping: Object.keys(model_mapping).length > 0 ? model_mapping : {},
         billing_model_source: form.billing_model_source,
-        restrict_models: form.restrict_models
+        restrict_models: form.restrict_models,
+        features_config,
+        apply_pricing_to_account_stats: form.apply_pricing_to_account_stats,
+        account_stats_pricing_rules: accountStatsRulesToAPI()
       }
       await adminAPI.channels.create(req)
       appStore.showSuccess(t('admin.channels.createSuccess', 'Channel created'))
     }
     closeDialog()
     loadChannels()
-  } catch (error: any) {
-    const msg = error.response?.data?.detail || (editingChannel.value
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, editingChannel.value
       ? t('admin.channels.updateError', 'Failed to update channel')
-      : t('admin.channels.createError', 'Failed to create channel'))
-    appStore.showError(msg)
-    console.error('Error saving channel:', error)
+      : t('admin.channels.createError', 'Failed to create channel')))
   } finally {
     submitting.value = false
   }
@@ -1044,9 +1475,8 @@ async function confirmDelete() {
     showDeleteDialog.value = false
     deletingChannel.value = null
     loadChannels()
-  } catch (error: any) {
-    appStore.showError(error.response?.data?.detail || t('admin.channels.deleteError', 'Failed to delete channel'))
-    console.error('Error deleting channel:', error)
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t('admin.channels.deleteError', 'Failed to delete channel')))
   }
 }
 
@@ -1054,11 +1484,16 @@ async function confirmDelete() {
 onMounted(() => {
   loadChannels()
   loadGroups()
+  loadWebSearchGlobalState()
+  document.addEventListener('click', handleRuleAccountClickOutside)
 })
 
 onUnmounted(() => {
   clearTimeout(searchTimeout)
   abortController?.abort()
+  document.removeEventListener('click', handleRuleAccountClickOutside)
+  ruleAccountSearchRunner.clearAll()
+  clearAllRuleAccountSearchState()
 })
 </script>
 

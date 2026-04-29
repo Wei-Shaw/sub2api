@@ -189,6 +189,13 @@
             <div class="flex flex-wrap items-center gap-1">
               <PlatformTypeBadge :platform="row.platform" :type="row.type" :plan-type="row.credentials?.plan_type" :privacy-mode="row.extra?.privacy_mode" :subscription-expires-at="row.credentials?.subscription_expires_at" />
               <span
+                v-if="getOpenAICompactLabel(row)"
+                :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', getOpenAICompactClass(row)]"
+                :title="getOpenAICompactTitle(row)"
+              >
+                {{ getOpenAICompactLabel(row) }}
+              </span>
+              <span
                 v-if="getAntigravityTierLabel(row)"
                 :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', getAntigravityTierClass(row)]"
               >
@@ -316,6 +323,7 @@ import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 import { adminAPI } from '@/api/admin'
 import { useTableLoader } from '@/composables/useTableLoader'
 import { useSwipeSelect, type SwipeSelectVirtualContext } from '@/composables/useSwipeSelect'
@@ -932,6 +940,43 @@ function getAntigravityTierLabel(row: any): string | null {
   }
 }
 
+function getOpenAICompactState(row: any): 'supported' | 'unsupported' | 'unknown' | null {
+  if (row.platform !== 'openai' || (row.type !== 'oauth' && row.type !== 'apikey')) return null
+  const extra = row.extra as Record<string, unknown> | undefined
+  const mode = typeof extra?.openai_compact_mode === 'string' ? extra.openai_compact_mode : 'auto'
+  if (mode === 'force_on') return 'supported'
+  if (mode === 'force_off') return 'unsupported'
+  if (typeof extra?.openai_compact_supported === 'boolean') {
+    return extra.openai_compact_supported ? 'supported' : 'unsupported'
+  }
+  return 'unknown'
+}
+
+function getOpenAICompactLabel(row: any): string | null {
+  switch (getOpenAICompactState(row)) {
+    case 'supported': return t('admin.accounts.openai.compactSupported')
+    case 'unsupported': return t('admin.accounts.openai.compactUnsupported')
+    case 'unknown': return t('admin.accounts.openai.compactUnknown')
+    default: return null
+  }
+}
+
+function getOpenAICompactClass(row: any): string {
+  switch (getOpenAICompactState(row)) {
+    case 'supported': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+    case 'unsupported': return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
+    case 'unknown': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+    default: return ''
+  }
+}
+
+function getOpenAICompactTitle(row: any): string {
+  const extra = row.extra as Record<string, unknown> | undefined
+  const checkedAt = typeof extra?.openai_compact_checked_at === 'string' ? extra.openai_compact_checked_at : ''
+  if (!checkedAt) return getOpenAICompactLabel(row) || ''
+  return `${getOpenAICompactLabel(row)} | ${t('admin.accounts.openai.compactLastChecked')}: ${formatDateTime(new Date(checkedAt))}`
+}
+
 function getAntigravityTierClass(row: any): string {
   const tier = getAntigravityTierFromRow(row)
   switch (tier) {
@@ -1037,7 +1082,19 @@ const toggleSelectAllVisible = (event: Event) => {
   const target = event.target as HTMLInputElement
   toggleVisible(target.checked)
 }
-const handleBulkDelete = async () => { if(!confirm(t('common.confirm'))) return; try { await Promise.all(selIds.value.map(id => adminAPI.accounts.delete(id))); clearSelection(); reload() } catch (error) { console.error('Failed to bulk delete accounts:', error) } }
+const handleBulkDelete = async () => {
+  if (!confirm(t('common.confirm'))) return
+  try {
+    await Promise.all(selIds.value.map(id => adminAPI.accounts.delete(id)))
+    clearSelection()
+    reload()
+  } catch (error: unknown) {
+    console.error('Failed to bulk delete accounts:', error)
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('common.error')),
+    )
+  }
+}
 const handleBulkResetStatus = async () => {
   if (!confirm(t('common.confirm'))) return
   try {
@@ -1049,9 +1106,11 @@ const handleBulkResetStatus = async () => {
       clearSelection()
     }
     reload()
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Failed to bulk reset status:', error)
-    appStore.showError(String(error))
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('common.error')),
+    )
   }
 }
 const handleBulkRefreshToken = async () => {
@@ -1065,9 +1124,11 @@ const handleBulkRefreshToken = async () => {
       clearSelection()
     }
     reload()
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Failed to bulk refresh token:', error)
-    appStore.showError(String(error))
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('common.error')),
+    )
   }
 }
 const updateSchedulableInList = (accountIds: number[], schedulable: boolean) => {
@@ -1167,9 +1228,11 @@ const handleBulkToggleSchedulable = async (schedulable: boolean) => {
       if (hasIds) clearSelection()
       else setSelectedIds(accountIds)
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Failed to bulk toggle schedulable:', error)
-    appStore.showError(t('common.error'))
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('common.error')),
+    )
   }
 }
 const handleBulkUpdated = () => { showBulkEdit.value = false; clearSelection(); reload() }
@@ -1304,8 +1367,10 @@ const handleExportData = async () => {
     link.click()
     URL.revokeObjectURL(url)
     appStore.showSuccess(t('admin.accounts.dataExported'))
-  } catch (error: any) {
-    appStore.showError(error?.message || t('admin.accounts.dataExportFailed'))
+  } catch (error: unknown) {
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('admin.accounts.dataExportFailed')),
+    )
   } finally {
     exportingData.value = false
     showExportDataDialog.value = false
@@ -1334,8 +1399,11 @@ const handleRefresh = async (a: Account) => {
     const updated = await adminAPI.accounts.refreshCredentials(a.id)
     patchAccountInList(updated)
     enterAutoRefreshSilentWindow()
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Failed to refresh credentials:', error)
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('common.error')),
+    )
   }
 }
 const handleRecoverState = async (a: Account) => {
@@ -1344,9 +1412,11 @@ const handleRecoverState = async (a: Account) => {
     patchAccountInList(updated)
     enterAutoRefreshSilentWindow()
     appStore.showSuccess(t('admin.accounts.recoverStateSuccess'))
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to recover account state:', error)
-    appStore.showError(error?.message || t('admin.accounts.recoverStateFailed'))
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('admin.accounts.recoverStateFailed')),
+    )
   }
 }
 const handleResetQuota = async (a: Account) => {
@@ -1355,8 +1425,11 @@ const handleResetQuota = async (a: Account) => {
     patchAccountInList(updated)
     enterAutoRefreshSilentWindow()
     appStore.showSuccess(t('common.success'))
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Failed to reset quota:', error)
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('common.error')),
+    )
   }
 }
 const handleSetPrivacy = async (a: Account) => {
@@ -1365,13 +1438,28 @@ const handleSetPrivacy = async (a: Account) => {
     patchAccountInList(updated)
     enterAutoRefreshSilentWindow()
     appStore.showSuccess(t('common.success'))
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Failed to set privacy:', error)
-    appStore.showError(error?.response?.data?.message || t('admin.accounts.privacyFailed'))
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('admin.accounts.privacyFailed')),
+    )
   }
 }
 const handleDelete = (a: Account) => { deletingAcc.value = a; showDeleteDialog.value = true }
-const confirmDelete = async () => { if(!deletingAcc.value) return; try { await adminAPI.accounts.delete(deletingAcc.value.id); showDeleteDialog.value = false; deletingAcc.value = null; reload() } catch (error) { console.error('Failed to delete account:', error) } }
+const confirmDelete = async () => {
+  if (!deletingAcc.value) return
+  try {
+    await adminAPI.accounts.delete(deletingAcc.value.id)
+    showDeleteDialog.value = false
+    deletingAcc.value = null
+    reload()
+  } catch (error: unknown) {
+    console.error('Failed to delete account:', error)
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('common.error')),
+    )
+  }
+}
 const handleToggleSchedulable = async (a: Account) => {
   const nextSchedulable = !a.schedulable
   togglingSchedulable.value = a.id
@@ -1379,9 +1467,11 @@ const handleToggleSchedulable = async (a: Account) => {
     const updated = await adminAPI.accounts.setSchedulable(a.id, nextSchedulable)
     updateSchedulableInList([a.id], updated?.schedulable ?? nextSchedulable)
     enterAutoRefreshSilentWindow()
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Failed to toggle schedulable:', error)
-    appStore.showError(t('admin.accounts.failedToToggleSchedulable'))
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('admin.accounts.failedToToggleSchedulable')),
+    )
   } finally {
     togglingSchedulable.value = null
   }

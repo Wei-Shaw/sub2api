@@ -27,6 +27,7 @@
         @keydown.tab.prevent="addModel"
         @keydown.delete="handleBackspace"
         @paste="handlePaste"
+        @blur="addModel"
       />
     </div>
     <p class="mt-1 text-xs text-gray-400">

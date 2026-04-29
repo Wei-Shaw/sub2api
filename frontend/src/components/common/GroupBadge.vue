@@ -37,13 +37,20 @@ interface Props {
   userRateMultiplier?: number | null // 用户专属倍率
   showRate?: boolean
   daysRemaining?: number | null // 剩余天数（订阅类型时使用）
+  /**
+   * 订阅分组默认在右侧 label 展示"订阅"或剩余天数；
+   * 开启后订阅分组也改为显示倍率（保留订阅主题色 label，配合可用渠道这类
+   * 只关心费率、不关心有效期的场景）。
+   */
+  alwaysShowRate?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   subscriptionType: 'standard',
   showRate: true,
   daysRemaining: null,
-  userRateMultiplier: null
+  userRateMultiplier: null,
+  alwaysShowRate: false
 })
 
 const { t } = useI18n()
@@ -71,7 +78,8 @@ const showLabel = computed(() => {
 
 // Label text
 const labelText = computed(() => {
-  if (isSubscription.value) {
+  const rateLabel = props.rateMultiplier !== undefined ? `${props.rateMultiplier}x` : ''
+  if (isSubscription.value && !props.alwaysShowRate) {
     // 如果有剩余天数，显示天数
     if (props.daysRemaining !== null && props.daysRemaining !== undefined) {
       if (props.daysRemaining <= 0) {
@@ -82,7 +90,7 @@ const labelText = computed(() => {
     // 否则显示"订阅"
     return t('groups.subscription')
   }
-  return props.rateMultiplier !== undefined ? `${props.rateMultiplier}x` : ''
+  return rateLabel
 })
 
 // Label style based on type and days remaining

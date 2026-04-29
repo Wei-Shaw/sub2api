@@ -4,8 +4,9 @@
  */
 
 import { apiClient } from '../client'
+import type { BillingMode, ChannelStatus, BillingModelSource } from '@/constants/channel'
 
-export type BillingMode = 'token' | 'per_request' | 'image'
+export type { BillingMode } from '@/constants/channel'
 
 export interface PricingInterval {
   id?: number
@@ -34,16 +35,27 @@ export interface ChannelModelPricing {
   intervals: PricingInterval[]
 }
 
+export interface AccountStatsPricingRule {
+  id?: number
+  name: string
+  group_ids: number[]
+  account_ids: number[]
+  pricing: ChannelModelPricing[]
+}
+
 export interface Channel {
   id: number
   name: string
   description: string
-  status: string
-  billing_model_source: string // "requested" | "upstream"
+  status: ChannelStatus
+  billing_model_source: BillingModelSource
   restrict_models: boolean
+  features_config?: Record<string, unknown>
   group_ids: number[]
   model_pricing: ChannelModelPricing[]
   model_mapping: Record<string, Record<string, string>> // platform → {src→dst}
+  apply_pricing_to_account_stats: boolean
+  account_stats_pricing_rules: AccountStatsPricingRule[]
   created_at: string
   updated_at: string
 }
@@ -56,6 +68,9 @@ export interface CreateChannelRequest {
   model_mapping?: Record<string, Record<string, string>>
   billing_model_source?: string
   restrict_models?: boolean
+  features_config?: Record<string, unknown>
+  apply_pricing_to_account_stats?: boolean
+  account_stats_pricing_rules?: AccountStatsPricingRule[]
 }
 
 export interface UpdateChannelRequest {
@@ -67,6 +82,9 @@ export interface UpdateChannelRequest {
   model_mapping?: Record<string, Record<string, string>>
   billing_model_source?: string
   restrict_models?: boolean
+  features_config?: Record<string, unknown>
+  apply_pricing_to_account_stats?: boolean
+  account_stats_pricing_rules?: AccountStatsPricingRule[]
 }
 
 interface PaginatedResponse<T> {

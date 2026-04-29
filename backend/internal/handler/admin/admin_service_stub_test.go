@@ -17,6 +17,8 @@ type stubAdminService struct {
 	proxies              []service.Proxy
 	proxyCounts          []service.ProxyWithAccountCount
 	redeems              []service.RedeemCode
+	boundAuthIdentity    *service.AdminBindAuthIdentityInput
+	boundAuthIdentityFor int64
 	createdAccounts      []*service.CreateAccountInput
 	createdProxies       []*service.CreateProxyInput
 	updatedProxyIDs      []int64
@@ -41,6 +43,14 @@ type stubAdminService struct {
 		sortBy      string
 		sortOrder   string
 		calls       int
+	}
+	lastListUsers struct {
+		page      int
+		pageSize  int
+		filters   service.UserListFilters
+		sortBy    string
+		sortOrder string
+		calls     int
 	}
 	lastListProxies struct {
 		protocol  string
@@ -127,6 +137,12 @@ func newStubAdminService() *stubAdminService {
 }
 
 func (s *stubAdminService) ListUsers(ctx context.Context, page, pageSize int, filters service.UserListFilters, sortBy, sortOrder string) ([]service.User, int64, error) {
+	s.lastListUsers.page = page
+	s.lastListUsers.pageSize = pageSize
+	s.lastListUsers.filters = filters
+	s.lastListUsers.sortBy = sortBy
+	s.lastListUsers.sortOrder = sortOrder
+	s.lastListUsers.calls++
 	return s.users, int64(len(s.users)), nil
 }
 
@@ -165,6 +181,63 @@ func (s *stubAdminService) GetUserAPIKeys(ctx context.Context, userID int64, pag
 
 func (s *stubAdminService) GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error) {
 	return map[string]any{"user_id": userID}, nil
+}
+
+func (s *stubAdminService) GetUserRPMStatus(ctx context.Context, userID int64) (*service.UserRPMStatus, error) {
+	user, err := s.GetUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return &service.UserRPMStatus{
+		UserRPMUsed:  0,
+		UserRPMLimit: user.RPMLimit,
+	}, nil
+}
+
+func (s *stubAdminService) BindUserAuthIdentity(ctx context.Context, userID int64, input service.AdminBindAuthIdentityInput) (*service.AdminBoundAuthIdentity, error) {
+	s.boundAuthIdentityFor = userID
+	copied := input
+	if input.Metadata != nil {
+		copied.Metadata = map[string]any{}
+		for key, value := range input.Metadata {
+			copied.Metadata[key] = value
+		}
+	}
+	if input.Channel != nil {
+		channel := *input.Channel
+		if input.Channel.Metadata != nil {
+			channel.Metadata = map[string]any{}
+			for key, value := range input.Channel.Metadata {
+				channel.Metadata[key] = value
+			}
+		}
+		copied.Channel = &channel
+	}
+	s.boundAuthIdentity = &copied
+
+	now := time.Now().UTC()
+	result := &service.AdminBoundAuthIdentity{
+		UserID:          userID,
+		ProviderType:    input.ProviderType,
+		ProviderKey:     input.ProviderKey,
+		ProviderSubject: input.ProviderSubject,
+		VerifiedAt:      &now,
+		Issuer:          input.Issuer,
+		Metadata:        input.Metadata,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	if input.Channel != nil {
+		result.Channel = &service.AdminBoundAuthIdentityChannel{
+			Channel:        input.Channel.Channel,
+			ChannelAppID:   input.Channel.ChannelAppID,
+			ChannelSubject: input.Channel.ChannelSubject,
+			Metadata:       input.Channel.Metadata,
+			CreatedAt:      now,
+			UpdatedAt:      now,
+		}
+	}
+	return result, nil
 }
 
 func (s *stubAdminService) ListGroups(ctx context.Context, page, pageSize int, platform, status, search string, isExclusive *bool, sortBy, sortOrder string) ([]service.Group, int64, error) {
@@ -211,6 +284,14 @@ func (s *stubAdminService) ClearGroupRateMultipliers(_ context.Context, _ int64)
 }
 
 func (s *stubAdminService) BatchSetGroupRateMultipliers(_ context.Context, _ int64, _ []service.GroupRateMultiplierInput) error {
+	return nil
+}
+
+func (s *stubAdminService) ClearGroupRPMOverrides(_ context.Context, _ int64) error {
+	return nil
+}
+
+func (s *stubAdminService) BatchSetGroupRPMOverrides(_ context.Context, _ int64, _ []service.GroupRPMOverrideInput) error {
 	return nil
 }
 

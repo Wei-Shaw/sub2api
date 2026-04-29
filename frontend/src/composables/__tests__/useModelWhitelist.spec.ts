@@ -12,8 +12,18 @@ describe('useModelWhitelist', () => {
 
     expect(models).toContain('gpt-5.4')
     expect(models).toContain('gpt-5.4-mini')
-    expect(models).toContain('gpt-5.4-nano')
     expect(models).toContain('gpt-5.4-2026-03-05')
+  })
+
+  it('openai 模型列表不再暴露已下线的 ChatGPT 登录 Codex 模型', () => {
+    const models = getModelsByPlatform('openai')
+
+    expect(models).not.toContain('gpt-5')
+    expect(models).not.toContain('gpt-5.1')
+    expect(models).not.toContain('gpt-5.1-codex')
+    expect(models).not.toContain('gpt-5.1-codex-max')
+    expect(models).not.toContain('gpt-5.1-codex-mini')
+    expect(models).not.toContain('gpt-5.2-codex')
   })
 
   it('antigravity 模型列表包含图片模型兼容项', () => {
@@ -55,12 +65,11 @@ describe('useModelWhitelist', () => {
     })
   })
 
-  it('whitelist keeps GPT-5.4 mini and nano exact mappings', () => {
-    const mapping = buildModelMappingObject('whitelist', ['gpt-5.4-mini', 'gpt-5.4-nano'], [])
+  it('whitelist keeps GPT-5.4 mini exact mappings', () => {
+    const mapping = buildModelMappingObject('whitelist', ['gpt-5.4-mini'], [])
 
     expect(mapping).toEqual({
-      'gpt-5.4-mini': 'gpt-5.4-mini',
-      'gpt-5.4-nano': 'gpt-5.4-nano'
+      'gpt-5.4-mini': 'gpt-5.4-mini'
     })
   })
 })

@@ -557,13 +557,7 @@ func (s *AntigravityGatewayService) antigravityRetryLoop(p antigravityRetryLoopP
 	if p.requestedModel != "" && p.account.Platform == PlatformAntigravity &&
 		p.account.IsOveragesEnabled() && !p.account.isCreditsExhausted() &&
 		p.account.isModelRateLimitedWithContext(p.ctx, p.requestedModel) {
-		// Check actual credits balance before injection
-		if !s.checkAccountCredits(p.ctx, p.account) {
-			// No credits available - mark as exhausted and skip injection
-			s.setCreditsExhausted(p.ctx, p.account)
-			logger.LegacyPrintf("service.antigravity_gateway", "%s pre_check: no_credits_available account=%d (skipping credits injection)",
-				p.prefix, p.account.ID)
-		} else if creditsBody := injectEnabledCreditTypes(p.body); creditsBody != nil {
+		if creditsBody := injectEnabledCreditTypes(p.body); creditsBody != nil {
 			p.body = creditsBody
 			overagesInjected = true
 			logger.LegacyPrintf("service.antigravity_gateway", "%s pre_check: model_rate_limited_credits_inject model=%s account=%d (injecting enabledCreditTypes)",
@@ -876,15 +870,14 @@ func logPrefix(sessionID, accountName string) string {
 
 // AntigravityGatewayService 处理 Antigravity 平台的 API 转发
 type AntigravityGatewayService struct {
-	accountRepo         AccountRepository
-	tokenProvider       *AntigravityTokenProvider
-	rateLimitService    *RateLimitService
-	httpUpstream        HTTPUpstream
-	settingService      *SettingService
-	cache               GatewayCache // 用于模型级限流时清除粘性会话绑定
-	schedulerSnapshot   *SchedulerSnapshotService
-	internal500Cache    Internal500CounterCache // INTERNAL 500 渐进惩罚计数器
-	accountUsageService *AccountUsageService    // 共享 usage 缓存，用于积分余额检查
+	accountRepo       AccountRepository
+	tokenProvider     *AntigravityTokenProvider
+	rateLimitService  *RateLimitService
+	httpUpstream      HTTPUpstream
+	settingService    *SettingService
+	cache             GatewayCache // 用于模型级限流时清除粘性会话绑定
+	schedulerSnapshot *SchedulerSnapshotService
+	internal500Cache  Internal500CounterCache // INTERNAL 500 渐进惩罚计数器
 }
 
 func NewAntigravityGatewayService(
@@ -896,18 +889,16 @@ func NewAntigravityGatewayService(
 	httpUpstream HTTPUpstream,
 	settingService *SettingService,
 	internal500Cache Internal500CounterCache,
-	accountUsageService *AccountUsageService,
 ) *AntigravityGatewayService {
 	return &AntigravityGatewayService{
-		accountRepo:         accountRepo,
-		tokenProvider:       tokenProvider,
-		rateLimitService:    rateLimitService,
-		httpUpstream:        httpUpstream,
-		settingService:      settingService,
-		cache:               cache,
-		schedulerSnapshot:   schedulerSnapshot,
-		internal500Cache:    internal500Cache,
-		accountUsageService: accountUsageService,
+		accountRepo:       accountRepo,
+		tokenProvider:     tokenProvider,
+		rateLimitService:  rateLimitService,
+		httpUpstream:      httpUpstream,
+		settingService:    settingService,
+		cache:             cache,
+		schedulerSnapshot: schedulerSnapshot,
+		internal500Cache:  internal500Cache,
 	}
 }
 
@@ -1007,8 +998,14 @@ func (s *AntigravityGatewayService) getMappedModel(account *Account, requestedMo
 }
 
 // applyThinkingModelSuffix 根据 thinking 配置调整模型名
-// Sonnet 4.5 已统一映射到 4.6，此函数保留为扩展点
+// 当映射结果是 claude-sonnet-4-5 且请求开启了 thinking 时，改为 claude-sonnet-4-5-thinking
 func applyThinkingModelSuffix(mappedModel string, thinkingEnabled bool) string {
+	if !thinkingEnabled {
+		return mappedModel
+	}
+	if mappedModel == "claude-sonnet-4-5" {
+		return "claude-sonnet-4-5-thinking"
+	}
 	return mappedModel
 }
 
@@ -1744,7 +1741,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 	var clientDisconnect bool
 	if claudeReq.Stream {
 		// 客户端要求流式，直接透传转换
-		streamRes, err := s.handleClaudeStreamingResponse(c, resp, startTime, originalModel, account.ID)
+		streamRes, err := s.handleClaudeStreamingResponse(c, resp, startTime, originalModel)
 		if err != nil {
 			logger.LegacyPrintf("service.antigravity_gateway", "%s status=stream_error error=%v", prefix, err)
 			return nil, err
@@ -1754,7 +1751,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 		clientDisconnect = streamRes.clientDisconnect
 	} else {
 		// 客户端要求非流式，收集流式响应后转换返回
-		streamRes, err := s.handleClaudeStreamToNonStreaming(c, resp, startTime, originalModel, account.ID)
+		streamRes, err := s.handleClaudeStreamToNonStreaming(c, resp, startTime, originalModel)
 		if err != nil {
 			logger.LegacyPrintf("service.antigravity_gateway", "%s status=stream_collect_error error=%v", prefix, err)
 			return nil, err
@@ -3702,7 +3699,7 @@ func (s *AntigravityGatewayService) writeGoogleError(c *gin.Context, status int,
 
 // handleClaudeStreamToNonStreaming 收集上游流式响应，转换为 Claude 非流式格式返回
 // 用于处理客户端非流式请求但上游只支持流式的情况
-func (s *AntigravityGatewayService) handleClaudeStreamToNonStreaming(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string, accountID int64) (*antigravityStreamResult, error) {
+func (s *AntigravityGatewayService) handleClaudeStreamToNonStreaming(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (*antigravityStreamResult, error) {
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
 	if s.settingService.cfg != nil && s.settingService.cfg.Gateway.MaxLineSize > 0 {
@@ -3874,7 +3871,7 @@ returnResponse:
 }
 
 // handleClaudeStreamingResponse 处理 Claude 流式响应（Gemini SSE → Claude SSE 转换）
-func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string, accountID int64) (*antigravityStreamResult, error) {
+func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (*antigravityStreamResult, error) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -3887,7 +3884,6 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 	}
 
 	processor := antigravity.NewStreamingProcessor(originalModel)
-
 	var firstTokenMs *int
 	// 使用 Scanner 并限制单行大小，避免 ReadString 无上限导致 OOM
 	scanner := bufio.NewScanner(resp.Body)

@@ -31,6 +31,22 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// 错误码常量：与前端 i18n key（admin.account.errors.* / common.errors.*）对齐。
+// 走 PR-A 字段级错误协议（task #33）让前端 parseFieldErrors 直接消费 metadata.fields，
+// 不再依赖英文 message 文本做解析。
+// INVALID_REQUEST_BODY 是跨 handler 通用 reason，集中在 admin/common.go 定义为
+// errReasonInvalidRequestBody，本文件不再重复声明（避免漂移）。
+const (
+	errReasonAccountInvalidID              = "INVALID_ACCOUNT_ID"
+	errReasonAccountInvalidRateMultiplier  = "INVALID_RATE_MULTIPLIER"
+	errReasonAccountIDsRequired            = "ACCOUNT_IDS_REQUIRED"
+	errReasonAccountInvalidExtraField      = "INVALID_EXTRA_FIELD"
+	errReasonAccountNoUpdates              = "NO_UPDATES_PROVIDED"
+	errReasonAccountPrivacyUnsupported     = "PRIVACY_UNSUPPORTED"
+	errReasonAccountMissingAccessToken     = "MISSING_ACCESS_TOKEN"
+	errReasonAccountTierRefreshUnsupported = "TIER_REFRESH_UNSUPPORTED"
+)
+
 // OAuthHandler handles OAuth-related operations for accounts
 type OAuthHandler struct {
 	oauthService *service.OAuthService
@@ -58,6 +74,8 @@ type AccountHandler struct {
 	sessionLimitCache       service.SessionLimitCache
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
+	// serviceQuotaSvc 用于在删除 account 后失效服务限额缓存（FK CASCADE 自动删除关联，但缓存不感知）。
+	serviceQuotaSvc service.ServiceQuotaService
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -75,6 +93,7 @@ func NewAccountHandler(
 	sessionLimitCache service.SessionLimitCache,
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
+	serviceQuotaSvc service.ServiceQuotaService,
 ) *AccountHandler {
 	return &AccountHandler{
 		adminService:            adminService,
@@ -90,6 +109,7 @@ func NewAccountHandler(
 		sessionLimitCache:       sessionLimitCache,
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
+		serviceQuotaSvc:         serviceQuotaSvc,
 	}
 }
 
@@ -441,9 +461,9 @@ func ifNoneMatchMatched(ifNoneMatch, etag string) bool {
 // GetByID handles getting an account by ID
 // GET /api/v1/admin/accounts/:id
 func (h *AccountHandler) GetByID(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	accountID, err := ParseInt64Param(c, "id", errReasonAccountInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -460,8 +480,8 @@ func (h *AccountHandler) GetByID(c *gin.Context) {
 // POST /api/v1/admin/accounts/check-mixed-channel
 func (h *AccountHandler) CheckMixedChannel(c *gin.Context) {
 	var req CheckMixedChannelRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -504,12 +524,12 @@ func (h *AccountHandler) CheckMixedChannel(c *gin.Context) {
 // POST /api/v1/admin/accounts
 func (h *AccountHandler) Create(c *gin.Context) {
 	var req CreateAccountRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 	if req.RateMultiplier != nil && *req.RateMultiplier < 0 {
-		response.BadRequest(c, "rate_multiplier must be >= 0")
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonAccountInvalidRateMultiplier, "rate_multiplier must be >= 0"))
 		return
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
@@ -573,19 +593,19 @@ func (h *AccountHandler) Create(c *gin.Context) {
 // Update handles updating an account
 // PUT /api/v1/admin/accounts/:id
 func (h *AccountHandler) Update(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	accountID, err := ParseInt64Param(c, "id", errReasonAccountInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
 	var req UpdateAccountRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 	if req.RateMultiplier != nil && *req.RateMultiplier < 0 {
-		response.BadRequest(c, "rate_multiplier must be >= 0")
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonAccountInvalidRateMultiplier, "rate_multiplier must be >= 0"))
 		return
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
@@ -633,16 +653,31 @@ func (h *AccountHandler) Update(c *gin.Context) {
 // Delete handles deleting an account
 // DELETE /api/v1/admin/accounts/:id
 func (h *AccountHandler) Delete(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	accountID, err := ParseInt64Param(c, "id", errReasonAccountInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
+		response.ErrorFrom(c, err)
 		return
 	}
+
+	// 必须在 DELETE 之前快照受影响的 path_ids（FK CASCADE 删完查不到）。
+	pathIDs := snapshotPathIDsForOwner(c, h.serviceQuotaSvc, service.ServiceQuotaPathOwnerAccount, accountID)
 
 	err = h.adminService.DeleteAccount(c.Request.Context(), accountID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+
+	// FK CASCADE 已删除 service_quota_paths 中引用本 account 的关联行，
+	// 但服务限额规则缓存（Redis 5min TTL）需要手动失效。
+	// 缓存重载失败不影响主删除流程，仅记日志。
+	if h.serviceQuotaSvc != nil {
+		if err := h.serviceQuotaSvc.ReloadCache(c.Request.Context()); err != nil {
+			slog.WarnContext(c.Request.Context(), "failed to reload service quota cache after account deletion",
+				"account_id", accountID, "err", err)
+		}
+		// 异步清 Redis 残留 counter key（避免 account_id 复用时新账号继承旧 counter）。
+		h.serviceQuotaSvc.ResetCountersForPaths(c.Request.Context(), pathIDs)
 	}
 
 	response.Success(c, gin.H{"message": "Account deleted successfully"})
@@ -652,6 +687,7 @@ func (h *AccountHandler) Delete(c *gin.Context) {
 type TestAccountRequest struct {
 	ModelID string `json:"model_id"`
 	Prompt  string `json:"prompt"`
+	Mode    string `json:"mode"`
 }
 
 type SyncFromCRSRequest struct {
@@ -671,9 +707,9 @@ type PreviewFromCRSRequest struct {
 // Test handles testing account connectivity with SSE streaming
 // POST /api/v1/admin/accounts/:id/test
 func (h *AccountHandler) Test(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	accountID, err := ParseInt64Param(c, "id", errReasonAccountInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -682,7 +718,7 @@ func (h *AccountHandler) Test(c *gin.Context) {
 	_ = c.ShouldBindJSON(&req)
 
 	// Use AccountTestService to test the account with SSE streaming
-	if err := h.accountTestService.TestAccountConnection(c, accountID, req.ModelID, req.Prompt); err != nil {
+	if err := h.accountTestService.TestAccountConnection(c, accountID, req.ModelID, req.Prompt, req.Mode); err != nil {
 		// Error already sent via SSE, just log
 		return
 	}
@@ -697,9 +733,9 @@ func (h *AccountHandler) Test(c *gin.Context) {
 // RecoverState handles unified recovery of recoverable account runtime state.
 // POST /api/v1/admin/accounts/:id/recover-state
 func (h *AccountHandler) RecoverState(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	accountID, err := ParseInt64Param(c, "id", errReasonAccountInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -728,8 +764,8 @@ func (h *AccountHandler) RecoverState(c *gin.Context) {
 // POST /api/v1/admin/accounts/sync/crs
 func (h *AccountHandler) SyncFromCRS(c *gin.Context) {
 	var req SyncFromCRSRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -759,8 +795,8 @@ func (h *AccountHandler) SyncFromCRS(c *gin.Context) {
 // POST /api/v1/admin/accounts/sync/crs/preview
 func (h *AccountHandler) PreviewFromCRS(c *gin.Context) {
 	var req PreviewFromCRSRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -902,9 +938,9 @@ func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *serv
 // Refresh handles refreshing account credentials
 // POST /api/v1/admin/accounts/:id/refresh
 func (h *AccountHandler) Refresh(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	accountID, err := ParseInt64Param(c, "id", errReasonAccountInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -935,9 +971,9 @@ func (h *AccountHandler) Refresh(c *gin.Context) {
 // GetStats handles getting account statistics
 // GET /api/v1/admin/accounts/:id/stats
 func (h *AccountHandler) GetStats(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	accountID, err := ParseInt64Param(c, "id", errReasonAccountInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -966,9 +1002,9 @@ func (h *AccountHandler) GetStats(c *gin.Context) {
 // ClearError handles clearing account error
 // POST /api/v1/admin/accounts/:id/clear-error
 func (h *AccountHandler) ClearError(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	accountID, err := ParseInt64Param(c, "id", errReasonAccountInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -995,12 +1031,12 @@ func (h *AccountHandler) BatchClearError(c *gin.Context) {
 	var req struct {
 		AccountIDs []int64 `json:"account_ids"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 	if len(req.AccountIDs) == 0 {
-		response.BadRequest(c, "account_ids is required")
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonAccountIDsRequired, "account_ids is required"))
 		return
 	}
 
@@ -1063,12 +1099,12 @@ func (h *AccountHandler) BatchRefresh(c *gin.Context) {
 	var req struct {
 		AccountIDs []int64 `json:"account_ids"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 	if len(req.AccountIDs) == 0 {
-		response.BadRequest(c, "account_ids is required")
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonAccountIDsRequired, "account_ids is required"))
 		return
 	}
 
@@ -1157,8 +1193,8 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 	var req struct {
 		Accounts []CreateAccountRequest `json:"accounts" binding:"required,min=1"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -1278,8 +1314,8 @@ type BatchUpdateCredentialsRequest struct {
 // POST /api/v1/admin/accounts/batch-update-credentials
 func (h *AccountHandler) BatchUpdateCredentials(c *gin.Context) {
 	var req BatchUpdateCredentialsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -1287,14 +1323,14 @@ func (h *AccountHandler) BatchUpdateCredentials(c *gin.Context) {
 	if req.Field == "intercept_warmup_requests" {
 		// Must be boolean
 		if _, ok := req.Value.(bool); !ok {
-			response.BadRequest(c, "intercept_warmup_requests must be boolean")
+			response.ErrorFrom(c, infraerrors.BadRequest(errReasonAccountInvalidExtraField, "intercept_warmup_requests must be boolean"))
 			return
 		}
 	} else {
 		// account_uuid and org_uuid can be string or null
 		if req.Value != nil {
 			if _, ok := req.Value.(string); !ok {
-				response.BadRequest(c, req.Field+" must be string or null")
+				response.ErrorFrom(c, infraerrors.BadRequest(errReasonAccountInvalidExtraField, req.Field+" must be string or null"))
 				return
 			}
 		}
@@ -1360,12 +1396,12 @@ func (h *AccountHandler) BatchUpdateCredentials(c *gin.Context) {
 // POST /api/v1/admin/accounts/bulk-update
 func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 	var req BulkUpdateAccountsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 	if req.RateMultiplier != nil && *req.RateMultiplier < 0 {
-		response.BadRequest(c, "rate_multiplier must be >= 0")
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonAccountInvalidRateMultiplier, "rate_multiplier must be >= 0"))
 		return
 	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
@@ -1387,7 +1423,7 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		len(req.Extra) > 0
 
 	if !hasUpdates {
-		response.BadRequest(c, "No updates provided")
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonAccountNoUpdates, "no updates provided"))
 		return
 	}
 
@@ -1482,8 +1518,8 @@ type ExchangeCodeRequest struct {
 // POST /api/v1/admin/accounts/exchange-code
 func (h *OAuthHandler) ExchangeCode(c *gin.Context) {
 	var req ExchangeCodeRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -1504,8 +1540,8 @@ func (h *OAuthHandler) ExchangeCode(c *gin.Context) {
 // POST /api/v1/admin/accounts/exchange-setup-token-code
 func (h *OAuthHandler) ExchangeSetupTokenCode(c *gin.Context) {
 	var req ExchangeCodeRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -1532,8 +1568,8 @@ type CookieAuthRequest struct {
 // POST /api/v1/admin/accounts/cookie-auth
 func (h *OAuthHandler) CookieAuth(c *gin.Context) {
 	var req CookieAuthRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -1554,8 +1590,8 @@ func (h *OAuthHandler) CookieAuth(c *gin.Context) {
 // POST /api/v1/admin/accounts/setup-token-cookie-auth
 func (h *OAuthHandler) SetupTokenCookieAuth(c *gin.Context) {
 	var req CookieAuthRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -1575,9 +1611,9 @@ func (h *OAuthHandler) SetupTokenCookieAuth(c *gin.Context) {
 // GetUsage handles getting account usage information
 // GET /api/v1/admin/accounts/:id/usage?source=passive|active
 func (h *AccountHandler) GetUsage(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	accountID, err := ParseInt64Param(c, "id", errReasonAccountInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -1600,9 +1636,9 @@ func (h *AccountHandler) GetUsage(c *gin.Context) {
 // ClearRateLimit handles clearing account rate limit status
 // POST /api/v1/admin/accounts/:id/clear-rate-limit
 func (h *AccountHandler) ClearRateLimit(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	accountID, err := ParseInt64Param(c, "id", errReasonAccountInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -1624,9 +1660,9 @@ func (h *AccountHandler) ClearRateLimit(c *gin.Context) {
 // ResetQuota handles resetting account quota usage
 // POST /api/v1/admin/accounts/:id/reset-quota
 func (h *AccountHandler) ResetQuota(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	accountID, err := ParseInt64Param(c, "id", errReasonAccountInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -1647,9 +1683,9 @@ func (h *AccountHandler) ResetQuota(c *gin.Context) {
 // GetTempUnschedulable handles getting temporary unschedulable status
 // GET /api/v1/admin/accounts/:id/temp-unschedulable
 func (h *AccountHandler) GetTempUnschedulable(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	accountID, err := ParseInt64Param(c, "id", errReasonAccountInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -1673,9 +1709,9 @@ func (h *AccountHandler) GetTempUnschedulable(c *gin.Context) {
 // ClearTempUnschedulable handles clearing temporary unschedulable status
 // DELETE /api/v1/admin/accounts/:id/temp-unschedulable
 func (h *AccountHandler) ClearTempUnschedulable(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	accountID, err := ParseInt64Param(c, "id", errReasonAccountInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -1690,9 +1726,9 @@ func (h *AccountHandler) ClearTempUnschedulable(c *gin.Context) {
 // GetTodayStats handles getting account today statistics
 // GET /api/v1/admin/accounts/:id/today-stats
 func (h *AccountHandler) GetTodayStats(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	accountID, err := ParseInt64Param(c, "id", errReasonAccountInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -1714,8 +1750,8 @@ type BatchTodayStatsRequest struct {
 // POST /api/v1/admin/accounts/today-stats/batch
 func (h *AccountHandler) GetBatchTodayStats(c *gin.Context) {
 	var req BatchTodayStatsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -1764,15 +1800,15 @@ type SetSchedulableRequest struct {
 // SetSchedulable handles toggling account schedulable status
 // POST /api/v1/admin/accounts/:id/schedulable
 func (h *AccountHandler) SetSchedulable(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	accountID, err := ParseInt64Param(c, "id", errReasonAccountInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
 	var req SetSchedulableRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -1788,9 +1824,9 @@ func (h *AccountHandler) SetSchedulable(c *gin.Context) {
 // GetAvailableModels handles getting available models for an account
 // GET /api/v1/admin/accounts/:id/models
 func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	accountID, err := ParseInt64Param(c, "id", errReasonAccountInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -1927,9 +1963,9 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 // SetPrivacy handles setting privacy for a single OpenAI/Antigravity OAuth account
 // POST /api/v1/admin/accounts/:id/set-privacy
 func (h *AccountHandler) SetPrivacy(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	accountID, err := ParseInt64Param(c, "id", errReasonAccountInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
@@ -1938,7 +1974,7 @@ func (h *AccountHandler) SetPrivacy(c *gin.Context) {
 		return
 	}
 	if account.Type != service.AccountTypeOAuth {
-		response.BadRequest(c, "Only OAuth accounts support privacy setting")
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonAccountPrivacyUnsupported, "only OAuth accounts support privacy setting"))
 		return
 	}
 	var mode string
@@ -1948,11 +1984,11 @@ func (h *AccountHandler) SetPrivacy(c *gin.Context) {
 	case service.PlatformAntigravity:
 		mode = h.adminService.ForceAntigravityPrivacy(c.Request.Context(), account)
 	default:
-		response.BadRequest(c, "Only OpenAI and Antigravity OAuth accounts support privacy setting")
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonAccountPrivacyUnsupported, "only OpenAI and Antigravity OAuth accounts support privacy setting"))
 		return
 	}
 	if mode == "" {
-		response.BadRequest(c, "Cannot set privacy: missing access_token")
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonAccountMissingAccessToken, "cannot set privacy: missing access_token"))
 		return
 	}
 	// 从 DB 重新读取以确保返回最新状态
@@ -1972,9 +2008,9 @@ func (h *AccountHandler) SetPrivacy(c *gin.Context) {
 // RefreshTier handles refreshing Google One tier for a single account
 // POST /api/v1/admin/accounts/:id/refresh-tier
 func (h *AccountHandler) RefreshTier(c *gin.Context) {
-	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	accountID, err := ParseInt64Param(c, "id", errReasonAccountInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid account ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -1986,13 +2022,13 @@ func (h *AccountHandler) RefreshTier(c *gin.Context) {
 	}
 
 	if account.Platform != service.PlatformGemini || account.Type != service.AccountTypeOAuth {
-		response.BadRequest(c, "Only Gemini OAuth accounts support tier refresh")
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonAccountTierRefreshUnsupported, "only Gemini OAuth accounts support tier refresh"))
 		return
 	}
 
 	oauthType, _ := account.Credentials["oauth_type"].(string)
 	if oauthType != "google_one" {
-		response.BadRequest(c, "Only google_one OAuth accounts support tier refresh")
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonAccountTierRefreshUnsupported, "only google_one OAuth accounts support tier refresh"))
 		return
 	}
 

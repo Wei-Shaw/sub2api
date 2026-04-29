@@ -81,9 +81,9 @@ type wildcardMappingEntry struct {
 type channelCache struct {
 	// 热路径查找
 	pricingByGroupModel     map[channelModelKey]*ChannelModelPricing            // (groupID, platform, model) → 定价
-	wildcardByGroupPlatform map[channelGroupPlatformKey][]*wildcardPricingEntry // (groupID, platform) → 通配符定价（前缀长度降序）
+	wildcardByGroupPlatform map[channelGroupPlatformKey][]*wildcardPricingEntry // (groupID, platform) → 通配符定价（按配置顺序，先匹配先使用）
 	mappingByGroupModel     map[channelModelKey]string                          // (groupID, platform, model) → 映射目标
-	wildcardMappingByGP     map[channelGroupPlatformKey][]*wildcardMappingEntry // (groupID, platform) → 通配符映射（前缀长度降序）
+	wildcardMappingByGP     map[channelGroupPlatformKey][]*wildcardMappingEntry // (groupID, platform) → 通配符映射（按配置顺序，先匹配先使用）
 	channelByGroupID        map[int64]*Channel                                  // groupID → 渠道
 	groupPlatform           map[int64]string                                    // groupID → platform
 
@@ -141,17 +141,23 @@ const (
 // ChannelService 渠道管理服务
 type ChannelService struct {
 	repo                 ChannelRepository
+	groupRepo            GroupRepository
 	authCacheInvalidator APIKeyAuthCacheInvalidator
+	pricingService       *PricingService // 用于「可用渠道」展示时回落到全局定价；可为 nil（测试场景）
 
 	cache   atomic.Value // *channelCache
 	cacheSF singleflight.Group
 }
 
-// NewChannelService 创建渠道服务实例
-func NewChannelService(repo ChannelRepository, authCacheInvalidator APIKeyAuthCacheInvalidator) *ChannelService {
+// NewChannelService 创建渠道服务实例。
+// pricingService 仅供 ListAvailable 在渠道未配置定价时回落到全局 LiteLLM 数据；
+// 计费热路径走独立的 ModelPricingResolver，与此参数无关。可传 nil。
+func NewChannelService(repo ChannelRepository, groupRepo GroupRepository, authCacheInvalidator APIKeyAuthCacheInvalidator, pricingService *PricingService) *ChannelService {
 	s := &ChannelService{
 		repo:                 repo,
+		groupRepo:            groupRepo,
 		authCacheInvalidator: authCacheInvalidator,
+		pricingService:       pricingService,
 	}
 	return s
 }
@@ -299,6 +305,9 @@ func (s *ChannelService) fetchChannelData(ctx context.Context) ([]Channel, map[i
 }
 
 // populateChannelCache 将渠道列表和分组平台映射填充到缓存快照中。
+// 装填时对每个 Channel 统一归一化 BillingModelSource，让缓存命中的所有下游
+// （gateway routing / billing / 未来任何 cache-backed 读路径）都拿到已归一化的实体，
+// 避免"每个出口各自记得 normalize"反模式。
 func populateChannelCache(channels []Channel, groupPlatforms map[int64]string) *channelCache {
 	cache := newEmptyChannelCache()
 	cache.groupPlatform = groupPlatforms
@@ -306,6 +315,7 @@ func populateChannelCache(channels []Channel, groupPlatforms map[int64]string) *
 	cache.loadedAt = time.Now()
 
 	for i := range channels {
+		channels[i].normalizeBillingModelSource()
 		ch := &channels[i]
 		cache.byID[ch.ID] = ch
 		for _, gid := range ch.GroupIDs {
@@ -416,6 +426,15 @@ func (s *ChannelService) GetChannelForGroup(ctx context.Context, groupID int64) 
 	return ch.Clone(), nil
 }
 
+// GetGroupPlatform 获取分组的平台标识（从缓存）
+func (s *ChannelService) GetGroupPlatform(ctx context.Context, groupID int64) string {
+	cache, err := s.loadCache(ctx)
+	if err != nil {
+		return ""
+	}
+	return cache.groupPlatform[groupID]
+}
+
 // channelLookup 热路径公共查找结果
 type channelLookup struct {
 	cache    *channelCache
@@ -507,13 +526,12 @@ func (s *ChannelService) ResolveChannelMappingAndRestrict(ctx context.Context, g
 // resolveMapping 基于已查找的渠道信息解析模型映射。
 // antigravity 分组依次尝试所有匹配平台，确保跨平台同名映射各自独立。
 func resolveMapping(lk *channelLookup, groupID int64, model string) ChannelMappingResult {
+	// lk.channel 来自已装填的缓存，BillingModelSource 已在 populateChannelCache 阶段归一化，
+	// 这里无需重复兜底。
 	result := ChannelMappingResult{
 		MappedModel:        model,
 		ChannelID:          lk.channel.ID,
 		BillingModelSource: lk.channel.BillingModelSource,
-	}
-	if result.BillingModelSource == "" {
-		result.BillingModelSource = BillingModelSourceChannelMapped
 	}
 
 	modelLower := strings.ToLower(model)
@@ -557,13 +575,19 @@ func ReplaceModelInBody(body []byte, newModel string) []byte {
 // validateChannelConfig 校验渠道的定价和映射配置（冲突检测 + 区间校验 + 计费模式校验）。
 // Create 和 Update 共用此函数，避免重复。
 func validateChannelConfig(pricing []ChannelModelPricing, mapping map[string]map[string]string) error {
+	if err := validatePricingEntries(pricing); err != nil {
+		return err
+	}
+	return validateNoConflictingMappings(mapping)
+}
+
+// validatePricingEntries 校验定价条目（冲突检测 + 区间校验 + 计费模式校验），
+// 同时用于主渠道定价和 account_stats_pricing_rules 的内部定价。
+func validatePricingEntries(pricing []ChannelModelPricing) error {
 	if err := validateNoConflictingModels(pricing); err != nil {
 		return err
 	}
 	if err := validatePricingIntervals(pricing); err != nil {
-		return err
-	}
-	if err := validateNoConflictingMappings(mapping); err != nil {
 		return err
 	}
 	return validatePricingBillingMode(pricing)
@@ -656,22 +680,28 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 	}
 
 	channel := &Channel{
-		Name:               input.Name,
-		Description:        input.Description,
-		Status:             StatusActive,
-		BillingModelSource: input.BillingModelSource,
-		RestrictModels:     input.RestrictModels,
-		GroupIDs:           input.GroupIDs,
-		ModelPricing:       input.ModelPricing,
-		ModelMapping:       input.ModelMapping,
-		Features:           input.Features,
+		Name:                       input.Name,
+		Description:                input.Description,
+		Status:                     StatusActive,
+		BillingModelSource:         input.BillingModelSource,
+		RestrictModels:             input.RestrictModels,
+		GroupIDs:                   input.GroupIDs,
+		ModelPricing:               input.ModelPricing,
+		ModelMapping:               input.ModelMapping,
+		Features:                   input.Features,
+		FeaturesConfig:             input.FeaturesConfig,
+		ApplyPricingToAccountStats: input.ApplyPricingToAccountStats,
+		AccountStatsPricingRules:   input.AccountStatsPricingRules,
 	}
-	if channel.BillingModelSource == "" {
-		channel.BillingModelSource = BillingModelSourceChannelMapped
-	}
+	channel.normalizeBillingModelSource()
 
 	if err := validateChannelConfig(channel.ModelPricing, channel.ModelMapping); err != nil {
 		return nil, err
+	}
+	for i, rule := range channel.AccountStatsPricingRules {
+		if err := validatePricingEntries(rule.Pricing); err != nil {
+			return nil, fmt.Errorf("account stats pricing rule #%d: %w", i+1, err)
+		}
 	}
 
 	if err := s.repo.Create(ctx, channel); err != nil {
@@ -679,12 +709,23 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 	}
 
 	s.invalidateCache()
-	return s.repo.GetByID(ctx, channel.ID)
+	created, err := s.repo.GetByID(ctx, channel.ID)
+	if err != nil {
+		return nil, err
+	}
+	created.normalizeBillingModelSource()
+	return created, nil
 }
 
-// GetByID 获取渠道详情
+// GetByID 获取渠道详情。返回前统一把空 BillingModelSource 回填为 ChannelMapped，
+// 让所有 handler 无需重复处理历史空值。
 func (s *ChannelService) GetByID(ctx context.Context, id int64) (*Channel, error) {
-	return s.repo.GetByID(ctx, id)
+	ch, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	ch.normalizeBillingModelSource()
+	return ch, nil
 }
 
 // Update 更新渠道
@@ -701,6 +742,11 @@ func (s *ChannelService) Update(ctx context.Context, id int64, input *UpdateChan
 	if err := validateChannelConfig(channel.ModelPricing, channel.ModelMapping); err != nil {
 		return nil, err
 	}
+	for i, rule := range channel.AccountStatsPricingRules {
+		if err := validatePricingEntries(rule.Pricing); err != nil {
+			return nil, fmt.Errorf("account stats pricing rule #%d: %w", i+1, err)
+		}
+	}
 
 	oldGroupIDs := s.getOldGroupIDs(ctx, id)
 
@@ -711,7 +757,12 @@ func (s *ChannelService) Update(ctx context.Context, id int64, input *UpdateChan
 	s.invalidateCache()
 	s.invalidateAuthCacheForGroups(ctx, oldGroupIDs, channel.GroupIDs)
 
-	return s.repo.GetByID(ctx, id)
+	updated, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	updated.normalizeBillingModelSource()
+	return updated, nil
 }
 
 // applyUpdateInput 将更新请求的字段应用到渠道实体上。
@@ -752,6 +803,15 @@ func (s *ChannelService) applyUpdateInput(ctx context.Context, channel *Channel,
 	}
 	if input.BillingModelSource != "" {
 		channel.BillingModelSource = input.BillingModelSource
+	}
+	if input.FeaturesConfig != nil {
+		channel.FeaturesConfig = input.FeaturesConfig
+	}
+	if input.ApplyPricingToAccountStats != nil {
+		channel.ApplyPricingToAccountStats = *input.ApplyPricingToAccountStats
+	}
+	if input.AccountStatsPricingRules != nil {
+		channel.AccountStatsPricingRules = *input.AccountStatsPricingRules
 	}
 	return nil
 }
@@ -820,7 +880,14 @@ func (s *ChannelService) Delete(ctx context.Context, id int64) error {
 
 // List 获取渠道列表
 func (s *ChannelService) List(ctx context.Context, params pagination.PaginationParams, status, search string) ([]Channel, *pagination.PaginationResult, error) {
-	return s.repo.List(ctx, params, status, search)
+	channels, res, err := s.repo.List(ctx, params, status, search)
+	if err != nil {
+		return nil, nil, err
+	}
+	for i := range channels {
+		channels[i].normalizeBillingModelSource()
+	}
+	return channels, res, nil
 }
 
 // modelEntry 表示一个模型模式条目（用于冲突检测）
@@ -847,12 +914,7 @@ func conflictsBetween(a, b modelEntry) bool {
 
 // toModelEntry 将模型名转换为 modelEntry
 func toModelEntry(pattern string) modelEntry {
-	lower := strings.ToLower(pattern)
-	isWild := strings.HasSuffix(lower, "*")
-	prefix := lower
-	if isWild {
-		prefix = strings.TrimSuffix(lower, "*")
-	}
+	prefix, isWild := splitWildcardSuffix(strings.ToLower(pattern))
 	return modelEntry{pattern: pattern, prefix: prefix, wildcard: isWild}
 }
 
@@ -918,25 +980,31 @@ func detectConflicts(entries []modelEntry, platform, errCode, label string) erro
 
 // CreateChannelInput 创建渠道输入
 type CreateChannelInput struct {
-	Name               string
-	Description        string
-	GroupIDs           []int64
-	ModelPricing       []ChannelModelPricing
-	ModelMapping       map[string]map[string]string // platform → {src→dst}
-	BillingModelSource string
-	RestrictModels     bool
-	Features           string
+	Name                       string
+	Description                string
+	GroupIDs                   []int64
+	ModelPricing               []ChannelModelPricing
+	ModelMapping               map[string]map[string]string // platform → {src→dst}
+	BillingModelSource         string
+	RestrictModels             bool
+	Features                   string
+	FeaturesConfig             map[string]any
+	ApplyPricingToAccountStats bool
+	AccountStatsPricingRules   []AccountStatsPricingRule
 }
 
 // UpdateChannelInput 更新渠道输入
 type UpdateChannelInput struct {
-	Name               string
-	Description        *string
-	Status             string
-	GroupIDs           *[]int64
-	ModelPricing       *[]ChannelModelPricing
-	ModelMapping       map[string]map[string]string // platform → {src→dst}
-	BillingModelSource string
-	RestrictModels     *bool
-	Features           *string
+	Name                       string
+	Description                *string
+	Status                     string
+	GroupIDs                   *[]int64
+	ModelPricing               *[]ChannelModelPricing
+	ModelMapping               map[string]map[string]string // platform → {src→dst}
+	BillingModelSource         string
+	RestrictModels             *bool
+	Features                   *string
+	FeaturesConfig             map[string]any
+	ApplyPricingToAccountStats *bool
+	AccountStatsPricingRules   *[]AccountStatsPricingRule
 }

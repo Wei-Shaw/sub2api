@@ -36,11 +36,15 @@ return 0
 // - Scheduling: 5-field cron spec (minute hour dom month dow).
 // - Multi-instance: best-effort Redis leader lock so only one node runs cleanup.
 // - Safety: deletes in batches to avoid long transactions.
+//
+// 附带：在 runCleanupOnce 末尾调用 ChannelMonitorService.RunDailyMaintenance，
+// 统一共享 cron schedule + leader lock + heartbeat，避免再引一套调度。
 type OpsCleanupService struct {
-	opsRepo     OpsRepository
-	db          *sql.DB
-	redisClient *redis.Client
-	cfg         *config.Config
+	opsRepo           OpsRepository
+	db                *sql.DB
+	redisClient       *redis.Client
+	cfg               *config.Config
+	channelMonitorSvc *ChannelMonitorService
 
 	instanceID string
 
@@ -57,13 +61,15 @@ func NewOpsCleanupService(
 	db *sql.DB,
 	redisClient *redis.Client,
 	cfg *config.Config,
+	channelMonitorSvc *ChannelMonitorService,
 ) *OpsCleanupService {
 	return &OpsCleanupService{
-		opsRepo:     opsRepo,
-		db:          db,
-		redisClient: redisClient,
-		cfg:         cfg,
-		instanceID:  uuid.NewString(),
+		opsRepo:           opsRepo,
+		db:                db,
+		redisClient:       redisClient,
+		cfg:               cfg,
+		channelMonitorSvc: channelMonitorSvc,
+		instanceID:        uuid.NewString(),
 	}
 }
 
@@ -178,6 +184,22 @@ func (c opsCleanupDeletedCounts) String() string {
 	)
 }
 
+// opsCleanupCutoff 把"保留天数"翻译成 deleteOldRowsByID 用的 cutoff。
+//   - days < 0 → 跳过该项清理（ok=false），保留兼容老数据
+//   - days == 0 → 清空全部：用未来时刻作 cutoff，所有现有行都满足 column < cutoff
+//   - days > 0 → 保留最近 N 天，cutoff = now - N 天
+//
+// 选择 now+24h 而不是 TRUNCATE：复用同一批量删除路径，保留 batch + leader-lock + 错误处理一致性。
+func opsCleanupCutoff(now time.Time, days int) (time.Time, bool) {
+	if days < 0 {
+		return time.Time{}, false
+	}
+	if days == 0 {
+		return now.Add(24 * time.Hour), true
+	}
+	return now.AddDate(0, 0, -days), true
+}
+
 func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDeletedCounts, error) {
 	out := opsCleanupDeletedCounts{}
 	if s == nil || s.db == nil || s.cfg == nil {
@@ -189,8 +211,7 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 	now := time.Now().UTC()
 
 	// Error-like tables: error logs / retry attempts / alert events.
-	if days := s.cfg.Ops.Cleanup.ErrorLogRetentionDays; days > 0 {
-		cutoff := now.AddDate(0, 0, -days)
+	if cutoff, ok := opsCleanupCutoff(now, s.cfg.Ops.Cleanup.ErrorLogRetentionDays); ok {
 		n, err := deleteOldRowsByID(ctx, s.db, "ops_error_logs", "created_at", cutoff, batchSize, false)
 		if err != nil {
 			return out, err
@@ -223,8 +244,7 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 	}
 
 	// Minute-level metrics snapshots.
-	if days := s.cfg.Ops.Cleanup.MinuteMetricsRetentionDays; days > 0 {
-		cutoff := now.AddDate(0, 0, -days)
+	if cutoff, ok := opsCleanupCutoff(now, s.cfg.Ops.Cleanup.MinuteMetricsRetentionDays); ok {
 		n, err := deleteOldRowsByID(ctx, s.db, "ops_system_metrics", "created_at", cutoff, batchSize, false)
 		if err != nil {
 			return out, err
@@ -233,8 +253,7 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 	}
 
 	// Pre-aggregation tables (hourly/daily).
-	if days := s.cfg.Ops.Cleanup.HourlyMetricsRetentionDays; days > 0 {
-		cutoff := now.AddDate(0, 0, -days)
+	if cutoff, ok := opsCleanupCutoff(now, s.cfg.Ops.Cleanup.HourlyMetricsRetentionDays); ok {
 		n, err := deleteOldRowsByID(ctx, s.db, "ops_metrics_hourly", "bucket_start", cutoff, batchSize, false)
 		if err != nil {
 			return out, err
@@ -246,6 +265,15 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 			return out, err
 		}
 		out.dailyPreagg = n
+	}
+
+	// Channel monitor 每日维护（聚合昨日明细 + 软删过期明细/聚合）。
+	// 失败只记日志，不影响 ops 清理的成功状态（与 ops 各步骤风格一致）；
+	// 维护本身已经把每步错误打到 slog，heartbeat result 不再分项记录。
+	if s.channelMonitorSvc != nil {
+		if err := s.channelMonitorSvc.RunDailyMaintenance(ctx); err != nil {
+			logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] channel monitor maintenance failed: %v", err)
+		}
 	}
 
 	return out, nil

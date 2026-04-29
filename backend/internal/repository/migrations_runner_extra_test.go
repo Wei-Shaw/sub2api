@@ -94,6 +94,24 @@ func TestIsMigrationChecksumCompatible_AdditionalCases(t *testing.T) {
 	require.True(t, isMigrationChecksumCompatible(name, accepted, rule.fileChecksum))
 }
 
+func TestMigrationChecksumCompatibilityRules_CoverEditedUpgradeCompatibilityMigrations(t *testing.T) {
+	for _, name := range []string{
+		"109_auth_identity_compat_backfill.sql",
+		"110_pending_auth_and_provider_default_grants.sql",
+		"112_add_payment_order_provider_key_snapshot.sql",
+		"115_auth_identity_legacy_external_backfill.sql",
+		"116_auth_identity_legacy_external_safety_reports.sql",
+		"118_wechat_dual_mode_and_auth_source_defaults.sql",
+		"120_enforce_payment_orders_out_trade_no_unique_notx.sql",
+		"123_fix_legacy_auth_source_grant_on_signup_defaults.sql",
+	} {
+		rule, ok := migrationChecksumCompatibilityRules[name]
+		require.Truef(t, ok, "missing compatibility rule for %s", name)
+		require.NotEmpty(t, rule.fileChecksum)
+		require.NotEmpty(t, rule.acceptedDBChecksum)
+	}
+}
+
 func TestEnsureAtlasBaselineAligned(t *testing.T) {
 	t.Run("skip_when_no_legacy_table", func(t *testing.T) {
 		db, mock, err := sqlmock.New()

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -139,34 +140,123 @@ func (s *PaymentService) checkPaid(ctx context.Context, o *dbent.PaymentOrder) s
 	if err != nil {
 		return ""
 	}
-	// Use OutTradeNo as fallback when PaymentTradeNo is empty
-	// (e.g. EasyPay popup mode where trade_no arrives only via notify callback)
-	tradeNo := o.PaymentTradeNo
-	if tradeNo == "" {
-		tradeNo = o.OutTradeNo
+	queryRef := paymentOrderQueryReference(o, prov)
+	if queryRef == "" {
+		return ""
 	}
-	resp, err := prov.QueryOrder(ctx, tradeNo)
+	resp, err := prov.QueryOrder(ctx, queryRef)
 	if err != nil {
 		slog.Warn("query upstream failed", "orderID", o.ID, "error", err)
 		return ""
 	}
 	if resp.Status == payment.ProviderStatusPaid {
-		if err := s.HandlePaymentNotification(ctx, &payment.PaymentNotification{TradeNo: o.PaymentTradeNo, OrderID: o.OutTradeNo, Amount: resp.Amount, Status: payment.ProviderStatusSuccess}, prov.ProviderKey()); err != nil {
+		if !isValidProviderAmount(resp.Amount) {
+			s.writeAuditLog(ctx, o.ID, "PAYMENT_INVALID_AMOUNT", prov.ProviderKey(), map[string]any{
+				"expected": o.PayAmount,
+				"paid":     resp.Amount,
+				"tradeNo":  resp.TradeNo,
+				"queryRef": queryRef,
+			})
+			slog.Warn("query upstream returned invalid paid amount", "orderID", o.ID, "queryRef", queryRef, "paid", resp.Amount)
+			retriedResp, retryOK := requeryPaidOrderOnce(ctx, prov, queryRef)
+			if !retryOK {
+				return ""
+			}
+			resp = retriedResp
+		}
+		notificationTradeNo := o.PaymentTradeNo
+		if upstreamTradeNo := strings.TrimSpace(resp.TradeNo); paymentOrderShouldPersistUpstreamTradeNo(queryRef, upstreamTradeNo, notificationTradeNo) {
+			if _, updateErr := s.entClient.PaymentOrder.Update().
+				Where(paymentorder.IDEQ(o.ID)).
+				SetPaymentTradeNo(upstreamTradeNo).
+				Save(ctx); updateErr != nil {
+				slog.Error("persist upstream trade no during checkPaid failed", "orderID", o.ID, "tradeNo", upstreamTradeNo, "error", updateErr)
+			} else {
+				o.PaymentTradeNo = upstreamTradeNo
+			}
+			notificationTradeNo = upstreamTradeNo
+		}
+		if err := s.HandlePaymentNotification(ctx, &payment.PaymentNotification{TradeNo: notificationTradeNo, OrderID: o.OutTradeNo, Amount: resp.Amount, Status: payment.ProviderStatusSuccess, Metadata: resp.Metadata}, prov.ProviderKey()); err != nil {
 			slog.Error("fulfillment failed during checkPaid", "orderID", o.ID, "error", err)
 			// Still return already_paid — order was paid, fulfillment can be retried
 		}
 		return checkPaidResultAlreadyPaid
 	}
 	if cp, ok := prov.(payment.CancelableProvider); ok {
-		_ = cp.CancelPayment(ctx, tradeNo)
+		_ = cp.CancelPayment(ctx, queryRef)
 	}
 	return ""
+}
+
+func requeryPaidOrderOnce(ctx context.Context, prov payment.Provider, queryRef string) (*payment.QueryOrderResponse, bool) {
+	if prov == nil || strings.TrimSpace(queryRef) == "" {
+		return nil, false
+	}
+	resp, err := prov.QueryOrder(ctx, queryRef)
+	if err != nil {
+		slog.Warn("query upstream retry failed", "queryRef", queryRef, "error", err)
+		return nil, false
+	}
+	if resp == nil || resp.Status != payment.ProviderStatusPaid || !isValidProviderAmount(resp.Amount) {
+		return nil, false
+	}
+	return resp, true
+}
+
+func paymentOrderQueryReference(order *dbent.PaymentOrder, prov payment.Provider) string {
+	if order == nil {
+		return ""
+	}
+
+	providerKey := ""
+	if prov != nil {
+		providerKey = strings.TrimSpace(prov.ProviderKey())
+	}
+	if providerKey == "" {
+		if snapshot := psOrderProviderSnapshot(order); snapshot != nil {
+			providerKey = strings.TrimSpace(snapshot.ProviderKey)
+		}
+	}
+	if providerKey == "" {
+		providerKey = strings.TrimSpace(psStringValue(order.ProviderKey))
+	}
+	if providerKey == "" {
+		providerKey = strings.TrimSpace(order.PaymentType)
+	}
+
+	switch payment.GetBasePaymentType(providerKey) {
+	case payment.TypeAlipay, payment.TypeEasyPay, payment.TypeWxpay:
+		return strings.TrimSpace(order.OutTradeNo)
+	default:
+		if tradeNo := strings.TrimSpace(order.PaymentTradeNo); tradeNo != "" {
+			return tradeNo
+		}
+		return strings.TrimSpace(order.OutTradeNo)
+	}
+}
+
+func paymentOrderShouldPersistUpstreamTradeNo(queryRef, upstreamTradeNo, currentTradeNo string) bool {
+	upstreamTradeNo = strings.TrimSpace(upstreamTradeNo)
+	if upstreamTradeNo == "" {
+		return false
+	}
+	if strings.EqualFold(upstreamTradeNo, strings.TrimSpace(currentTradeNo)) {
+		return false
+	}
+	if strings.EqualFold(upstreamTradeNo, strings.TrimSpace(queryRef)) {
+		return false
+	}
+	return true
 }
 
 // VerifyOrderByOutTradeNo actively queries the upstream provider to check
 // if a payment was made, and processes it if so. This handles the case where
 // the provider's notify callback was missed (e.g. EasyPay popup mode).
 func (s *PaymentService) VerifyOrderByOutTradeNo(ctx context.Context, outTradeNo string, userID int64) (*dbent.PaymentOrder, error) {
+	outTradeNo, err := normalizeOrderLookupOutTradeNo(outTradeNo)
+	if err != nil {
+		return nil, err
+	}
 	o, err := s.entClient.PaymentOrder.Query().
 		Where(paymentorder.OutTradeNo(outTradeNo)).
 		Only(ctx)
@@ -190,25 +280,42 @@ func (s *PaymentService) VerifyOrderByOutTradeNo(ctx context.Context, outTradeNo
 	return o, nil
 }
 
-// VerifyOrderPublic verifies payment status without user authentication.
-// Used by the payment result page when the user's session has expired.
+// VerifyOrderPublic returns the currently persisted public order state without
+// triggering any upstream reconciliation. Signed resume-token recovery is the
+// only public recovery path allowed to query upstream state.
 func (s *PaymentService) VerifyOrderPublic(ctx context.Context, outTradeNo string) (*dbent.PaymentOrder, error) {
+	outTradeNo, err := normalizeOrderLookupOutTradeNo(outTradeNo)
+	if err != nil {
+		return nil, err
+	}
 	o, err := s.entClient.PaymentOrder.Query().
 		Where(paymentorder.OutTradeNo(outTradeNo)).
 		Only(ctx)
 	if err != nil {
 		return nil, infraerrors.NotFound("NOT_FOUND", "order not found")
 	}
-	if o.Status == OrderStatusPending || o.Status == OrderStatusExpired {
-		result := s.checkPaid(ctx, o)
-		if result == checkPaidResultAlreadyPaid {
-			o, err = s.entClient.PaymentOrder.Get(ctx, o.ID)
-			if err != nil {
-				return nil, fmt.Errorf("reload order: %w", err)
-			}
+	return o, nil
+}
+
+func normalizeOrderLookupOutTradeNo(raw string) (string, error) {
+	outTradeNo := strings.TrimSpace(raw)
+	if outTradeNo == "" {
+		return "", infraerrors.BadRequest("INVALID_OUT_TRADE_NO", "out_trade_no is required")
+	}
+	if len(outTradeNo) > 64 {
+		return "", infraerrors.BadRequest("INVALID_OUT_TRADE_NO", "out_trade_no is invalid")
+	}
+	for _, ch := range outTradeNo {
+		switch {
+		case ch >= 'a' && ch <= 'z':
+		case ch >= 'A' && ch <= 'Z':
+		case ch >= '0' && ch <= '9':
+		case ch == '_' || ch == '-':
+		default:
+			return "", infraerrors.BadRequest("INVALID_OUT_TRADE_NO", "out_trade_no is invalid")
 		}
 	}
-	return o, nil
+	return outTradeNo, nil
 }
 
 func (s *PaymentService) ExpireTimedOutOrders(ctx context.Context) (int, error) {
@@ -236,22 +343,79 @@ func (s *PaymentService) ExpireTimedOutOrders(ctx context.Context) (int, error) 
 // getOrderProvider creates a provider using the order's original instance config.
 // Falls back to registry lookup if instance ID is missing (legacy orders).
 func (s *PaymentService) getOrderProvider(ctx context.Context, o *dbent.PaymentOrder) (payment.Provider, error) {
-	if o.ProviderInstanceID != nil && *o.ProviderInstanceID != "" {
-		instID, err := strconv.ParseInt(*o.ProviderInstanceID, 10, 64)
-		if err == nil {
-			cfg, err := s.loadBalancer.GetInstanceConfig(ctx, instID)
-			if err == nil {
-				providerKey := s.registry.GetProviderKey(o.PaymentType)
-				if providerKey == "" {
-					providerKey = o.PaymentType
-				}
-				p, err := provider.CreateProvider(providerKey, *o.ProviderInstanceID, cfg)
-				if err == nil {
-					return p, nil
-				}
-			}
-		}
+	inst, err := s.getOrderProviderInstance(ctx, o)
+	if err != nil {
+		return nil, fmt.Errorf("load order provider instance: %w", err)
+	}
+	if inst != nil {
+		return s.createProviderFromInstance(ctx, inst)
+	}
+	if !paymentOrderAllowsRegistryFallback(o) {
+		return nil, fmt.Errorf("order %d provider instance is unresolved", o.ID)
+	}
+	providerKey := paymentOrderFallbackProviderKey(s.registry, o)
+	if providerKey == "" {
+		return nil, fmt.Errorf("order %d provider fallback key is missing", o.ID)
+	}
+	if !s.webhookRegistryFallbackAllowed(ctx, providerKey) {
+		return nil, fmt.Errorf("order %d provider fallback is ambiguous for %s", o.ID, providerKey)
 	}
 	s.EnsureProviders(ctx)
 	return s.registry.GetProvider(o.PaymentType)
+}
+
+func paymentOrderAllowsRegistryFallback(order *dbent.PaymentOrder) bool {
+	if order == nil {
+		return false
+	}
+	if psOrderProviderSnapshot(order) != nil {
+		return false
+	}
+	if strings.TrimSpace(psStringValue(order.ProviderInstanceID)) != "" {
+		return false
+	}
+	if strings.TrimSpace(psStringValue(order.ProviderKey)) != "" {
+		return false
+	}
+	return true
+}
+
+func paymentOrderFallbackProviderKey(registry *payment.Registry, order *dbent.PaymentOrder) string {
+	if order == nil {
+		return ""
+	}
+	if registry != nil {
+		if key := strings.TrimSpace(registry.GetProviderKey(payment.PaymentType(order.PaymentType))); key != "" {
+			return key
+		}
+	}
+	return strings.TrimSpace(payment.GetBasePaymentType(strings.TrimSpace(order.PaymentType)))
+}
+
+func (s *PaymentService) createProviderFromInstance(ctx context.Context, inst *dbent.PaymentProviderInstance) (payment.Provider, error) {
+	if inst == nil {
+		return nil, fmt.Errorf("payment provider instance is missing")
+	}
+
+	cfg, err := s.loadBalancer.GetInstanceConfig(ctx, int64(inst.ID))
+	if err != nil {
+		return nil, fmt.Errorf("load provider instance config: %w", err)
+	}
+	if inst.PaymentMode != "" {
+		cfg["paymentMode"] = inst.PaymentMode
+	}
+
+	instID := strconv.FormatInt(int64(inst.ID), 10)
+	prov, err := provider.CreateProvider(inst.ProviderKey, instID, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create provider from instance: %w", err)
+	}
+	return prov, nil
+}
+
+func psStringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }

@@ -22,7 +22,7 @@
               <Icon name="x" size="sm" />
               <span>{{ t('payment.orders.cancel') }}</span>
             </button>
-            <button v-if="row.status === 'COMPLETED'" @click="openRefundDialog(row)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/20">
+            <button v-if="canRequestRefund(row)" @click="openRefundDialog(row)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/20">
               <Icon name="dollar" size="sm" />
               <span>{{ t('payment.orders.requestRefund') }}</span>
             </button>
@@ -62,7 +62,7 @@
           </div>
           <div class="mt-2 flex justify-between text-sm">
             <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') }}</span>
-            <span class="text-gray-900 dark:text-white">${{ refundTarget.amount.toFixed(2) }}</span>
+            <span class="text-gray-900 dark:text-white">{{ formatCurrency(refundTarget.amount) }}</span>
           </div>
         </div>
         <div>
@@ -86,7 +86,8 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
-import { extractApiErrorMessage } from '@/utils/apiError'
+import { extractI18nErrorMessage } from '@/utils/apiError'
+import { formatCurrency } from '@/utils/format'
 import type { PaymentOrder } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
@@ -102,6 +103,7 @@ const appStore = useAppStore()
 const loading = ref(false)
 const actionLoading = ref(false)
 const orders = ref<PaymentOrder[]>([])
+const refundEligibleProviders = ref<Set<string>>(new Set())
 const currentFilter = ref('')
 const cancelTargetId = ref<number | null>(null)
 const refundTarget = ref<PaymentOrder | null>(null)
@@ -127,7 +129,7 @@ async function fetchOrders() {
     orders.value = res.data.items || []
     pagination.total = res.data.total || 0
   } catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
   } finally {
     loading.value = false
   }
@@ -147,7 +149,7 @@ async function confirmCancel() {
     cancelTargetId.value = null
     await fetchOrders()
   } catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
   } finally {
     actionLoading.value = false
   }
@@ -165,11 +167,24 @@ async function confirmRefund() {
     refundReason.value = ''
     await fetchOrders()
   } catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
   } finally {
     actionLoading.value = false
   }
 }
 
-onMounted(() => fetchOrders())
+function canRequestRefund(order: PaymentOrder): boolean {
+  if (order.status !== 'COMPLETED') return false
+  if (!order.provider_instance_id) return false
+  return refundEligibleProviders.value.has(order.provider_instance_id)
+}
+
+async function loadRefundEligibility() {
+  try {
+    const res = await paymentAPI.getRefundEligibleProviders()
+    refundEligibleProviders.value = new Set(res.data.provider_instance_ids || [])
+  } catch { /* ignore — default to hiding refund button */ }
+}
+
+onMounted(() => { fetchOrders(); loadRefundEligibility() })
 </script>

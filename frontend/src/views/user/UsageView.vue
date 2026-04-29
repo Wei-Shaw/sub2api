@@ -29,7 +29,7 @@
             <div class="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/30">
               <Icon name="cube" size="md" class="text-amber-600 dark:text-amber-400" />
             </div>
-            <div>
+            <div class="min-w-0 flex-1">
               <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
                 {{ t('usage.totalTokens') }}
               </p>
@@ -37,8 +37,23 @@
                 {{ formatTokens(usageStats?.total_tokens || 0) }}
               </p>
               <p class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t('usage.in') }}: {{ formatTokens(usageStats?.total_input_tokens || 0) }} /
-                {{ t('usage.out') }}: {{ formatTokens(usageStats?.total_output_tokens || 0) }}
+                <span>{{ t('usage.in') }} {{ formatTokens(usageStats?.total_input_tokens || 0) }}</span>
+                <span> · </span>
+                <span>{{ t('usage.out') }} {{ formatTokens(usageStats?.total_output_tokens || 0) }}</span>
+                <span> · </span>
+                <span class="text-sky-600 dark:text-sky-400">{{ t('usage.cacheHit') }} {{ formatTokens(usageStats?.total_cache_read_tokens || 0) }}</span>
+                <span> · </span>
+                <span class="text-amber-600 dark:text-amber-400">{{ t('usage.cacheCreate') }} {{ formatTokens(usageStats?.total_cache_creation_tokens || 0) }}</span>
+              </p>
+              <p class="text-xs text-gray-400 dark:text-gray-500">
+                {{ t('usage.cacheHitRate') }}:
+                <template v-if="cacheStats.totalInput > 0">
+                  <span class="text-sky-600 dark:text-sky-400">{{ formatTokens(cacheStats.cacheRead) }}</span>
+                  <span class="text-gray-400">/</span>
+                  <span class="text-gray-600 dark:text-gray-300">{{ formatTokens(cacheStats.totalInput) }}</span>
+                  <span class="ml-1">{{ cacheStats.ratePercent }}</span>
+                </template>
+                <template v-else>-</template>
               </p>
             </div>
           </div>
@@ -192,7 +207,7 @@
           <template #cell-billing_mode="{ row }">
             <span class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium"
                   :class="getBillingModeBadgeClass(row.billing_mode)">
-              {{ getBillingModeLabel(row.billing_mode) }}
+              {{ getBillingModeLabel(row.billing_mode, t) }}
             </span>
           </template>
 
@@ -447,13 +462,21 @@
               <span class="text-gray-400">{{ t('admin.usage.outputCost') }}</span>
               <span class="font-medium text-white">${{ tooltipData.output_cost.toFixed(6) }}</span>
             </div>
-            <div v-if="tooltipData && tooltipData.input_tokens > 0" class="flex items-center justify-between gap-4">
-              <span class="text-gray-400">{{ t('usage.inputTokenPrice') }}</span>
-              <span class="font-medium text-sky-300">{{ formatTokenPricePerMillion(tooltipData.input_cost, tooltipData.input_tokens) }} {{ t('usage.perMillionTokens') }}</span>
-            </div>
-            <div v-if="tooltipData && tooltipData.output_tokens > 0" class="flex items-center justify-between gap-4">
-              <span class="text-gray-400">{{ t('usage.outputTokenPrice') }}</span>
-              <span class="font-medium text-violet-300">{{ formatTokenPricePerMillion(tooltipData.output_cost, tooltipData.output_tokens) }} {{ t('usage.perMillionTokens') }}</span>
+            <!-- Token billing: show unit prices per 1M tokens -->
+            <template v-if="!tooltipData?.billing_mode || tooltipData.billing_mode === 'token'">
+              <div v-if="tooltipData && tooltipData.input_tokens > 0" class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.inputTokenPrice') }}</span>
+                <span class="font-medium text-sky-300">{{ formatTokenPricePerMillion(tooltipData.input_cost, tooltipData.input_tokens) }} {{ t('usage.perMillionTokens') }}</span>
+              </div>
+              <div v-if="tooltipData && tooltipData.output_tokens > 0" class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.outputTokenPrice') }}</span>
+                <span class="font-medium text-violet-300">{{ formatTokenPricePerMillion(tooltipData.output_cost, tooltipData.output_tokens) }} {{ t('usage.perMillionTokens') }}</span>
+              </div>
+            </template>
+            <!-- Per-request / image billing: show unit price -->
+            <div v-else class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ tooltipData.billing_mode === 'image' ? t('usage.imageUnitPrice') : t('usage.unitPrice') }}</span>
+              <span class="font-medium text-sky-300">${{ tooltipData.total_cost?.toFixed(6) || '0.000000' }}</span>
             </div>
             <div v-if="tooltipData && tooltipData.cache_creation_cost > 0" class="flex items-center justify-between gap-4">
               <span class="text-gray-400">{{ t('admin.usage.cacheCreationCost') }}</span>
@@ -516,6 +539,7 @@ import { formatCacheTokens, formatMultiplier } from '@/utils/formatters'
 import { formatTokenPricePerMillion } from '@/utils/usagePricing'
 import { getUsageServiceTierLabel } from '@/utils/usageServiceTier'
 import { resolveUsageRequestType } from '@/utils/usageRequestType'
+import { getBillingModeLabel, getBillingModeBadgeClass } from '@/utils/billingMode'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -534,6 +558,19 @@ const tokenTooltipData = ref<UsageLog | null>(null)
 
 // Usage stats from API
 const usageStats = ref<UsageStatsResponse | null>(null)
+
+// 缓存命中率 = cache_read / (input + cache_read)
+// 分母为 0（无任何输入）时显示 '-'
+const cacheStats = computed(() => {
+  // 总输入 token = 普通输入 + 缓存写入 + 缓存读取（命中）
+  // 缓存命中率 = 缓存读取 / 总输入；总输入为 0 时返回零值，模板按 '-' 渲染。
+  const cacheRead = usageStats.value?.total_cache_read_tokens || 0
+  const cacheCreate = usageStats.value?.total_cache_creation_tokens || 0
+  const input = usageStats.value?.total_input_tokens || 0
+  const totalInput = input + cacheCreate + cacheRead
+  const ratePercent = totalInput > 0 ? `${((cacheRead / totalInput) * 100).toFixed(1)}%` : '-'
+  return { cacheRead, totalInput, ratePercent }
+})
 
 const columns = computed<Column[]>(() => [
   { key: 'api_key', label: t('usage.apiKeyFilter'), sortable: false },
@@ -636,17 +673,6 @@ const getRequestTypeBadgeClass = (log: UsageLog): string => {
   return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
 }
 
-const getBillingModeLabel = (mode: string | null | undefined): string => {
-  if (mode === 'per_request') return t('admin.usage.billingModePerRequest')
-  if (mode === 'image') return t('admin.usage.billingModeImage')
-  return t('admin.usage.billingModeToken')
-}
-
-const getBillingModeBadgeClass = (mode: string | null | undefined): string => {
-  if (mode === 'per_request') return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200'
-  if (mode === 'image') return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200'
-  return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-}
 
 const getRequestTypeExportText = (log: UsageLog): string => {
   const requestType = resolveUsageRequestType(log)
@@ -858,7 +884,7 @@ const exportToCSV = async () => {
         formatReasoningEffort(log.reasoning_effort),
         log.inbound_endpoint || '',
         getRequestTypeExportText(log),
-        getBillingModeLabel(log.billing_mode),
+        getBillingModeLabel(log.billing_mode, t),
         log.input_tokens,
         log.output_tokens,
         log.cache_read_tokens,

@@ -32,7 +32,8 @@
       <!-- Toggles + Payment mode + Supported types (single row) -->
       <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
         <ToggleSwitch :label="t('common.enabled')" :checked="form.enabled" @toggle="form.enabled = !form.enabled" />
-        <ToggleSwitch :label="t('admin.settings.payment.refundEnabled')" :checked="form.refund_enabled" @toggle="form.refund_enabled = !form.refund_enabled" />
+        <ToggleSwitch :label="t('admin.settings.payment.refundEnabled')" :checked="form.refund_enabled" @toggle="form.refund_enabled = !form.refund_enabled; if (!form.refund_enabled) form.allow_user_refund = false" />
+        <ToggleSwitch v-if="form.refund_enabled" :label="t('admin.settings.payment.allowUserRefund')" :checked="form.allow_user_refund" @toggle="form.allow_user_refund = !form.allow_user_refund" />
         <div v-if="form.provider_key === 'easypay'" class="flex items-center gap-2">
           <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.paymentMode') }}</span>
           <div class="flex gap-1.5">
@@ -72,9 +73,42 @@
 
       <!-- Config fields -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-700">
-        <h4 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">
-          {{ t('admin.settings.payment.providerConfig') }}
-        </h4>
+        <div class="mb-3 flex items-center gap-2">
+          <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
+            {{ t('admin.settings.payment.providerConfig') }}
+          </h4>
+          <HelpTooltip v-if="paymentGuide" trigger="click" width-class="w-80">
+            <template #trigger>
+              <button
+                type="button"
+                class="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-300 text-[11px] font-semibold text-gray-400 transition-colors hover:border-primary-500 hover:text-primary-600 dark:border-dark-500 dark:text-gray-500 dark:hover:border-primary-400 dark:hover:text-primary-400"
+                :aria-label="t('admin.settings.payment.paymentGuideTrigger')"
+                :title="t('admin.settings.payment.paymentGuideTrigger')"
+              >
+                ?
+              </button>
+            </template>
+            <div class="space-y-3">
+              <p class="font-medium text-white">{{ paymentGuide.summary }}</p>
+              <div
+                v-for="item in paymentGuide.items"
+                :key="item.title"
+                class="space-y-1.5 border-t border-white/10 pt-2 first:border-t-0 first:pt-0"
+              >
+                <p class="font-medium text-white">{{ item.title }}</p>
+                <p><span class="text-gray-300">{{ t('admin.settings.payment.guideOpenLabel') }}</span>{{ item.open }}</p>
+                <p><span class="text-gray-300">{{ t('admin.settings.payment.guideCallLabel') }}</span>{{ item.call }}</p>
+                <p><span class="text-gray-300">{{ t('admin.settings.payment.guideFallbackLabel') }}</span>{{ item.fallback }}</p>
+              </div>
+              <p v-if="paymentGuide.note" class="border-t border-white/10 pt-2 text-[11px] text-gray-300">
+                {{ paymentGuide.note }}
+              </p>
+            </div>
+          </HelpTooltip>
+        </div>
+        <p v-if="paymentGuide" class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+          {{ paymentGuide.summary }}
+        </p>
         <div class="space-y-3">
           <div v-for="field in resolvedFields" :key="field.key">
             <label class="input-label">
@@ -87,13 +121,24 @@
               v-model="config[field.key]"
               rows="3"
               class="input font-mono text-xs"
+              autocomplete="new-password"
+              data-1p-ignore
+              data-lpignore="true"
+              data-bwignore="true"
+              spellcheck="false"
+              :placeholder="editing ? t('admin.accounts.leaveEmptyToKeep') : ''"
             />
             <div v-else-if="field.sensitive" class="relative">
               <input
                 :type="visibleFields[field.key] ? 'text' : 'password'"
                 v-model="config[field.key]"
                 class="input pr-10"
-                :placeholder="field.defaultValue || ''"
+                autocomplete="new-password"
+                data-1p-ignore
+                data-lpignore="true"
+                data-bwignore="true"
+                spellcheck="false"
+                :placeholder="editing ? t('admin.accounts.leaveEmptyToKeep') : (field.defaultValue || '')"
               />
               <button
                 type="button"
@@ -208,6 +253,7 @@
 import { reactive, computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import Select from '@/components/common/Select.vue'
 import type { SelectOption } from '@/components/common/Select.vue'
 import ToggleSwitch from './ToggleSwitch.vue'
@@ -243,12 +289,26 @@ const emit = defineEmits<{
     enabled: boolean
     payment_mode: string
     refund_enabled: boolean
+    allow_user_refund: boolean
     config: Record<string, string>
     limits: string
   }]
 }>()
 
 const { t } = useI18n()
+
+interface PaymentGuideItem {
+  title: string
+  open: string
+  call: string
+  fallback: string
+}
+
+interface PaymentGuide {
+  summary: string
+  items: PaymentGuideItem[]
+  note?: string
+}
 
 // --- Form state ---
 const form = reactive({
@@ -258,6 +318,7 @@ const form = reactive({
   enabled: true,
   payment_mode: PAYMENT_MODE_QRCODE,
   refund_enabled: false,
+  allow_user_refund: false,
 })
 const config = reactive<Record<string, string>>({})
 const limits = reactive<Record<string, Record<string, number>>>({})
@@ -298,6 +359,63 @@ const resolvedFields = computed(() => {
     ...f,
     label: f.label || t(`admin.settings.payment.field_${f.key}`),
   }))
+})
+
+const paymentGuide = computed<PaymentGuide | null>(() => {
+  if (form.provider_key === 'alipay') {
+    return {
+      summary: t('admin.settings.payment.alipayGuideSummary'),
+      items: [
+        {
+          title: t('admin.settings.payment.alipayGuideFaceToFaceTitle'),
+          open: t('admin.settings.payment.alipayGuideFaceToFaceOpen'),
+          call: t('admin.settings.payment.alipayGuideFaceToFaceCall'),
+          fallback: t('admin.settings.payment.alipayGuideFaceToFaceFallback'),
+        },
+        {
+          title: t('admin.settings.payment.alipayGuidePagePayTitle'),
+          open: t('admin.settings.payment.alipayGuidePagePayOpen'),
+          call: t('admin.settings.payment.alipayGuidePagePayCall'),
+          fallback: t('admin.settings.payment.alipayGuidePagePayFallback'),
+        },
+        {
+          title: t('admin.settings.payment.alipayGuideWapTitle'),
+          open: t('admin.settings.payment.alipayGuideWapOpen'),
+          call: t('admin.settings.payment.alipayGuideWapCall'),
+          fallback: t('admin.settings.payment.alipayGuideWapFallback'),
+        },
+      ],
+    }
+  }
+
+  if (form.provider_key === 'wxpay') {
+    return {
+      summary: t('admin.settings.payment.wxpayGuideSummary'),
+      note: t('admin.settings.payment.wxpayGuideNote'),
+      items: [
+        {
+          title: t('admin.settings.payment.wxpayGuideNativeTitle'),
+          open: t('admin.settings.payment.wxpayGuideNativeOpen'),
+          call: t('admin.settings.payment.wxpayGuideNativeCall'),
+          fallback: t('admin.settings.payment.wxpayGuideNativeFallback'),
+        },
+        {
+          title: t('admin.settings.payment.wxpayGuideJsapiTitle'),
+          open: t('admin.settings.payment.wxpayGuideJsapiOpen'),
+          call: t('admin.settings.payment.wxpayGuideJsapiCall'),
+          fallback: t('admin.settings.payment.wxpayGuideJsapiFallback'),
+        },
+        {
+          title: t('admin.settings.payment.wxpayGuideH5Title'),
+          open: t('admin.settings.payment.wxpayGuideH5Open'),
+          call: t('admin.settings.payment.wxpayGuideH5Call'),
+          fallback: t('admin.settings.payment.wxpayGuideH5Fallback'),
+        },
+      ],
+    }
+  }
+
+  return null
 })
 
 const limitableTypes = computed(() => {
@@ -395,9 +513,12 @@ function handleSave() {
     emitValidationError(t('admin.settings.payment.validationNameRequired'))
     return
   }
-  // Validate required config fields — all non-optional fields must be filled
+  // Validate required config fields — all non-optional fields must be filled.
+  // In edit mode, sensitive fields may be left blank to preserve the stored
+  // value (backend merges blanks by preserving the existing secret).
   for (const f of PROVIDER_CONFIG_FIELDS[form.provider_key] || []) {
     if (f.optional) continue
+    if (props.editing && f.sensitive) continue
     const val = (config[f.key] || '').trim()
     if (!val) {
       const label = f.label || t(`admin.settings.payment.field_${f.key}`)
@@ -409,8 +530,6 @@ function handleSave() {
   const filteredConfig: Record<string, string> = {}
   for (const [k, v] of Object.entries(config)) {
     if (!v || !v.trim()) continue
-    // Skip masked values — backend keeps existing credentials
-    if (v === '••••••••') continue
     filteredConfig[k] = v
   }
 
@@ -433,6 +552,7 @@ function handleSave() {
     enabled: form.enabled,
     payment_mode: form.provider_key === 'easypay' ? form.payment_mode : '',
     refund_enabled: form.refund_enabled,
+    allow_user_refund: form.refund_enabled ? form.allow_user_refund : false,
     config: filteredConfig,
     limits: serializeLimits(),
   })
@@ -452,6 +572,7 @@ function reset(defaultKey: string) {
   form.enabled = true
   form.payment_mode = defaultKey === 'easypay' ? PAYMENT_MODE_QRCODE : ''
   form.refund_enabled = false
+  form.allow_user_refund = false
   clearConfig()
   applyDefaults()
 }
@@ -463,8 +584,10 @@ function loadProvider(provider: ProviderInstance) {
   form.enabled = provider.enabled
   form.payment_mode = provider.payment_mode || (provider.provider_key === 'easypay' ? PAYMENT_MODE_QRCODE : '')
   form.refund_enabled = provider.refund_enabled
+  form.allow_user_refund = provider.allow_user_refund
   clearConfig()
-  // Pre-fill config from API response (non-sensitive in cleartext, sensitive masked as ••••••••)
+  // Pre-fill config from API response. Backend omits sensitive fields entirely,
+  // so those inputs stay blank — submitting blank preserves the stored secret.
   if (provider.config) {
     for (const [k, v] of Object.entries(provider.config)) {
       // Skip notifyUrl/returnUrl — they are derived from callbackBaseUrl

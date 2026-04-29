@@ -36,6 +36,22 @@ class MockResizeObserver {
 
 globalThis.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver
 
+// Mock matchMedia (jsdom doesn't implement it).
+// Default matches=true so desktop viewport queries pass and components that
+// only lazy-load on mobile render content immediately in tests.
+if (typeof window !== 'undefined' && !window.matchMedia) {
+  window.matchMedia = (query: string): MediaQueryList => ({
+    matches: true,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn()
+  }) as MediaQueryList
+}
+
 // Vue Test Utils 全局配置
 config.global.stubs = {
   // 可以在这里添加全局 stub

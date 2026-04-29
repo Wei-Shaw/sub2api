@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -15,11 +16,21 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// 错误码常量：与前端 i18n key（admin.group.errors.* 或 common.errors.*）对齐。
+// 走 PR-A 字段级错误协议（task #33）让前端 parseFieldErrors 直接消费 metadata.fields。
+//
+// INVALID_REQUEST_BODY 集中在 admin/common.go 的 errReasonInvalidRequestBody，本文件不再重复声明。
+const (
+	errReasonGroupInvalidID = "INVALID_GROUP_ID"
+)
+
 // GroupHandler handles admin group management
 type GroupHandler struct {
 	adminService         service.AdminService
 	dashboardService     *service.DashboardService
 	groupCapacityService *service.GroupCapacityService
+	// serviceQuotaSvc 用于在删除 group 后失效服务限额缓存（FK CASCADE 自动删除关联，但缓存不感知）。
+	serviceQuotaSvc service.ServiceQuotaService
 }
 
 type optionalLimitField struct {
@@ -72,11 +83,12 @@ func (f optionalLimitField) ToServiceInput() *float64 {
 }
 
 // NewGroupHandler creates a new admin group handler
-func NewGroupHandler(adminService service.AdminService, dashboardService *service.DashboardService, groupCapacityService *service.GroupCapacityService) *GroupHandler {
+func NewGroupHandler(adminService service.AdminService, dashboardService *service.DashboardService, groupCapacityService *service.GroupCapacityService, serviceQuotaSvc service.ServiceQuotaService) *GroupHandler {
 	return &GroupHandler{
 		adminService:         adminService,
 		dashboardService:     dashboardService,
 		groupCapacityService: groupCapacityService,
+		serviceQuotaSvc:      serviceQuotaSvc,
 	}
 }
 
@@ -110,6 +122,8 @@ type CreateGroupRequest struct {
 	RequirePrivacySet           bool                                      `json:"require_privacy_set"`
 	DefaultMappedModel          string                                    `json:"default_mapped_model"`
 	MessagesDispatchModelConfig service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
+	// 分组 RPM 上限（0 = 不限制）
+	RPMLimit int `json:"rpm_limit"`
 	// 从指定分组复制账号（创建后自动绑定）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -145,6 +159,8 @@ type UpdateGroupRequest struct {
 	RequirePrivacySet           *bool                                      `json:"require_privacy_set"`
 	DefaultMappedModel          *string                                    `json:"default_mapped_model"`
 	MessagesDispatchModelConfig *service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
+	// 分组 RPM 上限（0 = 不限制）；nil 表示未提供不改动
+	RPMLimit *int `json:"rpm_limit"`
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -213,9 +229,9 @@ func (h *GroupHandler) GetAll(c *gin.Context) {
 // GetByID handles getting a group by ID
 // GET /api/v1/admin/groups/:id
 func (h *GroupHandler) GetByID(c *gin.Context) {
-	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	groupID, err := ParseInt64Param(c, "id", errReasonGroupInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid group ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -232,8 +248,8 @@ func (h *GroupHandler) GetByID(c *gin.Context) {
 // POST /api/v1/admin/groups
 func (h *GroupHandler) Create(c *gin.Context) {
 	var req CreateGroupRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -262,6 +278,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		RequirePrivacySet:               req.RequirePrivacySet,
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
+		RPMLimit:                        req.RPMLimit,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {
@@ -275,15 +292,15 @@ func (h *GroupHandler) Create(c *gin.Context) {
 // Update handles updating a group
 // PUT /api/v1/admin/groups/:id
 func (h *GroupHandler) Update(c *gin.Context) {
-	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	groupID, err := ParseInt64Param(c, "id", errReasonGroupInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid group ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
 	var req UpdateGroupRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -313,6 +330,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		RequirePrivacySet:               req.RequirePrivacySet,
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
+		RPMLimit:                        req.RPMLimit,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {
@@ -326,16 +344,31 @@ func (h *GroupHandler) Update(c *gin.Context) {
 // Delete handles deleting a group
 // DELETE /api/v1/admin/groups/:id
 func (h *GroupHandler) Delete(c *gin.Context) {
-	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	groupID, err := ParseInt64Param(c, "id", errReasonGroupInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid group ID")
+		response.ErrorFrom(c, err)
 		return
 	}
+
+	// 必须在 DELETE 之前快照受影响的 path_ids（FK CASCADE 删完查不到）。
+	pathIDs := snapshotPathIDsForOwner(c, h.serviceQuotaSvc, service.ServiceQuotaPathOwnerGroup, groupID)
 
 	err = h.adminService.DeleteGroup(c.Request.Context(), groupID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+
+	// FK CASCADE 已删除 service_quota_paths 中引用本 group 的关联行，
+	// 但服务限额规则缓存（Redis 5min TTL）需要手动失效。
+	// 缓存重载失败不影响主删除流程，仅记日志。
+	if h.serviceQuotaSvc != nil {
+		if err := h.serviceQuotaSvc.ReloadCache(c.Request.Context()); err != nil {
+			slog.WarnContext(c.Request.Context(), "failed to reload service quota cache after group deletion",
+				"group_id", groupID, "err", err)
+		}
+		// 异步清 Redis 残留 counter key（避免 group_id 复用时新 group 继承旧 counter）。
+		h.serviceQuotaSvc.ResetCountersForPaths(c.Request.Context(), pathIDs)
 	}
 
 	response.Success(c, gin.H{"message": "Group deleted successfully"})
@@ -344,9 +377,9 @@ func (h *GroupHandler) Delete(c *gin.Context) {
 // GetStats handles getting group statistics
 // GET /api/v1/admin/groups/:id/stats
 func (h *GroupHandler) GetStats(c *gin.Context) {
-	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	groupID, err := ParseInt64Param(c, "id", errReasonGroupInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid group ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -390,9 +423,9 @@ func (h *GroupHandler) GetCapacitySummary(c *gin.Context) {
 // GetGroupAPIKeys handles getting API keys in a group
 // GET /api/v1/admin/groups/:id/api-keys
 func (h *GroupHandler) GetGroupAPIKeys(c *gin.Context) {
-	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	groupID, err := ParseInt64Param(c, "id", errReasonGroupInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid group ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -414,9 +447,9 @@ func (h *GroupHandler) GetGroupAPIKeys(c *gin.Context) {
 // GetGroupRateMultipliers handles getting rate multipliers for users in a group
 // GET /api/v1/admin/groups/:id/rate-multipliers
 func (h *GroupHandler) GetGroupRateMultipliers(c *gin.Context) {
-	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	groupID, err := ParseInt64Param(c, "id", errReasonGroupInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid group ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -435,9 +468,9 @@ func (h *GroupHandler) GetGroupRateMultipliers(c *gin.Context) {
 // ClearGroupRateMultipliers handles clearing all rate multipliers for a group
 // DELETE /api/v1/admin/groups/:id/rate-multipliers
 func (h *GroupHandler) ClearGroupRateMultipliers(c *gin.Context) {
-	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	groupID, err := ParseInt64Param(c, "id", errReasonGroupInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid group ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -457,15 +490,15 @@ type BatchSetGroupRateMultipliersRequest struct {
 // BatchSetGroupRateMultipliers handles batch setting rate multipliers for a group
 // PUT /api/v1/admin/groups/:id/rate-multipliers
 func (h *GroupHandler) BatchSetGroupRateMultipliers(c *gin.Context) {
-	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	groupID, err := ParseInt64Param(c, "id", errReasonGroupInvalidID)
 	if err != nil {
-		response.BadRequest(c, "Invalid group ID")
+		response.ErrorFrom(c, err)
 		return
 	}
 
 	var req BatchSetGroupRateMultipliersRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -475,6 +508,51 @@ func (h *GroupHandler) BatchSetGroupRateMultipliers(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{"message": "Rate multipliers updated successfully"})
+}
+
+// BatchSetGroupRPMOverridesRequest represents batch set rpm_override request
+type BatchSetGroupRPMOverridesRequest struct {
+	Entries []service.GroupRPMOverrideInput `json:"entries" binding:"required"`
+}
+
+// BatchSetGroupRPMOverrides handles batch setting rpm_override for users in a group
+// PUT /api/v1/admin/groups/:id/rpm-overrides
+func (h *GroupHandler) BatchSetGroupRPMOverrides(c *gin.Context) {
+	groupID, err := ParseInt64Param(c, "id", errReasonGroupInvalidID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	var req BatchSetGroupRPMOverridesRequest
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	if err := h.adminService.BatchSetGroupRPMOverrides(c.Request.Context(), groupID, req.Entries); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{"message": "RPM overrides updated successfully"})
+}
+
+// ClearGroupRPMOverrides handles clearing all rpm_override for a group
+// DELETE /api/v1/admin/groups/:id/rpm-overrides
+func (h *GroupHandler) ClearGroupRPMOverrides(c *gin.Context) {
+	groupID, err := ParseInt64Param(c, "id", errReasonGroupInvalidID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	if err := h.adminService.ClearGroupRPMOverrides(c.Request.Context(), groupID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{"message": "RPM overrides cleared successfully"})
 }
 
 // UpdateSortOrderRequest represents the request to update group sort orders
@@ -489,8 +567,8 @@ type UpdateSortOrderRequest struct {
 // PUT /api/v1/admin/groups/sort-order
 func (h *GroupHandler) UpdateSortOrder(c *gin.Context) {
 	var req UpdateSortOrderRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 

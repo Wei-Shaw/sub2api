@@ -85,15 +85,16 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		return nil, fmt.Errorf("marshal anthropic request: %w", err)
 	}
 
-	// 6. Apply Claude Code mimicry for OAuth accounts
-	isClaudeCode := false // CC API is never Claude Code
+	// 6. Apply Claude Code mimicry for OAuth accounts.
+	// Chat Completions 协议进来的请求永远不是 Claude Code 客户端，所以对 OAuth 账号
+	// 必须完整执行 /v1/messages 主路径上的伪装链路（system 重写 + normalize + metadata 注入），
+	// 否则会被 Anthropic 判为第三方应用并扣 extra usage。
+	// 见 applyClaudeCodeOAuthMimicryToBody 的 godoc。
+	isClaudeCode := false
 	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCode
 
 	if shouldMimicClaudeCode {
-		if !strings.Contains(strings.ToLower(mappedModel), "haiku") &&
-			!systemIncludesClaudeCodePrompt(anthropicReq.System) {
-			anthropicBody = injectClaudeCodePrompt(anthropicBody, anthropicReq.System)
-		}
+		anthropicBody = s.applyClaudeCodeOAuthMimicryToBody(ctx, c, account, anthropicBody, anthropicReq.System, mappedModel)
 	}
 
 	// 7. Enforce cache_control block limit
@@ -312,7 +313,14 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	}
-	c.JSON(http.StatusOK, ccResp)
+	// Marshal then bytes-replace so tool name mapping is reversed at byte level
+	// (parity with Parrot non-stream flow that marshals → restore → emit).
+	if respBytes, err := json.Marshal(ccResp); err == nil {
+		respBytes = reverseToolNamesIfPresent(c, respBytes)
+		c.Data(http.StatusOK, "application/json; charset=utf-8", respBytes)
+	} else {
+		c.JSON(http.StatusOK, ccResp)
+	}
 
 	return &ForwardResult{
 		RequestID:       requestID,
@@ -383,7 +391,10 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 		if err != nil {
 			return false
 		}
-		if _, err := fmt.Fprint(c.Writer, sse); err != nil {
+		// Reverse tool name mapping: fake → real, per-chunk bytes.Replace.
+		// c 可能持有请求侧注入的 ToolNameRewrite；无则仅做静态前缀还原。
+		out := string(reverseToolNamesIfPresent(c, []byte(sse)))
+		if _, err := fmt.Fprint(c.Writer, out); err != nil {
 			return true // client disconnected
 		}
 		return false

@@ -187,6 +187,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "previous_response_id must be a response.id (resp_*), not a message id")
 			return
 		}
+		reqLog.Warn("openai.request_validation_failed",
+			zap.String("reason", "previous_response_id_requires_wsv2"),
+		)
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "previous_response_id is only supported on Responses WebSocket v2")
+		return
 	}
 
 	setOpsRequestContext(c, reqModel, reqStream, body)
@@ -221,15 +226,22 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 
 	// 2. Re-check billing eligibility after wait
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+	// billingTicket：两阶段计费检查（详见 service.BillingTicket 注释），caller 必须 defer Close。
+	billingTicket, err := h.billingCacheService.PrepareBillingCheckForRequest(
+		c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription,
+		service.ServiceQuotaCheckRequest{Model: reqModel, ChannelID: channelMapping.ChannelID},
+	)
+	if err != nil {
 		reqLog.Info("openai.billing_eligibility_check_failed", zap.Error(err))
-		status, code, message := billingErrorDetails(err)
-		h.handleStreamingAwareError(c, status, code, message, streamStarted)
+		status, code, message, metadata := billingErrorDetails(err)
+		h.handleStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
 		return
 	}
+	defer billingTicket.Close()
 
 	// Generate session hash (header first; fallback to prompt_cache_key)
 	sessionHash := h.gatewayService.GenerateSessionHash(c, sessionHashBody)
+	requireCompact := isOpenAIRemoteCompactPath(c)
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
@@ -248,6 +260,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			reqModel,
 			failedAccountIDs,
 			service.OpenAIUpstreamTransportAny,
+			requireCompact,
 		)
 		if err != nil {
 			reqLog.Warn("openai.account_select_failed",
@@ -255,6 +268,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if len(failedAccountIDs) == 0 {
+				if errors.Is(err, service.ErrNoAvailableCompactAccounts) {
+					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "compact_not_supported", "No available OpenAI accounts support /responses/compact", streamStarted)
+					return
+				}
 				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
 				return
 			}
@@ -288,6 +305,17 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if !acquired {
+			return
+		}
+
+		// service quota 第二阶段：基于选定的 channel/account 抢槽位 / 增 RPM。
+		if err := billingTicket.Consume(c.Request.Context(), channelMapping.ChannelID, account.ID); err != nil {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			reqLog.Info("openai.service_quota_consume_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+			status, code, message, metadata := billingErrorDetails(err)
+			h.handleStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
 			return
 		}
 
@@ -587,12 +615,18 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		defer userReleaseFunc()
 	}
 
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+	// billingTicket：两阶段计费检查（详见 service.BillingTicket 注释），caller 必须 defer Close。
+	billingTicket, err := h.billingCacheService.PrepareBillingCheckForRequest(
+		c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription,
+		service.ServiceQuotaCheckRequest{Model: reqModel, ChannelID: channelMappingMsg.ChannelID},
+	)
+	if err != nil {
 		reqLog.Info("openai_messages.billing_eligibility_check_failed", zap.Error(err))
-		status, code, message := billingErrorDetails(err)
-		h.anthropicStreamingAwareError(c, status, code, message, streamStarted)
+		status, code, message, metadata := billingErrorDetails(err)
+		h.anthropicStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
 		return
 	}
+	defer billingTicket.Close()
 
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
 	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
@@ -633,6 +667,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			currentRoutingModel,
 			failedAccountIDs,
 			service.OpenAIUpstreamTransportAny,
+			false,
 		)
 		if err != nil {
 			reqLog.Warn("openai_messages.account_select_failed",
@@ -665,6 +700,17 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if !acquired {
+			return
+		}
+
+		// service quota 第二阶段：基于选定的 channel/account 抢槽位 / 增 RPM。
+		if err := billingTicket.Consume(c.Request.Context(), channelMappingMsg.ChannelID, account.ID); err != nil {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			reqLog.Info("openai_messages.service_quota_consume_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+			status, code, message, metadata := billingErrorDetails(err)
+			h.anthropicStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
 			return
 		}
 
@@ -785,18 +831,34 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 // anthropicErrorResponse writes an error in Anthropic Messages API format.
 func (h *OpenAIGatewayHandler) anthropicErrorResponse(c *gin.Context, status int, errType, message string) {
-	c.JSON(status, gin.H{
-		"type": "error",
+	h.anthropicErrorResponseWithMetadata(c, status, errType, message, nil)
+}
+
+// anthropicErrorResponseWithMetadata 带 metadata + reason 的 Anthropic 格式错误响应
+// （配额超限等场景要求前端能取到 metadata 和 reason 做 i18n 渲染）
+func (h *OpenAIGatewayHandler) anthropicErrorResponseWithMetadata(c *gin.Context, status int, errType, message string, metadata map[string]string) {
+	body := gin.H{
+		"type":   "error",
+		"reason": errType,
 		"error": gin.H{
 			"type":    errType,
 			"message": message,
 		},
-	})
+	}
+	if len(metadata) > 0 {
+		body["metadata"] = metadata
+	}
+	c.JSON(status, body)
 }
 
 // anthropicStreamingAwareError handles errors that may occur during streaming,
 // using Anthropic SSE error format.
 func (h *OpenAIGatewayHandler) anthropicStreamingAwareError(c *gin.Context, status int, errType, message string, streamStarted bool) {
+	h.anthropicStreamingAwareErrorWithMetadata(c, status, errType, message, nil, streamStarted)
+}
+
+// anthropicStreamingAwareErrorWithMetadata 带 metadata + reason 的 Anthropic 流错误响应
+func (h *OpenAIGatewayHandler) anthropicStreamingAwareErrorWithMetadata(c *gin.Context, status int, errType, message string, metadata map[string]string, streamStarted bool) {
 	if streamStarted {
 		flusher, ok := c.Writer.(http.Flusher)
 		if ok {
@@ -812,7 +874,7 @@ func (h *OpenAIGatewayHandler) anthropicStreamingAwareError(c *gin.Context, stat
 		}
 		return
 	}
-	h.anthropicErrorResponse(c, status, errType, message)
+	h.anthropicErrorResponseWithMetadata(c, status, errType, message, metadata)
 }
 
 // handleAnthropicFailoverExhausted maps upstream failover errors to Anthropic format.
@@ -856,7 +918,7 @@ func (h *OpenAIGatewayHandler) validateFunctionCallOutputRequest(c *gin.Context,
 		reqLog.Warn("openai.request_validation_failed",
 			zap.String("reason", "function_call_output_missing_call_id"),
 		)
-		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires call_id or previous_response_id; if relying on history, ensure store=true and reuse previous_response_id")
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires call_id on HTTP requests; continuation via previous_response_id is only supported on Responses WebSocket v2")
 		return false
 	}
 	if validation.HasItemReferenceForAllCallIDs {
@@ -866,7 +928,7 @@ func (h *OpenAIGatewayHandler) validateFunctionCallOutputRequest(c *gin.Context,
 	reqLog.Warn("openai.request_validation_failed",
 		zap.String("reason", "function_call_output_missing_item_reference"),
 	)
-	h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires item_reference ids matching each call_id, or previous_response_id/tool_call context; if relying on history, ensure store=true and reuse previous_response_id")
+	h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "function_call_output requires item_reference ids matching each call_id on HTTP requests; continuation via previous_response_id is only supported on Responses WebSocket v2")
 	return false
 }
 
@@ -1137,11 +1199,18 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	currentUserRelease = wrapReleaseOnDone(ctx, userReleaseFunc)
 
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
-	if err := h.billingCacheService.CheckBillingEligibility(ctx, apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+	// billingTicket：两阶段计费检查。websocket handler 在 return 时关闭整个连接，
+	// defer ticket.Close() 覆盖客户端断开 / 上游断开 / panic 等所有路径。
+	billingTicket, err := h.billingCacheService.PrepareBillingCheckForRequest(
+		ctx, apiKey.User, apiKey, apiKey.Group, subscription,
+		service.ServiceQuotaCheckRequest{Model: reqModel, ChannelID: channelMappingWS.ChannelID},
+	)
+	if err != nil {
 		reqLog.Info("openai.websocket_billing_eligibility_check_failed", zap.Error(err))
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "billing check failed")
 		return
 	}
+	defer billingTicket.Close()
 
 	sessionHash := h.gatewayService.GenerateSessionHashWithFallback(
 		c,
@@ -1156,6 +1225,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		reqModel,
 		nil,
 		service.OpenAIUpstreamTransportResponsesWebsocketV2,
+		false,
 	)
 	if err != nil {
 		reqLog.Warn("openai.websocket_account_select_failed", zap.Error(err))
@@ -1197,6 +1267,18 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	currentAccountRelease = wrapReleaseOnDone(ctx, accountReleaseFunc)
 	if err := h.gatewayService.BindStickySession(ctx, apiKey.GroupID, sessionHash, account.ID); err != nil {
 		reqLog.Warn("openai.websocket_bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+	}
+
+	// service quota 第二阶段：基于选定的 channel/account 抢槽位 / 增 RPM。
+	if err := billingTicket.Consume(ctx, channelMappingWS.ChannelID, account.ID); err != nil {
+		reqLog.Info("openai.websocket_service_quota_consume_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		// HTTP 路径走 handleStreamingAwareErrorWithMetadata 透传 rule_id / limiter_type 等
+		// 给前端 i18n。WS 路径同样需要透传：Close frame 的 reason 受 123 字节限制无法承载
+		// metadata，这里先发一个 OpenAI Realtime 协议规范的 error text frame，再发 Close
+		// frame 兜底，确保客户端能拿到完整的限流规则上下文。
+		sendOpenAIWSBillingErrorEvent(ctx, wsConn, err)
+		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "service quota exceeded")
+		return
 	}
 
 	token, _, err := h.gatewayService.GetAccessToken(ctx, account)
@@ -1499,6 +1581,11 @@ func (h *OpenAIGatewayHandler) mapUpstreamError(statusCode int) (int, string, st
 
 // handleStreamingAwareError handles errors that may occur after streaming has started
 func (h *OpenAIGatewayHandler) handleStreamingAwareError(c *gin.Context, status int, errType, message string, streamStarted bool) {
+	h.handleStreamingAwareErrorWithMetadata(c, status, errType, message, nil, streamStarted)
+}
+
+// handleStreamingAwareErrorWithMetadata 带 metadata + reason 的错误响应
+func (h *OpenAIGatewayHandler) handleStreamingAwareErrorWithMetadata(c *gin.Context, status int, errType, message string, metadata map[string]string, streamStarted bool) {
 	if streamStarted {
 		// Stream already started, send error as SSE event then close
 		flusher, ok := c.Writer.(http.Flusher)
@@ -1514,7 +1601,7 @@ func (h *OpenAIGatewayHandler) handleStreamingAwareError(c *gin.Context, status 
 	}
 
 	// Normal case: return JSON response with proper status code
-	h.errorResponse(c, status, errType, message)
+	h.errorResponseWithMetadata(c, status, errType, message, metadata)
 }
 
 // ensureForwardErrorResponse 在 Forward 返回错误但尚未写响应时补写统一错误响应。
@@ -1538,12 +1625,22 @@ func shouldLogOpenAIForwardFailureAsWarn(c *gin.Context, wroteFallback bool) boo
 
 // errorResponse returns OpenAI API format error response
 func (h *OpenAIGatewayHandler) errorResponse(c *gin.Context, status int, errType, message string) {
-	c.JSON(status, gin.H{
+	h.errorResponseWithMetadata(c, status, errType, message, nil)
+}
+
+// errorResponseWithMetadata 带 metadata + reason 的错误响应
+func (h *OpenAIGatewayHandler) errorResponseWithMetadata(c *gin.Context, status int, errType, message string, metadata map[string]string) {
+	body := gin.H{
+		"reason": errType,
 		"error": gin.H{
 			"type":    errType,
 			"message": message,
 		},
-	})
+	}
+	if len(metadata) > 0 {
+		body["metadata"] = metadata
+	}
+	c.JSON(status, body)
 }
 
 func setOpenAIClientTransportHTTP(c *gin.Context) {
@@ -1590,6 +1687,37 @@ func closeOpenAIClientWS(conn *coderws.Conn, status coderws.StatusCode, reason s
 	}
 	_ = conn.Close(status, reason)
 	_ = conn.CloseNow()
+}
+
+// sendOpenAIWSBillingErrorEvent 在 WebSocket 关闭前发一个 OpenAI Realtime 协议规范的
+// `{"type":"error","error":{...}}` 文本帧，把 billingErrorDetails 解析出的
+// code / message / metadata（rule_id / limiter_type / limiter_window / limit_value 等）
+// 透传给客户端，保持与 HTTP 路径 handleStreamingAwareErrorWithMetadata 同等的可观测性。
+// metadata 字段名沿用 HTTP 错误响应 details 的 snake_case 约定，便于客户端 i18n 复用。
+func sendOpenAIWSBillingErrorEvent(ctx context.Context, conn *coderws.Conn, srcErr error) {
+	if conn == nil || srcErr == nil {
+		return
+	}
+	_, code, message, metadata := billingErrorDetails(srcErr)
+	errPayload := map[string]any{
+		"type":    code,
+		"code":    code,
+		"message": message,
+	}
+	if len(metadata) > 0 {
+		errPayload["metadata"] = metadata
+	}
+	frame := map[string]any{
+		"type":  "error",
+		"error": errPayload,
+	}
+	encoded, marshalErr := json.Marshal(frame)
+	if marshalErr != nil {
+		return
+	}
+	writeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	_ = conn.Write(writeCtx, coderws.MessageText, encoded)
 }
 
 func summarizeWSCloseErrorForLog(err error) (string, string) {

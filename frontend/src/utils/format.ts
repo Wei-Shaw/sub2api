@@ -54,24 +54,38 @@ export function formatNumber(num: number | null | undefined): string {
 
 /**
  * 格式化货币金额
- * @param amount 金额
+ *
+ * 行为：
+ * - null / undefined / NaN / 非有限数 → "$0.00"
+ * - 正常数值先经 toPrecision(10) 消除 IEEE 754 浮点误差（参考 CLAUDE.md §12 "前端显示规范 - 浮点精度"），
+ *   再用 Intl.NumberFormat 按当前 locale 以货币样式输出（默认 USD → "$1.25"）
+ * - 极小金额（0 < amount < 0.01）显示 6 位小数，其他情况 2 位小数
+ *
+ * 合并自原 `formatLimitUsd`，作为货币展示的唯一权威实现。
+ *
+ * @param amount 金额，可能为 null/undefined
  * @param currency 货币代码，默认 USD
- * @returns 格式化后的字符串，如 "$1.25"
+ * @returns 本地化的货币字符串（含货币符号，如 "$1.25"）
  */
 export function formatCurrency(amount: number | null | undefined, currency: string = 'USD'): string {
   if (amount === null || amount === undefined) return '$0.00'
+  const num = Number(amount)
+  if (!Number.isFinite(num)) return '$0.00'
 
   const locale = getLocale()
 
+  // IEEE 754 误差消除：例如 5e-8 * 1e6 = 0.04999...96 → 0.05
+  const normalized = Number(num.toPrecision(10))
+
   // For very small amounts, show more decimals
-  const fractionDigits = amount > 0 && amount < 0.01 ? 6 : 2
+  const fractionDigits = normalized > 0 && normalized < 0.01 ? 6 : 2
 
   return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: currency,
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits
-  }).format(amount)
+  }).format(normalized)
 }
 
 /**
@@ -193,7 +207,9 @@ export function formatReasoningEffort(effort: string | null | undefined): string
       return 'High'
     case 'xhigh':
     case 'extrahigh':
-      return 'Xhigh'
+      return 'XHigh'
+    case 'max':
+      return 'Max'
     case 'none':
     case 'minimal':
       return '-'
@@ -227,6 +243,20 @@ export function formatNumberLocaleString(num: number): string {
 }
 
 /**
+ * 美式千分位逗号格式化（强制 en-US locale，不随浏览器语言变化）。
+ *
+ * 适用于"始终用 1,234,567 这种风格"的场景——比如限额配置/监控里的限流值，
+ * 后端是与货币/单位无关的纯数字，统一千分位逗号让管理员一眼看清量级。
+ *
+ * 与 formatNumberLocaleString 的区别：后者跟随浏览器 locale，可能渲染成
+ * 1.234.567（德语）/ 1 234 567（法语）等；本函数固定 en-US。
+ */
+export function formatThousands(num: number): string {
+  if (!Number.isFinite(num)) return '0'
+  return num.toLocaleString('en-US')
+}
+
+/**
  * 格式化金额（固定小数位，不带货币符号）
  * @param amount 金额
  * @param fractionDigits 小数位数，默认 4
@@ -234,6 +264,41 @@ export function formatNumberLocaleString(num: number): string {
  */
 export function formatCostFixed(amount: number, fractionDigits: number = 4): string {
   return amount.toFixed(fractionDigits)
+}
+
+/**
+ * service-quota daily_usd 限额展示：美式千分位 + 最多 6 位小数（去尾零）。
+ *
+ * 与 formatCurrency 的差异：
+ *   - 这里的 daily_usd 已经是"美元金额数值"，本身就是 service-quota 限额配置场景，
+ *     不走 IEEE 754 误差消除（输入由用户在 NumericInput 里直接录入）
+ *   - 不固定 2 位小数（限额可能是 0.05 这种小金额）
+ *   - 强制 en-US locale，与 formatThousands 一致（避免随浏览器语言变成
+ *     "100.000,00" 等欧式风格，让管理员一眼对齐量级）
+ *
+ * minimumFractionDigits 默认 0（去尾零）；监控页用量列传 2，让 `0.00 / 50.00` 对齐。
+ *
+ * 示例：
+ *   formatDailyUsd(100000)        → "100,000"
+ *   formatDailyUsd(1234.56)       → "1,234.56"
+ *   formatDailyUsd(0.05)          → "0.05"
+ *   formatDailyUsd(0)             → "0"
+ *   formatDailyUsd(100000, 2)     → "100,000.00"
+ *   formatDailyUsd(0, 2)          → "0.00"
+ *
+ * 调用方负责前缀 "$"（监控页 chip 不带符号、配置页 limit chip 带 $）。
+ */
+export function formatDailyUsd(amount: number | null | undefined, minimumFractionDigits: number = 0): string {
+  if (amount === null || amount === undefined || !Number.isFinite(Number(amount))) {
+    return (0).toLocaleString('en-US', {
+      minimumFractionDigits,
+      maximumFractionDigits: Math.max(minimumFractionDigits, 6),
+    })
+  }
+  return Number(amount).toLocaleString('en-US', {
+    minimumFractionDigits,
+    maximumFractionDigits: Math.max(minimumFractionDigits, 6),
+  })
 }
 
 /**
