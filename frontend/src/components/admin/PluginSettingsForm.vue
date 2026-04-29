@@ -1,13 +1,22 @@
 <template>
   <div class="space-y-4">
+    <!-- Plan C·C2: cycles in if-then-else dependencies cannot be resolved
+         in a single evaluator pass; surface a banner and fall back to
+         showing every field so the admin still has a way out. -->
     <div
-      v-if="!schemaProperties.length"
+      v-if="evaluated.cyclic"
+      class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200"
+    >
+      {{ t('admin.pluginSettings.cyclicConditions') }}
+    </div>
+    <div
+      v-if="!visibleDescriptors.length"
       class="text-sm text-gray-500 dark:text-gray-400"
     >
       {{ t('admin.pluginSettings.emptySchema') }}
     </div>
     <div
-      v-for="prop in schemaProperties"
+      v-for="prop in visibleDescriptors"
       :key="prop.key"
       class="rounded-md border border-gray-200 dark:border-gray-700 p-4"
     >
@@ -85,6 +94,7 @@ import {
   DeprecatedBadge,
   RequiresReloadBadge,
   buildPropDescriptors,
+  evaluateConditions,
   resolveWidget,
   type PropDescriptor,
 } from '@/components/admin/plugin-settings-widgets'
@@ -110,6 +120,25 @@ const dirty = reactive<Record<string, boolean>>({})
 const errors = reactive<Record<string, string>>({})
 const saving = ref<string | null>(null)
 
+// Plan C·C2 — opt-out flag for the conditional evaluator. When the
+// flag is set to 'off', the form behaves like the pre-C2 version
+// (every schema field is rendered).
+const conditionsEnabled = import.meta.env.VITE_PLUGIN_SETTINGS_CONDITIONS !== 'off'
+
+const evaluated = computed(() => {
+  if (!conditionsEnabled || !props.info?.schema) {
+    return { hidden: new Set<string>(), requiredOverride: new Set<string>(), cyclic: false }
+  }
+  return evaluateConditions(
+    props.info.schema as Record<string, unknown>,
+    localValues,
+  )
+})
+
+const visibleDescriptors = computed<PropDescriptor[]>(() =>
+  schemaProperties.value.filter((p) => !evaluated.value.hidden.has(p.key)),
+)
+
 watch(
   () => props.info,
   (next) => {
@@ -128,6 +157,14 @@ function onChange(prop: PropDescriptor, v: unknown) {
 
 async function save(prop: PropDescriptor) {
   if (errors[prop.key]) return
+  // Plan C·C2: refuse to save fields that the evaluator currently hides.
+  // The form already drops hidden fields from the render tree, so this
+  // is a defense-in-depth guard against a stale dirty entry firing
+  // through some queued widget event.
+  if (evaluated.value.hidden.has(prop.key)) {
+    dirty[prop.key] = false
+    return
+  }
   // SETTINGS-V2 secret semantics (DESIGN §5.6): empty input on a NOT-yet
   // configured secret means "user did not type anything" — skip the request.
   // Empty input on a configured secret falls through to the regular PUT,

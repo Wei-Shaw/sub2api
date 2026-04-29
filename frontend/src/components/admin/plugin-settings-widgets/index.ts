@@ -63,4 +63,5 @@ export function resolveWidget(prop: PropDescriptor): Widget {
 
 export { DeprecatedBadge, RequiresReloadBadge }
 export { buildPropDescriptors } from './buildPropDescriptors'
+export { evaluateConditions, type EvaluatedConditions } from './evaluateConditions'
 export type { Decorator, PropDescriptor, PropertyMetadata, Widget, WidgetProps } from './types'

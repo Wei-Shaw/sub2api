@@ -987,6 +987,7 @@ export default {
       backendOnly: 'This field is backend-only and cannot be edited from the admin UI.',
       schemaVersion: 'Schema version: {version}',
       schemaVersionMismatch: 'Stored schema version differs from current; some values may be stale.',
+      cyclicConditions: 'Cyclic dependency detected in settings; showing all fields.',
     },
     // Plugin Management
     plugins: {

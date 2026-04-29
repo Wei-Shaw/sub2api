@@ -991,6 +991,7 @@ export default {
       backendOnly: '此字段仅由后端修改，无法在管理后台编辑',
       schemaVersion: 'Schema 版本：{version}',
       schemaVersionMismatch: '存储值的 schema 版本与当前不一致，部分值可能已过期',
+      cyclicConditions: '设置项之间存在循环依赖，已显示全部字段',
     },
     // Plugin Management
     plugins: {
