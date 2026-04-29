@@ -171,23 +171,6 @@ func TestPreCheckAcquire_DifferentAccountSamRulePathMissesBecauseOfPathFilter(t 
 	require.Empty(t, limiter.acquireCalls)
 }
 
-func TestIsPreCheckTwoPhase_DefaultFalse(t *testing.T) {
-	t.Parallel()
-	limiter := newFakeLimiter()
-	repo := newMockSettingRepo()
-	svc := newQuotaServiceForTest(t, nil, repo, limiter)
-	require.False(t, svc.IsPreCheckTwoPhase(context.Background()))
-}
-
-func TestIsPreCheckTwoPhase_ReadsSetting(t *testing.T) {
-	t.Parallel()
-	limiter := newFakeLimiter()
-	repo := newMockSettingRepo()
-	repo.data[SettingKeyServiceQuotaPreCheckTwoPhase] = "true"
-	svc := newQuotaServiceForTest(t, nil, repo, limiter)
-	require.True(t, svc.IsPreCheckTwoPhase(context.Background()))
-}
-
 func TestPreCheck_LegacySinglePhase_StillWorks(t *testing.T) {
 	t.Parallel()
 	limiter := newFakeLimiter()
@@ -201,7 +184,9 @@ func TestPreCheck_LegacySinglePhase_StillWorks(t *testing.T) {
 	lease.Release()
 }
 
-func TestBillingTicket_Consume_FlagOff_NoOp(t *testing.T) {
+// TestBillingTicket_Consume_LegacyOneOff_NoOp 验证兼容入口（CheckBillingEligibility）
+// 走 legacyOneOff=true 分支：lease 已在 Prepare 阶段抢到，Consume 不会再次 Acquire。
+func TestBillingTicket_Consume_LegacyOneOff_NoOp(t *testing.T) {
 	t.Parallel()
 	limiter := newFakeLimiter()
 	rule := ruleConcurrencyAccount(6, 7, 5)
@@ -211,7 +196,6 @@ func TestBillingTicket_Consume_FlagOff_NoOp(t *testing.T) {
 	ticket := &BillingTicket{
 		svc:          nil,
 		quotaReq:     ServiceQuotaCheckRequest{UserID: 42, AccountID: 7},
-		twoPhase:     false,
 		legacyOneOff: true,
 	}
 	lease, err := svc.PreCheck(context.Background(), ServiceQuotaCheckRequest{UserID: 42, AccountID: 7})
@@ -221,18 +205,19 @@ func TestBillingTicket_Consume_FlagOff_NoOp(t *testing.T) {
 
 	acquireCallsBefore := len(limiter.acquireCalls)
 	require.NoError(t, ticket.Consume(context.Background(), 0, 7))
-	require.Equal(t, acquireCallsBefore, len(limiter.acquireCalls), "Consume with flag off must not Acquire again")
+	require.Equal(t, acquireCallsBefore, len(limiter.acquireCalls), "Consume on legacyOneOff ticket must not Acquire again")
 
 	ticket.Close()
 	require.Error(t, ticket.Consume(context.Background(), 0, 7))
 }
 
-func TestBillingTicket_Consume_FlagOn_AcquiresLazily(t *testing.T) {
+// TestBillingTicket_Consume_TwoPhase_AcquiresLazily 验证标准两阶段路径：
+// Prepare 阶段只选 plan，Consume 阶段才真正 Acquire；切换 account 时 lease 跟随。
+func TestBillingTicket_Consume_TwoPhase_AcquiresLazily(t *testing.T) {
 	t.Parallel()
 	limiter := newFakeLimiter()
 	rule := ruleConcurrencyAccount(7, 7, 5)
 	repo := newMockSettingRepo()
-	repo.data[SettingKeyServiceQuotaPreCheckTwoPhase] = "true"
 	svc := newQuotaServiceForTest(t, []*ServiceQuotaRule{rule}, repo, limiter)
 
 	plan, err := svc.PreCheckSelect(context.Background(), ServiceQuotaCheckRequest{UserID: 42})
@@ -243,7 +228,6 @@ func TestBillingTicket_Consume_FlagOn_AcquiresLazily(t *testing.T) {
 		svc:      &BillingCacheService{serviceQuota: svc},
 		quotaReq: ServiceQuotaCheckRequest{UserID: 42},
 		plan:     plan,
-		twoPhase: true,
 	}
 
 	require.Empty(t, limiter.acquireCalls, "Prepare phase must not Acquire")

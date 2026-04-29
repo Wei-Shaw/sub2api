@@ -107,9 +107,6 @@ type ServiceQuotaService interface {
 	// channelID/accountID == 0 表示 caller 未选定该维度（例如某些 fallback 路径或仅 group/platform
 	// 限定的请求）；此时只命中那些对应字段为 nil 的 path。
 	PreCheckAcquire(ctx context.Context, plan *ServiceQuotaPreCheckPlan, channelID, accountID int64) (*ServiceQuotaLease, error)
-	// IsPreCheckTwoPhase 返回是否启用两阶段 PreCheck（对应 setting service_quota.precheck_two_phase）。
-	// BillingTicket.Consume 据此决定是否在 caller 侧真正抢槽位。
-	IsPreCheckTwoPhase(ctx context.Context) bool
 	Record(ctx context.Context, req ServiceQuotaRecordRequest)
 	// ResetLimiterCounter 直接清空指定 (rule_id, path_id, limiter_type, scope_user_id) 的 Redis 计数器。
 	// 用于管理员手动重置：路径不存在或 limiter 缺失时返回 404 让 handler 透传 HTTP 状态。

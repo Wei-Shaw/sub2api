@@ -57,14 +57,14 @@ func BillingTicketFromContext(ctx context.Context) *BillingTicket {
 //  4. 同一个 ticket 允许多次 Consume——在 fallback 重试切换账号时常见。
 //     Consume 内部检测到 lease 已存在会先释放再重新抢，使 lease 始终对应"当前生效的 channel/account"。
 //
-// feature flag service_quota_precheck_two_phase 关闭（默认）时：
-//   - Prepare 阶段就完成旧 PreCheck（一次性 acquire），ticket 持有 lease；
-//   - Consume 退化为 noop（不会重新 acquire）；
-//   - 行为与历史 CheckBillingEligibility 完全一致。
-//
-// flag 开启时：
+// 标准两阶段路径（PrepareBillingCheck 入口）：
 //   - Prepare 阶段只调 PreCheckSelect 选规则，不抢 concurrency；
 //   - Consume 阶段才调 PreCheckAcquire 按完整 channel/account 维度抢槽位 / 增 RPM。
+//
+// 兼容入口 CheckBillingEligibility（legacyOneOff=true）：
+//   - Prepare 阶段就完成旧 PreCheck（一次性 acquire），ticket 持有 lease；
+//   - Consume 退化为 noop（仅回填 ChannelID/AccountID）；
+//   - 行为与历史 CheckBillingEligibility 完全一致。
 //
 // 并发：BillingTicket 不要跨 goroutine 共享。每个请求一个 ticket，由 caller 的请求 goroutine 独占。
 type BillingTicket struct {
@@ -73,12 +73,9 @@ type BillingTicket struct {
 	plan     *ServiceQuotaPreCheckPlan
 	lease    *ServiceQuotaLease
 
-	// twoPhase=true 表示 Prepare 阶段只选 plan，Consume 阶段才 acquire（feature flag 开启）。
-	// twoPhase=false 表示 Prepare 已完成 PreCheck，Consume 是 noop。
-	twoPhase bool
-	// legacyOneOff=true 标记本 ticket 由 CheckBillingEligibility（兼容入口）创建，无视 flag
-	// 走单阶段路径；CheckBillingEligibility 调用 ticket.Consume 后会 detachLease，所以
-	// Consume 内部允许在 legacyOneOff 时把 lease 转移所有权而不抢新的。
+	// legacyOneOff=true 标记本 ticket 由 CheckBillingEligibility（兼容入口）创建，
+	// Prepare 阶段已完成 PreCheck（lease 持有），Consume 退化为 noop（仅回填 channel/account）；
+	// CheckBillingEligibility 调用 ticket.Consume 后会 detachLease 把所有权移交 caller。
 	legacyOneOff bool
 	closed       bool
 }
@@ -87,8 +84,8 @@ type BillingTicket struct {
 // concurrency / 增 RPM。
 //
 // 行为分支：
-//   - feature flag off / legacyOneOff：lease 已在 Prepare 时获得，本方法只校验 ticket 状态后立即返回 nil。
-//   - feature flag on：基于 plan 调用 ServiceQuotaService.PreCheckAcquire；如本 ticket 已有 lease
+//   - legacyOneOff（兼容入口）：lease 已在 Prepare 时获得，本方法只回填 channel/account 后返回 nil。
+//   - 标准两阶段：基于 plan 调用 ServiceQuotaService.PreCheckAcquire；如本 ticket 已有 lease
 //     （上一次 Consume 抢的，常见于 fallback 切换账号），先 Release 再抢新的，使 lease 与当前
 //     channel/account 严格对应。
 //
@@ -103,14 +100,18 @@ func (t *BillingTicket) Consume(ctx context.Context, channelID, accountID int64)
 	if t.closed {
 		return errBillingTicketClosed
 	}
-	if !t.twoPhase {
-		// flag off：Prepare 已完成 PreCheck，无需再做。lease 已经持有（若有规则匹配）。
+	if t.legacyOneOff {
+		// 兼容入口：Prepare 已完成 PreCheck，无需再做。lease 已经持有（若有规则匹配）。
 		// 把入参里的 channel/account 也回填到 quotaReq，方便 detachLease 之外的观测。
 		t.quotaReq.ChannelID = channelID
 		t.quotaReq.AccountID = accountID
 		return nil
 	}
-	if t.svc == nil || t.svc.serviceQuota == nil {
+	if t.svc == nil || t.svc.serviceQuota == nil || t.plan == nil {
+		// plan==nil：PreCheckSelect 返回空（无规则匹配 / service quota 未启用 / user==nil）。
+		// 仍然回填 channel/account 让观测保持一致；不抢任何槽位。
+		t.quotaReq.ChannelID = channelID
+		t.quotaReq.AccountID = accountID
 		return nil
 	}
 

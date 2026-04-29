@@ -3,17 +3,6 @@ package service
 const (
 	SettingKeyServiceQuotaEnabled = "service_quota_enabled"
 
-	// SettingKeyServiceQuotaPreCheckTwoPhase 控制 PreCheck 是否走两阶段路径
-	// （PreCheckSelect 在路由前选规则、PreCheckAcquire 在选定 channel/account 后抢槽位）。
-	//
-	// 默认 false（关闭）：CheckBillingEligibility 行为与历史版本完全一致，PreCheck 在 channel/account
-	// 还未确定时被一次性调用，account/channel scope 的 concurrency / rpm 限流器仍然失效。
-	//
-	// true（开启）：BillingTicket.Prepare 只调 PreCheckSelect 选规则，BillingTicket.Consume 在
-	// caller 选定 channel + account 后调用 PreCheckAcquire 才真正抢 concurrency / 增 rpm，
-	// account/channel scope 限流器从此生效。详见 BillingCacheService.PrepareBillingCheck。
-	SettingKeyServiceQuotaPreCheckTwoPhase = "service_quota_precheck_two_phase"
-
 	ServiceQuotaLimiterRPM         = "rpm"
 	ServiceQuotaLimiterTPM         = "tpm"
 	ServiceQuotaLimiterTPD         = "tpd"
