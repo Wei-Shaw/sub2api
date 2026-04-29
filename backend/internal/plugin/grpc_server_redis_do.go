@@ -195,10 +195,13 @@ func (s *SDKServer) Do(ctx context.Context, req *pluginsdk.DoRequest) (*pluginsd
 	// raw_key=true requires the redis_raw_keys capability. Anonymous callers
 	// (pluginName=="") never hold capabilities so they are denied implicitly.
 	if req.GetRawKey() {
-		if pluginName == "" || !s.capabilities.Has(pluginName, "redis_raw_keys") {
+		// P12·B-1: capability normalisation runs in approveCapabilities,
+		// so the registry stores the canonical "redis.raw"; legacy
+		// "redis_raw_keys" plugins still pass after normalisation.
+		if pluginName == "" || !s.capabilities.Has(pluginName, "redis.raw") {
 			slog.Warn("redis do: raw_key=true denied",
 				"plugin", pluginName, "command", commandName)
-			return nil, fmt.Errorf("redis do: raw_key requires redis_raw_keys capability")
+			return nil, fmt.Errorf("redis do: raw_key requires redis.raw capability")
 		}
 	} else if pluginName != "" {
 		// Defence in depth: every key argument must carry the plugin's

@@ -28,33 +28,100 @@ const (
 // The SDK server treats these as fine-grained permissions: a plugin lacking
 // a capability is rejected when it tries to use the corresponding feature.
 // Adding a new capability requires updating both the SDK and the core's
-// allow-list (backend/internal/plugin/grpc_server.go).
+// allow-list (backend/internal/plugin/manager.go::allowedPluginCapabilities).
+//
+// Naming convention (P12·B-1 onward): "<resource>.<action>" dotted-lowercase.
+// The legacy snake_case constants below are kept as deprecated aliases for
+// one release cycle; the host normalises them to the canonical form when
+// the plugin Init runs and emits a migration WARN.
+//
+// The constants are grouped into three tiers:
+//   - default-grant: declarative-only, host always grants without enforcement
+//     (used by manifest tooling / docs).
+//   - declare-required: must be listed in the manifest; the host auto-grants
+//     when listed and gates the corresponding host-side feature.
+//   - admin-approve: future Phase 2; not yet wired but reserved.
 const (
-	// CapabilityRedisRawKeys lets PluginContext.Redis().Raw() bypass the
-	// per-plugin Redis key namespace. Required for plugins that intentionally
-	// share keys with other components (e.g. the channel-management plugin
-	// writes the gateway cache contract documented in GATEWAY_CACHE_SPEC.md).
-	CapabilityRedisRawKeys = "redis_raw_keys"
-
-	// CapabilitySecretEncryption authorises a plugin to call
-	// PluginContext.Secrets().Encrypt/Decrypt. The host derives a
-	// per-plugin key from its master key on first use and uses AES-256-GCM
-	// with the plugin name as AAD. Plugins lacking this capability receive
-	// a nil SecretEncryptor from PluginContext.Secrets() — see V5-DESIGN
-	// §5 for the full design.
-	CapabilitySecretEncryption = "secret_encryption"
-	// CapabilityJobScheduler grants access to PluginContext.Jobs() for
+	// --- Default-grant tier ----------------------------------------------
+	// CapabilityHTTPRegisterPlugin lets a plugin register HTTP handlers under
+	// /plugins/<name>/* (its own namespace). Always granted.
+	CapabilityHTTPRegisterPlugin = "http.register.plugin"
+	// CapabilityJobsRegister grants access to PluginContext.Jobs() for
 	// declaring scheduled work (interval / cron / fixed_delay). The host owns
 	// the schedule clock and per-(plugin, job) leader lock; the plugin owns
 	// the handler. See V5-DESIGN §2 (W2 JobSchedulerCapability).
+	CapabilityJobsRegister = "jobs.register"
+	// CapabilitySettingsOwnRead lets a plugin read its own settings tab.
+	// Implicit when the plugin ships a SettingsSchema.
+	CapabilitySettingsOwnRead = "settings.own.read"
+	// CapabilitySettingsOwnWrite lets a plugin write to its own settings tab
+	// (rare — most settings are admin-edited via the host UI).
+	CapabilitySettingsOwnWrite = "settings.own.write"
+	// CapabilityEventsSubscribeLowfreq lets a plugin subscribe to
+	// low-frequency host events (e.g. payment.order.created). High-frequency
+	// gateway events require CapabilityEventsSubscribeGateway separately.
+	CapabilityEventsSubscribeLowfreq = "events.subscribe.lowfreq"
+	// CapabilityRedisOwn lets a plugin read/write its own namespaced Redis
+	// keys (plugin:<name>:*). Always granted.
+	CapabilityRedisOwn = "redis.own"
+	// CapabilityDBOwnRead lets a plugin read from tables it owns (declared
+	// via Manifest.OwnedTables). Always granted; enforced by the SQL gate.
+	CapabilityDBOwnRead = "db.own.read"
+	// CapabilityDBOwnWrite lets a plugin write to tables it owns. Always
+	// granted; enforced by the SQL gate.
+	CapabilityDBOwnWrite = "db.own.write"
+	// CapabilityMigrationsApply lets a plugin ship migrations the host
+	// applies. Implicit when Manifest.Migrations is non-empty.
+	CapabilityMigrationsApply = "migrations.apply"
+
+	// --- Declare-required tier -------------------------------------------
+	// CapabilityHTTPRegisterGateway lets a plugin register HTTP handlers on
+	// gateway paths (/v1/*). Required when GatewayEndpoints are declared.
+	CapabilityHTTPRegisterGateway = "http.register.gateway"
+	// CapabilityEventsSubscribeGateway gates subscribing to high-frequency
+	// gateway events (currently gateway.model.invoked). Replaces the legacy
+	// "events.gateway" name.
+	CapabilityEventsSubscribeGateway = "events.subscribe.gateway"
+	// CapabilitySecretsEncrypt authorises a plugin to call
+	// PluginContext.Secrets().Encrypt/Decrypt. The host derives a
+	// per-plugin key from its master key on first use and uses AES-256-GCM
+	// with the plugin name as AAD. Replaces the legacy "secret_encryption".
+	CapabilitySecretsEncrypt = "secrets.encrypt"
+	// CapabilityOutboundHTTP authorises plugin outbound HTTP via the SDK's
+	// SafeOutboundHTTP client. Replaces the legacy "safe_outbound_http".
+	CapabilityOutboundHTTP = "outbound.http"
+	// CapabilityRedisRaw lets PluginContext.Redis().Raw() bypass the
+	// per-plugin Redis key namespace. Required for plugins that intentionally
+	// share keys with other components (e.g. channel-management writes the
+	// gateway cache contract documented in GATEWAY_CACHE_SPEC.md). Replaces
+	// the legacy "redis_raw_keys".
+	CapabilityRedisRaw = "redis.raw"
+	// CapabilityDBCoreRead lets a plugin read host-shared core tables (a
+	// curated whitelist: users, accounts, payment_orders, …). Phase 2:
+	// admin-approve is planned; today the host auto-grants when declared.
+	CapabilityDBCoreRead = "db.core.read"
+	// CapabilityDBCoreWrite lets a plugin write to host-shared core tables.
+	// DANGEROUS — Phase 2: admin-approve is required. Today the host
+	// auto-grants when declared but this is intended to change.
+	CapabilityDBCoreWrite = "db.core.write"
+
+	// --- Legacy snake_case aliases (deprecated; one-release migration) --
+	// CapabilityRedisRawKeys is the legacy alias for CapabilityRedisRaw.
+	// Deprecated: migrate to CapabilityRedisRaw.
+	CapabilityRedisRawKeys = "redis_raw_keys"
+	// CapabilitySecretEncryption is the legacy alias for CapabilitySecretsEncrypt.
+	// Deprecated: migrate to CapabilitySecretsEncrypt.
+	CapabilitySecretEncryption = "secret_encryption"
+	// CapabilityJobScheduler is the legacy alias for CapabilityJobsRegister.
+	// Deprecated: migrate to CapabilityJobsRegister.
 	CapabilityJobScheduler = "job_scheduler"
-	// CapabilitySettingsExtension opts the plugin into the V5
-	// SettingsExtension SDK feature. The host validates schema-bearing
-	// manifests and wires up Settings.Get / Watch only for plugins that
-	// declare this capability (or supply a non-empty SettingsSchema in
-	// their Manifest, which the SDK upgrades to this capability
-	// automatically). Declaring it explicitly is harmless.
+	// CapabilitySettingsExtension is the legacy alias for CapabilitySettingsOwnRead.
+	// Deprecated: migrate to CapabilitySettingsOwnRead (and OwnWrite if needed).
 	CapabilitySettingsExtension = "settings_extension"
+	// CapabilityLegacyEventsGateway is the legacy alias for
+	// CapabilityEventsSubscribeGateway.
+	// Deprecated: migrate to CapabilityEventsSubscribeGateway.
+	CapabilityLegacyEventsGateway = "events.gateway"
 )
 
 // Manifest is the Go-level representation of pluginsdk.ManifestResponse.

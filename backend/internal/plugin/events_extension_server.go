@@ -55,7 +55,12 @@ const (
 // CapabilityEventsGateway is the manifest capability required to subscribe
 // to high-frequency gateway events. Mirrors pluginsdk.Capability* style
 // without forcing an extra import.
-const CapabilityEventsGateway = "events.gateway"
+//
+// P12·B-1 renamed the canonical name to "events.subscribe.gateway"; the
+// legacy "events.gateway" alias is normalised to this value by the
+// manager's approveCapabilities, so the registry only ever stores the
+// new name.
+const CapabilityEventsGateway = "events.subscribe.gateway"
 
 // highFrequencyEventCapability maps an event type to the capability a
 // plugin must hold in order to subscribe to it. Events absent from this

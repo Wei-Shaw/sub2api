@@ -626,21 +626,59 @@ func configToString(in map[string]any) (map[string]string, error) {
 // SDK package into manager.go's already-large import set. Each entry MUST
 // match the corresponding pluginsdk.Capability* constant.
 var allowedPluginCapabilities = map[string]struct{}{
-	"redis_raw_keys":     {}, // pluginsdk.CapabilityRedisRawKeys
-	"safe_outbound_http": {}, // pluginsdk.CapabilitySafeOutboundHTTP — V5 W4
-	"secret_encryption":  {}, // pluginsdk.CapabilitySecretEncryption — V5 W5
-	// job_scheduler is the V5 W2 capability granting access to the
-	// JobScheduler stream RPC. Default-allow because scheduling work is
-	// not a privileged cross-plugin operation — see V5-DESIGN §2.7.
-	"job_scheduler": {},
-	// settings_extension lets a plugin register a JSON-Schema-described
-	// settings tab in the admin SettingsView and read its persisted values
-	// via SDK Settings(). See V5-DESIGN §W3 (SettingsExtensionCapability).
-	"settings_extension": {}, // pluginsdk.CapabilitySettingsExtension — V5 W3
-	// events.gateway gates subscribing to high-frequency gateway events
-	// (currently gateway.model.invoked). Plugin Hook Phase B — see
-	// EventsExtension service in plugin-sdk/proto/sdk.proto.
-	"events.gateway": {},
+	// --- New canonical dotted-lowercase names (P12·B-1) -----------------
+	"redis.raw":                {}, // pluginsdk.CapabilityRedisRaw
+	"redis.own":                {}, // pluginsdk.CapabilityRedisOwn (default-grant)
+	"outbound.http":            {}, // pluginsdk.CapabilityOutboundHTTP — V5 W4
+	"secrets.encrypt":          {}, // pluginsdk.CapabilitySecretsEncrypt — V5 W5
+	"jobs.register":            {}, // pluginsdk.CapabilityJobsRegister — V5 W2
+	"settings.own.read":        {}, // pluginsdk.CapabilitySettingsOwnRead — V5 W3
+	"settings.own.write":       {}, // pluginsdk.CapabilitySettingsOwnWrite — V5 W3
+	"events.subscribe.lowfreq": {}, // pluginsdk.CapabilityEventsSubscribeLowfreq
+	"events.subscribe.gateway": {}, // pluginsdk.CapabilityEventsSubscribeGateway — Phase B
+	"http.register.plugin":     {}, // pluginsdk.CapabilityHTTPRegisterPlugin (default-grant)
+	"http.register.gateway":    {}, // pluginsdk.CapabilityHTTPRegisterGateway — gateway path gate
+	"db.own.read":              {}, // pluginsdk.CapabilityDBOwnRead (default-grant)
+	"db.own.write":             {}, // pluginsdk.CapabilityDBOwnWrite (default-grant)
+	"db.core.read":             {}, // pluginsdk.CapabilityDBCoreRead — host shared tables
+	"db.core.write":            {}, // pluginsdk.CapabilityDBCoreWrite — DANGEROUS, Phase 2 admin-approve
+	"migrations.apply":         {}, // pluginsdk.CapabilityMigrationsApply (default-grant)
+
+	// --- Legacy snake_case names (deprecated; one-release migration) ----
+	// Plugins using these names continue to work; the manager normalises
+	// them via normalizeCapability and emits a WARN per registered plugin.
+	"redis_raw_keys":     {}, // → redis.raw
+	"safe_outbound_http": {}, // → outbound.http
+	"secret_encryption":  {}, // → secrets.encrypt
+	"job_scheduler":      {}, // → jobs.register
+	"settings_extension": {}, // → settings.own.read (+ own.write if writing)
+	"events.gateway":     {}, // → events.subscribe.gateway
+}
+
+// legacyCapabilityRenames maps deprecated snake_case capability names to the
+// canonical dotted-lowercase names introduced in P12·B-1. The host normalises
+// the manifest's Capabilities slice via normalizeCapability so the rest of the
+// codebase only deals with the new names. Entries here drive the deprecation
+// WARN emitted at plugin-register time.
+var legacyCapabilityRenames = map[string]string{
+	"redis_raw_keys":     "redis.raw",
+	"safe_outbound_http": "outbound.http",
+	"secret_encryption":  "secrets.encrypt",
+	"job_scheduler":      "jobs.register",
+	"settings_extension": "settings.own.read",
+	"events.gateway":     "events.subscribe.gateway",
+}
+
+// normalizeCapability returns the canonical dotted-lowercase capability name
+// for a possibly-legacy input. When the input is a known legacy alias the
+// returned `renamed` flag is true and `canonical` carries the new name; the
+// caller is expected to log a deprecation WARN. Unknown / already-canonical
+// inputs are returned unchanged with renamed=false.
+func normalizeCapability(name string) (canonical string, renamed bool) {
+	if c, ok := legacyCapabilityRenames[name]; ok {
+		return c, true
+	}
+	return name, false
 }
 
 // defaultOutboundBlockedCIDRs is the host-side default block list pushed to
@@ -686,6 +724,7 @@ func approveCapabilities(pluginName string, requested []string, logger *slog.Log
 		return nil
 	}
 	out := make([]string, 0, len(requested))
+	seen := make(map[string]struct{}, len(requested))
 	for _, c := range requested {
 		if _, ok := allowedPluginCapabilities[c]; !ok {
 			if logger != nil {
@@ -694,7 +733,22 @@ func approveCapabilities(pluginName string, requested []string, logger *slog.Log
 			}
 			continue
 		}
-		out = append(out, c)
+		// Normalise legacy snake_case → dotted-lowercase. The rest of the
+		// host (capability registry, route gate, SQL gate) only deals with
+		// the canonical form so the legacy aliases stay isolated to the
+		// allow-list and this rename map. P12·B-1.
+		canonical, renamed := normalizeCapability(c)
+		if renamed && logger != nil {
+			logger.Warn("plugin uses deprecated capability name — please migrate",
+				"plugin", pluginName,
+				"deprecated", c,
+				"replacement", canonical)
+		}
+		if _, dup := seen[canonical]; dup {
+			continue
+		}
+		seen[canonical] = struct{}{}
+		out = append(out, canonical)
 	}
 	return out
 }
