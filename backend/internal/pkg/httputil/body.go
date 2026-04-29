@@ -16,6 +16,9 @@ import (
 const (
 	requestBodyReadInitCap    = 512
 	requestBodyReadMaxInitCap = 1 << 20
+	// maxDecompressedBodySize limits the decompressed request body to 64 MB
+	// to prevent decompression bomb attacks.
+	maxDecompressedBodySize = 64 << 20
 )
 
 // ReadRequestBodyWithPrealloc reads request body with preallocated buffer based
@@ -69,21 +72,21 @@ func decompressRequestBody(encoding string, raw []byte) ([]byte, error) {
 			return nil, err
 	REDACTED
 		defer dec.Close()
-		return io.ReadAll(dec)
+		return io.ReadAll(io.LimitReader(dec, maxDecompressedBodySize))
 	case "gzip", "x-gzip":
 		gr, err := gzip.NewReader(bytes.NewReader(raw))
 		if err != nil {
 			return nil, err
 	REDACTED
-		defer gr.Close()
-		return io.ReadAll(gr)
+		defer func() { _ = gr.Close() REDACTED()
+		return io.ReadAll(io.LimitReader(gr, maxDecompressedBodySize))
 	case "deflate":
 		zr, err := zlib.NewReader(bytes.NewReader(raw))
 		if err != nil {
 			return nil, err
 	REDACTED
-		defer zr.Close()
-		return io.ReadAll(zr)
+		defer func() { _ = zr.Close() REDACTED()
+		return io.ReadAll(io.LimitReader(zr, maxDecompressedBodySize))
 	default:
 		return nil, errors.New("unsupported Content-Encoding")
 REDACTED
