@@ -119,6 +119,26 @@ func (t *BillingTicket) Close() {
 	}
 }
 
+// PreCheckPlan 暴露 ticket 内部缓存的 service_quota PreCheckSelect 计划，给调度阶段
+// 用于批量预测候选账号是否被 service_quota 阻塞（详见 ServiceQuotaService.SnapshotForAccounts）。
+//
+// 返回值语义：
+//   - service_quota 关闭 / 无规则匹配 → nil（caller 跳过预过滤）
+//   - feature flag off / legacyOneOff（CheckBillingEligibility 路径）→ 也返回 nil：
+//     单阶段路径 plan 不被持有，没有可用的候选规则集合
+//   - twoPhase=true 且 PreCheckSelect 选出至少一条候选规则 → 非 nil *ServiceQuotaPreCheckPlan
+//
+// 不暴露内部 svc / lease / quotaReq 字段，保持 BillingTicket 的封装边界——caller 只能
+// 通过 Consume / Close 改变 ticket 状态，不能旁路调用 PreCheckAcquire / Release。
+//
+// nil-safe：t == nil 时返回 nil（与其他 receiver 方法一致）。
+func (t *BillingTicket) PreCheckPlan() *ServiceQuotaPreCheckPlan {
+	if t == nil {
+		return nil
+	}
+	return t.plan
+}
+
 // detachLease 把 lease 所有权从 ticket 转移给 caller，并把 ticket 置为已关闭。
 // 仅供 CheckBillingEligibility 兼容路径使用——它需要返回原始 *ServiceQuotaLease 让旧 caller
 // 沿用 defer ReleaseQuotaLease(lease) 协议；ticket 在转移后不再持有任何资源。
