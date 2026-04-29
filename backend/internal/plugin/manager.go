@@ -82,6 +82,18 @@ type PluginManager struct {
 	// HTML returned to subsequent reloads still references the old plugin
 	// list and the frontend Sidebar / vue-router pick up stale state.
 	frontendCacheInvalidator func()
+
+	// eventPublisher fans typed host events out to subscribed plugins via
+	// the EventsExtension gRPC service. Optional; nil means "events
+	// disabled" — Publish* helpers degrade to no-ops.
+	eventPublisher *EventPublisher
+	// eventsAllowList tracks each plugin manifest.SubscribedEvents so the
+	// EventsExtensionServer can validate Subscribe requests against the
+	// declared allow-list. Populated alongside RegisterPlugin.
+	eventsAllowList *EventsAllowListRegistry
+	// eventsServer is the gRPC service registered when eventPublisher is
+	// non-nil. Built in SetEvents.
+	eventsServer *EventsExtensionServer
 }
 
 // PluginSettingsRegistrar is the minimal surface PluginManager needs from
@@ -269,6 +281,9 @@ func (m *PluginManager) startSDKServer() error {
 	m.sdkServer.RegisterServices(srv)
 	if m.settingsServer != nil {
 		m.settingsServer.Register(srv)
+	}
+	if m.eventsServer != nil {
+		m.eventsServer.Register(srv)
 	}
 	m.sdkGRPC = srv
 
@@ -622,6 +637,10 @@ var allowedPluginCapabilities = map[string]struct{}{
 	// settings tab in the admin SettingsView and read its persisted values
 	// via SDK Settings(). See V5-DESIGN §W3 (SettingsExtensionCapability).
 	"settings_extension": {}, // pluginsdk.CapabilitySettingsExtension — V5 W3
+	// events.gateway gates subscribing to high-frequency gateway events
+	// (currently gateway.model.invoked). Plugin Hook Phase B — see
+	// EventsExtension service in plugin-sdk/proto/sdk.proto.
+	"events.gateway": {},
 }
 
 // defaultOutboundBlockedCIDRs is the host-side default block list pushed to
@@ -938,6 +957,13 @@ func (m *PluginManager) spawnAndConnect(parentCtx context.Context, inst *PluginI
 	// 在 SDKServer 上注册插件 → 授权 capabilities 的映射,后续 Redis Do 会查询。
 	m.sdkServer.RegisterPlugin(inst.Name, approvedCaps)
 
+	// Phase B: register the plugin manifest.SubscribedEvents so the
+	// EventsExtension server can validate Subscribe requests against
+	// what the plugin actually declared interest in.
+	if m.eventsAllowList != nil {
+		m.eventsAllowList.Set(inst.Name, manifest.GetSubscribedEvents())
+	}
+
 	// V5/W3 SettingsExtension: persist the plugin's schema + defaults so
 	// the admin UI can render the form and so reads have something to
 	// fall back to. The registrar handles the missing-service case
@@ -959,6 +985,9 @@ func (m *PluginManager) spawnAndConnect(parentCtx context.Context, inst *PluginI
 		cancelReg()
 		if err != nil {
 			m.sdkServer.UnregisterPlugin(inst.Name)
+			if m.eventsAllowList != nil {
+				m.eventsAllowList.Forget(inst.Name)
+			}
 			_ = conn.Close()
 			cancelProc()
 			_ = cmd.Wait()
@@ -991,6 +1020,9 @@ func (m *PluginManager) spawnAndConnect(parentCtx context.Context, inst *PluginI
 	cancelInit()
 	if initErr != nil {
 		m.sdkServer.UnregisterPlugin(inst.Name)
+		if m.eventsAllowList != nil {
+			m.eventsAllowList.Forget(inst.Name)
+		}
 		_ = conn.Close()
 		cancelProc()
 		_ = cmd.Wait()
@@ -998,6 +1030,9 @@ func (m *PluginManager) spawnAndConnect(parentCtx context.Context, inst *PluginI
 	}
 	if initResp != nil && !initResp.Success {
 		m.sdkServer.UnregisterPlugin(inst.Name)
+		if m.eventsAllowList != nil {
+			m.eventsAllowList.Forget(inst.Name)
+		}
 		_ = conn.Close()
 		cancelProc()
 		_ = cmd.Wait()
@@ -1022,6 +1057,9 @@ func (m *PluginManager) spawnAndConnect(parentCtx context.Context, inst *PluginI
 	} else if len(manifest.GetMigrations()) > 0 {
 		if err := fetchAndRunPluginMigrations(parentCtx, m.db, lifecycle, manifest, inst.Name, m.logger); err != nil {
 			m.sdkServer.UnregisterPlugin(inst.Name)
+			if m.eventsAllowList != nil {
+				m.eventsAllowList.Forget(inst.Name)
+			}
 			_ = conn.Close()
 			cancelProc()
 			_ = cmd.Wait()
@@ -1134,6 +1172,9 @@ func (m *PluginManager) stopInstance(ctx context.Context, name string, markRegis
 	newTable := m.router.CurrentTable().RemovePlugin(name)
 	m.router.SwapRouteTable(newTable)
 	m.sdkServer.UnregisterPlugin(name)
+	if m.eventsAllowList != nil {
+		m.eventsAllowList.Forget(name)
+	}
 
 	// V5/W6 SETTINGS-V2: release the per-plugin settings subscription
 	// before unregistering the schema so the handler goroutine drains
@@ -1562,6 +1603,41 @@ func (m *PluginManager) SetSettings(svc PluginSettingsRegistrar, builder Setting
 	} else {
 		m.settingsServer = nil
 	}
+}
+
+// SetEvents wires the host-side EventPublisher and registers the
+// EventsExtension gRPC service so plugins can subscribe to typed host
+// events. Pass nil to disable; the SDK side returns PERMISSION_DENIED
+// for any Subscribe call when no publisher is configured.
+//
+// Plugin Hook Phase B — see plugin-sdk/proto/sdk.proto EventsExtension
+// service block for the delivery contract. Must be called before Start;
+// calling it after has no effect on the already-running gRPC server.
+func (m *PluginManager) SetEvents(publisher *EventPublisher) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.eventPublisher = publisher
+	if publisher == nil {
+		m.eventsAllowList = nil
+		m.eventsServer = nil
+		return
+	}
+	m.eventsAllowList = NewEventsAllowListRegistry()
+	m.eventsServer = NewEventsExtensionServer(
+		publisher,
+		m.eventsAllowList,
+		m.sdkServer,
+		m.sdkServer.ResolveCaller,
+	)
+}
+
+// EventPublisher returns the configured publisher (or nil if SetEvents
+// was not called). Services that need to publish events take a
+// non-nil pointer; the publisher itself tolerates a nil receiver.
+func (m *PluginManager) EventPublisher() *EventPublisher {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.eventPublisher
 }
 
 // SettingsExtensionBuilder is the callback the wire layer supplies; it

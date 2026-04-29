@@ -139,6 +139,13 @@ func (s *SDKServer) UnregisterPlugin(name string) {
 	s.knownPlugins.Remove(name)
 }
 
+// HasCapability reports whether the plugin has been granted the named
+// capability. Exposed so external service wirings (e.g. EventsExtension)
+// can implement their own gating without re-implementing the registry.
+func (s *SDKServer) HasCapability(name, capability string) bool {
+	return s.capabilities.Has(name, capability)
+}
+
 // resolveCaller pulls the plugin identity from the gRPC metadata header the
 // SDK client attaches to every outgoing call. Returns "" when the header is
 // missing or names a plugin the manager has not registered, so callers can
