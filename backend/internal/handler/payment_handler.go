@@ -2,6 +2,8 @@ package handler
 
 import (
 	"fmt"
+	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -140,6 +142,9 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		})
 	}
 
+	allowedPaymentCurrencies := checkoutAllowedPaymentCurrencies(cfg.AllowedPaymentCurrencies, limitsResp.Methods)
+	fxStatus := checkoutFXStatus(cfg, allowedPaymentCurrencies)
+
 	response.Success(c, checkoutInfoResponse{
 		Methods:                       limitsResp.Methods,
 		GlobalMin:                     limitsResp.GlobalMin,
@@ -157,10 +162,10 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		PaddleClientToken:             cfg.PaddleClientToken,
 		PaddleEnvironment:             cfg.PaddleEnvironment,
 		LedgerCurrency:                cfg.LedgerCurrency,
-		AllowedPaymentCurrencies:      cfg.AllowedPaymentCurrencies,
+		AllowedPaymentCurrencies:      allowedPaymentCurrencies,
 		ManualFXRates:                 cfg.ManualFXRates,
-		FXStatus:                      cfg.FXStatus,
-		CurrencyMeta:                  buildCurrencyMeta(cfg),
+		FXStatus:                      fxStatus,
+		CurrencyMeta:                  buildCurrencyMeta(cfg, allowedPaymentCurrencies),
 	})
 }
 
@@ -192,7 +197,66 @@ type currencyMeta struct {
 	Symbol     string `json:"symbol"`
 }
 
-func buildCurrencyMeta(cfg *service.PaymentConfig) map[string]currencyMeta {
+func checkoutAllowedPaymentCurrencies(configured []string, methods map[string]service.MethodLimits) []string {
+	seen := map[string]struct{}{}
+	ordered := make([]string, 0, 8)
+	add := func(currency string) {
+		currency = strings.ToUpper(strings.TrimSpace(currency))
+		if currency == "" {
+			return
+		}
+		if _, ok := seen[currency]; ok {
+			return
+		}
+		seen[currency] = struct{}{}
+		ordered = append(ordered, currency)
+	}
+
+	methodKeys := make([]string, 0, len(methods))
+	for method := range methods {
+		methodKeys = append(methodKeys, method)
+	}
+	sort.Strings(methodKeys)
+	for _, method := range methodKeys {
+		for _, currency := range methods[method].AllowedPaymentCurrencies {
+			add(currency)
+		}
+	}
+	if len(ordered) > 0 {
+		return ordered
+	}
+	for _, currency := range configured {
+		add(currency)
+	}
+	return ordered
+}
+
+func checkoutFXStatus(cfg *service.PaymentConfig, paymentCurrencies []string) service.PaymentFXStatus {
+	if cfg == nil {
+		return service.PaymentFXStatus{Stale: true}
+	}
+	status := cfg.FXStatus
+	ledgerCurrency := strings.ToUpper(strings.TrimSpace(cfg.LedgerCurrency))
+	missing := make([]string, 0)
+	for _, currency := range paymentCurrencies {
+		currency = strings.ToUpper(strings.TrimSpace(currency))
+		if currency == "" || currency == ledgerCurrency {
+			continue
+		}
+		rate := cfg.ManualFXRates[currency]
+		if math.IsNaN(rate) || math.IsInf(rate, 0) || rate <= 0 {
+			missing = append(missing, currency)
+		}
+	}
+	sort.Strings(missing)
+	status.MissingCurrencies = missing
+	if len(missing) > 0 {
+		status.Stale = true
+	}
+	return status
+}
+
+func buildCurrencyMeta(cfg *service.PaymentConfig, paymentCurrencies []string) map[string]currencyMeta {
 	seen := map[string]struct{}{}
 	ordered := make([]string, 0, 8)
 	add := func(currency string) {
@@ -208,6 +272,9 @@ func buildCurrencyMeta(cfg *service.PaymentConfig) map[string]currencyMeta {
 	}
 	if cfg != nil {
 		add(cfg.LedgerCurrency)
+		for _, currency := range paymentCurrencies {
+			add(currency)
+		}
 		for _, currency := range cfg.AllowedPaymentCurrencies {
 			add(currency)
 		}

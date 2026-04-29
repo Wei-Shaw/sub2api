@@ -4,10 +4,12 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -115,4 +117,55 @@ func TestPaymentQuoteRejectsUnsupportedPaymentCurrency(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "payment currency is not supported")
+}
+
+func TestPaymentQuoteDefaultsMissingSepayCurrencyToVND(t *testing.T) {
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{
+		SettingPaymentEnabled:           "true",
+		SettingLedgerCurrency:           "USD",
+		SettingAllowedPaymentCurrencies: "USD,VND,CNY",
+		SettingManualFXRates:            `{"USD":1,"VND":0.000039215686,"CNY":0.139}`,
+		SettingMinRechargeAmount:        "1",
+		SettingMaxRechargeAmount:        "1000",
+	}}
+	configSvc := NewPaymentConfigService(nil, repo, []byte("0123456789abcdef0123456789abcdef"))
+	svc := NewPaymentService(nil, nil, nil, nil, nil, configSvc, nil, nil, nil)
+
+	quote, err := svc.CreatePaymentQuote(context.Background(), CreatePaymentQuoteRequest{
+		UserID:      42,
+		Amount:      200000,
+		AmountMode:  PaymentAmountModePayment,
+		PaymentType: payment.TypeSepay,
+		OrderType:   payment.OrderTypeBalance,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "VND", quote.PaymentCurrency)
+	require.Equal(t, 200000.0, quote.PaymentAmount)
+	require.InDelta(t, 7.84, quote.LedgerAmount, 0.01)
+}
+
+func TestPaymentQuoteReturnsBadRequestWhenFXRateMissing(t *testing.T) {
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{
+		SettingPaymentEnabled:           "true",
+		SettingLedgerCurrency:           "USD",
+		SettingAllowedPaymentCurrencies: "USD,VND",
+		SettingManualFXRates:            `{"USD":1}`,
+	}}
+	configSvc := NewPaymentConfigService(nil, repo, []byte("0123456789abcdef0123456789abcdef"))
+	svc := NewPaymentService(nil, nil, nil, nil, nil, configSvc, nil, nil, nil)
+
+	_, err := svc.CreatePaymentQuote(context.Background(), CreatePaymentQuoteRequest{
+		UserID:          42,
+		Amount:          200000,
+		AmountMode:      PaymentAmountModePayment,
+		PaymentCurrency: "VND",
+		PaymentType:     payment.TypeSepay,
+		OrderType:       payment.OrderTypeBalance,
+	})
+	require.Error(t, err)
+	var appErr *infraerrors.ApplicationError
+	require.True(t, errors.As(err, &appErr))
+	require.Equal(t, "FX_RATE_MISSING", appErr.Reason)
+	require.Equal(t, "VND", appErr.Metadata["payment_currency"])
+	require.Equal(t, "USD", appErr.Metadata["ledger_currency"])
 }

@@ -291,13 +291,13 @@ func unionFloat(agg float64, limited bool, val float64, wantMin bool) (float64, 
 //   - SingleMax: highest ceiling across instances; 0 if any is unlimited
 //   - DailyLimit: highest cap across instances; 0 if any is unlimited
 func pcAggregateMethodLimits(pt string, instances []*dbent.PaymentProviderInstance) MethodLimits {
-	ml := MethodLimits{PaymentType: pt}
+	ml := MethodLimits{PaymentType: pt, AllowedPaymentCurrencies: pcSupportedPaymentCurrencies(pt, instances)}
 	minLimited, maxLimited, dailyLimited := true, true, true
 
 	for _, inst := range instances {
 		cl, hasLimits := pcInstanceTypeLimits(inst, pt)
 		if !hasLimits {
-			return MethodLimits{PaymentType: pt} // any unlimited instance → all zeros
+			return MethodLimits{PaymentType: pt, AllowedPaymentCurrencies: ml.AllowedPaymentCurrencies} // any unlimited instance → all zeros
 		}
 		ml.SingleMin, minLimited = unionFloat(ml.SingleMin, minLimited, cl.SingleMin, true)
 		ml.SingleMax, maxLimited = unionFloat(ml.SingleMax, maxLimited, cl.SingleMax, false)
@@ -314,6 +314,34 @@ func pcAggregateMethodLimits(pt string, instances []*dbent.PaymentProviderInstan
 		ml.DailyLimit = 0
 	}
 	return ml
+}
+
+func pcSupportedPaymentCurrencies(pt string, instances []*dbent.PaymentProviderInstance) []string {
+	seen := make(map[string]struct{})
+	out := make([]string, 0, 4)
+	add := func(currency string) {
+		currency = normalizeCurrencyCode(currency, "")
+		if currency == "" {
+			return
+		}
+		if _, ok := seen[currency]; ok {
+			return
+		}
+		seen[currency] = struct{}{}
+		out = append(out, currency)
+	}
+
+	for _, inst := range instances {
+		for _, currency := range supportedCurrenciesForProvider(inst.ProviderKey, pt) {
+			add(currency)
+		}
+	}
+	if len(out) == 0 {
+		for _, currency := range supportedCurrenciesForProvider("", pt) {
+			add(currency)
+		}
+	}
+	return out
 }
 
 // pcComputeGlobalRange computes the widest [min, max] across all methods.

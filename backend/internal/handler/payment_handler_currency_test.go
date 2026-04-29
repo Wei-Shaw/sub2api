@@ -48,7 +48,7 @@ func TestPaymentCheckoutInfoReturnsCurrencyMetadata(t *testing.T) {
 		service.SettingFXRatesUpdatedAt:         time.Now().UTC().Format(time.RFC3339),
 	}}
 	configSvc := service.NewPaymentConfigService(client, settings, []byte("0123456789abcdef0123456789abcdef"))
-	h := NewPaymentHandler(nil, configSvc, nil)
+	h := NewPaymentHandler(nil, configSvc)
 
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
@@ -95,6 +95,75 @@ func TestPaymentCheckoutInfoReturnsCurrencyMetadata(t *testing.T) {
 	require.Empty(t, resp.Data.StripePublishableKey)
 }
 
+func TestPaymentCheckoutInfoExposesSepayVNDMethodCurrency(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db, err := sql.Open("sqlite", "file:payment_handler_currency_checkout_sepay?mode=memory&cache=shared")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	_, err = db.Exec("PRAGMA foreign_keys = ON")
+	require.NoError(t, err)
+
+	drv := entsql.OpenDB(dialect.SQLite, db)
+	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(drv)))
+	t.Cleanup(func() { _ = client.Close() })
+
+	_, err = client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeSepay).
+		SetName("Sepay").
+		SetConfig("{}").
+		SetSupportedTypes(payment.TypeSepay).
+		SetEnabled(true).
+		Save(context.Background())
+	require.NoError(t, err)
+
+	settings := &paymentHandlerCurrencySettingRepo{values: map[string]string{
+		service.SettingPaymentEnabled:           "true",
+		service.SettingLedgerCurrency:           "USD",
+		service.SettingAllowedPaymentCurrencies: "CNY,USD",
+		service.SettingManualFXRates:            `{"USD":1,"CNY":1}`,
+		service.SettingFXRatesSource:            "manual",
+		service.SettingFXRatesUpdatedAt:         time.Now().UTC().Format(time.RFC3339),
+	}}
+	configSvc := service.NewPaymentConfigService(client, settings, []byte("0123456789abcdef0123456789abcdef"))
+	h := NewPaymentHandler(nil, configSvc)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/payment/checkout-info", nil)
+
+	h.GetCheckoutInfo(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			Methods map[string]struct {
+				PaymentType              string   `json:"payment_type"`
+				AllowedPaymentCurrencies []string `json:"allowed_payment_currencies"`
+			} `json:"methods"`
+			AllowedPaymentCurrencies []string `json:"allowed_payment_currencies"`
+			FXStatus                 struct {
+				Stale             bool     `json:"stale"`
+				MissingCurrencies []string `json:"missing_currencies"`
+			} `json:"fx_status"`
+			CurrencyMeta map[string]struct {
+				MinorUnits int    `json:"minor_units"`
+				Symbol     string `json:"symbol"`
+			} `json:"currency_meta"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Equal(t, []string{"VND"}, resp.Data.Methods[payment.TypeSepay].AllowedPaymentCurrencies)
+	require.Equal(t, []string{"VND"}, resp.Data.AllowedPaymentCurrencies)
+	require.True(t, resp.Data.FXStatus.Stale)
+	require.Equal(t, []string{"VND"}, resp.Data.FXStatus.MissingCurrencies)
+	require.Equal(t, 0, resp.Data.CurrencyMeta["VND"].MinorUnits)
+	require.Equal(t, "₫", resp.Data.CurrencyMeta["VND"].Symbol)
+}
+
 func TestCreateOrderRequestBindsCurrencyAmountMode(t *testing.T) {
 	var req CreateOrderRequest
 	require.NoError(t, json.Unmarshal([]byte(`{
@@ -136,7 +205,7 @@ func TestPaymentQuoteEndpointReturnsSignedSnapshot(t *testing.T) {
 	}}
 	configSvc := service.NewPaymentConfigService(client, settings, []byte("0123456789abcdef0123456789abcdef"))
 	paymentSvc := service.NewPaymentService(nil, nil, nil, nil, nil, configSvc, nil, nil, nil)
-	h := NewPaymentHandler(paymentSvc, configSvc, nil)
+	h := NewPaymentHandler(paymentSvc, configSvc)
 
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)

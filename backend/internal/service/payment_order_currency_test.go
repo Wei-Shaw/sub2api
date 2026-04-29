@@ -1,13 +1,14 @@
 package service
 
 import (
+	"errors"
 	"math"
-	"strings"
 	"testing"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
 func TestComputeCreateOrderAmountsPaymentModeVNDTopUp(t *testing.T) {
@@ -93,8 +94,9 @@ func TestComputeCreateOrderAmountsMissingFXRateReturnsError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected missing FX rate error")
 	}
-	if !strings.Contains(err.Error(), "manual fx rate not found for KRW") {
-		t.Fatalf("error = %v, want missing KRW fx rate", err)
+	var appErr *infraerrors.ApplicationError
+	if !errors.As(err, &appErr) || appErr.Reason != "FX_RATE_MISSING" {
+		t.Fatalf("error = %v, want FX_RATE_MISSING", err)
 	}
 }
 

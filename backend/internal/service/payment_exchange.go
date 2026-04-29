@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
 const (
@@ -32,7 +34,11 @@ func resolveFXSnapshot(paymentCurrency string, cfg *PaymentConfig, now time.Time
 		}
 	}
 	if !isAllowedPaymentCurrency(payCurrency, cfg.AllowedPaymentCurrencies) {
-		return fxSnapshot{}, fmt.Errorf("payment currency %s is not allowed", payCurrency)
+		return fxSnapshot{}, infraerrors.BadRequest("PAYMENT_CURRENCY_NOT_ALLOWED", "payment currency is not allowed").
+			WithMetadata(map[string]string{
+				"payment_currency": payCurrency,
+				"ledger_currency":  ledgerCurrency,
+			})
 	}
 	if payCurrency == ledgerCurrency {
 		return fxSnapshot{
@@ -45,7 +51,11 @@ func resolveFXSnapshot(paymentCurrency string, cfg *PaymentConfig, now time.Time
 	}
 	rate := cfg.ManualFXRates[payCurrency]
 	if math.IsNaN(rate) || math.IsInf(rate, 0) || rate <= 0 {
-		return fxSnapshot{}, fmt.Errorf("manual fx rate not found for %s", payCurrency)
+		return fxSnapshot{}, infraerrors.BadRequest("FX_RATE_MISSING", "missing FX rate for payment currency").
+			WithMetadata(map[string]string{
+				"payment_currency": payCurrency,
+				"ledger_currency":  ledgerCurrency,
+			})
 	}
 	return fxSnapshot{
 		PaymentCurrency:     payCurrency,
