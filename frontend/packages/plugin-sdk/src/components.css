@@ -653,4 +653,46 @@
   .table-wrapper thead.sticky {
     box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
   }
+
+  /* ============ Plugin layout primitives ============ */
+  /* plugin 端通用页面布局 class, 与 PluginPageLayout / TablePageLayout / PageActions /
+     FilterBar 组件配套. 提供给 plugin 模板直接用 class 写, 不必依赖组件 wrapper. */
+  .plugin-channels-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .layout-section-fixed {
+    flex-shrink: 0;
+  }
+
+  .layout-section-scrollable {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .table-scroll-container {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 100%;
+    @apply bg-white dark:bg-dark-800 rounded-2xl border border-gray-200 dark:border-dark-700 shadow-sm;
+  }
+
+  .page-actions {
+    @apply flex w-full flex-shrink-0 flex-wrap items-center justify-end gap-3 lg:w-auto;
+  }
+
+  .filter-bar {
+    @apply flex flex-col justify-between gap-4 lg:flex-row lg:items-start;
+  }
+
+  .filter-bar-left {
+    @apply flex flex-1 flex-wrap items-center gap-3;
+  }
 }

@@ -14,6 +14,12 @@ export { default as EmptyState } from './components/EmptyState.vue'
 export { default as Toggle } from './components/Toggle.vue'
 export { default as PlatformIcon } from './components/PlatformIcon.vue'
 
+// Layout primitives (Plan B D1)
+export { default as PluginPageLayout } from './components/PluginPageLayout.vue'
+export { default as TablePageLayout } from './components/TablePageLayout.vue'
+export { default as PageActions } from './components/PageActions.vue'
+export { default as FilterBar } from './components/FilterBar.vue'
+
 export type { Column, SelectOption } from './types'
 
 export * as tablePreferences from './utils/tablePreferences'
