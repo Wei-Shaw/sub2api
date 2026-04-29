@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	mathrand "math/rand"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -6434,6 +6436,49 @@ REDACTED
 	return false
 REDACTED
 
+// sanitizeStreamError 返回不含网络地址的客户端可见错误描述。
+// 默认 (*net.OpError).Error() 会拼接 Source/Addr 字段，泄露内部 IP/端口与上游
+// 服务器地址（例如 "read tcp 10.0.0.1:54321->52.1.2.3:443: read: connection
+// reset by peer"）。该函数只保留可识别的错误类别，原始 err 仍在调用点写入日志。
+func sanitizeStreamError(err error) string {
+	if err == nil {
+		return ""
+REDACTED
+	switch {
+	case errors.Is(err, io.ErrUnexpectedEOF):
+		return "unexpected EOF"
+	case errors.Is(err, io.EOF):
+		return "EOF"
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "deadline exceeded"
+	case errors.Is(err, syscall.ECONNRESET):
+		return "connection reset by peer"
+	case errors.Is(err, syscall.ECONNABORTED):
+		return "connection aborted"
+	case errors.Is(err, syscall.ETIMEDOUT):
+		return "connection timed out"
+	case errors.Is(err, syscall.EPIPE):
+		return "broken pipe"
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return "connection refused"
+REDACTED
+	var netErr *net.OpError
+	if errors.As(err, &netErr) {
+		if netErr.Timeout() {
+			if netErr.Op != "" {
+				return netErr.Op + " timeout"
+		REDACTED
+			return "i/o timeout"
+	REDACTED
+		if netErr.Op != "" {
+			return netErr.Op + " network error"
+	REDACTED
+REDACTED
+	return "upstream connection error"
+REDACTED
+
 // ExtractUpstreamErrorMessage 从上游响应体中提取错误消息
 // 支持 Claude 风格的错误格式：{"type":"error","error":{"type":"...","message":"..."REDACTEDREDACTED
 func ExtractUpstreamErrorMessage(body []byte) string {
@@ -7061,7 +7106,10 @@ REDACTED
 				// 上游中途读错误（unexpected EOF / connection reset 等，常见于 HTTP/2 GOAWAY）：
 				// 若尚未向客户端写过任何字节，包成 UpstreamFailoverError 让 handler 层走 failover/重试。
 				// 已经开始写流时 SSE 协议无 resume，只能透传错误事件给客户端。
-				disconnectMsg := fmt.Sprintf("upstream stream disconnected: %s", ev.err)
+				// 注意:面向客户端的 disconnectMsg 必须用 sanitizeStreamError 剥离地址,
+				// 默认 *net.OpError 的 Error() 会泄露内部 IP/端口和上游地址。完整 ev.err
+				// 仅在下方 LegacyPrintf 内部日志中保留供运维诊断。
+				disconnectMsg := "upstream stream disconnected: " + sanitizeStreamError(ev.err)
 				if !c.Writer.Written() {
 					logger.LegacyPrintf("service.gateway", "Upstream stream read error before any client output (account=%d), failing over: %v", account.ID, ev.err)
 					body, _ := json.Marshal(map[string]any{

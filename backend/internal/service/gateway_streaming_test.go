@@ -6,8 +6,10 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"syscall"
 	"testing"
 	"time"
 
@@ -296,4 +298,98 @@ REDACTED
 	require.Contains(t, body, `"type":"error"`, "data 必须含 type:error 顶层字段（Anthropic 标准）")
 	require.Contains(t, body, `"stream_read_error"`, "error.type 必须为 stream_read_error")
 	require.Contains(t, body, "upstream stream disconnected", "error.message 必须包含具体根因，Claude Code 等客户端才能显示有效错误文案")
+REDACTED
+
+// 默认 (*net.OpError).Error() 会拼接 Source/Addr 字段，泄露内部 IP/端口与上游
+// 服务器地址。sanitizeStreamError 必须剥离这些信息，避免基础设施拓扑通过
+// failover ResponseBody 或 SSE error 帧返回给客户端。
+func TestSanitizeStreamError_StripsNetworkAddresses(t *testing.T) {
+	src, err := net.ResolveTCPAddr("tcp", "10.0.0.1:54321")
+REDACTED
+	dst, err := net.ResolveTCPAddr("tcp", "52.1.2.3:443")
+REDACTED
+
+	raw := &net.OpError{
+		Op:     "read",
+		Net:    "tcp",
+		Source: src,
+		Addr:   dst,
+		Err:    syscall.ECONNRESET,
+REDACTED
+
+	// 前置：原始 Error() 确实包含会泄露的字段（避免测试在 Go 行为变化时静默通过）
+	require.Contains(t, raw.Error(), "10.0.0.1")
+	require.Contains(t, raw.Error(), "52.1.2.3")
+
+	got := sanitizeStreamError(raw)
+	require.NotContains(t, got, "10.0.0.1", "不得泄露内部源 IP")
+	require.NotContains(t, got, "54321", "不得泄露源端口")
+	require.NotContains(t, got, "52.1.2.3", "不得泄露上游目标 IP")
+	require.NotContains(t, got, "443", "不得泄露上游端口")
+	require.Equal(t, "connection reset by peer", got)
+REDACTED
+
+func TestSanitizeStreamError_KnownErrors(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want string
+REDACTED{
+		{"unexpected EOF", io.ErrUnexpectedEOF, "unexpected EOF"REDACTED,
+		{"EOF", io.EOF, "EOF"REDACTED,
+		{"context canceled", context.Canceled, "canceled"REDACTED,
+		{"deadline exceeded", context.DeadlineExceeded, "deadline exceeded"REDACTED,
+		{"ECONNRESET 直接", syscall.ECONNRESET, "connection reset by peer"REDACTED,
+		{"EPIPE", syscall.EPIPE, "broken pipe"REDACTED,
+		{"ETIMEDOUT", syscall.ETIMEDOUT, "connection timed out"REDACTED,
+		{"未识别错误兜底", errors.New("weird internal error"), "upstream connection error"REDACTED,
+		{"nil 返回空串", nil, ""REDACTED,
+REDACTED
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, sanitizeStreamError(tc.err))
+	REDACTED)
+REDACTED
+REDACTED
+
+// failover ResponseBody 必须用 sanitize 过的消息，避免泄露给客户端 / 写入 ops 日志
+// 时携带内部地址信息。
+func TestHandleStreamingResponse_FailoverBodyDoesNotLeakAddresses(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newMinimalGatewayService()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	src, _ := net.ResolveTCPAddr("tcp", "10.0.0.1:54321")
+	dst, _ := net.ResolveTCPAddr("tcp", "52.1.2.3:443")
+	netErr := &net.OpError{
+		Op:     "read",
+		Net:    "tcp",
+		Source: src,
+		Addr:   dst,
+		Err:    syscall.ECONNRESET,
+REDACTED
+
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTEDREDACTED,
+		Body:       &streamReadCloser{err: netErrREDACTED,
+REDACTED
+
+	_, err := svc.handleStreamingResponse(context.Background(), resp, c, &Account{ID: 1REDACTED, time.Now(), "model", "model", false)
+REDACTED
+
+	var failoverErr *UpstreamFailoverError
+	require.True(t, errors.As(err, &failoverErr))
+
+	body := string(failoverErr.ResponseBody)
+	require.NotContains(t, body, "10.0.0.1", "failover ResponseBody 不得泄露内部源 IP")
+	require.NotContains(t, body, "54321")
+	require.NotContains(t, body, "52.1.2.3", "failover ResponseBody 不得泄露上游 IP")
+	require.NotContains(t, body, "443")
+	// 仍然包含可诊断的根因
+	require.Contains(t, body, "connection reset by peer")
+	require.Contains(t, body, "upstream stream disconnected")
 REDACTED
