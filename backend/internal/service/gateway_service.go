@@ -1484,6 +1484,26 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	if err != nil {
 		return nil, err
 	}
+	// TODO(service-quota-schedulability): 在选号循环前注入 service_quota 预过滤——
+	// 让 path 含 account_id / channel_id 的规则命中后该账号自然从候选中剔除，
+	// 与原生 RateLimitResetAt 全部命中走同一 ErrNoAvailableAccounts / 503 链路。
+	//
+	// 接入方式（待 handler 把 *BillingTicket 注入到 ctx，或将 GatewayService 构造期注入
+	// ServiceQuotaService 后启用）：
+	//
+	//   if plan := billingTicketFromCtx(ctx).PreCheckPlan(); plan != nil && s.serviceQuota != nil {
+	//       base := ServiceQuotaCheckRequest{
+	//           UserID:   plan.Req.UserID,
+	//           Platform: platform,
+	//           GroupID:  derefGroupID(groupID),
+	//           Model:    requestedModel,
+	//       }
+	//       accounts = FilterAccountsByServiceQuotaSchedulability(ctx, s.serviceQuota, plan, base, accounts)
+	//   }
+	//
+	// 当前 GatewayService 未持有 ServiceQuotaService 引用且 ctx 中无 ticket，临时跳过。
+	// FilterAccountsByServiceQuotaSchedulability + ServiceQuotaService.SnapshotForAccounts
+	// 已在 service 包内实现并测试，待 handler 改造完成可一行代码接入。
 	if len(accounts) == 0 {
 		return nil, ErrNoAvailableAccounts
 	}
