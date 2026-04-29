@@ -64,9 +64,14 @@
             <!-- Top: icon + display_name + builtin badge -->
             <div class="flex items-start gap-3">
               <span
-                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-500/10 text-primary-600 dark:text-primary-300"
+                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-500/10 text-primary-600 dark:text-primary-300 [&_svg]:h-6 [&_svg]:w-6"
               >
-                <Icon name="cube" size="md" />
+                <span
+                  v-if="p.icon_svg"
+                  v-html="sanitizeSvg(p.icon_svg)"
+                  aria-hidden="true"
+                />
+                <Icon v-else name="cube" size="md" />
               </span>
               <div class="min-w-0 flex-1">
                 <div class="flex items-start justify-between gap-2">
@@ -175,6 +180,7 @@
           {{ t('admin.plugins.tabDetail') }}
         </button>
         <button
+          v-if="detailPlugin.has_settings"
           type="button"
           class="-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors"
           :class="activeTab === 'settings'
@@ -358,6 +364,7 @@ import PluginSettingsForm from '@/components/admin/PluginSettingsForm.vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import { useAppStore } from '@/stores'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { sanitizeSvg } from '@/utils/sanitize'
 
 interface PluginInfo {
   name: string
@@ -374,6 +381,13 @@ interface PluginInfo {
   started_at?: string
   last_error?: string
   config?: Record<string, unknown>
+  /** Manifest-supplied SVG icon markup; empty falls back to the cube icon. */
+  icon_svg?: string
+  /**
+   * True when the plugin manifest declares a non-empty SettingsSchema.
+   * The Settings tab is only rendered for plugins that opted in.
+   */
+  has_settings?: boolean
 }
 
 // Plugin lifecycle action keys (must match backend POST endpoints).

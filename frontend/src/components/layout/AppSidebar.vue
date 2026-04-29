@@ -196,6 +196,13 @@ interface NavItem {
   iconSvg?: string
   hideInSimpleMode?: boolean
   children?: NavItem[]
+  /**
+   * V5/W7 Placement DSL bucket the host chose for this entry. Plugin items
+   * carry their plugin-supplied placement_group; host items carry one of the
+   * fixed buckets defined alongside `baseItems`. Undefined falls back to
+   * `<section>/end` inside mergeByPlacement.
+   */
+  group?: string
 }
 
 // resolvePluginLabel 选择菜单项的显示文本,优先级：
@@ -255,7 +262,90 @@ function pluginItemsAsNavItems(items: PluginNavItem[]): NavItem[] {
     iconSvg: item.iconSvg,
     hideInSimpleMode: item.hideInSimpleMode,
     children: item.children ? pluginItemsAsNavItems(item.children) : undefined,
+    // V5/W7: 把插件声明的 placement_group 投射到 NavItem.group; 缺省时
+    // mergeByPlacement 会按 section 推 `${section}/end` fallback。
+    group: item.placementGroup,
   }))
+}
+
+// V5/W7 Placement DSL — 把 host 的 baseItems 与插件菜单按 group 合并:
+//   1. 每条 base 项的 group 已在声明时硬编码; 插件项的 group 来自
+//      placement_group, 缺省 fallback 到 `${sectionPrefix}/end`.
+//   2. 按 group 分桶, 桶内按 (placementOrder asc, originalIndex asc) 排序;
+//      base 项的 placementOrder 视为 originalIndex (保持声明顺序), 这样无插件
+//      时输出与原数组完全一致 (回归保护).
+//   3. 按预定义桶顺序拼接: main -> system -> end.
+//
+// sectionPrefix 决定 fallback bucket 与桶顺序, 'admin' 用 admin/main 系列,
+// 'user' 没有 system 桶 (只有 main / end).
+function mergeByPlacement(
+  base: NavItem[],
+  pluginItems: PluginNavItem[],
+  sectionPrefix: 'admin' | 'user',
+): NavItem[] {
+  type Annotated = NavItem & { __order: number; __seq: number }
+  const fallback = `${sectionPrefix}/end`
+  const annotated: Annotated[] = []
+
+  base.forEach((item, idx) => {
+    annotated.push({
+      ...item,
+      group: item.group || fallback,
+      __order: idx, // host 项保持声明顺序
+      __seq: idx,
+    })
+  })
+
+  const baseLen = base.length
+  const pluginNavs = pluginItemsAsNavItems(pluginItems)
+  pluginNavs.forEach((item, idx) => {
+    const original = pluginItems[idx]
+    annotated.push({
+      ...item,
+      group: original?.placementGroup || fallback,
+      __order: original?.placementOrder ?? 9999,
+      __seq: baseLen + idx,
+    })
+  })
+
+  // 桶顺序: admin = main → system → end; user = main → end (system 桶在
+  // user section 里没有意义, 但即便插件错误声明也会被拼到 end 之前, 不影响
+  // 视觉)。
+  const order = sectionPrefix === 'admin'
+    ? [`${sectionPrefix}/main`, `${sectionPrefix}/system`, `${sectionPrefix}/end`]
+    : [`${sectionPrefix}/main`, `${sectionPrefix}/system`, `${sectionPrefix}/end`]
+
+  const buckets = new Map<string, Annotated[]>()
+  for (const g of order) buckets.set(g, [])
+  // 收集未在 order 中列出的桶(防御性, 不应发生), 按出现顺序追加到末尾。
+  const extraGroups: string[] = []
+  for (const item of annotated) {
+    const g = item.group || fallback
+    if (!buckets.has(g)) {
+      buckets.set(g, [])
+      extraGroups.push(g)
+    }
+    buckets.get(g)!.push(item)
+  }
+
+  const result: NavItem[] = []
+  const flush = (g: string) => {
+    const list = buckets.get(g)
+    if (!list || list.length === 0) return
+    list.sort((a, b) => {
+      if (a.__order !== b.__order) return a.__order - b.__order
+      return a.__seq - b.__seq
+    })
+    for (const item of list) {
+      const { __order, __seq, ...clean } = item
+      void __order
+      void __seq
+      result.push(clean)
+    }
+  }
+  for (const g of order) flush(g)
+  for (const g of extraGroups) flush(g)
+  return result
 }
 
 const { t, locale } = useI18n()
@@ -629,19 +719,22 @@ const ChevronDownIcon = {
 
 // User navigation items (for regular users)
 const userNavItems = computed((): NavItem[] => {
-  const items: NavItem[] = [
-    { path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
-    { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
-    { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
-    { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
+  // V5/W7 Placement DSL: host 项硬编码 group 字段, 插件项通过 mergeByPlacement
+  // 按 placement_group 合并; 自定义菜单与插件同属 user/end 末尾段。
+  const baseItems: NavItem[] = [
+    { path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon, group: 'user/main' },
+    { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon, group: 'user/main' },
+    { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true, group: 'user/main' },
+    { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, group: 'user/main' },
     ...(appStore.cachedPublicSettings?.payment_enabled
       ? [
           {
             path: '/purchase',
             label: t('nav.buySubscription'),
             icon: RechargeSubscriptionIcon,
-            hideInSimpleMode: true
-          },
+            hideInSimpleMode: true,
+            group: 'user/main',
+          } as NavItem,
         ]
       : []),
     ...(appStore.cachedPublicSettings?.payment_enabled
@@ -650,20 +743,22 @@ const userNavItems = computed((): NavItem[] => {
             path: '/orders',
             label: t('nav.myOrders'),
             icon: OrderListIcon,
-            hideInSimpleMode: true
-          },
+            hideInSimpleMode: true,
+            group: 'user/main',
+          } as NavItem,
         ]
       : []),
-    { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
-    { path: '/profile', label: t('nav.profile'), icon: UserIcon },
+    { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true, group: 'user/end' },
+    { path: '/profile', label: t('nav.profile'), icon: UserIcon, group: 'user/end' },
     ...customMenuItemsForUser.value.map((item): NavItem => ({
       path: `/custom/${item.id}`,
       label: item.label,
       icon: null,
       iconSvg: item.icon_svg,
+      group: 'user/end',
     })),
-    ...pluginItemsAsNavItems(pluginUserNavItems.value),
   ]
+  const items = mergeByPlacement(baseItems, pluginUserNavItems.value, 'user')
   return authStore.isSimpleMode ? items.filter(item => !item.hideInSimpleMode) : items
 })
 
@@ -673,18 +768,19 @@ const pluginUserNavItems = computed(() => getPluginMenuItems('user'))
 
 // Personal navigation items (for admin's "My Account" section, without Dashboard)
 const personalNavItems = computed((): NavItem[] => {
-  const items: NavItem[] = [
-    { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
-    { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
-    { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
+  const baseItems: NavItem[] = [
+    { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon, group: 'user/main' },
+    { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true, group: 'user/main' },
+    { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, group: 'user/main' },
     ...(appStore.cachedPublicSettings?.payment_enabled
       ? [
           {
             path: '/purchase',
             label: t('nav.buySubscription'),
             icon: RechargeSubscriptionIcon,
-            hideInSimpleMode: true
-          },
+            hideInSimpleMode: true,
+            group: 'user/main',
+          } as NavItem,
         ]
       : []),
     ...(appStore.cachedPublicSettings?.payment_enabled
@@ -693,20 +789,22 @@ const personalNavItems = computed((): NavItem[] => {
             path: '/orders',
             label: t('nav.myOrders'),
             icon: OrderListIcon,
-            hideInSimpleMode: true
-          },
+            hideInSimpleMode: true,
+            group: 'user/main',
+          } as NavItem,
         ]
       : []),
-    { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true },
-    { path: '/profile', label: t('nav.profile'), icon: UserIcon },
+    { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true, group: 'user/end' },
+    { path: '/profile', label: t('nav.profile'), icon: UserIcon, group: 'user/end' },
     ...customMenuItemsForUser.value.map((item): NavItem => ({
       path: `/custom/${item.id}`,
       label: item.label,
       icon: null,
       iconSvg: item.icon_svg,
+      group: 'user/end',
     })),
-    ...pluginItemsAsNavItems(pluginUserNavItems.value),
   ]
+  const items = mergeByPlacement(baseItems, pluginUserNavItems.value, 'user')
   return authStore.isSimpleMode ? items.filter(item => !item.hideInSimpleMode) : items
 })
 
@@ -726,21 +824,24 @@ const customMenuItemsForAdmin = computed(() => {
 
 // Admin navigation items
 const adminNavItems = computed((): NavItem[] => {
+  // V5/W7 Placement DSL: 业务主菜单走 admin/main, 系统类(/admin/plugins、
+  // /admin/usage) 走 admin/system, 系统设置 + 自定义菜单走 admin/end.
+  // mergeByPlacement 把插件项按 placement_group 插入对应桶。
   const baseItems: NavItem[] = [
-    { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
+    { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon, group: 'admin/main' },
     ...(adminSettingsStore.opsMonitoringEnabled
-      ? [{ path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon }]
+      ? [{ path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, group: 'admin/main' } as NavItem]
       : []),
-    { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
-    { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true },
+    { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true, group: 'admin/main' },
+    { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true, group: 'admin/main' },
     // /admin/channels 入口由 channel-management 插件 manifest 提供 (含 渠道定价 + 渠道监控 子菜单).
     // 插件未启用时不显示, host 不再硬编码副本.
-    { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
-    { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
-    { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
-    { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
-    { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true },
-    { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true },
+    { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, group: 'admin/main' },
+    { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon, group: 'admin/main' },
+    { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon, group: 'admin/main' },
+    { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon, group: 'admin/main' },
+    { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true, group: 'admin/main' },
+    { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true, group: 'admin/main' },
     ...(adminSettingsStore.paymentEnabled
       ? [
           {
@@ -748,51 +849,42 @@ const adminNavItems = computed((): NavItem[] => {
             label: t('nav.orderManagement'),
             icon: OrderIcon,
             hideInSimpleMode: true,
+            group: 'admin/main',
             children: [
               { path: '/admin/orders/dashboard', label: t('nav.paymentDashboard'), icon: ChartIcon },
               { path: '/admin/orders', label: t('nav.orderManagement'), icon: OrderIcon },
               { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon },
             ],
-          },
+          } as NavItem,
         ]
       : []),
-    { path: '/admin/plugins', label: t('nav.plugins'), icon: PluginIcon, hideInSimpleMode: true },
-    { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon }
+    { path: '/admin/plugins', label: t('nav.plugins'), icon: PluginIcon, hideInSimpleMode: true, group: 'admin/system' },
+    { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon, group: 'admin/system' },
   ]
 
-  // 简单模式下，在系统设置前插入 API密钥
+  // 简单模式下,基础项按 mergeByPlacement 合并插件,再在末尾补充 API 密钥和
+  // 系统设置 + 自定义菜单 (这两类不参与桶排序, 始终位于尾部)。
   if (authStore.isSimpleMode) {
-    const filtered = baseItems.filter(item => !item.hideInSimpleMode)
-    filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon })
-    filtered.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
-    // Add admin custom menu items after settings
+    const visiblePlugins = pluginAdminNavItems.value.filter((pl) => !pl.hideInSimpleMode)
+    const visibleBase = baseItems.filter(item => !item.hideInSimpleMode)
+    const merged = mergeByPlacement(visibleBase, visiblePlugins, 'admin')
+    merged.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon, group: 'admin/end' })
+    merged.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon, group: 'admin/end' })
     for (const cm of customMenuItemsForAdmin.value) {
-      filtered.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
+      merged.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg, group: 'admin/end' })
     }
-    // 简易模式下,只追加未声明 hide_in_simple_mode 的插件菜单。
-    for (const pl of pluginAdminNavItems.value) {
-      if (pl.hideInSimpleMode) continue
-      filtered.push({
-        path: pl.path,
-        label: pl.label,
-        icon: pl.icon,
-        iconSvg: pl.iconSvg,
-        children: pl.children ? pluginItemsAsNavItems(pl.children) : undefined,
-      })
-    }
-    return filtered
+    return merged
   }
 
-  baseItems.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
-  // Add admin custom menu items after settings
+  // 完整模式: 先合并 base + plugin, 再在 admin/end 桶尾追加系统设置 / 自定义
+  // 菜单。系统设置语义上属于 admin/end, 但既有界面期待"始终在末尾", 所以仍
+  // 用 push 而非声明在 baseItems 里。
+  const merged = mergeByPlacement(baseItems, pluginAdminNavItems.value, 'admin')
+  merged.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon, group: 'admin/end' })
   for (const cm of customMenuItemsForAdmin.value) {
-    baseItems.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
+    merged.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg, group: 'admin/end' })
   }
-  // 插件菜单追加在最后,与自定义菜单同级。
-  for (const pl of pluginItemsAsNavItems(pluginAdminNavItems.value)) {
-    baseItems.push(pl)
-  }
-  return baseItems
+  return merged
 })
 
 function toggleSidebar() {

@@ -28,6 +28,10 @@ export interface PluginMenuItem {
   requires_admin: boolean
   hide_in_simple_mode: boolean
   feature_flag: string
+  /** V5/W7 Placement DSL bucket, e.g. "admin/main"。空字符串退化到 "<section>/end"。 */
+  placement_group: string
+  /** V5/W7 Placement bucket 内的排序权重；与 placement_group 同时设置才生效。 */
+  placement_order: number
   children?: PluginMenuItem[]
 }
 
@@ -75,6 +79,10 @@ export interface PluginNavItem {
   labels: Record<string, string>
   /** 原始 sort_order,合并到主菜单时用作排序权重 */
   sortOrder: number
+  /** V5/W7 Placement DSL bucket，可选；缺省由消费方按 section 推导 fallback。 */
+  placementGroup?: string
+  /** V5/W7 Placement bucket 内的排序权重，与 placementGroup 同时设置才生效。 */
+  placementOrder?: number
   children?: PluginNavItem[]
 }
 
@@ -296,6 +304,8 @@ function normalizeMenuItem(value: unknown): PluginMenuItem | null {
     requires_admin: booleanField(value, 'requires_admin'),
     hide_in_simple_mode: booleanField(value, 'hide_in_simple_mode'),
     feature_flag: stringField(value, 'feature_flag'),
+    placement_group: stringField(value, 'placement_group'),
+    placement_order: numberField(value, 'placement_order'),
     children: normalizeMenuItems(value['children']),
   }
 }
@@ -357,6 +367,10 @@ function toNavItem(pluginName: string, pluginDisplayName: string, menu: PluginMe
     labelKey,
     labels: menu.labels,
     sortOrder: menu.sort_order,
+    // V5/W7 Placement DSL — 透传给 sidebar mergeByPlacement 使用，缺省为
+    // 空串时表示走 fallback bucket。
+    placementGroup: menu.placement_group || undefined,
+    placementOrder: menu.placement_group ? menu.placement_order : undefined,
   }
   if (menu.children && menu.children.length > 0) {
     item.children = menu.children.map((c) => toNavItem(pluginName, pluginDisplayName, c))
