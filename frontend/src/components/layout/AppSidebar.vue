@@ -57,7 +57,10 @@
                   :class="{ 'sidebar-link-active': route.path === child.path }"
                   @click="handleMenuItemClick(child.path)"
                 >
-                  <component :is="child.icon" class="h-4 w-4 flex-shrink-0" />
+                  <!-- Bug 修复: 子菜单也支持 plugin 注入的 iconSvg, 与 normal item 保持
+                       一致的 v-if/v-else 分支顺序; 都没有时不渲染图标占位避免对齐错位。 -->
+                  <span v-if="child.iconSvg" class="h-4 w-4 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(child.iconSvg)"></span>
+                  <component v-else-if="child.icon" :is="child.icon" class="h-4 w-4 flex-shrink-0" />
                   <span>{{ child.label }}</span>
                 </router-link>
               </div>
