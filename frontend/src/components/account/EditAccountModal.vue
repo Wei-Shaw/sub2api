@@ -577,9 +577,9 @@
               type="text"
               class="input font-mono"
               readonly
-              placeholder="从 JSON 自动读取"
+              :placeholder="t('admin.accounts.vertexProjectIdPlaceholder')"
             />
-            <p class="input-hint">Service Account JSON 不在编辑页显示；需要更换 JSON 时请删除账号后重新创建。</p>
+            <p class="input-hint">{{ t('admin.accounts.vertexSaJsonEditHint') REDACTEDREDACTED</p>
           </div>
           <div>
             <label class="input-label">Location</label>
@@ -589,7 +589,7 @@
               class="input font-mono"
             >
               <optgroup
-                v-for="group in vertexLocationOptions"
+                v-for="group in VERTEX_LOCATION_OPTIONS"
                 :key="group.label"
                 :label="group.label"
               >
@@ -602,7 +602,182 @@
                 </option>
               </optgroup>
             </select>
-            <p class="input-hint">不同 Vertex 模型可用 location 可能不同，这里选择账号默认 endpoint location。</p>
+            <p class="input-hint">{{ t('admin.accounts.vertexLocationHint') REDACTEDREDACTED</p>
+          </div>
+        </div>
+
+        <!-- Model Restriction Section for Service Account -->
+        <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
+          <label class="input-label">{{ t('admin.accounts.modelRestriction') REDACTEDREDACTED</label>
+
+          <!-- Mode Toggle -->
+          <div class="mb-4 flex gap-2">
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'whitelist'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'whitelist'
+                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              <svg
+                class="mr-1.5 inline h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              {{ t('admin.accounts.modelWhitelist') REDACTEDREDACTED
+            </button>
+            <button
+              type="button"
+              @click="modelRestrictionMode = 'mapping'"
+              :class="[
+                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                modelRestrictionMode === 'mapping'
+                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+              ]"
+            >
+              <svg
+                class="mr-1.5 inline h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+                />
+              </svg>
+              {{ t('admin.accounts.modelMapping') REDACTEDREDACTED
+            </button>
+          </div>
+
+          <!-- Whitelist Mode -->
+          <div v-if="modelRestrictionMode === 'whitelist'">
+            <ModelWhitelistSelector v-model="allowedModels" :platform="account?.platform || 'anthropic'" />
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.selectedModels', { count: allowedModels.length REDACTED) REDACTEDREDACTED
+              <span v-if="allowedModels.length === 0">{{
+                t('admin.accounts.supportsAllModels')
+              REDACTEDREDACTED</span>
+            </p>
+          </div>
+
+          <!-- Mapping Mode -->
+          <div v-else>
+            <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
+              <p class="text-xs text-purple-700 dark:text-purple-400">
+                <svg
+                  class="mr-1 inline h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                {{ t('admin.accounts.mapRequestModels') REDACTEDREDACTED
+              </p>
+            </div>
+
+            <!-- Model Mapping List -->
+            <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
+              <div
+                v-for="(mapping, index) in modelMappings"
+                :key="getModelMappingKey(mapping)"
+                class="flex items-center gap-2"
+              >
+                <input
+                  v-model="mapping.from"
+                  type="text"
+                  class="input flex-1"
+                  :placeholder="t('admin.accounts.requestModel')"
+                />
+                <svg
+                  class="h-4 w-4 flex-shrink-0 text-gray-400"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M14 5l7 7m0 0l-7 7m7-7H3"
+                  />
+                </svg>
+                <input
+                  v-model="mapping.to"
+                  type="text"
+                  class="input flex-1"
+                  :placeholder="t('admin.accounts.actualModel')"
+                />
+                <button
+                  type="button"
+                  @click="removeModelMapping(index)"
+                  class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                >
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      stroke-width="2"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              @click="addModelMapping"
+              class="mb-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-dark-500 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:text-gray-300"
+            >
+              <svg
+                class="mr-1 inline h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 4v16m8-8H4"
+                />
+              </svg>
+              {{ t('admin.accounts.addMapping') REDACTEDREDACTED
+            </button>
+
+            <!-- Quick Add Buttons -->
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="preset in presetMappings"
+                :key="preset.label"
+                type="button"
+                @click="addPresetMapping(preset.from, preset.to)"
+                :class="['rounded-lg px-3 py-1 text-xs transition-colors', preset.color]"
+              >
+                + {{ preset.label REDACTEDREDACTED
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1959,6 +2134,7 @@ import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import { applyInterceptWarmup REDACTED from '@/components/account/credentialsBuilder'
 import { formatDateTime, formatDateTimeLocalInput, parseDateTimeLocalInput REDACTED from '@/utils/format'
 import { createStableObjectKeyResolver REDACTED from '@/utils/stableObjectKey'
+import { VERTEX_LOCATION_OPTIONS REDACTED from '@/constants/account'
 import {
   OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
@@ -2030,52 +2206,6 @@ const editBedrockApiKeyValue = ref('')
 const editVertexProjectId = ref('')
 const editVertexClientEmail = ref('')
 const editVertexLocation = ref('us-central1')
-const vertexLocationOptions = [
-  {
-    label: 'Common',
-    options: [
-      { value: 'us-central1', label: 'us-central1 (Iowa)' REDACTED,
-      { value: 'global', label: 'global' REDACTED,
-      { value: 'us', label: 'us' REDACTED,
-      { value: 'eu', label: 'eu' REDACTED
-    ]
-  REDACTED,
-  {
-    label: 'United States',
-    options: [
-      { value: 'us-east1', label: 'us-east1 (South Carolina)' REDACTED,
-      { value: 'us-east4', label: 'us-east4 (Northern Virginia)' REDACTED,
-      { value: 'us-east5', label: 'us-east5 (Columbus)' REDACTED,
-      { value: 'us-south1', label: 'us-south1 (Dallas)' REDACTED,
-      { value: 'us-west1', label: 'us-west1 (Oregon)' REDACTED,
-      { value: 'us-west4', label: 'us-west4 (Las Vegas)' REDACTED
-    ]
-  REDACTED,
-  {
-    label: 'Europe',
-    options: [
-      { value: 'europe-west1', label: 'europe-west1 (Belgium)' REDACTED,
-      { value: 'europe-west2', label: 'europe-west2 (London)' REDACTED,
-      { value: 'europe-west3', label: 'europe-west3 (Frankfurt)' REDACTED,
-      { value: 'europe-west4', label: 'europe-west4 (Netherlands)' REDACTED,
-      { value: 'europe-west6', label: 'europe-west6 (Zurich)' REDACTED,
-      { value: 'europe-west8', label: 'europe-west8 (Milan)' REDACTED,
-      { value: 'europe-west9', label: 'europe-west9 (Paris)' REDACTED
-    ]
-  REDACTED,
-  {
-    label: 'Asia Pacific',
-    options: [
-      { value: 'asia-east1', label: 'asia-east1 (Taiwan)' REDACTED,
-      { value: 'asia-east2', label: 'asia-east2 (Hong Kong)' REDACTED,
-      { value: 'asia-northeast1', label: 'asia-northeast1 (Tokyo)' REDACTED,
-      { value: 'asia-northeast3', label: 'asia-northeast3 (Seoul)' REDACTED,
-      { value: 'asia-south1', label: 'asia-south1 (Mumbai)' REDACTED,
-      { value: 'asia-southeast1', label: 'asia-southeast1 (Singapore)' REDACTED,
-      { value: 'australia-southeast1', label: 'australia-southeast1 (Sydney)' REDACTED
-    ]
-  REDACTED
-] as const
 const isBedrockAPIKeyMode = computed(() =>
   props.account?.type === 'bedrock' &&
   (props.account?.credentials as Record<string, unknown>)?.auth_mode === 'apikey'
@@ -2564,6 +2694,26 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editVertexProjectId.value = (credentials.project_id as string) || ''
     editVertexClientEmail.value = (credentials.client_email as string) || ''
     editVertexLocation.value = (credentials.location as string) || (credentials.vertex_location as string) || 'us-central1'
+
+    // Load model mappings for service_account
+    const existingMappings = credentials.model_mapping as Record<string, string> | undefined
+    if (existingMappings && typeof existingMappings === 'object') {
+      const entries = Object.entries(existingMappings)
+      const isWhitelistMode = entries.length > 0 && entries.every(([from, to]) => from === to)
+      if (isWhitelistMode) {
+        modelRestrictionMode.value = 'whitelist'
+        allowedModels.value = entries.map(([from]) => from)
+        modelMappings.value = []
+      REDACTED else {
+        modelRestrictionMode.value = 'mapping'
+        modelMappings.value = entries.map(([from, to]) => ({ from, to REDACTED))
+        allowedModels.value = []
+      REDACTED
+    REDACTED else {
+      modelRestrictionMode.value = 'whitelist'
+      modelMappings.value = []
+      allowedModels.value = []
+    REDACTED
   REDACTED else {
     const platformDefaultUrl =
       newAccount.platform === 'openai'
@@ -3160,26 +3310,34 @@ const handleSubmit = async () => {
       const newCredentials: Record<string, unknown> = { ...currentCredentials REDACTED
 
       if (!editVertexProjectId.value.trim()) {
-        appStore.showError('Service Account JSON 缺少 project_id')
+        appStore.showError(t('admin.accounts.vertexSaJsonMissingProjectId'))
         return
       REDACTED
       if (!editVertexClientEmail.value.trim()) {
-        appStore.showError('Service Account JSON 缺少 client_email')
+        appStore.showError(t('admin.accounts.vertexSaJsonMissingClientEmail'))
         return
       REDACTED
       if (!editVertexLocation.value.trim()) {
-        appStore.showError('请填写 Vertex location')
+        appStore.showError(t('admin.accounts.vertexLocationRequired'))
         return
       REDACTED
 
       if (!currentCredentials.service_account_json && !currentCredentials.service_account) {
-        appStore.showError('请上传 Service Account JSON')
+        appStore.showError(t('admin.accounts.vertexSaJsonRequired'))
         return
       REDACTED
       newCredentials.project_id = editVertexProjectId.value.trim()
       newCredentials.client_email = editVertexClientEmail.value.trim()
       newCredentials.location = editVertexLocation.value.trim()
       newCredentials.tier_id = 'vertex'
+
+      // Add model mapping if configured
+      const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+      if (modelMapping) {
+        newCredentials.model_mapping = modelMapping
+      REDACTED else {
+        delete newCredentials.model_mapping
+      REDACTED
 
       applyInterceptWarmup(newCredentials, interceptWarmupRequests.value, 'edit')
       if (!applyTempUnschedConfig(newCredentials)) {

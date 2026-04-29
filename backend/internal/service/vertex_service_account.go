@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -23,6 +24,7 @@ const (
 	vertexDefaultTokenURL         = "https://oauth2.googleapis.com/token"
 	vertexCloudPlatformScope      = "https://www.googleapis.com/auth/cloud-platform"
 	vertexServiceAccountCacheSkew = 5 * time.Minute
+	vertexLockWaitTime            = 200 * time.Millisecond
 	vertexAnthropicVersion        = "vertex-2023-10-16"
 )
 
@@ -123,9 +125,8 @@ REDACTED
 	if strings.TrimSpace(key.ProjectID) == "" {
 		return nil, errors.New("service account json missing project_id")
 REDACTED
-	if strings.TrimSpace(key.TokenURI) == "" {
-		key.TokenURI = vertexDefaultTokenURL
-REDACTED
+	// Always use the well-known Google token endpoint to prevent SSRF via crafted token_uri.
+	key.TokenURI = vertexDefaultTokenURL
 	return &key, nil
 REDACTED
 
@@ -139,6 +140,47 @@ REDACTED
 		fingerprint = fmt.Sprintf("account:%d", account.ID)
 REDACTED
 	return "vertex:service_account:" + fingerprint
+REDACTED
+
+// getVertexServiceAccountAccessToken obtains an access token for a Vertex service account,
+// using the shared cache and distributed lock to avoid redundant exchanges.
+func getVertexServiceAccountAccessToken(ctx context.Context, cache GeminiTokenCache, account *Account) (string, error) {
+	key, err := parseVertexServiceAccountKey(account)
+	if err != nil {
+		return "", err
+REDACTED
+	cacheKey := vertexServiceAccountCacheKey(account, key)
+
+	if cache != nil {
+		if token, err := cache.GetAccessToken(ctx, cacheKey); err == nil && strings.TrimSpace(token) != "" {
+			return token, nil
+	REDACTED
+REDACTED
+
+	locked := false
+	if cache != nil {
+		var lockErr error
+		locked, lockErr = cache.AcquireRefreshLock(ctx, cacheKey, 30*time.Second)
+		if lockErr == nil && locked {
+			defer func() { _ = cache.ReleaseRefreshLock(ctx, cacheKey) REDACTED()
+	REDACTED else if lockErr != nil {
+			slog.Warn("vertex_service_account_token_lock_failed", "account_id", account.ID, "error", lockErr)
+	REDACTED else {
+			time.Sleep(vertexLockWaitTime)
+			if token, err := cache.GetAccessToken(ctx, cacheKey); err == nil && strings.TrimSpace(token) != "" {
+				return token, nil
+		REDACTED
+	REDACTED
+REDACTED
+
+	accessToken, ttl, err := exchangeVertexServiceAccountToken(ctx, key)
+	if err != nil {
+		return "", err
+REDACTED
+	if cache != nil {
+		_ = cache.SetAccessToken(ctx, cacheKey, accessToken, ttl)
+REDACTED
+	return accessToken, nil
 REDACTED
 
 func exchangeVertexServiceAccountToken(ctx context.Context, key *vertexServiceAccountKey) (string, time.Duration, error) {

@@ -13,3 +13,51 @@ export type QuotaThresholdType = typeof QUOTA_THRESHOLD_TYPE_FIXED | typeof QUOT
 export const QUOTA_RESET_MODE_ROLLING = 'rolling' as const
 export const QUOTA_RESET_MODE_FIXED = 'fixed' as const
 export type QuotaResetMode = typeof QUOTA_RESET_MODE_ROLLING | typeof QUOTA_RESET_MODE_FIXED
+
+/** Vertex AI location options for Service Account accounts */
+export const VERTEX_LOCATION_OPTIONS = [
+  {
+    label: 'Common',
+    options: [
+      { value: 'us-central1', label: 'us-central1 (Iowa)' REDACTED,
+      { value: 'global', label: 'global' REDACTED,
+      { value: 'us', label: 'us' REDACTED,
+      { value: 'eu', label: 'eu' REDACTED
+    ]
+  REDACTED,
+  {
+    label: 'United States',
+    options: [
+      { value: 'us-east1', label: 'us-east1 (South Carolina)' REDACTED,
+      { value: 'us-east4', label: 'us-east4 (Northern Virginia)' REDACTED,
+      { value: 'us-east5', label: 'us-east5 (Columbus)' REDACTED,
+      { value: 'us-south1', label: 'us-south1 (Dallas)' REDACTED,
+      { value: 'us-west1', label: 'us-west1 (Oregon)' REDACTED,
+      { value: 'us-west4', label: 'us-west4 (Las Vegas)' REDACTED
+    ]
+  REDACTED,
+  {
+    label: 'Europe',
+    options: [
+      { value: 'europe-west1', label: 'europe-west1 (Belgium)' REDACTED,
+      { value: 'europe-west2', label: 'europe-west2 (London)' REDACTED,
+      { value: 'europe-west3', label: 'europe-west3 (Frankfurt)' REDACTED,
+      { value: 'europe-west4', label: 'europe-west4 (Netherlands)' REDACTED,
+      { value: 'europe-west6', label: 'europe-west6 (Zurich)' REDACTED,
+      { value: 'europe-west8', label: 'europe-west8 (Milan)' REDACTED,
+      { value: 'europe-west9', label: 'europe-west9 (Paris)' REDACTED
+    ]
+  REDACTED,
+  {
+    label: 'Asia Pacific',
+    options: [
+      { value: 'asia-east1', label: 'asia-east1 (Taiwan)' REDACTED,
+      { value: 'asia-east2', label: 'asia-east2 (Hong Kong)' REDACTED,
+      { value: 'asia-northeast1', label: 'asia-northeast1 (Tokyo)' REDACTED,
+      { value: 'asia-northeast3', label: 'asia-northeast3 (Seoul)' REDACTED,
+      { value: 'asia-south1', label: 'asia-south1 (Mumbai)' REDACTED,
+      { value: 'asia-southeast1', label: 'asia-southeast1 (Singapore)' REDACTED,
+      { value: 'australia-southeast1', label: 'australia-southeast1 (Sydney)' REDACTED
+    ]
+  REDACTED
+] as const

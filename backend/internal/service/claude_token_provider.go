@@ -162,40 +162,5 @@ REDACTED
 REDACTED
 
 func (p *ClaudeTokenProvider) getServiceAccountAccessToken(ctx context.Context, account *Account) (string, error) {
-	key, err := parseVertexServiceAccountKey(account)
-	if err != nil {
-		return "", err
-REDACTED
-	cacheKey := vertexServiceAccountCacheKey(account, key)
-
-	if p.tokenCache != nil {
-		if token, err := p.tokenCache.GetAccessToken(ctx, cacheKey); err == nil && strings.TrimSpace(token) != "" {
-			return token, nil
-	REDACTED
-REDACTED
-
-	locked := false
-	if p.tokenCache != nil {
-		var lockErr error
-		locked, lockErr = p.tokenCache.AcquireRefreshLock(ctx, cacheKey, 30*time.Second)
-		if lockErr == nil && locked {
-			defer func() { _ = p.tokenCache.ReleaseRefreshLock(ctx, cacheKey) REDACTED()
-	REDACTED else if lockErr != nil {
-			slog.Warn("vertex_service_account_token_lock_failed", "account_id", account.ID, "error", lockErr)
-	REDACTED else {
-			time.Sleep(claudeLockWaitTime)
-			if token, err := p.tokenCache.GetAccessToken(ctx, cacheKey); err == nil && strings.TrimSpace(token) != "" {
-				return token, nil
-		REDACTED
-	REDACTED
-REDACTED
-
-	accessToken, ttl, err := exchangeVertexServiceAccountToken(ctx, key)
-	if err != nil {
-		return "", err
-REDACTED
-	if p.tokenCache != nil {
-		_ = p.tokenCache.SetAccessToken(ctx, cacheKey, accessToken, ttl)
-REDACTED
-	return accessToken, nil
+	return getVertexServiceAccountAccessToken(ctx, p.tokenCache, account)
 REDACTED

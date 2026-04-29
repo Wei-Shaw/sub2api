@@ -515,6 +515,10 @@ REDACTED
 		REDACTED
 			// Code Assist OAuth tokens often lack AI Studio scopes for models listing.
 			return 3
+		case AccountTypeServiceAccount:
+			// Vertex service accounts use aiplatform.googleapis.com, not the AI Studio
+			// endpoint (generativelanguage.googleapis.com), so they cannot serve these requests.
+			return 999
 		default:
 			return 10
 	REDACTED

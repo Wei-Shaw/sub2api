@@ -276,7 +276,7 @@
           v-if="accountCategory === 'service_account'"
           class="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-800/40 dark:bg-sky-900/20 dark:text-sky-200"
         >
-          <p>使用 Google Cloud Service Account JSON 通过 Vertex AI 调用 Anthropic Claude。建议配置模型映射，将客户端 Claude 模型名映射到 Vertex 模型 ID。</p>
+          <p>{{ t('admin.accounts.vertexAnthropicHint') REDACTEDREDACTED</p>
         </div>
       </div>
 
@@ -479,7 +479,7 @@
           v-if="accountCategory === 'service_account'"
           class="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-800/40 dark:bg-sky-900/20 dark:text-sky-200"
         >
-          <p>使用 Google Cloud Service Account JSON 访问 Vertex AI Gemini。建议将 Vertex 账号放入独立分组，避免和 AI Studio/Gemini OAuth 同模型混调。</p>
+          <p>{{ t('admin.accounts.vertexGeminiHint') REDACTEDREDACTED</p>
         </div>
 
         <!-- OAuth Type Selection (only show when oauth-based is selected) -->
@@ -827,10 +827,10 @@
               <div class="min-w-0">
                 <div class="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
                   <Icon name="upload" size="sm" />
-                  <span>{{ vertexClientEmail ? '已读取 Service Account JSON' : '拖入 Service Account JSON' REDACTEDREDACTED</span>
+                  <span>{{ vertexClientEmail ? t('admin.accounts.vertexSaJsonLoaded') : t('admin.accounts.vertexSaJsonDrop') REDACTEDREDACTED</span>
                 </div>
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  {{ vertexClientEmail ? '密钥内容不会在表单中显示。' : '把 .json 文件拖到这里，或点击按钮选择文件。' REDACTEDREDACTED
+                  {{ vertexClientEmail ? t('admin.accounts.vertexSaJsonKeyHidden') : t('admin.accounts.vertexSaJsonDropHint') REDACTEDREDACTED
                 </p>
               </div>
               <button
@@ -839,7 +839,7 @@
                 @click="vertexServiceAccountFileInput?.click()"
               >
                 <Icon name="upload" size="sm" />
-                选择 JSON
+                {{ t('admin.accounts.vertexSaJsonSelectBtn') REDACTEDREDACTED
               </button>
             </div>
             <div
@@ -850,7 +850,7 @@
               <div class="truncate">Client Email: <span class="font-mono">{{ vertexClientEmail REDACTEDREDACTED</span></div>
             </div>
           </div>
-          <p class="input-hint">上传或拖入 JSON 后会自动读取 project_id，密钥内容仅用于创建账号提交。</p>
+          <p class="input-hint">{{ t('admin.accounts.vertexSaJsonUploadHint') REDACTEDREDACTED</p>
         </div>
 
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -861,7 +861,7 @@
               type="text"
               class="input font-mono"
               readonly
-              placeholder="从 JSON 自动读取"
+              :placeholder="t('admin.accounts.vertexProjectIdPlaceholder')"
             />
           </div>
           <div>
@@ -872,7 +872,7 @@
               class="input font-mono"
             >
               <optgroup
-                v-for="group in vertexLocationOptions"
+                v-for="group in VERTEX_LOCATION_OPTIONS"
                 :key="group.label"
                 :label="group.label"
               >
@@ -885,7 +885,7 @@
                 </option>
               </optgroup>
             </select>
-            <p class="input-hint">不同 Vertex 模型可用 location 可能不同，这里选择账号默认 endpoint location。</p>
+            <p class="input-hint">{{ t('admin.accounts.vertexLocationHint') REDACTEDREDACTED</p>
           </div>
         </div>
       </div>
@@ -3132,6 +3132,7 @@ import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import { applyInterceptWarmup REDACTED from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput REDACTED from '@/utils/format'
 import { createStableObjectKeyResolver REDACTED from '@/utils/stableObjectKey'
+import { VERTEX_LOCATION_OPTIONS REDACTED from '@/constants/account'
 import {
   OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
@@ -3318,52 +3319,6 @@ const vertexProjectId = ref('')
 const vertexClientEmail = ref('')
 const vertexLocation = ref('global')
 const vertexServiceAccountDragActive = ref(false)
-const vertexLocationOptions = [
-  {
-    label: 'Common',
-    options: [
-      { value: 'us-central1', label: 'us-central1 (Iowa)' REDACTED,
-      { value: 'global', label: 'global' REDACTED,
-      { value: 'us', label: 'us' REDACTED,
-      { value: 'eu', label: 'eu' REDACTED
-    ]
-  REDACTED,
-  {
-    label: 'United States',
-    options: [
-      { value: 'us-east1', label: 'us-east1 (South Carolina)' REDACTED,
-      { value: 'us-east4', label: 'us-east4 (Northern Virginia)' REDACTED,
-      { value: 'us-east5', label: 'us-east5 (Columbus)' REDACTED,
-      { value: 'us-south1', label: 'us-south1 (Dallas)' REDACTED,
-      { value: 'us-west1', label: 'us-west1 (Oregon)' REDACTED,
-      { value: 'us-west4', label: 'us-west4 (Las Vegas)' REDACTED
-    ]
-  REDACTED,
-  {
-    label: 'Europe',
-    options: [
-      { value: 'europe-west1', label: 'europe-west1 (Belgium)' REDACTED,
-      { value: 'europe-west2', label: 'europe-west2 (London)' REDACTED,
-      { value: 'europe-west3', label: 'europe-west3 (Frankfurt)' REDACTED,
-      { value: 'europe-west4', label: 'europe-west4 (Netherlands)' REDACTED,
-      { value: 'europe-west6', label: 'europe-west6 (Zurich)' REDACTED,
-      { value: 'europe-west8', label: 'europe-west8 (Milan)' REDACTED,
-      { value: 'europe-west9', label: 'europe-west9 (Paris)' REDACTED
-    ]
-  REDACTED,
-  {
-    label: 'Asia Pacific',
-    options: [
-      { value: 'asia-east1', label: 'asia-east1 (Taiwan)' REDACTED,
-      { value: 'asia-east2', label: 'asia-east2 (Hong Kong)' REDACTED,
-      { value: 'asia-northeast1', label: 'asia-northeast1 (Tokyo)' REDACTED,
-      { value: 'asia-northeast3', label: 'asia-northeast3 (Seoul)' REDACTED,
-      { value: 'asia-south1', label: 'asia-south1 (Mumbai)' REDACTED,
-      { value: 'asia-southeast1', label: 'asia-southeast1 (Singapore)' REDACTED,
-      { value: 'australia-southeast1', label: 'australia-southeast1 (Sydney)' REDACTED
-    ]
-  REDACTED
-] as const
 const tempUnschedEnabled = ref(false)
 const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
 const getModelMappingKey = createStableObjectKeyResolver<ModelMapping>('create-model-mapping')
@@ -4251,7 +4206,7 @@ const applyVertexServiceAccountJson = (value: string) => {
     const clientEmail = typeof parsed.client_email === 'string' ? parsed.client_email.trim() : ''
     const privateKey = typeof parsed.private_key === 'string' ? parsed.private_key.trim() : ''
     if (!projectId || !clientEmail || !privateKey) {
-      appStore.showError('Service Account JSON 缺少 project_id、client_email 或 private_key')
+      appStore.showError(t('admin.accounts.vertexSaJsonMissingFields'))
       return false
     REDACTED
     vertexProjectId.value = projectId
@@ -4259,7 +4214,7 @@ const applyVertexServiceAccountJson = (value: string) => {
     vertexServiceAccountJson.value = JSON.stringify(parsed)
     return true
   REDACTED catch {
-    appStore.showError('Service Account JSON 格式无效')
+    appStore.showError(t('admin.accounts.vertexSaJsonInvalid'))
     return false
   REDACTED
 REDACTED
@@ -4406,7 +4361,7 @@ const handleSubmit = async () => {
       return
     REDACTED
     if (!vertexLocation.value.trim()) {
-      appStore.showError('请填写 Vertex location')
+      appStore.showError(t('admin.accounts.vertexLocationRequired'))
       return
     REDACTED
     const credentials: Record<string, unknown> = {
