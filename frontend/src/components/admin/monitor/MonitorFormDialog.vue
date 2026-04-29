@@ -47,8 +47,12 @@
           <input
             v-model="form.api_key"
             type="password"
+            autocomplete="new-password"
+            data-1p-ignore
+            data-lpignore="true"
+            data-bwignore="true"
             :required="!editing"
-            class="input flex-1"
+            class="input flex-1 font-mono"
             :placeholder="editing ? t('admin.channelMonitor.form.apiKeyEditPlaceholder') : t('admin.channelMonitor.form.apiKeyPlaceholder')"
           />
           <button type="button" @click="openMyKeyPicker" class="btn btn-secondary whitespace-nowrap">
