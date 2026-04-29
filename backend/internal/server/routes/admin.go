@@ -560,6 +560,10 @@ func registerPluginRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		plugins.POST("/:name/disable", h.Admin.Plugin.Disable)
 		plugins.POST("/:name/restart", h.Admin.Plugin.Restart)
 		plugins.PUT("/:name/config", h.Admin.Plugin.UpdateConfig)
+		// P13/C-1 软卸载: uninstall 关进程 + 标记 uninstalled_at (数据保留),
+		// install 撤回软卸载。两个 endpoint 都走 admin auth middleware。
+		plugins.POST("/:name/uninstall", h.Admin.Plugin.Uninstall)
+		plugins.POST("/:name/install", h.Admin.Plugin.Install)
 	}
 }
 

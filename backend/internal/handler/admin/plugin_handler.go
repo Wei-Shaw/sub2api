@@ -21,11 +21,18 @@ import (
 // 避免在 handler 内重复定义同名结构体导致字段漂移。
 type PluginManager interface {
 	List(ctx context.Context) ([]plugin.PluginInfo, error)
+	// ListExt 暴露包含软卸载条目的列表; admin "已卸载" 视图通过 query 参数
+	// include_uninstalled=true 触发, 落到 List 时 include=false 即等价于 List。
+	ListExt(ctx context.Context, includeUninstalled bool) ([]plugin.PluginInfo, error)
 	Get(ctx context.Context, name string) (*plugin.PluginInfo, error)
 	Enable(ctx context.Context, name string) error
 	Disable(ctx context.Context, name string) error
 	Restart(ctx context.Context, name string) error
 	UpdateConfig(ctx context.Context, name string, cfg map[string]any) error
+	// Uninstall 软卸载: 关进程 + 标记 uninstalled_at, 不删数据。
+	Uninstall(ctx context.Context, name string) error
+	// Install 撤销软卸载, 让插件回到 disabled / enabled 状态。
+	Install(ctx context.Context, name string) error
 }
 
 // ErrPluginNotFound 由 PluginManager 实现返回,表示请求的插件不存在。
@@ -34,6 +41,13 @@ type PluginManager interface {
 // 别名指向 plugin.ErrPluginNotFound,以便上层判断时可以直接使用本包的导出符号,
 // 无需额外导入 plugin 包。
 var ErrPluginNotFound = plugin.ErrPluginNotFound
+
+// ErrPluginIsBuiltin 表示尝试对内置插件执行 Uninstall。映射成 HTTP 400。
+var ErrPluginIsBuiltin = plugin.ErrPluginIsBuiltin
+
+// ErrInvalidPluginName 由 PluginManager 实现返回, 表示请求的插件名违反命名
+// 规则。映射为 HTTP 400。
+var ErrInvalidPluginName = plugin.ErrInvalidPluginName
 
 // PluginHandler 提供插件管理的 admin HTTP 接口。
 //
@@ -54,11 +68,17 @@ type UpdatePluginConfigRequest struct {
 
 // List 列出所有已注册的插件。
 // GET /api/v1/admin/plugins
+//
+// Query parameters:
+//   - include_uninstalled: "true" / "1" 时把软卸载条目也带回来 (admin "已卸载"
+//     视图)。默认 false: 只返回活动 (uninstalled_at IS NULL) 插件, 与 sidebar /
+//     菜单的可见性一致。
 func (h *PluginHandler) List(c *gin.Context) {
 	if !h.requireManager(c) {
 		return
 	}
-	items, err := h.manager.List(c.Request.Context())
+	includeUninstalled := parseBoolQuery(c.Query("include_uninstalled"))
+	items, err := h.manager.ListExt(c.Request.Context(), includeUninstalled)
 	if err != nil {
 		response.InternalError(c, err.Error())
 		return
@@ -67,6 +87,16 @@ func (h *PluginHandler) List(c *gin.Context) {
 		items = []plugin.PluginInfo{}
 	}
 	response.Success(c, gin.H{"items": items})
+}
+
+// parseBoolQuery 解析 admin API 中常见的 "true"/"1"/"yes" → true。空串与
+// 其余值落到 false, 与 Gin 默认行为一致。
+func parseBoolQuery(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
 }
 
 // Get 返回单个插件的详细信息。
@@ -156,6 +186,43 @@ func (h *PluginHandler) UpdateConfig(c *gin.Context) {
 	response.Success(c, gin.H{"name": name, "config": req.Config})
 }
 
+// Uninstall 软卸载插件: 停子进程 + 标记 uninstalled_at, 数据保留, 可通过 Install 撤回。
+// POST /api/v1/admin/plugins/:name/uninstall
+//
+// 内置插件 (BuiltinDir 下的官方插件) 一律拒绝, 返回 400 + ErrPluginIsBuiltin.
+// 已经软卸载的条目幂等返回 200。
+func (h *PluginHandler) Uninstall(c *gin.Context) {
+	if !h.requireManager(c) {
+		return
+	}
+	name, ok := h.parseName(c)
+	if !ok {
+		return
+	}
+	if h.handleManagerError(c, h.manager.Uninstall(c.Request.Context(), name)) {
+		return
+	}
+	response.Success(c, gin.H{"name": name, "status": "uninstalled", "mode": "soft"})
+}
+
+// Install 撤销软卸载, 让插件回到 disabled 状态 (enabled 字段保持原值)。
+// POST /api/v1/admin/plugins/:name/install
+//
+// 在已经活动的插件上调用是 no-op, 返回 200。
+func (h *PluginHandler) Install(c *gin.Context) {
+	if !h.requireManager(c) {
+		return
+	}
+	name, ok := h.parseName(c)
+	if !ok {
+		return
+	}
+	if h.handleManagerError(c, h.manager.Install(c.Request.Context(), name)) {
+		return
+	}
+	response.Success(c, gin.H{"name": name, "status": "installed"})
+}
+
 // requireManager 在 manager 未注入时返回 503，避免后续 nil panic。
 func (h *PluginHandler) requireManager(c *gin.Context) bool {
 	if h.manager == nil {
@@ -190,6 +257,14 @@ func (h *PluginHandler) handleManagerError(c *gin.Context, err error) bool {
 	}
 	if errors.Is(err, ErrPluginNotFound) {
 		response.NotFound(c, "plugin not found")
+		return true
+	}
+	if errors.Is(err, ErrPluginIsBuiltin) {
+		response.BadRequest(c, "builtin plugins cannot be uninstalled")
+		return true
+	}
+	if errors.Is(err, ErrInvalidPluginName) {
+		response.BadRequest(c, "plugin name contains invalid characters or is too long")
 		return true
 	}
 	response.InternalError(c, err.Error())

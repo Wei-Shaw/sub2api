@@ -699,6 +699,12 @@ func (m *PluginManager) List(ctx context.Context) ([]PluginInfo, error) {
 	return m.ListPlugins(ctx)
 }
 
+// ListExt 是 ListPluginsExt 的别名, 实现 admin.PluginManager 接口的扩展列表
+// 方法 — 用于 admin "已卸载" 视图按需把软卸载条目带回来。
+func (m *PluginManager) ListExt(ctx context.Context, includeUninstalled bool) ([]PluginInfo, error) {
+	return m.ListPluginsExt(ctx, includeUninstalled)
+}
+
 // Get 是 GetPlugin 的别名,实现 admin.PluginManager 接口。
 func (m *PluginManager) Get(ctx context.Context, name string) (*PluginInfo, error) {
 	return m.GetPlugin(ctx, name)
