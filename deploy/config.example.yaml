@@ -101,21 +101,11 @@ webauthn:
 run_mode: "standard"
 
 # =============================================================================
-# Payment FX Provider Runtime
-# 支付外汇供应商运行配置
+# Payment FX rates
+# 支付汇率配置
 # =============================================================================
-# Admin Payment Settings controls whether auto-sync is enabled and which provider
-# to use. Secrets stay here/env only; do not store provider API keys in DB settings.
-payment_fx:
-  open_exchange_rates:
-    # Prefer env PAYMENT_FX_OPEN_EXCHANGE_RATES_APP_ID in production.
-    app_id: ""
-    base_url: "https://openexchangerates.org/api/latest.json"
-    timeout_seconds: 10
-  sync:
-    max_attempts: 3
-    initial_backoff_seconds: 2
-    max_backoff_seconds: 30
+# Payment FX rates are stored in database settings and edited by Admin.
+# No external FX API runtime config is required for checkout.
 
 # =============================================================================
 # CORS Configuration

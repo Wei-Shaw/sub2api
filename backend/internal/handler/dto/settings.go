@@ -268,9 +268,6 @@ type SystemSettings struct {
 	PaymentAllowedCurrencies         []string           `json:"payment_allowed_currencies"`
 	PaymentManualFXRates             map[string]float64 `json:"payment_manual_fx_rates"`
 	PaymentFXStatus                  PaymentFXStatus    `json:"payment_fx_status"`
-	PaymentFXAutoSyncEnabled         bool               `json:"payment_fx_auto_sync_enabled"`
-	PaymentFXAutoSyncProvider        string             `json:"payment_fx_auto_sync_provider"`
-	PaymentFXAutoSyncIntervalSeconds int                `json:"payment_fx_auto_sync_interval_seconds"`
 
 	// Cancel rate limit
 	PaymentCancelRateLimitEnabled bool   `json:"payment_cancel_rate_limit_enabled"`

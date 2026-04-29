@@ -4,7 +4,7 @@
 
 **Goal:** Cho phép khách nạp/mua bằng tiền địa phương như VND/KRW/CNY ở checkout, nhưng toàn bộ balance/subscription/fulfillment nội bộ vẫn hạch toán bằng USD.
 
-**Architecture:** Multi-currency chỉ nằm ở payment boundary. Backend tạo order với `ledger_amount/currency` và `payment_amount/currency`, lưu immutable FX snapshot tại thời điểm tạo order, provider thu local currency, webhook xác nhận đúng local amount/currency, fulfillment cộng USD. Phase đầu dùng manual FX config hiện có để giảm risk; phase sau thêm persisted FX rates + background updater + quote endpoint.
+**Architecture:** Multi-currency chỉ nằm ở payment boundary. Backend tạo order với `ledger_amount/currency` và `payment_amount/currency`, lưu immutable FX snapshot tại thời điểm tạo order, provider thu local currency, webhook xác nhận đúng local amount/currency, fulfillment cộng USD. FX rates are admin-managed in DB/settings; phase sau thêm persisted exchange-rate table + quote endpoint, không dùng external FX API/auto-sync cho checkout.
 
 **Tech Stack:** Go backend + Ent + Gin + provider abstraction, Vue 3/TypeScript frontend, Vitest, Go unit tests, existing payment config/service/provider stack.
 
@@ -94,9 +94,9 @@ Frontend:
 
 Ops/Admin:
 
-- Manual FX remains supported as safe rollout fallback.
-- Auto FX updater can be enabled without hardcoded secrets.
-- Stale FX policy is visible and tested.
+- Admin-managed FX is the only source of truth for checkout rates.
+- No external FX API/auto-sync config is used for payment checkout.
+- Stale/missing FX policy is visible and tested so missing admin rates fail loudly instead of being masked.
 
 ## 3. Execution Prep
 
@@ -110,7 +110,7 @@ git pull --ff-only origin main
 git checkout -b feat/multi-currency-checkout-usd-ledger
 ```
 
-Do not commit secrets. FX API key, if later used, must be environment/config only.
+Do not commit secrets. Payment FX rates are edited by Admin and stored in DB/settings; do not add external FX API keys/config for checkout.
 
 ## 4. Phase 1 — Backend Currency Math + Manual FX Order Creation
 
@@ -410,7 +410,7 @@ Behavior:
   1. previously selected currency in local storage if still allowed,
   2. browser locale heuristic (`vi`=>`VND`, `ko`=>`KRW`, `zh`=>`CNY`),
   3. first allowed currency,
-  4. fallback `USD`.
+  4. `USD` only when it is explicitly allowed/configured.
 - For balance top-up:
   - Amount input is in selected payment currency.
   - Create order sends `amount_mode: "payment"` and `payment_currency`.
@@ -586,11 +586,11 @@ pnpm --dir frontend exec vitest run \
 pnpm --dir frontend run typecheck
 ```
 
-## 7. Phase 4 — Auto FX Rate Sync
+## 7. Phase 4 — Admin-Managed FX Rates
 
 ### Task 13: Add persisted exchange-rate model
 
-**Objective:** Store latest rates with source/freshness instead of relying only on manual JSON.
+**Objective:** Store multiple admin-managed payment-currency -> USD rates with source/freshness as an explicit DB model instead of relying on one settings JSON blob.
 
 **Files:**
 
@@ -605,11 +605,10 @@ Suggested fields:
 - `quote_currency` string, e.g. `VND`
 - `quote_per_base` decimal/float, e.g. `25500`
 - `rate_payment_to_ledger` decimal/float, e.g. `0.000039215686`
-- `source` string
-- `fetched_at` timestamptz
+- `source` string, e.g. `manual_admin`
+- `updated_at` timestamptz
 - `valid_until` timestamptz nullable
 - `is_stale` bool
-- `raw_payload` jsonb optional, redacted/no secrets
 - unique index `(base_currency, quote_currency, source)` or `(base_currency, quote_currency)` depending desired source policy.
 
 **Verification:**
@@ -620,76 +619,74 @@ make generate
 go test ./migrations -count=1
 ```
 
-### Task 14: Implement FX provider client abstraction
+### Task 14: Implement admin exchange-rate repository/API abstraction
 
-**Objective:** Fetch rates from an external provider without coupling checkout to HTTP calls.
+**Objective:** Let Admin create/update many currency exchange-rate rows without coupling checkout to external HTTP calls.
 
 **Files:**
 
-- Create: `backend/internal/service/payment_fx_provider.go`
-- Create tests: `backend/internal/service/payment_fx_provider_test.go`
+- Create: `backend/internal/service/payment_exchange_rate_service.go`
+- Create tests: `backend/internal/service/payment_exchange_rate_service_test.go`
 - Modify config loading in `backend/internal/service/payment_config_service.go` if new settings are needed.
 
 Config settings to add:
 
-- `PAYMENT_FX_AUTO_ENABLED`
-- `PAYMENT_FX_PROVIDER` e.g. `exchangerate-api`, `openexchangerates`, `manual`
-- `PAYMENT_FX_API_KEY` or environment-only config; never write real key to repo.
-- `PAYMENT_FX_SYNC_INTERVAL_MINUTES`
+- Admin-managed FX rates stored in DB settings only.
+- No external FX API key/provider/auto-sync env config for checkout.
+- Admin updates `PAYMENT_MANUAL_FX_RATES_JSON` through the settings UI/API; quote/order creation snapshots that DB value.
 - `PAYMENT_FX_STALE_AFTER_MINUTES`
 - `PAYMENT_FX_BLOCK_AFTER_MINUTES`
 - `PAYMENT_FX_MAX_RATE_CHANGE_PCT`
 
-Provider abstraction:
+Service abstraction:
 
 ```go
-type FXRateProvider interface {
-    FetchRates(ctx context.Context, base string, quotes []string) ([]PaymentExchangeRate, error)
+type PaymentExchangeRate struct {
+    BaseCurrency string // USD ledger
+    QuoteCurrency string // VND/KRW/CNY payment currency
+    RatePaymentToLedger float64
+    Source string // manual_admin
+    UpdatedAt time.Time
 }
 ```
 
-First implementation can support one provider plus test fake. Manual fallback remains.
+No external provider implementation and no manual fallback path. If an enabled payment currency has no valid admin rate, checkout/quote fails loudly.
 
 **Verification:**
 
 ```bash
 cd /root/projects/sub2api/backend
-go test -tags=unit ./internal/service -run 'TestFXProvider|TestPaymentFX' -count=1
+go test -tags=unit ./internal/service -run 'TestPaymentExchangeRate|TestPaymentFX' -count=1
 ```
 
-### Task 15: Implement background FX sync service
+### Task 15: Admin-managed FX rate status and future exchange-rate table
 
-**Objective:** Periodically refresh USD->VND/KRW/CNY rates and mark stale rates.
+**Objective:** Let Admin update payment-currency -> USD ledger rates in DB settings, expose stale/missing status, and avoid external API auto-sync.
 
 **Files:**
 
-- Create: `backend/internal/service/payment_fx_sync_service.go`
-- Wire service in existing DI/wire file: `backend/internal/service/wire.go` or server bootstrap path used by this repo.
-- Add start/stop in server lifecycle file after locating current startup pattern.
-- Test: `backend/internal/service/payment_fx_sync_service_test.go`
+- Create/modify: `backend/internal/service/payment_fx_status.go`
+- Add admin API/UI for exchange-rate rows once the table exists.
+- Test: `backend/internal/service/payment_fx_status_test.go`
 
 Rules:
 
-- Sync allowed payment currencies from payment config.
+- Admin controls allowed payment currencies and their payment-to-ledger rates.
 - Skip ledger currency or store identity rate.
 - Validate:
   - rate > 0
   - no NaN/Inf
-  - rate does not change more than configured max % unless no previous rate exists.
-- On provider failure:
-  - keep latest valid rate,
-  - mark stale if threshold exceeded,
-  - log warning, do not crash server.
+  - rate does not change more than configured max % unless Admin explicitly confirms in a future UI flow.
 - Checkout/order creation:
-  - prefer fresh persisted auto rate,
-  - fallback to manual rate if configured,
-  - block non-USD if stale beyond policy.
+  - use only the admin-saved rate for the selected payment currency,
+  - block non-USD if the rate is missing/stale beyond policy,
+  - do not fallback to any provider/API/default rate because that hides configuration errors.
 
 **Verification:**
 
 ```bash
 cd /root/projects/sub2api/backend
-go test -tags=unit ./internal/service -run 'TestPaymentFXSync|TestResolveFXSnapshot' -count=1
+go test -tags=unit ./internal/service -run 'TestPaymentFXStatus|TestResolveFXSnapshot' -count=1
 ```
 
 ### Task 16: Expose FX freshness in checkout/admin config
@@ -712,7 +709,7 @@ Checkout info additions:
   "fx_rates": {
     "VND": {
       "rate_payment_to_ledger": 0.000039215686,
-      "source": "openexchangerates",
+      "source": "manual",
       "fetched_at": "...",
       "stale": false
     }
@@ -830,8 +827,8 @@ python3 tools/secret_scan.py
    - VND SePay QR flow with whole-number amount.
 3. **Webhook smoke**
    - Confirm paid VND order credits USD ledger amount from stored order, not live FX.
-4. **Auto FX disabled by default**
-   - Merge manual-FX checkout first.
+4. **External FX auto-sync removed**
+   - Checkout uses Admin-managed DB/settings rates only; no external API or scheduler path is kept.
    - Enable auto FX later in staging with API key in environment only.
 5. **Production**
    - Start with VND + existing CNY only.
@@ -843,11 +840,11 @@ python3 tools/secret_scan.py
 - **Current order columns are `decimal(20,2)` for payment_amount.** This is okay for VND/KRW whole units and USD/CNY cents, but if future currencies need more precision, schema may need expansion.
 - **Stripe dynamic currency can break payment method compatibility.** Keep Stripe currency expansion separate from SePay VND rollout.
 - **Quote endpoint persistence vs signed token needs repo-specific decision.** Signed token has less DB churn; persisted quote is easier to audit/idempotency-check.
-- **FX provider outages must not silently over-credit.** Stale policy should block non-USD orders when rates are too old unless manual fallback is intentionally enabled.
+- **Missing/stale admin FX must not silently over-credit.** Stale policy should block non-USD orders when rates are missing or too old; no provider/default fallback should mask the issue.
 
 ## 12. Open Questions Before Coding Phase 4/5
 
-1. Which FX provider should be used first: OpenExchangeRates, ExchangeRate-API, Fixer, CurrencyLayer, or another provider?
+1. If we need richer audit later, move from JSON settings to a `currency_exchange_rates` table with currency pair, rate, source, effective_at, created_by, and audit metadata.
 2. Do we want `KRW` visible before choosing a Korea provider, or keep hidden until provider integration exists?
 3. For balance top-up, should user enter local amount and receive computed USD, or choose USD packages displayed in local currency? Recommended for VN: local presets like `50k/100k/200k/500k VND`.
 4. Should quote be persisted in DB or signed as token? Recommended: signed token for Phase 3 if existing signing helpers are available; DB quote if audit/idempotency is prioritized.
@@ -858,7 +855,7 @@ python3 tools/secret_scan.py
 2. Phase 2 frontend currency selector + formatter.
 3. SePay VND staging smoke test.
 4. Phase 3 quote endpoint.
-5. Phase 4 auto FX sync.
+5. Phase 4 admin-managed FX status/freshness visibility.
 6. Phase 5 Stripe/Paddle currency cleanup.
 
 This order gives useful product value quickly while keeping the riskiest external/provider changes isolated.

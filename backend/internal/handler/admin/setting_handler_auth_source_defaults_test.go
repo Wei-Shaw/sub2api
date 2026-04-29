@@ -270,14 +270,11 @@ func TestSettingHandler_UpdateSettings_PersistsPaymentFXSettings(t *testing.T) {
 	handler := NewSettingHandler(svc, nil, nil, nil, paymentConfigSvc, nil, nil)
 
 	body := map[string]any{
-		"promo_code_enabled":                    true,
-		"payment_ledger_currency":               "usd",
-		"payment_allowed_currencies":            []string{"usd", "vnd", "cny"},
-		"payment_manual_fx_rates":               `{"USD":1,"VND":0.00004,"CNY":0.14}`,
-		"payment_fx_auto_sync_enabled":          true,
-		"payment_fx_auto_sync_provider":         "open_exchange_rates",
-		"payment_fx_auto_sync_interval_seconds": 900,
-		"payment_fx_rates_stale_after_seconds":  1800,
+		"promo_code_enabled":                   true,
+		"payment_ledger_currency":              "usd",
+		"payment_allowed_currencies":           []string{"usd", "vnd", "cny"},
+		"payment_manual_fx_rates":              `{"USD":1,"VND":0.00004,"CNY":0.14}`,
+		"payment_fx_rates_stale_after_seconds": 1800,
 	}
 	rawBody, err := json.Marshal(body)
 	require.NoError(t, err)
@@ -295,9 +292,6 @@ func TestSettingHandler_UpdateSettings_PersistsPaymentFXSettings(t *testing.T) {
 	require.JSONEq(t, `{"CNY":0.14,"USD":1,"VND":0.00004}`, repo.values[service.SettingManualFXRates])
 	require.Equal(t, "manual", repo.values[service.SettingFXRatesSource])
 	require.NotEmpty(t, repo.values[service.SettingFXRatesUpdatedAt])
-	require.Equal(t, "true", repo.values[service.SettingFXAutoSyncEnabled])
-	require.Equal(t, "open_exchange_rates", repo.values[service.SettingFXAutoSyncProvider])
-	require.Equal(t, "900", repo.values[service.SettingFXAutoSyncIntervalSec])
 	require.Equal(t, "1800", repo.values[service.SettingFXRatesStaleAfterSeconds])
 
 	var resp response.Response
@@ -306,9 +300,6 @@ func TestSettingHandler_UpdateSettings_PersistsPaymentFXSettings(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "USD", data["payment_ledger_currency"])
 	require.ElementsMatch(t, []any{"USD", "VND", "CNY"}, data["payment_allowed_currencies"])
-	require.Equal(t, true, data["payment_fx_auto_sync_enabled"])
-	require.Equal(t, "open_exchange_rates", data["payment_fx_auto_sync_provider"])
-	require.Equal(t, float64(900), data["payment_fx_auto_sync_interval_seconds"])
 	status, ok := data["payment_fx_status"].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "manual", status["source"])

@@ -8924,12 +8924,9 @@ const form = reactive<SettingsForm>({
   payment_fx_status: {
     source: "manual",
     stale_after_seconds: 86400,
-    stale: false,
+    stale: true,
     missing_currencies: [],
   },
-  payment_fx_auto_sync_enabled: false,
-  payment_fx_auto_sync_provider: "manual",
-  payment_fx_auto_sync_interval_seconds: 3600,
   payment_product_name_prefix: "",
   payment_product_name_suffix: "",
   payment_load_balance_strategy: "round-robin",

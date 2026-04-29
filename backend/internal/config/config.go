@@ -99,24 +99,6 @@ type Config struct {
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
 	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
-	PaymentFX               PaymentFXConfig               `mapstructure:"payment_fx"`
-}
-
-type PaymentFXConfig struct {
-	OpenExchangeRates PaymentFXOpenExchangeRatesConfig `mapstructure:"open_exchange_rates"`
-	Sync              PaymentFXSyncConfig              `mapstructure:"sync"`
-}
-
-type PaymentFXOpenExchangeRatesConfig struct {
-	AppID          string `mapstructure:"app_id"`
-	BaseURL        string `mapstructure:"base_url"`
-	TimeoutSeconds int    `mapstructure:"timeout_seconds"`
-}
-
-type PaymentFXSyncConfig struct {
-	MaxAttempts           int `mapstructure:"max_attempts"`
-	InitialBackoffSeconds int `mapstructure:"initial_backoff_seconds"`
-	MaxBackoffSeconds     int `mapstructure:"max_backoff_seconds"`
 }
 
 type LogConfig struct {
@@ -1776,20 +1758,6 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	cfg.Log.StacktraceLevel = strings.ToLower(strings.TrimSpace(cfg.Log.StacktraceLevel))
 	cfg.Log.Output.FilePath = strings.TrimSpace(cfg.Log.Output.FilePath)
 	cfg.Gateway.ForcedCodexInstructionsTemplateFile = strings.TrimSpace(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
-	cfg.PaymentFX.OpenExchangeRates.AppID = strings.TrimSpace(cfg.PaymentFX.OpenExchangeRates.AppID)
-	cfg.PaymentFX.OpenExchangeRates.BaseURL = strings.TrimSpace(cfg.PaymentFX.OpenExchangeRates.BaseURL)
-	if cfg.PaymentFX.OpenExchangeRates.TimeoutSeconds <= 0 {
-		cfg.PaymentFX.OpenExchangeRates.TimeoutSeconds = 10
-	}
-	if cfg.PaymentFX.Sync.MaxAttempts <= 0 {
-		cfg.PaymentFX.Sync.MaxAttempts = 3
-	}
-	if cfg.PaymentFX.Sync.InitialBackoffSeconds <= 0 {
-		cfg.PaymentFX.Sync.InitialBackoffSeconds = 2
-	}
-	if cfg.PaymentFX.Sync.MaxBackoffSeconds <= 0 {
-		cfg.PaymentFX.Sync.MaxBackoffSeconds = 30
-	}
 	if cfg.Gateway.ForcedCodexInstructionsTemplateFile != "" {
 		content, err := os.ReadFile(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
 		if err != nil {
@@ -1915,14 +1883,6 @@ func setDefaults() {
 	viper.SetDefault("log.sampling.enabled", false)
 	viper.SetDefault("log.sampling.initial", 100)
 	viper.SetDefault("log.sampling.thereafter", 100)
-
-	// Payment FX provider runtime
-	viper.SetDefault("payment_fx.open_exchange_rates.app_id", "")
-	viper.SetDefault("payment_fx.open_exchange_rates.base_url", "https://openexchangerates.org/api/latest.json")
-	viper.SetDefault("payment_fx.open_exchange_rates.timeout_seconds", 10)
-	viper.SetDefault("payment_fx.sync.max_attempts", 3)
-	viper.SetDefault("payment_fx.sync.initial_backoff_seconds", 2)
-	viper.SetDefault("payment_fx.sync.max_backoff_seconds", 30)
 
 	// CORS
 	viper.SetDefault("cors.allowed_origins", []string{})
