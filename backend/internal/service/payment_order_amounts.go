@@ -24,7 +24,7 @@ func computeCreateOrderAmounts(req CreateOrderRequest, cfg *PaymentConfig, plan 
 	}
 	paymentCurrency := req.PaymentCurrency
 	if normalizeCurrencyCode(paymentCurrency, "") == "" {
-		paymentCurrency = defaultPaymentCurrencyForPaymentType(req.PaymentType, cfg)
+		paymentCurrency = defaultConfiguredPaymentCurrency(cfg)
 	}
 	snapshot, err := resolveFXSnapshot(paymentCurrency, cfg, now)
 	if err != nil {
@@ -73,24 +73,6 @@ func computeCreateOrderAmounts(req CreateOrderRequest, cfg *PaymentConfig, plan 
 		LimitLedgerAmount: ledgerBaseAmount,
 		FXSnapshot:        snapshot,
 	}, nil
-}
-
-func defaultPaymentCurrencyForPaymentType(paymentType string, cfg *PaymentConfig) string {
-	if cfg == nil {
-		return ""
-	}
-	for _, currency := range supportedCurrenciesForProvider("", paymentType) {
-		if isAllowedPaymentCurrency(currency, cfg.AllowedPaymentCurrencies) {
-			return currency
-		}
-	}
-	if supported := supportedCurrenciesForProvider("", paymentType); len(supported) > 0 {
-		return supported[0]
-	}
-	if len(cfg.AllowedPaymentCurrencies) > 0 {
-		return cfg.AllowedPaymentCurrencies[0]
-	}
-	return normalizeCurrencyCode(cfg.LedgerCurrency, defaultLedgerCurrency)
 }
 
 func normalizePaymentAmountMode(mode string) (string, error) {

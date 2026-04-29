@@ -93,6 +93,9 @@ func (s *PaymentService) CreatePaymentQuote(ctx context.Context, req CreatePayme
 		OrderType:       req.OrderType,
 		PlanID:          req.PlanID,
 	}
+	if err := s.resolveRequestPaymentCurrency(ctx, &createReq, cfg); err != nil {
+		return nil, err
+	}
 	plan, err := s.validateOrderInput(ctx, createReq, cfg)
 	if err != nil {
 		return nil, err
@@ -102,9 +105,6 @@ func (s *PaymentService) CreatePaymentQuote(ctx context.Context, req CreatePayme
 		return nil, err
 	}
 	if err := validateLedgerAmountLimits(req.OrderType, amounts.LimitLedgerAmount, cfg); err != nil {
-		return nil, err
-	}
-	if err := validateProviderCurrency("", req.PaymentType, amounts.FXSnapshot.PaymentCurrency); err != nil {
 		return nil, err
 	}
 

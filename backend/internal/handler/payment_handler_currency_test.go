@@ -164,6 +164,74 @@ func TestPaymentCheckoutInfoExposesSepayVNDMethodCurrency(t *testing.T) {
 	require.Equal(t, "₫", resp.Data.CurrencyMeta["VND"].Symbol)
 }
 
+func TestPaymentCheckoutInfoExposesConfiguredProviderCurrencies(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	db, err := sql.Open("sqlite", "file:payment_handler_currency_checkout_paddle?mode=memory&cache=shared")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	_, err = db.Exec("PRAGMA foreign_keys = ON")
+	require.NoError(t, err)
+
+	drv := entsql.OpenDB(dialect.SQLite, db)
+	client := enttest.NewClient(t, enttest.WithOptions(dbent.Driver(drv)))
+	t.Cleanup(func() { _ = client.Close() })
+
+	_, err = client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypePaddle).
+		SetName("Paddle KRW/USD").
+		SetConfig(`{"allowed_payment_currencies":"KRW,USD"}`).
+		SetSupportedTypes(payment.TypePaddle).
+		SetEnabled(true).
+		Save(context.Background())
+	require.NoError(t, err)
+
+	settings := &paymentHandlerCurrencySettingRepo{values: map[string]string{
+		service.SettingPaymentEnabled:           "true",
+		service.SettingLedgerCurrency:           "USD",
+		service.SettingAllowedPaymentCurrencies: "USD",
+		service.SettingManualFXRates:            `{"USD":1,"KRW":0.00073}`,
+		service.SettingFXRatesSource:            "manual",
+		service.SettingFXRatesUpdatedAt:         time.Now().UTC().Format(time.RFC3339),
+	}}
+	configSvc := service.NewPaymentConfigService(client, settings, []byte("0123456789abcdef0123456789abcdef"))
+	h := NewPaymentHandler(nil, configSvc, nil)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/v1/payment/checkout-info", nil)
+
+	h.GetCheckoutInfo(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			Methods map[string]struct {
+				AllowedPaymentCurrencies []string `json:"allowed_payment_currencies"`
+			} `json:"methods"`
+			AllowedPaymentCurrencies []string `json:"allowed_payment_currencies"`
+			FXStatus                 struct {
+				MissingCurrencies []string `json:"missing_currencies"`
+			} `json:"fx_status"`
+			CurrencyMeta map[string]struct {
+				MinorUnits int    `json:"minor_units"`
+				Symbol     string `json:"symbol"`
+			} `json:"currency_meta"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.Equal(t, []string{"KRW", "USD"}, resp.Data.Methods[payment.TypePaddle].AllowedPaymentCurrencies)
+	require.Equal(t, []string{"KRW", "USD"}, resp.Data.AllowedPaymentCurrencies)
+	require.Empty(t, resp.Data.FXStatus.MissingCurrencies)
+	require.Equal(t, 0, resp.Data.CurrencyMeta["KRW"].MinorUnits)
+	require.Equal(t, "₩", resp.Data.CurrencyMeta["KRW"].Symbol)
+	require.Equal(t, 2, resp.Data.CurrencyMeta["USD"].MinorUnits)
+	require.Equal(t, "$", resp.Data.CurrencyMeta["USD"].Symbol)
+}
+
 func TestCreateOrderRequestBindsCurrencyAmountMode(t *testing.T) {
 	var req CreateOrderRequest
 	require.NoError(t, json.Unmarshal([]byte(`{

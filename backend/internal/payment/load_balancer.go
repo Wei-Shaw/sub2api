@@ -97,8 +97,13 @@ func (lb *DefaultLoadBalancer) SelectInstance(
 		return nil, err
 	}
 
-	// Step 2: batch-fetch daily usage for all candidates.
-	candidates := lb.attachDailyUsage(ctx, instances)
+	currencyCompatible := lb.filterByPaymentCurrency(ctx, instances, paymentType)
+	if len(currencyCompatible) == 0 && paymentCurrencyFromContext(ctx) != "" {
+		return nil, fmt.Errorf("no enabled instance for payment type %s and currency %s", paymentType, paymentCurrencyFromContext(ctx))
+	}
+
+	// Step 2: batch-fetch daily usage for all currency-compatible candidates.
+	candidates := lb.attachDailyUsage(ctx, currencyCompatible)
 
 	// Step 3: filter by limits.
 	available := filterByLimits(candidates, paymentType, orderAmount)
@@ -162,6 +167,25 @@ func (lb *DefaultLoadBalancer) queryEnabledInstances(
 		return nil, fmt.Errorf("no enabled instance for payment type %s", paymentType)
 	}
 	return matched, nil
+}
+
+func (lb *DefaultLoadBalancer) filterByPaymentCurrency(ctx context.Context, instances []*dbent.PaymentProviderInstance, paymentType PaymentType) []*dbent.PaymentProviderInstance {
+	currency := paymentCurrencyFromContext(ctx)
+	if currency == "" {
+		return instances
+	}
+	matched := make([]*dbent.PaymentProviderInstance, 0, len(instances))
+	for _, inst := range instances {
+		config, err := lb.decryptConfig(inst.Config)
+		if err != nil {
+			slog.Warn("skip instance with unreadable config during currency filtering", "instance_id", inst.ID, "error", err)
+			continue
+		}
+		if InstanceSupportsPaymentCurrency(inst, paymentType, currency, config) {
+			matched = append(matched, inst)
+		}
+	}
+	return matched
 }
 
 // attachDailyUsage queries daily usage for each instance in a single pass.

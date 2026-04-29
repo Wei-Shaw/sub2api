@@ -54,8 +54,8 @@ const (
 	defaultOrderTimeoutMin          = 30
 	defaultMaxPendingOrders         = 3
 	defaultLedgerCurrency           = "USD"
-	defaultPaymentCurrencyCSV       = "VND,USD"
-	defaultManualFXRatesJSON        = `{"USD":1,"VND":0.0000392}`
+	defaultPaymentCurrencyCSV       = "USD"
+	defaultManualFXRatesJSON        = `{"USD":1}`
 	defaultFXRatesSource            = fxSourceManual
 	defaultFXRatesStaleAfterSeconds = 24 * 60 * 60
 )

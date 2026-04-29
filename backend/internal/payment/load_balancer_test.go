@@ -3,6 +3,7 @@
 package payment
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -112,6 +113,44 @@ func TestGetInstanceChannelLimitsFallsBackToLegacyDirectAliases(t *testing.T) {
 	if wxGot.SingleMin != 8 {
 		t.Fatalf("getInstanceChannelLimits() = %+v, want SingleMin=8", wxGot)
 	}
+}
+
+func TestLoadBalancerFiltersInstancesByPaymentCurrency(t *testing.T) {
+	lb := NewDefaultLoadBalancer(nil, nil)
+	instances := []*dbent.PaymentProviderInstance{
+		{
+			ID:             1,
+			ProviderKey:    TypePaddle,
+			SupportedTypes: TypePaddle,
+			Config:         `{"allowed_payment_currencies":"KRW"}`,
+			Enabled:        true,
+		},
+		{
+			ID:             2,
+			ProviderKey:    TypePaddle,
+			SupportedTypes: TypePaddle,
+			Config:         `{"allowed_payment_currencies":"USD"}`,
+			Enabled:        true,
+		},
+	}
+
+	got := lb.filterByPaymentCurrency(WithPaymentCurrency(context.Background(), "krw"), instances, TypePaddle)
+	if len(got) != 1 || got[0].ID != 1 {
+		t.Fatalf("filterByPaymentCurrency returned IDs %v, want [1]", instanceIDs(got))
+	}
+
+	got = lb.filterByPaymentCurrency(context.Background(), instances, TypePaddle)
+	if len(got) != 2 {
+		t.Fatalf("filterByPaymentCurrency without context currency returned %d instances, want 2", len(got))
+	}
+}
+
+func instanceIDs(instances []*dbent.PaymentProviderInstance) []int64 {
+	ids := make([]int64, 0, len(instances))
+	for _, inst := range instances {
+		ids = append(ids, int64(inst.ID))
+	}
+	return ids
 }
 
 // ---------------------------------------------------------------------------

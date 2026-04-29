@@ -222,7 +222,7 @@ func TestPcAggregateMethodCurrency(t *testing.T) {
 	require.Equal(t, payment.DefaultPaymentCurrency, currency)
 }
 
-func TestGetAvailableMethodLimitsOmitsMixedCurrencyMethod(t *testing.T) {
+func TestGetAvailableMethodLimitsExposesMixedCurrencyCapabilities(t *testing.T) {
 	ctx := context.Background()
 	client := newPaymentConfigServiceTestClient(t)
 
@@ -247,7 +247,9 @@ func TestGetAvailableMethodLimitsOmitsMixedCurrencyMethod(t *testing.T) {
 	svc := &PaymentConfigService{entClient: client}
 	resp, err := svc.GetAvailableMethodLimits(ctx)
 	require.NoError(t, err)
-	require.NotContains(t, resp.Methods, payment.TypeStripe)
+	stripeLimits, ok := resp.Methods[payment.TypeStripe]
+	require.True(t, ok, "expected mixed-currency Stripe method to remain visible")
+	require.ElementsMatch(t, []string{"HKD", "USD"}, stripeLimits.AllowedPaymentCurrencies)
 
 	_, err = svc.ValidateMethodCurrencyConsistency(ctx, payment.TypeStripe)
 	require.Error(t, err)
@@ -480,6 +482,28 @@ func TestGetAvailableMethodLimitsUsesConfiguredVisibleMethodSource(t *testing.T)
 			}
 		})
 	}
+}
+
+func TestGetAvailableMethodLimitsExposesConfiguredProviderCurrencies(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	_, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypePaddle).
+		SetName("Paddle KRW/USD").
+		SetConfig(`{"allowed_payment_currencies":"KRW,USD"}`).
+		SetSupportedTypes(payment.TypePaddle).
+		SetEnabled(true).
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc := NewPaymentConfigService(client, &paymentConfigSettingRepoStub{values: map[string]string{}}, []byte("0123456789abcdef0123456789abcdef"))
+	resp, err := svc.GetAvailableMethodLimits(ctx)
+	require.NoError(t, err)
+
+	paddleLimits, ok := resp.Methods[payment.TypePaddle]
+	require.True(t, ok, "expected paddle method limits")
+	require.Equal(t, []string{"KRW", "USD"}, paddleLimits.AllowedPaymentCurrencies)
 }
 
 func TestGetAvailableMethodLimitsPreservesLegacyCrossProviderBehaviorWhenVisibleMethodSourceMissing(t *testing.T) {
