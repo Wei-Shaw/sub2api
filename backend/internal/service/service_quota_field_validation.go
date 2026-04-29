@@ -50,12 +50,21 @@ func validateRuleFields(input *ServiceQuotaRuleInput) error {
 		}
 		return nil
 	}
-
 	if input.CounterMode == ServiceQuotaCounterModeUser && len(input.TargetUserIDs) == 0 {
 		c.Add("target_user_ids", FieldErrCodeTargetUsersRequired)
 	}
+	collectLimiterFieldErrors(c, input.Limiters)
+	collectPathFieldErrors(c, input.Paths)
+	if err := c.Build(); err != nil {
+		return err
+	}
+	return nil
+}
 
-	for i, l := range input.Limiters {
+// collectLimiterFieldErrors 收集每个 limiter 的字段级错误（limit_value / token_components）。
+// 拆出来让 validateRuleFields 主体保持 ≤30 行；与 collectPathFieldErrors 对称。
+func collectLimiterFieldErrors(c *pkgerrors.FieldErrorCollector, limiters []ServiceQuotaLimiterInput) {
+	for i, l := range limiters {
 		base := "limiters[" + strconv.Itoa(i) + "]"
 		if l.LimitValue <= 0 {
 			c.Add(base+".limit_value", FieldErrCodeMustBePositive)
@@ -64,8 +73,12 @@ func validateRuleFields(input *ServiceQuotaRuleInput) error {
 			c.Add(base+".token_components", FieldErrCodeTokenComponentsRequired)
 		}
 	}
+}
 
-	for i, p := range input.Paths {
+// collectPathFieldErrors 收集每条 path 的字段级错误（目前只有 platform 必填）。
+// 与 collectLimiterFieldErrors 对称，便于后续新增 path 字段校验只改一个 helper。
+func collectPathFieldErrors(c *pkgerrors.FieldErrorCollector, paths []ServiceQuotaPathInput) {
+	for i, p := range paths {
 		base := "paths[" + strconv.Itoa(i) + "]"
 		// platform 必填：存量 NULL 老规则在保存（Update）时强制要求补齐——存量在 Read 路径仍然返回，
 		// admin UI 列表会标 warning 提示用户编辑修复。
@@ -73,9 +86,4 @@ func validateRuleFields(input *ServiceQuotaRuleInput) error {
 			c.Add(base+".platform", FieldErrCodePlatformRequired)
 		}
 	}
-
-	if err := c.Build(); err != nil {
-		return err
-	}
-	return nil
 }

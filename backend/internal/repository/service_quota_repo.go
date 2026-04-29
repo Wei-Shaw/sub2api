@@ -20,18 +20,7 @@ func NewServiceQuotaRuleRepository(db *sql.DB) service.ServiceQuotaRuleRepositor
 const serviceQuotaRuleColumns = `id, enabled, name, counter_mode, is_fallback, created_at, updated_at`
 
 func (r *serviceQuotaRuleRepository) List(ctx context.Context, filter service.ServiceQuotaListFilter) ([]*service.ServiceQuotaRule, error) {
-	query := `SELECT ` + serviceQuotaRuleColumns + ` FROM service_quota_rules WHERE 1=1`
-	args := []any{}
-	if filter.Enabled != nil {
-		args = append(args, *filter.Enabled)
-		query += ` AND enabled = $` + strconv.Itoa(len(args))
-	}
-	if strings.TrimSpace(filter.LimiterType) != "" {
-		args = append(args, filter.LimiterType)
-		query += ` AND EXISTS (SELECT 1 FROM service_quota_limiters l WHERE l.rule_id = service_quota_rules.id AND l.limiter_type = $` + strconv.Itoa(len(args)) + `)`
-	}
-	query += ` ORDER BY id DESC`
-
+	query, args := buildListQuery(filter)
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -49,16 +38,39 @@ func (r *serviceQuotaRuleRepository) List(ctx context.Context, filter service.Se
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	if err := r.loadLimiters(ctx, out); err != nil {
-		return nil, err
-	}
-	if err := r.loadPaths(ctx, out); err != nil {
-		return nil, err
-	}
-	if err := r.loadRuleUsers(ctx, out); err != nil {
+	if err := r.hydrateRules(ctx, out); err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+// buildListQuery 根据 filter 拼装 List 的 SQL 与参数。
+// 拆出来让 List 主流程保持 ≤30 行：query 拼装是纯字符串/参数操作，单独可测。
+func buildListQuery(filter service.ServiceQuotaListFilter) (string, []any) {
+	query := `SELECT ` + serviceQuotaRuleColumns + ` FROM service_quota_rules WHERE 1=1`
+	args := []any{}
+	if filter.Enabled != nil {
+		args = append(args, *filter.Enabled)
+		query += ` AND enabled = $` + strconv.Itoa(len(args))
+	}
+	if strings.TrimSpace(filter.LimiterType) != "" {
+		args = append(args, filter.LimiterType)
+		query += ` AND EXISTS (SELECT 1 FROM service_quota_limiters l WHERE l.rule_id = service_quota_rules.id AND l.limiter_type = $` + strconv.Itoa(len(args)) + `)`
+	}
+	query += ` ORDER BY id DESC`
+	return query, args
+}
+
+// hydrateRules 调三个 load* 加载子表（limiters / paths / rule_users）。
+// List 与 fetchByID 共用此 helper，避免双份"调三遍 loader 短路返回"代码。
+func (r *serviceQuotaRuleRepository) hydrateRules(ctx context.Context, rules []*service.ServiceQuotaRule) error {
+	if err := r.loadLimiters(ctx, rules); err != nil {
+		return err
+	}
+	if err := r.loadPaths(ctx, rules); err != nil {
+		return err
+	}
+	return r.loadRuleUsers(ctx, rules)
 }
 
 func (r *serviceQuotaRuleRepository) Create(ctx context.Context, input service.ServiceQuotaRuleInput) (*service.ServiceQuotaRule, error) {
@@ -68,13 +80,9 @@ func (r *serviceQuotaRuleRepository) Create(ctx context.Context, input service.S
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	enabled := true
-	if input.Enabled != nil {
-		enabled = *input.Enabled
-	}
 	row := tx.QueryRowContext(ctx,
 		`INSERT INTO service_quota_rules (enabled, name, counter_mode, is_fallback) VALUES ($1,$2,$3,$4) RETURNING `+serviceQuotaRuleColumns,
-		enabled, input.Name, input.CounterMode, input.IsFallback,
+		resolveEnabled(input.Enabled), input.Name, input.CounterMode, input.IsFallback,
 	)
 	rule, err := scanServiceQuotaRule(row)
 	if err != nil {
@@ -82,13 +90,7 @@ func (r *serviceQuotaRuleRepository) Create(ctx context.Context, input service.S
 	}
 	// Create 与 Update 共用同一组 upsert helper（复用原则）：Create 时空表无冲突，
 	// upsert 退化为普通 INSERT；Update 时 ON CONFLICT 保留旧 id 让计数延续。
-	if err := upsertLimitersTx(ctx, tx, rule.ID, input.Limiters); err != nil {
-		return nil, err
-	}
-	if err := upsertPathsTx(ctx, tx, rule.ID, input.Paths); err != nil {
-		return nil, err
-	}
-	if err := replaceRuleUsersTx(ctx, tx, rule.ID, input.TargetUserIDs); err != nil {
+	if err := applyRuleSubtablesTx(ctx, tx, rule.ID, input); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -104,35 +106,46 @@ func (r *serviceQuotaRuleRepository) Update(ctx context.Context, id int64, input
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	enabled := true
-	if input.Enabled != nil {
-		enabled = *input.Enabled
-	}
 	row := tx.QueryRowContext(ctx,
 		`UPDATE service_quota_rules SET enabled=$1, name=$2, counter_mode=$3, is_fallback=$4, updated_at=now() WHERE id=$5 RETURNING `+serviceQuotaRuleColumns,
-		enabled, input.Name, input.CounterMode, input.IsFallback, id,
+		resolveEnabled(input.Enabled), input.Name, input.CounterMode, input.IsFallback, id,
 	)
 	rule, err := scanServiceQuotaRule(row)
 	if err != nil {
 		return nil, err
 	}
-
 	// 走 upsert 而非 DELETE+INSERT，让"调整 limit_value / 字段未变的 path"保留原 id。
 	// 计数 key 公式 svcquota:v2:<rule>:<path>:<limiter_type>:<target> 含 path_id，
 	// 旧实现会重置已有 Redis 计数；upsert 后内容相同的 path/limiter id 稳定，计数延续。
-	if err := upsertLimitersTx(ctx, tx, rule.ID, input.Limiters); err != nil {
-		return nil, err
-	}
-	if err := upsertPathsTx(ctx, tx, rule.ID, input.Paths); err != nil {
-		return nil, err
-	}
-	if err := replaceRuleUsersTx(ctx, tx, rule.ID, input.TargetUserIDs); err != nil {
+	if err := applyRuleSubtablesTx(ctx, tx, rule.ID, input); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return r.fetchByID(ctx, rule.ID)
+}
+
+// resolveEnabled 把可空 Enabled 字段解析成 bool（nil 视为 true，与历史默认一致）。
+// Create / Update 共用，避免双份 if 判断。
+func resolveEnabled(p *bool) bool {
+	if p == nil {
+		return true
+	}
+	return *p
+}
+
+// applyRuleSubtablesTx 把 limiters / paths / rule_users 三张子表写入事务。
+// Create 与 Update 共用此 helper，让主流程聚焦在 rules 主表 INSERT/UPDATE 上，
+// 把"上游 input.* 切片如何落库"这一并发逻辑收敛到一处。
+func applyRuleSubtablesTx(ctx context.Context, tx *sql.Tx, ruleID int64, input service.ServiceQuotaRuleInput) error {
+	if err := upsertLimitersTx(ctx, tx, ruleID, input.Limiters); err != nil {
+		return err
+	}
+	if err := upsertPathsTx(ctx, tx, ruleID, input.Paths); err != nil {
+		return err
+	}
+	return replaceRuleUsersTx(ctx, tx, ruleID, input.TargetUserIDs)
 }
 
 func (r *serviceQuotaRuleRepository) Delete(ctx context.Context, id int64) error {
@@ -152,14 +165,7 @@ func (r *serviceQuotaRuleRepository) fetchByID(ctx context.Context, id int64) (*
 	if err != nil {
 		return nil, err
 	}
-	rules := []*service.ServiceQuotaRule{rule}
-	if err := r.loadLimiters(ctx, rules); err != nil {
-		return nil, err
-	}
-	if err := r.loadPaths(ctx, rules); err != nil {
-		return nil, err
-	}
-	if err := r.loadRuleUsers(ctx, rules); err != nil {
+	if err := r.hydrateRules(ctx, []*service.ServiceQuotaRule{rule}); err != nil {
 		return nil, err
 	}
 	return rule, nil

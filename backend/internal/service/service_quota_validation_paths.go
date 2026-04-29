@@ -20,23 +20,7 @@ func (s *serviceQuotaService) normalizePaths(ctx context.Context, input *Service
 	seen := make(map[string]int, len(input.Paths))
 	for i := range input.Paths {
 		p := &input.Paths[i]
-		if p.Platform != nil {
-			trimmed := strings.TrimSpace(*p.Platform)
-			if trimmed == "" {
-				p.Platform = nil
-			} else {
-				lower := strings.ToLower(trimmed)
-				p.Platform = &lower
-			}
-		}
-		if p.ModelPattern != nil {
-			trimmed := strings.TrimSpace(*p.ModelPattern)
-			if trimmed == "" {
-				p.ModelPattern = nil
-			} else {
-				p.ModelPattern = &trimmed
-			}
-		}
+		normalizePathStrings(p)
 		if err := s.validatePathLinkage(ctx, *p); err != nil {
 			return err
 		}
@@ -54,6 +38,32 @@ func (s *serviceQuotaService) normalizePaths(ctx context.Context, input *Service
 		seen[key] = i
 	}
 	return nil
+}
+
+// normalizePathStrings 对单条 path 的字符串字段做去空格 / 小写归一：
+//   - Platform：trim 后小写（路由匹配是大小写无关，但存库统一小写避免后续 EqualFold 满天飞）
+//   - ModelPattern：trim 后保留原大小写（filepath.Match 模式本身是大小写敏感的）
+//
+// 任一字段 trim 后为空字符串则置 nil，让上游"nil 视作不限制该维度"的语义生效。
+// 拆出来让 normalizePaths 主循环保持 ≤30 行，TrimSpace 这种小工具不值得放主流程里。
+func normalizePathStrings(p *ServiceQuotaPathInput) {
+	if p.Platform != nil {
+		trimmed := strings.TrimSpace(*p.Platform)
+		if trimmed == "" {
+			p.Platform = nil
+		} else {
+			lower := strings.ToLower(trimmed)
+			p.Platform = &lower
+		}
+	}
+	if p.ModelPattern != nil {
+		trimmed := strings.TrimSpace(*p.ModelPattern)
+		if trimmed == "" {
+			p.ModelPattern = nil
+		} else {
+			p.ModelPattern = &trimmed
+		}
+	}
 }
 
 // serviceQuotaPathSignature 为同一规则内的 path 生成稳定签名，

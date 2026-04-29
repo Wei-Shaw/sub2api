@@ -23,6 +23,32 @@ func (s *serviceQuotaService) normalizeAndValidate(ctx context.Context, input *S
 	if input == nil {
 		return pkgerrors.BadRequest("SERVICE_QUOTA_INVALID_RULE", "invalid service quota rule")
 	}
+	if err := normalizeRuleHeader(input); err != nil {
+		return err
+	}
+	// 先做字段级硬校验，一次性收集所有字段错误（前端按 metadata.fields JSON 渲染高亮）。
+	// 字段错误 reason = SERVICE_QUOTA_VALIDATION_ERROR，与旧 SERVICE_QUOTA_INVALID_TARGET 等单字段错误码区分；
+	// 旧错误码保留给"业务级校验"（链路 mismatch / 重复 path 等）。
+	if err := validateRuleFields(input); err != nil {
+		return err
+	}
+	if err := s.validateTargetUserIDsExist(ctx, input.TargetUserIDs); err != nil {
+		return err
+	}
+	if err := normalizeLimiters(input); err != nil {
+		return err
+	}
+	return s.normalizePaths(ctx, input)
+}
+
+// normalizeRuleHeader 归一化规则的"头部"字段（CounterMode / Enabled / TargetUserIDs）。
+// 拆出来让 normalizeAndValidate 主流程保持线性 ≤30 行：Header 归一化属于"前置预处理"，
+// 与后续字段/业务校验是独立子阶段，单独可测。
+//
+// CounterMode 非法时直接返回错误（这是字段级硬校验的唯一例外，因为它决定后续 TargetUserIDs
+// 是否抹空，必须先于 validateRuleFields 处理）；其他字段做幂等归一（默认值填充 / 非 user
+// 模式抹掉 TargetUserIDs）。
+func normalizeRuleHeader(input *ServiceQuotaRuleInput) error {
 	if input.CounterMode == "" {
 		input.CounterMode = ServiceQuotaCounterModePerUser
 	}
@@ -38,21 +64,6 @@ func (s *serviceQuotaService) normalizeAndValidate(ctx context.Context, input *S
 	input.TargetUserIDs = sanitizeTargetUserIDs(input.TargetUserIDs)
 	if input.CounterMode != ServiceQuotaCounterModeUser {
 		input.TargetUserIDs = nil
-	}
-	// 先做字段级硬校验，一次性收集所有字段错误（前端按 metadata.fields JSON 渲染高亮）。
-	// 字段错误 reason = SERVICE_QUOTA_VALIDATION_ERROR，与旧 SERVICE_QUOTA_INVALID_TARGET 等单字段错误码区分；
-	// 旧错误码保留给"业务级校验"（链路 mismatch / 重复 path 等）。
-	if err := validateRuleFields(input); err != nil {
-		return err
-	}
-	if err := s.validateTargetUserIDsExist(ctx, input.TargetUserIDs); err != nil {
-		return err
-	}
-	if err := normalizeLimiters(input); err != nil {
-		return err
-	}
-	if err := s.normalizePaths(ctx, input); err != nil {
-		return err
 	}
 	return nil
 }

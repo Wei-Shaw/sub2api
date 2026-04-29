@@ -109,16 +109,28 @@ func (s *serviceQuotaService) PreCheckAcquire(ctx context.Context, plan *Service
 	if len(matched) == 0 {
 		return nil, nil
 	}
-
 	// matched rules 无 concurrency limiter 时，acquireConcurrency 不会被调用，
 	// lease.Release 维持 nil。下游 BillingTicket.Close 已对 Release == nil 做 nil-safe。
 	lease := &ServiceQuotaLease{}
-	// 三轮：concurrency → RPM → deferred(tpm/tpd/daily_usd)。先抢并发额度避免后续判断时占用未释放。
-	//
-	// 前两轮（concurrency / RPM）必须逐个：concurrency 走 Lua 原子脚本 + 副作用 lease，
-	// RPM CountOnArrival=true 走 Increment + 失败回滚。两类操作都是写命令，pipeline 也不能合并。
-	//
-	// 第三轮（deferred）全是只读 Current → 批量 SnapshotMany 一次拉全部用量。
+	if err := s.runAcquirePhases(ctx, req, matched, lease); err != nil {
+		lease.release()
+		return nil, err
+	}
+	return lease, nil
+}
+
+// runAcquirePhases 执行 PreCheckAcquire 的三轮判定：
+//
+//	concurrency → RPM → deferred(tpm/tpd/daily_usd)
+//
+// 先抢并发额度避免后续判断时占用未释放。前两轮（concurrency / RPM）必须逐个：
+// concurrency 走 Lua 原子脚本 + 副作用 lease，RPM CountOnArrival=true 走 Increment + 失败回滚——
+// 两类操作都是写命令，pipeline 也不能合并。
+//
+// 第三轮（deferred）全是只读 Current → 批量 SnapshotMany 一次拉全部用量。
+//
+// 任何一轮短路返回 error，调用方负责释放 lease（与历史行为一致）。
+func (s *serviceQuotaService) runAcquirePhases(ctx context.Context, req ServiceQuotaCheckRequest, matched []matchedQuotaRule, lease *ServiceQuotaLease) error {
 	concurrencyStep := limiterPhase{predicate: isConcurrencyLimiter, fn: func(rule *ServiceQuotaRule, p ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) error {
 		return s.acquireConcurrency(ctx, req, rule, p, lim, lease)
 	}}
@@ -127,15 +139,10 @@ func (s *serviceQuotaService) PreCheckAcquire(ctx context.Context, plan *Service
 	}}
 	for _, step := range []limiterPhase{concurrencyStep, rpmStep} {
 		if err := iterateLimiters(matched, step.predicate, step.fn); err != nil {
-			lease.release()
-			return nil, err
+			return err
 		}
 	}
-	if err := s.checkDeferredBatch(ctx, req, matched); err != nil {
-		lease.release()
-		return nil, err
-	}
-	return lease, nil
+	return s.checkDeferredBatch(ctx, req, matched)
 }
 
 // matchedRulesForAcquire 是 PreCheckAcquire 内"重读 enabled + path 匹配 + fallback 覆盖"的

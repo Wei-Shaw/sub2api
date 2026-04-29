@@ -167,24 +167,34 @@ func buildLimiterRuntime(row plannedRow, snap LimiterSnapshot, userScope bool) L
 		IsFallback:     row.rule.IsFallback,
 		Exists:         snap.Exists,
 		ResetAtUnixMs:  snap.ResetAtUnixMs,
+		// counter_mode 是规则的 enum 类型描述（'shared' / 'user' / 'per_user'），不属于敏感字段：
+		// admin 端公开，user 端也需要它来区分"全局共享限额"和"用户独立限额"（前端按此渲染"全"badge）。
+		CounterMode: row.rule.CounterMode,
 	}
-	// counter_mode 是规则的 enum 类型描述（'shared' / 'user' / 'per_user'），不属于敏感字段：
-	// admin 端公开，user 端也需要它来区分"全局共享限额"和"用户独立限额"（前端按此渲染"全"badge）。
-	rt.CounterMode = row.rule.CounterMode
+	applyScopeFields(&rt, row, userScope)
+	return rt
+}
+
+// applyScopeFields 按视角填充 / 抹除字段：
+//   - admin (userScope=false)：暴露 5 维 PathSummary + ScopeUserID
+//   - user  (userScope=true) ：仅 platform / model_pattern + 抹掉 RuleID / IsFallback
+//
+// 拆出来让 buildLimiterRuntime 主体保持 ≤30 行；视角差异在此一处收敛，
+// 后续若要新增"hide X for user"或"only-admin Y"只需改这里。
+func applyScopeFields(rt *LimiterRuntime, row plannedRow, userScope bool) {
 	if !userScope {
 		rt.PathSummary = pathSummaryFrom(row.path)
 		rt.ScopeUserID = row.scopeUserID
-	} else {
-		// user 视角下仍透出 platform 与 model_pattern，让用户能看到自己被
-		// 限流的"业务路径"；channel/group/account 是内部资源拓扑，故意不暴露
-		// （避免侧信道泄露平台架构信息）。
-		rt.PathSummary = pathSummaryFromForUser(row.path)
-		// 抹掉规则内部标识：rule_id 是 admin 才需要的内部关键字（用于 ResetCounter 等管理动作）；
-		// is_fallback 是规则编排细节，不应暴露给最终用户。最小信息暴露原则。
-		rt.RuleID = 0
-		rt.IsFallback = false
+		return
 	}
-	return rt
+	// user 视角下仍透出 platform 与 model_pattern，让用户能看到自己被
+	// 限流的"业务路径"；channel/group/account 是内部资源拓扑，故意不暴露
+	// （避免侧信道泄露平台架构信息）。
+	rt.PathSummary = pathSummaryFromForUser(row.path)
+	// 抹掉规则内部标识：rule_id 是 admin 才需要的内部关键字（用于 ResetCounter 等管理动作）；
+	// is_fallback 是规则编排细节，不应暴露给最终用户。最小信息暴露原则。
+	rt.RuleID = 0
+	rt.IsFallback = false
 }
 
 // pathSummaryFrom 把 ServiceQuotaPathDef 浅拷贝成 PathSummary（admin 视角，5 维都暴露）。
