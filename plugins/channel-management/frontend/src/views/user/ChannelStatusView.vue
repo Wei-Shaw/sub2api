@@ -1,10 +1,8 @@
 <template>
-  <!-- Plan B·D3: PluginPageLayout title/description (修复无标题区).
+  <!-- title/description 已上移到 channel-management manifest descriptions,
+       host AppHeader 唯一渲染标题区. PluginPageLayout 继续作为 layout 容器使用,
        MonitorHero 内含状态条/窗口切换/刷新, 不需要再叠 FilterBar/PageActions. -->
-  <PluginPageLayout
-    :title="t('channelStatus.title')"
-    :description="t('channelStatus.description')"
-  >
+  <PluginPageLayout>
     <div class="layout-section-fixed">
       <MonitorHero
         :overall-status="overallStatus"

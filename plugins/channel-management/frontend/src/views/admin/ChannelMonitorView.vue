@@ -1,10 +1,8 @@
 <template>
-  <!-- Plan B·D3: 加上 PluginPageLayout title/description (修复用户反馈的"渠道监控
-       页面缺顶部标题区"); TablePageLayout + FilterBar + PageActions 复用 SDK 组件. -->
-  <PluginPageLayout
-    :title="t('admin.channelMonitor.title')"
-    :description="t('admin.channelMonitor.description')"
-  >
+  <!-- title/description 已上移到 channel-management manifest descriptions,
+       host AppHeader 唯一渲染标题区. PluginPageLayout 继续作为 layout 容器使用,
+       TablePageLayout + FilterBar + PageActions 复用 SDK 组件. -->
+  <PluginPageLayout>
     <TablePageLayout>
       <template #filters>
         <FilterBar>

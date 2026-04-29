@@ -1,10 +1,8 @@
 <template>
-  <!-- Plan B·D3: PluginPageLayout title/description + FilterBar/PageActions
-       (无表格分页, default slot 直接渲染 AvailableChannelsTable). -->
-  <PluginPageLayout
-    :title="t('availableChannels.title')"
-    :description="t('availableChannels.description')"
-  >
+  <!-- title/description 已上移到 channel-management manifest descriptions,
+       host AppHeader 唯一渲染标题区. PluginPageLayout 继续作为 layout 容器使用,
+       FilterBar/PageActions 仍由 view 提供。 -->
+  <PluginPageLayout>
     <template #actions>
       <PageActions>
         <button

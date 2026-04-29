@@ -194,9 +194,12 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 					RequiresAdmin: true,
 					Children: []pluginsdk.MenuItemDecl{
 						{
-							Path:          "/admin/channels",
-							IconSVG:       pluginsdk.IconTag,
-							Labels:        pluginsdk.Labels("渠道定价", "Channel Pricing"),
+							Path:    "/admin/channels",
+							IconSVG: pluginsdk.IconTag,
+							Labels:  pluginsdk.Labels("渠道定价", "Channel Pricing"),
+							// Descriptions 走 manifest 提供 AppHeader 副标题,
+							// view 内 PluginPageLayout 不再自己渲染 title/description。
+							Descriptions:  pluginsdk.Descriptions("管理渠道和自定义模型定价", "Manage channels and custom model pricing"),
 							Section:       pluginsdk.SectionAdmin,
 							SortOrder:     210,
 							RequiresAdmin: true,
@@ -205,6 +208,7 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 							Path:          channelMonitorAdminFrontendPath,
 							IconSVG:       pluginsdk.IconCog,
 							Labels:        pluginsdk.Labels("渠道监控", "Channel Monitor"),
+							Descriptions:  pluginsdk.Descriptions("监控渠道可用性、延迟和状态", "Monitor channel availability, latency, and status"),
 							Section:       pluginsdk.SectionAdmin,
 							SortOrder:     220,
 							RequiresAdmin: true,
@@ -216,10 +220,11 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 				// the host SPA pick it up the moment the frontend bundle
 				// rebuilds, with no further backend change required.
 				{
-					Path:    availableChannelsFrontendPath,
-					IconSVG: pluginsdk.IconBranchFork,
-					Labels:  pluginsdk.Labels("可用渠道", "Available Channels"),
-					Section: pluginsdk.SectionUser,
+					Path:         availableChannelsFrontendPath,
+					IconSVG:      pluginsdk.IconBranchFork,
+					Labels:       pluginsdk.Labels("可用渠道", "Available Channels"),
+					Descriptions: pluginsdk.Descriptions("您可以访问的渠道及其支持的模型与定价", "Channels you can access with their supported models and pricing"),
+					Section:      pluginsdk.SectionUser,
 					// Placement: user/main 桶内排在 50, 让"可用渠道"作为业务
 					// 主菜单的一部分跟在 host 的 dashboard/keys 等之后。
 					Placement:     &pluginsdk.Placement{Group: pluginsdk.PlacementUserMain, Order: 50},
@@ -228,10 +233,11 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 				},
 				// User-facing read-only "Channel Status" view (V5 W7.3).
 				{
-					Path:    channelStatusFrontendPath,
-					IconSVG: pluginsdk.IconCog,
-					Labels:  pluginsdk.Labels("渠道状态", "Channel Status"),
-					Section: pluginsdk.SectionUser,
+					Path:         channelStatusFrontendPath,
+					IconSVG:      pluginsdk.IconCog,
+					Labels:       pluginsdk.Labels("渠道状态", "Channel Status"),
+					Descriptions: pluginsdk.Descriptions("查看渠道可用性、延迟和近期状态", "View channel availability, latency, and recent status"),
+					Section:      pluginsdk.SectionUser,
 					// Placement: 渠道状态属于"次级信息", 落入 user/end 桶,
 					// 跟在 redeem/profile 后面但仍排在自定义菜单之前。
 					Placement:     &pluginsdk.Placement{Group: pluginsdk.PlacementUserEnd, Order: 10},

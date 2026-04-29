@@ -1,11 +1,12 @@
 <template>
   <!-- Plan B·D3: 用 SDK PluginPageLayout / TablePageLayout / FilterBar / PageActions
        替换 V2 inline 容器; layout class 走 SDK components.css, 不再在 scoped style
-       重复定义 (避免 ShadowRoot 内多套尺寸). -->
-  <PluginPageLayout
-    :title="t('admin.channels.title', 'Channels')"
-    :description="t('admin.channels.description', 'Manage channels and custom model pricing')"
-  >
+       重复定义 (避免 ShadowRoot 内多套尺寸).
+
+       title/description 已上移到 manifest descriptions, host AppHeader 唯一
+       渲染页面标题区, view 不再重复 (修复"双重标题"问题). PluginPageLayout
+       继续作为 layout 容器使用。 -->
+  <PluginPageLayout>
     <TablePageLayout>
       <template #filters>
         <FilterBar>
