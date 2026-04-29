@@ -522,9 +522,6 @@
         </a>
       </div>
     </footer>
-
-    <!-- 微信客服悬浮按钮 -->
-    <WechatServiceButton />
   </div>
 </template>
 
@@ -534,7 +531,6 @@ import { useI18n } from 'vue-i18n'
 import { useAuthStore, useAppStore } from '@/stores'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
-import WechatServiceButton from '@/components/common/WechatServiceButton.vue'
 
 const { t } = useI18n()
 
