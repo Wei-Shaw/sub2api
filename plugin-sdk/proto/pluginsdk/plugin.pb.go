@@ -462,8 +462,15 @@ type ManifestResponse struct {
 	// settings_schema_json. When both sources disagree, this field wins
 	// (it is the SDK's authoritative serialization).
 	SettingsPropertiesMetaJson []byte `protobuf:"bytes,45,opt,name=settings_properties_meta_json,json=settingsPropertiesMetaJson,proto3" json:"settings_properties_meta_json,omitempty"`
-	unknownFields              protoimpl.UnknownFields
-	sizeCache                  protoimpl.SizeCache
+	// icon_svg is the complete SVG markup (including the outer <svg> tag)
+	// that the admin UI renders next to the plugin name on the plugins
+	// management page. Letting plugins ship the SVG removes the need for
+	// the core to maintain a registry of plugin icons. Empty bytes mean
+	// the host falls back to its generic plugin icon. See pluginsdk Icon*
+	// constants for ergonomic helpers.
+	IconSvg       string `protobuf:"bytes,46,opt,name=icon_svg,json=iconSvg,proto3" json:"icon_svg,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ManifestResponse) Reset() {
@@ -599,6 +606,13 @@ func (x *ManifestResponse) GetSettingsPropertiesMetaJson() []byte {
 		return x.SettingsPropertiesMetaJson
 	}
 	return nil
+}
+
+func (x *ManifestResponse) GetIconSvg() string {
+	if x != nil {
+		return x.IconSvg
+	}
+	return ""
 }
 
 type EndpointDeclaration struct {
@@ -764,9 +778,22 @@ type MenuItem struct {
 	// locale, falling back to "en" if present, then to label_key as a last
 	// resort. This removes the need for the core's i18n bundle to contain every
 	// plugin's translations.
-	Labels        map[string]string `protobuf:"bytes,11,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Labels map[string]string `protobuf:"bytes,11,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// placement_group is the V5/W7 "Placement DSL" sidebar bucket the host
+	// routes this menu item into. Known values: "admin/main", "admin/system",
+	// "admin/end", "user/main", "user/end". Empty defaults to the section's
+	// "<section>/end" bucket so legacy plugins land at the bottom of their
+	// section without further changes. See AppSidebar.mergeByPlacement for
+	// the merge algorithm.
+	PlacementGroup string `protobuf:"bytes,12,opt,name=placement_group,json=placementGroup,proto3" json:"placement_group,omitempty"`
+	// placement_order is the relative order *within* placement_group. Lower
+	// values render first; ties fall back to the host's deterministic
+	// declaration order (host items keep their hard-coded position, plugin
+	// items follow plugin-name then path). Mirrors sort_order semantics
+	// but scoped to one Placement bucket.
+	PlacementOrder int32 `protobuf:"varint,13,opt,name=placement_order,json=placementOrder,proto3" json:"placement_order,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *MenuItem) Reset() {
@@ -874,6 +901,20 @@ func (x *MenuItem) GetLabels() map[string]string {
 		return x.Labels
 	}
 	return nil
+}
+
+func (x *MenuItem) GetPlacementGroup() string {
+	if x != nil {
+		return x.PlacementGroup
+	}
+	return ""
+}
+
+func (x *MenuItem) GetPlacementOrder() int32 {
+	if x != nil {
+		return x.PlacementOrder
+	}
+	return 0
 }
 
 type RouteDefinition struct {
@@ -1162,7 +1203,7 @@ const file_plugin_proto_rawDesc = "" +
 	"\tFileChunk\x12\x12\n" +
 	"\x04data\x18\x01 \x01(\fR\x04data\x12\x1a\n" +
 	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x10\n" +
-	"\x03eof\x18\x03 \x01(\bR\x03eof\"\xd8\x05\n" +
+	"\x03eof\x18\x03 \x01(\bR\x03eof\"\xf3\x05\n" +
 	"\x10ManifestResponse\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x18\n" +
@@ -1181,7 +1222,8 @@ const file_plugin_proto_rawDesc = "" +
 	"\x14settings_schema_json\x18* \x01(\fR\x12settingsSchemaJson\x124\n" +
 	"\x16settings_defaults_json\x18+ \x01(\fR\x14settingsDefaultsJson\x126\n" +
 	"\x17settings_schema_version\x18, \x01(\tR\x15settingsSchemaVersion\x12A\n" +
-	"\x1dsettings_properties_meta_json\x18- \x01(\fR\x1asettingsPropertiesMetaJson\"`\n" +
+	"\x1dsettings_properties_meta_json\x18- \x01(\fR\x1asettingsPropertiesMetaJson\x12\x19\n" +
+	"\bicon_svg\x18. \x01(\tR\aiconSvg\"`\n" +
 	"\x13EndpointDeclaration\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x18\n" +
 	"\amethods\x18\x02 \x03(\tR\amethods\x12\x1b\n" +
@@ -1192,7 +1234,7 @@ const file_plugin_proto_rawDesc = "" +
 	"\n" +
 	"menu_items\x18\x03 \x03(\v2\x13.pluginsdk.MenuItemR\tmenuItems\x122\n" +
 	"\x06routes\x18\x04 \x03(\v2\x1a.pluginsdk.RouteDefinitionR\x06routes\x12'\n" +
-	"\x0fi18n_namespaces\x18\x05 \x03(\tR\x0ei18nNamespaces\"\xc1\x03\n" +
+	"\x0fi18n_namespaces\x18\x05 \x03(\tR\x0ei18nNamespaces\"\x93\x04\n" +
 	"\bMenuItem\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x1b\n" +
 	"\tlabel_key\x18\x02 \x01(\tR\blabelKey\x12\x12\n" +
@@ -1206,7 +1248,9 @@ const file_plugin_proto_rawDesc = "" +
 	"\bchildren\x18\t \x03(\v2\x13.pluginsdk.MenuItemR\bchildren\x12\x19\n" +
 	"\bicon_svg\x18\n" +
 	" \x01(\tR\aiconSvg\x127\n" +
-	"\x06labels\x18\v \x03(\v2\x1f.pluginsdk.MenuItem.LabelsEntryR\x06labels\x1a9\n" +
+	"\x06labels\x18\v \x03(\v2\x1f.pluginsdk.MenuItem.LabelsEntryR\x06labels\x12'\n" +
+	"\x0fplacement_group\x18\f \x01(\tR\x0eplacementGroup\x12'\n" +
+	"\x0fplacement_order\x18\r \x01(\x05R\x0eplacementOrder\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd3\x01\n" +

@@ -108,7 +108,36 @@ type Manifest struct {
 	// plugin contributes no settings. See SettingsSchemaDoc for the
 	// preferred construction helper.
 	SettingsSchema *SettingsSchemaDoc
+
+	// IconSVG is the complete SVG markup (including the outer <svg> tag)
+	// the admin plugin-management page renders next to the plugin display
+	// name. Use one of the Icon* constants in this package or supply your
+	// own. Empty falls back to the host's generic plugin icon.
+	IconSVG string
 }
+
+// Placement describes where on a sidebar a plugin's menu item should land.
+// Pointing a MenuItemDecl at a Placement opts that item into the V5/W7
+// "Placement DSL" merge algorithm; leaving Placement nil keeps the legacy
+// SortOrder path (item is appended at the end of its section).
+//
+// Group is one of the Placement* constants below. Order is the relative
+// position *inside* that bucket — lower renders first.
+type Placement struct {
+	Group string
+	Order int
+}
+
+// Placement* are the known sidebar buckets the host honours. Plugins should
+// always use these constants instead of bare strings so a typo fails to
+// compile rather than silently landing in the fallback bucket.
+const (
+	PlacementAdminMain   = "admin/main"
+	PlacementAdminSystem = "admin/system"
+	PlacementAdminEnd    = "admin/end"
+	PlacementUserMain    = "user/main"
+	PlacementUserEnd     = "user/end"
+)
 
 // SettingsSchemaDoc bundles a JSON Schema and its default values into the
 // shape the SDK ships in the manifest. Both fields are stored as raw JSON so
@@ -259,6 +288,14 @@ type MenuItemDecl struct {
 	// {"zh": "渠道管理", "en": "Channel Management"}. The frontend chooses the
 	// entry matching the user's current locale, falling back to "en".
 	Labels map[string]string
+
+	// Placement opts this menu item into the V5/W7 Placement DSL: the host
+	// merges the item into the named sidebar bucket (Group) at the given
+	// Order rather than appending at the end of its Section. nil = legacy
+	// SortOrder behaviour (item is appended at the end of its section).
+	// Both fields must be set together; setting Order without Group has
+	// the same effect as nil.
+	Placement *Placement
 }
 
 // RouteDecl is a Vue Router route definition contributed by the plugin.
@@ -286,6 +323,7 @@ func (m *Manifest) toProto() *pb.ManifestResponse {
 		PluginEndpoints:  endpointsToProto(m.PluginEndpoints),
 		MigrationFiles:   append([]string(nil), m.MigrationFiles...),
 		Migrations:       migrationsToProto(m.Migrations),
+		IconSvg:          m.IconSVG,
 	}
 	if m.Frontend != nil {
 		resp.Frontend = m.Frontend.toProto()
@@ -400,7 +438,7 @@ func menuItemsToProto(items []MenuItemDecl) []*pb.MenuItem {
 				labels[k] = v
 			}
 		}
-		out = append(out, &pb.MenuItem{
+		mi := &pb.MenuItem{
 			Path:             item.Path,
 			LabelKey:         item.LabelKey,
 			Icon:             item.Icon,
@@ -412,7 +450,15 @@ func menuItemsToProto(items []MenuItemDecl) []*pb.MenuItem {
 			Children:         menuItemsToProto(item.Children),
 			IconSvg:          item.IconSVG,
 			Labels:           labels,
-		})
+		}
+		// V5/W7 Placement DSL — only stamp the wire fields when the plugin
+		// opted in; leaving them zero preserves the legacy SortOrder path
+		// for callers still on the old API.
+		if item.Placement != nil && item.Placement.Group != "" {
+			mi.PlacementGroup = item.Placement.Group
+			mi.PlacementOrder = int32(item.Placement.Order)
+		}
+		out = append(out, mi)
 	}
 	return out
 }

@@ -168,6 +168,14 @@ message ManifestResponse {
   // settings_schema_json. When both sources disagree, this field wins
   // (it is the SDK's authoritative serialization).
   bytes settings_properties_meta_json = 45;
+
+  // icon_svg is the complete SVG markup (including the outer <svg> tag)
+  // that the admin UI renders next to the plugin name on the plugins
+  // management page. Letting plugins ship the SVG removes the need for
+  // the core to maintain a registry of plugin icons. Empty bytes mean
+  // the host falls back to its generic plugin icon. See pluginsdk Icon*
+  // constants for ergonomic helpers.
+  string icon_svg = 46;
 }
 
 message EndpointDeclaration {
@@ -211,6 +219,21 @@ message MenuItem {
   // resort. This removes the need for the core's i18n bundle to contain every
   // plugin's translations.
   map<string, string> labels = 11;
+
+  // placement_group is the V5/W7 "Placement DSL" sidebar bucket the host
+  // routes this menu item into. Known values: "admin/main", "admin/system",
+  // "admin/end", "user/main", "user/end". Empty defaults to the section's
+  // "<section>/end" bucket so legacy plugins land at the bottom of their
+  // section without further changes. See AppSidebar.mergeByPlacement for
+  // the merge algorithm.
+  string placement_group = 12;
+
+  // placement_order is the relative order *within* placement_group. Lower
+  // values render first; ties fall back to the host's deterministic
+  // declaration order (host items keep their hard-coded position, plugin
+  // items follow plugin-name then path). Mirrors sort_order semantics
+  // but scoped to one Placement bucket.
+  int32 placement_order = 13;
 }
 
 message RouteDefinition {

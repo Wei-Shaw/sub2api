@@ -772,6 +772,12 @@ func convertMenuItems(items []*pluginsdk.MenuItem) []map[string]any {
 			// is fine here because encoding/json renders it as null and the
 			// frontend treats null + empty as equivalent.
 			"labels": mi.GetLabels(),
+			// V5/W7 Placement DSL — pass through verbatim so the frontend can
+			// route the item into the right sidebar bucket. Empty group + zero
+			// order is the legacy fallback (frontend lands the item at the
+			// section's "<section>/end" bucket).
+			"placement_group": mi.GetPlacementGroup(),
+			"placement_order": mi.GetPlacementOrder(),
 		}
 		if children := convertMenuItems(mi.GetChildren()); len(children) > 0 {
 			entry["children"] = children

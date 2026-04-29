@@ -134,6 +134,13 @@ func (inst *PluginInstance) SnapshotInfo() PluginInfo {
 	if inst.Manifest != nil {
 		info.DisplayName = inst.Manifest.DisplayName
 		info.Version = inst.Manifest.Version
+		// V5/W7: surface manifest IconSVG and the presence of a settings
+		// schema so the admin plugin-management UI can render the plugin's
+		// own icon and only show the Settings tab for plugins that actually
+		// declare one. Both fields are zero-value when the plugin omitted
+		// them, preserving the legacy display.
+		info.IconSVG = inst.Manifest.GetIconSvg()
+		info.HasSettings = len(inst.Manifest.GetSettingsSchemaJson()) > 0
 	}
 	return info
 }
@@ -159,4 +166,14 @@ type PluginInfo struct {
 	StartedAt    time.Time      `json:"started_at,omitempty"`
 	LastError    string         `json:"last_error,omitempty"`
 	Config       map[string]any `json:"config,omitempty"`
+	// IconSVG is the plugin manifest-supplied SVG markup the admin UI
+	// renders next to DisplayName. Empty means the host falls back to its
+	// generic plugin icon. Always omitted on the wire when empty so the
+	// payload stays compact for plugins that did not opt in.
+	IconSVG string `json:"icon_svg,omitempty"`
+	// HasSettings flags whether the plugin shipped a non-empty
+	// SettingsSchema in its manifest. The admin UI hides the Settings tab
+	// when false to avoid a "no settings declared" empty state for every
+	// plugin that simply does not contribute settings.
+	HasSettings bool `json:"has_settings"`
 }
