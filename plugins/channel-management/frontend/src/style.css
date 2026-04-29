@@ -11,6 +11,11 @@
  *
  * 注意: plugin SFC 内若要用 `*, *::before, *::after { box-sizing: border-box }`
  * 这种全局重置, 由 plugin-sdk.css 已提供, 不必在此处再加.
+ *
+ * @import 必须在 @tailwind 之前 (CSS spec): @import 须出现在所有其他规则之前,
+ * 否则 PostCSS 直接丢弃, .btn/.card/.empty-state 全局类不会进 entry.css.
  */
+@import '@sub2api/plugin-sdk/src/components.css';
+
 @tailwind components;
 @tailwind utilities;

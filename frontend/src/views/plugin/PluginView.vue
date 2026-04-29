@@ -1,12 +1,6 @@
 <template>
   <AppLayout>
     <div class="plugin-view">
-      <header class="plugin-view__header">
-        <h1 class="plugin-view__title">
-          {{ displayName || pluginName }}
-        </h1>
-      </header>
-
       <section class="plugin-view__body">
         <!-- 加载中 -->
         <div v-if="state === 'loading'" class="plugin-view__placeholder">
@@ -220,17 +214,6 @@ function stringMeta(key: string): string {
   gap: 1rem;
   height: 100%;
   min-height: 0;
-}
-
-.plugin-view__header {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  padding-bottom: 0.75rem;
-}
-
-.plugin-view__title {
-  font-size: 1.5rem;
-  font-weight: 600;
-  margin: 0;
 }
 
 .plugin-view__body {

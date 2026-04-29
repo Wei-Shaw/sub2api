@@ -127,6 +127,27 @@ export async function mountPluginAssets(opts: MountPluginAssetsOptions): Promise
   root.dataset.pluginName = pluginName
   shadow.appendChild(root)
 
+  // 3.1) 同步 host 的 dark class 到 shadow root 内根容器.
+  //
+  // 为什么需要:
+  //   host 用 `:is(.dark *)` 选择器实现 tailwind `dark:` variant, 但这个选择器
+  //   不能跨 shadow 边界 — shadow tree 内的元素不会被 host 的 `.dark` ancestor
+  //   匹配. 解决方案: 在 shadow tree 自己的根容器上镜像一份 `dark` class, 这样
+  //   shadow 内 stylesheet 里的 `.dark ...` / `:is(.dark *)` 选择器就能命中.
+  const applyDarkState = (): void => {
+    const isDark = document.documentElement.classList.contains('dark')
+    root.classList.toggle('dark', isDark)
+  }
+  applyDarkState()
+
+  const darkObserver = new MutationObserver(() => {
+    applyDarkState()
+  })
+  darkObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['class'],
+  })
+
   // 4) 调 plugin 自己的 mount.
   //    plugin 收到的是整个 ShadowRoot, 它可以选择 root div 或自己再 createElement.
   //    约定: plugin mount 内部应该把 view mount 到 .plugin-shadow-root (上面的 root).
@@ -140,6 +161,7 @@ export async function mountPluginAssets(opts: MountPluginAssetsOptions): Promise
     instance = await assets.mount(shadow, ctx)
   } catch (err) {
     // mount 失败时把 shadow 清空, 不留半成品.
+    darkObserver.disconnect()
     while (shadow.firstChild) {
       shadow.removeChild(shadow.firstChild)
     }
@@ -148,6 +170,7 @@ export async function mountPluginAssets(opts: MountPluginAssetsOptions): Promise
 
   return {
     unmount(): void {
+      darkObserver.disconnect()
       try {
         instance.unmount()
       } catch (err) {

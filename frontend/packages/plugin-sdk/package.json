@@ -9,7 +9,9 @@
     ".": "./src/index.ts",
     "./components/*": "./src/components/*",
     "./types": "./src/types/index.ts",
-    "./tailwind-preset.cjs": "./tailwind-preset.cjs"
+    "./tailwind-preset.cjs": "./tailwind-preset.cjs",
+    "./package.json": "./package.json",
+    "./src/*": "./src/*"
   },
   "peerDependencies": {
     "vue": "^3.4.0",

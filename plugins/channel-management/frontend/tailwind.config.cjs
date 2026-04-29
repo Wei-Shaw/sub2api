@@ -12,15 +12,22 @@
 // mobile / desktop 分支 (md:hidden / hidden md:block) 同时显示, 出现重复
 // EmptyState / 表头错乱.
 //
-// SDK 通过 file: 链接到 host 的 frontend/packages/plugin-sdk, npm install 把它
-// 链到 plugin 自己的 node_modules/@sub2api/plugin-sdk. tailwind glob 走 node_modules
-// 路径以适配两种 install 形态 (npm hoisting / 直接 link).
+// SDK 通过 file: 链接到 host 的 frontend/packages/plugin-sdk, pnpm install 通过
+// symlink 把它链到 plugin 自己的 node_modules/@sub2api/plugin-sdk. fast-glob (tailwind
+// 内部使用) 默认不跟随 node_modules 中的 symlink, 直接写
+// './node_modules/@sub2api/plugin-sdk/src/**' 在 pnpm 下扫不到任何文件.
+// 改用 require.resolve('@sub2api/plugin-sdk/package.json') 拿到包真实的物理路径
+// (pnpm 解析后落在 .pnpm 或 host 仓库 frontend/packages/plugin-sdk), 再拼 src glob,
+// 保证两种 install 形态 (pnpm symlink / npm hoisting) 都能扫到 SDK source.
+const path = require('path')
+const sdkPath = path.dirname(require.resolve('@sub2api/plugin-sdk/package.json'))
+
 module.exports = {
   presets: [require('@sub2api/plugin-sdk/tailwind-preset.cjs')],
   content: [
     './src/**/*.{vue,js,ts,jsx,tsx}',
     './index.html',
-    './node_modules/@sub2api/plugin-sdk/src/**/*.{vue,js,ts,jsx,tsx}',
+    path.join(sdkPath, 'src/**/*.{vue,js,ts,jsx,tsx}'),
   ],
-  darkMode: 'class'
+  darkMode: 'class',
 }
