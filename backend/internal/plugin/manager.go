@@ -1131,6 +1131,21 @@ func (m *PluginManager) spawnAndConnect(parentCtx context.Context, inst *PluginI
 		)
 	}
 
+	// P12·B-1 HTTP route namespace gate: reject manifests that try to claim
+	// host-reserved /api/v1/admin/* or gateway /v1/* without the
+	// http.register.gateway capability. Routes inside the plugin's own
+	// /plugins/<name>/* namespace are always allowed.
+	if err := validatePluginRoutePaths(inst.Name, manifest, approvedCaps); err != nil {
+		m.sdkServer.UnregisterPlugin(inst.Name)
+		if m.eventsAllowList != nil {
+			m.eventsAllowList.Forget(inst.Name)
+		}
+		_ = conn.Close()
+		cancelProc()
+		_ = cmd.Wait()
+		return fmt.Errorf("plugin manifest route validation: %w", err)
+	}
+
 	entries := buildRouteEntries(inst.Name, manifest, hs.HTTPAddr)
 	newTable := m.router.CurrentTable().AddPlugin(inst.Name, entries)
 	m.router.SwapRouteTable(newTable)
@@ -1590,6 +1605,78 @@ func dialPlugin(ctx context.Context, addr string, timeout time.Duration) (*grpc.
 			return nil, nil, fmt.Errorf("dial plugin grpc %s: %w", addr, dialCtx.Err())
 		}
 	}
+}
+
+// pluginOwnNamespacePrefixes returns the path prefixes a plugin may
+// register handlers under without declaring http.register.gateway. The
+// canonical form is "/api/v1/plugin/<name>/" (singular plugin), used by
+// hello-world / channel-management today; "/plugins/<name>/" is recognised
+// as an alternative form for forward compatibility with the route table
+// comment in route_table.go.
+func pluginOwnNamespacePrefixes(pluginName string) []string {
+	return []string{
+		"/api/v1/plugin/" + pluginName + "/",
+		"/plugins/" + pluginName + "/",
+	}
+}
+
+// validatePluginRoutePaths runs the P12·B-1 HTTP namespace gate over a
+// plugin's manifest. Each declared GatewayEndpoint / PluginEndpoint path
+// must satisfy one of:
+//
+//   1. starts with "/api/v1/plugin/<plugin>/" or "/plugins/<plugin>/" —
+//      the plugin's own namespace, always allowed
+//      (CapabilityHTTPRegisterPlugin is default-grant)
+//   2. is a host-reserved admin path (/api/v1/admin/*) — ALWAYS denied,
+//      even if the plugin holds every capability the host knows about
+//   3. otherwise the plugin must hold http.register.gateway, granting it
+//      the right to register on shared gateway paths (typically /v1/*)
+//
+// approvedCaps is the post-normalisation list returned by approveCapabilities;
+// it only contains canonical dotted-lowercase names.
+func validatePluginRoutePaths(pluginName string, manifest *pluginsdk.ManifestResponse, approvedCaps []string) error {
+	hasGatewayCap := false
+	for _, c := range approvedCaps {
+		if c == "http.register.gateway" {
+			hasGatewayCap = true
+			break
+		}
+	}
+	ownPrefixes := pluginOwnNamespacePrefixes(pluginName)
+	isOwn := func(path string) bool {
+		for _, p := range ownPrefixes {
+			if strings.HasPrefix(path, p) || path == strings.TrimSuffix(p, "/") {
+				return true
+			}
+		}
+		return false
+	}
+	check := func(path string) error {
+		if path == "" {
+			return nil
+		}
+		if strings.HasPrefix(path, "/api/v1/admin/") {
+			return fmt.Errorf("plugin %q cannot register admin path %q (host-reserved)", pluginName, path)
+		}
+		if isOwn(path) {
+			return nil
+		}
+		if !hasGatewayCap {
+			return fmt.Errorf("plugin %q registers path %q outside own namespace; declare capability %q in manifest", pluginName, path, "http.register.gateway")
+		}
+		return nil
+	}
+	for _, ep := range manifest.GetGatewayEndpoints() {
+		if err := check(ep.GetPath()); err != nil {
+			return err
+		}
+	}
+	for _, ep := range manifest.GetPluginEndpoints() {
+		if err := check(ep.GetPath()); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // buildRouteEntries 把 manifest 中声明的 endpoint 转换成 RouteEntry。
