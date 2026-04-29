@@ -8,7 +8,7 @@
     <form id="channel-monitor-form" @submit.prevent="handleSubmit" class="space-y-5">
       <div>
         <label class="input-label">
-          {{ t('admin.channelMonitor.form.name') }} <span class="text-red-500">*</span>
+          {{ t('admin.channelMonitor.form.name') }} <span class="input-required">*</span>
         </label>
         <input
           v-model="form.name"
@@ -21,14 +21,14 @@
 
       <div>
         <label class="input-label">
-          {{ t('admin.channelMonitor.form.provider') }} <span class="text-red-500">*</span>
+          {{ t('admin.channelMonitor.form.provider') }} <span class="input-required">*</span>
         </label>
         <Select v-model="form.provider" :options="providerOptions" class="w-full" />
       </div>
 
       <div>
         <label class="input-label">
-          {{ t('admin.channelMonitor.form.endpoint') }} <span class="text-red-500">*</span>
+          {{ t('admin.channelMonitor.form.endpoint') }} <span class="input-required">*</span>
         </label>
         <input
           v-model="form.endpoint"
@@ -42,7 +42,7 @@
       <div>
         <label class="input-label">
           {{ t('admin.channelMonitor.form.apiKey')
-          }}<span v-if="!editing" class="text-red-500"> *</span>
+          }}<span v-if="!editing" class="input-required"> *</span>
         </label>
         <input
           v-model="form.api_key"
@@ -58,7 +58,7 @@
 
       <div>
         <label class="input-label">
-          {{ t('admin.channelMonitor.form.primaryModel') }} <span class="text-red-500">*</span>
+          {{ t('admin.channelMonitor.form.primaryModel') }} <span class="input-required">*</span>
         </label>
         <input
           v-model="form.primary_model"
@@ -90,7 +90,7 @@
 
       <div>
         <label class="input-label">
-          {{ t('admin.channelMonitor.form.intervalSeconds') }} <span class="text-red-500">*</span>
+          {{ t('admin.channelMonitor.form.intervalSeconds') }} <span class="input-required">*</span>
         </label>
         <input
           v-model.number="form.interval_seconds"

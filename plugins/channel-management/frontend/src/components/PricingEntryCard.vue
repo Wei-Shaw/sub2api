@@ -55,7 +55,7 @@
       <button
         type="button"
         @click.stop="emit('remove')"
-        class="flex-shrink-0 rounded p-1 text-gray-400 hover:text-red-500"
+        class="btn-icon-danger flex-shrink-0 p-1"
       >
         <Icon name="trash" size="sm" />
       </button>
@@ -71,7 +71,7 @@
         <div class="mt-3 flex items-start gap-2">
           <div class="flex-1">
             <label class="text-xs font-medium text-gray-500 dark:text-gray-400">
-              {{ t('admin.channels.form.models', '模型列表') }} <span class="text-red-500">*</span>
+              {{ t('admin.channels.form.models', '模型列表') }} <span class="input-required">*</span>
             </label>
             <ModelTagInput
               :models="entry.models"
