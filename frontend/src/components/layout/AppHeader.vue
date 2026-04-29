@@ -219,7 +219,7 @@ import Icon from '@/components/icons/Icon.vue'
 
 const router = useRouter()
 const route = useRoute()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 const adminSettingsStore = useAdminSettingsStore()
@@ -268,6 +268,17 @@ const pageTitle = computed(() => {
   if (titleKey) {
     return t(titleKey)
   }
+  // 插件兜底: meta.pluginLabels 是 { zh: "...", en: "..." }, 由 plugin loader
+  // 从 menu item labels 透传过来. 当前 locale 命中就用, 否则按 zh -> en 退化,
+  // 最后退到 pluginDisplayName / meta.title.
+  const pluginLabels = route.meta.pluginLabels as Record<string, string> | undefined
+  if (pluginLabels) {
+    const cur = locale.value
+    const picked = pluginLabels[cur] || pluginLabels.zh || pluginLabels.en
+    if (picked) return picked
+  }
+  const pluginDisplayName = route.meta.pluginDisplayName as string | undefined
+  if (pluginDisplayName) return pluginDisplayName
   return (route.meta.title as string) || ''
 })
 

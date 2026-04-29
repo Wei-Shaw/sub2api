@@ -159,6 +159,12 @@ export function registerPluginRoutes(router: Router): void {
       if (!route.path) {
         continue
       }
+      // Header 标题兜底:
+      //   plugin 没填 RouteDecl.Meta.titleKey 时, 把同 path 的 menu item labels
+      //   (locale -> 翻译文本) 透传到 route.meta.pluginLabels, AppHeader 据此
+      //   按当前 i18n locale 选标题. 再往后还有 display_name 兜底.
+      const matchedMenu = findMenuItemByPath(manifest.menu_items, route.path)
+      const fallbackLabels = matchedMenu ? matchedMenu.labels : {}
       const record: RouteRecordRaw = {
         path: route.path,
         name: route.name || `Plugin_${manifest.name}_${route.path}`,
@@ -168,6 +174,7 @@ export function registerPluginRoutes(router: Router): void {
           pluginName: manifest.name,
           pluginDisplayName: manifest.display_name,
           componentPath: route.component_path,
+          pluginLabels: fallbackLabels,
           ...route.meta,
         },
       }
@@ -217,6 +224,21 @@ export function findPluginManifest(name: string): PluginManifest | null {
 // ------------------------------------------------------------------
 // 内部工具
 // ------------------------------------------------------------------
+
+function findMenuItemByPath(items: PluginMenuItem[], path: string): PluginMenuItem | null {
+  for (const item of items) {
+    if (item.path === path) {
+      return item
+    }
+    if (item.children && item.children.length > 0) {
+      const child = findMenuItemByPath(item.children, path)
+      if (child) {
+        return child
+      }
+    }
+  }
+  return null
+}
 
 function normalizeManifest(value: unknown): PluginManifest | null {
   if (!isRecord(value)) {

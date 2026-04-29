@@ -227,6 +227,15 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 				},
 			},
 			Routes: []pluginsdk.RouteDecl{
+				// 关于 Header 标题:
+				//   不在 RouteDecl.Meta 里填 titleKey/descriptionKey. 原因是 plugin
+				//   i18n 通过 install() -> sdk.i18n.registerNamespace 运行时合并,
+				//   而 install 只在 PluginView 首次加载 entry.js 之后才执行;
+				//   AppHeader 计算 pageTitle 时 i18n 资源可能还没就位, t() 会原样
+				//   返回 i18n key. 因此标题统一走 host loader 的兜底链路:
+				//     menu_items[].labels (manifest 同步注入)
+				//       -> route.meta.pluginLabels[locale]
+				//       -> AppHeader pageTitle.
 				{
 					// path 与 menu item path 一致, 让 vue-router 命中 PluginView,
 					// PluginView 通过 meta.componentPath 找到 install 返回的
