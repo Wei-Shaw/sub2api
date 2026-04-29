@@ -2,8 +2,15 @@ package httputil
 
 import (
 	"bytes"
+	"compress/gzip"
+	"compress/zlib"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"strings"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 const (
@@ -11,7 +18,9 @@ const (
 	requestBodyReadMaxInitCap = 1 << 20
 )
 
-// ReadRequestBodyWithPrealloc reads request body with preallocated buffer based on content length.
+// ReadRequestBodyWithPrealloc reads request body with preallocated buffer based
+// on content length, transparently decoding any Content-Encoding the upstream
+// client used to compress the body (zstd, gzip, deflate).
 func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
 	if req == nil || req.Body == nil {
 		return nil, nil
@@ -33,5 +42,49 @@ REDACTED
 	if _, err := io.Copy(buf, req.Body); err != nil {
 		return nil, err
 REDACTED
-	return buf.Bytes(), nil
+	raw := buf.Bytes()
+
+	enc := strings.ToLower(strings.TrimSpace(req.Header.Get("Content-Encoding")))
+	if enc == "" || enc == "identity" {
+		return raw, nil
+REDACTED
+
+	decoded, err := decompressRequestBody(enc, raw)
+	if err != nil {
+		return nil, fmt.Errorf("decode Content-Encoding %q: %w", enc, err)
+REDACTED
+
+	req.Header.Del("Content-Encoding")
+	req.Header.Del("Content-Length")
+	req.ContentLength = int64(len(decoded))
+
+	return decoded, nil
+REDACTED
+
+func decompressRequestBody(encoding string, raw []byte) ([]byte, error) {
+	switch encoding {
+	case "zstd":
+		dec, err := zstd.NewReader(bytes.NewReader(raw))
+		if err != nil {
+			return nil, err
+	REDACTED
+		defer dec.Close()
+		return io.ReadAll(dec)
+	case "gzip", "x-gzip":
+		gr, err := gzip.NewReader(bytes.NewReader(raw))
+		if err != nil {
+			return nil, err
+	REDACTED
+		defer gr.Close()
+		return io.ReadAll(gr)
+	case "deflate":
+		zr, err := zlib.NewReader(bytes.NewReader(raw))
+		if err != nil {
+			return nil, err
+	REDACTED
+		defer zr.Close()
+		return io.ReadAll(zr)
+	default:
+		return nil, errors.New("unsupported Content-Encoding")
+REDACTED
 REDACTED
