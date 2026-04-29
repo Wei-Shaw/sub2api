@@ -3,6 +3,21 @@ package plugin
 import "fmt"
 
 // PluginState 表示插件实例当前所处的生命周期状态。
+//
+// P13/C-1 高层状态机 (从 admin / DB 视角):
+//
+//	absent       — DB 中无记录, manager 中无 instance
+//	disabled     — DB 行存在, enabled=false, uninstalled_at IS NULL
+//	enabled      — DB 行存在, enabled=true,  uninstalled_at IS NULL
+//	                进程通常 Running, 也可能在 Starting / Restarting / Errored
+//	uninstalled  — DB 行存在, uninstalled_at IS NOT NULL
+//	                进程已停, 数据保留, 可通过 Install 撤回; 不出现在 List / sidebar
+//
+// 这里的 PluginState 仅描述运行时进程状态 (Registered/Starting/Running/Errored/
+// Restarting); enabled / uninstalled_at 由 PluginRepository 持久化, 通过 PluginInfo
+// 一起暴露给上层。运行时状态与 DB 状态正交: 例如 enabled=true 但进程刚崩溃时
+// State=Errored, 或 uninstalled_at 非空但 instance 还没来得及清理时 State 仍可能
+// 是 Running 的瞬间窗口 (Uninstall 内部串行化保证窗口对外不可见)。
 type PluginState int
 
 const (

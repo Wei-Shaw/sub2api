@@ -321,7 +321,9 @@ func (m *PluginManager) syncFromDisk(ctx context.Context) error {
 		return err
 	}
 	for _, d := range discovered {
-		_, err := m.repo.Get(ctx, d.Name)
+		// 用 GetIncludingUninstalled 避免重新登记已被软卸载的插件 — soft-uninstall
+		// 期望持续存在直到 admin 显式恢复, 不能被磁盘扫描静默撤销。
+		_, err := m.repo.GetIncludingUninstalled(ctx, d.Name)
 		if err == nil {
 			continue
 		}
@@ -446,6 +448,128 @@ func (m *PluginManager) DisablePlugin(ctx context.Context, name string) error {
 	return nil
 }
 
+// ErrPluginIsBuiltin 表示尝试对内置插件执行 Uninstall。内置插件随发行包装载,
+// 不允许通过 admin 软卸载 — 否则下次启动时 syncFromDisk 与 admin 之间会陷入
+// 反复登记/卸载的循环。返回 ErrPluginIsBuiltin 让 handler 映射成 400。
+var ErrPluginIsBuiltin = errors.New("builtin plugins cannot be uninstalled")
+
+// isBuiltinPlugin 判断 name 是否对应 BuiltinDir 下的二进制。
+//
+// 实现细节: BuiltinDir 为空 (e.g. 没有内置插件目录) 时一律返回 false; 否则用
+// filepath.Stat 检查 BuiltinDir/<name>/<binary> 是否存在, 命中即视为 builtin。
+// 不依赖 DB 状态, 因此对软卸载行也能正确识别。
+func (m *PluginManager) isBuiltinPlugin(name string) bool {
+	if m.cfg.BuiltinDir == "" {
+		return false
+	}
+	if !IsValidPluginName(name) {
+		return false
+	}
+	absDir, err := filepath.Abs(m.cfg.BuiltinDir)
+	if err != nil {
+		return false
+	}
+	candidate := filepath.Join(absDir, name, pluginBinaryName(name))
+	rel, err := filepath.Rel(absDir, candidate)
+	if err != nil || strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+		return false
+	}
+	if st, err := os.Stat(candidate); err == nil && !st.IsDir() {
+		return true
+	}
+	return false
+}
+
+// Uninstall 软卸载插件: 停进程 + 标记 uninstalled_at = NOW(), 不删数据。
+//
+// 步骤:
+//  1. 校验 name; 内置插件直接拒绝 (ErrPluginIsBuiltin)
+//  2. 取出 DB 行 (含软卸载视图); 不存在返回 ErrPluginNotFound
+//  3. 已经软卸载 → 幂等 no-op
+//  4. 当前 running → 调内部 stopInstance 走 disable 路径 (关进程 + UnregisterSchema,
+//     与 DisablePlugin 一致地保留数据)
+//  5. DB UPDATE: uninstalled_at = NOW(), enabled = false
+//  6. 失效前端缓存 + 移除 manager 中的 instance entry
+//
+// 数据 (plugin_settings, plugin_settings_schemas, plugin_migrations 以及 plugins 行
+// 本身) 全部保留, 可通过 Install 撤回。
+func (m *PluginManager) Uninstall(ctx context.Context, name string) error {
+	if !IsValidPluginName(name) {
+		return ErrInvalidPluginName
+	}
+	if m.isBuiltinPlugin(name) {
+		return ErrPluginIsBuiltin
+	}
+
+	rec, err := m.repo.GetIncludingUninstalled(ctx, name)
+	if err != nil {
+		return err
+	}
+	if rec.UninstalledAt != nil {
+		// 已经软卸载, 幂等 no-op。
+		return nil
+	}
+
+	// 关闭进程 (若运行中)。stopInstance 复用 disable 路径 — 数据保留,
+	// 健康监控被取消, gRPC 连接关闭。markRegistered=true 让状态回到 Registered,
+	// 与之后从 manager.plugins 删除的语义一致。
+	if err := m.stopInstance(ctx, name, true); err != nil {
+		return fmt.Errorf("stop plugin before uninstall: %w", err)
+	}
+
+	if err := m.repo.MarkUninstalled(ctx, name); err != nil {
+		return err
+	}
+
+	// 从内存 instance map 中移除, 避免 GetPluginManifestsJSON / List 在窗口期内
+	// 还看到一个停了的 instance 记录。下次 Install + Enable 时会重新创建。
+	m.mu.Lock()
+	delete(m.plugins, name)
+	m.mu.Unlock()
+
+	m.logger.Info("plugin uninstalled (soft)",
+		"plugin", name,
+		"mode", "soft",
+		"data_preserved", true,
+	)
+	m.invalidateFrontendCache()
+	return nil
+}
+
+// Install 撤销软卸载, 让插件回到 disabled / enabled 状态。
+//
+// 幂等: 调用一个本来就活动的插件是 no-op (不报错)。enabled 字段保持原值 — 即
+// 如果插件被 Uninstall 时是 enabled=true, MarkUninstalled 已经把它清成 false,
+// 这里不会再自动启进程; admin 自行决定是否后续 Enable。
+//
+// 步骤:
+//  1. 校验 name
+//  2. 取 DB 行 (含软卸载); 不存在返回 ErrPluginNotFound
+//  3. uninstalled_at == nil → 已经活动, 直接返回 nil
+//  4. UPDATE uninstalled_at = NULL
+//  5. 失效前端缓存 (sidebar / route 列表恢复)
+func (m *PluginManager) Install(ctx context.Context, name string) error {
+	if !IsValidPluginName(name) {
+		return ErrInvalidPluginName
+	}
+	rec, err := m.repo.GetIncludingUninstalled(ctx, name)
+	if err != nil {
+		return err
+	}
+	if rec.UninstalledAt == nil {
+		// 已经活动, 幂等 no-op。
+		return nil
+	}
+	if err := m.repo.MarkInstalled(ctx, name); err != nil {
+		return err
+	}
+	m.logger.Info("plugin installed (restored from soft-uninstall)",
+		"plugin", name,
+	)
+	m.invalidateFrontendCache()
+	return nil
+}
+
 // RestartPlugin 先停后启。
 func (m *PluginManager) RestartPlugin(ctx context.Context, name string) error {
 	if !IsValidPluginName(name) {
@@ -457,9 +581,25 @@ func (m *PluginManager) RestartPlugin(ctx context.Context, name string) error {
 	return m.EnablePlugin(ctx, name)
 }
 
-// ListPlugins 返回所有已注册插件的运行时信息。
+// ListPlugins 返回所有活动插件的运行时信息 (软卸载的隐藏)。
+// 等价于 ListPluginsExt(ctx, false)。
 func (m *PluginManager) ListPlugins(ctx context.Context) ([]PluginInfo, error) {
-	records, err := m.repo.List(ctx)
+	return m.ListPluginsExt(ctx, false)
+}
+
+// ListPluginsExt 返回插件列表; includeUninstalled=true 时把软卸载的插件也带上,
+// 用于 admin "已卸载" 视图。每个软卸载条目的 PluginInfo.UninstalledAt 不为 nil,
+// 调用方据此决定是否高亮 / 提供 "恢复" 按钮。
+func (m *PluginManager) ListPluginsExt(ctx context.Context, includeUninstalled bool) ([]PluginInfo, error) {
+	var (
+		records []PluginRecord
+		err     error
+	)
+	if includeUninstalled {
+		records, err = m.repo.ListAll(ctx)
+	} else {
+		records, err = m.repo.List(ctx)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -471,7 +611,8 @@ func (m *PluginManager) ListPlugins(ctx context.Context) ([]PluginInfo, error) {
 		m.mu.RUnlock()
 
 		var info PluginInfo
-		if ok {
+		// 软卸载行: 进程必然已停, 不应该把可能残留的 instance 状态当成"运行中".
+		if ok && rec.UninstalledAt == nil {
 			info = inst.SnapshotInfo()
 		} else {
 			info = PluginInfo{
@@ -521,6 +662,10 @@ func mergeRecordIntoInfo(info *PluginInfo, rec PluginRecord) {
 		info.Version = rec.Version
 	}
 	info.Config = configToAny(rec.Config)
+	if rec.UninstalledAt != nil {
+		t := *rec.UninstalledAt
+		info.UninstalledAt = &t
+	}
 }
 
 // configToAny 把存储层的 map[string]string 转成 API 暴露的 map[string]any。
@@ -1667,13 +1812,13 @@ func pluginOwnNamespacePrefixes(pluginName string) []string {
 // plugin's manifest. Each declared GatewayEndpoint / PluginEndpoint path
 // must satisfy one of:
 //
-//   1. starts with "/api/v1/plugin/<plugin>/" or "/plugins/<plugin>/" —
-//      the plugin's own namespace, always allowed
-//      (CapabilityHTTPRegisterPlugin is default-grant)
-//   2. is a host-reserved admin path (/api/v1/admin/*) — ALWAYS denied,
-//      even if the plugin holds every capability the host knows about
-//   3. otherwise the plugin must hold http.register.gateway, granting it
-//      the right to register on shared gateway paths (typically /v1/*)
+//  1. starts with "/api/v1/plugin/<plugin>/" or "/plugins/<plugin>/" —
+//     the plugin's own namespace, always allowed
+//     (CapabilityHTTPRegisterPlugin is default-grant)
+//  2. is a host-reserved admin path (/api/v1/admin/*) — ALWAYS denied,
+//     even if the plugin holds every capability the host knows about
+//  3. otherwise the plugin must hold http.register.gateway, granting it
+//     the right to register on shared gateway paths (typically /v1/*)
 //
 // approvedCaps is the post-normalisation list returned by approveCapabilities;
 // it only contains canonical dotted-lowercase names.

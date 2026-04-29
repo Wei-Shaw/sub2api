@@ -176,4 +176,8 @@ type PluginInfo struct {
 	// when false to avoid a "no settings declared" empty state for every
 	// plugin that simply does not contribute settings.
 	HasSettings bool `json:"has_settings"`
+	// UninstalledAt is non-nil when the plugin has been soft-uninstalled
+	// (P13/C-1). The admin UI surfaces these only in the "uninstalled"
+	// listing alongside a Restore button. When nil the plugin is active.
+	UninstalledAt *time.Time `json:"uninstalled_at,omitempty"`
 }
