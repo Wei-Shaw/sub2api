@@ -176,6 +176,13 @@ message ManifestResponse {
   // the host falls back to its generic plugin icon. See pluginsdk Icon*
   // constants for ergonomic helpers.
   string icon_svg = 46;
+
+  // subscribed_events declares which HostEvent types this plugin wants
+  // to receive. Names use dotted lowercase (e.g. "payment.order.created").
+  // Host validates against capability whitelist on Subscribe; high-frequency
+  // events like "gateway.model.invoked" additionally require capability
+  // "events.gateway".
+  repeated string subscribed_events = 47;
 }
 
 message EndpointDeclaration {

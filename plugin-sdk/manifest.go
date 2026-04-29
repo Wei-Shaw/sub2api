@@ -114,6 +114,11 @@ type Manifest struct {
 	// name. Use one of the Icon* constants in this package or supply your
 	// own. Empty falls back to the host's generic plugin icon.
 	IconSVG string
+
+	// SubscribedEvents declares which HostEvent types this plugin wants to
+	// receive via EventsExtension.Subscribe. See plugin-sdk/proto/sdk.proto
+	// for the list of available event types.
+	SubscribedEvents []string
 }
 
 // Placement describes where on a sidebar a plugin's menu item should land.
@@ -335,6 +340,7 @@ func (m *Manifest) toProto() *pb.ManifestResponse {
 		MigrationFiles:   append([]string(nil), m.MigrationFiles...),
 		Migrations:       migrationsToProto(m.Migrations),
 		IconSvg:          m.IconSVG,
+		SubscribedEvents: append([]string(nil), m.SubscribedEvents...),
 	}
 	if m.Frontend != nil {
 		resp.Frontend = m.Frontend.toProto()

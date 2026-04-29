@@ -49,6 +49,9 @@ service RedisProxy {
 }
 
 // EventBus 核心事件总线
+//
+// Deprecated: kept for one release cycle for backwards compatibility.
+// Use EventsExtension below for typed event subscription.
 service EventBus {
   rpc Publish(EventRequest) returns (google.protobuf.Empty);
   rpc Subscribe(EventFilter) returns (stream Event);
@@ -487,4 +490,104 @@ message SettingsChangeEvent {
   // this field — it is only meaningful to the host. See SETTINGS-V2-DESIGN
   // §4.4 for the reload state machine.
   bool requires_reload = 4;
+}
+
+// ============================================================
+// EventsExtension — Phase A (typed host event subscription)
+// ============================================================
+//
+// EventsExtension lets plugins subscribe to typed host business events.
+//
+// Semantics:
+//   - at-most-once delivery (no replay, no persistence). Plugins doing
+//     reconciliation should use Job-driven pull.
+//   - host buffers up to 256 events per subscriber; on overflow it drops
+//     the oldest and increments dropped_since_last_send on the next event.
+//   - send timeout is 2s; on timeout host closes the stream and the plugin
+//     SDK reconnects with exponential backoff (1s → 2s → 4s → 8s → 30s).
+//   - high-frequency events (e.g. gateway.model.invoked) require a matching
+//     capability declaration in the plugin manifest; otherwise Subscribe
+//     returns PERMISSION_DENIED.
+service EventsExtension {
+  rpc Subscribe(EventSubscribeRequest) returns (stream HostEvent);
+}
+
+message EventSubscribeRequest {
+  // event_types acts as a server-side filter; empty means "all events the
+  // plugin's capabilities allow". Names use dotted lowercase
+  // (e.g. "payment.order.created").
+  repeated string event_types = 1;
+  // resume_from_unix_nano is best-effort. Host MAY ignore it; MVP has no
+  // replay buffer so a freshly-reconnected plugin only receives events
+  // emitted after Subscribe returns.
+  int64 resume_from_unix_nano = 2;
+}
+
+message HostEvent {
+  string event_type      = 1;  // e.g. "payment.order.created"
+  string event_id        = 2;  // ULID, stable across redelivery (future)
+  int64  timestamp_nanos = 3;  // host-side wall clock at publish
+  // dropped_since_last_send: number of events dropped between the previous
+  // successful send and this one. Same backpressure pattern as LogRecord.
+  uint64 dropped_since_last_send = 4;
+
+  oneof payload {
+    PaymentOrderCreated       payment_order_created        = 100;
+    PaymentOrderFulfilled     payment_order_fulfilled      = 101;
+    GatewayModelInvoked       gateway_model_invoked        = 102;
+    AuthUserRegistered        auth_user_registered         = 103;
+    AccountRateLimitTriggered account_rate_limit_triggered = 104;
+    // future event types: 105+. NEVER reuse a number; deprecation goes via
+    // [deprecated=true] but the wire number stays reserved.
+  }
+}
+
+message PaymentOrderCreated {
+  int64  order_id              = 1;
+  string out_trade_no          = 2;
+  int64  user_id               = 3;
+  int64  amount_cents          = 4;
+  string plan_id               = 5;   // empty for non-subscription orders
+  string provider_key          = 6;   // e.g. "stripe", "easypay"
+  string biz_type              = 7;   // "balance" | "subscription"
+  int64  created_at_unix_nano  = 8;
+}
+
+message PaymentOrderFulfilled {
+  int64  order_id                = 1;
+  int64  user_id                 = 2;
+  int64  amount_cents            = 3;
+  string biz_type                = 4;   // "balance" | "subscription"
+  string audit_action            = 5;   // matches AuditLog action
+  int64  fulfilled_at_unix_nano  = 6;
+}
+
+message GatewayModelInvoked {
+  string request_id             = 1;
+  int64  user_id                = 2;
+  int64  account_id             = 3;
+  string platform               = 4;   // antigravity | anthropic | openai | gemini
+  string model                  = 5;
+  int64  prompt_tokens          = 6;
+  int64  completion_tokens      = 7;
+  int32  status_code            = 8;   // upstream HTTP status
+  int64  latency_ms             = 9;
+  int64  started_at_unix_nano   = 10;
+}
+
+message AuthUserRegistered {
+  int64  user_id                  = 1;
+  string email                    = 2;
+  string source                   = 3;   // "register" | "oauth" | ...
+  int64  referrer_id              = 4;   // 0 if none
+  int64  registered_at_unix_nano  = 5;
+}
+
+message AccountRateLimitTriggered {
+  int64  account_id           = 1;
+  string platform             = 2;
+  string model                = 3;   // empty if account-wide
+  string scope                = 4;   // "account" | "model" | ...
+  int64  reset_at_unix_nano   = 5;
+  string reason               = 6;
 }

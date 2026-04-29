@@ -874,7 +874,10 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// EventBus 核心事件总线
+// # EventBus 核心事件总线
+//
+// Deprecated: kept for one release cycle for backwards compatibility.
+// Use EventsExtension below for typed event subscription.
 type EventBusClient interface {
 	Publish(ctx context.Context, in *EventRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	Subscribe(ctx context.Context, in *EventFilter, opts ...grpc.CallOption) (grpc.ServerStreamingClient[Event], error)
@@ -921,7 +924,10 @@ type EventBus_SubscribeClient = grpc.ServerStreamingClient[Event]
 // All implementations must embed UnimplementedEventBusServer
 // for forward compatibility.
 //
-// EventBus 核心事件总线
+// # EventBus 核心事件总线
+//
+// Deprecated: kept for one release cycle for backwards compatibility.
+// Use EventsExtension below for typed event subscription.
 type EventBusServer interface {
 	Publish(context.Context, *EventRequest) (*emptypb.Empty, error)
 	Subscribe(*EventFilter, grpc.ServerStreamingServer[Event]) error
@@ -1658,6 +1664,145 @@ var SettingsExtension_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Watch",
 			Handler:       _SettingsExtension_Watch_Handler,
+			ServerStreams: true,
+		},
+	},
+	Metadata: "sdk.proto",
+}
+
+const (
+	EventsExtension_Subscribe_FullMethodName = "/pluginsdk.EventsExtension/Subscribe"
+)
+
+// EventsExtensionClient is the client API for EventsExtension service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// ============================================================
+// EventsExtension — Phase A (typed host event subscription)
+// ============================================================
+//
+// EventsExtension lets plugins subscribe to typed host business events.
+//
+// Semantics:
+//   - at-most-once delivery (no replay, no persistence). Plugins doing
+//     reconciliation should use Job-driven pull.
+//   - host buffers up to 256 events per subscriber; on overflow it drops
+//     the oldest and increments dropped_since_last_send on the next event.
+//   - send timeout is 2s; on timeout host closes the stream and the plugin
+//     SDK reconnects with exponential backoff (1s → 2s → 4s → 8s → 30s).
+//   - high-frequency events (e.g. gateway.model.invoked) require a matching
+//     capability declaration in the plugin manifest; otherwise Subscribe
+//     returns PERMISSION_DENIED.
+type EventsExtensionClient interface {
+	Subscribe(ctx context.Context, in *EventSubscribeRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[HostEvent], error)
+}
+
+type eventsExtensionClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewEventsExtensionClient(cc grpc.ClientConnInterface) EventsExtensionClient {
+	return &eventsExtensionClient{cc}
+}
+
+func (c *eventsExtensionClient) Subscribe(ctx context.Context, in *EventSubscribeRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[HostEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &EventsExtension_ServiceDesc.Streams[0], EventsExtension_Subscribe_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[EventSubscribeRequest, HostEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type EventsExtension_SubscribeClient = grpc.ServerStreamingClient[HostEvent]
+
+// EventsExtensionServer is the server API for EventsExtension service.
+// All implementations must embed UnimplementedEventsExtensionServer
+// for forward compatibility.
+//
+// ============================================================
+// EventsExtension — Phase A (typed host event subscription)
+// ============================================================
+//
+// EventsExtension lets plugins subscribe to typed host business events.
+//
+// Semantics:
+//   - at-most-once delivery (no replay, no persistence). Plugins doing
+//     reconciliation should use Job-driven pull.
+//   - host buffers up to 256 events per subscriber; on overflow it drops
+//     the oldest and increments dropped_since_last_send on the next event.
+//   - send timeout is 2s; on timeout host closes the stream and the plugin
+//     SDK reconnects with exponential backoff (1s → 2s → 4s → 8s → 30s).
+//   - high-frequency events (e.g. gateway.model.invoked) require a matching
+//     capability declaration in the plugin manifest; otherwise Subscribe
+//     returns PERMISSION_DENIED.
+type EventsExtensionServer interface {
+	Subscribe(*EventSubscribeRequest, grpc.ServerStreamingServer[HostEvent]) error
+	mustEmbedUnimplementedEventsExtensionServer()
+}
+
+// UnimplementedEventsExtensionServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedEventsExtensionServer struct{}
+
+func (UnimplementedEventsExtensionServer) Subscribe(*EventSubscribeRequest, grpc.ServerStreamingServer[HostEvent]) error {
+	return status.Error(codes.Unimplemented, "method Subscribe not implemented")
+}
+func (UnimplementedEventsExtensionServer) mustEmbedUnimplementedEventsExtensionServer() {}
+func (UnimplementedEventsExtensionServer) testEmbeddedByValue()                         {}
+
+// UnsafeEventsExtensionServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to EventsExtensionServer will
+// result in compilation errors.
+type UnsafeEventsExtensionServer interface {
+	mustEmbedUnimplementedEventsExtensionServer()
+}
+
+func RegisterEventsExtensionServer(s grpc.ServiceRegistrar, srv EventsExtensionServer) {
+	// If the following call panics, it indicates UnimplementedEventsExtensionServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&EventsExtension_ServiceDesc, srv)
+}
+
+func _EventsExtension_Subscribe_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(EventSubscribeRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(EventsExtensionServer).Subscribe(m, &grpc.GenericServerStream[EventSubscribeRequest, HostEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type EventsExtension_SubscribeServer = grpc.ServerStreamingServer[HostEvent]
+
+// EventsExtension_ServiceDesc is the grpc.ServiceDesc for EventsExtension service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var EventsExtension_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "pluginsdk.EventsExtension",
+	HandlerType: (*EventsExtensionServer)(nil),
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Subscribe",
+			Handler:       _EventsExtension_Subscribe_Handler,
 			ServerStreams: true,
 		},
 	},

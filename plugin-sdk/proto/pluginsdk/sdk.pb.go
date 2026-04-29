@@ -2706,6 +2706,688 @@ func (x *SettingsChangeEvent) GetRequiresReload() bool {
 	return false
 }
 
+type EventSubscribeRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// event_types acts as a server-side filter; empty means "all events the
+	// plugin's capabilities allow". Names use dotted lowercase
+	// (e.g. "payment.order.created").
+	EventTypes []string `protobuf:"bytes,1,rep,name=event_types,json=eventTypes,proto3" json:"event_types,omitempty"`
+	// resume_from_unix_nano is best-effort. Host MAY ignore it; MVP has no
+	// replay buffer so a freshly-reconnected plugin only receives events
+	// emitted after Subscribe returns.
+	ResumeFromUnixNano int64 `protobuf:"varint,2,opt,name=resume_from_unix_nano,json=resumeFromUnixNano,proto3" json:"resume_from_unix_nano,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *EventSubscribeRequest) Reset() {
+	*x = EventSubscribeRequest{}
+	mi := &file_sdk_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EventSubscribeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EventSubscribeRequest) ProtoMessage() {}
+
+func (x *EventSubscribeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EventSubscribeRequest.ProtoReflect.Descriptor instead.
+func (*EventSubscribeRequest) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *EventSubscribeRequest) GetEventTypes() []string {
+	if x != nil {
+		return x.EventTypes
+	}
+	return nil
+}
+
+func (x *EventSubscribeRequest) GetResumeFromUnixNano() int64 {
+	if x != nil {
+		return x.ResumeFromUnixNano
+	}
+	return 0
+}
+
+type HostEvent struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	EventType      string                 `protobuf:"bytes,1,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`                 // e.g. "payment.order.created"
+	EventId        string                 `protobuf:"bytes,2,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`                       // ULID, stable across redelivery (future)
+	TimestampNanos int64                  `protobuf:"varint,3,opt,name=timestamp_nanos,json=timestampNanos,proto3" json:"timestamp_nanos,omitempty"` // host-side wall clock at publish
+	// dropped_since_last_send: number of events dropped between the previous
+	// successful send and this one. Same backpressure pattern as LogRecord.
+	DroppedSinceLastSend uint64 `protobuf:"varint,4,opt,name=dropped_since_last_send,json=droppedSinceLastSend,proto3" json:"dropped_since_last_send,omitempty"`
+	// Types that are valid to be assigned to Payload:
+	//
+	//	*HostEvent_PaymentOrderCreated
+	//	*HostEvent_PaymentOrderFulfilled
+	//	*HostEvent_GatewayModelInvoked
+	//	*HostEvent_AuthUserRegistered
+	//	*HostEvent_AccountRateLimitTriggered
+	Payload       isHostEvent_Payload `protobuf_oneof:"payload"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HostEvent) Reset() {
+	*x = HostEvent{}
+	mi := &file_sdk_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HostEvent) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HostEvent) ProtoMessage() {}
+
+func (x *HostEvent) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HostEvent.ProtoReflect.Descriptor instead.
+func (*HostEvent) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *HostEvent) GetEventType() string {
+	if x != nil {
+		return x.EventType
+	}
+	return ""
+}
+
+func (x *HostEvent) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
+}
+
+func (x *HostEvent) GetTimestampNanos() int64 {
+	if x != nil {
+		return x.TimestampNanos
+	}
+	return 0
+}
+
+func (x *HostEvent) GetDroppedSinceLastSend() uint64 {
+	if x != nil {
+		return x.DroppedSinceLastSend
+	}
+	return 0
+}
+
+func (x *HostEvent) GetPayload() isHostEvent_Payload {
+	if x != nil {
+		return x.Payload
+	}
+	return nil
+}
+
+func (x *HostEvent) GetPaymentOrderCreated() *PaymentOrderCreated {
+	if x != nil {
+		if x, ok := x.Payload.(*HostEvent_PaymentOrderCreated); ok {
+			return x.PaymentOrderCreated
+		}
+	}
+	return nil
+}
+
+func (x *HostEvent) GetPaymentOrderFulfilled() *PaymentOrderFulfilled {
+	if x != nil {
+		if x, ok := x.Payload.(*HostEvent_PaymentOrderFulfilled); ok {
+			return x.PaymentOrderFulfilled
+		}
+	}
+	return nil
+}
+
+func (x *HostEvent) GetGatewayModelInvoked() *GatewayModelInvoked {
+	if x != nil {
+		if x, ok := x.Payload.(*HostEvent_GatewayModelInvoked); ok {
+			return x.GatewayModelInvoked
+		}
+	}
+	return nil
+}
+
+func (x *HostEvent) GetAuthUserRegistered() *AuthUserRegistered {
+	if x != nil {
+		if x, ok := x.Payload.(*HostEvent_AuthUserRegistered); ok {
+			return x.AuthUserRegistered
+		}
+	}
+	return nil
+}
+
+func (x *HostEvent) GetAccountRateLimitTriggered() *AccountRateLimitTriggered {
+	if x != nil {
+		if x, ok := x.Payload.(*HostEvent_AccountRateLimitTriggered); ok {
+			return x.AccountRateLimitTriggered
+		}
+	}
+	return nil
+}
+
+type isHostEvent_Payload interface {
+	isHostEvent_Payload()
+}
+
+type HostEvent_PaymentOrderCreated struct {
+	PaymentOrderCreated *PaymentOrderCreated `protobuf:"bytes,100,opt,name=payment_order_created,json=paymentOrderCreated,proto3,oneof"`
+}
+
+type HostEvent_PaymentOrderFulfilled struct {
+	PaymentOrderFulfilled *PaymentOrderFulfilled `protobuf:"bytes,101,opt,name=payment_order_fulfilled,json=paymentOrderFulfilled,proto3,oneof"`
+}
+
+type HostEvent_GatewayModelInvoked struct {
+	GatewayModelInvoked *GatewayModelInvoked `protobuf:"bytes,102,opt,name=gateway_model_invoked,json=gatewayModelInvoked,proto3,oneof"`
+}
+
+type HostEvent_AuthUserRegistered struct {
+	AuthUserRegistered *AuthUserRegistered `protobuf:"bytes,103,opt,name=auth_user_registered,json=authUserRegistered,proto3,oneof"`
+}
+
+type HostEvent_AccountRateLimitTriggered struct {
+	AccountRateLimitTriggered *AccountRateLimitTriggered `protobuf:"bytes,104,opt,name=account_rate_limit_triggered,json=accountRateLimitTriggered,proto3,oneof"`
+}
+
+func (*HostEvent_PaymentOrderCreated) isHostEvent_Payload() {}
+
+func (*HostEvent_PaymentOrderFulfilled) isHostEvent_Payload() {}
+
+func (*HostEvent_GatewayModelInvoked) isHostEvent_Payload() {}
+
+func (*HostEvent_AuthUserRegistered) isHostEvent_Payload() {}
+
+func (*HostEvent_AccountRateLimitTriggered) isHostEvent_Payload() {}
+
+type PaymentOrderCreated struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	OrderId           int64                  `protobuf:"varint,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	OutTradeNo        string                 `protobuf:"bytes,2,opt,name=out_trade_no,json=outTradeNo,proto3" json:"out_trade_no,omitempty"`
+	UserId            int64                  `protobuf:"varint,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	AmountCents       int64                  `protobuf:"varint,4,opt,name=amount_cents,json=amountCents,proto3" json:"amount_cents,omitempty"`
+	PlanId            string                 `protobuf:"bytes,5,opt,name=plan_id,json=planId,proto3" json:"plan_id,omitempty"`                // empty for non-subscription orders
+	ProviderKey       string                 `protobuf:"bytes,6,opt,name=provider_key,json=providerKey,proto3" json:"provider_key,omitempty"` // e.g. "stripe", "easypay"
+	BizType           string                 `protobuf:"bytes,7,opt,name=biz_type,json=bizType,proto3" json:"biz_type,omitempty"`             // "balance" | "subscription"
+	CreatedAtUnixNano int64                  `protobuf:"varint,8,opt,name=created_at_unix_nano,json=createdAtUnixNano,proto3" json:"created_at_unix_nano,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *PaymentOrderCreated) Reset() {
+	*x = PaymentOrderCreated{}
+	mi := &file_sdk_proto_msgTypes[45]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PaymentOrderCreated) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PaymentOrderCreated) ProtoMessage() {}
+
+func (x *PaymentOrderCreated) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[45]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PaymentOrderCreated.ProtoReflect.Descriptor instead.
+func (*PaymentOrderCreated) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{45}
+}
+
+func (x *PaymentOrderCreated) GetOrderId() int64 {
+	if x != nil {
+		return x.OrderId
+	}
+	return 0
+}
+
+func (x *PaymentOrderCreated) GetOutTradeNo() string {
+	if x != nil {
+		return x.OutTradeNo
+	}
+	return ""
+}
+
+func (x *PaymentOrderCreated) GetUserId() int64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *PaymentOrderCreated) GetAmountCents() int64 {
+	if x != nil {
+		return x.AmountCents
+	}
+	return 0
+}
+
+func (x *PaymentOrderCreated) GetPlanId() string {
+	if x != nil {
+		return x.PlanId
+	}
+	return ""
+}
+
+func (x *PaymentOrderCreated) GetProviderKey() string {
+	if x != nil {
+		return x.ProviderKey
+	}
+	return ""
+}
+
+func (x *PaymentOrderCreated) GetBizType() string {
+	if x != nil {
+		return x.BizType
+	}
+	return ""
+}
+
+func (x *PaymentOrderCreated) GetCreatedAtUnixNano() int64 {
+	if x != nil {
+		return x.CreatedAtUnixNano
+	}
+	return 0
+}
+
+type PaymentOrderFulfilled struct {
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	OrderId             int64                  `protobuf:"varint,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	UserId              int64                  `protobuf:"varint,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	AmountCents         int64                  `protobuf:"varint,3,opt,name=amount_cents,json=amountCents,proto3" json:"amount_cents,omitempty"`
+	BizType             string                 `protobuf:"bytes,4,opt,name=biz_type,json=bizType,proto3" json:"biz_type,omitempty"`             // "balance" | "subscription"
+	AuditAction         string                 `protobuf:"bytes,5,opt,name=audit_action,json=auditAction,proto3" json:"audit_action,omitempty"` // matches AuditLog action
+	FulfilledAtUnixNano int64                  `protobuf:"varint,6,opt,name=fulfilled_at_unix_nano,json=fulfilledAtUnixNano,proto3" json:"fulfilled_at_unix_nano,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
+}
+
+func (x *PaymentOrderFulfilled) Reset() {
+	*x = PaymentOrderFulfilled{}
+	mi := &file_sdk_proto_msgTypes[46]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PaymentOrderFulfilled) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PaymentOrderFulfilled) ProtoMessage() {}
+
+func (x *PaymentOrderFulfilled) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[46]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PaymentOrderFulfilled.ProtoReflect.Descriptor instead.
+func (*PaymentOrderFulfilled) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{46}
+}
+
+func (x *PaymentOrderFulfilled) GetOrderId() int64 {
+	if x != nil {
+		return x.OrderId
+	}
+	return 0
+}
+
+func (x *PaymentOrderFulfilled) GetUserId() int64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *PaymentOrderFulfilled) GetAmountCents() int64 {
+	if x != nil {
+		return x.AmountCents
+	}
+	return 0
+}
+
+func (x *PaymentOrderFulfilled) GetBizType() string {
+	if x != nil {
+		return x.BizType
+	}
+	return ""
+}
+
+func (x *PaymentOrderFulfilled) GetAuditAction() string {
+	if x != nil {
+		return x.AuditAction
+	}
+	return ""
+}
+
+func (x *PaymentOrderFulfilled) GetFulfilledAtUnixNano() int64 {
+	if x != nil {
+		return x.FulfilledAtUnixNano
+	}
+	return 0
+}
+
+type GatewayModelInvoked struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	RequestId         string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	UserId            int64                  `protobuf:"varint,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	AccountId         int64                  `protobuf:"varint,3,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	Platform          string                 `protobuf:"bytes,4,opt,name=platform,proto3" json:"platform,omitempty"` // antigravity | anthropic | openai | gemini
+	Model             string                 `protobuf:"bytes,5,opt,name=model,proto3" json:"model,omitempty"`
+	PromptTokens      int64                  `protobuf:"varint,6,opt,name=prompt_tokens,json=promptTokens,proto3" json:"prompt_tokens,omitempty"`
+	CompletionTokens  int64                  `protobuf:"varint,7,opt,name=completion_tokens,json=completionTokens,proto3" json:"completion_tokens,omitempty"`
+	StatusCode        int32                  `protobuf:"varint,8,opt,name=status_code,json=statusCode,proto3" json:"status_code,omitempty"` // upstream HTTP status
+	LatencyMs         int64                  `protobuf:"varint,9,opt,name=latency_ms,json=latencyMs,proto3" json:"latency_ms,omitempty"`
+	StartedAtUnixNano int64                  `protobuf:"varint,10,opt,name=started_at_unix_nano,json=startedAtUnixNano,proto3" json:"started_at_unix_nano,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *GatewayModelInvoked) Reset() {
+	*x = GatewayModelInvoked{}
+	mi := &file_sdk_proto_msgTypes[47]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GatewayModelInvoked) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GatewayModelInvoked) ProtoMessage() {}
+
+func (x *GatewayModelInvoked) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[47]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GatewayModelInvoked.ProtoReflect.Descriptor instead.
+func (*GatewayModelInvoked) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{47}
+}
+
+func (x *GatewayModelInvoked) GetRequestId() string {
+	if x != nil {
+		return x.RequestId
+	}
+	return ""
+}
+
+func (x *GatewayModelInvoked) GetUserId() int64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *GatewayModelInvoked) GetAccountId() int64 {
+	if x != nil {
+		return x.AccountId
+	}
+	return 0
+}
+
+func (x *GatewayModelInvoked) GetPlatform() string {
+	if x != nil {
+		return x.Platform
+	}
+	return ""
+}
+
+func (x *GatewayModelInvoked) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *GatewayModelInvoked) GetPromptTokens() int64 {
+	if x != nil {
+		return x.PromptTokens
+	}
+	return 0
+}
+
+func (x *GatewayModelInvoked) GetCompletionTokens() int64 {
+	if x != nil {
+		return x.CompletionTokens
+	}
+	return 0
+}
+
+func (x *GatewayModelInvoked) GetStatusCode() int32 {
+	if x != nil {
+		return x.StatusCode
+	}
+	return 0
+}
+
+func (x *GatewayModelInvoked) GetLatencyMs() int64 {
+	if x != nil {
+		return x.LatencyMs
+	}
+	return 0
+}
+
+func (x *GatewayModelInvoked) GetStartedAtUnixNano() int64 {
+	if x != nil {
+		return x.StartedAtUnixNano
+	}
+	return 0
+}
+
+type AuthUserRegistered struct {
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	UserId               int64                  `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Email                string                 `protobuf:"bytes,2,opt,name=email,proto3" json:"email,omitempty"`
+	Source               string                 `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`                            // "register" | "oauth" | ...
+	ReferrerId           int64                  `protobuf:"varint,4,opt,name=referrer_id,json=referrerId,proto3" json:"referrer_id,omitempty"` // 0 if none
+	RegisteredAtUnixNano int64                  `protobuf:"varint,5,opt,name=registered_at_unix_nano,json=registeredAtUnixNano,proto3" json:"registered_at_unix_nano,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *AuthUserRegistered) Reset() {
+	*x = AuthUserRegistered{}
+	mi := &file_sdk_proto_msgTypes[48]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuthUserRegistered) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuthUserRegistered) ProtoMessage() {}
+
+func (x *AuthUserRegistered) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[48]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuthUserRegistered.ProtoReflect.Descriptor instead.
+func (*AuthUserRegistered) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{48}
+}
+
+func (x *AuthUserRegistered) GetUserId() int64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *AuthUserRegistered) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+func (x *AuthUserRegistered) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *AuthUserRegistered) GetReferrerId() int64 {
+	if x != nil {
+		return x.ReferrerId
+	}
+	return 0
+}
+
+func (x *AuthUserRegistered) GetRegisteredAtUnixNano() int64 {
+	if x != nil {
+		return x.RegisteredAtUnixNano
+	}
+	return 0
+}
+
+type AccountRateLimitTriggered struct {
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	AccountId       int64                  `protobuf:"varint,1,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	Platform        string                 `protobuf:"bytes,2,opt,name=platform,proto3" json:"platform,omitempty"`
+	Model           string                 `protobuf:"bytes,3,opt,name=model,proto3" json:"model,omitempty"` // empty if account-wide
+	Scope           string                 `protobuf:"bytes,4,opt,name=scope,proto3" json:"scope,omitempty"` // "account" | "model" | ...
+	ResetAtUnixNano int64                  `protobuf:"varint,5,opt,name=reset_at_unix_nano,json=resetAtUnixNano,proto3" json:"reset_at_unix_nano,omitempty"`
+	Reason          string                 `protobuf:"bytes,6,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *AccountRateLimitTriggered) Reset() {
+	*x = AccountRateLimitTriggered{}
+	mi := &file_sdk_proto_msgTypes[49]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccountRateLimitTriggered) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccountRateLimitTriggered) ProtoMessage() {}
+
+func (x *AccountRateLimitTriggered) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[49]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccountRateLimitTriggered.ProtoReflect.Descriptor instead.
+func (*AccountRateLimitTriggered) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{49}
+}
+
+func (x *AccountRateLimitTriggered) GetAccountId() int64 {
+	if x != nil {
+		return x.AccountId
+	}
+	return 0
+}
+
+func (x *AccountRateLimitTriggered) GetPlatform() string {
+	if x != nil {
+		return x.Platform
+	}
+	return ""
+}
+
+func (x *AccountRateLimitTriggered) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *AccountRateLimitTriggered) GetScope() string {
+	if x != nil {
+		return x.Scope
+	}
+	return ""
+}
+
+func (x *AccountRateLimitTriggered) GetResetAtUnixNano() int64 {
+	if x != nil {
+		return x.ResetAtUnixNano
+	}
+	return 0
+}
+
+func (x *AccountRateLimitTriggered) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
 var File_sdk_proto protoreflect.FileDescriptor
 
 const file_sdk_proto_rawDesc = "" +
@@ -2893,7 +3575,71 @@ const file_sdk_proto_rawDesc = "" +
 	"\n" +
 	"value_json\x18\x02 \x01(\fR\tvalueJson\x12\x1a\n" +
 	"\brevision\x18\x03 \x01(\x03R\brevision\x12'\n" +
-	"\x0frequires_reload\x18\x04 \x01(\bR\x0erequiresReload2\xa9\x03\n" +
+	"\x0frequires_reload\x18\x04 \x01(\bR\x0erequiresReload\"k\n" +
+	"\x15EventSubscribeRequest\x12\x1f\n" +
+	"\vevent_types\x18\x01 \x03(\tR\n" +
+	"eventTypes\x121\n" +
+	"\x15resume_from_unix_nano\x18\x02 \x01(\x03R\x12resumeFromUnixNano\"\xf4\x04\n" +
+	"\tHostEvent\x12\x1d\n" +
+	"\n" +
+	"event_type\x18\x01 \x01(\tR\teventType\x12\x19\n" +
+	"\bevent_id\x18\x02 \x01(\tR\aeventId\x12'\n" +
+	"\x0ftimestamp_nanos\x18\x03 \x01(\x03R\x0etimestampNanos\x125\n" +
+	"\x17dropped_since_last_send\x18\x04 \x01(\x04R\x14droppedSinceLastSend\x12T\n" +
+	"\x15payment_order_created\x18d \x01(\v2\x1e.pluginsdk.PaymentOrderCreatedH\x00R\x13paymentOrderCreated\x12Z\n" +
+	"\x17payment_order_fulfilled\x18e \x01(\v2 .pluginsdk.PaymentOrderFulfilledH\x00R\x15paymentOrderFulfilled\x12T\n" +
+	"\x15gateway_model_invoked\x18f \x01(\v2\x1e.pluginsdk.GatewayModelInvokedH\x00R\x13gatewayModelInvoked\x12Q\n" +
+	"\x14auth_user_registered\x18g \x01(\v2\x1d.pluginsdk.AuthUserRegisteredH\x00R\x12authUserRegistered\x12g\n" +
+	"\x1caccount_rate_limit_triggered\x18h \x01(\v2$.pluginsdk.AccountRateLimitTriggeredH\x00R\x19accountRateLimitTriggeredB\t\n" +
+	"\apayload\"\x96\x02\n" +
+	"\x13PaymentOrderCreated\x12\x19\n" +
+	"\border_id\x18\x01 \x01(\x03R\aorderId\x12 \n" +
+	"\fout_trade_no\x18\x02 \x01(\tR\n" +
+	"outTradeNo\x12\x17\n" +
+	"\auser_id\x18\x03 \x01(\x03R\x06userId\x12!\n" +
+	"\famount_cents\x18\x04 \x01(\x03R\vamountCents\x12\x17\n" +
+	"\aplan_id\x18\x05 \x01(\tR\x06planId\x12!\n" +
+	"\fprovider_key\x18\x06 \x01(\tR\vproviderKey\x12\x19\n" +
+	"\bbiz_type\x18\a \x01(\tR\abizType\x12/\n" +
+	"\x14created_at_unix_nano\x18\b \x01(\x03R\x11createdAtUnixNano\"\xe1\x01\n" +
+	"\x15PaymentOrderFulfilled\x12\x19\n" +
+	"\border_id\x18\x01 \x01(\x03R\aorderId\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\x03R\x06userId\x12!\n" +
+	"\famount_cents\x18\x03 \x01(\x03R\vamountCents\x12\x19\n" +
+	"\bbiz_type\x18\x04 \x01(\tR\abizType\x12!\n" +
+	"\faudit_action\x18\x05 \x01(\tR\vauditAction\x123\n" +
+	"\x16fulfilled_at_unix_nano\x18\x06 \x01(\x03R\x13fulfilledAtUnixNano\"\xe1\x02\n" +
+	"\x13GatewayModelInvoked\x12\x1d\n" +
+	"\n" +
+	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\x03R\x06userId\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x03 \x01(\x03R\taccountId\x12\x1a\n" +
+	"\bplatform\x18\x04 \x01(\tR\bplatform\x12\x14\n" +
+	"\x05model\x18\x05 \x01(\tR\x05model\x12#\n" +
+	"\rprompt_tokens\x18\x06 \x01(\x03R\fpromptTokens\x12+\n" +
+	"\x11completion_tokens\x18\a \x01(\x03R\x10completionTokens\x12\x1f\n" +
+	"\vstatus_code\x18\b \x01(\x05R\n" +
+	"statusCode\x12\x1d\n" +
+	"\n" +
+	"latency_ms\x18\t \x01(\x03R\tlatencyMs\x12/\n" +
+	"\x14started_at_unix_nano\x18\n" +
+	" \x01(\x03R\x11startedAtUnixNano\"\xb3\x01\n" +
+	"\x12AuthUserRegistered\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\x03R\x06userId\x12\x14\n" +
+	"\x05email\x18\x02 \x01(\tR\x05email\x12\x16\n" +
+	"\x06source\x18\x03 \x01(\tR\x06source\x12\x1f\n" +
+	"\vreferrer_id\x18\x04 \x01(\x03R\n" +
+	"referrerId\x125\n" +
+	"\x17registered_at_unix_nano\x18\x05 \x01(\x03R\x14registeredAtUnixNano\"\xc7\x01\n" +
+	"\x19AccountRateLimitTriggered\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x01 \x01(\x03R\taccountId\x12\x1a\n" +
+	"\bplatform\x18\x02 \x01(\tR\bplatform\x12\x14\n" +
+	"\x05model\x18\x03 \x01(\tR\x05model\x12\x14\n" +
+	"\x05scope\x18\x04 \x01(\tR\x05scope\x12+\n" +
+	"\x12reset_at_unix_nano\x18\x05 \x01(\x03R\x0fresetAtUnixNano\x12\x16\n" +
+	"\x06reason\x18\x06 \x01(\tR\x06reason2\xa9\x03\n" +
 	"\bSQLProxy\x126\n" +
 	"\x05Query\x12\x15.pluginsdk.SQLRequest\x1a\x16.pluginsdk.SQLResponse\x126\n" +
 	"\x04Exec\x12\x15.pluginsdk.SQLRequest\x1a\x17.pluginsdk.ExecResponse\x12;\n" +
@@ -2928,7 +3674,9 @@ const file_sdk_proto_rawDesc = "" +
 	"\tSubscribe\x12\x15.pluginsdk.JobMessage\x1a\x15.pluginsdk.JobTrigger(\x010\x012\xa5\x01\n" +
 	"\x11SettingsExtension\x12D\n" +
 	"\x03Get\x12\x1d.pluginsdk.SettingsGetRequest\x1a\x1e.pluginsdk.SettingsGetResponse\x12J\n" +
-	"\x05Watch\x12\x1f.pluginsdk.SettingsWatchRequest\x1a\x1e.pluginsdk.SettingsChangeEvent0\x01B8Z6github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdkb\x06proto3"
+	"\x05Watch\x12\x1f.pluginsdk.SettingsWatchRequest\x1a\x1e.pluginsdk.SettingsChangeEvent0\x012X\n" +
+	"\x0fEventsExtension\x12E\n" +
+	"\tSubscribe\x12 .pluginsdk.EventSubscribeRequest\x1a\x14.pluginsdk.HostEvent0\x01B8Z6github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdkb\x06proto3"
 
 var (
 	file_sdk_proto_rawDescOnce sync.Once
@@ -2942,53 +3690,60 @@ func file_sdk_proto_rawDescGZIP() []byte {
 	return file_sdk_proto_rawDescData
 }
 
-var file_sdk_proto_msgTypes = make([]protoimpl.MessageInfo, 44)
+var file_sdk_proto_msgTypes = make([]protoimpl.MessageInfo, 51)
 var file_sdk_proto_goTypes = []any{
-	(*LogRecord)(nil),            // 0: pluginsdk.LogRecord
-	(*LogAttr)(nil),              // 1: pluginsdk.LogAttr
-	(*LogPushSummary)(nil),       // 2: pluginsdk.LogPushSummary
-	(*SQLRequest)(nil),           // 3: pluginsdk.SQLRequest
-	(*TxSQLRequest)(nil),         // 4: pluginsdk.TxSQLRequest
-	(*BeginTxRequest)(nil),       // 5: pluginsdk.BeginTxRequest
-	(*TxResponse)(nil),           // 6: pluginsdk.TxResponse
-	(*TxIDRequest)(nil),          // 7: pluginsdk.TxIDRequest
-	(*SQLValue)(nil),             // 8: pluginsdk.SQLValue
-	(*SQLResponse)(nil),          // 9: pluginsdk.SQLResponse
-	(*SQLRow)(nil),               // 10: pluginsdk.SQLRow
-	(*ExecResponse)(nil),         // 11: pluginsdk.ExecResponse
-	(*RedisKeyRequest)(nil),      // 12: pluginsdk.RedisKeyRequest
-	(*RedisValueResponse)(nil),   // 13: pluginsdk.RedisValueResponse
-	(*RedisSetRequest)(nil),      // 14: pluginsdk.RedisSetRequest
-	(*RedisSetExRequest)(nil),    // 15: pluginsdk.RedisSetExRequest
-	(*RedisDelRequest)(nil),      // 16: pluginsdk.RedisDelRequest
-	(*RedisHGetRequest)(nil),     // 17: pluginsdk.RedisHGetRequest
-	(*RedisHSetRequest)(nil),     // 18: pluginsdk.RedisHSetRequest
-	(*RedisMapResponse)(nil),     // 19: pluginsdk.RedisMapResponse
-	(*RedisHDelRequest)(nil),     // 20: pluginsdk.RedisHDelRequest
-	(*RedisPubRequest)(nil),      // 21: pluginsdk.RedisPubRequest
-	(*RedisSubRequest)(nil),      // 22: pluginsdk.RedisSubRequest
-	(*RedisMessage)(nil),         // 23: pluginsdk.RedisMessage
-	(*DoRequest)(nil),            // 24: pluginsdk.DoRequest
-	(*DoReply)(nil),              // 25: pluginsdk.DoReply
-	(*EventRequest)(nil),         // 26: pluginsdk.EventRequest
-	(*EventFilter)(nil),          // 27: pluginsdk.EventFilter
-	(*Event)(nil),                // 28: pluginsdk.Event
-	(*EncryptRequest)(nil),       // 29: pluginsdk.EncryptRequest
-	(*EncryptResponse)(nil),      // 30: pluginsdk.EncryptResponse
-	(*DecryptRequest)(nil),       // 31: pluginsdk.DecryptRequest
-	(*DecryptResponse)(nil),      // 32: pluginsdk.DecryptResponse
-	(*JobMessage)(nil),           // 33: pluginsdk.JobMessage
-	(*JobRegistration)(nil),      // 34: pluginsdk.JobRegistration
-	(*JobSpec)(nil),              // 35: pluginsdk.JobSpec
-	(*JobTrigger)(nil),           // 36: pluginsdk.JobTrigger
-	(*JobAck)(nil),               // 37: pluginsdk.JobAck
-	(*ManualTrigger)(nil),        // 38: pluginsdk.ManualTrigger
-	(*SettingsGetRequest)(nil),   // 39: pluginsdk.SettingsGetRequest
-	(*SettingsGetResponse)(nil),  // 40: pluginsdk.SettingsGetResponse
-	(*SettingsWatchRequest)(nil), // 41: pluginsdk.SettingsWatchRequest
-	(*SettingsChangeEvent)(nil),  // 42: pluginsdk.SettingsChangeEvent
-	nil,                          // 43: pluginsdk.RedisMapResponse.FieldsEntry
-	(*emptypb.Empty)(nil),        // 44: google.protobuf.Empty
+	(*LogRecord)(nil),                 // 0: pluginsdk.LogRecord
+	(*LogAttr)(nil),                   // 1: pluginsdk.LogAttr
+	(*LogPushSummary)(nil),            // 2: pluginsdk.LogPushSummary
+	(*SQLRequest)(nil),                // 3: pluginsdk.SQLRequest
+	(*TxSQLRequest)(nil),              // 4: pluginsdk.TxSQLRequest
+	(*BeginTxRequest)(nil),            // 5: pluginsdk.BeginTxRequest
+	(*TxResponse)(nil),                // 6: pluginsdk.TxResponse
+	(*TxIDRequest)(nil),               // 7: pluginsdk.TxIDRequest
+	(*SQLValue)(nil),                  // 8: pluginsdk.SQLValue
+	(*SQLResponse)(nil),               // 9: pluginsdk.SQLResponse
+	(*SQLRow)(nil),                    // 10: pluginsdk.SQLRow
+	(*ExecResponse)(nil),              // 11: pluginsdk.ExecResponse
+	(*RedisKeyRequest)(nil),           // 12: pluginsdk.RedisKeyRequest
+	(*RedisValueResponse)(nil),        // 13: pluginsdk.RedisValueResponse
+	(*RedisSetRequest)(nil),           // 14: pluginsdk.RedisSetRequest
+	(*RedisSetExRequest)(nil),         // 15: pluginsdk.RedisSetExRequest
+	(*RedisDelRequest)(nil),           // 16: pluginsdk.RedisDelRequest
+	(*RedisHGetRequest)(nil),          // 17: pluginsdk.RedisHGetRequest
+	(*RedisHSetRequest)(nil),          // 18: pluginsdk.RedisHSetRequest
+	(*RedisMapResponse)(nil),          // 19: pluginsdk.RedisMapResponse
+	(*RedisHDelRequest)(nil),          // 20: pluginsdk.RedisHDelRequest
+	(*RedisPubRequest)(nil),           // 21: pluginsdk.RedisPubRequest
+	(*RedisSubRequest)(nil),           // 22: pluginsdk.RedisSubRequest
+	(*RedisMessage)(nil),              // 23: pluginsdk.RedisMessage
+	(*DoRequest)(nil),                 // 24: pluginsdk.DoRequest
+	(*DoReply)(nil),                   // 25: pluginsdk.DoReply
+	(*EventRequest)(nil),              // 26: pluginsdk.EventRequest
+	(*EventFilter)(nil),               // 27: pluginsdk.EventFilter
+	(*Event)(nil),                     // 28: pluginsdk.Event
+	(*EncryptRequest)(nil),            // 29: pluginsdk.EncryptRequest
+	(*EncryptResponse)(nil),           // 30: pluginsdk.EncryptResponse
+	(*DecryptRequest)(nil),            // 31: pluginsdk.DecryptRequest
+	(*DecryptResponse)(nil),           // 32: pluginsdk.DecryptResponse
+	(*JobMessage)(nil),                // 33: pluginsdk.JobMessage
+	(*JobRegistration)(nil),           // 34: pluginsdk.JobRegistration
+	(*JobSpec)(nil),                   // 35: pluginsdk.JobSpec
+	(*JobTrigger)(nil),                // 36: pluginsdk.JobTrigger
+	(*JobAck)(nil),                    // 37: pluginsdk.JobAck
+	(*ManualTrigger)(nil),             // 38: pluginsdk.ManualTrigger
+	(*SettingsGetRequest)(nil),        // 39: pluginsdk.SettingsGetRequest
+	(*SettingsGetResponse)(nil),       // 40: pluginsdk.SettingsGetResponse
+	(*SettingsWatchRequest)(nil),      // 41: pluginsdk.SettingsWatchRequest
+	(*SettingsChangeEvent)(nil),       // 42: pluginsdk.SettingsChangeEvent
+	(*EventSubscribeRequest)(nil),     // 43: pluginsdk.EventSubscribeRequest
+	(*HostEvent)(nil),                 // 44: pluginsdk.HostEvent
+	(*PaymentOrderCreated)(nil),       // 45: pluginsdk.PaymentOrderCreated
+	(*PaymentOrderFulfilled)(nil),     // 46: pluginsdk.PaymentOrderFulfilled
+	(*GatewayModelInvoked)(nil),       // 47: pluginsdk.GatewayModelInvoked
+	(*AuthUserRegistered)(nil),        // 48: pluginsdk.AuthUserRegistered
+	(*AccountRateLimitTriggered)(nil), // 49: pluginsdk.AccountRateLimitTriggered
+	nil,                               // 50: pluginsdk.RedisMapResponse.FieldsEntry
+	(*emptypb.Empty)(nil),             // 51: google.protobuf.Empty
 }
 var file_sdk_proto_depIdxs = []int32{
 	1,  // 0: pluginsdk.LogRecord.attrs:type_name -> pluginsdk.LogAttr
@@ -2996,69 +3751,76 @@ var file_sdk_proto_depIdxs = []int32{
 	8,  // 2: pluginsdk.TxSQLRequest.args:type_name -> pluginsdk.SQLValue
 	10, // 3: pluginsdk.SQLResponse.rows:type_name -> pluginsdk.SQLRow
 	8,  // 4: pluginsdk.SQLRow.values:type_name -> pluginsdk.SQLValue
-	43, // 5: pluginsdk.RedisMapResponse.fields:type_name -> pluginsdk.RedisMapResponse.FieldsEntry
+	50, // 5: pluginsdk.RedisMapResponse.fields:type_name -> pluginsdk.RedisMapResponse.FieldsEntry
 	25, // 6: pluginsdk.DoReply.array:type_name -> pluginsdk.DoReply
 	34, // 7: pluginsdk.JobMessage.register:type_name -> pluginsdk.JobRegistration
 	37, // 8: pluginsdk.JobMessage.ack:type_name -> pluginsdk.JobAck
 	38, // 9: pluginsdk.JobMessage.manual:type_name -> pluginsdk.ManualTrigger
 	35, // 10: pluginsdk.JobRegistration.specs:type_name -> pluginsdk.JobSpec
-	3,  // 11: pluginsdk.SQLProxy.Query:input_type -> pluginsdk.SQLRequest
-	3,  // 12: pluginsdk.SQLProxy.Exec:input_type -> pluginsdk.SQLRequest
-	5,  // 13: pluginsdk.SQLProxy.BeginTx:input_type -> pluginsdk.BeginTxRequest
-	4,  // 14: pluginsdk.SQLProxy.TxQuery:input_type -> pluginsdk.TxSQLRequest
-	4,  // 15: pluginsdk.SQLProxy.TxExec:input_type -> pluginsdk.TxSQLRequest
-	7,  // 16: pluginsdk.SQLProxy.CommitTx:input_type -> pluginsdk.TxIDRequest
-	7,  // 17: pluginsdk.SQLProxy.RollbackTx:input_type -> pluginsdk.TxIDRequest
-	24, // 18: pluginsdk.RedisProxy.Do:input_type -> pluginsdk.DoRequest
-	12, // 19: pluginsdk.RedisProxy.Get:input_type -> pluginsdk.RedisKeyRequest
-	14, // 20: pluginsdk.RedisProxy.Set:input_type -> pluginsdk.RedisSetRequest
-	15, // 21: pluginsdk.RedisProxy.SetEx:input_type -> pluginsdk.RedisSetExRequest
-	16, // 22: pluginsdk.RedisProxy.Del:input_type -> pluginsdk.RedisDelRequest
-	17, // 23: pluginsdk.RedisProxy.HGet:input_type -> pluginsdk.RedisHGetRequest
-	18, // 24: pluginsdk.RedisProxy.HSet:input_type -> pluginsdk.RedisHSetRequest
-	12, // 25: pluginsdk.RedisProxy.HGetAll:input_type -> pluginsdk.RedisKeyRequest
-	20, // 26: pluginsdk.RedisProxy.HDel:input_type -> pluginsdk.RedisHDelRequest
-	21, // 27: pluginsdk.RedisProxy.Publish:input_type -> pluginsdk.RedisPubRequest
-	22, // 28: pluginsdk.RedisProxy.Subscribe:input_type -> pluginsdk.RedisSubRequest
-	26, // 29: pluginsdk.EventBus.Publish:input_type -> pluginsdk.EventRequest
-	27, // 30: pluginsdk.EventBus.Subscribe:input_type -> pluginsdk.EventFilter
-	0,  // 31: pluginsdk.LogProxy.PushLogs:input_type -> pluginsdk.LogRecord
-	29, // 32: pluginsdk.SecretEncryption.Encrypt:input_type -> pluginsdk.EncryptRequest
-	31, // 33: pluginsdk.SecretEncryption.Decrypt:input_type -> pluginsdk.DecryptRequest
-	33, // 34: pluginsdk.JobScheduler.Subscribe:input_type -> pluginsdk.JobMessage
-	39, // 35: pluginsdk.SettingsExtension.Get:input_type -> pluginsdk.SettingsGetRequest
-	41, // 36: pluginsdk.SettingsExtension.Watch:input_type -> pluginsdk.SettingsWatchRequest
-	9,  // 37: pluginsdk.SQLProxy.Query:output_type -> pluginsdk.SQLResponse
-	11, // 38: pluginsdk.SQLProxy.Exec:output_type -> pluginsdk.ExecResponse
-	6,  // 39: pluginsdk.SQLProxy.BeginTx:output_type -> pluginsdk.TxResponse
-	9,  // 40: pluginsdk.SQLProxy.TxQuery:output_type -> pluginsdk.SQLResponse
-	11, // 41: pluginsdk.SQLProxy.TxExec:output_type -> pluginsdk.ExecResponse
-	44, // 42: pluginsdk.SQLProxy.CommitTx:output_type -> google.protobuf.Empty
-	44, // 43: pluginsdk.SQLProxy.RollbackTx:output_type -> google.protobuf.Empty
-	25, // 44: pluginsdk.RedisProxy.Do:output_type -> pluginsdk.DoReply
-	13, // 45: pluginsdk.RedisProxy.Get:output_type -> pluginsdk.RedisValueResponse
-	44, // 46: pluginsdk.RedisProxy.Set:output_type -> google.protobuf.Empty
-	44, // 47: pluginsdk.RedisProxy.SetEx:output_type -> google.protobuf.Empty
-	44, // 48: pluginsdk.RedisProxy.Del:output_type -> google.protobuf.Empty
-	13, // 49: pluginsdk.RedisProxy.HGet:output_type -> pluginsdk.RedisValueResponse
-	44, // 50: pluginsdk.RedisProxy.HSet:output_type -> google.protobuf.Empty
-	19, // 51: pluginsdk.RedisProxy.HGetAll:output_type -> pluginsdk.RedisMapResponse
-	44, // 52: pluginsdk.RedisProxy.HDel:output_type -> google.protobuf.Empty
-	44, // 53: pluginsdk.RedisProxy.Publish:output_type -> google.protobuf.Empty
-	23, // 54: pluginsdk.RedisProxy.Subscribe:output_type -> pluginsdk.RedisMessage
-	44, // 55: pluginsdk.EventBus.Publish:output_type -> google.protobuf.Empty
-	28, // 56: pluginsdk.EventBus.Subscribe:output_type -> pluginsdk.Event
-	2,  // 57: pluginsdk.LogProxy.PushLogs:output_type -> pluginsdk.LogPushSummary
-	30, // 58: pluginsdk.SecretEncryption.Encrypt:output_type -> pluginsdk.EncryptResponse
-	32, // 59: pluginsdk.SecretEncryption.Decrypt:output_type -> pluginsdk.DecryptResponse
-	36, // 60: pluginsdk.JobScheduler.Subscribe:output_type -> pluginsdk.JobTrigger
-	40, // 61: pluginsdk.SettingsExtension.Get:output_type -> pluginsdk.SettingsGetResponse
-	42, // 62: pluginsdk.SettingsExtension.Watch:output_type -> pluginsdk.SettingsChangeEvent
-	37, // [37:63] is the sub-list for method output_type
-	11, // [11:37] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	45, // 11: pluginsdk.HostEvent.payment_order_created:type_name -> pluginsdk.PaymentOrderCreated
+	46, // 12: pluginsdk.HostEvent.payment_order_fulfilled:type_name -> pluginsdk.PaymentOrderFulfilled
+	47, // 13: pluginsdk.HostEvent.gateway_model_invoked:type_name -> pluginsdk.GatewayModelInvoked
+	48, // 14: pluginsdk.HostEvent.auth_user_registered:type_name -> pluginsdk.AuthUserRegistered
+	49, // 15: pluginsdk.HostEvent.account_rate_limit_triggered:type_name -> pluginsdk.AccountRateLimitTriggered
+	3,  // 16: pluginsdk.SQLProxy.Query:input_type -> pluginsdk.SQLRequest
+	3,  // 17: pluginsdk.SQLProxy.Exec:input_type -> pluginsdk.SQLRequest
+	5,  // 18: pluginsdk.SQLProxy.BeginTx:input_type -> pluginsdk.BeginTxRequest
+	4,  // 19: pluginsdk.SQLProxy.TxQuery:input_type -> pluginsdk.TxSQLRequest
+	4,  // 20: pluginsdk.SQLProxy.TxExec:input_type -> pluginsdk.TxSQLRequest
+	7,  // 21: pluginsdk.SQLProxy.CommitTx:input_type -> pluginsdk.TxIDRequest
+	7,  // 22: pluginsdk.SQLProxy.RollbackTx:input_type -> pluginsdk.TxIDRequest
+	24, // 23: pluginsdk.RedisProxy.Do:input_type -> pluginsdk.DoRequest
+	12, // 24: pluginsdk.RedisProxy.Get:input_type -> pluginsdk.RedisKeyRequest
+	14, // 25: pluginsdk.RedisProxy.Set:input_type -> pluginsdk.RedisSetRequest
+	15, // 26: pluginsdk.RedisProxy.SetEx:input_type -> pluginsdk.RedisSetExRequest
+	16, // 27: pluginsdk.RedisProxy.Del:input_type -> pluginsdk.RedisDelRequest
+	17, // 28: pluginsdk.RedisProxy.HGet:input_type -> pluginsdk.RedisHGetRequest
+	18, // 29: pluginsdk.RedisProxy.HSet:input_type -> pluginsdk.RedisHSetRequest
+	12, // 30: pluginsdk.RedisProxy.HGetAll:input_type -> pluginsdk.RedisKeyRequest
+	20, // 31: pluginsdk.RedisProxy.HDel:input_type -> pluginsdk.RedisHDelRequest
+	21, // 32: pluginsdk.RedisProxy.Publish:input_type -> pluginsdk.RedisPubRequest
+	22, // 33: pluginsdk.RedisProxy.Subscribe:input_type -> pluginsdk.RedisSubRequest
+	26, // 34: pluginsdk.EventBus.Publish:input_type -> pluginsdk.EventRequest
+	27, // 35: pluginsdk.EventBus.Subscribe:input_type -> pluginsdk.EventFilter
+	0,  // 36: pluginsdk.LogProxy.PushLogs:input_type -> pluginsdk.LogRecord
+	29, // 37: pluginsdk.SecretEncryption.Encrypt:input_type -> pluginsdk.EncryptRequest
+	31, // 38: pluginsdk.SecretEncryption.Decrypt:input_type -> pluginsdk.DecryptRequest
+	33, // 39: pluginsdk.JobScheduler.Subscribe:input_type -> pluginsdk.JobMessage
+	39, // 40: pluginsdk.SettingsExtension.Get:input_type -> pluginsdk.SettingsGetRequest
+	41, // 41: pluginsdk.SettingsExtension.Watch:input_type -> pluginsdk.SettingsWatchRequest
+	43, // 42: pluginsdk.EventsExtension.Subscribe:input_type -> pluginsdk.EventSubscribeRequest
+	9,  // 43: pluginsdk.SQLProxy.Query:output_type -> pluginsdk.SQLResponse
+	11, // 44: pluginsdk.SQLProxy.Exec:output_type -> pluginsdk.ExecResponse
+	6,  // 45: pluginsdk.SQLProxy.BeginTx:output_type -> pluginsdk.TxResponse
+	9,  // 46: pluginsdk.SQLProxy.TxQuery:output_type -> pluginsdk.SQLResponse
+	11, // 47: pluginsdk.SQLProxy.TxExec:output_type -> pluginsdk.ExecResponse
+	51, // 48: pluginsdk.SQLProxy.CommitTx:output_type -> google.protobuf.Empty
+	51, // 49: pluginsdk.SQLProxy.RollbackTx:output_type -> google.protobuf.Empty
+	25, // 50: pluginsdk.RedisProxy.Do:output_type -> pluginsdk.DoReply
+	13, // 51: pluginsdk.RedisProxy.Get:output_type -> pluginsdk.RedisValueResponse
+	51, // 52: pluginsdk.RedisProxy.Set:output_type -> google.protobuf.Empty
+	51, // 53: pluginsdk.RedisProxy.SetEx:output_type -> google.protobuf.Empty
+	51, // 54: pluginsdk.RedisProxy.Del:output_type -> google.protobuf.Empty
+	13, // 55: pluginsdk.RedisProxy.HGet:output_type -> pluginsdk.RedisValueResponse
+	51, // 56: pluginsdk.RedisProxy.HSet:output_type -> google.protobuf.Empty
+	19, // 57: pluginsdk.RedisProxy.HGetAll:output_type -> pluginsdk.RedisMapResponse
+	51, // 58: pluginsdk.RedisProxy.HDel:output_type -> google.protobuf.Empty
+	51, // 59: pluginsdk.RedisProxy.Publish:output_type -> google.protobuf.Empty
+	23, // 60: pluginsdk.RedisProxy.Subscribe:output_type -> pluginsdk.RedisMessage
+	51, // 61: pluginsdk.EventBus.Publish:output_type -> google.protobuf.Empty
+	28, // 62: pluginsdk.EventBus.Subscribe:output_type -> pluginsdk.Event
+	2,  // 63: pluginsdk.LogProxy.PushLogs:output_type -> pluginsdk.LogPushSummary
+	30, // 64: pluginsdk.SecretEncryption.Encrypt:output_type -> pluginsdk.EncryptResponse
+	32, // 65: pluginsdk.SecretEncryption.Decrypt:output_type -> pluginsdk.DecryptResponse
+	36, // 66: pluginsdk.JobScheduler.Subscribe:output_type -> pluginsdk.JobTrigger
+	40, // 67: pluginsdk.SettingsExtension.Get:output_type -> pluginsdk.SettingsGetResponse
+	42, // 68: pluginsdk.SettingsExtension.Watch:output_type -> pluginsdk.SettingsChangeEvent
+	44, // 69: pluginsdk.EventsExtension.Subscribe:output_type -> pluginsdk.HostEvent
+	43, // [43:70] is the sub-list for method output_type
+	16, // [16:43] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_sdk_proto_init() }
@@ -3088,15 +3850,22 @@ func file_sdk_proto_init() {
 		(*JobMessage_Ack)(nil),
 		(*JobMessage_Manual)(nil),
 	}
+	file_sdk_proto_msgTypes[44].OneofWrappers = []any{
+		(*HostEvent_PaymentOrderCreated)(nil),
+		(*HostEvent_PaymentOrderFulfilled)(nil),
+		(*HostEvent_GatewayModelInvoked)(nil),
+		(*HostEvent_AuthUserRegistered)(nil),
+		(*HostEvent_AccountRateLimitTriggered)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sdk_proto_rawDesc), len(file_sdk_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   44,
+			NumMessages:   51,
 			NumExtensions: 0,
-			NumServices:   7,
+			NumServices:   8,
 		},
 		GoTypes:           file_sdk_proto_goTypes,
 		DependencyIndexes: file_sdk_proto_depIdxs,

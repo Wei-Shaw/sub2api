@@ -468,9 +468,15 @@ type ManifestResponse struct {
 	// the core to maintain a registry of plugin icons. Empty bytes mean
 	// the host falls back to its generic plugin icon. See pluginsdk Icon*
 	// constants for ergonomic helpers.
-	IconSvg       string `protobuf:"bytes,46,opt,name=icon_svg,json=iconSvg,proto3" json:"icon_svg,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	IconSvg string `protobuf:"bytes,46,opt,name=icon_svg,json=iconSvg,proto3" json:"icon_svg,omitempty"`
+	// subscribed_events declares which HostEvent types this plugin wants
+	// to receive. Names use dotted lowercase (e.g. "payment.order.created").
+	// Host validates against capability whitelist on Subscribe; high-frequency
+	// events like "gateway.model.invoked" additionally require capability
+	// "events.gateway".
+	SubscribedEvents []string `protobuf:"bytes,47,rep,name=subscribed_events,json=subscribedEvents,proto3" json:"subscribed_events,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *ManifestResponse) Reset() {
@@ -613,6 +619,13 @@ func (x *ManifestResponse) GetIconSvg() string {
 		return x.IconSvg
 	}
 	return ""
+}
+
+func (x *ManifestResponse) GetSubscribedEvents() []string {
+	if x != nil {
+		return x.SubscribedEvents
+	}
+	return nil
 }
 
 type EndpointDeclaration struct {
@@ -1222,7 +1235,7 @@ const file_plugin_proto_rawDesc = "" +
 	"\tFileChunk\x12\x12\n" +
 	"\x04data\x18\x01 \x01(\fR\x04data\x12\x1a\n" +
 	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x10\n" +
-	"\x03eof\x18\x03 \x01(\bR\x03eof\"\xf3\x05\n" +
+	"\x03eof\x18\x03 \x01(\bR\x03eof\"\xa0\x06\n" +
 	"\x10ManifestResponse\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x18\n" +
@@ -1242,7 +1255,8 @@ const file_plugin_proto_rawDesc = "" +
 	"\x16settings_defaults_json\x18+ \x01(\fR\x14settingsDefaultsJson\x126\n" +
 	"\x17settings_schema_version\x18, \x01(\tR\x15settingsSchemaVersion\x12A\n" +
 	"\x1dsettings_properties_meta_json\x18- \x01(\fR\x1asettingsPropertiesMetaJson\x12\x19\n" +
-	"\bicon_svg\x18. \x01(\tR\aiconSvg\"`\n" +
+	"\bicon_svg\x18. \x01(\tR\aiconSvg\x12+\n" +
+	"\x11subscribed_events\x18/ \x03(\tR\x10subscribedEvents\"`\n" +
 	"\x13EndpointDeclaration\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x18\n" +
 	"\amethods\x18\x02 \x03(\tR\amethods\x12\x1b\n" +
