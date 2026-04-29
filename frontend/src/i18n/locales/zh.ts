@@ -5200,6 +5200,7 @@ export default {
           configureLink: '进入服务配额规则管理',
           enabled: '启用服务配额',
           enabledHint: '关闭时不执行服务配额规则。',
+          unrelatedRpmWarning: '⚠ 注意：用户级别的 RPM / 并发限制与本功能完全独立、互不影响。是否放开或收紧用户级限流，需要在「用户管理 / 用户组」里单独配置；启用本开关不会自动放开任何用户级限制。',
         },
         affiliate: {
           title: '邀请返利',

@@ -148,13 +148,7 @@ func (s *serviceQuotaMonitorService) Snapshot(ctx context.Context, filter Monito
 	if len(rules) == 0 {
 		return empty, nil
 	}
-	rows := s.expandTargets(rules, filter)
-	rows = applyFilter(filter, rows)
-	truncated := false
-	if len(rows) > monitorMaxRows {
-		rows = rows[:monitorMaxRows]
-		truncated = true
-	}
+	rows, truncated := s.planRows(rules, filter)
 	keys := buildSnapshotKeys(rows)
 	snapshots := s.fetchSnapshots(ctx, keys)
 	items := assembleRuntime(rows, snapshots, filter.UserScope != nil)
@@ -164,6 +158,20 @@ func (s *serviceQuotaMonitorService) Snapshot(ctx context.Context, filter Monito
 		Items:      items,
 		Truncated:  truncated,
 	}, nil
+}
+
+// planRows 把规则集合按 filter 展开成 plannedRow，并按 monitorMaxRows 截断。
+// 拆出来让 Snapshot 主流程保持 ≤30 行：planning（展开 + 过滤 + 截断）属于
+// 纯数据流转，与 Redis 批量读 / 结果拼装是各自独立的阶段。
+func (s *serviceQuotaMonitorService) planRows(rules []*ServiceQuotaRule, filter MonitorSnapshotFilter) ([]plannedRow, bool) {
+	rows := s.expandTargets(rules, filter)
+	rows = applyFilter(filter, rows)
+	truncated := false
+	if len(rows) > monitorMaxRows {
+		rows = rows[:monitorMaxRows]
+		truncated = true
+	}
+	return rows, truncated
 }
 
 // snapshotEnabled 委托给 serviceQuotaIsEnabled 包级函数，与 PreCheck/Record 共享同一份

@@ -154,7 +154,7 @@ func (s *BillingCacheService) CheckBillingEligibilityForRequest(ctx context.Cont
 // 后续 caller 选定 channel + account（路由完成）后，必须调用 ticket.Consume(ctx, channelID, accountID)
 // 才会真正按 channel/account scope 抢 concurrency / 增 RPM。
 //
-// feature flag service_quota.precheck_two_phase 关闭时（默认），ticket 在 Prepare 阶段就完成
+// feature flag service_quota_precheck_two_phase 关闭时（默认），ticket 在 Prepare 阶段就完成
 // PreCheck（沿用旧行为），Consume 退化为校验入参后立即返回 nil；caller 仍需 defer Close 释放 lease。
 //
 // 失败语义：返回 error 时 ticket==nil，caller 不需要也不应该 Close。

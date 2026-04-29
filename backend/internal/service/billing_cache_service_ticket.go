@@ -26,7 +26,7 @@ var errBillingTicketClosed = errors.New("billing_ticket: consume after close")
 //  4. 同一个 ticket 允许多次 Consume——在 fallback 重试切换账号时常见。
 //     Consume 内部检测到 lease 已存在会先释放再重新抢，使 lease 始终对应"当前生效的 channel/account"。
 //
-// feature flag service_quota.precheck_two_phase 关闭（默认）时：
+// feature flag service_quota_precheck_two_phase 关闭（默认）时：
 //   - Prepare 阶段就完成旧 PreCheck（一次性 acquire），ticket 持有 lease；
 //   - Consume 退化为 noop（不会重新 acquire）；
 //   - 行为与历史 CheckBillingEligibility 完全一致。

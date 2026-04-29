@@ -33,13 +33,19 @@ func TestResetCountersForUser_ClearsUserScopedKeys(t *testing.T) {
 
 	// fire-and-forget：等到 user 7 的 key 被清掉。
 	require.Eventually(t, func() bool {
-		_, ok := limiter.counters[keyUser7]
+		_, ok := limiter.counterValue(keyUser7)
 		return !ok
 	}, 500*time.Millisecond, 5*time.Millisecond, "user 7 的 counter 应被清除")
 
 	// user 8 与 shared 必须保留——pattern 不能误伤其他作用域。
-	require.Equal(t, float64(9), limiter.counters[keyUser8], "user 8 不应被波及")
-	require.Equal(t, float64(42), limiter.counters[keyShared], "shared key 不应被波及")
+	{
+		v8, _ := limiter.counterValue(keyUser8)
+		require.Equal(t, float64(9), v8, "user 8 不应被波及")
+	}
+	{
+		vs, _ := limiter.counterValue(keyShared)
+		require.Equal(t, float64(42), vs, "shared key 不应被波及")
+	}
 }
 
 // TestResetCountersForPaths_ClearsAllRulesAtPath 验证：path 删除时，
@@ -66,15 +72,18 @@ func TestResetCountersForPaths_ClearsAllRulesAtPath(t *testing.T) {
 	svc.ResetCountersForPaths(context.Background(), []int64{200})
 
 	require.Eventually(t, func() bool {
-		_, ok1 := limiter.counters[k1]
-		_, ok2 := limiter.counters[k2]
-		_, ok3 := limiter.counters[k3]
-		_, ok4 := limiter.counters[k4]
+		_, ok1 := limiter.counterValue(k1)
+		_, ok2 := limiter.counterValue(k2)
+		_, ok3 := limiter.counterValue(k3)
+		_, ok4 := limiter.counterValue(k4)
 		return !ok1 && !ok2 && !ok3 && !ok4
 	}, 500*time.Millisecond, 5*time.Millisecond, "path=200 的所有 counter 都应被清除")
 
 	// path=300 必须保留
-	require.Equal(t, float64(1), limiter.counters[k5], "path=300 的 counter 不应被波及")
+	{
+		v5, _ := limiter.counterValue(k5)
+		require.Equal(t, float64(1), v5, "path=300 的 counter 不应被波及")
+	}
 }
 
 // TestResetCountersForPaths_EmptyOrZero_NoOp 验证空切片 / 0 path_id 不会触发 ResetPattern。
@@ -90,7 +99,10 @@ func TestResetCountersForPaths_EmptyOrZero_NoOp(t *testing.T) {
 
 	// 给异步 goroutine 一点时间但都应该是 noop。
 	time.Sleep(20 * time.Millisecond)
-	require.Equal(t, float64(1), limiter.counters[keyShared], "空 / 0 / 负 path_id 不应触发任何清理")
+	{
+		vs, _ := limiter.counterValue(keyShared)
+		require.Equal(t, float64(1), vs, "空 / 0 / 负 path_id 不应触发任何清理")
+	}
 }
 
 // TestResetCountersForUser_ZeroOrNegative_NoOp 验证 user_id <= 0 时函数 noop。
@@ -105,7 +117,10 @@ func TestResetCountersForUser_ZeroOrNegative_NoOp(t *testing.T) {
 	svc.ResetCountersForUser(context.Background(), -5)
 
 	time.Sleep(20 * time.Millisecond)
-	require.Equal(t, float64(1), limiter.counters[keyShared])
+	{
+		vs, _ := limiter.counterValue(keyShared)
+		require.Equal(t, float64(1), vs)
+	}
 }
 
 // TestBuildServiceQuotaCounterKeyPatternForUser 验证 pattern 文本格式。
