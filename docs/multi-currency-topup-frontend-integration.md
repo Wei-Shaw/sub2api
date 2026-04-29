@@ -798,7 +798,7 @@ Frontend không cần tự parse hết `message`, nhưng nên ưu tiên `reason`
 
 ## 16. Checklist tích hợp cho frontend app khác
 
-- [ ] Có JWT auth và gửi `Authorization: Bearer <token>`.
+- [ ] Có JWT auth và gửi `Authorization: Bearer ***`.
 - [ ] Gọi `GET /payment/checkout-info` khi vào payment page.
 - [ ] Dùng `allowed_payment_currencies` + `currency_meta` thay vì hardcode currency.
 - [ ] Với balance top-up, gửi `amount_mode: "payment"`.
@@ -940,7 +940,8 @@ export interface CreateOrderResult {
 
 ## 18. Ghi chú bảo mật/đúng nghiệp vụ
 
-- Không đưa FX API key, provider secret, webhook key vào frontend.
+- Không có FX provider/API key phía client; tỷ giá do Admin cấu hình trong backend DB/settings và frontend chỉ đọc qua checkout/quote response.
+- Không đưa provider secret, webhook key, hoặc bất kỳ credential backend nào vào frontend.
 - Frontend không được tự tính amount để credit balance.
 - Không gọi webhook từ frontend.
 - Không tin `manual_fx_rates` ở frontend để tạo order cuối cùng; chỉ dùng preview. Quote/create-order backend mới là nguồn sự thật.
