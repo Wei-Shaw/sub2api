@@ -47,6 +47,13 @@ type PluginContext interface {
 	// the returned client surfaces a clear error from every method
 	// instead of silently no-oping. See settings.go for the full surface.
 	Settings() SettingsClient
+	// Events returns the EventsClient for subscribing to typed host
+	// business events (payment.order.created, gateway.model.invoked,
+	// auth.user.registered, …). The plugin must declare each event in
+	// Manifest.SubscribedEvents; high-frequency events additionally
+	// require a matching capability (events.gateway for
+	// gateway.model.invoked). See events.go for the full surface.
+	Events() EventsClient
 }
 
 // RedisClient is the SDK's go-redis-style Redis client. It mirrors the

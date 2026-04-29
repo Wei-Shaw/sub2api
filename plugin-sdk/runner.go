@@ -382,6 +382,7 @@ func (r *runner) Init(ctx context.Context, req *pb.PluginInitRequest) (*pb.Plugi
 		sqlClient := pb.NewSQLProxyClient(conn)
 		redisClient := pb.NewRedisProxyClient(conn)
 		settingsExtClient := pb.NewSettingsExtensionClient(conn)
+		eventsExtClient := pb.NewEventsExtensionClient(conn)
 		sdkdriver.Register(sqlClient)
 		db, err := sql.Open(sdkdriver.DriverName, "")
 		if err != nil {
@@ -449,6 +450,14 @@ func (r *runner) Init(ctx context.Context, req *pb.PluginInitRequest) (*pb.Plugi
 			r.settingsImpl = realClient
 		}
 
+		// EventsClient is unconditionally wired — Subscribe is harmless
+		// on a host that has not registered EventsExtension (the gRPC
+		// call returns Unimplemented, which the SDK treats as
+		// non-retryable and surfaces to the caller). Plugins that do
+		// not subscribe to anything pay no cost; the client is just a
+		// thin wrapper around a stub.
+		eventsCli := newEventsClient(eventsExtClient, pluginName, r.logger)
+
 		r.ctxImpl = &pluginCtx{
 			db:       db,
 			redis:    &redisAdapter{inner: sdkdriver.NewNamespacedRedisClient(redisClient, r.logger, pluginName, rawAllowed)},
@@ -456,6 +465,7 @@ func (r *runner) Init(ctx context.Context, req *pb.PluginInitRequest) (*pb.Plugi
 			secrets:  secrets,
 			jobs:     jobs,
 			settings: settingsCli,
+			events:   eventsCli,
 		}
 
 		if err := r.plugin.Init(r.ctxImpl); err != nil {
@@ -659,6 +669,7 @@ type pluginCtx struct {
 	secrets  SecretEncryptor
 	jobs     JobsClient
 	settings SettingsClient
+	events   EventsClient
 }
 
 func (c *pluginCtx) DB() *sql.DB              { return c.db }
@@ -675,6 +686,17 @@ func (c *pluginCtx) Settings() SettingsClient {
 // Jobs returns the JobScheduler client. May be nil if the SDK runner did
 // not wire one (older host or jobs feature not yet enabled).
 func (c *pluginCtx) Jobs() JobsClient { return c.jobs }
+
+// Events returns the EventsClient for subscribing to typed host business
+// events. Returns a nilEventsClient when the SDK runner has not wired one
+// (e.g. an older host without EventsExtension); every method on the nil
+// client returns a clear error so misconfiguration is obvious.
+func (c *pluginCtx) Events() EventsClient {
+	if c.events == nil {
+		return nilEventsClient{}
+	}
+	return c.events
+}
 
 // redisAdapter bridges the driver-package RedisClient onto the public
 // pluginsdk.RedisClient interface. Most methods are direct pass-throughs;
