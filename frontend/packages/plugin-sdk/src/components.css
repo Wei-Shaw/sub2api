@@ -86,6 +86,13 @@
     @apply rounded-xl p-2.5;
   }
 
+  /* 图标按钮 - 危险操作 (删除/移除等), 默认灰色, hover 变红 */
+  .btn-icon-danger {
+    @apply rounded-lg text-gray-400 transition-colors;
+    @apply hover:bg-red-50 hover:text-red-600;
+    @apply dark:hover:bg-red-900/20 dark:hover:text-red-400;
+  }
+
   /* ============ 输入框样式 ============ */
   .input {
     @apply w-full rounded-xl px-4 py-2.5 text-sm;
@@ -112,6 +119,11 @@
 
   .input-error-text {
     @apply mt-1 text-xs text-red-500;
+  }
+
+  /* 表单必填星号 (业务含义: 必填项) */
+  .input-required {
+    @apply text-red-500;
   }
 
   /* Hide number input spinner buttons for cleaner UI */
@@ -172,6 +184,18 @@
   .card-footer {
     @apply border-t border-gray-100 dark:border-dark-700;
     @apply px-6 py-4;
+  }
+
+  /* 卡片高亮 - 警告语义 (例如必填字段未填的小卡片) */
+  .card-highlight-danger {
+    @apply border-red-400 bg-red-50;
+    @apply dark:border-red-500 dark:bg-red-950/20;
+  }
+
+  /* 卡片高亮 - 中性 (默认未高亮状态) */
+  .card-highlight-neutral {
+    @apply border-gray-200 bg-white;
+    @apply dark:border-dark-500 dark:bg-dark-700;
   }
 
   /* ============ 统计卡片 ============ */
