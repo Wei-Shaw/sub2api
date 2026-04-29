@@ -1227,7 +1227,7 @@ REDACTED
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
 REDACTED
-	apiURL := strings.TrimSuffix(normalizedBaseURL, "/") + "/v1/images/generations"
+	apiURL := buildOpenAIImagesURL(normalizedBaseURL, openAIImagesGenerationsEndpoint)
 
 	// Set SSE headers
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
