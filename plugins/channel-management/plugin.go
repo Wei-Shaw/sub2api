@@ -187,9 +187,11 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 					Labels:  pluginsdk.Labels("渠道管理", "Channel Management"),
 					Section: pluginsdk.SectionAdmin,
 					// V5/W7 Placement DSL — 把渠道管理放在 admin/main 桶内
-					// /admin/groups (group=主菜单, host order≈3) 之后, 在统计
-					// /admin/announcements 之前; 65 留出空间给后续插件插入。
-					Placement:     &pluginsdk.Placement{Group: pluginsdk.PlacementAdminMain, Order: 65},
+					// /admin/accounts (host placementOrder=60) 之后, 在
+					// /admin/announcements (placementOrder=80) 之前。host 给
+					// base item 显式 placementOrder 后, 70 让"渠道管理"直接
+					// 相邻于"账号管理", 形成核心业务相邻的菜单顺序。
+					Placement:     &pluginsdk.Placement{Group: pluginsdk.PlacementAdminMain, Order: 70},
 					SortOrder:     200,
 					RequiresAdmin: true,
 					Children: []pluginsdk.MenuItemDecl{

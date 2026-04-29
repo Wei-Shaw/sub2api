@@ -206,6 +206,16 @@ interface NavItem {
    * `<section>/end` inside mergeByPlacement.
    */
   group?: string
+  /**
+   * Bug C 修复: host base item 的离散排序权重，让插件能精细插入。
+   * 每条 base 项预留 10 的 step (10/20/30...), 插件 manifest 的
+   * Placement.Order 可以落在缝隙里 (如 70 就排在 accounts=60 与
+   * announcements=80 之间)。未声明则 mergeByPlacement 退回到原 idx。
+   *
+   * TODO: 将这些离散值抽取到 frontend/src/plugins/anchors.ts 的命名常量
+   * (NAV_ADMIN_ACCOUNTS_ORDER 等), plugin 通过 import 引用而非硬编码数字。
+   */
+  placementOrder?: number
 }
 
 // resolvePluginLabel 选择菜单项的显示文本,优先级：
@@ -294,7 +304,9 @@ function mergeByPlacement(
     annotated.push({
       ...item,
       group: item.group || fallback,
-      __order: idx, // host 项保持声明顺序
+      // Bug C 修复: host 项支持显式 placementOrder, 否则退回 idx 保持
+      // 声明顺序 (兼容未声明 placementOrder 的旧 baseItems)。
+      __order: item.placementOrder ?? idx,
       __seq: idx,
     })
   })
@@ -724,11 +736,13 @@ const ChevronDownIcon = {
 const userNavItems = computed((): NavItem[] => {
   // V5/W7 Placement DSL: host 项硬编码 group 字段, 插件项通过 mergeByPlacement
   // 按 placement_group 合并; 自定义菜单与插件同属 user/end 末尾段。
+  // Bug C: 每条 base 项预留 step=10, 插件可在缝隙里插入 (placementOrder 25,
+  //         55, 85 等). 同 group 内 __order 决定顺序。
   const baseItems: NavItem[] = [
-    { path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon, group: 'user/main' },
-    { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon, group: 'user/main' },
-    { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true, group: 'user/main' },
-    { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, group: 'user/main' },
+    { path: '/dashboard', label: t('nav.dashboard'), icon: DashboardIcon, group: 'user/main', placementOrder: 10 },
+    { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon, group: 'user/main', placementOrder: 20 },
+    { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true, group: 'user/main', placementOrder: 30 },
+    { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, group: 'user/main', placementOrder: 40 },
     ...(appStore.cachedPublicSettings?.payment_enabled
       ? [
           {
@@ -737,6 +751,7 @@ const userNavItems = computed((): NavItem[] => {
             icon: RechargeSubscriptionIcon,
             hideInSimpleMode: true,
             group: 'user/main',
+            placementOrder: 60,
           } as NavItem,
         ]
       : []),
@@ -748,17 +763,22 @@ const userNavItems = computed((): NavItem[] => {
             icon: OrderListIcon,
             hideInSimpleMode: true,
             group: 'user/main',
+            placementOrder: 70,
           } as NavItem,
         ]
       : []),
-    { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true, group: 'user/end' },
-    { path: '/profile', label: t('nav.profile'), icon: UserIcon, group: 'user/end' },
-    ...customMenuItemsForUser.value.map((item): NavItem => ({
+    { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true, group: 'user/end', placementOrder: 20 },
+    { path: '/profile', label: t('nav.profile'), icon: UserIcon, group: 'user/end', placementOrder: 30 },
+    ...customMenuItemsForUser.value.map((item, idx): NavItem => ({
       path: `/custom/${item.id}`,
       label: item.label,
       icon: null,
       iconSvg: item.icon_svg,
       group: 'user/end',
+      // 自定义菜单永远跟在固有 user/end 项之后 (>=100), 但相互之间保持
+      // 用户配置的 sort_order 顺序 (这里用 idx, customMenuItemsForUser 已按
+      // sort_order 排序)。
+      placementOrder: 100 + idx,
     })),
   ]
   const items = mergeByPlacement(baseItems, pluginUserNavItems.value, 'user')
@@ -771,10 +791,11 @@ const pluginUserNavItems = computed(() => getPluginMenuItems('user'))
 
 // Personal navigation items (for admin's "My Account" section, without Dashboard)
 const personalNavItems = computed((): NavItem[] => {
+  // Bug C: 与 userNavItems 同步; 没有 dashboard 所以从 placementOrder=20 起步。
   const baseItems: NavItem[] = [
-    { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon, group: 'user/main' },
-    { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true, group: 'user/main' },
-    { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, group: 'user/main' },
+    { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon, group: 'user/main', placementOrder: 20 },
+    { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true, group: 'user/main', placementOrder: 30 },
+    { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, group: 'user/main', placementOrder: 40 },
     ...(appStore.cachedPublicSettings?.payment_enabled
       ? [
           {
@@ -783,6 +804,7 @@ const personalNavItems = computed((): NavItem[] => {
             icon: RechargeSubscriptionIcon,
             hideInSimpleMode: true,
             group: 'user/main',
+            placementOrder: 60,
           } as NavItem,
         ]
       : []),
@@ -794,17 +816,19 @@ const personalNavItems = computed((): NavItem[] => {
             icon: OrderListIcon,
             hideInSimpleMode: true,
             group: 'user/main',
+            placementOrder: 70,
           } as NavItem,
         ]
       : []),
-    { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true, group: 'user/end' },
-    { path: '/profile', label: t('nav.profile'), icon: UserIcon, group: 'user/end' },
-    ...customMenuItemsForUser.value.map((item): NavItem => ({
+    { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true, group: 'user/end', placementOrder: 20 },
+    { path: '/profile', label: t('nav.profile'), icon: UserIcon, group: 'user/end', placementOrder: 30 },
+    ...customMenuItemsForUser.value.map((item, idx): NavItem => ({
       path: `/custom/${item.id}`,
       label: item.label,
       icon: null,
       iconSvg: item.icon_svg,
       group: 'user/end',
+      placementOrder: 100 + idx,
     })),
   ]
   const items = mergeByPlacement(baseItems, pluginUserNavItems.value, 'user')
@@ -830,21 +854,27 @@ const adminNavItems = computed((): NavItem[] => {
   // V5/W7 Placement DSL: 业务主菜单走 admin/main, 系统类(/admin/plugins、
   // /admin/usage) 走 admin/system, 系统设置 + 自定义菜单走 admin/end.
   // mergeByPlacement 把插件项按 placement_group 插入对应桶。
+  // Bug C 修复: 每条 base 项预留 step≈10 的离散 placementOrder, 让插件能精细
+  // 插入。channel-management 插件以 70 落在 accounts (60) 与 announcements (80)
+  // 之间, 形成"账号管理 → 渠道管理 → 公告"的核心业务相邻顺序。
+  //
+  // TODO: 把这些数字抽到 frontend/src/plugins/anchors.ts 的命名常量
+  // (NAV_ADMIN_DASHBOARD_ORDER=10 等), 让插件 import 引用而非硬编码数字。
   const baseItems: NavItem[] = [
-    { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon, group: 'admin/main' },
+    { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon, group: 'admin/main', placementOrder: 10 },
     ...(adminSettingsStore.opsMonitoringEnabled
-      ? [{ path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, group: 'admin/main' } as NavItem]
+      ? [{ path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, group: 'admin/main', placementOrder: 20 } as NavItem]
       : []),
-    { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true, group: 'admin/main' },
-    { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true, group: 'admin/main' },
+    { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true, group: 'admin/main', placementOrder: 30 },
+    { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true, group: 'admin/main', placementOrder: 40 },
     // /admin/channels 入口由 channel-management 插件 manifest 提供 (含 渠道定价 + 渠道监控 子菜单).
-    // 插件未启用时不显示, host 不再硬编码副本.
-    { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, group: 'admin/main' },
-    { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon, group: 'admin/main' },
-    { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon, group: 'admin/main' },
-    { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon, group: 'admin/main' },
-    { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true, group: 'admin/main' },
-    { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true, group: 'admin/main' },
+    // 插件未启用时不显示, host 不再硬编码副本. 插件用 placementOrder=70 排在 accounts(60) 与 announcements(80) 之间.
+    { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, group: 'admin/main', placementOrder: 50 },
+    { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon, group: 'admin/main', placementOrder: 60 },
+    { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon, group: 'admin/main', placementOrder: 80 },
+    { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon, group: 'admin/main', placementOrder: 90 },
+    { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true, group: 'admin/main', placementOrder: 100 },
+    { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true, group: 'admin/main', placementOrder: 110 },
     ...(adminSettingsStore.paymentEnabled
       ? [
           {
@@ -853,6 +883,7 @@ const adminNavItems = computed((): NavItem[] => {
             icon: OrderIcon,
             hideInSimpleMode: true,
             group: 'admin/main',
+            placementOrder: 120,
             children: [
               { path: '/admin/orders/dashboard', label: t('nav.paymentDashboard'), icon: ChartIcon },
               { path: '/admin/orders', label: t('nav.orderManagement'), icon: OrderIcon },
@@ -861,12 +892,13 @@ const adminNavItems = computed((): NavItem[] => {
           } as NavItem,
         ]
       : []),
-    { path: '/admin/plugins', label: t('nav.plugins'), icon: PluginIcon, hideInSimpleMode: true, group: 'admin/system' },
-    { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon, group: 'admin/system' },
+    { path: '/admin/plugins', label: t('nav.plugins'), icon: PluginIcon, hideInSimpleMode: true, group: 'admin/system', placementOrder: 10 },
+    { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon, group: 'admin/system', placementOrder: 20 },
   ]
 
   // 简单模式下,基础项按 mergeByPlacement 合并插件,再在末尾补充 API 密钥和
-  // 系统设置 + 自定义菜单 (这两类不参与桶排序, 始终位于尾部)。
+  // 系统设置 + 自定义菜单 (这两类不参与桶排序, 始终位于尾部, 用 push 而非
+  // 重新跑一次 mergeByPlacement, 保持原有视觉与单元测试断言)。
   if (authStore.isSimpleMode) {
     const visiblePlugins = pluginAdminNavItems.value.filter((pl) => !pl.hideInSimpleMode)
     const visibleBase = baseItems.filter(item => !item.hideInSimpleMode)
