@@ -669,6 +669,49 @@ var legacyCapabilityRenames = map[string]string{
 	"events.gateway":     "events.subscribe.gateway",
 }
 
+// canonicalToLegacy is the reverse of legacyCapabilityRename. When the host
+// pushes the approved capability list to the plugin via PluginInitRequest,
+// we expand each canonical name with its legacy alias (if any) so plugin
+// code that still hardcodes the legacy string ("redis_raw_keys" etc.) sees
+// itself as granted. Internal host registries (route gate, SQL gate, redis
+// raw key gate) only ever see the canonical form.
+var canonicalToLegacy = map[string]string{
+	"redis.raw":                "redis_raw_keys",
+	"outbound.http":            "safe_outbound_http",
+	"secrets.encrypt":          "secret_encryption",
+	"jobs.register":            "job_scheduler",
+	"settings.own.read":        "settings_extension",
+	"events.subscribe.gateway": "events.gateway",
+}
+
+// expandWithLegacyAliases returns the input slice augmented with every
+// legacy alias listed in canonicalToLegacy, deduplicated. Order: canonical
+// names first in input order, then aliases appended at the end. Used only
+// at the PluginInitRequest boundary — registry stores canonical only.
+func expandWithLegacyAliases(canonical []string) []string {
+	if len(canonical) == 0 {
+		return canonical
+	}
+	out := make([]string, 0, len(canonical)*2)
+	seen := make(map[string]struct{}, len(canonical)*2)
+	for _, c := range canonical {
+		if _, dup := seen[c]; dup {
+			continue
+		}
+		seen[c] = struct{}{}
+		out = append(out, c)
+	}
+	for _, c := range canonical {
+		if legacy, has := canonicalToLegacy[c]; has {
+			if _, dup := seen[legacy]; !dup {
+				seen[legacy] = struct{}{}
+				out = append(out, legacy)
+			}
+		}
+	}
+	return out
+}
+
 // normalizeCapability returns the canonical dotted-lowercase capability name
 // for a possibly-legacy input. When the input is a known legacy alias the
 // returned `renamed` flag is true and `canonical` carries the new name; the
@@ -1072,7 +1115,7 @@ func (m *PluginManager) spawnAndConnect(parentCtx context.Context, inst *PluginI
 	initResp, initErr := lifecycle.Init(initCtx, &pluginsdk.PluginInitRequest{
 		SdkAddress:       m.sdkAddr,
 		PluginName:       inst.Name,
-		Capabilities:     approvedCaps,
+		Capabilities:     expandWithLegacyAliases(approvedCaps),
 		OutboundDefaults: m.buildOutboundDefaults(),
 	})
 	cancelInit()
