@@ -54,8 +54,14 @@ const (
 // HelloPlugin holds the resources the SDK injects via Init. The pluginCtx
 // pointer is stored atomically so HTTP handlers can read it without a mutex
 // even when they race with Init (in practice Init always finishes first).
+//
+// eventsCtx / eventsCancel scope the EventsExtension subscribe loop to the
+// plugin lifetime: Shutdown cancels the context so the SDK's subscribe
+// goroutine can exit cleanly before the gRPC connection tears down.
 type HelloPlugin struct {
-	ctx atomic.Pointer[pluginsdk.PluginContext]
+	ctx          atomic.Pointer[pluginsdk.PluginContext]
+	eventsCtx    context.Context
+	eventsCancel context.CancelFunc
 }
 
 // pluginRoutePrefix is the path prefix the core gateway uses when proxying
@@ -131,6 +137,14 @@ func (p *HelloPlugin) Manifest() *pluginsdk.Manifest {
 			Schema:   helloWorldSettingsSchema,
 			Defaults: helloWorldSettingsDefaults,
 		},
+		// Phase A EventsExtension demo: hello-world subscribes to
+		// auth.user.registered so a fresh registration produces a log
+		// line in the host's plugin output. The handler is intentionally
+		// trivial — a real plugin would call out to email or Slack via
+		// SafeHTTPClient. We deliberately skip gateway.model.invoked here
+		// because that event requires the events.gateway capability and
+		// firing on every gateway request would drown the demo's logs.
+		SubscribedEvents: []string{pluginsdk.EventTypeAuthUserRegistered},
 	}
 }
 
@@ -140,14 +154,60 @@ func (p *HelloPlugin) Manifest() *pluginsdk.Manifest {
 func (p *HelloPlugin) Init(ctx pluginsdk.PluginContext) error {
 	p.ctx.Store(&ctx)
 	ctx.Logger().Info("hello-world plugin initialised", "version", pluginVersion)
+
+	// Phase A EventsExtension demo: subscribe to auth.user.registered.
+	// Subscribe spawns its own goroutine and reconnects on failure with
+	// exponential backoff (1s → 2s → 4s → 8s → 30s), so we just call
+	// it once and let the SDK manage the receive loop.
+	p.eventsCtx, p.eventsCancel = context.WithCancel(context.Background())
+	if err := ctx.Events().Subscribe(
+		p.eventsCtx,
+		[]string{pluginsdk.EventTypeAuthUserRegistered},
+		p.handleAuthUserRegistered,
+	); err != nil {
+		// Non-fatal: a misconfigured host (no EventsExtension wired up)
+		// should not block the plugin from booting. Log loudly so
+		// operators can tell the demo handler is silent on purpose.
+		ctx.Logger().Warn("hello-world: event subscribe failed", "error", err)
+	}
+
 	return nil
 }
 
 func (p *HelloPlugin) Shutdown() error {
+	if p.eventsCancel != nil {
+		p.eventsCancel()
+	}
 	if c := p.ctx.Load(); c != nil {
 		(*c).Logger().Info("hello-world plugin shutting down")
 	}
 	return nil
+}
+
+// handleAuthUserRegistered is the EventsExtension callback. It is invoked
+// once per delivered event on the SDK's subscribe goroutine, so we keep
+// the body trivial — anything that takes more than a couple of hundred
+// milliseconds should fork a goroutine to avoid back-pressuring the host
+// (which times out sends after 2s and closes the stream on overflow).
+func (p *HelloPlugin) handleAuthUserRegistered(ctx context.Context, evt *pluginsdk.HostEvent) {
+	pctx := p.context()
+	if pctx == nil {
+		return
+	}
+	reg := evt.GetAuthUserRegistered()
+	if reg == nil {
+		// Defensive: SubscribedEvents should narrow the stream to this
+		// payload, but the host could still send a fan-out event with
+		// an empty oneof during a schema migration.
+		return
+	}
+	pctx.Logger().Info("hello-world: user registered",
+		"event_id", evt.GetEventId(),
+		"user_id", reg.GetUserId(),
+		"email", reg.GetEmail(),
+		"source", reg.GetSource(),
+		"referrer_id", reg.GetReferrerId(),
+	)
 }
 
 // RegisterHTTP wires the three smoke-test routes onto the SDK-managed mux.
