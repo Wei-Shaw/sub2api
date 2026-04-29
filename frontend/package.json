@@ -13,7 +13,8 @@
     "typecheck": "vue-tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "lint:plugins": "eslint --no-eslintrc --config ../plugins/.eslintrc.cjs --resolve-plugins-relative-to . --ext .vue ../plugins"
   },
   "dependencies": {
     "@lobehub/icons": "^4.0.2",
@@ -49,6 +50,7 @@
     "@vue/test-utils": "^2.4.6",
     "autoprefixer": "^10.4.16",
     "eslint": "^8.57.0",
+    "eslint-plugin-local-rules": "^3.0.2",
     "eslint-plugin-vue": "^9.25.0",
     "jsdom": "^24.1.3",
     "postcss": "^8.4.32",
