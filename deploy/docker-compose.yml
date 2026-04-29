@@ -11,6 +11,10 @@
 # No Setup Wizard needed - the system auto-initializes on first run.
 # =============================================================================
 
+# 固定 compose project name，避免依赖 cwd（默认是目录名 deploy）。
+# 对齐已有正式容器的 project=sub2api；beta 部署仍可用 -p sub2api-beta override。
+name: sub2api
+
 services:
   # ===========================================================================
   # Sub2API Application
