@@ -807,6 +807,195 @@ instead of rewriting history.
 
 ---
 
+## §11 Subscribing to host events
+
+The Phase A `EventsExtension` lets a plugin react to typed business
+events emitted by the host (payments, gateway invocations, user
+registration, account rate limits). Worked example:
+`plugins/hello-world/main.go:147,160-170,187-205`.
+
+### §11.1 Concept
+
+- **At-most-once** delivery. The host does not persist or replay
+  events; if your plugin is offline when an event fires, you will
+  never see it. Reconciliation that needs replay must use a
+  Job-driven pull instead (see §5).
+- **256-slot ring buffer per subscriber** with **drop-oldest** on
+  overflow. The host increments `dropped_since_last_send` on the next
+  event so your handler can tell the SDK is behind.
+- **2 s send timeout.** If a handler stalls and back-pressures the
+  ring, the host closes the stream; the SDK then reconnects with
+  exponential backoff.
+- **Reconnect schedule:** `1s → 2s → 4s → 8s → 30s`, ±10 % jitter
+  (see `plugin-sdk/events.go` constants).
+
+The SDK itself does not retry handler logic — once `EventHandler`
+returns the event is gone. If you need durable processing, push the
+event onto your own Redis list / SQL queue inside the handler and
+process it from a Job.
+
+### §11.2 Subscribing
+
+Two steps. First, declare the events in your manifest:
+
+```go
+return &pluginsdk.Manifest{
+    Name: "my-plugin",
+    // ...
+    SubscribedEvents: []string{
+        pluginsdk.EventTypePaymentOrderFulfilled,
+        pluginsdk.EventTypeAuthUserRegistered,
+    },
+}
+```
+
+The host validates the manifest at install time and rejects
+`Subscribe` calls for types not on this list with `InvalidArgument`.
+
+Second, call `Events().Subscribe` from `Init`:
+
+```go
+func (p *MyPlugin) Init(ctx pluginsdk.PluginContext) error {
+    p.eventsCtx, p.eventsCancel = context.WithCancel(context.Background())
+    return ctx.Events().Subscribe(
+        p.eventsCtx,
+        []string{pluginsdk.EventTypePaymentOrderFulfilled},
+        p.onPaymentFulfilled,
+    )
+}
+
+func (p *MyPlugin) onPaymentFulfilled(ctx context.Context, evt *pluginsdk.HostEvent) {
+    payload := evt.GetPaymentOrderFulfilled()
+    if payload == nil {
+        return // defensive: schema migration could send empty oneof
+    }
+    // ... business logic ...
+}
+```
+
+Notes:
+
+- `Subscribe` returns immediately. It spins up its own goroutine for
+  the receive loop; you do not need to wrap the call in a `go`.
+- The handler runs **serially per subscription** (one goroutine per
+  `Subscribe` call). If you need to do non-trivial work, fork a
+  goroutine inside the handler. Do **not** retain the `*HostEvent`
+  pointer past the handler return.
+- Cancel the context (typically from `Shutdown`) to stop the loop
+  cleanly before the SDK tears down the gRPC connection.
+- Multiple `Subscribe` calls are fine: each gets its own stream and
+  goroutine. Use this when you want separate handlers for separate
+  event types.
+
+### §11.3 Event schemas
+
+All event types and field names are declared in
+`plugin-sdk/proto/sdk.proto`; the SDK exposes Go aliases in
+`plugin-sdk/events.go` (`PaymentOrderCreated`, `GatewayModelInvoked`,
+…) plus `EventType*` string constants for use in `SubscribedEvents`.
+
+| Event type | Payload getter | Use case |
+|---|---|---|
+| `payment.order.created` | `GetPaymentOrderCreated()` | invoice numbering, anti-fraud first-pass |
+| `payment.order.fulfilled` | `GetPaymentOrderFulfilled()` | receipt email, downstream ledger sync |
+| `gateway.model.invoked` | `GetGatewayModelInvoked()` | usage-based billing, custom analytics |
+| `auth.user.registered` | `GetAuthUserRegistered()` | welcome email, referral credit, CRM push |
+| `account.rate_limit.triggered` | `GetAccountRateLimitTriggered()` | ops alerting, automatic account swap |
+
+Key fields per payload:
+
+- **`PaymentOrderCreated`** — `OrderId`, `OutTradeNo`, `UserId`,
+  `AmountCents`, `PlanId` (empty for non-subscription),
+  `ProviderKey` (`stripe` / `easypay` / …), `BizType`
+  (`balance` / `subscription`), `CreatedAtUnixNano`.
+- **`PaymentOrderFulfilled`** — `OrderId`, `UserId`, `AmountCents`,
+  `BizType`, `AuditAction` (matches the row in `audit_log`),
+  `FulfilledAtUnixNano`.
+- **`GatewayModelInvoked`** — `RequestId`, `UserId`, `AccountId`,
+  `Platform` (`antigravity` / `anthropic` / `openai` / `gemini`),
+  `Model`, `PromptTokens`, `CompletionTokens`, `StatusCode`
+  (upstream HTTP), `LatencyMs`, `StartedAtUnixNano`.
+- **`AuthUserRegistered`** — `UserId`, `Email`, `Source`
+  (`register` / `oauth` / …), `ReferrerId` (0 if none),
+  `RegisteredAtUnixNano`.
+- **`AccountRateLimitTriggered`** — `AccountId`, `Platform`, `Model`
+  (empty if account-wide), `Scope` (`account` / `model` / …),
+  `ResetAtUnixNano`, `Reason`.
+
+Event envelope fields (on `HostEvent` itself) are useful too:
+`GetEventId()` for de-duplication if you write to your own queue,
+`GetTimestampNanos()` for ordering, and
+`GetDroppedSinceLastSend()` (see §11.6).
+
+### §11.4 High-frequency events require a capability
+
+`gateway.model.invoked` fires on **every** gateway request and can
+saturate a slow handler in seconds. To prevent accidental
+subscription, the host gates it behind the `events.gateway`
+capability:
+
+```go
+return &pluginsdk.Manifest{
+    Capabilities: []string{"events.gateway"},
+    SubscribedEvents: []string{pluginsdk.EventTypeGatewayModelInvoked},
+}
+```
+
+Subscribing without the capability returns
+`status.Code(err) == codes.PermissionDenied` synchronously from
+`Subscribe`. The capability is opt-in only — the operator can grant
+it from the plugin install screen. Plugins should drop the event into
+a buffered channel or Redis stream and process asynchronously rather
+than do anything blocking inside the handler.
+
+### §11.5 Error handling
+
+`Subscribe` returns errors in two distinct shapes:
+
+| Source | Behaviour |
+|---|---|
+| Synchronous `error` from `Subscribe` | Setup failure: nil/empty inputs, `PermissionDenied`, `InvalidArgument`, or `Unimplemented`. Operator action required. |
+| Internal log line, no return | Stream-level transport drop. The SDK reconnects with backoff; you see `events stream lost; reconnecting` in the host log. |
+
+The SDK only stops the loop on a non-retryable status code
+(`PermissionDenied` / `InvalidArgument` / `Unimplemented`) or on ctx
+cancel. Everything else (EOF, `Unavailable`, network errors) is
+retried indefinitely.
+
+### §11.6 Debugging
+
+Three log lines are useful when troubleshooting:
+
+- `events stream lost; reconnecting` — emitted by the SDK at WARN.
+  Look for `error` and `backoff` attributes; sustained reconnects
+  point to a host crash loop or a slow handler.
+- `host dropped events before this delivery; consider faster
+  handlers or fewer subscriptions` — emitted by the SDK at WARN
+  when `dropped_since_last_send > 0`. Action: profile your handler
+  or batch work onto a goroutine.
+- `plugin event dropped` / `event send timeout` — emitted by the
+  **host** at WARN when its 256-slot buffer overflows or the 2 s
+  send timeout fires. Look for `plugin` + `event_type` to identify
+  the slow subscriber.
+
+### §11.7 What is NOT supported
+
+- **Filter / mutation hooks** (running before the host commits state
+  and rejecting / rewriting the action). Phase A is fire-and-forget
+  notification only. If you need to block a registration or rewrite
+  a payment, register an HTTP middleware via the gateway plugin
+  surface and run your logic there — the host calls those
+  synchronously.
+- **Replay / historical events.** The host does not retain a log;
+  events that fire while you are offline are lost. Use a
+  `Jobs().Register` interval that polls the relevant SQL table for
+  reconciliation flows.
+- **Cross-plugin events.** Plugins receive only host-emitted events.
+  If two plugins need to coordinate, publish through Redis Pub/Sub
+  with a shared key (requires `redis_raw_keys`).
+
+---
+
 ## Where to go next
 
 - `docs/plugin-architecture/DESIGN.md` — system-wide design rationale
