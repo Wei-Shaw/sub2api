@@ -60,8 +60,8 @@ type wildcardEnvelope[T any] struct {
 
 // ChannelMeta 是 K1 解码后供网关使用的精简元信息。
 //
-// 字段语义与 service.Channel 中的同名字段一致；不携带 GroupIDs / ModelPricing /
-// ModelMapping（它们存放在其它 key 中）。
+// 字段语义与 channel-management 插件 service.Channel 中的同名字段一致；
+// 不携带 GroupIDs / ModelPricing / ModelMapping（它们存放在其它 key 中）。
 type ChannelMeta struct {
 	ChannelID          int64
 	BillingModelSource string
@@ -149,8 +149,9 @@ func (r *ChannelCacheReader) GetChannelMeta(ctx context.Context, groupID int64, 
 	}, true
 }
 
-// ResolveChannelMapping 与 ChannelService.ResolveChannelMapping 行为对齐:
-// 返回映射后的模型名 / 渠道 ID / 计费模型来源。
+// ResolveChannelMapping 通过 K1 meta + K4/K5 mapping 返回映射后的模型名 /
+// 渠道 ID / 计费模型来源。该方法是核心 Gateway 侧的入口, 与 channel-management
+// 插件 service 层的同名方法行为对齐。
 //
 // 缓存缺失时返回 ChannelMappingResult{MappedModel: model},网关随后按"无渠道"
 // 路径继续。
@@ -182,9 +183,8 @@ func (r *ChannelCacheReader) ResolveChannelMapping(
 	return result
 }
 
-// ResolveChannelMappingAndRestrict 与 ChannelService 同名方法对齐。
-// 当前实现 restricted 始终返回 false（与 service 层保持一致,限制检查已下
-// 沉到调度阶段）。
+// ResolveChannelMappingAndRestrict 与 channel-management 插件 service 层的
+// 同名方法对齐。当前实现 restricted 始终返回 false（限制检查已下沉到调度阶段）。
 func (r *ChannelCacheReader) ResolveChannelMappingAndRestrict(
 	ctx context.Context, groupID *int64, platform, model string,
 ) (ChannelMappingResult, bool) {

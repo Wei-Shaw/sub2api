@@ -1,14 +1,11 @@
 package service
 
 import (
-	"context"
-	"fmt"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
-	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
-	"sort"
 	"strings"
 	"time"
+
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // BillingMode 计费模式
@@ -35,27 +32,10 @@ const (
 	BillingModelSourceChannelMapped = "channel_mapped"
 )
 
-// Channel 渠道实体
-type Channel struct {
-	ID                 int64
-	Name               string
-	Description        string
-	Status             string
-	BillingModelSource string // "requested", "upstream", or "channel_mapped"
-	RestrictModels     bool   // 是否限制模型（仅允许定价列表中的模型）
-	Features           string // 渠道特性描述（JSON 数组），用于支付页面展示
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-
-	// 关联的分组 ID 列表
-	GroupIDs []int64
-	// 模型定价列表（每条含 Platform 字段）
-	ModelPricing []ChannelModelPricing
-	// 渠道级模型映射（按平台分组：platform → {src→dst}）
-	ModelMapping map[string]map[string]string
-}
-
-// ChannelModelPricing 渠道模型定价条目
+// ChannelModelPricing 渠道模型定价条目。
+// 渠道管理逻辑已迁移到 plugins/channel-management/；核心只保留这份定价结构作为
+// PricingOverrideCache 翻译层的本地 owner（见 channel_cache_reader.go），
+// 以便 Gateway 热路径读取缓存而无需 import plugin 代码。
 type ChannelModelPricing struct {
 	ID               int64
 	ChannelID        int64
@@ -88,28 +68,6 @@ type PricingInterval struct {
 	SortOrder       int
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
-}
-
-// IsActive 判断渠道是否启用
-func (c *Channel) IsActive() bool {
-	return c.Status == StatusActive
-}
-
-// GetModelPricing 根据模型名查找渠道定价，未找到返回 nil。
-// 精确匹配，大小写不敏感。返回值拷贝，不污染缓存。
-func (c *Channel) GetModelPricing(model string) *ChannelModelPricing {
-	modelLower := strings.ToLower(model)
-
-	for i := range c.ModelPricing {
-		for _, m := range c.ModelPricing[i].Models {
-			if strings.ToLower(m) == modelLower {
-				cp := c.ModelPricing[i].Clone()
-				return &cp
-			}
-		}
-	}
-
-	return nil
 }
 
 // FindMatchingInterval 在区间列表中查找匹配 totalTokens 的区间。
@@ -153,123 +111,6 @@ func (p ChannelModelPricing) Clone() ChannelModelPricing {
 		copy(cp.Intervals, p.Intervals)
 	}
 	return cp
-}
-
-// Clone 返回 Channel 的深拷贝
-func (c *Channel) Clone() *Channel {
-	if c == nil {
-		return nil
-	}
-	cp := *c
-	if c.GroupIDs != nil {
-		cp.GroupIDs = make([]int64, len(c.GroupIDs))
-		copy(cp.GroupIDs, c.GroupIDs)
-	}
-	if c.ModelPricing != nil {
-		cp.ModelPricing = make([]ChannelModelPricing, len(c.ModelPricing))
-		for i := range c.ModelPricing {
-			cp.ModelPricing[i] = c.ModelPricing[i].Clone()
-		}
-	}
-	if c.ModelMapping != nil {
-		cp.ModelMapping = make(map[string]map[string]string, len(c.ModelMapping))
-		for platform, mapping := range c.ModelMapping {
-			inner := make(map[string]string, len(mapping))
-			for k, v := range mapping {
-				inner[k] = v
-			}
-			cp.ModelMapping[platform] = inner
-		}
-	}
-	return &cp
-}
-
-// ValidateIntervals 校验区间列表的合法性。
-// 规则：MinTokens >= 0；MaxTokens 若非 nil 则 > 0 且 > MinTokens；
-// 所有价格字段 >= 0；区间按 MinTokens 排序后无重叠（(min, max] 语义）；
-// 无界区间（MaxTokens=nil）必须是最后一个。间隙允许（回退默认价格）。
-func ValidateIntervals(intervals []PricingInterval) error {
-	if len(intervals) == 0 {
-		return nil
-	}
-	sorted := make([]PricingInterval, len(intervals))
-	copy(sorted, intervals)
-	sort.Slice(sorted, func(i, j int) bool {
-		return sorted[i].MinTokens < sorted[j].MinTokens
-	})
-
-	for i := range sorted {
-		if err := validateSingleInterval(&sorted[i], i); err != nil {
-			return err
-		}
-	}
-	return validateIntervalOverlap(sorted)
-}
-
-// validateSingleInterval 校验单个区间的字段合法性
-func validateSingleInterval(iv *PricingInterval, idx int) error {
-	if iv.MinTokens < 0 {
-		return fmt.Errorf("interval #%d: min_tokens (%d) must be >= 0", idx+1, iv.MinTokens)
-	}
-	if iv.MaxTokens != nil {
-		if *iv.MaxTokens <= 0 {
-			return fmt.Errorf("interval #%d: max_tokens (%d) must be > 0", idx+1, *iv.MaxTokens)
-		}
-		if *iv.MaxTokens <= iv.MinTokens {
-			return fmt.Errorf("interval #%d: max_tokens (%d) must be > min_tokens (%d)",
-				idx+1, *iv.MaxTokens, iv.MinTokens)
-		}
-	}
-	return validateIntervalPrices(iv, idx)
-}
-
-// validateIntervalPrices 校验区间内所有价格字段 >= 0
-func validateIntervalPrices(iv *PricingInterval, idx int) error {
-	prices := []struct {
-		name string
-		val  *float64
-	}{
-		{"input_price", iv.InputPrice},
-		{"output_price", iv.OutputPrice},
-		{"cache_write_price", iv.CacheWritePrice},
-		{"cache_read_price", iv.CacheReadPrice},
-		{"per_request_price", iv.PerRequestPrice},
-	}
-	for _, p := range prices {
-		if p.val != nil && *p.val < 0 {
-			return fmt.Errorf("interval #%d: %s must be >= 0", idx+1, p.name)
-		}
-	}
-	return nil
-}
-
-// validateIntervalOverlap 校验排序后的区间列表无重叠，且无界区间在最后
-func validateIntervalOverlap(sorted []PricingInterval) error {
-	for i, iv := range sorted {
-		// 无界区间必须是最后一个
-		if iv.MaxTokens == nil && i < len(sorted)-1 {
-			return fmt.Errorf("interval #%d: unbounded interval (max_tokens=null) must be the last one",
-				i+1)
-		}
-		if i == 0 {
-			continue
-		}
-		prev := sorted[i-1]
-		// 检查重叠：前一个区间的上界 > 当前区间的下界则重叠
-		// (min, max] 语义：prev 覆盖 (prev.Min, prev.Max]，cur 覆盖 (cur.Min, cur.Max]
-		if prev.MaxTokens == nil || *prev.MaxTokens > iv.MinTokens {
-			return fmt.Errorf("interval #%d and #%d overlap: prev max=%s > cur min=%d",
-				i, i+1, formatMaxTokensLabel(prev.MaxTokens), iv.MinTokens)
-		}
-	}
-	return nil
-}
-
-func formatMaxTokensLabel(max *int) string {
-	if max == nil {
-		return "∞"
-	}
-	return fmt.Sprintf("%d", *max)
 }
 
 // ChannelUsageFields 渠道相关的使用记录字段（嵌入到各平台的 RecordUsageInput 中）
@@ -318,36 +159,6 @@ func (r ChannelMappingResult) ToUsageFields(reqModel, upstreamModel string) Chan
 	}
 }
 
-// ChannelService 渠道服务存根。
-// 渠道管理已迁移到 plugins/channel-management/。此存根仅用于保持核心代码编译通过，
-// 调用任何方法都返回零值（无渠道、无映射、无限制），由插件层覆盖实际行为。
-type ChannelService struct{}
-
-// ResolveChannelMapping 存根：返回原模型，无映射
-func (s *ChannelService) ResolveChannelMapping(_ context.Context, _ int64, model string) ChannelMappingResult {
-	return ChannelMappingResult{MappedModel: model}
-}
-
-// ResolveChannelMappingAndRestrict 存根：返回原模型，无限制
-func (s *ChannelService) ResolveChannelMappingAndRestrict(_ context.Context, _ *int64, model string) (ChannelMappingResult, bool) {
-	return ChannelMappingResult{MappedModel: model}, false
-}
-
-// IsModelRestricted 存根：始终返回 false（不限制）
-func (s *ChannelService) IsModelRestricted(_ context.Context, _ int64, _ string) bool {
-	return false
-}
-
-// GetChannelForGroup 存根：始终返回 nil（无渠道关联）
-func (s *ChannelService) GetChannelForGroup(_ context.Context, _ int64) (*Channel, error) {
-	return nil, nil
-}
-
-// GetChannelModelPricing 存根：始终返回 nil（无定价信息）
-func (s *ChannelService) GetChannelModelPricing(_ context.Context, _ int64, _ string) *ChannelModelPricing {
-	return nil
-}
-
 // ReplaceModelInBody 替换请求体 JSON 中的 model 字段。
 // 这是一个通用工具函数，gateway 在执行渠道映射后用它改写上游请求。
 func ReplaceModelInBody(body []byte, newModel string) []byte {
@@ -362,9 +173,4 @@ func ReplaceModelInBody(body []byte, newModel string) []byte {
 		return body
 	}
 	return newBody
-}
-
-// List 存根：始终返回空渠道列表（无渠道）
-func (s *ChannelService) List(_ context.Context, _ pagination.PaginationParams, _, _ string) ([]Channel, *pagination.PaginationResult, error) {
-	return nil, &pagination.PaginationResult{}, nil
 }

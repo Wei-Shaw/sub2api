@@ -399,39 +399,6 @@ func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 	return nil, fmt.Errorf("pricing not found for model: %s", model)
 }
 
-// GetModelPricingWithChannel 获取模型定价，渠道配置的价格覆盖默认值
-// 仅覆盖渠道中非 nil 的价格字段，nil 字段使用默认定价
-func (s *BillingService) GetModelPricingWithChannel(model string, channelPricing *ChannelModelPricing) (*ModelPricing, error) {
-	pricing, err := s.GetModelPricing(model)
-	if err != nil {
-		return nil, err
-	}
-	if channelPricing == nil {
-		return pricing, nil
-	}
-	if channelPricing.InputPrice != nil {
-		pricing.InputPricePerToken = *channelPricing.InputPrice
-		pricing.InputPricePerTokenPriority = *channelPricing.InputPrice
-	}
-	if channelPricing.OutputPrice != nil {
-		pricing.OutputPricePerToken = *channelPricing.OutputPrice
-		pricing.OutputPricePerTokenPriority = *channelPricing.OutputPrice
-	}
-	if channelPricing.CacheWritePrice != nil {
-		pricing.CacheCreationPricePerToken = *channelPricing.CacheWritePrice
-		pricing.CacheCreation5mPrice = *channelPricing.CacheWritePrice
-		pricing.CacheCreation1hPrice = *channelPricing.CacheWritePrice
-	}
-	if channelPricing.CacheReadPrice != nil {
-		pricing.CacheReadPricePerToken = *channelPricing.CacheReadPrice
-		pricing.CacheReadPricePerTokenPriority = *channelPricing.CacheReadPrice
-	}
-	if channelPricing.ImageOutputPrice != nil {
-		pricing.ImageOutputPricePerToken = *channelPricing.ImageOutputPrice
-	}
-	return pricing, nil
-}
-
 // --- 统一计费入口 ---
 
 // CostInput 统一计费输入
@@ -454,7 +421,7 @@ type CostInput struct {
 func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, error) {
 	if input.Resolver == nil {
 		// 无 Resolver，回退到旧路径
-		return s.calculateCostInternal(input.Model, input.Tokens, input.RateMultiplier, input.ServiceTier, nil)
+		return s.calculateCostInternal(input.Model, input.Tokens, input.RateMultiplier, input.ServiceTier)
 	}
 
 	// 优先使用预解析结果，避免重复 Resolve 调用
@@ -700,25 +667,18 @@ func (s *BillingService) calculatePerRequestCost(resolved *ResolvedPricing, inpu
 
 // CalculateCost 计算使用费用
 func (s *BillingService) CalculateCost(model string, tokens UsageTokens, rateMultiplier float64) (*CostBreakdown, error) {
-	return s.calculateCostInternal(model, tokens, rateMultiplier, "", nil)
+	return s.calculateCostInternal(model, tokens, rateMultiplier, "")
 }
 
 func (s *BillingService) CalculateCostWithServiceTier(model string, tokens UsageTokens, rateMultiplier float64, serviceTier string) (*CostBreakdown, error) {
-	return s.calculateCostInternal(model, tokens, rateMultiplier, serviceTier, nil)
+	return s.calculateCostInternal(model, tokens, rateMultiplier, serviceTier)
 }
 
-func (s *BillingService) calculateCostInternal(model string, tokens UsageTokens, rateMultiplier float64, serviceTier string, channelPricing *ChannelModelPricing) (*CostBreakdown, error) {
-	var pricing *ModelPricing
-	var err error
-	if channelPricing != nil {
-		pricing, err = s.GetModelPricingWithChannel(model, channelPricing)
-	} else {
-		pricing, err = s.GetModelPricing(model)
-	}
+func (s *BillingService) calculateCostInternal(model string, tokens UsageTokens, rateMultiplier float64, serviceTier string) (*CostBreakdown, error) {
+	pricing, err := s.GetModelPricing(model)
 	if err != nil {
 		return nil, err
 	}
-
 	// 旧路径始终检查长上下文定价（无区间定价概念）
 	return s.computeTokenBreakdown(pricing, tokens, rateMultiplier, serviceTier, true), nil
 }
