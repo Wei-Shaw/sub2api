@@ -140,43 +140,35 @@ func buildOpenCodeImageDoneSSEFrames(ctx context.Context, data string, store *Op
 	sourceItemID := strings.TrimSpace(gjson.Get(data, "item.id").String())
 	if sourceItemID != "" && opts.RewrittenImageMessages != nil {
 		if message, ok := opts.RewrittenImageMessages[sourceItemID]; ok {
-			return buildOpenCodeImageOutputSSEFrames(message, buildOpenCodeImageContinuationToolCall(message), int(gjson.Get(data, "output_index").Int()))
+			return buildOpenCodeImageOutputSSEFrames(message, int(gjson.Get(data, "output_index").Int()))
 		}
 	}
 	message, rec, err := buildOpenCodeImageGenerationMessageForRawItem(ctx, json.RawMessage(itemRaw), store, opts, true)
 	if err != nil {
 		message = buildOpenCodeImageNoResultMessage(gjson.Get(data, "item.id").String())
 	}
+	if rec != nil && opts.GeneratedMessages != nil {
+		*opts.GeneratedMessages = append(*opts.GeneratedMessages, openCodeImageGeneratedMessage{
+			OutputIndex: int(gjson.Get(data, "output_index").Int()),
+			Message:     message,
+			Record:      rec,
+		})
+	}
 	if sourceItemID != "" && opts.RewrittenImageMessages != nil {
 		opts.RewrittenImageMessages[sourceItemID] = message
 	}
-	var toolCall map[string]any
-	if rec != nil {
-		toolCall = buildOpenCodeImageContinuationToolCall(message)
-	}
-	return buildOpenCodeImageOutputSSEFrames(message, toolCall, int(gjson.Get(data, "output_index").Int()))
+	return buildOpenCodeImageOutputSSEFrames(message, int(gjson.Get(data, "output_index").Int()))
 }
 
 func buildOpenCodeGeneratedImageSSEFrames(rec OpenAIGeneratedImageRecord, outputIndex int, opts openCodeImageRewriteOptions) string {
 	message := buildOpenCodeGeneratedImageMessage(rec, opts)
-	frames, _ := buildOpenCodeImageOutputSSEFrames(message, buildOpenCodeImageContinuationToolCall(message), outputIndex)
+	frames, _ := buildOpenCodeImageOutputSSEFrames(message, outputIndex)
 	return frames
 }
 
-func buildOpenCodeImageOutputSSEFrames(message map[string]any, toolCall map[string]any, outputIndex int) (string, string) {
+func buildOpenCodeImageOutputSSEFrames(message map[string]any, outputIndex int) (string, string) {
 	messageFrames, lastData := buildOpenCodeMessageSSEFrames(message, outputIndex)
-	if toolCall == nil {
-		return messageFrames, lastData
-	}
-	toolFrames, toolData := buildOpenCodeFunctionCallSSEFrames(toolCall, openCodeImageContinuationOutputIndex(outputIndex))
-	if toolFrames == "" {
-		return messageFrames, lastData
-	}
-	return messageFrames + toolFrames, toolData
-}
-
-func openCodeImageContinuationOutputIndex(outputIndex int) int {
-	return outputIndex + 100000
+	return messageFrames, lastData
 }
 
 func buildOpenCodeMessageSSEFrames(message map[string]any, outputIndex int) (string, string) {
@@ -278,54 +270,6 @@ func buildOpenCodeMessageSSEFrames(message map[string]any, outputIndex int) (str
 	return builder.String(), lastData
 }
 
-func buildOpenCodeFunctionCallSSEFrames(toolCall map[string]any, outputIndex int) (string, string) {
-	addedItem := map[string]any{
-		"id":        toolCall["id"],
-		"type":      "function_call",
-		"call_id":   toolCall["call_id"],
-		"name":      toolCall["name"],
-		"arguments": toolCall["arguments"],
-	}
-	events := []struct {
-		typeName string
-		payload  map[string]any
-	}{
-		{
-			typeName: "response.output_item.added",
-			payload: map[string]any{
-				"type":         "response.output_item.added",
-				"output_index": outputIndex,
-				"item":         addedItem,
-			},
-		},
-		{
-			typeName: "response.output_item.done",
-			payload: map[string]any{
-				"type":         "response.output_item.done",
-				"output_index": outputIndex,
-				"item":         toolCall,
-			},
-		},
-	}
-
-	var builder strings.Builder
-	lastData := ""
-	for _, event := range events {
-		payload, err := json.Marshal(event.payload)
-		if err != nil {
-			return "", ""
-		}
-		lastData = string(payload)
-		builder.WriteString("event: ")
-		builder.WriteString(event.typeName)
-		builder.WriteString("\n")
-		builder.WriteString("data: ")
-		builder.Write(payload)
-		builder.WriteString("\n\n")
-	}
-	return builder.String(), lastData
-}
-
 func rewriteOpenCodeTerminalSSEDataWithImages(ctx context.Context, data string, store *OpenAIGeneratedImageStore, opts openCodeImageRewriteOptions) (string, string, bool) {
 	responseRaw := gjson.Get(data, "response").Raw
 	if responseRaw == "" {
@@ -354,7 +298,7 @@ func rewriteOpenCodeTerminalSSEDataWithImages(ctx context.Context, data string, 
 
 	var synthetic strings.Builder
 	for _, generatedMessage := range generated {
-		frames, _ := buildOpenCodeImageOutputSSEFrames(generatedMessage.Message, generatedMessage.ToolCall, generatedMessage.OutputIndex)
+		frames, _ := buildOpenCodeImageOutputSSEFrames(generatedMessage.Message, generatedMessage.OutputIndex)
 		synthetic.WriteString(frames)
 	}
 	return patchedData, synthetic.String(), true

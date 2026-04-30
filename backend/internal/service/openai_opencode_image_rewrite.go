@@ -17,44 +17,51 @@ import (
 type openCodeImageRewriteOptions struct {
 	BaseURL                string
 	RewrittenImageMessages map[string]map[string]any
+	GeneratedMessages      *[]openCodeImageGeneratedMessage
 }
 
 type openCodePublicSettingsProvider interface {
 	GetPublicSettings(ctx context.Context) (*PublicSettings, error)
 }
 
+const openCodeImageServerContinuationToolName = "sub2api_image_generation_result"
+
 func rewriteOpenCodeImageGenerationOutput(ctx context.Context, body []byte, store *OpenAIGeneratedImageStore, opts openCodeImageRewriteOptions) ([]byte, bool, error) {
+	patched, _, changed, err := rewriteOpenCodeImageGenerationOutputWithGenerated(ctx, body, store, opts)
+	return patched, changed, err
+}
+
+func rewriteOpenCodeImageGenerationOutputWithGenerated(ctx context.Context, body []byte, store *OpenAIGeneratedImageStore, opts openCodeImageRewriteOptions) ([]byte, []openCodeImageGeneratedMessage, bool, error) {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
-		return body, false, nil
+		return body, nil, false, nil
 	}
 	output := gjson.GetBytes(body, "output")
 	if !output.Exists() || !output.IsArray() {
-		return body, false, nil
+		return body, nil, false, nil
 	}
 
-	rewritten, _, changed, err := rewriteOpenCodeImageGenerationOutputItems(ctx, []byte(output.Raw), store, opts, false)
+	rewritten, generated, changed, err := rewriteOpenCodeImageGenerationOutputItems(ctx, []byte(output.Raw), store, opts, false)
 	if err != nil {
-		return body, false, err
+		return body, nil, false, err
 	}
 	if !changed {
-		return body, false, nil
+		return body, nil, false, nil
 	}
 
 	outputJSON, err := json.Marshal(rewritten)
 	if err != nil {
-		return body, false, err
+		return body, nil, false, err
 	}
 	patched, err := sjson.SetRawBytes(body, "output", outputJSON)
 	if err != nil {
-		return body, false, err
+		return body, nil, false, err
 	}
-	return patched, true, nil
+	return patched, generated, true, nil
 }
 
 type openCodeImageGeneratedMessage struct {
 	OutputIndex int
 	Message     map[string]any
-	ToolCall    map[string]any
 	Record      *OpenAIGeneratedImageRecord
 }
 
@@ -86,13 +93,6 @@ func rewriteOpenCodeImageGenerationOutputItems(ctx context.Context, outputRaw []
 					return nil, nil, false, err
 				}
 				rewritten = append(rewritten, messageJSON)
-				if toolCall := buildOpenCodeImageContinuationToolCall(message); toolCall != nil {
-					toolCallJSON, err := json.Marshal(toolCall)
-					if err != nil {
-						return nil, nil, false, err
-					}
-					rewritten = append(rewritten, toolCallJSON)
-				}
 				changed = true
 				continue
 			}
@@ -107,26 +107,21 @@ func rewriteOpenCodeImageGenerationOutputItems(ctx context.Context, outputRaw []
 			return nil, nil, false, err
 		}
 		rewritten = append(rewritten, messageJSON)
-		var toolCall map[string]any
-		if rec != nil {
-			toolCall = buildOpenCodeImageContinuationToolCall(message)
-			if toolCall != nil {
-				toolCallJSON, err := json.Marshal(toolCall)
-				if err != nil {
-					return nil, nil, false, err
-				}
-				rewritten = append(rewritten, toolCallJSON)
-			}
-		}
 		if sourceItemID != "" && opts.RewrittenImageMessages != nil {
 			opts.RewrittenImageMessages[sourceItemID] = message
 		}
 		generated = append(generated, openCodeImageGeneratedMessage{
 			OutputIndex: idx,
 			Message:     message,
-			ToolCall:    toolCall,
 			Record:      rec,
 		})
+		if rec != nil && opts.GeneratedMessages != nil {
+			*opts.GeneratedMessages = append(*opts.GeneratedMessages, openCodeImageGeneratedMessage{
+				OutputIndex: idx,
+				Message:     message,
+				Record:      rec,
+			})
+		}
 		changed = true
 	}
 
@@ -180,33 +175,6 @@ func buildOpenCodeGeneratedImageMessage(rec OpenAIGeneratedImageRecord, opts ope
 	}
 }
 
-func buildOpenCodeImageContinuationToolCall(message map[string]any) map[string]any {
-	messageJSON, err := json.Marshal(message)
-	if err != nil {
-		return nil
-	}
-	messageID := strings.TrimSpace(gjson.GetBytes(messageJSON, "id").String())
-	imageID := strings.TrimPrefix(messageID, "msg_sub2api_")
-	if imageID == messageID || validateOpenAIGeneratedImageID(imageID) != nil {
-		return nil
-	}
-	args, err := json.Marshal(map[string]any{
-		"command":     "echo \"sub2api generated image is ready. Next action: immediately download the image from the preceding I'll download from URL link into the local workspace before any other work. That URL is short-lived and should not be treated as a durable reference. After saving the file, continue the user's original request using the local image. Do not stop after reporting that image generation is complete.\"",
-		"description": "Reports generated image availability",
-	})
-	if err != nil {
-		return nil
-	}
-	return map[string]any{
-		"id":        "fc_sub2api_" + imageID,
-		"type":      "function_call",
-		"status":    "completed",
-		"call_id":   "call_sub2api_" + imageID,
-		"name":      "bash",
-		"arguments": string(args),
-	}
-}
-
 func buildOpenCodeImageNoResultMessage(sourceItemID string) map[string]any {
 	messageID := "msg_sub2api_no_image_result"
 	if sourceItemID = strings.TrimSpace(sourceItemID); sourceItemID != "" {
@@ -224,6 +192,82 @@ func buildOpenCodeImageNoResultMessage(sourceItemID string) map[string]any {
 				"annotations": []any{},
 			},
 		},
+	}
+}
+
+func buildOpenCodeImageServerContinuationBody(body []byte, generated []openCodeImageGeneratedMessage) ([]byte, bool, error) {
+	if len(generated) == 0 || len(body) == 0 || !gjson.ValidBytes(body) {
+		return body, false, nil
+	}
+	var reqBody map[string]any
+	if err := json.Unmarshal(body, &reqBody); err != nil {
+		return body, false, err
+	}
+	input, ok := normalizeOpenCodeImageContinuationInput(reqBody["input"])
+	if !ok {
+		return body, false, nil
+	}
+	appended := false
+	for _, item := range generated {
+		if item.Record == nil || item.Message == nil {
+			continue
+		}
+		messageJSON, err := json.Marshal(item.Message)
+		if err != nil {
+			return body, false, err
+		}
+		messageText := strings.TrimSpace(gjson.GetBytes(messageJSON, "content.0.text").String())
+		if messageText == "" {
+			continue
+		}
+		callID := "call_sub2api_continue_" + item.Record.ID
+		input = append(input,
+			map[string]any{"type": "function_call", "call_id": callID, "name": openCodeImageServerContinuationToolName, "arguments": "{}"},
+			map[string]any{"type": "function_call_output", "call_id": callID, "output": openCodeImageServerContinuationOutput(messageText)},
+		)
+		appended = true
+	}
+	if !appended {
+		return body, false, nil
+	}
+	reqBody["input"] = input
+	if isOpenCodeImageGenerationToolChoice(reqBody["tool_choice"]) {
+		delete(reqBody, "tool_choice")
+	}
+	patched, err := json.Marshal(reqBody)
+	if err != nil {
+		return body, false, err
+	}
+	return patched, true, nil
+}
+
+func normalizeOpenCodeImageContinuationInput(raw any) ([]any, bool) {
+	switch value := raw.(type) {
+	case []any:
+		return append([]any(nil), value...), true
+	case string:
+		return []any{map[string]any{"type": "message", "role": "user", "content": []any{map[string]any{"type": "input_text", "text": value}}}}, true
+	case map[string]any:
+		return []any{value}, true
+	case nil:
+		return []any{}, true
+	default:
+		return nil, false
+	}
+}
+
+func openCodeImageServerContinuationOutput(messageText string) string {
+	return messageText + "\n\nThe image generation result above has already been saved by sub2api. Continue the user's original request from this generated image result. Treat any download URL as short-lived and do not ask the user to regenerate unless the result is unavailable."
+}
+
+func isOpenCodeImageGenerationToolChoice(raw any) bool {
+	switch value := raw.(type) {
+	case string:
+		return strings.TrimSpace(value) == "image_generation"
+	case map[string]any:
+		return strings.TrimSpace(asStringMaybe(value["type"])) == "image_generation"
+	default:
+		return false
 	}
 }
 

@@ -758,7 +758,7 @@ Rules:
 - Preserve non-image output items.
 - Keep existing `web_search_call` filtering behavior.
 - Replace image item with complete message schema.
-- After a successful generated-image message, append a synthetic `bash` `function_call` whose command only echoes a continuation hint. This keeps OpenCode in the tool-call loop so the next model step can finish the user's original instruction, such as saving the image locally.
+- After a successful generated-image message, do not return any synthetic client tool call. Immediately issue a second server-side upstream request based on the first upstream request body plus a minimal `function_call` / `function_call_output` pair that describes the saved generated image. Merge or stream the generated-image message with the second upstream model's natural output before returning to the client. For streaming responses, suppress the first upstream terminal frame and `[DONE]`, then forward the second upstream stream as the visible terminal continuation.
 - Do not include base64 in text.
 - Resolve absolute download URL with this priority: public `api_base_url` setting with trailing `/v1` removed, `cfg.Server.FrontendURL`, trusted forwarded host, trusted request Host. If Host is untrusted, omit the absolute `I'll download from URL:` line and keep only the `sub2api-image://...` marker.
 - Do not expose `/sub2api/generated-images/...` server-relative paths in assistant text. They are not useful to the Agent and can be mistaken for local files or invisible server bytes.
@@ -815,7 +815,7 @@ func TestBuildOpenCodeGeneratedImageMessage_UsesRelativeOnlyWhenBaseURLEmpty(t *
 
 - [ ] **Step 3c: Add continuation loop tests**
 
-Add tests proving OpenCode image rewrite adds a synthetic `bash` `function_call` after successful image messages and that SSE output emits matching function-call frames. Assert the synthetic command tells the model to immediately download the image from the preceding `I'll download from URL` link, save it into the local workspace before any other work, treat that URL as short-lived rather than durable, continue the user's original request using the local image, and never includes raw image base64 or server-relative paths.
+Add tests proving OpenCode image rewrite does not expose a synthetic `bash` `function_call` after successful image messages and that SSE output emits only the rewritten image message frames. Add Forward-level non-streaming and streaming tests proving sub2api sends a second server-side upstream request with a minimal `function_call` / `function_call_output`, includes the generated image marker and short-lived download URL in that tool output, merges or streams the generated-image message with the second upstream model output, suppresses the first streaming terminal frame / `[DONE]`, and never exposes raw image base64 or server-relative paths.
 
 - [ ] **Step 4: Run rewrite test and verify GREEN**
 

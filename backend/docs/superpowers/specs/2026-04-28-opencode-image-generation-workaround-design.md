@@ -80,9 +80,9 @@ Generated image: sub2api-image://img_abc123
 I'll download from URL: https://example.com/sub2api/generated-images/img_abc123.png
 ```
 
-marker 本身必须与域名无关，避免反向代理或域名变化导致上下文恢复失败。绝对下载链接的来源优先级是：公开设置 `api_base_url` 去掉末尾 `/v1` 后的站点根地址、`cfg.Server.FrontendURL`、trusted forwarded host、trusted request Host。只有在可信代理或可信 Host 场景下才从当前请求 Host 或 forwarded headers 推导；如果 Host 不可信，只输出 marker，不输出由 Host 推导的绝对 URL，也不把 `/sub2api/generated-images/...` 这种服务端相对路径写进 assistant 文本，避免误导 Agent 把它当成本地文件或不可见字节来源。绝对链接文案使用 `I'll download from URL:`，让下一轮模型把第一步理解为下载图片，而不是长期引用该 URL。
+marker 本身必须与域名无关，避免反向代理或域名变化导致上下文恢复失败。绝对下载链接的来源优先级是：公开设置 `api_base_url` 去掉末尾 `/v1` 后的站点根地址、`cfg.Server.FrontendURL`、trusted forwarded host、trusted request Host。只有在可信代理或可信 Host 场景下才从当前请求 Host 或 forwarded headers 推导；如果 Host 不可信，只输出 marker，不输出由 Host 推导的绝对 URL，也不把 `/sub2api/generated-images/...` 这种服务端相对路径写进 assistant 文本，避免误导 Agent 把它当成本地文件或不可见字节来源。绝对链接文案使用 `I'll download from URL:`，让服务端续跑提示和后续模型输出都把它理解为短期下载入口，而不是长期引用。
 
-OpenCode 的 agent loop 只有在 `finish == tool-calls` 或存在非 provider-executed tool part 时才会继续。纯 assistant text 会让 loop 结束，导致用户要求“生成后继续保存到本地文件”这类后续动作无法执行。因此，每个成功保存的图片 message 后还要追加一个合成的本地 `bash` `function_call`，命令仅 `echo` 一段 continuation 提示，不包含图片 base64，不直接写文件。该 tool call 的目的只是让 OpenCode 保持下一轮模型循环，并明确要求模型立刻从前面的 `I'll download from URL` 链接下载图片、保存到本地 workspace、把 URL 视为短期 bearer capability，之后再用本地文件继续用户原始任务，不能只报告生成完成。
+不能把 continuation 做成返回给客户端执行的 synthetic `bash` tool call：客户端 harness 不一定有 `bash`，而且 OpenCode 会把它展示为真实终端调用。正确做法是在 sub2api 服务端拿到并保存图片后，立即发起第二轮上游 Responses 请求。第二轮请求基于第一轮上游请求体，在 `input` 末尾追加最小 `function_call` / `function_call_output`，`output` 写入生成图片 marker 和短期下载 URL，让上游模型自然继续用户原始任务。非流式响应返回生成图片 message 与第二轮模型自然输出的合并结果；流式响应先向客户端发送生成图片 message，随后抑制第一轮 terminal / `[DONE]`，再把第二轮 stream 的自然输出和 terminal 继续转发给客户端。客户端不应收到任何 synthetic client tool。
 
 ### 二、非流式普通 message schema
 
@@ -104,20 +104,25 @@ OpenCode 非流式路径中，替换后的 item 必须是完整合法的 Respons
 }
 ```
 
-同一图片后追加的 continuation tool call 示例：
+服务端第二轮上游请求追加的最小 continuation item 示例；这些 item 只发给上游，不返回给 OpenCode 客户端：
 
 ```json
-{
-  "id": "fc_sub2api_img_abc123",
-  "type": "function_call",
-  "status": "completed",
-  "call_id": "call_sub2api_img_abc123",
-  "name": "bash",
-  "arguments": "{\"command\":\"echo \\\"sub2api generated image is ready. Next action: immediately download the image from the preceding I'll download from URL link into the local workspace before any other work. That URL is short-lived and should not be treated as a durable reference. After saving the file, continue the user's original request using the local image. Do not stop after reporting that image generation is complete.\\\"\",\"description\":\"Reports generated image availability\"}"
-}
+[
+  {
+    "type": "function_call",
+    "call_id": "call_sub2api_continue_img_abc123",
+    "name": "sub2api_image_generation_result",
+    "arguments": "{}"
+  },
+  {
+    "type": "function_call_output",
+    "call_id": "call_sub2api_continue_img_abc123",
+    "output": "Generated image: sub2api-image://img_abc123\nI'll download from URL: https://example.com/sub2api/generated-images/img_abc123.png\n\nThe image generation result above has already been saved by sub2api. Continue the user's original request from this generated image result. Treat any download URL as short-lived and do not ask the user to regenerate unless the result is unavailable."
+  }
+]
 ```
 
-`id` 使用 synthetic message id，不复用 OpenAI `ig_...` 原始 id。`text` 和 `arguments` 必须通过 JSON marshal 输出，不能手写拼接 JSON 字符串。
+`id` 使用 synthetic message id，不复用 OpenAI `ig_...` 原始 id。`text` 和第二轮 continuation request 必须通过 JSON marshal 输出，不能手写拼接 JSON 字符串。
 
 ### 三、图片资源保存与下载
 

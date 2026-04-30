@@ -3724,14 +3724,24 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		var usage *OpenAIUsage
 		var firstTokenMs *int
 		if reqStream {
-			streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, upstreamModel)
+			streamResult, err := s.handleStreamingResponseWithOpenCodeContinuation(ctx, resp, c, account, startTime, originalModel, upstreamModel, &openCodeImageServerContinuationContext{
+				RequestBody:    body,
+				Token:          token,
+				PromptCacheKey: promptCacheKey,
+				IsCodexCLI:     isCodexCLI,
+			})
 			if err != nil {
 				return nil, err
 			}
 			usage = streamResult.usage
 			firstTokenMs = streamResult.firstTokenMs
 		} else {
-			usage, err = s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
+			usage, err = s.handleNonStreamingResponseWithOpenCodeContinuation(ctx, resp, c, account, originalModel, upstreamModel, &openCodeImageServerContinuationContext{
+				RequestBody:    body,
+				Token:          token,
+				PromptCacheKey: promptCacheKey,
+				IsCodexCLI:     isCodexCLI,
+			})
 			if err != nil {
 				return nil, err
 			}
@@ -5074,6 +5084,10 @@ type openaiStreamingResult struct {
 }
 
 func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string) (*openaiStreamingResult, error) {
+	return s.handleStreamingResponseWithOpenCodeContinuation(ctx, resp, c, account, startTime, originalModel, mappedModel, nil)
+}
+
+func (s *OpenAIGatewayService) handleStreamingResponseWithOpenCodeContinuation(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string, continuation *openCodeImageServerContinuationContext) (*openaiStreamingResult, error) {
 	w := c.Writer
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -5143,10 +5157,13 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	sawResponseInProgress := false
 	sawSubstantiveEvent := false
 	openCodeClient := isOpenCodeResponsesClient(c)
+	openCodeGeneratedMessages := make([]openCodeImageGeneratedMessage, 0, 1)
+	openCodeContinuationReady := false
 	openCodeImageOpts := openCodeImageRewriteOptions{}
 	if openCodeClient {
 		openCodeImageOpts.BaseURL = s.resolveOpenCodeImageDownloadBaseURL(c.Request.Context(), c)
 		openCodeImageOpts.RewrittenImageMessages = make(map[string]map[string]any)
+		openCodeImageOpts.GeneratedMessages = &openCodeGeneratedMessages
 	}
 	pendingOpenCodeFrame := make([]string, 0, 4)
 	localRequestID := strings.TrimSpace(c.Writer.Header().Get("X-Request-Id"))
@@ -5232,6 +5249,18 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		if sawFailedEvent {
 			return resultWithUsage(), fmt.Errorf("upstream response failed: %s", failedMessage)
 		}
+		if openCodeContinuationReady && continuation != nil && !clientDisconnected {
+			continued, err := s.openCodeImageStreamingServerContinuation(ctx, c, account, startTime, originalModel, mappedModel, continuation, openCodeGeneratedMessages)
+			if err != nil {
+				return resultWithUsage(), err
+			}
+			if continued != nil {
+				addOpenAIUsage(usage, continued.usage)
+				if firstTokenMs == nil && continued.firstTokenMs != nil {
+					firstTokenMs = continued.firstTokenMs
+				}
+			}
+		}
 		if !clientDisconnected {
 			hadBufferedData := bufferedWriter.Buffered() > 0
 			if err := flushBuffered(); err != nil {
@@ -5285,6 +5314,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		return resultWithUsage(), fmt.Errorf("stream read error: %w", scanErr), true
 	}
 	processOpenCodeSSEFrame := func(frameLines []string, queueDrained bool) (*openaiStreamingResult, error, bool) {
+		generatedBefore := len(openCodeGeneratedMessages)
 		frameBody, data, hasData, keep := filterOpenCodeResponsesSSEFrameWithImages(ctx, frameLines, s.generatedImageStore, openCodeImageOpts)
 		if !keep {
 			return nil, nil, false
@@ -5320,6 +5350,15 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			if isOpenAITransientProcessingError(http.StatusBadRequest, msg, []byte(data)) {
 				return resultWithUsage(), &UpstreamFailoverError{StatusCode: http.StatusServiceUnavailable, ResponseBody: []byte(data)}, true
 			}
+		}
+		if continuation != nil && strings.TrimSpace(data) == "[DONE]" && openCodeContinuationReady {
+			return nil, nil, false
+		}
+		if continuation != nil && generatedBefore > 0 && (eventType == "response.completed" || eventType == "response.done") {
+			openCodeContinuationReady = true
+			sawTerminalEvent = true
+			s.parseSSEUsageBytesWithEventType([]byte(data), eventType, usage)
+			return nil, nil, false
 		}
 
 		if needModelReplace && mappedModel != "" && strings.Contains(data, mappedModel) {
@@ -5983,7 +6022,18 @@ func filterOpenCodeResponsesSSEBody(bodyText string) string {
 	return strings.Join(frames, "")
 }
 
+type openCodeImageServerContinuationContext struct {
+	RequestBody    []byte
+	Token          string
+	PromptCacheKey string
+	IsCodexCLI     bool
+}
+
 func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*OpenAIUsage, error) {
+	return s.handleNonStreamingResponseWithOpenCodeContinuation(ctx, resp, c, account, originalModel, mappedModel, nil)
+}
+
+func (s *OpenAIGatewayService) handleNonStreamingResponseWithOpenCodeContinuation(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string, continuation *openCodeImageServerContinuationContext) (*OpenAIUsage, error) {
 	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		return nil, err
@@ -6012,8 +6062,9 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		return nil, fmt.Errorf("parse response: invalid json response")
 	}
 	usage := &usageValue
+	var generated []openCodeImageGeneratedMessage
 	if isOpenCodeResponsesClient(c) {
-		filteredBody, changed, err := rewriteOpenCodeImageGenerationOutput(ctx, body, s.generatedImageStore, openCodeImageRewriteOptions{
+		filteredBody, rewrittenGenerated, changed, err := rewriteOpenCodeImageGenerationOutputWithGenerated(ctx, body, s.generatedImageStore, openCodeImageRewriteOptions{
 			BaseURL: s.resolveOpenCodeImageDownloadBaseURL(ctx, c),
 		})
 		if err != nil {
@@ -6021,6 +6072,21 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		}
 		if changed {
 			body = filteredBody
+			generated = rewrittenGenerated
+		}
+		if len(generated) > 0 && continuation != nil {
+			continuedBody, continuedUsage, continued, err := s.openCodeImageServerContinuationResponse(ctx, c, account, originalModel, mappedModel, continuation, generated)
+			if err != nil {
+				return nil, err
+			}
+			if continued {
+				mergedBody, err := mergeOpenCodeImageContinuationResponseBodies(body, continuedBody)
+				if err != nil {
+					return nil, err
+				}
+				body = mergedBody
+				addOpenAIUsage(usage, continuedUsage)
+			}
 		}
 	}
 	if normalizedBody, changed, err := normalizeResponsesJSONForAISDK(body); err != nil {
@@ -6046,6 +6112,125 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	c.Data(resp.StatusCode, contentType, body)
 
 	return usage, nil
+}
+
+func (s *OpenAIGatewayService) openCodeImageServerContinuationResponse(ctx context.Context, c *gin.Context, account *Account, originalModel, mappedModel string, continuation *openCodeImageServerContinuationContext, generated []openCodeImageGeneratedMessage) ([]byte, *OpenAIUsage, bool, error) {
+	if continuation == nil || len(generated) == 0 {
+		return nil, nil, false, nil
+	}
+	continuedRequestBody, changed, err := buildOpenCodeImageServerContinuationBody(continuation.RequestBody, generated)
+	if err != nil || !changed {
+		return nil, nil, false, err
+	}
+	resp, err := s.doOpenAIResponsesUpstream(ctx, c, account, continuedRequestBody, continuation.Token, false, continuation.PromptCacheKey, continuation.IsCodexCLI)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 400 {
+		return nil, nil, false, fmt.Errorf("opencode image continuation upstream returned status %d", resp.StatusCode)
+	}
+	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	if isEventStreamResponse(resp.Header) || (account != nil && account.Type == AccountTypeOAuth && (bytes.Contains(body, []byte("data:")) || bytes.Contains(body, []byte("event:")))) {
+		finalResponse, ok := extractCodexFinalResponse(string(body))
+		if !ok {
+			return nil, nil, false, fmt.Errorf("opencode image continuation: missing terminal response")
+		}
+		body = finalResponse
+	}
+	usageValue, usageOK := extractOpenAIUsageFromJSONBytes(body)
+	if !usageOK {
+		return nil, nil, false, fmt.Errorf("opencode image continuation: invalid json response")
+	}
+	usage := &usageValue
+	filteredBody, changed, err := rewriteOpenCodeImageGenerationOutput(ctx, body, s.generatedImageStore, openCodeImageRewriteOptions{
+		BaseURL: s.resolveOpenCodeImageDownloadBaseURL(ctx, c),
+	})
+	if err != nil {
+		return nil, nil, false, fmt.Errorf("rewrite opencode image continuation output: %w", err)
+	}
+	if changed {
+		body = filteredBody
+	}
+	if normalizedBody, changed, err := normalizeResponsesJSONForAISDK(body); err != nil {
+		return nil, nil, false, fmt.Errorf("normalize opencode image continuation response: %w", err)
+	} else if changed {
+		body = normalizedBody
+	}
+	if originalModel != mappedModel {
+		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
+	}
+	return body, usage, true, nil
+}
+
+func (s *OpenAIGatewayService) openCodeImageStreamingServerContinuation(ctx context.Context, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string, continuation *openCodeImageServerContinuationContext, generated []openCodeImageGeneratedMessage) (*openaiStreamingResult, error) {
+	if continuation == nil || len(generated) == 0 {
+		return nil, nil
+	}
+	continuedRequestBody, changed, err := buildOpenCodeImageServerContinuationBody(continuation.RequestBody, generated)
+	if err != nil || !changed {
+		return nil, err
+	}
+	resp, err := s.doOpenAIResponsesUpstream(ctx, c, account, continuedRequestBody, continuation.Token, true, continuation.PromptCacheKey, continuation.IsCodexCLI)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("opencode image streaming continuation upstream returned status %d", resp.StatusCode)
+	}
+	return s.handleStreamingResponseWithOpenCodeContinuation(ctx, resp, c, account, startTime, originalModel, mappedModel, nil)
+}
+
+func (s *OpenAIGatewayService) doOpenAIResponsesUpstream(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool, promptCacheKey string, isCodexCLI bool) (*http.Response, error) {
+	upstreamReq, err := s.buildUpstreamRequest(ctx, c, account, body, token, isStream, promptCacheKey, isCodexCLI)
+	if err != nil {
+		return nil, err
+	}
+	proxyURL := ""
+	if account != nil && account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	upstreamStart := time.Now()
+	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
+	return resp, err
+}
+
+func mergeOpenCodeImageContinuationResponseBodies(firstBody, continuationBody []byte) ([]byte, error) {
+	firstOutput := gjson.GetBytes(firstBody, "output")
+	continuationOutput := gjson.GetBytes(continuationBody, "output")
+	if !firstOutput.IsArray() || !continuationOutput.IsArray() {
+		return continuationBody, nil
+	}
+	combined := make([]json.RawMessage, 0, len(firstOutput.Array())+len(continuationOutput.Array()))
+	if err := json.Unmarshal([]byte(firstOutput.Raw), &combined); err != nil {
+		return nil, err
+	}
+	var tail []json.RawMessage
+	if err := json.Unmarshal([]byte(continuationOutput.Raw), &tail); err != nil {
+		return nil, err
+	}
+	combined = append(combined, tail...)
+	combinedJSON, err := json.Marshal(combined)
+	if err != nil {
+		return nil, err
+	}
+	return sjson.SetRawBytes(continuationBody, "output", combinedJSON)
+}
+
+func addOpenAIUsage(base *OpenAIUsage, extra *OpenAIUsage) {
+	if base == nil || extra == nil {
+		return
+	}
+	base.InputTokens += extra.InputTokens
+	base.OutputTokens += extra.OutputTokens
+	base.CacheReadInputTokens += extra.CacheReadInputTokens
+	base.CacheCreationInputTokens += extra.CacheCreationInputTokens
+	base.ImageOutputTokens += extra.ImageOutputTokens
 }
 
 func isEventStreamResponse(header http.Header) bool {

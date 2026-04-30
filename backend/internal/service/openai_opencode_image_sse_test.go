@@ -34,9 +34,8 @@ func TestFilterOpenCodeResponsesSSEFrame_RewritesImageGenerationToMessage(t *tes
 	require.Contains(t, out, "response.output_item.done")
 	require.Contains(t, out, `"output_index":2`)
 	require.Contains(t, out, "sub2api-image://img_")
-	require.Contains(t, out, `"type":"function_call"`)
-	require.Contains(t, out, `"name":"bash"`)
-	require.Contains(t, out, "continue the user's original request")
+	require.NotContains(t, out, `"type":"function_call"`)
+	require.NotContains(t, out, `"name":"bash"`)
 	require.NotContains(t, out, "image_generation_call")
 	require.NotContains(t, out, pngB64)
 }
@@ -487,8 +486,8 @@ func TestHandleStreamingResponse_OpenCodeDedupesImageDoneAndTerminalOutput(t *te
 
 	require.NoError(t, err)
 	body := rec.Body.String()
-	require.Equal(t, 2, strings.Count(body, "event: response.output_item.added"))
-	require.Contains(t, body, `"type":"function_call"`)
+	require.Equal(t, 1, strings.Count(body, "event: response.output_item.added"))
+	require.NotContains(t, body, `"name":"bash"`)
 	require.NotContains(t, body, "image_generation_call")
 	require.NotContains(t, body, pngB64)
 	require.Equal(t, 1, countGeneratedImageMetadataFiles(t, store))
