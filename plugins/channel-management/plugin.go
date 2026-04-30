@@ -141,10 +141,15 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 			{Path: pluginRoutePrefix + "/available-channels", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
 		},
 		// Capabilities — channel-management writes the gateway cache contract
-		// (channel:active, channel:by_id:*, …) which the core's
+		// (plugin:channel:meta:*, plugin:channel:mapping:*) which the core's
 		// ChannelCacheReader reads directly. Those keys live outside the
 		// per-plugin namespace, so we ask the core for raw key access via
 		// CapabilityRedisRaw (P12·B-1 dotted naming).
+		//
+		// P4 拆分: pricing (K2 / K3) 已经从 Redis 通道下线, 改由
+		// PricingExtension gRPC stream 推送到 host in-memory cache. 但 meta
+		// (K1) 与 mapping (K4 / K5) 因为字段不在 PricingOverride proto 内,
+		// 仍走 Redis, 因此 RedisRaw capability 必须保留。
 		//
 		// CapabilitySecretsEncrypt / CapabilityJobsRegister /
 		// CapabilitySettingsOwnRead are required by the channel-monitor
@@ -352,6 +357,16 @@ func (p *ChannelPlugin) Init(ctx pluginsdk.PluginContext) error {
 	// through the SDK, channel updates will not actively bust API-key auth
 	// caches. The cache eventually expires on its own TTL.
 	svc := chService.NewChannelService(repo, nil)
+
+	// Hook the in-process pricing event broker (P4). After every CRUD
+	// commit ChannelService publishes UPSERT/DELETE events that the
+	// pricingServer's WatchPricingOverrides handler forwards to the
+	// host's PricingExtension cache. Sub-second freshness without
+	// touching Redis. The host's 5-minute List re-sync still acts as a
+	// safety net against silently dropped events.
+	if p.pricingServer != nil {
+		svc.SetEventPublisher(p.pricingServer.Publisher())
+	}
 
 	// Wire the Redis cache writer that mirrors channel state to the
 	// gateway-side Redis cache (see GATEWAY_CACHE_SPEC.md). The cache keys

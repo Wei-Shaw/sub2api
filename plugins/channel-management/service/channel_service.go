@@ -147,7 +147,8 @@ const (
 type ChannelService struct {
 	repo                 ChannelRepository
 	authCacheInvalidator AuthCacheInvalidator
-	cacheWriter          *CacheWriter // optional Redis cache writer
+	cacheWriter          *CacheWriter          // optional Redis cache writer (meta/mapping only post-P4)
+	eventPublisher       PricingEventPublisher // optional in-process pricing event broker (P4)
 
 	cache   atomic.Value // *channelCache
 	cacheSF singleflight.Group
@@ -170,6 +171,19 @@ func NewChannelService(repo ChannelRepository, authCacheInvalidator AuthCacheInv
 // unit tests or when the plugin runs without Redis).
 func (s *ChannelService) SetCacheWriter(writer *CacheWriter) {
 	s.cacheWriter = writer
+}
+
+// SetEventPublisher wires the in-process pricing event broker. After
+// every successful CRUD commit ChannelService publishes UPSERT/DELETE
+// events for the affected (group, platform, model) tuples so the host's
+// PricingExtension Watch stream can keep its cache fresh sub-second
+// without round-tripping through Redis.
+//
+// Passing nil disables broadcasting; the host's 5-minute List re-sync
+// then becomes the only freshness mechanism (matches the pre-P4
+// behaviour).
+func (s *ChannelService) SetEventPublisher(publisher PricingEventPublisher) {
+	s.eventPublisher = publisher
 }
 
 // GroupPlatforms exposes the repo-backed group→platform lookup so the cache
@@ -740,7 +754,16 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 
 	s.invalidateCache()
 	s.rebuildCacheForChannel(ctx, channel.ID)
-	return s.repo.GetByID(ctx, channel.ID)
+	// Reload the freshly-persisted channel so we publish the same shape
+	// the host's PricingExtension cache will store after a future
+	// ListPricingOverrides re-sync. Failure is logged but does not
+	// block the CRUD path; the 5-minute re-sync still bridges the gap.
+	created, err := s.repo.GetByID(ctx, channel.ID)
+	if err != nil {
+		return nil, err
+	}
+	s.publishUpsertEvent(ctx, created)
+	return created, nil
 }
 
 // GetByID returns the channel with id loaded, or ErrChannelNotFound.
@@ -765,6 +788,7 @@ func (s *ChannelService) Update(ctx context.Context, id int64, input *UpdateChan
 
 	oldGroupIDs := s.getOldGroupIDs(ctx, id)
 	preUpdateSnapshot := s.snapshotForCacheInvalidate(ctx, id, oldGroupIDs)
+	preUpdatePricing := s.snapshotForEventPublish(ctx, id, oldGroupIDs)
 
 	if err := s.repo.Update(ctx, channel); err != nil {
 		return nil, fmt.Errorf("update channel: %w", err)
@@ -778,7 +802,18 @@ func (s *ChannelService) Update(ctx context.Context, id int64, input *UpdateChan
 	s.invalidateCacheForChannel(ctx, preUpdateSnapshot)
 	s.rebuildCacheForChannel(ctx, id)
 
-	return s.repo.GetByID(ctx, id)
+	updated, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	// Conservative diff: emit DELETE for the pre-update tuple set and
+	// UPSERT for the post-update active tuple set. The host's cache
+	// applies them in arrival order so the end state is the union of
+	// post-update entries, with any pre-update tuple no longer present
+	// correctly evicted.
+	s.publishDeleteEvent(ctx, preUpdatePricing)
+	s.publishUpsertEvent(ctx, updated)
+	return updated, nil
 }
 
 // snapshotForCacheInvalidate returns a minimal Channel describing the
@@ -801,6 +836,75 @@ func (s *ChannelService) snapshotForCacheInvalidate(ctx context.Context, channel
 	}
 	existing.GroupIDs = oldGroupIDs
 	return existing
+}
+
+// snapshotForEventPublish loads the pre-mutation channel snapshot used
+// to broadcast DELETE events for the (group, platform, model) tuples a
+// channel previously owned. Unlike snapshotForCacheInvalidate, this
+// path is independent of the cacheWriter — it only needs the
+// eventPublisher to be wired.
+//
+// Returns nil when no broker is wired, the channel is unknown, or the
+// pre-mutation group set is empty (no tuples to delete).
+func (s *ChannelService) snapshotForEventPublish(ctx context.Context, channelID int64, oldGroupIDs []int64) *Channel {
+	if s.eventPublisher == nil {
+		return nil
+	}
+	existing, err := s.repo.GetByID(ctx, channelID)
+	if err != nil || existing == nil {
+		// Without a real snapshot we cannot enumerate the (platform, model)
+		// tuples to delete. Fall back to a stub carrying just the group
+		// IDs so the publisher can no-op cleanly; the host's 5-minute
+		// re-sync covers the leftover state.
+		if len(oldGroupIDs) == 0 {
+			return nil
+		}
+		return &Channel{ID: channelID, GroupIDs: oldGroupIDs}
+	}
+	if len(oldGroupIDs) > 0 {
+		existing.GroupIDs = oldGroupIDs
+	}
+	return existing
+}
+
+// publishUpsertEvent fans UPSERT events for channel out via the broker.
+// Best-effort — missing channel, missing group→platform lookup, or a
+// nil eventPublisher all degrade to a noop and rely on the host's
+// 5-minute re-sync.
+func (s *ChannelService) publishUpsertEvent(ctx context.Context, channel *Channel) {
+	if s.eventPublisher == nil || channel == nil {
+		return
+	}
+	groupPlatforms := s.resolveGroupPlatforms(ctx, channel.GroupIDs)
+	s.eventPublisher.PublishChannelUpsert(channel, groupPlatforms)
+}
+
+// publishDeleteEvent broadcasts DELETE events for every
+// (group, platform, model) tuple captured in channel — typically the
+// pre-mutation snapshot loaded by snapshotForEventPublish. Same
+// best-effort semantics as publishUpsertEvent.
+func (s *ChannelService) publishDeleteEvent(ctx context.Context, channel *Channel) {
+	if s.eventPublisher == nil || channel == nil {
+		return
+	}
+	groupPlatforms := s.resolveGroupPlatforms(ctx, channel.GroupIDs)
+	s.eventPublisher.PublishChannelDelete(channel, groupPlatforms)
+}
+
+// resolveGroupPlatforms wraps repo.GetGroupPlatforms with the
+// best-effort logging the publish helpers expect. Returns an empty map
+// on failure so the caller can still iterate without nil-checking.
+func (s *ChannelService) resolveGroupPlatforms(ctx context.Context, groupIDs []int64) map[int64]string {
+	if len(groupIDs) == 0 {
+		return map[int64]string{}
+	}
+	platforms, err := s.repo.GetGroupPlatforms(ctx, groupIDs)
+	if err != nil {
+		slog.Warn("channel events: group platform lookup failed",
+			"group_ids", groupIDs, "error", err)
+		return map[int64]string{}
+	}
+	return platforms
 }
 
 func (s *ChannelService) applyUpdateInput(ctx context.Context, channel *Channel, input *UpdateChannelInput) error {
@@ -859,7 +963,11 @@ func (s *ChannelService) checkGroupConflicts(ctx context.Context, channelID int6
 }
 
 func (s *ChannelService) getOldGroupIDs(ctx context.Context, channelID int64) []int64 {
-	if s.authCacheInvalidator == nil {
+	// Fetch when any downstream consumer needs the pre-mutation set:
+	// auth invalidation, the Redis cache writer (drops keys whose
+	// (group, platform) is no longer owned), or the in-process pricing
+	// event publisher (DELETE events for evicted tuples).
+	if s.authCacheInvalidator == nil && s.cacheWriter == nil && s.eventPublisher == nil {
 		return nil
 	}
 	oldGroupIDs, err := s.repo.GetGroupIDs(ctx, channelID)
@@ -897,6 +1005,10 @@ func (s *ChannelService) Delete(ctx context.Context, id int64) error {
 	// (group, platform) keys to wipe. Best-effort — if the lookup fails we
 	// still attempt invalidation with a stub carrying just the group IDs.
 	preDeleteSnapshot := s.snapshotForCacheInvalidate(ctx, id, groupIDs)
+	// Capture the pre-delete pricing snapshot for event broadcast. Same
+	// best-effort semantics — missing data degrades to a noop emit, and
+	// the host's 5-minute re-sync still bridges the gap.
+	preDeletePricing := s.snapshotForEventPublish(ctx, id, groupIDs)
 
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete channel: %w", err)
@@ -905,6 +1017,7 @@ func (s *ChannelService) Delete(ctx context.Context, id int64) error {
 	s.invalidateCache()
 	s.invalidateAuthCacheForGroups(ctx, groupIDs)
 	s.invalidateCacheForChannel(ctx, preDeleteSnapshot)
+	s.publishDeleteEvent(ctx, preDeletePricing)
 	return nil
 }
 

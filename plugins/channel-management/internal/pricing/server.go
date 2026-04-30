@@ -1,23 +1,20 @@
 // Package pricing implements the channel-management plugin's
-// PricingExtension gRPC server (P3+P5). The host calls
+// PricingExtension gRPC server (P3+P5+P4). The host calls
 // ListPricingOverrides on plugin start to bootstrap its in-memory pricing
 // cache and keeps a long-lived WatchPricingOverrides stream for incremental
 // updates. AdjustCost is invoked per-request after the host computes the
 // base cost; the channel-management plugin currently returns Modified=false
 // because every pricing decision is already encoded in the override snapshot.
 //
-// Watch implementation note: this version pushes the current snapshot to a
-// freshly-subscribed client and then keeps the stream open without further
-// events. Cache freshness for CRUD changes is provided by:
-//
-//  1. The host's 5-minute periodic re-sync (pricing_extension_client.go),
-//     which calls ListPricingOverrides again and replaces the cache.
-//  2. A reconnect after stream end (e.g. plugin restart) — the client passes
-//     SinceVersion and we resend a fresh snapshot regardless.
-//
-// A future revision can wire ChannelService.{Create,Update,Delete} into a
-// broker that pushes UPSERT/DELETE events on this stream for sub-second
-// freshness; the proto contract is already shaped for it.
+// Watch implementation: the server pushes the current snapshot as
+// UPSERT events to a freshly-subscribed client, registers a Broker
+// subscriber, and forwards every CRUD-driven event onto the stream. The
+// Broker is owned by the plugin (constructed once in plugin.go) and shared
+// with the ChannelService so its Create/Update/Delete handlers can publish
+// after the underlying DB write succeeds. Sub-second freshness lives at
+// the Broker boundary; the host's 5-minute periodic re-sync still acts
+// as a safety net against silently dropped events (slow subscriber reaped
+// by Broker, network partition, etc.).
 package pricing
 
 import (
@@ -49,10 +46,16 @@ type channelLister interface {
 // before SetLister return codes.Unavailable so the host's pricing extension
 // client treats the plugin as "not ready yet" and retries via the periodic
 // re-sync ticker.
+//
+// The Broker is wired the same way (NewServer constructs an empty Broker;
+// callers may swap it via SetBroker before Init publishes the first event).
+// ChannelService.SetBroker shares the same instance so CRUD-driven events
+// reach every active Watch stream.
 type Server struct {
 	pb.UnimplementedPricingExtensionServer
 
 	lister atomic.Pointer[listerHolder]
+	broker *Broker
 
 	mu      sync.Mutex
 	version string
@@ -64,10 +67,22 @@ type listerHolder struct {
 	inner channelLister
 }
 
-// NewServer returns a Server with no lister wired. Call SetLister from
-// Plugin.Init once the repository is available.
+// NewServer returns a Server with no lister wired and a fresh in-process
+// Broker. Call SetLister from Plugin.Init once the repository is
+// available; share the Broker with ChannelService so CRUD events reach
+// every active Watch stream.
 func NewServer() *Server {
-	return &Server{}
+	return &Server{
+		broker: NewBroker(),
+	}
+}
+
+// Broker exposes the server's broker so ChannelService can publish
+// CRUD-driven events on the same fanout WatchPricingOverrides reads
+// from. Returns the shared instance — never nil for a value built via
+// NewServer.
+func (s *Server) Broker() *Broker {
+	return s.broker
 }
 
 // SetLister wires the data source. Calling SetLister with a nil lister
@@ -107,13 +122,33 @@ func (s *Server) ListPricingOverrides(
 	}, nil
 }
 
-// WatchPricingOverrides streams the current snapshot as UPSERT events and
-// keeps the stream open until the client disconnects. See the package doc
-// for the simplified-broker rationale.
+// WatchPricingOverrides streams the current snapshot as UPSERT events to
+// freshly-connected clients, then forwards every Broker event onto the
+// same stream until the client disconnects or the broker reaps the
+// subscriber for back-pressure.
+//
+// since_version is intentionally ignored: we always resend the full
+// snapshot first so the host's cache converges even if it missed events
+// during a reconnect window. The subsequent live-event tail keeps it
+// fresh.
 func (s *Server) WatchPricingOverrides(
 	req *pb.WatchPricingOverridesRequest,
 	stream pb.PricingExtension_WatchPricingOverridesServer,
 ) error {
+	_ = req // since_version intentionally ignored — see godoc above.
+
+	// Subscribe BEFORE we take the snapshot so any CRUD event that lands
+	// during the snapshot window is buffered on the subscriber channel
+	// and flushed after the initial flood. Worst case: the host receives
+	// the same UPSERT twice — applyEvent in the host is idempotent so
+	// duplicates are harmless.
+	if s.broker == nil {
+		return status.Error(codes.Internal,
+			"channel-management: pricing broker not wired (NewServer not used)")
+	}
+	events, unsubscribe := s.broker.Subscribe()
+	defer unsubscribe()
+
 	overrides, version, err := s.snapshot(stream.Context())
 	if err != nil {
 		return err
@@ -128,12 +163,30 @@ func (s *Server) WatchPricingOverrides(
 			return err
 		}
 	}
-	// Hold the stream open. The host treats stream end as a signal to
-	// reconnect with the last-known version, and the 5-minute re-sync
-	// covers CRUD changes that happened in between. Exit on cancellation.
-	_ = req // since_version intentionally ignored — we always resend full snapshot
-	<-stream.Context().Done()
-	return nil
+
+	// Live tail. Exit on:
+	//   - ctx cancellation (host disconnected / plugin shutdown)
+	//   - subscriber chan closed (broker dropped us as slow consumer; the
+	//     host will reconnect and trigger a fresh snapshot resend)
+	//   - stream.Send error (host RPC error, treat as fatal for this
+	//     stream; reconnect path mirrors the broker-drop case)
+	for {
+		select {
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		case evt, ok := <-events:
+			if !ok {
+				// Broker closed our subscription. Returning Unavailable
+				// asks the host's watchLoop to reconnect with backoff
+				// and re-sync via ListPricingOverrides.
+				return status.Error(codes.Unavailable,
+					"channel-management: pricing broker dropped subscriber (slow consumer)")
+			}
+			if err := stream.Send(evt); err != nil {
+				return err
+			}
+		}
+	}
 }
 
 // AdjustCost is currently a typed no-op: returns Modified=false so the host

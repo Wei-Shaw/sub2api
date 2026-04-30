@@ -29,8 +29,6 @@ import (
 
 const (
 	channelCacheMetaKeyFmt       = "plugin:channel:meta:%d:%s"
-	channelCachePricingKeyFmt    = "plugin:channel:pricing:%d:%s:%s"
-	channelCacheWildcardPriceFmt = "plugin:channel:wildcard:pricing:%d:%s"
 	channelCacheMappingKeyFmt    = "plugin:channel:mapping:%d:%s:%s"
 	channelCacheWildcardMapFmt   = "plugin:channel:wildcard:mapping:%d:%s"
 	channelCacheReadTimeoutShort = 200 * time.Millisecond
@@ -47,50 +45,13 @@ type channelMetaPayload struct {
 	UpdatedAt          int64  `json:"updated_at"`
 }
 
-// channelPricingPayload 对应 GATEWAY_CACHE_SPEC.md §3.2（K2 元素）。
-type channelPricingPayload struct {
-	SchemaVersion    string                   `json:"schema_version"`
-	ID               int64                    `json:"id"`
-	ChannelID        int64                    `json:"channel_id"`
-	Platform         string                   `json:"platform"`
-	Models           []string                 `json:"models"`
-	BillingMode      string                   `json:"billing_mode"`
-	InputPrice       *float64                 `json:"input_price"`
-	OutputPrice      *float64                 `json:"output_price"`
-	CacheWritePrice  *float64                 `json:"cache_write_price"`
-	CacheReadPrice   *float64                 `json:"cache_read_price"`
-	ImageOutputPrice *float64                 `json:"image_output_price"`
-	PerRequestPrice  *float64                 `json:"per_request_price"`
-	Intervals        []pricingIntervalPayload `json:"intervals"`
-	UpdatedAt        int64                    `json:"updated_at"`
-}
-
-type pricingIntervalPayload struct {
-	ID              int64    `json:"id"`
-	MinTokens       int      `json:"min_tokens"`
-	MaxTokens       *int     `json:"max_tokens"`
-	TierLabel       string   `json:"tier_label"`
-	InputPrice      *float64 `json:"input_price"`
-	OutputPrice     *float64 `json:"output_price"`
-	CacheWritePrice *float64 `json:"cache_write_price"`
-	CacheReadPrice  *float64 `json:"cache_read_price"`
-	PerRequestPrice *float64 `json:"per_request_price"`
-	SortOrder       int      `json:"sort_order"`
-}
-
-// wildcardPricingPayload 对应 K3 envelope 中的元素。
-type wildcardPricingPayload struct {
-	Prefix  string                `json:"prefix"`
-	Pricing channelPricingPayload `json:"pricing"`
-}
-
 // wildcardMappingPayload 对应 K5 envelope 中的元素。
 type wildcardMappingPayload struct {
 	Prefix string `json:"prefix"`
 	Target string `json:"target"`
 }
 
-// wildcardEnvelope 是 K3 / K5 共用的顶层结构。
+// wildcardEnvelope 是 K5 顶层结构。P4 之前 K3 也共用此结构, 现仅 K5 用到。
 type wildcardEnvelope[T any] struct {
 	SchemaVersion string `json:"schema_version"`
 	Entries       []T    `json:"entries"`
@@ -111,30 +72,33 @@ type ChannelMeta struct {
 }
 
 // ChannelCacheReader 通过 Redis Key 读取由 channel-management 插件维护的渠道
-// 元信息 / 定价 / 映射 / 限制数据。该结构对插件零感知,只认 Redis 键格式。
+// 元信息 (K1) 和 model 映射 (K4 / K5) 数据。该结构对插件零感知,只认 Redis
+// 键格式。
 //
 // 所有公共方法都是协程安全的（go-redis 客户端本身协程安全）。
 //
-// P3 双源降级 (PLUGIN-PRICING):
-//   - pricingCache 优先 (in-memory, host 端经 PricingExtensionClient 同步而来)
-//   - cache miss 时落回 Redis 路径, 兼容 P4 之前 channel-management 仍在写
-//     plugin:channel:pricing:* 等约定 key 的过渡期。
-//
-// 当 PricingOverrideCache 完全替代 Redis 写入路径时(P4), 仅需删除 Redis
-// 分支即可。
+// P4 拆分后的数据来源:
+//   - GetChannelModelPricing: 仅查 in-memory PricingOverrideCache。Redis
+//     上的 K2 / K3 已经从 channel-management CacheWriter 下线, 不再被读取。
+//     未注入 pricingCache 时所有定价查询返回 nil（无渠道）。
+//   - GetChannelMeta / lookupMapping / IsModelRestricted: 继续走 Redis,
+//     因为 PricingOverride proto 不携带 ChannelID / restrict_models /
+//     model→model mapping 字段。这些 capability 仍由 channel-management
+//     CacheWriter 维护对应的 K1 / K4 / K5 keys, RedisRaw 在 P4 之后仍保留。
 type ChannelCacheReader struct {
 	rdb *redis.Client
-	// pricingCache 是 host wire 注入的 in-memory 覆盖层。GetChannelModelPricing
-	// 优先查它, 命中即返回; 缺失才走 Redis fallback。nil 等价于"未启用 plugin
-	// pricing", 行为与 P3 之前完全一致。
+	// pricingCache 是 host wire 注入的 in-memory 覆盖层。P4 之后是 pricing
+	// 唯一来源（不再走 Redis fallback）。nil 等价于 "host 没有装载任何 plugin
+	// pricing", GetChannelModelPricing 一律返回 nil。
 	pricingCache *PricingOverrideCache
 }
 
 // NewChannelCacheReader 构造一个只读缓存客户端。
 //
-// 当 rdb 为 nil 时,所有方法都会走"无渠道"降级路径,适用于 Redis 未配置或
-// 单元测试场景。pricingCache 可由 host wire 通过 SetPricingOverrideCache
-// 注入; 不传 / 传 nil 时本 reader 退化为 P3 之前的纯 Redis 行为。
+// 当 rdb 为 nil 时,所有依赖 Redis 的方法 (GetChannelMeta / lookupMapping /
+// IsModelRestricted) 都会走"无渠道"降级路径,适用于 Redis 未配置或单元测试
+// 场景。pricingCache 由 host wire 通过 SetPricingOverrideCache 注入; 不传 /
+// 传 nil 时 GetChannelModelPricing 永远返回 nil。
 func NewChannelCacheReader(rdb *redis.Client, pricingCache *PricingOverrideCache) *ChannelCacheReader {
 	return &ChannelCacheReader{rdb: rdb, pricingCache: pricingCache}
 }
@@ -234,6 +198,10 @@ func (r *ChannelCacheReader) ResolveChannelMappingAndRestrict(
 //
 // 派生公式: K1.restrict_models == true AND lookup_pricing(...) == nil。
 // 见 GATEWAY_CACHE_SPEC.md §4。
+//
+// P4 拆分后: restrict 标记仍由 K1 (Redis meta) 提供; 但 "model 是否在
+// 允许列表" 的判断已经迁移到 PricingOverrideCache (in-memory) — Redis
+// K2 / K3 已停止写入。因此 lookup 走 lookupPricingFromCache。
 func (r *ChannelCacheReader) IsModelRestricted(
 	ctx context.Context, groupID int64, platform, model string,
 ) bool {
@@ -245,35 +213,28 @@ func (r *ChannelCacheReader) IsModelRestricted(
 	if !ok || !meta.RestrictModels {
 		return false
 	}
-	return r.lookupPricing(ctx, groupID, platform, model) == nil
+	return r.lookupPricingFromCache(groupID, platform, model) == nil
 }
 
-// GetChannelModelPricing 返回精确或通配符匹配的渠道定价。未命中返回 nil。
+// GetChannelModelPricing 返回精确匹配的渠道定价, 数据来源于 in-memory
+// PricingOverrideCache (由 host PricingExtensionClient 通过 plugin gRPC
+// stream 同步)。未命中或 cache 未注入时返回 nil。
 //
-// 返回的 *ChannelModelPricing 是新分配的拷贝,调用方持有所有权。
+// P4 拆分: Redis K2 / K3 已经从 channel-management 写侧下线, 这里也不再
+// 读 Redis — pricing 唯一通路是 PricingExtension。如果 plugin 离线 / cache
+// 未就绪, host 自然降级到 LiteLLM / 本地 fallback (调用方 PricingService 的
+// 行为, 与本 reader 无关)。
 //
-// 双源降级 (P3): 优先查 in-memory PricingOverrideCache (由 plugin
-// PricingExtension 写入), miss 才走 Redis 路径。Redis 仍由 channel-management
-// CacheWriter 维护, P4 移除 Redis 写入时删除 fallback 分支即可。
+// 返回的 *ChannelModelPricing 是新分配的拷贝, 调用方持有所有权。
 func (r *ChannelCacheReader) GetChannelModelPricing(
 	ctx context.Context, groupID int64, platform, model string,
 ) *ChannelModelPricing {
+	_ = ctx // ctx kept for symmetry / future use; in-memory lookup is synchronous
 	platform = normalizePlatform(platform)
-	if r == nil || platform == "" {
+	if platform == "" {
 		return nil
 	}
-	// In-memory cache first. Cache 命中时不依赖 Redis K1 meta — pricing override
-	// 已经包含了完整的字段 (含 BillingMode), 无需再读 meta。
-	if pricing := r.lookupPricingFromCache(groupID, platform, model); pricing != nil {
-		return pricing
-	}
-	if r.rdb == nil {
-		return nil
-	}
-	if _, ok := r.GetChannelMeta(ctx, groupID, platform); !ok {
-		return nil
-	}
-	return r.lookupPricing(ctx, groupID, platform, model)
+	return r.lookupPricingFromCache(groupID, platform, model)
 }
 
 // lookupPricingFromCache resolves a (group, platform, model) tuple via the
@@ -352,62 +313,6 @@ func nonZeroFloat(v float64) *float64 {
 
 // ---- 内部读取与匹配 ----
 
-// lookupPricing 先查精确 key (K2),未命中再扫通配符数组 (K3)。
-func (r *ChannelCacheReader) lookupPricing(
-	ctx context.Context, groupID int64, platform, model string,
-) *ChannelModelPricing {
-	modelLower := normalizeModel(model)
-	if modelLower == "" {
-		return nil
-	}
-
-	if exact := r.fetchExactPricing(ctx, groupID, platform, modelLower); exact != nil {
-		return exact
-	}
-	return r.fetchWildcardPricing(ctx, groupID, platform, modelLower)
-}
-
-func (r *ChannelCacheReader) fetchExactPricing(
-	ctx context.Context, groupID int64, platform, modelLower string,
-) *ChannelModelPricing {
-	key := fmt.Sprintf(channelCachePricingKeyFmt, groupID, platform, modelLower)
-	raw, err := r.getString(ctx, key)
-	if err != nil || raw == "" {
-		return nil
-	}
-	var payload channelPricingPayload
-	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
-		slog.Warn("channel cache: pricing decode failed",
-			"key", key, "error", err)
-		return nil
-	}
-	return decodePricing(&payload)
-}
-
-func (r *ChannelCacheReader) fetchWildcardPricing(
-	ctx context.Context, groupID int64, platform, modelLower string,
-) *ChannelModelPricing {
-	key := fmt.Sprintf(channelCacheWildcardPriceFmt, groupID, platform)
-	raw, err := r.getString(ctx, key)
-	if err != nil || raw == "" {
-		return nil
-	}
-	var envelope wildcardEnvelope[wildcardPricingPayload]
-	if err := json.Unmarshal([]byte(raw), &envelope); err != nil {
-		slog.Warn("channel cache: wildcard pricing decode failed",
-			"key", key, "error", err)
-		return nil
-	}
-	// envelope.Entries 由写侧保证按前缀长度降序,直接遍历即可。
-	for i := range envelope.Entries {
-		entry := &envelope.Entries[i]
-		if strings.HasPrefix(modelLower, entry.Prefix) {
-			return decodePricing(&entry.Pricing)
-		}
-	}
-	return nil
-}
-
 // lookupMapping 先查精确 key (K4),未命中再扫通配符数组 (K5)。
 func (r *ChannelCacheReader) lookupMapping(
 	ctx context.Context, groupID int64, platform, model string,
@@ -473,49 +378,6 @@ func (r *ChannelCacheReader) getString(ctx context.Context, key string) (string,
 	slog.Warn("channel cache: redis get failed",
 		"key", key, "error", err)
 	return "", err
-}
-
-// decodePricing 将 channelPricingPayload 转换为 service.ChannelModelPricing。
-func decodePricing(p *channelPricingPayload) *ChannelModelPricing {
-	if p == nil {
-		return nil
-	}
-	out := ChannelModelPricing{
-		ID:               p.ID,
-		ChannelID:        p.ChannelID,
-		Platform:         p.Platform,
-		Models:           append([]string(nil), p.Models...),
-		BillingMode:      BillingMode(p.BillingMode),
-		InputPrice:       p.InputPrice,
-		OutputPrice:      p.OutputPrice,
-		CacheWritePrice:  p.CacheWritePrice,
-		CacheReadPrice:   p.CacheReadPrice,
-		ImageOutputPrice: p.ImageOutputPrice,
-		PerRequestPrice:  p.PerRequestPrice,
-		UpdatedAt:        time.Unix(p.UpdatedAt, 0),
-	}
-	if out.BillingMode == "" {
-		out.BillingMode = BillingModeToken
-	}
-	if len(p.Intervals) > 0 {
-		out.Intervals = make([]PricingInterval, len(p.Intervals))
-		for i := range p.Intervals {
-			iv := &p.Intervals[i]
-			out.Intervals[i] = PricingInterval{
-				ID:              iv.ID,
-				MinTokens:       iv.MinTokens,
-				MaxTokens:       iv.MaxTokens,
-				TierLabel:       iv.TierLabel,
-				InputPrice:      iv.InputPrice,
-				OutputPrice:     iv.OutputPrice,
-				CacheWritePrice: iv.CacheWritePrice,
-				CacheReadPrice:  iv.CacheReadPrice,
-				PerRequestPrice: iv.PerRequestPrice,
-				SortOrder:       iv.SortOrder,
-			}
-		}
-	}
-	return &out
 }
 
 func normalizePlatform(platform string) string {

@@ -13,18 +13,23 @@ import (
 )
 
 // 本文件实现 CacheWriter：channel-management 插件向 Redis 写入网关读取的
-// 渠道元信息 / 定价 / 映射 / 限制数据。键格式与字段语义严格遵循
+// 渠道元信息 (K1) 与模型映射 (K4 / K5) 数据。键格式与字段语义遵循
 // plugins/channel-management/GATEWAY_CACHE_SPEC.md（v1）。
 //
 // 设计要点：
+//   - P4 拆分: pricing (K2 / K3) 已经从 Redis 通道下线, 改由
+//     PricingExtension gRPC stream 推送到 host in-memory PricingOverrideCache。
+//     本写侧只剩 meta / mapping 三类 key, 因为 PricingOverride proto 不携带
+//     restrict_models / channel_id / model→model mapping 字段。RedisRaw
+//     capability 因此仍然保留。
 //   - SDK 暴露的 RedisClient 没有 Pipeline / MGET，写侧只能逐条 SetEx。
-//     对单 (group, platform) 的键数 ≈ 1 (meta) + N (exact pricing) +
-//     1 (wildcard pricing) + N (exact mapping) + 1 (wildcard mapping)。
-//     渠道 CRUD 是低频路径，串行写入完全可接受。
+//     对单 (group, platform) 的键数 ≈ 1 (meta) + N (exact mapping) +
+//     1 (wildcard mapping)。渠道 CRUD 是低频路径，串行写入完全可接受。
 //   - 写入失败只记 warn 不返回错误，避免缓存层故障阻塞 CRUD 主路径。
 //     TTL（15 min）+ 下次 CRUD 重建会自然兜底。
-//   - InvalidateCache 必须基于"旧 GroupIDs / 旧 ModelPricing 的 platform 集合"
-//     去删 key，否则更新后旧分组 / 旧平台残留缓存得等 TTL。
+//   - InvalidateCache 基于"旧 GroupIDs / 旧 ModelPricing 的 platform 集合"
+//     推断要删的 key — pricing 走 in-memory cache 后, 旧 platform 集合仍是
+//     最准确的 mapping platform 来源(因为 ModelMapping map 也按 platform 分桶)。
 
 const (
 	// channelCacheSchemaVersion 与 channel_cache_reader.go 保持一致。
@@ -37,7 +42,7 @@ const (
 	channelCacheWriteTimeout = 2 * time.Second
 
 	// 失效广播频道 / scope（GATEWAY_CACHE_SPEC.md §6.2）。
-	channelCacheInvalidateChannel = "plugin:channel:invalidate"
+	channelCacheInvalidateChannel    = "plugin:channel:invalidate"
 	channelCacheInvalidateScopeAll   = "all"
 	channelCacheInvalidateScopeGroup = "group"
 
@@ -156,7 +161,7 @@ func (w *CacheWriter) InvalidateCache(ctx context.Context, channel *Channel) err
 
 // fetchGroupPlatforms 通过注入的 lookup 把 groupIDs 解析为
 // {groupID → platform}。lookup 为 nil 或返回错误时退化为空 map（写侧
-// 会因此跳过对应分组的 K2~K5 写入，但仍会保留 InvalidateCache 删除路径）。
+// 会因此跳过对应分组的 K1 / K4 / K5 写入，但仍会保留 InvalidateCache 删除路径）。
 func (w *CacheWriter) fetchGroupPlatforms(groupIDs []int64) map[int64]string {
 	if w == nil || w.lookup == nil || len(groupIDs) == 0 {
 		return map[int64]string{}
@@ -172,7 +177,14 @@ func (w *CacheWriter) fetchGroupPlatforms(groupIDs []int64) map[int64]string {
 	return platforms
 }
 
-// writeChannelForGroup 把 channel 拆解为 K1/K2/K3/K4/K5 写入 Redis。
+// writeChannelForGroup 把 channel 拆解为 K1/K4/K5 写入 Redis。
+//
+// P4 注：K2/K3（pricing / wildcard pricing）已经从 Redis 通道下线，
+// 改由 PricingExtension gRPC + in-memory PricingOverrideCache 提供，
+// 见 plugins/channel-management/internal/pricing。本写侧仅保留
+// meta（K1）、mapping（K4 / K5）三类 key — 它们承载的字段（restrict
+// flag / channel_id / model→model mapping）当前不在 PricingOverride
+// proto 内，仍由 ChannelCacheReader 直接从 Redis 读。
 func (w *CacheWriter) writeChannelForGroup(ctx context.Context, channel *Channel, groupID int64, platform string) {
 	platform = normalizePlatformValue(platform)
 	if platform == "" {
@@ -180,7 +192,6 @@ func (w *CacheWriter) writeChannelForGroup(ctx context.Context, channel *Channel
 	}
 
 	w.writeMeta(ctx, channel, groupID, platform)
-	w.writePricing(ctx, channel, groupID, platform)
 	w.writeMapping(ctx, channel, groupID, platform)
 }
 
@@ -205,60 +216,6 @@ func (w *CacheWriter) writeMeta(ctx context.Context, channel *Channel, groupID i
 	}
 	key := fmt.Sprintf("plugin:channel:meta:%d:%s", groupID, platform)
 	w.setEx(ctx, key, string(value))
-}
-
-func (w *CacheWriter) writePricing(ctx context.Context, channel *Channel, groupID int64, platform string) {
-	exact := make([]ChannelModelPricing, 0)
-	wildcards := make([]wildcardPricingItem, 0)
-
-	for i := range channel.ModelPricing {
-		pricing := &channel.ModelPricing[i]
-		if normalizePlatformValue(pricing.Platform) != platform {
-			continue
-		}
-		for _, model := range pricing.Models {
-			modelLower := normalizeModelValue(model)
-			if modelLower == "" {
-				continue
-			}
-			if strings.HasSuffix(modelLower, "*") {
-				wildcards = append(wildcards, wildcardPricingItem{
-					Prefix:  strings.TrimSuffix(modelLower, "*"),
-					Pricing: pricingPayload(pricing),
-				})
-				continue
-			}
-			key := fmt.Sprintf("plugin:channel:pricing:%d:%s:%s", groupID, platform, modelLower)
-			value, err := json.Marshal(pricingPayload(pricing).withModels([]string{modelLower}))
-			if err != nil {
-				slog.Warn("channel cache: marshal pricing failed", "key", key, "error", err)
-				continue
-			}
-			w.setEx(ctx, key, string(value))
-			_ = exact // exact 仅用于潜在的全量列举，当前未用
-		}
-	}
-
-	wildcardKey := fmt.Sprintf("plugin:channel:wildcard:pricing:%d:%s", groupID, platform)
-	if len(wildcards) == 0 {
-		// 无通配符 → 主动删除可能残留的旧 key，避免读侧命中过期数据
-		w.del(ctx, wildcardKey)
-		return
-	}
-	sort.SliceStable(wildcards, func(i, j int) bool {
-		return len(wildcards[i].Prefix) > len(wildcards[j].Prefix)
-	})
-	envelope := map[string]any{
-		"schema_version": channelCacheSchemaVersion,
-		"entries":        wildcards,
-		"updated_at":     channel.UpdatedAt.Unix(),
-	}
-	value, err := json.Marshal(envelope)
-	if err != nil {
-		slog.Warn("channel cache: marshal wildcard pricing failed", "key", wildcardKey, "error", err)
-		return
-	}
-	w.setEx(ctx, wildcardKey, string(value))
 }
 
 func (w *CacheWriter) writeMapping(ctx context.Context, channel *Channel, groupID int64, platform string) {
@@ -307,14 +264,15 @@ func (w *CacheWriter) writeMapping(ctx context.Context, channel *Channel, groupI
 	w.setEx(ctx, wildcardKey, string(value))
 }
 
-// deleteGroupKeys 删除给定 (group, platforms) 下所有 K1~K5 键。
-// 由于读侧依赖 K1 缺失即视为"无渠道",这里仅需删除 meta + 通配符 envelope
-// 即可让网关进入降级路径。残留的精确 K2/K4 即便存活,因 K1 已缺失,
-// ChannelCacheReader.GetChannelModelPricing / lookupMapping 都不会读到它们
-// (lookupMapping 还会被读到一次,但 ResolveChannelMapping 读 K1 后会先返回)。
+// deleteGroupKeys 删除给定 (group, platforms) 下的 K1 + K5 wildcard envelope。
 //
-// 为了双保险,我们仍然主动删除 wildcard envelope (体积大)。精确 key 等 TTL
-// 自然过期。
+// 读侧依赖 K1 缺失即视为"无渠道"，删除 K1 已经能让网关进入降级路径；
+// 我们仍然主动删除 K5 wildcard envelope（体积大，残留浪费内存），
+// 精确 K4 mapping 留给 TTL 自然过期。
+//
+// P4 注：K2 / K3（pricing / wildcard pricing）已经从写侧下线，删除路径
+// 也不再涉及它们 — 读侧 ChannelCacheReader.GetChannelModelPricing 现在
+// 只读 PricingOverrideCache，Redis 上即便有残留 key 也不会被命中。
 func (w *CacheWriter) deleteGroupKeys(ctx context.Context, groupID int64, platforms []string) {
 	for _, p := range platforms {
 		platform := normalizePlatformValue(p)
@@ -323,7 +281,6 @@ func (w *CacheWriter) deleteGroupKeys(ctx context.Context, groupID int64, platfo
 		}
 		w.del(ctx,
 			fmt.Sprintf("plugin:channel:meta:%d:%s", groupID, platform),
-			fmt.Sprintf("plugin:channel:wildcard:pricing:%d:%s", groupID, platform),
 			fmt.Sprintf("plugin:channel:wildcard:mapping:%d:%s", groupID, platform),
 		)
 	}
@@ -399,89 +356,6 @@ func (w *CacheWriter) platformsFromPricing(channel *Channel) []string {
 }
 
 // --- 序列化辅助 ---
-
-// pricingPayloadStruct 与 ChannelCacheReader.channelPricingPayload 字段对齐。
-type pricingPayloadStruct struct {
-	SchemaVersion    string                   `json:"schema_version"`
-	ID               int64                    `json:"id"`
-	ChannelID        int64                    `json:"channel_id"`
-	Platform         string                   `json:"platform"`
-	Models           []string                 `json:"models"`
-	BillingMode      string                   `json:"billing_mode"`
-	InputPrice       *float64                 `json:"input_price"`
-	OutputPrice      *float64                 `json:"output_price"`
-	CacheWritePrice  *float64                 `json:"cache_write_price"`
-	CacheReadPrice   *float64                 `json:"cache_read_price"`
-	ImageOutputPrice *float64                 `json:"image_output_price"`
-	PerRequestPrice  *float64                 `json:"per_request_price"`
-	Intervals        []intervalPayloadStruct  `json:"intervals"`
-	UpdatedAt        int64                    `json:"updated_at"`
-}
-
-type intervalPayloadStruct struct {
-	ID              int64    `json:"id"`
-	MinTokens       int      `json:"min_tokens"`
-	MaxTokens       *int     `json:"max_tokens"`
-	TierLabel       string   `json:"tier_label"`
-	InputPrice      *float64 `json:"input_price"`
-	OutputPrice     *float64 `json:"output_price"`
-	CacheWritePrice *float64 `json:"cache_write_price"`
-	CacheReadPrice  *float64 `json:"cache_read_price"`
-	PerRequestPrice *float64 `json:"per_request_price"`
-	SortOrder       int      `json:"sort_order"`
-}
-
-func (p pricingPayloadStruct) withModels(models []string) pricingPayloadStruct {
-	p.Models = models
-	return p
-}
-
-func pricingPayload(p *ChannelModelPricing) pricingPayloadStruct {
-	models := make([]string, 0, len(p.Models))
-	for _, m := range p.Models {
-		models = append(models, normalizeModelValue(m))
-	}
-	intervals := make([]intervalPayloadStruct, 0, len(p.Intervals))
-	for _, iv := range p.Intervals {
-		intervals = append(intervals, intervalPayloadStruct{
-			ID:              iv.ID,
-			MinTokens:       iv.MinTokens,
-			MaxTokens:       iv.MaxTokens,
-			TierLabel:       iv.TierLabel,
-			InputPrice:      iv.InputPrice,
-			OutputPrice:     iv.OutputPrice,
-			CacheWritePrice: iv.CacheWritePrice,
-			CacheReadPrice:  iv.CacheReadPrice,
-			PerRequestPrice: iv.PerRequestPrice,
-			SortOrder:       iv.SortOrder,
-		})
-	}
-	billingMode := string(p.BillingMode)
-	if billingMode == "" {
-		billingMode = string(BillingModeToken)
-	}
-	return pricingPayloadStruct{
-		SchemaVersion:    channelCacheSchemaVersion,
-		ID:               p.ID,
-		ChannelID:        p.ChannelID,
-		Platform:         normalizePlatformValue(p.Platform),
-		Models:           models,
-		BillingMode:      billingMode,
-		InputPrice:       p.InputPrice,
-		OutputPrice:      p.OutputPrice,
-		CacheWritePrice:  p.CacheWritePrice,
-		CacheReadPrice:   p.CacheReadPrice,
-		ImageOutputPrice: p.ImageOutputPrice,
-		PerRequestPrice:  p.PerRequestPrice,
-		Intervals:        intervals,
-		UpdatedAt:        p.UpdatedAt.Unix(),
-	}
-}
-
-type wildcardPricingItem struct {
-	Prefix  string               `json:"prefix"`
-	Pricing pricingPayloadStruct `json:"pricing"`
-}
 
 type wildcardMappingItem struct {
 	Prefix string `json:"prefix"`
