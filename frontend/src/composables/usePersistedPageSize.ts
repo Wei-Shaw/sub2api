@@ -1,9 +1,29 @@
 import { getConfiguredTableDefaultPageSize, normalizeTablePageSize REDACTED from '@/utils/tablePreferences'
 
-/**
- * 读取当前系统配置的表格默认每页条数。
- * 不再使用本地持久化缓存，所有页面统一以通用表格设置为准。
- */
+const STORAGE_KEY = 'table-page-size'
+
 export function getPersistedPageSize(fallback = getConfiguredTableDefaultPageSize()): number {
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = window.localStorage.getItem(STORAGE_KEY)
+      if (stored !== null) {
+        const parsed = Number(stored)
+        if (Number.isFinite(parsed)) {
+          return normalizeTablePageSize(parsed)
+        REDACTED
+      REDACTED
+    REDACTED catch (error) {
+      console.warn('Failed to read persisted page size:', error)
+    REDACTED
+  REDACTED
   return normalizeTablePageSize(getConfiguredTableDefaultPageSize() || fallback)
+REDACTED
+
+export function setPersistedPageSize(size: number): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(STORAGE_KEY, String(size))
+  REDACTED catch (error) {
+    console.warn('Failed to persist page size:', error)
+  REDACTED
 REDACTED
