@@ -268,7 +268,7 @@ func TestFilterThinkingBlocks(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := FilterThinkingBlocks([]byte(tt.input))
+			result := FilterThinkingBlocks([]byte(tt.input), "claude-sonnet-4-5")
 
 			if tt.expectError {
 				// For invalid JSON, should return original
@@ -304,7 +304,7 @@ func TestFilterThinkingBlocksForRetry_DisablesThinkingAndPreservesAsText(t *test
 		]
 	}`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -337,7 +337,7 @@ func TestFilterThinkingBlocksForRetry_DisablesThinkingEvenWithoutThinkingBlocks(
 		]
 	}`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -356,7 +356,7 @@ func TestFilterThinkingBlocksForRetry_RemovesRedactedThinkingAndKeepsValidConten
 		]
 	}`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -415,7 +415,7 @@ func TestFilterThinkingBlocksForRetry_EmptyContentGetsPlaceholder(t *testing.T) 
 		]
 	}`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -441,7 +441,7 @@ func TestFilterThinkingBlocksForRetry_StripsEmptyTextBlocks(t *testing.T) {
 		]
 	}`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -476,7 +476,7 @@ func TestFilterThinkingBlocksForRetry_StripsNestedEmptyTextInToolResult(t *testi
 		]
 	}`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -504,7 +504,7 @@ func TestFilterThinkingBlocksForRetry_NestedAllEmptyGetsEmptySlice(t *testing.T)
 		]
 	}`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -587,7 +587,7 @@ func TestFilterThinkingBlocksForRetry_PreservesNonEmptyTextBlocks(t *testing.T) 
 		]
 	}`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	// Fast path: no thinking content, no empty content, no empty text blocks → unchanged
 	require.Equal(t, input, out)
@@ -604,7 +604,7 @@ func TestFilterSignatureSensitiveBlocksForRetry_DowngradesTools(t *testing.T) {
 		]
 	}`)
 
-	out := FilterSignatureSensitiveBlocksForRetry(input)
+	out := FilterSignatureSensitiveBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -691,7 +691,7 @@ func TestFilterThinkingBlocksForRetry_RemovesClearThinkingStrategy_FastPath(t *t
 		]
 	}`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -717,7 +717,7 @@ func TestFilterThinkingBlocksForRetry_RemovesClearThinkingStrategy_WithThinkingB
 		]
 	}`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -741,7 +741,7 @@ func TestFilterThinkingBlocksForRetry_NoContextManagement_Unaffected(t *testing.
 		"messages":[{"role":"user","content":[{"type":"text","text":"Hi"}]}]
 	}`)
 
-	out := FilterThinkingBlocksForRetry(input)
+	out := FilterThinkingBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -764,7 +764,7 @@ func TestFilterSignatureSensitiveBlocksForRetry_RemovesClearThinkingStrategy(t *
 		]
 	}`)
 
-	out := FilterSignatureSensitiveBlocksForRetry(input)
+	out := FilterSignatureSensitiveBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -795,7 +795,7 @@ func TestFilterSignatureSensitiveBlocksForRetry_PreservesNonThinkingStrategies(t
 		]
 	}`)
 
-	out := FilterSignatureSensitiveBlocksForRetry(input)
+	out := FilterSignatureSensitiveBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))
@@ -821,7 +821,7 @@ func TestFilterSignatureSensitiveBlocksForRetry_NoThinkingField_ContextManagemen
 		]
 	}`)
 
-	out := FilterSignatureSensitiveBlocksForRetry(input)
+	out := FilterSignatureSensitiveBlocksForRetry(input, "claude-sonnet-4-5")
 
 	var req map[string]any
 	require.NoError(t, json.Unmarshal(out, &req))

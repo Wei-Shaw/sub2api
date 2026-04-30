@@ -504,13 +504,22 @@ func StripEmptyTextBlocks(body []byte) []byte {
 
 // FilterThinkingBlocks removes thinking blocks from request body
 // Returns filtered body or original body if filtering fails (fail-safe)
-// This prevents 400 errors from invalid thinking block signatures
+// This prevents 400 errors from invalid thinking block signatures.
 //
-// 策略：
+// mappedModel 是「实际发给上游的模型 ID」(after account model mapping)，用于按
+// 协议族分流。仅 anthropic-strict 走原过滤逻辑；passback-required 与 unknown
+// 一律保留全部 thinking block，避免误伤第三方兼容上游
+// (DeepSeek `/anthropic`、Kimi `/coding`、GLM、Moonshot 等)，详见
+// .pensieve/short-term/knowledge/thinking-block-filter-third-party-upstream-inversion/。
+//
+// 策略 (anthropic-strict only)：
 //   - 当 thinking.type 不是 "enabled"/"adaptive"：移除所有 thinking 相关块
 //   - 当 thinking.type 是 "enabled"/"adaptive"：仅移除缺失/无效 signature 的 thinking 块（避免 400）
 //     (blocks with missing/empty/dummy signatures that would cause 400 errors)
-func FilterThinkingBlocks(body []byte) []byte {
+func FilterThinkingBlocks(body []byte, mappedModel string) []byte {
+	if !ShouldPreFilterThinkingBlocks(mappedModel) {
+		return body
+	}
 	return filterThinkingBlocksInternal(body, false)
 }
 
@@ -528,7 +537,17 @@ func FilterThinkingBlocks(body []byte) []byte {
 //   - Convert `thinking` blocks to `text` blocks (preserve the thinking content).
 //   - Remove `redacted_thinking` blocks (cannot be converted to text).
 //   - Ensure no message ends up with empty content.
-func FilterThinkingBlocksForRetry(body []byte) []byte {
+//
+// mappedModel 用于按协议族分流：仅 anthropic-strict 执行上述变形；
+// passback-required (DeepSeek/Kimi/GLM 等) 与 unknown 一律返回原 body，
+// 因为这类上游的契约就是「thinking block 原样回传」（或我们不了解），
+// retry 任何变形都不会修好 400，反而破坏契约。详见 thinking_protocol.go。
+func FilterThinkingBlocksForRetry(body []byte, mappedModel string) []byte {
+	// 仅 anthropic-strict 走整流；passback-required 与 unknown 都返回原 body。
+	if !ShouldApplyRetryFilters(mappedModel) {
+		return body
+	}
+
 	hasThinkingContent := bytes.Contains(body, patternTypeThinking) ||
 		bytes.Contains(body, patternTypeThinkingSpaced) ||
 		bytes.Contains(body, patternTypeRedactedThinking) ||
@@ -871,7 +890,14 @@ func anthropicBetaTokensContains(header, token string) bool {
 //
 // Use this only when needed: converting tool blocks to text changes model behaviour and can increase the
 // risk of prompt injection (tool output becomes plain conversation text).
-func FilterSignatureSensitiveBlocksForRetry(body []byte) []byte {
+//
+// mappedModel 同 FilterThinkingBlocksForRetry：仅 anthropic-strict 执行变形；
+// passback-required 与 unknown 都返回原 body，避免在不熟悉的上游上盲目变形。
+func FilterSignatureSensitiveBlocksForRetry(body []byte, mappedModel string) []byte {
+	if !ShouldApplyRetryFilters(mappedModel) {
+		return body
+	}
+
 	// Fast path: only run when we see likely relevant constructs.
 	if !bytes.Contains(body, []byte(`"type":"thinking"`)) &&
 		!bytes.Contains(body, []byte(`"type": "thinking"`)) &&
