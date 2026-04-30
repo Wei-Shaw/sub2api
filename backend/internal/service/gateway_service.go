@@ -4492,7 +4492,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 							logger.LegacyPrintf("service.gateway", "Account %d: budget rectifier retry build failed: %v", account.ID, buildErr)
 						}
 					}
-				} else if s.shouldRectifyAdvisorToolError(ctx, respBody) {
+				} else if s.shouldRectifyAdvisorToolError(ctx, account.Platform, respBody) {
 					// Advisor Tool 整流：上游不识别 advisor-tool-2026-03-01 beta header 时，
 					// 剥离 anthropic-beta 中的该 token 并删除 tools[] 里 type=advisor_20260301 的工具后重试。
 					rectifiedBody, bodyApplied := RectifyAdvisorTool(body)
@@ -6470,7 +6470,14 @@ func (s *GatewayService) isSignatureErrorPattern(ctx context.Context, account *A
 
 // shouldRectifyAdvisorToolError 判断是否应触发 advisor-tool 整流（剥 header + tool 后重试）。
 // 仅当总开关 + advisor-tool 子开关均开启，且响应体匹配内置或自定义关键词时返回 true。
-func (s *GatewayService) shouldRectifyAdvisorToolError(ctx context.Context, respBody []byte) bool {
+func (s *GatewayService) shouldRectifyAdvisorToolError(ctx context.Context, platform string, respBody []byte) bool {
+	// advisor-tool-2026-03-01 是 Anthropic 特有 beta header；其他平台（OpenAI / Antigravity / Gemini）
+	// 不会发出该 token，也不存在 tools[type=advisor_*] 概念，整流无意义。
+	// 显式 platform guard 让"非 Anthropic 不进 advisor 整流"在调用栈上可见，避免依赖
+	// RectifyAdvisorTool 对非 Anthropic JSON 是 no-op 的隐式契约。
+	if platform != PlatformAnthropic {
+		return false
+	}
 	if s.settingService == nil {
 		return false
 	}
@@ -7863,7 +7870,13 @@ func finalizePostUsageBilling(p *postUsageBillingParams, deps *billingDeps, resu
 		deps.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(p.APIKey.ID, p.Cost.ActualCost)
 	}
 	if record, ok := buildServiceQuotaRecordRequest(p); ok && deps.billingCacheService != nil {
-		deps.billingCacheService.RecordServiceQuotaUsage(context.Background(), record)
+		// 故意脱离请求 ctx：客户端断开不应中断 quota 计数，否则 RPM/TPD 漏记。
+		// 但 context.Background() 没有超时，Redis 慢/挂时会让这条调用无限阻塞 worker。
+		// 给 2 分钟硬上限——正常 Redis 增量写应在毫秒级完成，2 分钟足够覆盖一次重连+重试，
+		// 真到这个点说明 Redis 不可用，放弃比阻塞 worker 队列更安全。
+		quotaCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		deps.billingCacheService.RecordServiceQuotaUsage(quotaCtx, record)
 	}
 
 	deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
