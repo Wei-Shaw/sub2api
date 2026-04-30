@@ -1,5 +1,5 @@
 /**
- * Tailwind v3 preflight 中 `--tw-*` 自定义属性初始值.
+ * Tailwind v3 preflight 中 `--tw-*` 自定义属性初始值 + 关键 form/border reset.
  *
  * 为什么单独一份:
  *   Tailwind utility (gradient / shadow / ring / transform 等) 的 CSS 是
@@ -14,15 +14,51 @@
  *       inheritance, 不会跨 shadow boundary
  *   所以必须在 shadow root 内重新注入一份.
  *
+ *   Shadow DOM 也不会继承 Tailwind preflight 的 `border-width: 0; border-style:
+ *   solid` 通用重置, 导致 `<button>` `<input>` `<select>` 的浏览器默认 outset/
+ *   inset 边框漏出来 (现象: 按钮/输入框出现一圈深灰"黑边"). 因此除了 `--tw-*`
+ *   变量, 必须把以下两类关键 reset 也注入:
+ *     1. 通用 border 重置 (border-width:0; border-style:solid)
+ *     2. form 元素 reset (button/input/select/textarea 字体继承 + button 移除
+ *        默认 outset 外观)
+ *   不注入完整 @tailwind base 是因为它包含大量 element-level reset (h1~h6,
+ *   list-style 等) 会改变 plugin 业务 markup 的渲染语义, 仅注入这两类视觉关键
+ *   项足以解决问题, 同时保留 plugin SFC 的语义自由度.
+ *
  * 内容来源:
  *   抄自 Tailwind v3 编译产物中 `*, ::before, ::after { ... }` 那一块的
- *   `--tw-*` 默认值. 不包含 `box-sizing` 等 reset, 调用方自己决定要不要.
+ *   `--tw-*` 默认值, 加 form/border 关键重置.
  *
  * 维护规则:
  *   升级 Tailwind 大版本时需要重新对照新版 preflight 输出, 把新增的
  *   `--tw-*` 变量补进来.
  */
 export const TAILWIND_SHADOW_PREFLIGHT = `
+*, ::before, ::after {
+  border-width: 0;
+  border-style: solid;
+  border-color: #e5e7eb;
+}
+button, input, optgroup, select, textarea {
+  font-family: inherit;
+  font-feature-settings: inherit;
+  font-variation-settings: inherit;
+  font-size: 100%;
+  font-weight: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  margin: 0;
+  padding: 0;
+}
+button, [type='button'], [type='reset'], [type='submit'] {
+  -webkit-appearance: button;
+  background-color: transparent;
+  background-image: none;
+}
+button, [role="button"] {
+  cursor: pointer;
+}
 *, ::before, ::after {
   --tw-border-spacing-x: 0;
   --tw-border-spacing-y: 0;
