@@ -637,7 +637,37 @@ REDACTED)
 		return
 REDACTED
 
+	// OpenAI APIKey: credentials 修改后重新探测上游能力（base_url/api_key 可能变更）。
+	// 异步执行，探测失败不影响账号更新响应。
+	if len(req.Credentials) > 0 {
+		h.scheduleOpenAIResponsesProbe(account)
+REDACTED
+
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+REDACTED
+
+// scheduleOpenAIResponsesProbe 异步触发 OpenAI APIKey 账号的 Responses API 能力探测。
+//
+// 仅对 platform=openai && type=apikey 账号生效；其他账号无操作。
+// 探测本身在 goroutine 中执行（会发一次 HTTP 请求到上游），不会阻塞
+// 当前请求。探测错误仅记录日志，不向上下文传播：探测失败时标记保持缺失，
+// 网关会按"现状即证据"默认走 Responses。
+func (h *AccountHandler) scheduleOpenAIResponsesProbe(account *service.Account) {
+	if account == nil || account.Platform != service.PlatformOpenAI || account.Type != service.AccountTypeAPIKey {
+		return
+REDACTED
+	if h.accountTestService == nil {
+		return
+REDACTED
+	accountID := account.ID
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("openai_responses_probe_panic", "account_id", accountID, "recover", r)
+		REDACTED
+	REDACTED()
+		h.accountTestService.ProbeOpenAIAPIKeyResponsesSupport(context.Background(), accountID)
+REDACTED()
 REDACTED
 
 // Delete handles deleting an account
@@ -1231,6 +1261,8 @@ REDACTED
 					openaiPrivacyAccounts = append(openaiPrivacyAccounts, account)
 			REDACTED
 		REDACTED
+			// OpenAI APIKey 账号异步探测 /v1/responses 能力。
+			h.scheduleOpenAIResponsesProbe(account)
 			success++
 			results = append(results, gin.H{
 				"name":    item.Name,
