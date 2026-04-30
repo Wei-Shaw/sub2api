@@ -29,6 +29,7 @@ type fakePluginManager struct {
 	updateCfgFn func(ctx context.Context, name string, cfg map[string]any) error
 	uninstallFn func(ctx context.Context, name string) error
 	installFn   func(ctx context.Context, name string) error
+	purgeFn     func(ctx context.Context, name string) error
 }
 
 func (f *fakePluginManager) List(ctx context.Context) ([]plugin.PluginInfo, error) {
@@ -82,6 +83,12 @@ func (f *fakePluginManager) Uninstall(ctx context.Context, name string) error {
 func (f *fakePluginManager) Install(ctx context.Context, name string) error {
 	if f.installFn != nil {
 		return f.installFn(ctx, name)
+	}
+	return nil
+}
+func (f *fakePluginManager) Purge(ctx context.Context, name string) error {
+	if f.purgeFn != nil {
+		return f.purgeFn(ctx, name)
 	}
 	return nil
 }

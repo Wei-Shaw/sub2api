@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -33,6 +34,9 @@ type PluginManager interface {
 	Uninstall(ctx context.Context, name string) error
 	// Install 撤销软卸载, 让插件回到 disabled / enabled 状态。
 	Install(ctx context.Context, name string) error
+	// Purge 硬卸载: 物理清除插件全部数据 (含 plugin_migrations / plugin_settings /
+	// plugin_settings_schemas / plugins 行)。仅对已经软卸载的插件有效。
+	Purge(ctx context.Context, name string) error
 }
 
 // ErrPluginNotFound 由 PluginManager 实现返回,表示请求的插件不存在。
@@ -48,6 +52,10 @@ var ErrPluginIsBuiltin = plugin.ErrPluginIsBuiltin
 // ErrInvalidPluginName 由 PluginManager 实现返回, 表示请求的插件名违反命名
 // 规则。映射为 HTTP 400。
 var ErrInvalidPluginName = plugin.ErrInvalidPluginName
+
+// ErrPluginNotSoftUninstalled 表示在仍处于 active 的插件上调用 Purge。
+// handler 据此映射为 HTTP 409 Conflict, 让前端提示 "先 Uninstall 再 Purge"。
+var ErrPluginNotSoftUninstalled = plugin.ErrPluginNotSoftUninstalled
 
 // PluginHandler 提供插件管理的 admin HTTP 接口。
 //
@@ -223,6 +231,52 @@ func (h *PluginHandler) Install(c *gin.Context) {
 	response.Success(c, gin.H{"name": name, "status": "installed"})
 }
 
+// purgeRequest 是 Delete (硬卸载) 接口的请求体。 body.name 必须与 URL :name
+// 一致 — 这是不可逆操作的 "二次确认" 模式, 与 Kubernetes / Stripe / GitHub
+// 的危险操作 UX 一致, 防止误点产生的连锁删除。
+type purgeRequest struct {
+	Name string `json:"name" binding:"required"`
+}
+
+// Delete 硬卸载插件: 物理清除数据 (plugin_migrations / plugin_settings /
+// plugin_settings_schemas / plugins), 不可逆。
+// DELETE /api/v1/admin/plugins/:name?purge=true
+//
+// 三道防线:
+//  1. URL query 必须带 purge=true — 防止 admin 误用 DELETE 时误删。
+//  2. JSON body 必须携带 name 且与 URL :name 一致 — 二次确认避免输错对象。
+//  3. plugin manager 拒绝未软卸载的目标 (409 Conflict), 强制走完
+//     "先 Uninstall 再 Purge" 的流程。
+//
+// 内置插件返回 400 (ErrPluginIsBuiltin); 不存在返回 404; 软卸载校验失败返回
+// 409; 其他错误 500。
+func (h *PluginHandler) Delete(c *gin.Context) {
+	if !h.requireManager(c) {
+		return
+	}
+	name, ok := h.parseName(c)
+	if !ok {
+		return
+	}
+	if !parseBoolQuery(c.Query("purge")) {
+		response.BadRequest(c, "purge=true query parameter is required to confirm hard uninstall")
+		return
+	}
+	var req purgeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "request body must be {\"name\":\"<plugin>\"}: "+err.Error())
+		return
+	}
+	if req.Name != name {
+		response.BadRequest(c, fmt.Sprintf("body name %q does not match URL plugin %q", req.Name, name))
+		return
+	}
+	if h.handleManagerError(c, h.manager.Purge(c.Request.Context(), name)) {
+		return
+	}
+	response.Success(c, gin.H{"name": name, "status": "purged"})
+}
+
 // requireManager 在 manager 未注入时返回 503，避免后续 nil panic。
 func (h *PluginHandler) requireManager(c *gin.Context) bool {
 	if h.manager == nil {
@@ -261,6 +315,10 @@ func (h *PluginHandler) handleManagerError(c *gin.Context, err error) bool {
 	}
 	if errors.Is(err, ErrPluginIsBuiltin) {
 		response.BadRequest(c, "builtin plugins cannot be uninstalled")
+		return true
+	}
+	if errors.Is(err, ErrPluginNotSoftUninstalled) {
+		response.Error(c, http.StatusConflict, "plugin must be soft-uninstalled before purge")
 		return true
 	}
 	if errors.Is(err, ErrInvalidPluginName) {

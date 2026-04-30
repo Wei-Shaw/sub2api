@@ -564,6 +564,10 @@ func registerPluginRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// install 撤回软卸载。两个 endpoint 都走 admin auth middleware。
 		plugins.POST("/:name/uninstall", h.Admin.Plugin.Uninstall)
 		plugins.POST("/:name/install", h.Admin.Plugin.Install)
+		// P13/C-2 硬卸载: 物理清除已经软卸载的插件全部数据。 不可逆, 因此要求
+		// purge=true query + 请求体携带 name 二次确认; 仍 active 的插件返回 409,
+		// 强制走完 "先 Uninstall 再 Purge" 的流程。
+		plugins.DELETE("/:name", h.Admin.Plugin.Delete)
 	}
 }
 
