@@ -453,6 +453,12 @@ func (m *PluginManager) DisablePlugin(ctx context.Context, name string) error {
 // 反复登记/卸载的循环。返回 ErrPluginIsBuiltin 让 handler 映射成 400。
 var ErrPluginIsBuiltin = errors.New("builtin plugins cannot be uninstalled")
 
+// ErrPluginNotSoftUninstalled 表示在仍处于 active (uninstalled_at IS NULL) 的
+// 插件上调用 Purge。硬卸载是不可逆的, 必须先经过软卸载阶段; 这强制 admin
+// 走完 "先 Uninstall, 再 Purge" 的流程, 防止误操作直接清掉数据。
+// handler 把这个错误映射成 HTTP 409 Conflict。
+var ErrPluginNotSoftUninstalled = errors.New("plugin must be soft-uninstalled before purge")
+
 // isBuiltinPlugin 判断 name 是否对应 BuiltinDir 下的二进制。
 //
 // 实现细节: BuiltinDir 为空 (e.g. 没有内置插件目录) 时一律返回 false; 否则用
@@ -568,6 +574,135 @@ func (m *PluginManager) Install(ctx context.Context, name string) error {
 	)
 	m.invalidateFrontendCache()
 	return nil
+}
+
+// Purge 硬卸载: 物理清除一个已经软卸载的插件的全部数据 — plugin_migrations
+// (含逐条回滚 down_sql_cached) 、 plugin_settings 、 plugin_settings_schemas 、
+// plugins 表本身, 全部 DELETE。不可逆。
+//
+// 前置条件:
+//   - 插件必须先经过 Uninstall (uninstalled_at IS NOT NULL); 否则返回
+//     ErrPluginNotSoftUninstalled (handler 映射 409)。 这强制 admin 流程
+//     "先软再硬" , 不提供 ?force=true 之类的逃生口避免误清。
+//   - 内置插件 (BuiltinDir 下) 一律拒绝 ErrPluginIsBuiltin: 它们的二进制
+//     在每次启动时被重新登记, Purge 反而会让 syncFromDisk 立刻把它们重建。
+//
+// 实现细节: 整个删除流程在单个事务里运行 — 任何 down SQL 失败 / DELETE
+// 失败都会整体回滚, 让插件保持软卸载状态可重试。 down_sql_cached IS NULL
+// (插件没声明 down_filename) 的迁移视为不可逆, 跳过 SQL 执行只删 bookkeeping。
+func (m *PluginManager) Purge(ctx context.Context, name string) error {
+	if !IsValidPluginName(name) {
+		return ErrInvalidPluginName
+	}
+	if m.isBuiltinPlugin(name) {
+		return ErrPluginIsBuiltin
+	}
+
+	inst, err := m.repo.GetIncludingUninstalled(ctx, name)
+	if err != nil {
+		return err
+	}
+	if inst.UninstalledAt == nil {
+		return ErrPluginNotSoftUninstalled
+	}
+
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("purge plugin %s: begin tx: %w", name, err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	reverted, skipped, err := revertCachedDownMigrationsTx(ctx, tx, name)
+	if err != nil {
+		return fmt.Errorf("purge plugin %s: revert migrations: %w", name, err)
+	}
+
+	deletes := []struct {
+		table string
+		query string
+	}{
+		{"plugin_migrations", "DELETE FROM plugin_migrations WHERE plugin_name = $1"},
+		{"plugin_settings", "DELETE FROM plugin_settings WHERE plugin_name = $1"},
+		{"plugin_settings_schemas", "DELETE FROM plugin_settings_schemas WHERE plugin_name = $1"},
+		{"plugins", "DELETE FROM plugins WHERE name = $1"},
+	}
+	for _, d := range deletes {
+		if _, err := tx.ExecContext(ctx, d.query, name); err != nil {
+			return fmt.Errorf("purge plugin %s: delete from %s: %w", name, d.table, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("purge plugin %s: commit: %w", name, err)
+	}
+	committed = true
+
+	m.mu.Lock()
+	delete(m.plugins, name)
+	m.mu.Unlock()
+
+	m.logger.Info("plugin purged",
+		"plugin", name,
+		"migrations_reverted", reverted,
+		"migrations_skipped", skipped,
+	)
+	m.invalidateFrontendCache()
+	return nil
+}
+
+// revertCachedDownMigrationsTx 在事务内倒序执行 plugin_migrations 中缓存的
+// down_sql_cached, 返回成功执行的条数和因为没有 down 缓存被跳过的条数。
+//
+// 顺序: filename DESC, 与 up 的 lexicographical 顺序逆向, 与传统数据库迁移
+// 工具对称。down_sql_cached IS NULL 的行视为不可逆, 仅计入 skipped, 不报错。
+//
+// 在 Purge 的事务上下文中直接对外部表执行 DDL — PostgreSQL 允许在事务内
+// 跑 DROP TABLE / ALTER TABLE, 任何失败都会随事务回滚, plugin_migrations
+// 行也不会被后续的 DELETE 清掉。
+func revertCachedDownMigrationsTx(ctx context.Context, tx *sql.Tx, pluginName string) (reverted, skipped int, err error) {
+	const q = `SELECT filename, down_sql_cached
+	FROM plugin_migrations
+	WHERE plugin_name = $1
+	ORDER BY filename DESC`
+	rows, err := tx.QueryContext(ctx, q, pluginName)
+	if err != nil {
+		return 0, 0, fmt.Errorf("list plugin migrations: %w", err)
+	}
+	type entry struct {
+		filename string
+		downSQL  sql.NullString
+	}
+	var entries []entry
+	for rows.Next() {
+		var e entry
+		if scanErr := rows.Scan(&e.filename, &e.downSQL); scanErr != nil {
+			_ = rows.Close()
+			return 0, 0, fmt.Errorf("scan plugin migration: %w", scanErr)
+		}
+		entries = append(entries, e)
+	}
+	if rowsErr := rows.Err(); rowsErr != nil {
+		_ = rows.Close()
+		return 0, 0, fmt.Errorf("iterate plugin migrations: %w", rowsErr)
+	}
+	_ = rows.Close()
+
+	for _, e := range entries {
+		if !e.downSQL.Valid || strings.TrimSpace(e.downSQL.String) == "" {
+			skipped++
+			continue
+		}
+		if _, execErr := tx.ExecContext(ctx, e.downSQL.String); execErr != nil {
+			return reverted, skipped, fmt.Errorf("apply down migration %s: %w", e.filename, execErr)
+		}
+		reverted++
+	}
+	return reverted, skipped, nil
 }
 
 // RestartPlugin 先停后启。
