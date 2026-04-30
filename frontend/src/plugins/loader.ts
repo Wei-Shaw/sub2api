@@ -244,10 +244,18 @@ export function findPluginManifest(name: string): PluginManifest | null {
 // 内部工具
 // ------------------------------------------------------------------
 
+// 查找与给定 path 匹配的 menu item, 用于 AppHeader 标题/描述兜底.
+// 当 parent 与某个 child 声明同一个 path (例如 channel-management 把
+// "/admin/channels" 同时挂在 parent "渠道管理" 和 child "渠道定价" 上,
+// 用 parent 仅作为 sidebar 分组容器, child 才是真实页面) 时, parent
+// 的 labels 通常是分组名 (与原版 host route.meta.title 一致), child
+// 的 descriptions 才是具体页面副标题 (与原版 descriptionKey 对齐).
+// 因此匹配到 self 后, 若 self 缺 labels 或 descriptions, 用第一个同
+// path 的 child 补全, 让 AppHeader 能同时拿到 title + description.
 function findMenuItemByPath(items: PluginMenuItem[], path: string): PluginMenuItem | null {
   for (const item of items) {
     if (item.path === path) {
-      return item
+      return mergeMenuItemFromSamePathChild(item, path)
     }
     if (item.children && item.children.length > 0) {
       const child = findMenuItemByPath(item.children, path)
@@ -257,6 +265,35 @@ function findMenuItemByPath(items: PluginMenuItem[], path: string): PluginMenuIt
     }
   }
   return null
+}
+
+// 当 self 与某个 child 同 path 时, 把 child 的 labels / descriptions 中
+// self 缺失的字段合并进来. self 的字段优先 (空 map 视为缺失). 不修改
+// 输入对象, 仅在需要合并时返回新对象.
+function mergeMenuItemFromSamePathChild(
+  self: PluginMenuItem,
+  path: string,
+): PluginMenuItem {
+  if (!self.children || self.children.length === 0) {
+    return self
+  }
+  const samePathChild = self.children.find((c) => c.path === path)
+  if (!samePathChild) {
+    return self
+  }
+  const selfHasLabels = self.labels && Object.keys(self.labels).length > 0
+  const selfHasDescriptions = self.descriptions && Object.keys(self.descriptions).length > 0
+  const childHasLabels = samePathChild.labels && Object.keys(samePathChild.labels).length > 0
+  const childHasDescriptions =
+    samePathChild.descriptions && Object.keys(samePathChild.descriptions).length > 0
+  if ((selfHasLabels || !childHasLabels) && (selfHasDescriptions || !childHasDescriptions)) {
+    return self
+  }
+  return {
+    ...self,
+    labels: selfHasLabels ? self.labels : samePathChild.labels,
+    descriptions: selfHasDescriptions ? self.descriptions : samePathChild.descriptions,
+  }
 }
 
 function normalizeManifest(value: unknown): PluginManifest | null {
