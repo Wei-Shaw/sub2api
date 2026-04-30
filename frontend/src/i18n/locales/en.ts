@@ -5647,6 +5647,16 @@ export default {
         saved: 'Overload cooldown settings saved',
         saveFailed: 'Failed to save overload cooldown settings'
       },
+      rateLimit429Cooldown: {
+        title: '429 Default Cooldown',
+        description: 'Configure the default account cooldown when upstream returns 429 without an explicit reset time',
+        enabled: 'Enable 429 Default Cooldown',
+        enabledHint: 'Pause account scheduling when a 429 has no reset time, then auto-recover after cooldown',
+        cooldownSeconds: 'Cooldown Duration (seconds)',
+        cooldownSecondsHint: 'Default cooldown duration (1-7200 seconds); explicit upstream reset times still take precedence',
+        saved: '429 default cooldown settings saved',
+        saveFailed: 'Failed to save 429 default cooldown settings'
+      },
       streamTimeout: {
         title: 'Stream Timeout Handling',
         description: 'Configure account handling strategy when upstream response times out',
