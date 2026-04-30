@@ -37,6 +37,14 @@ type channelLister interface {
 	GetGroupPlatforms(ctx context.Context, groupIDs []int64) (map[int64]string, error)
 }
 
+// accountStatsResolver lets the gRPC server delegate per-request account
+// stats cost resolution to the channel service without import cycles.
+// ChannelService satisfies this interface via its ResolveAccountStatsCost
+// method.
+type accountStatsResolver interface {
+	ResolveAccountStatsCost(ctx context.Context, in chService.AccountStatsCostInput) (chService.AccountStatsCostResult, error)
+}
+
 // Server implements pluginsdk.PricingExtensionServer for the
 // channel-management plugin.
 //
@@ -54,8 +62,9 @@ type channelLister interface {
 type Server struct {
 	pb.UnimplementedPricingExtensionServer
 
-	lister atomic.Pointer[listerHolder]
-	broker *Broker
+	lister   atomic.Pointer[listerHolder]
+	resolver atomic.Pointer[resolverHolder]
+	broker   *Broker
 
 	mu      sync.Mutex
 	version string
@@ -65,6 +74,12 @@ type Server struct {
 // nil-safe value without going through reflection.
 type listerHolder struct {
 	inner channelLister
+}
+
+// resolverHolder mirrors listerHolder for accountStatsResolver so a nil
+// stored value (no resolver wired) is unambiguous.
+type resolverHolder struct {
+	inner accountStatsResolver
 }
 
 // NewServer returns a Server with no lister wired and a fresh in-process
@@ -94,6 +109,18 @@ func (s *Server) SetLister(lister channelLister) {
 		return
 	}
 	s.lister.Store(&listerHolder{inner: lister})
+}
+
+// SetAccountStatsResolver wires the per-request account-stats resolver
+// (typically ChannelService). Until SetAccountStatsResolver is called
+// with a non-nil value, ResolveAccountStatsCost returns has_cost=false
+// so the host treats the plugin as "no opinion" and keeps account_stats_cost NULL.
+func (s *Server) SetAccountStatsResolver(resolver accountStatsResolver) {
+	if resolver == nil {
+		s.resolver.Store(nil)
+		return
+	}
+	s.resolver.Store(&resolverHolder{inner: resolver})
 }
 
 // loadLister returns the wired lister or nil. Hot path; cheap atomic load.
@@ -200,6 +227,67 @@ func (s *Server) AdjustCost(
 	return &pb.AdjustCostResponse{
 		Modified:         false,
 		AdjustmentReason: "channel-management: AdjustCost not implemented yet",
+	}, nil
+}
+
+// ResolveAccountStatsCost translates the proto request into the channel
+// service's AccountStatsCostInput, runs the per-channel custom-rule
+// resolver, and packages the result back into the proto response. When
+// no resolver is wired (Init still pending) we return has_cost=false so
+// the host treats the plugin as "no opinion" rather than failing the
+// request.
+func (s *Server) ResolveAccountStatsCost(
+	ctx context.Context,
+	req *pb.ResolveAccountStatsCostRequest,
+) (*pb.ResolveAccountStatsCostResponse, error) {
+	if req == nil {
+		return &pb.ResolveAccountStatsCostResponse{}, nil
+	}
+	holder := s.resolver.Load()
+	if holder == nil || holder.inner == nil {
+		return &pb.ResolveAccountStatsCostResponse{
+			HasCost:          false,
+			ResolutionReason: "channel-management: account stats resolver not yet wired",
+		}, nil
+	}
+
+	tokens := chService.UsageTokens{}
+	if t := req.GetTokens(); t != nil {
+		tokens = chService.UsageTokens{
+			InputTokens:         t.GetInputTokens(),
+			OutputTokens:        t.GetOutputTokens(),
+			CacheCreationTokens: t.GetCacheCreationTokens(),
+			CacheReadTokens:     t.GetCacheReadTokens(),
+			ImageOutputTokens:   t.GetImageCount(),
+		}
+	}
+	requestCount := int(req.GetRequestCount())
+	if requestCount <= 0 {
+		requestCount = 1
+	}
+
+	result, err := holder.inner.ResolveAccountStatsCost(ctx, chService.AccountStatsCostInput{
+		ChannelID:     req.GetChannelId(),
+		AccountID:     req.GetAccountId(),
+		GroupID:       req.GetGroupId(),
+		UpstreamModel: req.GetUpstreamModel(),
+		Tokens:        tokens,
+		RequestCount:  requestCount,
+		TotalCost:     req.GetTotalCost(),
+	})
+	if err != nil {
+		// The host treats any error as "no opinion" — surface the cause
+		// so operators can debug, but do not fail the gateway hot path.
+		return nil, status.Errorf(codes.Internal,
+			"channel-management: resolve account stats cost: %v", err)
+	}
+	if !result.HasCost {
+		return &pb.ResolveAccountStatsCostResponse{HasCost: false}, nil
+	}
+	return &pb.ResolveAccountStatsCostResponse{
+		HasCost:          true,
+		Cost:             result.Cost,
+		ResolutionReason: "channel-management: matched account stats pricing",
 	}, nil
 }
 

@@ -72,3 +72,50 @@ type AdjustCostResult struct {
 	FinalCost        AdjustCostBreakdown
 	AdjustmentReason string
 }
+
+// AccountStatsCostResolver is the host-facing surface GatewayService
+// consults after computing the customer cost. The implementation is
+// allowed to error out or return HasCost=false; in either case the host
+// keeps usage_logs.account_stats_cost NULL and aggregation queries fall
+// back to total_cost via COALESCE(account_stats_cost, total_cost). See
+// plugin-sdk/proto/sdk.proto::PricingExtension.ResolveAccountStatsCost
+// for the underlying RPC contract.
+//
+// Implementations must be safe for concurrent use.
+type AccountStatsCostResolver interface {
+	ResolveAccountStatsCost(ctx context.Context, in AccountStatsCostInput) (AccountStatsCostResult, error)
+}
+
+// AccountStatsCostInput carries the per-request fields GatewayService
+// passes in. Mirrors the proto ResolveAccountStatsCostRequest 1:1 but
+// stays plain Go so callers in the service package do not need to
+// import pluginsdk.
+type AccountStatsCostInput struct {
+	RequestID     string
+	ChannelID     int64
+	AccountID     int64
+	GroupID       int64
+	UpstreamModel string
+	Tokens        AccountStatsCostTokens
+	RequestCount  int
+	TotalCost     float64
+}
+
+// AccountStatsCostTokens is the per-request token / image count
+// breakdown forwarded to the resolver. Field semantics match the proto
+// PricingUsageTokens message so the client can copy values verbatim.
+type AccountStatsCostTokens struct {
+	InputTokens         int64
+	OutputTokens        int64
+	CacheCreationTokens int64
+	CacheReadTokens     int64
+	ImageOutputTokens   int64
+}
+
+// AccountStatsCostResult is what GatewayService receives back.
+// HasCost=false means the host should keep account_stats_cost NULL.
+type AccountStatsCostResult struct {
+	HasCost          bool
+	Cost             float64
+	ResolutionReason string
+}

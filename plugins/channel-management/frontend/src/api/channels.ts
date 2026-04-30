@@ -37,16 +37,32 @@ export interface ChannelModelPricing {
   intervals: PricingInterval[]
 }
 
+/**
+ * AccountStatsPricingRule mirrors the backend service.AccountStatsPricingRule.
+ * Pricing entries use the same shape as ChannelModelPricing but `intervals` is
+ * never consulted by the resolver, so the API treats it as a flat list.
+ */
+export interface AccountStatsPricingRule {
+  id?: number
+  name?: string
+  group_ids: number[]
+  account_ids: number[]
+  sort_order?: number
+  pricing: ChannelModelPricing[]
+}
+
 export interface Channel {
   id: number
   name: string
   description: string
   status: string
-  billing_model_source: string // "requested" | "upstream"
+  billing_model_source: string // "requested" | "upstream" | "channel_mapped"
   restrict_models: boolean
+  apply_pricing_to_account_stats?: boolean
   group_ids: number[]
   model_pricing: ChannelModelPricing[]
   model_mapping: Record<string, Record<string, string>> // platform → {src→dst}
+  account_stats_pricing_rules?: AccountStatsPricingRule[]
   created_at: string
   updated_at: string
 }
@@ -59,6 +75,8 @@ export interface CreateChannelRequest {
   model_mapping?: Record<string, Record<string, string>>
   billing_model_source?: string
   restrict_models?: boolean
+  apply_pricing_to_account_stats?: boolean
+  account_stats_pricing_rules?: AccountStatsPricingRule[]
 }
 
 export interface UpdateChannelRequest {
@@ -70,6 +88,8 @@ export interface UpdateChannelRequest {
   model_mapping?: Record<string, Record<string, string>>
   billing_model_source?: string
   restrict_models?: boolean
+  apply_pricing_to_account_stats?: boolean
+  account_stats_pricing_rules?: AccountStatsPricingRule[]
 }
 
 interface PaginatedResponse<T> {

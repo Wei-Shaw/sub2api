@@ -1810,9 +1810,10 @@ var EventsExtension_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	PricingExtension_ListPricingOverrides_FullMethodName  = "/pluginsdk.PricingExtension/ListPricingOverrides"
-	PricingExtension_WatchPricingOverrides_FullMethodName = "/pluginsdk.PricingExtension/WatchPricingOverrides"
-	PricingExtension_AdjustCost_FullMethodName            = "/pluginsdk.PricingExtension/AdjustCost"
+	PricingExtension_ListPricingOverrides_FullMethodName    = "/pluginsdk.PricingExtension/ListPricingOverrides"
+	PricingExtension_WatchPricingOverrides_FullMethodName   = "/pluginsdk.PricingExtension/WatchPricingOverrides"
+	PricingExtension_AdjustCost_FullMethodName              = "/pluginsdk.PricingExtension/AdjustCost"
+	PricingExtension_ResolveAccountStatsCost_FullMethodName = "/pluginsdk.PricingExtension/ResolveAccountStatsCost"
 )
 
 // PricingExtensionClient is the client API for PricingExtension service.
@@ -1858,6 +1859,13 @@ type PricingExtensionClient interface {
 	// The plugin may return modified=true with a new CostBreakdown to
 	// override; otherwise the host uses its own computed cost.
 	AdjustCost(ctx context.Context, in *AdjustCostRequest, opts ...grpc.CallOption) (*AdjustCostResponse, error)
+	// ResolveAccountStatsCost is called per-request after core computes the
+	// customer cost. The plugin returns an optional override the host stores
+	// in usage_logs.account_stats_cost. has_cost=false means "no opinion" —
+	// the host keeps the column NULL and aggregation queries fall back to
+	// total_cost via COALESCE(account_stats_cost, total_cost). Errors are
+	// never fatal; the host falls back to NULL on any RPC failure.
+	ResolveAccountStatsCost(ctx context.Context, in *ResolveAccountStatsCostRequest, opts ...grpc.CallOption) (*ResolveAccountStatsCostResponse, error)
 }
 
 type pricingExtensionClient struct {
@@ -1907,6 +1915,16 @@ func (c *pricingExtensionClient) AdjustCost(ctx context.Context, in *AdjustCostR
 	return out, nil
 }
 
+func (c *pricingExtensionClient) ResolveAccountStatsCost(ctx context.Context, in *ResolveAccountStatsCostRequest, opts ...grpc.CallOption) (*ResolveAccountStatsCostResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResolveAccountStatsCostResponse)
+	err := c.cc.Invoke(ctx, PricingExtension_ResolveAccountStatsCost_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PricingExtensionServer is the server API for PricingExtension service.
 // All implementations must embed UnimplementedPricingExtensionServer
 // for forward compatibility.
@@ -1950,6 +1968,13 @@ type PricingExtensionServer interface {
 	// The plugin may return modified=true with a new CostBreakdown to
 	// override; otherwise the host uses its own computed cost.
 	AdjustCost(context.Context, *AdjustCostRequest) (*AdjustCostResponse, error)
+	// ResolveAccountStatsCost is called per-request after core computes the
+	// customer cost. The plugin returns an optional override the host stores
+	// in usage_logs.account_stats_cost. has_cost=false means "no opinion" —
+	// the host keeps the column NULL and aggregation queries fall back to
+	// total_cost via COALESCE(account_stats_cost, total_cost). Errors are
+	// never fatal; the host falls back to NULL on any RPC failure.
+	ResolveAccountStatsCost(context.Context, *ResolveAccountStatsCostRequest) (*ResolveAccountStatsCostResponse, error)
 	mustEmbedUnimplementedPricingExtensionServer()
 }
 
@@ -1968,6 +1993,9 @@ func (UnimplementedPricingExtensionServer) WatchPricingOverrides(*WatchPricingOv
 }
 func (UnimplementedPricingExtensionServer) AdjustCost(context.Context, *AdjustCostRequest) (*AdjustCostResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AdjustCost not implemented")
+}
+func (UnimplementedPricingExtensionServer) ResolveAccountStatsCost(context.Context, *ResolveAccountStatsCostRequest) (*ResolveAccountStatsCostResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ResolveAccountStatsCost not implemented")
 }
 func (UnimplementedPricingExtensionServer) mustEmbedUnimplementedPricingExtensionServer() {}
 func (UnimplementedPricingExtensionServer) testEmbeddedByValue()                          {}
@@ -2037,6 +2065,24 @@ func _PricingExtension_AdjustCost_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PricingExtension_ResolveAccountStatsCost_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResolveAccountStatsCostRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PricingExtensionServer).ResolveAccountStatsCost(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PricingExtension_ResolveAccountStatsCost_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PricingExtensionServer).ResolveAccountStatsCost(ctx, req.(*ResolveAccountStatsCostRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PricingExtension_ServiceDesc is the grpc.ServiceDesc for PricingExtension service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -2051,6 +2097,10 @@ var PricingExtension_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AdjustCost",
 			Handler:    _PricingExtension_AdjustCost_Handler,
+		},
+		{
+			MethodName: "ResolveAccountStatsCost",
+			Handler:    _PricingExtension_ResolveAccountStatsCost_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

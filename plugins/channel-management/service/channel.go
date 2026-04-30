@@ -60,8 +60,13 @@ type Channel struct {
 	BillingModelSource string // "requested", "upstream", or "channel_mapped"
 	RestrictModels     bool   // 是否限制模型（仅允许定价列表中的模型）
 	Features           string // 渠道特性描述（JSON 数组），用于支付页面展示
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	// ApplyPricingToAccountStats 控制账号统计费用是否启用基于渠道定价的覆写。
+	// 关闭时 account_stats_cost 走默认公式 (total_cost * account_rate_multiplier)。
+	// 开启后优先级：自定义规则 (AccountStatsPricingRules) → 客户计费 (totalCost) →
+	// host LiteLLM 默认价格 → nil（默认公式）。
+	ApplyPricingToAccountStats bool
+	CreatedAt                  time.Time
+	UpdatedAt                  time.Time
 
 	// 关联的分组 ID 列表
 	GroupIDs []int64
@@ -69,6 +74,9 @@ type Channel struct {
 	ModelPricing []ChannelModelPricing
 	// 渠道级模型映射（按平台分组：platform → {src→dst}）
 	ModelMapping map[string]map[string]string
+	// 账号统计自定义定价规则（按 SortOrder 升序遍历，先命中即返回）。
+	// 不依赖 ApplyPricingToAccountStats 开关：只要规则匹配就生效。
+	AccountStatsPricingRules []AccountStatsPricingRule
 }
 
 // ChannelModelPricing is one pricing row inside a channel.
@@ -105,6 +113,47 @@ type PricingInterval struct {
 	SortOrder       int
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
+}
+
+// AccountStatsPricingRule 是渠道下的一条「账号统计自定义定价规则」。
+// 规则按 SortOrder 升序遍历，找到第一条同时满足 (groupID 命中 GroupIDs 或
+// accountID 命中 AccountIDs) 且 Pricing 中存在匹配模型的规则即停止。
+//
+// 规则与 channels.ApplyPricingToAccountStats 开关相互独立：开关只影响
+// "无规则匹配时是否回退到客户计费" 的语义；规则本身始终生效。
+type AccountStatsPricingRule struct {
+	ID         int64
+	ChannelID  int64
+	Name       string
+	GroupIDs   []int64
+	AccountIDs []int64
+	SortOrder  int
+	// Pricing 是规则下的模型定价行，结构与 ChannelModelPricing 对齐但仅使用
+	// flat 字段（Intervals 不在该规则范围内，对账号统计没意义）。
+	Pricing   []ChannelModelPricing
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// Clone returns a deep copy of r so the cache snapshot can hand it out
+// without exposing the underlying slice references.
+func (r AccountStatsPricingRule) Clone() AccountStatsPricingRule {
+	cp := r
+	if r.GroupIDs != nil {
+		cp.GroupIDs = make([]int64, len(r.GroupIDs))
+		copy(cp.GroupIDs, r.GroupIDs)
+	}
+	if r.AccountIDs != nil {
+		cp.AccountIDs = make([]int64, len(r.AccountIDs))
+		copy(cp.AccountIDs, r.AccountIDs)
+	}
+	if r.Pricing != nil {
+		cp.Pricing = make([]ChannelModelPricing, len(r.Pricing))
+		for i := range r.Pricing {
+			cp.Pricing[i] = r.Pricing[i].Clone()
+		}
+	}
+	return cp
 }
 
 // IsActive reports whether the channel is in the active state.
@@ -196,6 +245,12 @@ func (c *Channel) Clone() *Channel {
 				inner[k] = v
 			}
 			cp.ModelMapping[platform] = inner
+		}
+	}
+	if c.AccountStatsPricingRules != nil {
+		cp.AccountStatsPricingRules = make([]AccountStatsPricingRule, len(c.AccountStatsPricingRules))
+		for i := range c.AccountStatsPricingRules {
+			cp.AccountStatsPricingRules[i] = c.AccountStatsPricingRules[i].Clone()
 		}
 	}
 	return &cp

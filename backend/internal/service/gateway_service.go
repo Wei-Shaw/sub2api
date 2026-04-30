@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -569,6 +570,15 @@ type GatewayService struct {
 	resolver              *ModelPricingResolver
 	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
+
+	// accountStatsResolver is the optional plugin hook invoked after the
+	// host computes the customer cost. The plugin may return a custom
+	// account-stats cost the host stores in usage_logs.account_stats_cost.
+	// Wired via SetAccountStatsResolver so the existing constructor signature
+	// stays untouched until plugin wiring lands at boot. nil → no-op (host
+	// keeps account_stats_cost NULL).
+	accountStatsMu       sync.RWMutex
+	accountStatsResolver AccountStatsCostResolver
 }
 
 // NewGatewayService creates a new GatewayService
@@ -7665,6 +7675,92 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 	})
 }
 
+// SetAccountStatsResolver wires an optional plugin-supplied account-stats
+// cost resolver. Passing nil disables the hook so the host falls back to
+// the default formula (total_cost × account_rate_multiplier).
+//
+// Safe for concurrent calls: the resolver is read under a RW mutex on
+// every recordUsage path so swapping it out (plugin restart, disable)
+// does not race with in-flight requests.
+func (s *GatewayService) SetAccountStatsResolver(resolver AccountStatsCostResolver) {
+	if s == nil {
+		return
+	}
+	s.accountStatsMu.Lock()
+	defer s.accountStatsMu.Unlock()
+	s.accountStatsResolver = resolver
+}
+
+// loadAccountStatsResolver returns the currently registered resolver
+// (possibly nil). Hot path read; the lock cost is negligible vs the
+// gRPC RPC the resolver itself makes.
+func (s *GatewayService) loadAccountStatsResolver() AccountStatsCostResolver {
+	if s == nil {
+		return nil
+	}
+	s.accountStatsMu.RLock()
+	defer s.accountStatsMu.RUnlock()
+	return s.accountStatsResolver
+}
+
+// resolveAccountStatsCost calls the registered AccountStatsCostResolver
+// (typically the channel-management plugin) to get the per-request
+// account-stats cost override. nil resolver, error, or HasCost=false →
+// returns nil so the caller leaves usage_logs.account_stats_cost NULL
+// and aggregation queries fall back to total_cost via COALESCE.
+//
+// The resolver is given the customer total cost (before multiplier) so
+// it can implement "use customer cost" priority levels without re-doing
+// the gateway's pricing math.
+func (s *GatewayService) resolveAccountStatsCost(
+	ctx context.Context,
+	requestID string,
+	channelID, accountID, groupID int64,
+	upstreamModel string,
+	usage ClaudeUsage,
+	requestCount int,
+	totalCost float64,
+) *float64 {
+	resolver := s.loadAccountStatsResolver()
+	if resolver == nil {
+		return nil
+	}
+	if upstreamModel == "" {
+		return nil
+	}
+	tokens := AccountStatsCostTokens{
+		InputTokens:         int64(usage.InputTokens),
+		OutputTokens:        int64(usage.OutputTokens),
+		CacheCreationTokens: int64(usage.CacheCreationInputTokens),
+		CacheReadTokens:     int64(usage.CacheReadInputTokens),
+		ImageOutputTokens:   int64(usage.ImageOutputTokens),
+	}
+	if requestCount <= 0 {
+		requestCount = 1
+	}
+	res, err := resolver.ResolveAccountStatsCost(ctx, AccountStatsCostInput{
+		RequestID:     requestID,
+		ChannelID:     channelID,
+		AccountID:     accountID,
+		GroupID:       groupID,
+		UpstreamModel: upstreamModel,
+		Tokens:        tokens,
+		RequestCount:  requestCount,
+		TotalCost:     totalCost,
+	})
+	if err != nil {
+		logger.LegacyPrintf("service.gateway",
+			"resolve_account_stats_cost: plugin error (channel=%d account=%d): %v",
+			channelID, accountID, err)
+		return nil
+	}
+	if !res.HasCost {
+		return nil
+	}
+	cost := res.Cost
+	return &cost
+}
+
 // recordUsageCoreInput 是 recordUsageCore 的公共输入字段，从两种输入结构体中提取。
 type recordUsageCoreInput struct {
 	Result             *ForwardResult
@@ -7748,6 +7844,34 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	accountRateMultiplier := account.BillingRateMultiplier()
 	usageLog := s.buildRecordUsageLog(ctx, input, result, apiKey, user, account, subscription,
 		requestedModel, multiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cost, opts)
+
+	// 询问插件层是否有渠道级账号统计定价覆写。优先级：
+	//   1. 自定义规则命中 → cost
+	//   2. 渠道开启 ApplyPricingToAccountStats 且 totalCost > 0 → 客户计费
+	//   3. nil → 默认公式 COALESCE(account_stats_cost, total_cost) * account_rate_multiplier
+	// upstream model 用 result.UpstreamModel（如果空则 fallback 到 result.Model）
+	// 以匹配 release 行为（commit 11c460687）。
+	upstreamModel := result.UpstreamModel
+	if upstreamModel == "" {
+		upstreamModel = result.Model
+	}
+	totalCost := 0.0
+	if cost != nil {
+		totalCost = cost.TotalCost
+	}
+	requestCount := 1
+	if result.ImageCount > 0 {
+		requestCount = result.ImageCount
+	}
+	groupID := int64(0)
+	if apiKey.GroupID != nil {
+		groupID = *apiKey.GroupID
+	}
+	usageLog.AccountStatsCost = s.resolveAccountStatsCost(
+		ctx, usageLog.RequestID,
+		input.ChannelID, account.ID, groupID,
+		upstreamModel, result.Usage, requestCount, totalCost,
+	)
 
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")

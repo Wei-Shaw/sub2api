@@ -117,7 +117,18 @@ export default {
         noPlatforms: 'Click "Add Platform" to start configuring the channel',
         mappingCount: 'mappings',
         pricingEntry: 'Pricing Entry',
-        noModels: 'No models added'
+        noModels: 'No models added',
+        applyPricingToAccountStats: 'Apply Pricing to Account Stats',
+        applyPricingToAccountStatsDesc: 'When enabled, account statistics cost can use custom model pricing. Account rate multiplier still applies.',
+        accountStatsPricingRules: 'Custom Account Stats Pricing Rules',
+        addRule: 'Add Rule',
+        noRulesConfigured: 'No custom rules configured. Channel model pricing above will be used.',
+        ruleName: 'Rule name (optional)',
+        ruleGroups: 'Groups',
+        ruleAccounts: 'Account IDs',
+        ruleAccountsPlaceholder: 'Enter account IDs, comma-separated',
+        ruleModelPricing: 'Model Pricing',
+        noGroupsInChannel: 'No groups selected in this platform tab'
       }
     },
     // V5 W7 — Channel Monitor (admin)

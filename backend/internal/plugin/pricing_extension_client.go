@@ -48,6 +48,10 @@ const (
 	// back to its own computed cost on timeout so the value is small
 	// enough to keep gateway latency predictable.
 	pricingAdjustTimeout = 1500 * time.Millisecond
+	// pricingAccountStatsTimeout caps a ResolveAccountStatsCost RPC. The
+	// host falls back to NULL on timeout (default formula) so this stays
+	// small to keep recordUsageCore latency stable.
+	pricingAccountStatsTimeout = 1500 * time.Millisecond
 	// pricingReSyncInterval is the period at which the client invokes
 	// ListPricingOverrides as a safety net against silently dropped Watch
 	// events. 5 minutes matches the existing channel cache contract.
@@ -359,6 +363,56 @@ func (c *PricingExtensionClient) AdjustCost(ctx context.Context, in service.Adju
 			BillingMode:    final.GetBillingMode(),
 		},
 		AdjustmentReason: resp.GetAdjustmentReason(),
+	}, nil
+}
+
+// ResolveAccountStatsCost invokes PricingExtension.ResolveAccountStatsCost
+// on the plugin. Returns HasCost=false on any failure (nil receiver,
+// not-yet-started client, RPC error, timeout) so the gateway hot path
+// can keep going with the default formula
+// (total_cost × account_rate_multiplier).
+//
+// Input / result types live in the service package so GatewayService
+// can invoke this method via service.AccountStatsCostResolver without
+// importing the plugin package (avoids the existing import cycle).
+func (c *PricingExtensionClient) ResolveAccountStatsCost(ctx context.Context, in service.AccountStatsCostInput) (service.AccountStatsCostResult, error) {
+	if c == nil {
+		return service.AccountStatsCostResult{}, nil
+	}
+	stub := c.stubSnapshot()
+	if stub == nil {
+		return service.AccountStatsCostResult{}, nil
+	}
+
+	rpcCtx, cancel := context.WithTimeout(ctx, pricingAccountStatsTimeout)
+	defer cancel()
+
+	resp, err := stub.ResolveAccountStatsCost(rpcCtx, &pb.ResolveAccountStatsCostRequest{
+		ChannelId:     in.ChannelID,
+		AccountId:     in.AccountID,
+		GroupId:       in.GroupID,
+		UpstreamModel: in.UpstreamModel,
+		Tokens: &pb.PricingUsageTokens{
+			InputTokens:         in.Tokens.InputTokens,
+			OutputTokens:        in.Tokens.OutputTokens,
+			CacheCreationTokens: in.Tokens.CacheCreationTokens,
+			CacheReadTokens:     in.Tokens.CacheReadTokens,
+			ImageCount:          in.Tokens.ImageOutputTokens,
+		},
+		RequestCount: int32(in.RequestCount),
+		TotalCost:    in.TotalCost,
+		RequestId:    in.RequestID,
+	})
+	if err != nil {
+		return service.AccountStatsCostResult{}, err
+	}
+	if !resp.GetHasCost() {
+		return service.AccountStatsCostResult{HasCost: false, ResolutionReason: resp.GetResolutionReason()}, nil
+	}
+	return service.AccountStatsCostResult{
+		HasCost:          true,
+		Cost:             resp.GetCost(),
+		ResolutionReason: resp.GetResolutionReason(),
 	}, nil
 }
 

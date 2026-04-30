@@ -306,6 +306,14 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		// adjuster seam so plugins implementing PricingExtension can
 		// participate without further wiring.
 		pluginManager.SetPricingExtension(pricingOverrideCache, billingService)
+		// AccountStats resolver hook: GatewayService + OpenAIGatewayService
+		// both consult the plugin per-request to compute usage_logs.account_stats_cost.
+		// One adapter forwards to both so the channel-management plugin
+		// covers Anthropic and OpenAI gateways uniformly.
+		pluginManager.SetAccountStatsResolverRegistrar(&accountStatsResolverFanout{
+			gateway:       gatewayService,
+			openaiGateway: openAIGatewayService,
+		})
 	}
 	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, paymentHandler, pluginHandler, pluginSettingsHandler)
 	usageRecordWorkerPool := service.NewUsageRecordWorkerPool(configConfig)
@@ -596,5 +604,32 @@ func provideCleanup(
 		default:
 			log.Printf("[Cleanup] All cleanup steps completed")
 		}
+	}
+}
+
+// accountStatsResolverFanout adapts the plugin manager's
+// AccountStatsResolverRegistrar to both gateway services. The adapter
+// is hand-coded here (rather than via wire) because it is a small bridge
+// between two singletons we want to keep in lockstep — installing the
+// resolver on only one of them would silently leave the other gateway's
+// usage_logs.account_stats_cost column NULL even when a plugin is
+// active.
+type accountStatsResolverFanout struct {
+	gateway       *service.GatewayService
+	openaiGateway *service.OpenAIGatewayService
+}
+
+// SetAccountStatsResolver forwards to both gateways. Both setters are
+// concurrent-safe; either being nil (e.g. a stripped test build) is
+// tolerated by guarding here.
+func (a *accountStatsResolverFanout) SetAccountStatsResolver(resolver service.AccountStatsCostResolver) {
+	if a == nil {
+		return
+	}
+	if a.gateway != nil {
+		a.gateway.SetAccountStatsResolver(resolver)
+	}
+	if a.openaiGateway != nil {
+		a.openaiGateway.SetAccountStatsResolver(resolver)
 	}
 }

@@ -730,21 +730,26 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 	}
 
 	channel := &Channel{
-		Name:               input.Name,
-		Description:        input.Description,
-		Status:             StatusActive,
-		BillingModelSource: input.BillingModelSource,
-		RestrictModels:     input.RestrictModels,
-		GroupIDs:           input.GroupIDs,
-		ModelPricing:       input.ModelPricing,
-		ModelMapping:       input.ModelMapping,
-		Features:           input.Features,
+		Name:                       input.Name,
+		Description:                input.Description,
+		Status:                     StatusActive,
+		BillingModelSource:         input.BillingModelSource,
+		RestrictModels:             input.RestrictModels,
+		GroupIDs:                   input.GroupIDs,
+		ModelPricing:               input.ModelPricing,
+		ModelMapping:               input.ModelMapping,
+		Features:                   input.Features,
+		ApplyPricingToAccountStats: input.ApplyPricingToAccountStats,
+		AccountStatsPricingRules:   input.AccountStatsPricingRules,
 	}
 	if channel.BillingModelSource == "" {
 		channel.BillingModelSource = BillingModelSourceChannelMapped
 	}
 
 	if err := validateChannelConfig(channel.ModelPricing, channel.ModelMapping); err != nil {
+		return nil, err
+	}
+	if err := validateAccountStatsPricingRules(channel.AccountStatsPricingRules); err != nil {
 		return nil, err
 	}
 
@@ -783,6 +788,9 @@ func (s *ChannelService) Update(ctx context.Context, id int64, input *UpdateChan
 	}
 
 	if err := validateChannelConfig(channel.ModelPricing, channel.ModelMapping); err != nil {
+		return nil, err
+	}
+	if err := validateAccountStatsPricingRules(channel.AccountStatsPricingRules); err != nil {
 		return nil, err
 	}
 
@@ -945,6 +953,12 @@ func (s *ChannelService) applyUpdateInput(ctx context.Context, channel *Channel,
 	if input.BillingModelSource != "" {
 		channel.BillingModelSource = input.BillingModelSource
 	}
+	if input.ApplyPricingToAccountStats != nil {
+		channel.ApplyPricingToAccountStats = *input.ApplyPricingToAccountStats
+	}
+	if input.AccountStatsPricingRules != nil {
+		channel.AccountStatsPricingRules = *input.AccountStatsPricingRules
+	}
 	return nil
 }
 
@@ -1098,6 +1112,20 @@ func validatePricingIntervals(pricingList []ChannelModelPricing) error {
 	return nil
 }
 
+// validateAccountStatsPricingRules enforces the same per-row checks as
+// validatePricingBillingMode (negative prices, billing-mode requirements,
+// interval price coverage) on every Pricing entry inside every rule.
+// Mirrors the host's `validatePricingEntries` helper introduced by
+// release commit 9c09bd19b.
+func validateAccountStatsPricingRules(rules []AccountStatsPricingRule) error {
+	for i := range rules {
+		if err := validatePricingBillingMode(rules[i].Pricing); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func detectConflicts(entries []modelEntry, platform, errCode, label string) error {
 	for i := 0; i < len(entries); i++ {
 		for j := i + 1; j < len(entries); j++ {
@@ -1115,26 +1143,33 @@ func detectConflicts(entries []modelEntry, platform, errCode, label string) erro
 
 // CreateChannelInput captures the fields accepted by Create.
 type CreateChannelInput struct {
-	Name               string
-	Description        string
-	GroupIDs           []int64
-	ModelPricing       []ChannelModelPricing
-	ModelMapping       map[string]map[string]string
-	BillingModelSource string
-	RestrictModels     bool
-	Features           string
+	Name                       string
+	Description                string
+	GroupIDs                   []int64
+	ModelPricing               []ChannelModelPricing
+	ModelMapping               map[string]map[string]string
+	BillingModelSource         string
+	RestrictModels             bool
+	Features                   string
+	ApplyPricingToAccountStats bool
+	AccountStatsPricingRules   []AccountStatsPricingRule
 }
 
 // UpdateChannelInput captures the fields accepted by Update; pointer fields
 // distinguish "unset" from "set to zero".
 type UpdateChannelInput struct {
-	Name               string
-	Description        *string
-	Status             string
-	GroupIDs           *[]int64
-	ModelPricing       *[]ChannelModelPricing
-	ModelMapping       map[string]map[string]string
-	BillingModelSource string
-	RestrictModels     *bool
-	Features           *string
+	Name                       string
+	Description                *string
+	Status                     string
+	GroupIDs                   *[]int64
+	ModelPricing               *[]ChannelModelPricing
+	ModelMapping               map[string]map[string]string
+	BillingModelSource         string
+	RestrictModels             *bool
+	Features                   *string
+	ApplyPricingToAccountStats *bool
+	// AccountStatsPricingRules: nil = "no change"; non-nil (including
+	// empty slice) = "replace with this list". Same semantics as
+	// ModelPricing above.
+	AccountStatsPricingRules *[]AccountStatsPricingRule
 }

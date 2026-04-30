@@ -189,6 +189,8 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 			"channel_monitor_daily_rollups",
 			"channel_monitor_aggregation_watermark",
 			"channel_monitor_request_templates",
+			"channel_account_stats_pricing_rules",
+			"channel_account_stats_model_pricing",
 		},
 		// Migrations enumerates the SQL files shipped under
 		// plugins/channel-management/migrations/. The host calls
@@ -219,6 +221,12 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 			{Filename: "010_channel_platform_pricing.sql", ChecksumSha256: "86ccfa03178144a658276c11ab0cd1bf8c6f435cf4ec6058bec727658b92e027"},
 			{Filename: "011_channel_billing_model_source_channel_mapped.sql", ChecksumSha256: "f384ea6228cd862c80312c05a584c84617a3d68e223f71ee0d07d8bc6362e480"},
 			{Filename: "012_channel_features.sql", ChecksumSha256: "3f13e9f362f5c1f88a07f7db6374cd3f66a47798b865a50ba39160f4445edf81"},
+			// 013: account-stats custom pricing rules. Adds the
+			// apply_pricing_to_account_stats toggle on channels (already plugin-owned)
+			// plus channel_account_stats_pricing_rules / channel_account_stats_model_pricing.
+			// usage_logs.account_stats_cost is added by the host (host-owned table) via
+			// backend/migrations/106_add_usage_logs_account_stats_cost.sql.
+			{Filename: "013_add_account_stats_pricing.sql", ChecksumSha256: "92c29e6a31bcfd8c57f939dc442979c3622cca6c8eefffd54ecc9f10b8ad305d"},
 		},
 		SettingsSchema: &pluginsdk.SettingsSchemaDoc{
 			Schema:   monitorSettingsSchemaJSON,
@@ -379,6 +387,10 @@ func (p *ChannelPlugin) Init(ctx pluginsdk.PluginContext) error {
 	// safety net against silently dropped events.
 	if p.pricingServer != nil {
 		svc.SetEventPublisher(p.pricingServer.Publisher())
+		// Hand the channel service to the gRPC server so per-request
+		// ResolveAccountStatsCost RPCs from the host can delegate into
+		// the plugin's matching engine without an import cycle.
+		p.pricingServer.SetAccountStatsResolver(svc)
 	}
 
 	// Wire the Redis cache writer that mirrors channel state to the

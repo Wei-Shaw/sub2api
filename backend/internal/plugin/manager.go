@@ -109,6 +109,21 @@ type PluginManager struct {
 	// nil disables the per-request AdjustCost hook entirely (BillingService
 	// stays at its baseline behaviour).
 	pricingAdjusterRegistrar PricingAdjusterRegistrar
+
+	// accountStatsResolverRegistrar is the analogous seam for the
+	// per-request account-stats cost resolver wired into GatewayService /
+	// OpenAIGatewayService. nil disables the hook (host keeps
+	// usage_logs.account_stats_cost NULL).
+	accountStatsResolverRegistrar AccountStatsResolverRegistrar
+}
+
+// AccountStatsResolverRegistrar is the minimal surface PluginManager
+// needs to install a per-plugin AccountStatsCostResolver on the host's
+// gateway services. The host implementation typically wraps both
+// GatewayService.SetAccountStatsResolver and
+// OpenAIGatewayService.SetAccountStatsResolver behind a single Set call.
+type AccountStatsResolverRegistrar interface {
+	SetAccountStatsResolver(resolver service.AccountStatsCostResolver)
 }
 
 // PricingAdjusterRegistrar is the minimal surface PluginManager needs to
@@ -1644,6 +1659,16 @@ func (m *PluginManager) tryStartPricingExtension(ctx context.Context, inst *Plug
 	if registrar != nil {
 		registrar.SetPricingAdjuster(client)
 	}
+
+	// AccountStats hook: same client (via its ResolveAccountStatsCost
+	// method) feeds the GatewayService / OpenAIGatewayService
+	// account-stats override path. nil registrar disables the hook.
+	m.mu.RLock()
+	statsRegistrar := m.accountStatsResolverRegistrar
+	m.mu.RUnlock()
+	if statsRegistrar != nil {
+		statsRegistrar.SetAccountStatsResolver(client)
+	}
 }
 
 // stopInstance 优雅停止某个插件:Shutdown RPC -> 等待退出 -> SIGKILL -> 清理。
@@ -1726,9 +1751,13 @@ func (m *PluginManager) stopInstance(ctx context.Context, name string, markRegis
 	if pricingClient != nil {
 		m.mu.RLock()
 		registrar := m.pricingAdjusterRegistrar
+		statsRegistrar := m.accountStatsResolverRegistrar
 		m.mu.RUnlock()
 		if registrar != nil {
 			registrar.SetPricingAdjuster(nil)
+		}
+		if statsRegistrar != nil {
+			statsRegistrar.SetAccountStatsResolver(nil)
 		}
 		pricingClient.Stop()
 	}
@@ -2279,6 +2308,19 @@ func (m *PluginManager) SetPricingExtension(cache *service.PricingOverrideCache,
 	defer m.mu.Unlock()
 	m.pricingCache = cache
 	m.pricingAdjusterRegistrar = registrar
+}
+
+// SetAccountStatsResolverRegistrar wires the host-side seam used to
+// install / detach the per-plugin AccountStatsCostResolver. Pass nil to
+// disable the hook entirely (the host keeps usage_logs.account_stats_cost
+// NULL and aggregation queries fall back to total_cost via COALESCE).
+//
+// Must be called before Start; calling after has no effect on already-
+// running plugins.
+func (m *PluginManager) SetAccountStatsResolverRegistrar(registrar AccountStatsResolverRegistrar) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.accountStatsResolverRegistrar = registrar
 }
 
 // SettingsExtensionBuilder is the callback the wire layer supplies; it

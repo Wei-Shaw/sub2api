@@ -342,6 +342,114 @@ type OpenAIGatewayService struct {
 	openaiWSRetryMetrics  openAIWSRetryMetrics
 	responseHeaderFilter  *responseheaders.CompiledHeaderFilter
 	codexSnapshotThrottle *accountWriteThrottle
+
+	// accountStatsResolver mirrors GatewayService.accountStatsResolver for
+	// the OpenAI gateway path. Wired separately because OpenAIGatewayService
+	// keeps its own RecordUsage entry point.
+	accountStatsMu       sync.RWMutex
+	accountStatsResolver AccountStatsCostResolver
+}
+
+// SetAccountStatsResolver wires an optional plugin-supplied account-stats
+// cost resolver. nil → disable hook (host keeps account_stats_cost NULL).
+func (s *OpenAIGatewayService) SetAccountStatsResolver(resolver AccountStatsCostResolver) {
+	if s == nil {
+		return
+	}
+	s.accountStatsMu.Lock()
+	defer s.accountStatsMu.Unlock()
+	s.accountStatsResolver = resolver
+}
+
+func (s *OpenAIGatewayService) loadAccountStatsResolver() AccountStatsCostResolver {
+	if s == nil {
+		return nil
+	}
+	s.accountStatsMu.RLock()
+	defer s.accountStatsMu.RUnlock()
+	return s.accountStatsResolver
+}
+
+// resolveAccountStatsCost is the OpenAI counterpart of
+// GatewayService.resolveAccountStatsCost — same priority semantics, same
+// fail-safe (any error / nil resolver / has_cost=false → returns nil).
+// OpenAIUsage and ClaudeUsage share field names so the mapping is just
+// a few struct copies.
+func (s *OpenAIGatewayService) resolveAccountStatsCost(
+	ctx context.Context,
+	requestID string,
+	channelID, accountID, groupID int64,
+	upstreamModel string,
+	usage OpenAIUsage,
+	requestCount int,
+	totalCost float64,
+) *float64 {
+	resolver := s.loadAccountStatsResolver()
+	if resolver == nil || upstreamModel == "" {
+		return nil
+	}
+	if requestCount <= 0 {
+		requestCount = 1
+	}
+	tokens := AccountStatsCostTokens{
+		InputTokens:         int64(usage.InputTokens),
+		OutputTokens:        int64(usage.OutputTokens),
+		CacheCreationTokens: int64(usage.CacheCreationInputTokens),
+		CacheReadTokens:     int64(usage.CacheReadInputTokens),
+		ImageOutputTokens:   int64(usage.ImageOutputTokens),
+	}
+	res, err := resolver.ResolveAccountStatsCost(ctx, AccountStatsCostInput{
+		RequestID:     requestID,
+		ChannelID:     channelID,
+		AccountID:     accountID,
+		GroupID:       groupID,
+		UpstreamModel: upstreamModel,
+		Tokens:        tokens,
+		RequestCount:  requestCount,
+		TotalCost:     totalCost,
+	})
+	if err != nil {
+		logger.LegacyPrintf("service.openai_gateway",
+			"resolve_account_stats_cost: plugin error (channel=%d account=%d): %v",
+			channelID, accountID, err)
+		return nil
+	}
+	if !res.HasCost {
+		return nil
+	}
+	cost := res.Cost
+	return &cost
+}
+
+// openaiAPIKeyGroupID dereferences APIKey.GroupID returning 0 when unset.
+func openaiAPIKeyGroupID(apiKey *APIKey) int64 {
+	if apiKey == nil || apiKey.GroupID == nil {
+		return 0
+	}
+	return *apiKey.GroupID
+}
+
+// openaiUpstreamModel chooses the upstream model id for account-stats
+// matching: prefer post-mapping UpstreamModel; fall back to Model when
+// no mapping was applied.
+func openaiUpstreamModel(result *OpenAIForwardResult) string {
+	if result == nil {
+		return ""
+	}
+	if result.UpstreamModel != "" {
+		return result.UpstreamModel
+	}
+	return result.Model
+}
+
+// usageLogTotalCostOrZero pulls the customer-facing total from the
+// computed cost breakdown. nil cost (calculation failed) → 0 so the
+// plugin falls through priority 2 ("apply pricing to account stats").
+func usageLogTotalCostOrZero(cost *CostBreakdown) float64 {
+	if cost == nil {
+		return 0
+	}
+	return cost.TotalCost
 }
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
@@ -4541,6 +4649,15 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	// 设置渠道信息
 	usageLog.ChannelID = optionalInt64Ptr(input.ChannelID)
 	usageLog.ModelMappingChain = optionalTrimmedStringPtr(input.ModelMappingChain)
+
+	// 询问插件层是否有渠道级账号统计定价覆写。详见 GatewayService.resolveAccountStatsCost。
+	usageLog.AccountStatsCost = s.resolveAccountStatsCost(
+		ctx, requestID,
+		input.ChannelID, account.ID, openaiAPIKeyGroupID(apiKey),
+		openaiUpstreamModel(result), result.Usage,
+		1, // OpenAI 每次请求计 1 次
+		usageLogTotalCostOrZero(cost),
+	)
 	// 设置计费模式
 	if cost != nil && cost.BillingMode != "" {
 		billingMode := cost.BillingMode

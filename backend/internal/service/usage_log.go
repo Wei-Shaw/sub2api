@@ -146,6 +146,11 @@ type UsageLog struct {
 	RateMultiplier    float64
 	// AccountRateMultiplier 账号计费倍率快照（nil 表示历史数据，按 1.0 处理）
 	AccountRateMultiplier *float64
+	// AccountStatsCost 账号统计自定义费用快照。
+	// nil = 走默认公式 (TotalCost * AccountRateMultiplier)；
+	// 非 nil = 由 channel-management 插件按渠道账号定价规则计算的"原始"费用
+	// (尚未乘以 account_rate_multiplier，聚合查询自行 COALESCE 后乘上)。
+	AccountStatsCost *float64
 
 	BillingType  int8
 	RequestType  RequestType

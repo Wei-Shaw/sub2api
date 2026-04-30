@@ -633,6 +633,14 @@ service PricingExtension {
   // The plugin may return modified=true with a new CostBreakdown to
   // override; otherwise the host uses its own computed cost.
   rpc AdjustCost(AdjustCostRequest) returns (AdjustCostResponse);
+
+  // ResolveAccountStatsCost is called per-request after core computes the
+  // customer cost. The plugin returns an optional override the host stores
+  // in usage_logs.account_stats_cost. has_cost=false means "no opinion" —
+  // the host keeps the column NULL and aggregation queries fall back to
+  // total_cost via COALESCE(account_stats_cost, total_cost). Errors are
+  // never fatal; the host falls back to NULL on any RPC failure.
+  rpc ResolveAccountStatsCost(ResolveAccountStatsCostRequest) returns (ResolveAccountStatsCostResponse);
 }
 
 // PricingOverrideKey is the (group_id, platform, model) triple the host
@@ -760,3 +768,41 @@ message PricingUsageTokens {
   int64 cache_read_tokens = 4;
   int64 image_count = 5;
 }
+
+// ResolveAccountStatsCostRequest carries the per-request inputs the
+// channel-management plugin (or any plugin implementing the RPC) needs
+// to evaluate its custom account-stats pricing rules. All fields are
+// optional from the plugin's point of view: a plugin that does not
+// implement the RPC simply returns has_cost=false.
+//
+// channel_id is the resolved channel ID from
+// service.GatewayService.recordUsageCore (0 when no channel is bound).
+// upstream_model is the post-mapping model id the host actually sent.
+// total_cost is the customer-facing cost the host already computed
+// (before account_rate_multiplier) — plugins use this when their rules
+// fall through to "use the customer cost" instead of recomputing from
+// model file pricing.
+message ResolveAccountStatsCostRequest {
+  int64  channel_id     = 1;
+  int64  account_id     = 2;
+  int64  group_id       = 3;
+  string upstream_model = 4;
+  PricingUsageTokens tokens = 5;
+  int32  request_count  = 6;
+  double total_cost     = 7;
+  // request_id lets the plugin deduplicate retries / make the RPC
+  // idempotent. The host fills it with the gateway request id (typically
+  // a ULID).
+  string request_id     = 8;
+}
+
+// ResolveAccountStatsCostResponse — has_cost=false means the host
+// should keep usage_logs.account_stats_cost NULL. resolution_reason is
+// a free-form audit string surfaced to host logs so operators can trace
+// which rule fired.
+message ResolveAccountStatsCostResponse {
+  bool   has_cost          = 1;
+  double cost              = 2;
+  string resolution_reason = 3;
+}
+
