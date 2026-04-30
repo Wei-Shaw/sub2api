@@ -130,6 +130,22 @@ export async function mountPluginAssets(opts: MountPluginAssetsOptions): Promise
   root.dataset.pluginName = pluginName
   shadow.appendChild(root)
 
+  // 3.0) Teleport 落地容器 (BaseDialog / Select 等通过 Vue inject 拿到这个 div).
+  //
+  // 为什么必须是 .plugin-shadow-root 的*同级*兄弟节点 (而不是 root 的子节点):
+  //   - 插件组件树内部任意祖先若有 overflow:hidden / clip / contain:layout,
+  //     Teleport 到子节点的 overlay 会被裁切. portal 作为 root 的兄弟节点, 不在
+  //     插件组件树的 ancestor chain 里, 等价于「teleport 到 shadow body」.
+  //   - portal 仍在 ShadowRoot 内, 自动继承 shadow 内的 stylesheet (entry.css /
+  //     plugin-sdk.css), Tailwind utilities 与 SDK 组件样式正常生效, 同时不污染
+  //     host light DOM.
+  //   - position:fixed 相对 viewport, 不受 shadow 边界影响, 全屏遮罩 / 下拉定位
+  //     算法 (getBoundingClientRect) 全部按原逻辑工作.
+  const portal = document.createElement('div')
+  portal.className = 'plugin-shadow-portal'
+  portal.dataset.pluginName = pluginName
+  shadow.appendChild(portal)
+
   // 3.1) 同步 host 的 dark class 到 shadow root 内根容器.
   //
   // 为什么需要:
@@ -140,6 +156,9 @@ export async function mountPluginAssets(opts: MountPluginAssetsOptions): Promise
   const applyDarkState = (): void => {
     const isDark = document.documentElement.classList.contains('dark')
     root.classList.toggle('dark', isDark)
+    // portal 是 root 的*同级*节点, 不会被 root 上的 `.dark` ancestor 选择器命中,
+    // 必须独立同步, 否则 Teleport 进 portal 的 overlay 在 dark mode 下样式残缺.
+    portal.classList.toggle('dark', isDark)
   }
   applyDarkState()
 

@@ -1,5 +1,5 @@
 <template>
-  <Teleport to="body">
+  <Teleport :to="teleportTarget">
     <Transition name="modal">
       <div
         v-if="show"
@@ -42,8 +42,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch, onMounted, onUnmounted, ref, nextTick } from 'vue'
+import { computed, watch, onMounted, onUnmounted, ref, nextTick, inject } from 'vue'
 import Icon from './Icon.vue'
+import { PLUGIN_TELEPORT_TARGET } from '../host-sdk'
+
+// Teleport 目标:
+//   - 插件运行时 (sdk.runtime.createApp) 会 provide(PLUGIN_TELEPORT_TARGET) 一个
+//     ShadowRoot 内的 portal div, 让 dialog 不跑出 shadow 边界, 样式自动跟随
+//     plugin entry.css / plugin-sdk.css.
+//   - host 自身 (没经 plugin runtime) 时 inject 命中 fallback 'body', 行为与
+//     改造前一致.
+const teleportTarget = inject<HTMLElement | string>(PLUGIN_TELEPORT_TARGET, 'body')
 
 // 生成唯一ID以避免多个对话框时ID冲突
 let dialogIdCounter = 0

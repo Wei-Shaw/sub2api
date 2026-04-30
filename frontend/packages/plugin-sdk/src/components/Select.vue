@@ -31,8 +31,9 @@
       </span>
     </button>
 
-    <!-- Teleport dropdown to body to escape stacking context -->
-    <Teleport to="body">
+    <!-- Teleport dropdown — host 自身用 'body' 跳出 stacking context;
+         插件 runtime 时 inject 注入 ShadowRoot 内 portal div, 不跑出 shadow 边界. -->
+    <Teleport :to="teleportTarget">
       <Transition name="select-dropdown">
         <div
           v-if="isOpen"
@@ -106,15 +107,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from './Icon.vue'
 import type { SelectOption } from '../types'
+import { PLUGIN_TELEPORT_TARGET } from '../host-sdk'
 
 // Re-export so callers that import { SelectOption } from this .vue still work.
 export type { SelectOption }
 
 const { t } = useI18n()
+
+// Teleport 目标 (与 BaseDialog 同语义): plugin runtime 注入 shadow 内 portal,
+// host 自身回落 'body'.
+const teleportTarget = inject<HTMLElement | string>(PLUGIN_TELEPORT_TARGET, 'body')
 
 // Instance ID for unique click-outside detection
 const instanceId = `select-${Math.random().toString(36).substring(2, 9)}`

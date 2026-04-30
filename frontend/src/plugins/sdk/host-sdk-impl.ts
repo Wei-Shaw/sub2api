@@ -30,6 +30,7 @@ import { useAuthStore } from '@/stores/auth'
 import { apiClient } from '@/api/client'
 import {
   HOST_SDK_VERSION,
+  PLUGIN_TELEPORT_TARGET,
   type HostFont,
   type HostI18n,
   type HostNotify,
@@ -226,6 +227,20 @@ function createRuntime(pinia: Pinia): HostRuntime {
     if (options?.components) {
       for (const [name, component] of Object.entries(options.components)) {
         app.component(name, component)
+      }
+    }
+    // 注入 Teleport 落地容器:
+    //   mount-plugin 在 ShadowRoot 内放了 .plugin-shadow-portal (root 的同级兄弟),
+    //   SDK 内的 BaseDialog / Select 等组件 inject(PLUGIN_TELEPORT_TARGET) 拿到
+    //   它当 <Teleport :to> 目标. 这样 overlay 不会跑出 ShadowRoot 污染 host head,
+    //   也不会被 plugin 组件树里 overflow:hidden 祖先裁切.
+    //   target 不在 ShadowRoot (host 自身用法 / 测试) 时退化为 'body', SDK 组件
+    //   inject 端有同名 fallback, 行为与改造前一致.
+    const rootNode = target.getRootNode()
+    if (rootNode instanceof ShadowRoot) {
+      const portal = rootNode.querySelector<HTMLElement>('.plugin-shadow-portal')
+      if (portal) {
+        app.provide(PLUGIN_TELEPORT_TARGET, portal)
       }
     }
     app.config.errorHandler = (err, instance, info) => {

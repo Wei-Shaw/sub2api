@@ -47,6 +47,25 @@ export const HOST_SDK_VERSION = '1.0.0'
 /** 注入到 window 的全局变量名。 */
 export const HOST_SDK_GLOBAL_KEY = '__SUB2API_HOST_SDK__'
 
+/**
+ * Vue provide/inject key — host 通过 sdk.runtime.createApp 给插件 app 注入一个
+ * 「Teleport 落地容器」, 让 SDK 内部的 BaseDialog / Select 等组件把 overlay
+ * 传送到 ShadowRoot 内的 portal div, 而不是 host document.body.
+ *
+ * 为什么必须用 Symbol.for (全局 symbol registry):
+ *   plugin-sdk 在浏览器里有两份模块实例 —
+ *     1) host 主 bundle 走源码 import (vite alias / pnpm workspace)
+ *     2) plugin entry 走 importmap → /api/v1/plugin-assets/__shared__/plugin-sdk.js
+ *   普通 `Symbol()` 会在两份 bundle 各自生成不同 identity, provide/inject 错配,
+ *   inject 永远拿到 fallback. `Symbol.for(key)` 走全局 registry, 跨 bundle 同 key
+ *   返回同一个 symbol, 才能让 host provide / plugin inject 命中.
+ *
+ * Fallback 约定:
+ *   inject(PLUGIN_TELEPORT_TARGET, 'body') — host 自身使用 SDK 组件 (没经 plugin
+ *   runtime, 不会 provide) 时回落到 document.body, 行为与改造前一致.
+ */
+export const PLUGIN_TELEPORT_TARGET = Symbol.for('sub2api.plugin-teleport-target')
+
 export type ThemeMode = 'light' | 'dark'
 export type FontSize = 'sm' | 'base' | 'lg'
 export type ToastType = 'success' | 'error' | 'warning' | 'info'
