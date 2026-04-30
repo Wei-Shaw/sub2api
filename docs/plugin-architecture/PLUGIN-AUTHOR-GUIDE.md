@@ -996,6 +996,249 @@ Three log lines are useful when troubleshooting:
 
 ---
 
+## §12 Capabilities
+
+Capabilities are the host's allow-list of privileged surfaces a plugin can
+touch (raw Redis keys, gateway-scoped routes, host-shared DB tables, secret
+encryption, etc.). They live in your manifest's `Capabilities` slice and
+are enforced at every gRPC entry point in the host SDK server.
+
+### §12.1 Concept — two categories
+
+| Category | Behaviour | Examples |
+|----------|-----------|----------|
+| **default-grant** | Host approves automatically. Listed for transparency / audit. Plugins do **not** need to declare them to use the corresponding API surface (own-namespace tables, own-namespace settings, jobs, plugin-scoped routes, low-frequency events, outbound HTTP). | `db.own.read`, `db.own.write`, `redis.own`, `settings.own.read`, `settings.own.write`, `jobs.register`, `http.register.plugin`, `events.subscribe.lowfreq`, `outbound.http`, `migrations.apply` |
+| **declare-required** | Plugin **must** list the capability in its manifest. Host honours the request today; admin-side approval is a Phase 2 follow-up (`docs/plugin-architecture/V5-DESIGN.md` §A-future). Sensitivity is the rationale — these surfaces touch shared state or escape the plugin's own namespace. | `redis.raw`, `secrets.encrypt`, `events.subscribe.gateway`, `http.register.gateway`, `db.core.read`, `db.core.write` |
+
+> **Note on default-grant**: even though the host approves these
+> automatically, listing them in your manifest is encouraged — it makes
+> the admin "Permissions" panel a complete audit surface and self-documents
+> the plugin's resource footprint.
+
+### §12.2 Capability catalogue
+
+The full set is defined in
+`backend/internal/plugin/manager.go::allowedPluginCapabilities`. Anything
+outside this set is dropped with a `plugin requested unknown capability`
+WARN at register time.
+
+| Capability | Default? | Used for | Where it gates |
+|------------|----------|----------|----------------|
+| `redis.own` | default | Plugin-namespaced Redis keys (auto-prefixed) | SDK Redis proxy |
+| `redis.raw` | declare | Raw / shared Redis keys (no prefix) | `grpc_server_redis_do.go` raw_key=true |
+| `db.own.read` | default | Read plugin-private tables created by the plugin's migrations | SQL gate, `OwnedTables` allow-list |
+| `db.own.write` | default | Write to plugin-private tables | SQL gate |
+| `db.core.read` | declare | Read host shared tables (users, accounts, payment_orders, ...) | SQL gate, host shared allow-list |
+| `db.core.write` | declare | Write to host shared tables — **dangerous** | SQL gate (Phase 2: admin-approve gate) |
+| `migrations.apply` | default | Run plugin-shipped SQL migrations on plugin startup | MigrationProxy |
+| `settings.own.read` | default | Read plugin-namespaced W3 settings | SettingsExtension |
+| `settings.own.write` | default | Write plugin-namespaced W3 settings | SettingsExtension |
+| `secrets.encrypt` | declare | Encrypt / decrypt secrets via host AES-GCM | SecretEncryption |
+| `jobs.register` | default | Register host-coordinated cron / leader-locked jobs | JobScheduler |
+| `events.subscribe.lowfreq` | default | Subscribe to low-frequency events (payments, account rate-limits, ...) | EventsExtension |
+| `events.subscribe.gateway` | declare | Subscribe to per-request gateway events — high cardinality | EventsExtension |
+| `http.register.plugin` | default | Register HTTP handlers under `/api/plugins/<name>/...` | Router gate |
+| `http.register.gateway` | declare | Register handlers under `/api/v1/...` (host gateway namespace) | Router gate |
+| `outbound.http` | default | Make outbound HTTP calls via the host-managed proxy with default block list | SafeOutboundHTTP |
+
+### §12.3 Declaring capabilities in the manifest
+
+```go
+return &pluginsdk.Manifest{
+    Name: "my-plugin",
+    // ...
+    Capabilities: []string{
+        pluginsdk.CapabilityRedisRaw,        // declare-required
+        pluginsdk.CapabilitySecretsEncrypt,  // declare-required
+        pluginsdk.CapabilityEventsSubscribeGateway, // declare-required
+        pluginsdk.CapabilityHTTPRegisterPlugin,     // default-grant; listing for audit
+    },
+}
+```
+
+Use the `pluginsdk.Capability*` constants (defined in
+`plugin-sdk/manifest.go`) — the host parses string values, but the
+constants keep your code in sync if a name is ever renamed.
+
+### §12.4 Owned tables (`db.own.*` allow-list)
+
+When you use the SQL gate (i.e., do anything via the host DB proxy), you
+must enumerate the tables your migrations create:
+
+```go
+return &pluginsdk.Manifest{
+    // ...
+    OwnedTables: []string{
+        "channel_management_logs",
+        "channel_management_alerts",
+    },
+}
+```
+
+The SQL gate composes this with the host's shared table allow-list
+(`users`, `accounts`, `payment_orders`, ...). Reads / writes to host
+shared tables additionally require `db.core.read` / `db.core.write`.
+
+### §12.5 Migrating from legacy snake_case names
+
+P12·B-1 renamed all capabilities from `snake_case_with_periods` to
+canonical `dotted.lowercase`. The host normalises legacy declarations
+internally and emits a deprecation WARN per plugin at register time:
+
+```
+plugin uses deprecated capability name — please migrate
+  plugin=my-plugin deprecated=redis_raw_keys replacement=redis.raw
+```
+
+| Legacy | Canonical |
+|--------|-----------|
+| `redis_raw_keys` | `redis.raw` |
+| `safe_outbound_http` | `outbound.http` |
+| `secret_encryption` | `secrets.encrypt` |
+| `job_scheduler` | `jobs.register` |
+| `settings_extension` | `settings.own.read` (add `settings.own.write` if you write) |
+| `events.gateway` | `events.subscribe.gateway` |
+
+Plugins that still ship `events.gateway` continue to work for one
+release; they appear in the admin "Permissions" panel under their
+canonical name regardless of which form the manifest used.
+
+### §12.6 Debugging
+
+If your plugin is hitting "permission denied" at runtime:
+
+1. Look at the host log around plugin start. The host emits
+   `plugin requested unknown capability — ignored` for typos and
+   `plugin uses deprecated capability name` for legacy aliases. Both
+   include the plugin name and the offending string.
+2. Open the admin → Plugins page → click the plugin → "Permissions"
+   panel. The list there is the host-approved set; if a capability is
+   missing it never reached enforcement.
+3. The actual gate that rejected your call lives in the SDK server
+   (e.g., `redis_raw_keys` rejections come from
+   `backend/internal/plugin/grpc_server_redis_do.go`). Each gate logs
+   the plugin name + the requested resource on rejection.
+
+---
+
+## §13 Lifecycle
+
+P13·C introduced the four-state lifecycle so admins can archive a plugin
+without losing data and later either restore or permanently purge it.
+
+### §13.1 State machine
+
+```
+absent ──install──► installed ──enable──► enabled
+                       ▲ │                   │
+                       │ └──────disable──────┘
+                       │
+                  [Restore]                  [Disable]
+                       │                          │
+                       ▼                          ▼
+                  uninstalled (uninstalled_at NOT NULL)
+                       │
+                  [hard purge]
+                       ▼
+                     absent
+```
+
+| State | DB row? | Process running? | Data preserved? |
+|-------|---------|------------------|-----------------|
+| absent | no | no | n/a |
+| installed (= disabled) | yes, `enabled=false`, `uninstalled_at IS NULL` | no | yes |
+| enabled | yes, `enabled=true`, `uninstalled_at IS NULL` | yes | yes |
+| uninstalled (soft) | yes, `enabled=false`, `uninstalled_at NOT NULL` | no | **yes** |
+
+### §13.2 enable / disable semantics
+
+- `enable`: runs all pending up-migrations, spawns the plugin process,
+  registers schema + jobs + events.
+- `disable`: stops the process, calls `UnregisterSchema`,
+  unsubscribes events, but **does not** drop any data. Toggling
+  `enable ↔ disable` is non-destructive — `plugin_settings`,
+  `plugin_migrations`, and the plugin's own tables stay put across
+  arbitrarily many cycles.
+
+### §13.3 Soft uninstall
+
+`POST /api/v1/admin/plugins/:name/uninstall`
+
+Equivalent to `disable` plus a `uninstalled_at = NOW()` stamp on the
+plugins row. The default list query filters out soft-uninstalled rows
+(sidebar / menu / route list never show them) so they're effectively
+hidden until an admin opts into the "Show uninstalled only" view.
+
+Reversal: `POST /api/v1/admin/plugins/:name/install` clears
+`uninstalled_at` and leaves the plugin in `installed` (disabled-but-
+present) state. The admin must explicitly enable it again — restore is
+intentionally conservative so a plugin archived because it broke does
+not auto-spawn on recovery.
+
+### §13.4 Hard purge
+
+`DELETE /api/v1/admin/plugins/:name?purge=true` with body
+`{"name": "<plugin-name>"}`.
+
+Two-stage gate:
+
+1. The plugin must already be soft-uninstalled. The host returns 409
+   `must be soft-uninstalled` otherwise.
+2. The body's `name` must match the path's `:name` exactly. Mismatch →
+   400. Mirrors the GitHub-repo-delete typed-name confirm pattern.
+
+In a single DB transaction the host:
+
+1. Runs the down migrations (in reverse order) for every applied
+   migration that declared a `DownFilename` + `DownChecksumSHA256` in
+   the manifest. Migrations without a down file are skipped with a
+   WARN — the resulting tables/columns remain in the DB.
+2. Deletes the rows for this plugin from `plugin_settings`,
+   `plugin_settings_schemas`, `plugin_migrations`, and `plugins`.
+
+The plugin **binary itself is preserved** — purge only touches database
+state. To remove the binary, contact ops; rolling out a new image
+without the binary takes the plugin to `absent` on next restart.
+
+### §13.5 Writing down migrations (optional, recommended)
+
+Place a paired `.up.sql` + `.down.sql` under your plugin's
+`migrations/` directory and reference both in the manifest:
+
+```go
+Migrations: []pluginsdk.MigrationDeclaration{
+    {
+        Filename:           "001_create_logs.up.sql",
+        ChecksumSHA256:     "abc...",
+        DownFilename:       "001_create_logs.down.sql",
+        DownChecksumSHA256: "def...",
+    },
+},
+```
+
+Hard purge runs the down files in reverse declaration order. If you
+omit `DownFilename` for a migration the purge logs:
+
+```
+plugin migration has no down — skipping; admin must clean up manually
+  plugin=my-plugin migration=001_create_logs.up.sql
+```
+
+and the corresponding tables / columns remain. The admin "Hard delete"
+dialog warns about this case so operators are not surprised.
+
+### §13.6 Builtin plugins are not uninstallable
+
+Plugins that ship under the host's `BuiltinDir` (e.g., `hello-world`,
+`channel-management`) cannot be soft-uninstalled — the manager checks
+the binary path and rejects with `ErrPluginIsBuiltin`. The admin UI
+hides the "Uninstall" button on builtin cards entirely, matching the
+backend gate. Builtins can still be disabled (process stops; row stays)
+and re-enabled at will; lifecycle for them is just the
+`installed ↔ enabled` toggle.
+
+---
+
 ## Where to go next
 
 - `docs/plugin-architecture/DESIGN.md` — system-wide design rationale
