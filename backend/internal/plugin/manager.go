@@ -756,6 +756,7 @@ func (m *PluginManager) ListPluginsExt(ctx context.Context, includeUninstalled b
 			}
 		}
 		mergeRecordIntoInfo(&info, rec)
+		info.Builtin = m.isBuiltinPlugin(rec.Name)
 		out = append(out, info)
 	}
 	return out, nil
@@ -781,6 +782,7 @@ func (m *PluginManager) GetPlugin(ctx context.Context, name string) (*PluginInfo
 		}
 	}
 	mergeRecordIntoInfo(&info, *rec)
+	info.Builtin = m.isBuiltinPlugin(rec.Name)
 	return &info, nil
 }
 

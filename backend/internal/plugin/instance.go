@@ -141,6 +141,15 @@ func (inst *PluginInstance) SnapshotInfo() PluginInfo {
 		// them, preserving the legacy display.
 		info.IconSVG = inst.Manifest.GetIconSvg()
 		info.HasSettings = len(inst.Manifest.GetSettingsSchemaJson()) > 0
+		// P12·B-1: surface declared capabilities so the admin UI can audit
+		// what the plugin requested. The list mirrors what the manifest
+		// shipped — host normalisation (legacy → canonical) happens at the
+		// approveCapabilities boundary, so plugins shipping legacy aliases
+		// will appear with their legacy strings here. Frontend resolves the
+		// canonical name via its capability metadata table.
+		if caps := inst.Manifest.GetCapabilities(); len(caps) > 0 {
+			info.Capabilities = append([]string(nil), caps...)
+		}
 	}
 	return info
 }
@@ -180,4 +189,15 @@ type PluginInfo struct {
 	// (P13/C-1). The admin UI surfaces these only in the "uninstalled"
 	// listing alongside a Restore button. When nil the plugin is active.
 	UninstalledAt *time.Time `json:"uninstalled_at,omitempty"`
+	// Capabilities is the canonical (post-normalisation) capability list
+	// declared by the plugin manifest. Empty when the plugin requested no
+	// capabilities. Surfaced to the admin UI so operators can audit what
+	// each plugin is asking for. Legacy snake_case names declared by the
+	// plugin are reported here in their canonical dotted-lowercase form;
+	// see PLUGIN-AUTHOR-GUIDE §12 for the migration table.
+	Capabilities []string `json:"capabilities,omitempty"`
+	// Builtin flags whether the plugin ships in the host image (under the
+	// configured BuiltinDir). Builtins cannot be soft-uninstalled or hard
+	// purged; the admin UI hides those buttons for them.
+	Builtin bool `json:"builtin,omitempty"`
 }

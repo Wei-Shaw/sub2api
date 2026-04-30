@@ -316,6 +316,44 @@
           </div>
         </section>
 
+        <!-- Permissions / Capabilities (P12·B-1). Hidden when the manifest
+             declared none — most plugins fall in this bucket and a "no
+             permissions" empty state would just add noise to the dialog. -->
+        <section>
+          <h4 class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            {{ t('admin.plugins.permissions.title') }}
+          </h4>
+          <div
+            v-if="!detailPlugin.capabilities || detailPlugin.capabilities.length === 0"
+            class="rounded-md border border-dashed border-gray-300 bg-gray-50/60 px-3 py-2 text-xs text-gray-500 dark:border-dark-600 dark:bg-dark-800/40 dark:text-gray-400"
+          >
+            {{ t('admin.plugins.permissions.empty') }}
+          </div>
+          <ul v-else class="space-y-1.5">
+            <li
+              v-for="cap in detailPlugin.capabilities"
+              :key="cap"
+              class="flex items-center gap-2 text-xs"
+            >
+              <span
+                v-if="capabilityCategory(cap) === 'default'"
+                class="inline-flex shrink-0 items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-700 dark:bg-dark-700 dark:text-gray-300"
+              >
+                <Icon name="checkCircle" size="xs" />
+                {{ t('admin.plugins.permissions.defaultGranted') }}
+              </span>
+              <span
+                v-else
+                class="inline-flex shrink-0 items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+              >
+                <Icon name="shield" size="xs" />
+                {{ t('admin.plugins.permissions.declared') }}
+              </span>
+              <code class="break-all font-mono text-[11px] text-gray-700 dark:text-gray-200">{{ cap }}</code>
+            </li>
+          </ul>
+        </section>
+
         <!-- Config table -->
         <section v-if="detailConfigEntries.length > 0">
           <h4 class="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
@@ -396,6 +434,70 @@ interface PluginInfo {
    * The Settings tab is only rendered for plugins that opted in.
    */
   has_settings?: boolean
+  /**
+   * Canonical capability names declared by the plugin manifest (P12·B-1).
+   * Empty / undefined when the plugin requested no capabilities. Surfaced
+   * so the admin can audit what the plugin is asking for; categorisation
+   * (default-grant vs declare-required) lives in `CAPABILITY_CATEGORY`.
+   */
+  capabilities?: string[]
+  /**
+   * Non-null when the plugin has been soft-uninstalled (P13·C-1). Cards
+   * with this set show the "Restore" + "Hard purge" buttons instead of
+   * the regular enable/disable controls.
+   */
+  uninstalled_at?: string | null
+}
+
+/**
+ * Capability categorisation for the admin UI permissions panel.
+ *
+ * - "default": granted automatically by the host (own-namespace resources,
+ *   register own-routes, register jobs, settings.own.*). Plugins listing
+ *   these declare intent but do not unlock anything privileged.
+ * - "declared": sensitive capabilities the plugin must explicitly opt into
+ *   so operators can spot them in audits (raw redis access, gateway-scoped
+ *   events / routes, host-wide DB tables, secret encryption).
+ *
+ * Mirrors backend `allowedPluginCapabilities` (manager.go). When a plugin
+ * declares a legacy snake_case alias the host normalises it to the canonical
+ * dotted form before exposing on the API; legacy strings still work as a
+ * lookup fallback so we don't render "unknown" during the deprecation window.
+ */
+type CapabilityCategory = 'default' | 'declared'
+
+const CAPABILITY_CATEGORY: Record<string, CapabilityCategory> = {
+  // default-grant — host approves automatically, listed for transparency.
+  'redis.own': 'default',
+  'http.register.plugin': 'default',
+  'jobs.register': 'default',
+  'settings.own.read': 'default',
+  'settings.own.write': 'default',
+  'db.own.read': 'default',
+  'db.own.write': 'default',
+  'migrations.apply': 'default',
+  'outbound.http': 'default',
+  'events.subscribe.lowfreq': 'default',
+  // declare-required — sensitive surface; admin must inspect at install time.
+  'redis.raw': 'declared',
+  'secrets.encrypt': 'declared',
+  'events.subscribe.gateway': 'declared',
+  'http.register.gateway': 'declared',
+  'db.core.read': 'declared',
+  'db.core.write': 'declared',
+  // Legacy snake_case aliases (P12·B-1 deprecation window) — same category
+  // as their canonical form so the badge is consistent until plugins
+  // migrate. Host log will WARN on register pointing at the new name.
+  redis_raw_keys: 'declared',
+  safe_outbound_http: 'default',
+  secret_encryption: 'declared',
+  job_scheduler: 'default',
+  settings_extension: 'default',
+  'events.gateway': 'declared',
+}
+
+function capabilityCategory(name: string): CapabilityCategory {
+  return CAPABILITY_CATEGORY[name] ?? 'declared'
 }
 
 // Plugin lifecycle action keys (must match backend POST endpoints).

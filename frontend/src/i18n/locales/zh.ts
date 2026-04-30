@@ -1039,7 +1039,14 @@ export default {
       stateUnknown: '未知',
       // Tags
       builtinTag: '内置',
-      externalTag: '外部'
+      externalTag: '外部',
+      // Permissions / Capabilities (P12·B-1)
+      permissions: {
+        title: '权限 / Permissions',
+        defaultGranted: '默认授权',
+        declared: '已声明',
+        empty: '此插件未声明任何额外权限'
+      }
     },
     // Dashboard
     dashboard: {

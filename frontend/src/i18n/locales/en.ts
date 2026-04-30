@@ -1035,7 +1035,14 @@ export default {
       stateUnknown: 'Unknown',
       // Tags
       builtinTag: 'Built-in',
-      externalTag: 'External'
+      externalTag: 'External',
+      // Permissions / Capabilities (P12·B-1)
+      permissions: {
+        title: 'Permissions',
+        defaultGranted: 'Default-granted',
+        declared: 'Declared',
+        empty: 'This plugin declared no additional permissions'
+      }
     },
     // Dashboard
     dashboard: {
