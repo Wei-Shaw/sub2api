@@ -17,10 +17,13 @@ import (
 // 与核心 schema_migrations 表分开,避免插件迁移污染核心迁移历史,也方便单独清理某个插件。
 const pluginMigrationsTableDDL = `
 CREATE TABLE IF NOT EXISTS plugin_migrations (
-	plugin_name TEXT NOT NULL,
-	filename    TEXT NOT NULL,
-	checksum    TEXT NOT NULL,
-	applied_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	plugin_name           TEXT NOT NULL,
+	filename              TEXT NOT NULL,
+	checksum              TEXT NOT NULL,
+	applied_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	down_sql_cached       TEXT NULL,
+	down_filename         TEXT NULL,
+	down_checksum_sha256  TEXT NULL,
 	PRIMARY KEY (plugin_name, filename)
 );
 `
@@ -35,6 +38,18 @@ type MigrationFile struct {
 	// (例如 CREATE INDEX CONCURRENTLY)。host 会跳过 BEGIN/COMMIT,直接在
 	// 连接上执行,并在记录到 plugin_migrations 表时使用独立语句。
 	NonTransactional bool
+
+	// DownFilename / DownChecksumSha256 / DownSQL 由 fetchAndRunPluginMigrations
+	// 在 plugin enable 时拉取并校验, 一并写到 plugin_migrations 表中。Purge
+	// 阶段 (插件硬卸载) 直接读取 down_sql_cached 执行回滚, 不再依赖 plugin
+	// 进程仍然存活。
+	//
+	// 三个字段同进同出: 要么 plugin 没声明 down (全部为空), 要么三个都填好。
+	// 空字符串 / 空 slice 表示该迁移不可逆, Purge 时跳过 SQL 执行, 仅删除
+	// bookkeeping 行。
+	DownFilename       string
+	DownChecksumSha256 string
+	DownSQL            []byte
 }
 
 // RunPluginMigrations 在事务中按 filename 顺序执行插件的迁移。
@@ -117,8 +132,14 @@ func applyOnePluginMigration(ctx context.Context, db *sql.DB, pluginName string,
 			return fmt.Errorf("apply plugin migration %s/%s (non_transactional): %w", pluginName, m.Filename, err)
 		}
 		if _, err := db.ExecContext(ctx,
-			"INSERT INTO plugin_migrations (plugin_name, filename, checksum) VALUES ($1, $2, $3)",
+			`INSERT INTO plugin_migrations (
+				plugin_name, filename, checksum,
+				down_sql_cached, down_filename, down_checksum_sha256
+			) VALUES ($1, $2, $3, $4, $5, $6)`,
 			pluginName, m.Filename, checksum,
+			nullableDownSQL(m.DownSQL),
+			nullableString(m.DownFilename),
+			nullableString(m.DownChecksumSha256),
 		); err != nil {
 			return fmt.Errorf("record plugin migration %s/%s (non_transactional): %w", pluginName, m.Filename, err)
 		}
@@ -134,8 +155,14 @@ func applyOnePluginMigration(ctx context.Context, db *sql.DB, pluginName string,
 		return fmt.Errorf("apply plugin migration %s/%s: %w", pluginName, m.Filename, err)
 	}
 	if _, err := tx.ExecContext(ctx,
-		"INSERT INTO plugin_migrations (plugin_name, filename, checksum) VALUES ($1, $2, $3)",
+		`INSERT INTO plugin_migrations (
+			plugin_name, filename, checksum,
+			down_sql_cached, down_filename, down_checksum_sha256
+		) VALUES ($1, $2, $3, $4, $5, $6)`,
 		pluginName, m.Filename, checksum,
+		nullableDownSQL(m.DownSQL),
+		nullableString(m.DownFilename),
+		nullableString(m.DownChecksumSha256),
 	); err != nil {
 		_ = tx.Rollback()
 		return fmt.Errorf("record plugin migration %s/%s: %w", pluginName, m.Filename, err)
@@ -145,6 +172,26 @@ func applyOnePluginMigration(ctx context.Context, db *sql.DB, pluginName string,
 		return fmt.Errorf("commit plugin migration %s/%s: %w", pluginName, m.Filename, err)
 	}
 	return nil
+}
+
+// nullableString returns sql.NullString matching s; empty -> {Valid:false}.
+// Used so the down_filename / down_checksum_sha256 columns stay NULL when the
+// plugin did not declare a reversible migration, instead of writing empty
+// strings that would then need a special case in Purge.
+func nullableString(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+// nullableDownSQL mirrors nullableString for the cached body. Bytes are stored
+// as TEXT in PostgreSQL because the plugin guarantees UTF-8 SQL.
+func nullableDownSQL(body []byte) any {
+	if len(body) == 0 {
+		return nil
+	}
+	return string(body)
 }
 
 // pluginMigrationLockID 用 fnv64 把 "plugin:<name>" 映射成 int64 advisory lock ID。

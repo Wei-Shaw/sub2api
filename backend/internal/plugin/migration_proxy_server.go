@@ -94,10 +94,44 @@ func fetchAndRunPluginMigrations(
 			)
 		}
 
+		downFilename := strings.TrimSpace(decl.GetDownFilename())
+		var (
+			downBody     []byte
+			downChecksum string
+		)
+		if downFilename != "" {
+			downExpected := strings.ToLower(strings.TrimSpace(decl.GetDownChecksumSha256()))
+			if downExpected == "" {
+				return fmt.Errorf("plugin %s migration %s: down_filename %q declared without down_checksum_sha256",
+					pluginName, filename, downFilename)
+			}
+			downResp, err := lifecycle.GetMigration(ctx, &pluginsdk.GetMigrationRequest{Filename: downFilename})
+			if err != nil {
+				return fmt.Errorf("fetch plugin down migration %s/%s: %w", pluginName, downFilename, err)
+			}
+			downBody = downResp.GetSql()
+			if len(downBody) == 0 {
+				return fmt.Errorf("plugin %s down migration %s: empty SQL body returned by GetMigration",
+					pluginName, downFilename)
+			}
+			downActual := sha256.Sum256(downBody)
+			downActualHex := hex.EncodeToString(downActual[:])
+			if !strings.EqualFold(downActualHex, downExpected) {
+				return fmt.Errorf(
+					"plugin %s down migration %s: checksum mismatch (manifest=%s body=%s) — refusing to cache",
+					pluginName, downFilename, downExpected, downActualHex,
+				)
+			}
+			downChecksum = downActualHex
+		}
+
 		files = append(files, MigrationFile{
-			Filename:         filename,
-			Content:          body,
-			NonTransactional: decl.GetNonTransactional(),
+			Filename:           filename,
+			Content:            body,
+			NonTransactional:   decl.GetNonTransactional(),
+			DownFilename:       downFilename,
+			DownChecksumSha256: downChecksum,
+			DownSQL:            downBody,
 		})
 	}
 
