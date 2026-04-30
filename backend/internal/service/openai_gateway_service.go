@@ -5159,6 +5159,8 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithOpenCodeContinuation(c
 	openCodeClient := isOpenCodeResponsesClient(c)
 	openCodeGeneratedMessages := make([]openCodeImageGeneratedMessage, 0, 1)
 	openCodeContinuationReady := false
+	openCodeSuppressedTerminalFrame := ""
+	openCodeSuppressedDoneFrame := ""
 	openCodeImageOpts := openCodeImageRewriteOptions{}
 	if openCodeClient {
 		openCodeImageOpts.BaseURL = s.resolveOpenCodeImageDownloadBaseURL(c.Request.Context(), c)
@@ -5232,6 +5234,33 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithOpenCodeContinuation(c
 	resultWithUsage := func() *openaiStreamingResult {
 		return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMs}
 	}
+	flushOpenCodeSuppressedTerminal := func() {
+		if clientDisconnected || (openCodeSuppressedTerminalFrame == "" && openCodeSuppressedDoneFrame == "") {
+			return
+		}
+		if err := startStream(); err != nil {
+			clientDisconnected = true
+			return
+		}
+		if openCodeSuppressedTerminalFrame != "" {
+			if _, err := bufferedWriter.WriteString(openCodeSuppressedTerminalFrame); err != nil {
+				clientDisconnected = true
+				return
+			}
+		}
+		if openCodeSuppressedDoneFrame != "" {
+			if _, err := bufferedWriter.WriteString(openCodeSuppressedDoneFrame); err != nil {
+				clientDisconnected = true
+				return
+			}
+		}
+		if err := flushBuffered(); err != nil {
+			clientDisconnected = true
+			return
+		}
+		clientOutputStarted = true
+		lastDownstreamWriteAt = time.Now()
+	}
 	finalizeStream := func() (*openaiStreamingResult, error) {
 		if !sawTerminalEvent {
 			if !openAIStreamClientOutputStarted(c, clientOutputStarted) {
@@ -5252,6 +5281,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithOpenCodeContinuation(c
 		if openCodeContinuationReady && continuation != nil && !clientDisconnected {
 			continued, err := s.openCodeImageStreamingServerContinuation(ctx, c, account, startTime, originalModel, mappedModel, continuation, openCodeGeneratedMessages)
 			if err != nil {
+				flushOpenCodeSuppressedTerminal()
 				return resultWithUsage(), err
 			}
 			if continued != nil {
@@ -5314,8 +5344,8 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithOpenCodeContinuation(c
 		return resultWithUsage(), fmt.Errorf("stream read error: %w", scanErr), true
 	}
 	processOpenCodeSSEFrame := func(frameLines []string, queueDrained bool) (*openaiStreamingResult, error, bool) {
-		generatedBefore := len(openCodeGeneratedMessages)
 		frameBody, data, hasData, keep := filterOpenCodeResponsesSSEFrameWithImages(ctx, frameLines, s.generatedImageStore, openCodeImageOpts)
+		generatedAfter := len(openCodeGeneratedMessages)
 		if !keep {
 			return nil, nil, false
 		}
@@ -5352,12 +5382,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithOpenCodeContinuation(c
 			}
 		}
 		if continuation != nil && strings.TrimSpace(data) == "[DONE]" && openCodeContinuationReady {
-			return nil, nil, false
-		}
-		if continuation != nil && generatedBefore > 0 && (eventType == "response.completed" || eventType == "response.done") {
-			openCodeContinuationReady = true
-			sawTerminalEvent = true
-			s.parseSSEUsageBytesWithEventType([]byte(data), eventType, usage)
+			openCodeSuppressedDoneFrame = frameBody
 			return nil, nil, false
 		}
 
@@ -5371,6 +5396,19 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithOpenCodeContinuation(c
 				if eventType == "" {
 					eventType = frameEventType
 				}
+			}
+		}
+		if continuation != nil && generatedAfter > 0 && (eventType == "response.completed" || eventType == "response.done") {
+			openCodeContinuationReady = true
+			sawTerminalEvent = true
+			s.parseSSEUsageBytesWithEventType([]byte(data), eventType, usage)
+			clientFrames, terminalFrame := splitOpenCodeTerminalContinuationFrames(frameBody)
+			if terminalFrame != "" {
+				openCodeSuppressedTerminalFrame = terminalFrame
+			}
+			frameBody = clientFrames
+			if strings.TrimSpace(frameBody) == "" {
+				return nil, nil, false
 			}
 		}
 
@@ -5977,6 +6015,29 @@ func rebuildSSEFrameWithData(lines []string, newData string) string {
 	return strings.Join(out, "\n") + "\n\n"
 }
 
+func splitOpenCodeTerminalContinuationFrames(frameBody string) (string, string) {
+	parts := strings.Split(frameBody, "\n\n")
+	last := -1
+	for i := len(parts) - 1; i >= 0; i-- {
+		if strings.TrimSpace(parts[i]) != "" {
+			last = i
+			break
+		}
+	}
+	if last < 0 {
+		return "", ""
+	}
+	var prefix strings.Builder
+	for _, part := range parts[:last] {
+		if strings.TrimSpace(part) == "" {
+			continue
+		}
+		prefix.WriteString(part)
+		prefix.WriteString("\n\n")
+	}
+	return prefix.String(), strings.TrimRight(parts[last], "\n") + "\n\n"
+}
+
 func filterOpenCodeResponsesSSEFrame(lines []string) (frame string, data string, hasData bool, keep bool) {
 	if len(lines) == 0 {
 		return "", "", false, false
@@ -6043,7 +6104,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponseWithOpenCodeContinuatio
 	// Some OpenAI-compatible upstreams (including other sub2api instances)
 	// may return SSE even when stream=false was requested.
 	if isEventStreamResponse(resp.Header) {
-		return s.handleSSEToJSONForAccount(resp, c, body, account, originalModel, mappedModel)
+		return s.handleSSEToJSONForAccountWithOpenCodeContinuation(resp, c, body, account, originalModel, mappedModel, continuation)
 	}
 	// For OAuth accounts, also fall back to a body-content heuristic because
 	// the upstream may omit the Content-Type header while still sending SSE.
@@ -6053,7 +6114,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponseWithOpenCodeContinuatio
 	if account.Type == AccountTypeOAuth {
 		bodyLooksLikeSSE := bytes.Contains(body, []byte("data:")) || bytes.Contains(body, []byte("event:"))
 		if bodyLooksLikeSSE {
-			return s.handleSSEToJSONForAccount(resp, c, body, account, originalModel, mappedModel)
+			return s.handleSSEToJSONForAccountWithOpenCodeContinuation(resp, c, body, account, originalModel, mappedModel, continuation)
 		}
 	}
 
@@ -6219,7 +6280,40 @@ func mergeOpenCodeImageContinuationResponseBodies(firstBody, continuationBody []
 	if err != nil {
 		return nil, err
 	}
-	return sjson.SetRawBytes(continuationBody, "output", combinedJSON)
+	merged, err := sjson.SetRawBytes(continuationBody, "output", combinedJSON)
+	if err != nil {
+		return nil, err
+	}
+	return mergeOpenCodeImageContinuationResponseUsage(firstBody, merged)
+}
+
+func mergeOpenCodeImageContinuationResponseUsage(firstBody, mergedBody []byte) ([]byte, error) {
+	firstUsage := gjson.GetBytes(firstBody, "usage")
+	mergedUsage := gjson.GetBytes(mergedBody, "usage")
+	if !firstUsage.Exists() || !mergedUsage.Exists() {
+		return mergedBody, nil
+	}
+	patched := mergedBody
+	var err error
+	for _, path := range []string{"input_tokens", "output_tokens", "total_tokens"} {
+		if path == "total_tokens" && !firstUsage.Get(path).Exists() && !mergedUsage.Get(path).Exists() {
+			continue
+		}
+		patched, err = sjson.SetBytes(patched, "usage."+path, firstUsage.Get(path).Int()+mergedUsage.Get(path).Int())
+		if err != nil {
+			return nil, err
+		}
+	}
+	for _, path := range []string{"input_tokens_details.cached_tokens", "output_tokens_details.image_tokens"} {
+		if !firstUsage.Get(path).Exists() && !mergedUsage.Get(path).Exists() {
+			continue
+		}
+		patched, err = sjson.SetBytes(patched, "usage."+path, firstUsage.Get(path).Int()+mergedUsage.Get(path).Int())
+		if err != nil {
+			return nil, err
+		}
+	}
+	return patched, nil
 }
 
 func addOpenAIUsage(base *OpenAIUsage, extra *OpenAIUsage) {
@@ -6243,6 +6337,10 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 }
 
 func (s *OpenAIGatewayService) handleSSEToJSONForAccount(resp *http.Response, c *gin.Context, body []byte, account *Account, originalModel, mappedModel string) (*OpenAIUsage, error) {
+	return s.handleSSEToJSONForAccountWithOpenCodeContinuation(resp, c, body, account, originalModel, mappedModel, nil)
+}
+
+func (s *OpenAIGatewayService) handleSSEToJSONForAccountWithOpenCodeContinuation(resp *http.Response, c *gin.Context, body []byte, account *Account, originalModel, mappedModel string, continuation *openCodeImageServerContinuationContext) (*OpenAIUsage, error) {
 	bodyText := string(body)
 	finalResponse, ok := extractCodexFinalResponse(bodyText)
 	isOpenCodeClient := isOpenCodeResponsesClient(c)
@@ -6279,7 +6377,7 @@ func (s *OpenAIGatewayService) handleSSEToJSONForAccount(resp *http.Response, c 
 		}
 		body = finalResponse
 		if isOpenCodeClient {
-			filteredBody, changed, err := rewriteOpenCodeImageGenerationOutput(c.Request.Context(), body, s.generatedImageStore, openCodeImageRewriteOptions{
+			filteredBody, generated, changed, err := rewriteOpenCodeImageGenerationOutputWithGenerated(c.Request.Context(), body, s.generatedImageStore, openCodeImageRewriteOptions{
 				BaseURL: s.resolveOpenCodeImageDownloadBaseURL(c.Request.Context(), c),
 			})
 			if err != nil {
@@ -6287,6 +6385,20 @@ func (s *OpenAIGatewayService) handleSSEToJSONForAccount(resp *http.Response, c 
 			}
 			if changed {
 				body = filteredBody
+			}
+			if len(generated) > 0 && continuation != nil {
+				continuedBody, continuedUsage, continued, err := s.openCodeImageServerContinuationResponse(c.Request.Context(), c, account, originalModel, mappedModel, continuation, generated)
+				if err != nil {
+					return nil, err
+				}
+				if continued {
+					mergedBody, err := mergeOpenCodeImageContinuationResponseBodies(body, continuedBody)
+					if err != nil {
+						return nil, err
+					}
+					body = mergedBody
+					addOpenAIUsage(usage, continuedUsage)
+				}
 			}
 		}
 		if normalizedBody, changed, err := normalizeResponsesJSONForAISDK(body); err != nil {

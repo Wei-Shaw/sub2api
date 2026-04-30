@@ -627,12 +627,12 @@ func TestForwardResponsesRequest_OpenCodeImageGenerationContinuesServerSide(t *t
 		{
 			StatusCode: http.StatusOK,
 			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(strings.NewReader(`{"id":"resp_img","output":[{"id":"ig_1","type":"image_generation_call","status":"completed","result":"` + pngB64 + `","output_format":"png"}],"usage":{"input_tokens":1,"output_tokens":2}}`)),
+			Body:       io.NopCloser(strings.NewReader(`{"id":"resp_img","output":[{"id":"ig_1","type":"image_generation_call","status":"completed","result":"` + pngB64 + `","output_format":"png"}],"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3}}`)),
 		},
 		{
 			StatusCode: http.StatusOK,
 			Header:     http.Header{"Content-Type": []string{"application/json"}},
-			Body:       io.NopCloser(strings.NewReader(`{"id":"resp_continue","output":[{"id":"msg_continue","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"continued after image","annotations":[]}]}],"usage":{"input_tokens":3,"output_tokens":4}}`)),
+			Body:       io.NopCloser(strings.NewReader(`{"id":"resp_continue","output":[{"id":"msg_continue","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"continued after image","annotations":[]}]}],"usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7}}`)),
 		},
 	}}
 	svc := newOpenAITestGatewayService(upstream)
@@ -640,10 +640,12 @@ func TestForwardResponsesRequest_OpenCodeImageGenerationContinuesServerSide(t *t
 	svc.cfg.Server.FrontendURL = "https://example.com"
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
 
-	_, err := svc.Forward(context.Background(), c, account, body)
+	result, err := svc.Forward(context.Background(), c, account, body)
 
 	require.NoError(t, err)
 	require.Equal(t, 2, upstream.callCount)
+	require.Equal(t, 4, result.Usage.InputTokens)
+	require.Equal(t, 6, result.Usage.OutputTokens)
 	secondBody := string(upstream.bodies[1])
 	require.Contains(t, secondBody, `"type":"function_call"`)
 	require.Contains(t, secondBody, `"type":"function_call_output"`)
@@ -653,6 +655,59 @@ func TestForwardResponsesRequest_OpenCodeImageGenerationContinuesServerSide(t *t
 	clientBody := rec.Body.String()
 	require.Contains(t, clientBody, "sub2api-image://img_")
 	require.Contains(t, clientBody, "continued after image")
+	require.Equal(t, int64(4), gjson.Get(clientBody, "usage.input_tokens").Int())
+	require.Equal(t, int64(6), gjson.Get(clientBody, "usage.output_tokens").Int())
+	require.Equal(t, int64(10), gjson.Get(clientBody, "usage.total_tokens").Int())
+	require.NotContains(t, clientBody, `"name":"bash"`)
+	require.NotContains(t, clientBody, "image_generation_call")
+	require.NotContains(t, clientBody, pngB64)
+}
+
+func TestForwardResponsesRequest_OpenCodeNonStreamingSSEImageGenerationContinuesServerSide(t *testing.T) {
+	store := newTestOpenAIGeneratedImageStore(t, fixedNow)
+	body := []byte(`{"model":"gpt-5.5","stream":false,"input":[{"role":"user","content":[{"type":"input_text","text":"draw and continue"}]}],"builtin_tools":{"image_generation":true}}`)
+	c, rec := newOpenAITestContext(t, "/v1/responses", body)
+	c.Request.Header.Set("User-Agent", "opencode/1.0")
+	firstStream := strings.Join([]string{
+		"event: response.completed",
+		`data: {"type":"response.completed","response":{"id":"resp_img","output":[{"id":"ig_1","type":"image_generation_call","status":"completed","result":"` + pngB64 + `","output_format":"png"}],"usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3}}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &httpUpstreamSequenceRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(firstStream)),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"id":"resp_continue","output":[{"id":"msg_continue","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"continued after non-stream sse image","annotations":[]}]}],"usage":{"input_tokens":3,"output_tokens":4,"total_tokens":7}}`)),
+		},
+	}}
+	svc := newOpenAITestGatewayService(upstream)
+	svc.generatedImageStore = store
+	svc.cfg.Server.FrontendURL = "https://example.com"
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+
+	require.NoError(t, err)
+	require.Equal(t, 2, upstream.callCount)
+	require.Equal(t, 4, result.Usage.InputTokens)
+	require.Equal(t, 6, result.Usage.OutputTokens)
+	secondBody := string(upstream.bodies[1])
+	require.Contains(t, secondBody, `"type":"function_call"`)
+	require.Contains(t, secondBody, `"type":"function_call_output"`)
+	require.Contains(t, secondBody, "sub2api-image://img_")
+	clientBody := rec.Body.String()
+	require.Contains(t, clientBody, "sub2api-image://img_")
+	require.Contains(t, clientBody, "continued after non-stream sse image")
+	require.Equal(t, int64(4), gjson.Get(clientBody, "usage.input_tokens").Int())
+	require.Equal(t, int64(6), gjson.Get(clientBody, "usage.output_tokens").Int())
+	require.Equal(t, int64(10), gjson.Get(clientBody, "usage.total_tokens").Int())
 	require.NotContains(t, clientBody, `"name":"bash"`)
 	require.NotContains(t, clientBody, "image_generation_call")
 	require.NotContains(t, clientBody, pngB64)
@@ -711,6 +766,99 @@ func TestForwardResponsesRequest_OpenCodeStreamingImageGenerationContinuesServer
 	clientBody := rec.Body.String()
 	require.Contains(t, clientBody, "sub2api-image://img_")
 	require.Contains(t, clientBody, "continued stream after image")
+	require.Equal(t, 1, strings.Count(clientBody, "event: response.completed"))
+	require.Equal(t, 1, strings.Count(clientBody, "data: [DONE]"))
+	require.NotContains(t, clientBody, `"name":"bash"`)
+	require.NotContains(t, clientBody, "image_generation_call")
+	require.NotContains(t, clientBody, pngB64)
+}
+
+func TestForwardResponsesRequest_OpenCodeStreamingTerminalOnlyImageGenerationContinuesServerSide(t *testing.T) {
+	store := newTestOpenAIGeneratedImageStore(t, fixedNow)
+	body := []byte(`{"model":"gpt-5.5","stream":true,"input":[{"role":"user","content":[{"type":"input_text","text":"draw and continue"}]}],"builtin_tools":{"image_generation":true}}`)
+	c, rec := newOpenAITestContext(t, "/v1/responses", body)
+	c.Request.Header.Set("User-Agent", "opencode/1.0")
+	firstStream := strings.Join([]string{
+		"event: response.completed",
+		`data: {"type":"response.completed","response":{"id":"resp_img","output":[{"id":"ig_1","type":"image_generation_call","status":"completed","result":"` + pngB64 + `","output_format":"png"}],"usage":{"input_tokens":1,"output_tokens":2}}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	secondStream := strings.Join([]string{
+		"event: response.output_item.added",
+		`data: {"type":"response.output_item.added","output_index":1,"item":{"id":"msg_continue","type":"message","status":"in_progress","role":"assistant","content":[]}}`,
+		"",
+		"event: response.output_text.delta",
+		`data: {"type":"response.output_text.delta","output_index":1,"content_index":0,"item_id":"msg_continue","delta":"continued stream after terminal-only image"}`,
+		"",
+		"event: response.output_item.done",
+		`data: {"type":"response.output_item.done","output_index":1,"item":{"id":"msg_continue","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"continued stream after terminal-only image","annotations":[]}]}}`,
+		"",
+		"event: response.completed",
+		`data: {"type":"response.completed","response":{"id":"resp_continue","output":[{"id":"msg_continue","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"continued stream after terminal-only image","annotations":[]}]}],"usage":{"input_tokens":3,"output_tokens":4}}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &httpUpstreamSequenceRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(firstStream))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(secondStream))},
+	}}
+	svc := newOpenAITestGatewayService(upstream)
+	svc.generatedImageStore = store
+	svc.cfg.Server.FrontendURL = "https://example.com"
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+
+	require.NoError(t, err)
+	require.Equal(t, 2, upstream.callCount)
+	require.Equal(t, 4, result.Usage.InputTokens)
+	require.Equal(t, 6, result.Usage.OutputTokens)
+	secondBody := string(upstream.bodies[1])
+	require.Contains(t, secondBody, `"type":"function_call"`)
+	require.Contains(t, secondBody, `"type":"function_call_output"`)
+	clientBody := rec.Body.String()
+	require.Contains(t, clientBody, "sub2api-image://img_")
+	require.Contains(t, clientBody, "continued stream after terminal-only image")
+	require.Equal(t, 1, strings.Count(clientBody, "event: response.completed"))
+	require.Equal(t, 1, strings.Count(clientBody, "data: [DONE]"))
+	require.NotContains(t, clientBody, `"name":"bash"`)
+	require.NotContains(t, clientBody, "image_generation_call")
+	require.NotContains(t, clientBody, pngB64)
+}
+
+func TestForwardResponsesRequest_OpenCodeStreamingContinuationFailureFallsBackToFirstTerminal(t *testing.T) {
+	store := newTestOpenAIGeneratedImageStore(t, fixedNow)
+	body := []byte(`{"model":"gpt-5.5","stream":true,"input":[{"role":"user","content":[{"type":"input_text","text":"draw and continue"}]}],"builtin_tools":{"image_generation":true}}`)
+	c, rec := newOpenAITestContext(t, "/v1/responses", body)
+	c.Request.Header.Set("User-Agent", "opencode/1.0")
+	firstStream := strings.Join([]string{
+		"event: response.output_item.done",
+		`data: {"type":"response.output_item.done","output_index":0,"item":{"id":"ig_1","type":"image_generation_call","status":"completed","result":"` + pngB64 + `","output_format":"png"}}`,
+		"",
+		"event: response.completed",
+		`data: {"type":"response.completed","response":{"id":"resp_img","output":[{"id":"ig_1","type":"image_generation_call","status":"completed","result":"` + pngB64 + `","output_format":"png"}],"usage":{"input_tokens":1,"output_tokens":2}}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &httpUpstreamSequenceRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(firstStream))},
+		{StatusCode: http.StatusBadGateway, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"message":"continuation failed"}}`))},
+	}}
+	svc := newOpenAITestGatewayService(upstream)
+	svc.generatedImageStore = store
+	svc.cfg.Server.FrontendURL = "https://example.com"
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+
+	require.Error(t, err)
+	require.Equal(t, 2, upstream.callCount)
+	clientBody := rec.Body.String()
+	require.Contains(t, clientBody, "sub2api-image://img_")
 	require.Equal(t, 1, strings.Count(clientBody, "event: response.completed"))
 	require.Equal(t, 1, strings.Count(clientBody, "data: [DONE]"))
 	require.NotContains(t, clientBody, `"name":"bash"`)
