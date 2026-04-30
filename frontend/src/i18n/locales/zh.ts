@@ -5644,6 +5644,16 @@ export default {
         saved: '过载冷却设置保存成功',
         saveFailed: '保存过载冷却设置失败'
       REDACTED,
+      rateLimit429Cooldown: {
+        title: '429 默认回避',
+        description: '配置上游返回 429 且没有明确重置时间时的默认账号回避策略',
+        enabled: '启用 429 默认回避',
+        enabledHint: '收到无重置时间的 429 时暂停该账号调度，冷却后自动恢复',
+        cooldownSeconds: '回避时长（秒）',
+        cooldownSecondsHint: '默认回避持续时间（1-7200 秒）；上游返回明确 reset 时仍优先使用上游时间',
+        saved: '429 默认回避设置保存成功',
+        saveFailed: '保存 429 默认回避设置失败'
+      REDACTED,
       streamTimeout: {
         title: '流超时处理',
         description: '配置上游响应超时时的账户处理策略，避免问题账户持续被选中',

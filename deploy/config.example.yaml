@@ -924,6 +924,10 @@ rate_limit:
   # 上游返回 529（过载）时的冷却时间（分钟）
   overload_cooldown_minutes: 10
 
+  # Default cooldown time (in seconds) when upstream returns 429 without a reset time
+  # 上游返回 429 且无明确重置时间时的默认回避时间（秒）
+  rate_limit_429_cooldown_seconds: 5
+
 # =============================================================================
 # Pricing Data Source (Optional)
 # 定价数据源（可选）
