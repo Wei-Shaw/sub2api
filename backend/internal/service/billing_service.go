@@ -115,6 +115,12 @@ type BillingService struct {
 	cfg            *config.Config
 	pricingService *PricingService
 	fallbackPrices map[string]*ModelPricing // 硬编码回退价格
+	// pricingAdjuster is the optional plugin hook invoked after
+	// CalculateCostUnified computes a base cost (P2 skeleton). nil =
+	// no plugin registered, hot path is identical to pre-P2 behaviour.
+	// Wired via SetPricingAdjuster so the existing constructor signature
+	// (and all unit tests calling NewBillingService) stay unchanged.
+	pricingAdjuster PricingAdjuster
 }
 
 // NewBillingService 创建计费服务实例
@@ -129,6 +135,23 @@ func NewBillingService(cfg *config.Config, pricingService *PricingService) *Bill
 	s.initFallbackPricing()
 
 	return s
+}
+
+// SetPricingAdjuster wires an optional plugin-supplied cost adjuster
+// (P2 skeleton). adjuster may be nil to detach a previously-installed
+// hook (typically on plugin disable). Calling this with adjuster=nil
+// returns the BillingService to its pre-P2 behaviour.
+//
+// Concurrency: this should only be called during plugin lifecycle
+// transitions (manager Start / Stop), which are serialised by the
+// plugin manager's own locking. The adjuster itself must be safe for
+// concurrent use because CalculateCostUnified reads the field on every
+// request without taking a lock.
+func (s *BillingService) SetPricingAdjuster(adjuster PricingAdjuster) {
+	if s == nil {
+		return
+	}
+	s.pricingAdjuster = adjuster
 }
 
 // initFallbackPricing 初始化硬编码回退价格（当动态价格不可用时使用）
@@ -461,8 +484,82 @@ func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, 
 		if breakdown.BillingMode == "" {
 			breakdown.BillingMode = string(BillingModeToken)
 		}
+		// P2 (skeleton): give a registered plugin the chance to override the
+		// final cost. The hook is a strict no-op when pricingAdjuster is nil
+		// (default), so a host without any pricing plugin behaves exactly as
+		// it did before P2.
+		s.applyPricingAdjustment(input, breakdown)
 	}
 	return breakdown, err
+}
+
+// applyPricingAdjustment consults the registered PricingAdjuster (if any)
+// and, when the plugin reports a modified cost, replaces the relevant
+// fields on breakdown. Errors and nil-adjuster cases leave breakdown
+// untouched. RateMultiplier is re-applied to the plugin's total so the
+// "ActualCost" semantics (host-side rate multiplier on top of base cost)
+// are preserved end-to-end.
+//
+// Why this is safe to call unconditionally: the function short-circuits
+// on s == nil, on s.pricingAdjuster == nil, and on RPC errors before
+// touching breakdown. The cost path remains lossless when no plugin is
+// registered, satisfying P2's "behaviour-preserving skeleton" mandate.
+func (s *BillingService) applyPricingAdjustment(input CostInput, breakdown *CostBreakdown) {
+	if s == nil || s.pricingAdjuster == nil || breakdown == nil {
+		return
+	}
+	groupID := int64(0)
+	if input.GroupID != nil {
+		groupID = *input.GroupID
+	}
+	req := AdjustCostInput{
+		Model:       input.Model,
+		GroupID:     groupID,
+		Platform:    input.Platform,
+		ServiceTier: input.ServiceTier,
+		CoreCost: AdjustCostBreakdown{
+			Currency:       "USD",
+			Total:          breakdown.TotalCost,
+			InputCost:      breakdown.InputCost,
+			OutputCost:     breakdown.OutputCost,
+			CacheWriteCost: breakdown.CacheCreationCost,
+			CacheReadCost:  breakdown.CacheReadCost,
+			ImageCost:      breakdown.ImageOutputCost,
+			BillingMode:    breakdown.BillingMode,
+		},
+		Tokens: AdjustCostTokens{
+			InputTokens:         int64(input.Tokens.InputTokens),
+			OutputTokens:        int64(input.Tokens.OutputTokens),
+			CacheCreationTokens: int64(input.Tokens.CacheCreationTokens),
+			CacheReadTokens:     int64(input.Tokens.CacheReadTokens),
+		},
+	}
+	ctx := input.Ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	res, err := s.pricingAdjuster.AdjustCost(ctx, req)
+	if err != nil {
+		log.Printf("billing: pricing adjuster error: %v (using core cost)", err)
+		return
+	}
+	if !res.Modified {
+		return
+	}
+	breakdown.InputCost = res.FinalCost.InputCost
+	breakdown.OutputCost = res.FinalCost.OutputCost
+	breakdown.CacheCreationCost = res.FinalCost.CacheWriteCost
+	breakdown.CacheReadCost = res.FinalCost.CacheReadCost
+	breakdown.ImageOutputCost = res.FinalCost.ImageCost
+	breakdown.TotalCost = res.FinalCost.Total
+	if res.FinalCost.BillingMode != "" {
+		breakdown.BillingMode = res.FinalCost.BillingMode
+	}
+	rate := input.RateMultiplier
+	if rate <= 0 {
+		rate = 1.0
+	}
+	breakdown.ActualCost = breakdown.TotalCost * rate
 }
 
 // calculateTokenCost 按 token 区间计费

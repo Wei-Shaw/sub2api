@@ -1808,3 +1808,257 @@ var EventsExtension_ServiceDesc = grpc.ServiceDesc{
 	},
 	Metadata: "sdk.proto",
 }
+
+const (
+	PricingExtension_ListPricingOverrides_FullMethodName  = "/pluginsdk.PricingExtension/ListPricingOverrides"
+	PricingExtension_WatchPricingOverrides_FullMethodName = "/pluginsdk.PricingExtension/WatchPricingOverrides"
+	PricingExtension_AdjustCost_FullMethodName            = "/pluginsdk.PricingExtension/AdjustCost"
+)
+
+// PricingExtensionClient is the client API for PricingExtension service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// ============================================================
+// PricingExtension — P2 (skeleton)
+// ============================================================
+//
+// PricingExtension is implemented by plugins that contribute pricing data
+// or cost-adjustment logic. The host uses ListPricingOverrides + WatchPricingOverrides
+// to maintain an in-memory pricing cache (data layer, hot-path zero RPC).
+// AdjustCost is called per-request to let plugins modify the final cost
+// (adjustment layer).
+//
+// Failure model:
+//   - All RPCs are optional. A plugin that only adjusts cost returns an
+//     empty list and a stream that immediately yields no events. A plugin
+//     that only provides data returns modified=false from AdjustCost.
+//   - If a plugin returns an error from AdjustCost the host falls back to
+//     its own computed cost and logs a warning; per-request errors must
+//     never abort the gateway hot path.
+//   - WatchPricingOverrides may end at any time (deploy / restart). The
+//     host is responsible for reconnecting with exponential backoff and
+//     re-syncing through ListPricingOverrides if the gap exceeds a
+//     replay budget.
+//
+// This service is host -> plugin: the plugin runs the gRPC server inside
+// its own process, the host opens a client over the existing per-plugin
+// gRPC connection (PluginInstance.GRPCConn).
+type PricingExtensionClient interface {
+	// ListPricingOverrides returns the full set of pricing overrides the
+	// plugin manages. Called by host on startup and as a fallback after a
+	// Watch stream disconnect or periodic safety re-sync.
+	ListPricingOverrides(ctx context.Context, in *ListPricingOverridesRequest, opts ...grpc.CallOption) (*ListPricingOverridesResponse, error)
+	// WatchPricingOverrides streams incremental updates. The plugin pushes
+	// events when its pricing data changes. Host reconnects on stream end
+	// with the last-known version so the plugin can decide between a
+	// resume and a full snapshot replay.
+	WatchPricingOverrides(ctx context.Context, in *WatchPricingOverridesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[PricingOverrideEvent], error)
+	// AdjustCost is called per-request after core computes the base cost.
+	// The plugin may return modified=true with a new CostBreakdown to
+	// override; otherwise the host uses its own computed cost.
+	AdjustCost(ctx context.Context, in *AdjustCostRequest, opts ...grpc.CallOption) (*AdjustCostResponse, error)
+}
+
+type pricingExtensionClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewPricingExtensionClient(cc grpc.ClientConnInterface) PricingExtensionClient {
+	return &pricingExtensionClient{cc}
+}
+
+func (c *pricingExtensionClient) ListPricingOverrides(ctx context.Context, in *ListPricingOverridesRequest, opts ...grpc.CallOption) (*ListPricingOverridesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListPricingOverridesResponse)
+	err := c.cc.Invoke(ctx, PricingExtension_ListPricingOverrides_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *pricingExtensionClient) WatchPricingOverrides(ctx context.Context, in *WatchPricingOverridesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[PricingOverrideEvent], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &PricingExtension_ServiceDesc.Streams[0], PricingExtension_WatchPricingOverrides_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[WatchPricingOverridesRequest, PricingOverrideEvent]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type PricingExtension_WatchPricingOverridesClient = grpc.ServerStreamingClient[PricingOverrideEvent]
+
+func (c *pricingExtensionClient) AdjustCost(ctx context.Context, in *AdjustCostRequest, opts ...grpc.CallOption) (*AdjustCostResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AdjustCostResponse)
+	err := c.cc.Invoke(ctx, PricingExtension_AdjustCost_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// PricingExtensionServer is the server API for PricingExtension service.
+// All implementations must embed UnimplementedPricingExtensionServer
+// for forward compatibility.
+//
+// ============================================================
+// PricingExtension — P2 (skeleton)
+// ============================================================
+//
+// PricingExtension is implemented by plugins that contribute pricing data
+// or cost-adjustment logic. The host uses ListPricingOverrides + WatchPricingOverrides
+// to maintain an in-memory pricing cache (data layer, hot-path zero RPC).
+// AdjustCost is called per-request to let plugins modify the final cost
+// (adjustment layer).
+//
+// Failure model:
+//   - All RPCs are optional. A plugin that only adjusts cost returns an
+//     empty list and a stream that immediately yields no events. A plugin
+//     that only provides data returns modified=false from AdjustCost.
+//   - If a plugin returns an error from AdjustCost the host falls back to
+//     its own computed cost and logs a warning; per-request errors must
+//     never abort the gateway hot path.
+//   - WatchPricingOverrides may end at any time (deploy / restart). The
+//     host is responsible for reconnecting with exponential backoff and
+//     re-syncing through ListPricingOverrides if the gap exceeds a
+//     replay budget.
+//
+// This service is host -> plugin: the plugin runs the gRPC server inside
+// its own process, the host opens a client over the existing per-plugin
+// gRPC connection (PluginInstance.GRPCConn).
+type PricingExtensionServer interface {
+	// ListPricingOverrides returns the full set of pricing overrides the
+	// plugin manages. Called by host on startup and as a fallback after a
+	// Watch stream disconnect or periodic safety re-sync.
+	ListPricingOverrides(context.Context, *ListPricingOverridesRequest) (*ListPricingOverridesResponse, error)
+	// WatchPricingOverrides streams incremental updates. The plugin pushes
+	// events when its pricing data changes. Host reconnects on stream end
+	// with the last-known version so the plugin can decide between a
+	// resume and a full snapshot replay.
+	WatchPricingOverrides(*WatchPricingOverridesRequest, grpc.ServerStreamingServer[PricingOverrideEvent]) error
+	// AdjustCost is called per-request after core computes the base cost.
+	// The plugin may return modified=true with a new CostBreakdown to
+	// override; otherwise the host uses its own computed cost.
+	AdjustCost(context.Context, *AdjustCostRequest) (*AdjustCostResponse, error)
+	mustEmbedUnimplementedPricingExtensionServer()
+}
+
+// UnimplementedPricingExtensionServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedPricingExtensionServer struct{}
+
+func (UnimplementedPricingExtensionServer) ListPricingOverrides(context.Context, *ListPricingOverridesRequest) (*ListPricingOverridesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListPricingOverrides not implemented")
+}
+func (UnimplementedPricingExtensionServer) WatchPricingOverrides(*WatchPricingOverridesRequest, grpc.ServerStreamingServer[PricingOverrideEvent]) error {
+	return status.Error(codes.Unimplemented, "method WatchPricingOverrides not implemented")
+}
+func (UnimplementedPricingExtensionServer) AdjustCost(context.Context, *AdjustCostRequest) (*AdjustCostResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AdjustCost not implemented")
+}
+func (UnimplementedPricingExtensionServer) mustEmbedUnimplementedPricingExtensionServer() {}
+func (UnimplementedPricingExtensionServer) testEmbeddedByValue()                          {}
+
+// UnsafePricingExtensionServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to PricingExtensionServer will
+// result in compilation errors.
+type UnsafePricingExtensionServer interface {
+	mustEmbedUnimplementedPricingExtensionServer()
+}
+
+func RegisterPricingExtensionServer(s grpc.ServiceRegistrar, srv PricingExtensionServer) {
+	// If the following call panics, it indicates UnimplementedPricingExtensionServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&PricingExtension_ServiceDesc, srv)
+}
+
+func _PricingExtension_ListPricingOverrides_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListPricingOverridesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PricingExtensionServer).ListPricingOverrides(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PricingExtension_ListPricingOverrides_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PricingExtensionServer).ListPricingOverrides(ctx, req.(*ListPricingOverridesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PricingExtension_WatchPricingOverrides_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(WatchPricingOverridesRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(PricingExtensionServer).WatchPricingOverrides(m, &grpc.GenericServerStream[WatchPricingOverridesRequest, PricingOverrideEvent]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type PricingExtension_WatchPricingOverridesServer = grpc.ServerStreamingServer[PricingOverrideEvent]
+
+func _PricingExtension_AdjustCost_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AdjustCostRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PricingExtensionServer).AdjustCost(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PricingExtension_AdjustCost_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PricingExtensionServer).AdjustCost(ctx, req.(*AdjustCostRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// PricingExtension_ServiceDesc is the grpc.ServiceDesc for PricingExtension service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var PricingExtension_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "pluginsdk.PricingExtension",
+	HandlerType: (*PricingExtensionServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ListPricingOverrides",
+			Handler:    _PricingExtension_ListPricingOverrides_Handler,
+		},
+		{
+			MethodName: "AdjustCost",
+			Handler:    _PricingExtension_AdjustCost_Handler,
+		},
+	},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "WatchPricingOverrides",
+			Handler:       _PricingExtension_WatchPricingOverrides_Handler,
+			ServerStreams: true,
+		},
+	},
+	Metadata: "sdk.proto",
+}

@@ -591,3 +591,172 @@ message AccountRateLimitTriggered {
   int64  reset_at_unix_nano   = 5;
   string reason               = 6;
 }
+
+// ============================================================
+// PricingExtension — P2 (skeleton)
+// ============================================================
+//
+// PricingExtension is implemented by plugins that contribute pricing data
+// or cost-adjustment logic. The host uses ListPricingOverrides + WatchPricingOverrides
+// to maintain an in-memory pricing cache (data layer, hot-path zero RPC).
+// AdjustCost is called per-request to let plugins modify the final cost
+// (adjustment layer).
+//
+// Failure model:
+//   - All RPCs are optional. A plugin that only adjusts cost returns an
+//     empty list and a stream that immediately yields no events. A plugin
+//     that only provides data returns modified=false from AdjustCost.
+//   - If a plugin returns an error from AdjustCost the host falls back to
+//     its own computed cost and logs a warning; per-request errors must
+//     never abort the gateway hot path.
+//   - WatchPricingOverrides may end at any time (deploy / restart). The
+//     host is responsible for reconnecting with exponential backoff and
+//     re-syncing through ListPricingOverrides if the gap exceeds a
+//     replay budget.
+//
+// This service is host -> plugin: the plugin runs the gRPC server inside
+// its own process, the host opens a client over the existing per-plugin
+// gRPC connection (PluginInstance.GRPCConn).
+service PricingExtension {
+  // ListPricingOverrides returns the full set of pricing overrides the
+  // plugin manages. Called by host on startup and as a fallback after a
+  // Watch stream disconnect or periodic safety re-sync.
+  rpc ListPricingOverrides(ListPricingOverridesRequest) returns (ListPricingOverridesResponse);
+
+  // WatchPricingOverrides streams incremental updates. The plugin pushes
+  // events when its pricing data changes. Host reconnects on stream end
+  // with the last-known version so the plugin can decide between a
+  // resume and a full snapshot replay.
+  rpc WatchPricingOverrides(WatchPricingOverridesRequest) returns (stream PricingOverrideEvent);
+
+  // AdjustCost is called per-request after core computes the base cost.
+  // The plugin may return modified=true with a new CostBreakdown to
+  // override; otherwise the host uses its own computed cost.
+  rpc AdjustCost(AdjustCostRequest) returns (AdjustCostResponse);
+}
+
+// PricingOverrideKey is the (group_id, platform, model) triple the host
+// uses to look up plugin-supplied pricing in its in-memory cache.
+//
+// group_id == 0 means "applies to all groups". Plugins typically scope
+// pricing by group; the global form is rare and reserved for host-wide
+// emergency rate adjustments.
+message PricingOverrideKey {
+  int64 group_id = 1;
+  string platform = 2;     // anthropic / openai / gemini / antigravity
+  string model = 3;        // e.g. claude-opus-4-7 (lowercase recommended)
+}
+
+// PricingOverride mirrors the existing channel_model_pricing schema so
+// the host can flow the values straight into ChannelModelPricing without
+// a translation layer. Field semantics match
+// backend/internal/service/channel_cache_reader.go::channelPricingPayload.
+message PricingOverride {
+  PricingOverrideKey key = 1;
+  string billing_mode = 2;       // "token" / "per_request" / "image"
+  // Pricing fields. All are USD per token (token mode) or USD per
+  // request (per_request mode); zero is treated as "unset" and the host
+  // will fall back to base pricing for that field.
+  double input_price = 3;
+  double output_price = 4;
+  double cache_write_price = 5;
+  double cache_read_price = 6;
+  double image_output_price = 7;
+  double per_request_price = 8;
+  repeated PricingInterval intervals = 9;
+}
+
+// PricingInterval mirrors backend ent PricingInterval for token-tier or
+// per-request-tier pricing. max_tokens=0 means "unbounded".
+message PricingInterval {
+  int64 min_tokens = 1;
+  int64 max_tokens = 2;
+  double input_price = 3;
+  double output_price = 4;
+  double cache_write_price = 5;
+  double cache_read_price = 6;
+  double image_output_price = 7;
+  double per_request_price = 8;
+}
+
+message ListPricingOverridesRequest {}
+
+message ListPricingOverridesResponse {
+  repeated PricingOverride overrides = 1;
+  // version is a monotonic version string the plugin assigns to the
+  // snapshot. The host stores it and passes it as since_version when
+  // (re)opening WatchPricingOverrides so the plugin can choose between
+  // an incremental resume and a full re-sync.
+  string version = 2;
+}
+
+message WatchPricingOverridesRequest {
+  // since_version is the version returned by the most recent
+  // ListPricingOverrides (or the last PricingOverrideEvent the host
+  // saw). Empty string means "stream from current".
+  string since_version = 1;
+}
+
+message PricingOverrideEvent {
+  enum Op {
+    UPSERT = 0;
+    DELETE = 1;
+  }
+  Op op = 1;
+  // override is set for UPSERT events; deleted_key is set for DELETE
+  // events. The unset alternative is left zero-valued.
+  PricingOverride override = 2;
+  PricingOverrideKey deleted_key = 3;
+  string version = 4;
+}
+
+message AdjustCostRequest {
+  string model = 1;
+  int64 group_id = 2;
+  string user_id = 3;
+  string platform = 4;
+  string service_tier = 5;
+  PricingCostBreakdown core_cost = 6;
+  PricingUsageTokens tokens = 7;
+  // request_id lets the plugin deduplicate retries / make per-request
+  // adjustments idempotent. The host fills it with the gateway request
+  // identifier (typically a ULID).
+  string request_id = 8;
+}
+
+message AdjustCostResponse {
+  // modified=true means final_cost replaces the host's computed cost.
+  // modified=false means the host keeps its own cost and ignores
+  // final_cost.
+  bool modified = 1;
+  PricingCostBreakdown final_cost = 2;
+  // adjustment_reason is surfaced to host logs / audit trail so operators
+  // can trace why a plugin altered the cost. Free-form, optional.
+  string adjustment_reason = 3;
+}
+
+// PricingCostBreakdown is the cost shape exchanged between host and
+// plugin. It is intentionally separate from CostBreakdown messages used
+// by other proto services to keep PricingExtension self-contained even
+// if the host's accounting layer evolves.
+message PricingCostBreakdown {
+  string currency = 1;       // typically "USD"
+  double total = 2;
+  double input_cost = 3;
+  double output_cost = 4;
+  double cache_write_cost = 5;
+  double cache_read_cost = 6;
+  double image_cost = 7;
+  string billing_mode = 8;   // "token" / "per_request" / "image"
+}
+
+// PricingUsageTokens carries the usage figures the plugin needs to make
+// adjustment decisions. Fields mirror service.UsageTokens but use int64
+// to stay within proto numeric conventions; the host casts as needed.
+message PricingUsageTokens {
+  int64 input_tokens = 1;
+  int64 output_tokens = 2;
+  int64 cache_creation_tokens = 3;
+  int64 cache_read_tokens = 4;
+  int64 image_count = 5;
+}
