@@ -126,26 +126,38 @@
             </p>
           </div>
           <span class="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-200">
-            {{ form.provider_key === 'sepay' ? 'VND' : t('admin.settings.payment.providerCurrencyConfigured') }}
+            {{ providerCurrencyBadgeLabel }}
           </span>
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+          <Select
+            v-model="paymentCurrencyDraft"
+            :options="availablePaymentCurrencySelectOptions"
+            :placeholder="t('admin.settings.payment.providerPaymentCurrencyPlaceholder')"
+            :creatable-prefix="t('admin.settings.payment.providerPaymentCurrencyCreatablePrefix')"
+            searchable
+            creatable
+            @change="addPaymentCurrencySelection"
+          />
           <button
-            v-for="currency in paymentCurrencyOptions"
+            type="button"
+            class="btn btn-secondary whitespace-nowrap"
+            :disabled="!normalizedPaymentCurrencyDraft"
+            @click="addPaymentCurrencySelection(normalizedPaymentCurrencyDraft)"
+          >
+            {{ t('admin.settings.payment.providerPaymentCurrencyAdd') }}
+          </button>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button
+            v-for="currency in selectedPaymentCurrencyOptions"
             :key="currency.value"
             type="button"
-            :disabled="form.provider_key === 'sepay' && currency.value !== 'VND'"
-            @click="togglePaymentCurrency(currency.value)"
-            :class="[
-              'rounded-lg border px-3 py-1.5 text-sm font-medium transition-all',
-              form.provider_key === 'sepay' && currency.value !== 'VND'
-                ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 opacity-60 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-500'
-                : isPaymentCurrencySelected(currency.value)
-                  ? 'border-primary-500 bg-primary-500 text-white shadow-sm'
-                  : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500',
-            ]"
+            class="inline-flex items-center gap-1 rounded-lg border border-primary-500 bg-primary-500 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-primary-600"
+            @click="removePaymentCurrency(currency.value)"
           >
-            {{ currency.label }}
+            <span>{{ currency.label }}</span>
+            <span aria-hidden="true" class="text-xs opacity-80">×</span>
           </button>
         </div>
         <p v-if="form.provider_key === 'sepay'" class="mt-2 text-xs text-blue-700 dark:text-blue-300">
@@ -497,6 +509,7 @@ const limits = reactive<Record<string, Record<string, number | string[]>>>({})
 const notifyBaseUrl = ref('')
 const returnBaseUrl = ref('')
 const limitsExpanded = ref(false)
+const paymentCurrencyDraft = ref('')
 const visibleFields = reactive<Record<string, boolean>>({})
 const easyPayCustomMethods = reactive<EasyPayCustomMethod[]>([])
 const sepayBankAccounts = ref<SepayBankAccountOption[]>([])
@@ -653,12 +666,58 @@ const paymentGuide = computed<PaymentGuide | null>(() => {
   return null
 })
 
-const paymentCurrencyOptions = computed(() => PAYMENT_CURRENCY_OPTIONS.map(option => ({
-  value: option.value,
-  label: option.value === 'VND' ? '₫ VND' : option.value === 'KRW' ? '₩ KRW' : option.value === 'CNY' ? '¥ CNY' : option.label,
+function normalizePaymentCurrencyCode(value: unknown): string {
+  const code = String(value || '').trim().toUpperCase()
+  return /^[A-Z]{3}$/.test(code) ? code : ''
+}
+
+function formatPaymentCurrencyLabel(currency: string): string {
+  const code = normalizePaymentCurrencyCode(currency)
+  const symbols: Record<string, string> = {
+    USD: '$',
+    CNY: '¥',
+    VND: '₫',
+    KRW: '₩',
+    EUR: '€',
+    JPY: '¥',
+    GBP: '£',
+  }
+  return `${symbols[code] ? `${symbols[code]} ` : ''}${code || currency}`
+}
+
+const paymentCurrencyOptions = computed<SelectOption[]>(() => PAYMENT_CURRENCY_OPTIONS.map(option => ({
+  value: String(option.value),
+  label: formatPaymentCurrencyLabel(String(option.value)),
 })))
 
 const selectedPaymentCurrencies = computed(() => parseCurrencyList(config.allowed_payment_currencies))
+
+const selectedPaymentCurrencyOptions = computed(() => selectedPaymentCurrencies.value.map(currency => ({
+  value: currency,
+  label: formatPaymentCurrencyLabel(currency),
+})))
+
+const normalizedPaymentCurrencyDraft = computed(() => normalizePaymentCurrencyCode(paymentCurrencyDraft.value))
+
+const availablePaymentCurrencySelectOptions = computed<SelectOption[]>(() => {
+  const selected = new Set(selectedPaymentCurrencies.value)
+  const options = paymentCurrencyOptions.value.filter(option => !selected.has(String(option.value)))
+  const draft = normalizedPaymentCurrencyDraft.value
+  if (draft && !selected.has(draft) && !options.some(option => option.value === draft)) {
+    options.unshift({
+      value: draft,
+      label: formatPaymentCurrencyLabel(draft),
+    })
+  }
+  return options
+})
+
+const providerCurrencyBadgeLabel = computed(() => {
+  const currencies = selectedPaymentCurrencies.value
+  return currencies.length > 0
+    ? currencies.join(', ')
+    : t('admin.settings.payment.providerCurrencyConfigured')
+})
 
 const sepayBankAccountSelectOptions = computed<SelectOption[]>(() => {
   const options = sepayBankAccounts.value.map(account => ({
@@ -697,7 +756,7 @@ function isTypeSelected(type: string): boolean {
 function parseCurrencyList(raw: string | undefined): string[] {
   return (raw || '')
     .split(',')
-    .map(value => value.trim().toUpperCase())
+    .map(value => normalizePaymentCurrencyCode(value))
     .filter((value, index, list) => !!value && list.indexOf(value) === index)
 }
 
@@ -737,25 +796,24 @@ function hydratePaymentCurrenciesFromLimits(): boolean {
 }
 
 function applyDefaultPaymentCurrencies() {
-  if (form.provider_key === 'sepay') {
-    syncPaymentCurrencies(['VND'])
-    return
-  }
   if (parseCurrencyList(config.allowed_payment_currencies).length > 0) return
   syncPaymentCurrencies(PROVIDER_DEFAULT_PAYMENT_CURRENCIES[form.provider_key] || ['USD'])
 }
 
-function isPaymentCurrencySelected(currency: string): boolean {
-  return selectedPaymentCurrencies.value.includes(currency)
+function addPaymentCurrencySelection(value: string | number | boolean | null) {
+  const currency = normalizePaymentCurrencyCode(value)
+  if (!currency) return
+  const next = selectedPaymentCurrencies.value.includes(currency)
+    ? selectedPaymentCurrencies.value
+    : [...selectedPaymentCurrencies.value, currency]
+  syncPaymentCurrencies(next)
+  paymentCurrencyDraft.value = ''
 }
 
-function togglePaymentCurrency(currency: string) {
-  currency = currency.trim().toUpperCase()
-  if (form.provider_key === 'sepay' && currency !== 'VND') return
-  const next = isPaymentCurrencySelected(currency)
-    ? selectedPaymentCurrencies.value.filter(value => value !== currency)
-    : [...selectedPaymentCurrencies.value, currency]
-  syncPaymentCurrencies(next.length ? next : (PROVIDER_DEFAULT_PAYMENT_CURRENCIES[form.provider_key] || [currency]))
+function removePaymentCurrency(currency: string) {
+  const normalized = normalizePaymentCurrencyCode(currency)
+  const next = selectedPaymentCurrencies.value.filter(value => value !== normalized)
+  syncPaymentCurrencies(next)
 }
 
 function toggleType(type: string) {
@@ -881,6 +939,7 @@ function clearConfig() {
   Object.keys(visibleFields).forEach(k => delete visibleFields[k])
   notifyBaseUrl.value = ''
   returnBaseUrl.value = ''
+  paymentCurrencyDraft.value = ''
   limitsExpanded.value = false
   easyPayCustomMethods.splice(0, easyPayCustomMethods.length)
   resetSepayBankAccounts()

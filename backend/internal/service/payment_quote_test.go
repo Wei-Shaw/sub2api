@@ -234,6 +234,55 @@ func TestPaymentQuoteRequiresCurrencyForMultiCurrencyMethod(t *testing.T) {
 	require.Equal(t, "KRW,USD", appErr.Metadata["supported_currencies"])
 }
 
+func TestPaymentQuoteUsesConfiguredSePayProviderCurrencies(t *testing.T) {
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{
+		SettingPaymentEnabled:           "true",
+		SettingLedgerCurrency:           "USD",
+		SettingAllowedPaymentCurrencies: "USD,VND",
+		SettingManualFXRates:            `{"USD":1,"VND":0.000039215686}`,
+		SettingMinRechargeAmount:        "1",
+		SettingMaxRechargeAmount:        "1000",
+	}}
+	client := newPaymentConfigServiceTestClient(t)
+	_, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeSepay).
+		SetName("Sepay multi-currency config").
+		SetConfig(`{"allowed_payment_currencies":"VND,USD"}`).
+		SetSupportedTypes(payment.TypeSepay).
+		SetEnabled(true).
+		Save(context.Background())
+	require.NoError(t, err)
+	configSvc := NewPaymentConfigService(client, repo, []byte("0123456789abcdef0123456789abcdef"))
+	svc := NewPaymentService(nil, nil, nil, nil, nil, configSvc, nil, nil, nil)
+
+	_, err = svc.CreatePaymentQuote(context.Background(), CreatePaymentQuoteRequest{
+		UserID:      42,
+		Amount:      10000,
+		AmountMode:  PaymentAmountModePayment,
+		PaymentType: payment.TypeSepay,
+		OrderType:   payment.OrderTypeBalance,
+	})
+	require.Error(t, err)
+	var appErr *infraerrors.ApplicationError
+	require.True(t, errors.As(err, &appErr))
+	require.Equal(t, "PAYMENT_CURRENCY_REQUIRED", appErr.Reason)
+	require.Equal(t, "VND,USD", appErr.Metadata["supported_currencies"])
+
+	quote, err := svc.CreatePaymentQuote(context.Background(), CreatePaymentQuoteRequest{
+		UserID:          42,
+		Amount:          10,
+		AmountMode:      PaymentAmountModePayment,
+		PaymentCurrency: "USD",
+		PaymentType:     payment.TypeSepay,
+		OrderType:       payment.OrderTypeBalance,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "USD", quote.PaymentCurrency)
+	require.Equal(t, 10.0, quote.PaymentAmount)
+	require.Equal(t, "USD", quote.LedgerCurrency)
+	require.InDelta(t, 10.0, quote.LedgerAmount, 0.01)
+}
+
 func TestPaymentQuoteSupportsConfiguredProviderCurrency(t *testing.T) {
 	repo := &paymentConfigSettingRepoStub{values: map[string]string{
 		SettingPaymentEnabled:           "true",

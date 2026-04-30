@@ -69,8 +69,27 @@ export const PAYMENT_MODE_POPUP = 'popup'
  * precreate→pagepay flow. */
 export const PAYMENT_MODE_REDIRECT = 'redirect'
 
-/** Common settlement currencies that admins can assign to provider instances. */
-export const PAYMENT_CURRENCY_CODES = ['USD', 'CNY', 'VND', 'KRW', 'HKD', 'EUR', 'GBP', 'AUD', 'CAD', 'SGD', 'JPY', 'NZD'] as const
+/** Common settlement currencies admins can assign to provider instances; custom ISO-4217 codes can still be typed in the UI. */
+export const PAYMENT_CURRENCY_CODES = [
+  'USD',
+  'CNY',
+  'VND',
+  'KRW',
+  'EUR',
+  'JPY',
+  'GBP',
+  'AUD',
+  'CAD',
+  'SGD',
+  'HKD',
+  'NZD',
+  'TWD',
+  'THB',
+  'MYR',
+  'PHP',
+  'IDR',
+  'INR',
+] as const
 
 export const PAYMENT_CURRENCY_OPTIONS: TypeOption[] = PAYMENT_CURRENCY_CODES.map(currency => ({ value: currency, label: currency }))
 
