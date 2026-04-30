@@ -20,6 +20,25 @@ import (
 	"go.uber.org/zap"
 )
 
+// openaiCCRawAllowedHeaders 是 CC 直转路径专用的客户端 header 透传白名单。
+//
+// **关键**：不能复用 openaiAllowedHeaders——后者含 Codex 客户端专属 header
+// （originator / session_id / x-codex-turn-state / x-codex-turn-metadata / conversation_id），
+// 这些在 ChatGPT OAuth 上游是必需的，但透传给 DeepSeek/Kimi/GLM 等第三方
+// OpenAI 兼容上游会造成：
+//   - 完全忽略（多数友好厂商）——隐性污染上游统计
+//   - 400 "unknown parameter"（严格上游）——可见错误
+//
+// 这里仅放行通用 HTTP header；content-type / authorization / accept 由上下文
+// 显式设置，不依赖透传。
+//
+// 参见决策记录：
+// pensieve/short-term/maxims/dont-reuse-shared-headers-whitelist-across-different-upstream-trust-domains
+var openaiCCRawAllowedHeaders = map[string]bool{
+	"accept-language": true,
+	"user-agent":      true,
+REDACTED
+
 // forwardAsRawChatCompletions 直转客户端的 Chat Completions 请求到上游
 // `{base_urlREDACTED/v1/chat/completions`，**不**做 CC↔Responses 协议转换。
 //
@@ -53,7 +72,6 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		return nil, fmt.Errorf("missing model in request")
 REDACTED
 	clientStream := gjson.GetBytes(body, "stream").Bool()
-	includeUsage := gjson.GetBytes(body, "stream_options.include_usage").Bool()
 
 	// 2. Resolve model mapping (same as ForwardAsChatCompletions)
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
@@ -111,10 +129,10 @@ REDACTED else {
 		upstreamReq.Header.Set("Accept", "application/json")
 REDACTED
 
-	// Whitelist passthrough headers (subset of openaiAllowedHeaders relevant to CC).
+	// 透传白名单中的客户端 header。详见 openaiCCRawAllowedHeaders 的设计说明。
 	for key, values := range c.Request.Header {
 		lowerKey := strings.ToLower(key)
-		if openaiAllowedHeaders[lowerKey] {
+		if openaiCCRawAllowedHeaders[lowerKey] {
 			for _, v := range values {
 				upstreamReq.Header.Add(key, v)
 		REDACTED
@@ -188,20 +206,23 @@ REDACTED
 
 	// 8. Forward response
 	if clientStream {
-		return s.streamRawChatCompletions(c, resp, originalModel, billingModel, upstreamModel, includeUsage, startTime)
+		return s.streamRawChatCompletions(c, resp, originalModel, billingModel, upstreamModel, startTime)
 REDACTED
 	return s.bufferRawChatCompletions(c, resp, originalModel, billingModel, upstreamModel, startTime)
 REDACTED
 
 // streamRawChatCompletions 透传上游 CC SSE 流到客户端，并提取 usage（包括
 // 末尾 [DONE] 之前的 chunk 中的 usage 字段，按 OpenAI CC 协议）。
+//
+// usage 字段仅在客户端请求 stream_options.include_usage=true 时出现于上游响应中。
+// 本函数不检查客户端的请求 flag——上游会自行处理，我们仅在上游响应
+// chunk 中出现 usage 时提取。
 func (s *OpenAIGatewayService) streamRawChatCompletions(
 	c *gin.Context,
 	resp *http.Response,
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
-	includeUsage bool,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
@@ -265,8 +286,6 @@ REDACTED
 			)
 	REDACTED
 REDACTED
-
-	_ = includeUsage // CC 协议下 usage 是否包含由客户端的 stream_options 决定，上游会自行处理；我们仅做提取。
 
 	return &OpenAIForwardResult{
 		RequestID:     requestID,
