@@ -633,6 +633,10 @@ const fxStatusMessage = computed(() => {
 })
 function methodSupportsSelectedCurrency(method: string): boolean {
   const currency = paymentCurrency.value
+  const methodCurrencies = visibleMethods.value[method]?.allowed_payment_currencies
+    ?.map(c => c.trim().toUpperCase())
+    .filter(Boolean) ?? []
+  if (methodCurrencies.length > 0) return methodCurrencies.includes(currency)
   if (method === 'sepay') return currency === 'VND'
   if (['stripe', 'alipay', 'wxpay', 'easypay', 'card', 'link', 'alipay_direct', 'wxpay_direct'].includes(method)) return currency === 'CNY'
   if (method === 'paddle') return true

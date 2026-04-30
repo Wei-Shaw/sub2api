@@ -119,14 +119,17 @@ func MarshalCurrencyCapabilityConfig(cfg CurrencyCapabilityConfig) (string, erro
 //  2. provider instance config override;
 //  3. global payment settings instance override;
 //  4. global payment settings provider/method override;
-//  5. global payment settings method override.
+//  5. global payment settings method override;
+//  6. compiled safety default for gateways with a single real-world currency.
 //
-// There is intentionally no compiled provider=>currency default here. If SePay
-// should accept VND or Paddle should accept KRW, that belongs in payment settings
-// or provider instance limits/config.
+// Admin/provider configuration is still the source of truth. The compiled SePay
+// fallback prevents legacy configs with an empty capability map from defaulting
+// to the ledger currency (USD) even though SePay can only collect VND.
 func InstancePaymentCurrencies(inst *dbent.PaymentProviderInstance, paymentType string, config map[string]string, capabilities CurrencyCapabilityConfig) []string {
 	paymentType = strings.TrimSpace(paymentType)
+	providerKey := ""
 	if inst != nil {
+		providerKey = strings.TrimSpace(inst.ProviderKey)
 		if currencies := instanceLimitPaymentCurrencies(inst.Limits, inst.ProviderKey, paymentType); len(currencies) > 0 {
 			return currencies
 		}
@@ -140,7 +143,19 @@ func InstancePaymentCurrencies(inst *dbent.PaymentProviderInstance, paymentType 
 			return currencies
 		}
 	}
-	return capabilityMethodPaymentCurrencies(capabilities, paymentType)
+	if currencies := capabilityMethodPaymentCurrencies(capabilities, paymentType); len(currencies) > 0 {
+		return currencies
+	}
+	return defaultGatewayPaymentCurrencies(providerKey, paymentType)
+}
+
+func defaultGatewayPaymentCurrencies(providerKey, paymentType string) []string {
+	providerKey = strings.TrimSpace(providerKey)
+	paymentType = strings.TrimSpace(paymentType)
+	if providerKey == TypeSepay || paymentType == TypeSepay || GetBasePaymentType(paymentType) == TypeSepay {
+		return []string{"VND"}
+	}
+	return nil
 }
 
 func InstanceSupportsPaymentCurrency(inst *dbent.PaymentProviderInstance, paymentType string, currency string, config map[string]string, capabilities CurrencyCapabilityConfig) bool {

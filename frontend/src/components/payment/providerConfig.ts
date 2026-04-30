@@ -69,19 +69,20 @@ export const PAYMENT_MODE_POPUP = 'popup'
  * precreate→pagepay flow. */
 export const PAYMENT_MODE_REDIRECT = 'redirect'
 
-export const PAYMENT_CURRENCY_OPTIONS: TypeOption[] = [
-  { value: 'CNY', label: 'CNY' },
-  { value: 'HKD', label: 'HKD' },
-  { value: 'USD', label: 'USD' },
-  { value: 'EUR', label: 'EUR' },
-  { value: 'GBP', label: 'GBP' },
-  { value: 'AUD', label: 'AUD' },
-  { value: 'CAD', label: 'CAD' },
-  { value: 'SGD', label: 'SGD' },
-  { value: 'JPY', label: 'JPY' },
-  { value: 'KRW', label: 'KRW' },
-  { value: 'NZD', label: 'NZD' },
-]
+/** Common settlement currencies that admins can assign to provider instances. */
+export const PAYMENT_CURRENCY_CODES = ['USD', 'CNY', 'VND', 'KRW', 'HKD', 'EUR', 'GBP', 'AUD', 'CAD', 'SGD', 'JPY', 'NZD'] as const
+
+export const PAYMENT_CURRENCY_OPTIONS: TypeOption[] = PAYMENT_CURRENCY_CODES.map(currency => ({ value: currency, label: currency }))
+
+/** Safe provider defaults used when creating a new provider instance. */
+export const PROVIDER_DEFAULT_PAYMENT_CURRENCIES: Record<string, string[]> = {
+  sepay: ['VND'],
+  alipay: ['CNY'],
+  wxpay: ['CNY'],
+  easypay: ['CNY'],
+  stripe: ['USD'],
+  paddle: ['USD'],
+}
 
 // 与后端当前集成的 stripe-go v85.0.0 的 stripe.APIVersion 保持一致。
 export const STRIPE_SDK_API_VERSION = '2026-03-25.dahlia'

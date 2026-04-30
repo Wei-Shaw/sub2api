@@ -114,6 +114,48 @@
       </div>
 
 
+      <!-- Payment currencies -->
+      <div class="rounded-xl border border-blue-100 bg-blue-50/60 p-4 dark:border-blue-900/40 dark:bg-blue-900/10">
+        <div class="mb-3 flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.payment.providerPaymentCurrencies') }}
+            </h4>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.payment.providerPaymentCurrenciesHint') }}
+            </p>
+          </div>
+          <span class="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-200">
+            {{ form.provider_key === 'sepay' ? 'VND' : t('admin.settings.payment.providerCurrencyConfigured') }}
+          </span>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button
+            v-for="currency in paymentCurrencyOptions"
+            :key="currency.value"
+            type="button"
+            :disabled="form.provider_key === 'sepay' && currency.value !== 'VND'"
+            @click="togglePaymentCurrency(currency.value)"
+            :class="[
+              'rounded-lg border px-3 py-1.5 text-sm font-medium transition-all',
+              form.provider_key === 'sepay' && currency.value !== 'VND'
+                ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400 opacity-60 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-500'
+                : isPaymentCurrencySelected(currency.value)
+                  ? 'border-primary-500 bg-primary-500 text-white shadow-sm'
+                  : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500',
+            ]"
+          >
+            {{ currency.label }}
+          </button>
+        </div>
+        <p v-if="form.provider_key === 'sepay'" class="mt-2 text-xs text-blue-700 dark:text-blue-300">
+          {{ t('admin.settings.payment.sepayProviderCurrencyHint') }}
+        </p>
+        <p v-else class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.settings.payment.providerPaymentCurrenciesExample') }}
+        </p>
+      </div>
+
       <!-- Config fields -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-700">
         <div class="mb-3 flex items-center gap-2">
@@ -362,6 +404,8 @@ import {
   PROVIDER_CONFIG_FIELDS,
   PROVIDER_SUPPORTED_TYPES,
   PROVIDER_CALLBACK_PATHS,
+  PROVIDER_DEFAULT_PAYMENT_CURRENCIES,
+  PAYMENT_CURRENCY_OPTIONS,
   WEBHOOK_PATHS,
   PAYMENT_MODE_QRCODE,
   PAYMENT_MODE_POPUP,
@@ -449,7 +493,7 @@ const form = reactive({
   allow_user_refund: false,
 })
 const config = reactive<Record<string, string>>({})
-const limits = reactive<Record<string, Record<string, number>>>({})
+const limits = reactive<Record<string, Record<string, number | string[]>>>({})
 const notifyBaseUrl = ref('')
 const returnBaseUrl = ref('')
 const limitsExpanded = ref(false)
@@ -609,6 +653,13 @@ const paymentGuide = computed<PaymentGuide | null>(() => {
   return null
 })
 
+const paymentCurrencyOptions = computed(() => PAYMENT_CURRENCY_OPTIONS.map(option => ({
+  value: option.value,
+  label: option.value === 'VND' ? '₫ VND' : option.value === 'KRW' ? '₩ KRW' : option.value === 'CNY' ? '¥ CNY' : option.label,
+})))
+
+const selectedPaymentCurrencies = computed(() => parseCurrencyList(config.allowed_payment_currencies))
+
 const sepayBankAccountSelectOptions = computed<SelectOption[]>(() => {
   const options = sepayBankAccounts.value.map(account => ({
     value: account.id,
@@ -643,11 +694,80 @@ function isTypeSelected(type: string): boolean {
   return form.supported_types.includes(type)
 }
 
+function parseCurrencyList(raw: string | undefined): string[] {
+  return (raw || '')
+    .split(',')
+    .map(value => value.trim().toUpperCase())
+    .filter((value, index, list) => !!value && list.indexOf(value) === index)
+}
+
+function syncPaymentCurrencies(currencies: string[]) {
+  const normalized = parseCurrencyList(currencies.join(','))
+  if (normalized.length === 0) {
+    delete config.allowed_payment_currencies
+    for (const fields of Object.values(limits)) delete fields.allowedPaymentCurrencies
+    return
+  }
+  config.allowed_payment_currencies = normalized.join(',')
+  for (const pt of form.supported_types) {
+    if (!limits[pt]) limits[pt] = {}
+    limits[pt].allowedPaymentCurrencies = [...normalized]
+  }
+}
+
+function parseCurrencyValue(value: unknown): string[] {
+  if (Array.isArray(value)) return parseCurrencyList(value.join(','))
+  if (typeof value === 'string') return parseCurrencyList(value)
+  return []
+}
+
+function hydratePaymentCurrenciesFromLimits(): boolean {
+  for (const pt of form.supported_types) {
+    const fields = limits[pt] as Record<string, unknown> | undefined
+    if (!fields) continue
+    for (const key of ['allowedPaymentCurrencies', 'allowed_payment_currencies', 'paymentCurrencies', 'payment_currencies', 'currencies']) {
+      const currencies = parseCurrencyValue(fields[key])
+      if (currencies.length > 0) {
+        syncPaymentCurrencies(currencies)
+        return true
+      }
+    }
+  }
+  return false
+}
+
+function applyDefaultPaymentCurrencies() {
+  if (form.provider_key === 'sepay') {
+    syncPaymentCurrencies(['VND'])
+    return
+  }
+  if (parseCurrencyList(config.allowed_payment_currencies).length > 0) return
+  syncPaymentCurrencies(PROVIDER_DEFAULT_PAYMENT_CURRENCIES[form.provider_key] || ['USD'])
+}
+
+function isPaymentCurrencySelected(currency: string): boolean {
+  return selectedPaymentCurrencies.value.includes(currency)
+}
+
+function togglePaymentCurrency(currency: string) {
+  currency = currency.trim().toUpperCase()
+  if (form.provider_key === 'sepay' && currency !== 'VND') return
+  const next = isPaymentCurrencySelected(currency)
+    ? selectedPaymentCurrencies.value.filter(value => value !== currency)
+    : [...selectedPaymentCurrencies.value, currency]
+  syncPaymentCurrencies(next.length ? next : (PROVIDER_DEFAULT_PAYMENT_CURRENCIES[form.provider_key] || [currency]))
+}
+
 function toggleType(type: string) {
   if (form.supported_types.includes(type)) {
     form.supported_types = form.supported_types.filter(t => t !== type)
   } else {
     form.supported_types = [...form.supported_types, type]
+    const currencies = selectedPaymentCurrencies.value
+    if (currencies.length > 0) {
+      if (!limits[type]) limits[type] = {}
+      limits[type].allowedPaymentCurrencies = [...currencies]
+    }
   }
 }
 
@@ -770,18 +890,23 @@ function applyDefaults() {
   for (const f of PROVIDER_CONFIG_FIELDS[form.provider_key] || []) {
     if (f.defaultValue && !config[f.key]) config[f.key] = f.defaultValue
   }
+  applyDefaultPaymentCurrencies()
 }
 
 function getLimitVal(paymentType: string, field: string): string {
   const val = limits[paymentType]?.[field]
-  return val && val > 0 ? String(val) : ''
+  return typeof val === 'number' && val > 0 ? String(val) : ''
 }
 
 /** Returns true if any limit field for this payment type has a value */
 function hasAnyLimit(paymentType: string): boolean {
   const l = limits[paymentType]
   if (!l) return false
-  return (l.singleMin > 0) || (l.singleMax > 0) || (l.dailyLimit > 0)
+  return (numericLimitValue(l.singleMin) > 0) || (numericLimitValue(l.singleMax) > 0) || (numericLimitValue(l.dailyLimit) > 0)
+}
+
+function numericLimitValue(value: number | string[] | undefined): number {
+  return typeof value === 'number' ? value : 0
 }
 
 /** Dynamic placeholder: "不限制" if sibling has value, "使用全局配置" if all empty */
@@ -804,11 +929,17 @@ function setLimitVal(paymentType: string, field: string, val: string) {
 }
 
 function serializeLimits(): string {
-  const result: Record<string, Record<string, number>> = {}
+  syncPaymentCurrencies(selectedPaymentCurrencies.value)
+  const result: Record<string, Record<string, number | string[]>> = {}
   for (const [pt, fields] of Object.entries(limits)) {
-    const clean: Record<string, number> = {}
+    const clean: Record<string, number | string[]> = {}
     for (const [k, v] of Object.entries(fields)) {
-      if (v > 0) clean[k] = v
+      if (Array.isArray(v)) {
+        const currencies = parseCurrencyList(v.join(','))
+        if (currencies.length > 0) clean[k] = currencies
+        continue
+      }
+      if (typeof v === 'number' && v > 0) clean[k] = v
     }
     if (Object.keys(clean).length > 0) result[pt] = clean
   }
@@ -860,6 +991,10 @@ function handleSave() {
   }
   if (form.provider_key === 'easypay') {
     filteredConfig.customMethods = serializeEasyPayCustomMethods(normalizedEasyPayCustomMethods())
+  }
+  if (selectedPaymentCurrencies.value.length === 0) {
+    emitValidationError(t('admin.settings.payment.providerPaymentCurrenciesRequired'))
+    return
   }
 
   // Inject computed callback URLs (each URL = independent base + fixed path)
@@ -993,17 +1128,19 @@ function loadProvider(provider: ProviderInstance) {
       returnBaseUrl.value = extractBaseUrl(provider.config['returnUrl'], paths.returnUrl)
     }
   }
-  applyDefaults()
-  // Parse existing limits
+  // Parse existing limits before applying defaults so old providers whose
+  // capabilities live only in limits still hydrate the currency selector.
   if (provider.limits) {
     try {
       const parsed = JSON.parse(provider.limits)
-      for (const [pt, fields] of Object.entries(parsed as Record<string, Record<string, number>>)) {
+      for (const [pt, fields] of Object.entries(parsed as Record<string, Record<string, number | string[]>>)) {
         limits[pt] = { ...fields }
       }
       limitsExpanded.value = Object.keys(limits).length > 0
     } catch { /* ignore */ }
   }
+  hydratePaymentCurrenciesFromLimits()
+  applyDefaults()
 }
 
 defineExpose({ reset, loadProvider })

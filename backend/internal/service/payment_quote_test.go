@@ -164,6 +164,40 @@ func TestPaymentQuoteDefaultsMissingSingleMethodCurrency(t *testing.T) {
 	require.InDelta(t, 7.84, quote.LedgerAmount, 0.01)
 }
 
+func TestPaymentQuoteDefaultsSePayToVNDWithoutConfiguredCapabilities(t *testing.T) {
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{
+		SettingPaymentEnabled:           "true",
+		SettingLedgerCurrency:           "USD",
+		SettingAllowedPaymentCurrencies: "USD,VND,CNY",
+		SettingManualFXRates:            `{"USD":1,"VND":0.000039215686,"CNY":0.139}`,
+		SettingMinRechargeAmount:        "1",
+		SettingMaxRechargeAmount:        "1000",
+	}}
+	client := newPaymentConfigServiceTestClient(t)
+	_, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeSepay).
+		SetName("Sepay").
+		SetConfig("{}").
+		SetSupportedTypes(payment.TypeSepay).
+		SetEnabled(true).
+		Save(context.Background())
+	require.NoError(t, err)
+	configSvc := NewPaymentConfigService(client, repo, []byte("0123456789abcdef0123456789abcdef"))
+	svc := NewPaymentService(nil, nil, nil, nil, nil, configSvc, nil, nil, nil)
+
+	quote, err := svc.CreatePaymentQuote(context.Background(), CreatePaymentQuoteRequest{
+		UserID:      42,
+		Amount:      200000,
+		AmountMode:  PaymentAmountModePayment,
+		PaymentType: payment.TypeSepay,
+		OrderType:   payment.OrderTypeBalance,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "VND", quote.PaymentCurrency)
+	require.Equal(t, 200000.0, quote.PaymentAmount)
+	require.InDelta(t, 7.84, quote.LedgerAmount, 0.01)
+}
+
 func TestPaymentQuoteRequiresCurrencyForMultiCurrencyMethod(t *testing.T) {
 	repo := &paymentConfigSettingRepoStub{values: map[string]string{
 		SettingPaymentEnabled:           "true",

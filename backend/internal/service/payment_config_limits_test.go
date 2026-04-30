@@ -149,6 +149,23 @@ func TestPcAggregateMethodLimits(t *testing.T) {
 	})
 }
 
+func TestPcAggregateMethodLimitsUsesSepayVNDDefault(t *testing.T) {
+	t.Parallel()
+
+	inst := makeInstance(1, payment.TypeSepay, payment.TypeSepay, "")
+	ml := (&PaymentConfigService{}).pcAggregateMethodLimits(payment.TypeSepay, []*dbent.PaymentProviderInstance{inst}, payment.CurrencyCapabilityConfig{})
+	require.Equal(t, payment.TypeSepay, ml.PaymentType)
+	require.Equal(t, []string{"VND"}, ml.AllowedPaymentCurrencies)
+}
+
+func TestPcAggregateMethodLimitsUsesInstanceCurrencyConfig(t *testing.T) {
+	t.Parallel()
+
+	inst := makeInstance(1, payment.TypePaddle, payment.TypePaddle, `{"paddle":{"allowedPaymentCurrencies":["KRW","USD"]}}`)
+	ml := (&PaymentConfigService{}).pcAggregateMethodLimits(payment.TypePaddle, []*dbent.PaymentProviderInstance{inst}, payment.CurrencyCapabilityConfig{})
+	require.Equal(t, []string{"KRW", "USD"}, ml.AllowedPaymentCurrencies)
+}
+
 func TestPcGroupByPaymentType(t *testing.T) {
 	t.Parallel()
 
