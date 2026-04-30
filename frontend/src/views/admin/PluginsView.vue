@@ -9,14 +9,29 @@
             {{ t('admin.plugins.description') }}
           </p>
         </div>
-        <button
-          class="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200 dark:hover:bg-dark-700"
-          :disabled="loading"
-          @click="reload"
-        >
-          <Icon name="refresh" size="sm" :class="loading ? 'animate-spin' : ''" />
-          {{ t('common.refresh') }}
-        </button>
+        <div class="flex shrink-0 items-center gap-2">
+          <!-- Soft-uninstalled view toggle (P13·C-1). When on, the list calls
+               ?include_uninstalled=true and we filter to uninstalled_at != null
+               so the operator only sees archived plugins ready for restore /
+               purge. -->
+          <label class="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200 dark:hover:bg-dark-700">
+            <input
+              type="checkbox"
+              v-model="showUninstalledOnly"
+              class="h-3.5 w-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500 dark:bg-dark-700"
+              @change="reload"
+            />
+            <span>{{ t('admin.plugins.showUninstalledOnly') }}</span>
+          </label>
+          <button
+            class="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-60 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200 dark:hover:bg-dark-700"
+            :disabled="loading"
+            @click="reload"
+          >
+            <Icon name="refresh" size="sm" :class="loading ? 'animate-spin' : ''" />
+            {{ t('common.refresh') }}
+          </button>
+        </div>
       </div>
 
       <!-- Load error -->
@@ -49,9 +64,14 @@
         class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
       >
         <article
-          v-for="p in plugins"
+          v-for="p in visiblePlugins"
           :key="p.name"
-          class="group relative flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-card transition-all hover:shadow-card-hover dark:border-dark-700 dark:bg-dark-800/60"
+          :class="[
+            'group relative flex flex-col overflow-hidden rounded-xl border bg-white shadow-card transition-all hover:shadow-card-hover dark:bg-dark-800/60',
+            p.uninstalled_at
+              ? 'border-gray-300 opacity-75 dark:border-dark-600'
+              : 'border-gray-200 dark:border-dark-700'
+          ]"
         >
           <!-- Builtin accent strip on the left edge -->
           <span
@@ -64,7 +84,12 @@
             <!-- Top: icon + display_name + builtin badge -->
             <div class="flex items-start gap-3">
               <span
-                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-500/10 text-primary-600 dark:text-primary-300 [&_svg]:h-6 [&_svg]:w-6"
+                :class="[
+                  'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg [&_svg]:h-6 [&_svg]:w-6',
+                  p.uninstalled_at
+                    ? 'bg-gray-200/60 text-gray-400 grayscale dark:bg-dark-700/60 dark:text-gray-500'
+                    : 'bg-primary-500/10 text-primary-600 dark:text-primary-300'
+                ]"
               >
                 <span
                   v-if="p.icon_svg"
@@ -93,17 +118,25 @@
 
             <!-- Status row -->
             <div class="mt-3 flex items-center gap-2 text-xs">
-              <span
-                :class="['inline-block h-2 w-2 shrink-0 rounded-full', dotClass(p.state, p.enabled)]"
-                aria-hidden="true"
-              />
-              <span class="font-medium text-gray-700 dark:text-gray-200">{{ stateLabel(p) }}</span>
-              <span
-                v-if="p.enabled && p.started_at && !isZeroTime(p.started_at)"
-                class="ml-auto truncate text-gray-500 dark:text-gray-400"
-              >
-                {{ t('admin.plugins.uptimePrefix') }} {{ formatUptime(p.started_at) }}
-              </span>
+              <template v-if="p.uninstalled_at">
+                <span class="inline-block h-2 w-2 shrink-0 rounded-full bg-gray-400 dark:bg-gray-500" aria-hidden="true" />
+                <span class="font-medium text-gray-600 dark:text-gray-300">
+                  {{ t('admin.plugins.softUninstalled') }}
+                </span>
+              </template>
+              <template v-else>
+                <span
+                  :class="['inline-block h-2 w-2 shrink-0 rounded-full', dotClass(p.state, p.enabled)]"
+                  aria-hidden="true"
+                />
+                <span class="font-medium text-gray-700 dark:text-gray-200">{{ stateLabel(p) }}</span>
+                <span
+                  v-if="p.enabled && p.started_at && !isZeroTime(p.started_at)"
+                  class="ml-auto truncate text-gray-500 dark:text-gray-400"
+                >
+                  {{ t('admin.plugins.uptimePrefix') }} {{ formatUptime(p.started_at) }}
+                </span>
+              </template>
             </div>
 
             <!-- Description (line-clamp 2) -->
@@ -130,38 +163,73 @@
                 <Icon name="infoCircle" size="xs" />
                 {{ t('admin.plugins.detailButton') }}
               </button>
-              <button
-                v-if="p.has_settings === true"
-                class="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200 dark:hover:bg-dark-700"
-                @click="openSettings(p.name)"
-              >
-                <Icon name="cog" size="xs" />
-                {{ t('admin.plugins.settingsButton') }}
-              </button>
-              <button
-                v-if="p.enabled"
-                class="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-60 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300 dark:hover:bg-amber-900/40"
-                :disabled="busy[p.name]"
-                @click="act(p.name, 'disable')"
-              >
-                {{ t('admin.plugins.disable') }}
-              </button>
-              <button
-                v-else
-                class="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
-                :disabled="busy[p.name]"
-                @click="act(p.name, 'enable')"
-              >
-                {{ t('admin.plugins.enable') }}
-              </button>
-              <button
-                class="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200 dark:hover:bg-dark-700"
-                :disabled="!p.enabled || busy[p.name]"
-                @click="act(p.name, 'restart')"
-              >
-                <Icon name="refresh" size="xs" :class="busy[p.name] ? 'animate-spin' : ''" />
-                {{ t('admin.plugins.restart') }}
-              </button>
+
+              <!-- Soft-uninstalled cards: restore + hard-purge buttons. -->
+              <template v-if="p.uninstalled_at">
+                <button
+                  class="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
+                  :disabled="busy[p.name]"
+                  @click="restorePlugin(p.name)"
+                >
+                  <Icon name="refresh" size="xs" />
+                  {{ t('admin.plugins.restoreButton') }}
+                </button>
+                <button
+                  class="inline-flex items-center gap-1 rounded-md border border-red-300 bg-red-50 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-60 dark:border-red-700 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/40"
+                  :disabled="busy[p.name]"
+                  @click="openPurgeDialog(p)"
+                >
+                  <Icon name="trash" size="xs" />
+                  {{ t('admin.plugins.purgeButton') }}
+                </button>
+              </template>
+
+              <!-- Active cards: settings, enable/disable, restart, uninstall.
+                   Builtins keep enable/disable but cannot be soft-uninstalled
+                   (host check rejects with ErrPluginIsBuiltin). -->
+              <template v-else>
+                <button
+                  v-if="p.has_settings === true"
+                  class="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200 dark:hover:bg-dark-700"
+                  @click="openSettings(p.name)"
+                >
+                  <Icon name="cog" size="xs" />
+                  {{ t('admin.plugins.settingsButton') }}
+                </button>
+                <button
+                  v-if="p.enabled"
+                  class="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-60 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300 dark:hover:bg-amber-900/40"
+                  :disabled="busy[p.name]"
+                  @click="act(p.name, 'disable')"
+                >
+                  {{ t('admin.plugins.disable') }}
+                </button>
+                <button
+                  v-else
+                  class="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
+                  :disabled="busy[p.name]"
+                  @click="act(p.name, 'enable')"
+                >
+                  {{ t('admin.plugins.enable') }}
+                </button>
+                <button
+                  class="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200 dark:hover:bg-dark-700"
+                  :disabled="!p.enabled || busy[p.name]"
+                  @click="act(p.name, 'restart')"
+                >
+                  <Icon name="refresh" size="xs" :class="busy[p.name] ? 'animate-spin' : ''" />
+                  {{ t('admin.plugins.restart') }}
+                </button>
+                <button
+                  v-if="!p.builtin"
+                  class="inline-flex items-center gap-1 rounded-md border border-red-300 bg-white px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-60 dark:border-red-700 dark:bg-dark-800 dark:text-red-300 dark:hover:bg-red-900/20"
+                  :disabled="busy[p.name]"
+                  @click="openUninstallDialog(p)"
+                >
+                  <Icon name="trash" size="xs" />
+                  {{ t('admin.plugins.uninstallButton') }}
+                </button>
+              </template>
             </div>
           </div>
         </article>
@@ -394,13 +462,27 @@
         </button>
       </template>
     </BaseDialog>
+
+    <!-- Soft uninstall confirm (P13·C-1). Stops the plugin process, hides
+         it from the sidebar, and marks plugins.uninstalled_at — does NOT
+         drop any data. Reversible via the Restore button on the
+         "soft-uninstalled" filter view. -->
+    <ConfirmDialog
+      :show="!!uninstallTarget"
+      :title="uninstallTarget ? t('admin.plugins.uninstallSoftConfirm.title', { name: uninstallTarget.display_name || uninstallTarget.name }) : ''"
+      :message="t('admin.plugins.uninstallSoftConfirm.message')"
+      :confirm-text="t('admin.plugins.uninstallButton')"
+      :danger="true"
+      @confirm="confirmUninstall"
+      @cancel="uninstallTarget = null"
+    />
   </AppLayout>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { BaseDialog, EmptyState, Icon } from '@sub2api/plugin-sdk'
+import { BaseDialog, ConfirmDialog, EmptyState, Icon } from '@sub2api/plugin-sdk'
 import { apiClient } from '@/api/client'
 import {
   pluginSettingsApi,
@@ -515,6 +597,33 @@ const loading = ref(false)
 const loadError = ref('')
 const busy = reactive<Record<string, boolean>>({})
 
+// P13·C-1 soft-uninstall view. When true the list call sets
+// include_uninstalled=true and we filter to only show uninstalled rows so
+// the operator focuses on archive recovery without active plugins polluting
+// the grid. Default off — keeps the existing landing UX unchanged.
+const showUninstalledOnly = ref(false)
+
+// Pending soft-uninstall target. Drives the ConfirmDialog at the bottom of
+// the template; null when no dialog is open.
+const uninstallTarget = ref<PluginInfo | null>(null)
+
+// P13·C-2 hard purge dialog state. The dialog template + endpoint wiring
+// land in commit 3; commit 2 declares the refs so soft-uninstalled cards'
+// "彻底删除" button can already store its target.
+const purgeTarget = ref<PluginInfo | null>(null)
+const purgeNameInput = ref('')
+const purgeError = ref('')
+
+const visiblePlugins = computed<PluginInfo[]>(() => {
+  if (showUninstalledOnly.value) {
+    return plugins.value.filter((p) => !!p.uninstalled_at)
+  }
+  // Default view hides soft-uninstalled rows even if the API returned them
+  // (defensive — backend already filters by default, but the toggle path
+  // shares the same fetch result).
+  return plugins.value.filter((p) => !p.uninstalled_at)
+})
+
 // Detail modal: open by plugin name; computed reference reads from `plugins`.
 const detailName = ref<string>('')
 const detailPlugin = computed<PluginInfo | undefined>(() =>
@@ -548,7 +657,11 @@ async function reload() {
   loading.value = true
   loadError.value = ''
   try {
-    const resp = await apiClient.get('/admin/plugins')
+    // include_uninstalled is needed only when the operator wants to see
+    // soft-uninstalled rows. The backend defaults this to false so the
+    // sidebar (which fetches its own list) stays consistent regardless.
+    const params = showUninstalledOnly.value ? { include_uninstalled: true } : undefined
+    const resp = await apiClient.get('/admin/plugins', { params })
     const list = (resp.data?.items || []) as PluginInfo[]
     plugins.value = Array.isArray(list) ? list : []
     // If the detail modal is open and the plugin disappeared, close it.
@@ -560,6 +673,58 @@ async function reload() {
   } finally {
     loading.value = false
   }
+}
+
+// P13·C-1: open the soft-uninstall confirm dialog. We capture the whole
+// PluginInfo (not just the name) so the dialog title/message can render the
+// display name even after the list reloads.
+function openUninstallDialog(p: PluginInfo) {
+  uninstallTarget.value = p
+}
+
+async function confirmUninstall() {
+  const target = uninstallTarget.value
+  if (!target) return
+  busy[target.name] = true
+  try {
+    await apiClient.post(`/admin/plugins/${target.name}/uninstall`)
+    appStore.showSuccess(t('admin.plugins.uninstallSuccess', { name: target.name }))
+    uninstallTarget.value = null
+    await reload()
+    // Soft-uninstall removes the plugin from sidebar / routes — same reason
+    // as enable/disable. Force a reload so SSR-injected manifests refresh.
+    window.location.reload()
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    busy[target.name] = false
+  }
+}
+
+// P13·C-1: undo soft-uninstall by POST /:name/install. Brings the plugin
+// back to disabled (the operator must explicitly enable it again — restore
+// is intentionally conservative so a once-broken plugin doesn't auto-spawn).
+async function restorePlugin(name: string) {
+  busy[name] = true
+  try {
+    await apiClient.post(`/admin/plugins/${name}/install`)
+    appStore.showSuccess(t('admin.plugins.restoreSuccess', { name }))
+    await reload()
+    window.location.reload()
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    busy[name] = false
+  }
+}
+
+// P13·C-2 hard purge dialog (impl in Commit 3). Wired here so commit 2's
+// soft-uninstalled cards already have a target for the "彻底删除" button —
+// commit 3 fills in the dialog template + state.
+function openPurgeDialog(p: PluginInfo) {
+  purgeTarget.value = p
+  purgeNameInput.value = ''
+  purgeError.value = ''
 }
 
 async function act(name: string, action: PluginAction) {

@@ -1007,6 +1007,18 @@ export default {
       enableSuccess: '{name} enabled',
       disableSuccess: '{name} disabled',
       restartSuccess: '{name} restart requested',
+      // Soft uninstall (P13·C-1)
+      uninstallButton: 'Uninstall',
+      uninstallSuccess: '{name} uninstalled',
+      uninstallSoftConfirm: {
+        title: 'Uninstall plugin {name}',
+        message: 'Stops the plugin process and hides it from the sidebar. Data is preserved and can be restored at any time. To purge data, soft-uninstall first then use "Hard delete".'
+      },
+      softUninstalled: 'Soft-uninstalled (data preserved)',
+      restoreButton: 'Restore',
+      restoreSuccess: '{name} restored',
+      purgeButton: 'Hard delete',
+      showUninstalledOnly: 'Show uninstalled only',
       // Detail modal tabs
       tabDetail: 'Details',
       tabSettings: 'Settings',

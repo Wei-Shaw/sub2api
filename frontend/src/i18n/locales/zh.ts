@@ -1011,6 +1011,18 @@ export default {
       enableSuccess: '已启用 {name}',
       disableSuccess: '已禁用 {name}',
       restartSuccess: '已发起重启 {name}',
+      // Soft uninstall (P13·C-1)
+      uninstallButton: '卸载',
+      uninstallSuccess: '已软卸载 {name}',
+      uninstallSoftConfirm: {
+        title: '软卸载插件 {name}',
+        message: '将停止插件运行并从侧边栏隐藏。数据完整保留，可随时恢复。如需彻底清除，请先软卸载再使用「彻底删除」。'
+      },
+      softUninstalled: '已软卸载（数据保留）',
+      restoreButton: '恢复',
+      restoreSuccess: '已恢复 {name}',
+      purgeButton: '彻底删除',
+      showUninstalledOnly: '仅显示已卸载',
       // Detail modal tabs
       tabDetail: '详情',
       tabSettings: '设置',
