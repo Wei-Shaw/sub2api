@@ -1,12 +1,90 @@
 package service
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
+
+type gatewayTTLSettingRepo struct {
+	data map[string]string
+REDACTED
+
+func (r *gatewayTTLSettingRepo) Get(context.Context, string) (*Setting, error) {
+	return nil, ErrSettingNotFound
+REDACTED
+
+func (r *gatewayTTLSettingRepo) GetValue(_ context.Context, key string) (string, error) {
+	if r == nil {
+		return "", ErrSettingNotFound
+REDACTED
+	v, ok := r.data[key]
+	if !ok {
+		return "", ErrSettingNotFound
+REDACTED
+	return v, nil
+REDACTED
+
+func (r *gatewayTTLSettingRepo) Set(_ context.Context, key, value string) error {
+	if r == nil {
+		return errors.New("setting repo is nil")
+REDACTED
+	if r.data == nil {
+		r.data = map[string]string{REDACTED
+REDACTED
+	r.data[key] = value
+	return nil
+REDACTED
+
+func (r *gatewayTTLSettingRepo) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+	result := make(map[string]string)
+	if r == nil {
+		return result, nil
+REDACTED
+	for _, key := range keys {
+		if v, ok := r.data[key]; ok {
+			result[key] = v
+	REDACTED
+REDACTED
+	return result, nil
+REDACTED
+
+func (r *gatewayTTLSettingRepo) SetMultiple(_ context.Context, settings map[string]string) error {
+	if r == nil {
+		return errors.New("setting repo is nil")
+REDACTED
+	if r.data == nil {
+		r.data = map[string]string{REDACTED
+REDACTED
+	for key, value := range settings {
+		r.data[key] = value
+REDACTED
+	return nil
+REDACTED
+
+func (r *gatewayTTLSettingRepo) GetAll(context.Context) (map[string]string, error) {
+	result := make(map[string]string)
+	if r == nil {
+		return result, nil
+REDACTED
+	for key, value := range r.data {
+		result[key] = value
+REDACTED
+	return result, nil
+REDACTED
+
+func (r *gatewayTTLSettingRepo) Delete(_ context.Context, key string) error {
+	if r != nil {
+		delete(r.data, key)
+REDACTED
+	return nil
+REDACTED
 
 func assertJSONTokenOrder(t *testing.T, body string, tokens ...string) {
 REDACTED
@@ -70,4 +148,61 @@ func TestEnforceCacheControlLimit_PreservesTopLevelFieldOrder(t *testing.T) {
 
 	assertJSONTokenOrder(t, resultStr, `"alpha"`, `"system"`, `"messages"`, `"omega"`)
 	require.Equal(t, 4, strings.Count(resultStr, `"cache_control"`))
+REDACTED
+
+func TestInjectAnthropicCacheControlTTL1h_OnlyUpdatesExistingEphemeralCacheControl(t *testing.T) {
+	body := []byte(`{"alpha":1,"cache_control":{"type":"ephemeral"REDACTED,"system":[{"type":"text","text":"sys","cache_control":{"type":"ephemeral","ttl":"5m"REDACTEDREDACTED,{"type":"text","text":"plain"REDACTED],"messages":[{"role":"user","content":[{"type":"text","text":"hi","cache_control":{"type":"ephemeral"REDACTEDREDACTED,{"type":"text","text":"non","cache_control":{"type":"persistent","ttl":"5m"REDACTEDREDACTED]REDACTED],"tools":[{"name":"a","input_schema":{REDACTED,"cache_control":{"type":"ephemeral"REDACTEDREDACTED],"omega":2REDACTED`)
+
+	result := injectAnthropicCacheControlTTL1h(body)
+	resultStr := string(result)
+
+	assertJSONTokenOrder(t, resultStr, `"alpha"`, `"cache_control"`, `"system"`, `"messages"`, `"tools"`, `"omega"`)
+	require.Equal(t, "1h", gjson.GetBytes(result, "cache_control.ttl").String())
+	require.Equal(t, "1h", gjson.GetBytes(result, "system.0.cache_control.ttl").String())
+	require.False(t, gjson.GetBytes(result, "system.1.cache_control").Exists())
+	require.Equal(t, "1h", gjson.GetBytes(result, "messages.0.content.0.cache_control.ttl").String())
+	require.Equal(t, "5m", gjson.GetBytes(result, "messages.0.content.1.cache_control.ttl").String())
+	require.Equal(t, "1h", gjson.GetBytes(result, "tools.0.cache_control.ttl").String())
+REDACTED
+
+func TestGatewayCacheTTLGlobalSetting_TargetResolution(t *testing.T) {
+	repo := &gatewayTTLSettingRepo{data: map[string]string{
+		SettingKeyEnableAnthropicCacheTTL1hInjection: "true",
+REDACTEDREDACTED
+	gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{REDACTED)
+	svc := &GatewayService{
+		settingService: NewSettingService(repo, &config.Config{REDACTED),
+REDACTED
+	account := &Account{Platform: PlatformAnthropic, Type: AccountTypeOAuthREDACTED
+
+	target, ok := svc.resolveCacheTTLUsageOverrideTarget(context.Background(), account)
+	require.True(t, ok)
+	require.Equal(t, cacheTTLTarget5m, target)
+
+	account.Extra = map[string]any{
+		"cache_ttl_override_enabled": true,
+		"cache_ttl_override_target":  "1h",
+REDACTED
+	target, ok = svc.resolveCacheTTLUsageOverrideTarget(context.Background(), account)
+	require.True(t, ok)
+	require.Equal(t, cacheTTLTarget1h, target)
+REDACTED
+
+func TestGatewayCacheTTLGlobalSetting_RequestInjectionScope(t *testing.T) {
+	repo := &gatewayTTLSettingRepo{data: map[string]string{
+		SettingKeyEnableAnthropicCacheTTL1hInjection: "true",
+REDACTEDREDACTED
+	gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{REDACTED)
+	svc := &GatewayService{
+		settingService: NewSettingService(repo, &config.Config{REDACTED),
+REDACTED
+
+	require.True(t, svc.shouldInjectAnthropicCacheTTL1h(context.Background(), &Account{Platform: PlatformAnthropic, Type: AccountTypeOAuthREDACTED))
+	require.True(t, svc.shouldInjectAnthropicCacheTTL1h(context.Background(), &Account{Platform: PlatformAnthropic, Type: AccountTypeSetupTokenREDACTED))
+	require.False(t, svc.shouldInjectAnthropicCacheTTL1h(context.Background(), &Account{Platform: PlatformAnthropic, Type: AccountTypeAPIKeyREDACTED))
+	require.False(t, svc.shouldInjectAnthropicCacheTTL1h(context.Background(), &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuthREDACTED))
+
+	repo.data[SettingKeyEnableAnthropicCacheTTL1hInjection] = "false"
+	gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{REDACTED)
+	require.False(t, svc.shouldInjectAnthropicCacheTTL1h(context.Background(), &Account{Platform: PlatformAnthropic, Type: AccountTypeOAuthREDACTED))
 REDACTED
