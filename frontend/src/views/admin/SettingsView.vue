@@ -7304,46 +7304,375 @@
                       {{ t("admin.settings.payment.orderTimeoutHint") }}
                     </p>
                   </div>
-                  <div class="min-w-96 flex-1">
-                    <label class="input-label">Payment currency capabilities JSON</label>
-                    <textarea
-                      v-model="form.payment_currency_capabilities"
-                      rows="5"
-                      class="input font-mono text-xs"
-                      placeholder='{"methods":{"sepay":["VND"]},"providers":{"paddle":["USD","KRW"]},"instances":{"123":["KRW"]}}'
-                    ></textarea>
-                    <p class="mt-0.5 text-xs text-gray-400">
-                      Configure provider/method/instance supported currencies. Checkout-info and quote/order validation use this payment setting instead of hardcoded gateway defaults.
-                    </p>
-                  </div>
-                  <div class="min-w-64 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-dark-600 dark:bg-dark-800/60 dark:text-gray-300">
-                    <div class="mb-1 font-medium text-gray-800 dark:text-gray-100">
-                      FX status
-                    </div>
+                </div>
+
+                <div
+                  class="rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-dark-600 dark:bg-dark-800/50"
+                >
+                  <div
+                    class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+                  >
                     <div>
-                      Ledger: {{ form.payment_ledger_currency || "USD" }} · Local:
-                      {{ (form.payment_allowed_currencies || []).join(", ") }}
+                      <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                        {{ t("admin.settings.payment.fxStatusTitle") }}
+                      </h3>
+                      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.payment.fxStatusHint") }}
+                      </p>
                     </div>
-                    <div>
-                      Source: {{ form.payment_fx_status?.source || "manual" }}
+                    <div class="flex flex-wrap gap-2 text-xs">
                       <span
-                        :class="
-                          form.payment_fx_status?.stale
-                            ? 'text-amber-600 dark:text-amber-300'
-                            : 'text-emerald-600 dark:text-emerald-300'
-                        "
+                        class="rounded-full bg-gray-100 px-2.5 py-1 font-medium text-gray-700 dark:bg-dark-700 dark:text-gray-200"
                       >
-                        · {{ form.payment_fx_status?.stale ? "stale" : "fresh" }}
+                        {{ t("admin.settings.payment.ledgerCurrency") }}:
+                        {{ form.payment_ledger_currency || "USD" }}
+                      </span>
+                      <span
+                        class="rounded-full bg-gray-100 px-2.5 py-1 font-medium text-gray-700 dark:bg-dark-700 dark:text-gray-200"
+                      >
+                        {{ t("admin.settings.payment.localCurrencies") }}:
+                        {{ (form.payment_allowed_currencies || []).join(", ") || "—" }}
+                      </span>
+                      <span
+                        class="rounded-full bg-blue-100 px-2.5 py-1 font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-200"
+                      >
+                        {{ t("admin.settings.payment.fxSource") }}:
+                        {{ paymentFXSourceLabel }}
+                      </span>
+                      <span
+                        :class="[
+                          'rounded-full px-2.5 py-1 font-medium',
+                          form.payment_fx_status?.stale
+                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-200'
+                            : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200',
+                        ]"
+                      >
+                        {{ paymentFXFreshnessLabel }}
                       </span>
                     </div>
+                  </div>
+                  <div
+                    v-if="form.payment_fx_status?.updated_at || form.payment_fx_status?.missing_currencies?.length"
+                    class="mt-3 grid gap-2 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-2"
+                  >
                     <div v-if="form.payment_fx_status?.updated_at">
-                      Updated: {{ form.payment_fx_status.updated_at }}
+                      {{ t("admin.settings.payment.fxUpdatedAt") }}:
+                      {{ form.payment_fx_status.updated_at }}
                     </div>
                     <div
                       v-if="form.payment_fx_status?.missing_currencies?.length"
                       class="text-red-600 dark:text-red-300"
                     >
-                      Missing: {{ form.payment_fx_status.missing_currencies.join(", ") }}
+                      {{ t("admin.settings.payment.fxMissingCurrencies") }}:
+                      {{ form.payment_fx_status.missing_currencies.join(", ") }}
+                    </div>
+                  </div>
+                </div>
+
+
+                <div
+                  class="space-y-4 rounded-xl border border-gray-200 p-4 dark:border-dark-600"
+                >
+                  <div
+                    class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+                  >
+                    <div>
+                      <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                        {{ t("admin.settings.payment.fxRatesTitle") }}
+                      </h3>
+                      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.payment.fxRatesHint") }}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm shrink-0"
+                      @click="addPaymentFXRateRow"
+                    >
+                      + {{ t("admin.settings.payment.addFxRate") }}
+                    </button>
+                  </div>
+
+                  <div class="grid gap-3 lg:grid-cols-[220px_1fr]">
+                    <div>
+                      <label class="input-label">{{
+                        t("admin.settings.payment.ledgerCurrency")
+                      }}</label>
+                      <Select
+                        :modelValue="form.payment_ledger_currency"
+                        :options="paymentFXCurrencyOptions"
+                        searchable
+                        creatable
+                        @update:modelValue="updatePaymentLedgerCurrency"
+                      />
+                      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.payment.ledgerCurrencyHint") }}
+                      </p>
+                    </div>
+                    <div>
+                      <label class="input-label">{{
+                        t("admin.settings.payment.enabledPaymentCurrencies")
+                      }}</label>
+                      <div
+                        class="flex min-h-[42px] flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-dark-600 dark:bg-dark-800"
+                      >
+                        <span
+                          v-for="currency in form.payment_allowed_currencies"
+                          :key="currency"
+                          class="rounded-full bg-primary-100 px-2.5 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-200"
+                        >
+                          {{ currency }}
+                        </span>
+                        <span
+                          v-if="!form.payment_allowed_currencies?.length"
+                          class="text-xs text-gray-500 dark:text-gray-400"
+                        >
+                          {{ t("admin.settings.payment.noPaymentCurrencies") }}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div
+                    class="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-200"
+                  >
+                    {{
+                      t("admin.settings.payment.fxRatesGuide", {
+                        ledger: paymentLedgerCurrency,
+                      })
+                    }}
+                  </div>
+
+                  <div
+                    v-if="paymentFXRateRows.length === 0"
+                    class="rounded-lg border border-dashed border-gray-300 p-4 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
+                  >
+                    {{ t("admin.settings.payment.noFxRates") }}
+                  </div>
+
+                  <div v-else class="space-y-3">
+                    <div
+                      v-for="row in paymentFXRateRows"
+                      :key="row.id"
+                      class="rounded-lg border border-gray-200 bg-white p-3 dark:border-dark-600 dark:bg-dark-900/50"
+                    >
+                      <div class="grid gap-3 lg:grid-cols-[180px_1fr_auto]">
+                        <div>
+                          <label class="input-label">{{
+                            t("admin.settings.payment.fxRateCurrency")
+                          }}</label>
+                          <Select
+                            :modelValue="row.currency"
+                            :options="paymentFXRateCurrencyOptions(row)"
+                            searchable
+                            creatable
+                            :placeholder="t('admin.settings.payment.selectCurrency')"
+                            @update:modelValue="updatePaymentFXRateCurrency(row, $event)"
+                          />
+                        </div>
+                        <div>
+                          <label class="input-label">{{
+                            t("admin.settings.payment.fxRateAmount")
+                          }}</label>
+                          <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                            <span class="text-sm text-gray-600 dark:text-gray-300">
+                              1 {{ paymentLedgerCurrency }} =
+                            </span>
+                            <div class="relative min-w-0 flex-1">
+                              <input
+                                :value="row.localAmountInput"
+                                @input="
+                                  updatePaymentFXRateAmount(
+                                    row,
+                                    ($event.target as HTMLInputElement).value,
+                                  )
+                                "
+                                @blur="normalizePaymentFXRateAmount(row)"
+                                type="text"
+                                inputmode="decimal"
+                                class="input pr-16"
+                                :placeholder="paymentFXRateAmountPlaceholder(row)"
+                              />
+                              <span
+                                class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-sm text-gray-400"
+                              >
+                                {{ row.currency || "—" }}
+                              </span>
+                            </div>
+                          </div>
+                          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            {{ t("admin.settings.payment.fxRateAmountHint") }}
+                          </p>
+                          <p
+                            v-if="paymentFXRatePreview(row)"
+                            class="mt-1 text-xs font-medium text-primary-600 dark:text-primary-400"
+                          >
+                            {{ paymentFXRatePreview(row) }}
+                          </p>
+                        </div>
+                        <div class="flex items-end justify-end">
+                          <button
+                            type="button"
+                            class="btn btn-secondary btn-sm text-red-600 hover:text-red-700 dark:text-red-400"
+                            @click="removePaymentFXRateRow(row.id)"
+                          >
+                            {{ t("common.delete") }}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  class="space-y-4 rounded-xl border border-gray-200 p-4 dark:border-dark-600"
+                >
+                  <div
+                    class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+                  >
+                    <div>
+                      <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                        {{ t("admin.settings.payment.currencyCapabilitiesTitle") }}
+                      </h3>
+                      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.payment.currencyCapabilitiesHint") }}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-sm shrink-0"
+                      @click="addPaymentCapabilityRow"
+                    >
+                      + {{ t("admin.settings.payment.addCurrencyCapability") }}
+                    </button>
+                  </div>
+
+                  <div
+                    class="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-200"
+                  >
+                    {{ t("admin.settings.payment.currencyCapabilitiesGuide") }}
+                  </div>
+
+                  <div
+                    v-if="paymentCapabilityRows.length === 0"
+                    class="rounded-lg border border-dashed border-gray-300 p-4 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
+                  >
+                    {{ t("admin.settings.payment.noCurrencyCapabilities") }}
+                  </div>
+
+                  <div v-else class="space-y-3">
+                    <div
+                      v-for="row in paymentCapabilityRows"
+                      :key="row.id"
+                      class="rounded-lg border border-gray-200 bg-white p-3 dark:border-dark-600 dark:bg-dark-900/50"
+                    >
+                      <div class="grid gap-3 lg:grid-cols-[160px_1fr_1.2fr_auto]">
+                        <div>
+                          <label class="input-label">{{
+                            t("admin.settings.payment.capabilityScope")
+                          }}</label>
+                          <Select
+                            :modelValue="row.scope"
+                            :options="paymentCapabilityScopeOptions"
+                            @update:modelValue="updatePaymentCapabilityScope(row, $event)"
+                          />
+                        </div>
+                        <div>
+                          <label class="input-label">{{
+                            t("admin.settings.payment.capabilityTarget")
+                          }}</label>
+                          <Select
+                            :modelValue="row.target"
+                            :options="paymentCapabilityTargetOptions(row.scope)"
+                            searchable
+                            creatable
+                            :placeholder="paymentCapabilityTargetPlaceholder(row.scope)"
+                            @update:modelValue="updatePaymentCapabilityTarget(row, $event)"
+                          />
+                        </div>
+                        <div>
+                          <label class="input-label">{{
+                            t("admin.settings.payment.capabilityCurrencies")
+                          }}</label>
+                          <div class="flex gap-2">
+                            <Select
+                              :modelValue="row.currencyDraft"
+                              :options="paymentCapabilityCurrencyOptions"
+                              searchable
+                              creatable
+                              class="min-w-40 flex-1"
+                              :placeholder="t('admin.settings.payment.selectCurrency')"
+                              @update:modelValue="updatePaymentCapabilityCurrencyDraft(row, $event)"
+                            />
+                            <button
+                              type="button"
+                              class="btn btn-secondary btn-sm shrink-0"
+                              :disabled="!row.currencyDraft"
+                              @click="addPaymentCapabilityCurrency(row)"
+                            >
+                              {{ t("common.add") }}
+                            </button>
+                          </div>
+                          <div class="mt-2 flex flex-wrap gap-2">
+                            <button
+                              v-for="currency in row.currencies"
+                              :key="currency"
+                              type="button"
+                              class="inline-flex items-center gap-1 rounded-full bg-primary-100 px-2.5 py-1 text-xs font-medium text-primary-700 hover:bg-primary-200 dark:bg-primary-900/30 dark:text-primary-200 dark:hover:bg-primary-900/50"
+                              @click="removePaymentCapabilityCurrency(row, currency)"
+                            >
+                              {{ currency }}
+                              <span aria-hidden="true">×</span>
+                            </button>
+                            <span
+                              v-if="row.currencies.length === 0"
+                              class="text-xs text-amber-600 dark:text-amber-300"
+                            >
+                              {{ t("admin.settings.payment.currencyRequired") }}
+                            </span>
+                          </div>
+                        </div>
+                        <div class="flex items-end justify-end">
+                          <button
+                            type="button"
+                            class="btn btn-secondary btn-sm text-red-600 hover:text-red-700 dark:text-red-400"
+                            @click="removePaymentCapabilityRow(row.id)"
+                          >
+                            {{ t("common.delete") }}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="border-t border-gray-100 pt-3 dark:border-dark-700">
+                    <button
+                      type="button"
+                      class="text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                      @click="paymentCapabilityAdvancedOpen = !paymentCapabilityAdvancedOpen"
+                    >
+                      {{
+                        paymentCapabilityAdvancedOpen
+                          ? t("admin.settings.payment.hideAdvancedJson")
+                          : t("admin.settings.payment.showAdvancedJson")
+                      }}
+                    </button>
+                    <div v-if="paymentCapabilityAdvancedOpen" class="mt-3 space-y-2">
+                      <textarea
+                        v-model="form.payment_currency_capabilities"
+                        rows="5"
+                        class="input font-mono text-xs"
+                        placeholder='{"methods":{"sepay":["VND"]},"providers":{"paddle":["USD","KRW"]},"instances":{"123":["KRW"]}}'
+                      ></textarea>
+                      <p
+                        v-if="paymentCapabilityJsonError"
+                        class="text-xs text-red-600 dark:text-red-300"
+                      >
+                        {{ paymentCapabilityJsonError }}
+                      </p>
+                      <p v-else class="text-xs text-gray-500 dark:text-gray-400">
+                        {{ t("admin.settings.payment.advancedJsonHint") }}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -8123,7 +8452,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch } from "vue";
+import { ref, reactive, computed, onMounted, watch, nextTick } from "vue";
 import { useI18n } from "vue-i18n";
 import { adminAPI } from "@/api";
 import {
@@ -9242,7 +9571,639 @@ const openAIAdvancedSchedulerWeightFields = computed<
   ];
 });
 
-const authSourceDefaults = reactive<AuthSourceDefaultsState>(
+type PaymentCurrencyCapabilityScope = "methods" | "providers" | "instances";
+
+interface PaymentCurrencyCapabilityRow {
+  id: string;
+  scope: PaymentCurrencyCapabilityScope;
+  target: string;
+  currencies: string[];
+  currencyDraft: string;
+}
+
+interface PaymentFXRateRow {
+  id: string;
+  currency: string;
+  localAmountInput: string;
+}
+
+type PaymentCurrencyCapabilities = Partial<
+  Record<PaymentCurrencyCapabilityScope, Record<string, string[]>>
+>;
+
+const commonPaymentCurrencyCodes = [
+  "USD",
+  "CNY",
+  "VND",
+  "KRW",
+  "EUR",
+  "JPY",
+  "GBP",
+  "AUD",
+  "CAD",
+  "SGD",
+  "HKD",
+  "TWD",
+  "THB",
+  "MYR",
+  "PHP",
+  "IDR",
+  "INR",
+];
+
+let paymentFXRateRowSeq = 0;
+const paymentFXRateRows = ref<PaymentFXRateRow[]>([]);
+const syncingPaymentFXRatesFromRows = ref(false);
+
+let paymentCapabilityRowSeq = 0;
+const paymentCapabilityRows = ref<PaymentCurrencyCapabilityRow[]>([]);
+const paymentCapabilityAdvancedOpen = ref(false);
+const paymentCapabilityJsonError = ref("");
+const syncingPaymentCapabilitiesFromRows = ref(false);
+
+const paymentLedgerCurrency = computed(
+  () => normalizePaymentCurrencyCode(form.payment_ledger_currency) || "USD",
+);
+
+const paymentFXCurrencyOptions = computed(() => {
+  const codes = new Set<string>(commonPaymentCurrencyCodes);
+  const addCode = (value: unknown) => {
+    const code = normalizePaymentCurrencyCode(value);
+    if (/^[A-Z]{3}$/.test(code)) codes.add(code);
+  };
+
+  addCode(form.payment_ledger_currency);
+  (form.payment_allowed_currencies || []).forEach(addCode);
+  Object.keys(form.payment_manual_fx_rates || {}).forEach(addCode);
+  (form.payment_fx_status?.missing_currencies || []).forEach(addCode);
+
+  return Array.from(codes)
+    .sort()
+    .map((code) => ({ value: code, label: code }));
+});
+
+function createPaymentFXRateRow(
+  currency = "",
+  localAmountInput = "",
+): PaymentFXRateRow {
+  paymentFXRateRowSeq += 1;
+  return {
+    id: `payment-fx-rate-${paymentFXRateRowSeq}`,
+    currency: normalizePaymentCurrencyCode(currency),
+    localAmountInput,
+  };
+}
+
+function parsePaymentFXAmountInput(raw: unknown): number {
+  const cleaned = String(raw || "")
+    .trim()
+    .replace(/[\s_]/g, "")
+    .replace(/[^0-9.,-]/g, "");
+  if (!cleaned) return Number.NaN;
+
+  const dotIndex = cleaned.lastIndexOf(".");
+  const commaIndex = cleaned.lastIndexOf(",");
+  let normalized = cleaned;
+
+  if (dotIndex !== -1 && commaIndex !== -1) {
+    const decimalSeparator = dotIndex > commaIndex ? "." : ",";
+    const groupingPattern = decimalSeparator === "." ? /,/g : /\./g;
+    normalized = cleaned
+      .replace(groupingPattern, "")
+      .replace(decimalSeparator, ".");
+  } else if (dotIndex !== -1) {
+    normalized = /^-?\d{1,3}(\.\d{3})+$/.test(cleaned)
+      ? cleaned.replace(/\./g, "")
+      : cleaned;
+  } else if (commaIndex !== -1) {
+    normalized = /^-?\d{1,3}(,\d{3})+$/.test(cleaned)
+      ? cleaned.replace(/,/g, "")
+      : cleaned.replace(",", ".");
+  }
+
+  return Number(normalized);
+}
+
+function formatPaymentFXAmountInput(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "";
+  const normalized = Number(value.toPrecision(12));
+  return Number.isInteger(normalized)
+    ? String(normalized)
+    : normalized.toString();
+}
+
+function formatPaymentFXInternalRate(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "";
+  return Number(value.toPrecision(12)).toString();
+}
+
+function storedPaymentFXRateForCurrency(currency: string): number {
+  const rates = form.payment_manual_fx_rates || {};
+  const direct = rates[currency];
+  if (typeof direct === "number") return direct;
+  const lower = rates[currency.toLowerCase()];
+  return typeof lower === "number" ? lower : Number.NaN;
+}
+
+function paymentFXLocalAmountInputFromStoredRate(currency: string): string {
+  const ledger = paymentLedgerCurrency.value;
+  if (currency === ledger) return "1";
+  const rate = storedPaymentFXRateForCurrency(currency);
+  if (!Number.isFinite(rate) || rate <= 0) return "";
+  return formatPaymentFXAmountInput(1 / rate);
+}
+
+function hydratePaymentFXRateRowsFromSettings() {
+  const ledger = paymentLedgerCurrency.value;
+  const codes = new Set<string>();
+  (form.payment_allowed_currencies || []).forEach((currency) => {
+    const code = normalizePaymentCurrencyCode(currency);
+    if (/^[A-Z]{3}$/.test(code) && code !== ledger) codes.add(code);
+  });
+  Object.keys(form.payment_manual_fx_rates || {}).forEach((currency) => {
+    const code = normalizePaymentCurrencyCode(currency);
+    if (/^[A-Z]{3}$/.test(code) && code !== ledger) codes.add(code);
+  });
+
+  paymentFXRateRows.value = Array.from(codes)
+    .sort()
+    .map((currency) =>
+      createPaymentFXRateRow(
+        currency,
+        paymentFXLocalAmountInputFromStoredRate(currency),
+      ),
+    );
+}
+
+function buildPaymentManualFXRatesFromRows(): Record<string, number> {
+  const ledger = paymentLedgerCurrency.value;
+  const rates: Record<string, number> = { [ledger]: 1 };
+  for (const row of paymentFXRateRows.value) {
+    const currency = normalizePaymentCurrencyCode(row.currency);
+    const localAmount = parsePaymentFXAmountInput(row.localAmountInput);
+    if (
+      !/^[A-Z]{3}$/.test(currency) ||
+      currency === ledger ||
+      !Number.isFinite(localAmount) ||
+      localAmount <= 0
+    ) {
+      continue;
+    }
+    rates[currency] = Number((1 / localAmount).toPrecision(12));
+  }
+  return rates;
+}
+
+function syncPaymentFXRateRowsToSettings() {
+  syncingPaymentFXRatesFromRows.value = true;
+  const ledger = paymentLedgerCurrency.value;
+  const currencies = new Set<string>([ledger]);
+  for (const row of paymentFXRateRows.value) {
+    const currency = normalizePaymentCurrencyCode(row.currency);
+    if (/^[A-Z]{3}$/.test(currency) && currency !== ledger) {
+      currencies.add(currency);
+    }
+  }
+  form.payment_ledger_currency = ledger;
+  form.payment_allowed_currencies = Array.from(currencies);
+  form.payment_manual_fx_rates = buildPaymentManualFXRatesFromRows();
+  void nextTick(() => {
+    syncingPaymentFXRatesFromRows.value = false;
+  });
+}
+
+function paymentFXRateCurrencyOptions(row: PaymentFXRateRow) {
+  const ledger = paymentLedgerCurrency.value;
+  const selected = new Set(
+    paymentFXRateRows.value
+      .filter((item) => item.id !== row.id)
+      .map((item) => normalizePaymentCurrencyCode(item.currency))
+      .filter(Boolean),
+  );
+  return paymentFXCurrencyOptions.value.filter(
+    (option) => option.value !== ledger && !selected.has(String(option.value)),
+  );
+}
+
+function updatePaymentLedgerCurrency(value: string | number | boolean | null) {
+  const currency = normalizePaymentCurrencyCode(value);
+  if (!/^[A-Z]{3}$/.test(currency)) return;
+  form.payment_ledger_currency = currency;
+  paymentFXRateRows.value = paymentFXRateRows.value.filter(
+    (row) => normalizePaymentCurrencyCode(row.currency) !== currency,
+  );
+  syncPaymentFXRateRowsToSettings();
+}
+
+function updatePaymentFXRateCurrency(
+  row: PaymentFXRateRow,
+  value: string | number | boolean | null,
+) {
+  row.currency = normalizePaymentCurrencyCode(value);
+  syncPaymentFXRateRowsToSettings();
+}
+
+function updatePaymentFXRateAmount(row: PaymentFXRateRow, value: string) {
+  row.localAmountInput = value;
+  syncPaymentFXRateRowsToSettings();
+}
+
+function normalizePaymentFXRateAmount(row: PaymentFXRateRow) {
+  const parsed = parsePaymentFXAmountInput(row.localAmountInput);
+  if (!Number.isFinite(parsed) || parsed <= 0) return;
+  row.localAmountInput = formatPaymentFXAmountInput(parsed);
+  syncPaymentFXRateRowsToSettings();
+}
+
+function addPaymentFXRateRow() {
+  const ledger = paymentLedgerCurrency.value;
+  const existing = new Set(
+    paymentFXRateRows.value.map((row) => normalizePaymentCurrencyCode(row.currency)),
+  );
+  const preferred = [
+    ...(form.payment_fx_status?.missing_currencies || []),
+    "VND",
+    "CNY",
+    "KRW",
+    ...commonPaymentCurrencyCodes,
+  ]
+    .map((currency) => normalizePaymentCurrencyCode(currency))
+    .find(
+      (currency) =>
+        /^[A-Z]{3}$/.test(currency) && currency !== ledger && !existing.has(currency),
+    );
+
+  paymentFXRateRows.value.push(createPaymentFXRateRow(preferred || "", ""));
+  syncPaymentFXRateRowsToSettings();
+}
+
+function removePaymentFXRateRow(rowId: string) {
+  paymentFXRateRows.value = paymentFXRateRows.value.filter(
+    (row) => row.id !== rowId,
+  );
+  syncPaymentFXRateRowsToSettings();
+}
+
+function paymentFXRateAmountPlaceholder(row: PaymentFXRateRow): string {
+  const currency = normalizePaymentCurrencyCode(row.currency);
+  if (currency === "VND") return "26000";
+  if (currency === "KRW") return "1300";
+  if (currency === "JPY") return "150";
+  if (currency === "CNY") return "7.2";
+  return "1.00";
+}
+
+function paymentFXRatePreview(row: PaymentFXRateRow): string {
+  const currency = normalizePaymentCurrencyCode(row.currency);
+  const localAmount = parsePaymentFXAmountInput(row.localAmountInput);
+  if (
+    !/^[A-Z]{3}$/.test(currency) ||
+    !Number.isFinite(localAmount) ||
+    localAmount <= 0
+  ) {
+    return "";
+  }
+  return t("admin.settings.payment.fxRatePreview", {
+    currency,
+    ledger: paymentLedgerCurrency.value,
+    rate: formatPaymentFXInternalRate(1 / localAmount),
+  });
+}
+
+function validatePaymentFXRateRowsForSave(): string | null {
+  const ledger = paymentLedgerCurrency.value;
+  if (!/^[A-Z]{3}$/.test(ledger)) {
+    return t("admin.settings.payment.fxRateLedgerRequired");
+  }
+
+  const seen = new Set<string>();
+  for (const row of paymentFXRateRows.value) {
+    const currency = normalizePaymentCurrencyCode(row.currency);
+    if (!/^[A-Z]{3}$/.test(currency)) {
+      return t("admin.settings.payment.fxRateCurrencyRequired");
+    }
+    if (currency === ledger) {
+      return t("admin.settings.payment.fxRateCurrencyMustDiffer");
+    }
+    if (seen.has(currency)) {
+      return t("admin.settings.payment.fxRateCurrencyDuplicate", { currency });
+    }
+    seen.add(currency);
+
+    const localAmount = parsePaymentFXAmountInput(row.localAmountInput);
+    if (!Number.isFinite(localAmount) || localAmount <= 0) {
+      return t("admin.settings.payment.fxRateAmountRequired", { currency });
+    }
+  }
+
+  syncPaymentFXRateRowsToSettings();
+  return null;
+}
+
+const paymentFXSourceLabel = computed(() => {
+  const source = form.payment_fx_status?.source || "manual";
+  return source === "manual"
+    ? t("admin.settings.payment.fxSourceManual")
+    : source;
+});
+
+const paymentFXFreshnessLabel = computed(() =>
+  form.payment_fx_status?.stale
+    ? t("admin.settings.payment.fxStale")
+    : t("admin.settings.payment.fxFresh"),
+);
+
+const paymentCapabilityScopeOptions = computed(() => [
+  { value: "methods", label: t("admin.settings.payment.capabilityScopeMethods") },
+  { value: "providers", label: t("admin.settings.payment.capabilityScopeProviders") },
+  { value: "instances", label: t("admin.settings.payment.capabilityScopeInstances") },
+]);
+
+const paymentCapabilityCurrencyOptions = computed(() => {
+  const codes = new Set<string>(commonPaymentCurrencyCodes);
+  (form.payment_allowed_currencies || []).forEach((currency) => {
+    const code = normalizePaymentCurrencyCode(currency);
+    if (code) codes.add(code);
+  });
+  Object.keys(form.payment_manual_fx_rates || {}).forEach((currency) => {
+    const code = normalizePaymentCurrencyCode(currency);
+    if (code) codes.add(code);
+  });
+  return Array.from(codes)
+    .sort()
+    .map((code) => ({ value: code, label: code }));
+});
+
+function createPaymentCapabilityRow(
+  scope: PaymentCurrencyCapabilityScope = "methods",
+  target = "",
+  currencies: string[] = [],
+): PaymentCurrencyCapabilityRow {
+  paymentCapabilityRowSeq += 1;
+  return {
+    id: `payment-capability-${paymentCapabilityRowSeq}`,
+    scope,
+    target,
+    currencies: normalizePaymentCurrencyCodes(currencies),
+    currencyDraft: "",
+  };
+}
+
+function isPaymentCapabilityScope(
+  value: unknown,
+): value is PaymentCurrencyCapabilityScope {
+  return value === "methods" || value === "providers" || value === "instances";
+}
+
+function normalizePaymentCurrencyCode(value: unknown): string {
+  return String(value || "")
+    .trim()
+    .toUpperCase();
+}
+
+function normalizePaymentCurrencyCodes(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  return Array.from(
+    new Set(
+      values
+        .map((value) => normalizePaymentCurrencyCode(value))
+        .filter((value) => /^[A-Z]{3}$/.test(value)),
+    ),
+  );
+}
+
+function parsePaymentCurrencyCapabilities(raw: string): {
+  rows: PaymentCurrencyCapabilityRow[];
+  error: string;
+} {
+  const trimmed = String(raw || "").trim();
+  if (!trimmed || trimmed === "{}") {
+    return { rows: [], error: "" };
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {
+        rows: [],
+        error: t("admin.settings.payment.invalidCapabilitiesJson"),
+      };
+    }
+
+    const capabilities = parsed as PaymentCurrencyCapabilities;
+    const rows: PaymentCurrencyCapabilityRow[] = [];
+    for (const scope of ["methods", "providers", "instances"] as const) {
+      const entries = capabilities[scope];
+      if (!entries || typeof entries !== "object" || Array.isArray(entries)) {
+        continue;
+      }
+      for (const [target, currencies] of Object.entries(entries)) {
+        const normalizedTarget = target.trim();
+        const normalizedCurrencies = normalizePaymentCurrencyCodes(currencies);
+        if (!normalizedTarget || normalizedCurrencies.length === 0) {
+          continue;
+        }
+        rows.push(
+          createPaymentCapabilityRow(scope, normalizedTarget, normalizedCurrencies),
+        );
+      }
+    }
+
+    return { rows, error: "" };
+  } catch (error: unknown) {
+    return {
+      rows: [],
+      error: `${t("admin.settings.payment.invalidCapabilitiesJson")}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
+}
+
+function hydratePaymentCapabilityRowsFromJson(raw: string) {
+  const result = parsePaymentCurrencyCapabilities(raw);
+  paymentCapabilityJsonError.value = result.error;
+  if (!result.error) {
+    paymentCapabilityRows.value = result.rows;
+  }
+}
+
+function buildPaymentCurrencyCapabilitiesJson(): string {
+  const capabilities: PaymentCurrencyCapabilities = {};
+  for (const row of paymentCapabilityRows.value) {
+    const target = row.target.trim();
+    const currencies = normalizePaymentCurrencyCodes(row.currencies);
+    if (!target || currencies.length === 0) continue;
+    const scopeEntries = capabilities[row.scope] || {};
+    scopeEntries[target] = normalizePaymentCurrencyCodes([
+      ...(scopeEntries[target] || []),
+      ...currencies,
+    ]);
+    capabilities[row.scope] = scopeEntries;
+  }
+  return JSON.stringify(capabilities);
+}
+
+function syncPaymentCapabilityRowsToJson() {
+  syncingPaymentCapabilitiesFromRows.value = true;
+  form.payment_currency_capabilities = buildPaymentCurrencyCapabilitiesJson();
+  paymentCapabilityJsonError.value = "";
+  void nextTick(() => {
+    syncingPaymentCapabilitiesFromRows.value = false;
+  });
+}
+
+function normalizePaymentCapabilityValue(value: unknown): string {
+  return String(value || "").trim();
+}
+
+function addPaymentCapabilityRow() {
+  const defaultScope: PaymentCurrencyCapabilityScope = providers.value.length
+    ? "instances"
+    : "methods";
+  const defaultTarget =
+    defaultScope === "instances"
+      ? String(providers.value[0]?.id || "")
+      : String(form.payment_enabled_types[0] || "sepay");
+  const defaultCurrency =
+    normalizePaymentCurrencyCode(form.payment_allowed_currencies?.[0]) ||
+    commonPaymentCurrencyCodes[0];
+
+  paymentCapabilityRows.value.push(
+    createPaymentCapabilityRow(defaultScope, defaultTarget, [defaultCurrency]),
+  );
+  syncPaymentCapabilityRowsToJson();
+}
+
+function removePaymentCapabilityRow(rowId: string) {
+  paymentCapabilityRows.value = paymentCapabilityRows.value.filter(
+    (row) => row.id !== rowId,
+  );
+  syncPaymentCapabilityRowsToJson();
+}
+
+function updatePaymentCapabilityScope(
+  row: PaymentCurrencyCapabilityRow,
+  value: string | number | boolean | null,
+) {
+  if (!isPaymentCapabilityScope(value)) return;
+  row.scope = value;
+  row.target = "";
+  syncPaymentCapabilityRowsToJson();
+}
+
+function updatePaymentCapabilityTarget(
+  row: PaymentCurrencyCapabilityRow,
+  value: string | number | boolean | null,
+) {
+  row.target = normalizePaymentCapabilityValue(value);
+  syncPaymentCapabilityRowsToJson();
+}
+
+function updatePaymentCapabilityCurrencyDraft(
+  row: PaymentCurrencyCapabilityRow,
+  value: string | number | boolean | null,
+) {
+  row.currencyDraft = normalizePaymentCurrencyCode(value);
+}
+
+function addPaymentCapabilityCurrency(row: PaymentCurrencyCapabilityRow) {
+  const currency = normalizePaymentCurrencyCode(row.currencyDraft);
+  if (!/^[A-Z]{3}$/.test(currency)) return;
+  if (!row.currencies.includes(currency)) {
+    row.currencies.push(currency);
+  }
+  row.currencyDraft = "";
+  syncPaymentCapabilityRowsToJson();
+}
+
+function removePaymentCapabilityCurrency(
+  row: PaymentCurrencyCapabilityRow,
+  currency: string,
+) {
+  row.currencies = row.currencies.filter((item) => item !== currency);
+  syncPaymentCapabilityRowsToJson();
+}
+
+function paymentCapabilityTargetOptions(scope: PaymentCurrencyCapabilityScope) {
+  if (scope === "methods") {
+    return allPaymentTypes.value.map((method) => ({
+      value: method.value,
+      label: method.label,
+    }));
+  }
+
+  if (scope === "providers") {
+    const options = providerKeyOptions.value.map((provider) => ({
+      value: provider.value,
+      label: provider.label,
+    }));
+    for (const provider of providerKeyOptions.value) {
+      for (const method of allPaymentTypes.value) {
+        options.push({
+          value: `${provider.value}:${method.value}`,
+          label: `${provider.label} / ${method.label}`,
+        });
+      }
+    }
+    return options;
+  }
+
+  return providers.value.map((provider) => ({
+    value: String(provider.id),
+    label: `${provider.name} #${provider.id}`,
+  }));
+}
+
+function paymentCapabilityTargetPlaceholder(
+  scope: PaymentCurrencyCapabilityScope,
+): string {
+  if (scope === "methods") {
+    return t("admin.settings.payment.selectMethod");
+  }
+  if (scope === "providers") {
+    return t("admin.settings.payment.selectProviderOrProviderMethod");
+  }
+  return t("admin.settings.payment.selectProviderInstance");
+}
+
+function validatePaymentCapabilityRowsForSave(): string | null {
+  if (paymentCapabilityJsonError.value) {
+    return paymentCapabilityJsonError.value;
+  }
+  for (const row of paymentCapabilityRows.value) {
+    if (!row.target.trim()) {
+      return t("admin.settings.payment.capabilityTargetRequired");
+    }
+    if (normalizePaymentCurrencyCodes(row.currencies).length === 0) {
+      return t("admin.settings.payment.capabilityCurrencyRequired");
+    }
+  }
+  syncPaymentCapabilityRowsToJson();
+  return null;
+}
+
+watch(
+  () => [
+    form.payment_ledger_currency,
+    form.payment_allowed_currencies,
+    form.payment_manual_fx_rates,
+  ],
+  () => {
+    if (syncingPaymentFXRatesFromRows.value) return;
+    hydratePaymentFXRateRowsFromSettings();
+  },
+  { immediate: true, deep: true },
+);
+
+watch(
+  () => form.payment_currency_capabilities,
+  (raw) => {
+    if (syncingPaymentCapabilitiesFromRows.value) return;
+    hydratePaymentCapabilityRowsFromJson(raw);
+  },
+  { immediate: true },
+);const authSourceDefaults = reactive<AuthSourceDefaultsState>(
   buildAuthSourceDefaultsState({}),
 );
 
@@ -10376,6 +11337,21 @@ async function saveSettings() {
       );
       return;
     }
+
+    const paymentFXRateError = validatePaymentFXRateRowsForSave();
+    if (paymentFXRateError) {
+      activeTab.value = "payment";
+      appStore.showError(paymentFXRateError);
+      return;
+    }
+
+    const paymentCapabilityError = validatePaymentCapabilityRowsForSave();
+    if (paymentCapabilityError) {
+      activeTab.value = "payment";
+      appStore.showError(paymentCapabilityError);
+      return;
+    }
+
     // Validate URL fields — novalidate disables browser-native checks, so we validate here
     const isValidHttpUrl = (url: string): boolean => {
       if (!url) return true;
@@ -10619,6 +11595,9 @@ async function saveSettings() {
       payment_product_name_suffix: form.payment_product_name_suffix,
       payment_help_image_url: form.payment_help_image_url,
       payment_help_text: form.payment_help_text,
+      payment_ledger_currency: form.payment_ledger_currency,
+      payment_allowed_currencies: form.payment_allowed_currencies,
+      payment_manual_fx_rates: JSON.stringify(form.payment_manual_fx_rates || {}),
       payment_currency_capabilities: form.payment_currency_capabilities || "{}",
       payment_cancel_rate_limit_enabled: form.payment_cancel_rate_limit_enabled,
       payment_cancel_rate_limit_max:
