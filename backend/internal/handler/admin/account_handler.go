@@ -528,6 +528,10 @@ REDACTED
 	// 确定是否跳过混合渠道检查
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
 
+	// 捕获闭包内创建的账号引用，用于创建成功后触发异步探测。
+	// 幂等重放时闭包不会执行 → createdAccount 为 nil → 不重复调度。
+	var createdAccount *service.Account
+
 	result, err := executeAdminIdempotent(c, "admin.accounts.create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		account, execErr := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
 			Name:                  req.Name,
@@ -549,6 +553,7 @@ REDACTED
 		if execErr != nil {
 			return nil, execErr
 	REDACTED
+		createdAccount = account
 		// Antigravity OAuth: 新账号直接设置隐私
 		h.adminService.ForceAntigravityPrivacy(ctx, account)
 		// OpenAI OAuth: 新账号直接设置隐私
@@ -577,6 +582,9 @@ REDACTED
 	if result != nil && result.Replayed {
 		c.Header("X-Idempotency-Replayed", "true")
 REDACTED
+	// OpenAI APIKey 账号创建后异步探测上游 /v1/responses 能力。
+	// 探测失败不影响账号创建响应。
+	h.scheduleOpenAIResponsesProbe(createdAccount)
 	response.Success(c, result.Data)
 REDACTED
 

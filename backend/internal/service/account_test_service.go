@@ -564,7 +564,7 @@ REDACTED else if account.Type == "apikey" {
 					"账号本身可正常使用，但当前测试接口仅支持 Responses API 路径。请直接通过实际 API 调用验证。",
 			)
 	REDACTED
-		apiURL = strings.TrimSuffix(normalizedBaseURL, "/") + "/responses"
+		apiURL = buildOpenAIResponsesURL(normalizedBaseURL)
 REDACTED else {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported account type: %s", account.Type))
 REDACTED

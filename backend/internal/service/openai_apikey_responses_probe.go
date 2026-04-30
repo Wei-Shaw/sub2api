@@ -85,7 +85,7 @@ REDACTED
 		return
 REDACTED
 
-	probeURL := strings.TrimSuffix(normalizedBaseURL, "/") + "/responses"
+	probeURL := buildOpenAIResponsesURL(normalizedBaseURL)
 
 	probeCtx, cancel := context.WithTimeout(ctx, openaiResponsesProbeTimeout)
 	defer cancel()
