@@ -20,7 +20,7 @@
               class="btn btn-secondary"
               :disabled="loading"
               :title="t('admin.serviceQuotaMonitor.refresh')"
-              @click="loadOnce"
+              @click="manualRefresh"
             >
               <Icon name="refresh" :class="{ 'animate-spin': loading }" size="sm" class="mr-1" />
               {{ t('admin.serviceQuotaMonitor.refresh') }}
@@ -30,8 +30,8 @@
               :interval-seconds="autoInterval"
               :countdown="countdown"
               :intervals="REFRESH_INTERVALS"
-              @update:enabled="onToggleEnabled"
-              @update:interval="onChangeInterval"
+              @update:enabled="setAutoEnabled"
+              @update:interval="setAutoInterval"
             />
           </div>
         </div>
@@ -94,8 +94,8 @@ import {
   resetServiceQuotaCounter,
   type LimiterRuntime,
   type ServiceQuotaMonitorFilter,
-  type ServiceQuotaMonitorSnapshot,
 } from '@/api/admin/serviceQuota'
+import { useQuotaMonitorPolling } from '@/components/serviceQuota/composables/useQuotaMonitorPolling'
 import { useAppStore } from '@/stores/app'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 
@@ -105,8 +105,6 @@ const appStore = useAppStore()
 const REFRESH_INTERVALS = [1, 5, 10, 30, 60] as const
 const DEFAULT_INTERVAL = 5
 
-const snapshot = ref<ServiceQuotaMonitorSnapshot | null>(null)
-const loading = ref(false)
 const errorMessage = ref('')
 const filter = ref<ServiceQuotaMonitorFilter>({})
 
@@ -114,13 +112,33 @@ function onFilterChange(next: ServiceQuotaMonitorFilter): void {
   filter.value = next
 }
 
-const autoEnabled = ref(true)
-const autoInterval = ref<number>(DEFAULT_INTERVAL)
-const countdown = ref<number>(DEFAULT_INTERVAL)
-let countdownTimer: ReturnType<typeof setInterval> | null = null
-
-const secondsSinceUpdate = ref(0)
-let asOfTimer: ReturnType<typeof setInterval> | null = null
+const {
+  snapshot,
+  loading,
+  autoEnabled,
+  autoInterval,
+  countdown,
+  secondsSinceUpdate,
+  loadSnapshot,
+  setAutoEnabled,
+  setAutoInterval,
+  start,
+  stop,
+} = useQuotaMonitorPolling({
+  defaultIntervalSeconds: DEFAULT_INTERVAL,
+  // 单一端点：手动刷新整体替换 items；轮询走 mergeSnapshotItems 原地更新动态字段
+  fetchSnapshot: () => getServiceQuotaMonitorSnapshot({ ...filter.value }),
+  onError: (err) => {
+    errorMessage.value = extractI18nErrorMessage(
+      err,
+      t,
+      'common.errors',
+      t('admin.serviceQuotaMonitor.loadError'),
+    )
+    appStore.showError(errorMessage.value)
+  },
+  // 轮询失败静默：让上一次成功的快照继续展示，不打断用户视觉
+})
 
 const rows = computed<LimiterRuntime[]>(() => snapshot.value?.items ?? [])
 
@@ -150,11 +168,15 @@ function onResetRow(row: LimiterRuntime): void {
   pendingReset.value = row
 }
 
-// 刷新单个 limiter 行：当前后端 Snapshot 是 batch 接口（一次拉所有 limiter，一次 redis pipeline），
-// 所以"刷新这一行"等同于"整页 loadOnce"——成本和"全表刷新"几乎一样。
-// 这样实现保持简单；将来若 limiter 数 >>5000 想减少传输，再加单条 GET 接口。
+// 单行 refresh 等同于"整页刷新"：当前后端 Snapshot 是 batch 接口，
+// 单条与全表成本一样，保持简单。
 function onRefreshRow(_row: LimiterRuntime): void {
-  loadOnce()
+  manualRefresh()
+}
+
+async function manualRefresh(): Promise<void> {
+  errorMessage.value = ''
+  await loadSnapshot()
 }
 
 async function confirmReset(): Promise<void> {
@@ -169,7 +191,7 @@ async function confirmReset(): Promise<void> {
       scope_user_id: row.scope_user_id ?? null,
     })
     appStore.showSuccess(t('admin.serviceQuotaMonitor.resetSuccess'))
-    await loadOnce()
+    await manualRefresh()
   } catch (err: unknown) {
     appStore.showError(
       extractI18nErrorMessage(err, t, 'common.errors', t('admin.serviceQuotaMonitor.resetError')),
@@ -177,71 +199,17 @@ async function confirmReset(): Promise<void> {
   }
 }
 
-async function loadOnce(): Promise<void> {
-  if (loading.value) return
-  loading.value = true
-  errorMessage.value = ''
-  try {
-    snapshot.value = await getServiceQuotaMonitorSnapshot({ ...filter.value })
-    secondsSinceUpdate.value = 0
-  } catch (err: unknown) {
-    errorMessage.value = extractI18nErrorMessage(
-      err, t, 'common.errors', t('admin.serviceQuotaMonitor.loadError'),
-    )
-    appStore.showError(errorMessage.value)
-  } finally {
-    loading.value = false
-  }
-}
-
-function startCountdown(): void {
-  stopCountdown()
-  if (!autoEnabled.value) return
-  countdown.value = autoInterval.value
-  countdownTimer = setInterval(() => {
-    countdown.value -= 1
-    if (countdown.value <= 0) {
-      countdown.value = autoInterval.value
-      loadOnce()
-    }
-  }, 1000)
-}
-
-function stopCountdown(): void {
-  if (countdownTimer) {
-    clearInterval(countdownTimer)
-    countdownTimer = null
-  }
-}
-
-function onToggleEnabled(value: boolean): void {
-  autoEnabled.value = value
-  if (value) {
-    startCountdown()
-  } else {
-    stopCountdown()
-  }
-}
-
-function onChangeInterval(seconds: number): void {
-  autoInterval.value = seconds
-  if (autoEnabled.value) startCountdown()
-}
-
+// filter 变化 = "配置过滤范围变了" → 走全量端点重新拉规则元信息
 watch(filter, () => {
-  loadOnce()
+  manualRefresh()
 }, { deep: true })
 
 onMounted(() => {
-  loadOnce()
-  startCountdown()
-  asOfTimer = setInterval(() => {
-    secondsSinceUpdate.value += 1
-  }, 1000)
+  manualRefresh()
+  start()
 })
 
 onBeforeUnmount(() => {
-  stopCountdown()
-  if (asOfTimer) clearInterval(asOfTimer)
+  stop()
 })
 </script>
