@@ -1053,8 +1053,19 @@ type MigrationDecl struct {
 	// refuses to run inside an explicit transaction (e.g.
 	// CREATE INDEX CONCURRENTLY). The host applies these outside BEGIN/COMMIT.
 	NonTransactional bool `protobuf:"varint,3,opt,name=non_transactional,json=nonTransactional,proto3" json:"non_transactional,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// DownFilename names the down migration the plugin ships alongside the up
+	// body. Empty string means the migration is irreversible — the host skips
+	// executing it during plugin Purge and only deletes bookkeeping rows.
+	// When non-empty, the host fetches the body via PluginLifecycle.GetMigration
+	// (same RPC, different filename) and caches it on plugin enable so Purge
+	// can run the down SQL even when the plugin process is no longer alive.
+	DownFilename string `protobuf:"bytes,4,opt,name=down_filename,json=downFilename,proto3" json:"down_filename,omitempty"`
+	// DownChecksumSha256 is the hex-encoded SHA-256 of the down SQL body. The
+	// host re-verifies it against the fetched body to detect supply-chain
+	// tampering — same contract as ChecksumSha256 above.
+	DownChecksumSha256 string `protobuf:"bytes,5,opt,name=down_checksum_sha256,json=downChecksumSha256,proto3" json:"down_checksum_sha256,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *MigrationDecl) Reset() {
@@ -1106,6 +1117,20 @@ func (x *MigrationDecl) GetNonTransactional() bool {
 		return x.NonTransactional
 	}
 	return false
+}
+
+func (x *MigrationDecl) GetDownFilename() string {
+	if x != nil {
+		return x.DownFilename
+	}
+	return ""
+}
+
+func (x *MigrationDecl) GetDownChecksumSha256() string {
+	if x != nil {
+		return x.DownChecksumSha256
+	}
+	return ""
 }
 
 // GetMigrationRequest names the migration the host wishes to fetch. The
@@ -1320,11 +1345,13 @@ const file_plugin_proto_rawDesc = "" +
 	"\x04meta\x18\x04 \x03(\v2$.pluginsdk.RouteDefinition.MetaEntryR\x04meta\x1a7\n" +
 	"\tMetaEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x81\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd8\x01\n" +
 	"\rMigrationDecl\x12\x1a\n" +
 	"\bfilename\x18\x01 \x01(\tR\bfilename\x12'\n" +
 	"\x0fchecksum_sha256\x18\x02 \x01(\tR\x0echecksumSha256\x12+\n" +
-	"\x11non_transactional\x18\x03 \x01(\bR\x10nonTransactional\"1\n" +
+	"\x11non_transactional\x18\x03 \x01(\bR\x10nonTransactional\x12#\n" +
+	"\rdown_filename\x18\x04 \x01(\tR\fdownFilename\x120\n" +
+	"\x14down_checksum_sha256\x18\x05 \x01(\tR\x12downChecksumSha256\"1\n" +
 	"\x13GetMigrationRequest\x12\x1a\n" +
 	"\bfilename\x18\x01 \x01(\tR\bfilename\"\x9a\x01\n" +
 	"\x14GetMigrationResponse\x12\x1a\n" +

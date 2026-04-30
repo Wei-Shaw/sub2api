@@ -292,6 +292,17 @@ message MigrationDecl {
   // refuses to run inside an explicit transaction (e.g.
   // CREATE INDEX CONCURRENTLY). The host applies these outside BEGIN/COMMIT.
   bool   non_transactional = 3;
+  // DownFilename names the down migration the plugin ships alongside the up
+  // body. Empty string means the migration is irreversible — the host skips
+  // executing it during plugin Purge and only deletes bookkeeping rows.
+  // When non-empty, the host fetches the body via PluginLifecycle.GetMigration
+  // (same RPC, different filename) and caches it on plugin enable so Purge
+  // can run the down SQL even when the plugin process is no longer alive.
+  string down_filename         = 4;
+  // DownChecksumSha256 is the hex-encoded SHA-256 of the down SQL body. The
+  // host re-verifies it against the fetched body to detect supply-chain
+  // tampering — same contract as ChecksumSha256 above.
+  string down_checksum_sha256  = 5;
 }
 
 // GetMigrationRequest names the migration the host wishes to fetch. The

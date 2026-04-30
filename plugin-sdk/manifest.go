@@ -337,6 +337,16 @@ type MigrationDecl struct {
 	// refuses to run inside an explicit transaction (e.g.
 	// CREATE INDEX CONCURRENTLY). The host applies these outside BEGIN/COMMIT.
 	NonTransactional bool
+
+	// DownFilename names the down migration the plugin ships alongside the up
+	// body. Empty string means the migration is irreversible — the host skips
+	// executing it during plugin Purge and only deletes bookkeeping rows.
+	DownFilename string
+
+	// DownChecksumSHA256 is the hex-encoded SHA-256 of the down SQL body. The
+	// host re-verifies it against the fetched body to detect supply-chain
+	// tampering — same contract as ChecksumSha256 above.
+	DownChecksumSHA256 string
 }
 
 // FrontendManifest describes the plugin's frontend integration.
@@ -502,9 +512,11 @@ func migrationsToProto(decls []MigrationDecl) []*pb.MigrationDecl {
 	out := make([]*pb.MigrationDecl, 0, len(decls))
 	for _, d := range decls {
 		out = append(out, &pb.MigrationDecl{
-			Filename:         d.Filename,
-			ChecksumSha256:   d.ChecksumSha256,
-			NonTransactional: d.NonTransactional,
+			Filename:           d.Filename,
+			ChecksumSha256:     d.ChecksumSha256,
+			NonTransactional:   d.NonTransactional,
+			DownFilename:       d.DownFilename,
+			DownChecksumSha256: d.DownChecksumSHA256,
 		})
 	}
 	return out
