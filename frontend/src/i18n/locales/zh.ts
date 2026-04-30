@@ -1022,7 +1022,20 @@ export default {
       restoreButton: '恢复',
       restoreSuccess: '已恢复 {name}',
       purgeButton: '彻底删除',
+      purgeSuccess: '已彻底删除 {name}',
       showUninstalledOnly: '仅显示已卸载',
+      // Hard purge dialog (P13·C-2)
+      purgeConfirm: {
+        title: '彻底删除插件 {name}',
+        warning: '此操作不可逆',
+        willLose: '将丢失：插件创建的所有表、settings、迁移记录以及 plugins 行',
+        willKeep: '保留：插件二进制本身（如需移除请联系运维）',
+        irreversibleWarning: '若插件未提供 down migration，相关 DB 表/列将残留 — 请检查 audit log',
+        typeName: '请输入插件名字 {name} 以确认',
+        confirmButton: '永久删除',
+        errorMustSoftUninstall: '请先软卸载插件再执行彻底删除',
+        errorNotFound: '插件已不存在'
+      },
       // Detail modal tabs
       tabDetail: '详情',
       tabSettings: '设置',

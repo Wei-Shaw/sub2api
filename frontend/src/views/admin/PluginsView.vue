@@ -476,6 +476,86 @@
       @confirm="confirmUninstall"
       @cancel="uninstallTarget = null"
     />
+
+    <!-- Hard purge dialog (P13·C-2). GitHub-repo-delete style: typed-name
+         confirmation, irreversibility warnings, scoped to plugins that have
+         already been soft-uninstalled (backend rejects with 409 otherwise). -->
+    <BaseDialog
+      v-if="purgeTarget"
+      :show="!!purgeTarget"
+      :title="t('admin.plugins.purgeConfirm.title', { name: purgeTarget.display_name || purgeTarget.name })"
+      width="narrow"
+      @close="closePurgeDialog"
+    >
+      <div class="space-y-3">
+        <!-- Irreversibility banner -->
+        <div class="rounded-md border border-red-300 bg-red-50 p-3 dark:border-red-700 dark:bg-red-900/30">
+          <div class="flex items-center gap-2 text-sm font-semibold text-red-800 dark:text-red-200">
+            <Icon name="exclamationCircle" size="sm" />
+            {{ t('admin.plugins.purgeConfirm.warning') }}
+          </div>
+        </div>
+
+        <!-- What will be lost / kept -->
+        <ul class="space-y-1.5 text-xs text-gray-700 dark:text-gray-300">
+          <li class="flex items-start gap-2">
+            <Icon name="trash" size="xs" class="mt-0.5 shrink-0 text-red-500" />
+            <span>{{ t('admin.plugins.purgeConfirm.willLose') }}</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <Icon name="checkCircle" size="xs" class="mt-0.5 shrink-0 text-emerald-500" />
+            <span>{{ t('admin.plugins.purgeConfirm.willKeep') }}</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <Icon name="exclamationCircle" size="xs" class="mt-0.5 shrink-0 text-amber-500" />
+            <span>{{ t('admin.plugins.purgeConfirm.irreversibleWarning') }}</span>
+          </li>
+        </ul>
+
+        <!-- Typed-name confirmation -->
+        <div>
+          <label class="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">
+            {{ t('admin.plugins.purgeConfirm.typeName', { name: purgeTarget.name }) }}
+          </label>
+          <input
+            v-model="purgeNameInput"
+            type="text"
+            class="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-mono text-gray-900 focus:border-red-500 focus:outline-none focus:ring-1 focus:ring-red-500 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-100"
+            :placeholder="purgeTarget.name"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </div>
+
+        <!-- Inline error (server returned 409 / 404 / etc.) -->
+        <div
+          v-if="purgeError"
+          class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300"
+        >
+          {{ purgeError }}
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button
+            type="button"
+            class="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-200 dark:hover:bg-dark-600"
+            @click="closePurgeDialog"
+          >
+            {{ t('common.cancel') }}
+          </button>
+          <button
+            type="button"
+            class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+            :disabled="!purgeNameMatches || purgeBusy"
+            @click="confirmPurge"
+          >
+            {{ t('admin.plugins.purgeConfirm.confirmButton') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
   </AppLayout>
 </template>
 
@@ -607,12 +687,22 @@ const showUninstalledOnly = ref(false)
 // the template; null when no dialog is open.
 const uninstallTarget = ref<PluginInfo | null>(null)
 
-// P13·C-2 hard purge dialog state. The dialog template + endpoint wiring
-// land in commit 3; commit 2 declares the refs so soft-uninstalled cards'
-// "彻底删除" button can already store its target.
+// P13·C-2 hard purge dialog state. Two-stage typed-name confirm: the
+// confirm button stays disabled until purgeNameInput === purgeTarget.name
+// (strict ===), then DELETE /:name?purge=true with body `{name}` is sent.
+// Backend requires the plugin to already be soft-uninstalled and rejects
+// with 409 otherwise.
 const purgeTarget = ref<PluginInfo | null>(null)
 const purgeNameInput = ref('')
 const purgeError = ref('')
+const purgeBusy = ref(false)
+
+// Strict equality: the confirm button is disabled until the operator has
+// typed the plugin name *exactly*. No trim, no lowercase — the GitHub-style
+// flow is meant to slow things down on purpose.
+const purgeNameMatches = computed<boolean>(
+  () => !!purgeTarget.value && purgeNameInput.value === purgeTarget.value.name
+)
 
 const visiblePlugins = computed<PluginInfo[]>(() => {
   if (showUninstalledOnly.value) {
@@ -718,13 +808,56 @@ async function restorePlugin(name: string) {
   }
 }
 
-// P13·C-2 hard purge dialog (impl in Commit 3). Wired here so commit 2's
-// soft-uninstalled cards already have a target for the "彻底删除" button —
-// commit 3 fills in the dialog template + state.
+// P13·C-2 hard purge: open the typed-name confirm dialog. Reset previous
+// input and error so the dialog never reuses stale state across plugins.
 function openPurgeDialog(p: PluginInfo) {
   purgeTarget.value = p
   purgeNameInput.value = ''
   purgeError.value = ''
+  purgeBusy.value = false
+}
+
+function closePurgeDialog() {
+  purgeTarget.value = null
+  purgeNameInput.value = ''
+  purgeError.value = ''
+  purgeBusy.value = false
+}
+
+// Map the backend's typed errors back to localised user messages. The
+// admin DELETE endpoint returns:
+//   - 409 if the plugin is still active (must be soft-uninstalled first)
+//   - 404 if the plugin row is gone (raced with another admin)
+//   - 200 on success
+// Anything else falls through to the generic apiError extractor.
+function purgeErrorMessage(status: number, fallback: string): string {
+  if (status === 409) return t('admin.plugins.purgeConfirm.errorMustSoftUninstall')
+  if (status === 404) return t('admin.plugins.purgeConfirm.errorNotFound')
+  return fallback
+}
+
+async function confirmPurge() {
+  const target = purgeTarget.value
+  if (!target || !purgeNameMatches.value) return
+  purgeBusy.value = true
+  purgeError.value = ''
+  try {
+    // Body carries the plugin name as a second-stage proof — the backend
+    // checks both the URL ?purge=true gate and the body name to guard
+    // against accidental :name path mismatches.
+    await apiClient.delete(`/admin/plugins/${target.name}`, {
+      params: { purge: true },
+      data: { name: target.name },
+    })
+    appStore.showSuccess(t('admin.plugins.purgeSuccess', { name: target.name }))
+    closePurgeDialog()
+    await reload()
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status ?? 0
+    purgeError.value = purgeErrorMessage(status, extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    purgeBusy.value = false
+  }
 }
 
 async function act(name: string, action: PluginAction) {

@@ -1018,7 +1018,20 @@ export default {
       restoreButton: 'Restore',
       restoreSuccess: '{name} restored',
       purgeButton: 'Hard delete',
+      purgeSuccess: '{name} permanently deleted',
       showUninstalledOnly: 'Show uninstalled only',
+      // Hard purge dialog (P13·C-2)
+      purgeConfirm: {
+        title: 'Permanently delete plugin {name}',
+        warning: 'This action is irreversible',
+        willLose: 'You will lose: every table the plugin created, all settings, migration records, and the plugins row.',
+        willKeep: 'Preserved: the plugin binary itself (contact ops to remove it).',
+        irreversibleWarning: 'If the plugin shipped no down migration, related DB tables/columns will remain — see audit log.',
+        typeName: 'Type the plugin name {name} to confirm',
+        confirmButton: 'Permanently delete',
+        errorMustSoftUninstall: 'Soft-uninstall the plugin first, then hard-delete',
+        errorNotFound: 'Plugin no longer exists'
+      },
       // Detail modal tabs
       tabDetail: 'Details',
       tabSettings: 'Settings',
