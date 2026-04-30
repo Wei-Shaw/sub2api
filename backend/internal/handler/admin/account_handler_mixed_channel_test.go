@@ -196,3 +196,29 @@ func TestAccountHandlerBulkUpdateMixedChannelConfirmSkips(t *testing.T) {
 	require.Equal(t, float64(2), data["success"])
 	require.Equal(t, float64(0), data["failed"])
 }
+
+func TestBulkUpdateAcceptsFilterTargetRequest(t *testing.T) {
+	adminSvc := newStubAdminService()
+	router := setupAccountMixedChannelRouter(adminSvc)
+
+	body, _ := json.Marshal(map[string]any{
+		"filters": map[string]any{
+			"platform":     "openai",
+			"type":         "oauth",
+			"status":       "active",
+			"group":        "12",
+			"privacy_mode": "blocked",
+			"search":       "bulk-target",
+		},
+		"schedulable": true,
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts/bulk-update", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, float64(0), resp["code"])
+}

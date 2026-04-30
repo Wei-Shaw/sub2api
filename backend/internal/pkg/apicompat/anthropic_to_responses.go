@@ -75,7 +75,7 @@ func AnthropicToResponses(req *AnthropicRequest) (*ResponsesRequest, error) {
 //	{"type":"auto"}            → "auto"
 //	{"type":"any"}             → "required"
 //	{"type":"none"}            → "none"
-//	{"type":"tool","name":"X"} → {"type":"function","function":{"name":"X"}}
+//	{"type":"tool","name":"X"} → {"type":"function","name":"X"}
 func convertAnthropicToolChoiceToResponses(raw json.RawMessage) (json.RawMessage, error) {
 	var tc struct {
 		Type string `json:"type"`
@@ -94,8 +94,8 @@ func convertAnthropicToolChoiceToResponses(raw json.RawMessage) (json.RawMessage
 		return json.Marshal("none")
 	case "tool":
 		return json.Marshal(map[string]any{
-			"type":     "function",
-			"function": map[string]string{"name": tc.Name},
+			"type": "function",
+			"name": tc.Name,
 		})
 	default:
 		// Pass through unknown types as-is

@@ -1042,6 +1042,285 @@
               </template>
             </div>
           </div>
+          <!-- OpenAI Fast/Flex Policy Settings -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.openaiFastPolicy.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.openaiFastPolicy.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <!-- Empty state -->
+              <div
+                v-if="openaiFastPolicyForm.rules.length === 0"
+                class="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
+              >
+                {{ t("admin.settings.openaiFastPolicy.empty") }}
+              </div>
+
+              <!-- Rule Cards -->
+              <div
+                v-for="(rule, ruleIndex) in openaiFastPolicyForm.rules"
+                :key="ruleIndex"
+                class="rounded-lg border border-gray-200 p-4 dark:border-dark-600"
+              >
+                <div class="mb-3 flex items-center justify-between">
+                  <span
+                    class="text-sm font-medium text-gray-900 dark:text-white"
+                  >
+                    {{
+                      t("admin.settings.openaiFastPolicy.ruleHeader", {
+                        index: ruleIndex + 1,
+                      })
+                    }}
+                  </span>
+                  <button
+                    type="button"
+                    @click="removeOpenAIFastPolicyRule(ruleIndex)"
+                    class="rounded p-1 text-red-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                    :title="t('admin.settings.openaiFastPolicy.removeRule')"
+                  >
+                    <svg
+                      class="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <!-- Service Tier -->
+                  <div>
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.openaiFastPolicy.serviceTier") }}
+                    </label>
+                    <Select
+                      :modelValue="rule.service_tier"
+                      @update:modelValue="
+                        rule.service_tier = $event as
+                          | 'all'
+                          | 'priority'
+                          | 'flex'
+                      "
+                      :options="openaiFastPolicyTierOptions"
+                    />
+                  </div>
+
+                  <!-- Action -->
+                  <div>
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.openaiFastPolicy.action") }}
+                    </label>
+                    <Select
+                      :modelValue="rule.action"
+                      @update:modelValue="
+                        rule.action = $event as 'pass' | 'filter' | 'block'
+                      "
+                      :options="openaiFastPolicyActionOptions"
+                    />
+                  </div>
+
+                  <!-- Scope -->
+                  <div>
+                    <label
+                      class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                    >
+                      {{ t("admin.settings.openaiFastPolicy.scope") }}
+                    </label>
+                    <Select
+                      :modelValue="rule.scope"
+                      @update:modelValue="
+                        rule.scope = $event as
+                          | 'all'
+                          | 'oauth'
+                          | 'apikey'
+                          | 'bedrock'
+                      "
+                      :options="openaiFastPolicyScopeOptions"
+                    />
+                  </div>
+                </div>
+
+                <!-- Error Message (only when action=block) -->
+                <div v-if="rule.action === 'block'" class="mt-3">
+                  <label
+                    class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                  >
+                    {{ t("admin.settings.openaiFastPolicy.errorMessage") }}
+                  </label>
+                  <input
+                    v-model="rule.error_message"
+                    type="text"
+                    class="input"
+                    :placeholder="
+                      t(
+                        'admin.settings.openaiFastPolicy.errorMessagePlaceholder',
+                      )
+                    "
+                  />
+                  <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                    {{ t("admin.settings.openaiFastPolicy.errorMessageHint") }}
+                  </p>
+                </div>
+
+                <!-- Model Whitelist -->
+                <div class="mt-3">
+                  <label
+                    class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                  >
+                    {{ t("admin.settings.openaiFastPolicy.modelWhitelist") }}
+                  </label>
+                  <p class="mb-2 text-xs text-gray-400 dark:text-gray-500">
+                    {{
+                      t("admin.settings.openaiFastPolicy.modelWhitelistHint")
+                    }}
+                  </p>
+                  <div
+                    v-for="(_, patternIdx) in rule.model_whitelist || []"
+                    :key="patternIdx"
+                    class="mb-1.5 flex items-center gap-2"
+                  >
+                    <input
+                      v-model="rule.model_whitelist![patternIdx]"
+                      type="text"
+                      class="input input-sm flex-1"
+                      :placeholder="
+                        t(
+                          'admin.settings.openaiFastPolicy.modelPatternPlaceholder',
+                        )
+                      "
+                    />
+                    <button
+                      type="button"
+                      @click="
+                        removeOpenAIFastPolicyModelPattern(rule, patternIdx)
+                      "
+                      class="shrink-0 rounded p-1 text-red-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                    >
+                      <svg
+                        class="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        stroke-width="2"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    @click="addOpenAIFastPolicyModelPattern(rule)"
+                    class="mb-2 inline-flex items-center gap-1 text-xs text-primary-600 transition-colors hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
+                  >
+                    <svg
+                      class="h-3.5 w-3.5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M12 4v16m8-8H4"
+                      />
+                    </svg>
+                    {{ t("admin.settings.openaiFastPolicy.addModelPattern") }}
+                  </button>
+                </div>
+
+                <!-- Fallback Action (only when model_whitelist is non-empty) -->
+                <div
+                  v-if="
+                    rule.model_whitelist && rule.model_whitelist.length > 0
+                  "
+                  class="mt-3"
+                >
+                  <label
+                    class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400"
+                  >
+                    {{ t("admin.settings.openaiFastPolicy.fallbackAction") }}
+                  </label>
+                  <Select
+                    :modelValue="rule.fallback_action || 'pass'"
+                    @update:modelValue="
+                      rule.fallback_action = $event as
+                        | 'pass'
+                        | 'filter'
+                        | 'block'
+                    "
+                    :options="openaiFastPolicyActionOptions"
+                  />
+                  <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                    {{
+                      t("admin.settings.openaiFastPolicy.fallbackActionHint")
+                    }}
+                  </p>
+                  <div v-if="rule.fallback_action === 'block'" class="mt-2">
+                    <input
+                      v-model="rule.fallback_error_message"
+                      type="text"
+                      class="input"
+                      :placeholder="
+                        t(
+                          'admin.settings.openaiFastPolicy.fallbackErrorMessagePlaceholder',
+                        )
+                      "
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Add Rule Button -->
+              <div>
+                <button
+                  type="button"
+                  @click="addOpenAIFastPolicyRule"
+                  class="btn btn-secondary btn-sm inline-flex items-center gap-1"
+                >
+                  <svg
+                    class="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 4v16m8-8H4"
+                    />
+                  </svg>
+                  {{ t("admin.settings.openaiFastPolicy.addRule") }}
+                </button>
+                <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">
+                  {{ t("admin.settings.openaiFastPolicy.saveHint") }}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
         <!-- /Tab: Gateway -->
 
@@ -5329,6 +5608,7 @@ import type {
   SystemSettings,
   UpdateSettingsRequest,
   DefaultSubscriptionSetting,
+  OpenAIFastPolicyRule,
   WeChatConnectMode,
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
@@ -5468,6 +5748,14 @@ const betaPolicyForm = reactive({
     fallback_error_message?: string;
   }>,
 });
+
+// OpenAI Fast/Flex Policy 状态
+const openaiFastPolicyForm = reactive({
+  rules: [] as OpenAIFastPolicyRule[],
+});
+// 标记 openai_fast_policy_settings 是否已成功从后端加载，
+// 避免后端 GET 出错或字段缺失时，保存把默认规则覆盖成空数组。
+const openaiFastPolicyLoaded = ref(false);
 
 const tablePageSizeMin = 5;
 const tablePageSizeMax = 1000;
@@ -6251,6 +6539,23 @@ async function loadSettings() {
     );
     form.oidc_connect_client_secret = "";
 
+    // Load OpenAI fast/flex policy rules from bulk settings.
+    // 仅当 payload 真的包含该字段时填充并标记为已加载；否则保持表单空值，
+    // 让 saveSettings 在未加载时跳过该字段，防止覆盖后端默认规则。
+    if (
+      settings.openai_fast_policy_settings &&
+      Array.isArray(settings.openai_fast_policy_settings.rules)
+    ) {
+      openaiFastPolicyForm.rules =
+        settings.openai_fast_policy_settings.rules.map((rule) => ({
+          ...rule,
+          model_whitelist: rule.model_whitelist
+            ? [...rule.model_whitelist]
+            : [],
+        }));
+      openaiFastPolicyLoaded.value = true;
+    }
+
     // Load web search emulation config separately
     await loadWebSearchConfig();
   } catch (error: unknown) {
@@ -6597,10 +6902,39 @@ async function saveSettings() {
       affiliate_enabled: form.affiliate_enabled,
     };
 
+    // 仅当 openai_fast_policy_settings 已成功从后端加载时才回写，
+    // 否则省略整个字段，让后端保留既有规则（含默认值）。
+    if (openaiFastPolicyLoaded.value) {
+      payload.openai_fast_policy_settings = {
+        rules: openaiFastPolicyForm.rules.map((rule) => {
+          const whitelist = (rule.model_whitelist || [])
+            .map((p) => p.trim())
+            .filter((p) => p !== "");
+          const hasWhitelist = whitelist.length > 0;
+          return {
+            service_tier: rule.service_tier,
+            action: rule.action,
+            scope: rule.scope,
+            error_message:
+              rule.action === "block" ? rule.error_message : undefined,
+            model_whitelist: hasWhitelist ? whitelist : undefined,
+            fallback_action: hasWhitelist
+              ? rule.fallback_action || "pass"
+              : undefined,
+            fallback_error_message:
+              hasWhitelist && rule.fallback_action === "block"
+                ? rule.fallback_error_message
+                : undefined,
+          };
+        }),
+      };
+    }
+
     appendAuthSourceDefaultsToUpdateRequest(payload, authSourceDefaults);
 
     const updated = await adminAPI.settings.updateSettings(payload);
     for (const [key, value] of Object.entries(updated)) {
+      if (key === "openai_fast_policy_settings") continue;
       if (value !== null && value !== undefined) {
         (form as Record<string, unknown>)[key] = value;
       }
@@ -6644,6 +6978,20 @@ async function saveSettings() {
       form.wechat_connect_mode,
     );
     form.oidc_connect_client_secret = "";
+    // Refresh OpenAI fast/flex policy from server response
+    if (
+      updated.openai_fast_policy_settings &&
+      Array.isArray(updated.openai_fast_policy_settings.rules)
+    ) {
+      openaiFastPolicyForm.rules =
+        updated.openai_fast_policy_settings.rules.map((rule) => ({
+          ...rule,
+          model_whitelist: rule.model_whitelist
+            ? [...rule.model_whitelist]
+            : [],
+        }));
+      openaiFastPolicyLoaded.value = true;
+    }
     // Save web search emulation config separately (errors handled internally)
     const wsOk = await saveWebSearchConfig();
     // Refresh cached settings so sidebar/header update immediately
@@ -7009,6 +7357,61 @@ async function loadBetaPolicySettings() {
   } finally {
     betaPolicyLoading.value = false;
   }
+}
+
+// ==================== OpenAI Fast/Flex Policy ====================
+
+const openaiFastPolicyTierOptions = computed(() => [
+  { value: "all", label: t("admin.settings.openaiFastPolicy.tierAll") },
+  {
+    value: "priority",
+    label: t("admin.settings.openaiFastPolicy.tierPriority"),
+  },
+  { value: "flex", label: t("admin.settings.openaiFastPolicy.tierFlex") },
+]);
+
+const openaiFastPolicyActionOptions = computed(() => [
+  { value: "pass", label: t("admin.settings.openaiFastPolicy.actionPass") },
+  { value: "filter", label: t("admin.settings.openaiFastPolicy.actionFilter") },
+  { value: "block", label: t("admin.settings.openaiFastPolicy.actionBlock") },
+]);
+
+const openaiFastPolicyScopeOptions = computed(() => [
+  { value: "all", label: t("admin.settings.openaiFastPolicy.scopeAll") },
+  { value: "oauth", label: t("admin.settings.openaiFastPolicy.scopeOAuth") },
+  { value: "apikey", label: t("admin.settings.openaiFastPolicy.scopeAPIKey") },
+  {
+    value: "bedrock",
+    label: t("admin.settings.openaiFastPolicy.scopeBedrock"),
+  },
+]);
+
+function addOpenAIFastPolicyRule() {
+  openaiFastPolicyForm.rules.push({
+    service_tier: "priority",
+    action: "filter",
+    scope: "all",
+    error_message: "",
+    model_whitelist: [],
+    fallback_action: "pass",
+    fallback_error_message: "",
+  });
+}
+
+function removeOpenAIFastPolicyRule(index: number) {
+  openaiFastPolicyForm.rules.splice(index, 1);
+}
+
+function addOpenAIFastPolicyModelPattern(rule: OpenAIFastPolicyRule) {
+  if (!rule.model_whitelist) rule.model_whitelist = [];
+  rule.model_whitelist.push("");
+}
+
+function removeOpenAIFastPolicyModelPattern(
+  rule: OpenAIFastPolicyRule,
+  idx: number,
+) {
+  rule.model_whitelist?.splice(idx, 1);
 }
 
 async function saveBetaPolicySettings() {

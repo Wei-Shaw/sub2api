@@ -119,12 +119,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	}
 	defer billingTicket.Close()
 
-	sessionHash := ""
-	if parsed.Multipart {
-		sessionHash = h.gatewayService.GenerateSessionHashWithFallback(c, nil, parsed.StickySessionSeed())
-	} else {
-		sessionHash = h.gatewayService.GenerateSessionHash(c, body)
-	}
+	sessionHash := h.gatewayService.GenerateExplicitSessionHash(c, body)
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0

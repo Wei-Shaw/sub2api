@@ -227,6 +227,41 @@ func TestOpenAIGatewayService_GenerateSessionHash_AttachesLegacyHashToContext(t 
 	require.NotEmpty(t, openAILegacySessionHashFromContext(c.Request.Context()))
 }
 
+func TestOpenAIGatewayService_GenerateExplicitSessionHash_SkipsContentFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{}
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat"}`)
+
+	t.Run("stateless image body stays unstuck", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+
+		require.Empty(t, svc.GenerateExplicitSessionHash(c, body))
+		require.Empty(t, openAILegacySessionHashFromContext(c.Request.Context()))
+	})
+
+	t.Run("prompt_cache_key is explicit", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+
+		got := svc.GenerateExplicitSessionHash(c, []byte(`{"model":"gpt-image-2","prompt_cache_key":"image-session"}`))
+		require.Equal(t, fmt.Sprintf("%016x", xxhash.Sum64String("image-session")), got)
+		require.NotEmpty(t, openAILegacySessionHashFromContext(c.Request.Context()))
+	})
+
+	t.Run("header overrides body", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", nil)
+		c.Request.Header.Set("session_id", "header-session")
+
+		got := svc.GenerateExplicitSessionHash(c, []byte(`{"prompt_cache_key":"body-session"}`))
+		require.Equal(t, fmt.Sprintf("%016x", xxhash.Sum64String("header-session")), got)
+	})
+}
+
 func TestOpenAIGatewayService_GenerateSessionHashWithFallback(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
@@ -1730,6 +1765,24 @@ func TestOpenAIResponsesRequestPathSuffix(t *testing.T) {
 			require.Equal(t, tt.want, openAIResponsesRequestPathSuffix(c))
 		})
 	}
+}
+
+func TestNormalizeOpenAICompactRequestBodyPreservesCurrentCodexPayloadFields(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.5","input":[{"type":"message","role":"user","content":"compact me"}],"instructions":"compact-test","tools":[{"type":"function","name":"shell"}],"parallel_tool_calls":true,"reasoning":{"effort":"high"},"text":{"verbosity":"low"},"previous_response_id":"resp_123","store":true,"stream":true,"prompt_cache_key":"cache_123"}`)
+
+	normalized, changed, err := normalizeOpenAICompactRequestBody(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "gpt-5.5", gjson.GetBytes(normalized, "model").String())
+	require.True(t, gjson.GetBytes(normalized, "tools").Exists())
+	require.True(t, gjson.GetBytes(normalized, "parallel_tool_calls").Bool())
+	require.Equal(t, "high", gjson.GetBytes(normalized, "reasoning.effort").String())
+	require.Equal(t, "low", gjson.GetBytes(normalized, "text.verbosity").String())
+	require.Equal(t, "resp_123", gjson.GetBytes(normalized, "previous_response_id").String())
+	require.False(t, gjson.GetBytes(normalized, "store").Exists())
+	require.False(t, gjson.GetBytes(normalized, "stream").Exists())
+	require.False(t, gjson.GetBytes(normalized, "prompt_cache_key").Exists())
 }
 
 func TestOpenAIBuildUpstreamRequestOpenAIPassthroughPreservesCompactPath(t *testing.T) {

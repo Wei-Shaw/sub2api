@@ -756,6 +756,16 @@ func TestAPIContracts(t *testing.T) {
 					"payment_visible_method_alipay_enabled": true,
 					"payment_visible_method_wxpay_enabled": false,
 					"openai_advanced_scheduler_enabled": true,
+					"openai_fast_policy_settings": {
+						"rules": [
+							{
+								"service_tier": "priority",
+								"action": "filter",
+								"scope": "all",
+								"fallback_action": "pass"
+							}
+						]
+					},
 					"custom_menu_items": [],
 					"custom_endpoints": [],
 					"payment_enabled": false,
@@ -939,6 +949,16 @@ func TestAPIContracts(t *testing.T) {
 					"payment_visible_method_alipay_enabled": false,
 					"payment_visible_method_wxpay_enabled": false,
 					"openai_advanced_scheduler_enabled": false,
+					"openai_fast_policy_settings": {
+						"rules": [
+							{
+								"service_tier": "priority",
+								"action": "filter",
+								"scope": "all",
+								"fallback_action": "pass"
+							}
+						]
+					},
 					"payment_enabled": false,
 					"payment_min_amount": 0,
 					"payment_max_amount": 0,

@@ -1366,14 +1366,23 @@ func setPreviousResponseIDToRawPayload(payload []byte, previousResponseID string
 func shouldInferIngressFunctionCallOutputPreviousResponseID(
 	storeDisabled bool,
 	turn int,
-	hasFunctionCallOutput bool,
+	signals ToolContinuationSignals,
 	currentPreviousResponseID string,
 	expectedPreviousResponseID string,
 ) bool {
-	if !storeDisabled || turn <= 1 || !hasFunctionCallOutput {
+	if !storeDisabled || turn <= 1 || !signals.HasFunctionCallOutput {
 		return false
 	}
 	if strings.TrimSpace(currentPreviousResponseID) != "" {
+		return false
+	}
+	if signals.HasFunctionCallOutputMissingCallID {
+		return false
+	}
+	// If the client already sent tool-call context or item_reference anchors,
+	// treat this as a full replay / self-contained continuation payload rather
+	// than downgrading it into an inferred delta continuation.
+	if signals.HasToolCallContext || signals.HasItemReferenceForAllCallIDs {
 		return false
 	}
 	return strings.TrimSpace(expectedPreviousResponseID) != ""
@@ -2366,6 +2375,15 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		return errors.New("token is empty")
 	}
 
+	// 预取一次 OpenAI Fast Policy settings，绑定到 ctx，让该 WS session
+	// 内所有帧的 evaluateOpenAIFastPolicy 调用复用同一份快照，避免每帧
+	// 进入 DB / settingRepo。Trade-off 见 withOpenAIFastPolicyContext 注释。
+	if s.settingService != nil {
+		if settings, err := s.settingService.GetOpenAIFastPolicySettings(ctx); err == nil && settings != nil {
+			ctx = withOpenAIFastPolicyContext(ctx, settings)
+		}
+	}
+
 	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)
 	modeRouterV2Enabled := s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.ModeRouterV2Enabled
 	ingressMode := OpenAIWSIngressModeCtxPool
@@ -2523,6 +2541,44 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 			normalized = next
 		}
+
+		// Apply OpenAI Fast Policy on the response.create frame using the same
+		// evaluator/normalize/scope rules as the HTTP entrypoints. This is the
+		// single integration point for all WS ingress turns (first + follow-up
+		// frames flow through here).
+		//
+		// Model fallback: parseClientPayload above rejects any frame whose
+		// "model" field is missing (line ~2493-2500), so by the time we
+		// reach this point upstreamModel is always derived from a non-empty
+		// per-frame model. The capturedSessionModel fallback used in the
+		// passthrough adapter is therefore not needed in this path.
+		policyApplied, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, upstreamModel, normalized)
+		if policyErr != nil {
+			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", policyErr)
+		}
+		if blocked != nil {
+			// Send a Realtime-style error event to the client first, then
+			// signal the handler to close the connection with PolicyViolation.
+			// We intentionally do NOT forward this frame upstream.
+			//
+			// coder/websocket@v1.8.14 Conn.Write is synchronous and flushes
+			// the underlying bufio writer before returning (write.go:42 →
+			// 307-311), and the subsequent close handshake re-acquires the
+			// same writeFrameMu, so the error event is guaranteed to reach
+			// the kernel send buffer before any close frame is queued.
+			eventBytes := buildOpenAIFastPolicyBlockedWSEvent(blocked)
+			if eventBytes != nil {
+				writeCtx, cancel := context.WithTimeout(ctx, s.openAIWSWriteTimeout())
+				_ = clientConn.Write(writeCtx, coderws.MessageText, eventBytes)
+				cancel()
+			}
+			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(
+				coderws.StatusPolicyViolation,
+				blocked.Message,
+				blocked,
+			)
+		}
+		normalized = policyApplied
 
 		return openAIWSClientPayload{
 			payloadRaw:         normalized,
@@ -3132,13 +3188,22 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		skipBeforeTurn = false
 		currentPreviousResponseID := openAIWSPayloadStringFromRaw(currentPayload, "previous_response_id")
 		expectedPrev := strings.TrimSpace(lastTurnResponseID)
-		hasFunctionCallOutput := gjson.GetBytes(currentPayload, `input.#(type=="function_call_output")`).Exists()
+		toolSignals := ToolContinuationSignals{
+			HasFunctionCallOutput: gjson.GetBytes(currentPayload, `input.#(type=="function_call_output")`).Exists(),
+		}
+		if toolSignals.HasFunctionCallOutput {
+			var currentReqBody map[string]any
+			if err := json.Unmarshal(currentPayload, &currentReqBody); err == nil {
+				toolSignals = AnalyzeToolContinuationSignals(currentReqBody)
+			}
+		}
+		hasFunctionCallOutput := toolSignals.HasFunctionCallOutput
 		// store=false + function_call_output 场景必须有续链锚点。
 		// 若客户端未传 previous_response_id，优先回填上一轮响应 ID，避免上游报 call_id 无法关联。
 		if shouldInferIngressFunctionCallOutputPreviousResponseID(
 			storeDisabled,
 			turn,
-			hasFunctionCallOutput,
+			toolSignals,
 			currentPreviousResponseID,
 			expectedPrev,
 		) {

@@ -149,6 +149,25 @@ func (s *BillingCacheService) QueueUpdateAPIKeyRateLimitUsage(apiKeyID int64, co
 	})
 }
 
+// InvalidateAPIKeyRateLimit invalidates the Redis rate-limit usage cache for an API key.
+// 同步调用：admin 改动 rate-limit 配置后立刻清掉旧缓存，让下次请求走 DB 拉最新值。
+// 与 QueueUpdateAPIKeyRateLimitUsage 异步累加路径互补——后者用于业务计费时延迟刷新，
+// 本方法用于配置变更时的强一致性失效。
+func (s *BillingCacheService) InvalidateAPIKeyRateLimit(ctx context.Context, keyID int64) error {
+	if s.cache == nil {
+		return nil
+	}
+	if err := s.cache.InvalidateAPIKeyRateLimit(ctx, keyID); err != nil {
+		slog.Warn("invalidate api key rate limit cache failed",
+			"component", billingCacheLogComponent,
+			"api_key_id", keyID,
+			"error", err,
+		)
+		return err
+	}
+	return nil
+}
+
 // processUpdateRateLimitUsageTask 处理 cacheWriteUpdateRateLimitUsage：
 // 异步累加 API Key 限速窗口用量到缓存。
 func (s *BillingCacheService) processUpdateRateLimitUsageTask(ctx context.Context, task cacheWriteTask) {
