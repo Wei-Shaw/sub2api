@@ -463,6 +463,8 @@ var ProviderSet = wire.NewSet(
 	NewGroupCapacityService,
 	// NewChannelService 已迁移到 plugins/channel-management/
 	// 渠道数据通过 ChannelCacheReader 从 Redis 直接读取（由插件侧 CacheWriter 维护）
+	// P3 加入 PricingOverrideCache: in-memory 双源, plugin PricingExtension 写, reader 优先读
+	NewPricingOverrideCache,
 	NewChannelCacheReader,
 	NewModelPricingResolver,
 	ProvidePaymentConfigService,

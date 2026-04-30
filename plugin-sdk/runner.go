@@ -126,6 +126,13 @@ func Run(p Plugin) error {
 
 	grpcSrv := grpc.NewServer()
 	pb.RegisterPluginLifecycleServer(grpcSrv, r)
+	// Optional plugin-supplied gRPC services share the same listener as the
+	// lifecycle service so the host can dispatch by service name on a single
+	// ClientConn. Registration runs before Serve so service descriptors are
+	// installed before the first incoming RPC.
+	if reg, ok := p.(GRPCServiceRegistrar); ok {
+		reg.RegisterGRPCServices(grpcSrv)
+	}
 
 	httpSrv := &http.Server{
 		Handler:           mux,

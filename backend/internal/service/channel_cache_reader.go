@@ -114,16 +114,39 @@ type ChannelMeta struct {
 // 元信息 / 定价 / 映射 / 限制数据。该结构对插件零感知,只认 Redis 键格式。
 //
 // 所有公共方法都是协程安全的（go-redis 客户端本身协程安全）。
+//
+// P3 双源降级 (PLUGIN-PRICING):
+//   - pricingCache 优先 (in-memory, host 端经 PricingExtensionClient 同步而来)
+//   - cache miss 时落回 Redis 路径, 兼容 P4 之前 channel-management 仍在写
+//     plugin:channel:pricing:* 等约定 key 的过渡期。
+//
+// 当 PricingOverrideCache 完全替代 Redis 写入路径时(P4), 仅需删除 Redis
+// 分支即可。
 type ChannelCacheReader struct {
 	rdb *redis.Client
+	// pricingCache 是 host wire 注入的 in-memory 覆盖层。GetChannelModelPricing
+	// 优先查它, 命中即返回; 缺失才走 Redis fallback。nil 等价于"未启用 plugin
+	// pricing", 行为与 P3 之前完全一致。
+	pricingCache *PricingOverrideCache
 }
 
 // NewChannelCacheReader 构造一个只读缓存客户端。
 //
 // 当 rdb 为 nil 时,所有方法都会走"无渠道"降级路径,适用于 Redis 未配置或
-// 单元测试场景。
-func NewChannelCacheReader(rdb *redis.Client) *ChannelCacheReader {
-	return &ChannelCacheReader{rdb: rdb}
+// 单元测试场景。pricingCache 可由 host wire 通过 SetPricingOverrideCache
+// 注入; 不传 / 传 nil 时本 reader 退化为 P3 之前的纯 Redis 行为。
+func NewChannelCacheReader(rdb *redis.Client, pricingCache *PricingOverrideCache) *ChannelCacheReader {
+	return &ChannelCacheReader{rdb: rdb, pricingCache: pricingCache}
+}
+
+// SetPricingOverrideCache (re)attaches the in-memory override cache. nil
+// detaches the cache and reverts to the Redis-only path. Useful in tests
+// that want to swap the cache without rebuilding the reader.
+func (r *ChannelCacheReader) SetPricingOverrideCache(cache *PricingOverrideCache) {
+	if r == nil {
+		return
+	}
+	r.pricingCache = cache
 }
 
 // GetChannelMeta 读取 K1。返回 (nil, false) 表示该 (group, platform) 没有
@@ -228,17 +251,103 @@ func (r *ChannelCacheReader) IsModelRestricted(
 // GetChannelModelPricing 返回精确或通配符匹配的渠道定价。未命中返回 nil。
 //
 // 返回的 *ChannelModelPricing 是新分配的拷贝,调用方持有所有权。
+//
+// 双源降级 (P3): 优先查 in-memory PricingOverrideCache (由 plugin
+// PricingExtension 写入), miss 才走 Redis 路径。Redis 仍由 channel-management
+// CacheWriter 维护, P4 移除 Redis 写入时删除 fallback 分支即可。
 func (r *ChannelCacheReader) GetChannelModelPricing(
 	ctx context.Context, groupID int64, platform, model string,
 ) *ChannelModelPricing {
 	platform = normalizePlatform(platform)
-	if r == nil || r.rdb == nil || platform == "" {
+	if r == nil || platform == "" {
+		return nil
+	}
+	// In-memory cache first. Cache 命中时不依赖 Redis K1 meta — pricing override
+	// 已经包含了完整的字段 (含 BillingMode), 无需再读 meta。
+	if pricing := r.lookupPricingFromCache(groupID, platform, model); pricing != nil {
+		return pricing
+	}
+	if r.rdb == nil {
 		return nil
 	}
 	if _, ok := r.GetChannelMeta(ctx, groupID, platform); !ok {
 		return nil
 	}
 	return r.lookupPricing(ctx, groupID, platform, model)
+}
+
+// lookupPricingFromCache resolves a (group, platform, model) tuple via the
+// in-memory PricingOverrideCache. Returns nil when the cache is detached
+// or the entry is missing — caller falls through to the Redis path. The
+// cache stores values normalised to lowercase so callers can pass the
+// original case freely.
+func (r *ChannelCacheReader) lookupPricingFromCache(groupID int64, platform, model string) *ChannelModelPricing {
+	if r == nil || r.pricingCache == nil {
+		return nil
+	}
+	override, ok := r.pricingCache.Get(groupID, platform, model)
+	if !ok || override == nil {
+		return nil
+	}
+	return overrideToChannelPricing(override)
+}
+
+// overrideToChannelPricing translates the cache value type into the shape
+// downstream consumers expect (service.ChannelModelPricing). Pointer
+// pricing fields are reconstructed only when the override carries a
+// non-zero value so "unset" semantics survive the round-trip — see proto
+// PricingOverride for the zero-means-unset contract.
+func overrideToChannelPricing(o *PricingOverride) *ChannelModelPricing {
+	if o == nil {
+		return nil
+	}
+	out := &ChannelModelPricing{
+		Platform:    o.Key.Platform,
+		Models:      []string{o.Key.Model},
+		BillingMode: BillingMode(o.BillingMode),
+		UpdatedAt:   o.UpdatedAt,
+	}
+	if out.BillingMode == "" {
+		out.BillingMode = BillingModeToken
+	}
+	out.InputPrice = nonZeroFloat(o.InputPrice)
+	out.OutputPrice = nonZeroFloat(o.OutputPrice)
+	out.CacheWritePrice = nonZeroFloat(o.CacheWritePrice)
+	out.CacheReadPrice = nonZeroFloat(o.CacheReadPrice)
+	out.ImageOutputPrice = nonZeroFloat(o.ImageOutputPrice)
+	out.PerRequestPrice = nonZeroFloat(o.PerRequestPrice)
+	if len(o.Intervals) > 0 {
+		out.Intervals = make([]PricingInterval, 0, len(o.Intervals))
+		for i := range o.Intervals {
+			iv := &o.Intervals[i]
+			var maxTokens *int
+			if iv.MaxTokens > 0 {
+				m := int(iv.MaxTokens)
+				maxTokens = &m
+			}
+			out.Intervals = append(out.Intervals, PricingInterval{
+				MinTokens:       int(iv.MinTokens),
+				MaxTokens:       maxTokens,
+				InputPrice:      nonZeroFloat(iv.InputPrice),
+				OutputPrice:     nonZeroFloat(iv.OutputPrice),
+				CacheWritePrice: nonZeroFloat(iv.CacheWritePrice),
+				CacheReadPrice:  nonZeroFloat(iv.CacheReadPrice),
+				PerRequestPrice: nonZeroFloat(iv.PerRequestPrice),
+			})
+		}
+	}
+	return out
+}
+
+// nonZeroFloat returns &v when v != 0, nil otherwise. The proto contract
+// treats zero as "unset" so we must NOT install a *float64 pointer for
+// zero values — downstream code distinguishes nil (fall back to base
+// pricing) from a real zero price.
+func nonZeroFloat(v float64) *float64 {
+	if v == 0 {
+		return nil
+	}
+	return &v
 }
 
 // ---- 内部读取与匹配 ----

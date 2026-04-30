@@ -45,6 +45,13 @@ type PluginInstance struct {
 	// V5/W6 SETTINGS-V2 — see DESIGN §4.4.
 	settingsUnsubscribe func()
 
+	// pricingClient is the host-side proxy started after the plugin's gRPC
+	// connection is up if the plugin implements PricingExtension. nil when
+	// the plugin does not register the service (the host detects this by
+	// observing codes.Unimplemented on the bootstrap List call). Stopped on
+	// stopInstance and re-created on the next spawnAndConnect.
+	pricingClient *PricingExtensionClient
+
 	// Exited closes after waitProcessExit returns from cmd.Wait(). Lets
 	// stopInstance wait for the process to actually exit *without* calling
 	// cmd.Wait() a second time — the first Wait() reaps the child, any

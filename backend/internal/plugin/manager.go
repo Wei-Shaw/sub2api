@@ -21,8 +21,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/leaderlock"
@@ -94,6 +96,30 @@ type PluginManager struct {
 	// eventsServer is the gRPC service registered when eventPublisher is
 	// non-nil. Built in SetEvents.
 	eventsServer *EventsExtensionServer
+
+	// pricingCache is the host-wide PricingOverrideCache the
+	// PricingExtensionClient writes into. Set via SetPricingExtension before
+	// Start. nil disables the data layer entirely (the registrar still gets
+	// AdjustCost calls via the per-plugin client if SetPricingAdjuster is
+	// available, but no overrides are buffered).
+	pricingCache *service.PricingOverrideCache
+	// pricingAdjusterRegistrar is the host-side seam that lets PluginManager
+	// install / detach a per-plugin PricingAdjuster on BillingService as
+	// plugins start and stop. The registrar is wired via SetPricingExtension;
+	// nil disables the per-request AdjustCost hook entirely (BillingService
+	// stays at its baseline behaviour).
+	pricingAdjusterRegistrar PricingAdjusterRegistrar
+}
+
+// PricingAdjusterRegistrar is the minimal surface PluginManager needs to
+// install a per-plugin PricingAdjuster on the host's BillingService.
+//
+// Implementations must be safe for concurrent calls; PluginManager invokes
+// Set during plugin lifecycle transitions which are serialised by the
+// manager but the BillingService itself reads the adjuster on every cost
+// calculation.
+type PricingAdjusterRegistrar interface {
+	SetPricingAdjuster(adjuster service.PricingAdjuster)
 }
 
 // PluginSettingsRegistrar is the minimal surface PluginManager needs from
@@ -1517,7 +1543,107 @@ func (m *PluginManager) spawnAndConnect(parentCtx context.Context, inst *PluginI
 
 	go m.waitProcessExit(inst)
 
+	// PricingExtension wiring: probe the plugin lazily — if it does not
+	// register the service the bootstrap List returns codes.Unimplemented
+	// and the client logs a debug-level message. The wire is best-effort:
+	// any failure here leaves the plugin running normally, just without
+	// pricing overrides feeding into BillingService.
+	m.tryStartPricingExtension(parentCtx, inst)
+
 	return nil
+}
+
+// pluginImplementsPricing reports whether the plugin at conn implements
+// PricingExtension by issuing a single ListPricingOverrides RPC. The probe
+// uses a 2-second timeout; codes.Unimplemented is the explicit "no" answer
+// (proto-default UnimplementedPricingExtensionServer returns it). Any other
+// error is treated as "yes, but transiently broken" — the retry loops are
+// the right place to surface that, not the spawn path. The probe also
+// catches plugins that registered the service but ship a placeholder Server
+// implementation that itself returns Unimplemented.
+//
+// The plugin's grpc.Server only ever has the host as a client, so a single
+// extra round trip during spawn is cheap relative to the value of avoiding
+// noisy Watch/Resync logs for plugins without a pricing layer.
+func (m *PluginManager) pluginImplementsPricing(ctx context.Context, pluginName string, conn *grpc.ClientConn) bool {
+	probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	stub := pluginsdk.NewPricingExtensionClient(conn)
+	_, err := stub.ListPricingOverrides(probeCtx, &pluginsdk.ListPricingOverridesRequest{})
+	if err == nil {
+		return true
+	}
+	// codes.Unimplemented means the plugin did not register the service.
+	// Anything else (Unavailable from a half-ready server, DeadlineExceeded
+	// from a slow first ListAll, …) is treated as "available, retry later".
+	if st, ok := status.FromError(err); ok && st.Code() == codes.Unimplemented {
+		m.logger.Debug("plugin does not implement PricingExtension — skipping wire",
+			"plugin", pluginName)
+		return false
+	}
+	m.logger.Debug("PricingExtension probe returned non-Unimplemented error — wiring anyway",
+		"plugin", pluginName, "error", err)
+	return true
+}
+
+// tryStartPricingExtension attempts to bind a PricingExtensionClient to the
+// just-spawned plugin and register it with BillingService. The function is
+// a no-op when SetPricingExtension was not called or when the plugin does
+// not implement PricingExtension (codes.Unimplemented). It never returns
+// an error; failures only affect the pricing data layer, not the plugin's
+// availability.
+func (m *PluginManager) tryStartPricingExtension(ctx context.Context, inst *PluginInstance) {
+	m.mu.RLock()
+	cache := m.pricingCache
+	registrar := m.pricingAdjusterRegistrar
+	m.mu.RUnlock()
+
+	// No host wiring → nothing to do. The plugin's PricingExtension server
+	// (if any) is reachable from elsewhere only via this client today, so
+	// the early exit is the right behaviour.
+	if cache == nil && registrar == nil {
+		return
+	}
+
+	inst.mu.Lock()
+	conn := inst.GRPCConn
+	inst.mu.Unlock()
+	if conn == nil {
+		return
+	}
+
+	// Probe first so we don't start watch/resync loops against a plugin
+	// that does not implement PricingExtension (codes.Unimplemented). The
+	// probe is a single ListPricingOverrides call with a tight timeout;
+	// any other error (network, transient) lets us proceed and treat the
+	// pricing extension as available — the client's normal retry loops
+	// take over from there.
+	if !m.pluginImplementsPricing(ctx, inst.Name, conn) {
+		return
+	}
+
+	client := NewPricingExtensionClient(inst.Name, cache, m.logger)
+	if err := client.Start(ctx, conn); err != nil {
+		// Probe failure is benign — Start returns nil when the bootstrap
+		// List was skipped or returned codes.Unimplemented; the only path
+		// that surfaces an error here is "nil receiver / nil conn", both
+		// guarded above. Keep the log entry so misconfigurations are
+		// visible.
+		m.logger.Debug("pricing extension client start failed",
+			"plugin", inst.Name, "error", err)
+		return
+	}
+
+	inst.mu.Lock()
+	inst.pricingClient = client
+	inst.mu.Unlock()
+
+	// Wire BillingService → adjuster only when the registrar is configured.
+	// The cache is always populated regardless so that read-side consumers
+	// (channel_cache_reader fallback) see the same data.
+	if registrar != nil {
+		registrar.SetPricingAdjuster(client)
+	}
 }
 
 // stopInstance 优雅停止某个插件:Shutdown RPC -> 等待退出 -> SIGKILL -> 清理。
@@ -1586,9 +1712,25 @@ func (m *PluginManager) stopInstance(ctx context.Context, name string, markRegis
 	inst.mu.Lock()
 	settingsUnsub := inst.settingsUnsubscribe
 	inst.settingsUnsubscribe = nil
+	pricingClient := inst.pricingClient
+	inst.pricingClient = nil
 	inst.mu.Unlock()
 	if settingsUnsub != nil {
 		settingsUnsub()
+	}
+
+	// PricingExtension teardown: detach BillingService first so an
+	// in-flight CalculateCostUnified does not race against a client whose
+	// loops are about to exit. Stop blocks until both watch + resync
+	// goroutines have drained.
+	if pricingClient != nil {
+		m.mu.RLock()
+		registrar := m.pricingAdjusterRegistrar
+		m.mu.RUnlock()
+		if registrar != nil {
+			registrar.SetPricingAdjuster(nil)
+		}
+		pricingClient.Stop()
 	}
 
 	if m.settingsService != nil {
@@ -2114,6 +2256,29 @@ func (m *PluginManager) EventPublisher() *EventPublisher {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.eventPublisher
+}
+
+// SetPricingExtension wires the host-side PricingExtension subsystem. The
+// cache is populated by per-plugin PricingExtensionClients during
+// List + Watch; the registrar is the BillingService seam that receives the
+// adjuster on plugin start and a nil on plugin stop.
+//
+// Either argument may be nil:
+//
+//   - cache=nil disables the data layer (List + Watch results are
+//     dropped). AdjustCost still works because it does not consult the
+//     cache.
+//   - registrar=nil disables the per-request AdjustCost hook. List + Watch
+//     still populate the cache for read-side consumers (channel cache
+//     reader fallback path).
+//
+// Must be called before Start; calling after has no effect on already-
+// running plugins (their pricing client is bound at spawn time).
+func (m *PluginManager) SetPricingExtension(cache *service.PricingOverrideCache, registrar PricingAdjusterRegistrar) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.pricingCache = cache
+	m.pricingAdjusterRegistrar = registrar
 }
 
 // SettingsExtensionBuilder is the callback the wire layer supplies; it

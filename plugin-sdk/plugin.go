@@ -5,6 +5,8 @@
 // proxies so the plugin can use the core's connection pools transparently.
 package pluginsdk
 
+import "google.golang.org/grpc"
+
 // Plugin is the contract every plugin binary implements.
 //
 // The lifecycle is:
@@ -60,6 +62,27 @@ type HTTPMux interface {
 // gRPC stream. The provider is typically backed by an embed.FS.
 type FrontendBundleProvider interface {
 	OpenFrontendFile(path string) (data []byte, err error)
+}
+
+// GRPCServiceRegistrar is an optional interface a Plugin may implement to
+// register additional gRPC services on the SDK-managed grpc.Server. The SDK
+// invokes RegisterGRPCServices once, immediately after registering its own
+// PluginLifecycle service and before the gRPC listener starts serving — so
+// the plugin's services share the same TCP listener / handshake address the
+// host already opens for the lifecycle RPCs.
+//
+// Use this to expose host-callable extensions such as PricingExtension. The
+// plugin's gRPC server embeds the SDK's lifecycle methods plus whatever the
+// plugin registers here; the host opens a single ClientConn to the plugin
+// and dispatches by service name. Plugins that do not need to expose any
+// extra services can simply omit this interface (zero overhead).
+//
+// The host detects whether a plugin implements a particular extension by
+// invoking it lazily — gRPC returns codes.Unimplemented when the plugin
+// does not register the service, which the host treats as "not available"
+// rather than an error.
+type GRPCServiceRegistrar interface {
+	RegisterGRPCServices(server *grpc.Server)
 }
 
 // MigrationProvider is an optional interface a Plugin may implement to ship

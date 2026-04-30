@@ -229,7 +229,8 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	claudeTokenProvider := service.ProvideClaudeTokenProvider(accountRepository, geminiTokenCache, oAuthService, oAuthRefreshAPI)
 	digestSessionStore := service.NewDigestSessionStore()
 	// channel-management 已迁移到插件；网关侧通过 Redis 读取渠道缓存
-	channelCacheReader := service.NewChannelCacheReader(redisClient)
+	pricingOverrideCache := service.NewPricingOverrideCache()
+	channelCacheReader := service.NewChannelCacheReader(redisClient, pricingOverrideCache)
 	modelPricingResolver := service.NewModelPricingResolver(channelCacheReader, billingService)
 	gatewayService := service.NewGatewayService(accountRepository, groupRepository, usageLogRepository, usageBillingRepository, userRepository, userSubscriptionRepository, userGroupRateRepository, gatewayCache, configConfig, schedulerSnapshotService, concurrencyService, billingService, rateLimitService, billingCacheService, identityService, httpUpstream, deferredService, claudeTokenProvider, sessionLimitCache, rpmCache, digestSessionStore, settingService, tlsFingerprintProfileService, channelCacheReader, modelPricingResolver)
 	openAITokenProvider := service.ProvideOpenAITokenProvider(accountRepository, geminiTokenCache, openAIOAuthService, oAuthRefreshAPI)
@@ -298,6 +299,13 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		authService.SetPluginEventPublisher(pluginEventPublisher)
 		antigravityGatewayService.SetPluginEventPublisher(pluginEventPublisher)
 		rateLimitService.SetPluginEventPublisher(pluginEventPublisher)
+	}
+	if pluginManager != nil {
+		// P3+P5 PricingExtension wire: feed the host-wide PricingOverrideCache
+		// (consumed by ChannelCacheReader's fast path) plus the BillingService
+		// adjuster seam so plugins implementing PricingExtension can
+		// participate without further wiring.
+		pluginManager.SetPricingExtension(pricingOverrideCache, billingService)
 	}
 	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, paymentHandler, pluginHandler, pluginSettingsHandler)
 	usageRecordWorkerPool := service.NewUsageRecordWorkerPool(configConfig)

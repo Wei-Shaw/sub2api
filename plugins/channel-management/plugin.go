@@ -9,6 +9,9 @@ import (
 	"sync/atomic"
 
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
+	pluginsdkpb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+
+	chPricing "github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/pricing"
 
 	chHandler "github.com/Wei-Shaw/sub2api/plugins/channel-management/handler"
 	chRepo "github.com/Wei-Shaw/sub2api/plugins/channel-management/repository"
@@ -19,6 +22,7 @@ import (
 	monitorService "github.com/Wei-Shaw/sub2api/plugins/channel-management/monitor/service"
 
 	"github.com/gin-gonic/gin"
+	"google.golang.org/grpc"
 )
 
 // frontendAssets 是 channel-management 的 frontend bundle 嵌入式 FS.
@@ -98,6 +102,12 @@ type ChannelPlugin struct {
 	monitorService      *monitorService.ChannelMonitorService
 	monitorAdminHandler *monitorHandler.AdminHandler
 	monitorUserHandler  *monitorHandler.UserHandler
+
+	// pricingServer implements PricingExtension on the plugin's gRPC server.
+	// It is constructed in RegisterGRPCServices (before Init) and wired with
+	// the repository in Init via pricingServer.SetLister. RPCs that arrive
+	// during the gap return codes.Unavailable so the host retries.
+	pricingServer *chPricing.Server
 }
 
 // Manifest declares the plugin's capabilities to the core. Endpoint paths are
@@ -329,6 +339,14 @@ func (p *ChannelPlugin) Init(ctx pluginsdk.PluginContext) error {
 	p.ctx.Store(&ctx)
 
 	repo := chRepo.NewChannelRepository(ctx.DB())
+	// Wire the PricingExtension data source now that the SDK has handed us
+	// a *sql.DB. The server itself was registered on the gRPC server in
+	// RegisterGRPCServices (called before Init), so any host RPC that
+	// arrived in the meantime saw codes.Unavailable; subsequent calls hit
+	// the live repository.
+	if p.pricingServer != nil {
+		p.pricingServer.SetLister(&pricingListerAdapter{repo: repo})
+	}
 	// authCacheInvalidator is currently nil — the in-process invalidator
 	// lives in the core monolith. Until the auth cache itself is exposed
 	// through the SDK, channel updates will not actively bust API-key auth
@@ -411,6 +429,36 @@ func (p *ChannelPlugin) Shutdown() error {
 		(*c).Logger().Info("channel-management plugin shutting down")
 	}
 	return nil
+}
+
+// RegisterGRPCServices attaches the plugin-side gRPC services that the host
+// invokes via the existing per-plugin connection. PricingExtension is
+// registered here so the host's PricingExtensionClient can call
+// ListPricingOverrides / WatchPricingOverrides / AdjustCost without an
+// extra connection. The Server's data source is wired later in Init via
+// pricingServer.SetLister.
+func (p *ChannelPlugin) RegisterGRPCServices(server *grpc.Server) {
+	if p.pricingServer == nil {
+		p.pricingServer = chPricing.NewServer()
+	}
+	pluginsdkpb.RegisterPricingExtensionServer(server, p.pricingServer)
+}
+
+// pricingListerAdapter exposes the *ChannelRepository to the pricing
+// server. The repository's interface returns chService types verbatim so
+// the adapter is a thin pass-through; it exists only to satisfy the
+// pricing.channelLister type without dragging the proto types into the
+// service package.
+type pricingListerAdapter struct {
+	repo chService.ChannelRepository
+}
+
+func (a *pricingListerAdapter) ListAll(ctx context.Context) ([]chService.Channel, error) {
+	return a.repo.ListAll(ctx)
+}
+
+func (a *pricingListerAdapter) GetGroupPlatforms(ctx context.Context, groupIDs []int64) (map[int64]string, error) {
+	return a.repo.GetGroupPlatforms(ctx, groupIDs)
 }
 
 // RegisterHTTP hands the Gin engine to the SDK. The engine is mounted at the
