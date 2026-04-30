@@ -206,6 +206,19 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 			{Filename: "002_add_channel_monitor_aggregation.sql", ChecksumSha256: "4e6b3e94aaed169dd7a6a4e69aa61794779e943d617b78540210bba93063abfc"},
 			{Filename: "003_drop_channel_monitor_deleted_at.sql", ChecksumSha256: "2f5c2f951c2b59ed706841135de6458093a52eff970d852aec5dd60d99f868d4"},
 			{Filename: "004_add_channel_monitor_request_templates.sql", ChecksumSha256: "a35f2e016afe5fe4019a2aad70184eb20104c8c248a60e5ba763ebd888280ca1"},
+			// 005-012: channel CRUD/pricing tables migrated from host backend/migrations/{081,082,083,084,085,086,088,095}.
+			// All DDL is idempotent (CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS), so environments where the host
+			// already applied the originals will see these as no-ops while still recording a plugin_migrations row with checksum.
+			// 008 is the split variant of host 084: the ALTER usage_logs ADD channel_id|model_mapping_chain|billing_tier lines
+			// were dropped because usage_logs is a host-owned table; the host migration keeps those ALTERs.
+			{Filename: "005_create_channels.sql", ChecksumSha256: "4eb880b780b2a1df07ec8dff5a9cd1ecf5cd0d35119051018f3ed3b4ae594285"},
+			{Filename: "006_refactor_channel_pricing.sql", ChecksumSha256: "fffe03fdbe1c5341976d2eedcaaea988dde974539d374045c7dcadf6b554b6ca"},
+			{Filename: "007_channel_model_mapping.sql", ChecksumSha256: "7d9caceeef2829e141279bf7be168a21ae80166316488902449b41fbf18d1173"},
+			{Filename: "008_channel_billing_model_source.sql", ChecksumSha256: "45bd859c8181e1fdb6f198b1f71c889335cfabde85ab6db42c9591e69478b640"},
+			{Filename: "009_channel_restrict_and_per_request_price.sql", ChecksumSha256: "d2fa05f3d6f0d1f0108bd0a3c55e162841e0d115f433a16c0df29b8352dd6646"},
+			{Filename: "010_channel_platform_pricing.sql", ChecksumSha256: "86ccfa03178144a658276c11ab0cd1bf8c6f435cf4ec6058bec727658b92e027"},
+			{Filename: "011_channel_billing_model_source_channel_mapped.sql", ChecksumSha256: "f384ea6228cd862c80312c05a584c84617a3d68e223f71ee0d07d8bc6362e480"},
+			{Filename: "012_channel_features.sql", ChecksumSha256: "3f13e9f362f5c1f88a07f7db6374cd3f66a47798b865a50ba39160f4445edf81"},
 		},
 		SettingsSchema: &pluginsdk.SettingsSchemaDoc{
 			Schema:   monitorSettingsSchemaJSON,
