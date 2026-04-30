@@ -449,9 +449,67 @@ func buildSchedulerMetadataAccount(account service.Account) service.Account {
 		SessionWindowStart:      account.SessionWindowStart,
 		SessionWindowEnd:        account.SessionWindowEnd,
 		SessionWindowStatus:     account.SessionWindowStatus,
+		AccountGroups:           filterSchedulerAccountGroups(account.AccountGroups),
+		GroupIDs:                filterSchedulerGroupIDs(account.GroupIDs, account.AccountGroups),
 		Credentials:             filterSchedulerCredentials(account.Credentials),
 		Extra:                   filterSchedulerExtra(account.Extra),
 REDACTED
+REDACTED
+
+func filterSchedulerAccountGroups(accountGroups []service.AccountGroup) []service.AccountGroup {
+	if len(accountGroups) == 0 {
+		return nil
+REDACTED
+
+	filtered := make([]service.AccountGroup, 0, len(accountGroups))
+	for _, ag := range accountGroups {
+		if ag.GroupID <= 0 {
+			continue
+	REDACTED
+		filtered = append(filtered, service.AccountGroup{
+			AccountID: ag.AccountID,
+			GroupID:   ag.GroupID,
+			Priority:  ag.Priority,
+			CreatedAt: ag.CreatedAt,
+	REDACTED)
+REDACTED
+	if len(filtered) == 0 {
+		return nil
+REDACTED
+	return filtered
+REDACTED
+
+func filterSchedulerGroupIDs(groupIDs []int64, accountGroups []service.AccountGroup) []int64 {
+	if len(groupIDs) == 0 && len(accountGroups) == 0 {
+		return nil
+REDACTED
+
+	seen := make(map[int64]struct{REDACTED, len(groupIDs)+len(accountGroups))
+	filtered := make([]int64, 0, len(groupIDs)+len(accountGroups))
+	for _, id := range groupIDs {
+		if id <= 0 {
+			continue
+	REDACTED
+		if _, ok := seen[id]; ok {
+			continue
+	REDACTED
+		seen[id] = struct{REDACTED{REDACTED
+		filtered = append(filtered, id)
+REDACTED
+	for _, ag := range accountGroups {
+		if ag.GroupID <= 0 {
+			continue
+	REDACTED
+		if _, ok := seen[ag.GroupID]; ok {
+			continue
+	REDACTED
+		seen[ag.GroupID] = struct{REDACTED{REDACTED
+		filtered = append(filtered, ag.GroupID)
+REDACTED
+	if len(filtered) == 0 {
+		return nil
+REDACTED
+	return filtered
 REDACTED
 
 func filterSchedulerCredentials(credentials map[string]any) map[string]any {
