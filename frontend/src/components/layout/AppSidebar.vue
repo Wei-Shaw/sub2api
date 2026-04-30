@@ -39,7 +39,8 @@
                 :title="sidebarCollapsed ? item.label : undefined"
                 @click="sidebarCollapsed ? undefined : toggleGroup(item)"
               >
-                <component :is="item.icon" class="h-5 w-5 flex-shrink-0" />
+                <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
+                <component v-else-if="item.icon" :is="item.icon" class="h-5 w-5 flex-shrink-0" />
                 <transition name="fade">
                   <span v-if="!sidebarCollapsed" class="flex flex-1 items-center justify-between">
                     <span>{{ item.label }}</span>
