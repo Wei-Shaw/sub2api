@@ -29,15 +29,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"sync"
 	"time"
 
+	"github.com/shopspring/decimal"
 	"google.golang.org/grpc"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/streamutil"
 )
 
 const (
@@ -57,10 +58,15 @@ const (
 	// events. 5 minutes matches the existing channel cache contract.
 	pricingReSyncInterval = 5 * time.Minute
 
-	// pricingWatchBackoffMin / Max bracket the exponential backoff used
-	// when the Watch stream ends. Same shape as EventsExtension.
-	pricingWatchBackoffMin = 1 * time.Second
-	pricingWatchBackoffMax = 30 * time.Second
+	// pricingWatchBackoffMin / Max bracket the reconnect backoff used by
+	// streamutil.Loop when the Watch stream breaks. Same shape as the SDK's
+	// jobs / settings / events / log_remote loops; multiplier and jitter
+	// match those clients so a single bad plugin doesn't reconnect on a
+	// noticeably different cadence than the SDK-side ones.
+	pricingWatchBackoffMin  = 1 * time.Second
+	pricingWatchBackoffMax  = 30 * time.Second
+	pricingWatchMultiplier  = 2.0
+	pricingWatchJitterRatio = 0.2
 )
 
 // PricingExtensionClient proxies host calls to a single plugin's
@@ -71,6 +77,18 @@ type PricingExtensionClient struct {
 	pluginName string
 	cache      *service.PricingOverrideCache
 	logger     *slog.Logger
+
+	// parentCtx anchors the watch / resync loops. Decoupling them from the
+	// Start ctx (which is a request-scoped HTTP / spawn ctx that gets
+	// cancelled as soon as the caller returns) is what keeps the loops
+	// alive past Start. Stop() owns explicit cancellation through the
+	// derived loopCancel below.
+	//
+	// We keep this as a field rather than a Start argument so the
+	// constructor caller (PluginManager.tryStartPricingExtension) can pin
+	// it once with a long-lived context (today: context.Background(); in
+	// the future: a manager-scoped shutdown ctx without losing trace).
+	parentCtx context.Context
 
 	// stub is set lazily on Start so a nil client (no plugin registered)
 	// is a valid no-op state. AdjustCost short-circuits when stub is nil.
@@ -84,10 +102,16 @@ type PricingExtensionClient struct {
 // in production; tests may pass nil to exercise AdjustCost without the
 // data layer.
 //
+// parentCtx is the long-lived ancestor of the watch / resync loops. Pass
+// context.Background() when you want loops to run until Stop() is called;
+// pass a manager-scoped shutdown ctx if you want a process-wide cancellation
+// signal to tear them down for free. Nil is treated as Background.
+//
 // The caller is expected to invoke Start once a plugin's gRPC connection
 // is ready, and Stop on plugin teardown. The constructor itself does not
 // dial anything.
 func NewPricingExtensionClient(
+	parentCtx context.Context,
 	pluginName string,
 	cache *service.PricingOverrideCache,
 	logger *slog.Logger,
@@ -95,10 +119,14 @@ func NewPricingExtensionClient(
 	if logger == nil {
 		logger = slog.Default()
 	}
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
 	return &PricingExtensionClient{
 		pluginName: pluginName,
 		cache:      cache,
 		logger:     logger.With("component", "pricing_ext_client", "plugin", pluginName),
+		parentCtx:  parentCtx,
 	}
 }
 
@@ -118,7 +146,12 @@ func (c *PricingExtensionClient) Start(ctx context.Context, conn grpc.ClientConn
 
 	c.mu.Lock()
 	c.stub = stub
-	loopCtx, cancel := context.WithCancel(context.Background())
+	// Derive the loop ctx from parentCtx (set by the constructor), not from
+	// the Start ctx. Start ctx is request-scoped and cancels as soon as the
+	// caller returns; the loops must outlive that. The trace context (if any
+	// is attached to parentCtx) flows through automatically via the gRPC
+	// client interceptor — no manual metadata handling here.
+	loopCtx, cancel := context.WithCancel(c.parentCtx)
 	c.cancel = cancel
 	c.mu.Unlock()
 
@@ -196,32 +229,21 @@ func (c *PricingExtensionClient) fullSync(ctx context.Context) error {
 }
 
 // watchLoop opens WatchPricingOverrides and applies events to the cache.
-// On stream end it backs off exponentially and reconnects. Exits when
-// loopCtx is cancelled.
+// Reconnect cadence is delegated to streamutil.Loop so this host-side
+// client shares one backoff schedule with the SDK-side jobs / settings /
+// events / log_remote loops. Crucially, streamutil.Loop resets backoff to
+// pricingWatchBackoffMin whenever runWatchOnce returns nil — that is the
+// audit-S10 fix for "stream ran successfully for an hour, lost, reconnect
+// waited 30s instead of 1s". Exits when loopCtx is cancelled.
 func (c *PricingExtensionClient) watchLoop(loopCtx context.Context) {
-	backoff := pricingWatchBackoffMin
-	for {
-		if loopCtx.Err() != nil {
-			return
-		}
-		err := c.runWatchOnce(loopCtx)
-		if loopCtx.Err() != nil {
-			return
-		}
-		if err != nil && !errors.Is(err, io.EOF) {
-			c.logger.Warn("watch pricing overrides ended", "error", err, "backoff", backoff)
-		}
-		select {
-		case <-loopCtx.Done():
-			return
-		case <-time.After(backoff):
-		}
-		// Exponential backoff capped at pricingWatchBackoffMax.
-		backoff *= 2
-		if backoff > pricingWatchBackoffMax {
-			backoff = pricingWatchBackoffMax
-		}
-	}
+	_ = streamutil.Loop(loopCtx, streamutil.Config{
+		Name:        "pricing.watch",
+		Initial:     pricingWatchBackoffMin,
+		Max:         pricingWatchBackoffMax,
+		Multiplier:  pricingWatchMultiplier,
+		JitterRatio: pricingWatchJitterRatio,
+		Logger:      c.logger,
+	}, c.runWatchOnce)
 }
 
 // runWatchOnce opens a single Watch stream and processes events until
@@ -319,12 +341,12 @@ func (c *PricingExtensionClient) AdjustCost(ctx context.Context, in service.Adju
 		RequestId:   in.RequestID,
 		CoreCost: &pb.PricingCostBreakdown{
 			Currency:       in.CoreCost.Currency,
-			Total:          in.CoreCost.Total,
-			InputCost:      in.CoreCost.InputCost,
-			OutputCost:     in.CoreCost.OutputCost,
-			CacheWriteCost: in.CoreCost.CacheWriteCost,
-			CacheReadCost:  in.CoreCost.CacheReadCost,
-			ImageCost:      in.CoreCost.ImageCost,
+			Total:          formatFloatAsDecimalString(in.CoreCost.Total),
+			InputCost:      formatFloatAsDecimalString(in.CoreCost.InputCost),
+			OutputCost:     formatFloatAsDecimalString(in.CoreCost.OutputCost),
+			CacheWriteCost: formatFloatAsDecimalString(in.CoreCost.CacheWriteCost),
+			CacheReadCost:  formatFloatAsDecimalString(in.CoreCost.CacheReadCost),
+			ImageCost:      formatFloatAsDecimalString(in.CoreCost.ImageCost),
 			BillingMode:    in.CoreCost.BillingMode,
 		},
 		Tokens: &pb.PricingUsageTokens{
@@ -354,12 +376,12 @@ func (c *PricingExtensionClient) AdjustCost(ctx context.Context, in service.Adju
 		Modified: true,
 		FinalCost: service.AdjustCostBreakdown{
 			Currency:       final.GetCurrency(),
-			Total:          final.GetTotal(),
-			InputCost:      final.GetInputCost(),
-			OutputCost:     final.GetOutputCost(),
-			CacheWriteCost: final.GetCacheWriteCost(),
-			CacheReadCost:  final.GetCacheReadCost(),
-			ImageCost:      final.GetImageCost(),
+			Total:          c.parseDecimalString(final.GetTotal()),
+			InputCost:      c.parseDecimalString(final.GetInputCost()),
+			OutputCost:     c.parseDecimalString(final.GetOutputCost()),
+			CacheWriteCost: c.parseDecimalString(final.GetCacheWriteCost()),
+			CacheReadCost:  c.parseDecimalString(final.GetCacheReadCost()),
+			ImageCost:      c.parseDecimalString(final.GetImageCost()),
 			BillingMode:    final.GetBillingMode(),
 		},
 		AdjustmentReason: resp.GetAdjustmentReason(),
@@ -400,7 +422,7 @@ func (c *PricingExtensionClient) ResolveAccountStatsCost(ctx context.Context, in
 			ImageCount:          in.Tokens.ImageOutputTokens,
 		},
 		RequestCount: int32(in.RequestCount),
-		TotalCost:    in.TotalCost,
+		TotalCost:    formatFloatAsDecimalString(in.TotalCost),
 		RequestId:    in.RequestID,
 	})
 	if err != nil {
@@ -411,25 +433,55 @@ func (c *PricingExtensionClient) ResolveAccountStatsCost(ctx context.Context, in
 	}
 	return service.AccountStatsCostResult{
 		HasCost:          true,
-		Cost:             resp.GetCost(),
+		Cost:             c.parseDecimalString(resp.GetCost()),
 		ResolutionReason: resp.GetResolutionReason(),
 	}, nil
 }
 
+// parseDecimalString parses a T24 proto decimal string into float64. Empty
+// string maps to 0 (the cache treats zero as "unset"). A parse failure is
+// logged and demoted to 0 so the gateway hot path never aborts on a single
+// malformed plugin payload.
+//
+// TODO(plugin-grpc, T24 follow-up): the host's service.PricingOverride still
+// stores float64 because BillingService / channel pricing layers consume
+// float64. Upgrading those to decimal.Decimal end-to-end is a much larger
+// change and intentionally out of scope here. The single bounded loss
+// happens at this site only — the proto wire and the plugin both speak
+// canonical decimal, and the host cache lives behind a 12-digit
+// NUMERIC(20,12) DB schema, so the 53-bit IEEE-754 mantissa still covers
+// every price magnitude in production. Switch to a decimal-everywhere
+// model only after the corresponding host-side cleanup ships.
+func (c *PricingExtensionClient) parseDecimalString(s string) float64 {
+	if s == "" {
+		return 0
+	}
+	d, err := decimal.NewFromString(s)
+	if err != nil {
+		c.logger.Warn("pricing override: bad decimal string", "raw", s, "error", err)
+		return 0
+	}
+	return d.InexactFloat64()
+}
+
 // protoToOverride converts a proto PricingOverride into the cache value
 // type. Callers feed the result into PricingOverrideCache.Set / ReplaceAll.
+//
+// T24: prices arrive as decimal strings; we parse via shopspring/decimal
+// and demote to float64 once at this boundary. See parseDecimalString
+// for why the host still uses float64 internally.
 func (c *PricingExtensionClient) protoToOverride(o *pb.PricingOverride) service.PricingOverride {
 	if o == nil {
 		return service.PricingOverride{}
 	}
 	out := service.PricingOverride{
 		BillingMode:      o.GetBillingMode(),
-		InputPrice:       o.GetInputPrice(),
-		OutputPrice:      o.GetOutputPrice(),
-		CacheWritePrice:  o.GetCacheWritePrice(),
-		CacheReadPrice:   o.GetCacheReadPrice(),
-		ImageOutputPrice: o.GetImageOutputPrice(),
-		PerRequestPrice:  o.GetPerRequestPrice(),
+		InputPrice:       c.parseDecimalString(o.GetInputPrice()),
+		OutputPrice:      c.parseDecimalString(o.GetOutputPrice()),
+		CacheWritePrice:  c.parseDecimalString(o.GetCacheWritePrice()),
+		CacheReadPrice:   c.parseDecimalString(o.GetCacheReadPrice()),
+		ImageOutputPrice: c.parseDecimalString(o.GetImageOutputPrice()),
+		PerRequestPrice:  c.parseDecimalString(o.GetPerRequestPrice()),
 		SourcePlugin:     c.pluginName,
 	}
 	if k := o.GetKey(); k != nil {
@@ -445,14 +497,32 @@ func (c *PricingExtensionClient) protoToOverride(o *pb.PricingOverride) service.
 			out.Intervals = append(out.Intervals, service.PricingOverrideInterval{
 				MinTokens:        iv.GetMinTokens(),
 				MaxTokens:        iv.GetMaxTokens(),
-				InputPrice:       iv.GetInputPrice(),
-				OutputPrice:      iv.GetOutputPrice(),
-				CacheWritePrice:  iv.GetCacheWritePrice(),
-				CacheReadPrice:   iv.GetCacheReadPrice(),
-				ImageOutputPrice: iv.GetImageOutputPrice(),
-				PerRequestPrice:  iv.GetPerRequestPrice(),
+				InputPrice:       c.parseDecimalString(iv.GetInputPrice()),
+				OutputPrice:      c.parseDecimalString(iv.GetOutputPrice()),
+				CacheWritePrice:  c.parseDecimalString(iv.GetCacheWritePrice()),
+				CacheReadPrice:   c.parseDecimalString(iv.GetCacheReadPrice()),
+				ImageOutputPrice: c.parseDecimalString(iv.GetImageOutputPrice()),
+				PerRequestPrice:  c.parseDecimalString(iv.GetPerRequestPrice()),
 			})
 		}
 	}
 	return out
+}
+
+// formatFloatAsDecimalString encodes a host-side float64 price as the T24
+// canonical decimal string for the proto wire. Zero maps to the empty
+// string ("not set") to match the legacy zero-as-unset semantics; any
+// other value goes through decimal.NewFromFloat → String() so the wire
+// representation stays readable and round-trips through the plugin's
+// decimalx.FromProtoString without nasty trailing nines.
+//
+// The IEEE-754 noise that rides on float64 inputs ends up in the proto
+// payload here — that is acceptable because the inputs are themselves
+// host-computed float64 (BillingService.computeCost). See protoToOverride's
+// TODO for the broader plan.
+func formatFloatAsDecimalString(v float64) string {
+	if v == 0 {
+		return ""
+	}
+	return decimal.NewFromFloat(v).String()
 }

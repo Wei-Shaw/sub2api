@@ -76,14 +76,20 @@ const secretEncryptionGCMTagSize = 16
 // occupy: nonce + empty payload + tag.
 const secretEncryptionMinCiphertext = secretEncryptionGCMNonceSize + secretEncryptionGCMTagSize
 
-// callerResolver is the host-side hook that pulls the plugin name from a
-// gRPC incoming context. SDKServer.resolveCaller is the production
-// implementation; tests inject a stub.
-type callerResolver func(ctx context.Context) string
+// callerResolver 是 SDK gRPC caller 解析的早期类型别名。CallerResolver
+// (interceptors.go) 是新的权威定义; 此处保留别名只是为了兼容已存在的测试
+// (secret_encryption_server_test.go 用 fixedResolver 直接调 server method)。
+// 生产路径上拦截器接管, server 持有的 resolver 不会被调用 —— 但仍保留字段
+// 以支持单元测试直接调用 Encrypt/Decrypt 而不经过 gRPC stack 的场景。
+type callerResolver = CallerResolver
 
 // SecretEncryptionServer implements pluginsdk.SecretEncryptionServer. One
 // instance is shared across all plugins; per-plugin keys are derived lazily
 // on first use and cached in perPluginKey.
+//
+// resolveName 仅服务于"绕过 gRPC 拦截器直接调 server method"的单元测试;
+// 生产路径上 RequirePluginIdentity{Unary,Stream} 已塞好 ctx, handler 优先
+// 走 CallerFromContext。
 type SecretEncryptionServer struct {
 	pluginsdk.UnimplementedSecretEncryptionServer
 
@@ -95,14 +101,11 @@ type SecretEncryptionServer struct {
 
 // NewSecretEncryptionServer constructs a server. masterKeyHex must decode to
 // exactly 32 bytes; anything else is a configuration bug and we fail-fast
-// at host startup. The resolver is normally SDKServer.resolveCaller; tests
-// pass a function returning a fixed plugin name.
+// at host startup. resolver 仅供绕过拦截器的测试使用; 生产链路 caller 解析
+// 已由 RequirePluginIdentityUnary 接管, 这里保留参数以兼容现有 wiring。
 func NewSecretEncryptionServer(masterKeyHex string, resolver callerResolver, logger *slog.Logger) (*SecretEncryptionServer, error) {
 	if resolver == nil {
 		return nil, errors.New("nil caller resolver")
-	}
-	if logger == nil {
-		logger = slog.Default()
 	}
 	key, err := hex.DecodeString(masterKeyHex)
 	if err != nil {
@@ -114,8 +117,20 @@ func NewSecretEncryptionServer(masterKeyHex string, resolver callerResolver, log
 	return &SecretEncryptionServer{
 		masterKey:   key,
 		resolveName: resolver,
-		logger:      logger,
+		logger:      loggerOrDefault(logger),
 	}, nil
+}
+
+// callerForSecret 优先取拦截器塞入的 ctx caller, 兜底再走构造期注入的
+// resolver(测试场景, 直接调 server method)。生产路径上前者必命中。
+func (s *SecretEncryptionServer) callerForSecret(ctx context.Context) string {
+	if name, ok := CallerFromContext(ctx); ok && name != "" {
+		return name
+	}
+	if s.resolveName != nil {
+		return s.resolveName(ctx)
+	}
+	return ""
 }
 
 // RegisterServices wires the server onto a gRPC server. Kept separate from
@@ -165,9 +180,9 @@ func newGCM(key []byte) (cipher.AEAD, error) {
 // Encrypt seals req.Plaintext with the per-plugin key. AAD = pluginName so
 // any tampering with the plugin attribution is detected at Decrypt time.
 func (s *SecretEncryptionServer) Encrypt(ctx context.Context, req *pluginsdk.EncryptRequest) (*pluginsdk.EncryptResponse, error) {
-	pluginName := s.resolveName(ctx)
+	pluginName := s.callerForSecret(ctx)
 	if pluginName == "" {
-		return nil, status.Error(codes.Unauthenticated, "missing caller identity")
+		return nil, status.Error(codes.PermissionDenied, "missing caller identity")
 	}
 	if len(req.GetPlaintext()) > secretEncryptionMaxPlaintext {
 		return nil, status.Error(codes.ResourceExhausted, "plaintext too large")
@@ -200,9 +215,9 @@ func (s *SecretEncryptionServer) Encrypt(ctx context.Context, req *pluginsdk.Enc
 // AAD = plugin name. Any failure (truncated, tampered, cross-plugin) maps
 // to InvalidArgument with a single audit log line and no payload bytes.
 func (s *SecretEncryptionServer) Decrypt(ctx context.Context, req *pluginsdk.DecryptRequest) (*pluginsdk.DecryptResponse, error) {
-	pluginName := s.resolveName(ctx)
+	pluginName := s.callerForSecret(ctx)
 	if pluginName == "" {
-		return nil, status.Error(codes.Unauthenticated, "missing caller identity")
+		return nil, status.Error(codes.PermissionDenied, "missing caller identity")
 	}
 	ct := req.GetCiphertext()
 	if len(ct) > secretEncryptionMaxPlaintext+secretEncryptionMinCiphertext {

@@ -183,7 +183,11 @@ func TestSecretEncryption_ConstructorRejectsBadKey(t *testing.T) {
 
 // TestSecretEncryption_AnonymousCallerDenied makes sure a request without a
 // resolved plugin name (e.g. the metadata header was missing) is rejected
-// with Unauthenticated rather than silently using an empty-string plugin.
+// with PermissionDenied rather than silently using an empty-string plugin.
+//
+// 错误码语义对齐 RequirePluginIdentityUnary 拦截器统一约定的 PermissionDenied;
+// 此前 Encrypt/Decrypt 写的是 Unauthenticated, 现在与 SQL/Redis/EventBus 等
+// SDK 接口统一。
 func TestSecretEncryption_AnonymousCallerDenied(t *testing.T) {
 	masterKeyHex := newTestMasterKey(t)
 	srv := newServerForPlugin(t, "", masterKeyHex)
@@ -192,16 +196,16 @@ func TestSecretEncryption_AnonymousCallerDenied(t *testing.T) {
 	if err == nil {
 		t.Fatal("anonymous Encrypt was accepted")
 	}
-	if got := status.Code(err); got != codes.Unauthenticated {
-		t.Fatalf("wrong error code: got %s, want Unauthenticated", got)
+	if got := status.Code(err); got != codes.PermissionDenied {
+		t.Fatalf("wrong error code: got %s, want PermissionDenied", got)
 	}
 
 	_, err = srv.Decrypt(context.Background(), &pluginsdk.DecryptRequest{Ciphertext: make([]byte, secretEncryptionMinCiphertext)})
 	if err == nil {
 		t.Fatal("anonymous Decrypt was accepted")
 	}
-	if got := status.Code(err); got != codes.Unauthenticated {
-		t.Fatalf("wrong error code: got %s, want Unauthenticated", got)
+	if got := status.Code(err); got != codes.PermissionDenied {
+		t.Fatalf("wrong error code: got %s, want PermissionDenied", got)
 	}
 }
 

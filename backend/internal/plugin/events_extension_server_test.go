@@ -10,7 +10,6 @@ package plugin
 import (
 	"context"
 	"net"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -58,7 +57,7 @@ func staticResolver(name string) func(context.Context) string {
 		if !ok {
 			return name
 		}
-		vals := md.Get("x-sub2api-plugin")
+		vals := md.Get(callerMetadataKey)
 		if len(vals) > 0 {
 			return vals[0]
 		}
@@ -102,7 +101,7 @@ func startTestServer(t *testing.T, allowList EventsAllowList, caps CapabilityChe
 }
 
 func withPlugin(ctx context.Context, name string) context.Context {
-	return metadata.AppendToOutgoingContext(ctx, "x-sub2api-plugin", name)
+	return metadata.AppendToOutgoingContext(ctx, callerMetadataKey, name)
 }
 
 func TestSubscribeAndReceive(t *testing.T) {
@@ -342,6 +341,112 @@ func TestPublishWithoutSubscribersIsNoop(t *testing.T) {
 	pub.PublishAccountRateLimitTriggered(&pb.AccountRateLimitTriggered{AccountId: 1})
 }
 
+// TestProbeSubscriptionAccepted asserts ProbeSubscription returns OK when
+// the manifest declares the requested types and capabilities are satisfied.
+// The response active_subscriptions is informational only — we just sanity-
+// check it stays a valid int64.
+func TestProbeSubscriptionAccepted(t *testing.T) {
+	allow := &fakeAllowList{events: map[string][]string{
+		"my-plugin": {EventTypePaymentOrderCreated},
+	}}
+	rig := startTestServer(t, allow, nil)
+	defer rig.cleanup()
+
+	ctx, cancel := context.WithTimeout(withPlugin(context.Background(), "my-plugin"), 2*time.Second)
+	defer cancel()
+
+	resp, err := rig.client.ProbeSubscription(ctx, &pb.EventSubscribeRequest{
+		EventTypes: []string{EventTypePaymentOrderCreated},
+	})
+	if err != nil {
+		t.Fatalf("Probe: %v", err)
+	}
+	if resp == nil {
+		t.Fatalf("expected non-nil response")
+	}
+	if resp.GetActiveSubscriptions() < 0 {
+		t.Fatalf("active_subscriptions should be >= 0, got %d", resp.GetActiveSubscriptions())
+	}
+	// A successful Probe must NOT register a subscriber; if it did, the
+	// publisher would carry stale state across plugin restarts.
+	rig.publisher.mu.RLock()
+	subs := len(rig.publisher.subscribers)
+	rig.publisher.mu.RUnlock()
+	if subs != 0 {
+		t.Fatalf("Probe should not register subscribers, got %d", subs)
+	}
+}
+
+// TestProbeSubscriptionRejectsUndeclared mirrors TestUndeclaredEventTypeRejected
+// but on the synchronous Probe path. The error must be PermissionDenied so
+// the SDK surfaces it to the caller without retrying.
+func TestProbeSubscriptionRejectsUndeclared(t *testing.T) {
+	allow := &fakeAllowList{events: map[string][]string{
+		"my-plugin": {EventTypePaymentOrderCreated},
+	}}
+	rig := startTestServer(t, allow, nil)
+	defer rig.cleanup()
+
+	ctx := withPlugin(context.Background(), "my-plugin")
+	_, err := rig.client.ProbeSubscription(ctx, &pb.EventSubscribeRequest{
+		EventTypes: []string{EventTypeAuthUserRegistered},
+	})
+	if status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("expected PermissionDenied, got: %v", err)
+	}
+}
+
+// TestProbeSubscriptionRejectsAnonymous mirrors TestAnonymousCallerDenied but
+// on the unary Probe path. Defence-in-depth: if the caller-identity
+// interceptor is missing the handler still rejects.
+func TestProbeSubscriptionRejectsAnonymous(t *testing.T) {
+	rig := startTestServer(t, &fakeAllowList{}, nil)
+	defer rig.cleanup()
+
+	_, err := rig.client.ProbeSubscription(context.Background(), &pb.EventSubscribeRequest{})
+	if status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("expected PermissionDenied, got: %v", err)
+	}
+}
+
+// TestProbeSubscriptionMissingManifestDeclaration covers the third gate:
+// caller is identified but the manifest does not declare any events. The
+// host must reject before applying capability checks.
+func TestProbeSubscriptionMissingManifestDeclaration(t *testing.T) {
+	allow := &fakeAllowList{events: map[string][]string{}}
+	rig := startTestServer(t, allow, nil)
+	defer rig.cleanup()
+
+	ctx := withPlugin(context.Background(), "my-plugin")
+	_, err := rig.client.ProbeSubscription(ctx, &pb.EventSubscribeRequest{})
+	if status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("expected PermissionDenied, got: %v", err)
+	}
+}
+
+// TestProbeSubscriptionEnforcesCapability covers the high-frequency gate.
+// gateway.model.invoked requires events.subscribe.gateway; without it the
+// Probe must fail synchronously, matching the server-streaming Subscribe
+// contract.
+func TestProbeSubscriptionEnforcesCapability(t *testing.T) {
+	allow := &fakeAllowList{events: map[string][]string{
+		"my-plugin": {EventTypeGatewayModelInvoked},
+	}}
+	caps := &fakeCaps{caps: map[string]map[string]struct{}{
+		"my-plugin": {},
+	}}
+	rig := startTestServer(t, allow, caps)
+	defer rig.cleanup()
+
+	ctx := withPlugin(context.Background(), "my-plugin")
+	_, err := rig.client.ProbeSubscription(ctx, &pb.EventSubscribeRequest{
+		EventTypes: []string{EventTypeGatewayModelInvoked},
+	})
+	if status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("expected PermissionDenied, got: %v", err)
+	}
+}
+
 // waitForSubscribers polls until the publisher reports the expected
 // subscriber count, bounded by a deadline.
 func waitForSubscribers(t *testing.T, pub *EventPublisher, want int) {
@@ -366,7 +471,8 @@ type stallStream struct {
 	grpc.ServerStream
 	ctx context.Context
 
-	mu       sync.Mutex
+	// sendHits 用 atomic.Int64 自身就线程安全, 不需要额外 mu;
+	// 历史曾留 sync.Mutex 但从未读/写 → 删除以消 unused 警告。
 	sendHits atomic.Int64
 }
 
@@ -387,10 +493,16 @@ func TestSendTimeoutClosesStream(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	timer := time.NewTimer(eventSendTimeout)
+	if !timer.Stop() {
+		<-timer.C
+	}
 	sub := &eventSubscriber{
 		pluginName: "test",
 		buffer:     make(chan *pb.HostEvent, eventBufferSize),
 		closed:     make(chan struct{}),
+		sendTimer:  timer,
+		sendDone:   make(chan error, 1),
 	}
 	publisher.register(sub)
 	defer publisher.unregister(sub)

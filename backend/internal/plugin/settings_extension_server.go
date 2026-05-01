@@ -28,37 +28,27 @@ import (
 
 // SettingsExtensionServer implements pb.SettingsExtensionServer.
 //
-// It needs three collaborators:
-//   - svc owns persistence + validation + pub/sub
-//   - resolver maps a gRPC call's metadata to the calling plugin name;
-//     this is the same function used by SDKServer.resolveCaller, passed
-//     in as a function value so we do not entangle this file with the
-//     SDKServer's lifecycle.
-//   - logger is optional; defaults to slog.Default() with the service tag.
+// Caller identity 由 RequirePluginIdentity{Unary,Stream} 拦截器在 RPC 入口
+// 处统一校验并塞入 ctx, handler 通过 CallerFromContext 取出。该结构不再
+// 持有 resolver 字段; 不走拦截器的旧测试由 CallerFromContext 的 metadata
+// fallback 路径自然兼容。
 type SettingsExtensionServer struct {
 	pb.UnimplementedSettingsExtensionServer
 
-	svc      *service.PluginSettingsService
-	resolver func(ctx context.Context) string
-	logger   *slog.Logger
+	svc    *service.PluginSettingsService
+	logger *slog.Logger
 }
 
-// NewSettingsExtensionServer constructs the server. resolver must be
-// non-nil; if you only have an SDKServer in scope, pass `sdk.ResolveCaller`.
+// NewSettingsExtensionServer constructs the server. resolver 参数仅为
+// 兼容已生成的 wire_gen.go 调用点而保留, 内部不再使用 —— caller 解析已被
+// gRPC 拦截器接管。
 func NewSettingsExtensionServer(
 	svc *service.PluginSettingsService,
-	resolver func(ctx context.Context) string,
+	_ func(ctx context.Context) string,
 ) *SettingsExtensionServer {
-	if resolver == nil {
-		// A nil resolver would mean every call is treated as anonymous,
-		// which the rest of the surface rejects. Substitute a sentinel
-		// so the panic source is obvious during integration.
-		resolver = func(context.Context) string { return "" }
-	}
 	return &SettingsExtensionServer{
-		svc:      svc,
-		resolver: resolver,
-		logger:   slog.Default().With("component", "plugin_settings_grpc"),
+		svc:    svc,
+		logger: slog.Default().With("component", "plugin_settings_grpc"),
 	}
 }
 
@@ -74,8 +64,8 @@ func (s *SettingsExtensionServer) Register(grpcServer *grpc.Server) {
 func (s *SettingsExtensionServer) Get(
 	ctx context.Context, req *pb.SettingsGetRequest,
 ) (*pb.SettingsGetResponse, error) {
-	pluginName := s.resolver(ctx)
-	if pluginName == "" {
+	pluginName, ok := CallerFromContext(ctx)
+	if !ok || pluginName == "" {
 		return nil, status.Error(codes.PermissionDenied, "settings: caller identity missing")
 	}
 	if req.GetKey() == "" {
@@ -134,8 +124,8 @@ func (s *SettingsExtensionServer) Watch(
 	req *pb.SettingsWatchRequest, stream grpc.ServerStreamingServer[pb.SettingsChangeEvent],
 ) error {
 	ctx := stream.Context()
-	pluginName := s.resolver(ctx)
-	if pluginName == "" {
+	pluginName, ok := CallerFromContext(ctx)
+	if !ok || pluginName == "" {
 		return status.Error(codes.PermissionDenied, "settings: caller identity missing")
 	}
 	ch, unsubscribe := s.svc.Subscribe(pluginName, req.GetKey())
@@ -205,10 +195,8 @@ func (s *SettingsExtensionServer) sendSnapshot(
 	return nil
 }
 
-// ResolveCaller exposes SDKServer.resolveCaller for use by external
-// packages that need plugin identity from a gRPC context. We expose this
-// here so the wiring code can pass it as a function value to
-// NewSettingsExtensionServer without depending on internal types.
-func (s *SDKServer) ResolveCaller(ctx context.Context) string {
-	return s.resolveCaller(ctx)
-}
+// 历史上这里曾提供 SDKServer.ResolveCaller 公开方法以便 wiring 把它当作
+// resolver 注入给 SettingsExtensionServer。RequirePluginIdentity 拦截器
+// 接管之后, handler 一律通过 CallerFromContext 取 caller, 不再需要把
+// resolveCaller 暴露到包外, 因此该方法已删除。manager.go 内部仍可访问
+// 私有的 SDKServer.resolveCaller 来构建拦截器。

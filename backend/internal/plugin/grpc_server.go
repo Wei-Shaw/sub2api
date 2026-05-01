@@ -12,6 +12,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
@@ -90,6 +92,8 @@ func NewSDKServer(db *sql.DB, rdb *redis.Client, secretMasterKeyHex string) (*SD
 		sqlGate:      newSQLGate(caps),
 	}
 	if secretMasterKeyHex != "" {
+		// resolveCaller 仍传入是为了兼容旧测试(直接调 server method 不走拦截器);
+		// 生产路径上 SecretEncryption 的 handler 走 CallerFromContext, resolver 不会被使用。
 		secrets, err := NewSecretEncryptionServer(secretMasterKeyHex, s.resolveCaller, slog.Default().With("component", "plugin_secret_encryption"))
 		if err != nil {
 			return nil, fmt.Errorf("init secret encryption server: %w", err)
@@ -197,16 +201,16 @@ func (s *SDKServer) rollbackTimedOutTx() {
 
 func (s *SDKServer) Query(ctx context.Context, req *pluginsdk.SQLRequest) (*pluginsdk.SQLResponse, error) {
 	if s.db == nil {
-		return nil, errors.New("sql db not configured")
+		return nil, errService("sql db")
 	}
-	pluginName := s.resolveCaller(ctx)
+	pluginName, _ := CallerFromContext(ctx)
 	if err := s.sqlGate.Authorize(pluginName, req.GetQuery()); err != nil {
 		return nil, sqlGateStatus(err)
 	}
 	args := convertSQLValues(req.GetArgs())
 	rows, err := s.db.QueryContext(ctx, req.GetQuery(), args...)
 	if err != nil {
-		return nil, fmt.Errorf("plugin sql query: %w", err)
+		return nil, errInternal(err, "plugin sql query")
 	}
 	defer func() { _ = rows.Close() }()
 	return scanRowsToResponse(rows)
@@ -214,23 +218,23 @@ func (s *SDKServer) Query(ctx context.Context, req *pluginsdk.SQLRequest) (*plug
 
 func (s *SDKServer) Exec(ctx context.Context, req *pluginsdk.SQLRequest) (*pluginsdk.ExecResponse, error) {
 	if s.db == nil {
-		return nil, errors.New("sql db not configured")
+		return nil, errService("sql db")
 	}
-	pluginName := s.resolveCaller(ctx)
+	pluginName, _ := CallerFromContext(ctx)
 	if err := s.sqlGate.Authorize(pluginName, req.GetQuery()); err != nil {
 		return nil, sqlGateStatus(err)
 	}
 	args := convertSQLValues(req.GetArgs())
 	res, err := s.db.ExecContext(ctx, req.GetQuery(), args...)
 	if err != nil {
-		return nil, fmt.Errorf("plugin sql exec: %w", err)
+		return nil, errInternal(err, "plugin sql exec")
 	}
 	return execResultToResponse(res), nil
 }
 
 func (s *SDKServer) BeginTx(ctx context.Context, req *pluginsdk.BeginTxRequest) (*pluginsdk.TxResponse, error) {
 	if s.db == nil {
-		return nil, errors.New("sql db not configured")
+		return nil, errService("sql db")
 	}
 	opts := &sql.TxOptions{ReadOnly: req.GetReadOnly()}
 	switch req.GetIsolationLevel() {
@@ -243,12 +247,12 @@ func (s *SDKServer) BeginTx(ctx context.Context, req *pluginsdk.BeginTxRequest) 
 	case "":
 		// 使用驱动默认
 	default:
-		return nil, fmt.Errorf("unsupported isolation level: %s", req.GetIsolationLevel())
+		return nil, status.Errorf(codes.InvalidArgument, "unsupported isolation level: %s", req.GetIsolationLevel())
 	}
 
 	tx, err := s.db.BeginTx(ctx, opts)
 	if err != nil {
-		return nil, fmt.Errorf("plugin begin tx: %w", err)
+		return nil, errInternal(err, "plugin begin tx")
 	}
 	id := uuid.NewString()
 	s.txMu.Lock()
@@ -262,14 +266,14 @@ func (s *SDKServer) TxQuery(ctx context.Context, req *pluginsdk.TxSQLRequest) (*
 	if err != nil {
 		return nil, err
 	}
-	pluginName := s.resolveCaller(ctx)
+	pluginName, _ := CallerFromContext(ctx)
 	if err := s.sqlGate.Authorize(pluginName, req.GetQuery()); err != nil {
 		return nil, sqlGateStatus(err)
 	}
 	args := convertSQLValues(req.GetArgs())
 	rows, err := tx.QueryContext(ctx, req.GetQuery(), args...)
 	if err != nil {
-		return nil, fmt.Errorf("plugin tx query: %w", err)
+		return nil, errInternal(err, "plugin tx query")
 	}
 	defer func() { _ = rows.Close() }()
 	return scanRowsToResponse(rows)
@@ -280,14 +284,14 @@ func (s *SDKServer) TxExec(ctx context.Context, req *pluginsdk.TxSQLRequest) (*p
 	if err != nil {
 		return nil, err
 	}
-	pluginName := s.resolveCaller(ctx)
+	pluginName, _ := CallerFromContext(ctx)
 	if err := s.sqlGate.Authorize(pluginName, req.GetQuery()); err != nil {
 		return nil, sqlGateStatus(err)
 	}
 	args := convertSQLValues(req.GetArgs())
 	res, err := tx.ExecContext(ctx, req.GetQuery(), args...)
 	if err != nil {
-		return nil, fmt.Errorf("plugin tx exec: %w", err)
+		return nil, errInternal(err, "plugin tx exec")
 	}
 	return execResultToResponse(res), nil
 }
@@ -298,7 +302,7 @@ func (s *SDKServer) CommitTx(_ context.Context, req *pluginsdk.TxIDRequest) (*em
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("plugin commit tx: %w", err)
+		return nil, errInternal(err, "plugin commit tx")
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -309,7 +313,7 @@ func (s *SDKServer) RollbackTx(_ context.Context, req *pluginsdk.TxIDRequest) (*
 		return nil, err
 	}
 	if err := tx.Rollback(); err != nil {
-		return nil, fmt.Errorf("plugin rollback tx: %w", err)
+		return nil, errInternal(err, "plugin rollback tx")
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -319,7 +323,7 @@ func (s *SDKServer) lookupTx(id string) (*sql.Tx, error) {
 	defer s.txMu.Unlock()
 	t, ok := s.txs[id]
 	if !ok {
-		return nil, fmt.Errorf("unknown tx_id: %s", id)
+		return nil, status.Errorf(codes.NotFound, "unknown tx_id: %s", id)
 	}
 	return t.tx, nil
 }
@@ -329,7 +333,7 @@ func (s *SDKServer) popTx(id string) (*sql.Tx, error) {
 	defer s.txMu.Unlock()
 	t, ok := s.txs[id]
 	if !ok {
-		return nil, fmt.Errorf("unknown tx_id: %s", id)
+		return nil, status.Errorf(codes.NotFound, "unknown tx_id: %s", id)
 	}
 	delete(s.txs, id)
 	return t.tx, nil
@@ -401,7 +405,7 @@ func interfaceToSQLValue(v any) *pluginsdk.SQLValue {
 func scanRowsToResponse(rows *sql.Rows) (*pluginsdk.SQLResponse, error) {
 	cols, err := rows.Columns()
 	if err != nil {
-		return nil, fmt.Errorf("plugin sql columns: %w", err)
+		return nil, errInternal(err, "plugin sql columns")
 	}
 
 	resp := &pluginsdk.SQLResponse{Columns: cols}
@@ -412,7 +416,7 @@ func scanRowsToResponse(rows *sql.Rows) (*pluginsdk.SQLResponse, error) {
 			ptrs[i] = &holders[i]
 		}
 		if err := rows.Scan(ptrs...); err != nil {
-			return nil, fmt.Errorf("plugin sql scan: %w", err)
+			return nil, errInternal(err, "plugin sql scan")
 		}
 		row := &pluginsdk.SQLRow{Values: make([]*pluginsdk.SQLValue, len(cols))}
 		for i, v := range holders {
@@ -421,7 +425,7 @@ func scanRowsToResponse(rows *sql.Rows) (*pluginsdk.SQLResponse, error) {
 		resp.Rows = append(resp.Rows, row)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("plugin sql iterate: %w", err)
+		return nil, errInternal(err, "plugin sql iterate")
 	}
 	return resp, nil
 }
@@ -451,86 +455,91 @@ func execResultToResponse(res sql.Result) *pluginsdk.ExecResponse {
 //
 // 当所有插件都升级到使用 Do() 的 SDK 后，这些方法可以删除。
 
+// 关于 caller 鉴权:RequirePluginIdentityUnary/Stream 拦截器已在 ctx 上塞好
+// 已校验的 plugin name,所以这里的 handler 无需再调用 resolveCaller —— 直接
+// CallerFromContext 即可,空名永远不会进入(拦截器先行 PermissionDenied)。
+// legacy RedisProxy 之前没做任何 caller 检查,新版本由拦截器统一兜底。
+
 func (s *SDKServer) Get(ctx context.Context, req *pluginsdk.RedisKeyRequest) (*pluginsdk.RedisValueResponse, error) {
 	if s.redis == nil {
-		return nil, errors.New("redis not configured")
+		return nil, errService("redis")
 	}
 	val, err := s.redis.Get(ctx, req.GetKey()).Bytes()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
 			return &pluginsdk.RedisValueResponse{Exists: false}, nil
 		}
-		return nil, fmt.Errorf("plugin redis get: %w", err)
+		return nil, errInternal(err, "plugin redis get")
 	}
 	return &pluginsdk.RedisValueResponse{Exists: true, Value: val}, nil
 }
 
 func (s *SDKServer) Set(ctx context.Context, req *pluginsdk.RedisSetRequest) (*emptypb.Empty, error) {
 	if s.redis == nil {
-		return nil, errors.New("redis not configured")
+		return nil, errService("redis")
 	}
 	if err := s.redis.Set(ctx, req.GetKey(), req.GetValue(), 0).Err(); err != nil {
-		return nil, fmt.Errorf("plugin redis set: %w", err)
+		return nil, errInternal(err, "plugin redis set")
 	}
 	return &emptypb.Empty{}, nil
 }
 
 func (s *SDKServer) SetEx(ctx context.Context, req *pluginsdk.RedisSetExRequest) (*emptypb.Empty, error) {
 	if s.redis == nil {
-		return nil, errors.New("redis not configured")
+		return nil, errService("redis")
 	}
 	ttl := time.Duration(req.GetTtlSeconds()) * time.Second
 	if err := s.redis.Set(ctx, req.GetKey(), req.GetValue(), ttl).Err(); err != nil {
-		return nil, fmt.Errorf("plugin redis setex: %w", err)
+		return nil, errInternal(err, "plugin redis setex")
 	}
 	return &emptypb.Empty{}, nil
 }
 
 func (s *SDKServer) Del(ctx context.Context, req *pluginsdk.RedisDelRequest) (*emptypb.Empty, error) {
 	if s.redis == nil {
-		return nil, errors.New("redis not configured")
+		return nil, errService("redis")
 	}
 	keys := req.GetKeys()
 	if len(keys) == 0 {
 		return &emptypb.Empty{}, nil
 	}
 	if err := s.redis.Del(ctx, keys...).Err(); err != nil {
-		return nil, fmt.Errorf("plugin redis del: %w", err)
+		return nil, errInternal(err, "plugin redis del")
 	}
 	return &emptypb.Empty{}, nil
 }
 
 func (s *SDKServer) HGet(ctx context.Context, req *pluginsdk.RedisHGetRequest) (*pluginsdk.RedisValueResponse, error) {
 	if s.redis == nil {
-		return nil, errors.New("redis not configured")
+		return nil, errService("redis")
 	}
 	val, err := s.redis.HGet(ctx, req.GetKey(), req.GetField()).Bytes()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
 			return &pluginsdk.RedisValueResponse{Exists: false}, nil
 		}
-		return nil, fmt.Errorf("plugin redis hget: %w", err)
+		return nil, errInternal(err, "plugin redis hget")
 	}
 	return &pluginsdk.RedisValueResponse{Exists: true, Value: val}, nil
 }
 
 func (s *SDKServer) HSet(ctx context.Context, req *pluginsdk.RedisHSetRequest) (*emptypb.Empty, error) {
 	if s.redis == nil {
-		return nil, errors.New("redis not configured")
+		return nil, errService("redis")
 	}
 	if err := s.redis.HSet(ctx, req.GetKey(), req.GetField(), req.GetValue()).Err(); err != nil {
-		return nil, fmt.Errorf("plugin redis hset: %w", err)
+		return nil, errInternal(err, "plugin redis hset")
 	}
 	return &emptypb.Empty{}, nil
 }
 
 func (s *SDKServer) HGetAll(ctx context.Context, req *pluginsdk.RedisKeyRequest) (*pluginsdk.RedisMapResponse, error) {
 	if s.redis == nil {
-		return nil, errors.New("redis not configured")
+		return nil, errService("redis")
 	}
 	m, err := s.redis.HGetAll(ctx, req.GetKey()).Result()
 	if err != nil {
-		return nil, fmt.Errorf("plugin redis hgetall: %w", err)
+		return nil, errInternal(err, "plugin redis hgetall")
 	}
 	out := &pluginsdk.RedisMapResponse{Fields: make(map[string][]byte, len(m))}
 	for k, v := range m {
@@ -541,20 +550,20 @@ func (s *SDKServer) HGetAll(ctx context.Context, req *pluginsdk.RedisKeyRequest)
 
 func (s *SDKServer) HDel(ctx context.Context, req *pluginsdk.RedisHDelRequest) (*emptypb.Empty, error) {
 	if s.redis == nil {
-		return nil, errors.New("redis not configured")
+		return nil, errService("redis")
 	}
 	if err := s.redis.HDel(ctx, req.GetKey(), req.GetFields()...).Err(); err != nil {
-		return nil, fmt.Errorf("plugin redis hdel: %w", err)
+		return nil, errInternal(err, "plugin redis hdel")
 	}
 	return &emptypb.Empty{}, nil
 }
 
 func (s *SDKServer) Publish(ctx context.Context, req *pluginsdk.RedisPubRequest) (*emptypb.Empty, error) {
 	if s.redis == nil {
-		return nil, errors.New("redis not configured")
+		return nil, errService("redis")
 	}
 	if err := s.redis.Publish(ctx, req.GetChannel(), req.GetMessage()).Err(); err != nil {
-		return nil, fmt.Errorf("plugin redis publish: %w", err)
+		return nil, errInternal(err, "plugin redis publish")
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -563,11 +572,11 @@ func (s *SDKServer) Publish(ctx context.Context, req *pluginsdk.RedisPubRequest)
 // 注意:此方法依赖 Redis pub/sub,与 EventBus 实现共用同一个 Redis 实例。
 func (s *SDKServer) Subscribe(req *pluginsdk.RedisSubRequest, stream grpc.ServerStreamingServer[pluginsdk.RedisMessage]) error {
 	if s.redis == nil {
-		return errors.New("redis not configured")
+		return errService("redis")
 	}
 	channels := req.GetChannels()
 	if len(channels) == 0 {
-		return errors.New("at least one channel is required")
+		return status.Error(codes.InvalidArgument, "at least one channel is required")
 	}
 
 	pubsub := s.redis.Subscribe(stream.Context(), channels...)
@@ -609,11 +618,11 @@ type eventBusAdapter struct {
 
 func (a *eventBusAdapter) Publish(ctx context.Context, req *pluginsdk.EventRequest) (*emptypb.Empty, error) {
 	if a.srv.redis == nil {
-		return nil, errors.New("redis not configured")
+		return nil, errService("redis")
 	}
 	channel := eventBusChannelPrefix + req.GetTopic()
 	if err := a.srv.redis.Publish(ctx, channel, req.GetPayload()).Err(); err != nil {
-		return nil, fmt.Errorf("plugin eventbus publish: %w", err)
+		return nil, errInternal(err, "plugin eventbus publish")
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -624,11 +633,11 @@ func (a *eventBusAdapter) Subscribe(req *pluginsdk.EventFilter, stream grpc.Serv
 
 func (s *SDKServer) eventBusSubscribe(req *pluginsdk.EventFilter, stream grpc.ServerStreamingServer[pluginsdk.Event]) error {
 	if s.redis == nil {
-		return errors.New("redis not configured")
+		return errService("redis")
 	}
 	topics := req.GetTopics()
 	if len(topics) == 0 {
-		return errors.New("at least one topic is required")
+		return status.Error(codes.InvalidArgument, "at least one topic is required")
 	}
 	channels := make([]string, 0, len(topics))
 	chMap := make(map[string]string, len(topics)) // channel -> topic

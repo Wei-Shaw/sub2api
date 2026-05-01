@@ -74,12 +74,12 @@ type JobRunRecord struct {
 }
 
 // JobSchedulerServer implements the host side of the JobScheduler RPC. One
-// instance per process; resolver maps stream → plugin name (delegated to the
-// SDKServer's metadata-based caller identity).
+// instance per process; caller identity is supplied by the
+// RequirePluginIdentityStream interceptor — the server reads it from the
+// stream context via CallerFromContext.
 type JobSchedulerServer struct {
 	pluginsdk.UnimplementedJobSchedulerServer
 
-	resolver   func(ctx context.Context) string
 	leaderLock leaderlock.Provider
 	history    JobHistoryRecorder
 	logger     *slog.Logger
@@ -91,18 +91,14 @@ type JobSchedulerServer struct {
 	schedulers   map[string]*pluginScheduler
 }
 
-// NewJobSchedulerServer wires the host job scheduler. resolver is typically
-// SDKServer.resolveCaller; passing nil makes every Subscribe reject as
-// unauthenticated which is rarely useful outside tests.
-func NewJobSchedulerServer(resolver func(context.Context) string, lock leaderlock.Provider, history JobHistoryRecorder, logger *slog.Logger) *JobSchedulerServer {
-	if logger == nil {
-		logger = slog.Default()
-	}
+// NewJobSchedulerServer wires the host job scheduler. caller identity is
+// 由 RequirePluginIdentityStream 拦截器注入 stream ctx, Subscribe 走
+// CallerFromContext 取出, 不再持有 resolver 字段。
+func NewJobSchedulerServer(lock leaderlock.Provider, history JobHistoryRecorder, logger *slog.Logger) *JobSchedulerServer {
 	return &JobSchedulerServer{
-		resolver:   resolver,
 		leaderLock: lock,
 		history:    history,
-		logger:     logger.With("component", "plugin_job_scheduler"),
+		logger:     loggerOrDefault(logger).With("component", "plugin_job_scheduler"),
 		schedulers: make(map[string]*pluginScheduler),
 	}
 }
@@ -128,12 +124,11 @@ func (s *JobSchedulerServer) Subscribe(stream pluginsdk.JobScheduler_SubscribeSe
 	if s == nil {
 		return status.Error(codes.Internal, "job scheduler not initialised")
 	}
-	pluginName := ""
-	if s.resolver != nil {
-		pluginName = s.resolver(stream.Context())
-	}
-	if pluginName == "" {
-		return status.Error(codes.Unauthenticated, "missing plugin caller identity")
+	pluginName, ok := CallerFromContext(stream.Context())
+	if !ok || pluginName == "" {
+		// Defence-in-depth: 生产路径上拦截器已经拒绝匿名调用; 这里覆盖
+		// 直接调用 Subscribe 的测试场景。
+		return status.Error(codes.PermissionDenied, "missing plugin caller identity")
 	}
 
 	first, err := stream.Recv()
@@ -196,6 +191,9 @@ func (s *JobSchedulerServer) removeScheduler(pluginName string, ps *pluginSchedu
 // ManualFire pushes a synthetic JobTrigger for an admin "Run now" call. The
 // W2.4 admin handler is the expected caller; returns an error if the plugin
 // has no live subscription or the named job is unknown.
+//
+// ManualFire 由 admin handler 直接调用(不经 gRPC), 这里仍返回普通 error;
+// 调用方负责把它映射到 HTTP 4xx/5xx。
 func (s *JobSchedulerServer) ManualFire(pluginName, jobName string) error {
 	if s == nil {
 		return errors.New("job scheduler not initialised")
@@ -241,9 +239,6 @@ type pendingTrigger struct {
 }
 
 func newPluginScheduler(pluginName string, lock leaderlock.Provider, history JobHistoryRecorder, logger *slog.Logger, streamCtx context.Context) *pluginScheduler {
-	if logger == nil {
-		logger = slog.Default()
-	}
 	if streamCtx == nil {
 		streamCtx = context.Background()
 	}
@@ -251,7 +246,7 @@ func newPluginScheduler(pluginName string, lock leaderlock.Provider, history Job
 		pluginName: pluginName,
 		leaderLock: lock,
 		history:    history,
-		logger:     logger.With("plugin", pluginName),
+		logger:     loggerOrDefault(logger).With("plugin", pluginName),
 		streamCtx:  streamCtx,
 		cron:       cron.New(cron.WithParser(jobCronParser)),
 		stopCh:     make(chan struct{}),
@@ -390,6 +385,12 @@ func (ps *pluginScheduler) runFixedDelayLoop(jobName string, delay time.Duration
 // fire is the per-trigger entry point: leader check, build trigger, enqueue.
 // All scheduler kinds (cron / interval / fixed_delay / manual) flow through
 // here so the leader-only check and history bookkeeping live in one place.
+//
+// Leader 锁语义：对 leader_only 任务在 TryAcquire 拿到租约后，**持锁直到
+// 所有副作用落盘**(pending map 写入 + sendCh 入队，或者 buffer 满时
+// recordHistory 落库)。这意味着 release() 由 defer 在 fire 函数退出时
+// 执行 —— 副本 host 在锁释放前看不到该 trigger，避免 30s TTL 窗口内被
+// 第二个 host 重复触发。30s TTL 仅作为 host 崩溃后的 deadlock 兜底。
 func (ps *pluginScheduler) fire(jobName string, manual bool) {
 	if ps.leaderOnly[jobName] {
 		release, isLeader := ps.leaderLock.TryAcquire(ps.streamCtx,
@@ -397,11 +398,9 @@ func (ps *pluginScheduler) fire(jobName string, manual bool) {
 		if !isLeader {
 			return
 		}
-		// Release the lease as soon as we have queued the trigger; the
-		// plugin handler is gated by its own concurrency cap on the SDK
-		// side, not by holding the lock for the run duration. This mirrors
-		// V5-DESIGN §2.5 and is critical for short TTLs (30s).
 		if release != nil {
+			// 必须 defer 到 fire 函数末尾：释放在 buffer 入队 + history
+			// 落库之后，否则 30s TTL 窗口内副本 host 会重复触发同一个 fire。
 			defer release()
 		}
 	}
@@ -424,6 +423,8 @@ func (ps *pluginScheduler) fire(jobName string, manual bool) {
 	}
 	select {
 	case ps.sendCh <- trigger:
+		// 成功入队 sendCh：trigger 已记入 pending map，sendLoop 会负责把它
+		// 发给插件。release() 在 fire 函数退出后执行，此时所有副作用就绪。
 	default:
 		// Buffer is full — surface as a failed run rather than deadlocking
 		// the caller. This is an SLA event, not a user error.
@@ -441,6 +442,7 @@ func (ps *pluginScheduler) fire(jobName string, manual bool) {
 			Error:      "send buffer full",
 		})
 		ps.logger.Warn("dropping trigger: send buffer full", "job", jobName)
+		// recordHistory 已落库，函数即将退出，defer 释放锁。
 	}
 }
 

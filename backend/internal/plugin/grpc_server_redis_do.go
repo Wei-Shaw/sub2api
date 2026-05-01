@@ -34,8 +34,11 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
+	pluginsdkroot "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
@@ -45,7 +48,12 @@ import (
 // to honour the SDK's metadata convention". Capability enforcement still
 // applies because the registry only contains plugins the operator has
 // explicitly approved at Init time.
-const callerMetadataKey = "x-sub2api-plugin"
+//
+// The literal lives in pluginsdkroot.CallerMetadataKey — host and SDK consume
+// the same constant so the wire contract cannot drift between them. We keep
+// the unexported package-local alias so the rest of this file reads exactly
+// like before.
+const callerMetadataKey = pluginsdkroot.CallerMetadataKey
 
 // pluginCapabilityRegistry tracks which plugins have which capabilities and
 // which DB tables they own. Keyed by plugin name; values are sets for O(1)
@@ -121,9 +129,9 @@ func (r *pluginCapabilityRegistry) OwnsTable(name, table string) bool {
 }
 
 // AllowedTable runs the SQL gate decision: a plugin may touch a table when
-//   1. it owns the table (declared in OwnedTables), OR
-//   2. it holds db.core.read (or db.core.write for writes) and the table
-//      is on the host shared whitelist.
+//  1. it owns the table (declared in OwnedTables), OR
+//  2. it holds db.core.read (or db.core.write for writes) and the table
+//     is on the host shared whitelist.
 //
 // `forWrite=true` requires db.core.write for the host-shared branch and
 // db.own.write for the owned branch. Owned-table reads/writes also require
@@ -153,12 +161,12 @@ func (r *pluginCapabilityRegistry) AllowedTable(name, table string, forWrite boo
 //
 // Notably absent: api_keys, sessions, password hashes, anything secret-bearing.
 var hostSharedReadableTables = map[string]struct{}{
-	"users":              {},
-	"user_subscriptions": {},
+	"users":               {},
+	"user_subscriptions":  {},
 	"user_allowed_groups": {},
-	"groups":             {},
-	"accounts":           {},
-	"payment_orders":     {},
+	"groups":              {},
+	"accounts":            {},
+	"payment_orders":      {},
 }
 
 // Forget drops the entry for plugin name. Called when a plugin is stopped
@@ -259,21 +267,24 @@ const maxDoArgsSize = 4 << 20 // 4 MiB
 // universal entry point.
 func (s *SDKServer) Do(ctx context.Context, req *pluginsdk.DoRequest) (*pluginsdk.DoReply, error) {
 	if s.redis == nil {
-		return nil, errors.New("redis not configured")
+		return nil, errService("redis")
 	}
 	args := req.GetArgs()
 	if len(args) == 0 {
-		return nil, errors.New("redis do: empty args")
+		return nil, status.Error(codes.InvalidArgument, "redis do: empty args")
 	}
 	if total := totalArgSize(args); total > maxDoArgsSize {
-		return nil, fmt.Errorf("redis do: argument size %d exceeds limit %d", total, maxDoArgsSize)
+		return nil, status.Errorf(codes.ResourceExhausted, "redis do: argument size %d exceeds limit %d", total, maxDoArgsSize)
 	}
 
 	commandName := strings.ToUpper(string(args[0]))
-	pluginName := s.resolveCaller(ctx)
+	// 拦截器已校验非空 caller 并塞入 ctx; 这里 pluginName 不会为空。
+	pluginName, _ := CallerFromContext(ctx)
 
-	// raw_key=true requires the redis_raw_keys capability. Anonymous callers
-	// (pluginName=="") never hold capabilities so they are denied implicitly.
+	// raw_key=true requires the redis.raw capability. The interceptor
+	// already rejected anonymous callers, so the empty-name branch here is
+	// purely a defensive belt-and-braces (capability table is keyed by name
+	// — empty name can never match).
 	if req.GetRawKey() {
 		// P12·B-1: capability normalisation runs in approveCapabilities,
 		// so the registry stores the canonical "redis.raw"; legacy
@@ -281,7 +292,7 @@ func (s *SDKServer) Do(ctx context.Context, req *pluginsdk.DoRequest) (*pluginsd
 		if pluginName == "" || !s.capabilities.Has(pluginName, "redis.raw") {
 			slog.Warn("redis do: raw_key=true denied",
 				"plugin", pluginName, "command", commandName)
-			return nil, fmt.Errorf("redis do: raw_key requires redis.raw capability")
+			return nil, status.Error(codes.PermissionDenied, "redis do: raw_key requires redis.raw capability")
 		}
 	} else if pluginName != "" {
 		// Defence in depth: every key argument must carry the plugin's
@@ -290,7 +301,7 @@ func (s *SDKServer) Do(ctx context.Context, req *pluginsdk.DoRequest) (*pluginsd
 		if err := validateNamespace(pluginName, args, req.GetKeyPositions()); err != nil {
 			slog.Warn("redis do: namespace validation failed",
 				"plugin", pluginName, "command", commandName, "error", err)
-			return nil, err
+			return nil, status.Errorf(codes.InvalidArgument, "%v", err)
 		}
 	}
 

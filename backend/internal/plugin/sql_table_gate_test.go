@@ -91,14 +91,21 @@ func TestSQLGate_WriteWithOnlyReadCapDenied(t *testing.T) {
 	}
 }
 
-func TestSQLGate_EmptyPluginNameDisablesGate(t *testing.T) {
+// TestSQLGate_EmptyPluginNameRejected: 旧实现遇到空 plugin name 直接放行,
+// 这成为攻击者绕过 gate 的天然通道。fail-closed 后空 caller 必须立即拒绝,
+// 与 RequirePluginIdentity 拦截器形成双重防御。
+func TestSQLGate_EmptyPluginNameRejected(t *testing.T) {
 	reg := newTestRegistry("ch",
 		[]string{"db.own.read"},
 		[]string{"channel_monitors"})
 	g := newSQLGate(reg)
-	// Empty plugin name → internal caller, gate should pass through.
-	if err := g.Authorize("", "SELECT * FROM users"); err != nil {
-		t.Fatalf("expected gate skip for empty plugin, got %v", err)
+	err := g.Authorize("", "SELECT * FROM users")
+	if err == nil {
+		t.Fatal("expected denial for empty plugin name (fail-closed)")
+	}
+	var pe *PermissionDeniedError
+	if !errors.As(err, &pe) {
+		t.Fatalf("expected PermissionDeniedError, got %T %v", err, err)
 	}
 }
 

@@ -8,6 +8,8 @@ import (
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
@@ -18,28 +20,21 @@ import (
 // rotation, and structured field schema as core code.
 //
 // Each plugin instance gets a logger named "plugin.<name>"; the name comes
-// from the gRPC caller-identity metadata header that the SDK already attaches
-// to every outbound call (see plugin-sdk/runner.go::callerMetadataKey).
+// from the RequirePluginIdentityStream interceptor — anonymous streams are
+// rejected at the gRPC layer so the handler never sees them.
 //
 // This server is registered alongside SQLProxy / RedisProxy / EventBus on the
 // same SDK gRPC endpoint via SDKServer.RegisterServices.
 type LogProxyServer struct {
 	pluginsdk.UnimplementedLogProxyServer
-
-	resolver func(stream pluginsdk.LogProxy_PushLogsServer) string
 }
 
-// NewLogProxyServer wires the LogProxy implementation against an SDKServer
-// (used to identify the calling plugin via gRPC metadata). Passing a nil
-// SDKServer is allowed for tests that want to inject a custom resolver.
-func NewLogProxyServer(s *SDKServer) *LogProxyServer {
-	srv := &LogProxyServer{}
-	if s != nil {
-		srv.resolver = func(stream pluginsdk.LogProxy_PushLogsServer) string {
-			return s.resolveCaller(stream.Context())
-		}
-	}
-	return srv
+// NewLogProxyServer wires the LogProxy implementation. The sdk argument is
+// kept for backwards compatibility with existing call sites; caller resolution
+// has moved to the gRPC interceptor and the server itself no longer needs a
+// reference to SDKServer.
+func NewLogProxyServer(_ *SDKServer) *LogProxyServer {
+	return &LogProxyServer{}
 }
 
 // PushLogs is the client-streaming entry point. The plugin opens one stream
@@ -51,15 +46,15 @@ func NewLogProxyServer(s *SDKServer) *LogProxyServer {
 // channel with drop-on-full so a misbehaving plugin cannot pin host
 // goroutines. Per-record dropped_since_last_send is logged at WARN to keep
 // observability honest.
+//
+// 之前这里在 caller 解析失败时回落到 "plugin.unknown" 日志名,等于让任何
+// 匿名连接都能写入插件日志区。新版本拦截器已堵住匿名调用; handler 内部
+// 再做一次显式检查,任何残留的空 caller 一律 PermissionDenied,绝不再
+// 降级为 "unknown"。
 func (l *LogProxyServer) PushLogs(stream pluginsdk.LogProxy_PushLogsServer) error {
-	pluginName := ""
-	if l.resolver != nil {
-		pluginName = l.resolver(stream)
-	}
-	if pluginName == "" {
-		// Without a known caller we still accept the stream but tag records
-		// as "plugin.unknown" so the records are not dropped on the floor.
-		pluginName = "unknown"
+	pluginName, ok := CallerFromContext(stream.Context())
+	if !ok || pluginName == "" {
+		return status.Error(codes.PermissionDenied, "log: caller identity missing")
 	}
 	zapLogger := logger.L().Named("plugin." + pluginName)
 	var received uint64

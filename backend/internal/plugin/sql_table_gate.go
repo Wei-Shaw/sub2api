@@ -70,12 +70,20 @@ func newSQLGate(reg *pluginCapabilityRegistry) *sqlGate {
 }
 
 // Authorize parses the query and rejects it when the plugin lacks rights to
-// any touched table. An empty plugin name disables the gate (anonymous /
-// internal callers — the same trust boundary that already governs the
-// rest of the SDK gRPC surface).
+// any touched table. An empty plugin name is now a hard rejection (fail-closed)
+// — RequirePluginIdentity{Unary,Stream} interceptor 已经在生产链路上把匿名
+// 调用挡掉, 但这里仍然 fail-closed 以确保 gate 自身不会因为上层链路漏装
+// 拦截器而被绕过。任何到达 SQL gate 而没有 plugin name 的调用都视为攻击面。
 func (g *sqlGate) Authorize(pluginName, query string) error {
-	if g == nil || g.registry == nil || pluginName == "" {
+	if g == nil || g.registry == nil {
 		return nil
+	}
+	if pluginName == "" {
+		return &PermissionDeniedError{
+			Plugin: "",
+			Table:  "(unresolved)",
+			Reason: "anonymous caller — plugin identity missing on SQL request",
+		}
 	}
 	reads, writes, err := extractSQLTables(query)
 	if err != nil {
@@ -212,8 +220,11 @@ func stripSQLComments(q string) string {
 		if i := strings.Index(line, "--"); i >= 0 {
 			line = line[:i]
 		}
-		b.WriteString(line)
-		b.WriteByte('\n')
+		// strings.Builder.WriteString / WriteByte 文档保证永远返回 nil error
+		// (内部 b.buf 是切片 append, 没有 io 失败路径), 这里显式 _ 忽略以满足
+		// errcheck 的 disable-default-exclusions=true 配置。
+		_, _ = b.WriteString(line)
+		_ = b.WriteByte('\n')
 	}
 	return b.String()
 }

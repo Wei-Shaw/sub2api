@@ -1,28 +1,30 @@
 // Package plugin — events_extension_server.go
 //
-// Phase B — host EventsExtension gRPC server + in-process EventPublisher.
+// Phase B — host EventsExtension gRPC server. The in-process publisher,
+// per-subscriber state, typed Publish helpers, and shared event-type /
+// capability constants live in events_publisher.go (split during T25 so
+// this file stays under the 600-line wrapper budget while keeping the same
+// package and unexported types).
 //
-// The host calls EventPublisher.Publish<TypedHelper>() from business code
-// (payment, gateway, auth, ratelimit) to fan an event out to every plugin
-// subscriber matching the requested type. Delivery semantics are documented
-// in plugin-sdk/proto/sdk.proto (EventsExtension service block):
+// Wire contract — documented in plugin-sdk/proto/sdk.proto's
+// EventsExtension service block:
 //
 //   - at-most-once, no replay, no persistence.
 //   - per-subscriber buffer: 256 events; full buffer drops the oldest entry
 //     and bumps dropped_since_last_send on the next successful send.
 //   - send timeout: 2s. Timeout or send error closes the stream; the SDK
-//     reconnects with backoff.
+//     reconnects with backoff via streamutil.Loop.
 //   - high-frequency events (currently only gateway.model.invoked) require
-//     the events.gateway capability — Subscribe rejects with PERMISSION_DENIED
-//     otherwise.
+//     the events.subscribe.gateway capability — Subscribe / Probe reject with
+//     PERMISSION_DENIED otherwise.
 //   - manifest.SubscribedEvents acts as an allow-list: a plugin cannot
 //     subscribe to a type it did not declare up front. Empty event_types in
 //     the request expands to "all declared types".
 //
-// Publish is non-blocking: the per-subscriber send happens on a goroutine
-// pulling from the buffer, and Publish itself only does a select-default
-// drop-oldest + buffered enqueue. Business main paths must never wait on
-// plugin delivery.
+// T25 added ProbeSubscription as a synchronous precondition check so the
+// SDK no longer needs to peel off the first stream.Recv just to surface
+// permission / argument errors. Subscribe still re-runs the gates so older
+// SDKs (without Probe) keep working unchanged.
 package plugin
 
 import (
@@ -30,7 +32,6 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc"
@@ -39,231 +40,6 @@ import (
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
-
-// Event type strings — keep in sync with plugin-sdk/proto/sdk.proto and the
-// SDK-side constants. They are deliberately literal here so the plugin
-// package does not pick up a reverse dependency on pluginsdk constants
-// beyond what we already import.
-const (
-	EventTypePaymentOrderCreated       = "payment.order.created"
-	EventTypePaymentOrderFulfilled     = "payment.order.fulfilled"
-	EventTypeGatewayModelInvoked       = "gateway.model.invoked"
-	EventTypeAuthUserRegistered        = "auth.user.registered"
-	EventTypeAccountRateLimitTriggered = "account.rate_limit.triggered"
-)
-
-// CapabilityEventsGateway is the manifest capability required to subscribe
-// to high-frequency gateway events. Mirrors pluginsdk.Capability* style
-// without forcing an extra import.
-//
-// P12·B-1 renamed the canonical name to "events.subscribe.gateway"; the
-// legacy "events.gateway" alias is normalised to this value by the
-// manager's approveCapabilities, so the registry only ever stores the
-// new name.
-const CapabilityEventsGateway = "events.subscribe.gateway"
-
-// highFrequencyEventCapability maps an event type to the capability a
-// plugin must hold in order to subscribe to it. Events absent from this
-// table are unrestricted.
-var highFrequencyEventCapability = map[string]string{
-	EventTypeGatewayModelInvoked: CapabilityEventsGateway,
-}
-
-// eventBufferSize is the per-subscriber buffer documented in the proto
-// contract. Full buffer drops the oldest entry. Sized to absorb a short
-// burst (e.g. a sweep over many accounts) without applying back-pressure
-// to host code.
-const eventBufferSize = 256
-
-// eventSendTimeout is the deadline applied to a single stream.Send call.
-// Exceeding it closes the stream and lets the SDK reconnect.
-const eventSendTimeout = 2 * time.Second
-
-// eventSubscriber is the per-plugin state held by the publisher. Only the
-// publisher's pump goroutine writes to lastSendTime / dropped after the
-// subscriber is registered; readers (Publish, tests) use atomics so we
-// avoid taking the publisher mutex on every fan-out.
-type eventSubscriber struct {
-	pluginName   string
-	eventTypes   map[string]struct{} // empty = all declared (allow-list applied at registration)
-	capabilities map[string]struct{}
-	buffer       chan *pb.HostEvent
-	dropped      atomic.Uint64
-	closeOnce    sync.Once
-	closed       chan struct{}
-}
-
-// close signals the pump goroutine to stop. Safe to call multiple times.
-func (s *eventSubscriber) close() {
-	s.closeOnce.Do(func() { close(s.closed) })
-}
-
-// EventPublisher is the host-side fan-out hub. It is safe for concurrent
-// use; the public Publish* helpers acquire only a read lock so the hot
-// path scales linearly with the number of subscribers.
-type EventPublisher struct {
-	mu sync.RWMutex
-	// subscribers keyed by plugin name. Re-Subscribe by the same plugin
-	// closes the previous entry — see Subscribe.
-	subscribers map[string]*eventSubscriber
-
-	logger *slog.Logger
-}
-
-// NewEventPublisher constructs an empty publisher. Callers wire it into
-// the SDK gRPC server via NewEventsExtensionServer and inject the same
-// publisher into business services so they can publish.
-func NewEventPublisher(logger *slog.Logger) *EventPublisher {
-	if logger == nil {
-		logger = slog.Default()
-	}
-	return &EventPublisher{
-		subscribers: make(map[string]*eventSubscriber),
-		logger:      logger.With("component", "plugin_events"),
-	}
-}
-
-// register attaches a subscriber. If a subscriber with the same plugin
-// name already exists it is closed (the old gRPC stream sees its buffer
-// channel close on the next read and exits).
-func (p *EventPublisher) register(sub *eventSubscriber) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if old, ok := p.subscribers[sub.pluginName]; ok {
-		old.close()
-	}
-	p.subscribers[sub.pluginName] = sub
-}
-
-// unregister removes a subscriber. Compares by pointer because a
-// re-Subscribe between the pump goroutine starting and ending would
-// otherwise have unregister evict the new subscriber instead of the old.
-func (p *EventPublisher) unregister(sub *eventSubscriber) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if cur, ok := p.subscribers[sub.pluginName]; ok && cur == sub {
-		delete(p.subscribers, sub.pluginName)
-	}
-}
-
-// publish dispatches the event to every interested subscriber. Non-blocking:
-// when a subscriber's buffer is full we drop the oldest entry and increment
-// its dropped counter; the next successful send carries the count.
-func (p *EventPublisher) publish(eventType string, build func() *pb.HostEvent) {
-	if p == nil {
-		return
-	}
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	if len(p.subscribers) == 0 {
-		return
-	}
-	var event *pb.HostEvent // lazy-built so a no-subscriber call costs ~nothing
-	for _, sub := range p.subscribers {
-		if !subscriberWants(sub, eventType) {
-			continue
-		}
-		if event == nil {
-			event = build()
-		}
-		// Non-blocking enqueue with drop-oldest.
-		select {
-		case sub.buffer <- event:
-		default:
-			// Buffer full — drop the oldest entry to make room.
-			select {
-			case <-sub.buffer:
-				sub.dropped.Add(1)
-				p.logger.Warn("event buffer full, dropped oldest",
-					"plugin", sub.pluginName,
-					"event_type", eventType,
-					"dropped_total", sub.dropped.Load())
-			default:
-				// Race: someone else just drained an entry; retry once.
-			}
-			select {
-			case sub.buffer <- event:
-			default:
-				// Still full and we already accounted for the drop above.
-				sub.dropped.Add(1)
-			}
-		}
-	}
-}
-
-func subscriberWants(sub *eventSubscriber, eventType string) bool {
-	if len(sub.eventTypes) == 0 {
-		return true
-	}
-	_, ok := sub.eventTypes[eventType]
-	return ok
-}
-
-// PublishPaymentOrderCreated is the typed helper for payment.order.created.
-func (p *EventPublisher) PublishPaymentOrderCreated(payload *pb.PaymentOrderCreated) {
-	p.publish(EventTypePaymentOrderCreated, func() *pb.HostEvent {
-		return &pb.HostEvent{
-			EventType:      EventTypePaymentOrderCreated,
-			TimestampNanos: time.Now().UnixNano(),
-			Payload: &pb.HostEvent_PaymentOrderCreated{
-				PaymentOrderCreated: payload,
-			},
-		}
-	})
-}
-
-// PublishPaymentOrderFulfilled — payment.order.fulfilled.
-func (p *EventPublisher) PublishPaymentOrderFulfilled(payload *pb.PaymentOrderFulfilled) {
-	p.publish(EventTypePaymentOrderFulfilled, func() *pb.HostEvent {
-		return &pb.HostEvent{
-			EventType:      EventTypePaymentOrderFulfilled,
-			TimestampNanos: time.Now().UnixNano(),
-			Payload: &pb.HostEvent_PaymentOrderFulfilled{
-				PaymentOrderFulfilled: payload,
-			},
-		}
-	})
-}
-
-// PublishGatewayModelInvoked — gateway.model.invoked. High-frequency: the
-// SDK side requires the events.gateway capability.
-func (p *EventPublisher) PublishGatewayModelInvoked(payload *pb.GatewayModelInvoked) {
-	p.publish(EventTypeGatewayModelInvoked, func() *pb.HostEvent {
-		return &pb.HostEvent{
-			EventType:      EventTypeGatewayModelInvoked,
-			TimestampNanos: time.Now().UnixNano(),
-			Payload: &pb.HostEvent_GatewayModelInvoked{
-				GatewayModelInvoked: payload,
-			},
-		}
-	})
-}
-
-// PublishAuthUserRegistered — auth.user.registered.
-func (p *EventPublisher) PublishAuthUserRegistered(payload *pb.AuthUserRegistered) {
-	p.publish(EventTypeAuthUserRegistered, func() *pb.HostEvent {
-		return &pb.HostEvent{
-			EventType:      EventTypeAuthUserRegistered,
-			TimestampNanos: time.Now().UnixNano(),
-			Payload: &pb.HostEvent_AuthUserRegistered{
-				AuthUserRegistered: payload,
-			},
-		}
-	})
-}
-
-// PublishAccountRateLimitTriggered — account.rate_limit.triggered.
-func (p *EventPublisher) PublishAccountRateLimitTriggered(payload *pb.AccountRateLimitTriggered) {
-	p.publish(EventTypeAccountRateLimitTriggered, func() *pb.HostEvent {
-		return &pb.HostEvent{
-			EventType:      EventTypeAccountRateLimitTriggered,
-			TimestampNanos: time.Now().UnixNano(),
-			Payload: &pb.HostEvent_AccountRateLimitTriggered{
-				AccountRateLimitTriggered: payload,
-			},
-		}
-	})
-}
 
 // EventsAllowList is the lookup the EventsExtensionServer uses to validate
 // requested event_types against a plugin's manifest declaration.
@@ -318,33 +94,33 @@ type CapabilityChecker interface {
 }
 
 // EventsExtensionServer implements pb.EventsExtensionServer.
+//
+// Caller identity 现在由 RequirePluginIdentityStream 拦截器统一校验并塞入
+// stream.Context(), handler 通过 CallerFromContext 取出。本结构不再持有
+// resolver 字段; 旧测试若直接调 server method, CallerFromContext 会从
+// metadata 兜底解析。
 type EventsExtensionServer struct {
 	pb.UnimplementedEventsExtensionServer
 
 	publisher    *EventPublisher
 	allowList    EventsAllowList
 	capabilities CapabilityChecker
-	resolver     func(ctx context.Context) string
 	logger       *slog.Logger
 }
 
-// NewEventsExtensionServer constructs the gRPC service. resolver MUST be
-// non-nil; passing nil substitutes a sentinel that always returns the
-// empty string so PERMISSION_DENIED is reported instead of a nil panic.
+// NewEventsExtensionServer constructs the gRPC service. resolver 参数保留
+// 是为了让 wire_gen.go 生成的调用点继续可编译; 传入的函数已被拦截器接管,
+// 此处只是丢弃。新接入方传 nil 即可。
 func NewEventsExtensionServer(
 	publisher *EventPublisher,
 	allowList EventsAllowList,
 	capabilities CapabilityChecker,
-	resolver func(ctx context.Context) string,
+	_ func(ctx context.Context) string,
 ) *EventsExtensionServer {
-	if resolver == nil {
-		resolver = func(context.Context) string { return "" }
-	}
 	return &EventsExtensionServer{
 		publisher:    publisher,
 		allowList:    allowList,
 		capabilities: capabilities,
-		resolver:     resolver,
 		logger:       slog.Default().With("component", "plugin_events_grpc"),
 	}
 }
@@ -352,6 +128,33 @@ func NewEventsExtensionServer(
 // Register attaches the server to the supplied gRPC server.
 func (s *EventsExtensionServer) Register(grpcServer *grpc.Server) {
 	pb.RegisterEventsExtensionServer(grpcServer, s)
+}
+
+// ProbeSubscription implements pb.EventsExtensionServer.ProbeSubscription.
+//
+// Probe is a pure precondition check the SDK runs synchronously before
+// opening the long-lived Subscribe stream. It runs the same gates as
+// Subscribe but does NOT register a subscriber, so:
+//   - PermissionDenied / InvalidArgument surface immediately to the caller
+//     (no goroutine spin-up, no streamutil.Loop swallowing the error).
+//   - Successful Probe is purely informational; the caller still has to
+//     open Subscribe to start receiving events. The reverse channel — Probe
+//     OK then Subscribe denied — is theoretically possible if the manifest
+//     mutates between the two calls, but the streaming RPC re-runs every
+//     check so the worst case is that streamutil.Loop sees the denial and
+//     stops retrying (matches isRetryableStreamError on the SDK side).
+//
+// 同步校验权限与参数，不真正建流；为 SDK 删除 "first-Recv 探活" 抽象泄漏
+// 而新增的 unary RPC（T25）。
+func (s *EventsExtensionServer) ProbeSubscription(
+	ctx context.Context, req *pb.EventSubscribeRequest,
+) (*pb.ProbeSubscriptionResponse, error) {
+	if _, err := s.authorise(ctx, req); err != nil {
+		return nil, err
+	}
+	return &pb.ProbeSubscriptionResponse{
+		ActiveSubscriptions: int64(s.publisher.subscriberCount()),
+	}, nil
 }
 
 // Subscribe implements pb.EventsExtensionServer.Subscribe. Lifecycle:
@@ -363,44 +166,88 @@ func (s *EventsExtensionServer) Register(grpcServer *grpc.Server) {
 //     stream from the same plugin).
 //  5. Pump events from the buffer to the stream until the context is
 //     cancelled, the stream errors, or a single Send exceeds the 2s deadline.
+//
+// authorise() centralises steps 1-3 so ProbeSubscription can run the exact
+// same gates without duplicating the validation logic.
 func (s *EventsExtensionServer) Subscribe(
 	req *pb.EventSubscribeRequest, stream grpc.ServerStreamingServer[pb.HostEvent],
 ) error {
 	ctx := stream.Context()
-	pluginName := s.resolver(ctx)
-	if pluginName == "" {
-		return status.Error(codes.PermissionDenied, "events: caller identity missing")
-	}
-
-	declared := s.declaredEvents(pluginName)
-	if len(declared) == 0 {
-		return status.Error(codes.PermissionDenied,
-			"events: plugin did not declare any SubscribedEvents in its manifest")
-	}
-
-	requested, err := s.resolveRequestedTypes(req.GetEventTypes(), declared)
+	authResult, err := s.authorise(ctx, req)
 	if err != nil {
 		return err
 	}
+	pluginName := authResult.pluginName
+	requested := authResult.requested
 
-	// Capability gate. We check after manifest validation so the error
-	// message does not leak unrelated info.
-	if err := s.checkCapabilities(pluginName, requested); err != nil {
-		return err
+	// sendTimer 创建后立即 stop 并清空 chan，等待第一次 Reset 时重新启动。
+	timer := time.NewTimer(eventSendTimeout)
+	if !timer.Stop() {
+		<-timer.C
 	}
-
 	sub := &eventSubscriber{
 		pluginName:   pluginName,
 		eventTypes:   requested,
 		capabilities: s.collectCaps(pluginName),
 		buffer:       make(chan *pb.HostEvent, eventBufferSize),
 		closed:       make(chan struct{}),
+		sendTimer:    timer,
+		sendDone:     make(chan error, 1),
 	}
 	s.publisher.register(sub)
 	defer s.publisher.unregister(sub)
 	defer sub.close()
 
 	return s.pump(ctx, stream, sub)
+}
+
+// authoriseResult bundles the outputs of authorise so Subscribe can reuse
+// them without re-running the resolver / allow-list / capability gates.
+//
+// authorise 的复用产物：把 caller 名 + 已解析的事件类型集合一起回传给
+// Subscribe，避免 Probe / Subscribe 两条路径写两份相同的校验代码。
+type authoriseResult struct {
+	pluginName string
+	requested  map[string]struct{}
+}
+
+// authorise runs the caller-identity / manifest / capability gates that
+// both Subscribe and ProbeSubscription share. Returning an error short-
+// circuits the caller with the appropriate gRPC status; on success the
+// caller proceeds to its own follow-on (register subscriber for Subscribe,
+// build the response for Probe).
+//
+// 复用 (1)：避免 Subscribe 和 ProbeSubscription 各自写一遍三段式校验，
+// 任何一段调整都只改这一个函数。
+func (s *EventsExtensionServer) authorise(
+	ctx context.Context, req *pb.EventSubscribeRequest,
+) (authoriseResult, error) {
+	pluginName, ok := CallerFromContext(ctx)
+	if !ok || pluginName == "" {
+		// Defence-in-depth: RequirePluginIdentityStream / Unary 拦截器已经在
+		// 生产链路上把匿名调用挡掉。能进到这里的只有未装拦截器的场景
+		// (老测试或直接调用), 也必须拒绝以避免任何身份未知的订阅者。
+		return authoriseResult{}, status.Error(codes.PermissionDenied,
+			"events: caller identity missing")
+	}
+
+	declared := s.declaredEvents(pluginName)
+	if len(declared) == 0 {
+		return authoriseResult{}, status.Error(codes.PermissionDenied,
+			"events: plugin did not declare any SubscribedEvents in its manifest")
+	}
+
+	requested, err := s.resolveRequestedTypes(req.GetEventTypes(), declared)
+	if err != nil {
+		return authoriseResult{}, err
+	}
+
+	// Capability gate. We check after manifest validation so the error
+	// message does not leak unrelated info.
+	if err := s.checkCapabilities(pluginName, requested); err != nil {
+		return authoriseResult{}, err
+	}
+	return authoriseResult{pluginName: pluginName, requested: requested}, nil
 }
 
 // declaredEvents returns the SubscribedEvents declared in the plugin's
@@ -499,7 +346,7 @@ func (s *EventsExtensionServer) pump(
 			// send", which is the value at this moment.
 			drop := sub.dropped.Swap(0)
 			event.DroppedSinceLastSend = drop
-			if err := s.sendWithTimeout(stream, event); err != nil {
+			if err := s.sendWithTimeout(ctx, stream, sub, event); err != nil {
 				if errors.Is(err, context.DeadlineExceeded) {
 					s.logger.Warn("event send timeout, closing stream",
 						"plugin", sub.pluginName, "event_type", event.EventType)
@@ -511,23 +358,59 @@ func (s *EventsExtensionServer) pump(
 }
 
 // sendWithTimeout enforces the 2s deadline by running stream.Send in a
-// goroutine and racing it against a timer. Returns context.DeadlineExceeded
-// on timeout and the underlying send error otherwise.
+// goroutine and racing it against the subscriber's reusable timer.
+// Returns context.DeadlineExceeded on timeout and the underlying send
+// error otherwise.
 //
-// gRPC server-streaming Send does not accept a context, so this is the
-// only way to bound a slow client without touching unsafe internals. The
-// goroutine leaks at most until the underlying Send returns or the
-// connection is torn down.
+// gRPC server-streaming Send does not accept a context, so这是在不动底层
+// 内部状态的前提下能给慢客户端设上限的唯一办法。返回超时后 pump 立即退出
+// 并触发 defer 链：register 注销 + sub.close + stream cancel；底层 Send
+// 在 stream context 被 cancel 后会随之返回，发送 goroutine 就不会无界
+// 滞留——最长寿命 = 单次 Send 自行解除阻塞或者 stream 被 gRPC 销毁。
+//
+// 复用 sub.sendTimer / sub.sendDone：每条事件不再分配新 chan / timer。
 func (s *EventsExtensionServer) sendWithTimeout(
+	ctx context.Context,
 	stream grpc.ServerStreamingServer[pb.HostEvent],
+	sub *eventSubscriber,
 	event *pb.HostEvent,
 ) error {
-	done := make(chan error, 1)
-	go func() { done <- stream.Send(event) }()
+	// drain 上一轮可能残留的结果(成功路径下 chan 已被 select 拿走，超时路径
+	// 下另一 goroutine 会在自己的 Send 返回时再尝试写入；这里在 reuse 前先
+	// 清掉以保证当前一次 send 的语义干净)。
 	select {
-	case err := <-done:
+	case <-sub.sendDone:
+	default:
+	}
+	go func() {
+		// chan 容量为 1；若上一次超时遗留的 goroutine 已经把结果写入，这里
+		// 用 non-blocking send 避免再阻塞。
+		select {
+		case sub.sendDone <- stream.Send(event):
+		default:
+		}
+	}()
+	sub.sendTimer.Reset(eventSendTimeout)
+	select {
+	case err := <-sub.sendDone:
+		// 成功/失败都要把 timer 关掉，下一次 Reset 才能从干净状态开始。
+		if !sub.sendTimer.Stop() {
+			select {
+			case <-sub.sendTimer.C:
+			default:
+			}
+		}
 		return err
-	case <-time.After(eventSendTimeout):
+	case <-sub.sendTimer.C:
 		return context.DeadlineExceeded
+	case <-ctx.Done():
+		// stream 已被取消(例如 plugin 断连)；停掉 timer 避免后续 Reset 误读。
+		if !sub.sendTimer.Stop() {
+			select {
+			case <-sub.sendTimer.C:
+			default:
+			}
+		}
+		return ctx.Err()
 	}
 }

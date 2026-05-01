@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	pluginsdkroot "github.com/Wei-Shaw/sub2api/plugin-sdk"
 )
 
 // Header names exposed to plugins. They are also documented in
@@ -25,7 +26,11 @@ const (
 	HeaderPluginRequestID = "X-Plugin-Request-ID"
 	HeaderPluginAPIKeyID  = "X-Plugin-API-Key-ID"
 	HeaderPluginClientIP  = "X-Plugin-Client-IP"
-	HeaderTraceparent     = "traceparent"
+	// HeaderTraceparent matches pluginsdkroot.MetadataTraceparentKey so the
+	// HTTP header (case-insensitive) and the gRPC metadata key (lower-case)
+	// share the same wire identifier; downstream handlers reading either
+	// surface end up with the same value.
+	HeaderTraceparent = pluginsdkroot.MetadataTraceparentKey
 )
 
 // PluginRouter 是核心 HTTP 入口的包装层。
@@ -76,6 +81,12 @@ func (r *PluginRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		r.coreHandler.ServeHTTP(w, req)
 		return
 	}
+
+	// trace 注入必须在鉴权之前: 鉴权 middleware 拿到的 req.Context() 会带有
+	// trace_id, 这样鉴权失败路径的结构化日志(401/403)也能附上一致的 trace,
+	// 跨进程链路不会因为提前返回而断裂。injectRequestContext 里仍会幂等地再
+	// 调一次 ensureTraceparentOnRequest, 不会重写已有的合法 traceparent。
+	req = ensureTraceparentOnRequest(req)
 
 	// 借用 Gin 的鉴权中间件:先在临时 gin.Engine 上执行鉴权,
 	// 鉴权通过后从 gin.Context 中读取用户信息再转发。
@@ -141,12 +152,45 @@ func (r *PluginRouter) proxyTo(w http.ResponseWriter, req *http.Request, authCtx
 	}
 
 	proxy := r.getOrCreateProxy(entry.ProxyURL, target)
-	injectRequestContext(req, authCtx, entry.PluginName)
+	req = injectRequestContext(req, authCtx, entry.PluginName)
 
 	// 移除 hop-by-hop header,避免误传给插件 HTTP server。
 	stripHopByHopHeaders(req.Header)
 
 	proxy.ServeHTTP(w, req)
+}
+
+// ensureTraceparentOnRequest 是 trace 注入的单一入口, 必须在所有鉴权 / 业务
+// middleware 之前调用一次。它具有 idempotent 语义: 第二次进入时 header 已合法、
+// ctx 已携带相同值, 不会重新生成或覆盖。
+//
+// 两层效果:
+//   - req.Header[HeaderTraceparent] 是插件经 RequestMetadata.Traceparent()
+//     读取的 wire-level header (HTTP 路径)。
+//   - req.Context() 经 pluginsdkroot.WithTraceparent 增强, 让 host 进程内的
+//     handler / 鉴权 middleware / 嵌套 gRPC 客户端都能通过 TraceparentFromContext
+//     拿到同一 id, 与 gRPC server interceptor 行为对齐。
+//
+// 把 trace 注入与 plugin 头注入解耦的原因: trace 与鉴权是两个独立横切关注点,
+// 鉴权失败路径(401/403)上的日志也应该带 trace_id, 因此 trace 必须在鉴权之前
+// 完成注入(见 ServeHTTP)。
+func ensureTraceparentOnRequest(req *http.Request) *http.Request {
+	tp := req.Header.Get(HeaderTraceparent)
+	if !pluginsdkroot.IsValidTraceparent(tp) {
+		tp = pluginsdkroot.NewTraceparent()
+		if tp != "" {
+			req.Header.Set(HeaderTraceparent, tp)
+		}
+	}
+	if tp == "" {
+		return req
+	}
+	// 已带相同 traceparent 的 ctx 重复 WithValue 等价于 no-op (相同 key 同值),
+	// 但仍会构造一个新 ctx; 用 TraceparentFromContext 早返回避免无谓分配。
+	if existing, ok := pluginsdkroot.TraceparentFromContext(req.Context()); ok && existing == tp {
+		return req
+	}
+	return req.WithContext(pluginsdkroot.WithTraceparent(req.Context(), tp))
 }
 
 // injectRequestContext 将 plugin 关心的上下文头写入 req:
@@ -155,10 +199,14 @@ func (r *PluginRouter) proxyTo(w http.ResponseWriter, req *http.Request, authCtx
 //   - X-Plugin-Client-IP: gin.Context.ClientIP() (已尊重 trust proxy)
 //   - X-Plugin-Name: 插件名 (用于 plugin 多实例区分)
 //   - X-Plugin-Request-ID: 优先透传上游, 否则生成 UUID v4
-//   - traceparent: W3C Trace Context, 合法则透传, 非法/缺失则生成新值
+//   - traceparent: 委托给 ensureTraceparentOnRequest, 保持 idempotent (鉴权前
+//     ServeHTTP 已注入过, 这里只是兜底)
 //
 // 注意: 不透传任何敏感原始凭据(JWT body、raw API key)。
-func injectRequestContext(req *http.Request, authCtx *gin.Context, pluginName string) {
+//
+// Returns the (possibly ctx-augmented) request the caller should use for
+// onward handling.
+func injectRequestContext(req *http.Request, authCtx *gin.Context, pluginName string) *http.Request {
 	if authCtx != nil {
 		if subject, ok := middleware.GetAuthSubjectFromContext(authCtx); ok && subject.UserID > 0 {
 			req.Header.Set(HeaderPluginUserID, strconv.FormatInt(subject.UserID, 10))
@@ -180,12 +228,9 @@ func injectRequestContext(req *http.Request, authCtx *gin.Context, pluginName st
 		req.Header.Set(HeaderPluginRequestID, uuid.NewString())
 	}
 
-	// traceparent：合法则 pass-through，非法则重写。host 自身不创建 span。
-	if !isValidTraceparent(req.Header.Get(HeaderTraceparent)) {
-		if tp := newTraceparent(); tp != "" {
-			req.Header.Set(HeaderTraceparent, tp)
-		}
-	}
+	// trace: ServeHTTP 已在鉴权前调过 ensureTraceparentOnRequest; 这里幂等再调
+	// 一次, 兼容直接复用 injectRequestContext 的单元测试用例。
+	return ensureTraceparentOnRequest(req)
 }
 
 func (r *PluginRouter) getOrCreateProxy(key string, target *url.URL) *httputil.ReverseProxy {
@@ -193,12 +238,28 @@ func (r *PluginRouter) getOrCreateProxy(key string, target *url.URL) *httputil.R
 		rp, _ := v.(*httputil.ReverseProxy)
 		return rp
 	}
-	proxy := httputil.NewSingleHostReverseProxy(target)
-	// 覆写 Director,设置 req.Host 为目标 host,确保上游 server 正确处理。
-	original := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		original(req)
-		req.Host = target.Host
+	// 用 Rewrite 替代已 deprecated 的 Director (Go 1.20+ 推荐写法,1.26 起 Director 标记弃用)。
+	//
+	// 等价语义对照 (旧 Director 路径 -> 新 Rewrite 路径):
+	//   - NewSingleHostReverseProxy 默认 Director 路由到 target.Scheme/Host + 拼接 BasePath
+	//     -> pr.SetURL(target) 完成同样的路由动作。
+	//   - 原代码额外的 req.Host = target.Host (覆盖 SingleHost "不重写 Host" 的默认行为)
+	//     -> pr.SetURL(target) 默认就重写 Out.Host 为 target.Host (见 SetURL godoc),
+	//        因此无需再显式赋值; 语义完全一致。
+	//   - Director 模式下 ReverseProxy 自动追加 X-Forwarded-For/Host/Proto
+	//     -> Rewrite 模式默认会移除入站 X-Forwarded-* 头, 需先把 inbound XFF 拷给 outbound
+	//        再调 SetXForwarded, 等价于"追加 client IP 到现有 XFF"行为
+	//        (Go 官方文档推荐写法, 见 SetXForwarded godoc)。
+	//
+	// SSRF 风险: target 来自 plugin manifest 注册时 inst.HTTPAddr, 该地址在
+	// manager_spawn.go 调用 validateLoopbackAddr 强制校验为 loopback (127.0.0.1/::1/localhost),
+	// 因此这里的 target 不可能指向任意外网/内网主机。
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(pr *httputil.ProxyRequest) {
+			pr.SetURL(target)
+			pr.Out.Header["X-Forwarded-For"] = pr.In.Header["X-Forwarded-For"]
+			pr.SetXForwarded()
+		},
 	}
 	actual, _ := r.proxies.LoadOrStore(key, proxy)
 	rp, _ := actual.(*httputil.ReverseProxy)

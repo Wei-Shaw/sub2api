@@ -7,9 +7,9 @@ import (
 
 // pluginNamePattern is the canonical character set for plugin names.
 //
-//	- lowercase alphanumeric + dash + underscore
-//	- must start AND end with alnum (rejects "-foo", "foo_", ".."  etc.)
-//	- length 1-64
+//   - lowercase alphanumeric + dash + underscore
+//   - must start AND end with alnum (rejects "-foo", "foo_", ".."  etc.)
+//   - length 1-64
 //
 // This both rules out path-traversal payloads (no "/", no ".", no "..")
 // and produces a name that filepath.Join cannot escape. New-line / NUL /

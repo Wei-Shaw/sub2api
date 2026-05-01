@@ -9,7 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
@@ -118,12 +120,7 @@ func (neverLeader) TryAcquire(context.Context, string) (func(), bool) {
 func TestSubscribe_FiresIntervalAndAcks(t *testing.T) {
 	t.Parallel()
 	hist := &recordingHistory{}
-	srv := NewJobSchedulerServer(
-		func(ctx context.Context) string { return "test-plugin" },
-		alwaysLeader{},
-		hist,
-		nil,
-	)
+	srv := NewJobSchedulerServer(alwaysLeader{}, hist, nil)
 	defer srv.Stop()
 
 	stream := newFakeStream()
@@ -198,12 +195,7 @@ func TestSubscribe_FiresIntervalAndAcks(t *testing.T) {
 func TestSubscribe_LeaderOnlySkipsWhenNotLeader(t *testing.T) {
 	t.Parallel()
 	hist := &recordingHistory{}
-	srv := NewJobSchedulerServer(
-		func(ctx context.Context) string { return "test-plugin" },
-		neverLeader{},
-		hist,
-		nil,
-	)
+	srv := NewJobSchedulerServer(neverLeader{}, hist, nil)
 	defer srv.Stop()
 
 	stream := newFakeStream()
@@ -234,12 +226,7 @@ func TestSubscribe_LeaderOnlySkipsWhenNotLeader(t *testing.T) {
 // that the first message must be Register.
 func TestSubscribe_RejectsNonRegisterFirstFrame(t *testing.T) {
 	t.Parallel()
-	srv := NewJobSchedulerServer(
-		func(ctx context.Context) string { return "test-plugin" },
-		alwaysLeader{},
-		nil,
-		nil,
-	)
+	srv := NewJobSchedulerServer(alwaysLeader{}, nil, nil)
 	defer srv.Stop()
 
 	stream := newFakeStream()
@@ -321,18 +308,36 @@ func indexOf(haystack, needle string) int {
 	return -1
 }
 
-// Sanity check: Subscribe with a nil resolver always returns Unauthenticated.
-func TestSubscribe_NoResolver(t *testing.T) {
+// Sanity check: Subscribe 在 ctx 没有 caller 信息(metadata header 为空)时
+// 必须 PermissionDenied。错误码与 RequirePluginIdentityStream 拦截器统一。
+func TestSubscribe_AnonymousCallerRejected(t *testing.T) {
 	t.Parallel()
-	srv := NewJobSchedulerServer(nil, alwaysLeader{}, nil, nil)
+	srv := NewJobSchedulerServer(alwaysLeader{}, nil, nil)
 	defer srv.Stop()
 
-	stream := newFakeStream()
+	// 构造一个不带 caller metadata 的 stream, 模拟 RequirePluginIdentity 缺失
+	// 时的兜底场景。
+	stream := newFakeStreamWithoutCaller()
 	defer stream.close()
 
 	err := srv.Subscribe(stream)
 	if err == nil {
-		t.Fatal("expected error from nil resolver")
+		t.Fatal("expected error from anonymous caller")
+	}
+	if got := status.Code(err); got != codes.PermissionDenied {
+		t.Fatalf("expected PermissionDenied, got %s", got)
+	}
+}
+
+// newFakeStreamWithoutCaller 构造一个 ctx 不包含 x-sub2api-plugin metadata
+// 的假 stream, 用于覆盖匿名拒绝路径。
+func newFakeStreamWithoutCaller() *fakeStream {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &fakeStream{
+		ctx:      ctx,
+		cancel:   cancel,
+		incoming: make(chan *pluginsdk.JobMessage, 8),
+		outgoing: make(chan *pluginsdk.JobTrigger, 8),
 	}
 }
 
