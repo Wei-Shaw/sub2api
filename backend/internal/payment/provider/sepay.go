@@ -27,10 +27,15 @@ const (
 	maxSepayResponseSize = 1 << 20
 )
 
+const (
+	sepayCanonicalOrderPrefix = "vclaw_"
+	sepayLegacyOrderPrefix    = "sub2_"
+)
+
 var (
-	sepayLegacyOrderCodePattern = regexp.MustCompile(`(?i)\bsub2_[a-z0-9]+\b`)
-	sepayTransferRefPattern     = regexp.MustCompile(`(?i)\bVC([0-9]{8}[a-z0-9]{8})\b`)
-	sepayOrderSuffixPattern     = regexp.MustCompile(`(?i)^([0-9]{8}[a-z0-9]{8})$`)
+	sepayOrderCodePattern   = regexp.MustCompile(`(?i)\b(?:vclaw|sub2)_[a-z0-9]+\b`)
+	sepayTransferRefPattern = regexp.MustCompile(`(?i)\b(?:VCLAW|VC)([0-9]{8}[a-z0-9]{8})\b`)
+	sepayOrderSuffixPattern = regexp.MustCompile(`(?i)^([0-9]{8}[a-z0-9]{8})$`)
 )
 
 type Sepay struct {
@@ -365,8 +370,12 @@ func buildSepayTransferContent(orderID string) string {
 
 func buildSepayTransferReference(orderID string) string {
 	suffix := strings.TrimSpace(orderID)
-	if strings.HasPrefix(strings.ToLower(suffix), "sub2_") {
-		suffix = suffix[len("sub2_"):]
+	lower := strings.ToLower(suffix)
+	for _, prefix := range []string{sepayCanonicalOrderPrefix, sepayLegacyOrderPrefix} {
+		if strings.HasPrefix(lower, prefix) {
+			suffix = suffix[len(prefix):]
+			break
+		}
 	}
 	if suffix == "" {
 		return ""
@@ -379,27 +388,37 @@ func NormalizeSepayOrderID(code string) string {
 	if code == "" {
 		return ""
 	}
-	if legacy := sepayLegacyOrderCodePattern.FindString(code); legacy != "" {
-		return legacy
+	if orderID := sepayOrderCodePattern.FindString(code); orderID != "" {
+		return normalizePrefixedSepayOrderID(orderID)
 	}
 	if match := sepayTransferRefPattern.FindStringSubmatch(code); len(match) == 2 {
-		return "sub2_" + match[1]
+		return sepayCanonicalOrderPrefix + match[1]
 	}
 	if match := sepayOrderSuffixPattern.FindStringSubmatch(code); len(match) == 2 {
-		return "sub2_" + match[1]
+		return sepayCanonicalOrderPrefix + match[1]
 	}
 	return ""
 }
 
 func ExtractSepayOrderIDFromContent(content string) string {
 	content = strings.TrimSpace(content)
-	if legacy := sepayLegacyOrderCodePattern.FindString(content); legacy != "" {
-		return legacy
+	if orderID := sepayOrderCodePattern.FindString(content); orderID != "" {
+		return normalizePrefixedSepayOrderID(orderID)
 	}
 	if match := sepayTransferRefPattern.FindStringSubmatch(content); len(match) == 2 {
-		return "sub2_" + match[1]
+		return sepayCanonicalOrderPrefix + match[1]
 	}
 	return ""
+}
+
+func normalizePrefixedSepayOrderID(orderID string) string {
+	if strings.HasPrefix(strings.ToLower(orderID), sepayCanonicalOrderPrefix) {
+		return strings.ToLower(orderID[:len(sepayCanonicalOrderPrefix)]) + orderID[len(sepayCanonicalOrderPrefix):]
+	}
+	if strings.HasPrefix(strings.ToLower(orderID), sepayLegacyOrderPrefix) {
+		return strings.ToLower(orderID[:len(sepayLegacyOrderPrefix)]) + orderID[len(sepayLegacyOrderPrefix):]
+	}
+	return strings.TrimSpace(orderID)
 }
 
 func normalizeSepayOrderID(code string) string {

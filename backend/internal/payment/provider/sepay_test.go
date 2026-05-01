@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -47,7 +48,7 @@ func TestSepayCreatePaymentAutoDiscoversSingleBankAccount(t *testing.T) {
 	}
 
 	resp, err := provider.CreatePayment(context.Background(), payment.CreatePaymentRequest{
-		OrderID:         "sub2_20260429AbC123xY",
+		OrderID:         "vclaw_20260429AbC123xY",
 		Amount:          "50000",
 		PaymentCurrency: "VND",
 	})
@@ -60,8 +61,8 @@ func TestSepayCreatePaymentAutoDiscoversSingleBankAccount(t *testing.T) {
 	if !strings.Contains(resp.QRCode, "bank=MBBank") {
 		t.Fatalf("QRCode missing bank short name: %s", resp.QRCode)
 	}
-	if strings.Contains(resp.QRCode, "sub2_") {
-		t.Fatalf("QRCode leaked internal order prefix: %s", resp.QRCode)
+	if strings.Contains(resp.QRCode, "sub2_") || strings.Contains(strings.ToLower(resp.QRCode), "vclaw_") {
+		t.Fatalf("QRCode leaked order prefix: %s", resp.QRCode)
 	}
 	if !strings.Contains(resp.QRCode, "VC20260429AbC123xY") {
 		t.Fatalf("QRCode missing SePay transfer reference: %s", resp.QRCode)
@@ -87,7 +88,7 @@ func TestSepayCreatePaymentRequiresBankAccountWhenMultipleAccounts(t *testing.T)
 	}
 
 	_, err = provider.CreatePayment(context.Background(), payment.CreatePaymentRequest{
-		OrderID:         "sub2_20260429AbC123xY",
+		OrderID:         "vclaw_20260429AbC123xY",
 		Amount:          "50000",
 		PaymentCurrency: "VND",
 	})
@@ -116,7 +117,7 @@ func TestSepayCreatePaymentUsesExplicitBankAccountID(t *testing.T) {
 	}
 
 	resp, err := provider.CreatePayment(context.Background(), payment.CreatePaymentRequest{
-		OrderID:         "sub2_20260429AbC123xY",
+		OrderID:         "vclaw_20260429AbC123xY",
 		Amount:          "50000",
 		PaymentCurrency: "VND",
 	})
@@ -165,12 +166,12 @@ func TestSepayCreatePaymentUsesMeaningfulTransferContentWithoutInternalPrefix(t 
 	if err != nil {
 		t.Fatalf("NewSepay() error = %v", err)
 	}
-	qr, err := provider.buildQRCodeURL(&SepayBankAccount{AccountNumber: "333999333333", BankShortName: "MBBank"}, 50000, buildSepayTransferContent("sub2_20260429AbC123xY"))
+	qr, err := provider.buildQRCodeURL(&SepayBankAccount{AccountNumber: "333999333333", BankShortName: "MBBank"}, 50000, buildSepayTransferContent("vclaw_20260429AbC123xY"))
 	if err != nil {
 		t.Fatalf("buildQRCodeURL() error = %v", err)
 	}
-	if strings.Contains(qr, "sub2_") {
-		t.Fatalf("QRCode leaked internal sub2 prefix: %s", qr)
+	if strings.Contains(qr, "sub2_") || strings.Contains(strings.ToLower(qr), "vclaw_") {
+		t.Fatalf("QRCode leaked order prefix: %s", qr)
 	}
 	if !strings.Contains(qr, "VClaw") || !strings.Contains(qr, "VC20260429AbC123xY") {
 		t.Fatalf("QRCode transfer content should be meaningful and include hidden reference: %s", qr)
@@ -200,8 +201,8 @@ func TestSepayVerifyNotificationExtractsTransferReferenceFromContent(t *testing.
 	if notification == nil {
 		t.Fatal("VerifyNotification() returned nil notification")
 	}
-	if notification.OrderID != "sub2_20260429AbC123xY" {
-		t.Fatalf("OrderID = %q, want sub2_20260429AbC123xY", notification.OrderID)
+	if notification.OrderID != "vclaw_20260429AbC123xY" {
+		t.Fatalf("OrderID = %q, want vclaw_20260429AbC123xY", notification.OrderID)
 	}
 }
 
@@ -228,8 +229,44 @@ func TestSepayVerifyNotificationNormalizesWebhookCodeSuffix(t *testing.T) {
 	if notification == nil {
 		t.Fatal("VerifyNotification() returned nil notification")
 	}
-	if notification.OrderID != "sub2_20260429AbC123xY" {
-		t.Fatalf("OrderID = %q, want sub2_20260429AbC123xY", notification.OrderID)
+	if notification.OrderID != "vclaw_20260429AbC123xY" {
+		t.Fatalf("OrderID = %q, want vclaw_20260429AbC123xY", notification.OrderID)
+	}
+}
+
+func TestSepayVerifyNotificationPreservesExplicitPrefixedOrderCode(t *testing.T) {
+	provider, err := NewSepay("sepay-1", map[string]string{
+		"apiToken":  "token",
+		"notifyUrl": "https://example.com/api/v1/payment/webhook/sepay",
+	})
+	if err != nil {
+		t.Fatalf("NewSepay() error = %v", err)
+	}
+
+	for _, tc := range []struct {
+		name string
+		code string
+		want string
+	}{
+		{name: "canonical vclaw", code: "vclaw_20260429AbC123xY", want: "vclaw_20260429AbC123xY"},
+		{name: "legacy sub2", code: "sub2_20260429AbC123xY", want: "sub2_20260429AbC123xY"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			notification, err := provider.VerifyNotification(context.Background(), fmt.Sprintf(`{
+				"id": 92704,
+				"code": %q,
+				"content": "Cam on VClaw",
+				"transferType": "in",
+				"transferAmount": 50000,
+				"referenceCode": "MBVCB.3278907687"
+			}`, tc.code), nil)
+			if err != nil {
+				t.Fatalf("VerifyNotification() error = %v", err)
+			}
+			if notification == nil || notification.OrderID != tc.want {
+				t.Fatalf("notification = %#v, want order %s", notification, tc.want)
+			}
+		})
 	}
 }
 
@@ -258,7 +295,7 @@ func TestSepayVerifyNotificationRequiresConfiguredWebhookAPIKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("VerifyNotification() error = %v", err)
 	}
-	if notification == nil || notification.OrderID != "sub2_20260429AbC123xY" {
+	if notification == nil || notification.OrderID != "vclaw_20260429AbC123xY" {
 		t.Fatalf("notification = %#v, want matched SePay order", notification)
 	}
 }
