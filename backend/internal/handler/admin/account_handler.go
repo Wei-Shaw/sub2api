@@ -11,6 +11,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"sync"
@@ -58,6 +59,7 @@ type AccountHandler struct {
 	sessionLimitCache       service.SessionLimitCache
 	rpmCache                service.RPMCache
 	tokenCacheInvalidator   service.TokenCacheInvalidator
+	accountTestQueue        *accountTestQueue
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -90,6 +92,7 @@ func NewAccountHandler(
 		sessionLimitCache:       sessionLimitCache,
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
+		accountTestQueue:        newAccountTestQueue(3 * time.Second),
 	}
 }
 
@@ -730,16 +733,8 @@ func (h *AccountHandler) Test(c *gin.Context) {
 	// Allow empty body, model_id is optional
 	_ = c.ShouldBindJSON(&req)
 
-	// Use AccountTestService to test the account with SSE streaming
-	if err := h.accountTestService.TestAccountConnection(c, accountID, req.ModelID, req.Prompt, req.Mode); err != nil {
-		// Error already sent via SSE, just log
+	if err := h.runQueuedInteractiveAccountTest(c, accountID, req); err != nil {
 		return
-	}
-
-	if h.rateLimitService != nil {
-		if _, err := h.rateLimitService.RecoverAccountAfterSuccessfulTest(c.Request.Context(), accountID); err != nil {
-			_ = c.Error(err)
-		}
 	}
 }
 
@@ -1197,6 +1192,78 @@ func (h *AccountHandler) BatchRefresh(c *gin.Context) {
 		"failed":   failedCount,
 		"errors":   errors,
 		"warnings": warnings,
+	})
+}
+
+// BatchTest handles batch testing account connectivity.
+// POST /api/v1/admin/accounts/batch-test
+func (h *AccountHandler) BatchTest(c *gin.Context) {
+	if h.accountTestService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Account test service unavailable")
+		return
+	}
+
+	var req struct {
+		AccountIDs []int64 `json:"account_ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if len(req.AccountIDs) == 0 {
+		response.BadRequest(c, "account_ids is required")
+		return
+	}
+
+	ctx := c.Request.Context()
+	accounts, err := h.adminService.GetAccountsByIDs(ctx, req.AccountIDs)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	foundIDs := make(map[int64]bool, len(accounts))
+	for _, acc := range accounts {
+		if acc != nil {
+			foundIDs[acc.ID] = true
+		}
+	}
+
+	successCount := 0
+	failedCount := 0
+	errors := make([]gin.H, 0)
+
+	for _, id := range req.AccountIDs {
+		if foundIDs[id] {
+			continue
+		}
+		failedCount++
+		errors = append(errors, gin.H{
+			"account_id": id,
+			"error":      "account not found",
+		})
+	}
+
+	for _, account := range accounts {
+		if account == nil {
+			continue
+		}
+		if err := h.runQueuedBackgroundAccountTest(ctx, account.ID); err != nil {
+			failedCount++
+			errors = append(errors, gin.H{
+				"account_id": account.ID,
+				"error":      err.Error(),
+			})
+			continue
+		}
+		successCount++
+	}
+
+	response.Success(c, gin.H{
+		"total":   len(req.AccountIDs),
+		"success": successCount,
+		"failed":  failedCount,
+		"errors":  errors,
 	})
 }
 
@@ -1711,7 +1778,58 @@ func (h *AccountHandler) ResetQuota(c *gin.Context) {
 		return
 	}
 
+	if account.Platform == service.PlatformOpenAI && h.accountTestService != nil {
+		if err := h.runQueuedBackgroundAccountTest(c.Request.Context(), accountID); err != nil {
+			log.Printf("[WARN] auto test after quota reset failed for account %d: %v", accountID, err)
+		}
+		account, err = h.adminService.GetAccount(c.Request.Context(), accountID)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+	}
+
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
+}
+
+func (h *AccountHandler) runQueuedInteractiveAccountTest(c *gin.Context, accountID int64, req TestAccountRequest) error {
+	if h.accountTestService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Account test service unavailable")
+		return errors.New("account test service unavailable")
+	}
+
+	return h.accountTestQueue.Run(c.Request.Context(), func() error {
+		if err := h.accountTestService.TestAccountConnection(c, accountID, req.ModelID, req.Prompt, req.Mode); err != nil {
+			return err
+		}
+		if h.rateLimitService != nil {
+			if _, err := h.rateLimitService.RecoverAccountAfterSuccessfulTest(c.Request.Context(), accountID); err != nil {
+				_ = c.Error(err)
+			}
+		}
+		return nil
+	})
+}
+
+func (h *AccountHandler) runQueuedBackgroundAccountTest(ctx context.Context, accountID int64) error {
+	if h.accountTestService == nil {
+		return errors.New("account test service unavailable")
+	}
+
+	return h.accountTestQueue.Run(ctx, func() error {
+		recorder := httptest.NewRecorder()
+		testCtx, _ := gin.CreateTestContext(recorder)
+		testCtx.Request = httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/admin/accounts/%d/test", accountID), nil).WithContext(ctx)
+		if err := h.accountTestService.TestAccountConnection(testCtx, accountID, "", "", ""); err != nil {
+			return err
+		}
+		if h.rateLimitService != nil {
+			if _, err := h.rateLimitService.RecoverAccountAfterSuccessfulTest(ctx, accountID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // GetTempUnschedulable handles getting temporary unschedulable status

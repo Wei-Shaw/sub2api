@@ -175,6 +175,7 @@
         <AccountBulkActionsBar
           :selected-ids="selIds"
           @delete="handleBulkDelete"
+          @test="handleBulkTest"
           @reset-status="handleBulkResetStatus"
           @refresh-token="handleBulkRefreshToken"
           @edit-selected="openBulkEditSelected"
@@ -1235,6 +1236,22 @@ const handleBulkRefreshToken = async () => {
     appStore.showError(String(error))
   }
 }
+const handleBulkTest = async () => {
+  if (!confirm(t('common.confirm'))) return
+  try {
+    const result = await adminAPI.accounts.batchTest(selIds.value)
+    if (result.failed > 0) {
+      appStore.showError(t('admin.accounts.bulkActions.partialSuccess', { success: result.success, failed: result.failed }))
+    } else {
+      appStore.showSuccess(t('admin.accounts.bulkActions.testSuccess', { count: result.success }))
+      clearSelection()
+    }
+    reload()
+  } catch (error) {
+    console.error('Failed to batch test accounts:', error)
+    appStore.showError(t('admin.accounts.bulkActions.testFailed'))
+  }
+}
 const updateSchedulableInList = (accountIds: number[], schedulable: boolean) => {
   if (accountIds.length === 0) return
   const idSet = new Set(accountIds)
@@ -1459,6 +1476,10 @@ const accountMatchesCurrentFilters = (account: Account) => {
       if (account.status !== 'active' || isRateLimited || isTempUnschedulable || !account.schedulable) return false
     } else if (filters.status === 'active_excluding_quota_stopped') {
       if (account.status !== 'active' || isRateLimited || isTempUnschedulable || !account.schedulable || isQuotaStopped) return false
+    } else if (filters.status === 'openai_5h_used_zero') {
+      if (!isOpenAI5HUsedZero) return false
+    } else if (filters.status === 'openai_7d_used_zero') {
+      if (!isOpenAI7DUsedZero) return false
     } else if (filters.status === 'rate_limited') {
       if (account.status !== 'active' || !isRateLimited || isTempUnschedulable) return false
     } else if (filters.status === 'temp_unschedulable') {

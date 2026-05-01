@@ -320,6 +320,10 @@ func (s *stubAdminService) GetAccount(ctx context.Context, id int64) (*service.A
 func (s *stubAdminService) GetAccountsByIDs(ctx context.Context, ids []int64) ([]*service.Account, error) {
 	out := make([]*service.Account, 0, len(ids))
 	for _, id := range ids {
+		if account, ok := s.getAccountByID[id]; ok && account != nil {
+			out = append(out, account)
+			continue
+		}
 		account := service.Account{ID: id, Name: "account", Status: service.StatusActive}
 		out = append(out, &account)
 	}

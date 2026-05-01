@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -218,6 +219,7 @@ func isOpenAIUsagePercentExactlyZero(account *Account, key string) bool {
 	progress := buildCodexUsageProgressFromExtra(account.Extra, window, time.Now())
 	return progress != nil && progress.Utilization == 0
 }
+
 func buildAnthropicModelAliases(requestedModel string) []string {
 	trimmed := strings.TrimSpace(requestedModel)
 	if trimmed == "" {

@@ -2875,6 +2875,8 @@ export default {
       status: {
         active: 'Active',
         activeExcludingQuotaStopped: 'Active (Exclude Quota-Stopped)',
+        openAI5HUsedZero: '5H Used 0%',
+        openAI7DUsedZero: '7D Used 0%',
         inactive: 'Inactive',
         error: 'Error',
         cooldown: 'Cooldown',
@@ -3051,12 +3053,15 @@ export default {
         clear: 'Clear selection',
         edit: 'Bulk Edit',
         delete: 'Bulk Delete',
+        test: 'Batch Test',
         enableScheduling: 'Enable Scheduling',
         disableScheduling: 'Disable Scheduling',
         resetStatus: 'Reset Status',
         refreshToken: 'Refresh Token',
         resetStatusSuccess: 'Successfully reset {count} account(s) status',
         refreshTokenSuccess: 'Successfully refreshed {count} account(s) token',
+        testSuccess: 'Successfully tested {count} account(s)',
+        testFailed: 'Batch test failed',
         partialSuccess: 'Partially completed: {success} succeeded, {failed} failed'
       },
       bulkEdit: {

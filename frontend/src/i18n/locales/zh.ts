@@ -3068,6 +3068,8 @@ export default {
       status: {
         active: '正常',
         activeExcludingQuotaStopped: '正常（排除超额度）',
+        openAI5HUsedZero: '5H额度已用0%',
+        openAI7DUsedZero: '7D额度已用0%',
         inactive: '停用',
         error: '错误',
         cooldown: '冷却中',
@@ -3204,12 +3206,15 @@ export default {
         clear: '清除选择',
         edit: '批量编辑账号',
         delete: '批量删除',
+        test: '批量测试',
         enableScheduling: '批量启用调度',
         disableScheduling: '批量停止调度',
         resetStatus: '批量重置状态',
         refreshToken: '批量刷新令牌',
         resetStatusSuccess: '已成功重置 {count} 个账号状态',
         refreshTokenSuccess: '已成功刷新 {count} 个账号令牌',
+        testSuccess: '已成功测试 {count} 个账号',
+        testFailed: '批量测试失败',
         partialSuccess: '操作部分完成：{success} 成功，{failed} 失败'
       },
       bulkEdit: {

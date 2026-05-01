@@ -503,6 +503,11 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 					))
 				}),
 			)
+		case service.AccountStatusFilterOpenAI5HUsedZero, service.AccountStatusFilterOpenAI7DUsedZero:
+			q = q.Where(
+				dbaccount.PlatformEQ(service.PlatformOpenAI),
+				dbaccount.TypeEQ(service.AccountTypeOAuth),
+			)
 		case "rate_limited":
 			q = q.Where(
 				dbaccount.StatusEQ(service.StatusActive),
@@ -570,7 +575,11 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 	}
 
 	normalizedStatus := strings.TrimSpace(status)
-	if normalizedStatus == service.AccountStatusFilterActiveExcludingQuotaStopped || strings.TrimSpace(model) != "" || strings.TrimSpace(quotaStrategy) != "" {
+	if normalizedStatus == service.AccountStatusFilterActiveExcludingQuotaStopped ||
+		normalizedStatus == service.AccountStatusFilterOpenAI5HUsedZero ||
+		normalizedStatus == service.AccountStatusFilterOpenAI7DUsedZero ||
+		strings.TrimSpace(model) != "" ||
+		strings.TrimSpace(quotaStrategy) != "" {
 		accountsQuery := q
 		for _, order := range accountListOrder(params) {
 			accountsQuery = accountsQuery.Order(order)

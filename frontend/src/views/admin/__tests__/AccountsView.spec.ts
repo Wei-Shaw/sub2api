@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { ref } from 'vue'
 
 import type { Account, AdminGroup, PaginatedResponse, WindowStats } from '@/types'
 import AccountsView from '../AccountsView.vue'
@@ -9,17 +10,21 @@ const {
   listWithEtag,
   getFilterModels,
   getBatchTodayStats,
+  batchTestAccounts,
   listProxies,
   getAllProxies,
-  getAllGroups
+  getAllGroups,
+  selectedAccountIdsState
 } = vi.hoisted(() => ({
   listAccounts: vi.fn(),
   listWithEtag: vi.fn(),
   getFilterModels: vi.fn(),
   getBatchTodayStats: vi.fn(),
+  batchTestAccounts: vi.fn(),
   listProxies: vi.fn(),
   getAllProxies: vi.fn(),
-  getAllGroups: vi.fn()
+  getAllGroups: vi.fn(),
+  selectedAccountIdsState: { ref: null as { value: number[] } | null }
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -32,6 +37,7 @@ vi.mock('@/api/admin', () => ({
       delete: vi.fn(),
       batchClearError: vi.fn(),
       batchRefresh: vi.fn(),
+      batchTest: batchTestAccounts,
       bulkUpdate: vi.fn(),
       exportData: vi.fn(),
       getAvailableModels: vi.fn(),
@@ -70,6 +76,39 @@ vi.mock('@/stores/auth', () => ({
 vi.mock('@/composables/useSwipeSelect', () => ({
   useSwipeSelect: vi.fn()
 }))
+
+vi.mock('@/composables/useTableSelection', () => {
+  const selectedIds = ref<number[]>([])
+  selectedAccountIdsState.ref = selectedIds
+  return {
+    useTableSelection: () => ({
+      selectedIds,
+      allVisibleSelected: ref(false),
+      isSelected: (id: number) => selectedIds.value.includes(id),
+      setSelectedIds: (ids: number[]) => {
+        selectedIds.value = [...ids]
+      },
+      select: (id: number) => {
+        if (!selectedIds.value.includes(id)) {
+          selectedIds.value = [...selectedIds.value, id]
+        }
+      },
+      deselect: (id: number) => {
+        selectedIds.value = selectedIds.value.filter((current) => current !== id)
+      },
+      toggle: vi.fn(),
+      clear: () => {
+        selectedIds.value = []
+      },
+      removeMany: (ids: number[]) => {
+        selectedIds.value = selectedIds.value.filter((current) => !ids.includes(current))
+      },
+      toggleVisible: vi.fn(),
+      selectVisible: vi.fn(),
+      batchUpdate: vi.fn()
+    })
+  }
+})
 
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
@@ -169,6 +208,10 @@ const AccountTableFiltersStub = {
         data-test="set-status-filter"
         @click="$emit('update:filters', { ...filters, status: 'active_excluding_quota_stopped' }); $emit('change')"
       >set-status-filter</button>
+      <button
+        data-test="set-status-filter-7d-zero"
+        @click="$emit('update:filters', { ...filters, status: 'openai_7d_used_zero' }); $emit('change')"
+      >set-status-filter-7d-zero</button>
     </div>
   `
 }
@@ -181,6 +224,11 @@ const AccountTableActionsStub = {
   template: '<div><slot name="beforeCreate" /><slot /><slot name="after" /></div>'
 }
 
+const AccountBulkActionsBarStub = {
+  emits: ['test'],
+  template: '<button data-test="bulk-test" @click="$emit(\'test\')">bulk-test</button>'
+}
+
 const createWrapper = () => mount(AccountsView, {
   global: {
     stubs: {
@@ -188,7 +236,7 @@ const createWrapper = () => mount(AccountsView, {
       TablePageLayout: TablePageLayoutStub,
       AccountTableFilters: AccountTableFiltersStub,
       AccountTableActions: AccountTableActionsStub,
-      AccountBulkActionsBar: true,
+      AccountBulkActionsBar: AccountBulkActionsBarStub,
       DataTable: { template: '<div />' },
       Pagination: true,
       ConfirmDialog: { template: '<div><slot /></div>' },
@@ -226,11 +274,16 @@ describe('admin AccountsView', () => {
     listWithEtag.mockReset()
     getFilterModels.mockReset()
     getBatchTodayStats.mockReset()
+    batchTestAccounts.mockReset()
     listProxies.mockReset()
     getAllProxies.mockReset()
     getAllGroups.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
+    if (selectedAccountIdsState.ref) {
+      selectedAccountIdsState.ref.value = []
+    }
+    vi.stubGlobal('confirm', vi.fn(() => true))
 
     listAccounts.mockResolvedValue(createListResponse())
     listWithEtag.mockResolvedValue({ notModified: true, etag: 'etag', data: null })
@@ -238,6 +291,7 @@ describe('admin AccountsView', () => {
     listProxies.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 500, pages: 1 })
     getAllProxies.mockResolvedValue([])
     getAllGroups.mockResolvedValue([] as AdminGroup[])
+    batchTestAccounts.mockResolvedValue({ total: 1, success: 1, failed: 0, errors: [] })
     getFilterModels.mockImplementation(async (platform?: string) => {
       if (platform === 'openai') return openaiGroups
       if (platform === 'anthropic') return anthropicGroups
@@ -352,5 +406,41 @@ describe('admin AccountsView', () => {
       }),
       expect.any(Object)
     )
+  })
+
+  it('7D 已用 0 状态筛选会透传到列表请求', async () => {
+    const wrapper = createWrapper()
+
+    await flushPromises()
+
+    await wrapper.get('[data-test="set-status-filter-7d-zero"]').trigger('click')
+    await vi.advanceTimersByTimeAsync(350)
+    await flushPromises()
+
+    expect(listAccounts).toHaveBeenLastCalledWith(
+      1,
+      20,
+      expect.objectContaining({
+        status: 'openai_7d_used_zero'
+      }),
+      expect.any(Object)
+    )
+  })
+
+  it('批量测试会调用后端批量测试接口', async () => {
+    const wrapper = createWrapper()
+
+    await flushPromises()
+
+    if (selectedAccountIdsState.ref) {
+      selectedAccountIdsState.ref.value = [1]
+    }
+    await flushPromises()
+
+    await wrapper.get('[data-test="bulk-test"]').trigger('click')
+    await flushPromises()
+
+    expect(batchTestAccounts).toHaveBeenCalledWith([1])
+    expect(showSuccess).toHaveBeenCalledWith('admin.accounts.bulkActions.testSuccess')
   })
 })

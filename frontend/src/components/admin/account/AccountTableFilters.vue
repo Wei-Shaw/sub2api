@@ -31,6 +31,8 @@ const sOpts = computed(() => [
   { value: '', label: t('admin.accounts.allStatus') },
   { value: 'active', label: t('admin.accounts.status.active') },
   { value: 'active_excluding_quota_stopped', label: t('admin.accounts.status.activeExcludingQuotaStopped') },
+  { value: 'openai_5h_used_zero', label: t('admin.accounts.status.openAI5HUsedZero') },
+  { value: 'openai_7d_used_zero', label: t('admin.accounts.status.openAI7DUsedZero') },
   { value: 'inactive', label: t('admin.accounts.status.inactive') },
   { value: 'error', label: t('admin.accounts.status.error') },
   { value: 'rate_limited', label: t('admin.accounts.status.rateLimited') },
