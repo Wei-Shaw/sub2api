@@ -1,4 +1,4 @@
-.PHONY: build generate test test-unit test-integration test-e2e
+.PHONY: build generate lint test test-unit test-integration test-e2e
 
 VERSION ?= $(shell tr -d '\r\n' < ./cmd/server/VERSION)
 LDFLAGS ?= -s -w -X main.Version=$(VERSION)
@@ -9,6 +9,10 @@ build:
 generate:
 	go generate ./ent
 	go generate ./cmd/server
+
+lint:
+	@gofmt -l ./... | (! grep .) || (echo "gofmt failed; run 'gofmt -w' on the listed files" && exit 1)
+	golangci-lint run --timeout=5m ./...
 
 test:
 	go test ./...

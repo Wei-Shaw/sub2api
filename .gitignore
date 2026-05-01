@@ -1,5 +1,8 @@
 docs/claude-relay-service/
 
+# Playwright MCP 测试截图/快照（本地调试产物）
+.playwright-mcp/
+
 # ===================
 # Go 后端
 # ===================

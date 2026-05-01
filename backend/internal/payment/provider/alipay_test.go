@@ -98,9 +98,9 @@ func TestNewAlipay(t *testing.T) {
 			errSubstr: "privateKey",
 		},
 		{
-			name:    "nil config map returns error for appId",
-			config:  map[string]string{},
-			wantErr: true,
+			name:      "nil config map returns error for appId",
+			config:    map[string]string{},
+			wantErr:   true,
 			errSubstr: "appId",
 		},
 	}

@@ -1,9 +1,17 @@
 // Command hello-world is the canonical smoke-test plugin for the Sub2API
-// plugin runtime. It exercises every transport the SDK provides:
-//   - PluginLifecycle handshake + Manifest delivery
-//   - HTTP routes registered via HTTPRegistrar (no auth, admin auth)
-//   - SQL proxy round-trip via PluginContext.DB()
-//   - Redis proxy round-trip via PluginContext.Redis()
+// plugin runtime. It is also the recommended starting template for new
+// plugin authors — see plugins/hello-world/README.md for the operator
+// view (build / run / deploy) and plugin-sdk/README.md for the full SDK
+// reference.
+//
+// It exercises every transport the SDK provides:
+//   - PluginLifecycle handshake + Manifest delivery (host → plugin)
+//   - HTTP routes registered via HTTPRegistrar (no auth + admin auth)
+//   - SQL proxy round-trip via PluginContext.DB() (plugin → host)
+//   - Redis proxy round-trip via PluginContext.Redis() (plugin → host)
+//   - SettingsExtension read via PluginContext.Settings().GetTyped (V5/W3)
+//   - EventsExtension subscribe via PluginContext.Events().Subscribe (Phase A)
+//   - Embedded frontend bundle served through GetFrontendBundle gRPC stream
 //
 // It is deliberately tiny so any failure points to the SDK or core, not to
 // the plugin itself.
