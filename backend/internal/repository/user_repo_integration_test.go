@@ -11,7 +11,9 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
+	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
+	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/suite"
@@ -36,6 +38,8 @@ func (s *UserRepoSuite) SetupTest() {
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM auth_identities")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_devices")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM redeem_codes")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM payment_audit_logs")
+	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM payment_orders")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM api_keys")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_subscriptions")
 	_, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM user_allowed_groups")
@@ -261,6 +265,42 @@ func (s *UserRepoSuite) TestDelete() {
 
 	_, err = s.repo.GetByID(s.ctx, user.ID)
 	s.Require().Error(err, "expected error after delete")
+}
+
+func (s *UserRepoSuite) TestDeletePreservesPaymentOrdersForLedgerHistory() {
+	user := s.mustCreateUser(&service.User{Email: "delete-preserve-payment@test.com", Username: "payer"})
+
+	order, err := s.client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(5).
+		SetPayAmount(130000).
+		SetPaymentCurrency("VND").
+		SetPaymentAmount(130000).
+		SetLedgerCurrency("USD").
+		SetLedgerAmount(5).
+		SetFeeRate(0).
+		SetRechargeCode("PAY-LEDGER-KEEP").
+		SetOutTradeNo("VCLEDGERKEEP").
+		SetPaymentType(payment.TypeSepay).
+		SetPaymentTradeNo("FT_LEDGER_KEEP").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(service.OrderStatusCompleted).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("test.local").
+		Save(s.ctx)
+	s.Require().NoError(err, "create payment order")
+
+	err = s.repo.Delete(s.ctx, user.ID)
+	s.Require().NoError(err)
+
+	preserved, err := s.client.PaymentOrder.Query().Where(paymentorder.IDEQ(order.ID)).Only(s.ctx)
+	s.Require().NoError(err, "payment orders are immutable ledger rows and must survive user deletion")
+	s.Require().Equal(user.ID, preserved.UserID)
+	s.Require().Equal(user.Email, preserved.UserEmail)
+	s.Require().Equal(service.OrderStatusCompleted, preserved.Status)
 }
 
 func (s *UserRepoSuite) TestDeleteRemovesAuthIdentitiesAndChannels() {
