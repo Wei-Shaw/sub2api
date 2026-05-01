@@ -1449,8 +1449,27 @@ func (r *userRepository) loadPrimaryRedeemCodes(ctx context.Context, userIDs []i
 		return codesByUser, typesByUser, nil
 	}
 
+	devices, err := r.client.UserDevice.Query().
+		Where(userdevice.UserIDIn(userIDs...)).
+		WithLoginRedeemCode().
+		Order(dbent.Desc(userdevice.FieldLastLoginAt), dbent.Desc(userdevice.FieldLastClaimedAt), dbent.Desc(userdevice.FieldCreatedAt), dbent.Desc(userdevice.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, device := range devices {
+		if _, exists := codesByUser[device.UserID]; exists || device.Edges.LoginRedeemCode == nil {
+			continue
+		}
+		code := device.Edges.LoginRedeemCode.Code
+		redeemType := device.Edges.LoginRedeemCode.Type
+		codesByUser[device.UserID] = &code
+		typesByUser[device.UserID] = &redeemType
+	}
+
+	identityTypes := []string{service.RedeemTypeDeviceLogin, service.RedeemTypeDeviceClaim, service.RedeemTypeInvitation}
 	redeems, err := r.client.RedeemCode.Query().
-		Where(redeemcode.UsedByIn(userIDs...)).
+		Where(redeemcode.UsedByIn(userIDs...), redeemcode.TypeIn(identityTypes...)).
 		Order(dbent.Desc(redeemcode.FieldUsedAt), dbent.Desc(redeemcode.FieldCreatedAt), dbent.Desc(redeemcode.FieldID)).
 		All(ctx)
 	if err != nil {

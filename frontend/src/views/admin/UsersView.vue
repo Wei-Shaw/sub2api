@@ -296,23 +296,22 @@
                   {{ value }}
                 </span>
                 <div
-                  v-if="shouldShowRedeemCode(row)"
+                  v-if="shouldShowIdentityCode(row)"
                   class="flex min-w-0 items-center gap-1.5"
                 >
                   <span
                     class="inline-flex min-w-0 max-w-[12rem] items-center rounded-md bg-primary-50 px-1.5 py-0.5 text-xs font-medium text-primary-700 ring-1 ring-inset ring-primary-200 dark:bg-primary-900/20 dark:text-primary-300 dark:ring-primary-800"
-                    :title="row.primary_redeem_code || t('admin.users.inviteRedeemUser')"
+                    :title="row.primary_redeem_code || t('admin.users.identityCodeUser')"
                   >
-                    <span class="mr-1 flex-shrink-0">({{ t('admin.users.redeemCode') }})</span>
                     <span v-if="row.primary_redeem_code" class="truncate font-mono">{{ row.primary_redeem_code }}</span>
                   </span>
                   <button
                     v-if="row.primary_redeem_code"
                     type="button"
                     class="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
-                    :title="t('admin.users.copyRedeemCode')"
-                    :aria-label="t('admin.users.copyRedeemCode')"
-                    @click.stop="copyRedeemCode(row)"
+                    :title="t('admin.users.copyIdentityCode')"
+                    :aria-label="t('admin.users.copyIdentityCode')"
+                    @click.stop="copyIdentityCode(row)"
                   >
                     <Icon name="copy" size="xs" :stroke-width="2" />
                   </button>
@@ -1033,19 +1032,29 @@ const USAGE_COLUMN_PLATFORMS: Record<string, string | null> = {
 }
 const PLATFORM_USAGE_COLUMNS = USAGE_COLUMN_KEYS.filter((k) => k !== 'usage')
 
-const shouldShowRedeemCode = (user: AdminUser) => Boolean(
-  user.primary_redeem_code || user.signup_source === 'invite' || user.primary_redeem_type === 'invitation'
-)
+const identityRedeemTypes = new Set(['device_login', 'device_claim', 'invitation'])
+const identityCodePrefixes = ['DLG-', 'DCL-', 'INV-']
 
-const copyRedeemCode = async (user: AdminUser) => {
+const shouldShowIdentityCode = (user: AdminUser) => {
+  const code = user.primary_redeem_code?.trim().toUpperCase()
+  if (!code) return false
+
+  const codeType = user.primary_redeem_type?.trim().toLowerCase()
+  if (codeType) return identityRedeemTypes.has(codeType)
+
+  return identityCodePrefixes.some((prefix) => code.startsWith(prefix))
+}
+
+const copyIdentityCode = async (user: AdminUser) => {
+  if (!shouldShowIdentityCode(user)) return
   if (!user.primary_redeem_code) return
 
   try {
     await navigator.clipboard.writeText(user.primary_redeem_code)
-    appStore.showSuccess(t('admin.users.redeemCodeCopied'))
+    appStore.showSuccess(t('admin.users.identityCodeCopied'))
   } catch (error) {
-    appStore.showError(t('admin.users.failedToCopyRedeemCode'))
-    console.error('Failed to copy redeem code:', error)
+    appStore.showError(t('admin.users.failedToCopyIdentityCode'))
+    console.error('Failed to copy identity code:', error)
   }
 }
 const hasVisibleUsageColumn = computed(

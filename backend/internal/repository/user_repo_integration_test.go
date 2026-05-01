@@ -415,14 +415,16 @@ func (s *UserRepoSuite) TestListWithFilters_SearchByUsername() {
 func (s *UserRepoSuite) TestListWithFilters_SearchByRedeemCodeLoadsRedeemAndDeviceSummary() {
 	target := s.mustCreateUser(&service.User{Email: "invite-search@test.com", SignupSource: "invite"})
 	s.mustCreateUser(&service.User{Email: "other-invite-search@test.com", SignupSource: "invite"})
-	redeem := s.mustCreateRedeemCode(target.ID, "INVITE-SEARCH-123", service.RedeemTypeInvitation)
+	inviteRedeem := s.mustCreateRedeemCode(target.ID, "INV-SEARCH-1234-ABCD", service.RedeemTypeInvitation)
+	loginRedeem := s.mustCreateRedeemCode(target.ID, "DLG-SEARCH-1234-ABCD", service.RedeemTypeDeviceLogin)
 
 	_, err := s.client.UserDevice.Create().
 		SetUserID(target.ID).
 		SetDeviceHash("invite-search-device-hash").
 		SetPlatform("windows").
 		SetArch("x64").
-		SetLoginRedeemCodeID(redeem.ID).
+		SetClaimRedeemCodeID(inviteRedeem.ID).
+		SetLoginRedeemCodeID(loginRedeem.ID).
 		Save(s.ctx)
 	s.Require().NoError(err, "create device binding")
 
@@ -432,10 +434,36 @@ func (s *UserRepoSuite) TestListWithFilters_SearchByRedeemCodeLoadsRedeemAndDevi
 	s.Require().Len(users, 1)
 	s.Require().Equal(target.ID, users[0].ID)
 	s.Require().NotNil(users[0].PrimaryRedeemCode)
-	s.Require().Equal("INVITE-SEARCH-123", *users[0].PrimaryRedeemCode)
+	s.Require().Equal("DLG-SEARCH-1234-ABCD", *users[0].PrimaryRedeemCode)
 	s.Require().NotNil(users[0].PrimaryRedeemType)
-	s.Require().Equal(service.RedeemTypeInvitation, *users[0].PrimaryRedeemType)
+	s.Require().Equal(service.RedeemTypeDeviceLogin, *users[0].PrimaryRedeemType)
 	s.Require().True(users[0].HasDeviceBinding)
+}
+
+func (s *UserRepoSuite) TestListWithFilters_PrimaryRedeemIgnoresBalanceTopups() {
+	target := s.mustCreateUser(&service.User{Email: "identity-code@test.com", SignupSource: "invite"})
+	_ = s.mustCreateRedeemCode(target.ID, "PAY-SHOULD-NOT-SHOW", service.RedeemTypeBalance)
+	loginRedeem := s.mustCreateRedeemCode(target.ID, "DLG-IDENT-1234-ABCD", service.RedeemTypeDeviceLogin)
+
+	_, err := s.client.UserDevice.Create().
+		SetUserID(target.ID).
+		SetDeviceHash("identity-code-device-hash").
+		SetPlatform("windows").
+		SetArch("x64").
+		SetLoginRedeemCodeID(loginRedeem.ID).
+		Save(s.ctx)
+	s.Require().NoError(err, "create device binding")
+
+	users, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, service.UserListFilters{Search: "identity-code@"})
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), page.Total)
+	s.Require().Len(users, 1)
+	s.Require().Equal(target.ID, users[0].ID)
+	s.Require().NotNil(users[0].PrimaryRedeemCode)
+	s.Require().Equal("DLG-IDENT-1234-ABCD", *users[0].PrimaryRedeemCode)
+	s.Require().NotEqual("PAY-SHOULD-NOT-SHOW", *users[0].PrimaryRedeemCode)
+	s.Require().NotNil(users[0].PrimaryRedeemType)
+	s.Require().Equal(service.RedeemTypeDeviceLogin, *users[0].PrimaryRedeemType)
 }
 
 func (s *UserRepoSuite) TestListWithFilters_LoadsActiveSubscriptions() {

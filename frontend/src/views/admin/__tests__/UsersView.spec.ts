@@ -383,7 +383,7 @@ describe('admin UsersView', () => {
     expect(wrapper.get('[data-test="selected-keys"]').text()).toBe('')
   })
 
-  it('shows invite redeem code next to truncated user email and copies it', async () => {
+  it('shows invitation identity code next to truncated user email and copies it', async () => {
     listUsers.mockResolvedValue({
       items: [createAdminUser({
         email: 'invalid-invite-user-email-that-is-too-long-to-render-cleanly@example.invalid.local',
@@ -428,14 +428,81 @@ describe('admin UsersView', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain('admin.users.redeemCode')
+    expect(wrapper.text()).not.toContain('admin.users.redeemCode')
     expect(wrapper.text()).toContain('INVITE-CODE-1234567890')
     expect(wrapper.get('[title="invalid-invite-user-email-that-is-too-long-to-render-cleanly@example.invalid.local"]').classes()).toContain('truncate')
 
-    await wrapper.get('button[aria-label="admin.users.copyRedeemCode"]').trigger('click')
+    await wrapper.get('button[aria-label="admin.users.copyIdentityCode"]').trigger('click')
     await flushPromises()
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('INVITE-CODE-1234567890')
-    expect(showSuccess).toHaveBeenCalledWith('admin.users.redeemCodeCopied')
+    expect(showSuccess).toHaveBeenCalledWith('admin.users.identityCodeCopied')
+  })
+
+  it('shows identity code next to truncated user email and copies it', async () => {
+    listUsers.mockResolvedValue({
+      items: [
+        createAdminUser({
+          email: 'invalid-invite-user-email-that-is-too-long-to-render-cleanly@example.invalid.local',
+          signup_source: 'invite',
+          primary_redeem_code: 'DLG-FN7Y-NJQJ-XNV6',
+          primary_redeem_type: 'device_login',
+          has_device_binding: true
+        }),
+        createAdminUser({
+          id: 43,
+          email: 'balance-topup@example.invalid.local',
+          primary_redeem_code: 'PAY-SHOULD-NOT-RENDER',
+          primary_redeem_type: 'balance',
+          has_device_binding: false
+        })
+      ],
+      total: 2,
+      page: 1,
+      page_size: 20,
+      pages: 1
+    })
+
+    const wrapper = mount(UsersView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: {
+            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+          },
+          DataTable: DataTableStub,
+          Pagination: true,
+          ConfirmDialog: true,
+          EmptyState: true,
+          GroupBadge: true,
+          Select: true,
+          UserAttributesConfigModal: true,
+          UserConcurrencyCell: true,
+          UserCreateModal: true,
+          UserEditModal: true,
+          UserApiKeysModal: true,
+          UserAllowedGroupsModal: true,
+          UserBalanceModal: true,
+          UserBalanceHistoryModal: true,
+          GroupReplaceModal: true,
+          Icon: true,
+          Teleport: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('admin.users.redeemCode')
+    expect(wrapper.text()).not.toContain('redeem-code')
+    expect(wrapper.text()).toContain('DLG-FN7Y-NJQJ-XNV6')
+    expect(wrapper.text()).not.toContain('PAY-SHOULD-NOT-RENDER')
+    expect(wrapper.get('[title="invalid-invite-user-email-that-is-too-long-to-render-cleanly@example.invalid.local"]').classes()).toContain('truncate')
+
+    await wrapper.get('button[aria-label="admin.users.copyIdentityCode"]').trigger('click')
+    await flushPromises()
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('DLG-FN7Y-NJQJ-XNV6')
+    expect(showSuccess).toHaveBeenCalledWith('admin.users.identityCodeCopied')
   })
 })
