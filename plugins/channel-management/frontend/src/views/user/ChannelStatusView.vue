@@ -51,9 +51,16 @@ import MonitorHero, {
 } from '../../components/user/monitor/MonitorHero.vue'
 import MonitorCardGrid from '../../components/user/monitor/MonitorCardGrid.vue'
 import MonitorDetailDialog from '../../components/user/MonitorDetailDialog.vue'
-import { DEFAULT_INTERVAL_SECONDS, STATUS_OPERATIONAL } from '../../utils/channelMonitorConstants'
+import {
+  DEFAULT_INTERVAL_SECONDS,
+  STATUS_OPERATIONAL,
+  STATUS_DEGRADED,
+  STATUS_FAILED,
+  STATUS_ERROR,
+} from '../../utils/channelMonitorConstants'
 import { useAutoRefresh } from '../../composables/useAutoRefresh'
 import { getSdk } from '../../api/sdk'
+import { extractApiErrorMessage } from '../../utils/apiError'
 
 const { t } = useI18n()
 const sdk = getSdk()
@@ -78,23 +85,27 @@ const autoRefresh = useAutoRefresh({
 const countdown = autoRefresh.countdown
 
 // ── Computed ──
+// T19 Fix C — OverallStatus 是 MonitorStatus 的真子集 ('operational' | 'degraded'),
+// 二者字面量值相等但 TS 类型不同, 用 'as OverallStatus' 缩窄即可;
+// 输入侧 (it.primary_status) 直接比较 STATUS_FAILED / STATUS_ERROR / STATUS_OPERATIONAL
+// 常量, 避免裸字面量与 channelMonitorConstants 漂移.
+const OVERALL_OPERATIONAL = STATUS_OPERATIONAL as OverallStatus
+const OVERALL_DEGRADED = STATUS_DEGRADED as OverallStatus
+
 const overallStatus = computed<OverallStatus>(() => {
-  if (items.value.length === 0) return 'operational'
+  if (items.value.length === 0) return OVERALL_OPERATIONAL
   for (const it of items.value) {
-    if (it.primary_status === 'failed' || it.primary_status === 'error') return 'degraded'
-    if (it.primary_status !== STATUS_OPERATIONAL) return 'degraded'
+    if (it.primary_status === STATUS_FAILED || it.primary_status === STATUS_ERROR) {
+      return OVERALL_DEGRADED
+    }
+    if (it.primary_status !== STATUS_OPERATIONAL) return OVERALL_DEGRADED
   }
-  return 'operational'
+  return OVERALL_OPERATIONAL
 })
 
 const detailTitle = computed(() => {
   return detailTarget.value?.name || t('channelStatus.detailTitle')
 })
-
-function extractMessage(err: unknown, fallback: string): string {
-  const msg = err instanceof Error ? err.message : String(err)
-  return msg || fallback
-}
 
 // ── Loaders ──
 async function reload(silent = false) {
@@ -109,7 +120,7 @@ async function reload(silent = false) {
   } catch (err: unknown) {
     const e = err as { name?: string; code?: string }
     if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return
-    sdk.notify.error(extractMessage(err, t('channelStatus.loadError')))
+    sdk.notify.error(extractApiErrorMessage(err, t('channelStatus.loadError')))
   } finally {
     if (abortController === ctrl) {
       if (!silent) loading.value = false
@@ -133,7 +144,7 @@ async function loadDetail(id: number, force = false) {
   try {
     detailCache[id] = await fetchChannelMonitorDetail(id)
   } catch (err: unknown) {
-    sdk.notify.error(extractMessage(err, t('channelStatus.detailLoadError')))
+    sdk.notify.error(extractApiErrorMessage(err, t('channelStatus.detailLoadError')))
   }
 }
 

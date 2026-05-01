@@ -1,7 +1,6 @@
 package monitorservice
 
 import (
-	"context"
 	"net/url"
 	"strings"
 )
@@ -30,10 +29,11 @@ func validateInterval(sec int) error {
 //   - scheme 强制 https（拒绝 http，避免明文凭证 + 部分 SSRF 利用面）
 //   - 必须为 origin（无 path/query/fragment），防止用户填 https://api.openai.com/v1
 //     导致 joinURL 拼出 /v1/v1/chat/completions
-//   - hostname 不能是 localhost/metadata 等已知元数据 hostname
-//   - 解析所有 IP，任一落在 loopback/RFC1918/link-local/ULA 段即拒绝（防 SSRF）
 //
-// 错误信息不暴露具体 IP / hostname，避免泄露内网拓扑。
+// 注：host 私网/回环检查曾经在此处做"提交时一次性预检"（isPrivateOrLoopbackHost），
+// 但因为 TOCTOU 与 DNS rebinding，该预检无法可靠拦截 SSRF。真正的防护放在
+// SDK SafeOutboundHTTP 层（每次 dial 都校验），所以这里不再做 host 预检——
+// 错误信息天然不暴露具体 IP / hostname，避免泄露内网拓扑。
 func validateEndpoint(ep string) error {
 	ep = strings.TrimSpace(ep)
 	if ep == "" {
@@ -54,17 +54,6 @@ func validateEndpoint(ep string) error {
 	}
 	if u.RawQuery != "" || u.Fragment != "" {
 		return ErrChannelMonitorEndpointPath
-	}
-
-	hostname := u.Hostname()
-	ctx, cancel := context.WithTimeout(context.Background(), monitorEndpointResolveTimeout)
-	defer cancel()
-	blocked, err := isPrivateOrLoopbackHost(ctx, hostname)
-	if err != nil {
-		return ErrChannelMonitorEndpointUnreachable
-	}
-	if blocked {
-		return ErrChannelMonitorEndpointPrivate
 	}
 	return nil
 }

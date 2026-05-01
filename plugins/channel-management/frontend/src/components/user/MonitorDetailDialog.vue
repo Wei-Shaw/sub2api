@@ -69,6 +69,7 @@ import {
 } from '../../api/user/channelMonitor'
 import { useChannelMonitorFormat } from '../../composables/useChannelMonitorFormat'
 import { getSdk } from '../../api/sdk'
+import { extractApiErrorMessage } from '../../utils/apiError'
 
 const props = defineProps<{
   show: boolean
@@ -93,8 +94,7 @@ async function load(id: number) {
   try {
     detail.value = await fetchChannelMonitorDetail(id)
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err)
-    sdk.notify.error(msg || t('channelStatus.detailLoadError'))
+    sdk.notify.error(extractApiErrorMessage(err, t('channelStatus.detailLoadError')))
   } finally {
     loading.value = false
   }

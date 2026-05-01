@@ -8,6 +8,7 @@ export interface IntervalFormEntry {
   output_price: number | string | null
   cache_write_price: number | string | null
   cache_read_price: number | string | null
+  image_output_price: number | string | null
   per_request_price: number | string | null
   sort_order: number
 }
@@ -55,6 +56,7 @@ export function apiIntervalsToForm(intervals: PricingInterval[]): IntervalFormEn
     output_price: perTokenToMTok(iv.output_price),
     cache_write_price: perTokenToMTok(iv.cache_write_price),
     cache_read_price: perTokenToMTok(iv.cache_read_price),
+    image_output_price: perTokenToMTok(iv.image_output_price),
     per_request_price: iv.per_request_price,
     sort_order: iv.sort_order
   }))
@@ -69,6 +71,7 @@ export function formIntervalsToAPI(intervals: IntervalFormEntry[]): PricingInter
     output_price: mTokToPerToken(iv.output_price),
     cache_write_price: mTokToPerToken(iv.cache_write_price),
     cache_read_price: mTokToPerToken(iv.cache_read_price),
+    image_output_price: mTokToPerToken(iv.image_output_price),
     per_request_price: toNullableNumber(iv.per_request_price),
     sort_order: iv.sort_order
   }))
@@ -150,6 +153,7 @@ function validateIntervalPrices(iv: IntervalFormEntry, idx: number): string | nu
     ['输出价格', iv.output_price],
     ['缓存写入价格', iv.cache_write_price],
     ['缓存读取价格', iv.cache_read_price],
+    ['图片输出价格', iv.image_output_price],
     ['单次价格', iv.per_request_price],
   ]
   for (const [name, val] of prices) {
@@ -177,13 +181,9 @@ function checkIntervalOverlap(sorted: IntervalFormEntry[]): string | null {
   return null
 }
 
-/** 平台对应的模型 tag 样式（背景+文字） */
-export function getPlatformTagClass(platform: string): string {
-  switch (platform) {
-    case 'anthropic': return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-    case 'openai': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-    case 'gemini': return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-    case 'antigravity': return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-    default: return 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400'
-  }
-}
+/**
+ * 平台对应的模型 tag 样式（背景+文字）.
+ * Re-export self utils/platformColors. 保留旧导出名以兼容
+ * `<ModelTagInput>` / `<PricingEntryCard>` 等已导入它的组件.
+ */
+export { platformTagClass as getPlatformTagClass } from '../utils/platformColors'

@@ -80,16 +80,11 @@ import {
   useChannelMonitorFormat,
   providerGradient,
 } from '../../../composables/useChannelMonitorFormat'
+import { platformTintTextClass } from '../../../utils/platformColors'
 import ProviderIcon from './ProviderIcon.vue'
 import MonitorMetricPair from './MonitorMetricPair.vue'
 import MonitorAvailabilityRow from './MonitorAvailabilityRow.vue'
 import MonitorTimeline from './MonitorTimeline.vue'
-
-const PROVIDER_TINT: Record<string, string> = {
-  openai: 'text-emerald-600 dark:text-emerald-300',
-  anthropic: 'text-orange-600 dark:text-orange-300',
-  gemini: 'text-sky-600 dark:text-sky-300',
-}
 
 const props = defineProps<{
   item: UserMonitorView
@@ -111,9 +106,7 @@ const {
   formatLatency,
 } = useChannelMonitorFormat()
 
-const providerTintClass = computed(() =>
-  PROVIDER_TINT[props.item.provider] ?? 'text-gray-500 dark:text-gray-300'
-)
+const providerTintClass = computed(() => platformTintTextClass(props.item.provider))
 
 const availabilityLabel = computed(() => {
   const win = t(`channelStatus.windowTab.${props.window}`)

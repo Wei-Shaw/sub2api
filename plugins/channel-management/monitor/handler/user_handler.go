@@ -1,7 +1,6 @@
 package monitorhandler
 
 import (
-	"net/http"
 	"time"
 
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
@@ -138,8 +137,7 @@ func userMonitorDetailToResponse(d *monitorservice.UserMonitorDetail) *channelMo
 
 // List GET /monitors — user-facing card grid data.
 func (h *UserHandler) List(c *gin.Context) {
-	if h.monitorService == nil {
-		response.ErrorWithDetails(c, http.StatusServiceUnavailable, "monitor service unavailable", "MONITOR_DISABLED", nil)
+	if !h.requireService(c) {
 		return
 	}
 	if !h.featureEnabled(c) {
@@ -160,8 +158,7 @@ func (h *UserHandler) List(c *gin.Context) {
 
 // GetStatus GET /monitors/:id — user-facing per-monitor detail.
 func (h *UserHandler) GetStatus(c *gin.Context) {
-	if h.monitorService == nil {
-		response.ErrorWithDetails(c, http.StatusServiceUnavailable, "monitor service unavailable", "MONITOR_DISABLED", nil)
+	if !h.requireService(c) {
 		return
 	}
 	if !h.featureEnabled(c) {

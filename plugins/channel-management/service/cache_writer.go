@@ -10,6 +10,8 @@ import (
 	"time"
 
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
+	"github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/platforms"
+	"github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/wildcard"
 )
 
 // 本文件实现 CacheWriter：channel-management 插件向 Redis 写入网关读取的
@@ -231,9 +233,9 @@ func (w *CacheWriter) writeMapping(ctx context.Context, channel *Channel, groupI
 		if srcLower == "" || dst == "" {
 			continue
 		}
-		if strings.HasSuffix(srcLower, "*") {
+		if rawPrefix, isWild := wildcard.SplitSuffix(srcLower); isWild {
 			wildcards = append(wildcards, wildcardMappingItem{
-				Prefix: strings.TrimSuffix(srcLower, "*"),
+				Prefix: rawPrefix,
 				Target: dst,
 			})
 			continue
@@ -388,8 +390,10 @@ func uniqueStrings(in []string) []string {
 	return out
 }
 
+// normalizePlatformValue 单点委托到 platforms.Normalize；保留 wrapper 以
+// 维持本文件原有调用面，调用方读起来仍是"normalize platform"语义。
 func normalizePlatformValue(p string) string {
-	return strings.ToLower(strings.TrimSpace(p))
+	return platforms.Normalize(p)
 }
 
 func normalizeModelValue(m string) string {

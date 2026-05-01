@@ -1,15 +1,21 @@
 package service
 
 import (
-	"math"
 	"testing"
+
+	"github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/decimalx"
+	"github.com/shopspring/decimal"
 )
 
-// statsPtrFloat64 returns a pointer to f. Local helper so tests stay
-// independent of any helper that may live in non-test code.
-func statsPtrFloat64(f float64) *float64 { return &f }
+// statsPrice constructs a decimal.NullDecimal from a literal so test
+// fixtures stay readable. Equivalent to decimalx.MustPrice but kept
+// local to avoid an extra import line per fixture.
+func statsPrice(s string) decimal.NullDecimal { return decimalx.MustPrice(s) }
 
-func nearlyEqual(a, b, eps float64) bool { return math.Abs(a-b) <= eps }
+// equalDecimals reports whether two decimals match exactly. Account
+// stats pricing math stays in decimal land end-to-end, so we no longer
+// tolerate epsilon noise — exact equality is the post-T4 contract.
+func equalDecimals(a, b decimal.Decimal) bool { return a.Equal(b) }
 
 // ---------------------------------------------------------------------------
 // matchAccountStatsRule
@@ -130,32 +136,33 @@ func TestFindAccountStatsPricingForModel(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCalculateAccountStatsCost_NilPricing(t *testing.T) {
-	if got := calculateAccountStatsCost(nil, UsageTokens{}, 1); got != nil {
-		t.Fatalf("expected nil, got=%v", *got)
+	if cost, ok := calculateAccountStatsCost(nil, UsageTokens{}, 1); ok {
+		t.Fatalf("expected ok=false, got cost=%s ok=true", cost.String())
 	}
 }
 
 func TestCalculateAccountStatsCost_TokenBilling(t *testing.T) {
 	pricing := &ChannelModelPricing{
 		BillingMode: BillingModeToken,
-		InputPrice:  statsPtrFloat64(0.001),
-		OutputPrice: statsPtrFloat64(0.002),
+		InputPrice:  statsPrice("0.001"),
+		OutputPrice: statsPrice("0.002"),
 	}
 	tokens := UsageTokens{InputTokens: 100, OutputTokens: 50}
-	got := calculateAccountStatsCost(pricing, tokens, 1)
-	if got == nil || !nearlyEqual(*got, 0.2, 1e-12) {
-		t.Fatalf("got=%v want=0.2", got)
+	got, ok := calculateAccountStatsCost(pricing, tokens, 1)
+	want := decimal.RequireFromString("0.2")
+	if !ok || !equalDecimals(got, want) {
+		t.Fatalf("got=%s ok=%v want=0.2", got.String(), ok)
 	}
 }
 
 func TestCalculateAccountStatsCost_TokenBilling_WithCacheAndImage(t *testing.T) {
 	pricing := &ChannelModelPricing{
 		BillingMode:      BillingModeToken,
-		InputPrice:       statsPtrFloat64(0.001),
-		OutputPrice:      statsPtrFloat64(0.002),
-		CacheWritePrice:  statsPtrFloat64(0.003),
-		CacheReadPrice:   statsPtrFloat64(0.0005),
-		ImageOutputPrice: statsPtrFloat64(0.01),
+		InputPrice:       statsPrice("0.001"),
+		OutputPrice:      statsPrice("0.002"),
+		CacheWritePrice:  statsPrice("0.003"),
+		CacheReadPrice:   statsPrice("0.0005"),
+		ImageOutputPrice: statsPrice("0.01"),
 	}
 	tokens := UsageTokens{
 		InputTokens:         100,
@@ -164,55 +171,58 @@ func TestCalculateAccountStatsCost_TokenBilling_WithCacheAndImage(t *testing.T) 
 		CacheReadTokens:     300,
 		ImageOutputTokens:   10,
 	}
-	got := calculateAccountStatsCost(pricing, tokens, 1)
+	got, ok := calculateAccountStatsCost(pricing, tokens, 1)
 	// 0.1 + 0.1 + 0.6 + 0.15 + 0.1 = 1.05
-	if got == nil || !nearlyEqual(*got, 1.05, 1e-12) {
-		t.Fatalf("got=%v want=1.05", got)
+	want := decimal.RequireFromString("1.05")
+	if !ok || !equalDecimals(got, want) {
+		t.Fatalf("got=%s ok=%v want=1.05", got.String(), ok)
 	}
 }
 
 func TestCalculateAccountStatsCost_TokenBilling_PartialPricesNil(t *testing.T) {
 	pricing := &ChannelModelPricing{
 		BillingMode: BillingModeToken,
-		InputPrice:  statsPtrFloat64(0.001),
+		InputPrice:  statsPrice("0.001"),
 	}
 	tokens := UsageTokens{InputTokens: 100, OutputTokens: 50, CacheCreationTokens: 200}
-	got := calculateAccountStatsCost(pricing, tokens, 1)
-	if got == nil || !nearlyEqual(*got, 0.1, 1e-12) {
-		t.Fatalf("got=%v want=0.1", got)
+	got, ok := calculateAccountStatsCost(pricing, tokens, 1)
+	want := decimal.RequireFromString("0.1")
+	if !ok || !equalDecimals(got, want) {
+		t.Fatalf("got=%s ok=%v want=0.1", got.String(), ok)
 	}
 }
 
 func TestCalculateAccountStatsCost_TokenBilling_AllTokensZero(t *testing.T) {
 	pricing := &ChannelModelPricing{
 		BillingMode: BillingModeToken,
-		InputPrice:  statsPtrFloat64(0.001),
-		OutputPrice: statsPtrFloat64(0.002),
+		InputPrice:  statsPrice("0.001"),
+		OutputPrice: statsPrice("0.002"),
 	}
-	if got := calculateAccountStatsCost(pricing, UsageTokens{}, 1); got != nil {
-		t.Fatalf("expected nil, got=%v", *got)
+	if cost, ok := calculateAccountStatsCost(pricing, UsageTokens{}, 1); ok {
+		t.Fatalf("expected ok=false, got cost=%s", cost.String())
 	}
 }
 
 func TestCalculateAccountStatsCost_PerRequestBilling(t *testing.T) {
 	pricing := &ChannelModelPricing{
 		BillingMode:     BillingModePerRequest,
-		PerRequestPrice: statsPtrFloat64(0.05),
+		PerRequestPrice: statsPrice("0.05"),
 	}
 	tokens := UsageTokens{InputTokens: 999, OutputTokens: 999}
-	got := calculateAccountStatsCost(pricing, tokens, 3)
-	if got == nil || !nearlyEqual(*got, 0.15, 1e-12) {
-		t.Fatalf("got=%v want=0.15", got)
+	got, ok := calculateAccountStatsCost(pricing, tokens, 3)
+	want := decimal.RequireFromString("0.15")
+	if !ok || !equalDecimals(got, want) {
+		t.Fatalf("got=%s ok=%v want=0.15", got.String(), ok)
 	}
 }
 
 func TestCalculateAccountStatsCost_PerRequestBilling_NilOrZeroPrice(t *testing.T) {
 	for _, p := range []*ChannelModelPricing{
 		{BillingMode: BillingModePerRequest},
-		{BillingMode: BillingModePerRequest, PerRequestPrice: statsPtrFloat64(0)},
+		{BillingMode: BillingModePerRequest, PerRequestPrice: statsPrice("0")},
 	} {
-		if got := calculateAccountStatsCost(p, UsageTokens{}, 1); got != nil {
-			t.Fatalf("expected nil, got=%v (price=%v)", *got, p.PerRequestPrice)
+		if cost, ok := calculateAccountStatsCost(p, UsageTokens{}, 1); ok {
+			t.Fatalf("expected ok=false, got cost=%s (price=%v)", cost.String(), p.PerRequestPrice)
 		}
 	}
 }
@@ -220,23 +230,25 @@ func TestCalculateAccountStatsCost_PerRequestBilling_NilOrZeroPrice(t *testing.T
 func TestCalculateAccountStatsCost_ImageBilling(t *testing.T) {
 	pricing := &ChannelModelPricing{
 		BillingMode:     BillingModeImage,
-		PerRequestPrice: statsPtrFloat64(0.10),
+		PerRequestPrice: statsPrice("0.10"),
 	}
-	got := calculateAccountStatsCost(pricing, UsageTokens{}, 2)
-	if got == nil || !nearlyEqual(*got, 0.20, 1e-12) {
-		t.Fatalf("got=%v want=0.20", got)
+	got, ok := calculateAccountStatsCost(pricing, UsageTokens{}, 2)
+	want := decimal.RequireFromString("0.20")
+	if !ok || !equalDecimals(got, want) {
+		t.Fatalf("got=%s ok=%v want=0.20", got.String(), ok)
 	}
 }
 
 func TestCalculateAccountStatsCost_DefaultBillingMode_FallsToToken(t *testing.T) {
 	pricing := &ChannelModelPricing{
-		InputPrice:  statsPtrFloat64(0.001),
-		OutputPrice: statsPtrFloat64(0.002),
+		InputPrice:  statsPrice("0.001"),
+		OutputPrice: statsPrice("0.002"),
 	}
 	tokens := UsageTokens{InputTokens: 100, OutputTokens: 50}
-	got := calculateAccountStatsCost(pricing, tokens, 1)
-	if got == nil || !nearlyEqual(*got, 0.2, 1e-12) {
-		t.Fatalf("got=%v want=0.2", got)
+	got, ok := calculateAccountStatsCost(pricing, tokens, 1)
+	want := decimal.RequireFromString("0.2")
+	if !ok || !equalDecimals(got, want) {
+		t.Fatalf("got=%s ok=%v want=0.2", got.String(), ok)
 	}
 }
 
@@ -250,21 +262,22 @@ func TestTryCustomRules_FirstMatchWins(t *testing.T) {
 			{
 				GroupIDs: []int64{1},
 				Pricing: []ChannelModelPricing{
-					{ID: 100, Models: []string{"claude-opus-4"}, InputPrice: statsPtrFloat64(0.01), OutputPrice: statsPtrFloat64(0.02)},
+					{ID: 100, Models: []string{"claude-opus-4"}, InputPrice: statsPrice("0.01"), OutputPrice: statsPrice("0.02")},
 				},
 			},
 			{
 				GroupIDs: []int64{1},
 				Pricing: []ChannelModelPricing{
-					{ID: 200, Models: []string{"claude-opus-4"}, InputPrice: statsPtrFloat64(0.99), OutputPrice: statsPtrFloat64(0.99)},
+					{ID: 200, Models: []string{"claude-opus-4"}, InputPrice: statsPrice("0.99"), OutputPrice: statsPrice("0.99")},
 				},
 			},
 		},
 	}
 	tokens := UsageTokens{InputTokens: 100, OutputTokens: 50}
-	got := tryCustomRules(channel, 999, 1, "", "claude-opus-4", tokens, 1)
-	if got == nil || !nearlyEqual(*got, 2.0, 1e-12) {
-		t.Fatalf("got=%v want=2.0", got)
+	got, ok := tryCustomRules(channel, 999, 1, "", "claude-opus-4", tokens, 1)
+	want := decimal.RequireFromString("2")
+	if !ok || !equalDecimals(got, want) {
+		t.Fatalf("got=%s ok=%v want=2.0", got.String(), ok)
 	}
 }
 
@@ -274,21 +287,22 @@ func TestTryCustomRules_SkipsNonMatchingRules(t *testing.T) {
 			{
 				AccountIDs: []int64{888},
 				Pricing: []ChannelModelPricing{
-					{ID: 100, Models: []string{"claude-opus-4"}, InputPrice: statsPtrFloat64(0.99)},
+					{ID: 100, Models: []string{"claude-opus-4"}, InputPrice: statsPrice("0.99")},
 				},
 			},
 			{
 				GroupIDs: []int64{1},
 				Pricing: []ChannelModelPricing{
-					{ID: 200, Models: []string{"claude-opus-4"}, InputPrice: statsPtrFloat64(0.05)},
+					{ID: 200, Models: []string{"claude-opus-4"}, InputPrice: statsPrice("0.05")},
 				},
 			},
 		},
 	}
 	tokens := UsageTokens{InputTokens: 100}
-	got := tryCustomRules(channel, 999, 1, "", "claude-opus-4", tokens, 1)
-	if got == nil || !nearlyEqual(*got, 5.0, 1e-12) {
-		t.Fatalf("got=%v want=5.0", got)
+	got, ok := tryCustomRules(channel, 999, 1, "", "claude-opus-4", tokens, 1)
+	want := decimal.RequireFromString("5")
+	if !ok || !equalDecimals(got, want) {
+		t.Fatalf("got=%s ok=%v want=5.0", got.String(), ok)
 	}
 }
 
@@ -298,14 +312,14 @@ func TestTryCustomRules_NoMatch_ReturnsNil(t *testing.T) {
 			{
 				AccountIDs: []int64{888},
 				Pricing: []ChannelModelPricing{
-					{ID: 100, Models: []string{"claude-opus-4"}, InputPrice: statsPtrFloat64(0.01)},
+					{ID: 100, Models: []string{"claude-opus-4"}, InputPrice: statsPrice("0.01")},
 				},
 			},
 		},
 	}
 	tokens := UsageTokens{InputTokens: 100}
-	if got := tryCustomRules(channel, 999, 2, "", "claude-opus-4", tokens, 1); got != nil {
-		t.Fatalf("expected nil, got=%v", *got)
+	if cost, ok := tryCustomRules(channel, 999, 2, "", "claude-opus-4", tokens, 1); ok {
+		t.Fatalf("expected ok=false, got cost=%s", cost.String())
 	}
 }
 
@@ -315,20 +329,21 @@ func TestTryCustomRules_RuleMatchesButModelNot_ContinuesToNext(t *testing.T) {
 			{
 				GroupIDs: []int64{1},
 				Pricing: []ChannelModelPricing{
-					{ID: 100, Models: []string{"gpt-4o"}, InputPrice: statsPtrFloat64(0.01)},
+					{ID: 100, Models: []string{"gpt-4o"}, InputPrice: statsPrice("0.01")},
 				},
 			},
 			{
 				GroupIDs: []int64{1},
 				Pricing: []ChannelModelPricing{
-					{ID: 200, Models: []string{"claude-opus-4"}, InputPrice: statsPtrFloat64(0.05)},
+					{ID: 200, Models: []string{"claude-opus-4"}, InputPrice: statsPrice("0.05")},
 				},
 			},
 		},
 	}
 	tokens := UsageTokens{InputTokens: 100}
-	got := tryCustomRules(channel, 999, 1, "", "claude-opus-4", tokens, 1)
-	if got == nil || !nearlyEqual(*got, 5.0, 1e-12) {
-		t.Fatalf("got=%v want=5.0", got)
+	got, ok := tryCustomRules(channel, 999, 1, "", "claude-opus-4", tokens, 1)
+	want := decimal.RequireFromString("5")
+	if !ok || !equalDecimals(got, want) {
+		t.Fatalf("got=%s ok=%v want=5.0", got.String(), ok)
 	}
 }

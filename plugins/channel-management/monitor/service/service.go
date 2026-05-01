@@ -1,3 +1,13 @@
+// Package monitorservice — channel-monitor 服务层。
+//
+// 文件分布（同 receiver `*ChannelMonitorService`、同 package）：
+//   - service.go              类型定义、构造器、CRUD（List / Get / Create / Update /
+//     Delete / ListHistory）以及 update 字段 dispatcher。
+//   - service_check.go        RunCheck 与并发执行 / 持久化路径（admin "Run now"
+//     和 runner 周期触发共用）。
+//   - service_maintenance.go  RunDailyMaintenance + 日聚合 + watermark 维护。
+//
+// 拆分仅按职责，不改业务逻辑；所有方法仍是同一个 receiver 类型。
 package monitorservice
 
 import (
@@ -5,10 +15,9 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"sync"
 	"time"
 
-	"golang.org/x/sync/errgroup"
+	"github.com/Wei-Shaw/sub2api/plugins/channel-management/monitor/internal/bodymode"
 )
 
 // ChannelMonitorRepository 渠道监控数据访问接口。
@@ -61,9 +70,6 @@ type ChannelMonitorRepository interface {
 type ChannelMonitorService struct {
 	repo      ChannelMonitorRepository
 	encryptor SecretEncryptor
-	// scheduler 由 wire 通过 SetScheduler 注入；CRUD 后调用对应钩子即时同步任务。
-	// 测试或未注入场景下保持 nil，所有钩子调用变为 no-op。
-	scheduler MonitorScheduler
 }
 
 // NewChannelMonitorService 创建渠道监控服务实例。
@@ -130,7 +136,7 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 		CreatedBy:        p.CreatedBy,
 		TemplateID:       p.TemplateID,
 		ExtraHeaders:     emptyHeadersIfNil(p.ExtraHeaders),
-		BodyOverrideMode: defaultBodyMode(p.BodyOverrideMode),
+		BodyOverrideMode: bodymode.Normalize(p.BodyOverrideMode),
 		BodyOverride:     p.BodyOverride,
 	}
 	if err := s.repo.Create(ctx, m); err != nil {
@@ -139,9 +145,7 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 	// 不再调 s.Get 重走解密链：已知刚加密的明文，直接构造响应。
 	// 这样可避免 SecretEncryptor 解密失败时 APIKey 被静默清空的问题（见 Fix 4）。
 	m.APIKey = strings.TrimSpace(p.APIKey)
-	if s.scheduler != nil {
-		s.scheduler.Schedule(m)
-	}
+	// 无需通知调度器：60 秒 tick 会在下一轮自动拾取新启用的 monitor。
 	return m, nil
 }
 
@@ -190,11 +194,8 @@ func (s *ChannelMonitorService) Update(ctx context.Context, id int64, p ChannelM
 	} else {
 		s.decryptInPlace(existing)
 	}
-	if s.scheduler != nil {
-		// Schedule 内部根据 Enabled 自动选择 Unschedule 或重建任务，
-		// IntervalSeconds 变化也会被自然吸收（旧 task 取消 + 新 task 用新 interval）。
-		s.scheduler.Schedule(existing)
-	}
+	// IntervalSeconds / Enabled 的修改无需立刻通知调度器：下一轮 tick
+	// 会基于新的 LastCheckedAt+IntervalSeconds 与 Enabled 标志重新决定是否触发。
 	return existing, nil
 }
 
@@ -220,9 +221,7 @@ func (s *ChannelMonitorService) Delete(ctx context.Context, id int64) error {
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return fmt.Errorf("delete channel monitor: %w", err)
 	}
-	if s.scheduler != nil {
-		s.scheduler.Unschedule(id)
-	}
+	// 删除后无需调度器联动：runner 只读取 ListEnabled 结果，DB 中已不存在的行不会再被调度。
 	return nil
 }
 
@@ -243,204 +242,6 @@ func (s *ChannelMonitorService) ListHistory(ctx context.Context, id int64, model
 		return nil, fmt.Errorf("list history: %w", err)
 	}
 	return entries, nil
-}
-
-// ---------- 业务 ----------
-
-// RunCheck 同步触发对一个监控的检测：并发跑 primary + extra 模型，
-// 写历史记录并更新 last_checked_at。返回每个模型的检测结果。
-func (s *ChannelMonitorService) RunCheck(ctx context.Context, id int64) ([]*CheckResult, error) {
-	m, err := s.Get(ctx, id) // 已解密 APIKey
-	if err != nil {
-		return nil, err
-	}
-	if m.APIKeyDecryptFailed {
-		return nil, ErrChannelMonitorAPIKeyDecryptFailed
-	}
-	results := s.runChecksConcurrent(ctx, m)
-	s.persistCheckResults(ctx, m, results)
-	return results, nil
-}
-
-// persistCheckResults 写入本次检测的历史记录并更新 last_checked_at。
-// 任一写库失败都只记日志，不影响调用方拿到 results（与 MVP 期望一致：宁可漏记历史也要先返回结果）。
-func (s *ChannelMonitorService) persistCheckResults(ctx context.Context, m *ChannelMonitor, results []*CheckResult) {
-	rows := make([]*ChannelMonitorHistoryRow, 0, len(results))
-	for _, r := range results {
-		rows = append(rows, &ChannelMonitorHistoryRow{
-			MonitorID:     m.ID,
-			Model:         r.Model,
-			Status:        r.Status,
-			LatencyMs:     r.LatencyMs,
-			PingLatencyMs: r.PingLatencyMs,
-			Message:       r.Message,
-			CheckedAt:     r.CheckedAt,
-		})
-	}
-	if err := s.repo.InsertHistoryBatch(ctx, rows); err != nil {
-		slog.Error("channel_monitor: insert history failed",
-			"monitor_id", m.ID, "name", m.Name, "error", err)
-	}
-	if err := s.repo.MarkChecked(ctx, m.ID, time.Now()); err != nil {
-		slog.Error("channel_monitor: mark checked failed",
-			"monitor_id", m.ID, "error", err)
-	}
-}
-
-// runChecksConcurrent 对 primary + extra 模型并发执行检测。
-// errgroup 仅用于等待，不传播错误（每个 model 失败都已打包进 CheckResult）。
-func (s *ChannelMonitorService) runChecksConcurrent(ctx context.Context, m *ChannelMonitor) []*CheckResult {
-	models := append([]string{m.PrimaryModel}, m.ExtraModels...)
-	results := make([]*CheckResult, len(models))
-
-	// ping 共享一次，所有模型记录同一个 ping 延迟。
-	pingMs := pingEndpointOrigin(ctx, m.Endpoint)
-
-	// 所有模型共用同一份 CheckOptions（来自监控的快照字段）。
-	opts := &CheckOptions{
-		ExtraHeaders:     m.ExtraHeaders,
-		BodyOverrideMode: m.BodyOverrideMode,
-		BodyOverride:     m.BodyOverride,
-	}
-
-	var eg errgroup.Group
-	var mu sync.Mutex
-	for i, model := range models {
-		i, model := i, model
-		eg.Go(func() error {
-			r := runCheckForModel(ctx, m.Provider, m.Endpoint, m.APIKey, model, opts)
-			r.PingLatencyMs = pingMs
-			mu.Lock()
-			results[i] = r
-			mu.Unlock()
-			return nil
-		})
-	}
-	_ = eg.Wait()
-	return results
-}
-
-// ---------- 调度器协作 ----------
-
-// SetScheduler 由 wire 在 runner 构造后注入，用于在 CRUD 时即时同步任务表。
-// 通过 setter 注入避免 service ↔ runner 的依赖环。
-func (s *ChannelMonitorService) SetScheduler(sched MonitorScheduler) {
-	s.scheduler = sched
-}
-
-// ListEnabledMonitors 返回所有 enabled=true 的监控（解密后），供 runner 启动时建立任务表。
-func (s *ChannelMonitorService) ListEnabledMonitors(ctx context.Context) ([]*ChannelMonitor, error) {
-	all, err := s.repo.ListEnabled(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for _, m := range all {
-		s.decryptInPlace(m)
-	}
-	return all, nil
-}
-
-// cleanupOldHistory 删除 monitorHistoryRetentionDays 天之前的明细历史记录。
-// 由 RunDailyMaintenance 调用；SoftDeleteMixin 自动把 DELETE 改为 UPDATE deleted_at。
-func (s *ChannelMonitorService) cleanupOldHistory(ctx context.Context) error {
-	before := time.Now().UTC().AddDate(0, 0, -monitorHistoryRetentionDays)
-	deleted, err := s.repo.DeleteHistoryBefore(ctx, before)
-	if err != nil {
-		return fmt.Errorf("delete history before %s: %w", before.Format(time.RFC3339), err)
-	}
-	if deleted > 0 {
-		slog.Info("channel_monitor: history cleanup",
-			"deleted_rows", deleted, "before", before.Format(time.RFC3339))
-	}
-	return nil
-}
-
-// RunDailyMaintenance 每日维护任务：聚合昨天之前未聚合的明细，软删过期明细和聚合。
-// 由 OpsCleanupService 的 cron 调度触发（共享 schedule 和 leader lock）。
-//
-// 幂等性：
-//   - watermark 保证已聚合的日期不会重复处理；
-//   - UpsertDailyRollupsFor 内部使用 ON CONFLICT DO UPDATE，同一日重复跑结果一致。
-//
-// 每一步失败都只记 slog.Warn，整体函数始终返回 nil 让后续步骤能继续跑
-// （与 OpsCleanupService.runCleanupOnce 风格一致）。
-func (s *ChannelMonitorService) RunDailyMaintenance(ctx context.Context) error {
-	now := time.Now().UTC()
-	today := now.Truncate(24 * time.Hour)
-
-	if err := s.runDailyAggregation(ctx, today); err != nil {
-		slog.Warn("channel_monitor: maintenance step failed",
-			"step", "aggregate", "error", err)
-	}
-	if err := s.cleanupOldHistory(ctx); err != nil {
-		slog.Warn("channel_monitor: maintenance step failed",
-			"step", "prune_history", "error", err)
-	}
-	if err := s.cleanupOldRollups(ctx, today); err != nil {
-		slog.Warn("channel_monitor: maintenance step failed",
-			"step", "prune_rollups", "error", err)
-	}
-	return nil
-}
-
-// runDailyAggregation 从 watermark+1 聚合到昨天（UTC）。
-// 首次跑（watermark nil）：从 today-monitorRollupRetentionDays 开始回填。
-// 每次最多聚合 monitorMaintenanceMaxDaysPerRun 天，避免长事务。
-func (s *ChannelMonitorService) runDailyAggregation(ctx context.Context, today time.Time) error {
-	watermark, err := s.repo.LoadAggregationWatermark(ctx)
-	if err != nil {
-		return fmt.Errorf("load watermark: %w", err)
-	}
-
-	start := s.resolveAggregationStart(watermark, today)
-	if !start.Before(today) {
-		return nil // 没有需要聚合的日期
-	}
-
-	iterations := 0
-	for d := start; d.Before(today); d = d.Add(24 * time.Hour) {
-		if iterations >= monitorMaintenanceMaxDaysPerRun {
-			slog.Info("channel_monitor: maintenance aggregation capped",
-				"max_days", monitorMaintenanceMaxDaysPerRun,
-				"next_resume", d.Format("2006-01-02"))
-			break
-		}
-		affected, upErr := s.repo.UpsertDailyRollupsFor(ctx, d)
-		if upErr != nil {
-			return fmt.Errorf("upsert rollups for %s: %w", d.Format("2006-01-02"), upErr)
-		}
-		if err := s.repo.UpdateAggregationWatermark(ctx, d); err != nil {
-			return fmt.Errorf("update watermark to %s: %w", d.Format("2006-01-02"), err)
-		}
-		slog.Info("channel_monitor: rollups upserted",
-			"date", d.Format("2006-01-02"), "affected_rows", affected)
-		iterations++
-	}
-	return nil
-}
-
-// resolveAggregationStart 计算本次聚合起点：
-//   - watermark == nil：today - monitorRollupRetentionDays（首次回填最多 30 天）
-//   - watermark != nil：*watermark + 1 day
-func (s *ChannelMonitorService) resolveAggregationStart(watermark *time.Time, today time.Time) time.Time {
-	if watermark == nil {
-		return today.AddDate(0, 0, -monitorRollupRetentionDays)
-	}
-	return watermark.UTC().Truncate(24 * time.Hour).Add(24 * time.Hour)
-}
-
-// cleanupOldRollups 软删 bucket_date < today - monitorRollupRetentionDays 的日聚合行。
-func (s *ChannelMonitorService) cleanupOldRollups(ctx context.Context, today time.Time) error {
-	cutoff := today.AddDate(0, 0, -monitorRollupRetentionDays)
-	deleted, err := s.repo.DeleteRollupsBefore(ctx, cutoff)
-	if err != nil {
-		return fmt.Errorf("delete rollups before %s: %w", cutoff.Format("2006-01-02"), err)
-	}
-	if deleted > 0 {
-		slog.Info("channel_monitor: rollups cleanup",
-			"deleted_rows", deleted, "before", cutoff.Format("2006-01-02"))
-	}
-	return nil
 }
 
 // ---------- helpers ----------
@@ -532,7 +333,7 @@ func applyMonitorAdvancedUpdate(existing *ChannelMonitor, p ChannelMonitorUpdate
 		if err := validateBodyModeParams(newMode, newBody); err != nil {
 			return err
 		}
-		existing.BodyOverrideMode = defaultBodyMode(newMode)
+		existing.BodyOverrideMode = bodymode.Normalize(newMode)
 		existing.BodyOverride = newBody
 	}
 	return nil

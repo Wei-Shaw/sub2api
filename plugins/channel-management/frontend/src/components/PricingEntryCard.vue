@@ -272,7 +272,7 @@ function addInterval() {
   intervals.push({
     min_tokens: 0, max_tokens: null, tier_label: '',
     input_price: null, output_price: null, cache_write_price: null,
-    cache_read_price: null, per_request_price: null,
+    cache_read_price: null, image_output_price: null, per_request_price: null,
     sort_order: intervals.length
   })
   emit('update', { ...props.entry, intervals })
@@ -284,7 +284,7 @@ function addImageTier() {
   intervals.push({
     min_tokens: 0, max_tokens: null, tier_label: labels[intervals.length] || '',
     input_price: null, output_price: null, cache_write_price: null,
-    cache_read_price: null, per_request_price: null,
+    cache_read_price: null, image_output_price: null, per_request_price: null,
     sort_order: intervals.length
   })
   emit('update', { ...props.entry, intervals })

@@ -26,21 +26,31 @@ import (
 	"context"
 	"sort"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/decimalx"
+	"github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/platforms"
+	"github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/wildcard"
+	"github.com/shopspring/decimal"
 )
 
 // AccountStatsCostInput captures the fields the host gateway forwards
 // when it asks the plugin to compute a custom account stats cost.
+//
+// T24: TotalCost is now decimal.Decimal end-to-end. The pricing gRPC
+// server parses the proto string at the wire boundary
+// (ResolveAccountStatsCostRequest.total_cost) and forwards a typed
+// decimal here so the resolver never round-trips through IEEE-754.
 type AccountStatsCostInput struct {
 	ChannelID     int64
 	AccountID     int64
 	GroupID       int64
-	UpstreamModel string  // post-mapping model id (matches custom rules by model name)
+	UpstreamModel string // post-mapping model id (matches custom rules by model name)
 	Tokens        UsageTokens
 	RequestCount  int
 	// TotalCost is the customer cost (before account_rate_multiplier).
 	// Used only for priority 2 when ApplyPricingToAccountStats=true and
 	// no custom rule matched.
-	TotalCost float64
+	TotalCost decimal.Decimal
 }
 
 // UsageTokens is the per-request token / image count breakdown used by
@@ -58,9 +68,13 @@ type UsageTokens struct {
 // AccountStatsCostResult is what the resolver returns. HasCost=false
 // means "no opinion" — the host should proceed with its own pricing
 // fallbacks (LiteLLM model file → default formula).
+//
+// Cost is a decimal.Decimal so the cost accumulator path stays inside the
+// shopspring/decimal world end-to-end. The proto edge converts to float64
+// once at the boundary (see internal/pricing/server.go).
 type AccountStatsCostResult struct {
 	HasCost bool
-	Cost    float64
+	Cost    decimal.Decimal
 }
 
 // ResolveAccountStatsCost is the plugin-facing entry point for the
@@ -87,13 +101,14 @@ func (s *ChannelService) ResolveAccountStatsCost(ctx context.Context, in Account
 	platform := s.platformForRule(ctx, in.GroupID)
 
 	// Priority 1: custom rules (always tried)
-	if cost := tryCustomRules(channel, in.AccountID, in.GroupID, platform, in.UpstreamModel, in.Tokens, in.RequestCount); cost != nil {
-		return AccountStatsCostResult{HasCost: true, Cost: *cost}, nil
+	if cost, ok := tryCustomRules(channel, in.AccountID, in.GroupID, platform, in.UpstreamModel, in.Tokens, in.RequestCount); ok {
+		return AccountStatsCostResult{HasCost: true, Cost: cost}, nil
 	}
 
 	// Priority 2: ApplyPricingToAccountStats → use customer billing total.
+	// TotalCost is decimal.Decimal end-to-end (T24); no float64 round-trip.
 	if channel.ApplyPricingToAccountStats {
-		if in.TotalCost > 0 {
+		if in.TotalCost.Sign() > 0 {
 			return AccountStatsCostResult{HasCost: true, Cost: in.TotalCost}, nil
 		}
 		return AccountStatsCostResult{}, nil
@@ -140,10 +155,15 @@ func (s *ChannelService) platformForRule(ctx context.Context, groupID int64) str
 // and Pricing contains a row covering the upstream model. A rule whose
 // AccountIDs and GroupIDs are both empty is skipped — operators creating
 // blank rules should not accidentally cover every account.
+//
+// Returns (cost, true) when a rule produces a positive cost; (zero, false)
+// otherwise so the caller can distinguish "no opinion" from a deliberate
+// zero. (Negative or zero costs from a rule are treated as "no opinion"
+// inside calculateAccountStatsCost so this contract holds.)
 func tryCustomRules(
 	channel *Channel, accountID, groupID int64,
 	platform, model string, tokens UsageTokens, requestCount int,
-) *float64 {
+) (decimal.Decimal, bool) {
 	modelLower := strings.ToLower(model)
 	for i := range channel.AccountStatsPricingRules {
 		rule := &channel.AccountStatsPricingRules[i]
@@ -156,11 +176,11 @@ func tryCustomRules(
 			// later rule may carry the model.
 			continue
 		}
-		if cost := calculateAccountStatsCost(pricing, tokens, requestCount); cost != nil {
-			return cost
+		if cost, ok := calculateAccountStatsCost(pricing, tokens, requestCount); ok {
+			return cost, true
 		}
 	}
-	return nil
+	return decimal.Zero, false
 }
 
 // matchAccountStatsRule returns true when the rule's scope covers the
@@ -213,12 +233,12 @@ func findAccountStatsPricingForModel(pricingList []ChannelModelPricing, platform
 		}
 		for _, m := range p.Models {
 			ml := strings.ToLower(m)
-			if !strings.HasSuffix(ml, "*") {
+			rawPrefix, isWild := wildcard.SplitSuffix(ml)
+			if !isWild {
 				continue
 			}
-			prefix := strings.TrimSuffix(ml, "*")
-			if strings.HasPrefix(modelLower, prefix) {
-				matches = append(matches, wildcardCandidate{prefixLen: len(prefix), pricing: p})
+			if strings.HasPrefix(modelLower, rawPrefix) {
+				matches = append(matches, wildcardCandidate{prefixLen: len(rawPrefix), pricing: p})
 			}
 		}
 	}
@@ -235,20 +255,31 @@ func findAccountStatsPricingForModel(pricingList []ChannelModelPricing, platform
 // "match anything". A rule pricing row with Platform="" therefore covers
 // every group platform; a request whose group has no resolved platform
 // also matches every rule pricing row.
+//
+// 这是 account-stats 自定义规则的特例语义（与 channel pricing / cache /
+// pricing.server 用的"严格相等"不同）。把"空串通配"集中在这一函数里，
+// 通用的 platforms.Match 保持严格语义；一旦未来想去掉这条特例，只需删除
+// 本函数的空串短路即可，不会牵连其他读路径。
 func isAccountStatsPlatformMatch(queryPlatform, pricingPlatform string) bool {
 	if queryPlatform == "" || pricingPlatform == "" {
 		return true
 	}
-	return queryPlatform == pricingPlatform
+	return platforms.Match(queryPlatform, pricingPlatform)
 }
 
 // calculateAccountStatsCost computes the raw account stats cost for the
 // supplied pricing row. Rate multipliers are NOT applied here — the host
 // is responsible for layering on account_rate_multiplier when it
 // records the final number into usage_logs.
-func calculateAccountStatsCost(pricing *ChannelModelPricing, tokens UsageTokens, requestCount int) *float64 {
+//
+// Returns (cost, true) on a positive cost; (zero, false) when the pricing
+// row produced nothing meaningful (nil pricing, all token counts zero,
+// no per-request price configured, etc.). The boolean lets the caller
+// keep walking the rule list without confusing "0 cost configured" with
+// "rule did not match this request shape".
+func calculateAccountStatsCost(pricing *ChannelModelPricing, tokens UsageTokens, requestCount int) (decimal.Decimal, bool) {
 	if pricing == nil {
-		return nil
+		return decimal.Zero, false
 	}
 	switch pricing.BillingMode {
 	case BillingModePerRequest, BillingModeImage:
@@ -258,31 +289,41 @@ func calculateAccountStatsCost(pricing *ChannelModelPricing, tokens UsageTokens,
 	}
 }
 
-func calculatePerRequestAccountStatsCost(pricing *ChannelModelPricing, requestCount int) *float64 {
-	if pricing.PerRequestPrice == nil || *pricing.PerRequestPrice <= 0 {
-		return nil
+func calculatePerRequestAccountStatsCost(pricing *ChannelModelPricing, requestCount int) (decimal.Decimal, bool) {
+	if !decimalx.IsPositive(pricing.PerRequestPrice) {
+		return decimal.Zero, false
 	}
 	if requestCount <= 0 {
 		requestCount = 1
 	}
-	cost := *pricing.PerRequestPrice * float64(requestCount)
-	return &cost
+	cost := pricing.PerRequestPrice.Decimal.Mul(decimal.NewFromInt(int64(requestCount)))
+	return cost, true
 }
 
-func calculateTokenAccountStatsCost(pricing *ChannelModelPricing, tokens UsageTokens) *float64 {
-	deref := func(p *float64) float64 {
-		if p == nil {
-			return 0
+// calculateTokenAccountStatsCost adds up the per-token contributions for
+// each component (input / output / cache write / cache read / image
+// output). Each addend stays in decimal land so we never round-trip
+// through float64 between additions.
+func calculateTokenAccountStatsCost(pricing *ChannelModelPricing, tokens UsageTokens) (decimal.Decimal, bool) {
+	addends := []struct {
+		count int64
+		price decimal.NullDecimal
+	}{
+		{tokens.InputTokens, pricing.InputPrice},
+		{tokens.OutputTokens, pricing.OutputPrice},
+		{tokens.CacheCreationTokens, pricing.CacheWritePrice},
+		{tokens.CacheReadTokens, pricing.CacheReadPrice},
+		{tokens.ImageOutputTokens, pricing.ImageOutputPrice},
+	}
+	cost := decimal.Zero
+	for _, a := range addends {
+		if a.count == 0 || !a.price.Valid {
+			continue
 		}
-		return *p
+		cost = cost.Add(decimal.NewFromInt(a.count).Mul(a.price.Decimal))
 	}
-	cost := float64(tokens.InputTokens)*deref(pricing.InputPrice) +
-		float64(tokens.OutputTokens)*deref(pricing.OutputPrice) +
-		float64(tokens.CacheCreationTokens)*deref(pricing.CacheWritePrice) +
-		float64(tokens.CacheReadTokens)*deref(pricing.CacheReadPrice) +
-		float64(tokens.ImageOutputTokens)*deref(pricing.ImageOutputPrice)
-	if cost <= 0 {
-		return nil
+	if cost.Sign() <= 0 {
+		return decimal.Zero, false
 	}
-	return &cost
+	return cost, true
 }

@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	"github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/errors"
@@ -25,10 +24,6 @@ import (
 const (
 	// monitorMaxPageSize 列表分页上限。
 	monitorMaxPageSize = 100
-	// monitorAPIKeyMaskPrefix 脱敏时保留的明文前缀长度。
-	monitorAPIKeyMaskPrefix = 4
-	// monitorAPIKeyMaskSuffix 脱敏后追加的占位字符串。
-	monitorAPIKeyMaskSuffix = "***"
 )
 
 // AdminHandler is the channel-monitor admin REST handler. The plugin wires
@@ -41,157 +36,6 @@ type AdminHandler struct {
 // service when running in --no-http mode; routes will simply 503.
 func NewAdminHandler(svc *monitorservice.ChannelMonitorService) *AdminHandler {
 	return &AdminHandler{monitorService: svc}
-}
-
-// --- Request / Response ---
-
-type channelMonitorCreateRequest struct {
-	Name             string            `json:"name" binding:"required,max=100"`
-	Provider         string            `json:"provider" binding:"required,oneof=openai anthropic gemini"`
-	Endpoint         string            `json:"endpoint" binding:"required,max=500"`
-	APIKey           string            `json:"api_key" binding:"required,max=2000"`
-	PrimaryModel     string            `json:"primary_model" binding:"required,max=200"`
-	ExtraModels      []string          `json:"extra_models"`
-	GroupName        string            `json:"group_name" binding:"max=100"`
-	Enabled          *bool             `json:"enabled"`
-	IntervalSeconds  int               `json:"interval_seconds" binding:"required,min=15,max=3600"`
-	TemplateID       *int64            `json:"template_id"`
-	ExtraHeaders     map[string]string `json:"extra_headers"`
-	BodyOverrideMode string            `json:"body_override_mode" binding:"omitempty,oneof=off merge replace"`
-	BodyOverride     map[string]any    `json:"body_override"`
-}
-
-type channelMonitorUpdateRequest struct {
-	Name             *string            `json:"name" binding:"omitempty,max=100"`
-	Provider         *string            `json:"provider" binding:"omitempty,oneof=openai anthropic gemini"`
-	Endpoint         *string            `json:"endpoint" binding:"omitempty,max=500"`
-	APIKey           *string            `json:"api_key" binding:"omitempty,max=2000"`
-	PrimaryModel     *string            `json:"primary_model" binding:"omitempty,max=200"`
-	ExtraModels      *[]string          `json:"extra_models"`
-	GroupName        *string            `json:"group_name" binding:"omitempty,max=100"`
-	Enabled          *bool              `json:"enabled"`
-	IntervalSeconds  *int               `json:"interval_seconds" binding:"omitempty,min=15,max=3600"`
-	TemplateID       *int64             `json:"template_id"`
-	ClearTemplate    bool               `json:"clear_template"`
-	ExtraHeaders     *map[string]string `json:"extra_headers"`
-	BodyOverrideMode *string            `json:"body_override_mode" binding:"omitempty,oneof=off merge replace"`
-	BodyOverride     *map[string]any    `json:"body_override"`
-}
-
-type channelMonitorResponse struct {
-	ID                  int64                                `json:"id"`
-	Name                string                               `json:"name"`
-	Provider            string                               `json:"provider"`
-	Endpoint            string                               `json:"endpoint"`
-	APIKeyMasked        string                               `json:"api_key_masked"`
-	APIKeyDecryptFailed bool                                 `json:"api_key_decrypt_failed"`
-	PrimaryModel        string                               `json:"primary_model"`
-	ExtraModels         []string                             `json:"extra_models"`
-	GroupName           string                               `json:"group_name"`
-	Enabled             bool                                 `json:"enabled"`
-	IntervalSeconds     int                                  `json:"interval_seconds"`
-	LastCheckedAt       *string                              `json:"last_checked_at"`
-	CreatedBy           int64                                `json:"created_by"`
-	CreatedAt           string                               `json:"created_at"`
-	UpdatedAt           string                               `json:"updated_at"`
-	PrimaryStatus       string                               `json:"primary_status"`
-	PrimaryLatencyMs    *int                                 `json:"primary_latency_ms"`
-	Availability7d      float64                              `json:"availability_7d"`
-	ExtraModelsStatus   []dto.ChannelMonitorExtraModelStatus `json:"extra_models_status"`
-	TemplateID          *int64                               `json:"template_id"`
-	ExtraHeaders        map[string]string                    `json:"extra_headers"`
-	BodyOverrideMode    string                               `json:"body_override_mode"`
-	BodyOverride        map[string]any                       `json:"body_override"`
-}
-
-type channelMonitorCheckResultResponse struct {
-	Model         string `json:"model"`
-	Status        string `json:"status"`
-	LatencyMs     *int   `json:"latency_ms"`
-	PingLatencyMs *int   `json:"ping_latency_ms"`
-	Message       string `json:"message"`
-	CheckedAt     string `json:"checked_at"`
-}
-
-type channelMonitorHistoryItemResponse struct {
-	ID            int64  `json:"id"`
-	Model         string `json:"model"`
-	Status        string `json:"status"`
-	LatencyMs     *int   `json:"latency_ms"`
-	PingLatencyMs *int   `json:"ping_latency_ms"`
-	Message       string `json:"message"`
-	CheckedAt     string `json:"checked_at"`
-}
-
-// maskAPIKey 对 API Key 明文做脱敏：前 4 字符 + "***"，长度 ≤ 4 时只显示 "***"。
-func maskAPIKey(plain string) string {
-	if len(plain) <= monitorAPIKeyMaskPrefix {
-		return monitorAPIKeyMaskSuffix
-	}
-	return plain[:monitorAPIKeyMaskPrefix] + monitorAPIKeyMaskSuffix
-}
-
-func channelMonitorToResponse(m *monitorservice.ChannelMonitor) *channelMonitorResponse {
-	if m == nil {
-		return nil
-	}
-	extras := m.ExtraModels
-	if extras == nil {
-		extras = []string{}
-	}
-	headers := m.ExtraHeaders
-	if headers == nil {
-		headers = map[string]string{}
-	}
-	resp := &channelMonitorResponse{
-		ID:                  m.ID,
-		Name:                m.Name,
-		Provider:            m.Provider,
-		Endpoint:            m.Endpoint,
-		APIKeyMasked:        maskAPIKey(m.APIKey),
-		APIKeyDecryptFailed: m.APIKeyDecryptFailed,
-		PrimaryModel:        m.PrimaryModel,
-		ExtraModels:         extras,
-		GroupName:           m.GroupName,
-		Enabled:             m.Enabled,
-		IntervalSeconds:     m.IntervalSeconds,
-		CreatedBy:           m.CreatedBy,
-		CreatedAt:           m.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt:           m.UpdatedAt.UTC().Format(time.RFC3339),
-		TemplateID:          m.TemplateID,
-		ExtraHeaders:        headers,
-		BodyOverrideMode:    m.BodyOverrideMode,
-		BodyOverride:        m.BodyOverride,
-		ExtraModelsStatus:   []dto.ChannelMonitorExtraModelStatus{},
-	}
-	if m.LastCheckedAt != nil {
-		s := m.LastCheckedAt.UTC().Format(time.RFC3339)
-		resp.LastCheckedAt = &s
-	}
-	return resp
-}
-
-func checkResultToResponse(r *monitorservice.CheckResult) channelMonitorCheckResultResponse {
-	return channelMonitorCheckResultResponse{
-		Model:         r.Model,
-		Status:        r.Status,
-		LatencyMs:     r.LatencyMs,
-		PingLatencyMs: r.PingLatencyMs,
-		Message:       r.Message,
-		CheckedAt:     r.CheckedAt.UTC().Format(time.RFC3339),
-	}
-}
-
-func historyEntryToResponse(e *monitorservice.ChannelMonitorHistoryEntry) channelMonitorHistoryItemResponse {
-	return channelMonitorHistoryItemResponse{
-		ID:            e.ID,
-		Model:         e.Model,
-		Status:        e.Status,
-		LatencyMs:     e.LatencyMs,
-		PingLatencyMs: e.PingLatencyMs,
-		Message:       e.Message,
-		CheckedAt:     e.CheckedAt.UTC().Format(time.RFC3339),
-	}
 }
 
 // ParseChannelMonitorID extracts and validates the :id route parameter.
@@ -240,8 +84,7 @@ func parseHistoryLimit(raw string) int {
 
 // List GET /admin/monitors
 func (h *AdminHandler) List(c *gin.Context) {
-	if h.monitorService == nil {
-		response.ErrorWithDetails(c, http.StatusServiceUnavailable, "monitor service unavailable", "MONITOR_DISABLED", nil)
+	if !h.requireService(c) {
 		return
 	}
 	page, pageSize := response.ParsePagination(c)
@@ -264,9 +107,11 @@ func (h *AdminHandler) List(c *gin.Context) {
 	}
 
 	summaries := h.batchSummaryFor(c, items)
-	out := make([]*channelMonitorResponse, 0, len(items))
+	out := make([]*dto.ChannelMonitorResponse, 0, len(items))
 	for _, m := range items {
-		out = append(out, buildListItemResponse(m, summaries[m.ID]))
+		resp := dto.MonitorToResponse(m)
+		dto.ApplyMonitorSummary(resp, summaries[m.ID])
+		out = append(out, resp)
 	}
 	response.Paginated(c, out, total, page, pageSize)
 }
@@ -284,27 +129,9 @@ func (h *AdminHandler) batchSummaryFor(c *gin.Context, items []*monitorservice.C
 	return h.monitorService.BatchMonitorStatusSummary(c.Request.Context(), ids, primaryByID, extrasByID)
 }
 
-// buildListItemResponse 把 monitor + summary 装成 admin list 的响应行。
-func buildListItemResponse(m *monitorservice.ChannelMonitor, summary monitorservice.MonitorStatusSummary) *channelMonitorResponse {
-	resp := channelMonitorToResponse(m)
-	resp.PrimaryStatus = summary.PrimaryStatus
-	resp.PrimaryLatencyMs = summary.PrimaryLatencyMs
-	resp.Availability7d = summary.Availability7d
-	resp.ExtraModelsStatus = make([]dto.ChannelMonitorExtraModelStatus, 0, len(summary.ExtraModels))
-	for _, e := range summary.ExtraModels {
-		resp.ExtraModelsStatus = append(resp.ExtraModelsStatus, dto.ChannelMonitorExtraModelStatus{
-			Model:     e.Model,
-			Status:    e.Status,
-			LatencyMs: e.LatencyMs,
-		})
-	}
-	return resp
-}
-
 // GetByID GET /admin/monitors/:id
 func (h *AdminHandler) GetByID(c *gin.Context) {
-	if h.monitorService == nil {
-		response.ErrorWithDetails(c, http.StatusServiceUnavailable, "monitor service unavailable", "MONITOR_DISABLED", nil)
+	if !h.requireService(c) {
 		return
 	}
 	id, ok := ParseChannelMonitorID(c)
@@ -316,16 +143,15 @@ func (h *AdminHandler) GetByID(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, channelMonitorToResponse(m))
+	response.Success(c, dto.MonitorToResponse(m))
 }
 
 // Create POST /admin/monitors
 func (h *AdminHandler) Create(c *gin.Context) {
-	if h.monitorService == nil {
-		response.ErrorWithDetails(c, http.StatusServiceUnavailable, "monitor service unavailable", "MONITOR_DISABLED", nil)
+	if !h.requireService(c) {
 		return
 	}
-	var req channelMonitorCreateRequest
+	var req dto.ChannelMonitorCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.ErrorFrom(c, errors.BadRequest("VALIDATION_ERROR", err.Error()))
 		return
@@ -357,20 +183,19 @@ func (h *AdminHandler) Create(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, response.Response{Code: 0, Message: "success", Data: channelMonitorToResponse(m)})
+	c.JSON(http.StatusCreated, response.Response{Code: 0, Message: "success", Data: dto.MonitorToResponse(m)})
 }
 
 // Update PUT /admin/monitors/:id
 func (h *AdminHandler) Update(c *gin.Context) {
-	if h.monitorService == nil {
-		response.ErrorWithDetails(c, http.StatusServiceUnavailable, "monitor service unavailable", "MONITOR_DISABLED", nil)
+	if !h.requireService(c) {
 		return
 	}
 	id, ok := ParseChannelMonitorID(c)
 	if !ok {
 		return
 	}
-	var req channelMonitorUpdateRequest
+	var req dto.ChannelMonitorUpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.ErrorFrom(c, errors.BadRequest("VALIDATION_ERROR", err.Error()))
 		return
@@ -396,13 +221,12 @@ func (h *AdminHandler) Update(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, channelMonitorToResponse(m))
+	response.Success(c, dto.MonitorToResponse(m))
 }
 
 // Delete DELETE /admin/monitors/:id
 func (h *AdminHandler) Delete(c *gin.Context) {
-	if h.monitorService == nil {
-		response.ErrorWithDetails(c, http.StatusServiceUnavailable, "monitor service unavailable", "MONITOR_DISABLED", nil)
+	if !h.requireService(c) {
 		return
 	}
 	id, ok := ParseChannelMonitorID(c)
@@ -418,8 +242,7 @@ func (h *AdminHandler) Delete(c *gin.Context) {
 
 // RunNow POST /admin/monitors/:id/run
 func (h *AdminHandler) RunNow(c *gin.Context) {
-	if h.monitorService == nil {
-		response.ErrorWithDetails(c, http.StatusServiceUnavailable, "monitor service unavailable", "MONITOR_DISABLED", nil)
+	if !h.requireService(c) {
 		return
 	}
 	id, ok := ParseChannelMonitorID(c)
@@ -431,17 +254,16 @@ func (h *AdminHandler) RunNow(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	out := make([]channelMonitorCheckResultResponse, 0, len(results))
+	out := make([]dto.ChannelMonitorCheckResultResponse, 0, len(results))
 	for _, r := range results {
-		out = append(out, checkResultToResponse(r))
+		out = append(out, dto.CheckResultToResponse(r))
 	}
 	response.Success(c, gin.H{"results": out})
 }
 
 // History GET /admin/monitors/:id/history
 func (h *AdminHandler) History(c *gin.Context) {
-	if h.monitorService == nil {
-		response.ErrorWithDetails(c, http.StatusServiceUnavailable, "monitor service unavailable", "MONITOR_DISABLED", nil)
+	if !h.requireService(c) {
 		return
 	}
 	id, ok := ParseChannelMonitorID(c)
@@ -456,9 +278,9 @@ func (h *AdminHandler) History(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	out := make([]channelMonitorHistoryItemResponse, 0, len(entries))
+	out := make([]dto.ChannelMonitorHistoryItemResponse, 0, len(entries))
 	for _, e := range entries {
-		out = append(out, historyEntryToResponse(e))
+		out = append(out, dto.HistoryEntryToResponse(e))
 	}
 	response.Success(c, gin.H{"items": out})
 }

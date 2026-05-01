@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/plugins/channel-management/monitor/internal/bodymode"
 )
 
 // ChannelMonitorRequestTemplateRepository 模板数据访问接口。
@@ -71,7 +73,7 @@ func (s *ChannelMonitorRequestTemplateService) Create(ctx context.Context, p Cha
 		Provider:         p.Provider,
 		Description:      strings.TrimSpace(p.Description),
 		ExtraHeaders:     emptyHeadersIfNil(p.ExtraHeaders),
-		BodyOverrideMode: defaultBodyMode(p.BodyOverrideMode),
+		BodyOverrideMode: bodymode.Normalize(p.BodyOverrideMode),
 		BodyOverride:     p.BodyOverride,
 	}
 	if err := s.repo.Create(ctx, t); err != nil {
@@ -183,7 +185,7 @@ func applyTemplateUpdate(existing *ChannelMonitorRequestTemplate, p ChannelMonit
 	if err := validateBodyModeParams(newMode, newBody); err != nil {
 		return err
 	}
-	existing.BodyOverrideMode = defaultBodyMode(newMode)
+	existing.BodyOverrideMode = bodymode.Normalize(newMode)
 	existing.BodyOverride = newBody
 	return nil
 }
@@ -240,12 +242,4 @@ func emptyHeadersIfNil(h map[string]string) map[string]string {
 		return map[string]string{}
 	}
 	return h
-}
-
-// defaultBodyMode 空串归一为 off。
-func defaultBodyMode(mode string) string {
-	if mode == "" {
-		return MonitorBodyOverrideModeOff
-	}
-	return mode
 }

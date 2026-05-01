@@ -48,10 +48,13 @@ func ErrorFrom(c *gin.Context, err error) bool {
 	}
 	statusCode, status := errors.ToHTTP(err)
 	if statusCode >= 500 && c.Request != nil {
+		// 用 SanitizeCauseForLog 包一道：err.Error() 已经会脱敏 cause，但顶层
+		// err 本身可能直接是 *pq.Error / *fmt.wrapError 等含查询参数的实现，
+		// 这里再过一遍以兜住非 ApplicationError 路径。
 		slog.Error("plugin handler error",
 			"method", c.Request.Method,
 			"path", c.Request.URL.Path,
-			"error", err.Error(),
+			"error", errors.SanitizeCauseForLog(err),
 		)
 	}
 	ErrorWithDetails(c, statusCode, status.Message, status.Reason, status.Metadata)

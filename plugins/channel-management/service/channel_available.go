@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/decimalx"
 	"github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/domain"
 )
 
@@ -234,18 +235,24 @@ func toChannelView(c *Channel) *domain.ChannelView {
 	}
 	for i := range c.ModelPricing {
 		p := &c.ModelPricing[i]
+		// domain.ChannelModelPricing is a vendored byte-for-byte snapshot
+		// of the host's struct (see internal/domain/channel_view.go), so
+		// the price fields stay *float64. We translate decimal →
+		// *float64 here at the conversion boundary; the SupportedModels
+		// algorithm only inspects model names, not prices, so the
+		// inexact float demotion does not influence its output.
 		dp := domain.ChannelModelPricing{
 			ID:               p.ID,
 			ChannelID:        p.ChannelID,
 			Platform:         p.Platform,
 			Models:           p.Models,
 			BillingMode:      string(p.BillingMode),
-			InputPrice:       p.InputPrice,
-			OutputPrice:      p.OutputPrice,
-			CacheWritePrice:  p.CacheWritePrice,
-			CacheReadPrice:   p.CacheReadPrice,
-			ImageOutputPrice: p.ImageOutputPrice,
-			PerRequestPrice:  p.PerRequestPrice,
+			InputPrice:       decimalx.ToFloat64Ptr(p.InputPrice),
+			OutputPrice:      decimalx.ToFloat64Ptr(p.OutputPrice),
+			CacheWritePrice:  decimalx.ToFloat64Ptr(p.CacheWritePrice),
+			CacheReadPrice:   decimalx.ToFloat64Ptr(p.CacheReadPrice),
+			ImageOutputPrice: decimalx.ToFloat64Ptr(p.ImageOutputPrice),
+			PerRequestPrice:  decimalx.ToFloat64Ptr(p.PerRequestPrice),
 			Intervals:        make([]domain.PricingInterval, 0, len(p.Intervals)),
 		}
 		for j := range p.Intervals {
@@ -256,11 +263,11 @@ func toChannelView(c *Channel) *domain.ChannelView {
 				MinTokens:       iv.MinTokens,
 				MaxTokens:       iv.MaxTokens,
 				TierLabel:       iv.TierLabel,
-				InputPrice:      iv.InputPrice,
-				OutputPrice:     iv.OutputPrice,
-				CacheWritePrice: iv.CacheWritePrice,
-				CacheReadPrice:  iv.CacheReadPrice,
-				PerRequestPrice: iv.PerRequestPrice,
+				InputPrice:      decimalx.ToFloat64Ptr(iv.InputPrice),
+				OutputPrice:     decimalx.ToFloat64Ptr(iv.OutputPrice),
+				CacheWritePrice: decimalx.ToFloat64Ptr(iv.CacheWritePrice),
+				CacheReadPrice:  decimalx.ToFloat64Ptr(iv.CacheReadPrice),
+				PerRequestPrice: decimalx.ToFloat64Ptr(iv.PerRequestPrice),
 				SortOrder:       iv.SortOrder,
 			})
 		}

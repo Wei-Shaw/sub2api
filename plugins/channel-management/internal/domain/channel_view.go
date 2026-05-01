@@ -26,6 +26,8 @@ package domain
 import (
 	"sort"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/wildcard"
 )
 
 // PricingInterval mirrors host service.PricingInterval. Only the fields used
@@ -96,9 +98,6 @@ type SupportedModel struct {
 	Pricing  *ChannelModelPricing // 定价详情（nil 表示未配置定价）
 }
 
-// wildcardSuffix 是模型模式中的通配符后缀标记（仅支持尾部匹配）。
-const wildcardSuffix = "*"
-
 // splitWildcardSuffix 将模型模式拆分为 (prefix, isWildcard)。
 //
 //	"claude-opus-*"  → ("claude-opus-", true)
@@ -106,11 +105,12 @@ const wildcardSuffix = "*"
 //	"*"              → ("", true)
 //
 // 注意：返回的 prefix 保持原始大小写，由调用方按需 ToLower。
+//
+// 单点实现位于 internal/wildcard.SplitSuffix；本 wrapper 保持 vendored
+// snapshot 文件的对外签名不变（drift detection 通过文件 diff 工作），同时
+// 让所有写法收敛到 wildcard 包。
 func splitWildcardSuffix(pattern string) (prefix string, isWildcard bool) {
-	if strings.HasSuffix(pattern, wildcardSuffix) {
-		return strings.TrimSuffix(pattern, wildcardSuffix), true
-	}
-	return pattern, false
+	return wildcard.SplitSuffix(pattern)
 }
 
 // platformPricingIndex 是单个平台下定价信息的复合索引。

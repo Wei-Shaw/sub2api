@@ -47,19 +47,6 @@ func (s *sdkSecretEncryptor) Decrypt(ciphertext string) (string, error) {
 	return string(out), nil
 }
 
-// MonitorScheduler is the optional callback the service uses to notify the
-// runner about CRUD changes. It is implemented by the W2 JobScheduler-backed
-// runner that lands in a later commit. Until then a nil scheduler is treated
-// as "no notifications" — service code calls these methods only when
-// scheduler != nil.
-//
-// The Schedule / Unschedule names mirror the original (now-deleted) host
-// runner's API so service.go can be ported without rewrites.
-type MonitorScheduler interface {
-	Schedule(monitor *ChannelMonitor)
-	Unschedule(monitorID int64)
-}
-
 // CheckOptions configures a single per-model probe. It carries the snapshot
 // fields the user / template captured: extra headers, body override mode,
 // and the body override payload. The Models field is reserved for future
@@ -71,9 +58,8 @@ type CheckOptions struct {
 	BodyOverride     map[string]any
 }
 
-// runCheckForModel / pingEndpointOrigin / isSupportedProvider /
-// isPrivateOrLoopbackHost are implemented in checker.go on top of the SDK's
-// SafeHTTPClient (W4). The legacy host-side channel_monitor_ssrf.go is
-// replaced wholesale by that SDK capability — the SSRF guard runs at every
-// dial inside SafeHTTPClient, so a per-host pre-validation hook is no
-// longer needed.
+// runCheckForModel / pingEndpointOrigin / isSupportedProvider are implemented
+// in checker.go on top of the SDK's SafeHTTPClient (W4). The legacy host-side
+// channel_monitor_ssrf.go is replaced wholesale by that SDK capability —
+// the SSRF guard runs at every dial inside SafeHTTPClient, so a per-host
+// pre-validation hook is no longer needed.

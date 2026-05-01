@@ -20,6 +20,11 @@ import {
   STATUS_FAILED,
   STATUS_ERROR,
 } from '../utils/channelMonitorConstants'
+import {
+  platformTagClass,
+  platformPickerClass,
+  platformGradientClass,
+} from '../utils/platformColors'
 
 const NEUTRAL_BADGE = 'bg-gray-100 text-gray-800 dark:bg-dark-700 dark:text-gray-300'
 
@@ -62,43 +67,14 @@ export function useChannelMonitorFormat() {
     return p || '-'
   }
 
+  /** Platform palette delegated to utils/platformColors so admin/user views and channel form share a single switch. */
   function providerBadgeClass(p: Provider | string): string {
-    switch (p) {
-      case PROVIDER_OPENAI:
-        return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
-      case PROVIDER_ANTHROPIC:
-        return 'bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300'
-      case PROVIDER_GEMINI:
-        return 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300'
-      default:
-        return NEUTRAL_BADGE
-    }
+    return platformTagClass(p)
   }
 
-  /**
-   * Tailwind class for a provider radio-button-style picker (active/inactive state).
-   * Reuses the same emerald/orange/sky palette as providerBadgeClass to keep
-   * visual semantics consistent across badges and pickers.
-   */
+  /** Picker palette delegated to utils/platformColors (active/inactive state). */
   function providerPickerClass(p: Provider | string, active: boolean): string {
-    switch (p) {
-      case PROVIDER_OPENAI:
-        return active
-          ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-400'
-          : 'border-gray-200 bg-white text-gray-600 hover:border-emerald-300 hover:text-emerald-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-emerald-500/50'
-      case PROVIDER_ANTHROPIC:
-        return active
-          ? 'border-orange-500 bg-orange-50 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300 dark:border-orange-400'
-          : 'border-gray-200 bg-white text-gray-600 hover:border-orange-300 hover:text-orange-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-orange-500/50'
-      case PROVIDER_GEMINI:
-        return active
-          ? 'border-sky-500 bg-sky-50 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300 dark:border-sky-400'
-          : 'border-gray-200 bg-white text-gray-600 hover:border-sky-300 hover:text-sky-700 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-sky-500/50'
-      default:
-        return active
-          ? 'border-gray-400 bg-gray-50 text-gray-700 dark:border-dark-500 dark:bg-dark-700 dark:text-gray-200'
-          : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400'
-    }
+    return platformPickerClass(p, active)
   }
 
   function formatLatency(ms: number | null | undefined): string {
@@ -112,6 +88,12 @@ export function useChannelMonitorFormat() {
   }
 
   function formatAvailability(row: AvailabilityRow): string {
+    // T19 Fix D — TODO(channel-mgmt): primary_status 为空当前同时表示
+    //   (a) 监控未启用 (尚未跑过任何检查), 与 (b) 启用但 availability_7d=0
+    // 两种语义被合并为 '-', 用户无法区分 "未启用" 和 "全部失败".
+    // 修复需要 API 在 AvailabilityRow / UserMonitorView 中显式暴露 enabled
+    // 字段, 由后端补全后再走 `if (!row.enabled) return ...` 的判断.
+    // 当前不引入新字段以保持与 V5 W7/W7.3 schema 一致.
     if (!row.primary_status) return '-'
     return formatPercent(row.availability_7d)
   }
@@ -156,16 +138,8 @@ export function hslForPct(pct: number | null | undefined): string | undefined {
 
 /**
  * Tailwind gradient class for the provider icon tile background.
+ * Delegates to utils/platformColors so admin/user/MonitorCard share one source.
  */
 export function providerGradient(provider: string): string {
-  switch (provider) {
-    case PROVIDER_OPENAI:
-      return 'bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-500/10 dark:to-emerald-500/20'
-    case PROVIDER_ANTHROPIC:
-      return 'bg-gradient-to-br from-orange-50 to-amber-100 dark:from-orange-500/10 dark:to-amber-500/20'
-    case PROVIDER_GEMINI:
-      return 'bg-gradient-to-br from-sky-50 to-indigo-100 dark:from-sky-500/10 dark:to-indigo-500/20'
-    default:
-      return 'bg-gradient-to-br from-gray-100 to-gray-200 dark:from-dark-700 dark:to-dark-600'
-  }
+  return platformGradientClass(provider)
 }

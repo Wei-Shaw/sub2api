@@ -161,6 +161,7 @@ import {
 } from '../../../api/admin/channelMonitor'
 import { DEFAULT_INTERVAL_SECONDS } from '../../../utils/channelMonitorConstants'
 import { getSdk } from '../../../api/sdk'
+import { extractApiErrorMessage } from '../../../utils/apiError'
 
 const props = defineProps<{
   show: boolean
@@ -245,14 +246,6 @@ watch(extraModelsText, (txt) => {
     .filter((s) => s.length > 0)
 })
 
-function extractMessage(err: unknown, fallback: string): string {
-  if (err && typeof err === 'object' && 'message' in err) {
-    const m = (err as { message?: unknown }).message
-    if (typeof m === 'string' && m) return m
-  }
-  return fallback
-}
-
 async function handleSubmit() {
   if (!form.value.name.trim()) {
     sdk.notify.error(t('admin.channelMonitor.nameRequired'))
@@ -299,7 +292,7 @@ async function handleSubmit() {
     emit('saved')
     emit('close')
   } catch (err: unknown) {
-    sdk.notify.error(extractMessage(err, t('common.error')))
+    sdk.notify.error(extractApiErrorMessage(err, t('common.error')))
   } finally {
     submitting.value = false
   }

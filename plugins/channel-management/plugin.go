@@ -364,6 +364,17 @@ func (p *ChannelPlugin) Manifest() *pluginsdk.Manifest {
 func (p *ChannelPlugin) Init(ctx pluginsdk.PluginContext) error {
 	p.ctx.Store(&ctx)
 
+	// Register custom gin/binding validators backed by the service-layer
+	// enum lists. Must run before any ShouldBindJSON call sees a request,
+	// so wiring it at the top of Init keeps the contract obvious. Failing
+	// here means gin's validator engine was swapped out — surface that as
+	// a startup error rather than continuing with permissive binds.
+	if err := chHandler.RegisterCustomValidators(); err != nil {
+		ctx.Logger().Error("channel-management: failed to register custom validators",
+			"error", err)
+		return err
+	}
+
 	repo := chRepo.NewChannelRepository(ctx.DB())
 	// Wire the PricingExtension data source now that the SDK has handed us
 	// a *sql.DB. The server itself was registered on the gRPC server in
@@ -442,11 +453,12 @@ func (p *ChannelPlugin) Init(ctx pluginsdk.PluginContext) error {
 	// monitor.daily-rollup once per day. The runner replaces the legacy
 	// in-process ticker pool — concurrency, leader election and history
 	// are all owned by the host.
+	// runner 注册后不再被 service 回引：CRUD 修改无需即时通知，
+	// 60 秒 tick 会在下一轮基于 ListEnabled + LastCheckedAt 自然吸收。
 	jobRunner := monitorService.NewMonitorJobRunner(p.monitorService, ctx.Jobs(), ctx.Logger())
 	if err := jobRunner.Register(); err != nil {
 		ctx.Logger().Warn("channel-monitor: job registration failed; periodic checks disabled", "error", err)
 	}
-	p.monitorService.SetScheduler(jobRunner)
 
 	// Wire the user-facing "available channels" view (V5 W8). It reuses the
 	// same channel repository for ListAll and adds a small read-only

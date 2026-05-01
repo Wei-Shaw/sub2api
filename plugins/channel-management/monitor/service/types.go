@@ -1,6 +1,10 @@
 package monitorservice
 
-import "time"
+import (
+	"time"
+
+	"github.com/Wei-Shaw/sub2api/plugins/channel-management/monitor/internal/bodymode"
+)
 
 // MonitorBodyOverrideMode 自定义请求体处理模式。
 //
@@ -9,10 +13,13 @@ import "time"
 //     model/messages/contents 等关键字段在 checker 黑名单内会被静默丢弃）
 //   - replace 完全用 BodyOverride 作为 body；跳过 challenge 校验，
 //     改成 HTTP 2xx + 响应非空即视为可用（用户负责构造 body）
+//
+// 这些常量与 internal/bodymode 包对齐，service 层保留别名以便外部包使用
+// 时不必再额外 import bodymode 子包。
 const (
-	MonitorBodyOverrideModeOff     = "off"
-	MonitorBodyOverrideModeMerge   = "merge"
-	MonitorBodyOverrideModeReplace = "replace"
+	MonitorBodyOverrideModeOff     = bodymode.Off
+	MonitorBodyOverrideModeMerge   = bodymode.Merge
+	MonitorBodyOverrideModeReplace = bodymode.Replace
 )
 
 // ChannelMonitor 渠道监控配置（service 层模型，不直接暴露 ent 类型）。

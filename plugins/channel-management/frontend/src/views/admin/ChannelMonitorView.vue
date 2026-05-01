@@ -206,6 +206,8 @@ import {
 import MonitorFormDialog from '../../components/admin/monitor/MonitorFormDialog.vue'
 import MonitorRunResultDialog from '../../components/admin/monitor/MonitorRunResultDialog.vue'
 import { getSdk } from '../../api/sdk'
+import { extractApiErrorMessage } from '../../utils/apiError'
+import { loadPageSize, savePageSize } from '../../utils/pageSize'
 
 const { t } = useI18n()
 const sdk = getSdk()
@@ -218,28 +220,7 @@ const {
   formatAvailability,
 } = useChannelMonitorFormat()
 
-const PAGE_SIZE_STORAGE_KEY = 'channelMonitor.pageSize'
-
-function readPersistedPageSize(): number {
-  try {
-    const v = window.localStorage.getItem(PAGE_SIZE_STORAGE_KEY)
-    if (v) {
-      const n = parseInt(v, 10)
-      if (Number.isFinite(n) && n > 0) return n
-    }
-  } catch {
-    // SSR / sandboxed iframe — ignore
-  }
-  return 20
-}
-
-function writePersistedPageSize(n: number) {
-  try {
-    window.localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(n))
-  } catch {
-    // ignore
-  }
-}
+const PAGE_SIZE_SCOPE = 'channelMonitor'
 
 const monitors = ref<ChannelMonitor[]>([])
 const loading = ref(false)
@@ -249,7 +230,7 @@ const providerFilter = ref<Provider | ''>('')
 const enabledFilter = ref<'' | 'true' | 'false'>('')
 const pagination = reactive({
   page: 1,
-  page_size: readPersistedPageSize(),
+  page_size: loadPageSize(PAGE_SIZE_SCOPE),
   total: 0,
 })
 
@@ -290,14 +271,6 @@ const deleteConfirmMessage = computed(() => {
   return t('admin.channelMonitor.deleteConfirm', { name })
 })
 
-function extractMessage(err: unknown, fallback: string): string {
-  if (err && typeof err === 'object' && 'message' in err) {
-    const m = (err as { message?: unknown }).message
-    if (typeof m === 'string' && m) return m
-  }
-  return fallback
-}
-
 async function reload() {
   if (abortController) abortController.abort()
   const ctrl = new AbortController()
@@ -320,7 +293,7 @@ async function reload() {
   } catch (err: unknown) {
     const e = err as { name?: string; code?: string }
     if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return
-    sdk.notify.error(extractMessage(err, t('admin.channelMonitor.loadError')))
+    sdk.notify.error(extractApiErrorMessage(err, t('admin.channelMonitor.loadError')))
   } finally {
     if (abortController === ctrl) {
       loading.value = false
@@ -343,7 +316,7 @@ function onPageChange(page: number) {
 function onPageSizeChange(size: number) {
   pagination.page_size = size
   pagination.page = 1
-  writePersistedPageSize(size)
+  savePageSize(PAGE_SIZE_SCOPE, size)
   reload()
 }
 
@@ -368,7 +341,7 @@ async function toggleEnabled(row: ChannelMonitor) {
     await channelMonitorAPI.update(row.id, { enabled: next })
     row.enabled = next
   } catch (err: unknown) {
-    sdk.notify.error(extractMessage(err, t('common.error')))
+    sdk.notify.error(extractApiErrorMessage(err, t('common.error')))
   }
 }
 
@@ -382,7 +355,7 @@ async function handleRunNow(row: ChannelMonitor) {
     sdk.notify.success(t('admin.channelMonitor.runSuccess'))
     void reload()
   } catch (err: unknown) {
-    sdk.notify.error(extractMessage(err, t('admin.channelMonitor.runFailed')))
+    sdk.notify.error(extractApiErrorMessage(err, t('admin.channelMonitor.runFailed')))
   } finally {
     runningId.value = null
   }
@@ -402,7 +375,7 @@ async function confirmDelete() {
     deleting.value = null
     reload()
   } catch (err: unknown) {
-    sdk.notify.error(extractMessage(err, t('common.error')))
+    sdk.notify.error(extractApiErrorMessage(err, t('common.error')))
   }
 }
 

@@ -129,7 +129,7 @@ func (r *channelRepository) batchLoadIntervals(ctx context.Context, pricingIDs [
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT id, pricing_id, min_tokens, max_tokens, tier_label,
 		        input_price, output_price, cache_write_price, cache_read_price,
-		        per_request_price, sort_order, created_at, updated_at
+		        image_output_price, per_request_price, sort_order, created_at, updated_at
 		 FROM channel_pricing_intervals
 		 WHERE pricing_id = ANY($1) ORDER BY pricing_id, sort_order, id`,
 		pq.Array(pricingIDs),
@@ -145,7 +145,7 @@ func (r *channelRepository) batchLoadIntervals(ctx context.Context, pricingIDs [
 		if err := rows.Scan(
 			&iv.ID, &iv.PricingID, &iv.MinTokens, &iv.MaxTokens, &iv.TierLabel,
 			&iv.InputPrice, &iv.OutputPrice, &iv.CacheWritePrice, &iv.CacheReadPrice,
-			&iv.PerRequestPrice, &iv.SortOrder, &iv.CreatedAt, &iv.UpdatedAt,
+			&iv.ImageOutputPrice, &iv.PerRequestPrice, &iv.SortOrder, &iv.CreatedAt, &iv.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan interval: %w", err)
 		}
@@ -247,11 +247,11 @@ func createModelPricingExec(ctx context.Context, exec dbExec, pricing *service.C
 func createIntervalExec(ctx context.Context, exec dbExec, iv *service.PricingInterval) error {
 	return exec.QueryRowContext(ctx,
 		`INSERT INTO channel_pricing_intervals
-		 (pricing_id, min_tokens, max_tokens, tier_label, input_price, output_price, cache_write_price, cache_read_price, per_request_price, sort_order)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id, created_at, updated_at`,
+		 (pricing_id, min_tokens, max_tokens, tier_label, input_price, output_price, cache_write_price, cache_read_price, image_output_price, per_request_price, sort_order)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id, created_at, updated_at`,
 		iv.PricingID, iv.MinTokens, iv.MaxTokens, iv.TierLabel,
 		iv.InputPrice, iv.OutputPrice, iv.CacheWritePrice, iv.CacheReadPrice,
-		iv.PerRequestPrice, iv.SortOrder,
+		iv.ImageOutputPrice, iv.PerRequestPrice, iv.SortOrder,
 	).Scan(&iv.ID, &iv.CreatedAt, &iv.UpdatedAt)
 }
 

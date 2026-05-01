@@ -1,10 +1,15 @@
 package service
 
+//go:generate go run ../cmd/gen-frontend-constants -out ../frontend/src/utils/channelConstants.ts
+
 import (
 	"fmt"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/decimalx"
+	"github.com/shopspring/decimal"
 )
 
 // Status values used on Channel.Status. Mirrors backend/internal/domain
@@ -49,6 +54,51 @@ const (
 	BillingModelSourceChannelMapped = "channel_mapped"
 )
 
+// 以下 List 函数把 service 包内权威的枚举常量集中暴露给上层（handler 注册的
+// 自定义 validator、未来 codegen 工具等），避免在 struct tag / 前端 / SDK
+// 各处再硬编码字符串字面量。新增 / 删除某个枚举值时只需要修改对应常量与
+// 它的 List 函数；handler 启动期 validator 注册会自动跟随。
+//
+// 返回值统一是 string slice，方便 caller 直接做 slices.Contains / map 查找。
+
+// BillingModes 返回所有合法 billing_mode 值（不含空串：空串只在写入侧由
+// pricingRequestToService 默认补成 BillingModeToken，校验层不应放它通过）。
+func BillingModes() []string {
+	return []string{
+		string(BillingModeToken),
+		string(BillingModePerRequest),
+		string(BillingModeImage),
+	}
+}
+
+// ChannelStatuses 返回所有合法 channel.status 值。
+func ChannelStatuses() []string {
+	return []string{StatusActive, StatusDisabled}
+}
+
+// Platforms 返回所有合法 platform 标识。
+//
+// 业务上 platform 字段在 ChannelModelPricingRequest / 相关 DTO 是可选的
+// （留空时由后端默认补 PlatformAnthropic），所以本列表也用于"平台是否可识别"
+// 的轻量校验，让 handler 启动期 validator 拒绝拼写错误。
+func Platforms() []string {
+	return []string{
+		PlatformAnthropic,
+		PlatformOpenAI,
+		PlatformGemini,
+		PlatformAntigravity,
+	}
+}
+
+// BillingModelSources 返回所有合法 billing_model_source 值。
+func BillingModelSources() []string {
+	return []string{
+		BillingModelSourceRequested,
+		BillingModelSourceUpstream,
+		BillingModelSourceChannelMapped,
+	}
+}
+
 // Channel is the in-memory shape of a channel record. Pricing and group
 // associations live as nested fields rather than separate aggregate roots so
 // the cache layer can hand out clones cheaply.
@@ -80,19 +130,25 @@ type Channel struct {
 }
 
 // ChannelModelPricing is one pricing row inside a channel.
+//
+// Pricing fields use decimal.NullDecimal so the channel-management plugin
+// satisfies the project's "金额必须用 shopspring/decimal" rule (CLAUDE.md
+// "支付系统专项"). Valid=false means "price not configured" — semantically
+// the same as the pre-T4 *float64 nil. Sites that bridge to JSON / proto /
+// the vendored domain snapshot translate via internal/decimalx helpers.
 type ChannelModelPricing struct {
 	ID               int64
 	ChannelID        int64
-	Platform         string            // 所属平台（anthropic/openai/gemini/...）
-	Models           []string          // 绑定的模型列表
-	BillingMode      BillingMode       // 计费模式
-	InputPrice       *float64          // 每 token 输入价格（USD）— 向后兼容 flat 定价
-	OutputPrice      *float64          // 每 token 输出价格（USD）
-	CacheWritePrice  *float64          // 缓存写入价格
-	CacheReadPrice   *float64          // 缓存读取价格
-	ImageOutputPrice *float64          // 图片输出价格（向后兼容）
-	PerRequestPrice  *float64          // 默认按次计费价格（USD）
-	Intervals        []PricingInterval // 区间定价列表
+	Platform         string              // 所属平台（anthropic/openai/gemini/...）
+	Models           []string            // 绑定的模型列表
+	BillingMode      BillingMode         // 计费模式
+	InputPrice       decimal.NullDecimal // 每 token 输入价格（USD）— 向后兼容 flat 定价
+	OutputPrice      decimal.NullDecimal // 每 token 输出价格（USD）
+	CacheWritePrice  decimal.NullDecimal // 缓存写入价格
+	CacheReadPrice   decimal.NullDecimal // 缓存读取价格
+	ImageOutputPrice decimal.NullDecimal // 图片输出价格（向后兼容）
+	PerRequestPrice  decimal.NullDecimal // 默认按次计费价格（USD）
+	Intervals        []PricingInterval   // 区间定价列表
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
@@ -100,19 +156,20 @@ type ChannelModelPricing struct {
 // PricingInterval represents one tiered pricing band (token range, per-request
 // tier, or image resolution tier).
 type PricingInterval struct {
-	ID              int64
-	PricingID       int64
-	MinTokens       int      // 区间下界（含）
-	MaxTokens       *int     // 区间上界（不含），nil = 无上限
-	TierLabel       string   // 层级标签（按次/图片模式：1K, 2K, 4K, HD 等）
-	InputPrice      *float64 // token 模式：每 token 输入价
-	OutputPrice     *float64 // token 模式：每 token 输出价
-	CacheWritePrice *float64 // token 模式：缓存写入价
-	CacheReadPrice  *float64 // token 模式：缓存读取价
-	PerRequestPrice *float64 // 按次/图片模式：每次请求价格
-	SortOrder       int
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID               int64
+	PricingID        int64
+	MinTokens        int                 // 区间下界（含）
+	MaxTokens        *int                // 区间上界（不含），nil = 无上限
+	TierLabel        string              // 层级标签（按次/图片模式：1K, 2K, 4K, HD 等）
+	InputPrice       decimal.NullDecimal // token 模式：每 token 输入价
+	OutputPrice      decimal.NullDecimal // token 模式：每 token 输出价
+	CacheWritePrice  decimal.NullDecimal // token 模式：缓存写入价
+	CacheReadPrice   decimal.NullDecimal // token 模式：缓存读取价
+	ImageOutputPrice decimal.NullDecimal // image 模式：图片输出价（与 ChannelModelPricing.ImageOutputPrice 对称）
+	PerRequestPrice  decimal.NullDecimal // 按次/图片模式：每次请求价格
+	SortOrder        int
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // AccountStatsPricingRule 是渠道下的一条「账号统计自定义定价规则」。
@@ -302,16 +359,17 @@ func validateSingleInterval(iv *PricingInterval, idx int) error {
 func validateIntervalPrices(iv *PricingInterval, idx int) error {
 	prices := []struct {
 		name string
-		val  *float64
+		val  decimal.NullDecimal
 	}{
 		{"input_price", iv.InputPrice},
 		{"output_price", iv.OutputPrice},
 		{"cache_write_price", iv.CacheWritePrice},
 		{"cache_read_price", iv.CacheReadPrice},
+		{"image_output_price", iv.ImageOutputPrice},
 		{"per_request_price", iv.PerRequestPrice},
 	}
 	for _, p := range prices {
-		if p.val != nil && *p.val < 0 {
+		if decimalx.IsNegative(p.val) {
 			return fmt.Errorf("interval #%d: %s must be >= 0", idx+1, p.name)
 		}
 	}

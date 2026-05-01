@@ -51,6 +51,7 @@ import { Icon, SearchInput } from '@sub2api/plugin-sdk'
 import AvailableChannelsTable from '../../components/channels/AvailableChannelsTable.vue'
 import userChannelsAPI, { type UserAvailableChannel } from '../../api/user/availableChannels'
 import { getSdk } from '../../api/sdk'
+import { extractApiErrorMessage } from '../../utils/apiError'
 
 const { t } = useI18n()
 const sdk = getSdk()
@@ -88,14 +89,6 @@ const filteredChannels = computed(() => {
     .filter((ch): ch is UserAvailableChannel => ch !== null)
 })
 
-function extractMessage(err: unknown, fallback: string): string {
-  if (err && typeof err === 'object' && 'message' in err) {
-    const m = (err as { message?: unknown }).message
-    if (typeof m === 'string' && m) return m
-  }
-  return fallback
-}
-
 async function loadChannels() {
   loading.value = true
   try {
@@ -110,7 +103,7 @@ async function loadChannels() {
     channels.value = list
     userGroupRates.value = rates
   } catch (err: unknown) {
-    sdk.notify.error(extractMessage(err, t('common.error')))
+    sdk.notify.error(extractApiErrorMessage(err, t('common.error')))
   } finally {
     loading.value = false
   }

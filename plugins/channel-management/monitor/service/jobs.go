@@ -27,17 +27,23 @@ const (
 // ChannelMonitorRunner (291 lines of pond/sync.Map/leader-lock plumbing) —
 // the host now owns scheduling, leader election, and concurrency.
 //
-// The runner also implements MonitorScheduler so service-side CRUD writes
-// can prompt an immediate one-off check via TriggerNow once the SDK
-// supports it. Until then the methods are a soft no-op (logged) — the
-// 60-second tick will still pick up new monitors on the next pass.
+// CRUD writes do not need to notify the runner: the 60-second tick picks up
+// newly enabled monitors on the next pass and naturally drops disabled ones,
+// so no scheduler hook is exposed (the previous Schedule / Unschedule pair
+// was an empty no-op kept only for symmetry with the legacy runner).
 type MonitorJobRunner struct {
 	svc  *ChannelMonitorService
 	jobs pluginsdk.JobsClient
 	log  *slog.Logger
 
-	mu       sync.Mutex
 	tickerWG sync.WaitGroup
+
+	// inFlightMu / inFlightSet 跟踪当前正在被 RunCheck 的 monitor ID，
+	// 防止同一 monitor 在前一次还在体检上游时被新一轮 tick 重复触发。
+	// 字段挂在 runner 实例上而非 package-level，确保多 runner 实例（生产 /
+	// 测试 fixture / 多插件）互相隔离不会争锁。
+	inFlightMu  sync.Mutex
+	inFlightSet map[int64]struct{}
 }
 
 // NewMonitorJobRunner builds the runner. jobs may be nil (host without W2);
@@ -47,7 +53,12 @@ func NewMonitorJobRunner(svc *ChannelMonitorService, jobs pluginsdk.JobsClient, 
 	if log == nil {
 		log = slog.Default()
 	}
-	return &MonitorJobRunner{svc: svc, jobs: jobs, log: log}
+	return &MonitorJobRunner{
+		svc:         svc,
+		jobs:        jobs,
+		log:         log,
+		inFlightSet: make(map[int64]struct{}),
+	}
 }
 
 // Register declares the two job specs to the host scheduler. Must be called
@@ -68,7 +79,7 @@ func (r *MonitorJobRunner) Register() error {
 			Kind:     pluginsdk.TriggerInterval,
 			Interval: monitorJobRunInterval,
 		},
-		Concurrency: 5,
+		Concurrency: monitorWorkerConcurrency,
 		Timeout:     monitorJobRunTimeout,
 	}
 	if err := r.jobs.Register(tickSpec, r.runOneTick); err != nil {
@@ -146,30 +157,23 @@ func (r *MonitorJobRunner) runDailyRollup(ctx context.Context, _ string) error {
 	return nil
 }
 
-// inFlightSet tracks which monitor IDs are currently being checked so the
-// per-tick scan does not double-fire while the previous attempt is still
-// inside the upstream HTTP call. Replaces the old runner.inFlight sync.Map
-// with a smaller mutex-protected map (the cardinality is at most ~hundreds
-// of monitors, so contention is negligible).
-var (
-	inFlightMu  sync.Mutex
-	inFlightSet = map[int64]struct{}{}
-)
-
+// acquireTicket / releaseTicket 维护 runner 自身的 in-flight 集合：基数最多
+// 几百个 monitor，互斥锁的争用可以忽略，但字段挂在 runner 上保证不同 runner
+// 实例（多插件 / 测试夹具）互相隔离。
 func (r *MonitorJobRunner) acquireTicket(id int64) bool {
-	inFlightMu.Lock()
-	defer inFlightMu.Unlock()
-	if _, ok := inFlightSet[id]; ok {
+	r.inFlightMu.Lock()
+	defer r.inFlightMu.Unlock()
+	if _, ok := r.inFlightSet[id]; ok {
 		return false
 	}
-	inFlightSet[id] = struct{}{}
+	r.inFlightSet[id] = struct{}{}
 	return true
 }
 
 func (r *MonitorJobRunner) releaseTicket(id int64) {
-	inFlightMu.Lock()
-	defer inFlightMu.Unlock()
-	delete(inFlightSet, id)
+	r.inFlightMu.Lock()
+	defer r.inFlightMu.Unlock()
+	delete(r.inFlightSet, id)
 }
 
 // isMonitorDue returns true when m has never been checked or when the last
@@ -187,12 +191,3 @@ func isMonitorDue(m *ChannelMonitor, now time.Time) bool {
 	}
 	return now.Sub(*m.LastCheckedAt) >= interval
 }
-
-// Schedule / Unschedule satisfy the MonitorScheduler interface. With the
-// host-driven JobScheduler the per-monitor task lifecycle is implicit (the
-// next tick will pick up enabled rows / drop disabled ones), so these
-// methods are intentionally no-ops; they exist so service-side CRUD
-// writes can stay agnostic of which runner implementation is wired.
-func (r *MonitorJobRunner) Schedule(_ *ChannelMonitor)   {}
-func (r *MonitorJobRunner) Unschedule(_ int64)           {}
-var _ MonitorScheduler = (*MonitorJobRunner)(nil)

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/plugins/channel-management/monitor/internal/bodymode"
 	monitorservice "github.com/Wei-Shaw/sub2api/plugins/channel-management/monitor/service"
 )
 
@@ -50,7 +51,7 @@ func (r *channelMonitorTemplateRepository) Create(ctx context.Context, t *monito
 		bodyArg = string(bodyOverride)
 	}
 	return r.db.QueryRowContext(ctx, q,
-		t.Name, t.Provider, t.Description, string(headers), defaultBodyMode(t.BodyOverrideMode), bodyArg,
+		t.Name, t.Provider, t.Description, string(headers), bodymode.Normalize(t.BodyOverrideMode), bodyArg,
 	).Scan(&t.ID, &t.CreatedAt, &t.UpdatedAt)
 }
 
@@ -88,7 +89,7 @@ func (r *channelMonitorTemplateRepository) Update(ctx context.Context, t *monito
 		bodyArg = string(bodyOverride)
 	}
 	if err := r.db.QueryRowContext(ctx, q,
-		t.ID, t.Name, t.Description, string(headers), defaultBodyMode(t.BodyOverrideMode), bodyArg,
+		t.ID, t.Name, t.Description, string(headers), bodymode.Normalize(t.BodyOverrideMode), bodyArg,
 	).Scan(&t.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return monitorservice.ErrChannelMonitorTemplateNotFound
@@ -191,7 +192,7 @@ func (r *channelMonitorTemplateRepository) ApplyToMonitors(ctx context.Context, 
 	if bodyOverride != nil {
 		bodyArg = string(bodyOverride)
 	}
-	args := append([]any{string(headers), defaultBodyMode(tpl.BodyOverrideMode), bodyArg}, idArgs...)
+	args := append([]any{string(headers), bodymode.Normalize(tpl.BodyOverrideMode), bodyArg}, idArgs...)
 
 	res, err := r.db.ExecContext(ctx, q, args...)
 	if err != nil {

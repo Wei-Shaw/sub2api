@@ -97,9 +97,7 @@ func (b *Broker) Subscribe() (<-chan *pb.PricingOverrideEvent, func()) {
 // Idempotent — repeated calls are safe.
 func (b *Broker) unsubscribe(sub *subscriber) {
 	b.mu.Lock()
-	if _, ok := b.subs[sub]; ok {
-		delete(b.subs, sub)
-	}
+	delete(b.subs, sub)
 	b.mu.Unlock()
 	sub.closeOnce.Do(func() { close(sub.ch) })
 }
@@ -142,9 +140,7 @@ func (b *Broker) Publish(evt *pb.PricingOverrideEvent) {
 	// dropping here is the safe fallback for sub-second freshness.
 	b.mu.Lock()
 	for _, s := range dropped {
-		if _, ok := b.subs[s]; ok {
-			delete(b.subs, s)
-		}
+		delete(b.subs, s)
 	}
 	b.mu.Unlock()
 	for _, s := range dropped {

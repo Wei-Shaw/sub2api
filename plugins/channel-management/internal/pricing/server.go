@@ -25,6 +25,8 @@ import (
 	"time"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+	"github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/decimalx"
+	"github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/platforms"
 	chService "github.com/Wei-Shaw/sub2api/plugins/channel-management/service"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -266,6 +268,10 @@ func (s *Server) ResolveAccountStatsCost(
 		requestCount = 1
 	}
 
+	// total_cost 是 T24 后的 decimal string；无值/解析失败按 0 处理，
+	// 由后续 ApplyPricingToAccountStats 分支决定是否触发"使用客户成本"路径。
+	totalCost := decimalx.FromProtoStringOrZero(req.GetTotalCost())
+
 	result, err := holder.inner.ResolveAccountStatsCost(ctx, chService.AccountStatsCostInput{
 		ChannelID:     req.GetChannelId(),
 		AccountID:     req.GetAccountId(),
@@ -273,7 +279,7 @@ func (s *Server) ResolveAccountStatsCost(
 		UpstreamModel: req.GetUpstreamModel(),
 		Tokens:        tokens,
 		RequestCount:  requestCount,
-		TotalCost:     req.GetTotalCost(),
+		TotalCost:     totalCost,
 	})
 	if err != nil {
 		// The host treats any error as "no opinion" — surface the cause
@@ -284,9 +290,12 @@ func (s *Server) ResolveAccountStatsCost(
 	if !result.HasCost {
 		return &pb.ResolveAccountStatsCostResponse{HasCost: false}, nil
 	}
+	// T24: cost is now a decimal string. result.Cost is decimal.Decimal so we
+	// emit the canonical String() representation; the host's
+	// FromProtoString round-trips it back with no IEEE-754 rounding.
 	return &pb.ResolveAccountStatsCostResponse{
 		HasCost:          true,
-		Cost:             result.Cost,
+		Cost:             decimalx.DecimalToProtoString(result.Cost),
 		ResolutionReason: "channel-management: matched account stats pricing",
 	}, nil
 }
@@ -375,15 +384,21 @@ func collectGroupIDs(channels []chService.Channel) []int64 {
 }
 
 // platformMatches reports whether a pricing row's platform applies to a
-// group's platform. Mirrors chService.isPlatformPricingMatch (strict equality
-// on lowercase) without re-exporting the helper.
+// group's platform. Single source: platforms.Match (trim + lowercase + strict
+// equality). chService.isPlatformPricingMatch reuses the same package, so
+// both gRPC publish and in-process cache go through the same rule.
 func platformMatches(groupPlatform, pricingPlatform string) bool {
-	return strings.ToLower(strings.TrimSpace(groupPlatform)) ==
-		strings.ToLower(strings.TrimSpace(pricingPlatform))
+	return platforms.Match(groupPlatform, pricingPlatform)
 }
 
 // encodeOverride converts one (group, platform, model) tuple plus its
 // matching ChannelModelPricing into a proto PricingOverride.
+//
+// T24: prices are encoded as decimal strings (ToProtoString) so the
+// canonical decimal.NullDecimal value flows end-to-end from the plugin
+// repo to the host cache without crossing IEEE-754. Unset prices map to
+// "" — the host treats empty string as "not set" and falls back to base
+// pricing, matching the legacy zero-as-unset semantics.
 func encodeOverride(
 	groupID int64,
 	platform string,
@@ -397,18 +412,20 @@ func encodeOverride(
 			Model:    model,
 		},
 		BillingMode:      string(p.BillingMode),
-		InputPrice:       deref(p.InputPrice),
-		OutputPrice:      deref(p.OutputPrice),
-		CacheWritePrice:  deref(p.CacheWritePrice),
-		CacheReadPrice:   deref(p.CacheReadPrice),
-		ImageOutputPrice: deref(p.ImageOutputPrice),
-		PerRequestPrice:  deref(p.PerRequestPrice),
+		InputPrice:       decimalx.ToProtoString(p.InputPrice),
+		OutputPrice:      decimalx.ToProtoString(p.OutputPrice),
+		CacheWritePrice:  decimalx.ToProtoString(p.CacheWritePrice),
+		CacheReadPrice:   decimalx.ToProtoString(p.CacheReadPrice),
+		ImageOutputPrice: decimalx.ToProtoString(p.ImageOutputPrice),
+		PerRequestPrice:  decimalx.ToProtoString(p.PerRequestPrice),
 		Intervals:        encodeIntervals(p.Intervals),
 	}
 }
 
 // encodeIntervals translates the plugin's PricingInterval list to proto.
-// nil prices map to zero (the proto contract treats zero as "unset").
+// Unset prices map to "" (T24: the proto contract treats empty string as
+// "not set"). Numeric values flow through decimalx.ToProtoString so no
+// round-trip through float64 happens.
 func encodeIntervals(in []chService.PricingInterval) []*pb.PricingInterval {
 	if len(in) == 0 {
 		return nil
@@ -421,25 +438,17 @@ func encodeIntervals(in []chService.PricingInterval) []*pb.PricingInterval {
 			maxTokens = int64(*iv.MaxTokens)
 		}
 		out = append(out, &pb.PricingInterval{
-			MinTokens:       int64(iv.MinTokens),
-			MaxTokens:       maxTokens,
-			InputPrice:      deref(iv.InputPrice),
-			OutputPrice:     deref(iv.OutputPrice),
-			CacheWritePrice: deref(iv.CacheWritePrice),
-			CacheReadPrice:  deref(iv.CacheReadPrice),
-			PerRequestPrice: deref(iv.PerRequestPrice),
+			MinTokens:        int64(iv.MinTokens),
+			MaxTokens:        maxTokens,
+			InputPrice:       decimalx.ToProtoString(iv.InputPrice),
+			OutputPrice:      decimalx.ToProtoString(iv.OutputPrice),
+			CacheWritePrice:  decimalx.ToProtoString(iv.CacheWritePrice),
+			CacheReadPrice:   decimalx.ToProtoString(iv.CacheReadPrice),
+			ImageOutputPrice: decimalx.ToProtoString(iv.ImageOutputPrice),
+			PerRequestPrice:  decimalx.ToProtoString(iv.PerRequestPrice),
 		})
 	}
 	return out
-}
-
-// deref returns the dereferenced value, treating nil as zero. Callers feed
-// the result into proto fields where zero already means "unset".
-func deref(p *float64) float64 {
-	if p == nil {
-		return 0
-	}
-	return *p
 }
 
 // formatVersion encodes an int64 unix-nano as a fixed-width decimal string

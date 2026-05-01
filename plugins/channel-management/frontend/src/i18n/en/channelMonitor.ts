@@ -1,0 +1,62 @@
+/**
+ * English i18n — `admin.channelMonitor.*` namespace (V5 W7 admin monitor).
+ *
+ * T19 Fix B — split out from monolithic `en.ts`.
+ */
+export default {
+  title: 'Channel Monitor',
+  description: 'Monitor channel availability, latency and status',
+  searchPlaceholder: 'Search monitor name...',
+  allProviders: 'All Providers',
+  allStatus: 'All Status',
+  enabledFilter: 'Enabled',
+  onlyEnabled: 'Enabled only',
+  onlyDisabled: 'Disabled only',
+  createButton: 'Create Monitor',
+  createTitle: 'Create Channel Monitor',
+  editTitle: 'Edit Channel Monitor',
+  runNow: 'Run Now',
+  runSuccess: 'Check completed',
+  runFailed: 'Check failed',
+  apiKeyDecryptFailed:
+    'API Key decryption failed. Please re-edit this monitor with a fresh key.',
+  createSuccess: 'Monitor created',
+  updateSuccess: 'Monitor updated',
+  deleteSuccess: 'Monitor deleted',
+  loadError: 'Failed to load monitors',
+  deleteConfirm:
+    'Are you sure you want to delete monitor "{name}"? This action cannot be undone.',
+  nameRequired: 'Please enter a monitor name',
+  primaryModelRequired: 'Please enter a primary model',
+  noMonitorsYet: 'No monitors yet',
+  createFirstMonitor: 'Create your first monitor to track channel availability',
+  runResultTitle: 'Check Result',
+  columns: {
+    name: 'Name',
+    provider: 'Provider',
+    primaryModel: 'Primary Model',
+    availability7d: '7d Availability',
+    latency: 'Latency (ms)',
+    enabled: 'Enabled',
+    actions: 'Actions',
+  },
+  form: {
+    name: 'Name',
+    namePlaceholder: 'Enter monitor name',
+    provider: 'Platform',
+    endpoint: 'Endpoint',
+    endpointPlaceholder: 'https://api.example.com',
+    apiKey: 'API Key',
+    apiKeyPlaceholder: 'Enter API Key',
+    apiKeyEditPlaceholder: 'Leave blank to keep current key',
+    primaryModel: 'Primary Model',
+    primaryModelPlaceholder: 'gpt-4o-mini',
+    extraModels: 'Extra Models',
+    extraModelsPlaceholder: 'One model per line (whitespace or comma separated)',
+    groupName: 'Group Name',
+    groupNamePlaceholder: 'Optional, used to group rows in user view',
+    intervalSeconds: 'Interval (seconds)',
+    intervalSecondsHint: 'Range: 15 - 3600 seconds',
+    enabled: 'Enable monitor',
+  },
+}

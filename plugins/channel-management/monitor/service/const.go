@@ -26,10 +26,10 @@ const (
 	// monitorMaintenanceMaxDaysPerRun 单次维护任务最多聚合的天数。
 	// 用于限制首次上线回填（30 天）+ 少量余量，避免长事务。
 	monitorMaintenanceMaxDaysPerRun = 35
-	// monitorWorkerConcurrency 调度器并发执行的监控数（pond 池容量）。
+	// monitorWorkerConcurrency 是 host JobScheduler 对 monitor.run 任务的并发上限。
+	// 单 host 内最多 5 个 tick handler 同时执行，避免并发体检时一次性把上游打垮。
+	// 实际并发还会被 per-monitor inFlight 票据进一步收敛（同一 monitor 永远串行）。
 	monitorWorkerConcurrency = 5
-	// monitorStartupLoadTimeout Start 时一次性加载所有 enabled monitor 的总超时。
-	monitorStartupLoadTimeout = 10 * time.Second
 	// monitorMinIntervalSeconds / monitorMaxIntervalSeconds 用户配置的检测间隔上下限。
 	monitorMinIntervalSeconds = 15
 	monitorMaxIntervalSeconds = 3600
@@ -76,9 +76,6 @@ const (
 	// monitorTimelineMaxPoints 用户视图 timeline 每个监控最多返回的历史点数。
 	monitorTimelineMaxPoints = 60
 
-	// monitorEndpointResolveTimeout validateEndpoint 解析 hostname 的最长耗时。
-	monitorEndpointResolveTimeout = 5 * time.Second
-
 	// ---- checker / runner 行为参数（消除 magic 值）----
 
 	// monitorAnthropicAPIVersion Anthropic Messages API 版本头。
@@ -86,22 +83,8 @@ const (
 	// monitorChallengeMaxTokens 单次 challenge 请求的 max_tokens（足够回答个位数算术）。
 	monitorChallengeMaxTokens = 50
 
-	// monitorRunOneBuffer runOne 的总超时缓冲（除请求超时与 ping 超时外的额外裕量）。
-	monitorRunOneBuffer = 10 * time.Second
-
-	// monitorIdleConnTimeout HTTP transport 空闲连接关闭超时。
-	monitorIdleConnTimeout = 30 * time.Second
-	// monitorTLSHandshakeTimeout HTTP transport TLS 握手超时。
-	monitorTLSHandshakeTimeout = 10 * time.Second
-	// monitorResponseHeaderTimeout HTTP transport 等待响应头超时。
-	monitorResponseHeaderTimeout = 30 * time.Second
 	// monitorPingDiscardMaxBytes ping 时丢弃响应体的最大字节数。
 	monitorPingDiscardMaxBytes = 1024
-
-	// monitorDialTimeout 自定义 dialer 单次连接超时。
-	monitorDialTimeout = 10 * time.Second
-	// monitorDialKeepAlive 自定义 dialer keep-alive 间隔。
-	monitorDialKeepAlive = 30 * time.Second
 )
 
 // 业务错误（统一在此声明，避免散落）。
@@ -124,12 +107,10 @@ var (
 	ErrChannelMonitorEndpointPath = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_ENDPOINT_PATH", "endpoint must be base origin only (no path/query/fragment)",
 	)
-	ErrChannelMonitorEndpointPrivate = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_ENDPOINT_PRIVATE", "endpoint must be a public host",
-	)
-	ErrChannelMonitorEndpointUnreachable = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_ENDPOINT_UNREACHABLE", "endpoint hostname could not be resolved",
-	)
+	// 注：曾经的 ErrChannelMonitorEndpointPrivate / ErrChannelMonitorEndpointUnreachable
+	// 与 isPrivateOrLoopbackHost 一同被移除（T13）。validateEndpoint 现在不再做
+	// host 预检——SSRF 防护交由 SDK SafeOutboundHTTP 层在每次 dial 时执行（避免
+	// TOCTOU 与 DNS rebinding 误判）。前端 i18n 未引用这两个错误码，可直接删除。
 	ErrChannelMonitorMissingAPIKey = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_MISSING_API_KEY", "api_key is required when creating a monitor",
 	)
