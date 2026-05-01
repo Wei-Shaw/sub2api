@@ -1401,6 +1401,33 @@ const buildAccountQueryFilters = () => ({
   sort_by: sortState.sort_by,
   sort_order: sortState.sort_order
 })
+const parseWindowUsagePercent = (account: Account, window: '5h' | '7d') => {
+  const usedKey = window === '5h' ? 'codex_5h_used_percent' : 'codex_7d_used_percent'
+  const resetAtKey = window === '5h' ? 'codex_5h_reset_at' : 'codex_7d_reset_at'
+  const resetAfterKey = window === '5h' ? 'codex_5h_reset_after_seconds' : 'codex_7d_reset_after_seconds'
+  const usedRaw = Number(account.extra?.[usedKey] ?? Number.NaN)
+  if (!Number.isFinite(usedRaw)) return Number.NaN
+  let usedPercent = Math.min(100, Math.max(0, usedRaw))
+  const now = Date.now()
+  const resetAtValue = account.extra?.[resetAtKey]
+  const resetAt = typeof resetAtValue === 'string' ? new Date(resetAtValue).getTime() : Number.NaN
+  if (Number.isFinite(resetAt)) {
+    if (resetAt <= now) {
+      return 0
+    }
+    return usedPercent
+  }
+  const resetAfterRaw = Number(account.extra?.[resetAfterKey] ?? Number.NaN)
+  if (Number.isFinite(resetAfterRaw) && resetAfterRaw > 0) {
+    const updatedAtValue = account.extra?.codex_usage_updated_at
+    const updatedAt = typeof updatedAtValue === 'string' ? new Date(updatedAtValue).getTime() : now
+    const derivedResetAt = updatedAt + resetAfterRaw * 1000
+    if (Number.isFinite(derivedResetAt) && derivedResetAt <= now) {
+      return 0
+    }
+  }
+  return usedPercent
+}
 const accountMatchesCurrentFilters = (account: Account) => {
   const filters = buildAccountQueryFilters()
   if (filters.platform && account.platform !== filters.platform) return false
@@ -1408,13 +1435,19 @@ const accountMatchesCurrentFilters = (account: Account) => {
   const strategy = String(account.extra?.openai_quota_strategy || '').trim()
   const thresholdRaw = Number(account.extra?.openai_quota_stop_threshold_percent ?? 10)
   const threshold = Number.isFinite(thresholdRaw) && thresholdRaw > 0 ? Math.min(100, thresholdRaw) : 10
-  const usedKey = strategy === 'prefer_5h' ? 'codex_5h_used_percent' : strategy === 'prefer_7d' ? 'codex_7d_used_percent' : ''
-  const usedRaw = usedKey ? Number(account.extra?.[usedKey] ?? Number.NaN) : Number.NaN
-  const usedPercent = Number.isFinite(usedRaw) ? Math.min(100, Math.max(0, usedRaw)) : Number.NaN
+  const usedPercent = strategy === 'prefer_5h'
+    ? parseWindowUsagePercent(account, '5h')
+    : strategy === 'prefer_7d'
+      ? parseWindowUsagePercent(account, '7d')
+      : Number.NaN
   const remainingPercent = Number.isFinite(usedPercent) ? 100 - usedPercent : Number.NaN
   const isQuotaStopped = (strategy === 'prefer_5h' || strategy === 'prefer_7d') &&
     Number.isFinite(remainingPercent) &&
     remainingPercent < threshold
+  const openAI5HUsedPercent = parseWindowUsagePercent(account, '5h')
+  const openAI7DUsedPercent = parseWindowUsagePercent(account, '7d')
+  const isOpenAI5HUsedZero = account.platform === 'openai' && account.type === 'oauth' && Number.isFinite(openAI5HUsedPercent) && openAI5HUsedPercent === 0
+  const isOpenAI7DUsedZero = account.platform === 'openai' && account.type === 'oauth' && Number.isFinite(openAI7DUsedPercent) && openAI7DUsedPercent === 0
   if (filters.status) {
     const now = Date.now()
     const rateLimitResetAt = account.rate_limit_reset_at ? new Date(account.rate_limit_reset_at).getTime() : Number.NaN

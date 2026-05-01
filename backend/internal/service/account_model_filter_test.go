@@ -150,10 +150,45 @@ func TestMatchesAccountListStatusFilter(t *testing.T) {
 		Status:      StatusActive,
 		Schedulable: false,
 	}
+	openAI5HZero := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			"codex_5h_used_percent": 0.0,
+		},
+	}
+	openAI7DZero := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			"codex_7d_used_percent": 0.0,
+		},
+	}
+	openAINonZero := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			"codex_5h_used_percent": 12.0,
+			"codex_7d_used_percent": 8.0,
+		},
+	}
+	expired7DWindow := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			"codex_7d_used_percent": 91.0,
+			"codex_7d_reset_at":     now.Add(-1 * time.Hour).Format(time.RFC3339),
+		},
+	}
 
 	require.True(t, MatchesAccountListStatusFilter(activeQuotaOK, AccountStatusFilterActiveExcludingQuotaStopped, now))
 	require.False(t, MatchesAccountListStatusFilter(activeQuotaStopped, AccountStatusFilterActiveExcludingQuotaStopped, now))
 	require.True(t, MatchesAccountListStatusFilter(rateLimited, "rate_limited", now))
 	require.True(t, MatchesAccountListStatusFilter(tempUnsched, "temp_unschedulable", now))
 	require.True(t, MatchesAccountListStatusFilter(unschedulable, "unschedulable", now))
+	require.True(t, MatchesAccountListStatusFilter(openAI5HZero, AccountStatusFilterOpenAI5HUsedZero, now))
+	require.True(t, MatchesAccountListStatusFilter(openAI7DZero, AccountStatusFilterOpenAI7DUsedZero, now))
+	require.True(t, MatchesAccountListStatusFilter(expired7DWindow, AccountStatusFilterOpenAI7DUsedZero, now))
+	require.False(t, MatchesAccountListStatusFilter(openAINonZero, AccountStatusFilterOpenAI5HUsedZero, now))
+	require.False(t, MatchesAccountListStatusFilter(openAINonZero, AccountStatusFilterOpenAI7DUsedZero, now))
 }

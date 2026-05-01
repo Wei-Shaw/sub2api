@@ -196,6 +196,22 @@ func isAccountTempUnschedulableAt(account *Account, now time.Time) bool {
 	return account != nil && account.TempUnschedulableUntil != nil && account.TempUnschedulableUntil.After(now)
 }
 
+func isOpenAIUsagePercentExactlyZero(account *Account, key string) bool {
+	if account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth || account.Extra == nil {
+		return false
+	}
+	window := ""
+	switch key {
+	case "codex_5h_used_percent":
+		window = "5h"
+	case "codex_7d_used_percent":
+		window = "7d"
+	default:
+		return false
+	}
+	progress := buildCodexUsageProgressFromExtra(account.Extra, window, time.Now())
+	return progress != nil && progress.Utilization == 0
+}
 func buildAnthropicModelAliases(requestedModel string) []string {
 	trimmed := strings.TrimSpace(requestedModel)
 	if trimmed == "" {

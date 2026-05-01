@@ -506,6 +506,16 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 	if progress := buildCodexUsageProgressFromExtra(account.Extra, "7d", now); progress != nil {
 		usage.SevenDay = progress
 	}
+	if zeroUpdates := buildExpiredOpenAICodexZeroUpdates(account, now); len(zeroUpdates) > 0 {
+		mergeAccountExtra(account, zeroUpdates)
+		s.persistOpenAICodexProbeSnapshot(account.ID, zeroUpdates)
+		if progress := buildCodexUsageProgressFromExtra(account.Extra, "5h", now); progress != nil {
+			usage.FiveHour = progress
+		}
+		if progress := buildCodexUsageProgressFromExtra(account.Extra, "7d", now); progress != nil {
+			usage.SevenDay = progress
+		}
+	}
 
 	if shouldRefreshOpenAICodexSnapshot(account, usage, now) && s.shouldProbeOpenAICodexSnapshot(account.ID, now) {
 		if updates, err := s.probeOpenAICodexSnapshot(ctx, account); err == nil && len(updates) > 0 {
@@ -670,6 +680,38 @@ func (s *AccountUsageService) persistOpenAICodexProbeSnapshot(accountID int64, u
 		defer updateCancel()
 		_ = s.accountRepo.UpdateExtra(updateCtx, accountID, updates)
 	}()
+}
+
+func buildExpiredOpenAICodexZeroUpdates(account *Account, now time.Time) map[string]any {
+	if account == nil || account.Extra == nil {
+		return nil
+	}
+
+	type windowConfig struct {
+		window string
+		key    string
+	}
+	configs := []windowConfig{
+		{window: "5h", key: "codex_5h_used_percent"},
+		{window: "7d", key: "codex_7d_used_percent"},
+	}
+
+	updates := make(map[string]any)
+	for _, config := range configs {
+		progress := buildCodexUsageProgressFromExtra(account.Extra, config.window, now)
+		if progress == nil || progress.ResetsAt == nil || now.Before(*progress.ResetsAt) {
+			continue
+		}
+		current := parseExtraFloat64(account.Extra[config.key])
+		if current != 0 {
+			updates[config.key] = 0.0
+		}
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+	updates["codex_usage_updated_at"] = now.UTC().Truncate(time.Second).Format(time.RFC3339)
+	return updates
 }
 
 func extractOpenAICodexProbeUpdates(resp *http.Response) (map[string]any, error) {

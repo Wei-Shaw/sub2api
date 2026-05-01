@@ -1046,6 +1046,72 @@ func (a *Account) GetOpenAISessionID() string {
 	return strings.TrimSpace(a.GetExtraString("openai_session_id"))
 }
 
+func (a *Account) GetOpenAIQuotaStrategy() string {
+	if !a.IsOpenAIOAuth() {
+		return ""
+	}
+	switch strings.TrimSpace(a.GetExtraString("openai_quota_strategy")) {
+	case "prefer_5h", "prefer_7d":
+		return strings.TrimSpace(a.GetExtraString("openai_quota_strategy"))
+	default:
+		return ""
+	}
+}
+
+func (a *Account) GetOpenAIQuotaStopThresholdPercent() float64 {
+	if !a.IsOpenAIOAuth() {
+		return 0
+	}
+	threshold := a.getExtraFloat64("openai_quota_stop_threshold_percent")
+	if threshold <= 0 {
+		return 10
+	}
+	if threshold > 100 {
+		return 100
+	}
+	return threshold
+}
+
+func (a *Account) GetOpenAIQuotaRemainingPercentByStrategy() (float64, bool) {
+	if !a.IsOpenAIOAuth() || a.Extra == nil {
+		return 0, false
+	}
+
+	var window string
+	switch a.GetOpenAIQuotaStrategy() {
+	case "prefer_5h":
+		window = "5h"
+	case "prefer_7d":
+		window = "7d"
+	default:
+		return 0, false
+	}
+
+	progress := buildCodexUsageProgressFromExtra(a.Extra, window, time.Now())
+	if progress == nil {
+		return 0, false
+	}
+	used := progress.Utilization
+	if used < 0 {
+		used = 0
+	}
+	if used > 100 {
+		used = 100
+	}
+	return 100 - used, true
+}
+
+func (a *Account) IsOpenAIQuotaStrategySchedulable() bool {
+	if a.GetOpenAIQuotaStrategy() == "" {
+		return true
+	}
+	remaining, ok := a.GetOpenAIQuotaRemainingPercentByStrategy()
+	if !ok {
+		return true
+	}
+	return remaining >= a.GetOpenAIQuotaStopThresholdPercent()
+}
+
 func (a *Account) SupportsOpenAIImageCapability(capability OpenAIImagesCapability) bool {
 	if !a.IsOpenAI() {
 		return false
