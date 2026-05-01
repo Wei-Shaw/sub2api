@@ -223,24 +223,6 @@
               </p>
             </div>
 
-            <!-- Apply Pricing to Account Stats (toggle only in basic settings) -->
-            <div class="border-t border-gray-200 pt-4 dark:border-dark-700">
-              <div class="flex items-center justify-between">
-                <div>
-                  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t('admin.channels.form.applyPricingToAccountStats') }}
-                  </label>
-                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t('admin.channels.form.applyPricingToAccountStatsDesc') }}
-                  </p>
-                </div>
-                <Toggle
-                  :modelValue="form.apply_pricing_to_account_stats"
-                  @update:modelValue="form.apply_pricing_to_account_stats = $event"
-                />
-              </div>
-            </div>
-
             <!-- Platform Management -->
             <div class="space-y-3">
               <label class="input-label mb-0">{{ t('admin.channels.form.platformConfig', '平台配置') }}</label>
@@ -262,6 +244,24 @@
                   <PlatformIcon :platform="p" size="xs" :class="getPlatformTextColor(p)" />
                   <span :class="getPlatformTextColor(p)">{{ t('admin.groups.platforms.' + p, p) }}</span>
                 </label>
+              </div>
+            </div>
+
+            <!-- Apply Pricing to Account Stats (toggle only in basic settings) -->
+            <div class="border-t border-gray-200 pt-4 dark:border-dark-700">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.channels.form.applyPricingToAccountStats') }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.channels.form.applyPricingToAccountStatsDesc') }}
+                  </p>
+                </div>
+                <Toggle
+                  :modelValue="form.apply_pricing_to_account_stats"
+                  @update:modelValue="form.apply_pricing_to_account_stats = $event"
+                />
               </div>
             </div>
           </div>
