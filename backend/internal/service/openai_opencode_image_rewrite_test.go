@@ -419,6 +419,19 @@ func TestBuildOpenCodeGeneratedImageMessage_LabelsAbsoluteURLAsImmediateDownload
 	require.NotContains(t, content, "Download: https://example.com")
 }
 
+func TestOpenCodeImageServerContinuationOutput_InstructsAgentToDownloadImmediately(t *testing.T) {
+	messageText := "Generated image: sub2api-image://" + testImageID + "\nI'll download from URL: https://example.com/sub2api/generated-images/" + testImageID + ".png"
+
+	output := openCodeImageServerContinuationOutput(messageText)
+
+	require.Contains(t, output, messageText)
+	require.Contains(t, output, "Synthetic image generation continuation inserted by sub2api")
+	require.Contains(t, output, "Immediately use the available shell, command-line, or network-access tool")
+	require.Contains(t, output, "download the image from the URL above")
+	require.Contains(t, output, "Do not stop after image generation")
+	require.Contains(t, output, "Only if no tool can access the URL")
+}
+
 func TestRewriteOpenCodeImageGenerationOutput_ImageCallWithoutResultBecomesText(t *testing.T) {
 	store := newTestOpenAIGeneratedImageStore(t, fixedNow)
 	body := []byte(`{"id":"resp_1","output":[{"id":"ig_1","type":"image_generation_call","status":"completed"}],"usage":{"input_tokens":1,"output_tokens":2}}`)

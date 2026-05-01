@@ -257,7 +257,7 @@ func normalizeOpenCodeImageContinuationInput(raw any) ([]any, bool) {
 }
 
 func openCodeImageServerContinuationOutput(messageText string) string {
-	return messageText + "\n\nThe image generation result above has already been saved by sub2api. Continue the user's original request from this generated image result. Treat any download URL as short-lived and do not ask the user to regenerate unless the result is unavailable."
+	return messageText + "\n\nSynthetic image generation continuation inserted by sub2api for OpenCode. The image generation tool already completed and produced the real image result above. Do not treat this wrapper as the final answer. Do not stop after image generation. Immediately use the available shell, command-line, or network-access tool to download the image from the URL above, then respond to the user with the downloaded image or file result. Only if no tool can access the URL, say that explicitly and provide the URL and sub2api-image marker instead of silently finishing. Do not ask the user to regenerate the image unless the saved result is unavailable."
 }
 
 func isOpenCodeImageGenerationToolChoice(raw any) bool {

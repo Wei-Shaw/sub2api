@@ -651,6 +651,8 @@ func TestForwardResponsesRequest_OpenCodeImageGenerationContinuesServerSide(t *t
 	require.Contains(t, secondBody, `"type":"function_call_output"`)
 	require.Contains(t, secondBody, "sub2api-image://img_")
 	require.Contains(t, secondBody, "I'll download from URL: https://example.com/sub2api/generated-images/img_")
+	require.Contains(t, secondBody, "Immediately use the available shell, command-line, or network-access tool")
+	require.Contains(t, secondBody, "Only if no tool can access the URL")
 	require.NotContains(t, secondBody, pngB64)
 	clientBody := rec.Body.String()
 	require.Contains(t, clientBody, "sub2api-image://img_")
