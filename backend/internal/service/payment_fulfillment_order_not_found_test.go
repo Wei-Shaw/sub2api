@@ -6,7 +6,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 	"testing"
+	"time"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -14,6 +16,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/enttest"
+	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/stretchr/testify/require"
 )
@@ -67,6 +70,72 @@ func TestHandlePaymentNotification_UnknownOrder_ReturnsSentinel(t *testing.T) {
 	// Sanity: the wrapped error message should still include the out_trade_no
 	// for operator diagnostics.
 	require.Contains(t, err.Error(), notification.OrderID)
+}
+
+func TestHandlePaymentNotification_AmountMismatch_ReturnsTerminalRejectedAndKeepsOrderPending(t *testing.T) {
+	ctx := context.Background()
+	client := newOrderNotFoundTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("payment-amount-mismatch@example.com").
+		SetPasswordHash("hash").
+		SetUsername("payment-amount-mismatch-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	order, err := client.PaymentOrder.Create().
+		SetUserID(user.ID).
+		SetUserEmail(user.Email).
+		SetUserName(user.Username).
+		SetAmount(130000).
+		SetPayAmount(130000).
+		SetPaymentAmount(130000).
+		SetPaymentCurrency("VND").
+		SetLedgerAmount(5).
+		SetLedgerCurrency("USD").
+		SetFeeRate(0).
+		SetRechargeCode("AMOUNT-MISMATCH-TEST").
+		SetOutTradeNo("sub2_amount_mismatch_test").
+		SetPaymentType(payment.TypeSepay).
+		SetPaymentTradeNo("").
+		SetOrderType(payment.OrderTypeBalance).
+		SetStatus(OrderStatusPending).
+		SetExpiresAt(time.Now().Add(time.Hour)).
+		SetClientIP("127.0.0.1").
+		SetSrcHost("api.example.com").
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc := &PaymentService{
+		entClient:       client,
+		providersLoaded: true,
+	}
+	notification := &payment.PaymentNotification{
+		OrderID:  order.OutTradeNo,
+		TradeNo:  "FT26121828344965",
+		Status:   payment.NotificationStatusSuccess,
+		Amount:   2000,
+		Currency: "VND",
+	}
+
+	err = svc.HandlePaymentNotification(ctx, notification, payment.TypeSepay)
+	require.Error(t, err, "amount mismatch must reject fulfillment")
+	require.ErrorIs(t, err, ErrPaymentNotificationRejected,
+		"webhook handler relies on this sentinel to return 200 instead of retry-looping with 500")
+	require.Contains(t, err.Error(), "amount mismatch")
+
+	reloaded, err := client.PaymentOrder.Get(ctx, order.ID)
+	require.NoError(t, err)
+	require.Equal(t, OrderStatusPending, reloaded.Status, "mismatched payment must not mark the order paid")
+	require.Empty(t, reloaded.PaymentTradeNo)
+
+	audit, err := client.PaymentAuditLog.Query().
+		Where(paymentauditlog.OrderID(strconv.FormatInt(order.ID, 10)), paymentauditlog.ActionEQ("PAYMENT_AMOUNT_MISMATCH")).
+		Only(ctx)
+	require.NoError(t, err, "amount mismatch should remain visible in audit logs")
+	require.Contains(t, audit.Detail, "130000")
+	require.Contains(t, audit.Detail, "2000")
+	require.Contains(t, audit.Detail, notification.TradeNo)
 }
 
 // TestHandlePaymentNotification_NonSuccessStatus_Skips documents the

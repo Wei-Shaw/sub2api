@@ -28,6 +28,18 @@ import (
 // misconfigured to point at us, or when our orders table has been wiped).
 var ErrOrderNotFound = errors.New("payment order not found")
 
+// ErrPaymentNotificationRejected marks a verified provider notification that we
+// intentionally rejected for business-rule reasons (wrong amount/currency,
+// wrong provider instance, invalid provider amount, etc.). These events are
+// terminal from the provider's retry perspective: retrying the exact same
+// webhook cannot make the payload valid, so the HTTP handler must ACK with 2xx
+// after audit logging instead of returning 500 forever.
+var ErrPaymentNotificationRejected = errors.New("payment notification rejected")
+
+func rejectedPaymentNotificationError(format string, args ...any) error {
+	return fmt.Errorf("%w: %s", ErrPaymentNotificationRejected, fmt.Sprintf(format, args...))
+}
+
 const paymentFulfillmentLeaseDuration = 5 * time.Minute
 
 type paymentFulfillmentLease struct {
@@ -92,14 +104,14 @@ func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo 
 			"actualProvider":   pk,
 			"tradeNo":          tradeNo,
 		})
-		return fmt.Errorf("provider mismatch: expected %s, got %s", expectedProviderKey, pk)
+		return rejectedPaymentNotificationError("provider mismatch: expected %s, got %s", expectedProviderKey, pk)
 	}
 	if err := validateProviderNotificationMetadata(o, pk, metadata); err != nil {
 		s.writeAuditLog(ctx, o.ID, "PAYMENT_PROVIDER_METADATA_MISMATCH", pk, map[string]any{
 			"detail":  err.Error(),
 			"tradeNo": tradeNo,
 		})
-		return err
+		return rejectedPaymentNotificationError("%s", err.Error())
 	}
 	expectedPaid := o.PayAmount
 	if expectedPaid <= 0 && o.PaymentAmount > 0 {
@@ -118,7 +130,7 @@ func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo 
 			"paid":     currency,
 			"tradeNo":  tradeNo,
 		})
-		return fmt.Errorf("currency mismatch: expected %s, got %s", expectedCurrency, currency)
+		return rejectedPaymentNotificationError("currency mismatch: expected %s, got %s", expectedCurrency, currency)
 	}
 	if !isValidProviderAmount(paid) {
 		if paid == 0 {
@@ -129,7 +141,7 @@ func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo 
 				"paid":     paid,
 				"tradeNo":  tradeNo,
 			})
-			return fmt.Errorf("invalid paid amount from provider: %v", paid)
+			return rejectedPaymentNotificationError("invalid paid amount from provider: %v", paid)
 		}
 	}
 	if !currencyAmountMatches(paid, expectedPaid, expectedCurrency) {
@@ -139,7 +151,7 @@ func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo 
 			"currency": expectedCurrency,
 			"tradeNo":  tradeNo,
 		})
-		return fmt.Errorf("amount mismatch: expected %.2f %s, got %.2f", expectedPaid, expectedCurrency, paid)
+		return rejectedPaymentNotificationError("amount mismatch: expected %.2f %s, got %.2f", expectedPaid, expectedCurrency, paid)
 	}
 	return s.toPaid(ctx, o, tradeNo, paid, pk)
 }

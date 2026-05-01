@@ -100,41 +100,55 @@ func TestWriteSuccessResponse(t *testing.T) {
 	}
 }
 
-// TestUnknownOrderWebhookAcksWithSuccess exercises the response contract that
-// handleNotify relies on when HandlePaymentNotification returns ErrOrderNotFound:
-// we still need to emit the provider-specific 2xx so the provider stops
-// retrying. We can't easily drive handleNotify end-to-end without mocking the
-// concrete *service.PaymentService, so this test locks down the two ingredients
-// the fix depends on:
-//  1. errors.Is recognises the sentinel through fmt.Errorf %w wrapping (which
-//     is how service layer wraps it with the out_trade_no context).
-//  2. writeSuccessResponse produces the provider-specific body for Stripe
-//     (empty 200) — matching what handleNotify calls on the ack path.
-//
-// If either contract breaks, the Stripe "unknown order → 500 loop" regresses.
-func TestUnknownOrderWebhookAcksWithSuccess(t *testing.T) {
+// TestTerminalWebhookRejectionsAckWithSuccess exercises the response contract
+// that handleNotify relies on for terminal service errors: the provider already
+// sent a verified payload, and retrying cannot fix cases such as unknown order
+// or amount mismatch, so the handler must emit the provider-specific 2xx.
+func TestTerminalWebhookRejectionsAckWithSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	// 1) Sentinel recognition through wrapping.
-	wrapped := fmt.Errorf("%w: out_trade_no=sub2_missing_42", service.ErrOrderNotFound)
-	require.True(t, errors.Is(wrapped, service.ErrOrderNotFound),
-		"handleNotify uses errors.Is on the wrapped service error; regression here "+
-			"would mean unknown-order webhooks go back to returning 500 and looping forever")
+	tests := []struct {
+		name       string
+		err        error
+		wantMatch  error
+		provider   string
+		wantBody   string
+		wantStatus int
+	}{
+		{
+			name:       "unknown order",
+			err:        fmt.Errorf("%w: out_trade_no=sub2_missing_42", service.ErrOrderNotFound),
+			wantMatch:  service.ErrOrderNotFound,
+			provider:   payment.TypeStripe,
+			wantBody:   "",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "amount mismatch",
+			err:        fmt.Errorf("%w: amount mismatch: expected 130000.00 VND, got 2000.00", service.ErrPaymentNotificationRejected),
+			wantMatch:  service.ErrPaymentNotificationRejected,
+			provider:   payment.TypeSepay,
+			wantBody:   "success",
+			wantStatus: http.StatusOK,
+		},
+	}
 
-	// A distinct error must NOT match — otherwise a DB failure would be silently
-	// swallowed as an ack.
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.True(t, errors.Is(tt.err, tt.wantMatch),
+				"handleNotify uses errors.Is on wrapped service errors before ACKing")
+
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			writeSuccessResponse(c, tt.provider)
+			require.Equal(t, tt.wantStatus, w.Code)
+			require.Equal(t, tt.wantBody, w.Body.String())
+		})
+	}
+
 	other := errors.New("lookup order failed: connection refused")
 	require.False(t, errors.Is(other, service.ErrOrderNotFound))
-
-	// 2) Provider-specific success body is what handleNotify emits on the
-	// ack path. Asserted again here because this is the shape Stripe expects
-	// to consider the webhook acknowledged.
-	w := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(w)
-	writeSuccessResponse(c, payment.TypeStripe)
-	require.Equal(t, http.StatusOK, w.Code,
-		"Stripe requires 2xx to stop retrying; anything else restarts the retry loop")
-	require.Empty(t, w.Body.String(), "Stripe expects an empty body on the ack path")
+	require.False(t, errors.Is(other, service.ErrPaymentNotificationRejected))
 }
 
 func TestWebhookConstants(t *testing.T) {

@@ -135,16 +135,17 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 	}
 
 	if err := h.paymentService.HandlePaymentNotification(c.Request.Context(), notification, resolvedProviderKey); err != nil {
-		// Unknown order: ack with 2xx so the provider stops retrying. This
-		// guards against foreign environments whose webhook endpoints are
-		// (mis)configured to point at us — without a 2xx, the provider will
-		// retry for days and spam our error logs. We still emit a WARN so the
-		// event is discoverable in logs.
-		if errors.Is(err, service.ErrOrderNotFound) {
-			slog.Warn("[Payment Webhook] unknown order, acking to stop retries",
+		// Terminal business-rule rejections must still ACK the provider. The
+		// payload was verified and audited by the service, and retrying the same
+		// webhook cannot fix cases like wrong amount/currency/provider or unknown
+		// order. Returning 500 here causes providers such as SePay to retry forever
+		// even though we already made the correct local decision not to fulfill.
+		if errors.Is(err, service.ErrOrderNotFound) || errors.Is(err, service.ErrPaymentNotificationRejected) {
+			slog.Warn("[Payment Webhook] terminal notification rejection, acking to stop retries",
 				"provider", resolvedProviderKey,
 				"outTradeNo", notification.OrderID,
 				"tradeNo", notification.TradeNo,
+				"error", err,
 			)
 			writeSuccessResponse(c, resolvedProviderKey)
 			return
