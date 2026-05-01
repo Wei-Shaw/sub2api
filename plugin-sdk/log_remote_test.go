@@ -6,11 +6,14 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
@@ -248,6 +251,89 @@ func TestRemoteSlogHandler_WithAttrsAndGroup(t *testing.T) {
 
 	h.Close()
 	<-done
+}
+
+// fakeUnauthLogProxyServer always rejects PushLogs with Unauthenticated,
+// matching the host-side behaviour for callers whose identity has been
+// invalidated. The subscribeCalls counter lets the T31 regression assert
+// that the SDK does not retry on a fatal classification.
+type fakeUnauthLogProxyServer struct {
+	pb.UnimplementedLogProxyServer
+	calls atomic.Int64
+}
+
+func (s *fakeUnauthLogProxyServer) PushLogs(stream pb.LogProxy_PushLogsServer) error {
+	s.calls.Add(1)
+	return status.Error(codes.Unauthenticated, "principal expired")
+}
+
+// TestRunRemoteSlogSender_UnauthenticatedExitsFast pins the T31 contract:
+// when the host returns Unauthenticated from PushLogs (e.g. credentials
+// invalidated mid-process), GRPCDefaultClassifier marks the error fatal
+// and the sender goroutine exits instead of looping forever. We also
+// assert PushLogs is invoked exactly once — any retry would indicate the
+// classifier was bypassed.
+func TestRunRemoteSlogSender_UnauthenticatedExitsFast(t *testing.T) {
+	fake := &fakeUnauthLogProxyServer{}
+	lis := bufconn.Listen(1 << 20)
+	srv := grpc.NewServer()
+	pb.RegisterLogProxyServer(srv, fake)
+	go func() { _ = srv.Serve(lis) }()
+	defer srv.Stop()
+	conn, err := grpc.NewClient("passthrough:///bufnet",
+		grpc.WithContextDialer(func(_ context.Context, _ string) (net.Conn, error) {
+			return lis.Dial()
+		}),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		t.Fatalf("dial bufconn: %v", err)
+	}
+	defer conn.Close()
+	client := pb.NewLogProxyClient(conn)
+
+	h := newRemoteSlogHandler(slog.LevelInfo)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runRemoteSlogSender(ctx, client, h, nil)
+	}()
+
+	// Push records until the sender exits. The first record opens
+	// PushLogs (server returns Unauthenticated immediately); subsequent
+	// records keep the consumer goroutine attempting Send so EOF
+	// surfaces and CloseAndRecv can read the terminal status.
+	logger := slog.New(h)
+	stop := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(20 * time.Millisecond)
+		defer ticker.Stop()
+		i := 0
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				logger.Info("ping", "i", i)
+				i++
+			}
+		}
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		close(stop)
+		t.Fatalf("runRemoteSlogSender did not exit on Unauthenticated (server calls=%d, dropped=%d); LoopWithRetryClass should classify it fatal",
+			fake.calls.Load(), h.droppedCount.Load())
+	}
+	close(stop)
+	if got := fake.calls.Load(); got != 1 {
+		t.Fatalf("PushLogs called %d times, want exactly 1 (no retry on fatal)", got)
+	}
 }
 
 func TestRemoteSlogHandler_EnabledHonoursLevel(t *testing.T) {

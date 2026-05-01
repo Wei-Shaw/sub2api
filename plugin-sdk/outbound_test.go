@@ -237,4 +237,3 @@ func TestCIDRContainsIPv6(t *testing.T) {
 		t.Fatal("did not expect fc00::/7 to match 2001:db8::1")
 	}
 }
-

@@ -3,12 +3,17 @@ package pluginsdk
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"log/slog"
+	"os"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/streamutil"
 )
 
 // LogChannelCapacity bounds the in-process channel between plugin slog calls
@@ -24,6 +29,13 @@ const LogChannelCapacity = 256
 const (
 	remoteSlogReconnectMin = 100 * time.Millisecond
 	remoteSlogReconnectMax = 30 * time.Second
+	// remoteSlogReconnectMultiplier matches the SDK-wide ×2 schedule.
+	// streamutil.Loop applies it via Config.Multiplier.
+	remoteSlogReconnectMultiplier = 2.0
+	// remoteSlogReconnectJitter spreads simultaneous reconnects so a host
+	// restart does not produce a thundering herd. ±20% mirrors the events
+	// client default.
+	remoteSlogReconnectJitter = 0.2
 )
 
 // remoteSlogShutdownDrain is the best-effort window the SDK waits for the
@@ -37,10 +49,14 @@ const remoteSlogShutdownDrain = 2 * time.Second
 //
 // The handler is safe for concurrent Handle calls and intentionally never
 // blocks the caller — slog must stay cheap inside business code.
+//
+// droppedCount 用指针存储以便 WithAttrs / WithGroup 派生出的新 handler 与
+// 原 handler 共享同一份计数器（语义：同一条 LogProxy 流上的 dropped 总数），
+// 同时避免 go vet 的 "lock value copy" 告警 —— atomic.Uint64 不能值复制。
 type remoteSlogHandler struct {
 	level        slog.Leveler
 	ch           chan *pb.LogRecord
-	droppedCount atomic.Uint64
+	droppedCount *atomic.Uint64
 
 	// attrs / groupPrefix accumulate slog.Logger.With / WithGroup metadata.
 	// They are flattened onto every Handle call so the wire record is
@@ -53,8 +69,9 @@ type remoteSlogHandler struct {
 // caller is expected to start a sender goroutine via runRemoteSlogSender.
 func newRemoteSlogHandler(level slog.Leveler) *remoteSlogHandler {
 	return &remoteSlogHandler{
-		level: level,
-		ch:    make(chan *pb.LogRecord, LogChannelCapacity),
+		level:        level,
+		ch:           make(chan *pb.LogRecord, LogChannelCapacity),
+		droppedCount: new(atomic.Uint64),
 	}
 }
 
@@ -94,25 +111,38 @@ func (h *remoteSlogHandler) Handle(_ context.Context, r slog.Record) error {
 }
 
 // WithAttrs / WithGroup mirror the slog handler contract by returning a copy
-// with the new metadata appended; the channel is shared so the new logger
-// stays wired to the same stream.
+// with the new metadata appended; the channel **and** dropped counter are
+// shared by pointer so the new logger stays wired to the same stream and
+// produces accurate dropped totals.
+//
+// 字段显式列出（不再 `clone := *h`）：避免 go vet 的 "lock value copy"
+// 告警 —— 即使 droppedCount 现在是指针，显式构造也明确了"哪些字段独立、
+// 哪些字段共享"的语义。
 func (h *remoteSlogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	clone := *h
-	clone.attrs = append(append([]slog.Attr{}, h.attrs...), attrs...)
-	return &clone
+	return &remoteSlogHandler{
+		level:        h.level,
+		ch:           h.ch,
+		droppedCount: h.droppedCount,
+		attrs:        append(append([]slog.Attr{}, h.attrs...), attrs...),
+		groupPrefix:  h.groupPrefix,
+	}
 }
 
 func (h *remoteSlogHandler) WithGroup(name string) slog.Handler {
 	if name == "" {
 		return h
 	}
-	clone := *h
-	if h.groupPrefix == "" {
-		clone.groupPrefix = name
-	} else {
-		clone.groupPrefix = h.groupPrefix + "." + name
+	prefix := name
+	if h.groupPrefix != "" {
+		prefix = h.groupPrefix + "." + name
 	}
-	return &clone
+	return &remoteSlogHandler{
+		level:        h.level,
+		ch:           h.ch,
+		droppedCount: h.droppedCount,
+		attrs:        append([]slog.Attr{}, h.attrs...),
+		groupPrefix:  prefix,
+	}
 }
 
 // Close shuts down the channel; the sender goroutine drains it (with the
@@ -179,46 +209,87 @@ func appendAttr(out []*pb.LogAttr, prefix string, a slog.Attr) []*pb.LogAttr {
 // runRemoteSlogSender is the per-handler consumer goroutine. It owns the
 // LogProxy client-streaming RPC: open stream → send records → on send error
 // close + reconnect with exponential backoff. Records arriving while the
-// stream is down are dropped (the channel send in Handle goes to default).
+// stream is down are dropped via the Handle channel-default path; the slog
+// path stays non-blocking either way.
 //
-// Stops when the handler's channel is closed AND the channel is drained.
+// The reconnect schedule comes from streamutil.LoopWithRetryClass with
+// GRPCDefaultClassifier. The host-side LogProxy interceptor rejects
+// anonymous callers with Unauthenticated; without the classifier the SDK
+// would reconnect forever on a permanently-broken token. Stops when:
+//   - the handler's channel is closed cleanly (we cancel the loop ctx
+//     from the attempt — same trick as before),
+//   - ctx is cancelled by the caller (graceful shutdown), or
+//   - the classifier marks the host's response fatal (Unauthenticated /
+//     PermissionDenied / Unimplemented / InvalidArgument).
+//
+// 复用 (1)：与 events / jobs / settings 共用 GRPCDefaultClassifier 单一来源。
+//
+// log_remote fallback after fatal exit
+// ------------------------------------
+// startRemoteLogger in runner.go installs this handler as slog.Default,
+// so once the sender exits every subsequent slog call inside the plugin
+// process drops on a closed/full channel. We cannot route the warning
+// through slog itself (that would silently disappear). We also cannot
+// re-install a stderr handler from here without racing the plugin's own
+// slog.Default reads. Instead we write a single warning line directly
+// to os.Stderr — operators tail container logs, so the message reaches
+// them via the Docker log driver even though structured shipping is
+// down. The remoteSlogHandler's channel-drop path keeps slog calls
+// non-blocking, so plugin business logic continues to run.
 func runRemoteSlogSender(ctx context.Context, client pb.LogProxyClient, h *remoteSlogHandler, logger *slog.Logger) {
 	if client == nil || h == nil {
 		return
 	}
-	backoff := remoteSlogReconnectMin
-	for {
-		stream, err := client.PushLogs(ctx)
-		if err != nil {
-			if waitOrExit(ctx, h, backoff) {
-				return
-			}
-			backoff = nextBackoff(backoff)
-			continue
-		}
-		backoff = remoteSlogReconnectMin
+	// Derive a child ctx so the attempt can break the Loop when the
+	// handler channel closes (clean shutdown). The Loop's contract is
+	// "exit on ctx cancel"; pretending the channel close is a ctx cancel
+	// keeps Loop generic.
+	loopCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-		// Inner consume loop: drain channel until send fails or channel closes.
-		streamErr := consumeLogs(ctx, stream, h)
+	attempt := func(actx context.Context) error {
+		stream, err := client.PushLogs(actx)
+		if err != nil {
+			return err
+		}
+		streamErr := consumeLogs(actx, stream, h)
+		// CloseAndRecv carries the server's terminal status. For
+		// client-streaming RPCs Send returns io.EOF when the server has
+		// already closed with a status (Unauthenticated, etc.); the real
+		// status only surfaces here. We feed it to LoopWithRetryClass so
+		// GRPCDefaultClassifier can decide retry vs fatal.
+		_, recvErr := stream.CloseAndRecv()
 		if streamErr == nil {
-			// Channel closed cleanly during shutdown — try to flush and exit.
-			_, _ = stream.CloseAndRecv()
-			return
+			// Channel closed cleanly during shutdown — break Loop by
+			// cancelling its ctx.
+			cancel()
+			return nil
 		}
-		// Send failed: close stream and back off before reconnecting. Any
-		// records arriving in the meantime will hit the channel-default path
-		// and be counted as dropped.
-		_, _ = stream.CloseAndRecv()
-		if logger != nil {
-			logger.Debug("plugin log stream broken, reconnecting",
-				"backoff", backoff.String(),
-				"error", streamErr,
-			)
+		// Prefer the CloseAndRecv status when Send returned EOF; that is
+		// the standard gRPC pattern for "server rejected the stream".
+		if errors.Is(streamErr, io.EOF) && recvErr != nil {
+			return recvErr
 		}
-		if waitOrExit(ctx, h, backoff) {
-			return
-		}
-		backoff = nextBackoff(backoff)
+		return streamErr
+	}
+
+	err := streamutil.LoopWithRetryClass(loopCtx, streamutil.Config{
+		Name:        "log_remote.push",
+		Initial:     remoteSlogReconnectMin,
+		Max:         remoteSlogReconnectMax,
+		Multiplier:  remoteSlogReconnectMultiplier,
+		JitterRatio: remoteSlogReconnectJitter,
+		Logger:      logger,
+	}, streamutil.GRPCDefaultClassifier, attempt)
+	// Clean exits (ctx cancel during shutdown, or attempt returned nil
+	// after Close) are silent. A fatal classifier verdict means future
+	// slog calls go nowhere; warn directly on stderr because the
+	// process-wide slog.Default points at the now-dead handler.
+	if err != nil && !errors.Is(err, context.Canceled) &&
+		!errors.Is(err, context.DeadlineExceeded) {
+		fmt.Fprintf(os.Stderr,
+			"[plugin-sdk log_remote] sender stopped fatally; structured logs will be dropped from this process: %v\n",
+			err)
 	}
 }
 
@@ -248,33 +319,6 @@ func consumeLogs(ctx context.Context, stream pb.LogProxy_PushLogsClient, h *remo
 			}
 		}
 	}
-}
-
-// waitOrExit sleeps for d but returns early if ctx is cancelled or the
-// handler channel was closed. Returns true when the caller should exit.
-func waitOrExit(ctx context.Context, h *remoteSlogHandler, d time.Duration) bool {
-	select {
-	case <-ctx.Done():
-		return true
-	case <-time.After(d):
-		return false
-	case _, ok := <-h.ch:
-		// During backoff a record arrived; we count it as dropped to keep
-		// behaviour consistent with the channel-full default path.
-		if ok {
-			h.droppedCount.Add(1)
-			return false
-		}
-		return true
-	}
-}
-
-func nextBackoff(d time.Duration) time.Duration {
-	next := d * 2
-	if next > remoteSlogReconnectMax {
-		return remoteSlogReconnectMax
-	}
-	return next
 }
 
 // shutdownRemoteSlogSender closes the handler's channel and waits up to

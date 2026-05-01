@@ -1,10 +1,8 @@
 package pluginsdk
 
 import (
-	"context"
 	"database/sql"
 	"log/slog"
-	"time"
 
 	sdkdriver "github.com/Wei-Shaw/sub2api/plugin-sdk/driver"
 )
@@ -56,10 +54,18 @@ type PluginContext interface {
 	Events() EventsClient
 }
 
-// RedisClient is the SDK's go-redis-style Redis client. It mirrors the
-// portion of github.com/redis/go-redis/v9.Cmdable that plugin authors need
-// in practice. Internally every method routes through the core's RedisProxy
-// gRPC service.
+// RedisClient is the SDK's go-redis-style Redis client. Internally every
+// method routes through the core's RedisProxy gRPC service.
+//
+// # Implementation
+//
+// RedisClient is a type alias for *driver.RedisClient. Earlier revisions of
+// the SDK declared a parallel interface here plus a 60-method pass-through
+// adapter in runner.go; both copies were verbatim mirrors of the driver
+// type and drifted whenever a new command landed. The alias collapses the
+// three identical surfaces (interface here, concrete struct in driver,
+// adapter in runner) into a single source of truth — adding a new Redis
+// command now only touches driver/redis_client.go.
 //
 // # Key namespacing
 //
@@ -75,113 +81,10 @@ type PluginContext interface {
 // their original (string, error) shape so existing plugins compile
 // unchanged. New methods follow the go-redis cmder pattern: they return a
 // typed *XxxCmd and the caller pulls the value out via .Result(), .Val(),
-// or .Err(). The v0 ergonomics are preserved on the methods that already
-// shipped in v0 to avoid an SDK-wide breaking change.
-type RedisClient interface {
-	// ----- Generic / key-space -----
-	Del(ctx context.Context, keys ...string) error
-	Exists(ctx context.Context, keys ...string) *sdkdriver.IntCmd
-	Expire(ctx context.Context, key string, ttl time.Duration) *sdkdriver.BoolCmd
-	ExpireAt(ctx context.Context, key string, t time.Time) *sdkdriver.BoolCmd
-	PExpire(ctx context.Context, key string, ttl time.Duration) *sdkdriver.BoolCmd
-	TTL(ctx context.Context, key string) *sdkdriver.DurationCmd
-	PTTL(ctx context.Context, key string) *sdkdriver.DurationCmd
-	Type(ctx context.Context, key string) *sdkdriver.StatusCmd
-	Rename(ctx context.Context, key, newkey string) *sdkdriver.StatusCmd
-	Persist(ctx context.Context, key string) *sdkdriver.BoolCmd
-	Keys(ctx context.Context, pattern string) *sdkdriver.StringSliceCmd
-	Scan(ctx context.Context, cursor uint64, match string, count int64) *sdkdriver.ScanCmd
+// or .Err().
+type RedisClient = *sdkdriver.RedisClient
 
-	// ----- String -----
-	Get(ctx context.Context, key string) (string, error)
-	Set(ctx context.Context, key string, value string) error
-	SetEx(ctx context.Context, key string, value string, ttl time.Duration) error
-	SetNX(ctx context.Context, key string, value string, ttl time.Duration) *sdkdriver.BoolCmd
-	GetSet(ctx context.Context, key, value string) *sdkdriver.StringCmd
-	Incr(ctx context.Context, key string) *sdkdriver.IntCmd
-	IncrBy(ctx context.Context, key string, value int64) *sdkdriver.IntCmd
-	Decr(ctx context.Context, key string) *sdkdriver.IntCmd
-	DecrBy(ctx context.Context, key string, value int64) *sdkdriver.IntCmd
-	IncrByFloat(ctx context.Context, key string, value float64) *sdkdriver.FloatCmd
-	Append(ctx context.Context, key, value string) *sdkdriver.IntCmd
-	StrLen(ctx context.Context, key string) *sdkdriver.IntCmd
-	MGet(ctx context.Context, keys ...string) *sdkdriver.SliceCmd
-	MSet(ctx context.Context, pairs ...any) *sdkdriver.StatusCmd
-
-	// ----- Hash -----
-	HGet(ctx context.Context, key, field string) (string, error)
-	HSet(ctx context.Context, key, field, value string) error
-	HDel(ctx context.Context, key string, fields ...string) error
-	HGetAll(ctx context.Context, key string) (map[string]string, error)
-	HExists(ctx context.Context, key, field string) *sdkdriver.BoolCmd
-	HKeys(ctx context.Context, key string) *sdkdriver.StringSliceCmd
-	HVals(ctx context.Context, key string) *sdkdriver.StringSliceCmd
-	HLen(ctx context.Context, key string) *sdkdriver.IntCmd
-	HIncrBy(ctx context.Context, key, field string, incr int64) *sdkdriver.IntCmd
-	HIncrByFloat(ctx context.Context, key, field string, incr float64) *sdkdriver.FloatCmd
-	HMGet(ctx context.Context, key string, fields ...string) *sdkdriver.SliceCmd
-	HMSet(ctx context.Context, key string, fields map[string]any) *sdkdriver.StatusCmd
-
-	// ----- List -----
-	LPush(ctx context.Context, key string, values ...any) *sdkdriver.IntCmd
-	RPush(ctx context.Context, key string, values ...any) *sdkdriver.IntCmd
-	LPop(ctx context.Context, key string) *sdkdriver.StringCmd
-	RPop(ctx context.Context, key string) *sdkdriver.StringCmd
-	LRange(ctx context.Context, key string, start, stop int64) *sdkdriver.StringSliceCmd
-	LLen(ctx context.Context, key string) *sdkdriver.IntCmd
-	LIndex(ctx context.Context, key string, index int64) *sdkdriver.StringCmd
-	LRem(ctx context.Context, key string, count int64, value any) *sdkdriver.IntCmd
-	LTrim(ctx context.Context, key string, start, stop int64) *sdkdriver.StatusCmd
-
-	// ----- Set -----
-	SAdd(ctx context.Context, key string, members ...any) *sdkdriver.IntCmd
-	SRem(ctx context.Context, key string, members ...any) *sdkdriver.IntCmd
-	SMembers(ctx context.Context, key string) *sdkdriver.StringSliceCmd
-	SIsMember(ctx context.Context, key string, member any) *sdkdriver.BoolCmd
-	SCard(ctx context.Context, key string) *sdkdriver.IntCmd
-	SPop(ctx context.Context, key string) *sdkdriver.StringCmd
-	SRandMember(ctx context.Context, key string) *sdkdriver.StringCmd
-
-	// ----- Sorted Set -----
-	ZAdd(ctx context.Context, key string, members ...sdkdriver.ZAddArgs) *sdkdriver.IntCmd
-	ZRem(ctx context.Context, key string, members ...any) *sdkdriver.IntCmd
-	ZRange(ctx context.Context, key string, start, stop int64) *sdkdriver.StringSliceCmd
-	ZRevRange(ctx context.Context, key string, start, stop int64) *sdkdriver.StringSliceCmd
-	ZRangeByScore(ctx context.Context, key string, min, max string) *sdkdriver.StringSliceCmd
-	ZScore(ctx context.Context, key, member string) *sdkdriver.FloatCmd
-	ZIncrBy(ctx context.Context, key string, incr float64, member string) *sdkdriver.FloatCmd
-	ZRank(ctx context.Context, key, member string) *sdkdriver.IntCmd
-	ZCard(ctx context.Context, key string) *sdkdriver.IntCmd
-	ZCount(ctx context.Context, key, min, max string) *sdkdriver.IntCmd
-
-	// ----- Server -----
-	Ping(ctx context.Context) *sdkdriver.StatusCmd
-
-	// ----- Scripting -----
-	Eval(ctx context.Context, script string, keys []string, args ...any) *sdkdriver.DoCmd
-	EvalSha(ctx context.Context, sha1 string, keys []string, args ...any) *sdkdriver.DoCmd
-	ScriptLoad(ctx context.Context, script string) *sdkdriver.StringCmd
-
-	// ----- Pub/Sub -----
-	Publish(ctx context.Context, channel string, message []byte) error
-	Subscribe(ctx context.Context, channels ...string) (<-chan RedisMsg, error)
-
-	// ----- Universal escape hatch -----
-	// Do dispatches an arbitrary Redis command. keyPositions are the indices
-	// (0-based, into the args slice excluding the command name) that contain
-	// keys; the SDK applies the per-plugin namespace to those positions.
-	// Pass nil for commands without key arguments (PING, INFO).
-	Do(ctx context.Context, command string, keyPositions []int, args ...any) *sdkdriver.DoCmd
-
-	// Raw returns a sibling client that bypasses the per-plugin namespace.
-	// Returns nil when the plugin lacks the CapabilityRedisRawKeys capability.
-	// Plugins that share keys with the core or other plugins (e.g. the
-	// channel-management gateway cache contract) MUST use this.
-	Raw() RedisClient
-}
-
-// RedisMsg is the SDK-level representation of a pub/sub message.
-type RedisMsg struct {
-	Channel string
-	Data    []byte
-}
+// RedisMsg is the SDK-level representation of a pub/sub message. Aliased
+// to driver.RedisMsg so RedisClient.Subscribe can return its channel
+// directly without an intermediate copy goroutine.
+type RedisMsg = sdkdriver.RedisMsg

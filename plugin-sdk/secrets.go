@@ -18,10 +18,10 @@ import (
 //
 // Ciphertexts are bound to the issuing plugin in two ways:
 //
-//   1. The host derives a per-plugin key with HKDF-SHA256 keyed on the
-//      master key, salted with the plugin name.
-//   2. AES-256-GCM is sealed with the plugin name as additional authenticated
-//      data (AAD).
+//  1. The host derives a per-plugin key with HKDF-SHA256 keyed on the
+//     master key, salted with the plugin name.
+//  2. AES-256-GCM is sealed with the plugin name as additional authenticated
+//     data (AAD).
 //
 // As a result a ciphertext stolen by plugin B will not decrypt under plugin
 // A's identity — Decrypt returns ErrSecretInvalid.

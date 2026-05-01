@@ -1671,7 +1671,8 @@ var SettingsExtension_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	EventsExtension_Subscribe_FullMethodName = "/pluginsdk.EventsExtension/Subscribe"
+	EventsExtension_Subscribe_FullMethodName         = "/pluginsdk.EventsExtension/Subscribe"
+	EventsExtension_ProbeSubscription_FullMethodName = "/pluginsdk.EventsExtension/ProbeSubscription"
 )
 
 // EventsExtensionClient is the client API for EventsExtension service.
@@ -1694,8 +1695,43 @@ const (
 //   - high-frequency events (e.g. gateway.model.invoked) require a matching
 //     capability declaration in the plugin manifest; otherwise Subscribe
 //     returns PERMISSION_DENIED.
+//
+// Subscribe lifecycle (T25):
+//
+//	The SDK first calls ProbeSubscription synchronously to validate the
+//	caller's capabilities and the requested event_types against the
+//	manifest allow-list. ProbeSubscription returns immediately with the
+//	appropriate gRPC status (OK / PermissionDenied / InvalidArgument).
+//	The SDK then opens the long-lived Subscribe stream on success, and
+//	delegates reconnect on transient transport failures to streamutil.Loop.
+//	This split removes the historical "first-Recv probe" abstraction leak
+//	where Subscribe had to peel off the first message just to surface
+//	synchronous capability errors.
 type EventsExtensionClient interface {
+	// Subscribe opens the long-lived event stream. Callers SHOULD invoke
+	// ProbeSubscription first; Subscribe still performs the same allow-list
+	// and capability checks server-side (older SDKs that skip Probe rely on
+	// these checks being mirrored on the streaming RPC), but only Probe is
+	// guaranteed to surface synchronous errors before any goroutine spins up.
 	Subscribe(ctx context.Context, in *EventSubscribeRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[HostEvent], error)
+	// ProbeSubscription synchronously validates that the caller is allowed
+	// to open a Subscribe stream with the requested filter:
+	//   - caller identity present (otherwise PermissionDenied)
+	//   - manifest declared the requested event_types (otherwise PermissionDenied
+	//     so plugins cannot widen interest at runtime)
+	//   - capability gate satisfied for high-frequency events such as
+	//     gateway.model.invoked (otherwise PermissionDenied)
+	//
+	// Probe does NOT establish a stream and does NOT register a subscriber;
+	// it is a pure precondition check the SDK runs before letting
+	// streamutil.Loop manage reconnects. This is intentional — the loop
+	// ought to retry only on transient transport failures, not on permission
+	// misconfiguration that requires operator action.
+	//
+	// 同步校验订阅请求是否会被接受。返回 OK 表示 caller 可以放心调用 Subscribe；
+	// 返回 PermissionDenied / InvalidArgument 时立即抛给调用方，避免被后台
+	// 重连循环吞掉。Probe 不建立流、不注册订阅者。
+	ProbeSubscription(ctx context.Context, in *EventSubscribeRequest, opts ...grpc.CallOption) (*ProbeSubscriptionResponse, error)
 }
 
 type eventsExtensionClient struct {
@@ -1725,6 +1761,16 @@ func (c *eventsExtensionClient) Subscribe(ctx context.Context, in *EventSubscrib
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type EventsExtension_SubscribeClient = grpc.ServerStreamingClient[HostEvent]
 
+func (c *eventsExtensionClient) ProbeSubscription(ctx context.Context, in *EventSubscribeRequest, opts ...grpc.CallOption) (*ProbeSubscriptionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProbeSubscriptionResponse)
+	err := c.cc.Invoke(ctx, EventsExtension_ProbeSubscription_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // EventsExtensionServer is the server API for EventsExtension service.
 // All implementations must embed UnimplementedEventsExtensionServer
 // for forward compatibility.
@@ -1745,8 +1791,43 @@ type EventsExtension_SubscribeClient = grpc.ServerStreamingClient[HostEvent]
 //   - high-frequency events (e.g. gateway.model.invoked) require a matching
 //     capability declaration in the plugin manifest; otherwise Subscribe
 //     returns PERMISSION_DENIED.
+//
+// Subscribe lifecycle (T25):
+//
+//	The SDK first calls ProbeSubscription synchronously to validate the
+//	caller's capabilities and the requested event_types against the
+//	manifest allow-list. ProbeSubscription returns immediately with the
+//	appropriate gRPC status (OK / PermissionDenied / InvalidArgument).
+//	The SDK then opens the long-lived Subscribe stream on success, and
+//	delegates reconnect on transient transport failures to streamutil.Loop.
+//	This split removes the historical "first-Recv probe" abstraction leak
+//	where Subscribe had to peel off the first message just to surface
+//	synchronous capability errors.
 type EventsExtensionServer interface {
+	// Subscribe opens the long-lived event stream. Callers SHOULD invoke
+	// ProbeSubscription first; Subscribe still performs the same allow-list
+	// and capability checks server-side (older SDKs that skip Probe rely on
+	// these checks being mirrored on the streaming RPC), but only Probe is
+	// guaranteed to surface synchronous errors before any goroutine spins up.
 	Subscribe(*EventSubscribeRequest, grpc.ServerStreamingServer[HostEvent]) error
+	// ProbeSubscription synchronously validates that the caller is allowed
+	// to open a Subscribe stream with the requested filter:
+	//   - caller identity present (otherwise PermissionDenied)
+	//   - manifest declared the requested event_types (otherwise PermissionDenied
+	//     so plugins cannot widen interest at runtime)
+	//   - capability gate satisfied for high-frequency events such as
+	//     gateway.model.invoked (otherwise PermissionDenied)
+	//
+	// Probe does NOT establish a stream and does NOT register a subscriber;
+	// it is a pure precondition check the SDK runs before letting
+	// streamutil.Loop manage reconnects. This is intentional — the loop
+	// ought to retry only on transient transport failures, not on permission
+	// misconfiguration that requires operator action.
+	//
+	// 同步校验订阅请求是否会被接受。返回 OK 表示 caller 可以放心调用 Subscribe；
+	// 返回 PermissionDenied / InvalidArgument 时立即抛给调用方，避免被后台
+	// 重连循环吞掉。Probe 不建立流、不注册订阅者。
+	ProbeSubscription(context.Context, *EventSubscribeRequest) (*ProbeSubscriptionResponse, error)
 	mustEmbedUnimplementedEventsExtensionServer()
 }
 
@@ -1759,6 +1840,9 @@ type UnimplementedEventsExtensionServer struct{}
 
 func (UnimplementedEventsExtensionServer) Subscribe(*EventSubscribeRequest, grpc.ServerStreamingServer[HostEvent]) error {
 	return status.Error(codes.Unimplemented, "method Subscribe not implemented")
+}
+func (UnimplementedEventsExtensionServer) ProbeSubscription(context.Context, *EventSubscribeRequest) (*ProbeSubscriptionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ProbeSubscription not implemented")
 }
 func (UnimplementedEventsExtensionServer) mustEmbedUnimplementedEventsExtensionServer() {}
 func (UnimplementedEventsExtensionServer) testEmbeddedByValue()                         {}
@@ -1792,13 +1876,36 @@ func _EventsExtension_Subscribe_Handler(srv interface{}, stream grpc.ServerStrea
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type EventsExtension_SubscribeServer = grpc.ServerStreamingServer[HostEvent]
 
+func _EventsExtension_ProbeSubscription_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EventSubscribeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EventsExtensionServer).ProbeSubscription(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EventsExtension_ProbeSubscription_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EventsExtensionServer).ProbeSubscription(ctx, req.(*EventSubscribeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // EventsExtension_ServiceDesc is the grpc.ServiceDesc for EventsExtension service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var EventsExtension_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "pluginsdk.EventsExtension",
 	HandlerType: (*EventsExtensionServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ProbeSubscription",
+			Handler:    _EventsExtension_ProbeSubscription_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "Subscribe",
@@ -1823,6 +1930,14 @@ const (
 // ============================================================
 // PricingExtension — P2 (skeleton)
 // ============================================================
+//
+// Changelog:
+//   - 2026-05-01 (T24): All price fields migrated from `double` to
+//     `string` decimal. Plugin emits decimal.Decimal.String(); host parses
+//     via decimal.NewFromString. Empty string ("") means "not set" and is
+//     equivalent to the legacy zero. All other proto services keep their
+//     `double` fields — only PricingExtension messages move. Plugin and
+//     host must be deployed together; no double-encoding fallback exists.
 //
 // PricingExtension is implemented by plugins that contribute pricing data
 // or cost-adjustment logic. The host uses ListPricingOverrides + WatchPricingOverrides
@@ -1932,6 +2047,14 @@ func (c *pricingExtensionClient) ResolveAccountStatsCost(ctx context.Context, in
 // ============================================================
 // PricingExtension — P2 (skeleton)
 // ============================================================
+//
+// Changelog:
+//   - 2026-05-01 (T24): All price fields migrated from `double` to
+//     `string` decimal. Plugin emits decimal.Decimal.String(); host parses
+//     via decimal.NewFromString. Empty string ("") means "not set" and is
+//     equivalent to the legacy zero. All other proto services keep their
+//     `double` fields — only PricingExtension messages move. Plugin and
+//     host must be deployed together; no double-encoding fallback exists.
 //
 // PricingExtension is implemented by plugins that contribute pricing data
 // or cost-adjustment logic. The host uses ListPricingOverrides + WatchPricingOverrides

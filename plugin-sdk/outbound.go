@@ -293,4 +293,3 @@ func cidrContains(nets []*net.IPNet, ip net.IP) bool {
 	}
 	return false
 }
-

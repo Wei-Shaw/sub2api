@@ -64,9 +64,9 @@ type StringCmd struct {
 	val string
 }
 
-func (c *StringCmd) Val() string              { return c.val }
-func (c *StringCmd) Result() (string, error)  { return c.val, c.err }
-func (c *StringCmd) Bytes() ([]byte, error)   { return []byte(c.val), c.err }
+func (c *StringCmd) Val() string             { return c.val }
+func (c *StringCmd) Result() (string, error) { return c.val, c.err }
+func (c *StringCmd) Bytes() ([]byte, error)  { return []byte(c.val), c.err }
 func (c *StringCmd) Int() (int, error) {
 	if c.err != nil {
 		return 0, c.err
@@ -111,8 +111,8 @@ type FloatCmd struct {
 	val float64
 }
 
-func (c *FloatCmd) Val() float64              { return c.val }
-func (c *FloatCmd) Result() (float64, error)  { return c.val, c.err }
+func (c *FloatCmd) Val() float64             { return c.val }
+func (c *FloatCmd) Result() (float64, error) { return c.val, c.err }
 
 // StringSliceCmd wraps array replies that the user expects as []string.
 // Missing-element entries (RESP nils) become "" — matching go-redis.
@@ -121,8 +121,8 @@ type StringSliceCmd struct {
 	val []string
 }
 
-func (c *StringSliceCmd) Val() []string              { return c.val }
-func (c *StringSliceCmd) Result() ([]string, error)  { return c.val, c.err }
+func (c *StringSliceCmd) Val() []string             { return c.val }
+func (c *StringSliceCmd) Result() ([]string, error) { return c.val, c.err }
 
 // StringStringMapCmd is the typed result for HGETALL.
 type StringStringMapCmd struct {
@@ -138,8 +138,8 @@ func (c *StringStringMapCmd) Result() (map[string]string, error) { return c.val,
 // are surfaced unchanged.
 type DurationCmd struct {
 	baseCmd
-	val      int64
-	unit     time.Duration // multiplier applied at Val() time
+	val  int64
+	unit time.Duration // multiplier applied at Val() time
 }
 
 // Val returns -2/-1 verbatim (key missing / no expiration) so callers can
@@ -161,8 +161,8 @@ type SliceCmd struct {
 	val []any
 }
 
-func (c *SliceCmd) Val() []any              { return c.val }
-func (c *SliceCmd) Result() ([]any, error)  { return c.val, c.err }
+func (c *SliceCmd) Val() []any             { return c.val }
+func (c *SliceCmd) Result() ([]any, error) { return c.val, c.err }
 
 // ============================================================
 // DoReply → Cmd parsers

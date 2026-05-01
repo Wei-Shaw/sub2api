@@ -28,9 +28,9 @@ type dummyMigrationPlugin struct {
 	openErr  error
 }
 
-func (d *dummyMigrationPlugin) Manifest() *Manifest { return d.manifest }
+func (d *dummyMigrationPlugin) Manifest() *Manifest      { return d.manifest }
 func (d *dummyMigrationPlugin) Init(PluginContext) error { return nil }
-func (d *dummyMigrationPlugin) Shutdown() error { return nil }
+func (d *dummyMigrationPlugin) Shutdown() error          { return nil }
 
 // OpenMigration matches the MigrationProvider contract: unknown filenames
 // must surface fs.ErrNotExist so callers can distinguish them from
@@ -162,9 +162,9 @@ func TestGetMigration_EmptyFilename(t *testing.T) {
 // generated Unimplemented default leak through.
 type nonProviderPlugin struct{}
 
-func (nonProviderPlugin) Manifest() *Manifest    { return &Manifest{Name: "no-provider"} }
+func (nonProviderPlugin) Manifest() *Manifest      { return &Manifest{Name: "no-provider"} }
 func (nonProviderPlugin) Init(PluginContext) error { return nil }
-func (nonProviderPlugin) Shutdown() error         { return nil }
+func (nonProviderPlugin) Shutdown() error          { return nil }
 
 func TestGetMigration_PluginWithoutProvider(t *testing.T) {
 	client, cleanup := startMigrationServer(t, nonProviderPlugin{})

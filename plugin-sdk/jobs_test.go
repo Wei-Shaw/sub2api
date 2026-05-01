@@ -6,6 +6,10 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // TestConvertJobSpec_Interval verifies the interval kind is round-tripped to
@@ -65,22 +69,21 @@ func TestConvertJobSpec_UnknownKind(t *testing.T) {
 	}
 }
 
-// TestNextBackoff verifies the (1s → 3s → 9s → 27s → 30s ceiling) schedule.
-func TestNextBackoff(t *testing.T) {
-	cases := []struct {
-		in   time.Duration
-		want time.Duration
-	}{
-		{1 * time.Second, 3 * time.Second},
-		{3 * time.Second, 9 * time.Second},
-		{9 * time.Second, 27 * time.Second},
-		{27 * time.Second, 30 * time.Second},
-		{30 * time.Second, 30 * time.Second},
+// TestJobsBackoffConstants pins the SDK-unified ×2 reconnect schedule
+// (1s → 2s → 4s → 8s → 16s → 30s ceiling). The actual schedule is
+// computed inside streamutil.Loop and verified by streamutil's own
+// tests; this test exists so a future PR that bumps the multiplier or
+// the cap on jobs reconnect must also update this assertion, surfacing
+// the V5-DESIGN §2.6 contract change at review time.
+func TestJobsBackoffConstants(t *testing.T) {
+	if jobReconnectInitialBackoff != 1*time.Second {
+		t.Errorf("jobReconnectInitialBackoff = %v, want 1s", jobReconnectInitialBackoff)
 	}
-	for _, c := range cases {
-		if got := jobNextBackoff(c.in); got != c.want {
-			t.Errorf("jobNextBackoff(%v) = %v, want %v", c.in, got, c.want)
-		}
+	if jobReconnectMaxBackoff != 30*time.Second {
+		t.Errorf("jobReconnectMaxBackoff = %v, want 30s", jobReconnectMaxBackoff)
+	}
+	if jobReconnectMultiplier != 2.0 {
+		t.Errorf("jobReconnectMultiplier = %v, want 2.0 (SDK-wide unification)", jobReconnectMultiplier)
 	}
 }
 
@@ -148,6 +151,79 @@ func TestTriggerLocal_RunsHandler(t *testing.T) {
 
 	if err := c.TriggerLocal(context.Background(), "unknown"); !errors.Is(err, ErrJobUnknown) {
 		t.Fatalf("unknown TriggerLocal error = %v, want ErrJobUnknown", err)
+	}
+}
+
+// TestRun_PermissionDeniedExitsFast is the T31 regression: when the host
+// rejects the Subscribe dial with PermissionDenied (e.g. anonymous caller
+// or missing capability), GRPCDefaultClassifier marks the error fatal and
+// LoopWithRetryClass must exit instead of reconnecting forever. The
+// observable signal is `c.loopDone` closing within a few hundred ms; with
+// the old streamutil.Loop the goroutine would still be sleeping inside
+// the backoff window after the test deadline.
+func TestRun_PermissionDeniedExitsFast(t *testing.T) {
+	var calls atomic.Int64
+	dial := func(ctx context.Context) (pb.JobScheduler_SubscribeClient, error) {
+		calls.Add(1)
+		return nil, status.Error(codes.PermissionDenied, "anonymous caller")
+	}
+	c := newJobsClient("p1", nil, dial)
+	c.loopDone = make(chan struct{})
+
+	done := make(chan struct{})
+	go func() {
+		c.run(context.Background())
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("run did not exit on PermissionDenied; LoopWithRetryClass should have classified it fatal")
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("dial called %d times, want exactly 1 (no retry on fatal)", got)
+	}
+}
+
+// TestRun_UnavailableRetries asserts the inverse: a transient gRPC error
+// (Unavailable) is NOT classified fatal, so run keeps retrying. We assert
+// at least 2 dial calls inside a short window then cancel the loop ctx.
+// Together with the test above this fully pins the LoopWithRetryClass
+// contract for the jobs client.
+func TestRun_UnavailableRetries(t *testing.T) {
+	var calls atomic.Int64
+	dial := func(ctx context.Context) (pb.JobScheduler_SubscribeClient, error) {
+		calls.Add(1)
+		return nil, status.Error(codes.Unavailable, "host bouncing")
+	}
+	c := newJobsClient("p1", nil, dial)
+	// Override backoff so the test does not sit on the 1s default.
+	c.loopDone = make(chan struct{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		c.run(ctx)
+		close(done)
+	}()
+
+	// Wait for at least two dial attempts. Initial backoff is 1s, so
+	// allow up to 3s for the second call.
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && calls.Load() < 2 {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if got := calls.Load(); got < 2 {
+		cancel()
+		<-done
+		t.Fatalf("dial called %d times in 3s, want >=2 (Unavailable must be retried)", got)
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("run did not exit after ctx cancel")
 	}
 }
 

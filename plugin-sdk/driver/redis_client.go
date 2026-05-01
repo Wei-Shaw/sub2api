@@ -56,11 +56,11 @@ type RedisMsg struct {
 // interface. It exposes a go-redis Cmdable-style surface and routes every
 // command through RedisProxy.Do.
 type RedisClient struct {
-	cli       pb.RedisProxyClient
-	logger    *slog.Logger
-	namespace string // "" = no prefixing (Raw mode); else "plugin:<name>:"
-	rawAllowed bool  // true if the plugin declared redis_raw_keys
-	rawClient *RedisClient // lazily-initialised raw twin (created by Raw())
+	cli        pb.RedisProxyClient
+	logger     *slog.Logger
+	namespace  string       // "" = no prefixing (Raw mode); else "plugin:<name>:"
+	rawAllowed bool         // true if the plugin declared redis_raw_keys
+	rawClient  *RedisClient // lazily-initialised raw twin (created by Raw())
 }
 
 // NewRedisClient builds a RedisClient with the default per-plugin namespace
@@ -121,6 +121,12 @@ func (r *RedisClient) Raw() *RedisClient {
 func (r *RedisClient) Namespace() string { return r.namespace }
 
 // applyKey adds the namespace prefix unless the client is in raw mode.
+//
+// 暂未在 SDK 现版本里被任何 typed Cmdable 包装直接调用 —— 当前所有
+// 命名空间前缀都在 host 侧 RedisProxy 完成。保留此方法是因为后续若把
+// 命名空间应用上移至 SDK（例如批量 MGET 优化），是显然的入口。
+//
+//nolint:unused // SDK helper kept for future namespace handling, see comment above.
 func (r *RedisClient) applyKey(key string) string {
 	if r.namespace == "" || strings.HasPrefix(key, r.namespace) {
 		return key
@@ -129,6 +135,8 @@ func (r *RedisClient) applyKey(key string) string {
 }
 
 // applyKeys batch-prefixes keys.
+//
+//nolint:unused // SDK helper kept for future namespace handling; pairs with applyKey.
 func (r *RedisClient) applyKeys(keys []string) []string {
 	if r.namespace == "" {
 		return keys
@@ -216,7 +224,9 @@ func (c *DoCmd) AsBool() *BoolCmd { return parseBoolCmd(c.reply, c.err) }
 func (c *DoCmd) AsStringSlice() *StringSliceCmd { return parseStringSliceCmd(c.reply, c.err) }
 
 // AsStringStringMap interprets the reply as a *StringStringMapCmd result.
-func (c *DoCmd) AsStringStringMap() *StringStringMapCmd { return parseStringStringMapCmd(c.reply, c.err) }
+func (c *DoCmd) AsStringStringMap() *StringStringMapCmd {
+	return parseStringStringMapCmd(c.reply, c.err)
+}
 
 // AsSlice interprets the reply as an untyped []any.
 func (c *DoCmd) AsSlice() *SliceCmd { return parseSliceCmd(c.reply, c.err) }
@@ -492,8 +502,8 @@ type ScanCmd struct {
 	keys   []string
 }
 
-func (c *ScanCmd) Val() (uint64, []string)              { return c.cursor, c.keys }
-func (c *ScanCmd) Result() (uint64, []string, error)    { return c.cursor, c.keys, c.err }
+func (c *ScanCmd) Val() (uint64, []string)           { return c.cursor, c.keys }
+func (c *ScanCmd) Result() (uint64, []string, error) { return c.cursor, c.keys, c.err }
 
 // parseScanCmd handles the [cursor, [keys...]] reply shape and strips the
 // per-plugin namespace from each returned key so the caller does not have to.

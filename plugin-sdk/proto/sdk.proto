@@ -508,8 +508,58 @@ message SettingsChangeEvent {
 //   - high-frequency events (e.g. gateway.model.invoked) require a matching
 //     capability declaration in the plugin manifest; otherwise Subscribe
 //     returns PERMISSION_DENIED.
+//
+// Subscribe lifecycle (T25):
+//   The SDK first calls ProbeSubscription synchronously to validate the
+//   caller's capabilities and the requested event_types against the
+//   manifest allow-list. ProbeSubscription returns immediately with the
+//   appropriate gRPC status (OK / PermissionDenied / InvalidArgument).
+//   The SDK then opens the long-lived Subscribe stream on success, and
+//   delegates reconnect on transient transport failures to streamutil.Loop.
+//   This split removes the historical "first-Recv probe" abstraction leak
+//   where Subscribe had to peel off the first message just to surface
+//   synchronous capability errors.
 service EventsExtension {
+  // Subscribe opens the long-lived event stream. Callers SHOULD invoke
+  // ProbeSubscription first; Subscribe still performs the same allow-list
+  // and capability checks server-side (older SDKs that skip Probe rely on
+  // these checks being mirrored on the streaming RPC), but only Probe is
+  // guaranteed to surface synchronous errors before any goroutine spins up.
   rpc Subscribe(EventSubscribeRequest) returns (stream HostEvent);
+
+  // ProbeSubscription synchronously validates that the caller is allowed
+  // to open a Subscribe stream with the requested filter:
+  //   - caller identity present (otherwise PermissionDenied)
+  //   - manifest declared the requested event_types (otherwise PermissionDenied
+  //     so plugins cannot widen interest at runtime)
+  //   - capability gate satisfied for high-frequency events such as
+  //     gateway.model.invoked (otherwise PermissionDenied)
+  //
+  // Probe does NOT establish a stream and does NOT register a subscriber;
+  // it is a pure precondition check the SDK runs before letting
+  // streamutil.Loop manage reconnects. This is intentional — the loop
+  // ought to retry only on transient transport failures, not on permission
+  // misconfiguration that requires operator action.
+  //
+  // 同步校验订阅请求是否会被接受。返回 OK 表示 caller 可以放心调用 Subscribe；
+  // 返回 PermissionDenied / InvalidArgument 时立即抛给调用方，避免被后台
+  // 重连循环吞掉。Probe 不建立流、不注册订阅者。
+  rpc ProbeSubscription(EventSubscribeRequest) returns (ProbeSubscriptionResponse);
+}
+
+// ProbeSubscriptionResponse is the success payload of ProbeSubscription.
+// Currently carries a debug-only counter; the only authoritative signal is
+// the gRPC status code. Future fields can document subscriber-side hints
+// (e.g. recommended buffer size) without breaking older SDKs.
+//
+// 调用方主要依赖 gRPC 状态码判断；本响应中的字段仅作为调试 / 观测使用，
+// 不影响后续 Subscribe 流的语义。
+message ProbeSubscriptionResponse {
+  // active_subscriptions reports the host-side count of currently registered
+  // subscribers (across all plugins). Useful for ops dashboards and noisy-
+  // neighbour detection but MUST NOT influence plugin behaviour.
+  // 当前 host 端已注册的订阅者总数，仅供观测，不要据此决定业务逻辑。
+  int64 active_subscriptions = 1;
 }
 
 message EventSubscribeRequest {
@@ -596,6 +646,14 @@ message AccountRateLimitTriggered {
 // PricingExtension — P2 (skeleton)
 // ============================================================
 //
+// Changelog:
+//   - 2026-05-01 (T24): All price fields migrated from `double` to
+//     `string` decimal. Plugin emits decimal.Decimal.String(); host parses
+//     via decimal.NewFromString. Empty string ("") means "not set" and is
+//     equivalent to the legacy zero. All other proto services keep their
+//     `double` fields — only PricingExtension messages move. Plugin and
+//     host must be deployed together; no double-encoding fallback exists.
+//
 // PricingExtension is implemented by plugins that contribute pricing data
 // or cost-adjustment logic. The host uses ListPricingOverrides + WatchPricingOverrides
 // to maintain an in-memory pricing cache (data layer, hot-path zero RPC).
@@ -657,34 +715,41 @@ message PricingOverrideKey {
 
 // PricingOverride mirrors the existing channel_model_pricing schema so
 // the host can flow the values straight into ChannelModelPricing without
-// a translation layer. Field semantics match
-// backend/internal/service/channel_cache_reader.go::channelPricingPayload.
+// a translation layer.
+//
+// All price fields use string decimal encoding (T24): emit via
+// decimal.Decimal.String(); parse via decimal.NewFromString. Empty string
+// ("") means "not set" — equivalent to decimal.NullDecimal{Valid:false} on
+// the plugin side and to the legacy zero on the host fallback path.
 message PricingOverride {
   PricingOverrideKey key = 1;
   string billing_mode = 2;       // "token" / "per_request" / "image"
   // Pricing fields. All are USD per token (token mode) or USD per
-  // request (per_request mode); zero is treated as "unset" and the host
-  // will fall back to base pricing for that field.
-  double input_price = 3;
-  double output_price = 4;
-  double cache_write_price = 5;
-  double cache_read_price = 6;
-  double image_output_price = 7;
-  double per_request_price = 8;
+  // request (per_request mode). Decimal string; "" = not set; parse via
+  // decimal.NewFromString.
+  string input_price = 3;
+  string output_price = 4;
+  string cache_write_price = 5;
+  string cache_read_price = 6;
+  string image_output_price = 7;
+  string per_request_price = 8;
   repeated PricingInterval intervals = 9;
 }
 
 // PricingInterval mirrors backend ent PricingInterval for token-tier or
 // per-request-tier pricing. max_tokens=0 means "unbounded".
+//
+// Price fields follow the same string decimal contract as PricingOverride.
 message PricingInterval {
   int64 min_tokens = 1;
   int64 max_tokens = 2;
-  double input_price = 3;
-  double output_price = 4;
-  double cache_write_price = 5;
-  double cache_read_price = 6;
-  double image_output_price = 7;
-  double per_request_price = 8;
+  // Decimal string; "" = not set; parse via decimal.NewFromString.
+  string input_price = 3;
+  string output_price = 4;
+  string cache_write_price = 5;
+  string cache_read_price = 6;
+  string image_output_price = 7;
+  string per_request_price = 8;
 }
 
 message ListPricingOverridesRequest {}
@@ -747,14 +812,19 @@ message AdjustCostResponse {
 // plugin. It is intentionally separate from CostBreakdown messages used
 // by other proto services to keep PricingExtension self-contained even
 // if the host's accounting layer evolves.
+//
+// Cost fields follow the same string decimal contract as PricingOverride
+// (T24). Empty string ("") means "not set"; parse via
+// decimal.NewFromString.
 message PricingCostBreakdown {
   string currency = 1;       // typically "USD"
-  double total = 2;
-  double input_cost = 3;
-  double output_cost = 4;
-  double cache_write_cost = 5;
-  double cache_read_cost = 6;
-  double image_cost = 7;
+  // Decimal string; "" = not set; parse via decimal.NewFromString.
+  string total = 2;
+  string input_cost = 3;
+  string output_cost = 4;
+  string cache_write_cost = 5;
+  string cache_read_cost = 6;
+  string image_cost = 7;
   string billing_mode = 8;   // "token" / "per_request" / "image"
 }
 
@@ -789,7 +859,9 @@ message ResolveAccountStatsCostRequest {
   string upstream_model = 4;
   PricingUsageTokens tokens = 5;
   int32  request_count  = 6;
-  double total_cost     = 7;
+  // total_cost is the customer-facing cost the host already computed.
+  // Decimal string; "" = not set; parse via decimal.NewFromString (T24).
+  string total_cost     = 7;
   // request_id lets the plugin deduplicate retries / make the RPC
   // idempotent. The host fills it with the gateway request id (typically
   // a ULID).
@@ -802,7 +874,10 @@ message ResolveAccountStatsCostRequest {
 // which rule fired.
 message ResolveAccountStatsCostResponse {
   bool   has_cost          = 1;
-  double cost              = 2;
+  // cost is the plugin's per-request override. Only meaningful when
+  // has_cost=true. Decimal string; "" = not set; parse via
+  // decimal.NewFromString (T24).
+  string cost              = 2;
   string resolution_reason = 3;
 }
 

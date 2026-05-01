@@ -9,6 +9,7 @@ import (
 	"time"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/streamutil"
 )
 
 // JobTriggerKind is the trigger discriminator for a JobSpec.
@@ -35,13 +36,20 @@ const (
 	defaultJobTimeout     = 5 * time.Minute
 )
 
-// Reconnect backoff schedule (1s → 3s → 9s, capped at 30s) — matches the
-// V5-DESIGN §2.6 spec. Kept as constants so the test harness can override
-// indirectly via injected sleep instead of busy-waiting.
+// Reconnect backoff schedule for the Subscribe stream. The schedule
+// itself runs through streamutil.Loop; constants stay here because
+// V5-DESIGN §2.6 reads the cadence off this file.
+//
+// Historical note: the original schedule was 1s → 3s → 9s → 30s (×3).
+// The SDK-wide unification dropped to ×2 (1s → 2s → 4s → 8s → … → 30s)
+// so a flap that recovers in <30s gets several reconnect attempts in
+// the same window instead of three coarse ones. Audit T6 in
+// PLUGIN_SYSTEM_HANDOFF tracks the rationale.
 const (
 	jobReconnectInitialBackoff = 1 * time.Second
-	jobReconnectBackoffFactor  = 3
 	jobReconnectMaxBackoff     = 30 * time.Second
+	jobReconnectMultiplier     = 2.0
+	jobReconnectJitterRatio    = 0.2
 )
 
 // JobTrigger declares how a JobSpec fires. Exactly one of Interval, CronSpec,
@@ -109,8 +117,8 @@ type JobsClient interface {
 
 // Sentinel errors returned by JobsClient.
 var (
-	ErrJobUnknown    = errors.New("plugin-sdk: no handler registered for job")
-	ErrJobsNotReady  = errors.New("plugin-sdk: jobs client not initialised")
+	ErrJobUnknown     = errors.New("plugin-sdk: no handler registered for job")
+	ErrJobsNotReady   = errors.New("plugin-sdk: jobs client not initialised")
 	ErrJobsRegistered = errors.New("plugin-sdk: cannot register after Subscribe stream is open")
 )
 
@@ -247,25 +255,42 @@ func (c *jobsClient) stop() {
 }
 
 // run is the reconnect loop: open Subscribe → send Register → drain triggers
-// → on broken stream sleep with backoff → repeat. Exits only when ctx is
-// cancelled (plugin shutdown).
+// → on broken stream sleep with backoff → repeat. Exits when ctx is
+// cancelled (plugin shutdown) OR when the host returns a fatal status
+// code that retrying cannot fix. The reconnect schedule comes from
+// streamutil.LoopWithRetryClass so jobs / settings / events / log_remote
+// share one cadence; GRPCDefaultClassifier marks PermissionDenied (e.g.
+// the host's job_scheduler_server now rejects anonymous callers) and
+// InvalidArgument (e.g. an undeclared job spec) as fatal so a
+// mis-configured plugin fails fast instead of hammering the host.
+//
+// jobs.start is invoked fire-and-forget from runner.go; if run exits
+// fatally, the plugin process keeps serving the rest of its surfaces
+// (settings / events / migrations / DB), it just no longer receives job
+// triggers. We log at error level here so operators can correlate the
+// loss of job dispatch with the underlying capability / spec error.
+//
+// 复用 (1)：与 events / settings / log_remote 共用 GRPCDefaultClassifier，
+// 没人需要再 copy 同一份 fatal-code 表。
 func (c *jobsClient) run(ctx context.Context) {
 	defer close(c.loopDone)
-	backoff := jobReconnectInitialBackoff
-	for {
-		if ctx.Err() != nil {
-			return
-		}
-		if err := c.runOnce(ctx); err != nil {
-			c.logger.Warn("job stream broken; reconnecting", "error", err, "backoff", backoff)
-			if !sleepCtx(ctx, backoff) {
-				return
-			}
-			backoff = jobNextBackoff(backoff)
-			continue
-		}
-		// runOnce returned nil only when ctx was cancelled — exit cleanly.
-		return
+	err := streamutil.LoopWithRetryClass(ctx, streamutil.Config{
+		Name:        "jobs.subscribe",
+		Initial:     jobReconnectInitialBackoff,
+		Max:         jobReconnectMaxBackoff,
+		Multiplier:  jobReconnectMultiplier,
+		JitterRatio: jobReconnectJitterRatio,
+		Logger:      c.logger,
+	}, streamutil.GRPCDefaultClassifier, c.runOnce)
+	if err != nil && !errors.Is(err, context.Canceled) &&
+		!errors.Is(err, context.DeadlineExceeded) && c.logger != nil {
+		// LoopWithRetryClass already logged at error level when the
+		// classifier marked the failure fatal; we add the plugin name so
+		// operators can grep the host's log for the corresponding
+		// capability / spec rejection.
+		c.logger.Error("jobs subscribe stopped; not retrying — plugin will no longer receive triggers",
+			"plugin", c.pluginName,
+			"error", err)
 	}
 }
 
@@ -425,31 +450,4 @@ func convertJobSpec(spec JobSpec) (*pb.JobSpec, error) {
 		return nil, fmt.Errorf("plugin-sdk: job %q unknown trigger kind %q", spec.Name, spec.Trigger.Kind)
 	}
 	return pbSpec, nil
-}
-
-// jobNextBackoff multiplies the current sleep by jobReconnectBackoffFactor,
-// capping at jobReconnectMaxBackoff. Pulled out so tests can compute the
-// schedule without driving the real loop.
-func jobNextBackoff(cur time.Duration) time.Duration {
-	next := cur * time.Duration(jobReconnectBackoffFactor)
-	if next > jobReconnectMaxBackoff {
-		return jobReconnectMaxBackoff
-	}
-	return next
-}
-
-// sleepCtx sleeps until d elapses or ctx cancels. Returns true on natural
-// timeout (continue), false on cancellation (stop the loop).
-func sleepCtx(ctx context.Context, d time.Duration) bool {
-	if d <= 0 {
-		return ctx.Err() == nil
-	}
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return false
-	case <-t.C:
-		return true
-	}
 }

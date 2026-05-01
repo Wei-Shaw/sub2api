@@ -29,6 +29,7 @@ import (
 	"time"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/streamutil"
 )
 
 // ErrSettingNotFound is returned by SettingsClient.Get when the plugin
@@ -84,10 +85,18 @@ const settingsGetTimeout = 5 * time.Second
 // settingsWatchInitialBackoff / settingsWatchMaxBackoff control the
 // exponential backoff for watch-stream reconnects. The numbers are
 // deliberately conservative so a flapping host does not produce a
-// reconnect storm.
+// reconnect storm. The schedule itself runs through streamutil.Loop;
+// these constants stay here because plugin authors look here to learn
+// the contract.
 const (
 	settingsWatchInitialBackoff = 1 * time.Second
 	settingsWatchMaxBackoff     = 30 * time.Second
+	// settingsWatchMultiplier was historically ×3 (more aggressive than
+	// the events / log_remote ×2) for no documented reason. Unified to
+	// ×2 across the SDK so a single Config tweak adjusts every reconnect
+	// site uniformly.
+	settingsWatchMultiplier  = 2.0
+	settingsWatchJitterRatio = 0.2
 )
 
 // SettingsChange is the SDK-level event delivered to subscribers. It
@@ -125,12 +134,18 @@ type SettingsClient interface {
 // settingsClient is the concrete implementation backing SettingsClient.
 // It is goroutine-safe; the cache uses sync.Map for lock-free reads and
 // the watcher table uses a mutex because slice appends are short.
+//
+// cacheWriteMu 串行化 Get / applyEvent 的写入路径：两条路径都先 Load
+// 当前条目，比较 revision 后再决定是否 Store。互斥写入避免 Get 路径用
+// 旧 revision 覆盖 watch 已 store 的更高 revision（写后写竞态）。读路径
+// 仍走 sync.Map 无锁。
 type settingsClient struct {
 	grpc       pb.SettingsExtensionClient
 	pluginName string
 	logger     *slog.Logger
 
-	cache sync.Map // string key -> *cachedSetting
+	cache        sync.Map // string key -> *cachedSetting
+	cacheWriteMu sync.Mutex
 
 	watchOnce sync.Once
 	watchCtx  context.Context
@@ -236,13 +251,14 @@ func (c *settingsClient) Get(ctx context.Context, key string) (json.RawMessage, 
 		return nil, fmt.Errorf("pluginsdk: settings get %q: %w", key, err)
 	}
 	if !resp.GetExists() {
-		// Cache the negative answer briefly so a tight Get loop on a
-		// missing key does not hammer the host.
-		c.cache.Store(key, &cachedSetting{exists: false, fetchedAt: time.Now()})
+		// 缓存 negative answer：但仍要走 storeIfNewer 防止 watch 在我们 RPC
+		// 期间已写入更高 revision 的真实值；revision 设为 0 让任何 watch 写入
+		// 都能覆盖它。
+		c.storeIfNewer(key, &cachedSetting{exists: false, fetchedAt: time.Now()})
 		return nil, ErrSettingNotFound
 	}
 	val := append(json.RawMessage(nil), resp.GetValueJson()...)
-	c.cache.Store(key, &cachedSetting{
+	c.storeIfNewer(key, &cachedSetting{
 		value:                val,
 		revision:             resp.GetRevision(),
 		exists:               true,
@@ -250,7 +266,33 @@ func (c *settingsClient) Get(ctx context.Context, key string) (json.RawMessage, 
 		storedSchemaVersion:  resp.GetStoredSchemaVersion(),
 		currentSchemaVersion: resp.GetCurrentSchemaVersion(),
 	})
+	// 返回值用从缓存里取到的最新版本（可能已被 watch 覆盖为更高 revision）。
+	if v, ok := c.cache.Load(key); ok {
+		if entry := v.(*cachedSetting); entry.exists {
+			return entry.value, nil
+		}
+	}
 	return val, nil
+}
+
+// storeIfNewer 将 next 写入 cache，但仅当 next.revision >= 当前条目 revision
+// 时才覆盖。两个写入路径(Get RPC 完成 / applyEvent 收到 watch 推送)都走它，
+// 由 cacheWriteMu 串行化以避免"已过期 RPC 结果覆盖较新 watch 推送"。
+//
+// revision == 0 由 RPC 在 host 没有给出版本号时返回；此时退化为"按时间最新者
+// 胜"，与之前的语义保持一致。
+func (c *settingsClient) storeIfNewer(key string, next *cachedSetting) {
+	c.cacheWriteMu.Lock()
+	defer c.cacheWriteMu.Unlock()
+	if v, ok := c.cache.Load(key); ok {
+		cur := v.(*cachedSetting)
+		// 只有 next 的 revision 严格大于等于现存条目 才允许覆盖。watch 拿到的
+		// 总是 >= host 当前发布 revision；Get 路径在 RPC 等待期间可能落后。
+		if cur.revision > next.revision {
+			return
+		}
+	}
+	c.cache.Store(key, next)
 }
 
 func (c *settingsClient) GetTyped(ctx context.Context, key string, out any) error {
@@ -331,48 +373,63 @@ func (c *settingsClient) removeSub(key string, id uint64) {
 	}
 }
 
+// runWatchLoop owns the reconnecting Watch stream. It exits when ctx is
+// cancelled or when GRPCDefaultClassifier marks an error fatal — the host
+// rejects callers without `settings.own.read` capability with
+// PermissionDenied, and without the classifier the SDK would reconnect
+// forever. After fatal exit SettingsClient.Get continues to work via the
+// unary RPC (TTL cache stays cold but every call sees fresh data), so
+// the plugin can still read settings, just without the watch fast path.
+//
+// 复用 (1)：GRPCDefaultClassifier shared with jobs / events / log_remote.
 func (c *settingsClient) runWatchLoop(ctx context.Context) {
 	defer close(c.watchDone)
-	backoff := settingsWatchInitialBackoff
+	err := streamutil.LoopWithRetryClass(ctx, streamutil.Config{
+		Name:        "settings.watch",
+		Initial:     settingsWatchInitialBackoff,
+		Max:         settingsWatchMaxBackoff,
+		Multiplier:  settingsWatchMultiplier,
+		JitterRatio: settingsWatchJitterRatio,
+		Logger:      c.logger,
+	}, streamutil.GRPCDefaultClassifier, c.runWatchAttempt)
+	if err != nil && !errors.Is(err, context.Canceled) &&
+		!errors.Is(err, context.DeadlineExceeded) && c.logger != nil {
+		// LoopWithRetryClass already logged the fatal classification; we
+		// annotate with the plugin context so operators can correlate
+		// the missing capability with this specific subscription.
+		c.logger.Error("settings watch stopped; falling back to unary Get per call",
+			"plugin", c.pluginName,
+			"error", err)
+	}
+}
+
+// runWatchAttempt opens a single Watch stream and drains it until
+// stream.Recv errors. The host's sendSnapshot fires a fresh per-key
+// event for every value in the namespace as soon as the stream opens
+// (see SETTINGS-V2-DESIGN §4.5 + INSPECT §2.4), so applyEvent re-
+// primes the cache automatically — including the case where the host
+// closed the previous stream because the plugin's schema_version
+// changed.
+func (c *settingsClient) runWatchAttempt(ctx context.Context) error {
+	stream, err := c.grpc.Watch(ctx, &pb.SettingsWatchRequest{Key: ""})
+	if err != nil {
+		return fmt.Errorf("settings watch open: %w", err)
+	}
 	for {
-		if ctx.Err() != nil {
-			return
-		}
-		stream, err := c.grpc.Watch(ctx, &pb.SettingsWatchRequest{Key: ""})
-		if err != nil {
-			if c.logger != nil {
-				c.logger.Warn("settings watch stream open failed; will retry",
-					"plugin", c.pluginName, "error", err, "backoff", backoff)
+		evt, recvErr := stream.Recv()
+		if recvErr != nil {
+			if ctx.Err() == nil && c.logger != nil {
+				// EOF / Unavailable here may also mean the host closed
+				// the stream because schema_version changed (DESIGN
+				// §4.5 dropAllSubscribersForPlugin). Either way the
+				// outer loop reconnects and the host's snapshot
+				// re-primes our cache.
+				c.logger.Warn("settings watch stream lost; will reconnect and re-prime cache via host snapshot",
+					"plugin", c.pluginName, "error", recvErr)
 			}
-			if !settingsSleepCtx(ctx, backoff) {
-				return
-			}
-			backoff = settingsNextBackoff(backoff)
-			continue
+			return recvErr
 		}
-		// Reset backoff after a successful open. The host's sendSnapshot
-		// fires a fresh per-key event for every value in the namespace as
-		// soon as the stream opens (see SETTINGS-V2-DESIGN §4.5 + INSPECT
-		// §2.4), so applyEvent below will re-prime the cache automatically
-		// — including the case where the host closed the previous stream
-		// because the plugin's schema_version changed.
-		backoff = settingsWatchInitialBackoff
-		for {
-			evt, err := stream.Recv()
-			if err != nil {
-				if ctx.Err() == nil && c.logger != nil {
-					// EOF / Unavailable here may also mean the host closed
-					// the stream because schema_version changed (DESIGN
-					// §4.5 dropAllSubscribersForPlugin). Either way the
-					// outer loop reconnects and the host's snapshot
-					// re-primes our cache.
-					c.logger.Warn("settings watch stream lost; will reconnect and re-prime cache via host snapshot",
-						"plugin", c.pluginName, "error", err)
-				}
-				break
-			}
-			c.applyEvent(evt)
-		}
+		c.applyEvent(evt)
 	}
 }
 
@@ -393,7 +450,7 @@ func (c *settingsClient) applyEvent(evt *pb.SettingsChangeEvent) {
 		prevStored = entry.storedSchemaVersion
 		prevCurrent = entry.currentSchemaVersion
 	}
-	c.cache.Store(evt.GetKey(), &cachedSetting{
+	c.storeIfNewer(evt.GetKey(), &cachedSetting{
 		value:                val,
 		revision:             evt.GetRevision(),
 		exists:               true,
@@ -435,23 +492,4 @@ func (c *settingsClient) applyEvent(evt *pb.SettingsChangeEvent) {
 			}
 		}
 	}
-}
-
-func settingsSleepCtx(ctx context.Context, d time.Duration) bool {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-t.C:
-		return true
-	case <-ctx.Done():
-		return false
-	}
-}
-
-func settingsNextBackoff(cur time.Duration) time.Duration {
-	next := cur * 3
-	if next > settingsWatchMaxBackoff {
-		return settingsWatchMaxBackoff
-	}
-	return next
 }
