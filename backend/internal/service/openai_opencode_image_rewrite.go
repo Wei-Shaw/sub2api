@@ -257,7 +257,22 @@ func normalizeOpenCodeImageContinuationInput(raw any) ([]any, bool) {
 }
 
 func openCodeImageServerContinuationOutput(messageText string) string {
-	return messageText + "\n\nSynthetic image generation continuation inserted by sub2api for OpenCode. The image generation tool already completed and produced the real image result above. Do not treat this wrapper as the final answer. Do not stop after image generation. Immediately use the available shell, command-line, or network-access tool to download the image from the URL above, then respond to the user with the downloaded image or file result. Only if no tool can access the URL, say that explicitly and provide the URL and sub2api-image marker instead of silently finishing. Do not ask the user to regenerate the image unless the saved result is unavailable."
+	return messageText + "\n\n" + strings.Join([]string{
+		"Synthetic image generation continuation inserted by sub2api for OpenCode.",
+		"The image generation tool already completed and produced the real image result above.",
+		"The saved image URL expires quickly; it is a short-lived bearer URL and may expire within about 1 hour, so download before any other action.",
+		"Do not delay for any reason.",
+		"Do not treat this wrapper as the final answer.",
+		"Do not stop after image generation.",
+		"Do not ask the user whether to download or where to save it before attempting the download.",
+		"Do not call question, notify, skill, or directory-listing tools before attempting the download.",
+		"Do not use ls or rtk ls as a preflight.",
+		"On Windows, prefer a single download command such as Invoke-WebRequest -Uri <URL> -OutFile (Join-Path $env:TEMP <filename>) or curl.exe -L <URL> -o <file>.",
+		"Immediately use the available shell, command-line, or network-access tool to download the image from the URL above; if no destination was specified, save it to a temporary directory.",
+		"Then respond to the user with the downloaded image or file result.",
+		"Only if no tool can access the URL, say that explicitly and provide the URL and sub2api-image marker instead of silently finishing.",
+		"Do not ask the user to regenerate the image unless the saved result is unavailable.",
+	}, " ")
 }
 
 func isOpenCodeImageGenerationToolChoice(raw any) bool {

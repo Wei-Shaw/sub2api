@@ -429,6 +429,18 @@ func TestOpenCodeImageServerContinuationOutput_InstructsAgentToDownloadImmediate
 	require.Contains(t, output, "Immediately use the available shell, command-line, or network-access tool")
 	require.Contains(t, output, "download the image from the URL above")
 	require.Contains(t, output, "Do not stop after image generation")
+	require.Contains(t, output, "The saved image URL expires quickly")
+	require.Contains(t, output, "short-lived bearer URL")
+	require.Contains(t, output, "may expire within about 1 hour")
+	require.Contains(t, output, "download before any other action")
+	require.Contains(t, output, "Do not delay for any reason")
+	require.Contains(t, output, "Do not ask the user whether to download")
+	require.Contains(t, output, "Do not call question, notify, skill, or directory-listing tools before attempting the download")
+	require.Contains(t, output, "Do not use ls or rtk ls as a preflight")
+	require.Contains(t, output, "Invoke-WebRequest")
+	require.Contains(t, output, "Join-Path $env:TEMP")
+	require.Contains(t, output, "curl.exe")
+	require.Contains(t, output, "save it to a temporary directory")
 	require.Contains(t, output, "Only if no tool can access the URL")
 }
 
