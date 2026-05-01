@@ -9,6 +9,8 @@ import { opsAPI, type OpsErrorLog REDACTED from '@/api/admin/ops'
 interface Props {
   show: boolean
   timeRange: string
+  customStartTime?: string | null
+  customEndTime?: string | null
   platform?: string
   groupId?: number | null
   errorType: 'request' | 'upstream'
@@ -96,6 +98,17 @@ async function fetchErrorLogs() {
       view: viewMode.value
     REDACTED
 
+    if (props.timeRange === 'custom') {
+      if (props.customStartTime && props.customEndTime) {
+        params.start_time = props.customStartTime
+        params.end_time = props.customEndTime
+        delete params.time_range
+      REDACTED else {
+        // Safety fallback: avoid sending time_range=custom (backend doesn't support it)
+        params.time_range = '1h'
+      REDACTED
+    REDACTED
+
     const platform = String(props.platform || '').trim()
     if (platform) params.platform = platform
     if (typeof props.groupId === 'number' && props.groupId > 0) params.group_id = props.groupId
@@ -147,7 +160,7 @@ watch(
 )
 
 watch(
-  () => [props.timeRange, props.platform, props.groupId] as const,
+  () => [props.timeRange, props.customStartTime, props.customEndTime, props.platform, props.groupId] as const,
   () => {
     if (!props.show) return
     page.value = 1
