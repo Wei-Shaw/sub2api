@@ -294,6 +294,24 @@ func (s *BillingService) initFallbackPricing() {
 		CacheReadPricePerTokenPriority: 0.35e-6,
 		SupportsCacheBreakdown:         false,
 	}
+	// DeepSeek V4 Pro
+	// Source: https://api-docs.deepseek.com/quick_start/pricing
+	s.fallbackPrices["deepseek-v4-pro"] = &ModelPricing{
+		InputPricePerToken:     4.35e-7,   // $0.435 per MTok
+		OutputPricePerToken:    8.7e-7,    // $0.87 per MTok
+		CacheReadPricePerToken: 3.625e-9,  // $0.003625 per MTok
+		SupportsCacheBreakdown: false,
+	}
+
+	// DeepSeek V4 Flash
+	// Source: https://api-docs.deepseek.com/quick_start/pricing
+	s.fallbackPrices["deepseek-v4-flash"] = &ModelPricing{
+		InputPricePerToken:     1.4e-7,   // $0.14 per MTok
+		OutputPricePerToken:    2.8e-7,   // $0.28 per MTok
+		CacheReadPricePerToken: 2.8e-9,   // $0.0028 per MTok
+		SupportsCacheBreakdown: false,
+	}
+
 	// Codex 族兜底统一按 GPT-5.3 Codex 价格计费
 	s.fallbackPrices["gpt-5.3-codex"] = &ModelPricing{
 		InputPricePerToken:             1.5e-6, // $1.5 per MTok
@@ -342,6 +360,18 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	}
 	if strings.Contains(modelLower, "gemini-3.1-pro") || strings.Contains(modelLower, "gemini-3-1-pro") {
 		return s.fallbackPrices["gemini-3.1-pro"]
+	}
+
+	// DeepSeek V4 系列
+	if strings.Contains(modelLower, "deepseek-v4-flash") {
+		return s.fallbackPrices["deepseek-v4-flash"]
+	}
+	if strings.Contains(modelLower, "deepseek-v4-pro") {
+		return s.fallbackPrices["deepseek-v4-pro"]
+	}
+	// deepseek-chat / deepseek-reasoner → V4 Flash（官方兼容别名）
+	if strings.Contains(modelLower, "deepseek-chat") || strings.Contains(modelLower, "deepseek-reasoner") {
+		return s.fallbackPrices["deepseek-v4-flash"]
 	}
 
 	// OpenAI 仅匹配已知 GPT-5/Codex 族，避免未知 OpenAI 型号误计价。
