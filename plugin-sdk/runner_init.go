@@ -142,6 +142,7 @@ func (r *runner) wireSubsystems(
 	jobs := r.wireJobs(conn, pluginName)
 	settingsCli := r.wireSettings(conn, pluginName, flags)
 	eventsCli := r.wireEvents(conn, pluginName)
+	hostCli := r.wireHost(conn)
 
 	ctxImpl := &pluginCtx{
 		db:       db,
@@ -151,6 +152,7 @@ func (r *runner) wireSubsystems(
 		jobs:     jobs,
 		settings: settingsCli,
 		events:   eventsCli,
+		host:     hostCli,
 	}
 	return ctxImpl, jobs, nil
 }
@@ -214,6 +216,16 @@ func (r *runner) wireSettings(conn *grpc.ClientConn, pluginName string, flags ca
 // client is just a thin wrapper around a stub.
 func (r *runner) wireEvents(conn *grpc.ClientConn, pluginName string) EventsClient {
 	return newEventsClient(pb.NewEventsExtensionClient(conn), pluginName, r.logger)
+}
+
+// wireHost is unconditionally wired (no capability gate). Calls surface
+// codes.Unimplemented from older hosts that have not registered the
+// HostService, which hostClient translates into ErrHostPricingUnavailable
+// so plugins degrade rather than crash. HostService is read-only and
+// side-effect-free; keeping it always-on means plugins can call it from
+// any code path (including enrichment loops) without a manifest change.
+func (r *runner) wireHost(conn *grpc.ClientConn) HostClient {
+	return newHostClient(pb.NewHostServiceClient(conn))
 }
 
 // resolvePluginName picks the plugin name from the host-supplied init

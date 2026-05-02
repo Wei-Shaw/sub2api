@@ -16,6 +16,7 @@ type pluginCtx struct {
 	jobs     JobsClient
 	settings SettingsClient
 	events   EventsClient
+	host     HostClient
 }
 
 func (c *pluginCtx) DB() *sql.DB              { return c.db }
@@ -42,4 +43,16 @@ func (c *pluginCtx) Events() EventsClient {
 		return nilEventsClient{}
 	}
 	return c.events
+}
+
+// Host returns the HostClient for reverse host-lookups. The SDK always
+// wires a real client (no capability gate); the nilHostClient fallback
+// is only used by test harnesses that construct a pluginCtx by hand —
+// in that mode every Host method returns ErrHostPricingUnavailable so
+// misconfiguration is obvious.
+func (c *pluginCtx) Host() HostClient {
+	if c.host == nil {
+		return nilHostClient{}
+	}
+	return c.host
 }

@@ -52,6 +52,16 @@ type PluginContext interface {
 	// require a matching capability (events.gateway for
 	// gateway.model.invoked). See events.go for the full surface.
 	Events() EventsClient
+
+	// Host returns the HostClient for narrow reverse-lookups against
+	// the host (e.g. global model pricing). Always returns a non-nil
+	// client: when the host-side HostService is not wired the client
+	// surfaces ErrHostPricingUnavailable instead of panicking, so
+	// plugins written against the new surface run unchanged on older
+	// hosts. No manifest capability is required — HostService
+	// exposes read-only lookups the host already trusts every plugin
+	// to perform.
+	Host() HostClient
 }
 
 // RedisClient is the SDK's go-redis-style Redis client. Internally every
