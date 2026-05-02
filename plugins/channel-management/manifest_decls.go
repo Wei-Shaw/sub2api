@@ -143,6 +143,14 @@ var migrationDecls = []pluginsdk.MigrationDecl{
 	// is added by the host (host-owned table) via
 	// backend/migrations/106_add_usage_logs_account_stats_cost.sql.
 	{Filename: "013_add_account_stats_pricing.sql", ChecksumSha256: "92c29e6a31bcfd8c57f939dc442979c3622cca6c8eefffd54ecc9f10b8ad305d"},
+	// 014: add image_output_price to channel_pricing_intervals so each tiered
+	// band carries its own image-output rate (mirrors channel_model_pricing).
+	// Unblocks the gRPC pricing publish path.
+	{Filename: "014_pricing_interval_image_output_price.sql", ChecksumSha256: "8cd2246f00959379fa6d7be29ad0841e3f72ed2e35597add4ef9969602fae47e"},
+	// 015: seed Claude Code request template (upstream a7415d4d2 port).
+	// Uses ON CONFLICT DO NOTHING so re-applying is safe; operators can
+	// customize the row after seed.
+	{Filename: "015_seed_claude_code_template.sql", ChecksumSha256: "1c8ebe1e32033a5bd179038b3423b911fefd6e652a24fbc1b356292b8811b367"},
 }
 
 // menuItemDecls is the admin / user sidebar contribution. Placement groups
