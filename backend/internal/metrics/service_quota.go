@@ -37,18 +37,22 @@ func NewCounterVec(name string, labelNames ...string) *CounterVec {
 func (c *CounterVec) WithLabelValues(values ...string) *CounterHandle {
 	key := joinLabelValues(values)
 	if v, ok := c.buckets.Load(key); ok {
-		return &CounterHandle{v: v.(*uint64)}
+		ptr, _ := v.(*uint64)
+		return &CounterHandle{v: ptr}
 	}
 	var zero uint64
 	actual, _ := c.buckets.LoadOrStore(key, &zero)
-	return &CounterHandle{v: actual.(*uint64)}
+	ptr, _ := actual.(*uint64)
+	return &CounterHandle{v: ptr}
 }
 
 // Snapshot 返回所有 label 组合当前的累计值，便于外部端点导出 / 单测断言。
 func (c *CounterVec) Snapshot() map[string]uint64 {
 	out := make(map[string]uint64)
 	c.buckets.Range(func(k, v any) bool {
-		out[k.(string)] = atomic.LoadUint64(v.(*uint64))
+		keyStr, _ := k.(string)
+		ptr, _ := v.(*uint64)
+		out[keyStr] = atomic.LoadUint64(ptr)
 		return true
 	})
 	return out

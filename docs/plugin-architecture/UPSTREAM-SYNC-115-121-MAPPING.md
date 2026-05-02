@@ -240,3 +240,71 @@
   `codexRateLimitResetAtFromSnapshot`（仅 build 需要这一个；其他 3 个调用方已不存在）
 
 （后续批次如遇类似情况，在下方继续追加）
+
+---
+
+## v0.1.119 merge 批次（2026-05-02）
+
+`release/custom-0.1.119` 一次合并了 v0.1.117 + v0.1.118 + v0.1.119 全部上游 commit
+（fork 跳过了 117/118 release 分支）。共 259 个上游 commit，绝大多数 host 改动通过
+auto-merge 吸纳；最终需要手工处理的冲突仅 16 个（1 DU + 15 UU），且无 plugins/ 命中。
+
+### 冲突分类
+
+| 类型 | 数量 | 处理 |
+|------|------|------|
+| DU | 1 | `backend/internal/handler/admin/channel_handler.go` — git rm（plugin 已 port）|
+| fork-only / frontend i18n / router / sidebar | 5 | `--ours`：VERSION / en.ts / zh.ts / index.ts / AppSidebar.vue |
+| 真·双改 | 10 | 手工 hunk merge |
+
+### 真·双改文件裁决
+
+1. **backend/internal/handler/handler.go**：保留 plugin 的 `Plugin` / `PluginSettings`
+   字段；吸纳上游新增 `Affiliate`；继续不引入 `Channel*` 字段（已迁 plugin）
+2. **backend/internal/handler/wire.go**：参数列表追加 `affiliateHandler` + 保留
+   `pluginHandler` / `pluginSettingsHandler`；`ProvideAdminHandlers` 返回结构体
+   同步增加 `Affiliate` 字段；ProviderSet 列表追加 `admin.NewAffiliateHandler`
+3. **backend/cmd/server/wire_gen.go**：上游新增 `proxyRepository` /
+   `rectifierSettingsCache` / `settingService.SetRectifierSettingsCache(...)`
+   全部吸纳；删除上游分支 channel handler 列表，保留 plugin 的 `pluginManager`
+   初始化大块，`ProvideAdminHandlers` 调用同步增加 `affiliateHandler`
+4. **backend/internal/service/wire.go**：`ProvideSettingService` 签名追加
+   `proxyRepo ProxyRepository` 参数 + 调 `svc.SetProxyRepository(proxyRepo)`
+   （setting_service.go 已被 auto-merge 引入新方法和字段）
+5. **backend/internal/service/account_test_service.go**：全部接受上游
+   （`prompt`/`mode` 参数 + `normalizeAccountTestMode` + `reconcileOpenAI429State`）
+6. **backend/internal/service/account_test_service_openai_test.go**：全部接受上游
+   （新签名 + 新增 SSE EOF / 429 等测试用例）
+7. **backend/internal/service/openai_gateway_service.go**：5 个 hunk 都取上游骨架
+   并把 `channelService.X(ctx, groupID)` 改回 plugin 的 `channelCacheReader.X(ctx,
+   groupID, PlatformOpenAI)`（保留 plugin 的 reader 字段 + 上游的 compact / restriction
+   语义）
+8. **backend/internal/service/payment_service.go**：struct 字段表保留 plugin 的
+   `eventPublisher PluginEventPublisher`（Plugin Hook Phase B）+ 吸纳上游新增
+   `affiliateService *AffiliateService`
+9. **frontend/src/api/admin/index.ts**：删除 `channels*` 三个 export，吸纳
+   `affiliates: affiliatesAPI` + `affiliatesAPI` 命名导出
+10. **frontend/src/components/account/EditAccountModal.vue**：保留 plugin 的
+    sdk-bundled UI 组件 import（`@sub2api/plugin-sdk` 出 `BaseDialog` / `ConfirmDialog`
+    / `Select`），吸纳上游新增的 `OpenAICompactMode` 类型
+11. **frontend/src/views/admin/SettingsView.vue**：保留 plugin 的 sdk-bundled UI
+    （`Select` / `ConfirmDialog` / `Toggle` 来自 `@sub2api/plugin-sdk`），吸纳上游
+    新增的 `affiliatesAPI` 等 affiliate 相关 import
+
+### Build / vet 验证
+
+- `cd backend && go build ./... && go vet ./...` — clean
+- `cd plugin-sdk && go build ./...` — clean
+- `cd plugins/channel-management && go build ./... && go vet ./...` — clean
+- VERSION 保持 `0.1.114.4-test.3`（未递增）
+
+### 二次修复
+
+无：本批次冲突均为 host 端 hunk-level，未触发 channel-coupled blocker。
+plugins/ 全程 0 个 UU；所有 channel monitor / channel handler 文件继续保持
+"已删除 + 不重新引入"状态，符合 plugin port 边界。
+
+### 待办
+
+无 plugins/ TODO 新增。后续 v0.1.120 / v0.1.121 上游同步如再涉及 OpenAI gateway 的
+channel 相关重构，注意继续把 `channelService` 改回 `channelCacheReader` 的命名差异。

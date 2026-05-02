@@ -106,10 +106,14 @@ type SystemSettings struct {
 	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
 
-	DefaultConcurrency   int                          `json:"default_concurrency"`
-	DefaultBalance       float64                      `json:"default_balance"`
-	DefaultUserRPMLimit  int                          `json:"default_user_rpm_limit"`
-	DefaultSubscriptions []DefaultSubscriptionSetting `json:"default_subscriptions"`
+	DefaultConcurrency           int                          `json:"default_concurrency"`
+	DefaultBalance               float64                      `json:"default_balance"`
+	AffiliateRebateRate          float64                      `json:"affiliate_rebate_rate"`
+	AffiliateRebateFreezeHours   int                          `json:"affiliate_rebate_freeze_hours"`
+	AffiliateRebateDurationDays  int                          `json:"affiliate_rebate_duration_days"`
+	AffiliateRebatePerInviteeCap float64                      `json:"affiliate_rebate_per_invitee_cap"`
+	DefaultUserRPMLimit          int                          `json:"default_user_rpm_limit"`
+	DefaultSubscriptions         []DefaultSubscriptionSetting `json:"default_subscriptions"`
 
 	ServiceQuotaEnabled bool `json:"service_quota_enabled"`
 
@@ -193,6 +197,9 @@ type SystemSettings struct {
 
 	// Available Channels feature switch (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+
+	// Affiliate (邀请返利) feature switch
+	AffiliateEnabled bool `json:"affiliate_enabled"`
 }
 
 type DefaultSubscriptionSetting struct {
@@ -246,6 +253,8 @@ type PublicSettings struct {
 
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 	ServiceQuotaEnabled      bool `json:"service_quota_enabled"`
+
+	AffiliateEnabled bool `json:"affiliate_enabled"`
 }
 
 // OverloadCooldownSettings 529过载冷却配置 DTO
@@ -270,6 +279,8 @@ type RectifierSettings struct {
 	ThinkingBudgetEnabled    bool     `json:"thinking_budget_enabled"`
 	APIKeySignatureEnabled   bool     `json:"apikey_signature_enabled"`
 	APIKeySignaturePatterns  []string `json:"apikey_signature_patterns"`
+	AdvisorToolEnabled       bool     `json:"advisor_tool_enabled"`
+	AdvisorToolPatterns      []string `json:"advisor_tool_patterns"`
 }
 
 // BetaPolicyRule Beta 策略规则 DTO

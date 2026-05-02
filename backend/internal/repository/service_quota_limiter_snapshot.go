@@ -23,7 +23,14 @@ func (l *serviceQuotaLimiter) Snapshot(ctx context.Context, key string, window t
 	if l == nil || l.rdb == nil {
 		return service.LimiterSnapshot{}, nil
 	}
-	return l.snapshotByMode(ctx, service.SnapshotKey{Key: key, Window: window, Mode: mode})
+	// mode 字符串协议：fixed/rolling 直接对应 window 模式；mode == "" 表示 concurrency
+	// （ZSET，无 window 概念）。SnapshotKey 用 IsConcurrency 字段区分，所以这里把 mode==""
+	// 翻译过去，避免误走 fixed 路径对 ZSET key 跑 GET 触发 WRONGTYPE。
+	sk := service.SnapshotKey{Key: key, Window: window, Mode: mode}
+	if mode == "" {
+		sk.IsConcurrency = true
+	}
+	return l.snapshotByMode(ctx, sk)
 }
 
 // snapshotByMode 根据 SnapshotKey 字段路由到具体实现，避免在多个调用点重复 if/else。

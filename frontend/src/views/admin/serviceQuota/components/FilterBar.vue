@@ -114,7 +114,7 @@ const rules = ref<ServiceQuotaRule[]>([])
 onMounted(async () => {
   try {
     rules.value = await listServiceQuotaRules()
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('[ServiceQuotaMonitor.FilterBar] Failed to load rules', err)
     rules.value = []
   }

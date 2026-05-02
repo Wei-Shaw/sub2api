@@ -296,9 +296,17 @@ func TestServiceQuotaRecordDelta_TokenComponents(t *testing.T) {
 			wantDelta: 0.42,
 		},
 		{
-			name:      "rpm 不入 Record（应返回 0）",
-			lim:       ServiceQuotaLimiterDef{LimiterType: ServiceQuotaLimiterRPM},
+			// 旧语义：CountOnArrival=true（迁移 137 把存量 RPM 行迁到此值）→ arrival 阶段已 +1，
+			// Record 不再重复计数，wantDelta=0。
+			name:      "rpm CountOnArrival=true 不入 Record（应返回 0）",
+			lim:       ServiceQuotaLimiterDef{LimiterType: ServiceQuotaLimiterRPM, CountOnArrival: true},
 			wantDelta: 0,
+		},
+		{
+			// 新默认：CountOnArrival=false → 仅成功才 +1，由 Record 阶段兜底，wantDelta=1。
+			name:      "rpm CountOnArrival=false 进入 Record（成功才计 +1）",
+			lim:       ServiceQuotaLimiterDef{LimiterType: ServiceQuotaLimiterRPM, CountOnArrival: false},
+			wantDelta: 1,
 		},
 		{
 			name:      "concurrency 不入 Record（应返回 0）",

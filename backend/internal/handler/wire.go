@@ -37,6 +37,7 @@ func ProvideAdminHandlers(
 	paymentHandler *admin.PaymentHandler,
 	serviceQuotaHandler *admin.ServiceQuotaHandler,
 	serviceQuotaMonitorHandler *admin.ServiceQuotaMonitorHandler,
+	affiliateHandler *admin.AffiliateHandler,
 	pluginHandler *admin.PluginHandler,
 	pluginSettingsHandler *admin.PluginSettingsHandler,
 ) *AdminHandlers {
@@ -68,6 +69,7 @@ func ProvideAdminHandlers(
 		Payment:               paymentHandler,
 		ServiceQuota:          serviceQuotaHandler,
 		ServiceQuotaMonitor:   serviceQuotaMonitorHandler,
+		Affiliate:             affiliateHandler,
 		Plugin:                pluginHandler,
 		PluginSettings:        pluginSettingsHandler,
 	}
@@ -181,6 +183,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewPaymentHandler,
 	admin.NewServiceQuotaHandler,
 	admin.NewServiceQuotaMonitorHandler,
+	admin.NewAffiliateHandler,
 	ProvidePluginHandler,
 	ProvidePluginSettingsHandler,
 

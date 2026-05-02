@@ -8,22 +8,31 @@
     <form id="service-quota-form" class="space-y-6" @submit.prevent="save">
       <section class="grid gap-4 md:grid-cols-2">
         <label class="form-field md:col-span-2">
-          <span class="input-label">{{ t('admin.serviceQuota.form.name') }}</span>
+          <RequiredLabel :label="t('admin.serviceQuota.form.name')" />
           <input v-model="form.name" :placeholder="t('admin.serviceQuota.form.namePlaceholder')" class="input" maxlength="128" />
         </label>
         <label class="form-field">
-          <span class="input-label">{{ t('admin.serviceQuota.columns.status') }}</span>
+          <RequiredLabel :label="t('admin.serviceQuota.columns.status')" required />
           <select v-model="form.enabled" class="input">
             <option :value="true">{{ t('common.enabled') }}</option>
             <option :value="false">{{ t('common.disabled') }}</option>
           </select>
         </label>
         <label class="form-field">
-          <span class="input-label">{{ t('admin.serviceQuota.form.counterMode') }}</span>
-          <select v-model="form.counter_mode" class="input">
+          <RequiredLabel :label="t('admin.serviceQuota.form.counterMode')" required />
+          <select
+            v-model="form.counter_mode"
+            :class="['input', { 'border-red-400 focus:ring-red-500': !!errorFor('counter_mode') }]"
+          >
             <option v-for="item in counterModeOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
           </select>
           <span class="text-xs text-gray-500 dark:text-gray-400">{{ counterModeHint(form.counter_mode) }}</span>
+          <span
+            v-if="errorFor('counter_mode')"
+            class="block text-xs text-red-500"
+          >
+            {{ t('admin.serviceQuota.errors.' + errorFor('counter_mode')) }}
+          </span>
         </label>
         <label class="form-field md:col-span-2 flex items-center gap-2">
           <input v-model="form.is_fallback" type="checkbox" class="h-4 w-4 rounded border-gray-300" />
@@ -35,12 +44,18 @@
       </section>
 
       <section v-if="form.counter_mode === 'user'" class="space-y-2">
-        <span class="input-label">{{ t('admin.serviceQuota.form.targetUserIds') }}</span>
+        <RequiredLabel :label="t('admin.serviceQuota.form.targetUserIds')" required />
         <UserMultiSelect
           v-model="selectedTargetUsers"
           :placeholder="t('admin.serviceQuota.form.targetUserIdsPlaceholder')"
         />
         <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.serviceQuota.form.targetUserIdsRequired') }}</span>
+        <span
+          v-if="errorFor('target_user_ids')"
+          class="block text-xs text-red-500"
+        >
+          {{ t('admin.serviceQuota.errors.' + errorFor('target_user_ids')) }}
+        </span>
       </section>
 
       <CollapsibleSection
@@ -50,7 +65,7 @@
         :collapsed="limitersCollapsed"
         @update:collapsed="limitersCollapsed = $event"
       >
-        <LimiterEditor v-model="form.limiters" />
+        <LimiterEditor v-model="form.limiters" :errors="validationErrors" />
       </CollapsibleSection>
 
       <CollapsibleSection
@@ -60,7 +75,7 @@
         :collapsed="pathsCollapsed"
         @update:collapsed="pathsCollapsed = $event"
       >
-        <PathEditor v-model="form.paths" />
+        <PathEditor v-model="form.paths" :errors="validationErrors" />
       </CollapsibleSection>
     </form>
 
@@ -90,9 +105,15 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import UserMultiSelect from '@/components/common/UserMultiSelect.vue'
 import LimiterEditor from '@/components/admin/LimiterEditor.vue'
 import PathEditor from '@/components/admin/PathEditor.vue'
+import RequiredLabel from '@/components/common/RequiredLabel.vue'
 import CollapsibleSection from './CollapsibleSection.vue'
 import { useAppStore } from '@/stores/app'
-import { extractApiErrorMessage } from '@/utils/apiError'
+import { extractI18nErrorMessage } from '@/utils/apiError'
+import {
+  validateServiceQuotaRule,
+  parseServiceQuotaApiErrors,
+  type ValidationError,
+} from '@/utils/validateServiceQuota'
 import type { SimpleUser } from '@/api/admin/usage'
 import {
   createServiceQuotaRule,
@@ -129,12 +150,24 @@ const limitersCollapsed = ref(false)
 const pathsCollapsed = ref(false)
 const saving = ref(false)
 
+// validationErrors 兼容前端 validateServiceQuotaRule 输出与后端
+// SERVICE_QUOTA_VALIDATION_ERROR.details.fields；都以 {path, code} 形式。
+// errorFor(path) 返回该字段第一条 code，子组件按 path 自取。
+const validationErrors = ref<ValidationError[]>([])
+
+function errorFor(path: string): string {
+  return validationErrors.value.find((e) => e.path === path)?.code || ''
+}
+
 // 每次 show 由 false → true 时按 editingRule 重置表单；
 // 关闭对话框时不清空，避免渐隐过程中文案先消失
 watch(
   () => props.show,
   (next, prev) => {
-    if (next && !prev) resetForm(props.editingRule)
+    if (next && !prev) {
+      resetForm(props.editingRule)
+      validationErrors.value = []
+    }
   }
 )
 
@@ -161,11 +194,16 @@ function resetForm(rule: ServiceQuotaRule | null) {
       uid: crypto.randomUUID(),
       limiter_type: l.limiter_type,
       window_mode: l.window_mode,
-      limit_value: l.limit_value,
+      // 整数型 limiter（rpm/tpm/tpd/concurrency）老数据可能是 999999.999997
+      // 这种 IEEE754 误差残留：编辑前 round 一次，避免编辑框直接呈现毛刺值；
+      // daily_usd 保留原小数（金额需要小数精度）
+      limit_value: l.limiter_type === 'daily_usd' ? l.limit_value : Math.round(l.limit_value),
       // TPM/TPD 才有 token_components；后端可能返回 null/undefined，统一展开成数组
       token_components: limiterUsesTokenComponents(l.limiter_type)
         ? (l.token_components ?? TOKEN_COMPONENTS_DEFAULT).slice()
         : undefined,
+      // RPM 才有 count_on_arrival；后端默认 false
+      count_on_arrival: l.limiter_type === 'rpm' ? l.count_on_arrival === true : undefined,
     }))
     initial.paths = rule.paths.map((p) => ({
       uid: crypto.randomUUID(),
@@ -198,20 +236,9 @@ function cleanNumber(value?: number | null): number | null {
   return value && value > 0 ? value : null
 }
 
+// normalizePayload 仅做"strip uid + 按类型决定可选字段"两件事；
+// 校验已经被 validateServiceQuotaRule 接管，这里假设 form 已合规。
 function normalizePayload(): ServiceQuotaRuleInput {
-  // 限额必须 > 0：阻止意外提交 limit_value=0 导致规则永久拒绝请求
-  for (const l of form.limiters) {
-    if (!(Number(l.limit_value) > 0)) {
-      throw new Error(t('admin.serviceQuota.errors.limitValueMustBePositive'))
-    }
-    // TPM/TPD 必须至少勾 1 项 token component；提交侧拦截，避免后端 400
-    if (limiterUsesTokenComponents(l.limiter_type)) {
-      const comps = l.token_components ?? TOKEN_COMPONENTS_DEFAULT
-      if (comps.length === 0) {
-        throw new Error(t('admin.serviceQuota.tokenComponents.minOneRequired'))
-      }
-    }
-  }
   return {
     enabled: form.enabled,
     name: cleanText(form.name),
@@ -219,14 +246,22 @@ function normalizePayload(): ServiceQuotaRuleInput {
     is_fallback: form.is_fallback,
     // 注意：strip 掉 uid（仅前端用于 v-for stable key）
     limiters: form.limiters.map((l) => {
+      const rawLimit = Number(l.limit_value)
+      // 整数型 limiter 提交前最后一次 round 防御：保证写入 DB 的总是整数，
+      // 避免任何上游路径泄漏 IEEE754 误差。daily_usd 保留小数。
+      const limitValue = l.limiter_type === 'daily_usd' ? rawLimit : Math.round(rawLimit)
       const out: ServiceQuotaLimiterInput = {
         limiter_type: l.limiter_type,
         window_mode: l.limiter_type === 'concurrency' ? 'fixed' : l.window_mode,
-        limit_value: Number(l.limit_value),
+        limit_value: limitValue,
       }
       // 只有 TPM/TPD 才提交 token_components；其他类型不带，让后端自然走默认/忽略路径
       if (limiterUsesTokenComponents(l.limiter_type)) {
         out.token_components = (l.token_components ?? TOKEN_COMPONENTS_DEFAULT).slice()
+      }
+      // 只有 RPM 才提交 count_on_arrival；缺省 false 与后端一致
+      if (l.limiter_type === 'rpm') {
+        out.count_on_arrival = l.count_on_arrival === true
       }
       return out
     }),
@@ -242,6 +277,22 @@ function normalizePayload(): ServiceQuotaRuleInput {
 }
 
 async function save() {
+  // 提交前先把 selectedTargetUsers 同步到 form.target_user_ids，让校验函数能拿到
+  const formForValidate: ServiceQuotaRuleInput = {
+    ...form,
+    target_user_ids:
+      form.counter_mode === 'user'
+        ? selectedTargetUsers.value.map((u) => u.id)
+        : null,
+  }
+  const result = validateServiceQuotaRule(formForValidate)
+  validationErrors.value = result.errors
+  if (!result.ok) {
+    // 客户端校验未通过：直接显示行内错误，不调 API；toast 给一个总览提示
+    appStore.showError(t('admin.serviceQuota.errors.formInvalid'))
+    return
+  }
+
   saving.value = true
   try {
     const payload = normalizePayload()
@@ -254,7 +305,18 @@ async function save() {
     emit('update:show', false)
     emit('saved')
   } catch (error: unknown) {
-    appStore.showError(extractApiErrorMessage(error, t('admin.serviceQuota.saveError')))
+    // 后端 SERVICE_QUOTA_VALIDATION_ERROR：把字段错误投影到行内显示
+    const apiErrors = parseServiceQuotaApiErrors(error)
+    if (apiErrors && apiErrors.length > 0) {
+      validationErrors.value = apiErrors
+      appStore.showError(t('admin.serviceQuota.errors.formInvalid'))
+      return
+    }
+    // 其他错误：优先按后端 reason 查 common.errors.* 本地化文案
+    // （如 INVALID_REQUEST_BODY / INVALID_ID / SERVICE_QUOTA_UNAVAILABLE），
+    // miss 则走 saveError 兜底；最后才退化到后端英文 message
+    const fallback = t('admin.serviceQuota.saveError')
+    appStore.showError(extractI18nErrorMessage(error, t, 'common.errors', fallback))
   } finally {
     saving.value = false
   }

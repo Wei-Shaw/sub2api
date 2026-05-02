@@ -24,3 +24,7 @@ plugins/*/migrations/*.sql text eol=lf
 
 # Dockerfile
 Dockerfile text eol=lf
+
+# Patch / diff 文件必须保持 LF，否则 git apply 在 *nix 环境失败
+*.patch text eol=lf
+*.diff text eol=lf

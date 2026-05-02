@@ -72,7 +72,7 @@ func (s *rpmOverrideRepoStub) GetRPMOverrideByUserAndGroup(_ context.Context, _,
 
 func newBillingServiceForRPM(t *testing.T, cache UserRPMCache, rateRepo UserGroupRateRepository) *BillingCacheService {
 	t.Helper()
-	// 用 nil BillingCache 走 "无缓存" 分支，避免 CheckBillingEligibility 副作用。
+	// 用 nil BillingCache 走 "无缓存" 分支，避免 PrepareBillingCheck 副作用。
 	// 我们只直接测 checkRPM。
 	svc := NewBillingCacheService(nil, nil, nil, nil, cache, rateRepo, &config.Config{})
 	t.Cleanup(svc.Stop)

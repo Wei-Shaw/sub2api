@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"net/http"
 	"strconv"
 	"strings"
 
@@ -16,7 +15,7 @@ import (
 // 单一职责：接受 admin filter（rule_id/user_id/channel_id/group_id/account_id/platform）
 // 透传给 ServiceQuotaMonitorService.Snapshot，把结果序列化为 JSON。
 // 错误语义统一走 response.ErrorFrom（业务层用 ApplicationError 表达）；
-// 解析阶段的非数字 query 直接返回 400 + code=invalid_query_param。
+// 解析阶段的非数字 query 直接返回 400 + code=INVALID_QUERY_PARAM。
 type ServiceQuotaMonitorHandler struct {
 	svc service.ServiceQuotaMonitorService
 }
@@ -31,7 +30,10 @@ func NewServiceQuotaMonitorHandler(svc service.ServiceQuotaMonitorService) *Serv
 // 区分"没指定"与"指定为 0"。任何字段解析失败立即 400，不再调用 service。
 func (h *ServiceQuotaMonitorHandler) Snapshot(c *gin.Context) {
 	if h == nil || h.svc == nil {
-		response.Error(c, http.StatusNotFound, "service quota monitor unavailable")
+		response.ErrorFrom(c, pkgerrors.NotFound(
+			"SERVICE_QUOTA_MONITOR_UNAVAILABLE",
+			"service quota monitor unavailable",
+		))
 		return
 	}
 	filter, err := parseMonitorFilter(c)
@@ -48,7 +50,7 @@ func (h *ServiceQuotaMonitorHandler) Snapshot(c *gin.Context) {
 }
 
 // parseMonitorFilter 解析 6 个 admin query。任何非数字字段直接返回 BadRequest，
-// 触发 response.ErrorFrom 输出 {code:400, reason:"invalid_query_param", details:{field, value}}。
+// 触发 response.ErrorFrom 输出 {code:400, reason:"INVALID_QUERY_PARAM", details:{field, value}}。
 func parseMonitorFilter(c *gin.Context) (service.MonitorSnapshotFilter, error) {
 	filter := service.MonitorSnapshotFilter{}
 	if v, ok, err := parseInt64Query(c, "rule_id"); err != nil {
@@ -94,7 +96,7 @@ func parseInt64Query(c *gin.Context, key string) (int64, bool, error) {
 	v, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil {
 		return 0, false, pkgerrors.BadRequest(
-			"invalid_query_param",
+			"INVALID_QUERY_PARAM",
 			"query parameter must be an integer",
 		).WithMetadata(map[string]string{
 			"field": key,

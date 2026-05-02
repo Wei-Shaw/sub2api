@@ -51,7 +51,8 @@ func (s *ServiceQuotaLimiterSnapshotSuite) Test_Snapshot_Rolling_ResetAtUnixMs()
 		1500, "rolling ResetAtUnixMs 应 ≈ now + window，容差 1.5s")
 }
 
-// Test_Snapshot_Fixed_ResetAtUnixMs 验证 fixed 快照返回的 ResetAtUnixMs ≈ now+ttl。
+// Test_Snapshot_Fixed_ResetAtUnixMs 验证 fixed 快照返回的 ResetAtUnixMs 对齐到下一个 window 整点。
+// 修复后的 fixed window TTL = window - (now % window)，所以 ResetAtUnixMs ≈ ceil(now/window)*window。
 func (s *ServiceQuotaLimiterSnapshotSuite) Test_Snapshot_Fixed_ResetAtUnixMs() {
 	const (
 		key    = "svcquota:test:snapshot:fixed:reset"
@@ -63,10 +64,12 @@ func (s *ServiceQuotaLimiterSnapshotSuite) Test_Snapshot_Fixed_ResetAtUnixMs() {
 	snap, err := s.limiter.Snapshot(s.ctx, key, window, service.ServiceQuotaWindowFixed)
 	s.RequireNoError(err)
 	require.True(s.T(), snap.Exists)
+	windowMs := window.Milliseconds()
+	expectedResetMs := beforeMs + windowMs - (beforeMs % windowMs)
 	require.InDelta(s.T(),
-		float64(beforeMs+window.Milliseconds()),
+		float64(expectedResetMs),
 		float64(snap.ResetAtUnixMs),
-		1500, "fixed ResetAtUnixMs 应 ≈ now + ttl，容差 1.5s")
+		1500, "fixed ResetAtUnixMs 应 ≈ 下一个 window 整点，容差 1.5s")
 }
 
 // Test_Snapshot_Concurrency_ResetAtUnixMs 验证 concurrency 快照 ResetAtUnixMs 始终为 0。

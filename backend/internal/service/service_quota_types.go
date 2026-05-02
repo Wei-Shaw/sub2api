@@ -1,90 +1,10 @@
 package service
 
 import (
-	"context"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
-
-const (
-	SettingKeyServiceQuotaEnabled = "service_quota_enabled"
-
-	// SettingKeyServiceQuotaPreCheckTwoPhase 控制 PreCheck 是否走两阶段路径
-	// （PreCheckSelect 在路由前选规则、PreCheckAcquire 在选定 channel/account 后抢槽位）。
-	//
-	// 默认 false（关闭）：CheckBillingEligibility 行为与历史版本完全一致，PreCheck 在 channel/account
-	// 还未确定时被一次性调用，account/channel scope 的 concurrency / rpm 限流器仍然失效。
-	//
-	// true（开启）：BillingTicket.Prepare 只调 PreCheckSelect 选规则，BillingTicket.Consume 在
-	// caller 选定 channel + account 后调用 PreCheckAcquire 才真正抢 concurrency / 增 rpm，
-	// account/channel scope 限流器从此生效。详见 BillingCacheService.PrepareBillingCheck。
-	SettingKeyServiceQuotaPreCheckTwoPhase = "service_quota.precheck_two_phase"
-
-	ServiceQuotaLimiterRPM         = "rpm"
-	ServiceQuotaLimiterTPM         = "tpm"
-	ServiceQuotaLimiterTPD         = "tpd"
-	ServiceQuotaLimiterDailyUSD    = "daily_usd"
-	ServiceQuotaLimiterConcurrency = "concurrency"
-
-	// ServiceQuotaCounterMode* 决定规则 Redis 计数 key 的分片方式：
-	//   - user     → 规则只对关联表中列出的用户生效，每个用户独立计数
-	//   - per_user → 对 scope 内所有用户生效，按 user_id 分片
-	//   - shared   → 对 scope 内所有用户生效，共享同一计数器
-	ServiceQuotaCounterModeUser    = "user"
-	ServiceQuotaCounterModePerUser = "per_user"
-	ServiceQuotaCounterModeShared  = "shared"
-
-	ServiceQuotaWindowFixed   = "fixed"
-	ServiceQuotaWindowRolling = "rolling"
-
-	// ServiceQuotaTokenComponent* 决定 TPM/TPD 限流器把哪几种 token 计入计数。
-	// 仅 TPM/TPD 使用此配置；RPM/concurrency/daily_usd 忽略。
-	//
-	// 默认值（ServiceQuotaTokenComponentsDefault）= {input, output, cache_creation}：
-	//   - 与 Anthropic 3.7+ ITPM(input+cache_creation) + OTPM(output) 双桶之和一致
-	//   - 与 Bedrock Claude 3.7+ 公式 InputTokenCount + CacheWriteInputTokens + OutputTokenCount 一致
-	//   - 剔除 cache_read：鼓励 prompt cache，与 Anthropic 3.7+/Bedrock 3.7+/Groq 一致
-	//   - 与 OpenAI/Gemini 单桶相比略松（它们也算 cache_read）
-	ServiceQuotaTokenComponentInput         = "input"
-	ServiceQuotaTokenComponentOutput        = "output"
-	ServiceQuotaTokenComponentCacheCreation = "cache_creation"
-	ServiceQuotaTokenComponentCacheRead     = "cache_read"
-)
-
-// ServiceQuotaTokenComponentsDefault 是 TPM/TPD 限流器 token_components 字段的默认值，
-// 与 DB DEFAULT 一致。新建限流器若未传该字段则采用此默认。
-var ServiceQuotaTokenComponentsDefault = []string{
-	ServiceQuotaTokenComponentInput,
-	ServiceQuotaTokenComponentOutput,
-	ServiceQuotaTokenComponentCacheCreation,
-}
-
-// ServiceQuotaTokenComponentsAll 是全部合法 token component 值，用于校验 input。
-var ServiceQuotaTokenComponentsAll = []string{
-	ServiceQuotaTokenComponentInput,
-	ServiceQuotaTokenComponentOutput,
-	ServiceQuotaTokenComponentCacheCreation,
-	ServiceQuotaTokenComponentCacheRead,
-}
-
-// IsValidServiceQuotaTokenComponent 判断字符串是否是合法 token component。
-func IsValidServiceQuotaTokenComponent(s string) bool {
-	switch s {
-	case ServiceQuotaTokenComponentInput,
-		ServiceQuotaTokenComponentOutput,
-		ServiceQuotaTokenComponentCacheCreation,
-		ServiceQuotaTokenComponentCacheRead:
-		return true
-	}
-	return false
-}
-
-// ServiceQuotaLimiterTypeUsesTokenComponents 判断 limiter type 是否使用 token_components 字段。
-// 仅 TPM/TPD；其他类型应忽略此字段（service 层会强制置 nil）。
-func ServiceQuotaLimiterTypeUsesTokenComponents(kind string) bool {
-	return kind == ServiceQuotaLimiterTPM || kind == ServiceQuotaLimiterTPD
-}
 
 var (
 	ErrServiceQuotaExceeded = infraerrors.TooManyRequests(
@@ -101,6 +21,9 @@ var (
 //
 // TokenComponents 仅对 TPM/TPD 有效，决定哪几种 token 计入计数（input/output/cache_creation/cache_read）。
 // 其他 limiter type 该字段为 nil；service 层会强制清洗。
+//
+// CountOnArrival 仅对 RPM 有效：true 表示请求到达即 +1（旧语义，迁移 137 把现存 RPM 行迁移成此值），
+// false 表示仅在请求成功后由 Record 阶段 +1（默认）。其他 limiter type 该字段恒为 false 且无意义。
 type ServiceQuotaLimiterDef struct {
 	ID              int64    `json:"id"`
 	RuleID          int64    `json:"rule_id"`
@@ -108,6 +31,7 @@ type ServiceQuotaLimiterDef struct {
 	WindowMode      string   `json:"window_mode"`
 	LimitValue      float64  `json:"limit_value"`
 	TokenComponents []string `json:"token_components,omitempty"`
+	CountOnArrival  bool     `json:"count_on_arrival,omitempty"`
 }
 
 type ServiceQuotaLimiterInput struct {
@@ -115,6 +39,32 @@ type ServiceQuotaLimiterInput struct {
 	WindowMode      string   `json:"window_mode"`
 	LimitValue      float64  `json:"limit_value"`
 	TokenComponents []string `json:"token_components,omitempty"`
+	CountOnArrival  *bool    `json:"count_on_arrival,omitempty"`
+}
+
+// ShouldIncrementOnArrival 决定 PreCheckAcquire 阶段是否需要对该 limiter +1：
+//   - 仅 RPM 受 CountOnArrival 控制：true → arrival 阶段 +1（旧语义，Record 不再重复）
+//   - 其他 limiter 走各自既有路径（concurrency=Acquire / TPM/TPD/daily_usd=Record），
+//     这里返回 false 表示 arrival 阶段不需要额外写入
+//
+// 抽到 receiver 是为了让 PreCheckAcquire/Record 共用同一判定，避免规则分散漂移。
+func (l ServiceQuotaLimiterDef) ShouldIncrementOnArrival() bool {
+	return l.LimiterType == ServiceQuotaLimiterRPM && l.CountOnArrival
+}
+
+// ShouldIncrementOnRecord 决定 Record 阶段（请求成功落账后）是否需要对该 limiter +1：
+//   - RPM 仅当 CountOnArrival=false 时由 Record 兜底 +1（"成功才计"语义）
+//   - TPM/TPD/daily_usd 天然由 Record 计数（与 CountOnArrival 无关）
+//   - concurrency 不通过 Record 计数
+func (l ServiceQuotaLimiterDef) ShouldIncrementOnRecord() bool {
+	switch l.LimiterType {
+	case ServiceQuotaLimiterRPM:
+		return !l.CountOnArrival
+	case ServiceQuotaLimiterTPM, ServiceQuotaLimiterTPD, ServiceQuotaLimiterDailyUSD:
+		return true
+	default:
+		return false
+	}
 }
 
 // ServiceQuotaPathDef 路径定义：单向递进链 平台→渠道→分组→账号→模型，
@@ -223,6 +173,59 @@ type ServiceQuotaLease struct {
 	Release func()
 }
 
+// ServiceQuotaPredictedBlock 是调度阶段批量预测出的"该账号已被服务限额阻塞"结果。
+//
+// 仅当 path 含 account_id（最高优先级）或 channel_id 时才会被标记 —— 这两类 scope
+// 切号才有意义；user / group / platform scope 命中后切号无解，留给 Consume 阶段返回 429。
+//
+// 模型维度天然支持：path.ModelPattern 与 req.Model 的匹配在 findMatchingPaths 已完成，
+// 此结构只描述"哪个规则的哪个 limiter 让该账号当前不可调度"，不再持有 path/model 信息。
+type ServiceQuotaPredictedBlock struct {
+	RuleID      int64
+	LimiterType string // rpm / tpm / tpd / daily_usd / concurrency
+	ScopeKind   string // account / channel
+	Used        float64
+	Limit       float64
+}
+
+// ServiceQuotaPredictedBlockScope* 是 ServiceQuotaPredictedBlock.ScopeKind 的取值集合。
+// 仅 account / channel 会出现在 SnapshotForAccounts 返回的 map；其他 scope 命中后切号无解，
+// 留给 Consume 阶段返回 429（与原生限流命中所有可调度账号 → 503 链路保持一致）。
+const (
+	ServiceQuotaPredictedBlockScopeAccount  = "account"
+	ServiceQuotaPredictedBlockScopeChannel  = "channel"
+	ServiceQuotaPredictedBlockScopeGroup    = "group"
+	ServiceQuotaPredictedBlockScopePlatform = "platform"
+	ServiceQuotaPredictedBlockScopeUser     = "user"
+)
+
+// serviceQuotaPathScopeKind 判定 path 的 scope 维度。
+//
+// 优先级（最高优先级铁律）：
+//  1. AccountID != nil       → account（**最高**，无视是否同时含 channel/group/platform/model）
+//  2. ChannelID != nil       → channel
+//  3. GroupID != nil         → group
+//  4. Platform != ""         → platform
+//  5. 否则                   → user
+//
+// 切号语义只对 account / channel 有意义：含 account → 跳过该账号；只含 channel → 跳过
+// 该 channel 的全部账号；其他 scope 命中后没有"切到另一个就好"的解，必须落到 Consume 429。
+func serviceQuotaPathScopeKind(path ServiceQuotaPathDef) string {
+	if path.AccountID != nil {
+		return ServiceQuotaPredictedBlockScopeAccount
+	}
+	if path.ChannelID != nil {
+		return ServiceQuotaPredictedBlockScopeChannel
+	}
+	if path.GroupID != nil {
+		return ServiceQuotaPredictedBlockScopeGroup
+	}
+	if path.Platform != nil && *path.Platform != "" {
+		return ServiceQuotaPredictedBlockScopePlatform
+	}
+	return ServiceQuotaPredictedBlockScopeUser
+}
+
 // ServiceQuotaPreCheckPlan 是两阶段 PreCheck 的中间态。
 //
 // 阶段 A（PreCheckSelect）只做"必到字段"过滤——is_enabled、counter_mode=user 时 target_user_ids 命中——
@@ -241,7 +244,8 @@ type ServiceQuotaPreCheckPlan struct {
 	PreparedAt time.Time
 }
 
-// AccountScopeInfo / GroupScopeInfo 用于 path 链路一致性校验：下级必须是上级的子孙。
+// AccountScopeInfo / GroupScopeInfo / ChannelScopeInfo 用于 path 链路一致性校验：
+// 下级必须是上级的子孙（account ⊂ group ⊂ platform；channel 服务的 platform/group 必须包含 path 指定值）。
 type AccountScopeInfo struct {
 	Platform string
 	GroupIDs []int64
@@ -251,55 +255,15 @@ type GroupScopeInfo struct {
 	Platform string
 }
 
-type ServiceQuotaRuleRepository interface {
-	List(ctx context.Context, filter ServiceQuotaListFilter) ([]*ServiceQuotaRule, error)
-	Create(ctx context.Context, input ServiceQuotaRuleInput) (*ServiceQuotaRule, error)
-	Update(ctx context.Context, id int64, input ServiceQuotaRuleInput) (*ServiceQuotaRule, error)
-	Delete(ctx context.Context, id int64) error
-	FetchAccountScope(ctx context.Context, accountID int64) (*AccountScopeInfo, error)
-	FetchGroupScope(ctx context.Context, groupID int64) (*GroupScopeInfo, error)
-}
-
-// ServiceQuotaUserChecker 是 service quota 在校验 target_user_ids 时使用的最小化用户存在性检查接口。
+// ChannelScopeInfo 用于 path 校验 channel 的服务关系：
+//   - Platforms：channel 的 model_pricing 中出现过的所有 platform 集合（小写归一化）
+//   - GroupIDs：channel 通过 channel_groups 关联表绑定的所有 group_id
 //
-// 单独抽出小接口（接口隔离原则）避免侵入庞大的 UserRepository，同时让 *userRepository
-// 自动满足该接口（duck typing）。返回值与 group_repo.ExistsByIDs 对齐：map[id]exists，
-// 缺失 ID 由调用方按需收集。
-type ServiceQuotaUserChecker interface {
-	ExistsByIDs(ctx context.Context, ids []int64) (map[int64]bool, error)
-}
-
-type ServiceQuotaLimiter interface {
-	Current(ctx context.Context, key string, window time.Duration, mode string) (float64, error)
-	Increment(ctx context.Context, key string, delta float64, window time.Duration, mode string) (float64, error)
-	Acquire(ctx context.Context, key, member string, limit int64) (bool, error)
-	Release(ctx context.Context, key, member string) error
-	// Snapshot 只读返回单个 key 的当前计数，不执行任何写入（区别于 Current 的 rolling
-	// 模式会顺带 ZRemRangeByScore）。监控页用它读取规则当前用量，必须保证多次调用幂等。
-	//
-	// mode 取值：ServiceQuotaWindowFixed / ServiceQuotaWindowRolling / ""（concurrency
-	// 路径走 SnapshotKey.IsConcurrency，mode 字段被忽略）。key 不存在时返回
-	// LimiterSnapshot{Current: 0, Exists: false}, nil；底层 Redis 错误以 error 返回。
-	Snapshot(ctx context.Context, key string, window time.Duration, mode string) (LimiterSnapshot, error)
-	// SnapshotMany 用单条 Redis Pipeline 批量获取多个 key 的快照，返回切片顺序
-	// 与入参 keys 一一对应。单 key 失败（除 redis.Nil 外）降级为 {0, false} 并打 warn 日志，
-	// 不让单条命令拖垮整个批次。
-	SnapshotMany(ctx context.Context, keys []SnapshotKey) ([]LimiterSnapshot, error)
-	// Reset 直接删除 limiter key，让计数立即归零。用于管理员手动重置场景。
-	// fixed/rolling/concurrency 三种实现共用同一 DEL；concurrency 已在飞请求的
-	// Release 是幂等的，无副作用。
-	Reset(ctx context.Context, key string) error
-	// ResetPattern 通过 SCAN+DEL 批量清理符合 pattern 的所有 limiter key（counter key 公式见
-	// BuildServiceQuotaCounterKey）。用于以下两类管理员操作的"事务后善后"路径：
-	//   - 规则被删除（DeleteRule） → pattern = svcquota:v2:<rule_id>:*
-	//   - limiter window_mode 切换 fixed↔rolling → pattern = svcquota:v2:<rule_id>:*:<limiter_type>:*
-	//
-	// 不写入 counterKey 公式（避免破坏 BuildServiceQuotaCounterKey 单点实现），
-	// 而是依赖 SCAN 在持有该前缀语义的 service 层调用方组装 pattern 后传入。
-	//
-	// 失败按 best-effort 语义返回 error 给调用方：调用方通常 log warn 但不阻塞业务
-	// （Redis TTL 仍会兜底清理，只是窗口更长）。pattern 为空字符串时直接返回 nil 不做任何动作。
-	ResetPattern(ctx context.Context, pattern string) error
+// path.channel_id 配合 path.platform 时，platform 必须出现在 ChannelScopeInfo.Platforms；
+// path.channel_id 配合 path.group_id 时，group_id 必须出现在 ChannelScopeInfo.GroupIDs。
+type ChannelScopeInfo struct {
+	Platforms []string
+	GroupIDs  []int64
 }
 
 // SnapshotKey 描述一个 limiter 的快照读取目标。
@@ -329,54 +293,4 @@ type LimiterSnapshot struct {
 	Current       float64
 	Exists        bool
 	ResetAtUnixMs int64
-}
-
-// ServiceQuotaCache 抽象服务限额规则与开关的缓存层。
-//
-// 读路径（GetRules / GetEnabled）未命中时由 service 层自行通过 singleflight
-// 加载并调用 SetRules / SetEnabled 回填，写路径只调 Invalidate* 把 key 删掉，
-// 让其他实例下次读时重新拉取，避免多实例间陈旧数据的不一致窗口。
-type ServiceQuotaCache interface {
-	GetRules(ctx context.Context) ([]*ServiceQuotaRule, bool, error)
-	SetRules(ctx context.Context, rules []*ServiceQuotaRule) error
-	InvalidateRules(ctx context.Context) error
-	GetEnabled(ctx context.Context) (*bool, error)
-	SetEnabled(ctx context.Context, enabled bool) error
-	InvalidateEnabled(ctx context.Context) error
-	Invalidate(ctx context.Context) error
-}
-
-type ServiceQuotaService interface {
-	ListRules(ctx context.Context, filter ServiceQuotaListFilter) ([]*ServiceQuotaRule, error)
-	CreateRule(ctx context.Context, input ServiceQuotaRuleInput) (*ServiceQuotaRule, error)
-	UpdateRule(ctx context.Context, id int64, input ServiceQuotaRuleInput) (*ServiceQuotaRule, error)
-	DeleteRule(ctx context.Context, id int64) error
-	InvalidateEnabledCache(ctx context.Context)
-	// ReloadCache 失效规则缓存，让所有实例下次读时重新拉取数据库。
-	// 用于 handler 层在删除 channel/group/account/user 等关联实体后
-	// 主动让服务限额规则缓存失效。
-	ReloadCache(ctx context.Context) error
-	// PreCheck 为兼容旧 caller 保留的一阶段方法：内部等价于 PreCheckSelect + PreCheckAcquire，
-	// 但 ChannelID/AccountID 取自传入 req（caller 路由前调用时这两字段为 0）。
-	//
-	// 新代码请走 BillingCacheService.PrepareBillingCheck 两阶段路径。
-	PreCheck(ctx context.Context, req ServiceQuotaCheckRequest) (*ServiceQuotaLease, error)
-	// PreCheckSelect 在路由前调用，仅做规则级过滤（enabled / target_user_ids），返回候选规则与
-	// 计划上下文。不抢 concurrency、不增 RPM。
-	PreCheckSelect(ctx context.Context, req ServiceQuotaCheckRequest) (*ServiceQuotaPreCheckPlan, error)
-	// PreCheckAcquire 在 caller 选定 channel + account 后调用，基于 plan 候选规则做 path 匹配
-	// （含 channel/account 维度），按 concurrency → rpm → deferred 三轮判定，命中超限返回错误，
-	// 否则返回已 acquire 的 *ServiceQuotaLease（caller 必须 defer Release）。
-	//
-	// channelID/accountID == 0 表示 caller 未选定该维度（例如某些 fallback 路径或仅 group/platform
-	// 限定的请求）；此时只命中那些对应字段为 nil 的 path。
-	PreCheckAcquire(ctx context.Context, plan *ServiceQuotaPreCheckPlan, channelID, accountID int64) (*ServiceQuotaLease, error)
-	// IsPreCheckTwoPhase 返回是否启用两阶段 PreCheck（对应 setting service_quota.precheck_two_phase）。
-	// BillingTicket.Consume 据此决定是否在 caller 侧真正抢槽位。
-	IsPreCheckTwoPhase(ctx context.Context) bool
-	Record(ctx context.Context, req ServiceQuotaRecordRequest)
-	// ResetLimiterCounter 直接清空指定 (rule_id, path_id, limiter_type, scope_user_id) 的 Redis 计数器。
-	// 用于管理员手动重置：路径不存在或 limiter 缺失时返回 404 让 handler 透传 HTTP 状态。
-	// scopeUserID == nil 对应 shared / per_user 未限定用户的情况；非 nil 对应 user 模式或 per_user 指定用户。
-	ResetLimiterCounter(ctx context.Context, ruleID, pathID int64, limiterType string, scopeUserID *int64) error
 }

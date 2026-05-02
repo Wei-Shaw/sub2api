@@ -30,10 +30,11 @@ type AdminHandlers struct {
 	TLSFingerprintProfile *admin.TLSFingerprintProfileHandler
 	APIKey                *admin.AdminAPIKeyHandler
 	ScheduledTest         *admin.ScheduledTestHandler
-	// Channel/ChannelMonitor handlers 已迁移到 plugins/channel-management/
+	// Channel/ChannelMonitor/ChannelMonitorTemplate handlers 已迁移到 plugins/channel-management/
 	Payment             *admin.PaymentHandler
 	ServiceQuota        *admin.ServiceQuotaHandler
 	ServiceQuotaMonitor *admin.ServiceQuotaMonitorHandler
+	Affiliate           *admin.AffiliateHandler
 	Plugin              *admin.PluginHandler
 	PluginSettings      *admin.PluginSettingsHandler
 }

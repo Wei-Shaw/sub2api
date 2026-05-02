@@ -5,83 +5,12 @@ package service
 import (
 	"context"
 	"errors"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
-
-type monitorFakeRepo struct {
-	rules []*ServiceQuotaRule
-}
-
-func (f *monitorFakeRepo) List(_ context.Context, _ ServiceQuotaListFilter) ([]*ServiceQuotaRule, error) {
-	out := make([]*ServiceQuotaRule, len(f.rules))
-	copy(out, f.rules)
-	return out, nil
-}
-
-func (f *monitorFakeRepo) Create(_ context.Context, _ ServiceQuotaRuleInput) (*ServiceQuotaRule, error) {
-	return nil, errors.New("not supported")
-}
-func (f *monitorFakeRepo) Update(_ context.Context, _ int64, _ ServiceQuotaRuleInput) (*ServiceQuotaRule, error) {
-	return nil, errors.New("not supported")
-}
-func (f *monitorFakeRepo) Delete(_ context.Context, _ int64) error {
-	return errors.New("not supported")
-}
-func (f *monitorFakeRepo) FetchAccountScope(_ context.Context, _ int64) (*AccountScopeInfo, error) {
-	return nil, errors.New("not supported")
-}
-func (f *monitorFakeRepo) FetchGroupScope(_ context.Context, _ int64) (*GroupScopeInfo, error) {
-	return nil, errors.New("not supported")
-}
-
-type monitorFakeLimiter struct {
-	mu        sync.Mutex
-	snapshots map[string]LimiterSnapshot
-	manyErr   error
-	calls     [][]SnapshotKey
-}
-
-func newMonitorFakeLimiter() *monitorFakeLimiter {
-	return &monitorFakeLimiter{snapshots: map[string]LimiterSnapshot{}}
-}
-
-func (f *monitorFakeLimiter) Current(_ context.Context, _ string, _ time.Duration, _ string) (float64, error) {
-	return 0, nil
-}
-func (f *monitorFakeLimiter) Increment(_ context.Context, _ string, _ float64, _ time.Duration, _ string) (float64, error) {
-	return 0, nil
-}
-func (f *monitorFakeLimiter) Acquire(_ context.Context, _, _ string, _ int64) (bool, error) {
-	return true, nil
-}
-func (f *monitorFakeLimiter) Release(_ context.Context, _, _ string) error    { return nil }
-func (f *monitorFakeLimiter) Reset(_ context.Context, _ string) error          { return nil }
-func (f *monitorFakeLimiter) ResetPattern(_ context.Context, _ string) error   { return nil }
-
-func (f *monitorFakeLimiter) Snapshot(_ context.Context, key string, _ time.Duration, _ string) (LimiterSnapshot, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.snapshots[key], nil
-}
-
-func (f *monitorFakeLimiter) SnapshotMany(_ context.Context, keys []SnapshotKey) ([]LimiterSnapshot, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.calls = append(f.calls, append([]SnapshotKey(nil), keys...))
-	if f.manyErr != nil {
-		return nil, f.manyErr
-	}
-	out := make([]LimiterSnapshot, len(keys))
-	for i, k := range keys {
-		out[i] = f.snapshots[k.Key]
-	}
-	return out, nil
-}
 
 type monitorFakeCache struct{}
 
@@ -95,7 +24,7 @@ func (monitorFakeCache) SetEnabled(_ context.Context, _ bool) error             
 func (monitorFakeCache) InvalidateEnabled(_ context.Context) error               { return nil }
 func (monitorFakeCache) Invalidate(_ context.Context) error                      { return nil }
 
-func newMonitorService(t *testing.T, enabled bool, rules []*ServiceQuotaRule, limiter *monitorFakeLimiter) ServiceQuotaMonitorService {
+func newMonitorService(t *testing.T, enabled bool, rules []*ServiceQuotaRule, limiter *fakeServiceQuotaLimiter) ServiceQuotaMonitorService {
 	t.Helper()
 	settingRepo := newMockSettingRepo()
 	if enabled {
@@ -104,9 +33,9 @@ func newMonitorService(t *testing.T, enabled bool, rules []*ServiceQuotaRule, li
 		settingRepo.data[SettingKeyServiceQuotaEnabled] = "false"
 	}
 	settings := NewSettingService(settingRepo, &config.Config{})
-	repo := &monitorFakeRepo{rules: rules}
+	repo := &fakeServiceQuotaRepo{rules: rules}
 	if limiter == nil {
-		limiter = newMonitorFakeLimiter()
+		limiter = newFakeLimiter()
 	}
 	return NewServiceQuotaMonitorService(repo, limiter, monitorFakeCache{}, settings)
 }
@@ -215,7 +144,7 @@ func TestSnapshot_AdminFilter_ByUserID(t *testing.T) {
 
 // 用户视角下 PathSummary 不再被全局抹空：仍暴露 platform / model_pattern
 // 给用户看到自己被限流的"业务路径"，但 channel/group/account 内部拓扑必须为 nil。
-// CounterMode 与 ScopeUserID 仍抹空（admin 专属字段）。
+// CounterMode 保留（前端按此区分全局 vs 用户独立限额，渲染"全"badge）；ScopeUserID 抹空（admin 专属）。
 func TestSnapshot_UserScope_PathSummaryHidesInternalTopologyOnly(t *testing.T) {
 	rule := ruleSimple(1, ServiceQuotaCounterModeUser, ServiceQuotaLimiterRPM, 100, []int64{7})
 	rule.Paths[0].Platform = ptrStringMonitor("openai")
@@ -243,8 +172,58 @@ func TestSnapshot_UserScope_PathSummaryHidesInternalTopologyOnly(t *testing.T) {
 	require.Nil(t, ps.ChannelID, "channel_id 不能暴露给用户")
 	require.Nil(t, ps.GroupID, "group_id 不能暴露给用户")
 	require.Nil(t, ps.AccountID, "account_id 不能暴露给用户")
-	require.Equal(t, "", snap.Items[0].CounterMode)
+	require.Equal(t, ServiceQuotaCounterModeUser, snap.Items[0].CounterMode,
+		"counter_mode 保留：前端按此区分全局 vs 用户独立限额")
 	require.Nil(t, snap.Items[0].ScopeUserID)
+	// 最小信息暴露：rule_id 是 admin 内部关键字（用于 ResetCounter），is_fallback 是规则编排细节。
+	// 用户视角下 JSON 必须把这两个字段抹空。
+	require.Equal(t, int64(0), snap.Items[0].RuleID, "rule_id 不能暴露给用户")
+	require.False(t, snap.Items[0].IsFallback, "is_fallback 不能暴露给用户")
+}
+
+// TestSnapshot_UserScope_BlanksFallbackRuleIdentity 单独验证 fallback 规则下 rule_id/is_fallback 也被抹空。
+//
+// 这条测试关键性在于：现有 PathSummary 测试用的 rule.IsFallback 默认 false（零值），
+// 即使不抹空也能巧合通过 require.False。这里显式构造 IsFallback=true 的规则，
+// 确认抹空逻辑真在执行而不是依赖零值。
+func TestSnapshot_UserScope_BlanksFallbackRuleIdentity(t *testing.T) {
+	rule := ruleSimple(7, ServiceQuotaCounterModeUser, ServiceQuotaLimiterRPM, 100, []int64{7})
+	rule.IsFallback = true
+	svc := newMonitorService(t, true, []*ServiceQuotaRule{rule}, nil)
+	snap, err := svc.Snapshot(context.Background(), MonitorSnapshotFilter{
+		UserScope: &MonitorUserScope{UserID: 7},
+	})
+	require.NoError(t, err)
+	require.Len(t, snap.Items, 1)
+	require.Equal(t, int64(0), snap.Items[0].RuleID)
+	require.False(t, snap.Items[0].IsFallback, "即使 rule.IsFallback=true，user scope 输出也必须为 false")
+}
+
+// TestSnapshot_UserScope_CounterModeShared 验证 shared 规则的 user 视角也保留 counter_mode：
+// 前端据此渲染"全局共享限额"（"全"badge）vs 用户独立限额的区别。
+func TestSnapshot_UserScope_CounterModeShared(t *testing.T) {
+	rule := ruleSimple(9, ServiceQuotaCounterModeShared, ServiceQuotaLimiterRPM, 100, nil)
+	svc := newMonitorService(t, true, []*ServiceQuotaRule{rule}, nil)
+	snap, err := svc.Snapshot(context.Background(), MonitorSnapshotFilter{
+		UserScope: &MonitorUserScope{UserID: 999},
+	})
+	require.NoError(t, err)
+	require.Len(t, snap.Items, 1)
+	require.Equal(t, ServiceQuotaCounterModeShared, snap.Items[0].CounterMode,
+		"shared 规则在 user 视角必须返回 counter_mode='shared'，让前端能渲染全局 badge")
+}
+
+// TestSnapshot_AdminScope_KeepsRuleIdentity 反向验证：admin 视角下 rule_id 与 is_fallback 必须保留，
+// 防止抹空逻辑误把 admin 路径也清空。
+func TestSnapshot_AdminScope_KeepsRuleIdentity(t *testing.T) {
+	rule := ruleSimple(8, ServiceQuotaCounterModeShared, ServiceQuotaLimiterRPM, 100, nil)
+	rule.IsFallback = true
+	svc := newMonitorService(t, true, []*ServiceQuotaRule{rule}, nil)
+	snap, err := svc.Snapshot(context.Background(), MonitorSnapshotFilter{}) // 无 UserScope = admin 视角
+	require.NoError(t, err)
+	require.Len(t, snap.Items, 1)
+	require.Equal(t, int64(8), snap.Items[0].RuleID, "admin 视角必须保留 rule_id")
+	require.True(t, snap.Items[0].IsFallback, "admin 视角必须保留 is_fallback")
 }
 
 // 用户视角下 path 完全 wildcard（platform/model 都 nil）→ PathSummary 仍抹成 nil，
@@ -292,7 +271,7 @@ func TestSnapshot_UserScope_FiltersToTargetUsers(t *testing.T) {
 // 验证 SnapshotMany 不会因为有遗留计数器而误命中。
 func TestSnapshot_AdminNoFilter_PerUserSkipped(t *testing.T) {
 	rule := ruleSimple(1, ServiceQuotaCounterModePerUser, ServiceQuotaLimiterRPM, 100, nil)
-	limiter := newMonitorFakeLimiter()
+	limiter := newFakeLimiter()
 	sharedKey := BuildServiceQuotaCounterKey(rule.ID, rule.Paths[0].ID, ServiceQuotaLimiterRPM, nil)
 	limiter.snapshots[sharedKey] = LimiterSnapshot{Current: 999, Exists: true}
 	svc := newMonitorService(t, true, []*ServiceQuotaRule{rule}, limiter)
@@ -377,7 +356,7 @@ func TestSnapshot_AdminWithUserFilter_SharedAlwaysIncluded(t *testing.T) {
 // LimiterSnapshot.ResetAtUnixMs（来自 repo 层 PTTL / now+window 推算）。
 func TestSnapshot_BuildLimiterRuntime_TransparentResetAt(t *testing.T) {
 	rule := ruleSimple(1, ServiceQuotaCounterModeShared, ServiceQuotaLimiterRPM, 100, nil)
-	limiter := newMonitorFakeLimiter()
+	limiter := newFakeLimiter()
 	key := BuildServiceQuotaCounterKey(rule.ID, rule.Paths[0].ID, ServiceQuotaLimiterRPM, nil)
 	expectedReset := time.Now().Add(60 * time.Second).UnixMilli()
 	limiter.snapshots[key] = LimiterSnapshot{Current: 5, Exists: true, ResetAtUnixMs: expectedReset}
@@ -410,7 +389,7 @@ func TestSnapshot_HardCap_Truncated(t *testing.T) {
 
 func TestSnapshot_BuildCounterKey_MatchesPreCheck(t *testing.T) {
 	rule := ruleSimple(42, ServiceQuotaCounterModeUser, ServiceQuotaLimiterRPM, 100, []int64{7})
-	limiter := newMonitorFakeLimiter()
+	limiter := newFakeLimiter()
 	expectedKey := BuildServiceQuotaCounterKey(42, rule.Paths[0].ID, ServiceQuotaLimiterRPM, ptrInt64Monitor(7))
 	limiter.snapshots[expectedKey] = LimiterSnapshot{Current: 33, Exists: true}
 	svc := newMonitorService(t, true, []*ServiceQuotaRule{rule}, limiter)
@@ -420,13 +399,13 @@ func TestSnapshot_BuildCounterKey_MatchesPreCheck(t *testing.T) {
 	require.True(t, snap.Items[0].Exists)
 	require.InDelta(t, 33.0, snap.Items[0].Current, 1e-9)
 	require.InDelta(t, 33.0, snap.Items[0].UtilizationPct, 1e-9)
-	require.Len(t, limiter.calls, 1)
-	require.Equal(t, expectedKey, limiter.calls[0][0].Key)
+	require.Len(t, limiter.snapshotManyCalls, 1)
+	require.Equal(t, expectedKey, limiter.snapshotManyCalls[0][0].Key)
 }
 
 func TestSnapshot_LimiterError_FailSoft(t *testing.T) {
 	rule := ruleSimple(1, ServiceQuotaCounterModeShared, ServiceQuotaLimiterRPM, 100, nil)
-	limiter := newMonitorFakeLimiter()
+	limiter := newFakeLimiter()
 	limiter.manyErr = errors.New("redis down")
 	svc := newMonitorService(t, true, []*ServiceQuotaRule{rule}, limiter)
 	snap, err := svc.Snapshot(context.Background(), MonitorSnapshotFilter{})

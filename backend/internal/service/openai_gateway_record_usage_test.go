@@ -1099,6 +1099,101 @@ func TestOpenAIGatewayServiceRecordUsage_ImageOnlyUsageStillPersists(t *testing.
 	require.Equal(t, string(BillingModeImage), *usageRepo.lastLog.BillingMode)
 }
 
+// openAIRecordUsageQuotaStub 仅捕获 ServiceQuotaService.Record 调用，其余方法走默认零值/panic。
+type openAIRecordUsageQuotaStub struct {
+	ServiceQuotaService
+
+	recordCalls   int
+	lastRecordReq ServiceQuotaRecordRequest
+}
+
+func (s *openAIRecordUsageQuotaStub) Record(_ context.Context, req ServiceQuotaRecordRequest) {
+	s.recordCalls++
+	s.lastRecordReq = req
+}
+
+// TestOpenAIGatewayServiceRecordUsage_ZeroTokenStillRecordsServiceQuota 覆盖回归点：
+// 当上游返回零 token 用量（例如 gpt-5.4-pro 这种不含 usage 字段的特殊模型），
+// service_quota.Record 仍必须被调用以保证 RPM/TPD 维度的服务限额计数生效；
+// 同时 DB usage_log 写入应当被跳过（保留旧"避免空记录污染统计"的语义）。
+func TestOpenAIGatewayServiceRecordUsage_ZeroTokenStillRecordsServiceQuota(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	quota := &openAIRecordUsageQuotaStub{}
+
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, nil)
+	svc.billingCacheService.serviceQuota = quota
+
+	groupID := int64(91)
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_zero_token",
+			Usage:     OpenAIUsage{}, // 完全空 usage，模拟上游不返回
+			Model:     "gpt-5.4-pro",
+			Duration:  time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      9001,
+			GroupID: i64p(groupID),
+			Group:   &Group{ID: groupID, Platform: PlatformOpenAI, RateMultiplier: 1.0},
+		},
+		User:    &User{ID: 9101},
+		Account: &Account{ID: 9201, Platform: PlatformOpenAI},
+	})
+
+	require.NoError(t, err)
+	// service_quota.Record 必须被调用一次（按 RPM 等次数维度计数）
+	require.Equal(t, 1, quota.recordCalls, "service_quota.Record 必须在零 token 用量场景下被调用")
+	require.Equal(t, int64(9101), quota.lastRecordReq.UserID)
+	require.Equal(t, groupID, quota.lastRecordReq.GroupID)
+	require.Equal(t, int64(9201), quota.lastRecordReq.AccountID)
+	require.Equal(t, PlatformOpenAI, quota.lastRecordReq.Platform)
+	// DB usage_log 写入应被跳过（避免 0-token 行污染统计）
+	require.Equal(t, 0, usageRepo.calls, "零 token 时不应写入 DB usage_log")
+	// balance/quota 都不应该真扣（cost==0 自然短路）
+	require.Equal(t, 0, userRepo.deductCalls)
+	require.Equal(t, 0, subRepo.incrementCalls)
+}
+
+// TestOpenAIGatewayServiceRecordUsage_NonZeroTokenRecordsBoth 覆盖正常路径：
+// 上游有 token 用量时，service_quota.Record 与 DB usage_log 写入必须同时执行。
+func TestOpenAIGatewayServiceRecordUsage_NonZeroTokenRecordsBoth(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	quota := &openAIRecordUsageQuotaStub{}
+
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, nil)
+	svc.billingCacheService.serviceQuota = quota
+
+	groupID := int64(92)
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_nonzero_token",
+			Usage:     OpenAIUsage{InputTokens: 100, OutputTokens: 50},
+			Model:     "gpt-5.1",
+			Duration:  time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      9002,
+			GroupID: i64p(groupID),
+			Group:   &Group{ID: groupID, Platform: PlatformOpenAI, RateMultiplier: 1.0},
+		},
+		User:    &User{ID: 9102},
+		Account: &Account{ID: 9202, Platform: PlatformOpenAI},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, quota.recordCalls, "service_quota.Record 必须执行")
+	require.Equal(t, 1, usageRepo.calls, "非零 token 必须写入 DB usage_log")
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, 100, usageRepo.lastLog.InputTokens)
+	require.Equal(t, 50, usageRepo.lastLog.OutputTokens)
+}
+
 func TestOpenAIGatewayServiceRecordUsage_ImageUsesPerImageBillingEvenWithUsageTokens(t *testing.T) {
 	imagePrice := 0.02
 	groupID := int64(12)

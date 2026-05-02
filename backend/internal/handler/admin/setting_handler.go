@@ -12,11 +12,32 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
+)
+
+// 错误码常量：与前端 i18n key（admin.setting.errors.* / common.errors.*）对齐。
+// 走 PR-A 字段级错误协议（task #33）。
+//
+// INVALID_REQUEST_BODY / INVALID_ID 是跨 handler 通用错误码，已提到 admin/common.go
+// 顶部（errReasonInvalidRequestBody / errReasonInvalidID）作为共享常量；这里的
+// errReasonSetting* 是 setting 模块特定的业务级 reason。
+const (
+	errReasonSettingTurnstileSiteKeyRequired = "TURNSTILE_SITE_KEY_REQUIRED"
+	errReasonSettingTurnstileSecretRequired  = "TURNSTILE_SECRET_REQUIRED"
+	errReasonSettingTOTPKeyMissing           = "TOTP_ENCRYPTION_KEY_MISSING"
+
+	// service 层 SetXxxSettings 校验失败时的兜底 reason（保留 WithCause 的链路便于排查）。
+	// 这些 reason 没细分到具体字段，因为底层 service 校验可能涉及多字段组合规则；
+	// 前端仅提示"X 设置无效"层级即可。
+	errReasonSettingOverloadCooldownInvalid = "OVERLOAD_COOLDOWN_INVALID"
+	errReasonSettingRectifierInvalid        = "RECTIFIER_SETTINGS_INVALID"
+	errReasonSettingBetaPolicyInvalid       = "BETA_POLICY_SETTINGS_INVALID"
+	errReasonSettingStreamTimeoutInvalid    = "STREAM_TIMEOUT_SETTINGS_INVALID"
 )
 
 // semverPattern 预编译 semver 格式校验正则
@@ -189,6 +210,10 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		CustomEndpoints:                        dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		DefaultConcurrency:                     settings.DefaultConcurrency,
 		DefaultBalance:                         settings.DefaultBalance,
+		AffiliateRebateRate:                    settings.AffiliateRebateRate,
+		AffiliateRebateFreezeHours:             settings.AffiliateRebateFreezeHours,
+		AffiliateRebateDurationDays:            settings.AffiliateRebateDurationDays,
+		AffiliateRebatePerInviteeCap:           settings.AffiliateRebatePerInviteeCap,
 		DefaultUserRPMLimit:                    settings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   defaultSubscriptions,
 		EnableModelFallback:                    settings.EnableModelFallback,
@@ -244,6 +269,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ChannelMonitorDefaultIntervalSeconds:   settings.ChannelMonitorDefaultIntervalSeconds,
 		AvailableChannelsEnabled:               settings.AvailableChannelsEnabled,
 		ServiceQuotaEnabled:                    settings.ServiceQuotaEnabled,
+		AffiliateEnabled:                       settings.AffiliateEnabled,
 	}
 	response.Success(c, systemSettingsResponseData(payload, authSourceDefaults))
 }
@@ -341,6 +367,10 @@ type UpdateSettingsRequest struct {
 	// 默认配置
 	DefaultConcurrency                       int                               `json:"default_concurrency"`
 	DefaultBalance                           float64                           `json:"default_balance"`
+	AffiliateRebateRate                      *float64                          `json:"affiliate_rebate_rate"`
+	AffiliateRebateFreezeHours               *int                              `json:"affiliate_rebate_freeze_hours"`
+	AffiliateRebateDurationDays              *int                              `json:"affiliate_rebate_duration_days"`
+	AffiliateRebatePerInviteeCap             *float64                          `json:"affiliate_rebate_per_invitee_cap"`
 	DefaultUserRPMLimit                      int                               `json:"default_user_rpm_limit"`
 	DefaultSubscriptions                     []dto.DefaultSubscriptionSetting  `json:"default_subscriptions"`
 	AuthSourceDefaultEmailBalance            *float64                          `json:"auth_source_default_email_balance"`
@@ -444,14 +474,17 @@ type UpdateSettingsRequest struct {
 
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
+
+	// Affiliate (邀请返利) feature switch
+	AffiliateEnabled *bool `json:"affiliate_enabled"`
 }
 
 // UpdateSettings 更新系统设置
 // PUT /api/v1/admin/settings
 func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	var req UpdateSettingsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -472,6 +505,43 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 	if req.DefaultBalance < 0 {
 		req.DefaultBalance = 0
+	}
+	affiliateRebateRate := previousSettings.AffiliateRebateRate
+	if req.AffiliateRebateRate != nil {
+		affiliateRebateRate = *req.AffiliateRebateRate
+	}
+	if affiliateRebateRate < service.AffiliateRebateRateMin {
+		affiliateRebateRate = service.AffiliateRebateRateMin
+	}
+	if affiliateRebateRate > service.AffiliateRebateRateMax {
+		affiliateRebateRate = service.AffiliateRebateRateMax
+	}
+	affiliateRebateFreezeHours := previousSettings.AffiliateRebateFreezeHours
+	if req.AffiliateRebateFreezeHours != nil {
+		affiliateRebateFreezeHours = *req.AffiliateRebateFreezeHours
+	}
+	if affiliateRebateFreezeHours < 0 {
+		affiliateRebateFreezeHours = service.AffiliateRebateFreezeHoursDefault
+	}
+	if affiliateRebateFreezeHours > service.AffiliateRebateFreezeHoursMax {
+		affiliateRebateFreezeHours = service.AffiliateRebateFreezeHoursMax
+	}
+	affiliateRebateDurationDays := previousSettings.AffiliateRebateDurationDays
+	if req.AffiliateRebateDurationDays != nil {
+		affiliateRebateDurationDays = *req.AffiliateRebateDurationDays
+	}
+	if affiliateRebateDurationDays < 0 {
+		affiliateRebateDurationDays = service.AffiliateRebateDurationDaysDefault
+	}
+	if affiliateRebateDurationDays > service.AffiliateRebateDurationDaysMax {
+		affiliateRebateDurationDays = service.AffiliateRebateDurationDaysMax
+	}
+	affiliateRebatePerInviteeCap := previousSettings.AffiliateRebatePerInviteeCap
+	if req.AffiliateRebatePerInviteeCap != nil {
+		affiliateRebatePerInviteeCap = *req.AffiliateRebatePerInviteeCap
+	}
+	if affiliateRebatePerInviteeCap < 0 {
+		affiliateRebatePerInviteeCap = service.AffiliateRebatePerInviteeCapDefault
 	}
 	// 通用表格配置：兼容旧客户端未传字段时保留当前值。
 	if req.TableDefaultPageSize <= 0 {
@@ -509,13 +579,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if req.TurnstileEnabled {
 		// 检查必填字段
 		if req.TurnstileSiteKey == "" {
-			response.BadRequest(c, "Turnstile Site Key is required when enabled")
+			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingTurnstileSiteKeyRequired, "turnstile site key is required when enabled"))
 			return
 		}
 		// 如果未提供 secret key，使用已保存的值（留空保留当前值）
 		if req.TurnstileSecretKey == "" {
 			if previousSettings.TurnstileSecretKey == "" {
-				response.BadRequest(c, "Turnstile Secret Key is required when enabled")
+				response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingTurnstileSecretRequired, "turnstile secret key is required when enabled"))
 				return
 			}
 			req.TurnstileSecretKey = previousSettings.TurnstileSecretKey
@@ -537,7 +607,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if req.TotpEnabled && !previousSettings.TotpEnabled {
 		// 尝试启用 TOTP，检查加密密钥是否已手动配置
 		if !h.settingService.IsTotpEncryptionKeyConfigured() {
-			response.BadRequest(c, "Cannot enable TOTP: TOTP_ENCRYPTION_KEY environment variable must be configured first. Generate a key with 'openssl rand -hex 32' and set it in your environment.")
+			response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingTOTPKeyMissing, "cannot enable TOTP: TOTP_ENCRYPTION_KEY environment variable must be configured first").
+				WithMetadata(map[string]string{
+					"hint": "Generate a key with 'openssl rand -hex 32' and set it in your environment.",
+				}))
 			return
 		}
 	}
@@ -1124,6 +1197,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                  customEndpointsJSON,
 		DefaultConcurrency:               req.DefaultConcurrency,
 		DefaultBalance:                   req.DefaultBalance,
+		AffiliateRebateRate:              affiliateRebateRate,
+		AffiliateRebateFreezeHours:       affiliateRebateFreezeHours,
+		AffiliateRebateDurationDays:      affiliateRebateDurationDays,
+		AffiliateRebatePerInviteeCap:     affiliateRebatePerInviteeCap,
 		DefaultUserRPMLimit:              req.DefaultUserRPMLimit,
 		DefaultSubscriptions:             defaultSubscriptions,
 		ServiceQuotaEnabled: func() bool {
@@ -1262,6 +1339,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.AvailableChannelsEnabled
 			}
 			return previousSettings.AvailableChannelsEnabled
+		}(),
+		AffiliateEnabled: func() bool {
+			if req.AffiliateEnabled != nil {
+				return *req.AffiliateEnabled
+			}
+			return previousSettings.AffiliateEnabled
 		}(),
 	}
 
@@ -1452,6 +1535,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                        dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		DefaultConcurrency:                     updatedSettings.DefaultConcurrency,
 		DefaultBalance:                         updatedSettings.DefaultBalance,
+		AffiliateRebateRate:                    updatedSettings.AffiliateRebateRate,
+		AffiliateRebateFreezeHours:             updatedSettings.AffiliateRebateFreezeHours,
+		AffiliateRebateDurationDays:            updatedSettings.AffiliateRebateDurationDays,
+		AffiliateRebatePerInviteeCap:           updatedSettings.AffiliateRebatePerInviteeCap,
 		DefaultUserRPMLimit:                    updatedSettings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   updatedDefaultSubscriptions,
 		EnableModelFallback:                    updatedSettings.EnableModelFallback,
@@ -1506,6 +1593,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorDefaultIntervalSeconds:   updatedSettings.ChannelMonitorDefaultIntervalSeconds,
 		AvailableChannelsEnabled:               updatedSettings.AvailableChannelsEnabled,
 		ServiceQuotaEnabled:                    updatedSettings.ServiceQuotaEnabled,
+		AffiliateEnabled:                       updatedSettings.AffiliateEnabled,
 	}
 	response.Success(c, systemSettingsResponseData(payload, updatedAuthSourceDefaults))
 }
@@ -1756,6 +1844,18 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.DefaultBalance != after.DefaultBalance {
 		changed = append(changed, "default_balance")
 	}
+	if before.AffiliateRebateRate != after.AffiliateRebateRate {
+		changed = append(changed, "affiliate_rebate_rate")
+	}
+	if before.AffiliateRebateFreezeHours != after.AffiliateRebateFreezeHours {
+		changed = append(changed, "affiliate_rebate_freeze_hours")
+	}
+	if before.AffiliateRebateDurationDays != after.AffiliateRebateDurationDays {
+		changed = append(changed, "affiliate_rebate_duration_days")
+	}
+	if before.AffiliateRebatePerInviteeCap != after.AffiliateRebatePerInviteeCap {
+		changed = append(changed, "affiliate_rebate_per_invitee_cap")
+	}
 	if !equalDefaultSubscriptions(before.DefaultSubscriptions, after.DefaultSubscriptions) {
 		changed = append(changed, "default_subscriptions")
 	}
@@ -1873,6 +1973,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.ServiceQuotaEnabled != after.ServiceQuotaEnabled {
 		changed = append(changed, "service_quota_enabled")
+	}
+	if before.AffiliateEnabled != after.AffiliateEnabled {
+		changed = append(changed, "affiliate_enabled")
 	}
 	changed = appendAuthSourceDefaultChanges(changed, beforeAuthSourceDefaults, afterAuthSourceDefaults)
 	return changed
@@ -2077,8 +2180,8 @@ type TestSMTPRequest struct {
 // POST /api/v1/admin/settings/test-smtp
 func (h *SettingHandler) TestSMTPConnection(c *gin.Context) {
 	var req TestSMTPRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -2145,8 +2248,8 @@ type SendTestEmailRequest struct {
 // POST /api/v1/admin/settings/send-test-email
 func (h *SettingHandler) SendTestEmail(c *gin.Context) {
 	var req SendTestEmailRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -2305,8 +2408,8 @@ type UpdateOverloadCooldownSettingsRequest struct {
 // PUT /api/v1/admin/settings/overload-cooldown
 func (h *SettingHandler) UpdateOverloadCooldownSettings(c *gin.Context) {
 	var req UpdateOverloadCooldownSettingsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -2316,7 +2419,9 @@ func (h *SettingHandler) UpdateOverloadCooldownSettings(c *gin.Context) {
 	}
 
 	if err := h.settingService.SetOverloadCooldownSettings(c.Request.Context(), settings); err != nil {
-		response.BadRequest(c, err.Error())
+		// service 层校验错（如 cooldown_minutes 范围非法）：包成结构化 BadRequest 让前端按 reason i18n。
+		// WithCause 保留底层 error 链便于排查；前端只读 reason / metadata。
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingOverloadCooldownInvalid, "overload cooldown settings invalid").WithCause(err))
 		return
 	}
 
@@ -2363,12 +2468,18 @@ func (h *SettingHandler) GetRectifierSettings(c *gin.Context) {
 	if patterns == nil {
 		patterns = []string{}
 	}
+	advisorPatterns := settings.AdvisorToolPatterns
+	if advisorPatterns == nil {
+		advisorPatterns = []string{}
+	}
 	response.Success(c, dto.RectifierSettings{
 		Enabled:                  settings.Enabled,
 		ThinkingSignatureEnabled: settings.ThinkingSignatureEnabled,
 		ThinkingBudgetEnabled:    settings.ThinkingBudgetEnabled,
 		APIKeySignatureEnabled:   settings.APIKeySignatureEnabled,
 		APIKeySignaturePatterns:  patterns,
+		AdvisorToolEnabled:       settings.AdvisorToolEnabled,
+		AdvisorToolPatterns:      advisorPatterns,
 	})
 }
 
@@ -2379,35 +2490,29 @@ type UpdateRectifierSettingsRequest struct {
 	ThinkingBudgetEnabled    bool     `json:"thinking_budget_enabled"`
 	APIKeySignatureEnabled   bool     `json:"apikey_signature_enabled"`
 	APIKeySignaturePatterns  []string `json:"apikey_signature_patterns"`
+	AdvisorToolEnabled       bool     `json:"advisor_tool_enabled"`
+	AdvisorToolPatterns      []string `json:"advisor_tool_patterns"`
 }
 
 // UpdateRectifierSettings 更新请求整流器配置
 // PUT /api/v1/admin/settings/rectifier
 func (h *SettingHandler) UpdateRectifierSettings(c *gin.Context) {
 	var req UpdateRectifierSettingsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
 	// 校验并清理自定义匹配关键词
-	const maxPatterns = 50
-	const maxPatternLen = 500
-	if len(req.APIKeySignaturePatterns) > maxPatterns {
-		response.BadRequest(c, "Too many signature patterns (max 50)")
+	cleanedSigPatterns, sigErr := cleanRectifierPatterns(req.APIKeySignaturePatterns)
+	if sigErr != nil {
+		response.BadRequest(c, sigErr.Error())
 		return
 	}
-	var cleanedPatterns []string
-	for _, p := range req.APIKeySignaturePatterns {
-		p = strings.TrimSpace(p)
-		if p == "" {
-			continue
-		}
-		if len(p) > maxPatternLen {
-			response.BadRequest(c, "Signature pattern too long (max 500 characters)")
-			return
-		}
-		cleanedPatterns = append(cleanedPatterns, p)
+	cleanedAdvisorPatterns, advisorErr := cleanRectifierPatterns(req.AdvisorToolPatterns)
+	if advisorErr != nil {
+		response.BadRequest(c, advisorErr.Error())
+		return
 	}
 
 	settings := &service.RectifierSettings{
@@ -2415,11 +2520,13 @@ func (h *SettingHandler) UpdateRectifierSettings(c *gin.Context) {
 		ThinkingSignatureEnabled: req.ThinkingSignatureEnabled,
 		ThinkingBudgetEnabled:    req.ThinkingBudgetEnabled,
 		APIKeySignatureEnabled:   req.APIKeySignatureEnabled,
-		APIKeySignaturePatterns:  cleanedPatterns,
+		APIKeySignaturePatterns:  cleanedSigPatterns,
+		AdvisorToolEnabled:       req.AdvisorToolEnabled,
+		AdvisorToolPatterns:      cleanedAdvisorPatterns,
 	}
 
 	if err := h.settingService.SetRectifierSettings(c.Request.Context(), settings); err != nil {
-		response.BadRequest(c, err.Error())
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingRectifierInvalid, "rectifier settings invalid").WithCause(err))
 		return
 	}
 
@@ -2434,13 +2541,44 @@ func (h *SettingHandler) UpdateRectifierSettings(c *gin.Context) {
 	if updatedPatterns == nil {
 		updatedPatterns = []string{}
 	}
+	updatedAdvisorPatterns := updatedSettings.AdvisorToolPatterns
+	if updatedAdvisorPatterns == nil {
+		updatedAdvisorPatterns = []string{}
+	}
 	response.Success(c, dto.RectifierSettings{
 		Enabled:                  updatedSettings.Enabled,
 		ThinkingSignatureEnabled: updatedSettings.ThinkingSignatureEnabled,
 		ThinkingBudgetEnabled:    updatedSettings.ThinkingBudgetEnabled,
 		APIKeySignatureEnabled:   updatedSettings.APIKeySignatureEnabled,
 		APIKeySignaturePatterns:  updatedPatterns,
+		AdvisorToolEnabled:       updatedSettings.AdvisorToolEnabled,
+		AdvisorToolPatterns:      updatedAdvisorPatterns,
 	})
+}
+
+const (
+	rectifierMaxPatterns   = 50
+	rectifierMaxPatternLen = 500
+)
+
+func cleanRectifierPatterns(input []string) ([]string, error) {
+	if len(input) > rectifierMaxPatterns {
+		return nil, fmt.Errorf("too many patterns (max %d)", rectifierMaxPatterns)
+	}
+	// 始终返回非 nil 切片，区分"用户清空"（[]）与"字段不存在"（nil），
+	// 让 GetRectifierSettings 仅对 nil 注入默认值。
+	cleaned := make([]string, 0, len(input))
+	for _, p := range input {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if len(p) > rectifierMaxPatternLen {
+			return nil, fmt.Errorf("pattern too long (max %d characters)", rectifierMaxPatternLen)
+		}
+		cleaned = append(cleaned, p)
+	}
+	return cleaned, nil
 }
 
 // GetBetaPolicySettings 获取 Beta 策略配置
@@ -2468,8 +2606,8 @@ type UpdateBetaPolicySettingsRequest struct {
 // PUT /api/v1/admin/settings/beta-policy
 func (h *SettingHandler) UpdateBetaPolicySettings(c *gin.Context) {
 	var req UpdateBetaPolicySettingsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -2480,7 +2618,7 @@ func (h *SettingHandler) UpdateBetaPolicySettings(c *gin.Context) {
 
 	settings := &service.BetaPolicySettings{Rules: rules}
 	if err := h.settingService.SetBetaPolicySettings(c.Request.Context(), settings); err != nil {
-		response.BadRequest(c, err.Error())
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingBetaPolicyInvalid, "beta policy settings invalid").WithCause(err))
 		return
 	}
 
@@ -2511,8 +2649,8 @@ type UpdateStreamTimeoutSettingsRequest struct {
 // PUT /api/v1/admin/settings/stream-timeout
 func (h *SettingHandler) UpdateStreamTimeoutSettings(c *gin.Context) {
 	var req UpdateStreamTimeoutSettingsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -2525,7 +2663,7 @@ func (h *SettingHandler) UpdateStreamTimeoutSettings(c *gin.Context) {
 	}
 
 	if err := h.settingService.SetStreamTimeoutSettings(c.Request.Context(), settings); err != nil {
-		response.BadRequest(c, err.Error())
+		response.ErrorFrom(c, infraerrors.BadRequest(errReasonSettingStreamTimeoutInvalid, "stream timeout settings invalid").WithCause(err))
 		return
 	}
 
@@ -2560,8 +2698,8 @@ func (h *SettingHandler) GetWebSearchEmulationConfig(c *gin.Context) {
 // PUT /api/v1/admin/settings/web-search-emulation
 func (h *SettingHandler) UpdateWebSearchEmulationConfig(c *gin.Context) {
 	var cfg service.WebSearchEmulationConfig
-	if err := c.ShouldBindJSON(&cfg); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &cfg, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 
@@ -2585,8 +2723,8 @@ func (h *SettingHandler) ResetWebSearchUsage(c *gin.Context) {
 	var req struct {
 		ProviderType string `json:"provider_type"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 	if req.ProviderType == "" {
@@ -2606,8 +2744,8 @@ func (h *SettingHandler) TestWebSearchEmulation(c *gin.Context) {
 	var req struct {
 		Query string `json:"query"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid request: "+err.Error())
+	if err := BindJSONOrError(c, &req, errReasonInvalidRequestBody); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 	if strings.TrimSpace(req.Query) == "" {

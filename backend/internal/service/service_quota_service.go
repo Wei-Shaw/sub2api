@@ -11,6 +11,7 @@ import (
 	"github.com/lib/pq"
 	"golang.org/x/sync/singleflight"
 )
+
 type serviceQuotaService struct {
 	repo     ServiceQuotaRuleRepository
 	settings *SettingService
@@ -73,9 +74,17 @@ func (s *serviceQuotaService) UpdateRule(ctx context.Context, id int64, input Se
 		return nil, translateServiceQuotaPersistenceError(err)
 	}
 	s.reloadCache(ctx)
-	s.resetCountersForModeSwitches(ctx, id, oldLimiterModes, input.Limiters)
+	// reset 路径走 SCAN+DEL，规则越大批次越多 RTT 越长，会阻塞 admin 响应。
+	// 改 fire-and-forget：用 context.WithoutCancel 让异步任务不被 admin 请求 ctx 取消打断；
+	// 顶层 panic recover 保证单个 reset 失败不会拖垮整个进程。
+	asyncLimiters := append([]ServiceQuotaLimiterInput(nil), input.Limiters...)
+	s.goAsync(ctx, "reset_counters_mode_switch", id, func(asyncCtx context.Context) {
+		s.resetCountersForModeSwitches(asyncCtx, id, oldLimiterModes, asyncLimiters)
+	})
 	if input.Enabled != nil && oldEnabled != nil && *oldEnabled != *input.Enabled {
-		s.resetAllCountersForRule(ctx, id)
+		s.goAsync(ctx, "reset_counters_enabled_flip", id, func(asyncCtx context.Context) {
+			s.resetAllCountersForRule(asyncCtx, id)
+		})
 	}
 	return rule, nil
 }
@@ -88,8 +97,40 @@ func (s *serviceQuotaService) DeleteRule(ctx context.Context, id int64) error {
 	// Bug #3：DB CASCADE 删干净了 rules / paths / limiters，但 Redis 计数 key 只能等 TTL（最长 48h）
 	// 自然过期。监控页能查到 "幽灵 rule_id" 的旧 key 一直显示，且占内存。这里主动 SCAN+DEL
 	// 该 rule 的所有 counter key（涵盖 path × limiter × scope_user 全笛卡尔积），失败仅 warn 不阻塞。
-	s.resetAllCountersForRule(ctx, id)
+	//
+	// 与 UpdateRule 同样 fire-and-forget：admin 删除请求立即返回，redis 清理在后台跑；
+	// 失败仍仅 warn（与同步语义一致），TTL 自然兜底。
+	s.goAsync(ctx, "reset_counters_rule_delete", id, func(asyncCtx context.Context) {
+		s.resetAllCountersForRule(asyncCtx, id)
+	})
 	return nil
+}
+
+// goAsync 启动 fire-and-forget goroutine 跑 reset 类后台任务。
+//
+// 设计：
+//   - 用 context.WithoutCancel(ctx)：保留 ctx 携带的 trace/log values，但解除 admin 请求的 cancel 联动，
+//     避免 admin 响应返回后 ctx 被取消导致 SCAN 半路中止留下"已删一半"的脏 key。
+//   - 顶层 defer recover：单个 reset goroutine panic（例如 redis client 内部 nil deref）不能让进程崩溃，
+//     用 slog.Error 记录后继续；TTL 仍会兜底清理。
+//   - op + ruleID 写到日志便于按规则 ID 关联问题。
+//
+// 不引 worker pool：admin 写路径调用频次低（人手操作 1Hz 量级），每次 reset 独立 goroutine 即可，
+// 引 pool 反而增加生命周期管理复杂度。
+func (s *serviceQuotaService) goAsync(ctx context.Context, op string, ruleID int64, fn func(context.Context)) {
+	asyncCtx := context.WithoutCancel(ctx)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("service quota async task panicked",
+					"op", op,
+					"rule_id", ruleID,
+					"panic", r,
+				)
+			}
+		}()
+		fn(asyncCtx)
+	}()
 }
 
 // translateServiceQuotaPersistenceError 把 repo 层透传的数据库错误翻译成业务层 ApplicationError，
@@ -122,32 +163,32 @@ func (s *serviceQuotaService) InvalidateEnabledCache(ctx context.Context) {
 	}
 }
 
-// IsPreCheckTwoPhase 返回 service_quota.precheck_two_phase setting 的当前值。
-// 读取失败或 setting 缺失时一律返回 false（保守降级，沿用旧行为）。
-func (s *serviceQuotaService) IsPreCheckTwoPhase(ctx context.Context) bool {
-	if s == nil || s.settings == nil {
-		return false
-	}
-	enabled, err := s.settings.GetBool(ctx, SettingKeyServiceQuotaPreCheckTwoPhase)
-	if err != nil {
-		return false
-	}
-	return enabled
+func (s *serviceQuotaService) isEnabled(ctx context.Context) bool {
+	return serviceQuotaIsEnabled(ctx, s.cache, s.settings)
 }
 
-func (s *serviceQuotaService) isEnabled(ctx context.Context) bool {
-	if s.cache != nil {
-		val, err := s.cache.GetEnabled(ctx)
+// serviceQuotaIsEnabled 是 PreCheck/Record 与 Monitor 共享的"读总开关 + fail-open"实现。
+//
+// 读路径优先级：
+//  1. cache 命中（GetEnabled 返回非 nil 且无 error）→ 直接用
+//  2. cache 未命中或错误 → 走 SettingService 拉 DB；失败 fail-open 返回 false（与历史一致）
+//  3. cache 非 nil 时回填 setting 值，让下次直接命中
+//
+// 抽出包级函数避免 isEnabled / snapshotEnabled 两份完全相同的实现漂移；
+// 任何一边新增逻辑（例如 metrics、tracing）都必须在这里改一次而不是两次。
+func serviceQuotaIsEnabled(ctx context.Context, cache ServiceQuotaCache, settings *SettingService) bool {
+	if cache != nil {
+		val, err := cache.GetEnabled(ctx)
 		if err == nil && val != nil {
 			return *val
 		}
 	}
-	enabled, err := s.settings.GetBool(ctx, SettingKeyServiceQuotaEnabled)
+	enabled, err := settings.GetBool(ctx, SettingKeyServiceQuotaEnabled)
 	if err != nil {
 		return false
 	}
-	if s.cache != nil {
-		_ = s.cache.SetEnabled(ctx, enabled)
+	if cache != nil {
+		_ = cache.SetEnabled(ctx, enabled)
 	}
 	return enabled
 }
@@ -159,7 +200,7 @@ func (s *serviceQuotaService) loadRulesWithCache(ctx context.Context) []*Service
 			return rules
 		}
 	}
-	val, err, _ := s.sf.Do("load_rules", func() (interface{}, error) {
+	val, err, _ := s.sf.Do("load_rules", func() (any, error) {
 		rules, err := s.repo.List(ctx, ServiceQuotaListFilter{})
 		if err != nil {
 			return nil, err
@@ -172,7 +213,8 @@ func (s *serviceQuotaService) loadRulesWithCache(ctx context.Context) []*Service
 	if err != nil {
 		return nil
 	}
-	return val.([]*ServiceQuotaRule)
+	rules, _ := val.([]*ServiceQuotaRule)
+	return rules
 }
 
 // reloadCache 是写路径在写完 DB 后的缓存失效入口。多实例部署下只能 Del 缓存

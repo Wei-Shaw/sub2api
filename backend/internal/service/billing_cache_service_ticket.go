@@ -9,6 +9,37 @@ import (
 // 内部 sentinel，不暴露给 HTTP 响应；上层应直接 panic? 不：返回 error 让 caller 走 fail-safe。
 var errBillingTicketClosed = errors.New("billing_ticket: consume after close")
 
+// billingTicketContextKeyType 是 *BillingTicket 在 ctx 中的 key 类型。
+// 用空 struct 类型避免与第三方 context key 字符串冲突。
+type billingTicketContextKeyType struct{}
+
+// billingTicketContextKey 是 *BillingTicket 在 ctx 中的 key 单例。
+var billingTicketContextKey = billingTicketContextKeyType{}
+
+// WithBillingTicket 把 *BillingTicket 注入 ctx，供下游调度阶段读取 PreCheckPlan
+// 做 service_quota 账号级预过滤（详见 SelectAccountWithLoadAwareness 内 quota 接入点）。
+//
+// caller 协议：handler 在 PrepareBillingCheckForRequest 成功后调用一次；ticket nil 时
+// 直接返回原 ctx（fast-path，无 ctx 包装开销）。
+func WithBillingTicket(ctx context.Context, ticket *BillingTicket) context.Context {
+	if ticket == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, billingTicketContextKey, ticket)
+}
+
+// BillingTicketFromContext 从 ctx 取出 *BillingTicket，无 ticket 时返回 nil。
+//
+// 设计权衡：返回 nil 而非 error 让 caller 一行 ticket.PreCheckPlan() 即可继续——
+// PreCheckPlan / Consume 的 nil-receiver 兼容路径已经覆盖"无 ticket"语义。
+func BillingTicketFromContext(ctx context.Context) *BillingTicket {
+	if ctx == nil {
+		return nil
+	}
+	t, _ := ctx.Value(billingTicketContextKey).(*BillingTicket)
+	return t
+}
+
 // BillingTicket 是 BillingCacheService 两阶段计费检查（Prepare → Consume）的状态载体。
 //
 // 设计目标：让 caller 在路由前完成余额 / 订阅 / RPM 等"必到字段"检查，但把对 channel/account
@@ -26,12 +57,7 @@ var errBillingTicketClosed = errors.New("billing_ticket: consume after close")
 //  4. 同一个 ticket 允许多次 Consume——在 fallback 重试切换账号时常见。
 //     Consume 内部检测到 lease 已存在会先释放再重新抢，使 lease 始终对应"当前生效的 channel/account"。
 //
-// feature flag service_quota.precheck_two_phase 关闭（默认）时：
-//   - Prepare 阶段就完成旧 PreCheck（一次性 acquire），ticket 持有 lease；
-//   - Consume 退化为 noop（不会重新 acquire）；
-//   - 行为与历史 CheckBillingEligibility 完全一致。
-//
-// flag 开启时：
+// 工作模型（统一走两阶段）：
 //   - Prepare 阶段只调 PreCheckSelect 选规则，不抢 concurrency；
 //   - Consume 阶段才调 PreCheckAcquire 按完整 channel/account 维度抢槽位 / 增 RPM。
 //
@@ -42,24 +68,16 @@ type BillingTicket struct {
 	plan     *ServiceQuotaPreCheckPlan
 	lease    *ServiceQuotaLease
 
-	// twoPhase=true 表示 Prepare 阶段只选 plan，Consume 阶段才 acquire（feature flag 开启）。
-	// twoPhase=false 表示 Prepare 已完成 PreCheck，Consume 是 noop。
-	twoPhase bool
-	// legacyOneOff=true 标记本 ticket 由 CheckBillingEligibility（兼容入口）创建，无视 flag
-	// 走单阶段路径；CheckBillingEligibility 调用 ticket.Consume 后会 detachLease，所以
-	// Consume 内部允许在 legacyOneOff 时把 lease 转移所有权而不抢新的。
-	legacyOneOff bool
-	closed       bool
+	closed bool
 }
 
 // Consume 完成两阶段计费检查的第二阶段：基于 caller 选定的 channel + account 抢 service quota
 // concurrency / 增 RPM。
 //
-// 行为分支：
-//   - feature flag off / legacyOneOff：lease 已在 Prepare 时获得，本方法只校验 ticket 状态后立即返回 nil。
-//   - feature flag on：基于 plan 调用 ServiceQuotaService.PreCheckAcquire；如本 ticket 已有 lease
-//     （上一次 Consume 抢的，常见于 fallback 切换账号），先 Release 再抢新的，使 lease 与当前
-//     channel/account 严格对应。
+// 基于 plan 调用 ServiceQuotaService.PreCheckAcquire；如本 ticket 已有 lease
+// （上一次 Consume 抢的，常见于 fallback 切换账号），先 Release 再抢新的，使 lease 与当前
+// channel/account 严格对应。plan==nil（PreCheckSelect 返回空，例如 service quota 未启用 /
+// user==nil）时 Consume 退化为只回填 channel/account 后返回 nil。
 //
 // 失败时不会更新 ticket.lease，caller 通过 defer ticket.Close() 兜底；不会 panic。
 //
@@ -72,14 +90,11 @@ func (t *BillingTicket) Consume(ctx context.Context, channelID, accountID int64)
 	if t.closed {
 		return errBillingTicketClosed
 	}
-	if !t.twoPhase {
-		// flag off：Prepare 已完成 PreCheck，无需再做。lease 已经持有（若有规则匹配）。
-		// 把入参里的 channel/account 也回填到 quotaReq，方便 detachLease 之外的观测。
+	if t.svc == nil || t.svc.serviceQuota == nil || t.plan == nil {
+		// plan==nil：PreCheckSelect 返回空（无规则匹配 / service quota 未启用 / user==nil）。
+		// 仍然回填 channel/account 让观测保持一致；不抢任何槽位。
 		t.quotaReq.ChannelID = channelID
 		t.quotaReq.AccountID = accountID
-		return nil
-	}
-	if t.svc == nil || t.svc.serviceQuota == nil {
 		return nil
 	}
 
@@ -111,20 +126,31 @@ func (t *BillingTicket) Close() {
 	}
 	t.closed = true
 	if t.lease != nil {
-		t.lease.Release()
+		// matched rules 仅含 RPM/deferred 时 lease.Release 为 nil（无 concurrency 槽位需释放）。
+		if t.lease.Release != nil {
+			t.lease.Release()
+		}
 		t.lease = nil
 	}
 }
 
-// detachLease 把 lease 所有权从 ticket 转移给 caller，并把 ticket 置为已关闭。
-// 仅供 CheckBillingEligibility 兼容路径使用——它需要返回原始 *ServiceQuotaLease 让旧 caller
-// 沿用 defer ReleaseQuotaLease(lease) 协议；ticket 在转移后不再持有任何资源。
-func (t *BillingTicket) detachLease() *ServiceQuotaLease {
+// PreCheckPlan 暴露 ticket 内部缓存的 service_quota PreCheckSelect 计划，给调度阶段
+// 用于批量预测候选账号是否被 service_quota 阻塞（详见 ServiceQuotaService.SnapshotForAccounts）。
+//
+// 返回值语义：
+//   - service_quota 关闭 / 无规则匹配 → nil（caller 跳过预过滤）
+//   - feature flag off / legacyOneOff（CheckBillingEligibility 路径）→ 也返回 nil：
+//     单阶段路径 plan 不被持有，没有可用的候选规则集合
+//   - twoPhase=true 且 PreCheckSelect 选出至少一条候选规则 → 非 nil *ServiceQuotaPreCheckPlan
+//
+// 不暴露内部 svc / lease / quotaReq 字段，保持 BillingTicket 的封装边界——caller 只能
+// 通过 Consume / Close 改变 ticket 状态，不能旁路调用 PreCheckAcquire / Release。
+//
+// nil-safe：t == nil 时返回 nil（与其他 receiver 方法一致）。
+func (t *BillingTicket) PreCheckPlan() *ServiceQuotaPreCheckPlan {
 	if t == nil {
 		return nil
 	}
-	lease := t.lease
-	t.lease = nil
-	t.closed = true
-	return lease
+	return t.plan
 }
+

@@ -54,6 +54,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_UsesWSPassthroughSnapsh
 		"gpt-5.1",
 		nil,
 		OpenAIUpstreamTransportResponsesWebsocketV2,
+		false,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, selection)

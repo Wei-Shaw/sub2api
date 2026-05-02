@@ -35,18 +35,20 @@ vi.mock('vue-i18n', async () => {
 const stubs = {
   AppLayout: { template: '<div><slot /></div>' },
   Icon: true,
+  PlatformIcon: { template: '<span data-test="platform-icon" />' },
   AutoRefreshButton: {
     props: ['enabled', 'intervalSeconds', 'countdown', 'intervals'],
     template: '<button data-test="auto-refresh-stub">{{ enabled ? "on" : "off" }} {{ intervalSeconds }}s</button>',
   },
   EmptyState: {
-    props: ['title'],
-    template: '<div data-test="empty-state">{{ title }}</div>',
+    props: ['title', 'actionText'],
+    emits: ['action'],
+    template: '<div data-test="empty-state">{{ title }}<button v-if="actionText" data-test="empty-action" @click="$emit(\'action\')">{{ actionText }}</button></div>',
   },
-  RuntimeTable: {
+  QuotaMonitorTable: {
     props: ['rows', 'loading', 'showInternal'],
     template:
-      '<div data-test="runtime-table">rows={{ rows.length }} internal={{ showInternal }}</div>',
+      '<div data-test="runtime-table">rows={{ rows.length }} internal={{ showInternal }} ids={{ rows.map((r) => r.rule_id).join(",") }}</div>',
   },
 }
 
@@ -91,7 +93,7 @@ describe('QuotaMonitorView', () => {
     vi.useRealTimers()
   })
 
-  it('挂载后渲染 RuntimeTable，rows.length=2，showInternal=false', async () => {
+  it('挂载后渲染 QuotaMonitorTable，rows.length=2，showInternal=false', async () => {
     const wrapper = mount(QuotaMonitorView, { global: { stubs } })
     await flushPromises()
     expect(getMyServiceQuotaMock).toHaveBeenCalledTimes(1)
@@ -101,7 +103,7 @@ describe('QuotaMonitorView', () => {
     wrapper.unmount()
   })
 
-  it('enabled=false 时显示 disabled 文案，不渲染 RuntimeTable', async () => {
+  it('enabled=false 时显示 disabled 文案，不渲染 QuotaMonitorTable', async () => {
     getMyServiceQuotaMock.mockResolvedValueOnce(makeSnapshot({ enabled: false, items: [] }))
     const wrapper = mount(QuotaMonitorView, { global: { stubs } })
     await flushPromises()
@@ -137,6 +139,131 @@ describe('QuotaMonitorView', () => {
     const wrapper = mount(QuotaMonitorView, { global: { stubs } })
     await flushPromises()
     expect(showErrorMock).toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('快照非空时显示 filter 卡片；空快照不显示', async () => {
+    const wrapper = mount(QuotaMonitorView, { global: { stubs } })
+    await flushPromises()
+    expect(wrapper.find('[data-test="user-quota-filters"]').exists()).toBe(true)
+    wrapper.unmount()
+
+    getMyServiceQuotaMock.mockResolvedValueOnce(makeSnapshot({ items: [] }))
+    const wrapper2 = mount(QuotaMonitorView, { global: { stubs } })
+    await flushPromises()
+    expect(wrapper2.find('[data-test="user-quota-filters"]').exists()).toBe(false)
+    wrapper2.unmount()
+  })
+
+  it('选规则下拉只显示该规则', async () => {
+    const wrapper = mount(QuotaMonitorView, { global: { stubs } })
+    await flushPromises()
+
+    const select = wrapper.get('[data-test="filter-rule"]')
+    await select.setValue('1')
+    const table = wrapper.get('[data-test="runtime-table"]')
+    expect(table.text()).toContain('rows=1')
+    expect(table.text()).toContain('ids=1')
+    wrapper.unmount()
+  })
+
+  it('限额范围 scope=mine 仅保留 counter_mode=user 行', async () => {
+    getMyServiceQuotaMock.mockResolvedValueOnce(
+      makeSnapshot({
+        items: [
+          makeRow({ rule_id: 1, counter_mode: 'shared' }),
+          makeRow({ rule_id: 2, counter_mode: 'user' }),
+        ],
+      }),
+    )
+    const wrapper = mount(QuotaMonitorView, { global: { stubs } })
+    await flushPromises()
+    await wrapper.get('[data-test="filter-scope"]').setValue('mine')
+    expect(wrapper.get('[data-test="runtime-table"]').text()).toContain('ids=2')
+    wrapper.unmount()
+  })
+
+  it('状态 status=exceeded 仅保留 utilization >= 100 行', async () => {
+    getMyServiceQuotaMock.mockResolvedValueOnce(
+      makeSnapshot({
+        items: [
+          makeRow({ rule_id: 1, utilization_pct: 50 }),
+          makeRow({ rule_id: 2, utilization_pct: 100 }),
+        ],
+      }),
+    )
+    const wrapper = mount(QuotaMonitorView, { global: { stubs } })
+    await flushPromises()
+    await wrapper.get('[data-test="filter-status"]').setValue('exceeded')
+    expect(wrapper.get('[data-test="runtime-table"]').text()).toContain('ids=2')
+    wrapper.unmount()
+  })
+
+  it('limiterTypes chip 多选过滤（≥2 种类型时显示 chip）', async () => {
+    getMyServiceQuotaMock.mockResolvedValueOnce(
+      makeSnapshot({
+        items: [
+          makeRow({ rule_id: 1, limiter_type: 'rpm' }),
+          makeRow({ rule_id: 2, limiter_type: 'tpm' }),
+          makeRow({ rule_id: 3, limiter_type: 'concurrency' }),
+        ],
+      }),
+    )
+    const wrapper = mount(QuotaMonitorView, { global: { stubs } })
+    await flushPromises()
+    const chips = wrapper.findAll('[data-test="filter-limiter-chip"]')
+    expect(chips.length).toBe(3)
+    // 点击 'rpm' chip（首个）
+    await chips[0].trigger('click')
+    expect(wrapper.get('[data-test="runtime-table"]').text()).toContain('rows=1')
+    // 再点 'tpm'（第二个）→ rows=2
+    await chips[1].trigger('click')
+    expect(wrapper.get('[data-test="runtime-table"]').text()).toContain('rows=2')
+    wrapper.unmount()
+  })
+
+  it('platforms chip 多选过滤（≥2 平台时显示 chip）', async () => {
+    getMyServiceQuotaMock.mockResolvedValueOnce(
+      makeSnapshot({
+        items: [
+          makeRow({ rule_id: 1, path_summary: { platform: 'anthropic', channel_id: null, group_id: null, account_id: null, model_pattern: null } }),
+          makeRow({ rule_id: 2, path_summary: { platform: 'openai', channel_id: null, group_id: null, account_id: null, model_pattern: null } }),
+        ],
+      }),
+    )
+    const wrapper = mount(QuotaMonitorView, { global: { stubs } })
+    await flushPromises()
+    const chips = wrapper.findAll('[data-test="filter-platform-chip"]')
+    expect(chips.length).toBe(2)
+    // 平台选项按字母序：anthropic(0) → openai(1)
+    await chips[1].trigger('click')
+    expect(wrapper.get('[data-test="runtime-table"]').text()).toContain('ids=2')
+    wrapper.unmount()
+  })
+
+  it('filter 过滤后为空时显示 emptyAfterFilter（带"重置筛选"按钮可恢复）', async () => {
+    const wrapper = mount(QuotaMonitorView, { global: { stubs } })
+    await flushPromises()
+    // 选不存在的规则 ID 把所有行过滤掉
+    await wrapper.get('[data-test="filter-status"]').setValue('exceeded') // 默认快照 utilization=10 全部 < 100
+    expect(wrapper.find('[data-test="empty-state"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('userQuotaMonitor.emptyAfterFilter')
+    // 点击"重置筛选"按钮（EmptyState stub 的 emit）
+    await wrapper.get('[data-test="empty-action"]').trigger('click')
+    // table 重新出现
+    expect(wrapper.find('[data-test="runtime-table"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('"重置筛选"按钮仅当任一 filter 激活时可点击', async () => {
+    const wrapper = mount(QuotaMonitorView, { global: { stubs } })
+    await flushPromises()
+    const resetBtn = wrapper.get('[data-test="filter-reset"]')
+    expect(resetBtn.attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-test="filter-scope"]').setValue('global')
+    expect(resetBtn.attributes('disabled')).toBeUndefined()
+    await resetBtn.trigger('click')
+    expect((wrapper.get('[data-test="filter-scope"]').element as HTMLSelectElement).value).toBe('all')
     wrapper.unmount()
   })
 })

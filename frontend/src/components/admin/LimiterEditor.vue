@@ -1,7 +1,20 @@
 <template>
   <div class="space-y-3">
-    <div v-if="modelValue.length === 0" class="rounded-lg border border-dashed border-gray-300 px-4 py-3 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400">
-      {{ t('admin.serviceQuota.limiterEditor.empty') }}
+    <!-- 数组空时占位提示。父组件提交校验后若 errors 命中 path='limiters' 切换为红色边框 + 红字
+         （让 user 看到"至少配置一个限流器"是必填错误，不只是占位） -->
+    <div
+      v-if="modelValue.length === 0"
+      :class="[
+        'rounded-lg border border-dashed px-4 py-3 text-center text-sm',
+        errorFor('limiters')
+          ? 'border-red-400 bg-red-50 text-red-600 dark:border-red-500 dark:bg-red-900/10 dark:text-red-400'
+          : 'border-gray-300 text-gray-500 dark:border-dark-600 dark:text-gray-400',
+      ]"
+    >
+      <span v-if="errorFor('limiters')">
+        {{ t('admin.serviceQuota.errors.' + errorFor('limiters')) }} · {{ t('admin.serviceQuota.limiterEditor.empty') }}
+      </span>
+      <span v-else>{{ t('admin.serviceQuota.limiterEditor.empty') }}</span>
     </div>
     <div
       v-for="(item, index) in modelValue"
@@ -10,37 +23,54 @@
     >
       <div class="grid grid-cols-1 items-end gap-3 sm:grid-cols-[160px_1fr_140px_auto]">
         <label class="form-field">
-          <span class="input-label">{{ t('admin.serviceQuota.columns.type') }}</span>
+          <RequiredLabel :label="t('admin.serviceQuota.columns.type')" required />
           <select
             :value="item.limiter_type"
-            class="input"
+            :class="['input', { 'border-red-400 focus:ring-red-500': !!errorFor(`limiters[${index}].limiter_type`) }]"
             @change="updateField(index, 'limiter_type', ($event.target as HTMLSelectElement).value)"
           >
             <option v-for="opt in availableTypes(item.limiter_type)" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
           </select>
+          <span
+            v-if="errorFor(`limiters[${index}].limiter_type`)"
+            class="text-xs text-red-500"
+          >
+            {{ t('admin.serviceQuota.errors.' + errorFor(`limiters[${index}].limiter_type`)) }}
+          </span>
         </label>
         <label class="form-field">
-          <span class="input-label">{{ t('admin.serviceQuota.columns.limit') }}</span>
-          <input
-            :value="item.limit_value"
-            type="number"
-            min="1"
-            step="0.000001"
-            class="input"
-            required
-            @input="updateField(index, 'limit_value', Number(($event.target as HTMLInputElement).value))"
+          <RequiredLabel :label="t('admin.serviceQuota.columns.limit')" required />
+          <NumericInput
+            :model-value="item.limit_value ?? null"
+            :min="0"
+            :step="getLimitStep(item.limiter_type)"
+            :integer="!isDailyUsd(item.limiter_type)"
+            :has-error="!!errorFor(`limiters[${index}].limit_value`)"
+            @update:model-value="updateField(index, 'limit_value', $event as number)"
           />
+          <span
+            v-if="errorFor(`limiters[${index}].limit_value`)"
+            class="text-xs text-red-500"
+          >
+            {{ t('admin.serviceQuota.errors.' + errorFor(`limiters[${index}].limit_value`)) }}
+          </span>
         </label>
         <label v-if="item.limiter_type !== 'concurrency'" class="form-field">
-          <span class="input-label">{{ t('admin.serviceQuota.columns.window') }}</span>
+          <RequiredLabel :label="t('admin.serviceQuota.columns.window')" required />
           <select
             :value="item.window_mode"
-            class="input"
+            :class="['input', { 'border-red-400 focus:ring-red-500': !!errorFor(`limiters[${index}].window_mode`) }]"
             @change="updateField(index, 'window_mode', ($event.target as HTMLSelectElement).value)"
           >
             <option value="fixed">{{ t('admin.serviceQuota.windows.fixed') }}</option>
             <option value="rolling">{{ t('admin.serviceQuota.windows.rolling') }}</option>
           </select>
+          <span
+            v-if="errorFor(`limiters[${index}].window_mode`)"
+            class="text-xs text-red-500"
+          >
+            {{ t('admin.serviceQuota.errors.' + errorFor(`limiters[${index}].window_mode`)) }}
+          </span>
         </label>
         <div v-else class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.serviceQuota.windows.none') }}</div>
         <button
@@ -75,11 +105,29 @@
           </label>
         </div>
         <div
-          v-if="(item.token_components ?? TOKEN_COMPONENTS_DEFAULT).length === 0"
+          v-if="errorFor(`limiters[${index}].token_components`) || (item.token_components ?? TOKEN_COMPONENTS_DEFAULT).length === 0"
           class="mt-1 text-xs text-red-500"
         >
           {{ t('admin.serviceQuota.tokenComponents.minOneRequired') }}
         </div>
+      </div>
+
+      <!-- 仅 RPM 显示"请求到达即计入" toggle；默认 false（仅成功请求计入）。 -->
+      <div v-if="usesCountOnArrival(item.limiter_type)" class="mt-3 border-t border-gray-100 pt-3 dark:border-dark-700">
+        <label class="inline-flex items-start gap-2 text-xs text-gray-700 dark:text-gray-200 cursor-pointer">
+          <input
+            type="checkbox"
+            class="mt-0.5 h-3.5 w-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            :checked="item.count_on_arrival === true"
+            @change="updateField(index, 'count_on_arrival', ($event.target as HTMLInputElement).checked)"
+          />
+          <span class="flex flex-col gap-0.5">
+            <span class="font-medium">{{ t('admin.serviceQuota.limiters.rpmCountOnArrival.label') }}</span>
+            <span class="text-[11px] text-gray-500 dark:text-gray-400">
+              {{ t('admin.serviceQuota.limiters.rpmCountOnArrival.help') }}
+            </span>
+          </span>
+        </label>
       </div>
     </div>
     <button
@@ -98,6 +146,8 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
+import NumericInput from '@/components/common/NumericInput.vue'
+import RequiredLabel from '@/components/common/RequiredLabel.vue'
 import {
   type ServiceQuotaLimiterInput,
   type TokenComponent,
@@ -105,16 +155,37 @@ import {
   TOKEN_COMPONENTS_DEFAULT,
   limiterUsesTokenComponents,
 } from '@/api/admin/serviceQuota'
+import type { ValidationError } from '@/utils/validateServiceQuota'
 
 const { t } = useI18n()
 
-const props = defineProps<{
-  modelValue: ServiceQuotaLimiterInput[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    modelValue: ServiceQuotaLimiterInput[]
+    /** 父组件传入的校验错误（路径与 validateServiceQuotaRule 输出对齐） */
+    errors?: ValidationError[]
+  }>(),
+  { errors: () => [] },
+)
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: ServiceQuotaLimiterInput[]): void
 }>()
+
+// errorFor(path) 返回该字段第一条 error.code，没有则空字符串
+function errorFor(path: string): string {
+  return props.errors.find((e) => e.path === path)?.code || ''
+}
+
+// daily_usd 是金额（小数）；其他都是整数（rpm/tpm/tpd/concurrency）
+function getLimitStep(limiterType: string): number {
+  return isDailyUsd(limiterType) ? 0.01 : 1
+}
+
+// daily_usd 单独走小数；其他类型业务上必须整数（避免 IEEE754 浮点累积误差）
+function isDailyUsd(limiterType: string): boolean {
+  return limiterType === 'daily_usd'
+}
 
 const allTypes = computed(() => [
   { value: 'rpm', label: t('admin.serviceQuota.limiters.rpm') },
@@ -134,6 +205,11 @@ function availableTypes(currentType: string) {
 
 function usesTokenComponents(limiterType: string): boolean {
   return limiterUsesTokenComponents(limiterType)
+}
+
+// count_on_arrival 仅对 RPM 有意义；切到其他 limiter 类型时会被 strip 掉。
+function usesCountOnArrival(limiterType: string): boolean {
+  return limiterType === 'rpm'
 }
 
 function defaultLimitFor(type: string): number {
@@ -163,6 +239,9 @@ function blankLimiter(limiter_type: string): ServiceQuotaLimiterInput {
   if (limiterUsesTokenComponents(limiter_type)) {
     out.token_components = [...TOKEN_COMPONENTS_DEFAULT]
   }
+  if (limiter_type === 'rpm') {
+    out.count_on_arrival = false
+  }
   return out
 }
 
@@ -191,13 +270,27 @@ function updateField<K extends keyof ServiceQuotaLimiterInput>(index: number, ke
   //   - 切到 TPM/TPD 且没有 token_components → 填默认（input/output/cache_creation）
   //   - 切到非 TPM/TPD → 删字段，避免提交垃圾数据（后端会清洗，前端也清干净）
   if (key === 'limiter_type') {
-    const newType = value as string
+    // value 在此分支对应 ServiceQuotaLimiterInput['limiter_type']（string）。
+    // 用 typeof narrow 处理泛型上下文，避免运行时拿到非字符串导致 helper 误判。
+    const newType: string = typeof value === 'string' ? value : ''
     if (limiterUsesTokenComponents(newType)) {
       if (!next.token_components || next.token_components.length === 0) {
         next.token_components = [...TOKEN_COMPONENTS_DEFAULT]
       }
     } else {
       delete next.token_components
+    }
+    // count_on_arrival 同理：仅 RPM 保留；切到其他类型 strip 掉
+    if (newType === 'rpm') {
+      if (next.count_on_arrival === undefined) {
+        next.count_on_arrival = false
+      }
+    } else {
+      delete next.count_on_arrival
+    }
+    // 切到整数型时归位非整数老值（如老数据 999999.999997 切到 tpm 时 → 1000000）
+    if (!isDailyUsd(newType) && typeof next.limit_value === 'number' && !Number.isInteger(next.limit_value)) {
+      next.limit_value = Math.round(next.limit_value)
     }
   }
   newList[index] = next

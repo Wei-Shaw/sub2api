@@ -167,6 +167,11 @@ import {
   isRegistrationEmailSuffixAllowed,
   normalizeRegistrationEmailSuffixWhitelist
 } from '@/utils/registrationEmailPolicy'
+import {
+  clearAllAffiliateReferralCodes,
+  loadAffiliateReferralCode,
+  oauthAffiliatePayload
+} from '@/utils/oauthAffiliate'
 
 const { t, locale } = useI18n()
 
@@ -209,6 +214,7 @@ const password = ref<string>('')
 const initialTurnstileToken = ref<string>('')
 const promoCode = ref<string>('')
 const invitationCode = ref<string>('')
+const affCode = ref<string>('')
 const pendingAuthToken = ref<string>('')
 const pendingAuthTokenField = ref<PendingAuthTokenField>('pending_auth_token')
 const pendingProvider = ref<string>('')
@@ -260,6 +266,7 @@ onMounted(async () => {
       initialTurnstileToken.value = registerData.turnstile_token || ''
       promoCode.value = registerData.promo_code || ''
       invitationCode.value = registerData.invitation_code || ''
+      affCode.value = registerData.aff_code || loadAffiliateReferralCode()
       pendingAuthToken.value = registerData.pending_auth_token || activePendingSession?.token || ''
       pendingAuthTokenField.value = registerData.pending_auth_token_field || activePendingSession?.token_field || 'pending_auth_token'
       pendingProvider.value = registerData.pending_provider || activePendingSession?.provider || ''
@@ -499,6 +506,7 @@ async function handleVerify(): Promise<void> {
           password: password.value,
           verify_code: verifyCode.value.trim(),
           invitation_code: invitationCode.value || undefined,
+          ...oauthAffiliatePayload(affCode.value || loadAffiliateReferralCode()),
           adopt_display_name: pendingAdoptionDecision.value?.adoptDisplayName,
           adopt_avatar: pendingAdoptionDecision.value?.adoptAvatar
         }
@@ -524,12 +532,14 @@ async function handleVerify(): Promise<void> {
         verify_code: verifyCode.value.trim(),
         turnstile_token: initialTurnstileToken.value || undefined,
         promo_code: promoCode.value || undefined,
-        invitation_code: invitationCode.value || undefined
+        invitation_code: invitationCode.value || undefined,
+        ...(affCode.value ? { aff_code: affCode.value } : {})
       })
     }
 
     // Clear session data
     sessionStorage.removeItem('register_data')
+    clearAllAffiliateReferralCodes()
 
     // Show success toast
     appStore.showSuccess(t('auth.accountCreatedSuccess', { siteName: siteName.value }))

@@ -42,7 +42,7 @@
       <template #table>
         <DataTable :columns="columns" :data="filteredRules" :loading="loading">
           <template #cell-enabled="{ row }">
-            <EnabledToggleCell :row="row" />
+            <EnabledToggleCell :row="row" @updated="load" />
           </template>
 
           <template #cell-name="{ row }">
@@ -84,11 +84,27 @@
           </template>
 
           <template #cell-counter_mode="{ row }">
-            <div class="space-y-0.5">
-              <div class="text-sm font-medium text-gray-900 dark:text-white">{{ counterModeLabel(row.counter_mode) }}</div>
-              <div v-if="row.counter_mode === 'user' && row.target_user_ids?.length" class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.serviceQuota.userId', { id: row.target_user_ids.join(', ') }) }}
-              </div>
+            <div class="text-sm font-medium text-gray-900 dark:text-white">{{ counterModeLabel(row.counter_mode) }}</div>
+          </template>
+
+          <template #cell-target_users="{ row }">
+            <div v-if="row.counter_mode !== 'user'" class="text-xs text-gray-400">—</div>
+            <div v-else-if="!targetUsersFor(row).length" class="text-xs text-gray-400">—</div>
+            <div v-else class="flex flex-wrap items-center gap-1">
+              <span
+                v-for="u in targetUsersFor(row).slice(0, TARGET_USERS_VISIBLE_LIMIT)"
+                :key="u.id"
+                class="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700 dark:bg-dark-700 dark:text-gray-200"
+                :title="`#${u.id}`"
+              >
+                {{ u.label }}
+              </span>
+              <span
+                v-if="targetUsersFor(row).length > TARGET_USERS_VISIBLE_LIMIT"
+                class="text-[11px] text-gray-500 dark:text-gray-400"
+              >
+                {{ t('admin.serviceQuota.targetUsersOverflow', { count: targetUsersFor(row).length - TARGET_USERS_VISIBLE_LIMIT }) }}
+              </span>
             </div>
           </template>
 
@@ -99,12 +115,26 @@
           </template>
 
           <template #cell-actions="{ row }">
+            <!-- 操作样式与监控页 RuntimeTable 一致：图标在上 / 文字在下，灰色基调，
+                 编辑 hover 切蓝色、删除 hover 切红色（与 AccountsView 同款） -->
             <div class="flex items-center gap-1">
-              <button class="action-btn hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20" type="button" :title="t('common.edit')" @click="openEdit(row)">
+              <button
+                type="button"
+                class="action-btn flex flex-col items-center gap-0.5 hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400"
+                :title="t('common.edit')"
+                @click="openEdit(row)"
+              >
                 <Icon name="edit" size="sm" />
+                <span class="text-xs">{{ t('common.edit') }}</span>
               </button>
-              <button class="action-btn hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20" type="button" :title="t('common.delete')" @click="askDelete(row)">
+              <button
+                type="button"
+                class="action-btn flex flex-col items-center gap-0.5 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                :title="t('common.delete')"
+                @click="askDelete(row)"
+              >
                 <Icon name="trash" size="sm" />
+                <span class="text-xs">{{ t('common.delete') }}</span>
               </button>
             </div>
           </template>
@@ -136,13 +166,13 @@
       :cancel-text="t('common.cancel')"
       :danger="true"
       @confirm="confirmDelete"
-      @cancel="deletingRule = null"
+      @cancel="cancelDelete"
     />
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -151,95 +181,62 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import Icon from '@/components/icons/Icon.vue'
 import EnabledToggleCell from './components/EnabledToggleCell.vue'
-import PathChevron from './components/PathChevron.vue'
+import PathChevron from '@/components/serviceQuota/PathChevron.vue'
 import RuleEditDialog from './components/RuleEditDialog.vue'
-import type { PathSummary } from './components/pathRender'
 import { useAppStore } from '@/stores/app'
-import { extractApiErrorMessage } from '@/utils/apiError'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 import { limiterChipClass } from '@/utils/limiterColors'
-import { formatThousands } from '@/utils/format'
 import type { Column } from '@/components/common/types'
 import {
-  deleteServiceQuotaRule,
   listServiceQuotaRules,
-  type ServiceQuotaLimiterDef,
-  type ServiceQuotaPathDef,
   type ServiceQuotaRule,
 } from '@/api/admin/serviceQuota'
+import { useServiceQuotaFilters } from './composables/useServiceQuotaFilters'
+import { useRuleDeleteDialog } from './composables/useRuleDeleteDialog'
+import { useServiceQuotaDisplay } from './composables/useServiceQuotaDisplay'
 
 const { t } = useI18n()
 const appStore = useAppStore()
 
-const counterModeOptions = computed(() => [
-  { value: 'user', label: t('admin.serviceQuota.counterModes.user') },
-  { value: 'per_user', label: t('admin.serviceQuota.counterModes.perUser') },
-  { value: 'shared', label: t('admin.serviceQuota.counterModes.shared') },
-])
+const {
+  counterModeOptions,
+  limiterLabel,
+  formatLimitValue,
+  counterModeLabel,
+  targetUsersFor,
+  pathDefToSummary,
+} = useServiceQuotaDisplay()
 
 const columns = computed<Column[]>(() => [
   { key: 'name', label: t('admin.serviceQuota.columns.name') },
   { key: 'limiters', label: t('admin.serviceQuota.columns.limiters') },
   { key: 'paths', label: t('admin.serviceQuota.columns.paths') },
   { key: 'counter_mode', label: t('admin.serviceQuota.columns.counterMode') },
+  { key: 'target_users', label: t('admin.serviceQuota.columns.targetUsers') },
   { key: 'is_fallback', label: t('admin.serviceQuota.columns.fallback') },
   { key: 'enabled', label: t('admin.serviceQuota.columns.status') },
   { key: 'actions', label: t('admin.serviceQuota.columns.actions') },
 ])
 
+// 限制单元格 chip 数量，避免一屏挤十几个用户名；超出折叠为 "等 N 人"
+const TARGET_USERS_VISIBLE_LIMIT = 3
+
 const rules = ref<ServiceQuotaRule[]>([])
 const loading = ref(false)
 const showDialog = ref(false)
 const editingRule = ref<ServiceQuotaRule | null>(null)
-const deletingRule = ref<ServiceQuotaRule | null>(null)
-const filters = reactive({ counterMode: '', fallback: '', enabled: '' })
 
-const filteredRules = computed(() => rules.value.filter((rule) => {
-  if (filters.counterMode && rule.counter_mode !== filters.counterMode) return false
-  if (filters.fallback && String(rule.is_fallback) !== filters.fallback) return false
-  if (filters.enabled && String(rule.enabled) !== filters.enabled) return false
-  return true
-}))
-
-function limiterLabel(value: string): string {
-  const map: Record<string, string> = {
-    rpm: t('admin.serviceQuota.limiters.rpm'),
-    tpm: t('admin.serviceQuota.limiters.tpm'),
-    tpd: t('admin.serviceQuota.limiters.tpd'),
-    daily_usd: t('admin.serviceQuota.limiters.dailyUsd'),
-    concurrency: t('admin.serviceQuota.limiters.concurrency'),
-  }
-  return map[value] || value
-}
-
-function formatLimitValue(lim: ServiceQuotaLimiterDef): string {
-  if (lim.limiter_type === 'daily_usd') return `$${Number(lim.limit_value).toFixed(6).replace(/\.?0+$/, '')}`
-  // 整数限额（rpm/tpm/tpd/concurrency）用美式千分位逗号
-  return formatThousands(Math.round(lim.limit_value))
-}
-
-function counterModeLabel(value: string): string {
-  return counterModeOptions.value.find((item) => item.value === value)?.label || value
-}
-
-// 复用 RuntimeTable 的 PathChevron 渲染：把 ServiceQuotaPathDef 适配成 PathSummary。
-// 复用 PathChevron 让监控页与配置页对"全部 nil 视为通配 / 平台 chip / chevron 链"
-// 三个语义保持一致——避免一处修改另一处漂移（复用原则）。
-function pathDefToSummary(path: ServiceQuotaPathDef): PathSummary {
-  return {
-    platform: path.platform ?? null,
-    channel_id: path.channel_id ?? null,
-    group_id: path.group_id ?? null,
-    account_id: path.account_id ?? null,
-    model_pattern: path.model_pattern ?? null,
-  }
-}
+const { filters, filteredRules } = useServiceQuotaFilters(rules)
+const { deletingRule, askDelete, cancelDelete, confirmDelete } = useRuleDeleteDialog(load)
 
 async function load() {
   loading.value = true
   try {
     rules.value = await listServiceQuotaRules()
   } catch (error: unknown) {
-    appStore.showError(extractApiErrorMessage(error, t('admin.serviceQuota.loadError')))
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('admin.serviceQuota.loadError')),
+    )
   } finally {
     loading.value = false
   }
@@ -253,22 +250,6 @@ function openCreate() {
 function openEdit(rule: ServiceQuotaRule) {
   editingRule.value = rule
   showDialog.value = true
-}
-
-function askDelete(rule: ServiceQuotaRule) {
-  deletingRule.value = rule
-}
-
-async function confirmDelete() {
-  if (!deletingRule.value) return
-  try {
-    await deleteServiceQuotaRule(deletingRule.value.id)
-    appStore.showSuccess(t('admin.serviceQuota.deleteSuccess'))
-    deletingRule.value = null
-    await load()
-  } catch (error: unknown) {
-    appStore.showError(extractApiErrorMessage(error, t('admin.serviceQuota.deleteError')))
-  }
 }
 
 onMounted(load)

@@ -56,7 +56,7 @@
       </template>
 
       <template #table>
-        <RuntimeTable
+        <QuotaMonitorTable
           :rows="rows"
           :loading="loading"
           :show-internal="true"
@@ -87,7 +87,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import AutoRefreshButton from '@/components/common/AutoRefreshButton.vue'
 import FilterBar from './components/FilterBar.vue'
-import RuntimeTable from './components/RuntimeTable.vue'
+import QuotaMonitorTable from '@/components/serviceQuota/QuotaMonitorTable.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import {
   getServiceQuotaMonitorSnapshot,
@@ -97,7 +97,7 @@ import {
   type ServiceQuotaMonitorSnapshot,
 } from '@/api/admin/serviceQuota'
 import { useAppStore } from '@/stores/app'
-import { extractApiErrorMessage } from '@/utils/apiError'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -171,7 +171,9 @@ async function confirmReset(): Promise<void> {
     appStore.showSuccess(t('admin.serviceQuotaMonitor.resetSuccess'))
     await loadOnce()
   } catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('admin.serviceQuotaMonitor.resetError')))
+    appStore.showError(
+      extractI18nErrorMessage(err, t, 'common.errors', t('admin.serviceQuotaMonitor.resetError')),
+    )
   }
 }
 
@@ -183,7 +185,9 @@ async function loadOnce(): Promise<void> {
     snapshot.value = await getServiceQuotaMonitorSnapshot({ ...filter.value })
     secondsSinceUpdate.value = 0
   } catch (err: unknown) {
-    errorMessage.value = extractApiErrorMessage(err, t('admin.serviceQuotaMonitor.loadError'))
+    errorMessage.value = extractI18nErrorMessage(
+      err, t, 'common.errors', t('admin.serviceQuotaMonitor.loadError'),
+    )
     appStore.showError(errorMessage.value)
   } finally {
     loading.value = false

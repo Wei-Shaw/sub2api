@@ -76,5 +76,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 		ServiceQuotaEnabled:      settings.ServiceQuotaEnabled,
+
+		AffiliateEnabled: settings.AffiliateEnabled,
 	})
 }

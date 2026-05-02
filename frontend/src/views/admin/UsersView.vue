@@ -622,6 +622,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatDateTime } from '@/utils/format'
 import Icon from '@/components/icons/Icon.vue'
@@ -1196,13 +1197,14 @@ const loadUsers = async () => {
         void loadUsersSecondaryData(userIds, signal, seq)
       }, 50)
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     const errorInfo = error as { name?: string; code?: string }
     if (errorInfo?.name === 'AbortError' || errorInfo?.name === 'CanceledError' || errorInfo?.code === 'ERR_CANCELED') {
       return
     }
-    const message = error.response?.data?.detail || error.message || t('admin.users.failedToLoad')
-    appStore.showError(message)
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('admin.users.failedToLoad')),
+    )
     console.error('Error loading users:', error)
   } finally {
     if (abortController === currentAbortController) {
@@ -1305,8 +1307,10 @@ const handleToggleStatus = async (user: AdminUser) => {
       newStatus === 'active' ? t('admin.users.userEnabled') : t('admin.users.userDisabled')
     )
     loadUsers()
-  } catch (error: any) {
-    appStore.showError(error.response?.data?.detail || t('admin.users.failedToToggle'))
+  } catch (error: unknown) {
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('admin.users.failedToToggle')),
+    )
     console.error('Error toggling user status:', error)
   }
 }
@@ -1357,8 +1361,10 @@ const confirmDelete = async () => {
     showDeleteDialog.value = false
     deletingUser.value = null
     loadUsers()
-  } catch (error: any) {
-    appStore.showError(error.response?.data?.detail || t('admin.users.failedToDelete'))
+  } catch (error: unknown) {
+    appStore.showError(
+      extractI18nErrorMessage(error, t, 'common.errors', t('admin.users.failedToDelete')),
+    )
     console.error('Error deleting user:', error)
   }
 }

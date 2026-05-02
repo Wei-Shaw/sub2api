@@ -148,13 +148,7 @@ func (s *serviceQuotaMonitorService) Snapshot(ctx context.Context, filter Monito
 	if len(rules) == 0 {
 		return empty, nil
 	}
-	rows := s.expandTargets(rules, filter)
-	rows = applyFilter(filter, rows)
-	truncated := false
-	if len(rows) > monitorMaxRows {
-		rows = rows[:monitorMaxRows]
-		truncated = true
-	}
+	rows, truncated := s.planRows(rules, filter)
 	keys := buildSnapshotKeys(rows)
 	snapshots := s.fetchSnapshots(ctx, keys)
 	items := assembleRuntime(rows, snapshots, filter.UserScope != nil)
@@ -166,23 +160,25 @@ func (s *serviceQuotaMonitorService) Snapshot(ctx context.Context, filter Monito
 	}, nil
 }
 
-// snapshotEnabled 复用 PreCheck 的 fail-open 语义：读取 settings 失败时按 false 处理，
-// 与 serviceQuotaService.isEnabled 一致；缓存命中优先级更高。
+// planRows 把规则集合按 filter 展开成 plannedRow，并按 monitorMaxRows 截断。
+// 拆出来让 Snapshot 主流程保持 ≤30 行：planning（展开 + 过滤 + 截断）属于
+// 纯数据流转，与 Redis 批量读 / 结果拼装是各自独立的阶段。
+func (s *serviceQuotaMonitorService) planRows(rules []*ServiceQuotaRule, filter MonitorSnapshotFilter) ([]plannedRow, bool) {
+	rows := s.expandTargets(rules, filter)
+	rows = applyFilter(filter, rows)
+	truncated := false
+	if len(rows) > monitorMaxRows {
+		rows = rows[:monitorMaxRows]
+		truncated = true
+	}
+	return rows, truncated
+}
+
+// snapshotEnabled 委托给 serviceQuotaIsEnabled 包级函数，与 PreCheck/Record 共享同一份
+// "读 cache 优先 + fail-open 走 settings + 回填 cache" 实现。任何一边新增逻辑都必须改 helper
+// 而不是 fork 一份新副本。
 func (s *serviceQuotaMonitorService) snapshotEnabled(ctx context.Context) bool {
-	if s.cache != nil {
-		val, err := s.cache.GetEnabled(ctx)
-		if err == nil && val != nil {
-			return *val
-		}
-	}
-	enabled, err := s.settings.GetBool(ctx, SettingKeyServiceQuotaEnabled)
-	if err != nil {
-		return false
-	}
-	if s.cache != nil {
-		_ = s.cache.SetEnabled(ctx, enabled)
-	}
-	return enabled
+	return serviceQuotaIsEnabled(ctx, s.cache, s.settings)
 }
 
 // loadRules 走 ServiceQuotaCache（与 PreCheck 共享），未命中时 List 并回填。

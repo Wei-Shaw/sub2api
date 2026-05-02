@@ -53,7 +53,7 @@ const stubs = {
     template: '<button data-test="auto-refresh-stub">{{ enabled ? "on" : "off" }} {{ intervalSeconds }}s</button>',
   },
   FilterBar: { template: '<div data-test="filter-bar"></div>' },
-  RuntimeTable: {
+  QuotaMonitorTable: {
     props: ['rows', 'loading', 'showInternal'],
     template: '<div data-test="runtime-table">rows={{ rows.length }} internal={{ showInternal }}</div>',
   },
@@ -98,7 +98,7 @@ describe('MonitorView', () => {
     vi.useRealTimers()
   })
 
-  it('挂载后立即触发一次快照拉取并把行传给 RuntimeTable', async () => {
+  it('挂载后立即触发一次快照拉取并把行传给 QuotaMonitorTable', async () => {
     const wrapper = mount(MonitorView, { global: { stubs } })
     await flushPromises()
     expect(getServiceQuotaMonitorSnapshotMock).toHaveBeenCalledTimes(1)

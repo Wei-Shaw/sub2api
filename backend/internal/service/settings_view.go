@@ -104,10 +104,15 @@ type SystemSettings struct {
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
 
-	DefaultConcurrency   int
-	DefaultBalance       float64
-	DefaultUserRPMLimit  int
-	DefaultSubscriptions []DefaultSubscriptionSetting
+	DefaultConcurrency           int
+	DefaultBalance               float64
+	AffiliateEnabled             bool
+	AffiliateRebateRate          float64
+	AffiliateRebateFreezeHours   int
+	AffiliateRebateDurationDays  int
+	AffiliateRebatePerInviteeCap float64
+	DefaultUserRPMLimit          int
+	DefaultSubscriptions         []DefaultSubscriptionSetting
 
 	// 用户每日配额限制（feature issue #1750）
 	UsageLimitEnabled         bool    // 总开关
@@ -231,6 +236,9 @@ type PublicSettings struct {
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 	ServiceQuotaEnabled      bool `json:"service_quota_enabled"`
+
+	// Affiliate (邀请返利) feature toggle
+	AffiliateEnabled bool `json:"affiliate_enabled"`
 }
 
 type WeChatConnectOAuthConfig struct {
@@ -332,6 +340,8 @@ type RectifierSettings struct {
 	ThinkingBudgetEnabled    bool     `json:"thinking_budget_enabled"`    // Thinking Budget 整流
 	APIKeySignatureEnabled   bool     `json:"apikey_signature_enabled"`   // API Key 签名整流开关
 	APIKeySignaturePatterns  []string `json:"apikey_signature_patterns"`  // API Key 自定义匹配关键词
+	AdvisorToolEnabled       bool     `json:"advisor_tool_enabled"`       // Advisor Tool 整流开关
+	AdvisorToolPatterns      []string `json:"advisor_tool_patterns"`      // Advisor Tool 自定义匹配关键词
 }
 
 // DefaultRectifierSettings 返回默认的整流器配置（全部启用）
@@ -340,6 +350,8 @@ func DefaultRectifierSettings() *RectifierSettings {
 		Enabled:                  true,
 		ThinkingSignatureEnabled: true,
 		ThinkingBudgetEnabled:    true,
+		AdvisorToolEnabled:       true,
+		AdvisorToolPatterns:      []string{DefaultAdvisorToolPattern},
 	}
 }
 

@@ -3,37 +3,18 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/metrics"
 )
+
 // matchedQuotaRule 是 PreCheck/Record 用的中间态：把规则与本次请求实际命中的 path 列表绑在一起，
 // 后续按 path × limiter 做笛卡尔展开。
 type matchedQuotaRule struct {
 	rule  *ServiceQuotaRule
 	paths []ServiceQuotaPathDef
-}
-
-// PreCheck 兼容旧 caller 的一阶段入口。
-//
-// 新代码请使用 BillingCacheService.PrepareBillingCheck（caller 路由前）+
-// BillingTicket.Consume（选定 channel/account 后）的两阶段路径，参见
-// service_quota_types.go 中 ServiceQuotaService.PreCheckSelect / PreCheckAcquire 的注释。
-//
-// 内部实现：直接复用 PreCheckSelect → PreCheckAcquire，二者共享同一份匹配/抢槽位逻辑。
-func (s *serviceQuotaService) PreCheck(ctx context.Context, req ServiceQuotaCheckRequest) (*ServiceQuotaLease, error) {
-	plan, err := s.PreCheckSelect(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if plan == nil {
-		return nil, nil
-	}
-	return s.PreCheckAcquire(ctx, plan, req.ChannelID, req.AccountID)
 }
 
 // PreCheckSelect 仅做规则级过滤（enabled、counter_mode=user 时 target_user_ids 命中），
@@ -87,7 +68,7 @@ func (s *serviceQuotaService) PreCheckSelect(ctx context.Context, req ServiceQuo
 // 三轮循环为何不抽象成 phases interface：
 //   - concurrency 持 lease（成功后注册 release callback，需要 *ServiceQuotaLease 上下文）
 //   - RPM 自回滚（Increment 失败时 best-effort -1，副作用模型与 deferred 完全不同）
-//   - deferred 只读（Current 即可，不写计数）
+//   - deferred 只读（一次 SnapshotMany 批量拉用量）
 //
 // 三类副作用差异巨大，强行抽 phase[T] 反而增加 generics 复杂度与回调签名噪音；
 // 共性仅限"四层嵌套（matched × paths × limiters × predicate）→ 调函数"，已由
@@ -110,51 +91,40 @@ func (s *serviceQuotaService) PreCheckAcquire(ctx context.Context, plan *Service
 	if len(matched) == 0 {
 		return nil, nil
 	}
-
-	// 初始化 no-op Release：当 matched rules 仅含 RPM/deferred 而无 concurrency limiter 时，
-	// acquireConcurrency 不会被调用，Release 仍为 nil。下游 BillingTicket.Close() 直接调
-	// t.lease.Release()（非 nil-safe），会 panic。给 Release 一个空 func，acquireConcurrency
-	// 包装 prev 时会顺带调用一次 no-op，幂等无害。
-	lease := &ServiceQuotaLease{Release: func() {}}
-	// 三轮：concurrency → RPM → deferred(tpm/tpd/daily_usd)。先抢并发额度避免后续判断时占用未释放。
-	steps := []limiterPhase{
-		{predicate: isConcurrencyLimiter, fn: func(rule *ServiceQuotaRule, p ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) error {
-			return s.acquireConcurrency(ctx, req, rule, p, lim, lease)
-		}},
-		{predicate: isRPMLimiter, fn: func(rule *ServiceQuotaRule, p ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) error {
-			return s.checkRPM(ctx, req, rule, p, lim)
-		}},
-		{predicate: isDeferredLimiter, fn: func(rule *ServiceQuotaRule, p ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) error {
-			return s.checkDeferred(ctx, req, rule, p, lim)
-		}},
-	}
-	for _, step := range steps {
-		if err := iterateLimiters(matched, step.predicate, step.fn); err != nil {
-			lease.release()
-			return nil, err
-		}
+	// matched rules 无 concurrency limiter 时，acquireConcurrency 不会被调用，
+	// lease.Release 维持 nil。下游 BillingTicket.Close 已对 Release == nil 做 nil-safe。
+	lease := &ServiceQuotaLease{}
+	if err := s.runAcquirePhases(ctx, req, matched, lease); err != nil {
+		lease.release()
+		return nil, err
 	}
 	return lease, nil
 }
 
-// limiterPhase 把 PreCheckAcquire 三轮步骤的 (predicate, fn) 组成可枚举的 step，
-// 让主流程的循环结构线性可读，预留新增 phase（例如 burst limiter）的扩展点。
-type limiterPhase struct {
-	predicate func(ServiceQuotaLimiterDef) bool
-	fn        func(rule *ServiceQuotaRule, p ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) error
-}
-
-func isConcurrencyLimiter(lim ServiceQuotaLimiterDef) bool {
-	return lim.LimiterType == ServiceQuotaLimiterConcurrency
-}
-
-func isRPMLimiter(lim ServiceQuotaLimiterDef) bool {
-	return lim.LimiterType == ServiceQuotaLimiterRPM
-}
-
-func isDeferredLimiter(lim ServiceQuotaLimiterDef) bool {
-	k := lim.LimiterType
-	return k == ServiceQuotaLimiterTPM || k == ServiceQuotaLimiterTPD || k == ServiceQuotaLimiterDailyUSD
+// runAcquirePhases 执行 PreCheckAcquire 的三轮判定：
+//
+//	concurrency → RPM → deferred(tpm/tpd/daily_usd)
+//
+// 先抢并发额度避免后续判断时占用未释放。前两轮（concurrency / RPM）必须逐个：
+// concurrency 走 Lua 原子脚本 + 副作用 lease，RPM CountOnArrival=true 走 Increment + 失败回滚——
+// 两类操作都是写命令，pipeline 也不能合并。
+//
+// 第三轮（deferred）全是只读 Current → 批量 SnapshotMany 一次拉全部用量。
+//
+// 任何一轮短路返回 error，调用方负责释放 lease（与历史行为一致）。
+func (s *serviceQuotaService) runAcquirePhases(ctx context.Context, req ServiceQuotaCheckRequest, matched []matchedQuotaRule, lease *ServiceQuotaLease) error {
+	concurrencyStep := limiterPhase{predicate: isConcurrencyLimiter, fn: func(rule *ServiceQuotaRule, p ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) error {
+		return s.acquireConcurrency(ctx, req, rule, p, lim, lease)
+	}}
+	rpmStep := limiterPhase{predicate: isRPMLimiter, fn: func(rule *ServiceQuotaRule, p ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) error {
+		return s.checkRPM(ctx, req, rule, p, lim)
+	}}
+	for _, step := range []limiterPhase{concurrencyStep, rpmStep} {
+		if err := iterateLimiters(matched, step.predicate, step.fn); err != nil {
+			return err
+		}
+	}
+	return s.checkDeferredBatch(ctx, req, matched)
 }
 
 // matchedRulesForAcquire 是 PreCheckAcquire 内"重读 enabled + path 匹配 + fallback 覆盖"的
@@ -167,6 +137,7 @@ func (s *serviceQuotaService) matchedRulesForAcquire(ctx context.Context, plan *
 			continue
 		}
 		paths := findMatchingPaths(rule, req)
+		logPathMatchTrace("svcquota.acquire", rule, paths, req)
 		if len(paths) == 0 {
 			continue
 		}
@@ -178,27 +149,37 @@ func (s *serviceQuotaService) matchedRulesForAcquire(ctx context.Context, plan *
 	return applyServiceQuotaFallbackOverride(matched)
 }
 
-// iterateLimiters 封装 PreCheckAcquire 三轮判定共有的 matched × paths × limiters 四层嵌套。
+// logPathMatchTrace 在 acquire / record 路径输出 path 匹配诊断日志。
 //
-// predicate 决定本轮关心哪些 limiter（只有 predicate(lim) 为 true 时才调 fn）。
-// fn 任意返回 error 立即终止整个迭代并向上冒泡（调用方负责释放已抢资源）。
+// 暂时使用 INFO 级别（增加单请求日志量）以诊断生产 rule 4 不计数等"path 不命中"问题；
+// 一旦真因定位下个 release 即应降级或删除（本函数集中一处便于摘除）。
 //
-// 这是纯遍历适配器，不持有 ctx / req 等运行时状态——这些都通过 fn 闭包透传，
-// 保持 helper 与具体阶段语义解耦。
-func iterateLimiters(matched []matchedQuotaRule, predicate func(ServiceQuotaLimiterDef) bool, fn func(rule *ServiceQuotaRule, p ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) error) error {
-	for _, m := range matched {
-		for _, p := range m.paths {
-			for _, lim := range m.rule.Limiters {
-				if !predicate(lim) {
-					continue
-				}
-				if err := fn(m.rule, p, lim); err != nil {
-					return err
-				}
-			}
-		}
+// op 形如 "svcquota.acquire" / "svcquota.record"。paths 长度为 0 视为 miss，否则视为 match。
+func logPathMatchTrace(op string, rule *ServiceQuotaRule, paths []ServiceQuotaPathDef, req ServiceQuotaCheckRequest) {
+	if rule == nil {
+		return
 	}
-	return nil
+	if len(paths) == 0 {
+		slog.Info(op+".miss",
+			"rule_id", rule.ID,
+			"rule_name", rule.Name,
+			"req_platform", req.Platform,
+			"req_channel", req.ChannelID,
+			"req_account", req.AccountID,
+			"req_model", req.Model,
+			"path_count", len(rule.Paths),
+		)
+		return
+	}
+	slog.Info(op+".match",
+		"rule_id", rule.ID,
+		"rule_name", rule.Name,
+		"matched_paths", len(paths),
+		"req_platform", req.Platform,
+		"req_channel", req.ChannelID,
+		"req_account", req.AccountID,
+		"req_model", req.Model,
+	)
 }
 
 // latestEnabledByID 重新走 ServiceQuotaCache（未命中时 singleflight 拉 DB）取最新规则集合，
@@ -243,20 +224,35 @@ func (s *serviceQuotaService) Record(ctx context.Context, req ServiceQuotaRecord
 	if !ok || len(matched) == 0 {
 		return
 	}
-	for _, m := range applyServiceQuotaFallbackOverride(matched) {
-		for _, p := range m.paths {
-			for _, lim := range m.rule.Limiters {
-				delta := serviceQuotaRecordDelta(lim, req)
-				if delta <= 0 {
-					continue
-				}
-				key := s.counterKey(req.ServiceQuotaCheckRequest, m.rule, p, lim)
-				if _, err := s.limiter.Increment(ctx, key, delta, serviceQuotaWindow(lim), lim.WindowMode); err != nil {
-					s.logLimiterFailure("record", m.rule, lim, key, err)
-				}
-			}
+	// 复用 PreCheckAcquire 同款 iterateLimiters：matched × paths × limiters 三层遍历用同一 helper，
+	// 让"哪些 limiter 在 Record 阶段写计数"的语义统一收敛到 isRecordCountedLimiter；fn 永远返回 nil
+	// （Record 单条失败只 log warn，不中止后续 limiter 的写入）。
+	final := applyServiceQuotaFallbackOverride(matched)
+	_ = iterateLimiters(final, isRecordCountedLimiter, func(rule *ServiceQuotaRule, p ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) error {
+		delta := serviceQuotaRecordDelta(lim, req)
+		if delta <= 0 {
+			// 例如 daily_usd cost=0 / RPM count_on_arrival=true 这两种"虽然类型路由到 Record 但本次无需写"的场景。
+			return nil
 		}
-	}
+		key := s.counterKey(req.ServiceQuotaCheckRequest, rule, p, lim)
+		if _, err := s.limiter.Increment(ctx, key, delta, serviceQuotaWindow(lim), lim.WindowMode); err != nil {
+			s.logLimiterFailure("record", rule, lim, key, err)
+		}
+		return nil
+	})
+}
+
+// isRecordCountedLimiter 判断 limiter 是否会被 Record 路径写计数。
+//
+// 直接复用 ServiceQuotaLimiterDef.ShouldIncrementOnRecord（task #1 引入的单点判定）：
+//   - TPM/TPD/daily_usd 恒 true
+//   - RPM 仅 CountOnArrival=false 时 true
+//   - concurrency 恒 false
+//
+// 与 isConcurrencyLimiter / isRPMLimiter / isDeferredLimiter 同样作为 iterateLimiters 的 predicate
+// 使用，让 PreCheckAcquire 的三轮判定与 Record 共用同一遍历骨架。
+func isRecordCountedLimiter(lim ServiceQuotaLimiterDef) bool {
+	return lim.ShouldIncrementOnRecord()
 }
 
 func (s *serviceQuotaService) matchedRules(ctx context.Context, req ServiceQuotaCheckRequest) ([]matchedQuotaRule, bool) {
@@ -276,72 +272,13 @@ func (s *serviceQuotaService) matchedRules(ctx context.Context, req ServiceQuota
 			continue
 		}
 		paths := findMatchingPaths(rule, req)
+		logPathMatchTrace("svcquota.record", rule, paths, req)
 		if len(paths) == 0 {
 			continue
 		}
 		out = append(out, matchedQuotaRule{rule: rule, paths: paths})
 	}
 	return out, true
-}
-
-func (s *serviceQuotaService) acquireConcurrency(ctx context.Context, req ServiceQuotaCheckRequest, rule *ServiceQuotaRule, path ServiceQuotaPathDef, lim ServiceQuotaLimiterDef, lease *ServiceQuotaLease) error {
-	member := fmt.Sprintf("%d:%d", req.UserID, time.Now().UnixNano())
-	key := s.counterKey(req, rule, path, lim)
-	ok, err := s.limiter.Acquire(ctx, key, member, int64(lim.LimitValue))
-	if err != nil {
-		s.recordFailOpen(rule, lim, "acquire_concurrency", key, err)
-		return nil
-	}
-	if !ok {
-		recordPreCheckResult(rule, lim, metrics.ServiceQuotaPreCheckResultDenied)
-		return serviceQuotaExceeded(rule, lim, 0)
-	}
-	recordPreCheckResult(rule, lim, metrics.ServiceQuotaPreCheckResultAllowed)
-	prev := lease.Release
-	lease.Release = func() {
-		if prev != nil {
-			prev()
-		}
-		if rerr := s.limiter.Release(context.Background(), key, member); rerr != nil {
-			s.logLimiterFailure("release_concurrency", rule, lim, key, rerr)
-		}
-	}
-	return nil
-}
-
-func (s *serviceQuotaService) checkRPM(ctx context.Context, req ServiceQuotaCheckRequest, rule *ServiceQuotaRule, path ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) error {
-	key := s.counterKey(req, rule, path, lim)
-	used, err := s.limiter.Increment(ctx, key, 1, time.Minute, lim.WindowMode)
-	if err != nil {
-		// fail-open: Increment 报错时，已经 +1 的计数会成为下次请求的 “幽灵 +1”。
-		// best-effort 反向 Increment(-1) 抵消：fixed window 走 IncrByFloat(-1) 干净回退；
-		// rolling window 通过追加一条 delta=-1 的 member 与原 +1 在 sumRollingMembers 求和时
-		// 相互抵消，等价于回滚。任何回退失败都忽略，不阻塞主流程。
-		_, _ = s.limiter.Increment(ctx, key, -1, time.Minute, lim.WindowMode)
-		s.recordFailOpen(rule, lim, "check_rpm", key, err)
-		return nil
-	}
-	if used > lim.LimitValue {
-		recordPreCheckResult(rule, lim, metrics.ServiceQuotaPreCheckResultDenied)
-		return serviceQuotaExceeded(rule, lim, used)
-	}
-	recordPreCheckResult(rule, lim, metrics.ServiceQuotaPreCheckResultAllowed)
-	return nil
-}
-
-func (s *serviceQuotaService) checkDeferred(ctx context.Context, req ServiceQuotaCheckRequest, rule *ServiceQuotaRule, path ServiceQuotaPathDef, lim ServiceQuotaLimiterDef) error {
-	key := s.counterKey(req, rule, path, lim)
-	used, err := s.limiter.Current(ctx, key, serviceQuotaWindow(lim), lim.WindowMode)
-	if err != nil {
-		s.recordFailOpen(rule, lim, "check_deferred", key, err)
-		return nil
-	}
-	if used >= lim.LimitValue {
-		recordPreCheckResult(rule, lim, metrics.ServiceQuotaPreCheckResultDenied)
-		return serviceQuotaExceeded(rule, lim, used)
-	}
-	recordPreCheckResult(rule, lim, metrics.ServiceQuotaPreCheckResultAllowed)
-	return nil
 }
 
 // recordFailOpen 在限流器报错降级时同时落日志 + 累加 metrics。
@@ -386,120 +323,4 @@ func (l *ServiceQuotaLease) release() {
 	if l != nil && l.Release != nil {
 		l.Release()
 	}
-}
-
-// applyServiceQuotaFallbackOverride 在限流器层级处理 is_fallback 语义：
-// 同一 limiter_type 若有任意非 fallback 规则命中并配置了该类型限流器，则丢弃 fallback 规则中该类型的限流器
-// （而不是整条 fallback 规则）。如果丢空了 fallback 规则的所有限流器，则该 fallback 规则整条被忽略。
-func applyServiceQuotaFallbackOverride(matched []matchedQuotaRule) []matchedQuotaRule {
-	covered := map[string]bool{}
-	for _, m := range matched {
-		if m.rule.IsFallback {
-			continue
-		}
-		for _, lim := range m.rule.Limiters {
-			covered[lim.LimiterType] = true
-		}
-	}
-	out := make([]matchedQuotaRule, 0, len(matched))
-	for _, m := range matched {
-		if !m.rule.IsFallback {
-			out = append(out, m)
-			continue
-		}
-		kept := make([]ServiceQuotaLimiterDef, 0, len(m.rule.Limiters))
-		for _, lim := range m.rule.Limiters {
-			if covered[lim.LimiterType] {
-				continue
-			}
-			kept = append(kept, lim)
-		}
-		if len(kept) == 0 {
-			continue
-		}
-		clone := *m.rule
-		clone.Limiters = kept
-		out = append(out, matchedQuotaRule{rule: &clone, paths: m.paths})
-	}
-	return out
-}
-
-
-func serviceQuotaWindow(lim ServiceQuotaLimiterDef) time.Duration {
-	switch lim.LimiterType {
-	case ServiceQuotaLimiterRPM, ServiceQuotaLimiterTPM:
-		return time.Minute
-	case ServiceQuotaLimiterTPD, ServiceQuotaLimiterDailyUSD:
-		return 24 * time.Hour
-	default:
-		return time.Minute
-	}
-}
-
-// serviceQuotaRecordDelta 计算单个 limiter 在一次请求中要增加的计数。
-//
-// TPM/TPD：按 limiter.TokenComponents 求和——每个限流器可独立选择 input/output/cache_creation/cache_read 子集。
-//   - 默认 {input, output, cache_creation}（DB DEFAULT + ServiceQuotaTokenComponentsDefault）
-//   - TokenComponents 为空时退化为默认值，向前兼容老规则
-//
-// daily_usd：按金额；其他 limiter type（rpm/concurrency）走单独路径，不入 Record。
-func serviceQuotaRecordDelta(lim ServiceQuotaLimiterDef, req ServiceQuotaRecordRequest) float64 {
-	switch lim.LimiterType {
-	case ServiceQuotaLimiterTPM, ServiceQuotaLimiterTPD:
-		components := lim.TokenComponents
-		if len(components) == 0 {
-			components = ServiceQuotaTokenComponentsDefault
-		}
-		return float64(req.SumTokens(components))
-	case ServiceQuotaLimiterDailyUSD:
-		return req.Cost
-	default:
-		return 0
-	}
-}
-
-// serviceQuotaExceeded 构造 429 拒绝错误。
-//
-// metadata 必须携带足够字段让前端在不发二次请求的前提下定位是哪条规则的哪个 limiter 超了：
-//   - rule_id：规则 ID
-//   - rule_name：规则可读名（缺省 fallback 为 "unnamed-{id}"）
-//   - limiter_type：rpm/tpm/tpd/daily_usd/concurrency
-//   - limiter_window：fixed/rolling/none（concurrency 没有窗口语义，统一返回 "none"）
-//   - limit_value：阈值
-//   - limit：阈值（保留旧 key 以兼容老前端）
-//   - used：当前已用量
-func serviceQuotaExceeded(rule *ServiceQuotaRule, lim ServiceQuotaLimiterDef, used float64) error {
-	return ErrServiceQuotaExceeded.WithMetadata(map[string]string{
-		"rule_id":        strconv.FormatInt(rule.ID, 10),
-		"rule_name":      ruleDisplayName(rule),
-		"limiter_type":   lim.LimiterType,
-		"limiter_window": limiterWindowLabel(lim),
-		"limit_value":    strconv.FormatFloat(lim.LimitValue, 'f', -1, 64),
-		"limit":          strconv.FormatFloat(lim.LimitValue, 'f', -1, 64),
-		"used":           strconv.FormatFloat(used, 'f', -1, 64),
-	})
-}
-
-// ruleDisplayName 返回规则的展示名，rule.Name 为 nil 或空字符串时回退为 "unnamed-{id}"。
-func ruleDisplayName(rule *ServiceQuotaRule) string {
-	if rule == nil {
-		return "unnamed-0"
-	}
-	if rule.Name != nil {
-		if name := strings.TrimSpace(*rule.Name); name != "" {
-			return name
-		}
-	}
-	return "unnamed-" + strconv.FormatInt(rule.ID, 10)
-}
-
-// limiterWindowLabel 返回前端可消费的 window 标签：concurrency 统一为 "none"。
-func limiterWindowLabel(lim ServiceQuotaLimiterDef) string {
-	if lim.LimiterType == ServiceQuotaLimiterConcurrency {
-		return "none"
-	}
-	if lim.WindowMode == "" {
-		return ServiceQuotaWindowFixed
-	}
-	return lim.WindowMode
 }

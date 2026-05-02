@@ -29,6 +29,7 @@ import tlsFingerprintProfileAPI from './tlsFingerprintProfile'
 // Host code should not import it directly anymore; the plugin owns its own
 // http client wired via sdk.http.apiClient at install time.
 import adminPaymentAPI from './payment'
+import affiliatesAPI from './affiliates'
 
 /**
  * Unified admin API object for convenient access
@@ -56,7 +57,8 @@ export const adminAPI = {
   scheduledTests: scheduledTestsAPI,
   backup: backupAPI,
   tlsFingerprintProfiles: tlsFingerprintProfileAPI,
-  payment: adminPaymentAPI
+  payment: adminPaymentAPI,
+  affiliates: affiliatesAPI
 }
 
 export {
@@ -82,7 +84,8 @@ export {
   scheduledTestsAPI,
   backupAPI,
   tlsFingerprintProfileAPI,
-  adminPaymentAPI
+  adminPaymentAPI,
+  affiliatesAPI
 }
 
 export default adminAPI

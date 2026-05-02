@@ -69,7 +69,7 @@ func TestSnapshot_InvalidRuleID_400(t *testing.T) {
 	require.Equal(t, 0, spy.calls) // service 不应被调用
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
-	require.Equal(t, "invalid_query_param", body["reason"])
+	require.Equal(t, "INVALID_QUERY_PARAM", body["reason"])
 }
 
 func TestSnapshot_NilSvc_404(t *testing.T) {

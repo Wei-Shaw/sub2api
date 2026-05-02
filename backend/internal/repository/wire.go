@@ -90,6 +90,7 @@ var ProviderSet = wire.NewSet(
 	NewTLSFingerprintProfileRepository,
 	// NewChannelRepository / NewChannelMonitorRepository / NewChannelMonitorRequestTemplateRepository 已迁移到 plugins/channel-management/
 	NewServiceQuotaRuleRepository,
+	NewAffiliateRepository,
 
 	// Cache implementations
 	NewServiceQuotaCache,
