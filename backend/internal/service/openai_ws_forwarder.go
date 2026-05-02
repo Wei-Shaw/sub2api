@@ -1379,10 +1379,12 @@ func shouldInferIngressFunctionCallOutputPreviousResponseID(
 	if signals.HasFunctionCallOutputMissingCallID {
 		return false
 	}
-	// If the client already sent tool-call context or item_reference anchors,
-	// treat this as a full replay / self-contained continuation payload rather
-	// than downgrading it into an inferred delta continuation.
-	if signals.HasToolCallContext || signals.HasItemReferenceForAllCallIDs {
+	// If the client already sent the actual tool-call context, treat this as
+	// a full replay / self-contained continuation payload rather than
+	// downgrading it into an inferred delta continuation. item_reference alone
+	// is not enough on the store=false WS path: it still needs a valid prior
+	// response anchor so upstream can resolve the referenced function_call.
+	if signals.HasToolCallContext {
 		return false
 	}
 	return strings.TrimSpace(expectedPreviousResponseID) != ""

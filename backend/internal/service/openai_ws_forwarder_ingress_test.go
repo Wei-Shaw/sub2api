@@ -303,12 +303,12 @@ func TestShouldInferIngressFunctionCallOutputPreviousResponseID(t *testing.T) {
 			want:             false,
 		},
 		{
-			name:             "skip_when_item_reference_already_covers_all_call_ids",
+			name:             "infer_when_only_item_reference_covers_call_ids",
 			storeDisabled:    true,
 			turn:             2,
 			signals:          ToolContinuationSignals{HasFunctionCallOutput: true, HasItemReferenceForAllCallIDs: true},
 			expectedPrevious: "resp_2",
-			want:             false,
+			want:             true,
 		},
 		{
 			name:             "skip_when_function_call_output_missing_call_id",
