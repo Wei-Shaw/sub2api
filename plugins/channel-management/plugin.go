@@ -7,9 +7,11 @@ import (
 	"path"
 	"sync/atomic"
 
+	entsql "entgo.io/ent/dialect/sql"
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	pluginsdkpb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 
+	pluginent "github.com/Wei-Shaw/sub2api/plugins/channel-management/ent"
 	chPricing "github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/pricing"
 
 	chHandler "github.com/Wei-Shaw/sub2api/plugins/channel-management/handler"
@@ -86,6 +88,10 @@ const (
 // plugin's service/repository wiring and exposes a Gin engine to the SDK.
 type ChannelPlugin struct {
 	ctx atomic.Pointer[pluginsdk.PluginContext]
+
+	// entClient is the ent ORM client backed by the SDK's SQL proxy.
+	// Created in Init via entsql.OpenDB(pluginsdk.Dialect, ctx.DB()).
+	entClient *pluginent.Client
 
 	// engine is the Gin HTTP engine the SDK mounts under pluginRoutePrefix.
 	// It is built once at construction time so that RegisterHTTP (called
@@ -171,7 +177,16 @@ func (p *ChannelPlugin) Init(ctx pluginsdk.PluginContext) error {
 		return err
 	}
 
-	repo := chRepo.NewChannelRepository(ctx.DB())
+	// Initialise the ent ORM client using the SDK's SQL proxy driver.
+	// The SDK driver transparently proxies queries through gRPC to the
+	// core's connection pool, and entsql.OpenDB wraps it with ent's
+	// dialect-specific query builder.
+	drv := entsql.OpenDB(pluginsdk.Dialect, ctx.DB())
+	p.entClient = pluginent.NewClient(pluginent.Driver(drv))
+	ctx.Logger().Info("channel-management: ent client initialised",
+		"dialect", pluginsdk.Dialect)
+
+	repo := chRepo.NewChannelRepository(ctx.DB(), p.entClient)
 	// authCacheInvalidator is currently nil — the in-process invalidator
 	// lives in the core monolith. Until the auth cache itself is exposed
 	// through the SDK, channel updates will not actively bust API-key auth
@@ -293,11 +308,14 @@ func (p *ChannelPlugin) wireAvailableChannels(ctx pluginsdk.PluginContext, repo 
 	p.availableChannelHandler = chHandler.NewAvailableChannelHandler(availableSvc, ctx.Settings())
 }
 
-// Shutdown is a no-op for now; service objects hold no goroutines or external
-// resources beyond the SDK-managed DB handle.
+// Shutdown closes the ent client (which releases the ent driver wrapper
+// but does NOT close the underlying SDK-managed *sql.DB).
 func (p *ChannelPlugin) Shutdown() error {
 	if c := p.ctx.Load(); c != nil {
 		(*c).Logger().Info("channel-management plugin shutting down")
+	}
+	if p.entClient != nil {
+		return p.entClient.Close()
 	}
 	return nil
 }
