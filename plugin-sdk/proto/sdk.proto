@@ -147,6 +147,7 @@ message SQLValue {
     string string_value = 4;
     bytes bytes_value = 5;
     bool bool_value = 6;
+    string time_value = 7;  // RFC3339Nano-encoded time.Time; decoded back to time.Time by the SDK driver
   }
 }
 

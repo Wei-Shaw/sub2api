@@ -648,6 +648,7 @@ type SQLValue struct {
 	//	*SQLValue_StringValue
 	//	*SQLValue_BytesValue
 	//	*SQLValue_BoolValue
+	//	*SQLValue_TimeValue
 	Value         isSQLValue_Value `protobuf_oneof:"value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -744,6 +745,15 @@ func (x *SQLValue) GetBoolValue() bool {
 	return false
 }
 
+func (x *SQLValue) GetTimeValue() string {
+	if x != nil {
+		if x, ok := x.Value.(*SQLValue_TimeValue); ok {
+			return x.TimeValue
+		}
+	}
+	return ""
+}
+
 type isSQLValue_Value interface {
 	isSQLValue_Value()
 }
@@ -772,6 +782,10 @@ type SQLValue_BoolValue struct {
 	BoolValue bool `protobuf:"varint,6,opt,name=bool_value,json=boolValue,proto3,oneof"`
 }
 
+type SQLValue_TimeValue struct {
+	TimeValue string `protobuf:"bytes,7,opt,name=time_value,json=timeValue,proto3,oneof"` // RFC3339Nano-encoded time.Time; decoded back to time.Time by the SDK driver
+}
+
 func (*SQLValue_Null) isSQLValue_Value() {}
 
 func (*SQLValue_IntValue) isSQLValue_Value() {}
@@ -783,6 +797,8 @@ func (*SQLValue_StringValue) isSQLValue_Value() {}
 func (*SQLValue_BytesValue) isSQLValue_Value() {}
 
 func (*SQLValue_BoolValue) isSQLValue_Value() {}
+
+func (*SQLValue_TimeValue) isSQLValue_Value() {}
 
 type SQLResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -4722,7 +4738,7 @@ const file_sdk_proto_rawDesc = "" +
 	"TxResponse\x12\x13\n" +
 	"\x05tx_id\x18\x01 \x01(\tR\x04txId\"\"\n" +
 	"\vTxIDRequest\x12\x13\n" +
-	"\x05tx_id\x18\x01 \x01(\tR\x04txId\"\xd4\x01\n" +
+	"\x05tx_id\x18\x01 \x01(\tR\x04txId\"\xf5\x01\n" +
 	"\bSQLValue\x12\x14\n" +
 	"\x04null\x18\x01 \x01(\bH\x00R\x04null\x12\x1d\n" +
 	"\tint_value\x18\x02 \x01(\x03H\x00R\bintValue\x12!\n" +
@@ -4732,7 +4748,9 @@ const file_sdk_proto_rawDesc = "" +
 	"\vbytes_value\x18\x05 \x01(\fH\x00R\n" +
 	"bytesValue\x12\x1f\n" +
 	"\n" +
-	"bool_value\x18\x06 \x01(\bH\x00R\tboolValueB\a\n" +
+	"bool_value\x18\x06 \x01(\bH\x00R\tboolValue\x12\x1f\n" +
+	"\n" +
+	"time_value\x18\a \x01(\tH\x00R\ttimeValueB\a\n" +
 	"\x05value\"N\n" +
 	"\vSQLResponse\x12\x18\n" +
 	"\acolumns\x18\x01 \x03(\tR\acolumns\x12%\n" +
@@ -5288,6 +5306,7 @@ func file_sdk_proto_init() {
 		(*SQLValue_StringValue)(nil),
 		(*SQLValue_BytesValue)(nil),
 		(*SQLValue_BoolValue)(nil),
+		(*SQLValue_TimeValue)(nil),
 	}
 	file_sdk_proto_msgTypes[33].OneofWrappers = []any{
 		(*JobMessage_Register)(nil),
