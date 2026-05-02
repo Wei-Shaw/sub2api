@@ -2235,3 +2235,175 @@ var PricingExtension_ServiceDesc = grpc.ServiceDesc{
 	},
 	Metadata: "sdk.proto",
 }
+
+const (
+	HostService_ResolveModelPricing_FullMethodName = "/pluginsdk.HostService/ResolveModelPricing"
+)
+
+// HostServiceClient is the client API for HostService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// ============================================================
+// HostService — W4 (plugin → host reverse RPCs)
+// ============================================================
+//
+// HostService groups the narrow set of host capabilities plugins may call
+// on the reverse gRPC channel. Unlike the existing proxy services
+// (SQLProxy / RedisProxy / …) which mediate host resources, HostService
+// exposes host *business* lookups a plugin would otherwise have to
+// reimplement or vendor.
+//
+// Scope (ADR-UPSTREAM-SYNC-115-121 §4): start with ResolveModelPricing so
+// the channel-management plugin can restore the LiteLLM global-pricing
+// fallback removed when channel_available.go was ported to the plugin.
+// New RPCs are appended here as other plugins grow similar needs; each
+// must be narrow, side-effect-free, and cheap — HostService is for
+// lookups, not for mutations.
+//
+// Availability model:
+//   - The SDK always wires a HostClient; no capability declaration is
+//     required. Callers must treat RPC failures (Unimplemented from older
+//     hosts, Unavailable during host restart, NotFound for missing data)
+//     as "no data" and degrade gracefully rather than aborting.
+//   - The host implementation is optional on the core side: when the
+//     PricingResolver dependency is not injected, the gRPC service is
+//     simply not registered and calls surface as Unimplemented.
+type HostServiceClient interface {
+	// ResolveModelPricing returns the host's globally-known pricing for
+	// the named model (LiteLLM data + host fallbacks). It is the reverse
+	// side of BillingService.GetModelPricing on the core; plugins call it
+	// to synthesise display-only pricing when their own per-channel data
+	// is absent.
+	//
+	// Returns has_pricing=false when no pricing is known for the model.
+	// Network / host errors surface as gRPC status codes; callers MUST
+	// treat any error as "no pricing" and continue rendering.
+	ResolveModelPricing(ctx context.Context, in *ResolveModelPricingRequest, opts ...grpc.CallOption) (*ResolveModelPricingResponse, error)
+}
+
+type hostServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewHostServiceClient(cc grpc.ClientConnInterface) HostServiceClient {
+	return &hostServiceClient{cc}
+}
+
+func (c *hostServiceClient) ResolveModelPricing(ctx context.Context, in *ResolveModelPricingRequest, opts ...grpc.CallOption) (*ResolveModelPricingResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResolveModelPricingResponse)
+	err := c.cc.Invoke(ctx, HostService_ResolveModelPricing_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// HostServiceServer is the server API for HostService service.
+// All implementations must embed UnimplementedHostServiceServer
+// for forward compatibility.
+//
+// ============================================================
+// HostService — W4 (plugin → host reverse RPCs)
+// ============================================================
+//
+// HostService groups the narrow set of host capabilities plugins may call
+// on the reverse gRPC channel. Unlike the existing proxy services
+// (SQLProxy / RedisProxy / …) which mediate host resources, HostService
+// exposes host *business* lookups a plugin would otherwise have to
+// reimplement or vendor.
+//
+// Scope (ADR-UPSTREAM-SYNC-115-121 §4): start with ResolveModelPricing so
+// the channel-management plugin can restore the LiteLLM global-pricing
+// fallback removed when channel_available.go was ported to the plugin.
+// New RPCs are appended here as other plugins grow similar needs; each
+// must be narrow, side-effect-free, and cheap — HostService is for
+// lookups, not for mutations.
+//
+// Availability model:
+//   - The SDK always wires a HostClient; no capability declaration is
+//     required. Callers must treat RPC failures (Unimplemented from older
+//     hosts, Unavailable during host restart, NotFound for missing data)
+//     as "no data" and degrade gracefully rather than aborting.
+//   - The host implementation is optional on the core side: when the
+//     PricingResolver dependency is not injected, the gRPC service is
+//     simply not registered and calls surface as Unimplemented.
+type HostServiceServer interface {
+	// ResolveModelPricing returns the host's globally-known pricing for
+	// the named model (LiteLLM data + host fallbacks). It is the reverse
+	// side of BillingService.GetModelPricing on the core; plugins call it
+	// to synthesise display-only pricing when their own per-channel data
+	// is absent.
+	//
+	// Returns has_pricing=false when no pricing is known for the model.
+	// Network / host errors surface as gRPC status codes; callers MUST
+	// treat any error as "no pricing" and continue rendering.
+	ResolveModelPricing(context.Context, *ResolveModelPricingRequest) (*ResolveModelPricingResponse, error)
+	mustEmbedUnimplementedHostServiceServer()
+}
+
+// UnimplementedHostServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedHostServiceServer struct{}
+
+func (UnimplementedHostServiceServer) ResolveModelPricing(context.Context, *ResolveModelPricingRequest) (*ResolveModelPricingResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ResolveModelPricing not implemented")
+}
+func (UnimplementedHostServiceServer) mustEmbedUnimplementedHostServiceServer() {}
+func (UnimplementedHostServiceServer) testEmbeddedByValue()                     {}
+
+// UnsafeHostServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to HostServiceServer will
+// result in compilation errors.
+type UnsafeHostServiceServer interface {
+	mustEmbedUnimplementedHostServiceServer()
+}
+
+func RegisterHostServiceServer(s grpc.ServiceRegistrar, srv HostServiceServer) {
+	// If the following call panics, it indicates UnimplementedHostServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&HostService_ServiceDesc, srv)
+}
+
+func _HostService_ResolveModelPricing_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResolveModelPricingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HostServiceServer).ResolveModelPricing(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HostService_ResolveModelPricing_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HostServiceServer).ResolveModelPricing(ctx, req.(*ResolveModelPricingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// HostService_ServiceDesc is the grpc.ServiceDesc for HostService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var HostService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "pluginsdk.HostService",
+	HandlerType: (*HostServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ResolveModelPricing",
+			Handler:    _HostService_ResolveModelPricing_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "sdk.proto",
+}

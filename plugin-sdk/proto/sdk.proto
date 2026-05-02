@@ -881,3 +881,73 @@ message ResolveAccountStatsCostResponse {
   string resolution_reason = 3;
 }
 
+// ============================================================
+// HostService — W4 (plugin → host reverse RPCs)
+// ============================================================
+//
+// HostService groups the narrow set of host capabilities plugins may call
+// on the reverse gRPC channel. Unlike the existing proxy services
+// (SQLProxy / RedisProxy / …) which mediate host resources, HostService
+// exposes host *business* lookups a plugin would otherwise have to
+// reimplement or vendor.
+//
+// Scope (ADR-UPSTREAM-SYNC-115-121 §4): start with ResolveModelPricing so
+// the channel-management plugin can restore the LiteLLM global-pricing
+// fallback removed when channel_available.go was ported to the plugin.
+// New RPCs are appended here as other plugins grow similar needs; each
+// must be narrow, side-effect-free, and cheap — HostService is for
+// lookups, not for mutations.
+//
+// Availability model:
+//   - The SDK always wires a HostClient; no capability declaration is
+//     required. Callers must treat RPC failures (Unimplemented from older
+//     hosts, Unavailable during host restart, NotFound for missing data)
+//     as "no data" and degrade gracefully rather than aborting.
+//   - The host implementation is optional on the core side: when the
+//     PricingResolver dependency is not injected, the gRPC service is
+//     simply not registered and calls surface as Unimplemented.
+service HostService {
+  // ResolveModelPricing returns the host's globally-known pricing for
+  // the named model (LiteLLM data + host fallbacks). It is the reverse
+  // side of BillingService.GetModelPricing on the core; plugins call it
+  // to synthesise display-only pricing when their own per-channel data
+  // is absent.
+  //
+  // Returns has_pricing=false when no pricing is known for the model.
+  // Network / host errors surface as gRPC status codes; callers MUST
+  // treat any error as "no pricing" and continue rendering.
+  rpc ResolveModelPricing(ResolveModelPricingRequest) returns (ResolveModelPricingResponse);
+}
+
+message ResolveModelPricingRequest {
+  // model is the model identifier to resolve. Case-insensitive on the
+  // host side (BillingService.GetModelPricing lowercases internally).
+  string model = 1;
+}
+
+// ResolveModelPricingResponse carries only the subset of pricing fields
+// the channel-management plugin's "Available Channels" popover consumes.
+// Extending this with more fields later is a non-breaking proto change
+// (field numbers are the API contract, not the struct size).
+//
+// All price fields use decimal-string encoding matching the T24
+// convention used by PricingExtension: empty string ("") means "not
+// set"; callers parse via decimal.NewFromString. Using strings instead
+// of doubles avoids IEEE-754 drift on the hot path that feeds user-
+// facing price popovers.
+message ResolveModelPricingResponse {
+  // has_pricing=false signals the host has no pricing data for the
+  // requested model; every price field is empty in that case and the
+  // caller should render the model as "未配置" like before.
+  bool has_pricing = 1;
+  // Input / output token pricing (USD per token). "" = not set.
+  string input_price_per_token = 2;
+  string output_price_per_token = 3;
+  // Cache-breakdown prices. Populated when the host's upstream pricing
+  // data (LiteLLM) carries them; "" otherwise.
+  string cache_write_price_per_token = 4;
+  string cache_read_price_per_token = 5;
+  // Image-output token pricing (nano-banana / gpt-image style models).
+  string image_output_price_per_token = 6;
+}
+

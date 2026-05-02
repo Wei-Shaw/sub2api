@@ -4529,6 +4529,153 @@ func (x *ResolveAccountStatsCostResponse) GetResolutionReason() string {
 	return ""
 }
 
+type ResolveModelPricingRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// model is the model identifier to resolve. Case-insensitive on the
+	// host side (BillingService.GetModelPricing lowercases internally).
+	Model         string `protobuf:"bytes,1,opt,name=model,proto3" json:"model,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResolveModelPricingRequest) Reset() {
+	*x = ResolveModelPricingRequest{}
+	mi := &file_sdk_proto_msgTypes[64]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveModelPricingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveModelPricingRequest) ProtoMessage() {}
+
+func (x *ResolveModelPricingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[64]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveModelPricingRequest.ProtoReflect.Descriptor instead.
+func (*ResolveModelPricingRequest) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{64}
+}
+
+func (x *ResolveModelPricingRequest) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+// ResolveModelPricingResponse carries only the subset of pricing fields
+// the channel-management plugin's "Available Channels" popover consumes.
+// Extending this with more fields later is a non-breaking proto change
+// (field numbers are the API contract, not the struct size).
+//
+// All price fields use decimal-string encoding matching the T24
+// convention used by PricingExtension: empty string ("") means "not
+// set"; callers parse via decimal.NewFromString. Using strings instead
+// of doubles avoids IEEE-754 drift on the hot path that feeds user-
+// facing price popovers.
+type ResolveModelPricingResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// has_pricing=false signals the host has no pricing data for the
+	// requested model; every price field is empty in that case and the
+	// caller should render the model as "未配置" like before.
+	HasPricing bool `protobuf:"varint,1,opt,name=has_pricing,json=hasPricing,proto3" json:"has_pricing,omitempty"`
+	// Input / output token pricing (USD per token). "" = not set.
+	InputPricePerToken  string `protobuf:"bytes,2,opt,name=input_price_per_token,json=inputPricePerToken,proto3" json:"input_price_per_token,omitempty"`
+	OutputPricePerToken string `protobuf:"bytes,3,opt,name=output_price_per_token,json=outputPricePerToken,proto3" json:"output_price_per_token,omitempty"`
+	// Cache-breakdown prices. Populated when the host's upstream pricing
+	// data (LiteLLM) carries them; "" otherwise.
+	CacheWritePricePerToken string `protobuf:"bytes,4,opt,name=cache_write_price_per_token,json=cacheWritePricePerToken,proto3" json:"cache_write_price_per_token,omitempty"`
+	CacheReadPricePerToken  string `protobuf:"bytes,5,opt,name=cache_read_price_per_token,json=cacheReadPricePerToken,proto3" json:"cache_read_price_per_token,omitempty"`
+	// Image-output token pricing (nano-banana / gpt-image style models).
+	ImageOutputPricePerToken string `protobuf:"bytes,6,opt,name=image_output_price_per_token,json=imageOutputPricePerToken,proto3" json:"image_output_price_per_token,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
+}
+
+func (x *ResolveModelPricingResponse) Reset() {
+	*x = ResolveModelPricingResponse{}
+	mi := &file_sdk_proto_msgTypes[65]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResolveModelPricingResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResolveModelPricingResponse) ProtoMessage() {}
+
+func (x *ResolveModelPricingResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[65]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResolveModelPricingResponse.ProtoReflect.Descriptor instead.
+func (*ResolveModelPricingResponse) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{65}
+}
+
+func (x *ResolveModelPricingResponse) GetHasPricing() bool {
+	if x != nil {
+		return x.HasPricing
+	}
+	return false
+}
+
+func (x *ResolveModelPricingResponse) GetInputPricePerToken() string {
+	if x != nil {
+		return x.InputPricePerToken
+	}
+	return ""
+}
+
+func (x *ResolveModelPricingResponse) GetOutputPricePerToken() string {
+	if x != nil {
+		return x.OutputPricePerToken
+	}
+	return ""
+}
+
+func (x *ResolveModelPricingResponse) GetCacheWritePricePerToken() string {
+	if x != nil {
+		return x.CacheWritePricePerToken
+	}
+	return ""
+}
+
+func (x *ResolveModelPricingResponse) GetCacheReadPricePerToken() string {
+	if x != nil {
+		return x.CacheReadPricePerToken
+	}
+	return ""
+}
+
+func (x *ResolveModelPricingResponse) GetImageOutputPricePerToken() string {
+	if x != nil {
+		return x.ImageOutputPricePerToken
+	}
+	return ""
+}
+
 var File_sdk_proto protoreflect.FileDescriptor
 
 const file_sdk_proto_rawDesc = "" +
@@ -4877,7 +5024,17 @@ const file_sdk_proto_rawDesc = "" +
 	"\x1fResolveAccountStatsCostResponse\x12\x19\n" +
 	"\bhas_cost\x18\x01 \x01(\bR\ahasCost\x12\x12\n" +
 	"\x04cost\x18\x02 \x01(\tR\x04cost\x12+\n" +
-	"\x11resolution_reason\x18\x03 \x01(\tR\x10resolutionReason2\xa9\x03\n" +
+	"\x11resolution_reason\x18\x03 \x01(\tR\x10resolutionReason\"2\n" +
+	"\x1aResolveModelPricingRequest\x12\x14\n" +
+	"\x05model\x18\x01 \x01(\tR\x05model\"\xe0\x02\n" +
+	"\x1bResolveModelPricingResponse\x12\x1f\n" +
+	"\vhas_pricing\x18\x01 \x01(\bR\n" +
+	"hasPricing\x121\n" +
+	"\x15input_price_per_token\x18\x02 \x01(\tR\x12inputPricePerToken\x123\n" +
+	"\x16output_price_per_token\x18\x03 \x01(\tR\x13outputPricePerToken\x12<\n" +
+	"\x1bcache_write_price_per_token\x18\x04 \x01(\tR\x17cacheWritePricePerToken\x12:\n" +
+	"\x1acache_read_price_per_token\x18\x05 \x01(\tR\x16cacheReadPricePerToken\x12>\n" +
+	"\x1cimage_output_price_per_token\x18\x06 \x01(\tR\x18imageOutputPricePerToken2\xa9\x03\n" +
 	"\bSQLProxy\x126\n" +
 	"\x05Query\x12\x15.pluginsdk.SQLRequest\x1a\x16.pluginsdk.SQLResponse\x126\n" +
 	"\x04Exec\x12\x15.pluginsdk.SQLRequest\x1a\x17.pluginsdk.ExecResponse\x12;\n" +
@@ -4921,7 +5078,9 @@ const file_sdk_proto_rawDesc = "" +
 	"\x15WatchPricingOverrides\x12'.pluginsdk.WatchPricingOverridesRequest\x1a\x1f.pluginsdk.PricingOverrideEvent0\x01\x12I\n" +
 	"\n" +
 	"AdjustCost\x12\x1c.pluginsdk.AdjustCostRequest\x1a\x1d.pluginsdk.AdjustCostResponse\x12p\n" +
-	"\x17ResolveAccountStatsCost\x12).pluginsdk.ResolveAccountStatsCostRequest\x1a*.pluginsdk.ResolveAccountStatsCostResponseB8Z6github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdkb\x06proto3"
+	"\x17ResolveAccountStatsCost\x12).pluginsdk.ResolveAccountStatsCostRequest\x1a*.pluginsdk.ResolveAccountStatsCostResponse2s\n" +
+	"\vHostService\x12d\n" +
+	"\x13ResolveModelPricing\x12%.pluginsdk.ResolveModelPricingRequest\x1a&.pluginsdk.ResolveModelPricingResponseB8Z6github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdkb\x06proto3"
 
 var (
 	file_sdk_proto_rawDescOnce sync.Once
@@ -4936,7 +5095,7 @@ func file_sdk_proto_rawDescGZIP() []byte {
 }
 
 var file_sdk_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_sdk_proto_msgTypes = make([]protoimpl.MessageInfo, 65)
+var file_sdk_proto_msgTypes = make([]protoimpl.MessageInfo, 67)
 var file_sdk_proto_goTypes = []any{
 	(PricingOverrideEvent_Op)(0),            // 0: pluginsdk.PricingOverrideEvent.Op
 	(*LogRecord)(nil),                       // 1: pluginsdk.LogRecord
@@ -5003,8 +5162,10 @@ var file_sdk_proto_goTypes = []any{
 	(*PricingUsageTokens)(nil),              // 62: pluginsdk.PricingUsageTokens
 	(*ResolveAccountStatsCostRequest)(nil),  // 63: pluginsdk.ResolveAccountStatsCostRequest
 	(*ResolveAccountStatsCostResponse)(nil), // 64: pluginsdk.ResolveAccountStatsCostResponse
-	nil,                                     // 65: pluginsdk.RedisMapResponse.FieldsEntry
-	(*emptypb.Empty)(nil),                   // 66: google.protobuf.Empty
+	(*ResolveModelPricingRequest)(nil),      // 65: pluginsdk.ResolveModelPricingRequest
+	(*ResolveModelPricingResponse)(nil),     // 66: pluginsdk.ResolveModelPricingResponse
+	nil,                                     // 67: pluginsdk.RedisMapResponse.FieldsEntry
+	(*emptypb.Empty)(nil),                   // 68: google.protobuf.Empty
 }
 var file_sdk_proto_depIdxs = []int32{
 	2,  // 0: pluginsdk.LogRecord.attrs:type_name -> pluginsdk.LogAttr
@@ -5012,7 +5173,7 @@ var file_sdk_proto_depIdxs = []int32{
 	9,  // 2: pluginsdk.TxSQLRequest.args:type_name -> pluginsdk.SQLValue
 	11, // 3: pluginsdk.SQLResponse.rows:type_name -> pluginsdk.SQLRow
 	9,  // 4: pluginsdk.SQLRow.values:type_name -> pluginsdk.SQLValue
-	65, // 5: pluginsdk.RedisMapResponse.fields:type_name -> pluginsdk.RedisMapResponse.FieldsEntry
+	67, // 5: pluginsdk.RedisMapResponse.fields:type_name -> pluginsdk.RedisMapResponse.FieldsEntry
 	26, // 6: pluginsdk.DoReply.array:type_name -> pluginsdk.DoReply
 	35, // 7: pluginsdk.JobMessage.register:type_name -> pluginsdk.JobRegistration
 	38, // 8: pluginsdk.JobMessage.ack:type_name -> pluginsdk.JobAck
@@ -5065,40 +5226,42 @@ var file_sdk_proto_depIdxs = []int32{
 	57, // 55: pluginsdk.PricingExtension.WatchPricingOverrides:input_type -> pluginsdk.WatchPricingOverridesRequest
 	59, // 56: pluginsdk.PricingExtension.AdjustCost:input_type -> pluginsdk.AdjustCostRequest
 	63, // 57: pluginsdk.PricingExtension.ResolveAccountStatsCost:input_type -> pluginsdk.ResolveAccountStatsCostRequest
-	10, // 58: pluginsdk.SQLProxy.Query:output_type -> pluginsdk.SQLResponse
-	12, // 59: pluginsdk.SQLProxy.Exec:output_type -> pluginsdk.ExecResponse
-	7,  // 60: pluginsdk.SQLProxy.BeginTx:output_type -> pluginsdk.TxResponse
-	10, // 61: pluginsdk.SQLProxy.TxQuery:output_type -> pluginsdk.SQLResponse
-	12, // 62: pluginsdk.SQLProxy.TxExec:output_type -> pluginsdk.ExecResponse
-	66, // 63: pluginsdk.SQLProxy.CommitTx:output_type -> google.protobuf.Empty
-	66, // 64: pluginsdk.SQLProxy.RollbackTx:output_type -> google.protobuf.Empty
-	26, // 65: pluginsdk.RedisProxy.Do:output_type -> pluginsdk.DoReply
-	14, // 66: pluginsdk.RedisProxy.Get:output_type -> pluginsdk.RedisValueResponse
-	66, // 67: pluginsdk.RedisProxy.Set:output_type -> google.protobuf.Empty
-	66, // 68: pluginsdk.RedisProxy.SetEx:output_type -> google.protobuf.Empty
-	66, // 69: pluginsdk.RedisProxy.Del:output_type -> google.protobuf.Empty
-	14, // 70: pluginsdk.RedisProxy.HGet:output_type -> pluginsdk.RedisValueResponse
-	66, // 71: pluginsdk.RedisProxy.HSet:output_type -> google.protobuf.Empty
-	20, // 72: pluginsdk.RedisProxy.HGetAll:output_type -> pluginsdk.RedisMapResponse
-	66, // 73: pluginsdk.RedisProxy.HDel:output_type -> google.protobuf.Empty
-	66, // 74: pluginsdk.RedisProxy.Publish:output_type -> google.protobuf.Empty
-	24, // 75: pluginsdk.RedisProxy.Subscribe:output_type -> pluginsdk.RedisMessage
-	66, // 76: pluginsdk.EventBus.Publish:output_type -> google.protobuf.Empty
-	29, // 77: pluginsdk.EventBus.Subscribe:output_type -> pluginsdk.Event
-	3,  // 78: pluginsdk.LogProxy.PushLogs:output_type -> pluginsdk.LogPushSummary
-	31, // 79: pluginsdk.SecretEncryption.Encrypt:output_type -> pluginsdk.EncryptResponse
-	33, // 80: pluginsdk.SecretEncryption.Decrypt:output_type -> pluginsdk.DecryptResponse
-	37, // 81: pluginsdk.JobScheduler.Subscribe:output_type -> pluginsdk.JobTrigger
-	41, // 82: pluginsdk.SettingsExtension.Get:output_type -> pluginsdk.SettingsGetResponse
-	43, // 83: pluginsdk.SettingsExtension.Watch:output_type -> pluginsdk.SettingsChangeEvent
-	46, // 84: pluginsdk.EventsExtension.Subscribe:output_type -> pluginsdk.HostEvent
-	44, // 85: pluginsdk.EventsExtension.ProbeSubscription:output_type -> pluginsdk.ProbeSubscriptionResponse
-	56, // 86: pluginsdk.PricingExtension.ListPricingOverrides:output_type -> pluginsdk.ListPricingOverridesResponse
-	58, // 87: pluginsdk.PricingExtension.WatchPricingOverrides:output_type -> pluginsdk.PricingOverrideEvent
-	60, // 88: pluginsdk.PricingExtension.AdjustCost:output_type -> pluginsdk.AdjustCostResponse
-	64, // 89: pluginsdk.PricingExtension.ResolveAccountStatsCost:output_type -> pluginsdk.ResolveAccountStatsCostResponse
-	58, // [58:90] is the sub-list for method output_type
-	26, // [26:58] is the sub-list for method input_type
+	65, // 58: pluginsdk.HostService.ResolveModelPricing:input_type -> pluginsdk.ResolveModelPricingRequest
+	10, // 59: pluginsdk.SQLProxy.Query:output_type -> pluginsdk.SQLResponse
+	12, // 60: pluginsdk.SQLProxy.Exec:output_type -> pluginsdk.ExecResponse
+	7,  // 61: pluginsdk.SQLProxy.BeginTx:output_type -> pluginsdk.TxResponse
+	10, // 62: pluginsdk.SQLProxy.TxQuery:output_type -> pluginsdk.SQLResponse
+	12, // 63: pluginsdk.SQLProxy.TxExec:output_type -> pluginsdk.ExecResponse
+	68, // 64: pluginsdk.SQLProxy.CommitTx:output_type -> google.protobuf.Empty
+	68, // 65: pluginsdk.SQLProxy.RollbackTx:output_type -> google.protobuf.Empty
+	26, // 66: pluginsdk.RedisProxy.Do:output_type -> pluginsdk.DoReply
+	14, // 67: pluginsdk.RedisProxy.Get:output_type -> pluginsdk.RedisValueResponse
+	68, // 68: pluginsdk.RedisProxy.Set:output_type -> google.protobuf.Empty
+	68, // 69: pluginsdk.RedisProxy.SetEx:output_type -> google.protobuf.Empty
+	68, // 70: pluginsdk.RedisProxy.Del:output_type -> google.protobuf.Empty
+	14, // 71: pluginsdk.RedisProxy.HGet:output_type -> pluginsdk.RedisValueResponse
+	68, // 72: pluginsdk.RedisProxy.HSet:output_type -> google.protobuf.Empty
+	20, // 73: pluginsdk.RedisProxy.HGetAll:output_type -> pluginsdk.RedisMapResponse
+	68, // 74: pluginsdk.RedisProxy.HDel:output_type -> google.protobuf.Empty
+	68, // 75: pluginsdk.RedisProxy.Publish:output_type -> google.protobuf.Empty
+	24, // 76: pluginsdk.RedisProxy.Subscribe:output_type -> pluginsdk.RedisMessage
+	68, // 77: pluginsdk.EventBus.Publish:output_type -> google.protobuf.Empty
+	29, // 78: pluginsdk.EventBus.Subscribe:output_type -> pluginsdk.Event
+	3,  // 79: pluginsdk.LogProxy.PushLogs:output_type -> pluginsdk.LogPushSummary
+	31, // 80: pluginsdk.SecretEncryption.Encrypt:output_type -> pluginsdk.EncryptResponse
+	33, // 81: pluginsdk.SecretEncryption.Decrypt:output_type -> pluginsdk.DecryptResponse
+	37, // 82: pluginsdk.JobScheduler.Subscribe:output_type -> pluginsdk.JobTrigger
+	41, // 83: pluginsdk.SettingsExtension.Get:output_type -> pluginsdk.SettingsGetResponse
+	43, // 84: pluginsdk.SettingsExtension.Watch:output_type -> pluginsdk.SettingsChangeEvent
+	46, // 85: pluginsdk.EventsExtension.Subscribe:output_type -> pluginsdk.HostEvent
+	44, // 86: pluginsdk.EventsExtension.ProbeSubscription:output_type -> pluginsdk.ProbeSubscriptionResponse
+	56, // 87: pluginsdk.PricingExtension.ListPricingOverrides:output_type -> pluginsdk.ListPricingOverridesResponse
+	58, // 88: pluginsdk.PricingExtension.WatchPricingOverrides:output_type -> pluginsdk.PricingOverrideEvent
+	60, // 89: pluginsdk.PricingExtension.AdjustCost:output_type -> pluginsdk.AdjustCostResponse
+	64, // 90: pluginsdk.PricingExtension.ResolveAccountStatsCost:output_type -> pluginsdk.ResolveAccountStatsCostResponse
+	66, // 91: pluginsdk.HostService.ResolveModelPricing:output_type -> pluginsdk.ResolveModelPricingResponse
+	59, // [59:92] is the sub-list for method output_type
+	26, // [26:59] is the sub-list for method input_type
 	26, // [26:26] is the sub-list for extension type_name
 	26, // [26:26] is the sub-list for extension extendee
 	0,  // [0:26] is the sub-list for field type_name
@@ -5144,9 +5307,9 @@ func file_sdk_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sdk_proto_rawDesc), len(file_sdk_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   65,
+			NumMessages:   67,
 			NumExtensions: 0,
-			NumServices:   9,
+			NumServices:   10,
 		},
 		GoTypes:           file_sdk_proto_goTypes,
 		DependencyIndexes: file_sdk_proto_depIdxs,
