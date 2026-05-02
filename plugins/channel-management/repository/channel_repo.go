@@ -172,22 +172,7 @@ func (r *channelRepository) Delete(ctx context.Context, id int64) error {
 }
 
 func (r *channelRepository) List(ctx context.Context, params pagination.PaginationParams, status, search string) ([]service.Channel, *pagination.PaginationResult, error) {
-	where := []string{"1=1"}
-	args := []any{}
-	argIdx := 1
-
-	if status != "" {
-		where = append(where, fmt.Sprintf("c.status = $%d", argIdx))
-		args = append(args, status)
-		argIdx++
-	}
-	if search != "" {
-		where = append(where, fmt.Sprintf("(c.name ILIKE $%d OR c.description ILIKE $%d)", argIdx, argIdx))
-		args = append(args, "%"+escapeLike(search)+"%")
-		argIdx++
-	}
-
-	whereClause := strings.Join(where, " AND ")
+	whereClause, args, argIdx := buildChannelListFilter(status, search)
 
 	var total int64
 	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM channels c WHERE %s", whereClause)
@@ -209,7 +194,52 @@ func (r *channelRepository) List(ctx context.Context, params pagination.Paginati
 	)
 	args = append(args, pageSize, offset)
 
-	rows, err := r.db.QueryContext(ctx, dataQuery, args...)
+	channels, channelIDs, err := r.scanChannelRows(ctx, dataQuery, args...)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := r.hydrateChannelChildren(ctx, channels, channelIDs); err != nil {
+		return nil, nil, err
+	}
+
+	pages := 0
+	if total > 0 {
+		pages = int((total + int64(pageSize) - 1) / int64(pageSize))
+	}
+	return channels, &pagination.PaginationResult{
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+		Pages:    pages,
+	}, nil
+}
+
+// buildChannelListFilter composes the dynamic WHERE clause for List. Extracted
+// so the RPC body stays focused on pagination / hydration orchestration —
+// adding a new filter means editing this helper, not re-wiring the List method.
+func buildChannelListFilter(status, search string) (string, []any, int) {
+	where := []string{"1=1"}
+	args := []any{}
+	argIdx := 1
+	if status != "" {
+		where = append(where, fmt.Sprintf("c.status = $%d", argIdx))
+		args = append(args, status)
+		argIdx++
+	}
+	if search != "" {
+		where = append(where, fmt.Sprintf("(c.name ILIKE $%d OR c.description ILIKE $%d)", argIdx, argIdx))
+		args = append(args, "%"+escapeLike(search)+"%")
+		argIdx++
+	}
+	return strings.Join(where, " AND "), args, argIdx
+}
+
+// scanChannelRows is the single source of truth for "SELECT ... FROM channels
+// -> []service.Channel" — both List and ListAll feed their query text +
+// arguments into this helper so column order and ModelMapping decoding never
+// drift. Returns the channel slice and the ID list batchLoad helpers want.
+func (r *channelRepository) scanChannelRows(ctx context.Context, query string, args ...any) ([]service.Channel, []int64, error) {
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("query channels: %w", err)
 	}
@@ -230,39 +260,35 @@ func (r *channelRepository) List(ctx context.Context, params pagination.Paginati
 	if err := rows.Err(); err != nil {
 		return nil, nil, fmt.Errorf("iterate channels: %w", err)
 	}
+	return channels, channelIDs, nil
+}
 
-	if len(channelIDs) > 0 {
-		groupMap, err := r.batchLoadGroupIDs(ctx, channelIDs)
-		if err != nil {
-			return nil, nil, err
-		}
-		pricingMap, err := r.batchLoadModelPricing(ctx, channelIDs)
-		if err != nil {
-			return nil, nil, err
-		}
-		rulesMap, err := r.batchLoadAccountStatsPricingRules(ctx, channelIDs)
-		if err != nil {
-			return nil, nil, err
-		}
-		for i := range channels {
-			channels[i].GroupIDs = groupMap[channels[i].ID]
-			channels[i].ModelPricing = pricingMap[channels[i].ID]
-			channels[i].AccountStatsPricingRules = rulesMap[channels[i].ID]
-		}
+// hydrateChannelChildren attaches the three batch-loaded child collections
+// (group IDs, model pricing, account-stats rules) onto each Channel. Empty
+// input is a no-op so callers do not need to guard around it — matching the
+// idiomatic "hydrate whatever you have" shape used by the snapshot encoder.
+func (r *channelRepository) hydrateChannelChildren(ctx context.Context, channels []service.Channel, channelIDs []int64) error {
+	if len(channelIDs) == 0 {
+		return nil
 	}
-
-	pages := 0
-	if total > 0 {
-		pages = int((total + int64(pageSize) - 1) / int64(pageSize))
+	groupMap, err := r.batchLoadGroupIDs(ctx, channelIDs)
+	if err != nil {
+		return err
 	}
-
-	paginationResult := &pagination.PaginationResult{
-		Total:    total,
-		Page:     page,
-		PageSize: pageSize,
-		Pages:    pages,
+	pricingMap, err := r.batchLoadModelPricing(ctx, channelIDs)
+	if err != nil {
+		return err
 	}
-	return channels, paginationResult, nil
+	rulesMap, err := r.batchLoadAccountStatsPricingRules(ctx, channelIDs)
+	if err != nil {
+		return err
+	}
+	for i := range channels {
+		channels[i].GroupIDs = groupMap[channels[i].ID]
+		channels[i].ModelPricing = pricingMap[channels[i].ID]
+		channels[i].AccountStatsPricingRules = rulesMap[channels[i].ID]
+	}
+	return nil
 }
 
 func channelListOrderBy(params pagination.PaginationParams) string {
@@ -290,51 +316,14 @@ func channelListOrderBy(params pagination.PaginationParams) string {
 }
 
 func (r *channelRepository) ListAll(ctx context.Context) ([]service.Channel, error) {
-	rows, err := r.db.QueryContext(ctx,
+	channels, channelIDs, err := r.scanChannelRows(ctx,
 		`SELECT id, name, description, status, model_mapping, billing_model_source, restrict_models, features, apply_pricing_to_account_stats, created_at, updated_at FROM channels ORDER BY id`,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("query all channels: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var channels []service.Channel
-	var channelIDs []int64
-	for rows.Next() {
-		var ch service.Channel
-		var modelMappingJSON []byte
-		if err := rows.Scan(&ch.ID, &ch.Name, &ch.Description, &ch.Status, &modelMappingJSON, &ch.BillingModelSource, &ch.RestrictModels, &ch.Features, &ch.ApplyPricingToAccountStats, &ch.CreatedAt, &ch.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("scan channel: %w", err)
-		}
-		ch.ModelMapping = unmarshalModelMapping(modelMappingJSON)
-		channels = append(channels, ch)
-		channelIDs = append(channelIDs, ch.ID)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate channels: %w", err)
-	}
-
-	if len(channelIDs) == 0 {
-		return channels, nil
-	}
-
-	groupMap, err := r.batchLoadGroupIDs(ctx, channelIDs)
-	if err != nil {
 		return nil, err
 	}
-	pricingMap, err := r.batchLoadModelPricing(ctx, channelIDs)
-	if err != nil {
+	if err := r.hydrateChannelChildren(ctx, channels, channelIDs); err != nil {
 		return nil, err
-	}
-	rulesMap, err := r.batchLoadAccountStatsPricingRules(ctx, channelIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	for i := range channels {
-		channels[i].GroupIDs = groupMap[channels[i].ID]
-		channels[i].ModelPricing = pricingMap[channels[i].ID]
-		channels[i].AccountStatsPricingRules = rulesMap[channels[i].ID]
 	}
 	return channels, nil
 }
