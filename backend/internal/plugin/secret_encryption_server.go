@@ -37,7 +37,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -76,37 +75,34 @@ const secretEncryptionGCMTagSize = 16
 // occupy: nonce + empty payload + tag.
 const secretEncryptionMinCiphertext = secretEncryptionGCMNonceSize + secretEncryptionGCMTagSize
 
-// callerResolver 是 SDK gRPC caller 解析的早期类型别名。CallerResolver
-// (interceptors.go) 是新的权威定义; 此处保留别名只是为了兼容已存在的测试
-// (secret_encryption_server_test.go 用 fixedResolver 直接调 server method)。
-// 生产路径上拦截器接管, server 持有的 resolver 不会被调用 —— 但仍保留字段
-// 以支持单元测试直接调用 Encrypt/Decrypt 而不经过 gRPC stack 的场景。
-type callerResolver = CallerResolver
-
 // SecretEncryptionServer implements pluginsdk.SecretEncryptionServer. One
 // instance is shared across all plugins; per-plugin keys are derived lazily
 // on first use and cached in perPluginKey.
 //
-// resolveName 仅服务于"绕过 gRPC 拦截器直接调 server method"的单元测试;
-// 生产路径上 RequirePluginIdentity{Unary,Stream} 已塞好 ctx, handler 优先
-// 走 CallerFromContext。
+// Caller identity flows exclusively through the gRPC context: production
+// traffic carries it via RequirePluginIdentity{Unary,Stream}, and unit tests
+// that bypass the interceptor stack stamp it with WithCaller(ctx, name).
+// The previously-required CallerResolver function (kept around under the
+// name "resolver" for a short transition period) was removed in T51 because
+// it had no production user — only tests — and its presence muddied the
+// dependency-injection contract.
 type SecretEncryptionServer struct {
 	pluginsdk.UnimplementedSecretEncryptionServer
 
 	masterKey    []byte
 	perPluginKey sync.Map // pluginName -> []byte (32 bytes)
-	resolveName  callerResolver
 	logger       *slog.Logger
 }
 
 // NewSecretEncryptionServer constructs a server. masterKeyHex must decode to
 // exactly 32 bytes; anything else is a configuration bug and we fail-fast
-// at host startup. resolver 仅供绕过拦截器的测试使用; 生产链路 caller 解析
-// 已由 RequirePluginIdentityUnary 接管, 这里保留参数以兼容现有 wiring。
-func NewSecretEncryptionServer(masterKeyHex string, resolver callerResolver, logger *slog.Logger) (*SecretEncryptionServer, error) {
-	if resolver == nil {
-		return nil, errors.New("nil caller resolver")
-	}
+// at host startup.
+//
+// T51: The former `resolver callerResolver` parameter was dropped. Callers
+// that previously injected a stub resolver for tests now stamp the caller
+// name onto ctx directly with `WithCaller(ctx, "<plugin>")` before invoking
+// Encrypt / Decrypt.
+func NewSecretEncryptionServer(masterKeyHex string, logger *slog.Logger) (*SecretEncryptionServer, error) {
 	key, err := hex.DecodeString(masterKeyHex)
 	if err != nil {
 		return nil, fmt.Errorf("invalid plugin secret master key hex: %w", err)
@@ -115,22 +111,18 @@ func NewSecretEncryptionServer(masterKeyHex string, resolver callerResolver, log
 		return nil, fmt.Errorf("plugin secret master key must be %d bytes, got %d", secretEncryptionMasterKeyLen, len(key))
 	}
 	return &SecretEncryptionServer{
-		masterKey:   key,
-		resolveName: resolver,
-		logger:      loggerOrDefault(logger),
+		masterKey: key,
+		logger:    loggerOrDefault(logger),
 	}, nil
 }
 
-// callerForSecret 优先取拦截器塞入的 ctx caller, 兜底再走构造期注入的
-// resolver(测试场景, 直接调 server method)。生产路径上前者必命中。
+// callerForSecret returns the authorised plugin name from ctx. Production
+// paths get a stamped value from RequirePluginIdentity{Unary,Stream}; tests
+// stamp one directly with WithCaller. An empty result means "anonymous" and
+// every handler that calls this helper rejects it.
 func (s *SecretEncryptionServer) callerForSecret(ctx context.Context) string {
-	if name, ok := CallerFromContext(ctx); ok && name != "" {
-		return name
-	}
-	if s.resolveName != nil {
-		return s.resolveName(ctx)
-	}
-	return ""
+	name, _ := CallerFromContext(ctx)
+	return name
 }
 
 // RegisterServices wires the server onto a gRPC server. Kept separate from

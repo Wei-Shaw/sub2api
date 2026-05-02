@@ -32,57 +32,74 @@ func (m *Manifest) toProto() *pb.ManifestResponse {
 		resp.Frontend = m.Frontend.toProto()
 	}
 	if m.SettingsSchema != nil {
-		// Copy bytes defensively so later mutations on the plugin side cannot
-		// race with a transmission already in flight.
-		if len(m.SettingsSchema.Schema) > 0 {
-			resp.SettingsSchemaJson = append([]byte(nil), m.SettingsSchema.Schema...)
-		}
-		if len(m.SettingsSchema.Defaults) > 0 {
-			resp.SettingsDefaultsJson = append([]byte(nil), m.SettingsSchema.Defaults...)
-		}
-		// Implicitly opt the plugin into SettingsExtension when it ships a
-		// schema. We add the canonical CapabilitySettingsOwnRead — the host
-		// expands canonical → legacy alias when shipping the approved list
-		// back in PluginInitRequest, so plugins still keyed off the legacy
-		// "settings_extension" string keep working.
-		//
-		// Skip when either the canonical or the legacy alias is already
-		// present so manifests opting into write-only settings, or pinned to
-		// the deprecated alias, are honoured as declared.
-		if resp.SettingsSchemaJson != nil &&
-			!containsCap(caps, CapabilitySettingsOwnRead) &&
-			!containsCap(caps, CapabilitySettingsOwnWrite) &&
-			!containsCap(caps, CapabilitySettingsExtension) {
-			caps = append(caps, CapabilitySettingsOwnRead)
-		}
-		// V5/W6 SETTINGS-V2: ship version + per-property markers so the
-		// host does not need to re-walk the schema for every admin GET.
-		resp.SettingsSchemaVersion = m.SettingsSchema.Version
-
-		if len(m.SettingsSchema.PropertyMeta) > 0 {
-			// Surface invalid Visibility values via the plugin's logger so
-			// the author notices during local development. The host's
-			// RegisterSchema (W2-B) will reject the manifest as the final
-			// defence; emitting nil here keeps the host able to derive
-			// markers from schema_json alone.
-			if err := validatePropertyMeta(m.SettingsSchema.PropertyMeta); err != nil {
-				slog.Default().Warn("plugin-sdk: PropertyMeta validation failed", "error", err)
-			}
-			metaBytes, err := json.Marshal(m.SettingsSchema.PropertyMeta)
-			if err != nil {
-				// Falling back to nil keeps the host able to derive markers
-				// from schema_json alone; the plugin author saw the error
-				// in their logs via slog.Default since toProto runs at
-				// manifest send time.
-				slog.Default().Warn("plugin-sdk: marshal PropertyMeta failed", "error", err)
-				resp.SettingsPropertiesMetaJson = nil
-			} else {
-				resp.SettingsPropertiesMetaJson = metaBytes
-			}
-		}
+		caps = applySettingsSchema(resp, m.SettingsSchema, caps)
 	}
 	resp.Capabilities = caps
 	return resp
+}
+
+// applySettingsSchema copies the SettingsSchemaDoc onto the proto response and
+// returns a possibly-extended capability slice. Two concerns lived inside
+// toProto before T53 split them out: defensive byte copies of the schema /
+// defaults blobs (so concurrent plugin-side mutations cannot race a
+// transmission in flight), and the canonical-capability auto-grant that
+// implicitly opts a schema-bearing plugin into CapabilitySettingsOwnRead.
+//
+// Returning the (possibly-extended) caps slice makes the side-effect
+// explicit: callers chain "caps = applySettingsSchema(...)" rather than
+// having to know which fields the helper mutated.
+func applySettingsSchema(resp *pb.ManifestResponse, doc *SettingsSchemaDoc, caps []string) []string {
+	// Copy bytes defensively so later mutations on the plugin side cannot
+	// race with a transmission already in flight.
+	if len(doc.Schema) > 0 {
+		resp.SettingsSchemaJson = append([]byte(nil), doc.Schema...)
+	}
+	if len(doc.Defaults) > 0 {
+		resp.SettingsDefaultsJson = append([]byte(nil), doc.Defaults...)
+	}
+	caps = grantSettingsReadIfImplied(caps, resp.SettingsSchemaJson != nil)
+	resp.SettingsSchemaVersion = doc.Version
+	if len(doc.PropertyMeta) > 0 {
+		resp.SettingsPropertiesMetaJson = encodePropertyMeta(doc.PropertyMeta)
+	}
+	return caps
+}
+
+// grantSettingsReadIfImplied implements the V5/W6 SETTINGS-V2 implicit
+// opt-in: shipping a schema implies the plugin wants to read its own
+// settings, so we add CapabilitySettingsOwnRead to the canonical list.
+//
+// Skip when either the canonical or the legacy alias is already present so
+// manifests opting into write-only settings, or pinned to the deprecated
+// alias, are honoured as declared.
+func grantSettingsReadIfImplied(caps []string, hasSchema bool) []string {
+	if !hasSchema {
+		return caps
+	}
+	if containsCap(caps, CapabilitySettingsOwnRead) ||
+		containsCap(caps, CapabilitySettingsOwnWrite) ||
+		containsCap(caps, CapabilitySettingsExtension) {
+		return caps
+	}
+	return append(caps, CapabilitySettingsOwnRead)
+}
+
+// encodePropertyMeta validates and JSON-encodes the per-property metadata
+// the plugin author declared. Validation failures are surfaced via the
+// plugin's slog so the author sees them during local development; encoding
+// failures fall back to nil so the host can still derive markers from
+// schema_json alone (the host RegisterSchema gate is the authoritative
+// defence).
+func encodePropertyMeta(meta map[string]PropertyMetadata) []byte {
+	if err := validatePropertyMeta(meta); err != nil {
+		slog.Default().Warn("plugin-sdk: PropertyMeta validation failed", "error", err)
+	}
+	metaBytes, err := json.Marshal(meta)
+	if err != nil {
+		slog.Default().Warn("plugin-sdk: marshal PropertyMeta failed", "error", err)
+		return nil
+	}
+	return metaBytes
 }
 
 func containsCap(caps []string, want string) bool {
@@ -145,42 +162,49 @@ func menuItemsToProto(items []MenuItemDecl) []*pb.MenuItem {
 	}
 	out := make([]*pb.MenuItem, 0, len(items))
 	for _, item := range items {
-		var labels map[string]string
-		if len(item.Labels) > 0 {
-			labels = make(map[string]string, len(item.Labels))
-			for k, v := range item.Labels {
-				labels[k] = v
-			}
-		}
-		var descriptions map[string]string
-		if len(item.Descriptions) > 0 {
-			descriptions = make(map[string]string, len(item.Descriptions))
-			for k, v := range item.Descriptions {
-				descriptions[k] = v
-			}
-		}
-		mi := &pb.MenuItem{
-			Path:             item.Path,
-			LabelKey:         item.LabelKey,
-			Icon:             item.Icon,
-			Section:          item.Section,
-			SortOrder:        int32(item.SortOrder),
-			RequiresAdmin:    item.RequiresAdmin,
-			HideInSimpleMode: item.HideInSimpleMode,
-			FeatureFlag:      item.FeatureFlag,
-			Children:         menuItemsToProto(item.Children),
-			IconSvg:          item.IconSVG,
-			Labels:           labels,
-			Descriptions:     descriptions,
-		}
-		// V5/W7 Placement DSL — only stamp the wire fields when the plugin
-		// opted in; leaving them zero preserves the legacy SortOrder path
-		// for callers still on the old API.
-		if item.Placement != nil && item.Placement.Group != "" {
-			mi.PlacementGroup = item.Placement.Group
-			mi.PlacementOrder = int32(item.Placement.Order)
-		}
-		out = append(out, mi)
+		out = append(out, menuItemToProto(item))
+	}
+	return out
+}
+
+// menuItemToProto translates one MenuItemDecl onto the proto type. Pulled
+// out of menuItemsToProto so the loop body stays small and adding a new
+// menu field touches only this function.
+func menuItemToProto(item MenuItemDecl) *pb.MenuItem {
+	mi := &pb.MenuItem{
+		Path:             item.Path,
+		LabelKey:         item.LabelKey,
+		Icon:             item.Icon,
+		Section:          item.Section,
+		SortOrder:        int32(item.SortOrder),
+		RequiresAdmin:    item.RequiresAdmin,
+		HideInSimpleMode: item.HideInSimpleMode,
+		FeatureFlag:      item.FeatureFlag,
+		Children:         menuItemsToProto(item.Children),
+		IconSvg:          item.IconSVG,
+		Labels:           copyStringMap(item.Labels),
+		Descriptions:     copyStringMap(item.Descriptions),
+	}
+	// V5/W7 Placement DSL — only stamp the wire fields when the plugin
+	// opted in; leaving them zero preserves the legacy SortOrder path
+	// for callers still on the old API.
+	if item.Placement != nil && item.Placement.Group != "" {
+		mi.PlacementGroup = item.Placement.Group
+		mi.PlacementOrder = int32(item.Placement.Order)
+	}
+	return mi
+}
+
+// copyStringMap returns a defensive copy of m or nil when m is empty.
+// Used by menuItemToProto so concurrent plugin-side mutations of the
+// labels / descriptions maps cannot race with a transmission in flight.
+func copyStringMap(m map[string]string) map[string]string {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		out[k] = v
 	}
 	return out
 }

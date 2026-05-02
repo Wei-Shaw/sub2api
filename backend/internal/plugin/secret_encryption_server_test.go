@@ -17,11 +17,12 @@ import (
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
-// fixedResolver returns a constant plugin name. Used to drive the gRPC
-// caller-identity hook deterministically without standing up a full
-// SDKServer + metadata interceptor stack.
-func fixedResolver(name string) callerResolver {
-	return func(_ context.Context) string { return name }
+// withCaller stamps a plugin name onto ctx the way the production
+// RequirePluginIdentityUnary interceptor would. T51 removed the
+// constructor-time resolver hook, so tests now drive caller identity
+// exclusively through ctx — matching the production path.
+func withCaller(ctx context.Context, name string) context.Context {
+	return WithCaller(ctx, name)
 }
 
 func newTestMasterKey(t *testing.T) string {
@@ -33,13 +34,16 @@ func newTestMasterKey(t *testing.T) string {
 	return hex.EncodeToString(buf)
 }
 
-func newServerForPlugin(t *testing.T, pluginName, masterKeyHex string) *SecretEncryptionServer {
+// newServerForPlugin returns the server plus a pre-stamped ctx that callers
+// can pass straight into Encrypt / Decrypt. Tests exercising the anonymous
+// path use context.Background() directly.
+func newServerForPlugin(t *testing.T, pluginName, masterKeyHex string) (*SecretEncryptionServer, context.Context) {
 	t.Helper()
-	srv, err := NewSecretEncryptionServer(masterKeyHex, fixedResolver(pluginName), slog.Default())
+	srv, err := NewSecretEncryptionServer(masterKeyHex, slog.Default())
 	if err != nil {
 		t.Fatalf("NewSecretEncryptionServer: %v", err)
 	}
-	return srv
+	return srv, withCaller(context.Background(), pluginName)
 }
 
 // TestSecretEncryption_RoundTrip is the happy-path Encrypt → Decrypt cycle
@@ -48,9 +52,8 @@ func newServerForPlugin(t *testing.T, pluginName, masterKeyHex string) *SecretEn
 // documented nonce(12) || payload || tag(16) shape.
 func TestSecretEncryption_RoundTrip(t *testing.T) {
 	masterKeyHex := newTestMasterKey(t)
-	srv := newServerForPlugin(t, "channel-monitor", masterKeyHex)
+	srv, ctx := newServerForPlugin(t, "channel-monitor", masterKeyHex)
 
-	ctx := context.Background()
 	plaintext := []byte("api_key=sk-test-1234567890abcdef")
 
 	encResp, err := srv.Encrypt(ctx, &pluginsdk.EncryptRequest{Plaintext: plaintext})
@@ -88,20 +91,19 @@ func TestSecretEncryption_RoundTrip(t *testing.T) {
 func TestSecretEncryption_CrossPluginRejected(t *testing.T) {
 	masterKeyHex := newTestMasterKey(t)
 
-	srvA := newServerForPlugin(t, "channel-monitor", masterKeyHex)
-	srvB := newServerForPlugin(t, "billing", masterKeyHex)
+	srvA, ctxA := newServerForPlugin(t, "channel-monitor", masterKeyHex)
+	srvB, ctxB := newServerForPlugin(t, "billing", masterKeyHex)
 
-	ctx := context.Background()
 	plaintext := []byte("super-secret-token")
 
-	encResp, err := srvA.Encrypt(ctx, &pluginsdk.EncryptRequest{Plaintext: plaintext})
+	encResp, err := srvA.Encrypt(ctxA, &pluginsdk.EncryptRequest{Plaintext: plaintext})
 	if err != nil {
 		t.Fatalf("plugin A Encrypt: %v", err)
 	}
 
 	// Plugin B sees the ciphertext (perhaps via a database read it should
 	// not have made) and tries to open it with its own identity.
-	_, err = srvB.Decrypt(ctx, &pluginsdk.DecryptRequest{Ciphertext: encResp.GetCiphertext()})
+	_, err = srvB.Decrypt(ctxB, &pluginsdk.DecryptRequest{Ciphertext: encResp.GetCiphertext()})
 	if err == nil {
 		t.Fatal("plugin B was able to decrypt plugin A's ciphertext — isolation broken!")
 	}
@@ -114,7 +116,7 @@ func TestSecretEncryption_CrossPluginRejected(t *testing.T) {
 
 	// Sanity check: plugin A can still decrypt its own ciphertext after
 	// plugin B's failed attempt — the failure path must not poison state.
-	decResp, err := srvA.Decrypt(ctx, &pluginsdk.DecryptRequest{Ciphertext: encResp.GetCiphertext()})
+	decResp, err := srvA.Decrypt(ctxA, &pluginsdk.DecryptRequest{Ciphertext: encResp.GetCiphertext()})
 	if err != nil {
 		t.Fatalf("plugin A own Decrypt failed after cross-plugin attempt: %v", err)
 	}
@@ -132,8 +134,7 @@ func TestSecretEncryption_CrossPluginRejected(t *testing.T) {
 // not the length sanity guard.
 func TestSecretEncryption_TamperedCiphertext(t *testing.T) {
 	masterKeyHex := newTestMasterKey(t)
-	srv := newServerForPlugin(t, "channel-monitor", masterKeyHex)
-	ctx := context.Background()
+	srv, ctx := newServerForPlugin(t, "channel-monitor", masterKeyHex)
 
 	encResp, err := srv.Encrypt(ctx, &pluginsdk.EncryptRequest{Plaintext: []byte("payload")})
 	if err != nil {
@@ -170,7 +171,7 @@ func TestSecretEncryption_ConstructorRejectsBadKey(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := NewSecretEncryptionServer(tc.key, fixedResolver("any"), slog.Default())
+			_, err := NewSecretEncryptionServer(tc.key, slog.Default())
 			if err == nil {
 				t.Fatalf("NewSecretEncryptionServer accepted bad key %q", tc.key)
 			}
@@ -190,9 +191,14 @@ func TestSecretEncryption_ConstructorRejectsBadKey(t *testing.T) {
 // SDK 接口统一。
 func TestSecretEncryption_AnonymousCallerDenied(t *testing.T) {
 	masterKeyHex := newTestMasterKey(t)
-	srv := newServerForPlugin(t, "", masterKeyHex)
+	// Construct the server but DON'T stamp a caller onto ctx; the handler
+	// must reject both Encrypt and Decrypt with PermissionDenied.
+	srv, err := NewSecretEncryptionServer(masterKeyHex, slog.Default())
+	if err != nil {
+		t.Fatalf("NewSecretEncryptionServer: %v", err)
+	}
 
-	_, err := srv.Encrypt(context.Background(), &pluginsdk.EncryptRequest{Plaintext: []byte("x")})
+	_, err = srv.Encrypt(context.Background(), &pluginsdk.EncryptRequest{Plaintext: []byte("x")})
 	if err == nil {
 		t.Fatal("anonymous Encrypt was accepted")
 	}
@@ -214,8 +220,7 @@ func TestSecretEncryption_AnonymousCallerDenied(t *testing.T) {
 // exceed the documented MaxSecretBytes envelope.
 func TestSecretEncryption_OversizedPlaintext(t *testing.T) {
 	masterKeyHex := newTestMasterKey(t)
-	srv := newServerForPlugin(t, "channel-monitor", masterKeyHex)
-	ctx := context.Background()
+	srv, ctx := newServerForPlugin(t, "channel-monitor", masterKeyHex)
 
 	tooBig := make([]byte, secretEncryptionMaxPlaintext+1)
 	_, err := srv.Encrypt(ctx, &pluginsdk.EncryptRequest{Plaintext: tooBig})
@@ -250,7 +255,7 @@ func TestSecretEncryption_OversizedPlaintext(t *testing.T) {
 // that HKDF is not run on every Encrypt.
 func TestSecretEncryption_DerivedKeysCached(t *testing.T) {
 	masterKeyHex := newTestMasterKey(t)
-	srv := newServerForPlugin(t, "channel-monitor", masterKeyHex)
+	srv, _ := newServerForPlugin(t, "channel-monitor", masterKeyHex)
 
 	k1, err := srv.deriveKey("channel-monitor")
 	if err != nil {
@@ -275,7 +280,7 @@ func TestSecretEncryption_DerivedKeysCached(t *testing.T) {
 	}
 }
 
-// resolverError is unused but kept here to anchor a future test path that
-// stubs a resolver returning an error sentinel; the production resolver
-// only ever returns "" for unknown callers.
+// errors is imported by the unused-resolver anchor we used to keep here. It
+// has no current consumer; remove the import once the helper-import drift
+// settles.
 var _ = errors.New

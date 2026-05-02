@@ -111,7 +111,24 @@ type OutboundConfig struct {
 // any IP address in the blocked-CIDR list. The check runs inside DialContext
 // so DNS rebinding (TTL=0 returning a public IP first, an internal IP on the
 // second resolve) is caught at every dial.
-func NewSafeHTTPClient(cfg OutboundConfig) (*http.Client, error) {
+// safeHTTPConfig is the resolved configuration NewSafeHTTPClient passes to
+// the dialer / transport / client builders below. Centralising the
+// host-defaults + plugin-overrides resolution into resolveSafeHTTPConfig
+// (T52) keeps NewSafeHTTPClient itself an orchestrator at <30 lines.
+type safeHTTPConfig struct {
+	blockedNets  []*net.IPNet
+	allowSet     map[string]struct{}
+	maxRedirects int
+	timeout      time.Duration
+	maxBody      int64
+}
+
+// resolveSafeHTTPConfig merges host-pushed outbound defaults with the
+// per-call OutboundConfig overrides, producing the concrete values the
+// dialer / transport / client builders need. Splitting this out (T52)
+// keeps NewSafeHTTPClient at orchestrator size and lets future changes to
+// the precedence rules live in one place.
+func resolveSafeHTTPConfig(cfg OutboundConfig) (safeHTTPConfig, error) {
 	defaults := getOutboundDefaultsSnapshot()
 
 	// Merge block list: defaults from host + plugin extras + SDK fallback.
@@ -122,7 +139,7 @@ func NewSafeHTTPClient(cfg OutboundConfig) (*http.Client, error) {
 	blocked = append(append([]string{}, blocked...), cfg.ExtraBlockedCIDRs...)
 	blockedNets, err := parseCIDRs(blocked)
 	if err != nil {
-		return nil, fmt.Errorf("pluginsdk: parse blocked cidrs: %w", err)
+		return safeHTTPConfig{}, fmt.Errorf("pluginsdk: parse blocked cidrs: %w", err)
 	}
 
 	// Merge allow-list: host's global + plugin's local. Empty union → no
@@ -157,19 +174,30 @@ func NewSafeHTTPClient(cfg OutboundConfig) (*http.Client, error) {
 		maxBody = 1 << 20 // 1 MiB
 	}
 
+	return safeHTTPConfig{
+		blockedNets:  blockedNets,
+		allowSet:     allowSet,
+		maxRedirects: maxRedirects,
+		timeout:      timeout,
+		maxBody:      maxBody,
+	}, nil
+}
+
+// buildSSRFTransport wires the SSRF-aware DialContext closure onto an
+// http.Transport. The DialContext re-resolves and re-checks the destination
+// IP on every dial — even if the application validated the hostname
+// earlier, the actual dialed IP is checked here, defeating TOCTOU / DNS
+// rebinding attacks.
+func buildSSRFTransport(cfg safeHTTPConfig) *http.Transport {
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
-	transport := &http.Transport{
-		// DialContext re-resolves and re-checks the IP on every dial. This
-		// is the core SSRF defence: even if the application validated the
-		// hostname earlier, the actual dialed IP is checked here, defeating
-		// TOCTOU / DNS rebinding attacks.
+	return &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			host, port, splitErr := net.SplitHostPort(addr)
 			if splitErr != nil {
 				return nil, splitErr
 			}
-			if len(allowSet) > 0 {
-				if _, ok := allowSet[strings.ToLower(host)]; !ok {
+			if len(cfg.allowSet) > 0 {
+				if _, ok := cfg.allowSet[strings.ToLower(host)]; !ok {
 					return nil, fmt.Errorf("%w: %s", ErrHostNotAllowed, host)
 				}
 			}
@@ -183,7 +211,7 @@ func NewSafeHTTPClient(cfg OutboundConfig) (*http.Client, error) {
 			// All resolved IPs must clear the block list — partial match is
 			// not enough, since net.Dialer may pick any of them.
 			for _, ip := range ips {
-				if cidrContains(blockedNets, ip.IP) {
+				if cidrContains(cfg.blockedNets, ip.IP) {
 					return nil, fmt.Errorf("%w: host=%s ip=%s", ErrBlockedTarget, host, ip.IP)
 				}
 			}
@@ -193,18 +221,24 @@ func NewSafeHTTPClient(cfg OutboundConfig) (*http.Client, error) {
 			return dialer.DialContext(ctx, network, net.JoinHostPort(ips[0].IP.String(), port))
 		},
 	}
+}
 
+// buildSafeHTTPClient assembles the http.Client with the SSRF transport,
+// timeout, redirect cap, and body-cap wrapper. Wrapping the transport via
+// limitedBodyTransport lets LimitedReadAll honour the per-call max without
+// the caller passing it explicitly.
+func buildSafeHTTPClient(transport *http.Transport, cfg safeHTTPConfig) *http.Client {
 	client := &http.Client{
 		Transport: transport,
-		Timeout:   timeout,
+		Timeout:   cfg.timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= maxRedirects {
+			if len(via) >= cfg.maxRedirects {
 				return ErrTooManyRedirects
 			}
 			// Re-validate the redirect target host against the allow-list.
-			if len(allowSet) > 0 {
+			if len(cfg.allowSet) > 0 {
 				h := strings.ToLower(req.URL.Hostname())
-				if _, ok := allowSet[h]; !ok {
+				if _, ok := cfg.allowSet[h]; !ok {
 					return fmt.Errorf("%w: %s", ErrHostNotAllowed, h)
 				}
 			}
@@ -213,8 +247,22 @@ func NewSafeHTTPClient(cfg OutboundConfig) (*http.Client, error) {
 	}
 	// Stash the body cap on the client via a wrapper transport so callers
 	// can later use LimitedReadAll without passing the cap explicitly.
-	client.Transport = &limitedBodyTransport{base: transport, max: maxBody}
-	return client, nil
+	client.Transport = &limitedBodyTransport{base: transport, max: cfg.maxBody}
+	return client
+}
+
+// NewSafeHTTPClient constructs the SSRF-hardened HTTP client plugins use
+// for outbound traffic. The body delegates to resolveSafeHTTPConfig +
+// buildSSRFTransport + buildSafeHTTPClient (T52) so each concern lives in
+// its own helper and adding a new defence (e.g. mTLS, metrics) means
+// extending one of them rather than the orchestrator.
+func NewSafeHTTPClient(cfg OutboundConfig) (*http.Client, error) {
+	resolved, err := resolveSafeHTTPConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	transport := buildSSRFTransport(resolved)
+	return buildSafeHTTPClient(transport, resolved), nil
 }
 
 // LimitedReadAll reads up to max bytes from r and returns ErrBodyTooLarge if
