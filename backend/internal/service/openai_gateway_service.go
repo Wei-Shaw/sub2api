@@ -7311,7 +7311,7 @@ REDACTED
 		return ""
 	case "low", "medium", "high":
 		return value
-	case "xhigh", "extrahigh":
+	case "xhigh", "extrahigh", "max":
 		return "xhigh"
 	default:
 		// Only store known effort levels for now to keep UI consistent.
