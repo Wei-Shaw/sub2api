@@ -274,6 +274,7 @@ func (s *SDKServer) TxQuery(ctx context.Context, req *pluginsdk.TxSQLRequest) (*
 	args := convertSQLValues(req.GetArgs())
 	rows, err := tx.QueryContext(ctx, req.GetQuery(), args...)
 	if err != nil {
+		slog.Warn("TxQuery error", "tx_id", req.GetTxId(), "err_type", fmt.Sprintf("%T", err), "err_text", err.Error())
 		return nil, errInternal(err, "plugin tx query")
 	}
 	defer func() { _ = rows.Close() }()
@@ -292,6 +293,7 @@ func (s *SDKServer) TxExec(ctx context.Context, req *pluginsdk.TxSQLRequest) (*p
 	args := convertSQLValues(req.GetArgs())
 	res, err := tx.ExecContext(ctx, req.GetQuery(), args...)
 	if err != nil {
+		slog.Warn("TxExec error", "tx_id", req.GetTxId(), "err_type", fmt.Sprintf("%T", err), "err_text", err.Error())
 		return nil, errInternal(err, "plugin tx exec")
 	}
 	return execResultToResponse(res), nil
