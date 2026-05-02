@@ -801,9 +801,13 @@ func (*SQLValue_BoolValue) isSQLValue_Value() {}
 func (*SQLValue_TimeValue) isSQLValue_Value() {}
 
 type SQLResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Columns       []string               `protobuf:"bytes,1,rep,name=columns,proto3" json:"columns,omitempty"`
-	Rows          []*SQLRow              `protobuf:"bytes,2,rep,name=rows,proto3" json:"rows,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Columns []string               `protobuf:"bytes,1,rep,name=columns,proto3" json:"columns,omitempty"`
+	Rows    []*SQLRow              `protobuf:"bytes,2,rep,name=rows,proto3" json:"rows,omitempty"`
+	// PostgreSQL type name per column (e.g. "int8", "varchar", "timestamptz", "jsonb").
+	// Populated by the host via rows.ColumnTypes().DatabaseTypeName(); empty when
+	// the driver does not support column type introspection.
+	ColumnTypes   []string `protobuf:"bytes,3,rep,name=column_types,json=columnTypes,proto3" json:"column_types,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -848,6 +852,13 @@ func (x *SQLResponse) GetColumns() []string {
 func (x *SQLResponse) GetRows() []*SQLRow {
 	if x != nil {
 		return x.Rows
+	}
+	return nil
+}
+
+func (x *SQLResponse) GetColumnTypes() []string {
+	if x != nil {
+		return x.ColumnTypes
 	}
 	return nil
 }
@@ -4751,10 +4762,11 @@ const file_sdk_proto_rawDesc = "" +
 	"bool_value\x18\x06 \x01(\bH\x00R\tboolValue\x12\x1f\n" +
 	"\n" +
 	"time_value\x18\a \x01(\tH\x00R\ttimeValueB\a\n" +
-	"\x05value\"N\n" +
+	"\x05value\"q\n" +
 	"\vSQLResponse\x12\x18\n" +
 	"\acolumns\x18\x01 \x03(\tR\acolumns\x12%\n" +
-	"\x04rows\x18\x02 \x03(\v2\x11.pluginsdk.SQLRowR\x04rows\"5\n" +
+	"\x04rows\x18\x02 \x03(\v2\x11.pluginsdk.SQLRowR\x04rows\x12!\n" +
+	"\fcolumn_types\x18\x03 \x03(\tR\vcolumnTypes\"5\n" +
 	"\x06SQLRow\x12+\n" +
 	"\x06values\x18\x01 \x03(\v2\x13.pluginsdk.SQLValueR\x06values\"Y\n" +
 	"\fExecResponse\x12#\n" +

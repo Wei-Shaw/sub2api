@@ -154,6 +154,10 @@ message SQLValue {
 message SQLResponse {
   repeated string columns = 1;
   repeated SQLRow rows = 2;
+  // PostgreSQL type name per column (e.g. "int8", "varchar", "timestamptz", "jsonb").
+  // Populated by the host via rows.ColumnTypes().DatabaseTypeName(); empty when
+  // the driver does not support column type introspection.
+  repeated string column_types = 3;
 }
 
 message SQLRow {

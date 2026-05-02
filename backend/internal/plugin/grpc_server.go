@@ -415,7 +415,19 @@ func scanRowsToResponse(rows *sql.Rows) (*pluginsdk.SQLResponse, error) {
 		return nil, errInternal(err, "plugin sql columns")
 	}
 
-	resp := &pluginsdk.SQLResponse{Columns: cols}
+	// Retrieve database type names so the plugin driver can implement
+	// ColumnTypeDatabaseTypeName / ColumnTypeScanType for ent's unknown-
+	// column branch. Errors are ignored — some drivers do not support
+	// ColumnTypes and the proxy should still work without type metadata.
+	colTypes, _ := rows.ColumnTypes()
+	typeNames := make([]string, len(cols))
+	if colTypes != nil {
+		for i, ct := range colTypes {
+			typeNames[i] = ct.DatabaseTypeName()
+		}
+	}
+
+	resp := &pluginsdk.SQLResponse{Columns: cols, ColumnTypes: typeNames}
 	for rows.Next() {
 		holders := make([]any, len(cols))
 		ptrs := make([]any, len(cols))

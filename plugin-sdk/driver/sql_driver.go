@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -341,13 +342,18 @@ func (r *execResult) RowsAffected() (int64, error) { return r.rowsAffected, nil 
 // grpcRows iterates over the SQLResponse returned by Query. The full result
 // set is materialised by the proxy; we just hand rows back one at a time.
 type grpcRows struct {
-	columns []string
-	rows    []*pb.SQLRow
-	idx     int
+	columns  []string
+	colTypes []string // PostgreSQL type names from host ColumnTypes()
+	rows     []*pb.SQLRow
+	idx      int
 }
 
 func newRows(resp *pb.SQLResponse) *grpcRows {
-	return &grpcRows{columns: resp.GetColumns(), rows: resp.GetRows()}
+	return &grpcRows{
+		columns:  resp.GetColumns(),
+		colTypes: resp.GetColumnTypes(),
+		rows:     resp.GetRows(),
+	}
 }
 
 func (r *grpcRows) Columns() []string { return r.columns }
@@ -496,4 +502,8 @@ var (
 	_ driver.Tx                 = (*grpcTx)(nil)
 	_ driver.Rows               = (*grpcRows)(nil)
 	_ driver.Result             = (*execResult)(nil)
+
+	// grpcRows satisfies the optional column-type introspection interfaces.
+	_ interface{ ColumnTypeDatabaseTypeName(int) string } = (*grpcRows)(nil)
+	_ interface{ ColumnTypeScanType(int) reflect.Type }   = (*grpcRows)(nil)
 )
