@@ -11,47 +11,13 @@ import (
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
 )
 
-// callerIdentityUnaryInterceptor returns a gRPC client interceptor that
-// attaches the plugin's name as `x-sub2api-plugin` metadata on every unary
-// call to the core. The core uses this to enforce per-plugin Redis key
-// namespaces and capability checks.
-//
-// pluginName is captured at Init time so all subsequent calls send the
-// same identity. Plugins cannot rotate their identity at runtime — and
-// should not, since capabilities are bound to the name.
-func callerIdentityUnaryInterceptor(pluginName string) grpc.UnaryClientInterceptor {
-	return func(
-		ctx context.Context,
-		method string,
-		req, reply interface{},
-		cc *grpc.ClientConn,
-		invoker grpc.UnaryInvoker,
-		opts ...grpc.CallOption,
-	) error {
-		ctx = metadata.AppendToOutgoingContext(ctx, CallerMetadataKey, pluginName)
-		return invoker(ctx, method, req, reply, cc, opts...)
-	}
-}
-
-// callerIdentityStreamInterceptor mirrors the unary version for streaming
-// RPCs (e.g. Subscribe). Without it the server would not see the metadata
-// header on long-lived streams and would treat them as anonymous.
-func callerIdentityStreamInterceptor(pluginName string) grpc.StreamClientInterceptor {
-	return func(
-		ctx context.Context,
-		desc *grpc.StreamDesc,
-		cc *grpc.ClientConn,
-		method string,
-		streamer grpc.Streamer,
-		opts ...grpc.CallOption,
-	) (grpc.ClientStream, error) {
-		ctx = metadata.AppendToOutgoingContext(ctx, CallerMetadataKey, pluginName)
-		return streamer(ctx, desc, cc, method, opts...)
-	}
-}
+// Caller-identity client interceptors are produced via the generic
+// AppendOutgoingMetadata{Unary,Stream} factories in grpcmeta.go (T41); the
+// hand-rolled callerIdentityUnaryInterceptor / callerIdentityStreamInterceptor
+// closures that lived here pre-T41 were a textbook duplicate of what those
+// factories now provide. dialCore wires both layers below.
 
 // startRemoteLogger replaces the SDK's stderr slog handler with one that
 // pushes records into a LogProxy client-streaming RPC. The previous logger
@@ -127,9 +93,11 @@ func buildCapabilityFlags(approved []string) capabilityFlags {
 //     to mint a fresh id, breaking the plugin <-> host call chain in
 //     traces.
 //
-//  2. callerIdentity{Unary,Stream}Interceptor — host-policy metadata that
-//     appends `x-sub2api-plugin: <name>` so RequirePluginIdentity on the
-//     host can authorise the call.
+//  2. AppendOutgoingMetadata{Unary,Stream}(CallerMetadataKey, pluginName)
+//     — host-policy metadata that appends `x-sub2api-plugin: <name>` so
+//     RequirePluginIdentity on the host can authorise the call. Backed by
+//     the generic factory in grpcmeta.go (T41) instead of a hand-rolled
+//     closure.
 //
 // The two layers live independently so future capability checks can compose
 // without entangling trace and identity concerns.
@@ -138,11 +106,11 @@ func dialCore(addr, pluginName string) (*grpc.ClientConn, error) {
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithChainUnaryInterceptor(
 			TraceparentUnaryClient(),
-			callerIdentityUnaryInterceptor(pluginName),
+			AppendOutgoingMetadataUnary(CallerMetadataKey, pluginName),
 		),
 		grpc.WithChainStreamInterceptor(
 			TraceparentStreamClient(),
-			callerIdentityStreamInterceptor(pluginName),
+			AppendOutgoingMetadataStream(CallerMetadataKey, pluginName),
 		),
 	)
 }
@@ -157,62 +125,27 @@ func dialCore(addr, pluginName string) (*grpc.ClientConn, error) {
 // gracefulShutdown needs to stop independently. r.settingsImpl is set as
 // a side-effect when settings is enabled so Shutdown can reach the watch
 // goroutine without re-deriving it.
+//
+// The body delegates to wireSql / wireSecrets / wireJobs / wireSettings /
+// wireEvents (T45). Adding a new subsystem means adding one helper plus one
+// line in this orchestrator, not extending an already-long function body.
 func (r *runner) wireSubsystems(
 	conn *grpc.ClientConn,
 	pluginName string,
 	flags capabilityFlags,
 ) (*pluginCtx, *jobsClient, error) {
-	sqlClient := pb.NewSQLProxyClient(conn)
-	redisClient := pb.NewRedisProxyClient(conn)
-	settingsExtClient := pb.NewSettingsExtensionClient(conn)
-	eventsExtClient := pb.NewEventsExtensionClient(conn)
-
-	sdkdriver.Register(sqlClient)
-	db, err := sql.Open(sdkdriver.DriverName, "")
+	db, redis, err := r.wireSql(conn, pluginName, flags)
 	if err != nil {
-		return nil, nil, fmt.Errorf("pluginsdk: open sql: %w", err)
+		return nil, nil, err
 	}
-
-	// Only construct the SecretEncryption client when the host approved the
-	// capability. A nil Secrets() is the SDK's way of saying "you forgot to
-	// declare it in your manifest" — better than a silent NotFound on the
-	// first Encrypt call.
-	var secrets SecretEncryptor
-	if flags.secretsEncrypt {
-		secrets = newSecretsClient(pb.NewSecretEncryptionClient(conn))
-	}
-
-	// Build the JobScheduler client. The dial closure opens a fresh
-	// Subscribe stream each time the run loop reconnects so we never reuse
-	// a half-broken stream across retries.
-	jobScheduler := pb.NewJobSchedulerClient(conn)
-	jobs := newJobsClient(pluginName, r.logger, func(ctx context.Context) (pb.JobScheduler_SubscribeClient, error) {
-		return jobScheduler.Subscribe(ctx)
-	})
-
-	// SettingsExtension capability is enabled either by explicit opt-in
-	// or by the plugin shipping a SettingsSchemaDoc in its manifest.
-	// nilSettingsClient surfaces a clear error if the plugin tries to
-	// use Settings() without declaring the capability, so debugging is
-	// straightforward.
-	var settingsCli SettingsClient = nilSettingsClient{}
-	if flags.settingsEnabled {
-		realClient := newSettingsClient(settingsExtClient, pluginName, r.logger)
-		realClient.startWatchLoop()
-		settingsCli = realClient
-		r.settingsImpl = realClient
-	}
-
-	// EventsClient is unconditionally wired — Subscribe is harmless on a
-	// host that has not registered EventsExtension (the gRPC call returns
-	// Unimplemented, which the SDK treats as non-retryable and surfaces to
-	// the caller). Plugins that do not subscribe to anything pay no cost;
-	// the client is just a thin wrapper around a stub.
-	eventsCli := newEventsClient(eventsExtClient, pluginName, r.logger)
+	secrets := r.wireSecrets(conn, flags)
+	jobs := r.wireJobs(conn, pluginName)
+	settingsCli := r.wireSettings(conn, pluginName, flags)
+	eventsCli := r.wireEvents(conn, pluginName)
 
 	ctxImpl := &pluginCtx{
 		db:       db,
-		redis:    sdkdriver.NewNamespacedRedisClient(redisClient, r.logger, pluginName, flags.rawRedis),
+		redis:    redis,
 		logger:   r.logger,
 		secrets:  secrets,
 		jobs:     jobs,
@@ -220,6 +153,67 @@ func (r *runner) wireSubsystems(
 		events:   eventsCli,
 	}
 	return ctxImpl, jobs, nil
+}
+
+// wireSql opens the SQL driver against the SQLProxy client and returns the
+// *sql.DB plus the namespaced Redis client (which shares the same connection
+// pool concept — Redis is wired here too so the caller hands "DB-shaped
+// resources" back together).
+func (r *runner) wireSql(conn *grpc.ClientConn, pluginName string, flags capabilityFlags) (*sql.DB, RedisClient, error) {
+	sqlClient := pb.NewSQLProxyClient(conn)
+	redisClient := pb.NewRedisProxyClient(conn)
+
+	sdkdriver.Register(sqlClient)
+	db, err := sql.Open(sdkdriver.DriverName, "")
+	if err != nil {
+		return nil, nil, fmt.Errorf("pluginsdk: open sql: %w", err)
+	}
+	return db, sdkdriver.NewNamespacedRedisClient(redisClient, r.logger, pluginName, flags.rawRedis), nil
+}
+
+// wireSecrets returns nil when the host did not approve secrets_encrypt — a
+// nil Secrets() is the SDK's way of saying "you forgot to declare it in
+// your manifest", which is cleaner than a silent NotFound on the first
+// Encrypt call.
+func (r *runner) wireSecrets(conn *grpc.ClientConn, flags capabilityFlags) SecretEncryptor {
+	if !flags.secretsEncrypt {
+		return nil
+	}
+	return newSecretsClient(pb.NewSecretEncryptionClient(conn))
+}
+
+// wireJobs builds the JobScheduler client. The dial closure opens a fresh
+// Subscribe stream each time the run loop reconnects so we never reuse a
+// half-broken stream across retries.
+func (r *runner) wireJobs(conn *grpc.ClientConn, pluginName string) *jobsClient {
+	scheduler := pb.NewJobSchedulerClient(conn)
+	return newJobsClient(pluginName, r.logger, func(ctx context.Context) (pb.JobScheduler_SubscribeClient, error) {
+		return scheduler.Subscribe(ctx)
+	})
+}
+
+// wireSettings constructs the SettingsExtension client when the capability
+// is enabled, kicks off its watch loop, and stamps r.settingsImpl so
+// gracefulShutdown can stop the watch goroutine before tearing down the
+// gRPC connection. Returns nilSettingsClient when the capability is off so
+// callers see a clear "you forgot to declare it" error if they call Get.
+func (r *runner) wireSettings(conn *grpc.ClientConn, pluginName string, flags capabilityFlags) SettingsClient {
+	if !flags.settingsEnabled {
+		return nilSettingsClient{}
+	}
+	realClient := newSettingsClient(pb.NewSettingsExtensionClient(conn), pluginName, r.logger)
+	realClient.startWatchLoop()
+	r.settingsImpl = realClient
+	return realClient
+}
+
+// wireEvents is unconditionally wired — Subscribe is harmless on a host
+// that has not registered EventsExtension (the gRPC call returns
+// Unimplemented, which the SDK treats as non-retryable and surfaces to the
+// caller). Plugins that do not subscribe to anything pay no cost; the
+// client is just a thin wrapper around a stub.
+func (r *runner) wireEvents(conn *grpc.ClientConn, pluginName string) EventsClient {
+	return newEventsClient(pb.NewEventsExtensionClient(conn), pluginName, r.logger)
 }
 
 // resolvePluginName picks the plugin name from the host-supplied init
@@ -250,54 +244,56 @@ func (r *runner) resolveCoreAddress(req *pb.PluginInitRequest) string {
 // hands control to Plugin.Init. The heavy lifting is delegated to the
 // helpers above so this function only sequences the lifecycle steps.
 func (r *runner) Init(ctx context.Context, req *pb.PluginInitRequest) (*pb.PluginInitResponse, error) {
-	r.initOnce.Do(func() {
-		addr := r.resolveCoreAddress(req)
-		if addr == "" {
-			r.initErr = errors.New("pluginsdk: core SDK address is empty")
-			return
-		}
-		pluginName := r.resolvePluginName(req)
-
-		conn, err := dialCore(addr, pluginName)
-		if err != nil {
-			r.initErr = fmt.Errorf("pluginsdk: dial core: %w", err)
-			return
-		}
-		r.coreConn = conn
-
-		// Swap the early stderr slog handler for a LogProxy handler so all
-		// subsequent logs flow into host zap with full structure preserved.
-		// The early stderr handler stays only for handshake-window logs
-		// (before this point) and any post-shutdown emergency lines.
-		r.startRemoteLogger(conn, parseLogLevel(r.opts.logLevel))
-
-		// Capture the host's outbound HTTP defaults so NewSafeHTTPClient can
-		// layer per-call configs on top without re-fetching them.
-		setOutboundDefaultsFromInit(req.GetOutboundDefaults())
-
-		flags := buildCapabilityFlags(req.GetCapabilities())
-		ctxImpl, jobs, err := r.wireSubsystems(conn, pluginName, flags)
-		if err != nil {
-			r.initErr = err
-			return
-		}
-		r.ctxImpl = ctxImpl
-
-		if err := r.plugin.Init(r.ctxImpl); err != nil {
-			r.initErr = err
-			return
-		}
-
-		// Plugin.Init has finished registering every spec; kick off the
-		// Subscribe loop so the host starts firing triggers. Loop ctx is
-		// independent from the Init RPC ctx — it lives until shutdown.
-		r.jobsClient = jobs
-		jobs.start(context.Background())
-	})
+	r.initOnce.Do(func() { r.initErr = r.initOnce0(req) })
 
 	if r.initErr != nil {
 		return &pb.PluginInitResponse{Success: false, Error: r.initErr.Error()}, nil
 	}
 	_ = ctx
 	return &pb.PluginInitResponse{Success: true}, nil
+}
+
+// initOnce0 carries the body that runs exactly once under r.initOnce.
+// Pulling it out keeps Init's surface obvious — error mapping at the top,
+// the heavy wiring sequence in this helper.
+func (r *runner) initOnce0(req *pb.PluginInitRequest) error {
+	addr := r.resolveCoreAddress(req)
+	if addr == "" {
+		return errors.New("pluginsdk: core SDK address is empty")
+	}
+	pluginName := r.resolvePluginName(req)
+
+	conn, err := dialCore(addr, pluginName)
+	if err != nil {
+		return fmt.Errorf("pluginsdk: dial core: %w", err)
+	}
+	r.coreConn = conn
+
+	// Swap the early stderr slog handler for a LogProxy handler so all
+	// subsequent logs flow into host zap with full structure preserved.
+	// The early stderr handler stays only for handshake-window logs
+	// (before this point) and any post-shutdown emergency lines.
+	r.startRemoteLogger(conn, parseLogLevel(r.opts.logLevel))
+
+	// Capture the host's outbound HTTP defaults so NewSafeHTTPClient can
+	// layer per-call configs on top without re-fetching them.
+	setOutboundDefaultsFromInit(req.GetOutboundDefaults())
+
+	flags := buildCapabilityFlags(req.GetCapabilities())
+	ctxImpl, jobs, err := r.wireSubsystems(conn, pluginName, flags)
+	if err != nil {
+		return err
+	}
+	r.ctxImpl = ctxImpl
+
+	if err := r.plugin.Init(r.ctxImpl); err != nil {
+		return err
+	}
+
+	// Plugin.Init has finished registering every spec; kick off the
+	// Subscribe loop so the host starts firing triggers. Loop ctx is
+	// independent from the Init RPC ctx — it lives until shutdown.
+	r.jobsClient = jobs
+	jobs.start(context.Background())
+	return nil
 }

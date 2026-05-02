@@ -18,6 +18,7 @@ package pricing
 import (
 	"testing"
 
+	sdkdecimalx "github.com/Wei-Shaw/sub2api/plugin-sdk/decimalx"
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 	"github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/decimalx"
 	chService "github.com/Wei-Shaw/sub2api/plugins/channel-management/service"
@@ -82,7 +83,7 @@ func TestEncodeOverride_RoundTripDecimalString(t *testing.T) {
 		{"per_request_price", got.GetPerRequestPrice(), p.PerRequestPrice},
 	}
 	for _, c := range parseChecks {
-		back, err := decimalx.FromProtoString(c.wire)
+		back, err := sdkdecimalx.FromProtoString(c.wire)
 		if err != nil {
 			t.Fatalf("%s: FromProtoString(%q): %v", c.field, c.wire, err)
 		}

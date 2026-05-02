@@ -19,14 +19,11 @@ package pricing
 
 import (
 	"context"
-	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
+	sdkdecimalx "github.com/Wei-Shaw/sub2api/plugin-sdk/decimalx"
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
-	"github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/decimalx"
-	"github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/platforms"
 	chService "github.com/Wei-Shaw/sub2api/plugins/channel-management/service"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -178,6 +175,16 @@ func (s *Server) WatchPricingOverrides(
 	events, unsubscribe := s.broker.Subscribe()
 	defer unsubscribe()
 
+	if err := s.sendInitialSnapshot(stream); err != nil {
+		return err
+	}
+	return s.streamLiveEvents(stream, events)
+}
+
+// sendInitialSnapshot loads the current override set and pushes every row
+// onto the stream as an UPSERT event. Ctx-cancellation / Send errors bubble
+// up so the caller exits the Watch RPC and the host reconnects.
+func (s *Server) sendInitialSnapshot(stream pb.PricingExtension_WatchPricingOverridesServer) error {
 	overrides, version, err := s.snapshot(stream.Context())
 	if err != nil {
 		return err
@@ -192,7 +199,17 @@ func (s *Server) WatchPricingOverrides(
 			return err
 		}
 	}
+	return nil
+}
 
+// streamLiveEvents forwards broker events onto the stream until the ctx is
+// cancelled, the broker drops us (slow consumer), or Send fails. Returning
+// Unavailable on broker-drop signals the host to reconnect with backoff
+// and re-sync via ListPricingOverrides.
+func (s *Server) streamLiveEvents(
+	stream pb.PricingExtension_WatchPricingOverridesServer,
+	events <-chan *pb.PricingOverrideEvent,
+) error {
 	// Live tail. Exit on:
 	//   - ctx cancellation (host disconnected / plugin shutdown)
 	//   - subscriber chan closed (broker dropped us as slow consumer; the
@@ -205,9 +222,6 @@ func (s *Server) WatchPricingOverrides(
 			return stream.Context().Err()
 		case evt, ok := <-events:
 			if !ok {
-				// Broker closed our subscription. Returning Unavailable
-				// asks the host's watchLoop to reconnect with backoff
-				// and re-sync via ListPricingOverrides.
 				return status.Error(codes.Unavailable,
 					"channel-management: pricing broker dropped subscriber (slow consumer)")
 			}
@@ -253,34 +267,7 @@ func (s *Server) ResolveAccountStatsCost(
 		}, nil
 	}
 
-	tokens := chService.UsageTokens{}
-	if t := req.GetTokens(); t != nil {
-		tokens = chService.UsageTokens{
-			InputTokens:         t.GetInputTokens(),
-			OutputTokens:        t.GetOutputTokens(),
-			CacheCreationTokens: t.GetCacheCreationTokens(),
-			CacheReadTokens:     t.GetCacheReadTokens(),
-			ImageOutputTokens:   t.GetImageCount(),
-		}
-	}
-	requestCount := int(req.GetRequestCount())
-	if requestCount <= 0 {
-		requestCount = 1
-	}
-
-	// total_cost 是 T24 后的 decimal string；无值/解析失败按 0 处理，
-	// 由后续 ApplyPricingToAccountStats 分支决定是否触发"使用客户成本"路径。
-	totalCost := decimalx.FromProtoStringOrZero(req.GetTotalCost())
-
-	result, err := holder.inner.ResolveAccountStatsCost(ctx, chService.AccountStatsCostInput{
-		ChannelID:     req.GetChannelId(),
-		AccountID:     req.GetAccountId(),
-		GroupID:       req.GetGroupId(),
-		UpstreamModel: req.GetUpstreamModel(),
-		Tokens:        tokens,
-		RequestCount:  requestCount,
-		TotalCost:     totalCost,
-	})
+	result, err := holder.inner.ResolveAccountStatsCost(ctx, decodeAccountStatsCostInput(req))
 	if err != nil {
 		// The host treats any error as "no opinion" — surface the cause
 		// so operators can debug, but do not fail the gateway hot path.
@@ -295,9 +282,42 @@ func (s *Server) ResolveAccountStatsCost(
 	// FromProtoString round-trips it back with no IEEE-754 rounding.
 	return &pb.ResolveAccountStatsCostResponse{
 		HasCost:          true,
-		Cost:             decimalx.DecimalToProtoString(result.Cost),
+		Cost:             sdkdecimalx.DecimalToProtoString(result.Cost),
 		ResolutionReason: "channel-management: matched account stats pricing",
 	}, nil
+}
+
+// decodeAccountStatsCostInput maps the proto request onto the service-layer
+// input type. Splitting this out keeps ResolveAccountStatsCost's main body
+// linear (validate -> resolve -> encode) without the token-struct plumbing
+// obscuring the RPC contract.
+//
+// total_cost 是 T24 后的 decimal string；无值/解析失败按 0 处理，
+// 由后续 ApplyPricingToAccountStats 分支决定是否触发"使用客户成本"路径。
+func decodeAccountStatsCostInput(req *pb.ResolveAccountStatsCostRequest) chService.AccountStatsCostInput {
+	tokens := chService.UsageTokens{}
+	if t := req.GetTokens(); t != nil {
+		tokens = chService.UsageTokens{
+			InputTokens:         t.GetInputTokens(),
+			OutputTokens:        t.GetOutputTokens(),
+			CacheCreationTokens: t.GetCacheCreationTokens(),
+			CacheReadTokens:     t.GetCacheReadTokens(),
+			ImageOutputTokens:   t.GetImageCount(),
+		}
+	}
+	requestCount := int(req.GetRequestCount())
+	if requestCount <= 0 {
+		requestCount = 1
+	}
+	return chService.AccountStatsCostInput{
+		ChannelID:     req.GetChannelId(),
+		AccountID:     req.GetAccountId(),
+		GroupID:       req.GetGroupId(),
+		UpstreamModel: req.GetUpstreamModel(),
+		Tokens:        tokens,
+		RequestCount:  requestCount,
+		TotalCost:     sdkdecimalx.FromProtoStringOrZero(req.GetTotalCost()),
+	}
 }
 
 // snapshot loads the current pricing override set and a monotonic version
@@ -314,161 +334,26 @@ func (s *Server) snapshot(ctx context.Context) ([]*pb.PricingOverride, string, e
 	if err != nil {
 		return nil, "", err
 	}
+	platforms, err := s.resolvePlatforms(ctx, lister, channels)
+	if err != nil {
+		return nil, "", err
+	}
 
-	// Collect group IDs to resolve the per-group platform.
+	out, maxUpdated := encodeChannelsAsOverrides(channels, platforms)
+	return out, s.bumpVersion(maxUpdated), nil
+}
+
+// resolvePlatforms batch-loads the per-group platform identifier the snapshot
+// encoder needs to filter out model pricing rows whose declared platform
+// does not match the group's authoritative platform.
+func (s *Server) resolvePlatforms(
+	ctx context.Context,
+	lister channelLister,
+	channels []chService.Channel,
+) (map[int64]string, error) {
 	allGroups := collectGroupIDs(channels)
-	platforms := map[int64]string{}
-	if len(allGroups) > 0 {
-		platforms, err = lister.GetGroupPlatforms(ctx, allGroups)
-		if err != nil {
-			return nil, "", err
-		}
+	if len(allGroups) == 0 {
+		return map[int64]string{}, nil
 	}
-
-	out := make([]*pb.PricingOverride, 0)
-	var maxUpdated int64
-	for i := range channels {
-		ch := &channels[i]
-		if !ch.IsActive() {
-			continue
-		}
-		if u := ch.UpdatedAt.UnixNano(); u > maxUpdated {
-			maxUpdated = u
-		}
-		for _, gid := range ch.GroupIDs {
-			groupPlatform := platforms[gid]
-			if groupPlatform == "" {
-				continue
-			}
-			for j := range ch.ModelPricing {
-				p := &ch.ModelPricing[j]
-				if !platformMatches(groupPlatform, p.Platform) {
-					continue
-				}
-				for _, model := range p.Models {
-					modelLower := strings.ToLower(strings.TrimSpace(model))
-					if modelLower == "" {
-						continue
-					}
-					out = append(out, encodeOverride(gid, groupPlatform, modelLower, p))
-				}
-			}
-		}
-	}
-
-	s.mu.Lock()
-	if maxUpdated == 0 {
-		maxUpdated = time.Now().UnixNano()
-	}
-	s.version = formatVersion(maxUpdated)
-	v := s.version
-	s.mu.Unlock()
-	return out, v, nil
-}
-
-// collectGroupIDs flattens every channel's GroupIDs into a deduplicated
-// slice. Order is not significant because the platform map is keyed by ID.
-func collectGroupIDs(channels []chService.Channel) []int64 {
-	seen := make(map[int64]struct{})
-	out := make([]int64, 0)
-	for i := range channels {
-		for _, gid := range channels[i].GroupIDs {
-			if _, ok := seen[gid]; ok {
-				continue
-			}
-			seen[gid] = struct{}{}
-			out = append(out, gid)
-		}
-	}
-	return out
-}
-
-// platformMatches reports whether a pricing row's platform applies to a
-// group's platform. Single source: platforms.Match (trim + lowercase + strict
-// equality). chService.isPlatformPricingMatch reuses the same package, so
-// both gRPC publish and in-process cache go through the same rule.
-func platformMatches(groupPlatform, pricingPlatform string) bool {
-	return platforms.Match(groupPlatform, pricingPlatform)
-}
-
-// encodeOverride converts one (group, platform, model) tuple plus its
-// matching ChannelModelPricing into a proto PricingOverride.
-//
-// T24: prices are encoded as decimal strings (ToProtoString) so the
-// canonical decimal.NullDecimal value flows end-to-end from the plugin
-// repo to the host cache without crossing IEEE-754. Unset prices map to
-// "" — the host treats empty string as "not set" and falls back to base
-// pricing, matching the legacy zero-as-unset semantics.
-func encodeOverride(
-	groupID int64,
-	platform string,
-	model string,
-	p *chService.ChannelModelPricing,
-) *pb.PricingOverride {
-	return &pb.PricingOverride{
-		Key: &pb.PricingOverrideKey{
-			GroupId:  groupID,
-			Platform: platform,
-			Model:    model,
-		},
-		BillingMode:      string(p.BillingMode),
-		InputPrice:       decimalx.ToProtoString(p.InputPrice),
-		OutputPrice:      decimalx.ToProtoString(p.OutputPrice),
-		CacheWritePrice:  decimalx.ToProtoString(p.CacheWritePrice),
-		CacheReadPrice:   decimalx.ToProtoString(p.CacheReadPrice),
-		ImageOutputPrice: decimalx.ToProtoString(p.ImageOutputPrice),
-		PerRequestPrice:  decimalx.ToProtoString(p.PerRequestPrice),
-		Intervals:        encodeIntervals(p.Intervals),
-	}
-}
-
-// encodeIntervals translates the plugin's PricingInterval list to proto.
-// Unset prices map to "" (T24: the proto contract treats empty string as
-// "not set"). Numeric values flow through decimalx.ToProtoString so no
-// round-trip through float64 happens.
-func encodeIntervals(in []chService.PricingInterval) []*pb.PricingInterval {
-	if len(in) == 0 {
-		return nil
-	}
-	out := make([]*pb.PricingInterval, 0, len(in))
-	for i := range in {
-		iv := &in[i]
-		var maxTokens int64
-		if iv.MaxTokens != nil {
-			maxTokens = int64(*iv.MaxTokens)
-		}
-		out = append(out, &pb.PricingInterval{
-			MinTokens:        int64(iv.MinTokens),
-			MaxTokens:        maxTokens,
-			InputPrice:       decimalx.ToProtoString(iv.InputPrice),
-			OutputPrice:      decimalx.ToProtoString(iv.OutputPrice),
-			CacheWritePrice:  decimalx.ToProtoString(iv.CacheWritePrice),
-			CacheReadPrice:   decimalx.ToProtoString(iv.CacheReadPrice),
-			ImageOutputPrice: decimalx.ToProtoString(iv.ImageOutputPrice),
-			PerRequestPrice:  decimalx.ToProtoString(iv.PerRequestPrice),
-		})
-	}
-	return out
-}
-
-// formatVersion encodes an int64 unix-nano as a fixed-width decimal string
-// so lexicographic compare matches numeric compare.
-func formatVersion(n int64) string {
-	const width = 20
-	digits := make([]byte, 0, width)
-	if n < 0 {
-		n = 0
-	}
-	for n > 0 {
-		digits = append(digits, byte('0'+n%10))
-		n /= 10
-	}
-	for len(digits) < width {
-		digits = append(digits, '0')
-	}
-	// Reverse in place.
-	for i, j := 0, len(digits)-1; i < j; i, j = i+1, j-1 {
-		digits[i], digits[j] = digits[j], digits[i]
-	}
-	return string(digits)
+	return lister.GetGroupPlatforms(ctx, allGroups)
 }

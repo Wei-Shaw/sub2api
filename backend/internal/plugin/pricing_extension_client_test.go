@@ -19,6 +19,7 @@ import (
 
 	"github.com/shopspring/decimal"
 
+	"github.com/Wei-Shaw/sub2api/plugin-sdk/decimalx"
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
@@ -117,6 +118,9 @@ func TestProtoToOverride_BadDecimalStringDecodesToZero(t *testing.T) {
 }
 
 func TestFormatFloatAsDecimalString(t *testing.T) {
+	// T39: the host-side formatter is now decimalx.FormatFloatString. This
+	// test stays here (rather than in plugin-sdk/decimalx) to assert that
+	// the host's call sites produce the wire format the plugin expects.
 	cases := []struct {
 		name string
 		in   float64
@@ -129,9 +133,9 @@ func TestFormatFloatAsDecimalString(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := formatFloatAsDecimalString(tc.in)
+			got := decimalx.FormatFloatString(tc.in)
 			if got != tc.want {
-				t.Errorf("formatFloatAsDecimalString(%g) = %q, want %q",
+				t.Errorf("decimalx.FormatFloatString(%g) = %q, want %q",
 					tc.in, got, tc.want)
 			}
 		})

@@ -3,6 +3,7 @@ module github.com/Wei-Shaw/sub2api/plugin-sdk
 go 1.26.2
 
 require (
+	github.com/shopspring/decimal v1.4.0
 	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.10
 )

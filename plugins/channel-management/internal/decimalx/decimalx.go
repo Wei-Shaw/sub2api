@@ -4,21 +4,23 @@
 //
 // The plugin's pricing fields moved from *float64 to decimal.NullDecimal in
 // task T4 to satisfy the project rule "金额计算必须用 shopspring/decimal"
-// (see CLAUDE.md "支付系统专项"). External boundaries fall into two camps:
+// (see CLAUDE.md "支付系统专项"). Three boundary translations stay here:
 //
 //   - REST JSON DTO and the vendored host domain snapshot still expect
 //     float64 / *float64 (legacy contracts not in scope of T24).
-//   - The PricingExtension proto edge moved to string decimal in T24
-//     (plugin-sdk/proto/sdk.proto). ToProtoString / FromProtoString below
-//     are the authoritative encoders for that hop.
+//   - Validators / accumulators want NullDecimal-aware equivalents of the
+//     legacy `p != nil && *p > 0` and `p != nil && *p` patterns.
+//   - Tests want a one-liner price literal constructor.
 //
-// The helpers here keep all four boundary translations in one place so the
-// rest of the plugin can compose a single import.
+// The PricingExtension proto wire codec (ToProtoString / FromProtoString /
+// FromProtoStringOrZero / DecimalToProtoString / FormatFloatString /
+// ParseFloatString) used to live here as well. T39 lifted those into the
+// single-source `plugin-sdk/decimalx` package so the host and the plugin
+// share one canonical implementation; call sites in this plugin now import
+// `github.com/Wei-Shaw/sub2api/plugin-sdk/decimalx` directly.
 package decimalx
 
 import (
-	"fmt"
-
 	"github.com/shopspring/decimal"
 )
 
@@ -82,61 +84,6 @@ func OrZero(d decimal.NullDecimal) decimal.Decimal {
 		return decimal.Zero
 	}
 	return d.Decimal
-}
-
-// ToProtoString encodes a decimal.NullDecimal for the PricingExtension
-// proto wire (T24). Invalid (unset) values map to the empty string ""
-// which the receiving side treats as "not set". Valid values are emitted
-// via decimal.Decimal.String() so the canonical text representation
-// (with trailing zeros stripped) round-trips losslessly through
-// decimal.NewFromString on the host.
-//
-// This is the authoritative encoder for plugin → host pricing values; do
-// not call decimal.Decimal.InexactFloat64 at the proto edge.
-func ToProtoString(d decimal.NullDecimal) string {
-	if !d.Valid {
-		return ""
-	}
-	return d.Decimal.String()
-}
-
-// FromProtoString is the inverse of ToProtoString. The empty string maps
-// to decimal.NullDecimal{Valid:false} ("not set") so legacy zero/unset
-// semantics survive the migration. Any non-empty input is parsed via
-// decimal.NewFromString; parse errors are surfaced to the caller so they
-// can decide whether to fall back to a default or fail the RPC.
-//
-// Used by both plugin-side decoding (Watch stream events that echo back
-// our own encodings) and host-side decoding of plugin output.
-func FromProtoString(s string) (decimal.NullDecimal, error) {
-	if s == "" {
-		return decimal.NullDecimal{}, nil
-	}
-	v, err := decimal.NewFromString(s)
-	if err != nil {
-		return decimal.NullDecimal{}, fmt.Errorf("decimalx.FromProtoString %q: %w", s, err)
-	}
-	return decimal.NullDecimal{Decimal: v, Valid: true}, nil
-}
-
-// FromProtoStringOrZero is a convenience wrapper that maps parse failures
-// to decimal.Zero so callers on the proto-decode path can keep the
-// gateway hot path running. The error is intentionally swallowed; callers
-// who want to surface parse failures should use FromProtoString directly.
-func FromProtoStringOrZero(s string) decimal.Decimal {
-	d, err := FromProtoString(s)
-	if err != nil || !d.Valid {
-		return decimal.Zero
-	}
-	return d.Decimal
-}
-
-// DecimalToProtoString encodes a plain decimal.Decimal (no nullability)
-// for the proto wire. The zero value is encoded as "0", not "" — callers
-// that want "0 means unset" semantics should pass a NullDecimal through
-// ToProtoString instead.
-func DecimalToProtoString(d decimal.Decimal) string {
-	return d.String()
 }
 
 // MustPrice is the test-friendly constructor that panics on parse failure.
