@@ -98,9 +98,11 @@ type ChannelPlugin struct {
 	// monitor* fields back the channel-monitor sub-feature ported in V5 W6.
 	// They are nil until Init wires them so HealthCheck can disambiguate
 	// freshly-spawned vs initialised processes.
-	monitorService      *monitorService.ChannelMonitorService
-	monitorAdminHandler *monitorHandler.AdminHandler
-	monitorUserHandler  *monitorHandler.UserHandler
+	monitorService         *monitorService.ChannelMonitorService
+	monitorAdminHandler    *monitorHandler.AdminHandler
+	monitorUserHandler     *monitorHandler.UserHandler
+	monitorTemplateService *monitorService.ChannelMonitorRequestTemplateService
+	monitorTemplateHandler *monitorHandler.TemplateHandler
 
 	// pricingServer implements PricingExtension on the plugin's gRPC server.
 	// It is constructed in RegisterGRPCServices (before Init) and wired with
@@ -256,6 +258,13 @@ func (p *ChannelPlugin) wireMonitor(ctx pluginsdk.PluginContext) {
 	p.monitorAdminHandler = monitorHandler.NewAdminHandler(p.monitorService)
 	p.monitorUserHandler = monitorHandler.NewUserHandler(p.monitorService, ctx.Settings())
 
+	// Request template sub-feature (W6 follow-up): CRUD + apply picker.
+	// Shares DB / logger with the monitor service; repo is stateless so no
+	// extra lifecycle hook required.
+	tmplRepo := monitorRepo.NewChannelMonitorTemplateRepository(ctx.DB())
+	p.monitorTemplateService = monitorService.NewChannelMonitorRequestTemplateService(tmplRepo)
+	p.monitorTemplateHandler = monitorHandler.NewTemplateHandler(p.monitorTemplateService)
+
 	// Host fires monitor.run every 60s on each replica and the
 	// leader-only monitor.daily-rollup once per day — concurrency, leader
 	// election and history are all owned by the host.
@@ -363,6 +372,20 @@ func (p *ChannelPlugin) registerRoutes() {
 			monitors.DELETE("/:id", p.monitorAdminHandler.Delete)
 			monitors.POST("/:id/run", p.monitorAdminHandler.RunNow)
 			monitors.GET("/:id/history", p.monitorAdminHandler.History)
+		}
+
+		// Channel monitor request templates (picker + CRUD). Frontend
+		// client lives at frontend/src/api/admin/channelMonitorTemplate.ts
+		// and hits these 7 endpoints under the same /admin prefix.
+		if p.monitorTemplateHandler != nil {
+			templates := admin.Group("/channel-monitor-templates")
+			templates.GET("", p.monitorTemplateHandler.List)
+			templates.POST("", p.monitorTemplateHandler.Create)
+			templates.GET("/:id", p.monitorTemplateHandler.Get)
+			templates.PUT("/:id", p.monitorTemplateHandler.Update)
+			templates.DELETE("/:id", p.monitorTemplateHandler.Delete)
+			templates.POST("/:id/apply", p.monitorTemplateHandler.Apply)
+			templates.GET("/:id/monitors", p.monitorTemplateHandler.AssociatedMonitors)
 		}
 	}
 

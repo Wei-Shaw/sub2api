@@ -33,6 +33,12 @@ var endpointDecls = []pluginsdk.EndpointDecl{
 	{Path: pluginRoutePrefix + "/admin/monitors/:id", Methods: []string{http.MethodGet, http.MethodPut, http.MethodDelete}, AuthType: pluginsdk.AuthTypeAdmin},
 	{Path: pluginRoutePrefix + "/admin/monitors/:id/run", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeAdmin},
 	{Path: pluginRoutePrefix + "/admin/monitors/:id/history", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeAdmin},
+	// Admin: channel-monitor request templates (reusable headers / body
+	// override snapshots). Feeds the template picker ported in W14+.
+	{Path: pluginRoutePrefix + "/admin/channel-monitor-templates", Methods: []string{http.MethodGet, http.MethodPost}, AuthType: pluginsdk.AuthTypeAdmin},
+	{Path: pluginRoutePrefix + "/admin/channel-monitor-templates/:id", Methods: []string{http.MethodGet, http.MethodPut, http.MethodDelete}, AuthType: pluginsdk.AuthTypeAdmin},
+	{Path: pluginRoutePrefix + "/admin/channel-monitor-templates/:id/apply", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeAdmin},
+	{Path: pluginRoutePrefix + "/admin/channel-monitor-templates/:id/monitors", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeAdmin},
 	// User-facing channel monitor read-only endpoints
 	{Path: pluginRoutePrefix + "/monitors", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
 	{Path: pluginRoutePrefix + "/monitors/:id", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
