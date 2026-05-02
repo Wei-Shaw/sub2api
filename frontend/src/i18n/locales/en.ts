@@ -4341,6 +4341,8 @@ export default {
         metadataPassthroughHint: 'Pass through client\'s original metadata.user_id without rewriting. May improve upstream cache hit rates.',
         cchSigning: 'CCH Signing',
         cchSigningHint: 'Sign the billing header in forwarded requests with CCH hash. When disabled, the placeholder is preserved.',
+        anthropicCacheTTL1hInjection: 'Anthropic Cache TTL Injection',
+        anthropicCacheTTL1hInjectionHint: 'When enabled, existing ephemeral cache_control blocks in Anthropic OAuth/Setup Token request bodies are forced to 1h; response usage is billed back as 5m by default, with account-level TTL billing override taking priority.',
       },
       site: {
         title: 'Site Settings',
