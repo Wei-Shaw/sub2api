@@ -68,3 +68,123 @@ func TestSanitizeCauseForLog_NilSafe(t *testing.T) {
 		t.Errorf("expected empty string for nil cause, got %q", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// ClassifyDBError / IsPQCode tests
+// ---------------------------------------------------------------------------
+
+// TestClassifyDBError_UniqueViolation verifies that a gRPC error carrying the
+// structured pq[23505,...] format is classified as a 409 Conflict.
+func TestClassifyDBError_UniqueViolation(t *testing.T) {
+	err := errors.New(`plugin tx exec: pq[23505,constraint=channels_name_key,table=channels]: duplicate key value violates unique constraint "channels_name_key"`)
+	appErr := ClassifyDBError(err)
+	if appErr == nil {
+		t.Fatal("expected non-nil ApplicationError for unique_violation")
+	}
+	if appErr.Code != 409 {
+		t.Errorf("expected 409, got %d", appErr.Code)
+	}
+	if appErr.Reason != "UNIQUE_VIOLATION" {
+		t.Errorf("expected reason UNIQUE_VIOLATION, got %q", appErr.Reason)
+	}
+	if !strings.Contains(appErr.Message, "channels_name_key") {
+		t.Errorf("expected constraint name in message, got %q", appErr.Message)
+	}
+}
+
+// TestClassifyDBError_NotNullViolation verifies 23502 → 400.
+func TestClassifyDBError_NotNullViolation(t *testing.T) {
+	err := errors.New(`plugin tx exec: pq[23502,column=name,table=channels]: null value in column "name" violates not-null constraint`)
+	appErr := ClassifyDBError(err)
+	if appErr == nil {
+		t.Fatal("expected non-nil ApplicationError for not_null_violation")
+	}
+	if appErr.Code != 400 {
+		t.Errorf("expected 400, got %d", appErr.Code)
+	}
+	if !strings.Contains(appErr.Message, "name") {
+		t.Errorf("expected column name in message, got %q", appErr.Message)
+	}
+}
+
+// TestClassifyDBError_CheckViolation verifies 23514 → 400.
+func TestClassifyDBError_CheckViolation(t *testing.T) {
+	err := errors.New(`plugin sql exec: pq[23514,constraint=channels_status_check]: new row violates check constraint`)
+	appErr := ClassifyDBError(err)
+	if appErr == nil {
+		t.Fatal("expected non-nil ApplicationError for check_violation")
+	}
+	if appErr.Code != 400 {
+		t.Errorf("expected 400, got %d", appErr.Code)
+	}
+	if appErr.Reason != "CHECK_VIOLATION" {
+		t.Errorf("expected reason CHECK_VIOLATION, got %q", appErr.Reason)
+	}
+}
+
+// TestClassifyDBError_StringTruncation verifies 22001 → 400.
+func TestClassifyDBError_StringTruncation(t *testing.T) {
+	err := errors.New(`plugin tx exec: pq[22001]: value too long for type character varying(255)`)
+	appErr := ClassifyDBError(err)
+	if appErr == nil {
+		t.Fatal("expected non-nil ApplicationError for string_data_right_truncation")
+	}
+	if appErr.Code != 400 {
+		t.Errorf("expected 400, got %d", appErr.Code)
+	}
+	if appErr.Reason != "VALUE_TOO_LONG" {
+		t.Errorf("expected reason VALUE_TOO_LONG, got %q", appErr.Reason)
+	}
+}
+
+// TestClassifyDBError_UndefinedColumn verifies 42703 → 500.
+func TestClassifyDBError_UndefinedColumn(t *testing.T) {
+	err := errors.New(`plugin tx exec: pq[42703,column=deleted_at]: column "deleted_at" does not exist`)
+	appErr := ClassifyDBError(err)
+	if appErr == nil {
+		t.Fatal("expected non-nil ApplicationError for undefined_column")
+	}
+	if appErr.Code != 500 {
+		t.Errorf("expected 500, got %d", appErr.Code)
+	}
+	if appErr.Reason != "SCHEMA_MISMATCH" {
+		t.Errorf("expected reason SCHEMA_MISMATCH, got %q", appErr.Reason)
+	}
+}
+
+// TestClassifyDBError_UnknownPQCode returns nil for unrecognised codes.
+func TestClassifyDBError_UnknownPQCode(t *testing.T) {
+	err := errors.New(`plugin tx exec: pq[99999]: some weird error`)
+	if appErr := ClassifyDBError(err); appErr != nil {
+		t.Errorf("expected nil for unknown pq code, got %v", appErr)
+	}
+}
+
+// TestClassifyDBError_NonPQError returns nil for non-pq errors.
+func TestClassifyDBError_NonPQError(t *testing.T) {
+	err := errors.New("connection refused")
+	if appErr := ClassifyDBError(err); appErr != nil {
+		t.Errorf("expected nil for non-pq error, got %v", appErr)
+	}
+}
+
+// TestClassifyDBError_Nil returns nil for nil.
+func TestClassifyDBError_Nil(t *testing.T) {
+	if appErr := ClassifyDBError(nil); appErr != nil {
+		t.Errorf("expected nil for nil error, got %v", appErr)
+	}
+}
+
+// TestIsPQCode verifies the helper for repo-layer use.
+func TestIsPQCode(t *testing.T) {
+	err := errors.New(`plugin tx exec: pq[23505,constraint=channels_name_key]: duplicate key`)
+	if !IsPQCode(err, "23505") {
+		t.Error("expected IsPQCode to return true for 23505")
+	}
+	if IsPQCode(err, "23502") {
+		t.Error("expected IsPQCode to return false for non-matching code")
+	}
+	if IsPQCode(errors.New("not a pq error"), "23505") {
+		t.Error("expected IsPQCode to return false for non-pq error")
+	}
+}

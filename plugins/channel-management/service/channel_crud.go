@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+
+	infraerrors "github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/errors"
 )
 
 // crudOp identifies which CRUD operation just committed; afterCommit uses it
@@ -58,6 +60,9 @@ func (s *ChannelService) Create(ctx context.Context, input *CreateChannelInput) 
 	}
 
 	if err := s.repo.Create(ctx, channel); err != nil {
+		if appErr := infraerrors.ClassifyDBError(err); appErr != nil {
+			return nil, appErr
+		}
 		return nil, fmt.Errorf("create channel: %w", err)
 	}
 
@@ -102,6 +107,9 @@ func (s *ChannelService) Update(ctx context.Context, id int64, input *UpdateChan
 	}
 
 	if err := s.repo.Update(ctx, channel); err != nil {
+		if appErr := infraerrors.ClassifyDBError(err); appErr != nil {
+			return nil, appErr
+		}
 		return nil, fmt.Errorf("update channel: %w", err)
 	}
 

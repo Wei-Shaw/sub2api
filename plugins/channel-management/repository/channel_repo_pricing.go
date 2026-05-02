@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/errors"
 	"github.com/Wei-Shaw/sub2api/plugins/channel-management/service"
 
 	"github.com/lib/pq"
@@ -268,12 +269,16 @@ func replaceModelPricingTx(ctx context.Context, exec dbExec, channelID int64, pr
 	return nil
 }
 
+// isUniqueViolation detects PostgreSQL unique-constraint violations both from
+// native *pq.Error (direct DB connection) and from the structured gRPC error
+// format "pq[23505,...]" emitted by the host's errInternal when the SQL proxy
+// forwards the error across the gRPC boundary.
 func isUniqueViolation(err error) bool {
 	var pqErr *pq.Error
 	if errors.As(err, &pqErr) && pqErr != nil {
 		return pqErr.Code == "23505"
 	}
-	return false
+	return infraerrors.IsPQCode(err, "23505")
 }
 
 // escapeLike escapes %, _ and \ in user-provided LIKE/ILIKE patterns.

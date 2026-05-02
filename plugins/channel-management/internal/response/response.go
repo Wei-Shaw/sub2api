@@ -3,6 +3,7 @@
 package response
 
 import (
+	stderrors "errors"
 	"log/slog"
 	"math"
 	"net/http"
@@ -42,23 +43,45 @@ func ErrorWithDetails(c *gin.Context, statusCode int, message, reason string, me
 
 // ErrorFrom converts an error into the envelope-compatible error response.
 // Returns true when an error was actually written.
+//
+// When err is not already an ApplicationError and carries the structured pq
+// metadata emitted by the host gRPC layer, ClassifyDBError promotes it to a
+// user-visible 4xx response instead of the generic 500 "internal error".
 func ErrorFrom(c *gin.Context, err error) bool {
 	if err == nil {
 		return false
 	}
-	statusCode, status := errors.ToHTTP(err)
+
+	// Try to classify raw DB errors before falling through to FromError,
+	// which would otherwise wrap them as 500 "internal error".
+	classified := classifyIfNeeded(err)
+
+	statusCode, st := errors.ToHTTP(classified)
 	if statusCode >= 500 && c.Request != nil {
-		// 用 SanitizeCauseForLog 包一道：err.Error() 已经会脱敏 cause，但顶层
-		// err 本身可能直接是 *pq.Error / *fmt.wrapError 等含查询参数的实现，
-		// 这里再过一遍以兜住非 ApplicationError 路径。
 		slog.Error("plugin handler error",
 			"method", c.Request.Method,
 			"path", c.Request.URL.Path,
 			"error", errors.SanitizeCauseForLog(err),
 		)
 	}
-	ErrorWithDetails(c, statusCode, status.Message, status.Reason, status.Metadata)
+	ErrorWithDetails(c, statusCode, st.Message, st.Reason, st.Metadata)
 	return true
+}
+
+// classifyIfNeeded returns err unchanged when it is already an
+// ApplicationError. Otherwise it tries ClassifyDBError to promote known
+// database errors to structured 4xx responses.
+func classifyIfNeeded(err error) error {
+	// If err is already a typed ApplicationError, respect it as-is.
+	var appErr *errors.ApplicationError
+	if stderrors.As(err, &appErr) {
+		return err
+	}
+	// Not a typed error — try to classify the underlying DB error.
+	if classified := errors.ClassifyDBError(err); classified != nil {
+		return classified
+	}
+	return err
 }
 
 // Paginated wraps Success with PaginatedData.

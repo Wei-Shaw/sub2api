@@ -22,8 +22,11 @@ package plugin
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 
+	"github.com/lib/pq"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -133,11 +136,35 @@ func errService(name string) error {
 
 // errInternal wraps an arbitrary host-side error as codes.Internal with the
 // operation name as a prefix. Use this for things that should never happen in
-// a healthy host (DB connection drop mid-query, scan failures, etc.) — we
-// intentionally drop the underlying error type because plugin code should
-// not depend on host implementation details.
+// a healthy host (DB connection drop mid-query, scan failures, etc.).
+//
+// When err is a *pq.Error the SQLSTATE code, constraint name and column name
+// are preserved in a structured prefix "pq[CODE,constraint=...,column=...]:"
+// so the plugin can classify the error without depending on fragile message
+// text parsing. Sensitive fields (Detail, Where, InternalQuery) are omitted.
 func errInternal(err error, op string) error {
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		return status.Errorf(codes.Internal, "%s: %s", op, formatPQForGRPC(pqErr))
+	}
 	return status.Errorf(codes.Internal, "%s: %v", op, err)
+}
+
+// formatPQForGRPC builds a structured-but-parseable error string from a pq.Error.
+// Format: "pq[SQLSTATE,constraint=name,column=name]: message"
+// Only non-empty metadata fields are included in the bracket section.
+func formatPQForGRPC(e *pq.Error) string {
+	bracket := string(e.Code)
+	if e.Constraint != "" {
+		bracket += ",constraint=" + e.Constraint
+	}
+	if e.Column != "" {
+		bracket += ",column=" + e.Column
+	}
+	if e.Table != "" {
+		bracket += ",table=" + e.Table
+	}
+	return fmt.Sprintf("pq[%s]: %s", bracket, e.Message)
 }
 
 // loggerOrDefault collapses the "if logger == nil { logger = slog.Default() }"
