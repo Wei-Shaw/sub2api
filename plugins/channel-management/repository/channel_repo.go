@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/pagination"
 	"github.com/Wei-Shaw/sub2api/plugins/channel-management/service"
 
+	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	"github.com/lib/pq"
 )
 
@@ -27,18 +28,9 @@ func NewChannelRepository(db *sql.DB) service.ChannelRepository {
 	return &channelRepository{db: db}
 }
 
-// runInTx wraps fn in a transaction; commits on success, rolls back on error.
+// runInTx wraps fn in a transaction via the SDK helper; commits on success, rolls back on error.
 func (r *channelRepository) runInTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
-	tx, err := r.db.BeginTx(context.WithoutCancel(ctx), nil)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	if err := fn(tx); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return pluginsdk.WithTx(ctx, r.db, fn)
 }
 
 func (r *channelRepository) Create(ctx context.Context, channel *service.Channel) error {
