@@ -51,6 +51,12 @@
       "maximum": 600,
       "default": 60,
       "x-visibility": "backend"
+    },
+    "availableChannelsEnabled": {
+      "type": "boolean",
+      "title": "Enable available channels view",
+      "description": "Soft switch for the user-facing /available-channels endpoint and sidebar entry. When off, the endpoint returns an empty list after auth and the sidebar entry is hidden. Defaults to false (opt-in).",
+      "default": false
     }
   },
   "required": ["enabled"],

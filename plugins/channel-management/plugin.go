@@ -270,10 +270,14 @@ func (p *ChannelPlugin) wireMonitor(ctx pluginsdk.PluginContext) {
 // small read-only repository for groups + user permissions. The user
 // identity is derived from V4 X-Plugin-User-* request headers inside the
 // handler, so this file only has to hand the plumbing together.
+//
+// ctx.Settings() feeds the `availableChannelsEnabled` feature switch
+// (declared in monitor/settings/settings_schema.json — the plugin owns a
+// single settings namespace shared by monitor + available-channels).
 func (p *ChannelPlugin) wireAvailableChannels(ctx pluginsdk.PluginContext, repo chService.ChannelRepository) {
 	availableRepo := chRepo.NewAvailableChannelsRepository(ctx.DB())
 	availableSvc := chService.NewAvailableChannelsService(repo, availableRepo)
-	p.availableChannelHandler = chHandler.NewAvailableChannelHandler(availableSvc)
+	p.availableChannelHandler = chHandler.NewAvailableChannelHandler(availableSvc, ctx.Settings())
 }
 
 // Shutdown is a no-op for now; service objects hold no goroutines or external

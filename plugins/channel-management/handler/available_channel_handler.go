@@ -6,10 +6,12 @@
 // identity from the V4 X-Plugin-User-* headers (parsed via the SDK's
 // RequestMetadata helper) instead of the host JWT middleware.
 //
-// The handler intentionally does not enforce a feature-flag in this Step.
-// W8.1's settings extension wiring is tracked separately; until that
-// lands the endpoint is always reachable through the plugin gateway when
-// the manifest declares it.
+// Feature switch: the endpoint is gated behind the
+// `availableChannelsEnabled` setting (defaults to false / opt-in). When
+// disabled the handler still authenticates the caller and then returns an
+// empty list — the 401-precedes-feature-check ordering preserves prior
+// behaviour for clients that hit the endpoint without auth. Mirrors host
+// commit 9ba42aa55 (backend/internal/handler/available_channel_handler.go).
 package handler
 
 import (
@@ -39,16 +41,35 @@ import (
 //     (no internal ids, no billing-source, no status flags).
 type AvailableChannelHandler struct {
 	availableService *service.AvailableChannelsService
+	settings         pluginsdk.SettingsClient
 }
 
 // NewAvailableChannelHandler constructs the handler. availableService must
 // be non-nil; the plugin entry point ensures wiring is complete before the
-// route is registered.
-func NewAvailableChannelHandler(availableService *service.AvailableChannelsService) *AvailableChannelHandler {
+// route is registered. settings is optional — passing nil disables the
+// runtime feature flag check, matching the V5 W8.3 fallback for older
+// hosts that do not implement SettingsExtension. Production wires the SDK
+// SettingsClient so the admin can flip the master switch without
+// redeploying.
+func NewAvailableChannelHandler(
+	availableService *service.AvailableChannelsService,
+	settings pluginsdk.SettingsClient,
+) *AvailableChannelHandler {
 	if availableService == nil {
 		panic("channel-management: NewAvailableChannelHandler requires a non-nil AvailableChannelsService")
 	}
-	return &AvailableChannelHandler{availableService: availableService}
+	return &AvailableChannelHandler{
+		availableService: availableService,
+		settings:         settings,
+	}
+}
+
+// featureEnabled returns the runtime "availableChannelsEnabled" master
+// switch. nil settings (older host without SettingsExtension wired) is
+// treated as disabled to keep the opt-in semantics consistent — operators
+// must flip the switch on intentionally regardless of host version.
+func (h *AvailableChannelHandler) featureEnabled(ctx *gin.Context) bool {
+	return service.LoadAvailableChannelsRuntime(ctx.Request.Context(), h.settings).Enabled
 }
 
 // userAvailableGroup is the slim group projection emitted to the user. The
@@ -121,6 +142,14 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 			Message: "user not authenticated",
 			Reason:  "UNAUTHENTICATED",
 		})
+		return
+	}
+
+	// Feature 未启用时返回空数组（不暴露渠道信息）。检查放在认证之后，
+	// 保持与未开关前的 401 行为一致：未登录先 401，登录后再按开关决定。
+	// 与 host commit 9ba42aa55 行为一致。
+	if !h.featureEnabled(c) {
+		response.Success(c, []userAvailableChannel{})
 		return
 	}
 
