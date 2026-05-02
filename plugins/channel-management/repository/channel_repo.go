@@ -29,7 +29,7 @@ func NewChannelRepository(db *sql.DB) service.ChannelRepository {
 
 // runInTx wraps fn in a transaction; commits on success, rolls back on error.
 func (r *channelRepository) runInTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := r.db.BeginTx(context.WithoutCancel(ctx), nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
