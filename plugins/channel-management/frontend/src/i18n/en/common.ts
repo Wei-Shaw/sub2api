@@ -11,6 +11,9 @@ export default {
   common: {
     refresh: 'Refresh',
     loading: 'Loading...',
+    // Worker B' — template picker / manager UX keys (absent from host common).
+    selectAll: 'Select all',
+    submitting: 'Submitting...',
     autoRefresh: {
       title: 'Auto Refresh',
       enable: 'Enable auto refresh',

@@ -10,6 +10,9 @@ export default {
   common: {
     refresh: '刷新',
     loading: '加载中...',
+    // Worker B' — 模板 picker / 管理器 UX key (host common 里没有).
+    selectAll: '全选',
+    submitting: '提交中...',
     autoRefresh: {
       title: '自动刷新',
       enable: '启用自动刷新',

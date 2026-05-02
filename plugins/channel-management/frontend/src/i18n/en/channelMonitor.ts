@@ -59,4 +59,62 @@ export default {
     intervalSecondsHint: 'Range: 15 - 3600 seconds',
     enabled: 'Enable monitor',
   },
+  // Advanced request config (Worker B' — headers KV rows + body override).
+  advanced: {
+    section: 'Advanced (optional)',
+    sectionHint:
+      'Customize request headers and body to bypass upstream client-detection (e.g. "only Claude Code clients allowed").',
+    headers: 'Custom request headers',
+    headerNamePlaceholder: 'Header name',
+    headerValuePlaceholder: 'Value',
+    headerAddRow: 'Add header',
+    headerNameInvalid: 'Header name cannot contain whitespace or colon: {name}',
+    headersHint:
+      'Merged on top of adapter defaults (user wins). Hop-by-hop headers (Host / Content-Length / ...) are ignored.',
+    bodyMode: 'Body handling',
+    bodyModeOff: 'Default',
+    bodyModeMerge: 'Merge',
+    bodyModeReplace: 'Replace',
+    bodyModeHintOff: 'Use the adapter default body (includes challenge validation).',
+    bodyModeHintMerge:
+      'Shallow-merge with the default body; user fields win but model / messages / contents are protected (use Replace to change those).',
+    bodyModeHintReplace:
+      'Use the JSON below as the complete body. Challenge validation is skipped; HTTP 2xx + non-empty response text is treated as operational.',
+    bodyJson: 'Body JSON',
+    bodyJsonHint: 'Parsed on blur. Empty means no override.',
+    bodyJsonError: 'JSON parse failed',
+    bodyJsonObjectError: 'Body must be a JSON object (no arrays or primitives)',
+  },
+  // Request template manager + apply picker (Worker B' — restores V5 W7 drop).
+  template: {
+    managerTitle: 'Request template manager',
+    createButton: 'New template',
+    manageButton: 'Templates',
+    emptyState: 'No templates for this provider yet',
+    missingName: 'Template name is required',
+    createSuccess: 'Template created',
+    updateSuccess: 'Template updated',
+    deleteSuccess: 'Template deleted',
+    applyButton: 'Apply to monitors',
+    applyTooltip: 'Overwrite snapshot fields on associated monitors',
+    applySuccess: 'Applied to {n} monitor(s)',
+    applyPickerTitle: 'Apply template "{name}"',
+    applyPickerHint:
+      'Select which monitors to overwrite (all selected by default). Any local customizations will be discarded.',
+    applyPickerEmpty: 'No monitors are currently associated to this template',
+    applyPickerConfirm: 'Apply to {n} monitor(s)',
+    selectNone: 'Select none',
+    selectedCount: 'Selected {n} / {total}',
+    pickerDisabledBadge: 'disabled',
+    deleteConfirm:
+      'Delete template "{name}"? {n} associated monitor(s) will be disassociated but keep their current snapshot and continue running.',
+    associatedCount: '{n} associated monitor(s)',
+    headersSummary: '{n} custom header(s)',
+    form: {
+      name: 'Template name',
+      namePlaceholder: 'e.g. Claude Code mimicry',
+      description: 'Description',
+      descriptionPlaceholder: 'Optional: what this template is for, capture date, etc.',
+    },
+  },
 }

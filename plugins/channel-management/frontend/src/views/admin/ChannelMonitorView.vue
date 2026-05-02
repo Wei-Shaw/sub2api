@@ -42,6 +42,10 @@
           >
             <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
           </button>
+          <!-- Worker B' — 模板管理入口 (V5 W7 曾砍掉，现随 template apply picker 一并补回). -->
+          <button @click="showTemplateManager = true" class="btn btn-secondary">
+            {{ t('admin.channelMonitor.template.manageButton') }}
+          </button>
           <button @click="openCreateDialog" class="btn btn-primary">
             <Icon name="plus" size="md" class="mr-2" />
             {{ t('admin.channelMonitor.createButton') }}
@@ -146,6 +150,12 @@
     @saved="reload"
   />
 
+  <MonitorTemplateManagerDialog
+    :show="showTemplateManager"
+    @close="showTemplateManager = false"
+    @updated="reload"
+  />
+
   <MonitorRunResultDialog
     :show="showRunResult"
     :results="runResults"
@@ -171,10 +181,15 @@
  * 简化范围 (vs 09fd83ab host):
  *   - 删除 HelpTooltip + api_key_decrypt_failed 视觉提示 (decrypt_failed
  *     仍然在 i18n 中描述, plugin 后续可加)
- *   - 删除 MonitorTemplateManagerDialog 入口 (V5 W6 后端未注册 template
- *     endpoints, plugin 端无相应 API)
  *   - 删除 MonitorActionsCell / MonitorPrimaryModelCell 子组件, 内联 actions
  *     和 primary_model 单元格
+ *
+ * Worker B' (2026-05): 补回 MonitorTemplateManagerDialog 入口 (host commit
+ * 6925ac25c). plugin backend `template_service` / `template_repo` 已经实现
+ * ApplyToMonitors / ListAssociatedMonitors, 但 plugin.go 尚未注册
+ * /admin/channel-monitor-templates* 路由——前端调用在路由注册前会 404,
+ * 这是已知缺口, 等后端配套 PR 补齐. 详见
+ * `../../api/admin/channelMonitorTemplate.ts` 头注释.
  */
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -205,6 +220,7 @@ import {
 } from '../../utils/channelMonitorConstants'
 import MonitorFormDialog from '../../components/admin/monitor/MonitorFormDialog.vue'
 import MonitorRunResultDialog from '../../components/admin/monitor/MonitorRunResultDialog.vue'
+import MonitorTemplateManagerDialog from '../../components/admin/monitor/MonitorTemplateManagerDialog.vue'
 import { getSdk } from '../../api/sdk'
 import { extractApiErrorMessage } from '../../utils/apiError'
 import { loadPageSize, savePageSize } from '../../utils/pageSize'
@@ -240,6 +256,8 @@ const showDeleteDialog = ref(false)
 const deleting = ref<ChannelMonitor | null>(null)
 const showRunResult = ref(false)
 const runResults = ref<CheckResult[]>([])
+// Worker B' — template manager visibility (open from header action).
+const showTemplateManager = ref(false)
 
 let abortController: AbortController | null = null
 
