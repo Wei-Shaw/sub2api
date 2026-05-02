@@ -151,6 +151,10 @@ var migrationDecls = []pluginsdk.MigrationDecl{
 	// Uses ON CONFLICT DO NOTHING so re-applying is safe; operators can
 	// customize the row after seed.
 	{Filename: "015_seed_claude_code_template.sql", ChecksumSha256: "1c8ebe1e32033a5bd179038b3423b911fefd6e652a24fbc1b356292b8811b367"},
+	// 016: add features_config JSONB column (upstream v0.1.115 port).
+	// Uses IF NOT EXISTS so environments where the host migration 101
+	// already ran see this as a no-op.
+	{Filename: "016_add_channel_features_config.sql", ChecksumSha256: "1118c6694ba27909809e9bd1dbc6c1226ba478ad8bdce749404ac2075436111b"},
 }
 
 // menuItemDecls is the admin / user sidebar contribution. Placement groups

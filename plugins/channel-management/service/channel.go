@@ -109,7 +109,8 @@ type Channel struct {
 	Status             string
 	BillingModelSource string // "requested", "upstream", or "channel_mapped"
 	RestrictModels     bool   // 是否限制模型（仅允许定价列表中的模型）
-	Features           string // 渠道特性描述（JSON 数组），用于支付页面展示
+	Features           string         // 渠道特性描述（JSON 数组），用于支付页面展示
+	FeaturesConfig     map[string]any // 渠道功能配置（如 web search emulation）
 	// ApplyPricingToAccountStats 控制账号统计费用是否启用基于渠道定价的覆写。
 	// 关闭时 account_stats_cost 走默认公式 (total_cost * account_rate_multiplier)。
 	// 开启后优先级：自定义规则 (AccountStatsPricingRules) → 客户计费 (totalCost) →
@@ -304,6 +305,9 @@ func (c *Channel) Clone() *Channel {
 			cp.ModelMapping[platform] = inner
 		}
 	}
+	if c.FeaturesConfig != nil {
+		cp.FeaturesConfig = deepCopyFeaturesConfig(c.FeaturesConfig)
+	}
 	if c.AccountStatsPricingRules != nil {
 		cp.AccountStatsPricingRules = make([]AccountStatsPricingRule, len(c.AccountStatsPricingRules))
 		for i := range c.AccountStatsPricingRules {
@@ -311,6 +315,19 @@ func (c *Channel) Clone() *Channel {
 		}
 	}
 	return &cp
+}
+
+// deepCopyFeaturesConfig creates a deep copy of FeaturesConfig to prevent cache pollution.
+func deepCopyFeaturesConfig(src map[string]any) map[string]any {
+	dst := make(map[string]any, len(src))
+	for k, v := range src {
+		if inner, ok := v.(map[string]any); ok {
+			dst[k] = deepCopyFeaturesConfig(inner)
+		} else {
+			dst[k] = v
+		}
+	}
+	return dst
 }
 
 // ValidateIntervals enforces the interval-list invariants:

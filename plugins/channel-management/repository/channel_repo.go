@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/plugins/channel-management/ent"
 	"github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/pagination"
 	"github.com/Wei-Shaw/sub2api/plugins/channel-management/service"
 
@@ -19,13 +20,15 @@ import (
 )
 
 type channelRepository struct {
-	db *sql.DB
+	db        *sql.DB
+	entClient *ent.Client
 }
 
 // NewChannelRepository wires the channel repository on top of the SDK's DB
-// handle.
-func NewChannelRepository(db *sql.DB) service.ChannelRepository {
-	return &channelRepository{db: db}
+// handle. entClient may be nil when ent is not yet initialised (the POC
+// GetByIDEnt method checks and returns an error in that case).
+func NewChannelRepository(db *sql.DB, entClient *ent.Client) service.ChannelRepository {
+	return &channelRepository{db: db, entClient: entClient}
 }
 
 // runInTx wraps fn in a transaction via the SDK helper; commits on success, rolls back on error.
@@ -447,6 +450,32 @@ func unmarshalModelMapping(data []byte) map[string]map[string]string {
 		return nil
 	}
 	var m map[string]map[string]string
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil
+	}
+	return m
+}
+
+// marshalFeaturesConfig serialises the channel's features_config to JSON.
+// Empty / nil maps become "{}".
+func marshalFeaturesConfig(m map[string]any) ([]byte, error) {
+	if len(m) == 0 {
+		return []byte("{}"), nil
+	}
+	data, err := json.Marshal(m)
+	if err != nil {
+		return nil, fmt.Errorf("marshal features_config: %w", err)
+	}
+	return data, nil
+}
+
+// unmarshalFeaturesConfig parses JSON back into the features config map.
+// Returns nil on any error so the caller never has to inspect malformed rows.
+func unmarshalFeaturesConfig(data []byte) map[string]any {
+	if len(data) == 0 {
+		return nil
+	}
+	var m map[string]any
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil
 	}

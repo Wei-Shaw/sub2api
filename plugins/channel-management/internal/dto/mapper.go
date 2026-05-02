@@ -34,6 +34,7 @@ func channelMainFieldsToResponse(ch *service.Channel) *ChannelResponse {
 		BillingModelSource:         ch.BillingModelSource,
 		RestrictModels:             ch.RestrictModels,
 		Features:                   ch.Features,
+		FeaturesConfig:             ch.FeaturesConfig,
 		ApplyPricingToAccountStats: ch.ApplyPricingToAccountStats,
 		GroupIDs:                   ch.GroupIDs,
 		ModelMapping:               ch.ModelMapping,
@@ -51,6 +52,9 @@ func applyChannelResponseDefaults(resp *ChannelResponse) {
 	}
 	if resp.GroupIDs == nil {
 		resp.GroupIDs = []int64{}
+	}
+	if resp.FeaturesConfig == nil {
+		resp.FeaturesConfig = map[string]any{}
 	}
 	if resp.ModelMapping == nil {
 		resp.ModelMapping = map[string]map[string]string{}
@@ -267,6 +271,7 @@ func CreateChannelInputFromRequest(req *CreateChannelRequest) *service.CreateCha
 		BillingModelSource:         req.BillingModelSource,
 		RestrictModels:             req.RestrictModels,
 		Features:                   req.Features,
+		FeaturesConfig:             req.FeaturesConfig,
 		ApplyPricingToAccountStats: req.ApplyPricingToAccountStats,
 		AccountStatsPricingRules:   AccountStatsRulesFromRequest(req.AccountStatsPricingRules),
 	}
@@ -285,6 +290,7 @@ func UpdateChannelInputFromRequest(req *UpdateChannelRequest) *service.UpdateCha
 		BillingModelSource:         req.BillingModelSource,
 		RestrictModels:             req.RestrictModels,
 		Features:                   req.Features,
+		FeaturesConfig:             req.FeaturesConfig,
 		ApplyPricingToAccountStats: req.ApplyPricingToAccountStats,
 	}
 	if req.ModelPricing != nil {

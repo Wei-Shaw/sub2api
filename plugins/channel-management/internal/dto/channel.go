@@ -27,6 +27,7 @@ type CreateChannelRequest struct {
 	BillingModelSource         string                           `json:"billing_model_source" binding:"billing_model_source"`
 	RestrictModels             bool                             `json:"restrict_models"`
 	Features                   string                           `json:"features"`
+	FeaturesConfig             map[string]any                   `json:"features_config"`
 	ApplyPricingToAccountStats bool                             `json:"apply_pricing_to_account_stats"`
 	AccountStatsPricingRules   []AccountStatsPricingRuleRequest `json:"account_stats_pricing_rules"`
 }
@@ -46,6 +47,7 @@ type UpdateChannelRequest struct {
 	BillingModelSource         string                        `json:"billing_model_source" binding:"billing_model_source"`
 	RestrictModels             *bool                         `json:"restrict_models"`
 	Features                   *string                       `json:"features"`
+	FeaturesConfig             map[string]any                `json:"features_config"`
 	ApplyPricingToAccountStats *bool                         `json:"apply_pricing_to_account_stats"`
 	// AccountStatsPricingRules: nil 表示不修改；非 nil（即使空数组）表示
 	// "用提交的列表整体替换"。语义与 ModelPricing 字段一致。
@@ -61,6 +63,7 @@ type ChannelResponse struct {
 	BillingModelSource         string                            `json:"billing_model_source"`
 	RestrictModels             bool                              `json:"restrict_models"`
 	Features                   string                            `json:"features"`
+	FeaturesConfig             map[string]any                    `json:"features_config"`
 	ApplyPricingToAccountStats bool                              `json:"apply_pricing_to_account_stats"`
 	GroupIDs                   []int64                           `json:"group_ids"`
 	ModelPricing               []ChannelModelPricingResponse     `json:"model_pricing"`
