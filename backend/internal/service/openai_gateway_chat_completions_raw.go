@@ -73,6 +73,10 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 REDACTED
 	clientStream := gjson.GetBytes(body, "stream").Bool()
 
+	// 1b. Extract reasoning effort and service tier from the raw body before any transformation.
+	reasoningEffort := extractOpenAIReasoningEffortFromBody(body, originalModel)
+	serviceTier := extractOpenAIServiceTierFromBody(body)
+
 	// 2. Resolve model mapping (same as ForwardAsChatCompletions)
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
@@ -206,9 +210,9 @@ REDACTED
 
 	// 8. Forward response
 	if clientStream {
-		return s.streamRawChatCompletions(c, resp, originalModel, billingModel, upstreamModel, startTime)
+		return s.streamRawChatCompletions(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 REDACTED
-	return s.bufferRawChatCompletions(c, resp, originalModel, billingModel, upstreamModel, startTime)
+	return s.bufferRawChatCompletions(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 REDACTED
 
 // streamRawChatCompletions 透传上游 CC SSE 流到客户端，并提取 usage（包括
@@ -223,6 +227,8 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
+	reasoningEffort *string,
+	serviceTier *string,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
@@ -288,14 +294,16 @@ REDACTED
 REDACTED
 
 	return &OpenAIForwardResult{
-		RequestID:     requestID,
-		Usage:         usage,
-		Model:         originalModel,
-		BillingModel:  billingModel,
-		UpstreamModel: upstreamModel,
-		Stream:        true,
-		Duration:      time.Since(startTime),
-		FirstTokenMs:  firstTokenMs,
+		RequestID:       requestID,
+		Usage:           usage,
+		Model:           originalModel,
+		BillingModel:    billingModel,
+		UpstreamModel:   upstreamModel,
+		ReasoningEffort: reasoningEffort,
+		ServiceTier:     serviceTier,
+		Stream:          true,
+		Duration:        time.Since(startTime),
+		FirstTokenMs:    firstTokenMs,
 REDACTED, nil
 REDACTED
 
@@ -306,6 +314,8 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
+	reasoningEffort *string,
+	serviceTier *string,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
@@ -340,13 +350,15 @@ REDACTED
 	_, _ = c.Writer.Write(respBody)
 
 	return &OpenAIForwardResult{
-		RequestID:     requestID,
-		Usage:         usage,
-		Model:         originalModel,
-		BillingModel:  billingModel,
-		UpstreamModel: upstreamModel,
-		Stream:        false,
-		Duration:      time.Since(startTime),
+		RequestID:       requestID,
+		Usage:           usage,
+		Model:           originalModel,
+		BillingModel:    billingModel,
+		UpstreamModel:   upstreamModel,
+		ReasoningEffort: reasoningEffort,
+		ServiceTier:     serviceTier,
+		Stream:          false,
+		Duration:        time.Since(startTime),
 REDACTED, nil
 REDACTED
 
