@@ -251,7 +251,13 @@ func (s *SDKServer) BeginTx(ctx context.Context, req *pluginsdk.BeginTxRequest) 
 		return nil, status.Errorf(codes.InvalidArgument, "unsupported isolation level: %s", req.GetIsolationLevel())
 	}
 
-	tx, err := s.db.BeginTx(ctx, opts)
+	// context.WithoutCancel: gRPC per-RPC context 在 handler 返回后被
+	// transport 层 cancel（finishStream → s.cancel()）。database/sql.Tx
+	// 的 awaitDone goroutine 会监听 ctx.Done() 并自动 rollback。事务的
+	// 生命周期跨越 BeginTx → TxQuery/TxExec → CommitTx 多个 RPC，必须
+	// 用 WithoutCancel 使 ctx 脱离 RPC 生命周期。事务超时保护由
+	// rollbackTimedOutTx（30s 清理）兜底。
+	tx, err := s.db.BeginTx(context.WithoutCancel(ctx), opts)
 	if err != nil {
 		return nil, errInternal(err, "plugin begin tx")
 	}
