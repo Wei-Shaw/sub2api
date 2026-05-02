@@ -375,6 +375,12 @@ func sqlValueToInterface(v *pluginsdk.SQLValue) any {
 		return payload.BytesValue
 	case *pluginsdk.SQLValue_BoolValue:
 		return payload.BoolValue
+	case *pluginsdk.SQLValue_TimeValue:
+		t, err := time.Parse(time.RFC3339Nano, payload.TimeValue)
+		if err != nil {
+			return payload.TimeValue
+		}
+		return t
 	default:
 		return nil
 	}
