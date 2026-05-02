@@ -308,3 +308,47 @@ plugins/ 全程 0 个 UU；所有 channel monitor / channel handler 文件继续
 
 无 plugins/ TODO 新增。后续 v0.1.120 / v0.1.121 上游同步如再涉及 OpenAI gateway 的
 channel 相关重构，注意继续把 `channelService` 改回 `channelCacheReader` 的命名差异。
+
+---
+
+## Batch 4: v0.1.120 (56 commits)
+
+### 冲突分类
+
+| 类型 | 数量 | 文件 |
+|------|------|------|
+| DU | 1 | `account_handler_mixed_channel_test.go` |
+| fork-only UU | 1 | `VERSION` |
+| i18n UU | 2 | `en.ts`, `zh.ts` |
+| wire_gen UU (3-way) | 1 | `wire_gen.go` |
+| **合计** | **5** | |
+
+### 真·双改裁决
+
+1. **backend/cmd/server/wire_gen.go**（2 处冲突）：
+   - 冲突1：`antigravityGatewayService` 保留 fork 的 `accountUsageService` 参数；
+     `accountTestService` 吸纳上游新增 `claudeTokenProvider` 参数
+   - 冲突2：`openAIGatewayService` 保留 fork 的 `channelCacheReader`（替代上游
+     `channelService`），吸纳上游新增 `settingService` 参数
+
+### i18n 补齐
+
+`--ours` 后手工从上游 diff 补入两组 key（en.ts + zh.ts 各一份）：
+- **Vertex Service Account** 相关 20 个 key（`vertexLabel` .. `vertexSaJsonRequired`）
+- **OpenAI Fast/Flex Policy** 相关 32 个 key（`openaiFastPolicy.title` .. `fallbackErrorMessagePlaceholder`）
+
+### Build / vet 验证
+
+- `cd backend && go build ./... && go vet ./...` — clean
+- `cd plugin-sdk && go build ./...` — clean
+- `cd plugins/channel-management && go build ./... && go vet ./...` — clean
+- VERSION 保持 `0.1.114.4-test.3`（未递增）
+
+### 二次修复
+
+无。本批次冲突均为 wire 层参数变更 + i18n 新增 key，未触发 channel-coupled blocker。
+
+### 待办
+
+无 plugins/ TODO 新增。v0.1.121 合并时继续注意 `channelService` → `channelCacheReader`
+命名差异。

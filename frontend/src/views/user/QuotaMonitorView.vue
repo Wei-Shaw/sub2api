@@ -19,7 +19,7 @@
             class="btn btn-secondary"
             :disabled="loading"
             :title="t('userQuotaMonitor.refresh')"
-            @click="loadOnce"
+            @click="loadSnapshot"
           >
             <Icon name="refresh" :class="{ 'animate-spin': loading }" size="sm" class="mr-1" />
             {{ t('userQuotaMonitor.refresh') }}
@@ -29,8 +29,8 @@
             :interval-seconds="autoInterval"
             :countdown="countdown"
             :intervals="REFRESH_INTERVALS"
-            @update:enabled="onToggleEnabled"
-            @update:interval="onChangeInterval"
+            @update:enabled="setAutoEnabled"
+            @update:interval="setAutoInterval"
           />
         </div>
       </header>
@@ -169,7 +169,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -177,7 +177,8 @@ import AutoRefreshButton from '@/components/common/AutoRefreshButton.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import QuotaMonitorTable from '@/components/serviceQuota/QuotaMonitorTable.vue'
-import { getMyServiceQuota, type MyQuotaSnapshot } from '@/api/serviceQuota'
+import { useQuotaMonitorPolling } from '@/components/serviceQuota/composables/useQuotaMonitorPolling'
+import { getMyServiceQuota } from '@/api/serviceQuota'
 import type { LimiterRuntime } from '@/api/admin/serviceQuota'
 import type { GroupPlatform } from '@/types'
 import { useAppStore } from '@/stores/app'
@@ -191,16 +192,28 @@ const appStore = useAppStore()
 const REFRESH_INTERVALS = [1, 5, 10, 30, 60] as const
 const DEFAULT_INTERVAL = 5
 
-const snapshot = ref<MyQuotaSnapshot | null>(null)
-const loading = ref(false)
-
-const autoEnabled = ref(true)
-const autoInterval = ref<number>(DEFAULT_INTERVAL)
-const countdown = ref<number>(DEFAULT_INTERVAL)
-let countdownTimer: ReturnType<typeof setInterval> | null = null
-
-const secondsSinceUpdate = ref(0)
-let asOfTimer: ReturnType<typeof setInterval> | null = null
+const {
+  snapshot,
+  loading,
+  autoEnabled,
+  autoInterval,
+  countdown,
+  secondsSinceUpdate,
+  loadSnapshot,
+  setAutoEnabled,
+  setAutoInterval,
+  start,
+  stop,
+} = useQuotaMonitorPolling({
+  defaultIntervalSeconds: DEFAULT_INTERVAL,
+  fetchSnapshot: () => getMyServiceQuota(),
+  onError: (err) => {
+    appStore.showError(
+      extractI18nErrorMessage(err, t, 'common.errors', t('userQuotaMonitor.loadError')),
+    )
+  },
+  // 轮询失败静默——上次成功的快照保持显示，等下一轮再试
+})
 
 const rows = computed<LimiterRuntime[]>(() => snapshot.value?.items ?? [])
 
@@ -249,65 +262,12 @@ function formatLimiterTypeLabel(lt: string): string {
   return t(`admin.serviceQuota.limiters.${key}`, lt.toUpperCase())
 }
 
-async function loadOnce(): Promise<void> {
-  if (loading.value) return
-  loading.value = true
-  try {
-    snapshot.value = await getMyServiceQuota()
-    secondsSinceUpdate.value = 0
-  } catch (err: unknown) {
-    appStore.showError(
-      extractI18nErrorMessage(err, t, 'common.errors', t('userQuotaMonitor.loadError')),
-    )
-  } finally {
-    loading.value = false
-  }
-}
-
-function startCountdown(): void {
-  stopCountdown()
-  if (!autoEnabled.value) return
-  countdown.value = autoInterval.value
-  countdownTimer = setInterval(() => {
-    countdown.value -= 1
-    if (countdown.value <= 0) {
-      countdown.value = autoInterval.value
-      loadOnce()
-    }
-  }, 1000)
-}
-
-function stopCountdown(): void {
-  if (countdownTimer) {
-    clearInterval(countdownTimer)
-    countdownTimer = null
-  }
-}
-
-function onToggleEnabled(value: boolean): void {
-  autoEnabled.value = value
-  if (value) {
-    startCountdown()
-  } else {
-    stopCountdown()
-  }
-}
-
-function onChangeInterval(seconds: number): void {
-  autoInterval.value = seconds
-  if (autoEnabled.value) startCountdown()
-}
-
 onMounted(() => {
-  loadOnce()
-  startCountdown()
-  asOfTimer = setInterval(() => {
-    secondsSinceUpdate.value += 1
-  }, 1000)
+  loadSnapshot()
+  start()
 })
 
 onBeforeUnmount(() => {
-  stopCountdown()
-  if (asOfTimer) clearInterval(asOfTimer)
+  stop()
 })
 </script>

@@ -416,3 +416,57 @@ func DefaultBetaPolicySettings() *BetaPolicySettings {
 		},
 	}
 }
+
+// OpenAI Fast Policy 策略常量
+// OpenAI 的 "fast 模式" 通过请求体中的 service_tier 字段识别：
+//   - "priority"（客户端可传 "fast"，归一化为 "priority"）：fast 模式
+//   - "flex"：低优先级模式
+//   - 省略：normal 默认
+//
+// 本策略复用 BetaPolicyAction*/BetaPolicyScope* 常量语义，只是匹配键从
+// anthropic-beta header 换成 body 的 service_tier 字段。
+const (
+	OpenAIFastTierAny      = "all"      // 匹配任意已识别的 service_tier
+	OpenAIFastTierPriority = "priority" // 仅匹配 fast（priority）
+	OpenAIFastTierFlex     = "flex"     // 仅匹配 flex
+)
+
+// OpenAIFastPolicyRule 单条 OpenAI fast/flex 策略规则
+type OpenAIFastPolicyRule struct {
+	ServiceTier          string   `json:"service_tier"`                     // "priority" | "flex" | "auto" | "default" | "scale" | "all"
+	Action               string   `json:"action"`                           // "pass" | "filter" | "block"
+	Scope                string   `json:"scope"`                            // "all" | "oauth" | "apikey" | "bedrock"
+	ErrorMessage         string   `json:"error_message,omitempty"`          // 自定义错误消息 (action=block 时生效)
+	ModelWhitelist       []string `json:"model_whitelist,omitempty"`        // 模型匹配模式列表（为空=对所有模型生效）
+	FallbackAction       string   `json:"fallback_action,omitempty"`        // 未匹配白名单的模型的处理方式
+	FallbackErrorMessage string   `json:"fallback_error_message,omitempty"` // 未匹配白名单时的自定义错误消息 (fallback_action=block 时生效)
+}
+
+// OpenAIFastPolicySettings OpenAI fast 策略配置
+type OpenAIFastPolicySettings struct {
+	Rules []OpenAIFastPolicyRule `json:"rules"`
+}
+
+// DefaultOpenAIFastPolicySettings 返回默认的 OpenAI fast 策略配置。
+// 默认对所有模型的 priority（fast）请求执行 filter，即剔除 service_tier 字段，
+// 让上游按 normal 优先级处理。
+//
+// 为什么 ModelWhitelist 为空（=对所有模型生效）：
+// codex 客户端的 service_tier=fast 是用户级开关，与 model 字段正交。即使
+// 用户使用 gpt-4 + fast，priority 配额仍会被消耗。如果默认规则只锁
+// gpt-5.5*，"用 gpt-4 + fast 透传 priority 上游" 这条路径就会绕过策略。
+// 与 codex 真实语义对齐，默认对所有模型生效；管理员若需要只针对特定
+// 模型，可在 admin UI 中显式配置 model_whitelist。
+func DefaultOpenAIFastPolicySettings() *OpenAIFastPolicySettings {
+	return &OpenAIFastPolicySettings{
+		Rules: []OpenAIFastPolicyRule{
+			{
+				ServiceTier:    OpenAIFastTierPriority,
+				Action:         BetaPolicyActionFilter,
+				Scope:          BetaPolicyScopeAll,
+				ModelWhitelist: []string{},
+				FallbackAction: BetaPolicyActionPass,
+			},
+		},
+	}
+}

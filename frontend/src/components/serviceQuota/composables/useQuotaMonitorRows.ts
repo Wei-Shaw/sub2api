@@ -34,7 +34,7 @@ export function useQuotaMonitorRows(rows: Ref<LimiterRuntime[]>): ComputedRef<De
     }
     const ruleSeen = new Set<number>()
     const pathSeen = new Set<string>()
-    return rows.value.map((row, i): DecoratedRow => {
+    return rows.value.map((row): DecoratedRow => {
       const pk = `${row.rule_id}:${row.path_id}`
       let ruleSpan = 0
       if (!ruleSeen.has(row.rule_id)) {
@@ -50,7 +50,11 @@ export function useQuotaMonitorRows(rows: Ref<LimiterRuntime[]>): ComputedRef<De
         ...row,
         _ruleSpan: ruleSpan,
         _pathSpan: pathSpan,
-        _key: `${row.rule_id}-${row.path_id}-${row.limiter_type}-${row.scope_user_id ?? 'shared'}-${i}`,
+        // _key 不带数组下标，确保 admin/user 端轮询 merge 后即便顺序变化，Vue
+        // 仍按业务身份复用同一行 DOM——避免 progressbar 抖动、动画断裂、用户选
+        // 中状态丢失。复合 key 与后端 (rule_id, path_id, limiter_type, scope_user_id)
+        // 的 merge key 严格对齐。
+        _key: `${row.rule_id}-${row.path_id}-${row.limiter_type}-${row.scope_user_id ?? 'shared'}`,
       }
     })
   })
