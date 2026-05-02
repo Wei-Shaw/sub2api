@@ -374,6 +374,7 @@ export default {
     buySubscription: '充值/订阅',
     docs: '文档',
     myOrders: '我的订单',
+    invoiceManagement: '发票管理',
     orderManagement: '订单管理',
     paymentDashboard: '支付概览',
     paymentConfig: '支付配置',
@@ -6535,6 +6536,102 @@ export default {
           '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">点击确认创建您的 API 密钥。</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ 重要：</b><ul style="margin: 8px 0 0 16px;"><li>创建后请立即复制密钥（sk-xxx）</li><li>密钥只显示一次，丢失需重新生成</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>🚀 如何使用：</b><br/>将密钥配置到支持 OpenAI 接口的任何客户端（如 ChatBox、OpenCat 等），即可开始使用！</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 点击"创建"按钮</p></div>'
       }
     }
+  },
+
+  // Invoice Management
+  invoice: {
+    title: '发票管理',
+    description: '管理发票抬头、可开票订单和邮件交付申请',
+    tabs: {
+      requests: '开票记录',
+      profiles: '发票抬头',
+      orders: '可开票订单',
+    },
+    filters: {
+      status: '状态',
+      startDate: '开始日期',
+      endDate: '结束日期',
+    },
+    status: {
+      pending: '待开票',
+      completed: '已开票',
+      rejected: '已驳回',
+    },
+    fields: {
+      title: '发票抬头',
+      taxNumber: '税号',
+      email: '接收邮箱',
+      phone: '联系电话',
+      address: '注册地址',
+      bankName: '开户银行',
+      bankAccount: '银行账号',
+      createdAt: '申请时间',
+    },
+    requests: {
+      orderCount: '{count} 个订单',
+    },
+    profiles: {
+      create: '新增抬头',
+      edit: '编辑抬头',
+      default: '默认',
+      deleteTitle: '删除发票抬头',
+      deleteMessage: '确定要删除「{name}」吗？',
+    },
+    orders: {
+      invoiceProfile: '发票抬头',
+      selectedSummary: '已选择 {count} 个订单，合计 {amount}',
+      orderNo: '订单号',
+      amount: '金额',
+      type: '类型',
+      completedAt: '完成时间',
+    },
+    orderTypes: {
+      balance: '余额充值',
+      subscription: '订阅',
+    },
+    actions: {
+      submitRequest: '提交开票',
+      setDefault: '设为默认',
+      clearSelection: '清空选择',
+    },
+    empty: {
+      requests: '暂无开票记录',
+      profiles: '暂无发票抬头',
+      orders: '暂无可开票订单',
+    },
+    messages: {
+      profileRequired: '请选择发票抬头',
+      orderRequired: '请选择需要开票的订单',
+      requestSubmitted: '开票申请已提交，发票将发送到接收邮箱',
+      defaultUpdated: '默认发票抬头已更新',
+      requiredFields: '请填写发票抬头、税号和接收邮箱',
+    },
+    errors: {
+      INVOICE_DB_UNAVAILABLE: '发票服务暂不可用',
+      INVOICE_TITLE_REQUIRED: '请填写发票抬头',
+      INVOICE_TITLE_TOO_LONG: '发票抬头过长',
+      INVOICE_TAX_NUMBER_REQUIRED: '请填写税号',
+      INVOICE_TAX_NUMBER_TOO_LONG: '税号过长',
+      INVOICE_EMAIL_REQUIRED: '请填写接收邮箱',
+      INVOICE_EMAIL_TOO_LONG: '接收邮箱过长',
+      INVOICE_EMAIL_INVALID: '接收邮箱格式不正确',
+      INVOICE_PROFILE_REQUIRED: '请选择发票抬头',
+      INVOICE_PROFILE_NOT_FOUND: '发票抬头不存在',
+      INVOICE_ORDER_REQUIRED: '请选择需要开票的订单',
+      INVOICE_ORDER_LIMIT_EXCEEDED: '单次开票订单数量过多',
+      INVOICE_ORDER_INVALID: '部分订单不可开票',
+      INVOICE_ORDER_ALREADY_REQUESTED: '部分订单已经提交过开票申请',
+      INVOICE_STATUS_INVALID: '开票状态不正确',
+      INVOICE_DATE_INVALID: '日期格式不正确',
+      INVOICE_PROFILE_LIST_FAILED: '加载发票抬头失败',
+      INVOICE_PROFILE_CREATE_FAILED: '创建发票抬头失败',
+      INVOICE_PROFILE_UPDATE_FAILED: '更新发票抬头失败',
+      INVOICE_PROFILE_DELETE_FAILED: '删除发票抬头失败',
+      INVOICE_PROFILE_DEFAULT_FAILED: '设置默认发票抬头失败',
+      INVOICE_REQUEST_CREATE_FAILED: '提交开票申请失败',
+      INVOICE_REQUEST_LIST_FAILED: '加载开票记录失败',
+      INVOICE_ORDER_LIST_FAILED: '加载可开票订单失败',
+    },
   },
 
   // Payment System

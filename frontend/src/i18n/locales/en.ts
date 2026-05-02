@@ -374,6 +374,7 @@ export default {
     buySubscription: 'Recharge / Subscription',
     docs: 'Docs',
     myOrders: 'My Orders',
+    invoiceManagement: 'Invoices',
     orderManagement: 'Orders',
     paymentDashboard: 'Payment Dashboard',
     paymentConfig: 'Payment Config',
@@ -6350,6 +6351,102 @@ export default {
         description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">Click to confirm and create your API key.</p><div style="padding: 8px 12px; background: #fee2e2; border-left: 3px solid #ef4444; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚠️ Important:</b><ul style="margin: 8px 0 0 16px;"><li>Copy the key (sk-xxx) immediately after creation</li><li>Key is only shown once, need to regenerate if lost</li></ul></div><p style="padding: 8px 12px; background: #f0fdf4; border-left: 3px solid #10b981; border-radius: 4px; font-size: 13px;"><b>🚀 How to Use:</b><br/>Configure the key in any OpenAI-compatible client (like ChatBox, OpenCat, etc.) and start using!</p><p style="margin-top: 12px; color: #10b981; font-weight: 600;">👉 Click "Create" button</p></div>'
       }
     }
+  },
+
+  // Invoice Management
+  invoice: {
+    title: 'Invoice Management',
+    description: 'Manage invoice profiles, invoiceable orders, and email delivery requests',
+    tabs: {
+      requests: 'Requests',
+      profiles: 'Profiles',
+      orders: 'Invoiceable Orders',
+    },
+    filters: {
+      status: 'Status',
+      startDate: 'Start Date',
+      endDate: 'End Date',
+    },
+    status: {
+      pending: 'Pending',
+      completed: 'Issued',
+      rejected: 'Rejected',
+    },
+    fields: {
+      title: 'Invoice Title',
+      taxNumber: 'Tax Number',
+      email: 'Email',
+      phone: 'Phone',
+      address: 'Registered Address',
+      bankName: 'Bank Name',
+      bankAccount: 'Bank Account',
+      createdAt: 'Requested At',
+    },
+    requests: {
+      orderCount: '{count} orders',
+    },
+    profiles: {
+      create: 'New Profile',
+      edit: 'Edit Profile',
+      default: 'Default',
+      deleteTitle: 'Delete Invoice Profile',
+      deleteMessage: 'Delete "{name}"?',
+    },
+    orders: {
+      invoiceProfile: 'Invoice Profile',
+      selectedSummary: '{count} orders selected, {amount} total',
+      orderNo: 'Order No.',
+      amount: 'Amount',
+      type: 'Type',
+      completedAt: 'Completed At',
+    },
+    orderTypes: {
+      balance: 'Balance Recharge',
+      subscription: 'Subscription',
+    },
+    actions: {
+      submitRequest: 'Submit Invoice',
+      setDefault: 'Set Default',
+      clearSelection: 'Clear Selection',
+    },
+    empty: {
+      requests: 'No invoice requests',
+      profiles: 'No invoice profiles',
+      orders: 'No invoiceable orders',
+    },
+    messages: {
+      profileRequired: 'Please select an invoice profile',
+      orderRequired: 'Please select invoiceable orders',
+      requestSubmitted: 'Invoice request submitted. The invoice will be sent to the recipient email.',
+      defaultUpdated: 'Default invoice profile updated',
+      requiredFields: 'Invoice title, tax number, and email are required',
+    },
+    errors: {
+      INVOICE_DB_UNAVAILABLE: 'Invoice service is unavailable',
+      INVOICE_TITLE_REQUIRED: 'Invoice title is required',
+      INVOICE_TITLE_TOO_LONG: 'Invoice title is too long',
+      INVOICE_TAX_NUMBER_REQUIRED: 'Tax number is required',
+      INVOICE_TAX_NUMBER_TOO_LONG: 'Tax number is too long',
+      INVOICE_EMAIL_REQUIRED: 'Email is required',
+      INVOICE_EMAIL_TOO_LONG: 'Email is too long',
+      INVOICE_EMAIL_INVALID: 'Email is invalid',
+      INVOICE_PROFILE_REQUIRED: 'Please select an invoice profile',
+      INVOICE_PROFILE_NOT_FOUND: 'Invoice profile was not found',
+      INVOICE_ORDER_REQUIRED: 'Please select invoiceable orders',
+      INVOICE_ORDER_LIMIT_EXCEEDED: 'Too many orders in one invoice request',
+      INVOICE_ORDER_INVALID: 'Some orders cannot be invoiced',
+      INVOICE_ORDER_ALREADY_REQUESTED: 'Some orders already have invoice requests',
+      INVOICE_STATUS_INVALID: 'Invoice status is invalid',
+      INVOICE_DATE_INVALID: 'Date format is invalid',
+      INVOICE_PROFILE_LIST_FAILED: 'Failed to load invoice profiles',
+      INVOICE_PROFILE_CREATE_FAILED: 'Failed to create invoice profile',
+      INVOICE_PROFILE_UPDATE_FAILED: 'Failed to update invoice profile',
+      INVOICE_PROFILE_DELETE_FAILED: 'Failed to delete invoice profile',
+      INVOICE_PROFILE_DEFAULT_FAILED: 'Failed to set default invoice profile',
+      INVOICE_REQUEST_CREATE_FAILED: 'Failed to submit invoice request',
+      INVOICE_REQUEST_LIST_FAILED: 'Failed to load invoice requests',
+      INVOICE_ORDER_LIST_FAILED: 'Failed to load invoiceable orders',
+    },
   },
 
   // Payment System

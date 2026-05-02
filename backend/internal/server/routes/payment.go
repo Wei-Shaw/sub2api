@@ -43,6 +43,29 @@ func RegisterPaymentRoutes(
 		}
 	}
 
+	// --- User-facing invoice endpoints (authenticated) ---
+	invoice := v1.Group("/invoice")
+	invoice.Use(gin.HandlerFunc(jwtAuth))
+	invoice.Use(middleware.BackendModeUserGuard(settingService))
+	{
+		invoice.GET("/orders", paymentHandler.ListInvoiceableOrders)
+
+		profiles := invoice.Group("/profiles")
+		{
+			profiles.GET("", paymentHandler.ListInvoiceProfiles)
+			profiles.POST("", paymentHandler.CreateInvoiceProfile)
+			profiles.PUT("/:id", paymentHandler.UpdateInvoiceProfile)
+			profiles.DELETE("/:id", paymentHandler.DeleteInvoiceProfile)
+			profiles.PUT("/:id/default", paymentHandler.SetDefaultInvoiceProfile)
+		}
+
+		requests := invoice.Group("/requests")
+		{
+			requests.GET("", paymentHandler.ListInvoiceRequests)
+			requests.POST("", paymentHandler.CreateInvoiceRequest)
+		}
+	}
+
 	// --- Public payment endpoints (no auth) ---
 	// Signed resume-token recovery is the preferred public lookup path.
 	// The legacy anonymous out_trade_no verify endpoint remains available as a
