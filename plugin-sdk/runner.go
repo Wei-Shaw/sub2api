@@ -69,6 +69,12 @@ func parseFlags() runOptions {
 // Run is the main entry point a plugin's main() invokes. It blocks until
 // the core asks the plugin to shut down or until the process receives
 // SIGINT/SIGTERM.
+//
+// The body is intentionally a thin orchestrator (T45 split) — listener
+// binding, server construction, serve goroutines, signal wait and graceful
+// shutdown each live in their own helper. New responsibilities should land
+// in a new helper, not as another inline block, so this function stays
+// scannable at a glance.
 func Run(p Plugin) error {
 	if p == nil {
 		return errors.New("pluginsdk.Run: plugin is nil")
@@ -76,29 +82,71 @@ func Run(p Plugin) error {
 	opts := parseFlags()
 	logger := newLogger(opts.logLevel, p.Manifest())
 
-	grpcLn, err := net.Listen("tcp", opts.grpcListen)
+	grpcLn, httpLn, err := bindListeners(opts)
 	if err != nil {
-		return fmt.Errorf("pluginsdk: bind grpc listener: %w", err)
-	}
-	var httpLn net.Listener
-	if !opts.disableHTTP {
-		httpLn, err = net.Listen("tcp", opts.httpListen)
-		if err != nil {
-			_ = grpcLn.Close()
-			return fmt.Errorf("pluginsdk: bind http listener: %w", err)
-		}
+		return err
 	}
 
+	r, mux := newRunner(p, opts, logger, grpcLn, httpLn)
+
+	grpcSrv := buildPluginGRPCServer(p, r)
+	httpSrv := &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	serveErr := startServeGoroutines(grpcSrv, grpcLn, httpSrv, httpLn)
+	if err := writeHandshake(r.hs); err != nil {
+		grpcSrv.Stop()
+		if httpLn != nil {
+			_ = httpSrv.Close()
+		}
+		return fmt.Errorf("pluginsdk: write handshake: %w", err)
+	}
+	logger.Info("plugin ready",
+		"grpc_addr", r.hs.GRPCAddr,
+		"http_addr", r.hs.HTTPAddr,
+		"pid", r.hs.PID,
+	)
+
+	waitForShutdown(logger, serveErr, r.shutdown)
+	r.gracefulShutdown(grpcSrv, httpSrv)
+	return nil
+}
+
+// bindListeners opens the gRPC listener (always required) and, when the
+// --no-http flag was not supplied, the HTTP listener. Failures clean up any
+// partially-bound socket so the caller never holds a fd it doesn't intend
+// to use.
+func bindListeners(opts runOptions) (net.Listener, net.Listener, error) {
+	grpcLn, err := net.Listen("tcp", opts.grpcListen)
+	if err != nil {
+		return nil, nil, fmt.Errorf("pluginsdk: bind grpc listener: %w", err)
+	}
+	if opts.disableHTTP {
+		return grpcLn, nil, nil
+	}
+	httpLn, err := net.Listen("tcp", opts.httpListen)
+	if err != nil {
+		_ = grpcLn.Close()
+		return nil, nil, fmt.Errorf("pluginsdk: bind http listener: %w", err)
+	}
+	return grpcLn, httpLn, nil
+}
+
+// newRunner builds the runner state object plus the http.ServeMux that
+// HTTPRegistrar plugins (if any) hang their handlers on. Returning the mux
+// lets Run wire the http.Server without having to peek inside the runner.
+func newRunner(p Plugin, opts runOptions, logger *slog.Logger, grpcLn, httpLn net.Listener) (*runner, *http.ServeMux) {
 	mux := http.NewServeMux()
 	if reg, ok := p.(HTTPRegistrar); ok && httpLn != nil {
 		reg.RegisterHTTP(httpMuxAdapter{mux})
 	}
-
 	httpAddr := ""
 	if httpLn != nil {
 		httpAddr = httpLn.Addr().String()
 	}
-	r := &runner{
+	return &runner{
 		plugin: p,
 		logger: logger,
 		opts:   opts,
@@ -109,39 +157,48 @@ func Run(p Plugin) error {
 			PID:      os.Getpid(),
 		},
 		shutdown: make(chan struct{}),
-	}
+	}, mux
+}
 
-	// Plugin gRPC server interceptors:
-	//
-	//   - TraceparentUnaryServer / TraceparentStreamServer ensure host →
-	//     plugin RPCs (lifecycle, pricing extension, migration proxy, etc.)
-	//     carry a valid traceparent on the handler ctx. The host stamps one
-	//     outbound via TraceparentUnaryClient (manager_dial.go); we read that
-	//     on the way in and attach it to ctx so plugin-side handlers — and
-	//     any nested pluginsdk-driven RPC fired off from the same ctx —
-	//     observe the same trace id without re-parsing metadata.
-	//
-	// Identity / authorisation interceptors live on the host server (which
-	// receives plugin → host RPCs) — there's no symmetric concern here
-	// because the plugin only accepts traffic from the parent host process.
-	grpcSrv := grpc.NewServer(
+// buildPluginGRPCServer constructs the plugin-side gRPC server with the
+// trace propagation interceptors, registers the lifecycle service, and gives
+// optional GRPCServiceRegistrar plugins a chance to add their own services
+// onto the same listener.
+//
+// Plugin gRPC server interceptors:
+//
+//   - TraceparentUnaryServer / TraceparentStreamServer ensure host →
+//     plugin RPCs (lifecycle, pricing extension, migration proxy, etc.)
+//     carry a valid traceparent on the handler ctx. The host stamps one
+//     outbound via TraceparentUnaryClient (manager_dial.go); we read that
+//     on the way in and attach it to ctx so plugin-side handlers — and
+//     any nested pluginsdk-driven RPC fired off from the same ctx —
+//     observe the same trace id without re-parsing metadata.
+//
+// Identity / authorisation interceptors live on the host server (which
+// receives plugin → host RPCs) — there's no symmetric concern here
+// because the plugin only accepts traffic from the parent host process.
+func buildPluginGRPCServer(p Plugin, r *runner) *grpc.Server {
+	srv := grpc.NewServer(
 		grpc.ChainUnaryInterceptor(TraceparentUnaryServer()),
 		grpc.ChainStreamInterceptor(TraceparentStreamServer()),
 	)
-	pb.RegisterPluginLifecycleServer(grpcSrv, r)
+	pb.RegisterPluginLifecycleServer(srv, r)
 	// Optional plugin-supplied gRPC services share the same listener as the
 	// lifecycle service so the host can dispatch by service name on a single
 	// ClientConn. Registration runs before Serve so service descriptors are
 	// installed before the first incoming RPC.
 	if reg, ok := p.(GRPCServiceRegistrar); ok {
-		reg.RegisterGRPCServices(grpcSrv)
+		reg.RegisterGRPCServices(srv)
 	}
+	return srv
+}
 
-	httpSrv := &http.Server{
-		Handler:           mux,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
-
+// startServeGoroutines launches the gRPC and (optionally) HTTP serve loops
+// in independent goroutines, surfacing any terminal error onto the returned
+// channel. http.ErrServerClosed is filtered out because it is the normal
+// path through gracefulShutdown.
+func startServeGoroutines(grpcSrv *grpc.Server, grpcLn net.Listener, httpSrv *http.Server, httpLn net.Listener) <-chan error {
 	serveErr := make(chan error, 2)
 	go func() {
 		if err := grpcSrv.Serve(grpcLn); err != nil {
@@ -155,35 +212,24 @@ func Run(p Plugin) error {
 			}
 		}()
 	}
+	return serveErr
+}
 
-	if err := writeHandshake(r.hs); err != nil {
-		grpcSrv.Stop()
-		if httpLn != nil {
-			_ = httpSrv.Close()
-		}
-		return fmt.Errorf("pluginsdk: write handshake: %w", err)
-	}
-
-	logger.Info("plugin ready",
-		"grpc_addr", r.hs.GRPCAddr,
-		"http_addr", r.hs.HTTPAddr,
-		"pid", r.hs.PID,
-	)
-
+// waitForShutdown blocks until any of three terminating events: a serve-loop
+// error, a SIGINT/SIGTERM, or a Shutdown RPC from the host (signalled via
+// r.shutdown). Logs the cause and returns; the caller then runs
+// gracefulShutdown.
+func waitForShutdown(logger *slog.Logger, serveErr <-chan error, shutdown <-chan struct{}) {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
 	select {
 	case err := <-serveErr:
 		logger.Error("transport terminated", "error", err)
 	case sig := <-sigCh:
 		logger.Info("signal received", "signal", sig.String())
-	case <-r.shutdown:
+	case <-shutdown:
 		logger.Info("shutdown requested by core")
 	}
-
-	r.gracefulShutdown(grpcSrv, httpSrv)
-	return nil
 }
 
 func writeHandshake(h Handshake) error {
