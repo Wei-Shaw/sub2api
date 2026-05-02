@@ -116,6 +116,24 @@
           {{ t('admin.channelMonitor.form.enabled') }}
         </label>
       </div>
+
+      <!-- Worker B' — Advanced request config (headers KV rows + body override). -->
+      <details class="rounded-lg border border-gray-200 p-3 dark:border-dark-700">
+        <summary class="cursor-pointer select-none text-sm font-medium">
+          {{ t('admin.channelMonitor.advanced.section') }}
+        </summary>
+        <p class="mt-1 mb-3 text-xs text-gray-500">
+          {{ t('admin.channelMonitor.advanced.sectionHint') }}
+        </p>
+        <MonitorAdvancedRequestConfig
+          :extra-headers="form.extra_headers"
+          :body-override-mode="form.body_override_mode"
+          :body-override="form.body_override"
+          @update:extra-headers="form.extra_headers = $event"
+          @update:body-override-mode="form.body_override_mode = $event"
+          @update:body-override="form.body_override = $event"
+        />
+      </details>
     </form>
 
     <template #footer>
@@ -142,18 +160,24 @@
  *   - 删除 ProviderIcon picker, 改用 SDK Select
  *   - 删除 "Use my key" picker (host APIKey 列表查询; plugin 暂未提供等价 API)
  *   - 删除 ModelTagInput, 改为多行 textarea (空白分隔)
- *   - 删除 advanced (extra_headers / body_override / template_id) UI;
- *     仅在 update 时透传现有值, 避免回传时把这些字段清空
  *   - 删除 useCurrentDomain 按钮 (依赖 host window.location，简化版直接让管
  *     理员手填)
  *
- * 这些被删除的功能仍然由后端支持, 后续 W7.x 可再补 UI.
+ * Worker B' (2026-05) — 补回 advanced UI (host commit e1193212b):
+ *   - 在表单末尾挂 MonitorAdvancedRequestConfig (headers KV 行 + body
+ *     override mode + body JSON), 折叠于 <details> 容器内以避免干扰常规
+ *     使用
+ *   - CreateParams / UpdateParams 把 extra_headers / body_override* 一并
+ *     送到后端; 旧行为 (update 时透传原值) 自然被 form state 覆盖
+ *
+ * 仍未补: template_id picker (本次不引入; 后续如果需要以 picker 形态带回)
  */
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { BaseDialog, Select } from '@sub2api/plugin-sdk'
 import {
   channelMonitorAPI,
+  type BodyOverrideMode,
   type ChannelMonitor,
   type CreateParams,
   type Provider,
@@ -162,6 +186,7 @@ import {
 import { DEFAULT_INTERVAL_SECONDS } from '../../../utils/channelMonitorConstants'
 import { getSdk } from '../../../api/sdk'
 import { extractApiErrorMessage } from '../../../utils/apiError'
+import MonitorAdvancedRequestConfig from './MonitorAdvancedRequestConfig.vue'
 
 const props = defineProps<{
   show: boolean
@@ -189,6 +214,10 @@ interface FormState {
   group_name: string
   enabled: boolean
   interval_seconds: number
+  // Advanced (Worker B') — headers KV 行 + body override.
+  extra_headers: Record<string, string>
+  body_override_mode: BodyOverrideMode
+  body_override: Record<string, unknown> | null
 }
 
 function emptyForm(): FormState {
@@ -202,6 +231,9 @@ function emptyForm(): FormState {
     group_name: '',
     enabled: true,
     interval_seconds: DEFAULT_INTERVAL_SECONDS,
+    extra_headers: {},
+    body_override_mode: 'off',
+    body_override: null,
   }
 }
 
@@ -229,6 +261,9 @@ watch(
         group_name: monitor.group_name || '',
         enabled: monitor.enabled,
         interval_seconds: monitor.interval_seconds,
+        extra_headers: { ...(monitor.extra_headers || {}) },
+        body_override_mode: monitor.body_override_mode || 'off',
+        body_override: monitor.body_override ? { ...monitor.body_override } : null,
       }
       extraModelsText.value = (monitor.extra_models || []).join('\n')
     } else {
@@ -267,6 +302,9 @@ async function handleSubmit() {
         group_name: form.value.group_name.trim(),
         enabled: form.value.enabled,
         interval_seconds: form.value.interval_seconds,
+        extra_headers: form.value.extra_headers,
+        body_override_mode: form.value.body_override_mode,
+        body_override: form.value.body_override,
       }
       // empty api_key means "do not modify" per backend contract
       if (form.value.api_key.trim()) {
@@ -285,6 +323,9 @@ async function handleSubmit() {
         group_name: form.value.group_name.trim(),
         enabled: form.value.enabled,
         interval_seconds: form.value.interval_seconds,
+        extra_headers: form.value.extra_headers,
+        body_override_mode: form.value.body_override_mode,
+        body_override: form.value.body_override,
       }
       await channelMonitorAPI.create(create)
       sdk.notify.success(t('admin.channelMonitor.createSuccess'))
