@@ -180,7 +180,7 @@ func (p *ChannelPlugin) Init(ctx pluginsdk.PluginContext) error {
 
 	p.wirePricing(svc, repo)
 	p.wireCacheWriter(ctx, svc)
-	p.channelHandler = chHandler.NewChannelHandler(svc, nil)
+	p.channelHandler = chHandler.NewChannelHandler(svc, chHandler.NewHostPricingLookup(ctx.Host()))
 	p.wireMonitor(ctx)
 	p.wireAvailableChannels(ctx, repo)
 
