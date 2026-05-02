@@ -364,6 +364,7 @@
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores'
+import { formatCurrency } from '@/utils/format'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
 
@@ -735,7 +736,7 @@ const modelStats = computed<any[]>(() => resultData.value?.model_stats || [])
 
 function usd(value: number | null | undefined): string {
   if (value == null || value < 0) return '-'
-  return '$' + Number(value).toFixed(2)
+  return formatCurrency(value)
 }
 
 function fmtNum(val: number | null | undefined): string {

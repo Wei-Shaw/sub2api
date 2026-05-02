@@ -355,6 +355,7 @@ export const useAppStore = defineStore('app', () => {
         channel_monitor_enabled: true,
         channel_monitor_default_interval_seconds: 60,
         available_channels_enabled: false,
+        service_quota_enabled: false,
       }
     }
 
@@ -382,6 +383,12 @@ export const useAppStore = defineStore('app', () => {
   function clearPublicSettingsCache(): void {
     publicSettingsLoaded.value = false
     cachedPublicSettings.value = null
+  }
+
+  function patchPublicSettings(patch: Partial<PublicSettings>): void {
+    const base = cachedPublicSettings.value || window.__APP_CONFIG__
+    if (!base) return
+    applySettings({ ...base, ...patch })
   }
 
   /**
@@ -452,6 +459,7 @@ export const useAppStore = defineStore('app', () => {
 
     // Public settings actions
     fetchPublicSettings,
+    patchPublicSettings,
     clearPublicSettingsCache,
     initFromInjectedConfig
   }

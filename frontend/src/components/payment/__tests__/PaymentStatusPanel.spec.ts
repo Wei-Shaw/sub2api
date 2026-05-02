@@ -96,4 +96,36 @@ describe('PaymentStatusPanel', () => {
     expect(wrapper.text()).toContain('payment.result.success')
     expect(wrapper.emitted('success')).toHaveLength(1)
   })
+
+  it('shows reopen button in QR mode when payUrl is also available', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue({ closed: false } as Window)
+
+    const wrapper = mount(PaymentStatusPanel, {
+      props: {
+        orderId: 42,
+        qrCode: 'https://pay.example.com/qr/42',
+        payUrl: 'https://pay.example.com/session/42',
+        expiresAt: '2099-01-01T12:30:00Z',
+        paymentType: 'alipay',
+        orderType: 'balance',
+      },
+      global: {
+        stubs: {
+          Icon: true,
+        },
+      },
+    })
+
+    await flushPromises()
+    expect(wrapper.text()).toContain('payment.qr.openPayWindow')
+
+    await wrapper.get('button.btn.btn-secondary.text-sm').trigger('click')
+    expect(openSpy).toHaveBeenCalledWith(
+      'https://pay.example.com/session/42',
+      'paymentPopup',
+      expect.any(String),
+    )
+
+    openSpy.mockRestore()
+  })
 })

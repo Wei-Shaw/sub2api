@@ -30,28 +30,32 @@ type AdminHandlers struct {
 	TLSFingerprintProfile *admin.TLSFingerprintProfileHandler
 	APIKey                *admin.AdminAPIKeyHandler
 	ScheduledTest         *admin.ScheduledTestHandler
-	// Channel handler 已迁移到 plugins/channel-management/
-	Payment        *admin.PaymentHandler
-	Plugin         *admin.PluginHandler
-	PluginSettings *admin.PluginSettingsHandler
+	// Channel/ChannelMonitor handlers 已迁移到 plugins/channel-management/
+	Payment             *admin.PaymentHandler
+	ServiceQuota        *admin.ServiceQuotaHandler
+	ServiceQuotaMonitor *admin.ServiceQuotaMonitorHandler
+	Plugin              *admin.PluginHandler
+	PluginSettings      *admin.PluginSettingsHandler
 }
 
 // Handlers contains all HTTP handlers
 type Handlers struct {
-	Auth           *AuthHandler
-	User           *UserHandler
-	APIKey         *APIKeyHandler
-	Usage          *UsageHandler
-	Redeem         *RedeemHandler
-	Subscription   *SubscriptionHandler
-	Announcement   *AnnouncementHandler
-	Admin          *AdminHandlers
-	Gateway        *GatewayHandler
-	OpenAIGateway  *OpenAIGatewayHandler
-	Setting        *SettingHandler
-	Totp           *TotpHandler
-	Payment        *PaymentHandler
-	PaymentWebhook *PaymentWebhookHandler
+	Auth             *AuthHandler
+	User             *UserHandler
+	APIKey           *APIKeyHandler
+	Usage            *UsageHandler
+	Redeem           *RedeemHandler
+	Subscription     *SubscriptionHandler
+	Announcement     *AnnouncementHandler
+	Admin            *AdminHandlers
+	Gateway          *GatewayHandler
+	OpenAIGateway    *OpenAIGatewayHandler
+	Setting          *SettingHandler
+	Totp             *TotpHandler
+	Payment          *PaymentHandler
+	PaymentWebhook   *PaymentWebhookHandler
+	UserServiceQuota *UserServiceQuotaHandler
+	// AvailableChannel / ChannelMonitor (user) 已迁移到 plugins/channel-management/
 }
 
 // BuildInfo contains build-time information

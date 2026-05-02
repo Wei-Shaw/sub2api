@@ -35,6 +35,8 @@ func ProvideAdminHandlers(
 	apiKeyHandler *admin.AdminAPIKeyHandler,
 	scheduledTestHandler *admin.ScheduledTestHandler,
 	paymentHandler *admin.PaymentHandler,
+	serviceQuotaHandler *admin.ServiceQuotaHandler,
+	serviceQuotaMonitorHandler *admin.ServiceQuotaMonitorHandler,
 	pluginHandler *admin.PluginHandler,
 	pluginSettingsHandler *admin.PluginSettingsHandler,
 ) *AdminHandlers {
@@ -64,6 +66,8 @@ func ProvideAdminHandlers(
 		APIKey:                apiKeyHandler,
 		ScheduledTest:         scheduledTestHandler,
 		Payment:               paymentHandler,
+		ServiceQuota:          serviceQuotaHandler,
+		ServiceQuotaMonitor:   serviceQuotaMonitorHandler,
 		Plugin:                pluginHandler,
 		PluginSettings:        pluginSettingsHandler,
 	}
@@ -107,24 +111,26 @@ func ProvideHandlers(
 	totpHandler *TotpHandler,
 	paymentHandler *PaymentHandler,
 	paymentWebhookHandler *PaymentWebhookHandler,
+	userServiceQuotaHandler *UserServiceQuotaHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
 	return &Handlers{
-		Auth:           authHandler,
-		User:           userHandler,
-		APIKey:         apiKeyHandler,
-		Usage:          usageHandler,
-		Redeem:         redeemHandler,
-		Subscription:   subscriptionHandler,
-		Announcement:   announcementHandler,
-		Admin:          adminHandlers,
-		Gateway:        gatewayHandler,
-		OpenAIGateway:  openaiGatewayHandler,
-		Setting:        settingHandler,
-		Totp:           totpHandler,
-		Payment:        paymentHandler,
-		PaymentWebhook: paymentWebhookHandler,
+		Auth:             authHandler,
+		User:             userHandler,
+		APIKey:           apiKeyHandler,
+		Usage:            usageHandler,
+		Redeem:           redeemHandler,
+		Subscription:     subscriptionHandler,
+		Announcement:     announcementHandler,
+		Admin:            adminHandlers,
+		Gateway:          gatewayHandler,
+		OpenAIGateway:    openaiGatewayHandler,
+		Setting:          settingHandler,
+		Totp:             totpHandler,
+		Payment:          paymentHandler,
+		PaymentWebhook:   paymentWebhookHandler,
+		UserServiceQuota: userServiceQuotaHandler,
 	}
 }
 
@@ -144,6 +150,7 @@ var ProviderSet = wire.NewSet(
 	ProvideSettingHandler,
 	NewPaymentHandler,
 	NewPaymentWebhookHandler,
+	NewUserServiceQuotaHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,
@@ -170,8 +177,10 @@ var ProviderSet = wire.NewSet(
 	admin.NewTLSFingerprintProfileHandler,
 	admin.NewAdminAPIKeyHandler,
 	admin.NewScheduledTestHandler,
-	// admin.NewChannelHandler 已迁移到 plugins/channel-management/
+	// admin.NewChannelHandler / NewChannelMonitorHandler / NewChannelMonitorRequestTemplateHandler 已迁移到 plugins/channel-management/
 	admin.NewPaymentHandler,
+	admin.NewServiceQuotaHandler,
+	admin.NewServiceQuotaMonitorHandler,
 	ProvidePluginHandler,
 	ProvidePluginSettingsHandler,
 

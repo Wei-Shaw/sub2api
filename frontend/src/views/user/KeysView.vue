@@ -158,7 +158,7 @@
                     row.quota_used >= row.quota * 0.8 ? 'text-yellow-500' :
                     'text-gray-900 dark:text-white'
                   ]">
-                    ${{ row.quota_used?.toFixed(2) || '0.00' }} / ${{ row.quota?.toFixed(2) }}
+                    {{ formatCurrency(row.quota_used) }} / {{ formatCurrency(row.quota) }}
                   </span>
                 </div>
                 <div class="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
@@ -188,7 +188,7 @@
                     row.usage_5h >= row.rate_limit_5h * 0.8 ? 'text-yellow-500' :
                     'text-gray-700 dark:text-gray-300'
                   ]">
-                    ${{ row.usage_5h?.toFixed(2) || '0.00' }}/${{ row.rate_limit_5h?.toFixed(2) }}
+                    {{ formatCurrency(row.usage_5h) }}/{{ formatCurrency(row.rate_limit_5h) }}
                   </span>
                 </div>
                 <div class="h-1 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
@@ -216,7 +216,7 @@
                     row.usage_1d >= row.rate_limit_1d * 0.8 ? 'text-yellow-500' :
                     'text-gray-700 dark:text-gray-300'
                   ]">
-                    ${{ row.usage_1d?.toFixed(2) || '0.00' }}/${{ row.rate_limit_1d?.toFixed(2) }}
+                    {{ formatCurrency(row.usage_1d) }}/{{ formatCurrency(row.rate_limit_1d) }}
                   </span>
                 </div>
                 <div class="h-1 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
@@ -244,7 +244,7 @@
                     row.usage_7d >= row.rate_limit_7d * 0.8 ? 'text-yellow-500' :
                     'text-gray-700 dark:text-gray-300'
                   ]">
-                    ${{ row.usage_7d?.toFixed(2) || '0.00' }}/${{ row.rate_limit_7d?.toFixed(2) }}
+                    {{ formatCurrency(row.usage_7d) }}/{{ formatCurrency(row.rate_limit_7d) }}
                   </span>
                 </div>
                 <div class="h-1 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
@@ -577,7 +577,7 @@
                   </span>
                   <span class="mx-2 text-gray-400">/</span>
                   <span class="text-gray-500 dark:text-gray-400">
-                    ${{ selectedKey.quota?.toFixed(2) || '0.00' }}
+                    {{ formatCurrency(selectedKey.quota) }}
                   </span>
                 </div>
                 <button
@@ -644,7 +644,7 @@
                     </span>
                     <span class="mx-2 text-gray-400">/</span>
                     <span class="text-gray-500 dark:text-gray-400">
-                      ${{ selectedKey.rate_limit_5h?.toFixed(2) || '0.00' }}
+                      {{ formatCurrency(selectedKey.rate_limit_5h) }}
                     </span>
                   </div>
                 </div>
@@ -690,7 +690,7 @@
                     </span>
                     <span class="mx-2 text-gray-400">/</span>
                     <span class="text-gray-500 dark:text-gray-400">
-                      ${{ selectedKey.rate_limit_1d?.toFixed(2) || '0.00' }}
+                      {{ formatCurrency(selectedKey.rate_limit_1d) }}
                     </span>
                   </div>
                 </div>
@@ -736,7 +736,7 @@
                     </span>
                     <span class="mx-2 text-gray-400">/</span>
                     <span class="text-gray-500 dark:text-gray-400">
-                      ${{ selectedKey.rate_limit_7d?.toFixed(2) || '0.00' }}
+                      {{ formatCurrency(selectedKey.rate_limit_7d) }}
                     </span>
                   </div>
                 </div>
@@ -1071,7 +1071,7 @@ import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 	import type { ApiKey, Group, PublicSettings, SubscriptionType, GroupPlatform } from '@/types'
 import type { Column } from '@sub2api/plugin-sdk'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
-import { formatDateTime } from '@/utils/format'
+import { formatDateTime, formatCurrency } from '@/utils/format'
 import { maskApiKey } from '@/utils/maskApiKey'
 
 // Helper to format date for datetime-local input

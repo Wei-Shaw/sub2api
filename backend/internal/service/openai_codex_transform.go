@@ -6,6 +6,7 @@ import (
 )
 
 var codexModelMap = map[string]string{
+	"gpt-5.5":                    "gpt-5.5",
 	"gpt-5.4":                    "gpt-5.4",
 	"gpt-5.4-mini":               "gpt-5.4-mini",
 	"gpt-5.4-none":               "gpt-5.4",
@@ -187,8 +188,12 @@ func applyCodexOAuthTransform(reqBody map[string]any, isCodexCLI bool, isCompact
 }
 
 func normalizeCodexModel(model string) string {
+	model = strings.TrimSpace(model)
 	if model == "" {
 		return "gpt-5.4"
+	}
+	if isOpenAIImageGenerationModel(model) {
+		return model
 	}
 
 	modelID := model
@@ -203,6 +208,9 @@ func normalizeCodexModel(model string) string {
 
 	normalized := strings.ToLower(modelID)
 
+	if strings.Contains(normalized, "gpt-5.5") || strings.Contains(normalized, "gpt 5.5") {
+		return "gpt-5.5"
+	}
 	if strings.Contains(normalized, "gpt-5.4-mini") || strings.Contains(normalized, "gpt 5.4 mini") {
 		return "gpt-5.4-mini"
 	}
@@ -229,6 +237,78 @@ func normalizeCodexModel(model string) string {
 	}
 
 	return "gpt-5.4"
+}
+
+func hasOpenAIImageGenerationTool(reqBody map[string]any) bool {
+	rawTools, ok := reqBody["tools"]
+	if !ok || rawTools == nil {
+		return false
+	}
+	tools, ok := rawTools.([]any)
+	if !ok {
+		return false
+	}
+	for _, rawTool := range tools {
+		toolMap, ok := rawTool.(map[string]any)
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(firstNonEmptyString(toolMap["type"])) == "image_generation" {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeOpenAIResponsesImageGenerationTools(reqBody map[string]any) bool {
+	rawTools, ok := reqBody["tools"]
+	if !ok || rawTools == nil {
+		return false
+	}
+	tools, ok := rawTools.([]any)
+	if !ok {
+		return false
+	}
+
+	modified := false
+	for _, rawTool := range tools {
+		toolMap, ok := rawTool.(map[string]any)
+		if !ok || strings.TrimSpace(firstNonEmptyString(toolMap["type"])) != "image_generation" {
+			continue
+		}
+		if _, ok := toolMap["output_format"]; !ok {
+			if value := strings.TrimSpace(firstNonEmptyString(toolMap["format"])); value != "" {
+				toolMap["output_format"] = value
+				modified = true
+			}
+		}
+		if _, ok := toolMap["output_compression"]; !ok {
+			if value, exists := toolMap["compression"]; exists && value != nil {
+				toolMap["output_compression"] = value
+				modified = true
+			}
+		}
+		if _, ok := toolMap["format"]; ok {
+			delete(toolMap, "format")
+			modified = true
+		}
+		if _, ok := toolMap["compression"]; ok {
+			delete(toolMap, "compression")
+			modified = true
+		}
+	}
+	return modified
+}
+
+func validateOpenAIResponsesImageModel(reqBody map[string]any, model string) error {
+	if !hasOpenAIImageGenerationTool(reqBody) {
+		return nil
+	}
+	model = strings.TrimSpace(model)
+	if !isOpenAIImageGenerationModel(model) {
+		return nil
+	}
+	return fmt.Errorf("/v1/responses image_generation requests require a Responses-capable text model; image-only model %q is not allowed", model)
 }
 
 func normalizeOpenAIModelForUpstream(account *Account, model string) string {

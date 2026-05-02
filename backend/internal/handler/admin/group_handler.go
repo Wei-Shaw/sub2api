@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -20,6 +21,8 @@ type GroupHandler struct {
 	adminService         service.AdminService
 	dashboardService     *service.DashboardService
 	groupCapacityService *service.GroupCapacityService
+	// serviceQuotaSvc 用于在删除 group 后失效服务限额缓存（FK CASCADE 自动删除关联，但缓存不感知）。
+	serviceQuotaSvc service.ServiceQuotaService
 }
 
 type optionalLimitField struct {
@@ -72,11 +75,12 @@ func (f optionalLimitField) ToServiceInput() *float64 {
 }
 
 // NewGroupHandler creates a new admin group handler
-func NewGroupHandler(adminService service.AdminService, dashboardService *service.DashboardService, groupCapacityService *service.GroupCapacityService) *GroupHandler {
+func NewGroupHandler(adminService service.AdminService, dashboardService *service.DashboardService, groupCapacityService *service.GroupCapacityService, serviceQuotaSvc service.ServiceQuotaService) *GroupHandler {
 	return &GroupHandler{
 		adminService:         adminService,
 		dashboardService:     dashboardService,
 		groupCapacityService: groupCapacityService,
+		serviceQuotaSvc:      serviceQuotaSvc,
 	}
 }
 
@@ -110,6 +114,8 @@ type CreateGroupRequest struct {
 	RequirePrivacySet           bool                                      `json:"require_privacy_set"`
 	DefaultMappedModel          string                                    `json:"default_mapped_model"`
 	MessagesDispatchModelConfig service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
+	// 分组 RPM 上限（0 = 不限制）
+	RPMLimit int `json:"rpm_limit"`
 	// 从指定分组复制账号（创建后自动绑定）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -145,6 +151,8 @@ type UpdateGroupRequest struct {
 	RequirePrivacySet           *bool                                      `json:"require_privacy_set"`
 	DefaultMappedModel          *string                                    `json:"default_mapped_model"`
 	MessagesDispatchModelConfig *service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
+	// 分组 RPM 上限（0 = 不限制）；nil 表示未提供不改动
+	RPMLimit *int `json:"rpm_limit"`
 	// 从指定分组复制账号（同步操作：先清空当前分组的账号绑定，再绑定源分组的账号）
 	CopyAccountsFromGroupIDs []int64 `json:"copy_accounts_from_group_ids"`
 }
@@ -262,6 +270,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		RequirePrivacySet:               req.RequirePrivacySet,
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
+		RPMLimit:                        req.RPMLimit,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {
@@ -313,6 +322,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		RequirePrivacySet:               req.RequirePrivacySet,
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
+		RPMLimit:                        req.RPMLimit,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
 	})
 	if err != nil {
@@ -336,6 +346,16 @@ func (h *GroupHandler) Delete(c *gin.Context) {
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+
+	// FK CASCADE 已删除 service_quota_paths 中引用本 group 的关联行，
+	// 但服务限额规则缓存（Redis 5min TTL）需要手动失效。
+	// 缓存重载失败不影响主删除流程，仅记日志。
+	if h.serviceQuotaSvc != nil {
+		if err := h.serviceQuotaSvc.ReloadCache(c.Request.Context()); err != nil {
+			slog.WarnContext(c.Request.Context(), "failed to reload service quota cache after group deletion",
+				"group_id", groupID, "err", err)
+		}
 	}
 
 	response.Success(c, gin.H{"message": "Group deleted successfully"})
@@ -475,6 +495,51 @@ func (h *GroupHandler) BatchSetGroupRateMultipliers(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{"message": "Rate multipliers updated successfully"})
+}
+
+// BatchSetGroupRPMOverridesRequest represents batch set rpm_override request
+type BatchSetGroupRPMOverridesRequest struct {
+	Entries []service.GroupRPMOverrideInput `json:"entries" binding:"required"`
+}
+
+// BatchSetGroupRPMOverrides handles batch setting rpm_override for users in a group
+// PUT /api/v1/admin/groups/:id/rpm-overrides
+func (h *GroupHandler) BatchSetGroupRPMOverrides(c *gin.Context) {
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid group ID")
+		return
+	}
+
+	var req BatchSetGroupRPMOverridesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	if err := h.adminService.BatchSetGroupRPMOverrides(c.Request.Context(), groupID, req.Entries); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{"message": "RPM overrides updated successfully"})
+}
+
+// ClearGroupRPMOverrides handles clearing all rpm_override for a group
+// DELETE /api/v1/admin/groups/:id/rpm-overrides
+func (h *GroupHandler) ClearGroupRPMOverrides(c *gin.Context) {
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid group ID")
+		return
+	}
+
+	if err := h.adminService.ClearGroupRPMOverrides(c.Request.Context(), groupID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{"message": "RPM overrides cleared successfully"})
 }
 
 // UpdateSortOrderRequest represents the request to update group sort orders

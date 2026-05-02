@@ -42,9 +42,15 @@
         <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
       </button>
 
-      <div class="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
-        {{ updatedLabel }}<span v-if="intervalSeconds > 0"> · {{ t('monitorCommon.pollEvery', { n: intervalSeconds }) }}</span>
-      </div>
+      <AutoRefreshButton
+        v-if="autoRefresh"
+        :enabled="autoRefresh.enabled.value"
+        :interval-seconds="autoRefresh.intervalSeconds.value"
+        :countdown="autoRefresh.countdown.value"
+        :intervals="autoRefresh.intervals"
+        @update:enabled="autoRefresh.setEnabled"
+        @update:interval="autoRefresh.setInterval"
+      />
     </div>
   </section>
 </template>
@@ -53,17 +59,23 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
-import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
-
+import AutoRefreshButton from '@/components/common/AutoRefreshButton.vue'
 export type MonitorWindow = '7d' | '15d' | '30d'
-export type OverallStatus = 'operational' | 'degraded' | 'unavailable'
+export type OverallStatus = 'operational' | 'degraded'
 
 const props = defineProps<{
   overallStatus: OverallStatus
-  updatedAt: string | null
   intervalSeconds: number
   window: MonitorWindow
   loading: boolean
+  autoRefresh?: {
+    enabled: { value: boolean }
+    intervalSeconds: { value: number }
+    countdown: { value: number }
+    intervals: readonly number[]
+    setEnabled: (v: boolean) => void
+    setInterval: (v: number) => void
+  }
 }>()
 
 const emit = defineEmits<{
@@ -72,7 +84,6 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
-const { formatRelativeTime } = useChannelMonitorFormat()
 
 const windowOptions = computed<{ value: MonitorWindow; label: string }[]>(() => [
   { value: '7d', label: t('channelStatus.windowTab.7d') },
@@ -87,10 +98,8 @@ const overallChipClass = computed(() => {
     case 'operational':
       return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
     case 'degraded':
-      return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
-    case 'unavailable':
     default:
-      return 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300'
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
   }
 })
 
@@ -99,15 +108,9 @@ const overallDotClass = computed(() => {
     case 'operational':
       return 'bg-emerald-500 animate-pulse'
     case 'degraded':
-      return 'bg-amber-500 animate-pulse'
-    case 'unavailable':
     default:
-      return 'bg-red-500 animate-pulse'
+      return 'bg-amber-500 animate-pulse'
   }
 })
 
-const updatedLabel = computed(() => {
-  if (!props.updatedAt) return t('monitorCommon.updatedAt', { time: '--' })
-  return t('monitorCommon.updatedAt', { time: formatRelativeTime(props.updatedAt) })
-})
 </script>

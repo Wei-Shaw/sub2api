@@ -152,6 +152,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				user.FieldSignupSource,
 				user.FieldLastLoginAt,
 				user.FieldLastActiveAt,
+				user.FieldRpmLimit,
 			)
 		}).
 		WithGroup(func(q *dbent.GroupQuery) {
@@ -178,6 +179,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldAllowMessagesDispatch,
 				group.FieldDefaultMappedModel,
 				group.FieldMessagesDispatchModelConfig,
+				group.FieldRpmLimit,
 			)
 		}).
 		Only(ctx)
@@ -669,6 +671,7 @@ func userEntityToService(u *dbent.User) *service.User {
 		BalanceNotifyThresholdType: u.BalanceNotifyThresholdType,
 		BalanceNotifyThreshold:     u.BalanceNotifyThreshold,
 		TotalRecharged:             u.TotalRecharged,
+		RPMLimit:                   u.RpmLimit,
 		CreatedAt:                  u.CreatedAt,
 		UpdatedAt:                  u.UpdatedAt,
 	}
@@ -713,6 +716,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		RequirePrivacySet:               g.RequirePrivacySet,
 		DefaultMappedModel:              g.DefaultMappedModel,
 		MessagesDispatchModelConfig:     g.MessagesDispatchModelConfig,
+		RPMLimit:                        g.RpmLimit,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}

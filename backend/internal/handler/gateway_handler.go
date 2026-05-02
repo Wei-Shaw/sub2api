@@ -241,12 +241,19 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}
 
 	// 2. 【新增】Wait后二次检查余额/订阅
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+	// billingTicket：两阶段计费检查（详见 service.BillingTicket 注释），caller 必须 defer Close。
+	// 选定 account 后通过 ticket.Consume 才按 channel/account scope 抢 service quota concurrency。
+	billingTicket, err := h.billingCacheService.PrepareBillingCheckForRequest(
+		c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription,
+		service.ServiceQuotaCheckRequest{Model: reqModel, ChannelID: channelMapping.ChannelID},
+	)
+	if err != nil {
 		reqLog.Info("gateway.billing_eligibility_check_failed", zap.Error(err))
-		status, code, message := billingErrorDetails(err)
-		h.handleStreamingAwareError(c, status, code, message, streamStarted)
+		status, code, message, metadata := billingErrorDetails(err)
+		h.handleStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
 		return
 	}
+	defer billingTicket.Close()
 
 	// 设置请求所属分组 ID（用于渠道级功能判断，如 WebSearch 模拟）
 	parsedReq.GroupID = apiKey.GroupID
@@ -403,6 +410,17 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 账号槽位/等待计数需要在超时或断开时安全回收
 			accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
 
+			// service quota 第二阶段：基于选定的 channel/account 抢槽位 / 增 RPM。
+			if err := billingTicket.Consume(c.Request.Context(), channelMapping.ChannelID, account.ID); err != nil {
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				reqLog.Info("gateway.service_quota_consume_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+				status, code, message, metadata := billingErrorDetails(err)
+				h.handleStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
+				return
+			}
+
 			// 转发请求 - 根据账号平台分流
 			var result *service.ForwardResult
 			requestCtx := c.Request.Context()
@@ -483,20 +501,21 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 			h.submitUsageRecordTask(func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
-					Result:             result,
-					ParsedRequest:      parsedReq,
-					APIKey:             apiKey,
-					User:               apiKey.User,
-					Account:            account,
-					Subscription:       subscription,
-					InboundEndpoint:    inboundEndpoint,
-					UpstreamEndpoint:   upstreamEndpoint,
-					UserAgent:          userAgent,
-					IPAddress:          clientIP,
-					RequestPayloadHash: requestPayloadHash,
-					ForceCacheBilling:  fs.ForceCacheBilling,
-					APIKeyService:      h.apiKeyService,
-					ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
+					Result:              result,
+					ParsedRequest:       parsedReq,
+					APIKey:              apiKey,
+					User:                apiKey.User,
+					Account:             account,
+					Subscription:        subscription,
+					InboundEndpoint:     inboundEndpoint,
+					UpstreamEndpoint:    upstreamEndpoint,
+					UserAgent:           userAgent,
+					IPAddress:           clientIP,
+					RequestPayloadHash:  requestPayloadHash,
+					ForceCacheBilling:   fs.ForceCacheBilling,
+					APIKeyService:       h.apiKeyService,
+					ChannelUsageFields:  channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
+					ServiceQuotaRequest: service.ServiceQuotaCheckRequest{Model: reqModel, AccountID: account.ID, ChannelID: channelMapping.ChannelID},
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.gateway.messages"),
@@ -639,6 +658,19 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 账号槽位/等待计数需要在超时或断开时安全回收
 			accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
 
+			// service quota 第二阶段：基于选定的 channel/account 抢槽位 / 增 RPM。
+			// fallback 重试切换 account 时同一个 ticket 会再次 Consume，BillingTicket 会先释放
+			// 旧 lease 再抢新的，使 lease 始终对应当前生效的 channel/account。
+			if err := billingTicket.Consume(c.Request.Context(), channelMapping.ChannelID, account.ID); err != nil {
+				if accountReleaseFunc != nil {
+					accountReleaseFunc()
+				}
+				reqLog.Info("gateway.service_quota_consume_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+				status, code, message, metadata := billingErrorDetails(err)
+				h.handleStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
+				return
+			}
+
 			// ===== 用户消息串行队列 START =====
 			var queueRelease func()
 			umqMode := h.getUserMsgQueueMode(account, parsedReq)
@@ -757,11 +789,27 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 							return
 						}
 						fallbackAPIKey := cloneAPIKeyWithGroup(apiKey, fallbackGroup)
-						if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), fallbackAPIKey.User, fallbackAPIKey, fallbackGroup, nil); err != nil {
-							status, code, message := billingErrorDetails(err)
-							h.handleStreamingAwareError(c, status, code, message, streamStarted)
+						// 切换 group 时必须重算 channelMapping：原 channelMapping 来自外层 group 的渠道
+						// 配置，channelID 与 model 映射规则都不适用于 fallback group。沿用旧 channelID
+						// 会让后续 BillingTicket.Consume 命中错误的 channel-scope 规则；沿用旧映射结果
+						// 还会用错误的 model 替换请求 body。这里在 PrepareBillingCheckForRequest 之前
+						// 重算，使 ChannelID 能正确传入 service quota 第一阶段检查。
+						fallbackChannelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(
+							c.Request.Context(), fallbackAPIKey.GroupID, fallbackAPIKey.GroupPlatform(), reqModel,
+						)
+						// fallbackBillingTicket 与外层 billingTicket 是不同 scope（不同 group / 规则匹配），
+						// defer 与 handler 同生命周期。注意：fallback 重试回到外层 select-account 循环后，
+						// Consume 会基于新选定的 account 抢槽位；这里只完成"必到字段"检查。
+						fallbackBillingTicket, err := h.billingCacheService.PrepareBillingCheckForRequest(
+							c.Request.Context(), fallbackAPIKey.User, fallbackAPIKey, fallbackGroup, nil,
+							service.ServiceQuotaCheckRequest{Model: reqModel, ChannelID: fallbackChannelMapping.ChannelID},
+						)
+						if err != nil {
+							status, code, message, metadata := billingErrorDetails(err)
+							h.handleStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
 							return
 						}
+						defer fallbackBillingTicket.Close()
 						// 兜底重试按"直接请求兜底分组"处理：清除强制平台，允许按分组平台调度
 						ctx := context.WithValue(c.Request.Context(), ctxkey.ForcePlatform, "")
 						c.Request = c.Request.WithContext(ctx)
@@ -769,6 +817,14 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						currentSubscription = nil
 						fallbackUsed = true
 						retryWithFallback = true
+						// 切换 channelMapping：后续 select-account 循环里的 Consume / model 替换 /
+						// RecordUsage 都依赖该变量，必须替换为 fallback group 的解析结果。
+						channelMapping = fallbackChannelMapping
+						// 切换到 fallbackBillingTicket：原 ticket 关闭释放任何已抢的 lease，
+						// 后续 select-account 循环会在选定新 account 后 Consume 在 fallback ticket 上。
+						// 外层 defer 仍指向原 ticket（once-safe，重复 Close 无害）。
+						billingTicket.Close()
+						billingTicket = fallbackBillingTicket
 						break
 					}
 					_ = h.antigravityGatewayService.WriteMappedClaudeError(c, account, promptTooLongErr.StatusCode, promptTooLongErr.RequestID, promptTooLongErr.Body)
@@ -837,20 +893,21 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 使用量记录通过有界 worker 池提交，避免请求热路径创建无界 goroutine。
 			h.submitUsageRecordTask(func(ctx context.Context) {
 				if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
-					Result:             result,
-					ParsedRequest:      parsedReq,
-					APIKey:             currentAPIKey,
-					User:               currentAPIKey.User,
-					Account:            account,
-					Subscription:       currentSubscription,
-					InboundEndpoint:    inboundEndpoint,
-					UpstreamEndpoint:   upstreamEndpoint,
-					UserAgent:          userAgent,
-					IPAddress:          clientIP,
-					RequestPayloadHash: requestPayloadHash,
-					ForceCacheBilling:  fs.ForceCacheBilling,
-					APIKeyService:      h.apiKeyService,
-					ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
+					Result:              result,
+					ParsedRequest:       parsedReq,
+					APIKey:              currentAPIKey,
+					User:                currentAPIKey.User,
+					Account:             account,
+					Subscription:        currentSubscription,
+					InboundEndpoint:     inboundEndpoint,
+					UpstreamEndpoint:    upstreamEndpoint,
+					UserAgent:           userAgent,
+					IPAddress:           clientIP,
+					RequestPayloadHash:  requestPayloadHash,
+					ForceCacheBilling:   fs.ForceCacheBilling,
+					APIKeyService:       h.apiKeyService,
+					ChannelUsageFields:  channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
+					ServiceQuotaRequest: service.ServiceQuotaCheckRequest{Model: reqModel, AccountID: account.ID, ChannelID: channelMapping.ChannelID},
 				}); err != nil {
 					logger.L().With(
 						zap.String("component", "handler.gateway.messages"),
@@ -1314,12 +1371,20 @@ func (h *GatewayHandler) mapUpstreamError(statusCode int) (int, string, string) 
 
 // handleStreamingAwareError handles errors that may occur after streaming has started
 func (h *GatewayHandler) handleStreamingAwareError(c *gin.Context, status int, errType, message string, streamStarted bool) {
+	h.handleStreamingAwareErrorWithMetadata(c, status, errType, message, nil, streamStarted)
+}
+
+// handleStreamingAwareErrorWithMetadata 带 metadata 的错误处理
+// metadata 在非流式响应中作为 JSON 字段透传；流式场景下为避免破坏 SSE schema 只作为 error 对象字段追加。
+func (h *GatewayHandler) handleStreamingAwareErrorWithMetadata(c *gin.Context, status int, errType, message string, metadata map[string]string, streamStarted bool) {
+	if ra, ok := metadata["retry_after"]; ok && ra != "" {
+		c.Header("Retry-After", ra)
+	}
 	if streamStarted {
-		// Stream already started, send error as SSE event then close
 		flusher, ok := c.Writer.(http.Flusher)
 		if ok {
-			// SSE 错误事件固定 schema，使用 Quote 直拼可避免额外 Marshal 分配。
-			errorEvent := `data: {"type":"error","error":{"type":` + strconv.Quote(errType) + `,"message":` + strconv.Quote(message) + `}}` + "\n\n"
+			// SSE 错误事件固定 schema；metadata 作为 error 对象的字段注入（非破坏性）。
+			errorEvent := streamingErrorEvent(errType, message, metadata)
 			if _, err := fmt.Fprint(c.Writer, errorEvent); err != nil {
 				_ = c.Error(err)
 			}
@@ -1327,9 +1392,19 @@ func (h *GatewayHandler) handleStreamingAwareError(c *gin.Context, status int, e
 		}
 		return
 	}
+	h.errorResponseWithMetadata(c, status, errType, message, metadata)
+}
 
-	// Normal case: return JSON response with proper status code
-	h.errorResponse(c, status, errType, message)
+// streamingErrorEvent 构造 SSE 错误事件字符串（含可选 metadata）
+func streamingErrorEvent(errType, message string, metadata map[string]string) string {
+	base := `data: {"type":"error","error":{"type":` + strconv.Quote(errType) + `,"message":` + strconv.Quote(message)
+	if len(metadata) > 0 {
+		mdJSON, err := json.Marshal(metadata)
+		if err == nil {
+			base += `,"metadata":` + string(mdJSON)
+		}
+	}
+	return base + "}}\n\n"
 }
 
 // ensureForwardErrorResponse 在 Forward 返回错误但尚未写响应时补写统一错误响应。
@@ -1387,13 +1462,30 @@ func (h *GatewayHandler) checkClaudeCodeVersion(c *gin.Context) bool {
 
 // errorResponse 返回Claude API格式的错误响应
 func (h *GatewayHandler) errorResponse(c *gin.Context, status int, errType, message string) {
-	c.JSON(status, gin.H{
-		"type": "error",
+	h.errorResponseWithMetadata(c, status, errType, message, nil)
+}
+
+// errorResponseWithMetadata 返回 Claude API 格式错误响应，额外附带 metadata。
+// 用于配额超限等需要把上下文（scope/limit_usd/...）带回前端做 i18n 渲染的场景。
+//
+// 契约 §3.3 / 决策 0.4：响应顶层必须携带 reason 字段（值与 errType 相同，即 billingErrorDetails
+// 返回的 code），供前端 extractApiErrorCode 走 data.reason 通路匹配 i18nMap。
+func (h *GatewayHandler) errorResponseWithMetadata(c *gin.Context, status int, errType, message string, metadata map[string]string) {
+	if ra, ok := metadata["retry_after"]; ok && ra != "" {
+		c.Header("Retry-After", ra)
+	}
+	body := gin.H{
+		"type":   "error",
+		"reason": errType,
 		"error": gin.H{
 			"type":    errType,
 			"message": message,
 		},
-	})
+	}
+	if len(metadata) > 0 {
+		body["metadata"] = metadata
+	}
+	c.JSON(status, body)
 }
 
 // CountTokens handles token counting endpoint
@@ -1463,11 +1555,17 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 
 	// 校验 billing eligibility（订阅/余额）
 	// 【注意】不计算并发，但需要校验订阅/余额
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
-		status, code, message := billingErrorDetails(err)
-		h.errorResponse(c, status, code, message)
+	// billingTicket：两阶段计费检查（详见 service.BillingTicket 注释），caller 必须 defer Close。
+	billingTicket, err := h.billingCacheService.PrepareBillingCheckForRequest(
+		c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription,
+		service.ServiceQuotaCheckRequest{Model: parsedReq.Model},
+	)
+	if err != nil {
+		status, code, message, metadata := billingErrorDetails(err)
+		h.errorResponseWithMetadata(c, status, code, message, metadata)
 		return
 	}
+	defer billingTicket.Close()
 
 	// 计算粘性会话 hash
 	parsedReq.SessionContext = &service.SessionContext{
@@ -1477,6 +1575,11 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	}
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
 
+	// 解析渠道级模型映射：count_tokens 不抢账号并发槽位，但服务限额仍要按 channel/account scope
+	// 检查，因此需要把 channelID 传给 BillingTicket.Consume（与主请求路径一致）。
+	// 仅做映射，restricted 检查已移至调度阶段，这里忽略 bool 返回值。
+	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, apiKey.GroupPlatform(), parsedReq.Model)
+
 	// 选择支持该模型的账号
 	account, err := h.gatewayService.SelectAccountForModel(c.Request.Context(), apiKey.GroupID, sessionHash, parsedReq.Model)
 	if err != nil {
@@ -1485,6 +1588,14 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 		return
 	}
 	setOpsSelectedAccount(c, account.ID, account.Platform)
+
+	// service quota 第二阶段：count_tokens 不抢账号并发槽位，但服务限额仍要按 channel/account scope 检查。
+	if err := billingTicket.Consume(c.Request.Context(), channelMapping.ChannelID, account.ID); err != nil {
+		reqLog.Info("gateway.count_tokens_service_quota_consume_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		status, code, message, metadata := billingErrorDetails(err)
+		h.errorResponseWithMetadata(c, status, code, message, metadata)
+		return
+	}
 
 	// 转发请求（不记录使用量）
 	if err := h.gatewayService.ForwardCountTokens(c.Request.Context(), c, account, parsedReq); err != nil {
@@ -1707,25 +1818,38 @@ func sendMockInterceptResponse(c *gin.Context, model string, interceptType Inter
 	c.JSON(http.StatusOK, response)
 }
 
-func billingErrorDetails(err error) (status int, code, message string) {
+// billingErrorDetails 将计费错误转换为 HTTP 响应参数。
+// 返回 status + code（error type）+ message + metadata（可为 nil）。
+// 配额超限必须通过 metadata 透传 scope/limit/used/reset_at 给前端 i18n。
+func billingErrorDetails(err error) (status int, code, message string, metadata map[string]string) {
 	if errors.Is(err, service.ErrBillingServiceUnavailable) {
 		msg := pkgerrors.Message(err)
 		if msg == "" {
 			msg = "Billing service temporarily unavailable. Please retry later."
 		}
-		return http.StatusServiceUnavailable, "billing_service_error", msg
+		return http.StatusServiceUnavailable, "billing_service_error", msg, nil
 	}
 	if errors.Is(err, service.ErrAPIKeyRateLimit5hExceeded) {
-		msg := pkgerrors.Message(err)
-		return http.StatusTooManyRequests, "rate_limit_exceeded", msg
+		return http.StatusTooManyRequests, "rate_limit_exceeded", pkgerrors.Message(err), nil
 	}
 	if errors.Is(err, service.ErrAPIKeyRateLimit1dExceeded) {
-		msg := pkgerrors.Message(err)
-		return http.StatusTooManyRequests, "rate_limit_exceeded", msg
+		return http.StatusTooManyRequests, "rate_limit_exceeded", pkgerrors.Message(err), nil
 	}
 	if errors.Is(err, service.ErrAPIKeyRateLimit7dExceeded) {
+		return http.StatusTooManyRequests, "rate_limit_exceeded", pkgerrors.Message(err), nil
+	}
+	if errors.Is(err, service.ErrGroupRPMExceeded) || errors.Is(err, service.ErrUserRPMExceeded) {
 		msg := pkgerrors.Message(err)
-		return http.StatusTooManyRequests, "rate_limit_exceeded", msg
+		retrySeconds := 60 - int(time.Now().Unix()%60)
+		return http.StatusTooManyRequests, "rate_limit_exceeded", msg, map[string]string{"retry_after": strconv.Itoa(retrySeconds)}
+	}
+	if errors.Is(err, service.ErrServiceQuotaExceeded) {
+		app := pkgerrors.FromError(err)
+		var md map[string]string
+		if app != nil {
+			md = app.Metadata
+		}
+		return http.StatusTooManyRequests, "SERVICE_QUOTA_EXCEEDED", pkgerrors.Message(err), md
 	}
 	msg := pkgerrors.Message(err)
 	if msg == "" {
@@ -1735,7 +1859,7 @@ func billingErrorDetails(err error) (status int, code, message string) {
 		).Warn("gateway.billing_error_missing_message")
 		msg = "Billing error"
 	}
-	return http.StatusForbidden, "billing_error", msg
+	return http.StatusForbidden, "billing_error", msg, nil
 }
 
 func (h *GatewayHandler) metadataBridgeEnabled() bool {

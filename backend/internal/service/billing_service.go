@@ -20,25 +20,43 @@ type APIKeyRateLimitCacheData struct {
 	Window7d int64   `json:"window_7d"`
 }
 
-// BillingCache defines cache operations for billing service
-type BillingCache interface {
-	// Balance operations
+// ---- 计费缓存按关注点拆分的子接口（ISP） ----
+//
+// 每个关注点（余额 / 订阅 / API Key 限速 / 用户每日配额）是独立的小接口，单个消费者可以
+// 只依赖它需要的那一块，测试 stub 也只需实现对应的小接口。生产实现 *billingCache
+// 自然同时满足全部 4 个子接口。BillingCache 通过接口嵌入组合四者，兼容既有调用方。
+
+// BalanceCache 用户余额缓存操作
+type BalanceCache interface {
 	GetUserBalance(ctx context.Context, userID int64) (float64, error)
 	SetUserBalance(ctx context.Context, userID int64, balance float64) error
 	DeductUserBalance(ctx context.Context, userID int64, amount float64) error
 	InvalidateUserBalance(ctx context.Context, userID int64) error
+}
 
-	// Subscription operations
+// SubscriptionCache 订阅用量缓存操作
+type SubscriptionCache interface {
 	GetSubscriptionCache(ctx context.Context, userID, groupID int64) (*SubscriptionCacheData, error)
 	SetSubscriptionCache(ctx context.Context, userID, groupID int64, data *SubscriptionCacheData) error
 	UpdateSubscriptionUsage(ctx context.Context, userID, groupID int64, cost float64) error
 	InvalidateSubscriptionCache(ctx context.Context, userID, groupID int64) error
+}
 
-	// API Key rate limit operations
+// RateLimitCache API Key 限速缓存操作
+type RateLimitCache interface {
 	GetAPIKeyRateLimit(ctx context.Context, keyID int64) (*APIKeyRateLimitCacheData, error)
 	SetAPIKeyRateLimit(ctx context.Context, keyID int64, data *APIKeyRateLimitCacheData) error
 	UpdateAPIKeyRateLimitUsage(ctx context.Context, keyID int64, cost float64) error
 	InvalidateAPIKeyRateLimit(ctx context.Context, keyID int64) error
+}
+
+// BillingCache 计费服务的完整缓存接口（3 个关注点的组合）。
+// 保留该聚合接口是为了兼容现有消费者（如 *BillingCacheService）；新代码应尽量依赖
+// 更窄的子接口（BalanceCache / SubscriptionCache / RateLimitCache）。
+type BillingCache interface {
+	BalanceCache
+	SubscriptionCache
+	RateLimitCache
 }
 
 // ModelPricing 模型价格配置（per-token价格，与LiteLLM格式一致）
@@ -240,6 +258,9 @@ func (s *BillingService) initFallbackPricing() {
 		LongContextInputMultiplier:     openAIGPT54LongContextInputMultiplier,
 		LongContextOutputMultiplier:    openAIGPT54LongContextOutputMultiplier,
 	}
+	// GPT-5.5 暂无独立定价，回退到 GPT-5.4
+	s.fallbackPrices["gpt-5.5"] = s.fallbackPrices["gpt-5.4"]
+
 	s.fallbackPrices["gpt-5.4-mini"] = &ModelPricing{
 		InputPricePerToken:     7.5e-7,
 		OutputPricePerToken:    4.5e-6,
@@ -311,6 +332,8 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	if strings.Contains(modelLower, "gpt-5") || strings.Contains(modelLower, "codex") {
 		normalized := normalizeCodexModel(modelLower)
 		switch normalized {
+		case "gpt-5.5":
+			return s.fallbackPrices["gpt-5.5"]
 		case "gpt-5.4-mini":
 			return s.fallbackPrices["gpt-5.4-mini"]
 		case "gpt-5.4":
@@ -696,7 +719,8 @@ func isOpenAIGPT54Model(model string) bool {
 	if !strings.Contains(trimmed, "gpt-5") && !strings.Contains(trimmed, "codex") {
 		return false
 	}
-	return normalizeCodexModel(trimmed) == "gpt-5.4"
+	normalized := normalizeCodexModel(trimmed)
+	return normalized == "gpt-5.4" || normalized == "gpt-5.5"
 }
 
 // CalculateCostWithConfig 使用配置中的默认倍率计算费用

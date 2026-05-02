@@ -2170,6 +2170,24 @@
                     {{ t("admin.settings.defaults.defaultConcurrencyHint") }}
                   </p>
                 </div>
+                <div>
+                  <label
+                    class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{ t("admin.settings.defaults.defaultUserRpmLimit") }}
+                  </label>
+                  <input
+                    v-model.number="form.default_user_rpm_limit"
+                    type="number"
+                    min="0"
+                    step="1"
+                    class="input"
+                    placeholder="0"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.defaults.defaultUserRpmLimitHint") }}
+                  </p>
+                </div>
               </div>
 
               <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
@@ -3833,6 +3851,39 @@
               </div>
             </div>
           </div>
+
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.features.serviceQuota.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.features.serviceQuota.description") }}
+              </p>
+              <p class="mt-1.5 text-xs">
+                <router-link
+                  to="/admin/service-quotas"
+                  class="inline-flex items-center gap-1 text-primary-600 hover:underline dark:text-primary-400"
+                >
+                  {{ t("admin.settings.features.serviceQuota.configureLink") }}
+                  <span aria-hidden="true">→</span>
+                </router-link>
+              </p>
+            </div>
+            <div class="p-6">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.features.serviceQuota.enabled") }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.features.serviceQuota.enabledHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.service_quota_enabled" />
+              </div>
+            </div>
+          </div>
         </div>
         <!-- /Tab: Features -->
 
@@ -4253,6 +4304,8 @@
                     }}</label>
                     <ImageUpload
                       v-model="form.payment_help_image_url"
+                      :upload-label="t('admin.settings.site.uploadImage')"
+                      :remove-label="t('admin.settings.site.remove')"
                       :placeholder="
                         t('admin.settings.payment.helpImagePlaceholder')
                       "
@@ -4939,6 +4992,7 @@ type SettingsForm = Omit<
   oidc_connect_client_secret: string;
   force_email_on_third_party_signup: boolean;
   openai_advanced_scheduler_enabled: boolean;
+  service_quota_enabled: boolean;
 };
 
 const form = reactive<SettingsForm>({
@@ -4954,6 +5008,7 @@ const form = reactive<SettingsForm>({
   default_concurrency: 1,
   default_subscriptions: [],
   force_email_on_third_party_signup: false,
+  default_user_rpm_limit: 0,
   site_name: "Sub2API",
   site_logo: "",
   site_subtitle: "Subscription to API Conversion Platform",
@@ -5097,6 +5152,7 @@ const form = reactive<SettingsForm>({
   channel_monitor_default_interval_seconds: 60,
   // Available Channels feature switch
   available_channels_enabled: false,
+  service_quota_enabled: false,
 });
 
 const authSourceDefaults = reactive<AuthSourceDefaultsState>(
@@ -5875,6 +5931,7 @@ async function saveSettings() {
       default_concurrency: form.default_concurrency,
       default_subscriptions: normalizedDefaultSubscriptions,
       force_email_on_third_party_signup: form.force_email_on_third_party_signup,
+      default_user_rpm_limit: form.default_user_rpm_limit,
       site_name: form.site_name,
       site_logo: form.site_logo,
       site_subtitle: form.site_subtitle,
@@ -6010,6 +6067,7 @@ async function saveSettings() {
         Number(form.channel_monitor_default_interval_seconds) || 60,
       // Available Channels feature switch
       available_channels_enabled: form.available_channels_enabled,
+      service_quota_enabled: form.service_quota_enabled,
     };
 
     appendAuthSourceDefaultsToUpdateRequest(payload, authSourceDefaults);
@@ -6062,6 +6120,12 @@ async function saveSettings() {
     // Save web search emulation config separately (errors handled internally)
     const wsOk = await saveWebSearchConfig();
     // Refresh cached settings so sidebar/header update immediately
+    appStore.patchPublicSettings({
+      channel_monitor_enabled: form.channel_monitor_enabled,
+      available_channels_enabled: form.available_channels_enabled,
+      service_quota_enabled: form.service_quota_enabled,
+      payment_enabled: form.payment_enabled,
+    });
     await appStore.fetchPublicSettings(true);
     await adminSettingsStore.fetch(true);
     if (wsOk) {

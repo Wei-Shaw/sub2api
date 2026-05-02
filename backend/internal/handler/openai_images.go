@@ -106,12 +106,18 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		defer userReleaseFunc()
 	}
 
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription); err != nil {
+	// billingTicket：两阶段计费检查（详见 service.BillingTicket 注释），caller 必须 defer Close。
+	billingTicket, err := h.billingCacheService.PrepareBillingCheckForRequest(
+		c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription,
+		service.ServiceQuotaCheckRequest{Model: parsed.Model, ChannelID: channelMapping.ChannelID},
+	)
+	if err != nil {
 		reqLog.Info("openai.images.billing_eligibility_check_failed", zap.Error(err))
-		status, code, message := billingErrorDetails(err)
-		h.handleStreamingAwareError(c, status, code, message, streamStarted)
+		status, code, message, metadata := billingErrorDetails(err)
+		h.handleStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
 		return
 	}
+	defer billingTicket.Close()
 
 	sessionHash := ""
 	if parsed.Multipart {
@@ -173,6 +179,17 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, parsed.Stream, &streamStarted, reqLog)
 		if !acquired {
+			return
+		}
+
+		// service quota 第二阶段：基于选定的 channel/account 抢槽位 / 增 RPM。
+		if err := billingTicket.Consume(c.Request.Context(), channelMapping.ChannelID, account.ID); err != nil {
+			if accountReleaseFunc != nil {
+				accountReleaseFunc()
+			}
+			reqLog.Info("openai.images.service_quota_consume_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+			status, code, message, metadata := billingErrorDetails(err)
+			h.handleStreamingAwareErrorWithMetadata(c, status, code, message, metadata, streamStarted)
 			return
 		}
 

@@ -425,6 +425,20 @@ func (_c *GroupCreate) SetNillableMessagesDispatchModelConfig(v *domain.OpenAIMe
 	return _c
 }
 
+// SetRpmLimit sets the "rpm_limit" field.
+func (_c *GroupCreate) SetRpmLimit(v int) *GroupCreate {
+	_c.mutation.SetRpmLimit(v)
+	return _c
+}
+
+// SetNillableRpmLimit sets the "rpm_limit" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableRpmLimit(v *int) *GroupCreate {
+	if v != nil {
+		_c.SetRpmLimit(*v)
+	}
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -630,6 +644,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultMessagesDispatchModelConfig
 		_c.mutation.SetMessagesDispatchModelConfig(v)
 	}
+	if _, ok := _c.mutation.RpmLimit(); !ok {
+		v := group.DefaultRpmLimit
+		_c.mutation.SetRpmLimit(v)
+	}
 	return nil
 }
 
@@ -716,6 +734,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.MessagesDispatchModelConfig(); !ok {
 		return &ValidationError{Name: "messages_dispatch_model_config", err: errors.New(`ent: missing required field "Group.messages_dispatch_model_config"`)}
+	}
+	if _, ok := _c.mutation.RpmLimit(); !ok {
+		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "Group.rpm_limit"`)}
 	}
 	return nil
 }
@@ -863,6 +884,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.MessagesDispatchModelConfig(); ok {
 		_spec.SetField(group.FieldMessagesDispatchModelConfig, field.TypeJSON, value)
 		_node.MessagesDispatchModelConfig = value
+	}
+	if value, ok := _c.mutation.RpmLimit(); ok {
+		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
+		_node.RpmLimit = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1500,6 +1525,24 @@ func (u *GroupUpsert) UpdateMessagesDispatchModelConfig() *GroupUpsert {
 	return u
 }
 
+// SetRpmLimit sets the "rpm_limit" field.
+func (u *GroupUpsert) SetRpmLimit(v int) *GroupUpsert {
+	u.Set(group.FieldRpmLimit, v)
+	return u
+}
+
+// UpdateRpmLimit sets the "rpm_limit" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateRpmLimit() *GroupUpsert {
+	u.SetExcluded(group.FieldRpmLimit)
+	return u
+}
+
+// AddRpmLimit adds v to the "rpm_limit" field.
+func (u *GroupUpsert) AddRpmLimit(v int) *GroupUpsert {
+	u.Add(group.FieldRpmLimit, v)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -2102,6 +2145,27 @@ func (u *GroupUpsertOne) SetMessagesDispatchModelConfig(v domain.OpenAIMessagesD
 func (u *GroupUpsertOne) UpdateMessagesDispatchModelConfig() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateMessagesDispatchModelConfig()
+	})
+}
+
+// SetRpmLimit sets the "rpm_limit" field.
+func (u *GroupUpsertOne) SetRpmLimit(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetRpmLimit(v)
+	})
+}
+
+// AddRpmLimit adds v to the "rpm_limit" field.
+func (u *GroupUpsertOne) AddRpmLimit(v int) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddRpmLimit(v)
+	})
+}
+
+// UpdateRpmLimit sets the "rpm_limit" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateRpmLimit() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateRpmLimit()
 	})
 }
 
@@ -2873,6 +2937,27 @@ func (u *GroupUpsertBulk) SetMessagesDispatchModelConfig(v domain.OpenAIMessages
 func (u *GroupUpsertBulk) UpdateMessagesDispatchModelConfig() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateMessagesDispatchModelConfig()
+	})
+}
+
+// SetRpmLimit sets the "rpm_limit" field.
+func (u *GroupUpsertBulk) SetRpmLimit(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetRpmLimit(v)
+	})
+}
+
+// AddRpmLimit adds v to the "rpm_limit" field.
+func (u *GroupUpsertBulk) AddRpmLimit(v int) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddRpmLimit(v)
+	})
+}
+
+// UpdateRpmLimit sets the "rpm_limit" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateRpmLimit() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateRpmLimit()
 	})
 }
 

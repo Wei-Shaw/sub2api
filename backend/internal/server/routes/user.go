@@ -121,5 +121,11 @@ func RegisterUserRoutes(
 		//     monitors.GET("", h.ChannelMonitor.List)
 		//     monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
 		// }
+
+		// 服务限额（用户只读 "我的限额"）
+		if h.UserServiceQuota != nil {
+			serviceQuotas := authenticated.Group("/service-quotas")
+			serviceQuotas.GET("/my", h.UserServiceQuota.MyQuota)
+		}
 	}
 }

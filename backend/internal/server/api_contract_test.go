@@ -59,6 +59,7 @@ func TestAPIContracts(t *testing.T) {
 					"balance_notify_threshold": null,
 					"balance_notify_threshold_type": "",
 					"concurrency": 5,
+					"rpm_limit": 0,
 					"status": "active",
 					"total_recharged": 0,
 					"allowed_groups": null,
@@ -338,6 +339,7 @@ func TestAPIContracts(t *testing.T) {
 						"fallback_group_id_on_invalid_request": null,
 						"require_oauth_only": false,
 						"require_privacy_set": false,
+						"rpm_limit": 0,
 						"created_at": "2025-01-02T03:04:05Z",
 						"updated_at": "2025-01-02T03:04:05Z"
 					}
@@ -481,6 +483,8 @@ func TestAPIContracts(t *testing.T) {
 					"total_input_tokens": 15,
 					"total_output_tokens": 35,
 					"total_cache_tokens": 3,
+					"total_cache_read_tokens": 2,
+					"total_cache_creation_tokens": 1,
 					"total_tokens": 53,
 					"total_cost": 0.75,
 					"total_actual_cost": 0.75,
@@ -641,6 +645,7 @@ func TestAPIContracts(t *testing.T) {
 				"code": 0,
 				"message": "success",
 				"data": {
+					"service_quota_enabled": false,
 					"registration_enabled": true,
 					"email_verify_enabled": false,
 					"registration_email_suffix_whitelist": [],
@@ -718,6 +723,7 @@ func TestAPIContracts(t *testing.T) {
 					"force_email_on_third_party_signup": false,
 					"default_concurrency": 5,
 					"default_balance": 1.25,
+					"default_user_rpm_limit": 0,
 					"default_subscriptions": [],
 					"enable_model_fallback": false,
 					"fallback_model_anthropic": "claude-3-5-sonnet-20241022",
@@ -836,6 +842,7 @@ func TestAPIContracts(t *testing.T) {
 				"code": 0,
 				"message": "success",
 				"data": {
+					"service_quota_enabled": false,
 					"registration_enabled": true,
 					"email_verify_enabled": false,
 					"registration_email_suffix_whitelist": [],
@@ -897,6 +904,7 @@ func TestAPIContracts(t *testing.T) {
 					"custom_endpoints": [],
 					"default_concurrency": 0,
 					"default_balance": 0,
+					"default_user_rpm_limit": 0,
 					"default_subscriptions": [],
 					"enable_model_fallback": false,
 					"fallback_model_anthropic": "claude-3-5-sonnet-20241022",
@@ -1098,12 +1106,12 @@ func newContractDeps(t *testing.T) *contractDeps {
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
 
-	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminService := service.NewAdminService(userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService)
-	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil, nil, nil)
-	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminSettingHandler := adminhandler.NewSettingHandler(settingService, nil, nil, nil, nil, nil, nil)
+	adminAccountHandler := adminhandler.NewAccountHandler(adminService, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	jwtAuth := func(c *gin.Context) {
 		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{
@@ -2170,7 +2178,8 @@ func (r *stubUsageLogRepo) GetUserStatsAggregated(ctx context.Context, userID in
 	var totalRequests int64
 	var totalInputTokens int64
 	var totalOutputTokens int64
-	var totalCacheTokens int64
+	var totalCacheReadTokens int64
+	var totalCacheCreationTokens int64
 	var totalCost float64
 	var totalActualCost float64
 	var totalDuration int64
@@ -2180,7 +2189,8 @@ func (r *stubUsageLogRepo) GetUserStatsAggregated(ctx context.Context, userID in
 		totalRequests++
 		totalInputTokens += int64(log.InputTokens)
 		totalOutputTokens += int64(log.OutputTokens)
-		totalCacheTokens += int64(log.CacheCreationTokens + log.CacheReadTokens)
+		totalCacheReadTokens += int64(log.CacheReadTokens)
+		totalCacheCreationTokens += int64(log.CacheCreationTokens)
 		totalCost += log.TotalCost
 		totalActualCost += log.ActualCost
 		if log.DurationMs != nil {
@@ -2194,15 +2204,18 @@ func (r *stubUsageLogRepo) GetUserStatsAggregated(ctx context.Context, userID in
 		avgDuration = float64(totalDuration) / float64(durationCount)
 	}
 
+	totalCacheTokens := totalCacheReadTokens + totalCacheCreationTokens
 	return &usagestats.UsageStats{
-		TotalRequests:     totalRequests,
-		TotalInputTokens:  totalInputTokens,
-		TotalOutputTokens: totalOutputTokens,
-		TotalCacheTokens:  totalCacheTokens,
-		TotalTokens:       totalInputTokens + totalOutputTokens + totalCacheTokens,
-		TotalCost:         totalCost,
-		TotalActualCost:   totalActualCost,
-		AverageDurationMs: avgDuration,
+		TotalRequests:            totalRequests,
+		TotalInputTokens:         totalInputTokens,
+		TotalOutputTokens:        totalOutputTokens,
+		TotalCacheReadTokens:     totalCacheReadTokens,
+		TotalCacheCreationTokens: totalCacheCreationTokens,
+		TotalCacheTokens:         totalCacheTokens,
+		TotalTokens:              totalInputTokens + totalOutputTokens + totalCacheTokens,
+		TotalCost:                totalCost,
+		TotalActualCost:          totalActualCost,
+		AverageDurationMs:        avgDuration,
 	}, nil
 }
 

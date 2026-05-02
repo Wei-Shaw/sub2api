@@ -2,10 +2,10 @@
   <AppLayout>
     <MonitorHero
       :overall-status="overallStatus"
-      :updated-at="updatedAt"
       :interval-seconds="DEFAULT_INTERVAL_SECONDS"
       :window="currentWindow"
       :loading="loading"
+      :auto-refresh="autoRefresh"
       @update:window="handleWindowChange"
       @refresh="manualReload"
     />
@@ -47,6 +47,7 @@ import MonitorHero, {
 import MonitorCardGrid from '@/components/user/monitor/MonitorCardGrid.vue'
 import MonitorDetailDialog from '@/components/user/MonitorDetailDialog.vue'
 import { DEFAULT_INTERVAL_SECONDS, STATUS_OPERATIONAL } from '@/constants/channelMonitor'
+import { useAutoRefresh } from '@/composables/useAutoRefresh'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -54,28 +55,29 @@ const appStore = useAppStore()
 // ── State ──
 const items = ref<UserMonitorView[]>([])
 const loading = ref(false)
-const updatedAt = ref<string | null>(null)
 const currentWindow = ref<MonitorWindow>('7d')
 const detailCache = reactive<Record<number, UserMonitorDetail>>({})
-const countdown = ref(DEFAULT_INTERVAL_SECONDS)
-
 const showDetail = ref(false)
 const detailTarget = ref<UserMonitorView | null>(null)
 
-let countdownTimer: number | undefined
 let abortController: AbortController | null = null
+
+const autoRefresh = useAutoRefresh({
+  storageKey: 'channel-status-auto-refresh',
+  intervals: [30, 60, 120] as const,
+  defaultInterval: DEFAULT_INTERVAL_SECONDS,
+  onRefresh: () => reload(true),
+  shouldPause: () => document.hidden || loading.value,
+})
+const countdown = autoRefresh.countdown
 
 // ── Computed ──
 const overallStatus = computed<OverallStatus>(() => {
   if (items.value.length === 0) return 'operational'
-  let hasFailure = false
-  let hasDegraded = false
   for (const it of items.value) {
-    if (it.primary_status === 'failed' || it.primary_status === 'error') hasFailure = true
-    else if (it.primary_status !== STATUS_OPERATIONAL) hasDegraded = true
+    if (it.primary_status === 'failed' || it.primary_status === 'error') return 'degraded'
+    if (it.primary_status !== STATUS_OPERATIONAL) return 'degraded'
   }
-  if (hasFailure) return 'unavailable'
-  if (hasDegraded) return 'degraded'
   return 'operational'
 })
 
@@ -93,7 +95,6 @@ async function reload(silent = false) {
     const res = await listChannelMonitorViews({ signal: ctrl.signal })
     if (ctrl.signal.aborted || abortController !== ctrl) return
     items.value = res.items || []
-    updatedAt.value = new Date().toISOString()
   } catch (err: unknown) {
     const e = err as { name?: string; code?: string }
     if (e?.name === 'AbortError' || e?.code === 'ERR_CANCELED') return
@@ -146,48 +147,26 @@ function closeDetail() {
   detailTarget.value = null
 }
 
-// ── Polling ──
-function tick() {
-  if (countdown.value <= 1) {
-    void reload(true)
-    return
-  }
-  countdown.value -= 1
-}
-
 watch(items, () => {
-  // Lazily load detail entries when window requires it and the list refreshes.
   void ensureDetailsForWindow()
 })
-
-function startTimer() {
-  if (countdownTimer !== undefined) return
-  countdownTimer = setInterval(tick, 1000) as unknown as number
-}
-
-function stopTimer() {
-  if (countdownTimer !== undefined) {
-    clearInterval(countdownTimer)
-    countdownTimer = undefined
-  }
-}
 
 watch(
   () => appStore.cachedPublicSettings?.channel_monitor_enabled,
   (enabled) => {
-    if (enabled === false) stopTimer()
-    else startTimer()
+    if (enabled === false) autoRefresh.stop()
+    else if (autoRefresh.enabled.value) autoRefresh.start()
   },
 )
 
-// ── Lifecycle ──
 onMounted(() => {
   void reload(false)
-  if (appStore.cachedPublicSettings?.channel_monitor_enabled !== false) startTimer()
+  if (appStore.cachedPublicSettings?.channel_monitor_enabled !== false) {
+    autoRefresh.setEnabled(true)
+  }
 })
 
 onBeforeUnmount(() => {
-  stopTimer()
   if (abortController) abortController.abort()
 })
 </script>

@@ -60,10 +60,13 @@ type SettingHandler struct {
 	opsService           *service.OpsService
 	paymentConfigService *service.PaymentConfigService
 	paymentService       *service.PaymentService
+	// serviceQuotaSvc 用于在 service_quota_enabled 总开关变更时失效 Redis 缓存。
+	// 没有它，开关切换后 ServiceQuota 中的 5min 启用快照缓存仍会返回旧值。
+	serviceQuotaSvc service.ServiceQuotaService
 }
 
 // NewSettingHandler 创建系统设置处理器
-func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService) *SettingHandler {
+func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService, serviceQuotaSvc service.ServiceQuotaService) *SettingHandler {
 	return &SettingHandler{
 		settingService:       settingService,
 		emailService:         emailService,
@@ -71,6 +74,7 @@ func NewSettingHandler(settingService *service.SettingService, emailService *ser
 		opsService:           opsService,
 		paymentConfigService: paymentConfigService,
 		paymentService:       paymentService,
+		serviceQuotaSvc:      serviceQuotaSvc,
 	}
 }
 
@@ -185,6 +189,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		CustomEndpoints:                        dto.ParseCustomEndpoints(settings.CustomEndpoints),
 		DefaultConcurrency:                     settings.DefaultConcurrency,
 		DefaultBalance:                         settings.DefaultBalance,
+		DefaultUserRPMLimit:                    settings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   defaultSubscriptions,
 		EnableModelFallback:                    settings.EnableModelFallback,
 		FallbackModelAnthropic:                 settings.FallbackModelAnthropic,
@@ -238,6 +243,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ChannelMonitorEnabled:                  settings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds:   settings.ChannelMonitorDefaultIntervalSeconds,
 		AvailableChannelsEnabled:               settings.AvailableChannelsEnabled,
+		ServiceQuotaEnabled:                    settings.ServiceQuotaEnabled,
 	}
 	response.Success(c, systemSettingsResponseData(payload, authSourceDefaults))
 }
@@ -335,6 +341,7 @@ type UpdateSettingsRequest struct {
 	// 默认配置
 	DefaultConcurrency                       int                               `json:"default_concurrency"`
 	DefaultBalance                           float64                           `json:"default_balance"`
+	DefaultUserRPMLimit                      int                               `json:"default_user_rpm_limit"`
 	DefaultSubscriptions                     []dto.DefaultSubscriptionSetting  `json:"default_subscriptions"`
 	AuthSourceDefaultEmailBalance            *float64                          `json:"auth_source_default_email_balance"`
 	AuthSourceDefaultEmailConcurrency        *int                              `json:"auth_source_default_email_concurrency"`
@@ -357,6 +364,8 @@ type UpdateSettingsRequest struct {
 	AuthSourceDefaultWeChatGrantOnSignup     *bool                             `json:"auth_source_default_wechat_grant_on_signup"`
 	AuthSourceDefaultWeChatGrantOnFirstBind  *bool                             `json:"auth_source_default_wechat_grant_on_first_bind"`
 	ForceEmailOnThirdPartySignup             *bool                             `json:"force_email_on_third_party_signup"`
+
+	ServiceQuotaEnabled *bool `json:"service_quota_enabled"`
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`
@@ -1115,18 +1124,25 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                  customEndpointsJSON,
 		DefaultConcurrency:               req.DefaultConcurrency,
 		DefaultBalance:                   req.DefaultBalance,
+		DefaultUserRPMLimit:              req.DefaultUserRPMLimit,
 		DefaultSubscriptions:             defaultSubscriptions,
-		EnableModelFallback:              req.EnableModelFallback,
-		FallbackModelAnthropic:           req.FallbackModelAnthropic,
-		FallbackModelOpenAI:              req.FallbackModelOpenAI,
-		FallbackModelGemini:              req.FallbackModelGemini,
-		FallbackModelAntigravity:         req.FallbackModelAntigravity,
-		EnableIdentityPatch:              req.EnableIdentityPatch,
-		IdentityPatchPrompt:              req.IdentityPatchPrompt,
-		MinClaudeCodeVersion:             req.MinClaudeCodeVersion,
-		MaxClaudeCodeVersion:             req.MaxClaudeCodeVersion,
-		AllowUngroupedKeyScheduling:      req.AllowUngroupedKeyScheduling,
-		BackendModeEnabled:               req.BackendModeEnabled,
+		ServiceQuotaEnabled: func() bool {
+			if req.ServiceQuotaEnabled != nil {
+				return *req.ServiceQuotaEnabled
+			}
+			return previousSettings.ServiceQuotaEnabled
+		}(),
+		EnableModelFallback:         req.EnableModelFallback,
+		FallbackModelAnthropic:      req.FallbackModelAnthropic,
+		FallbackModelOpenAI:         req.FallbackModelOpenAI,
+		FallbackModelGemini:         req.FallbackModelGemini,
+		FallbackModelAntigravity:    req.FallbackModelAntigravity,
+		EnableIdentityPatch:         req.EnableIdentityPatch,
+		IdentityPatchPrompt:         req.IdentityPatchPrompt,
+		MinClaudeCodeVersion:        req.MinClaudeCodeVersion,
+		MaxClaudeCodeVersion:        req.MaxClaudeCodeVersion,
+		AllowUngroupedKeyScheduling: req.AllowUngroupedKeyScheduling,
+		BackendModeEnabled:          req.BackendModeEnabled,
 		OpsMonitoringEnabled: func() bool {
 			if req.OpsMonitoringEnabled != nil {
 				return *req.OpsMonitoringEnabled
@@ -1322,6 +1338,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 	h.auditSettingsUpdate(c, previousSettings, settings, previousAuthSourceDefaults, authSourceDefaults, req)
 
+	// service_quota_enabled 总开关变化后，需要立即失效 Redis 缓存中的启用快照。
+	// 否则在缓存 TTL（5min）内，ServiceQuotaService 的 PreCheck 仍会读取旧值，
+	// 造成开关切换后 5 分钟内行为不一致。
+	if h.serviceQuotaSvc != nil && previousSettings != nil &&
+		previousSettings.ServiceQuotaEnabled != settings.ServiceQuotaEnabled {
+		h.serviceQuotaSvc.InvalidateEnabledCache(c.Request.Context())
+	}
+
 	// 重新获取设置返回
 	updatedSettings, err := h.settingService.GetAllSettings(c.Request.Context())
 	if err != nil {
@@ -1428,6 +1452,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		CustomEndpoints:                        dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		DefaultConcurrency:                     updatedSettings.DefaultConcurrency,
 		DefaultBalance:                         updatedSettings.DefaultBalance,
+		DefaultUserRPMLimit:                    updatedSettings.DefaultUserRPMLimit,
 		DefaultSubscriptions:                   updatedDefaultSubscriptions,
 		EnableModelFallback:                    updatedSettings.EnableModelFallback,
 		FallbackModelAnthropic:                 updatedSettings.FallbackModelAnthropic,
@@ -1480,6 +1505,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorEnabled:                  updatedSettings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds:   updatedSettings.ChannelMonitorDefaultIntervalSeconds,
 		AvailableChannelsEnabled:               updatedSettings.AvailableChannelsEnabled,
+		ServiceQuotaEnabled:                    updatedSettings.ServiceQuotaEnabled,
 	}
 	response.Success(c, systemSettingsResponseData(payload, updatedAuthSourceDefaults))
 }
@@ -1844,6 +1870,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.AvailableChannelsEnabled != after.AvailableChannelsEnabled {
 		changed = append(changed, "available_channels_enabled")
+	}
+	if before.ServiceQuotaEnabled != after.ServiceQuotaEnabled {
+		changed = append(changed, "service_quota_enabled")
 	}
 	changed = appendAuthSourceDefaultChanges(changed, beforeAuthSourceDefaults, afterAuthSourceDefaults)
 	return changed

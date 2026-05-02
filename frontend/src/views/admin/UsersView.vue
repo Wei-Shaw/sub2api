@@ -728,7 +728,7 @@ const toggleableColumns = computed(() =>
 const hiddenColumns = reactive<Set<string>>(new Set())
 
 // Default hidden columns (columns hidden by default on first load)
-const DEFAULT_HIDDEN_COLUMNS = ['notes', 'groups', 'subscriptions', 'usage', 'concurrency']
+const DEFAULT_HIDDEN_COLUMNS = ['notes', 'groups', 'subscriptions', 'usage', 'quota', 'concurrency']
 const REMOVED_COLUMNS = new Set(['last_login_at'])
 const FORCED_VISIBLE_COLUMNS = new Set(['last_active_at'])
 

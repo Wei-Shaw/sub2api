@@ -89,9 +89,32 @@ func RegisterAdminRoutes(
 		// æ¸ éç®¡ç
 		// 渠道管理已迁移到 plugins/channel-management/，路由由插件注册
 
+		// 渠道监控路由已迁移到 plugins/channel-management/
+
 		// 插件管理
 		registerPluginRoutes(admin, h)
 		registerPluginSettingsRoutes(admin, h)
+
+		registerServiceQuotaRoutes(admin, h)
+	}
+}
+
+func registerServiceQuotaRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h.Admin.ServiceQuota == nil {
+		return
+	}
+	quotas := admin.Group("/service-quotas")
+	{
+		quotas.GET("", h.Admin.ServiceQuota.List)
+		quotas.POST("", h.Admin.ServiceQuota.Create)
+		quotas.PUT("/:id", h.Admin.ServiceQuota.Update)
+		quotas.DELETE("/:id", h.Admin.ServiceQuota.Delete)
+		// 手动重置 Redis 计数器（按 rule_id + path_id + limiter_type [+ scope_user_id]）
+		quotas.POST("/reset", h.Admin.ServiceQuota.ResetCounter)
+		// 运行时监控（独立 handler，规则 CRUD 之外的只读快照入口）
+		if h.Admin.ServiceQuotaMonitor != nil {
+			quotas.GET("/monitor", h.Admin.ServiceQuotaMonitor.Snapshot)
+		}
 	}
 }
 
@@ -189,6 +212,9 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		ops.GET("/dashboard/error-trend", h.Admin.Ops.GetDashboardErrorTrend)
 		ops.GET("/dashboard/error-distribution", h.Admin.Ops.GetDashboardErrorDistribution)
 		ops.GET("/dashboard/openai-token-stats", h.Admin.Ops.GetDashboardOpenAITokenStats)
+
+		// Service quota metrics (in-memory atomic counters; not gated by monitoring switch)
+		ops.GET("/service-quota-metrics", h.Admin.Ops.GetServiceQuotaMetrics)
 	}
 }
 
@@ -224,10 +250,12 @@ func registerUserManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		users.GET("/:id/usage", h.Admin.User.GetUserUsage)
 		users.GET("/:id/balance-history", h.Admin.User.GetBalanceHistory)
 		users.POST("/:id/replace-group", h.Admin.User.ReplaceGroup)
+		users.GET("/:id/rpm-status", h.Admin.User.GetUserRPMStatus)
 
 		// User attribute values
 		users.GET("/:id/attributes", h.Admin.UserAttribute.GetUserAttributes)
 		users.PUT("/:id/attributes", h.Admin.UserAttribute.UpdateUserAttributes)
+
 	}
 }
 
@@ -247,6 +275,8 @@ func registerGroupRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		groups.GET("/:id/rate-multipliers", h.Admin.Group.GetGroupRateMultipliers)
 		groups.PUT("/:id/rate-multipliers", h.Admin.Group.BatchSetGroupRateMultipliers)
 		groups.DELETE("/:id/rate-multipliers", h.Admin.Group.ClearGroupRateMultipliers)
+		groups.PUT("/:id/rpm-overrides", h.Admin.Group.BatchSetGroupRPMOverrides)
+		groups.DELETE("/:id/rpm-overrides", h.Admin.Group.ClearGroupRPMOverrides)
 		groups.GET("/:id/api-keys", h.Admin.Group.GetGroupAPIKeys)
 	}
 }

@@ -7,7 +7,9 @@
         <UserDashboardCharts v-model:startDate="startDate" v-model:endDate="endDate" v-model:granularity="granularity" :loading="loadingCharts" :trend="trendData" :models="modelStats" @dateRangeChange="loadCharts" @granularityChange="loadCharts" @refresh="refreshAll" />
         <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <div class="lg:col-span-2"><UserDashboardRecentUsage :data="recentUsage" :loading="loadingUsage" /></div>
-          <div class="lg:col-span-1"><UserDashboardQuickActions /></div>
+          <div class="lg:col-span-1 space-y-6">
+            <UserDashboardQuickActions />
+          </div>
         </div>
       </template>
     </div>

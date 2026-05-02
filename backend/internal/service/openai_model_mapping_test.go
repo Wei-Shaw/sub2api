@@ -91,6 +91,7 @@ func TestNormalizeCodexModel(t *testing.T) {
 		"gpt-5.3-codex-spark-high":  "gpt-5.3-codex-spark",
 		"gpt-5.3-codex-spark-xhigh": "gpt-5.3-codex-spark",
 		"gpt-5.3":                   "gpt-5.3-codex",
+		"gpt-image-2":               "gpt-image-2",
 	}
 
 	for input, expected := range cases {

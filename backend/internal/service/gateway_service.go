@@ -7258,19 +7258,20 @@ func (s *GatewayService) getUserGroupRateMultiplier(ctx context.Context, userID,
 
 // RecordUsageInput 记录使用量的输入参数
 type RecordUsageInput struct {
-	Result             *ForwardResult
-	ParsedRequest      *ParsedRequest
-	APIKey             *APIKey
-	User               *User
-	Account            *Account
-	Subscription       *UserSubscription  // 可选：订阅信息
-	InboundEndpoint    string             // 入站端点（客户端请求路径）
-	UpstreamEndpoint   string             // 上游端点（标准化后的上游路径）
-	UserAgent          string             // 请求的 User-Agent
-	IPAddress          string             // 请求的客户端 IP 地址
-	RequestPayloadHash string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
-	ForceCacheBilling  bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
-	APIKeyService      APIKeyQuotaUpdater // 可选：用于更新API Key配额
+	Result              *ForwardResult
+	ParsedRequest       *ParsedRequest
+	APIKey              *APIKey
+	User                *User
+	Account             *Account
+	Subscription        *UserSubscription  // 可选：订阅信息
+	InboundEndpoint     string             // 入站端点（客户端请求路径）
+	UpstreamEndpoint    string             // 上游端点（标准化后的上游路径）
+	UserAgent           string             // 请求的 User-Agent
+	IPAddress           string             // 请求的客户端 IP 地址
+	RequestPayloadHash  string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
+	ForceCacheBilling   bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
+	APIKeyService       APIKeyQuotaUpdater // 可选：用于更新API Key配额
+	ServiceQuotaRequest ServiceQuotaCheckRequest
 
 	ChannelUsageFields // 渠道映射信息（由 handler 在 Forward 前解析）
 }
@@ -7290,6 +7291,9 @@ type usageLogBestEffortWriter interface {
 }
 
 // postUsageBillingParams 统一扣费所需的参数
+//
+// 4 个 Token 字段分开传，便于 service quota TPM/TPD 限流器按各自 token_components
+// 配置自由选择计入项；下游 Record 调用直接用这 4 个值组装 ServiceQuotaRecordRequest。
 type postUsageBillingParams struct {
 	Cost                  *CostBreakdown
 	User                  *User
@@ -7300,6 +7304,11 @@ type postUsageBillingParams struct {
 	IsSubscriptionBill    bool
 	AccountRateMultiplier float64
 	APIKeyService         APIKeyQuotaUpdater
+	ServiceQuotaRequest   ServiceQuotaCheckRequest
+	InputTokens           int64
+	OutputTokens          int64
+	CacheCreationTokens   int64
+	CacheReadTokens       int64
 }
 
 func (p *postUsageBillingParams) shouldDeductAPIKeyQuota() bool {
@@ -7312,6 +7321,38 @@ func (p *postUsageBillingParams) shouldUpdateRateLimits() bool {
 
 func (p *postUsageBillingParams) shouldUpdateAccountQuota() bool {
 	return p.Cost.TotalCost > 0 && p.Account.IsAPIKeyOrBedrock() && p.Account.HasAnyQuotaLimit()
+}
+
+// buildServiceQuotaRecordRequest 从 postUsageBillingParams 装配 ServiceQuotaRecordRequest。
+//
+// 返回 ok=false 表示"本次请求不需要写服务限额计数"——目前唯一硬约束是 p.User == nil
+// （未鉴权或异常路径），因为所有 limiter 计数 key 都需要 UserID 以做 per-user/shared 区分。
+//
+// 注意 ServiceQuotaRequest 已在 caller 路径就装填了 platform / channel / model 等字段，
+// 这里只补上随响应才确定的 UserID/GroupID/Platform/AccountID 覆盖（同 APIKey 的 group 一致）。
+func buildServiceQuotaRecordRequest(p *postUsageBillingParams) (ServiceQuotaRecordRequest, bool) {
+	if p == nil || p.User == nil || p.Cost == nil {
+		return ServiceQuotaRecordRequest{}, false
+	}
+	req := p.ServiceQuotaRequest
+	req.UserID = p.User.ID
+	if p.APIKey != nil && p.APIKey.GroupID != nil {
+		req.GroupID = *p.APIKey.GroupID
+	}
+	if p.APIKey != nil && p.APIKey.Group != nil {
+		req.Platform = p.APIKey.Group.Platform
+	}
+	if p.Account != nil {
+		req.AccountID = p.Account.ID
+	}
+	return ServiceQuotaRecordRequest{
+		ServiceQuotaCheckRequest: req,
+		InputTokens:              p.InputTokens,
+		OutputTokens:             p.OutputTokens,
+		CacheCreationTokens:      p.CacheCreationTokens,
+		CacheReadTokens:          p.CacheReadTokens,
+		Cost:                     p.Cost.ActualCost,
+	}, true
 }
 
 // postUsageBilling is the legacy fallback billing path used when the unified
@@ -7501,6 +7542,9 @@ func finalizePostUsageBilling(p *postUsageBillingParams, deps *billingDeps, resu
 	if p.Cost.ActualCost > 0 && p.APIKey != nil && p.APIKey.HasRateLimits() {
 		deps.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(p.APIKey.ID, p.Cost.ActualCost)
 	}
+	if record, ok := buildServiceQuotaRecordRequest(p); ok && deps.billingCacheService != nil {
+		deps.billingCacheService.RecordServiceQuotaUsage(context.Background(), record)
+	}
 
 	deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
 
@@ -7663,19 +7707,20 @@ type recordUsageOpts struct {
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
 func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInput) error {
 	return s.recordUsageCore(ctx, &recordUsageCoreInput{
-		Result:             input.Result,
-		APIKey:             input.APIKey,
-		User:               input.User,
-		Account:            input.Account,
-		Subscription:       input.Subscription,
-		InboundEndpoint:    input.InboundEndpoint,
-		UpstreamEndpoint:   input.UpstreamEndpoint,
-		UserAgent:          input.UserAgent,
-		IPAddress:          input.IPAddress,
-		RequestPayloadHash: input.RequestPayloadHash,
-		ForceCacheBilling:  input.ForceCacheBilling,
-		APIKeyService:      input.APIKeyService,
-		ChannelUsageFields: input.ChannelUsageFields,
+		Result:              input.Result,
+		APIKey:              input.APIKey,
+		User:                input.User,
+		Account:             input.Account,
+		Subscription:        input.Subscription,
+		InboundEndpoint:     input.InboundEndpoint,
+		UpstreamEndpoint:    input.UpstreamEndpoint,
+		UserAgent:           input.UserAgent,
+		IPAddress:           input.IPAddress,
+		RequestPayloadHash:  input.RequestPayloadHash,
+		ForceCacheBilling:   input.ForceCacheBilling,
+		APIKeyService:       input.APIKeyService,
+		ServiceQuotaRequest: input.ServiceQuotaRequest,
+		ChannelUsageFields:  input.ChannelUsageFields,
 	}, &recordUsageOpts{
 		EnableClaudePath: true,
 	})
@@ -7824,6 +7869,7 @@ type recordUsageCoreInput struct {
 	ForceCacheBilling  bool
 	APIKeyService      APIKeyQuotaUpdater
 	ChannelUsageFields
+	ServiceQuotaRequest ServiceQuotaCheckRequest
 }
 
 // recordUsageCore 是 RecordUsage 和 RecordUsageWithLongContext 的统一实现。
@@ -7939,6 +7985,11 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		IsSubscriptionBill:    isSubscriptionBilling,
 		AccountRateMultiplier: accountRateMultiplier,
 		APIKeyService:         input.APIKeyService,
+		ServiceQuotaRequest:   input.ServiceQuotaRequest,
+		InputTokens:           int64(usageLog.InputTokens),
+		OutputTokens:          int64(usageLog.OutputTokens),
+		CacheCreationTokens:   int64(usageLog.CacheCreationTokens),
+		CacheReadTokens:       int64(usageLog.CacheReadTokens),
 	}, s.billingDeps(), s.usageBillingRepo)
 
 	if billingErr != nil {

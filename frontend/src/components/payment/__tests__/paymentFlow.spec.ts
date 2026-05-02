@@ -43,7 +43,17 @@ describe('getVisibleMethods', () => {
     expect(visible).toEqual({
       alipay: methodLimit({ single_min: 5 }),
       wxpay: methodLimit({ single_max: 100 }),
+      stripe: methodLimit({ fee_rate: 3 }),
     })
+  })
+
+  it('exposes Stripe as a first-class visible method when the backend returns it', () => {
+    const visible = getVisibleMethods({
+      stripe: methodLimit({ single_min: 1, single_max: 1000, fee_rate: 3 }),
+    })
+
+    expect(Object.keys(visible)).toEqual(['stripe'])
+    expect(visible.stripe.single_max).toBe(1000)
   })
 
   it('prefers canonical visible methods over aliases when both exist', () => {
@@ -181,6 +191,36 @@ describe('decidePaymentLaunch', () => {
     expect(decision.jsapi?.appId).toBe('wx123')
     expect(decision.paymentState.orderType).toBe('subscription')
   })
+
+  it('routes generic Stripe selection through the popup flow on desktop with no preset sub-method', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      client_secret: 'cs_stripe_generic',
+    }), {
+      visibleMethod: 'stripe',
+      orderType: 'balance',
+      isMobile: false,
+      stripePopupUrl: '/payment/stripe?order_id=101&client_secret=cs_stripe_generic&popup=1',
+      stripeRouteUrl: '/payment/stripe?order_id=101&client_secret=cs_stripe_generic',
+    })
+
+    expect(decision.kind).toBe('stripe_popup')
+    expect(decision.stripeMethod).toBe('')
+    expect(decision.paymentState.payUrl).toContain('popup=1')
+  })
+
+  it('falls back to route flow on mobile for generic Stripe', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      client_secret: 'cs_stripe_generic',
+    }), {
+      visibleMethod: 'stripe',
+      orderType: 'balance',
+      isMobile: true,
+      stripeRouteUrl: '/payment/stripe?order_id=101&client_secret=cs_stripe_generic',
+    })
+
+    expect(decision.kind).toBe('stripe_route')
+    expect(decision.stripeMethod).toBe('')
+  })
 })
 
 describe('buildCreateOrderPayload', () => {
@@ -190,12 +230,14 @@ describe('buildCreateOrderPayload', () => {
       paymentType: 'alipay_direct',
       orderType: 'balance',
       origin: 'https://app.example.com/',
+      isMobile: true,
       isWechatBrowser: false,
     })).toEqual({
       amount: 88,
       payment_type: 'alipay',
       order_type: 'balance',
       return_url: 'https://app.example.com/payment/result',
+      is_mobile: true,
       payment_source: 'hosted_redirect',
     })
   })
@@ -207,6 +249,7 @@ describe('buildCreateOrderPayload', () => {
       orderType: 'subscription',
       planId: 7,
       origin: 'https://app.example.com',
+      isMobile: false,
       isWechatBrowser: true,
     })).toEqual({
       amount: 128,
@@ -214,6 +257,7 @@ describe('buildCreateOrderPayload', () => {
       order_type: 'subscription',
       plan_id: 7,
       return_url: 'https://app.example.com/payment/result',
+      is_mobile: false,
       payment_source: 'wechat_in_app_resume',
     })
   })

@@ -29,7 +29,7 @@
             <div class="rounded-lg bg-amber-100 p-2 dark:bg-amber-900/30">
               <Icon name="cube" size="md" class="text-amber-600 dark:text-amber-400" />
             </div>
-            <div>
+            <div class="min-w-0 flex-1">
               <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
                 {{ t('usage.totalTokens') }}
               </p>
@@ -37,8 +37,23 @@
                 {{ formatTokens(usageStats?.total_tokens || 0) }}
               </p>
               <p class="text-xs text-gray-500 dark:text-gray-400">
-                {{ t('usage.in') }}: {{ formatTokens(usageStats?.total_input_tokens || 0) }} /
-                {{ t('usage.out') }}: {{ formatTokens(usageStats?.total_output_tokens || 0) }}
+                <span>{{ t('usage.in') }} {{ formatTokens(usageStats?.total_input_tokens || 0) }}</span>
+                <span> · </span>
+                <span>{{ t('usage.out') }} {{ formatTokens(usageStats?.total_output_tokens || 0) }}</span>
+                <span> · </span>
+                <span class="text-sky-600 dark:text-sky-400">{{ t('usage.cacheHit') }} {{ formatTokens(usageStats?.total_cache_read_tokens || 0) }}</span>
+                <span> · </span>
+                <span class="text-amber-600 dark:text-amber-400">{{ t('usage.cacheCreate') }} {{ formatTokens(usageStats?.total_cache_creation_tokens || 0) }}</span>
+              </p>
+              <p class="text-xs text-gray-400 dark:text-gray-500">
+                {{ t('usage.cacheHitRate') }}:
+                <template v-if="cacheStats.totalInput > 0">
+                  <span class="text-sky-600 dark:text-sky-400">{{ formatTokens(cacheStats.cacheRead) }}</span>
+                  <span class="text-gray-400">/</span>
+                  <span class="text-gray-600 dark:text-gray-300">{{ formatTokens(cacheStats.totalInput) }}</span>
+                  <span class="ml-1">{{ cacheStats.ratePercent }}</span>
+                </template>
+                <template v-else>-</template>
               </p>
             </div>
           </div>
@@ -543,6 +558,19 @@ const tokenTooltipData = ref<UsageLog | null>(null)
 
 // Usage stats from API
 const usageStats = ref<UsageStatsResponse | null>(null)
+
+// 缓存命中率 = cache_read / (input + cache_read)
+// 分母为 0（无任何输入）时显示 '-'
+const cacheStats = computed(() => {
+  // 总输入 token = 普通输入 + 缓存写入 + 缓存读取（命中）
+  // 缓存命中率 = 缓存读取 / 总输入；总输入为 0 时返回零值，模板按 '-' 渲染。
+  const cacheRead = usageStats.value?.total_cache_read_tokens || 0
+  const cacheCreate = usageStats.value?.total_cache_creation_tokens || 0
+  const input = usageStats.value?.total_input_tokens || 0
+  const totalInput = input + cacheCreate + cacheRead
+  const ratePercent = totalInput > 0 ? `${((cacheRead / totalInput) * 100).toFixed(1)}%` : '-'
+  return { cacheRead, totalInput, ratePercent }
+})
 
 const columns = computed<Column[]>(() => [
   { key: 'api_key', label: t('usage.apiKeyFilter'), sortable: false },

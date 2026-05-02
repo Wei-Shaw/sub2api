@@ -93,6 +93,7 @@ func (r *userRepository) Create(ctx context.Context, userIn *service.User) error
 		SetSignupSource(userSignupSourceOrDefault(userIn.SignupSource)).
 		SetNillableLastLoginAt(userIn.LastLoginAt).
 		SetNillableLastActiveAt(userIn.LastActiveAt).
+		SetRpmLimit(userIn.RPMLimit).
 		Save(txCtx)
 	if err != nil {
 		return translatePersistenceError(err, nil, service.ErrEmailExists)
@@ -219,7 +220,8 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User) error
 		SetBalanceNotifyThresholdType(userIn.BalanceNotifyThresholdType).
 		SetNillableBalanceNotifyThreshold(userIn.BalanceNotifyThreshold).
 		SetBalanceNotifyExtraEmails(marshalExtraEmails(userIn.BalanceNotifyExtraEmails)).
-		SetTotalRecharged(userIn.TotalRecharged)
+		SetTotalRecharged(userIn.TotalRecharged).
+		SetRpmLimit(userIn.RPMLimit)
 	if userIn.SignupSource != "" {
 		updateOp = updateOp.SetSignupSource(userIn.SignupSource)
 	}
@@ -737,6 +739,57 @@ func (r *userRepository) UpdateConcurrency(ctx context.Context, id int64, amount
 
 func (r *userRepository) ExistsByEmail(ctx context.Context, email string) (bool, error) {
 	return r.client.User.Query().Where(userEmailLookupPredicate(email)).Exist(ctx)
+}
+
+// ExistsByIDs 批量检查用户是否存在（仅未软删除记录）。
+// 返回 map[id]exists；len(ids)==0 时返回空 map。
+//
+// 与 group_repo.ExistsByIDs 行为对齐：去重 + <=0 过滤后通过单次 SQL 查询，
+// 调用方按需筛出 missing 集合。供 ServiceQuotaUserChecker 接口（duck typing）使用。
+func (r *userRepository) ExistsByIDs(ctx context.Context, ids []int64) (map[int64]bool, error) {
+	result := make(map[int64]bool, len(ids))
+	if len(ids) == 0 {
+		return result, nil
+	}
+
+	uniqueIDs := make([]int64, 0, len(ids))
+	seen := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		uniqueIDs = append(uniqueIDs, id)
+		result[id] = false
+	}
+	if len(uniqueIDs) == 0 {
+		return result, nil
+	}
+
+	rows, err := r.sql.QueryContext(ctx, `
+		SELECT id
+		FROM users
+		WHERE id = ANY($1) AND deleted_at IS NULL
+	`, pq.Array(uniqueIDs))
+	if err != nil {
+		return nil, fmt.Errorf("user_repo: ExistsByIDs query: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("user_repo: ExistsByIDs scan: %w", err)
+		}
+		result[id] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("user_repo: ExistsByIDs rows: %w", err)
+	}
+	return result, nil
 }
 
 func ensureNormalizedEmailAvailableWithClient(ctx context.Context, client *dbent.Client, userID int64, email string) error {

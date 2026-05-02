@@ -312,6 +312,20 @@ func (m *mockBillingCache) InvalidateAPIKeyRateLimit(context.Context, int64) err
 	return nil
 }
 
+func (m *mockBillingCache) GetQuotaUsedTotal(context.Context, int64, string) (float64, error) {
+	return 0, nil
+}
+func (m *mockBillingCache) GetQuotaUsedRule(context.Context, int64, int64, string) (float64, error) {
+	return 0, nil
+}
+func (m *mockBillingCache) IncrQuotaUsedTotal(context.Context, int64, string, float64) error {
+	return nil
+}
+func (m *mockBillingCache) IncrQuotaUsedRule(context.Context, int64, int64, string, float64) error {
+	return nil
+}
+func (m *mockBillingCache) InvalidateQuotaConfig(context.Context, int64) error { return nil }
+
 // --- 测试 ---
 
 func TestUpdateBalance_Success(t *testing.T) {
@@ -650,7 +664,7 @@ func TestNewUserService_FieldsAssignment(t *testing.T) {
 	require.NotNil(t, svc)
 	require.Equal(t, repo, svc.userRepo)
 	require.Equal(t, auth, svc.authCacheInvalidator)
-	require.Equal(t, cache, svc.billingCache)
+	require.Equal(t, cache, svc.balanceCache)
 }
 
 func TestUpdateProfile_StoresInlineAvatarWithinLimit(t *testing.T) {

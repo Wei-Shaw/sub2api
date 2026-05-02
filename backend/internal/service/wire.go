@@ -39,6 +39,11 @@ func ProvideEmailQueueService(emailService *EmailService) *EmailQueueService {
 	return NewEmailQueueService(emailService, 3)
 }
 
+// ProvideOAuthRefreshAPI creates OAuthRefreshAPI with the default lock TTL.
+func ProvideOAuthRefreshAPI(accountRepo AccountRepository, tokenCache GeminiTokenCache) *OAuthRefreshAPI {
+	return NewOAuthRefreshAPI(accountRepo, tokenCache)
+}
+
 // ProvideTokenRefreshService creates and starts TokenRefreshService
 func ProvideTokenRefreshService(
 	accountRepo AccountRepository,
@@ -210,11 +215,13 @@ func ProvideRateLimitService(
 	geminiQuotaService *GeminiQuotaService,
 	tempUnschedCache TempUnschedCache,
 	timeoutCounterCache TimeoutCounterCache,
+	openAI403CounterCache OpenAI403CounterCache,
 	settingService *SettingService,
 	tokenCacheInvalidator TokenCacheInvalidator,
 ) *RateLimitService {
 	svc := NewRateLimitService(accountRepo, usageRepo, cfg, geminiQuotaService, tempUnschedCache)
 	svc.SetTimeoutCounterCache(timeoutCounterCache)
+	svc.SetOpenAI403CounterCache(openAI403CounterCache)
 	svc.SetSettingService(settingService)
 	svc.SetTokenCacheInvalidator(tokenCacheInvalidator)
 	return svc
@@ -380,6 +387,30 @@ func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupReposit
 	return svc
 }
 
+// ProvideServiceQuotaService 注入服务限额服务。userRepo 自动满足 ServiceQuotaUserChecker
+// 接口（仅依赖其 ExistsByIDs 方法），用于 Create/Update 时校验 target_user_ids 是否存在。
+func ProvideServiceQuotaService(repo ServiceQuotaRuleRepository, settings *SettingService, limiter ServiceQuotaLimiter, cache ServiceQuotaCache, userRepo UserRepository) ServiceQuotaService {
+	var users ServiceQuotaUserChecker
+	if checker, ok := userRepo.(ServiceQuotaUserChecker); ok {
+		users = checker
+	}
+	return NewServiceQuotaService(repo, settings, limiter, cache, users)
+}
+
+// ProvideBillingCacheService wires BillingCacheService with its RPM dependencies.
+func ProvideBillingCacheService(
+	cache BillingCache,
+	userRepo UserRepository,
+	subRepo UserSubscriptionRepository,
+	apiKeyRepo APIKeyRepository,
+	rpmCache UserRPMCache,
+	rateRepo UserGroupRateRepository,
+	cfg *config.Config,
+	serviceQuota ServiceQuotaService,
+) *BillingCacheService {
+	return NewBillingCacheService(cache, userRepo, subRepo, apiKeyRepo, rpmCache, rateRepo, cfg, serviceQuota)
+}
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
@@ -397,7 +428,9 @@ var ProviderSet = wire.NewSet(
 	NewDashboardService,
 	ProvidePricingService,
 	NewBillingService,
-	NewBillingCacheService,
+	ProvideBillingCacheService,
+	ProvideServiceQuotaService,
+	NewServiceQuotaMonitorService,
 	NewAnnouncementService,
 	NewAdminService,
 	NewGatewayService,
@@ -409,7 +442,7 @@ var ProviderSet = wire.NewSet(
 	NewCompositeTokenCacheInvalidator,
 	wire.Bind(new(TokenCacheInvalidator), new(*CompositeTokenCacheInvalidator)),
 	NewAntigravityOAuthService,
-	NewOAuthRefreshAPI,
+	ProvideOAuthRefreshAPI,
 	ProvideGeminiTokenProvider,
 	NewGeminiMessagesCompatService,
 	ProvideAntigravityTokenProvider,

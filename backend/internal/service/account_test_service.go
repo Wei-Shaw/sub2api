@@ -1038,6 +1038,199 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 }
 
 // sendEvent sends a SSE event to the client
+
+// testOpenAIImageAPIKey tests OpenAI image generation using an API Key account.
+func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.Context, account *Account, modelID, prompt string) error {
+	authToken := account.GetOpenAIApiKey()
+	if authToken == "" {
+		return s.sendErrorAndEnd(c, "No API key available")
+	}
+
+	baseURL := account.GetOpenAIBaseURL()
+	if baseURL == "" {
+		baseURL = "https://api.openai.com"
+	}
+	normalizedBaseURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid base URL: %s", err.Error()))
+	}
+	apiURL := strings.TrimSuffix(normalizedBaseURL, "/") + "/v1/images/generations"
+
+	// Set SSE headers
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: modelID})
+
+	payload := map[string]any{
+		"model":           modelID,
+		"prompt":          prompt,
+		"n":               1,
+		"response_format": "b64_json",
+	}
+	payloadBytes, _ := json.Marshal(payload)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create request")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+authToken)
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+
+	resp, err := s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to read response: %s", err.Error()))
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
+	}
+
+	// Parse {"data": [{"b64_json": "...", "revised_prompt": "..."}]}
+	var result struct {
+		Data []struct {
+			B64JSON       string `json:"b64_json"`
+			RevisedPrompt string `json:"revised_prompt"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to parse response: %s", err.Error()))
+	}
+
+	if len(result.Data) == 0 {
+		return s.sendErrorAndEnd(c, "No images returned from API")
+	}
+
+	for _, item := range result.Data {
+		if item.RevisedPrompt != "" {
+			s.sendEvent(c, TestEvent{Type: "content", Text: item.RevisedPrompt})
+		}
+		if item.B64JSON != "" {
+			s.sendEvent(c, TestEvent{
+				Type:     "image",
+				ImageURL: "data:image/png;base64," + item.B64JSON,
+				MimeType: "image/png",
+			})
+		}
+	}
+
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
+// testOpenAIImageOAuth tests OpenAI image generation using an OAuth account via Codex /responses API.
+func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Context, account *Account, modelID, prompt string) error {
+	authToken := account.GetOpenAIAccessToken()
+	if authToken == "" {
+		return s.sendErrorAndEnd(c, "No access token available")
+	}
+
+	// Set SSE headers
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: modelID})
+	s.sendEvent(c, TestEvent{Type: "content", Text: "Calling Codex /responses image tool...\n"})
+
+	parsed := &OpenAIImagesRequest{
+		Endpoint: openAIImagesGenerationsEndpoint,
+		Model:    strings.TrimSpace(modelID),
+		Prompt:   prompt,
+	}
+	applyOpenAIImagesDefaults(parsed)
+
+	responsesBody, err := buildOpenAIImagesResponsesRequest(parsed, parsed.Model)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to build image request: %s", err.Error()))
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, chatgptCodexAPIURL, bytes.NewReader(responsesBody))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create request")
+	}
+	req.Host = "chatgpt.com"
+	req.Header.Set("Authorization", "Bearer "+authToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("OpenAI-Beta", "responses=experimental")
+	req.Header.Set("originator", "opencode")
+	if customUA := strings.TrimSpace(account.GetOpenAIUserAgent()); customUA != "" {
+		req.Header.Set("User-Agent", customUA)
+	} else {
+		req.Header.Set("User-Agent", codexCLIUserAgent)
+	}
+	if chatgptAccountID := strings.TrimSpace(account.GetChatGPTAccountID()); chatgptAccountID != "" {
+		req.Header.Set("chatgpt-account-id", chatgptAccountID)
+	}
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Responses API request failed: %s", err.Error()))
+	}
+	defer func() {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+	}()
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		message := strings.TrimSpace(extractUpstreamErrorMessage(body))
+		if message == "" {
+			message = fmt.Sprintf("Responses API returned %d", resp.StatusCode)
+		}
+		return s.sendErrorAndEnd(c, message)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to read image response: %s", err.Error()))
+	}
+
+	results, _, _, _, _, err := collectOpenAIImagesFromResponsesBody(body)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to parse image response: %s", err.Error()))
+	}
+	if len(results) == 0 {
+		return s.sendErrorAndEnd(c, "No images returned from responses API")
+	}
+
+	for _, item := range results {
+		if item.RevisedPrompt != "" {
+			s.sendEvent(c, TestEvent{Type: "content", Text: item.RevisedPrompt})
+		}
+		mimeType := openAIImageOutputMIMEType(item.OutputFormat)
+		s.sendEvent(c, TestEvent{
+			Type:     "image",
+			ImageURL: "data:" + mimeType + ";base64," + item.Result,
+			MimeType: mimeType,
+		})
+	}
+
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
 func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {
 	eventJSON, _ := json.Marshal(event)
 	if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", eventJSON); err != nil {

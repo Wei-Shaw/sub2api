@@ -206,18 +206,18 @@ type UserService struct {
 	userRepo             UserRepository
 	settingRepo          SettingRepository
 	authCacheInvalidator APIKeyAuthCacheInvalidator
-	billingCache         BillingCache
+	balanceCache         BillingCache
 	lastActiveTouchL1    sync.Map
 	lastActiveTouchSF    singleflight.Group
 }
 
 // NewUserService 创建用户服务实例
-func NewUserService(userRepo UserRepository, settingRepo SettingRepository, authCacheInvalidator APIKeyAuthCacheInvalidator, billingCache BillingCache) *UserService {
+func NewUserService(userRepo UserRepository, settingRepo SettingRepository, authCacheInvalidator APIKeyAuthCacheInvalidator, balanceCache BillingCache) *UserService {
 	return &UserService{
 		userRepo:             userRepo,
 		settingRepo:          settingRepo,
 		authCacheInvalidator: authCacheInvalidator,
-		billingCache:         billingCache,
+		balanceCache:         balanceCache,
 	}
 }
 
@@ -1050,7 +1050,7 @@ func (s *UserService) UpdateBalance(ctx context.Context, userID int64, amount fl
 	if s.authCacheInvalidator != nil {
 		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, userID)
 	}
-	if s.billingCache != nil {
+	if s.balanceCache != nil {
 		go func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -1059,7 +1059,7 @@ func (s *UserService) UpdateBalance(ctx context.Context, userID int64, amount fl
 			}()
 			cacheCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			if err := s.billingCache.InvalidateUserBalance(cacheCtx, userID); err != nil {
+			if err := s.balanceCache.InvalidateUserBalance(cacheCtx, userID); err != nil {
 				slog.Error("invalidate user balance cache failed", "user_id", userID, "error", err)
 			}
 		}()

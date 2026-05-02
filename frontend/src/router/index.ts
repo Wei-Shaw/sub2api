@@ -164,6 +164,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/quota-monitor',
+    name: 'UserQuotaMonitor',
+    component: () => import('@/views/user/QuotaMonitorView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'My Quotas',
+      titleKey: 'nav.myQuota',
+      descriptionKey: 'userQuotaMonitor.description'
+    }
+  },
+  {
     path: '/redeem',
     name: 'Redeem',
     component: () => import('@/views/user/RedeemView.vue'),
@@ -350,6 +362,32 @@ const routes: RouteRecordRaw[] = [
       title: 'Subscription Management',
       titleKey: 'admin.subscriptions.title',
       descriptionKey: 'admin.subscriptions.description'
+    }
+  },
+  {
+    path: '/admin/service-quotas',
+    redirect: '/admin/service-quotas/monitor'
+  },
+  {
+    path: '/admin/service-quotas/monitor',
+    name: 'AdminServiceQuotaMonitor',
+    component: () => import('@/views/admin/serviceQuota/MonitorView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Quota Monitor',
+      titleKey: 'nav.serviceQuotaMonitor'
+    }
+  },
+  {
+    path: '/admin/service-quotas/config',
+    name: 'AdminServiceQuotaConfig',
+    component: () => import('@/views/admin/serviceQuota/ConfigView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Quota Rules',
+      titleKey: 'nav.serviceQuotaConfig'
     }
   },
   {

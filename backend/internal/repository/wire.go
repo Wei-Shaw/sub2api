@@ -88,18 +88,22 @@ var ProviderSet = wire.NewSet(
 	NewUserGroupRateRepository,
 	NewErrorPassthroughRepository,
 	NewTLSFingerprintProfileRepository,
-	// NewChannelRepository 已迁移到 plugins/channel-management/
+	// NewChannelRepository / NewChannelMonitorRepository / NewChannelMonitorRequestTemplateRepository 已迁移到 plugins/channel-management/
+	NewServiceQuotaRuleRepository,
 
 	// Cache implementations
+	NewServiceQuotaCache,
 	NewGatewayCache,
 	NewBillingCache,
 	NewAPIKeyCache,
 	NewTempUnschedCache,
 	NewTimeoutCounterCache,
+	NewOpenAI403CounterCache,
 	NewInternal500CounterCache,
 	ProvideConcurrencyCache,
 	ProvideSessionLimitCache,
 	NewRPMCache,
+	NewUserRPMCache,
 	NewUserMsgQueueCache,
 	NewDashboardCache,
 	NewEmailCache,
@@ -114,6 +118,7 @@ var ProviderSet = wire.NewSet(
 	NewRefreshTokenCache,
 	NewErrorPassthroughCache,
 	NewTLSFingerprintProfileCache,
+	NewServiceQuotaLimiter,
 
 	// Encryptors
 	NewAESEncryptor,

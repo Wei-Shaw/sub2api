@@ -204,6 +204,12 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 
 	grantPlan := s.resolveSignupGrantPlan(ctx, "email")
 
+	// 新用户默认 RPM（0 = 不限制）。注册时写入，后续作为用户级兜底。
+	var defaultRPMLimit int
+	if s.settingService != nil {
+		defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(ctx)
+	}
+
 	// 创建用户
 	user := &User{
 		Email:        email,
@@ -211,6 +217,7 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 		Role:         RoleUser,
 		Balance:      grantPlan.Balance,
 		Concurrency:  grantPlan.Concurrency,
+		RPMLimit:     defaultRPMLimit,
 		Status:       StatusActive,
 	}
 
@@ -504,6 +511,10 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 
 			signupSource := inferLegacySignupSource(email)
 			grantPlan := s.resolveSignupGrantPlan(ctx, signupSource)
+			var defaultRPMLimit int
+			if s.settingService != nil {
+				defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(ctx)
+			}
 
 			newUser := &User{
 				Email:        email,
@@ -512,9 +523,11 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 				Role:         RoleUser,
 				Balance:      grantPlan.Balance,
 				Concurrency:  grantPlan.Concurrency,
+				RPMLimit:     defaultRPMLimit,
 				Status:       StatusActive,
 				SignupSource: signupSource,
 			}
+			// 默认每日配额（feature issue #1750）
 
 			if err := s.userRepo.Create(ctx, newUser); err != nil {
 				if errors.Is(err, ErrEmailExists) {
@@ -615,6 +628,10 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 
 			signupSource := inferLegacySignupSource(email)
 			grantPlan := s.resolveSignupGrantPlan(ctx, signupSource)
+			var defaultRPMLimit int
+			if s.settingService != nil {
+				defaultRPMLimit = s.settingService.GetDefaultUserRPMLimit(ctx)
+			}
 
 			newUser := &User{
 				Email:        email,
@@ -623,9 +640,11 @@ func (s *AuthService) LoginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				Role:         RoleUser,
 				Balance:      grantPlan.Balance,
 				Concurrency:  grantPlan.Concurrency,
+				RPMLimit:     defaultRPMLimit,
 				Status:       StatusActive,
 				SignupSource: signupSource,
 			}
+			// 默认每日配额（feature issue #1750）
 
 			if s.entClient != nil && invitationRedeemCode != nil {
 				tx, err := s.entClient.Tx(ctx)

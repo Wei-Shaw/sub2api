@@ -110,3 +110,4 @@ func TestUsageLogSyncRequestTypeAndLegacyFieldsNilReceiver(t *testing.T) {
 	var log *UsageLog
 	log.SyncRequestTypeAndLegacyFields()
 }
+

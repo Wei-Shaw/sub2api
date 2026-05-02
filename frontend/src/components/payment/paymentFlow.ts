@@ -14,10 +14,15 @@ const VISIBLE_METHOD_ALIASES = {
   alipay_direct: 'alipay',
   wxpay: 'wxpay',
   wxpay_direct: 'wxpay',
+  stripe: 'stripe',
 } as const
 
-export type VisiblePaymentMethod = 'alipay' | 'wxpay'
-export type StripeVisibleMethod = 'alipay' | 'wechat_pay'
+export type VisiblePaymentMethod = 'alipay' | 'wxpay' | 'stripe'
+// Stripe sub-method routed to /payment/stripe?method=...
+//  - 'alipay' / 'wechat_pay' : direct confirm with one specific Stripe sub-method
+//  - '' (empty)              : let StripePaymentView render the full Payment Element
+//                              so the user can pick card / link / etc. in the Stripe UI.
+export type StripeVisibleMethod = 'alipay' | 'wechat_pay' | ''
 export type PaymentLaunchKind =
   | 'qr_waiting'
   | 'redirect_waiting'
@@ -68,6 +73,7 @@ export interface BuildCreateOrderPayloadInput {
   orderType: OrderType
   planId?: number
   origin?: string
+  isMobile: boolean
   isWechatBrowser: boolean
 }
 
@@ -106,6 +112,7 @@ export function buildCreateOrderPayload(input: BuildCreateOrderPayloadInput): Cr
     amount: input.amount,
     payment_type: visibleMethod,
     order_type: input.orderType,
+    is_mobile: input.isMobile,
     payment_source: visibleMethod === 'wxpay' && input.isWechatBrowser
       ? 'wechat_in_app_resume'
       : 'hosted_redirect',
@@ -142,10 +149,16 @@ export function decidePaymentLaunch(
   }, context.now)
 
   if (baseState.clientSecret) {
-    const stripeMethod: StripeVisibleMethod = visibleMethod === 'wxpay' ? 'wechat_pay' : 'alipay'
-    const kind: PaymentLaunchKind = stripeMethod === 'alipay' && !context.isMobile
-      ? 'stripe_popup'
-      : 'stripe_route'
+    // Resolve Stripe sub-method from the visible method:
+    //  - wxpay  -> wechat_pay (Stripe-side identifier)
+    //  - alipay -> alipay
+    //  - stripe -> '' (empty: render the full Payment Element so the user
+    //               can choose card / link / etc. inside Stripe's hosted UI)
+    let stripeMethod: StripeVisibleMethod = ''
+    if (visibleMethod === 'wxpay') stripeMethod = 'wechat_pay'
+    else if (visibleMethod === 'alipay') stripeMethod = 'alipay'
+    // Stripe 桌面端统一走 popup（小窗），与历史行为一致；移动端 fallback 全页跳转。
+    const kind: PaymentLaunchKind = context.isMobile ? 'stripe_route' : 'stripe_popup'
     const payUrl = kind === 'stripe_popup'
       ? context.stripePopupUrl || context.stripeRouteUrl || ''
       : context.stripeRouteUrl || context.stripePopupUrl || ''

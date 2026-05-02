@@ -453,6 +453,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorEnabled,
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
 		SettingKeyAvailableChannelsEnabled,
+		SettingKeyServiceQuotaEnabled,
 	}
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -540,6 +541,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		ChannelMonitorDefaultIntervalSeconds: parseChannelMonitorInterval(settings[SettingKeyChannelMonitorDefaultIntervalSeconds]),
 
 		AvailableChannelsEnabled: settings[SettingKeyAvailableChannelsEnabled] == "true",
+		ServiceQuotaEnabled:      settings[SettingKeyServiceQuotaEnabled] == "true",
 	}, nil
 }
 
@@ -683,9 +685,11 @@ type PublicSettingsInjectionPayload struct {
 	// Feature flags — MUST match the opt-in/opt-out registry in
 	// frontend/src/utils/featureFlags.ts. Missing a field here is the bug
 	// that hid the "可用渠道" menu on page refresh.
+	ForceEmailOnThirdPartySignup         bool `json:"force_email_on_third_party_signup"`
 	ChannelMonitorEnabled                bool `json:"channel_monitor_enabled"`
 	ChannelMonitorDefaultIntervalSeconds int  `json:"channel_monitor_default_interval_seconds"`
 	AvailableChannelsEnabled             bool `json:"available_channels_enabled"`
+	ServiceQuotaEnabled                  bool `json:"service_quota_enabled"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -735,9 +739,11 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		BalanceLowNotifyThreshold:        settings.BalanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:      settings.BalanceLowNotifyRechargeURL,
 
+		ForceEmailOnThirdPartySignup:         settings.ForceEmailOnThirdPartySignup,
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
+		ServiceQuotaEnabled:                  settings.ServiceQuotaEnabled,
 	}, nil
 }
 
@@ -946,6 +952,45 @@ func oidcCompatibilityWriteDefault(base config.OIDCConnectConfig, configured boo
 }
 
 // UpdateSettings 更新系统设置
+// settingUpdater accumulates setting key/value pairs for batch persistence.
+// It encapsulates repetitive strconv formatting logic in UpdateSettings.
+type settingUpdater struct {
+	updates map[string]string
+}
+
+func newSettingUpdater() *settingUpdater {
+	return &settingUpdater{updates: make(map[string]string)}
+}
+
+// SetBool formats a boolean value using strconv.FormatBool.
+func (u *settingUpdater) SetBool(key string, v bool) {
+	u.updates[key] = strconv.FormatBool(v)
+}
+
+// SetFloat formats a float value with 8 fractional digits (consistent with
+// monetary-precision defaults used in UpdateSettings).
+func (u *settingUpdater) SetFloat(key string, v float64) {
+	u.updates[key] = strconv.FormatFloat(v, 'f', 8, 64)
+}
+
+// SetInt formats an int value using strconv.Itoa.
+func (u *settingUpdater) SetInt(key string, v int) {
+	u.updates[key] = strconv.Itoa(v)
+}
+
+// SetString stores a string value as-is.
+func (u *settingUpdater) SetString(key, v string) {
+	u.updates[key] = v
+}
+
+// SetStringIfNotEmpty only stores non-empty strings (used for secrets where an
+// empty incoming value means "keep current").
+func (u *settingUpdater) SetStringIfNotEmpty(key, v string) {
+	if v != "" {
+		u.updates[key] = v
+	}
+}
+
 func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSettings) error {
 	updates, err := s.buildSystemSettingsUpdates(ctx, settings)
 	if err != nil {
@@ -1046,189 +1091,184 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		settings.WeChatConnectFrontendRedirectURL = defaultWeChatConnectFrontend
 	}
 
-	updates := make(map[string]string)
+	u := newSettingUpdater()
 
 	// 注册设置
-	updates[SettingKeyRegistrationEnabled] = strconv.FormatBool(settings.RegistrationEnabled)
-	updates[SettingKeyEmailVerifyEnabled] = strconv.FormatBool(settings.EmailVerifyEnabled)
+	u.SetBool(SettingKeyRegistrationEnabled, settings.RegistrationEnabled)
+	u.SetBool(SettingKeyEmailVerifyEnabled, settings.EmailVerifyEnabled)
 	registrationEmailSuffixWhitelistJSON, err := json.Marshal(settings.RegistrationEmailSuffixWhitelist)
 	if err != nil {
 		return nil, fmt.Errorf("marshal registration email suffix whitelist: %w", err)
 	}
-	updates[SettingKeyRegistrationEmailSuffixWhitelist] = string(registrationEmailSuffixWhitelistJSON)
-	updates[SettingKeyPromoCodeEnabled] = strconv.FormatBool(settings.PromoCodeEnabled)
-	updates[SettingKeyPasswordResetEnabled] = strconv.FormatBool(settings.PasswordResetEnabled)
-	updates[SettingKeyFrontendURL] = settings.FrontendURL
-	updates[SettingKeyInvitationCodeEnabled] = strconv.FormatBool(settings.InvitationCodeEnabled)
-	updates[SettingKeyTotpEnabled] = strconv.FormatBool(settings.TotpEnabled)
+	u.SetString(SettingKeyRegistrationEmailSuffixWhitelist, string(registrationEmailSuffixWhitelistJSON))
+	u.SetBool(SettingKeyPromoCodeEnabled, settings.PromoCodeEnabled)
+	u.SetBool(SettingKeyPasswordResetEnabled, settings.PasswordResetEnabled)
+	u.SetString(SettingKeyFrontendURL, settings.FrontendURL)
+	u.SetBool(SettingKeyInvitationCodeEnabled, settings.InvitationCodeEnabled)
+	u.SetBool(SettingKeyTotpEnabled, settings.TotpEnabled)
 
 	// 邮件服务设置（只有非空才更新密码）
-	updates[SettingKeySMTPHost] = settings.SMTPHost
-	updates[SettingKeySMTPPort] = strconv.Itoa(settings.SMTPPort)
-	updates[SettingKeySMTPUsername] = settings.SMTPUsername
-	if settings.SMTPPassword != "" {
-		updates[SettingKeySMTPPassword] = settings.SMTPPassword
-	}
-	updates[SettingKeySMTPFrom] = settings.SMTPFrom
-	updates[SettingKeySMTPFromName] = settings.SMTPFromName
-	updates[SettingKeySMTPUseTLS] = strconv.FormatBool(settings.SMTPUseTLS)
+	u.SetString(SettingKeySMTPHost, settings.SMTPHost)
+	u.SetInt(SettingKeySMTPPort, settings.SMTPPort)
+	u.SetString(SettingKeySMTPUsername, settings.SMTPUsername)
+	u.SetStringIfNotEmpty(SettingKeySMTPPassword, settings.SMTPPassword)
+	u.SetString(SettingKeySMTPFrom, settings.SMTPFrom)
+	u.SetString(SettingKeySMTPFromName, settings.SMTPFromName)
+	u.SetBool(SettingKeySMTPUseTLS, settings.SMTPUseTLS)
 
 	// Cloudflare Turnstile 设置（只有非空才更新密钥）
-	updates[SettingKeyTurnstileEnabled] = strconv.FormatBool(settings.TurnstileEnabled)
-	updates[SettingKeyTurnstileSiteKey] = settings.TurnstileSiteKey
-	if settings.TurnstileSecretKey != "" {
-		updates[SettingKeyTurnstileSecretKey] = settings.TurnstileSecretKey
-	}
+	u.SetBool(SettingKeyTurnstileEnabled, settings.TurnstileEnabled)
+	u.SetString(SettingKeyTurnstileSiteKey, settings.TurnstileSiteKey)
+	u.SetStringIfNotEmpty(SettingKeyTurnstileSecretKey, settings.TurnstileSecretKey)
 
 	// LinuxDo Connect OAuth 登录
-	updates[SettingKeyLinuxDoConnectEnabled] = strconv.FormatBool(settings.LinuxDoConnectEnabled)
-	updates[SettingKeyLinuxDoConnectClientID] = settings.LinuxDoConnectClientID
-	updates[SettingKeyLinuxDoConnectRedirectURL] = settings.LinuxDoConnectRedirectURL
-	if settings.LinuxDoConnectClientSecret != "" {
-		updates[SettingKeyLinuxDoConnectClientSecret] = settings.LinuxDoConnectClientSecret
-	}
+	u.SetBool(SettingKeyLinuxDoConnectEnabled, settings.LinuxDoConnectEnabled)
+	u.SetString(SettingKeyLinuxDoConnectClientID, settings.LinuxDoConnectClientID)
+	u.SetString(SettingKeyLinuxDoConnectRedirectURL, settings.LinuxDoConnectRedirectURL)
+	u.SetStringIfNotEmpty(SettingKeyLinuxDoConnectClientSecret, settings.LinuxDoConnectClientSecret)
 
 	// Generic OIDC OAuth 登录
-	updates[SettingKeyOIDCConnectEnabled] = strconv.FormatBool(settings.OIDCConnectEnabled)
-	updates[SettingKeyOIDCConnectProviderName] = settings.OIDCConnectProviderName
-	updates[SettingKeyOIDCConnectClientID] = settings.OIDCConnectClientID
-	updates[SettingKeyOIDCConnectIssuerURL] = settings.OIDCConnectIssuerURL
-	updates[SettingKeyOIDCConnectDiscoveryURL] = settings.OIDCConnectDiscoveryURL
-	updates[SettingKeyOIDCConnectAuthorizeURL] = settings.OIDCConnectAuthorizeURL
-	updates[SettingKeyOIDCConnectTokenURL] = settings.OIDCConnectTokenURL
-	updates[SettingKeyOIDCConnectUserInfoURL] = settings.OIDCConnectUserInfoURL
-	updates[SettingKeyOIDCConnectJWKSURL] = settings.OIDCConnectJWKSURL
-	updates[SettingKeyOIDCConnectScopes] = settings.OIDCConnectScopes
-	updates[SettingKeyOIDCConnectRedirectURL] = settings.OIDCConnectRedirectURL
-	updates[SettingKeyOIDCConnectFrontendRedirectURL] = settings.OIDCConnectFrontendRedirectURL
-	updates[SettingKeyOIDCConnectTokenAuthMethod] = settings.OIDCConnectTokenAuthMethod
-	updates[SettingKeyOIDCConnectUsePKCE] = strconv.FormatBool(settings.OIDCConnectUsePKCE)
-	updates[SettingKeyOIDCConnectValidateIDToken] = strconv.FormatBool(settings.OIDCConnectValidateIDToken)
-	updates[SettingKeyOIDCConnectAllowedSigningAlgs] = settings.OIDCConnectAllowedSigningAlgs
-	updates[SettingKeyOIDCConnectClockSkewSeconds] = strconv.Itoa(settings.OIDCConnectClockSkewSeconds)
-	updates[SettingKeyOIDCConnectRequireEmailVerified] = strconv.FormatBool(settings.OIDCConnectRequireEmailVerified)
-	updates[SettingKeyOIDCConnectUserInfoEmailPath] = settings.OIDCConnectUserInfoEmailPath
-	updates[SettingKeyOIDCConnectUserInfoIDPath] = settings.OIDCConnectUserInfoIDPath
-	updates[SettingKeyOIDCConnectUserInfoUsernamePath] = settings.OIDCConnectUserInfoUsernamePath
-	if settings.OIDCConnectClientSecret != "" {
-		updates[SettingKeyOIDCConnectClientSecret] = settings.OIDCConnectClientSecret
-	}
+	u.SetBool(SettingKeyOIDCConnectEnabled, settings.OIDCConnectEnabled)
+	u.SetString(SettingKeyOIDCConnectProviderName, settings.OIDCConnectProviderName)
+	u.SetString(SettingKeyOIDCConnectClientID, settings.OIDCConnectClientID)
+	u.SetString(SettingKeyOIDCConnectIssuerURL, settings.OIDCConnectIssuerURL)
+	u.SetString(SettingKeyOIDCConnectDiscoveryURL, settings.OIDCConnectDiscoveryURL)
+	u.SetString(SettingKeyOIDCConnectAuthorizeURL, settings.OIDCConnectAuthorizeURL)
+	u.SetString(SettingKeyOIDCConnectTokenURL, settings.OIDCConnectTokenURL)
+	u.SetString(SettingKeyOIDCConnectUserInfoURL, settings.OIDCConnectUserInfoURL)
+	u.SetString(SettingKeyOIDCConnectJWKSURL, settings.OIDCConnectJWKSURL)
+	u.SetString(SettingKeyOIDCConnectScopes, settings.OIDCConnectScopes)
+	u.SetString(SettingKeyOIDCConnectRedirectURL, settings.OIDCConnectRedirectURL)
+	u.SetString(SettingKeyOIDCConnectFrontendRedirectURL, settings.OIDCConnectFrontendRedirectURL)
+	u.SetString(SettingKeyOIDCConnectTokenAuthMethod, settings.OIDCConnectTokenAuthMethod)
+	u.SetBool(SettingKeyOIDCConnectUsePKCE, settings.OIDCConnectUsePKCE)
+	u.SetBool(SettingKeyOIDCConnectValidateIDToken, settings.OIDCConnectValidateIDToken)
+	u.SetString(SettingKeyOIDCConnectAllowedSigningAlgs, settings.OIDCConnectAllowedSigningAlgs)
+	u.SetInt(SettingKeyOIDCConnectClockSkewSeconds, settings.OIDCConnectClockSkewSeconds)
+	u.SetBool(SettingKeyOIDCConnectRequireEmailVerified, settings.OIDCConnectRequireEmailVerified)
+	u.SetString(SettingKeyOIDCConnectUserInfoEmailPath, settings.OIDCConnectUserInfoEmailPath)
+	u.SetString(SettingKeyOIDCConnectUserInfoIDPath, settings.OIDCConnectUserInfoIDPath)
+	u.SetString(SettingKeyOIDCConnectUserInfoUsernamePath, settings.OIDCConnectUserInfoUsernamePath)
+	u.SetStringIfNotEmpty(SettingKeyOIDCConnectClientSecret, settings.OIDCConnectClientSecret)
 
 	// WeChat Connect OAuth 登录
-	updates[SettingKeyWeChatConnectEnabled] = strconv.FormatBool(settings.WeChatConnectEnabled)
-	updates[SettingKeyWeChatConnectAppID] = settings.WeChatConnectAppID
-	updates[SettingKeyWeChatConnectOpenAppID] = settings.WeChatConnectOpenAppID
-	updates[SettingKeyWeChatConnectMPAppID] = settings.WeChatConnectMPAppID
-	updates[SettingKeyWeChatConnectMobileAppID] = settings.WeChatConnectMobileAppID
-	updates[SettingKeyWeChatConnectOpenEnabled] = strconv.FormatBool(settings.WeChatConnectOpenEnabled)
-	updates[SettingKeyWeChatConnectMPEnabled] = strconv.FormatBool(settings.WeChatConnectMPEnabled)
-	updates[SettingKeyWeChatConnectMobileEnabled] = strconv.FormatBool(settings.WeChatConnectMobileEnabled)
-	updates[SettingKeyWeChatConnectMode] = settings.WeChatConnectMode
-	updates[SettingKeyWeChatConnectScopes] = settings.WeChatConnectScopes
-	updates[SettingKeyWeChatConnectRedirectURL] = settings.WeChatConnectRedirectURL
-	updates[SettingKeyWeChatConnectFrontendRedirectURL] = settings.WeChatConnectFrontendRedirectURL
+	u.SetBool(SettingKeyWeChatConnectEnabled, settings.WeChatConnectEnabled)
+	u.SetString(SettingKeyWeChatConnectAppID, settings.WeChatConnectAppID)
+	u.SetString(SettingKeyWeChatConnectOpenAppID, settings.WeChatConnectOpenAppID)
+	u.SetString(SettingKeyWeChatConnectMPAppID, settings.WeChatConnectMPAppID)
+	u.SetString(SettingKeyWeChatConnectMobileAppID, settings.WeChatConnectMobileAppID)
+	u.SetBool(SettingKeyWeChatConnectOpenEnabled, settings.WeChatConnectOpenEnabled)
+	u.SetBool(SettingKeyWeChatConnectMPEnabled, settings.WeChatConnectMPEnabled)
+	u.SetBool(SettingKeyWeChatConnectMobileEnabled, settings.WeChatConnectMobileEnabled)
+	u.SetString(SettingKeyWeChatConnectMode, settings.WeChatConnectMode)
+	u.SetString(SettingKeyWeChatConnectScopes, settings.WeChatConnectScopes)
+	u.SetString(SettingKeyWeChatConnectRedirectURL, settings.WeChatConnectRedirectURL)
+	u.SetString(SettingKeyWeChatConnectFrontendRedirectURL, settings.WeChatConnectFrontendRedirectURL)
 	if settings.WeChatConnectAppSecret != "" {
-		updates[SettingKeyWeChatConnectAppSecret] = settings.WeChatConnectAppSecret
+		u.SetString(SettingKeyWeChatConnectAppSecret, settings.WeChatConnectAppSecret)
 	}
 	if settings.WeChatConnectOpenAppSecret != "" {
-		updates[SettingKeyWeChatConnectOpenAppSecret] = settings.WeChatConnectOpenAppSecret
+		u.SetString(SettingKeyWeChatConnectOpenAppSecret, settings.WeChatConnectOpenAppSecret)
 	}
 	if settings.WeChatConnectMPAppSecret != "" {
-		updates[SettingKeyWeChatConnectMPAppSecret] = settings.WeChatConnectMPAppSecret
+		u.SetString(SettingKeyWeChatConnectMPAppSecret, settings.WeChatConnectMPAppSecret)
 	}
 	if settings.WeChatConnectMobileAppSecret != "" {
-		updates[SettingKeyWeChatConnectMobileAppSecret] = settings.WeChatConnectMobileAppSecret
+		u.SetString(SettingKeyWeChatConnectMobileAppSecret, settings.WeChatConnectMobileAppSecret)
 	}
 
 	// OEM设置
-	updates[SettingKeySiteName] = settings.SiteName
-	updates[SettingKeySiteLogo] = settings.SiteLogo
-	updates[SettingKeySiteSubtitle] = settings.SiteSubtitle
-	updates[SettingKeyAPIBaseURL] = settings.APIBaseURL
-	updates[SettingKeyContactInfo] = settings.ContactInfo
-	updates[SettingKeyDocURL] = settings.DocURL
-	updates[SettingKeyHomeContent] = settings.HomeContent
-	updates[SettingKeyHideCcsImportButton] = strconv.FormatBool(settings.HideCcsImportButton)
-	updates[SettingKeyPurchaseSubscriptionEnabled] = strconv.FormatBool(settings.PurchaseSubscriptionEnabled)
-	updates[SettingKeyPurchaseSubscriptionURL] = strings.TrimSpace(settings.PurchaseSubscriptionURL)
+	u.SetString(SettingKeySiteName, settings.SiteName)
+	u.SetString(SettingKeySiteLogo, settings.SiteLogo)
+	u.SetString(SettingKeySiteSubtitle, settings.SiteSubtitle)
+	u.SetString(SettingKeyAPIBaseURL, settings.APIBaseURL)
+	u.SetString(SettingKeyContactInfo, settings.ContactInfo)
+	u.SetString(SettingKeyDocURL, settings.DocURL)
+	u.SetString(SettingKeyHomeContent, settings.HomeContent)
+	u.SetBool(SettingKeyHideCcsImportButton, settings.HideCcsImportButton)
+	u.SetBool(SettingKeyPurchaseSubscriptionEnabled, settings.PurchaseSubscriptionEnabled)
+	u.SetString(SettingKeyPurchaseSubscriptionURL, strings.TrimSpace(settings.PurchaseSubscriptionURL))
 	tableDefaultPageSize, tablePageSizeOptions := normalizeTablePreferences(
 		settings.TableDefaultPageSize,
 		settings.TablePageSizeOptions,
 	)
-	updates[SettingKeyTableDefaultPageSize] = strconv.Itoa(tableDefaultPageSize)
+	u.SetInt(SettingKeyTableDefaultPageSize, tableDefaultPageSize)
 	tablePageSizeOptionsJSON, err := json.Marshal(tablePageSizeOptions)
 	if err != nil {
 		return nil, fmt.Errorf("marshal table page size options: %w", err)
 	}
-	updates[SettingKeyTablePageSizeOptions] = string(tablePageSizeOptionsJSON)
-	updates[SettingKeyCustomMenuItems] = settings.CustomMenuItems
-	updates[SettingKeyCustomEndpoints] = settings.CustomEndpoints
+	u.SetString(SettingKeyTablePageSizeOptions, string(tablePageSizeOptionsJSON))
+	u.SetString(SettingKeyCustomMenuItems, settings.CustomMenuItems)
+	u.SetString(SettingKeyCustomEndpoints, settings.CustomEndpoints)
 
 	// 默认配置
-	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
-	updates[SettingKeyDefaultBalance] = strconv.FormatFloat(settings.DefaultBalance, 'f', 8, 64)
+	u.SetInt(SettingKeyDefaultConcurrency, settings.DefaultConcurrency)
+	u.SetFloat(SettingKeyDefaultBalance, settings.DefaultBalance)
+	u.SetInt(SettingKeyDefaultUserRPMLimit, settings.DefaultUserRPMLimit)
+
 	defaultSubsJSON, err := json.Marshal(settings.DefaultSubscriptions)
 	if err != nil {
 		return nil, fmt.Errorf("marshal default subscriptions: %w", err)
 	}
-	updates[SettingKeyDefaultSubscriptions] = string(defaultSubsJSON)
+	u.SetString(SettingKeyDefaultSubscriptions, string(defaultSubsJSON))
 
 	// Model fallback configuration
-	updates[SettingKeyEnableModelFallback] = strconv.FormatBool(settings.EnableModelFallback)
-	updates[SettingKeyFallbackModelAnthropic] = settings.FallbackModelAnthropic
-	updates[SettingKeyFallbackModelOpenAI] = settings.FallbackModelOpenAI
-	updates[SettingKeyFallbackModelGemini] = settings.FallbackModelGemini
-	updates[SettingKeyFallbackModelAntigravity] = settings.FallbackModelAntigravity
+	u.SetBool(SettingKeyEnableModelFallback, settings.EnableModelFallback)
+	u.SetString(SettingKeyFallbackModelAnthropic, settings.FallbackModelAnthropic)
+	u.SetString(SettingKeyFallbackModelOpenAI, settings.FallbackModelOpenAI)
+	u.SetString(SettingKeyFallbackModelGemini, settings.FallbackModelGemini)
+	u.SetString(SettingKeyFallbackModelAntigravity, settings.FallbackModelAntigravity)
 
 	// Identity patch configuration (Claude -> Gemini)
-	updates[SettingKeyEnableIdentityPatch] = strconv.FormatBool(settings.EnableIdentityPatch)
-	updates[SettingKeyIdentityPatchPrompt] = settings.IdentityPatchPrompt
+	u.SetBool(SettingKeyEnableIdentityPatch, settings.EnableIdentityPatch)
+	u.SetString(SettingKeyIdentityPatchPrompt, settings.IdentityPatchPrompt)
 
 	// Ops monitoring (vNext)
-	updates[SettingKeyOpsMonitoringEnabled] = strconv.FormatBool(settings.OpsMonitoringEnabled)
-	updates[SettingKeyOpsRealtimeMonitoringEnabled] = strconv.FormatBool(settings.OpsRealtimeMonitoringEnabled)
-	updates[SettingKeyOpsQueryModeDefault] = string(ParseOpsQueryMode(settings.OpsQueryModeDefault))
+	u.SetBool(SettingKeyOpsMonitoringEnabled, settings.OpsMonitoringEnabled)
+	u.SetBool(SettingKeyOpsRealtimeMonitoringEnabled, settings.OpsRealtimeMonitoringEnabled)
+	u.SetString(SettingKeyOpsQueryModeDefault, string(ParseOpsQueryMode(settings.OpsQueryModeDefault)))
 	if settings.OpsMetricsIntervalSeconds > 0 {
-		updates[SettingKeyOpsMetricsIntervalSeconds] = strconv.Itoa(settings.OpsMetricsIntervalSeconds)
+		u.SetInt(SettingKeyOpsMetricsIntervalSeconds, settings.OpsMetricsIntervalSeconds)
 	}
 
 	// Channel monitor feature switch
-	updates[SettingKeyChannelMonitorEnabled] = strconv.FormatBool(settings.ChannelMonitorEnabled)
+	u.SetBool(SettingKeyChannelMonitorEnabled, settings.ChannelMonitorEnabled)
 	if v := clampChannelMonitorInterval(settings.ChannelMonitorDefaultIntervalSeconds); v > 0 {
-		updates[SettingKeyChannelMonitorDefaultIntervalSeconds] = strconv.Itoa(v)
+		u.SetInt(SettingKeyChannelMonitorDefaultIntervalSeconds, v)
 	}
 
 	// Available channels feature switch
-	updates[SettingKeyAvailableChannelsEnabled] = strconv.FormatBool(settings.AvailableChannelsEnabled)
+	u.SetBool(SettingKeyAvailableChannelsEnabled, settings.AvailableChannelsEnabled)
+	u.SetBool(SettingKeyServiceQuotaEnabled, settings.ServiceQuotaEnabled)
 
 	// Claude Code version check
-	updates[SettingKeyMinClaudeCodeVersion] = settings.MinClaudeCodeVersion
-	updates[SettingKeyMaxClaudeCodeVersion] = settings.MaxClaudeCodeVersion
+	u.SetString(SettingKeyMinClaudeCodeVersion, settings.MinClaudeCodeVersion)
+	u.SetString(SettingKeyMaxClaudeCodeVersion, settings.MaxClaudeCodeVersion)
 
 	// 分组隔离
-	updates[SettingKeyAllowUngroupedKeyScheduling] = strconv.FormatBool(settings.AllowUngroupedKeyScheduling)
+	u.SetBool(SettingKeyAllowUngroupedKeyScheduling, settings.AllowUngroupedKeyScheduling)
 
 	// Backend Mode
-	updates[SettingKeyBackendModeEnabled] = strconv.FormatBool(settings.BackendModeEnabled)
+	u.SetBool(SettingKeyBackendModeEnabled, settings.BackendModeEnabled)
 
 	// Gateway forwarding behavior
-	updates[SettingKeyEnableFingerprintUnification] = strconv.FormatBool(settings.EnableFingerprintUnification)
-	updates[SettingKeyEnableMetadataPassthrough] = strconv.FormatBool(settings.EnableMetadataPassthrough)
-	updates[SettingKeyEnableCCHSigning] = strconv.FormatBool(settings.EnableCCHSigning)
-	updates[SettingPaymentVisibleMethodAlipaySource] = settings.PaymentVisibleMethodAlipaySource
-	updates[SettingPaymentVisibleMethodWxpaySource] = settings.PaymentVisibleMethodWxpaySource
-	updates[SettingPaymentVisibleMethodAlipayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodAlipayEnabled)
-	updates[SettingPaymentVisibleMethodWxpayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodWxpayEnabled)
-	updates[openAIAdvancedSchedulerSettingKey] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerEnabled)
+	u.SetBool(SettingKeyEnableFingerprintUnification, settings.EnableFingerprintUnification)
+	u.SetBool(SettingKeyEnableMetadataPassthrough, settings.EnableMetadataPassthrough)
+	u.SetBool(SettingKeyEnableCCHSigning, settings.EnableCCHSigning)
+	u.SetString(SettingPaymentVisibleMethodAlipaySource, settings.PaymentVisibleMethodAlipaySource)
+	u.SetString(SettingPaymentVisibleMethodWxpaySource, settings.PaymentVisibleMethodWxpaySource)
+	u.SetBool(SettingPaymentVisibleMethodAlipayEnabled, settings.PaymentVisibleMethodAlipayEnabled)
+	u.SetBool(SettingPaymentVisibleMethodWxpayEnabled, settings.PaymentVisibleMethodWxpayEnabled)
+	u.SetBool(openAIAdvancedSchedulerSettingKey, settings.OpenAIAdvancedSchedulerEnabled)
 
 	// Balance low notification
-	updates[SettingKeyBalanceLowNotifyEnabled] = strconv.FormatBool(settings.BalanceLowNotifyEnabled)
-	updates[SettingKeyBalanceLowNotifyThreshold] = strconv.FormatFloat(settings.BalanceLowNotifyThreshold, 'f', 8, 64)
-	updates[SettingKeyBalanceLowNotifyRechargeURL] = settings.BalanceLowNotifyRechargeURL
-	updates[SettingKeyAccountQuotaNotifyEnabled] = strconv.FormatBool(settings.AccountQuotaNotifyEnabled)
-	updates[SettingKeyAccountQuotaNotifyEmails] = MarshalNotifyEmails(settings.AccountQuotaNotifyEmails)
+	u.SetBool(SettingKeyBalanceLowNotifyEnabled, settings.BalanceLowNotifyEnabled)
+	u.SetFloat(SettingKeyBalanceLowNotifyThreshold, settings.BalanceLowNotifyThreshold)
+	u.SetString(SettingKeyBalanceLowNotifyRechargeURL, settings.BalanceLowNotifyRechargeURL)
+	u.SetBool(SettingKeyAccountQuotaNotifyEnabled, settings.AccountQuotaNotifyEnabled)
+	u.SetString(SettingKeyAccountQuotaNotifyEmails, MarshalNotifyEmails(settings.AccountQuotaNotifyEmails))
 
-	return updates, nil
+	return u.updates, nil
 }
 
 func (s *SettingService) buildAuthSourceDefaultUpdates(ctx context.Context, settings *AuthSourceDefaultSettings) (map[string]string, error) {
@@ -1538,6 +1578,18 @@ func (s *SettingService) GetDefaultBalance(ctx context.Context) float64 {
 	return s.cfg.Default.UserBalance
 }
 
+// GetDefaultUserRPMLimit 获取新用户默认 RPM 限制（0 = 不限制）。未配置则返回 0。
+func (s *SettingService) GetDefaultUserRPMLimit(ctx context.Context) int {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyDefaultUserRPMLimit)
+	if err != nil || value == "" {
+		return 0
+	}
+	if v, err := strconv.Atoi(value); err == nil && v >= 0 {
+		return v
+	}
+	return 0
+}
+
 // GetDefaultSubscriptions 获取新用户默认订阅配置列表。
 func (s *SettingService) GetDefaultSubscriptions(ctx context.Context) []DefaultSubscriptionSetting {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyDefaultSubscriptions)
@@ -1629,6 +1681,36 @@ func (s *SettingService) UpdateAuthSourceDefaultSettings(ctx context.Context, se
 	return nil
 }
 
+// GetBool 通用布尔 setting 读取（用于 QuotaService 等下游），
+// 设置不存在或解析失败时返回 false, nil（不当作错误）。
+func (s *SettingService) GetBool(ctx context.Context, key string) (bool, error) {
+	value, err := s.settingRepo.GetValue(ctx, key)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return value == "true", nil
+}
+
+// GetFloat 通用浮点 setting 读取（用于 QuotaService 等下游），
+// 设置不存在或解析失败时返回 0, nil。
+func (s *SettingService) GetFloat(ctx context.Context, key string) (float64, error) {
+	value, err := s.settingRepo.GetValue(ctx, key)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	v, convErr := strconv.ParseFloat(value, 64)
+	if convErr != nil {
+		return 0, nil
+	}
+	return v, nil
+}
+
 // InitializeDefaultSettings 初始化默认设置
 func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 	// 检查是否已有设置
@@ -1706,6 +1788,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOIDCConnectUserInfoUsernamePath:          "",
 		SettingKeyDefaultConcurrency:                       strconv.Itoa(s.cfg.Default.UserConcurrency),
 		SettingKeyDefaultBalance:                           strconv.FormatFloat(s.cfg.Default.UserBalance, 'f', 8, 64),
+		SettingKeyDefaultUserRPMLimit:                      "0",
 		SettingKeyDefaultSubscriptions:                     "[]",
 		SettingKeyAuthSourceDefaultEmailBalance:            "0",
 		SettingKeyAuthSourceDefaultEmailConcurrency:        "5",
@@ -1752,6 +1835,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 
 		// Available channels feature (default disabled; opt-in)
 		SettingKeyAvailableChannelsEnabled: "false",
+		SettingKeyServiceQuotaEnabled:      "false",
 
 		// Claude Code version check (default: empty = disabled)
 		SettingKeyMinClaudeCodeVersion: "",
@@ -1820,6 +1904,10 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.DefaultConcurrency = concurrency
 	} else {
 		result.DefaultConcurrency = s.cfg.Default.UserConcurrency
+	}
+
+	if rpm, err := strconv.Atoi(settings[SettingKeyDefaultUserRPMLimit]); err == nil && rpm >= 0 {
+		result.DefaultUserRPMLimit = rpm
 	}
 
 	// 解析浮点数类型
@@ -2063,6 +2151,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// Available channels feature (default: disabled; strict true)
 	result.AvailableChannelsEnabled = settings[SettingKeyAvailableChannelsEnabled] == "true"
+	result.ServiceQuotaEnabled = settings[SettingKeyServiceQuotaEnabled] == "true"
 
 	// Claude Code version check
 	result.MinClaudeCodeVersion = settings[SettingKeyMinClaudeCodeVersion]

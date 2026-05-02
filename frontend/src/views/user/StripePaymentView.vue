@@ -111,8 +111,8 @@ const route = useRoute()
 const router = useRouter()
 const paymentStore = usePaymentStore()
 
-// Popup mode: skip AppLayout when opened with a specific method (alipay/wechat_pay)
-const isPopup = computed(() => !!route.query.method)
+// Popup mode: skip AppLayout when opened in popup window or with a specific method (alipay/wechat_pay)
+const isPopup = computed(() => !!route.query.method || route.query.popup === '1')
 
 const loading = ref(true)
 const initError = ref('')
