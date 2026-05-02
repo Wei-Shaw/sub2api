@@ -92,15 +92,19 @@ func (m *PluginManager) buildGRPCServer() *grpc.Server {
 	return srv
 }
 
-// registerExtensionServices 按可选 extension (Settings / Events) 挂载额外的
-// gRPC service。若对应 service 未配置 (SetSettings/SetEvents 没调用), 不注册
-// 任何东西 — 插件这边收到的会是 codes.Unimplemented, 这是预期的"未启用"语义。
+// registerExtensionServices 按可选 extension (Settings / Events / Host) 挂载
+// 额外的 gRPC service。若对应 service 未配置 (SetSettings/SetEvents/
+// SetHostPricingResolver 没调用), 不注册任何东西 — 插件这边收到的会是
+// codes.Unimplemented, 这是预期的"未启用"语义。
 func (m *PluginManager) registerExtensionServices(srv *grpc.Server) {
 	if m.settingsServer != nil {
 		m.settingsServer.Register(srv)
 	}
 	if m.eventsServer != nil {
 		m.eventsServer.Register(srv)
+	}
+	if m.hostService != nil {
+		m.hostService.RegisterServices(srv)
 	}
 }
 

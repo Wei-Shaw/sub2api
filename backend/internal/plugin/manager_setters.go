@@ -222,6 +222,26 @@ func (m *PluginManager) SetAccountStatsResolverRegistrar(registrar AccountStatsR
 	m.accountStatsResolverRegistrar = registrar
 }
 
+// SetHostPricingResolver wires the HostService.ResolveModelPricing RPC
+// to a concrete host-side pricing backend (typically *BillingService).
+// Pass nil to leave HostService unregistered — plugins that call
+// ctx.Host().ResolveModelPricing will then see codes.Unimplemented,
+// which the SDK translates into ErrHostPricingUnavailable so the
+// feature degrades to nil pricing.
+//
+// Must be called before Start; the gRPC service list is frozen onto
+// the SDK grpc.Server in startSDKServer and later calls only mutate
+// the manager field (which today has no runtime effect).
+func (m *PluginManager) SetHostPricingResolver(resolver HostPricingResolver) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if resolver == nil {
+		m.hostService = nil
+		return
+	}
+	m.hostService = NewHostServiceServer(resolver)
+}
+
 // SDKAddr 返回 SDK gRPC 实际监听地址,主要用于测试与诊断。
 func (m *PluginManager) SDKAddr() string {
 	return m.sdkAddr

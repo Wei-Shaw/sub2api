@@ -314,6 +314,11 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 			gateway:       gatewayService,
 			openaiGateway: openAIGatewayService,
 		})
+		// HostService wire (ADR-UPSTREAM-SYNC-115-121 §4): let plugins call
+		// BillingService.GetModelPricing over the reverse gRPC channel so
+		// channel-management can render a global-pricing fallback for the
+		// "Available Channels" popover without vendoring LiteLLM data.
+		pluginManager.SetHostPricingResolver(billingService)
 	}
 	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, paymentHandler, pluginHandler, pluginSettingsHandler)
 	usageRecordWorkerPool := service.NewUsageRecordWorkerPool(configConfig)

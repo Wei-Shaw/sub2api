@@ -144,6 +144,14 @@ type PluginManager struct {
 	// OpenAIGatewayService. nil disables the hook (host keeps
 	// usage_logs.account_stats_cost NULL).
 	accountStatsResolverRegistrar AccountStatsResolverRegistrar
+
+	// hostService holds the HostService gRPC server (plugin→host reverse
+	// RPCs, see ADR-UPSTREAM-SYNC-115-121 §4). Wired via
+	// SetHostPricingResolver before Start; nil disables the service
+	// (plugin SDK calls surface codes.Unimplemented → degrade to nil
+	// pricing, which is the same behaviour as older hosts that never
+	// shipped HostService).
+	hostService *HostServiceServer
 }
 
 // NewPluginManager 构造 manager。
