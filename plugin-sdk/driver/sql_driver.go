@@ -430,7 +430,7 @@ func goValueToProto(v interface{}) (*pb.SQLValue, error) {
 	case []byte:
 		return &pb.SQLValue{Value: &pb.SQLValue_BytesValue{BytesValue: x}}, nil
 	case time.Time:
-		return &pb.SQLValue{Value: &pb.SQLValue_StringValue{StringValue: x.Format(time.RFC3339Nano)}}, nil
+		return &pb.SQLValue{Value: &pb.SQLValue_TimeValue{TimeValue: x.Format(time.RFC3339Nano)}}, nil
 	default:
 		return nil, fmt.Errorf("unsupported argument type %T", v)
 	}
@@ -455,6 +455,12 @@ func sqlValueToDriver(v *pb.SQLValue) driver.Value {
 		out := make([]byte, len(x.BytesValue))
 		copy(out, x.BytesValue)
 		return out
+	case *pb.SQLValue_TimeValue:
+		t, err := time.Parse(time.RFC3339Nano, x.TimeValue)
+		if err != nil {
+			return x.TimeValue // parse failure: degrade to string
+		}
+		return t
 	default:
 		return nil
 	}

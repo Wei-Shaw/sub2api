@@ -402,7 +402,7 @@ func interfaceToSQLValue(v any) *pluginsdk.SQLValue {
 	case []byte:
 		return &pluginsdk.SQLValue{Value: &pluginsdk.SQLValue_BytesValue{BytesValue: x}}
 	case time.Time:
-		return &pluginsdk.SQLValue{Value: &pluginsdk.SQLValue_StringValue{StringValue: x.Format(time.RFC3339Nano)}}
+		return &pluginsdk.SQLValue{Value: &pluginsdk.SQLValue_TimeValue{TimeValue: x.Format(time.RFC3339Nano)}}
 	default:
 		// 兜底:转字符串,避免 panic
 		return &pluginsdk.SQLValue{Value: &pluginsdk.SQLValue_StringValue{StringValue: fmt.Sprintf("%v", x)}}
