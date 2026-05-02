@@ -596,6 +596,13 @@ REDACTED{
 			wantValue: "xhigh",
 	REDACTED,
 		{
+			name:      "DeepSeek max 归一化为 xhigh",
+			body:      []byte(`{"reasoning_effort":"max"REDACTED`),
+			model:     "deepseek-v4-pro",
+			wantNil:   false,
+			wantValue: "xhigh",
+	REDACTED,
+		{
 			name:    "minimal 归一化为空",
 			body:    []byte(`{"reasoning":{"effort":"minimal"REDACTEDREDACTED`),
 			model:   "gpt-5-high",
