@@ -7,19 +7,31 @@ import (
 )
 
 type User struct {
-	ID            int64
-	Email         string
-	Username      string
-	Notes         string
-	PasswordHash  string
-	Role          string
-	Balance       float64
-	Concurrency   int
-	Status        string
-	AllowedGroups []int64
-	TokenVersion  int64 // Incremented on password change to invalidate existing tokens
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID             int64
+	Email          string
+	Username       string
+	Notes          string
+	AvatarURL      string
+	AvatarSource   string
+	AvatarMIME     string
+	AvatarByteSize int
+	AvatarSHA256   string
+	PasswordHash   string
+	Role           string
+	Balance        float64
+	Concurrency    int
+	Status         string
+	AllowedGroups  []int64
+	TokenVersion   int64 // Incremented on password change to invalidate existing tokens
+	// TokenVersionResolved indicates TokenVersion already contains the fingerprint-derived
+	// value expected in JWT claims and refresh-token state.
+	TokenVersionResolved bool
+	SignupSource         string
+	LastLoginAt          *time.Time
+	LastActiveAt         *time.Time
+	LastUsedAt           *time.Time
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]rateMultiplier
@@ -29,6 +41,13 @@ type User struct {
 	TotpSecretEncrypted *string    // AES-256-GCM 加密的 TOTP 密钥
 	TotpEnabled         bool       // 是否启用 TOTP
 	TotpEnabledAt       *time.Time // TOTP 启用时间
+
+	// 余额不足通知
+	BalanceNotifyEnabled       bool
+	BalanceNotifyThresholdType string // "fixed" (default) | "percentage"
+	BalanceNotifyThreshold     *float64
+	BalanceNotifyExtraEmails   []NotifyEmailEntry
+	TotalRecharged             float64
 
 	APIKeys       []APIKey
 	Subscriptions []UserSubscription

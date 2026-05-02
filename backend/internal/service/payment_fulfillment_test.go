@@ -3,11 +3,38 @@
 package service
 
 import (
+	"context"
 	"errors"
+	"math"
 	"testing"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/stretchr/testify/assert"
 )
+
+type paymentFulfillmentTestProvider struct {
+	key            string
+	supportedTypes []payment.PaymentType
+}
+
+func (p paymentFulfillmentTestProvider) Name() string        { return p.key }
+func (p paymentFulfillmentTestProvider) ProviderKey() string { return p.key }
+func (p paymentFulfillmentTestProvider) SupportedTypes() []payment.PaymentType {
+	return p.supportedTypes
+}
+func (p paymentFulfillmentTestProvider) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
+	panic("unexpected call")
+}
+func (p paymentFulfillmentTestProvider) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryOrderResponse, error) {
+	panic("unexpected call")
+}
+func (p paymentFulfillmentTestProvider) VerifyNotification(ctx context.Context, rawBody string, headers map[string]string) (*payment.PaymentNotification, error) {
+	panic("unexpected call")
+}
+func (p paymentFulfillmentTestProvider) Refund(ctx context.Context, req payment.RefundRequest) (*payment.RefundResponse, error) {
+	panic("unexpected call")
+}
 
 // ---------------------------------------------------------------------------
 // resolveRedeemAction — pure idempotency decision logic
@@ -160,4 +187,182 @@ func TestResolveRedeemAction_IsUsedCanUseConsistency(t *testing.T) {
 	assert.False(t, unusedCode.IsUsed())
 	assert.True(t, unusedCode.CanUse())
 	assert.Equal(t, redeemActionRedeem, resolveRedeemAction(unusedCode, nil))
+}
+
+func TestExpectedNotificationProviderKeyPrefersOrderInstanceProvider(t *testing.T) {
+	t.Parallel()
+
+	registry := payment.NewRegistry()
+	registry.Register(paymentFulfillmentTestProvider{
+		key:            payment.TypeAlipay,
+		supportedTypes: []payment.PaymentType{payment.TypeAlipay},
+	})
+
+	assert.Equal(t,
+		payment.TypeEasyPay,
+		expectedNotificationProviderKey(registry, payment.TypeAlipay, "", payment.TypeEasyPay),
+	)
+}
+
+func TestExpectedNotificationProviderKeyUsesRegistryMappingForLegacyOrders(t *testing.T) {
+	t.Parallel()
+
+	registry := payment.NewRegistry()
+	registry.Register(paymentFulfillmentTestProvider{
+		key:            payment.TypeEasyPay,
+		supportedTypes: []payment.PaymentType{payment.TypeAlipay},
+	})
+
+	assert.Equal(t,
+		payment.TypeEasyPay,
+		expectedNotificationProviderKey(registry, payment.TypeAlipay, "", ""),
+	)
+}
+
+func TestExpectedNotificationProviderKeyFallsBackToPaymentType(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t,
+		payment.TypeWxpay,
+		expectedNotificationProviderKey(nil, payment.TypeWxpay, "", ""),
+	)
+}
+
+func TestExpectedNotificationProviderKeyPrefersOrderSnapshotProviderKey(t *testing.T) {
+	t.Parallel()
+
+	registry := payment.NewRegistry()
+	registry.Register(paymentFulfillmentTestProvider{
+		key:            payment.TypeAlipay,
+		supportedTypes: []payment.PaymentType{payment.TypeAlipay},
+	})
+
+	assert.Equal(t,
+		payment.TypeEasyPay,
+		expectedNotificationProviderKey(registry, payment.TypeAlipay, payment.TypeEasyPay, ""),
+	)
+}
+
+func TestExpectedNotificationProviderKeyForOrderUsesSnapshotProviderKey(t *testing.T) {
+	t.Parallel()
+
+	registry := payment.NewRegistry()
+	registry.Register(paymentFulfillmentTestProvider{
+		key:            payment.TypeAlipay,
+		supportedTypes: []payment.PaymentType{payment.TypeAlipay},
+	})
+
+	order := &dbent.PaymentOrder{
+		PaymentType: payment.TypeAlipay,
+		ProviderSnapshot: map[string]any{
+			"schema_version": 1,
+			"provider_key":   payment.TypeEasyPay,
+		},
+	}
+
+	assert.Equal(t,
+		payment.TypeEasyPay,
+		expectedNotificationProviderKeyForOrder(registry, order, ""),
+	)
+}
+
+func TestValidateProviderNotificationMetadataRejectsWxpaySnapshotMismatch(t *testing.T) {
+	t.Parallel()
+
+	order := &dbent.PaymentOrder{
+		PaymentType: payment.TypeWxpay,
+		ProviderSnapshot: map[string]any{
+			"schema_version":  1,
+			"merchant_app_id": "wx-app-expected",
+			"merchant_id":     "mch-expected",
+			"currency":        "CNY",
+		},
+	}
+
+	err := validateProviderNotificationMetadata(order, payment.TypeWxpay, map[string]string{
+		"appid":       "wx-app-other",
+		"mchid":       "mch-expected",
+		"currency":    "CNY",
+		"trade_state": "SUCCESS",
+	})
+	assert.ErrorContains(t, err, "wxpay appid mismatch")
+}
+
+func TestValidateProviderNotificationMetadataAllowsLegacyOrdersWithoutSnapshotFields(t *testing.T) {
+	t.Parallel()
+
+	order := &dbent.PaymentOrder{
+		PaymentType: payment.TypeWxpay,
+		ProviderSnapshot: map[string]any{
+			"schema_version":       1,
+			"provider_instance_id": "9",
+			"provider_key":         payment.TypeWxpay,
+		},
+	}
+
+	err := validateProviderNotificationMetadata(order, payment.TypeWxpay, map[string]string{
+		"appid":       "wx-app-runtime",
+		"mchid":       "mch-runtime",
+		"currency":    "CNY",
+		"trade_state": "SUCCESS",
+	})
+	assert.NoError(t, err)
+}
+
+func TestParseLegacyPaymentOrderID(t *testing.T) {
+	t.Parallel()
+
+	oid, ok := parseLegacyPaymentOrderID("sub2_42", &dbent.NotFoundError{})
+	assert.True(t, ok)
+	assert.EqualValues(t, 42, oid)
+
+	_, ok = parseLegacyPaymentOrderID("42", &dbent.NotFoundError{})
+	assert.False(t, ok)
+
+	_, ok = parseLegacyPaymentOrderID("sub2_42", errors.New("db down"))
+	assert.False(t, ok)
+}
+
+func TestIsValidProviderAmount(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, isValidProviderAmount(0.01))
+	assert.False(t, isValidProviderAmount(0))
+	assert.False(t, isValidProviderAmount(-1))
+	assert.False(t, isValidProviderAmount(math.NaN()))
+	assert.False(t, isValidProviderAmount(math.Inf(1)))
+}
+
+func TestValidateProviderNotificationMetadataRejectsAlipaySnapshotMismatch(t *testing.T) {
+	t.Parallel()
+
+	order := &dbent.PaymentOrder{
+		PaymentType: payment.TypeAlipay,
+		ProviderSnapshot: map[string]any{
+			"schema_version":  2,
+			"merchant_app_id": "alipay-app-expected",
+		},
+	}
+
+	err := validateProviderNotificationMetadata(order, payment.TypeAlipay, map[string]string{
+		"app_id": "alipay-app-other",
+	})
+	assert.ErrorContains(t, err, "alipay app_id mismatch")
+}
+
+func TestValidateProviderNotificationMetadataRejectsEasyPaySnapshotMismatch(t *testing.T) {
+	t.Parallel()
+
+	order := &dbent.PaymentOrder{
+		PaymentType: payment.TypeAlipay,
+		ProviderSnapshot: map[string]any{
+			"schema_version": 2,
+			"merchant_id":    "pid-expected",
+		},
+	}
+
+	err := validateProviderNotificationMetadata(order, payment.TypeEasyPay, map[string]string{
+		"pid": "pid-other",
+	})
+	assert.ErrorContains(t, err, "easypay pid mismatch")
 }

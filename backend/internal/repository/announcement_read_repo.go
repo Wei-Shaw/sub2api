@@ -19,13 +19,17 @@ func NewAnnouncementReadRepository(client *dbent.Client) service.AnnouncementRea
 
 func (r *announcementReadRepository) MarkRead(ctx context.Context, announcementID, userID int64, readAt time.Time) error {
 	client := clientFromContext(ctx, r.client)
-	return client.AnnouncementRead.Create().
+	err := client.AnnouncementRead.Create().
 		SetAnnouncementID(announcementID).
 		SetUserID(userID).
 		SetReadAt(readAt).
 		OnConflictColumns(announcementread.FieldAnnouncementID, announcementread.FieldUserID).
 		DoNothing().
 		Exec(ctx)
+	if isSQLNoRowsError(err) {
+		return nil
+	}
+	return err
 }
 
 func (r *announcementReadRepository) GetReadMapByUser(ctx context.Context, userID int64, announcementIDs []int64) (map[int64]time.Time, error) {

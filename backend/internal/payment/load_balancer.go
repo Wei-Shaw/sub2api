@@ -45,9 +45,29 @@ type DefaultLoadBalancer struct {
 	counter       atomic.Uint64
 }
 
+type contextKey string
+
+const wxpayJSAPIAppIDContextKey contextKey = "payment.wxpay.jsapi_app_id"
+
 // NewDefaultLoadBalancer creates a new load balancer.
 func NewDefaultLoadBalancer(db *dbent.Client, encryptionKey []byte) *DefaultLoadBalancer {
 	return &DefaultLoadBalancer{db: db, encryptionKey: encryptionKey}
+}
+
+func WithWxpayJSAPIAppID(ctx context.Context, appID string) context.Context {
+	appID = strings.TrimSpace(appID)
+	if appID == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, wxpayJSAPIAppIDContextKey, appID)
+}
+
+func wxpayJSAPIAppIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	appID, _ := ctx.Value(wxpayJSAPIAppIDContextKey).(string)
+	return strings.TrimSpace(appID)
 }
 
 // instanceCandidate pairs an instance with its pre-fetched daily usage.
@@ -94,17 +114,21 @@ func (lb *DefaultLoadBalancer) SelectInstance(
 	return lb.buildSelection(selected.inst)
 }
 
-// queryEnabledInstances returns enabled instances for providerKey that support paymentType.
+// queryEnabledInstances returns enabled instances that support paymentType.
+// When providerKey is non-empty, only instances with that provider key are considered.
+// When providerKey is empty, instances across all providers are considered,
+// enabling cross-provider load balancing (e.g. EasyPay + Alipay direct for "alipay").
 func (lb *DefaultLoadBalancer) queryEnabledInstances(
 	ctx context.Context,
 	providerKey string,
 	paymentType PaymentType,
 ) ([]*dbent.PaymentProviderInstance, error) {
-	instances, err := lb.db.PaymentProviderInstance.Query().
-		Where(
-			paymentproviderinstance.ProviderKey(providerKey),
-			paymentproviderinstance.Enabled(true),
-		).
+	query := lb.db.PaymentProviderInstance.Query().
+		Where(paymentproviderinstance.Enabled(true))
+	if providerKey != "" {
+		query = query.Where(paymentproviderinstance.ProviderKey(providerKey))
+	}
+	instances, err := query.
 		Order(dbent.Asc(paymentproviderinstance.FieldSortOrder)).
 		All(ctx)
 	if err != nil {
@@ -112,13 +136,30 @@ func (lb *DefaultLoadBalancer) queryEnabledInstances(
 	}
 
 	var matched []*dbent.PaymentProviderInstance
+	expectedWxpayJSAPIAppID := wxpayJSAPIAppIDFromContext(ctx)
 	for _, inst := range instances {
-		if paymentType == providerKey || InstanceSupportsType(inst.SupportedTypes, paymentType) {
+		// Stripe: match by provider_key because supported_types lists sub-types (card,link,alipay,wxpay),
+		// not "stripe" itself. The checkout page aggregates all sub-types under "stripe".
+		if paymentType == TypeStripe {
+			if inst.ProviderKey == TypeStripe {
+				matched = append(matched, inst)
+			}
+		} else if InstanceSupportsType(inst.SupportedTypes, paymentType) {
+			if expectedWxpayJSAPIAppID != "" && normalizeVisibleMethodSupportType(paymentType) == TypeWxpay && inst.ProviderKey == TypeWxpay {
+				config, cfgErr := lb.decryptConfig(inst.Config)
+				if cfgErr != nil {
+					slog.Warn("skip wxpay instance with unreadable config during jsapi filtering", "instance_id", inst.ID, "error", cfgErr)
+					continue
+				}
+				if resolveWxpayJSAPIAppID(config) != expectedWxpayJSAPIAppID {
+					continue
+				}
+			}
 			matched = append(matched, inst)
 		}
 	}
 	if len(matched) == 0 {
-		return nil, fmt.Errorf("no enabled instance for provider %s type %s", providerKey, paymentType)
+		return nil, fmt.Errorf("no enabled instance for payment type %s", paymentType)
 	}
 	return matched, nil
 }
@@ -221,6 +262,11 @@ func getInstanceChannelLimits(inst *dbent.PaymentProviderInstance, paymentType P
 	if cl, ok := limits[lookupKey]; ok {
 		return cl
 	}
+	if aliasKey := legacyVisibleMethodAlias(lookupKey); aliasKey != "" {
+		if cl, ok := limits[aliasKey]; ok {
+			return cl
+		}
+	}
 	return ChannelLimits{}
 }
 
@@ -251,6 +297,9 @@ func (lb *DefaultLoadBalancer) buildSelection(selected *dbent.PaymentProviderIns
 	if err != nil {
 		return nil, fmt.Errorf("decrypt instance %d config: %w", selected.ID, err)
 	}
+	if config == nil {
+		config = map[string]string{}
+	}
 
 	if selected.PaymentMode != "" {
 		config["paymentMode"] = selected.PaymentMode
@@ -258,22 +307,43 @@ func (lb *DefaultLoadBalancer) buildSelection(selected *dbent.PaymentProviderIns
 
 	return &InstanceSelection{
 		InstanceID:     fmt.Sprintf("%d", selected.ID),
+		ProviderKey:    selected.ProviderKey,
 		Config:         config,
 		SupportedTypes: selected.SupportedTypes,
 		PaymentMode:    selected.PaymentMode,
 	}, nil
 }
 
-func (lb *DefaultLoadBalancer) decryptConfig(encrypted string) (map[string]string, error) {
-	plaintext, err := Decrypt(encrypted, lb.encryptionKey)
-	if err != nil {
-		return nil, err
+// decryptConfig parses a stored provider config.
+// New records are plaintext JSON; legacy records are AES-256-GCM ciphertext.
+// Unreadable values (legacy ciphertext without a valid key, or malformed data)
+// are treated as empty so the service keeps running while the admin re-enters
+// the config via the UI.
+//
+// TODO(deprecated-legacy-ciphertext): The AES fallback branch below is a
+// transitional compatibility shim for pre-plaintext records. Remove it (and
+// the encryptionKey field + the Decrypt import) after a few releases once all
+// live deployments have re-saved their provider configs through the UI.
+func (lb *DefaultLoadBalancer) decryptConfig(stored string) (map[string]string, error) {
+	if stored == "" {
+		return nil, nil
 	}
 	var config map[string]string
-	if err := json.Unmarshal([]byte(plaintext), &config); err != nil {
-		return nil, fmt.Errorf("unmarshal config: %w", err)
+	if err := json.Unmarshal([]byte(stored), &config); err == nil {
+		return config, nil
 	}
-	return config, nil
+	// Deprecated: legacy AES-256-GCM ciphertext fallback — scheduled for removal.
+	if len(lb.encryptionKey) == AES256KeySize {
+		//nolint:staticcheck // SA1019: intentional legacy fallback, scheduled for removal
+		if plaintext, err := Decrypt(stored, lb.encryptionKey); err == nil {
+			if err := json.Unmarshal([]byte(plaintext), &config); err == nil {
+				return config, nil
+			}
+		}
+	}
+	slog.Warn("payment provider config unreadable, treating as empty for re-entry",
+		"stored_len", len(stored))
+	return nil, nil
 }
 
 // GetInstanceDailyAmount returns the total completed order amount for an instance today.
@@ -310,12 +380,43 @@ func InstanceSupportsType(supportedTypes string, target PaymentType) bool {
 	if supportedTypes == "" {
 		return true
 	}
+	normalizedTarget := normalizeVisibleMethodSupportType(target)
 	for _, t := range strings.Split(supportedTypes, ",") {
-		if strings.TrimSpace(t) == target {
+		supported := strings.TrimSpace(t)
+		if supported == target || normalizeVisibleMethodSupportType(supported) == normalizedTarget {
 			return true
 		}
 	}
 	return false
+}
+
+func normalizeVisibleMethodSupportType(paymentType PaymentType) PaymentType {
+	switch strings.TrimSpace(paymentType) {
+	case TypeAlipay, TypeAlipayDirect:
+		return TypeAlipay
+	case TypeWxpay, TypeWxpayDirect:
+		return TypeWxpay
+	default:
+		return strings.TrimSpace(paymentType)
+	}
+}
+
+func legacyVisibleMethodAlias(paymentType PaymentType) PaymentType {
+	switch normalizeVisibleMethodSupportType(paymentType) {
+	case TypeAlipay:
+		return TypeAlipayDirect
+	case TypeWxpay:
+		return TypeWxpayDirect
+	default:
+		return ""
+	}
+}
+
+func resolveWxpayJSAPIAppID(config map[string]string) string {
+	if appID := strings.TrimSpace(config["mpAppId"]); appID != "" {
+		return appID
+	}
+	return strings.TrimSpace(config["appId"])
 }
 
 // GetInstanceConfig decrypts and returns the configuration for a provider instance by ID.

@@ -192,7 +192,7 @@
           <template #cell-billing_mode="{ row }">
             <span class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium"
                   :class="getBillingModeBadgeClass(row.billing_mode)">
-              {{ getBillingModeLabel(row.billing_mode) }}
+              {{ getBillingModeLabel(row.billing_mode, t) }}
             </span>
           </template>
 
@@ -447,13 +447,21 @@
               <span class="text-gray-400">{{ t('admin.usage.outputCost') }}</span>
               <span class="font-medium text-white">${{ tooltipData.output_cost.toFixed(6) }}</span>
             </div>
-            <div v-if="tooltipData && tooltipData.input_tokens > 0" class="flex items-center justify-between gap-4">
-              <span class="text-gray-400">{{ t('usage.inputTokenPrice') }}</span>
-              <span class="font-medium text-sky-300">{{ formatTokenPricePerMillion(tooltipData.input_cost, tooltipData.input_tokens) }} {{ t('usage.perMillionTokens') }}</span>
-            </div>
-            <div v-if="tooltipData && tooltipData.output_tokens > 0" class="flex items-center justify-between gap-4">
-              <span class="text-gray-400">{{ t('usage.outputTokenPrice') }}</span>
-              <span class="font-medium text-violet-300">{{ formatTokenPricePerMillion(tooltipData.output_cost, tooltipData.output_tokens) }} {{ t('usage.perMillionTokens') }}</span>
+            <!-- Token billing: show unit prices per 1M tokens -->
+            <template v-if="!tooltipData?.billing_mode || tooltipData.billing_mode === 'token'">
+              <div v-if="tooltipData && tooltipData.input_tokens > 0" class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.inputTokenPrice') }}</span>
+                <span class="font-medium text-sky-300">{{ formatTokenPricePerMillion(tooltipData.input_cost, tooltipData.input_tokens) }} {{ t('usage.perMillionTokens') }}</span>
+              </div>
+              <div v-if="tooltipData && tooltipData.output_tokens > 0" class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.outputTokenPrice') }}</span>
+                <span class="font-medium text-violet-300">{{ formatTokenPricePerMillion(tooltipData.output_cost, tooltipData.output_tokens) }} {{ t('usage.perMillionTokens') }}</span>
+              </div>
+            </template>
+            <!-- Per-request / image billing: show unit price -->
+            <div v-else class="flex items-center justify-between gap-4">
+              <span class="text-gray-400">{{ tooltipData.billing_mode === 'image' ? t('usage.imageUnitPrice') : t('usage.unitPrice') }}</span>
+              <span class="font-medium text-sky-300">${{ tooltipData.total_cost?.toFixed(6) || '0.000000' }}</span>
             </div>
             <div v-if="tooltipData && tooltipData.cache_creation_cost > 0" class="flex items-center justify-between gap-4">
               <span class="text-gray-400">{{ t('admin.usage.cacheCreationCost') }}</span>
@@ -516,6 +524,7 @@ import { formatCacheTokens, formatMultiplier } from '@/utils/formatters'
 import { formatTokenPricePerMillion } from '@/utils/usagePricing'
 import { getUsageServiceTierLabel } from '@/utils/usageServiceTier'
 import { resolveUsageRequestType } from '@/utils/usageRequestType'
+import { getBillingModeLabel, getBillingModeBadgeClass } from '@/utils/billingMode'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -636,17 +645,6 @@ const getRequestTypeBadgeClass = (log: UsageLog): string => {
   return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
 }
 
-const getBillingModeLabel = (mode: string | null | undefined): string => {
-  if (mode === 'per_request') return t('admin.usage.billingModePerRequest')
-  if (mode === 'image') return t('admin.usage.billingModeImage')
-  return t('admin.usage.billingModeToken')
-}
-
-const getBillingModeBadgeClass = (mode: string | null | undefined): string => {
-  if (mode === 'per_request') return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200'
-  if (mode === 'image') return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200'
-  return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
-}
 
 const getRequestTypeExportText = (log: UsageLog): string => {
   const requestType = resolveUsageRequestType(log)
@@ -858,7 +856,7 @@ const exportToCSV = async () => {
         formatReasoningEffort(log.reasoning_effort),
         log.inbound_endpoint || '',
         getRequestTypeExportText(log),
-        getBillingModeLabel(log.billing_mode),
+        getBillingModeLabel(log.billing_mode, t),
         log.input_tokens,
         log.output_tokens,
         log.cache_read_tokens,

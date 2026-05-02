@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -17,6 +18,14 @@ import (
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
+// ErrOrderNotFound is returned by HandlePaymentNotification when the webhook
+// references an out_trade_no that does not exist in our DB. Callers (webhook
+// handlers) should treat this as a terminal, non-retryable condition and still
+// respond with a 2xx success to the provider — otherwise the provider will keep
+// retrying forever (e.g. when a foreign environment's webhook endpoint is
+// misconfigured to point at us, or when our orders table has been wiped).
+var ErrOrderNotFound = errors.New("payment order not found")
+
 // --- Payment Notification & Fulfillment ---
 
 func (s *PaymentService) HandlePaymentNotification(ctx context.Context, n *payment.PaymentNotification, pk string) error {
@@ -26,35 +35,100 @@ func (s *PaymentService) HandlePaymentNotification(ctx context.Context, n *payme
 	// Look up order by out_trade_no (the external order ID we sent to the provider)
 	order, err := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(n.OrderID)).Only(ctx)
 	if err != nil {
-		// Fallback: try legacy format (sub2_N where N is DB ID)
-		trimmed := strings.TrimPrefix(n.OrderID, orderIDPrefix)
-		if oid, parseErr := strconv.ParseInt(trimmed, 10, 64); parseErr == nil {
-			return s.confirmPayment(ctx, oid, n.TradeNo, n.Amount, pk)
+		// Fallback only for true legacy "sub2_N" DB-ID payloads when the
+		// current out_trade_no lookup genuinely did not find an order.
+		if oid, ok := parseLegacyPaymentOrderID(n.OrderID, err); ok {
+			return s.confirmPayment(ctx, oid, n.TradeNo, n.Amount, pk, n.Metadata)
 		}
-		return fmt.Errorf("order not found for out_trade_no: %s", n.OrderID)
+		if dbent.IsNotFound(err) {
+			return fmt.Errorf("%w: out_trade_no=%s", ErrOrderNotFound, n.OrderID)
+		}
+		return fmt.Errorf("lookup order failed for out_trade_no %s: %w", n.OrderID, err)
 	}
-	return s.confirmPayment(ctx, order.ID, n.TradeNo, n.Amount, pk)
+	return s.confirmPayment(ctx, order.ID, n.TradeNo, n.Amount, pk, n.Metadata)
 }
 
-func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo string, paid float64, pk string) error {
+func parseLegacyPaymentOrderID(orderID string, lookupErr error) (int64, bool) {
+	if !dbent.IsNotFound(lookupErr) {
+		return 0, false
+	}
+	orderID = strings.TrimSpace(orderID)
+	if !strings.HasPrefix(orderID, orderIDPrefix) {
+		return 0, false
+	}
+	trimmed := strings.TrimPrefix(orderID, orderIDPrefix)
+	if trimmed == "" || trimmed == orderID {
+		return 0, false
+	}
+	oid, err := strconv.ParseInt(trimmed, 10, 64)
+	if err != nil || oid <= 0 {
+		return 0, false
+	}
+	return oid, true
+}
+
+func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo string, paid float64, pk string, metadata map[string]string) error {
 	o, err := s.entClient.PaymentOrder.Get(ctx, oid)
 	if err != nil {
 		slog.Error("order not found", "orderID", oid)
 		return nil
 	}
-	// Skip amount check when paid=0 (e.g. QueryOrder doesn't return amount).
-	// Also skip if paid is NaN/Inf (malformed provider data).
-	if paid > 0 && !math.IsNaN(paid) && !math.IsInf(paid, 0) {
-		if math.Abs(paid-o.PayAmount) > amountToleranceCNY {
-			s.writeAuditLog(ctx, o.ID, "PAYMENT_AMOUNT_MISMATCH", pk, map[string]any{"expected": o.PayAmount, "paid": paid, "tradeNo": tradeNo})
-			return fmt.Errorf("amount mismatch: expected %.2f, got %.2f", o.PayAmount, paid)
-		}
+	instanceProviderKey := ""
+	if inst, instErr := s.getOrderProviderInstance(ctx, o); instErr == nil && inst != nil {
+		instanceProviderKey = inst.ProviderKey
 	}
-	// Use order's expected amount when provider didn't report one
-	if paid <= 0 || math.IsNaN(paid) || math.IsInf(paid, 0) {
-		paid = o.PayAmount
+	expectedProviderKey := expectedNotificationProviderKeyForOrder(s.registry, o, instanceProviderKey)
+	if expectedProviderKey != "" && strings.TrimSpace(pk) != "" && !strings.EqualFold(expectedProviderKey, strings.TrimSpace(pk)) {
+		s.writeAuditLog(ctx, o.ID, "PAYMENT_PROVIDER_MISMATCH", pk, map[string]any{
+			"expectedProvider": expectedProviderKey,
+			"actualProvider":   pk,
+			"tradeNo":          tradeNo,
+		})
+		return fmt.Errorf("provider mismatch: expected %s, got %s", expectedProviderKey, pk)
+	}
+	if err := validateProviderNotificationMetadata(o, pk, metadata); err != nil {
+		s.writeAuditLog(ctx, o.ID, "PAYMENT_PROVIDER_METADATA_MISMATCH", pk, map[string]any{
+			"detail":  err.Error(),
+			"tradeNo": tradeNo,
+		})
+		return err
+	}
+	if !isValidProviderAmount(paid) {
+		s.writeAuditLog(ctx, o.ID, "PAYMENT_INVALID_AMOUNT", pk, map[string]any{
+			"expected": o.PayAmount,
+			"paid":     paid,
+			"tradeNo":  tradeNo,
+		})
+		return fmt.Errorf("invalid paid amount from provider: %v", paid)
+	}
+	if math.Abs(paid-o.PayAmount) > amountToleranceCNY {
+		s.writeAuditLog(ctx, o.ID, "PAYMENT_AMOUNT_MISMATCH", pk, map[string]any{"expected": o.PayAmount, "paid": paid, "tradeNo": tradeNo})
+		return fmt.Errorf("amount mismatch: expected %.2f, got %.2f", o.PayAmount, paid)
 	}
 	return s.toPaid(ctx, o, tradeNo, paid, pk)
+}
+
+func isValidProviderAmount(amount float64) bool {
+	return amount > 0 && !math.IsNaN(amount) && !math.IsInf(amount, 0)
+}
+
+func validateProviderNotificationMetadata(order *dbent.PaymentOrder, providerKey string, metadata map[string]string) error {
+	return validateProviderSnapshotMetadata(order, providerKey, metadata)
+}
+
+func expectedNotificationProviderKey(registry *payment.Registry, orderPaymentType string, orderProviderKey string, instanceProviderKey string) string {
+	if key := strings.TrimSpace(instanceProviderKey); key != "" {
+		return key
+	}
+	if key := strings.TrimSpace(orderProviderKey); key != "" {
+		return key
+	}
+	if registry != nil {
+		if key := strings.TrimSpace(registry.GetProviderKey(payment.PaymentType(orderPaymentType))); key != "" {
+			return key
+		}
+	}
+	return strings.TrimSpace(orderPaymentType)
 }
 
 func (s *PaymentService) toPaid(ctx context.Context, o *dbent.PaymentOrder, tradeNo string, paid float64, pk string) error {
@@ -217,7 +291,11 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 	if err != nil {
 		return fmt.Errorf("mark completed: %w", err)
 	}
-	s.writeAuditLog(ctx, o.ID, auditAction, "system", map[string]any{"rechargeCode": o.RechargeCode, "amount": o.Amount})
+	s.writeAuditLog(ctx, o.ID, auditAction, "system", map[string]any{
+		"rechargeCode":   o.RechargeCode,
+		"creditedAmount": o.Amount,
+		"payAmount":      o.PayAmount,
+	})
 	// Plugin Hook Phase B: payment.order.fulfilled. Non-blocking.
 	s.publishPaymentOrderFulfilled(&pb.PaymentOrderFulfilled{
 		OrderId:             o.ID,

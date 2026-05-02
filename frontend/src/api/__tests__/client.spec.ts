@@ -91,6 +91,22 @@ describe('API Client', () => {
       const config = adapter.mock.calls[0][0]
       expect(config.params?.timezone).toBeUndefined()
     })
+
+    it('请求默认带 withCredentials 以支持跨域 cookie', async () => {
+      const adapter = vi.fn().mockResolvedValue({
+        status: 200,
+        data: { code: 0, data: {} },
+        headers: {},
+        config: {},
+        statusText: 'OK',
+      })
+      apiClient.defaults.adapter = adapter
+
+      await apiClient.post('/auth/oauth/bind-token')
+
+      const config = adapter.mock.calls[0][0]
+      expect(config.withCredentials).toBe(true)
+    })
   })
 
   // --- 响应拦截器 ---

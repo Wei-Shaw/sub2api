@@ -1,5 +1,5 @@
 <template>
-  <div v-if="showUsageWindows">
+  <div ref="rootRef" v-if="showUsageWindows">
     <!-- Anthropic OAuth and Setup Token accounts: fetch real usage data -->
     <template
       v-if="
@@ -105,7 +105,7 @@
       <div v-else class="text-xs text-gray-400">-</div>
     </template>
 
-    <!-- OpenAI OAuth accounts: prefer /usage API, fallback to local Codex snapshot -->
+    <!-- OpenAI OAuth accounts: single source from /usage API -->
     <template v-else-if="account.platform === 'openai' && account.type === 'oauth'">
       <div v-if="hasOpenAIUsageFallback" class="space-y-1">
         <UsageProgressBar
@@ -123,36 +123,6 @@
           :utilization="usageInfo.seven_day.utilization"
           :resets-at="usageInfo.seven_day.resets_at"
           :window-stats="usageInfo.seven_day.window_stats"
-          :show-now-when-idle="true"
-          color="emerald"
-        />
-      </div>
-      <div v-else-if="isActiveOpenAIRateLimited && loading" class="space-y-1.5">
-        <div class="flex items-center gap-1">
-          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-          <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
-          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-        </div>
-        <div class="flex items-center gap-1">
-          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-          <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
-          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
-        </div>
-      </div>
-      <div v-else-if="hasCodexUsage" class="space-y-1">
-        <UsageProgressBar
-          v-if="codex5hUsedPercent !== null"
-          label="5h"
-          :utilization="codex5hUsedPercent"
-          :resets-at="codex5hResetAt"
-          :show-now-when-idle="true"
-          color="indigo"
-        />
-        <UsageProgressBar
-          v-if="codex7dUsedPercent !== null"
-          label="7d"
-          :utilization="codex7dUsedPercent"
-          :resets-at="codex7dResetAt"
           :show-now-when-idle="true"
           color="emerald"
         />
@@ -401,7 +371,7 @@
   </div>
 
   <!-- Non-OAuth/Setup-Token accounts -->
-  <div v-else>
+  <div ref="rootRef" v-else>
     <!-- Gemini API Key accounts: show quota info -->
     <AccountQuotaInfo v-if="account.platform === 'gemini'" :account="account" />
     <!-- Key/Bedrock accounts: show today stats + optional quota bars -->
@@ -446,7 +416,6 @@
         label="1d"
         :utilization="quotaDailyBar.utilization"
         :resets-at="quotaDailyBar.resetsAt"
-:display-value="quotaDailyBar.displayValue"
         color="indigo"
       />
       <UsageProgressBar
@@ -454,14 +423,12 @@
         label="7d"
         :utilization="quotaWeeklyBar.utilization"
         :resets-at="quotaWeeklyBar.resetsAt"
-:display-value="quotaWeeklyBar.displayValue"
         color="emerald"
       />
       <UsageProgressBar
         v-if="quotaTotalBar"
         label="total"
         :utilization="quotaTotalBar.utilization"
-:display-value="quotaTotalBar.displayValue"
         color="purple"
       />
 
@@ -472,12 +439,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats } from '@/types'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
-import { resolveCodexUsageWindow } from '@/utils/codexUsage'
 import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
 import { formatCompactNumber } from '@/utils/format'
 import UsageProgressBar from './UsageProgressBar.vue'
@@ -502,6 +468,7 @@ const props = withDefaults(
 )
 
 const { t } = useI18n()
+const desktopViewportQuery = '(min-width: 768px)'
 
 const unmounted = ref(false)
 onBeforeUnmount(() => { unmounted.value = true })
@@ -510,6 +477,17 @@ const loading = ref(false)
 const activeQueryLoading = ref(false)
 const error = ref<string | null>(null)
 const usageInfo = ref<AccountUsageInfo | null>(null)
+const rootRef = ref<HTMLElement | null>(null)
+const isDesktopViewport = ref(
+  typeof window === 'undefined' ? true : window.matchMedia(desktopViewportQuery).matches
+)
+const hasEnteredViewport = ref(false)
+const pendingAutoLoad = ref(false)
+const pendingAutoLoadSource = ref<'passive' | 'active' | undefined>(undefined)
+
+let desktopViewportMediaQuery: MediaQueryList | null = null
+let desktopViewportListener: ((event: MediaQueryListEvent) => void) | null = null
+let visibilityObserver: IntersectionObserver | null = null
 
 // Show usage windows for OAuth and Setup Token accounts
 const showUsageWindows = computed(() => {
@@ -545,35 +523,19 @@ const geminiUsageAvailable = computed(() => {
   )
 })
 
-const codex5hWindow = computed(() => resolveCodexUsageWindow(props.account.extra, '5h'))
-const codex7dWindow = computed(() => resolveCodexUsageWindow(props.account.extra, '7d'))
-
-const hasCodexUsage = computed(() => {
-  if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
-  return codex5hWindow.value.usedPercent !== null || codex7dWindow.value.usedPercent !== null
-})
-
 const hasOpenAIUsageFallback = computed(() => {
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
   return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day
 })
 
-const isActiveOpenAIRateLimited = computed(() => {
-  if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
-  if (!props.account.rate_limit_reset_at) return false
-  const resetAt = Date.parse(props.account.rate_limit_reset_at)
-  return !Number.isNaN(resetAt) && resetAt > Date.now()
-})
-
-const codex5hUsedPercent = computed(() => codex5hWindow.value.usedPercent)
-const codex5hResetAt = computed(() => codex5hWindow.value.resetAt)
-const codex7dUsedPercent = computed(() => codex7dWindow.value.usedPercent)
-const codex7dResetAt = computed(() => codex7dWindow.value.resetAt)
-
 const openAIUsageRefreshKey = computed(() => buildOpenAIUsageRefreshKey(props.account))
 
 const shouldAutoLoadUsageOnMount = computed(() => {
   return shouldFetchUsage.value
+})
+
+const shouldLazyLoadOnMobile = computed(() => {
+  return shouldFetchUsage.value && !isDesktopViewport.value
 })
 
 // Antigravity quota types (用于 API 返回的数据)
@@ -1020,6 +982,56 @@ const loadUsage = async (options?: { source?: 'passive' | 'active'; bypassCache?
   }
 }
 
+const flushPendingAutoLoad = () => {
+  if (!pendingAutoLoad.value) return
+  const source = pendingAutoLoadSource.value
+  pendingAutoLoad.value = false
+  pendingAutoLoadSource.value = undefined
+  loadUsage({ source }).catch((e) => {
+    console.error('Failed to load deferred usage:', e)
+  })
+}
+
+const requestAutoLoad = (source?: 'passive' | 'active') => {
+  if (!shouldFetchUsage.value) return
+  if (shouldLazyLoadOnMobile.value && !hasEnteredViewport.value) {
+    pendingAutoLoad.value = true
+    pendingAutoLoadSource.value = source
+    return
+  }
+  loadUsage({ source }).catch((e) => {
+    console.error('Failed to auto load usage:', e)
+  })
+}
+
+const detachVisibilityObserver = () => {
+  visibilityObserver?.disconnect()
+  visibilityObserver = null
+}
+
+const attachVisibilityObserver = () => {
+  detachVisibilityObserver()
+  if (!shouldLazyLoadOnMobile.value || hasEnteredViewport.value) return
+  if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') {
+    hasEnteredViewport.value = true
+    flushPendingAutoLoad()
+    return
+  }
+  if (!rootRef.value) return
+
+  visibilityObserver = new IntersectionObserver((entries) => {
+    if (!entries.some((entry) => entry.isIntersecting)) return
+    hasEnteredViewport.value = true
+    detachVisibilityObserver()
+    flushPendingAutoLoad()
+  }, {
+    root: null,
+    rootMargin: '200px 0px',
+    threshold: 0.01
+  })
+  visibilityObserver.observe(rootRef.value)
+}
+
 const loadActiveUsage = async () => {
   activeQueryLoading.value = true
   try {
@@ -1035,11 +1047,8 @@ const loadActiveUsage = async () => {
 
 interface QuotaBarInfo {
   utilization: number
-  displayValue: string
   resetsAt: string | null
 }
-
-const fmtCost = (v: number) => v.toFixed(2)
 
 const makeQuotaBar = (
   used: number,
@@ -1047,7 +1056,6 @@ const makeQuotaBar = (
   startKey?: string
 ): QuotaBarInfo => {
   const utilization = limit > 0 ? (used / limit) * 100 : 0
-  const displayValue = `${fmtCost(used)}/${fmtCost(limit)}`
   let resetsAt: string | null = null
   if (startKey) {
     const extra = props.account.extra as Record<string, unknown> | undefined
@@ -1070,7 +1078,7 @@ const makeQuotaBar = (
       }
     }
   }
-  return { utilization, displayValue, resetsAt }
+  return { utilization, resetsAt }
 }
 
 const hasApiKeyQuota = computed(() => {
@@ -1123,18 +1131,29 @@ const formatKeyUserCost = computed(() => {
 })
 
 onMounted(() => {
+  if (typeof window !== 'undefined') {
+    desktopViewportMediaQuery = window.matchMedia(desktopViewportQuery)
+    isDesktopViewport.value = desktopViewportMediaQuery.matches
+    desktopViewportListener = (event: MediaQueryListEvent) => {
+      isDesktopViewport.value = event.matches
+    }
+    if (typeof desktopViewportMediaQuery.addEventListener === 'function') {
+      desktopViewportMediaQuery.addEventListener('change', desktopViewportListener)
+    } else {
+      desktopViewportMediaQuery.addListener(desktopViewportListener)
+    }
+  }
+
   if (!shouldAutoLoadUsageOnMount.value) return
   const source = isAnthropicOAuthOrSetupToken.value ? 'passive' : undefined
-  loadUsage({ source })
+  requestAutoLoad(source)
 })
 
 watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
   if (!prevKey || nextKey === prevKey) return
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
 
-  loadUsage().catch((e) => {
-    console.error('Failed to refresh OpenAI usage:', e)
-  })
+  requestAutoLoad()
 })
 
 watch(
@@ -1150,4 +1169,40 @@ watch(
     })
   }
 )
+
+watch(
+  [rootRef, shouldLazyLoadOnMobile],
+  () => {
+    if (shouldLazyLoadOnMobile.value) {
+      attachVisibilityObserver()
+      return
+    }
+    detachVisibilityObserver()
+  },
+  { immediate: true, flush: 'post' }
+)
+
+watch(isDesktopViewport, (isDesktop) => {
+  if (isDesktop) {
+    detachVisibilityObserver()
+    hasEnteredViewport.value = true
+    flushPendingAutoLoad()
+    return
+  }
+  hasEnteredViewport.value = false
+  attachVisibilityObserver()
+})
+
+onUnmounted(() => {
+  detachVisibilityObserver()
+  if (desktopViewportMediaQuery && desktopViewportListener) {
+    if (typeof desktopViewportMediaQuery.removeEventListener === 'function') {
+      desktopViewportMediaQuery.removeEventListener('change', desktopViewportListener)
+    } else {
+      desktopViewportMediaQuery.removeListener(desktopViewportListener)
+    }
+  }
+  desktopViewportListener = null
+  desktopViewportMediaQuery = null
+})
 </script>

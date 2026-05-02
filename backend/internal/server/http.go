@@ -2,12 +2,15 @@
 package server
 
 import (
+	"context"
 	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/websearch"
 	"github.com/Wei-Shaw/sub2api/internal/plugin"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -58,6 +61,42 @@ func ProvideRouter(
 			log.Printf("Warning: server.trusted_proxies is empty in release mode; client IP trust chain is disabled")
 		}
 	}
+
+	// Wire up websearch Manager builder so it initializes on startup and rebuilds on config save.
+	settingService.SetWebSearchManagerBuilder(context.Background(), func(cfg *service.WebSearchEmulationConfig, proxyURLs map[int64]string) {
+		if cfg == nil || !cfg.Enabled || len(cfg.Providers) == 0 {
+			service.SetWebSearchManager(nil)
+			return
+		}
+		configs := make([]websearch.ProviderConfig, 0, len(cfg.Providers))
+		for _, p := range cfg.Providers {
+			if p.APIKey == "" {
+				continue
+			}
+			pc := websearch.ProviderConfig{
+				Type:       p.Type,
+				APIKey:     p.APIKey,
+				QuotaLimit: derefInt64(p.QuotaLimit),
+				ExpiresAt:  p.ExpiresAt,
+			}
+			if p.SubscribedAt != nil {
+				pc.SubscribedAt = p.SubscribedAt
+			}
+			if p.ProxyID != nil {
+				pc.ProxyID = *p.ProxyID
+				if u, ok := proxyURLs[*p.ProxyID]; ok {
+					pc.ProxyURL = u
+				} else {
+					// Proxy configured but not found — skip this provider to prevent direct connection.
+					slog.Warn("websearch: proxy not found for provider, skipping",
+						"provider", p.Type, "proxy_id", *p.ProxyID)
+					continue
+				}
+			}
+			configs = append(configs, pc)
+		}
+		service.SetWebSearchManager(websearch.NewManager(configs, redisClient))
+	})
 
 	return SetupRouter(r, handlers, jwtAuth, adminAuth, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, cfg, redisClient, pluginManager)
 }
@@ -120,4 +159,11 @@ func ProvideHTTPServer(cfg *config.Config, router *gin.Engine, pluginRouter *plu
 		// 注意：不设置 WriteTimeout，因为流式响应可能持续十几分钟
 		// 不设置 ReadTimeout，因为大请求体可能需要较长时间读取
 	}
+}
+
+func derefInt64(p *int64) int64 {
+	if p == nil {
+		return 0
+	}
+	return *p
 }

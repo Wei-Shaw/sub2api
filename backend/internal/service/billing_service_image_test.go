@@ -90,13 +90,14 @@ func TestCalculateImageCost_NegativeCount(t *testing.T) {
 	require.Equal(t, 0.0, cost.ActualCost)
 }
 
-// TestCalculateImageCost_ZeroRateMultiplier 测试费率倍数为 0 时默认使用 1.0
+// TestCalculateImageCost_ZeroRateMultiplier 锁定新行为：倍率 0 直接按 0 计费
+// （保存时已强制 > 0；若仍有 0 泄漏到计费层，零消耗比历史的 1.0 更安全）。
 func TestCalculateImageCost_ZeroRateMultiplier(t *testing.T) {
 	svc := &BillingService{}
 
 	cost := svc.CalculateImageCost("gemini-3-pro-image", "2K", 1, nil, 0)
 	require.InDelta(t, 0.201, cost.TotalCost, 0.0001)
-	require.InDelta(t, 0.201, cost.ActualCost, 0.0001) // 0 倍率当作 1.0 处理
+	require.InDelta(t, 0.0, cost.ActualCost, 1e-10)
 }
 
 // TestGetImageUnitPrice_GroupPriorityOverDefault 测试分组价格优先于默认价格

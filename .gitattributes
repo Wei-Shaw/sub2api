@@ -19,5 +19,8 @@ plugins/*/migrations/*.sql text eol=lf
 *.yaml text eol=lf
 *.yml text eol=lf
 
+# JSON 配置/数据文件（含指纹基线 baseline JSON）
+*.json text eol=lf
+
 # Dockerfile
 Dockerfile text eol=lf

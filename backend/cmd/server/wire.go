@@ -305,6 +305,12 @@ func provideCleanup(
 				}
 				return nil
 			}},
+			{"ChannelMonitorRunner", func() error {
+				if channelMonitorRunner != nil {
+					channelMonitorRunner.Stop()
+				}
+				return nil
+			}},
 		}
 
 		infraSteps := []cleanupStep{

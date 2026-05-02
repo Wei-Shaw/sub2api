@@ -32,6 +32,7 @@ export interface PaymentConfig {
   max_pending_orders: number
   order_timeout_minutes: number
   balance_disabled: boolean
+  balance_recharge_multiplier: number
   enabled_payment_types: PaymentType[]
   help_image_url: string
   help_text: string
@@ -62,6 +63,8 @@ export interface CheckoutInfoResponse {
   global_max: number
   plans: SubscriptionPlan[]
   balance_disabled: boolean
+  balance_recharge_multiplier: number
+  recharge_fee_rate: number
   help_text: string
   help_image_url: string
   stripe_publishable_key: string
@@ -89,6 +92,7 @@ export interface PaymentOrder {
   refund_requested_by?: number
   refund_request_reason?: string
   plan_id?: number
+  provider_instance_id?: string
 }
 
 // ==================== Plans & Channels ====================
@@ -138,6 +142,7 @@ export interface ProviderInstance {
   enabled: boolean
   payment_mode: string
   refund_enabled: boolean
+  allow_user_refund: boolean
   limits: string
   sort_order: number
 }
@@ -149,16 +154,50 @@ export interface CreateOrderRequest {
   payment_type: string
   order_type: string
   plan_id?: number
+  return_url?: string
+  payment_source?: string
+  openid?: string
+  wechat_resume_token?: string
+  is_mobile?: boolean
+}
+
+export type CreateOrderResultType = 'order_created' | 'oauth_required' | 'jsapi_ready'
+
+export interface WechatOAuthInfo {
+  authorize_url?: string
+  appid?: string
+  openid?: string
+  scope?: string
+  state?: string
+  redirect_url?: string
+}
+
+export interface WechatJSAPIPayload {
+  appId?: string
+  timeStamp?: string
+  nonceStr?: string
+  package?: string
+  signType?: string
+  paySign?: string
 }
 
 export interface CreateOrderResult {
   order_id: number
+  amount: number
   pay_url?: string
   qr_code?: string
   client_secret?: string
   pay_amount: number
+  fee_rate: number
   expires_at: string
+  result_type?: CreateOrderResultType
+  payment_type?: string
+  out_trade_no?: string
   payment_mode?: string
+  resume_token?: string
+  oauth?: WechatOAuthInfo
+  jsapi?: WechatJSAPIPayload
+  jsapi_payload?: WechatJSAPIPayload
 }
 
 export interface DashboardStats {

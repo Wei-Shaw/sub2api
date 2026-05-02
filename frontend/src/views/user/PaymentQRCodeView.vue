@@ -39,7 +39,7 @@ import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import { usePaymentStore } from '@/stores/payment'
 import { paymentAPI } from '@/api/payment'
-import { extractApiErrorMessage } from '@/utils/apiError'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 import { useAppStore } from '@/stores'
 import QRCode from 'qrcode'
 import alipayIcon from '@/assets/icons/alipay.svg'
@@ -94,12 +94,12 @@ async function renderQR() {
   await nextTick()
   if (!qrCanvas.value || !qrUrl.value) return
 
-  // Use high error correction to support logo overlay
+  // Use medium error correction to support logo overlay while keeping QR code scannable
   const logoSrc = getLogoForType()
   await QRCode.toCanvas(qrCanvas.value, qrUrl.value, {
     width: 256,
     margin: 2,
-    errorCorrectionLevel: logoSrc ? 'H' : 'M',
+    errorCorrectionLevel: logoSrc ? 'M' : 'L',
   })
 
   if (!logoSrc) return
@@ -167,7 +167,7 @@ async function handleCancel() {
     cleanup()
     router.push('/purchase')
   } catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
   } finally {
     cancelling.value = false
   }

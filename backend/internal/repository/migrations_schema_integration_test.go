@@ -89,6 +89,35 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "user_allowed_groups", "created_at", "timestamp with time zone", 0, false)
 }
 
+func TestMigrationsRunner_AuthIdentityAndPaymentSchemaStayAligned(t *testing.T) {
+	tx := testTx(t)
+
+	requireColumn(t, tx, "auth_identity_migration_reports", "report_type", "character varying", 80, false)
+	requireColumn(t, tx, "users", "signup_source", "character varying", 20, false)
+	requireColumnDefaultContains(t, tx, "users", "signup_source", "email")
+	requireConstraintDefinitionContains(
+		t,
+		tx,
+		"users",
+		"users_signup_source_check",
+		"signup_source",
+		"'email'",
+		"'linuxdo'",
+		"'wechat'",
+		"'oidc'",
+	)
+
+	requireForeignKeyOnDelete(t, tx, "auth_identities", "user_id", "users", "CASCADE")
+	requireForeignKeyOnDelete(t, tx, "auth_identity_channels", "identity_id", "auth_identities", "CASCADE")
+	requireForeignKeyOnDelete(t, tx, "pending_auth_sessions", "target_user_id", "users", "SET NULL")
+	requireForeignKeyOnDelete(t, tx, "identity_adoption_decisions", "pending_auth_session_id", "pending_auth_sessions", "CASCADE")
+	requireForeignKeyOnDelete(t, tx, "identity_adoption_decisions", "identity_id", "auth_identities", "SET NULL")
+
+	requireIndex(t, tx, "payment_orders", "paymentorder_out_trade_no")
+	requirePartialUniqueIndexDefinition(t, tx, "payment_orders", "paymentorder_out_trade_no", "out_trade_no", "WHERE")
+	requireIndexAbsent(t, tx, "payment_orders", "paymentorder_out_trade_no_unique")
+}
+
 func requireIndex(t *testing.T, tx *sql.Tx, table, index string) {
 	t.Helper()
 
@@ -104,6 +133,118 @@ SELECT EXISTS (
 `, table, index).Scan(&exists)
 	require.NoError(t, err, "query pg_indexes for %s.%s", table, index)
 	require.True(t, exists, "expected index %s on %s", index, table)
+}
+
+func requireIndexAbsent(t *testing.T, tx *sql.Tx, table, index string) {
+	t.Helper()
+
+	var exists bool
+	err := tx.QueryRowContext(context.Background(), `
+SELECT EXISTS (
+	SELECT 1
+	FROM pg_indexes
+	WHERE schemaname = 'public'
+	  AND tablename = $1
+	  AND indexname = $2
+)
+`, table, index).Scan(&exists)
+	require.NoError(t, err, "query pg_indexes for %s.%s", table, index)
+	require.False(t, exists, "expected index %s on %s to be absent", index, table)
+}
+
+func requirePartialUniqueIndexDefinition(t *testing.T, tx *sql.Tx, table, index string, fragments ...string) {
+	t.Helper()
+
+	var (
+		unique bool
+		def    string
+	)
+
+	err := tx.QueryRowContext(context.Background(), `
+SELECT
+	i.indisunique,
+	pg_get_indexdef(i.indexrelid)
+FROM pg_class idx
+JOIN pg_index i ON i.indexrelid = idx.oid
+JOIN pg_class tbl ON tbl.oid = i.indrelid
+JOIN pg_namespace ns ON ns.oid = tbl.relnamespace
+WHERE ns.nspname = 'public'
+  AND tbl.relname = $1
+  AND idx.relname = $2
+`, table, index).Scan(&unique, &def)
+	require.NoError(t, err, "query index definition for %s.%s", table, index)
+	require.True(t, unique, "expected index %s on %s to be unique", index, table)
+
+	for _, fragment := range fragments {
+		require.Contains(t, def, fragment, "expected index definition for %s.%s to contain %q", table, index, fragment)
+	}
+}
+
+func requireForeignKeyOnDelete(t *testing.T, tx *sql.Tx, table, column, refTable, expected string) {
+	t.Helper()
+
+	var actual string
+	err := tx.QueryRowContext(context.Background(), `
+SELECT CASE c.confdeltype
+	WHEN 'a' THEN 'NO ACTION'
+	WHEN 'r' THEN 'RESTRICT'
+	WHEN 'c' THEN 'CASCADE'
+	WHEN 'n' THEN 'SET NULL'
+	WHEN 'd' THEN 'SET DEFAULT'
+END
+FROM pg_constraint c
+JOIN pg_class tbl ON tbl.oid = c.conrelid
+JOIN pg_namespace ns ON ns.oid = tbl.relnamespace
+JOIN pg_class ref_tbl ON ref_tbl.oid = c.confrelid
+JOIN pg_attribute attr ON attr.attrelid = tbl.oid AND attr.attnum = ANY(c.conkey)
+WHERE ns.nspname = 'public'
+  AND c.contype = 'f'
+  AND tbl.relname = $1
+  AND attr.attname = $2
+  AND ref_tbl.relname = $3
+LIMIT 1
+`, table, column, refTable).Scan(&actual)
+	require.NoError(t, err, "query foreign key action for %s.%s -> %s", table, column, refTable)
+	require.Equal(t, expected, actual, "unexpected ON DELETE action for %s.%s -> %s", table, column, refTable)
+}
+
+func requireConstraintDefinitionContains(t *testing.T, tx *sql.Tx, table, constraint string, fragments ...string) {
+	t.Helper()
+
+	var def string
+	err := tx.QueryRowContext(context.Background(), `
+SELECT pg_get_constraintdef(c.oid)
+FROM pg_constraint c
+JOIN pg_class tbl ON tbl.oid = c.conrelid
+JOIN pg_namespace ns ON ns.oid = tbl.relnamespace
+WHERE ns.nspname = 'public'
+  AND tbl.relname = $1
+  AND c.conname = $2
+`, table, constraint).Scan(&def)
+	require.NoError(t, err, "query constraint definition for %s.%s", table, constraint)
+
+	for _, fragment := range fragments {
+		require.Contains(t, def, fragment, "expected constraint definition for %s.%s to contain %q", table, constraint, fragment)
+	}
+}
+
+func requireColumnDefaultContains(t *testing.T, tx *sql.Tx, table, column string, fragments ...string) {
+	t.Helper()
+
+	var columnDefault sql.NullString
+	err := tx.QueryRowContext(context.Background(), `
+SELECT column_default
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = $1
+  AND column_name = $2
+`, table, column).Scan(&columnDefault)
+	require.NoError(t, err, "query column_default for %s.%s", table, column)
+	require.True(t, columnDefault.Valid, "expected column_default for %s.%s", table, column)
+
+	for _, fragment := range fragments {
+		require.Contains(t, columnDefault.String, fragment, "expected default for %s.%s to contain %q", table, column, fragment)
+	}
 }
 
 func requireColumn(t *testing.T, tx *sql.Tx, table, column, dataType string, maxLen int, nullable bool) {

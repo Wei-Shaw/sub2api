@@ -74,6 +74,9 @@ const LinuxDoConnectSyntheticEmailDomain = "@linuxdo-connect.invalid"
 // OIDCConnectSyntheticEmailDomain 是 OIDC 用户的合成邮箱后缀（RFC 保留域名）。
 const OIDCConnectSyntheticEmailDomain = "@oidc-connect.invalid"
 
+// WeChatConnectSyntheticEmailDomain 是 WeChat Connect 用户的合成邮箱后缀（RFC 保留域名）。
+const WeChatConnectSyntheticEmailDomain = "@wechat-connect.invalid"
+
 // Setting keys
 const (
 	// 注册设置
@@ -107,6 +110,24 @@ const (
 	SettingKeyLinuxDoConnectClientID     = "linuxdo_connect_client_id"
 	SettingKeyLinuxDoConnectClientSecret = "linuxdo_connect_client_secret"
 	SettingKeyLinuxDoConnectRedirectURL  = "linuxdo_connect_redirect_url"
+
+	// WeChat Connect OAuth 登录设置
+	SettingKeyWeChatConnectEnabled             = "wechat_connect_enabled"
+	SettingKeyWeChatConnectAppID               = "wechat_connect_app_id"
+	SettingKeyWeChatConnectAppSecret           = "wechat_connect_app_secret"
+	SettingKeyWeChatConnectOpenAppID           = "wechat_connect_open_app_id"
+	SettingKeyWeChatConnectOpenAppSecret       = "wechat_connect_open_app_secret"
+	SettingKeyWeChatConnectMPAppID             = "wechat_connect_mp_app_id"
+	SettingKeyWeChatConnectMPAppSecret         = "wechat_connect_mp_app_secret"
+	SettingKeyWeChatConnectMobileAppID         = "wechat_connect_mobile_app_id"
+	SettingKeyWeChatConnectMobileAppSecret     = "wechat_connect_mobile_app_secret"
+	SettingKeyWeChatConnectOpenEnabled         = "wechat_connect_open_enabled"
+	SettingKeyWeChatConnectMPEnabled           = "wechat_connect_mp_enabled"
+	SettingKeyWeChatConnectMobileEnabled       = "wechat_connect_mobile_enabled"
+	SettingKeyWeChatConnectMode                = "wechat_connect_mode"
+	SettingKeyWeChatConnectScopes              = "wechat_connect_scopes"
+	SettingKeyWeChatConnectRedirectURL         = "wechat_connect_redirect_url"
+	SettingKeyWeChatConnectFrontendRedirectURL = "wechat_connect_frontend_redirect_url"
 
 	// Generic OIDC OAuth 登录设置
 	SettingKeyOIDCConnectEnabled              = "oidc_connect_enabled"
@@ -153,6 +174,29 @@ const (
 	SettingKeyDefaultBalance       = "default_balance"       // 新用户默认余额
 	SettingKeyDefaultSubscriptions = "default_subscriptions" // 新用户默认订阅列表（JSON）
 
+	// 第三方认证来源默认授予配置
+	SettingKeyAuthSourceDefaultEmailBalance            = "auth_source_default_email_balance"
+	SettingKeyAuthSourceDefaultEmailConcurrency        = "auth_source_default_email_concurrency"
+	SettingKeyAuthSourceDefaultEmailSubscriptions      = "auth_source_default_email_subscriptions"
+	SettingKeyAuthSourceDefaultEmailGrantOnSignup      = "auth_source_default_email_grant_on_signup"
+	SettingKeyAuthSourceDefaultEmailGrantOnFirstBind   = "auth_source_default_email_grant_on_first_bind"
+	SettingKeyAuthSourceDefaultLinuxDoBalance          = "auth_source_default_linuxdo_balance"
+	SettingKeyAuthSourceDefaultLinuxDoConcurrency      = "auth_source_default_linuxdo_concurrency"
+	SettingKeyAuthSourceDefaultLinuxDoSubscriptions    = "auth_source_default_linuxdo_subscriptions"
+	SettingKeyAuthSourceDefaultLinuxDoGrantOnSignup    = "auth_source_default_linuxdo_grant_on_signup"
+	SettingKeyAuthSourceDefaultLinuxDoGrantOnFirstBind = "auth_source_default_linuxdo_grant_on_first_bind"
+	SettingKeyAuthSourceDefaultOIDCBalance             = "auth_source_default_oidc_balance"
+	SettingKeyAuthSourceDefaultOIDCConcurrency         = "auth_source_default_oidc_concurrency"
+	SettingKeyAuthSourceDefaultOIDCSubscriptions       = "auth_source_default_oidc_subscriptions"
+	SettingKeyAuthSourceDefaultOIDCGrantOnSignup       = "auth_source_default_oidc_grant_on_signup"
+	SettingKeyAuthSourceDefaultOIDCGrantOnFirstBind    = "auth_source_default_oidc_grant_on_first_bind"
+	SettingKeyAuthSourceDefaultWeChatBalance           = "auth_source_default_wechat_balance"
+	SettingKeyAuthSourceDefaultWeChatConcurrency       = "auth_source_default_wechat_concurrency"
+	SettingKeyAuthSourceDefaultWeChatSubscriptions     = "auth_source_default_wechat_subscriptions"
+	SettingKeyAuthSourceDefaultWeChatGrantOnSignup     = "auth_source_default_wechat_grant_on_signup"
+	SettingKeyAuthSourceDefaultWeChatGrantOnFirstBind  = "auth_source_default_wechat_grant_on_first_bind"
+	SettingKeyForceEmailOnThirdPartySignup             = "force_email_on_third_party_signup"
+
 	// 管理员 API Key
 	SettingKeyAdminAPIKey = "admin_api_key" // 全局管理员 API Key（用于外部系统集成）
 
@@ -197,6 +241,23 @@ const (
 
 	// SettingKeyOpsRuntimeLogConfig stores JSON config for runtime log settings.
 	SettingKeyOpsRuntimeLogConfig = "ops_runtime_log_config"
+
+	// =========================
+	// Channel Monitor (渠道监控)
+	// =========================
+
+	// SettingKeyChannelMonitorEnabled is a DB-backed soft switch for the channel monitor feature.
+	// When false: runner skips scheduling and user-facing endpoints return an empty list.
+	SettingKeyChannelMonitorEnabled = "channel_monitor_enabled"
+
+	// SettingKeyChannelMonitorDefaultIntervalSeconds controls the default interval (seconds)
+	// pre-filled when creating a new channel monitor from the admin UI. Range: [15, 3600].
+	SettingKeyChannelMonitorDefaultIntervalSeconds = "channel_monitor_default_interval_seconds"
+
+	// SettingKeyAvailableChannelsEnabled is a DB-backed soft switch for the "Available Channels"
+	// user-facing aggregate view. When false: user endpoint returns an empty list and the
+	// sidebar entry is hidden. Defaults to false (opt-in feature).
+	SettingKeyAvailableChannelsEnabled = "available_channels_enabled"
 
 	// =========================
 	// Overload Cooldown (529)
@@ -249,6 +310,18 @@ const (
 	SettingKeyEnableMetadataPassthrough = "enable_metadata_passthrough"
 	// SettingKeyEnableCCHSigning 是否对 billing header 中的 cch 进行 xxHash64 签名（默认 false）
 	SettingKeyEnableCCHSigning = "enable_cch_signing"
+
+	// Balance Low Notification
+	SettingKeyBalanceLowNotifyEnabled     = "balance_low_notify_enabled"      // 全局开关
+	SettingKeyBalanceLowNotifyThreshold   = "balance_low_notify_threshold"    // 默认阈值（USD）
+	SettingKeyBalanceLowNotifyRechargeURL = "balance_low_notify_recharge_url" // 充值页面 URL
+
+	// Account Quota Notification
+	SettingKeyAccountQuotaNotifyEnabled = "account_quota_notify_enabled" // 全局开关
+	SettingKeyAccountQuotaNotifyEmails  = "account_quota_notify_emails"  // 管理员通知邮箱列表（JSON 数组）
+
+	// Web Search Emulation
+	SettingKeyWebSearchEmulationConfig = "web_search_emulation_config" // JSON 配置
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).

@@ -171,3 +171,72 @@
 3. **admin form 已被 V5 W7 简化**：补 advanced UI 时需"重新引入"组件（KV headers / body override / template apply picker / key picker），而非"在现有结构上加字段"。
 4. **plugin handler 走 SDK metadata，不走 host JWT 中间件**：移植涉及鉴权的代码时统一用 `pluginsdk.RequestMetadata(c.Request)` 取 `UserID`，不要 `middleware.GetAuthSubjectFromContext(c)`。
 5. **plugin 前端 import 路径**：`@sub2api/plugin-sdk`（`Icon`/`PlatformIcon`/`BaseDialog`/`Select`），其余从 plugin 本地 `../../api/...` `../../utils/...` 引；不要 `@/...`。
+
+---
+
+## Post-merge TODO（7 批 merge 全部完成后处理）
+
+以下 plugin 文件在逐版本 host merge 期间采用了 `git checkout --ours` 策略，
+上游改动投射到 plugin 路径上被跳过，需要在所有 merge 完成后统一检查是否要二次 port。
+
+### v0.1.115
+- `plugins/channel-management/frontend/src/api/channels.ts`
+- `plugins/channel-management/frontend/src/components/types.ts`
+- `plugins/channel-management/repository/channel_repo.go`
+  - v0.1.115 引入了 `features_config` 列（新列），plugin HEAD 可能没有对应处理
+  - 检查 migration 是否涉及该列（host 加列 DDL 是否应并进 plugins/channel-management/migrations/）
+  - 检查 channel service/handler/DTO 是否需要透传该字段
+
+### v0.1.115 host 文件 channel-coupled 残留（merge 时手动处理）
+
+#### 1. `backend/internal/service/openai_gateway_service.go::RecordUsage`
+- **现象**：v0.1.115 引入 `applyAccountStatsCost(ctx, usageLog, s.channelService, ...)`
+  调用，调用了 plugin 已删除的 `channelService` + 已删除的 `account_stats_pricing.go`
+  helper（channel-management 在 commit `120d521e1` 中已 port 该功能）
+- **临时处理**：在 merge 中删除该调用块（用注释说明 plugin 已接管），保留 fork
+  通过 `accountStatsResolver` hook 走 `PricingExtension.ResolveAccountStatsCost` RPC 的方式
+- **后续验证**：plugin 的 `ResolveAccountStatsCost` RPC 是否覆盖了 v0.1.115 的所有
+  upstream model 匹配场景（custom rules、wildcard、规则优先级）；是否需要补 port
+
+#### 2. `backend/internal/service/gateway_websearch_emulation.go::shouldEmulateWebSearch`【**已决策 - 方案 A**】
+- **现象**：v0.1.115 新增的 websearch 模拟功能（host 文件，非 plugins/）的 `default`
+  模式分支原本调用 `s.channelService.GetChannelForGroup(...)` 和
+  `ch.IsWebSearchEmulationEnabled(...)`
+- **冲突原因**：plugin 已删除 host 的 `channelService` 字段和 `Channel` struct
+- **决策（v0.1.115 merge 时采用）**：**方案 A** —— 删 channel fallback；
+  websearch emulation 改为依赖账号 `extra.web_search_emulation` 显式 `enable` 才启用
+  - 落地位置：`backend/internal/service/gateway_websearch_emulation.go`
+    `shouldEmulateWebSearch` 的 `default` 分支直接 `return false`（保留 `groupID`
+    形参以维持调用签名稳定，标 `_ = groupID` 抑制 unused 警告）
+  - 文件头部追加 NOTE 说明 v0.1.115 上游语义、fork 退化原因和 V5-CURATE 后续路径
+- **损失**：失去 "channel 级一键开关 web search emulation" 产品能力
+- **后续（V5 W7 / V5-CURATE §X）**：如有需求扩 plugin SDK `ChannelExtension`
+  加 `IsWebSearchEmulationEnabled(groupID, platform)` RPC，host 反向查 plugin
+- **关联文件变更**：
+  - `backend/internal/service/gateway_websearch_emulation.go`：`shouldEmulateWebSearch`
+    的 default 分支精简为 `return false`，加 NOTE 注释
+  - `backend/internal/service/channel_websearch_test.go`：**整文件删除**（依赖已删除
+    的 host `Channel` struct）
+  - `backend/internal/service/gateway_websearch_emulation_test.go`：**整文件删除**
+    （混合 channel + 非 channel 测试，依赖 `channelService` 字段；按"删整个文件"
+    的稳妥策略处理，丢失上游新增的 `isOnlyWebSearchToolInBody` /
+    `extractSearchQueryFromBody` / `buildSearchResultBlocks` / `buildTextSummary`
+    等纯函数测试，可在后续单独补回不依赖 channel 的部分）
+  - `backend/internal/pkg/websearch/*`、`backend/internal/service/websearch_config.go`：
+    保留上游版本，本次 merge 全量采纳
+
+#### 3. `backend/internal/service/antigravity_credits_overages.go`
+- **现象**：merge 期间被 `--theirs` 覆盖，丢失 fork 自有的 `checkAccountCredits`
+  / `retryCreditsOnDegraded` / `logCreditsResult` / `hasEnoughCredits` /
+  `isAntigravityDegradedResponse` 5 个函数；同时 `account_usage_service.go`
+  丢了 `GetAntigravityCredits` / `InvalidateAntigravityCreditsCache` 2 个方法
+- **修复**：merge 期间手动追加回上述 fork 自有 method/helper（完全是 fork 内容，
+  与上游无冲突）
+
+#### 4. `backend/internal/service/openai_gateway_service.go` — codex rate-limit helpers
+- **现象**：fork 自有 `codexRateLimitResetAtFromSnapshot` 等 4 个 helper 被 merge
+  覆盖删掉，但 fork 的 `account_test_service.go` 还在调用
+- **修复**：在 openai_gateway_service.go 重新追加 `codexUsagePercentExhausted` +
+  `codexRateLimitResetAtFromSnapshot`（仅 build 需要这一个；其他 3 个调用方已不存在）
+
+（后续批次如遇类似情况，在下方继续追加）

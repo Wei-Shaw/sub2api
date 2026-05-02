@@ -7,16 +7,24 @@ import (
 )
 
 type User struct {
-	ID            int64     `json:"id"`
-	Email         string    `json:"email"`
-	Username      string    `json:"username"`
-	Role          string    `json:"role"`
-	Balance       float64   `json:"balance"`
-	Concurrency   int       `json:"concurrency"`
-	Status        string    `json:"status"`
-	AllowedGroups []int64   `json:"allowed_groups"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID            int64      `json:"id"`
+	Email         string     `json:"email"`
+	Username      string     `json:"username"`
+	Role          string     `json:"role"`
+	Balance       float64    `json:"balance"`
+	Concurrency   int        `json:"concurrency"`
+	Status        string     `json:"status"`
+	AllowedGroups []int64    `json:"allowed_groups"`
+	LastActiveAt  *time.Time `json:"last_active_at,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+
+	// 余额不足通知
+	BalanceNotifyEnabled       bool               `json:"balance_notify_enabled"`
+	BalanceNotifyThresholdType string             `json:"balance_notify_threshold_type"`
+	BalanceNotifyThreshold     *float64           `json:"balance_notify_threshold"`
+	BalanceNotifyExtraEmails   []NotifyEmailEntry `json:"balance_notify_extra_emails"`
+	TotalRecharged             float64            `json:"total_recharged"`
 
 	APIKeys       []APIKey           `json:"api_keys,omitempty"`
 	Subscriptions []UserSubscription `json:"subscriptions,omitempty"`
@@ -27,7 +35,8 @@ type User struct {
 type AdminUser struct {
 	User
 
-	Notes string `json:"notes"`
+	Notes      string     `json:"notes"`
+	LastUsedAt *time.Time `json:"last_used_at"`
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]rateMultiplier
 	GroupRates map[int64]float64 `json:"group_rates,omitempty"`
@@ -217,6 +226,14 @@ type Account struct {
 	QuotaResetTimezone   *string `json:"quota_reset_timezone,omitempty"`
 	QuotaDailyResetAt    *string `json:"quota_daily_reset_at,omitempty"`
 	QuotaWeeklyResetAt   *string `json:"quota_weekly_reset_at,omitempty"`
+
+	// 配额通知配置
+	QuotaNotifyDailyEnabled    *bool    `json:"quota_notify_daily_enabled,omitempty"`
+	QuotaNotifyDailyThreshold  *float64 `json:"quota_notify_daily_threshold,omitempty"`
+	QuotaNotifyWeeklyEnabled   *bool    `json:"quota_notify_weekly_enabled,omitempty"`
+	QuotaNotifyWeeklyThreshold *float64 `json:"quota_notify_weekly_threshold,omitempty"`
+	QuotaNotifyTotalEnabled    *bool    `json:"quota_notify_total_enabled,omitempty"`
+	QuotaNotifyTotalThreshold  *float64 `json:"quota_notify_total_threshold,omitempty"`
 
 	Proxy         *Proxy         `json:"proxy,omitempty"`
 	AccountGroups []AccountGroup `json:"account_groups,omitempty"`
@@ -412,6 +429,8 @@ type AdminUsageLog struct {
 
 	// AccountRateMultiplier 账号计费倍率快照（nil 表示按 1.0 处理）
 	AccountRateMultiplier *float64 `json:"account_rate_multiplier"`
+	// AccountStatsCost 自定义定价规则计算的账号统计费用（nil 表示使用默认公式）
+	AccountStatsCost *float64 `json:"account_stats_cost,omitempty"`
 
 	// IPAddress 用户请求 IP（仅管理员可见）
 	IPAddress *string `json:"ip_address,omitempty"`

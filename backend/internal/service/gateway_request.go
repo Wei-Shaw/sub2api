@@ -75,6 +75,9 @@ type ParsedRequest struct {
 	MaxTokens       int             // max_tokens 值（用于探测请求拦截）
 	SessionContext  *SessionContext // 可选：请求上下文区分因子（nil 时行为不变）
 
+	// GroupID 请求所属分组 ID（来自 API Key）
+	GroupID *int64
+
 	// OnUpstreamAccepted 上游接受请求后立即调用（用于提前释放串行锁）
 	// 流式请求在收到 2xx 响应头后调用，避免持锁等流完成
 	OnUpstreamAccepted func()
@@ -959,7 +962,7 @@ func NormalizeClaudeOutputEffort(raw string) *string {
 		return nil
 	}
 	switch value {
-	case "low", "medium", "high", "max":
+	case "low", "medium", "high", "xhigh", "max":
 		return &value
 	default:
 		return nil

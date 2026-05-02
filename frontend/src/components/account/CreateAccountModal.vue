@@ -1492,6 +1492,16 @@
           :totalLimit="editQuotaLimit"
           :dailyLimit="editQuotaDailyLimit"
           :weeklyLimit="editQuotaWeeklyLimit"
+          :quotaNotifyGlobalEnabled="quotaNotifyGlobalEnabled"
+          :quotaNotifyDailyEnabled="quotaNotifyState.daily.enabled"
+          :quotaNotifyDailyThreshold="quotaNotifyState.daily.threshold"
+          :quotaNotifyDailyThresholdType="quotaNotifyState.daily.thresholdType"
+          :quotaNotifyWeeklyEnabled="quotaNotifyState.weekly.enabled"
+          :quotaNotifyWeeklyThreshold="quotaNotifyState.weekly.threshold"
+          :quotaNotifyWeeklyThresholdType="quotaNotifyState.weekly.thresholdType"
+          :quotaNotifyTotalEnabled="quotaNotifyState.total.enabled"
+          :quotaNotifyTotalThreshold="quotaNotifyState.total.threshold"
+          :quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType"
           :dailyResetMode="editDailyResetMode"
           :dailyResetHour="editDailyResetHour"
           :weeklyResetMode="editWeeklyResetMode"
@@ -1501,6 +1511,15 @@
           @update:totalLimit="editQuotaLimit = $event"
           @update:dailyLimit="editQuotaDailyLimit = $event"
           @update:weeklyLimit="editQuotaWeeklyLimit = $event"
+          @update:quotaNotifyDailyEnabled="quotaNotifyState.daily.enabled = $event"
+          @update:quotaNotifyDailyThreshold="quotaNotifyState.daily.threshold = $event"
+          @update:quotaNotifyDailyThresholdType="quotaNotifyState.daily.thresholdType = $event"
+          @update:quotaNotifyWeeklyEnabled="quotaNotifyState.weekly.enabled = $event"
+          @update:quotaNotifyWeeklyThreshold="quotaNotifyState.weekly.threshold = $event"
+          @update:quotaNotifyWeeklyThresholdType="quotaNotifyState.weekly.thresholdType = $event"
+          @update:quotaNotifyTotalEnabled="quotaNotifyState.total.enabled = $event"
+          @update:quotaNotifyTotalThreshold="quotaNotifyState.total.threshold = $event"
+          @update:quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType = $event"
           @update:dailyResetMode="editDailyResetMode = $event"
           @update:dailyResetHour="editDailyResetHour = $event"
           @update:weeklyResetMode="editWeeklyResetMode = $event"
@@ -1525,6 +1544,16 @@
           :totalLimit="editQuotaLimit"
           :dailyLimit="editQuotaDailyLimit"
           :weeklyLimit="editQuotaWeeklyLimit"
+          :quotaNotifyGlobalEnabled="quotaNotifyGlobalEnabled"
+          :quotaNotifyDailyEnabled="quotaNotifyState.daily.enabled"
+          :quotaNotifyDailyThreshold="quotaNotifyState.daily.threshold"
+          :quotaNotifyDailyThresholdType="quotaNotifyState.daily.thresholdType"
+          :quotaNotifyWeeklyEnabled="quotaNotifyState.weekly.enabled"
+          :quotaNotifyWeeklyThreshold="quotaNotifyState.weekly.threshold"
+          :quotaNotifyWeeklyThresholdType="quotaNotifyState.weekly.thresholdType"
+          :quotaNotifyTotalEnabled="quotaNotifyState.total.enabled"
+          :quotaNotifyTotalThreshold="quotaNotifyState.total.threshold"
+          :quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType"
           :dailyResetMode="editDailyResetMode"
           :dailyResetHour="editDailyResetHour"
           :weeklyResetMode="editWeeklyResetMode"
@@ -1534,6 +1563,15 @@
           @update:totalLimit="editQuotaLimit = $event"
           @update:dailyLimit="editQuotaDailyLimit = $event"
           @update:weeklyLimit="editQuotaWeeklyLimit = $event"
+          @update:quotaNotifyDailyEnabled="quotaNotifyState.daily.enabled = $event"
+          @update:quotaNotifyDailyThreshold="quotaNotifyState.daily.threshold = $event"
+          @update:quotaNotifyDailyThresholdType="quotaNotifyState.daily.thresholdType = $event"
+          @update:quotaNotifyWeeklyEnabled="quotaNotifyState.weekly.enabled = $event"
+          @update:quotaNotifyWeeklyThreshold="quotaNotifyState.weekly.threshold = $event"
+          @update:quotaNotifyWeeklyThresholdType="quotaNotifyState.weekly.thresholdType = $event"
+          @update:quotaNotifyTotalEnabled="quotaNotifyState.total.enabled = $event"
+          @update:quotaNotifyTotalThreshold="quotaNotifyState.total.threshold = $event"
+          @update:quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType = $event"
           @update:dailyResetMode="editDailyResetMode = $event"
           @update:dailyResetHour="editDailyResetHour = $event"
           @update:weeklyResetMode="editWeeklyResetMode = $event"
@@ -2361,6 +2399,26 @@
         </div>
       </div>
 
+      <!-- Anthropic API Key: Web Search Emulation (hidden when global disabled) -->
+      <div
+        v-if="form.platform === 'anthropic' && accountCategory === 'apikey' && webSearchGlobalEnabled"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.anthropic.webSearchEmulation') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.anthropic.webSearchEmulationDesc') }}
+            </p>
+          </div>
+          <select v-model="webSearchEmulationMode" class="input w-24 text-sm">
+            <option value="default">{{ t('admin.accounts.anthropic.webSearchDefault') }}</option>
+            <option value="enabled">{{ t('admin.accounts.anthropic.webSearchEnabled') }}</option>
+            <option value="disabled">{{ t('admin.accounts.anthropic.webSearchDisabled') }}</option>
+          </select>
+        </div>
+      </div>
+
       <!-- OpenAI OAuth Codex 官方客户端限制开关 -->
       <div
         v-if="form.platform === 'openai' && accountCategory === 'oauth-based'"
@@ -2845,6 +2903,7 @@ import {
 } from '@/composables/useModelWhitelist'
 import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
+import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import {
   useAccountOAuth,
   type AddMethod,
@@ -2873,7 +2932,7 @@ import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import {
-  // OPENAI_WS_MODE_CTX_POOL,
+  OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
   OPENAI_WS_MODE_PASSTHROUGH,
   isOpenAIWSModeEnabled,
@@ -3016,6 +3075,21 @@ const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const codexCLIOnlyEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
+const webSearchEmulationMode = ref('default')
+const webSearchGlobalEnabled = ref(false)
+const {
+  globalEnabled: quotaNotifyGlobalEnabled,
+  state: quotaNotifyState,
+  loadGlobalState: loadQuotaNotifyGlobal,
+  writeToExtra: writeQuotaNotifyToExtra,
+} = useQuotaNotifyState()
+
+// Load global feature states once
+adminAPI.settings.getWebSearchEmulationConfig().then(cfg => {
+  webSearchGlobalEnabled.value = cfg?.enabled === true && (cfg?.providers?.length ?? 0) > 0
+}).catch(() => { webSearchGlobalEnabled.value = false })
+
+loadQuotaNotifyGlobal()
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const allowOverages = ref(false) // For antigravity accounts: enable AI Credits overages
 const antigravityAccountType = ref<'oauth' | 'upstream'>('oauth') // For antigravity: oauth or upstream
@@ -3106,8 +3180,7 @@ const geminiSelectedTier = computed(() => {
 
 const openAIWSModeOptions = computed(() => [
   { value: OPENAI_WS_MODE_OFF, label: t('admin.accounts.openai.wsModeOff') },
-  // TODO: ctx_pool 选项暂时隐藏，待测试完成后恢复
-  // { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') },
+  { value: OPENAI_WS_MODE_CTX_POOL, label: t('admin.accounts.openai.wsModeCtxPool') },
   { value: OPENAI_WS_MODE_PASSTHROUGH, label: t('admin.accounts.openai.wsModePassthrough') }
 ])
 
@@ -3249,7 +3322,12 @@ watch(
     if (newVal) {
       // Load TLS fingerprint profiles
       adminAPI.tlsFingerprintProfiles.list()
-        .then(profiles => { tlsFingerprintProfiles.value = profiles.map(p => ({ id: p.id, name: p.name })) })
+        .then(profiles => {
+          tlsFingerprintProfiles.value = profiles.map(p => ({
+            id: p.id,
+            name: p.name,
+          }))
+        })
         .catch(() => { tlsFingerprintProfiles.value = [] })
       // Modal opened - fill related models
       allowedModels.value = [...getModelsByPlatform(form.platform)]
@@ -3343,6 +3421,7 @@ watch(
     }
     if (newPlatform !== 'anthropic') {
       anthropicPassthroughEnabled.value = false
+      webSearchEmulationMode.value = 'default'
     }
     // Reset OAuth states
     oauth.resetState()
@@ -3362,6 +3441,7 @@ watch(
     }
     if (platform !== 'anthropic' || category !== 'apikey') {
       anthropicPassthroughEnabled.value = false
+      webSearchEmulationMode.value = 'default'
     }
   }
 )
@@ -3726,6 +3806,7 @@ const resetForm = () => {
   openaiAPIKeyResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
   codexCLIOnlyEnabled.value = false
   anthropicPassthroughEnabled.value = false
+  webSearchEmulationMode.value = 'default'
   // Reset quota control state
   windowCostEnabled.value = false
   windowCostLimit.value = null
@@ -3812,6 +3893,11 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
     extra.anthropic_passthrough = true
   } else {
     delete extra.anthropic_passthrough
+  }
+  if (webSearchEmulationMode.value === 'default') {
+    delete extra.web_search_emulation
+  } else {
+    extra.web_search_emulation = webSearchEmulationMode.value
   }
 
   return Object.keys(extra).length > 0 ? extra : undefined
@@ -4111,6 +4197,8 @@ const createAccountAndFinish = async (
     if (editDailyResetMode.value === 'fixed' || editWeeklyResetMode.value === 'fixed') {
       quotaExtra.quota_reset_timezone = editResetTimezone.value || 'UTC'
     }
+    // Quota notify config
+    writeQuotaNotifyToExtra(quotaExtra, 'create')
     if (Object.keys(quotaExtra).length > 0) {
       finalExtra = quotaExtra
     }

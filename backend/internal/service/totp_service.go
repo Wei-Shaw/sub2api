@@ -58,9 +58,15 @@ type TotpSetupSession struct {
 
 // TotpLoginSession represents a pending 2FA login session
 type TotpLoginSession struct {
-	UserID      int64
-	Email       string
-	TokenExpiry time.Time
+	UserID           int64
+	Email            string
+	TokenExpiry      time.Time
+	PendingOAuthBind *PendingOAuthBindLoginSession `json:"pending_oauth_bind,omitempty"`
+}
+
+type PendingOAuthBindLoginSession struct {
+	PendingSessionToken string `json:"pending_session_token,omitempty"`
+	BrowserSessionKey   string `json:"browser_session_key,omitempty"`
 }
 
 // TotpStatus represents the TOTP status for a user
@@ -397,6 +403,30 @@ func (s *TotpService) VerifyCode(ctx context.Context, userID int64, code string)
 
 // CreateLoginSession creates a temporary login session for 2FA
 func (s *TotpService) CreateLoginSession(ctx context.Context, userID int64, email string) (string, error) {
+	return s.createLoginSession(ctx, userID, email, nil)
+}
+
+// CreatePendingOAuthBindLoginSession creates a temporary 2FA session that will
+// finalize a pending OAuth bind after the TOTP code is verified.
+func (s *TotpService) CreatePendingOAuthBindLoginSession(
+	ctx context.Context,
+	userID int64,
+	email string,
+	pendingSessionToken string,
+	browserSessionKey string,
+) (string, error) {
+	return s.createLoginSession(ctx, userID, email, &PendingOAuthBindLoginSession{
+		PendingSessionToken: pendingSessionToken,
+		BrowserSessionKey:   browserSessionKey,
+	})
+}
+
+func (s *TotpService) createLoginSession(
+	ctx context.Context,
+	userID int64,
+	email string,
+	pendingOAuthBind *PendingOAuthBindLoginSession,
+) (string, error) {
 	// Generate a random temp token
 	tempToken, err := generateRandomToken(32)
 	if err != nil {
@@ -404,9 +434,10 @@ func (s *TotpService) CreateLoginSession(ctx context.Context, userID int64, emai
 	}
 
 	session := &TotpLoginSession{
-		UserID:      userID,
-		Email:       email,
-		TokenExpiry: time.Now().Add(totpLoginTTL),
+		UserID:           userID,
+		Email:            email,
+		TokenExpiry:      time.Now().Add(totpLoginTTL),
+		PendingOAuthBind: pendingOAuthBind,
 	}
 
 	if err := s.cache.SetLoginSession(ctx, tempToken, session, totpLoginTTL); err != nil {

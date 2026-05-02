@@ -99,7 +99,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { usePaymentStore } from '@/stores/payment'
 import { paymentAPI } from '@/api/payment'
-import { extractApiErrorMessage } from '@/utils/apiError'
+import { extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
 import type { PaymentOrder } from '@/types/payment'
 import type { Stripe, StripeElements } from '@stripe/stripe-js'
@@ -167,7 +167,7 @@ onMounted(async () => {
       mountPaymentElement(stripe, clientSecret)
     }
   } catch (err: unknown) {
-    initError.value = extractApiErrorMessage(err, t('payment.stripeLoadFailed'))
+    initError.value = extractI18nErrorMessage(err, t, 'payment.errors', t('payment.stripeLoadFailed'))
   } finally {
     loading.value = false
   }
@@ -248,7 +248,7 @@ async function handleGenericPay() {
       scheduleClose()
     }
   } catch (err: unknown) {
-    stripeError.value = extractApiErrorMessage(err, t('payment.result.failed'))
+    stripeError.value = extractI18nErrorMessage(err, t, 'payment.errors', t('payment.result.failed'))
   } finally {
     stripeSubmitting.value = false
   }

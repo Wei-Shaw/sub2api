@@ -68,10 +68,16 @@ func TestInstanceSupportsType(t *testing.T) {
 			expected:       true,
 		},
 		{
-			name:           "partial match should not succeed",
+			name:           "legacy alipay direct supports canonical visible method",
 			supportedTypes: "alipay_direct",
 			target:         "alipay",
-			expected:       false,
+			expected:       true,
+		},
+		{
+			name:           "legacy wxpay direct supports canonical visible method",
+			supportedTypes: "wxpay_direct",
+			target:         "wxpay",
+			expected:       true,
 		},
 		{
 			name:           "empty supported types means all supported",
@@ -89,6 +95,22 @@ func TestInstanceSupportsType(t *testing.T) {
 				t.Fatalf("InstanceSupportsType(%q, %q) = %v, want %v", tt.supportedTypes, tt.target, got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestGetInstanceChannelLimitsFallsBackToLegacyDirectAliases(t *testing.T) {
+	t.Parallel()
+
+	inst := testInstance(1, TypeAlipay, makeLimitsJSON(TypeAlipayDirect, ChannelLimits{SingleMax: 66}))
+	got := getInstanceChannelLimits(inst, TypeAlipay)
+	if got.SingleMax != 66 {
+		t.Fatalf("getInstanceChannelLimits() = %+v, want SingleMax=66", got)
+	}
+
+	wxInst := testInstance(2, TypeWxpay, makeLimitsJSON(TypeWxpayDirect, ChannelLimits{SingleMin: 8}))
+	wxGot := getInstanceChannelLimits(wxInst, TypeWxpay)
+	if wxGot.SingleMin != 8 {
+		t.Fatalf("getInstanceChannelLimits() = %+v, want SingleMin=8", wxGot)
 	}
 }
 
@@ -450,6 +472,103 @@ func TestStartOfDay(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDecryptConfig_PlaintextAndLegacyCompat(t *testing.T) {
+	t.Parallel()
+
+	key := make([]byte, AES256KeySize)
+	for i := range key {
+		key[i] = byte(i + 1)
+	}
+	wrongKey := make([]byte, AES256KeySize)
+	for i := range wrongKey {
+		wrongKey[i] = byte(0xFF - i)
+	}
+
+	plaintextJSON := `{"appId":"app-123","secret":"sec-xyz"}`
+
+	legacyEncrypted, err := Encrypt(plaintextJSON, key)
+	if err != nil {
+		t.Fatalf("seed Encrypt: %v", err)
+	}
+
+	tests := []struct {
+		name   string
+		stored string
+		key    []byte
+		want   map[string]string
+	}{
+		{
+			name:   "empty stored returns nil map",
+			stored: "",
+			key:    key,
+			want:   nil,
+		},
+		{
+			name:   "plaintext JSON parses directly",
+			stored: plaintextJSON,
+			key:    nil,
+			want:   map[string]string{"appId": "app-123", "secret": "sec-xyz"},
+		},
+		{
+			name:   "plaintext JSON works even with key present",
+			stored: plaintextJSON,
+			key:    key,
+			want:   map[string]string{"appId": "app-123", "secret": "sec-xyz"},
+		},
+		{
+			name:   "legacy ciphertext with correct key decrypts",
+			stored: legacyEncrypted,
+			key:    key,
+			want:   map[string]string{"appId": "app-123", "secret": "sec-xyz"},
+		},
+		{
+			name:   "legacy ciphertext with no key treated as empty",
+			stored: legacyEncrypted,
+			key:    nil,
+			want:   nil,
+		},
+		{
+			name:   "legacy ciphertext with wrong key treated as empty",
+			stored: legacyEncrypted,
+			key:    wrongKey,
+			want:   nil,
+		},
+		{
+			name:   "garbage data treated as empty",
+			stored: "not-json-and-not-ciphertext",
+			key:    key,
+			want:   nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			lb := NewDefaultLoadBalancer(nil, tt.key)
+			got, err := lb.decryptConfig(tt.stored)
+			if err != nil {
+				t.Fatalf("decryptConfig unexpected error: %v", err)
+			}
+			if !stringMapEqual(got, tt.want) {
+				t.Fatalf("decryptConfig = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// stringMapEqual compares two map[string]string values; nil and empty are equal.
+func stringMapEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if bv, ok := b[k]; !ok || bv != v {
+			return false
+		}
+	}
+	return true
 }
 
 // ---------------------------------------------------------------------------

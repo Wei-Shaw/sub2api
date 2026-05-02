@@ -25,6 +25,19 @@ func RegisterUserRoutes(
 			user.GET("/profile", h.User.GetProfile)
 			user.PUT("/password", h.User.ChangePassword)
 			user.PUT("", h.User.UpdateProfile)
+			user.POST("/account-bindings/email/send-code", h.User.SendEmailBindingCode)
+			user.POST("/account-bindings/email", h.User.BindEmailIdentity)
+			user.DELETE("/account-bindings/:provider", h.User.UnbindIdentity)
+			user.POST("/auth-identities/bind/start", h.User.StartIdentityBinding)
+
+			// 通知邮箱管理
+			notifyEmail := user.Group("/notify-email")
+			{
+				notifyEmail.POST("/send-code", h.User.SendNotifyEmailCode)
+				notifyEmail.POST("/verify", h.User.VerifyNotifyEmail)
+				notifyEmail.PUT("/toggle", h.User.ToggleNotifyEmail)
+				notifyEmail.DELETE("", h.User.RemoveNotifyEmail)
+			}
 
 			// TOTP 双因素认证
 			totp := user.Group("/totp")
@@ -54,6 +67,15 @@ func RegisterUserRoutes(
 			groups.GET("/available", h.APIKey.GetAvailableGroups)
 			groups.GET("/rates", h.APIKey.GetUserGroupRates)
 		}
+
+		// 用户可用渠道（非管理员接口）
+		// NOTE: v0.1.115 上游新增 h.AvailableChannel 由 host AvailableChannelHandler 支持，
+		// fork 把渠道管理迁到 plugin，host 不再提供该 handler。等 plugin 暴露
+		// AvailableChannel RPC 后再恢复路由（V5 W7）。
+		// channels := authenticated.Group("/channels")
+		// {
+		//     channels.GET("/available", h.AvailableChannel.List)
+		// }
 
 		// 使用记录
 		usage := authenticated.Group("/usage")
@@ -90,5 +112,14 @@ func RegisterUserRoutes(
 			subscriptions.GET("/progress", h.Subscription.GetProgress)
 			subscriptions.GET("/summary", h.Subscription.GetSummary)
 		}
+
+		// 渠道监控（用户只读）
+		// NOTE: v0.1.115 上游新增 h.ChannelMonitor 由 host ChannelMonitorHandler 支持，
+		// fork 把渠道监控迁到 plugin，host 不再提供该 handler。等 plugin 暴露 RPC 后再恢复（V5 W7）。
+		// monitors := authenticated.Group("/channel-monitors")
+		// {
+		//     monitors.GET("", h.ChannelMonitor.List)
+		//     monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
+		// }
 	}
 }

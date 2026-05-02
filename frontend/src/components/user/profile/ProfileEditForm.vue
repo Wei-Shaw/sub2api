@@ -1,12 +1,20 @@
 <template>
-  <div class="card">
-    <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+  <div :class="props.embedded ? 'space-y-4' : 'card'">
+    <div
+      v-if="!props.embedded"
+      class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+    >
       <h2 class="text-lg font-medium text-gray-900 dark:text-white">
         {{ t('profile.editProfile') }}
       </h2>
     </div>
-    <div class="px-6 py-6">
+    <div :class="props.embedded ? '' : 'px-6 py-6'">
       <form @submit.prevent="handleUpdateProfile" class="space-y-4">
+        <div v-if="props.embedded">
+          <p class="text-sm font-semibold text-gray-900 dark:text-white">
+            {{ t('profile.editProfile') }}
+          </p>
+        </div>
         <div>
           <label for="username" class="input-label">
             {{ t('profile.username') }}
@@ -37,9 +45,12 @@ import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { userAPI } from '@/api'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   initialUsername: string
-}>()
+  embedded?: boolean
+}>(), {
+  embedded: false,
+})
 
 const { t } = useI18n()
 const authStore = useAuthStore()

@@ -436,26 +436,19 @@ func prefetchedStickyAccountIDFromContext(ctx context.Context, groupID *int64) i
 }
 
 // shouldClearStickySession 检查账号是否处于不可调度状态，需要清理粘性会话绑定。
-// 当账号状态为错误、禁用、不可调度、处于临时不可调度期间，
-// 或请求的模型处于限流状态时，返回 true。
-// 这确保后续请求不会继续使用不可用的账号。
+// 委托 IsSchedulable() 判断账号级可调度性（状态、配额、过载、限流等），
+// 额外检查模型级限流。
 //
 // shouldClearStickySession checks if an account is in an unschedulable state
 // and the sticky session binding should be cleared.
-// Returns true when account status is error/disabled, schedulable is false,
-// within temporary unschedulable period, or the requested model is rate-limited.
-// This ensures subsequent requests won't continue using unavailable accounts.
+// Delegates to IsSchedulable() for account-level checks, plus model-level rate limiting.
 func shouldClearStickySession(account *Account, requestedModel string) bool {
 	if account == nil {
 		return false
 	}
-	if account.Status == StatusError || account.Status == StatusDisabled || !account.Schedulable {
+	if !account.IsSchedulable() {
 		return true
 	}
-	if account.TempUnschedulableUntil != nil && time.Now().Before(*account.TempUnschedulableUntil) {
-		return true
-	}
-	// 检查模型限流和 scope 限流，有限流即清除粘性会话
 	if remaining := account.GetRateLimitRemainingTimeWithContext(context.Background(), requestedModel); remaining > 0 {
 		return true
 	}
@@ -570,6 +563,7 @@ type GatewayService struct {
 	resolver              *ModelPricingResolver
 	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
+	balanceNotifyService  *BalanceNotifyService
 
 	// accountStatsResolver is the optional plugin hook invoked after the
 	// host computes the customer cost. The plugin may return a custom
@@ -608,6 +602,7 @@ func NewGatewayService(
 	tlsFPProfileService *TLSFingerprintProfileService,
 	channelCacheReader *ChannelCacheReader,
 	resolver *ModelPricingResolver,
+	balanceNotifyService *BalanceNotifyService,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
@@ -642,6 +637,7 @@ func NewGatewayService(
 		tlsFPProfileService:  tlsFPProfileService,
 		channelCacheReader:   channelCacheReader,
 		resolver:             resolver,
+		balanceNotifyService: balanceNotifyService,
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
@@ -3946,6 +3942,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		return nil, fmt.Errorf("parse request: empty request")
 	}
 
+	// Web Search 模拟：纯 web_search 请求时，直接调用搜索 API 构造响应
+	if account != nil && s.shouldEmulateWebSearch(ctx, account, parsed.GroupID, parsed.Body) {
+		return s.handleWebSearchEmulation(ctx, c, account, parsed)
+	}
+
 	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabled() {
 		passthroughBody := parsed.Body
 		passthroughModel := parsed.Model
@@ -5126,19 +5127,8 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 		s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
 	}
 
-	maxBytes := resolveUpstreamResponseReadLimit(s.cfg)
-	body, err := readUpstreamResponseBodyLimited(resp.Body, maxBytes)
+	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, anthropicTooLargeError)
 	if err != nil {
-		if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
-			setOpsUpstreamError(c, http.StatusBadGateway, "upstream response too large", "")
-			c.JSON(http.StatusBadGateway, gin.H{
-				"type": "error",
-				"error": gin.H{
-					"type":    "upstream_error",
-					"message": "Upstream response too large",
-				},
-			})
-		}
 		return nil, err
 	}
 
@@ -5504,19 +5494,8 @@ func (s *GatewayService) handleBedrockNonStreamingResponse(
 	c *gin.Context,
 	account *Account,
 ) (*ClaudeUsage, error) {
-	maxBytes := resolveUpstreamResponseReadLimit(s.cfg)
-	body, err := readUpstreamResponseBodyLimited(resp.Body, maxBytes)
+	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, anthropicTooLargeError)
 	if err != nil {
-		if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
-			setOpsUpstreamError(c, http.StatusBadGateway, "upstream response too large", "")
-			c.JSON(http.StatusBadGateway, gin.H{
-				"type": "error",
-				"error": gin.H{
-					"type":    "upstream_error",
-					"message": "Upstream response too large",
-				},
-			})
-		}
 		return nil, err
 	}
 
@@ -7181,19 +7160,8 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 	// 更新5h窗口状态
 	s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
 
-	maxBytes := resolveUpstreamResponseReadLimit(s.cfg)
-	body, err := readUpstreamResponseBodyLimited(resp.Body, maxBytes)
+	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, anthropicTooLargeError)
 	if err != nil {
-		if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
-			setOpsUpstreamError(c, http.StatusBadGateway, "upstream response too large", "")
-			c.JSON(http.StatusBadGateway, gin.H{
-				"type": "error",
-				"error": gin.H{
-					"type":    "upstream_error",
-					"message": "Upstream response too large",
-				},
-			})
-		}
 		return nil, err
 	}
 
@@ -7346,49 +7314,43 @@ func (p *postUsageBillingParams) shouldUpdateAccountQuota() bool {
 	return p.Cost.TotalCost > 0 && p.Account.IsAPIKeyOrBedrock() && p.Account.HasAnyQuotaLimit()
 }
 
-// postUsageBilling 统一处理使用量记录后的扣费逻辑：
-//   - 订阅/余额扣费
-//   - API Key 配额更新
-//   - API Key 限速用量更新
-//   - 账号配额用量更新（账号口径：TotalCost × 账号计费倍率）
+// postUsageBilling is the legacy fallback billing path used when the unified
+// billing repo is unavailable (nil). Production uses applyUsageBilling → repo.Apply
+// for atomic billing. This path only runs in tests or degraded mode.
 func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *billingDeps) {
 	billingCtx, cancel := detachedBillingContext(ctx)
 	defer cancel()
 
 	cost := p.Cost
 
-	// 1. 订阅 / 余额扣费
 	if p.IsSubscriptionBill {
-		if cost.TotalCost > 0 {
-			if err := deps.userSubRepo.IncrementUsage(billingCtx, p.Subscription.ID, cost.TotalCost); err != nil {
+		// Subscription usage tracked by ActualCost so group rate multiplier
+		// consumes the quota at the expected speed.
+		if cost.ActualCost > 0 {
+			if err := deps.userSubRepo.IncrementUsage(billingCtx, p.Subscription.ID, cost.ActualCost); err != nil {
 				slog.Error("increment subscription usage failed", "subscription_id", p.Subscription.ID, "error", err)
 			}
-			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, cost.TotalCost)
 		}
 	} else {
 		if cost.ActualCost > 0 {
 			if err := deps.userRepo.DeductBalance(billingCtx, p.User.ID, cost.ActualCost); err != nil {
 				slog.Error("deduct balance failed", "user_id", p.User.ID, "error", err)
 			}
-			deps.billingCacheService.QueueDeductBalance(p.User.ID, cost.ActualCost)
 		}
 	}
 
-	// 2. API Key 配额
 	if p.shouldDeductAPIKeyQuota() {
 		if err := p.APIKeyService.UpdateQuotaUsed(billingCtx, p.APIKey.ID, cost.ActualCost); err != nil {
 			slog.Error("update api key quota failed", "api_key_id", p.APIKey.ID, "error", err)
 		}
 	}
 
-	// 3. API Key 限速用量
 	if p.shouldUpdateRateLimits() {
 		if err := p.APIKeyService.UpdateRateLimitUsage(billingCtx, p.APIKey.ID, cost.ActualCost); err != nil {
 			slog.Error("update api key rate limit usage failed", "api_key_id", p.APIKey.ID, "error", err)
 		}
 	}
 
-	// 4. 账号配额用量（账号口径：TotalCost × 账号计费倍率）
 	if p.shouldUpdateAccountQuota() {
 		accountCost := cost.TotalCost * p.AccountRateMultiplier
 		if err := deps.accountRepo.IncrementQuotaUsed(billingCtx, p.Account.ID, accountCost); err != nil {
@@ -7396,7 +7358,10 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 		}
 	}
 
-	finalizePostUsageBilling(p, deps)
+	// NOTE: finalizePostUsageBilling is NOT called here to avoid double-queuing
+	// cache updates. The legacy path does DB writes directly; the finalize path
+	// does cache queue + notifications. Notifications are dispatched separately
+	// by the caller after recording the usage log.
 }
 
 func resolveUsageBillingRequestID(ctx context.Context, upstreamRequestID string) string {
@@ -7461,9 +7426,13 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 		}
 	}
 
+	// Record subscription / balance cost using ActualCost so the group (and any
+	// user-specific) rate multiplier consumes subscription quota at the expected
+	// speed. TotalCost remains the raw (pre-multiplier) value; downstream guards
+	// on "> 0" still correctly skip free subscriptions (RateMultiplier == 0).
 	if p.IsSubscriptionBill && p.Subscription != nil && p.Cost.TotalCost > 0 {
 		cmd.SubscriptionID = &p.Subscription.ID
-		cmd.SubscriptionCost = p.Cost.TotalCost
+		cmd.SubscriptionCost = p.Cost.ActualCost
 	} else if p.Cost.ActualCost > 0 {
 		cmd.BalanceCost = p.Cost.ActualCost
 	}
@@ -7512,18 +7481,18 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 		}
 	}
 
-	finalizePostUsageBilling(p, deps)
+	finalizePostUsageBilling(p, deps, result)
 	return true, nil
 }
 
-func finalizePostUsageBilling(p *postUsageBillingParams, deps *billingDeps) {
+func finalizePostUsageBilling(p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
 	if p == nil || p.Cost == nil || deps == nil {
 		return
 	}
 
 	if p.IsSubscriptionBill {
-		if p.Cost.TotalCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
-			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.TotalCost)
+		if p.Cost.ActualCost > 0 && p.User != nil && p.APIKey != nil && p.APIKey.GroupID != nil {
+			deps.billingCacheService.QueueUpdateSubscriptionUsage(p.User.ID, *p.APIKey.GroupID, p.Cost.ActualCost)
 		}
 	} else if p.Cost.ActualCost > 0 && p.User != nil {
 		deps.billingCacheService.QueueDeductBalance(p.User.ID, p.Cost.ActualCost)
@@ -7534,6 +7503,83 @@ func finalizePostUsageBilling(p *postUsageBillingParams, deps *billingDeps) {
 	}
 
 	deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
+
+	// Notification checks run async — all parameters are already captured,
+	// no dependency on the request context or upstream connection.
+	go notifyBalanceLow(p, deps, result)
+	go notifyAccountQuota(p, deps, result)
+}
+
+// notifyBalanceLow sends balance low notification after deduction.
+// When result.NewBalance is available (from DB transaction RETURNING), it is used directly
+// to reconstruct oldBalance, avoiding stale Redis reads and concurrent-deduction races.
+func notifyBalanceLow(p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("panic in notifyBalanceLow", "recover", r)
+		}
+	}()
+	if p.IsSubscriptionBill || p.Cost.ActualCost <= 0 || p.User == nil || deps.balanceNotifyService == nil {
+		slog.Debug("notifyBalanceLow: skipped",
+			"is_subscription", p.IsSubscriptionBill,
+			"actual_cost", p.Cost.ActualCost,
+			"user_nil", p.User == nil,
+			"service_nil", deps.balanceNotifyService == nil,
+		)
+		return
+	}
+
+	oldBalance := resolveOldBalance(p, result)
+	slog.Debug("notifyBalanceLow: calling CheckBalanceAfterDeduction",
+		"user_id", p.User.ID,
+		"old_balance", oldBalance,
+		"cost", p.Cost.ActualCost,
+		"notify_enabled", p.User.BalanceNotifyEnabled,
+		"threshold", p.User.BalanceNotifyThreshold,
+		"result_has_new_balance", result != nil && result.NewBalance != nil,
+	)
+	deps.balanceNotifyService.CheckBalanceAfterDeduction(context.Background(), p.User, oldBalance, p.Cost.ActualCost)
+}
+
+// resolveOldBalance returns the pre-deduction balance.
+// Prefers the DB transaction result (newBalance + cost) over snapshot.
+func resolveOldBalance(p *postUsageBillingParams, result *UsageBillingApplyResult) float64 {
+	if result != nil && result.NewBalance != nil {
+		return *result.NewBalance + p.Cost.ActualCost
+	}
+	// Legacy fallback: snapshot balance from request context
+	return p.User.Balance
+}
+
+// notifyAccountQuota sends account quota threshold notification after increment.
+// When result.QuotaState is available (from DB transaction RETURNING), it is passed directly
+// to avoid a separate DB read that may see stale or concurrently-modified data.
+func notifyAccountQuota(p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("panic in notifyAccountQuota", "recover", r)
+		}
+	}()
+	if p.Cost.TotalCost <= 0 || p.Account == nil || !p.Account.IsAPIKeyOrBedrock() || deps.balanceNotifyService == nil {
+		slog.Debug("notifyAccountQuota: skipped",
+			"total_cost", p.Cost.TotalCost,
+			"account_nil", p.Account == nil,
+			"is_apikey_or_bedrock", p.Account != nil && p.Account.IsAPIKeyOrBedrock(),
+			"service_nil", deps.balanceNotifyService == nil,
+		)
+		return
+	}
+	accountCost := p.Cost.TotalCost * p.AccountRateMultiplier
+	var quotaState *AccountQuotaState
+	if result != nil {
+		quotaState = result.QuotaState
+	}
+	slog.Debug("notifyAccountQuota: calling CheckAccountQuotaAfterIncrement",
+		"account_id", p.Account.ID,
+		"account_cost", accountCost,
+		"has_quota_state", quotaState != nil,
+	)
+	deps.balanceNotifyService.CheckAccountQuotaAfterIncrement(context.Background(), p.Account, accountCost, quotaState)
 }
 
 func detachedBillingContext(ctx context.Context) (context.Context, context.CancelFunc) {
@@ -7556,20 +7602,22 @@ func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Cont
 
 // billingDeps 扣费逻辑依赖的服务（由各 gateway service 提供）
 type billingDeps struct {
-	accountRepo         AccountRepository
-	userRepo            UserRepository
-	userSubRepo         UserSubscriptionRepository
-	billingCacheService *BillingCacheService
-	deferredService     *DeferredService
+	accountRepo          AccountRepository
+	userRepo             UserRepository
+	userSubRepo          UserSubscriptionRepository
+	billingCacheService  *BillingCacheService
+	deferredService      *DeferredService
+	balanceNotifyService *BalanceNotifyService
 }
 
 func (s *GatewayService) billingDeps() *billingDeps {
 	return &billingDeps{
-		accountRepo:         s.accountRepo,
-		userRepo:            s.userRepo,
-		userSubRepo:         s.userSubRepo,
-		billingCacheService: s.billingCacheService,
-		deferredService:     s.deferredService,
+		accountRepo:          s.accountRepo,
+		userRepo:             s.userRepo,
+		userSubRepo:          s.userSubRepo,
+		billingCacheService:  s.billingCacheService,
+		deferredService:      s.deferredService,
+		balanceNotifyService: s.balanceNotifyService,
 	}
 }
 
@@ -8330,16 +8378,15 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 	}
 
 	// 读取响应体
-	maxReadBytes := resolveUpstreamResponseReadLimit(s.cfg)
-	respBody, err := readUpstreamResponseBodyLimited(resp.Body, maxReadBytes)
+	countTokensTooLarge := func(c *gin.Context) {
+		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Upstream response too large")
+	}
+	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, countTokensTooLarge)
 	_ = resp.Body.Close()
 	if err != nil {
-		if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
-			setOpsUpstreamError(c, http.StatusBadGateway, "upstream response too large", "")
-			s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Upstream response too large")
-			return err
+		if !errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
+			s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to read response")
 		}
-		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to read response")
 		return err
 	}
 
@@ -8353,15 +8400,12 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 			retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
 			if retryErr == nil {
 				resp = retryResp
-				respBody, err = readUpstreamResponseBodyLimited(resp.Body, maxReadBytes)
+				respBody, err = ReadUpstreamResponseBody(resp.Body, s.cfg, c, countTokensTooLarge)
 				_ = resp.Body.Close()
 				if err != nil {
-					if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
-						setOpsUpstreamError(c, http.StatusBadGateway, "upstream response too large", "")
-						s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Upstream response too large")
-						return err
+					if !errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
+						s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to read response")
 					}
-					s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to read response")
 					return err
 				}
 			}
@@ -8456,16 +8500,15 @@ func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx contex
 		return fmt.Errorf("upstream request failed: %w", err)
 	}
 
-	maxReadBytes := resolveUpstreamResponseReadLimit(s.cfg)
-	respBody, err := readUpstreamResponseBodyLimited(resp.Body, maxReadBytes)
+	countTokensTooLarge := func(c *gin.Context) {
+		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Upstream response too large")
+	}
+	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, countTokensTooLarge)
 	_ = resp.Body.Close()
 	if err != nil {
-		if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
-			setOpsUpstreamError(c, http.StatusBadGateway, "upstream response too large", "")
-			s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Upstream response too large")
-			return err
+		if !errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
+			s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to read response")
 		}
-		s.countTokensError(c, http.StatusBadGateway, "upstream_error", "Failed to read response")
 		return err
 	}
 

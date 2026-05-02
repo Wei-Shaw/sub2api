@@ -115,7 +115,7 @@ const emit = defineEmits<{
   create: []
   edit: [provider: ProviderInstance]
   delete: [provider: ProviderInstance]
-  toggleField: [provider: ProviderInstance, field: 'enabled' | 'refund_enabled']
+  toggleField: [provider: ProviderInstance, field: 'enabled' | 'refund_enabled' | 'allow_user_refund']
   toggleType: [provider: ProviderInstance, type: string]
   reorder: [providers: { id: number; sort_order: number }[]]
 }>()
