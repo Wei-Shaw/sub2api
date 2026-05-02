@@ -145,8 +145,10 @@ func errService(name string) error {
 func errInternal(err error, op string) error {
 	var pqErr *pq.Error
 	if errors.As(err, &pqErr) {
+		slog.Debug("errInternal: pq.Error matched", "op", op, "code", string(pqErr.Code), "msg", pqErr.Message)
 		return status.Errorf(codes.Internal, "%s: %s", op, formatPQForGRPC(pqErr))
 	}
+	slog.Warn("errInternal: pq.Error NOT matched", "op", op, "err_type", fmt.Sprintf("%T", err), "err_text", err.Error())
 	return status.Errorf(codes.Internal, "%s: %v", op, err)
 }
 
