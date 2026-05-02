@@ -25,9 +25,12 @@ import apiKeysAPI from './apiKeys'
 import scheduledTestsAPI from './scheduledTests'
 import backupAPI from './backup'
 import tlsFingerprintProfileAPI from './tlsFingerprintProfile'
-// channelsAPI moved into channel-management plugin (plugins/channel-management/frontend).
-// Host code should not import it directly anymore; the plugin owns its own
-// http client wired via sdk.http.apiClient at install time.
+// channelsAPI: full CRUD UI moved to channel-management plugin, but host-side
+// cross-cutting features (PathEditor, ServiceQuota FilterBar, entityNames)
+// still need list/getById, so we keep this thin client here.
+import channelsAPI from './channels'
+import channelMonitorAPI from './channelMonitor'
+import channelMonitorTemplateAPI from './channelMonitorTemplate'
 import adminPaymentAPI from './payment'
 import affiliatesAPI from './affiliates'
 
@@ -57,6 +60,9 @@ export const adminAPI = {
   scheduledTests: scheduledTestsAPI,
   backup: backupAPI,
   tlsFingerprintProfiles: tlsFingerprintProfileAPI,
+  channels: channelsAPI,
+  channelMonitor: channelMonitorAPI,
+  channelMonitorTemplate: channelMonitorTemplateAPI,
   payment: adminPaymentAPI,
   affiliates: affiliatesAPI
 }
@@ -84,6 +90,9 @@ export {
   scheduledTestsAPI,
   backupAPI,
   tlsFingerprintProfileAPI,
+  channelsAPI,
+  channelMonitorAPI,
+  channelMonitorTemplateAPI,
   adminPaymentAPI,
   affiliatesAPI
 }
