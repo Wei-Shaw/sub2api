@@ -276,7 +276,11 @@ func (p *ChannelPlugin) wireMonitor(ctx pluginsdk.PluginContext) {
 // single settings namespace shared by monitor + available-channels).
 func (p *ChannelPlugin) wireAvailableChannels(ctx pluginsdk.PluginContext, repo chService.ChannelRepository) {
 	availableRepo := chRepo.NewAvailableChannelsRepository(ctx.DB())
-	availableSvc := chService.NewAvailableChannelsService(repo, availableRepo)
+	// ctx.Host() is always non-nil (the SDK wires the HostClient
+	// unconditionally); when the host has not registered HostService
+	// the client surfaces ErrHostPricingUnavailable and the view
+	// degrades to nil pricing — same behaviour as before the wire.
+	availableSvc := chService.NewAvailableChannelsService(repo, availableRepo, ctx.Host(), ctx.Logger())
 	p.availableChannelHandler = chHandler.NewAvailableChannelHandler(availableSvc, ctx.Settings())
 }
 

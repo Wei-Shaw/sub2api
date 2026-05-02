@@ -6,19 +6,30 @@
 // implemented this in backend/internal/service/channel_available.go;
 // W8 of the V5 plugin migration moves the logic into this plugin.
 //
-// Compared with the host implementation we deliberately drop the LiteLLM
-// global-pricing fallback (synthesizePricingFromLiteLLM): pricing data is
-// not yet exposed through the SDK, so unconfigured models simply return
-// nil pricing. V5-CURATE §6 acknowledges this trade-off; restoring the
-// fallback is left to V6 once HostServiceProxyCapability is in place.
+// Pricing fallback (ADR-UPSTREAM-SYNC-115-121 §4): after W8 moved the
+// view out of the host, unconfigured models rendered as "未配置" because
+// LiteLLM global pricing was only reachable inside the host process.
+// The HostService reverse-gRPC channel restores that fallback: for every
+// SupportedModel with nil Pricing, the view calls
+// ctx.Host().ResolveModelPricing(name) and synthesises a display-only
+// ChannelModelPricing row from whatever the host returns. Host errors /
+// Unimplemented are silently tolerated (caller keeps nil pricing), so
+// older hosts without HostService keep the W8 behaviour instead of
+// breaking the page.
 package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
+	"sync/atomic"
 
+	"github.com/shopspring/decimal"
+
+	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	"github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/decimalx"
 	"github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/domain"
 )
@@ -62,17 +73,33 @@ type AvailableChannelsRepository interface {
 // ChannelRepository (for ListAll) plus a slim AvailableChannelsRepository
 // for the group / user-permission reads that don't belong to the channel
 // CRUD path.
+//
+// The host field is the plugin-sdk HostClient — set to nil in tests
+// that don't need pricing fallback; ListAvailable tolerates nil by
+// skipping the enrichment step.
 type AvailableChannelsService struct {
 	channelRepo   ChannelRepository
 	availableRepo AvailableChannelsRepository
+	host          pluginsdk.HostClient
+	logger        *slog.Logger
+
+	// hostUnavailableLogged makes the "host pricing unavailable" log
+	// a one-shot — older hosts never ship HostService, so the
+	// fallback enrichment loop would spam the plugin log on every
+	// page render without this latch. 0 = not logged, 1 = logged.
+	hostUnavailableLogged atomic.Uint32
 }
 
-// NewAvailableChannelsService constructs the service. Both repositories are
-// required; nil-argument calls panic at construction time so misconfigured
-// wiring is caught at start-up rather than on the first request.
+// NewAvailableChannelsService constructs the service. The channel + group
+// repositories are required; nil-argument calls panic at construction
+// time so misconfigured wiring is caught at start-up rather than on the
+// first request. The host client is optional: pass nil to disable the
+// LiteLLM pricing fallback (tests, or plugin deployments that opt out).
 func NewAvailableChannelsService(
 	channelRepo ChannelRepository,
 	availableRepo AvailableChannelsRepository,
+	host pluginsdk.HostClient,
+	logger *slog.Logger,
 ) *AvailableChannelsService {
 	if channelRepo == nil {
 		panic("channel-management: NewAvailableChannelsService requires a non-nil ChannelRepository")
@@ -80,7 +107,15 @@ func NewAvailableChannelsService(
 	if availableRepo == nil {
 		panic("channel-management: NewAvailableChannelsService requires a non-nil AvailableChannelsRepository")
 	}
-	return &AvailableChannelsService{channelRepo: channelRepo, availableRepo: availableRepo}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &AvailableChannelsService{
+		channelRepo:   channelRepo,
+		availableRepo: availableRepo,
+		host:          host,
+		logger:        logger,
+	}
 }
 
 // ListAvailable returns all channels paired with their associated active
@@ -120,6 +155,7 @@ func (s *AvailableChannelsService) ListAvailable(ctx context.Context) ([]Availab
 
 		view := toChannelView(ch)
 		supported := view.SupportedModels()
+		s.fillGlobalPricingFallback(ctx, supported)
 
 		out = append(out, AvailableChannel{
 			ID:                 ch.ID,
@@ -137,6 +173,111 @@ func (s *AvailableChannelsService) ListAvailable(ctx context.Context) ([]Availab
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
 	})
 	return out, nil
+}
+
+// fillGlobalPricingFallback fills display-only pricing for SupportedModels
+// that emerged from mapping/pricing without a per-channel pricing row
+// (Pass A "mapping without pricing" and the upstream "pricing-only but
+// absent from channel pricing" cases). For each such entry the service
+// asks the host for globally-known pricing (LiteLLM + host fallbacks)
+// via HostService.ResolveModelPricing and synthesises a display-only
+// ChannelModelPricing row. Matches upstream
+// backend/internal/service/channel_available.go behaviour before W8
+// moved the view out of the host.
+//
+// Failure modes are deliberately silent:
+//   - Nil host client (tests, or plugin explicitly opts out): no-op.
+//   - ErrHostPricingUnavailable (older host): logged once at Info,
+//     subsequent calls stay silent so page renders never spam logs.
+//   - Any other error (ctx canceled, host transiently down): logged at
+//     Debug and the model keeps nil pricing. The popover falls back to
+//     "未配置" which matches the pre-fallback behaviour.
+//
+// Never returns an error: pricing enrichment is strictly a rendering
+// nicety and must not abort the "Available Channels" page.
+func (s *AvailableChannelsService) fillGlobalPricingFallback(
+	ctx context.Context,
+	models []domain.SupportedModel,
+) {
+	if s == nil || s.host == nil || len(models) == 0 {
+		return
+	}
+	for i := range models {
+		if models[i].Pricing != nil {
+			continue
+		}
+		pricing, err := s.host.ResolveModelPricing(ctx, models[i].Name)
+		if err != nil {
+			s.noteHostPricingError(err)
+			continue
+		}
+		if pricing == nil {
+			// Host has no data for this model — keep nil pricing, the
+			// popover renders it as "未配置" just like before.
+			continue
+		}
+		models[i].Pricing = synthesizePricingFromHost(pricing)
+	}
+}
+
+// noteHostPricingError logs host pricing failures conservatively: the
+// "older host / feature not wired" case is logged once at Info so
+// operators can spot missing wiring, everything else is per-call Debug.
+// We deliberately do NOT log at Warn/Error — pricing fallback is a
+// cosmetic enhancement and noisy logs would train operators to ignore
+// the channel-management plugin.
+func (s *AvailableChannelsService) noteHostPricingError(err error) {
+	if errors.Is(err, pluginsdk.ErrHostPricingUnavailable) {
+		if s.hostUnavailableLogged.CompareAndSwap(0, 1) {
+			s.logger.Info("host pricing fallback unavailable; available-channels view will render LiteLLM-less popovers",
+				"error", err)
+		}
+		return
+	}
+	s.logger.Debug("host pricing lookup failed; skipping fallback for this model",
+		"error", err)
+}
+
+// synthesizePricingFromHost converts the SDK's HostModelPricing into the
+// vendored domain.ChannelModelPricing shape used by SupportedModels
+// consumers. Mirrors host synthesizePricingFromLiteLLM from
+// backend/internal/service/channel_available.go@6cd7c6054: BillingMode is
+// fixed to token (the LiteLLM fallback is always per-token), zero values
+// stay absent (*float64(nil)), and only price fields are populated —
+// interval tiers and platform come from real channel-level pricing rows
+// which this path intentionally does not have.
+func synthesizePricingFromHost(hp *pluginsdk.HostModelPricing) *domain.ChannelModelPricing {
+	if hp == nil {
+		return nil
+	}
+	return &domain.ChannelModelPricing{
+		BillingMode:      string(BillingModeToken),
+		InputPrice:       hostDecimalToFloat64Ptr(hp.InputPrice),
+		OutputPrice:      hostDecimalToFloat64Ptr(hp.OutputPrice),
+		CacheWritePrice:  hostDecimalToFloat64Ptr(hp.CacheWritePrice),
+		CacheReadPrice:   hostDecimalToFloat64Ptr(hp.CacheReadPrice),
+		ImageOutputPrice: hostDecimalToFloat64Ptr(hp.ImageOutputPrice),
+	}
+}
+
+// hostDecimalToFloat64Ptr demotes the SDK's *decimal.Decimal into the
+// vendored domain.ChannelModelPricing's *float64 fields. nil / zero
+// collapse to nil so the popover renders "未配置" for missing dimensions
+// (LiteLLM leaves e.g. CacheWritePrice unset for most models).
+//
+// Float demotion is acceptable here because the value only drives the
+// display popover — nothing on the real billing hot path consumes it.
+// The real billing path still goes through BillingService inside the
+// host with full decimal precision.
+func hostDecimalToFloat64Ptr(d *decimal.Decimal) *float64 {
+	if d == nil || d.IsZero() {
+		return nil
+	}
+	f, _ := d.Float64()
+	if f <= 0 {
+		return nil
+	}
+	return &f
 }
 
 // VisibleGroupIDs computes the set of group ids userID can see, applying the
