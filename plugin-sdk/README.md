@@ -287,6 +287,33 @@ err := ctx.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM channel_pricings").Sc
 
 返回的是标准 `*sql.DB`，可直接交给 ent / gorm / sqlx；driver 实现见 [`driver/sql_driver.go`](driver/sql_driver.go)。
 
+#### Using ent ORM
+
+Plugin SDK 的 SQL driver 兼容 [ent](https://entgo.io/) ORM。
+在 plugin 的 `Init` 中初始化 ent client：
+
+```go
+import (
+    entsql "entgo.io/ent/dialect/sql"
+    pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
+    "<your-plugin>/ent"
+)
+
+func (p *MyPlugin) Init(ctx pluginsdk.PluginContext) error {
+    drv := entsql.OpenDB(pluginsdk.Dialect, ctx.DB())
+    p.entClient = ent.NewClient(ent.Driver(drv))
+    // ...
+}
+```
+
+**注意事项**：
+- 不要调用 `entClient.Schema.Create(ctx)` 做 auto migration。
+  Plugin 使用声明式 SQL migration（`migrations/*.sql` + manifest 声明）。
+- ent 的事务通过 SDK 的 gRPC SQL 代理透传，生命周期由 SDK 管理。
+- `ctx.DB()` 返回的 `*sql.DB` 使用 gRPC driver，连接池参数
+  （`MaxOpenConns` 等）控制的是 plugin 端的逻辑并发数，不直接对应
+  host 端的物理连接数。
+
 ### 6.2 `ctx.Redis()` / `Raw()` — Redis 代理
 
 默认所有 key 自动加前缀 `plugin:<name>:`；要写 host 共享 key 需声明 `redis.raw` 并 `ctx.Redis().Raw()`。
