@@ -2,8 +2,6 @@ package monitorservice
 
 import (
 	"context"
-	stderrors "errors"
-	"log/slog"
 
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 )
@@ -42,18 +40,24 @@ func LoadMonitorRuntime(ctx context.Context, settings pluginsdk.SettingsClient) 
 	if settings == nil {
 		return def
 	}
-	var rt MonitorRuntime
-	if err := settings.GetTyped(ctx, "", &rt); err != nil {
-		if !stderrors.Is(err, pluginsdk.ErrSettingNotFound) {
-			slog.Warn("channel-monitor: load runtime settings failed", "error", err)
-		}
-		return def
-	}
-	if rt.DefaultIntervalSec == 0 {
-		rt.DefaultIntervalSec = def.DefaultIntervalSec
-	}
-	if rt.TemplateMaxBodyKB == 0 {
-		rt.TemplateMaxBodyKB = def.TemplateMaxBodyKB
-	}
+	rt := def
+	loadBool(ctx, settings, "enabled", &rt.Enabled)
+	loadInt(ctx, settings, "defaultIntervalSec", &rt.DefaultIntervalSec)
+	loadInt(ctx, settings, "templateMaxBodyKB", &rt.TemplateMaxBodyKB)
+	loadInt(ctx, settings, "dailyRollupHourUTC", &rt.DailyRollupHourUTC)
 	return rt
+}
+
+func loadBool(ctx context.Context, s pluginsdk.SettingsClient, key string, dst *bool) {
+	var v bool
+	if err := s.GetTyped(ctx, key, &v); err == nil {
+		*dst = v
+	}
+}
+
+func loadInt(ctx context.Context, s pluginsdk.SettingsClient, key string, dst *int) {
+	var v int
+	if err := s.GetTyped(ctx, key, &v); err == nil && v != 0 {
+		*dst = v
+	}
 }

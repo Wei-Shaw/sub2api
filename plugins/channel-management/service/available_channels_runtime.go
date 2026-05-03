@@ -48,12 +48,12 @@ func LoadAvailableChannelsRuntime(
 	if settings == nil {
 		return def
 	}
-	var rt AvailableChannelsRuntime
-	if err := settings.GetTyped(ctx, "", &rt); err != nil {
+	var enabled bool
+	if err := settings.GetTyped(ctx, "availableChannelsEnabled", &enabled); err != nil {
 		if !stderrors.Is(err, pluginsdk.ErrSettingNotFound) {
 			slog.Warn("channel-management: load available-channels runtime settings failed", "error", err)
 		}
 		return def
 	}
-	return rt
+	return AvailableChannelsRuntime{Enabled: enabled}
 }
