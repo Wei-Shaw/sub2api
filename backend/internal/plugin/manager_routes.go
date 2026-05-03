@@ -141,10 +141,11 @@ func expandEndpoints(pluginName string, decls []*pluginsdk.EndpointDeclaration, 
 		if auth == "" {
 			auth = AuthTypeNone
 		}
+		prefix := stripGinParams(ep.GetPath())
 		for _, mth := range methods {
 			out = append(out, RouteEntry{
 				Method:     strings.ToUpper(mth),
-				PathPrefix: ep.GetPath(),
+				PathPrefix: prefix,
 				PluginName: pluginName,
 				AuthType:   auth,
 				ProxyURL:   proxyURL,
@@ -153,6 +154,25 @@ func expandEndpoints(pluginName string, decls []*pluginsdk.EndpointDeclaration, 
 		}
 	}
 	return out
+}
+
+// stripGinParams truncates a path at the first Gin-style parameter segment
+// (`:param` or `*param`), returning a prefix suitable for strings.HasPrefix
+// matching. The trailing slash is preserved so the prefix only matches
+// sub-paths, not the bare parent.
+//
+//	"/admin/monitors"              → "/admin/monitors"  (no params)
+//	"/admin/monitors/:id"          → "/admin/monitors/"
+//	"/admin/monitors/:id/run"      → "/admin/monitors/"
+//	"/admin/monitors/:id/history"  → "/admin/monitors/"
+func stripGinParams(path string) string {
+	parts := strings.Split(path, "/")
+	for i, seg := range parts {
+		if len(seg) > 0 && (seg[0] == ':' || seg[0] == '*') {
+			return strings.Join(parts[:i], "/") + "/"
+		}
+	}
+	return path
 }
 
 // normalizeProxyURL 把 host:port 形式补成 http://host:port。
