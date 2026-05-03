@@ -186,6 +186,56 @@ REDACTED
 	return b
 REDACTED
 
+func TestOpenAIGatewayServiceRecordUsage_ZeroUsageStillWritesUsageLog(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: trueREDACTEDREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	quotaSvc := &openAIRecordUsageAPIKeyQuotaStub{REDACTED
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_zero_usage",
+			Usage:     OpenAIUsage{REDACTED,
+			Model:     "gpt-5.1",
+			Duration:  time.Second,
+	REDACTED,
+		APIKey:        &APIKey{ID: 1000, Quota: 100, Group: &Group{RateMultiplier: 1REDACTEDREDACTED,
+		User:          &User{ID: 2000REDACTED,
+		Account:       &Account{ID: 3000, Type: AccountTypeAPIKeyREDACTED,
+		APIKeyService: quotaSvc,
+REDACTED)
+
+REDACTED
+	require.Equal(t, 1, billingRepo.calls)
+	require.Equal(t, 1, usageRepo.calls)
+	require.Equal(t, 0, userRepo.deductCalls)
+	require.Equal(t, 0, subRepo.incrementCalls)
+	require.Equal(t, 0, quotaSvc.quotaCalls)
+	require.Equal(t, 0, quotaSvc.rateLimitCalls)
+
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "resp_zero_usage", usageRepo.lastLog.RequestID)
+	require.Zero(t, usageRepo.lastLog.InputTokens)
+	require.Zero(t, usageRepo.lastLog.OutputTokens)
+	require.Zero(t, usageRepo.lastLog.CacheCreationTokens)
+	require.Zero(t, usageRepo.lastLog.CacheReadTokens)
+	require.Zero(t, usageRepo.lastLog.ImageOutputTokens)
+	require.Zero(t, usageRepo.lastLog.ImageCount)
+	require.Zero(t, usageRepo.lastLog.InputCost)
+	require.Zero(t, usageRepo.lastLog.OutputCost)
+	require.Zero(t, usageRepo.lastLog.TotalCost)
+	require.Zero(t, usageRepo.lastLog.ActualCost)
+
+	require.NotNil(t, billingRepo.lastCmd)
+	require.Zero(t, billingRepo.lastCmd.BalanceCost)
+	require.Zero(t, billingRepo.lastCmd.SubscriptionCost)
+	require.Zero(t, billingRepo.lastCmd.APIKeyQuotaCost)
+	require.Zero(t, billingRepo.lastCmd.APIKeyRateLimitCost)
+	require.Zero(t, billingRepo.lastCmd.AccountQuotaCost)
+REDACTED
+
 func TestOpenAIGatewayServiceRecordUsage_UsesUserSpecificGroupRate(t *testing.T) {
 	groupID := int64(11)
 	groupRate := 1.4

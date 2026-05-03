@@ -446,6 +446,109 @@ REDACTED
 	require.Equal(t, "aGVsbG8=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 REDACTED
 
+func TestOpenAIGatewayServiceForwardImages_APIKeyStreamJSONResponseBillsImage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","stream":true,"response_format":"b64_json"REDACTED`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{REDACTED,
+		httpUpstream: &httpUpstreamRecorder{
+			resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"application/json"REDACTED,
+					"X-Request-Id": []string{"req_img_stream_json"REDACTED,
+			REDACTED,
+				Body: io.NopCloser(strings.NewReader(`{"created":1710000008,"usage":{"input_tokens":12,"output_tokens":21,"output_tokens_details":{"image_tokens":9REDACTEDREDACTED,"data":[{"b64_json":"aGVsbG8=","revised_prompt":"draw a cat"REDACTED]REDACTED`)),
+		REDACTED,
+	REDACTED,
+REDACTED
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+REDACTED
+
+	account := &Account{
+		ID:       7,
+		Name:     "openai-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+REDACTED
+			"api_key":  "test-api-key",
+			"base_url": "https://image-upstream.example/v1",
+	REDACTED,
+REDACTED
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+REDACTED
+	require.NotNil(t, result)
+	require.True(t, result.Stream)
+	require.Equal(t, 1, result.ImageCount)
+	require.Equal(t, 12, result.Usage.InputTokens)
+	require.Equal(t, 21, result.Usage.OutputTokens)
+	require.Equal(t, 9, result.Usage.ImageOutputTokens)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "aGVsbG8=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+REDACTED
+
+func TestOpenAIGatewayServiceForwardImages_APIKeyStreamRawJSONEventStreamFallbackBillsImage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","stream":true,"response_format":"b64_json"REDACTED`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{REDACTED,
+		httpUpstream: &httpUpstreamRecorder{
+			resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": []string{"text/event-stream"REDACTED,
+					"X-Request-Id": []string{"req_img_stream_json_mislabeled"REDACTED,
+			REDACTED,
+				Body: io.NopCloser(strings.NewReader(`{"created":1710000009,"usage":{"input_tokens":10,"output_tokens":18,"output_tokens_details":{"image_tokens":8REDACTEDREDACTED,"data":[{"b64_json":"ZmluYWw="REDACTED]REDACTED`)),
+		REDACTED,
+	REDACTED,
+REDACTED
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+REDACTED
+
+	account := &Account{
+		ID:       8,
+		Name:     "openai-apikey",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+REDACTED
+			"api_key":  "test-api-key",
+			"base_url": "https://image-upstream.example/v1",
+	REDACTED,
+REDACTED
+
+	result, err := svc.ForwardImages(context.Background(), c, account, body, parsed, "")
+REDACTED
+	require.NotNil(t, result)
+	require.True(t, result.Stream)
+	require.Equal(t, 1, result.ImageCount)
+	require.Equal(t, 10, result.Usage.InputTokens)
+	require.Equal(t, 18, result.Usage.OutputTokens)
+	require.Equal(t, 8, result.Usage.ImageOutputTokens)
+	require.Equal(t, "ZmluYWw=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
+REDACTED
+
+func TestExtractOpenAIImagesBillableCountFromJSONBytes_CompletedEvent(t *testing.T) {
+	body := []byte(`{"type":"image_generation.completed","b64_json":"ZmluYWw=","usage":{"input_tokens":10,"output_tokens":18REDACTEDREDACTED`)
+
+	require.Equal(t, 1, extractOpenAIImagesBillableCountFromJSONBytes(body))
+REDACTED
+
 func TestOpenAIGatewayServiceForwardImages_APIKeyEditUsesConfiguredV1BaseURL(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

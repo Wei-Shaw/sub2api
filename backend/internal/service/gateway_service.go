@@ -8174,9 +8174,16 @@ REDACTED
 REDACTED
 
 func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		return context.Background(), func() {REDACTED
+REDACTED
 	if !stream {
 		return ctx, func() {REDACTED
 REDACTED
+	return context.WithoutCancel(ctx), func() {REDACTED
+REDACTED
+
+func detachUpstreamContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	if ctx == nil {
 		return context.Background(), func() {REDACTED
 REDACTED
