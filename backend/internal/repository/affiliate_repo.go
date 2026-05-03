@@ -23,6 +23,34 @@ const (
 
 var affiliateCodeCharset = []byte("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
 
+const affiliateUserOverviewSQL = `
+SELECT ua.user_id,
+       COALESCE(u.email, ''),
+       COALESCE(u.username, ''),
+       ua.aff_code,
+       COALESCE(ua.aff_rebate_rate_percent, 0)::double precision,
+       (ua.aff_rebate_rate_percent IS NOT NULL) AS has_custom_rate,
+       ua.aff_count,
+       COALESCE(rebated.rebated_invitee_count, 0),
+       (ua.aff_quota + COALESCE(matured.matured_frozen_quota, 0))::double precision,
+       ua.aff_history_quota::double precision
+FROM user_affiliates ua
+JOIN users u ON u.id = ua.user_id
+LEFT JOIN (
+    SELECT user_id, COUNT(DISTINCT source_user_id)::integer AS rebated_invitee_count
+    FROM user_affiliate_ledger
+    WHERE action = 'accrue' AND source_user_id IS NOT NULL
+    GROUP BY user_id
+) rebated ON rebated.user_id = ua.user_id
+LEFT JOIN (
+    SELECT user_id, COALESCE(SUM(amount), 0)::double precision AS matured_frozen_quota
+    FROM user_affiliate_ledger
+    WHERE action = 'accrue' AND frozen_until IS NOT NULL AND frozen_until <= NOW()
+    GROUP BY user_id
+) matured ON matured.user_id = ua.user_id
+WHERE ua.user_id = $1
+LIMIT 1`
+
 type affiliateQueryExecer interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
@@ -575,27 +603,7 @@ func (r *affiliateRepository) GetAffiliateUserOverview(ctx context.Context, user
 		return nil, service.ErrUserNotFound
 REDACTED
 	client := clientFromContext(ctx, r.client)
-	rows, err := client.QueryContext(ctx, `
-SELECT ua.user_id,
-       COALESCE(u.email, ''),
-       COALESCE(u.username, ''),
-       ua.aff_code,
-       COALESCE(ua.aff_rebate_rate_percent, 0)::double precision,
-       (ua.aff_rebate_rate_percent IS NOT NULL) AS has_custom_rate,
-       ua.aff_count,
-       COALESCE(rebated.rebated_invitee_count, 0),
-       ua.aff_quota::double precision,
-       ua.aff_history_quota::double precision
-FROM user_affiliates ua
-JOIN users u ON u.id = ua.user_id
-LEFT JOIN (
-    SELECT user_id, COUNT(DISTINCT source_user_id)::integer AS rebated_invitee_count
-    FROM user_affiliate_ledger
-    WHERE action = 'accrue' AND source_user_id IS NOT NULL
-    GROUP BY user_id
-) rebated ON rebated.user_id = ua.user_id
-WHERE ua.user_id = $1
-LIMIT 1`, userID)
+	rows, err := client.QueryContext(ctx, affiliateUserOverviewSQL, userID)
 	if err != nil {
 		return nil, err
 REDACTED
