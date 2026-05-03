@@ -31,7 +31,7 @@
               :id="row.inviter_id"
               :email="row.inviter_email"
               :username="row.inviter_username"
-              :clickable="props.type === 'invites'"
+              :clickable="props.type !== 'transfers'"
               @open="openUserOverview"
             />
           </template>
@@ -40,12 +40,18 @@
               :id="row.invitee_id"
               :email="row.invitee_email"
               :username="row.invitee_username"
-              :clickable="props.type === 'invites'"
+              :clickable="props.type !== 'transfers'"
               @open="openUserOverview"
             />
           </template>
           <template #cell-user="{ row REDACTED">
-            <UserCell :id="row.user_id" :email="row.user_email" :username="row.username" />
+            <UserCell
+              :id="row.user_id"
+              :email="row.user_email"
+              :username="row.username"
+              :clickable="true"
+              @open="openUserOverview"
+            />
           </template>
           <template #cell-aff_code="{ row REDACTED">
             <span class="font-mono text-sm text-gray-700 dark:text-gray-300">{{ row.aff_code || '-' REDACTEDREDACTED</span>
