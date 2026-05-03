@@ -208,11 +208,13 @@ function stringMeta(key: string): string {
 
 <style scoped>
 .plugin-view {
-  /* AppLayout's <main> already provides p-4 md:p-6 lg:p-8; avoid double padding. */
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  height: 100%;
+  /* AppLayout's <main> is content-sized (no fixed height), so height:100%
+     collapses to content height. Use the same viewport calc as the host's
+     TablePageLayout: 64px header + lg:p-8 top/bottom padding (2rem × 2). */
+  height: calc(100vh - 64px - 4rem);
   min-height: 0;
 }
 
