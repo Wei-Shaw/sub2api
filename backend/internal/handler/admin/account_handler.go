@@ -98,7 +98,7 @@ type CreateAccountRequest struct {
 	Name                    string         `json:"name" binding:"required"`
 	Notes                   *string        `json:"notes"`
 	Platform                string         `json:"platform" binding:"required"`
-	Type                    string         `json:"type" binding:"required,oneof=oauth setup-token apikey upstream bedrock"`
+	Type                    string         `json:"type" binding:"required,oneof=oauth setup-token apikey upstream bedrock service_account"`
 	Credentials             map[string]any `json:"credentials" binding:"required"`
 	Extra                   map[string]any `json:"extra"`
 	ProxyID                 *int64         `json:"proxy_id"`
@@ -117,7 +117,7 @@ type CreateAccountRequest struct {
 type UpdateAccountRequest struct {
 	Name                    string         `json:"name"`
 	Notes                   *string        `json:"notes"`
-	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock"`
+	Type                    string         `json:"type" binding:"omitempty,oneof=oauth setup-token apikey upstream bedrock service_account"`
 	Credentials             map[string]any `json:"credentials"`
 	Extra                   map[string]any `json:"extra"`
 	ProxyID                 *int64         `json:"proxy_id"`
@@ -134,19 +134,29 @@ type UpdateAccountRequest struct {
 
 // BulkUpdateAccountsRequest represents the payload for bulk editing accounts
 type BulkUpdateAccountsRequest struct {
-	AccountIDs              []int64        `json:"account_ids" binding:"required,min=1"`
-	Name                    string         `json:"name"`
-	ProxyID                 *int64         `json:"proxy_id"`
-	Concurrency             *int           `json:"concurrency"`
-	Priority                *int           `json:"priority"`
-	RateMultiplier          *float64       `json:"rate_multiplier"`
-	LoadFactor              *int           `json:"load_factor"`
-	Status                  string         `json:"status" binding:"omitempty,oneof=active inactive error"`
-	Schedulable             *bool          `json:"schedulable"`
-	GroupIDs                *[]int64       `json:"group_ids"`
-	Credentials             map[string]any `json:"credentials"`
-	Extra                   map[string]any `json:"extra"`
-	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
+	AccountIDs              []int64                   `json:"account_ids"`
+	Filters                 *BulkUpdateAccountFilters `json:"filters"`
+	Name                    string                    `json:"name"`
+	ProxyID                 *int64                    `json:"proxy_id"`
+	Concurrency             *int                      `json:"concurrency"`
+	Priority                *int                      `json:"priority"`
+	RateMultiplier          *float64                  `json:"rate_multiplier"`
+	LoadFactor              *int                      `json:"load_factor"`
+	Status                  string                    `json:"status" binding:"omitempty,oneof=active inactive error"`
+	Schedulable             *bool                     `json:"schedulable"`
+	GroupIDs                *[]int64                  `json:"group_ids"`
+	Credentials             map[string]any            `json:"credentials"`
+	Extra                   map[string]any            `json:"extra"`
+	ConfirmMixedChannelRisk *bool                     `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
+}
+
+type BulkUpdateAccountFilters struct {
+	Platform    string `json:"platform"`
+	Type        string `json:"type"`
+	Status      string `json:"status"`
+	Group       string `json:"group"`
+	Search      string `json:"search"`
+	PrivacyMode string `json:"privacy_mode"`
 }
 
 // CheckMixedChannelRequest represents check mixed channel risk request
@@ -1369,6 +1379,10 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 		response.BadRequest(c, "rate_multiplier must be >= 0")
 		return
 	}
+	if len(req.AccountIDs) == 0 && req.Filters == nil {
+		response.BadRequest(c, "account_ids or filters is required")
+		return
+	}
 	// base_rpm 输入校验：负值归零，超过 10000 截断
 	sanitizeExtraBaseRPM(req.Extra)
 
@@ -1394,6 +1408,7 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 
 	result, err := h.adminService.BulkUpdateAccounts(c.Request.Context(), &service.BulkUpdateAccountsInput{
 		AccountIDs:            req.AccountIDs,
+		Filters:               toServiceBulkUpdateAccountFilters(req.Filters),
 		Name:                  req.Name,
 		ProxyID:               req.ProxyID,
 		Concurrency:           req.Concurrency,
@@ -1427,6 +1442,20 @@ func (h *AccountHandler) BulkUpdate(c *gin.Context) {
 	}
 
 	response.Success(c, result)
+}
+
+func toServiceBulkUpdateAccountFilters(filters *BulkUpdateAccountFilters) *service.BulkUpdateAccountFilters {
+	if filters == nil {
+		return nil
+	}
+	return &service.BulkUpdateAccountFilters{
+		Platform:    filters.Platform,
+		Type:        filters.Type,
+		Status:      filters.Status,
+		Group:       filters.Group,
+		Search:      filters.Search,
+		PrivacyMode: filters.PrivacyMode,
+	}
 }
 
 // ========== OAuth Handlers ==========

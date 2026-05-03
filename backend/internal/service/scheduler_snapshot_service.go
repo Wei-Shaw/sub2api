@@ -544,6 +544,9 @@ func (s *SchedulerSnapshotService) rebuildBucket(ctx context.Context, bucket Sch
 	if !ok {
 		return nil
 	}
+	defer func() {
+		_ = s.cache.UnlockBucket(ctx, bucket)
+	}()
 
 	rebuildCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()

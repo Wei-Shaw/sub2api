@@ -434,6 +434,45 @@ func TestStreamingTextOnly(t *testing.T) {
 	assert.Equal(t, "message_stop", events[1].Type)
 }
 
+func TestResponsesEventToAnthropicEvents_ResponseDone(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+	state.Model = "gpt-4o"
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type: "response.done",
+		Response: &ResponsesResponse{
+			Status: "completed",
+			Usage:  &ResponsesUsage{InputTokens: 12, OutputTokens: 4},
+		},
+	}, state)
+	require.Len(t, events, 2)
+	assert.Equal(t, "message_delta", events[0].Type)
+	assert.Equal(t, "end_turn", events[0].Delta.StopReason)
+	assert.Equal(t, 12, events[0].Usage.InputTokens)
+	assert.Equal(t, 4, events[0].Usage.OutputTokens)
+	assert.Equal(t, "message_stop", events[1].Type)
+	assert.Nil(t, FinalizeResponsesAnthropicStream(state))
+}
+
+func TestResponsesEventToAnthropicEvents_ResponseDoneIncomplete(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+	state.Model = "gpt-4o"
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type: "response.done",
+		Response: &ResponsesResponse{
+			Status:            "incomplete",
+			IncompleteDetails: &ResponsesIncompleteDetails{Reason: "max_output_tokens"},
+			Usage:             &ResponsesUsage{InputTokens: 12, OutputTokens: 4},
+		},
+	}, state)
+	require.Len(t, events, 2)
+	assert.Equal(t, "message_delta", events[0].Type)
+	assert.Equal(t, "max_tokens", events[0].Delta.StopReason)
+	assert.Equal(t, "message_stop", events[1].Type)
+	assert.Nil(t, FinalizeResponsesAnthropicStream(state))
+}
+
 func TestStreamingCachedTokensUseAnthropicInputSemantics(t *testing.T) {
 	state := NewResponsesEventToAnthropicState()
 	ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
@@ -991,9 +1030,40 @@ func TestAnthropicToResponses_ToolChoiceSpecific(t *testing.T) {
 	var tc map[string]any
 	require.NoError(t, json.Unmarshal(resp.ToolChoice, &tc))
 	assert.Equal(t, "function", tc["type"])
-	fn, ok := tc["function"].(map[string]any)
-	require.True(t, ok)
-	assert.Equal(t, "get_weather", fn["name"])
+	assert.Equal(t, "get_weather", tc["name"])
+	assert.NotContains(t, tc, "function")
+}
+
+func TestResponsesToAnthropicRequest_ToolChoiceFunctionName(t *testing.T) {
+	req := &ResponsesRequest{
+		Model:      "gpt-5.2",
+		Input:      json.RawMessage(`[{"role":"user","content":"Hello"}]`),
+		ToolChoice: json.RawMessage(`{"type":"function","name":"get_weather"}`),
+	}
+
+	resp, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+
+	var tc map[string]string
+	require.NoError(t, json.Unmarshal(resp.ToolChoice, &tc))
+	assert.Equal(t, "tool", tc["type"])
+	assert.Equal(t, "get_weather", tc["name"])
+}
+
+func TestResponsesToAnthropicRequest_ToolChoiceLegacyFunctionName(t *testing.T) {
+	req := &ResponsesRequest{
+		Model:      "gpt-5.2",
+		Input:      json.RawMessage(`[{"role":"user","content":"Hello"}]`),
+		ToolChoice: json.RawMessage(`{"type":"function","function":{"name":"get_weather"}}`),
+	}
+
+	resp, err := ResponsesToAnthropicRequest(req)
+	require.NoError(t, err)
+
+	var tc map[string]string
+	require.NoError(t, json.Unmarshal(resp.ToolChoice, &tc))
+	assert.Equal(t, "tool", tc["type"])
+	assert.Equal(t, "get_weather", tc["name"])
 }
 
 // ---------------------------------------------------------------------------

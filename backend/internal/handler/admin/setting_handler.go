@@ -209,6 +209,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		EnableFingerprintUnification:           settings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:              settings.EnableMetadataPassthrough,
 		EnableCCHSigning:                       settings.EnableCCHSigning,
+		EnableAnthropicCacheTTL1hInjection:     settings.EnableAnthropicCacheTTL1hInjection,
 		WebSearchEmulationEnabled:              settings.WebSearchEmulationEnabled,
 		PaymentVisibleMethodAlipaySource:       settings.PaymentVisibleMethodAlipaySource,
 		PaymentVisibleMethodWxpaySource:        settings.PaymentVisibleMethodWxpaySource,
@@ -441,9 +442,10 @@ type UpdateSettingsRequest struct {
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
 
 	// Gateway forwarding behavior
-	EnableFingerprintUnification *bool `json:"enable_fingerprint_unification"`
-	EnableMetadataPassthrough    *bool `json:"enable_metadata_passthrough"`
-	EnableCCHSigning             *bool `json:"enable_cch_signing"`
+	EnableFingerprintUnification       *bool `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough          *bool `json:"enable_metadata_passthrough"`
+	EnableCCHSigning                   *bool `json:"enable_cch_signing"`
+	EnableAnthropicCacheTTL1hInjection *bool `json:"enable_anthropic_cache_ttl_1h_injection"`
 
 	// Payment visible method routing
 	PaymentVisibleMethodAlipaySource  *string `json:"payment_visible_method_alipay_source"`
@@ -1273,6 +1275,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.EnableCCHSigning
 		}(),
+		EnableAnthropicCacheTTL1hInjection: func() bool {
+			if req.EnableAnthropicCacheTTL1hInjection != nil {
+				return *req.EnableAnthropicCacheTTL1hInjection
+			}
+			return previousSettings.EnableAnthropicCacheTTL1hInjection
+		}(),
 		PaymentVisibleMethodAlipaySource: func() string {
 			if req.PaymentVisibleMethodAlipaySource != nil {
 				return strings.TrimSpace(*req.PaymentVisibleMethodAlipaySource)
@@ -1570,6 +1578,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		EnableFingerprintUnification:           updatedSettings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:              updatedSettings.EnableMetadataPassthrough,
 		EnableCCHSigning:                       updatedSettings.EnableCCHSigning,
+		EnableAnthropicCacheTTL1hInjection:     updatedSettings.EnableAnthropicCacheTTL1hInjection,
 		PaymentVisibleMethodAlipaySource:       updatedSettings.PaymentVisibleMethodAlipaySource,
 		PaymentVisibleMethodWxpaySource:        updatedSettings.PaymentVisibleMethodWxpaySource,
 		PaymentVisibleMethodAlipayEnabled:      updatedSettings.PaymentVisibleMethodAlipayEnabled,
@@ -1948,6 +1957,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.EnableCCHSigning != after.EnableCCHSigning {
 		changed = append(changed, "enable_cch_signing")
+	}
+	if before.EnableAnthropicCacheTTL1hInjection != after.EnableAnthropicCacheTTL1hInjection {
+		changed = append(changed, "enable_anthropic_cache_ttl_1h_injection")
 	}
 	if before.PaymentVisibleMethodAlipaySource != after.PaymentVisibleMethodAlipaySource {
 		changed = append(changed, "payment_visible_method_alipay_source")

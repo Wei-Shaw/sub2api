@@ -56,6 +56,15 @@ func TestSchedulerCacheSnapshotUsesSlimMetadataButKeepsFullAccount(t *testing.T)
 		SessionWindowStart:     &now,
 		SessionWindowEnd:       &windowEnd,
 		SessionWindowStatus:    "active",
+		GroupIDs:               []int64{bucket.GroupID},
+		AccountGroups: []service.AccountGroup{
+			{
+				AccountID: 101,
+				GroupID:   bucket.GroupID,
+				Priority:  5,
+				Group:     &service.Group{ID: bucket.GroupID, Name: "gemini-group"},
+			},
+		},
 	}
 
 	require.NoError(t, cache.SetSnapshot(ctx, bucket, []service.Account{account}))
@@ -79,10 +88,17 @@ func TestSchedulerCacheSnapshotUsesSlimMetadataButKeepsFullAccount(t *testing.T)
 	require.Equal(t, 4, got.GetMaxSessions())
 	require.Equal(t, 11, got.GetSessionIdleTimeoutMinutes())
 	require.Nil(t, got.Extra["unused_large_field"])
+	require.Equal(t, []int64{bucket.GroupID}, got.GroupIDs)
+	require.Len(t, got.AccountGroups, 1)
+	require.Equal(t, account.ID, got.AccountGroups[0].AccountID)
+	require.Equal(t, bucket.GroupID, got.AccountGroups[0].GroupID)
+	require.Nil(t, got.AccountGroups[0].Group)
 
 	full, err := cache.GetAccount(ctx, account.ID)
 	require.NoError(t, err)
 	require.NotNil(t, full)
 	require.Equal(t, "secret-access-token", full.GetCredential("access_token"))
 	require.Equal(t, strings.Repeat("x", 4096), full.GetCredential("huge_blob"))
+	require.Len(t, full.AccountGroups, 1)
+	require.NotNil(t, full.AccountGroups[0].Group)
 }
