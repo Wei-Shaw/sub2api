@@ -33,7 +33,7 @@ type SchemaInfoLike = PluginSettingsSchemaInfo & {
   secret_keys?: string[]
 }
 
-export function buildPropDescriptors(info: PluginSettingsSchemaInfo): PropDescriptor[] {
+export function buildPropDescriptors(info: PluginSettingsSchemaInfo, locale = 'en'): PropDescriptor[] {
   const schema = info.schema as Record<string, unknown> | undefined
   if (!schema || typeof schema !== 'object') return []
   const propsMap = schema['properties'] as Record<string, Record<string, unknown>> | undefined
@@ -65,8 +65,10 @@ export function buildPropDescriptors(info: PluginSettingsSchemaInfo): PropDescri
       type = 'json'
     }
 
-    const title = typeof node['title'] === 'string' ? (node['title'] as string) : key
-    const description = typeof node['description'] === 'string' ? (node['description'] as string) : ''
+    // Extract locale-specific overrides from x-i18n if present
+    const i18nOverrides = (node['x-i18n'] as Record<string, Record<string, string>> | undefined)?.[locale]
+    const title = i18nOverrides?.title ?? (typeof node['title'] === 'string' ? (node['title'] as string) : key)
+    const description = i18nOverrides?.description ?? (typeof node['description'] === 'string' ? (node['description'] as string) : '')
 
     return {
       key,

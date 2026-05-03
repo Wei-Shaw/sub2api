@@ -155,7 +155,11 @@ function createI18n(): HostI18n {
     }
   }
 
-  return { t, currentLocale, registerNamespace }
+  function onChange(callback: (locale: string) => void): () => void {
+    return watch(currentLocale, (next) => callback(next))
+  }
+
+  return { t, currentLocale, registerNamespace, onChange }
 }
 
 /**

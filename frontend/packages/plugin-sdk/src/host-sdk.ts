@@ -107,6 +107,13 @@ export interface HostI18n {
    * - 同名 key 与 host 冲突时 vue-i18n 走 deep-merge 默认覆盖语义。
    */
   registerNamespace(namespace: string, messages: Record<string, Record<string, unknown>>): void
+  /**
+   * 监听 locale 变化。回调在 locale 切换后同步触发，参数为新 locale 值。
+   * 返回取消监听函数，调用后不再收到后续通知。
+   *
+   * 等价于 `watch(sdk.i18n.currentLocale, cb)`，但不要求插件了解 Vue 的 watch API。
+   */
+  onChange(callback: (locale: string) => void): () => void
 }
 
 /** 通知（toast）能力，对接 host 的 toast 系统。 */

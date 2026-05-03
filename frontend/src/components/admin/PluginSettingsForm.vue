@@ -106,13 +106,13 @@ const emit = defineEmits<{
   (e: 'updated', key: string, value: unknown): void
 }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const appStore = useAppStore()
 
 const schemaProperties = computed<PropDescriptor[]>(() =>
   // DESIGN §5.4: backend-only fields are not rendered. Server-side
   // validation still rejects writes for defence in depth.
-  buildPropDescriptors(props.info).filter((p) => p.visibility !== 'backend'),
+  buildPropDescriptors(props.info, locale.value).filter((p) => p.visibility !== 'backend'),
 )
 
 const localValues = reactive<Record<string, unknown>>({ ...(props.info.values ?? {}) })
