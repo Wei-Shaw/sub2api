@@ -270,6 +270,37 @@ func TestApplyErrorPassthroughRule_SkipMonitoringSetsContextKey(t *testing.T) {
 	assert.True(t, boolVal)
 }
 
+func TestApplyErrorPassthroughRule_RedactsGeneratedImagePayloads(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	sample := "aGVsbG8="
+	imageURL := "data:image/png;base64," + sample
+	rule := newNonFailoverPassthroughRule(http.StatusBadRequest, "invalid generated image", http.StatusBadRequest, "")
+	rule.PassthroughBody = true
+	rule.CustomMessage = nil
+
+	ruleSvc := &ErrorPassthroughService{}
+	ruleSvc.setLocalCache([]*model.ErrorPassthroughRule{rule})
+	BindErrorPassthroughService(c, ruleSvc)
+
+	_, _, errMsg, matched := applyErrorPassthroughRule(
+		c,
+		PlatformOpenAI,
+		http.StatusBadRequest,
+		[]byte(`{"error":{"message":"invalid generated image `+imageURL+`"}}`),
+		http.StatusBadGateway,
+		"upstream_error",
+		"Upstream request failed",
+	)
+
+	require.True(t, matched)
+	require.NotContains(t, errMsg, "data:image")
+	require.NotContains(t, errMsg, sample)
+	require.Contains(t, errMsg, "invalid generated image")
+}
+
 func TestApplyErrorPassthroughRule_NoSkipMonitoringDoesNotSetContextKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()

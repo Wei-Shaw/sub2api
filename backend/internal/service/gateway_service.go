@@ -4407,10 +4407,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 						UpstreamRequestID:  resp.Header.Get("x-request-id"),
 						UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
 						Kind:               "signature_error",
-						Message:            extractUpstreamErrorMessage(respBody),
+						Message:            SanitizeUpstreamErrorMessageForOutput(extractUpstreamErrorMessage(respBody)),
 						Detail: func() string {
 							if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-								return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+								return redactedGatewayUpstreamBodySnippet(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
 							}
 							return ""
 						}(),
@@ -4462,10 +4462,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 									UpstreamRequestID:  retryResp.Header.Get("x-request-id"),
 									UpstreamURL:        safeUpstreamURL(retryReq.URL.String()),
 									Kind:               "signature_retry_thinking",
-									Message:            extractUpstreamErrorMessage(retryRespBody),
+									Message:            SanitizeUpstreamErrorMessageForOutput(extractUpstreamErrorMessage(retryRespBody)),
 									Detail: func() string {
 										if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-											return truncateString(string(retryRespBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+											return redactedGatewayUpstreamBodySnippet(retryRespBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
 										}
 										return ""
 									}(),
@@ -4533,10 +4533,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 						UpstreamRequestID:  resp.Header.Get("x-request-id"),
 						UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
 						Kind:               "budget_constraint_error",
-						Message:            errMsg,
+						Message:            SanitizeUpstreamErrorMessageForOutput(errMsg),
 						Detail: func() string {
 							if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-								return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+								return redactedGatewayUpstreamBodySnippet(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
 							}
 							return ""
 						}(),
@@ -4595,10 +4595,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					UpstreamRequestID:  resp.Header.Get("x-request-id"),
 					UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
 					Kind:               "retry",
-					Message:            extractUpstreamErrorMessage(respBody),
+					Message:            SanitizeUpstreamErrorMessageForOutput(extractUpstreamErrorMessage(respBody)),
 					Detail: func() string {
 						if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-							return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+							return redactedGatewayUpstreamBodySnippet(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
 						}
 						return ""
 					}(),
@@ -4638,7 +4638,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 			// 调试日志：打印重试耗尽后的错误响应
 			logger.LegacyPrintf("service.gateway", "[Forward] Upstream error (retry exhausted, failover): Account=%d(%s) Status=%d RequestID=%s Body=%s",
-				account.ID, account.Name, resp.StatusCode, resp.Header.Get("x-request-id"), truncateString(string(respBody), 1000))
+				account.ID, account.Name, resp.StatusCode, resp.Header.Get("x-request-id"), redactedGatewayUpstreamBodySnippet(respBody, 1000))
 
 			s.handleRetryExhaustedSideEffects(ctx, resp, account)
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -4648,10 +4648,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				UpstreamStatusCode: resp.StatusCode,
 				UpstreamRequestID:  resp.Header.Get("x-request-id"),
 				Kind:               "retry_exhausted_failover",
-				Message:            extractUpstreamErrorMessage(respBody),
+				Message:            SanitizeUpstreamErrorMessageForOutput(extractUpstreamErrorMessage(respBody)),
 				Detail: func() string {
 					if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-						return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+						return redactedGatewayUpstreamBodySnippet(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
 					}
 					return ""
 				}(),
@@ -4673,7 +4673,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 		// 调试日志：打印上游错误响应
 		logger.LegacyPrintf("service.gateway", "[Forward] Upstream error (failover): Account=%d(%s) Status=%d RequestID=%s Body=%s",
-			account.ID, account.Name, resp.StatusCode, resp.Header.Get("x-request-id"), truncateString(string(respBody), 1000))
+			account.ID, account.Name, resp.StatusCode, resp.Header.Get("x-request-id"), redactedGatewayUpstreamBodySnippet(respBody, 1000))
 
 		s.handleFailoverSideEffects(ctx, resp, account)
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -4682,10 +4682,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			UpstreamStatusCode: resp.StatusCode,
 			UpstreamRequestID:  resp.Header.Get("x-request-id"),
 			Kind:               "failover",
-			Message:            extractUpstreamErrorMessage(respBody),
+			Message:            SanitizeUpstreamErrorMessageForOutput(extractUpstreamErrorMessage(respBody)),
 			Detail: func() string {
 				if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-					return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+					return redactedGatewayUpstreamBodySnippet(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
 				}
 				return ""
 			}(),
@@ -4709,14 +4709,14 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 			if s.shouldFailoverOn400(respBody) {
 				upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
-				upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+				upstreamMsg = SanitizeUpstreamErrorMessageForOutput(upstreamMsg)
 				upstreamDetail := ""
 				if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
 					maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
 					if maxBytes <= 0 {
 						maxBytes = 2048
 					}
-					upstreamDetail = truncateString(string(respBody), maxBytes)
+					upstreamDetail = redactedGatewayUpstreamBodySnippet(respBody, maxBytes)
 				}
 				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 					Platform:           account.Platform,
@@ -4733,7 +4733,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					logger.LegacyPrintf("service.gateway",
 						"Account %d: 400 error, attempting failover: %s",
 						account.ID,
-						truncateForLog(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
+						redactedGatewayUpstreamBodyForLog(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
 					)
 				} else {
 					logger.LegacyPrintf("service.gateway", "Account %d: 400 error, attempting failover", account.ID)
@@ -4910,10 +4910,10 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 					UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
 					Passthrough:        true,
 					Kind:               "retry",
-					Message:            extractUpstreamErrorMessage(respBody),
+					Message:            SanitizeUpstreamErrorMessageForOutput(extractUpstreamErrorMessage(respBody)),
 					Detail: func() string {
 						if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-							return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+							return redactedGatewayUpstreamBodySnippet(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
 						}
 						return ""
 					}(),
@@ -4942,7 +4942,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
 			logger.LegacyPrintf("service.gateway", "[Anthropic Passthrough] Upstream error (retry exhausted, failover): Account=%d(%s) Status=%d RequestID=%s Body=%s",
-				account.ID, account.Name, resp.StatusCode, resp.Header.Get("x-request-id"), truncateString(string(respBody), 1000))
+				account.ID, account.Name, resp.StatusCode, resp.Header.Get("x-request-id"), redactedGatewayUpstreamBodySnippet(respBody, 1000))
 
 			s.handleRetryExhaustedSideEffects(ctx, resp, account)
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -4953,10 +4953,10 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 				UpstreamRequestID:  resp.Header.Get("x-request-id"),
 				Passthrough:        true,
 				Kind:               "retry_exhausted_failover",
-				Message:            extractUpstreamErrorMessage(respBody),
+				Message:            SanitizeUpstreamErrorMessageForOutput(extractUpstreamErrorMessage(respBody)),
 				Detail: func() string {
 					if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-						return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+						return redactedGatewayUpstreamBodySnippet(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
 					}
 					return ""
 				}(),
@@ -4976,7 +4976,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 		resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
 		logger.LegacyPrintf("service.gateway", "[Anthropic Passthrough] Upstream error (failover): Account=%d(%s) Status=%d RequestID=%s Body=%s",
-			account.ID, account.Name, resp.StatusCode, resp.Header.Get("x-request-id"), truncateString(string(respBody), 1000))
+			account.ID, account.Name, resp.StatusCode, resp.Header.Get("x-request-id"), redactedGatewayUpstreamBodySnippet(respBody, 1000))
 
 		s.handleFailoverSideEffects(ctx, resp, account)
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -4987,10 +4987,10 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 			UpstreamRequestID:  resp.Header.Get("x-request-id"),
 			Passthrough:        true,
 			Kind:               "failover",
-			Message:            extractUpstreamErrorMessage(respBody),
+			Message:            SanitizeUpstreamErrorMessageForOutput(extractUpstreamErrorMessage(respBody)),
 			Detail: func() string {
 				if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-					return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+					return redactedGatewayUpstreamBodySnippet(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
 				}
 				return ""
 			}(),
@@ -5619,10 +5619,10 @@ func (s *GatewayService) executeBedrockUpstream(
 					UpstreamStatusCode: resp.StatusCode,
 					UpstreamURL:        safeUpstreamURL(upstreamReq.URL.String()),
 					Kind:               "retry",
-					Message:            extractUpstreamErrorMessage(respBody),
+					Message:            SanitizeUpstreamErrorMessageForOutput(extractUpstreamErrorMessage(respBody)),
 					Detail: func() string {
 						if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-							return truncateString(string(respBody), s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
+							return redactedGatewayUpstreamBodySnippet(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
 						}
 						return ""
 					}(),
@@ -5660,7 +5660,7 @@ func (s *GatewayService) handleBedrockUpstreamErrors(
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
 			logger.LegacyPrintf("service.gateway", "[Bedrock] Upstream error (retry exhausted, failover): Account=%d(%s) Status=%d Body=%s",
-				account.ID, account.Name, resp.StatusCode, truncateString(string(respBody), 1000))
+				account.ID, account.Name, resp.StatusCode, redactedGatewayUpstreamBodySnippet(respBody, 1000))
 
 			s.handleRetryExhaustedSideEffects(ctx, resp, account)
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -5669,7 +5669,7 @@ func (s *GatewayService) handleBedrockUpstreamErrors(
 				AccountName:        account.Name,
 				UpstreamStatusCode: resp.StatusCode,
 				Kind:               "retry_exhausted_failover",
-				Message:            extractUpstreamErrorMessage(respBody),
+				Message:            SanitizeUpstreamErrorMessageForOutput(extractUpstreamErrorMessage(respBody)),
 			})
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
@@ -5693,7 +5693,7 @@ func (s *GatewayService) handleBedrockUpstreamErrors(
 			AccountName:        account.Name,
 			UpstreamStatusCode: resp.StatusCode,
 			Kind:               "failover",
-			Message:            extractUpstreamErrorMessage(respBody),
+			Message:            SanitizeUpstreamErrorMessageForOutput(extractUpstreamErrorMessage(respBody)),
 		})
 		return nil, &UpstreamFailoverError{
 			StatusCode:             resp.StatusCode,
@@ -6410,6 +6410,14 @@ func truncateForLog(b []byte, maxBytes int) string {
 	return s
 }
 
+func redactedGatewayUpstreamBodyForLog(body []byte, maxBytes int) string {
+	return truncateForLog(redactOpenCodeGeneratedImagesForOps(body), maxBytes)
+}
+
+func redactedGatewayUpstreamBodySnippet(body []byte, maxBytes int) string {
+	return truncateString(string(redactOpenCodeGeneratedImagesForOps(body)), maxBytes)
+}
+
 // shouldRectifySignatureError 统一判断是否应触发签名整流（strip thinking blocks 并重试）。
 // 根据账号类型检查对应的开关和匹配模式。
 func (s *GatewayService) shouldRectifySignatureError(ctx context.Context, account *Account, respBody []byte) bool {
@@ -6600,10 +6608,10 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 
 	// 调试日志：打印上游错误响应
 	logger.LegacyPrintf("service.gateway", "[Forward] Upstream error (non-retryable): Account=%d(%s) Status=%d RequestID=%s Body=%s",
-		account.ID, account.Name, resp.StatusCode, resp.Header.Get("x-request-id"), truncateString(string(body), 1000))
+		account.ID, account.Name, resp.StatusCode, resp.Header.Get("x-request-id"), redactedGatewayUpstreamBodySnippet(body, 1000))
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
-	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+	upstreamMsg = SanitizeUpstreamErrorMessageForOutput(upstreamMsg)
 
 	// Print a compact upstream request fingerprint when we hit the Claude Code OAuth
 	// credential scope error. This avoids requiring env-var tweaks in a fixed deploy.
@@ -6626,7 +6634,7 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		if maxBytes <= 0 {
 			maxBytes = 2048
 		}
-		upstreamDetail = truncateString(string(body), maxBytes)
+		upstreamDetail = redactedGatewayUpstreamBodySnippet(body, maxBytes)
 	}
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -6656,7 +6664,7 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 			account.ID,
 			account.Platform,
 			account.Type,
-			truncateForLog(body, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
+			redactedGatewayUpstreamBodyForLog(body, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
 		)
 	}
 
@@ -6697,7 +6705,7 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		c.Data(http.StatusBadRequest, "application/json", body)
 		summary := upstreamMsg
 		if summary == "" {
-			summary = truncateForLog(body, 512)
+			summary = redactedGatewayUpstreamBodyForLog(body, 512)
 		}
 		if summary == "" {
 			return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
@@ -6775,7 +6783,7 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 	s.handleRetryExhaustedSideEffects(ctx, resp, account)
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
-	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+	upstreamMsg = SanitizeUpstreamErrorMessageForOutput(upstreamMsg)
 
 	if isClaudeCodeCredentialScopeError(upstreamMsg) && c != nil {
 		if v, ok := c.Get(claudeMimicDebugInfoKey); ok {
@@ -6795,7 +6803,7 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 		if maxBytes <= 0 {
 			maxBytes = 2048
 		}
-		upstreamDetail = truncateString(string(respBody), maxBytes)
+		upstreamDetail = redactedGatewayUpstreamBodySnippet(respBody, maxBytes)
 	}
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -6815,7 +6823,7 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 			account.ID,
 			account.Platform,
 			account.Type,
-			truncateForLog(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
+			redactedGatewayUpstreamBodyForLog(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
 		)
 	}
 
@@ -8511,14 +8519,14 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody)
 
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
-		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+		upstreamMsg = SanitizeUpstreamErrorMessageForOutput(upstreamMsg)
 		upstreamDetail := ""
 		if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
 			maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
 			if maxBytes <= 0 {
 				maxBytes = 2048
 			}
-			upstreamDetail = truncateString(string(respBody), maxBytes)
+			upstreamDetail = redactedGatewayUpstreamBodySnippet(respBody, maxBytes)
 		}
 		setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
 
@@ -8530,7 +8538,7 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 				account.ID,
 				account.Platform,
 				account.Type,
-				truncateForLog(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
+				redactedGatewayUpstreamBodyForLog(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
 			)
 		}
 
@@ -8611,7 +8619,7 @@ func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx contex
 		}
 
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
-		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+		upstreamMsg = SanitizeUpstreamErrorMessageForOutput(upstreamMsg)
 
 		// 中转站不支持 count_tokens 端点时（404），返回 404 让客户端 fallback 到本地估算。
 		// 仅在错误消息明确指向 count_tokens endpoint 不存在时生效，避免误吞其他 404（如错误 base_url）。
@@ -8630,7 +8638,7 @@ func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx contex
 			if maxBytes <= 0 {
 				maxBytes = 2048
 			}
-			upstreamDetail = truncateString(string(respBody), maxBytes)
+			upstreamDetail = redactedGatewayUpstreamBodySnippet(respBody, maxBytes)
 		}
 		setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
