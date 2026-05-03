@@ -36,12 +36,14 @@ func NewRouteTable() *RouteTable {
 }
 
 // Match 根据 method + path 查找匹配的路由条目。
-// 优先选择最长前缀匹配,以保证更精确的路由命中。
+// 优先选择最长（段数最多）前缀匹配,以保证更精确的路由命中。
+// PathPrefix 中的 Gin 风格参数段（:id、*rest）被视为通配符,
+// 匹配对应位置的任意非空段。
 func (t *RouteTable) Match(method, path string) (*RouteEntry, bool) {
 	if t == nil || len(t.entries) == 0 {
 		return nil, false
 	}
-
+	pathSegs := strings.Split(path, "/")
 	var (
 		best    *RouteEntry
 		bestLen int
@@ -51,18 +53,12 @@ func (t *RouteTable) Match(method, path string) (*RouteEntry, bool) {
 		if entry.Method != "*" && !strings.EqualFold(entry.Method, method) {
 			continue
 		}
-		if !strings.HasPrefix(path, entry.PathPrefix) {
-			continue
-		}
-		if len(entry.PathPrefix) > bestLen {
+		if n := matchSegments(pathSegs, entry.PathPrefix); n > bestLen {
 			best = entry
-			bestLen = len(entry.PathPrefix)
+			bestLen = n
 		}
 	}
-	if best == nil {
-		return nil, false
-	}
-	return best, true
+	return best, best != nil
 }
 
 // HasPrefix 用于在 ServeHTTP 中快速判断路径是否可能命中插件路由。
@@ -70,12 +66,39 @@ func (t *RouteTable) HasPrefix(path string) bool {
 	if t == nil {
 		return false
 	}
+	pathSegs := strings.Split(path, "/")
 	for i := range t.entries {
-		if strings.HasPrefix(path, t.entries[i].PathPrefix) {
+		if matchSegments(pathSegs, t.entries[i].PathPrefix) > 0 {
 			return true
 		}
 	}
 	return false
+}
+
+// matchSegments 逐段比较 path 是否以 pattern 为前缀。
+// pattern 中以 ':' 或 '*' 开头的段视为通配符,匹配任意非空段。
+// 尾部斜杠产生的空段会被忽略（"/demo/" 等价于 "/demo" 做前缀匹配）。
+// 返回匹配的段数（0 = 不匹配）,用于最长匹配选择。
+func matchSegments(pathSegs []string, pattern string) int {
+	patSegs := strings.Split(pattern, "/")
+	if len(patSegs) > 1 && patSegs[len(patSegs)-1] == "" {
+		patSegs = patSegs[:len(patSegs)-1]
+	}
+	if len(pathSegs) < len(patSegs) {
+		return 0
+	}
+	for i, ps := range patSegs {
+		if len(ps) > 0 && (ps[0] == ':' || ps[0] == '*') {
+			if pathSegs[i] == "" {
+				return 0
+			}
+			continue
+		}
+		if ps != pathSegs[i] {
+			return 0
+		}
+	}
+	return len(patSegs)
 }
 
 // AddPlugin 返回一个新的路由表,将指定插件的路由追加到现有条目末尾。
