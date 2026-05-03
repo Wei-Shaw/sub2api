@@ -441,12 +441,12 @@ REDACTED()
 				return nil, usage, acc, ev.err
 		REDACTED
 
+			if isOpenAICompatDoneSentinelLine(ev.line) {
+				return nil, usage, acc, nil
+		REDACTED
 			payload, ok := extractOpenAISSEDataLine(ev.line)
 			if !ok || payload == "" {
 				continue
-		REDACTED
-			if strings.TrimSpace(payload) == "[DONE]" {
-				return nil, usage, acc, nil
 		REDACTED
 
 			var event apicompat.ResponsesStreamEvent
@@ -640,12 +640,12 @@ REDACTED
 	if streamInterval <= 0 && keepaliveInterval <= 0 {
 		for scanner.Scan() {
 			line := scanner.Text()
+			if isOpenAICompatDoneSentinelLine(line) {
+				return missingTerminalErr()
+		REDACTED
 			payload, ok := extractOpenAISSEDataLine(line)
 			if !ok {
 				continue
-		REDACTED
-			if strings.TrimSpace(payload) == "[DONE]" {
-				return missingTerminalErr()
 		REDACTED
 			if processDataLine(payload) {
 				return finalizeStream()
@@ -713,12 +713,12 @@ REDACTED
 		REDACTED
 			lastDataAt = time.Now()
 			line := ev.line
+			if isOpenAICompatDoneSentinelLine(line) {
+				return missingTerminalErr()
+		REDACTED
 			payload, ok := extractOpenAISSEDataLine(line)
 			if !ok {
 				continue
-		REDACTED
-			if strings.TrimSpace(payload) == "[DONE]" {
-				return missingTerminalErr()
 		REDACTED
 			if processDataLine(payload) {
 				return finalizeStream()

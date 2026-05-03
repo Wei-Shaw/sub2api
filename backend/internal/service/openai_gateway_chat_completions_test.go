@@ -156,7 +156,9 @@ func TestForwardAsChatCompletions_TerminalUsageWithoutUpstreamCloseReturns(t *te
 
 	upstreamBody := []byte(`data: {"type":"response.completed","response":{"id":"resp_1","object":"response","model":"gpt-5.4","status":"completed","output":[{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"ok"REDACTED]REDACTED],"usage":{"input_tokens":17,"output_tokens":8,"total_tokens":25,"input_tokens_details":{"cached_tokens":6REDACTEDREDACTEDREDACTEDREDACTED` + "\n\n")
 	upstreamStream := newOpenAICompatBlockingReadCloser(upstreamBody)
-	defer upstreamStream.Close()
+	defer func() {
+		require.NoError(t, upstreamStream.Close())
+REDACTED()
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTED, "x-request-id": []string{"rid_chat_terminal_no_close"REDACTEDREDACTED,
@@ -209,7 +211,9 @@ func TestForwardAsChatCompletions_BufferedTerminalWithoutUpstreamCloseReturns(t 
 
 	upstreamBody := []byte(`data: {"type":"response.completed","response":{"id":"resp_1","object":"response","model":"gpt-5.4","status":"completed","output":[{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"ok"REDACTED]REDACTED],"usage":{"input_tokens":17,"output_tokens":8,"total_tokens":25,"input_tokens_details":{"cached_tokens":6REDACTEDREDACTEDREDACTEDREDACTED` + "\n\n")
 	upstreamStream := newOpenAICompatBlockingReadCloser(upstreamBody)
-	defer upstreamStream.Close()
+	defer func() {
+		require.NoError(t, upstreamStream.Close())
+REDACTED()
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"REDACTED, "x-request-id": []string{"rid_chat_buffered_terminal_no_close"REDACTEDREDACTED,
