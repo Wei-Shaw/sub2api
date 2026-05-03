@@ -1,7 +1,7 @@
 <template>
   <div class="space-y-4">
     <!-- Quick Amount Buttons -->
-    <div>
+    <div v-if="showQuickAmounts">
       <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
         {{ t('payment.quickAmounts') }}
       </label>
@@ -25,7 +25,7 @@
 
     <!-- Custom Amount Input -->
     <div>
-      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+      <label v-if="!hideLabel" class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
         {{ t('payment.customAmount') }}
       </label>
       <div class="relative">
@@ -34,7 +34,8 @@
         </span>
         <input
           type="text"
-          inputmode="decimal"
+          inputmode="numeric"
+          pattern="[0-9]*"
           :value="customText"
           :placeholder="placeholderText"
           class="input w-full py-3 pl-8 pr-4"
@@ -54,10 +55,14 @@ const props = withDefaults(defineProps<{
   modelValue: number | null
   min?: number
   max?: number
+  showQuickAmounts?: boolean
+  hideLabel?: boolean
 }>(), {
   amounts: () => [10, 20, 50, 100, 200, 500, 1000, 2000, 5000],
   min: 0,
   max: 0,
+  showQuickAmounts: true,
+  hideLabel: false,
 })
 
 const emit = defineEmits<{
@@ -80,7 +85,7 @@ const placeholderText = computed(() => {
   return t('payment.enterAmount')
 })
 
-const AMOUNT_PATTERN = /^\d*(\.\d{0,2})?$/
+const AMOUNT_PATTERN = /^\d*$/
 
 function selectAmount(amt: number) {
   customText.value = String(amt)
@@ -88,14 +93,18 @@ function selectAmount(amt: number) {
 }
 
 function handleInput(e: Event) {
-  const val = (e.target as HTMLInputElement).value
-  if (!AMOUNT_PATTERN.test(val)) return
+  const input = e.target as HTMLInputElement
+  const val = input.value
+  if (!AMOUNT_PATTERN.test(val)) {
+    input.value = customText.value
+    return
+  }
   customText.value = val
   if (val === '') {
     emit('update:modelValue', null)
     return
   }
-  const num = parseFloat(val)
+  const num = parseInt(val, 10)
   if (!isNaN(num) && num > 0) {
     emit('update:modelValue', num)
   } else {

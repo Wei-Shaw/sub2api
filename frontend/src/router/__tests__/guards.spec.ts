@@ -115,6 +115,7 @@ function simulateGuard(
       '/admin/subscriptions',
       '/admin/redeem',
       '/subscriptions',
+      '/recharge-subscription',
       '/redeem',
     ]
     if (restrictedPaths.some((path) => toPath.startsWith(path))) {
@@ -261,6 +262,18 @@ describe('路由守卫逻辑', () => {
         hasPendingAuthSession: false,
       }
       const redirect = simulateGuard('/subscriptions', {}, authState)
+      expect(redirect).toBe('/dashboard')
+    })
+
+    it('普通用户简易模式访问 /recharge-subscription 重定向到 /dashboard', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: true,
+        isAdmin: false,
+        isSimpleMode: true,
+        backendModeEnabled: false,
+        hasPendingAuthSession: false,
+      }
+      const redirect = simulateGuard('/recharge-subscription', {}, authState)
       expect(redirect).toBe('/dashboard')
     })
 

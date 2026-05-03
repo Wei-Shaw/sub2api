@@ -30,3 +30,17 @@ describe('AppSidebar header styles', () => {
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
   })
 })
+
+describe('AppSidebar secondary-development navigation contract', () => {
+  it('keeps profile, hides user channel status, and adds unified user entries', () => {
+    expect(componentSource).toContain("path: '/profile'")
+    expect(componentSource).toContain("path: '/models'")
+    expect(componentSource).toContain("path: '/docs'")
+    expect(componentSource).toContain("path: '/recharge-subscription'")
+    expect(componentSource).not.toContain("path: '/monitor', label: t('nav.channelStatus')")
+  })
+
+  it('uses a home-style label for the user dashboard item', () => {
+    expect(componentSource).toContain("path: '/dashboard', label: t('nav.home')")
+  })
+})

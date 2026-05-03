@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import PaymentView from '../PaymentView.vue'
@@ -19,6 +22,16 @@ const showInfo = vi.hoisted(() => vi.fn())
 const showWarning = vi.hoisted(() => vi.fn())
 const getCheckoutInfo = vi.hoisted(() => vi.fn())
 const bridgeInvoke = vi.hoisted(() => vi.fn())
+
+const storage = vi.hoisted(() => {
+  const values = new Map<string, string>()
+  return {
+    getItem: vi.fn((key: string) => values.get(key) ?? null),
+    setItem: vi.fn((key: string, value: string) => { values.set(key, value) }),
+    removeItem: vi.fn((key: string) => { values.delete(key) }),
+    clear: vi.fn(() => { values.clear() }),
+  }
+})
 
 vi.mock('vue-router', async () => {
   const actual = await vi.importActual<typeof import('vue-router')>('vue-router')
@@ -42,6 +55,14 @@ vi.mock('vue-i18n', async () => {
     }),
   }
 })
+
+vi.mock('@/i18n', () => ({
+  i18n: {
+    global: {
+      t: (key: string) => key,
+    },
+  },
+}))
 
 vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({
@@ -80,9 +101,62 @@ vi.mock('@/api/payment', () => ({
   },
 }))
 
+Object.defineProperty(window, 'localStorage', {
+  configurable: true,
+  value: storage,
+})
+
 vi.mock('@/utils/device', () => ({
   isMobileDevice: () => true,
 }))
+
+describe('PaymentView recharge UI contract', () => {
+  it('uses a custom amount field with an inline immediate recharge button', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/views/user/PaymentView.vue'), 'utf8')
+
+    expect(source).not.toContain("t('payment.rechargeAccount')")
+    expect(source).not.toContain("t('payment.currentBalance')")
+    expect(source).toContain(':show-quick-amounts="false"')
+    expect(source).toContain("t('payment.immediateRecharge')")
+    expect(source).not.toContain("t('payment.paymentAmount')")
+    expect(source).toContain("t('payment.actualPayShort')")
+    expect(source).toContain('text-right')
+    expect(source).toContain('text-red-600')
+    expect(source).toContain('@click="openPurchaseNoticeModal"')
+    expect(source).toContain('const amount = ref<number | null>(1)')
+  })
+
+  it('opens a purchase notice confirmation before recharge order creation', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/views/user/PaymentView.vue'), 'utf8')
+    const rechargeSectionEnd = source.indexOf('<!-- Subscribe Tab -->')
+    const rechargeSource = source.slice(0, rechargeSectionEnd)
+
+    expect(rechargeSource).not.toContain('<PaymentMethodSelector')
+    expect(source).toContain('showPurchaseNoticeModal')
+    expect(source).toContain("t('payment.purchaseNotice.title')")
+    expect(source).toContain("t('payment.purchaseNotice.agreement')")
+    expect(source).toContain("t('payment.purchaseNotice.confirm')")
+    expect(source).toContain('<ol class="space-y-3')
+    expect(source).toContain('list-decimal')
+    expect(source).toContain('pl-5')
+    expect(source).toContain(':disabled="!purchaseNoticeAccepted || submitting"')
+    expect(source).toContain('confirmPurchaseNoticeAndRecharge')
+    expect(source).toContain(':methods="methodOptions"')
+    expect(source).toContain('compact')
+    expect(source.indexOf("t('payment.actualPayShort')")).toBeLessThan(source.indexOf(':methods="methodOptions"'))
+    expect(source.indexOf(':methods="methodOptions"')).toBeLessThan(source.indexOf("t('payment.purchaseNotice.agreement')"))
+  })
+
+  it('limits the recharge amount input to whole numbers', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/components/payment/AmountInput.vue'), 'utf8')
+
+    expect(source).toContain('inputmode="numeric"')
+    expect(source).toContain('pattern="[0-9]*"')
+    expect(source).toContain('const AMOUNT_PATTERN = /^\\d*$/')
+    expect(source).toContain('parseInt(val, 10)')
+    expect(source).not.toContain('parseFloat(val)')
+  })
+})
 
 function checkoutInfoFixture() {
   return {

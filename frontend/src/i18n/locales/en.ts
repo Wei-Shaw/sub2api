@@ -10,6 +10,7 @@ export default {
     login: 'Login',
     getStarted: 'Get Started',
     goToDashboard: 'Go to Dashboard',
+    goHome: 'Go Home',
     // User-focused value proposition
     heroSubtitle: 'One Key, All AI Models',
     heroDescription: 'No need to manage multiple subscriptions. Access Claude, GPT, Gemini and more with a single API key',
@@ -341,6 +342,7 @@ export default {
 
   // Navigation
   nav: {
+    home: 'Home',
     dashboard: 'Dashboard',
     announcements: 'Announcements',
     apiKeys: 'API Keys',
@@ -348,6 +350,9 @@ export default {
     redeem: 'Redeem',
     affiliate: 'Affiliate Rebates',
     profile: 'Profile',
+    modelPlaza: 'Model Plaza',
+    usageDocs: 'Usage Docs',
+    rechargeSubscription: 'Recharge & Subscription',
     users: 'Users',
     groups: 'Groups',
     channels: 'Channels',
@@ -583,6 +588,13 @@ export default {
     modelDistribution: 'Model Distribution',
     groupDistribution: 'Group Usage Distribution',
     tokenUsageTrend: 'Token Usage Trend',
+    tokenInput: 'Input Tokens',
+    tokenOutput: 'Output Tokens',
+    tokenCacheWrite: 'Cache Write Tokens',
+    tokenCacheRead: 'Cache Read Tokens',
+    cacheHitRate: 'Cache Hit Rate',
+    actualCost: 'Actual Cost',
+    standardCost: 'Standard Cost',
     noDataAvailable: 'No data available',
     model: 'Model',
     group: 'Group',
@@ -971,6 +983,28 @@ export default {
       unitPerMillion: '/ 1M tokens',
       unitPerRequest: '/ request'
     }
+  },
+
+  models: {
+    title: 'Model Plaza',
+    description: 'View currently available channels, models, and pricing. Actual billing follows the existing system rules.',
+    searchPlaceholder: 'Search channels, platforms, or models',
+    noImageSupport: 'Text-to-image is not supported yet.',
+    readonlyHint: 'This page is read-only and cannot change channels, models, or pricing.'
+  },
+
+  usageDocs: {
+    title: 'Usage Docs',
+    description: 'Configure CLI, Curl, and third-party tools with the current site origin. This page documents frontend usage only and does not change backend APIs or billing.',
+    textToImageUnsupported: 'Text-to-image is not supported yet'
+  },
+
+  rechargeSubscription: {
+    title: 'Recharge & Subscription',
+    description: 'Manage balance recharge, subscription plans, and order history in one place.',
+    rechargeSection: 'Recharge',
+    subscriptionSection: 'Subscription',
+    ordersSection: 'My Orders'
   },
 
   affiliate: {
@@ -6050,7 +6084,18 @@ export default {
     paymentMethod: 'Payment Method',
     fee: 'Fee',
     actualPay: 'Actual Payment',
+    actualPayShort: 'Pay',
     createOrder: 'Confirm Payment',
+    immediateRecharge: 'Recharge Now',
+    purchaseNotice: {
+      title: 'Purchase Notice',
+      line1: 'You must agree to the Purchase Notice before placing an order or using this service.',
+      line2: 'The site may adjust product multipliers, pricing, and service content accordingly, and will explain changes through site announcements, community groups, and other channels.',
+      line3: 'You agree to use this service legally and not for illegal, non-compliant, infringing, fraudulent, malicious attack, network security damage, or other activities that harm public interests or others rights.',
+      line4: 'Before using this service, make sure you have a stable and reliable network environment.',
+      agreement: 'I have read and agree to the Purchase Notice',
+      confirm: 'Agree and Order',
+    },
     methods: {
       easypay: 'EasyPay',
       alipay: 'Alipay',

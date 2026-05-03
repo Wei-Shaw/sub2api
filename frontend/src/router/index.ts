@@ -156,8 +156,8 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
-      title: 'Dashboard',
-      titleKey: 'dashboard.title',
+      title: 'Home',
+      titleKey: 'nav.home',
       descriptionKey: 'dashboard.welcomeMessage'
     }
   },
@@ -210,6 +210,28 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/models',
+    name: 'ModelPlaza',
+    component: () => import('@/views/user/ModelsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Model Plaza',
+      titleKey: 'nav.modelPlaza'
+    }
+  },
+  {
+    path: '/docs',
+    name: 'UsageDocs',
+    component: () => import('@/views/user/UsageDocsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Usage Docs',
+      titleKey: 'nav.usageDocs'
+    }
+  },
+  {
     path: '/available-channels',
     name: 'UserAvailableChannels',
     component: () => import('@/views/user/AvailableChannelsView.vue'),
@@ -231,6 +253,18 @@ const routes: RouteRecordRaw[] = [
       title: 'Profile',
       titleKey: 'profile.title',
       descriptionKey: 'profile.description'
+    }
+  },
+  {
+    path: '/recharge-subscription',
+    name: 'RechargeSubscription',
+    component: () => import('@/views/user/RechargeSubscriptionView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Recharge & Subscription',
+      titleKey: 'nav.rechargeSubscription',
+      requiresPayment: true
     }
   },
   {
@@ -714,6 +748,7 @@ router.beforeEach((to, _from, next) => {
       '/admin/subscriptions',
       '/admin/redeem',
       '/subscriptions',
+      '/recharge-subscription',
       '/redeem'
     ]
 

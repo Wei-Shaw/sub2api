@@ -10,6 +10,7 @@ export default {
     login: '登录',
     getStarted: '立即开始',
     goToDashboard: '进入控制台',
+    goHome: '返回主页',
     // 新增：面向用户的价值主张
     heroSubtitle: '一个密钥，畅用多个 AI 模型',
     heroDescription: '无需管理多个订阅账号，一站式接入 Claude、GPT、Gemini 等主流 AI 服务',
@@ -341,6 +342,7 @@ export default {
 
   // Navigation
   nav: {
+    home: '主页',
     dashboard: '仪表盘',
     announcements: '公告',
     apiKeys: 'API 密钥',
@@ -348,6 +350,9 @@ export default {
     redeem: '兑换',
     affiliate: '邀请返利',
     profile: '个人资料',
+    modelPlaza: '模型广场',
+    usageDocs: '使用文档',
+    rechargeSubscription: '充值订阅',
     users: '用户管理',
     groups: '分组管理',
     channels: '渠道管理',
@@ -582,6 +587,13 @@ export default {
     modelDistribution: '模型分布',
     groupDistribution: '分组使用分布',
     tokenUsageTrend: 'Token 使用趋势',
+    tokenInput: '输入 Token',
+    tokenOutput: '输出 Token',
+    tokenCacheWrite: '缓存写入 Token',
+    tokenCacheRead: '缓存读取 Token',
+    cacheHitRate: '缓存命中率',
+    actualCost: '实际费用',
+    standardCost: '标准费用',
     noDataAvailable: '暂无数据',
     model: '模型',
     group: '分组',
@@ -975,6 +987,28 @@ export default {
       unitPerMillion: '/ 1M token',
       unitPerRequest: '/ 次'
     }
+  },
+
+  models: {
+    title: '模型广场',
+    description: '查看当前可用渠道、模型与价格信息。展示内容来自现有平台配置，实际计费以系统现有规则为准。',
+    searchPlaceholder: '搜索渠道、平台或模型',
+    noImageSupport: '文生图暂不支持，后续以平台公告为准。',
+    readonlyHint: '此页面仅用于查看，不支持修改渠道、模型或价格。'
+  },
+
+  usageDocs: {
+    title: '使用文档',
+    description: '按照当前站点地址配置 CLI、Curl 和第三方工具。页面内容仅说明前端使用方式，不改变后端接口或计费规则。',
+    textToImageUnsupported: '文生图暂不支持'
+  },
+
+  rechargeSubscription: {
+    title: '充值订阅',
+    description: '统一管理余额充值、套餐订阅和订单记录。',
+    rechargeSection: '充值',
+    subscriptionSection: '订阅',
+    ordersSection: '我的订单'
   },
 
   affiliate: {
@@ -6235,7 +6269,18 @@ export default {
     paymentMethod: '支付方式',
     fee: '手续费',
     actualPay: '实付金额',
+    actualPayShort: '实付',
     createOrder: '确认支付',
+    immediateRecharge: '立即充值',
+    purchaseNotice: {
+      title: '购买须知',
+      line1: '您需同意《购买须知》后方可继续下单或使用本站服务。',
+      line2: '本站有权据此对相关产品的倍率、定价及服务内容进行同步调整，并将通过站内公告、交流群等途径予以说明。',
+      line3: '您承诺合法使用本站服务，不得用于违法、违规、侵权、欺诈、恶意攻击、破坏网络安全或其他危害社会公共利益及他人合法权益的活动。',
+      line4: '用户在使用本站服务前，应确保具备稳定、良好的网络环境。',
+      agreement: '我已阅读并同意购买须知',
+      confirm: '同意并下单',
+    },
     methods: {
       easypay: '易支付',
       alipay: '支付宝',

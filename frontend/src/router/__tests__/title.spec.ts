@@ -1,4 +1,16 @@
-import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('@/i18n', () => ({
+  i18n: {
+    global: {
+      t: (key: string) => key,
+    },
+  },
+}))
+
 import { resolveDocumentTitle } from '@/router/title'
 
 describe('resolveDocumentTitle', () => {
@@ -21,5 +33,15 @@ describe('resolveDocumentTitle', () => {
 
     expect(before).toBe('Admin Dashboard - Alpha')
     expect(after).toBe('Admin Dashboard - Beta')
+  })
+
+  it('declares secondary-development frontend routes without backend coupling', () => {
+    const routerSource = readFileSync(resolve(process.cwd(), 'src/router/index.ts'), 'utf8')
+
+    expect(routerSource).toContain("path: '/models'")
+    expect(routerSource).toContain("path: '/docs'")
+    expect(routerSource).toContain("path: '/recharge-subscription'")
+    expect(routerSource).toContain("path: '/profile'")
+    expect(routerSource).not.toContain("backend/")
   })
 })

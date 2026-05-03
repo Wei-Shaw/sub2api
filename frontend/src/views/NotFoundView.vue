@@ -59,7 +59,7 @@
         </button>
         <router-link to="/dashboard" class="btn btn-primary">
           <Icon name="home" size="md" class="mr-2" />
-          Go to Dashboard
+          {{ t('home.goHome') }}
         </router-link>
       </div>
 

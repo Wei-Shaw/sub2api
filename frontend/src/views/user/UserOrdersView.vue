@@ -1,5 +1,5 @@
 <template>
-  <AppLayout>
+  <component :is="embedded ? 'div' : AppLayout">
     <div class="space-y-4">
       <!-- Filters -->
       <div class="card p-4">
@@ -9,7 +9,7 @@
             <button @click="fetchOrders" :disabled="loading" class="btn btn-secondary" :title="t('common.refresh')">
               <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
             </button>
-            <button class="btn btn-primary" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
+            <button v-if="!embedded" class="btn btn-primary" @click="router.push('/recharge-subscription')">{{ t('payment.result.backToRecharge') }}</button>
           </div>
         </div>
       </div>
@@ -77,7 +77,7 @@
         </div>
       </template>
     </BaseDialog>
-  </AppLayout>
+  </component>
 </template>
 
 <script setup lang="ts">
@@ -96,6 +96,9 @@ import Icon from '@/components/icons/Icon.vue'
 import OrderTable from '@/components/payment/OrderTable.vue'
 
 const { t } = useI18n()
+const props = withDefaults(defineProps<{ embedded?: boolean }>(), {
+  embedded: false,
+})
 const router = useRouter()
 const appStore = useAppStore()
 
@@ -108,6 +111,8 @@ const cancelTargetId = ref<number | null>(null)
 const refundTarget = ref<PaymentOrder | null>(null)
 const refundReason = ref('')
 const pagination = reactive({ page: 1, page_size: 20, total: 0 })
+
+void props.embedded
 
 const statusFilters = computed(() => [
   { value: '', label: t('common.all') },
@@ -186,4 +191,8 @@ async function loadRefundEligibility() {
 }
 
 onMounted(() => { fetchOrders(); loadRefundEligibility() })
+
+defineExpose({
+  refresh: fetchOrders,
+})
 </script>

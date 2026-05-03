@@ -75,7 +75,7 @@ const chartData = computed(() => {
     labels: props.trendData.map((d) => d.date),
     datasets: [
       {
-        label: 'Input',
+        label: t('dashboard.tokenInput'),
         data: props.trendData.map((d) => d.input_tokens),
         borderColor: chartColors.value.input,
         backgroundColor: `${chartColors.value.input}20`,
@@ -83,7 +83,7 @@ const chartData = computed(() => {
         tension: 0.3
       },
       {
-        label: 'Output',
+        label: t('dashboard.tokenOutput'),
         data: props.trendData.map((d) => d.output_tokens),
         borderColor: chartColors.value.output,
         backgroundColor: `${chartColors.value.output}20`,
@@ -91,7 +91,7 @@ const chartData = computed(() => {
         tension: 0.3
       },
       {
-        label: 'Cache Creation',
+        label: t('dashboard.tokenCacheWrite'),
         data: props.trendData.map((d) => d.cache_creation_tokens),
         borderColor: chartColors.value.cacheCreation,
         backgroundColor: `${chartColors.value.cacheCreation}20`,
@@ -99,7 +99,7 @@ const chartData = computed(() => {
         tension: 0.3
       },
       {
-        label: 'Cache Read',
+        label: t('dashboard.tokenCacheRead'),
         data: props.trendData.map((d) => d.cache_read_tokens),
         borderColor: chartColors.value.cacheRead,
         backgroundColor: `${chartColors.value.cacheRead}20`,
@@ -107,7 +107,7 @@ const chartData = computed(() => {
         tension: 0.3
       },
       {
-        label: 'Cache Hit Rate',
+        label: t('dashboard.cacheHitRate'),
         data: props.trendData.map((d) => {
           const total = d.cache_read_tokens + d.cache_creation_tokens
           return total > 0 ? (d.cache_read_tokens / total) * 100 : 0
@@ -155,7 +155,7 @@ const lineOptions = computed(() => ({
           const dataIndex = tooltipItems[0]?.dataIndex
           if (dataIndex !== undefined && props.trendData[dataIndex]) {
             const data = props.trendData[dataIndex]
-            return `Actual: $${formatCost(data.actual_cost)} | Standard: $${formatCost(data.cost)}`
+            return `${t('dashboard.actualCost')}: $${formatCost(data.actual_cost)} | ${t('dashboard.standardCost')}: $${formatCost(data.cost)}`
           }
           return ''
         }
