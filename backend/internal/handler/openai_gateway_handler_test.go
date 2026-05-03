@@ -13,6 +13,7 @@ import (
 	"unsafe"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/model"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -57,6 +58,42 @@ func setUnexportedFieldForTest(t *testing.T, target any, fieldName string, value
 	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Set(reflect.ValueOf(value))
 }
 
+func mustJSONBytesHandlerTest(t *testing.T, value any) []byte {
+	t.Helper()
+	data, err := json.Marshal(value)
+	require.NoError(t, err)
+	return data
+}
+
+const capturedStyleHandlerValidImageID = "img_abcdefghijklmnopqrstuvwxyzABCDEF"
+const capturedStyleHandlerCompressedLegacyImageID = "img_oldoldoldoldoldoldoldoldoldoldoldold"
+
+func openCodeCapturedSpecificImageMarkerForHandlerTest(id string) string {
+	return "[[sub2api-" + "generated-image:id=" + id + "]]"
+}
+
+func openCodeCapturedLegacyImageMarkerForHandlerTest(id string) string {
+	return "sub2api" + "-image://" + id
+}
+
+func openCodeImageRehydrateCapturedStyleHandlerBody(t *testing.T) []byte {
+	t.Helper()
+	return mustJSONBytesHandlerTest(t, map[string]any{
+		"model": "gpt-5.5-Sys",
+		"store": false,
+		"reasoning": map[string]any{
+			"effort":  "xhigh",
+			"summary": "auto",
+		},
+		"include": []any{"reasoning.encrypted_content"},
+		"input": []any{
+			map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": "[Compressed conversation section]\nGenerated image: " + openCodeCapturedLegacyImageMarkerForHandlerTest(capturedStyleHandlerCompressedLegacyImageID)}}},
+			map[string]any{"id": "msg_sub2api_img_abcdefghijklmnopqrstuvwxyzABCDEF", "role": "assistant", "content": []any{map[string]any{"type": "output_text", "text": "Generated image saved by sub2api.\nImage reference: " + openCodeCapturedSpecificImageMarkerForHandlerTest(capturedStyleHandlerValidImageID)}}},
+			map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": "Continue"}}},
+		},
+	})
+}
+
 func newOpenAIStickyDecisionForTest(t *testing.T, layer string, evalResult string) service.OpenAIAccountScheduleDecision {
 	t.Helper()
 	decision := service.OpenAIAccountScheduleDecision{Layer: layer}
@@ -75,6 +112,34 @@ func newOpenAIStickyDecisionForTest(t *testing.T, layer string, evalResult strin
 	stickyElem.FieldByName("ParentSessionKey").SetString("")
 	stickyField.Set(stickyValue)
 	return decision
+}
+
+type errorPassthroughRuleRepoStub struct {
+	rules []*model.ErrorPassthroughRule
+}
+
+func (r *errorPassthroughRuleRepoStub) List(context.Context) ([]*model.ErrorPassthroughRule, error) {
+	return r.rules, nil
+}
+
+func (r *errorPassthroughRuleRepoStub) GetByID(context.Context, int64) (*model.ErrorPassthroughRule, error) {
+	return nil, nil
+}
+
+func (r *errorPassthroughRuleRepoStub) Create(context.Context, *model.ErrorPassthroughRule) (*model.ErrorPassthroughRule, error) {
+	return nil, nil
+}
+
+func (r *errorPassthroughRuleRepoStub) Update(context.Context, *model.ErrorPassthroughRule) (*model.ErrorPassthroughRule, error) {
+	return nil, nil
+}
+
+func (r *errorPassthroughRuleRepoStub) Delete(context.Context, int64) error {
+	return nil
+}
+
+func newErrorPassthroughServiceForHandlerTest(rules []*model.ErrorPassthroughRule) *service.ErrorPassthroughService {
+	return service.NewErrorPassthroughService(&errorPassthroughRuleRepoStub{rules: rules}, nil)
 }
 
 func TestOpenAIHandleStreamingAwareError_JSONEscaping(t *testing.T) {
@@ -241,6 +306,40 @@ func TestOpenAIEnsureForwardErrorResponse_DoesNotOverrideWrittenResponse(t *test
 	require.False(t, wrote)
 	require.Equal(t, http.StatusTeapot, w.Code)
 	assert.Equal(t, "already written", w.Body.String())
+}
+
+func TestOpenAIHandleFailoverExhaustedRedactsPassthroughMessage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	sample := "aGVsbG8="
+	imageURL := "data:image/png;base64," + sample
+	statusCode := http.StatusBadRequest
+	ruleSvc := newErrorPassthroughServiceForHandlerTest([]*model.ErrorPassthroughRule{{
+		ID:              1,
+		Name:            "image-passthrough",
+		Enabled:         true,
+		Priority:        1,
+		ErrorCodes:      []int{statusCode},
+		Keywords:        []string{"invalid generated image"},
+		MatchMode:       model.MatchModeAll,
+		PassthroughCode: true,
+		PassthroughBody: true,
+	}})
+	h := &OpenAIGatewayHandler{errorPassthroughService: ruleSvc}
+
+	h.handleFailoverExhausted(c, &service.UpstreamFailoverError{
+		StatusCode:   statusCode,
+		ResponseBody: []byte(`{"error":{"message":"invalid generated image ` + imageURL + `"}}`),
+	}, false)
+
+	require.Equal(t, statusCode, w.Code)
+	body := w.Body.String()
+	require.NotContains(t, body, "data:image")
+	require.NotContains(t, body, sample)
+	require.Contains(t, body, "invalid generated image")
 }
 
 func TestOpenAIErrorResponse_IncludesRequestID(t *testing.T) {
@@ -514,7 +613,7 @@ func TestPrepareResponsesRequestForScheduling_FunctionCallOutputUsesExhaustedGro
 
 	body := []byte(`{"model":"gpt-5.4","input":[{"type":"function_call_output","call_id":"call_1","output":"ok"}]}`)
 
-	patchedBody, patchedModel, targetGroup, err := prepareResponsesRequestForScheduling(c, body, "gpt-5.4")
+	patchedBody, patchedModel, targetGroup, err := prepareResponsesRequestForScheduling(c, body, "gpt-5.4", nil)
 	require.NoError(t, err)
 	require.Equal(t, "gpt-5.4", patchedModel)
 	require.Equal(t, service.TargetGroupExhausted, targetGroup)
@@ -528,7 +627,7 @@ func TestPrepareResponsesRequestForScheduling_FunctionCallOutputTypeVariantUsesE
 
 	body := []byte(`{"model":"gpt-5.4","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]},{"type":" Function_Call_Output ","call_id":"call_2","output":"ok"}]}`)
 
-	patchedBody, patchedModel, targetGroup, err := prepareResponsesRequestForScheduling(c, body, "gpt-5.4")
+	patchedBody, patchedModel, targetGroup, err := prepareResponsesRequestForScheduling(c, body, "gpt-5.4", nil)
 	require.NoError(t, err)
 	require.Equal(t, "gpt-5.4", patchedModel)
 	require.Equal(t, service.TargetGroupExhausted, targetGroup)
@@ -542,7 +641,7 @@ func TestPrepareResponsesRequestForScheduling_SysModelAppendsContinuation(t *tes
 
 	body := []byte(`{"model":"gpt-5.4-Sys","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]}]}`)
 
-	patchedBody, patchedModel, targetGroup, err := prepareResponsesRequestForScheduling(c, body, "gpt-5.4-Sys")
+	patchedBody, patchedModel, targetGroup, err := prepareResponsesRequestForScheduling(c, body, "gpt-5.4-Sys", nil)
 	require.NoError(t, err)
 	require.Equal(t, "gpt-5.4", patchedModel)
 	require.Equal(t, "gpt-5.4", gjson.GetBytes(patchedBody, "model").String())
@@ -559,7 +658,7 @@ func TestPrepareResponsesRequestForScheduling_SysModelAppendsContinuationForRole
 
 	body := []byte(`{"model":"gpt-5.4-Sys","input":[{"role":"user","content":[{"type":"input_text","text":"hello"}]}]}`)
 
-	patchedBody, patchedModel, targetGroup, err := prepareResponsesRequestForScheduling(c, body, "gpt-5.4-Sys")
+	patchedBody, patchedModel, targetGroup, err := prepareResponsesRequestForScheduling(c, body, "gpt-5.4-Sys", nil)
 	require.NoError(t, err)
 	require.Equal(t, "gpt-5.4", patchedModel)
 	require.Equal(t, service.TargetGroupExhausted, targetGroup)
@@ -574,7 +673,7 @@ func TestPrepareResponsesRequestForScheduling_SysModelStringInputAppendsContinua
 
 	body := []byte(`{"model":"gpt-5.4-Sys","tools":[{"type":"function","name":"lookup_number"}],"input":"hello"}`)
 
-	patchedBody, patchedModel, targetGroup, err := prepareResponsesRequestForScheduling(c, body, "gpt-5.4-Sys")
+	patchedBody, patchedModel, targetGroup, err := prepareResponsesRequestForScheduling(c, body, "gpt-5.4-Sys", nil)
 	require.NoError(t, err)
 	require.Equal(t, "gpt-5.4", patchedModel)
 	require.Equal(t, service.TargetGroupExhausted, targetGroup)
@@ -591,11 +690,149 @@ func TestPrepareResponsesRequestForScheduling_SysModelStripEmptyReturnsInvalidMo
 
 	body := []byte(`{"model":"-Sys","input":[{"type":"message","role":"user","content":[]}]}`)
 
-	patchedBody, patchedModel, targetGroup, err := prepareResponsesRequestForScheduling(c, body, "-Sys")
+	patchedBody, patchedModel, targetGroup, err := prepareResponsesRequestForScheduling(c, body, "-Sys", nil)
 	require.Error(t, err)
 	require.ErrorIs(t, err, errPrepareResponsesRequestInvalidModel)
 	require.Nil(t, patchedBody)
 	require.Equal(t, "", patchedModel)
+	require.Equal(t, service.TargetGroupActive, targetGroup)
+}
+
+func TestPrepareResponsesRequestForSchedulingCachesNeedsSysDummyBeforeImageRehydrate(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "opencode/1.14.31")
+	body := []byte(`{"model":"gpt-5.5-Sys","input":[{"role":"user","content":[{"type":"input_text","text":"restore [[sub2api-generated-image:id=img_abcdefghijklmnopqrstuvwxyzABCDEF]]"}]}]}`)
+	hookCalled := false
+	hook := func(_ *gin.Context, reqBody map[string]any) (bool, error) {
+		hookCalled = true
+		input := reqBody["input"].([]any)
+		reqBody["input"] = append(input,
+			map[string]any{"type": "function_call", "call_id": "call_sub2api_image_img_abcdefghijklmnopqrstuvwxyzABCDEF", "name": "sub2api_generated_image", "arguments": "{}"},
+			map[string]any{"type": "function_call_output", "call_id": "call_sub2api_image_img_abcdefghijklmnopqrstuvwxyzABCDEF", "output": []any{map[string]any{"type": "input_text", "text": "restored"}}},
+		)
+		return true, nil
+	}
+
+	patchedBody, patchedModel, targetGroup, err := prepareResponsesRequestForScheduling(c, body, "gpt-5.5-Sys", hook)
+
+	require.NoError(t, err)
+	require.True(t, hookCalled)
+	require.Equal(t, "gpt-5.5", patchedModel)
+	require.Equal(t, service.TargetGroupExhausted, targetGroup)
+	var patched map[string]any
+	require.NoError(t, json.Unmarshal(patchedBody, &patched))
+	input := patched["input"].([]any)
+	require.Equal(t, "function_call", input[len(input)-4].(map[string]any)["type"])
+	require.Equal(t, "function_call_output", input[len(input)-3].(map[string]any)["type"])
+	require.Equal(t, "function_call", input[len(input)-2].(map[string]any)["type"])
+	require.Equal(t, "function_call_output", input[len(input)-1].(map[string]any)["type"])
+	require.Equal(t, "sys_dummy", input[len(input)-1].(map[string]any)["call_id"])
+	cached, ok := c.Get(service.OpenAIParsedRequestBodyKey)
+	require.True(t, ok)
+	require.Len(t, cached.(map[string]any)["input"].([]any), len(input))
+	require.JSONEq(t, string(patchedBody), string(mustJSONBytesHandlerTest(t, cached)))
+}
+
+func TestPrepareResponsesRequestForSchedulingRunsHookForActiveOpenCodeRequests(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "opencode/1.14.31")
+	body := []byte(`{"model":"gpt-5.5","input":[{"role":"user","content":[{"type":"input_text","text":"restore [[sub2api-generated-image:id=img_abcdefghijklmnopqrstuvwxyzABCDEF]]"}]}]}`)
+	hookCalled := false
+	hook := func(_ *gin.Context, reqBody map[string]any) (bool, error) {
+		hookCalled = true
+		input := reqBody["input"].([]any)
+		reqBody["input"] = append(input,
+			map[string]any{"type": "function_call", "call_id": "call_sub2api_image_img_abcdefghijklmnopqrstuvwxyzABCDEF", "name": "sub2api_generated_image", "arguments": "{}"},
+			map[string]any{"type": "function_call_output", "call_id": "call_sub2api_image_img_abcdefghijklmnopqrstuvwxyzABCDEF", "output": []any{map[string]any{"type": "input_text", "text": "restored"}}},
+		)
+		return true, nil
+	}
+
+	patchedBody, _, targetGroup, err := prepareResponsesRequestForScheduling(c, body, "gpt-5.5", hook)
+
+	require.NoError(t, err)
+	require.True(t, hookCalled)
+	require.Equal(t, service.TargetGroupExhausted, targetGroup)
+	var patched map[string]any
+	require.NoError(t, json.Unmarshal(patchedBody, &patched))
+	input := patched["input"].([]any)
+	require.Equal(t, "function_call_output", input[len(input)-1].(map[string]any)["type"])
+	cached, ok := c.Get(service.OpenAIParsedRequestBodyKey)
+	require.True(t, ok)
+	require.JSONEq(t, string(patchedBody), string(mustJSONBytesHandlerTest(t, cached)))
+}
+
+func TestPrepareResponsesRequestForSchedulingCapturedStyleKeepsSysDummyTail(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "opencode/1.14.31")
+	imageCallID := "call_sub2api_image_" + capturedStyleHandlerValidImageID
+	hook := func(_ *gin.Context, reqBody map[string]any) (bool, error) {
+		input := reqBody["input"].([]any)
+		imagePair := []any{
+			map[string]any{"type": "function_call", "call_id": imageCallID, "name": "sub2api_generated_image", "arguments": "{}"},
+			map[string]any{"type": "function_call_output", "call_id": imageCallID, "output": []any{map[string]any{"type": "input_text", "text": "restored"}}},
+		}
+		rewritten := append([]any{}, input[:2]...)
+		rewritten = append(rewritten, imagePair...)
+		rewritten = append(rewritten, input[2:]...)
+		reqBody["input"] = rewritten
+		return true, nil
+	}
+
+	body, model, targetGroup, err := prepareResponsesRequestForScheduling(c, openCodeImageRehydrateCapturedStyleHandlerBody(t), "gpt-5.5-Sys", hook)
+
+	require.NoError(t, err)
+	require.Equal(t, "gpt-5.5", model)
+	require.Equal(t, service.TargetGroupExhausted, targetGroup)
+	var req map[string]any
+	require.NoError(t, json.Unmarshal(body, &req))
+	input := req["input"].([]any)
+	require.Equal(t, "function_call", input[2].(map[string]any)["type"])
+	require.Equal(t, "sub2api_generated_image", input[2].(map[string]any)["name"])
+	require.Equal(t, imageCallID, input[2].(map[string]any)["call_id"])
+	require.Equal(t, "function_call_output", input[3].(map[string]any)["type"])
+	require.Equal(t, imageCallID, input[3].(map[string]any)["call_id"])
+	require.Equal(t, "Continue", gjson.GetBytes(mustJSONBytesHandlerTest(t, input[4]), "content.0.text").String())
+	sysCall := input[len(input)-2].(map[string]any)
+	sysOutput := input[len(input)-1].(map[string]any)
+	require.Equal(t, "function_call", sysCall["type"])
+	require.Equal(t, "sub2api_sys_bootstrap", sysCall["name"])
+	require.Equal(t, "sys_dummy", sysCall["call_id"])
+	require.Equal(t, "function_call_output", sysOutput["type"])
+	require.Equal(t, "sys_dummy", sysOutput["call_id"])
+	require.NotContains(t, string(body), "call_sub2api_image_"+capturedStyleHandlerCompressedLegacyImageID)
+	cached, ok := c.Get(service.OpenAIParsedRequestBodyKey)
+	require.True(t, ok)
+	require.JSONEq(t, string(body), string(mustJSONBytesHandlerTest(t, cached)))
+}
+
+func TestPrepareResponsesRequestForSchedulingRejectsHookOutputWithoutMatchingCallID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	body := []byte(`{"model":"gpt-5.5","input":[{"type":"function_call","call_id":"call_existing","name":"existing_tool","arguments":"{}"}]}`)
+	hook := func(_ *gin.Context, reqBody map[string]any) (bool, error) {
+		input := reqBody["input"].([]any)
+		reqBody["input"] = append(input, map[string]any{
+			"type":    "function_call_output",
+			"call_id": "call_hook_output_without_call",
+			"output":  []any{map[string]any{"type": "input_text", "text": "restored"}},
+		})
+		return true, nil
+	}
+
+	patchedBody, patchedModel, targetGroup, err := prepareResponsesRequestForScheduling(c, body, "gpt-5.5", hook)
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, errPrepareResponsesRequestRewrite)
+	require.Nil(t, patchedBody)
+	require.Empty(t, patchedModel)
 	require.Equal(t, service.TargetGroupActive, targetGroup)
 }
 
@@ -843,6 +1080,70 @@ func TestResolveOpenAIScheduleSessionSource_StickyFallbackSeed(t *testing.T) {
 
 	source := resolveOpenAIScheduleSessionSource(c, nil, "derived_fallback_hash", openAIScheduleSessionSourceFallbackSeed)
 	require.Equal(t, openAIScheduleSessionSourceFallbackSeed, source)
+}
+
+func TestOpenAIGatewayResponsesUsesPreparedBodyForSessionHashAndForward(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	prepared := []byte(`{"model":"gpt-5.5","input":[{"role":"user","content":[{"type":"input_text","text":"restore"}]},{"type":"function_call","call_id":"call_sub2api_image_img_abcdefghijklmnopqrstuvwxyzABCDEF","name":"sub2api_generated_image","arguments":"{}"},{"type":"function_call_output","call_id":"call_sub2api_image_img_abcdefghijklmnopqrstuvwxyzABCDEF","output":[{"type":"input_text","text":"restored"}]}]}`)
+	var parsedPrepared map[string]any
+	require.NoError(t, json.Unmarshal(prepared, &parsedPrepared))
+
+	oldPrepare := prepareResponsesRequestForSchedulingFn
+	oldHash := generateOpenAISessionHash
+	oldForward := forwardOpenAIResponsesForTestableCallSite
+	var hashBody []byte
+	var forwardedBody []byte
+	prepareResponsesRequestForSchedulingFn = func(c *gin.Context, _ []byte, _ string, hook responsesRequestPrepareHook) ([]byte, string, service.AccountTargetGroup, error) {
+		require.NotNil(t, hook)
+		cloned := map[string]any{}
+		require.NoError(t, json.Unmarshal(prepared, &cloned))
+		c.Set(service.OpenAIParsedRequestBodyKey, cloned)
+		return prepared, "gpt-5.5", service.TargetGroupExhausted, nil
+	}
+	generateOpenAISessionHash = func(_ *service.OpenAIGatewayService, _ *gin.Context, body []byte) string {
+		hashBody = append([]byte(nil), body...)
+		return ""
+	}
+	forwardOpenAIResponsesForTestableCallSite = func(_ *service.OpenAIGatewayService, _ context.Context, c *gin.Context, _ *service.Account, body []byte) (*service.OpenAIForwardResult, error) {
+		forwardedBody = append([]byte(nil), body...)
+		c.Set(service.OpsUpstreamRequestBodyKey, append([]byte(nil), body...))
+		return &service.OpenAIForwardResult{Model: "gpt-5.5", UpstreamModel: "gpt-5.5"}, nil
+	}
+	t.Cleanup(func() {
+		prepareResponsesRequestForSchedulingFn = oldPrepare
+		generateOpenAISessionHash = oldHash
+		forwardOpenAIResponsesForTestableCallSite = oldForward
+	})
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.5-Sys","input":"restore"}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("User-Agent", "opencode/1.0")
+	groupID := int64(12)
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 101, GroupID: &groupID, User: &service.User{ID: 1}})
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 1, Concurrency: 1})
+
+	gatewayService := &service.OpenAIGatewayService{}
+	setUnexportedFieldForTest(t, gatewayService, "openaiScheduler", &openAIAccountSchedulerStub{selectFn: func(ctx context.Context, req service.OpenAIAccountScheduleRequest) (*service.AccountSelectionResult, service.OpenAIAccountScheduleDecision, error) {
+		return &service.AccountSelectionResult{Account: &service.Account{ID: 1, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}, Acquired: true, ReleaseFunc: func() {}}, service.OpenAIAccountScheduleDecision{}, nil
+	}})
+	billingService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeSimple})
+	defer billingService.Stop()
+	h := &OpenAIGatewayHandler{gatewayService: gatewayService, billingCacheService: billingService, apiKeyService: &service.APIKeyService{}, concurrencyHelper: NewConcurrencyHelper(service.NewConcurrencyService(&concurrencyCacheMock{acquireUserSlotFn: func(ctx context.Context, userID int64, maxConcurrency int, requestID string) (bool, error) {
+		return true, nil
+	}}), SSEPingFormatNone, time.Second)}
+
+	h.Responses(c)
+
+	require.JSONEq(t, string(prepared), string(hashBody))
+	require.JSONEq(t, string(prepared), string(forwardedBody))
+	raw, ok := c.Get(service.OpsUpstreamRequestBodyKey)
+	require.True(t, ok)
+	require.JSONEq(t, string(prepared), string(raw.([]byte)))
+	cached, ok := c.Get(service.OpenAIParsedRequestBodyKey)
+	require.True(t, ok)
+	require.JSONEq(t, string(prepared), string(mustJSONBytesHandlerTest(t, cached)))
 }
 
 func TestOpenAIResponses_FailedSelectionStillStoresStickySnapshot(t *testing.T) {

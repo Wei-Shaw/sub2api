@@ -596,9 +596,70 @@ func TestForwardResponsesRequest_NonOpenCodeDoesNotRehydrateGeneratedImageMarker
 	require.NotContains(t, string(upstream.lastBody), "data:image")
 }
 
-func TestForwardResponsesRequest_OpenCodeRehydrateRedactsOpsUpstreamBody(t *testing.T) {
+func TestRehydrateOpenCodeGeneratedImagesForResponsesSkipsNonOpenCodeClient(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Request.Header.Set("User-Agent", "curl/8.0")
+	svc := &OpenAIGatewayService{generatedImageStore: newTestStoreWithImage(t, testImageID, "png", pngBytes)}
+	req := map[string]any{"input": []any{
+		openCodeSub2APIImageMessageForTest(testImageID, "Generated image saved by sub2api.\nImage reference: "+openCodeSpecificImageMarkerForTest(testImageID)),
+	}}
+
+	changed, err := svc.RehydrateOpenCodeGeneratedImagesForResponses(context.Background(), c, req)
+
+	require.NoError(t, err)
+	require.False(t, changed)
+	encoded := string(mustJSONBytes(t, req))
+	require.NotContains(t, encoded, openCodeGeneratedImageToolName)
+	require.NotContains(t, encoded, "call_sub2api_image_"+testImageID)
+	require.NotContains(t, encoded, "data:image")
+}
+
+func TestRehydrateOpenCodeGeneratedImagesForResponsesThenForwardRedactsOpsUpstreamBody(t *testing.T) {
 	store := newTestStoreWithImage(t, testImageID, "png", pngBytes)
-	body := []byte(`{"model":"gpt-5.5","input":"sub2api-image://` + testImageID + `"}`)
+	body := mustJSONBytes(t, map[string]any{
+		"model": "gpt-5.5",
+		"input": []any{
+			openCodeSub2APIImageMessageForTest(testImageID, strings.Join([]string{
+				"Generated image: " + openCodeLegacyImageMarkerForTest(testImageID),
+				"Download: " + openCodeGeneratedImageDownloadURLForTest("https://example.com", testImageID),
+			}, "\n")),
+		},
+	})
+	c, _ := newOpenAITestContext(t, "/v1/responses", body)
+	c.Request.Header.Set("User-Agent", "opencode/1.0")
+	upstream := &stubHTTPUpstream{}
+	svc := newOpenAITestGatewayService(upstream)
+	svc.generatedImageStore = store
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+	reqBody := decodeJSONMap(t, body)
+	changed, err := svc.RehydrateOpenCodeGeneratedImagesForResponses(context.Background(), c, reqBody)
+	require.NoError(t, err)
+	require.True(t, changed)
+	body = mustJSONBytes(t, reqBody)
+	c.Set(OpenAIParsedRequestBodyKey, reqBody)
+
+	_, err = svc.Forward(context.Background(), c, account, body)
+
+	require.NoError(t, err)
+	v, ok := c.Get(OpsUpstreamRequestBodyKey)
+	require.True(t, ok)
+	opsBody := string(v.([]byte))
+	require.NotContains(t, opsBody, "data:image")
+	require.NotContains(t, opsBody, pngB64)
+	require.Contains(t, opsBody, "[redacted-input-image]")
+	require.Contains(t, string(upstream.lastBody), "data:image/png;base64,")
+}
+
+func TestForwardResponsesRequest_OpenCodeDoesNotRehydrateGeneratedImageMarkersInForward(t *testing.T) {
+	store := newTestStoreWithImage(t, testImageID, "png", pngBytes)
+	body := mustJSONBytes(t, map[string]any{
+		"model": "gpt-5.5",
+		"input": []any{
+			map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": "restore " + openCodeSpecificImageMarkerForTest(testImageID)}}},
+		},
+	})
 	c, _ := newOpenAITestContext(t, "/v1/responses", body)
 	c.Request.Header.Set("User-Agent", "opencode/1.0")
 	upstream := &stubHTTPUpstream{}
@@ -609,13 +670,469 @@ func TestForwardResponsesRequest_OpenCodeRehydrateRedactsOpsUpstreamBody(t *test
 	_, err := svc.Forward(context.Background(), c, account, body)
 
 	require.NoError(t, err)
+	require.NotContains(t, string(upstream.lastBody), "data:image")
+	require.NotContains(t, string(upstream.lastBody), openCodeGeneratedImageToolName)
+	require.Contains(t, string(upstream.lastBody), openCodeSpecificImageMarkerForTest(testImageID))
+}
+
+func TestForwardResponsesRequest_PreinsertedOpenCodeImageToolPairNotDuplicatedInForward(t *testing.T) {
+	store := newTestStoreWithImage(t, testImageID, "png", pngBytes)
+	callID := "call_sub2api_image_" + testImageID
+	body := mustJSONBytes(t, map[string]any{
+		"model": "gpt-5.5",
+		"input": []any{
+			map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": "restore " + openCodeSpecificImageMarkerForTest(testImageID)}}},
+			map[string]any{"type": "function_call", "call_id": callID, "name": openCodeGeneratedImageToolName, "arguments": "{}"},
+			map[string]any{"type": "function_call_output", "call_id": callID, "output": []any{
+				map[string]any{"type": "input_text", "text": "restored"},
+				map[string]any{"type": "input_image", "image_url": "data:image/png;base64," + pngB64},
+			}},
+		},
+	})
+	c, _ := newOpenAITestContext(t, "/v1/responses", body)
+	c.Request.Header.Set("User-Agent", "opencode/1.0")
+	upstream := &stubHTTPUpstream{}
+	svc := newOpenAITestGatewayService(upstream)
+	svc.generatedImageStore = store
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+
+	require.NoError(t, err)
+	upstreamBody := string(upstream.lastBody)
+	require.Equal(t, 1, strings.Count(upstreamBody, `"name":"`+openCodeGeneratedImageToolName+`"`))
+	require.Equal(t, 2, strings.Count(upstreamBody, `"call_id":"`+callID+`"`))
+}
+
+func TestOpenCodeImageToolOutputArraySurvivesCodexTransform(t *testing.T) {
+	callID := "call_sub2api_image_" + testImageID
+	req := map[string]any{
+		"model": "gpt-5.5",
+		"input": []any{
+			map[string]any{"type": "function_call", "call_id": callID, "name": openCodeGeneratedImageToolName, "arguments": "{}"},
+			map[string]any{"type": "function_call_output", "call_id": callID, "output": []any{
+				map[string]any{"type": "input_text", "text": "restored"},
+				map[string]any{"type": "input_image", "image_url": "data:image/png;base64," + pngB64},
+			}},
+		},
+	}
+
+	result := applyCodexOAuthTransform(req, false, false)
+
+	require.True(t, result.Modified)
+	encoded := mustJSONBytes(t, req)
+	require.True(t, gjson.GetBytes(encoded, "input.1.output").IsArray())
+	require.Equal(t, "input_image", gjson.GetBytes(encoded, "input.1.output.1.type").String())
+	require.Equal(t, gjson.GetBytes(encoded, "input.0.call_id").String(), gjson.GetBytes(encoded, "input.1.call_id").String())
+}
+
+func TestOpenCodeImageToolOutputRedactsRuntimeAndOpsErrorBodies(t *testing.T) {
+	sample := "aGVsbG8="
+	imageURL := "data:image/png;base64," + sample
+	callID := "call_sub2api_image_" + testImageID
+	rawRequestBody := mustJSONBytes(t, map[string]any{
+		"model": "gpt-5.5",
+		"input": []any{
+			map[string]any{"type": "function_call", "call_id": callID, "name": openCodeGeneratedImageToolName, "arguments": "{}"},
+			map[string]any{"type": "function_call_output", "call_id": callID, "output": []any{
+				map[string]any{"type": "input_text", "text": "ok"},
+				map[string]any{"type": "input_image", "image_url": imageURL},
+			}},
+		},
+	})
+	upstreamErrorBody := mustJSONBytes(t, map[string]any{
+		"error": map[string]any{"message": "Instructions are required " + imageURL, "detail": imageURL},
+	})
+	assertNoImageLeak := func(label string, value any) {
+		t.Helper()
+		text := fmt.Sprint(value)
+		require.NotContains(t, text, "data:image", label)
+		require.NotContains(t, text, sample, label)
+	}
+
+	upstream := &stubHTTPUpstream{response: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader(upstreamErrorBody)),
+	}}
+	svc := newOpenAITestGatewayService(upstream)
+	svc.cfg.Gateway.LogUpstreamErrorBody = true
+	svc.cfg.Gateway.LogUpstreamErrorBodyMaxBytes = 4096
+	c, _ := newOpenAITestContext(t, "/v1/responses", rawRequestBody)
+	logSink, restoreLogs := captureStructuredLog(t)
+	t.Cleanup(restoreLogs)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+
+	_, err := svc.Forward(context.Background(), c, account, rawRequestBody)
+
+	require.Error(t, err)
+	for _, key := range []string{OpsUpstreamRequestBodyKey, OpsUpstreamErrorDetailKey, OpsUpstreamErrorsKey} {
+		value, ok := c.Get(key)
+		require.True(t, ok, "expected %s in gin context", key)
+		assertNoImageLeak(key, value)
+	}
+
+	logSink.mu.Lock()
+	eventCount := len(logSink.events)
+	foundErrorLog := false
+	var leakedRuntimeLog []string
+	for _, event := range logSink.events {
+		if event == nil {
+			continue
+		}
+		if strings.Contains(event.Message, "OpenAI upstream error") || strings.Contains(event.Message, "400") {
+			foundErrorLog = true
+		}
+		if strings.Contains(event.Message, "data:image") || strings.Contains(event.Message, sample) {
+			leakedRuntimeLog = append(leakedRuntimeLog, "message")
+		}
+		for key, field := range event.Fields {
+			text := fmt.Sprint(field)
+			if strings.Contains(text, "data:image") || strings.Contains(text, sample) {
+				leakedRuntimeLog = append(leakedRuntimeLog, key)
+			}
+		}
+	}
+	logSink.mu.Unlock()
+	require.NotZero(t, eventCount)
+	require.True(t, foundErrorLog)
+	require.Empty(t, leakedRuntimeLog)
+
+	var captured []*OpsInsertErrorLogInput
+	opsSvc := &OpsService{opsRepo: &opsRepoMock{
+		InsertErrorLogFn: func(ctx context.Context, input *OpsInsertErrorLogInput) (int64, error) {
+			captured = append(captured, input)
+			return 1, nil
+		},
+		BatchInsertErrorLogsFn: func(ctx context.Context, inputs []*OpsInsertErrorLogInput) (int64, error) {
+			captured = append(captured, inputs...)
+			return int64(len(inputs)), nil
+		},
+	}}
+	detail := imageURL
+	require.NoError(t, opsSvc.RecordError(context.Background(), &OpsInsertErrorLogInput{
+		ErrorPhase:          "upstream",
+		ErrorType:           "upstream_error",
+		ErrorBody:           imageURL,
+		UpstreamErrorDetail: &detail,
+	}, rawRequestBody))
+	require.NoError(t, opsSvc.RecordErrorBatch(context.Background(), []*OpsInsertErrorLogInput{
+		{
+			ErrorPhase: "upstream",
+			ErrorType:  "upstream_error",
+			UpstreamErrors: []*OpsUpstreamErrorEvent{
+				{Kind: "http_error", Message: "bad", Detail: detail, UpstreamResponseBody: detail, UpstreamRequestBody: string(rawRequestBody)},
+			},
+		},
+		{ErrorPhase: "upstream", ErrorType: "upstream_error", ErrorBody: imageURL},
+	}))
+	require.NotEmpty(t, captured)
+	foundRequestBodyJSON := false
+	foundUpstreamErrorsJSON := false
+	for _, input := range captured {
+		if input.RequestBodyJSON != nil {
+			foundRequestBodyJSON = true
+			assertNoImageLeak("RequestBodyJSON", *input.RequestBodyJSON)
+		}
+		if input.UpstreamErrorDetail != nil {
+			assertNoImageLeak("UpstreamErrorDetail", *input.UpstreamErrorDetail)
+		}
+		if input.UpstreamErrorsJSON != nil {
+			foundUpstreamErrorsJSON = true
+			assertNoImageLeak("UpstreamErrorsJSON", *input.UpstreamErrorsJSON)
+		}
+		assertNoImageLeak("ErrorBody", input.ErrorBody)
+	}
+	require.True(t, foundRequestBodyJSON)
+	require.True(t, foundUpstreamErrorsJSON)
+}
+
+func TestOpenCodeImageToolOutputRedactsClientErrorEnvelope(t *testing.T) {
+	sample := "aGVsbG8="
+	imageURL := "data:image/png;base64," + sample
+	requestBody := mustJSONBytes(t, map[string]any{
+		"model": "gpt-5.5",
+		"input": "hello",
+	})
+	upstreamErrorBody := mustJSONBytes(t, map[string]any{
+		"error": map[string]any{
+			"type":    "invalid_request_error",
+			"code":    "invalid_image",
+			"param":   "input",
+			"message": "invalid generated image " + imageURL,
+			"detail":  imageURL,
+		},
+	})
+	upstream := &stubHTTPUpstream{response: &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader(upstreamErrorBody)),
+	}}
+	svc := newOpenAITestGatewayService(upstream)
+	c, rec := newOpenAITestContext(t, "/v1/responses", requestBody)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+
+	_, err := svc.Forward(context.Background(), c, account, requestBody)
+
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "data:image")
+	require.NotContains(t, err.Error(), sample)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	body := rec.Body.String()
+	require.NotContains(t, body, "data:image")
+	require.NotContains(t, body, sample)
+	require.Contains(t, body, "upstream")
+}
+
+func TestOpenCodeImageRuntimeLogRedactsUpstreamMessageFields(t *testing.T) {
+	sample := "aGVsbG8="
+	imageURL := "data:image/png;base64," + sample
+	assertNoImageLeak := func(t testing.TB, label string, value any) {
+		t.Helper()
+		text := fmt.Sprint(value)
+		require.NotContains(t, text, "data:image", label)
+		require.NotContains(t, text, sample, label)
+	}
+	assertCapturedLogs := func(t *testing.T, logSink *inMemoryLogSink, wantMessagePart string) {
+		t.Helper()
+		logSink.mu.Lock()
+		defer logSink.mu.Unlock()
+		require.NotEmpty(t, logSink.events)
+		found := false
+		for _, event := range logSink.events {
+			if event == nil {
+				continue
+			}
+			if strings.Contains(event.Message, wantMessagePart) || strings.Contains(event.Message, "400") {
+				found = true
+			}
+			assertNoImageLeak(t, "runtime log message", event.Message)
+			for key, field := range event.Fields {
+				assertNoImageLeak(t, "runtime log field "+key, field)
+			}
+		}
+		require.True(t, found)
+	}
+
+	t.Run("instructions required debug field", func(t *testing.T) {
+		body := mustJSONBytes(t, map[string]any{"error": map[string]any{"message": "Instructions are required " + imageURL}})
+		logSink, restoreLogs := captureStructuredLog(t)
+		t.Cleanup(restoreLogs)
+
+		requestBody := mustJSONBytes(t, map[string]any{"input": "ok"})
+		logOpenAIInstructionsRequiredDebug(context.Background(), nil, &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, http.StatusBadRequest, "Instructions are required "+imageURL, requestBody, body)
+
+		assertCapturedLogs(t, logSink, "Instructions are required")
+	})
+
+	t.Run("transient failover field", func(t *testing.T) {
+		logSink, restoreLogs := captureStructuredLog(t)
+		t.Cleanup(restoreLogs)
+		msg := "an error occurred while processing your request; you can retry your request; help.openai.com request id " + imageURL
+
+		logOpenAITransientProcessingFailover(context.Background(), nil, &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, http.StatusBadRequest, "rid_1", msg)
+
+		assertCapturedLogs(t, logSink, "transient processing error")
+	})
+}
+
+func TestOpenCodeImageToolOutputStringFallbackDoesNotContainImageBytes(t *testing.T) {
+	output := buildOpenCodeImageToolOutputStringFallback(testImageID, openCodeGeneratedImageDownloadURLForTest("https://example.com", testImageID))
+
+	require.NotContains(t, output, "data:image")
+	require.NotContains(t, output, "base64,")
+	require.NotContains(t, output, pngB64)
+	require.NotContains(t, output, openCodeGeneratedImageDownloadURLForTest("https://example.com", testImageID))
+	require.Contains(t, output, openCodeSpecificImageMarkerForTest(testImageID))
+}
+
+func TestOpenCodeImageToolOutputAutoRetryRewritesArrayToStringFallback(t *testing.T) {
+	callID := "call_sub2api_image_" + testImageID
+	body := mustJSONBytes(t, map[string]any{
+		"model": "gpt-5.5",
+		"input": []any{
+			map[string]any{"type": "function_call", "call_id": callID, "name": openCodeGeneratedImageToolName, "arguments": "{}"},
+			map[string]any{"type": "function_call_output", "call_id": callID, "output": []any{
+				map[string]any{"type": "input_text", "text": "restored"},
+				map[string]any{"type": "input_image", "image_url": "data:image/png;base64," + pngB64},
+			}},
+		},
+	})
+	upstream := &httpUpstreamSequenceRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusBadRequest, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"message":"function_call_output output must be a string"}}`))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"resp_ok","object":"response","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`))},
+	}}
+	svc := newOpenAITestGatewayService(upstream)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+	c, _ := newOpenAITestContext(t, "/v1/responses", body)
+	c.Set(OpenAIImageToolOutputArrayKey, true)
+	parsedOriginal := decodeJSONMap(t, body)
+	c.Set(OpenAIParsedRequestBodyKey, parsedOriginal)
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 2)
+	require.Contains(t, string(upstream.bodies[0]), "data:image/png;base64,"+pngB64)
+	require.NotContains(t, string(upstream.bodies[1]), "data:image")
+	require.NotContains(t, string(upstream.bodies[1]), "base64,")
+	require.NotContains(t, string(upstream.bodies[1]), pngB64)
+	require.Equal(t, gjson.String, gjson.GetBytes(upstream.bodies[1], "input.1.output").Type)
+	require.Contains(t, gjson.GetBytes(upstream.bodies[1], "input.1.output").String(), openCodeSpecificImageMarkerForTest(testImageID))
+	cached, ok := c.Get(OpenAIParsedRequestBodyKey)
+	require.True(t, ok)
+	require.True(t, gjson.GetBytes(mustJSONBytes(t, cached), "input.1.output").IsArray(), "fallback retry must not mutate global parsed request cache")
+}
+
+func TestOpenCodeImageToolOutputAutoRetryHandlesCodexNormalizedCallID(t *testing.T) {
+	callID := "call_sub2api_image_" + testImageID
+	body := mustJSONBytes(t, map[string]any{
+		"model": "gpt-5.5",
+		"input": []any{
+			map[string]any{"type": "function_call", "call_id": callID, "name": openCodeGeneratedImageToolName, "arguments": "{}"},
+			map[string]any{"type": "function_call_output", "call_id": callID, "output": []any{
+				map[string]any{"type": "input_text", "text": "restored"},
+				map[string]any{"type": "input_image", "image_url": "data:image/png;base64," + pngB64},
+			}},
+		},
+	})
+	upstream := &httpUpstreamSequenceRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusBadRequest, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"message":"function_call_output output must be a string"}}`))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"id":"resp_ok","object":"response","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`))},
+	}}
+	svc := newOpenAITestGatewayService(upstream)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Credentials: map[string]any{"access_token": "oauth-token"}}
+	c, _ := newOpenAITestContext(t, "/v1/responses", body)
+	c.Set(OpenAIImageToolOutputArrayKey, true)
+	c.Set(OpenAIParsedRequestBodyKey, decodeJSONMap(t, body))
+
+	result, err := svc.Forward(context.Background(), c, account, body)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 2)
+	firstCallID := gjson.GetBytes(upstream.bodies[0], "input.0.call_id").String()
+	require.NotEqual(t, callID, firstCallID)
+	require.Equal(t, firstCallID, gjson.GetBytes(upstream.bodies[0], "input.1.call_id").String())
+	require.True(t, gjson.GetBytes(upstream.bodies[0], "input.1.output").IsArray())
+	require.Equal(t, firstCallID, gjson.GetBytes(upstream.bodies[1], "input.1.call_id").String())
+	require.Equal(t, gjson.String, gjson.GetBytes(upstream.bodies[1], "input.1.output").Type)
+	require.NotContains(t, string(upstream.bodies[1]), "data:image")
+	require.NotContains(t, string(upstream.bodies[1]), "base64,")
+	require.Contains(t, gjson.GetBytes(upstream.bodies[1], "input.1.output").String(), openCodeSpecificImageMarkerForTest(testImageID))
+}
+
+func TestOpenCodeImageToolOutputFallbackSkipsRealToolWithSyntheticLookingCallID(t *testing.T) {
+	callID := "call_sub2api_image_" + testImageID
+	req := map[string]any{"input": []any{
+		map[string]any{"type": "function_call", "call_id": callID, "name": "real_tool", "arguments": "{}"},
+		map[string]any{"type": "function_call_output", "call_id": callID, "output": []any{
+			map[string]any{"type": "input_text", "text": "real tool output"},
+			map[string]any{"type": "input_image", "image_url": "data:image/png;base64," + pngB64},
+		}},
+	}}
+
+	changed := rewriteOpenCodeImageToolOutputsToStringFallback(req)
+
+	require.False(t, changed)
+	encoded := mustJSONBytes(t, req)
+	require.True(t, gjson.GetBytes(encoded, "input.1.output").IsArray())
+	require.Contains(t, string(encoded), "data:image/png;base64,"+pngB64)
+}
+
+func TestOpenCodeImageToolOutputUnavailableTextFallbackKeepsUnavailableSemantics(t *testing.T) {
+	callID := "call_sub2api_image_" + testImageID
+	req := map[string]any{"input": []any{
+		map[string]any{"type": "function_call", "call_id": callID, "name": openCodeGeneratedImageToolName, "arguments": "{}"},
+		map[string]any{"type": "function_call_output", "call_id": callID, "output": buildOpenCodeUnavailableImageToolParts(testImageID)},
+	}}
+
+	changed := rewriteOpenCodeImageToolOutputsToStringFallback(req)
+
+	require.True(t, changed)
+	output := gjson.GetBytes(mustJSONBytes(t, req), "input.1.output").String()
+	require.Contains(t, output, "no longer available")
+	require.NotContains(t, strings.ToLower(output), "restored")
+	require.Contains(t, output, openCodeSpecificImageMarkerForTest(testImageID))
+}
+
+func TestOpenCodeImageToolOutputImageArrayFallbackSaysPixelsNotAttached(t *testing.T) {
+	callID := "call_sub2api_image_" + testImageID
+	req := map[string]any{"input": []any{
+		map[string]any{"type": "function_call", "call_id": callID, "name": openCodeGeneratedImageToolName, "arguments": "{}"},
+		map[string]any{"type": "function_call_output", "call_id": callID, "output": buildOpenCodeRehydratedInputImageParts(testImageID, "image/png", pngBytes)},
+	}}
+
+	changed := rewriteOpenCodeImageToolOutputsToStringFallback(req)
+
+	require.True(t, changed)
+	output := gjson.GetBytes(mustJSONBytes(t, req), "input.1.output").String()
+	require.Contains(t, output, "not attached")
+	require.NotContains(t, output, "data:image")
+	require.NotContains(t, output, "base64,")
+	require.NotContains(t, output, pngB64)
+	require.Contains(t, output, openCodeSpecificImageMarkerForTest(testImageID))
+}
+
+func TestOpenCodeImageToolOutputAutoRetrySkipsNonOutputTypeErrors(t *testing.T) {
+	callID := "call_sub2api_image_" + testImageID
+	body := mustJSONBytes(t, map[string]any{
+		"model": "gpt-5.5",
+		"input": []any{
+			map[string]any{"type": "function_call", "call_id": callID, "name": openCodeGeneratedImageToolName, "arguments": "{}"},
+			map[string]any{"type": "function_call_output", "call_id": callID, "output": []any{
+				map[string]any{"type": "input_text", "text": "restored"},
+				map[string]any{"type": "input_image", "image_url": "data:image/png;base64," + pngB64},
+			}},
+		},
+	})
+	upstream := &httpUpstreamSequenceRecorder{responses: []*http.Response{{StatusCode: http.StatusBadRequest, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"error":{"message":"ordinary bad request"}}`))}}}
+	svc := newOpenAITestGatewayService(upstream)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+	c, _ := newOpenAITestContext(t, "/v1/responses", body)
+	c.Set(OpenAIImageToolOutputArrayKey, true)
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+
+	require.Error(t, err)
+	require.Len(t, upstream.bodies, 1)
+}
+
+func TestShouldRetryOpenCodeImageOutputArrayCompatibilitySkipsWrittenResponse(t *testing.T) {
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Set(OpenAIImageToolOutputArrayKey, true)
+	_, err := c.Writer.Write([]byte("started"))
+	require.NoError(t, err)
+
+	require.False(t, shouldRetryOpenCodeImageOutputArrayCompatibility(c, http.StatusBadRequest, []byte(`{"error":{"message":"function_call_output output"}}`)))
+}
+
+func TestForwardResponsesRequest_OpenCodeUserLegacyMarkerDoesNotRehydrate(t *testing.T) {
+	store := newTestStoreWithImage(t, testImageID, "png", pngBytes)
+	body := mustJSONBytes(t, map[string]any{
+		"model": "gpt-5.5",
+		"input": []any{
+			map[string]any{"role": "user", "content": []any{map[string]any{"type": "input_text", "text": "please discuss " + openCodeLegacyImageMarkerForTest(testImageID)}}},
+		},
+	})
+	c, _ := newOpenAITestContext(t, "/v1/responses", body)
+	c.Request.Header.Set("User-Agent", "opencode/1.0")
+	upstream := &stubHTTPUpstream{}
+	svc := newOpenAITestGatewayService(upstream)
+	svc.generatedImageStore = store
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+
+	_, err := svc.Forward(context.Background(), c, account, body)
+
+	require.NoError(t, err)
+	require.NotContains(t, string(upstream.lastBody), "data:image")
 	v, ok := c.Get(OpsUpstreamRequestBodyKey)
 	require.True(t, ok)
 	opsBody := string(v.([]byte))
+	require.NotContains(t, opsBody, "[redacted-input-image]")
 	require.NotContains(t, opsBody, "data:image")
-	require.NotContains(t, opsBody, pngB64)
-	require.Contains(t, opsBody, "[redacted-input-image]")
-	require.Contains(t, string(upstream.lastBody), "data:image/png;base64,")
 }
 
 func TestForwardResponsesRequest_OpenCodeImageGenerationContinuesServerSide(t *testing.T) {
@@ -649,8 +1166,8 @@ func TestForwardResponsesRequest_OpenCodeImageGenerationContinuesServerSide(t *t
 	secondBody := string(upstream.bodies[1])
 	require.Contains(t, secondBody, `"type":"function_call"`)
 	require.Contains(t, secondBody, `"type":"function_call_output"`)
-	require.Contains(t, secondBody, "sub2api-image://img_")
-	require.Contains(t, secondBody, "I'll download from URL: https://example.com/sub2api/generated-images/img_")
+	requireContainsOpenCodeGeneratedImageSpecificMarker(t, secondBody)
+	require.Contains(t, secondBody, "Temporary download URL: https://example.com/sub2api/generated-images/img_")
 	require.Contains(t, secondBody, "Immediately use the available shell, command-line, or network-access tool")
 	require.Contains(t, secondBody, "The saved image URL expires quickly")
 	require.Contains(t, secondBody, "Do not ask the user whether to download")
@@ -660,7 +1177,7 @@ func TestForwardResponsesRequest_OpenCodeImageGenerationContinuesServerSide(t *t
 	require.Contains(t, secondBody, "Only if no tool can access the URL")
 	require.NotContains(t, secondBody, pngB64)
 	clientBody := rec.Body.String()
-	require.Contains(t, clientBody, "sub2api-image://img_")
+	requireContainsOpenCodeGeneratedImageSpecificMarker(t, clientBody)
 	require.Contains(t, clientBody, "continued after image")
 	require.Equal(t, int64(4), gjson.Get(clientBody, "usage.input_tokens").Int())
 	require.Equal(t, int64(6), gjson.Get(clientBody, "usage.output_tokens").Int())
@@ -708,9 +1225,9 @@ func TestForwardResponsesRequest_OpenCodeNonStreamingSSEImageGenerationContinues
 	secondBody := string(upstream.bodies[1])
 	require.Contains(t, secondBody, `"type":"function_call"`)
 	require.Contains(t, secondBody, `"type":"function_call_output"`)
-	require.Contains(t, secondBody, "sub2api-image://img_")
+	requireContainsOpenCodeGeneratedImageSpecificMarker(t, secondBody)
 	clientBody := rec.Body.String()
-	require.Contains(t, clientBody, "sub2api-image://img_")
+	requireContainsOpenCodeGeneratedImageSpecificMarker(t, clientBody)
 	require.Contains(t, clientBody, "continued after non-stream sse image")
 	require.Equal(t, int64(4), gjson.Get(clientBody, "usage.input_tokens").Int())
 	require.Equal(t, int64(6), gjson.Get(clientBody, "usage.output_tokens").Int())
@@ -769,9 +1286,9 @@ func TestForwardResponsesRequest_OpenCodeStreamingImageGenerationContinuesServer
 	secondBody := string(upstream.bodies[1])
 	require.Contains(t, secondBody, `"type":"function_call"`)
 	require.Contains(t, secondBody, `"type":"function_call_output"`)
-	require.Contains(t, secondBody, "sub2api-image://img_")
+	requireContainsOpenCodeGeneratedImageSpecificMarker(t, secondBody)
 	clientBody := rec.Body.String()
-	require.Contains(t, clientBody, "sub2api-image://img_")
+	requireContainsOpenCodeGeneratedImageSpecificMarker(t, clientBody)
 	require.Contains(t, clientBody, "continued stream after image")
 	require.Equal(t, 1, strings.Count(clientBody, "event: response.completed"))
 	require.Equal(t, 1, strings.Count(clientBody, "data: [DONE]"))
@@ -827,7 +1344,7 @@ func TestForwardResponsesRequest_OpenCodeStreamingTerminalOnlyImageGenerationCon
 	require.Contains(t, secondBody, `"type":"function_call"`)
 	require.Contains(t, secondBody, `"type":"function_call_output"`)
 	clientBody := rec.Body.String()
-	require.Contains(t, clientBody, "sub2api-image://img_")
+	requireContainsOpenCodeGeneratedImageSpecificMarker(t, clientBody)
 	require.Contains(t, clientBody, "continued stream after terminal-only image")
 	require.Equal(t, 1, strings.Count(clientBody, "event: response.completed"))
 	require.Equal(t, 1, strings.Count(clientBody, "data: [DONE]"))
@@ -865,7 +1382,7 @@ func TestForwardResponsesRequest_OpenCodeStreamingContinuationFailureFallsBackTo
 	require.Error(t, err)
 	require.Equal(t, 2, upstream.callCount)
 	clientBody := rec.Body.String()
-	require.Contains(t, clientBody, "sub2api-image://img_")
+	requireContainsOpenCodeGeneratedImageSpecificMarker(t, clientBody)
 	require.Equal(t, 1, strings.Count(clientBody, "event: response.completed"))
 	require.Equal(t, 1, strings.Count(clientBody, "data: [DONE]"))
 	require.NotContains(t, clientBody, `"name":"bash"`)

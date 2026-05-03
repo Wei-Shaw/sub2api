@@ -45,7 +45,8 @@ const (
 	codexCLIOnlyHeaderValueMaxBytes = 256
 
 	// OpenAIParsedRequestBodyKey 缓存 handler 侧已解析的请求体，避免重复解析。
-	OpenAIParsedRequestBodyKey = "openai_parsed_request_body"
+	OpenAIParsedRequestBodyKey    = "openai_parsed_request_body"
+	OpenAIImageToolOutputArrayKey = "openai_image_tool_output_array"
 	// OpenAISysToolContinuationKey 标记当前请求需要为 -Sys 路由补最小 tool continuation。
 	OpenAISysToolContinuationKey = "openai_sys_tool_continuation"
 	// OpenAI WS Mode 失败后的重连次数上限（不含首次尝试）。
@@ -470,6 +471,19 @@ func (s *OpenAIGatewayService) needsUpstreamChannelRestrictionCheck(ctx context.
 // ReplaceModelInBody 替换请求体中的 JSON model 字段（通用 gjson/sjson 实现）。
 func (s *OpenAIGatewayService) ReplaceModelInBody(body []byte, newModel string) []byte {
 	return ReplaceModelInBody(body, newModel)
+}
+
+// RehydrateOpenCodeGeneratedImagesForResponses expects the caller to pass the
+// parsed Responses request body that will be marshaled for scheduling/forwarding.
+func (s *OpenAIGatewayService) RehydrateOpenCodeGeneratedImagesForResponses(ctx context.Context, c *gin.Context, reqBody map[string]any) (bool, error) {
+	if !isOpenCodeResponsesClient(c) || isOpenAIResponsesCompactPath(c) {
+		return false, nil
+	}
+	changed, err := rehydrateOpenCodeGeneratedImageMarkers(ctx, reqBody, s.generatedImageStore, openCodeImageRehydrateOptions{MaxImages: 3})
+	if changed && c != nil {
+		c.Set(OpenAIImageToolOutputArrayKey, true)
+	}
+	return changed, err
 }
 
 func (s *OpenAIGatewayService) getCodexSnapshotThrottle() *accountWriteThrottle {
@@ -1006,12 +1020,13 @@ func logOpenAIInstructionsRequiredDebug(
 		originator = strings.TrimSpace(c.GetHeader("originator"))
 	}
 
+	redactedMsg := redactOpenCodeGeneratedImageTokensForOps(msg)
 	fields := []zap.Field{
 		zap.String("component", "service.openai_gateway"),
 		zap.Int64("account_id", accountID),
 		zap.String("account_name", accountName),
 		zap.Int("upstream_status_code", upstreamStatusCode),
-		zap.String("upstream_error_message", msg),
+		zap.String("upstream_error_message", redactedMsg),
 		zap.String("request_user_agent", userAgent),
 		zap.Bool("codex_official_client_match", openai.IsCodexOfficialClientByHeaders(userAgent, originator)),
 	}
@@ -1113,10 +1128,11 @@ func isOpenAITransientProcessingError(upstreamStatusCode int, upstreamMsg string
 }
 
 func logOpenAITransientProcessingFailover(ctx context.Context, c *gin.Context, account *Account, statusCode int, upstreamRequestID, upstreamMsg string) {
+	redactedMsg := redactOpenCodeGeneratedImageTokensForOps(strings.TrimSpace(upstreamMsg))
 	fields := []zap.Field{
 		zap.Int("status_code", statusCode),
 		zap.String("upstream_request_id", strings.TrimSpace(upstreamRequestID)),
-		zap.String("upstream_message", strings.TrimSpace(upstreamMsg)),
+		zap.String("upstream_message", redactedMsg),
 	}
 	if account != nil {
 		fields = append(fields,
@@ -1157,11 +1173,28 @@ func hasOpenAIStructuredError(body []byte) bool {
 	return false
 }
 
+func redactedOpenAIUpstreamBodySnippet(body []byte, maxBytes int) string {
+	if len(body) == 0 {
+		return ""
+	}
+	if maxBytes <= 0 {
+		maxBytes = 2048
+	}
+	return truncateString(string(redactOpenCodeGeneratedImagesForOps(body)), maxBytes)
+}
+
+func redactedOpenAIUpstreamBodyForLog(body []byte, maxBytes int) string {
+	return truncateForLog(redactOpenCodeGeneratedImagesForOps(body), maxBytes)
+}
+
 func buildOpenAIUpstreamErrorEnvelope(status int, body []byte, fallback string) (int, openAIUpstreamErrorEnvelope) {
-	msg := strings.TrimSpace(extractUpstreamErrorMessage(body))
+	redactedBody := redactOpenCodeGeneratedImagesForOps(body)
+	msg := strings.TrimSpace(extractUpstreamErrorMessage(redactedBody))
 	if msg == "" {
 		msg = strings.TrimSpace(fallback)
 	}
+	msg = sanitizeUpstreamErrorMessage(msg)
+	msg = redactOpenCodeGeneratedImageTokensForOps(msg)
 	if msg == "" {
 		msg = fmt.Sprintf("Upstream error: %d", status)
 	}
@@ -1174,22 +1207,22 @@ func buildOpenAIUpstreamErrorEnvelope(status int, body []byte, fallback string) 
 		"status":  status,
 		"message": msg,
 	}
-	if code := strings.TrimSpace(gjson.GetBytes(body, "error.code").String()); code != "" {
+	if code := strings.TrimSpace(gjson.GetBytes(redactedBody, "error.code").String()); code != "" {
 		upstream["code"] = code
 	}
-	if typ := strings.TrimSpace(gjson.GetBytes(body, "error.type").String()); typ != "" {
+	if typ := strings.TrimSpace(gjson.GetBytes(redactedBody, "error.type").String()); typ != "" {
 		upstream["type"] = typ
 	}
-	if param := strings.TrimSpace(gjson.GetBytes(body, "error.param").String()); param != "" {
+	if param := strings.TrimSpace(gjson.GetBytes(redactedBody, "error.param").String()); param != "" {
 		upstream["param"] = param
 	}
 
 	var raw any
-	if len(body) > 0 {
-		if err := json.Unmarshal(body, &raw); err == nil {
+	if len(redactedBody) > 0 {
+		if err := json.Unmarshal(redactedBody, &raw); err == nil {
 			upstream["raw"] = raw
 		} else {
-			upstream["raw"] = string(body)
+			upstream["raw"] = string(redactedBody)
 		}
 	}
 
@@ -3025,6 +3058,20 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode i
 	return isOpenAITransientProcessingError(statusCode, upstreamMsg, upstreamBody)
 }
 
+func shouldRetryOpenCodeImageOutputArrayCompatibility(c *gin.Context, status int, body []byte) bool {
+	if c == nil || status != http.StatusBadRequest {
+		return false
+	}
+	if c.Writer != nil && c.Writer.Written() {
+		return false
+	}
+	if marked, _ := c.Get(OpenAIImageToolOutputArrayKey); marked != true {
+		return false
+	}
+	text := strings.ToLower(string(body))
+	return strings.Contains(text, "function_call_output") && strings.Contains(text, "output")
+}
+
 func (s *OpenAIGatewayService) handleFailoverSideEffects(ctx context.Context, resp *http.Response, account *Account) {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
@@ -3224,16 +3271,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			upstreamModel,
 			account.Type,
 		)
-	}
-	if isOpenCodeResponsesClient(c) {
-		changed, rehydrateErr := rehydrateOpenCodeGeneratedImageMarkers(ctx, reqBody, s.generatedImageStore, openCodeImageRehydrateOptions{MaxImages: 3})
-		if rehydrateErr != nil {
-			return nil, rehydrateErr
-		}
-		if changed {
-			bodyModified = true
-			disablePatch()
-		}
 	}
 	if err := validateCodexSparkInput(reqBody, upstreamModel); err != nil {
 		setOpsUpstreamError(c, http.StatusBadRequest, err.Error(), "")
@@ -3624,6 +3661,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	httpInvalidEncryptedContentRetryTried := false
+	openCodeImageOutputArrayRetryTried := false
 	for {
 		// Build upstream request
 		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
@@ -3669,9 +3707,23 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 			_ = resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+			if !openCodeImageOutputArrayRetryTried && shouldRetryOpenCodeImageOutputArrayCompatibility(c, resp.StatusCode, respBody) {
+				retryReqBody := cloneOpenAIRequestBodyMap(reqBody)
+				if rewriteOpenCodeImageToolOutputsToStringFallback(retryReqBody) {
+					retryBody, err := json.Marshal(retryReqBody)
+					if err != nil {
+						return nil, fmt.Errorf("serialize image output fallback retry body: %w", err)
+					}
+					body = retryBody
+					setOpsUpstreamRequestBody(c, retryBody)
+					openCodeImageOutputArrayRetryTried = true
+					logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Retrying same account once with OpenCode image tool output string fallback (account: %s)", account.Name)
+					continue
+				}
+			}
 
 			upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
-			upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+			upstreamMsg = SanitizeUpstreamErrorMessageForOutput(upstreamMsg)
 			upstreamCode := extractUpstreamErrorCode(respBody)
 			if !httpInvalidEncryptedContentRetryTried && resp.StatusCode == http.StatusBadRequest && upstreamCode == "invalid_encrypted_content" {
 				if trimOpenAIEncryptedReasoningItems(reqBody) {
@@ -3692,11 +3744,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				}
 				upstreamDetail := ""
 				if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-					maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
-					if maxBytes <= 0 {
-						maxBytes = 2048
-					}
-					upstreamDetail = truncateString(string(respBody), maxBytes)
+					upstreamDetail = redactedOpenAIUpstreamBodySnippet(respBody, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
 				}
 				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 					Platform:           account.Platform,
@@ -4123,14 +4171,10 @@ func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
-	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+	upstreamMsg = SanitizeUpstreamErrorMessageForOutput(upstreamMsg)
 	upstreamDetail := ""
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
-		if maxBytes <= 0 {
-			maxBytes = 2048
-		}
-		upstreamDetail = truncateString(string(body), maxBytes)
+		upstreamDetail = redactedOpenAIUpstreamBodySnippet(body, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
 	}
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
 	logOpenAIInstructionsRequiredDebug(ctx, c, account, resp.StatusCode, upstreamMsg, requestBody, body)
@@ -4166,14 +4210,10 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
-	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+	upstreamMsg = SanitizeUpstreamErrorMessageForOutput(upstreamMsg)
 	upstreamDetail := ""
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
-		if maxBytes <= 0 {
-			maxBytes = 2048
-		}
-		upstreamDetail = truncateString(string(body), maxBytes)
+		upstreamDetail = redactedOpenAIUpstreamBodySnippet(body, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
 	}
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
 	logOpenAIInstructionsRequiredDebug(ctx, c, account, resp.StatusCode, upstreamMsg, requestBody, body)
@@ -4321,17 +4361,13 @@ func (s *OpenAIGatewayService) newOpenAIStreamFailoverError(
 	payload []byte,
 	message string,
 ) *UpstreamFailoverError {
-	message = sanitizeUpstreamErrorMessage(strings.TrimSpace(message))
+	message = SanitizeUpstreamErrorMessageForOutput(message)
 	if message == "" {
 		message = "OpenAI stream disconnected before completion"
 	}
 	detail := ""
 	if len(payload) > 0 && s != nil && s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
-		if maxBytes <= 0 {
-			maxBytes = 2048
-		}
-		detail = truncateString(string(payload), maxBytes)
+		detail = redactedOpenAIUpstreamBodySnippet(payload, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
 	}
 	if c != nil {
 		setOpsUpstreamError(c, http.StatusBadGateway, message, detail)
@@ -4819,14 +4855,10 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
-	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+	upstreamMsg = SanitizeUpstreamErrorMessageForOutput(upstreamMsg)
 	upstreamDetail := ""
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
-		if maxBytes <= 0 {
-			maxBytes = 2048
-		}
-		upstreamDetail = truncateString(string(body), maxBytes)
+		upstreamDetail = redactedOpenAIUpstreamBodySnippet(body, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
 	}
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
 	logOpenAIInstructionsRequiredDebug(ctx, c, account, resp.StatusCode, upstreamMsg, requestBody, body)
@@ -4838,7 +4870,7 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 			account.ID,
 			account.Platform,
 			account.Type,
-			truncateForLog(body, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
+			redactedOpenAIUpstreamBodyForLog(body, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes),
 		)
 	}
 
@@ -4984,15 +5016,11 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 	if upstreamMsg == "" {
 		upstreamMsg = fmt.Sprintf("Upstream error: %d", resp.StatusCode)
 	}
-	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+	upstreamMsg = SanitizeUpstreamErrorMessageForOutput(upstreamMsg)
 
 	upstreamDetail := ""
 	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
-		if maxBytes <= 0 {
-			maxBytes = 2048
-		}
-		upstreamDetail = truncateString(string(body), maxBytes)
+		upstreamDetail = redactedOpenAIUpstreamBodySnippet(body, s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes)
 	}
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, upstreamDetail)
 
@@ -6485,14 +6513,14 @@ func extractOpenAISSEErrorMessage(payload []byte) string {
 	}
 	for _, path := range []string{"response.error.message", "error.message", "message"} {
 		if msg := strings.TrimSpace(gjson.GetBytes(payload, path).String()); msg != "" {
-			return sanitizeUpstreamErrorMessage(msg)
+			return SanitizeUpstreamErrorMessageForOutput(msg)
 		}
 	}
-	return sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(payload)))
+	return SanitizeUpstreamErrorMessageForOutput(extractUpstreamErrorMessage(payload))
 }
 
 func (s *OpenAIGatewayService) writeOpenAINonStreamingProtocolError(resp *http.Response, c *gin.Context, message string) error {
-	message = sanitizeUpstreamErrorMessage(strings.TrimSpace(message))
+	message = SanitizeUpstreamErrorMessageForOutput(message)
 	if message == "" {
 		message = "Upstream returned an invalid non-streaming response"
 	}

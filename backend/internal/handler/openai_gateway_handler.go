@@ -41,6 +41,16 @@ var errPrepareResponsesRequestParse = errors.New("prepare responses request pars
 var errPrepareResponsesRequestRewrite = errors.New("prepare responses request rewrite")
 var errPrepareResponsesRequestInvalidModel = errors.New("prepare responses request invalid model")
 
+type responsesRequestPrepareHook func(*gin.Context, map[string]any) (bool, error)
+
+var prepareResponsesRequestForSchedulingFn = prepareResponsesRequestForScheduling
+var generateOpenAISessionHash = func(s *service.OpenAIGatewayService, c *gin.Context, body []byte) string {
+	return s.GenerateSessionHash(c, body)
+}
+var forwardOpenAIResponsesForTestableCallSite = func(s *service.OpenAIGatewayService, ctx context.Context, c *gin.Context, account *service.Account, body []byte) (*service.OpenAIForwardResult, error) {
+	return s.Forward(ctx, c, account, body)
+}
+
 const openAIRoutingSnapshotKey = "openai_routing_snapshot"
 
 const (
@@ -338,7 +348,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 
-	body, reqModel, targetGroup, err := prepareResponsesRequestForScheduling(c, body, reqModel)
+	var prepareHook responsesRequestPrepareHook
+	if shouldPrepareOpenCodeImageRehydrate(c) {
+		prepareHook = func(c *gin.Context, reqBody map[string]any) (bool, error) {
+			return h.gatewayService.RehydrateOpenCodeGeneratedImagesForResponses(c.Request.Context(), c, reqBody)
+		}
+	}
+	body, reqModel, targetGroup, err := prepareResponsesRequestForSchedulingFn(c, body, reqModel, prepareHook)
 	if err != nil {
 		switch {
 		case errors.Is(err, errPrepareResponsesRequestParse):
@@ -354,7 +370,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	if channelMapping.Mapped {
 		reqModel = channelMapping.MappedModel
 		body = h.gatewayService.ReplaceModelInBody(body, reqModel)
+		syncOpenAIParsedRequestBodyModel(c, body, reqModel)
 	}
+	sessionHashBody = body
 
 	// 绑定错误透传服务，允许 service 层在非 failover 错误场景复用规则。
 	if h.errorPassthroughService != nil {
@@ -388,7 +406,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 
 	// Generate session hash (header first; fallback to prompt_cache_key)
-	sessionHash := h.gatewayService.GenerateSessionHash(c, sessionHashBody)
+	sessionHash := generateOpenAISessionHash(h.gatewayService, c, sessionHashBody)
 	sessionSource := resolveOpenAIScheduleSessionSource(c, sessionHashBody, sessionHash, "")
 	requireCompact := isOpenAIRemoteCompactPath(c)
 
@@ -471,12 +489,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		// Forward request
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
-		// 应用渠道模型映射到请求体
 		forwardBody := body
-		if channelMapping.Mapped {
-			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
-		}
-		result, err := h.gatewayService.Forward(c.Request.Context(), c, account, forwardBody)
+		result, err := forwardOpenAIResponsesForTestableCallSite(h.gatewayService, c.Request.Context(), c, account, forwardBody)
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
@@ -1078,6 +1092,82 @@ func (h *OpenAIGatewayHandler) validateFunctionCallOutputRequest(c *gin.Context,
 	return false
 }
 
+func shouldPrepareOpenCodeImageRehydrate(c *gin.Context) bool {
+	if c == nil || c.Request == nil {
+		return false
+	}
+	userAgent := strings.ToLower(strings.TrimSpace(c.Request.Header.Get("User-Agent")))
+	return strings.Contains(userAgent, "opencode") && !service.IsOpenAIResponsesCompactPathForTest(c)
+}
+
+func syncOpenAIParsedRequestBodyModel(c *gin.Context, body []byte, reqModel string) {
+	if c == nil {
+		return
+	}
+	if cached, ok := c.Get(service.OpenAIParsedRequestBodyKey); ok {
+		if reqBody, ok := cached.(map[string]any); ok && reqBody != nil {
+			reqBody["model"] = reqModel
+			c.Set(service.OpenAIParsedRequestBodyKey, reqBody)
+			return
+		}
+	}
+
+	var reqBody map[string]any
+	if err := json.Unmarshal(body, &reqBody); err != nil {
+		return
+	}
+	c.Set(service.OpenAIParsedRequestBodyKey, reqBody)
+}
+
+func preparedFunctionCallOutputsHaveContext(reqBody map[string]any) bool {
+	if reqBody == nil {
+		return true
+	}
+	input, ok := reqBody["input"].([]any)
+	if !ok {
+		return true
+	}
+
+	callIDs := make(map[string]struct{})
+	itemReferenceIDs := make(map[string]struct{})
+	outputCallIDs := make([]string, 0)
+	for _, item := range input {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		itemType, _ := itemMap["type"].(string)
+		switch strings.ToLower(strings.TrimSpace(itemType)) {
+		case "function_call", "tool_call":
+			callID, _ := itemMap["call_id"].(string)
+			if callID = strings.TrimSpace(callID); callID != "" {
+				callIDs[callID] = struct{}{}
+			}
+		case "function_call_output":
+			callID, _ := itemMap["call_id"].(string)
+			outputCallIDs = append(outputCallIDs, strings.TrimSpace(callID))
+		case "item_reference":
+			idValue, _ := itemMap["id"].(string)
+			if idValue = strings.TrimSpace(idValue); idValue != "" {
+				itemReferenceIDs[idValue] = struct{}{}
+			}
+		}
+	}
+	for _, callID := range outputCallIDs {
+		if callID == "" {
+			return false
+		}
+		if _, ok := callIDs[callID]; ok {
+			continue
+		}
+		if _, ok := itemReferenceIDs[callID]; ok {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 func getResponsesRequestBody(c *gin.Context, body []byte) (map[string]any, error) {
 	if c != nil {
 		if cached, ok := c.Get(service.OpenAIParsedRequestBodyKey); ok {
@@ -1097,11 +1187,11 @@ func getResponsesRequestBody(c *gin.Context, body []byte) (map[string]any, error
 	return reqBody, nil
 }
 
-func prepareResponsesRequestForScheduling(c *gin.Context, body []byte, reqModel string) ([]byte, string, service.AccountTargetGroup, error) {
+func prepareResponsesRequestForScheduling(c *gin.Context, body []byte, reqModel string, hook responsesRequestPrepareHook) ([]byte, string, service.AccountTargetGroup, error) {
 	targetGroup := service.TargetGroupActive
 	isSysModel := service.IsSysModel(reqModel)
 	var reqBody map[string]any
-	needsParsedBody := isSysModel
+	needsParsedBody := isSysModel || hook != nil
 	if !needsParsedBody {
 		if cached, err := getResponsesRequestBody(c, body); err == nil {
 			reqBody = cached
@@ -1121,6 +1211,7 @@ func prepareResponsesRequestForScheduling(c *gin.Context, body []byte, reqModel 
 	}
 
 	rewriteBody := false
+	needsSysDummy := false
 	if isSysModel {
 		if inputStr, ok := reqBody["input"].(string); ok {
 			trimmed := strings.TrimSpace(inputStr)
@@ -1144,9 +1235,23 @@ func prepareResponsesRequestForScheduling(c *gin.Context, body []byte, reqModel 
 		}
 		reqBody["model"] = reqModel
 		rewriteBody = true
-		if service.NeedsSysToolContinuation(reqBody) {
-			service.AppendMinimalSysToolContinuation(reqBody)
+		needsSysDummy = service.NeedsSysToolContinuation(reqBody)
+	}
+
+	if hook != nil {
+		changed, err := hook(c, reqBody)
+		if err != nil {
+			return nil, "", targetGroup, err
 		}
+		rewriteBody = rewriteBody || changed
+		if validation := service.ValidateFunctionCallOutputContext(reqBody); validation.HasFunctionCallOutput && !preparedFunctionCallOutputsHaveContext(reqBody) {
+			return nil, "", targetGroup, fmt.Errorf("%w: injected function_call_output lacks matching function_call context", errPrepareResponsesRequestRewrite)
+		}
+	}
+
+	if isSysModel && needsSysDummy {
+		service.AppendMinimalSysToolContinuation(reqBody)
+		rewriteBody = true
 	}
 
 	if rewriteBody {
@@ -1808,7 +1913,7 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 			}
 
 			// 确定响应消息
-			msg := service.ExtractUpstreamErrorMessage(responseBody)
+			msg := service.SanitizeUpstreamErrorMessageForOutput(service.ExtractUpstreamErrorMessage(responseBody))
 			if !rule.PassthroughBody && rule.CustomMessage != nil {
 				msg = *rule.CustomMessage
 			}
@@ -1823,7 +1928,7 @@ func (h *OpenAIGatewayHandler) handleFailoverExhausted(c *gin.Context, failoverE
 	}
 
 	// 记录原始上游状态码，以便 ops 错误日志捕获真实的上游错误
-	upstreamMsg := service.ExtractUpstreamErrorMessage(responseBody)
+	upstreamMsg := service.SanitizeUpstreamErrorMessageForOutput(service.ExtractUpstreamErrorMessage(responseBody))
 	service.SetOpsUpstreamError(c, statusCode, upstreamMsg, "")
 
 	// 使用默认的错误映射
