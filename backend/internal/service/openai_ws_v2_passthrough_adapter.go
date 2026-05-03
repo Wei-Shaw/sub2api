@@ -124,6 +124,73 @@ REDACTED
 	return normalizeOpenAIModelForUpstream(account, account.GetMappedModel(original))
 REDACTED
 
+type openAIWSPassthroughUsageMeta struct {
+	serviceTier     atomic.Pointer[string]
+	reasoningEffort atomic.Pointer[string]
+
+	// 仅在 client->upstream filter goroutine 中读写；Load 侧通过上方原子指针同步。
+	sessionRequestModel string
+REDACTED
+
+func newOpenAIWSPassthroughUsageMeta(initialRequestModel string, firstFrame []byte) *openAIWSPassthroughUsageMeta {
+	meta := &openAIWSPassthroughUsageMeta{
+		sessionRequestModel: strings.TrimSpace(initialRequestModel),
+REDACTED
+	if meta.sessionRequestModel == "" {
+		meta.sessionRequestModel = openAIWSPassthroughRequestModelForFrame(firstFrame)
+REDACTED
+	return meta
+REDACTED
+
+func (m *openAIWSPassthroughUsageMeta) initFromFirstFrame(policyOutput []byte) {
+	if m == nil {
+		return
+REDACTED
+	m.serviceTier.Store(extractOpenAIServiceTierFromBody(policyOutput))
+	m.reasoningEffort.Store(extractOpenAIReasoningEffortFromBody(policyOutput, m.sessionRequestModel))
+REDACTED
+
+func (m *openAIWSPassthroughUsageMeta) updateSessionRequestModel(payload []byte) {
+	if m == nil {
+		return
+REDACTED
+	if model := openAIWSPassthroughRequestModelFromSessionFrame(payload); model != "" {
+		m.sessionRequestModel = model
+REDACTED
+REDACTED
+
+func (m *openAIWSPassthroughUsageMeta) requestModelForFrame(payload []byte) string {
+	if m == nil {
+		return openAIWSPassthroughRequestModelForFrame(payload)
+REDACTED
+	if model := openAIWSPassthroughRequestModelForFrame(payload); model != "" {
+		return model
+REDACTED
+	return m.sessionRequestModel
+REDACTED
+
+func (m *openAIWSPassthroughUsageMeta) updateFromResponseCreate(policyOutput []byte, requestModelForFrame string) {
+	if m == nil {
+		return
+REDACTED
+	m.serviceTier.Store(extractOpenAIServiceTierFromBody(policyOutput))
+	m.reasoningEffort.Store(extractOpenAIReasoningEffortFromBody(policyOutput, requestModelForFrame))
+REDACTED
+
+func openAIWSPassthroughRequestModelForFrame(payload []byte) string {
+	if len(payload) == 0 || strings.TrimSpace(gjson.GetBytes(payload, "type").String()) != "response.create" {
+		return ""
+REDACTED
+	return strings.TrimSpace(gjson.GetBytes(payload, "model").String())
+REDACTED
+
+func openAIWSPassthroughRequestModelFromSessionFrame(payload []byte) string {
+	if len(payload) == 0 || strings.TrimSpace(gjson.GetBytes(payload, "type").String()) != "session.update" {
+		return ""
+REDACTED
+	return strings.TrimSpace(gjson.GetBytes(payload, "session.model").String())
+REDACTED
+
 const openaiWSV2PassthroughModeFields = "ws_mode=passthrough ws_router=v2"
 
 var _ openaiwsv2.FrameConn = (*openAIWSClientFrameConn)(nil)
@@ -204,6 +271,11 @@ REDACTED
 	// silently passed through, defeating the policy on every frame after
 	// the first.
 	capturedSessionModel := openAIWSPassthroughPolicyModelForFrame(account, firstClientMessage)
+	initialRequestModel := ""
+	if hooks != nil {
+		initialRequestModel = hooks.InitialRequestModel
+REDACTED
+	usageMeta := newOpenAIWSPassthroughUsageMeta(initialRequestModel, firstClientMessage)
 	updatedFirst, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, capturedSessionModel, firstClientMessage)
 	if policyErr != nil {
 		return fmt.Errorf("apply openai fast policy on first ws frame: %w", policyErr)
@@ -226,7 +298,8 @@ REDACTED
 REDACTED
 	firstClientMessage = updatedFirst
 
-	// 在 policy filter 之后再提取 service_tier 用于 billing 上报：filter
+	// 在 policy filter 之后再提取 service_tier / reasoning_effort 用于
+	// usage 上报：filter
 	// 命中时 service_tier 已经从 firstClientMessage 中删除，billing 应当
 	// 反映上游实际处理的 tier（nil = default），而不是用户最初请求的
 	// "priority"。HTTP 入口（line ~2728 extractOpenAIServiceTier(reqBody)）
@@ -237,11 +310,8 @@ REDACTED
 	// codex-rs/core/src/client.rs build_responses_request 每次重新填值）。
 	// 因此使用 atomic.Pointer[string] 在 filter（runClientToUpstream
 	// goroutine）和 OnTurnComplete / final result（runUpstreamToClient
-	// goroutine）之间同步当前 turn 的 service_tier。
-	// extractOpenAIServiceTierFromBody 返回 *string，本身是指针类型，
-	// 可直接 Store/Load 而无需额外封装。
-	var requestServiceTierPtr atomic.Pointer[string]
-	requestServiceTierPtr.Store(extractOpenAIServiceTierFromBody(firstClientMessage))
+	// goroutine）之间同步当前 turn 的 usage metadata。
+	usageMeta.initFromFirstFrame(firstClientMessage)
 
 	wsURL, err := s.buildOpenAIResponsesWSURL(account)
 	if err != nil {
@@ -327,6 +397,8 @@ REDACTED
 			if updated := openAIWSPassthroughPolicyModelFromSessionFrame(account, payload); updated != "" {
 				capturedSessionModel = updated
 		REDACTED
+			usageMeta.updateSessionRequestModel(payload)
+			requestModelForThisFrame := usageMeta.requestModelForFrame(payload)
 			// Per-frame model first; if the client omits "model" on a
 			// follow-up frame (legal in Realtime), fall back to the
 			// session-level model captured from the first frame so the
@@ -337,14 +409,14 @@ REDACTED
 				model = capturedSessionModel
 		REDACTED
 			out, blocked, policyErr := s.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, model, payload)
-			// 多轮 passthrough billing：仅在成功（non-block / non-err）
-			// 的 response.create 帧上更新 requestServiceTierPtr，使用
+			// 多轮 passthrough usage：仅在成功（non-block / non-err）
+			// 的 response.create 帧上更新 usageMeta，使用
 			// filter 处理后的 payload，与首帧 policy-after-extract 语义
 			// 保持一致（参见上方 extractOpenAIServiceTierFromBody 注释）。
 			//   - 非 response.create 帧（response.cancel /
 			//     conversation.item.create / session.update 等）不携带
-			//     per-response service_tier，不应覆盖前一轮值。
-			//   - blocked != nil：该帧不会发送上游，billing tier 应保持
+			//     per-response metadata，不应覆盖前一轮值。
+			//   - blocked != nil：该帧不会发送上游，usage metadata 应保持
 			//     上一轮值。
 			//   - policyErr != nil：异常路径，保持上一轮值。
 			//   - 不带 service_tier 的 response.create 会让
@@ -353,7 +425,7 @@ REDACTED
 			//     service_tier 时按 default 处理，billing 应如实反映。
 			if policyErr == nil && blocked == nil &&
 				strings.TrimSpace(gjson.GetBytes(payload, "type").String()) == "response.create" {
-				requestServiceTierPtr.Store(extractOpenAIServiceTierFromBody(out))
+				usageMeta.updateFromResponseCreate(out, requestModelForThisFrame)
 		REDACTED
 			return out, blocked, policyErr
 	REDACTED,
@@ -397,7 +469,8 @@ REDACTED
 						CacheReadInputTokens:     turn.Usage.CacheReadInputTokens,
 				REDACTED,
 					Model:           turn.RequestModel,
-					ServiceTier:     requestServiceTierPtr.Load(),
+					ServiceTier:     usageMeta.serviceTier.Load(),
+					ReasoningEffort: usageMeta.reasoningEffort.Load(),
 					Stream:          true,
 					OpenAIWSMode:    true,
 					ResponseHeaders: cloneHeader(handshakeHeaders),
@@ -445,7 +518,8 @@ REDACTED)
 			CacheReadInputTokens:     relayResult.Usage.CacheReadInputTokens,
 	REDACTED,
 		Model:           relayResult.RequestModel,
-		ServiceTier:     requestServiceTierPtr.Load(),
+		ServiceTier:     usageMeta.serviceTier.Load(),
+		ReasoningEffort: usageMeta.reasoningEffort.Load(),
 		Stream:          true,
 		OpenAIWSMode:    true,
 		ResponseHeaders: cloneHeader(handshakeHeaders),
