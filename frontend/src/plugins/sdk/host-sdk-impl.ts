@@ -28,6 +28,8 @@ import { i18n, getLocale } from '@/i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { apiClient } from '@/api/client'
+import { keysAPI } from '@/api/keys'
+import { userGroupsAPI } from '@/api/groups'
 import {
   HOST_SDK_VERSION,
   PLUGIN_TELEPORT_TARGET,
@@ -41,6 +43,8 @@ import {
   type HostTheme,
   type HostAuth,
   type HostHttp,
+  type HostKeys,
+  type SdkApiKey,
   type HostVue,
   type PluginAppInstance,
   type ThemeMode,
@@ -275,6 +279,45 @@ function createRuntime(pinia: Pinia): HostRuntime {
 }
 
 /**
+ * 创建 API key 查询能力。复用 host 的 keysAPI / userGroupsAPI。
+ *
+ * listActive 过滤掉非 active 和已过期的 key，并映射为 SDK 最小类型。
+ */
+function createKeys(): HostKeys {
+  return {
+    async listActive(): Promise<SdkApiKey[]> {
+      const res = await keysAPI.list(1, 100, { status: 'active' })
+      const now = Date.now()
+      return (res.items || [])
+        .filter((k) => {
+          if (k.status !== 'active') return false
+          if (k.expires_at && new Date(k.expires_at).getTime() <= now) return false
+          return true
+        })
+        .map((k): SdkApiKey => ({
+          id: k.id,
+          name: k.name,
+          key: k.key,
+          status: k.status,
+          expires_at: k.expires_at ?? null,
+          group: k.group
+            ? {
+                id: k.group.id,
+                name: k.group.name,
+                platform: k.group.platform,
+                subscription_type: k.group.subscription_type ?? '',
+                rate_multiplier: k.group.rate_multiplier ?? 1,
+              }
+            : undefined,
+        }))
+    },
+    async getUserGroupRates(): Promise<Record<number, number>> {
+      return userGroupsAPI.getUserGroupRates()
+    },
+  }
+}
+
+/**
  * 工厂函数：组装一个新的 HostSdk 实例。需要 router 与 pinia 已经创建.
  *
  * pinia 必须显式传入而不是 useStore() 模式, 因为 createHostSdk 调用时机要求
@@ -292,5 +335,6 @@ export function createHostSdk(router: Router, pinia: Pinia): HostSdk {
     http: createHttp(),
     vue: createVue(),
     runtime: createRuntime(pinia),
+    keys: createKeys(),
   }
 }

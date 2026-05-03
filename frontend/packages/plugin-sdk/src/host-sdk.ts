@@ -255,6 +255,45 @@ export interface PluginRuntimeAssets {
   mount(shadowRoot: ShadowRoot, ctx: PluginRuntimeContext): PluginInstance | Promise<PluginInstance>
 }
 
+/** Minimal group shape attached to an API key, for plugin consumption. */
+export interface SdkApiKeyGroup {
+  id: number
+  name: string
+  platform: string
+  subscription_type: string
+  rate_multiplier: number
+}
+
+/** Minimal API key shape exposed to plugins. Excludes internal fields (user_id, ip_whitelist, quota, rate limits). */
+export interface SdkApiKey {
+  id: number
+  name: string
+  key: string
+  status: string
+  expires_at: string | null
+  group?: SdkApiKeyGroup
+}
+
+/** User API key access. Returns keys belonging to the currently authenticated user. */
+export interface HostKeys {
+  /** Fetch the current user's active, non-expired API keys. */
+  listActive(): Promise<SdkApiKey[]>
+  /** Fetch the current user's custom group rate multipliers. */
+  getUserGroupRates(): Promise<Record<number, number>>
+}
+
+/**
+ * Mask an API key for display, showing only head/tail characters.
+ *
+ * - Keys <= 12 chars: `${first4}***`
+ * - Keys > 12 chars: `${first6}...${last4}`
+ */
+export function maskApiKey(key: string): string {
+  if (!key) return ''
+  if (key.length <= 12) return `${key.slice(0, 4)}***`
+  return `${key.slice(0, 6)}...${key.slice(-4)}`
+}
+
 /** Host SDK 完整接口。 */
 export interface HostSdk {
   /** SDK 协议版本号。 */
@@ -270,6 +309,8 @@ export interface HostSdk {
   vue: HostVue
   /** Host 提供的 Vue app 工厂, 自动 use pinia/i18n + 注册全局组件. */
   runtime: HostRuntime
+  /** 当前用户的 API key 查询能力. */
+  keys: HostKeys
 }
 
 declare global {
