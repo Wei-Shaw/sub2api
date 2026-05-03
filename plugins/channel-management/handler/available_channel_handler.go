@@ -89,7 +89,7 @@ type userAvailableGroup struct {
 type userPricingIntervalDTO struct {
 	MinTokens       int      `json:"min_tokens"`
 	MaxTokens       *int     `json:"max_tokens"`
-	TierLabel       string   `json:"tier_label,omitempty"`
+	TierLabel       *string  `json:"tier_label,omitempty"`
 	InputPrice      *float64 `json:"input_price"`
 	OutputPrice     *float64 `json:"output_price"`
 	CacheWritePrice *float64 `json:"cache_write_price"`

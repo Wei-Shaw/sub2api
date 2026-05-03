@@ -38,7 +38,7 @@ type PricingInterval struct {
 	PricingID       int64
 	MinTokens       int
 	MaxTokens       *int
-	TierLabel       string
+	TierLabel       *string
 	InputPrice      *float64
 	OutputPrice     *float64
 	CacheWritePrice *float64

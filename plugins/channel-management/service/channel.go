@@ -161,7 +161,7 @@ type PricingInterval struct {
 	PricingID        int64
 	MinTokens        int                 // 区间下界（含）
 	MaxTokens        *int                // 区间上界（不含），nil = 无上限
-	TierLabel        string              // 层级标签（按次/图片模式：1K, 2K, 4K, HD 等）
+	TierLabel        *string             // 层级标签（按次/图片模式：1K, 2K, 4K, HD 等）
 	InputPrice       decimal.NullDecimal // token 模式：每 token 输入价
 	OutputPrice      decimal.NullDecimal // token 模式：每 token 输出价
 	CacheWritePrice  decimal.NullDecimal // token 模式：缓存写入价
@@ -257,7 +257,7 @@ func (p *ChannelModelPricing) GetIntervalForContext(totalTokens int) *PricingInt
 func (p *ChannelModelPricing) GetTierByLabel(label string) *PricingInterval {
 	labelLower := strings.ToLower(label)
 	for i := range p.Intervals {
-		if strings.ToLower(p.Intervals[i].TierLabel) == labelLower {
+		if p.Intervals[i].TierLabel != nil && strings.ToLower(*p.Intervals[i].TierLabel) == labelLower {
 			return &p.Intervals[i]
 		}
 	}
