@@ -155,9 +155,9 @@ func buildOpenCodeImageGenerationMessageForRawItem(ctx context.Context, raw json
 
 func buildOpenCodeGeneratedImageMessage(rec OpenAIGeneratedImageRecord, opts openCodeImageRewriteOptions) map[string]any {
 	downloadPath := "/sub2api/generated-images/" + rec.Filename
-	text := "Generated image: sub2api-image://" + rec.ID
+	text := "Generated image saved by sub2api.\nImage reference: [[sub2api-generated-image:id=" + rec.ID + "]]"
 	if baseURL := strings.TrimRight(strings.TrimSpace(opts.BaseURL), "/"); baseURL != "" {
-		text += "\nI'll download from URL: " + baseURL + downloadPath
+		text += "\nTemporary download URL: " + baseURL + downloadPath
 	}
 
 	return map[string]any{
@@ -270,7 +270,7 @@ func openCodeImageServerContinuationOutput(messageText string) string {
 		"On Windows, prefer a single download command such as Invoke-WebRequest -Uri <URL> -OutFile (Join-Path $env:TEMP <filename>) or curl.exe -L <URL> -o <file>.",
 		"Immediately use the available shell, command-line, or network-access tool to download the image from the URL above; if no destination was specified, save it to a temporary directory.",
 		"Then respond to the user with the downloaded image or file result.",
-		"Only if no tool can access the URL, say that explicitly and provide the URL and sub2api-image marker instead of silently finishing.",
+		"Only if no tool can access the URL, say that explicitly and provide the temporary download URL and generated image reference marker instead of silently finishing.",
 		"Do not ask the user to regenerate the image unless the saved result is unavailable.",
 	}, " ")
 }

@@ -17,6 +17,12 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+func requireOpenCodeSSEGeneratedImageSpecificMarker(t *testing.T, text string) {
+	t.Helper()
+	require.Contains(t, text, "[[sub2api-generated-image:id=img_")
+	require.NotContains(t, text, "sub2api-image://img_")
+}
+
 func TestFilterOpenCodeResponsesSSEFrame_RewritesImageGenerationToMessage(t *testing.T) {
 	store := newTestOpenAIGeneratedImageStore(t, fixedNow)
 	frame := []string{
@@ -33,7 +39,8 @@ func TestFilterOpenCodeResponsesSSEFrame_RewritesImageGenerationToMessage(t *tes
 	require.Contains(t, out, "response.content_part.done")
 	require.Contains(t, out, "response.output_item.done")
 	require.Contains(t, out, `"output_index":2`)
-	require.Contains(t, out, "sub2api-image://img_")
+	requireOpenCodeSSEGeneratedImageSpecificMarker(t, out)
+	require.Contains(t, out, "https://example.com/sub2api/generated-images/")
 	require.NotContains(t, out, `"type":"function_call"`)
 	require.NotContains(t, out, `"name":"bash"`)
 	require.NotContains(t, out, "image_generation_call")
@@ -113,7 +120,8 @@ func TestFilterOpenCodeResponsesSSEFrame_RewritesEventOnlyImageDone(t *testing.T
 
 	require.True(t, keep)
 	require.Contains(t, out, "response.output_item.added")
-	require.Contains(t, out, "sub2api-image://img_")
+	requireOpenCodeSSEGeneratedImageSpecificMarker(t, out)
+	require.Contains(t, out, "https://example.com/sub2api/generated-images/")
 	require.NotContains(t, out, "image_generation_call")
 	require.NotContains(t, out, pngB64)
 }
@@ -129,7 +137,8 @@ func TestFilterOpenCodeResponsesSSEFrame_RewritesDataOnlyImageDoneWithoutEventOr
 
 	require.True(t, keep)
 	require.Contains(t, out, "response.output_item.added")
-	require.Contains(t, out, "sub2api-image://img_")
+	requireOpenCodeSSEGeneratedImageSpecificMarker(t, out)
+	require.Contains(t, out, "https://example.com/sub2api/generated-images/")
 	require.NotContains(t, out, "image_generation_call")
 	require.NotContains(t, out, pngB64)
 }
@@ -274,11 +283,15 @@ func TestFilterOpenCodeResponsesSSEFrame_RewritesCompletedOutputImageAndKeepsTer
 	require.True(t, hasData)
 	require.Contains(t, out, "response.output_item.added")
 	require.Contains(t, out, "response.completed")
+	requireOpenCodeSSEGeneratedImageSpecificMarker(t, out)
+	require.Contains(t, out, "https://example.com/sub2api/generated-images/")
 	require.NotContains(t, out, "image_generation_call")
 	require.NotContains(t, out, pngB64)
 	require.Equal(t, "response.completed", gjson.Get(data, "type").String())
 	require.Equal(t, int64(3), gjson.Get(data, "response.usage.input_tokens").Int())
 	require.Equal(t, "message", gjson.Get(data, "response.output.0.type").String())
+	requireOpenCodeSSEGeneratedImageSpecificMarker(t, data)
+	require.Contains(t, data, "https://example.com/sub2api/generated-images/")
 }
 
 func TestFilterOpenCodeResponsesSSEFrame_RewritesDoneOutputImageAndKeepsTerminalData(t *testing.T) {
@@ -293,11 +306,15 @@ func TestFilterOpenCodeResponsesSSEFrame_RewritesDoneOutputImageAndKeepsTerminal
 	require.True(t, hasData)
 	require.Contains(t, out, "response.output_item.added")
 	require.Contains(t, out, "response.done")
+	requireOpenCodeSSEGeneratedImageSpecificMarker(t, out)
+	require.Contains(t, out, "https://example.com/sub2api/generated-images/")
 	require.NotContains(t, out, "image_generation_call")
 	require.NotContains(t, out, pngB64)
 	require.Equal(t, "response.done", gjson.Get(data, "type").String())
 	require.Equal(t, int64(3), gjson.Get(data, "response.usage.input_tokens").Int())
 	require.Equal(t, "message", gjson.Get(data, "response.output.0.type").String())
+	requireOpenCodeSSEGeneratedImageSpecificMarker(t, data)
+	require.Contains(t, data, "https://example.com/sub2api/generated-images/")
 }
 
 func TestFilterOpenCodeResponsesSSEFrame_RewritesOtherTerminalOutputImagesAndKeepsTerminalData(t *testing.T) {
@@ -316,11 +333,15 @@ func TestFilterOpenCodeResponsesSSEFrame_RewritesOtherTerminalOutputImagesAndKee
 			require.True(t, hasData)
 			require.Contains(t, out, "response.output_item.added")
 			require.Contains(t, out, eventType)
+			requireOpenCodeSSEGeneratedImageSpecificMarker(t, out)
+			require.Contains(t, out, "https://example.com/sub2api/generated-images/")
 			require.NotContains(t, out, "image_generation_call")
 			require.NotContains(t, out, pngB64)
 			require.Equal(t, eventType, gjson.Get(data, "type").String())
 			require.Equal(t, int64(3), gjson.Get(data, "response.usage.input_tokens").Int())
 			require.Equal(t, "message", gjson.Get(data, "response.output.0.type").String())
+			requireOpenCodeSSEGeneratedImageSpecificMarker(t, data)
+			require.Contains(t, data, "https://example.com/sub2api/generated-images/")
 		})
 	}
 }
@@ -347,7 +368,7 @@ func TestHandleStreamingResponse_OpenCodeRewritesImageGenerationDone(t *testing.
 	body := rec.Body.String()
 	require.Contains(t, body, "response.output_item.added")
 	require.Contains(t, body, "response.output_text.delta")
-	require.Contains(t, body, "sub2api-image://img_")
+	requireOpenCodeSSEGeneratedImageSpecificMarker(t, body)
 	require.NotContains(t, body, "image_generation_call")
 	require.NotContains(t, body, pngB64)
 }
@@ -371,7 +392,7 @@ func TestHandleStreamingResponse_OpenCodeRewritesCompletedOnlyImageFallback(t *t
 	body := rec.Body.String()
 	require.Contains(t, body, "response.output_item.added")
 	require.Contains(t, body, "response.completed")
-	require.Contains(t, body, "sub2api-image://img_")
+	requireOpenCodeSSEGeneratedImageSpecificMarker(t, body)
 	require.NotContains(t, body, "image_generation_call")
 	require.NotContains(t, body, pngB64)
 }
@@ -402,7 +423,7 @@ func TestHandleStreamingResponse_OpenCodeTerminalImageFallbackUsesEventTypeWhenD
 			body := rec.Body.String()
 			require.Contains(t, body, "response.output_item.added")
 			require.Contains(t, body, eventType)
-			require.Contains(t, body, "sub2api-image://img_")
+			requireOpenCodeSSEGeneratedImageSpecificMarker(t, body)
 			require.NotContains(t, body, "image_generation_call")
 			require.NotContains(t, body, pngB64)
 		})
@@ -427,7 +448,7 @@ func TestHandleStreamingResponse_OpenCodePreservesSyntheticFramesWhenReplacingMo
 	require.NoError(t, err)
 	body := rec.Body.String()
 	require.Contains(t, body, "response.output_item.added")
-	require.Contains(t, body, "sub2api-image://img_")
+	requireOpenCodeSSEGeneratedImageSpecificMarker(t, body)
 	require.Contains(t, body, "gpt-5.5")
 	require.NotContains(t, body, "image_generation_call")
 	require.NotContains(t, body, pngB64)
@@ -487,6 +508,7 @@ func TestHandleStreamingResponse_OpenCodeDedupesImageDoneAndTerminalOutput(t *te
 	require.NoError(t, err)
 	body := rec.Body.String()
 	require.Equal(t, 1, strings.Count(body, "event: response.output_item.added"))
+	requireOpenCodeSSEGeneratedImageSpecificMarker(t, body)
 	require.NotContains(t, body, `"name":"bash"`)
 	require.NotContains(t, body, "image_generation_call")
 	require.NotContains(t, body, pngB64)

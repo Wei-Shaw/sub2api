@@ -1,20 +1,25 @@
 package service
 
 import (
+	"bytes"
 	"encoding/json"
 	"regexp"
 	"strings"
 )
 
 var (
-	openCodeGeneratedImageAbsoluteURLForOpsPattern = regexp.MustCompile(`https?://[^\s"'<>]+/sub2api/generated-images/(img_[A-Za-z0-9_-]{32,})\.(png|jpe?g|webp)`)
-	openCodeDataImageURLForOpsPattern              = regexp.MustCompile(`data:image/[A-Za-z0-9.+-]+(?:;[A-Za-z0-9=._+-]+)*;base64,[A-Za-z0-9+/=_-]+`)
-	openCodeImageResultFieldForOpsPattern          = regexp.MustCompile(`("result"\s*:\s*")[A-Za-z0-9+/=_-]+`)
-	openCodePartialImageFieldForOpsPattern         = regexp.MustCompile(`("partial_image_b64"\s*:\s*")[A-Za-z0-9+/=_-]+`)
+	openCodeGeneratedImageAbsoluteURLForOpsPattern    = regexp.MustCompile(`https?://[^\s"'<>]+/sub2api/generated-images/(img_[A-Za-z0-9_-]{32,})\.(png|jpe?g|webp)`)
+	openCodeGeneratedImageSpecificMarkerForOpsPattern = regexp.MustCompile(`\[\[sub2api-generated-image:id=img_[A-Za-z0-9_-]{32,}\]\]`)
+	openCodeDataImageURLForOpsPattern                 = regexp.MustCompile(`data:image/[A-Za-z0-9.+-]+(?:;[A-Za-z0-9=._+-]+)*;base64,[A-Za-z0-9+/=_-]+`)
+	openCodeImageResultFieldForOpsPattern             = regexp.MustCompile(`("result"\s*:\s*")[A-Za-z0-9+/=_-]+`)
+	openCodePartialImageFieldForOpsPattern            = regexp.MustCompile(`("partial_image_b64"\s*:\s*")[A-Za-z0-9+/=_-]+`)
 )
 
 func redactOpenCodeGeneratedImagesForOps(body []byte) []byte {
 	if len(body) == 0 {
+		return body
+	}
+	if !mayContainOpenCodeGeneratedImageForOps(body) {
 		return body
 	}
 	var payload any
@@ -30,6 +35,25 @@ func redactOpenCodeGeneratedImagesForOps(body []byte) []byte {
 		return body
 	}
 	return encoded
+}
+
+func SanitizeUpstreamErrorMessageForOutput(message string) string {
+	msg := strings.TrimSpace(message)
+	if msg == "" {
+		return ""
+	}
+	msg = sanitizeUpstreamErrorMessage(msg)
+	return redactOpenCodeGeneratedImageTokensForOps(msg)
+}
+
+func mayContainOpenCodeGeneratedImageForOps(body []byte) bool {
+	return bytes.Contains(body, []byte(`"input_image"`)) && bytes.Contains(body, []byte(`"data:`)) ||
+		bytes.Contains(body, []byte(`data:image/`)) ||
+		bytes.Contains(body, []byte(`"result"`)) ||
+		bytes.Contains(body, []byte(`"partial_image_b64"`)) ||
+		bytes.Contains(body, []byte(`[[sub2api-generated-image:id=`)) ||
+		bytes.Contains(body, []byte(`/sub2api/generated-images/`)) ||
+		bytes.Contains(body, []byte(`sub2api-image://`))
 }
 
 func redactOpenCodeGeneratedImagesForOpsValue(value any) (any, bool) {
@@ -85,6 +109,7 @@ func redactOpenCodeGeneratedImageTokensForOps(value string) string {
 	redacted := openCodeDataImageURLForOpsPattern.ReplaceAllString(value, "[redacted-input-image]")
 	redacted = openCodeImageResultFieldForOpsPattern.ReplaceAllString(redacted, "${1}[redacted-image-result]")
 	redacted = openCodePartialImageFieldForOpsPattern.ReplaceAllString(redacted, "${1}[redacted-partial-image]")
+	redacted = openCodeGeneratedImageSpecificMarkerForOpsPattern.ReplaceAllString(redacted, "[[sub2api-generated-image:id=[redacted]]]")
 	redacted = openCodeGeneratedImageAbsoluteURLForOpsPattern.ReplaceAllString(redacted, "[redacted-generated-image-url]")
 	redacted = openCodeRehydrateDownloadPathPattern.ReplaceAllString(redacted, "/sub2api/generated-images/[redacted]")
 	redacted = openCodeRehydrateImageMarkerPattern.ReplaceAllString(redacted, "sub2api-image://[redacted]")
