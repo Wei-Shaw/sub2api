@@ -70,6 +70,65 @@ func TestOpsServiceRecordErrorBatch_SanitizesAndBatches(t *testing.T) {
 	require.False(t, second.CreatedAt.IsZero())
 }
 
+func TestOpsServiceRecordErrorBatch_RedactsOpenCodeImageMessages(t *testing.T) {
+	t.Parallel()
+
+	sample := "aGVsbG8="
+	imageURL := "data:image/png;base64," + sample
+	assertNoImageLeak := func(t testing.TB, label string, value string) {
+		t.Helper()
+		require.NotContains(t, value, "data:image", label)
+		require.NotContains(t, value, sample, label)
+	}
+
+	var capturedSingle []*OpsInsertErrorLogInput
+	singleRepo := &opsRepoMock{
+		InsertErrorLogFn: func(ctx context.Context, input *OpsInsertErrorLogInput) (int64, error) {
+			capturedSingle = append(capturedSingle, input)
+			return 1, nil
+		},
+	}
+	singleSvc := NewOpsService(singleRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	upstreamMessage := "upstream echoed generated image " + imageURL + " https://example.com?access_token=secret-value"
+	errorMessage := "malformed upstream body copied generated image " + imageURL
+
+	require.NoError(t, singleSvc.RecordError(context.Background(), &OpsInsertErrorLogInput{
+		ErrorPhase:           "upstream",
+		ErrorType:            "upstream_error",
+		ErrorMessage:         errorMessage,
+		UpstreamErrorMessage: &upstreamMessage,
+	}, nil))
+	require.Len(t, capturedSingle, 1)
+	assertNoImageLeak(t, "ErrorMessage", capturedSingle[0].ErrorMessage)
+	require.NotNil(t, capturedSingle[0].UpstreamErrorMessage)
+	assertNoImageLeak(t, "UpstreamErrorMessage", *capturedSingle[0].UpstreamErrorMessage)
+	require.Contains(t, *capturedSingle[0].UpstreamErrorMessage, "access_token=***")
+	require.NotContains(t, *capturedSingle[0].UpstreamErrorMessage, "secret-value")
+
+	var capturedBatch []*OpsInsertErrorLogInput
+	batchRepo := &opsRepoMock{
+		BatchInsertErrorLogsFn: func(ctx context.Context, inputs []*OpsInsertErrorLogInput) (int64, error) {
+			capturedBatch = append(capturedBatch, inputs...)
+			return int64(len(inputs)), nil
+		},
+	}
+	batchSvc := NewOpsService(batchRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+
+	require.NoError(t, batchSvc.RecordErrorBatch(context.Background(), []*OpsInsertErrorLogInput{
+		{
+			ErrorPhase: "upstream",
+			ErrorType:  "upstream_error",
+			UpstreamErrors: []*OpsUpstreamErrorEvent{
+				{Kind: "http_error", Message: "event echoed generated image " + imageURL},
+			},
+		},
+		{ErrorPhase: "upstream", ErrorType: "upstream_error", ErrorBody: "plain"},
+	}))
+	require.Len(t, capturedBatch, 2)
+	require.NotNil(t, capturedBatch[0].UpstreamErrorsJSON)
+	assertNoImageLeak(t, "UpstreamErrorsJSON", *capturedBatch[0].UpstreamErrorsJSON)
+}
+
 func TestOpsServiceRecordErrorBatch_FallsBackToSingleInsert(t *testing.T) {
 	t.Parallel()
 

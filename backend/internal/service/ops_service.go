@@ -205,6 +205,12 @@ func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertE
 	if entry.ErrorType == "" {
 		entry.ErrorType = "api_error"
 	}
+	if strings.TrimSpace(entry.ErrorMessage) != "" {
+		sanitized, _ := sanitizeErrorBodyForStorage(entry.ErrorMessage, 2048)
+		entry.ErrorMessage = strings.TrimSpace(sanitized)
+	} else {
+		entry.ErrorMessage = ""
+	}
 
 	// Sanitize + trim request body (errors only).
 	if len(rawRequestBody) > 0 {
@@ -222,8 +228,7 @@ func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertE
 		entry.UpstreamStatusCode = nil
 	}
 	if entry.UpstreamErrorMessage != nil {
-		msg := strings.TrimSpace(*entry.UpstreamErrorMessage)
-		msg = sanitizeUpstreamErrorMessage(msg)
+		msg := sanitizeOpsUpstreamMessage(*entry.UpstreamErrorMessage)
 		msg = truncateString(msg, 2048)
 		if strings.TrimSpace(msg) == "" {
 			entry.UpstreamErrorMessage = nil
@@ -284,7 +289,7 @@ func sanitizeOpsUpstreamErrors(entry *OpsInsertErrorLogInput) error {
 			out.AtUnixMs = 0
 		}
 
-		msg := sanitizeUpstreamErrorMessage(strings.TrimSpace(out.Message))
+		msg := sanitizeOpsUpstreamMessage(out.Message)
 		msg = truncateString(msg, 2048)
 		out.Message = msg
 
@@ -316,6 +321,13 @@ func sanitizeOpsUpstreamErrors(entry *OpsInsertErrorLogInput) error {
 			}
 		}
 
+		out.UpstreamResponseBody = strings.TrimSpace(out.UpstreamResponseBody)
+		if out.UpstreamResponseBody != "" {
+			// Response bodies follow error-body sanitization rather than retry-body preservation.
+			sanitizedBody, _ := sanitizeErrorBodyForStorage(out.UpstreamResponseBody, 10*1024)
+			out.UpstreamResponseBody = strings.TrimSpace(sanitizedBody)
+		}
+
 		// Drop fully-empty events (can happen if only status code was known).
 		if out.UpstreamStatusCode == 0 && out.Message == "" && out.Detail == "" {
 			continue
@@ -328,6 +340,10 @@ func sanitizeOpsUpstreamErrors(entry *OpsInsertErrorLogInput) error {
 	entry.UpstreamErrorsJSON = marshalOpsUpstreamErrors(sanitized)
 	entry.UpstreamErrors = nil
 	return nil
+}
+
+func sanitizeOpsUpstreamMessage(message string) string {
+	return SanitizeUpstreamErrorMessageForOutput(message)
 }
 
 func (s *OpsService) GetErrorLogs(ctx context.Context, filter *OpsErrorLogFilter) (*OpsErrorLogList, error) {
@@ -408,6 +424,7 @@ func sanitizeAndTrimRequestBody(raw []byte, maxBytes int) (jsonString string, tr
 	if len(raw) == 0 {
 		return "", false, 0
 	}
+	raw = redactOpenCodeGeneratedImagesForOps(raw)
 
 	var decoded any
 	if err := json.Unmarshal(raw, &decoded); err != nil {
@@ -712,6 +729,7 @@ func sanitizeErrorBodyForStorage(raw string, maxBytes int) (sanitized string, tr
 	if raw == "" {
 		return "", false
 	}
+	raw = strings.TrimSpace(string(redactOpenCodeGeneratedImagesForOps([]byte(raw))))
 
 	// Prefer JSON-safe sanitization when possible.
 	if out, trunc, _ := sanitizeAndTrimRequestBody([]byte(raw), maxBytes); out != "" {

@@ -68,9 +68,11 @@ func setOpsUpstreamError(c *gin.Context, upstreamStatusCode int, upstreamMessage
 		c.Set(OpsUpstreamStatusCodeKey, upstreamStatusCode)
 	}
 	if msg := strings.TrimSpace(upstreamMessage); msg != "" {
+		msg = redactOpenCodeGeneratedImageTokensForOps(msg)
 		c.Set(OpsUpstreamErrorMessageKey, msg)
 	}
 	if detail := strings.TrimSpace(upstreamDetail); detail != "" {
+		detail = string(redactOpenCodeGeneratedImagesForOps([]byte(detail)))
 		c.Set(OpsUpstreamErrorDetailKey, detail)
 	}
 }
@@ -120,14 +122,15 @@ func appendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {
 	}
 	ev.Platform = strings.TrimSpace(ev.Platform)
 	ev.UpstreamRequestID = strings.TrimSpace(ev.UpstreamRequestID)
-	ev.UpstreamRequestBody = strings.TrimSpace(ev.UpstreamRequestBody)
-	ev.UpstreamResponseBody = strings.TrimSpace(ev.UpstreamResponseBody)
+	ev.UpstreamRequestBody = strings.TrimSpace(string(redactOpenCodeGeneratedImagesForOps([]byte(ev.UpstreamRequestBody))))
+	ev.UpstreamResponseBody = strings.TrimSpace(string(redactOpenCodeGeneratedImagesForOps([]byte(ev.UpstreamResponseBody))))
 	ev.Kind = strings.TrimSpace(ev.Kind)
 	ev.UpstreamURL = strings.TrimSpace(ev.UpstreamURL)
 	ev.Message = strings.TrimSpace(ev.Message)
-	ev.Detail = strings.TrimSpace(ev.Detail)
+	ev.Detail = strings.TrimSpace(string(redactOpenCodeGeneratedImagesForOps([]byte(ev.Detail))))
 	if ev.Message != "" {
 		ev.Message = sanitizeUpstreamErrorMessage(ev.Message)
+		ev.Message = redactOpenCodeGeneratedImageTokensForOps(ev.Message)
 	}
 
 	// If the caller didn't explicitly pass upstream request body but the gateway
@@ -141,6 +144,9 @@ func appendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {
 				ev.UpstreamRequestBody = strings.TrimSpace(string(raw))
 			}
 		}
+	}
+	if ev.UpstreamRequestBody != "" {
+		ev.UpstreamRequestBody = strings.TrimSpace(string(redactOpenCodeGeneratedImagesForOps([]byte(ev.UpstreamRequestBody))))
 	}
 
 	var existing []*OpsUpstreamErrorEvent
