@@ -31,7 +31,7 @@ type AdminHandlers struct {
 	APIKey                *admin.AdminAPIKeyHandler
 	ScheduledTest         *admin.ScheduledTestHandler
 	// Channel/ChannelMonitor/ChannelMonitorTemplate handlers 已迁移到 plugins/channel-management/
-	Payment             *admin.PaymentHandler
+	// Payment handler 已迁移到 plugins/payment/
 	ServiceQuota        *admin.ServiceQuotaHandler
 	ServiceQuotaMonitor *admin.ServiceQuotaMonitorHandler
 	Affiliate           *admin.AffiliateHandler
@@ -53,8 +53,7 @@ type Handlers struct {
 	OpenAIGateway    *OpenAIGatewayHandler
 	Setting          *SettingHandler
 	Totp             *TotpHandler
-	Payment          *PaymentHandler
-	PaymentWebhook   *PaymentWebhookHandler
+	// Payment / PaymentWebhook handlers 已迁移到 plugins/payment/
 	UserServiceQuota *UserServiceQuotaHandler
 	// AvailableChannel / ChannelMonitor (user) 已迁移到 plugins/channel-management/
 }

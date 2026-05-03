@@ -27,6 +27,7 @@ func (m *Manifest) toProto() *pb.ManifestResponse {
 		IconSvg:          m.IconSVG,
 		SubscribedEvents: append([]string(nil), m.SubscribedEvents...),
 		OwnedTables:      append([]string(nil), m.OwnedTables...),
+		PublicFlags:      publicFlagsToProto(m.PublicFlags),
 	}
 	if m.Frontend != nil {
 		resp.Frontend = m.Frontend.toProto()
@@ -230,4 +231,40 @@ func routesToProto(routes []RouteDecl) []*pb.RouteDefinition {
 		})
 	}
 	return out
+}
+
+// publicFlagsToProto translates the Manifest.PublicFlags slice onto the proto
+// wire form. default_value is JSON-encoded so the host can preserve the
+// declared type (bool vs string vs number) without a schema lookup.
+func publicFlagsToProto(flags []PublicFlagDecl) []*pb.PublicFlagDecl {
+	if len(flags) == 0 {
+		return nil
+	}
+	out := make([]*pb.PublicFlagDecl, 0, len(flags))
+	for _, fl := range flags {
+		defaultJSON := encodePublicFlagDefault(fl.Default)
+		out = append(out, &pb.PublicFlagDecl{
+			Key:          fl.Key,
+			Source:       fl.Source,
+			SettingsKey:  fl.SettingsKey,
+			Type:         fl.Type,
+			DefaultValue: defaultJSON,
+		})
+	}
+	return out
+}
+
+// encodePublicFlagDefault marshals the flag's default Go value into JSON. A
+// failure (e.g. unsupported value type) collapses to "" so the host treats
+// the flag as having no default; we log the error so plugin authors notice.
+func encodePublicFlagDefault(v any) string {
+	if v == nil {
+		return ""
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		slog.Default().Warn("plugin-sdk: marshal PublicFlag default failed", "error", err)
+		return ""
+	}
+	return string(b)
 }

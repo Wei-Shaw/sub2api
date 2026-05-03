@@ -74,28 +74,29 @@ func firstNonEmpty(values ...string) string {
 }
 
 // SettingHandler 系统设置处理器
+//
+// payment 相关配置已迁移到 plugins/payment/，host 不再持有
+// PaymentConfigService / PaymentService。涉及 payment_* 字段的 DTO
+// 字段保持兼容性零值（false / 0 / ""），由 plugin 通过自身的
+// PluginSettings 接口管理。
 type SettingHandler struct {
-	settingService       *service.SettingService
-	emailService         *service.EmailService
-	turnstileService     *service.TurnstileService
-	opsService           *service.OpsService
-	paymentConfigService *service.PaymentConfigService
-	paymentService       *service.PaymentService
+	settingService   *service.SettingService
+	emailService     *service.EmailService
+	turnstileService *service.TurnstileService
+	opsService       *service.OpsService
 	// serviceQuotaSvc 用于在 service_quota_enabled 总开关变更时失效 Redis 缓存。
 	// 没有它，开关切换后 ServiceQuota 中的 5min 启用快照缓存仍会返回旧值。
 	serviceQuotaSvc service.ServiceQuotaService
 }
 
 // NewSettingHandler 创建系统设置处理器
-func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, paymentConfigService *service.PaymentConfigService, paymentService *service.PaymentService, serviceQuotaSvc service.ServiceQuotaService) *SettingHandler {
+func NewSettingHandler(settingService *service.SettingService, emailService *service.EmailService, turnstileService *service.TurnstileService, opsService *service.OpsService, serviceQuotaSvc service.ServiceQuotaService) *SettingHandler {
 	return &SettingHandler{
-		settingService:       settingService,
-		emailService:         emailService,
-		turnstileService:     turnstileService,
-		opsService:           opsService,
-		paymentConfigService: paymentConfigService,
-		paymentService:       paymentService,
-		serviceQuotaSvc:      serviceQuotaSvc,
+		settingService:   settingService,
+		emailService:     emailService,
+		turnstileService: turnstileService,
+		opsService:       opsService,
+		serviceQuotaSvc:  serviceQuotaSvc,
 	}
 }
 
@@ -123,15 +124,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		})
 	}
 
-	// Load payment config
-	var paymentCfg *service.PaymentConfig
-	if h.paymentConfigService != nil {
-		paymentCfg, _ = h.paymentConfigService.GetPaymentConfig(c.Request.Context())
-	}
-	if paymentCfg == nil {
-		paymentCfg = &service.PaymentConfig{}
-	}
-
+	// TODO: payment 已迁移到 plugins/payment/ — payment_* 字段仍保留在 DTO
+	// 中以兼容前端旧版本，但 host 不再读写这些值。后续应改为 PublicFlags /
+	// plugin-aware PublicSettings，从 plugin 暴露的 settings 接口聚合获得。
 	payload := dto.SystemSettings{
 		RegistrationEnabled:                    settings.RegistrationEnabled,
 		EmailVerifyEnabled:                     settings.EmailVerifyEnabled,
@@ -246,26 +241,6 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		BalanceLowNotifyRechargeURL:            settings.BalanceLowNotifyRechargeURL,
 		AccountQuotaNotifyEnabled:              settings.AccountQuotaNotifyEnabled,
 		AccountQuotaNotifyEmails:               dto.NotifyEmailEntriesFromService(settings.AccountQuotaNotifyEmails),
-		PaymentEnabled:                         paymentCfg.Enabled,
-		PaymentMinAmount:                       paymentCfg.MinAmount,
-		PaymentMaxAmount:                       paymentCfg.MaxAmount,
-		PaymentDailyLimit:                      paymentCfg.DailyLimit,
-		PaymentOrderTimeoutMin:                 paymentCfg.OrderTimeoutMin,
-		PaymentMaxPendingOrders:                paymentCfg.MaxPendingOrders,
-		PaymentEnabledTypes:                    paymentCfg.EnabledTypes,
-		PaymentBalanceDisabled:                 paymentCfg.BalanceDisabled,
-		PaymentBalanceRechargeMultiplier:       paymentCfg.BalanceRechargeMultiplier,
-		PaymentRechargeFeeRate:                 paymentCfg.RechargeFeeRate,
-		PaymentLoadBalanceStrat:                paymentCfg.LoadBalanceStrategy,
-		PaymentProductNamePrefix:               paymentCfg.ProductNamePrefix,
-		PaymentProductNameSuffix:               paymentCfg.ProductNameSuffix,
-		PaymentHelpImageURL:                    paymentCfg.HelpImageURL,
-		PaymentHelpText:                        paymentCfg.HelpText,
-		PaymentCancelRateLimitEnabled:          paymentCfg.CancelRateLimitEnabled,
-		PaymentCancelRateLimitMax:              paymentCfg.CancelRateLimitMax,
-		PaymentCancelRateLimitWindow:           paymentCfg.CancelRateLimitWindow,
-		PaymentCancelRateLimitUnit:             paymentCfg.CancelRateLimitUnit,
-		PaymentCancelRateLimitMode:             paymentCfg.CancelRateLimitMode,
 		ChannelMonitorEnabled:                  settings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds:   settings.ChannelMonitorDefaultIntervalSeconds,
 		AvailableChannelsEnabled:               settings.AvailableChannelsEnabled,
@@ -488,29 +463,7 @@ type UpdateSettingsRequest struct {
 	AccountQuotaNotifyEnabled   *bool                   `json:"account_quota_notify_enabled"`
 	AccountQuotaNotifyEmails    *[]dto.NotifyEmailEntry `json:"account_quota_notify_emails"`
 
-	// Payment configuration (integrated into settings, full replace)
-	PaymentEnabled                   *bool    `json:"payment_enabled"`
-	PaymentMinAmount                 *float64 `json:"payment_min_amount"`
-	PaymentMaxAmount                 *float64 `json:"payment_max_amount"`
-	PaymentDailyLimit                *float64 `json:"payment_daily_limit"`
-	PaymentOrderTimeoutMin           *int     `json:"payment_order_timeout_minutes"`
-	PaymentMaxPendingOrders          *int     `json:"payment_max_pending_orders"`
-	PaymentEnabledTypes              []string `json:"payment_enabled_types"`
-	PaymentBalanceDisabled           *bool    `json:"payment_balance_disabled"`
-	PaymentBalanceRechargeMultiplier *float64 `json:"payment_balance_recharge_multiplier"`
-	PaymentRechargeFeeRate           *float64 `json:"payment_recharge_fee_rate"`
-	PaymentLoadBalanceStrat          *string  `json:"payment_load_balance_strategy"`
-	PaymentProductNamePrefix         *string  `json:"payment_product_name_prefix"`
-	PaymentProductNameSuffix         *string  `json:"payment_product_name_suffix"`
-	PaymentHelpImageURL              *string  `json:"payment_help_image_url"`
-	PaymentHelpText                  *string  `json:"payment_help_text"`
-
-	// Cancel rate limit
-	PaymentCancelRateLimitEnabled *bool   `json:"payment_cancel_rate_limit_enabled"`
-	PaymentCancelRateLimitMax     *int    `json:"payment_cancel_rate_limit_max"`
-	PaymentCancelRateLimitWindow  *int    `json:"payment_cancel_rate_limit_window"`
-	PaymentCancelRateLimitUnit    *string `json:"payment_cancel_rate_limit_unit"`
-	PaymentCancelRateLimitMode    *string `json:"payment_cancel_rate_limit_window_mode"`
+	// payment_* 配置已迁移到 plugins/payment/，host 不再处理这些字段。
 
 	// Channel Monitor feature switch
 	ChannelMonitorEnabled                *bool `json:"channel_monitor_enabled"`
@@ -1445,40 +1398,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 	}
 
-	// Update payment configuration (integrated into system settings).
-	// Skip if no payment fields were provided (prevents accidental wipe).
-	if h.paymentConfigService != nil && hasPaymentFields(req) {
-		paymentReq := service.UpdatePaymentConfigRequest{
-			Enabled:                   req.PaymentEnabled,
-			MinAmount:                 req.PaymentMinAmount,
-			MaxAmount:                 req.PaymentMaxAmount,
-			DailyLimit:                req.PaymentDailyLimit,
-			OrderTimeoutMin:           req.PaymentOrderTimeoutMin,
-			MaxPendingOrders:          req.PaymentMaxPendingOrders,
-			EnabledTypes:              req.PaymentEnabledTypes,
-			BalanceDisabled:           req.PaymentBalanceDisabled,
-			BalanceRechargeMultiplier: req.PaymentBalanceRechargeMultiplier,
-			RechargeFeeRate:           req.PaymentRechargeFeeRate,
-			LoadBalanceStrategy:       req.PaymentLoadBalanceStrat,
-			ProductNamePrefix:         req.PaymentProductNamePrefix,
-			ProductNameSuffix:         req.PaymentProductNameSuffix,
-			HelpImageURL:              req.PaymentHelpImageURL,
-			HelpText:                  req.PaymentHelpText,
-			CancelRateLimitEnabled:    req.PaymentCancelRateLimitEnabled,
-			CancelRateLimitMax:        req.PaymentCancelRateLimitMax,
-			CancelRateLimitWindow:     req.PaymentCancelRateLimitWindow,
-			CancelRateLimitUnit:       req.PaymentCancelRateLimitUnit,
-			CancelRateLimitMode:       req.PaymentCancelRateLimitMode,
-		}
-		if err := h.paymentConfigService.UpdatePaymentConfig(c.Request.Context(), paymentReq); err != nil {
-			response.ErrorFrom(c, err)
-			return
-		}
-		// Refresh in-memory provider registry so config changes take effect immediately
-		if h.paymentService != nil {
-			h.paymentService.RefreshProviders(c.Request.Context())
-		}
-	}
+	// payment 配置已迁移到 plugins/payment/，host 不再处理 PUT /settings 中的
+	// payment_* 字段。前端应改为调用 plugin 自身的 PluginSettings 接口；
+	// 旧字段保留在 UpdateSettingsRequest 中只为旧客户端兼容（被忽略）。
 
 	h.auditSettingsUpdate(c, previousSettings, settings, previousAuthSourceDefaults, authSourceDefaults, req)
 
@@ -1509,14 +1431,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		})
 	}
 
-	// Reload payment config for response
-	var updatedPaymentCfg *service.PaymentConfig
-	if h.paymentConfigService != nil {
-		updatedPaymentCfg, _ = h.paymentConfigService.GetPaymentConfig(c.Request.Context())
-	}
-	if updatedPaymentCfg == nil {
-		updatedPaymentCfg = &service.PaymentConfig{}
-	}
+	// payment 已迁移到 plugins/payment/ — 响应中不再包含 payment_* 字段。
 
 	payload := dto.SystemSettings{
 		RegistrationEnabled:                    updatedSettings.RegistrationEnabled,
@@ -1631,26 +1546,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		BalanceLowNotifyRechargeURL:            updatedSettings.BalanceLowNotifyRechargeURL,
 		AccountQuotaNotifyEnabled:              updatedSettings.AccountQuotaNotifyEnabled,
 		AccountQuotaNotifyEmails:               dto.NotifyEmailEntriesFromService(updatedSettings.AccountQuotaNotifyEmails),
-		PaymentEnabled:                         updatedPaymentCfg.Enabled,
-		PaymentMinAmount:                       updatedPaymentCfg.MinAmount,
-		PaymentMaxAmount:                       updatedPaymentCfg.MaxAmount,
-		PaymentDailyLimit:                      updatedPaymentCfg.DailyLimit,
-		PaymentOrderTimeoutMin:                 updatedPaymentCfg.OrderTimeoutMin,
-		PaymentMaxPendingOrders:                updatedPaymentCfg.MaxPendingOrders,
-		PaymentEnabledTypes:                    updatedPaymentCfg.EnabledTypes,
-		PaymentBalanceDisabled:                 updatedPaymentCfg.BalanceDisabled,
-		PaymentBalanceRechargeMultiplier:       updatedPaymentCfg.BalanceRechargeMultiplier,
-		PaymentRechargeFeeRate:                 updatedPaymentCfg.RechargeFeeRate,
-		PaymentLoadBalanceStrat:                updatedPaymentCfg.LoadBalanceStrategy,
-		PaymentProductNamePrefix:               updatedPaymentCfg.ProductNamePrefix,
-		PaymentProductNameSuffix:               updatedPaymentCfg.ProductNameSuffix,
-		PaymentHelpImageURL:                    updatedPaymentCfg.HelpImageURL,
-		PaymentHelpText:                        updatedPaymentCfg.HelpText,
-		PaymentCancelRateLimitEnabled:          updatedPaymentCfg.CancelRateLimitEnabled,
-		PaymentCancelRateLimitMax:              updatedPaymentCfg.CancelRateLimitMax,
-		PaymentCancelRateLimitWindow:           updatedPaymentCfg.CancelRateLimitWindow,
-		PaymentCancelRateLimitUnit:             updatedPaymentCfg.CancelRateLimitUnit,
-		PaymentCancelRateLimitMode:             updatedPaymentCfg.CancelRateLimitMode,
 		ChannelMonitorEnabled:                  updatedSettings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds:   updatedSettings.ChannelMonitorDefaultIntervalSeconds,
 		AvailableChannelsEnabled:               updatedSettings.AvailableChannelsEnabled,
@@ -1665,19 +1560,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	response.Success(c, systemSettingsResponseData(payload, updatedAuthSourceDefaults))
 }
 
-// hasPaymentFields returns true if any payment-related field was explicitly provided.
-func hasPaymentFields(req UpdateSettingsRequest) bool {
-	return req.PaymentEnabled != nil || req.PaymentMinAmount != nil ||
-		req.PaymentMaxAmount != nil || req.PaymentDailyLimit != nil ||
-		req.PaymentOrderTimeoutMin != nil || req.PaymentMaxPendingOrders != nil ||
-		req.PaymentEnabledTypes != nil || req.PaymentBalanceDisabled != nil ||
-		req.PaymentBalanceRechargeMultiplier != nil || req.PaymentRechargeFeeRate != nil ||
-		req.PaymentLoadBalanceStrat != nil || req.PaymentProductNamePrefix != nil ||
-		req.PaymentProductNameSuffix != nil || req.PaymentHelpImageURL != nil ||
-		req.PaymentHelpText != nil || req.PaymentCancelRateLimitEnabled != nil ||
-		req.PaymentCancelRateLimitMax != nil || req.PaymentCancelRateLimitWindow != nil ||
-		req.PaymentCancelRateLimitUnit != nil || req.PaymentCancelRateLimitMode != nil
-}
+// hasPaymentFields 已删除：payment 配置由 plugin 负责，host 不再处理。
 
 func (h *SettingHandler) auditSettingsUpdate(c *gin.Context, before *service.SystemSettings, after *service.SystemSettings, beforeAuthSourceDefaults *service.AuthSourceDefaultSettings, afterAuthSourceDefaults *service.AuthSourceDefaultSettings, req UpdateSettingsRequest) {
 	if before == nil || after == nil {

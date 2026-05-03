@@ -12,7 +12,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
-	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/plugin"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/server"
@@ -250,15 +249,8 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	geminiMessagesCompatService := service.NewGeminiMessagesCompatService(accountRepository, groupRepository, gatewayCache, schedulerSnapshotService, geminiTokenProvider, rateLimitService, httpUpstream, antigravityGatewayService, configConfig)
 	opsSystemLogSink := service.ProvideOpsSystemLogSink(opsRepository)
 	opsService := service.NewOpsService(opsRepository, settingRepository, configConfig, accountRepository, userRepository, concurrencyService, gatewayService, openAIGatewayService, geminiMessagesCompatService, antigravityGatewayService, opsSystemLogSink)
-	encryptionKey, err := payment.ProvideEncryptionKey(configConfig)
-	if err != nil {
-		return nil, err
-	}
-	paymentConfigService := service.ProvidePaymentConfigService(client, settingRepository, encryptionKey)
-	registry := payment.ProvideRegistry()
-	defaultLoadBalancer := payment.ProvideDefaultLoadBalancer(client, encryptionKey)
-	paymentService := service.NewPaymentService(client, registry, defaultLoadBalancer, redeemService, subscriptionService, paymentConfigService, userRepository, groupRepository, affiliateService)
-	settingHandler := admin.NewSettingHandler(settingService, emailService, turnstileService, opsService, paymentConfigService, paymentService, serviceQuotaService)
+	// payment registry / encryptionKey / paymentConfigService / paymentService 已迁移到 plugins/payment/
+	settingHandler := admin.NewSettingHandler(settingService, emailService, turnstileService, opsService, serviceQuotaService)
 	opsHandler := admin.NewOpsHandler(opsService)
 	updateCache := repository.NewUpdateCache(redisClient)
 	gitHubReleaseClient := repository.ProvideGitHubReleaseClient(configConfig)
@@ -286,9 +278,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	scheduledTestService := service.ProvideScheduledTestService(scheduledTestPlanRepository, scheduledTestResultRepository)
 	scheduledTestHandler := admin.NewScheduledTestHandler(scheduledTestService)
 	// channelHandler / channelMonitorHandler / channelMonitorRequestTemplateHandler: 已迁移到 plugins/channel-management/
-	// payment registry / encryptionKey / paymentConfigService / paymentService / settingHandler 已在前置 ops 段统一提供（v0.1.116 上游调整）
-	paymentOrderExpiryService := service.ProvidePaymentOrderExpiryService(paymentService)
-	paymentHandler := admin.NewPaymentHandler(paymentService, paymentConfigService)
+	// paymentHandler / paymentOrderExpiryService 已迁移到 plugins/payment/
 	serviceQuotaHandler := admin.NewServiceQuotaHandler(serviceQuotaService)
 	serviceQuotaMonitorService := service.NewServiceQuotaMonitorService(serviceQuotaRuleRepository, serviceQuotaLimiter, serviceQuotaCache, settingService)
 	serviceQuotaMonitorHandler := admin.NewServiceQuotaMonitorHandler(serviceQuotaMonitorService)
@@ -311,7 +301,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		// the same publisher into every business service that emits events.
 		pluginEventPublisher := plugin.NewEventPublisher(slog.Default())
 		pluginManager.SetEvents(pluginEventPublisher)
-		paymentService.SetPluginEventPublisher(pluginEventPublisher)
+		// paymentService.SetPluginEventPublisher: payment service 已迁移到 plugin
 		authService.SetPluginEventPublisher(pluginEventPublisher)
 		antigravityGatewayService.SetPluginEventPublisher(pluginEventPublisher)
 		rateLimitService.SetPluginEventPublisher(pluginEventPublisher)
@@ -335,9 +325,19 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		// channel-management can render a global-pricing fallback for the
 		// "Available Channels" popover without vendoring LiteLLM data.
 		pluginManager.SetHostPricingResolver(billingService)
+		// Phase 0 payment-plugin migration: SQL-backed idempotency store
+		// dedupes externally-retried HostService writes (CreditBalance /
+		// AssignSubscription / AccrueRebate / …). Adapters wrap the host
+		// repos / services with that store so a payment plugin can call
+		// the host without risking double-credit on retry.
+		hostIdempotencyStore := plugin.NewHostIdempotencyStore(db)
+		pluginManager.SetHostBalanceService(plugin.NewHostBalanceAdapter(userRepository, hostIdempotencyStore))
+		pluginManager.SetHostSubscriptionAssigner(plugin.NewHostSubscriptionAdapter(subscriptionService, hostIdempotencyStore))
+		pluginManager.SetHostAffiliateAccruer(plugin.NewHostAffiliateAdapter(affiliateService, hostIdempotencyStore))
+		pluginManager.SetHostUserLookup(plugin.NewHostUserLookupAdapter(userRepository, affiliateService))
 	}
 	affiliateHandler := admin.NewAffiliateHandler(affiliateService, adminService)
-	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, paymentHandler, serviceQuotaHandler, serviceQuotaMonitorHandler, affiliateHandler, pluginHandler, pluginSettingsHandler)
+	adminHandlers := handler.ProvideAdminHandlers(dashboardHandler, adminUserHandler, groupHandler, accountHandler, adminAnnouncementHandler, dataManagementHandler, backupHandler, oAuthHandler, openAIOAuthHandler, geminiOAuthHandler, antigravityOAuthHandler, proxyHandler, adminRedeemHandler, promoHandler, settingHandler, opsHandler, systemHandler, adminSubscriptionHandler, adminUsageHandler, userAttributeHandler, errorPassthroughHandler, tlsFingerprintProfileHandler, adminAPIKeyHandler, scheduledTestHandler, serviceQuotaHandler, serviceQuotaMonitorHandler, affiliateHandler, pluginHandler, pluginSettingsHandler)
 	usageRecordWorkerPool := service.NewUsageRecordWorkerPool(configConfig)
 	userMsgQueueCache := repository.NewUserMsgQueueCache(redisClient)
 	userMessageQueueService := service.ProvideUserMessageQueueService(userMsgQueueCache, rpmCache, configConfig)
@@ -345,12 +345,11 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	openAIGatewayHandler := handler.NewOpenAIGatewayHandler(openAIGatewayService, concurrencyService, billingCacheService, apiKeyService, usageRecordWorkerPool, errorPassthroughService, configConfig)
 	handlerSettingHandler := handler.ProvideSettingHandler(settingService, buildInfo)
 	totpHandler := handler.NewTotpHandler(totpService)
-	handlerPaymentHandler := handler.NewPaymentHandler(paymentService, paymentConfigService)
-	paymentWebhookHandler := handler.NewPaymentWebhookHandler(paymentService, registry)
+	// PaymentHandler / PaymentWebhookHandler 已迁移到 plugins/payment/
 	userServiceQuotaHandler := handler.NewUserServiceQuotaHandler(serviceQuotaMonitorService)
 	idempotencyCoordinator := service.ProvideIdempotencyCoordinator(idempotencyRepository, configConfig)
 	idempotencyCleanupService := service.ProvideIdempotencyCleanupService(idempotencyRepository, configConfig)
-	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, announcementHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, handlerSettingHandler, totpHandler, handlerPaymentHandler, paymentWebhookHandler, userServiceQuotaHandler, idempotencyCoordinator, idempotencyCleanupService)
+	handlers := handler.ProvideHandlers(authHandler, userHandler, apiKeyHandler, usageHandler, redeemHandler, subscriptionHandler, announcementHandler, adminHandlers, gatewayHandler, openAIGatewayHandler, handlerSettingHandler, totpHandler, userServiceQuotaHandler, idempotencyCoordinator, idempotencyCleanupService)
 	jwtAuthMiddleware := middleware.NewJWTAuthMiddleware(authService, userService)
 	adminAuthMiddleware := middleware.NewAdminAuthMiddleware(authService, userService, settingService)
 	apiKeyAuthMiddleware := middleware.NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, configConfig)
@@ -372,7 +371,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	accountExpiryService := service.ProvideAccountExpiryService(accountRepository)
 	subscriptionExpiryService := service.ProvideSubscriptionExpiryService(userSubscriptionRepository)
 	scheduledTestRunnerService := service.ProvideScheduledTestRunnerService(scheduledTestPlanRepository, scheduledTestService, accountTestService, rateLimitService, configConfig)
-	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, paymentOrderExpiryService, pluginManager)
+	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, pluginManager)
 	application := &Application{
 		Server:        httpServer,
 		PluginManager: pluginManager,
@@ -427,7 +426,6 @@ func provideCleanup(
 	openAIGateway *service.OpenAIGatewayService,
 	scheduledTestRunner *service.ScheduledTestRunnerService,
 	backupSvc *service.BackupService,
-	paymentOrderExpiry *service.PaymentOrderExpiryService,
 	pluginManager *plugin.PluginManager,
 ) func() {
 	return func() {
@@ -570,12 +568,7 @@ func provideCleanup(
 				}
 				return nil
 			}},
-			{"PaymentOrderExpiryService", func() error {
-				if paymentOrderExpiry != nil {
-					paymentOrderExpiry.Stop()
-				}
-				return nil
-			}},
+			// PaymentOrderExpiryService 已迁移到 plugins/payment/
 		}
 
 		infraSteps := []cleanupStep{

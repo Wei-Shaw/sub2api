@@ -232,14 +232,69 @@ func (m *PluginManager) SetAccountStatsResolverRegistrar(registrar AccountStatsR
 // Must be called before Start; the gRPC service list is frozen onto
 // the SDK grpc.Server in startSDKServer and later calls only mutate
 // the manager field (which today has no runtime effect).
+//
+// Setters share a single mutating helper (rebuildHostServiceLocked) so
+// every call refreshes one slot and preserves the others. Calling
+// setters in arbitrary order produces a coherent server.
 func (m *PluginManager) SetHostPricingResolver(resolver HostPricingResolver) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if resolver == nil {
+	m.hostPricingResolver = resolver
+	m.rebuildHostServiceLocked()
+}
+
+// SetHostBalanceService wires HostService.CreditBalance / DeductBalance.
+// Pass nil to disable those RPCs (they return codes.Unimplemented).
+func (m *PluginManager) SetHostBalanceService(svc HostBalanceService) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.hostBalance = svc
+	m.rebuildHostServiceLocked()
+}
+
+// SetHostSubscriptionAssigner wires HostService.AssignSubscription /
+// RevokeSubscriptionDays.
+func (m *PluginManager) SetHostSubscriptionAssigner(svc HostSubscriptionAssigner) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.hostSubscription = svc
+	m.rebuildHostServiceLocked()
+}
+
+// SetHostAffiliateAccruer wires HostService.AccrueRebate.
+func (m *PluginManager) SetHostAffiliateAccruer(svc HostAffiliateAccruer) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.hostAffiliate = svc
+	m.rebuildHostServiceLocked()
+}
+
+// SetHostUserLookup wires HostService.GetUserByID.
+func (m *PluginManager) SetHostUserLookup(svc HostUserLookup) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.hostUserLookup = svc
+	m.rebuildHostServiceLocked()
+}
+
+// rebuildHostServiceLocked refreshes m.hostService from the cached
+// dependency fields. The caller MUST hold m.mu (write lock). When every
+// dep is nil the service is dropped — semantically identical to never
+// calling any setter.
+func (m *PluginManager) rebuildHostServiceLocked() {
+	deps := HostServiceDeps{
+		Pricing:      m.hostPricingResolver,
+		Balance:      m.hostBalance,
+		Subscription: m.hostSubscription,
+		Affiliate:    m.hostAffiliate,
+		UserLookup:   m.hostUserLookup,
+	}
+	if deps.Pricing == nil && deps.Balance == nil && deps.Subscription == nil &&
+		deps.Affiliate == nil && deps.UserLookup == nil {
 		m.hostService = nil
 		return
 	}
-	m.hostService = NewHostServiceServer(resolver)
+	m.hostService = NewHostServiceServerWithDeps(deps)
 }
 
 // SDKAddr 返回 SDK gRPC 实际监听地址,主要用于测试与诊断。

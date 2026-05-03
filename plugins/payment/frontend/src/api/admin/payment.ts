@@ -1,0 +1,146 @@
+/**
+ * Admin Payment API endpoints (plugin frontend).
+ *
+ * Routed through the host axios instance with auth/api-version baseURL. Paths
+ * point at /api/v1/plugin/payment/admin/* so the plugin gateway forwards
+ * them to the plugin gRPC handler.
+ */
+
+import { getClient } from '../client'
+import type {
+  DashboardStats,
+  PaymentOrder,
+  PaymentChannel,
+  SubscriptionPlan,
+  ProviderInstance,
+} from '../../types/payment'
+import type { BasePaginationResponse } from '../../types'
+
+const BASE = '/plugin/payment/admin'
+
+/** Admin-facing payment config returned by GET /admin/config */
+export interface AdminPaymentConfig {
+  enabled: boolean
+  min_amount: number
+  max_amount: number
+  daily_limit: number
+  order_timeout_minutes: number
+  max_pending_orders: number
+  enabled_payment_types: string[]
+  balance_disabled: boolean
+  balance_recharge_multiplier: number
+  load_balance_strategy: string
+  product_name_prefix: string
+  product_name_suffix: string
+  help_image_url: string
+  help_text: string
+}
+
+/** Fields accepted by PUT /admin/config (all optional). */
+export interface UpdatePaymentConfigRequest {
+  enabled?: boolean
+  min_amount?: number
+  max_amount?: number
+  daily_limit?: number
+  order_timeout_minutes?: number
+  max_pending_orders?: number
+  enabled_payment_types?: string[]
+  balance_disabled?: boolean
+  balance_recharge_multiplier?: number
+  load_balance_strategy?: string
+  product_name_prefix?: string
+  product_name_suffix?: string
+  help_image_url?: string
+  help_text?: string
+}
+
+export const adminPaymentAPI = {
+  // ==================== Config ====================
+  getConfig() {
+    return getClient().get<AdminPaymentConfig>(`${BASE}/config`)
+  },
+  updateConfig(data: UpdatePaymentConfigRequest) {
+    return getClient().put(`${BASE}/config`, data)
+  },
+
+  // ==================== Dashboard ====================
+  getDashboard(days?: number) {
+    return getClient().get<DashboardStats>(`${BASE}/dashboard`, {
+      params: days ? { days } : undefined,
+    })
+  },
+
+  // ==================== Orders ====================
+  getOrders(params?: {
+    page?: number
+    page_size?: number
+    status?: string
+    payment_type?: string
+    user_id?: number
+    keyword?: string
+    start_date?: string
+    end_date?: string
+    order_type?: string
+  }) {
+    return getClient().get<BasePaginationResponse<PaymentOrder>>(`${BASE}/orders`, { params })
+  },
+  getOrder(id: number) {
+    return getClient().get<PaymentOrder>(`${BASE}/orders/${id}`)
+  },
+  cancelOrder(id: number) {
+    return getClient().post(`${BASE}/orders/${id}/cancel`)
+  },
+  retryRecharge(id: number) {
+    return getClient().post(`${BASE}/orders/${id}/retry`)
+  },
+  refundOrder(
+    id: number,
+    data: { amount: number; reason: string; deduct_balance?: boolean; force?: boolean },
+  ) {
+    return getClient().post(`${BASE}/orders/${id}/refund`, data)
+  },
+
+  // ==================== Channels (legacy) ====================
+  getChannels() {
+    return getClient().get<PaymentChannel[]>(`${BASE}/channels`)
+  },
+  createChannel(data: Partial<PaymentChannel>) {
+    return getClient().post<PaymentChannel>(`${BASE}/channels`, data)
+  },
+  updateChannel(id: number, data: Partial<PaymentChannel>) {
+    return getClient().put<PaymentChannel>(`${BASE}/channels/${id}`, data)
+  },
+  deleteChannel(id: number) {
+    return getClient().delete(`${BASE}/channels/${id}`)
+  },
+
+  // ==================== Subscription Plans ====================
+  getPlans() {
+    return getClient().get<SubscriptionPlan[]>(`${BASE}/plans`)
+  },
+  createPlan(data: Record<string, unknown>) {
+    return getClient().post<SubscriptionPlan>(`${BASE}/plans`, data)
+  },
+  updatePlan(id: number, data: Record<string, unknown>) {
+    return getClient().put<SubscriptionPlan>(`${BASE}/plans/${id}`, data)
+  },
+  deletePlan(id: number) {
+    return getClient().delete(`${BASE}/plans/${id}`)
+  },
+
+  // ==================== Provider Instances ====================
+  getProviders() {
+    return getClient().get<ProviderInstance[]>(`${BASE}/providers`)
+  },
+  createProvider(data: Partial<ProviderInstance>) {
+    return getClient().post<ProviderInstance>(`${BASE}/providers`, data)
+  },
+  updateProvider(id: number, data: Partial<ProviderInstance>) {
+    return getClient().put<ProviderInstance>(`${BASE}/providers/${id}`, data)
+  },
+  deleteProvider(id: number) {
+    return getClient().delete(`${BASE}/providers/${id}`)
+  },
+}
+
+export default adminPaymentAPI

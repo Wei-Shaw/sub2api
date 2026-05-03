@@ -188,6 +188,50 @@ func (p *EventPublisher) publish(eventType string, build func() *pb.HostEvent) {
 	}
 }
 
+// PublishGeneric dispatches a fully-formed *pb.HostEvent to every
+// interested subscriber and reports how many subscribers accepted it
+// synchronously (i.e. successfully enqueued without dropping). The
+// counter is observability-only — callers MUST NOT branch on it.
+//
+// Used by EventsExtension.Publish so plugins can emit their own events
+// (e.g. payment.order.created from a payment plugin) over the same
+// fan-out machinery the host's typed helpers use.
+func (p *EventPublisher) PublishGeneric(event *pb.HostEvent) int64 {
+	if p == nil || event == nil {
+		return 0
+	}
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	var delivered int64
+	for _, sub := range p.subscribers {
+		if !subscriberWants(sub, event.GetEventType()) {
+			continue
+		}
+		select {
+		case sub.buffer <- event:
+			delivered++
+		default:
+			// Buffer full — drop the oldest entry to make room.
+			select {
+			case <-sub.buffer:
+				sub.dropped.Add(1)
+				p.logger.Warn("event buffer full, dropped oldest",
+					"plugin", sub.pluginName,
+					"event_type", event.GetEventType(),
+					"dropped_total", sub.dropped.Load())
+			default:
+			}
+			select {
+			case sub.buffer <- event:
+				delivered++
+			default:
+				sub.dropped.Add(1)
+			}
+		}
+	}
+	return delivered
+}
+
 func subscriberWants(sub *eventSubscriber, eventType string) bool {
 	if len(sub.eventTypes) == 0 {
 		return true

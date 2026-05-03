@@ -464,7 +464,6 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyWeChatConnectRedirectURL,
 		SettingKeyWeChatConnectFrontendRedirectURL,
 		SettingKeyBackendModeEnabled,
-		SettingPaymentEnabled,
 		SettingKeyOIDCConnectEnabled,
 		SettingKeyOIDCConnectProviderName,
 		SettingKeyBalanceLowNotifyEnabled,
@@ -551,7 +550,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		WeChatOAuthMPEnabled:             weChatMPEnabled,
 		WeChatOAuthMobileEnabled:         weChatMobileEnabled,
 		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
-		PaymentEnabled:                   settings[SettingPaymentEnabled] == "true",
+		// PaymentEnabled 已迁移到 plugin（payment plugin 自带 PluginSettings）。
 		OIDCOAuthEnabled:                 oidcEnabled,
 		OIDCOAuthProviderName:            oidcProviderName,
 		BalanceLowNotifyEnabled:          settings[SettingKeyBalanceLowNotifyEnabled] == "true",
@@ -699,7 +698,7 @@ type PublicSettingsInjectionPayload struct {
 	OIDCOAuthEnabled                 bool            `json:"oidc_oauth_enabled"`
 	OIDCOAuthProviderName            string          `json:"oidc_oauth_provider_name"`
 	BackendModeEnabled               bool            `json:"backend_mode_enabled"`
-	PaymentEnabled                   bool            `json:"payment_enabled"`
+	// PaymentEnabled 已迁移到 plugin（payment plugin 自带 PluginSettings）。
 	Version                          string          `json:"version"`
 	BalanceLowNotifyEnabled          bool            `json:"balance_low_notify_enabled"`
 	AccountQuotaNotifyEnabled        bool            `json:"account_quota_notify_enabled"`
@@ -757,7 +756,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		OIDCOAuthEnabled:                 settings.OIDCOAuthEnabled,
 		OIDCOAuthProviderName:            settings.OIDCOAuthProviderName,
 		BackendModeEnabled:               settings.BackendModeEnabled,
-		PaymentEnabled:                   settings.PaymentEnabled,
+		// PaymentEnabled 已迁移到 plugin（payment plugin 自带 PluginSettings）。
 		Version:                          s.version,
 		BalanceLowNotifyEnabled:          settings.BalanceLowNotifyEnabled,
 		AccountQuotaNotifyEnabled:        settings.AccountQuotaNotifyEnabled,
@@ -2407,22 +2406,8 @@ func isFalseSettingValue(value string) bool {
 	}
 }
 
-func normalizeVisibleMethodSettingSource(method, source string, enabled bool) (string, error) {
-	_ = enabled
-	source = strings.TrimSpace(source)
-	if source == "" {
-		return "", nil
-	}
-
-	normalized := NormalizeVisibleMethodSource(method, source)
-	if normalized == "" {
-		return "", infraerrors.BadRequest(
-			"INVALID_PAYMENT_VISIBLE_METHOD_SOURCE",
-			fmt.Sprintf("%s source must be one of the supported payment providers", method),
-		)
-	}
-	return normalized, nil
-}
+// normalizeVisibleMethodSettingSource / NormalizeVisibleMethodSource /
+// SettingPaymentVisibleMethod* 已迁移到 payment_visible_methods.go。
 
 func parseDefaultSubscriptions(raw string) []DefaultSubscriptionSetting {
 	raw = strings.TrimSpace(raw)

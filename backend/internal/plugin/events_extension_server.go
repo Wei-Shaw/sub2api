@@ -31,13 +31,16 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	pluginsdkroot "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
@@ -128,6 +131,83 @@ func NewEventsExtensionServer(
 // Register attaches the server to the supplied gRPC server.
 func (s *EventsExtensionServer) Register(grpcServer *grpc.Server) {
 	pb.RegisterEventsExtensionServer(grpcServer, s)
+}
+
+// Publish implements pb.EventsExtensionServer.Publish. Plugins use this
+// to emit their own HostEvents (e.g. payment.* from a payment plugin)
+// over the same fan-out machinery the host's typed helpers use.
+//
+// Authorization: the caller must hold the publish capability matching
+// the event-type prefix (currently only events.publish.payment for
+// payment.*). Anonymous callers are rejected up-front. Capability gates
+// keep one plugin from injecting fake events into another's stream.
+//
+// Stamping: missing event_id is replaced with a fresh UUID v4 so
+// downstream consumers can dedupe; missing timestamp_nanos is set to
+// the host wall clock at publish time.
+func (s *EventsExtensionServer) Publish(
+	ctx context.Context, req *pb.PublishEventRequest,
+) (*pb.PublishEventResponse, error) {
+	pluginName, ok := CallerFromContext(ctx)
+	if !ok || pluginName == "" {
+		return nil, status.Error(codes.PermissionDenied,
+			"events: caller identity missing")
+	}
+	event := req.GetEvent()
+	if event == nil {
+		return nil, status.Error(codes.InvalidArgument, "events: event payload is required")
+	}
+	eventType := strings.TrimSpace(event.GetEventType())
+	if eventType == "" {
+		return nil, status.Error(codes.InvalidArgument, "events: event_type is required")
+	}
+	if err := s.checkPublishCapability(pluginName, eventType); err != nil {
+		return nil, err
+	}
+	if event.GetEventId() == "" {
+		event.EventId = uuid.NewString()
+	}
+	if event.GetTimestampNanos() == 0 {
+		event.TimestampNanos = time.Now().UnixNano()
+	}
+	delivered := s.publisher.PublishGeneric(event)
+	return &pb.PublishEventResponse{DeliveredTo: delivered}, nil
+}
+
+// publishCapabilityForType maps the leading dotted-prefix of an event
+// type to the manifest capability required to publish it. Unrecognised
+// prefixes reject with PermissionDenied — adding a new namespace
+// requires both a registry entry and a row here.
+func publishCapabilityForType(eventType string) (string, bool) {
+	prefix := eventType
+	if i := strings.IndexByte(eventType, '.'); i > 0 {
+		prefix = eventType[:i]
+	}
+	switch prefix {
+	case "payment":
+		return pluginsdkroot.CapabilityEventsPublishPayment, true
+	default:
+		return "", false
+	}
+}
+
+// checkPublishCapability gates Publish against the event-type's
+// required capability.
+func (s *EventsExtensionServer) checkPublishCapability(pluginName, eventType string) error {
+	capName, known := publishCapabilityForType(eventType)
+	if !known {
+		return status.Errorf(codes.PermissionDenied,
+			"events: publishing %q is not supported", eventType)
+	}
+	if s.capabilities == nil {
+		return status.Error(codes.PermissionDenied,
+			"events: capability checker not configured")
+	}
+	if !s.capabilities.HasCapability(pluginName, capName) {
+		return status.Errorf(codes.PermissionDenied,
+			"events: publishing %q requires capability %q", eventType, capName)
+	}
+	return nil
 }
 
 // ProbeSubscription implements pb.EventsExtensionServer.ProbeSubscription.

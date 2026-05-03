@@ -152,6 +152,18 @@ type PluginManager struct {
 	// pricing, which is the same behaviour as older hosts that never
 	// shipped HostService).
 	hostService *HostServiceServer
+
+	// hostPricingResolver / hostBalance / hostSubscription /
+	// hostAffiliate / hostUserLookup cache the dependency injected via
+	// the SetHost* setters. rebuildHostServiceLocked re-derives
+	// m.hostService from these fields whenever any setter is called,
+	// preserving previously-set deps. All optional — nil leaves the
+	// corresponding RPC returning codes.Unimplemented.
+	hostPricingResolver HostPricingResolver
+	hostBalance         HostBalanceService
+	hostSubscription    HostSubscriptionAssigner
+	hostAffiliate       HostAffiliateAccruer
+	hostUserLookup      HostUserLookup
 }
 
 // NewPluginManager 构造 manager。

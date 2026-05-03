@@ -198,6 +198,36 @@ message ManifestResponse {
   // shared host table they read/write (the latter requires db.core.read
   // or db.core.write capability).
   repeated string owned_tables = 48;
+
+  // public_flags declares public-facing settings flags the host should
+  // expose alongside its own GetPublicSettings response. The host queries
+  // each flag's value without going through the plugin process, so a
+  // degraded / stopped plugin does not break the public bootstrap.
+  //
+  // Used by the payment plugin to expose payment_enabled to the SPA's
+  // route guard / sidebar without coupling the core to plugin status.
+  repeated PublicFlagDecl public_flags = 49;
+}
+
+// PublicFlagDecl is a single entry in ManifestResponse.public_flags.
+// Mirrors Go-side pluginsdk.PublicFlagDecl - keep field names in sync.
+message PublicFlagDecl {
+  // key is the JSON field name in the PublicSettings response envelope.
+  // SHOULD be snake_case (e.g. "payment_enabled").
+  string key = 1;
+  // source is "settings" (read from plugin's settings store) or
+  // "static" (always return default_value).
+  string source = 2;
+  // settings_key is the path inside the plugin's settings document
+  // (e.g. "enabled" or "stripe.publishable_key"). Required when
+  // source == "settings".
+  string settings_key = 3;
+  // type is "bool" | "string" | "number". Drives JSON encoding.
+  string type = 4;
+  // default_value is JSON-encoded (e.g. "true", a quoted string, or "1.5").
+  // Used when settings_key is unset, source is "static", or the plugin
+  // has not been started yet.
+  string default_value = 5;
 }
 
 message EndpointDeclaration {

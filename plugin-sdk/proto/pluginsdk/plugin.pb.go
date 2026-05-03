@@ -488,7 +488,15 @@ type ManifestResponse struct {
 	// Plugins SHOULD list every table they CREATE in migrations and any
 	// shared host table they read/write (the latter requires db.core.read
 	// or db.core.write capability).
-	OwnedTables   []string `protobuf:"bytes,48,rep,name=owned_tables,json=ownedTables,proto3" json:"owned_tables,omitempty"`
+	OwnedTables []string `protobuf:"bytes,48,rep,name=owned_tables,json=ownedTables,proto3" json:"owned_tables,omitempty"`
+	// public_flags declares public-facing settings flags the host should
+	// expose alongside its own GetPublicSettings response. The host queries
+	// each flag's value without going through the plugin process, so a
+	// degraded / stopped plugin does not break the public bootstrap.
+	//
+	// Used by the payment plugin to expose payment_enabled to the SPA's
+	// route guard / sidebar without coupling the core to plugin status.
+	PublicFlags   []*PublicFlagDecl `protobuf:"bytes,49,rep,name=public_flags,json=publicFlags,proto3" json:"public_flags,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -649,6 +657,102 @@ func (x *ManifestResponse) GetOwnedTables() []string {
 	return nil
 }
 
+func (x *ManifestResponse) GetPublicFlags() []*PublicFlagDecl {
+	if x != nil {
+		return x.PublicFlags
+	}
+	return nil
+}
+
+// PublicFlagDecl is a single entry in ManifestResponse.public_flags.
+// Mirrors Go-side pluginsdk.PublicFlagDecl - keep field names in sync.
+type PublicFlagDecl struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// key is the JSON field name in the PublicSettings response envelope.
+	// SHOULD be snake_case (e.g. "payment_enabled").
+	Key string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	// source is "settings" (read from plugin's settings store) or
+	// "static" (always return default_value).
+	Source string `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
+	// settings_key is the path inside the plugin's settings document
+	// (e.g. "enabled" or "stripe.publishable_key"). Required when
+	// source == "settings".
+	SettingsKey string `protobuf:"bytes,3,opt,name=settings_key,json=settingsKey,proto3" json:"settings_key,omitempty"`
+	// type is "bool" | "string" | "number". Drives JSON encoding.
+	Type string `protobuf:"bytes,4,opt,name=type,proto3" json:"type,omitempty"`
+	// default_value is JSON-encoded (e.g. "true", a quoted string, or "1.5").
+	// Used when settings_key is unset, source is "static", or the plugin
+	// has not been started yet.
+	DefaultValue  string `protobuf:"bytes,5,opt,name=default_value,json=defaultValue,proto3" json:"default_value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PublicFlagDecl) Reset() {
+	*x = PublicFlagDecl{}
+	mi := &file_plugin_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PublicFlagDecl) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PublicFlagDecl) ProtoMessage() {}
+
+func (x *PublicFlagDecl) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PublicFlagDecl.ProtoReflect.Descriptor instead.
+func (*PublicFlagDecl) Descriptor() ([]byte, []int) {
+	return file_plugin_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *PublicFlagDecl) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *PublicFlagDecl) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *PublicFlagDecl) GetSettingsKey() string {
+	if x != nil {
+		return x.SettingsKey
+	}
+	return ""
+}
+
+func (x *PublicFlagDecl) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *PublicFlagDecl) GetDefaultValue() string {
+	if x != nil {
+		return x.DefaultValue
+	}
+	return ""
+}
+
 type EndpointDeclaration struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
@@ -660,7 +764,7 @@ type EndpointDeclaration struct {
 
 func (x *EndpointDeclaration) Reset() {
 	*x = EndpointDeclaration{}
-	mi := &file_plugin_proto_msgTypes[7]
+	mi := &file_plugin_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -672,7 +776,7 @@ func (x *EndpointDeclaration) String() string {
 func (*EndpointDeclaration) ProtoMessage() {}
 
 func (x *EndpointDeclaration) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[7]
+	mi := &file_plugin_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -685,7 +789,7 @@ func (x *EndpointDeclaration) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EndpointDeclaration.ProtoReflect.Descriptor instead.
 func (*EndpointDeclaration) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{7}
+	return file_plugin_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *EndpointDeclaration) GetPath() string {
@@ -722,7 +826,7 @@ type FrontendManifest struct {
 
 func (x *FrontendManifest) Reset() {
 	*x = FrontendManifest{}
-	mi := &file_plugin_proto_msgTypes[8]
+	mi := &file_plugin_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -734,7 +838,7 @@ func (x *FrontendManifest) String() string {
 func (*FrontendManifest) ProtoMessage() {}
 
 func (x *FrontendManifest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[8]
+	mi := &file_plugin_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -747,7 +851,7 @@ func (x *FrontendManifest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FrontendManifest.ProtoReflect.Descriptor instead.
 func (*FrontendManifest) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{8}
+	return file_plugin_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *FrontendManifest) GetEntryJs() string {
@@ -844,7 +948,7 @@ type MenuItem struct {
 
 func (x *MenuItem) Reset() {
 	*x = MenuItem{}
-	mi := &file_plugin_proto_msgTypes[9]
+	mi := &file_plugin_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -856,7 +960,7 @@ func (x *MenuItem) String() string {
 func (*MenuItem) ProtoMessage() {}
 
 func (x *MenuItem) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[9]
+	mi := &file_plugin_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -869,7 +973,7 @@ func (x *MenuItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MenuItem.ProtoReflect.Descriptor instead.
 func (*MenuItem) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{9}
+	return file_plugin_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *MenuItem) GetPath() string {
@@ -982,7 +1086,7 @@ type RouteDefinition struct {
 
 func (x *RouteDefinition) Reset() {
 	*x = RouteDefinition{}
-	mi := &file_plugin_proto_msgTypes[10]
+	mi := &file_plugin_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -994,7 +1098,7 @@ func (x *RouteDefinition) String() string {
 func (*RouteDefinition) ProtoMessage() {}
 
 func (x *RouteDefinition) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[10]
+	mi := &file_plugin_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1007,7 +1111,7 @@ func (x *RouteDefinition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RouteDefinition.ProtoReflect.Descriptor instead.
 func (*RouteDefinition) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{10}
+	return file_plugin_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *RouteDefinition) GetPath() string {
@@ -1070,7 +1174,7 @@ type MigrationDecl struct {
 
 func (x *MigrationDecl) Reset() {
 	*x = MigrationDecl{}
-	mi := &file_plugin_proto_msgTypes[11]
+	mi := &file_plugin_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1082,7 +1186,7 @@ func (x *MigrationDecl) String() string {
 func (*MigrationDecl) ProtoMessage() {}
 
 func (x *MigrationDecl) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[11]
+	mi := &file_plugin_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1095,7 +1199,7 @@ func (x *MigrationDecl) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MigrationDecl.ProtoReflect.Descriptor instead.
 func (*MigrationDecl) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{11}
+	return file_plugin_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *MigrationDecl) GetFilename() string {
@@ -1144,7 +1248,7 @@ type GetMigrationRequest struct {
 
 func (x *GetMigrationRequest) Reset() {
 	*x = GetMigrationRequest{}
-	mi := &file_plugin_proto_msgTypes[12]
+	mi := &file_plugin_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1156,7 +1260,7 @@ func (x *GetMigrationRequest) String() string {
 func (*GetMigrationRequest) ProtoMessage() {}
 
 func (x *GetMigrationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[12]
+	mi := &file_plugin_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1169,7 +1273,7 @@ func (x *GetMigrationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMigrationRequest.ProtoReflect.Descriptor instead.
 func (*GetMigrationRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{12}
+	return file_plugin_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *GetMigrationRequest) GetFilename() string {
@@ -1196,7 +1300,7 @@ type GetMigrationResponse struct {
 
 func (x *GetMigrationResponse) Reset() {
 	*x = GetMigrationResponse{}
-	mi := &file_plugin_proto_msgTypes[13]
+	mi := &file_plugin_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1208,7 +1312,7 @@ func (x *GetMigrationResponse) String() string {
 func (*GetMigrationResponse) ProtoMessage() {}
 
 func (x *GetMigrationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_proto_msgTypes[13]
+	mi := &file_plugin_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1221,7 +1325,7 @@ func (x *GetMigrationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMigrationResponse.ProtoReflect.Descriptor instead.
 func (*GetMigrationResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_proto_rawDescGZIP(), []int{13}
+	return file_plugin_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GetMigrationResponse) GetFilename() string {
@@ -1281,7 +1385,7 @@ const file_plugin_proto_rawDesc = "" +
 	"\tFileChunk\x12\x12\n" +
 	"\x04data\x18\x01 \x01(\fR\x04data\x12\x1a\n" +
 	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x10\n" +
-	"\x03eof\x18\x03 \x01(\bR\x03eof\"\xc3\x06\n" +
+	"\x03eof\x18\x03 \x01(\bR\x03eof\"\x81\a\n" +
 	"\x10ManifestResponse\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x18\n" +
@@ -1303,7 +1407,14 @@ const file_plugin_proto_rawDesc = "" +
 	"\x1dsettings_properties_meta_json\x18- \x01(\fR\x1asettingsPropertiesMetaJson\x12\x19\n" +
 	"\bicon_svg\x18. \x01(\tR\aiconSvg\x12+\n" +
 	"\x11subscribed_events\x18/ \x03(\tR\x10subscribedEvents\x12!\n" +
-	"\fowned_tables\x180 \x03(\tR\vownedTables\"`\n" +
+	"\fowned_tables\x180 \x03(\tR\vownedTables\x12<\n" +
+	"\fpublic_flags\x181 \x03(\v2\x19.pluginsdk.PublicFlagDeclR\vpublicFlags\"\x96\x01\n" +
+	"\x0ePublicFlagDecl\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x16\n" +
+	"\x06source\x18\x02 \x01(\tR\x06source\x12!\n" +
+	"\fsettings_key\x18\x03 \x01(\tR\vsettingsKey\x12\x12\n" +
+	"\x04type\x18\x04 \x01(\tR\x04type\x12#\n" +
+	"\rdefault_value\x18\x05 \x01(\tR\fdefaultValue\"`\n" +
 	"\x13EndpointDeclaration\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x18\n" +
 	"\amethods\x18\x02 \x03(\tR\amethods\x12\x1b\n" +
@@ -1379,7 +1490,7 @@ func file_plugin_proto_rawDescGZIP() []byte {
 	return file_plugin_proto_rawDescData
 }
 
-var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_plugin_proto_goTypes = []any{
 	(*PluginInitRequest)(nil),     // 0: pluginsdk.PluginInitRequest
 	(*OutboundDefaults)(nil),      // 1: pluginsdk.OutboundDefaults
@@ -1388,47 +1499,49 @@ var file_plugin_proto_goTypes = []any{
 	(*FrontendBundleRequest)(nil), // 4: pluginsdk.FrontendBundleRequest
 	(*FileChunk)(nil),             // 5: pluginsdk.FileChunk
 	(*ManifestResponse)(nil),      // 6: pluginsdk.ManifestResponse
-	(*EndpointDeclaration)(nil),   // 7: pluginsdk.EndpointDeclaration
-	(*FrontendManifest)(nil),      // 8: pluginsdk.FrontendManifest
-	(*MenuItem)(nil),              // 9: pluginsdk.MenuItem
-	(*RouteDefinition)(nil),       // 10: pluginsdk.RouteDefinition
-	(*MigrationDecl)(nil),         // 11: pluginsdk.MigrationDecl
-	(*GetMigrationRequest)(nil),   // 12: pluginsdk.GetMigrationRequest
-	(*GetMigrationResponse)(nil),  // 13: pluginsdk.GetMigrationResponse
-	nil,                           // 14: pluginsdk.MenuItem.LabelsEntry
-	nil,                           // 15: pluginsdk.MenuItem.DescriptionsEntry
-	nil,                           // 16: pluginsdk.RouteDefinition.MetaEntry
-	(*emptypb.Empty)(nil),         // 17: google.protobuf.Empty
+	(*PublicFlagDecl)(nil),        // 7: pluginsdk.PublicFlagDecl
+	(*EndpointDeclaration)(nil),   // 8: pluginsdk.EndpointDeclaration
+	(*FrontendManifest)(nil),      // 9: pluginsdk.FrontendManifest
+	(*MenuItem)(nil),              // 10: pluginsdk.MenuItem
+	(*RouteDefinition)(nil),       // 11: pluginsdk.RouteDefinition
+	(*MigrationDecl)(nil),         // 12: pluginsdk.MigrationDecl
+	(*GetMigrationRequest)(nil),   // 13: pluginsdk.GetMigrationRequest
+	(*GetMigrationResponse)(nil),  // 14: pluginsdk.GetMigrationResponse
+	nil,                           // 15: pluginsdk.MenuItem.LabelsEntry
+	nil,                           // 16: pluginsdk.MenuItem.DescriptionsEntry
+	nil,                           // 17: pluginsdk.RouteDefinition.MetaEntry
+	(*emptypb.Empty)(nil),         // 18: google.protobuf.Empty
 }
 var file_plugin_proto_depIdxs = []int32{
 	1,  // 0: pluginsdk.PluginInitRequest.outbound_defaults:type_name -> pluginsdk.OutboundDefaults
-	7,  // 1: pluginsdk.ManifestResponse.gateway_endpoints:type_name -> pluginsdk.EndpointDeclaration
-	7,  // 2: pluginsdk.ManifestResponse.plugin_endpoints:type_name -> pluginsdk.EndpointDeclaration
-	8,  // 3: pluginsdk.ManifestResponse.frontend:type_name -> pluginsdk.FrontendManifest
-	11, // 4: pluginsdk.ManifestResponse.migrations:type_name -> pluginsdk.MigrationDecl
-	9,  // 5: pluginsdk.FrontendManifest.menu_items:type_name -> pluginsdk.MenuItem
-	10, // 6: pluginsdk.FrontendManifest.routes:type_name -> pluginsdk.RouteDefinition
-	9,  // 7: pluginsdk.MenuItem.children:type_name -> pluginsdk.MenuItem
-	14, // 8: pluginsdk.MenuItem.labels:type_name -> pluginsdk.MenuItem.LabelsEntry
-	15, // 9: pluginsdk.MenuItem.descriptions:type_name -> pluginsdk.MenuItem.DescriptionsEntry
-	16, // 10: pluginsdk.RouteDefinition.meta:type_name -> pluginsdk.RouteDefinition.MetaEntry
-	0,  // 11: pluginsdk.PluginLifecycle.Init:input_type -> pluginsdk.PluginInitRequest
-	17, // 12: pluginsdk.PluginLifecycle.GetManifest:input_type -> google.protobuf.Empty
-	17, // 13: pluginsdk.PluginLifecycle.HealthCheck:input_type -> google.protobuf.Empty
-	17, // 14: pluginsdk.PluginLifecycle.Shutdown:input_type -> google.protobuf.Empty
-	4,  // 15: pluginsdk.PluginLifecycle.GetFrontendBundle:input_type -> pluginsdk.FrontendBundleRequest
-	12, // 16: pluginsdk.PluginLifecycle.GetMigration:input_type -> pluginsdk.GetMigrationRequest
-	2,  // 17: pluginsdk.PluginLifecycle.Init:output_type -> pluginsdk.PluginInitResponse
-	6,  // 18: pluginsdk.PluginLifecycle.GetManifest:output_type -> pluginsdk.ManifestResponse
-	3,  // 19: pluginsdk.PluginLifecycle.HealthCheck:output_type -> pluginsdk.HealthResponse
-	17, // 20: pluginsdk.PluginLifecycle.Shutdown:output_type -> google.protobuf.Empty
-	5,  // 21: pluginsdk.PluginLifecycle.GetFrontendBundle:output_type -> pluginsdk.FileChunk
-	13, // 22: pluginsdk.PluginLifecycle.GetMigration:output_type -> pluginsdk.GetMigrationResponse
-	17, // [17:23] is the sub-list for method output_type
-	11, // [11:17] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	8,  // 1: pluginsdk.ManifestResponse.gateway_endpoints:type_name -> pluginsdk.EndpointDeclaration
+	8,  // 2: pluginsdk.ManifestResponse.plugin_endpoints:type_name -> pluginsdk.EndpointDeclaration
+	9,  // 3: pluginsdk.ManifestResponse.frontend:type_name -> pluginsdk.FrontendManifest
+	12, // 4: pluginsdk.ManifestResponse.migrations:type_name -> pluginsdk.MigrationDecl
+	7,  // 5: pluginsdk.ManifestResponse.public_flags:type_name -> pluginsdk.PublicFlagDecl
+	10, // 6: pluginsdk.FrontendManifest.menu_items:type_name -> pluginsdk.MenuItem
+	11, // 7: pluginsdk.FrontendManifest.routes:type_name -> pluginsdk.RouteDefinition
+	10, // 8: pluginsdk.MenuItem.children:type_name -> pluginsdk.MenuItem
+	15, // 9: pluginsdk.MenuItem.labels:type_name -> pluginsdk.MenuItem.LabelsEntry
+	16, // 10: pluginsdk.MenuItem.descriptions:type_name -> pluginsdk.MenuItem.DescriptionsEntry
+	17, // 11: pluginsdk.RouteDefinition.meta:type_name -> pluginsdk.RouteDefinition.MetaEntry
+	0,  // 12: pluginsdk.PluginLifecycle.Init:input_type -> pluginsdk.PluginInitRequest
+	18, // 13: pluginsdk.PluginLifecycle.GetManifest:input_type -> google.protobuf.Empty
+	18, // 14: pluginsdk.PluginLifecycle.HealthCheck:input_type -> google.protobuf.Empty
+	18, // 15: pluginsdk.PluginLifecycle.Shutdown:input_type -> google.protobuf.Empty
+	4,  // 16: pluginsdk.PluginLifecycle.GetFrontendBundle:input_type -> pluginsdk.FrontendBundleRequest
+	13, // 17: pluginsdk.PluginLifecycle.GetMigration:input_type -> pluginsdk.GetMigrationRequest
+	2,  // 18: pluginsdk.PluginLifecycle.Init:output_type -> pluginsdk.PluginInitResponse
+	6,  // 19: pluginsdk.PluginLifecycle.GetManifest:output_type -> pluginsdk.ManifestResponse
+	3,  // 20: pluginsdk.PluginLifecycle.HealthCheck:output_type -> pluginsdk.HealthResponse
+	18, // 21: pluginsdk.PluginLifecycle.Shutdown:output_type -> google.protobuf.Empty
+	5,  // 22: pluginsdk.PluginLifecycle.GetFrontendBundle:output_type -> pluginsdk.FileChunk
+	14, // 23: pluginsdk.PluginLifecycle.GetMigration:output_type -> pluginsdk.GetMigrationResponse
+	18, // [18:24] is the sub-list for method output_type
+	12, // [12:18] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_plugin_proto_init() }
@@ -1442,7 +1555,7 @@ func file_plugin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_plugin_proto_rawDesc), len(file_plugin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

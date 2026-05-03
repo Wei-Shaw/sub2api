@@ -507,31 +507,6 @@ const CreditCardIcon = {
     )
 }
 
-const RechargeSubscriptionIcon = {
-  render: () =>
-    h(
-      'svg',
-      { fill: 'currentColor', viewBox: '0 0 1024 1024' },
-      [
-        h('path', {
-          d: 'M512 992C247.3 992 32 776.7 32 512S247.3 32 512 32s480 215.3 480 480c0 84.4-22.2 167.4-64.2 240-8.9 15.3-28.4 20.6-43.7 11.7-15.3-8.8-20.5-28.4-11.7-43.7 36.4-62.9 55.6-134.8 55.6-208 0-229.4-186.6-416-416-416S96 282.6 96 512s186.6 416 416 416c17.7 0 32 14.3 32 32s-14.3 32-32 32z'
-        }),
-        h('path', {
-          d: 'M640 512H384c-17.7 0-32-14.3-32-32s14.3-32 32-32h256c17.7 0 32 14.3 32 32s-14.3 32-32 32zM640 640H384c-17.7 0-32-14.3-32-32s14.3-32 32-32h256c17.7 0 32 14.3 32 32s-14.3 32-32 32z'
-        }),
-        h('path', {
-          d: 'M512 480c-8.2 0-16.4-3.1-22.6-9.4l-128-128c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l128 128c12.5 12.5 12.5 32.8 0 45.3-6.3 6.3-14.5 9.4-22.7 9.4z'
-        }),
-        h('path', {
-          d: 'M512 480c-8.2 0-16.4-3.1-22.6-9.4-12.5-12.5-12.5-32.8 0-45.3l128-128c12.5-12.5 32.8-12.5 45.3 0s12.5 32.8 0 45.3l-128 128c-6.3 6.3-14.5 9.4-22.7 9.4z'
-        }),
-        h('path', {
-          d: 'M512 736c-17.7 0-32-14.3-32-32V448c0-17.7 14.3-32 32-32s32 14.3 32 32v256c0 17.7-14.3 32-32 32zM896 992H512c-17.7 0-32-14.3-32-32s14.3-32 32-32h306.8l-73.4-73.4c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l128 128c9.2 9.2 11.9 22.9 6.9 34.9S908.9 992 896 992z'
-        })
-      ]
-    )
-}
-
 const GlobeIcon = {
   render: () =>
     h(
@@ -673,36 +648,6 @@ const ChevronDoubleLeftIcon = {
 }
 
 
-const OrderIcon = {
-  render: () =>
-    h(
-      'svg',
-      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
-      [
-        h('path', {
-          'stroke-linecap': 'round',
-          'stroke-linejoin': 'round',
-          d: 'M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.25 2.25 0 012.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z'
-        })
-      ]
-    )
-}
-
-const OrderListIcon = {
-  render: () =>
-    h(
-      'svg',
-      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
-      [
-        h('path', {
-          'stroke-linecap': 'round',
-          'stroke-linejoin': 'round',
-          d: 'M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z'
-        })
-      ]
-    )
-}
-
 const ChevronDoubleRightIcon = {
   render: () =>
     h(
@@ -744,30 +689,6 @@ const userNavItems = computed((): NavItem[] => {
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon, group: 'user/main', placementOrder: 20 },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true, group: 'user/main', placementOrder: 30 },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, group: 'user/main', placementOrder: 40 },
-    ...(appStore.cachedPublicSettings?.payment_enabled
-      ? [
-          {
-            path: '/purchase',
-            label: t('nav.buySubscription'),
-            icon: RechargeSubscriptionIcon,
-            hideInSimpleMode: true,
-            group: 'user/main',
-            placementOrder: 60,
-          } as NavItem,
-        ]
-      : []),
-    ...(appStore.cachedPublicSettings?.payment_enabled
-      ? [
-          {
-            path: '/orders',
-            label: t('nav.myOrders'),
-            icon: OrderListIcon,
-            hideInSimpleMode: true,
-            group: 'user/main',
-            placementOrder: 70,
-          } as NavItem,
-        ]
-      : []),
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true, group: 'user/end', placementOrder: 20 },
     { path: '/profile', label: t('nav.profile'), icon: UserIcon, group: 'user/end', placementOrder: 30 },
     ...customMenuItemsForUser.value.map((item, idx): NavItem => ({
@@ -797,30 +718,6 @@ const personalNavItems = computed((): NavItem[] => {
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon, group: 'user/main', placementOrder: 20 },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true, group: 'user/main', placementOrder: 30 },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, group: 'user/main', placementOrder: 40 },
-    ...(appStore.cachedPublicSettings?.payment_enabled
-      ? [
-          {
-            path: '/purchase',
-            label: t('nav.buySubscription'),
-            icon: RechargeSubscriptionIcon,
-            hideInSimpleMode: true,
-            group: 'user/main',
-            placementOrder: 60,
-          } as NavItem,
-        ]
-      : []),
-    ...(appStore.cachedPublicSettings?.payment_enabled
-      ? [
-          {
-            path: '/orders',
-            label: t('nav.myOrders'),
-            icon: OrderListIcon,
-            hideInSimpleMode: true,
-            group: 'user/main',
-            placementOrder: 70,
-          } as NavItem,
-        ]
-      : []),
     { path: '/redeem', label: t('nav.redeem'), icon: GiftIcon, hideInSimpleMode: true, group: 'user/end', placementOrder: 20 },
     { path: '/profile', label: t('nav.profile'), icon: UserIcon, group: 'user/end', placementOrder: 30 },
     ...customMenuItemsForUser.value.map((item, idx): NavItem => ({
@@ -876,23 +773,6 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon, group: 'admin/main', placementOrder: 90 },
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true, group: 'admin/main', placementOrder: 100 },
     { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true, group: 'admin/main', placementOrder: 110 },
-    ...(adminSettingsStore.paymentEnabled
-      ? [
-          {
-            path: '/admin/orders',
-            label: t('nav.orderManagement'),
-            icon: OrderIcon,
-            hideInSimpleMode: true,
-            group: 'admin/main',
-            placementOrder: 120,
-            children: [
-              { path: '/admin/orders/dashboard', label: t('nav.paymentDashboard'), icon: ChartIcon },
-              { path: '/admin/orders', label: t('nav.orderManagement'), icon: OrderIcon },
-              { path: '/admin/orders/plans', label: t('nav.paymentPlans'), icon: CreditCardIcon },
-            ],
-          } as NavItem,
-        ]
-      : []),
     { path: '/admin/plugins', label: t('nav.plugins'), icon: PluginIcon, hideInSimpleMode: true, group: 'admin/system', placementOrder: 10 },
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon, group: 'admin/system', placementOrder: 20 },
   ]

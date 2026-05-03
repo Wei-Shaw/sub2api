@@ -49,6 +49,7 @@ var CapabilityRegistry = []CapabilityDecl{
 	{Canonical: CapabilityRedisRaw, LegacyAliases: []string{CapabilityRedisRawKeys}, Description: "Bypass per-plugin Redis namespace (PluginContext.Redis().Raw())."},
 	{Canonical: CapabilityDBCoreRead, Description: "Read host-shared core tables (whitelisted)."},
 	{Canonical: CapabilityDBCoreWrite, Description: "Write host-shared core tables (DANGEROUS; Phase 2 admin-approve)."},
+	{Canonical: CapabilityEventsPublishPayment, Description: "Publish payment.* HostEvents via EventsExtension.Publish."},
 }
 
 // IsKnownCapability reports whether name (canonical OR legacy alias) appears

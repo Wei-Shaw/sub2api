@@ -15,7 +15,6 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
-	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -423,7 +422,7 @@ func (h *AuthHandler) WeChatPaymentOAuthCallback(c *gin.Context) {
 		return
 	}
 	if paymentContext.PaymentType == "" {
-		paymentContext.PaymentType = payment.TypeWxpay
+		paymentContext.PaymentType = paymentTypeWxpay
 	}
 
 	scope, _ := readCookieDecoded(c, wechatPaymentOAuthScope)
@@ -450,7 +449,7 @@ func (h *AuthHandler) WeChatPaymentOAuthCallback(c *gin.Context) {
 		scope = strings.TrimSpace(tokenResp.Scope)
 	}
 
-	resumeToken, err := h.wechatPaymentResumeService().CreateWeChatPaymentResumeToken(service.WeChatPaymentResumeClaims{
+	resumeToken, err := h.wechatPaymentResumeService().CreateWeChatPaymentResumeToken(WeChatPaymentResumeClaims{
 		OpenID:      openid,
 		PaymentType: paymentContext.PaymentType,
 		Amount:      paymentContext.Amount,
@@ -470,13 +469,13 @@ func (h *AuthHandler) WeChatPaymentOAuthCallback(c *gin.Context) {
 	redirectWithFragment(c, frontendCallback, fragment)
 }
 
-func (h *AuthHandler) wechatPaymentResumeService() *service.PaymentResumeService {
+func (h *AuthHandler) wechatPaymentResumeService() *paymentResumeService {
 	var legacyKey []byte
-	key, err := payment.ProvideEncryptionKey(h.cfg)
+	key, err := derivePaymentEncryptionKey(h.cfg)
 	if err == nil {
-		legacyKey = []byte(key)
+		legacyKey = key
 	}
-	return service.NewLegacyAwarePaymentResumeService(legacyKey)
+	return newLegacyAwarePaymentResumeService(legacyKey)
 }
 
 type completeWeChatOAuthRequest struct {
@@ -1255,7 +1254,7 @@ func wechatClearCookie(c *gin.Context, name string, secure bool) {
 
 func normalizeWeChatPaymentType(raw string) string {
 	switch strings.TrimSpace(raw) {
-	case payment.TypeWxpay, payment.TypeWxpayDirect:
+	case paymentTypeWxpay, paymentTypeWxpayDirect:
 		return strings.TrimSpace(raw)
 	default:
 		return ""

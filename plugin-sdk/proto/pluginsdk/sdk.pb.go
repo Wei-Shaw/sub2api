@@ -65,7 +65,7 @@ func (x PricingOverrideEvent_Op) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use PricingOverrideEvent_Op.Descriptor instead.
 func (PricingOverrideEvent_Op) EnumDescriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{57, 0}
+	return file_sdk_proto_rawDescGZIP(), []int{59, 0}
 }
 
 type LogRecord struct {
@@ -2779,6 +2779,103 @@ func (x *SettingsChangeEvent) GetRequiresReload() bool {
 	return false
 }
 
+// PublishEventRequest carries a single event to broadcast. The wrapping
+// envelope mirrors HostEvent so the proto wire format is symmetric in both
+// directions; the host validates the inner payload oneof matches the
+// declared event_type before fan-out.
+type PublishEventRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Event         *HostEvent             `protobuf:"bytes,1,opt,name=event,proto3" json:"event,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PublishEventRequest) Reset() {
+	*x = PublishEventRequest{}
+	mi := &file_sdk_proto_msgTypes[43]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PublishEventRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PublishEventRequest) ProtoMessage() {}
+
+func (x *PublishEventRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[43]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PublishEventRequest.ProtoReflect.Descriptor instead.
+func (*PublishEventRequest) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{43}
+}
+
+func (x *PublishEventRequest) GetEvent() *HostEvent {
+	if x != nil {
+		return x.Event
+	}
+	return nil
+}
+
+// PublishEventResponse is the success payload. Delivery to individual
+// subscribers is best-effort and out-of-band (same backpressure semantics
+// as Subscribe).
+type PublishEventResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// delivered_to reports how many subscriber streams accepted the event
+	// synchronously. Observability only — never branch on this value.
+	DeliveredTo   int64 `protobuf:"varint,1,opt,name=delivered_to,json=deliveredTo,proto3" json:"delivered_to,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PublishEventResponse) Reset() {
+	*x = PublishEventResponse{}
+	mi := &file_sdk_proto_msgTypes[44]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PublishEventResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PublishEventResponse) ProtoMessage() {}
+
+func (x *PublishEventResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[44]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PublishEventResponse.ProtoReflect.Descriptor instead.
+func (*PublishEventResponse) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{44}
+}
+
+func (x *PublishEventResponse) GetDeliveredTo() int64 {
+	if x != nil {
+		return x.DeliveredTo
+	}
+	return 0
+}
+
 // ProbeSubscriptionResponse is the success payload of ProbeSubscription.
 // Currently carries a debug-only counter; the only authoritative signal is
 // the gRPC status code. Future fields can document subscriber-side hints
@@ -2799,7 +2896,7 @@ type ProbeSubscriptionResponse struct {
 
 func (x *ProbeSubscriptionResponse) Reset() {
 	*x = ProbeSubscriptionResponse{}
-	mi := &file_sdk_proto_msgTypes[43]
+	mi := &file_sdk_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2811,7 +2908,7 @@ func (x *ProbeSubscriptionResponse) String() string {
 func (*ProbeSubscriptionResponse) ProtoMessage() {}
 
 func (x *ProbeSubscriptionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[43]
+	mi := &file_sdk_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2824,7 +2921,7 @@ func (x *ProbeSubscriptionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProbeSubscriptionResponse.ProtoReflect.Descriptor instead.
 func (*ProbeSubscriptionResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{43}
+	return file_sdk_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *ProbeSubscriptionResponse) GetActiveSubscriptions() int64 {
@@ -2850,7 +2947,7 @@ type EventSubscribeRequest struct {
 
 func (x *EventSubscribeRequest) Reset() {
 	*x = EventSubscribeRequest{}
-	mi := &file_sdk_proto_msgTypes[44]
+	mi := &file_sdk_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2862,7 +2959,7 @@ func (x *EventSubscribeRequest) String() string {
 func (*EventSubscribeRequest) ProtoMessage() {}
 
 func (x *EventSubscribeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[44]
+	mi := &file_sdk_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2875,7 +2972,7 @@ func (x *EventSubscribeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventSubscribeRequest.ProtoReflect.Descriptor instead.
 func (*EventSubscribeRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{44}
+	return file_sdk_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *EventSubscribeRequest) GetEventTypes() []string {
@@ -2914,7 +3011,7 @@ type HostEvent struct {
 
 func (x *HostEvent) Reset() {
 	*x = HostEvent{}
-	mi := &file_sdk_proto_msgTypes[45]
+	mi := &file_sdk_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2926,7 +3023,7 @@ func (x *HostEvent) String() string {
 func (*HostEvent) ProtoMessage() {}
 
 func (x *HostEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[45]
+	mi := &file_sdk_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2939,7 +3036,7 @@ func (x *HostEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HostEvent.ProtoReflect.Descriptor instead.
 func (*HostEvent) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{45}
+	return file_sdk_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *HostEvent) GetEventType() string {
@@ -3072,7 +3169,7 @@ type PaymentOrderCreated struct {
 
 func (x *PaymentOrderCreated) Reset() {
 	*x = PaymentOrderCreated{}
-	mi := &file_sdk_proto_msgTypes[46]
+	mi := &file_sdk_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3084,7 +3181,7 @@ func (x *PaymentOrderCreated) String() string {
 func (*PaymentOrderCreated) ProtoMessage() {}
 
 func (x *PaymentOrderCreated) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[46]
+	mi := &file_sdk_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3097,7 +3194,7 @@ func (x *PaymentOrderCreated) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PaymentOrderCreated.ProtoReflect.Descriptor instead.
 func (*PaymentOrderCreated) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{46}
+	return file_sdk_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *PaymentOrderCreated) GetOrderId() int64 {
@@ -3170,7 +3267,7 @@ type PaymentOrderFulfilled struct {
 
 func (x *PaymentOrderFulfilled) Reset() {
 	*x = PaymentOrderFulfilled{}
-	mi := &file_sdk_proto_msgTypes[47]
+	mi := &file_sdk_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3182,7 +3279,7 @@ func (x *PaymentOrderFulfilled) String() string {
 func (*PaymentOrderFulfilled) ProtoMessage() {}
 
 func (x *PaymentOrderFulfilled) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[47]
+	mi := &file_sdk_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3195,7 +3292,7 @@ func (x *PaymentOrderFulfilled) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PaymentOrderFulfilled.ProtoReflect.Descriptor instead.
 func (*PaymentOrderFulfilled) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{47}
+	return file_sdk_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *PaymentOrderFulfilled) GetOrderId() int64 {
@@ -3258,7 +3355,7 @@ type GatewayModelInvoked struct {
 
 func (x *GatewayModelInvoked) Reset() {
 	*x = GatewayModelInvoked{}
-	mi := &file_sdk_proto_msgTypes[48]
+	mi := &file_sdk_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3270,7 +3367,7 @@ func (x *GatewayModelInvoked) String() string {
 func (*GatewayModelInvoked) ProtoMessage() {}
 
 func (x *GatewayModelInvoked) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[48]
+	mi := &file_sdk_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3283,7 +3380,7 @@ func (x *GatewayModelInvoked) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayModelInvoked.ProtoReflect.Descriptor instead.
 func (*GatewayModelInvoked) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{48}
+	return file_sdk_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *GatewayModelInvoked) GetRequestId() string {
@@ -3369,7 +3466,7 @@ type AuthUserRegistered struct {
 
 func (x *AuthUserRegistered) Reset() {
 	*x = AuthUserRegistered{}
-	mi := &file_sdk_proto_msgTypes[49]
+	mi := &file_sdk_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3381,7 +3478,7 @@ func (x *AuthUserRegistered) String() string {
 func (*AuthUserRegistered) ProtoMessage() {}
 
 func (x *AuthUserRegistered) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[49]
+	mi := &file_sdk_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3394,7 +3491,7 @@ func (x *AuthUserRegistered) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuthUserRegistered.ProtoReflect.Descriptor instead.
 func (*AuthUserRegistered) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{49}
+	return file_sdk_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *AuthUserRegistered) GetUserId() int64 {
@@ -3446,7 +3543,7 @@ type AccountRateLimitTriggered struct {
 
 func (x *AccountRateLimitTriggered) Reset() {
 	*x = AccountRateLimitTriggered{}
-	mi := &file_sdk_proto_msgTypes[50]
+	mi := &file_sdk_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3458,7 +3555,7 @@ func (x *AccountRateLimitTriggered) String() string {
 func (*AccountRateLimitTriggered) ProtoMessage() {}
 
 func (x *AccountRateLimitTriggered) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[50]
+	mi := &file_sdk_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3471,7 +3568,7 @@ func (x *AccountRateLimitTriggered) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AccountRateLimitTriggered.ProtoReflect.Descriptor instead.
 func (*AccountRateLimitTriggered) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{50}
+	return file_sdk_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *AccountRateLimitTriggered) GetAccountId() int64 {
@@ -3533,7 +3630,7 @@ type PricingOverrideKey struct {
 
 func (x *PricingOverrideKey) Reset() {
 	*x = PricingOverrideKey{}
-	mi := &file_sdk_proto_msgTypes[51]
+	mi := &file_sdk_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3545,7 +3642,7 @@ func (x *PricingOverrideKey) String() string {
 func (*PricingOverrideKey) ProtoMessage() {}
 
 func (x *PricingOverrideKey) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[51]
+	mi := &file_sdk_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3558,7 +3655,7 @@ func (x *PricingOverrideKey) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PricingOverrideKey.ProtoReflect.Descriptor instead.
 func (*PricingOverrideKey) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{51}
+	return file_sdk_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *PricingOverrideKey) GetGroupId() int64 {
@@ -3610,7 +3707,7 @@ type PricingOverride struct {
 
 func (x *PricingOverride) Reset() {
 	*x = PricingOverride{}
-	mi := &file_sdk_proto_msgTypes[52]
+	mi := &file_sdk_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3622,7 +3719,7 @@ func (x *PricingOverride) String() string {
 func (*PricingOverride) ProtoMessage() {}
 
 func (x *PricingOverride) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[52]
+	mi := &file_sdk_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3635,7 +3732,7 @@ func (x *PricingOverride) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PricingOverride.ProtoReflect.Descriptor instead.
 func (*PricingOverride) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{52}
+	return file_sdk_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *PricingOverride) GetKey() *PricingOverrideKey {
@@ -3722,7 +3819,7 @@ type PricingInterval struct {
 
 func (x *PricingInterval) Reset() {
 	*x = PricingInterval{}
-	mi := &file_sdk_proto_msgTypes[53]
+	mi := &file_sdk_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3734,7 +3831,7 @@ func (x *PricingInterval) String() string {
 func (*PricingInterval) ProtoMessage() {}
 
 func (x *PricingInterval) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[53]
+	mi := &file_sdk_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3747,7 +3844,7 @@ func (x *PricingInterval) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PricingInterval.ProtoReflect.Descriptor instead.
 func (*PricingInterval) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{53}
+	return file_sdk_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *PricingInterval) GetMinTokens() int64 {
@@ -3814,7 +3911,7 @@ type ListPricingOverridesRequest struct {
 
 func (x *ListPricingOverridesRequest) Reset() {
 	*x = ListPricingOverridesRequest{}
-	mi := &file_sdk_proto_msgTypes[54]
+	mi := &file_sdk_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3826,7 +3923,7 @@ func (x *ListPricingOverridesRequest) String() string {
 func (*ListPricingOverridesRequest) ProtoMessage() {}
 
 func (x *ListPricingOverridesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[54]
+	mi := &file_sdk_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3839,7 +3936,7 @@ func (x *ListPricingOverridesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPricingOverridesRequest.ProtoReflect.Descriptor instead.
 func (*ListPricingOverridesRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{54}
+	return file_sdk_proto_rawDescGZIP(), []int{56}
 }
 
 type ListPricingOverridesResponse struct {
@@ -3856,7 +3953,7 @@ type ListPricingOverridesResponse struct {
 
 func (x *ListPricingOverridesResponse) Reset() {
 	*x = ListPricingOverridesResponse{}
-	mi := &file_sdk_proto_msgTypes[55]
+	mi := &file_sdk_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3868,7 +3965,7 @@ func (x *ListPricingOverridesResponse) String() string {
 func (*ListPricingOverridesResponse) ProtoMessage() {}
 
 func (x *ListPricingOverridesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[55]
+	mi := &file_sdk_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3881,7 +3978,7 @@ func (x *ListPricingOverridesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPricingOverridesResponse.ProtoReflect.Descriptor instead.
 func (*ListPricingOverridesResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{55}
+	return file_sdk_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *ListPricingOverridesResponse) GetOverrides() []*PricingOverride {
@@ -3910,7 +4007,7 @@ type WatchPricingOverridesRequest struct {
 
 func (x *WatchPricingOverridesRequest) Reset() {
 	*x = WatchPricingOverridesRequest{}
-	mi := &file_sdk_proto_msgTypes[56]
+	mi := &file_sdk_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3922,7 +4019,7 @@ func (x *WatchPricingOverridesRequest) String() string {
 func (*WatchPricingOverridesRequest) ProtoMessage() {}
 
 func (x *WatchPricingOverridesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[56]
+	mi := &file_sdk_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3935,7 +4032,7 @@ func (x *WatchPricingOverridesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchPricingOverridesRequest.ProtoReflect.Descriptor instead.
 func (*WatchPricingOverridesRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{56}
+	return file_sdk_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *WatchPricingOverridesRequest) GetSinceVersion() string {
@@ -3959,7 +4056,7 @@ type PricingOverrideEvent struct {
 
 func (x *PricingOverrideEvent) Reset() {
 	*x = PricingOverrideEvent{}
-	mi := &file_sdk_proto_msgTypes[57]
+	mi := &file_sdk_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3971,7 +4068,7 @@ func (x *PricingOverrideEvent) String() string {
 func (*PricingOverrideEvent) ProtoMessage() {}
 
 func (x *PricingOverrideEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[57]
+	mi := &file_sdk_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3984,7 +4081,7 @@ func (x *PricingOverrideEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PricingOverrideEvent.ProtoReflect.Descriptor instead.
 func (*PricingOverrideEvent) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{57}
+	return file_sdk_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *PricingOverrideEvent) GetOp() PricingOverrideEvent_Op {
@@ -4034,7 +4131,7 @@ type AdjustCostRequest struct {
 
 func (x *AdjustCostRequest) Reset() {
 	*x = AdjustCostRequest{}
-	mi := &file_sdk_proto_msgTypes[58]
+	mi := &file_sdk_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4046,7 +4143,7 @@ func (x *AdjustCostRequest) String() string {
 func (*AdjustCostRequest) ProtoMessage() {}
 
 func (x *AdjustCostRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[58]
+	mi := &file_sdk_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4059,7 +4156,7 @@ func (x *AdjustCostRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdjustCostRequest.ProtoReflect.Descriptor instead.
 func (*AdjustCostRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{58}
+	return file_sdk_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *AdjustCostRequest) GetModel() string {
@@ -4134,7 +4231,7 @@ type AdjustCostResponse struct {
 
 func (x *AdjustCostResponse) Reset() {
 	*x = AdjustCostResponse{}
-	mi := &file_sdk_proto_msgTypes[59]
+	mi := &file_sdk_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4146,7 +4243,7 @@ func (x *AdjustCostResponse) String() string {
 func (*AdjustCostResponse) ProtoMessage() {}
 
 func (x *AdjustCostResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[59]
+	mi := &file_sdk_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4159,7 +4256,7 @@ func (x *AdjustCostResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AdjustCostResponse.ProtoReflect.Descriptor instead.
 func (*AdjustCostResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{59}
+	return file_sdk_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *AdjustCostResponse) GetModified() bool {
@@ -4208,7 +4305,7 @@ type PricingCostBreakdown struct {
 
 func (x *PricingCostBreakdown) Reset() {
 	*x = PricingCostBreakdown{}
-	mi := &file_sdk_proto_msgTypes[60]
+	mi := &file_sdk_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4220,7 +4317,7 @@ func (x *PricingCostBreakdown) String() string {
 func (*PricingCostBreakdown) ProtoMessage() {}
 
 func (x *PricingCostBreakdown) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[60]
+	mi := &file_sdk_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4233,7 +4330,7 @@ func (x *PricingCostBreakdown) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PricingCostBreakdown.ProtoReflect.Descriptor instead.
 func (*PricingCostBreakdown) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{60}
+	return file_sdk_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *PricingCostBreakdown) GetCurrency() string {
@@ -4308,7 +4405,7 @@ type PricingUsageTokens struct {
 
 func (x *PricingUsageTokens) Reset() {
 	*x = PricingUsageTokens{}
-	mi := &file_sdk_proto_msgTypes[61]
+	mi := &file_sdk_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4320,7 +4417,7 @@ func (x *PricingUsageTokens) String() string {
 func (*PricingUsageTokens) ProtoMessage() {}
 
 func (x *PricingUsageTokens) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[61]
+	mi := &file_sdk_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4333,7 +4430,7 @@ func (x *PricingUsageTokens) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PricingUsageTokens.ProtoReflect.Descriptor instead.
 func (*PricingUsageTokens) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{61}
+	return file_sdk_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *PricingUsageTokens) GetInputTokens() int64 {
@@ -4405,7 +4502,7 @@ type ResolveAccountStatsCostRequest struct {
 
 func (x *ResolveAccountStatsCostRequest) Reset() {
 	*x = ResolveAccountStatsCostRequest{}
-	mi := &file_sdk_proto_msgTypes[62]
+	mi := &file_sdk_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4417,7 +4514,7 @@ func (x *ResolveAccountStatsCostRequest) String() string {
 func (*ResolveAccountStatsCostRequest) ProtoMessage() {}
 
 func (x *ResolveAccountStatsCostRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[62]
+	mi := &file_sdk_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4430,7 +4527,7 @@ func (x *ResolveAccountStatsCostRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveAccountStatsCostRequest.ProtoReflect.Descriptor instead.
 func (*ResolveAccountStatsCostRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{62}
+	return file_sdk_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *ResolveAccountStatsCostRequest) GetChannelId() int64 {
@@ -4507,7 +4604,7 @@ type ResolveAccountStatsCostResponse struct {
 
 func (x *ResolveAccountStatsCostResponse) Reset() {
 	*x = ResolveAccountStatsCostResponse{}
-	mi := &file_sdk_proto_msgTypes[63]
+	mi := &file_sdk_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4519,7 +4616,7 @@ func (x *ResolveAccountStatsCostResponse) String() string {
 func (*ResolveAccountStatsCostResponse) ProtoMessage() {}
 
 func (x *ResolveAccountStatsCostResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[63]
+	mi := &file_sdk_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4532,7 +4629,7 @@ func (x *ResolveAccountStatsCostResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveAccountStatsCostResponse.ProtoReflect.Descriptor instead.
 func (*ResolveAccountStatsCostResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{63}
+	return file_sdk_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *ResolveAccountStatsCostResponse) GetHasCost() bool {
@@ -4568,7 +4665,7 @@ type RunMaintenanceRequest struct {
 
 func (x *RunMaintenanceRequest) Reset() {
 	*x = RunMaintenanceRequest{}
-	mi := &file_sdk_proto_msgTypes[64]
+	mi := &file_sdk_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4580,7 +4677,7 @@ func (x *RunMaintenanceRequest) String() string {
 func (*RunMaintenanceRequest) ProtoMessage() {}
 
 func (x *RunMaintenanceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[64]
+	mi := &file_sdk_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4593,7 +4690,7 @@ func (x *RunMaintenanceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunMaintenanceRequest.ProtoReflect.Descriptor instead.
 func (*RunMaintenanceRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{64}
+	return file_sdk_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *RunMaintenanceRequest) GetNowUnix() int64 {
@@ -4614,7 +4711,7 @@ type RunMaintenanceResponse struct {
 
 func (x *RunMaintenanceResponse) Reset() {
 	*x = RunMaintenanceResponse{}
-	mi := &file_sdk_proto_msgTypes[65]
+	mi := &file_sdk_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4626,7 +4723,7 @@ func (x *RunMaintenanceResponse) String() string {
 func (*RunMaintenanceResponse) ProtoMessage() {}
 
 func (x *RunMaintenanceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[65]
+	mi := &file_sdk_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4639,7 +4736,7 @@ func (x *RunMaintenanceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RunMaintenanceResponse.ProtoReflect.Descriptor instead.
 func (*RunMaintenanceResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{65}
+	return file_sdk_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *RunMaintenanceResponse) GetResults() []*MaintenanceTaskResult {
@@ -4665,7 +4762,7 @@ type MaintenanceTaskResult struct {
 
 func (x *MaintenanceTaskResult) Reset() {
 	*x = MaintenanceTaskResult{}
-	mi := &file_sdk_proto_msgTypes[66]
+	mi := &file_sdk_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4677,7 +4774,7 @@ func (x *MaintenanceTaskResult) String() string {
 func (*MaintenanceTaskResult) ProtoMessage() {}
 
 func (x *MaintenanceTaskResult) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[66]
+	mi := &file_sdk_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4690,7 +4787,7 @@ func (x *MaintenanceTaskResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MaintenanceTaskResult.ProtoReflect.Descriptor instead.
 func (*MaintenanceTaskResult) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{66}
+	return file_sdk_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *MaintenanceTaskResult) GetTask() string {
@@ -4714,6 +4811,831 @@ func (x *MaintenanceTaskResult) GetError() string {
 	return ""
 }
 
+// CreditBalanceRequest credits a user's balance.
+type CreditBalanceRequest struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	UserId int64                  `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// amount is decimal-string encoded (T24 convention). Must be > 0.
+	Amount string `protobuf:"bytes,2,opt,name=amount,proto3" json:"amount,omitempty"`
+	// reason is recorded on the audit log; e.g. "payment_order:123".
+	Reason string `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	// idempotency_key uniquely identifies the source operation.
+	IdempotencyKey string `protobuf:"bytes,4,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	// source: "payment" | "redeem_code" | "admin".
+	Source        string `protobuf:"bytes,5,opt,name=source,proto3" json:"source,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreditBalanceRequest) Reset() {
+	*x = CreditBalanceRequest{}
+	mi := &file_sdk_proto_msgTypes[69]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreditBalanceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreditBalanceRequest) ProtoMessage() {}
+
+func (x *CreditBalanceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[69]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreditBalanceRequest.ProtoReflect.Descriptor instead.
+func (*CreditBalanceRequest) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{69}
+}
+
+func (x *CreditBalanceRequest) GetUserId() int64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *CreditBalanceRequest) GetAmount() string {
+	if x != nil {
+		return x.Amount
+	}
+	return ""
+}
+
+func (x *CreditBalanceRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *CreditBalanceRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *CreditBalanceRequest) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+type CreditBalanceResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// new_balance is the user's balance after the credit (decimal string).
+	NewBalance string `protobuf:"bytes,1,opt,name=new_balance,json=newBalance,proto3" json:"new_balance,omitempty"`
+	// already_applied=true means the idempotency_key matched a prior
+	// credit; new_balance reflects the state at that prior credit.
+	AlreadyApplied bool `protobuf:"varint,2,opt,name=already_applied,json=alreadyApplied,proto3" json:"already_applied,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *CreditBalanceResponse) Reset() {
+	*x = CreditBalanceResponse{}
+	mi := &file_sdk_proto_msgTypes[70]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreditBalanceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreditBalanceResponse) ProtoMessage() {}
+
+func (x *CreditBalanceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[70]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreditBalanceResponse.ProtoReflect.Descriptor instead.
+func (*CreditBalanceResponse) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{70}
+}
+
+func (x *CreditBalanceResponse) GetNewBalance() string {
+	if x != nil {
+		return x.NewBalance
+	}
+	return ""
+}
+
+func (x *CreditBalanceResponse) GetAlreadyApplied() bool {
+	if x != nil {
+		return x.AlreadyApplied
+	}
+	return false
+}
+
+// DeductBalanceRequest debits a user's balance (refund flow).
+type DeductBalanceRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	UserId         int64                  `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Amount         string                 `protobuf:"bytes,2,opt,name=amount,proto3" json:"amount,omitempty"`
+	Reason         string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	IdempotencyKey string                 `protobuf:"bytes,4,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	Source         string                 `protobuf:"bytes,5,opt,name=source,proto3" json:"source,omitempty"`
+	// allow_negative permits balance < 0 (refund flow). Otherwise the host
+	// returns FailedPrecondition when amount > current balance.
+	AllowNegative bool `protobuf:"varint,6,opt,name=allow_negative,json=allowNegative,proto3" json:"allow_negative,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeductBalanceRequest) Reset() {
+	*x = DeductBalanceRequest{}
+	mi := &file_sdk_proto_msgTypes[71]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeductBalanceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeductBalanceRequest) ProtoMessage() {}
+
+func (x *DeductBalanceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[71]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeductBalanceRequest.ProtoReflect.Descriptor instead.
+func (*DeductBalanceRequest) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{71}
+}
+
+func (x *DeductBalanceRequest) GetUserId() int64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *DeductBalanceRequest) GetAmount() string {
+	if x != nil {
+		return x.Amount
+	}
+	return ""
+}
+
+func (x *DeductBalanceRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *DeductBalanceRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+func (x *DeductBalanceRequest) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *DeductBalanceRequest) GetAllowNegative() bool {
+	if x != nil {
+		return x.AllowNegative
+	}
+	return false
+}
+
+type DeductBalanceResponse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	NewBalance     string                 `protobuf:"bytes,1,opt,name=new_balance,json=newBalance,proto3" json:"new_balance,omitempty"`
+	AlreadyApplied bool                   `protobuf:"varint,2,opt,name=already_applied,json=alreadyApplied,proto3" json:"already_applied,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *DeductBalanceResponse) Reset() {
+	*x = DeductBalanceResponse{}
+	mi := &file_sdk_proto_msgTypes[72]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeductBalanceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeductBalanceResponse) ProtoMessage() {}
+
+func (x *DeductBalanceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[72]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeductBalanceResponse.ProtoReflect.Descriptor instead.
+func (*DeductBalanceResponse) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{72}
+}
+
+func (x *DeductBalanceResponse) GetNewBalance() string {
+	if x != nil {
+		return x.NewBalance
+	}
+	return ""
+}
+
+func (x *DeductBalanceResponse) GetAlreadyApplied() bool {
+	if x != nil {
+		return x.AlreadyApplied
+	}
+	return false
+}
+
+// AssignSubscriptionRequest assigns or extends a subscription.
+type AssignSubscriptionRequest struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	UserId int64                  `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// plan_id is the host's subscription_plans.id.
+	PlanId int64 `protobuf:"varint,2,opt,name=plan_id,json=planId,proto3" json:"plan_id,omitempty"`
+	// group_id is the host's groups.id (multi-tenant aggregator).
+	GroupId int64 `protobuf:"varint,3,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
+	// days to extend; must be > 0.
+	Days int32 `protobuf:"varint,4,opt,name=days,proto3" json:"days,omitempty"`
+	// source is "payment" | "admin" | "redeem_code".
+	Source string `protobuf:"bytes,5,opt,name=source,proto3" json:"source,omitempty"`
+	// idempotency_key, typically the source order_id encoded as string.
+	IdempotencyKey string `protobuf:"bytes,6,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *AssignSubscriptionRequest) Reset() {
+	*x = AssignSubscriptionRequest{}
+	mi := &file_sdk_proto_msgTypes[73]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AssignSubscriptionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AssignSubscriptionRequest) ProtoMessage() {}
+
+func (x *AssignSubscriptionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[73]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AssignSubscriptionRequest.ProtoReflect.Descriptor instead.
+func (*AssignSubscriptionRequest) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{73}
+}
+
+func (x *AssignSubscriptionRequest) GetUserId() int64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *AssignSubscriptionRequest) GetPlanId() int64 {
+	if x != nil {
+		return x.PlanId
+	}
+	return 0
+}
+
+func (x *AssignSubscriptionRequest) GetGroupId() int64 {
+	if x != nil {
+		return x.GroupId
+	}
+	return 0
+}
+
+func (x *AssignSubscriptionRequest) GetDays() int32 {
+	if x != nil {
+		return x.Days
+	}
+	return 0
+}
+
+func (x *AssignSubscriptionRequest) GetSource() string {
+	if x != nil {
+		return x.Source
+	}
+	return ""
+}
+
+func (x *AssignSubscriptionRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+type AssignSubscriptionResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// subscription_id is the host's user_subscriptions.id.
+	SubscriptionId int64 `protobuf:"varint,1,opt,name=subscription_id,json=subscriptionId,proto3" json:"subscription_id,omitempty"`
+	// expires_at_unix is the new subscription expiry (seconds since epoch).
+	ExpiresAtUnix  int64 `protobuf:"varint,2,opt,name=expires_at_unix,json=expiresAtUnix,proto3" json:"expires_at_unix,omitempty"`
+	AlreadyApplied bool  `protobuf:"varint,3,opt,name=already_applied,json=alreadyApplied,proto3" json:"already_applied,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *AssignSubscriptionResponse) Reset() {
+	*x = AssignSubscriptionResponse{}
+	mi := &file_sdk_proto_msgTypes[74]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AssignSubscriptionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AssignSubscriptionResponse) ProtoMessage() {}
+
+func (x *AssignSubscriptionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[74]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AssignSubscriptionResponse.ProtoReflect.Descriptor instead.
+func (*AssignSubscriptionResponse) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{74}
+}
+
+func (x *AssignSubscriptionResponse) GetSubscriptionId() int64 {
+	if x != nil {
+		return x.SubscriptionId
+	}
+	return 0
+}
+
+func (x *AssignSubscriptionResponse) GetExpiresAtUnix() int64 {
+	if x != nil {
+		return x.ExpiresAtUnix
+	}
+	return 0
+}
+
+func (x *AssignSubscriptionResponse) GetAlreadyApplied() bool {
+	if x != nil {
+		return x.AlreadyApplied
+	}
+	return false
+}
+
+// RevokeSubscriptionDaysRequest removes days from an active subscription.
+type RevokeSubscriptionDaysRequest struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	UserId         int64                  `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	GroupId        int64                  `protobuf:"varint,2,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
+	Days           int32                  `protobuf:"varint,3,opt,name=days,proto3" json:"days,omitempty"`
+	Reason         string                 `protobuf:"bytes,4,opt,name=reason,proto3" json:"reason,omitempty"`
+	IdempotencyKey string                 `protobuf:"bytes,5,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *RevokeSubscriptionDaysRequest) Reset() {
+	*x = RevokeSubscriptionDaysRequest{}
+	mi := &file_sdk_proto_msgTypes[75]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeSubscriptionDaysRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeSubscriptionDaysRequest) ProtoMessage() {}
+
+func (x *RevokeSubscriptionDaysRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[75]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeSubscriptionDaysRequest.ProtoReflect.Descriptor instead.
+func (*RevokeSubscriptionDaysRequest) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{75}
+}
+
+func (x *RevokeSubscriptionDaysRequest) GetUserId() int64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *RevokeSubscriptionDaysRequest) GetGroupId() int64 {
+	if x != nil {
+		return x.GroupId
+	}
+	return 0
+}
+
+func (x *RevokeSubscriptionDaysRequest) GetDays() int32 {
+	if x != nil {
+		return x.Days
+	}
+	return 0
+}
+
+func (x *RevokeSubscriptionDaysRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *RevokeSubscriptionDaysRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+type RevokeSubscriptionDaysResponse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	ExpiresAtUnix  int64                  `protobuf:"varint,1,opt,name=expires_at_unix,json=expiresAtUnix,proto3" json:"expires_at_unix,omitempty"`
+	AlreadyApplied bool                   `protobuf:"varint,2,opt,name=already_applied,json=alreadyApplied,proto3" json:"already_applied,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *RevokeSubscriptionDaysResponse) Reset() {
+	*x = RevokeSubscriptionDaysResponse{}
+	mi := &file_sdk_proto_msgTypes[76]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RevokeSubscriptionDaysResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RevokeSubscriptionDaysResponse) ProtoMessage() {}
+
+func (x *RevokeSubscriptionDaysResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[76]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RevokeSubscriptionDaysResponse.ProtoReflect.Descriptor instead.
+func (*RevokeSubscriptionDaysResponse) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{76}
+}
+
+func (x *RevokeSubscriptionDaysResponse) GetExpiresAtUnix() int64 {
+	if x != nil {
+		return x.ExpiresAtUnix
+	}
+	return 0
+}
+
+func (x *RevokeSubscriptionDaysResponse) GetAlreadyApplied() bool {
+	if x != nil {
+		return x.AlreadyApplied
+	}
+	return false
+}
+
+// AccrueRebateRequest triggers affiliate rebate accrual for a paid order.
+type AccrueRebateRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// invitee_user_id is the user whose order triggered the rebate.
+	InviteeUserId int64 `protobuf:"varint,1,opt,name=invitee_user_id,json=inviteeUserId,proto3" json:"invitee_user_id,omitempty"`
+	// order_amount is the original order amount (decimal string).
+	OrderAmount string `protobuf:"bytes,2,opt,name=order_amount,json=orderAmount,proto3" json:"order_amount,omitempty"`
+	// idempotency_key, typically order_id encoded as string.
+	IdempotencyKey string `protobuf:"bytes,3,opt,name=idempotency_key,json=idempotencyKey,proto3" json:"idempotency_key,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *AccrueRebateRequest) Reset() {
+	*x = AccrueRebateRequest{}
+	mi := &file_sdk_proto_msgTypes[77]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccrueRebateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccrueRebateRequest) ProtoMessage() {}
+
+func (x *AccrueRebateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[77]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccrueRebateRequest.ProtoReflect.Descriptor instead.
+func (*AccrueRebateRequest) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{77}
+}
+
+func (x *AccrueRebateRequest) GetInviteeUserId() int64 {
+	if x != nil {
+		return x.InviteeUserId
+	}
+	return 0
+}
+
+func (x *AccrueRebateRequest) GetOrderAmount() string {
+	if x != nil {
+		return x.OrderAmount
+	}
+	return ""
+}
+
+func (x *AccrueRebateRequest) GetIdempotencyKey() string {
+	if x != nil {
+		return x.IdempotencyKey
+	}
+	return ""
+}
+
+type AccrueRebateResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// rebate_amount is the amount actually credited to the inviter; "" or
+	// "0" if no inviter / rebate disabled / already applied.
+	RebateAmount string `protobuf:"bytes,1,opt,name=rebate_amount,json=rebateAmount,proto3" json:"rebate_amount,omitempty"`
+	// inviter_user_id is 0 when no inviter exists.
+	InviterUserId  int64 `protobuf:"varint,2,opt,name=inviter_user_id,json=inviterUserId,proto3" json:"inviter_user_id,omitempty"`
+	AlreadyApplied bool  `protobuf:"varint,3,opt,name=already_applied,json=alreadyApplied,proto3" json:"already_applied,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *AccrueRebateResponse) Reset() {
+	*x = AccrueRebateResponse{}
+	mi := &file_sdk_proto_msgTypes[78]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AccrueRebateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AccrueRebateResponse) ProtoMessage() {}
+
+func (x *AccrueRebateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[78]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AccrueRebateResponse.ProtoReflect.Descriptor instead.
+func (*AccrueRebateResponse) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{78}
+}
+
+func (x *AccrueRebateResponse) GetRebateAmount() string {
+	if x != nil {
+		return x.RebateAmount
+	}
+	return ""
+}
+
+func (x *AccrueRebateResponse) GetInviterUserId() int64 {
+	if x != nil {
+		return x.InviterUserId
+	}
+	return 0
+}
+
+func (x *AccrueRebateResponse) GetAlreadyApplied() bool {
+	if x != nil {
+		return x.AlreadyApplied
+	}
+	return false
+}
+
+// GetUserByIDRequest queries minimal user info.
+type GetUserByIDRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        int64                  `protobuf:"varint,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetUserByIDRequest) Reset() {
+	*x = GetUserByIDRequest{}
+	mi := &file_sdk_proto_msgTypes[79]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetUserByIDRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetUserByIDRequest) ProtoMessage() {}
+
+func (x *GetUserByIDRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[79]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetUserByIDRequest.ProtoReflect.Descriptor instead.
+func (*GetUserByIDRequest) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{79}
+}
+
+func (x *GetUserByIDRequest) GetUserId() int64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+type GetUserByIDResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// found=false signals the user does not exist (e.g. deleted account);
+	// every other field is empty in that case.
+	Found    bool   `protobuf:"varint,1,opt,name=found,proto3" json:"found,omitempty"`
+	UserId   int64  `protobuf:"varint,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Email    string `protobuf:"bytes,3,opt,name=email,proto3" json:"email,omitempty"`
+	Username string `protobuf:"bytes,4,opt,name=username,proto3" json:"username,omitempty"`
+	// balance is decimal-string encoded (T24 convention).
+	Balance string `protobuf:"bytes,5,opt,name=balance,proto3" json:"balance,omitempty"`
+	// inviter_id is 0 when no inviter recorded.
+	InviterId int64 `protobuf:"varint,6,opt,name=inviter_id,json=inviterId,proto3" json:"inviter_id,omitempty"`
+	// role is "user" | "admin" | ...
+	Role          string `protobuf:"bytes,7,opt,name=role,proto3" json:"role,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetUserByIDResponse) Reset() {
+	*x = GetUserByIDResponse{}
+	mi := &file_sdk_proto_msgTypes[80]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetUserByIDResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetUserByIDResponse) ProtoMessage() {}
+
+func (x *GetUserByIDResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[80]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetUserByIDResponse.ProtoReflect.Descriptor instead.
+func (*GetUserByIDResponse) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{80}
+}
+
+func (x *GetUserByIDResponse) GetFound() bool {
+	if x != nil {
+		return x.Found
+	}
+	return false
+}
+
+func (x *GetUserByIDResponse) GetUserId() int64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *GetUserByIDResponse) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+func (x *GetUserByIDResponse) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
+func (x *GetUserByIDResponse) GetBalance() string {
+	if x != nil {
+		return x.Balance
+	}
+	return ""
+}
+
+func (x *GetUserByIDResponse) GetInviterId() int64 {
+	if x != nil {
+		return x.InviterId
+	}
+	return 0
+}
+
+func (x *GetUserByIDResponse) GetRole() string {
+	if x != nil {
+		return x.Role
+	}
+	return ""
+}
+
 type ResolveModelPricingRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// model is the model identifier to resolve. Case-insensitive on the
@@ -4725,7 +5647,7 @@ type ResolveModelPricingRequest struct {
 
 func (x *ResolveModelPricingRequest) Reset() {
 	*x = ResolveModelPricingRequest{}
-	mi := &file_sdk_proto_msgTypes[67]
+	mi := &file_sdk_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4737,7 +5659,7 @@ func (x *ResolveModelPricingRequest) String() string {
 func (*ResolveModelPricingRequest) ProtoMessage() {}
 
 func (x *ResolveModelPricingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[67]
+	mi := &file_sdk_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4750,7 +5672,7 @@ func (x *ResolveModelPricingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveModelPricingRequest.ProtoReflect.Descriptor instead.
 func (*ResolveModelPricingRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{67}
+	return file_sdk_proto_rawDescGZIP(), []int{81}
 }
 
 func (x *ResolveModelPricingRequest) GetModel() string {
@@ -4791,7 +5713,7 @@ type ResolveModelPricingResponse struct {
 
 func (x *ResolveModelPricingResponse) Reset() {
 	*x = ResolveModelPricingResponse{}
-	mi := &file_sdk_proto_msgTypes[68]
+	mi := &file_sdk_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4803,7 +5725,7 @@ func (x *ResolveModelPricingResponse) String() string {
 func (*ResolveModelPricingResponse) ProtoMessage() {}
 
 func (x *ResolveModelPricingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[68]
+	mi := &file_sdk_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4816,7 +5738,7 @@ func (x *ResolveModelPricingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveModelPricingResponse.ProtoReflect.Descriptor instead.
 func (*ResolveModelPricingResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{68}
+	return file_sdk_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *ResolveModelPricingResponse) GetHasPricing() bool {
@@ -5051,7 +5973,11 @@ const file_sdk_proto_rawDesc = "" +
 	"\n" +
 	"value_json\x18\x02 \x01(\fR\tvalueJson\x12\x1a\n" +
 	"\brevision\x18\x03 \x01(\x03R\brevision\x12'\n" +
-	"\x0frequires_reload\x18\x04 \x01(\bR\x0erequiresReload\"N\n" +
+	"\x0frequires_reload\x18\x04 \x01(\bR\x0erequiresReload\"A\n" +
+	"\x13PublishEventRequest\x12*\n" +
+	"\x05event\x18\x01 \x01(\v2\x14.pluginsdk.HostEventR\x05event\"9\n" +
+	"\x14PublishEventResponse\x12!\n" +
+	"\fdelivered_to\x18\x01 \x01(\x03R\vdeliveredTo\"N\n" +
 	"\x19ProbeSubscriptionResponse\x121\n" +
 	"\x14active_subscriptions\x18\x01 \x01(\x03R\x13activeSubscriptions\"k\n" +
 	"\x15EventSubscribeRequest\x12\x1f\n" +
@@ -5220,7 +6146,67 @@ const file_sdk_proto_rawDesc = "" +
 	"\x15MaintenanceTaskResult\x12\x12\n" +
 	"\x04task\x18\x01 \x01(\tR\x04task\x12#\n" +
 	"\rdeleted_count\x18\x02 \x01(\x03R\fdeletedCount\x12\x14\n" +
-	"\x05error\x18\x03 \x01(\tR\x05error\"2\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"\xa0\x01\n" +
+	"\x14CreditBalanceRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\x03R\x06userId\x12\x16\n" +
+	"\x06amount\x18\x02 \x01(\tR\x06amount\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\x12'\n" +
+	"\x0fidempotency_key\x18\x04 \x01(\tR\x0eidempotencyKey\x12\x16\n" +
+	"\x06source\x18\x05 \x01(\tR\x06source\"a\n" +
+	"\x15CreditBalanceResponse\x12\x1f\n" +
+	"\vnew_balance\x18\x01 \x01(\tR\n" +
+	"newBalance\x12'\n" +
+	"\x0falready_applied\x18\x02 \x01(\bR\x0ealreadyApplied\"\xc7\x01\n" +
+	"\x14DeductBalanceRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\x03R\x06userId\x12\x16\n" +
+	"\x06amount\x18\x02 \x01(\tR\x06amount\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\x12'\n" +
+	"\x0fidempotency_key\x18\x04 \x01(\tR\x0eidempotencyKey\x12\x16\n" +
+	"\x06source\x18\x05 \x01(\tR\x06source\x12%\n" +
+	"\x0eallow_negative\x18\x06 \x01(\bR\rallowNegative\"a\n" +
+	"\x15DeductBalanceResponse\x12\x1f\n" +
+	"\vnew_balance\x18\x01 \x01(\tR\n" +
+	"newBalance\x12'\n" +
+	"\x0falready_applied\x18\x02 \x01(\bR\x0ealreadyApplied\"\xbd\x01\n" +
+	"\x19AssignSubscriptionRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\x03R\x06userId\x12\x17\n" +
+	"\aplan_id\x18\x02 \x01(\x03R\x06planId\x12\x19\n" +
+	"\bgroup_id\x18\x03 \x01(\x03R\agroupId\x12\x12\n" +
+	"\x04days\x18\x04 \x01(\x05R\x04days\x12\x16\n" +
+	"\x06source\x18\x05 \x01(\tR\x06source\x12'\n" +
+	"\x0fidempotency_key\x18\x06 \x01(\tR\x0eidempotencyKey\"\x96\x01\n" +
+	"\x1aAssignSubscriptionResponse\x12'\n" +
+	"\x0fsubscription_id\x18\x01 \x01(\x03R\x0esubscriptionId\x12&\n" +
+	"\x0fexpires_at_unix\x18\x02 \x01(\x03R\rexpiresAtUnix\x12'\n" +
+	"\x0falready_applied\x18\x03 \x01(\bR\x0ealreadyApplied\"\xa8\x01\n" +
+	"\x1dRevokeSubscriptionDaysRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\x03R\x06userId\x12\x19\n" +
+	"\bgroup_id\x18\x02 \x01(\x03R\agroupId\x12\x12\n" +
+	"\x04days\x18\x03 \x01(\x05R\x04days\x12\x16\n" +
+	"\x06reason\x18\x04 \x01(\tR\x06reason\x12'\n" +
+	"\x0fidempotency_key\x18\x05 \x01(\tR\x0eidempotencyKey\"q\n" +
+	"\x1eRevokeSubscriptionDaysResponse\x12&\n" +
+	"\x0fexpires_at_unix\x18\x01 \x01(\x03R\rexpiresAtUnix\x12'\n" +
+	"\x0falready_applied\x18\x02 \x01(\bR\x0ealreadyApplied\"\x89\x01\n" +
+	"\x13AccrueRebateRequest\x12&\n" +
+	"\x0finvitee_user_id\x18\x01 \x01(\x03R\rinviteeUserId\x12!\n" +
+	"\forder_amount\x18\x02 \x01(\tR\vorderAmount\x12'\n" +
+	"\x0fidempotency_key\x18\x03 \x01(\tR\x0eidempotencyKey\"\x8c\x01\n" +
+	"\x14AccrueRebateResponse\x12#\n" +
+	"\rrebate_amount\x18\x01 \x01(\tR\frebateAmount\x12&\n" +
+	"\x0finviter_user_id\x18\x02 \x01(\x03R\rinviterUserId\x12'\n" +
+	"\x0falready_applied\x18\x03 \x01(\bR\x0ealreadyApplied\"-\n" +
+	"\x12GetUserByIDRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\x03R\x06userId\"\xc3\x01\n" +
+	"\x13GetUserByIDResponse\x12\x14\n" +
+	"\x05found\x18\x01 \x01(\bR\x05found\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\x03R\x06userId\x12\x14\n" +
+	"\x05email\x18\x03 \x01(\tR\x05email\x12\x1a\n" +
+	"\busername\x18\x04 \x01(\tR\busername\x12\x18\n" +
+	"\abalance\x18\x05 \x01(\tR\abalance\x12\x1d\n" +
+	"\n" +
+	"inviter_id\x18\x06 \x01(\x03R\tinviterId\x12\x12\n" +
+	"\x04role\x18\a \x01(\tR\x04role\"2\n" +
 	"\x1aResolveModelPricingRequest\x12\x14\n" +
 	"\x05model\x18\x01 \x01(\tR\x05model\"\xe0\x02\n" +
 	"\x1bResolveModelPricingResponse\x12\x1f\n" +
@@ -5265,10 +6251,11 @@ const file_sdk_proto_rawDesc = "" +
 	"\tSubscribe\x12\x15.pluginsdk.JobMessage\x1a\x15.pluginsdk.JobTrigger(\x010\x012\xa5\x01\n" +
 	"\x11SettingsExtension\x12D\n" +
 	"\x03Get\x12\x1d.pluginsdk.SettingsGetRequest\x1a\x1e.pluginsdk.SettingsGetResponse\x12J\n" +
-	"\x05Watch\x12\x1f.pluginsdk.SettingsWatchRequest\x1a\x1e.pluginsdk.SettingsChangeEvent0\x012\xb5\x01\n" +
+	"\x05Watch\x12\x1f.pluginsdk.SettingsWatchRequest\x1a\x1e.pluginsdk.SettingsChangeEvent0\x012\x81\x02\n" +
 	"\x0fEventsExtension\x12E\n" +
 	"\tSubscribe\x12 .pluginsdk.EventSubscribeRequest\x1a\x14.pluginsdk.HostEvent0\x01\x12[\n" +
-	"\x11ProbeSubscription\x12 .pluginsdk.EventSubscribeRequest\x1a$.pluginsdk.ProbeSubscriptionResponse2\x9d\x03\n" +
+	"\x11ProbeSubscription\x12 .pluginsdk.EventSubscribeRequest\x1a$.pluginsdk.ProbeSubscriptionResponse\x12J\n" +
+	"\aPublish\x12\x1e.pluginsdk.PublishEventRequest\x1a\x1f.pluginsdk.PublishEventResponse2\x9d\x03\n" +
 	"\x10PricingExtension\x12g\n" +
 	"\x14ListPricingOverrides\x12&.pluginsdk.ListPricingOverridesRequest\x1a'.pluginsdk.ListPricingOverridesResponse\x12c\n" +
 	"\x15WatchPricingOverrides\x12'.pluginsdk.WatchPricingOverridesRequest\x1a\x1f.pluginsdk.PricingOverrideEvent0\x01\x12I\n" +
@@ -5276,9 +6263,15 @@ const file_sdk_proto_rawDesc = "" +
 	"AdjustCost\x12\x1c.pluginsdk.AdjustCostRequest\x1a\x1d.pluginsdk.AdjustCostResponse\x12p\n" +
 	"\x17ResolveAccountStatsCost\x12).pluginsdk.ResolveAccountStatsCostRequest\x1a*.pluginsdk.ResolveAccountStatsCostResponse2m\n" +
 	"\x14MaintenanceExtension\x12U\n" +
-	"\x0eRunMaintenance\x12 .pluginsdk.RunMaintenanceRequest\x1a!.pluginsdk.RunMaintenanceResponse2s\n" +
+	"\x0eRunMaintenance\x12 .pluginsdk.RunMaintenanceRequest\x1a!.pluginsdk.RunMaintenanceResponse2\x8c\x05\n" +
 	"\vHostService\x12d\n" +
-	"\x13ResolveModelPricing\x12%.pluginsdk.ResolveModelPricingRequest\x1a&.pluginsdk.ResolveModelPricingResponseB8Z6github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdkb\x06proto3"
+	"\x13ResolveModelPricing\x12%.pluginsdk.ResolveModelPricingRequest\x1a&.pluginsdk.ResolveModelPricingResponse\x12R\n" +
+	"\rCreditBalance\x12\x1f.pluginsdk.CreditBalanceRequest\x1a .pluginsdk.CreditBalanceResponse\x12R\n" +
+	"\rDeductBalance\x12\x1f.pluginsdk.DeductBalanceRequest\x1a .pluginsdk.DeductBalanceResponse\x12a\n" +
+	"\x12AssignSubscription\x12$.pluginsdk.AssignSubscriptionRequest\x1a%.pluginsdk.AssignSubscriptionResponse\x12m\n" +
+	"\x16RevokeSubscriptionDays\x12(.pluginsdk.RevokeSubscriptionDaysRequest\x1a).pluginsdk.RevokeSubscriptionDaysResponse\x12O\n" +
+	"\fAccrueRebate\x12\x1e.pluginsdk.AccrueRebateRequest\x1a\x1f.pluginsdk.AccrueRebateResponse\x12L\n" +
+	"\vGetUserByID\x12\x1d.pluginsdk.GetUserByIDRequest\x1a\x1e.pluginsdk.GetUserByIDResponseB8Z6github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdkb\x06proto3"
 
 var (
 	file_sdk_proto_rawDescOnce sync.Once
@@ -5293,7 +6286,7 @@ func file_sdk_proto_rawDescGZIP() []byte {
 }
 
 var file_sdk_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_sdk_proto_msgTypes = make([]protoimpl.MessageInfo, 70)
+var file_sdk_proto_msgTypes = make([]protoimpl.MessageInfo, 84)
 var file_sdk_proto_goTypes = []any{
 	(PricingOverrideEvent_Op)(0),            // 0: pluginsdk.PricingOverrideEvent.Op
 	(*LogRecord)(nil),                       // 1: pluginsdk.LogRecord
@@ -5339,34 +6332,48 @@ var file_sdk_proto_goTypes = []any{
 	(*SettingsGetResponse)(nil),             // 41: pluginsdk.SettingsGetResponse
 	(*SettingsWatchRequest)(nil),            // 42: pluginsdk.SettingsWatchRequest
 	(*SettingsChangeEvent)(nil),             // 43: pluginsdk.SettingsChangeEvent
-	(*ProbeSubscriptionResponse)(nil),       // 44: pluginsdk.ProbeSubscriptionResponse
-	(*EventSubscribeRequest)(nil),           // 45: pluginsdk.EventSubscribeRequest
-	(*HostEvent)(nil),                       // 46: pluginsdk.HostEvent
-	(*PaymentOrderCreated)(nil),             // 47: pluginsdk.PaymentOrderCreated
-	(*PaymentOrderFulfilled)(nil),           // 48: pluginsdk.PaymentOrderFulfilled
-	(*GatewayModelInvoked)(nil),             // 49: pluginsdk.GatewayModelInvoked
-	(*AuthUserRegistered)(nil),              // 50: pluginsdk.AuthUserRegistered
-	(*AccountRateLimitTriggered)(nil),       // 51: pluginsdk.AccountRateLimitTriggered
-	(*PricingOverrideKey)(nil),              // 52: pluginsdk.PricingOverrideKey
-	(*PricingOverride)(nil),                 // 53: pluginsdk.PricingOverride
-	(*PricingInterval)(nil),                 // 54: pluginsdk.PricingInterval
-	(*ListPricingOverridesRequest)(nil),     // 55: pluginsdk.ListPricingOverridesRequest
-	(*ListPricingOverridesResponse)(nil),    // 56: pluginsdk.ListPricingOverridesResponse
-	(*WatchPricingOverridesRequest)(nil),    // 57: pluginsdk.WatchPricingOverridesRequest
-	(*PricingOverrideEvent)(nil),            // 58: pluginsdk.PricingOverrideEvent
-	(*AdjustCostRequest)(nil),               // 59: pluginsdk.AdjustCostRequest
-	(*AdjustCostResponse)(nil),              // 60: pluginsdk.AdjustCostResponse
-	(*PricingCostBreakdown)(nil),            // 61: pluginsdk.PricingCostBreakdown
-	(*PricingUsageTokens)(nil),              // 62: pluginsdk.PricingUsageTokens
-	(*ResolveAccountStatsCostRequest)(nil),  // 63: pluginsdk.ResolveAccountStatsCostRequest
-	(*ResolveAccountStatsCostResponse)(nil), // 64: pluginsdk.ResolveAccountStatsCostResponse
-	(*RunMaintenanceRequest)(nil),           // 65: pluginsdk.RunMaintenanceRequest
-	(*RunMaintenanceResponse)(nil),          // 66: pluginsdk.RunMaintenanceResponse
-	(*MaintenanceTaskResult)(nil),           // 67: pluginsdk.MaintenanceTaskResult
-	(*ResolveModelPricingRequest)(nil),      // 68: pluginsdk.ResolveModelPricingRequest
-	(*ResolveModelPricingResponse)(nil),     // 69: pluginsdk.ResolveModelPricingResponse
-	nil,                                     // 70: pluginsdk.RedisMapResponse.FieldsEntry
-	(*emptypb.Empty)(nil),                   // 71: google.protobuf.Empty
+	(*PublishEventRequest)(nil),             // 44: pluginsdk.PublishEventRequest
+	(*PublishEventResponse)(nil),            // 45: pluginsdk.PublishEventResponse
+	(*ProbeSubscriptionResponse)(nil),       // 46: pluginsdk.ProbeSubscriptionResponse
+	(*EventSubscribeRequest)(nil),           // 47: pluginsdk.EventSubscribeRequest
+	(*HostEvent)(nil),                       // 48: pluginsdk.HostEvent
+	(*PaymentOrderCreated)(nil),             // 49: pluginsdk.PaymentOrderCreated
+	(*PaymentOrderFulfilled)(nil),           // 50: pluginsdk.PaymentOrderFulfilled
+	(*GatewayModelInvoked)(nil),             // 51: pluginsdk.GatewayModelInvoked
+	(*AuthUserRegistered)(nil),              // 52: pluginsdk.AuthUserRegistered
+	(*AccountRateLimitTriggered)(nil),       // 53: pluginsdk.AccountRateLimitTriggered
+	(*PricingOverrideKey)(nil),              // 54: pluginsdk.PricingOverrideKey
+	(*PricingOverride)(nil),                 // 55: pluginsdk.PricingOverride
+	(*PricingInterval)(nil),                 // 56: pluginsdk.PricingInterval
+	(*ListPricingOverridesRequest)(nil),     // 57: pluginsdk.ListPricingOverridesRequest
+	(*ListPricingOverridesResponse)(nil),    // 58: pluginsdk.ListPricingOverridesResponse
+	(*WatchPricingOverridesRequest)(nil),    // 59: pluginsdk.WatchPricingOverridesRequest
+	(*PricingOverrideEvent)(nil),            // 60: pluginsdk.PricingOverrideEvent
+	(*AdjustCostRequest)(nil),               // 61: pluginsdk.AdjustCostRequest
+	(*AdjustCostResponse)(nil),              // 62: pluginsdk.AdjustCostResponse
+	(*PricingCostBreakdown)(nil),            // 63: pluginsdk.PricingCostBreakdown
+	(*PricingUsageTokens)(nil),              // 64: pluginsdk.PricingUsageTokens
+	(*ResolveAccountStatsCostRequest)(nil),  // 65: pluginsdk.ResolveAccountStatsCostRequest
+	(*ResolveAccountStatsCostResponse)(nil), // 66: pluginsdk.ResolveAccountStatsCostResponse
+	(*RunMaintenanceRequest)(nil),           // 67: pluginsdk.RunMaintenanceRequest
+	(*RunMaintenanceResponse)(nil),          // 68: pluginsdk.RunMaintenanceResponse
+	(*MaintenanceTaskResult)(nil),           // 69: pluginsdk.MaintenanceTaskResult
+	(*CreditBalanceRequest)(nil),            // 70: pluginsdk.CreditBalanceRequest
+	(*CreditBalanceResponse)(nil),           // 71: pluginsdk.CreditBalanceResponse
+	(*DeductBalanceRequest)(nil),            // 72: pluginsdk.DeductBalanceRequest
+	(*DeductBalanceResponse)(nil),           // 73: pluginsdk.DeductBalanceResponse
+	(*AssignSubscriptionRequest)(nil),       // 74: pluginsdk.AssignSubscriptionRequest
+	(*AssignSubscriptionResponse)(nil),      // 75: pluginsdk.AssignSubscriptionResponse
+	(*RevokeSubscriptionDaysRequest)(nil),   // 76: pluginsdk.RevokeSubscriptionDaysRequest
+	(*RevokeSubscriptionDaysResponse)(nil),  // 77: pluginsdk.RevokeSubscriptionDaysResponse
+	(*AccrueRebateRequest)(nil),             // 78: pluginsdk.AccrueRebateRequest
+	(*AccrueRebateResponse)(nil),            // 79: pluginsdk.AccrueRebateResponse
+	(*GetUserByIDRequest)(nil),              // 80: pluginsdk.GetUserByIDRequest
+	(*GetUserByIDResponse)(nil),             // 81: pluginsdk.GetUserByIDResponse
+	(*ResolveModelPricingRequest)(nil),      // 82: pluginsdk.ResolveModelPricingRequest
+	(*ResolveModelPricingResponse)(nil),     // 83: pluginsdk.ResolveModelPricingResponse
+	nil,                                     // 84: pluginsdk.RedisMapResponse.FieldsEntry
+	(*emptypb.Empty)(nil),                   // 85: google.protobuf.Empty
 }
 var file_sdk_proto_depIdxs = []int32{
 	2,  // 0: pluginsdk.LogRecord.attrs:type_name -> pluginsdk.LogAttr
@@ -5374,101 +6381,116 @@ var file_sdk_proto_depIdxs = []int32{
 	9,  // 2: pluginsdk.TxSQLRequest.args:type_name -> pluginsdk.SQLValue
 	11, // 3: pluginsdk.SQLResponse.rows:type_name -> pluginsdk.SQLRow
 	9,  // 4: pluginsdk.SQLRow.values:type_name -> pluginsdk.SQLValue
-	70, // 5: pluginsdk.RedisMapResponse.fields:type_name -> pluginsdk.RedisMapResponse.FieldsEntry
+	84, // 5: pluginsdk.RedisMapResponse.fields:type_name -> pluginsdk.RedisMapResponse.FieldsEntry
 	26, // 6: pluginsdk.DoReply.array:type_name -> pluginsdk.DoReply
 	35, // 7: pluginsdk.JobMessage.register:type_name -> pluginsdk.JobRegistration
 	38, // 8: pluginsdk.JobMessage.ack:type_name -> pluginsdk.JobAck
 	39, // 9: pluginsdk.JobMessage.manual:type_name -> pluginsdk.ManualTrigger
 	36, // 10: pluginsdk.JobRegistration.specs:type_name -> pluginsdk.JobSpec
-	47, // 11: pluginsdk.HostEvent.payment_order_created:type_name -> pluginsdk.PaymentOrderCreated
-	48, // 12: pluginsdk.HostEvent.payment_order_fulfilled:type_name -> pluginsdk.PaymentOrderFulfilled
-	49, // 13: pluginsdk.HostEvent.gateway_model_invoked:type_name -> pluginsdk.GatewayModelInvoked
-	50, // 14: pluginsdk.HostEvent.auth_user_registered:type_name -> pluginsdk.AuthUserRegistered
-	51, // 15: pluginsdk.HostEvent.account_rate_limit_triggered:type_name -> pluginsdk.AccountRateLimitTriggered
-	52, // 16: pluginsdk.PricingOverride.key:type_name -> pluginsdk.PricingOverrideKey
-	54, // 17: pluginsdk.PricingOverride.intervals:type_name -> pluginsdk.PricingInterval
-	53, // 18: pluginsdk.ListPricingOverridesResponse.overrides:type_name -> pluginsdk.PricingOverride
-	0,  // 19: pluginsdk.PricingOverrideEvent.op:type_name -> pluginsdk.PricingOverrideEvent.Op
-	53, // 20: pluginsdk.PricingOverrideEvent.override:type_name -> pluginsdk.PricingOverride
-	52, // 21: pluginsdk.PricingOverrideEvent.deleted_key:type_name -> pluginsdk.PricingOverrideKey
-	61, // 22: pluginsdk.AdjustCostRequest.core_cost:type_name -> pluginsdk.PricingCostBreakdown
-	62, // 23: pluginsdk.AdjustCostRequest.tokens:type_name -> pluginsdk.PricingUsageTokens
-	61, // 24: pluginsdk.AdjustCostResponse.final_cost:type_name -> pluginsdk.PricingCostBreakdown
-	62, // 25: pluginsdk.ResolveAccountStatsCostRequest.tokens:type_name -> pluginsdk.PricingUsageTokens
-	67, // 26: pluginsdk.RunMaintenanceResponse.results:type_name -> pluginsdk.MaintenanceTaskResult
-	4,  // 27: pluginsdk.SQLProxy.Query:input_type -> pluginsdk.SQLRequest
-	4,  // 28: pluginsdk.SQLProxy.Exec:input_type -> pluginsdk.SQLRequest
-	6,  // 29: pluginsdk.SQLProxy.BeginTx:input_type -> pluginsdk.BeginTxRequest
-	5,  // 30: pluginsdk.SQLProxy.TxQuery:input_type -> pluginsdk.TxSQLRequest
-	5,  // 31: pluginsdk.SQLProxy.TxExec:input_type -> pluginsdk.TxSQLRequest
-	8,  // 32: pluginsdk.SQLProxy.CommitTx:input_type -> pluginsdk.TxIDRequest
-	8,  // 33: pluginsdk.SQLProxy.RollbackTx:input_type -> pluginsdk.TxIDRequest
-	25, // 34: pluginsdk.RedisProxy.Do:input_type -> pluginsdk.DoRequest
-	13, // 35: pluginsdk.RedisProxy.Get:input_type -> pluginsdk.RedisKeyRequest
-	15, // 36: pluginsdk.RedisProxy.Set:input_type -> pluginsdk.RedisSetRequest
-	16, // 37: pluginsdk.RedisProxy.SetEx:input_type -> pluginsdk.RedisSetExRequest
-	17, // 38: pluginsdk.RedisProxy.Del:input_type -> pluginsdk.RedisDelRequest
-	18, // 39: pluginsdk.RedisProxy.HGet:input_type -> pluginsdk.RedisHGetRequest
-	19, // 40: pluginsdk.RedisProxy.HSet:input_type -> pluginsdk.RedisHSetRequest
-	13, // 41: pluginsdk.RedisProxy.HGetAll:input_type -> pluginsdk.RedisKeyRequest
-	21, // 42: pluginsdk.RedisProxy.HDel:input_type -> pluginsdk.RedisHDelRequest
-	22, // 43: pluginsdk.RedisProxy.Publish:input_type -> pluginsdk.RedisPubRequest
-	23, // 44: pluginsdk.RedisProxy.Subscribe:input_type -> pluginsdk.RedisSubRequest
-	27, // 45: pluginsdk.EventBus.Publish:input_type -> pluginsdk.EventRequest
-	28, // 46: pluginsdk.EventBus.Subscribe:input_type -> pluginsdk.EventFilter
-	1,  // 47: pluginsdk.LogProxy.PushLogs:input_type -> pluginsdk.LogRecord
-	30, // 48: pluginsdk.SecretEncryption.Encrypt:input_type -> pluginsdk.EncryptRequest
-	32, // 49: pluginsdk.SecretEncryption.Decrypt:input_type -> pluginsdk.DecryptRequest
-	34, // 50: pluginsdk.JobScheduler.Subscribe:input_type -> pluginsdk.JobMessage
-	40, // 51: pluginsdk.SettingsExtension.Get:input_type -> pluginsdk.SettingsGetRequest
-	42, // 52: pluginsdk.SettingsExtension.Watch:input_type -> pluginsdk.SettingsWatchRequest
-	45, // 53: pluginsdk.EventsExtension.Subscribe:input_type -> pluginsdk.EventSubscribeRequest
-	45, // 54: pluginsdk.EventsExtension.ProbeSubscription:input_type -> pluginsdk.EventSubscribeRequest
-	55, // 55: pluginsdk.PricingExtension.ListPricingOverrides:input_type -> pluginsdk.ListPricingOverridesRequest
-	57, // 56: pluginsdk.PricingExtension.WatchPricingOverrides:input_type -> pluginsdk.WatchPricingOverridesRequest
-	59, // 57: pluginsdk.PricingExtension.AdjustCost:input_type -> pluginsdk.AdjustCostRequest
-	63, // 58: pluginsdk.PricingExtension.ResolveAccountStatsCost:input_type -> pluginsdk.ResolveAccountStatsCostRequest
-	65, // 59: pluginsdk.MaintenanceExtension.RunMaintenance:input_type -> pluginsdk.RunMaintenanceRequest
-	68, // 60: pluginsdk.HostService.ResolveModelPricing:input_type -> pluginsdk.ResolveModelPricingRequest
-	10, // 61: pluginsdk.SQLProxy.Query:output_type -> pluginsdk.SQLResponse
-	12, // 62: pluginsdk.SQLProxy.Exec:output_type -> pluginsdk.ExecResponse
-	7,  // 63: pluginsdk.SQLProxy.BeginTx:output_type -> pluginsdk.TxResponse
-	10, // 64: pluginsdk.SQLProxy.TxQuery:output_type -> pluginsdk.SQLResponse
-	12, // 65: pluginsdk.SQLProxy.TxExec:output_type -> pluginsdk.ExecResponse
-	71, // 66: pluginsdk.SQLProxy.CommitTx:output_type -> google.protobuf.Empty
-	71, // 67: pluginsdk.SQLProxy.RollbackTx:output_type -> google.protobuf.Empty
-	26, // 68: pluginsdk.RedisProxy.Do:output_type -> pluginsdk.DoReply
-	14, // 69: pluginsdk.RedisProxy.Get:output_type -> pluginsdk.RedisValueResponse
-	71, // 70: pluginsdk.RedisProxy.Set:output_type -> google.protobuf.Empty
-	71, // 71: pluginsdk.RedisProxy.SetEx:output_type -> google.protobuf.Empty
-	71, // 72: pluginsdk.RedisProxy.Del:output_type -> google.protobuf.Empty
-	14, // 73: pluginsdk.RedisProxy.HGet:output_type -> pluginsdk.RedisValueResponse
-	71, // 74: pluginsdk.RedisProxy.HSet:output_type -> google.protobuf.Empty
-	20, // 75: pluginsdk.RedisProxy.HGetAll:output_type -> pluginsdk.RedisMapResponse
-	71, // 76: pluginsdk.RedisProxy.HDel:output_type -> google.protobuf.Empty
-	71, // 77: pluginsdk.RedisProxy.Publish:output_type -> google.protobuf.Empty
-	24, // 78: pluginsdk.RedisProxy.Subscribe:output_type -> pluginsdk.RedisMessage
-	71, // 79: pluginsdk.EventBus.Publish:output_type -> google.protobuf.Empty
-	29, // 80: pluginsdk.EventBus.Subscribe:output_type -> pluginsdk.Event
-	3,  // 81: pluginsdk.LogProxy.PushLogs:output_type -> pluginsdk.LogPushSummary
-	31, // 82: pluginsdk.SecretEncryption.Encrypt:output_type -> pluginsdk.EncryptResponse
-	33, // 83: pluginsdk.SecretEncryption.Decrypt:output_type -> pluginsdk.DecryptResponse
-	37, // 84: pluginsdk.JobScheduler.Subscribe:output_type -> pluginsdk.JobTrigger
-	41, // 85: pluginsdk.SettingsExtension.Get:output_type -> pluginsdk.SettingsGetResponse
-	43, // 86: pluginsdk.SettingsExtension.Watch:output_type -> pluginsdk.SettingsChangeEvent
-	46, // 87: pluginsdk.EventsExtension.Subscribe:output_type -> pluginsdk.HostEvent
-	44, // 88: pluginsdk.EventsExtension.ProbeSubscription:output_type -> pluginsdk.ProbeSubscriptionResponse
-	56, // 89: pluginsdk.PricingExtension.ListPricingOverrides:output_type -> pluginsdk.ListPricingOverridesResponse
-	58, // 90: pluginsdk.PricingExtension.WatchPricingOverrides:output_type -> pluginsdk.PricingOverrideEvent
-	60, // 91: pluginsdk.PricingExtension.AdjustCost:output_type -> pluginsdk.AdjustCostResponse
-	64, // 92: pluginsdk.PricingExtension.ResolveAccountStatsCost:output_type -> pluginsdk.ResolveAccountStatsCostResponse
-	66, // 93: pluginsdk.MaintenanceExtension.RunMaintenance:output_type -> pluginsdk.RunMaintenanceResponse
-	69, // 94: pluginsdk.HostService.ResolveModelPricing:output_type -> pluginsdk.ResolveModelPricingResponse
-	61, // [61:95] is the sub-list for method output_type
-	27, // [27:61] is the sub-list for method input_type
-	27, // [27:27] is the sub-list for extension type_name
-	27, // [27:27] is the sub-list for extension extendee
-	0,  // [0:27] is the sub-list for field type_name
+	48, // 11: pluginsdk.PublishEventRequest.event:type_name -> pluginsdk.HostEvent
+	49, // 12: pluginsdk.HostEvent.payment_order_created:type_name -> pluginsdk.PaymentOrderCreated
+	50, // 13: pluginsdk.HostEvent.payment_order_fulfilled:type_name -> pluginsdk.PaymentOrderFulfilled
+	51, // 14: pluginsdk.HostEvent.gateway_model_invoked:type_name -> pluginsdk.GatewayModelInvoked
+	52, // 15: pluginsdk.HostEvent.auth_user_registered:type_name -> pluginsdk.AuthUserRegistered
+	53, // 16: pluginsdk.HostEvent.account_rate_limit_triggered:type_name -> pluginsdk.AccountRateLimitTriggered
+	54, // 17: pluginsdk.PricingOverride.key:type_name -> pluginsdk.PricingOverrideKey
+	56, // 18: pluginsdk.PricingOverride.intervals:type_name -> pluginsdk.PricingInterval
+	55, // 19: pluginsdk.ListPricingOverridesResponse.overrides:type_name -> pluginsdk.PricingOverride
+	0,  // 20: pluginsdk.PricingOverrideEvent.op:type_name -> pluginsdk.PricingOverrideEvent.Op
+	55, // 21: pluginsdk.PricingOverrideEvent.override:type_name -> pluginsdk.PricingOverride
+	54, // 22: pluginsdk.PricingOverrideEvent.deleted_key:type_name -> pluginsdk.PricingOverrideKey
+	63, // 23: pluginsdk.AdjustCostRequest.core_cost:type_name -> pluginsdk.PricingCostBreakdown
+	64, // 24: pluginsdk.AdjustCostRequest.tokens:type_name -> pluginsdk.PricingUsageTokens
+	63, // 25: pluginsdk.AdjustCostResponse.final_cost:type_name -> pluginsdk.PricingCostBreakdown
+	64, // 26: pluginsdk.ResolveAccountStatsCostRequest.tokens:type_name -> pluginsdk.PricingUsageTokens
+	69, // 27: pluginsdk.RunMaintenanceResponse.results:type_name -> pluginsdk.MaintenanceTaskResult
+	4,  // 28: pluginsdk.SQLProxy.Query:input_type -> pluginsdk.SQLRequest
+	4,  // 29: pluginsdk.SQLProxy.Exec:input_type -> pluginsdk.SQLRequest
+	6,  // 30: pluginsdk.SQLProxy.BeginTx:input_type -> pluginsdk.BeginTxRequest
+	5,  // 31: pluginsdk.SQLProxy.TxQuery:input_type -> pluginsdk.TxSQLRequest
+	5,  // 32: pluginsdk.SQLProxy.TxExec:input_type -> pluginsdk.TxSQLRequest
+	8,  // 33: pluginsdk.SQLProxy.CommitTx:input_type -> pluginsdk.TxIDRequest
+	8,  // 34: pluginsdk.SQLProxy.RollbackTx:input_type -> pluginsdk.TxIDRequest
+	25, // 35: pluginsdk.RedisProxy.Do:input_type -> pluginsdk.DoRequest
+	13, // 36: pluginsdk.RedisProxy.Get:input_type -> pluginsdk.RedisKeyRequest
+	15, // 37: pluginsdk.RedisProxy.Set:input_type -> pluginsdk.RedisSetRequest
+	16, // 38: pluginsdk.RedisProxy.SetEx:input_type -> pluginsdk.RedisSetExRequest
+	17, // 39: pluginsdk.RedisProxy.Del:input_type -> pluginsdk.RedisDelRequest
+	18, // 40: pluginsdk.RedisProxy.HGet:input_type -> pluginsdk.RedisHGetRequest
+	19, // 41: pluginsdk.RedisProxy.HSet:input_type -> pluginsdk.RedisHSetRequest
+	13, // 42: pluginsdk.RedisProxy.HGetAll:input_type -> pluginsdk.RedisKeyRequest
+	21, // 43: pluginsdk.RedisProxy.HDel:input_type -> pluginsdk.RedisHDelRequest
+	22, // 44: pluginsdk.RedisProxy.Publish:input_type -> pluginsdk.RedisPubRequest
+	23, // 45: pluginsdk.RedisProxy.Subscribe:input_type -> pluginsdk.RedisSubRequest
+	27, // 46: pluginsdk.EventBus.Publish:input_type -> pluginsdk.EventRequest
+	28, // 47: pluginsdk.EventBus.Subscribe:input_type -> pluginsdk.EventFilter
+	1,  // 48: pluginsdk.LogProxy.PushLogs:input_type -> pluginsdk.LogRecord
+	30, // 49: pluginsdk.SecretEncryption.Encrypt:input_type -> pluginsdk.EncryptRequest
+	32, // 50: pluginsdk.SecretEncryption.Decrypt:input_type -> pluginsdk.DecryptRequest
+	34, // 51: pluginsdk.JobScheduler.Subscribe:input_type -> pluginsdk.JobMessage
+	40, // 52: pluginsdk.SettingsExtension.Get:input_type -> pluginsdk.SettingsGetRequest
+	42, // 53: pluginsdk.SettingsExtension.Watch:input_type -> pluginsdk.SettingsWatchRequest
+	47, // 54: pluginsdk.EventsExtension.Subscribe:input_type -> pluginsdk.EventSubscribeRequest
+	47, // 55: pluginsdk.EventsExtension.ProbeSubscription:input_type -> pluginsdk.EventSubscribeRequest
+	44, // 56: pluginsdk.EventsExtension.Publish:input_type -> pluginsdk.PublishEventRequest
+	57, // 57: pluginsdk.PricingExtension.ListPricingOverrides:input_type -> pluginsdk.ListPricingOverridesRequest
+	59, // 58: pluginsdk.PricingExtension.WatchPricingOverrides:input_type -> pluginsdk.WatchPricingOverridesRequest
+	61, // 59: pluginsdk.PricingExtension.AdjustCost:input_type -> pluginsdk.AdjustCostRequest
+	65, // 60: pluginsdk.PricingExtension.ResolveAccountStatsCost:input_type -> pluginsdk.ResolveAccountStatsCostRequest
+	67, // 61: pluginsdk.MaintenanceExtension.RunMaintenance:input_type -> pluginsdk.RunMaintenanceRequest
+	82, // 62: pluginsdk.HostService.ResolveModelPricing:input_type -> pluginsdk.ResolveModelPricingRequest
+	70, // 63: pluginsdk.HostService.CreditBalance:input_type -> pluginsdk.CreditBalanceRequest
+	72, // 64: pluginsdk.HostService.DeductBalance:input_type -> pluginsdk.DeductBalanceRequest
+	74, // 65: pluginsdk.HostService.AssignSubscription:input_type -> pluginsdk.AssignSubscriptionRequest
+	76, // 66: pluginsdk.HostService.RevokeSubscriptionDays:input_type -> pluginsdk.RevokeSubscriptionDaysRequest
+	78, // 67: pluginsdk.HostService.AccrueRebate:input_type -> pluginsdk.AccrueRebateRequest
+	80, // 68: pluginsdk.HostService.GetUserByID:input_type -> pluginsdk.GetUserByIDRequest
+	10, // 69: pluginsdk.SQLProxy.Query:output_type -> pluginsdk.SQLResponse
+	12, // 70: pluginsdk.SQLProxy.Exec:output_type -> pluginsdk.ExecResponse
+	7,  // 71: pluginsdk.SQLProxy.BeginTx:output_type -> pluginsdk.TxResponse
+	10, // 72: pluginsdk.SQLProxy.TxQuery:output_type -> pluginsdk.SQLResponse
+	12, // 73: pluginsdk.SQLProxy.TxExec:output_type -> pluginsdk.ExecResponse
+	85, // 74: pluginsdk.SQLProxy.CommitTx:output_type -> google.protobuf.Empty
+	85, // 75: pluginsdk.SQLProxy.RollbackTx:output_type -> google.protobuf.Empty
+	26, // 76: pluginsdk.RedisProxy.Do:output_type -> pluginsdk.DoReply
+	14, // 77: pluginsdk.RedisProxy.Get:output_type -> pluginsdk.RedisValueResponse
+	85, // 78: pluginsdk.RedisProxy.Set:output_type -> google.protobuf.Empty
+	85, // 79: pluginsdk.RedisProxy.SetEx:output_type -> google.protobuf.Empty
+	85, // 80: pluginsdk.RedisProxy.Del:output_type -> google.protobuf.Empty
+	14, // 81: pluginsdk.RedisProxy.HGet:output_type -> pluginsdk.RedisValueResponse
+	85, // 82: pluginsdk.RedisProxy.HSet:output_type -> google.protobuf.Empty
+	20, // 83: pluginsdk.RedisProxy.HGetAll:output_type -> pluginsdk.RedisMapResponse
+	85, // 84: pluginsdk.RedisProxy.HDel:output_type -> google.protobuf.Empty
+	85, // 85: pluginsdk.RedisProxy.Publish:output_type -> google.protobuf.Empty
+	24, // 86: pluginsdk.RedisProxy.Subscribe:output_type -> pluginsdk.RedisMessage
+	85, // 87: pluginsdk.EventBus.Publish:output_type -> google.protobuf.Empty
+	29, // 88: pluginsdk.EventBus.Subscribe:output_type -> pluginsdk.Event
+	3,  // 89: pluginsdk.LogProxy.PushLogs:output_type -> pluginsdk.LogPushSummary
+	31, // 90: pluginsdk.SecretEncryption.Encrypt:output_type -> pluginsdk.EncryptResponse
+	33, // 91: pluginsdk.SecretEncryption.Decrypt:output_type -> pluginsdk.DecryptResponse
+	37, // 92: pluginsdk.JobScheduler.Subscribe:output_type -> pluginsdk.JobTrigger
+	41, // 93: pluginsdk.SettingsExtension.Get:output_type -> pluginsdk.SettingsGetResponse
+	43, // 94: pluginsdk.SettingsExtension.Watch:output_type -> pluginsdk.SettingsChangeEvent
+	48, // 95: pluginsdk.EventsExtension.Subscribe:output_type -> pluginsdk.HostEvent
+	46, // 96: pluginsdk.EventsExtension.ProbeSubscription:output_type -> pluginsdk.ProbeSubscriptionResponse
+	45, // 97: pluginsdk.EventsExtension.Publish:output_type -> pluginsdk.PublishEventResponse
+	58, // 98: pluginsdk.PricingExtension.ListPricingOverrides:output_type -> pluginsdk.ListPricingOverridesResponse
+	60, // 99: pluginsdk.PricingExtension.WatchPricingOverrides:output_type -> pluginsdk.PricingOverrideEvent
+	62, // 100: pluginsdk.PricingExtension.AdjustCost:output_type -> pluginsdk.AdjustCostResponse
+	66, // 101: pluginsdk.PricingExtension.ResolveAccountStatsCost:output_type -> pluginsdk.ResolveAccountStatsCostResponse
+	68, // 102: pluginsdk.MaintenanceExtension.RunMaintenance:output_type -> pluginsdk.RunMaintenanceResponse
+	83, // 103: pluginsdk.HostService.ResolveModelPricing:output_type -> pluginsdk.ResolveModelPricingResponse
+	71, // 104: pluginsdk.HostService.CreditBalance:output_type -> pluginsdk.CreditBalanceResponse
+	73, // 105: pluginsdk.HostService.DeductBalance:output_type -> pluginsdk.DeductBalanceResponse
+	75, // 106: pluginsdk.HostService.AssignSubscription:output_type -> pluginsdk.AssignSubscriptionResponse
+	77, // 107: pluginsdk.HostService.RevokeSubscriptionDays:output_type -> pluginsdk.RevokeSubscriptionDaysResponse
+	79, // 108: pluginsdk.HostService.AccrueRebate:output_type -> pluginsdk.AccrueRebateResponse
+	81, // 109: pluginsdk.HostService.GetUserByID:output_type -> pluginsdk.GetUserByIDResponse
+	69, // [69:110] is the sub-list for method output_type
+	28, // [28:69] is the sub-list for method input_type
+	28, // [28:28] is the sub-list for extension type_name
+	28, // [28:28] is the sub-list for extension extendee
+	0,  // [0:28] is the sub-list for field type_name
 }
 
 func init() { file_sdk_proto_init() }
@@ -5499,7 +6521,7 @@ func file_sdk_proto_init() {
 		(*JobMessage_Ack)(nil),
 		(*JobMessage_Manual)(nil),
 	}
-	file_sdk_proto_msgTypes[45].OneofWrappers = []any{
+	file_sdk_proto_msgTypes[47].OneofWrappers = []any{
 		(*HostEvent_PaymentOrderCreated)(nil),
 		(*HostEvent_PaymentOrderFulfilled)(nil),
 		(*HostEvent_GatewayModelInvoked)(nil),
@@ -5512,7 +6534,7 @@ func file_sdk_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sdk_proto_rawDesc), len(file_sdk_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   70,
+			NumMessages:   84,
 			NumExtensions: 0,
 			NumServices:   11,
 		},

@@ -220,7 +220,7 @@ type PublicSettings struct {
 	WeChatOAuthMPEnabled     bool
 	WeChatOAuthMobileEnabled bool
 	BackendModeEnabled       bool
-	PaymentEnabled           bool
+	// PaymentEnabled 已迁移到 plugin（payment plugin 自带 PluginSettings）。
 	OIDCOAuthEnabled         bool
 	OIDCOAuthProviderName    string
 	Version                  string

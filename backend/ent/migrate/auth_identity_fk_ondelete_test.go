@@ -3,7 +3,6 @@ package migrate
 import (
 	"testing"
 
-	"entgo.io/ent/dialect/entsql"
 	entschema "entgo.io/ent/dialect/sql/schema"
 	"github.com/stretchr/testify/require"
 )
@@ -37,14 +36,8 @@ func TestAuthIdentityFoundationForeignKeyOnDeleteActions(t *testing.T) {
 	)
 }
 
-func TestPaymentOrdersOutTradeNoPartialUniqueIndex(t *testing.T) {
-	idx := findIndexByName(t, PaymentOrdersTable, "paymentorder_out_trade_no")
-	require.True(t, idx.Unique)
-	require.Len(t, idx.Columns, 1)
-	require.Equal(t, "out_trade_no", idx.Columns[0].Name)
-	require.NotNil(t, idx.Annotation)
-	require.Equal(t, (&entsql.IndexAnnotation{Where: "out_trade_no <> ''"}).Where, idx.Annotation.Where)
-}
+// TestPaymentOrdersOutTradeNoPartialUniqueIndex 已删除：payment 表已迁移到
+// plugins/payment/，host 不再持有 PaymentOrdersTable。
 
 func findForeignKeyBySymbol(t *testing.T, table *entschema.Table, symbol string) *entschema.ForeignKey {
 	t.Helper()

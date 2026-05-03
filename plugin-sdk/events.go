@@ -104,6 +104,20 @@ type EventsClient interface {
 	// happens server-side; on failure Subscribe returns the wrapped
 	// gRPC error so callers can branch on codes.PermissionDenied.
 	Subscribe(ctx context.Context, eventTypes []string, handler EventHandler) error
+
+	// Publish emits a HostEvent the host re-broadcasts to other subscribers.
+	// The plugin must declare the matching capability (e.g.
+	// CapabilityEventsPublishPayment for payment.* events) — the host
+	// enforces this and returns codes.PermissionDenied otherwise.
+	//
+	// Errors:
+	//   - codes.PermissionDenied: capability not granted
+	//   - codes.InvalidArgument: event_type not allowlisted for this caller
+	//   - codes.Unavailable: host not ready
+	// Plugin authors should log+swallow Publish errors rather than
+	// surfacing them to end users — events are best-effort signalling,
+	// not a mandatory side-effect.
+	Publish(ctx context.Context, event *HostEvent) error
 }
 
 // nilEventsClient is returned when the plugin process was started by
@@ -114,6 +128,10 @@ type EventsClient interface {
 type nilEventsClient struct{}
 
 func (nilEventsClient) Subscribe(ctx context.Context, types []string, h EventHandler) error {
+	return errors.New("pluginsdk: EventsExtension not available on this host")
+}
+
+func (nilEventsClient) Publish(ctx context.Context, event *HostEvent) error {
 	return errors.New("pluginsdk: EventsExtension not available on this host")
 }
 
@@ -191,6 +209,29 @@ func (c *eventsClient) Subscribe(ctx context.Context, eventTypes []string, handl
 	go c.runEventsStreamLoop(ctx, req, handler)
 	return nil
 }
+
+// Publish emits a single HostEvent through the host's EventsExtension.
+// The event must already carry a populated EventType + matching oneof
+// payload (use the typed payload aliases declared above and the proto
+// builder pattern). publishRPCTimeout caps the synchronous round trip so
+// a slow host cannot block the plugin's foreground work.
+func (c *eventsClient) Publish(ctx context.Context, event *HostEvent) error {
+	if event == nil {
+		return errors.New("pluginsdk: events Publish: event must not be nil")
+	}
+	if ctx == nil {
+		return errors.New("pluginsdk: events Publish: ctx must not be nil")
+	}
+	rpcCtx, cancel := context.WithTimeout(ctx, eventsPublishTimeout)
+	defer cancel()
+	_, err := c.grpc.Publish(rpcCtx, &pb.PublishEventRequest{Event: event})
+	return err
+}
+
+// eventsPublishTimeout caps the Publish RPC. Events are best-effort and
+// the host fan-out is buffered, so 2s is plenty; longer means the host
+// is degraded and the plugin should not stall foreground work.
+const eventsPublishTimeout = 2 * time.Second
 
 // runEventsStreamLoop opens the Subscribe stream repeatedly, draining each
 // stream until it errors or ctx is cancelled. streamutil.LoopWithRetryClass

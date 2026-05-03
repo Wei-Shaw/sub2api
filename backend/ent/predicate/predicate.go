@@ -51,15 +51,6 @@ type IdempotencyRecord func(*sql.Selector)
 // IdentityAdoptionDecision is the predicate function for identityadoptiondecision builders.
 type IdentityAdoptionDecision func(*sql.Selector)
 
-// PaymentAuditLog is the predicate function for paymentauditlog builders.
-type PaymentAuditLog func(*sql.Selector)
-
-// PaymentOrder is the predicate function for paymentorder builders.
-type PaymentOrder func(*sql.Selector)
-
-// PaymentProviderInstance is the predicate function for paymentproviderinstance builders.
-type PaymentProviderInstance func(*sql.Selector)
-
 // PendingAuthSession is the predicate function for pendingauthsession builders.
 type PendingAuthSession func(*sql.Selector)
 

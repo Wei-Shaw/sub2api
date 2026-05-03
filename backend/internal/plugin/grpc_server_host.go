@@ -57,6 +57,52 @@ type HostPricingResolver interface {
 	GetModelPricing(model string) (*service.ModelPricing, error)
 }
 
+// HostBalanceService is the host-side surface HostServiceServer needs to
+// satisfy CreditBalance / DeductBalance. The concrete adapter wraps the
+// host UserRepository plus an idempotency store (see
+// host_service_adapters.go); injecting only this small interface keeps
+// the gRPC handler decoupled from the wider service graph.
+type HostBalanceService interface {
+	CreditBalance(ctx context.Context, userID int64, amount decimal.Decimal,
+		reason, idempotencyKey, source string) (newBalance decimal.Decimal, alreadyApplied bool, err error)
+	DeductBalance(ctx context.Context, userID int64, amount decimal.Decimal,
+		reason, idempotencyKey, source string, allowNegative bool) (newBalance decimal.Decimal, alreadyApplied bool, err error)
+}
+
+// HostSubscriptionAssigner is the host-side surface for the
+// AssignSubscription / RevokeSubscriptionDays RPCs.
+type HostSubscriptionAssigner interface {
+	AssignSubscription(ctx context.Context, userID, planID, groupID int64, days int,
+		source, idempotencyKey string) (subscriptionID, expiresAtUnix int64, alreadyApplied bool, err error)
+	RevokeSubscriptionDays(ctx context.Context, userID, groupID int64, days int,
+		reason, idempotencyKey string) (expiresAtUnix int64, alreadyApplied bool, err error)
+}
+
+// HostAffiliateAccruer wraps the affiliate-rebate flow for the
+// AccrueRebate RPC.
+type HostAffiliateAccruer interface {
+	AccrueRebate(ctx context.Context, inviteeUserID int64, orderAmount decimal.Decimal,
+		idempotencyKey string) (rebateAmount decimal.Decimal, inviterUserID int64, alreadyApplied bool, err error)
+}
+
+// HostUserLookup serves GetUserByID. Returning (nil, nil) signals
+// not-found so the handler can map it to found=false; any other error
+// surfaces as Internal.
+type HostUserLookup interface {
+	GetUserByID(ctx context.Context, userID int64) (*HostUserInfo, error)
+}
+
+// HostUserInfo is the projection HostService.GetUserByID returns. Kept
+// minimal so the wire contract doesn't drag in unrelated user fields.
+type HostUserInfo struct {
+	ID        int64
+	InviterID int64
+	Email     string
+	Username  string
+	Role      string
+	Balance   decimal.Decimal
+}
+
 // HostServiceServer implements pluginsdk.HostServiceServer. One
 // instance is shared across all plugins — the narrow RPC surface
 // requires no per-plugin state. Construct with NewHostServiceServer;
@@ -64,20 +110,53 @@ type HostPricingResolver interface {
 // makes ResolveModelPricing return Unimplemented (same gRPC behaviour
 // as not registering the service at all, but lets the manager decide
 // once at wire time rather than on every call).
+//
+// All dependencies are optional: a nil field makes the corresponding
+// RPC return codes.Unimplemented (the embedded
+// UnimplementedHostServiceServer base behaviour). The manager rebuilds
+// the server via NewHostServiceServer whenever a setter is called so
+// the field set is always coherent.
 type HostServiceServer struct {
 	pluginsdk.UnimplementedHostServiceServer
 
-	resolver HostPricingResolver
+	resolver     HostPricingResolver
+	balance      HostBalanceService
+	subscription HostSubscriptionAssigner
+	affiliate    HostAffiliateAccruer
+	userLookup   HostUserLookup
 }
 
-// NewHostServiceServer constructs a server bound to the given
-// resolver. A nil resolver is accepted and produces a server whose
-// ResolveModelPricing returns codes.Unimplemented — semantically
-// identical to not registering the service at all, but kept as an
-// explicit option so PluginManager can still wire the service for
-// tests without a full BillingService.
+// HostServiceDeps groups the optional host-side dependencies the gRPC
+// HostServiceServer wraps. All fields are optional; nil values cause
+// the corresponding RPC to return codes.Unimplemented.
+type HostServiceDeps struct {
+	Pricing      HostPricingResolver
+	Balance      HostBalanceService
+	Subscription HostSubscriptionAssigner
+	Affiliate    HostAffiliateAccruer
+	UserLookup   HostUserLookup
+}
+
+// NewHostServiceServer constructs a server bound to the given pricing
+// resolver. Backwards-compatible with the original single-arg signature;
+// other dependencies stay nil and their RPCs return Unimplemented. Use
+// NewHostServiceServerWithDeps to wire the full payment-plugin surface.
 func NewHostServiceServer(resolver HostPricingResolver) *HostServiceServer {
 	return &HostServiceServer{resolver: resolver}
+}
+
+// NewHostServiceServerWithDeps constructs a server with every
+// dependency declared via HostServiceDeps. A zero-value Deps produces
+// a server whose every RPC returns Unimplemented — semantically
+// identical to not registering the service at all.
+func NewHostServiceServerWithDeps(deps HostServiceDeps) *HostServiceServer {
+	return &HostServiceServer{
+		resolver:     deps.Pricing,
+		balance:      deps.Balance,
+		subscription: deps.Subscription,
+		affiliate:    deps.Affiliate,
+		userLookup:   deps.UserLookup,
+	}
 }
 
 // RegisterServices wires the server onto a gRPC server. Separate from
@@ -144,4 +223,229 @@ func formatHostPrice(v float64) string {
 		return ""
 	}
 	return decimal.NewFromFloat(v).String()
+}
+
+// parsePositiveAmount validates and parses a decimal-string amount. The
+// helper is used by CreditBalance / DeductBalance / AccrueRebate which
+// all reject zero or negative values via InvalidArgument.
+func parsePositiveAmount(s, fieldName string) (decimal.Decimal, error) {
+	d, err := decimal.NewFromString(strings.TrimSpace(s))
+	if err != nil {
+		return decimal.Decimal{}, status.Errorf(codes.InvalidArgument,
+			"%s: invalid decimal: %v", fieldName, err)
+	}
+	if d.Sign() <= 0 {
+		return decimal.Decimal{}, status.Errorf(codes.InvalidArgument,
+			"%s must be > 0", fieldName)
+	}
+	return d, nil
+}
+
+// CreditBalance implements HostService.CreditBalance.
+func (s *HostServiceServer) CreditBalance(
+	ctx context.Context, req *pluginsdk.CreditBalanceRequest,
+) (*pluginsdk.CreditBalanceResponse, error) {
+	if s.balance == nil {
+		return nil, status.Error(codes.Unimplemented, "host balance service not configured")
+	}
+	if req.GetUserId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "user_id must be > 0")
+	}
+	if strings.TrimSpace(req.GetIdempotencyKey()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "idempotency_key is required")
+	}
+	amount, err := parsePositiveAmount(req.GetAmount(), "amount")
+	if err != nil {
+		return nil, err
+	}
+	newBal, applied, err := s.balance.CreditBalance(ctx, req.GetUserId(), amount,
+		req.GetReason(), req.GetIdempotencyKey(), req.GetSource())
+	if err != nil {
+		return nil, mapHostServiceError(err)
+	}
+	return &pluginsdk.CreditBalanceResponse{
+		NewBalance:     newBal.String(),
+		AlreadyApplied: applied,
+	}, nil
+}
+
+// DeductBalance implements HostService.DeductBalance. AllowNegative=true
+// means "refund flow — let balance go negative if necessary"; otherwise
+// the host returns FailedPrecondition when amount > current balance.
+func (s *HostServiceServer) DeductBalance(
+	ctx context.Context, req *pluginsdk.DeductBalanceRequest,
+) (*pluginsdk.DeductBalanceResponse, error) {
+	if s.balance == nil {
+		return nil, status.Error(codes.Unimplemented, "host balance service not configured")
+	}
+	if req.GetUserId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "user_id must be > 0")
+	}
+	if strings.TrimSpace(req.GetIdempotencyKey()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "idempotency_key is required")
+	}
+	amount, err := parsePositiveAmount(req.GetAmount(), "amount")
+	if err != nil {
+		return nil, err
+	}
+	newBal, applied, err := s.balance.DeductBalance(ctx, req.GetUserId(), amount,
+		req.GetReason(), req.GetIdempotencyKey(), req.GetSource(), req.GetAllowNegative())
+	if err != nil {
+		return nil, mapHostServiceError(err)
+	}
+	return &pluginsdk.DeductBalanceResponse{
+		NewBalance:     newBal.String(),
+		AlreadyApplied: applied,
+	}, nil
+}
+
+// AssignSubscription implements HostService.AssignSubscription.
+func (s *HostServiceServer) AssignSubscription(
+	ctx context.Context, req *pluginsdk.AssignSubscriptionRequest,
+) (*pluginsdk.AssignSubscriptionResponse, error) {
+	if s.subscription == nil {
+		return nil, status.Error(codes.Unimplemented, "host subscription service not configured")
+	}
+	if req.GetUserId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "user_id must be > 0")
+	}
+	if req.GetGroupId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "group_id must be > 0")
+	}
+	if req.GetDays() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "days must be > 0")
+	}
+	if strings.TrimSpace(req.GetIdempotencyKey()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "idempotency_key is required")
+	}
+	subID, expiresAt, applied, err := s.subscription.AssignSubscription(ctx,
+		req.GetUserId(), req.GetPlanId(), req.GetGroupId(), int(req.GetDays()),
+		req.GetSource(), req.GetIdempotencyKey())
+	if err != nil {
+		return nil, mapHostServiceError(err)
+	}
+	return &pluginsdk.AssignSubscriptionResponse{
+		SubscriptionId: subID,
+		ExpiresAtUnix:  expiresAt,
+		AlreadyApplied: applied,
+	}, nil
+}
+
+// RevokeSubscriptionDays implements HostService.RevokeSubscriptionDays.
+func (s *HostServiceServer) RevokeSubscriptionDays(
+	ctx context.Context, req *pluginsdk.RevokeSubscriptionDaysRequest,
+) (*pluginsdk.RevokeSubscriptionDaysResponse, error) {
+	if s.subscription == nil {
+		return nil, status.Error(codes.Unimplemented, "host subscription service not configured")
+	}
+	if req.GetUserId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "user_id must be > 0")
+	}
+	if req.GetGroupId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "group_id must be > 0")
+	}
+	if req.GetDays() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "days must be > 0")
+	}
+	if strings.TrimSpace(req.GetIdempotencyKey()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "idempotency_key is required")
+	}
+	expiresAt, applied, err := s.subscription.RevokeSubscriptionDays(ctx,
+		req.GetUserId(), req.GetGroupId(), int(req.GetDays()),
+		req.GetReason(), req.GetIdempotencyKey())
+	if err != nil {
+		return nil, mapHostServiceError(err)
+	}
+	return &pluginsdk.RevokeSubscriptionDaysResponse{
+		ExpiresAtUnix:  expiresAt,
+		AlreadyApplied: applied,
+	}, nil
+}
+
+// AccrueRebate implements HostService.AccrueRebate. The handler returns
+// success with rebate_amount="" and inviter_user_id=0 when the invitee
+// has no inviter or rebates are disabled — those are not RPC errors.
+func (s *HostServiceServer) AccrueRebate(
+	ctx context.Context, req *pluginsdk.AccrueRebateRequest,
+) (*pluginsdk.AccrueRebateResponse, error) {
+	if s.affiliate == nil {
+		return nil, status.Error(codes.Unimplemented, "host affiliate service not configured")
+	}
+	if req.GetInviteeUserId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "invitee_user_id must be > 0")
+	}
+	if strings.TrimSpace(req.GetIdempotencyKey()) == "" {
+		return nil, status.Error(codes.InvalidArgument, "idempotency_key is required")
+	}
+	amount, err := parsePositiveAmount(req.GetOrderAmount(), "order_amount")
+	if err != nil {
+		return nil, err
+	}
+	rebate, inviterID, applied, err := s.affiliate.AccrueRebate(ctx,
+		req.GetInviteeUserId(), amount, req.GetIdempotencyKey())
+	if err != nil {
+		return nil, mapHostServiceError(err)
+	}
+	resp := &pluginsdk.AccrueRebateResponse{
+		InviterUserId:  inviterID,
+		AlreadyApplied: applied,
+	}
+	if rebate.Sign() > 0 {
+		resp.RebateAmount = rebate.String()
+	}
+	return resp, nil
+}
+
+// GetUserByID implements HostService.GetUserByID. A nil HostUserInfo
+// from the underlying lookup signals "not found" and produces a
+// found=false response (the wire contract for soft-deletes).
+func (s *HostServiceServer) GetUserByID(
+	ctx context.Context, req *pluginsdk.GetUserByIDRequest,
+) (*pluginsdk.GetUserByIDResponse, error) {
+	if s.userLookup == nil {
+		return nil, status.Error(codes.Unimplemented, "host user lookup not configured")
+	}
+	if req.GetUserId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "user_id must be > 0")
+	}
+	info, err := s.userLookup.GetUserByID(ctx, req.GetUserId())
+	if err != nil {
+		return nil, mapHostServiceError(err)
+	}
+	if info == nil {
+		return &pluginsdk.GetUserByIDResponse{Found: false}, nil
+	}
+	return &pluginsdk.GetUserByIDResponse{
+		Found:     true,
+		UserId:    info.ID,
+		Email:     info.Email,
+		Username:  info.Username,
+		Balance:   info.Balance.String(),
+		InviterId: info.InviterID,
+		Role:      info.Role,
+	}, nil
+}
+
+// mapHostServiceError converts host-side errors to gRPC status codes.
+// Insufficient-balance is the only recognised FailedPrecondition; other
+// errors surface as Internal so plugins can log + retry without leaking
+// host stack traces.
+func mapHostServiceError(err error) error {
+	if err == nil {
+		return nil
+	}
+	// Already a status — pass through (adapters may pre-classify).
+	if _, ok := status.FromError(err); ok {
+		return err
+	}
+	msg := err.Error()
+	lower := strings.ToLower(msg)
+	switch {
+	case strings.Contains(lower, "insufficient") || strings.Contains(lower, "negative balance"):
+		return status.Error(codes.FailedPrecondition, msg)
+	case strings.Contains(lower, "not found"):
+		return status.Error(codes.NotFound, msg)
+	default:
+		return status.Error(codes.Internal, msg)
+	}
 }

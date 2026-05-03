@@ -64,7 +64,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		OIDCOAuthEnabled:                 settings.OIDCOAuthEnabled,
 		OIDCOAuthProviderName:            settings.OIDCOAuthProviderName,
 		BackendModeEnabled:               settings.BackendModeEnabled,
-		PaymentEnabled:                   settings.PaymentEnabled,
+		// PaymentEnabled 已迁移到 plugin（payment plugin 自带 PluginSettings）。
 		Version:                          h.version,
 		BalanceLowNotifyEnabled:          settings.BalanceLowNotifyEnabled,
 		AccountQuotaNotifyEnabled:        settings.AccountQuotaNotifyEnabled,

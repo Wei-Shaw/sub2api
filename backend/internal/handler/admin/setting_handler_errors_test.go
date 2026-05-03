@@ -19,7 +19,7 @@ func setupSettingErrorRouter() *gin.Engine {
 	router := gin.New()
 	repo := &settingHandlerRepoStub{values: map[string]string{}}
 	svc := service.NewSettingService(repo, &config.Config{})
-	h := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
+	h := NewSettingHandler(svc, nil, nil, nil, nil)
 	router.PUT("/api/v1/admin/settings", h.UpdateSettings)
 	return router
 }

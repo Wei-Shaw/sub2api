@@ -104,11 +104,6 @@ export const FeatureFlags = {
     mode: 'opt-in',
     label: 'Available Channels',
   }),
-  payment: defineFlag({
-    key: 'payment_enabled',
-    mode: 'opt-out',
-    label: 'Payment',
-  }),
   serviceQuota: defineFlag({
     key: 'service_quota_enabled',
     mode: 'opt-in',

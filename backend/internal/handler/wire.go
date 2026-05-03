@@ -34,7 +34,6 @@ func ProvideAdminHandlers(
 	tlsFingerprintProfileHandler *admin.TLSFingerprintProfileHandler,
 	apiKeyHandler *admin.AdminAPIKeyHandler,
 	scheduledTestHandler *admin.ScheduledTestHandler,
-	paymentHandler *admin.PaymentHandler,
 	serviceQuotaHandler *admin.ServiceQuotaHandler,
 	serviceQuotaMonitorHandler *admin.ServiceQuotaMonitorHandler,
 	affiliateHandler *admin.AffiliateHandler,
@@ -66,7 +65,6 @@ func ProvideAdminHandlers(
 		TLSFingerprintProfile: tlsFingerprintProfileHandler,
 		APIKey:                apiKeyHandler,
 		ScheduledTest:         scheduledTestHandler,
-		Payment:               paymentHandler,
 		ServiceQuota:          serviceQuotaHandler,
 		ServiceQuotaMonitor:   serviceQuotaMonitorHandler,
 		Affiliate:             affiliateHandler,
@@ -111,8 +109,6 @@ func ProvideHandlers(
 	openaiGatewayHandler *OpenAIGatewayHandler,
 	settingHandler *SettingHandler,
 	totpHandler *TotpHandler,
-	paymentHandler *PaymentHandler,
-	paymentWebhookHandler *PaymentWebhookHandler,
 	userServiceQuotaHandler *UserServiceQuotaHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
@@ -130,8 +126,6 @@ func ProvideHandlers(
 		OpenAIGateway:    openaiGatewayHandler,
 		Setting:          settingHandler,
 		Totp:             totpHandler,
-		Payment:          paymentHandler,
-		PaymentWebhook:   paymentWebhookHandler,
 		UserServiceQuota: userServiceQuotaHandler,
 	}
 }
@@ -150,8 +144,6 @@ var ProviderSet = wire.NewSet(
 	NewOpenAIGatewayHandler,
 	NewTotpHandler,
 	ProvideSettingHandler,
-	NewPaymentHandler,
-	NewPaymentWebhookHandler,
 	NewUserServiceQuotaHandler,
 
 	// Admin handlers
@@ -180,7 +172,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewAdminAPIKeyHandler,
 	admin.NewScheduledTestHandler,
 	// admin.NewChannelHandler / NewChannelMonitorHandler / NewChannelMonitorRequestTemplateHandler 已迁移到 plugins/channel-management/
-	admin.NewPaymentHandler,
+	// admin.NewPaymentHandler 已迁移到 plugins/payment/
 	admin.NewServiceQuotaHandler,
 	admin.NewServiceQuotaMonitorHandler,
 	admin.NewAffiliateHandler,

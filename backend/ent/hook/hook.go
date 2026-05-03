@@ -189,42 +189,6 @@ func (f IdentityAdoptionDecisionFunc) Mutate(ctx context.Context, m ent.Mutation
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.IdentityAdoptionDecisionMutation", m)
 }
 
-// The PaymentAuditLogFunc type is an adapter to allow the use of ordinary
-// function as PaymentAuditLog mutator.
-type PaymentAuditLogFunc func(context.Context, *ent.PaymentAuditLogMutation) (ent.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f PaymentAuditLogFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-	if mv, ok := m.(*ent.PaymentAuditLogMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PaymentAuditLogMutation", m)
-}
-
-// The PaymentOrderFunc type is an adapter to allow the use of ordinary
-// function as PaymentOrder mutator.
-type PaymentOrderFunc func(context.Context, *ent.PaymentOrderMutation) (ent.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f PaymentOrderFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-	if mv, ok := m.(*ent.PaymentOrderMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PaymentOrderMutation", m)
-}
-
-// The PaymentProviderInstanceFunc type is an adapter to allow the use of ordinary
-// function as PaymentProviderInstance mutator.
-type PaymentProviderInstanceFunc func(context.Context, *ent.PaymentProviderInstanceMutation) (ent.Value, error)
-
-// Mutate calls f(ctx, m).
-func (f PaymentProviderInstanceFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
-	if mv, ok := m.(*ent.PaymentProviderInstanceMutation); ok {
-		return f(ctx, mv)
-	}
-	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.PaymentProviderInstanceMutation", m)
-}
-
 // The PendingAuthSessionFunc type is an adapter to allow the use of ordinary
 // function as PendingAuthSession mutator.
 type PendingAuthSessionFunc func(context.Context, *ent.PendingAuthSessionMutation) (ent.Value, error)

@@ -442,31 +442,6 @@ export interface SystemSettings {
   enable_anthropic_cache_ttl_1h_injection: boolean;
   web_search_emulation_enabled?: boolean;
 
-  // Payment configuration
-  payment_enabled: boolean;
-  payment_min_amount: number;
-  payment_max_amount: number;
-  payment_daily_limit: number;
-  payment_order_timeout_minutes: number;
-  payment_max_pending_orders: number;
-  payment_enabled_types: string[];
-  payment_balance_disabled: boolean;
-  payment_balance_recharge_multiplier: number;
-  payment_recharge_fee_rate: number;
-  payment_load_balance_strategy: string;
-  payment_product_name_prefix: string;
-  payment_product_name_suffix: string;
-  payment_help_image_url: string;
-  payment_help_text: string;
-  payment_cancel_rate_limit_enabled: boolean;
-  payment_cancel_rate_limit_max: number;
-  payment_cancel_rate_limit_window: number;
-  payment_cancel_rate_limit_unit: string;
-  payment_cancel_rate_limit_window_mode: string;
-  payment_visible_method_alipay_source?: string;
-  payment_visible_method_wxpay_source?: string;
-  payment_visible_method_alipay_enabled?: boolean;
-  payment_visible_method_wxpay_enabled?: boolean;
   openai_advanced_scheduler_enabled?: boolean;
 
   // Balance & quota notification
@@ -614,31 +589,6 @@ export interface UpdateSettingsRequest {
   enable_metadata_passthrough?: boolean;
   enable_cch_signing?: boolean;
   enable_anthropic_cache_ttl_1h_injection?: boolean;
-  // Payment configuration
-  payment_enabled?: boolean;
-  payment_min_amount?: number;
-  payment_max_amount?: number;
-  payment_daily_limit?: number;
-  payment_order_timeout_minutes?: number;
-  payment_max_pending_orders?: number;
-  payment_enabled_types?: string[];
-  payment_balance_disabled?: boolean;
-  payment_balance_recharge_multiplier?: number;
-  payment_recharge_fee_rate?: number;
-  payment_load_balance_strategy?: string;
-  payment_product_name_prefix?: string;
-  payment_product_name_suffix?: string;
-  payment_help_image_url?: string;
-  payment_help_text?: string;
-  payment_cancel_rate_limit_enabled?: boolean;
-  payment_cancel_rate_limit_max?: number;
-  payment_cancel_rate_limit_window?: number;
-  payment_cancel_rate_limit_unit?: string;
-  payment_cancel_rate_limit_window_mode?: string;
-  payment_visible_method_alipay_source?: string;
-  payment_visible_method_wxpay_source?: string;
-  payment_visible_method_alipay_enabled?: boolean;
-  payment_visible_method_wxpay_enabled?: boolean;
   openai_advanced_scheduler_enabled?: boolean;
   // Balance & quota notification
   balance_low_notify_enabled?: boolean;

@@ -96,6 +96,11 @@ const (
 	// DANGEROUS — Phase 2: admin-approve is required. Today the host
 	// auto-grants when declared but this is intended to change.
 	CapabilityDBCoreWrite = "db.core.write"
+	// CapabilityEventsPublishPayment lets a plugin emit payment.* HostEvents
+	// via EventsExtension.Publish (e.g. payment.order.created). The host
+	// validates the capability before fan-out so anonymous / unauthorised
+	// plugins cannot inject fake payment events into other subscribers.
+	CapabilityEventsPublishPayment = "events.publish.payment"
 
 	// --- Legacy snake_case aliases (deprecated; one-release migration) --
 	// CapabilityRedisRawKeys is the legacy alias for CapabilityRedisRaw.
@@ -196,6 +201,62 @@ type Manifest struct {
 	// shared host table they read/write (the latter requires db.core.read or
 	// db.core.write capability).
 	OwnedTables []string
+
+	// PublicFlags declares public-facing settings flags the host should expose
+	// alongside its own GetPublicSettings response. Each entry maps a key
+	// (which appears in the public_settings JSON envelope shipped to the SSR /
+	// browser bootstrap payload) to either a static default or a
+	// settings-store lookup. The host queries the value without going through
+	// the plugin process, so a degraded / stopped plugin does not break the
+	// public bootstrap.
+	//
+	// Phase 0: Go-side declaration only. The proto wire field
+	// (ManifestResponse.public_flags) is reserved for a follow-up commit that
+	// regenerates plugin.proto bindings; until then host wiring reads
+	// PublicFlags directly from the in-memory Manifest struct returned by
+	// the plugin runner.
+	PublicFlags []PublicFlagDecl
+}
+
+// PublicFlagSource enumerates where the host should read a public flag's
+// value when GetPublicSettings is called.
+const (
+	// PublicFlagSourceSettings reads the value from the plugin's
+	// PluginSettingsService entry. Falls back to Default if missing.
+	PublicFlagSourceSettings = "settings"
+	// PublicFlagSourceStatic always returns the declared Default. Useful
+	// for compile-time constants exposed to the frontend (e.g. plugin
+	// version, build channel).
+	PublicFlagSourceStatic = "static"
+)
+
+// PublicFlagType enumerates the JSON value types a public flag may take.
+// Other types are rejected at manifest-validation time so the host can
+// safely cast them.
+const (
+	PublicFlagTypeBool   = "bool"
+	PublicFlagTypeString = "string"
+	PublicFlagTypeNumber = "number"
+)
+
+// PublicFlagDecl is a single entry in Manifest.PublicFlags.
+type PublicFlagDecl struct {
+	// Key is the field name surfaced in PublicSettings JSON. SHOULD be
+	// snake_case to match the dominant convention (e.g.
+	// "payment_enabled").
+	Key string
+	// Source is one of PublicFlagSource* constants.
+	Source string
+	// SettingsKey is the path inside the plugin's settings document
+	// (e.g. "enabled" or "stripe.publishable_key"). Required when
+	// Source == PublicFlagSourceSettings.
+	SettingsKey string
+	// Type is one of PublicFlagType* constants. Drives JSON encoding so
+	// the SSR bootstrap renders the correct primitive.
+	Type string
+	// Default is the value used when SettingsKey is unset / Source is
+	// static. Must be JSON-serialisable (bool, string, float64).
+	Default any
 }
 
 // Placement describes where on a sidebar a plugin's menu item should land.

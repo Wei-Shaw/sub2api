@@ -550,6 +550,38 @@ service EventsExtension {
   // 返回 PermissionDenied / InvalidArgument 时立即抛给调用方，避免被后台
   // 重连循环吞掉。Probe 不建立流、不注册订阅者。
   rpc ProbeSubscription(EventSubscribeRequest) returns (ProbeSubscriptionResponse);
+
+  // Publish lets a plugin emit a HostEvent that the host re-broadcasts to
+  // every other plugin currently subscribed to that event_type. This is the
+  // reverse direction of Subscribe and is intended for plugins that own a
+  // domain whose events other plugins care about (e.g. the payment plugin
+  // emits payment.order.created / payment.order.fulfilled after fulfillment).
+  //
+  // Authorization model:
+  //   - Caller must hold the per-event-type publish capability declared in
+  //     CapabilityRegistry (e.g. events.publish.payment for payment events).
+  //   - The host stamps event_id (if empty), timestamp_nanos and the source
+  //     plugin name; callers SHOULD leave those fields empty unless replaying
+  //     a known event.
+  //   - The host MUST NOT consume the event itself except for fan-out.
+  rpc Publish(PublishEventRequest) returns (PublishEventResponse);
+}
+
+// PublishEventRequest carries a single event to broadcast. The wrapping
+// envelope mirrors HostEvent so the proto wire format is symmetric in both
+// directions; the host validates the inner payload oneof matches the
+// declared event_type before fan-out.
+message PublishEventRequest {
+  HostEvent event = 1;
+}
+
+// PublishEventResponse is the success payload. Delivery to individual
+// subscribers is best-effort and out-of-band (same backpressure semantics
+// as Subscribe).
+message PublishEventResponse {
+  // delivered_to reports how many subscriber streams accepted the event
+  // synchronously. Observability only — never branch on this value.
+  int64 delivered_to = 1;
 }
 
 // ProbeSubscriptionResponse is the success payload of ProbeSubscription.
@@ -973,6 +1005,147 @@ service HostService {
   // Network / host errors surface as gRPC status codes; callers MUST
   // treat any error as "no pricing" and continue rendering.
   rpc ResolveModelPricing(ResolveModelPricingRequest) returns (ResolveModelPricingResponse);
+
+  // CreditBalance credits a user's balance. Idempotency via idempotency_key
+  // (typically the source order's out_trade_no). A repeat with the same key
+  // returns already_applied=true and the original balance, never double-credits.
+  rpc CreditBalance(CreditBalanceRequest) returns (CreditBalanceResponse);
+
+  // DeductBalance debits a user's balance (refund flow). Idempotent via
+  // idempotency_key. allow_negative permits balance < 0 for refund cases.
+  rpc DeductBalance(DeductBalanceRequest) returns (DeductBalanceResponse);
+
+  // AssignSubscription assigns or extends a subscription plan. Host owns
+  // the user_subscriptions table and group-merge rules. Idempotent.
+  rpc AssignSubscription(AssignSubscriptionRequest) returns (AssignSubscriptionResponse);
+
+  // RevokeSubscriptionDays removes days from an active subscription.
+  // Used by refund flow for subscription orders. Idempotent.
+  rpc RevokeSubscriptionDays(RevokeSubscriptionDaysRequest) returns (RevokeSubscriptionDaysResponse);
+
+  // AccrueRebate triggers the host's affiliate-rebate flow for a paid
+  // order. Returns the rebate amount actually credited (0 if no inviter
+  // or rebate disabled). Idempotent.
+  rpc AccrueRebate(AccrueRebateRequest) returns (AccrueRebateResponse);
+
+  // GetUserByID returns minimal user info (email/username/balance/inviter)
+  // for the payment plugin. Plugins with db.core.read could read users
+  // directly; this RPC exists so payment-flavored fields can evolve.
+  rpc GetUserByID(GetUserByIDRequest) returns (GetUserByIDResponse);
+}
+
+// CreditBalanceRequest credits a user's balance.
+message CreditBalanceRequest {
+  int64  user_id          = 1;
+  // amount is decimal-string encoded (T24 convention). Must be > 0.
+  string amount           = 2;
+  // reason is recorded on the audit log; e.g. "payment_order:123".
+  string reason           = 3;
+  // idempotency_key uniquely identifies the source operation.
+  string idempotency_key  = 4;
+  // source: "payment" | "redeem_code" | "admin".
+  string source           = 5;
+}
+
+message CreditBalanceResponse {
+  // new_balance is the user's balance after the credit (decimal string).
+  string new_balance     = 1;
+  // already_applied=true means the idempotency_key matched a prior
+  // credit; new_balance reflects the state at that prior credit.
+  bool   already_applied = 2;
+}
+
+// DeductBalanceRequest debits a user's balance (refund flow).
+message DeductBalanceRequest {
+  int64  user_id          = 1;
+  string amount           = 2;
+  string reason           = 3;
+  string idempotency_key  = 4;
+  string source           = 5;
+  // allow_negative permits balance < 0 (refund flow). Otherwise the host
+  // returns FailedPrecondition when amount > current balance.
+  bool   allow_negative   = 6;
+}
+
+message DeductBalanceResponse {
+  string new_balance     = 1;
+  bool   already_applied = 2;
+}
+
+// AssignSubscriptionRequest assigns or extends a subscription.
+message AssignSubscriptionRequest {
+  int64  user_id          = 1;
+  // plan_id is the host's subscription_plans.id.
+  int64  plan_id          = 2;
+  // group_id is the host's groups.id (multi-tenant aggregator).
+  int64  group_id         = 3;
+  // days to extend; must be > 0.
+  int32  days             = 4;
+  // source is "payment" | "admin" | "redeem_code".
+  string source           = 5;
+  // idempotency_key, typically the source order_id encoded as string.
+  string idempotency_key  = 6;
+}
+
+message AssignSubscriptionResponse {
+  // subscription_id is the host's user_subscriptions.id.
+  int64 subscription_id   = 1;
+  // expires_at_unix is the new subscription expiry (seconds since epoch).
+  int64 expires_at_unix   = 2;
+  bool  already_applied   = 3;
+}
+
+// RevokeSubscriptionDaysRequest removes days from an active subscription.
+message RevokeSubscriptionDaysRequest {
+  int64  user_id          = 1;
+  int64  group_id         = 2;
+  int32  days             = 3;
+  string reason           = 4;
+  string idempotency_key  = 5;
+}
+
+message RevokeSubscriptionDaysResponse {
+  int64 expires_at_unix = 1;
+  bool  already_applied = 2;
+}
+
+// AccrueRebateRequest triggers affiliate rebate accrual for a paid order.
+message AccrueRebateRequest {
+  // invitee_user_id is the user whose order triggered the rebate.
+  int64  invitee_user_id  = 1;
+  // order_amount is the original order amount (decimal string).
+  string order_amount     = 2;
+  // idempotency_key, typically order_id encoded as string.
+  string idempotency_key  = 3;
+}
+
+message AccrueRebateResponse {
+  // rebate_amount is the amount actually credited to the inviter; "" or
+  // "0" if no inviter / rebate disabled / already applied.
+  string rebate_amount    = 1;
+  // inviter_user_id is 0 when no inviter exists.
+  int64  inviter_user_id  = 2;
+  bool   already_applied  = 3;
+}
+
+// GetUserByIDRequest queries minimal user info.
+message GetUserByIDRequest {
+  int64 user_id = 1;
+}
+
+message GetUserByIDResponse {
+  // found=false signals the user does not exist (e.g. deleted account);
+  // every other field is empty in that case.
+  bool   found      = 1;
+  int64  user_id    = 2;
+  string email      = 3;
+  string username   = 4;
+  // balance is decimal-string encoded (T24 convention).
+  string balance    = 5;
+  // inviter_id is 0 when no inviter recorded.
+  int64  inviter_id = 6;
+  // role is "user" | "admin" | ...
+  string role       = 7;
 }
 
 message ResolveModelPricingRequest {

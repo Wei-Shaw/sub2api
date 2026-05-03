@@ -21,7 +21,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -409,9 +408,9 @@ func TestWeChatPaymentOAuthCallbackRedirectsWithOpaqueResumeToken(t *testing.T) 
 	claims, err := handler.wechatPaymentResumeService().ParseWeChatPaymentResumeToken(fragment.Get("wechat_resume_token"))
 	require.NoError(t, err)
 	require.Equal(t, "openid-123", claims.OpenID)
-	require.Equal(t, payment.TypeWxpay, claims.PaymentType)
+	require.Equal(t, paymentTypeWxpay, claims.PaymentType)
 	require.Equal(t, "12.5", claims.Amount)
-	require.Equal(t, payment.OrderTypeSubscription, claims.OrderType)
+	require.Equal(t, paymentOrderTypeSubscription, claims.OrderType)
 	require.EqualValues(t, 7, claims.PlanID)
 	require.Equal(t, "/purchase?from=wechat", claims.RedirectTo)
 }
@@ -464,16 +463,16 @@ func TestWeChatPaymentOAuthCallbackUsesExplicitPaymentResumeSigningKeyWhenMixedK
 	token := fragment.Get("wechat_resume_token")
 	require.NotEmpty(t, token)
 
-	claims, err := service.NewPaymentResumeService([]byte(explicitSigningKey)).ParseWeChatPaymentResumeToken(token)
+	claims, err := newPaymentResumeService([]byte(explicitSigningKey)).ParseWeChatPaymentResumeToken(token)
 	require.NoError(t, err)
 	require.Equal(t, "openid-mixed-key", claims.OpenID)
-	require.Equal(t, payment.TypeWxpay, claims.PaymentType)
+	require.Equal(t, paymentTypeWxpay, claims.PaymentType)
 	require.Equal(t, "18.8", claims.Amount)
-	require.Equal(t, payment.OrderTypeSubscription, claims.OrderType)
+	require.Equal(t, paymentOrderTypeSubscription, claims.OrderType)
 	require.EqualValues(t, 9, claims.PlanID)
 	require.Equal(t, "/purchase?from=wechat", claims.RedirectTo)
 
-	_, err = service.NewPaymentResumeService([]byte("0123456789abcdef0123456789abcdef")).ParseWeChatPaymentResumeToken(token)
+	_, err = newPaymentResumeService([]byte("0123456789abcdef0123456789abcdef")).ParseWeChatPaymentResumeToken(token)
 	require.Error(t, err)
 }
 

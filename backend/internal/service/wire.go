@@ -5,9 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
@@ -518,20 +516,6 @@ var ProviderSet = wire.NewSet(
 	NewChannelCacheReader,
 	NewModelPricingResolver,
 	NewAffiliateService,
-	ProvidePaymentConfigService,
-	NewPaymentService,
-	ProvidePaymentOrderExpiryService,
+	// payment-related providers (PaymentConfigService / PaymentService /
+	// PaymentOrderExpiryService) 已迁移到 plugins/payment/.
 )
-
-// ProvidePaymentConfigService wraps NewPaymentConfigService to accept the named
-// payment.EncryptionKey type instead of raw []byte, avoiding Wire ambiguity.
-func ProvidePaymentConfigService(entClient *dbent.Client, settingRepo SettingRepository, key payment.EncryptionKey) *PaymentConfigService {
-	return NewPaymentConfigService(entClient, settingRepo, []byte(key))
-}
-
-// ProvidePaymentOrderExpiryService creates and starts PaymentOrderExpiryService.
-func ProvidePaymentOrderExpiryService(paymentSvc *PaymentService) *PaymentOrderExpiryService {
-	svc := NewPaymentOrderExpiryService(paymentSvc, 60*time.Second)
-	svc.Start()
-	return svc
-}

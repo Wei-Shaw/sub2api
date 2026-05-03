@@ -44,12 +44,6 @@ type Tx struct {
 	IdempotencyRecord *IdempotencyRecordClient
 	// IdentityAdoptionDecision is the client for interacting with the IdentityAdoptionDecision builders.
 	IdentityAdoptionDecision *IdentityAdoptionDecisionClient
-	// PaymentAuditLog is the client for interacting with the PaymentAuditLog builders.
-	PaymentAuditLog *PaymentAuditLogClient
-	// PaymentOrder is the client for interacting with the PaymentOrder builders.
-	PaymentOrder *PaymentOrderClient
-	// PaymentProviderInstance is the client for interacting with the PaymentProviderInstance builders.
-	PaymentProviderInstance *PaymentProviderInstanceClient
 	// PendingAuthSession is the client for interacting with the PendingAuthSession builders.
 	PendingAuthSession *PendingAuthSessionClient
 	// PromoCode is the client for interacting with the PromoCode builders.
@@ -228,9 +222,6 @@ func (tx *Tx) init() {
 	tx.Group = NewGroupClient(tx.config)
 	tx.IdempotencyRecord = NewIdempotencyRecordClient(tx.config)
 	tx.IdentityAdoptionDecision = NewIdentityAdoptionDecisionClient(tx.config)
-	tx.PaymentAuditLog = NewPaymentAuditLogClient(tx.config)
-	tx.PaymentOrder = NewPaymentOrderClient(tx.config)
-	tx.PaymentProviderInstance = NewPaymentProviderInstanceClient(tx.config)
 	tx.PendingAuthSession = NewPendingAuthSessionClient(tx.config)
 	tx.PromoCode = NewPromoCodeClient(tx.config)
 	tx.PromoCodeUsage = NewPromoCodeUsageClient(tx.config)

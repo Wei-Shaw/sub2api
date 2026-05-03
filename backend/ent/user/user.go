@@ -79,8 +79,6 @@ const (
 	EdgeAttributeValues = "attribute_values"
 	// EdgePromoCodeUsages holds the string denoting the promo_code_usages edge name in mutations.
 	EdgePromoCodeUsages = "promo_code_usages"
-	// EdgePaymentOrders holds the string denoting the payment_orders edge name in mutations.
-	EdgePaymentOrders = "payment_orders"
 	// EdgeAuthIdentities holds the string denoting the auth_identities edge name in mutations.
 	EdgeAuthIdentities = "auth_identities"
 	// EdgePendingAuthSessions holds the string denoting the pending_auth_sessions edge name in mutations.
@@ -150,13 +148,6 @@ const (
 	PromoCodeUsagesInverseTable = "promo_code_usages"
 	// PromoCodeUsagesColumn is the table column denoting the promo_code_usages relation/edge.
 	PromoCodeUsagesColumn = "user_id"
-	// PaymentOrdersTable is the table that holds the payment_orders relation/edge.
-	PaymentOrdersTable = "payment_orders"
-	// PaymentOrdersInverseTable is the table name for the PaymentOrder entity.
-	// It exists in this package in order to avoid circular dependency with the "paymentorder" package.
-	PaymentOrdersInverseTable = "payment_orders"
-	// PaymentOrdersColumn is the table column denoting the payment_orders relation/edge.
-	PaymentOrdersColumn = "user_id"
 	// AuthIdentitiesTable is the table that holds the auth_identities relation/edge.
 	AuthIdentitiesTable = "auth_identities"
 	// AuthIdentitiesInverseTable is the table name for the AuthIdentity entity.
@@ -527,20 +518,6 @@ func ByPromoCodeUsages(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
-// ByPaymentOrdersCount orders the results by payment_orders count.
-func ByPaymentOrdersCount(opts ...sql.OrderTermOption) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborsCount(s, newPaymentOrdersStep(), opts...)
-	}
-}
-
-// ByPaymentOrders orders the results by payment_orders terms.
-func ByPaymentOrders(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
-	return func(s *sql.Selector) {
-		sqlgraph.OrderByNeighborTerms(s, newPaymentOrdersStep(), append([]sql.OrderTerm{term}, terms...)...)
-	}
-}
-
 // ByAuthIdentitiesCount orders the results by auth_identities count.
 func ByAuthIdentitiesCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -643,13 +620,6 @@ func newPromoCodeUsagesStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(PromoCodeUsagesInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, PromoCodeUsagesTable, PromoCodeUsagesColumn),
-	)
-}
-func newPaymentOrdersStep() *sqlgraph.Step {
-	return sqlgraph.NewStep(
-		sqlgraph.From(Table, FieldID),
-		sqlgraph.To(PaymentOrdersInverseTable, FieldID),
-		sqlgraph.Edge(sqlgraph.O2M, false, PaymentOrdersTable, PaymentOrdersColumn),
 	)
 }
 func newAuthIdentitiesStep() *sqlgraph.Step {

@@ -33,23 +33,11 @@ type PluginEventPublisher interface {
 }
 
 // --- Helpers per receiver ---
-
-// publishPaymentOrderCreated emits payment.order.created. Safe when the
-// publisher has not been wired (s.eventPublisher == nil).
-func (s *PaymentService) publishPaymentOrderCreated(payload *pb.PaymentOrderCreated) {
-	if s == nil || s.eventPublisher == nil {
-		return
-	}
-	s.eventPublisher.PublishPaymentOrderCreated(payload)
-}
-
-// publishPaymentOrderFulfilled emits payment.order.fulfilled.
-func (s *PaymentService) publishPaymentOrderFulfilled(payload *pb.PaymentOrderFulfilled) {
-	if s == nil || s.eventPublisher == nil {
-		return
-	}
-	s.eventPublisher.PublishPaymentOrderFulfilled(payload)
-}
+//
+// PaymentService publish helpers 已迁移到 plugins/payment/。
+// 本接口保留 PublishPaymentOrderCreated / PublishPaymentOrderFulfilled
+// 的方法定义只是因为 plugin/event_publisher 实现了它们 — 当 plugin
+// 自己持有 publisher 时可以直接调用。
 
 // publishGatewayModelInvoked emits gateway.model.invoked.
 func (s *AntigravityGatewayService) publishGatewayModelInvoked(payload *pb.GatewayModelInvoked) {

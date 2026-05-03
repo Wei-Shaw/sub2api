@@ -196,7 +196,7 @@ export interface PublicSettings {
   doc_url: string
   home_content: string
   hide_ccs_import_button: boolean
-  payment_enabled: boolean
+  payment_enabled?: boolean
   table_default_page_size: number
   table_page_size_options: number[]
   custom_menu_items: CustomMenuItem[]
@@ -1751,5 +1751,3 @@ export interface UpdateScheduledTestPlanRequest {
   auto_recover?: boolean
 }
 
-// Payment types
-export type { SubscriptionPlan, PaymentOrder, CheckoutInfoResponse } from './payment'

@@ -1673,6 +1673,7 @@ var SettingsExtension_ServiceDesc = grpc.ServiceDesc{
 const (
 	EventsExtension_Subscribe_FullMethodName         = "/pluginsdk.EventsExtension/Subscribe"
 	EventsExtension_ProbeSubscription_FullMethodName = "/pluginsdk.EventsExtension/ProbeSubscription"
+	EventsExtension_Publish_FullMethodName           = "/pluginsdk.EventsExtension/Publish"
 )
 
 // EventsExtensionClient is the client API for EventsExtension service.
@@ -1732,6 +1733,20 @@ type EventsExtensionClient interface {
 	// 返回 PermissionDenied / InvalidArgument 时立即抛给调用方，避免被后台
 	// 重连循环吞掉。Probe 不建立流、不注册订阅者。
 	ProbeSubscription(ctx context.Context, in *EventSubscribeRequest, opts ...grpc.CallOption) (*ProbeSubscriptionResponse, error)
+	// Publish lets a plugin emit a HostEvent that the host re-broadcasts to
+	// every other plugin currently subscribed to that event_type. This is the
+	// reverse direction of Subscribe and is intended for plugins that own a
+	// domain whose events other plugins care about (e.g. the payment plugin
+	// emits payment.order.created / payment.order.fulfilled after fulfillment).
+	//
+	// Authorization model:
+	//   - Caller must hold the per-event-type publish capability declared in
+	//     CapabilityRegistry (e.g. events.publish.payment for payment events).
+	//   - The host stamps event_id (if empty), timestamp_nanos and the source
+	//     plugin name; callers SHOULD leave those fields empty unless replaying
+	//     a known event.
+	//   - The host MUST NOT consume the event itself except for fan-out.
+	Publish(ctx context.Context, in *PublishEventRequest, opts ...grpc.CallOption) (*PublishEventResponse, error)
 }
 
 type eventsExtensionClient struct {
@@ -1765,6 +1780,16 @@ func (c *eventsExtensionClient) ProbeSubscription(ctx context.Context, in *Event
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ProbeSubscriptionResponse)
 	err := c.cc.Invoke(ctx, EventsExtension_ProbeSubscription_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *eventsExtensionClient) Publish(ctx context.Context, in *PublishEventRequest, opts ...grpc.CallOption) (*PublishEventResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PublishEventResponse)
+	err := c.cc.Invoke(ctx, EventsExtension_Publish_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1828,6 +1853,20 @@ type EventsExtensionServer interface {
 	// 返回 PermissionDenied / InvalidArgument 时立即抛给调用方，避免被后台
 	// 重连循环吞掉。Probe 不建立流、不注册订阅者。
 	ProbeSubscription(context.Context, *EventSubscribeRequest) (*ProbeSubscriptionResponse, error)
+	// Publish lets a plugin emit a HostEvent that the host re-broadcasts to
+	// every other plugin currently subscribed to that event_type. This is the
+	// reverse direction of Subscribe and is intended for plugins that own a
+	// domain whose events other plugins care about (e.g. the payment plugin
+	// emits payment.order.created / payment.order.fulfilled after fulfillment).
+	//
+	// Authorization model:
+	//   - Caller must hold the per-event-type publish capability declared in
+	//     CapabilityRegistry (e.g. events.publish.payment for payment events).
+	//   - The host stamps event_id (if empty), timestamp_nanos and the source
+	//     plugin name; callers SHOULD leave those fields empty unless replaying
+	//     a known event.
+	//   - The host MUST NOT consume the event itself except for fan-out.
+	Publish(context.Context, *PublishEventRequest) (*PublishEventResponse, error)
 	mustEmbedUnimplementedEventsExtensionServer()
 }
 
@@ -1843,6 +1882,9 @@ func (UnimplementedEventsExtensionServer) Subscribe(*EventSubscribeRequest, grpc
 }
 func (UnimplementedEventsExtensionServer) ProbeSubscription(context.Context, *EventSubscribeRequest) (*ProbeSubscriptionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ProbeSubscription not implemented")
+}
+func (UnimplementedEventsExtensionServer) Publish(context.Context, *PublishEventRequest) (*PublishEventResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Publish not implemented")
 }
 func (UnimplementedEventsExtensionServer) mustEmbedUnimplementedEventsExtensionServer() {}
 func (UnimplementedEventsExtensionServer) testEmbeddedByValue()                         {}
@@ -1894,6 +1936,24 @@ func _EventsExtension_ProbeSubscription_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _EventsExtension_Publish_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PublishEventRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EventsExtensionServer).Publish(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: EventsExtension_Publish_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EventsExtensionServer).Publish(ctx, req.(*PublishEventRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // EventsExtension_ServiceDesc is the grpc.ServiceDesc for EventsExtension service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1904,6 +1964,10 @@ var EventsExtension_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ProbeSubscription",
 			Handler:    _EventsExtension_ProbeSubscription_Handler,
+		},
+		{
+			MethodName: "Publish",
+			Handler:    _EventsExtension_Publish_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
@@ -2387,7 +2451,13 @@ var MaintenanceExtension_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	HostService_ResolveModelPricing_FullMethodName = "/pluginsdk.HostService/ResolveModelPricing"
+	HostService_ResolveModelPricing_FullMethodName    = "/pluginsdk.HostService/ResolveModelPricing"
+	HostService_CreditBalance_FullMethodName          = "/pluginsdk.HostService/CreditBalance"
+	HostService_DeductBalance_FullMethodName          = "/pluginsdk.HostService/DeductBalance"
+	HostService_AssignSubscription_FullMethodName     = "/pluginsdk.HostService/AssignSubscription"
+	HostService_RevokeSubscriptionDays_FullMethodName = "/pluginsdk.HostService/RevokeSubscriptionDays"
+	HostService_AccrueRebate_FullMethodName           = "/pluginsdk.HostService/AccrueRebate"
+	HostService_GetUserByID_FullMethodName            = "/pluginsdk.HostService/GetUserByID"
 )
 
 // HostServiceClient is the client API for HostService service.
@@ -2430,6 +2500,27 @@ type HostServiceClient interface {
 	// Network / host errors surface as gRPC status codes; callers MUST
 	// treat any error as "no pricing" and continue rendering.
 	ResolveModelPricing(ctx context.Context, in *ResolveModelPricingRequest, opts ...grpc.CallOption) (*ResolveModelPricingResponse, error)
+	// CreditBalance credits a user's balance. Idempotency via idempotency_key
+	// (typically the source order's out_trade_no). A repeat with the same key
+	// returns already_applied=true and the original balance, never double-credits.
+	CreditBalance(ctx context.Context, in *CreditBalanceRequest, opts ...grpc.CallOption) (*CreditBalanceResponse, error)
+	// DeductBalance debits a user's balance (refund flow). Idempotent via
+	// idempotency_key. allow_negative permits balance < 0 for refund cases.
+	DeductBalance(ctx context.Context, in *DeductBalanceRequest, opts ...grpc.CallOption) (*DeductBalanceResponse, error)
+	// AssignSubscription assigns or extends a subscription plan. Host owns
+	// the user_subscriptions table and group-merge rules. Idempotent.
+	AssignSubscription(ctx context.Context, in *AssignSubscriptionRequest, opts ...grpc.CallOption) (*AssignSubscriptionResponse, error)
+	// RevokeSubscriptionDays removes days from an active subscription.
+	// Used by refund flow for subscription orders. Idempotent.
+	RevokeSubscriptionDays(ctx context.Context, in *RevokeSubscriptionDaysRequest, opts ...grpc.CallOption) (*RevokeSubscriptionDaysResponse, error)
+	// AccrueRebate triggers the host's affiliate-rebate flow for a paid
+	// order. Returns the rebate amount actually credited (0 if no inviter
+	// or rebate disabled). Idempotent.
+	AccrueRebate(ctx context.Context, in *AccrueRebateRequest, opts ...grpc.CallOption) (*AccrueRebateResponse, error)
+	// GetUserByID returns minimal user info (email/username/balance/inviter)
+	// for the payment plugin. Plugins with db.core.read could read users
+	// directly; this RPC exists so payment-flavored fields can evolve.
+	GetUserByID(ctx context.Context, in *GetUserByIDRequest, opts ...grpc.CallOption) (*GetUserByIDResponse, error)
 }
 
 type hostServiceClient struct {
@@ -2444,6 +2535,66 @@ func (c *hostServiceClient) ResolveModelPricing(ctx context.Context, in *Resolve
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ResolveModelPricingResponse)
 	err := c.cc.Invoke(ctx, HostService_ResolveModelPricing_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hostServiceClient) CreditBalance(ctx context.Context, in *CreditBalanceRequest, opts ...grpc.CallOption) (*CreditBalanceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreditBalanceResponse)
+	err := c.cc.Invoke(ctx, HostService_CreditBalance_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hostServiceClient) DeductBalance(ctx context.Context, in *DeductBalanceRequest, opts ...grpc.CallOption) (*DeductBalanceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeductBalanceResponse)
+	err := c.cc.Invoke(ctx, HostService_DeductBalance_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hostServiceClient) AssignSubscription(ctx context.Context, in *AssignSubscriptionRequest, opts ...grpc.CallOption) (*AssignSubscriptionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AssignSubscriptionResponse)
+	err := c.cc.Invoke(ctx, HostService_AssignSubscription_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hostServiceClient) RevokeSubscriptionDays(ctx context.Context, in *RevokeSubscriptionDaysRequest, opts ...grpc.CallOption) (*RevokeSubscriptionDaysResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RevokeSubscriptionDaysResponse)
+	err := c.cc.Invoke(ctx, HostService_RevokeSubscriptionDays_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hostServiceClient) AccrueRebate(ctx context.Context, in *AccrueRebateRequest, opts ...grpc.CallOption) (*AccrueRebateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AccrueRebateResponse)
+	err := c.cc.Invoke(ctx, HostService_AccrueRebate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hostServiceClient) GetUserByID(ctx context.Context, in *GetUserByIDRequest, opts ...grpc.CallOption) (*GetUserByIDResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetUserByIDResponse)
+	err := c.cc.Invoke(ctx, HostService_GetUserByID_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -2490,6 +2641,27 @@ type HostServiceServer interface {
 	// Network / host errors surface as gRPC status codes; callers MUST
 	// treat any error as "no pricing" and continue rendering.
 	ResolveModelPricing(context.Context, *ResolveModelPricingRequest) (*ResolveModelPricingResponse, error)
+	// CreditBalance credits a user's balance. Idempotency via idempotency_key
+	// (typically the source order's out_trade_no). A repeat with the same key
+	// returns already_applied=true and the original balance, never double-credits.
+	CreditBalance(context.Context, *CreditBalanceRequest) (*CreditBalanceResponse, error)
+	// DeductBalance debits a user's balance (refund flow). Idempotent via
+	// idempotency_key. allow_negative permits balance < 0 for refund cases.
+	DeductBalance(context.Context, *DeductBalanceRequest) (*DeductBalanceResponse, error)
+	// AssignSubscription assigns or extends a subscription plan. Host owns
+	// the user_subscriptions table and group-merge rules. Idempotent.
+	AssignSubscription(context.Context, *AssignSubscriptionRequest) (*AssignSubscriptionResponse, error)
+	// RevokeSubscriptionDays removes days from an active subscription.
+	// Used by refund flow for subscription orders. Idempotent.
+	RevokeSubscriptionDays(context.Context, *RevokeSubscriptionDaysRequest) (*RevokeSubscriptionDaysResponse, error)
+	// AccrueRebate triggers the host's affiliate-rebate flow for a paid
+	// order. Returns the rebate amount actually credited (0 if no inviter
+	// or rebate disabled). Idempotent.
+	AccrueRebate(context.Context, *AccrueRebateRequest) (*AccrueRebateResponse, error)
+	// GetUserByID returns minimal user info (email/username/balance/inviter)
+	// for the payment plugin. Plugins with db.core.read could read users
+	// directly; this RPC exists so payment-flavored fields can evolve.
+	GetUserByID(context.Context, *GetUserByIDRequest) (*GetUserByIDResponse, error)
 	mustEmbedUnimplementedHostServiceServer()
 }
 
@@ -2502,6 +2674,24 @@ type UnimplementedHostServiceServer struct{}
 
 func (UnimplementedHostServiceServer) ResolveModelPricing(context.Context, *ResolveModelPricingRequest) (*ResolveModelPricingResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ResolveModelPricing not implemented")
+}
+func (UnimplementedHostServiceServer) CreditBalance(context.Context, *CreditBalanceRequest) (*CreditBalanceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreditBalance not implemented")
+}
+func (UnimplementedHostServiceServer) DeductBalance(context.Context, *DeductBalanceRequest) (*DeductBalanceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeductBalance not implemented")
+}
+func (UnimplementedHostServiceServer) AssignSubscription(context.Context, *AssignSubscriptionRequest) (*AssignSubscriptionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AssignSubscription not implemented")
+}
+func (UnimplementedHostServiceServer) RevokeSubscriptionDays(context.Context, *RevokeSubscriptionDaysRequest) (*RevokeSubscriptionDaysResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RevokeSubscriptionDays not implemented")
+}
+func (UnimplementedHostServiceServer) AccrueRebate(context.Context, *AccrueRebateRequest) (*AccrueRebateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AccrueRebate not implemented")
+}
+func (UnimplementedHostServiceServer) GetUserByID(context.Context, *GetUserByIDRequest) (*GetUserByIDResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetUserByID not implemented")
 }
 func (UnimplementedHostServiceServer) mustEmbedUnimplementedHostServiceServer() {}
 func (UnimplementedHostServiceServer) testEmbeddedByValue()                     {}
@@ -2542,6 +2732,114 @@ func _HostService_ResolveModelPricing_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HostService_CreditBalance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreditBalanceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HostServiceServer).CreditBalance(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HostService_CreditBalance_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HostServiceServer).CreditBalance(ctx, req.(*CreditBalanceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HostService_DeductBalance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeductBalanceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HostServiceServer).DeductBalance(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HostService_DeductBalance_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HostServiceServer).DeductBalance(ctx, req.(*DeductBalanceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HostService_AssignSubscription_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AssignSubscriptionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HostServiceServer).AssignSubscription(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HostService_AssignSubscription_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HostServiceServer).AssignSubscription(ctx, req.(*AssignSubscriptionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HostService_RevokeSubscriptionDays_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevokeSubscriptionDaysRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HostServiceServer).RevokeSubscriptionDays(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HostService_RevokeSubscriptionDays_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HostServiceServer).RevokeSubscriptionDays(ctx, req.(*RevokeSubscriptionDaysRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HostService_AccrueRebate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AccrueRebateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HostServiceServer).AccrueRebate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HostService_AccrueRebate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HostServiceServer).AccrueRebate(ctx, req.(*AccrueRebateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HostService_GetUserByID_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetUserByIDRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HostServiceServer).GetUserByID(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HostService_GetUserByID_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HostServiceServer).GetUserByID(ctx, req.(*GetUserByIDRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // HostService_ServiceDesc is the grpc.ServiceDesc for HostService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -2552,6 +2850,30 @@ var HostService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ResolveModelPricing",
 			Handler:    _HostService_ResolveModelPricing_Handler,
+		},
+		{
+			MethodName: "CreditBalance",
+			Handler:    _HostService_CreditBalance_Handler,
+		},
+		{
+			MethodName: "DeductBalance",
+			Handler:    _HostService_DeductBalance_Handler,
+		},
+		{
+			MethodName: "AssignSubscription",
+			Handler:    _HostService_AssignSubscription_Handler,
+		},
+		{
+			MethodName: "RevokeSubscriptionDays",
+			Handler:    _HostService_RevokeSubscriptionDays_Handler,
+		},
+		{
+			MethodName: "AccrueRebate",
+			Handler:    _HostService_AccrueRebate_Handler,
+		},
+		{
+			MethodName: "GetUserByID",
+			Handler:    _HostService_GetUserByID_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
