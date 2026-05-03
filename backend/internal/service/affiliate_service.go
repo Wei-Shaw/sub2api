@@ -110,6 +110,10 @@ type AffiliateRepository interface {
 	SetUserRebateRate(ctx context.Context, userID int64, ratePercent *float64) error
 	BatchSetUserRebateRate(ctx context.Context, userIDs []int64, ratePercent *float64) error
 	ListUsersWithCustomSettings(ctx context.Context, filter AffiliateAdminFilter) ([]AffiliateAdminEntry, int64, error)
+	ListAffiliateInviteRecords(ctx context.Context, filter AffiliateRecordFilter) ([]AffiliateInviteRecord, int64, error)
+	ListAffiliateRebateRecords(ctx context.Context, filter AffiliateRecordFilter) ([]AffiliateRebateRecord, int64, error)
+	ListAffiliateTransferRecords(ctx context.Context, filter AffiliateRecordFilter) ([]AffiliateTransferRecord, int64, error)
+	GetAffiliateUserOverview(ctx context.Context, userID int64) (*AffiliateUserOverview, error)
 REDACTED
 
 // AffiliateAdminFilter 列表筛选条件
@@ -128,6 +132,71 @@ type AffiliateAdminEntry struct {
 	AffCodeCustom        bool     `json:"aff_code_custom"`
 	AffRebateRatePercent *float64 `json:"aff_rebate_rate_percent,omitempty"`
 	AffCount             int      `json:"aff_count"`
+REDACTED
+
+type AffiliateRecordFilter struct {
+	Search   string
+	Page     int
+	PageSize int
+	StartAt  *time.Time
+	EndAt    *time.Time
+	SortBy   string
+	SortDesc bool
+REDACTED
+
+type AffiliateInviteRecord struct {
+	InviterID       int64     `json:"inviter_id"`
+	InviterEmail    string    `json:"inviter_email"`
+	InviterUsername string    `json:"inviter_username"`
+	InviteeID       int64     `json:"invitee_id"`
+	InviteeEmail    string    `json:"invitee_email"`
+	InviteeUsername string    `json:"invitee_username"`
+	AffCode         string    `json:"aff_code"`
+	TotalRebate     float64   `json:"total_rebate"`
+	CreatedAt       time.Time `json:"created_at"`
+REDACTED
+
+type AffiliateRebateRecord struct {
+	OrderID         int64     `json:"order_id"`
+	OutTradeNo      string    `json:"out_trade_no"`
+	InviterID       int64     `json:"inviter_id"`
+	InviterEmail    string    `json:"inviter_email"`
+	InviterUsername string    `json:"inviter_username"`
+	InviteeID       int64     `json:"invitee_id"`
+	InviteeEmail    string    `json:"invitee_email"`
+	InviteeUsername string    `json:"invitee_username"`
+	OrderAmount     float64   `json:"order_amount"`
+	PayAmount       float64   `json:"pay_amount"`
+	RebateAmount    float64   `json:"rebate_amount"`
+	PaymentType     string    `json:"payment_type"`
+	OrderStatus     string    `json:"order_status"`
+	CreatedAt       time.Time `json:"created_at"`
+REDACTED
+
+type AffiliateTransferRecord struct {
+	LedgerID       int64     `json:"ledger_id"`
+	UserID         int64     `json:"user_id"`
+	UserEmail      string    `json:"user_email"`
+	Username       string    `json:"username"`
+	Amount         float64   `json:"amount"`
+	CurrentBalance float64   `json:"current_balance"`
+	RemainingQuota float64   `json:"remaining_quota"`
+	FrozenQuota    float64   `json:"frozen_quota"`
+	HistoryQuota   float64   `json:"history_quota"`
+	CreatedAt      time.Time `json:"created_at"`
+REDACTED
+
+type AffiliateUserOverview struct {
+	UserID              int64   `json:"user_id"`
+	Email               string  `json:"email"`
+	Username            string  `json:"username"`
+	AffCode             string  `json:"aff_code"`
+	RebateRatePercent   float64 `json:"rebate_rate_percent"`
+	RebateRateCustom    bool    `json:"-"`
+	InvitedCount        int     `json:"invited_count"`
+	RebatedInviteeCount int     `json:"rebated_invitee_count"`
+	AvailableQuota      float64 `json:"available_quota"`
+	HistoryQuota        float64 `json:"history_quota"`
 REDACTED
 
 type AffiliateService struct {
@@ -487,4 +556,60 @@ func (s *AffiliateService) AdminListCustomUsers(ctx context.Context, filter Affi
 		return nil, 0, infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
 REDACTED
 	return s.repo.ListUsersWithCustomSettings(ctx, filter)
+REDACTED
+
+func (s *AffiliateService) AdminListInviteRecords(ctx context.Context, filter AffiliateRecordFilter) ([]AffiliateInviteRecord, int64, error) {
+	if s == nil || s.repo == nil {
+		return nil, 0, infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
+REDACTED
+	return s.repo.ListAffiliateInviteRecords(ctx, normalizeAffiliateRecordFilter(filter))
+REDACTED
+
+func (s *AffiliateService) AdminListRebateRecords(ctx context.Context, filter AffiliateRecordFilter) ([]AffiliateRebateRecord, int64, error) {
+	if s == nil || s.repo == nil {
+		return nil, 0, infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
+REDACTED
+	return s.repo.ListAffiliateRebateRecords(ctx, normalizeAffiliateRecordFilter(filter))
+REDACTED
+
+func (s *AffiliateService) AdminListTransferRecords(ctx context.Context, filter AffiliateRecordFilter) ([]AffiliateTransferRecord, int64, error) {
+	if s == nil || s.repo == nil {
+		return nil, 0, infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
+REDACTED
+	return s.repo.ListAffiliateTransferRecords(ctx, normalizeAffiliateRecordFilter(filter))
+REDACTED
+
+func (s *AffiliateService) AdminGetUserOverview(ctx context.Context, userID int64) (*AffiliateUserOverview, error) {
+	if userID <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_USER", "invalid user")
+REDACTED
+	if s == nil || s.repo == nil {
+		return nil, infraerrors.ServiceUnavailable("SERVICE_UNAVAILABLE", "affiliate service unavailable")
+REDACTED
+	overview, err := s.repo.GetAffiliateUserOverview(ctx, userID)
+	if err != nil {
+		return nil, err
+REDACTED
+	if overview != nil {
+		if !overview.RebateRateCustom {
+			overview.RebateRatePercent = s.globalRebateRatePercent(ctx)
+	REDACTED
+		overview.RebateRatePercent = clampAffiliateRebateRate(overview.RebateRatePercent)
+REDACTED
+	return overview, nil
+REDACTED
+
+func normalizeAffiliateRecordFilter(filter AffiliateRecordFilter) AffiliateRecordFilter {
+	if filter.Page <= 0 {
+		filter.Page = 1
+REDACTED
+	if filter.PageSize <= 0 {
+		filter.PageSize = 20
+REDACTED
+	if filter.PageSize > 100 {
+		filter.PageSize = 100
+REDACTED
+	filter.Search = strings.TrimSpace(filter.Search)
+	filter.SortBy = strings.TrimSpace(filter.SortBy)
+	return filter
 REDACTED
