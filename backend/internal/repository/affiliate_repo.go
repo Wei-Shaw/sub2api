@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -115,7 +114,7 @@ REDACTED
 	return bound, nil
 REDACTED
 
-func (r *affiliateRepository) AccrueQuota(ctx context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int) (bool, error) {
+func (r *affiliateRepository) AccrueQuota(ctx context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error) {
 	if amount <= 0 {
 		return false, nil
 REDACTED
@@ -141,15 +140,15 @@ REDACTED
 
 		if freezeHours > 0 {
 			if _, err = txClient.ExecContext(txCtx, `
-INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, frozen_until, created_at, updated_at)
-VALUES ($1, 'accrue', $2, $3, NOW() + make_interval(hours => $4), NOW(), NOW())`,
-				inviterID, amount, inviteeUserID, freezeHours); err != nil {
+INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, source_order_id, frozen_until, created_at, updated_at)
+VALUES ($1, 'accrue', $2, $3, $4, NOW() + make_interval(hours => $5), NOW(), NOW())`,
+				inviterID, amount, inviteeUserID, nullableInt64Arg(sourceOrderID), freezeHours); err != nil {
 				return fmt.Errorf("insert affiliate accrue ledger: %w", err)
 		REDACTED
 	REDACTED else {
 			if _, err = txClient.ExecContext(txCtx, `
-INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, created_at, updated_at)
-VALUES ($1, 'accrue', $2, $3, NOW(), NOW())`, inviterID, amount, inviteeUserID); err != nil {
+INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, source_order_id, created_at, updated_at)
+VALUES ($1, 'accrue', $2, $3, $4, NOW(), NOW())`, inviterID, amount, inviteeUserID, nullableInt64Arg(sourceOrderID)); err != nil {
 				return fmt.Errorf("insert affiliate accrue ledger: %w", err)
 		REDACTED
 	REDACTED
@@ -304,9 +303,32 @@ FROM cleared`, userID)
 			return err
 	REDACTED
 
+		snapshot, err := queryAffiliateTransferSnapshot(txCtx, txClient, userID)
+		if err != nil {
+			return err
+	REDACTED
+
 		if _, err = txClient.ExecContext(txCtx, `
-INSERT INTO user_affiliate_ledger (user_id, action, amount, source_user_id, created_at, updated_at)
-VALUES ($1, 'transfer', $2, NULL, NOW(), NOW())`, userID, transferred); err != nil {
+INSERT INTO user_affiliate_ledger (
+    user_id,
+    action,
+    amount,
+    source_user_id,
+    balance_after,
+    aff_quota_after,
+    aff_frozen_quota_after,
+    aff_history_quota_after,
+    created_at,
+    updated_at
+)
+VALUES ($1, 'transfer', $2, NULL, $3, $4, $5, $6, NOW(), NOW())`,
+			userID,
+			transferred,
+			snapshot.BalanceAfter,
+			snapshot.AvailableQuotaAfter,
+			snapshot.FrozenQuotaAfter,
+			snapshot.HistoryQuotaAfter,
+		); err != nil {
 			return fmt.Errorf("insert affiliate transfer ledger: %w", err)
 	REDACTED
 
@@ -440,17 +462,17 @@ REDACTED
 
 func (r *affiliateRepository) ListAffiliateRebateRecords(ctx context.Context, filter service.AffiliateRecordFilter) ([]service.AffiliateRebateRecord, int64, error) {
 	client := clientFromContext(ctx, r.client)
-	where, args := buildAffiliateRecordWhere(filter, "pal.created_at", []string{
+	where, args := buildAffiliateRecordWhere(filter, "ual.created_at", []string{
 		"inviter.email", "inviter.username", "invitee.email", "invitee.username",
 		"po.id::text", "po.out_trade_no", "po.payment_type", "po.status",
 REDACTED)
 	baseJoin := `
-FROM payment_audit_logs pal
-JOIN payment_orders po ON po.id::text = pal.order_id
-JOIN user_affiliates invitee_aff ON invitee_aff.user_id = po.user_id
-JOIN users invitee ON invitee.id = po.user_id
-JOIN users inviter ON inviter.id = invitee_aff.inviter_id
-WHERE pal.action = 'AFFILIATE_REBATE_APPLIED'`
+FROM user_affiliate_ledger ual
+JOIN payment_orders po ON po.id = ual.source_order_id
+JOIN users invitee ON invitee.id = ual.source_user_id
+JOIN users inviter ON inviter.id = ual.user_id
+WHERE ual.action = 'accrue'
+  AND ual.source_order_id IS NOT NULL`
 	if where != "" {
 		where = strings.Replace(where, "WHERE ", " AND ", 1)
 REDACTED
@@ -461,31 +483,32 @@ REDACTED
 REDACTED
 
 	orderBy := buildAffiliateRecordOrderBy(filter, map[string]string{
-		"order":        "po.id",
-		"inviter":      "inviter.email",
-		"invitee":      "invitee.email",
-		"order_amount": "po.amount",
-		"pay_amount":   "po.pay_amount",
-		"payment_type": "po.payment_type",
-		"order_status": "po.status",
-		"created_at":   "pal.created_at",
-REDACTED, "pal.created_at")
+		"order":         "po.id",
+		"inviter":       "inviter.email",
+		"invitee":       "invitee.email",
+		"order_amount":  "po.amount",
+		"pay_amount":    "po.pay_amount",
+		"rebate_amount": "ual.amount",
+		"payment_type":  "po.payment_type",
+		"order_status":  "po.status",
+		"created_at":    "ual.created_at",
+REDACTED, "ual.created_at")
 	args = append(args, filter.PageSize, (filter.Page-1)*filter.PageSize)
 	rows, err := client.QueryContext(ctx, `
 SELECT po.id,
        po.out_trade_no,
-       invitee_aff.inviter_id,
+       ual.user_id,
        COALESCE(inviter.email, ''),
        COALESCE(inviter.username, ''),
-       po.user_id,
+       ual.source_user_id,
        COALESCE(invitee.email, ''),
        COALESCE(invitee.username, ''),
        po.amount::double precision,
        po.pay_amount::double precision,
-       COALESCE(pal.detail, ''),
+       ual.amount::double precision,
        po.payment_type,
        po.status,
-       pal.created_at
+       ual.created_at
 `+baseJoin+where+`
 `+orderBy+`
 LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
@@ -497,7 +520,6 @@ REDACTED
 	items := make([]service.AffiliateRebateRecord, 0)
 	for rows.Next() {
 		var item service.AffiliateRebateRecord
-		var detail string
 		if err := rows.Scan(
 			&item.OrderID,
 			&item.OutTradeNo,
@@ -509,14 +531,13 @@ REDACTED
 			&item.InviteeUsername,
 			&item.OrderAmount,
 			&item.PayAmount,
-			&detail,
+			&item.RebateAmount,
 			&item.PaymentType,
 			&item.OrderStatus,
 			&item.CreatedAt,
 		); err != nil {
 			return nil, 0, err
 	REDACTED
-		item.RebateAmount = parseAffiliateRebateAmount(detail)
 		items = append(items, item)
 REDACTED
 	if err := rows.Err(); err != nil {
@@ -533,7 +554,6 @@ REDACTED)
 	baseJoin := `
 FROM user_affiliate_ledger ual
 JOIN users u ON u.id = ual.user_id
-JOIN user_affiliates ua ON ua.user_id = ual.user_id
 WHERE ual.action = 'transfer'`
 	if where != "" {
 		where = strings.Replace(where, "WHERE ", " AND ", 1)
@@ -545,13 +565,13 @@ REDACTED
 REDACTED
 
 	orderBy := buildAffiliateRecordOrderBy(filter, map[string]string{
-		"user":            "u.email",
-		"amount":          "ual.amount",
-		"current_balance": "u.balance",
-		"remaining_quota": "ua.aff_quota",
-		"frozen_quota":    "ua.aff_frozen_quota",
-		"history_quota":   "ua.aff_history_quota",
-		"created_at":      "ual.created_at",
+		"user":                  "u.email",
+		"amount":                "ual.amount",
+		"balance_after":         "ual.balance_after",
+		"available_quota_after": "ual.aff_quota_after",
+		"frozen_quota_after":    "ual.aff_frozen_quota_after",
+		"history_quota_after":   "ual.aff_history_quota_after",
+		"created_at":            "ual.created_at",
 REDACTED, "ual.created_at")
 	args = append(args, filter.PageSize, (filter.Page-1)*filter.PageSize)
 	rows, err := client.QueryContext(ctx, `
@@ -560,10 +580,10 @@ SELECT ual.id,
        COALESCE(u.email, ''),
        COALESCE(u.username, ''),
        ual.amount::double precision,
-       u.balance::double precision,
-       ua.aff_quota::double precision,
-       ua.aff_frozen_quota::double precision,
-       ua.aff_history_quota::double precision,
+       ual.balance_after::double precision,
+       ual.aff_quota_after::double precision,
+       ual.aff_frozen_quota_after::double precision,
+       ual.aff_history_quota_after::double precision,
        ual.created_at
 `+baseJoin+where+`
 `+orderBy+`
@@ -576,20 +596,32 @@ REDACTED
 	items := make([]service.AffiliateTransferRecord, 0)
 	for rows.Next() {
 		var item service.AffiliateTransferRecord
+		var balanceAfter sql.NullFloat64
+		var availableQuotaAfter sql.NullFloat64
+		var frozenQuotaAfter sql.NullFloat64
+		var historyQuotaAfter sql.NullFloat64
 		if err := rows.Scan(
 			&item.LedgerID,
 			&item.UserID,
 			&item.UserEmail,
 			&item.Username,
 			&item.Amount,
-			&item.CurrentBalance,
-			&item.RemainingQuota,
-			&item.FrozenQuota,
-			&item.HistoryQuota,
+			&balanceAfter,
+			&availableQuotaAfter,
+			&frozenQuotaAfter,
+			&historyQuotaAfter,
 			&item.CreatedAt,
 		); err != nil {
 			return nil, 0, err
 	REDACTED
+		item.BalanceAfter = nullableFloat64Ptr(balanceAfter)
+		item.AvailableQuotaAfter = nullableFloat64Ptr(availableQuotaAfter)
+		item.FrozenQuotaAfter = nullableFloat64Ptr(frozenQuotaAfter)
+		item.HistoryQuotaAfter = nullableFloat64Ptr(historyQuotaAfter)
+		item.SnapshotAvailable = balanceAfter.Valid &&
+			availableQuotaAfter.Valid &&
+			frozenQuotaAfter.Valid &&
+			historyQuotaAfter.Valid
 		items = append(items, item)
 REDACTED
 	if err := rows.Err(); err != nil {
@@ -675,7 +707,7 @@ REDACTED
 	if !filter.SortDesc {
 		direction = "ASC"
 REDACTED
-	return "ORDER BY " + column + " " + direction
+	return "ORDER BY " + column + " " + direction + " NULLS LAST"
 REDACTED
 
 func queryAffiliateRecordCount(ctx context.Context, client affiliateQueryExecer, query string, args ...any) (int64, error) {
@@ -692,16 +724,6 @@ REDACTED
 		return 0, err
 REDACTED
 	return total, rows.Err()
-REDACTED
-
-func parseAffiliateRebateAmount(detail string) float64 {
-	var payload struct {
-		RebateAmount float64 `json:"rebateAmount"`
-REDACTED
-	if err := json.Unmarshal([]byte(detail), &payload); err != nil {
-		return 0
-REDACTED
-	return payload.RebateAmount
 REDACTED
 
 func (r *affiliateRepository) withTx(ctx context.Context, fn func(txCtx context.Context, txClient *dbent.Client) error) error {
@@ -888,6 +910,54 @@ REDACTED
 	return balance, nil
 REDACTED
 
+type affiliateTransferSnapshot struct {
+	BalanceAfter        float64
+	AvailableQuotaAfter float64
+	FrozenQuotaAfter    float64
+	HistoryQuotaAfter   float64
+REDACTED
+
+func queryAffiliateTransferSnapshot(ctx context.Context, client affiliateQueryExecer, userID int64) (*affiliateTransferSnapshot, error) {
+	rows, err := client.QueryContext(ctx, `
+SELECT u.balance::double precision,
+       ua.aff_quota::double precision,
+       ua.aff_frozen_quota::double precision,
+       ua.aff_history_quota::double precision
+FROM users u
+JOIN user_affiliates ua ON ua.user_id = u.id
+WHERE u.id = $1
+LIMIT 1`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("query affiliate transfer snapshot: %w", err)
+REDACTED
+	defer func() { _ = rows.Close() REDACTED()
+
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, err
+	REDACTED
+		return nil, service.ErrUserNotFound
+REDACTED
+
+	var snapshot affiliateTransferSnapshot
+	if err := rows.Scan(
+		&snapshot.BalanceAfter,
+		&snapshot.AvailableQuotaAfter,
+		&snapshot.FrozenQuotaAfter,
+		&snapshot.HistoryQuotaAfter,
+	); err != nil {
+		return nil, err
+REDACTED
+	return &snapshot, rows.Err()
+REDACTED
+
+func nullableFloat64Ptr(v sql.NullFloat64) *float64 {
+	if !v.Valid {
+		return nil
+REDACTED
+	return &v.Float64
+REDACTED
+
 func generateAffiliateCode() (string, error) {
 	buf := make([]byte, affiliateCodeLength)
 	if _, err := rand.Read(buf); err != nil {
@@ -1040,6 +1110,13 @@ REDACTED
 // nullableArg unwraps a *float64 into an interface{REDACTED suitable for SQL parameter
 // binding: nil pointer → SQL NULL, non-nil → the float value.
 func nullableArg(v *float64) any {
+	if v == nil {
+		return nil
+REDACTED
+	return *v
+REDACTED
+
+func nullableInt64Arg(v *int64) any {
 	if v == nil {
 		return nil
 REDACTED

@@ -83,17 +83,17 @@
           <template #cell-amount="{ row REDACTED">
             <AmountText :value="row.amount" strong />
           </template>
-          <template #cell-current_balance="{ row REDACTED">
-            <AmountText :value="row.current_balance" />
+          <template #cell-balance_after="{ row REDACTED">
+            <NullableAmountText :value="row.balance_after" />
           </template>
-          <template #cell-remaining_quota="{ row REDACTED">
-            <AmountText :value="row.remaining_quota" />
+          <template #cell-available_quota_after="{ row REDACTED">
+            <NullableAmountText :value="row.available_quota_after" />
           </template>
-          <template #cell-frozen_quota="{ row REDACTED">
-            <AmountText :value="row.frozen_quota" />
+          <template #cell-frozen_quota_after="{ row REDACTED">
+            <NullableAmountText :value="row.frozen_quota_after" />
           </template>
-          <template #cell-history_quota="{ row REDACTED">
-            <AmountText :value="row.history_quota" />
+          <template #cell-history_quota_after="{ row REDACTED">
+            <NullableAmountText :value="row.history_quota_after" />
           </template>
           <template #cell-created_at="{ row REDACTED">
             <span class="text-sm text-gray-700 dark:text-gray-300">{{ formatDateTime(row.created_at) REDACTEDREDACTED</span>
@@ -142,7 +142,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, onMounted, reactive, ref REDACTED from 'vue'
+import { computed, defineComponent, h, onMounted, reactive, ref, type PropType REDACTED from 'vue'
 import { useI18n REDACTED from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -202,10 +202,10 @@ const columns = computed<Column[]>(() => {
   return [
     { key: 'user', label: t('admin.affiliates.records.user'), sortable: true REDACTED,
     { key: 'amount', label: t('admin.affiliates.records.transferAmount'), sortable: true REDACTED,
-    { key: 'current_balance', label: t('admin.affiliates.records.currentBalance'), sortable: true REDACTED,
-    { key: 'remaining_quota', label: t('admin.affiliates.records.remainingQuota'), sortable: true REDACTED,
-    { key: 'frozen_quota', label: t('admin.affiliates.records.frozenQuota'), sortable: true REDACTED,
-    { key: 'history_quota', label: t('admin.affiliates.records.historyQuota'), sortable: true REDACTED,
+    { key: 'balance_after', label: t('admin.affiliates.records.balanceAfter'), sortable: true REDACTED,
+    { key: 'available_quota_after', label: t('admin.affiliates.records.availableQuotaAfter'), sortable: true REDACTED,
+    { key: 'frozen_quota_after', label: t('admin.affiliates.records.frozenQuotaAfter'), sortable: true REDACTED,
+    { key: 'history_quota_after', label: t('admin.affiliates.records.historyQuotaAfter'), sortable: true REDACTED,
     { key: 'created_at', label: t('admin.affiliates.records.transferredAt'), sortable: true REDACTED,
   ]
 REDACTED)
@@ -365,6 +365,21 @@ const AmountText = defineComponent({
         ? 'text-sm font-semibold text-emerald-600 dark:text-emerald-400'
         : 'text-sm text-gray-900 dark:text-white',
     REDACTED, `$${formatAmount(amountProps.value)REDACTED`)
+  REDACTED,
+REDACTED)
+
+const NullableAmountText = defineComponent({
+  props: {
+    value: { type: Number as PropType<number | null | undefined>, default: null REDACTED,
+  REDACTED,
+  setup(amountProps) {
+    return () => {
+      const value = amountProps.value
+      if (value === null || value === undefined) {
+        return h('span', { class: 'text-sm text-gray-400 dark:text-dark-500' REDACTED, '-')
+      REDACTED
+      return h(AmountText, { value REDACTED)
+    REDACTED
   REDACTED,
 REDACTED)
 

@@ -98,7 +98,7 @@ type AffiliateRepository interface {
 	EnsureUserAffiliate(ctx context.Context, userID int64) (*AffiliateSummary, error)
 	GetAffiliateByCode(ctx context.Context, code string) (*AffiliateSummary, error)
 	BindInviter(ctx context.Context, userID, inviterID int64) (bool, error)
-	AccrueQuota(ctx context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int) (bool, error)
+	AccrueQuota(ctx context.Context, inviterID, inviteeUserID int64, amount float64, freezeHours int, sourceOrderID *int64) (bool, error)
 	GetAccruedRebateFromInvitee(ctx context.Context, inviterID, inviteeUserID int64) (float64, error)
 	ThawFrozenQuota(ctx context.Context, userID int64) (float64, error)
 	TransferQuotaToBalance(ctx context.Context, userID int64) (float64, float64, error)
@@ -174,16 +174,21 @@ type AffiliateRebateRecord struct {
 REDACTED
 
 type AffiliateTransferRecord struct {
-	LedgerID       int64     `json:"ledger_id"`
-	UserID         int64     `json:"user_id"`
-	UserEmail      string    `json:"user_email"`
-	Username       string    `json:"username"`
-	Amount         float64   `json:"amount"`
-	CurrentBalance float64   `json:"current_balance"`
-	RemainingQuota float64   `json:"remaining_quota"`
-	FrozenQuota    float64   `json:"frozen_quota"`
-	HistoryQuota   float64   `json:"history_quota"`
-	CreatedAt      time.Time `json:"created_at"`
+	LedgerID            int64     `json:"ledger_id"`
+	UserID              int64     `json:"user_id"`
+	UserEmail           string    `json:"user_email"`
+	Username            string    `json:"username"`
+	Amount              float64   `json:"amount"`
+	BalanceAfter        *float64  `json:"balance_after,omitempty"`
+	AvailableQuotaAfter *float64  `json:"available_quota_after,omitempty"`
+	FrozenQuotaAfter    *float64  `json:"frozen_quota_after,omitempty"`
+	HistoryQuotaAfter   *float64  `json:"history_quota_after,omitempty"`
+	SnapshotAvailable   bool      `json:"snapshot_available"`
+	CurrentBalance      float64   `json:"-"`
+	RemainingQuota      float64   `json:"-"`
+	FrozenQuota         float64   `json:"-"`
+	HistoryQuota        float64   `json:"-"`
+	CreatedAt           time.Time `json:"created_at"`
 REDACTED
 
 type AffiliateUserOverview struct {
@@ -307,6 +312,10 @@ REDACTED
 REDACTED
 
 func (s *AffiliateService) AccrueInviteRebate(ctx context.Context, inviteeUserID int64, baseRechargeAmount float64) (float64, error) {
+	return s.AccrueInviteRebateForOrder(ctx, inviteeUserID, baseRechargeAmount, nil)
+REDACTED
+
+func (s *AffiliateService) AccrueInviteRebateForOrder(ctx context.Context, inviteeUserID int64, baseRechargeAmount float64, sourceOrderID *int64) (float64, error) {
 	if s == nil || s.repo == nil {
 		return 0, nil
 REDACTED
@@ -367,7 +376,7 @@ REDACTED
 		freezeHours = s.settingService.GetAffiliateRebateFreezeHours(ctx)
 REDACTED
 
-	applied, err := s.repo.AccrueQuota(ctx, *inviteeSummary.InviterID, inviteeUserID, rebate, freezeHours)
+	applied, err := s.repo.AccrueQuota(ctx, *inviteeSummary.InviterID, inviteeUserID, rebate, freezeHours, sourceOrderID)
 	if err != nil {
 		return 0, err
 REDACTED

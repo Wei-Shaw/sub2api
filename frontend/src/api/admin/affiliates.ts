@@ -69,10 +69,11 @@ export interface AffiliateTransferRecord {
   user_email: string
   username: string
   amount: number
-  current_balance: number
-  remaining_quota: number
-  frozen_quota: number
-  history_quota: number
+  balance_after?: number | null
+  available_quota_after?: number | null
+  frozen_quota_after?: number | null
+  history_quota_after?: number | null
+  snapshot_available: boolean
   created_at: string
 REDACTED
 
