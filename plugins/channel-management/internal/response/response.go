@@ -77,8 +77,11 @@ func classifyIfNeeded(err error) error {
 	if stderrors.As(err, &appErr) {
 		return err
 	}
-	// Not a typed error — try to classify the underlying DB error.
+	// Not a typed error — try to classify the underlying DB or gRPC error.
 	if classified := errors.ClassifyDBError(err); classified != nil {
+		return classified
+	}
+	if classified := errors.ClassifyGRPCError(err); classified != nil {
 		return classified
 	}
 	return err

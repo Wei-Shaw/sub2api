@@ -2,6 +2,8 @@ package monitorservice
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
 
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 )
@@ -36,11 +38,17 @@ func (s *sdkSecretEncryptor) Encrypt(plaintext string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(out), nil
+	// base64 encode: raw ciphertext may contain non-UTF-8 bytes which
+	// protobuf string fields reject during gRPC marshaling.
+	return base64.StdEncoding.EncodeToString(out), nil
 }
 
 func (s *sdkSecretEncryptor) Decrypt(ciphertext string) (string, error) {
-	out, err := s.impl.Decrypt(s.ctx, []byte(ciphertext))
+	raw, err := base64.StdEncoding.DecodeString(ciphertext)
+	if err != nil {
+		return "", fmt.Errorf("decode encrypted api key: %w", err)
+	}
+	out, err := s.impl.Decrypt(s.ctx, raw)
 	if err != nil {
 		return "", err
 	}

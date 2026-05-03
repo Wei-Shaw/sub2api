@@ -53,7 +53,7 @@ func SanitizeCauseForLog(err error) string {
 
 const (
 	UnknownCode    = http.StatusInternalServerError
-	UnknownReason  = ""
+	UnknownReason  = "INTERNAL_ERROR"
 	UnknownMessage = "internal error"
 )
 
@@ -283,6 +283,24 @@ func ClassifyDBError(err error) *ApplicationError {
 	default:
 		return nil
 	}
+}
+
+// ClassifyGRPCError examines err for common gRPC transport/marshaling errors
+// and returns a structured ApplicationError. Returns nil for unrecognised errors.
+func ClassifyGRPCError(err error) *ApplicationError {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "invalid UTF-8") {
+		return InternalServer("ENCODING_ERROR",
+			"a field contains binary data that cannot be transmitted as text").WithCause(err)
+	}
+	if strings.Contains(msg, "connection refused") || strings.Contains(msg, "Unavailable") {
+		return New(http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE",
+			"backend service temporarily unavailable").WithCause(err)
+	}
+	return nil
 }
 
 // IsPQCode returns true when err carries the structured pq metadata from the
