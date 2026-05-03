@@ -596,7 +596,7 @@ REDACTED
 	var usage OpenAIUsage
 	imageCount := parsed.N
 	var firstTokenMs *int
-	if parsed.Stream {
+	if parsed.Stream && isEventStreamResponse(resp.Header) {
 		streamUsage, streamCount, ttft, err := s.handleOpenAIImagesStreamingResponse(resp, c, startTime)
 		if err != nil {
 			return nil, err
@@ -811,6 +811,11 @@ REDACTED
 	usage := OpenAIUsage{REDACTED
 	imageCount := 0
 	var firstTokenMs *int
+	var fallbackBody bytes.Buffer
+	fallbackBytes := int64(0)
+	fallbackLimit := resolveUpstreamResponseReadLimit(s.cfg)
+	seenSSEData := false
+	fallbackTooLarge := false
 
 	for {
 		line, err := reader.ReadBytes('\n')
@@ -824,11 +829,24 @@ REDACTED
 		REDACTED
 			flusher.Flush()
 
-			if data, ok := extractOpenAISSEDataLine(strings.TrimRight(string(line), "\r\n")); ok && data != "" && data != "[DONE]" {
-				dataBytes := []byte(data)
-				mergeOpenAIUsage(&usage, dataBytes)
-				if count := extractOpenAIImageCountFromJSONBytes(dataBytes); count > imageCount {
-					imageCount = count
+			if data, ok := extractOpenAISSEDataLine(strings.TrimRight(string(line), "\r\n")); ok {
+				if data != "" && data != "[DONE]" {
+					seenSSEData = true
+					fallbackBody.Reset()
+					fallbackBytes = 0
+					dataBytes := []byte(data)
+					mergeOpenAIUsage(&usage, dataBytes)
+					if count := extractOpenAIImagesBillableCountFromJSONBytes(dataBytes); count > imageCount {
+						imageCount = count
+				REDACTED
+			REDACTED
+		REDACTED else if !seenSSEData && !fallbackTooLarge {
+				fallbackBytes += int64(len(line))
+				if fallbackBytes <= fallbackLimit {
+					_, _ = fallbackBody.Write(line)
+			REDACTED else {
+					fallbackTooLarge = true
+					fallbackBody.Reset()
 			REDACTED
 		REDACTED
 	REDACTED
@@ -839,7 +857,39 @@ REDACTED
 			return OpenAIUsage{REDACTED, 0, firstTokenMs, err
 	REDACTED
 REDACTED
+	if !seenSSEData && fallbackBody.Len() > 0 {
+		body := bytes.TrimSpace(fallbackBody.Bytes())
+		if len(body) > 0 {
+			mergeOpenAIUsage(&usage, body)
+			if count := extractOpenAIImagesBillableCountFromJSONBytes(body); count > imageCount {
+				imageCount = count
+		REDACTED
+	REDACTED
+REDACTED
 	return usage, imageCount, firstTokenMs, nil
+REDACTED
+
+func extractOpenAIImagesBillableCountFromJSONBytes(body []byte) int {
+	if count := extractOpenAIImageCountFromJSONBytes(body); count > 0 {
+		return count
+REDACTED
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return 0
+REDACTED
+	if count := int(gjson.GetBytes(body, "usage.images").Int()); count > 0 {
+		return count
+REDACTED
+	if count := int(gjson.GetBytes(body, "tool_usage.image_gen.images").Int()); count > 0 {
+		return count
+REDACTED
+	eventType := strings.TrimSpace(gjson.GetBytes(body, "type").String())
+	if eventType == "" || !strings.HasSuffix(eventType, ".completed") {
+		return 0
+REDACTED
+	if gjson.GetBytes(body, "b64_json").Exists() || gjson.GetBytes(body, "url").Exists() {
+		return 1
+REDACTED
+	return 0
 REDACTED
 
 func mergeOpenAIUsage(dst *OpenAIUsage, body []byte) {
