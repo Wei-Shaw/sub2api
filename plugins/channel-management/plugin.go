@@ -12,6 +12,7 @@ import (
 	pluginsdkpb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 
 	pluginent "github.com/Wei-Shaw/sub2api/plugins/channel-management/ent"
+	chMaintenance "github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/maintenance"
 	chPricing "github.com/Wei-Shaw/sub2api/plugins/channel-management/internal/pricing"
 
 	chHandler "github.com/Wei-Shaw/sub2api/plugins/channel-management/handler"
@@ -115,6 +116,12 @@ type ChannelPlugin struct {
 	// the repository in Init via pricingServer.SetLister. RPCs that arrive
 	// during the gap return codes.Unavailable so the host retries.
 	pricingServer *chPricing.Server
+
+	// maintenanceServer implements MaintenanceExtension on the plugin's gRPC
+	// server. It is constructed in RegisterGRPCServices (before Init) and
+	// wired with the monitor service in wireMonitor. RPCs that arrive before
+	// wiring return an empty response (no tasks to run).
+	maintenanceServer *chMaintenance.Server
 }
 
 // Manifest declares the plugin's capabilities to the core. Static data lives
@@ -270,6 +277,9 @@ func (p *ChannelPlugin) wireMonitor(ctx pluginsdk.PluginContext) {
 		ctx.Logger().Warn("channel-monitor encryption disabled: SDK Secrets() unavailable; api keys will fail to encrypt — check CapabilitySecretEncryption is in plugin manifest")
 	}
 	p.monitorService = monitorService.NewChannelMonitorService(monRepo, monEncryptor)
+	if p.maintenanceServer != nil {
+		p.maintenanceServer.SetMonitorService(p.monitorService)
+	}
 	p.monitorAdminHandler = monitorHandler.NewAdminHandler(p.monitorService)
 	p.monitorUserHandler = monitorHandler.NewUserHandler(p.monitorService, ctx.Settings())
 
@@ -280,9 +290,9 @@ func (p *ChannelPlugin) wireMonitor(ctx pluginsdk.PluginContext) {
 	p.monitorTemplateService = monitorService.NewChannelMonitorRequestTemplateService(tmplRepo)
 	p.monitorTemplateHandler = monitorHandler.NewTemplateHandler(p.monitorTemplateService)
 
-	// Host fires monitor.run every 60s on each replica and the
-	// leader-only monitor.daily-rollup once per day — concurrency, leader
-	// election and history are all owned by the host.
+	// Host fires monitor.run every 60s on each replica — concurrency,
+	// leader election and history are all owned by the host. Daily
+	// maintenance is handled via the MaintenanceExtension gRPC service.
 	jobRunner := monitorService.NewMonitorJobRunner(p.monitorService, ctx.Jobs(), ctx.Logger())
 	if err := jobRunner.Register(); err != nil {
 		ctx.Logger().Warn("channel-monitor: job registration failed; periodic checks disabled", "error", err)
@@ -331,6 +341,11 @@ func (p *ChannelPlugin) RegisterGRPCServices(server *grpc.Server) {
 		p.pricingServer = chPricing.NewServer()
 	}
 	pluginsdkpb.RegisterPricingExtensionServer(server, p.pricingServer)
+
+	if p.maintenanceServer == nil {
+		p.maintenanceServer = chMaintenance.NewServer()
+	}
+	p.maintenanceServer.Register(server)
 }
 
 // pricingListerAdapter exposes the *ChannelRepository to the pricing

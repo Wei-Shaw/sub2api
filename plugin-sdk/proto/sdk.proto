@@ -887,6 +887,57 @@ message ResolveAccountStatsCostResponse {
 }
 
 // ============================================================
+// MaintenanceExtension
+// ============================================================
+//
+// MaintenanceExtension is implemented by plugins that need periodic
+// data cleanup integrated with the host's OpsCleanupService schedule.
+// Instead of managing independent cron jobs, plugins register this
+// extension and the host calls RunMaintenance once per OpsCleanup cycle
+// (typically daily at 02:00 UTC), sharing the same leader lock and
+// heartbeat infrastructure.
+//
+// Failure model:
+//   - RunMaintenance errors are logged but do not fail the host's
+//     overall OpsCleanup run. Each plugin is isolated.
+//   - If the plugin does not implement this service, the host skips it
+//     (codes.Unimplemented detection, same as PricingExtension).
+//
+// This service is host -> plugin: the plugin runs the gRPC server,
+// the host calls it over the per-plugin gRPC connection.
+service MaintenanceExtension {
+  // RunMaintenance is called by the host's OpsCleanupService after its
+  // own cleanup completes. The plugin performs its retention logic
+  // (e.g. delete old history rows, aggregate daily rollups) and reports
+  // what was cleaned.
+  rpc RunMaintenance(RunMaintenanceRequest) returns (RunMaintenanceResponse);
+}
+
+// RunMaintenanceRequest carries host-side context for the cleanup run.
+message RunMaintenanceRequest {
+  // now_unix is the current time as Unix seconds, so the plugin uses
+  // the same clock as the host for retention cutoff calculations.
+  int64 now_unix = 1;
+}
+
+// RunMaintenanceResponse reports what the plugin cleaned up.
+message RunMaintenanceResponse {
+  // results is one entry per cleanup task the plugin performed.
+  repeated MaintenanceTaskResult results = 1;
+}
+
+// MaintenanceTaskResult reports the outcome of a single cleanup task.
+message MaintenanceTaskResult {
+  // task is a human-readable label (e.g. "delete_old_history").
+  string task = 1;
+  // deleted_count is the number of rows removed / cleaned.
+  int64 deleted_count = 2;
+  // error is non-empty if this task failed. The host logs it but
+  // does not retry.
+  string error = 3;
+}
+
+// ============================================================
 // HostService — W4 (plugin → host reverse RPCs)
 // ============================================================
 //

@@ -4556,6 +4556,164 @@ func (x *ResolveAccountStatsCostResponse) GetResolutionReason() string {
 	return ""
 }
 
+// RunMaintenanceRequest carries host-side context for the cleanup run.
+type RunMaintenanceRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// now_unix is the current time as Unix seconds, so the plugin uses
+	// the same clock as the host for retention cutoff calculations.
+	NowUnix       int64 `protobuf:"varint,1,opt,name=now_unix,json=nowUnix,proto3" json:"now_unix,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RunMaintenanceRequest) Reset() {
+	*x = RunMaintenanceRequest{}
+	mi := &file_sdk_proto_msgTypes[64]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RunMaintenanceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RunMaintenanceRequest) ProtoMessage() {}
+
+func (x *RunMaintenanceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[64]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RunMaintenanceRequest.ProtoReflect.Descriptor instead.
+func (*RunMaintenanceRequest) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{64}
+}
+
+func (x *RunMaintenanceRequest) GetNowUnix() int64 {
+	if x != nil {
+		return x.NowUnix
+	}
+	return 0
+}
+
+// RunMaintenanceResponse reports what the plugin cleaned up.
+type RunMaintenanceResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// results is one entry per cleanup task the plugin performed.
+	Results       []*MaintenanceTaskResult `protobuf:"bytes,1,rep,name=results,proto3" json:"results,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RunMaintenanceResponse) Reset() {
+	*x = RunMaintenanceResponse{}
+	mi := &file_sdk_proto_msgTypes[65]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RunMaintenanceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RunMaintenanceResponse) ProtoMessage() {}
+
+func (x *RunMaintenanceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[65]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RunMaintenanceResponse.ProtoReflect.Descriptor instead.
+func (*RunMaintenanceResponse) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{65}
+}
+
+func (x *RunMaintenanceResponse) GetResults() []*MaintenanceTaskResult {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
+// MaintenanceTaskResult reports the outcome of a single cleanup task.
+type MaintenanceTaskResult struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// task is a human-readable label (e.g. "delete_old_history").
+	Task string `protobuf:"bytes,1,opt,name=task,proto3" json:"task,omitempty"`
+	// deleted_count is the number of rows removed / cleaned.
+	DeletedCount int64 `protobuf:"varint,2,opt,name=deleted_count,json=deletedCount,proto3" json:"deleted_count,omitempty"`
+	// error is non-empty if this task failed. The host logs it but
+	// does not retry.
+	Error         string `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MaintenanceTaskResult) Reset() {
+	*x = MaintenanceTaskResult{}
+	mi := &file_sdk_proto_msgTypes[66]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MaintenanceTaskResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MaintenanceTaskResult) ProtoMessage() {}
+
+func (x *MaintenanceTaskResult) ProtoReflect() protoreflect.Message {
+	mi := &file_sdk_proto_msgTypes[66]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MaintenanceTaskResult.ProtoReflect.Descriptor instead.
+func (*MaintenanceTaskResult) Descriptor() ([]byte, []int) {
+	return file_sdk_proto_rawDescGZIP(), []int{66}
+}
+
+func (x *MaintenanceTaskResult) GetTask() string {
+	if x != nil {
+		return x.Task
+	}
+	return ""
+}
+
+func (x *MaintenanceTaskResult) GetDeletedCount() int64 {
+	if x != nil {
+		return x.DeletedCount
+	}
+	return 0
+}
+
+func (x *MaintenanceTaskResult) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 type ResolveModelPricingRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// model is the model identifier to resolve. Case-insensitive on the
@@ -4567,7 +4725,7 @@ type ResolveModelPricingRequest struct {
 
 func (x *ResolveModelPricingRequest) Reset() {
 	*x = ResolveModelPricingRequest{}
-	mi := &file_sdk_proto_msgTypes[64]
+	mi := &file_sdk_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4579,7 +4737,7 @@ func (x *ResolveModelPricingRequest) String() string {
 func (*ResolveModelPricingRequest) ProtoMessage() {}
 
 func (x *ResolveModelPricingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[64]
+	mi := &file_sdk_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4592,7 +4750,7 @@ func (x *ResolveModelPricingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveModelPricingRequest.ProtoReflect.Descriptor instead.
 func (*ResolveModelPricingRequest) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{64}
+	return file_sdk_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *ResolveModelPricingRequest) GetModel() string {
@@ -4633,7 +4791,7 @@ type ResolveModelPricingResponse struct {
 
 func (x *ResolveModelPricingResponse) Reset() {
 	*x = ResolveModelPricingResponse{}
-	mi := &file_sdk_proto_msgTypes[65]
+	mi := &file_sdk_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4645,7 +4803,7 @@ func (x *ResolveModelPricingResponse) String() string {
 func (*ResolveModelPricingResponse) ProtoMessage() {}
 
 func (x *ResolveModelPricingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_sdk_proto_msgTypes[65]
+	mi := &file_sdk_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4658,7 +4816,7 @@ func (x *ResolveModelPricingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResolveModelPricingResponse.ProtoReflect.Descriptor instead.
 func (*ResolveModelPricingResponse) Descriptor() ([]byte, []int) {
-	return file_sdk_proto_rawDescGZIP(), []int{65}
+	return file_sdk_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *ResolveModelPricingResponse) GetHasPricing() bool {
@@ -5055,6 +5213,14 @@ const file_sdk_proto_rawDesc = "" +
 	"\bhas_cost\x18\x01 \x01(\bR\ahasCost\x12\x12\n" +
 	"\x04cost\x18\x02 \x01(\tR\x04cost\x12+\n" +
 	"\x11resolution_reason\x18\x03 \x01(\tR\x10resolutionReason\"2\n" +
+	"\x15RunMaintenanceRequest\x12\x19\n" +
+	"\bnow_unix\x18\x01 \x01(\x03R\anowUnix\"T\n" +
+	"\x16RunMaintenanceResponse\x12:\n" +
+	"\aresults\x18\x01 \x03(\v2 .pluginsdk.MaintenanceTaskResultR\aresults\"f\n" +
+	"\x15MaintenanceTaskResult\x12\x12\n" +
+	"\x04task\x18\x01 \x01(\tR\x04task\x12#\n" +
+	"\rdeleted_count\x18\x02 \x01(\x03R\fdeletedCount\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\"2\n" +
 	"\x1aResolveModelPricingRequest\x12\x14\n" +
 	"\x05model\x18\x01 \x01(\tR\x05model\"\xe0\x02\n" +
 	"\x1bResolveModelPricingResponse\x12\x1f\n" +
@@ -5108,7 +5274,9 @@ const file_sdk_proto_rawDesc = "" +
 	"\x15WatchPricingOverrides\x12'.pluginsdk.WatchPricingOverridesRequest\x1a\x1f.pluginsdk.PricingOverrideEvent0\x01\x12I\n" +
 	"\n" +
 	"AdjustCost\x12\x1c.pluginsdk.AdjustCostRequest\x1a\x1d.pluginsdk.AdjustCostResponse\x12p\n" +
-	"\x17ResolveAccountStatsCost\x12).pluginsdk.ResolveAccountStatsCostRequest\x1a*.pluginsdk.ResolveAccountStatsCostResponse2s\n" +
+	"\x17ResolveAccountStatsCost\x12).pluginsdk.ResolveAccountStatsCostRequest\x1a*.pluginsdk.ResolveAccountStatsCostResponse2m\n" +
+	"\x14MaintenanceExtension\x12U\n" +
+	"\x0eRunMaintenance\x12 .pluginsdk.RunMaintenanceRequest\x1a!.pluginsdk.RunMaintenanceResponse2s\n" +
 	"\vHostService\x12d\n" +
 	"\x13ResolveModelPricing\x12%.pluginsdk.ResolveModelPricingRequest\x1a&.pluginsdk.ResolveModelPricingResponseB8Z6github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdkb\x06proto3"
 
@@ -5125,7 +5293,7 @@ func file_sdk_proto_rawDescGZIP() []byte {
 }
 
 var file_sdk_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_sdk_proto_msgTypes = make([]protoimpl.MessageInfo, 67)
+var file_sdk_proto_msgTypes = make([]protoimpl.MessageInfo, 70)
 var file_sdk_proto_goTypes = []any{
 	(PricingOverrideEvent_Op)(0),            // 0: pluginsdk.PricingOverrideEvent.Op
 	(*LogRecord)(nil),                       // 1: pluginsdk.LogRecord
@@ -5192,10 +5360,13 @@ var file_sdk_proto_goTypes = []any{
 	(*PricingUsageTokens)(nil),              // 62: pluginsdk.PricingUsageTokens
 	(*ResolveAccountStatsCostRequest)(nil),  // 63: pluginsdk.ResolveAccountStatsCostRequest
 	(*ResolveAccountStatsCostResponse)(nil), // 64: pluginsdk.ResolveAccountStatsCostResponse
-	(*ResolveModelPricingRequest)(nil),      // 65: pluginsdk.ResolveModelPricingRequest
-	(*ResolveModelPricingResponse)(nil),     // 66: pluginsdk.ResolveModelPricingResponse
-	nil,                                     // 67: pluginsdk.RedisMapResponse.FieldsEntry
-	(*emptypb.Empty)(nil),                   // 68: google.protobuf.Empty
+	(*RunMaintenanceRequest)(nil),           // 65: pluginsdk.RunMaintenanceRequest
+	(*RunMaintenanceResponse)(nil),          // 66: pluginsdk.RunMaintenanceResponse
+	(*MaintenanceTaskResult)(nil),           // 67: pluginsdk.MaintenanceTaskResult
+	(*ResolveModelPricingRequest)(nil),      // 68: pluginsdk.ResolveModelPricingRequest
+	(*ResolveModelPricingResponse)(nil),     // 69: pluginsdk.ResolveModelPricingResponse
+	nil,                                     // 70: pluginsdk.RedisMapResponse.FieldsEntry
+	(*emptypb.Empty)(nil),                   // 71: google.protobuf.Empty
 }
 var file_sdk_proto_depIdxs = []int32{
 	2,  // 0: pluginsdk.LogRecord.attrs:type_name -> pluginsdk.LogAttr
@@ -5203,7 +5374,7 @@ var file_sdk_proto_depIdxs = []int32{
 	9,  // 2: pluginsdk.TxSQLRequest.args:type_name -> pluginsdk.SQLValue
 	11, // 3: pluginsdk.SQLResponse.rows:type_name -> pluginsdk.SQLRow
 	9,  // 4: pluginsdk.SQLRow.values:type_name -> pluginsdk.SQLValue
-	67, // 5: pluginsdk.RedisMapResponse.fields:type_name -> pluginsdk.RedisMapResponse.FieldsEntry
+	70, // 5: pluginsdk.RedisMapResponse.fields:type_name -> pluginsdk.RedisMapResponse.FieldsEntry
 	26, // 6: pluginsdk.DoReply.array:type_name -> pluginsdk.DoReply
 	35, // 7: pluginsdk.JobMessage.register:type_name -> pluginsdk.JobRegistration
 	38, // 8: pluginsdk.JobMessage.ack:type_name -> pluginsdk.JobAck
@@ -5224,77 +5395,80 @@ var file_sdk_proto_depIdxs = []int32{
 	62, // 23: pluginsdk.AdjustCostRequest.tokens:type_name -> pluginsdk.PricingUsageTokens
 	61, // 24: pluginsdk.AdjustCostResponse.final_cost:type_name -> pluginsdk.PricingCostBreakdown
 	62, // 25: pluginsdk.ResolveAccountStatsCostRequest.tokens:type_name -> pluginsdk.PricingUsageTokens
-	4,  // 26: pluginsdk.SQLProxy.Query:input_type -> pluginsdk.SQLRequest
-	4,  // 27: pluginsdk.SQLProxy.Exec:input_type -> pluginsdk.SQLRequest
-	6,  // 28: pluginsdk.SQLProxy.BeginTx:input_type -> pluginsdk.BeginTxRequest
-	5,  // 29: pluginsdk.SQLProxy.TxQuery:input_type -> pluginsdk.TxSQLRequest
-	5,  // 30: pluginsdk.SQLProxy.TxExec:input_type -> pluginsdk.TxSQLRequest
-	8,  // 31: pluginsdk.SQLProxy.CommitTx:input_type -> pluginsdk.TxIDRequest
-	8,  // 32: pluginsdk.SQLProxy.RollbackTx:input_type -> pluginsdk.TxIDRequest
-	25, // 33: pluginsdk.RedisProxy.Do:input_type -> pluginsdk.DoRequest
-	13, // 34: pluginsdk.RedisProxy.Get:input_type -> pluginsdk.RedisKeyRequest
-	15, // 35: pluginsdk.RedisProxy.Set:input_type -> pluginsdk.RedisSetRequest
-	16, // 36: pluginsdk.RedisProxy.SetEx:input_type -> pluginsdk.RedisSetExRequest
-	17, // 37: pluginsdk.RedisProxy.Del:input_type -> pluginsdk.RedisDelRequest
-	18, // 38: pluginsdk.RedisProxy.HGet:input_type -> pluginsdk.RedisHGetRequest
-	19, // 39: pluginsdk.RedisProxy.HSet:input_type -> pluginsdk.RedisHSetRequest
-	13, // 40: pluginsdk.RedisProxy.HGetAll:input_type -> pluginsdk.RedisKeyRequest
-	21, // 41: pluginsdk.RedisProxy.HDel:input_type -> pluginsdk.RedisHDelRequest
-	22, // 42: pluginsdk.RedisProxy.Publish:input_type -> pluginsdk.RedisPubRequest
-	23, // 43: pluginsdk.RedisProxy.Subscribe:input_type -> pluginsdk.RedisSubRequest
-	27, // 44: pluginsdk.EventBus.Publish:input_type -> pluginsdk.EventRequest
-	28, // 45: pluginsdk.EventBus.Subscribe:input_type -> pluginsdk.EventFilter
-	1,  // 46: pluginsdk.LogProxy.PushLogs:input_type -> pluginsdk.LogRecord
-	30, // 47: pluginsdk.SecretEncryption.Encrypt:input_type -> pluginsdk.EncryptRequest
-	32, // 48: pluginsdk.SecretEncryption.Decrypt:input_type -> pluginsdk.DecryptRequest
-	34, // 49: pluginsdk.JobScheduler.Subscribe:input_type -> pluginsdk.JobMessage
-	40, // 50: pluginsdk.SettingsExtension.Get:input_type -> pluginsdk.SettingsGetRequest
-	42, // 51: pluginsdk.SettingsExtension.Watch:input_type -> pluginsdk.SettingsWatchRequest
-	45, // 52: pluginsdk.EventsExtension.Subscribe:input_type -> pluginsdk.EventSubscribeRequest
-	45, // 53: pluginsdk.EventsExtension.ProbeSubscription:input_type -> pluginsdk.EventSubscribeRequest
-	55, // 54: pluginsdk.PricingExtension.ListPricingOverrides:input_type -> pluginsdk.ListPricingOverridesRequest
-	57, // 55: pluginsdk.PricingExtension.WatchPricingOverrides:input_type -> pluginsdk.WatchPricingOverridesRequest
-	59, // 56: pluginsdk.PricingExtension.AdjustCost:input_type -> pluginsdk.AdjustCostRequest
-	63, // 57: pluginsdk.PricingExtension.ResolveAccountStatsCost:input_type -> pluginsdk.ResolveAccountStatsCostRequest
-	65, // 58: pluginsdk.HostService.ResolveModelPricing:input_type -> pluginsdk.ResolveModelPricingRequest
-	10, // 59: pluginsdk.SQLProxy.Query:output_type -> pluginsdk.SQLResponse
-	12, // 60: pluginsdk.SQLProxy.Exec:output_type -> pluginsdk.ExecResponse
-	7,  // 61: pluginsdk.SQLProxy.BeginTx:output_type -> pluginsdk.TxResponse
-	10, // 62: pluginsdk.SQLProxy.TxQuery:output_type -> pluginsdk.SQLResponse
-	12, // 63: pluginsdk.SQLProxy.TxExec:output_type -> pluginsdk.ExecResponse
-	68, // 64: pluginsdk.SQLProxy.CommitTx:output_type -> google.protobuf.Empty
-	68, // 65: pluginsdk.SQLProxy.RollbackTx:output_type -> google.protobuf.Empty
-	26, // 66: pluginsdk.RedisProxy.Do:output_type -> pluginsdk.DoReply
-	14, // 67: pluginsdk.RedisProxy.Get:output_type -> pluginsdk.RedisValueResponse
-	68, // 68: pluginsdk.RedisProxy.Set:output_type -> google.protobuf.Empty
-	68, // 69: pluginsdk.RedisProxy.SetEx:output_type -> google.protobuf.Empty
-	68, // 70: pluginsdk.RedisProxy.Del:output_type -> google.protobuf.Empty
-	14, // 71: pluginsdk.RedisProxy.HGet:output_type -> pluginsdk.RedisValueResponse
-	68, // 72: pluginsdk.RedisProxy.HSet:output_type -> google.protobuf.Empty
-	20, // 73: pluginsdk.RedisProxy.HGetAll:output_type -> pluginsdk.RedisMapResponse
-	68, // 74: pluginsdk.RedisProxy.HDel:output_type -> google.protobuf.Empty
-	68, // 75: pluginsdk.RedisProxy.Publish:output_type -> google.protobuf.Empty
-	24, // 76: pluginsdk.RedisProxy.Subscribe:output_type -> pluginsdk.RedisMessage
-	68, // 77: pluginsdk.EventBus.Publish:output_type -> google.protobuf.Empty
-	29, // 78: pluginsdk.EventBus.Subscribe:output_type -> pluginsdk.Event
-	3,  // 79: pluginsdk.LogProxy.PushLogs:output_type -> pluginsdk.LogPushSummary
-	31, // 80: pluginsdk.SecretEncryption.Encrypt:output_type -> pluginsdk.EncryptResponse
-	33, // 81: pluginsdk.SecretEncryption.Decrypt:output_type -> pluginsdk.DecryptResponse
-	37, // 82: pluginsdk.JobScheduler.Subscribe:output_type -> pluginsdk.JobTrigger
-	41, // 83: pluginsdk.SettingsExtension.Get:output_type -> pluginsdk.SettingsGetResponse
-	43, // 84: pluginsdk.SettingsExtension.Watch:output_type -> pluginsdk.SettingsChangeEvent
-	46, // 85: pluginsdk.EventsExtension.Subscribe:output_type -> pluginsdk.HostEvent
-	44, // 86: pluginsdk.EventsExtension.ProbeSubscription:output_type -> pluginsdk.ProbeSubscriptionResponse
-	56, // 87: pluginsdk.PricingExtension.ListPricingOverrides:output_type -> pluginsdk.ListPricingOverridesResponse
-	58, // 88: pluginsdk.PricingExtension.WatchPricingOverrides:output_type -> pluginsdk.PricingOverrideEvent
-	60, // 89: pluginsdk.PricingExtension.AdjustCost:output_type -> pluginsdk.AdjustCostResponse
-	64, // 90: pluginsdk.PricingExtension.ResolveAccountStatsCost:output_type -> pluginsdk.ResolveAccountStatsCostResponse
-	66, // 91: pluginsdk.HostService.ResolveModelPricing:output_type -> pluginsdk.ResolveModelPricingResponse
-	59, // [59:92] is the sub-list for method output_type
-	26, // [26:59] is the sub-list for method input_type
-	26, // [26:26] is the sub-list for extension type_name
-	26, // [26:26] is the sub-list for extension extendee
-	0,  // [0:26] is the sub-list for field type_name
+	67, // 26: pluginsdk.RunMaintenanceResponse.results:type_name -> pluginsdk.MaintenanceTaskResult
+	4,  // 27: pluginsdk.SQLProxy.Query:input_type -> pluginsdk.SQLRequest
+	4,  // 28: pluginsdk.SQLProxy.Exec:input_type -> pluginsdk.SQLRequest
+	6,  // 29: pluginsdk.SQLProxy.BeginTx:input_type -> pluginsdk.BeginTxRequest
+	5,  // 30: pluginsdk.SQLProxy.TxQuery:input_type -> pluginsdk.TxSQLRequest
+	5,  // 31: pluginsdk.SQLProxy.TxExec:input_type -> pluginsdk.TxSQLRequest
+	8,  // 32: pluginsdk.SQLProxy.CommitTx:input_type -> pluginsdk.TxIDRequest
+	8,  // 33: pluginsdk.SQLProxy.RollbackTx:input_type -> pluginsdk.TxIDRequest
+	25, // 34: pluginsdk.RedisProxy.Do:input_type -> pluginsdk.DoRequest
+	13, // 35: pluginsdk.RedisProxy.Get:input_type -> pluginsdk.RedisKeyRequest
+	15, // 36: pluginsdk.RedisProxy.Set:input_type -> pluginsdk.RedisSetRequest
+	16, // 37: pluginsdk.RedisProxy.SetEx:input_type -> pluginsdk.RedisSetExRequest
+	17, // 38: pluginsdk.RedisProxy.Del:input_type -> pluginsdk.RedisDelRequest
+	18, // 39: pluginsdk.RedisProxy.HGet:input_type -> pluginsdk.RedisHGetRequest
+	19, // 40: pluginsdk.RedisProxy.HSet:input_type -> pluginsdk.RedisHSetRequest
+	13, // 41: pluginsdk.RedisProxy.HGetAll:input_type -> pluginsdk.RedisKeyRequest
+	21, // 42: pluginsdk.RedisProxy.HDel:input_type -> pluginsdk.RedisHDelRequest
+	22, // 43: pluginsdk.RedisProxy.Publish:input_type -> pluginsdk.RedisPubRequest
+	23, // 44: pluginsdk.RedisProxy.Subscribe:input_type -> pluginsdk.RedisSubRequest
+	27, // 45: pluginsdk.EventBus.Publish:input_type -> pluginsdk.EventRequest
+	28, // 46: pluginsdk.EventBus.Subscribe:input_type -> pluginsdk.EventFilter
+	1,  // 47: pluginsdk.LogProxy.PushLogs:input_type -> pluginsdk.LogRecord
+	30, // 48: pluginsdk.SecretEncryption.Encrypt:input_type -> pluginsdk.EncryptRequest
+	32, // 49: pluginsdk.SecretEncryption.Decrypt:input_type -> pluginsdk.DecryptRequest
+	34, // 50: pluginsdk.JobScheduler.Subscribe:input_type -> pluginsdk.JobMessage
+	40, // 51: pluginsdk.SettingsExtension.Get:input_type -> pluginsdk.SettingsGetRequest
+	42, // 52: pluginsdk.SettingsExtension.Watch:input_type -> pluginsdk.SettingsWatchRequest
+	45, // 53: pluginsdk.EventsExtension.Subscribe:input_type -> pluginsdk.EventSubscribeRequest
+	45, // 54: pluginsdk.EventsExtension.ProbeSubscription:input_type -> pluginsdk.EventSubscribeRequest
+	55, // 55: pluginsdk.PricingExtension.ListPricingOverrides:input_type -> pluginsdk.ListPricingOverridesRequest
+	57, // 56: pluginsdk.PricingExtension.WatchPricingOverrides:input_type -> pluginsdk.WatchPricingOverridesRequest
+	59, // 57: pluginsdk.PricingExtension.AdjustCost:input_type -> pluginsdk.AdjustCostRequest
+	63, // 58: pluginsdk.PricingExtension.ResolveAccountStatsCost:input_type -> pluginsdk.ResolveAccountStatsCostRequest
+	65, // 59: pluginsdk.MaintenanceExtension.RunMaintenance:input_type -> pluginsdk.RunMaintenanceRequest
+	68, // 60: pluginsdk.HostService.ResolveModelPricing:input_type -> pluginsdk.ResolveModelPricingRequest
+	10, // 61: pluginsdk.SQLProxy.Query:output_type -> pluginsdk.SQLResponse
+	12, // 62: pluginsdk.SQLProxy.Exec:output_type -> pluginsdk.ExecResponse
+	7,  // 63: pluginsdk.SQLProxy.BeginTx:output_type -> pluginsdk.TxResponse
+	10, // 64: pluginsdk.SQLProxy.TxQuery:output_type -> pluginsdk.SQLResponse
+	12, // 65: pluginsdk.SQLProxy.TxExec:output_type -> pluginsdk.ExecResponse
+	71, // 66: pluginsdk.SQLProxy.CommitTx:output_type -> google.protobuf.Empty
+	71, // 67: pluginsdk.SQLProxy.RollbackTx:output_type -> google.protobuf.Empty
+	26, // 68: pluginsdk.RedisProxy.Do:output_type -> pluginsdk.DoReply
+	14, // 69: pluginsdk.RedisProxy.Get:output_type -> pluginsdk.RedisValueResponse
+	71, // 70: pluginsdk.RedisProxy.Set:output_type -> google.protobuf.Empty
+	71, // 71: pluginsdk.RedisProxy.SetEx:output_type -> google.protobuf.Empty
+	71, // 72: pluginsdk.RedisProxy.Del:output_type -> google.protobuf.Empty
+	14, // 73: pluginsdk.RedisProxy.HGet:output_type -> pluginsdk.RedisValueResponse
+	71, // 74: pluginsdk.RedisProxy.HSet:output_type -> google.protobuf.Empty
+	20, // 75: pluginsdk.RedisProxy.HGetAll:output_type -> pluginsdk.RedisMapResponse
+	71, // 76: pluginsdk.RedisProxy.HDel:output_type -> google.protobuf.Empty
+	71, // 77: pluginsdk.RedisProxy.Publish:output_type -> google.protobuf.Empty
+	24, // 78: pluginsdk.RedisProxy.Subscribe:output_type -> pluginsdk.RedisMessage
+	71, // 79: pluginsdk.EventBus.Publish:output_type -> google.protobuf.Empty
+	29, // 80: pluginsdk.EventBus.Subscribe:output_type -> pluginsdk.Event
+	3,  // 81: pluginsdk.LogProxy.PushLogs:output_type -> pluginsdk.LogPushSummary
+	31, // 82: pluginsdk.SecretEncryption.Encrypt:output_type -> pluginsdk.EncryptResponse
+	33, // 83: pluginsdk.SecretEncryption.Decrypt:output_type -> pluginsdk.DecryptResponse
+	37, // 84: pluginsdk.JobScheduler.Subscribe:output_type -> pluginsdk.JobTrigger
+	41, // 85: pluginsdk.SettingsExtension.Get:output_type -> pluginsdk.SettingsGetResponse
+	43, // 86: pluginsdk.SettingsExtension.Watch:output_type -> pluginsdk.SettingsChangeEvent
+	46, // 87: pluginsdk.EventsExtension.Subscribe:output_type -> pluginsdk.HostEvent
+	44, // 88: pluginsdk.EventsExtension.ProbeSubscription:output_type -> pluginsdk.ProbeSubscriptionResponse
+	56, // 89: pluginsdk.PricingExtension.ListPricingOverrides:output_type -> pluginsdk.ListPricingOverridesResponse
+	58, // 90: pluginsdk.PricingExtension.WatchPricingOverrides:output_type -> pluginsdk.PricingOverrideEvent
+	60, // 91: pluginsdk.PricingExtension.AdjustCost:output_type -> pluginsdk.AdjustCostResponse
+	64, // 92: pluginsdk.PricingExtension.ResolveAccountStatsCost:output_type -> pluginsdk.ResolveAccountStatsCostResponse
+	66, // 93: pluginsdk.MaintenanceExtension.RunMaintenance:output_type -> pluginsdk.RunMaintenanceResponse
+	69, // 94: pluginsdk.HostService.ResolveModelPricing:output_type -> pluginsdk.ResolveModelPricingResponse
+	61, // [61:95] is the sub-list for method output_type
+	27, // [27:61] is the sub-list for method input_type
+	27, // [27:27] is the sub-list for extension type_name
+	27, // [27:27] is the sub-list for extension extendee
+	0,  // [0:27] is the sub-list for field type_name
 }
 
 func init() { file_sdk_proto_init() }
@@ -5338,9 +5512,9 @@ func file_sdk_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_sdk_proto_rawDesc), len(file_sdk_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   67,
+			NumMessages:   70,
 			NumExtensions: 0,
-			NumServices:   10,
+			NumServices:   11,
 		},
 		GoTypes:           file_sdk_proto_goTypes,
 		DependencyIndexes: file_sdk_proto_depIdxs,

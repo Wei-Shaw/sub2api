@@ -26,6 +26,12 @@ const (
 
 var opsCleanupCronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
+// PluginMaintenanceRunner is called after ops cleanup to trigger plugin-owned
+// data retention tasks. Implemented by PluginManager.
+type PluginMaintenanceRunner interface {
+	RunPluginMaintenance(ctx context.Context, nowUnix int64)
+}
+
 // OpsCleanupService periodically deletes old ops data to prevent unbounded DB growth.
 //
 // - Scheduling: 5-field cron spec (minute hour dom month dow).
@@ -43,6 +49,8 @@ type OpsCleanupService struct {
 
 	startOnce sync.Once
 	stopOnce  sync.Once
+
+	pluginMaintenance PluginMaintenanceRunner
 }
 
 func NewOpsCleanupService(
@@ -115,6 +123,12 @@ func (s *OpsCleanupService) Stop() {
 			}
 		}
 	})
+}
+
+// SetPluginMaintenance registers the PluginManager as the maintenance runner.
+// Called from wire_gen after both OpsCleanupService and PluginManager are created.
+func (s *OpsCleanupService) SetPluginMaintenance(runner PluginMaintenanceRunner) {
+	s.pluginMaintenance = runner
 }
 
 func (s *OpsCleanupService) runScheduled() {
@@ -264,6 +278,12 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 			return out, err
 		}
 		out.dailyPreagg = n
+	}
+
+	// Plugin maintenance — let plugins run their own data-retention tasks
+	// after the host's ops cleanup is complete.
+	if s.pluginMaintenance != nil {
+		s.pluginMaintenance.RunPluginMaintenance(ctx, now.Unix())
 	}
 
 	return out, nil

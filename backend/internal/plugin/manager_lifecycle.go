@@ -156,12 +156,15 @@ func (m *PluginManager) detachExtensions(sx *stopCtx) {
 	sx.inst.settingsUnsubscribe = nil
 	pricingClient := sx.inst.pricingClient
 	sx.inst.pricingClient = nil
+	maintenanceClient := sx.inst.maintenanceClient
+	sx.inst.maintenanceClient = nil
 	sx.inst.mu.Unlock()
 
 	if settingsUnsub != nil {
 		settingsUnsub()
 	}
 	m.detachPricingClient(pricingClient)
+	m.detachMaintenanceClient(maintenanceClient)
 	if m.settingsService != nil {
 		m.settingsService.UnregisterSchema(sx.name)
 	}

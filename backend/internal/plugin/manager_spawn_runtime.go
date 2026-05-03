@@ -145,3 +145,15 @@ func (m *PluginManager) spawnTryPricing(sc *spawnCtx) error {
 	m.tryStartPricingExtension(sc.parentCtx, sc.inst)
 	return nil
 }
+
+// -------------------------------------------------------------
+// Stage: maintenance — attach MaintenanceExtension client (best-effort)
+// -------------------------------------------------------------
+
+func (m *PluginManager) spawnTryMaintenance(sc *spawnCtx) error {
+	// MaintenanceExtension wiring: unconditionally create the client for
+	// every plugin. No probe RPC is issued — codes.Unimplemented is
+	// handled at call-time in RunPluginMaintenance, keeping spawn cheap.
+	m.tryStartMaintenanceExtension(sc.parentCtx, sc.inst)
+	return nil
+}

@@ -52,6 +52,12 @@ type PluginInstance struct {
 	// stopInstance and re-created on the next spawnAndConnect.
 	pricingClient *PricingExtensionClient
 
+	// maintenanceClient is the host-side proxy created after the plugin's gRPC
+	// connection is up. Unlike pricingClient no probe RPC is issued at spawn;
+	// codes.Unimplemented is handled at call-time in RunPluginMaintenance.
+	// Detached in detachExtensions and re-created on the next spawnAndConnect.
+	maintenanceClient *MaintenanceExtensionClient
+
 	// Exited closes after waitProcessExit returns from cmd.Wait(). Lets
 	// stopInstance wait for the process to actually exit *without* calling
 	// cmd.Wait() a second time — the first Wait() reaps the child, any

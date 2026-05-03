@@ -14,18 +14,16 @@ import (
 // "Run now" UI references them by name, and history rows are tagged with
 // them, so do not rename without an admin migration.
 const (
-	JobNameMonitorRun          = "monitor.run"
-	JobNameMonitorDailyRollup  = "monitor.daily-rollup"
-	monitorJobRunInterval      = 60 * time.Second
-	monitorJobDailyRollupSpec  = "0 2 * * *"
-	monitorJobRunTimeout       = 2 * time.Minute
-	monitorJobDailyRollupLimit = 10 * time.Minute
+	JobNameMonitorRun     = "monitor.run"
+	monitorJobRunInterval = 60 * time.Second
+	monitorJobRunTimeout  = 2 * time.Minute
 )
 
-// MonitorJobRunner registers the per-tick "scan + check" job and the daily
-// rollup job with the host JobScheduler. It replaces the old in-process
-// ChannelMonitorRunner (291 lines of pond/sync.Map/leader-lock plumbing) —
-// the host now owns scheduling, leader election, and concurrency.
+// MonitorJobRunner registers the per-tick "scan + check" job with the host
+// JobScheduler. It replaces the old in-process ChannelMonitorRunner (291
+// lines of pond/sync.Map/leader-lock plumbing) — the host now owns
+// scheduling, leader election, and concurrency. Daily maintenance is handled
+// separately via the MaintenanceExtension gRPC service.
 //
 // CRUD writes do not need to notify the runner: the 60-second tick picks up
 // newly enabled monitors on the next pass and naturally drops disabled ones,
@@ -61,9 +59,9 @@ func NewMonitorJobRunner(svc *ChannelMonitorService, jobs pluginsdk.JobsClient, 
 	}
 }
 
-// Register declares the two job specs to the host scheduler. Must be called
-// from inside Plugin.Init before the SDK opens the Subscribe stream — the
-// JobsClient rejects late Register calls with ErrJobsRegistered.
+// Register declares the monitor.run job spec to the host scheduler. Must be
+// called from inside Plugin.Init before the SDK opens the Subscribe stream —
+// the JobsClient rejects late Register calls with ErrJobsRegistered.
 func (r *MonitorJobRunner) Register() error {
 	if r == nil || r.svc == nil {
 		return nil
@@ -85,21 +83,11 @@ func (r *MonitorJobRunner) Register() error {
 	if err := r.jobs.Register(tickSpec, r.runOneTick); err != nil {
 		return fmt.Errorf("register %s: %w", JobNameMonitorRun, err)
 	}
-
-	rollupSpec := pluginsdk.JobSpec{
-		Name: JobNameMonitorDailyRollup,
-		Trigger: pluginsdk.JobTrigger{
-			Kind:     pluginsdk.TriggerCron,
-			CronSpec: monitorJobDailyRollupSpec,
-		},
-		LeaderOnly: true,
-		Timeout:    monitorJobDailyRollupLimit,
-	}
-	if err := r.jobs.Register(rollupSpec, r.runDailyRollup); err != nil {
-		return fmt.Errorf("register %s: %w", JobNameMonitorDailyRollup, err)
-	}
+	// NOTE: the daily maintenance job (monitor.daily-rollup) has been removed.
+	// Daily cleanup is now triggered by the host's OpsCleanupService via the
+	// MaintenanceExtension gRPC service — see internal/maintenance/server.go.
 	r.log.Info("channel-monitor: jobs registered",
-		"jobs", []string{JobNameMonitorRun, JobNameMonitorDailyRollup})
+		"jobs", []string{JobNameMonitorRun})
 	return nil
 }
 
@@ -146,15 +134,6 @@ func (r *MonitorJobRunner) fireOnce(ctx context.Context, m *ChannelMonitor) {
 		r.log.Warn("channel-monitor: RunCheck failed",
 			"monitor_id", m.ID, "name", m.Name, "error", err)
 	}
-}
-
-// runDailyRollup is the job handler the host fires once per day on the
-// leader replica. Delegates to the existing service-level maintenance.
-func (r *MonitorJobRunner) runDailyRollup(ctx context.Context, _ string) error {
-	if err := r.svc.RunDailyMaintenance(ctx); err != nil {
-		return fmt.Errorf("daily maintenance: %w", err)
-	}
-	return nil
 }
 
 // acquireTicket / releaseTicket 维护 runner 自身的 in-flight 集合：基数最多

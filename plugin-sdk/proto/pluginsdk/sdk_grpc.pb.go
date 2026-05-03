@@ -2237,6 +2237,156 @@ var PricingExtension_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
+	MaintenanceExtension_RunMaintenance_FullMethodName = "/pluginsdk.MaintenanceExtension/RunMaintenance"
+)
+
+// MaintenanceExtensionClient is the client API for MaintenanceExtension service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// ============================================================
+// MaintenanceExtension
+// ============================================================
+//
+// MaintenanceExtension is implemented by plugins that need periodic
+// data cleanup integrated with the host's OpsCleanupService schedule.
+// Instead of managing independent cron jobs, plugins register this
+// extension and the host calls RunMaintenance once per OpsCleanup cycle
+// (typically daily at 02:00 UTC), sharing the same leader lock and
+// heartbeat infrastructure.
+//
+// Failure model:
+//   - RunMaintenance errors are logged but do not fail the host's
+//     overall OpsCleanup run. Each plugin is isolated.
+//   - If the plugin does not implement this service, the host skips it
+//     (codes.Unimplemented detection, same as PricingExtension).
+//
+// This service is host -> plugin: the plugin runs the gRPC server,
+// the host calls it over the per-plugin gRPC connection.
+type MaintenanceExtensionClient interface {
+	// RunMaintenance is called by the host's OpsCleanupService after its
+	// own cleanup completes. The plugin performs its retention logic
+	// (e.g. delete old history rows, aggregate daily rollups) and reports
+	// what was cleaned.
+	RunMaintenance(ctx context.Context, in *RunMaintenanceRequest, opts ...grpc.CallOption) (*RunMaintenanceResponse, error)
+}
+
+type maintenanceExtensionClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewMaintenanceExtensionClient(cc grpc.ClientConnInterface) MaintenanceExtensionClient {
+	return &maintenanceExtensionClient{cc}
+}
+
+func (c *maintenanceExtensionClient) RunMaintenance(ctx context.Context, in *RunMaintenanceRequest, opts ...grpc.CallOption) (*RunMaintenanceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RunMaintenanceResponse)
+	err := c.cc.Invoke(ctx, MaintenanceExtension_RunMaintenance_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// MaintenanceExtensionServer is the server API for MaintenanceExtension service.
+// All implementations must embed UnimplementedMaintenanceExtensionServer
+// for forward compatibility.
+//
+// ============================================================
+// MaintenanceExtension
+// ============================================================
+//
+// MaintenanceExtension is implemented by plugins that need periodic
+// data cleanup integrated with the host's OpsCleanupService schedule.
+// Instead of managing independent cron jobs, plugins register this
+// extension and the host calls RunMaintenance once per OpsCleanup cycle
+// (typically daily at 02:00 UTC), sharing the same leader lock and
+// heartbeat infrastructure.
+//
+// Failure model:
+//   - RunMaintenance errors are logged but do not fail the host's
+//     overall OpsCleanup run. Each plugin is isolated.
+//   - If the plugin does not implement this service, the host skips it
+//     (codes.Unimplemented detection, same as PricingExtension).
+//
+// This service is host -> plugin: the plugin runs the gRPC server,
+// the host calls it over the per-plugin gRPC connection.
+type MaintenanceExtensionServer interface {
+	// RunMaintenance is called by the host's OpsCleanupService after its
+	// own cleanup completes. The plugin performs its retention logic
+	// (e.g. delete old history rows, aggregate daily rollups) and reports
+	// what was cleaned.
+	RunMaintenance(context.Context, *RunMaintenanceRequest) (*RunMaintenanceResponse, error)
+	mustEmbedUnimplementedMaintenanceExtensionServer()
+}
+
+// UnimplementedMaintenanceExtensionServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedMaintenanceExtensionServer struct{}
+
+func (UnimplementedMaintenanceExtensionServer) RunMaintenance(context.Context, *RunMaintenanceRequest) (*RunMaintenanceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RunMaintenance not implemented")
+}
+func (UnimplementedMaintenanceExtensionServer) mustEmbedUnimplementedMaintenanceExtensionServer() {}
+func (UnimplementedMaintenanceExtensionServer) testEmbeddedByValue()                              {}
+
+// UnsafeMaintenanceExtensionServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to MaintenanceExtensionServer will
+// result in compilation errors.
+type UnsafeMaintenanceExtensionServer interface {
+	mustEmbedUnimplementedMaintenanceExtensionServer()
+}
+
+func RegisterMaintenanceExtensionServer(s grpc.ServiceRegistrar, srv MaintenanceExtensionServer) {
+	// If the following call panics, it indicates UnimplementedMaintenanceExtensionServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&MaintenanceExtension_ServiceDesc, srv)
+}
+
+func _MaintenanceExtension_RunMaintenance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RunMaintenanceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MaintenanceExtensionServer).RunMaintenance(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MaintenanceExtension_RunMaintenance_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MaintenanceExtensionServer).RunMaintenance(ctx, req.(*RunMaintenanceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// MaintenanceExtension_ServiceDesc is the grpc.ServiceDesc for MaintenanceExtension service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var MaintenanceExtension_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "pluginsdk.MaintenanceExtension",
+	HandlerType: (*MaintenanceExtensionServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "RunMaintenance",
+			Handler:    _MaintenanceExtension_RunMaintenance_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "sdk.proto",
+}
+
+const (
 	HostService_ResolveModelPricing_FullMethodName = "/pluginsdk.HostService/ResolveModelPricing"
 )
 

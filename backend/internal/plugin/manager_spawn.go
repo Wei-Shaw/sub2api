@@ -149,6 +149,7 @@ func (m *PluginManager) spawnStages() []spawnStage {
 		{name: "route_install", do: m.spawnInstallRoutes, rollback: m.spawnRollbackRoutes},
 		{name: "health", do: m.spawnStartHealth, rollback: nil},
 		{name: "pricing", do: m.spawnTryPricing, rollback: nil},
+		{name: "maintenance", do: m.spawnTryMaintenance, rollback: nil},
 	}
 }
 
