@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/model"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -98,6 +99,40 @@ func TestStreamWrittenGuard_GeminiPath_AbortFailoverOnSSEContentWritten(t *testi
 	firstIdx := strings.Index(body, "event: message_start")
 	lastIdx := strings.LastIndex(body, "event: message_start")
 	assert.Equal(t, firstIdx, lastIdx, "Gemini 路径不得出现双 message_start")
+}
+
+func TestGatewayHandleFailoverExhaustedRedactsPassthroughSSEMessage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	sample := "aGVsbG8="
+	imageURL := "data:image/png;base64," + sample
+	statusCode := http.StatusBadRequest
+	ruleSvc := newErrorPassthroughServiceForHandlerTest([]*model.ErrorPassthroughRule{{
+		ID:              1,
+		Name:            "image-passthrough",
+		Enabled:         true,
+		Priority:        1,
+		ErrorCodes:      []int{statusCode},
+		Keywords:        []string{"invalid generated image"},
+		MatchMode:       model.MatchModeAll,
+		PassthroughCode: true,
+		PassthroughBody: true,
+	}})
+	h := &GatewayHandler{errorPassthroughService: ruleSvc}
+
+	h.handleFailoverExhausted(c, &service.UpstreamFailoverError{
+		StatusCode:   statusCode,
+		ResponseBody: []byte(`{"error":{"message":"invalid generated image ` + imageURL + `"}}`),
+	}, service.PlatformAnthropic, true)
+
+	body := w.Body.String()
+	require.Contains(t, body, `"type":"error"`)
+	require.NotContains(t, body, "data:image")
+	require.NotContains(t, body, sample)
+	require.Contains(t, body, "invalid generated image")
 }
 
 // TestStreamWrittenGuard_NoByteWritten_GuardNotTriggered 验证反向场景：
