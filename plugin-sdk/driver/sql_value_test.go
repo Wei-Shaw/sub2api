@@ -63,3 +63,56 @@ func TestGoValueToProto_TimeRoundTrip(t *testing.T) {
 		t.Errorf("round-trip time mismatch: got %v, want %v", gotTime, now)
 	}
 }
+
+func TestGoValueToProto_TimeZero_RoundTrip(t *testing.T) {
+	zero := time.Time{}
+
+	sv, err := goValueToProto(zero)
+	if err != nil {
+		t.Fatalf("goValueToProto(zero time): %v", err)
+	}
+
+	got := sqlValueToDriver(sv)
+	gotTime, ok := got.(time.Time)
+	if !ok {
+		t.Fatalf("expected time.Time, got %T (%v)", got, got)
+	}
+	if !gotTime.Equal(zero) {
+		t.Errorf("zero-time round-trip mismatch: got %v, want %v", gotTime, zero)
+	}
+}
+
+func TestGoValueToProto_TimeNonUTC_RoundTrip(t *testing.T) {
+	loc := time.FixedZone("UTC+8", 8*60*60)
+	orig := time.Date(2025, 6, 15, 14, 30, 0, 123456000, loc)
+
+	sv, err := goValueToProto(orig)
+	if err != nil {
+		t.Fatalf("goValueToProto(non-UTC time): %v", err)
+	}
+
+	got := sqlValueToDriver(sv)
+	gotTime, ok := got.(time.Time)
+	if !ok {
+		t.Fatalf("expected time.Time, got %T (%v)", got, got)
+	}
+	// time.Equal compares instants, so UTC+8 14:30 == UTC 06:30.
+	if !gotTime.Equal(orig) {
+		t.Errorf("non-UTC round-trip: got %v, want %v (Equal should be true even if Location differs)", gotTime, orig)
+	}
+}
+
+func TestSqlValueToDriver_Nil(t *testing.T) {
+	got := sqlValueToDriver(nil)
+	if got != nil {
+		t.Errorf("sqlValueToDriver(nil) = %v (%T), want nil", got, got)
+	}
+}
+
+func TestGoValueToProto_UnsupportedType(t *testing.T) {
+	type custom struct{ X int }
+	_, err := goValueToProto(custom{X: 1})
+	if err == nil {
+		t.Fatal("goValueToProto(custom struct) should return an error")
+	}
+}

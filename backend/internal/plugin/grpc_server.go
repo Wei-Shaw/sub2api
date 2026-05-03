@@ -24,6 +24,9 @@ const txAutoRollbackTimeout = 30 * time.Second
 // txCleanupInterval 是事务清理 goroutine 的轮询间隔。
 const txCleanupInterval = 10 * time.Second
 
+// maxActiveTxPerPlugin 限制每个插件的最大活跃事务数,防止单个插件耗尽连接池。
+const maxActiveTxPerPlugin = 16
+
 // SDKServer 实现了 SQLProxy / RedisProxy 两个 gRPC 服务,
 // 并通过内嵌 eventBusAdapter 暴露 EventBus 服务。
 // 这是核心暴露给插件的 SDK 入口。
@@ -71,6 +74,7 @@ type SDKServer struct {
 
 type activeTx struct {
 	tx        *sql.Tx
+	owner     string
 	startedAt time.Time
 }
 
@@ -169,29 +173,25 @@ func (s *SDKServer) cleanupLoop(ctx context.Context) {
 func (s *SDKServer) rollbackTimedOutTx() {
 	cutoff := time.Now().Add(-txAutoRollbackTimeout)
 
+	type expiredEntry struct {
+		id string
+		t  *activeTx
+	}
 	s.txMu.Lock()
-	expired := make([]string, 0)
+	var expired []expiredEntry
 	for id, t := range s.txs {
 		if t.startedAt.Before(cutoff) {
-			expired = append(expired, id)
+			expired = append(expired, expiredEntry{id: id, t: t})
+			delete(s.txs, id)
 		}
 	}
 	s.txMu.Unlock()
 
-	for _, id := range expired {
-		s.txMu.Lock()
-		t, ok := s.txs[id]
-		if ok {
-			delete(s.txs, id)
-		}
-		s.txMu.Unlock()
-		if !ok {
-			continue
-		}
-		if err := t.tx.Rollback(); err != nil {
-			slog.Warn("rollback timed-out plugin tx", "tx_id", id, "error", err)
+	for _, e := range expired {
+		if err := e.t.tx.Rollback(); err != nil {
+			slog.Warn("rollback timed-out plugin tx", "tx_id", e.id, "error", err)
 		} else {
-			slog.Warn("rolled back timed-out plugin tx", "tx_id", id, "age", time.Since(t.startedAt).String())
+			slog.Warn("rolled back timed-out plugin tx", "tx_id", e.id, "age", time.Since(e.t.startedAt).String())
 		}
 	}
 }
@@ -237,18 +237,15 @@ func (s *SDKServer) BeginTx(ctx context.Context, req *pluginsdk.BeginTxRequest) 
 	if s.db == nil {
 		return nil, errService("sql db")
 	}
-	opts := &sql.TxOptions{ReadOnly: req.GetReadOnly()}
-	switch req.GetIsolationLevel() {
-	case "read_committed":
-		opts.Isolation = sql.LevelReadCommitted
-	case "repeatable_read":
-		opts.Isolation = sql.LevelRepeatableRead
-	case "serializable":
-		opts.Isolation = sql.LevelSerializable
-	case "":
-		// 使用驱动默认
-	default:
-		return nil, status.Errorf(codes.InvalidArgument, "unsupported isolation level: %s", req.GetIsolationLevel())
+	isolation, err := parseIsolationLevel(req.GetIsolationLevel())
+	if err != nil {
+		return nil, err
+	}
+	opts := &sql.TxOptions{ReadOnly: req.GetReadOnly(), Isolation: isolation}
+
+	pluginName, _ := CallerFromContext(ctx)
+	if err := s.checkActiveTxLimit(pluginName); err != nil {
+		return nil, err
 	}
 
 	// context.WithoutCancel: gRPC per-RPC context 在 handler 返回后被
@@ -263,13 +260,13 @@ func (s *SDKServer) BeginTx(ctx context.Context, req *pluginsdk.BeginTxRequest) 
 	}
 	id := uuid.NewString()
 	s.txMu.Lock()
-	s.txs[id] = &activeTx{tx: tx, startedAt: time.Now()}
+	s.txs[id] = &activeTx{tx: tx, owner: pluginName, startedAt: time.Now()}
 	s.txMu.Unlock()
 	return &pluginsdk.TxResponse{TxId: id}, nil
 }
 
 func (s *SDKServer) TxQuery(ctx context.Context, req *pluginsdk.TxSQLRequest) (*pluginsdk.SQLResponse, error) {
-	tx, err := s.lookupTx(req.GetTxId())
+	tx, err := s.lookupTx(ctx, req.GetTxId())
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +284,7 @@ func (s *SDKServer) TxQuery(ctx context.Context, req *pluginsdk.TxSQLRequest) (*
 }
 
 func (s *SDKServer) TxExec(ctx context.Context, req *pluginsdk.TxSQLRequest) (*pluginsdk.ExecResponse, error) {
-	tx, err := s.lookupTx(req.GetTxId())
+	tx, err := s.lookupTx(ctx, req.GetTxId())
 	if err != nil {
 		return nil, err
 	}
@@ -303,8 +300,8 @@ func (s *SDKServer) TxExec(ctx context.Context, req *pluginsdk.TxSQLRequest) (*p
 	return execResultToResponse(res), nil
 }
 
-func (s *SDKServer) CommitTx(_ context.Context, req *pluginsdk.TxIDRequest) (*emptypb.Empty, error) {
-	tx, err := s.popTx(req.GetTxId())
+func (s *SDKServer) CommitTx(ctx context.Context, req *pluginsdk.TxIDRequest) (*emptypb.Empty, error) {
+	tx, err := s.popTx(ctx, req.GetTxId())
 	if err != nil {
 		return nil, err
 	}
@@ -314,8 +311,8 @@ func (s *SDKServer) CommitTx(_ context.Context, req *pluginsdk.TxIDRequest) (*em
 	return &emptypb.Empty{}, nil
 }
 
-func (s *SDKServer) RollbackTx(_ context.Context, req *pluginsdk.TxIDRequest) (*emptypb.Empty, error) {
-	tx, err := s.popTx(req.GetTxId())
+func (s *SDKServer) RollbackTx(ctx context.Context, req *pluginsdk.TxIDRequest) (*emptypb.Empty, error) {
+	tx, err := s.popTx(ctx, req.GetTxId())
 	if err != nil {
 		return nil, err
 	}
@@ -325,25 +322,80 @@ func (s *SDKServer) RollbackTx(_ context.Context, req *pluginsdk.TxIDRequest) (*
 	return &emptypb.Empty{}, nil
 }
 
-func (s *SDKServer) lookupTx(id string) (*sql.Tx, error) {
+func (s *SDKServer) lookupTx(ctx context.Context, id string) (*sql.Tx, error) {
 	s.txMu.Lock()
 	defer s.txMu.Unlock()
 	t, ok := s.txs[id]
 	if !ok {
 		return nil, status.Errorf(codes.NotFound, "unknown tx_id: %s", id)
+	}
+	if caller, _ := CallerFromContext(ctx); caller != t.owner {
+		return nil, status.Errorf(codes.PermissionDenied,
+			"tx %s belongs to %s, not %s", id, t.owner, caller)
 	}
 	return t.tx, nil
 }
 
-func (s *SDKServer) popTx(id string) (*sql.Tx, error) {
+func (s *SDKServer) popTx(ctx context.Context, id string) (*sql.Tx, error) {
 	s.txMu.Lock()
 	defer s.txMu.Unlock()
 	t, ok := s.txs[id]
 	if !ok {
 		return nil, status.Errorf(codes.NotFound, "unknown tx_id: %s", id)
 	}
+	if caller, _ := CallerFromContext(ctx); caller != t.owner {
+		return nil, status.Errorf(codes.PermissionDenied,
+			"tx %s belongs to %s, not %s", id, t.owner, caller)
+	}
 	delete(s.txs, id)
 	return t.tx, nil
+}
+
+// parseIsolationLevel converts a proto-level isolation string to sql.IsolationLevel.
+func parseIsolationLevel(level string) (sql.IsolationLevel, error) {
+	switch level {
+	case "read_committed":
+		return sql.LevelReadCommitted, nil
+	case "repeatable_read":
+		return sql.LevelRepeatableRead, nil
+	case "serializable":
+		return sql.LevelSerializable, nil
+	case "":
+		return sql.LevelDefault, nil
+	default:
+		return 0, status.Errorf(codes.InvalidArgument, "unsupported isolation level: %s", level)
+	}
+}
+
+// checkActiveTxLimit enforces maxActiveTxPerPlugin for the given plugin.
+func (s *SDKServer) checkActiveTxLimit(pluginName string) error {
+	s.txMu.Lock()
+	defer s.txMu.Unlock()
+	count := 0
+	for _, t := range s.txs {
+		if t.owner == pluginName {
+			count++
+		}
+	}
+	if count >= maxActiveTxPerPlugin {
+		return status.Errorf(codes.ResourceExhausted,
+			"plugin %s has %d active transactions (max %d)",
+			pluginName, count, maxActiveTxPerPlugin)
+	}
+	return nil
+}
+
+// collectColumnTypeNames extracts database type names from *sql.Rows.
+// Returns a zero-length slice on unsupported drivers (ColumnTypes returns error).
+func collectColumnTypeNames(rows *sql.Rows, numCols int) []string {
+	colTypes, _ := rows.ColumnTypes()
+	typeNames := make([]string, numCols)
+	if colTypes != nil {
+		for i, ct := range colTypes {
+			typeNames[i] = ct.DatabaseTypeName()
+		}
+	}
+	return typeNames
 }
 
 // ============================================================
@@ -420,18 +472,7 @@ func scanRowsToResponse(rows *sql.Rows) (*pluginsdk.SQLResponse, error) {
 	if err != nil {
 		return nil, errInternal(err, "plugin sql columns")
 	}
-
-	// Retrieve database type names so the plugin driver can implement
-	// ColumnTypeDatabaseTypeName / ColumnTypeScanType for ent's unknown-
-	// column branch. Errors are ignored — some drivers do not support
-	// ColumnTypes and the proxy should still work without type metadata.
-	colTypes, _ := rows.ColumnTypes()
-	typeNames := make([]string, len(cols))
-	if colTypes != nil {
-		for i, ct := range colTypes {
-			typeNames[i] = ct.DatabaseTypeName()
-		}
-	}
+	typeNames := collectColumnTypeNames(rows, len(cols))
 
 	resp := &pluginsdk.SQLResponse{Columns: cols, ColumnTypes: typeNames}
 	for rows.Next() {
@@ -465,4 +506,3 @@ func execResultToResponse(res sql.Result) *pluginsdk.ExecResponse {
 	}
 	return out
 }
-

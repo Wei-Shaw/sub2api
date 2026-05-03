@@ -19,7 +19,7 @@ var (
 		{Name: "billing_model_source", Type: field.TypeString, Size: 20, Default: "channel_mapped"},
 		{Name: "restrict_models", Type: field.TypeBool, Default: false},
 		{Name: "features", Type: field.TypeString, Default: ""},
-		{Name: "features_config", Type: field.TypeJSON, Nullable: true},
+		{Name: "features_config", Type: field.TypeJSON},
 		{Name: "apply_pricing_to_account_stats", Type: field.TypeBool, Default: false},
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},

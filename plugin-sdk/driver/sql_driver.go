@@ -13,7 +13,6 @@ import (
 	"time"
 
 	pb "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 // DriverName is the canonical name registered with database/sql.
@@ -133,6 +132,24 @@ func (c *grpcConn) Close() error {
 	return nil
 }
 
+// IsValid satisfies driver.Validator, letting database/sql's connection pool
+// discard connections that have been closed without an expensive round-trip.
+func (c *grpcConn) IsValid() bool {
+	return !c.closed.Load()
+}
+
+// ResetSession satisfies driver.SessionResetter, letting database/sql clean
+// up stale transaction state before returning a connection to the pool.
+func (c *grpcConn) ResetSession(_ context.Context) error {
+	if c.closed.Load() {
+		return driver.ErrBadConn
+	}
+	c.txMu.Lock()
+	c.txID = ""
+	c.txMu.Unlock()
+	return nil
+}
+
 // Begin is the legacy API; we always go through BeginTx.
 func (c *grpcConn) Begin() (driver.Tx, error) {
 	return c.BeginTx(context.Background(), driver.TxOptions{})
@@ -152,8 +169,12 @@ func (c *grpcConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.T
 		// instead of silently dropping the previous txID.
 		return nil, fmt.Errorf("plugin-sdk: BeginTx called with active tx %s", existing)
 	}
+	isoLevel, err := isolationLevelString(sql.IsolationLevel(opts.Isolation))
+	if err != nil {
+		return nil, err
+	}
 	resp, err := c.client.BeginTx(ctx, &pb.BeginTxRequest{
-		IsolationLevel: isolationLevelString(sql.IsolationLevel(opts.Isolation)),
+		IsolationLevel: isoLevel,
 		ReadOnly:       opts.ReadOnly,
 	})
 	if err != nil {
@@ -223,7 +244,7 @@ func (c *grpcConn) ExecContext(ctx context.Context, query string, args []driver.
 
 // dispatchQuery is the single routing point that decides between the
 // transactional and non-transactional Query RPCs. Centralising the
-// branch keeps the state-machine invariant (txID empty ⇔ no tx) in one
+// branch keeps the state-machine invariant (txID empty / no tx) in one
 // place and lets QueryContext stay protocol-only.
 func (c *grpcConn) dispatchQuery(ctx context.Context, query string, args []*pb.SQLValue) (*pb.SQLResponse, error) {
 	if txID := c.activeTxID(); txID != "" {
@@ -325,11 +346,6 @@ func (t *grpcTx) finish(commit bool) error {
 	return err
 }
 
-// _ keeps the emptypb import alive - CommitTx/RollbackTx return *emptypb.Empty
-// values that we discard, but referencing the package once here makes the
-// dependency explicit even if the compiler optimises the discard away.
-var _ = (*emptypb.Empty)(nil)
-
 // execResult is a trivial driver.Result implementation.
 type execResult struct {
 	rowsAffected int64
@@ -375,118 +391,6 @@ func (r *grpcRows) Next(dest []driver.Value) error {
 	return nil
 }
 
-// ---------------------------------------------------------------------------
-// Value conversion helpers
-// ---------------------------------------------------------------------------
-
-func namedValuesToProto(args []driver.NamedValue) ([]*pb.SQLValue, error) {
-	if len(args) == 0 {
-		return nil, nil
-	}
-	out := make([]*pb.SQLValue, 0, len(args))
-	for _, a := range args {
-		v, err := goValueToProto(a.Value)
-		if err != nil {
-			return nil, fmt.Errorf("plugin-sdk: arg %d: %w", a.Ordinal, err)
-		}
-		out = append(out, v)
-	}
-	return out, nil
-}
-
-func valuesToNamed(args []driver.Value) []driver.NamedValue {
-	out := make([]driver.NamedValue, len(args))
-	for i, v := range args {
-		out[i] = driver.NamedValue{Ordinal: i + 1, Value: v}
-	}
-	return out
-}
-
-func goValueToProto(v interface{}) (*pb.SQLValue, error) {
-	if v == nil {
-		return &pb.SQLValue{Value: &pb.SQLValue_Null{Null: true}}, nil
-	}
-	switch x := v.(type) {
-	case bool:
-		return &pb.SQLValue{Value: &pb.SQLValue_BoolValue{BoolValue: x}}, nil
-	case int:
-		return &pb.SQLValue{Value: &pb.SQLValue_IntValue{IntValue: int64(x)}}, nil
-	case int8:
-		return &pb.SQLValue{Value: &pb.SQLValue_IntValue{IntValue: int64(x)}}, nil
-	case int16:
-		return &pb.SQLValue{Value: &pb.SQLValue_IntValue{IntValue: int64(x)}}, nil
-	case int32:
-		return &pb.SQLValue{Value: &pb.SQLValue_IntValue{IntValue: int64(x)}}, nil
-	case int64:
-		return &pb.SQLValue{Value: &pb.SQLValue_IntValue{IntValue: x}}, nil
-	case uint8:
-		return &pb.SQLValue{Value: &pb.SQLValue_IntValue{IntValue: int64(x)}}, nil
-	case uint16:
-		return &pb.SQLValue{Value: &pb.SQLValue_IntValue{IntValue: int64(x)}}, nil
-	case uint32:
-		return &pb.SQLValue{Value: &pb.SQLValue_IntValue{IntValue: int64(x)}}, nil
-	case uint64:
-		return &pb.SQLValue{Value: &pb.SQLValue_IntValue{IntValue: int64(x)}}, nil
-	case float32:
-		return &pb.SQLValue{Value: &pb.SQLValue_FloatValue{FloatValue: float64(x)}}, nil
-	case float64:
-		return &pb.SQLValue{Value: &pb.SQLValue_FloatValue{FloatValue: x}}, nil
-	case string:
-		return &pb.SQLValue{Value: &pb.SQLValue_StringValue{StringValue: x}}, nil
-	case []byte:
-		return &pb.SQLValue{Value: &pb.SQLValue_BytesValue{BytesValue: x}}, nil
-	case time.Time:
-		return &pb.SQLValue{Value: &pb.SQLValue_TimeValue{TimeValue: x.Format(time.RFC3339Nano)}}, nil
-	default:
-		return nil, fmt.Errorf("unsupported argument type %T", v)
-	}
-}
-
-func sqlValueToDriver(v *pb.SQLValue) driver.Value {
-	if v == nil {
-		return nil
-	}
-	switch x := v.GetValue().(type) {
-	case *pb.SQLValue_Null:
-		return nil
-	case *pb.SQLValue_BoolValue:
-		return x.BoolValue
-	case *pb.SQLValue_IntValue:
-		return x.IntValue
-	case *pb.SQLValue_FloatValue:
-		return x.FloatValue
-	case *pb.SQLValue_StringValue:
-		return x.StringValue
-	case *pb.SQLValue_BytesValue:
-		out := make([]byte, len(x.BytesValue))
-		copy(out, x.BytesValue)
-		return out
-	case *pb.SQLValue_TimeValue:
-		t, err := time.Parse(time.RFC3339Nano, x.TimeValue)
-		if err != nil {
-			return x.TimeValue // parse failure: degrade to string
-		}
-		return t
-	default:
-		return nil
-	}
-}
-
-func isolationLevelString(level sql.IsolationLevel) string {
-	switch level {
-	case sql.LevelDefault:
-		return ""
-	case sql.LevelReadCommitted:
-		return "read_committed"
-	case sql.LevelRepeatableRead:
-		return "repeatable_read"
-	case sql.LevelSerializable:
-		return "serializable"
-	default:
-		return ""
-	}
-}
-
 // Compile-time interface assertions.
 var (
 	_ driver.Driver             = (*grpcDriver)(nil)
@@ -496,6 +400,8 @@ var (
 	_ driver.QueryerContext     = (*grpcConn)(nil)
 	_ driver.ExecerContext      = (*grpcConn)(nil)
 	_ driver.Pinger             = (*grpcConn)(nil)
+	_ driver.Validator          = (*grpcConn)(nil)
+	_ driver.SessionResetter    = (*grpcConn)(nil)
 	_ driver.Stmt               = (*grpcStmt)(nil)
 	_ driver.StmtExecContext    = (*grpcStmt)(nil)
 	_ driver.StmtQueryContext   = (*grpcStmt)(nil)

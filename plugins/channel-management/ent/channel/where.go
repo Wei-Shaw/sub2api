@@ -444,16 +444,6 @@ func FeaturesContainsFold(v string) predicate.Channel {
 	return predicate.Channel(sql.FieldContainsFold(FieldFeatures, v))
 }
 
-// FeaturesConfigIsNil applies the IsNil predicate on the "features_config" field.
-func FeaturesConfigIsNil() predicate.Channel {
-	return predicate.Channel(sql.FieldIsNull(FieldFeaturesConfig))
-}
-
-// FeaturesConfigNotNil applies the NotNil predicate on the "features_config" field.
-func FeaturesConfigNotNil() predicate.Channel {
-	return predicate.Channel(sql.FieldNotNull(FieldFeaturesConfig))
-}
-
 // ApplyPricingToAccountStatsEQ applies the EQ predicate on the "apply_pricing_to_account_stats" field.
 func ApplyPricingToAccountStatsEQ(v bool) predicate.Channel {
 	return predicate.Channel(sql.FieldEQ(FieldApplyPricingToAccountStats, v))

@@ -199,6 +199,10 @@ func (_c *ChannelCreate) defaults() {
 		v := channel.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.ModelMapping(); !ok {
+		v := channel.DefaultModelMapping
+		_c.mutation.SetModelMapping(v)
+	}
 	if _, ok := _c.mutation.BillingModelSource(); !ok {
 		v := channel.DefaultBillingModelSource
 		_c.mutation.SetBillingModelSource(v)
@@ -210,6 +214,10 @@ func (_c *ChannelCreate) defaults() {
 	if _, ok := _c.mutation.Features(); !ok {
 		v := channel.DefaultFeatures
 		_c.mutation.SetFeatures(v)
+	}
+	if _, ok := _c.mutation.FeaturesConfig(); !ok {
+		v := channel.DefaultFeaturesConfig
+		_c.mutation.SetFeaturesConfig(v)
 	}
 	if _, ok := _c.mutation.ApplyPricingToAccountStats(); !ok {
 		v := channel.DefaultApplyPricingToAccountStats
@@ -259,6 +267,9 @@ func (_c *ChannelCreate) check() error {
 	}
 	if _, ok := _c.mutation.Features(); !ok {
 		return &ValidationError{Name: "features", err: errors.New(`ent: missing required field "Channel.features"`)}
+	}
+	if _, ok := _c.mutation.FeaturesConfig(); !ok {
+		return &ValidationError{Name: "features_config", err: errors.New(`ent: missing required field "Channel.features_config"`)}
 	}
 	if _, ok := _c.mutation.ApplyPricingToAccountStats(); !ok {
 		return &ValidationError{Name: "apply_pricing_to_account_stats", err: errors.New(`ent: missing required field "Channel.apply_pricing_to_account_stats"`)}

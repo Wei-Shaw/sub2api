@@ -450,22 +450,9 @@ func (m *ChannelMutation) OldFeaturesConfig(ctx context.Context) (v map[string]i
 	return oldValue.FeaturesConfig, nil
 }
 
-// ClearFeaturesConfig clears the value of the "features_config" field.
-func (m *ChannelMutation) ClearFeaturesConfig() {
-	m.features_config = nil
-	m.clearedFields[channel.FieldFeaturesConfig] = struct{}{}
-}
-
-// FeaturesConfigCleared returns if the "features_config" field was cleared in this mutation.
-func (m *ChannelMutation) FeaturesConfigCleared() bool {
-	_, ok := m.clearedFields[channel.FieldFeaturesConfig]
-	return ok
-}
-
 // ResetFeaturesConfig resets all changes to the "features_config" field.
 func (m *ChannelMutation) ResetFeaturesConfig() {
 	m.features_config = nil
-	delete(m.clearedFields, channel.FieldFeaturesConfig)
 }
 
 // SetApplyPricingToAccountStats sets the "apply_pricing_to_account_stats" field.
@@ -824,9 +811,6 @@ func (m *ChannelMutation) ClearedFields() []string {
 	if m.FieldCleared(channel.FieldModelMapping) {
 		fields = append(fields, channel.FieldModelMapping)
 	}
-	if m.FieldCleared(channel.FieldFeaturesConfig) {
-		fields = append(fields, channel.FieldFeaturesConfig)
-	}
 	return fields
 }
 
@@ -843,9 +827,6 @@ func (m *ChannelMutation) ClearField(name string) error {
 	switch name {
 	case channel.FieldModelMapping:
 		m.ClearModelMapping()
-		return nil
-	case channel.FieldFeaturesConfig:
-		m.ClearFeaturesConfig()
 		return nil
 	}
 	return fmt.Errorf("unknown Channel nullable field %s", name)

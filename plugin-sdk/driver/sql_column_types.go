@@ -30,13 +30,14 @@ func (r *grpcRows) ColumnTypeScanType(index int) reflect.Type {
 // covers the common PG types; unknown types fall back to any (interface{}).
 func pgTypeToGoType(name string) reflect.Type {
 	switch strings.ToLower(name) {
-	case "int2", "int4", "int8", "serial", "bigserial":
+	case "int2", "int4", "int8", "serial", "bigserial", "smallserial":
 		return reflect.TypeOf(int64(0))
 	case "float4", "float8", "numeric", "decimal":
 		return reflect.TypeOf(float64(0))
 	case "bool":
 		return reflect.TypeOf(false)
-	case "varchar", "text", "char", "bpchar", "name", "uuid":
+	case "varchar", "text", "char", "bpchar", "name", "uuid",
+		"interval", "inet", "cidr", "money":
 		return reflect.TypeOf("")
 	case "bytea":
 		return reflect.TypeOf([]byte{})
@@ -44,6 +45,10 @@ func pgTypeToGoType(name string) reflect.Type {
 		return reflect.TypeOf(time.Time{})
 	case "json", "jsonb":
 		return reflect.TypeOf([]byte{})
+	case "_int4", "_int8":
+		return reflect.TypeOf([]int64{})
+	case "_text", "_varchar":
+		return reflect.TypeOf([]string{})
 	default:
 		return reflect.TypeOf((*any)(nil)).Elem()
 	}

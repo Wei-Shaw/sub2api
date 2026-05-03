@@ -49,7 +49,8 @@ func (Channel) Fields() []ent.Field {
 			Default("active"),
 
 		field.JSON("model_mapping", map[string]map[string]string{}).
-			Optional(),
+			Optional().
+			Default(map[string]map[string]string{}),
 
 		field.String("billing_model_source").
 			MaxLen(20).
@@ -62,7 +63,7 @@ func (Channel) Fields() []ent.Field {
 			Default(""),
 
 		field.JSON("features_config", map[string]any{}).
-			Optional(),
+			Default(map[string]any{}),
 
 		field.Bool("apply_pricing_to_account_stats").
 			Default(false),

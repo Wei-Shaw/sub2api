@@ -130,12 +130,6 @@ func (_u *ChannelUpdate) SetFeaturesConfig(v map[string]interface{}) *ChannelUpd
 	return _u
 }
 
-// ClearFeaturesConfig clears the value of the "features_config" field.
-func (_u *ChannelUpdate) ClearFeaturesConfig() *ChannelUpdate {
-	_u.mutation.ClearFeaturesConfig()
-	return _u
-}
-
 // SetApplyPricingToAccountStats sets the "apply_pricing_to_account_stats" field.
 func (_u *ChannelUpdate) SetApplyPricingToAccountStats(v bool) *ChannelUpdate {
 	_u.mutation.SetApplyPricingToAccountStats(v)
@@ -255,9 +249,6 @@ func (_u *ChannelUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.FeaturesConfig(); ok {
 		_spec.SetField(channel.FieldFeaturesConfig, field.TypeJSON, value)
-	}
-	if _u.mutation.FeaturesConfigCleared() {
-		_spec.ClearField(channel.FieldFeaturesConfig, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ApplyPricingToAccountStats(); ok {
 		_spec.SetField(channel.FieldApplyPricingToAccountStats, field.TypeBool, value)
@@ -384,12 +375,6 @@ func (_u *ChannelUpdateOne) SetNillableFeatures(v *string) *ChannelUpdateOne {
 // SetFeaturesConfig sets the "features_config" field.
 func (_u *ChannelUpdateOne) SetFeaturesConfig(v map[string]interface{}) *ChannelUpdateOne {
 	_u.mutation.SetFeaturesConfig(v)
-	return _u
-}
-
-// ClearFeaturesConfig clears the value of the "features_config" field.
-func (_u *ChannelUpdateOne) ClearFeaturesConfig() *ChannelUpdateOne {
-	_u.mutation.ClearFeaturesConfig()
 	return _u
 }
 
@@ -542,9 +527,6 @@ func (_u *ChannelUpdateOne) sqlSave(ctx context.Context) (_node *Channel, err er
 	}
 	if value, ok := _u.mutation.FeaturesConfig(); ok {
 		_spec.SetField(channel.FieldFeaturesConfig, field.TypeJSON, value)
-	}
-	if _u.mutation.FeaturesConfigCleared() {
-		_spec.ClearField(channel.FieldFeaturesConfig, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ApplyPricingToAccountStats(); ok {
 		_spec.SetField(channel.FieldApplyPricingToAccountStats, field.TypeBool, value)

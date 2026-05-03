@@ -28,6 +28,7 @@ package plugin
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
 	"github.com/shopspring/decimal"
@@ -116,12 +117,12 @@ func (s *HostServiceServer) ResolveModelPricing(
 	}
 
 	return &pluginsdk.ResolveModelPricingResponse{
-		HasPricing:                true,
-		InputPricePerToken:        formatHostPrice(pricing.InputPricePerToken),
-		OutputPricePerToken:       formatHostPrice(pricing.OutputPricePerToken),
-		CacheWritePricePerToken:   formatHostPrice(pricing.CacheCreationPricePerToken),
-		CacheReadPricePerToken:    formatHostPrice(pricing.CacheReadPricePerToken),
-		ImageOutputPricePerToken:  formatHostPrice(pricing.ImageOutputPricePerToken),
+		HasPricing:               true,
+		InputPricePerToken:       formatHostPrice(pricing.InputPricePerToken),
+		OutputPricePerToken:      formatHostPrice(pricing.OutputPricePerToken),
+		CacheWritePricePerToken:  formatHostPrice(pricing.CacheCreationPricePerToken),
+		CacheReadPricePerToken:   formatHostPrice(pricing.CacheReadPricePerToken),
+		ImageOutputPricePerToken: formatHostPrice(pricing.ImageOutputPricePerToken),
 	}, nil
 }
 
@@ -135,7 +136,11 @@ func (s *HostServiceServer) ResolveModelPricing(
 // LiteLLM values are decimal in source, so decimal.NewFromFloat's
 // shortest-repr round-trip preserves them cleanly enough for display.
 func formatHostPrice(v float64) string {
-	if v <= 0 {
+	if v < 0 {
+		slog.Warn("negative price value in host pricing response", "value", v)
+		return ""
+	}
+	if v == 0 {
 		return ""
 	}
 	return decimal.NewFromFloat(v).String()

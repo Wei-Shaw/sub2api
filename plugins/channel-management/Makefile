@@ -20,3 +20,8 @@ typecheck-frontend:
 # 全量前端构建。会先执行 vue-tsc，再走 vite build。
 build-frontend:
 	@pnpm --dir frontend run build
+
+# 重新生成 ent ORM 代码。schema 变更后执行。
+.PHONY: gen-ent
+gen-ent:
+	cd ent && go generate ./...

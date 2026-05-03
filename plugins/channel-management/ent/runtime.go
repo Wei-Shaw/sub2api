@@ -29,6 +29,10 @@ func init() {
 	channel.DefaultStatus = channelDescStatus.Default.(string)
 	// channel.StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	channel.StatusValidator = channelDescStatus.Validators[0].(func(string) error)
+	// channelDescModelMapping is the schema descriptor for model_mapping field.
+	channelDescModelMapping := channelFields[4].Descriptor()
+	// channel.DefaultModelMapping holds the default value on creation for the model_mapping field.
+	channel.DefaultModelMapping = channelDescModelMapping.Default.(map[string]map[string]string)
 	// channelDescBillingModelSource is the schema descriptor for billing_model_source field.
 	channelDescBillingModelSource := channelFields[5].Descriptor()
 	// channel.DefaultBillingModelSource holds the default value on creation for the billing_model_source field.
@@ -43,6 +47,10 @@ func init() {
 	channelDescFeatures := channelFields[7].Descriptor()
 	// channel.DefaultFeatures holds the default value on creation for the features field.
 	channel.DefaultFeatures = channelDescFeatures.Default.(string)
+	// channelDescFeaturesConfig is the schema descriptor for features_config field.
+	channelDescFeaturesConfig := channelFields[8].Descriptor()
+	// channel.DefaultFeaturesConfig holds the default value on creation for the features_config field.
+	channel.DefaultFeaturesConfig = channelDescFeaturesConfig.Default.(map[string]interface{})
 	// channelDescApplyPricingToAccountStats is the schema descriptor for apply_pricing_to_account_stats field.
 	channelDescApplyPricingToAccountStats := channelFields[9].Descriptor()
 	// channel.DefaultApplyPricingToAccountStats holds the default value on creation for the apply_pricing_to_account_stats field.

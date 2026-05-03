@@ -74,6 +74,8 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// DefaultModelMapping holds the default value on creation for the "model_mapping" field.
+	DefaultModelMapping map[string]map[string]string
 	// DefaultBillingModelSource holds the default value on creation for the "billing_model_source" field.
 	DefaultBillingModelSource string
 	// BillingModelSourceValidator is a validator for the "billing_model_source" field. It is called by the builders before save.
@@ -82,6 +84,8 @@ var (
 	DefaultRestrictModels bool
 	// DefaultFeatures holds the default value on creation for the "features" field.
 	DefaultFeatures string
+	// DefaultFeaturesConfig holds the default value on creation for the "features_config" field.
+	DefaultFeaturesConfig map[string]interface{}
 	// DefaultApplyPricingToAccountStats holds the default value on creation for the "apply_pricing_to_account_stats" field.
 	DefaultApplyPricingToAccountStats bool
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
