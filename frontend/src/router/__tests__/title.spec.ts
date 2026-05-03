@@ -39,7 +39,7 @@ describe('resolveDocumentTitle', () => {
     const routerSource = readFileSync(resolve(process.cwd(), 'src/router/index.ts'), 'utf8')
 
     expect(routerSource).toContain("path: '/models'")
-    expect(routerSource).toContain("path: '/docs'")
+    expect(routerSource).not.toContain("path: '/docs'")
     expect(routerSource).toContain("path: '/recharge-subscription'")
     expect(routerSource).toContain("path: '/profile'")
     expect(routerSource).not.toContain("backend/")
