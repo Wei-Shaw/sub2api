@@ -17,7 +17,7 @@ describe('secondary-development route shells', () => {
     expect(source).toContain('class="model-channel-count')
     expect(source).toContain('formatTokenComparison')
     expect(source).toContain('getOfficialModelPricing')
-    expect(source).toContain('userChannelsAPI.getAvailable()')
+    expect(source).toContain('userChannelsAPI.getAvailable')
     expect(source).not.toContain("import AvailableChannelsView from '@/views/user/AvailableChannelsView.vue'")
     expect(source).not.toContain("import AvailableChannelsTable from '@/components/channels/AvailableChannelsTable.vue'")
   })

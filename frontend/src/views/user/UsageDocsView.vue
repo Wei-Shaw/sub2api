@@ -73,7 +73,7 @@
                 <p>模型广场只展示当前可用配置。</p>
               </div>
             </div>
-            <p>查看当前可用平台、模型与价格信息。</p>
+            <p>模型广场用于查看当前可用渠道、模型与价格。展示内容来自现有平台配置，实际计费以系统现有规则为准。</p>
             <p class="docs-alert">{{ t('usageDocs.textToImageUnsupported') }}</p>
           </section>
 

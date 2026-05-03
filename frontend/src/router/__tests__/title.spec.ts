@@ -41,7 +41,7 @@ describe('resolveDocumentTitle', () => {
     expect(routerSource).toContain("path: '/models'")
     expect(routerSource).toContain("path: '/images'")
     expect(routerSource).toContain("titleKey: 'nav.imageGeneration'")
-    expect(routerSource).not.toContain("path: '/docs'")
+    expect(routerSource).toContain("path: '/docs'")
     expect(routerSource).toContain("path: '/recharge-subscription'")
     expect(routerSource).toContain("path: '/profile'")
     expect(routerSource).not.toContain("backend/")

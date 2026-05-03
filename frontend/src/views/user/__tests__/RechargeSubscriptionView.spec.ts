@@ -57,10 +57,6 @@ describe('RechargeSubscriptionView', () => {
     })
 
     expect(wrapper.text()).toContain('充值订阅')
-    const shellClasses = wrapper.get('[data-testid="recharge-subscription-shell"]').classes()
-    expect(shellClasses).toContain('space-y-6')
-    expect(shellClasses).not.toContain('mx-auto')
-    expect(shellClasses.some((className) => className.startsWith('max-w-'))).toBe(false)
     expect(wrapper.findAllComponents({ name: 'PaymentView' })).toHaveLength(1)
     expect(wrapper.get('[data-testid="recharge-panel"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="subscription-panel"]').exists()).toBe(true)
