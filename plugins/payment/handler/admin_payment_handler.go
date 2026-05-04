@@ -59,7 +59,6 @@ func (h *AdminPaymentHandler) RegisterRoutes(admin *gin.RouterGroup) {
 	admin.POST("/providers", h.CreateProvider)
 	admin.PUT("/providers/:id", h.UpdateProvider)
 	admin.DELETE("/providers/:id", h.DeleteProvider)
-	admin.POST("/providers/reencrypt", h.ReencryptProviderConfigs)
 }
 
 // requireAdmin verifies the caller is an authenticated admin via the
@@ -444,35 +443,6 @@ func (h *AdminPaymentHandler) UpdateProvider(c *gin.Context) {
 	}
 	h.paymentService.RefreshProviders(c.Request.Context())
 	response.Success(c, inst)
-}
-
-// ReencryptProviderConfigs walks every payment_provider_instances row and
-// rewrites legacy plaintext-JSON Config blobs as encrypted ciphertext under
-// the SDK SecretEncryptor. Idempotent — running twice in a row reports
-// AlreadyOK == Total on the second pass.
-//
-// Operator usage (curl):
-//
-//	curl -X POST -H "x-api-key: $ADMIN_API_KEY" \
-//	  $BASE/api/v1/plugin/payment/admin/providers/reencrypt
-//
-// Response body is the ReencryptResult JSON (total / reencrypted /
-// already_encrypted / failed / first 10 error strings).
-func (h *AdminPaymentHandler) ReencryptProviderConfigs(c *gin.Context) {
-	if !requireAdmin(c) {
-		return
-	}
-	result, err := h.configService.ReencryptAllProviderConfigs(c.Request.Context())
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	// Refresh the live registry so any newly-rewritten rows are picked up
-	// without waiting for the next admin save / restart.
-	if h.paymentService != nil {
-		h.paymentService.RefreshProviders(c.Request.Context())
-	}
-	response.Success(c, result)
 }
 
 // DeleteProvider deletes a payment provider instance.
