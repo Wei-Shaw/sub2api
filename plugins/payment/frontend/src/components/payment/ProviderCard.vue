@@ -4,7 +4,7 @@
       'group relative rounded-lg border transition-all',
       enabled ? 'border-gray-200 dark:border-dark-600' : 'border-gray-200 bg-gray-50 opacity-50 dark:border-dark-700 dark:bg-dark-800/50',
     ]"
-    :title="!enabled ? t('admin.settings.payment.typeDisabled') + ' — ' + t('admin.settings.payment.enableTypesFirst') : undefined"
+    :title="!enabled ? t('payment.adminSettings.typeDisabled') + ' — ' + t('payment.adminSettings.enableTypesFirst') : undefined"
   >
     <div :class="[
       'flex items-center justify-between px-4 py-2.5',
@@ -45,8 +45,8 @@
       <!-- Right: toggles + actions -->
       <div class="flex items-center gap-4">
         <ToggleSwitch :label="t('common.enabled')" :checked="provider.enabled" @toggle="emit('toggleField', 'enabled')" />
-        <ToggleSwitch :label="t('admin.settings.payment.refundEnabled')" :checked="provider.refund_enabled" @toggle="emit('toggleField', 'refund_enabled')" />
-        <ToggleSwitch v-if="provider.refund_enabled" :label="t('admin.settings.payment.allowUserRefund')" :checked="provider.allow_user_refund" @toggle="emit('toggleField', 'allow_user_refund')" />
+        <ToggleSwitch :label="t('payment.adminSettings.refundEnabled')" :checked="provider.refund_enabled" @toggle="emit('toggleField', 'refund_enabled')" />
+        <ToggleSwitch v-if="provider.refund_enabled" :label="t('payment.adminSettings.allowUserRefund')" :checked="provider.allow_user_refund" @toggle="emit('toggleField', 'allow_user_refund')" />
         <div class="flex items-center gap-2 border-l border-gray-200 pl-3 dark:border-dark-600">
           <button type="button" @click="emit('edit')" class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400">
             <Icon name="edit" size="sm" />
@@ -72,10 +72,10 @@ import type { TypeOption } from './providerConfig'
 import { PAYMENT_MODE_QRCODE, PAYMENT_MODE_POPUP } from './providerConfig'
 
 const PROVIDER_KEY_LABELS: Record<string, string> = {
-  easypay: 'admin.settings.payment.providerEasypay',
-  alipay: 'admin.settings.payment.providerAlipay',
-  wxpay: 'admin.settings.payment.providerWxpay',
-  stripe: 'admin.settings.payment.providerStripe',
+  easypay: 'payment.adminSettings.providerEasypay',
+  alipay: 'payment.adminSettings.providerAlipay',
+  wxpay: 'payment.adminSettings.providerWxpay',
+  stripe: 'payment.adminSettings.providerStripe',
 }
 
 const props = defineProps<{
@@ -96,8 +96,8 @@ const { t } = useI18n()
 const keyLabel = computed(() => t(PROVIDER_KEY_LABELS[props.provider.provider_key] || props.provider.provider_key))
 
 const modeLabel = computed(() => {
-  if (props.provider.payment_mode === PAYMENT_MODE_QRCODE) return t('admin.settings.payment.modeQRCode')
-  if (props.provider.payment_mode === PAYMENT_MODE_POPUP) return t('admin.settings.payment.modePopup')
+  if (props.provider.payment_mode === PAYMENT_MODE_QRCODE) return t('payment.adminSettings.modeQRCode')
+  if (props.provider.payment_mode === PAYMENT_MODE_POPUP) return t('payment.adminSettings.modePopup')
   return ''
 })
 

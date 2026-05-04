@@ -1,7 +1,7 @@
 <template>
   <BaseDialog
     :show="show"
-    :title="editing ? t('admin.settings.payment.editProvider') : t('admin.settings.payment.createProvider')"
+    :title="editing ? t('payment.adminSettings.editProvider') : t('payment.adminSettings.createProvider')"
     width="wide"
     @close="emit('close')"
   >
@@ -10,14 +10,14 @@
       <div class="grid grid-cols-2 gap-4">
         <div>
           <label class="input-label">
-            {{ t('admin.settings.payment.providerName') }}
+            {{ t('payment.adminSettings.providerName') }}
             <span class="text-red-500">*</span>
           </label>
           <input v-model="form.name" type="text" class="input" required />
         </div>
         <div>
           <label class="input-label">
-            {{ t('admin.settings.payment.providerKey') }}
+            {{ t('payment.adminSettings.providerKey') }}
             <span class="text-red-500">*</span>
           </label>
           <Select
@@ -32,10 +32,10 @@
       <!-- Toggles + Payment mode + Supported types (single row) -->
       <div class="flex flex-wrap items-center gap-x-5 gap-y-2">
         <ToggleSwitch :label="t('common.enabled')" :checked="form.enabled" @toggle="form.enabled = !form.enabled" />
-        <ToggleSwitch :label="t('admin.settings.payment.refundEnabled')" :checked="form.refund_enabled" @toggle="form.refund_enabled = !form.refund_enabled; if (!form.refund_enabled) form.allow_user_refund = false" />
-        <ToggleSwitch v-if="form.refund_enabled" :label="t('admin.settings.payment.allowUserRefund')" :checked="form.allow_user_refund" @toggle="form.allow_user_refund = !form.allow_user_refund" />
+        <ToggleSwitch :label="t('payment.adminSettings.refundEnabled')" :checked="form.refund_enabled" @toggle="form.refund_enabled = !form.refund_enabled; if (!form.refund_enabled) form.allow_user_refund = false" />
+        <ToggleSwitch v-if="form.refund_enabled" :label="t('payment.adminSettings.allowUserRefund')" :checked="form.allow_user_refund" @toggle="form.allow_user_refund = !form.allow_user_refund" />
         <div v-if="form.provider_key === 'easypay'" class="flex items-center gap-2">
-          <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.paymentMode') }}</span>
+          <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('payment.adminSettings.paymentMode') }}</span>
           <div class="flex gap-1.5">
             <button
               v-for="mode in paymentModeOptions"
@@ -52,7 +52,7 @@
           </div>
         </div>
         <div v-if="availableTypes.length > 1" class="flex items-center gap-2">
-          <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.supportedTypes') }}</span>
+          <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('payment.adminSettings.supportedTypes') }}</span>
           <div class="flex flex-wrap gap-1.5">
             <button
               v-for="pt in availableTypes"
@@ -74,7 +74,7 @@
       <!-- Config fields -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-700">
         <h4 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">
-          {{ t('admin.settings.payment.providerConfig') }}
+          {{ t('payment.adminSettings.providerConfig') }}
         </h4>
         <div class="space-y-3">
           <div v-for="field in resolvedFields" :key="field.key">
@@ -129,14 +129,14 @@
         <!-- Callback URLs (each = editable URL + fixed path) -->
         <div v-if="callbackPaths" class="mt-4 space-y-3">
           <div v-if="callbackPaths.notifyUrl">
-            <label class="input-label">{{ t('admin.settings.payment.field_notifyUrl') }} <span class="text-red-500">*</span></label>
+            <label class="input-label">{{ t('payment.adminSettings.field_notifyUrl') }} <span class="text-red-500">*</span></label>
             <div class="flex">
               <input v-model="notifyBaseUrl" type="text" class="input min-w-0 flex-1 !rounded-r-none !border-r-0" :placeholder="defaultBaseUrl" />
               <span class="inline-flex items-center whitespace-nowrap rounded-r-lg border border-gray-300 bg-gray-50 px-3 text-xs text-gray-500 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-400">{{ callbackPaths.notifyUrl }}</span>
             </div>
           </div>
           <div v-if="callbackPaths.returnUrl">
-            <label class="input-label">{{ t('admin.settings.payment.field_returnUrl') }} <span class="text-red-500">*</span></label>
+            <label class="input-label">{{ t('payment.adminSettings.field_returnUrl') }} <span class="text-red-500">*</span></label>
             <div class="flex">
               <input v-model="returnBaseUrl" type="text" class="input min-w-0 flex-1 !rounded-r-none !border-r-0" :placeholder="defaultBaseUrl" />
               <span class="inline-flex items-center whitespace-nowrap rounded-r-lg border border-gray-300 bg-gray-50 px-3 text-xs text-gray-500 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-400">{{ callbackPaths.returnUrl }}</span>
@@ -147,7 +147,7 @@
         <!-- Stripe webhook hint -->
         <div v-if="stripeWebhookUrl" class="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800/50 dark:bg-blue-900/20">
           <p class="text-xs text-blue-700 dark:text-blue-300">
-            {{ t('admin.settings.payment.stripeWebhookHint') }}
+            {{ t('payment.adminSettings.stripeWebhookHint') }}
           </p>
           <code class="mt-1 block break-all rounded bg-blue-100 px-2 py-1 text-xs text-blue-800 dark:bg-blue-900/40 dark:text-blue-200">
             {{ stripeWebhookUrl }}
@@ -159,7 +159,7 @@
       <div v-if="limitableTypes.length" class="border-t border-gray-200 pt-4 dark:border-dark-700">
         <button type="button" @click="limitsExpanded = !limitsExpanded" class="flex w-full items-center justify-between">
           <h4 class="text-sm font-semibold text-gray-900 dark:text-white">
-            {{ t('admin.settings.payment.limitsTitle') }}
+            {{ t('payment.adminSettings.limitsTitle') }}
           </h4>
           <svg :class="['h-4 w-4 text-gray-400 transition-transform', limitsExpanded && 'rotate-180']" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
         </button>
@@ -172,7 +172,7 @@
             <p class="mb-2 text-xs font-medium text-gray-700 dark:text-gray-300">{{ lt.label }}</p>
             <div class="grid grid-cols-3 gap-3">
               <div>
-                <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.limitSingleMin') }}</label>
+                <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.adminSettings.limitSingleMin') }}</label>
                 <input
                   type="number"
                   :value="getLimitVal(lt.value, 'singleMin')"
@@ -181,7 +181,7 @@
                 />
               </div>
               <div>
-                <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.limitSingleMax') }}</label>
+                <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.adminSettings.limitSingleMax') }}</label>
                 <input
                   type="number"
                   :value="getLimitVal(lt.value, 'singleMax')"
@@ -190,7 +190,7 @@
                 />
               </div>
               <div>
-                <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.limitDaily') }}</label>
+                <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.adminSettings.limitDaily') }}</label>
                 <input
                   type="number"
                   :value="getLimitVal(lt.value, 'dailyLimit')"
@@ -200,7 +200,7 @@
               </div>
             </div>
           </div>
-          <p class="text-xs text-gray-400 dark:text-gray-500">{{ t('admin.settings.payment.limitsHint') }}</p>
+          <p class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.adminSettings.limitsHint') }}</p>
         </div>
       </div>
     </form>
@@ -293,8 +293,8 @@ const callbackPaths = computed(() => PROVIDER_CALLBACK_PATHS[form.provider_key] 
 
 const paymentModeOptions = computed(() => {
   return [
-    { value: PAYMENT_MODE_QRCODE, label: t('admin.settings.payment.modeQRCode') },
-    { value: PAYMENT_MODE_POPUP, label: t('admin.settings.payment.modePopup') },
+    { value: PAYMENT_MODE_QRCODE, label: t('payment.adminSettings.modeQRCode') },
+    { value: PAYMENT_MODE_POPUP, label: t('payment.adminSettings.modePopup') },
   ]
 })
 
@@ -312,7 +312,7 @@ const resolvedFields = computed(() => {
   const fields = PROVIDER_CONFIG_FIELDS[form.provider_key] || []
   return fields.map(f => ({
     ...f,
-    label: f.label || t(`admin.settings.payment.field_${f.key}`),
+    label: f.label || t(`payment.adminSettings.field_${f.key}`),
   }))
 })
 
@@ -377,8 +377,8 @@ function hasAnyLimit(paymentType: string): boolean {
 /** Dynamic placeholder: "不限制" if sibling has value, "使用全局配置" if all empty */
 function limitPlaceholder(paymentType: string): string {
   return hasAnyLimit(paymentType)
-    ? t('admin.settings.payment.limitsNoLimit')
-    : t('admin.settings.payment.limitsUseGlobal')
+    ? t('payment.adminSettings.limitsNoLimit')
+    : t('payment.adminSettings.limitsUseGlobal')
 }
 
 function setLimitVal(paymentType: string, field: string, val: string) {
@@ -408,7 +408,7 @@ function serializeLimits(): string {
 function handleSave() {
   // Validate required fields
   if (!form.name.trim()) {
-    emitValidationError(t('admin.settings.payment.validationNameRequired'))
+    emitValidationError(t('payment.adminSettings.validationNameRequired'))
     return
   }
   // Validate required config fields — all non-optional fields must be filled.
@@ -419,8 +419,8 @@ function handleSave() {
     if (props.editing && f.sensitive) continue
     const val = (config[f.key] || '').trim()
     if (!val) {
-      const label = f.label || t(`admin.settings.payment.field_${f.key}`)
-      emitValidationError(t('admin.settings.payment.validationFieldRequired', { field: label }))
+      const label = f.label || t(`payment.adminSettings.field_${f.key}`)
+      emitValidationError(t('payment.adminSettings.validationFieldRequired', { field: label }))
       return
     }
   }

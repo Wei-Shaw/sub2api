@@ -100,6 +100,22 @@ func RegisterAdminRoutes(
 
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
+
+		// 文件上传（图片）— admin auth, 写入 UploadService.UploadDir
+		registerUploadRoutes(admin, h)
+	}
+}
+
+// registerUploadRoutes mounts the admin image upload endpoint. The matching
+// public download route lives in uploads.go (RegisterUploadRoutes) and is
+// registered without auth at the engine root.
+func registerUploadRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	if h.Admin.Upload == nil {
+		return
+	}
+	uploads := admin.Group("/uploads")
+	{
+		uploads.POST("/image", h.Admin.Upload.UploadImage)
 	}
 }
 

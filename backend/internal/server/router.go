@@ -118,6 +118,10 @@ func registerRoutes(
 	// 通用路由（健康检查、状态等）
 	routes.RegisterCommonRoutes(r)
 
+	// 公共上传文件下载: /api/v1/uploads/:filename (无 auth, 静态资源)
+	// 必须在 v1 group 创建之前挂到 engine 上，避免被任何 admin 鉴权中间件拦截。
+	routes.RegisterUploadRoutes(r, h)
+
 	// API v1
 	v1 := r.Group("/api/v1")
 

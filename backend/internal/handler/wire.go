@@ -39,6 +39,7 @@ func ProvideAdminHandlers(
 	affiliateHandler *admin.AffiliateHandler,
 	pluginHandler *admin.PluginHandler,
 	pluginSettingsHandler *admin.PluginSettingsHandler,
+	uploadHandler *admin.UploadHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
 		Dashboard:             dashboardHandler,
@@ -70,6 +71,7 @@ func ProvideAdminHandlers(
 		Affiliate:             affiliateHandler,
 		Plugin:                pluginHandler,
 		PluginSettings:        pluginSettingsHandler,
+		Upload:                uploadHandler,
 	}
 }
 
@@ -110,6 +112,7 @@ func ProvideHandlers(
 	settingHandler *SettingHandler,
 	totpHandler *TotpHandler,
 	userServiceQuotaHandler *UserServiceQuotaHandler,
+	uploadHandler *UploadHandler,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -127,6 +130,7 @@ func ProvideHandlers(
 		Setting:          settingHandler,
 		Totp:             totpHandler,
 		UserServiceQuota: userServiceQuotaHandler,
+		Upload:           uploadHandler,
 	}
 }
 
@@ -145,6 +149,7 @@ var ProviderSet = wire.NewSet(
 	NewTotpHandler,
 	ProvideSettingHandler,
 	NewUserServiceQuotaHandler,
+	NewUploadHandler,
 
 	// Admin handlers
 	admin.NewDashboardHandler,
@@ -176,6 +181,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewServiceQuotaHandler,
 	admin.NewServiceQuotaMonitorHandler,
 	admin.NewAffiliateHandler,
+	admin.NewUploadHandler,
 	ProvidePluginHandler,
 	ProvidePluginSettingsHandler,
 

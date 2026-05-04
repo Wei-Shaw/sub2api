@@ -283,6 +283,40 @@ export interface HostKeys {
 }
 
 /**
+ * Result of a successful image upload. The URL is host-relative (no origin)
+ * and is safe to embed directly in `<img :src>` or persist in a settings
+ * record. The host serves these URLs as public, cacheable assets — do not
+ * store sensitive imagery here.
+ */
+export interface UploadedImage {
+  /** Public URL of the stored image (e.g. `/api/v1/uploads/<hash>.png`). */
+  url: string
+}
+
+/**
+ * Image upload capability. Plugins use this to push user-selected files to
+ * the host, which persists them under a dedupe-by-content path and returns
+ * a stable URL.
+ *
+ * Constraints (mirrored on the backend):
+ *   - File ≤ 5 MiB
+ *   - MIME type ∈ {image/jpeg, image/png, image/webp, image/gif, image/svg+xml}
+ *   - Auth: requires the plugin to be running inside the admin app context
+ *     (the host axios client carries the admin session token / api key).
+ *
+ * Errors surface via promise rejection using the host's standard API error
+ * shape; plugins should funnel through their `extractApiErrorMessage` helper
+ * to display a user-facing message.
+ */
+export interface HostImages {
+  /**
+   * Upload a single image file. Resolves with the public URL of the stored
+   * image on success. Throws on validation / auth / network failure.
+   */
+  upload(file: File): Promise<UploadedImage>
+}
+
+/**
  * Mask an API key for display, showing only head/tail characters.
  *
  * - Keys <= 12 chars: `${first4}***`
@@ -311,6 +345,8 @@ export interface HostSdk {
   runtime: HostRuntime
   /** 当前用户的 API key 查询能力. */
   keys: HostKeys
+  /** 图片上传能力（admin only）. */
+  images: HostImages
 }
 
 declare global {

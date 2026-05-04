@@ -6,7 +6,7 @@
       :can-create="hasAnyPaymentTypeEnabled"
       :enabled-payment-types="enabledPaymentTypes"
       :all-payment-types="allPaymentTypes"
-      :redirect-label="t('admin.settings.payment.easypayRedirect')"
+      :redirect-label="t('payment.adminSettings.easypayRedirect')"
       @refresh="loadAll"
       @create="openCreateProvider"
       @edit="openEditProvider"
@@ -25,7 +25,7 @@
       :all-key-options="providerKeyOptions"
       :enabled-key-options="enabledProviderKeyOptions"
       :all-payment-types="allPaymentTypes"
-      :redirect-label="t('admin.settings.payment.easypayRedirect')"
+      :redirect-label="t('payment.adminSettings.easypayRedirect')"
       @close="onDialogClose"
       @save="handleSaveProvider"
     />
@@ -33,8 +33,8 @@
     <!-- Delete confirmation -->
     <ConfirmDialog
       :show="showDeleteProviderDialog"
-      :title="t('admin.settings.payment.deleteProvider')"
-      :message="t('admin.settings.payment.deleteProviderConfirm')"
+      :title="t('payment.adminSettings.deleteProvider')"
+      :message="t('payment.adminSettings.deleteProviderConfirm')"
       :confirm-text="t('common.delete')"
       danger
       @confirm="handleDeleteProvider"
@@ -95,10 +95,10 @@ const allPaymentTypes = computed(() => [
 const hasAnyPaymentTypeEnabled = computed(() => enabledPaymentTypes.value.length > 0)
 
 const providerKeyOptions = computed(() => [
-  { value: 'easypay', label: t('admin.settings.payment.providerEasypay') },
-  { value: 'alipay', label: t('admin.settings.payment.providerAlipay') },
-  { value: 'wxpay', label: t('admin.settings.payment.providerWxpay') },
-  { value: 'stripe', label: t('admin.settings.payment.providerStripe') },
+  { value: 'easypay', label: t('payment.adminSettings.providerEasypay') },
+  { value: 'alipay', label: t('payment.adminSettings.providerAlipay') },
+  { value: 'wxpay', label: t('payment.adminSettings.providerWxpay') },
+  { value: 'stripe', label: t('payment.adminSettings.providerStripe') },
 ])
 
 const enabledProviderKeyOptions = computed(() =>
@@ -163,7 +163,7 @@ function showProviderEnablementConflict(conflict: {
 }) {
   // enableConflict key is plugin-local; falls back to a generic message.
   const fallback = `${conflict.conflicting.name} already handles ${conflict.method}`
-  const key = 'admin.settings.payment.enableConflict'
+  const key = 'payment.adminSettings.enableConflict'
   const translated = t(key, {
     method: t(`payment.methods.${conflict.method}`),
     provider: conflict.conflicting.name,

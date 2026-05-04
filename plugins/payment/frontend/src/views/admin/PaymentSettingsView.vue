@@ -21,10 +21,10 @@
       <div class="flex items-center justify-between">
         <div>
           <h1 class="text-xl font-bold text-gray-900 dark:text-white">
-            {{ t('admin.settings.payment.title') }}
+            {{ t('payment.adminSettings.title') }}
           </h1>
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {{ t('admin.settings.payment.description') }}
+            {{ t('payment.adminSettings.description') }}
           </p>
         </div>
         <button
@@ -47,10 +47,10 @@
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('admin.settings.payment.title') }}
+              {{ t('payment.adminSettings.title') }}
             </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {{ t('admin.settings.payment.description') }}
+              {{ t('payment.adminSettings.description') }}
             </p>
           </div>
           <div class="space-y-4 p-6">
@@ -58,10 +58,10 @@
             <div class="flex items-center justify-between">
               <div>
                 <label class="font-medium text-gray-900 dark:text-white">
-                  {{ t('admin.settings.payment.enabled') }}
+                  {{ t('payment.adminSettings.enabled') }}
                 </label>
                 <p class="text-sm text-gray-500 dark:text-gray-400">
-                  {{ t('admin.settings.payment.enabledHint') }}
+                  {{ t('payment.adminSettings.enabledHint') }}
                 </p>
               </div>
               <Toggle v-model="form.payment_enabled" />
@@ -72,7 +72,7 @@
               <div class="grid grid-cols-3 gap-3">
                 <div>
                   <label class="input-label">
-                    {{ t('admin.settings.payment.productNamePrefix') }}
+                    {{ t('payment.adminSettings.productNamePrefix') }}
                   </label>
                   <input
                     v-model="form.payment_product_name_prefix"
@@ -83,7 +83,7 @@
                 </div>
                 <div>
                   <label class="input-label">
-                    {{ t('admin.settings.payment.productNameSuffix') }}
+                    {{ t('payment.adminSettings.productNameSuffix') }}
                   </label>
                   <input
                     v-model="form.payment_product_name_suffix"
@@ -94,7 +94,7 @@
                 </div>
                 <div>
                   <label class="input-label">
-                    {{ t('admin.settings.payment.preview') }}
+                    {{ t('payment.adminSettings.preview') }}
                   </label>
                   <div
                     class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300"
@@ -112,7 +112,7 @@
               <div class="grid grid-cols-2 gap-3 sm:grid-cols-5">
                 <div>
                   <label class="input-label">
-                    {{ t('admin.settings.payment.minAmount') }}
+                    {{ t('payment.adminSettings.minAmount') }}
                   </label>
                   <input
                     v-model="form.payment_min_amount"
@@ -120,12 +120,12 @@
                     step="0.01"
                     min="0"
                     class="input"
-                    :placeholder="t('admin.settings.payment.noLimit')"
+                    :placeholder="t('payment.adminSettings.noLimit')"
                   />
                 </div>
                 <div>
                   <label class="input-label">
-                    {{ t('admin.settings.payment.maxAmount') }}
+                    {{ t('payment.adminSettings.maxAmount') }}
                   </label>
                   <input
                     v-model="form.payment_max_amount"
@@ -133,12 +133,12 @@
                     step="0.01"
                     min="0"
                     class="input"
-                    :placeholder="t('admin.settings.payment.noLimit')"
+                    :placeholder="t('payment.adminSettings.noLimit')"
                   />
                 </div>
                 <div>
                   <label class="input-label">
-                    {{ t('admin.settings.payment.dailyLimit') }}
+                    {{ t('payment.adminSettings.dailyLimit') }}
                   </label>
                   <input
                     v-model="form.payment_daily_limit"
@@ -146,12 +146,12 @@
                     step="0.01"
                     min="0"
                     class="input"
-                    :placeholder="t('admin.settings.payment.noLimit')"
+                    :placeholder="t('payment.adminSettings.noLimit')"
                   />
                 </div>
                 <div>
                   <label class="input-label">
-                    {{ t('admin.settings.payment.balanceRechargeMultiplier') }}
+                    {{ t('payment.adminSettings.balanceRechargeMultiplier') }}
                   </label>
                   <input
                     v-model="form.payment_balance_recharge_multiplier"
@@ -161,11 +161,11 @@
                     class="input"
                   />
                   <p class="mt-0.5 text-xs text-gray-400">
-                    {{ t('admin.settings.payment.balanceRechargeMultiplierHint') }}
+                    {{ t('payment.adminSettings.balanceRechargeMultiplierHint') }}
                   </p>
                   <p class="mt-1 text-xs font-medium text-primary-600 dark:text-primary-400">
                     {{
-                      t('admin.settings.payment.balanceRechargePreview', {
+                      t('payment.adminSettings.balanceRechargePreview', {
                         usd: balanceMultiplierPreview,
                       })
                     }}
@@ -173,7 +173,7 @@
                 </div>
                 <div>
                   <label class="input-label">
-                    {{ t('admin.settings.payment.rechargeFeeRate') }}
+                    {{ t('payment.adminSettings.rechargeFeeRate') }}
                   </label>
                   <div class="relative">
                     <input
@@ -190,14 +190,14 @@
                     >
                   </div>
                   <p class="mt-0.5 text-xs text-gray-400">
-                    {{ t('admin.settings.payment.rechargeFeeRateHint') }}
+                    {{ t('payment.adminSettings.rechargeFeeRateHint') }}
                   </p>
                   <p
                     v-if="hasFeeRate"
                     class="mt-1 text-xs font-medium text-primary-600 dark:text-primary-400"
                   >
                     {{
-                      t('admin.settings.payment.rechargeFeePreview', {
+                      t('payment.adminSettings.rechargeFeePreview', {
                         fee: feeRatePreview,
                       })
                     }}
@@ -205,7 +205,7 @@
                 </div>
                 <div>
                   <label class="input-label">
-                    {{ t('admin.settings.payment.orderTimeout') }}
+                    {{ t('payment.adminSettings.orderTimeout') }}
                     <span class="text-red-500">*</span>
                   </label>
                   <input
@@ -216,7 +216,7 @@
                     required
                   />
                   <p class="mt-0.5 text-xs text-gray-400">
-                    {{ t('admin.settings.payment.orderTimeoutHint') }}
+                    {{ t('payment.adminSettings.orderTimeoutHint') }}
                   </p>
                 </div>
               </div>
@@ -225,7 +225,7 @@
               <div class="flex flex-wrap items-end gap-4">
                 <div class="w-28">
                   <label class="input-label">
-                    {{ t('admin.settings.payment.maxPendingOrders') }}
+                    {{ t('payment.adminSettings.maxPendingOrders') }}
                   </label>
                   <input
                     v-model.number="form.payment_max_pending_orders"
@@ -236,7 +236,7 @@
                 </div>
                 <div>
                   <label class="input-label">
-                    {{ t('admin.settings.payment.loadBalanceStrategy') }}
+                    {{ t('payment.adminSettings.loadBalanceStrategy') }}
                   </label>
                   <Select
                     v-model="form.payment_load_balance_strategy"
@@ -246,7 +246,7 @@
                 </div>
                 <div>
                   <label class="input-label">
-                    {{ t('admin.settings.payment.cancelRateLimit') }}
+                    {{ t('payment.adminSettings.cancelRateLimit') }}
                   </label>
                   <div class="flex items-center gap-2">
                     <button
@@ -284,7 +284,7 @@
                           ? 'text-gray-700 dark:text-gray-300'
                           : 'text-gray-400 dark:text-gray-600',
                       ]"
-                      >{{ t('admin.settings.payment.cancelRateLimitEvery') }}</span
+                      >{{ t('payment.adminSettings.cancelRateLimitEvery') }}</span
                     >
                     <input
                       v-model.number="form.payment_cancel_rate_limit_window"
@@ -307,7 +307,7 @@
                           ? 'text-gray-700 dark:text-gray-300'
                           : 'text-gray-400 dark:text-gray-600',
                       ]"
-                      >{{ t('admin.settings.payment.cancelRateLimitAllowMax') }}</span
+                      >{{ t('payment.adminSettings.cancelRateLimitAllowMax') }}</span
                     >
                     <input
                       v-model.number="form.payment_cancel_rate_limit_max"
@@ -324,7 +324,7 @@
                           ? 'text-gray-700 dark:text-gray-300'
                           : 'text-gray-400 dark:text-gray-600',
                       ]"
-                      >{{ t('admin.settings.payment.cancelRateLimitTimes') }}</span
+                      >{{ t('payment.adminSettings.cancelRateLimitTimes') }}</span
                     >
                   </div>
                 </div>
@@ -333,7 +333,7 @@
               <!-- Row 4: Enabled payment types (badges) -->
               <div>
                 <label class="input-label">
-                  {{ t('admin.settings.payment.enabledPaymentTypes') }}
+                  {{ t('payment.adminSettings.enabledPaymentTypes') }}
                 </label>
                 <div class="mt-1.5 flex flex-wrap gap-2">
                   <button
@@ -352,42 +352,27 @@
                   </button>
                 </div>
                 <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">
-                  {{ t('admin.settings.payment.enabledPaymentTypesHint') }}
+                  {{ t('payment.adminSettings.enabledPaymentTypesHint') }}
                 </p>
               </div>
 
-              <!-- Row 5: Help image URL + help text -->
+              <!-- Row 5: Help image upload + help text -->
               <div class="grid grid-cols-2 gap-3">
                 <div>
                   <label class="input-label">
-                    {{ t('admin.settings.payment.helpImage') }}
+                    {{ t('payment.adminSettings.helpImage') }}
                   </label>
-                  <input
-                    v-model="form.payment_help_image_url"
-                    type="text"
-                    class="input"
-                    :placeholder="t('admin.settings.payment.helpImagePlaceholder')"
-                  />
-                  <div
-                    v-if="form.payment_help_image_url"
-                    class="mt-2 overflow-hidden rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-dark-600 dark:bg-dark-800"
-                  >
-                    <img
-                      :src="form.payment_help_image_url"
-                      class="mx-auto max-h-32 object-contain"
-                      alt=""
-                    />
-                  </div>
+                  <ImageUploadInput v-model="form.payment_help_image_url" />
                 </div>
                 <div>
                   <label class="input-label">
-                    {{ t('admin.settings.payment.helpText') }}
+                    {{ t('payment.adminSettings.helpText') }}
                   </label>
                   <textarea
                     v-model="form.payment_help_text"
                     rows="3"
                     class="input"
-                    :placeholder="t('admin.settings.payment.helpTextPlaceholder')"
+                    :placeholder="t('payment.adminSettings.helpTextPlaceholder')"
                   ></textarea>
                 </div>
               </div>
@@ -403,7 +388,7 @@
           :can-create="hasAnyPaymentTypeEnabled"
           :enabled-payment-types="form.payment_enabled_types"
           :all-payment-types="allPaymentTypes"
-          :redirect-label="t('admin.settings.payment.easypayRedirect')"
+          :redirect-label="t('payment.adminSettings.easypayRedirect')"
           @refresh="loadProviders"
           @create="openCreateProvider"
           @edit="openEditProvider"
@@ -422,7 +407,7 @@
           :all-key-options="providerKeyOptions"
           :enabled-key-options="enabledProviderKeyOptions"
           :all-payment-types="allPaymentTypes"
-          :redirect-label="t('admin.settings.payment.easypayRedirect')"
+          :redirect-label="t('payment.adminSettings.easypayRedirect')"
           @close="onDialogClose"
           @save="handleSaveProvider"
         />
@@ -430,8 +415,8 @@
         <!-- Delete confirmation -->
         <ConfirmDialog
           :show="showDeleteProviderDialog"
-          :title="t('admin.settings.payment.deleteProvider')"
-          :message="t('admin.settings.payment.deleteProviderConfirm')"
+          :title="t('payment.adminSettings.deleteProvider')"
+          :message="t('payment.adminSettings.deleteProviderConfirm')"
           :confirm-text="t('common.delete')"
           danger
           @confirm="handleDeleteProvider"
@@ -454,6 +439,7 @@ import { money, formatMoney } from '../../utils/decimal'
 import type { ProviderInstance } from '../../types/payment'
 
 import AppLayout from '../../components/common/AppLayout.vue'
+import ImageUploadInput from '../../components/common/ImageUploadInput.vue'
 import PaymentProviderList from '../../components/payment/PaymentProviderList.vue'
 import PaymentProviderDialog from '../../components/payment/PaymentProviderDialog.vue'
 
@@ -510,10 +496,10 @@ const providerDialogRef = ref<InstanceType<typeof PaymentProviderDialog> | null>
 // ==================== Computed (option lists & helpers) ====================
 
 const allPaymentTypes = computed(() => [
-  { value: 'easypay', label: t('admin.settings.payment.providerEasypay') },
-  { value: 'alipay', label: t('admin.settings.payment.providerAlipay') },
-  { value: 'wxpay', label: t('admin.settings.payment.providerWxpay') },
-  { value: 'stripe', label: t('admin.settings.payment.providerStripe') },
+  { value: 'easypay', label: t('payment.adminSettings.providerEasypay') },
+  { value: 'alipay', label: t('payment.adminSettings.providerAlipay') },
+  { value: 'wxpay', label: t('payment.adminSettings.providerWxpay') },
+  { value: 'stripe', label: t('payment.adminSettings.providerStripe') },
 ])
 
 const hasAnyPaymentTypeEnabled = computed(() => form.payment_enabled_types.length > 0)
@@ -528,10 +514,10 @@ const hasFeeRate = computed(() => money(form.payment_recharge_fee_rate).gt(0))
 const feeRatePreview = computed(() => formatMoney(form.payment_recharge_fee_rate || '0'))
 
 const providerKeyOptions = computed(() => [
-  { value: 'easypay', label: t('admin.settings.payment.providerEasypay') },
-  { value: 'alipay', label: t('admin.settings.payment.providerAlipay') },
-  { value: 'wxpay', label: t('admin.settings.payment.providerWxpay') },
-  { value: 'stripe', label: t('admin.settings.payment.providerStripe') },
+  { value: 'easypay', label: t('payment.adminSettings.providerEasypay') },
+  { value: 'alipay', label: t('payment.adminSettings.providerAlipay') },
+  { value: 'wxpay', label: t('payment.adminSettings.providerWxpay') },
+  { value: 'stripe', label: t('payment.adminSettings.providerStripe') },
 ])
 
 const enabledProviderKeyOptions = computed(() =>
@@ -539,19 +525,19 @@ const enabledProviderKeyOptions = computed(() =>
 )
 
 const loadBalanceOptions = computed(() => [
-  { value: 'round-robin', label: t('admin.settings.payment.strategyRoundRobin') },
-  { value: 'least-amount', label: t('admin.settings.payment.strategyLeastAmount') },
+  { value: 'round-robin', label: t('payment.adminSettings.strategyRoundRobin') },
+  { value: 'least-amount', label: t('payment.adminSettings.strategyLeastAmount') },
 ])
 
 const cancelRateLimitUnitOptions = computed(() => [
-  { value: 'minute', label: t('admin.settings.payment.cancelRateLimitUnitMinute') },
-  { value: 'hour', label: t('admin.settings.payment.cancelRateLimitUnitHour') },
-  { value: 'day', label: t('admin.settings.payment.cancelRateLimitUnitDay') },
+  { value: 'minute', label: t('payment.adminSettings.cancelRateLimitUnitMinute') },
+  { value: 'hour', label: t('payment.adminSettings.cancelRateLimitUnitHour') },
+  { value: 'day', label: t('payment.adminSettings.cancelRateLimitUnitDay') },
 ])
 
 const cancelRateLimitModeOptions = computed(() => [
-  { value: 'rolling', label: t('admin.settings.payment.cancelRateLimitWindowModeRolling') },
-  { value: 'fixed', label: t('admin.settings.payment.cancelRateLimitWindowModeFixed') },
+  { value: 'rolling', label: t('payment.adminSettings.cancelRateLimitWindowModeRolling') },
+  { value: 'fixed', label: t('payment.adminSettings.cancelRateLimitWindowModeFixed') },
 ])
 
 function togglePaymentType(type: string): void {
@@ -617,7 +603,7 @@ function showProviderEnablementConflict(conflict: {
   conflicting: ProviderInstance
 }) {
   const fallback = `${conflict.conflicting.name} already handles ${conflict.method}`
-  const key = 'admin.settings.payment.enableConflict'
+  const key = 'payment.adminSettings.enableConflict'
   const translated = t(key, {
     method: t(`payment.methods.${conflict.method}`),
     provider: conflict.conflicting.name,

@@ -90,6 +90,18 @@ type Config struct {
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
 	Plugins                 PluginConfig                  `mapstructure:"plugins"`
+	Upload                  UploadConfig                  `mapstructure:"upload"`
+}
+
+// UploadConfig holds settings for the admin file upload service. Only image
+// uploads are currently supported; other media types should add dedicated
+// sections rather than overloading this one.
+type UploadConfig struct {
+	// Dir is the on-disk directory where uploaded images are stored. The
+	// public download handler reads files directly from this path. In
+	// container deployments this should live under a persistent volume
+	// (e.g. /app/data/uploads) so files survive restarts.
+	Dir string `mapstructure:"dir"`
 }
 
 type LogConfig struct {
@@ -1586,6 +1598,11 @@ func setDefaults() {
 	viper.SetDefault("pricing.remote_url", "https://raw.githubusercontent.com/Wei-Shaw/model-price-repo/main/model_prices_and_context_window.json")
 	viper.SetDefault("pricing.hash_url", "https://raw.githubusercontent.com/Wei-Shaw/model-price-repo/main/model_prices_and_context_window.sha256")
 	viper.SetDefault("pricing.data_dir", "./data")
+
+	// Upload (admin image uploads) — defaults under ./data so dev runs work
+	// without explicit env config; production deployments override via
+	// UPLOAD_DIR=/app/data/uploads (mapped to the persistent volume).
+	viper.SetDefault("upload.dir", "./data/uploads")
 	viper.SetDefault("pricing.fallback_file", "./resources/model-pricing/model_prices_and_context_window.json")
 	viper.SetDefault("pricing.update_interval_hours", 24)
 	viper.SetDefault("pricing.hash_check_interval_minutes", 10)

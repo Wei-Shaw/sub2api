@@ -5,10 +5,10 @@
       <div class="flex items-center justify-between">
         <div>
           <h2 class="text-base font-semibold text-gray-900 dark:text-white">
-            {{ t('admin.settings.payment.providerManagement') }}
+            {{ t('payment.adminSettings.providerManagement') }}
           </h2>
           <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-            {{ t('admin.settings.payment.providerManagementDesc') }}
+            {{ t('payment.adminSettings.providerManagementDesc') }}
           </p>
         </div>
         <div class="flex items-center gap-2">
@@ -29,7 +29,7 @@
               ? 'btn btn-primary btn-sm'
               : 'btn btn-secondary btn-sm cursor-not-allowed opacity-50'"
           >
-            {{ t('admin.settings.payment.createProvider') }}
+            {{ t('payment.adminSettings.createProvider') }}
           </button>
         </div>
       </div>
@@ -75,8 +75,8 @@
       <div v-else-if="!loading" class="py-6 text-center">
         <p class="text-sm text-gray-500 dark:text-gray-400">
           {{ canCreate
-            ? t('admin.settings.payment.noProviders')
-            : t('admin.settings.payment.enableTypesFirst') }}
+            ? t('payment.adminSettings.noProviders')
+            : t('payment.adminSettings.enableTypesFirst') }}
         </p>
         <button
           type="button"
@@ -84,7 +84,7 @@
           @click="emit('create')"
           class="btn btn-primary btn-sm mt-2"
         >
-          {{ t('admin.settings.payment.createProvider') }}
+          {{ t('payment.adminSettings.createProvider') }}
         </button>
       </div>
     </div>

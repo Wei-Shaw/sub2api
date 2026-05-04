@@ -37,25 +37,27 @@ type AdminHandlers struct {
 	Affiliate           *admin.AffiliateHandler
 	Plugin              *admin.PluginHandler
 	PluginSettings      *admin.PluginSettingsHandler
+	Upload              *admin.UploadHandler
 }
 
 // Handlers contains all HTTP handlers
 type Handlers struct {
-	Auth             *AuthHandler
-	User             *UserHandler
-	APIKey           *APIKeyHandler
-	Usage            *UsageHandler
-	Redeem           *RedeemHandler
-	Subscription     *SubscriptionHandler
-	Announcement     *AnnouncementHandler
-	Admin            *AdminHandlers
-	Gateway          *GatewayHandler
-	OpenAIGateway    *OpenAIGatewayHandler
-	Setting          *SettingHandler
-	Totp             *TotpHandler
+	Auth          *AuthHandler
+	User          *UserHandler
+	APIKey        *APIKeyHandler
+	Usage         *UsageHandler
+	Redeem        *RedeemHandler
+	Subscription  *SubscriptionHandler
+	Announcement  *AnnouncementHandler
+	Admin         *AdminHandlers
+	Gateway       *GatewayHandler
+	OpenAIGateway *OpenAIGatewayHandler
+	Setting       *SettingHandler
+	Totp          *TotpHandler
 	// Payment / PaymentWebhook handlers 已迁移到 plugins/payment/
 	UserServiceQuota *UserServiceQuotaHandler
 	// AvailableChannel / ChannelMonitor (user) 已迁移到 plugins/channel-management/
+	Upload *UploadHandler
 }
 
 // BuildInfo contains build-time information

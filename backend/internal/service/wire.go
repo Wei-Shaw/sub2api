@@ -426,6 +426,23 @@ func ProvideAPIKeyService(
 	return svc
 }
 
+// ProvideUploadService creates UploadService rooted at the configured upload
+// directory. Falls back to <data_dir>/uploads when unset so dev/test setups
+// don't need to declare a separate upload path.
+func ProvideUploadService(cfg *config.Config) *UploadService {
+	dir := ""
+	if cfg != nil {
+		dir = cfg.Upload.Dir
+		if dir == "" && cfg.Pricing.DataDir != "" {
+			dir = cfg.Pricing.DataDir + "/uploads"
+		}
+	}
+	if dir == "" {
+		dir = "data/uploads"
+	}
+	return NewUploadService(dir)
+}
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
@@ -516,6 +533,7 @@ var ProviderSet = wire.NewSet(
 	NewChannelCacheReader,
 	NewModelPricingResolver,
 	NewAffiliateService,
+	ProvideUploadService,
 	// payment-related providers (PaymentConfigService / PaymentService /
 	// PaymentOrderExpiryService) 已迁移到 plugins/payment/.
 )

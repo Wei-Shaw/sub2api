@@ -43,12 +43,14 @@ import {
   type HostTheme,
   type HostAuth,
   type HostHttp,
+  type HostImages,
   type HostKeys,
   type SdkApiKey,
   type HostVue,
   type PluginAppInstance,
   type ThemeMode,
   type FontSize,
+  type UploadedImage,
 } from './host-sdk'
 
 const THEME_STORAGE_KEY = 'theme'
@@ -324,6 +326,30 @@ function createKeys(): HostKeys {
 }
 
 /**
+ * 创建图片上传能力。
+ *
+ * 通过 host 的 axios 实例 (apiClient) 走 multipart/form-data 上传到
+ * /admin/uploads/image, 后端返回 `{ url: "/api/v1/uploads/<hash>.png" }`,
+ * apiClient 的 response interceptor 已经把外层 envelope 拆掉, 所以
+ * `res.data` 直接就是 UploadedImage shape.
+ *
+ * Auth: apiClient 拦截器会带上 admin 登录后的 JWT; 后端 admin 中间件按
+ * 既有规则鉴权。普通用户的 plugin view 调用本能力将收到 401/403, 由
+ * caller 通过 extractApiErrorMessage 呈现给用户。
+ */
+function createImages(): HostImages {
+  return {
+    async upload(file: File): Promise<UploadedImage> {
+      const fd = new FormData()
+      fd.append('file', file)
+      // 不显式设 Content-Type, 让浏览器自动加上 multipart boundary。
+      const res = await apiClient.post<UploadedImage>('/admin/uploads/image', fd)
+      return res.data
+    },
+  }
+}
+
+/**
  * 工厂函数：组装一个新的 HostSdk 实例。需要 router 与 pinia 已经创建.
  *
  * pinia 必须显式传入而不是 useStore() 模式, 因为 createHostSdk 调用时机要求
@@ -342,5 +368,6 @@ export function createHostSdk(router: Router, pinia: Pinia): HostSdk {
     vue: createVue(),
     runtime: createRuntime(pinia, router),
     keys: createKeys(),
+    images: createImages(),
   }
 }
