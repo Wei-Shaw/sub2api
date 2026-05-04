@@ -17,6 +17,7 @@ var openAIImageGenerationBuiltinAllowedFields = map[string]struct{}{
 	"moderation":         {},
 	"style":              {},
 	"partial_images":     {},
+	"input_fidelity":     {},
 }
 
 func normalizeOpenAIBuiltinTools(raw any) []map[string]any {
@@ -41,12 +42,6 @@ func openAIImageGenerationBuiltinTool(raw any) (map[string]any, bool) {
 				return tool, true
 			}
 		}
-	case []string:
-		for _, item := range value {
-			if item == "image_generation" {
-				return defaultOpenAIImageGenerationBuiltinTool(), true
-			}
-		}
 	case []map[string]any:
 		for _, item := range value {
 			if tool, ok := openAIImageGenerationBuiltinItem(item); ok {
@@ -61,12 +56,7 @@ func openAIImageGenerationBuiltinTool(raw any) (map[string]any, bool) {
 		if !ok {
 			return nil, false
 		}
-		switch config := rawConfig.(type) {
-		case bool:
-			if config {
-				return defaultOpenAIImageGenerationBuiltinTool(), true
-			}
-		case map[string]any:
+		if config, ok := extractOpenAIImageGenerationBuiltinToolConfig(rawConfig); ok {
 			return buildOpenAIImageGenerationBuiltinTool(config), true
 		}
 	}
@@ -75,13 +65,6 @@ func openAIImageGenerationBuiltinTool(raw any) (map[string]any, bool) {
 }
 
 func openAIImageGenerationBuiltinItem(raw any) (map[string]any, bool) {
-	if name, ok := raw.(string); ok {
-		if name == "image_generation" {
-			return defaultOpenAIImageGenerationBuiltinTool(), true
-		}
-		return nil, false
-	}
-
 	tool, ok := raw.(map[string]any)
 	if !ok {
 		return nil, false
@@ -90,7 +73,31 @@ func openAIImageGenerationBuiltinItem(raw any) (map[string]any, bool) {
 	if typ != "image_generation" {
 		return nil, false
 	}
-	return buildOpenAIImageGenerationBuiltinTool(tool), true
+	config, ok := extractOpenAIImageGenerationBuiltinToolConfig(tool)
+	if !ok {
+		return nil, false
+	}
+	return buildOpenAIImageGenerationBuiltinTool(config), true
+}
+
+func extractOpenAIImageGenerationBuiltinToolConfig(raw any) (map[string]any, bool) {
+	config, ok := raw.(map[string]any)
+	if !ok {
+		return nil, false
+	}
+	enabled, ok := config["enabled"].(bool)
+	if !ok || !enabled {
+		return nil, false
+	}
+	model, ok := config["model"].(string)
+	if !ok || normalizeOpenAIImageGenerationBuiltinModel(model) != openAIImageGenerationBuiltinDefaultModel {
+		return nil, false
+	}
+	return config, true
+}
+
+func normalizeOpenAIImageGenerationBuiltinModel(model string) string {
+	return strings.ToLower(strings.TrimSpace(model))
 }
 
 func defaultOpenAIImageGenerationBuiltinTool() map[string]any {
@@ -108,6 +115,10 @@ func buildOpenAIImageGenerationBuiltinTool(config map[string]any) map[string]any
 			continue
 		}
 		if text, ok := value.(string); ok {
+			if key == "model" {
+				tool[key] = normalizeOpenAIImageGenerationBuiltinModel(text)
+				continue
+			}
 			trimmed := strings.TrimSpace(text)
 			if trimmed == "" {
 				continue

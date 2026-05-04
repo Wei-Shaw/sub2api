@@ -10,8 +10,6 @@ func TestNormalizeOpenAIBuiltinTools(t *testing.T) {
 	t.Parallel()
 
 	webSearch := []map[string]any{{"type": "web_search"}}
-	imageGeneration := map[string]any{"type": "image_generation", "model": "gpt-image-2", "output_format": "png"}
-	webSearchAndImageGeneration := []map[string]any{{"type": "web_search"}, imageGeneration}
 
 	tests := []struct {
 		name string
@@ -29,9 +27,9 @@ func TestNormalizeOpenAIBuiltinTools(t *testing.T) {
 			want: webSearch,
 		},
 		{
-			name: "string slice keeps supported builtin tools",
+			name: "string slice keeps only web search",
 			raw:  []string{"web_search", "image_generation"},
-			want: webSearchAndImageGeneration,
+			want: webSearch,
 		},
 		{
 			name: "any slice accepts web search tool object",
@@ -44,18 +42,28 @@ func TestNormalizeOpenAIBuiltinTools(t *testing.T) {
 			want: webSearch,
 		},
 		{
-			name: "map accepts explicit true values",
+			name: "map image generation true is ignored",
 			raw:  map[string]any{"web_search": true, "image_generation": true},
-			want: webSearchAndImageGeneration,
+			want: webSearch,
 		},
 		{
-			name: "map accepts configured image generation tool",
+			name: "configured image generation requires enabled true",
+			raw: map[string]any{"web_search": true, "image_generation": map[string]any{
+				"model":         "gpt-image-2",
+				"output_format": "png",
+			}},
+			want: webSearch,
+		},
+		{
+			name: "enabled configured image generation keeps allowed fields",
 			raw: map[string]any{"image_generation": map[string]any{
-				"model":              "gpt-image-2",
+				"enabled":            true,
+				"model":              " GPT-IMAGE-2 ",
 				"size":               "1024x1024",
 				"quality":            "low",
 				"output_format":      "webp",
 				"output_compression": 75,
+				"input_fidelity":     "high",
 				"ignored":            "drop-me",
 			}},
 			want: []map[string]any{{
@@ -65,7 +73,16 @@ func TestNormalizeOpenAIBuiltinTools(t *testing.T) {
 				"quality":            "low",
 				"output_format":      "webp",
 				"output_compression": 75,
+				"input_fidelity":     "high",
 			}},
+		},
+		{
+			name: "enabled image generation rejects non gpt image 2 model",
+			raw: map[string]any{"web_search": true, "image_generation": map[string]any{
+				"enabled": true,
+				"model":   "gpt-image-1",
+			}},
+			want: webSearch,
 		},
 		{
 			name: "false returns nil",
