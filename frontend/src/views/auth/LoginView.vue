@@ -560,7 +560,55 @@ function validateForm(): boolean {
 
 // ==================== Form Handlers ====================
 
-async function handleLogin(): Promise<void> {
+async function handlePasswordLogin(): Promise<void> {
+  const response = await authStore.login({
+    email: formData.email,
+    password: formData.password,
+    turnstile_token:
+      turnstileEnabled.value || aliyunCaptchaEnabled.value ? turnstileToken.value : undefined,
+    tencent_captcha_ticket: tencentCaptchaEnabled.value ? turnstileToken.value : undefined,
+    tencent_captcha_randstr: tencentCaptchaEnabled.value
+      ? tencentCaptchaRandstr.value
+      : undefined
+  })
+
+  // Check if 2FA is required
+  if (isTotp2FARequired(response)) {
+    const totpResponse = response as TotpLoginResponse
+    totpTempToken.value = totpResponse.temp_token || ''
+    totpUserEmailMasked.value = totpResponse.user_email_masked || ''
+    show2FAModal.value = true
+    isLoading.value = false
+    return
+  }
+
+  // Show success toast
+  clearAllAffiliateReferralCodes()
+  appStore.showSuccess(t('auth.loginSuccess'))
+
+  // Redirect to dashboard or intended route
+  await redirectAfterPasswordLogin()
+}
+
+async function handleRedeemLogin(): Promise<void> {
+  await authStore.inviteLogin({
+    invitation_code: inviteForm.invitation_code,
+    client_kind: 'web',
+    turnstile_token:
+      turnstileEnabled.value || aliyunCaptchaEnabled.value ? turnstileToken.value : undefined,
+    tencent_captcha_ticket: tencentCaptchaEnabled.value ? turnstileToken.value : undefined,
+    tencent_captcha_randstr: tencentCaptchaEnabled.value
+      ? tencentCaptchaRandstr.value
+      : undefined
+  })
+
+  clearAllAffiliateReferralCodes()
+  appStore.showSuccess(t('auth.redeemLoginSuccess'))
+  await redirectAfterRedeemLogin()
+}
+
+async function handleSubmit(): Promise<void> {
+>>>>>>> 04d11b667 (fix(auth): support DLG web code login (#22))
   // Clear previous error
   errorMessage.value = ''
 

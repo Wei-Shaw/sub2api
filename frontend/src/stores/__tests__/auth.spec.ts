@@ -105,6 +105,42 @@ describe('useAuthStore', () => {
     })
   })
 
+  describe('redeem and invite login', () => {
+    it('redeemLogin 设置 token 和 user 并调用网页兑换码登录 API', async () => {
+      mockRedeemLogin.mockResolvedValue(fakeAuthResponse)
+      const store = useAuthStore()
+
+      const user = await store.redeemLogin({ invitation_code: 'INV-TEST-001' })
+
+      expect(mockRedeemLogin).toHaveBeenCalledWith({ invitation_code: 'INV-TEST-001' })
+      expect(user).toEqual(fakeUser)
+      expect(store.token).toBe('test-token-123')
+      expect(store.user).toEqual(fakeUser)
+      expect(store.isAuthenticated).toBe(true)
+    })
+
+    it('inviteLogin 透传 device 字段用于设备绑定登录', async () => {
+      mockInviteLogin.mockResolvedValue(fakeAuthResponse)
+      const store = useAuthStore()
+
+      await store.inviteLogin({
+        invitation_code: 'DLG-TEST-001',
+        client_kind: 'web',
+        device_hash: 'device-hash',
+        install_id: 'install-id'
+      })
+
+      expect(mockInviteLogin).toHaveBeenCalledWith({
+        invitation_code: 'DLG-TEST-001',
+        client_kind: 'web',
+        device_hash: 'device-hash',
+        install_id: 'install-id'
+      })
+      expect(store.isAuthenticated).toBe(true)
+    })
+  })
+
+>>>>>>> 04d11b667 (fix(auth): support DLG web code login (#22))
   // --- login2FA ---
 
   describe('login2FA', () => {
