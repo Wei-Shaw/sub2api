@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -45,13 +47,18 @@ type OpsCleanupService struct {
 	redisClient       *redis.Client
 	cfg               *config.Config
 	channelMonitorSvc *ChannelMonitorService
+	settingRepo       SettingRepository
 
 	instanceID string
 
-	cron *cron.Cron
-
-	startOnce sync.Once
-	stopOnce  sync.Once
+	// mu 守护 cron 实例切换 + effective 配置切换。
+	// 这里不再用 startOnce/stopOnce，是因为 Reload 需要"停旧 cron 重启新 cron"，
+	// 而 Once 一旦触发就无法再次执行；改为 started/stopped 布尔配合 mu。
+	mu        sync.Mutex
+	cron      *cron.Cron
+	started   bool
+	stopped   bool
+	effective config.OpsCleanupConfig
 
 	warnNoRedisOnce sync.Once
 }
@@ -62,6 +69,7 @@ func NewOpsCleanupService(
 	redisClient *redis.Client,
 	cfg *config.Config,
 	channelMonitorSvc *ChannelMonitorService,
+	settingRepo SettingRepository,
 ) *OpsCleanupService {
 	return &OpsCleanupService{
 		opsRepo:           opsRepo,
@@ -69,10 +77,13 @@ func NewOpsCleanupService(
 		redisClient:       redisClient,
 		cfg:               cfg,
 		channelMonitorSvc: channelMonitorSvc,
+		settingRepo:       settingRepo,
 		instanceID:        uuid.NewString(),
 	}
 }
 
+// Start 首次启动 cron 调度。Enabled / Schedule 由 effective 配置决定（settings 优先 cfg）。
+// 重复调用幂等。
 func (s *OpsCleanupService) Start() {
 	if s == nil {
 		return
@@ -80,54 +91,169 @@ func (s *OpsCleanupService) Start() {
 	if s.cfg != nil && !s.cfg.Ops.Enabled {
 		return
 	}
-	if s.cfg != nil && !s.cfg.Ops.Cleanup.Enabled {
-		logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] not started (disabled)")
-		return
-	}
 	if s.opsRepo == nil || s.db == nil {
 		logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] not started (missing deps)")
 		return
 	}
 
-	s.startOnce.Do(func() {
-		schedule := "0 2 * * *"
-		if s.cfg != nil && strings.TrimSpace(s.cfg.Ops.Cleanup.Schedule) != "" {
-			schedule = strings.TrimSpace(s.cfg.Ops.Cleanup.Schedule)
-		}
-
-		loc := time.Local
-		if s.cfg != nil && strings.TrimSpace(s.cfg.Timezone) != "" {
-			if parsed, err := time.LoadLocation(strings.TrimSpace(s.cfg.Timezone)); err == nil && parsed != nil {
-				loc = parsed
-			}
-		}
-
-		c := cron.New(cron.WithParser(opsCleanupCronParser), cron.WithLocation(loc))
-		_, err := c.AddFunc(schedule, func() { s.runScheduled() })
-		if err != nil {
-			logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] not started (invalid schedule=%q): %v", schedule, err)
-			return
-		}
-		s.cron = c
-		s.cron.Start()
-		logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] started (schedule=%q tz=%s)", schedule, loc.String())
-	})
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.started || s.stopped {
+		return
+	}
+	s.started = true
+	if err := s.applyScheduleLocked(context.Background()); err != nil {
+		logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] not started: %v", err)
+	}
 }
 
+// Stop 关闭 cron。幂等。
 func (s *OpsCleanupService) Stop() {
 	if s == nil {
 		return
 	}
-	s.stopOnce.Do(func() {
-		if s.cron != nil {
-			ctx := s.cron.Stop()
-			select {
-			case <-ctx.Done():
-			case <-time.After(3 * time.Second):
-				logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] cron stop timed out")
-			}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stopped {
+		return
+	}
+	s.stopped = true
+	s.stopCronLocked()
+}
+
+// stopCronLocked 停掉当前 cron 实例（带 3s 超时）。调用方持锁。
+func (s *OpsCleanupService) stopCronLocked() {
+	if s.cron == nil {
+		return
+	}
+	ctx := s.cron.Stop()
+	select {
+	case <-ctx.Done():
+	case <-time.After(3 * time.Second):
+		logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] cron stop timed out")
+	}
+	s.cron = nil
+}
+
+// applyScheduleLocked 重新计算 effective 配置并按其 schedule 重建 cron。调用方持锁。
+// 若 effective.Enabled=false（用户在 UI 关闭清理），停旧 cron 后直接返回，不创建新 cron。
+func (s *OpsCleanupService) applyScheduleLocked(ctx context.Context) error {
+	s.computeEffectiveLocked(ctx)
+	s.stopCronLocked()
+
+	if !s.effective.Enabled {
+		logger.LegacyPrintf("service.ops_cleanup", "[OpsCleanup] cron disabled by settings")
+		return nil
+	}
+
+	schedule := strings.TrimSpace(s.effective.Schedule)
+	if schedule == "" {
+		schedule = "0 2 * * *"
+	}
+
+	loc := time.Local
+	if s.cfg != nil && strings.TrimSpace(s.cfg.Timezone) != "" {
+		if parsed, err := time.LoadLocation(strings.TrimSpace(s.cfg.Timezone)); err == nil && parsed != nil {
+			loc = parsed
 		}
-	})
+	}
+
+	c := cron.New(cron.WithParser(opsCleanupCronParser), cron.WithLocation(loc))
+	if _, err := c.AddFunc(schedule, func() { s.runScheduled() }); err != nil {
+		return fmt.Errorf("invalid schedule %q: %w", schedule, err)
+	}
+	c.Start()
+	s.cron = c
+	logger.LegacyPrintf("service.ops_cleanup",
+		"[OpsCleanup] scheduled (schedule=%q tz=%s retention_days=err:%d/min:%d/hour:%d)",
+		schedule, loc.String(),
+		s.effective.ErrorLogRetentionDays,
+		s.effective.MinuteMetricsRetentionDays,
+		s.effective.HourlyMetricsRetentionDays,
+	)
+	return nil
+}
+
+// Reload 重新读取 ops_advanced_settings.data_retention 并按新配置重建 cron。
+// 适用于 admin 在 UI 修改清理设置后立即生效（schedule / enabled 改动需要 Reload；
+// retention 改动 runScheduled 顶部也会刷新，下一次触发即生效）。
+// 若 service 还未 Start 或已 Stop，Reload 不做任何事。
+func (s *OpsCleanupService) Reload(ctx context.Context) error {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.started || s.stopped {
+		return nil
+	}
+	return s.applyScheduleLocked(ctx)
+}
+
+// computeEffectiveLocked 计算"生效配置"并写入 s.effective。调用方持锁。
+//
+// 优先级：UI 写入的 settings.ops_advanced_settings.data_retention（权威）覆盖 cfg.Ops.Cleanup 的副本。
+//   - Enabled：settings 直接覆盖
+//   - Schedule：settings 非空时覆盖，否则保留 cfg
+//   - *RetentionDays：settings >=0 时覆盖（包括 0=TRUNCATE），<0 沿用 cfg
+//
+// 若 settings 表无该 key（ErrSettingNotFound）或解析失败，整体 fallback 到 cfg.Ops.Cleanup。
+func (s *OpsCleanupService) computeEffectiveLocked(ctx context.Context) {
+	base := config.OpsCleanupConfig{}
+	if s.cfg != nil {
+		base = s.cfg.Ops.Cleanup
+	}
+	defer func() { s.effective = base }()
+
+	if s.settingRepo == nil {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	raw, err := s.settingRepo.GetValue(ctx, SettingKeyOpsAdvancedSettings)
+	if err != nil {
+		if !errors.Is(err, ErrSettingNotFound) {
+			logger.LegacyPrintf("service.ops_cleanup",
+				"[OpsCleanup] read advanced settings failed, using cfg: %v", err)
+		}
+		return
+	}
+	var adv OpsAdvancedSettings
+	if err := json.Unmarshal([]byte(raw), &adv); err != nil {
+		logger.LegacyPrintf("service.ops_cleanup",
+			"[OpsCleanup] parse advanced settings failed, using cfg: %v", err)
+		return
+	}
+	dr := adv.DataRetention
+	base.Enabled = dr.CleanupEnabled
+	if sched := strings.TrimSpace(dr.CleanupSchedule); sched != "" {
+		base.Schedule = sched
+	}
+	if dr.ErrorLogRetentionDays >= 0 {
+		base.ErrorLogRetentionDays = dr.ErrorLogRetentionDays
+	}
+	if dr.MinuteMetricsRetentionDays >= 0 {
+		base.MinuteMetricsRetentionDays = dr.MinuteMetricsRetentionDays
+	}
+	if dr.HourlyMetricsRetentionDays >= 0 {
+		base.HourlyMetricsRetentionDays = dr.HourlyMetricsRetentionDays
+	}
+}
+
+// snapshotEffective 取一份 effective 副本（runCleanupOnce 等读路径使用）。
+func (s *OpsCleanupService) snapshotEffective() config.OpsCleanupConfig {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.effective
+}
+
+// refreshEffectiveBeforeRun 在 cron 触发时刷新 effective，让 retention 改动当次即生效。
+// schedule 改动不影响当次（cron 调度由库管理，需要 Reload 才换 schedule）。
+func (s *OpsCleanupService) refreshEffectiveBeforeRun(ctx context.Context) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.computeEffectiveLocked(ctx)
 }
 
 func (s *OpsCleanupService) runScheduled() {
@@ -137,6 +263,9 @@ func (s *OpsCleanupService) runScheduled() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
+
+	// 让 retention 改动当次生效（schedule/enabled 改动需要 Reload）。
+	s.refreshEffectiveBeforeRun(ctx)
 
 	release, ok := s.tryAcquireLeaderLock(ctx)
 	if !ok {
@@ -209,6 +338,8 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 		return out, nil
 	}
 
+	effective := s.snapshotEffective()
+
 	batchSize := 5000
 
 	now := time.Now().UTC()
@@ -223,7 +354,7 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 	}
 
 	// Error-like tables: error logs / retry attempts / alert events / system logs / cleanup audits.
-	if cutoff, truncate, ok := opsCleanupPlan(now, s.cfg.Ops.Cleanup.ErrorLogRetentionDays); ok {
+	if cutoff, truncate, ok := opsCleanupPlan(now, effective.ErrorLogRetentionDays); ok {
 		n, err := runOne(truncate, cutoff, "ops_error_logs", "created_at", false)
 		if err != nil {
 			return out, err
@@ -256,7 +387,7 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 	}
 
 	// Minute-level metrics snapshots.
-	if cutoff, truncate, ok := opsCleanupPlan(now, s.cfg.Ops.Cleanup.MinuteMetricsRetentionDays); ok {
+	if cutoff, truncate, ok := opsCleanupPlan(now, effective.MinuteMetricsRetentionDays); ok {
 		n, err := runOne(truncate, cutoff, "ops_system_metrics", "created_at", false)
 		if err != nil {
 			return out, err
@@ -265,7 +396,7 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 	}
 
 	// Pre-aggregation tables (hourly/daily).
-	if cutoff, truncate, ok := opsCleanupPlan(now, s.cfg.Ops.Cleanup.HourlyMetricsRetentionDays); ok {
+	if cutoff, truncate, ok := opsCleanupPlan(now, effective.HourlyMetricsRetentionDays); ok {
 		n, err := runOne(truncate, cutoff, "ops_metrics_hourly", "bucket_start", false)
 		if err != nil {
 			return out, err

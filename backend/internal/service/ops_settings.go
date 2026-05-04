@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"strings"
 	"time"
 )
@@ -475,6 +476,14 @@ func (s *OpsService) UpdateOpsAdvancedSettings(ctx context.Context, cfg *OpsAdva
 	}
 	if err := s.settingRepo.Set(ctx, SettingKeyOpsAdvancedSettings, string(raw)); err != nil {
 		return nil, err
+	}
+
+	// notify cleanup service to reload schedule/enabled.
+	if s.cleanupReloader != nil {
+		if rerr := s.cleanupReloader.Reload(ctx); rerr != nil {
+			logger.LegacyPrintf("service.ops_settings",
+				"[OpsSettings] cleanup reload after advanced-settings update failed: %v", rerr)
+		}
 	}
 
 	updated := &OpsAdvancedSettings{}
