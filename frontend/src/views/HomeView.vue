@@ -100,7 +100,7 @@
             </svg>
           </router-link>
           <router-link
-            v-else
+            v-if="!isAuthenticated"
             to="/login"
             class="inline-flex items-center rounded-full bg-gray-900 px-3 py-1 text-xs font-medium text-white transition-colors hover:bg-gray-800 dark:bg-gray-800 dark:hover:bg-gray-700"
           >
@@ -127,13 +127,19 @@
             </p>
 
             <!-- CTA Button -->
-            <div>
+            <div class="flex flex-col items-center gap-3 sm:flex-row lg:justify-start">
               <router-link
                 :to="isAuthenticated ? dashboardPath : '/login'"
                 class="btn btn-primary px-8 py-3 text-base shadow-lg shadow-primary-500/30"
               >
                 {{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') }}
                 <Icon name="arrowRight" size="md" class="ml-2" :stroke-width="2" />
+              </router-link>
+              <router-link
+                to="/models"
+                class="btn min-w-[144px] border border-primary-200/70 bg-gradient-to-r from-white via-primary-50 to-teal-50 px-8 py-3 text-base font-semibold text-primary-700 shadow-lg shadow-primary-500/15 backdrop-blur transition-all hover:-translate-y-0.5 hover:border-primary-300 hover:from-primary-50 hover:via-teal-50 hover:to-cyan-50 hover:text-primary-800 hover:shadow-primary-500/25 dark:border-primary-700/50 dark:from-dark-800 dark:via-primary-900/30 dark:to-teal-900/30 dark:text-primary-200 dark:hover:border-primary-600 dark:hover:from-primary-900/40 dark:hover:via-teal-900/30 dark:hover:to-cyan-900/30 dark:hover:text-primary-100"
+              >
+                {{ t('home.browseModelPlaza') }}
               </router-link>
             </div>
           </div>

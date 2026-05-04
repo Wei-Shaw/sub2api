@@ -10,6 +10,7 @@ export default {
     login: '登录',
     getStarted: '立即开始',
     goToDashboard: '进入控制台',
+    browseModelPlaza: '浏览模型广场',
     goHome: '返回主页',
     // 新增：面向用户的价值主张
     heroSubtitle: '一个密钥，畅用多个 AI 模型',
@@ -354,6 +355,7 @@ export default {
     affiliateRebateRecords: '返利记录',
     affiliateTransferRecords: '提取记录',
     profile: '个人资料',
+    notLoggedIn: '未登录',
     modelPlaza: '模型广场',
     usageDocs: '使用文档',
     rechargeSubscription: '充值订阅',

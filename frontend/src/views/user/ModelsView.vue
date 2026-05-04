@@ -183,6 +183,7 @@ import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import userChannelsAPI, { type UserAvailableChannel, type UserAvailableGroup, type UserDefaultModelPricing, type UserSupportedModel } from '@/api/channels'
 import userGroupsAPI from '@/api/groups'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { BILLING_MODE_IMAGE, BILLING_MODE_PER_REQUEST, BILLING_MODE_TOKEN, type BillingMode } from '@/constants/channel'
 import { platformBadgeClass, platformLabel } from '@/utils/platformColors'
@@ -191,6 +192,7 @@ import type { GroupPlatform } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const authStore = useAuthStore()
 
 const channels = ref<UserAvailableChannel[]>([])
 const userGroupRates = ref<Record<number, number>>({})
@@ -398,11 +400,13 @@ async function loadChannels() {
   loading.value = true
   try {
     const [list, rates] = await Promise.all([
-      userChannelsAPI.getAvailable(),
-      userGroupsAPI.getUserGroupRates().catch((err: unknown) => {
-        console.error('Failed to load user group rates:', err)
-        return {} as Record<number, number>
-      }),
+      userChannelsAPI.getAvailable({ public: !authStore.isAuthenticated }),
+      authStore.isAuthenticated
+        ? userGroupsAPI.getUserGroupRates().catch((err: unknown) => {
+          console.error('Failed to load user group rates:', err)
+          return {} as Record<number, number>
+        })
+        : Promise.resolve({} as Record<number, number>),
     ])
     channels.value = list
     userGroupRates.value = rates

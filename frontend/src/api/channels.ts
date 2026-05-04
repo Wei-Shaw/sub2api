@@ -78,11 +78,14 @@ export interface UserAvailableChannel {
   platforms: UserChannelPlatformSection[]
 }
 
-/** 列出当前用户可见的「可用渠道」（与 /groups/available 保持一致，返回平数组）。 */
-export async function getAvailable(options?: { signal?: AbortSignal }): Promise<UserAvailableChannel[]> {
-  const { data } = await apiClient.get<UserAvailableChannel[]>('/channels/available', {
+/** 列出可见的「可用渠道」。未登录模型广场使用公开接口，只展示公开分组可见数据。 */
+export async function getAvailable(options?: { signal?: AbortSignal, public?: boolean }): Promise<UserAvailableChannel[]> {
+  const { data } = await apiClient.get<UserAvailableChannel[]>(
+    options?.public ? '/public/channels/available' : '/channels/available',
+    {
     signal: options?.signal
-  })
+    },
+  )
   return data
 }
 

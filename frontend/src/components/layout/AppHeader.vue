@@ -207,6 +207,14 @@
             </div>
           </transition>
         </div>
+        <router-link
+          v-else
+          :to="{ path: '/login', query: { redirect: route.fullPath } }"
+          class="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700 dark:border-dark-700 dark:bg-dark-800 dark:text-dark-200 dark:hover:border-primary-700/60 dark:hover:bg-primary-900/20 dark:hover:text-primary-300"
+        >
+          <Icon name="user" size="sm" />
+          <span>{{ t('nav.notLoggedIn') }}</span>
+        </router-link>
       </div>
     </div>
   </header>

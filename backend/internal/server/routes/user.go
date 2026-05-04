@@ -15,6 +15,21 @@ func RegisterUserRoutes(
 	jwtAuth middleware.JWTAuthMiddleware,
 	settingService *service.SettingService,
 ) {
+	// 公开模型广场接口：只暴露公开分组可见的渠道和模型。
+	public := v1.Group("/public")
+	{
+		channels := public.Group("/channels")
+		{
+			channels.GET("/available", h.AvailableChannel.ListPublic)
+		}
+	}
+
+	// 模型广场价格对比接口不包含用户数据，允许匿名页面复用。
+	publicChannels := v1.Group("/channels")
+	{
+		publicChannels.POST("/model-pricing/batch", h.AvailableChannel.GetModelPricingBatch)
+	}
+
 	authenticated := v1.Group("")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))
 	authenticated.Use(middleware.BackendModeUserGuard(settingService))
@@ -74,7 +89,6 @@ func RegisterUserRoutes(
 		channels := authenticated.Group("/channels")
 		{
 			channels.GET("/available", h.AvailableChannel.List)
-			channels.POST("/model-pricing/batch", h.AvailableChannel.GetModelPricingBatch)
 		}
 
 		// 使用记录

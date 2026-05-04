@@ -134,19 +134,18 @@ type userModelPricingBatchResponse struct {
 	Prices map[string]userDefaultModelPricing `json:"prices"`
 }
 
+// ListPublic 列出公开模型广场可见的「可用渠道」。
+// GET /api/v1/public/channels/available
+func (h *AvailableChannelHandler) ListPublic(c *gin.Context) {
+	h.listVisible(c, nil)
+}
+
 // List 列出当前用户可见的「可用渠道」。
 // GET /api/v1/channels/available
 func (h *AvailableChannelHandler) List(c *gin.Context) {
 	subject, ok := middleware.GetAuthSubjectFromContext(c)
 	if !ok {
 		response.Unauthorized(c, "User not authenticated")
-		return
-	}
-
-	// Feature 未启用时返回空数组（不暴露渠道信息）。检查放在认证之后，
-	// 保持与未开关前的 401 行为一致：未登录先 401，登录后再按开关决定。
-	if !h.featureEnabled(c) {
-		response.Success(c, []userAvailableChannel{})
 		return
 	}
 
@@ -158,6 +157,14 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 	allowedGroupIDs := make(map[int64]struct{}, len(userGroups))
 	for i := range userGroups {
 		allowedGroupIDs[userGroups[i].ID] = struct{}{}
+	}
+	h.listVisible(c, allowedGroupIDs)
+}
+
+func (h *AvailableChannelHandler) listVisible(c *gin.Context, allowedGroupIDs map[int64]struct{}) {
+	if !h.featureEnabled(c) {
+		response.Success(c, []userAvailableChannel{})
+		return
 	}
 
 	channels, err := h.channelService.ListAvailable(c.Request.Context())
@@ -171,7 +178,7 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 		if ch.Status != service.StatusActive {
 			continue
 		}
-		visibleGroups := filterUserVisibleGroups(ch.Groups, allowedGroupIDs)
+		visibleGroups := filterVisibleGroups(ch.Groups, allowedGroupIDs)
 		if len(visibleGroups) == 0 {
 			continue
 		}
@@ -192,10 +199,6 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 // GetModelPricingBatch 批量查询模型默认定价。
 // POST /api/v1/channels/model-pricing/batch
 func (h *AvailableChannelHandler) GetModelPricingBatch(c *gin.Context) {
-	if _, ok := middleware.GetAuthSubjectFromContext(c); !ok {
-		response.Unauthorized(c, "User not authenticated")
-		return
-	}
 	if h.billingService == nil {
 		response.InternalError(c, "Billing service not available")
 		return
@@ -280,9 +283,21 @@ func filterUserVisibleGroups(
 	groups []service.AvailableGroupRef,
 	allowed map[int64]struct{},
 ) []userAvailableGroup {
+	return filterVisibleGroups(groups, allowed)
+}
+
+// filterVisibleGroups 过滤可见分组。allowed 为 nil 时表示匿名模型广场，只展示公开分组。
+func filterVisibleGroups(
+	groups []service.AvailableGroupRef,
+	allowed map[int64]struct{},
+) []userAvailableGroup {
 	visible := make([]userAvailableGroup, 0, len(groups))
 	for _, g := range groups {
-		if _, ok := allowed[g.ID]; !ok {
+		if allowed == nil {
+			if g.IsExclusive {
+				continue
+			}
+		} else if _, ok := allowed[g.ID]; !ok {
 			continue
 		}
 		visible = append(visible, userAvailableGroup{

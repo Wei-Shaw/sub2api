@@ -10,6 +10,7 @@ export default {
     login: 'Login',
     getStarted: 'Get Started',
     goToDashboard: 'Go to Dashboard',
+    browseModelPlaza: 'Browse Model Plaza',
     goHome: 'Go Home',
     // User-focused value proposition
     heroSubtitle: 'One Key, All AI Models',
@@ -354,6 +355,7 @@ export default {
     affiliateRebateRecords: 'Rebate Records',
     affiliateTransferRecords: 'Transfer Records',
     profile: 'Profile',
+    notLoggedIn: 'Not logged in',
     modelPlaza: 'Model Plaza',
     usageDocs: 'Usage Docs',
     rechargeSubscription: 'Recharge & Subscription',

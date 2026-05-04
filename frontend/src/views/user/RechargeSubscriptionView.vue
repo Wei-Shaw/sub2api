@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-5xl space-y-8">
+    <div class="space-y-6" data-testid="recharge-subscription-shell">
       <header class="space-y-1">
         <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">{{ t('rechargeSubscription.title') }}</h1>
         <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('rechargeSubscription.description') }}</p>

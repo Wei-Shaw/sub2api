@@ -6,6 +6,7 @@ const getAvailable = vi.hoisted(() => vi.fn())
 const getModelPricingBatch = vi.hoisted(() => vi.fn())
 const getUserGroupRates = vi.hoisted(() => vi.fn())
 const showError = vi.hoisted(() => vi.fn())
+const authState = vi.hoisted(() => ({ isAuthenticated: true }))
 
 vi.mock('@/api/channels', () => ({
   default: { getAvailable, getModelPricingBatch },
@@ -17,6 +18,10 @@ vi.mock('@/api/groups', () => ({
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({ showError }),
+}))
+
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => authState,
 }))
 
 vi.mock('@/utils/apiError', () => ({
@@ -82,6 +87,7 @@ vi.mock('vue-i18n', () => ({
 
 describe('ModelsView', () => {
   beforeEach(() => {
+    authState.isAuthenticated = true
     getAvailable.mockReset()
     getModelPricingBatch.mockReset()
     getUserGroupRates.mockReset()
@@ -151,6 +157,25 @@ describe('ModelsView', () => {
     expect(wrapper.text()).toContain('claude-sonnet-4')
     expect(wrapper.text()).not.toContain('文生图暂不支持')
     expect(wrapper.text()).not.toContain('此页面仅用于查看')
+  })
+
+  it('uses the public model plaza endpoint without loading user group rates for guests', async () => {
+    authState.isAuthenticated = false
+
+    mount(ModelsView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          Icon: { template: '<span />' },
+          PlatformIcon: { template: '<span />' },
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(getAvailable).toHaveBeenCalledWith({ public: true })
+    expect(getUserGroupRates).not.toHaveBeenCalled()
+    expect(getModelPricingBatch).toHaveBeenCalledWith(['claude-sonnet-4'])
   })
 
   it('supports platform filtering and shows channel model prices inline', async () => {
