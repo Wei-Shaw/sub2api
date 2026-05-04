@@ -109,7 +109,7 @@ var migrationDecls = []pluginsdk.MigrationDecl{
 	{Filename: "007_provider_key_snapshot.sql", ChecksumSha256: "b75f8f56d39455682787696a3d92ad25b055444ca328fb7fca9a460a15d68d99"},
 	{Filename: "008_provider_snapshot.sql", ChecksumSha256: "69320a2f03662ea02b4a0f09ef293b1ee600dd55d474f20a1b0d6fe03f4482cc"},
 	{Filename: "009_enforce_out_trade_no_unique.sql", ChecksumSha256: "66ba0ae221454ca8742770428ede26695cc5b065d0119cc9fe33fd2a26a4d38f"},
-	{Filename: "010_enforce_out_trade_no_unique_notx.sql", ChecksumSha256: "39f9323ace96b835c74e8de83ba15b977d4c65609c22eecc4e9afbf382f7667d"},
+	{Filename: "010_enforce_out_trade_no_unique_notx.sql", ChecksumSha256: "39f9323ace96b835c74e8de83ba15b977d4c65609c22eecc4e9afbf382f7667d", NonTransactional: true},
 	{Filename: "011_align_out_trade_no_index_name.sql", ChecksumSha256: "846d179e41eb1218698e2aa312bb280e7ed41c949dd0669ff45fc7e838a643bc"},
 }
 
