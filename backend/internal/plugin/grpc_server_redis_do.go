@@ -167,6 +167,12 @@ var hostSharedReadableTables = map[string]struct{}{
 	"groups":              {},
 	"accounts":            {},
 	"payment_orders":      {},
+	// subscription_plans is host-owned (admin defines the catalog) but the
+	// payment plugin needs to read it to render plan listings, group rules,
+	// and validate plan IDs at order creation time. Schema is stable and
+	// rows contain only catalog metadata (name, price, validity) — safe to
+	// expose to plugin code.
+	"subscription_plans":  {},
 }
 
 // Forget drops the entry for plugin name. Called when a plugin is stopped
