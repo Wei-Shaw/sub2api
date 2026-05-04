@@ -29,27 +29,27 @@ SELECT 'payment', plugin_key, plugin_value, 1, NOW()
 FROM (
     -- enabled
     SELECT 'enabled' AS plugin_key,
-           to_jsonb(COALESCE((SELECT value::boolean FROM settings WHERE key='payment_enabled'), false)) AS plugin_value
+           to_jsonb(COALESCE((SELECT NULLIF(value, '')::boolean FROM settings WHERE key='payment_enabled'), false)) AS plugin_value
     UNION ALL
     -- min_recharge_amount (numeric)
     SELECT 'min_recharge_amount',
-           to_jsonb(COALESCE((SELECT value::numeric FROM settings WHERE key='MIN_RECHARGE_AMOUNT'), 1::numeric))
+           to_jsonb(COALESCE((SELECT NULLIF(value, '')::numeric FROM settings WHERE key='MIN_RECHARGE_AMOUNT'), 1::numeric))
     UNION ALL
     -- max_recharge_amount
     SELECT 'max_recharge_amount',
-           to_jsonb(COALESCE((SELECT value::numeric FROM settings WHERE key='MAX_RECHARGE_AMOUNT'), 10000::numeric))
+           to_jsonb(COALESCE((SELECT NULLIF(value, '')::numeric FROM settings WHERE key='MAX_RECHARGE_AMOUNT'), 10000::numeric))
     UNION ALL
     -- daily_recharge_limit
     SELECT 'daily_recharge_limit',
-           to_jsonb(COALESCE((SELECT value::numeric FROM settings WHERE key='DAILY_RECHARGE_LIMIT'), 0::numeric))
+           to_jsonb(COALESCE((SELECT NULLIF(value, '')::numeric FROM settings WHERE key='DAILY_RECHARGE_LIMIT'), 0::numeric))
     UNION ALL
     -- order_timeout_minutes
     SELECT 'order_timeout_minutes',
-           to_jsonb(COALESCE((SELECT value::int FROM settings WHERE key='ORDER_TIMEOUT_MINUTES'), 30))
+           to_jsonb(COALESCE((SELECT NULLIF(value, '')::int FROM settings WHERE key='ORDER_TIMEOUT_MINUTES'), 30))
     UNION ALL
     -- max_pending_orders
     SELECT 'max_pending_orders',
-           to_jsonb(COALESCE((SELECT value::int FROM settings WHERE key='MAX_PENDING_ORDERS'), 3))
+           to_jsonb(COALESCE((SELECT NULLIF(value, '')::int FROM settings WHERE key='MAX_PENDING_ORDERS'), 3))
     UNION ALL
     -- enabled_payment_types: CSV -> jsonb array
     SELECT 'enabled_payment_types',
@@ -66,15 +66,15 @@ FROM (
     UNION ALL
     -- balance_payment_disabled
     SELECT 'balance_payment_disabled',
-           to_jsonb(COALESCE((SELECT value::boolean FROM settings WHERE key='BALANCE_PAYMENT_DISABLED'), false))
+           to_jsonb(COALESCE((SELECT NULLIF(value, '')::boolean FROM settings WHERE key='BALANCE_PAYMENT_DISABLED'), false))
     UNION ALL
     -- balance_recharge_multiplier
     SELECT 'balance_recharge_multiplier',
-           to_jsonb(COALESCE((SELECT value::numeric FROM settings WHERE key='BALANCE_RECHARGE_MULTIPLIER'), 1::numeric))
+           to_jsonb(COALESCE((SELECT NULLIF(value, '')::numeric FROM settings WHERE key='BALANCE_RECHARGE_MULTIPLIER'), 1::numeric))
     UNION ALL
     -- recharge_fee_rate
     SELECT 'recharge_fee_rate',
-           to_jsonb(COALESCE((SELECT value::numeric FROM settings WHERE key='RECHARGE_FEE_RATE'), 0::numeric))
+           to_jsonb(COALESCE((SELECT NULLIF(value, '')::numeric FROM settings WHERE key='RECHARGE_FEE_RATE'), 0::numeric))
     UNION ALL
     -- product_name_prefix
     SELECT 'product_name_prefix',
@@ -94,15 +94,15 @@ FROM (
     UNION ALL
     -- cancel_rate_limit_enabled
     SELECT 'cancel_rate_limit_enabled',
-           to_jsonb(COALESCE((SELECT value::boolean FROM settings WHERE key='CANCEL_RATE_LIMIT_ENABLED'), false))
+           to_jsonb(COALESCE((SELECT NULLIF(value, '')::boolean FROM settings WHERE key='CANCEL_RATE_LIMIT_ENABLED'), false))
     UNION ALL
     -- cancel_rate_limit_max
     SELECT 'cancel_rate_limit_max',
-           to_jsonb(COALESCE((SELECT value::int FROM settings WHERE key='CANCEL_RATE_LIMIT_MAX'), 0))
+           to_jsonb(COALESCE((SELECT NULLIF(value, '')::int FROM settings WHERE key='CANCEL_RATE_LIMIT_MAX'), 0))
     UNION ALL
     -- cancel_rate_limit_window
     SELECT 'cancel_rate_limit_window',
-           to_jsonb(COALESCE((SELECT value::int FROM settings WHERE key='CANCEL_RATE_LIMIT_WINDOW'), 0))
+           to_jsonb(COALESCE((SELECT NULLIF(value, '')::int FROM settings WHERE key='CANCEL_RATE_LIMIT_WINDOW'), 0))
     UNION ALL
     -- cancel_rate_limit_unit
     SELECT 'cancel_rate_limit_unit',
@@ -114,7 +114,7 @@ FROM (
     UNION ALL
     -- visible_method_alipay_enabled
     SELECT 'visible_method_alipay_enabled',
-           to_jsonb(COALESCE((SELECT value::boolean FROM settings WHERE key='payment_visible_method_alipay_enabled'), true))
+           to_jsonb(COALESCE((SELECT NULLIF(value, '')::boolean FROM settings WHERE key='payment_visible_method_alipay_enabled'), true))
     UNION ALL
     -- visible_method_alipay_source
     SELECT 'visible_method_alipay_source',
@@ -122,7 +122,7 @@ FROM (
     UNION ALL
     -- visible_method_wxpay_enabled
     SELECT 'visible_method_wxpay_enabled',
-           to_jsonb(COALESCE((SELECT value::boolean FROM settings WHERE key='payment_visible_method_wxpay_enabled'), true))
+           to_jsonb(COALESCE((SELECT NULLIF(value, '')::boolean FROM settings WHERE key='payment_visible_method_wxpay_enabled'), true))
     UNION ALL
     -- visible_method_wxpay_source
     SELECT 'visible_method_wxpay_source',
