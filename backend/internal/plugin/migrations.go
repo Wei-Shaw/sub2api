@@ -125,11 +125,15 @@ func applyOnePluginMigration(ctx context.Context, db *sql.DB, pluginName string,
 
 	if m.NonTransactional {
 		// 不允许在显式事务中执行(例如 CREATE INDEX CONCURRENTLY)。
-		// 直接在连接上执行 SQL,然后单独记录到 plugin_migrations 表。
+		// 必须按 `;` 拆分逐条执行: lib/pq 在 simple-query 协议下会把
+		// 多语句批量包进隐式事务, 触发 "CONCURRENTLY cannot run inside
+		// a transaction block" 错误。
 		// 失败时无法原子回滚,但已应用的语句会被 PostgreSQL 自身保留;
 		// 重新启动时 checksum 校验仍会跳过已记录的迁移。
-		if _, err := db.ExecContext(ctx, content); err != nil {
-			return fmt.Errorf("apply plugin migration %s/%s (non_transactional): %w", pluginName, m.Filename, err)
+		for _, stmt := range splitSQLStatements(content) {
+			if _, err := db.ExecContext(ctx, stmt); err != nil {
+				return fmt.Errorf("apply plugin migration %s/%s (non_transactional): %w", pluginName, m.Filename, err)
+			}
 		}
 		if _, err := db.ExecContext(ctx,
 			`INSERT INTO plugin_migrations (
@@ -228,4 +232,33 @@ func pgPluginAdvisoryUnlock(ctx context.Context, db *sql.DB, lockID int64) error
 		return fmt.Errorf("release plugin migration lock: %w", err)
 	}
 	return nil
+}
+
+// splitSQLStatements 把多语句 SQL 文本按 `;` 拆分为单条语句,
+// 跳过纯空白和纯注释行。供 NonTransactional 迁移使用 ——
+// CREATE INDEX CONCURRENTLY 等 DDL 必须独占连接 (无隐式事务),
+// 而 lib/pq simple-query 协议会把同一 Exec 里的多语句包进隐式事务。
+//
+// 简单实现: 不识别字符串字面量里的 `;` (DDL migrations 极少包含)。
+// 如需更鲁棒的解析,引入 pg_query_go 等专用 SQL 解析器。
+func splitSQLStatements(content string) []string {
+	parts := strings.Split(content, ";")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		// 删除单行注释 -- ... 到行末
+		var cleaned strings.Builder
+		for _, line := range strings.Split(p, "\n") {
+			if idx := strings.Index(line, "--"); idx >= 0 {
+				line = line[:idx]
+			}
+			cleaned.WriteString(line)
+			cleaned.WriteString("\n")
+		}
+		stmt := strings.TrimSpace(cleaned.String())
+		if stmt == "" {
+			continue
+		}
+		out = append(out, stmt)
+	}
+	return out
 }
