@@ -72,7 +72,6 @@ const VIEWS: Record<string, Component> = {
   'PaymentOrdersView.vue': AdminOrdersView,
   'PaymentPlansView.vue': AdminPaymentPlansView,
   'PaymentProvidersView.vue': PaymentProvidersView,
-  'PaymentConfigView.vue': AdminPaymentDashboardView, // TODO: dedicated config view (Phase 3)
   'PaymentSettingsView.vue': PaymentSettingsView,
   // User
   'RechargeView.vue': PaymentView,
