@@ -46,8 +46,13 @@ import WechatPaymentCallbackView from './views/auth/WechatPaymentCallbackView.vu
 import AdminPaymentDashboardView from './views/admin/AdminPaymentDashboardView.vue'
 import AdminOrdersView from './views/admin/AdminOrdersView.vue'
 import AdminPaymentPlansView from './views/admin/AdminPaymentPlansView.vue'
-// Provider CRUD reuses existing PaymentProviderList component as a wrapper view.
-import PaymentProviderList from './components/payment/PaymentProviderList.vue'
+// Provider CRUD wrapper view. PaymentProviderList alone is a child component
+// (requires `providers` prop); the wrapper owns state, fetches, and dialogs.
+import PaymentProvidersView from './views/admin/PaymentProvidersView.vue'
+// Custom settings UI — host PluginSettingsForm mounts this when the manifest
+// declares SettingsComponentPath = "PaymentSettingsView.vue". See plugin.go
+// Manifest() and frontend/src/components/admin/PluginSettingsForm.vue.
+import PaymentSettingsView from './views/admin/PaymentSettingsView.vue'
 
 import { setClient } from './api/client'
 import { setSdk } from './api/sdk'
@@ -66,8 +71,9 @@ const VIEWS: Record<string, Component> = {
   'PaymentDashboardView.vue': AdminPaymentDashboardView,
   'PaymentOrdersView.vue': AdminOrdersView,
   'PaymentPlansView.vue': AdminPaymentPlansView,
-  'PaymentProvidersView.vue': PaymentProviderList,
+  'PaymentProvidersView.vue': PaymentProvidersView,
   'PaymentConfigView.vue': AdminPaymentDashboardView, // TODO: dedicated config view (Phase 3)
+  'PaymentSettingsView.vue': PaymentSettingsView,
   // User
   'RechargeView.vue': PaymentView,
   // Aliases for additional routes the host may surface (Phase 3 wires them):

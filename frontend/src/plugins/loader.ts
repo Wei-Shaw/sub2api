@@ -66,6 +66,12 @@ export interface PluginManifest {
   entry_css_url: string
   /** 'shared' / 'iframe', 默认 'shared'. */
   isolation: 'shared' | 'iframe'
+  /**
+   * 可选: 插件自定义的 settings 视图组件名 (映射到 entry.js 的 VIEWS map).
+   * 非空时, host 的 PluginSettingsForm 会挂载该组件代替默认的 JSON-schema 表单;
+   * 空字符串 / 未设置时走老的 schema 渲染流程.
+   */
+  settings_component_path: string
 }
 
 /** 给 AppSidebar 使用的菜单条目结构,字段命名与现有 NavItem 一致 */
@@ -316,6 +322,7 @@ function normalizeManifest(value: unknown): PluginManifest | null {
     entry_js_url: stringField(value, 'entry_js_url'),
     entry_css_url: stringField(value, 'entry_css_url'),
     isolation,
+    settings_component_path: stringField(value, 'settings_component_path'),
   }
 }
 

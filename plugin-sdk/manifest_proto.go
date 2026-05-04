@@ -15,19 +15,20 @@ func (m *Manifest) toProto() *pb.ManifestResponse {
 	}
 	caps := append([]string(nil), m.Capabilities...)
 	resp := &pb.ManifestResponse{
-		Name:             m.Name,
-		DisplayName:      m.DisplayName,
-		Version:          m.Version,
-		Description:      m.Description,
-		Author:           m.Author,
-		GatewayEndpoints: endpointsToProto(m.GatewayEndpoints),
-		PluginEndpoints:  endpointsToProto(m.PluginEndpoints),
-		MigrationFiles:   append([]string(nil), m.MigrationFiles...),
-		Migrations:       migrationsToProto(m.Migrations),
-		IconSvg:          m.IconSVG,
-		SubscribedEvents: append([]string(nil), m.SubscribedEvents...),
-		OwnedTables:      append([]string(nil), m.OwnedTables...),
-		PublicFlags:      publicFlagsToProto(m.PublicFlags),
+		Name:                  m.Name,
+		DisplayName:           m.DisplayName,
+		Version:               m.Version,
+		Description:           m.Description,
+		Author:                m.Author,
+		GatewayEndpoints:      endpointsToProto(m.GatewayEndpoints),
+		PluginEndpoints:       endpointsToProto(m.PluginEndpoints),
+		MigrationFiles:        append([]string(nil), m.MigrationFiles...),
+		Migrations:            migrationsToProto(m.Migrations),
+		IconSvg:               m.IconSVG,
+		SubscribedEvents:      append([]string(nil), m.SubscribedEvents...),
+		OwnedTables:           append([]string(nil), m.OwnedTables...),
+		PublicFlags:           publicFlagsToProto(m.PublicFlags),
+		SettingsComponentPath: m.SettingsComponentPath,
 	}
 	if m.Frontend != nil {
 		resp.Frontend = m.Frontend.toProto()

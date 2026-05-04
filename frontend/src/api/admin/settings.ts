@@ -25,20 +25,11 @@ export type AuthSourceDefaultsState = Record<
   AuthSourceType,
   AuthSourceDefaultsValue
 >;
-export type PaymentVisibleMethod = "alipay" | "wxpay";
-export type PaymentVisibleMethodSource =
-  | ""
-  | "official_alipay"
-  | "easypay_alipay"
-  | "official_wxpay"
-  | "easypay_wxpay";
-export type WeChatConnectMode = "open" | "mp" | "mobile";
+// PaymentVisibleMethod / PaymentVisibleMethodSource 等支付路由相关类型与
+// 工具函数已随支付配置整体迁移到 plugins/payment/，由插件自身的设置面板
+// 渲染。host 不再导出这些类型。
 
-export interface PaymentVisibleMethodSourceOption {
-  value: PaymentVisibleMethodSource;
-  labelZh: string;
-  labelEn: string;
-}
+export type WeChatConnectMode = "open" | "mp" | "mobile";
 
 export interface WeChatConnectModeOption {
   value: WeChatConnectMode;
@@ -54,59 +45,6 @@ const AUTH_SOURCE_TYPES: AuthSourceType[] = [
 ];
 const AUTH_SOURCE_DEFAULT_BALANCE = 0;
 const AUTH_SOURCE_DEFAULT_CONCURRENCY = 5;
-const PAYMENT_VISIBLE_METHOD_SOURCE_OPTIONS: Record<
-  PaymentVisibleMethod,
-  PaymentVisibleMethodSourceOption[]
-> = {
-  alipay: [
-    { value: "", labelZh: "未配置", labelEn: "Not configured" },
-    {
-      value: "official_alipay",
-      labelZh: "支付宝官方",
-      labelEn: "Official Alipay",
-    },
-    {
-      value: "easypay_alipay",
-      labelZh: "易支付支付宝",
-      labelEn: "EasyPay Alipay",
-    },
-  ],
-  wxpay: [
-    { value: "", labelZh: "未配置", labelEn: "Not configured" },
-    {
-      value: "official_wxpay",
-      labelZh: "微信官方",
-      labelEn: "Official WeChat Pay",
-    },
-    {
-      value: "easypay_wxpay",
-      labelZh: "易支付微信",
-      labelEn: "EasyPay WeChat Pay",
-    },
-  ],
-};
-const PAYMENT_VISIBLE_METHOD_SOURCE_ALIASES: Record<
-  PaymentVisibleMethod,
-  Record<string, PaymentVisibleMethodSource>
-> = {
-  alipay: {
-    official_alipay: "official_alipay",
-    alipay: "official_alipay",
-    alipay_direct: "official_alipay",
-    official: "official_alipay",
-    easypay_alipay: "easypay_alipay",
-    easypay: "easypay_alipay",
-  },
-  wxpay: {
-    official_wxpay: "official_wxpay",
-    wxpay: "official_wxpay",
-    wxpay_direct: "official_wxpay",
-    wechat: "official_wxpay",
-    official: "official_wxpay",
-    easypay_wxpay: "easypay_wxpay",
-    easypay: "easypay_wxpay",
-  },
-};
 const WECHAT_CONNECT_MODE_OPTIONS: WeChatConnectModeOption[] = [
   { value: "open", labelZh: "PC 应用", labelEn: "PC App" },
   {
@@ -210,23 +148,8 @@ export function appendAuthSourceDefaultsToUpdateRequest(
   return payload;
 }
 
-export function getPaymentVisibleMethodSourceOptions(
-  method: PaymentVisibleMethod,
-): PaymentVisibleMethodSourceOption[] {
-  return PAYMENT_VISIBLE_METHOD_SOURCE_OPTIONS[method];
-}
-
-export function normalizePaymentVisibleMethodSource(
-  method: PaymentVisibleMethod,
-  source: unknown,
-): PaymentVisibleMethodSource {
-  if (typeof source !== "string") return "";
-
-  const normalized = source.trim().toLowerCase();
-  if (!normalized) return "";
-
-  return PAYMENT_VISIBLE_METHOD_SOURCE_ALIASES[method][normalized] ?? "";
-}
+// getPaymentVisibleMethodSourceOptions / normalizePaymentVisibleMethodSource
+// 已随类型一并迁移到 plugins/payment 前端包。
 
 export function getWeChatConnectModeOptions(): WeChatConnectModeOption[] {
   return WECHAT_CONNECT_MODE_OPTIONS;

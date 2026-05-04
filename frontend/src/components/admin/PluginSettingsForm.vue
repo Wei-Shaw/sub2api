@@ -1,5 +1,29 @@
 <template>
-  <div class="space-y-4">
+  <!-- Custom component branch: when the plugin manifest declares a
+       settings_component_path, mount that plugin component instead of
+       rendering the generic JSON-schema form. The plugin component owns
+       its own loading / save flow against /admin/plugin-settings/:plugin/:key. -->
+  <div
+    v-if="customComponentPath"
+    ref="customHost"
+    class="plugin-settings-custom-host"
+    data-plugin-settings-custom
+  >
+    <div
+      v-if="customState === 'loading'"
+      class="text-sm text-gray-500 dark:text-gray-400"
+    >
+      {{ t('common.loading') }}
+    </div>
+    <div
+      v-else-if="customState === 'error'"
+      class="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-700 dark:bg-red-900/30 dark:text-red-200"
+    >
+      <p>{{ t('admin.pluginSettings.customComponentError') }}</p>
+      <p v-if="customError" class="mt-1 font-mono">{{ customError }}</p>
+    </div>
+  </div>
+  <div v-else class="space-y-4">
     <!-- Plan C·C2: cycles in if-then-else dependencies cannot be resolved
          in a single evaluator pass; surface a banner and fall back to
          showing every field so the admin still has a way out. -->
@@ -83,8 +107,9 @@
 // the label inside its own slot (strikethrough + badge); the plain branch
 // renders the same label outside any wrapper. The widget body, error and
 // save button are shared between both branches via straight markup.
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, useTemplateRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 
 import {
   pluginSettingsApi,
@@ -98,6 +123,9 @@ import {
   resolveWidget,
   type PropDescriptor,
 } from '@/components/admin/plugin-settings-widgets'
+import { findPluginManifest } from '@/plugins/loader'
+import { loadPluginEntry } from '@/plugins/loader-runtime'
+import { mountPluginAssets, type MountedPluginHandle } from '@/plugins/mount-plugin'
 import { useAppStore } from '@/stores'
 import { extractApiErrorMessage } from '@/utils/apiError'
 
@@ -105,6 +133,8 @@ const props = defineProps<{ info: PluginSettingsSchemaInfo }>()
 const emit = defineEmits<{
   (e: 'updated', key: string, value: unknown): void
 }>()
+
+const route = useRoute()
 
 const { t, locale } = useI18n()
 const appStore = useAppStore()
@@ -192,4 +222,128 @@ async function save(prop: PropDescriptor) {
     saving.value = null
   }
 }
+
+// ---------------------------------------------------------------------------
+// Custom settings component branch
+//
+// When the plugin manifest declares `settings_component_path`, we ask the
+// plugin's already-loaded runtime to mount that component in place of the
+// generic JSON-schema form. The plugin component is responsible for its own
+// load / save flow against /admin/plugin-settings/:plugin/:key (it has the
+// host's apiClient through the SDK injection).
+//
+// We reuse mountPluginAssets() for the plumbing (Vue createApp wired with
+// pinia / i18n, dark-mode mirroring, Teleport portal, error bubbling). The
+// admin modal sits inside an already styled host view, but mountPluginAssets
+// has been the only public entry point into a plugin's VIEWS map — going
+// through it here keeps the contract single-source-of-truth.
+// ---------------------------------------------------------------------------
+
+type CustomState = 'idle' | 'loading' | 'ready' | 'error'
+
+const customHostRef = useTemplateRef<HTMLDivElement>('customHost')
+const customState = ref<CustomState>('idle')
+const customError = ref<string>('')
+let customHandle: MountedPluginHandle | null = null
+let customMountToken = 0
+
+const customComponentPath = computed<string>(() => {
+  const manifest = findPluginManifest(props.info.plugin)
+  return manifest?.settings_component_path || ''
+})
+
+watch(
+  () => [props.info.plugin, customComponentPath.value] as const,
+  () => {
+    void mountCustomComponent()
+  },
+  { immediate: true, flush: 'post' },
+)
+
+onBeforeUnmount(() => {
+  cleanupCustomMount()
+})
+
+async function mountCustomComponent(): Promise<void> {
+  cleanupCustomMount()
+  const componentPath = customComponentPath.value
+  if (!componentPath) {
+    customState.value = 'idle'
+    return
+  }
+  const manifest = findPluginManifest(props.info.plugin)
+  if (!manifest || !manifest.entry_js_url) {
+    customState.value = 'error'
+    customError.value = 'plugin entry_js_url unavailable'
+    return
+  }
+  customState.value = 'loading'
+  customError.value = ''
+  const myToken = ++customMountToken
+
+  const result = await loadPluginEntry({
+    pluginName: manifest.name,
+    entryJsUrl: manifest.entry_js_url,
+    entryCssUrl: manifest.entry_css_url || undefined,
+    isolation: manifest.isolation,
+  })
+  if (myToken !== customMountToken) return
+  if (result.error || !result.assets) {
+    customState.value = 'error'
+    customError.value = result.error?.message ?? 'unknown error'
+    return
+  }
+
+  await Promise.resolve()
+  if (myToken !== customMountToken) return
+
+  const host = customHostRef.value
+  if (!host) {
+    customState.value = 'error'
+    customError.value = 'host element not ready'
+    return
+  }
+
+  try {
+    const handle = await mountPluginAssets({
+      container: host,
+      assets: result.assets,
+      route,
+      componentPath,
+      pluginName: manifest.name,
+      entryCssUrl: manifest.entry_css_url || undefined,
+    })
+    if (myToken !== customMountToken) {
+      handle.unmount()
+      return
+    }
+    customHandle = handle
+    customState.value = 'ready'
+  } catch (err) {
+    customState.value = 'error'
+    customError.value = err instanceof Error ? err.message : String(err)
+  }
+}
+
+function cleanupCustomMount(): void {
+  if (customHandle) {
+    try {
+      customHandle.unmount()
+    } catch {
+      // ignore — the host element will be torn down with the modal
+    }
+    customHandle = null
+  }
+}
 </script>
+
+<style scoped>
+.plugin-settings-custom-host {
+  /* Plugin component mounts into a Shadow Root attached to this host;
+     give it a sane default so the inner Vue app can flex within the
+     admin Settings tab without collapsing to zero height. */
+  display: block;
+  min-height: 8rem;
+  width: 100%;
+}
+</style>

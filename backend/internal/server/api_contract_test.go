@@ -631,11 +631,7 @@ func TestAPIContracts(t *testing.T) {
 					service.SettingKeyOpsRealtimeMonitoringEnabled:   "true",
 					service.SettingKeyOpsQueryModeDefault:            "auto",
 					service.SettingKeyOpsMetricsIntervalSeconds:      "60",
-					service.SettingPaymentVisibleMethodAlipaySource:  service.VisibleMethodSourceEasyPayAlipay,
-					service.SettingPaymentVisibleMethodWxpaySource:   service.VisibleMethodSourceOfficialWechat,
-					service.SettingPaymentVisibleMethodAlipayEnabled: "true",
-					service.SettingPaymentVisibleMethodWxpayEnabled:  "false",
-					"openai_advanced_scheduler_enabled":              "true",
+					"openai_advanced_scheduler_enabled": "true",
 				})
 			},
 			method:     http.MethodGet,
@@ -752,10 +748,6 @@ func TestAPIContracts(t *testing.T) {
 					"enable_fingerprint_unification": true,
 					"enable_metadata_passthrough": false,
 					"web_search_emulation_enabled": false,
-					"payment_visible_method_alipay_source": "easypay_alipay",
-					"payment_visible_method_wxpay_source": "official_wxpay",
-					"payment_visible_method_alipay_enabled": true,
-					"payment_visible_method_wxpay_enabled": false,
 					"openai_advanced_scheduler_enabled": true,
 					"openai_fast_policy_settings": {
 						"rules": [
@@ -946,10 +938,6 @@ func TestAPIContracts(t *testing.T) {
 					"enable_cch_signing": false,
 					"enable_anthropic_cache_ttl_1h_injection": false,
 					"web_search_emulation_enabled": false,
-					"payment_visible_method_alipay_source": "",
-					"payment_visible_method_wxpay_source": "",
-					"payment_visible_method_alipay_enabled": false,
-					"payment_visible_method_wxpay_enabled": false,
 					"openai_advanced_scheduler_enabled": false,
 					"openai_fast_policy_settings": {
 						"rules": [

@@ -223,6 +223,7 @@ import { BaseDialog } from '@sub2api/plugin-sdk'
 import { Select } from '@sub2api/plugin-sdk'
 import type { SelectOption } from '@sub2api/plugin-sdk'
 import ToggleSwitch from './ToggleSwitch.vue'
+import { useAppStore } from '../../stores/host'
 import type { ProviderInstance } from '../../types/payment'
 import type { TypeOption } from './providerConfig'
 import {
@@ -262,6 +263,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const appStore = useAppStore()
 
 // --- Form state ---
 const form = reactive({
@@ -455,9 +457,7 @@ function handleSave() {
 }
 
 function emitValidationError(msg: string) {
-  // Use a custom event or inject appStore — for now use window alert fallback
-  // The parent handles this via the save event validation
-  import('@/stores').then(m => m.useAppStore().showError(msg))
+  appStore.showError(msg)
 }
 
 // --- Public API for parent to call ---

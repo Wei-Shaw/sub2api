@@ -231,10 +231,6 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		EnableCCHSigning:                       settings.EnableCCHSigning,
 		EnableAnthropicCacheTTL1hInjection:     settings.EnableAnthropicCacheTTL1hInjection,
 		WebSearchEmulationEnabled:              settings.WebSearchEmulationEnabled,
-		PaymentVisibleMethodAlipaySource:       settings.PaymentVisibleMethodAlipaySource,
-		PaymentVisibleMethodWxpaySource:        settings.PaymentVisibleMethodWxpaySource,
-		PaymentVisibleMethodAlipayEnabled:      settings.PaymentVisibleMethodAlipayEnabled,
-		PaymentVisibleMethodWxpayEnabled:       settings.PaymentVisibleMethodWxpayEnabled,
 		OpenAIAdvancedSchedulerEnabled:         settings.OpenAIAdvancedSchedulerEnabled,
 		BalanceLowNotifyEnabled:                settings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:              settings.BalanceLowNotifyThreshold,
@@ -447,12 +443,6 @@ type UpdateSettingsRequest struct {
 	EnableCCHSigning                   *bool `json:"enable_cch_signing"`
 	EnableAnthropicCacheTTL1hInjection *bool `json:"enable_anthropic_cache_ttl_1h_injection"`
 
-	// Payment visible method routing
-	PaymentVisibleMethodAlipaySource  *string `json:"payment_visible_method_alipay_source"`
-	PaymentVisibleMethodWxpaySource   *string `json:"payment_visible_method_wxpay_source"`
-	PaymentVisibleMethodAlipayEnabled *bool   `json:"payment_visible_method_alipay_enabled"`
-	PaymentVisibleMethodWxpayEnabled  *bool   `json:"payment_visible_method_wxpay_enabled"`
-
 	// OpenAI account scheduling
 	OpenAIAdvancedSchedulerEnabled *bool `json:"openai_advanced_scheduler_enabled"`
 
@@ -463,7 +453,8 @@ type UpdateSettingsRequest struct {
 	AccountQuotaNotifyEnabled   *bool                   `json:"account_quota_notify_enabled"`
 	AccountQuotaNotifyEmails    *[]dto.NotifyEmailEntry `json:"account_quota_notify_emails"`
 
-	// payment_* 配置已迁移到 plugins/payment/，host 不再处理这些字段。
+	// payment_*（含 payment_visible_method_*）已迁移到 plugins/payment/，
+	// host 不再处理这些字段。
 
 	// Channel Monitor feature switch
 	ChannelMonitorEnabled                *bool `json:"channel_monitor_enabled"`
@@ -1268,30 +1259,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.EnableAnthropicCacheTTL1hInjection
 		}(),
-		PaymentVisibleMethodAlipaySource: func() string {
-			if req.PaymentVisibleMethodAlipaySource != nil {
-				return strings.TrimSpace(*req.PaymentVisibleMethodAlipaySource)
-			}
-			return previousSettings.PaymentVisibleMethodAlipaySource
-		}(),
-		PaymentVisibleMethodWxpaySource: func() string {
-			if req.PaymentVisibleMethodWxpaySource != nil {
-				return strings.TrimSpace(*req.PaymentVisibleMethodWxpaySource)
-			}
-			return previousSettings.PaymentVisibleMethodWxpaySource
-		}(),
-		PaymentVisibleMethodAlipayEnabled: func() bool {
-			if req.PaymentVisibleMethodAlipayEnabled != nil {
-				return *req.PaymentVisibleMethodAlipayEnabled
-			}
-			return previousSettings.PaymentVisibleMethodAlipayEnabled
-		}(),
-		PaymentVisibleMethodWxpayEnabled: func() bool {
-			if req.PaymentVisibleMethodWxpayEnabled != nil {
-				return *req.PaymentVisibleMethodWxpayEnabled
-			}
-			return previousSettings.PaymentVisibleMethodWxpayEnabled
-		}(),
 		OpenAIAdvancedSchedulerEnabled: func() bool {
 			if req.OpenAIAdvancedSchedulerEnabled != nil {
 				return *req.OpenAIAdvancedSchedulerEnabled
@@ -1536,10 +1503,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		EnableMetadataPassthrough:              updatedSettings.EnableMetadataPassthrough,
 		EnableCCHSigning:                       updatedSettings.EnableCCHSigning,
 		EnableAnthropicCacheTTL1hInjection:     updatedSettings.EnableAnthropicCacheTTL1hInjection,
-		PaymentVisibleMethodAlipaySource:       updatedSettings.PaymentVisibleMethodAlipaySource,
-		PaymentVisibleMethodWxpaySource:        updatedSettings.PaymentVisibleMethodWxpaySource,
-		PaymentVisibleMethodAlipayEnabled:      updatedSettings.PaymentVisibleMethodAlipayEnabled,
-		PaymentVisibleMethodWxpayEnabled:       updatedSettings.PaymentVisibleMethodWxpayEnabled,
 		OpenAIAdvancedSchedulerEnabled:         updatedSettings.OpenAIAdvancedSchedulerEnabled,
 		BalanceLowNotifyEnabled:                updatedSettings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:              updatedSettings.BalanceLowNotifyThreshold,
@@ -1883,18 +1846,6 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.EnableAnthropicCacheTTL1hInjection != after.EnableAnthropicCacheTTL1hInjection {
 		changed = append(changed, "enable_anthropic_cache_ttl_1h_injection")
-	}
-	if before.PaymentVisibleMethodAlipaySource != after.PaymentVisibleMethodAlipaySource {
-		changed = append(changed, "payment_visible_method_alipay_source")
-	}
-	if before.PaymentVisibleMethodWxpaySource != after.PaymentVisibleMethodWxpaySource {
-		changed = append(changed, "payment_visible_method_wxpay_source")
-	}
-	if before.PaymentVisibleMethodAlipayEnabled != after.PaymentVisibleMethodAlipayEnabled {
-		changed = append(changed, "payment_visible_method_alipay_enabled")
-	}
-	if before.PaymentVisibleMethodWxpayEnabled != after.PaymentVisibleMethodWxpayEnabled {
-		changed = append(changed, "payment_visible_method_wxpay_enabled")
 	}
 	if before.OpenAIAdvancedSchedulerEnabled != after.OpenAIAdvancedSchedulerEnabled {
 		changed = append(changed, "openai_advanced_scheduler_enabled")

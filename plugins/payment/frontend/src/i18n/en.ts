@@ -131,6 +131,18 @@ export default {
     oneYear: '1 Year',
     perMonth: 'month',
     perYear: 'year',
+    adminSettings: {
+      sectionBasic: 'Basic',
+      sectionLimits: 'Limits',
+      sectionVisible: 'Visible Methods',
+      sectionFees: 'Fees',
+      sourceOfficial: 'Official',
+      sourceEasypay: 'EasyPay',
+      balanceMultiplier: 'Balance Recharge Multiplier',
+      rechargeFeeRate: 'Recharge Fee Rate',
+      rechargeFeeRateHint: 'Decimal between 0 and 1 (e.g. 0.006 = 0.6%)',
+      saveSuccess: 'Settings saved',
+    },
     admin: {
       tabs: {
         overview: 'Overview',

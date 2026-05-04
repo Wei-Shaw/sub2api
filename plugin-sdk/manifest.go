@@ -216,6 +216,17 @@ type Manifest struct {
 	// PublicFlags directly from the in-memory Manifest struct returned by
 	// the plugin runner.
 	PublicFlags []PublicFlagDecl
+
+	// SettingsComponentPath optionally names a Vue component the plugin
+	// frontend exports under the same VIEWS map as route components. When
+	// set, the host's settings dialog mounts this component instead of
+	// rendering the generic JSON-schema form. Empty string = fall back to
+	// the schema renderer.
+	//
+	// The named component receives the current settings values plus a save
+	// callback as props; see frontend/src/components/admin/PluginSettingsForm.vue
+	// for the host-side wiring.
+	SettingsComponentPath string
 }
 
 // PublicFlagSource enumerates where the host should read a public flag's

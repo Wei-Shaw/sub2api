@@ -75,6 +75,13 @@ func buildManifestEntry(inst *PluginInstance) map[string]any {
 		entry["entry_css"] = entryCSS
 		entry["entry_css_url"] = pluginAssetsURLPrefix + inst.Manifest.GetName() + "/" + entryCSS
 	}
+	// settings_component_path: plugins that ship a custom settings UI surface
+	// the component name here so PluginSettingsForm.vue can mount it instead
+	// of the generic JSON-schema form. Empty string means fall back to the
+	// schema renderer.
+	if comp := inst.Manifest.GetSettingsComponentPath(); comp != "" {
+		entry["settings_component_path"] = comp
+	}
 	return entry
 }
 

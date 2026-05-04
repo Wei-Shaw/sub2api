@@ -131,6 +131,18 @@ export default {
     oneYear: '1 年',
     perMonth: '月',
     perYear: '年',
+    adminSettings: {
+      sectionBasic: '基础',
+      sectionLimits: '限额',
+      sectionVisible: '可见方式',
+      sectionFees: '费率',
+      sourceOfficial: '官方',
+      sourceEasypay: '易支付',
+      balanceMultiplier: '余额充值倍率',
+      rechargeFeeRate: '充值手续费率',
+      rechargeFeeRateHint: '0 ~ 1 之间的小数（例如 0.006 = 0.6%）',
+      saveSuccess: '设置已保存',
+    },
     admin: {
       tabs: {
         overview: '概览',

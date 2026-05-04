@@ -1085,16 +1085,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		normalizedWhitelist = []string{}
 	}
 	settings.RegistrationEmailSuffixWhitelist = normalizedWhitelist
-	alipaySource, err := normalizeVisibleMethodSettingSource("alipay", settings.PaymentVisibleMethodAlipaySource, settings.PaymentVisibleMethodAlipayEnabled)
-	if err != nil {
-		return nil, err
-	}
-	wxpaySource, err := normalizeVisibleMethodSettingSource("wxpay", settings.PaymentVisibleMethodWxpaySource, settings.PaymentVisibleMethodWxpayEnabled)
-	if err != nil {
-		return nil, err
-	}
-	settings.PaymentVisibleMethodAlipaySource = alipaySource
-	settings.PaymentVisibleMethodWxpaySource = wxpaySource
+	// payment_visible_method_*（含 alipay/wxpay 的 source/enabled）已迁移到
+	// plugins/payment/，host 不再校验或持久化这些字段。
 	settings.WeChatConnectAppID = strings.TrimSpace(settings.WeChatConnectAppID)
 	settings.WeChatConnectAppSecret = strings.TrimSpace(settings.WeChatConnectAppSecret)
 	settings.WeChatConnectOpenAppID = strings.TrimSpace(firstNonEmpty(settings.WeChatConnectOpenAppID, settings.WeChatConnectAppID))
@@ -1308,10 +1300,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	u.SetBool(SettingKeyEnableMetadataPassthrough, settings.EnableMetadataPassthrough)
 	u.SetBool(SettingKeyEnableCCHSigning, settings.EnableCCHSigning)
 	u.SetBool(SettingKeyEnableAnthropicCacheTTL1hInjection, settings.EnableAnthropicCacheTTL1hInjection)
-	u.SetString(SettingPaymentVisibleMethodAlipaySource, settings.PaymentVisibleMethodAlipaySource)
-	u.SetString(SettingPaymentVisibleMethodWxpaySource, settings.PaymentVisibleMethodWxpaySource)
-	u.SetBool(SettingPaymentVisibleMethodAlipayEnabled, settings.PaymentVisibleMethodAlipayEnabled)
-	u.SetBool(SettingPaymentVisibleMethodWxpayEnabled, settings.PaymentVisibleMethodWxpayEnabled)
+	// payment_visible_method_* 已迁移到 plugins/payment/，host 不再写这些 key。
 	u.SetBool(openAIAdvancedSchedulerSettingKey, settings.OpenAIAdvancedSchedulerEnabled)
 
 	// Balance low notification
@@ -2002,11 +1991,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// 分组隔离（默认不允许未分组 Key 调度）
 		SettingKeyAllowUngroupedKeyScheduling:        "false",
 		SettingKeyEnableAnthropicCacheTTL1hInjection: "false",
-		SettingPaymentVisibleMethodAlipaySource:      "",
-		SettingPaymentVisibleMethodWxpaySource:       "",
-		SettingPaymentVisibleMethodAlipayEnabled:     "false",
-		SettingPaymentVisibleMethodWxpayEnabled:      "false",
-		openAIAdvancedSchedulerSettingKey:            "false",
+		// payment_visible_method_* 默认值由 plugins/payment 自身维护。
+		openAIAdvancedSchedulerSettingKey: "false",
 	}
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -2359,10 +2345,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 			result.WebSearchEmulationEnabled = wsCfg.Enabled && len(wsCfg.Providers) > 0
 		}
 	}
-	result.PaymentVisibleMethodAlipaySource = NormalizeVisibleMethodSource("alipay", settings[SettingPaymentVisibleMethodAlipaySource])
-	result.PaymentVisibleMethodWxpaySource = NormalizeVisibleMethodSource("wxpay", settings[SettingPaymentVisibleMethodWxpaySource])
-	result.PaymentVisibleMethodAlipayEnabled = settings[SettingPaymentVisibleMethodAlipayEnabled] == "true"
-	result.PaymentVisibleMethodWxpayEnabled = settings[SettingPaymentVisibleMethodWxpayEnabled] == "true"
+	// payment_visible_method_* 已迁移到 plugins/payment/，host 不再回填。
 	result.OpenAIAdvancedSchedulerEnabled = settings[openAIAdvancedSchedulerSettingKey] == "true"
 
 	// Balance low notification
@@ -2406,8 +2389,8 @@ func isFalseSettingValue(value string) bool {
 	}
 }
 
-// normalizeVisibleMethodSettingSource / NormalizeVisibleMethodSource /
-// SettingPaymentVisibleMethod* 已迁移到 payment_visible_methods.go。
+// payment_visible_method_* 配置（包括 normalize / setting key / 常量）已随
+// 整个支付模块迁移到 plugins/payment/internal/settings/，host 不再持有。
 
 func parseDefaultSubscriptions(raw string) []DefaultSubscriptionSetting {
 	raw = strings.TrimSpace(raw)

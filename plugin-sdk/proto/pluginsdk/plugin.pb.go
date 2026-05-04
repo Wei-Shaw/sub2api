@@ -496,9 +496,15 @@ type ManifestResponse struct {
 	//
 	// Used by the payment plugin to expose payment_enabled to the SPA's
 	// route guard / sidebar without coupling the core to plugin status.
-	PublicFlags   []*PublicFlagDecl `protobuf:"bytes,49,rep,name=public_flags,json=publicFlags,proto3" json:"public_flags,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	PublicFlags []*PublicFlagDecl `protobuf:"bytes,49,rep,name=public_flags,json=publicFlags,proto3" json:"public_flags,omitempty"`
+	// settings_component_path optionally names a Vue component the plugin
+	// frontend exports under the same VIEWS map as route components. When
+	// non-empty, the host's PluginSettingsForm mounts this component instead
+	// of rendering the generic JSON-schema form. Empty string = fall back
+	// to the schema renderer (legacy behaviour).
+	SettingsComponentPath string `protobuf:"bytes,50,opt,name=settings_component_path,json=settingsComponentPath,proto3" json:"settings_component_path,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
 }
 
 func (x *ManifestResponse) Reset() {
@@ -662,6 +668,13 @@ func (x *ManifestResponse) GetPublicFlags() []*PublicFlagDecl {
 		return x.PublicFlags
 	}
 	return nil
+}
+
+func (x *ManifestResponse) GetSettingsComponentPath() string {
+	if x != nil {
+		return x.SettingsComponentPath
+	}
+	return ""
 }
 
 // PublicFlagDecl is a single entry in ManifestResponse.public_flags.
@@ -1385,7 +1398,7 @@ const file_plugin_proto_rawDesc = "" +
 	"\tFileChunk\x12\x12\n" +
 	"\x04data\x18\x01 \x01(\fR\x04data\x12\x1a\n" +
 	"\bfilename\x18\x02 \x01(\tR\bfilename\x12\x10\n" +
-	"\x03eof\x18\x03 \x01(\bR\x03eof\"\x81\a\n" +
+	"\x03eof\x18\x03 \x01(\bR\x03eof\"\xb9\a\n" +
 	"\x10ManifestResponse\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12!\n" +
 	"\fdisplay_name\x18\x02 \x01(\tR\vdisplayName\x12\x18\n" +
@@ -1408,7 +1421,8 @@ const file_plugin_proto_rawDesc = "" +
 	"\bicon_svg\x18. \x01(\tR\aiconSvg\x12+\n" +
 	"\x11subscribed_events\x18/ \x03(\tR\x10subscribedEvents\x12!\n" +
 	"\fowned_tables\x180 \x03(\tR\vownedTables\x12<\n" +
-	"\fpublic_flags\x181 \x03(\v2\x19.pluginsdk.PublicFlagDeclR\vpublicFlags\"\x96\x01\n" +
+	"\fpublic_flags\x181 \x03(\v2\x19.pluginsdk.PublicFlagDeclR\vpublicFlags\x126\n" +
+	"\x17settings_component_path\x182 \x01(\tR\x15settingsComponentPath\"\x96\x01\n" +
 	"\x0ePublicFlagDecl\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x16\n" +
 	"\x06source\x18\x02 \x01(\tR\x06source\x12!\n" +

@@ -207,6 +207,13 @@ message ManifestResponse {
   // Used by the payment plugin to expose payment_enabled to the SPA's
   // route guard / sidebar without coupling the core to plugin status.
   repeated PublicFlagDecl public_flags = 49;
+
+  // settings_component_path optionally names a Vue component the plugin
+  // frontend exports under the same VIEWS map as route components. When
+  // non-empty, the host's PluginSettingsForm mounts this component instead
+  // of rendering the generic JSON-schema form. Empty string = fall back
+  // to the schema renderer (legacy behaviour).
+  string settings_component_path = 50;
 }
 
 // PublicFlagDecl is a single entry in ManifestResponse.public_flags.

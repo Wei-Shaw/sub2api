@@ -152,17 +152,12 @@ type SystemSettings struct {
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool `json:"web_search_emulation_enabled"`
 
-	// Payment visible method routing
-	PaymentVisibleMethodAlipaySource  string `json:"payment_visible_method_alipay_source"`
-	PaymentVisibleMethodWxpaySource   string `json:"payment_visible_method_wxpay_source"`
-	PaymentVisibleMethodAlipayEnabled bool   `json:"payment_visible_method_alipay_enabled"`
-	PaymentVisibleMethodWxpayEnabled  bool   `json:"payment_visible_method_wxpay_enabled"`
-
 	// OpenAI account scheduling
 	OpenAIAdvancedSchedulerEnabled bool `json:"openai_advanced_scheduler_enabled"`
 
-	// Payment configuration 已迁移到 plugins/payment/ — 字段不再由 host 提供。
-	// payment_visible_method_* 等 host 持有的路由开关仍保留在上方。
+	// Payment configuration（包括 payment_visible_method_*）已全部迁移到
+	// plugins/payment/，host 不再提供这些字段。详见
+	// plugins/payment/internal/settings/settings_schema.json。
 
 	// Balance low notification
 	BalanceLowNotifyEnabled     bool               `json:"balance_low_notify_enabled"`

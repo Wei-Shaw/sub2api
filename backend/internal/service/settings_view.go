@@ -163,12 +163,6 @@ type SystemSettings struct {
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool // 是否启用 web search 模拟
 
-	// Payment visible method routing
-	PaymentVisibleMethodAlipaySource  string
-	PaymentVisibleMethodWxpaySource   string
-	PaymentVisibleMethodAlipayEnabled bool
-	PaymentVisibleMethodWxpayEnabled  bool
-
 	// OpenAI account scheduling
 	OpenAIAdvancedSchedulerEnabled bool
 

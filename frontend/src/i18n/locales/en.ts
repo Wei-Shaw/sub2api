@@ -982,6 +982,7 @@ export default {
       schemaVersion: 'Schema version: {version}',
       schemaVersionMismatch: 'Stored schema version differs from current; some values may be stale.',
       cyclicConditions: 'Cyclic dependency detected in settings; showing all fields.',
+      customComponentError: 'Failed to load the plugin custom settings component.',
     },
     // Plugin Management
     plugins: {

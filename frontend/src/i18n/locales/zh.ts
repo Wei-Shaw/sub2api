@@ -986,6 +986,7 @@ export default {
       schemaVersion: 'Schema 版本：{version}',
       schemaVersionMismatch: '存储值的 schema 版本与当前不一致，部分值可能已过期',
       cyclicConditions: '设置项之间存在循环依赖，已显示全部字段',
+      customComponentError: '插件自定义设置组件加载失败',
     },
     // Plugin Management
     plugins: {
