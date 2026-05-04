@@ -20,6 +20,7 @@ import (
 
 const (
 	paddleAPIBase              = "https://api.paddle.com"
+	paddleSandboxAPIBase       = "https://sandbox-api.paddle.com"
 	paddleHTTPTimeout          = 15 * time.Second
 	paddleMaxResponseSize      = 1 << 20
 	paddleHeaderAuth           = "Authorization"
@@ -38,19 +39,31 @@ type Paddle struct {
 }
 
 type paddleTransactionPayload struct {
-	Items []struct {
-		Quantity int `json:"quantity"`
-		Price    struct {
-			Name        string `json:"name"`
-			Description string `json:"description,omitempty"`
-			UnitPrice   struct {
-				Amount       string `json:"amount"`
-				CurrencyCode string `json:"currency_code"`
-			} `json:"unit_price"`
-			TaxMode string `json:"tax_mode"`
-		} `json:"price"`
-	} `json:"items"`
-	CustomData map[string]any `json:"custom_data,omitempty"`
+	Items      []paddleTransactionItem `json:"items"`
+	CustomData map[string]any          `json:"custom_data,omitempty"`
+}
+
+type paddleTransactionItem struct {
+	Quantity int         `json:"quantity"`
+	Price    paddlePrice `json:"price"`
+}
+
+type paddlePrice struct {
+	Name        string        `json:"name"`
+	Description string        `json:"description,omitempty"`
+	UnitPrice   paddleAmount  `json:"unit_price"`
+	TaxMode     string        `json:"tax_mode"`
+	Product     paddleProduct `json:"product"`
+}
+
+type paddleAmount struct {
+	Amount       string `json:"amount"`
+	CurrencyCode string `json:"currency_code"`
+}
+
+type paddleProduct struct {
+	Name        string `json:"name"`
+	TaxCategory string `json:"tax_category"`
 }
 
 type paddleTransactionEnvelope struct {
@@ -123,37 +136,28 @@ func (p *Paddle) CreatePayment(ctx context.Context, req payment.CreatePaymentReq
 			"providerInstance": p.instanceID,
 		},
 	}
-	payload.Items = []struct {
-		Quantity int `json:"quantity"`
-		Price    struct {
-			Name        string `json:"name"`
-			Description string `json:"description,omitempty"`
-			UnitPrice   struct {
-				Amount       string `json:"amount"`
-				CurrencyCode string `json:"currency_code"`
-			} `json:"unit_price"`
-			TaxMode string `json:"tax_mode"`
-		} `json:"price"`
-	}{
+	payload.Items = []paddleTransactionItem{
 		{
 			Quantity: 1,
-			Price: struct {
-				Name        string `json:"name"`
-				Description string `json:"description,omitempty"`
-				UnitPrice   struct {
-					Amount       string `json:"amount"`
-					CurrencyCode string `json:"currency_code"`
-				} `json:"unit_price"`
-				TaxMode string `json:"tax_mode"`
-			}{
+			Price: paddlePrice{
 				Name:        strings.TrimSpace(req.Subject),
 				Description: strings.TrimSpace(req.Subject),
 				TaxMode:     "account_setting",
+				Product: paddleProduct{
+					Name:        strings.TrimSpace(req.Subject),
+					TaxCategory: "saas",
+				},
 			},
 		},
 	}
 	if payload.Items[0].Price.Name == "" {
 		payload.Items[0].Price.Name = "Sub2API Payment"
+	}
+	if payload.Items[0].Price.Description == "" {
+		payload.Items[0].Price.Description = payload.Items[0].Price.Name
+	}
+	if payload.Items[0].Price.Product.Name == "" {
+		payload.Items[0].Price.Product.Name = payload.Items[0].Price.Name
 	}
 	payload.Items[0].Price.UnitPrice.Amount = minorAmount
 	payload.Items[0].Price.UnitPrice.CurrencyCode = currency
@@ -273,6 +277,9 @@ func (p *Paddle) doRequest(ctx context.Context, method, path string, payload any
 func (p *Paddle) apiBase() string {
 	if base := strings.TrimSpace(p.config["apiBase"]); base != "" {
 		return base
+	}
+	if strings.EqualFold(strings.TrimSpace(p.config["environment"]), "sandbox") {
+		return paddleSandboxAPIBase
 	}
 	return paddleAPIBase
 }

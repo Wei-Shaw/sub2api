@@ -3,8 +3,16 @@
 package provider
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"math"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/Wei-Shaw/sub2api/internal/payment"
 )
 
 func TestPaddleMinorUnitsUseCurrencyPrecision(t *testing.T) {
@@ -52,5 +60,114 @@ func TestPaddleMinorUnitsToDecimalUseCurrencyPrecision(t *testing.T) {
 				t.Fatalf("minorUnitsToDecimal(%q, %q) = %f, want %f", tt.minor, tt.currency, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestPaddleUsesSandboxAPIBaseWhenEnvironmentSandbox(t *testing.T) {
+	p, err := NewPaddle("paddle-1", map[string]string{
+		"apiKey":      "test_key",
+		"environment": " sandbox ",
+	})
+	if err != nil {
+		t.Fatalf("NewPaddle() error = %v", err)
+	}
+	if got := p.apiBase(); got != paddleSandboxAPIBase {
+		t.Fatalf("apiBase() = %q, want %q", got, paddleSandboxAPIBase)
+	}
+}
+
+func TestPaddleAPIBaseOverrideWinsOverEnvironment(t *testing.T) {
+	p, err := NewPaddle("paddle-1", map[string]string{
+		"apiKey":      "test_key",
+		"environment": "sandbox",
+		"apiBase":     "https://example.test/paddle",
+	})
+	if err != nil {
+		t.Fatalf("NewPaddle() error = %v", err)
+	}
+	if got := p.apiBase(); got != "https://example.test/paddle" {
+		t.Fatalf("apiBase() = %q, want apiBase override", got)
+	}
+}
+
+func TestPaddleCreatePaymentSendsHostedCheckoutTransactionPayload(t *testing.T) {
+	var requestedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestedPath = r.URL.Path
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		if got := r.Header.Get(paddleHeaderAuth); got != "Bearer test_key" {
+			t.Fatalf("authorization header = %q, want bearer key", got)
+		}
+		var payload paddleTransactionPayload
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode request payload: %v", err)
+		}
+		if len(payload.Items) != 1 {
+			t.Fatalf("items len = %d, want 1", len(payload.Items))
+		}
+		item := payload.Items[0]
+		if item.Price.UnitPrice.Amount != "5000" || item.Price.UnitPrice.CurrencyCode != "KRW" {
+			t.Fatalf("unit_price = %+v, want 5000 KRW", item.Price.UnitPrice)
+		}
+		if item.Price.Product.Name != "V-Claw top up" || item.Price.Product.TaxCategory != "saas" {
+			t.Fatalf("product = %+v, want V-Claw top up saas", item.Price.Product)
+		}
+		if payload.CustomData["orderId"] != "vclaw_123" {
+			t.Fatalf("custom orderId = %v, want vclaw_123", payload.CustomData["orderId"])
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"id":"txn_123"}}`))
+	}))
+	defer server.Close()
+
+	p, err := NewPaddle("paddle-1", map[string]string{"apiKey": "test_key", "apiBase": server.URL})
+	if err != nil {
+		t.Fatalf("NewPaddle() error = %v", err)
+	}
+	resp, err := p.CreatePayment(context.Background(), payment.CreatePaymentRequest{
+		OrderID:         "vclaw_123",
+		Amount:          "5000",
+		PaymentCurrency: "KRW",
+		PaymentType:     "paddle",
+		Subject:         "V-Claw top up",
+	})
+	if err != nil {
+		t.Fatalf("CreatePayment() error = %v", err)
+	}
+	if requestedPath != "/transactions" {
+		t.Fatalf("requested path = %q, want /transactions", requestedPath)
+	}
+	if resp.TradeNo != "txn_123" || resp.CheckoutID != "txn_123" {
+		t.Fatalf("response = %+v, want txn_123 trade and checkout IDs", resp)
+	}
+}
+
+func TestPaddleCreatePaymentReturnsUpstreamStatusBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"code":"bad_request","detail":"invalid paddle request"}}`))
+	}))
+	defer server.Close()
+
+	p, err := NewPaddle("paddle-1", map[string]string{"apiKey": "test_key", "apiBase": server.URL})
+	if err != nil {
+		t.Fatalf("NewPaddle() error = %v", err)
+	}
+	_, err = p.CreatePayment(context.Background(), payment.CreatePaymentRequest{
+		OrderID:         "vclaw_123",
+		Amount:          "5000",
+		PaymentCurrency: "KRW",
+		PaymentType:     "paddle",
+	})
+	if err == nil {
+		t.Fatal("expected upstream error")
+	}
+	if !strings.Contains(err.Error(), "status=400") || !strings.Contains(err.Error(), "invalid paddle request") {
+		t.Fatalf("error = %q, want upstream status and body", err.Error())
+	}
+	if errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, should not be context canceled", err)
 	}
 }
