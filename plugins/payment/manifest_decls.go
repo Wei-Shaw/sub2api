@@ -111,6 +111,7 @@ var migrationDecls = []pluginsdk.MigrationDecl{
 	{Filename: "009_enforce_out_trade_no_unique.sql", ChecksumSha256: "66ba0ae221454ca8742770428ede26695cc5b065d0119cc9fe33fd2a26a4d38f"},
 	{Filename: "010_enforce_out_trade_no_unique_notx.sql", ChecksumSha256: "39f9323ace96b835c74e8de83ba15b977d4c65609c22eecc4e9afbf382f7667d", NonTransactional: true},
 	{Filename: "011_align_out_trade_no_index_name.sql", ChecksumSha256: "846d179e41eb1218698e2aa312bb280e7ed41c949dd0669ff45fc7e838a643bc"},
+	{Filename: "012_normalize_settings_decimal_format.sql", ChecksumSha256: "725ff9a0d2b101e27fa63a2b3efb3051553777f611149ed4760a9e6b0a7ed1b0"},
 }
 
 // publicFlagDecls exposes plugin-owned flags through the host's
