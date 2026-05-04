@@ -9,8 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment"
+	"github.com/shopspring/decimal"
 	"github.com/smartwalle/alipay/v3"
+
+	"github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment"
 )
 
 func TestIsTradeNotExist(t *testing.T) {
@@ -297,8 +299,8 @@ func TestParseAlipayAmount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if amount != 88 {
-		t.Fatalf("amount = %v, want 88", amount)
+	if !amount.Equal(decimal.NewFromInt(88)) {
+		t.Fatalf("amount = %s, want 88", amount.String())
 	}
 
 	if _, err := parseAlipayAmount("", "not-a-number"); err == nil {

@@ -17,7 +17,7 @@
         <div v-if="order" class="card overflow-hidden">
           <div class="bg-gradient-to-br from-[#635bff] to-[#4f46e5] px-6 py-6 text-center">
             <p class="text-sm font-medium text-indigo-200">{{ t('payment.actualPay') }}</p>
-            <p class="mt-1 text-3xl font-bold text-white">&#165;{{ Number(order.pay_amount ?? 0).toFixed(2) }}</p>
+            <p class="mt-1 text-3xl font-bold text-white">&#165;{{ formatMoney(order.pay_amount) }}</p>
           </div>
         </div>
 
@@ -100,6 +100,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { usePaymentStore } from '../../stores/payment'
 import { paymentAPI } from '../../api/payment'
 import { extractI18nErrorMessage } from '../../utils/apiError'
+import { formatMoney } from '../../utils/decimal'
 import { isMobileDevice } from '../../utils/device'
 import type { PaymentOrder } from '../../types/payment'
 import type { Stripe, StripeElements } from '@stripe/stripe-js'

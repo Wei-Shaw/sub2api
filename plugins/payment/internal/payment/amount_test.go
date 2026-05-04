@@ -3,8 +3,9 @@
 package payment
 
 import (
-	"math"
 	"testing"
+
+	"github.com/shopspring/decimal"
 )
 
 func TestYuanToFen(t *testing.T) {
@@ -77,22 +78,54 @@ func TestFenToYuan(t *testing.T) {
 	tests := []struct {
 		name string
 		fen  int64
-		want float64
+		want string
 	}{
-		{name: "one yuan", fen: 100, want: 1.0},
-		{name: "ten yuan fifty fen", fen: 1050, want: 10.5},
-		{name: "one fen", fen: 1, want: 0.01},
-		{name: "zero", fen: 0, want: 0.0},
-		{name: "large amount", fen: 9999999, want: 99999.99},
-		{name: "negative", fen: -100, want: -1.0},
-		{name: "negative with fen", fen: -1050, want: -10.5},
+		{name: "one yuan", fen: 100, want: "1"},
+		{name: "ten yuan fifty fen", fen: 1050, want: "10.5"},
+		{name: "one fen", fen: 1, want: "0.01"},
+		{name: "zero", fen: 0, want: "0"},
+		{name: "large amount", fen: 9999999, want: "99999.99"},
+		{name: "negative", fen: -100, want: "-1"},
+		{name: "negative with fen", fen: -1050, want: "-10.5"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := FenToYuan(tt.fen)
-			if math.Abs(got-tt.want) > 1e-9 {
-				t.Errorf("FenToYuan(%d) = %f, want %f", tt.fen, got, tt.want)
+			want, err := decimal.NewFromString(tt.want)
+			if err != nil {
+				t.Fatalf("decimal.NewFromString(%q): %v", tt.want, err)
+			}
+			if !got.Equal(want) {
+				t.Errorf("FenToYuan(%d) = %s, want %s", tt.fen, got.String(), want.String())
+			}
+		})
+	}
+}
+
+func TestYuanDecimalToFen(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want int64
+	}{
+		{name: "one yuan", in: "1.00", want: 100},
+		{name: "ten yuan fifty fen", in: "10.50", want: 1050},
+		{name: "one fen", in: "0.01", want: 1},
+		{name: "round half up", in: "1.155", want: 116},
+		{name: "round down", in: "1.154", want: 115},
+		{name: "negative", in: "-1.00", want: -100},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d, err := decimal.NewFromString(tt.in)
+			if err != nil {
+				t.Fatalf("decimal.NewFromString(%q): %v", tt.in, err)
+			}
+			got := YuanDecimalToFen(d)
+			if got != tt.want {
+				t.Errorf("YuanDecimalToFen(%s) = %d, want %d", tt.in, got, tt.want)
 			}
 		})
 	}
@@ -119,10 +152,9 @@ func TestYuanToFenRoundTrip(t *testing.T) {
 			t.Errorf("YuanToFen(%q) = %d, want %d", tc.yuan, fen, tc.fen)
 		}
 		yuan := FenToYuan(fen)
-		// Parse expected yuan back for comparison
 		expectedYuan := FenToYuan(tc.fen)
-		if math.Abs(yuan-expectedYuan) > 1e-9 {
-			t.Errorf("round-trip: FenToYuan(%d) = %f, want %f", fen, yuan, expectedYuan)
+		if !yuan.Equal(expectedYuan) {
+			t.Errorf("round-trip: FenToYuan(%d) = %s, want %s", fen, yuan.String(), expectedYuan.String())
 		}
 	}
 }

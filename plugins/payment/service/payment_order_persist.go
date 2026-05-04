@@ -3,10 +3,11 @@ package service
 import (
 	"context"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/shopspring/decimal"
 
 	pluginent "github.com/Wei-Shaw/sub2api/plugins/payment/ent"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentorder"
@@ -163,8 +164,8 @@ func (s *PaymentService) checkPendingLimit(ctx context.Context, tx *pluginent.Tx
 	return nil
 }
 
-func (s *PaymentService) checkDailyLimit(ctx context.Context, tx *pluginent.Tx, userID int64, amount, limit float64) error {
-	if limit <= 0 {
+func (s *PaymentService) checkDailyLimit(ctx context.Context, tx *pluginent.Tx, userID int64, amount, limit decimal.Decimal) error {
+	if !limit.IsPositive() {
 		return nil
 	}
 	since := psStartOfDayUTC(time.Now())
@@ -177,21 +178,25 @@ func (s *PaymentService) checkDailyLimit(ctx context.Context, tx *pluginent.Tx, 
 		return fmt.Errorf("query daily usage: %w", err)
 	}
 	used := sumDailyUsage(orders)
-	if used+amount > limit {
+	if used.Add(amount).GreaterThan(limit) {
+		remaining := limit.Sub(used)
+		if remaining.IsNegative() {
+			remaining = decimal.Zero
+		}
 		return infraerrors.TooManyRequests("DAILY_LIMIT_EXCEEDED", "daily_limit_exceeded").
-			WithMetadata(map[string]string{"remaining": fmt.Sprintf("%.2f", math.Max(0, limit-used))})
+			WithMetadata(map[string]string{"remaining": remaining.StringFixed(2)})
 	}
 	return nil
 }
 
-func sumDailyUsage(orders []*pluginent.PaymentOrder) float64 {
-	var used float64
+func sumDailyUsage(orders []*pluginent.PaymentOrder) decimal.Decimal {
+	used := decimal.Zero
 	for _, o := range orders {
 		if o.OrderType == payment.OrderTypeBalance {
-			used += o.PayAmount
+			used = used.Add(o.PayAmount)
 			continue
 		}
-		used += o.Amount
+		used = used.Add(o.Amount)
 	}
 	return used
 }

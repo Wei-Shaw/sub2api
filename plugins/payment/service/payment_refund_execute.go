@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -66,12 +65,12 @@ func (s *PaymentService) lockOrderForRefund(ctx context.Context, p *RefundPlan) 
 // crashed after the deduction landed (recorded via REFUND_ROLLBACK_FAILED)
 // are skipped — the historical deduction is the source of truth.
 func (s *PaymentService) applyRefundDeductions(ctx context.Context, p *RefundPlan) error {
-	if p.DeductionType == payment.DeductionTypeBalance && p.BalanceToDeduct > 0 {
+	if p.DeductionType == payment.DeductionTypeBalance && p.BalanceToDeduct.IsPositive() {
 		if s.hasAuditLog(ctx, p.OrderID, auditActionRefundRollbackFailed) {
 			if s.logger != nil {
 				s.logger.Warn("skipping balance deduction on retry (previous rollback failed)", "order_id", p.OrderID)
 			}
-			p.BalanceToDeduct = 0
+			p.BalanceToDeduct = decimal.Zero
 		} else if err := s.deductRefundBalance(ctx, p); err != nil {
 			s.restoreStatus(ctx, p)
 			return err
@@ -97,7 +96,7 @@ func (s *PaymentService) deductRefundBalance(ctx context.Context, p *RefundPlan)
 	}
 	in := pluginsdk.DeductBalanceInput{
 		UserID:         p.Order.UserID,
-		Amount:         decimal.NewFromFloat(p.BalanceToDeduct),
+		Amount:         p.BalanceToDeduct,
 		Reason:         fmt.Sprintf("refund_order:%d", p.Order.ID),
 		IdempotencyKey: fmt.Sprintf("refund:%d", p.Order.ID),
 		Source:         "payment_refund",
@@ -153,7 +152,7 @@ func (s *PaymentService) gwRefund(ctx context.Context, p *RefundPlan) error {
 	_, err = prov.Refund(ctx, payment.RefundRequest{
 		TradeNo: p.Order.PaymentTradeNo,
 		OrderID: p.Order.OutTradeNo,
-		Amount:  strconv.FormatFloat(p.GatewayAmount, 'f', 2, 64),
+		Amount:  p.GatewayAmount.StringFixed(2),
 		Reason:  p.Reason,
 	})
 	return err
@@ -197,7 +196,7 @@ func (s *PaymentService) handleGwFail(ctx context.Context, p *RefundPlan, gErr e
 
 func (s *PaymentService) markRefundOk(ctx context.Context, p *RefundPlan) (*RefundResult, error) {
 	finalStatus := OrderStatusRefunded
-	if p.RefundAmount < p.Order.Amount {
+	if p.RefundAmount.LessThan(p.Order.Amount) {
 		finalStatus = OrderStatusPartiallyRefunded
 	}
 	now := time.Now()
@@ -230,7 +229,7 @@ func (s *PaymentService) markRefundOk(ctx context.Context, p *RefundPlan) (*Refu
 // step succeeded; false leaves the order in REFUND_FAILED so an operator
 // can investigate.
 func (s *PaymentService) RollbackRefund(ctx context.Context, p *RefundPlan, gErr error) bool {
-	if p.DeductionType == payment.DeductionTypeBalance && p.BalanceToDeduct > 0 {
+	if p.DeductionType == payment.DeductionTypeBalance && p.BalanceToDeduct.IsPositive() {
 		if !s.rollbackBalance(ctx, p, gErr) {
 			return false
 		}
@@ -249,7 +248,7 @@ func (s *PaymentService) rollbackBalance(ctx context.Context, p *RefundPlan, gEr
 	}
 	in := pluginsdk.CreditBalanceInput{
 		UserID:         p.Order.UserID,
-		Amount:         decimal.NewFromFloat(p.BalanceToDeduct),
+		Amount:         p.BalanceToDeduct,
 		Reason:         fmt.Sprintf("refund_rollback:%d", p.Order.ID),
 		IdempotencyKey: fmt.Sprintf("refund_rollback:%d", p.Order.ID),
 		Source:         "payment_refund_rollback",

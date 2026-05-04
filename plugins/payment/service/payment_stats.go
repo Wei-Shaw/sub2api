@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	pluginent "github.com/Wei-Shaw/sub2api/plugins/payment/ent"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentorder"
@@ -55,12 +57,13 @@ func (s *PaymentService) GetDashboardStats(ctx context.Context, days int) (*Dash
 }
 
 func computeBasicStats(st *DashboardStats, orders []*pluginent.PaymentOrder, todayStart time.Time) {
-	var totalAmount, todayAmount float64
+	totalAmount := decimal.Zero
+	todayAmount := decimal.Zero
 	var todayCount int
 	for _, o := range orders {
-		totalAmount += o.PayAmount
+		totalAmount = totalAmount.Add(o.PayAmount)
 		if o.PaidAt != nil && !o.PaidAt.Before(todayStart) {
-			todayAmount += o.PayAmount
+			todayAmount = todayAmount.Add(o.PayAmount)
 			todayCount++
 		}
 	}
@@ -69,7 +72,7 @@ func computeBasicStats(st *DashboardStats, orders []*pluginent.PaymentOrder, tod
 	st.TotalCount = len(orders)
 	st.TodayCount = todayCount
 	if st.TotalCount > 0 {
-		st.AvgAmount = roundYuan(totalAmount / float64(st.TotalCount))
+		st.AvgAmount = roundYuan(totalAmount.Div(decimal.NewFromInt(int64(st.TotalCount))))
 	}
 }
 
@@ -85,7 +88,7 @@ func buildDailySeries(orders []*pluginent.PaymentOrder, since time.Time, days in
 			ds = &DailyStats{Date: date}
 			dailyMap[date] = ds
 		}
-		ds.Amount += o.PayAmount
+		ds.Amount = ds.Amount.Add(o.PayAmount)
 		ds.Count++
 	}
 	series := make([]DailyStats, 0, days)
@@ -109,7 +112,7 @@ func buildMethodDistribution(orders []*pluginent.PaymentOrder) []PaymentMethodSt
 			ms = &PaymentMethodStat{Type: o.PaymentType}
 			methodMap[o.PaymentType] = ms
 		}
-		ms.Amount += o.PayAmount
+		ms.Amount = ms.Amount.Add(o.PayAmount)
 		ms.Count++
 	}
 	methods := make([]PaymentMethodStat, 0, len(methodMap))
@@ -128,7 +131,7 @@ func buildTopUsers(orders []*pluginent.PaymentOrder) []TopUserStat {
 			us = &TopUserStat{UserID: o.UserID, Email: o.UserEmail}
 			userMap[o.UserID] = us
 		}
-		us.Amount += o.PayAmount
+		us.Amount = us.Amount.Add(o.PayAmount)
 	}
 	userList := make([]*TopUserStat, 0, len(userMap))
 	for _, us := range userMap {
@@ -136,7 +139,7 @@ func buildTopUsers(orders []*pluginent.PaymentOrder) []TopUserStat {
 		userList = append(userList, us)
 	}
 	sort.Slice(userList, func(i, j int) bool {
-		return userList[i].Amount > userList[j].Amount
+		return userList[i].Amount.GreaterThan(userList[j].Amount)
 	})
 	limit := topUsersLimit
 	if len(userList) < limit {

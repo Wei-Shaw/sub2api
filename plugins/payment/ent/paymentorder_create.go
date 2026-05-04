@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentorder"
+	"github.com/shopspring/decimal"
 )
 
 // PaymentOrderCreate is the builder for creating a PaymentOrder entity.
@@ -53,25 +54,25 @@ func (_c *PaymentOrderCreate) SetNillableUserNotes(v *string) *PaymentOrderCreat
 }
 
 // SetAmount sets the "amount" field.
-func (_c *PaymentOrderCreate) SetAmount(v float64) *PaymentOrderCreate {
+func (_c *PaymentOrderCreate) SetAmount(v decimal.Decimal) *PaymentOrderCreate {
 	_c.mutation.SetAmount(v)
 	return _c
 }
 
 // SetPayAmount sets the "pay_amount" field.
-func (_c *PaymentOrderCreate) SetPayAmount(v float64) *PaymentOrderCreate {
+func (_c *PaymentOrderCreate) SetPayAmount(v decimal.Decimal) *PaymentOrderCreate {
 	_c.mutation.SetPayAmount(v)
 	return _c
 }
 
 // SetFeeRate sets the "fee_rate" field.
-func (_c *PaymentOrderCreate) SetFeeRate(v float64) *PaymentOrderCreate {
+func (_c *PaymentOrderCreate) SetFeeRate(v decimal.Decimal) *PaymentOrderCreate {
 	_c.mutation.SetFeeRate(v)
 	return _c
 }
 
 // SetNillableFeeRate sets the "fee_rate" field if the given value is not nil.
-func (_c *PaymentOrderCreate) SetNillableFeeRate(v *float64) *PaymentOrderCreate {
+func (_c *PaymentOrderCreate) SetNillableFeeRate(v *decimal.Decimal) *PaymentOrderCreate {
 	if v != nil {
 		_c.SetFeeRate(*v)
 	}
@@ -257,13 +258,13 @@ func (_c *PaymentOrderCreate) SetNillableStatus(v *string) *PaymentOrderCreate {
 }
 
 // SetRefundAmount sets the "refund_amount" field.
-func (_c *PaymentOrderCreate) SetRefundAmount(v float64) *PaymentOrderCreate {
+func (_c *PaymentOrderCreate) SetRefundAmount(v decimal.Decimal) *PaymentOrderCreate {
 	_c.mutation.SetRefundAmount(v)
 	return _c
 }
 
 // SetNillableRefundAmount sets the "refund_amount" field if the given value is not nil.
-func (_c *PaymentOrderCreate) SetNillableRefundAmount(v *float64) *PaymentOrderCreate {
+func (_c *PaymentOrderCreate) SetNillableRefundAmount(v *decimal.Decimal) *PaymentOrderCreate {
 	if v != nil {
 		_c.SetRefundAmount(*v)
 	}
@@ -706,15 +707,15 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 		_node.UserNotes = &value
 	}
 	if value, ok := _c.mutation.Amount(); ok {
-		_spec.SetField(paymentorder.FieldAmount, field.TypeFloat64, value)
+		_spec.SetField(paymentorder.FieldAmount, field.TypeOther, value)
 		_node.Amount = value
 	}
 	if value, ok := _c.mutation.PayAmount(); ok {
-		_spec.SetField(paymentorder.FieldPayAmount, field.TypeFloat64, value)
+		_spec.SetField(paymentorder.FieldPayAmount, field.TypeOther, value)
 		_node.PayAmount = value
 	}
 	if value, ok := _c.mutation.FeeRate(); ok {
-		_spec.SetField(paymentorder.FieldFeeRate, field.TypeFloat64, value)
+		_spec.SetField(paymentorder.FieldFeeRate, field.TypeOther, value)
 		_node.FeeRate = value
 	}
 	if value, ok := _c.mutation.RechargeCode(); ok {
@@ -778,7 +779,7 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 		_node.Status = value
 	}
 	if value, ok := _c.mutation.RefundAmount(); ok {
-		_spec.SetField(paymentorder.FieldRefundAmount, field.TypeFloat64, value)
+		_spec.SetField(paymentorder.FieldRefundAmount, field.TypeOther, value)
 		_node.RefundAmount = value
 	}
 	if value, ok := _c.mutation.RefundReason(); ok {

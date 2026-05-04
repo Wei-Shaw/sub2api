@@ -115,16 +115,12 @@
                     {{ t('admin.settings.payment.minAmount') }}
                   </label>
                   <input
-                    :value="form.payment_min_amount || ''"
+                    v-model="form.payment_min_amount"
                     type="number"
                     step="0.01"
                     min="0"
                     class="input"
                     :placeholder="t('admin.settings.payment.noLimit')"
-                    @input="
-                      form.payment_min_amount =
-                        parseFloat(($event.target as HTMLInputElement).value) || 0
-                    "
                   />
                 </div>
                 <div>
@@ -132,16 +128,12 @@
                     {{ t('admin.settings.payment.maxAmount') }}
                   </label>
                   <input
-                    :value="form.payment_max_amount || ''"
+                    v-model="form.payment_max_amount"
                     type="number"
                     step="0.01"
                     min="0"
                     class="input"
                     :placeholder="t('admin.settings.payment.noLimit')"
-                    @input="
-                      form.payment_max_amount =
-                        parseFloat(($event.target as HTMLInputElement).value) || 0
-                    "
                   />
                 </div>
                 <div>
@@ -149,16 +141,12 @@
                     {{ t('admin.settings.payment.dailyLimit') }}
                   </label>
                   <input
-                    :value="form.payment_daily_limit || ''"
+                    v-model="form.payment_daily_limit"
                     type="number"
                     step="0.01"
                     min="0"
                     class="input"
                     :placeholder="t('admin.settings.payment.noLimit')"
-                    @input="
-                      form.payment_daily_limit =
-                        parseFloat(($event.target as HTMLInputElement).value) || 0
-                    "
                   />
                 </div>
                 <div>
@@ -166,15 +154,11 @@
                     {{ t('admin.settings.payment.balanceRechargeMultiplier') }}
                   </label>
                   <input
-                    :value="form.payment_balance_recharge_multiplier || ''"
+                    v-model="form.payment_balance_recharge_multiplier"
                     type="number"
                     step="0.01"
                     min="0.01"
                     class="input"
-                    @input="
-                      form.payment_balance_recharge_multiplier =
-                        parseFloat(($event.target as HTMLInputElement).value) || 1
-                    "
                   />
                   <p class="mt-0.5 text-xs text-gray-400">
                     {{ t('admin.settings.payment.balanceRechargeMultiplierHint') }}
@@ -182,7 +166,7 @@
                   <p class="mt-1 text-xs font-medium text-primary-600 dark:text-primary-400">
                     {{
                       t('admin.settings.payment.balanceRechargePreview', {
-                        usd: (Number(form.payment_balance_recharge_multiplier) || 1).toFixed(2),
+                        usd: balanceMultiplierPreview,
                       })
                     }}
                   </p>
@@ -193,25 +177,12 @@
                   </label>
                   <div class="relative">
                     <input
-                      :value="form.payment_recharge_fee_rate ?? ''"
+                      v-model="form.payment_recharge_fee_rate"
                       type="number"
                       step="0.01"
                       min="0"
                       max="100"
                       class="input pr-8"
-                      @input="
-                        form.payment_recharge_fee_rate = Math.min(
-                          100,
-                          Math.max(
-                            0,
-                            Math.round(
-                              parseFloat(
-                                ($event.target as HTMLInputElement).value || '0',
-                              ) * 100,
-                            ) / 100,
-                          ),
-                        )
-                      "
                     />
                     <span
                       class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400"
@@ -222,12 +193,12 @@
                     {{ t('admin.settings.payment.rechargeFeeRateHint') }}
                   </p>
                   <p
-                    v-if="(Number(form.payment_recharge_fee_rate) || 0) > 0"
+                    v-if="hasFeeRate"
                     class="mt-1 text-xs font-medium text-primary-600 dark:text-primary-400"
                   >
                     {{
                       t('admin.settings.payment.rechargeFeePreview', {
-                        fee: (Number(form.payment_recharge_fee_rate) || 0).toFixed(2),
+                        fee: feeRatePreview,
                       })
                     }}
                   </p>
@@ -479,6 +450,7 @@ import { ConfirmDialog, Select, Toggle } from '@sub2api/plugin-sdk'
 import { useAppStore } from '../../stores/host'
 import { adminPaymentAPI } from '../../api/admin/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '../../utils/apiError'
+import { money, formatMoney } from '../../utils/decimal'
 import type { ProviderInstance } from '../../types/payment'
 
 import AppLayout from '../../components/common/AppLayout.vue'
@@ -490,16 +462,19 @@ const appStore = useAppStore()
 
 // ==================== Form state ====================
 
+// Money fields stay as decimal strings so the user can type "0.01" without
+// JS Number coercion. The Go backend's shopspring/decimal accepts strings
+// directly. Empty string == "no value" for the optional limit fields.
 const form = reactive({
   payment_enabled: false,
-  payment_min_amount: 0,
-  payment_max_amount: 0,
-  payment_daily_limit: 0,
+  payment_min_amount: '',
+  payment_max_amount: '',
+  payment_daily_limit: '',
   payment_order_timeout_minutes: 30,
   payment_max_pending_orders: 3,
   payment_balance_disabled: false,
-  payment_balance_recharge_multiplier: 1,
-  payment_recharge_fee_rate: 0,
+  payment_balance_recharge_multiplier: '1',
+  payment_recharge_fee_rate: '0',
   payment_load_balance_strategy: 'round-robin',
   payment_product_name_prefix: '',
   payment_product_name_suffix: '',
@@ -542,6 +517,15 @@ const allPaymentTypes = computed(() => [
 ])
 
 const hasAnyPaymentTypeEnabled = computed(() => form.payment_enabled_types.length > 0)
+
+const balanceMultiplierPreview = computed(() => {
+  const m = money(form.payment_balance_recharge_multiplier || '1')
+  return formatMoney(m.gt(0) ? m : 1)
+})
+
+const hasFeeRate = computed(() => money(form.payment_recharge_fee_rate).gt(0))
+
+const feeRatePreview = computed(() => formatMoney(form.payment_recharge_fee_rate || '0'))
 
 const providerKeyOptions = computed(() => [
   { value: 'easypay', label: t('admin.settings.payment.providerEasypay') },
@@ -649,14 +633,16 @@ async function loadConfig() {
     const cfg = res.data
     if (!cfg) return
     form.payment_enabled = !!cfg.enabled
-    form.payment_min_amount = cfg.min_amount ?? 0
-    form.payment_max_amount = cfg.max_amount ?? 0
-    form.payment_daily_limit = cfg.daily_limit ?? 0
+    // Backend now returns string decimals; keep "0" as empty so the
+    // placeholder "no limit" text shows up for those optional fields.
+    form.payment_min_amount = cfg.min_amount && money(cfg.min_amount).gt(0) ? String(cfg.min_amount) : ''
+    form.payment_max_amount = cfg.max_amount && money(cfg.max_amount).gt(0) ? String(cfg.max_amount) : ''
+    form.payment_daily_limit = cfg.daily_limit && money(cfg.daily_limit).gt(0) ? String(cfg.daily_limit) : ''
     form.payment_order_timeout_minutes = cfg.order_timeout_minutes ?? 30
     form.payment_max_pending_orders = cfg.max_pending_orders ?? 3
     form.payment_balance_disabled = !!cfg.balance_disabled
-    form.payment_balance_recharge_multiplier = cfg.balance_recharge_multiplier ?? 1
-    form.payment_recharge_fee_rate = cfg.recharge_fee_rate ?? 0
+    form.payment_balance_recharge_multiplier = cfg.balance_recharge_multiplier ? String(cfg.balance_recharge_multiplier) : '1'
+    form.payment_recharge_fee_rate = cfg.recharge_fee_rate ? String(cfg.recharge_fee_rate) : '0'
     form.payment_load_balance_strategy = cfg.load_balance_strategy || 'round-robin'
     form.payment_product_name_prefix = cfg.product_name_prefix || ''
     form.payment_product_name_suffix = cfg.product_name_suffix || ''
@@ -707,14 +693,15 @@ async function saveSettings() {
   try {
     await adminPaymentAPI.updateConfig({
       enabled: form.payment_enabled,
-      min_amount: form.payment_min_amount,
-      max_amount: form.payment_max_amount,
-      daily_limit: form.payment_daily_limit,
+      // Empty string -> "0" so backend treats the field as "no limit".
+      min_amount: form.payment_min_amount === '' ? '0' : formatMoney(form.payment_min_amount),
+      max_amount: form.payment_max_amount === '' ? '0' : formatMoney(form.payment_max_amount),
+      daily_limit: form.payment_daily_limit === '' ? '0' : formatMoney(form.payment_daily_limit),
       order_timeout_minutes: form.payment_order_timeout_minutes,
       max_pending_orders: form.payment_max_pending_orders,
       balance_disabled: form.payment_balance_disabled,
-      balance_recharge_multiplier: form.payment_balance_recharge_multiplier,
-      recharge_fee_rate: form.payment_recharge_fee_rate,
+      balance_recharge_multiplier: formatMoney(form.payment_balance_recharge_multiplier || '1'),
+      recharge_fee_rate: formatMoney(form.payment_recharge_fee_rate || '0'),
       load_balance_strategy: form.payment_load_balance_strategy,
       product_name_prefix: form.payment_product_name_prefix,
       product_name_suffix: form.payment_product_name_suffix,

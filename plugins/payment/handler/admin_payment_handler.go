@@ -6,7 +6,6 @@
 package handler
 
 import (
-	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -223,29 +222,26 @@ type AdminProcessRefundRequest struct {
 	ConfirmNoBalanceDeduction bool `json:"confirm_no_balance_deduction"`
 }
 
-// validateAdminRefundAmount enforces the strict numeric envelope: NaN/Inf
-// rejected, sub-cent precision rejected, negative values rejected. Returns
-// the float64 view used by the service layer plus an error string suitable
-// for a 400 response.
-func validateAdminRefundAmount(amt decimal.Decimal) (float64, string) {
+// validateAdminRefundAmount enforces the strict numeric envelope:
+// negative values rejected, sub-cent precision rejected. Decimal types
+// have no NaN/Inf so the previous IEEE-754 guard is no longer required.
+// Returns the validated decimal (passed straight to the service layer)
+// plus an error string suitable for a 400 response.
+func validateAdminRefundAmount(amt decimal.Decimal) (decimal.Decimal, string) {
 	// Zero is allowed and treated as "full refund" by the service layer.
 	if amt.IsZero() {
-		return 0, ""
+		return decimal.Zero, ""
 	}
 	if amt.IsNegative() {
-		return 0, "amount must be non-negative"
+		return decimal.Zero, "amount must be non-negative"
 	}
 	// Reject sub-cent precision: yuan*100 must be an integer at decimal
 	// precision (no rounding required). decimal.Equal compares values, so
 	// .Truncate(2) catches anything below 0.01 CNY.
 	if !amt.Equal(amt.Truncate(2)) {
-		return 0, "amount cannot have sub-cent precision"
+		return decimal.Zero, "amount cannot have sub-cent precision"
 	}
-	f, _ := amt.Float64()
-	if math.IsNaN(f) || math.IsInf(f, 0) {
-		return 0, "amount must be a finite number"
-	}
-	return f, ""
+	return amt, ""
 }
 
 // ProcessRefund processes a refund for an order (admin).

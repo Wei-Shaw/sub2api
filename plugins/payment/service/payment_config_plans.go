@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+
+	"github.com/shopspring/decimal"
 )
 
 // errPlansDBUnavailable is returned by every plan read when the SDK has
@@ -14,9 +16,13 @@ var errPlansDBUnavailable = errors.New("payment: plan database connection unavai
 
 // scanPlanRow scans a single row from subscription_plans into a SubscriptionPlan.
 // Column order MUST match the SELECT statement in queryPlans.
+//
+// price / original_price come from the host's DECIMAL columns; we read them
+// into decimal.Decimal directly via shopspring/decimal's sql.Scanner so
+// the conversion stays exact.
 func scanPlanRow(rows *sql.Rows) (*SubscriptionPlan, error) {
 	var p SubscriptionPlan
-	var originalPrice sql.NullFloat64
+	var originalPrice decimal.NullDecimal
 	if err := rows.Scan(
 		&p.ID,
 		&p.GroupID,
@@ -34,7 +40,7 @@ func scanPlanRow(rows *sql.Rows) (*SubscriptionPlan, error) {
 		return nil, err
 	}
 	if originalPrice.Valid {
-		v := originalPrice.Float64
+		v := originalPrice.Decimal
 		p.OriginalPrice = &v
 	}
 	return &p, nil
@@ -244,14 +250,14 @@ func joinComma(parts []string) string {
 }
 
 // validatePlanRequired performs the body-level validation of CreatePlan.
-func validatePlanRequired(name string, groupID int64, price float64, validityDays int, validityUnit string, originalPrice *float64) error {
+func validatePlanRequired(name string, groupID int64, price decimal.Decimal, validityDays int, validityUnit string, originalPrice *decimal.Decimal) error {
 	if name == "" {
 		return errors.New("name required")
 	}
 	if groupID == 0 {
 		return errors.New("group_id required")
 	}
-	if price < 0 {
+	if price.IsNegative() {
 		return errors.New("price must be non-negative")
 	}
 	if validityDays <= 0 {
@@ -260,7 +266,7 @@ func validatePlanRequired(name string, groupID int64, price float64, validityDay
 	if validityUnit == "" {
 		return errors.New("validity_unit required")
 	}
-	if originalPrice != nil && *originalPrice < 0 {
+	if originalPrice != nil && originalPrice.IsNegative() {
 		return errors.New("original_price must be non-negative")
 	}
 	return nil
@@ -268,10 +274,10 @@ func validatePlanRequired(name string, groupID int64, price float64, validityDay
 
 // validatePlanPatch is the analogue for UpdatePlan.
 func validatePlanPatch(req UpdatePlanRequest) error {
-	if req.Price != nil && *req.Price < 0 {
+	if req.Price != nil && req.Price.IsNegative() {
 		return errors.New("price must be non-negative")
 	}
-	if req.OriginalPrice != nil && *req.OriginalPrice < 0 {
+	if req.OriginalPrice != nil && req.OriginalPrice.IsNegative() {
 		return errors.New("original_price must be non-negative")
 	}
 	if req.ValidityDays != nil && *req.ValidityDays <= 0 {

@@ -17,6 +17,9 @@ importers:
       chart.js:
         specifier: ^4.5.1
         version: 4.5.1
+      decimal.js:
+        specifier: ^10.6.0
+        version: 10.6.0
       pinia:
         specifier: ^2.1.7
         version: 2.3.1(typescript@5.3.3)(vue@3.5.33(typescript@5.3.3))
@@ -599,6 +602,9 @@ packages:
   decamelize@1.2.0:
     resolution: {integrity: sha512-z2S+W9X73hAUUki+N+9Za2lBlun89zigOyGrsax+KUQ6wKW4ZoWpEYBkGhQjwAjjDCkWxhY0VKEhk8wzY7F5cA==}
     engines: {node: '>=0.10.0'}
+
+  decimal.js@10.6.0:
+    resolution: {integrity: sha512-YpgQiITW3JXGntzdUmyUR1V812Hn8T1YVXhCu+wO3OpS4eU9l4YdD3qjyiKdV6mvV29zapkMeD390UVEf2lkUg==}
 
   delayed-stream@1.0.0:
     resolution: {integrity: sha512-ZySD7Nf91aLB0RxL4KGrKHBXl7Eds1DAmEdcoVawXnLD7SDhpNgtuII2aAkg7a7QS41jxPSZ17p4VdGnMHk3MQ==}
@@ -1576,6 +1582,8 @@ snapshots:
   de-indent@1.0.2: {}
 
   decamelize@1.2.0: {}
+
+  decimal.js@10.6.0: {}
 
   delayed-stream@1.0.0: {}
 

@@ -29,8 +29,8 @@
         </template>
         <template #cell-price="{ value, row }">
           <div class="text-sm">
-            <span class="font-medium text-gray-900 dark:text-white">${{ Number(value ?? 0).toFixed(2) }}</span>
-            <span v-if="row.original_price" class="ml-1 text-xs text-gray-400 line-through">${{ Number(row.original_price ?? 0).toFixed(2) }}</span>
+            <span class="font-medium text-gray-900 dark:text-white">${{ formatMoney(value) }}</span>
+            <span v-if="row.original_price" class="ml-1 text-xs text-gray-400 line-through">${{ formatMoney(row.original_price) }}</span>
           </div>
         </template>
         <template #cell-validity_days="{ value, row }">
@@ -103,8 +103,8 @@
 
         <div><label class="input-label">{{ t('payment.admin.planDescription') }}</label><textarea v-model="planForm.description" rows="2" class="input"></textarea></div>
         <div class="grid grid-cols-3 gap-4">
-          <div><label class="input-label">{{ t('payment.admin.price') }}</label><input v-model.number="planForm.price" type="number" step="0.01" min="0" class="input" required /></div>
-          <div><label class="input-label">{{ t('payment.admin.originalPrice') }}</label><input v-model.number="planForm.original_price" type="number" step="0.01" min="0" class="input" /></div>
+          <div><label class="input-label">{{ t('payment.admin.price') }}</label><input v-model="planForm.price" type="number" step="0.01" min="0" class="input" required /></div>
+          <div><label class="input-label">{{ t('payment.admin.originalPrice') }}</label><input v-model="planForm.original_price" type="number" step="0.01" min="0" class="input" /></div>
           <div><label class="input-label">{{ t('payment.admin.sortOrder') }}</label><input v-model.number="planForm.sort_order" type="number" min="0" class="input" /></div>
         </div>
         <div class="grid grid-cols-2 gap-4">
@@ -151,6 +151,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '../../stores/host'
 import { adminPaymentAPI } from '../../api/admin/payment'
 import { extractApiErrorMessage } from '../../utils/apiError'
+import { formatMoney } from '../../utils/decimal'
 import adminAPI from '../../api/admin'
 import type { SubscriptionPlan } from '../../types/payment'
 import type { AdminGroup } from '../../types/index'
@@ -215,7 +216,10 @@ const showDeletePlanDialog = ref(false)
 const planSaving = ref(false)
 const editingPlan = ref<SubscriptionPlan | null>(null)
 const deletingPlanId = ref<number | null>(null)
-const planForm = reactive({ name: '', group_id: 0, description: '', price: 0, original_price: 0, validity_days: 30, validity_unit: 'days', for_sale: true, sort_order: 0 })
+// price / original_price are bound to <input type="number"> as decimal
+// strings so the backend's shopspring/decimal sees the canonical form
+// without any JS Number round-trip.
+const planForm = reactive({ name: '', group_id: 0, description: '', price: '0', original_price: '0', validity_days: 30, validity_unit: 'days', for_sale: true, sort_order: 0 })
 const planFeaturesText = ref('')
 
 const validityUnitOptions = computed(() => [
@@ -254,10 +258,10 @@ async function loadPlans() {
 function openPlanEdit(plan: SubscriptionPlan | null) {
   editingPlan.value = plan
   if (plan) {
-    Object.assign(planForm, { name: plan.name, group_id: plan.group_id, description: plan.description, price: plan.price, original_price: plan.original_price || 0, validity_days: plan.validity_days, validity_unit: plan.validity_unit || 'days', for_sale: plan.for_sale, sort_order: plan.sort_order })
+    Object.assign(planForm, { name: plan.name, group_id: plan.group_id, description: plan.description, price: String(plan.price ?? '0'), original_price: String(plan.original_price ?? '0'), validity_days: plan.validity_days, validity_unit: plan.validity_unit || 'days', for_sale: plan.for_sale, sort_order: plan.sort_order })
     planFeaturesText.value = (plan.features || []).join('\n')
   } else {
-    Object.assign(planForm, { name: '', group_id: 0, description: '', price: 0, original_price: 0, validity_days: 30, validity_unit: 'days', for_sale: true, sort_order: 0 })
+    Object.assign(planForm, { name: '', group_id: 0, description: '', price: '0', original_price: '0', validity_days: 30, validity_unit: 'days', for_sale: true, sort_order: 0 })
     planFeaturesText.value = ''
   }
   showPlanDialog.value = true
@@ -270,8 +274,9 @@ function buildPlanPayload() {
     name: planForm.name,
     group_id: planForm.group_id,
     description: planForm.description,
-    price: planForm.price,
-    original_price: planForm.original_price || 0,
+    // Send canonical decimal strings; Go shopspring/decimal accepts them.
+    price: formatMoney(planForm.price),
+    original_price: formatMoney(planForm.original_price),
     validity_days: planForm.validity_days,
     validity_unit: planForm.validity_unit,
     for_sale: planForm.for_sale,

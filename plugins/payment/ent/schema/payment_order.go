@@ -9,6 +9,7 @@ import (
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
+	"github.com/shopspring/decimal"
 )
 
 // PaymentOrder holds the schema definition for the PaymentOrder entity.
@@ -41,14 +42,14 @@ func (PaymentOrder) Fields() []ent.Field {
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "text"}),
 
-		// 金额信息
-		field.Float("amount").
+		// 金额信息 — 使用 shopspring/decimal 保证金融级精度,避免 float64 在累加 / 乘除时累积误差
+		field.Other("amount", decimal.Decimal{}).
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}),
-		field.Float("pay_amount").
+		field.Other("pay_amount", decimal.Decimal{}).
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}),
-		field.Float("fee_rate").
+		field.Other("fee_rate", decimal.Decimal{}).
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
-			Default(0),
+			Default(decimal.Zero),
 		field.String("recharge_code").
 			MaxLen(64),
 
@@ -103,10 +104,10 @@ func (PaymentOrder) Fields() []ent.Field {
 			MaxLen(30).
 			Default("PENDING"),
 
-		// 退款信息
-		field.Float("refund_amount").
+		// 退款信息 — 同样用 decimal 保证精度
+		field.Other("refund_amount", decimal.Decimal{}).
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
-			Default(0),
+			Default(decimal.Zero),
 		field.String("refund_reason").
 			Optional().
 			Nillable().

@@ -6,66 +6,71 @@
 package service
 
 import (
-	"math"
-
 	"github.com/shopspring/decimal"
+
+	"github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment"
 )
 
-const defaultBalanceRechargeMultiplier = 1.0
+// defaultBalanceRechargeMultiplier is the multiplier applied to balance
+// recharges when the operator has not configured one. Kept as a
+// decimal so all downstream multiplication paths share one type.
+var defaultBalanceRechargeMultiplier = decimal.NewFromInt(1)
 
-// yuanToFen converts a CNY yuan float64 to fen (int64) using
-// shopspring/decimal so the conversion is exact at the cent boundary.
-// Negative / NaN / Inf inputs return 0 — callers that have not already
-// validated the input should pre-check via isValidProviderAmount.
+// yuanToFen converts a yuan-decimal value to integer fen using the
+// canonical helper exposed by the internal/payment package.
 //
-// This is the canonical helper across the service layer; webhook amount
-// comparison, order event publication, balance fulfillment events and
-// admin refund validation all share it so the rounding rule cannot drift.
-func yuanToFen(yuan float64) int64 {
-	return decimal.NewFromFloat(yuan).Mul(decimal.NewFromInt(100)).Round(0).IntPart()
+// Centralising the conversion here keeps the rounding rule visible
+// across webhook amount comparison, order event publication, balance
+// fulfillment events and admin refund validation; all of those used to
+// share a yuanToFen / yuanToFenInt pair on top of float64. The decimal
+// version no longer needs the float wrapper.
+func yuanToFen(d decimal.Decimal) int64 {
+	return payment.YuanDecimalToFen(d)
 }
 
-// yuanToFenInt is an alias for yuanToFen used at event-publication sites
-// where the call reads more naturally as a one-shot conversion than a
-// reusable helper. Both forms compile to the same code.
-func yuanToFenInt(yuan float64) int64 { return yuanToFen(yuan) }
-
-// roundYuan rounds a CNY value to 2 decimals using shopspring/decimal.
-// The float64 round-trip via InexactFloat64 still defeats exact decimal
-// representation but the *rounding* itself is correct, which is what
-// matters for display / aggregate stats (the alternative
-// math.Round(v*100)/100 is wrong for values like 19.985).
-func roundYuan(v float64) float64 {
-	return decimal.NewFromFloat(v).Round(2).InexactFloat64()
+// roundYuan rounds a CNY decimal to two decimal places.
+//
+// Used by the dashboard / stats helpers when accumulating sums — the
+// underlying field is already decimal(20,2) so the rounding is normally
+// a no-op, but keeping it explicit makes the assembly site obviously
+// safe (the alternative math.Round(v*100)/100 was wrong for values like
+// 19.985).
+func roundYuan(d decimal.Decimal) decimal.Decimal {
+	return d.Round(2)
 }
 
-func normalizeBalanceRechargeMultiplier(multiplier float64) float64 {
-	if math.IsNaN(multiplier) || math.IsInf(multiplier, 0) || multiplier <= 0 {
+// normalizeBalanceRechargeMultiplier rejects non-positive (or
+// uninitialised) multipliers and falls back to 1. Decimal does not
+// support NaN/Inf so the previous math.IsNaN / math.IsInf checks are no
+// longer required.
+func normalizeBalanceRechargeMultiplier(m decimal.Decimal) decimal.Decimal {
+	if !m.IsPositive() {
 		return defaultBalanceRechargeMultiplier
 	}
-	return multiplier
+	return m
 }
 
-func calculateCreditedBalance(paymentAmount, multiplier float64) float64 {
-	return decimal.NewFromFloat(paymentAmount).
-		Mul(decimal.NewFromFloat(normalizeBalanceRechargeMultiplier(multiplier))).
-		Round(2).
-		InexactFloat64()
+// calculateCreditedBalance applies the recharge bonus multiplier to the
+// raw payment amount. Result is rounded to two decimals for storage.
+func calculateCreditedBalance(paymentAmount, multiplier decimal.Decimal) decimal.Decimal {
+	return paymentAmount.Mul(normalizeBalanceRechargeMultiplier(multiplier)).Round(2)
 }
 
-func calculateGatewayRefundAmount(orderAmount, payAmount, refundAmount float64) float64 {
-	if orderAmount <= 0 || payAmount <= 0 || refundAmount <= 0 {
-		return 0
+// calculateGatewayRefundAmount returns the amount the upstream gateway
+// should refund given an (orderAmount, payAmount, refundAmount) triple
+// expressed in CNY. The intuition: the gateway saw payAmount; we owe
+// the user back the gateway-side proportion of the in-system refund
+// amount, with cent precision.
+//
+// When refund == orderAmount at cent precision we short-circuit to
+// payAmount unchanged so a full refund never drops a cent due to
+// reciprocal rounding.
+func calculateGatewayRefundAmount(orderAmount, payAmount, refundAmount decimal.Decimal) decimal.Decimal {
+	if orderAmount.Sign() <= 0 || payAmount.Sign() <= 0 || refundAmount.Sign() <= 0 {
+		return decimal.Zero
 	}
-	// Use decimal-fen comparison to avoid float drift: when the refund
-	// equals the order amount at cent precision the gateway refund is
-	// exactly payAmount (no ratio multiplication).
 	if yuanToFen(refundAmount) == yuanToFen(orderAmount) {
-		return decimal.NewFromFloat(payAmount).Round(2).InexactFloat64()
+		return payAmount.Round(2)
 	}
-	return decimal.NewFromFloat(payAmount).
-		Mul(decimal.NewFromFloat(refundAmount)).
-		Div(decimal.NewFromFloat(orderAmount)).
-		Round(2).
-		InexactFloat64()
+	return payAmount.Mul(refundAmount).Div(orderAmount).Round(2)
 }

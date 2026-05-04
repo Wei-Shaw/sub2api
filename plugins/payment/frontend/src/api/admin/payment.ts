@@ -18,18 +18,26 @@ import type { BasePaginationResponse } from '../../types'
 
 const BASE = '/plugin/payment/admin'
 
-/** Admin-facing payment config returned by GET /admin/config */
+/**
+ * Admin-facing payment config returned by GET /admin/config.
+ *
+ * Money fields (min_amount / max_amount / daily_limit /
+ * balance_recharge_multiplier / recharge_fee_rate) are strings because the
+ * Go backend serializes shopspring/decimal as a quoted JSON string. The
+ * settings page binds these directly to <input type="number"> via string
+ * v-model so they never round-trip through JS Number.
+ */
 export interface AdminPaymentConfig {
   enabled: boolean
-  min_amount: number
-  max_amount: number
-  daily_limit: number
+  min_amount: string
+  max_amount: string
+  daily_limit: string
   order_timeout_minutes: number
   max_pending_orders: number
   enabled_payment_types: string[]
   balance_disabled: boolean
-  balance_recharge_multiplier: number
-  recharge_fee_rate: number
+  balance_recharge_multiplier: string
+  recharge_fee_rate: string
   load_balance_strategy: string
   product_name_prefix: string
   product_name_suffix: string
@@ -51,15 +59,15 @@ export interface AdminPaymentConfig {
 /** Fields accepted by PUT /admin/config (all optional). */
 export interface UpdatePaymentConfigRequest {
   enabled?: boolean
-  min_amount?: number
-  max_amount?: number
-  daily_limit?: number
+  min_amount?: string
+  max_amount?: string
+  daily_limit?: string
   order_timeout_minutes?: number
   max_pending_orders?: number
   enabled_payment_types?: string[]
   balance_disabled?: boolean
-  balance_recharge_multiplier?: number
-  recharge_fee_rate?: number
+  balance_recharge_multiplier?: string
+  recharge_fee_rate?: string
   load_balance_strategy?: string
   product_name_prefix?: string
   product_name_suffix?: string
@@ -119,7 +127,7 @@ export const adminPaymentAPI = {
   },
   refundOrder(
     id: number,
-    data: { amount: number; reason: string; deduct_balance?: boolean; force?: boolean },
+    data: { amount: string; reason: string; deduct_balance?: boolean; force?: boolean },
   ) {
     return getClient().post(`${BASE}/orders/${id}/refund`, data)
   },

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	dbent "github.com/Wei-Shaw/sub2api/plugins/payment/ent"
@@ -73,19 +74,19 @@ func (h *PaymentHandler) GetPaymentConfig(c *gin.Context) {
 // planWithPlatform mirrors the legacy /plans response shape, enriched
 // with the group's platform string used by frontend color coding.
 type planWithPlatform struct {
-	ID            int64    `json:"id"`
-	GroupID       int64    `json:"group_id"`
-	GroupPlatform string   `json:"group_platform"`
-	Name          string   `json:"name"`
-	Description   string   `json:"description"`
-	Price         float64  `json:"price"`
-	OriginalPrice *float64 `json:"original_price,omitempty"`
-	ValidityDays  int      `json:"validity_days"`
-	ValidityUnit  string   `json:"validity_unit"`
-	Features      string   `json:"features"`
-	ProductName   string   `json:"product_name"`
-	ForSale       bool     `json:"for_sale"`
-	SortOrder     int      `json:"sort_order"`
+	ID            int64            `json:"id"`
+	GroupID       int64            `json:"group_id"`
+	GroupPlatform string           `json:"group_platform"`
+	Name          string           `json:"name"`
+	Description   string           `json:"description"`
+	Price         decimal.Decimal  `json:"price"`
+	OriginalPrice *decimal.Decimal `json:"original_price,omitempty"`
+	ValidityDays  int              `json:"validity_days"`
+	ValidityUnit  string           `json:"validity_unit"`
+	Features      string           `json:"features"`
+	ProductName   string           `json:"product_name"`
+	ForSale       bool             `json:"for_sale"`
+	SortOrder     int              `json:"sort_order"`
 }
 
 // GetPlans returns subscription plans available for sale.
@@ -153,30 +154,30 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 
 type checkoutInfoResponse struct {
 	Methods                   map[string]service.MethodLimits `json:"methods"`
-	GlobalMin                 float64                         `json:"global_min"`
-	GlobalMax                 float64                         `json:"global_max"`
+	GlobalMin                 decimal.Decimal                 `json:"global_min"`
+	GlobalMax                 decimal.Decimal                 `json:"global_max"`
 	Plans                     []checkoutPlan                  `json:"plans"`
 	BalanceDisabled           bool                            `json:"balance_disabled"`
-	BalanceRechargeMultiplier float64                         `json:"balance_recharge_multiplier"`
-	RechargeFeeRate           float64                         `json:"recharge_fee_rate"`
+	BalanceRechargeMultiplier decimal.Decimal                 `json:"balance_recharge_multiplier"`
+	RechargeFeeRate           decimal.Decimal                 `json:"recharge_fee_rate"`
 	HelpText                  string                          `json:"help_text"`
 	HelpImageURL              string                          `json:"help_image_url"`
 	StripePublishableKey      string                          `json:"stripe_publishable_key"`
 }
 
 type checkoutPlan struct {
-	ID            int64    `json:"id"`
-	GroupID       int64    `json:"group_id"`
-	GroupPlatform string   `json:"group_platform"`
-	GroupName     string   `json:"group_name"`
-	Name          string   `json:"name"`
-	Description   string   `json:"description"`
-	Price         float64  `json:"price"`
-	OriginalPrice *float64 `json:"original_price,omitempty"`
-	ValidityDays  int      `json:"validity_days"`
-	ValidityUnit  string   `json:"validity_unit"`
-	Features      []string `json:"features"`
-	ProductName   string   `json:"product_name"`
+	ID            int64            `json:"id"`
+	GroupID       int64            `json:"group_id"`
+	GroupPlatform string           `json:"group_platform"`
+	GroupName     string           `json:"group_name"`
+	Name          string           `json:"name"`
+	Description   string           `json:"description"`
+	Price         decimal.Decimal  `json:"price"`
+	OriginalPrice *decimal.Decimal `json:"original_price,omitempty"`
+	ValidityDays  int              `json:"validity_days"`
+	ValidityUnit  string           `json:"validity_unit"`
+	Features      []string         `json:"features"`
+	ProductName   string           `json:"product_name"`
 }
 
 // parseFeatures splits a newline-separated features string into a slice.
@@ -207,16 +208,20 @@ func (h *PaymentHandler) GetLimits(c *gin.Context) {
 }
 
 // CreateOrderRequest is the request body for creating a payment order.
+//
+// Amount accepts both JSON numbers and quoted decimal strings; binding via
+// shopspring/decimal preserves cent precision through the request boundary
+// so the validator and pricing layer never see a float64.
 type CreateOrderRequest struct {
-	Amount            float64 `json:"amount"`
-	PaymentType       string  `json:"payment_type" binding:"required"`
-	OpenID            string  `json:"openid"`
-	WechatResumeToken string  `json:"wechat_resume_token"`
-	ReturnURL         string  `json:"return_url"`
-	PaymentSource     string  `json:"payment_source"`
-	OrderType         string  `json:"order_type"`
-	PlanID            int64   `json:"plan_id"`
-	IsMobile          *bool   `json:"is_mobile,omitempty"`
+	Amount            decimal.Decimal `json:"amount"`
+	PaymentType       string          `json:"payment_type" binding:"required"`
+	OpenID            string          `json:"openid"`
+	WechatResumeToken string          `json:"wechat_resume_token"`
+	ReturnURL         string          `json:"return_url"`
+	PaymentSource     string          `json:"payment_source"`
+	OrderType         string          `json:"order_type"`
+	PlanID            int64           `json:"plan_id"`
+	IsMobile          *bool           `json:"is_mobile,omitempty"`
 }
 
 // CreateOrder creates a new payment order for the authenticated user.
@@ -292,8 +297,8 @@ func applyWeChatPaymentResumeClaims(req *CreateOrderRequest, claims *service.WeC
 	req.OpenID = openid
 
 	if strings.TrimSpace(claims.Amount) != "" {
-		amount, err := strconv.ParseFloat(strings.TrimSpace(claims.Amount), 64)
-		if err != nil || amount <= 0 {
+		amount, err := decimal.NewFromString(strings.TrimSpace(claims.Amount))
+		if err != nil || !amount.IsPositive() {
 			return infraerrors.BadRequest("INVALID_WECHAT_PAYMENT_RESUME_TOKEN", fmt.Sprintf("invalid resume amount: %s", claims.Amount))
 		}
 		req.Amount = amount
@@ -445,24 +450,24 @@ func (h *PaymentHandler) VerifyOrder(c *gin.Context) {
 
 // PublicOrderResult is the limited order info returned by the public verify endpoint.
 type PublicOrderResult struct {
-	ID                  int64      `json:"id"`
-	OutTradeNo          string     `json:"out_trade_no"`
-	Amount              float64    `json:"amount"`
-	PayAmount           float64    `json:"pay_amount"`
-	FeeRate             float64    `json:"fee_rate"`
-	PaymentType         string     `json:"payment_type"`
-	OrderType           string     `json:"order_type"`
-	Status              string     `json:"status"`
-	CreatedAt           time.Time  `json:"created_at"`
-	ExpiresAt           time.Time  `json:"expires_at"`
-	PaidAt              *time.Time `json:"paid_at,omitempty"`
-	CompletedAt         *time.Time `json:"completed_at,omitempty"`
-	RefundAmount        float64    `json:"refund_amount"`
-	RefundReason        *string    `json:"refund_reason,omitempty"`
-	RefundRequestedAt   *time.Time `json:"refund_requested_at,omitempty"`
-	RefundRequestedBy   *string    `json:"refund_requested_by,omitempty"`
-	RefundRequestReason *string    `json:"refund_request_reason,omitempty"`
-	PlanID              *int64     `json:"plan_id,omitempty"`
+	ID                  int64           `json:"id"`
+	OutTradeNo          string          `json:"out_trade_no"`
+	Amount              decimal.Decimal `json:"amount"`
+	PayAmount           decimal.Decimal `json:"pay_amount"`
+	FeeRate             decimal.Decimal `json:"fee_rate"`
+	PaymentType         string          `json:"payment_type"`
+	OrderType           string          `json:"order_type"`
+	Status              string          `json:"status"`
+	CreatedAt           time.Time       `json:"created_at"`
+	ExpiresAt           time.Time       `json:"expires_at"`
+	PaidAt              *time.Time      `json:"paid_at,omitempty"`
+	CompletedAt         *time.Time      `json:"completed_at,omitempty"`
+	RefundAmount        decimal.Decimal `json:"refund_amount"`
+	RefundReason        *string         `json:"refund_reason,omitempty"`
+	RefundRequestedAt   *time.Time      `json:"refund_requested_at,omitempty"`
+	RefundRequestedBy   *string         `json:"refund_requested_by,omitempty"`
+	RefundRequestReason *string         `json:"refund_request_reason,omitempty"`
+	PlanID              *int64          `json:"plan_id,omitempty"`
 }
 
 func buildPublicOrderResult(order *dbent.PaymentOrder) PublicOrderResult {

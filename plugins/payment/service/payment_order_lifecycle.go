@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/shopspring/decimal"
 
 	pluginent "github.com/Wei-Shaw/sub2api/plugins/payment/ent"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentauditlog"
@@ -483,15 +484,9 @@ func (s *PaymentService) createProviderFromInstance(ctx context.Context, inst *p
 	return prov, nil
 }
 
-// isValidProviderAmount filters out NaN / Inf / non-positive values
-// returned by buggy provider integrations; the validator is shared with
-// the webhook fulfillment path.
-func isValidProviderAmount(amount float64) bool {
-	if amount <= 0 {
-		return false
-	}
-	if amount != amount { // NaN
-		return false
-	}
-	return !math.IsInf(amount, 0)
+// isValidProviderAmount filters out non-positive values returned by
+// buggy provider integrations. decimal.Decimal carries no NaN/Inf so
+// the IEEE-754 guards from the float64 era are no longer required.
+func isValidProviderAmount(amount decimal.Decimal) bool {
+	return amount.IsPositive()
 }

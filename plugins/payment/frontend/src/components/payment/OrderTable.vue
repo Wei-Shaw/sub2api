@@ -14,12 +14,12 @@
     </template>
     <template #cell-pay_amount="{ value, row }">
       <div class="text-sm">
-        <span class="font-medium text-gray-900 dark:text-white">¥{{ Number(value ?? 0).toFixed(2) }}</span>
-        <span v-if="row.fee_rate > 0" class="ml-1 text-xs text-gray-400" :title="t('payment.orders.fee') + ': ' + row.fee_rate + '%'">
+        <span class="font-medium text-gray-900 dark:text-white">¥{{ formatMoney(value) }}</span>
+        <span v-if="hasFeeRate(row.fee_rate)" class="ml-1 text-xs text-gray-400" :title="t('payment.orders.fee') + ': ' + row.fee_rate + '%'">
           ({{ t('payment.orders.fee') }} {{ row.fee_rate }}%)
         </span>
         <div v-if="row.amount !== row.pay_amount" class="text-xs text-gray-500">
-          {{ t('payment.orders.creditedAmount') }}: {{ row.order_type === 'balance' ? '$' : '¥' }}{{ Number(row.amount ?? 0).toFixed(2) }}
+          {{ t('payment.orders.creditedAmount') }}: {{ row.order_type === 'balance' ? '$' : '¥' }}{{ formatMoney(row.amount) }}
         </div>
       </div>
     </template>
@@ -45,6 +45,11 @@ import type { PaymentOrder } from '../../types/payment'
 import type { Column } from '@sub2api/plugin-sdk'
 import { DataTable } from '@sub2api/plugin-sdk'
 import OrderStatusBadge from './OrderStatusBadge.vue'
+import { money, formatMoney } from '../../utils/decimal'
+
+function hasFeeRate(rate: string | number | null | undefined): boolean {
+  return money(rate).gt(0)
+}
 
 const { t } = useI18n()
 

@@ -64,14 +64,11 @@
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@sub2api/plugin-sdk'
 import type { DashboardStats } from '../../../types/payment'
+import { formatMoney } from '../../../utils/decimal'
 
 const { t } = useI18n()
 
 defineProps<{
   stats: DashboardStats
 }>()
-
-function formatMoney(value: number): string {
-  return Number(value ?? 0).toFixed(2)
-}
 </script>

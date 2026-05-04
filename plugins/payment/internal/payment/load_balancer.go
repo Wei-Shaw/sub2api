@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	dbent "github.com/Wei-Shaw/sub2api/plugins/payment/ent"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentproviderinstance"
@@ -23,10 +25,14 @@ const (
 )
 
 // ChannelLimits holds limits for a single payment channel within a provider instance.
+//
+// All amounts are decimal so the limit comparison runs at full precision —
+// the previous float64 form silently allowed sub-cent overshoot on values
+// like 100.005.
 type ChannelLimits struct {
-	DailyLimit float64 `json:"dailyLimit,omitempty"`
-	SingleMin  float64 `json:"singleMin,omitempty"`
-	SingleMax  float64 `json:"singleMax,omitempty"`
+	DailyLimit decimal.Decimal `json:"dailyLimit,omitempty"`
+	SingleMin  decimal.Decimal `json:"singleMin,omitempty"`
+	SingleMax  decimal.Decimal `json:"singleMax,omitempty"`
 }
 
 // InstanceLimits holds per-channel limits for a provider instance (JSON).
@@ -35,7 +41,7 @@ type InstanceLimits map[string]ChannelLimits
 // LoadBalancer selects a provider instance for a given payment type.
 type LoadBalancer interface {
 	GetInstanceConfig(ctx context.Context, instanceID int64) (map[string]string, error)
-	SelectInstance(ctx context.Context, providerKey string, paymentType PaymentType, strategy Strategy, orderAmount float64) (*InstanceSelection, error)
+	SelectInstance(ctx context.Context, providerKey string, paymentType PaymentType, strategy Strategy, orderAmount decimal.Decimal) (*InstanceSelection, error)
 }
 
 // DefaultLoadBalancer implements LoadBalancer using database queries.
@@ -73,7 +79,7 @@ func wxpayJSAPIAppIDFromContext(ctx context.Context) string {
 // instanceCandidate pairs an instance with its pre-fetched daily usage.
 type instanceCandidate struct {
 	inst      *dbent.PaymentProviderInstance
-	dailyUsed float64 // includes PENDING orders
+	dailyUsed decimal.Decimal // includes PENDING orders
 }
 
 // SelectInstance picks an enabled instance for the given provider key and payment type.
@@ -89,7 +95,7 @@ func (lb *DefaultLoadBalancer) SelectInstance(
 	providerKey string,
 	paymentType PaymentType,
 	strategy Strategy,
-	orderAmount float64,
+	orderAmount decimal.Decimal,
 ) (*InstanceSelection, error) {
 	// Step 1: query enabled instances matching payment type.
 	instances, err := lb.queryEnabledInstances(ctx, providerKey, paymentType)
@@ -105,7 +111,7 @@ func (lb *DefaultLoadBalancer) SelectInstance(
 	if len(available) == 0 {
 		slog.Warn("all instances exceeded limits, using full candidate list",
 			"provider", providerKey, "payment_type", paymentType,
-			"order_amount", orderAmount, "count", len(candidates))
+			"order_amount", orderAmount.String(), "count", len(candidates))
 		available = candidates
 	}
 
@@ -179,9 +185,14 @@ func (lb *DefaultLoadBalancer) attachDailyUsage(
 	}
 
 	// Batch query: sum pay_amount grouped by provider_instance_id.
+	//
+	// The Postgres SUM(decimal) result comes back as a numeric string;
+	// we scan it via decimal.Decimal so the running total stays exact
+	// no matter how many orders contribute. Float64 used to drift on
+	// large daily totals.
 	type row struct {
-		InstanceID string  `json:"provider_instance_id"`
-		Sum        float64 `json:"sum"`
+		InstanceID string          `json:"provider_instance_id"`
+		Sum        decimal.Decimal `json:"sum"`
 	}
 	var rows []row
 	err := lb.db.PaymentOrder.Query().
@@ -200,7 +211,7 @@ func (lb *DefaultLoadBalancer) attachDailyUsage(
 		slog.Warn("batch daily usage query failed, treating all as zero", "error", err)
 	}
 
-	usageMap := make(map[string]float64, len(rows))
+	usageMap := make(map[string]decimal.Decimal, len(rows))
 	for _, r := range rows {
 		usageMap[r.InstanceID] = r.Sum
 	}
@@ -218,25 +229,25 @@ func (lb *DefaultLoadBalancer) attachDailyUsage(
 // filterByLimits removes instances that cannot accommodate the order:
 //   - orderAmount outside single-transaction [min, max]
 //   - daily remaining capacity (limit - used) < orderAmount
-func filterByLimits(candidates []instanceCandidate, paymentType PaymentType, orderAmount float64) []instanceCandidate {
+func filterByLimits(candidates []instanceCandidate, paymentType PaymentType, orderAmount decimal.Decimal) []instanceCandidate {
 	var result []instanceCandidate
 	for _, c := range candidates {
 		cl := getInstanceChannelLimits(c.inst, paymentType)
 
-		if cl.SingleMin > 0 && orderAmount < cl.SingleMin {
+		if cl.SingleMin.IsPositive() && orderAmount.LessThan(cl.SingleMin) {
 			slog.Info("order below instance single min, skipping",
-				"instance_id", c.inst.ID, "order", orderAmount, "min", cl.SingleMin)
+				"instance_id", c.inst.ID, "order", orderAmount.String(), "min", cl.SingleMin.String())
 			continue
 		}
-		if cl.SingleMax > 0 && orderAmount > cl.SingleMax {
+		if cl.SingleMax.IsPositive() && orderAmount.GreaterThan(cl.SingleMax) {
 			slog.Info("order above instance single max, skipping",
-				"instance_id", c.inst.ID, "order", orderAmount, "max", cl.SingleMax)
+				"instance_id", c.inst.ID, "order", orderAmount.String(), "max", cl.SingleMax.String())
 			continue
 		}
-		if cl.DailyLimit > 0 && c.dailyUsed+orderAmount > cl.DailyLimit {
+		if cl.DailyLimit.IsPositive() && c.dailyUsed.Add(orderAmount).GreaterThan(cl.DailyLimit) {
 			slog.Info("instance daily remaining insufficient, skipping",
-				"instance_id", c.inst.ID, "used", c.dailyUsed,
-				"order", orderAmount, "limit", cl.DailyLimit)
+				"instance_id", c.inst.ID, "used", c.dailyUsed.String(),
+				"order", orderAmount.String(), "limit", cl.DailyLimit.String())
 			continue
 		}
 
@@ -285,7 +296,7 @@ func (lb *DefaultLoadBalancer) pickByStrategy(candidates []instanceCandidate, st
 func pickLeastAmount(candidates []instanceCandidate) instanceCandidate {
 	best := candidates[0]
 	for _, c := range candidates[1:] {
-		if c.dailyUsed < best.dailyUsed {
+		if c.dailyUsed.LessThan(best.dailyUsed) {
 			best = c
 		}
 	}
@@ -347,11 +358,11 @@ func (lb *DefaultLoadBalancer) decryptConfig(stored string) (map[string]string, 
 }
 
 // GetInstanceDailyAmount returns the total completed order amount for an instance today.
-func (lb *DefaultLoadBalancer) GetInstanceDailyAmount(ctx context.Context, instanceID string) (float64, error) {
+func (lb *DefaultLoadBalancer) GetInstanceDailyAmount(ctx context.Context, instanceID string) (decimal.Decimal, error) {
 	todayStart := startOfDay(time.Now())
 
 	var result []struct {
-		Sum float64 `json:"sum"`
+		Sum decimal.Decimal `json:"sum"`
 	}
 	err := lb.db.PaymentOrder.Query().
 		Where(
@@ -362,12 +373,12 @@ func (lb *DefaultLoadBalancer) GetInstanceDailyAmount(ctx context.Context, insta
 		Aggregate(dbent.Sum(paymentorder.FieldPayAmount)).
 		Scan(ctx, &result)
 	if err != nil {
-		return 0, fmt.Errorf("query daily amount: %w", err)
+		return decimal.Zero, fmt.Errorf("query daily amount: %w", err)
 	}
 	if len(result) > 0 {
 		return result[0].Sum, nil
 	}
-	return 0, nil
+	return decimal.Zero, nil
 }
 
 func startOfDay(t time.Time) time.Time {

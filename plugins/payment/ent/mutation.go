@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/predicate"
+	"github.com/shopspring/decimal"
 )
 
 const (
@@ -584,12 +585,9 @@ type PaymentOrderMutation struct {
 	user_email               *string
 	user_name                *string
 	user_notes               *string
-	amount                   *float64
-	addamount                *float64
-	pay_amount               *float64
-	addpay_amount            *float64
-	fee_rate                 *float64
-	addfee_rate              *float64
+	amount                   *decimal.Decimal
+	pay_amount               *decimal.Decimal
+	fee_rate                 *decimal.Decimal
 	recharge_code            *string
 	out_trade_no             *string
 	payment_type             *string
@@ -608,8 +606,7 @@ type PaymentOrderMutation struct {
 	provider_key             *string
 	provider_snapshot        *map[string]interface{}
 	status                   *string
-	refund_amount            *float64
-	addrefund_amount         *float64
+	refund_amount            *decimal.Decimal
 	refund_reason            *string
 	refund_at                *time.Time
 	force_refund             *bool
@@ -908,13 +905,12 @@ func (m *PaymentOrderMutation) ResetUserNotes() {
 }
 
 // SetAmount sets the "amount" field.
-func (m *PaymentOrderMutation) SetAmount(f float64) {
-	m.amount = &f
-	m.addamount = nil
+func (m *PaymentOrderMutation) SetAmount(d decimal.Decimal) {
+	m.amount = &d
 }
 
 // Amount returns the value of the "amount" field in the mutation.
-func (m *PaymentOrderMutation) Amount() (r float64, exists bool) {
+func (m *PaymentOrderMutation) Amount() (r decimal.Decimal, exists bool) {
 	v := m.amount
 	if v == nil {
 		return
@@ -925,7 +921,7 @@ func (m *PaymentOrderMutation) Amount() (r float64, exists bool) {
 // OldAmount returns the old "amount" field's value of the PaymentOrder entity.
 // If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *PaymentOrderMutation) OldAmount(ctx context.Context) (v float64, err error) {
+func (m *PaymentOrderMutation) OldAmount(ctx context.Context) (v decimal.Decimal, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldAmount is only allowed on UpdateOne operations")
 	}
@@ -939,38 +935,18 @@ func (m *PaymentOrderMutation) OldAmount(ctx context.Context) (v float64, err er
 	return oldValue.Amount, nil
 }
 
-// AddAmount adds f to the "amount" field.
-func (m *PaymentOrderMutation) AddAmount(f float64) {
-	if m.addamount != nil {
-		*m.addamount += f
-	} else {
-		m.addamount = &f
-	}
-}
-
-// AddedAmount returns the value that was added to the "amount" field in this mutation.
-func (m *PaymentOrderMutation) AddedAmount() (r float64, exists bool) {
-	v := m.addamount
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
 // ResetAmount resets all changes to the "amount" field.
 func (m *PaymentOrderMutation) ResetAmount() {
 	m.amount = nil
-	m.addamount = nil
 }
 
 // SetPayAmount sets the "pay_amount" field.
-func (m *PaymentOrderMutation) SetPayAmount(f float64) {
-	m.pay_amount = &f
-	m.addpay_amount = nil
+func (m *PaymentOrderMutation) SetPayAmount(d decimal.Decimal) {
+	m.pay_amount = &d
 }
 
 // PayAmount returns the value of the "pay_amount" field in the mutation.
-func (m *PaymentOrderMutation) PayAmount() (r float64, exists bool) {
+func (m *PaymentOrderMutation) PayAmount() (r decimal.Decimal, exists bool) {
 	v := m.pay_amount
 	if v == nil {
 		return
@@ -981,7 +957,7 @@ func (m *PaymentOrderMutation) PayAmount() (r float64, exists bool) {
 // OldPayAmount returns the old "pay_amount" field's value of the PaymentOrder entity.
 // If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *PaymentOrderMutation) OldPayAmount(ctx context.Context) (v float64, err error) {
+func (m *PaymentOrderMutation) OldPayAmount(ctx context.Context) (v decimal.Decimal, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldPayAmount is only allowed on UpdateOne operations")
 	}
@@ -995,38 +971,18 @@ func (m *PaymentOrderMutation) OldPayAmount(ctx context.Context) (v float64, err
 	return oldValue.PayAmount, nil
 }
 
-// AddPayAmount adds f to the "pay_amount" field.
-func (m *PaymentOrderMutation) AddPayAmount(f float64) {
-	if m.addpay_amount != nil {
-		*m.addpay_amount += f
-	} else {
-		m.addpay_amount = &f
-	}
-}
-
-// AddedPayAmount returns the value that was added to the "pay_amount" field in this mutation.
-func (m *PaymentOrderMutation) AddedPayAmount() (r float64, exists bool) {
-	v := m.addpay_amount
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
 // ResetPayAmount resets all changes to the "pay_amount" field.
 func (m *PaymentOrderMutation) ResetPayAmount() {
 	m.pay_amount = nil
-	m.addpay_amount = nil
 }
 
 // SetFeeRate sets the "fee_rate" field.
-func (m *PaymentOrderMutation) SetFeeRate(f float64) {
-	m.fee_rate = &f
-	m.addfee_rate = nil
+func (m *PaymentOrderMutation) SetFeeRate(d decimal.Decimal) {
+	m.fee_rate = &d
 }
 
 // FeeRate returns the value of the "fee_rate" field in the mutation.
-func (m *PaymentOrderMutation) FeeRate() (r float64, exists bool) {
+func (m *PaymentOrderMutation) FeeRate() (r decimal.Decimal, exists bool) {
 	v := m.fee_rate
 	if v == nil {
 		return
@@ -1037,7 +993,7 @@ func (m *PaymentOrderMutation) FeeRate() (r float64, exists bool) {
 // OldFeeRate returns the old "fee_rate" field's value of the PaymentOrder entity.
 // If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *PaymentOrderMutation) OldFeeRate(ctx context.Context) (v float64, err error) {
+func (m *PaymentOrderMutation) OldFeeRate(ctx context.Context) (v decimal.Decimal, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldFeeRate is only allowed on UpdateOne operations")
 	}
@@ -1051,28 +1007,9 @@ func (m *PaymentOrderMutation) OldFeeRate(ctx context.Context) (v float64, err e
 	return oldValue.FeeRate, nil
 }
 
-// AddFeeRate adds f to the "fee_rate" field.
-func (m *PaymentOrderMutation) AddFeeRate(f float64) {
-	if m.addfee_rate != nil {
-		*m.addfee_rate += f
-	} else {
-		m.addfee_rate = &f
-	}
-}
-
-// AddedFeeRate returns the value that was added to the "fee_rate" field in this mutation.
-func (m *PaymentOrderMutation) AddedFeeRate() (r float64, exists bool) {
-	v := m.addfee_rate
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
 // ResetFeeRate resets all changes to the "fee_rate" field.
 func (m *PaymentOrderMutation) ResetFeeRate() {
 	m.fee_rate = nil
-	m.addfee_rate = nil
 }
 
 // SetRechargeCode sets the "recharge_code" field.
@@ -1796,13 +1733,12 @@ func (m *PaymentOrderMutation) ResetStatus() {
 }
 
 // SetRefundAmount sets the "refund_amount" field.
-func (m *PaymentOrderMutation) SetRefundAmount(f float64) {
-	m.refund_amount = &f
-	m.addrefund_amount = nil
+func (m *PaymentOrderMutation) SetRefundAmount(d decimal.Decimal) {
+	m.refund_amount = &d
 }
 
 // RefundAmount returns the value of the "refund_amount" field in the mutation.
-func (m *PaymentOrderMutation) RefundAmount() (r float64, exists bool) {
+func (m *PaymentOrderMutation) RefundAmount() (r decimal.Decimal, exists bool) {
 	v := m.refund_amount
 	if v == nil {
 		return
@@ -1813,7 +1749,7 @@ func (m *PaymentOrderMutation) RefundAmount() (r float64, exists bool) {
 // OldRefundAmount returns the old "refund_amount" field's value of the PaymentOrder entity.
 // If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *PaymentOrderMutation) OldRefundAmount(ctx context.Context) (v float64, err error) {
+func (m *PaymentOrderMutation) OldRefundAmount(ctx context.Context) (v decimal.Decimal, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldRefundAmount is only allowed on UpdateOne operations")
 	}
@@ -1827,28 +1763,9 @@ func (m *PaymentOrderMutation) OldRefundAmount(ctx context.Context) (v float64, 
 	return oldValue.RefundAmount, nil
 }
 
-// AddRefundAmount adds f to the "refund_amount" field.
-func (m *PaymentOrderMutation) AddRefundAmount(f float64) {
-	if m.addrefund_amount != nil {
-		*m.addrefund_amount += f
-	} else {
-		m.addrefund_amount = &f
-	}
-}
-
-// AddedRefundAmount returns the value that was added to the "refund_amount" field in this mutation.
-func (m *PaymentOrderMutation) AddedRefundAmount() (r float64, exists bool) {
-	v := m.addrefund_amount
-	if v == nil {
-		return
-	}
-	return *v, true
-}
-
 // ResetRefundAmount resets all changes to the "refund_amount" field.
 func (m *PaymentOrderMutation) ResetRefundAmount() {
 	m.refund_amount = nil
-	m.addrefund_amount = nil
 }
 
 // SetRefundReason sets the "refund_reason" field.
@@ -2920,21 +2837,21 @@ func (m *PaymentOrderMutation) SetField(name string, value ent.Value) error {
 		m.SetUserNotes(v)
 		return nil
 	case paymentorder.FieldAmount:
-		v, ok := value.(float64)
+		v, ok := value.(decimal.Decimal)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetAmount(v)
 		return nil
 	case paymentorder.FieldPayAmount:
-		v, ok := value.(float64)
+		v, ok := value.(decimal.Decimal)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetPayAmount(v)
 		return nil
 	case paymentorder.FieldFeeRate:
-		v, ok := value.(float64)
+		v, ok := value.(decimal.Decimal)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
@@ -3046,7 +2963,7 @@ func (m *PaymentOrderMutation) SetField(name string, value ent.Value) error {
 		m.SetStatus(v)
 		return nil
 	case paymentorder.FieldRefundAmount:
-		v, ok := value.(float64)
+		v, ok := value.(decimal.Decimal)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
@@ -3175,15 +3092,6 @@ func (m *PaymentOrderMutation) AddedFields() []string {
 	if m.adduser_id != nil {
 		fields = append(fields, paymentorder.FieldUserID)
 	}
-	if m.addamount != nil {
-		fields = append(fields, paymentorder.FieldAmount)
-	}
-	if m.addpay_amount != nil {
-		fields = append(fields, paymentorder.FieldPayAmount)
-	}
-	if m.addfee_rate != nil {
-		fields = append(fields, paymentorder.FieldFeeRate)
-	}
 	if m.addplan_id != nil {
 		fields = append(fields, paymentorder.FieldPlanID)
 	}
@@ -3192,9 +3100,6 @@ func (m *PaymentOrderMutation) AddedFields() []string {
 	}
 	if m.addsubscription_days != nil {
 		fields = append(fields, paymentorder.FieldSubscriptionDays)
-	}
-	if m.addrefund_amount != nil {
-		fields = append(fields, paymentorder.FieldRefundAmount)
 	}
 	return fields
 }
@@ -3206,20 +3111,12 @@ func (m *PaymentOrderMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case paymentorder.FieldUserID:
 		return m.AddedUserID()
-	case paymentorder.FieldAmount:
-		return m.AddedAmount()
-	case paymentorder.FieldPayAmount:
-		return m.AddedPayAmount()
-	case paymentorder.FieldFeeRate:
-		return m.AddedFeeRate()
 	case paymentorder.FieldPlanID:
 		return m.AddedPlanID()
 	case paymentorder.FieldSubscriptionGroupID:
 		return m.AddedSubscriptionGroupID()
 	case paymentorder.FieldSubscriptionDays:
 		return m.AddedSubscriptionDays()
-	case paymentorder.FieldRefundAmount:
-		return m.AddedRefundAmount()
 	}
 	return nil, false
 }
@@ -3235,27 +3132,6 @@ func (m *PaymentOrderMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddUserID(v)
-		return nil
-	case paymentorder.FieldAmount:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddAmount(v)
-		return nil
-	case paymentorder.FieldPayAmount:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddPayAmount(v)
-		return nil
-	case paymentorder.FieldFeeRate:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddFeeRate(v)
 		return nil
 	case paymentorder.FieldPlanID:
 		v, ok := value.(int64)
@@ -3277,13 +3153,6 @@ func (m *PaymentOrderMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddSubscriptionDays(v)
-		return nil
-	case paymentorder.FieldRefundAmount:
-		v, ok := value.(float64)
-		if !ok {
-			return fmt.Errorf("unexpected type %T for field %s", value, name)
-		}
-		m.AddRefundAmount(v)
 		return nil
 	}
 	return fmt.Errorf("unknown PaymentOrder numeric field %s", name)

@@ -28,16 +28,19 @@ export type PaymentLaunchKind =
   | 'wechat_jsapi'
   | 'unhandled'
 
+// Money fields are decimal strings end-to-end so the localStorage snapshot
+// round-trips losslessly (no JSON Number coercion). Reading code wraps them
+// through `money()` from utils/decimal at the consumption site.
 export interface PaymentRecoverySnapshot {
   orderId: number
-  amount: number
+  amount: string
   qrCode: string
   expiresAt: string
   paymentType: string
   payUrl: string
   outTradeNo: string
   clientSecret: string
-  payAmount: number
+  payAmount: string
   orderType: OrderType | ''
   paymentMode: string
   resumeToken: string
@@ -64,7 +67,9 @@ export interface PaymentLaunchDecision {
 }
 
 export interface BuildCreateOrderPayloadInput {
-  amount: number
+  // Decimal string. Caller computes via `money()` and emits via .toFixed(2)
+  // (or .toString()) so the backend's shopspring/decimal sees a canonical form.
+  amount: string
   paymentType: string
   orderType: OrderType
   planId?: number
@@ -232,14 +237,16 @@ export function readPaymentRecoverySnapshot(
     const parsed = JSON.parse(raw) as Partial<PaymentRecoverySnapshot>
     if (
       typeof parsed.orderId !== 'number'
-      || typeof parsed.amount !== 'number'
+      // Money fields are now strings; legacy snapshots persisted as number
+      // are intentionally rejected — the user must re-create the order.
+      || typeof parsed.amount !== 'string'
       || typeof parsed.qrCode !== 'string'
       || typeof parsed.expiresAt !== 'string'
       || typeof parsed.paymentType !== 'string'
       || typeof parsed.payUrl !== 'string'
       || (parsed.outTradeNo != null && typeof parsed.outTradeNo !== 'string')
       || typeof parsed.clientSecret !== 'string'
-      || typeof parsed.payAmount !== 'number'
+      || typeof parsed.payAmount !== 'string'
       || typeof parsed.paymentMode !== 'string'
       || typeof parsed.resumeToken !== 'string'
       || typeof parsed.createdAt !== 'number'

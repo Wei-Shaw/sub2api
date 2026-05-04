@@ -34,7 +34,7 @@
             <div class="card p-5">
               <p class="text-xs font-medium text-gray-400 dark:text-gray-500">{{ t('payment.rechargeAccount') }}</p>
               <p class="mt-1 text-base font-semibold text-gray-900 dark:text-white">{{ user?.username || '' }}</p>
-              <p class="mt-0.5 text-sm font-medium text-green-600 dark:text-green-400">{{ t('payment.currentBalance') }}: {{ user?.balance?.toFixed(2) || '0.00' }}</p>
+              <p class="mt-0.5 text-sm font-medium text-green-600 dark:text-green-400">{{ t('payment.currentBalance') }}: {{ formatMoney(user?.balance) }}</p>
             </div>
             <div v-if="enabledMethods.length === 0" class="card py-16 text-center">
               <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
@@ -44,8 +44,8 @@
               <AmountInput
                 v-model="amount"
                 :amounts="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
-                :min="globalMinAmount"
-                :max="globalMaxAmount"
+                :min="globalMinAmountNum"
+                :max="globalMaxAmountNum"
               />
               <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
             </div>
@@ -56,26 +56,26 @@
                 @select="selectedMethod = $event"
               />
             </div>
-            <div v-if="validAmount > 0" class="card p-6">
+            <div v-if="validAmount.gt(0)" class="card p-6">
               <div class="space-y-2 text-sm">
                 <div class="flex justify-between">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.paymentAmount') }}</span>
-                  <span class="text-gray-900 dark:text-white">¥{{ Number(validAmount ?? 0).toFixed(2) }}</span>
+                  <span class="text-gray-900 dark:text-white">¥{{ formatMoney(validAmount) }}</span>
                 </div>
-                <div v-if="feeRate > 0" class="flex justify-between">
+                <div v-if="hasFeeRate" class="flex justify-between">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
-                  <span class="text-gray-900 dark:text-white">¥{{ Number(feeAmount ?? 0).toFixed(2) }}</span>
+                  <span class="text-gray-900 dark:text-white">¥{{ formatMoney(feeAmount) }}</span>
                 </div>
-                <div v-if="feeRate > 0" class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
+                <div v-if="hasFeeRate" class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
                   <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
-                  <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ Number(totalAmount ?? 0).toFixed(2) }}</span>
+                  <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ formatMoney(totalAmount) }}</span>
                 </div>
-                <div v-if="balanceRechargeMultiplier !== 1" class="flex justify-between" :class="{ 'border-t border-gray-200 pt-2 dark:border-dark-600': feeRate <= 0 }">
+                <div v-if="hasMultiplier" class="flex justify-between" :class="{ 'border-t border-gray-200 pt-2 dark:border-dark-600': !hasFeeRate }">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.creditedBalance') }}</span>
-                  <span class="text-gray-900 dark:text-white">${{ Number(creditedAmount ?? 0).toFixed(2) }}</span>
+                  <span class="text-gray-900 dark:text-white">${{ formatMoney(creditedAmount) }}</span>
                 </div>
-                <p v-if="balanceRechargeMultiplier !== 1" class="border-t border-gray-200 pt-2 text-xs text-gray-500 dark:border-dark-600 dark:text-gray-400">
-                  {{ t('payment.rechargeRatePreview', { usd: Number(balanceRechargeMultiplier ?? 0).toFixed(2) }) }}
+                <p v-if="hasMultiplier" class="border-t border-gray-200 pt-2 text-xs text-gray-500 dark:border-dark-600 dark:text-gray-400">
+                  {{ t('payment.rechargeRatePreview', { usd: formatMoney(balanceRechargeMultiplier) }) }}
                 </p>
               </div>
             </div>
@@ -84,7 +84,7 @@
                 <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                 {{ t('common.processing') }}
               </span>
-              <span v-else>{{ t('payment.createOrder') }} ¥{{ Number(totalAmount ?? 0).toFixed(2) }}</span>
+              <span v-else>{{ t('payment.createOrder') }} ¥{{ formatMoney(totalAmount) }}</span>
             </button>
             </template>
           </template>
@@ -145,19 +145,19 @@
                   @select="selectedMethod = $event"
                 />
               </div>
-              <div v-if="feeRate > 0 && selectedPlan.price > 0" class="card p-6">
+              <div v-if="hasFeeRate && hasPositivePlanPrice" class="card p-6">
                 <div class="space-y-2 text-sm">
                   <div class="flex justify-between">
                     <span class="text-gray-500 dark:text-gray-400">{{ t('payment.amountLabel') }}</span>
-                    <span class="text-gray-900 dark:text-white">¥{{ Number(selectedPlan.price ?? 0).toFixed(2) }}</span>
+                    <span class="text-gray-900 dark:text-white">¥{{ formatMoney(selectedPlan.price) }}</span>
                   </div>
                   <div class="flex justify-between">
                     <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
-                    <span class="text-gray-900 dark:text-white">¥{{ Number(subFeeAmount ?? 0).toFixed(2) }}</span>
+                    <span class="text-gray-900 dark:text-white">¥{{ formatMoney(subFeeAmount) }}</span>
                   </div>
                   <div class="flex justify-between border-t border-gray-200 pt-2 dark:border-dark-600">
                     <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
-                    <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ Number(subTotalAmount ?? 0).toFixed(2) }}</span>
+                    <span class="text-lg font-bold text-primary-600 dark:text-primary-400">¥{{ formatMoney(subTotalAmount) }}</span>
                   </div>
                 </div>
               </div>
@@ -166,7 +166,7 @@
                   <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                   {{ t('common.processing') }}
                 </span>
-                <span v-else>{{ t('payment.createOrder') }} ¥{{ Number((feeRate > 0 ? subTotalAmount : selectedPlan.price) ?? 0).toFixed(2) }}</span>
+                <span v-else>{{ t('payment.createOrder') }} ¥{{ formatMoney(hasFeeRate ? subTotalAmount : selectedPlan.price) }}</span>
               </button>
               <button class="btn btn-secondary w-full" @click="selectedPlan = null">{{ t('common.cancel') }}</button>
             </template>
@@ -253,6 +253,7 @@ import { useSubscriptionStore } from '../../stores/host'
 import { useAppStore } from '../../stores/host'
 import { paymentAPI } from '../../api/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '../../utils/apiError'
+import { money, formatMoney, Decimal } from '../../utils/decimal'
 import { isMobileDevice } from '../../utils/device'
 import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType } from '../../types/payment'
 import AppLayout from '../../components/common/AppLayout.vue'
@@ -325,14 +326,15 @@ interface WeixinJSBridgeLike {
 function emptyPaymentState(): PaymentRecoverySnapshot {
   return {
     orderId: 0,
-    amount: 0,
+    // Money fields are decimal strings; "0" is the canonical "no value".
+    amount: '0',
     qrCode: '',
     expiresAt: '',
     paymentType: '',
     payUrl: '',
     outTradeNo: '',
     clientSecret: '',
-    payAmount: 0,
+    payAmount: '0',
     orderType: '',
     paymentMode: '',
     resumeToken: '',
@@ -412,7 +414,10 @@ async function redirectToPaymentResult(state: PaymentRecoverySnapshot): Promise<
 
 function buildWechatOAuthAuthorizeUrl(
   authorizeUrl: string,
-  context: { paymentType: string; orderType: OrderType; planId?: number; orderAmount: number },
+  // orderAmount is a decimal-string (Decimal serialized via .toString());
+  // this URL only round-trips the value through query params so any
+  // canonical form is fine.
+  context: { paymentType: string; orderType: OrderType; planId?: number; orderAmount: string },
 ): string {
   const normalizedUrl = authorizeUrl.trim()
   if (!normalizedUrl || typeof window === 'undefined') {
@@ -434,8 +439,8 @@ function buildWechatOAuthAuthorizeUrl(
       redirectUrl.searchParams.delete('plan_id')
     }
 
-    if (context.orderAmount > 0) {
-      redirectUrl.searchParams.set('amount', String(context.orderAmount))
+    if (money(context.orderAmount).gt(0)) {
+      redirectUrl.searchParams.set('amount', context.orderAmount)
     } else {
       redirectUrl.searchParams.delete('amount')
     }
@@ -468,10 +473,12 @@ function onPaymentSettled() {
   removeRecoverySnapshot()
 }
 
-// All checkout data from single API call
+// All checkout data from single API call. Money fields are decimal strings
+// because the backend (shopspring/decimal) serializes that way; arithmetic
+// goes through `money()` to preserve precision.
 const checkout = ref<CheckoutInfoResponse>({
-  methods: {}, global_min: 0, global_max: 0,
-  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
+  methods: {}, global_min: '0', global_max: '0',
+  plans: [], balance_disabled: false, balance_recharge_multiplier: '1', recharge_fee_rate: '0', help_text: '', help_image_url: '', stripe_publishable_key: '',
 })
 
 const tabs = computed(() => {
@@ -483,12 +490,17 @@ const tabs = computed(() => {
 
 const visibleMethods = computed(() => getVisibleMethods(checkout.value.methods))
 const enabledMethods = computed(() => Object.keys(visibleMethods.value))
-const validAmount = computed(() => amount.value ?? 0)
-const balanceRechargeMultiplier = computed(() => {
-  const multiplier = checkout.value.balance_recharge_multiplier
-  return multiplier > 0 ? multiplier : 1
+// `amount` is bound to AmountInput, which still works in JS Number land for
+// the user's keypad. We wrap into Decimal at the boundary.
+const validAmount = computed<Decimal>(() => money(amount.value))
+const balanceRechargeMultiplier = computed<Decimal>(() => {
+  const m = money(checkout.value.balance_recharge_multiplier)
+  return m.gt(0) ? m : new Decimal(1)
 })
-const creditedAmount = computed(() => Math.round((validAmount.value * balanceRechargeMultiplier.value) * 100) / 100)
+const hasMultiplier = computed(() => !balanceRechargeMultiplier.value.equals(1))
+const creditedAmount = computed<Decimal>(() =>
+  validAmount.value.mul(balanceRechargeMultiplier.value).toDecimalPlaces(2)
+)
 
 // Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
 const planGridClass = computed(() => {
@@ -498,57 +510,76 @@ const planGridClass = computed(() => {
 })
 
 // Check if an amount fits a method's [min, max]. 0 = no limit.
-function amountFitsMethod(amt: number, methodType: string): boolean {
-  if (amt <= 0) return true
+// `amt` accepts either a Decimal (for computed values) or a number
+// (for plan price coming straight from props in subMethodOptions).
+function amountFitsMethod(amt: Decimal | number | string, methodType: string): boolean {
+  const amtDec = money(amt)
+  if (amtDec.lte(0)) return true
   const ml = visibleMethods.value[methodType]
   if (!ml) return false
-  if (ml.single_min > 0 && amt < ml.single_min) return false
-  if (ml.single_max > 0 && amt > ml.single_max) return false
+  const min = money(ml.single_min)
+  const max = money(ml.single_max)
+  if (min.gt(0) && amtDec.lt(min)) return false
+  if (max.gt(0) && amtDec.gt(max)) return false
   return true
 }
 
 // Visible methods decide the amount range shown to users.
-const globalMinAmount = computed(() => {
+const globalMinAmount = computed<Decimal>(() => {
   const limits = Object.values(visibleMethods.value)
-  if (limits.length === 0) return 0
-  if (limits.some(limit => limit.single_min <= 0)) return 0
-  return Math.min(...limits.map(limit => limit.single_min))
+  if (limits.length === 0) return new Decimal(0)
+  if (limits.some(limit => money(limit.single_min).lte(0))) return new Decimal(0)
+  return limits
+    .map(l => money(l.single_min))
+    .reduce((acc, v) => (v.lt(acc) ? v : acc), money(limits[0].single_min))
 })
-const globalMaxAmount = computed(() => {
+const globalMaxAmount = computed<Decimal>(() => {
   const limits = Object.values(visibleMethods.value)
-  if (limits.length === 0) return 0
-  if (limits.some(limit => limit.single_max <= 0)) return 0
-  return Math.max(...limits.map(limit => limit.single_max))
+  if (limits.length === 0) return new Decimal(0)
+  if (limits.some(limit => money(limit.single_max).lte(0))) return new Decimal(0)
+  return limits
+    .map(l => money(l.single_max))
+    .reduce((acc, v) => (v.gt(acc) ? v : acc), money(limits[0].single_max))
 })
+// AmountInput expects JS numbers for its min/max props; Decimal -> number
+// here is safe because limits are typically integer yuan amounts.
+const globalMinAmountNum = computed(() => globalMinAmount.value.toNumber())
+const globalMaxAmountNum = computed(() => globalMaxAmount.value.toNumber())
 
 // Selected method's limits (for validation and error messages)
 const selectedLimit = computed(() => visibleMethods.value[selectedMethod.value])
 
+// PaymentMethodOption.fee_rate is still a JS number for the existing
+// component contract; coerce here at the boundary.
 const methodOptions = computed<PaymentMethodOption[]>(() =>
   enabledMethods.value.map((type) => {
     const ml = visibleMethods.value[type]
     return {
       type,
-      fee_rate: ml?.fee_rate ?? 0,
+      fee_rate: money(ml?.fee_rate).toNumber(),
       available: ml?.available !== false && amountFitsMethod(validAmount.value, type),
     }
   })
 )
 
-const feeRate = computed(() => checkout.value?.recharge_fee_rate ?? 0)
-const feeAmount = computed(() =>
-  feeRate.value > 0 && validAmount.value > 0
-    ? Math.ceil(((validAmount.value * feeRate.value) / 100) * 100) / 100
-    : 0
-)
-const totalAmount = computed(() =>
-  feeRate.value > 0 && validAmount.value > 0
-    ? Math.round((validAmount.value + feeAmount.value) * 100) / 100
+const feeRate = computed<Decimal>(() => money(checkout.value?.recharge_fee_rate))
+const hasFeeRate = computed(() => feeRate.value.gt(0))
+// fee amount: ceil to 2 decimals (matches backend `decimal.RoundCeil(2)`).
+const feeAmount = computed<Decimal>(() => {
+  if (feeRate.value.lte(0) || validAmount.value.lte(0)) return new Decimal(0)
+  return validAmount.value
+    .mul(feeRate.value)
+    .div(100)
+    .toDecimalPlaces(2, Decimal.ROUND_CEIL)
+})
+const totalAmount = computed<Decimal>(() =>
+  feeRate.value.gt(0) && validAmount.value.gt(0)
+    ? validAmount.value.plus(feeAmount.value).toDecimalPlaces(2)
     : validAmount.value
 )
 
 const amountError = computed(() => {
-  if (validAmount.value <= 0) return ''
+  if (validAmount.value.lte(0)) return ''
   // No method can handle this amount
   if (!enabledMethods.value.some((m) => amountFitsMethod(validAmount.value, m))) {
     return t('payment.amountNoMethod')
@@ -556,41 +587,47 @@ const amountError = computed(() => {
   // Selected method can't handle this amount (but others can)
   const ml = selectedLimit.value
   if (ml) {
-    if (ml.single_min > 0 && validAmount.value < ml.single_min) return t('payment.amountTooLow', { min: ml.single_min })
-    if (ml.single_max > 0 && validAmount.value > ml.single_max) return t('payment.amountTooHigh', { max: ml.single_max })
+    const min = money(ml.single_min)
+    const max = money(ml.single_max)
+    if (min.gt(0) && validAmount.value.lt(min)) return t('payment.amountTooLow', { min: ml.single_min })
+    if (max.gt(0) && validAmount.value.gt(max)) return t('payment.amountTooHigh', { max: ml.single_max })
   }
   return ''
 })
 
 const canSubmit = computed(() =>
-  validAmount.value > 0
+  validAmount.value.gt(0)
     && amountFitsMethod(validAmount.value, selectedMethod.value)
     && selectedLimit.value?.available !== false
 )
 
 // Subscription-specific: method options based on plan price
 const subMethodOptions = computed<PaymentMethodOption[]>(() => {
-  const planPrice = selectedPlan.value?.price ?? 0
+  const planPrice = selectedPlan.value?.price ?? '0'
   return enabledMethods.value.map((type) => {
     const ml = visibleMethods.value[type]
     return {
       type,
-      fee_rate: ml?.fee_rate ?? 0,
+      fee_rate: money(ml?.fee_rate).toNumber(),
       available: ml?.available !== false && amountFitsMethod(planPrice, type),
     }
   })
 })
 
-const subFeeAmount = computed(() => {
-  const price = selectedPlan.value?.price ?? 0
-  if (feeRate.value <= 0 || price <= 0) return 0
-  return Math.ceil(((price * feeRate.value) / 100) * 100) / 100
+const planPrice = computed<Decimal>(() => money(selectedPlan.value?.price))
+const hasPositivePlanPrice = computed(() => planPrice.value.gt(0))
+
+const subFeeAmount = computed<Decimal>(() => {
+  if (feeRate.value.lte(0) || planPrice.value.lte(0)) return new Decimal(0)
+  return planPrice.value
+    .mul(feeRate.value)
+    .div(100)
+    .toDecimalPlaces(2, Decimal.ROUND_CEIL)
 })
 
-const subTotalAmount = computed(() => {
-  const price = selectedPlan.value?.price ?? 0
-  if (feeRate.value <= 0 || price <= 0) return price
-  return Math.round((price + subFeeAmount.value) * 100) / 100
+const subTotalAmount = computed<Decimal>(() => {
+  if (feeRate.value.lte(0) || planPrice.value.lte(0)) return planPrice.value
+  return planPrice.value.plus(subFeeAmount.value).toDecimalPlaces(2)
 })
 
 const canSubmitSubscription = computed(() =>
@@ -601,7 +638,7 @@ const canSubmitSubscription = computed(() =>
 
 // Auto-switch to first available method when current selection can't handle the amount
 watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) => {
-  if (amt <= 0 || amountFitsMethod(amt, method)) return
+  if (amt.lte(0) || amountFitsMethod(amt, method)) return
   const available = enabledMethods.value.find((m) => amountFitsMethod(amt, m))
   if (available) selectedMethod.value = available
 })
@@ -655,7 +692,7 @@ function closeRenewalModal() {
 
 async function handleSubmitRecharge() {
   if (!canSubmit.value || submitting.value) return
-  await createOrder(validAmount.value, 'balance')
+  await createOrder(validAmount.value.toString(), 'balance')
 }
 
 async function confirmSubscribe() {
@@ -663,7 +700,9 @@ async function confirmSubscribe() {
   await createOrder(selectedPlan.value.price, 'subscription', selectedPlan.value.id)
 }
 
-async function createOrder(orderAmount: number, orderType: OrderType, planId?: number, options: CreateOrderOptions = {}) {
+// orderAmount is a decimal string. The backend's shopspring/decimal will
+// unmarshal "10.00" or "10" identically; we never coerce through Number.
+async function createOrder(orderAmount: string, orderType: OrderType, planId?: number, options: CreateOrderOptions = {}) {
   submitting.value = true
   errorMessage.value = ''
   errorHintMessage.value = ''
@@ -831,7 +870,8 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
 }
 
 interface MobileQrFallbackContext {
-  orderAmount: number
+  // Decimal string passthrough; backend handles the canonical form.
+  orderAmount: string
   orderType: OrderType
   planId?: number
   paymentType: string
@@ -943,14 +983,16 @@ function applyScenarioError(err: unknown, paymentMethod: string): boolean {
 }
 
 async function resumeWechatPaymentFromQuery() {
-  const resume = parseWechatResumeRoute(route.query, checkout.value.plans, validAmount.value)
+  const resume = parseWechatResumeRoute(route.query, checkout.value.plans, validAmount.value.toString())
   if (!resume) {
     return
   }
 
   selectedMethod.value = resume.paymentType
-  if (resume.orderType === 'balance' && resume.orderAmount > 0) {
-    amount.value = resume.orderAmount
+  const resumeAmountDec = money(resume.orderAmount)
+  if (resume.orderType === 'balance' && resumeAmountDec.gt(0)) {
+    // AmountInput v-models a JS number; convert at the boundary.
+    amount.value = resumeAmountDec.toNumber()
   }
   if (resume.orderType === 'subscription' && resume.planId) {
     selectedPlan.value = checkout.value.plans.find(plan => plan.id === resume.planId) ?? null
@@ -959,7 +1001,7 @@ async function resumeWechatPaymentFromQuery() {
   await router.replace({ path: route.path, query: stripWechatResumeQuery(route.query) })
 
   if (resume.wechatResumeToken) {
-    await createOrder(0, resume.orderType, resume.planId, {
+    await createOrder('0', resume.orderType, resume.planId, {
       wechatResumeToken: resume.wechatResumeToken,
       paymentType: resume.paymentType,
       isResume: true,
@@ -967,7 +1009,7 @@ async function resumeWechatPaymentFromQuery() {
     return
   }
 
-  if (resume.orderAmount > 0 && resume.openid) {
+  if (resumeAmountDec.gt(0) && resume.openid) {
     await createOrder(resume.orderAmount, resume.orderType, resume.planId, {
       openid: resume.openid,
       paymentType: resume.paymentType,

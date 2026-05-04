@@ -23,21 +23,18 @@ import (
 
 // parseEasypayMoney parses an EasyPay-supplied amount string ("12.34")
 // using shopspring/decimal so the conversion is exact at cent precision.
-// Unparseable inputs collapse to 0 — callers historically used
-// strconv.ParseFloat with ignored errors for the same effect, but the
-// decimal path avoids float-rounding drift on values that would otherwise
-// slip past the webhook amount check by a sub-cent margin.
-func parseEasypayMoney(raw string) float64 {
+// Unparseable / empty inputs collapse to a zero decimal so the webhook
+// amount check rejects them deterministically.
+func parseEasypayMoney(raw string) decimal.Decimal {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return 0
+		return decimal.Zero
 	}
 	d, err := decimal.NewFromString(raw)
 	if err != nil {
-		return 0
+		return decimal.Zero
 	}
-	f, _ := d.Float64()
-	return f
+	return d
 }
 
 // EasyPay constants.

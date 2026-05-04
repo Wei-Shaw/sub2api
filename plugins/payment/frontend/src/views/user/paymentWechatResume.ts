@@ -1,9 +1,12 @@
 import type { LocationQuery, LocationQueryRaw } from 'vue-router'
 import type { SubscriptionPlan } from '../../types/payment'
 import { normalizeVisibleMethod } from '../../components/payment/paymentFlow'
+import { money } from '../../utils/decimal'
 
 export interface ParsedWechatResumeRoute {
-  orderAmount: number
+  // Decimal string carried through query params; backend's
+  // shopspring/decimal accepts any canonical form ("10", "10.0", "10.00").
+  orderAmount: string
   orderType: 'balance' | 'subscription'
   paymentType: string
   planId?: number
@@ -30,7 +33,9 @@ export function hasWechatResumeQuery(query: LocationQuery): boolean {
 export function parseWechatResumeRoute(
   query: LocationQuery,
   plans: SubscriptionPlan[],
-  fallbackBalanceAmount: number,
+  // fallback for `balance` orders is supplied by the caller as a Decimal
+  // string (e.g. amount.value.toString() from the user's input).
+  fallbackBalanceAmount: string,
 ): ParsedWechatResumeRoute | null {
   if (!hasWechatResumeQuery(query)) {
     return null
@@ -49,7 +54,7 @@ export function parseWechatResumeRoute(
       wechatResumeToken,
       paymentType,
       orderType,
-      orderAmount: 0,
+      orderAmount: '0',
       planId: hasPlanId ? planId : undefined,
     }
   }
@@ -59,11 +64,12 @@ export function parseWechatResumeRoute(
     return null
   }
 
-  const rawAmount = Number.parseFloat(readQueryString(query, 'amount'))
-  const orderAmount = Number.isFinite(rawAmount) && rawAmount > 0
-    ? rawAmount
+  const rawAmountStr = readQueryString(query, 'amount').trim()
+  const rawAmount = rawAmountStr ? money(rawAmountStr) : null
+  const orderAmount = rawAmount && rawAmount.gt(0)
+    ? rawAmount.toString()
     : (orderType === 'subscription'
-      ? (plans.find(plan => plan.id === planId)?.price ?? 0)
+      ? String(plans.find(plan => plan.id === planId)?.price ?? '0')
       : fallbackBalanceAmount)
 
   return {

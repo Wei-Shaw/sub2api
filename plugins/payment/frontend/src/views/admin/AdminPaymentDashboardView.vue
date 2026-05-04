@@ -42,7 +42,7 @@
                   <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('payment.methods.' + method.type, method.type) }}</span>
                 </div>
                 <div class="text-right">
-                  <span class="text-sm font-medium text-gray-900 dark:text-white">&yen;{{ Number(method.amount ?? 0).toFixed(2) }}</span>
+                  <span class="text-sm font-medium text-gray-900 dark:text-white">&yen;{{ formatMoney(method.amount) }}</span>
                   <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">({{ method.count }})</span>
                 </div>
               </div>
@@ -57,7 +57,7 @@
                   <span :class="['flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold', rankClass(idx)]">{{ idx + 1 }}</span>
                   <span class="text-sm text-gray-700 dark:text-gray-300">{{ user.email }}</span>
                 </div>
-                <span class="text-sm font-medium text-gray-900 dark:text-white">&yen;{{ Number(user.amount ?? 0).toFixed(2) }}</span>
+                <span class="text-sm font-medium text-gray-900 dark:text-white">&yen;{{ formatMoney(user.amount) }}</span>
               </div>
             </div>
           </div>
@@ -73,6 +73,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '../../stores/host'
 import { adminPaymentAPI } from '../../api/admin/payment'
 import { extractI18nErrorMessage } from '../../utils/apiError'
+import { formatMoney } from '../../utils/decimal'
 import type { DashboardStats } from '../../types/payment'
 import AppLayout from '../../components/common/AppLayout.vue'
 import LoadingSpinner from '../../components/common/LoadingSpinner.vue'

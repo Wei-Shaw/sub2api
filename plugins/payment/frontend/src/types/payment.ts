@@ -24,15 +24,19 @@ export type OrderType = 'balance' | 'subscription'
 
 // ==================== Configuration ====================
 
+// Money fields are strings end-to-end: the Go backend uses
+// shopspring/decimal whose JSON form is a quoted string ("10.00"). The
+// frontend wraps these through `money()` (utils/decimal.ts) for any
+// arithmetic so we never coerce to JS number and lose precision.
 export interface PaymentConfig {
   payment_enabled: boolean
-  min_amount: number
-  max_amount: number
-  daily_limit: number
+  min_amount: string
+  max_amount: string
+  daily_limit: string
   max_pending_orders: number
   order_timeout_minutes: number
   balance_disabled: boolean
-  balance_recharge_multiplier: number
+  balance_recharge_multiplier: string
   enabled_payment_types: PaymentType[]
   help_image_url: string
   help_text: string
@@ -40,31 +44,31 @@ export interface PaymentConfig {
 }
 
 export interface MethodLimit {
-  daily_limit: number
-  daily_used: number
-  daily_remaining: number
-  single_min: number
-  single_max: number
-  fee_rate: number
+  daily_limit: string
+  daily_used: string
+  daily_remaining: string
+  single_min: string
+  single_max: string
+  fee_rate: string
   available: boolean
 }
 
 /** Response from /payment/limits API */
 export interface MethodLimitsResponse {
   methods: Record<string, MethodLimit>
-  global_min: number  // widest min across all methods; 0 = no minimum
-  global_max: number  // widest max across all methods; 0 = no maximum
+  global_min: string  // widest min across all methods; "0" = no minimum
+  global_max: string  // widest max across all methods; "0" = no maximum
 }
 
 /** Response from /payment/checkout-info API — single call for the payment page */
 export interface CheckoutInfoResponse {
   methods: Record<string, MethodLimit>
-  global_min: number
-  global_max: number
+  global_min: string
+  global_max: string
   plans: SubscriptionPlan[]
   balance_disabled: boolean
-  balance_recharge_multiplier: number
-  recharge_fee_rate: number
+  balance_recharge_multiplier: string
+  recharge_fee_rate: string
   help_text: string
   help_image_url: string
   stripe_publishable_key: string
@@ -75,9 +79,9 @@ export interface CheckoutInfoResponse {
 export interface PaymentOrder {
   id: number
   user_id: number
-  amount: number
-  pay_amount: number
-  fee_rate: number
+  amount: string
+  pay_amount: string
+  fee_rate: string
   payment_type: string
   out_trade_no: string
   status: OrderStatus
@@ -86,7 +90,7 @@ export interface PaymentOrder {
   expires_at: string
   paid_at?: string
   completed_at?: string
-  refund_amount: number
+  refund_amount: string
   refund_reason?: string
   refund_requested_at?: string
   refund_requested_by?: number
@@ -109,8 +113,10 @@ export interface SubscriptionPlan {
   supported_model_scopes?: string[]
   name: string
   description: string
-  price: number
-  original_price?: number
+  // price / original_price arrive as strings (shopspring/decimal). Display
+  // and arithmetic both go through `money()` to preserve precision.
+  price: string
+  original_price?: string
   validity_days: number
   validity_unit: string
   /** Stored as JSON string in backend; API layer should parse before use */
@@ -150,7 +156,9 @@ export interface ProviderInstance {
 // ==================== Request / Response ====================
 
 export interface CreateOrderRequest {
-  amount: number
+  // amount is sent as a string (decimal) so the Go backend's
+  // shopspring/decimal can unmarshal without float64 round-trips.
+  amount: string
   payment_type: string
   order_type: string
   plan_id?: number
@@ -183,12 +191,12 @@ export interface WechatJSAPIPayload {
 
 export interface CreateOrderResult {
   order_id: number
-  amount: number
+  amount: string
   pay_url?: string
   qr_code?: string
   client_secret?: string
-  pay_amount: number
-  fee_rate: number
+  pay_amount: string
+  fee_rate: string
   expires_at: string
   result_type?: CreateOrderResultType
   payment_type?: string
@@ -201,12 +209,12 @@ export interface CreateOrderResult {
 }
 
 export interface DashboardStats {
-  today_amount: number
-  total_amount: number
+  today_amount: string
+  total_amount: string
   today_count: number
   total_count: number
-  avg_amount: number
-  daily_series: { date: string; amount: number; count: number }[]
-  payment_methods: { type: string; amount: number; count: number }[]
-  top_users: { user_id: number; email: string; amount: number }[]
+  avg_amount: string
+  daily_series: { date: string; amount: string; count: number }[]
+  payment_methods: { type: string; amount: string; count: number }[]
+  top_users: { user_id: number; email: string; amount: string }[]
 }

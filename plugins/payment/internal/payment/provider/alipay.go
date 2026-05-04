@@ -364,14 +364,11 @@ func isTradeNotExist(err error) bool {
 }
 
 // parseAlipayAmount returns the first non-empty amount string parsed via
-// shopspring/decimal. We avoid strconv.ParseFloat because Alipay sends
-// amounts as fixed-precision strings ("19.99") and a float64 round-trip
-// can introduce sub-cent drift on certain values that, combined with the
-// webhook tolerance check, used to allow silent underpayment up to 1 cent.
-// The decimal.Float64 round-trip is still float64 because the existing
-// PaymentNotification API uses float64 — but the parse step is exact at
-// cent precision, which is what the downstream comparison cares about.
-func parseAlipayAmount(values ...string) (float64, error) {
+// shopspring/decimal. Alipay sends amounts as fixed-precision strings
+// ("19.99"); returning a decimal preserves cent precision through the
+// webhook comparison so a sub-cent rounding drift cannot silently let
+// an attacker underpay by up to 1 cent per order.
+func parseAlipayAmount(values ...string) (decimal.Decimal, error) {
 	for _, raw := range values {
 		raw = strings.TrimSpace(raw)
 		if raw == "" {
@@ -379,11 +376,10 @@ func parseAlipayAmount(values ...string) (float64, error) {
 		}
 		d, err := decimal.NewFromString(raw)
 		if err == nil {
-			amount, _ := d.Float64()
-			return amount, nil
+			return d, nil
 		}
 	}
-	return 0, fmt.Errorf("no valid amount field")
+	return decimal.Zero, fmt.Errorf("no valid amount field")
 }
 
 // Ensure interface compliance.

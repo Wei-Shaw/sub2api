@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 
+	"github.com/shopspring/decimal"
+
 	infraerrors "github.com/Wei-Shaw/sub2api/plugins/payment/internal/errors"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment"
 )
@@ -16,7 +18,7 @@ import (
 // route every supported method through the same load-balancer call. If a
 // caller hits the in-WeChat path with a JSAPI provider, the load balancer
 // will simply return whatever instance matches.
-func (s *PaymentService) selectCreateOrderInstance(ctx context.Context, req CreateOrderRequest, cfg *PaymentConfig, payAmount float64) (*payment.InstanceSelection, error) {
+func (s *PaymentService) selectCreateOrderInstance(ctx context.Context, req CreateOrderRequest, cfg *PaymentConfig, payAmount decimal.Decimal) (*payment.InstanceSelection, error) {
 	sel, err := s.loadBalancer.SelectInstance(ctx, "", req.PaymentType, payment.Strategy(cfg.LoadBalanceStrategy), payAmount)
 	if err != nil {
 		return nil, infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", "method_not_configured").

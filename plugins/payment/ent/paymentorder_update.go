@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/predicate"
+	"github.com/shopspring/decimal"
 )
 
 // PaymentOrderUpdate is the builder for updating PaymentOrder entities.
@@ -98,65 +99,44 @@ func (_u *PaymentOrderUpdate) ClearUserNotes() *PaymentOrderUpdate {
 }
 
 // SetAmount sets the "amount" field.
-func (_u *PaymentOrderUpdate) SetAmount(v float64) *PaymentOrderUpdate {
-	_u.mutation.ResetAmount()
+func (_u *PaymentOrderUpdate) SetAmount(v decimal.Decimal) *PaymentOrderUpdate {
 	_u.mutation.SetAmount(v)
 	return _u
 }
 
 // SetNillableAmount sets the "amount" field if the given value is not nil.
-func (_u *PaymentOrderUpdate) SetNillableAmount(v *float64) *PaymentOrderUpdate {
+func (_u *PaymentOrderUpdate) SetNillableAmount(v *decimal.Decimal) *PaymentOrderUpdate {
 	if v != nil {
 		_u.SetAmount(*v)
 	}
 	return _u
 }
 
-// AddAmount adds value to the "amount" field.
-func (_u *PaymentOrderUpdate) AddAmount(v float64) *PaymentOrderUpdate {
-	_u.mutation.AddAmount(v)
-	return _u
-}
-
 // SetPayAmount sets the "pay_amount" field.
-func (_u *PaymentOrderUpdate) SetPayAmount(v float64) *PaymentOrderUpdate {
-	_u.mutation.ResetPayAmount()
+func (_u *PaymentOrderUpdate) SetPayAmount(v decimal.Decimal) *PaymentOrderUpdate {
 	_u.mutation.SetPayAmount(v)
 	return _u
 }
 
 // SetNillablePayAmount sets the "pay_amount" field if the given value is not nil.
-func (_u *PaymentOrderUpdate) SetNillablePayAmount(v *float64) *PaymentOrderUpdate {
+func (_u *PaymentOrderUpdate) SetNillablePayAmount(v *decimal.Decimal) *PaymentOrderUpdate {
 	if v != nil {
 		_u.SetPayAmount(*v)
 	}
 	return _u
 }
 
-// AddPayAmount adds value to the "pay_amount" field.
-func (_u *PaymentOrderUpdate) AddPayAmount(v float64) *PaymentOrderUpdate {
-	_u.mutation.AddPayAmount(v)
-	return _u
-}
-
 // SetFeeRate sets the "fee_rate" field.
-func (_u *PaymentOrderUpdate) SetFeeRate(v float64) *PaymentOrderUpdate {
-	_u.mutation.ResetFeeRate()
+func (_u *PaymentOrderUpdate) SetFeeRate(v decimal.Decimal) *PaymentOrderUpdate {
 	_u.mutation.SetFeeRate(v)
 	return _u
 }
 
 // SetNillableFeeRate sets the "fee_rate" field if the given value is not nil.
-func (_u *PaymentOrderUpdate) SetNillableFeeRate(v *float64) *PaymentOrderUpdate {
+func (_u *PaymentOrderUpdate) SetNillableFeeRate(v *decimal.Decimal) *PaymentOrderUpdate {
 	if v != nil {
 		_u.SetFeeRate(*v)
 	}
-	return _u
-}
-
-// AddFeeRate adds value to the "fee_rate" field.
-func (_u *PaymentOrderUpdate) AddFeeRate(v float64) *PaymentOrderUpdate {
-	_u.mutation.AddFeeRate(v)
 	return _u
 }
 
@@ -438,23 +418,16 @@ func (_u *PaymentOrderUpdate) SetNillableStatus(v *string) *PaymentOrderUpdate {
 }
 
 // SetRefundAmount sets the "refund_amount" field.
-func (_u *PaymentOrderUpdate) SetRefundAmount(v float64) *PaymentOrderUpdate {
-	_u.mutation.ResetRefundAmount()
+func (_u *PaymentOrderUpdate) SetRefundAmount(v decimal.Decimal) *PaymentOrderUpdate {
 	_u.mutation.SetRefundAmount(v)
 	return _u
 }
 
 // SetNillableRefundAmount sets the "refund_amount" field if the given value is not nil.
-func (_u *PaymentOrderUpdate) SetNillableRefundAmount(v *float64) *PaymentOrderUpdate {
+func (_u *PaymentOrderUpdate) SetNillableRefundAmount(v *decimal.Decimal) *PaymentOrderUpdate {
 	if v != nil {
 		_u.SetRefundAmount(*v)
 	}
-	return _u
-}
-
-// AddRefundAmount adds value to the "refund_amount" field.
-func (_u *PaymentOrderUpdate) AddRefundAmount(v float64) *PaymentOrderUpdate {
-	_u.mutation.AddRefundAmount(v)
 	return _u
 }
 
@@ -862,22 +835,13 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 		_spec.ClearField(paymentorder.FieldUserNotes, field.TypeString)
 	}
 	if value, ok := _u.mutation.Amount(); ok {
-		_spec.SetField(paymentorder.FieldAmount, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedAmount(); ok {
-		_spec.AddField(paymentorder.FieldAmount, field.TypeFloat64, value)
+		_spec.SetField(paymentorder.FieldAmount, field.TypeOther, value)
 	}
 	if value, ok := _u.mutation.PayAmount(); ok {
-		_spec.SetField(paymentorder.FieldPayAmount, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedPayAmount(); ok {
-		_spec.AddField(paymentorder.FieldPayAmount, field.TypeFloat64, value)
+		_spec.SetField(paymentorder.FieldPayAmount, field.TypeOther, value)
 	}
 	if value, ok := _u.mutation.FeeRate(); ok {
-		_spec.SetField(paymentorder.FieldFeeRate, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedFeeRate(); ok {
-		_spec.AddField(paymentorder.FieldFeeRate, field.TypeFloat64, value)
+		_spec.SetField(paymentorder.FieldFeeRate, field.TypeOther, value)
 	}
 	if value, ok := _u.mutation.RechargeCode(); ok {
 		_spec.SetField(paymentorder.FieldRechargeCode, field.TypeString, value)
@@ -961,10 +925,7 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 		_spec.SetField(paymentorder.FieldStatus, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.RefundAmount(); ok {
-		_spec.SetField(paymentorder.FieldRefundAmount, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedRefundAmount(); ok {
-		_spec.AddField(paymentorder.FieldRefundAmount, field.TypeFloat64, value)
+		_spec.SetField(paymentorder.FieldRefundAmount, field.TypeOther, value)
 	}
 	if value, ok := _u.mutation.RefundReason(); ok {
 		_spec.SetField(paymentorder.FieldRefundReason, field.TypeString, value)
@@ -1131,65 +1092,44 @@ func (_u *PaymentOrderUpdateOne) ClearUserNotes() *PaymentOrderUpdateOne {
 }
 
 // SetAmount sets the "amount" field.
-func (_u *PaymentOrderUpdateOne) SetAmount(v float64) *PaymentOrderUpdateOne {
-	_u.mutation.ResetAmount()
+func (_u *PaymentOrderUpdateOne) SetAmount(v decimal.Decimal) *PaymentOrderUpdateOne {
 	_u.mutation.SetAmount(v)
 	return _u
 }
 
 // SetNillableAmount sets the "amount" field if the given value is not nil.
-func (_u *PaymentOrderUpdateOne) SetNillableAmount(v *float64) *PaymentOrderUpdateOne {
+func (_u *PaymentOrderUpdateOne) SetNillableAmount(v *decimal.Decimal) *PaymentOrderUpdateOne {
 	if v != nil {
 		_u.SetAmount(*v)
 	}
 	return _u
 }
 
-// AddAmount adds value to the "amount" field.
-func (_u *PaymentOrderUpdateOne) AddAmount(v float64) *PaymentOrderUpdateOne {
-	_u.mutation.AddAmount(v)
-	return _u
-}
-
 // SetPayAmount sets the "pay_amount" field.
-func (_u *PaymentOrderUpdateOne) SetPayAmount(v float64) *PaymentOrderUpdateOne {
-	_u.mutation.ResetPayAmount()
+func (_u *PaymentOrderUpdateOne) SetPayAmount(v decimal.Decimal) *PaymentOrderUpdateOne {
 	_u.mutation.SetPayAmount(v)
 	return _u
 }
 
 // SetNillablePayAmount sets the "pay_amount" field if the given value is not nil.
-func (_u *PaymentOrderUpdateOne) SetNillablePayAmount(v *float64) *PaymentOrderUpdateOne {
+func (_u *PaymentOrderUpdateOne) SetNillablePayAmount(v *decimal.Decimal) *PaymentOrderUpdateOne {
 	if v != nil {
 		_u.SetPayAmount(*v)
 	}
 	return _u
 }
 
-// AddPayAmount adds value to the "pay_amount" field.
-func (_u *PaymentOrderUpdateOne) AddPayAmount(v float64) *PaymentOrderUpdateOne {
-	_u.mutation.AddPayAmount(v)
-	return _u
-}
-
 // SetFeeRate sets the "fee_rate" field.
-func (_u *PaymentOrderUpdateOne) SetFeeRate(v float64) *PaymentOrderUpdateOne {
-	_u.mutation.ResetFeeRate()
+func (_u *PaymentOrderUpdateOne) SetFeeRate(v decimal.Decimal) *PaymentOrderUpdateOne {
 	_u.mutation.SetFeeRate(v)
 	return _u
 }
 
 // SetNillableFeeRate sets the "fee_rate" field if the given value is not nil.
-func (_u *PaymentOrderUpdateOne) SetNillableFeeRate(v *float64) *PaymentOrderUpdateOne {
+func (_u *PaymentOrderUpdateOne) SetNillableFeeRate(v *decimal.Decimal) *PaymentOrderUpdateOne {
 	if v != nil {
 		_u.SetFeeRate(*v)
 	}
-	return _u
-}
-
-// AddFeeRate adds value to the "fee_rate" field.
-func (_u *PaymentOrderUpdateOne) AddFeeRate(v float64) *PaymentOrderUpdateOne {
-	_u.mutation.AddFeeRate(v)
 	return _u
 }
 
@@ -1471,23 +1411,16 @@ func (_u *PaymentOrderUpdateOne) SetNillableStatus(v *string) *PaymentOrderUpdat
 }
 
 // SetRefundAmount sets the "refund_amount" field.
-func (_u *PaymentOrderUpdateOne) SetRefundAmount(v float64) *PaymentOrderUpdateOne {
-	_u.mutation.ResetRefundAmount()
+func (_u *PaymentOrderUpdateOne) SetRefundAmount(v decimal.Decimal) *PaymentOrderUpdateOne {
 	_u.mutation.SetRefundAmount(v)
 	return _u
 }
 
 // SetNillableRefundAmount sets the "refund_amount" field if the given value is not nil.
-func (_u *PaymentOrderUpdateOne) SetNillableRefundAmount(v *float64) *PaymentOrderUpdateOne {
+func (_u *PaymentOrderUpdateOne) SetNillableRefundAmount(v *decimal.Decimal) *PaymentOrderUpdateOne {
 	if v != nil {
 		_u.SetRefundAmount(*v)
 	}
-	return _u
-}
-
-// AddRefundAmount adds value to the "refund_amount" field.
-func (_u *PaymentOrderUpdateOne) AddRefundAmount(v float64) *PaymentOrderUpdateOne {
-	_u.mutation.AddRefundAmount(v)
 	return _u
 }
 
@@ -1925,22 +1858,13 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 		_spec.ClearField(paymentorder.FieldUserNotes, field.TypeString)
 	}
 	if value, ok := _u.mutation.Amount(); ok {
-		_spec.SetField(paymentorder.FieldAmount, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedAmount(); ok {
-		_spec.AddField(paymentorder.FieldAmount, field.TypeFloat64, value)
+		_spec.SetField(paymentorder.FieldAmount, field.TypeOther, value)
 	}
 	if value, ok := _u.mutation.PayAmount(); ok {
-		_spec.SetField(paymentorder.FieldPayAmount, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedPayAmount(); ok {
-		_spec.AddField(paymentorder.FieldPayAmount, field.TypeFloat64, value)
+		_spec.SetField(paymentorder.FieldPayAmount, field.TypeOther, value)
 	}
 	if value, ok := _u.mutation.FeeRate(); ok {
-		_spec.SetField(paymentorder.FieldFeeRate, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedFeeRate(); ok {
-		_spec.AddField(paymentorder.FieldFeeRate, field.TypeFloat64, value)
+		_spec.SetField(paymentorder.FieldFeeRate, field.TypeOther, value)
 	}
 	if value, ok := _u.mutation.RechargeCode(); ok {
 		_spec.SetField(paymentorder.FieldRechargeCode, field.TypeString, value)
@@ -2024,10 +1948,7 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 		_spec.SetField(paymentorder.FieldStatus, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.RefundAmount(); ok {
-		_spec.SetField(paymentorder.FieldRefundAmount, field.TypeFloat64, value)
-	}
-	if value, ok := _u.mutation.AddedRefundAmount(); ok {
-		_spec.AddField(paymentorder.FieldRefundAmount, field.TypeFloat64, value)
+		_spec.SetField(paymentorder.FieldRefundAmount, field.TypeOther, value)
 	}
 	if value, ok := _u.mutation.RefundReason(); ok {
 		_spec.SetField(paymentorder.FieldRefundReason, field.TypeString, value)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -20,27 +19,31 @@ import (
 )
 
 // RefundPlan captures the ExecuteRefund inputs derived from PrepareRefund.
+//
+// Currency-typed fields are decimals so the gateway-amount derivation
+// and balance deduction stay exact; the previous float64 form drifted
+// by sub-cent on certain (orderAmount, payAmount, refundAmount) triples.
 type RefundPlan struct {
 	OrderID         int64
 	Order           *pluginent.PaymentOrder
-	RefundAmount    float64
-	GatewayAmount   float64
+	RefundAmount    decimal.Decimal
+	GatewayAmount   decimal.Decimal
 	Reason          string
 	Force           bool
 	DeductBalance   bool
 	DeductionType   string
-	BalanceToDeduct float64
+	BalanceToDeduct decimal.Decimal
 	SubDaysToDeduct int
 	SubscriptionID  int64
 }
 
 // RefundResult is the outcome of ExecuteRefund.
 type RefundResult struct {
-	Success         bool    `json:"success"`
-	Warning         string  `json:"warning,omitempty"`
-	RequireForce    bool    `json:"require_force,omitempty"`
-	BalanceDeducted float64 `json:"balance_deducted,omitempty"`
-	SubDaysDeducted int     `json:"subscription_days_deducted,omitempty"`
+	Success         bool            `json:"success"`
+	Warning         string          `json:"warning,omitempty"`
+	RequireForce    bool            `json:"require_force,omitempty"`
+	BalanceDeducted decimal.Decimal `json:"balance_deducted,omitempty"`
+	SubDaysDeducted int             `json:"subscription_days_deducted,omitempty"`
 }
 
 // RequestRefund is the user-initiated refund request entry point. Only
@@ -101,8 +104,7 @@ func (s *PaymentService) checkRefundBalance(ctx context.Context, o *pluginent.Pa
 	if user == nil || !user.Found {
 		return infraerrors.NotFound("USER_NOT_FOUND", "user not found")
 	}
-	balance, _ := user.Balance.Float64()
-	if balance < o.Amount {
+	if user.Balance.LessThan(o.Amount) {
 		return infraerrors.BadRequest("BALANCE_NOT_ENOUGH", "refund amount exceeds balance")
 	}
 	return nil
@@ -137,7 +139,7 @@ func (s *PaymentService) validateRefundRequest(ctx context.Context, oid, uid int
 // RefundResult when the caller still needs to confirm something (e.g.
 // an admin must pass force=true to proceed despite a missing
 // subscription record).
-func (s *PaymentService) PrepareRefund(ctx context.Context, oid int64, amt float64, reason string, force, deduct bool) (*RefundPlan, *RefundResult, error) {
+func (s *PaymentService) PrepareRefund(ctx context.Context, oid int64, amt decimal.Decimal, reason string, force, deduct bool) (*RefundPlan, *RefundResult, error) {
 	if s == nil || s.entClient == nil {
 		return nil, nil, errPaymentServiceUnavailable
 	}
@@ -198,19 +200,16 @@ func (s *PaymentService) requireRefundProviderEnabled(ctx context.Context, o *pl
 	return nil
 }
 
-func normalizeRefundAmount(o *pluginent.PaymentOrder, amt float64) (float64, error) {
-	if math.IsNaN(amt) || math.IsInf(amt, 0) {
-		return 0, infraerrors.BadRequest("INVALID_AMOUNT", "invalid refund amount")
-	}
-	if amt <= 0 {
+func normalizeRefundAmount(o *pluginent.PaymentOrder, amt decimal.Decimal) (decimal.Decimal, error) {
+	if amt.Sign() <= 0 {
 		amt = o.Amount
 	}
 	// Decimal-precision comparison: refund amount must not exceed the
 	// order amount even by sub-cent fractions. A 0.01 float tolerance
 	// previously let an attacker request a refund up to 1 cent over the
-	// recharge silently.
+	// recharge silently. Comparing in fen keeps the rule explicit.
 	if yuanToFen(amt) > yuanToFen(o.Amount) {
-		return 0, infraerrors.BadRequest("REFUND_AMOUNT_EXCEEDED", "refund amount exceeds recharge")
+		return decimal.Zero, infraerrors.BadRequest("REFUND_AMOUNT_EXCEEDED", "refund amount exceeds recharge")
 	}
 	return amt, nil
 }
@@ -268,9 +267,13 @@ func (s *PaymentService) prepBalanceDeduct(ctx context.Context, o *pluginent.Pay
 		}
 		return nil
 	}
-	balance, _ := user.Balance.Float64()
 	p.DeductionType = payment.DeductionTypeBalance
-	p.BalanceToDeduct = math.Min(p.RefundAmount, balance)
+	// min(refund, balance) at decimal precision so we never over-debit
+	// the user even by a sub-cent amount.
+	p.BalanceToDeduct = p.RefundAmount
+	if user.Balance.LessThan(p.RefundAmount) {
+		p.BalanceToDeduct = user.Balance
+	}
 	return nil
 }
 
@@ -349,11 +352,11 @@ func (s *PaymentService) resolveUniqueLegacyOrderProviderInstance(ctx context.Co
 	return nil, nil
 }
 
-// roundCNY rounds a CNY value to two decimals using shopspring/decimal,
-// avoiding the IEEE-754 drift that plain math.Round would introduce on
-// values like 19.985.
-func roundCNY(v float64) float64 {
-	return decimal.NewFromFloat(v).Round(2).InexactFloat64()
+// roundCNY rounds a CNY decimal to two decimals. The wrapper exists
+// for symmetry with roundYuan in payment_amounts.go and keeps the
+// refund-execute companion file's dependency obvious.
+func roundCNY(v decimal.Decimal) decimal.Decimal {
+	return v.Round(2)
 }
 
 var _ = roundCNY // referenced by the refund execute companion file.
@@ -365,7 +368,7 @@ var _ = roundCNY // referenced by the refund execute companion file.
 // the user keeps both the recharge credit and the gateway refund. The
 // admin handler requires ConfirmNoBalanceDeduction=true to reach this
 // path; this method is the operational paper trail.
-func (s *PaymentService) LogAdminForceRefundNoDeduct(ctx context.Context, orderID, adminID int64, amount float64, reason string) {
+func (s *PaymentService) LogAdminForceRefundNoDeduct(ctx context.Context, orderID, adminID int64, amount decimal.Decimal, reason string) {
 	if s == nil {
 		return
 	}
@@ -373,7 +376,7 @@ func (s *PaymentService) LogAdminForceRefundNoDeduct(ctx context.Context, orderI
 		s.logger.Warn("admin refund: force without balance deduction (silent free-money path acknowledged)",
 			"order_id", orderID,
 			"admin_id", adminID,
-			"amount", amount,
+			"amount", amount.String(),
 			"reason", reason,
 		)
 	}

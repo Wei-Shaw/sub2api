@@ -33,13 +33,17 @@ import {
 } from 'chart.js'
 import { Line } from 'vue-chartjs'
 import LoadingSpinner from '../../common/LoadingSpinner.vue'
+import { money } from '../../../utils/decimal'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend, Filler)
 
 const { t } = useI18n()
 
 const props = defineProps<{
-  data: { date: string; amount: number; count: number }[]
+  // amount arrives as a decimal string (Go shopspring/decimal); we coerce
+  // to JS number at the chart boundary because chart.js requires numbers.
+  // Precision lost here is invisible (chart pixels, not money math).
+  data: { date: string; amount: string; count: number }[]
   loading?: boolean
 }>()
 
@@ -50,7 +54,7 @@ const chartData = computed(() => {
     datasets: [
       {
         label: t('payment.admin.revenue'),
-        data: props.data.map(d => d.amount),
+        data: props.data.map(d => money(d.amount).toNumber()),
         borderColor: 'rgb(59, 130, 246)',
         backgroundColor: 'rgba(59, 130, 246, 0.1)',
         fill: true,

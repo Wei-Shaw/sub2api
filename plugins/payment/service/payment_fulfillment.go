@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	pluginent "github.com/Wei-Shaw/sub2api/plugins/payment/ent"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentorder"
@@ -73,7 +75,7 @@ func parseLegacyPaymentOrderID(orderID string, lookupErr error) (int64, bool) {
 // confirmPayment validates an inbound notification against the persisted
 // order (provider mismatch, merchant identity mismatch, amount mismatch)
 // and transitions the order to PAID on success.
-func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo string, paid float64, pk string, metadata map[string]string) error {
+func (s *PaymentService) confirmPayment(ctx context.Context, oid int64, tradeNo string, paid decimal.Decimal, pk string, metadata map[string]string) error {
 	o, err := s.entClient.PaymentOrder.Get(ctx, int(oid))
 	if err != nil {
 		if s.logger != nil {
@@ -121,14 +123,14 @@ func (s *PaymentService) validateNotificationMetadata(ctx context.Context, o *pl
 	return nil
 }
 
-func (s *PaymentService) validateNotificationAmount(ctx context.Context, o *pluginent.PaymentOrder, pk, tradeNo string, paid float64) error {
+func (s *PaymentService) validateNotificationAmount(ctx context.Context, o *pluginent.PaymentOrder, pk, tradeNo string, paid decimal.Decimal) error {
 	if !isValidProviderAmount(paid) {
 		s.writeAuditLog(ctx, int64(o.ID), "PAYMENT_INVALID_AMOUNT", pk, map[string]any{
 			"expected": o.PayAmount,
 			"paid":     paid,
 			"tradeNo":  tradeNo,
 		})
-		return fmt.Errorf("invalid paid amount from provider: %v", paid)
+		return fmt.Errorf("invalid paid amount from provider: %s", paid.String())
 	}
 	// Decimal-precision comparison in fen (integer cents) so a provider
 	// rounding drift cannot let an attacker underpay by sub-cent amounts
@@ -141,7 +143,7 @@ func (s *PaymentService) validateNotificationAmount(ctx context.Context, o *plug
 			"tradeNo":  tradeNo,
 			"order_id": o.ID,
 		})
-		return fmt.Errorf("amount mismatch: expected %.2f, got %.2f", o.PayAmount, paid)
+		return fmt.Errorf("amount mismatch: expected %s, got %s", o.PayAmount.StringFixed(2), paid.StringFixed(2))
 	}
 	return nil
 }
@@ -151,7 +153,7 @@ func (s *PaymentService) validateNotificationAmount(ctx context.Context, o *plug
 // allowed source statuses are PENDING / CANCELLED / EXPIRED-within-grace.
 // Returns nil after starting fulfillment; alreadyProcessed handles the
 // race where another webhook beat us to the same order.
-func (s *PaymentService) toPaid(ctx context.Context, o *pluginent.PaymentOrder, tradeNo string, paid float64, pk string) error {
+func (s *PaymentService) toPaid(ctx context.Context, o *pluginent.PaymentOrder, tradeNo string, paid decimal.Decimal, pk string) error {
 	previousStatus := o.Status
 	now := time.Now()
 	grace := now.Add(-paymentGraceMinutes * time.Minute)
@@ -182,7 +184,7 @@ func (s *PaymentService) toPaid(ctx context.Context, o *pluginent.PaymentOrder, 
 	return s.executeFulfillment(ctx, int64(o.ID))
 }
 
-func (s *PaymentService) recordPaidTransitionAudit(ctx context.Context, o *pluginent.PaymentOrder, previousStatus, tradeNo string, paid float64, pk string) {
+func (s *PaymentService) recordPaidTransitionAudit(ctx context.Context, o *pluginent.PaymentOrder, previousStatus, tradeNo string, paid decimal.Decimal, pk string) {
 	if previousStatus == OrderStatusCancelled || previousStatus == OrderStatusExpired {
 		if s.logger != nil {
 			s.logger.Info("order recovered from webhook payment success",

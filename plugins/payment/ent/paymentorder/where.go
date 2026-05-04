@@ -7,6 +7,7 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/predicate"
+	"github.com/shopspring/decimal"
 )
 
 // ID filters vertices based on their ID field.
@@ -75,17 +76,17 @@ func UserNotes(v string) predicate.PaymentOrder {
 }
 
 // Amount applies equality check predicate on the "amount" field. It's identical to AmountEQ.
-func Amount(v float64) predicate.PaymentOrder {
+func Amount(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldAmount, v))
 }
 
 // PayAmount applies equality check predicate on the "pay_amount" field. It's identical to PayAmountEQ.
-func PayAmount(v float64) predicate.PaymentOrder {
+func PayAmount(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldPayAmount, v))
 }
 
 // FeeRate applies equality check predicate on the "fee_rate" field. It's identical to FeeRateEQ.
-func FeeRate(v float64) predicate.PaymentOrder {
+func FeeRate(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldFeeRate, v))
 }
 
@@ -160,7 +161,7 @@ func Status(v string) predicate.PaymentOrder {
 }
 
 // RefundAmount applies equality check predicate on the "refund_amount" field. It's identical to RefundAmountEQ.
-func RefundAmount(v float64) predicate.PaymentOrder {
+func RefundAmount(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldRefundAmount, v))
 }
 
@@ -490,122 +491,122 @@ func UserNotesContainsFold(v string) predicate.PaymentOrder {
 }
 
 // AmountEQ applies the EQ predicate on the "amount" field.
-func AmountEQ(v float64) predicate.PaymentOrder {
+func AmountEQ(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldAmount, v))
 }
 
 // AmountNEQ applies the NEQ predicate on the "amount" field.
-func AmountNEQ(v float64) predicate.PaymentOrder {
+func AmountNEQ(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldNEQ(FieldAmount, v))
 }
 
 // AmountIn applies the In predicate on the "amount" field.
-func AmountIn(vs ...float64) predicate.PaymentOrder {
+func AmountIn(vs ...decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldIn(FieldAmount, vs...))
 }
 
 // AmountNotIn applies the NotIn predicate on the "amount" field.
-func AmountNotIn(vs ...float64) predicate.PaymentOrder {
+func AmountNotIn(vs ...decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldNotIn(FieldAmount, vs...))
 }
 
 // AmountGT applies the GT predicate on the "amount" field.
-func AmountGT(v float64) predicate.PaymentOrder {
+func AmountGT(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldGT(FieldAmount, v))
 }
 
 // AmountGTE applies the GTE predicate on the "amount" field.
-func AmountGTE(v float64) predicate.PaymentOrder {
+func AmountGTE(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldGTE(FieldAmount, v))
 }
 
 // AmountLT applies the LT predicate on the "amount" field.
-func AmountLT(v float64) predicate.PaymentOrder {
+func AmountLT(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldLT(FieldAmount, v))
 }
 
 // AmountLTE applies the LTE predicate on the "amount" field.
-func AmountLTE(v float64) predicate.PaymentOrder {
+func AmountLTE(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldLTE(FieldAmount, v))
 }
 
 // PayAmountEQ applies the EQ predicate on the "pay_amount" field.
-func PayAmountEQ(v float64) predicate.PaymentOrder {
+func PayAmountEQ(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldPayAmount, v))
 }
 
 // PayAmountNEQ applies the NEQ predicate on the "pay_amount" field.
-func PayAmountNEQ(v float64) predicate.PaymentOrder {
+func PayAmountNEQ(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldNEQ(FieldPayAmount, v))
 }
 
 // PayAmountIn applies the In predicate on the "pay_amount" field.
-func PayAmountIn(vs ...float64) predicate.PaymentOrder {
+func PayAmountIn(vs ...decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldIn(FieldPayAmount, vs...))
 }
 
 // PayAmountNotIn applies the NotIn predicate on the "pay_amount" field.
-func PayAmountNotIn(vs ...float64) predicate.PaymentOrder {
+func PayAmountNotIn(vs ...decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldNotIn(FieldPayAmount, vs...))
 }
 
 // PayAmountGT applies the GT predicate on the "pay_amount" field.
-func PayAmountGT(v float64) predicate.PaymentOrder {
+func PayAmountGT(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldGT(FieldPayAmount, v))
 }
 
 // PayAmountGTE applies the GTE predicate on the "pay_amount" field.
-func PayAmountGTE(v float64) predicate.PaymentOrder {
+func PayAmountGTE(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldGTE(FieldPayAmount, v))
 }
 
 // PayAmountLT applies the LT predicate on the "pay_amount" field.
-func PayAmountLT(v float64) predicate.PaymentOrder {
+func PayAmountLT(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldLT(FieldPayAmount, v))
 }
 
 // PayAmountLTE applies the LTE predicate on the "pay_amount" field.
-func PayAmountLTE(v float64) predicate.PaymentOrder {
+func PayAmountLTE(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldLTE(FieldPayAmount, v))
 }
 
 // FeeRateEQ applies the EQ predicate on the "fee_rate" field.
-func FeeRateEQ(v float64) predicate.PaymentOrder {
+func FeeRateEQ(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldFeeRate, v))
 }
 
 // FeeRateNEQ applies the NEQ predicate on the "fee_rate" field.
-func FeeRateNEQ(v float64) predicate.PaymentOrder {
+func FeeRateNEQ(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldNEQ(FieldFeeRate, v))
 }
 
 // FeeRateIn applies the In predicate on the "fee_rate" field.
-func FeeRateIn(vs ...float64) predicate.PaymentOrder {
+func FeeRateIn(vs ...decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldIn(FieldFeeRate, vs...))
 }
 
 // FeeRateNotIn applies the NotIn predicate on the "fee_rate" field.
-func FeeRateNotIn(vs ...float64) predicate.PaymentOrder {
+func FeeRateNotIn(vs ...decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldNotIn(FieldFeeRate, vs...))
 }
 
 // FeeRateGT applies the GT predicate on the "fee_rate" field.
-func FeeRateGT(v float64) predicate.PaymentOrder {
+func FeeRateGT(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldGT(FieldFeeRate, v))
 }
 
 // FeeRateGTE applies the GTE predicate on the "fee_rate" field.
-func FeeRateGTE(v float64) predicate.PaymentOrder {
+func FeeRateGTE(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldGTE(FieldFeeRate, v))
 }
 
 // FeeRateLT applies the LT predicate on the "fee_rate" field.
-func FeeRateLT(v float64) predicate.PaymentOrder {
+func FeeRateLT(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldLT(FieldFeeRate, v))
 }
 
 // FeeRateLTE applies the LTE predicate on the "fee_rate" field.
-func FeeRateLTE(v float64) predicate.PaymentOrder {
+func FeeRateLTE(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldLTE(FieldFeeRate, v))
 }
 
@@ -1535,42 +1536,42 @@ func StatusContainsFold(v string) predicate.PaymentOrder {
 }
 
 // RefundAmountEQ applies the EQ predicate on the "refund_amount" field.
-func RefundAmountEQ(v float64) predicate.PaymentOrder {
+func RefundAmountEQ(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldRefundAmount, v))
 }
 
 // RefundAmountNEQ applies the NEQ predicate on the "refund_amount" field.
-func RefundAmountNEQ(v float64) predicate.PaymentOrder {
+func RefundAmountNEQ(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldNEQ(FieldRefundAmount, v))
 }
 
 // RefundAmountIn applies the In predicate on the "refund_amount" field.
-func RefundAmountIn(vs ...float64) predicate.PaymentOrder {
+func RefundAmountIn(vs ...decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldIn(FieldRefundAmount, vs...))
 }
 
 // RefundAmountNotIn applies the NotIn predicate on the "refund_amount" field.
-func RefundAmountNotIn(vs ...float64) predicate.PaymentOrder {
+func RefundAmountNotIn(vs ...decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldNotIn(FieldRefundAmount, vs...))
 }
 
 // RefundAmountGT applies the GT predicate on the "refund_amount" field.
-func RefundAmountGT(v float64) predicate.PaymentOrder {
+func RefundAmountGT(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldGT(FieldRefundAmount, v))
 }
 
 // RefundAmountGTE applies the GTE predicate on the "refund_amount" field.
-func RefundAmountGTE(v float64) predicate.PaymentOrder {
+func RefundAmountGTE(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldGTE(FieldRefundAmount, v))
 }
 
 // RefundAmountLT applies the LT predicate on the "refund_amount" field.
-func RefundAmountLT(v float64) predicate.PaymentOrder {
+func RefundAmountLT(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldLT(FieldRefundAmount, v))
 }
 
 // RefundAmountLTE applies the LTE predicate on the "refund_amount" field.
-func RefundAmountLTE(v float64) predicate.PaymentOrder {
+func RefundAmountLTE(v decimal.Decimal) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldLTE(FieldRefundAmount, v))
 }
 

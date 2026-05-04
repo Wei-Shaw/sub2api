@@ -19,19 +19,19 @@
         </div>
         <div>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.baseAmount') }}</p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white">¥{{ Number(baseAmount ?? 0).toFixed(2) }}</p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">¥{{ formatMoney(baseAmount) }}</p>
         </div>
-        <div v-if="order.fee_rate > 0">
+        <div v-if="hasFee">
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.fee') }} ({{ order.fee_rate }}%)</p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white">¥{{ Number(feeAmount ?? 0).toFixed(2) }}</p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">¥{{ formatMoney(feeAmount) }}</p>
         </div>
         <div>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white">¥{{ Number(order.pay_amount ?? 0).toFixed(2) }}</p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">¥{{ formatMoney(order.pay_amount) }}</p>
         </div>
         <div v-if="order.amount !== order.pay_amount">
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.creditedAmount') }}</p>
-          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ order.order_type === 'balance' ? '$' : '¥' }}{{ Number(order.amount ?? 0).toFixed(2) }}</p>
+          <p class="text-sm font-medium text-gray-900 dark:text-white">{{ order.order_type === 'balance' ? '$' : '¥' }}{{ formatMoney(order.amount) }}</p>
         </div>
         <div>
           <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.orders.paymentMethod') }}</p>
@@ -77,7 +77,7 @@
         <div class="grid grid-cols-2 gap-2 text-sm">
           <div>
             <span class="text-red-600 dark:text-red-400">{{ t('payment.admin.refundAmount') }}:</span>
-            <span class="ml-1 font-medium text-red-700 dark:text-red-300">{{ order.order_type === 'balance' ? '$' : '¥' }}{{ Number(order.refund_amount ?? 0).toFixed(2) }}</span>
+            <span class="ml-1 font-medium text-red-700 dark:text-red-300">{{ order.order_type === 'balance' ? '$' : '¥' }}{{ formatMoney(order.refund_amount) }}</span>
           </div>
           <div v-if="order.refund_reason" class="col-span-2">
             <span class="text-red-600 dark:text-red-400">{{ t('payment.admin.refundReason') }}:</span>
@@ -119,6 +119,7 @@ import { useI18n } from 'vue-i18n'
 import { BaseDialog } from '@sub2api/plugin-sdk'
 import type { PaymentOrder } from '../../../types/payment'
 import { statusBadgeClass, canRefund as canRefundStatus, formatOrderDateTime } from '../../payment/orderUtils'
+import { money, formatMoney, Decimal } from '../../../utils/decimal'
 
 const { t } = useI18n()
 
@@ -127,17 +128,27 @@ const props = defineProps<{
   order: PaymentOrder | null
 }>()
 
+const hasFee = computed(() => {
+  if (!props.order) return false
+  return money(props.order.fee_rate).gt(0)
+})
+
 /** 充值金额 (base amount before fee) = pay_amount - fee = pay_amount / (1 + fee_rate/100) */
-const baseAmount = computed(() => {
-  if (!props.order) return 0
-  if (props.order.fee_rate <= 0) return props.order.pay_amount
-  return props.order.pay_amount / (1 + props.order.fee_rate / 100)
+const baseAmount = computed<Decimal>(() => {
+  if (!props.order) return new Decimal(0)
+  const pay = money(props.order.pay_amount)
+  const fee = money(props.order.fee_rate)
+  if (fee.lte(0)) return pay
+  // 1 + fee_rate/100; pay / divisor preserves precision
+  const divisor = new Decimal(1).plus(fee.div(100))
+  return pay.div(divisor)
 })
 
 /** 手续费 = pay_amount - baseAmount */
-const feeAmount = computed(() => {
-  if (!props.order || props.order.fee_rate <= 0) return 0
-  return props.order.pay_amount - baseAmount.value
+const feeAmount = computed<Decimal>(() => {
+  if (!props.order) return new Decimal(0)
+  if (money(props.order.fee_rate).lte(0)) return new Decimal(0)
+  return money(props.order.pay_amount).minus(baseAmount.value)
 })
 
 const emit = defineEmits<{

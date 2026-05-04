@@ -45,11 +45,11 @@
           </div>
           <div class="flex justify-between">
             <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.amount') }}</span>
-            <span class="font-medium text-gray-900 dark:text-white">{{ paidOrder.order_type === 'balance' ? '$' : '¥' }}{{ Number(paidOrder.amount ?? 0).toFixed(2) }}</span>
+            <span class="font-medium text-gray-900 dark:text-white">{{ paidOrder.order_type === 'balance' ? '$' : '¥' }}{{ formatMoney(paidOrder.amount) }}</span>
           </div>
           <div class="flex justify-between">
             <span class="text-gray-500 dark:text-gray-400">{{ t('payment.orders.payAmount') }}</span>
-            <span class="font-medium text-gray-900 dark:text-white">¥{{ Number(paidOrder.pay_amount ?? 0).toFixed(2) }}</span>
+            <span class="font-medium text-gray-900 dark:text-white">¥{{ formatMoney(paidOrder.pay_amount) }}</span>
           </div>
         </div>
       </div>
@@ -79,6 +79,7 @@ import { usePaymentStore } from '../../stores/payment'
 import { useAppStore } from '../../stores/host'
 import { paymentAPI } from '../../api/payment'
 import { extractI18nErrorMessage } from '../../utils/apiError'
+import { formatMoney } from '../../utils/decimal'
 import { getPaymentPopupFeatures } from './providerConfig'
 import type { PaymentOrder } from '../../types/payment'
 import QRCode from 'qrcode'

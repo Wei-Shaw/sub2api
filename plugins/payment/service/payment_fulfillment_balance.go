@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/shopspring/decimal"
-
 	pluginent "github.com/Wei-Shaw/sub2api/plugins/payment/ent"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentorder"
 	infraerrors "github.com/Wei-Shaw/sub2api/plugins/payment/internal/errors"
@@ -87,10 +85,9 @@ func (s *PaymentService) doBalance(ctx context.Context, o *pluginent.PaymentOrde
 	if s.host == nil {
 		return errors.New("host client unavailable")
 	}
-	credit := decimal.NewFromFloat(o.Amount)
 	_, err := s.host.CreditBalance(ctx, pluginsdk.CreditBalanceInput{
 		UserID:         o.UserID,
-		Amount:         credit,
+		Amount:         o.Amount,
 		Reason:         fmt.Sprintf("payment_order:%d", o.ID),
 		IdempotencyKey: o.OutTradeNo,
 		Source:         "payment",
@@ -138,7 +135,7 @@ func (s *PaymentService) publishOrderFulfilled(ctx context.Context, o *pluginent
 			PaymentOrderFulfilled: &pluginsdk.PaymentOrderFulfilled{
 				OrderId:             int64(o.ID),
 				UserId:              o.UserID,
-				AmountCents:         yuanToFenInt(o.Amount),
+				AmountCents:         yuanToFen(o.Amount),
 				BizType:             o.OrderType,
 				AuditAction:         auditAction,
 				FulfilledAtUnixNano: fulfilledAt.UnixNano(),
@@ -162,7 +159,7 @@ func (s *PaymentService) applyAffiliateRebateForOrder(ctx context.Context, o *pl
 	}
 	in := pluginsdk.AccrueRebateInput{
 		InviteeUserID:  o.UserID,
-		OrderAmount:    decimal.NewFromFloat(o.Amount),
+		OrderAmount:    o.Amount,
 		IdempotencyKey: fmt.Sprintf("rebate:%d", o.ID),
 	}
 	result, err := s.host.AccrueRebate(ctx, in)
@@ -186,7 +183,7 @@ func shouldAccrueAffiliateRebate(o *pluginent.PaymentOrder, host pluginsdk.HostP
 	if o.OrderType != payment.OrderTypeBalance {
 		return false
 	}
-	return o.Amount > 0
+	return o.Amount.IsPositive()
 }
 
 func (s *PaymentService) recordRebateOutcome(ctx context.Context, o *pluginent.PaymentOrder, result *pluginsdk.AccrueRebateResult) {
@@ -204,10 +201,9 @@ func (s *PaymentService) recordRebateOutcome(ctx context.Context, o *pluginent.P
 		})
 		return
 	}
-	rebate, _ := result.RebateAmount.Float64()
 	s.writeAuditLog(ctx, int64(o.ID), auditActionAffiliateApplied, "system", map[string]any{
 		rebateBaseAmountKey: o.Amount,
-		"rebateAmount":      rebate,
+		"rebateAmount":      result.RebateAmount,
 		"inviterUserId":     result.InviterUserID,
 	})
 }

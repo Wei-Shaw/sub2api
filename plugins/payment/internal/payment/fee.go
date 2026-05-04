@@ -6,14 +6,16 @@ import (
 
 // CalculatePayAmount computes the total pay amount given a recharge amount and
 // fee rate (percentage). Fee = amount * feeRate / 100, rounded UP (away from zero)
-// to 2 decimal places. The returned string is formatted to exactly 2 decimal places.
-// If feeRate <= 0, the amount is returned as-is (formatted to 2 decimal places).
-func CalculatePayAmount(rechargeAmount float64, feeRate float64) string {
-	amount := decimal.NewFromFloat(rechargeAmount)
-	if feeRate <= 0 {
-		return amount.StringFixed(2)
+// to 2 decimal places. The returned decimal carries exact cent precision so
+// callers may format it (StringFixed(2)) or feed it back into further decimal
+// arithmetic without a float64 round-trip.
+//
+// If feeRate is non-positive the amount is returned unchanged at cent precision.
+func CalculatePayAmount(rechargeAmount, feeRate decimal.Decimal) decimal.Decimal {
+	amount := rechargeAmount.RoundBank(2)
+	if feeRate.Sign() <= 0 {
+		return amount
 	}
-	rate := decimal.NewFromFloat(feeRate)
-	fee := amount.Mul(rate).Div(decimal.NewFromInt(100)).RoundUp(2)
-	return amount.Add(fee).StringFixed(2)
+	fee := rechargeAmount.Mul(feeRate).Div(decimal.NewFromInt(100)).RoundUp(2)
+	return amount.Add(fee)
 }

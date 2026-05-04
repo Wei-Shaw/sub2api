@@ -99,6 +99,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { SubscriptionPlan } from '../../types/payment'
 import type { UserSubscription } from '../../types/index'
+import { money, Decimal } from '../../utils/decimal'
 import {
   platformAccentBarClass,
   platformBadgeLightClass,
@@ -129,9 +130,13 @@ const btnClass = computed(() => platformButtonClass(platform.value))
 const discountClass = computed(() => platformDiscountClass(platform.value))
 const pLabel = computed(() => platformLabel(platform.value))
 
+// Compute discount with Decimal arithmetic to avoid JS Number precision
+// loss; final percent is an integer cast to JS number for display.
 const discountText = computed(() => {
-  if (!props.plan.original_price || props.plan.original_price <= 0) return ''
-  const pct = Math.round((1 - props.plan.price / props.plan.original_price) * 100)
+  const orig = money(props.plan.original_price)
+  if (orig.lte(0)) return ''
+  const price = money(props.plan.price)
+  const pct = new Decimal(1).minus(price.div(orig)).mul(100).toDecimalPlaces(0).toNumber()
   return pct > 0 ? `-${pct}%` : ''
 })
 

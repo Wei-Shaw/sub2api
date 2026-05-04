@@ -2,7 +2,11 @@
 // registry, load balancing, and shared utilities for the payment subsystem.
 package payment
 
-import "context"
+import (
+	"context"
+
+	"github.com/shopspring/decimal"
+)
 
 // PaymentType represents a supported payment method.
 type PaymentType = string
@@ -148,19 +152,25 @@ type CreatePaymentResponse struct {
 }
 
 // QueryOrderResponse describes the payment status from the upstream provider.
+//
+// Amount is the CNY amount as a decimal so the cent-precision comparison in
+// the webhook pipeline never round-trips through float64 (which previously
+// allowed sub-cent underpayment to slip past the tolerance check).
 type QueryOrderResponse struct {
 	TradeNo  string
-	Status   string  // "pending", "paid", "failed", "refunded"
-	Amount   float64 // Amount in CNY
-	PaidAt   string  // RFC3339 timestamp or empty
+	Status   string          // "pending", "paid", "failed", "refunded"
+	Amount   decimal.Decimal // Amount in CNY
+	PaidAt   string          // RFC3339 timestamp or empty
 	Metadata map[string]string
 }
 
 // PaymentNotification is the parsed result of a webhook/notify callback.
+//
+// Amount is the CNY amount as a decimal — see QueryOrderResponse.Amount.
 type PaymentNotification struct {
 	TradeNo  string
 	OrderID  string
-	Amount   float64
+	Amount   decimal.Decimal
 	Status   string // "success" or "failed"
 	RawData  string // Raw notification body for audit
 	Metadata map[string]string

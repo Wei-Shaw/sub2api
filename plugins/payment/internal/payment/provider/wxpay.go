@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/plugins/payment/internal/errors"
 	"github.com/wechatpay-apiv3/wechatpay-go/core"
@@ -402,7 +404,7 @@ func (w *Wxpay) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryO
 	if err != nil {
 		return nil, fmt.Errorf("wxpay query order: %w", err)
 	}
-	var amt float64
+	amt := decimal.Zero
 	if tx.Amount != nil && tx.Amount.Total != nil {
 		amt = payment.FenToYuan(*tx.Amount.Total)
 	}
@@ -442,7 +444,7 @@ func (w *Wxpay) VerifyNotification(ctx context.Context, rawBody string, headers 
 	if nr.EventType != wxpayEventTransactionSuccess {
 		return nil, nil
 	}
-	var amt float64
+	amt := decimal.Zero
 	if tx.Amount != nil && tx.Amount.Total != nil {
 		amt = payment.FenToYuan(*tx.Amount.Total)
 	}

@@ -20,7 +20,7 @@
           </div>
           <div class="text-right">
             <span class="text-sm font-medium text-gray-900 dark:text-white">
-              ${{ Number(method.amount ?? 0).toFixed(2) }}
+              ${{ formatMoney(method.amount) }}
             </span>
             <span class="ml-2 text-xs text-gray-500 dark:text-gray-400">
               ({{ method.count }})
@@ -41,11 +41,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { money, formatMoney } from '../../../utils/decimal'
 
 const { t } = useI18n()
 
 const props = defineProps<{
-  methods: { type: string; amount: number; count: number }[]
+  methods: { type: string; amount: string; count: number }[]
 }>()
 
 const colorMap: Record<string, string> = {
@@ -64,12 +65,16 @@ const barColorMap: Record<string, string> = {
   stripe: 'bg-purple-500',
 }
 
-const maxAmount = computed(() => {
+// Bar width is a UI-layout calculation (0..100%), not money — converting
+// to JS number is fine here as the precision lost rounding to a percent is
+// invisible. money() guards against null/undefined.
+const maxAmount = computed<number>(() => {
   if (!props.methods?.length) return 1
-  return Math.max(...props.methods.map(m => m.amount), 1)
+  const numbers = props.methods.map(m => money(m.amount).toNumber())
+  return Math.max(...numbers, 1)
 })
 
-function barWidth(amount: number): number {
-  return Math.min((amount / maxAmount.value) * 100, 100)
+function barWidth(amount: string): number {
+  return Math.min((money(amount).toNumber() / maxAmount.value) * 100, 100)
 }
 </script>

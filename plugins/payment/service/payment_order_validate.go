@@ -3,8 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
-	"math"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/plugins/payment/internal/errors"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment"
@@ -20,14 +18,18 @@ func (s *PaymentService) validateOrderInput(ctx context.Context, req CreateOrder
 	if req.OrderType == payment.OrderTypeSubscription {
 		return s.validateSubOrder(ctx, req)
 	}
-	if math.IsNaN(req.Amount) || math.IsInf(req.Amount, 0) || req.Amount <= 0 {
+	// decimal.Decimal carries no NaN/Inf so the float64 IEEE-754 guard
+	// is no longer required; a non-positive value is the only invalid
+	// shape left.
+	if !req.Amount.IsPositive() {
 		return nil, infraerrors.BadRequest("INVALID_AMOUNT", "amount must be a positive number")
 	}
-	if (cfg.MinAmount > 0 && req.Amount < cfg.MinAmount) || (cfg.MaxAmount > 0 && req.Amount > cfg.MaxAmount) {
+	if (cfg.MinAmount.IsPositive() && req.Amount.LessThan(cfg.MinAmount)) ||
+		(cfg.MaxAmount.IsPositive() && req.Amount.GreaterThan(cfg.MaxAmount)) {
 		return nil, infraerrors.BadRequest("INVALID_AMOUNT", "amount out of range").
 			WithMetadata(map[string]string{
-				"min": fmt.Sprintf("%.2f", cfg.MinAmount),
-				"max": fmt.Sprintf("%.2f", cfg.MaxAmount),
+				"min": cfg.MinAmount.StringFixed(2),
+				"max": cfg.MaxAmount.StringFixed(2),
 			})
 	}
 	return nil, nil

@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentorder"
+	"github.com/shopspring/decimal"
 )
 
 // PaymentOrder is the model entity for the PaymentOrder schema.
@@ -27,11 +28,11 @@ type PaymentOrder struct {
 	// UserNotes holds the value of the "user_notes" field.
 	UserNotes *string `json:"user_notes,omitempty"`
 	// Amount holds the value of the "amount" field.
-	Amount float64 `json:"amount,omitempty"`
+	Amount decimal.Decimal `json:"amount,omitempty"`
 	// PayAmount holds the value of the "pay_amount" field.
-	PayAmount float64 `json:"pay_amount,omitempty"`
+	PayAmount decimal.Decimal `json:"pay_amount,omitempty"`
 	// FeeRate holds the value of the "fee_rate" field.
-	FeeRate float64 `json:"fee_rate,omitempty"`
+	FeeRate decimal.Decimal `json:"fee_rate,omitempty"`
 	// RechargeCode holds the value of the "recharge_code" field.
 	RechargeCode string `json:"recharge_code,omitempty"`
 	// OutTradeNo holds the value of the "out_trade_no" field.
@@ -63,7 +64,7 @@ type PaymentOrder struct {
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
 	// RefundAmount holds the value of the "refund_amount" field.
-	RefundAmount float64 `json:"refund_amount,omitempty"`
+	RefundAmount decimal.Decimal `json:"refund_amount,omitempty"`
 	// RefundReason holds the value of the "refund_reason" field.
 	RefundReason *string `json:"refund_reason,omitempty"`
 	// RefundAt holds the value of the "refund_at" field.
@@ -106,10 +107,10 @@ func (*PaymentOrder) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case paymentorder.FieldProviderSnapshot:
 			values[i] = new([]byte)
+		case paymentorder.FieldAmount, paymentorder.FieldPayAmount, paymentorder.FieldFeeRate, paymentorder.FieldRefundAmount:
+			values[i] = new(decimal.Decimal)
 		case paymentorder.FieldForceRefund:
 			values[i] = new(sql.NullBool)
-		case paymentorder.FieldAmount, paymentorder.FieldPayAmount, paymentorder.FieldFeeRate, paymentorder.FieldRefundAmount:
-			values[i] = new(sql.NullFloat64)
 		case paymentorder.FieldID, paymentorder.FieldUserID, paymentorder.FieldPlanID, paymentorder.FieldSubscriptionGroupID, paymentorder.FieldSubscriptionDays:
 			values[i] = new(sql.NullInt64)
 		case paymentorder.FieldUserEmail, paymentorder.FieldUserName, paymentorder.FieldUserNotes, paymentorder.FieldRechargeCode, paymentorder.FieldOutTradeNo, paymentorder.FieldPaymentType, paymentorder.FieldPaymentTradeNo, paymentorder.FieldPayURL, paymentorder.FieldQrCode, paymentorder.FieldQrCodeImg, paymentorder.FieldOrderType, paymentorder.FieldProviderInstanceID, paymentorder.FieldProviderKey, paymentorder.FieldStatus, paymentorder.FieldRefundReason, paymentorder.FieldRefundRequestReason, paymentorder.FieldRefundRequestedBy, paymentorder.FieldFailedReason, paymentorder.FieldClientIP, paymentorder.FieldSrcHost, paymentorder.FieldSrcURL:
@@ -163,22 +164,22 @@ func (_m *PaymentOrder) assignValues(columns []string, values []any) error {
 				*_m.UserNotes = value.String
 			}
 		case paymentorder.FieldAmount:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
+			if value, ok := values[i].(*decimal.Decimal); !ok {
 				return fmt.Errorf("unexpected type %T for field amount", values[i])
-			} else if value.Valid {
-				_m.Amount = value.Float64
+			} else if value != nil {
+				_m.Amount = *value
 			}
 		case paymentorder.FieldPayAmount:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
+			if value, ok := values[i].(*decimal.Decimal); !ok {
 				return fmt.Errorf("unexpected type %T for field pay_amount", values[i])
-			} else if value.Valid {
-				_m.PayAmount = value.Float64
+			} else if value != nil {
+				_m.PayAmount = *value
 			}
 		case paymentorder.FieldFeeRate:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
+			if value, ok := values[i].(*decimal.Decimal); !ok {
 				return fmt.Errorf("unexpected type %T for field fee_rate", values[i])
-			} else if value.Valid {
-				_m.FeeRate = value.Float64
+			} else if value != nil {
+				_m.FeeRate = *value
 			}
 		case paymentorder.FieldRechargeCode:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -281,10 +282,10 @@ func (_m *PaymentOrder) assignValues(columns []string, values []any) error {
 				_m.Status = value.String
 			}
 		case paymentorder.FieldRefundAmount:
-			if value, ok := values[i].(*sql.NullFloat64); !ok {
+			if value, ok := values[i].(*decimal.Decimal); !ok {
 				return fmt.Errorf("unexpected type %T for field refund_amount", values[i])
-			} else if value.Valid {
-				_m.RefundAmount = value.Float64
+			} else if value != nil {
+				_m.RefundAmount = *value
 			}
 		case paymentorder.FieldRefundReason:
 			if value, ok := values[i].(*sql.NullString); !ok {

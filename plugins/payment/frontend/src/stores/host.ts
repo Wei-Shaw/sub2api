@@ -29,11 +29,15 @@ import type { UserSubscription } from '../types/index'
  * `[key: string]: unknown` index signature so plugin code can read extras.
  *
  * PaymentView reads `user.username` (typed) and `user.balance` (accessed
- * through the index signature). We widen the bridge to allow `username` /
- * `balance` directly so the SFC body keeps `user?.balance?.toFixed(2)`
- * working without `as` casts.
+ * through the index signature). We widen the bridge so plugin views can
+ * pull `balance` off without `as` casts.
+ *
+ * `balance` is typed as `string | number` because the host frontend has not
+ * yet migrated its own `User.balance` to a string — once it does, plugin
+ * views still work via the `money()` wrapper, which accepts both. The host
+ * store edge converts whichever shape it receives.
  */
-type AuthUser = SdkUser & { balance?: number }
+type AuthUser = SdkUser & { balance?: string | number }
 
 interface AppStoreLike {
   showSuccess(message: string): void

@@ -126,6 +126,8 @@ func (s *Stripe) QueryOrder(ctx context.Context, tradeNo string) (*payment.Query
 		status = payment.ProviderStatusFailed
 	}
 
+	// Stripe denominates the amount in fen (smallest currency unit), so
+	// FenToYuan returns a precise decimal — no float64 round-trip.
 	return &payment.QueryOrderResponse{
 		TradeNo: pi.ID,
 		Status:  status,

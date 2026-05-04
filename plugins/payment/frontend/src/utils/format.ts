@@ -7,6 +7,7 @@
  */
 
 import { getSdk } from '../api/sdk'
+import { money } from './decimal'
 
 /** Read the current locale from the host SDK; fall back to en-US if not set. */
 function currentLocale(): string {
@@ -20,12 +21,22 @@ function currentLocale(): string {
 /**
  * Localised currency formatter.
  *
+ * Accepts string (decimal — backend's shopspring/decimal JSON form) or
+ * number (legacy callers). Internally we coerce through `money()` so the
+ * value is precision-safe before handing it to Intl.NumberFormat (which
+ * itself takes a JS number — same precision floor as before).
+ *
  * @param amount - amount in dollars (already converted from minor units)
  * @param currency - ISO 4217 currency code (default USD)
  */
-export function formatCurrency(amount: number | null | undefined, currency: string = 'USD'): string {
-  if (amount === null || amount === undefined) return '$0.00'
-  const num = Number(amount)
+export function formatCurrency(amount: string | number | null | undefined, currency: string = 'USD'): string {
+  if (amount === null || amount === undefined || amount === '') return '$0.00'
+  let num: number
+  try {
+    num = money(amount).toNumber()
+  } catch {
+    return '$0.00'
+  }
   if (!Number.isFinite(num)) return '$0.00'
 
   // IEEE 754 round-trip: 5e-8 * 1e6 = 0.04999...96 → 0.05

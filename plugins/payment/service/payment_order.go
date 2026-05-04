@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	pluginent "github.com/Wei-Shaw/sub2api/plugins/payment/ent"
 	infraerrors "github.com/Wei-Shaw/sub2api/plugins/payment/internal/errors"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment"
@@ -19,7 +21,7 @@ import (
 // CreateOrderRequest is the input the handler passes to CreateOrder.
 type CreateOrderRequest struct {
 	UserID          int64
-	Amount          float64
+	Amount          decimal.Decimal
 	PaymentType     string
 	OpenID          string
 	ClientIP        string
@@ -36,9 +38,9 @@ type CreateOrderRequest struct {
 // CreateOrderResponse is the result returned by CreateOrder.
 type CreateOrderResponse struct {
 	OrderID      int64                           `json:"order_id"`
-	Amount       float64                         `json:"amount"`
-	PayAmount    float64                         `json:"pay_amount"`
-	FeeRate      float64                         `json:"fee_rate"`
+	Amount       decimal.Decimal                 `json:"amount"`
+	PayAmount    decimal.Decimal                 `json:"pay_amount"`
+	FeeRate      decimal.Decimal                 `json:"fee_rate"`
 	Status       string                          `json:"status"`
 	ResultType   payment.CreatePaymentResultType `json:"result_type,omitempty"`
 	PaymentType  string                          `json:"payment_type"`
@@ -149,18 +151,21 @@ func (s *PaymentService) lookupOrderUser(ctx context.Context, userID int64) (*pl
 }
 
 // orderPricing bundles the four currency values derived from the
-// request, plan and config so each one is computed exactly once.
+// request, plan and config so each one is computed exactly once. All
+// amounts are decimal — PayAmountStr is kept alongside as the formatted
+// string we hand to the upstream gateway (most provider SDKs prefer
+// strings over native floats).
 type orderPricing struct {
-	OrderAmount  float64
-	LimitAmount  float64
-	PayAmount    float64
+	OrderAmount  decimal.Decimal
+	LimitAmount  decimal.Decimal
+	PayAmount    decimal.Decimal
 	PayAmountStr string
-	FeeRate      float64
+	FeeRate      decimal.Decimal
 }
 
 // computeOrderPricing applies the plan/balance multiplier rules and
-// computes the gateway-facing pay amount string. Subscription orders
-// take their price from the plan; balance orders may be multiplied by a
+// computes the gateway-facing pay amount. Subscription orders take
+// their price from the plan; balance orders may be multiplied by a
 // configurable bonus rate.
 func computeOrderPricing(req CreateOrderRequest, plan *SubscriptionPlan, cfg *PaymentConfig) orderPricing {
 	orderAmount := req.Amount
@@ -171,13 +176,12 @@ func computeOrderPricing(req CreateOrderRequest, plan *SubscriptionPlan, cfg *Pa
 	} else if req.OrderType == payment.OrderTypeBalance {
 		orderAmount = calculateCreditedBalance(req.Amount, cfg.BalanceRechargeMultiplier)
 	}
-	payAmountStr := payment.CalculatePayAmount(limitAmount, cfg.RechargeFeeRate)
-	payAmount, _ := strconv.ParseFloat(payAmountStr, 64)
+	payAmount := payment.CalculatePayAmount(limitAmount, cfg.RechargeFeeRate)
 	return orderPricing{
 		OrderAmount:  orderAmount,
 		LimitAmount:  limitAmount,
 		PayAmount:    payAmount,
-		PayAmountStr: payAmountStr,
+		PayAmountStr: payAmount.StringFixed(2),
 		FeeRate:      cfg.RechargeFeeRate,
 	}
 }
@@ -199,7 +203,7 @@ func (s *PaymentService) publishOrderCreated(ctx context.Context, o *pluginent.P
 				OrderId:           int64(o.ID),
 				OutTradeNo:        o.OutTradeNo,
 				UserId:            o.UserID,
-				AmountCents:       yuanToFenInt(o.Amount),
+				AmountCents:       yuanToFen(o.Amount),
 				PlanId:            planIDStr,
 				ProviderKey:       o.PaymentType,
 				BizType:           o.OrderType,
@@ -338,7 +342,7 @@ func selectedInstanceSupportedTypes(sel *payment.InstanceSelection) string {
 	return sel.SupportedTypes
 }
 
-func buildCreateOrderResponse(order *pluginent.PaymentOrder, req CreateOrderRequest, payAmount float64, sel *payment.InstanceSelection, pr *payment.CreatePaymentResponse, resultType payment.CreatePaymentResultType) *CreateOrderResponse {
+func buildCreateOrderResponse(order *pluginent.PaymentOrder, req CreateOrderRequest, payAmount decimal.Decimal, sel *payment.InstanceSelection, pr *payment.CreatePaymentResponse, resultType payment.CreatePaymentResultType) *CreateOrderResponse {
 	return &CreateOrderResponse{
 		OrderID:      int64(order.ID),
 		Amount:       order.Amount,
@@ -392,14 +396,14 @@ func classifyCreatePaymentError(req CreateOrderRequest, providerKey string, err 
 	return infraerrors.ServiceUnavailable("PAYMENT_GATEWAY_ERROR", fmt.Sprintf("payment gateway error: %s", err.Error()))
 }
 
-func buildPaymentSubject(plan *SubscriptionPlan, limitAmount float64, cfg *PaymentConfig) string {
+func buildPaymentSubject(plan *SubscriptionPlan, limitAmount decimal.Decimal, cfg *PaymentConfig) string {
 	if plan != nil {
 		if plan.ProductName != "" {
 			return plan.ProductName
 		}
 		return "Sub2API Subscription " + plan.Name
 	}
-	amountStr := strconv.FormatFloat(limitAmount, 'f', 2, 64)
+	amountStr := limitAmount.StringFixed(2)
 	pf := strings.TrimSpace(cfg.ProductNamePrefix)
 	sf := strings.TrimSpace(cfg.ProductNameSuffix)
 	if pf != "" || sf != "" {

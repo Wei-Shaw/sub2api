@@ -7,8 +7,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	dbent "github.com/Wei-Shaw/sub2api/plugins/payment/ent"
 )
+
+// dec converts a literal int into decimal.Decimal — keeps the test
+// table data legible after the float64 → decimal migration.
+func dec(v int64) decimal.Decimal { return decimal.NewFromInt(v) }
 
 func TestInstanceSupportsType(t *testing.T) {
 	t.Parallel()
@@ -101,15 +107,15 @@ func TestInstanceSupportsType(t *testing.T) {
 func TestGetInstanceChannelLimitsFallsBackToLegacyDirectAliases(t *testing.T) {
 	t.Parallel()
 
-	inst := testInstance(1, TypeAlipay, makeLimitsJSON(TypeAlipayDirect, ChannelLimits{SingleMax: 66}))
+	inst := testInstance(1, TypeAlipay, makeLimitsJSON(TypeAlipayDirect, ChannelLimits{SingleMax: dec(66)}))
 	got := getInstanceChannelLimits(inst, TypeAlipay)
-	if got.SingleMax != 66 {
+	if !got.SingleMax.Equal(dec(66)) {
 		t.Fatalf("getInstanceChannelLimits() = %+v, want SingleMax=66", got)
 	}
 
-	wxInst := testInstance(2, TypeWxpay, makeLimitsJSON(TypeWxpayDirect, ChannelLimits{SingleMin: 8}))
+	wxInst := testInstance(2, TypeWxpay, makeLimitsJSON(TypeWxpayDirect, ChannelLimits{SingleMin: dec(8)}))
 	wxGot := getInstanceChannelLimits(wxInst, TypeWxpay)
-	if wxGot.SingleMin != 8 {
+	if !wxGot.SingleMin.Equal(dec(8)) {
 		t.Fatalf("getInstanceChannelLimits() = %+v, want SingleMin=8", wxGot)
 	}
 }
@@ -118,7 +124,7 @@ func TestGetInstanceChannelLimitsFallsBackToLegacyDirectAliases(t *testing.T) {
 // Helper to build test PaymentProviderInstance values
 // ---------------------------------------------------------------------------
 
-func testInstance(id int64, providerKey, limits string) *dbent.PaymentProviderInstance {
+func testInstance(id int, providerKey, limits string) *dbent.PaymentProviderInstance {
 	return &dbent.PaymentProviderInstance{
 		ID:          id,
 		ProviderKey: providerKey,
@@ -145,129 +151,129 @@ func TestFilterByLimits(t *testing.T) {
 		name        string
 		candidates  []instanceCandidate
 		paymentType PaymentType
-		orderAmount float64
-		wantIDs     []int64 // expected surviving instance IDs
+		orderAmount decimal.Decimal
+		wantIDs     []int // expected surviving instance IDs
 	}{
 		{
 			name: "order below SingleMin is filtered out",
 			candidates: []instanceCandidate{
-				{inst: testInstance(1, "easypay", makeLimitsJSON("alipay", ChannelLimits{SingleMin: 10})), dailyUsed: 0},
+				{inst: testInstance(1, "easypay", makeLimitsJSON("alipay", ChannelLimits{SingleMin: dec(10)})), dailyUsed: decimal.Zero},
 			},
 			paymentType: "alipay",
-			orderAmount: 5,
+			orderAmount: dec(5),
 			wantIDs:     nil,
 		},
 		{
 			name: "order at exact SingleMin boundary passes",
 			candidates: []instanceCandidate{
-				{inst: testInstance(1, "easypay", makeLimitsJSON("alipay", ChannelLimits{SingleMin: 10})), dailyUsed: 0},
+				{inst: testInstance(1, "easypay", makeLimitsJSON("alipay", ChannelLimits{SingleMin: dec(10)})), dailyUsed: decimal.Zero},
 			},
 			paymentType: "alipay",
-			orderAmount: 10,
-			wantIDs:     []int64{1},
+			orderAmount: dec(10),
+			wantIDs:     []int{1},
 		},
 		{
 			name: "order above SingleMax is filtered out",
 			candidates: []instanceCandidate{
-				{inst: testInstance(1, "easypay", makeLimitsJSON("alipay", ChannelLimits{SingleMax: 100})), dailyUsed: 0},
+				{inst: testInstance(1, "easypay", makeLimitsJSON("alipay", ChannelLimits{SingleMax: dec(100)})), dailyUsed: decimal.Zero},
 			},
 			paymentType: "alipay",
-			orderAmount: 150,
+			orderAmount: dec(150),
 			wantIDs:     nil,
 		},
 		{
 			name: "order at exact SingleMax boundary passes",
 			candidates: []instanceCandidate{
-				{inst: testInstance(1, "easypay", makeLimitsJSON("alipay", ChannelLimits{SingleMax: 100})), dailyUsed: 0},
+				{inst: testInstance(1, "easypay", makeLimitsJSON("alipay", ChannelLimits{SingleMax: dec(100)})), dailyUsed: decimal.Zero},
 			},
 			paymentType: "alipay",
-			orderAmount: 100,
-			wantIDs:     []int64{1},
+			orderAmount: dec(100),
+			wantIDs:     []int{1},
 		},
 		{
 			name: "daily used + orderAmount exceeding dailyLimit is filtered out",
 			candidates: []instanceCandidate{
-				{inst: testInstance(1, "easypay", makeLimitsJSON("alipay", ChannelLimits{DailyLimit: 500})), dailyUsed: 480},
+				{inst: testInstance(1, "easypay", makeLimitsJSON("alipay", ChannelLimits{DailyLimit: dec(500)})), dailyUsed: dec(480)},
 			},
 			paymentType: "alipay",
-			orderAmount: 30,
+			orderAmount: dec(30),
 			wantIDs:     nil, // 480+30=510 > 500
 		},
 		{
 			name: "daily used + orderAmount equal to dailyLimit passes (strict greater-than)",
 			candidates: []instanceCandidate{
-				{inst: testInstance(1, "easypay", makeLimitsJSON("alipay", ChannelLimits{DailyLimit: 500})), dailyUsed: 480},
+				{inst: testInstance(1, "easypay", makeLimitsJSON("alipay", ChannelLimits{DailyLimit: dec(500)})), dailyUsed: dec(480)},
 			},
 			paymentType: "alipay",
-			orderAmount: 20,
-			wantIDs:     []int64{1}, // 480+20=500, 500 > 500 is false → passes
+			orderAmount: dec(20),
+			wantIDs:     []int{1}, // 480+20=500, 500 > 500 is false → passes
 		},
 		{
 			name: "daily used + orderAmount below dailyLimit passes",
 			candidates: []instanceCandidate{
-				{inst: testInstance(1, "easypay", makeLimitsJSON("alipay", ChannelLimits{DailyLimit: 500})), dailyUsed: 400},
+				{inst: testInstance(1, "easypay", makeLimitsJSON("alipay", ChannelLimits{DailyLimit: dec(500)})), dailyUsed: dec(400)},
 			},
 			paymentType: "alipay",
-			orderAmount: 50,
-			wantIDs:     []int64{1},
+			orderAmount: dec(50),
+			wantIDs:     []int{1},
 		},
 		{
 			name: "no limits configured passes through",
 			candidates: []instanceCandidate{
-				{inst: testInstance(1, "easypay", ""), dailyUsed: 99999},
+				{inst: testInstance(1, "easypay", ""), dailyUsed: dec(99999)},
 			},
 			paymentType: "alipay",
-			orderAmount: 100,
-			wantIDs:     []int64{1},
+			orderAmount: dec(100),
+			wantIDs:     []int{1},
 		},
 		{
 			name: "multiple candidates with partial filtering",
 			candidates: []instanceCandidate{
 				// singleMax=50, order=80 → filtered out
-				{inst: testInstance(1, "easypay", makeLimitsJSON("alipay", ChannelLimits{SingleMax: 50})), dailyUsed: 0},
+				{inst: testInstance(1, "easypay", makeLimitsJSON("alipay", ChannelLimits{SingleMax: dec(50)})), dailyUsed: decimal.Zero},
 				// no limits → passes
-				{inst: testInstance(2, "easypay", ""), dailyUsed: 0},
+				{inst: testInstance(2, "easypay", ""), dailyUsed: decimal.Zero},
 				// singleMin=100, order=80 → filtered out
-				{inst: testInstance(3, "easypay", makeLimitsJSON("alipay", ChannelLimits{SingleMin: 100})), dailyUsed: 0},
+				{inst: testInstance(3, "easypay", makeLimitsJSON("alipay", ChannelLimits{SingleMin: dec(100)})), dailyUsed: decimal.Zero},
 				// daily limit ok → passes (500+80=580 < 1000)
-				{inst: testInstance(4, "easypay", makeLimitsJSON("alipay", ChannelLimits{DailyLimit: 1000})), dailyUsed: 500},
+				{inst: testInstance(4, "easypay", makeLimitsJSON("alipay", ChannelLimits{DailyLimit: dec(1000)})), dailyUsed: dec(500)},
 			},
 			paymentType: "alipay",
-			orderAmount: 80,
-			wantIDs:     []int64{2, 4},
+			orderAmount: dec(80),
+			wantIDs:     []int{2, 4},
 		},
 		{
 			name: "zero SingleMin and SingleMax means no single-transaction limit",
 			candidates: []instanceCandidate{
-				{inst: testInstance(1, "easypay", makeLimitsJSON("alipay", ChannelLimits{SingleMin: 0, SingleMax: 0, DailyLimit: 0})), dailyUsed: 0},
+				{inst: testInstance(1, "easypay", makeLimitsJSON("alipay", ChannelLimits{})), dailyUsed: decimal.Zero},
 			},
 			paymentType: "alipay",
-			orderAmount: 99999,
-			wantIDs:     []int64{1},
+			orderAmount: dec(99999),
+			wantIDs:     []int{1},
 		},
 		{
 			name: "all limits combined - order passes all checks",
 			candidates: []instanceCandidate{
-				{inst: testInstance(1, "easypay", makeLimitsJSON("alipay", ChannelLimits{SingleMin: 10, SingleMax: 200, DailyLimit: 1000})), dailyUsed: 500},
+				{inst: testInstance(1, "easypay", makeLimitsJSON("alipay", ChannelLimits{SingleMin: dec(10), SingleMax: dec(200), DailyLimit: dec(1000)})), dailyUsed: dec(500)},
 			},
 			paymentType: "alipay",
-			orderAmount: 50,
-			wantIDs:     []int64{1},
+			orderAmount: dec(50),
+			wantIDs:     []int{1},
 		},
 		{
 			name: "all limits combined - order fails SingleMin",
 			candidates: []instanceCandidate{
-				{inst: testInstance(1, "easypay", makeLimitsJSON("alipay", ChannelLimits{SingleMin: 10, SingleMax: 200, DailyLimit: 1000})), dailyUsed: 500},
+				{inst: testInstance(1, "easypay", makeLimitsJSON("alipay", ChannelLimits{SingleMin: dec(10), SingleMax: dec(200), DailyLimit: dec(1000)})), dailyUsed: dec(500)},
 			},
 			paymentType: "alipay",
-			orderAmount: 5,
+			orderAmount: dec(5),
 			wantIDs:     nil,
 		},
 		{
 			name:        "empty candidates returns empty",
 			candidates:  nil,
 			paymentType: "alipay",
-			orderAmount: 10,
+			orderAmount: dec(10),
 			wantIDs:     nil,
 		},
 	}
@@ -276,11 +282,11 @@ func TestFilterByLimits(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := filterByLimits(tt.candidates, tt.paymentType, tt.orderAmount)
-			gotIDs := make([]int64, len(got))
+			gotIDs := make([]int, len(got))
 			for i, c := range got {
 				gotIDs[i] = c.inst.ID
 			}
-			if !int64SliceEqual(gotIDs, tt.wantIDs) {
+			if !intSliceEqual(gotIDs, tt.wantIDs) {
 				t.Fatalf("filterByLimits() returned IDs %v, want %v", gotIDs, tt.wantIDs)
 			}
 		})
@@ -297,9 +303,9 @@ func TestPickLeastAmount(t *testing.T) {
 	t.Run("picks candidate with lowest dailyUsed", func(t *testing.T) {
 		t.Parallel()
 		candidates := []instanceCandidate{
-			{inst: testInstance(1, "easypay", ""), dailyUsed: 300},
-			{inst: testInstance(2, "easypay", ""), dailyUsed: 100},
-			{inst: testInstance(3, "easypay", ""), dailyUsed: 200},
+			{inst: testInstance(1, "easypay", ""), dailyUsed: dec(300)},
+			{inst: testInstance(2, "easypay", ""), dailyUsed: dec(100)},
+			{inst: testInstance(3, "easypay", ""), dailyUsed: dec(200)},
 		}
 		got := pickLeastAmount(candidates)
 		if got.inst.ID != 2 {
@@ -310,9 +316,9 @@ func TestPickLeastAmount(t *testing.T) {
 	t.Run("with equal dailyUsed picks the first one", func(t *testing.T) {
 		t.Parallel()
 		candidates := []instanceCandidate{
-			{inst: testInstance(1, "easypay", ""), dailyUsed: 100},
-			{inst: testInstance(2, "easypay", ""), dailyUsed: 100},
-			{inst: testInstance(3, "easypay", ""), dailyUsed: 200},
+			{inst: testInstance(1, "easypay", ""), dailyUsed: dec(100)},
+			{inst: testInstance(2, "easypay", ""), dailyUsed: dec(100)},
+			{inst: testInstance(3, "easypay", ""), dailyUsed: dec(200)},
 		}
 		got := pickLeastAmount(candidates)
 		if got.inst.ID != 1 {
@@ -323,7 +329,7 @@ func TestPickLeastAmount(t *testing.T) {
 	t.Run("single candidate returns that candidate", func(t *testing.T) {
 		t.Parallel()
 		candidates := []instanceCandidate{
-			{inst: testInstance(42, "easypay", ""), dailyUsed: 999},
+			{inst: testInstance(42, "easypay", ""), dailyUsed: dec(999)},
 		}
 		got := pickLeastAmount(candidates)
 		if got.inst.ID != 42 {
@@ -334,9 +340,9 @@ func TestPickLeastAmount(t *testing.T) {
 	t.Run("zero usage among non-zero picks zero", func(t *testing.T) {
 		t.Parallel()
 		candidates := []instanceCandidate{
-			{inst: testInstance(1, "easypay", ""), dailyUsed: 500},
-			{inst: testInstance(2, "easypay", ""), dailyUsed: 0},
-			{inst: testInstance(3, "easypay", ""), dailyUsed: 300},
+			{inst: testInstance(1, "easypay", ""), dailyUsed: dec(500)},
+			{inst: testInstance(2, "easypay", ""), dailyUsed: decimal.Zero},
+			{inst: testInstance(3, "easypay", ""), dailyUsed: dec(300)},
 		}
 		got := pickLeastAmount(candidates)
 		if got.inst.ID != 2 {
@@ -375,7 +381,7 @@ func TestGetInstanceChannelLimits(t *testing.T) {
 			inst: testInstance(1, "easypay",
 				`{"alipay":{"singleMin":5,"singleMax":200,"dailyLimit":1000}}`),
 			paymentType: "alipay",
-			want:        ChannelLimits{SingleMin: 5, SingleMax: 200, DailyLimit: 1000},
+			want:        ChannelLimits{SingleMin: dec(5), SingleMax: dec(200), DailyLimit: dec(1000)},
 		},
 		{
 			name: "payment type not in limits returns zero ChannelLimits",
@@ -389,28 +395,28 @@ func TestGetInstanceChannelLimits(t *testing.T) {
 			inst: testInstance(1, "stripe",
 				`{"stripe":{"singleMin":10,"singleMax":500,"dailyLimit":5000}}`),
 			paymentType: "alipay",
-			want:        ChannelLimits{SingleMin: 10, SingleMax: 500, DailyLimit: 5000},
+			want:        ChannelLimits{SingleMin: dec(10), SingleMax: dec(500), DailyLimit: dec(5000)},
 		},
 		{
 			name: "stripe provider ignores payment type key even if present",
 			inst: testInstance(1, "stripe",
 				`{"stripe":{"singleMin":10,"singleMax":500},"alipay":{"singleMin":1,"singleMax":100}}`),
 			paymentType: "alipay",
-			want:        ChannelLimits{SingleMin: 10, SingleMax: 500},
+			want:        ChannelLimits{SingleMin: dec(10), SingleMax: dec(500)},
 		},
 		{
 			name: "non-stripe provider uses payment type as lookup key",
 			inst: testInstance(1, "easypay",
 				`{"alipay":{"singleMin":5},"wxpay":{"singleMin":10}}`),
 			paymentType: "wxpay",
-			want:        ChannelLimits{SingleMin: 10},
+			want:        ChannelLimits{SingleMin: dec(10)},
 		},
 		{
 			name: "valid JSON with partial limits (only dailyLimit)",
 			inst: testInstance(1, "easypay",
 				`{"alipay":{"dailyLimit":800}}`),
 			paymentType: "alipay",
-			want:        ChannelLimits{DailyLimit: 800},
+			want:        ChannelLimits{DailyLimit: dec(800)},
 		},
 	}
 
@@ -418,11 +424,20 @@ func TestGetInstanceChannelLimits(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got := getInstanceChannelLimits(tt.inst, tt.paymentType)
-			if got != tt.want {
+			if !channelLimitsEqual(got, tt.want) {
 				t.Fatalf("getInstanceChannelLimits() = %+v, want %+v", got, tt.want)
 			}
 		})
 	}
+}
+
+// channelLimitsEqual compares two ChannelLimits values structurally —
+// decimal.Decimal does not implement == so a direct struct compare is
+// no longer valid after the float64 → decimal migration.
+func channelLimitsEqual(a, b ChannelLimits) bool {
+	return a.SingleMin.Equal(b.SingleMin) &&
+		a.SingleMax.Equal(b.SingleMax) &&
+		a.DailyLimit.Equal(b.DailyLimit)
 }
 
 // ---------------------------------------------------------------------------
@@ -575,9 +590,9 @@ func stringMapEqual(a, b map[string]string) bool {
 // Helpers
 // ---------------------------------------------------------------------------
 
-// int64SliceEqual compares two int64 slices for equality.
+// intSliceEqual compares two int slices for equality.
 // Both nil and empty slices are treated as equal.
-func int64SliceEqual(a, b []int64) bool {
+func intSliceEqual(a, b []int) bool {
 	if len(a) == 0 && len(b) == 0 {
 		return true
 	}

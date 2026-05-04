@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/shopspring/decimal"
+
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	pluginent "github.com/Wei-Shaw/sub2api/plugins/payment/ent"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentproviderinstance"
@@ -50,23 +52,27 @@ const (
 )
 
 // PaymentConfig is the full plugin payment config materialised for handlers.
+//
+// Money-typed fields are shopspring/decimal so all subsequent arithmetic
+// stays exact. The settings backend persists these as numeric strings,
+// which preserves precision across the read/write boundary.
 type PaymentConfig struct {
-	Enabled                   bool     `json:"enabled"`
-	MinAmount                 float64  `json:"min_amount"`
-	MaxAmount                 float64  `json:"max_amount"`
-	DailyLimit                float64  `json:"daily_limit"`
-	OrderTimeoutMin           int      `json:"order_timeout_minutes"`
-	MaxPendingOrders          int      `json:"max_pending_orders"`
-	EnabledTypes              []string `json:"enabled_payment_types"`
-	BalanceDisabled           bool     `json:"balance_disabled"`
-	BalanceRechargeMultiplier float64  `json:"balance_recharge_multiplier"`
-	RechargeFeeRate           float64  `json:"recharge_fee_rate"`
-	LoadBalanceStrategy       string   `json:"load_balance_strategy"`
-	ProductNamePrefix         string   `json:"product_name_prefix"`
-	ProductNameSuffix         string   `json:"product_name_suffix"`
-	HelpImageURL              string   `json:"help_image_url"`
-	HelpText                  string   `json:"help_text"`
-	StripePublishableKey      string   `json:"stripe_publishable_key,omitempty"`
+	Enabled                   bool            `json:"enabled"`
+	MinAmount                 decimal.Decimal `json:"min_amount"`
+	MaxAmount                 decimal.Decimal `json:"max_amount"`
+	DailyLimit                decimal.Decimal `json:"daily_limit"`
+	OrderTimeoutMin           int             `json:"order_timeout_minutes"`
+	MaxPendingOrders          int             `json:"max_pending_orders"`
+	EnabledTypes              []string        `json:"enabled_payment_types"`
+	BalanceDisabled           bool            `json:"balance_disabled"`
+	BalanceRechargeMultiplier decimal.Decimal `json:"balance_recharge_multiplier"`
+	RechargeFeeRate           decimal.Decimal `json:"recharge_fee_rate"`
+	LoadBalanceStrategy       string          `json:"load_balance_strategy"`
+	ProductNamePrefix         string          `json:"product_name_prefix"`
+	ProductNameSuffix         string          `json:"product_name_suffix"`
+	HelpImageURL              string          `json:"help_image_url"`
+	HelpText                  string          `json:"help_text"`
+	StripePublishableKey      string          `json:"stripe_publishable_key,omitempty"`
 
 	CancelRateLimitEnabled bool   `json:"cancel_rate_limit_enabled"`
 	CancelRateLimitMax     int    `json:"cancel_rate_limit_max"`
@@ -86,21 +92,21 @@ type PaymentConfig struct {
 // SettingsClient.Set, so the form can submit deltas without resetting
 // untouched keys.
 type UpdatePaymentConfigRequest struct {
-	Enabled                   *bool    `json:"enabled"`
-	MinAmount                 *float64 `json:"min_amount"`
-	MaxAmount                 *float64 `json:"max_amount"`
-	DailyLimit                *float64 `json:"daily_limit"`
-	OrderTimeoutMin           *int     `json:"order_timeout_minutes"`
-	MaxPendingOrders          *int     `json:"max_pending_orders"`
-	EnabledTypes              []string `json:"enabled_payment_types"`
-	BalanceDisabled           *bool    `json:"balance_disabled"`
-	BalanceRechargeMultiplier *float64 `json:"balance_recharge_multiplier"`
-	RechargeFeeRate           *float64 `json:"recharge_fee_rate"`
-	LoadBalanceStrategy       *string  `json:"load_balance_strategy"`
-	ProductNamePrefix         *string  `json:"product_name_prefix"`
-	ProductNameSuffix         *string  `json:"product_name_suffix"`
-	HelpImageURL              *string  `json:"help_image_url"`
-	HelpText                  *string  `json:"help_text"`
+	Enabled                   *bool            `json:"enabled"`
+	MinAmount                 *decimal.Decimal `json:"min_amount"`
+	MaxAmount                 *decimal.Decimal `json:"max_amount"`
+	DailyLimit                *decimal.Decimal `json:"daily_limit"`
+	OrderTimeoutMin           *int             `json:"order_timeout_minutes"`
+	MaxPendingOrders          *int             `json:"max_pending_orders"`
+	EnabledTypes              []string         `json:"enabled_payment_types"`
+	BalanceDisabled           *bool            `json:"balance_disabled"`
+	BalanceRechargeMultiplier *decimal.Decimal `json:"balance_recharge_multiplier"`
+	RechargeFeeRate           *decimal.Decimal `json:"recharge_fee_rate"`
+	LoadBalanceStrategy       *string          `json:"load_balance_strategy"`
+	ProductNamePrefix         *string          `json:"product_name_prefix"`
+	ProductNameSuffix         *string          `json:"product_name_suffix"`
+	HelpImageURL              *string          `json:"help_image_url"`
+	HelpText                  *string          `json:"help_text"`
 
 	CancelRateLimitEnabled *bool   `json:"cancel_rate_limit_enabled"`
 	CancelRateLimitMax     *int    `json:"cancel_rate_limit_max"`
@@ -114,20 +120,22 @@ type UpdatePaymentConfigRequest struct {
 	VisibleMethodWxpayEnabled  *bool   `json:"visible_method_wxpay_enabled"`
 }
 
-// MethodLimits holds per-payment-type limits.
+// MethodLimits holds per-payment-type limits. All currency-typed
+// fields are decimal so the limit comparison never round-trips through
+// float64.
 type MethodLimits struct {
-	PaymentType string  `json:"payment_type"`
-	FeeRate     float64 `json:"fee_rate"`
-	DailyLimit  float64 `json:"daily_limit"`
-	SingleMin   float64 `json:"single_min"`
-	SingleMax   float64 `json:"single_max"`
+	PaymentType string          `json:"payment_type"`
+	FeeRate     decimal.Decimal `json:"fee_rate"`
+	DailyLimit  decimal.Decimal `json:"daily_limit"`
+	SingleMin   decimal.Decimal `json:"single_min"`
+	SingleMax   decimal.Decimal `json:"single_max"`
 }
 
 // MethodLimitsResponse is the full /limits API response.
 type MethodLimitsResponse struct {
 	Methods   map[string]MethodLimits `json:"methods"`
-	GlobalMin float64                 `json:"global_min"`
-	GlobalMax float64                 `json:"global_max"`
+	GlobalMin decimal.Decimal         `json:"global_min"`
+	GlobalMax decimal.Decimal         `json:"global_max"`
 }
 
 type CreateProviderInstanceRequest struct {
@@ -156,31 +164,31 @@ type UpdateProviderInstanceRequest struct {
 }
 
 type CreatePlanRequest struct {
-	GroupID       int64    `json:"group_id"`
-	Name          string   `json:"name"`
-	Description   string   `json:"description"`
-	Price         float64  `json:"price"`
-	OriginalPrice *float64 `json:"original_price"`
-	ValidityDays  int      `json:"validity_days"`
-	ValidityUnit  string   `json:"validity_unit"`
-	Features      string   `json:"features"`
-	ProductName   string   `json:"product_name"`
-	ForSale       bool     `json:"for_sale"`
-	SortOrder     int      `json:"sort_order"`
+	GroupID       int64            `json:"group_id"`
+	Name          string           `json:"name"`
+	Description   string           `json:"description"`
+	Price         decimal.Decimal  `json:"price"`
+	OriginalPrice *decimal.Decimal `json:"original_price"`
+	ValidityDays  int              `json:"validity_days"`
+	ValidityUnit  string           `json:"validity_unit"`
+	Features      string           `json:"features"`
+	ProductName   string           `json:"product_name"`
+	ForSale       bool             `json:"for_sale"`
+	SortOrder     int              `json:"sort_order"`
 }
 
 type UpdatePlanRequest struct {
-	GroupID       *int64   `json:"group_id"`
-	Name          *string  `json:"name"`
-	Description   *string  `json:"description"`
-	Price         *float64 `json:"price"`
-	OriginalPrice *float64 `json:"original_price"`
-	ValidityDays  *int     `json:"validity_days"`
-	ValidityUnit  *string  `json:"validity_unit"`
-	Features      *string  `json:"features"`
-	ProductName   *string  `json:"product_name"`
-	ForSale       *bool    `json:"for_sale"`
-	SortOrder     *int     `json:"sort_order"`
+	GroupID       *int64           `json:"group_id"`
+	Name          *string          `json:"name"`
+	Description   *string          `json:"description"`
+	Price         *decimal.Decimal `json:"price"`
+	OriginalPrice *decimal.Decimal `json:"original_price"`
+	ValidityDays  *int             `json:"validity_days"`
+	ValidityUnit  *string          `json:"validity_unit"`
+	Features      *string          `json:"features"`
+	ProductName   *string          `json:"product_name"`
+	ForSale       *bool            `json:"for_sale"`
+	SortOrder     *int             `json:"sort_order"`
 }
 
 // SubscriptionPlan is a plugin-local mirror of the core's subscription_plans
@@ -190,8 +198,8 @@ type SubscriptionPlan struct {
 	GroupID       int64
 	Name          string
 	Description   string
-	Price         float64
-	OriginalPrice *float64
+	Price         decimal.Decimal
+	OriginalPrice *decimal.Decimal
 	ValidityDays  int
 	ValidityUnit  string
 	Features      string
@@ -270,15 +278,15 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 		LoadBalanceStrategy:       payment.DefaultLoadBalanceStrategy,
 	}
 	s.readBoolSetting(ctx, SettingPaymentEnabled, &cfg.Enabled)
-	s.readFloatSetting(ctx, SettingMinRechargeAmount, &cfg.MinAmount)
-	s.readFloatSetting(ctx, SettingMaxRechargeAmount, &cfg.MaxAmount)
-	s.readFloatSetting(ctx, SettingDailyRechargeLimit, &cfg.DailyLimit)
+	s.readDecimalSetting(ctx, SettingMinRechargeAmount, &cfg.MinAmount)
+	s.readDecimalSetting(ctx, SettingMaxRechargeAmount, &cfg.MaxAmount)
+	s.readDecimalSetting(ctx, SettingDailyRechargeLimit, &cfg.DailyLimit)
 	s.readIntSetting(ctx, SettingOrderTimeoutMinutes, &cfg.OrderTimeoutMin)
 	s.readIntSetting(ctx, SettingMaxPendingOrders, &cfg.MaxPendingOrders)
 	s.readBoolSetting(ctx, SettingBalancePayDisabled, &cfg.BalanceDisabled)
-	s.readFloatSetting(ctx, SettingBalanceRechargeMult, &cfg.BalanceRechargeMultiplier)
+	s.readDecimalSetting(ctx, SettingBalanceRechargeMult, &cfg.BalanceRechargeMultiplier)
 	cfg.BalanceRechargeMultiplier = normalizeBalanceRechargeMultiplier(cfg.BalanceRechargeMultiplier)
-	s.readFloatSetting(ctx, SettingRechargeFeeRate, &cfg.RechargeFeeRate)
+	s.readDecimalSetting(ctx, SettingRechargeFeeRate, &cfg.RechargeFeeRate)
 	s.readStringSetting(ctx, SettingLoadBalanceStrategy, &cfg.LoadBalanceStrategy)
 	s.readStringSetting(ctx, SettingProductNamePrefix, &cfg.ProductNamePrefix)
 	s.readStringSetting(ctx, SettingProductNameSuffix, &cfg.ProductNameSuffix)
@@ -321,10 +329,26 @@ func (s *PaymentConfigService) readIntSetting(ctx context.Context, key string, d
 	}
 }
 
-func (s *PaymentConfigService) readFloatSetting(ctx context.Context, key string, dst *float64) {
-	var v float64
-	if err := s.settings.GetTyped(ctx, key, &v); err == nil {
-		*dst = v
+// readDecimalSetting loads a decimal-valued setting with permissive
+// parsing: stored numbers (float64) are accepted via NewFromFloat,
+// strings via NewFromString. Missing / unparseable values leave dst
+// untouched so callers keep their default.
+func (s *PaymentConfigService) readDecimalSetting(ctx context.Context, key string, dst *decimal.Decimal) {
+	// Try string form first — that is how the form persists values now
+	// so precision is preserved through the round-trip.
+	var asString string
+	if err := s.settings.GetTyped(ctx, key, &asString); err == nil && strings.TrimSpace(asString) != "" {
+		if d, err := decimal.NewFromString(strings.TrimSpace(asString)); err == nil {
+			*dst = d
+			return
+		}
+	}
+	// Legacy: settings written before the decimal migration were stored
+	// as JSON numbers; honour them via NewFromFloat so we don't break
+	// existing deployments.
+	var asFloat float64
+	if err := s.settings.GetTyped(ctx, key, &asFloat); err == nil {
+		*dst = decimal.NewFromFloat(asFloat)
 	}
 }
 
@@ -435,13 +459,13 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 	if err := s.setIfNotNilBool(ctx, SettingPaymentEnabled, req.Enabled); err != nil {
 		return err
 	}
-	if err := s.setIfNotNilFloat(ctx, SettingMinRechargeAmount, req.MinAmount); err != nil {
+	if err := s.setIfNotNilDecimal(ctx, SettingMinRechargeAmount, req.MinAmount); err != nil {
 		return err
 	}
-	if err := s.setIfNotNilFloat(ctx, SettingMaxRechargeAmount, req.MaxAmount); err != nil {
+	if err := s.setIfNotNilDecimal(ctx, SettingMaxRechargeAmount, req.MaxAmount); err != nil {
 		return err
 	}
-	if err := s.setIfNotNilFloat(ctx, SettingDailyRechargeLimit, req.DailyLimit); err != nil {
+	if err := s.setIfNotNilDecimal(ctx, SettingDailyRechargeLimit, req.DailyLimit); err != nil {
 		return err
 	}
 	if err := s.setIfNotNilInt(ctx, SettingOrderTimeoutMinutes, req.OrderTimeoutMin); err != nil {
@@ -453,10 +477,10 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 	if err := s.setIfNotNilBool(ctx, SettingBalancePayDisabled, req.BalanceDisabled); err != nil {
 		return err
 	}
-	if err := s.setIfNotNilFloat(ctx, SettingBalanceRechargeMult, req.BalanceRechargeMultiplier); err != nil {
+	if err := s.setIfNotNilDecimal(ctx, SettingBalanceRechargeMult, req.BalanceRechargeMultiplier); err != nil {
 		return err
 	}
-	if err := s.setIfNotNilFloat(ctx, SettingRechargeFeeRate, req.RechargeFeeRate); err != nil {
+	if err := s.setIfNotNilDecimal(ctx, SettingRechargeFeeRate, req.RechargeFeeRate); err != nil {
 		return err
 	}
 	if err := s.setIfNotNilString(ctx, SettingLoadBalanceStrategy, req.LoadBalanceStrategy); err != nil {
@@ -530,11 +554,15 @@ func (s *PaymentConfigService) setIfNotNilInt(ctx context.Context, key string, v
 	return nil
 }
 
-func (s *PaymentConfigService) setIfNotNilFloat(ctx context.Context, key string, v *float64) error {
+// setIfNotNilDecimal serialises a decimal value as its canonical string
+// form so the settings store keeps full precision. The legacy float
+// variant lost precision on values like 0.1+0.2; passing strings makes
+// the round-trip lossless.
+func (s *PaymentConfigService) setIfNotNilDecimal(ctx context.Context, key string, v *decimal.Decimal) error {
 	if v == nil {
 		return nil
 	}
-	if err := s.settings.Set(ctx, key, *v); err != nil {
+	if err := s.settings.Set(ctx, key, v.String()); err != nil {
 		return fmt.Errorf("set %s: %w", key, err)
 	}
 	return nil

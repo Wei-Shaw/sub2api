@@ -9,6 +9,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentproviderinstance"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/schema"
+	"github.com/shopspring/decimal"
 )
 
 // The init function reads all schema descriptors with runtime code
@@ -52,7 +53,7 @@ func init() {
 	// paymentorderDescFeeRate is the schema descriptor for fee_rate field.
 	paymentorderDescFeeRate := paymentorderFields[6].Descriptor()
 	// paymentorder.DefaultFeeRate holds the default value on creation for the fee_rate field.
-	paymentorder.DefaultFeeRate = paymentorderDescFeeRate.Default.(float64)
+	paymentorder.DefaultFeeRate = paymentorderDescFeeRate.Default.(decimal.Decimal)
 	// paymentorderDescRechargeCode is the schema descriptor for recharge_code field.
 	paymentorderDescRechargeCode := paymentorderFields[7].Descriptor()
 	// paymentorder.RechargeCodeValidator is a validator for the "recharge_code" field. It is called by the builders before save.
@@ -94,7 +95,7 @@ func init() {
 	// paymentorderDescRefundAmount is the schema descriptor for refund_amount field.
 	paymentorderDescRefundAmount := paymentorderFields[22].Descriptor()
 	// paymentorder.DefaultRefundAmount holds the default value on creation for the refund_amount field.
-	paymentorder.DefaultRefundAmount = paymentorderDescRefundAmount.Default.(float64)
+	paymentorder.DefaultRefundAmount = paymentorderDescRefundAmount.Default.(decimal.Decimal)
 	// paymentorderDescForceRefund is the schema descriptor for force_refund field.
 	paymentorderDescForceRefund := paymentorderFields[25].Descriptor()
 	// paymentorder.DefaultForceRefund holds the default value on creation for the force_refund field.

@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	pluginent "github.com/Wei-Shaw/sub2api/plugins/payment/ent"
 	paymentpkg "github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment"
@@ -199,16 +201,16 @@ func applyPagination(pageSize, page int) (size, pg int) {
 }
 
 // DashboardStats is the aggregate snapshot returned by GetDashboardStats.
-// Currency-typed fields are float64 (CNY) rounded to 2 decimal places at
-// the assembly site so the JSON encoder emits exact strings rather than
-// IEEE-754 drift.
+// Currency-typed fields are shopspring/decimal so the JSON encoder emits
+// exact strings rather than IEEE-754 drift. The frontend already accepts
+// decimal-encoded numbers without changes.
 type DashboardStats struct {
-	TodayAmount   float64 `json:"today_amount"`
-	TotalAmount   float64 `json:"total_amount"`
-	TodayCount    int     `json:"today_count"`
-	TotalCount    int     `json:"total_count"`
-	AvgAmount     float64 `json:"avg_amount"`
-	PendingOrders int     `json:"pending_orders"`
+	TodayAmount   decimal.Decimal `json:"today_amount"`
+	TotalAmount   decimal.Decimal `json:"total_amount"`
+	TodayCount    int             `json:"today_count"`
+	TotalCount    int             `json:"total_count"`
+	AvgAmount     decimal.Decimal `json:"avg_amount"`
+	PendingOrders int             `json:"pending_orders"`
 
 	DailySeries    []DailyStats        `json:"daily_series"`
 	PaymentMethods []PaymentMethodStat `json:"payment_methods"`
@@ -217,24 +219,24 @@ type DashboardStats struct {
 
 // DailyStats is one row of the dashboard's date-series chart.
 type DailyStats struct {
-	Date   string  `json:"date"`
-	Amount float64 `json:"amount"`
-	Count  int     `json:"count"`
+	Date   string          `json:"date"`
+	Amount decimal.Decimal `json:"amount"`
+	Count  int             `json:"count"`
 }
 
 // PaymentMethodStat is one row of the dashboard's payment-method
 // distribution chart.
 type PaymentMethodStat struct {
-	Type   string  `json:"type"`
-	Amount float64 `json:"amount"`
-	Count  int     `json:"count"`
+	Type   string          `json:"type"`
+	Amount decimal.Decimal `json:"amount"`
+	Count  int             `json:"count"`
 }
 
 // TopUserStat is one row of the dashboard's top-users leaderboard.
 type TopUserStat struct {
-	UserID int64   `json:"user_id"`
-	Email  string  `json:"email"`
-	Amount float64 `json:"amount"`
+	UserID int64           `json:"user_id"`
+	Email  string          `json:"email"`
+	Amount decimal.Decimal `json:"amount"`
 }
 
 // helpers used by the unported files (kept here so the build tag block
