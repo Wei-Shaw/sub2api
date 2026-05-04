@@ -455,6 +455,334 @@ func TestOpenAIAccountScheduleContracts_StickyObservability(t *testing.T) {
 	requireStructFieldByName(t, affinityBindingType, "SelectedGroup")
 }
 
+func TestShouldUseDefaultOpenAIAccountScheduler_ResponsesImageGeneration(t *testing.T) {
+	tests := []struct {
+		name        string
+		requirement *OpenAIResponsesImageGenerationRequirement
+		expects     bool
+	}{
+		{
+			name:        "disabled requirement does not activate scheduler",
+			requirement: &OpenAIResponsesImageGenerationRequirement{Enabled: false, MainModel: "gpt-5.1", ImageModel: "gpt-image-2"},
+		},
+		{
+			name:        "invalid image model does not activate scheduler",
+			requirement: &OpenAIResponsesImageGenerationRequirement{Enabled: true, MainModel: "gpt-5.1", ImageModel: "gpt-image-2-Sys"},
+		},
+		{
+			name:        "missing main model does not activate scheduler",
+			requirement: &OpenAIResponsesImageGenerationRequirement{Enabled: true, ImageModel: "gpt-image-2"},
+		},
+		{
+			name:        "valid requirement activates scheduler",
+			requirement: &OpenAIResponsesImageGenerationRequirement{Enabled: true, MainModel: "gpt-5.1", ImageModel: "gpt-image-2"},
+			expects:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := OpenAIAccountScheduleRequest{RequiredResponsesImageGeneration: tt.requirement}
+			require.Equal(t, tt.expects, shouldUseDefaultOpenAIAccountScheduler(req))
+		})
+	}
+}
+
+func TestAccountSupportsOpenAIResponsesImageGenerationRequiresPositiveImageEvidence(t *testing.T) {
+	baseAccount := Account{
+		ID:       45001,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Status:   StatusActive,
+	}
+
+	tests := []struct {
+		name    string
+		typ     string
+		creds   map[string]any
+		extra   map[string]any
+		main    string
+		image   string
+		expects bool
+	}{
+		{
+			name:  "no explicit capability does not satisfy responses image generation",
+			main:  "gpt-5.1",
+			image: "gpt-image-2",
+		},
+		{
+			name:  "main model alone does not satisfy responses image generation",
+			main:  "gpt-5.1",
+			image: "gpt-image-2",
+			extra: map[string]any{
+				openAICapabilityExplicitModelsExtraKey: []string{"gpt-5.1"},
+			},
+		},
+		{
+			name:  "default allow still needs explicit image model evidence",
+			main:  "gpt-5.1",
+			image: "gpt-image-2",
+			extra: map[string]any{
+				openAICapabilityDefaultAllowExtraKey: true,
+			},
+		},
+		{
+			name:  "unsupported main model fails despite valid image evidence",
+			creds: map[string]any{"model_mapping": map[string]any{"gpt-4.1": "gpt-4.1", "gpt-image-2": "gpt-image-2"}},
+			main:  "gpt-5.5",
+			image: "gpt-image-2",
+		},
+		{
+			name:  "invalid image model sys suffix is rejected despite valid evidence",
+			creds: map[string]any{"model_mapping": map[string]any{"gpt-5.5": "gpt-5.5", "gpt-image-2": "gpt-image-2"}},
+			main:  "gpt-5.5",
+			image: "gpt-image-2-Sys",
+		},
+		{
+			name:  "sys suffixed exact evidence does not prove image model support",
+			creds: map[string]any{"model_mapping": map[string]any{"gpt-5.5": "gpt-5.5", "gpt-image-2-Sys": "gpt-image-2-Sys"}},
+			main:  "gpt-5.5",
+			image: "gpt-image-2",
+		},
+		{
+			name:  "bare wildcard does not prove image model support",
+			creds: map[string]any{"model_mapping": map[string]any{"gpt-5.5": "gpt-5.5", "*": "*"}},
+			main:  "gpt-5.5",
+			image: "gpt-image-2",
+		},
+		{
+			name:  "explicit main and image models satisfy responses image generation",
+			creds: map[string]any{"plan_type": "plus"},
+			main:  "gpt-5.1",
+			image: "gpt-image-2",
+			extra: map[string]any{
+				openAICapabilityExplicitModelsExtraKey: []string{"gpt-5.1", "gpt-image-2"},
+			},
+			expects: true,
+		},
+		{
+			name:  "wildcard main and explicit image model satisfy responses image generation",
+			creds: map[string]any{"plan_type": "plus"},
+			main:  "gpt-5.5-Sys",
+			image: "gpt-image-2",
+			extra: map[string]any{
+				openAICapabilityWildcardRulesExtraKey:  []string{"gpt-5.*"},
+				openAICapabilityExplicitModelsExtraKey: []string{"gpt-image-2"},
+			},
+			expects: true,
+		},
+		{
+			name:  "oauth free plan is rejected even with explicit image evidence",
+			typ:   AccountTypeOAuth,
+			creds: map[string]any{"plan_type": "free", "model_mapping": map[string]any{"gpt-5.5": "gpt-5.5", "gpt-image-2": "gpt-image-2"}},
+			main:  "gpt-5.5",
+			image: "gpt-image-2",
+		},
+		{
+			name:  "oauth missing plan is rejected even with explicit image evidence",
+			typ:   AccountTypeOAuth,
+			creds: map[string]any{"model_mapping": map[string]any{"gpt-5.5": "gpt-5.5", "gpt-image-2": "gpt-image-2"}},
+			main:  "gpt-5.5",
+			image: "gpt-image-2",
+		},
+		{
+			name:    "paid oauth exact model mapping satisfies responses image generation",
+			typ:     AccountTypeOAuth,
+			creds:   map[string]any{"plan_type": "plus", "model_mapping": map[string]any{"gpt-5.5": "gpt-5.5", "gpt-image-2": "gpt-image-2"}},
+			main:    "gpt-5.5",
+			image:   "gpt-image-2",
+			expects: true,
+		},
+		{
+			name:  "wide gpt wildcard does not prove image model support",
+			creds: map[string]any{"plan_type": "plus", "model_mapping": map[string]any{"gpt-5.5": "gpt-5.5", "gpt-*": "gpt-*"}},
+			main:  "gpt-5.5",
+			image: "gpt-image-2",
+		},
+		{
+			name:  "api key default allow does not prove image model support",
+			typ:   AccountTypeAPIKey,
+			creds: map[string]any{"model_mapping": map[string]any{"gpt-5.5": "gpt-5.5"}},
+			main:  "gpt-5.5",
+			image: "gpt-image-2",
+			extra: map[string]any{
+				openAICapabilityDefaultAllowExtraKey: true,
+			},
+		},
+		{
+			name:    "image specific model mapping wildcard proves image support",
+			typ:     AccountTypeAPIKey,
+			creds:   map[string]any{"model_mapping": map[string]any{"gpt-5.5": "gpt-5.5", "gpt-image-*": "gpt-image-*"}},
+			main:    "gpt-5.5",
+			image:   "gpt-image-2",
+			expects: true,
+		},
+		{
+			name:  "malformed image wildcard does not prove image model support",
+			typ:   AccountTypeAPIKey,
+			creds: map[string]any{"model_mapping": map[string]any{"gpt-5.5": "gpt-5.5", "gpt-image-*-sys": "gpt-image-*-sys"}},
+			main:  "gpt-5.5",
+			image: "gpt-image-2",
+		},
+		{
+			name:  "catalog model proves image support",
+			typ:   AccountTypeAPIKey,
+			creds: map[string]any{"model_mapping": map[string]any{"gpt-5.5": "gpt-5.5"}},
+			main:  "gpt-5.5",
+			image: "gpt-image-2",
+			extra: map[string]any{
+				openAICapabilityCatalogModelsExtraKey: []string{"gpt-image-2"},
+			},
+			expects: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := baseAccount
+			if tt.typ != "" {
+				account.Type = tt.typ
+			}
+			account.Credentials = tt.creds
+			account.Extra = tt.extra
+
+			require.Equal(t, tt.expects, account.SupportsOpenAIResponsesImageGeneration(tt.main, tt.image))
+		})
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_ResponsesImageGenerationSkipsUnsupportedCandidate(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(10110)
+	unsupportedAccount := Account{
+		ID:          36101,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+	}
+	supportedAccount := Account{
+		ID:          36102,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    5,
+		Extra: map[string]any{
+			openAICapabilityExplicitModelsExtraKey: []string{"gpt-5.1", "gpt-image-2"},
+		},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.LoadBatchEnabled = false
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{unsupportedAccount, supportedAccount}},
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+	}
+
+	selection, decision, err := svc.SelectAccountWithSchedulerRequest(ctx, OpenAIAccountScheduleRequest{
+		GroupID:        &groupID,
+		RequestedModel: "gpt-5.1",
+		RequiredResponsesImageGeneration: &OpenAIResponsesImageGenerationRequirement{
+			Enabled:    true,
+			MainModel:  "gpt-5.1",
+			ImageModel: "gpt-image-2",
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, supportedAccount.ID, selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_ResponsesImageGenerationClearsUnsupportedSticky(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(10111)
+	sessionHash := "responses_image_generation_sticky"
+	unsupportedAccount := Account{ID: 36111, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0}
+	supportedAccount := Account{
+		ID:          36112,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    5,
+		Extra: map[string]any{
+			openAICapabilityExplicitModelsExtraKey: []string{"gpt-5.1", "gpt-image-2"},
+		},
+	}
+	cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{"openai:" + sessionHash: unsupportedAccount.ID}}
+	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.LoadBatchEnabled = false
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{unsupportedAccount, supportedAccount}},
+		cache:              cache,
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+	}
+
+	selection, decision, err := svc.SelectAccountWithSchedulerRequest(ctx, OpenAIAccountScheduleRequest{
+		GroupID:                          &groupID,
+		SessionHash:                      sessionHash,
+		RequestedModel:                   "gpt-5.1",
+		RequiredResponsesImageGeneration: &OpenAIResponsesImageGenerationRequirement{Enabled: true, MainModel: "gpt-5.1", ImageModel: "gpt-image-2"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, supportedAccount.ID, selection.Account.ID)
+	require.Equal(t, 1, cache.deletedSessions["openai:"+sessionHash])
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_ResponsesImageGenerationNoAvailableAccount(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(10112)
+	account := Account{ID: 36121, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 0}
+	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.LoadBatchEnabled = false
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{account}},
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+	}
+
+	selection, _, err := svc.SelectAccountWithSchedulerRequest(ctx, OpenAIAccountScheduleRequest{
+		GroupID:        &groupID,
+		RequestedModel: "gpt-5.1",
+		RequiredResponsesImageGeneration: &OpenAIResponsesImageGenerationRequirement{
+			Enabled:    true,
+			MainModel:  "gpt-5.1",
+			ImageModel: "gpt-image-2",
+		},
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no available OpenAI accounts supporting model: gpt-5.1")
+	require.Nil(t, selection)
+}
+
 func TestDefaultOpenAIAccountScheduler_Select_StickyHitObservability(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(401)
@@ -839,6 +1167,67 @@ func TestDefaultOpenAIAccountScheduler_Select_PreviousResponseOverridesNoSession
 	require.Equal(t, openAIStickySessionSourceNone, requireStickyStringField(t, decision, "SessionSource"))
 	require.True(t, requireStickyBoolField(t, decision, "SessionHashPresent"))
 	require.Equal(t, openAIStickyEvalResultBypassedPreviousResponse, requireStickyStringField(t, decision, "EvalResult"))
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestDefaultOpenAIAccountScheduler_Select_PreviousResponseSkipsUnsupportedImageRequirement(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(410)
+	unsupportedAccount := Account{
+		ID:          54015,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    0,
+		Extra: map[string]any{
+			"openai_apikey_responses_websockets_v2_enabled": true,
+		},
+	}
+	supportedAccount := Account{
+		ID:          54016,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Priority:    5,
+		Extra: map[string]any{
+			"openai_apikey_responses_websockets_v2_enabled": true,
+			openAICapabilityExplicitModelsExtraKey:          []string{"gpt-5.1", "gpt-image-2"},
+		},
+	}
+	service := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{unsupportedAccount, supportedAccount}},
+		cache:              &stubGatewayCache{sessionBindings: map[string]int64{}},
+		cfg:                newOpenAIWSV2TestConfig(),
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+	}
+	store := service.getOpenAIWSStateStore()
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_image_requirement_prev", unsupportedAccount.ID, time.Hour))
+	schedulerAny := newDefaultOpenAIAccountScheduler(service, nil)
+	scheduler, ok := schedulerAny.(*defaultOpenAIAccountScheduler)
+	require.True(t, ok)
+
+	selection, decision, err := scheduler.Select(ctx, OpenAIAccountScheduleRequest{
+		GroupID:            &groupID,
+		PreviousResponseID: "resp_image_requirement_prev",
+		RequestedModel:     "gpt-5.1",
+		RequiredResponsesImageGeneration: &OpenAIResponsesImageGenerationRequirement{
+			Enabled:    true,
+			MainModel:  "gpt-5.1",
+			ImageModel: "gpt-image-2",
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, supportedAccount.ID, selection.Account.ID)
+	require.NotEqual(t, openAIAccountScheduleLayerPreviousResponse, decision.Layer)
+	require.False(t, decision.StickyPreviousHit)
 	if selection.ReleaseFunc != nil {
 		selection.ReleaseFunc()
 	}

@@ -110,7 +110,7 @@ func TestDeriveCompatPromptCacheKey_BuiltinToolsAffectsSupportedTools(t *testing
 	withWebSearch := *base
 	withWebSearch.BuiltinTools = []any{"web_search", "image_generation"}
 	withImageGeneration := *base
-	withImageGeneration.BuiltinTools = []any{"image_generation"}
+	withImageGeneration.BuiltinTools = map[string]any{"image_generation": map[string]any{"enabled": true, "model": "gpt-image-2", "output_format": "png"}}
 
 	baseKey := deriveCompatPromptCacheKey(base, "gpt-5.4")
 	unsupportedKey := deriveCompatPromptCacheKey(&withUnsupported, "gpt-5.4")

@@ -60,8 +60,9 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	originalModel := chatReq.Model
 	clientStream := chatReq.Stream
 	includeUsage := chatReq.StreamOptions != nil && chatReq.StreamOptions.IncludeUsage
-	if applyOpenAICompatBuiltinToolsAugmentation(&chatReq) {
-		// chatReq.Tools augmented in-place and BuiltinTools cleared
+	compatBuiltinTools, compatBuiltinToolsConsumed := consumeOpenAICompatBuiltinToolsCarrier(&chatReq)
+	if compatBuiltinToolsConsumed {
+		applyOpenAICompatBuiltinToolsToChatRequest(&chatReq, compatBuiltinTools)
 	}
 
 	// 2. Resolve model mapping early so compat prompt_cache_key injection can
@@ -143,6 +144,10 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 		responsesBody, err = json.Marshal(responsesReq)
 		if err != nil {
 			return nil, fmt.Errorf("marshal responses request: %w", err)
+		}
+		responsesBody, _, err = applyOpenAICompatBuiltinToolsToResponsesBody(responsesBody, compatBuiltinTools)
+		if err != nil {
+			return nil, fmt.Errorf("apply chat completions builtin tools to responses body: %w", err)
 		}
 	}
 	if promptCacheKey == "" && account.Type == AccountTypeOAuth && shouldAutoInjectPromptCacheKeyForCompat(upstreamModel) {
@@ -686,17 +691,29 @@ func writeChatCompletionsError(c *gin.Context, statusCode int, errType, message 
 }
 
 func applyOpenAICompatBuiltinToolsAugmentation(req *apicompat.ChatCompletionsRequest) bool {
-	if req == nil {
+	augmented, consumed := consumeOpenAICompatBuiltinToolsCarrier(req)
+	if !consumed {
 		return false
+	}
+	applyOpenAICompatBuiltinToolsToChatRequest(req, augmented)
+	return true
+}
+
+func consumeOpenAICompatBuiltinToolsCarrier(req *apicompat.ChatCompletionsRequest) ([]map[string]any, bool) {
+	if req == nil {
+		return nil, false
 	}
 	raw, ok := extractOpenAICompatBuiltinToolsCarrier(req)
 	if !ok {
-		return false
+		return nil, false
 	}
 	stripOpenAICompatBuiltinToolsCarrier(req)
-	augmented := normalizeOpenAIBuiltinTools(raw)
-	if len(augmented) == 0 {
-		return true
+	return normalizeOpenAIBuiltinTools(raw), true
+}
+
+func applyOpenAICompatBuiltinToolsToChatRequest(req *apicompat.ChatCompletionsRequest, augmented []map[string]any) {
+	if req == nil || len(augmented) == 0 {
+		return
 	}
 	addWebSearch := false
 	for _, tool := range augmented {
@@ -706,15 +723,37 @@ func applyOpenAICompatBuiltinToolsAugmentation(req *apicompat.ChatCompletionsReq
 		}
 	}
 	if !addWebSearch {
-		return true
+		return
 	}
 	for _, tool := range req.Tools {
 		if strings.TrimSpace(tool.Type) == "web_search" {
-			return true
+			return
 		}
 	}
 	req.Tools = append(req.Tools, apicompat.ChatTool{Type: "web_search"})
-	return true
+}
+
+func applyOpenAICompatBuiltinToolsToResponsesBody(body []byte, augmented []map[string]any) ([]byte, bool, error) {
+	if len(body) == 0 {
+		return body, false, nil
+	}
+
+	var reqBody map[string]any
+	if err := json.Unmarshal(body, &reqBody); err != nil {
+		return body, false, err
+	}
+
+	merged := mergeOpenAIBuiltinToolsIntoRequestBody(reqBody, augmented)
+	cleaned := dropUnavailableOpenAIImageGenerationToolChoice(reqBody)
+	if !merged && !cleaned {
+		return body, false, nil
+	}
+
+	nextBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return body, false, err
+	}
+	return nextBody, true, nil
 }
 
 func extractOpenAICompatBuiltinToolsCarrier(req *apicompat.ChatCompletionsRequest) (any, bool) {

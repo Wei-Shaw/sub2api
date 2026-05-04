@@ -395,37 +395,24 @@ describe('UseKeyModal', () => {
     expect(gpt54FastSys.headers['x-test-header']).toBe('fast-mode')
     expect(gpt54Mini.options.builtin_tools).toBeUndefined()
     expect(gpt54Mini.options.metadata.builtin_tools).toEqual({ web_search: true })
-    expect(gpt55.options.metadata.builtin_tools).toEqual({
+    const gpt55ImageBuiltinTools = {
       web_search: true,
       image_generation: {
+        enabled: true,
         model: 'gpt-image-2',
         output_format: 'png'
       }
-    })
+    }
+
+    for (const model of [gpt55, gpt55Fast, gpt55Sys, gpt55FastSys]) {
+      expect(model.options.metadata.builtin_tools).toEqual({ web_search: true })
+      expect(model.variants.image).toBeDefined()
+      expect(model.variants.image.metadata.builtin_tools).toEqual(gpt55ImageBuiltinTools)
+    }
+
     expect(gpt55Fast.options.serviceTier).toBe('priority')
-    expect(gpt55Fast.options.metadata.builtin_tools).toEqual({
-      web_search: true,
-      image_generation: {
-        model: 'gpt-image-2',
-        output_format: 'png'
-      }
-    })
     expect(gpt55Fast.headers['x-test-header']).toBe('gpt-5.5-fast-mode')
-    expect(gpt55Sys.options.metadata.builtin_tools).toEqual({
-      web_search: true,
-      image_generation: {
-        model: 'gpt-image-2',
-        output_format: 'png'
-      }
-    })
     expect(gpt55FastSys.options.serviceTier).toBe('priority')
-    expect(gpt55FastSys.options.metadata.builtin_tools).toEqual({
-      web_search: true,
-      image_generation: {
-        model: 'gpt-image-2',
-        output_format: 'png'
-      }
-    })
     expect(gpt55FastSys.headers['x-test-header']).toBe('gpt-5.5-fast-mode')
     expect(gpt54.tools).toBeUndefined()
     expect(gpt54Fast.tools).toBeUndefined()
@@ -448,6 +435,9 @@ describe('UseKeyModal', () => {
     expect(gpt55Variants.medium).toBeDefined()
     expect(gpt55Variants.high).toBeDefined()
     expect(gpt55Variants.xhigh).toBeDefined()
+    expect(gpt55Variants.image).toBeDefined()
+    expect(gpt55Sys.variants).not.toBe(gpt55.variants)
+    expect(gpt55FastSys.variants).not.toBe(gpt55Fast.variants)
     expect(Object.keys(gpt55Variants).some((variant) => variant.endsWith('-fast'))).toBe(false)
     expect(gpt54Fast.options.serviceTier).not.toBe('wrong-from-raw')
     expect(gpt54Fast.headers['x-test-header']).not.toBe('wrong-raw-header')
@@ -458,6 +448,14 @@ describe('UseKeyModal', () => {
     expect(modelsJson).not.toContain('"tools"')
     expect(parsed.agent.build.options.store).toBe(false)
     expect(parsed.agent.plan.options.store).toBe(false)
+    expect(parsed.agent.image).toEqual({
+      mode: 'subagent',
+      description: expect.stringContaining('Generate images with GPT-5.5 Image Fast (Sys)'),
+      model: 'sub2api-openai/gpt-5.5-fast-Sys',
+      variant: 'image',
+      options: { store: false }
+    })
+    expect(models[parsed.agent.image.model.replace('sub2api-openai/', '')].variants.image).toBeDefined()
   })
 
   it('describes OpenCode config as custom provider based', async () => {

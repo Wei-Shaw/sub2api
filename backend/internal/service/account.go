@@ -1232,6 +1232,74 @@ func (a *Account) SupportsOpenAIImageCapability(capability OpenAIImagesCapabilit
 	}
 }
 
+func (a *Account) SupportsOpenAIResponsesImageGeneration(mainModel string, imageModel string) bool {
+	if a == nil || !a.IsOpenAI() {
+		return false
+	}
+	if a.IsOpenAIOAuth() {
+		planType := strings.TrimSpace(a.GetCredential("plan_type"))
+		if planType == "" || strings.EqualFold(planType, "free") {
+			return false
+		}
+	}
+	if strings.TrimSpace(mainModel) == "" || !a.IsModelSupported(mainModel) {
+		return false
+	}
+	normalizedImage := normalizeOpenAIImageGenerationBuiltinModel(imageModel)
+	if normalizedImage != openAIImageGenerationBuiltinDefaultModel {
+		return false
+	}
+	return a.hasExplicitOpenAIResponsesImageModelEvidence(normalizedImage)
+}
+
+func (a *Account) hasExplicitOpenAIResponsesImageModelEvidence(canonicalImageModel string) bool {
+	if a == nil || canonicalImageModel == "" {
+		return false
+	}
+	for source, target := range a.GetModelMapping() {
+		if openAIResponsesImageModelEvidenceMatches(source, canonicalImageModel) || openAIResponsesImageModelEvidenceMatches(target, canonicalImageModel) {
+			return true
+		}
+	}
+	if a.Extra == nil {
+		return false
+	}
+	for _, model := range parseOpenAIProjectionStringSlice(a.Extra[openAICapabilityExplicitModelsExtraKey]) {
+		if openAIResponsesImageModelEvidenceMatches(model, canonicalImageModel) {
+			return true
+		}
+	}
+	for _, model := range parseOpenAIProjectionStringSlice(a.Extra[openAICapabilityCatalogModelsExtraKey]) {
+		if openAIResponsesImageModelEvidenceMatches(model, canonicalImageModel) {
+			return true
+		}
+	}
+	for _, rule := range parseOpenAIProjectionStringSlice(a.Extra[openAICapabilityWildcardRulesExtraKey]) {
+		if openAIResponsesImageModelEvidenceMatches(rule, canonicalImageModel) {
+			return true
+		}
+	}
+	return false
+}
+
+func openAIResponsesImageModelEvidenceMatches(pattern string, canonicalImageModel string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(pattern))
+	if normalized == "" || canonicalImageModel == "" {
+		return false
+	}
+	if !strings.Contains(normalized, "*") {
+		return normalized == canonicalImageModel
+	}
+	if !strings.HasSuffix(normalized, "*") || strings.Count(normalized, "*") != 1 {
+		return false
+	}
+	prefix := strings.TrimSuffix(normalized, "*")
+	if prefix == "" || !strings.HasPrefix(prefix, "gpt-image-") {
+		return false
+	}
+	return strings.HasPrefix(canonicalImageModel, prefix)
+}
+
 func (a *Account) GetChatGPTUserID() string {
 	if !a.IsOpenAIOAuth() {
 		return ""

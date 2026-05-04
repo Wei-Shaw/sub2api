@@ -114,21 +114,23 @@ func buildOpenAIAccountScheduleRequest(
 	targetGroup service.AccountTargetGroup,
 	excludedIDs map[int64]struct{},
 	requiredTransport service.OpenAIUpstreamTransport,
+	requiredResponsesImageGeneration *service.OpenAIResponsesImageGenerationRequirement,
 	requireCompact bool,
 ) service.OpenAIAccountScheduleRequest {
 	trimmedPreviousResponseID := strings.TrimSpace(previousResponseID)
 	return service.OpenAIAccountScheduleRequest{
-		GroupID:              groupID,
-		TargetGroup:          targetGroup,
-		SessionHash:          strings.TrimSpace(sessionHash),
-		SessionSource:        sessionSource,
-		PreviousResponseID:   trimmedPreviousResponseID,
-		ParentSessionPresent: trimmedPreviousResponseID != "",
-		ParentSessionKey:     trimmedPreviousResponseID,
-		RequestedModel:       requestedModel,
-		RequiredTransport:    requiredTransport,
-		RequireCompact:       requireCompact,
-		ExcludedIDs:          excludedIDs,
+		GroupID:                          groupID,
+		TargetGroup:                      targetGroup,
+		SessionHash:                      strings.TrimSpace(sessionHash),
+		SessionSource:                    sessionSource,
+		PreviousResponseID:               trimmedPreviousResponseID,
+		ParentSessionPresent:             trimmedPreviousResponseID != "",
+		ParentSessionKey:                 trimmedPreviousResponseID,
+		RequestedModel:                   requestedModel,
+		RequiredTransport:                requiredTransport,
+		RequiredResponsesImageGeneration: requiredResponsesImageGeneration,
+		RequireCompact:                   requireCompact,
+		ExcludedIDs:                      excludedIDs,
 	}
 }
 
@@ -413,6 +415,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	sessionHash := generateOpenAISessionHash(h.gatewayService, c, sessionHashBody)
 	sessionSource := resolveOpenAIScheduleSessionSource(c, sessionHashBody, sessionHash, "")
 	requireCompact := isOpenAIRemoteCompactPath(c)
+	var requiredResponsesImage *service.OpenAIResponsesImageGenerationRequirement
+	if !requireCompact {
+		requiredResponsesImage = service.BuildOpenAIResponsesImageGenerationRequirementFromBody(body, reqModel, true)
+	}
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
@@ -434,6 +440,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				targetGroup,
 				failedAccountIDs,
 				service.OpenAIUpstreamTransportAny,
+				requiredResponsesImage,
 				requireCompact,
 			),
 		)
@@ -456,7 +463,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			action := classifyResponsesSelectionFailure(err, selection, len(failedAccountIDs), lastFailoverErr)
 			switch action {
 			case responsesSelectionFailureActionTargetGroupAware:
-				status, code, message := responsesNoAvailableAccountsError(targetGroup)
+				status, code, message := responsesNoAvailableAccountsError(targetGroup, requiredResponsesImage)
 				h.handleStreamingAwareError(c, status, code, message, streamStarted)
 			case responsesSelectionFailureActionServiceUnavailable:
 				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
@@ -847,6 +854,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				targetGroup,
 				failedAccountIDs,
 				service.OpenAIUpstreamTransportAny,
+				nil,
 				false,
 			),
 		)
@@ -1322,11 +1330,18 @@ func isResponsesNoAvailableAccountsError(err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "no available openai accounts")
 }
 
-func responsesNoAvailableAccountsError(targetGroup service.AccountTargetGroup) (int, string, string) {
+func responsesNoAvailableAccountsError(targetGroup service.AccountTargetGroup, requiredResponsesImage *service.OpenAIResponsesImageGenerationRequirement) (int, string, string) {
+	if requiredResponsesImage != nil {
+		return noAvailableOpenAIResponsesImageGenerationAccountError(requiredResponsesImage.MainModel, requiredResponsesImage.ImageModel)
+	}
 	if targetGroup == service.TargetGroupExhausted {
 		return http.StatusTooManyRequests, "rate_limit_exceeded", "No available accounts in target group (exhausted)"
 	}
 	return http.StatusServiceUnavailable, "service_unavailable", "No available accounts in target group (active)"
+}
+
+func noAvailableOpenAIResponsesImageGenerationAccountError(mainModel, imageModel string) (int, string, string) {
+	return http.StatusServiceUnavailable, "no_available_accounts", fmt.Sprintf("No available OpenAI accounts support both %s and %s image_generation", mainModel, imageModel)
 }
 
 func (h *OpenAIGatewayHandler) acquireResponsesUserSlot(
@@ -1613,6 +1628,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		openAIWSIngressFallbackSessionSeed(subject.UserID, apiKey.ID, apiKey.GroupID),
 	)
 	sessionSource := resolveOpenAIScheduleSessionSource(c, firstMessage, sessionHash, openAIScheduleSessionSourceFallbackSeed)
+	requiredResponsesImage := service.BuildOpenAIResponsesImageGenerationRequirementFromBody(firstMessage, reqModel, true)
 	selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerRequest(
 		ctx,
 		buildOpenAIAccountScheduleRequest(
@@ -1624,6 +1640,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			targetGroup,
 			nil,
 			service.OpenAIUpstreamTransportResponsesWebsocketV2,
+			requiredResponsesImage,
 			false,
 		),
 	)

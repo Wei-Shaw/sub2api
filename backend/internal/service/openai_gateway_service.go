@@ -7399,6 +7399,95 @@ func sanitizeEncryptedReasoningInputItem(item any) (next any, changed bool, keep
 	return inputItem, true, true
 }
 
+func BuildOpenAIResponsesImageGenerationRequirementFromBody(body []byte, mainModel string, augmentBuiltin bool) *OpenAIResponsesImageGenerationRequirement {
+	var reqBody map[string]any
+	if len(body) == 0 || json.Unmarshal(body, &reqBody) != nil {
+		return nil
+	}
+	if augmentBuiltin {
+		applyOpenAIBuiltinToolsAugmentation(reqBody)
+	}
+	return BuildOpenAIResponsesImageGenerationRequirement(reqBody, mainModel)
+}
+
+func BuildOpenAIResponsesImageGenerationRequirement(reqBody map[string]any, mainModel string) *OpenAIResponsesImageGenerationRequirement {
+	for _, tool := range openAIResponsesImageGenerationTools(reqBody) {
+		imageModel, hasImageModel := openAIResponsesImageGenerationToolModel(tool)
+		if !hasImageModel {
+			imageModel = openAIImageGenerationBuiltinDefaultModel
+		}
+		requirement := (&OpenAIResponsesImageGenerationRequirement{Enabled: true, MainModel: mainModel, ImageModel: imageModel}).normalized()
+		if requirement != nil {
+			return requirement
+		}
+	}
+	return nil
+}
+
+func (s *OpenAIGatewayService) BuildOpenAIChatCompletionsResponsesImageGenerationRequirement(body []byte, mainModel string) *OpenAIResponsesImageGenerationRequirement {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return nil
+	}
+	if !gjson.GetBytes(body, "messages").Exists() && gjson.GetBytes(body, "input").Exists() {
+		return BuildOpenAIResponsesImageGenerationRequirementFromBody(body, mainModel, true)
+	}
+
+	var req apicompat.ChatCompletionsRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return nil
+	}
+	raw, ok := extractOpenAICompatBuiltinToolsCarrier(&req)
+	if !ok {
+		return nil
+	}
+	augmented := normalizeOpenAIBuiltinTools(raw)
+	if len(augmented) == 0 {
+		return nil
+	}
+	tools := make([]any, 0, len(augmented))
+	for _, tool := range augmented {
+		tools = append(tools, tool)
+	}
+	return BuildOpenAIResponsesImageGenerationRequirement(map[string]any{"tools": tools}, mainModel)
+}
+
+func openAIResponsesImageGenerationTools(reqBody map[string]any) []map[string]any {
+	if reqBody == nil {
+		return nil
+	}
+	tools, ok := reqBody["tools"].([]any)
+	if !ok {
+		return nil
+	}
+	imageTools := make([]map[string]any, 0, len(tools))
+	for _, rawTool := range tools {
+		tool, ok := rawTool.(map[string]any)
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(fmt.Sprint(tool["type"])) != "image_generation" {
+			continue
+		}
+		imageTools = append(imageTools, tool)
+	}
+	return imageTools
+}
+
+func openAIResponsesImageGenerationToolModel(tool map[string]any) (string, bool) {
+	if tool == nil {
+		return "", false
+	}
+	rawModel, ok := tool["model"]
+	if !ok {
+		return "", false
+	}
+	model, ok := rawModel.(string)
+	if !ok {
+		return "", true
+	}
+	return model, true
+}
+
 func stripOpenAIBuiltinToolsField(reqBody map[string]any) bool {
 	if reqBody == nil {
 		return false
@@ -7446,13 +7535,24 @@ func applyOpenAIBuiltinToolsAugmentation(reqBody map[string]any) bool {
 
 	raw, ok := extractOpenAIBuiltinToolsCarrier(reqBody)
 	if !ok {
-		return false
+		return dropUnavailableOpenAIImageGenerationToolChoice(reqBody)
 	}
 
-	stripOpenAIBuiltinToolsField(reqBody)
+	changed := stripOpenAIBuiltinToolsField(reqBody)
 	augmented := normalizeOpenAIBuiltinTools(raw)
 	if len(augmented) == 0 {
-		return true
+		cleaned := dropUnavailableOpenAIImageGenerationToolChoice(reqBody)
+		return changed || cleaned
+	}
+
+	merged := mergeOpenAIBuiltinToolsIntoRequestBody(reqBody, augmented)
+	cleaned := dropUnavailableOpenAIImageGenerationToolChoice(reqBody)
+	return changed || merged || cleaned
+}
+
+func mergeOpenAIBuiltinToolsIntoRequestBody(reqBody map[string]any, augmented []map[string]any) bool {
+	if reqBody == nil || len(augmented) == 0 {
+		return false
 	}
 
 	var existing []any
@@ -7460,19 +7560,46 @@ func applyOpenAIBuiltinToolsAugmentation(reqBody map[string]any) bool {
 		var ok bool
 		existing, ok = toolsRaw.([]any)
 		if !ok {
-			return true
+			return false
 		}
 	}
+
+	changed := false
 	for _, tool := range augmented {
 		toolType := strings.TrimSpace(fmt.Sprint(tool["type"]))
 		if toolType == "" || hasOpenAIBuiltinTool(existing, toolType) {
 			continue
 		}
 		existing = append(existing, tool)
+		changed = true
 	}
+	if changed {
+		reqBody["tools"] = existing
+	}
+	return changed
+}
 
-	reqBody["tools"] = existing
+func dropUnavailableOpenAIImageGenerationToolChoice(reqBody map[string]any) bool {
+	if reqBody == nil || !isOpenAIImageGenerationToolChoice(reqBody["tool_choice"]) {
+		return false
+	}
+	tools, _ := reqBody["tools"].([]any)
+	if hasOpenAIBuiltinTool(tools, "image_generation") {
+		return false
+	}
+	delete(reqBody, "tool_choice")
 	return true
+}
+
+func isOpenAIImageGenerationToolChoice(raw any) bool {
+	switch value := raw.(type) {
+	case string:
+		return strings.TrimSpace(value) == "image_generation"
+	case map[string]any:
+		return strings.TrimSpace(fmt.Sprint(value["type"])) == "image_generation"
+	default:
+		return false
+	}
 }
 
 func applyOpenAIBuiltinToolsRequestPathTransform(c *gin.Context, reqBody map[string]any) bool {
