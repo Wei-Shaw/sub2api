@@ -4,7 +4,7 @@ import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vu
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
-    t: (key: string, fallback?: string) => fallback ?? key,
+    t: (_key: string, fallback?: string) => fallback ?? _key,
   }),
 }))
 
@@ -59,5 +59,28 @@ describe('PaymentMethodSelector', () => {
     const button = wrapper.get('button')
     expect(button.classes()).toContain('border-primary-500')
     expect(button.classes()).not.toContain('border-[#02A9F1]')
+  })
+
+  it('uses dedicated Paddle and SePay icons instead of falling back to Alipay', () => {
+    const wrapper = mount(PaymentMethodSelector, {
+      props: {
+        selected: 'paddle',
+        methods: [
+          { type: 'paddle', fee_rate: 0, available: true },
+          { type: 'sepay', fee_rate: 0, available: true },
+          { type: 'alipay', fee_rate: 0, available: true },
+        ],
+      },
+    })
+
+    const icons = wrapper.findAll('img')
+    const srcByAlt = Object.fromEntries(
+      icons.map(icon => [icon.attributes('alt'), icon.attributes('src')]),
+    )
+
+    expect(srcByAlt.paddle).toContain('paddle')
+    expect(srcByAlt.sepay).toContain('sepay')
+    expect(srcByAlt.paddle).not.toBe(srcByAlt.alipay)
+    expect(srcByAlt.sepay).not.toBe(srcByAlt.alipay)
   })
 })

@@ -50,7 +50,7 @@
               <p class="mt-1 text-base font-semibold text-gray-900 dark:text-white">{{ user?.username || '' }}</p>
               <p class="mt-0.5 text-sm font-medium text-green-600 dark:text-green-400">{{ t('payment.currentBalance') }}: {{ user?.balance?.toFixed(2) || '0.00' }}</p>
             </div>
-            <div v-if="enabledMethods.length === 0" class="card py-16 text-center">
+            <div v-if="visibleMethodTypes.length === 0" class="card py-16 text-center">
               <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
             </div>
             <template v-else>
@@ -75,7 +75,7 @@
               />
               <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
             </div>
-            <div v-if="enabledMethods.length >= 1" class="card p-6">
+            <div v-if="visibleMethodTypes.length >= 1" class="card p-6">
               <PaymentMethodSelector
                 :methods="methodOptions"
                 :selected="selectedMethod"
@@ -173,7 +173,7 @@
                   </div>
                 </div>
               </div>
-              <div v-if="enabledMethods.length >= 1" class="card p-6">
+              <div v-if="visibleMethodTypes.length >= 1" class="card p-6">
                 <PaymentMethodSelector
                   :methods="subMethodOptions"
                   :selected="selectedMethod"
@@ -569,6 +569,7 @@ const tabs = computed(() => {
 })
 
 const visibleMethods = computed(() => getVisibleMethods(checkout.value.methods))
+const visibleMethodTypes = computed(() => Object.keys(visibleMethods.value))
 const ledgerCurrency = computed(() => checkout.value.ledger_currency || 'USD')
 const availablePaymentCurrencies = computed(() => {
   const currencies = checkout.value.allowed_payment_currencies?.map(c => c.trim().toUpperCase()).filter(Boolean) ?? []
@@ -718,13 +719,14 @@ function formatSelectedSubscriptionPaymentAmount(value: number): string {
 }
 
 const methodOptions = computed<PaymentMethodOption[]>(() =>
-  enabledMethods.value.map((type) => {
+  visibleMethodTypes.value.map((type) => {
     const ml = visibleMethods.value[type]
+    const supportsCurrency = methodSupportsSelectedCurrency(type)
     return {
       type,
       display_name: ml?.display_name,
       fee_rate: ml?.fee_rate ?? 0,
-      available: ml?.available !== false && amountFitsMethod(validAmount.value, type),
+      available: supportsCurrency && ml?.available !== false && amountFitsMethod(validAmount.value, type),
     }
   })
 )
@@ -786,15 +788,15 @@ function subscriptionTotalAmountForCurrency(value: number, currency: string): nu
 
 // Subscription-specific: method options based on gateway pay amount
 const subMethodOptions = computed<PaymentMethodOption[]>(() => {
-  const price = selectedPlan.value?.price ?? 0
-  return enabledMethods.value.map((type) => {
+  const planPrice = selectedPlan.value?.price ?? 0
+  return visibleMethodTypes.value.map((type) => {
     const ml = visibleMethods.value[type]
-    const currency = normalizePaymentCurrency(ml?.currency)
+    const supportsCurrency = methodSupportsSelectedCurrency(type)
     return {
       type,
       display_name: ml?.display_name,
       fee_rate: ml?.fee_rate ?? 0,
-      available: ml?.available !== false && amountFitsMethod(subscriptionTotalAmountForCurrency(price, currency), type),
+      available: supportsCurrency && ml?.available !== false && amountFitsMethod(subscriptionTotalAmountForCurrency(planPrice, normalizePaymentCurrency(ml?.currency)), type),
     }
   })
 })

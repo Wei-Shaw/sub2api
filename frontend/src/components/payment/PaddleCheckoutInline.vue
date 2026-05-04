@@ -1,8 +1,8 @@
 <template>
   <div class="card p-6">
     <div class="flex flex-col items-center gap-4 py-6 text-center">
-      <div class="flex h-16 w-16 items-center justify-center rounded-full bg-sky-100 dark:bg-sky-900/30">
-        <img src="@/assets/icons/paddle.svg" alt="Paddle" class="h-9 w-9" />
+      <div class="flex h-16 w-16 items-center justify-center rounded-full bg-yellow-100 dark:bg-yellow-900/30">
+        <img src="@/assets/icons/paddle.png" alt="Paddle" class="h-9 w-9 rounded-md" />
       </div>
       <div class="space-y-1">
         <p class="text-lg font-semibold text-gray-900 dark:text-white">{{ title }}</p>

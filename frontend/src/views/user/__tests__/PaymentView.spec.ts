@@ -342,9 +342,14 @@ describe('PaymentView subscription confirmation amounts', () => {
     const usdWrapper = await mountSubscriptionConfirm({
       checkout: {
         subscription_usd_to_cny_rate: 7.15,
+        allowed_payment_currencies: ['USD'],
+        ledger_currency: 'USD',
+        manual_fx_rates: { USD: 1 },
+        currency_meta: {},
       },
       method: {
         currency: 'USD',
+        allowed_payment_currencies: ['USD'],
       },
       plan: {
         price: 7.99,
@@ -396,6 +401,7 @@ describe('PaymentView payment recovery', () => {
     showError.mockReset()
     showInfo.mockReset()
     showWarning.mockReset()
+    getCheckoutInfo.mockReset()
     bridgeInvoke.mockReset()
     window.localStorage.clear()
     ;(window as Window & { WeixinJSBridge?: { invoke: typeof bridgeInvoke } }).WeixinJSBridge = undefined
@@ -444,7 +450,7 @@ describe('PaymentView payment recovery', () => {
             template: '<div><slot /></div>',
           },
           PaymentStatusPanel: {
-            template: '<button data-test="payment-done" @click="$emit(\'done\')" />',
+            template: `<button data-test="payment-done" @click="$emit('done')" />`,
           },
           PaymentMethodSelector: {
             props: ['selected'],
@@ -464,6 +470,80 @@ describe('PaymentView payment recovery', () => {
   })
 })
 
+describe('PaymentView payment methods', () => {
+  beforeEach(() => {
+    vi.useRealTimers()
+    routeState.path = '/purchase'
+    routeState.query = {}
+    routerReplace.mockReset().mockResolvedValue(undefined)
+    routerPush.mockReset().mockResolvedValue(undefined)
+    routerResolve.mockClear()
+    createOrder.mockReset()
+    refreshUser.mockReset()
+    fetchActiveSubscriptions.mockReset().mockResolvedValue(undefined)
+    showError.mockReset()
+    showInfo.mockReset()
+    showWarning.mockReset()
+    getCheckoutInfo.mockReset()
+    bridgeInvoke.mockReset()
+    window.localStorage.clear()
+    delete (window as Window & { WeixinJSBridge?: { invoke: typeof bridgeInvoke } }).WeixinJSBridge
+  })
+
+  it('shows SePay as a payment method option even when another currency is selected', async () => {
+    getCheckoutInfo.mockResolvedValue({
+      data: {
+        ...checkoutInfoFixture().data,
+        methods: {
+          paddle: {
+            daily_limit: 0,
+            daily_used: 0,
+            daily_remaining: 0,
+            single_min: 0,
+            single_max: 0,
+            fee_rate: 0,
+            available: true,
+            allowed_payment_currencies: ['KRW'],
+          },
+          sepay: {
+            daily_limit: 0,
+            daily_used: 0,
+            daily_remaining: 0,
+            single_min: 0,
+            single_max: 0,
+            fee_rate: 0,
+            available: true,
+            allowed_payment_currencies: ['VND'],
+          },
+        },
+        allowed_payment_currencies: ['KRW', 'VND'],
+        ledger_currency: 'USD',
+        manual_fx_rates: { USD: 1, KRW: 0.0007, VND: 0.00004 },
+        currency_meta: {},
+        fx_status: { source: 'manual', stale_after_seconds: 86400, stale: false, missing_currencies: [] },
+      },
+    })
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          Teleport: true,
+          Transition: false,
+          AppLayout: { template: '<div><slot /></div>' },
+          PaymentMethodSelector: {
+            props: ['methods'],
+            template: '<div data-testid="payment-method-selector"><span v-for="method in methods" :key="method.type">{{ method.type }}:{{ method.available }}</span></div>',
+          },
+        },
+      },
+    })
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="payment-method-selector"]').text()).toContain('paddle:true')
+    expect(wrapper.get('[data-testid="payment-method-selector"]').text()).toContain('sepay:false')
+  })
+})
 describe('PaymentView WeChat JSAPI flow', () => {
   beforeEach(() => {
     routeState.path = '/purchase'
