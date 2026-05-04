@@ -70,20 +70,39 @@ func normalizeTargetGroup(group AccountTargetGroup) AccountTargetGroup {
 	}
 }
 
+type OpenAIResponsesImageGenerationRequirement struct {
+	Enabled    bool
+	MainModel  string
+	ImageModel string
+}
+
+func (r *OpenAIResponsesImageGenerationRequirement) normalized() *OpenAIResponsesImageGenerationRequirement {
+	if r == nil || !r.Enabled {
+		return nil
+	}
+	mainModel := NormalizeOpenAIProjectionModelKey(r.MainModel)
+	imageModel := normalizeOpenAIImageGenerationBuiltinModel(r.ImageModel)
+	if mainModel == "" || imageModel != openAIImageGenerationBuiltinDefaultModel {
+		return nil
+	}
+	return &OpenAIResponsesImageGenerationRequirement{Enabled: true, MainModel: mainModel, ImageModel: imageModel}
+}
+
 type OpenAIAccountScheduleRequest struct {
-	GroupID                 *int64
-	TargetGroup             AccountTargetGroup
-	SessionHash             string
-	SessionSource           string
-	StickyAccountID         int64
-	ParentSessionPresent    bool
-	ParentSessionKey        string
-	PreviousResponseID      string
-	RequestedModel          string
-	RequiredTransport       OpenAIUpstreamTransport
-	RequiredImageCapability OpenAIImagesCapability
-	RequireCompact          bool
-	ExcludedIDs             map[int64]struct{}
+	GroupID                          *int64
+	TargetGroup                      AccountTargetGroup
+	SessionHash                      string
+	SessionSource                    string
+	StickyAccountID                  int64
+	ParentSessionPresent             bool
+	ParentSessionKey                 string
+	PreviousResponseID               string
+	RequestedModel                   string
+	RequiredTransport                OpenAIUpstreamTransport
+	RequiredImageCapability          OpenAIImagesCapability
+	RequiredResponsesImageGeneration *OpenAIResponsesImageGenerationRequirement
+	RequireCompact                   bool
+	ExcludedIDs                      map[int64]struct{}
 }
 
 type openAIAffinityBinding struct {
@@ -531,6 +550,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 	req.SessionSource = normalizeOpenAIStickySessionSource(req.SessionSource)
 	req.PreviousResponseID = strings.TrimSpace(req.PreviousResponseID)
 	req.ParentSessionKey = strings.TrimSpace(req.ParentSessionKey)
+	req.RequiredResponsesImageGeneration = req.RequiredResponsesImageGeneration.normalized()
 	if req.ParentSessionKey != "" {
 		req.ParentSessionPresent = true
 	}
@@ -567,7 +587,9 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			return nil, decision, err
 		}
 		if selection != nil && selection.Account != nil {
-			if !s.isAccountTransportCompatible(selection.Account, req.RequiredTransport) {
+			if !s.isAccountTransportCompatible(selection.Account, req.RequiredTransport) ||
+				!selection.Account.SupportsOpenAIImageCapability(req.RequiredImageCapability) ||
+				!accountSupportsOpenAIResponsesImageGenerationRequirement(selection.Account, req.RequiredResponsesImageGeneration) {
 				if selection.ReleaseFunc != nil {
 					selection.ReleaseFunc()
 				}
@@ -791,7 +813,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		}
 		return nil, nil
 	}
-	if !account.SupportsOpenAIImageCapability(req.RequiredImageCapability) || (req.RequireCompact && openAICompactSupportTier(account) == 0) {
+	if !account.SupportsOpenAIImageCapability(req.RequiredImageCapability) || !accountSupportsOpenAIResponsesImageGenerationRequirement(account, req.RequiredResponsesImageGeneration) || (req.RequireCompact && openAICompactSupportTier(account) == 0) {
 		if sticky != nil {
 			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
 		}
@@ -806,7 +828,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		return nil, nil
 	}
 	account = s.service.recheckSelectedProjectedOpenAIAccountFromDB(ctx, req.GroupID, account, req.RequestedModel, selectedGroup, req.TargetGroup)
-	if account == nil || !s.isAccountTransportCompatible(account, req.RequiredTransport) || !account.SupportsOpenAIImageCapability(req.RequiredImageCapability) || (req.RequireCompact && openAICompactSupportTier(account) == 0) {
+	if account == nil || !s.isAccountTransportCompatible(account, req.RequiredTransport) || !account.SupportsOpenAIImageCapability(req.RequiredImageCapability) || !accountSupportsOpenAIResponsesImageGenerationRequirement(account, req.RequiredResponsesImageGeneration) || (req.RequireCompact && openAICompactSupportTier(account) == 0) {
 		if sticky != nil {
 			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
 		}
@@ -1448,11 +1470,11 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 
 	prepareCandidate := func(candidate openAIAccountCandidateScore) (*Account, bool) {
 		fresh := s.service.resolveFreshProjectedOpenAIAccount(ctx, req.GroupID, candidate.account, req.RequestedModel, candidate.selectedGroup, req.TargetGroup, req.RequireCompact)
-		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !fresh.SupportsOpenAIImageCapability(req.RequiredImageCapability) {
+		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !fresh.SupportsOpenAIImageCapability(req.RequiredImageCapability) || !accountSupportsOpenAIResponsesImageGenerationRequirement(fresh, req.RequiredResponsesImageGeneration) {
 			return nil, false
 		}
 		fresh = s.service.recheckSelectedProjectedOpenAIAccountFromDB(ctx, req.GroupID, fresh, req.RequestedModel, candidate.selectedGroup, req.TargetGroup)
-		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !fresh.SupportsOpenAIImageCapability(req.RequiredImageCapability) {
+		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !fresh.SupportsOpenAIImageCapability(req.RequiredImageCapability) || !accountSupportsOpenAIResponsesImageGenerationRequirement(fresh, req.RequiredResponsesImageGeneration) {
 			return nil, false
 		}
 		if req.RequireCompact && openAICompactSupportTier(fresh) == 0 {
@@ -1551,7 +1573,16 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatible(account *Acco
 	if req.RequestedModel != "" && !account.IsModelSupported(req.RequestedModel) {
 		return false
 	}
-	return account.SupportsOpenAIImageCapability(req.RequiredImageCapability)
+	return account.SupportsOpenAIImageCapability(req.RequiredImageCapability) &&
+		accountSupportsOpenAIResponsesImageGenerationRequirement(account, req.RequiredResponsesImageGeneration)
+}
+
+func accountSupportsOpenAIResponsesImageGenerationRequirement(account *Account, requirement *OpenAIResponsesImageGenerationRequirement) bool {
+	requirement = requirement.normalized()
+	if requirement == nil {
+		return true
+	}
+	return account.SupportsOpenAIResponsesImageGeneration(requirement.MainModel, requirement.ImageModel)
 }
 
 func (s *defaultOpenAIAccountScheduler) ReportResult(accountID int64, success bool, firstTokenMs *int) {
@@ -1763,6 +1794,7 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerRequest(
 				return selection, decision, nil
 			}
 			if selection.Account.SupportsOpenAIImageCapability(req.RequiredImageCapability) &&
+				accountSupportsOpenAIResponsesImageGenerationRequirement(selection.Account, req.RequiredResponsesImageGeneration) &&
 				s.isOpenAIAccountTransportCompatible(selection.Account, req.RequiredTransport) {
 				decision.SelectedAccountID = selection.Account.ID
 				decision.SelectedAccountType = selection.Account.Type
@@ -1805,6 +1837,7 @@ func shouldUseDefaultOpenAIAccountScheduler(req OpenAIAccountScheduleRequest) bo
 		req.RequireCompact ||
 		req.RequiredTransport != OpenAIUpstreamTransportAny ||
 		req.RequiredImageCapability != "" ||
+		req.RequiredResponsesImageGeneration.normalized() != nil ||
 		req.PreviousResponseID != ""
 }
 
