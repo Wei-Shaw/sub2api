@@ -20,7 +20,7 @@ English | [中文](README_CN.md) | [日本語](README_JA.md)
 
 ---
 
-## Demo
+## DemoA
 
 Try Sub2API online: **[https://demo.sub2api.org/](https://demo.sub2api.org/)**
 
