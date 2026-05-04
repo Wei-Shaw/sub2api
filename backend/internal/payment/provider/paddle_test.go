@@ -171,3 +171,36 @@ func TestPaddleCreatePaymentReturnsUpstreamStatusBody(t *testing.T) {
 		t.Fatalf("error = %v, should not be context canceled", err)
 	}
 }
+
+func TestPaddleCreatePaymentDefaultsEmptySubjectToVClawCredit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload paddleTransactionPayload
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode request payload: %v", err)
+		}
+		if len(payload.Items) != 1 {
+			t.Fatalf("items len = %d, want 1", len(payload.Items))
+		}
+		item := payload.Items[0]
+		if item.Price.Name != "VClaw Credit" || item.Price.Product.Name != "VClaw Credit" {
+			t.Fatalf("paddle label = price %q product %q, want VClaw Credit", item.Price.Name, item.Price.Product.Name)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"id":"txn_123"}}`))
+	}))
+	defer server.Close()
+
+	p, err := NewPaddle("paddle-1", map[string]string{"apiKey": "***", "apiBase": server.URL})
+	if err != nil {
+		t.Fatalf("NewPaddle() error = %v", err)
+	}
+	_, err = p.CreatePayment(context.Background(), payment.CreatePaymentRequest{
+		OrderID:         "vclaw_123",
+		Amount:          "5000",
+		PaymentCurrency: "KRW",
+		PaymentType:     "paddle",
+	})
+	if err != nil {
+		t.Fatalf("CreatePayment() error = %v", err)
+	}
+}

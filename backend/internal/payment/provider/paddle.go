@@ -151,7 +151,7 @@ func (p *Paddle) CreatePayment(ctx context.Context, req payment.CreatePaymentReq
 		},
 	}
 	if payload.Items[0].Price.Name == "" {
-		payload.Items[0].Price.Name = "Sub2API Payment"
+		payload.Items[0].Price.Name = "VClaw Credit"
 	}
 	if payload.Items[0].Price.Description == "" {
 		payload.Items[0].Price.Description = payload.Items[0].Price.Name

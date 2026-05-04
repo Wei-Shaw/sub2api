@@ -173,6 +173,21 @@ func TestBuildProviderCreatePaymentRequestUsesPayAmountAndCurrencySnapshot(t *te
 	}
 }
 
+func TestBuildPaymentSubjectUsesVClawCreditForBalanceTopUp(t *testing.T) {
+	t.Parallel()
+
+	svc := &PaymentService{}
+	got := svc.buildPaymentSubject(nil, 339.44, &PaymentConfig{
+		LedgerCurrency:    "USD",
+		ProductNamePrefix: "Sub2API",
+		ProductNameSuffix: "USD",
+	}, &payment.InstanceSelection{ProviderKey: payment.TypePaddle})
+
+	if got != "VClaw Credit" {
+		t.Fatalf("subject = %q, want VClaw Credit", got)
+	}
+}
+
 func TestBuildCreateOrderResponseCopiesJSAPIPayload(t *testing.T) {
 	t.Parallel()
 
