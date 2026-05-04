@@ -90,7 +90,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 	setOpsRequestContext(c, reqModel, reqStream, body)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
-	targetGroup := service.TargetGroupAny
+	targetGroup := service.TargetGroupActive
 	if service.IsSysModel(reqModel) {
 		strippedModel := service.StripSysSuffix(reqModel)
 		if strippedModel == "" {

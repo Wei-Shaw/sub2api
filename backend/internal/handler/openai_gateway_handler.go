@@ -757,6 +757,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	routingModel := service.NormalizeOpenAICompatRequestedModel(reqModel)
 	preferredMappedModel := resolveOpenAIMessagesDispatchMappedModel(apiKey, reqModel)
 	reqStream := gjson.GetBytes(body, "stream").Bool()
+	targetGroup := service.TargetGroupActive
 
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 
@@ -835,7 +836,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				sessionHash,
 				sessionSource,
 				currentRoutingModel,
-				service.TargetGroupAny,
+				targetGroup,
 				failedAccountIDs,
 				service.OpenAIUpstreamTransportAny,
 				false,
@@ -850,7 +851,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			if selection != nil {
 				selectedAccount = selection.Account
 			}
-			storeOpenAIRoutingSnapshotFromDecision(c, service.TargetGroupAny, scheduleDecision, selectedAccount, reqModel, currentRoutingModel)
+			storeOpenAIRoutingSnapshotFromDecision(c, targetGroup, scheduleDecision, selectedAccount, reqModel, currentRoutingModel)
 			if len(failedAccountIDs) == 0 {
 				if err != nil {
 					h.anthropicStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
@@ -873,7 +874,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
 		reqLog.Debug("openai_messages.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
-		storeOpenAIRoutingSnapshotFromDecision(c, service.TargetGroupAny, scheduleDecision, account, reqModel, currentRoutingModel)
+		storeOpenAIRoutingSnapshotFromDecision(c, targetGroup, scheduleDecision, account, reqModel, currentRoutingModel)
 
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if !acquired {
@@ -1541,6 +1542,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "model is required in first response.create payload")
 		return
 	}
+	targetGroup := service.TargetGroupActive
 	previousResponseID := strings.TrimSpace(gjson.GetBytes(firstMessage, "previous_response_id").String())
 	previousResponseIDKind := service.ClassifyOpenAIPreviousResponseIDKind(previousResponseID)
 	if previousResponseID != "" && previousResponseIDKind == service.OpenAIPreviousResponseIDKindMessageID {
@@ -1607,7 +1609,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			sessionHash,
 			sessionSource,
 			reqModel,
-			service.TargetGroupAny,
+			targetGroup,
 			nil,
 			service.OpenAIUpstreamTransportResponsesWebsocketV2,
 			false,
@@ -1615,18 +1617,18 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	)
 	if err != nil {
 		reqLog.Warn("openai.websocket_account_select_failed", zap.Error(err))
-		storeOpenAIRoutingSnapshotFromDecision(c, service.TargetGroupAny, scheduleDecision, nil, reqModel, reqModel)
+		storeOpenAIRoutingSnapshotFromDecision(c, targetGroup, scheduleDecision, nil, reqModel, reqModel)
 		closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "no available account")
 		return
 	}
 	if selection == nil || selection.Account == nil {
-		storeOpenAIRoutingSnapshotFromDecision(c, service.TargetGroupAny, scheduleDecision, nil, reqModel, reqModel)
+		storeOpenAIRoutingSnapshotFromDecision(c, targetGroup, scheduleDecision, nil, reqModel, reqModel)
 		closeOpenAIClientWS(wsConn, coderws.StatusTryAgainLater, "no available account")
 		return
 	}
 
 	account := selection.Account
-	storeOpenAIRoutingSnapshotFromDecision(c, service.TargetGroupAny, scheduleDecision, account, reqModel, reqModel)
+	storeOpenAIRoutingSnapshotFromDecision(c, targetGroup, scheduleDecision, account, reqModel, reqModel)
 	accountMaxConcurrency := account.Concurrency
 	if selection.WaitPlan != nil && selection.WaitPlan.MaxConcurrency > 0 {
 		accountMaxConcurrency = selection.WaitPlan.MaxConcurrency

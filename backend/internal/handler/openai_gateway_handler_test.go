@@ -1314,6 +1314,154 @@ func TestOpenAIChatCompletions_FailedSelectionStillStoresStickySnapshot(t *testi
 	require.True(t, snapshotSticky.FieldByName("SessionHashPresent").Bool())
 }
 
+func TestOpenAIChatCompletions_NonSysUsesActiveTargetGroup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5.5","stream":false,"messages":[{"role":"user","content":"hello"}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	groupID := int64(15)
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 104, GroupID: &groupID, User: &service.User{ID: 4}})
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 4, Concurrency: 1})
+
+	billingService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeSimple})
+	defer billingService.Stop()
+
+	var capturedReq service.OpenAIAccountScheduleRequest
+	gatewayService := &service.OpenAIGatewayService{}
+	setUnexportedFieldForTest(t, gatewayService, "openaiScheduler", &openAIAccountSchedulerStub{
+		selectFn: func(ctx context.Context, req service.OpenAIAccountScheduleRequest) (*service.AccountSelectionResult, service.OpenAIAccountScheduleDecision, error) {
+			capturedReq = req
+			return nil, service.OpenAIAccountScheduleDecision{Layer: "load_balance"}, service.ErrNoAvailableAccounts
+		},
+	})
+
+	h := &OpenAIGatewayHandler{
+		gatewayService:      gatewayService,
+		billingCacheService: billingService,
+		apiKeyService:       &service.APIKeyService{},
+		concurrencyHelper: NewConcurrencyHelper(service.NewConcurrencyService(&concurrencyCacheMock{
+			acquireUserSlotFn: func(ctx context.Context, userID int64, maxConcurrency int, requestID string) (bool, error) {
+				return true, nil
+			},
+		}), SSEPingFormatNone, time.Second),
+	}
+
+	h.ChatCompletions(c)
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	require.Equal(t, service.TargetGroupActive, capturedReq.TargetGroup)
+	snapshot := getOpenAIRoutingSnapshot(c)
+	require.NotNil(t, snapshot)
+	require.Equal(t, string(service.TargetGroupActive), snapshot.TargetGroup)
+	require.Equal(t, "gpt-5.5", snapshot.RequestedModel)
+	require.Equal(t, "gpt-5.5", snapshot.EffectiveModel)
+}
+
+func TestOpenAIMessages_NonSysUsesActiveTargetGroup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"gpt-5.5","stream":false,"messages":[{"role":"user","content":"hello"}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	groupID := int64(16)
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 105, GroupID: &groupID, User: &service.User{ID: 5}})
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 5, Concurrency: 1})
+
+	billingService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeSimple})
+	defer billingService.Stop()
+
+	var capturedReq service.OpenAIAccountScheduleRequest
+	gatewayService := &service.OpenAIGatewayService{}
+	setUnexportedFieldForTest(t, gatewayService, "openaiScheduler", &openAIAccountSchedulerStub{
+		selectFn: func(ctx context.Context, req service.OpenAIAccountScheduleRequest) (*service.AccountSelectionResult, service.OpenAIAccountScheduleDecision, error) {
+			capturedReq = req
+			return nil, service.OpenAIAccountScheduleDecision{Layer: "load_balance"}, service.ErrNoAvailableAccounts
+		},
+	})
+
+	h := &OpenAIGatewayHandler{
+		gatewayService:      gatewayService,
+		billingCacheService: billingService,
+		apiKeyService:       &service.APIKeyService{},
+		concurrencyHelper: NewConcurrencyHelper(service.NewConcurrencyService(&concurrencyCacheMock{
+			acquireUserSlotFn: func(ctx context.Context, userID int64, maxConcurrency int, requestID string) (bool, error) {
+				return true, nil
+			},
+		}), SSEPingFormatNone, time.Second),
+	}
+
+	h.Messages(c)
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	require.Equal(t, service.TargetGroupActive, capturedReq.TargetGroup)
+	snapshot := getOpenAIRoutingSnapshot(c)
+	require.NotNil(t, snapshot)
+	require.Equal(t, string(service.TargetGroupActive), snapshot.TargetGroup)
+	require.Equal(t, "gpt-5.5", snapshot.RequestedModel)
+	require.Equal(t, "gpt-5.5", snapshot.EffectiveModel)
+}
+
+func TestOpenAIResponsesWebSocket_NonSysUsesActiveTargetGroup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	targetGroupCh := make(chan service.AccountTargetGroup, 1)
+	gatewayService := &service.OpenAIGatewayService{}
+	setUnexportedFieldForTest(t, gatewayService, "openaiScheduler", &openAIAccountSchedulerStub{
+		selectFn: func(ctx context.Context, req service.OpenAIAccountScheduleRequest) (*service.AccountSelectionResult, service.OpenAIAccountScheduleDecision, error) {
+			select {
+			case targetGroupCh <- req.TargetGroup:
+			default:
+			}
+			return nil, service.OpenAIAccountScheduleDecision{Layer: "load_balance"}, service.ErrNoAvailableAccounts
+		},
+	})
+	billingService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeSimple})
+	defer billingService.Stop()
+	h := &OpenAIGatewayHandler{
+		gatewayService:      gatewayService,
+		billingCacheService: billingService,
+		apiKeyService:       &service.APIKeyService{},
+		concurrencyHelper: NewConcurrencyHelper(service.NewConcurrencyService(&concurrencyCacheMock{
+			acquireUserSlotFn: func(ctx context.Context, userID int64, maxConcurrency int, requestID string) (bool, error) {
+				return true, nil
+			},
+		}), SSEPingFormatNone, time.Second),
+	}
+	wsServer := newOpenAIWSHandlerTestServer(t, h, middleware.AuthSubject{UserID: 6, Concurrency: 1})
+	defer wsServer.Close()
+
+	dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
+	clientConn, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http")+"/openai/v1/responses", nil)
+	cancelDial()
+	require.NoError(t, err)
+	defer func() {
+		_ = clientConn.CloseNow()
+	}()
+
+	writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
+	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.5","stream":true}`))
+	cancelWrite()
+	require.NoError(t, err)
+
+	readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+	_, _, err = clientConn.Read(readCtx)
+	cancelRead()
+	require.Error(t, err)
+	var closeErr coderws.CloseError
+	require.ErrorAs(t, err, &closeErr)
+	require.Equal(t, coderws.StatusTryAgainLater, closeErr.Code)
+
+	select {
+	case targetGroup := <-targetGroupCh:
+		require.Equal(t, service.TargetGroupActive, targetGroup)
+	case <-time.After(3 * time.Second):
+		t.Fatal("scheduler was not called")
+	}
+}
+
 func TestResponsesSelectionFailure_FirstAttemptNoAvailableUsesTargetGroup(t *testing.T) {
 	action := classifyResponsesSelectionFailure(
 		service.ErrNoAvailableAccounts,
