@@ -194,3 +194,64 @@ REDACTED
 		t.Fatalf("expected reloader.Reload called once, got %d", reloader.calls)
 REDACTED
 REDACTED
+
+func TestReload_BeforeStart_IsNoop(t *testing.T) {
+	svc := &OpsCleanupService{REDACTED
+	if err := svc.Reload(context.Background()); err != nil {
+		t.Fatalf("Reload before Start should return nil, got %v", err)
+REDACTED
+REDACTED
+
+func TestReload_AfterStop_IsNoop(t *testing.T) {
+	svc := &OpsCleanupService{started: true, stopped: trueREDACTED
+	if err := svc.Reload(context.Background()); err != nil {
+		t.Fatalf("Reload after Stop should return nil, got %v", err)
+REDACTED
+REDACTED
+
+func TestUpdateOpsAdvancedSettings_NilReloader_NoPanic(t *testing.T) {
+	repo := newRuntimeSettingRepoStub()
+	svc := &OpsService{settingRepo: repoREDACTED
+	// cleanupReloader intentionally nil
+
+	cfg := defaultOpsAdvancedSettings()
+	cfg.DataRetention.ErrorLogRetentionDays = 7
+
+	// should not panic
+	if _, err := svc.UpdateOpsAdvancedSettings(context.Background(), cfg); err != nil {
+		t.Fatalf("update with nil reloader: %v", err)
+REDACTED
+REDACTED
+
+func TestStart_IdempotentSecondCall(t *testing.T) {
+	svc := &OpsCleanupService{started: trueREDACTED
+	svc.Start() // second call should be noop, not panic
+REDACTED
+
+func TestRefreshEffectiveBeforeRun_UpdatesSnapshot(t *testing.T) {
+	repo := newRuntimeSettingRepoStub()
+	base := config.OpsCleanupConfig{
+		Enabled:               true,
+		Schedule:              "0 2 * * *",
+		ErrorLogRetentionDays: 30,
+REDACTED
+	svc := makeOverlayService(repo, base)
+	svc.computeEffectiveLocked(context.Background())
+
+	if svc.effective.ErrorLogRetentionDays != 30 {
+		t.Fatalf("initial retention should be 30, got %d", svc.effective.ErrorLogRetentionDays)
+REDACTED
+
+	// simulate UI change
+	writeAdvancedSettings(t, repo, OpsDataRetentionSettings{
+		CleanupEnabled:        true,
+		CleanupSchedule:       "0 * * * *",
+		ErrorLogRetentionDays: 7,
+REDACTED)
+
+	svc.refreshEffectiveBeforeRun(context.Background())
+	snap := svc.snapshotEffective()
+	if snap.ErrorLogRetentionDays != 7 {
+		t.Fatalf("after refresh, retention should be 7, got %d", snap.ErrorLogRetentionDays)
+REDACTED
+REDACTED
