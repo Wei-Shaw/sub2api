@@ -108,10 +108,10 @@ type SettingsChange struct {
 	Revision int64
 }
 
-// SettingsClient is the read-side API plugins use to access their own
-// settings. Writes go through the admin UI; the SDK intentionally does
-// NOT expose a Set method to plugins so configuration drift from
-// runtime code is impossible.
+// SettingsClient is the API plugins use to access their own settings.
+// Reads (Get / GetTyped / Watch) and writes (Set) both flow through
+// the host SettingsExtension; writes go through the same validation
+// pipeline as admin REST writes (schema check + visibility guard).
 type SettingsClient interface {
 	// Get returns the JSON-encoded current value for key. If the key has
 	// no value and no default seeded by the host the call returns
@@ -122,6 +122,12 @@ type SettingsClient interface {
 	// into out. out must be a pointer to the target type. Missing keys
 	// surface as ErrSettingNotFound so callers can branch on them.
 	GetTyped(ctx context.Context, key string, out any) error
+
+	// Set persists a value for key inside the plugin's namespace. The
+	// host validates against the schema declared in the manifest. Pass
+	// any JSON-serialisable value; the SDK marshals to JSON before
+	// sending. Returns the new revision on success.
+	Set(ctx context.Context, key string, value any) error
 
 	// Watch returns a channel that receives SettingsChange events for
 	// the supplied key. An empty key subscribes to every key in the
@@ -182,6 +188,10 @@ func (nilSettingsClient) Get(ctx context.Context, key string) (json.RawMessage, 
 	return nil, errors.New("pluginsdk: SettingsExtension not enabled (declare a SettingsSchema in your Manifest)")
 }
 func (n nilSettingsClient) GetTyped(ctx context.Context, key string, out any) error {
+	_, err := n.Get(ctx, key)
+	return err
+}
+func (n nilSettingsClient) Set(ctx context.Context, key string, value any) error {
 	_, err := n.Get(ctx, key)
 	return err
 }
@@ -293,6 +303,27 @@ func (c *settingsClient) storeIfNewer(key string, next *cachedSetting) {
 		}
 	}
 	c.cache.Store(key, next)
+}
+
+// Set implements SettingsClient.Set. Marshals value to JSON and sends
+// to the host's SettingsExtension. The cache is updated lazily via the
+// Watch stream so callers reading immediately after Set may briefly
+// see the old value; this matches host admin write semantics.
+func (c *settingsClient) Set(ctx context.Context, key string, value any) error {
+	if c == nil || c.grpc == nil {
+		return errors.New("pluginsdk: settings client unavailable")
+	}
+	if key == "" {
+		return errors.New("pluginsdk: settings set: empty key")
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("pluginsdk: settings set: marshal value: %w", err)
+	}
+	if _, err := c.grpc.Set(ctx, &pb.SettingsSetRequest{Key: key, ValueJson: raw}); err != nil {
+		return fmt.Errorf("pluginsdk: settings set %q: %w", key, err)
+	}
+	return nil
 }
 
 func (c *settingsClient) GetTyped(ctx context.Context, key string, out any) error {

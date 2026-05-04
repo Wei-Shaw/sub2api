@@ -485,12 +485,10 @@ func (h *AdminPaymentHandler) GetConfig(c *gin.Context) {
 	response.Success(c, cfg)
 }
 
-// UpdateConfig updates the payment configuration.
-//
-// TODO(payment-migration): the underlying service returns
-// errPaymentSettingsWriteNotSupported — settings live in the host admin
-// form. The endpoint stays mounted so the frontend gets a structured error
-// rather than a 404.
+// UpdateConfig saves payment configuration via SDK Settings + refreshes
+// providers so changes take effect immediately. Mirrors the release
+// branch's setting_handler.go behaviour: settings persist first, then
+// the in-memory provider registry is invalidated.
 func (h *AdminPaymentHandler) UpdateConfig(c *gin.Context) {
 	if !requireAdmin(c) {
 		return
@@ -503,6 +501,9 @@ func (h *AdminPaymentHandler) UpdateConfig(c *gin.Context) {
 	if err := h.configService.UpdatePaymentConfig(c.Request.Context(), req); err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+	if h.paymentService != nil {
+		h.paymentService.RefreshProviders(c.Request.Context())
 	}
 	response.Success(c, gin.H{"message": "updated"})
 }

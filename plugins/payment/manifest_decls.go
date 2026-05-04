@@ -131,9 +131,9 @@ var publicFlagDecls = []pluginsdk.PublicFlagDecl{
 // menuItemDecls is the admin / user sidebar contribution. Placement
 // groups and orders interoperate with the host's Placement DSL.
 var menuItemDecls = []pluginsdk.MenuItemDecl{
-	// Admin "支付管理" parent — owns 仪表盘 + 订单 + 订阅套餐 + 收款渠道.
-	// (Settings live in the plugin management dialog's "设置" tab, mounted via
-	// the manifest's SettingsComponentPath = "PaymentSettingsView.vue".)
+	// Admin "支付管理" parent — owns 仪表盘 + 订单 + 订阅套餐 + 支付配置.
+	// 支付配置 (settings) is its own /admin/payment/settings route — the
+	// plugin management dialog no longer mounts a custom settings component.
 	{
 		Path:          "/admin/payment",
 		IconSVG:       pluginsdk.IconCog,
@@ -167,6 +167,14 @@ var menuItemDecls = []pluginsdk.MenuItemDecl{
 				SortOrder:     253,
 				RequiresAdmin: true,
 			},
+			{
+				Path:          "/admin/payment/settings",
+				Labels:        pluginsdk.Labels("支付配置", "Settings"),
+				Descriptions:  pluginsdk.Descriptions("配置支付系统行为", "Configure payment system behavior"),
+				Section:       pluginsdk.SectionAdmin,
+				SortOrder:     255,
+				RequiresAdmin: true,
+			},
 		},
 	},
 	// User-facing "充值" entry surfaces the recharge view.
@@ -191,6 +199,7 @@ var routeDecls = []pluginsdk.RouteDecl{
 	{Path: "/admin/payment/orders", Name: "AdminPaymentOrders", ComponentPath: "PaymentOrdersView.vue"},
 	{Path: "/admin/payment/plans", Name: "AdminPaymentPlans", ComponentPath: "PaymentPlansView.vue"},
 	{Path: "/admin/payment/providers", Name: "AdminPaymentProviders", ComponentPath: "PaymentProvidersView.vue"},
+	{Path: "/admin/payment/settings", Name: "AdminPaymentSettings", ComponentPath: "PaymentSettingsView.vue"},
 
 	// User-facing
 	{Path: "/recharge", Name: "UserRecharge", ComponentPath: "RechargeView.vue"},

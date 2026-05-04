@@ -131,6 +131,10 @@ func (s *stubSettingsExtClient) Get(ctx context.Context, _ *pb.SettingsGetReques
 	return &pb.SettingsGetResponse{Exists: false}, nil
 }
 
+func (s *stubSettingsExtClient) Set(ctx context.Context, _ *pb.SettingsSetRequest, _ ...grpc.CallOption) (*pb.SettingsSetResponse, error) {
+	return &pb.SettingsSetResponse{Revision: 1}, nil
+}
+
 func (s *stubSettingsExtClient) Watch(ctx context.Context, _ *pb.SettingsWatchRequest, _ ...grpc.CallOption) (grpc.ServerStreamingClient[pb.SettingsChangeEvent], error) {
 	s.watchCalls.Add(1)
 	return nil, s.watchErr

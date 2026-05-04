@@ -1478,6 +1478,7 @@ var JobScheduler_ServiceDesc = grpc.ServiceDesc{
 
 const (
 	SettingsExtension_Get_FullMethodName   = "/pluginsdk.SettingsExtension/Get"
+	SettingsExtension_Set_FullMethodName   = "/pluginsdk.SettingsExtension/Set"
 	SettingsExtension_Watch_FullMethodName = "/pluginsdk.SettingsExtension/Watch"
 )
 
@@ -1505,6 +1506,12 @@ type SettingsExtensionClient interface {
 	// the calling plugin's namespace. Missing keys return exists=false
 	// rather than a gRPC error so plugins can probe without try/catch.
 	Get(ctx context.Context, in *SettingsGetRequest, opts ...grpc.CallOption) (*SettingsGetResponse, error)
+	// Set persists a single key inside the calling plugin's namespace.
+	// The host validates value_json against the plugin's declared JSON
+	// schema and rejects backend-only keys per SETTINGS-V2-DESIGN §4.3.
+	// expected_revision is reserved for future CAS support; pass 0 to
+	// skip the optimistic concurrency check.
+	Set(ctx context.Context, in *SettingsSetRequest, opts ...grpc.CallOption) (*SettingsSetResponse, error)
 	// Watch streams change events for keys inside the calling plugin's
 	// namespace. An empty key subscribes to every key in the namespace.
 	// The host MAY emit a synthetic "snapshot" event for each existing key
@@ -1526,6 +1533,16 @@ func (c *settingsExtensionClient) Get(ctx context.Context, in *SettingsGetReques
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SettingsGetResponse)
 	err := c.cc.Invoke(ctx, SettingsExtension_Get_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *settingsExtensionClient) Set(ctx context.Context, in *SettingsSetRequest, opts ...grpc.CallOption) (*SettingsSetResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SettingsSetResponse)
+	err := c.cc.Invoke(ctx, SettingsExtension_Set_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1575,6 +1592,12 @@ type SettingsExtensionServer interface {
 	// the calling plugin's namespace. Missing keys return exists=false
 	// rather than a gRPC error so plugins can probe without try/catch.
 	Get(context.Context, *SettingsGetRequest) (*SettingsGetResponse, error)
+	// Set persists a single key inside the calling plugin's namespace.
+	// The host validates value_json against the plugin's declared JSON
+	// schema and rejects backend-only keys per SETTINGS-V2-DESIGN §4.3.
+	// expected_revision is reserved for future CAS support; pass 0 to
+	// skip the optimistic concurrency check.
+	Set(context.Context, *SettingsSetRequest) (*SettingsSetResponse, error)
 	// Watch streams change events for keys inside the calling plugin's
 	// namespace. An empty key subscribes to every key in the namespace.
 	// The host MAY emit a synthetic "snapshot" event for each existing key
@@ -1594,6 +1617,9 @@ type UnimplementedSettingsExtensionServer struct{}
 
 func (UnimplementedSettingsExtensionServer) Get(context.Context, *SettingsGetRequest) (*SettingsGetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Get not implemented")
+}
+func (UnimplementedSettingsExtensionServer) Set(context.Context, *SettingsSetRequest) (*SettingsSetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Set not implemented")
 }
 func (UnimplementedSettingsExtensionServer) Watch(*SettingsWatchRequest, grpc.ServerStreamingServer[SettingsChangeEvent]) error {
 	return status.Error(codes.Unimplemented, "method Watch not implemented")
@@ -1637,6 +1663,24 @@ func _SettingsExtension_Get_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SettingsExtension_Set_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SettingsSetRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SettingsExtensionServer).Set(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SettingsExtension_Set_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SettingsExtensionServer).Set(ctx, req.(*SettingsSetRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _SettingsExtension_Watch_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(SettingsWatchRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -1658,6 +1702,10 @@ var SettingsExtension_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Get",
 			Handler:    _SettingsExtension_Get_Handler,
+		},
+		{
+			MethodName: "Set",
+			Handler:    _SettingsExtension_Set_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

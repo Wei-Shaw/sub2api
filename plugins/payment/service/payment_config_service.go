@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -79,9 +80,11 @@ type PaymentConfig struct {
 	VisibleMethodWxpayEnabled  bool   `json:"visible_method_wxpay_enabled,omitempty"`
 }
 
-// UpdatePaymentConfigRequest is kept for handler signature compatibility.
-// The plugin no longer accepts writes — settings are read-only and owned
-// by the host admin form.
+// UpdatePaymentConfigRequest carries the partial-update payload from the
+// admin payment-config form. Pointer fields are optional ("not provided"
+// = nil); UpdatePaymentConfig writes only the non-nil ones via the SDK
+// SettingsClient.Set, so the form can submit deltas without resetting
+// untouched keys.
 type UpdatePaymentConfigRequest struct {
 	Enabled                   *bool    `json:"enabled"`
 	MinAmount                 *float64 `json:"min_amount"`
@@ -241,9 +244,6 @@ func NewPaymentConfigService(settings pluginsdk.SettingsClient, secrets pluginsd
 
 // errPlanWriteNotSupported is returned by every plan-write method.
 var errPlanWriteNotSupported = errors.New("payment: plan CRUD is not supported from the plugin (use host admin)")
-
-// errPaymentSettingsWriteNotSupported is returned by UpdatePaymentConfig.
-var errPaymentSettingsWriteNotSupported = errors.New("payment: settings updates are owned by the host admin form")
 
 // IsPaymentEnabled returns whether the payment system is enabled.
 func (s *PaymentConfigService) IsPaymentEnabled(ctx context.Context) bool {
@@ -420,10 +420,134 @@ func (s *PaymentConfigService) encryptConfig(_ context.Context, cfg map[string]s
 	return string(raw), nil
 }
 
-// UpdatePaymentConfig is intentionally a no-op: settings live in the host's
-// admin form.
-func (s *PaymentConfigService) UpdatePaymentConfig(_ context.Context, _ UpdatePaymentConfigRequest) error {
-	return errPaymentSettingsWriteNotSupported
+// UpdatePaymentConfig persists each non-nil field via the SDK Settings
+// API. Non-nil pointer fields are written one by one; the order doesn't
+// matter because each field has its own settings key. Errors short-circuit
+// at the first failure so the caller knows which field failed.
+//
+// The handler is responsible for calling paymentService.RefreshProviders
+// after a successful update so the in-memory load balancer picks up
+// changes immediately (matches release-branch behaviour).
+func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req UpdatePaymentConfigRequest) error {
+	if s == nil || s.settings == nil {
+		return errors.New("payment: settings client unavailable")
+	}
+	if err := s.setIfNotNilBool(ctx, SettingPaymentEnabled, req.Enabled); err != nil {
+		return err
+	}
+	if err := s.setIfNotNilFloat(ctx, SettingMinRechargeAmount, req.MinAmount); err != nil {
+		return err
+	}
+	if err := s.setIfNotNilFloat(ctx, SettingMaxRechargeAmount, req.MaxAmount); err != nil {
+		return err
+	}
+	if err := s.setIfNotNilFloat(ctx, SettingDailyRechargeLimit, req.DailyLimit); err != nil {
+		return err
+	}
+	if err := s.setIfNotNilInt(ctx, SettingOrderTimeoutMinutes, req.OrderTimeoutMin); err != nil {
+		return err
+	}
+	if err := s.setIfNotNilInt(ctx, SettingMaxPendingOrders, req.MaxPendingOrders); err != nil {
+		return err
+	}
+	if err := s.setIfNotNilBool(ctx, SettingBalancePayDisabled, req.BalanceDisabled); err != nil {
+		return err
+	}
+	if err := s.setIfNotNilFloat(ctx, SettingBalanceRechargeMult, req.BalanceRechargeMultiplier); err != nil {
+		return err
+	}
+	if err := s.setIfNotNilFloat(ctx, SettingRechargeFeeRate, req.RechargeFeeRate); err != nil {
+		return err
+	}
+	if err := s.setIfNotNilString(ctx, SettingLoadBalanceStrategy, req.LoadBalanceStrategy); err != nil {
+		return err
+	}
+	if err := s.setIfNotNilString(ctx, SettingProductNamePrefix, req.ProductNamePrefix); err != nil {
+		return err
+	}
+	if err := s.setIfNotNilString(ctx, SettingProductNameSuffix, req.ProductNameSuffix); err != nil {
+		return err
+	}
+	if err := s.setIfNotNilString(ctx, SettingHelpImageURL, req.HelpImageURL); err != nil {
+		return err
+	}
+	if err := s.setIfNotNilString(ctx, SettingHelpText, req.HelpText); err != nil {
+		return err
+	}
+	if err := s.setIfNotNilBool(ctx, SettingCancelRateLimitOn, req.CancelRateLimitEnabled); err != nil {
+		return err
+	}
+	if err := s.setIfNotNilInt(ctx, SettingCancelRateLimitMax, req.CancelRateLimitMax); err != nil {
+		return err
+	}
+	if err := s.setIfNotNilInt(ctx, SettingCancelWindowSize, req.CancelRateLimitWindow); err != nil {
+		return err
+	}
+	if err := s.setIfNotNilString(ctx, SettingCancelWindowUnit, req.CancelRateLimitUnit); err != nil {
+		return err
+	}
+	if err := s.setIfNotNilString(ctx, SettingCancelWindowMode, req.CancelRateLimitMode); err != nil {
+		return err
+	}
+	if err := s.setIfNotNilBool(ctx, SettingPaymentVisibleMethodAlipayEnabled, req.VisibleMethodAlipayEnabled); err != nil {
+		return err
+	}
+	if err := s.setIfNotNilBool(ctx, SettingPaymentVisibleMethodWxpayEnabled, req.VisibleMethodWxpayEnabled); err != nil {
+		return err
+	}
+	if err := s.setIfNotNilString(ctx, SettingPaymentVisibleMethodAlipaySource, req.VisibleMethodAlipaySource); err != nil {
+		return err
+	}
+	if err := s.setIfNotNilString(ctx, SettingPaymentVisibleMethodWxpaySource, req.VisibleMethodWxpaySource); err != nil {
+		return err
+	}
+	if req.EnabledTypes != nil {
+		normalized := NormalizeVisibleMethods(req.EnabledTypes)
+		if err := s.settings.Set(ctx, SettingEnabledPaymentTypes, normalized); err != nil {
+			return fmt.Errorf("set %s: %w", SettingEnabledPaymentTypes, err)
+		}
+	}
+	return nil
+}
+
+func (s *PaymentConfigService) setIfNotNilBool(ctx context.Context, key string, v *bool) error {
+	if v == nil {
+		return nil
+	}
+	if err := s.settings.Set(ctx, key, *v); err != nil {
+		return fmt.Errorf("set %s: %w", key, err)
+	}
+	return nil
+}
+
+func (s *PaymentConfigService) setIfNotNilInt(ctx context.Context, key string, v *int) error {
+	if v == nil {
+		return nil
+	}
+	if err := s.settings.Set(ctx, key, *v); err != nil {
+		return fmt.Errorf("set %s: %w", key, err)
+	}
+	return nil
+}
+
+func (s *PaymentConfigService) setIfNotNilFloat(ctx context.Context, key string, v *float64) error {
+	if v == nil {
+		return nil
+	}
+	if err := s.settings.Set(ctx, key, *v); err != nil {
+		return fmt.Errorf("set %s: %w", key, err)
+	}
+	return nil
+}
+
+func (s *PaymentConfigService) setIfNotNilString(ctx context.Context, key string, v *string) error {
+	if v == nil {
+		return nil
+	}
+	if err := s.settings.Set(ctx, key, *v); err != nil {
+		return fmt.Errorf("set %s: %w", key, err)
+	}
+	return nil
 }
 
 // splitTypes splits a CSV settings value, trimming whitespace.

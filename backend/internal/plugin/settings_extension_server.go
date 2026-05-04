@@ -94,6 +94,30 @@ func (s *SettingsExtensionServer) Get(
 	}, nil
 }
 
+// Set implements pb.SettingsExtensionServer.Set. The plugin can only
+// write keys inside its own namespace (caller identity comes from the
+// gRPC metadata header). Visibility / schema validation runs at the
+// host service layer just like admin REST writes.
+func (s *SettingsExtensionServer) Set(
+	ctx context.Context, req *pb.SettingsSetRequest,
+) (*pb.SettingsSetResponse, error) {
+	pluginName, ok := CallerFromContext(ctx)
+	if !ok || pluginName == "" {
+		return nil, status.Error(codes.PermissionDenied, "settings: caller identity missing")
+	}
+	if req.GetKey() == "" {
+		return nil, status.Error(codes.InvalidArgument, "settings: empty key")
+	}
+	rev, err := s.svc.SetByKeyWithSource(ctx, pluginName, req.GetKey(),
+		req.GetValueJson(), service.SetSourceAdmin)
+	if err != nil {
+		s.logger.Warn("settings set failed",
+			"plugin", pluginName, "key", req.GetKey(), "error", err)
+		return nil, status.Errorf(codes.Internal, "settings set: %v", err)
+	}
+	return &pb.SettingsSetResponse{Revision: rev}, nil
+}
+
 // Watch implements pb.SettingsExtensionServer.Watch.
 //
 // Lifecycle:

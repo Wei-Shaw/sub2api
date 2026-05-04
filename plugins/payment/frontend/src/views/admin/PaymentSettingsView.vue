@@ -1,392 +1,439 @@
 <!--
-  PaymentSettingsView — plugin-owned admin settings page.
+  PaymentSettingsView — standalone admin page mounted at /admin/payment/settings.
 
-  When the host PluginSettingsForm sees Manifest.SettingsComponentPath !==
-  empty, it mounts THIS component instead of the generic JSON-schema
-  renderer. The component owns its own load + per-section save flow
-  against the host's plugin-settings REST endpoints
-  (GET/PUT /api/v1/admin/plugin-settings/payment[/:key]).
+  Mirrors the release/custom-0.1.121 host SettingsView payment tab (lines
+  ~4694-5160): a single global save button + 5 inline form rows + provider
+  list. The plugin no longer surfaces a custom settings component inside
+  the plugin-management dialog (SettingsComponentPath was removed in
+  manifest); admins reach payment configuration via the dedicated sidebar
+  entry under "支付管理 / Payment".
 
-  Sections mirror the business domains declared in
-  plugins/payment/internal/settings/settings_schema.json:
-    1. 基础  — enable / 商品名前后缀 / 帮助文案
-    2. 限额  — 充值范围 / 订单超时 / 待支付订单上限
-    3. 可见方式 — alipay / wxpay 启停 + 来源 + 启用渠道列表
-    4. 费率  — 充值倍率 / 手续费率 / 余额支付 / 负载均衡
-    5. 取消限流 — 取消频率限制 (启停 + 时间窗口 + 模式)
+  Design points kept verbatim from release:
+    - flat reactive `form` with `payment_*` field names
+    - one global save (no per-section save)
+    - `<PaymentProviderList>` rendered only when payment_enabled is true
+    - badge-style enabled_payment_types selector
 -->
 <template>
-  <div class="payment-settings space-y-4">
-    <div v-if="state === 'loading'" class="text-sm text-gray-500 dark:text-gray-400">
-      {{ t('common.loading') }}
-    </div>
-    <div
-      v-else-if="state === 'error'"
-      class="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-700 dark:bg-red-900/30 dark:text-red-200"
-    >
-      {{ loadError || t('common.error') }}
-    </div>
-    <template v-else>
-      <!-- Section: 基础 -->
-      <section class="ps-card">
-        <header class="ps-section-header">
-          <h3 class="ps-section-title">{{ t('payment.adminSettings.sectionBasic') }}</h3>
-          <button
-            type="button"
-            class="ps-btn ps-btn-primary"
-            :disabled="saving === 'basic' || !sectionDirty.basic"
-            @click="saveSection('basic')"
-          >
-            {{ saving === 'basic' ? t('common.saving') : t('common.save') }}
-          </button>
-        </header>
-        <div class="ps-section-body">
-          <div class="ps-toggle-row">
-            <div>
-              <label class="ps-label">{{ t('admin.settings.payment.enabled') }}</label>
-              <p class="ps-hint">{{ t('admin.settings.payment.enabledHint') }}</p>
-            </div>
-            <Toggle
-              :model-value="Boolean(values.enabled)"
-              @update:model-value="setValue('enabled', $event, 'basic')"
-            />
+  <AppLayout>
+    <div class="space-y-6">
+      <!-- Page header -->
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-xl font-bold text-gray-900 dark:text-white">
+            {{ t('admin.settings.payment.title') }}
+          </h1>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            {{ t('admin.settings.payment.description') }}
+          </p>
+        </div>
+        <button
+          type="button"
+          class="btn btn-primary"
+          :disabled="saving || loading"
+          @click="saveSettings"
+        >
+          {{ saving ? t('common.saving') : t('common.save') }}
+        </button>
+      </div>
+
+      <!-- Loading state -->
+      <div v-if="loading" class="card p-6 text-sm text-gray-500 dark:text-gray-400">
+        {{ t('common.loading') }}
+      </div>
+
+      <template v-else>
+        <!-- Payment system settings -->
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.payment.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.payment.description') }}
+            </p>
           </div>
-          <div class="ps-grid ps-grid-3">
-            <div>
-              <label class="ps-label">{{ t('admin.settings.payment.productNamePrefix') }}</label>
-              <input
-                type="text"
-                class="ps-input"
-                :value="String(values.product_name_prefix ?? '')"
-                @input="setValue('product_name_prefix', ($event.target as HTMLInputElement).value, 'basic')"
-              />
+          <div class="space-y-4 p-6">
+            <!-- Enable toggle -->
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="font-medium text-gray-900 dark:text-white">
+                  {{ t('admin.settings.payment.enabled') }}
+                </label>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.payment.enabledHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.payment_enabled" />
             </div>
-            <div>
-              <label class="ps-label">{{ t('admin.settings.payment.productNameSuffix') }}</label>
-              <input
-                type="text"
-                class="ps-input"
-                :value="String(values.product_name_suffix ?? '')"
-                @input="setValue('product_name_suffix', ($event.target as HTMLInputElement).value, 'basic')"
-              />
-            </div>
-            <div>
-              <label class="ps-label">{{ t('admin.settings.payment.helpImageUrl') }}</label>
-              <input
-                type="text"
-                class="ps-input"
-                :placeholder="t('admin.settings.payment.helpImagePlaceholder')"
-                :value="String(values.help_image_url ?? '')"
-                @input="setValue('help_image_url', ($event.target as HTMLInputElement).value, 'basic')"
-              />
-            </div>
-          </div>
-          <div>
-            <label class="ps-label">{{ t('admin.settings.payment.helpText') }}</label>
-            <textarea
-              rows="3"
-              class="ps-input"
-              :placeholder="t('admin.settings.payment.helpTextPlaceholder')"
-              :value="String(values.help_text ?? '')"
-              @input="setValue('help_text', ($event.target as HTMLTextAreaElement).value, 'basic')"
-            />
+
+            <template v-if="form.payment_enabled">
+              <!-- Row 1: Product name prefix / suffix / preview -->
+              <div class="grid grid-cols-3 gap-3">
+                <div>
+                  <label class="input-label">
+                    {{ t('admin.settings.payment.productNamePrefix') }}
+                  </label>
+                  <input
+                    v-model="form.payment_product_name_prefix"
+                    type="text"
+                    class="input"
+                    placeholder="Sub2API"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">
+                    {{ t('admin.settings.payment.productNameSuffix') }}
+                  </label>
+                  <input
+                    v-model="form.payment_product_name_suffix"
+                    type="text"
+                    class="input"
+                    placeholder="CNY"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">
+                    {{ t('admin.settings.payment.preview') }}
+                  </label>
+                  <div
+                    class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300"
+                  >
+                    {{
+                      (form.payment_product_name_prefix || 'Sub2API') +
+                      ' 100 ' +
+                      (form.payment_product_name_suffix || 'CNY')
+                    }}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Row 2: Amount range + multiplier + fee rate + order timeout -->
+              <div class="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                <div>
+                  <label class="input-label">
+                    {{ t('admin.settings.payment.minAmount') }}
+                  </label>
+                  <input
+                    :value="form.payment_min_amount || ''"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    class="input"
+                    :placeholder="t('admin.settings.payment.noLimit')"
+                    @input="
+                      form.payment_min_amount =
+                        parseFloat(($event.target as HTMLInputElement).value) || 0
+                    "
+                  />
+                </div>
+                <div>
+                  <label class="input-label">
+                    {{ t('admin.settings.payment.maxAmount') }}
+                  </label>
+                  <input
+                    :value="form.payment_max_amount || ''"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    class="input"
+                    :placeholder="t('admin.settings.payment.noLimit')"
+                    @input="
+                      form.payment_max_amount =
+                        parseFloat(($event.target as HTMLInputElement).value) || 0
+                    "
+                  />
+                </div>
+                <div>
+                  <label class="input-label">
+                    {{ t('admin.settings.payment.dailyLimit') }}
+                  </label>
+                  <input
+                    :value="form.payment_daily_limit || ''"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    class="input"
+                    :placeholder="t('admin.settings.payment.noLimit')"
+                    @input="
+                      form.payment_daily_limit =
+                        parseFloat(($event.target as HTMLInputElement).value) || 0
+                    "
+                  />
+                </div>
+                <div>
+                  <label class="input-label">
+                    {{ t('admin.settings.payment.balanceRechargeMultiplier') }}
+                  </label>
+                  <input
+                    :value="form.payment_balance_recharge_multiplier || ''"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    class="input"
+                    @input="
+                      form.payment_balance_recharge_multiplier =
+                        parseFloat(($event.target as HTMLInputElement).value) || 1
+                    "
+                  />
+                  <p class="mt-0.5 text-xs text-gray-400">
+                    {{ t('admin.settings.payment.balanceRechargeMultiplierHint') }}
+                  </p>
+                  <p class="mt-1 text-xs font-medium text-primary-600 dark:text-primary-400">
+                    {{
+                      t('admin.settings.payment.balanceRechargePreview', {
+                        usd: (Number(form.payment_balance_recharge_multiplier) || 1).toFixed(2),
+                      })
+                    }}
+                  </p>
+                </div>
+                <div>
+                  <label class="input-label">
+                    {{ t('admin.settings.payment.rechargeFeeRate') }}
+                  </label>
+                  <div class="relative">
+                    <input
+                      :value="form.payment_recharge_fee_rate ?? ''"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      class="input pr-8"
+                      @input="
+                        form.payment_recharge_fee_rate = Math.min(
+                          100,
+                          Math.max(
+                            0,
+                            Math.round(
+                              parseFloat(
+                                ($event.target as HTMLInputElement).value || '0',
+                              ) * 100,
+                            ) / 100,
+                          ),
+                        )
+                      "
+                    />
+                    <span
+                      class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400"
+                      >%</span
+                    >
+                  </div>
+                  <p class="mt-0.5 text-xs text-gray-400">
+                    {{ t('admin.settings.payment.rechargeFeeRateHint') }}
+                  </p>
+                  <p
+                    v-if="(Number(form.payment_recharge_fee_rate) || 0) > 0"
+                    class="mt-1 text-xs font-medium text-primary-600 dark:text-primary-400"
+                  >
+                    {{
+                      t('admin.settings.payment.rechargeFeePreview', {
+                        fee: (Number(form.payment_recharge_fee_rate) || 0).toFixed(2),
+                      })
+                    }}
+                  </p>
+                </div>
+                <div>
+                  <label class="input-label">
+                    {{ t('admin.settings.payment.orderTimeout') }}
+                    <span class="text-red-500">*</span>
+                  </label>
+                  <input
+                    v-model.number="form.payment_order_timeout_minutes"
+                    type="number"
+                    min="1"
+                    class="input"
+                    required
+                  />
+                  <p class="mt-0.5 text-xs text-gray-400">
+                    {{ t('admin.settings.payment.orderTimeoutHint') }}
+                  </p>
+                </div>
+              </div>
+
+              <!-- Row 3: Pending orders + load balance + cancel rate limit (inline) -->
+              <div class="flex flex-wrap items-end gap-4">
+                <div class="w-28">
+                  <label class="input-label">
+                    {{ t('admin.settings.payment.maxPendingOrders') }}
+                  </label>
+                  <input
+                    v-model.number="form.payment_max_pending_orders"
+                    type="number"
+                    min="1"
+                    class="input"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">
+                    {{ t('admin.settings.payment.loadBalanceStrategy') }}
+                  </label>
+                  <Select
+                    v-model="form.payment_load_balance_strategy"
+                    :options="loadBalanceOptions"
+                    class="w-40"
+                  />
+                </div>
+                <div>
+                  <label class="input-label">
+                    {{ t('admin.settings.payment.cancelRateLimit') }}
+                  </label>
+                  <div class="flex items-center gap-2">
+                    <button
+                      type="button"
+                      :class="[
+                        'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                        form.payment_cancel_rate_limit_enabled
+                          ? 'bg-primary-500'
+                          : 'bg-gray-300 dark:bg-dark-600',
+                      ]"
+                      @click="
+                        form.payment_cancel_rate_limit_enabled =
+                          !form.payment_cancel_rate_limit_enabled
+                      "
+                    >
+                      <span
+                        :class="[
+                          'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                          form.payment_cancel_rate_limit_enabled
+                            ? 'translate-x-5'
+                            : 'translate-x-0',
+                        ]"
+                      />
+                    </button>
+                    <Select
+                      v-model="form.payment_cancel_rate_limit_window_mode"
+                      :options="cancelRateLimitModeOptions"
+                      class="w-24"
+                      :disabled="!form.payment_cancel_rate_limit_enabled"
+                    />
+                    <span
+                      :class="[
+                        'whitespace-nowrap text-sm',
+                        form.payment_cancel_rate_limit_enabled
+                          ? 'text-gray-700 dark:text-gray-300'
+                          : 'text-gray-400 dark:text-gray-600',
+                      ]"
+                      >{{ t('admin.settings.payment.cancelRateLimitEvery') }}</span
+                    >
+                    <input
+                      v-model.number="form.payment_cancel_rate_limit_window"
+                      type="number"
+                      min="1"
+                      required
+                      class="input w-14 text-center"
+                      :disabled="!form.payment_cancel_rate_limit_enabled"
+                    />
+                    <Select
+                      v-model="form.payment_cancel_rate_limit_unit"
+                      :options="cancelRateLimitUnitOptions"
+                      class="w-28"
+                      :disabled="!form.payment_cancel_rate_limit_enabled"
+                    />
+                    <span
+                      :class="[
+                        'whitespace-nowrap text-sm',
+                        form.payment_cancel_rate_limit_enabled
+                          ? 'text-gray-700 dark:text-gray-300'
+                          : 'text-gray-400 dark:text-gray-600',
+                      ]"
+                      >{{ t('admin.settings.payment.cancelRateLimitAllowMax') }}</span
+                    >
+                    <input
+                      v-model.number="form.payment_cancel_rate_limit_max"
+                      type="number"
+                      min="1"
+                      required
+                      class="input w-14 text-center"
+                      :disabled="!form.payment_cancel_rate_limit_enabled"
+                    />
+                    <span
+                      :class="[
+                        'whitespace-nowrap text-sm',
+                        form.payment_cancel_rate_limit_enabled
+                          ? 'text-gray-700 dark:text-gray-300'
+                          : 'text-gray-400 dark:text-gray-600',
+                      ]"
+                      >{{ t('admin.settings.payment.cancelRateLimitTimes') }}</span
+                    >
+                  </div>
+                </div>
+              </div>
+
+              <!-- Row 4: Enabled payment types (badges) -->
+              <div>
+                <label class="input-label">
+                  {{ t('admin.settings.payment.enabledPaymentTypes') }}
+                </label>
+                <div class="mt-1.5 flex flex-wrap gap-2">
+                  <button
+                    v-for="pt in allPaymentTypes"
+                    :key="pt.value"
+                    type="button"
+                    :class="[
+                      'rounded-lg border px-3 py-1.5 text-sm font-medium transition-all',
+                      form.payment_enabled_types.includes(pt.value)
+                        ? 'border-primary-500 bg-primary-500 text-white shadow-sm'
+                        : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400 hover:bg-gray-50 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500',
+                    ]"
+                    @click="togglePaymentType(pt.value)"
+                  >
+                    {{ pt.label }}
+                  </button>
+                </div>
+                <p class="mt-2 text-xs text-gray-400 dark:text-gray-500">
+                  {{ t('admin.settings.payment.enabledPaymentTypesHint') }}
+                </p>
+              </div>
+
+              <!-- Row 5: Help image URL + help text -->
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="input-label">
+                    {{ t('admin.settings.payment.helpImage') }}
+                  </label>
+                  <input
+                    v-model="form.payment_help_image_url"
+                    type="text"
+                    class="input"
+                    :placeholder="t('admin.settings.payment.helpImagePlaceholder')"
+                  />
+                  <div
+                    v-if="form.payment_help_image_url"
+                    class="mt-2 overflow-hidden rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-dark-600 dark:bg-dark-800"
+                  >
+                    <img
+                      :src="form.payment_help_image_url"
+                      class="mx-auto max-h-32 object-contain"
+                      alt=""
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label class="input-label">
+                    {{ t('admin.settings.payment.helpText') }}
+                  </label>
+                  <textarea
+                    v-model="form.payment_help_text"
+                    rows="3"
+                    class="input"
+                    :placeholder="t('admin.settings.payment.helpTextPlaceholder')"
+                  ></textarea>
+                </div>
+              </div>
+            </template>
           </div>
         </div>
-      </section>
 
-      <!-- Section: 限额 -->
-      <section class="ps-card">
-        <header class="ps-section-header">
-          <h3 class="ps-section-title">{{ t('payment.adminSettings.sectionLimits') }}</h3>
-          <button
-            type="button"
-            class="ps-btn ps-btn-primary"
-            :disabled="saving === 'limits' || !sectionDirty.limits"
-            @click="saveSection('limits')"
-          >
-            {{ saving === 'limits' ? t('common.saving') : t('common.save') }}
-          </button>
-        </header>
-        <div class="ps-section-body">
-          <div class="ps-grid ps-grid-3">
-            <div>
-              <label class="ps-label">{{ t('admin.settings.payment.minAmount') }}</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                class="ps-input"
-                :value="numAsString(values.min_recharge_amount)"
-                @input="setValue('min_recharge_amount', toNumber(($event.target as HTMLInputElement).value), 'limits')"
-              />
-            </div>
-            <div>
-              <label class="ps-label">{{ t('admin.settings.payment.maxAmount') }}</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                class="ps-input"
-                :value="numAsString(values.max_recharge_amount)"
-                @input="setValue('max_recharge_amount', toNumber(($event.target as HTMLInputElement).value), 'limits')"
-              />
-              <p class="ps-hint">{{ t('admin.settings.payment.noLimit') }}</p>
-            </div>
-            <div>
-              <label class="ps-label">{{ t('admin.settings.payment.dailyLimit') }}</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                class="ps-input"
-                :value="numAsString(values.daily_recharge_limit)"
-                @input="setValue('daily_recharge_limit', toNumber(($event.target as HTMLInputElement).value), 'limits')"
-              />
-              <p class="ps-hint">{{ t('admin.settings.payment.noLimit') }}</p>
-            </div>
-          </div>
-          <div class="ps-grid ps-grid-2">
-            <div>
-              <label class="ps-label">{{ t('admin.settings.payment.orderTimeout') }}</label>
-              <input
-                type="number"
-                min="1"
-                step="1"
-                class="ps-input"
-                :value="numAsString(values.order_timeout_minutes)"
-                @input="setValue('order_timeout_minutes', toNumber(($event.target as HTMLInputElement).value), 'limits')"
-              />
-              <p class="ps-hint">{{ t('admin.settings.payment.orderTimeoutHint') }}</p>
-            </div>
-            <div>
-              <label class="ps-label">{{ t('admin.settings.payment.maxPendingOrders') }}</label>
-              <input
-                type="number"
-                min="1"
-                step="1"
-                class="ps-input"
-                :value="numAsString(values.max_pending_orders)"
-                @input="setValue('max_pending_orders', toNumber(($event.target as HTMLInputElement).value), 'limits')"
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Section: 可见方式 -->
-      <section class="ps-card">
-        <header class="ps-section-header">
-          <h3 class="ps-section-title">{{ t('payment.adminSettings.sectionVisible') }}</h3>
-          <button
-            type="button"
-            class="ps-btn ps-btn-primary"
-            :disabled="saving === 'visible' || !sectionDirty.visible"
-            @click="saveSection('visible')"
-          >
-            {{ saving === 'visible' ? t('common.saving') : t('common.save') }}
-          </button>
-        </header>
-        <div class="ps-section-body">
-          <div class="ps-grid ps-grid-2">
-            <div class="ps-toggle-row">
-              <label class="ps-label">{{ t('admin.settings.payment.providerAlipay') }}</label>
-              <Toggle
-                :model-value="Boolean(values.visible_method_alipay_enabled)"
-                @update:model-value="setValue('visible_method_alipay_enabled', $event, 'visible')"
-              />
-            </div>
-            <div>
-              <label class="ps-label">{{ t('payment.adminSettings.sourceOfficial') }} / {{ t('payment.adminSettings.sourceEasypay') }}</label>
-              <Select
-                class="ps-select"
-                :model-value="String(values.visible_method_alipay_source ?? 'official')"
-                :options="visibleSourceOptions"
-                @update:model-value="setValue('visible_method_alipay_source', String($event), 'visible')"
-              />
-            </div>
-          </div>
-          <div class="ps-grid ps-grid-2">
-            <div class="ps-toggle-row">
-              <label class="ps-label">{{ t('admin.settings.payment.providerWxpay') }}</label>
-              <Toggle
-                :model-value="Boolean(values.visible_method_wxpay_enabled)"
-                @update:model-value="setValue('visible_method_wxpay_enabled', $event, 'visible')"
-              />
-            </div>
-            <div>
-              <label class="ps-label">{{ t('payment.adminSettings.sourceOfficial') }} / {{ t('payment.adminSettings.sourceEasypay') }}</label>
-              <Select
-                class="ps-select"
-                :model-value="String(values.visible_method_wxpay_source ?? 'official')"
-                :options="visibleSourceOptions"
-                @update:model-value="setValue('visible_method_wxpay_source', String($event), 'visible')"
-              />
-            </div>
-          </div>
-          <div>
-            <label class="ps-label">{{ t('admin.settings.payment.enabledPaymentTypes') }}</label>
-            <div class="ps-checkbox-list">
-              <label v-for="opt in paymentTypeOptions" :key="opt.value" class="ps-checkbox">
-                <input
-                  type="checkbox"
-                  :checked="enabledTypes.includes(opt.value)"
-                  @change="toggleEnabledType(opt.value, ($event.target as HTMLInputElement).checked)"
-                />
-                <span>{{ opt.label }}</span>
-              </label>
-            </div>
-            <p class="ps-hint">{{ t('admin.settings.payment.enabledPaymentTypesHint') }}</p>
-          </div>
-        </div>
-      </section>
-
-      <!-- Section: 费率 -->
-      <section class="ps-card">
-        <header class="ps-section-header">
-          <h3 class="ps-section-title">{{ t('payment.adminSettings.sectionFees') }}</h3>
-          <button
-            type="button"
-            class="ps-btn ps-btn-primary"
-            :disabled="saving === 'fees' || !sectionDirty.fees"
-            @click="saveSection('fees')"
-          >
-            {{ saving === 'fees' ? t('common.saving') : t('common.save') }}
-          </button>
-        </header>
-        <div class="ps-section-body">
-          <div class="ps-grid ps-grid-2">
-            <div>
-              <label class="ps-label">{{ t('payment.adminSettings.balanceMultiplier') }}</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                class="ps-input"
-                :value="numAsString(values.balance_recharge_multiplier)"
-                @input="setValue('balance_recharge_multiplier', toNumber(($event.target as HTMLInputElement).value), 'fees')"
-              />
-            </div>
-            <div>
-              <label class="ps-label">{{ t('payment.adminSettings.rechargeFeeRate') }}</label>
-              <input
-                type="number"
-                min="0"
-                max="1"
-                step="0.001"
-                class="ps-input"
-                :value="numAsString(values.recharge_fee_rate)"
-                @input="setValue('recharge_fee_rate', toNumber(($event.target as HTMLInputElement).value), 'fees')"
-              />
-              <p class="ps-hint">{{ t('payment.adminSettings.rechargeFeeRateHint') }}</p>
-            </div>
-          </div>
-          <div class="ps-grid ps-grid-2">
-            <div class="ps-toggle-row">
-              <label class="ps-label">{{ t('admin.settings.payment.balancePaymentDisabled') }}</label>
-              <Toggle
-                :model-value="Boolean(values.balance_payment_disabled)"
-                @update:model-value="setValue('balance_payment_disabled', $event, 'fees')"
-              />
-            </div>
-            <div>
-              <label class="ps-label">{{ t('admin.settings.payment.loadBalanceStrategy') }}</label>
-              <Select
-                class="ps-select"
-                :model-value="String(values.load_balance_strategy ?? 'round-robin')"
-                :options="loadBalanceOptions"
-                @update:model-value="setValue('load_balance_strategy', String($event), 'fees')"
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Section: 取消限流 -->
-      <section class="ps-card">
-        <header class="ps-section-header">
-          <h3 class="ps-section-title">{{ t('admin.settings.payment.cancelRateLimit') }}</h3>
-          <button
-            type="button"
-            class="ps-btn ps-btn-primary"
-            :disabled="saving === 'cancel' || !sectionDirty.cancel"
-            @click="saveSection('cancel')"
-          >
-            {{ saving === 'cancel' ? t('common.saving') : t('common.save') }}
-          </button>
-        </header>
-        <div class="ps-section-body">
-          <div class="ps-toggle-row">
-            <div>
-              <label class="ps-label">{{ t('admin.settings.payment.cancelRateLimit') }}</label>
-              <p class="ps-hint">{{ t('admin.settings.payment.cancelRateLimitHint') }}</p>
-            </div>
-            <Toggle
-              :model-value="Boolean(values.cancel_rate_limit_enabled)"
-              @update:model-value="setValue('cancel_rate_limit_enabled', $event, 'cancel')"
-            />
-          </div>
-          <div class="ps-grid ps-grid-2 sm:ps-grid-4">
-            <div>
-              <label class="ps-label">{{ t('admin.settings.payment.cancelRateLimitMax') }}</label>
-              <input
-                type="number"
-                min="1"
-                step="1"
-                class="ps-input"
-                :disabled="!values.cancel_rate_limit_enabled"
-                :value="numAsString(values.cancel_rate_limit_max)"
-                @input="setValue('cancel_rate_limit_max', toNumber(($event.target as HTMLInputElement).value), 'cancel')"
-              />
-            </div>
-            <div>
-              <label class="ps-label">{{ t('admin.settings.payment.cancelRateLimitWindow') }}</label>
-              <input
-                type="number"
-                min="1"
-                step="1"
-                class="ps-input"
-                :disabled="!values.cancel_rate_limit_enabled"
-                :value="numAsString(values.cancel_rate_limit_window)"
-                @input="setValue('cancel_rate_limit_window', toNumber(($event.target as HTMLInputElement).value), 'cancel')"
-              />
-            </div>
-            <div>
-              <label class="ps-label">{{ t('admin.settings.payment.cancelRateLimitUnit') }}</label>
-              <Select
-                class="ps-select"
-                :disabled="!values.cancel_rate_limit_enabled"
-                :model-value="String(values.cancel_rate_limit_unit ?? 'hour')"
-                :options="cancelUnitOptions"
-                @update:model-value="setValue('cancel_rate_limit_unit', String($event), 'cancel')"
-              />
-            </div>
-            <div>
-              <label class="ps-label">{{ t('admin.settings.payment.cancelRateLimitWindowMode') }}</label>
-              <Select
-                class="ps-select"
-                :disabled="!values.cancel_rate_limit_enabled"
-                :model-value="String(values.cancel_rate_limit_window_mode ?? 'rolling')"
-                :options="cancelModeOptions"
-                @update:model-value="setValue('cancel_rate_limit_window_mode', String($event), 'cancel')"
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Section: 收款渠道 -->
-      <section class="ps-card">
-        <header class="ps-section-header">
-          <h3 class="ps-section-title">{{ t('payment.adminSettings.sectionProviders') }}</h3>
-        </header>
+        <!-- Provider management list -->
         <PaymentProviderList
+          v-if="form.payment_enabled"
           :providers="providers"
           :loading="providersLoading"
           :can-create="hasAnyPaymentTypeEnabled"
-          :enabled-payment-types="providerEnabledTypes"
+          :enabled-payment-types="form.payment_enabled_types"
           :all-payment-types="allPaymentTypes"
           :redirect-label="t('admin.settings.payment.easypayRedirect')"
-          @refresh="loadProvidersAndTypes"
+          @refresh="loadProviders"
           @create="openCreateProvider"
           @edit="openEditProvider"
           @delete="confirmDeleteProvider"
@@ -394,248 +441,90 @@
           @toggle-type="handleToggleType"
           @reorder="handleReorderProviders"
         />
-      </section>
 
-      <!-- Provider create/edit dialog -->
-      <PaymentProviderDialog
-        ref="providerDialogRef"
-        :show="showProviderDialog"
-        :saving="providerSaving"
-        :editing="editingProvider"
-        :all-key-options="providerKeyOptions"
-        :enabled-key-options="enabledProviderKeyOptions"
-        :all-payment-types="allPaymentTypes"
-        :redirect-label="t('admin.settings.payment.easypayRedirect')"
-        @close="onProviderDialogClose"
-        @save="handleSaveProvider"
-      />
+        <!-- Provider create / edit dialog -->
+        <PaymentProviderDialog
+          ref="providerDialogRef"
+          :show="showProviderDialog"
+          :saving="providerSaving"
+          :editing="editingProvider"
+          :all-key-options="providerKeyOptions"
+          :enabled-key-options="enabledProviderKeyOptions"
+          :all-payment-types="allPaymentTypes"
+          :redirect-label="t('admin.settings.payment.easypayRedirect')"
+          @close="onDialogClose"
+          @save="handleSaveProvider"
+        />
 
-      <!-- Provider delete confirmation -->
-      <ConfirmDialog
-        :show="showDeleteProviderDialog"
-        :title="t('admin.settings.payment.deleteProvider')"
-        :message="t('admin.settings.payment.deleteProviderConfirm')"
-        :confirm-text="t('common.delete')"
-        danger
-        @confirm="handleDeleteProvider"
-        @cancel="showDeleteProviderDialog = false"
-      />
-    </template>
-  </div>
+        <!-- Delete confirmation -->
+        <ConfirmDialog
+          :show="showDeleteProviderDialog"
+          :title="t('admin.settings.payment.deleteProvider')"
+          :message="t('admin.settings.payment.deleteProviderConfirm')"
+          :confirm-text="t('common.delete')"
+          danger
+          @confirm="handleDeleteProvider"
+          @cancel="showDeleteProviderDialog = false"
+        />
+      </template>
+    </div>
+  </AppLayout>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { SelectOption } from '@sub2api/plugin-sdk'
-import { Toggle, Select } from '@sub2api/plugin-sdk'
+import { ConfirmDialog, Select, Toggle } from '@sub2api/plugin-sdk'
 
-import { getClient } from '../../api/client'
 import { useAppStore } from '../../stores/host'
-import { extractApiErrorMessage } from '../../utils/apiError'
-import { ConfirmDialog } from '@sub2api/plugin-sdk'
+import { adminPaymentAPI } from '../../api/admin/payment'
+import { extractApiErrorMessage, extractI18nErrorMessage } from '../../utils/apiError'
+import type { ProviderInstance } from '../../types/payment'
 
+import AppLayout from '../../components/common/AppLayout.vue'
 import PaymentProviderList from '../../components/payment/PaymentProviderList.vue'
 import PaymentProviderDialog from '../../components/payment/PaymentProviderDialog.vue'
-import { adminPaymentAPI } from '../../api/admin/payment'
-import { extractI18nErrorMessage } from '../../utils/apiError'
-import type { ProviderInstance } from '../../types/payment'
 
 const { t } = useI18n()
 const appStore = useAppStore()
-const client = getClient()
 
-type SectionKey = 'basic' | 'limits' | 'visible' | 'fees' | 'cancel'
+// ==================== Form state ====================
 
-const SECTION_KEYS: Record<SectionKey, string[]> = {
-  basic: ['enabled', 'product_name_prefix', 'product_name_suffix', 'help_image_url', 'help_text'],
-  limits: [
-    'min_recharge_amount',
-    'max_recharge_amount',
-    'daily_recharge_limit',
-    'order_timeout_minutes',
-    'max_pending_orders',
-  ],
-  visible: [
-    'visible_method_alipay_enabled',
-    'visible_method_alipay_source',
-    'visible_method_wxpay_enabled',
-    'visible_method_wxpay_source',
-    'enabled_payment_types',
-  ],
-  fees: [
-    'balance_recharge_multiplier',
-    'recharge_fee_rate',
-    'balance_payment_disabled',
-    'load_balance_strategy',
-  ],
-  cancel: [
-    'cancel_rate_limit_enabled',
-    'cancel_rate_limit_max',
-    'cancel_rate_limit_window',
-    'cancel_rate_limit_unit',
-    'cancel_rate_limit_window_mode',
-  ],
-}
-
-const PLUGIN_NAME = 'payment'
-
-const state = ref<'loading' | 'ready' | 'error'>('loading')
-const loadError = ref<string>('')
-const saving = ref<SectionKey | null>(null)
-
-const values = reactive<Record<string, unknown>>({})
-const initialValues = reactive<Record<string, unknown>>({})
-const sectionDirty = reactive<Record<SectionKey, boolean>>({
-  basic: false,
-  limits: false,
-  visible: false,
-  fees: false,
-  cancel: false,
+const form = reactive({
+  payment_enabled: false,
+  payment_min_amount: 0,
+  payment_max_amount: 0,
+  payment_daily_limit: 0,
+  payment_order_timeout_minutes: 30,
+  payment_max_pending_orders: 3,
+  payment_balance_disabled: false,
+  payment_balance_recharge_multiplier: 1,
+  payment_recharge_fee_rate: 0,
+  payment_load_balance_strategy: 'round-robin',
+  payment_product_name_prefix: '',
+  payment_product_name_suffix: '',
+  payment_help_image_url: '',
+  payment_help_text: '',
+  payment_cancel_rate_limit_enabled: false,
+  payment_cancel_rate_limit_max: 0,
+  payment_cancel_rate_limit_window: 0,
+  payment_cancel_rate_limit_unit: 'minute',
+  payment_cancel_rate_limit_window_mode: 'rolling',
+  payment_visible_method_alipay_enabled: true,
+  payment_visible_method_alipay_source: 'official',
+  payment_visible_method_wxpay_enabled: true,
+  payment_visible_method_wxpay_source: 'official',
+  payment_enabled_types: [] as string[],
 })
 
-const visibleSourceOptions = computed<SelectOption[]>(() => [
-  { value: 'official', label: t('payment.adminSettings.sourceOfficial') },
-  { value: 'easypay', label: t('payment.adminSettings.sourceEasypay') },
-])
+const loading = ref(true)
+const saving = ref(false)
 
-const loadBalanceOptions = computed<SelectOption[]>(() => [
-  { value: 'round-robin', label: t('admin.settings.payment.strategyRoundRobin') },
-  { value: 'least-amount', label: t('admin.settings.payment.strategyLeastAmount') },
-])
-
-const cancelUnitOptions = computed<SelectOption[]>(() => [
-  { value: 'minute', label: t('admin.settings.payment.cancelRateLimitUnitMinute') },
-  { value: 'hour', label: t('admin.settings.payment.cancelRateLimitUnitHour') },
-  { value: 'day', label: t('admin.settings.payment.cancelRateLimitUnitDay') },
-])
-
-const cancelModeOptions = computed<SelectOption[]>(() => [
-  { value: 'rolling', label: t('admin.settings.payment.cancelRateLimitWindowModeRolling') },
-  { value: 'fixed', label: t('admin.settings.payment.cancelRateLimitWindowModeFixed') },
-])
-
-const paymentTypeOptions = computed<Array<{ value: string; label: string }>>(() => [
-  { value: 'easypay', label: t('admin.settings.payment.providerEasypay') },
-  { value: 'alipay', label: t('admin.settings.payment.providerAlipay') },
-  { value: 'wxpay', label: t('admin.settings.payment.providerWxpay') },
-  { value: 'stripe', label: t('admin.settings.payment.providerStripe') },
-])
-
-const enabledTypes = computed<string[]>(() => {
-  const v = values.enabled_payment_types
-  if (Array.isArray(v)) {
-    return v.map((x) => String(x))
-  }
-  if (typeof v === 'string' && v.length > 0) {
-    return v.split(',').map((s) => s.trim()).filter(Boolean)
-  }
-  return []
-})
-
-function toggleEnabledType(value: string, checked: boolean): void {
-  const current = enabledTypes.value.slice()
-  const idx = current.indexOf(value)
-  if (checked && idx < 0) {
-    current.push(value)
-  } else if (!checked && idx >= 0) {
-    current.splice(idx, 1)
-  }
-  setValue('enabled_payment_types', current, 'visible')
-}
-
-function numAsString(v: unknown): string {
-  if (v == null || v === '') return ''
-  const n = Number(v)
-  return Number.isFinite(n) ? String(n) : ''
-}
-
-function toNumber(raw: string): number {
-  if (raw === '' || raw == null) return 0
-  const n = Number(raw)
-  return Number.isFinite(n) ? n : 0
-}
-
-function setValue(key: string, value: unknown, section: SectionKey): void {
-  values[key] = value
-  sectionDirty[section] = !sectionEquals(section)
-}
-
-function sectionEquals(section: SectionKey): boolean {
-  for (const k of SECTION_KEYS[section]) {
-    if (!shallowEqual(values[k], initialValues[k])) {
-      return false
-    }
-  }
-  return true
-}
-
-function shallowEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true
-  if (Array.isArray(a) && Array.isArray(b)) {
-    if (a.length !== b.length) return false
-    for (let i = 0; i < a.length; i++) {
-      if (a[i] !== b[i]) return false
-    }
-    return true
-  }
-  return false
-}
-
-async function loadAll(): Promise<void> {
-  state.value = 'loading'
-  loadError.value = ''
-  try {
-    const resp = await client.get(`/admin/plugin-settings/${encodeURIComponent(PLUGIN_NAME)}`)
-    const data = resp.data as { values?: Record<string, unknown>; defaults?: Record<string, unknown> }
-    const merged: Record<string, unknown> = { ...(data.defaults ?? {}), ...(data.values ?? {}) }
-    Object.keys(values).forEach((k) => delete values[k])
-    Object.keys(initialValues).forEach((k) => delete initialValues[k])
-    Object.assign(values, merged)
-    Object.assign(initialValues, JSON.parse(JSON.stringify(merged)))
-    Object.keys(sectionDirty).forEach((k) => {
-      sectionDirty[k as SectionKey] = false
-    })
-    state.value = 'ready'
-  } catch (err: unknown) {
-    state.value = 'error'
-    loadError.value = extractApiErrorMessage(err, t('common.error'))
-  }
-}
-
-async function saveSection(section: SectionKey): Promise<void> {
-  if (!sectionDirty[section]) return
-  saving.value = section
-  const keys = SECTION_KEYS[section]
-  try {
-    for (const key of keys) {
-      if (shallowEqual(values[key], initialValues[key])) continue
-      await client.put(
-        `/admin/plugin-settings/${encodeURIComponent(PLUGIN_NAME)}/${encodeURIComponent(key)}`,
-        { value: values[key] },
-      )
-      initialValues[key] = JSON.parse(JSON.stringify(values[key]))
-    }
-    sectionDirty[section] = false
-    appStore.showSuccess(t('payment.adminSettings.saveSuccess'))
-  } catch (err: unknown) {
-    appStore.showError(extractApiErrorMessage(err, t('common.error')))
-  } finally {
-    saving.value = null
-  }
-}
-
-
-// ==================== Providers (section "shoukuan-qudao") ====================
-//
-// Migrated from PaymentProvidersView.vue: providers list + create/edit dialog
-// + delete confirmation now live inside this settings page as a 6th section.
-// enabledTypes (the computed above) already mirrors enabled_payment_types
-// from settings, so we reuse it as the source-of-truth instead of refetching
-// /admin/payment/config.
+// ==================== Provider state ====================
 
 const providers = ref<ProviderInstance[]>([])
 const providersLoading = ref(false)
+
 const showProviderDialog = ref(false)
 const showDeleteProviderDialog = ref(false)
 const providerSaving = ref(false)
@@ -643,17 +532,16 @@ const editingProvider = ref<ProviderInstance | null>(null)
 const deletingProviderId = ref<number | null>(null)
 const providerDialogRef = ref<InstanceType<typeof PaymentProviderDialog> | null>(null)
 
-// Reuse the settings computed enabledTypes instead of refetching config.
-const providerEnabledTypes = computed<string[]>(() => enabledTypes.value)
+// ==================== Computed (option lists & helpers) ====================
 
 const allPaymentTypes = computed(() => [
-  { value: 'easypay', label: t('payment.methods.easypay') },
-  { value: 'alipay', label: t('payment.methods.alipay') },
-  { value: 'wxpay', label: t('payment.methods.wxpay') },
-  { value: 'stripe', label: t('payment.methods.stripe') },
+  { value: 'easypay', label: t('admin.settings.payment.providerEasypay') },
+  { value: 'alipay', label: t('admin.settings.payment.providerAlipay') },
+  { value: 'wxpay', label: t('admin.settings.payment.providerWxpay') },
+  { value: 'stripe', label: t('admin.settings.payment.providerStripe') },
 ])
 
-const hasAnyPaymentTypeEnabled = computed(() => providerEnabledTypes.value.length > 0)
+const hasAnyPaymentTypeEnabled = computed(() => form.payment_enabled_types.length > 0)
 
 const providerKeyOptions = computed(() => [
   { value: 'easypay', label: t('admin.settings.payment.providerEasypay') },
@@ -663,10 +551,35 @@ const providerKeyOptions = computed(() => [
 ])
 
 const enabledProviderKeyOptions = computed(() =>
-  providerKeyOptions.value.filter(opt => providerEnabledTypes.value.includes(opt.value)),
+  providerKeyOptions.value.filter(opt => form.payment_enabled_types.includes(opt.value)),
 )
 
-// ---- Provider conflict detection (mirror of PaymentProvidersView) ----
+const loadBalanceOptions = computed(() => [
+  { value: 'round-robin', label: t('admin.settings.payment.strategyRoundRobin') },
+  { value: 'least-amount', label: t('admin.settings.payment.strategyLeastAmount') },
+])
+
+const cancelRateLimitUnitOptions = computed(() => [
+  { value: 'minute', label: t('admin.settings.payment.cancelRateLimitUnitMinute') },
+  { value: 'hour', label: t('admin.settings.payment.cancelRateLimitUnitHour') },
+  { value: 'day', label: t('admin.settings.payment.cancelRateLimitUnitDay') },
+])
+
+const cancelRateLimitModeOptions = computed(() => [
+  { value: 'rolling', label: t('admin.settings.payment.cancelRateLimitWindowModeRolling') },
+  { value: 'fixed', label: t('admin.settings.payment.cancelRateLimitWindowModeFixed') },
+])
+
+function togglePaymentType(type: string): void {
+  const idx = form.payment_enabled_types.indexOf(type)
+  if (idx >= 0) form.payment_enabled_types.splice(idx, 1)
+  else form.payment_enabled_types.push(type)
+}
+
+// ==================== Provider conflict detection ====================
+//
+// Mirrors PaymentProvidersView.vue and the host's legacy SettingsView
+// behaviour: a provider can only "claim" a visible alipay/wxpay slot once.
 
 type ProviderEnablementCandidate = Pick<
   ProviderInstance,
@@ -679,7 +592,9 @@ function normalizeVisibleMethod(type: string): string {
   return type
 }
 
-function getProviderVisibleMethods(provider: ProviderEnablementCandidate): Array<'alipay' | 'wxpay'> {
+function getProviderVisibleMethods(
+  provider: ProviderEnablementCandidate,
+): Array<'alipay' | 'wxpay'> {
   if (!provider.enabled) return []
   const supportedTypes = Array.isArray(provider.supported_types) ? provider.supported_types : []
   const methods = new Set<'alipay' | 'wxpay'>()
@@ -687,13 +602,12 @@ function getProviderVisibleMethods(provider: ProviderEnablementCandidate): Array
     const m = normalizeVisibleMethod(type)
     if (m === 'alipay' || m === 'wxpay') methods.add(m)
   }
-
   if (provider.provider_key === 'alipay') {
     if (supportedTypes.length === 0) methods.add('alipay')
-    else supportedTypes.forEach(ty => { if (normalizeVisibleMethod(ty) === 'alipay') methods.add('alipay') })
+    else supportedTypes.forEach(typ => { if (normalizeVisibleMethod(typ) === 'alipay') methods.add('alipay') })
   } else if (provider.provider_key === 'wxpay') {
     if (supportedTypes.length === 0) methods.add('wxpay')
-    else supportedTypes.forEach(ty => { if (normalizeVisibleMethod(ty) === 'wxpay') methods.add('wxpay') })
+    else supportedTypes.forEach(typ => { if (normalizeVisibleMethod(typ) === 'wxpay') methods.add('wxpay') })
   } else if (provider.provider_key === 'easypay') {
     supportedTypes.forEach(addMethod)
   }
@@ -718,57 +632,133 @@ function showProviderEnablementConflict(conflict: {
   method: 'alipay' | 'wxpay'
   conflicting: ProviderInstance
 }) {
-  const fallback = conflict.conflicting.name + ' already handles ' + conflict.method
+  const fallback = `${conflict.conflicting.name} already handles ${conflict.method}`
   const key = 'admin.settings.payment.enableConflict'
   const translated = t(key, {
-    method: t('payment.methods.' + conflict.method),
+    method: t(`payment.methods.${conflict.method}`),
     provider: conflict.conflicting.name,
   })
   appStore.showError(translated === key ? fallback : translated)
 }
 
-// ---- Data loading ----
+// ==================== Data loading ====================
 
-async function loadProviders(): Promise<void> {
+async function loadConfig() {
+  try {
+    const res = await adminPaymentAPI.getConfig()
+    const cfg = res.data
+    if (!cfg) return
+    form.payment_enabled = !!cfg.enabled
+    form.payment_min_amount = cfg.min_amount ?? 0
+    form.payment_max_amount = cfg.max_amount ?? 0
+    form.payment_daily_limit = cfg.daily_limit ?? 0
+    form.payment_order_timeout_minutes = cfg.order_timeout_minutes ?? 30
+    form.payment_max_pending_orders = cfg.max_pending_orders ?? 3
+    form.payment_balance_disabled = !!cfg.balance_disabled
+    form.payment_balance_recharge_multiplier = cfg.balance_recharge_multiplier ?? 1
+    form.payment_recharge_fee_rate = cfg.recharge_fee_rate ?? 0
+    form.payment_load_balance_strategy = cfg.load_balance_strategy || 'round-robin'
+    form.payment_product_name_prefix = cfg.product_name_prefix || ''
+    form.payment_product_name_suffix = cfg.product_name_suffix || ''
+    form.payment_help_image_url = cfg.help_image_url || ''
+    form.payment_help_text = cfg.help_text || ''
+    form.payment_cancel_rate_limit_enabled = !!cfg.cancel_rate_limit_enabled
+    form.payment_cancel_rate_limit_max = cfg.cancel_rate_limit_max ?? 0
+    form.payment_cancel_rate_limit_window = cfg.cancel_rate_limit_window ?? 0
+    form.payment_cancel_rate_limit_unit = cfg.cancel_rate_limit_unit || 'minute'
+    form.payment_cancel_rate_limit_window_mode = cfg.cancel_rate_limit_window_mode || 'rolling'
+    form.payment_visible_method_alipay_enabled = cfg.visible_method_alipay_enabled ?? true
+    form.payment_visible_method_alipay_source = cfg.visible_method_alipay_source || 'official'
+    form.payment_visible_method_wxpay_enabled = cfg.visible_method_wxpay_enabled ?? true
+    form.payment_visible_method_wxpay_source = cfg.visible_method_wxpay_source || 'official'
+    form.payment_enabled_types = Array.isArray(cfg.enabled_payment_types)
+      ? [...cfg.enabled_payment_types]
+      : []
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  }
+}
+
+async function loadProviders() {
+  providersLoading.value = true
   try {
     const res = await adminPaymentAPI.getProviders()
     providers.value = res.data || []
   } catch (err: unknown) {
     appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
-  }
-}
-
-async function loadProvidersAndTypes(): Promise<void> {
-  providersLoading.value = true
-  try {
-    await loadProviders()
   } finally {
     providersLoading.value = false
   }
 }
 
-// ---- Dialog open / close ----
+async function loadAll() {
+  loading.value = true
+  try {
+    await Promise.all([loadConfig(), loadProviders()])
+  } finally {
+    loading.value = false
+  }
+}
 
-function openCreateProvider(): void {
+// ==================== Save ====================
+
+async function saveSettings() {
+  saving.value = true
+  try {
+    await adminPaymentAPI.updateConfig({
+      enabled: form.payment_enabled,
+      min_amount: form.payment_min_amount,
+      max_amount: form.payment_max_amount,
+      daily_limit: form.payment_daily_limit,
+      order_timeout_minutes: form.payment_order_timeout_minutes,
+      max_pending_orders: form.payment_max_pending_orders,
+      balance_disabled: form.payment_balance_disabled,
+      balance_recharge_multiplier: form.payment_balance_recharge_multiplier,
+      recharge_fee_rate: form.payment_recharge_fee_rate,
+      load_balance_strategy: form.payment_load_balance_strategy,
+      product_name_prefix: form.payment_product_name_prefix,
+      product_name_suffix: form.payment_product_name_suffix,
+      help_image_url: form.payment_help_image_url,
+      help_text: form.payment_help_text,
+      cancel_rate_limit_enabled: form.payment_cancel_rate_limit_enabled,
+      cancel_rate_limit_max: form.payment_cancel_rate_limit_max,
+      cancel_rate_limit_window: form.payment_cancel_rate_limit_window,
+      cancel_rate_limit_unit: form.payment_cancel_rate_limit_unit,
+      cancel_rate_limit_window_mode: form.payment_cancel_rate_limit_window_mode,
+      visible_method_alipay_enabled: form.payment_visible_method_alipay_enabled,
+      visible_method_alipay_source: form.payment_visible_method_alipay_source,
+      visible_method_wxpay_enabled: form.payment_visible_method_wxpay_enabled,
+      visible_method_wxpay_source: form.payment_visible_method_wxpay_source,
+      enabled_payment_types: [...form.payment_enabled_types],
+    })
+    appStore.showSuccess(t('common.saved'))
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('common.error')))
+  } finally {
+    saving.value = false
+  }
+}
+
+// ==================== Provider CRUD ====================
+
+function openCreateProvider() {
   editingProvider.value = null
   providerDialogRef.value?.reset(enabledProviderKeyOptions.value[0]?.value || 'easypay')
   showProviderDialog.value = true
 }
 
-function openEditProvider(provider: ProviderInstance): void {
+function openEditProvider(provider: ProviderInstance) {
   editingProvider.value = provider
   providerDialogRef.value?.loadProvider(provider)
   showProviderDialog.value = true
 }
 
-function onProviderDialogClose(): void {
+function onDialogClose() {
   showProviderDialog.value = false
   void loadProviders()
 }
 
-// ---- CRUD handlers ----
-
-async function handleSaveProvider(payload: Partial<ProviderInstance>): Promise<void> {
+async function handleSaveProvider(payload: Partial<ProviderInstance>) {
   providerSaving.value = true
   try {
     const candidate: ProviderEnablementCandidate = {
@@ -802,7 +792,7 @@ async function handleSaveProvider(payload: Partial<ProviderInstance>): Promise<v
 async function handleToggleField(
   provider: ProviderInstance,
   field: 'enabled' | 'refund_enabled' | 'allow_user_refund',
-): Promise<void> {
+) {
   let nextValue: boolean
   if (field === 'enabled') nextValue = !provider.enabled
   else if (field === 'refund_enabled') nextValue = !provider.refund_enabled
@@ -834,9 +824,9 @@ async function handleToggleField(
   }
 }
 
-async function handleToggleType(provider: ProviderInstance, type: string): Promise<void> {
+async function handleToggleType(provider: ProviderInstance, type: string) {
   const updated = provider.supported_types.includes(type)
-    ? provider.supported_types.filter(x => x !== type)
+    ? provider.supported_types.filter(typ => typ !== type)
     : [...provider.supported_types, type]
   const conflict = findProviderEnablementConflict({
     id: provider.id,
@@ -859,7 +849,7 @@ async function handleToggleType(provider: ProviderInstance, type: string): Promi
   }
 }
 
-async function handleReorderProviders(updates: { id: number; sort_order: number }[]): Promise<void> {
+async function handleReorderProviders(updates: { id: number; sort_order: number }[]) {
   try {
     await Promise.all(
       updates.map(u =>
@@ -873,12 +863,12 @@ async function handleReorderProviders(updates: { id: number; sort_order: number 
   }
 }
 
-function confirmDeleteProvider(provider: ProviderInstance): void {
+function confirmDeleteProvider(provider: ProviderInstance) {
   deletingProviderId.value = provider.id
   showDeleteProviderDialog.value = true
 }
 
-async function handleDeleteProvider(): Promise<void> {
+async function handleDeleteProvider() {
   if (!deletingProviderId.value) return
   try {
     await adminPaymentAPI.deleteProvider(deletingProviderId.value)
@@ -889,161 +879,10 @@ async function handleDeleteProvider(): Promise<void> {
     appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
   }
 }
+
+// ==================== Lifecycle ====================
+
 onMounted(() => {
   void loadAll()
-  void loadProvidersAndTypes()
 })
 </script>
-
-<style scoped>
-.payment-settings {
-  font-family: inherit;
-  color: rgb(31 41 55);
-}
-.dark .payment-settings,
-:host(.dark) .payment-settings {
-  color: rgb(229 231 235);
-}
-.ps-card {
-  border: 1px solid rgb(229 231 235);
-  border-radius: 0.5rem;
-  background: white;
-  padding: 1rem;
-}
-.dark .ps-card {
-  background: rgb(31 41 55);
-  border-color: rgb(55 65 81);
-}
-.ps-section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.75rem;
-}
-.ps-section-title {
-  font-size: 0.875rem;
-  font-weight: 600;
-  margin: 0;
-}
-.ps-section-body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-.ps-grid {
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: minmax(0, 1fr);
-}
-@media (min-width: 640px) {
-  .ps-grid-2 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .ps-grid-3 {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .ps-grid-4,
-  .sm\:ps-grid-4 {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-.ps-label {
-  display: block;
-  margin-bottom: 0.25rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: rgb(55 65 81);
-}
-.dark .ps-label {
-  color: rgb(209 213 219);
-}
-.ps-hint {
-  margin: 0.25rem 0 0;
-  font-size: 0.75rem;
-  color: rgb(156 163 175);
-}
-.dark .ps-hint {
-  color: rgb(156 163 175);
-}
-.ps-toggle-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  min-width: 0;
-}
-.ps-toggle-row > div {
-  min-width: 0;
-}
-.ps-input {
-  display: block;
-  width: 100%;
-  border: 1px solid rgb(209 213 219);
-  border-radius: 0.375rem;
-  padding: 0.4rem 0.6rem;
-  font-size: 0.875rem;
-  color: rgb(17 24 39);
-  background: white;
-}
-.ps-input:focus {
-  outline: 2px solid rgb(59 130 246);
-  outline-offset: 1px;
-}
-.ps-input:disabled {
-  background: rgb(243 244 246);
-  cursor: not-allowed;
-}
-.dark .ps-input {
-  background: rgb(17 24 39);
-  border-color: rgb(75 85 99);
-  color: rgb(243 244 246);
-}
-.dark .ps-input:disabled {
-  background: rgb(31 41 55);
-}
-.ps-select {
-  width: 100%;
-  min-width: 0;
-}
-.ps-checkbox-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-.ps-checkbox {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.875rem;
-  cursor: pointer;
-}
-.ps-checkbox input[type='checkbox'] {
-  width: 1rem;
-  height: 1rem;
-}
-.ps-btn {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 0.375rem;
-  padding: 0.4rem 0.9rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-  border: 0;
-  cursor: pointer;
-  transition: background-color 150ms ease;
-}
-.ps-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.ps-btn-primary {
-  background: rgb(37 99 235);
-  color: white;
-}
-.ps-btn-primary:hover:not(:disabled) {
-  background: rgb(29 78 216);
-}
-.space-y-4 > * + * {
-  margin-top: 1rem;
-}
-</style>

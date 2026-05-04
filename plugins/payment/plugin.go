@@ -114,12 +114,9 @@ func (p *PaymentPlugin) Manifest() *pluginsdk.Manifest {
 			Defaults: settingsDefaultsJSON,
 			Version:  "1.0.0",
 		},
-		// SettingsComponentPath opts the plugin into the host's "custom
-		// settings UI" path: when non-empty, PluginSettingsForm.vue mounts
-		// this Vue component (looked up in the plugin's frontend VIEWS map)
-		// instead of rendering the JSON-schema form. See
-		// frontend/src/index.ts and views/admin/PaymentSettingsView.vue.
-		SettingsComponentPath: "PaymentSettingsView.vue",
+		// Settings UI lives at the dedicated /admin/payment/settings route
+		// (see manifest_decls.go menuItemDecls + routeDecls). The plugin
+		// management dialog no longer mounts a custom settings component.
 		Frontend: &pluginsdk.FrontendManifest{
 			EntryJS:        "dist/entry.js",
 			EntryCSS:       "dist/entry.css",

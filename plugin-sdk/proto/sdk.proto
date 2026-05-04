@@ -443,6 +443,13 @@ service SettingsExtension {
   // rather than a gRPC error so plugins can probe without try/catch.
   rpc Get(SettingsGetRequest) returns (SettingsGetResponse);
 
+  // Set persists a single key inside the calling plugin's namespace.
+  // The host validates value_json against the plugin's declared JSON
+  // schema and rejects backend-only keys per SETTINGS-V2-DESIGN §4.3.
+  // expected_revision is reserved for future CAS support; pass 0 to
+  // skip the optimistic concurrency check.
+  rpc Set(SettingsSetRequest) returns (SettingsSetResponse);
+
   // Watch streams change events for keys inside the calling plugin's
   // namespace. An empty key subscribes to every key in the namespace.
   // The host MAY emit a synthetic "snapshot" event for each existing key
@@ -477,6 +484,16 @@ message SettingsGetResponse {
   // compares stored vs current to raise SchemaVersionMismatchError when
   // they disagree. Empty string is normalised to "0" by both sides.
   string current_schema_version = 5;
+}
+
+message SettingsSetRequest {
+  string key = 1;
+  bytes value_json = 2;
+}
+
+message SettingsSetResponse {
+  // revision is the new revision number after a successful write.
+  int64 revision = 1;
 }
 
 message SettingsWatchRequest {

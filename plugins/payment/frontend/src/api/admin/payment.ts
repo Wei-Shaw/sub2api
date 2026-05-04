@@ -29,11 +29,23 @@ export interface AdminPaymentConfig {
   enabled_payment_types: string[]
   balance_disabled: boolean
   balance_recharge_multiplier: number
+  recharge_fee_rate: number
   load_balance_strategy: string
   product_name_prefix: string
   product_name_suffix: string
   help_image_url: string
   help_text: string
+
+  cancel_rate_limit_enabled: boolean
+  cancel_rate_limit_max: number
+  cancel_rate_limit_window: number
+  cancel_rate_limit_unit: string
+  cancel_rate_limit_window_mode: string
+
+  visible_method_alipay_source?: string
+  visible_method_wxpay_source?: string
+  visible_method_alipay_enabled?: boolean
+  visible_method_wxpay_enabled?: boolean
 }
 
 /** Fields accepted by PUT /admin/config (all optional). */
@@ -47,11 +59,23 @@ export interface UpdatePaymentConfigRequest {
   enabled_payment_types?: string[]
   balance_disabled?: boolean
   balance_recharge_multiplier?: number
+  recharge_fee_rate?: number
   load_balance_strategy?: string
   product_name_prefix?: string
   product_name_suffix?: string
   help_image_url?: string
   help_text?: string
+
+  cancel_rate_limit_enabled?: boolean
+  cancel_rate_limit_max?: number
+  cancel_rate_limit_window?: number
+  cancel_rate_limit_unit?: string
+  cancel_rate_limit_window_mode?: string
+
+  visible_method_alipay_source?: string
+  visible_method_wxpay_source?: string
+  visible_method_alipay_enabled?: boolean
+  visible_method_wxpay_enabled?: boolean
 }
 
 export const adminPaymentAPI = {
