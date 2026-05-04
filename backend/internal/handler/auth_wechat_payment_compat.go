@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -132,7 +133,19 @@ func newLegacyAwarePaymentResumeService(legacyKey []byte) *paymentResumeService 
 }
 
 func resolvePaymentResumeSigningKeys(legacyKey []byte) ([]byte, [][]byte) {
-	signingKey := parsePaymentResumeSigningKey(os.Getenv(paymentResumeSigningKeyEnv))
+	signingKey, err := parsePaymentResumeSigningKey(os.Getenv(paymentResumeSigningKeyEnv))
+	if err != nil {
+		// 校验失败时拒绝悄悄回退到 raw bytes (原实现的安全坑: 32 字符
+		// passphrase 被静默当成 key, 与 admin 期望的 64 hex 不一致)。
+		// 直接降级到 legacy key 让 OAuth callback 显式失败 ("payment
+		// resume not configured"), 同时把错误打到日志里促使运维修复。
+		slog.Error("PAYMENT_RESUME_SIGNING_KEY 解析失败, 已禁用 resume token 签发",
+			"error", err)
+		if len(legacyKey) == 0 {
+			return nil, nil
+		}
+		return legacyKey, nil
+	}
 	if len(signingKey) == 0 {
 		if len(legacyKey) == 0 {
 			return nil, nil
@@ -145,17 +158,41 @@ func resolvePaymentResumeSigningKeys(legacyKey []byte) ([]byte, [][]byte) {
 	return signingKey, [][]byte{legacyKey}
 }
 
-func parsePaymentResumeSigningKey(raw string) []byte {
+// parsePaymentResumeSigningKey decodes PAYMENT_RESUME_SIGNING_KEY in a
+// strict, unambiguous way:
+//
+//   - 64 hex chars  -> 32 raw bytes (recommended; rotates cleanly)
+//   - 32 ASCII chars -> 32 raw bytes, accepted with a warning so operators
+//     can keep legacy passphrase-style keys working while migrating to hex.
+//   - anything else -> error; caller logs and falls back to the legacy
+//     TOTP-derived key so misconfiguration doesn't silently accept a
+//     truncated / wrong-length value as the HMAC key.
+//
+// The historic implementation silently fell back to []byte(raw) for any
+// value that didn't decode as hex, which let a 32-char passphrase or a
+// typo'd hex string become the key with no operator signal. See the Q3
+// security note in CLAUDE.md / commit history for context.
+func parsePaymentResumeSigningKey(raw string) ([]byte, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return nil
+		return nil, nil
 	}
-	if len(raw) >= 64 && len(raw)%2 == 0 {
-		if decoded, err := hex.DecodeString(raw); err == nil && len(decoded) > 0 {
-			return decoded
+	if len(raw) == 64 {
+		decoded, err := hex.DecodeString(raw)
+		if err != nil {
+			return nil, fmt.Errorf("PAYMENT_RESUME_SIGNING_KEY: invalid hex: %w", err)
 		}
+		return decoded, nil
 	}
-	return []byte(raw)
+	if len(raw) == 32 {
+		// Raw 32-byte passphrase form is allowed for legacy compatibility
+		// but warned about so operators move to the hex form (which is what
+		// the plugin's settings UI emits). Without this branch existing
+		// deployments would break on upgrade.
+		slog.Warn("PAYMENT_RESUME_SIGNING_KEY: 接受 32 字节 raw passphrase, 建议改用 64 hex 字符的形式")
+		return []byte(raw), nil
+	}
+	return nil, fmt.Errorf("PAYMENT_RESUME_SIGNING_KEY: must be 64 hex chars or 32 raw bytes, got len=%d", len(raw))
 }
 
 func (s *paymentResumeService) isSigningConfigured() bool {

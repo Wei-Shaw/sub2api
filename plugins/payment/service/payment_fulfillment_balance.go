@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -139,7 +138,7 @@ func (s *PaymentService) publishOrderFulfilled(ctx context.Context, o *pluginent
 			PaymentOrderFulfilled: &pluginsdk.PaymentOrderFulfilled{
 				OrderId:             int64(o.ID),
 				UserId:              o.UserID,
-				AmountCents:         int64(math.Round(o.Amount * 100)),
+				AmountCents:         yuanToFenInt(o.Amount),
 				BizType:             o.OrderType,
 				AuditAction:         auditAction,
 				FulfilledAtUnixNano: fulfilledAt.UnixNano(),

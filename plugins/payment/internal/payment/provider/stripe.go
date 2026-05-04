@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment"
 	stripe "github.com/stripe/stripe-go/v85"
@@ -20,33 +19,31 @@ const (
 )
 
 // Stripe implements the payment.CancelableProvider interface for Stripe payments.
+//
+// 并发说明: sc 在 NewStripe 构造期一次性写入, 之后只读, 因此所有 receiver
+// 方法对 s.sc 的访问都不需要互斥锁。**禁止**改回 lazy init: 历史版本里
+// ensureInit 拿锁初始化, 但调用方 (CreatePayment / QueryOrder / ...) 在锁外
+// 直接读 s.sc, 形成 data race (Q1, race detector 会报告)。如未来确实需要按
+// 配置变更换出 client, 应使用 atomic.Pointer[stripe.Client] 而不是 mutex。
 type Stripe struct {
 	instanceID string
 	config     map[string]string
-
-	mu          sync.Mutex
-	initialized bool
-	sc          *stripe.Client
+	sc         *stripe.Client
 }
 
-// NewStripe creates a new Stripe provider instance.
+// NewStripe creates a new Stripe provider instance. The Stripe client is
+// constructed eagerly here so all subsequent reads of s.sc are race-free
+// without a mutex (see type comment).
 func NewStripe(instanceID string, config map[string]string) (*Stripe, error) {
-	if config["secretKey"] == "" {
+	secretKey := config["secretKey"]
+	if secretKey == "" {
 		return nil, fmt.Errorf("stripe config missing required key: secretKey")
 	}
 	return &Stripe{
 		instanceID: instanceID,
 		config:     config,
+		sc:         stripe.NewClient(secretKey),
 	}, nil
-}
-
-func (s *Stripe) ensureInit() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !s.initialized {
-		s.sc = stripe.NewClient(s.config["secretKey"])
-		s.initialized = true
-	}
 }
 
 // GetPublishableKey returns the publishable key for frontend use.
@@ -70,8 +67,6 @@ var stripePaymentMethodTypes = map[string][]string{
 
 // CreatePayment creates a Stripe PaymentIntent.
 func (s *Stripe) CreatePayment(ctx context.Context, req payment.CreatePaymentRequest) (*payment.CreatePaymentResponse, error) {
-	s.ensureInit()
-
 	amountInCents, err := payment.YuanToFen(req.Amount)
 	if err != nil {
 		return nil, fmt.Errorf("stripe create payment: %w", err)
@@ -118,8 +113,6 @@ func (s *Stripe) CreatePayment(ctx context.Context, req payment.CreatePaymentReq
 
 // QueryOrder retrieves a PaymentIntent by ID.
 func (s *Stripe) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryOrderResponse, error) {
-	s.ensureInit()
-
 	pi, err := s.sc.V1PaymentIntents.Retrieve(ctx, tradeNo, nil)
 	if err != nil {
 		return nil, fmt.Errorf("stripe query order: %w", err)
@@ -142,8 +135,6 @@ func (s *Stripe) QueryOrder(ctx context.Context, tradeNo string) (*payment.Query
 
 // VerifyNotification verifies a Stripe webhook event.
 func (s *Stripe) VerifyNotification(_ context.Context, rawBody string, headers map[string]string) (*payment.PaymentNotification, error) {
-	s.ensureInit()
-
 	webhookSecret := s.config["webhookSecret"]
 	if webhookSecret == "" {
 		return nil, fmt.Errorf("stripe webhookSecret not configured")
@@ -185,8 +176,6 @@ func parseStripePaymentIntent(event *stripe.Event, status string, rawBody string
 
 // Refund creates a Stripe refund.
 func (s *Stripe) Refund(ctx context.Context, req payment.RefundRequest) (*payment.RefundResponse, error) {
-	s.ensureInit()
-
 	amountInCents, err := payment.YuanToFen(req.Amount)
 	if err != nil {
 		return nil, fmt.Errorf("stripe refund: %w", err)
@@ -246,8 +235,6 @@ func hasStripeMethod(methods []string, target string) bool {
 
 // CancelPayment cancels a pending PaymentIntent.
 func (s *Stripe) CancelPayment(ctx context.Context, tradeNo string) error {
-	s.ensureInit()
-
 	_, err := s.sc.V1PaymentIntents.Cancel(ctx, tradeNo, nil)
 	if err != nil {
 		return fmt.Errorf("stripe cancel payment: %w", err)

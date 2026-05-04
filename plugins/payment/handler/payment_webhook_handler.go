@@ -17,6 +17,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/service"
 )
@@ -25,6 +26,11 @@ import (
 type PaymentWebhookHandler struct {
 	paymentService *service.PaymentService
 	registry       *payment.Registry
+	// dedup guards against replay of an already-processed provider
+	// notification using a Redis SETNX-backed seen-set keyed on
+	// (provider, TradeNo). Constructed nil when the SDK Redis client is
+	// not wired — the dedup degrades to fail-open in that case.
+	dedup *webhookDedup
 }
 
 // maxWebhookBodySize is the maximum allowed webhook request body size (1 MB).
@@ -33,11 +39,15 @@ const maxWebhookBodySize = 1 << 20
 // webhookLogTruncateLen is the maximum length of raw body logged on verify failure.
 const webhookLogTruncateLen = 200
 
-// NewPaymentWebhookHandler creates a new PaymentWebhookHandler.
-func NewPaymentWebhookHandler(paymentService *service.PaymentService, registry *payment.Registry) *PaymentWebhookHandler {
+// NewPaymentWebhookHandler creates a new PaymentWebhookHandler. redis may
+// be nil when the host has not wired a Redis proxy; the constructor still
+// builds a dedup helper but Reserve becomes a fail-open no-op (see
+// webhook_dedup.go).
+func NewPaymentWebhookHandler(paymentService *service.PaymentService, registry *payment.Registry, redis pluginsdk.RedisClient, logger *slog.Logger) *PaymentWebhookHandler {
 	return &PaymentWebhookHandler{
 		paymentService: paymentService,
 		registry:       registry,
+		dedup:          newWebhookDedup(redis, logger),
 	}
 }
 
@@ -104,6 +114,30 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 	if notification == nil {
 		writeSuccessResponse(c, resolvedProviderKey)
 		return
+	}
+
+	// Replay protection: each provider populates notification.TradeNo with
+	// the upstream's authoritative transaction id (Alipay trade_no, WeChat
+	// transaction_id, EasyPay trade_no, Stripe PaymentIntent id) once the
+	// signature has been verified. Reserving (provider, TradeNo) in Redis
+	// blocks a captured-and-replayed body from re-triggering fulfillment
+	// even after the order has expired and the grace window has closed.
+	if err := h.dedup.Reserve(c.Request.Context(), resolvedProviderKey, notification.TradeNo); err != nil {
+		if errors.Is(err, ErrWebhookReplay) {
+			slog.Info("[Payment Webhook] duplicate notification suppressed",
+				"provider", resolvedProviderKey,
+				"outTradeNo", notification.OrderID,
+				"tradeNo", notification.TradeNo,
+			)
+			writeSuccessResponse(c, resolvedProviderKey)
+			return
+		}
+		// Reserve never returns non-replay errors today (it logs and
+		// falls open on transport failures), but treat the contract
+		// defensively so future tightening does not silently 500 the
+		// provider.
+		slog.Warn("[Payment Webhook] dedup reserve unexpected error; continuing fail-open",
+			"provider", resolvedProviderKey, "error", err)
 	}
 
 	if err := h.paymentService.HandlePaymentNotification(c.Request.Context(), notification, resolvedProviderKey); err != nil {

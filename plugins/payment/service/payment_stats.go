@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math"
 	"sort"
 	"strconv"
 	"time"
@@ -65,12 +64,12 @@ func computeBasicStats(st *DashboardStats, orders []*pluginent.PaymentOrder, tod
 			todayCount++
 		}
 	}
-	st.TotalAmount = math.Round(totalAmount*100) / 100
-	st.TodayAmount = math.Round(todayAmount*100) / 100
+	st.TotalAmount = roundYuan(totalAmount)
+	st.TodayAmount = roundYuan(todayAmount)
 	st.TotalCount = len(orders)
 	st.TodayCount = todayCount
 	if st.TotalCount > 0 {
-		st.AvgAmount = math.Round(totalAmount/float64(st.TotalCount)*100) / 100
+		st.AvgAmount = roundYuan(totalAmount / float64(st.TotalCount))
 	}
 }
 
@@ -93,7 +92,7 @@ func buildDailySeries(orders []*pluginent.PaymentOrder, since time.Time, days in
 	for i := 0; i < days; i++ {
 		date := since.AddDate(0, 0, i+1).Format("2006-01-02")
 		if ds, ok := dailyMap[date]; ok {
-			ds.Amount = math.Round(ds.Amount*100) / 100
+			ds.Amount = roundYuan(ds.Amount)
 			series = append(series, *ds)
 		} else {
 			series = append(series, DailyStats{Date: date})
@@ -115,7 +114,7 @@ func buildMethodDistribution(orders []*pluginent.PaymentOrder) []PaymentMethodSt
 	}
 	methods := make([]PaymentMethodStat, 0, len(methodMap))
 	for _, ms := range methodMap {
-		ms.Amount = math.Round(ms.Amount*100) / 100
+		ms.Amount = roundYuan(ms.Amount)
 		methods = append(methods, *ms)
 	}
 	return methods
@@ -133,7 +132,7 @@ func buildTopUsers(orders []*pluginent.PaymentOrder) []TopUserStat {
 	}
 	userList := make([]*TopUserStat, 0, len(userMap))
 	for _, us := range userMap {
-		us.Amount = math.Round(us.Amount*100) / 100
+		us.Amount = roundYuan(us.Amount)
 		userList = append(userList, us)
 	}
 	sort.Slice(userList, func(i, j int) bool {

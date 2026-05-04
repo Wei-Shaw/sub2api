@@ -6,10 +6,13 @@
 package handler
 
 import (
+	"math"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/shopspring/decimal"
 
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	dbent "github.com/Wei-Shaw/sub2api/plugins/payment/ent"
@@ -56,6 +59,7 @@ func (h *AdminPaymentHandler) RegisterRoutes(admin *gin.RouterGroup) {
 	admin.POST("/providers", h.CreateProvider)
 	admin.PUT("/providers/:id", h.UpdateProvider)
 	admin.DELETE("/providers/:id", h.DeleteProvider)
+	admin.POST("/providers/reencrypt", h.ReencryptProviderConfigs)
 }
 
 // requireAdmin verifies the caller is an authenticated admin via the
@@ -192,11 +196,57 @@ func sanitizeAdminPaymentOrderForResponse(order *dbent.PaymentOrder) *dbent.Paym
 }
 
 // AdminProcessRefundRequest is the request body for admin refund processing.
+//
+// Amount accepts either a JSON number or a string. Strings are parsed via
+// shopspring/decimal so callers can avoid float64 round-trip drift; the
+// numeric path is kept for backwards compatibility but every value is
+// validated against NaN/Inf/negative-zero/sub-cent precision before reaching
+// the service layer.
+//
+// ConfirmNoBalanceDeduction is required when Force=true && DeductBalance=false.
+// Without this explicit acknowledgement the handler refuses the request:
+// the (force, no-deduct) combination is the silent free-money path —
+// refund is sent to the gateway without debiting the user's balance, so
+// the user keeps both the credited balance and the refunded payment. We
+// require operators to opt in to that behaviour explicitly and we mark
+// the audit log so security review can flag the request.
 type AdminProcessRefundRequest struct {
-	Amount        float64 `json:"amount"`
-	Reason        string  `json:"reason"`
-	Force         bool    `json:"force"`
-	DeductBalance bool    `json:"deduct_balance"`
+	// Amount is the refund amount in CNY yuan. JSON numbers and strings
+	// are both accepted. <= 0 / NaN / Inf are rejected. Sub-cent precision
+	// is rejected. Empty/missing falls through to a full refund (service
+	// layer normalises to o.Amount when amt <= 0).
+	Amount        decimal.Decimal `json:"amount"`
+	Reason        string          `json:"reason"`
+	Force         bool            `json:"force"`
+	DeductBalance bool            `json:"deduct_balance"`
+	// ConfirmNoBalanceDeduction must be true when Force=true and
+	// DeductBalance=false. See the type doc for rationale.
+	ConfirmNoBalanceDeduction bool `json:"confirm_no_balance_deduction"`
+}
+
+// validateAdminRefundAmount enforces the strict numeric envelope: NaN/Inf
+// rejected, sub-cent precision rejected, negative values rejected. Returns
+// the float64 view used by the service layer plus an error string suitable
+// for a 400 response.
+func validateAdminRefundAmount(amt decimal.Decimal) (float64, string) {
+	// Zero is allowed and treated as "full refund" by the service layer.
+	if amt.IsZero() {
+		return 0, ""
+	}
+	if amt.IsNegative() {
+		return 0, "amount must be non-negative"
+	}
+	// Reject sub-cent precision: yuan*100 must be an integer at decimal
+	// precision (no rounding required). decimal.Equal compares values, so
+	// .Truncate(2) catches anything below 0.01 CNY.
+	if !amt.Equal(amt.Truncate(2)) {
+		return 0, "amount cannot have sub-cent precision"
+	}
+	f, _ := amt.Float64()
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0, "amount must be a finite number"
+	}
+	return f, ""
 }
 
 // ProcessRefund processes a refund for an order (admin).
@@ -215,7 +265,32 @@ func (h *AdminPaymentHandler) ProcessRefund(c *gin.Context) {
 		return
 	}
 
-	plan, earlyResult, err := h.paymentService.PrepareRefund(c.Request.Context(), orderID, req.Amount, req.Reason, req.Force, req.DeductBalance)
+	amount, validationErr := validateAdminRefundAmount(req.Amount)
+	if validationErr != "" {
+		response.BadRequest(c, "Invalid request: "+validationErr)
+		return
+	}
+
+	meta := pluginsdk.RequestMetadata(c.Request)
+	if req.Force && !req.DeductBalance {
+		if !req.ConfirmNoBalanceDeduction {
+			response.BadRequest(c,
+				"Invalid request: force refund without deducting user balance requires confirm_no_balance_deduction=true")
+			return
+		}
+		// Audit-flag the dangerous combination so security review can
+		// follow the trail. The service layer also writes its own audit
+		// row on success — this entry captures the admin intent before
+		// the refund runs.
+		c.Set("payment.admin.no_deduct_force",
+			strings.Join([]string{
+				"order_id=" + strconv.FormatInt(orderID, 10),
+				"admin_id=" + strconv.FormatInt(meta.UserID, 10),
+				"reason=" + req.Reason,
+			}, " "))
+	}
+
+	plan, earlyResult, err := h.paymentService.PrepareRefund(c.Request.Context(), orderID, amount, req.Reason, req.Force, req.DeductBalance)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -223,6 +298,10 @@ func (h *AdminPaymentHandler) ProcessRefund(c *gin.Context) {
 	if earlyResult != nil {
 		response.Success(c, earlyResult)
 		return
+	}
+
+	if req.Force && !req.DeductBalance && h.paymentService != nil {
+		h.paymentService.LogAdminForceRefundNoDeduct(c.Request.Context(), orderID, meta.UserID, amount, req.Reason)
 	}
 
 	result, err := h.paymentService.ExecuteRefund(c.Request.Context(), plan)
@@ -365,6 +444,35 @@ func (h *AdminPaymentHandler) UpdateProvider(c *gin.Context) {
 	}
 	h.paymentService.RefreshProviders(c.Request.Context())
 	response.Success(c, inst)
+}
+
+// ReencryptProviderConfigs walks every payment_provider_instances row and
+// rewrites legacy plaintext-JSON Config blobs as encrypted ciphertext under
+// the SDK SecretEncryptor. Idempotent — running twice in a row reports
+// AlreadyOK == Total on the second pass.
+//
+// Operator usage (curl):
+//
+//	curl -X POST -H "x-api-key: $ADMIN_API_KEY" \
+//	  $BASE/api/v1/plugin/payment/admin/providers/reencrypt
+//
+// Response body is the ReencryptResult JSON (total / reencrypted /
+// already_encrypted / failed / first 10 error strings).
+func (h *AdminPaymentHandler) ReencryptProviderConfigs(c *gin.Context) {
+	if !requireAdmin(c) {
+		return
+	}
+	result, err := h.configService.ReencryptAllProviderConfigs(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	// Refresh the live registry so any newly-rewritten rows are picked up
+	// without waiting for the next admin save / restart.
+	if h.paymentService != nil {
+		h.paymentService.RefreshProviders(c.Request.Context())
+	}
+	response.Success(c, result)
 }
 
 // DeleteProvider deletes a payment provider instance.

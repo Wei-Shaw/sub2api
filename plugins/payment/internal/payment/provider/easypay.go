@@ -16,8 +16,29 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment"
 )
+
+// parseEasypayMoney parses an EasyPay-supplied amount string ("12.34")
+// using shopspring/decimal so the conversion is exact at cent precision.
+// Unparseable inputs collapse to 0 — callers historically used
+// strconv.ParseFloat with ignored errors for the same effect, but the
+// decimal path avoids float-rounding drift on values that would otherwise
+// slip past the webhook amount check by a sub-cent margin.
+func parseEasypayMoney(raw string) float64 {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0
+	}
+	d, err := decimal.NewFromString(raw)
+	if err != nil {
+		return 0
+	}
+	f, _ := d.Float64()
+	return f
+}
 
 // EasyPay constants.
 const (
@@ -226,7 +247,7 @@ func (e *EasyPay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Quer
 	if resp.Status == easypayStatusPaid {
 		status = payment.ProviderStatusPaid
 	}
-	amount, _ := strconv.ParseFloat(resp.Money, 64)
+	amount := parseEasypayMoney(resp.Money)
 	return &payment.QueryOrderResponse{
 		TradeNo:  tradeNo,
 		Status:   status,
@@ -256,7 +277,7 @@ func (e *EasyPay) VerifyNotification(_ context.Context, rawBody string, _ map[st
 	if params["trade_status"] == tradeStatusSuccess {
 		status = payment.ProviderStatusSuccess
 	}
-	amount, _ := strconv.ParseFloat(params["money"], 64)
+	amount := parseEasypayMoney(params["money"])
 
 	metadata := e.MerchantIdentityMetadata()
 	if pid := strings.TrimSpace(params["pid"]); pid != "" {

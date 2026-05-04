@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -358,38 +359,46 @@ func (s *PaymentConfigService) getStripePublishableKey(ctx context.Context) stri
 
 // decryptConfig decrypts a stored provider-instance config blob.
 //
-// Layered handling: plaintext JSON wins (new records use that, identical
-// to host policy after the AES-GCM rollback). When that fails, fall back
-// to the SDK SecretEncryptor — it owns the legacy AES path centrally
-// and is the encrypt-side counterpart used by encryptConfig.
+// Layered handling:
 //
-// Unreadable blobs degrade to nil so the admin can re-enter the config
-// without the row being permanently quarantined.
+//  1. Try the SDK SecretEncryptor first — new records are AES-256-GCM
+//     ciphertext sealed with the plugin's per-plugin key.
+//  2. Fall back to plaintext JSON for legacy rows written before the
+//     S1 fix. These will be re-encrypted on the next admin save; we log
+//     a warning so operators can prioritise the rotation.
+//  3. Unreadable blobs degrade to nil so the admin can re-enter the
+//     config without the row being permanently quarantined.
 func (s *PaymentConfigService) decryptConfig(ctx context.Context, stored string) (map[string]string, error) {
 	if stored == "" || s == nil {
 		return nil, nil
 	}
+	if s.secrets != nil {
+		plain, err := s.secrets.Decrypt(ctx, []byte(stored))
+		if err == nil {
+			out := map[string]string{}
+			if jsonErr := json.Unmarshal(plain, &out); jsonErr == nil {
+				return out, nil
+			}
+			// Decrypt succeeded but plaintext is not valid JSON — fall
+			// through to plaintext fallback (very old data could be
+			// corrupted or non-JSON).
+		}
+	}
+	// Legacy fallback: plaintext JSON written before the S1 encryption
+	// fix. Log a warning so operators know which rows still need
+	// re-saving via the admin UI to be encrypted at rest.
 	if cfg, ok := tryDecodeConfigJSON(stored); ok {
+		if s.logger != nil {
+			s.logger.Warn("provider config is unencrypted; will re-encrypt on next save",
+				"stored_len", len(stored))
+		}
 		return cfg, nil
 	}
-	if s.secrets == nil {
-		return nil, nil
+	if s.logger != nil {
+		s.logger.Warn("payment provider config unreadable, treating as empty for re-entry",
+			"stored_len", len(stored))
 	}
-	plain, err := s.secrets.Decrypt(ctx, []byte(stored))
-	if err != nil {
-		// Treat unreadable blobs as empty so admins can re-enter the
-		// config; matches host behaviour.
-		if s.logger != nil {
-			s.logger.Warn("payment provider config unreadable, treating as empty for re-entry",
-				"stored_len", len(stored), "error", err)
-		}
-		return nil, nil
-	}
-	out := map[string]string{}
-	if err := json.Unmarshal(plain, &out); err != nil {
-		return nil, err
-	}
-	return out, nil
+	return nil, nil
 }
 
 // tryDecodeConfigJSON returns (cfg, true) when stored is a plaintext JSON
@@ -404,26 +413,157 @@ func tryDecodeConfigJSON(stored string) (map[string]string, bool) {
 
 // encryptConfig serialises a provider config for storage.
 //
-// New records are written as plaintext JSON, matching the host's
-// post-rollback behaviour (decryptConfig accepts both plaintext and
-// the legacy SDK-encrypted form during migration). Keeping ciphertext
-// confined to the legacy path means newly written rows survive a
-// SecretEncryptor key rotation without re-encrypting the whole table.
-func (s *PaymentConfigService) encryptConfig(_ context.Context, cfg map[string]string) (string, error) {
+// New records are encrypted via the SDK SecretEncryptor (AES-256-GCM
+// sealed with a per-plugin HKDF-derived key, see plugin-sdk/secrets.go).
+// We fail closed when no encryptor is wired — provider configs hold
+// merchant API keys, secret signing material and webhook keys; storing
+// them in plaintext is treated as a configuration bug, not a graceful
+// degradation.
+func (s *PaymentConfigService) encryptConfig(ctx context.Context, cfg map[string]string) (string, error) {
 	if s == nil {
 		return "", errors.New("payment: config service unavailable")
+	}
+	if s.secrets == nil {
+		return "", errors.New("payment: SecretEncryptor not configured; refusing to store provider config in plaintext")
 	}
 	raw, err := json.Marshal(cfg)
 	if err != nil {
 		return "", err
 	}
-	return string(raw), nil
+	ciphertext, err := s.secrets.Encrypt(ctx, raw)
+	if err != nil {
+		return "", fmt.Errorf("encrypt provider config: %w", err)
+	}
+	return string(ciphertext), nil
 }
 
 // UpdatePaymentConfig is intentionally a no-op: settings live in the host's
 // admin form.
 func (s *PaymentConfigService) UpdatePaymentConfig(_ context.Context, _ UpdatePaymentConfigRequest) error {
 	return errPaymentSettingsWriteNotSupported
+}
+
+// ReencryptResult reports the outcome of a bulk re-encrypt run.
+//
+// Errors is bounded to the first reencryptMaxErrors entries to keep the
+// admin response payload predictable; the per-row failures are also
+// emitted via slog.Warn so operators can drill into a specific instance
+// without scrolling the JSON body.
+type ReencryptResult struct {
+	Total       int      `json:"total"`
+	Reencrypted int      `json:"reencrypted"`
+	AlreadyOK   int      `json:"already_encrypted"`
+	Failed      int      `json:"failed"`
+	Errors      []string `json:"errors,omitempty"`
+}
+
+// reencryptMaxErrors caps how many per-row error strings the result body
+// carries. Operators get a representative sample without an unbounded
+// payload when many rows are corrupted.
+const reencryptMaxErrors = 10
+
+// ReencryptAllProviderConfigs walks every payment_provider_instances row,
+// detects rows that are still stored as plaintext JSON (the legacy format
+// used before encryptConfig started writing AES-256-GCM ciphertext) and
+// rewrites them as encrypted. Rows whose Config blob already decrypts via
+// the SDK SecretEncryptor are skipped.
+//
+// The operation is idempotent — running twice in a row yields
+// AlreadyOK == Total on the second run.
+//
+// Each row is read+rewritten as an independent ent UpdateOneID call. We do
+// not wrap the whole sweep in one transaction: a long-running TX would
+// hold a lock against admin saves of unrelated instance rows for the
+// duration of the run. The trade-off is that an interrupted run can leave
+// the table partially migrated; the next invocation simply finishes the
+// remaining rows because the helper is idempotent.
+//
+// When SecretEncryptor is not wired (CapabilitySecretEncryption missing)
+// the call returns an error rather than silently doing nothing — the
+// endpoint exists specifically to fix the encryption gap, so failing
+// closed surfaces the misconfiguration immediately.
+func (s *PaymentConfigService) ReencryptAllProviderConfigs(ctx context.Context) (ReencryptResult, error) {
+	var result ReencryptResult
+	if s == nil || s.entClient == nil {
+		return result, errors.New("payment: config service not initialised")
+	}
+	if s.secrets == nil {
+		return result, errors.New("payment: SecretEncryptor not configured; cannot re-encrypt")
+	}
+
+	instances, err := s.entClient.PaymentProviderInstance.Query().All(ctx)
+	if err != nil {
+		return result, fmt.Errorf("list provider instances: %w", err)
+	}
+	result.Total = len(instances)
+
+	for _, inst := range instances {
+		s.reencryptOneInstance(ctx, inst, &result)
+	}
+	return result, nil
+}
+
+// reencryptOneInstance reclassifies a single row as already-encrypted,
+// freshly-re-encrypted, or failed and updates result accordingly. Split
+// out so ReencryptAllProviderConfigs stays under the 30-line budget.
+func (s *PaymentConfigService) reencryptOneInstance(ctx context.Context, inst *pluginent.PaymentProviderInstance, result *ReencryptResult) {
+	stored := inst.Config
+	if stored == "" {
+		// Empty config — no secrets to migrate; treat as already-fine.
+		result.AlreadyOK++
+		return
+	}
+
+	// Probe 1: does it already decrypt under the SDK SecretEncryptor?
+	if plain, err := s.secrets.Decrypt(ctx, []byte(stored)); err == nil {
+		// Decrypted blob must look like a JSON object to be a valid
+		// provider config. If it does not, fall through to the plaintext
+		// path so the row is rewritten in canonical form.
+		var probe map[string]string
+		if jsonErr := json.Unmarshal(plain, &probe); jsonErr == nil {
+			result.AlreadyOK++
+			return
+		}
+	}
+
+	// Probe 2: does it parse as plaintext JSON? If so this is a legacy
+	// row — re-encrypt and write it back.
+	cfg, ok := tryDecodeConfigJSON(stored)
+	if !ok {
+		s.recordReencryptFailure(result, inst.ID, fmt.Errorf("config is neither valid ciphertext nor plaintext JSON"))
+		return
+	}
+	enc, err := s.encryptConfig(ctx, cfg)
+	if err != nil {
+		s.recordReencryptFailure(result, inst.ID, fmt.Errorf("encrypt: %w", err))
+		return
+	}
+	if _, err := s.entClient.PaymentProviderInstance.UpdateOneID(inst.ID).
+		SetConfig(enc).Save(ctx); err != nil {
+		s.recordReencryptFailure(result, inst.ID, fmt.Errorf("save: %w", err))
+		return
+	}
+	result.Reencrypted++
+	if s.logger != nil {
+		s.logger.Info("payment: provider config re-encrypted",
+			"instance_id", inst.ID, "provider_key", inst.ProviderKey)
+	}
+}
+
+// recordReencryptFailure increments the Failed counter, appends a
+// truncated error message (bounded to reencryptMaxErrors), and emits a
+// warn log so operators see every failure even when the response body
+// truncates.
+func (s *PaymentConfigService) recordReencryptFailure(result *ReencryptResult, instanceID int, err error) {
+	result.Failed++
+	if s.logger != nil {
+		s.logger.Warn("payment: provider config re-encrypt failed",
+			"instance_id", instanceID, "error", err)
+	}
+	if len(result.Errors) >= reencryptMaxErrors {
+		return
+	}
+	result.Errors = append(result.Errors, fmt.Sprintf("instance %d: %v", instanceID, err))
 }
 
 // splitTypes splits a CSV settings value, trimming whitespace.

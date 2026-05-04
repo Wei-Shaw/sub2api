@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -200,7 +199,7 @@ func (s *PaymentService) publishOrderCreated(ctx context.Context, o *pluginent.P
 				OrderId:           int64(o.ID),
 				OutTradeNo:        o.OutTradeNo,
 				UserId:            o.UserID,
-				AmountCents:       int64(math.Round(o.Amount * 100)),
+				AmountCents:       yuanToFenInt(o.Amount),
 				PlanId:            planIDStr,
 				ProviderKey:       o.PaymentType,
 				BizType:           o.OrderType,

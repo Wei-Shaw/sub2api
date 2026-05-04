@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -131,16 +130,22 @@ func (s *PaymentService) validateNotificationAmount(ctx context.Context, o *plug
 		})
 		return fmt.Errorf("invalid paid amount from provider: %v", paid)
 	}
-	if math.Abs(paid-o.PayAmount) > amountToleranceCNY {
+	// Decimal-precision comparison in fen (integer cents) so a provider
+	// rounding drift cannot let an attacker underpay by sub-cent amounts
+	// — float64 subtraction with a 0.01 tolerance silently accepted up to
+	// 1 cent of underpayment per order.
+	if yuanToFen(paid) != yuanToFen(o.PayAmount) {
 		s.writeAuditLog(ctx, int64(o.ID), "PAYMENT_AMOUNT_MISMATCH", pk, map[string]any{
 			"expected": o.PayAmount,
 			"paid":     paid,
 			"tradeNo":  tradeNo,
+			"order_id": o.ID,
 		})
 		return fmt.Errorf("amount mismatch: expected %.2f, got %.2f", o.PayAmount, paid)
 	}
 	return nil
 }
+
 
 // toPaid promotes the order to PAID inside an idempotent CAS update. The
 // allowed source statuses are PENDING / CANCELLED / EXPIRED-within-grace.

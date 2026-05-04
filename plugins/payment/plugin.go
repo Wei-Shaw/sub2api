@@ -144,7 +144,7 @@ func (p *PaymentPlugin) Init(ctx pluginsdk.PluginContext) error {
 	ctx.Logger().Info("payment: ent client initialised", "dialect", pluginsdk.Dialect)
 
 	p.buildServices(ctx)
-	p.buildHandlers()
+	p.buildHandlers(ctx)
 
 	if err := p.registerOrderExpiryJob(ctx); err != nil {
 		ctx.Logger().Warn("payment: order-expiry job registration failed; expiry sweep disabled",
@@ -186,9 +186,19 @@ func (p *PaymentPlugin) buildServices(ctx pluginsdk.PluginContext) {
 // buildHandlers constructs the three handler facets (user, webhook,
 // admin). Each handler is a thin protocol adapter over the services
 // already built in buildServices, so this is just plumbing.
-func (p *PaymentPlugin) buildHandlers() {
+//
+// The webhook handler additionally needs the SDK Redis client to power
+// notification-replay protection (see handler/webhook_dedup.go); we read
+// it off the plugin context here so the handler stays unaware of the SDK
+// shape.
+func (p *PaymentPlugin) buildHandlers(ctx pluginsdk.PluginContext) {
 	p.userHandler = handler.NewPaymentHandler(p.paymentService, p.configService)
-	p.webhookHandler = handler.NewPaymentWebhookHandler(p.paymentService, p.paymentService.Registry())
+	p.webhookHandler = handler.NewPaymentWebhookHandler(
+		p.paymentService,
+		p.paymentService.Registry(),
+		ctx.Redis(),
+		ctx.Logger(),
+	)
 	p.adminHandler = handler.NewAdminPaymentHandler(p.paymentService, p.configService)
 }
 

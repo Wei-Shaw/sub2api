@@ -205,7 +205,11 @@ func normalizeRefundAmount(o *pluginent.PaymentOrder, amt float64) (float64, err
 	if amt <= 0 {
 		amt = o.Amount
 	}
-	if amt-o.Amount > amountToleranceCNY {
+	// Decimal-precision comparison: refund amount must not exceed the
+	// order amount even by sub-cent fractions. A 0.01 float tolerance
+	// previously let an attacker request a refund up to 1 cent over the
+	// recharge silently.
+	if yuanToFen(amt) > yuanToFen(o.Amount) {
 		return 0, infraerrors.BadRequest("REFUND_AMOUNT_EXCEEDED", "refund amount exceeds recharge")
 	}
 	return amt, nil
@@ -353,3 +357,28 @@ func roundCNY(v float64) float64 {
 }
 
 var _ = roundCNY // referenced by the refund execute companion file.
+
+// LogAdminForceRefundNoDeduct records the (force=true, deduct_balance=false)
+// admin refund path in the audit log AND emits a structured warn-level
+// slog entry. The combination is the silent free-money path: a refund is
+// pushed to the upstream gateway without debiting the user's balance, so
+// the user keeps both the recharge credit and the gateway refund. The
+// admin handler requires ConfirmNoBalanceDeduction=true to reach this
+// path; this method is the operational paper trail.
+func (s *PaymentService) LogAdminForceRefundNoDeduct(ctx context.Context, orderID, adminID int64, amount float64, reason string) {
+	if s == nil {
+		return
+	}
+	if s.logger != nil {
+		s.logger.Warn("admin refund: force without balance deduction (silent free-money path acknowledged)",
+			"order_id", orderID,
+			"admin_id", adminID,
+			"amount", amount,
+			"reason", reason,
+		)
+	}
+	s.writeAuditLog(ctx, orderID, "REFUND_ADMIN_FORCE_NO_DEDUCT", fmt.Sprintf("admin:%d", adminID), map[string]any{
+		"amount": amount,
+		"reason": reason,
+	})
+}

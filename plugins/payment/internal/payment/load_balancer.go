@@ -14,6 +14,14 @@ import (
 	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentproviderinstance"
 )
 
+// SecretDecryptor is the minimal SDK surface the load balancer needs to
+// decrypt provider-instance configs. It's a subset of
+// plugin-sdk.SecretEncryptor (Decrypt only) so this internal/ package
+// does not import the full plugin-sdk types.
+type SecretDecryptor interface {
+	Decrypt(ctx context.Context, ciphertext []byte) ([]byte, error)
+}
+
 // Strategy represents a load balancing strategy for provider instance selection.
 type Strategy string
 
@@ -42,6 +50,7 @@ type LoadBalancer interface {
 type DefaultLoadBalancer struct {
 	db            *dbent.Client
 	encryptionKey []byte
+	secrets       SecretDecryptor
 	counter       atomic.Uint64
 }
 
@@ -52,6 +61,19 @@ const wxpayJSAPIAppIDContextKey contextKey = "payment.wxpay.jsapi_app_id"
 // NewDefaultLoadBalancer creates a new load balancer.
 func NewDefaultLoadBalancer(db *dbent.Client, encryptionKey []byte) *DefaultLoadBalancer {
 	return &DefaultLoadBalancer{db: db, encryptionKey: encryptionKey}
+}
+
+// WithSecrets wires an SDK SecretEncryptor (Decrypt-only is sufficient).
+// New rows produced by PaymentConfigService.encryptConfig are AES-256-GCM
+// ciphertext sealed with the plugin's per-plugin key — without an
+// encryptor, those rows look like opaque bytes and the legacy fallbacks
+// would treat them as unreadable.
+func (lb *DefaultLoadBalancer) WithSecrets(s SecretDecryptor) *DefaultLoadBalancer {
+	if lb == nil {
+		return nil
+	}
+	lb.secrets = s
+	return lb
 }
 
 func WithWxpayJSAPIAppID(ctx context.Context, appID string) context.Context {
@@ -315,21 +337,37 @@ func (lb *DefaultLoadBalancer) buildSelection(selected *dbent.PaymentProviderIns
 }
 
 // decryptConfig parses a stored provider config.
-// New records are plaintext JSON; legacy records are AES-256-GCM ciphertext.
-// Unreadable values (legacy ciphertext without a valid key, or malformed data)
-// are treated as empty so the service keeps running while the admin re-enters
-// the config via the UI.
 //
-// TODO(deprecated-legacy-ciphertext): The AES fallback branch below is a
-// transitional compatibility shim for pre-plaintext records. Remove it (and
-// the encryptionKey field + the Decrypt import) after a few releases once all
+// Layered decoding (matches PaymentConfigService.decryptConfig):
+//
+//  1. SDK SecretEncryptor (preferred): new rows produced after the S1 fix
+//     are AES-256-GCM ciphertext sealed with the plugin's per-plugin key.
+//  2. Plaintext JSON: legacy rows written before S1. A warning is logged
+//     so operators can prioritise re-saving them through the admin UI.
+//  3. Legacy AES (deprecated): pre-plaintext rows from before the
+//     in-process encryption rollback.
+//
+// Unreadable values are treated as empty so the service keeps running
+// while the admin re-enters the config via the UI.
+//
+// TODO(deprecated-legacy-ciphertext): Remove branches 2 and 3 once all
 // live deployments have re-saved their provider configs through the UI.
 func (lb *DefaultLoadBalancer) decryptConfig(stored string) (map[string]string, error) {
 	if stored == "" {
 		return nil, nil
 	}
+	if lb.secrets != nil {
+		if plain, err := lb.secrets.Decrypt(context.Background(), []byte(stored)); err == nil {
+			var cfg map[string]string
+			if jsonErr := json.Unmarshal(plain, &cfg); jsonErr == nil {
+				return cfg, nil
+			}
+		}
+	}
 	var config map[string]string
 	if err := json.Unmarshal([]byte(stored), &config); err == nil {
+		slog.Warn("provider config is unencrypted; will re-encrypt on next save",
+			"stored_len", len(stored))
 		return config, nil
 	}
 	// Deprecated: legacy AES-256-GCM ciphertext fallback — scheduled for removal.
@@ -337,6 +375,8 @@ func (lb *DefaultLoadBalancer) decryptConfig(stored string) (map[string]string, 
 		//nolint:staticcheck // SA1019: intentional legacy fallback, scheduled for removal
 		if plaintext, err := Decrypt(stored, lb.encryptionKey); err == nil {
 			if err := json.Unmarshal([]byte(plaintext), &config); err == nil {
+				slog.Warn("provider config decoded via legacy AES fallback; will re-encrypt on next save",
+					"stored_len", len(stored))
 				return config, nil
 			}
 		}

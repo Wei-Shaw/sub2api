@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/shopspring/decimal"
 
 	"github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment"
 	"github.com/smartwalle/alipay/v3"
@@ -237,17 +238,14 @@ func (a *Alipay) QueryOrder(ctx context.Context, tradeNo string) (*payment.Query
 		status = payment.ProviderStatusFailed
 	}
 
-	amount, err := strconv.ParseFloat(result.TotalAmount, 64)
+	amount, err := parseAlipayAmount(
+		result.TotalAmount,
+		result.ReceiptAmount,
+		result.BuyerPayAmount,
+		result.InvoiceAmount,
+	)
 	if err != nil {
-		amount, err = parseAlipayAmount(
-			result.TotalAmount,
-			result.ReceiptAmount,
-			result.BuyerPayAmount,
-			result.InvoiceAmount,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("alipay parse amount: %w", err)
-		}
+		return nil, fmt.Errorf("alipay parse amount: %w", err)
 	}
 
 	return &payment.QueryOrderResponse{
@@ -281,16 +279,13 @@ func (a *Alipay) VerifyNotification(ctx context.Context, rawBody string, _ map[s
 		status = payment.ProviderStatusSuccess
 	}
 
-	amount, err := strconv.ParseFloat(notification.TotalAmount, 64)
+	amount, err := parseAlipayAmount(
+		notification.TotalAmount,
+		notification.ReceiptAmount,
+		notification.BuyerPayAmount,
+	)
 	if err != nil {
-		amount, err = parseAlipayAmount(
-			notification.TotalAmount,
-			notification.ReceiptAmount,
-			notification.BuyerPayAmount,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("alipay parse notification amount: %w", err)
-		}
+		return nil, fmt.Errorf("alipay parse notification amount: %w", err)
 	}
 
 	metadata := a.MerchantIdentityMetadata()
@@ -368,14 +363,23 @@ func isTradeNotExist(err error) bool {
 	return strings.Contains(err.Error(), alipayErrTradeNotExist)
 }
 
+// parseAlipayAmount returns the first non-empty amount string parsed via
+// shopspring/decimal. We avoid strconv.ParseFloat because Alipay sends
+// amounts as fixed-precision strings ("19.99") and a float64 round-trip
+// can introduce sub-cent drift on certain values that, combined with the
+// webhook tolerance check, used to allow silent underpayment up to 1 cent.
+// The decimal.Float64 round-trip is still float64 because the existing
+// PaymentNotification API uses float64 — but the parse step is exact at
+// cent precision, which is what the downstream comparison cares about.
 func parseAlipayAmount(values ...string) (float64, error) {
 	for _, raw := range values {
 		raw = strings.TrimSpace(raw)
 		if raw == "" {
 			continue
 		}
-		amount, err := strconv.ParseFloat(raw, 64)
+		d, err := decimal.NewFromString(raw)
 		if err == nil {
+			amount, _ := d.Float64()
 			return amount, nil
 		}
 	}

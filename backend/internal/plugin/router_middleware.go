@@ -207,6 +207,18 @@ func ensureTraceparentOnRequest(req *http.Request) *http.Request {
 // Returns the (possibly ctx-augmented) request the caller should use for
 // onward handling.
 func injectRequestContext(req *http.Request, authCtx *gin.Context, pluginName string) *http.Request {
+	// 安全前置: 在重新写入受信任的 X-Plugin-* header 之前, 必须无条件清除任何
+	// 客户端伪造的同名 header。这覆盖 AuthTypeNone 路径 (公开 / webhook 端点);
+	// 否则攻击者可以通过 `X-Plugin-User-ID: 1` / `X-Plugin-User-Role: admin`
+	// 绕过插件内部基于 RequestMetadata 的鉴权判断, 因为这些 header 设计上是
+	// host 单向写入的 (见 docs/plugin-architecture/V4-CURATE.md)。
+	//
+	// HeaderPluginName 由本函数无条件重写, 但仍一并 Del 以保持"鉴权类
+	// X-Plugin-* 全部由 host 控制"的不变量。HeaderPluginRequestID 故意保留
+	// 透传语义 (前端 / gateway 已生成的 request id 可关联跨进程日志), 它不
+	// 承载权限信息, 攻击者伪造只影响自身请求的日志聚合。
+	stripInboundAuthPluginHeaders(req.Header)
+
 	if authCtx != nil {
 		if subject, ok := middleware.GetAuthSubjectFromContext(authCtx); ok && subject.UserID > 0 {
 			req.Header.Set(HeaderPluginUserID, strconv.FormatInt(subject.UserID, 10))
@@ -277,6 +289,25 @@ var hopByHopHeaders = []string{
 	"Trailer",
 	"Transfer-Encoding",
 	"Upgrade",
+}
+
+// authPluginHeaderNames 列出 host 单向写入、绝不允许客户端伪造的鉴权类
+// X-Plugin-* header。HeaderPluginRequestID 不在列表中: 它是日志关联标识,
+// 故意保留前端 / 网关透传语义 (见 injectRequestContext 的注释)。
+var authPluginHeaderNames = []string{
+	HeaderPluginUserID,
+	HeaderPluginUserRole,
+	HeaderPluginAPIKeyID,
+	HeaderPluginClientIP,
+	HeaderPluginName,
+}
+
+// stripInboundAuthPluginHeaders 清除任何客户端伪造的鉴权类 X-Plugin-* header。
+// 必须在 host 重新写入受信任值之前调用, 包括 AuthTypeNone 路径。
+func stripInboundAuthPluginHeaders(h http.Header) {
+	for _, name := range authPluginHeaderNames {
+		h.Del(name)
+	}
 }
 
 func stripHopByHopHeaders(h http.Header) {
