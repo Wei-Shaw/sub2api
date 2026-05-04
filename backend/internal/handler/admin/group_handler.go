@@ -41,6 +41,12 @@ type optionalLimitField struct {
 	value *float64
 }
 
+type optionalIntField struct {
+	set   bool
+	clear bool
+	value *int
+}
+
 func (f *optionalLimitField) UnmarshalJSON(data []byte) error {
 	f.set = true
 
@@ -82,6 +88,59 @@ func (f optionalLimitField) ToServiceInput() *float64 {
 		return f.value
 	}
 	zero := 0.0
+	return &zero
+}
+
+func (f *optionalIntField) UnmarshalJSON(data []byte) error {
+	f.set = true
+	f.clear = false
+	f.value = nil
+
+	trimmed := bytes.TrimSpace(data)
+	if bytes.Equal(trimmed, []byte("null")) {
+		f.clear = true
+		return nil
+	}
+
+	var number int
+	if err := json.Unmarshal(trimmed, &number); err == nil {
+		f.value = &number
+		return nil
+	}
+
+	var text string
+	if err := json.Unmarshal(trimmed, &text); err == nil {
+		text = strings.TrimSpace(text)
+		if text == "" {
+			f.clear = true
+			return nil
+		}
+		number, err = strconv.Atoi(text)
+		if err != nil {
+			return fmt.Errorf("invalid integer value %q: %w", text, err)
+		}
+		f.value = &number
+		return nil
+	}
+
+	return fmt.Errorf("invalid integer value: %s", string(trimmed))
+}
+
+func (f optionalIntField) ToCreateInput() int {
+	if !f.set || f.clear || f.value == nil {
+		return 0
+	}
+	return *f.value
+}
+
+func (f optionalIntField) ToUpdateInput() *int {
+	if !f.set {
+		return nil
+	}
+	if f.value != nil {
+		return f.value
+	}
+	zero := 0
 	return &zero
 }
 
@@ -143,7 +202,7 @@ type CreateGroupRequest struct {
 	MessagesDispatchModelConfig service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	ModelsListConfig            service.GroupModelsListConfig             `json:"models_list_config"`
 	// 分组 RPM 上限（0 = 不限制）
-	RPMLimit int `json:"rpm_limit"`
+	RPMLimit optionalIntField `json:"rpm_limit"`
 	// OpenAI/Codex 请求推理强度上限，空字符串表示不限制。
 	MaxReasoningEffort string `json:"max_reasoning_effort"`
 	// OpenAI/Codex 推理强度精确映射。
@@ -201,8 +260,8 @@ type UpdateGroupRequest struct {
 	DefaultMappedModel          *string                                    `json:"default_mapped_model"`
 	MessagesDispatchModelConfig *service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	ModelsListConfig            *service.GroupModelsListConfig             `json:"models_list_config"`
-	// 分组 RPM 上限（0 = 不限制）；nil 表示未提供不改动
-	RPMLimit *int `json:"rpm_limit"`
+	// 分组 RPM 上限（0 = 不限制）；未提供时不改动
+	RPMLimit optionalIntField `json:"rpm_limit"`
 	// OpenAI/Codex 请求推理强度上限；空字符串清除，nil 不修改。
 	MaxReasoningEffort *string `json:"max_reasoning_effort"`
 	// nil 不修改，空数组清空，非空数组替换。
@@ -518,7 +577,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelsListConfig:                req.ModelsListConfig,
-		RPMLimit:                        req.RPMLimit,
+		RPMLimit:                        req.RPMLimit.ToCreateInput(),
 		MaxReasoningEffort:              req.MaxReasoningEffort,
 		ReasoningEffortMappings:         req.ReasoningEffortMappings,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
@@ -637,7 +696,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelsListConfig:                req.ModelsListConfig,
-		RPMLimit:                        req.RPMLimit,
+		RPMLimit:                        req.RPMLimit.ToUpdateInput(),
 		MaxReasoningEffort:              req.MaxReasoningEffort,
 		ReasoningEffortMappings:         req.ReasoningEffortMappings,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,

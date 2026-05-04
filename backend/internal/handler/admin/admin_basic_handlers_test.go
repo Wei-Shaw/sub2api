@@ -166,7 +166,7 @@ func TestUserHandlerBindAuthIdentityMapsRequest(t *testing.T) {
 }
 
 func TestGroupHandlerEndpoints(t *testing.T) {
-	router, _ := setupAdminRouter()
+	router, adminSvc := setupAdminRouter()
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/groups", nil)
@@ -236,19 +236,24 @@ func TestGroupHandlerEndpoints(t *testing.T) {
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
 
-	body, _ = json.Marshal(map[string]any{"name": "new", "platform": "anthropic", "subscription_type": "standard"})
+	body, _ = json.Marshal(map[string]any{"name": "new", "platform": "anthropic", "subscription_type": "standard", "rpm_limit": ""})
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/groups", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
+	require.Len(t, adminSvc.createdGroups, 1)
+	require.Equal(t, 0, adminSvc.createdGroups[0].RPMLimit)
 
-	body, _ = json.Marshal(map[string]any{"name": "update"})
+	body, _ = json.Marshal(map[string]any{"name": "update", "rpm_limit": ""})
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPut, "/api/v1/admin/groups/2", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
+	require.Len(t, adminSvc.updatedGroups, 1)
+	require.NotNil(t, adminSvc.updatedGroups[0].RPMLimit)
+	require.Equal(t, 0, *adminSvc.updatedGroups[0].RPMLimit)
 
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodDelete, "/api/v1/admin/groups/2", nil)
@@ -264,6 +269,59 @@ func TestGroupHandlerEndpoints(t *testing.T) {
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/admin/groups/2/api-keys", nil)
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestGroupHandlerCreateAcceptsAdminFormEmptyRPMLimit(t *testing.T) {
+	router, adminSvc := setupAdminRouter()
+
+	payload := map[string]any{
+		"name":                                 "OpenAI-Subcription",
+		"description":                          "",
+		"platform":                             "openai",
+		"rate_multiplier":                      0.25,
+		"is_exclusive":                         true,
+		"subscription_type":                    "subscription",
+		"daily_limit_usd":                      5,
+		"weekly_limit_usd":                     10,
+		"monthly_limit_usd":                    15,
+		"image_price_1k":                       nil,
+		"image_price_2k":                       nil,
+		"image_price_4k":                       nil,
+		"claude_code_only":                     false,
+		"fallback_group_id":                    nil,
+		"fallback_group_id_on_invalid_request": nil,
+		"allow_messages_dispatch":              false,
+		"opus_mapped_model":                    "gpt-5.4",
+		"sonnet_mapped_model":                  "gpt-5.3-codex",
+		"haiku_mapped_model":                   "gpt-5.4-mini",
+		"exact_model_mappings":                 []any{},
+		"require_oauth_only":                   false,
+		"require_privacy_set":                  false,
+		"model_routing_enabled":                false,
+		"supported_model_scopes":               []string{"claude", "gemini_text", "gemini_image"},
+		"mcp_xml_inject":                       true,
+		"copy_accounts_from_group_ids":         []int64{},
+		"rpm_limit":                            "",
+		"model_routing":                        nil,
+		"messages_dispatch_model_config": map[string]any{
+			"opus_mapped_model":    "gpt-5.4",
+			"sonnet_mapped_model":  "gpt-5.3-codex",
+			"haiku_mapped_model":   "gpt-5.4-mini",
+			"exact_model_mappings": map[string]string{},
+		},
+	}
+	body, _ := json.Marshal(payload)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/groups", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Len(t, adminSvc.createdGroups, 1)
+	require.Equal(t, "openai", adminSvc.createdGroups[0].Platform)
+	require.Equal(t, 0, adminSvc.createdGroups[0].RPMLimit)
+	require.Equal(t, "gpt-5.4", adminSvc.createdGroups[0].MessagesDispatchModelConfig.OpusMappedModel)
 }
 
 func TestProxyHandlerEndpoints(t *testing.T) {
