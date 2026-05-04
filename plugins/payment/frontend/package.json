@@ -19,7 +19,9 @@
   },
   "dependencies": {
     "@stripe/stripe-js": "^9.0.1",
+    "chart.js": "^4.5.1",
     "qrcode": "^1.5.4",
+    "vue-chartjs": "^5.3.3",
     "vue-draggable-plus": "^0.6.1"
   },
   "devDependencies": {
