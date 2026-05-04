@@ -105,6 +105,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
+	requiredResponsesImage := h.gatewayService.BuildOpenAIChatCompletionsResponsesImageGenerationRequirement(body, reqModel)
 
 	if h.errorPassthroughService != nil {
 		service.BindErrorPassthroughService(c, h.errorPassthroughService)
@@ -158,6 +159,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				targetGroup,
 				failedAccountIDs,
 				service.OpenAIUpstreamTransportAny,
+				requiredResponsesImage,
 				false,
 			),
 		)
@@ -171,7 +173,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				if apiKey.Group != nil {
 					defaultModel = apiKey.Group.DefaultMappedModel
 				}
-				if defaultModel != "" && defaultModel != reqModel {
+				if requiredResponsesImage == nil && defaultModel != "" && defaultModel != reqModel {
 					reqLog.Info("openai_chat_completions.fallback_to_default_model",
 						zap.String("default_mapped_model", defaultModel),
 					)
@@ -187,6 +189,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 							targetGroup,
 							failedAccountIDs,
 							service.OpenAIUpstreamTransportAny,
+							nil,
 							false,
 						),
 					)
@@ -195,6 +198,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					}
 				}
 				if err != nil {
+					if requiredResponsesImage != nil && isResponsesNoAvailableAccountsError(err) {
+						status, code, message := noAvailableOpenAIResponsesImageGenerationAccountError(requiredResponsesImage.MainModel, requiredResponsesImage.ImageModel)
+						h.handleStreamingAwareError(c, status, code, message, streamStarted)
+						return
+					}
 					var selectedAccount *service.Account
 					if selection != nil {
 						selectedAccount = selection.Account
@@ -209,6 +217,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					selectedAccount = selection.Account
 				}
 				storeOpenAIRoutingSnapshotFromDecision(c, targetGroup, scheduleDecision, selectedAccount, requestedModel, currentSelectionModel)
+				if requiredResponsesImage != nil && isResponsesNoAvailableAccountsError(err) {
+					status, code, message := noAvailableOpenAIResponsesImageGenerationAccountError(requiredResponsesImage.MainModel, requiredResponsesImage.ImageModel)
+					h.handleStreamingAwareError(c, status, code, message, streamStarted)
+					return
+				}
 				if lastFailoverErr != nil {
 					h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
 				} else {
@@ -218,6 +231,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			}
 		}
 		if selection == nil || selection.Account == nil {
+			if requiredResponsesImage != nil {
+				status, code, message := noAvailableOpenAIResponsesImageGenerationAccountError(requiredResponsesImage.MainModel, requiredResponsesImage.ImageModel)
+				h.handleStreamingAwareError(c, status, code, message, streamStarted)
+				return
+			}
 			h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
 			return
 		}

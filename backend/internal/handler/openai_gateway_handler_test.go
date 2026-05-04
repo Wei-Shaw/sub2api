@@ -114,6 +114,32 @@ func newOpenAIStickyDecisionForTest(t *testing.T, layer string, evalResult strin
 	return decision
 }
 
+func newOpenAIHandlerCapturingScheduleRequestForTest(t *testing.T, selectFn func(context.Context, service.OpenAIAccountScheduleRequest) (*service.AccountSelectionResult, service.OpenAIAccountScheduleDecision, error)) *OpenAIGatewayHandler {
+	t.Helper()
+	gatewayService := &service.OpenAIGatewayService{}
+	setUnexportedFieldForTest(t, gatewayService, "openaiScheduler", &openAIAccountSchedulerStub{selectFn: selectFn})
+	billingService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeSimple})
+	t.Cleanup(billingService.Stop)
+	return &OpenAIGatewayHandler{
+		gatewayService:      gatewayService,
+		billingCacheService: billingService,
+		apiKeyService:       &service.APIKeyService{},
+		concurrencyHelper: NewConcurrencyHelper(service.NewConcurrencyService(&concurrencyCacheMock{
+			acquireUserSlotFn: func(ctx context.Context, userID int64, maxConcurrency int, requestID string) (bool, error) {
+				return true, nil
+			},
+		}), SSEPingFormatNone, time.Second),
+	}
+}
+
+func requireOpenAIResponsesImageScheduleRequirement(t *testing.T, req service.OpenAIAccountScheduleRequest, mainModel string) {
+	t.Helper()
+	require.NotNil(t, req.RequiredResponsesImageGeneration)
+	require.True(t, req.RequiredResponsesImageGeneration.Enabled)
+	require.Equal(t, mainModel, req.RequiredResponsesImageGeneration.MainModel)
+	require.Equal(t, "gpt-image-2", req.RequiredResponsesImageGeneration.ImageModel)
+}
+
 type errorPassthroughRuleRepoStub struct {
 	rules []*model.ErrorPassthroughRule
 }
@@ -837,15 +863,24 @@ func TestPrepareResponsesRequestForSchedulingRejectsHookOutputWithoutMatchingCal
 }
 
 func TestResponsesNoAvailableAccountsError(t *testing.T) {
-	status, code, message := responsesNoAvailableAccountsError(service.TargetGroupExhausted)
+	status, code, message := responsesNoAvailableAccountsError(service.TargetGroupExhausted, nil)
 	require.Equal(t, http.StatusTooManyRequests, status)
 	require.Equal(t, "rate_limit_exceeded", code)
 	require.Equal(t, "No available accounts in target group (exhausted)", message)
 
-	status, code, message = responsesNoAvailableAccountsError(service.TargetGroupActive)
+	status, code, message = responsesNoAvailableAccountsError(service.TargetGroupActive, nil)
 	require.Equal(t, http.StatusServiceUnavailable, status)
 	require.Equal(t, "service_unavailable", code)
 	require.Equal(t, "No available accounts in target group (active)", message)
+
+	status, code, message = responsesNoAvailableAccountsError(service.TargetGroupActive, &service.OpenAIResponsesImageGenerationRequirement{
+		Enabled:    true,
+		MainModel:  "gpt-5.5",
+		ImageModel: "gpt-image-2",
+	})
+	require.Equal(t, http.StatusServiceUnavailable, status)
+	require.Equal(t, "no_available_accounts", code)
+	require.Equal(t, "No available OpenAI accounts support both gpt-5.5 and gpt-image-2 image_generation", message)
 }
 
 func TestStoreOpenAIRoutingSnapshot(t *testing.T) {
@@ -1357,6 +1392,185 @@ func TestOpenAIChatCompletions_NonSysUsesActiveTargetGroup(t *testing.T) {
 	require.Equal(t, string(service.TargetGroupActive), snapshot.TargetGroup)
 	require.Equal(t, "gpt-5.5", snapshot.RequestedModel)
 	require.Equal(t, "gpt-5.5", snapshot.EffectiveModel)
+}
+
+func TestOpenAIResponses_MetadataBuiltinImageScheduleRequirement(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(`{"model":"gpt-5.5-Sys","input":"draw","metadata":{"builtin_tools":{"image_generation":{"enabled":true,"model":"gpt-image-2","output_format":"png"}}}}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	groupID := int64(91)
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 901, GroupID: &groupID, User: &service.User{ID: 1}})
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 1, Concurrency: 1})
+
+	scheduleCalled := false
+	var capturedReq service.OpenAIAccountScheduleRequest
+	h := newOpenAIHandlerCapturingScheduleRequestForTest(t, func(ctx context.Context, req service.OpenAIAccountScheduleRequest) (*service.AccountSelectionResult, service.OpenAIAccountScheduleDecision, error) {
+		scheduleCalled = true
+		capturedReq = req
+		return nil, service.OpenAIAccountScheduleDecision{Layer: "load_balance"}, service.ErrNoAvailableAccounts
+	})
+
+	h.Responses(c)
+
+	require.True(t, scheduleCalled)
+	requireOpenAIResponsesImageScheduleRequirement(t, capturedReq, "gpt-5.5")
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	require.Equal(t, "no_available_accounts", gjson.Get(w.Body.String(), "error.type").String())
+	require.Equal(t, "No available OpenAI accounts support both gpt-5.5 and gpt-image-2 image_generation", gjson.Get(w.Body.String(), "error.message").String())
+}
+
+func TestOpenAIResponses_NativeImageToolScheduleRequirement(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(`{"model":"GPT-5.5-Sys","input":"draw","tools":[{"type":"image_generation"}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	groupID := int64(92)
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 902, GroupID: &groupID, User: &service.User{ID: 2}})
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 2, Concurrency: 1})
+
+	scheduleCalled := false
+	var capturedReq service.OpenAIAccountScheduleRequest
+	h := newOpenAIHandlerCapturingScheduleRequestForTest(t, func(ctx context.Context, req service.OpenAIAccountScheduleRequest) (*service.AccountSelectionResult, service.OpenAIAccountScheduleDecision, error) {
+		scheduleCalled = true
+		capturedReq = req
+		return nil, service.OpenAIAccountScheduleDecision{Layer: "load_balance"}, service.ErrNoAvailableAccounts
+	})
+
+	h.Responses(c)
+
+	require.True(t, scheduleCalled)
+	requireOpenAIResponsesImageScheduleRequirement(t, capturedReq, "gpt-5.5")
+}
+
+func TestOpenAIResponses_CompactNativeImageToolNoScheduleRequirement(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses/compact", strings.NewReader(`{"model":"GPT-5.5-Sys","input":"draw","tools":[{"type":"image_generation"}]}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	groupID := int64(96)
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 906, GroupID: &groupID, User: &service.User{ID: 6}})
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 6, Concurrency: 1})
+
+	scheduleCalled := false
+	var capturedReq service.OpenAIAccountScheduleRequest
+	h := newOpenAIHandlerCapturingScheduleRequestForTest(t, func(ctx context.Context, req service.OpenAIAccountScheduleRequest) (*service.AccountSelectionResult, service.OpenAIAccountScheduleDecision, error) {
+		scheduleCalled = true
+		capturedReq = req
+		return nil, service.OpenAIAccountScheduleDecision{Layer: "load_balance"}, service.ErrNoAvailableAccounts
+	})
+
+	h.Responses(c)
+
+	require.True(t, scheduleCalled)
+	require.True(t, capturedReq.RequireCompact)
+	require.Nil(t, capturedReq.RequiredResponsesImageGeneration)
+}
+
+func TestOpenAIResponses_OldImageCarrierNoScheduleRequirement(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(`{"model":"gpt-5.5-Sys","input":"draw","metadata":{"builtin_tools":{"image_generation":true}}}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	groupID := int64(93)
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 903, GroupID: &groupID, User: &service.User{ID: 3}})
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 3, Concurrency: 1})
+
+	scheduleCalled := false
+	var capturedReq service.OpenAIAccountScheduleRequest
+	h := newOpenAIHandlerCapturingScheduleRequestForTest(t, func(ctx context.Context, req service.OpenAIAccountScheduleRequest) (*service.AccountSelectionResult, service.OpenAIAccountScheduleDecision, error) {
+		scheduleCalled = true
+		capturedReq = req
+		return nil, service.OpenAIAccountScheduleDecision{Layer: "load_balance"}, service.ErrNoAvailableAccounts
+	})
+
+	h.Responses(c)
+
+	require.True(t, scheduleCalled)
+	require.Nil(t, capturedReq.RequiredResponsesImageGeneration)
+}
+
+func TestOpenAIChatCompletions_ImageScheduleRequirementSkipsDefaultModelFallback(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gpt-5.5","stream":false,"messages":[{"role":"user","content":"draw"}],"metadata":{"builtin_tools":{"image_generation":{"enabled":true,"model":"gpt-image-2","output_format":"png"}}}}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	groupID := int64(94)
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+		ID:      904,
+		GroupID: &groupID,
+		Group:   &service.Group{DefaultMappedModel: "gpt-5.1"},
+		User:    &service.User{ID: 4},
+	})
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 4, Concurrency: 1})
+
+	var capturedReqs []service.OpenAIAccountScheduleRequest
+	h := newOpenAIHandlerCapturingScheduleRequestForTest(t, func(ctx context.Context, req service.OpenAIAccountScheduleRequest) (*service.AccountSelectionResult, service.OpenAIAccountScheduleDecision, error) {
+		capturedReqs = append(capturedReqs, req)
+		return nil, service.OpenAIAccountScheduleDecision{Layer: "load_balance"}, service.ErrNoAvailableAccounts
+	})
+
+	h.ChatCompletions(c)
+
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	require.Equal(t, "no_available_accounts", gjson.Get(w.Body.String(), "error.type").String())
+	require.Equal(t, "No available OpenAI accounts support both gpt-5.5 and gpt-image-2 image_generation", gjson.Get(w.Body.String(), "error.message").String())
+	require.Len(t, capturedReqs, 1)
+	require.Equal(t, "gpt-5.5", capturedReqs[0].RequestedModel)
+	requireOpenAIResponsesImageScheduleRequirement(t, capturedReqs[0], "gpt-5.5")
+}
+
+func TestOpenAIResponsesWebSocket_ImageScheduleRequirement(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	scheduleReqCh := make(chan service.OpenAIAccountScheduleRequest, 1)
+	h := newOpenAIHandlerCapturingScheduleRequestForTest(t, func(ctx context.Context, req service.OpenAIAccountScheduleRequest) (*service.AccountSelectionResult, service.OpenAIAccountScheduleDecision, error) {
+		select {
+		case scheduleReqCh <- req:
+		default:
+		}
+		return nil, service.OpenAIAccountScheduleDecision{Layer: "load_balance"}, service.ErrNoAvailableAccounts
+	})
+	wsServer := newOpenAIWSHandlerTestServer(t, h, middleware.AuthSubject{UserID: 5, Concurrency: 1})
+	defer wsServer.Close()
+
+	dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
+	clientConn, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http")+"/openai/v1/responses", nil)
+	cancelDial()
+	require.NoError(t, err)
+	defer func() {
+		_ = clientConn.CloseNow()
+	}()
+
+	writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
+	err = clientConn.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.5-Sys","stream":true,"input":"draw","metadata":{"builtin_tools":{"image_generation":{"enabled":true,"model":"gpt-image-2","output_format":"png"}}}}`))
+	cancelWrite()
+	require.NoError(t, err)
+
+	readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+	_, _, err = clientConn.Read(readCtx)
+	cancelRead()
+	require.Error(t, err)
+	var closeErr coderws.CloseError
+	require.ErrorAs(t, err, &closeErr)
+	require.Equal(t, coderws.StatusTryAgainLater, closeErr.Code)
+
+	select {
+	case capturedReq := <-scheduleReqCh:
+		requireOpenAIResponsesImageScheduleRequirement(t, capturedReq, "gpt-5.5")
+	case <-time.After(3 * time.Second):
+		t.Fatal("scheduler was not called")
+	}
 }
 
 func TestOpenAIMessages_NonSysUsesActiveTargetGroup(t *testing.T) {
