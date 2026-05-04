@@ -266,6 +266,50 @@ REDACTED
 	require.Nil(t, repo.updated.ImagePrice4K)
 REDACTED
 
+func TestAdminService_UpdateGroup_PreservesImageGenerationControlsWhenOmitted(t *testing.T) {
+	imageMultiplier := 0.5
+	existingGroup := &Group{
+		ID:                   1,
+		Name:                 "existing-group",
+		Platform:             PlatformOpenAI,
+		Status:               StatusActive,
+		AllowImageGeneration: true,
+		ImageRateIndependent: true,
+		ImageRateMultiplier:  imageMultiplier,
+REDACTED
+	repo := &groupRepoStubForAdmin{getByID: existingGroupREDACTED
+	svc := &adminServiceImpl{groupRepo: repoREDACTED
+
+	group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
+		Description: "updated",
+REDACTED)
+REDACTED
+	require.NotNil(t, group)
+	require.NotNil(t, repo.updated)
+	require.True(t, repo.updated.AllowImageGeneration)
+	require.True(t, repo.updated.ImageRateIndependent)
+	require.InDelta(t, 0.5, repo.updated.ImageRateMultiplier, 1e-12)
+REDACTED
+
+func TestAdminService_UpdateGroup_RejectsNegativeImageRateMultiplier(t *testing.T) {
+	existingGroup := &Group{
+		ID:                  1,
+		Name:                "existing-group",
+		Platform:            PlatformOpenAI,
+		Status:              StatusActive,
+		ImageRateMultiplier: 1,
+REDACTED
+	repo := &groupRepoStubForAdmin{getByID: existingGroupREDACTED
+	svc := &adminServiceImpl{groupRepo: repoREDACTED
+	negative := -0.1
+
+	_, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{
+		ImageRateMultiplier: &negative,
+REDACTED)
+REDACTED
+	require.Nil(t, repo.updated)
+REDACTED
+
 func TestAdminService_UpdateGroup_InvalidatesAuthCacheOnRPMLimitChange(t *testing.T) {
 	existingGroup := &Group{
 		ID:       1,

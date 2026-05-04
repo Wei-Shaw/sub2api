@@ -1990,6 +1990,7 @@ REDACTED
 REDACTED
 
 	usage := &OpenAIUsage{REDACTED
+	imageCounter := newOpenAIImageOutputCounter()
 	var firstTokenMs *int
 	responseID := ""
 	var finalResponse []byte
@@ -2171,6 +2172,7 @@ REDACTED
 		if openAIWSEventShouldParseUsage(eventType) {
 			parseOpenAIWSResponseUsageFromCompletedEvent(message, usage)
 	REDACTED
+		imageCounter.AddSSEData(message)
 
 		if eventType == "error" {
 			errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(message)
@@ -2343,6 +2345,7 @@ REDACTED
 		Usage:           *usage,
 		Model:           originalModel,
 		UpstreamModel:   mappedModel,
+		ImageCount:      imageCounter.Count(),
 		ServiceTier:     extractOpenAIServiceTier(reqBody),
 		ReasoningEffort: extractOpenAIReasoningEffort(reqBody, originalModel),
 		Stream:          reqStream,
@@ -2449,6 +2452,8 @@ REDACTED
 		promptCacheKey     string
 		previousResponseID string
 		originalModel      string
+		imageBillingModel  string
+		imageSizeTier      string
 		payloadBytes       int
 REDACTED
 
@@ -2546,6 +2551,19 @@ REDACTED
 		REDACTED
 			normalized = next
 	REDACTED
+		imageIntent := IsImageGenerationIntent(openAIResponsesEndpoint, originalModel, normalized)
+		if imageIntent && !GroupAllowsImageGeneration(apiKeyGroup(getAPIKeyFromContext(c))) {
+			return openAIWSClientPayload{REDACTED, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, ImageGenerationPermissionMessage(), nil)
+	REDACTED
+		imageBillingModel := ""
+		imageSizeTier := ""
+		if imageIntent {
+			var imageCfgErr error
+			imageBillingModel, imageSizeTier, imageCfgErr = resolveOpenAIResponsesImageBillingConfigFromBody(normalized, originalModel)
+			if imageCfgErr != nil {
+				return openAIWSClientPayload{REDACTED, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, imageCfgErr.Error(), imageCfgErr)
+		REDACTED
+	REDACTED
 
 		// Apply OpenAI Fast Policy on the response.create frame using the same
 		// evaluator/normalize/scope rules as the HTTP entrypoints. This is the
@@ -2591,6 +2609,8 @@ REDACTED
 			promptCacheKey:     promptCacheKey,
 			previousResponseID: previousResponseID,
 			originalModel:      originalModel,
+			imageBillingModel:  imageBillingModel,
+			imageSizeTier:      imageSizeTier,
 			payloadBytes:       len(normalized),
 	REDACTED, nil
 REDACTED
@@ -2792,7 +2812,7 @@ REDACTED
 		return payload, nil
 REDACTED
 
-	sendAndRelay := func(turn int, lease *openAIWSConnLease, payload []byte, payloadBytes int, originalModel string) (*OpenAIForwardResult, error) {
+	sendAndRelay := func(turn int, lease *openAIWSConnLease, payload []byte, payloadBytes int, originalModel string, imageBillingModel string, imageSizeTier string) (*OpenAIForwardResult, error) {
 		if lease == nil {
 			return nil, errors.New("upstream websocket lease is nil")
 	REDACTED
@@ -2817,6 +2837,7 @@ REDACTED
 
 		responseID := ""
 		usage := OpenAIUsage{REDACTED
+		imageCounter := newOpenAIImageOutputCounter()
 		var firstTokenMs *int
 		reqStream := openAIWSPayloadBoolFromRaw(payload, "stream", true)
 		turnPreviousResponseID := openAIWSPayloadStringFromRaw(payload, "previous_response_id")
@@ -2938,6 +2959,7 @@ REDACTED
 			if openAIWSEventShouldParseUsage(eventType) {
 				parseOpenAIWSResponseUsageFromCompletedEvent(upstreamMessage, &usage)
 		REDACTED
+			imageCounter.AddSSEData(upstreamMessage)
 
 			if !clientDisconnected {
 				if needModelReplace && len(mappedModelBytes) > 0 && openAIWSEventMayContainModel(eventType) && bytes.Contains(upstreamMessage, mappedModelBytes) {
@@ -2997,7 +3019,8 @@ REDACTED
 						clientDisconnected,
 					)
 			REDACTED
-				return &OpenAIForwardResult{
+				imageCount := imageCounter.Count()
+				result := &OpenAIForwardResult{
 					RequestID:       responseID,
 					Usage:           usage,
 					Model:           originalModel,
@@ -3009,13 +3032,21 @@ REDACTED
 					ResponseHeaders: lease.HandshakeHeaders(),
 					Duration:        time.Since(turnStart),
 					FirstTokenMs:    firstTokenMs,
-			REDACTED, nil
+			REDACTED
+				if imageCount > 0 {
+					result.ImageCount = imageCount
+					result.ImageSize = imageSizeTier
+					result.BillingModel = imageBillingModel
+			REDACTED
+				return result, nil
 		REDACTED
 	REDACTED
 REDACTED
 
 	currentPayload := firstPayload.payloadRaw
 	currentOriginalModel := firstPayload.originalModel
+	currentImageBillingModel := firstPayload.imageBillingModel
+	currentImageSizeTier := firstPayload.imageSizeTier
 	currentPayloadBytes := firstPayload.payloadBytes
 	isStrictAffinityTurn := func(payload []byte) bool {
 		if !storeDisabled {
@@ -3460,7 +3491,7 @@ REDACTED
 			)
 	REDACTED
 
-		result, relayErr := sendAndRelay(turn, sessionLease, currentPayload, currentPayloadBytes, currentOriginalModel)
+		result, relayErr := sendAndRelay(turn, sessionLease, currentPayload, currentPayloadBytes, currentOriginalModel, currentImageBillingModel, currentImageSizeTier)
 		if relayErr != nil {
 			lastTurnClean = false
 			if recoverIngressPrevResponseNotFound(relayErr, turn, connID) {
@@ -3582,6 +3613,8 @@ REDACTED
 	REDACTED
 		currentPayload = nextPayload.payloadRaw
 		currentOriginalModel = nextPayload.originalModel
+		currentImageBillingModel = nextPayload.imageBillingModel
+		currentImageSizeTier = nextPayload.imageSizeTier
 		currentPayloadBytes = nextPayload.payloadBytes
 		storeDisabled = s.isOpenAIWSStoreDisabledInRequestRaw(currentPayload, account)
 		if !storeDisabled {

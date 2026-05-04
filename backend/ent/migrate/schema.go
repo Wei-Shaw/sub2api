@@ -638,6 +638,9 @@ REDACTED
 		{Name: "weekly_limit_usd", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
 		{Name: "monthly_limit_usd", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
 		{Name: "default_validity_days", Type: field.TypeInt, Default: 30REDACTED,
+		{Name: "allow_image_generation", Type: field.TypeBool, Default: falseREDACTED,
+		{Name: "image_rate_independent", Type: field.TypeBool, Default: falseREDACTED,
+		{Name: "image_rate_multiplier", Type: field.TypeFloat64, Default: 1, SchemaType: map[string]string{"postgres": "decimal(10,4)"REDACTEDREDACTED,
 		{Name: "image_price_1k", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
 		{Name: "image_price_2k", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
 		{Name: "image_price_4k", Type: field.TypeFloat64, Nullable: true, SchemaType: map[string]string{"postgres": "decimal(20,8)"REDACTEDREDACTED,
@@ -690,7 +693,7 @@ REDACTED
 			{
 				Name:    "group_sort_order",
 				Unique:  false,
-				Columns: []*schema.Column{GroupsColumns[25]REDACTED,
+				Columns: []*schema.Column{GroupsColumns[28]REDACTED,
 		REDACTED,
 	REDACTED,
 REDACTED

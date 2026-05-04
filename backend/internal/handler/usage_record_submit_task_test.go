@@ -129,3 +129,63 @@ REDACTED)
 REDACTED)
 	require.True(t, called.Load(), "panic 后后续任务应仍可执行")
 REDACTED
+
+func TestOpenAIGatewayHandlerSubmitMandatoryUsageRecordTask_DroppedTaskSyncFallback(t *testing.T) {
+	pool := service.NewUsageRecordWorkerPoolWithOptions(service.UsageRecordWorkerPoolOptions{
+		WorkerCount:           1,
+		QueueSize:             1,
+		TaskTimeout:           time.Second,
+		OverflowPolicy:        "drop",
+		OverflowSamplePercent: 0,
+		AutoScaleEnabled:      false,
+REDACTED)
+	t.Cleanup(pool.Stop)
+	h := &OpenAIGatewayHandler{usageRecordWorkerPool: poolREDACTED
+
+	block := make(chan struct{REDACTED)
+	release := make(chan struct{REDACTED)
+	pool.Submit(func(ctx context.Context) {
+		close(block)
+		<-release
+REDACTED)
+	<-block
+	pool.Submit(func(ctx context.Context) {REDACTED)
+
+	var called atomic.Bool
+	h.submitMandatoryUsageRecordTask(func(ctx context.Context) {
+		called.Store(true)
+REDACTED)
+	close(release)
+
+	require.True(t, called.Load(), "mandatory usage task must run synchronously when async submit is dropped")
+REDACTED
+
+func TestOpenAIGatewayHandlerSubmitOpenAIUsageRecordTask_ImageResultUsesMandatoryFallback(t *testing.T) {
+	pool := service.NewUsageRecordWorkerPoolWithOptions(service.UsageRecordWorkerPoolOptions{
+		WorkerCount:           1,
+		QueueSize:             1,
+		TaskTimeout:           time.Second,
+		OverflowPolicy:        "drop",
+		OverflowSamplePercent: 0,
+		AutoScaleEnabled:      false,
+REDACTED)
+	t.Cleanup(pool.Stop)
+	h := &OpenAIGatewayHandler{usageRecordWorkerPool: poolREDACTED
+
+	block := make(chan struct{REDACTED)
+	release := make(chan struct{REDACTED)
+	pool.Submit(func(ctx context.Context) {
+		close(block)
+		<-release
+REDACTED)
+	<-block
+	pool.Submit(func(ctx context.Context) {REDACTED)
+
+	var called atomic.Bool
+	h.submitOpenAIUsageRecordTask(&service.OpenAIForwardResult{ImageCount: 1REDACTED, func(ctx context.Context) {
+		called.Store(true)
+REDACTED)
+	close(release)
+
+	require.True(t, called.Load(), "image usage task must be mandatory when async submit is dropped")
+REDACTED

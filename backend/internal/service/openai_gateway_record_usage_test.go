@@ -52,6 +52,12 @@ REDACTED
 	return &UsageBillingApplyResult{Applied: trueREDACTED, nil
 REDACTED
 
+func TestOpenAIGatewayServiceRecordUsage_RejectsNilInput(t *testing.T) {
+	svc := &OpenAIGatewayService{REDACTED
+	require.Error(t, svc.RecordUsage(context.Background(), nil))
+	require.Error(t, svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{REDACTED))
+REDACTED
+
 type openAIRecordUsageUserRepoStub struct {
 	UserRepository
 
@@ -1081,6 +1087,101 @@ REDACTED
 	require.True(t, usageRepo.lastLog.ActualCost > 0, "cost must not be zero")
 REDACTED
 
+func TestOpenAIGatewayServiceRecordUsage_BillsCompactOpenAIModelAlias(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 10REDACTED
+
+	expectedCost, err := svc.billingService.CalculateCost("gpt-5.5", UsageTokens{
+		InputTokens:  20,
+		OutputTokens: 10,
+REDACTED, 1.1)
+REDACTED
+
+	err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:     "resp_compact_openai_alias",
+			Model:         "gpt5.5",
+			UpstreamModel: "gpt-5.4",
+			Usage:         usage,
+			Duration:      time.Second,
+	REDACTED,
+		APIKey:  &APIKey{ID: 10REDACTED,
+		User:    &User{ID: 20REDACTED,
+		Account: &Account{ID: 30REDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+	require.Equal(t, "gpt5.5", usageRepo.lastLog.Model)
+	require.NotNil(t, usageRepo.lastLog.UpstreamModel)
+	require.Equal(t, "gpt-5.4", *usageRepo.lastLog.UpstreamModel)
+	require.InDelta(t, expectedCost.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
+	require.True(t, usageRepo.lastLog.ActualCost > 0, "cost must not be zero")
+	require.InDelta(t, expectedCost.ActualCost, userRepo.lastAmount, 1e-12)
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_FallsBackToUpstreamModelWhenPrimaryUnpriceable(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 10REDACTED
+
+	expectedCost, err := svc.billingService.CalculateCost("gpt-5.4", UsageTokens{
+		InputTokens:  20,
+		OutputTokens: 10,
+REDACTED, 1.1)
+REDACTED
+
+	err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:     "resp_unpriceable_primary_upstream_fallback",
+			Model:         "not-priceable-alias",
+			BillingModel:  "not-priceable-alias",
+			UpstreamModel: "gpt-5.4",
+			Usage:         usage,
+			Duration:      time.Second,
+	REDACTED,
+		APIKey:  &APIKey{ID: 10REDACTED,
+		User:    &User{ID: 20REDACTED,
+		Account: &Account{ID: 30REDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+	require.InDelta(t, expectedCost.ActualCost, usageRepo.lastLog.ActualCost, 1e-12)
+	require.True(t, usageRepo.lastLog.ActualCost > 0, "cost must not be zero")
+	require.InDelta(t, expectedCost.ActualCost, userRepo.lastAmount, 1e-12)
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_ReturnsErrorWhenTokenModelCannotBePriced(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
+	subRepo := &openAIRecordUsageSubRepoStub{REDACTED
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_unpriceable_without_upstream",
+			Model:     "not-priceable-alias",
+			Usage:     OpenAIUsage{InputTokens: 20, OutputTokens: 10REDACTED,
+			Duration:  time.Second,
+	REDACTED,
+		APIKey:  &APIKey{ID: 10REDACTED,
+		User:    &User{ID: 20REDACTED,
+		Account: &Account{ID: 30REDACTED,
+REDACTED)
+
+REDACTED
+	require.Contains(t, err.Error(), "calculate OpenAI usage cost failed")
+	require.Equal(t, 0, usageRepo.calls)
+	require.Equal(t, 0, userRepo.deductCalls)
+	require.Equal(t, 0, subRepo.incrementCalls)
+REDACTED
+
 func TestOpenAIGatewayServiceRecordUsage_SubscriptionBillingSetsSubscriptionFields(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
 	userRepo := &openAIRecordUsageUserRepoStub{REDACTED
@@ -1208,4 +1309,279 @@ REDACTED
 	require.InDelta(t, 0.0, usageRepo.lastLog.InputCost, 1e-12)
 	require.InDelta(t, 0.0, usageRepo.lastLog.OutputCost, 1e-12)
 	require.InDelta(t, 0.0, usageRepo.lastLog.ImageOutputCost, 1e-12)
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_ImageSharedMultiplierPreservesExistingBehavior(t *testing.T) {
+	imagePrice := 0.2
+	groupID := int64(121)
+
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{REDACTED, &openAIRecordUsageSubRepoStub{REDACTED, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:  "resp_image_shared_multiplier",
+			Model:      "gpt-image-2",
+			ImageCount: 1,
+			ImageSize:  "1K",
+			Duration:   time.Second,
+	REDACTED,
+		APIKey: &APIKey{
+			ID:      10121,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:                   groupID,
+				RateMultiplier:       0.15,
+				ImageRateIndependent: false,
+				ImageRateMultiplier:  1,
+				ImagePrice1K:         &imagePrice,
+		REDACTED,
+	REDACTED,
+		User:    &User{ID: 20121REDACTED,
+		Account: &Account{ID: 30121REDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+	require.InDelta(t, 0.2, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 0.03, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, 0.15, usageRepo.lastLog.RateMultiplier, 1e-12)
+	require.NotNil(t, usageRepo.lastLog.BillingMode)
+	require.Equal(t, string(BillingModeImage), *usageRepo.lastLog.BillingMode)
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_ImageSharedMultiplierUsesUserGroupOverride(t *testing.T) {
+	imagePrice := 0.5
+	userRate := 0.2
+	groupID := int64(125)
+
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	svc := newOpenAIRecordUsageServiceForTest(
+		usageRepo,
+		&openAIRecordUsageUserRepoStub{REDACTED,
+		&openAIRecordUsageSubRepoStub{REDACTED,
+		&openAIUserGroupRateRepoStub{rate: &userRateREDACTED,
+	)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:  "resp_image_user_group_override",
+			Model:      "gpt-image-2",
+			ImageCount: 1,
+			ImageSize:  "1K",
+			Duration:   time.Second,
+	REDACTED,
+		APIKey: &APIKey{
+			ID:      10125,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:                   groupID,
+				RateMultiplier:       0.15,
+				ImageRateIndependent: false,
+				ImageRateMultiplier:  1,
+				ImagePrice1K:         &imagePrice,
+		REDACTED,
+	REDACTED,
+		User:    &User{ID: 20125REDACTED,
+		Account: &Account{ID: 30125REDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+	require.InDelta(t, 0.5, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 0.1, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, 0.2, usageRepo.lastLog.RateMultiplier, 1e-12)
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_ImageIndependentMultiplierUsesImageRate(t *testing.T) {
+	imagePrice := 0.2
+	groupID := int64(122)
+
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{REDACTED, &openAIRecordUsageSubRepoStub{REDACTED, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:  "resp_image_independent_multiplier",
+			Model:      "gpt-image-2",
+			ImageCount: 1,
+			ImageSize:  "1K",
+			Duration:   time.Second,
+	REDACTED,
+		APIKey: &APIKey{
+			ID:      10122,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:                   groupID,
+				RateMultiplier:       0.15,
+				ImageRateIndependent: true,
+				ImageRateMultiplier:  1,
+				ImagePrice1K:         &imagePrice,
+		REDACTED,
+	REDACTED,
+		User:    &User{ID: 20122REDACTED,
+		Account: &Account{ID: 30122REDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+	require.InDelta(t, 0.2, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 0.2, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, 1.0, usageRepo.lastLog.RateMultiplier, 1e-12)
+	require.NotNil(t, usageRepo.lastLog.BillingMode)
+	require.Equal(t, string(BillingModeImage), *usageRepo.lastLog.BillingMode)
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_ChannelImageBillingUsesImageCountAndSharedMultiplier(t *testing.T) {
+	groupID := int64(123)
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{REDACTED, &openAIRecordUsageSubRepoStub{REDACTED, nil)
+	svc.resolver = newOpenAIImageChannelPricingResolverForTest(t, groupID, "gpt-image-2", 0.25)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:  "resp_image_channel_shared",
+			Model:      "gpt-image-2",
+			ImageCount: 3,
+			ImageSize:  "1K",
+			Duration:   time.Second,
+	REDACTED,
+		APIKey: &APIKey{
+			ID:      10123,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:                   groupID,
+				RateMultiplier:       0.15,
+				ImageRateIndependent: false,
+				ImageRateMultiplier:  1,
+		REDACTED,
+	REDACTED,
+		User:    &User{ID: 20123REDACTED,
+		Account: &Account{ID: 30123REDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+	require.InDelta(t, 0.75, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 0.1125, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, 0.15, usageRepo.lastLog.RateMultiplier, 1e-12)
+	require.Equal(t, 3, usageRepo.lastLog.ImageCount)
+	require.NotNil(t, usageRepo.lastLog.BillingMode)
+	require.Equal(t, string(BillingModeImage), *usageRepo.lastLog.BillingMode)
+REDACTED
+
+func TestOpenAIGatewayServiceRecordUsage_ChannelImageBillingUsesImageCountAndIndependentMultiplier(t *testing.T) {
+	groupID := int64(124)
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: trueREDACTED
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{REDACTED, &openAIRecordUsageSubRepoStub{REDACTED, nil)
+	svc.resolver = newOpenAIImageChannelPricingResolverForTest(t, groupID, "gpt-image-2", 0.25)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:  "resp_image_channel_independent",
+			Model:      "gpt-image-2",
+			ImageCount: 3,
+			ImageSize:  "1K",
+			Duration:   time.Second,
+	REDACTED,
+		APIKey: &APIKey{
+			ID:      10124,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:                   groupID,
+				RateMultiplier:       0.15,
+				ImageRateIndependent: true,
+				ImageRateMultiplier:  1,
+		REDACTED,
+	REDACTED,
+		User:    &User{ID: 20124REDACTED,
+		Account: &Account{ID: 30124REDACTED,
+REDACTED)
+
+REDACTED
+	require.NotNil(t, usageRepo.lastLog)
+	require.InDelta(t, 0.75, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 0.75, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, 1.0, usageRepo.lastLog.RateMultiplier, 1e-12)
+	require.Equal(t, 3, usageRepo.lastLog.ImageCount)
+	require.NotNil(t, usageRepo.lastLog.BillingMode)
+	require.Equal(t, string(BillingModeImage), *usageRepo.lastLog.BillingMode)
+REDACTED
+
+func newOpenAIImageChannelPricingResolverForTest(t *testing.T, groupID int64, model string, price float64) *ModelPricingResolver {
+REDACTED
+	cache := newEmptyChannelCache()
+	cache.pricingByGroupModel[channelModelKey{groupID: groupID, model: modelREDACTED] = &ChannelModelPricing{
+		BillingMode:     BillingModeImage,
+		PerRequestPrice: &price,
+REDACTED
+	cache.channelByGroupID[groupID] = &Channel{ID: groupID, Status: StatusActiveREDACTED
+	cache.groupPlatform[groupID] = ""
+	cache.loadedAt = time.Now()
+	cs := &ChannelService{REDACTED
+	cs.cache.Store(cache)
+	return NewModelPricingResolver(cs, NewBillingService(&config.Config{REDACTED, nil))
+REDACTED
+
+func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingUsesImageCount(t *testing.T) {
+	groupID := int64(126)
+	billingService := NewBillingService(&config.Config{REDACTED, nil)
+	svc := &GatewayService{
+		billingService: billingService,
+		resolver:       newOpenAIImageChannelPricingResolverForTest(t, groupID, "gemini-image", 0.25),
+REDACTED
+
+	cost := svc.calculateRecordUsageCost(
+		context.Background(),
+		&ForwardResult{Model: "gemini-image", ImageCount: 2, ImageSize: "1K"REDACTED,
+		&APIKey{GroupID: i64p(groupID), Group: &Group{ID: groupIDREDACTEDREDACTED,
+		"gemini-image",
+		0.15,
+		1.0,
+		nil,
+	)
+
+	require.NotNil(t, cost)
+	require.Equal(t, string(BillingModeImage), cost.BillingMode)
+	require.InDelta(t, 0.5, cost.TotalCost, 1e-12)
+	require.InDelta(t, 0.5, cost.ActualCost, 1e-12)
+REDACTED
+
+func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingUsesSizeTier(t *testing.T) {
+	groupID := int64(127)
+	defaultPrice := 0.10
+	price4K := 0.40
+	cache := newEmptyChannelCache()
+	cache.pricingByGroupModel[channelModelKey{groupID: groupID, model: "gemini-image"REDACTED] = &ChannelModelPricing{
+		BillingMode:     BillingModeImage,
+		PerRequestPrice: &defaultPrice,
+		Intervals: []PricingInterval{{
+			TierLabel:       "4K",
+			PerRequestPrice: &price4K,
+REDACTED
+REDACTED
+	cache.channelByGroupID[groupID] = &Channel{ID: groupID, Status: StatusActiveREDACTED
+	cache.loadedAt = time.Now()
+	channelService := &ChannelService{REDACTED
+	channelService.cache.Store(cache)
+
+	svc := &GatewayService{
+		billingService: NewBillingService(&config.Config{REDACTED, nil),
+		resolver:       NewModelPricingResolver(channelService, NewBillingService(&config.Config{REDACTED, nil)),
+REDACTED
+
+	cost := svc.calculateRecordUsageCost(
+		context.Background(),
+		&ForwardResult{Model: "gemini-image", ImageCount: 2, ImageSize: "4K"REDACTED,
+		&APIKey{GroupID: i64p(groupID), Group: &Group{ID: groupIDREDACTEDREDACTED,
+		"gemini-image",
+		1.0,
+		1.0,
+		nil,
+	)
+
+	require.NotNil(t, cost)
+	require.Equal(t, string(BillingModeImage), cost.BillingMode)
+	require.InDelta(t, 0.80, cost.TotalCost, 1e-12)
+	require.InDelta(t, 0.80, cost.ActualCost, 1e-12)
 REDACTED

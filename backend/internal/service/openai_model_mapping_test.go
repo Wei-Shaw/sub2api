@@ -95,6 +95,15 @@ REDACTED{
 			expectedModel:      "gpt-5.5",
 	REDACTED,
 		{
+			name: "preserves compact-spelled gpt5.5 instead of group default",
+			account: &Account{
+		REDACTEDREDACTED,
+		REDACTED,
+			requestedModel:     "gpt5.5",
+			defaultMappedModel: "gpt-5.4",
+			expectedModel:      "gpt5.5",
+	REDACTED,
+		{
 			name: "preserves openai namespaced gpt-5.5 instead of group default",
 			account: &Account{
 		REDACTEDREDACTED,
