@@ -1006,9 +1006,8 @@ func TestOpenAIGatewayServiceRecordUsage_ChannelMappedDoesNotOverrideBillingMode
 	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, subRepo, nil)
 	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 10}
 
-	// When channel did NOT map the model (ChannelMappedModel == OriginalModel),
-	// billing should use result.BillingModel (the actual model used after group
-	// DefaultMappedModel resolution), not the unmapped original model.
+	// 渠道未发生模型映射时，应使用 result.BillingModel 中记录的实际上游计费模型，
+	// 而不是未映射的原始请求模型。
 	expectedCost, err := svc.billingService.CalculateCost("gpt-5.1", UsageTokens{
 		InputTokens:  20,
 		OutputTokens: 10,
