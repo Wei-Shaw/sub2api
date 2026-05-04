@@ -85,6 +85,10 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	reqModel := modelResult.String()
 	requestedModel := reqModel
 	reqStream := gjson.GetBytes(body, "stream").Bool()
+	if ok, message := openAIModelAccessAllowed(c, reqModel); !ok {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", message)
+		return
+	}
 
 	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
 

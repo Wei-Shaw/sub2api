@@ -1162,6 +1162,7 @@ func TestOpenAIResponses_FailedSelectionStillStoresStickySnapshot(t *testing.T) 
 	}
 	c.Set(string(middleware.ContextKeyAPIKey), apiKey)
 	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 1, Concurrency: 1})
+	c.Set(string(middleware.ContextKeyUserRole), service.RoleAdmin)
 
 	billingCfg := &config.Config{RunMode: config.RunModeSimple}
 	billingService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, billingCfg)
@@ -1218,6 +1219,7 @@ func TestOpenAIMessages_FailedSelectionStillStoresStickySnapshot(t *testing.T) {
 	}
 	c.Set(string(middleware.ContextKeyAPIKey), apiKey)
 	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 2, Concurrency: 1})
+	c.Set(string(middleware.ContextKeyUserRole), service.RoleAdmin)
 
 	billingCfg := &config.Config{RunMode: config.RunModeSimple}
 	billingService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, billingCfg)
@@ -1274,6 +1276,7 @@ func TestOpenAIChatCompletions_FailedSelectionStillStoresStickySnapshot(t *testi
 	}
 	c.Set(string(middleware.ContextKeyAPIKey), apiKey)
 	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 3, Concurrency: 1})
+	c.Set(string(middleware.ContextKeyUserRole), service.RoleAdmin)
 
 	billingCfg := &config.Config{RunMode: config.RunModeSimple}
 	billingService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, billingCfg)
@@ -1324,6 +1327,7 @@ func TestOpenAIChatCompletions_NonSysUsesActiveTargetGroup(t *testing.T) {
 	groupID := int64(15)
 	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 104, GroupID: &groupID, User: &service.User{ID: 4}})
 	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 4, Concurrency: 1})
+	c.Set(string(middleware.ContextKeyUserRole), service.RoleAdmin)
 
 	billingService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeSimple})
 	defer billingService.Stop()
@@ -1369,6 +1373,7 @@ func TestOpenAIMessages_NonSysUsesActiveTargetGroup(t *testing.T) {
 	groupID := int64(16)
 	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 105, GroupID: &groupID, User: &service.User{ID: 5}})
 	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 5, Concurrency: 1})
+	c.Set(string(middleware.ContextKeyUserRole), service.RoleAdmin)
 
 	billingService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, &config.Config{RunMode: config.RunModeSimple})
 	defer billingService.Stop()
@@ -1534,6 +1539,7 @@ func TestOpenAIResponses_MissingDependencies_ReturnsServiceUnavailable(t *testin
 		UserID:      1,
 		Concurrency: 1,
 	})
+	c.Set(string(middleware.ContextKeyUserRole), service.RoleAdmin)
 
 	// 故意使用未初始化依赖，验证快速失败而不是崩溃。
 	h := &OpenAIGatewayHandler{}
@@ -1588,6 +1594,7 @@ func TestOpenAIResponses_RejectsMessageIDAsPreviousResponseID(t *testing.T) {
 		UserID:      1,
 		Concurrency: 1,
 	})
+	c.Set(string(middleware.ContextKeyUserRole), service.RoleAdmin)
 
 	h := newOpenAIHandlerForPreviousResponseIDValidation(t, nil)
 	h.Responses(c)
@@ -1616,6 +1623,7 @@ func TestOpenAIResponses_RejectsHTTPContinuationPreviousResponseID(t *testing.T)
 		UserID:      1,
 		Concurrency: 1,
 	})
+	c.Set(string(middleware.ContextKeyUserRole), service.RoleAdmin)
 
 	h := newOpenAIHandlerForPreviousResponseIDValidation(t, nil)
 	h.Responses(c)
@@ -1645,6 +1653,7 @@ func TestOpenAIResponses_FunctionCallOutputHTTPGuidanceDoesNotSuggestPreviousRes
 		UserID:      1,
 		Concurrency: 1,
 	})
+	c.Set(string(middleware.ContextKeyUserRole), service.RoleAdmin)
 
 	h := newOpenAIHandlerForPreviousResponseIDValidation(t, nil)
 	h.Responses(c)
@@ -1887,12 +1896,13 @@ func newOpenAIWSHandlerTestServer(t *testing.T, h *OpenAIGatewayHandler, subject
 	apiKey := &service.APIKey{
 		ID:      101,
 		GroupID: &groupID,
-		User:    &service.User{ID: subject.UserID},
+		User:    &service.User{ID: subject.UserID, Role: service.RoleAdmin},
 	}
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
 		c.Set(string(middleware.ContextKeyAPIKey), apiKey)
 		c.Set(string(middleware.ContextKeyUser), subject)
+		c.Set(string(middleware.ContextKeyUserRole), service.RoleAdmin)
 		c.Next()
 	})
 	router.GET("/openai/v1/responses", h.ResponsesWebSocket)

@@ -310,6 +310,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 	reqModel := modelResult.String()
 	requestedModel := reqModel
+	if ok, message := openAIModelAccessAllowed(c, reqModel); !ok {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", message)
+		return
+	}
 
 	streamResult := gjson.GetBytes(body, "stream")
 	if streamResult.Exists() && streamResult.Type != gjson.True && streamResult.Type != gjson.False {
@@ -754,6 +758,10 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 	reqModel := modelResult.String()
+	if ok, message := openAIModelAccessAllowed(c, reqModel); !ok {
+		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", message)
+		return
+	}
 	routingModel := service.NormalizeOpenAICompatRequestedModel(reqModel)
 	preferredMappedModel := resolveOpenAIMessagesDispatchMappedModel(apiKey, reqModel)
 	reqStream := gjson.GetBytes(body, "stream").Bool()
@@ -1540,6 +1548,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	reqModel := strings.TrimSpace(gjson.GetBytes(firstMessage, "model").String())
 	if reqModel == "" {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "model is required in first response.create payload")
+		return
+	}
+	if ok, message := openAIModelAccessAllowed(c, reqModel); !ok {
+		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, message)
 		return
 	}
 	targetGroup := service.TargetGroupActive
