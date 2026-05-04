@@ -136,6 +136,7 @@ export default {
       sectionLimits: '限额',
       sectionVisible: '可见方式',
       sectionFees: '费率',
+      sectionProviders: '收款渠道',
       sourceOfficial: '官方',
       sourceEasypay: '易支付',
       balanceMultiplier: '余额充值倍率',

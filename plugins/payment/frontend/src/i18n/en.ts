@@ -136,6 +136,7 @@ export default {
       sectionLimits: 'Limits',
       sectionVisible: 'Visible Methods',
       sectionFees: 'Fees',
+      sectionProviders: 'Payment Providers',
       sourceOfficial: 'Official',
       sourceEasypay: 'EasyPay',
       balanceMultiplier: 'Balance Recharge Multiplier',

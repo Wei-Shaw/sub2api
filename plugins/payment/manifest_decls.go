@@ -167,14 +167,6 @@ var menuItemDecls = []pluginsdk.MenuItemDecl{
 				SortOrder:     253,
 				RequiresAdmin: true,
 			},
-			{
-				Path:          "/admin/payment/providers",
-				Labels:        pluginsdk.Labels("收款渠道", "Providers"),
-				Descriptions:  pluginsdk.Descriptions("配置 EasyPay / 支付宝 / 微信 / Stripe", "Configure EasyPay / Alipay / WeChat / Stripe"),
-				Section:       pluginsdk.SectionAdmin,
-				SortOrder:     254,
-				RequiresAdmin: true,
-			},
 		},
 	},
 	// User-facing "充值" entry surfaces the recharge view.

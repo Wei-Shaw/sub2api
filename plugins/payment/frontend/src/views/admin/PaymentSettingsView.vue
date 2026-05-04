@@ -40,24 +40,20 @@
             {{ saving === 'basic' ? t('common.saving') : t('common.save') }}
           </button>
         </header>
-        <div class="ps-rows">
-          <div class="ps-row">
-            <div class="ps-row-label">
-              <label>{{ t('admin.settings.payment.enabled') }}</label>
-              <p class="ps-row-hint">{{ t('admin.settings.payment.enabledHint') }}</p>
+        <div class="ps-section-body">
+          <div class="ps-toggle-row">
+            <div>
+              <label class="ps-label">{{ t('admin.settings.payment.enabled') }}</label>
+              <p class="ps-hint">{{ t('admin.settings.payment.enabledHint') }}</p>
             </div>
-            <div class="ps-row-control">
-              <Toggle
-                :model-value="Boolean(values.enabled)"
-                @update:model-value="setValue('enabled', $event, 'basic')"
-              />
-            </div>
+            <Toggle
+              :model-value="Boolean(values.enabled)"
+              @update:model-value="setValue('enabled', $event, 'basic')"
+            />
           </div>
-          <div class="ps-row">
-            <div class="ps-row-label">
-              <label>{{ t('admin.settings.payment.productNamePrefix') }}</label>
-            </div>
-            <div class="ps-row-control">
+          <div class="ps-grid ps-grid-3">
+            <div>
+              <label class="ps-label">{{ t('admin.settings.payment.productNamePrefix') }}</label>
               <input
                 type="text"
                 class="ps-input"
@@ -65,12 +61,8 @@
                 @input="setValue('product_name_prefix', ($event.target as HTMLInputElement).value, 'basic')"
               />
             </div>
-          </div>
-          <div class="ps-row">
-            <div class="ps-row-label">
-              <label>{{ t('admin.settings.payment.productNameSuffix') }}</label>
-            </div>
-            <div class="ps-row-control">
+            <div>
+              <label class="ps-label">{{ t('admin.settings.payment.productNameSuffix') }}</label>
               <input
                 type="text"
                 class="ps-input"
@@ -78,12 +70,8 @@
                 @input="setValue('product_name_suffix', ($event.target as HTMLInputElement).value, 'basic')"
               />
             </div>
-          </div>
-          <div class="ps-row">
-            <div class="ps-row-label">
-              <label>{{ t('admin.settings.payment.helpImageUrl') }}</label>
-            </div>
-            <div class="ps-row-control">
+            <div>
+              <label class="ps-label">{{ t('admin.settings.payment.helpImageUrl') }}</label>
               <input
                 type="text"
                 class="ps-input"
@@ -93,19 +81,15 @@
               />
             </div>
           </div>
-          <div class="ps-row">
-            <div class="ps-row-label">
-              <label>{{ t('admin.settings.payment.helpText') }}</label>
-            </div>
-            <div class="ps-row-control">
-              <textarea
-                rows="3"
-                class="ps-input"
-                :placeholder="t('admin.settings.payment.helpTextPlaceholder')"
-                :value="String(values.help_text ?? '')"
-                @input="setValue('help_text', ($event.target as HTMLTextAreaElement).value, 'basic')"
-              />
-            </div>
+          <div>
+            <label class="ps-label">{{ t('admin.settings.payment.helpText') }}</label>
+            <textarea
+              rows="3"
+              class="ps-input"
+              :placeholder="t('admin.settings.payment.helpTextPlaceholder')"
+              :value="String(values.help_text ?? '')"
+              @input="setValue('help_text', ($event.target as HTMLTextAreaElement).value, 'basic')"
+            />
           </div>
         </div>
       </section>
@@ -123,12 +107,10 @@
             {{ saving === 'limits' ? t('common.saving') : t('common.save') }}
           </button>
         </header>
-        <div class="ps-rows">
-          <div class="ps-row">
-            <div class="ps-row-label">
-              <label>{{ t('admin.settings.payment.minAmount') }}</label>
-            </div>
-            <div class="ps-row-control">
+        <div class="ps-section-body">
+          <div class="ps-grid ps-grid-3">
+            <div>
+              <label class="ps-label">{{ t('admin.settings.payment.minAmount') }}</label>
               <input
                 type="number"
                 min="0"
@@ -138,13 +120,8 @@
                 @input="setValue('min_recharge_amount', toNumber(($event.target as HTMLInputElement).value), 'limits')"
               />
             </div>
-          </div>
-          <div class="ps-row">
-            <div class="ps-row-label">
-              <label>{{ t('admin.settings.payment.maxAmount') }}</label>
-              <p class="ps-row-hint">{{ t('admin.settings.payment.noLimit') }}</p>
-            </div>
-            <div class="ps-row-control">
+            <div>
+              <label class="ps-label">{{ t('admin.settings.payment.maxAmount') }}</label>
               <input
                 type="number"
                 min="0"
@@ -153,14 +130,10 @@
                 :value="numAsString(values.max_recharge_amount)"
                 @input="setValue('max_recharge_amount', toNumber(($event.target as HTMLInputElement).value), 'limits')"
               />
+              <p class="ps-hint">{{ t('admin.settings.payment.noLimit') }}</p>
             </div>
-          </div>
-          <div class="ps-row">
-            <div class="ps-row-label">
-              <label>{{ t('admin.settings.payment.dailyLimit') }}</label>
-              <p class="ps-row-hint">{{ t('admin.settings.payment.noLimit') }}</p>
-            </div>
-            <div class="ps-row-control">
+            <div>
+              <label class="ps-label">{{ t('admin.settings.payment.dailyLimit') }}</label>
               <input
                 type="number"
                 min="0"
@@ -169,14 +142,12 @@
                 :value="numAsString(values.daily_recharge_limit)"
                 @input="setValue('daily_recharge_limit', toNumber(($event.target as HTMLInputElement).value), 'limits')"
               />
+              <p class="ps-hint">{{ t('admin.settings.payment.noLimit') }}</p>
             </div>
           </div>
-          <div class="ps-row">
-            <div class="ps-row-label">
-              <label>{{ t('admin.settings.payment.orderTimeout') }}</label>
-              <p class="ps-row-hint">{{ t('admin.settings.payment.orderTimeoutHint') }}</p>
-            </div>
-            <div class="ps-row-control">
+          <div class="ps-grid ps-grid-2">
+            <div>
+              <label class="ps-label">{{ t('admin.settings.payment.orderTimeout') }}</label>
               <input
                 type="number"
                 min="1"
@@ -185,13 +156,10 @@
                 :value="numAsString(values.order_timeout_minutes)"
                 @input="setValue('order_timeout_minutes', toNumber(($event.target as HTMLInputElement).value), 'limits')"
               />
+              <p class="ps-hint">{{ t('admin.settings.payment.orderTimeoutHint') }}</p>
             </div>
-          </div>
-          <div class="ps-row">
-            <div class="ps-row-label">
-              <label>{{ t('admin.settings.payment.maxPendingOrders') }}</label>
-            </div>
-            <div class="ps-row-control">
+            <div>
+              <label class="ps-label">{{ t('admin.settings.payment.maxPendingOrders') }}</label>
               <input
                 type="number"
                 min="1"
@@ -218,16 +186,17 @@
             {{ saving === 'visible' ? t('common.saving') : t('common.save') }}
           </button>
         </header>
-        <div class="ps-rows">
-          <div class="ps-row">
-            <div class="ps-row-label">
-              <label>{{ t('admin.settings.payment.providerAlipay') }}</label>
-            </div>
-            <div class="ps-row-control ps-inline">
+        <div class="ps-section-body">
+          <div class="ps-grid ps-grid-2">
+            <div class="ps-toggle-row">
+              <label class="ps-label">{{ t('admin.settings.payment.providerAlipay') }}</label>
               <Toggle
                 :model-value="Boolean(values.visible_method_alipay_enabled)"
                 @update:model-value="setValue('visible_method_alipay_enabled', $event, 'visible')"
               />
+            </div>
+            <div>
+              <label class="ps-label">{{ t('payment.adminSettings.sourceOfficial') }} / {{ t('payment.adminSettings.sourceEasypay') }}</label>
               <Select
                 class="ps-select"
                 :model-value="String(values.visible_method_alipay_source ?? 'official')"
@@ -236,15 +205,16 @@
               />
             </div>
           </div>
-          <div class="ps-row">
-            <div class="ps-row-label">
-              <label>{{ t('admin.settings.payment.providerWxpay') }}</label>
-            </div>
-            <div class="ps-row-control ps-inline">
+          <div class="ps-grid ps-grid-2">
+            <div class="ps-toggle-row">
+              <label class="ps-label">{{ t('admin.settings.payment.providerWxpay') }}</label>
               <Toggle
                 :model-value="Boolean(values.visible_method_wxpay_enabled)"
                 @update:model-value="setValue('visible_method_wxpay_enabled', $event, 'visible')"
               />
+            </div>
+            <div>
+              <label class="ps-label">{{ t('payment.adminSettings.sourceOfficial') }} / {{ t('payment.adminSettings.sourceEasypay') }}</label>
               <Select
                 class="ps-select"
                 :model-value="String(values.visible_method_wxpay_source ?? 'official')"
@@ -253,23 +223,19 @@
               />
             </div>
           </div>
-          <div class="ps-row">
-            <div class="ps-row-label">
-              <label>{{ t('admin.settings.payment.enabledPaymentTypes') }}</label>
-              <p class="ps-row-hint">{{ t('admin.settings.payment.enabledPaymentTypesHint') }}</p>
+          <div>
+            <label class="ps-label">{{ t('admin.settings.payment.enabledPaymentTypes') }}</label>
+            <div class="ps-checkbox-list">
+              <label v-for="opt in paymentTypeOptions" :key="opt.value" class="ps-checkbox">
+                <input
+                  type="checkbox"
+                  :checked="enabledTypes.includes(opt.value)"
+                  @change="toggleEnabledType(opt.value, ($event.target as HTMLInputElement).checked)"
+                />
+                <span>{{ opt.label }}</span>
+              </label>
             </div>
-            <div class="ps-row-control">
-              <div class="ps-checkbox-list">
-                <label v-for="opt in paymentTypeOptions" :key="opt.value" class="ps-checkbox">
-                  <input
-                    type="checkbox"
-                    :checked="enabledTypes.includes(opt.value)"
-                    @change="toggleEnabledType(opt.value, ($event.target as HTMLInputElement).checked)"
-                  />
-                  <span>{{ opt.label }}</span>
-                </label>
-              </div>
-            </div>
+            <p class="ps-hint">{{ t('admin.settings.payment.enabledPaymentTypesHint') }}</p>
           </div>
         </div>
       </section>
@@ -287,12 +253,10 @@
             {{ saving === 'fees' ? t('common.saving') : t('common.save') }}
           </button>
         </header>
-        <div class="ps-rows">
-          <div class="ps-row">
-            <div class="ps-row-label">
-              <label>{{ t('payment.adminSettings.balanceMultiplier') }}</label>
-            </div>
-            <div class="ps-row-control">
+        <div class="ps-section-body">
+          <div class="ps-grid ps-grid-2">
+            <div>
+              <label class="ps-label">{{ t('payment.adminSettings.balanceMultiplier') }}</label>
               <input
                 type="number"
                 min="0"
@@ -302,13 +266,8 @@
                 @input="setValue('balance_recharge_multiplier', toNumber(($event.target as HTMLInputElement).value), 'fees')"
               />
             </div>
-          </div>
-          <div class="ps-row">
-            <div class="ps-row-label">
-              <label>{{ t('payment.adminSettings.rechargeFeeRate') }}</label>
-              <p class="ps-row-hint">{{ t('payment.adminSettings.rechargeFeeRateHint') }}</p>
-            </div>
-            <div class="ps-row-control">
+            <div>
+              <label class="ps-label">{{ t('payment.adminSettings.rechargeFeeRate') }}</label>
               <input
                 type="number"
                 min="0"
@@ -318,24 +277,19 @@
                 :value="numAsString(values.recharge_fee_rate)"
                 @input="setValue('recharge_fee_rate', toNumber(($event.target as HTMLInputElement).value), 'fees')"
               />
+              <p class="ps-hint">{{ t('payment.adminSettings.rechargeFeeRateHint') }}</p>
             </div>
           </div>
-          <div class="ps-row">
-            <div class="ps-row-label">
-              <label>{{ t('admin.settings.payment.balancePaymentDisabled') }}</label>
-            </div>
-            <div class="ps-row-control">
+          <div class="ps-grid ps-grid-2">
+            <div class="ps-toggle-row">
+              <label class="ps-label">{{ t('admin.settings.payment.balancePaymentDisabled') }}</label>
               <Toggle
                 :model-value="Boolean(values.balance_payment_disabled)"
                 @update:model-value="setValue('balance_payment_disabled', $event, 'fees')"
               />
             </div>
-          </div>
-          <div class="ps-row">
-            <div class="ps-row-label">
-              <label>{{ t('admin.settings.payment.loadBalanceStrategy') }}</label>
-            </div>
-            <div class="ps-row-control">
+            <div>
+              <label class="ps-label">{{ t('admin.settings.payment.loadBalanceStrategy') }}</label>
               <Select
                 class="ps-select"
                 :model-value="String(values.load_balance_strategy ?? 'round-robin')"
@@ -360,24 +314,20 @@
             {{ saving === 'cancel' ? t('common.saving') : t('common.save') }}
           </button>
         </header>
-        <div class="ps-rows">
-          <div class="ps-row">
-            <div class="ps-row-label">
-              <label>{{ t('admin.settings.payment.cancelRateLimit') }}</label>
-              <p class="ps-row-hint">{{ t('admin.settings.payment.cancelRateLimitHint') }}</p>
+        <div class="ps-section-body">
+          <div class="ps-toggle-row">
+            <div>
+              <label class="ps-label">{{ t('admin.settings.payment.cancelRateLimit') }}</label>
+              <p class="ps-hint">{{ t('admin.settings.payment.cancelRateLimitHint') }}</p>
             </div>
-            <div class="ps-row-control">
-              <Toggle
-                :model-value="Boolean(values.cancel_rate_limit_enabled)"
-                @update:model-value="setValue('cancel_rate_limit_enabled', $event, 'cancel')"
-              />
-            </div>
+            <Toggle
+              :model-value="Boolean(values.cancel_rate_limit_enabled)"
+              @update:model-value="setValue('cancel_rate_limit_enabled', $event, 'cancel')"
+            />
           </div>
-          <div class="ps-row">
-            <div class="ps-row-label">
-              <label>{{ t('admin.settings.payment.cancelRateLimitMax') }}</label>
-            </div>
-            <div class="ps-row-control">
+          <div class="ps-grid ps-grid-2 sm:ps-grid-4">
+            <div>
+              <label class="ps-label">{{ t('admin.settings.payment.cancelRateLimitMax') }}</label>
               <input
                 type="number"
                 min="1"
@@ -388,12 +338,8 @@
                 @input="setValue('cancel_rate_limit_max', toNumber(($event.target as HTMLInputElement).value), 'cancel')"
               />
             </div>
-          </div>
-          <div class="ps-row">
-            <div class="ps-row-label">
-              <label>{{ t('admin.settings.payment.cancelRateLimitWindow') }}</label>
-            </div>
-            <div class="ps-row-control">
+            <div>
+              <label class="ps-label">{{ t('admin.settings.payment.cancelRateLimitWindow') }}</label>
               <input
                 type="number"
                 min="1"
@@ -404,12 +350,8 @@
                 @input="setValue('cancel_rate_limit_window', toNumber(($event.target as HTMLInputElement).value), 'cancel')"
               />
             </div>
-          </div>
-          <div class="ps-row">
-            <div class="ps-row-label">
-              <label>{{ t('admin.settings.payment.cancelRateLimitUnit') }}</label>
-            </div>
-            <div class="ps-row-control">
+            <div>
+              <label class="ps-label">{{ t('admin.settings.payment.cancelRateLimitUnit') }}</label>
               <Select
                 class="ps-select"
                 :disabled="!values.cancel_rate_limit_enabled"
@@ -418,12 +360,8 @@
                 @update:model-value="setValue('cancel_rate_limit_unit', String($event), 'cancel')"
               />
             </div>
-          </div>
-          <div class="ps-row">
-            <div class="ps-row-label">
-              <label>{{ t('admin.settings.payment.cancelRateLimitWindowMode') }}</label>
-            </div>
-            <div class="ps-row-control">
+            <div>
+              <label class="ps-label">{{ t('admin.settings.payment.cancelRateLimitWindowMode') }}</label>
               <Select
                 class="ps-select"
                 :disabled="!values.cancel_rate_limit_enabled"
@@ -435,6 +373,53 @@
           </div>
         </div>
       </section>
+
+      <!-- Section: 收款渠道 -->
+      <section class="ps-card">
+        <header class="ps-section-header">
+          <h3 class="ps-section-title">{{ t('payment.adminSettings.sectionProviders') }}</h3>
+        </header>
+        <PaymentProviderList
+          :providers="providers"
+          :loading="providersLoading"
+          :can-create="hasAnyPaymentTypeEnabled"
+          :enabled-payment-types="providerEnabledTypes"
+          :all-payment-types="allPaymentTypes"
+          :redirect-label="t('admin.settings.payment.easypayRedirect')"
+          @refresh="loadProvidersAndTypes"
+          @create="openCreateProvider"
+          @edit="openEditProvider"
+          @delete="confirmDeleteProvider"
+          @toggle-field="handleToggleField"
+          @toggle-type="handleToggleType"
+          @reorder="handleReorderProviders"
+        />
+      </section>
+
+      <!-- Provider create/edit dialog -->
+      <PaymentProviderDialog
+        ref="providerDialogRef"
+        :show="showProviderDialog"
+        :saving="providerSaving"
+        :editing="editingProvider"
+        :all-key-options="providerKeyOptions"
+        :enabled-key-options="enabledProviderKeyOptions"
+        :all-payment-types="allPaymentTypes"
+        :redirect-label="t('admin.settings.payment.easypayRedirect')"
+        @close="onProviderDialogClose"
+        @save="handleSaveProvider"
+      />
+
+      <!-- Provider delete confirmation -->
+      <ConfirmDialog
+        :show="showDeleteProviderDialog"
+        :title="t('admin.settings.payment.deleteProvider')"
+        :message="t('admin.settings.payment.deleteProviderConfirm')"
+        :confirm-text="t('common.delete')"
+        danger
+        @confirm="handleDeleteProvider"
+        @cancel="showDeleteProviderDialog = false"
+      />
     </template>
   </div>
 </template>
@@ -448,6 +433,13 @@ import { Toggle, Select } from '@sub2api/plugin-sdk'
 import { getClient } from '../../api/client'
 import { useAppStore } from '../../stores/host'
 import { extractApiErrorMessage } from '../../utils/apiError'
+import { ConfirmDialog } from '@sub2api/plugin-sdk'
+
+import PaymentProviderList from '../../components/payment/PaymentProviderList.vue'
+import PaymentProviderDialog from '../../components/payment/PaymentProviderDialog.vue'
+import { adminPaymentAPI } from '../../api/admin/payment'
+import { extractI18nErrorMessage } from '../../utils/apiError'
+import type { ProviderInstance } from '../../types/payment'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -633,8 +625,273 @@ async function saveSection(section: SectionKey): Promise<void> {
   }
 }
 
+
+// ==================== Providers (section "shoukuan-qudao") ====================
+//
+// Migrated from PaymentProvidersView.vue: providers list + create/edit dialog
+// + delete confirmation now live inside this settings page as a 6th section.
+// enabledTypes (the computed above) already mirrors enabled_payment_types
+// from settings, so we reuse it as the source-of-truth instead of refetching
+// /admin/payment/config.
+
+const providers = ref<ProviderInstance[]>([])
+const providersLoading = ref(false)
+const showProviderDialog = ref(false)
+const showDeleteProviderDialog = ref(false)
+const providerSaving = ref(false)
+const editingProvider = ref<ProviderInstance | null>(null)
+const deletingProviderId = ref<number | null>(null)
+const providerDialogRef = ref<InstanceType<typeof PaymentProviderDialog> | null>(null)
+
+// Reuse the settings computed enabledTypes instead of refetching config.
+const providerEnabledTypes = computed<string[]>(() => enabledTypes.value)
+
+const allPaymentTypes = computed(() => [
+  { value: 'easypay', label: t('payment.methods.easypay') },
+  { value: 'alipay', label: t('payment.methods.alipay') },
+  { value: 'wxpay', label: t('payment.methods.wxpay') },
+  { value: 'stripe', label: t('payment.methods.stripe') },
+])
+
+const hasAnyPaymentTypeEnabled = computed(() => providerEnabledTypes.value.length > 0)
+
+const providerKeyOptions = computed(() => [
+  { value: 'easypay', label: t('admin.settings.payment.providerEasypay') },
+  { value: 'alipay', label: t('admin.settings.payment.providerAlipay') },
+  { value: 'wxpay', label: t('admin.settings.payment.providerWxpay') },
+  { value: 'stripe', label: t('admin.settings.payment.providerStripe') },
+])
+
+const enabledProviderKeyOptions = computed(() =>
+  providerKeyOptions.value.filter(opt => providerEnabledTypes.value.includes(opt.value)),
+)
+
+// ---- Provider conflict detection (mirror of PaymentProvidersView) ----
+
+type ProviderEnablementCandidate = Pick<
+  ProviderInstance,
+  'id' | 'provider_key' | 'supported_types' | 'enabled' | 'name'
+>
+
+function normalizeVisibleMethod(type: string): string {
+  if (type === 'alipay_direct') return 'alipay'
+  if (type === 'wxpay_direct') return 'wxpay'
+  return type
+}
+
+function getProviderVisibleMethods(provider: ProviderEnablementCandidate): Array<'alipay' | 'wxpay'> {
+  if (!provider.enabled) return []
+  const supportedTypes = Array.isArray(provider.supported_types) ? provider.supported_types : []
+  const methods = new Set<'alipay' | 'wxpay'>()
+  const addMethod = (type: string) => {
+    const m = normalizeVisibleMethod(type)
+    if (m === 'alipay' || m === 'wxpay') methods.add(m)
+  }
+
+  if (provider.provider_key === 'alipay') {
+    if (supportedTypes.length === 0) methods.add('alipay')
+    else supportedTypes.forEach(ty => { if (normalizeVisibleMethod(ty) === 'alipay') methods.add('alipay') })
+  } else if (provider.provider_key === 'wxpay') {
+    if (supportedTypes.length === 0) methods.add('wxpay')
+    else supportedTypes.forEach(ty => { if (normalizeVisibleMethod(ty) === 'wxpay') methods.add('wxpay') })
+  } else if (provider.provider_key === 'easypay') {
+    supportedTypes.forEach(addMethod)
+  }
+  return Array.from(methods)
+}
+
+function findProviderEnablementConflict(
+  candidate: ProviderEnablementCandidate,
+): { method: 'alipay' | 'wxpay'; conflicting: ProviderInstance } | null {
+  const claimed = getProviderVisibleMethods(candidate)
+  if (claimed.length === 0) return null
+  for (const other of providers.value) {
+    if (other.id === candidate.id || !other.enabled) continue
+    const otherMethods = getProviderVisibleMethods(other)
+    const matched = claimed.find(m => otherMethods.includes(m))
+    if (matched) return { method: matched, conflicting: other }
+  }
+  return null
+}
+
+function showProviderEnablementConflict(conflict: {
+  method: 'alipay' | 'wxpay'
+  conflicting: ProviderInstance
+}) {
+  const fallback = conflict.conflicting.name + ' already handles ' + conflict.method
+  const key = 'admin.settings.payment.enableConflict'
+  const translated = t(key, {
+    method: t('payment.methods.' + conflict.method),
+    provider: conflict.conflicting.name,
+  })
+  appStore.showError(translated === key ? fallback : translated)
+}
+
+// ---- Data loading ----
+
+async function loadProviders(): Promise<void> {
+  try {
+    const res = await adminPaymentAPI.getProviders()
+    providers.value = res.data || []
+  } catch (err: unknown) {
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
+  }
+}
+
+async function loadProvidersAndTypes(): Promise<void> {
+  providersLoading.value = true
+  try {
+    await loadProviders()
+  } finally {
+    providersLoading.value = false
+  }
+}
+
+// ---- Dialog open / close ----
+
+function openCreateProvider(): void {
+  editingProvider.value = null
+  providerDialogRef.value?.reset(enabledProviderKeyOptions.value[0]?.value || 'easypay')
+  showProviderDialog.value = true
+}
+
+function openEditProvider(provider: ProviderInstance): void {
+  editingProvider.value = provider
+  providerDialogRef.value?.loadProvider(provider)
+  showProviderDialog.value = true
+}
+
+function onProviderDialogClose(): void {
+  showProviderDialog.value = false
+  void loadProviders()
+}
+
+// ---- CRUD handlers ----
+
+async function handleSaveProvider(payload: Partial<ProviderInstance>): Promise<void> {
+  providerSaving.value = true
+  try {
+    const candidate: ProviderEnablementCandidate = {
+      id: editingProvider.value?.id ?? 0,
+      provider_key: payload.provider_key ?? editingProvider.value?.provider_key ?? '',
+      supported_types: payload.supported_types ?? editingProvider.value?.supported_types ?? [],
+      enabled: payload.enabled ?? editingProvider.value?.enabled ?? false,
+      name: payload.name ?? editingProvider.value?.name ?? '',
+    }
+    const conflict = findProviderEnablementConflict(candidate)
+    if (conflict) {
+      showProviderEnablementConflict(conflict)
+      return
+    }
+
+    if (editingProvider.value) {
+      await adminPaymentAPI.updateProvider(editingProvider.value.id, payload)
+    } else {
+      await adminPaymentAPI.createProvider(payload)
+    }
+    showProviderDialog.value = false
+    await loadProviders()
+    appStore.showSuccess(t('common.saved'))
+  } catch (err: unknown) {
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
+  } finally {
+    providerSaving.value = false
+  }
+}
+
+async function handleToggleField(
+  provider: ProviderInstance,
+  field: 'enabled' | 'refund_enabled' | 'allow_user_refund',
+): Promise<void> {
+  let nextValue: boolean
+  if (field === 'enabled') nextValue = !provider.enabled
+  else if (field === 'refund_enabled') nextValue = !provider.refund_enabled
+  else nextValue = !provider.allow_user_refund
+
+  if (field === 'enabled' && nextValue) {
+    const conflict = findProviderEnablementConflict({
+      id: provider.id,
+      provider_key: provider.provider_key,
+      supported_types: provider.supported_types,
+      enabled: true,
+      name: provider.name,
+    })
+    if (conflict) {
+      showProviderEnablementConflict(conflict)
+      return
+    }
+  }
+
+  const payload: Record<string, boolean> = { [field]: nextValue }
+  if (field === 'refund_enabled' && !nextValue) {
+    payload.allow_user_refund = false
+  }
+  try {
+    await adminPaymentAPI.updateProvider(provider.id, payload)
+    await loadProviders()
+  } catch (err: unknown) {
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
+  }
+}
+
+async function handleToggleType(provider: ProviderInstance, type: string): Promise<void> {
+  const updated = provider.supported_types.includes(type)
+    ? provider.supported_types.filter(x => x !== type)
+    : [...provider.supported_types, type]
+  const conflict = findProviderEnablementConflict({
+    id: provider.id,
+    provider_key: provider.provider_key,
+    supported_types: updated,
+    enabled: provider.enabled,
+    name: provider.name,
+  })
+  if (conflict) {
+    showProviderEnablementConflict(conflict)
+    return
+  }
+  try {
+    await adminPaymentAPI.updateProvider(provider.id, {
+      supported_types: updated,
+    } as Partial<ProviderInstance>)
+    await loadProviders()
+  } catch (err: unknown) {
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
+  }
+}
+
+async function handleReorderProviders(updates: { id: number; sort_order: number }[]): Promise<void> {
+  try {
+    await Promise.all(
+      updates.map(u =>
+        adminPaymentAPI.updateProvider(u.id, { sort_order: u.sort_order } as Partial<ProviderInstance>),
+      ),
+    )
+    await loadProviders()
+  } catch (err: unknown) {
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
+    void loadProviders()
+  }
+}
+
+function confirmDeleteProvider(provider: ProviderInstance): void {
+  deletingProviderId.value = provider.id
+  showDeleteProviderDialog.value = true
+}
+
+async function handleDeleteProvider(): Promise<void> {
+  if (!deletingProviderId.value) return
+  try {
+    await adminPaymentAPI.deleteProvider(deletingProviderId.value)
+    appStore.showSuccess(t('common.deleted'))
+    showDeleteProviderDialog.value = false
+    await loadProviders()
+  } catch (err: unknown) {
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
+  }
+}
 onMounted(() => {
   void loadAll()
+  void loadProvidersAndTypes()
 })
 </script>
 
@@ -668,44 +925,55 @@ onMounted(() => {
   font-weight: 600;
   margin: 0;
 }
-.ps-rows {
+.ps-section-body {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
-.ps-row {
+.ps-grid {
   display: grid;
+  gap: 0.75rem;
   grid-template-columns: minmax(0, 1fr);
-  gap: 0.5rem;
-  align-items: start;
 }
 @media (min-width: 640px) {
-  .ps-row {
-    grid-template-columns: 12rem minmax(0, 1fr);
-    gap: 1rem;
+  .ps-grid-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ps-grid-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .ps-grid-4,
+  .sm\:ps-grid-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
-.ps-row-label label {
+.ps-label {
   display: block;
-  font-size: 0.875rem;
+  margin-bottom: 0.25rem;
+  font-size: 0.75rem;
   font-weight: 500;
-  color: inherit;
+  color: rgb(55 65 81);
 }
-.ps-row-hint {
+.dark .ps-label {
+  color: rgb(209 213 219);
+}
+.ps-hint {
   margin: 0.25rem 0 0;
   font-size: 0.75rem;
-  color: rgb(107 114 128);
-}
-.dark .ps-row-hint {
   color: rgb(156 163 175);
 }
-.ps-row-control {
-  min-width: 0;
+.dark .ps-hint {
+  color: rgb(156 163 175);
 }
-.ps-inline {
+.ps-toggle-row {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  justify-content: space-between;
+  gap: 1rem;
+  min-width: 0;
+}
+.ps-toggle-row > div {
+  min-width: 0;
 }
 .ps-input {
   display: block;
@@ -734,7 +1002,8 @@ onMounted(() => {
   background: rgb(31 41 55);
 }
 .ps-select {
-  min-width: 12rem;
+  width: 100%;
+  min-width: 0;
 }
 .ps-checkbox-list {
   display: flex;
