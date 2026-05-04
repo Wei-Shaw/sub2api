@@ -3,11 +3,14 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -25,6 +28,41 @@ func TestUserAvailableChannel_Unauthenticated401(t *testing.T) {
 	h.List(c)
 
 	require.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestUserModelPricingBatch_ReturnsPricingForKnownAndUnknownModels(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := &AvailableChannelHandler{
+		billingService: service.NewBillingService(&config.Config{}, nil),
+	}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/channels/model-pricing/batch",
+		bytes.NewBufferString(`{"models":["gpt-5.4","totally-unknown-model"]}`),
+	)
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 1})
+
+	h.GetModelPricingBatch(c)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp struct {
+		Code int `json:"code"`
+		Data struct {
+			Prices map[string]struct {
+				Found      bool     `json:"found"`
+				InputPrice *float64 `json:"input_price"`
+			} `json:"prices"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.Equal(t, 0, resp.Code)
+	require.True(t, resp.Data.Prices["gpt-5.4"].Found)
+	require.NotNil(t, resp.Data.Prices["gpt-5.4"].InputPrice)
+	require.False(t, resp.Data.Prices["totally-unknown-model"].Found)
+	require.Nil(t, resp.Data.Prices["totally-unknown-model"].InputPrice)
 }
 
 func TestFilterUserVisibleGroups_IntersectionOnly(t *testing.T) {

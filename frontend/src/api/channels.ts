@@ -46,6 +46,21 @@ export interface UserSupportedModel {
   pricing: UserSupportedModelPricing | null
 }
 
+export interface UserDefaultModelPricing {
+  found: boolean
+  billing_mode?: BillingMode
+  input_price?: number
+  output_price?: number
+  cache_write_price?: number
+  cache_read_price?: number
+  image_output_price?: number
+  per_request_price?: number
+}
+
+export interface UserModelPricingBatchResponse {
+  prices: Record<string, UserDefaultModelPricing>
+}
+
 /**
  * 渠道下单个平台的子视图：用户可访问的分组 + 该平台支持的模型。
  * 后端把一个渠道按平台聚合成 sections，前端可以把渠道名作为 row-group
@@ -71,6 +86,15 @@ export async function getAvailable(options?: { signal?: AbortSignal }): Promise<
   return data
 }
 
-export const userChannelsAPI = { getAvailable }
+export async function getModelPricingBatch(models: string[], options?: { signal?: AbortSignal }): Promise<UserModelPricingBatchResponse> {
+  const { data } = await apiClient.post<UserModelPricingBatchResponse>('/channels/model-pricing/batch', {
+    models
+  }, {
+    signal: options?.signal
+  })
+  return data
+}
+
+export const userChannelsAPI = { getAvailable, getModelPricingBatch }
 
 export default userChannelsAPI

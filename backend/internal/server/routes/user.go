@@ -74,6 +74,7 @@ func RegisterUserRoutes(
 		channels := authenticated.Group("/channels")
 		{
 			channels.GET("/available", h.AvailableChannel.List)
+			channels.POST("/model-pricing/batch", h.AvailableChannel.GetModelPricingBatch)
 		}
 
 		// 使用记录

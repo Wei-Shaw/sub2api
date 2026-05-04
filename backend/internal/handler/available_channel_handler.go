@@ -2,6 +2,7 @@ package handler
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -24,6 +25,7 @@ type AvailableChannelHandler struct {
 	channelService *service.ChannelService
 	apiKeyService  *service.APIKeyService
 	settingService *service.SettingService
+	billingService *service.BillingService
 }
 
 // NewAvailableChannelHandler 创建用户侧可用渠道 handler。
@@ -31,11 +33,13 @@ func NewAvailableChannelHandler(
 	channelService *service.ChannelService,
 	apiKeyService *service.APIKeyService,
 	settingService *service.SettingService,
+	billingService *service.BillingService,
 ) *AvailableChannelHandler {
 	return &AvailableChannelHandler{
 		channelService: channelService,
 		apiKeyService:  apiKeyService,
 		settingService: settingService,
+		billingService: billingService,
 	}
 }
 
@@ -111,6 +115,25 @@ type userAvailableChannel struct {
 	Platforms   []userChannelPlatformSection `json:"platforms"`
 }
 
+type userModelPricingBatchRequest struct {
+	Models []string `json:"models"`
+}
+
+type userDefaultModelPricing struct {
+	Found            bool     `json:"found"`
+	BillingMode      string   `json:"billing_mode,omitempty"`
+	InputPrice       *float64 `json:"input_price,omitempty"`
+	OutputPrice      *float64 `json:"output_price,omitempty"`
+	CacheWritePrice  *float64 `json:"cache_write_price,omitempty"`
+	CacheReadPrice   *float64 `json:"cache_read_price,omitempty"`
+	ImageOutputPrice *float64 `json:"image_output_price,omitempty"`
+	PerRequestPrice  *float64 `json:"per_request_price,omitempty"`
+}
+
+type userModelPricingBatchResponse struct {
+	Prices map[string]userDefaultModelPricing `json:"prices"`
+}
+
 // List 列出当前用户可见的「可用渠道」。
 // GET /api/v1/channels/available
 func (h *AvailableChannelHandler) List(c *gin.Context) {
@@ -164,6 +187,56 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 	}
 
 	response.Success(c, out)
+}
+
+// GetModelPricingBatch 批量查询模型默认定价。
+// POST /api/v1/channels/model-pricing/batch
+func (h *AvailableChannelHandler) GetModelPricingBatch(c *gin.Context) {
+	if _, ok := middleware.GetAuthSubjectFromContext(c); !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+	if h.billingService == nil {
+		response.InternalError(c, "Billing service not available")
+		return
+	}
+
+	var req userModelPricingBatchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid request body")
+		return
+	}
+
+	prices := make(map[string]userDefaultModelPricing, len(req.Models))
+	seen := make(map[string]struct{}, len(req.Models))
+	for _, raw := range req.Models {
+		model := strings.TrimSpace(raw)
+		if model == "" {
+			continue
+		}
+		key := strings.ToLower(model)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+
+		pricing, err := h.billingService.GetModelPricing(model)
+		if err != nil {
+			prices[model] = userDefaultModelPricing{Found: false}
+			continue
+		}
+		prices[model] = userDefaultModelPricing{
+			Found:            true,
+			BillingMode:      string(service.BillingModeToken),
+			InputPrice:       &pricing.InputPricePerToken,
+			OutputPrice:      &pricing.OutputPricePerToken,
+			CacheWritePrice:  &pricing.CacheCreationPricePerToken,
+			CacheReadPrice:   &pricing.CacheReadPricePerToken,
+			ImageOutputPrice: &pricing.ImageOutputPricePerToken,
+		}
+	}
+
+	response.Success(c, userModelPricingBatchResponse{Prices: prices})
 }
 
 // buildPlatformSections 把一个渠道按 visibleGroups 的平台集合拆成有序的 section 列表：

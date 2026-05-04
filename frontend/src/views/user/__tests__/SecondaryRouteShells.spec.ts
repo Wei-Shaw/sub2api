@@ -11,17 +11,22 @@ describe('secondary-development route shells', () => {
   it('models route uses the existing available-channel data source without remaining a placeholder shell', () => {
     const source = readFileSync(viewPath('ModelsView'), 'utf8')
 
-    expect(source).toContain("import userChannelsAPI, { type UserAvailableChannel } from '@/api/channels'")
-    expect(source).toContain("import AvailableChannelsTable from '@/components/channels/AvailableChannelsTable.vue'")
+    expect(source).toContain("import userChannelsAPI, { type UserAvailableChannel")
+    expect(source).toContain('data-testid="platform-filter"')
+    expect(source).toContain('class="model-channel-card')
+    expect(source).toContain('class="model-channel-count')
+    expect(source).toContain('formatTokenComparison')
+    expect(source).toContain('getOfficialModelPricing')
     expect(source).toContain('userChannelsAPI.getAvailable()')
     expect(source).not.toContain("import AvailableChannelsView from '@/views/user/AvailableChannelsView.vue'")
+    expect(source).not.toContain("import AvailableChannelsTable from '@/components/channels/AvailableChannelsTable.vue'")
   })
 
   it('recharge-subscription route keeps existing payment functionality reachable', () => {
     const source = readFileSync(viewPath('RechargeSubscriptionView'), 'utf8')
 
     expect(source).toContain("import PaymentView from '@/views/user/PaymentView.vue'")
-    expect(source).toContain('<PaymentView embedded layout-mode="stacked" hide-tabs />')
-    expect(source).toContain('<UserOrdersView embedded />')
+    expect(source).toContain('<PaymentView embedded layout-mode="stacked" hide-tabs @payment-completed="refreshOrders" />')
+    expect(source).toContain('<UserOrdersView ref="ordersViewRef" embedded />')
   })
 })
