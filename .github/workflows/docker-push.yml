@@ -1,0 +1,39 @@
+name: Deploy Sub2api to GHCR
+
+on:
+  push:
+    branches: [ "main" ]  # 只有推送到 main 分支时触发，如果是 master 请修改
+
+env:
+  REGISTRY: ghcr.io
+  # 镜像名会自动设为：用户名/仓库名
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest # 使用 GitHub 提供的 amd64 环境构建
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          # 明确指定 amd64，确保服务器能跑
+          platforms: linux/amd64
+          tags: |
+            ghcr.io/${{ env.IMAGE_NAME }}:latest
+            ghcr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
