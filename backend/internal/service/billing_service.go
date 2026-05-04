@@ -226,6 +226,12 @@ REDACTED
 		CacheReadPricePerToken: 7.5e-8,
 		SupportsCacheBreakdown: false,
 REDACTED
+	s.fallbackPrices["gpt-5.4-nano"] = &ModelPricing{
+		InputPricePerToken:     2e-7,
+		OutputPricePerToken:    1.25e-6,
+		CacheReadPricePerToken: 2e-8,
+		SupportsCacheBreakdown: false,
+REDACTED
 	// OpenAI GPT-5.2（本地兜底）
 	s.fallbackPrices["gpt-5.2"] = &ModelPricing{
 		InputPricePerToken:             1.75e-6,
@@ -295,6 +301,8 @@ REDACTED
 			return s.fallbackPrices["gpt-5.5"]
 		case "gpt-5.4-mini":
 			return s.fallbackPrices["gpt-5.4-mini"]
+		case "gpt-5.4-nano":
+			return s.fallbackPrices["gpt-5.4-nano"]
 		case "gpt-5.4":
 			return s.fallbackPrices["gpt-5.4"]
 		case "gpt-5.2":
