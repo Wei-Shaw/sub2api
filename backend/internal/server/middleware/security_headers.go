@@ -28,6 +28,8 @@ const (
 	AirwallexDemoStaticDomain = "https://static-demo.airwallex.com"
 	// AirwallexDemoCheckoutDomain 是 Airwallex 沙箱环境收银台元素和 iframe 域名。
 	AirwallexDemoCheckoutDomain = "https://checkout-demo.airwallex.com"
+	// PaddleDomain is the domain for Paddle.js SDK and hosted checkout frames
+	PaddleDomain = "https://*.paddle.com"
 )
 
 var requiredCSPDirectiveValues = []struct {
@@ -37,6 +39,8 @@ var requiredCSPDirectiveValues = []struct {
 	{"script-src", CloudflareInsightsDomain},
 	{"script-src", StripeDomain},
 	{"frame-src", StripeDomain},
+	{"script-src", PaddleDomain},
+	{"frame-src", PaddleDomain},
 	{"script-src", AirwallexStaticDomain},
 	{"script-src", AirwallexCheckoutDomain},
 	{"style-src", AirwallexStaticDomain},
@@ -139,6 +143,12 @@ func enhanceCSPPolicy(policy string) string {
 		if !directiveHasValue(policy, required.directive, required.value) {
 			policy = addToDirective(policy, required.directive, required.value)
 		}
+	}
+
+	// Add Paddle.js domain to script-src and hosted checkout frames if not present
+	if !strings.Contains(policy, "paddle.com") {
+		policy = addToDirective(policy, "script-src", PaddleDomain)
+		policy = addToDirective(policy, "frame-src", PaddleDomain)
 	}
 
 	return policy

@@ -17,6 +17,25 @@ func init() {
 	gin.SetMode(gin.TestMode)
 }
 
+func countDirectiveValue(policy, directive, value string) int {
+	for _, part := range strings.Split(policy, ";") {
+		fields := strings.Fields(strings.TrimSpace(part))
+		if len(fields) == 0 || fields[0] != directive {
+			continue
+		}
+
+		count := 0
+		for _, field := range fields[1:] {
+			if field == value {
+				count++
+			}
+		}
+		return count
+	}
+
+	return 0
+}
+
 func TestGenerateNonce(t *testing.T) {
 	t.Run("generates_valid_base64_string", func(t *testing.T) {
 		nonce, err := GenerateNonce()
@@ -359,23 +378,24 @@ func TestEnhanceCSPPolicy(t *testing.T) {
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "style-src", AirwallexDemoCheckoutDomain))
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", AirwallexDemoCheckoutDomain))
 	})
-}
 
-func countDirectiveValue(policy, directive, value string) int {
-	for _, rawDirective := range strings.Split(policy, ";") {
-		fields := strings.Fields(strings.TrimSpace(rawDirective))
-		if len(fields) == 0 || fields[0] != directive {
-			continue
-		}
-		count := 0
-		for _, field := range fields[1:] {
-			if field == value {
-				count++
-			}
-		}
-		return count
-	}
-	return 0
+	t.Run("adds_paddle_domain_for_checkout", func(t *testing.T) {
+		policy := "default-src 'self'; script-src 'self' __CSP_NONCE__; frame-src https://challenges.cloudflare.com"
+		enhanced := enhanceCSPPolicy(policy)
+
+		assert.Contains(t, enhanced, "script-src 'self' __CSP_NONCE__")
+		assert.Contains(t, enhanced, PaddleDomain)
+		assert.Contains(t, enhanced, "frame-src https://challenges.cloudflare.com")
+		assert.Contains(t, enhanced, StripeDomain)
+		assert.Equal(t, 2, strings.Count(enhanced, PaddleDomain))
+	})
+
+	t.Run("preserves_existing_paddle_domain", func(t *testing.T) {
+		policy := "script-src 'self' https://*.paddle.com; frame-src https://*.paddle.com"
+		enhanced := enhanceCSPPolicy(policy)
+
+		assert.Equal(t, 2, strings.Count(enhanced, PaddleDomain))
+	})
 }
 
 func TestAddToDirective(t *testing.T) {
