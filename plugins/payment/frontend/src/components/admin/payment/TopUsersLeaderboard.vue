@@ -27,7 +27,7 @@
           <span class="text-sm text-gray-700 dark:text-gray-300">{{ user.email }}</span>
         </div>
         <span class="text-sm font-medium text-gray-900 dark:text-white">
-          ${{ user.amount.toFixed(2) }}
+          ${{ Number(user.amount ?? 0).toFixed(2) }}
         </span>
       </div>
     </div>

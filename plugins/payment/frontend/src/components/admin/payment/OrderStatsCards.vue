@@ -72,6 +72,6 @@ defineProps<{
 }>()
 
 function formatMoney(value: number): string {
-  return value.toFixed(2)
+  return Number(value ?? 0).toFixed(2)
 }
 </script>
