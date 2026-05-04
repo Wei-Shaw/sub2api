@@ -129,12 +129,14 @@ describe('useAuthStore', () => {
 
       await store.inviteLogin({
         invitation_code: 'DLG-TEST-001',
+        client_kind: 'web',
         device_hash: 'device-hash',
         install_id: 'install-id'
       })
 
       expect(mockInviteLogin).toHaveBeenCalledWith({
         invitation_code: 'DLG-TEST-001',
+        client_kind: 'web',
         device_hash: 'device-hash',
         install_id: 'install-id'
       })

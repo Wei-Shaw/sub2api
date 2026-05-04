@@ -17,10 +17,12 @@ func (s *AuthService) completeDeviceInviteLogin(ctx context.Context, input Invit
 	}
 
 	deviceHash := normalizeDeviceHash(input.DeviceHash)
-	if deviceHash == "" {
+	clientKind := strings.TrimSpace(strings.ToLower(input.ClientKind))
+	allowWebLoginWithoutDeviceHash := deviceHash == "" && clientKind == "web"
+	if deviceHash == "" && !allowWebLoginWithoutDeviceHash {
 		return nil, ErrDeviceHashRequired
 	}
-	if len(deviceHash) != 64 {
+	if deviceHash != "" && len(deviceHash) != 64 {
 		return nil, ErrDeviceHashInvalid
 	}
 	for _, ch := range deviceHash {
@@ -39,7 +41,7 @@ func (s *AuthService) completeDeviceInviteLogin(ctx context.Context, input Invit
 	if device == nil || !device.IsActive() {
 		return nil, ErrDeviceRevoked
 	}
-	if normalizeDeviceHash(device.DeviceHash) != deviceHash {
+	if deviceHash != "" && normalizeDeviceHash(device.DeviceHash) != deviceHash {
 		return nil, ErrDeviceMismatch
 	}
 
@@ -59,12 +61,15 @@ func (s *AuthService) completeDeviceInviteLogin(ctx context.Context, input Invit
 		return nil, ErrServiceUnavailable
 	}
 
-	grantPlan := s.resolveSignupGrantPlan(ctx, "invite_login")
-	s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by invite login")
+	var bootstrapKeys []InviteBootstrapAPIKey
+	if !allowWebLoginWithoutDeviceHash {
+		grantPlan := s.resolveSignupGrantPlan(ctx, "invite_login")
+		s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by invite login")
 
-	bootstrapKeys, err := s.provisionInviteBootstrapAPIKeys(ctx, user.ID, code)
-	if err != nil {
-		return nil, err
+		bootstrapKeys, err = s.provisionInviteBootstrapAPIKeys(ctx, user.ID, code)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	tokenPair, err := s.GenerateTokenPair(ctx, user, "")

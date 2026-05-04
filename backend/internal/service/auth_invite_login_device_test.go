@@ -320,6 +320,53 @@ func TestAuthServiceInviteLoginAcceptsDeviceLoginCode(t *testing.T) {
 	require.Equal(t, int64(101), *bootstrapSvc.createdKeys[1].GroupID)
 }
 
+func TestAuthServiceInviteLoginAllowsWebLoginWithoutDeviceHash(t *testing.T) {
+	const loginCode = "DLG-7TTY-SQ2Q-47TE"
+	usedAt := time.Now().UTC().Add(-24 * time.Hour)
+	loginRedeem := &RedeemCode{
+		ID:     50,
+		Code:   loginCode,
+		Type:   RedeemTypeDeviceLogin,
+		Status: StatusUsed,
+		UsedAt: &usedAt,
+	}
+	userRepo := &userRepoStub{user: &User{ID: 51, Email: "web-dlg@example.com", Username: "web-user", Role: RoleUser, Status: StatusActive}}
+	userDeviceRepo := &inviteLoginUserDeviceRepoStub{
+		deviceByLoginCodeID: map[int64]*UserDevice{
+			50: {
+				ID:                2,
+				UserID:            51,
+				DeviceHash:        "ac0addf134d4ac9d6ac98ffdb1f4796dd2b27d6ab2b66ec0bab9e181a007b668",
+				InstallID:         stringPtr("000f0c66-0a84-4a72-a7bb-a82249dbc3c7"),
+				LoginRedeemCodeID: 50,
+				Status:            UserDeviceStatusActive,
+			},
+		},
+	}
+	bootstrapSvc := &inviteBootstrapAPIKeyServiceStub{}
+	authService := newAuthServiceForInviteLoginTest(
+		userRepo,
+		&redeemCodeRepoStub{codesByCode: map[string]*RedeemCode{loginCode: loginRedeem}},
+		userDeviceRepo,
+		map[string]string{SettingKeyRegistrationEnabled: "false"},
+		bootstrapSvc,
+	)
+
+	result, err := authService.InviteLogin(context.Background(), InviteLoginInput{
+		InvitationCode: loginCode,
+		ClientKind:     "web",
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.TokenPair)
+	require.NotNil(t, result.User)
+	require.Equal(t, int64(51), result.User.ID)
+	require.Equal(t, []int64{2}, userDeviceRepo.updatedLoginIDs)
+	require.Empty(t, result.BootstrapAPIKeys)
+	require.Empty(t, bootstrapSvc.createdKeys)
+}
+
 func TestAuthServiceInviteLoginRejectsDeviceMismatch(t *testing.T) {
 	const loginCode = "DLG-FN7Y-NJQJ-XNV6"
 	usedAt := time.Now().UTC().Add(-24 * time.Hour)

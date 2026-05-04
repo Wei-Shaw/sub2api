@@ -123,6 +123,7 @@ export interface LoginRequest {
 
 export interface InviteLoginRequest {
   invitation_code: string
+  client_kind?: 'web'
   device_hash?: string
   install_id?: string
   turnstile_token?: string
