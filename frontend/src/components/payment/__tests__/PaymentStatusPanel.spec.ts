@@ -312,4 +312,30 @@ describe('PaymentStatusPanel', () => {
     Object.defineProperty(window, 'location', { configurable: true, value: originalLocation })
     if (originalHidden) Object.defineProperty(document, 'hidden', originalHidden)
   })
+
+  it('renders provider QR image URLs directly instead of nesting them in a generated QR code', async () => {
+    const qrImage = 'https://qr.sepay.vn/img?acc=333999333333&bank=MBBank&amount=50000&des=VC20260429AbC123xY'
+
+    const wrapper = mount(PaymentStatusPanel, {
+      props: {
+        orderId: 42,
+        qrCode: qrImage,
+        expiresAt: '2099-01-01T12:30:00Z',
+        paymentType: 'sepay',
+        orderType: 'balance',
+      },
+      global: {
+        stubs: {
+          Icon: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const img = wrapper.get('img[alt="Payment QR code"]')
+    expect(img.attributes('src')).toBe(qrImage)
+    expect(wrapper.find('canvas').exists()).toBe(false)
+    expect(toCanvas).not.toHaveBeenCalled()
+  })
 })

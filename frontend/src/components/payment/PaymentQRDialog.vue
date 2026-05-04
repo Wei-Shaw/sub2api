@@ -5,7 +5,8 @@
       <!-- QR Code mode -->
       <template v-if="qrUrl">
         <div class="rounded-2xl bg-white p-4 shadow-sm dark:bg-dark-800">
-          <canvas ref="qrCanvas" class="mx-auto"></canvas>
+          <img v-if="qrImageUrl" :src="qrImageUrl" alt="Payment QR code" class="mx-auto h-[220px] w-[220px] object-contain" />
+          <canvas v-else ref="qrCanvas" class="mx-auto"></canvas>
         </div>
         <p v-if="scanHint" class="text-center text-sm text-gray-500 dark:text-gray-400">
           {{ scanHint }}
@@ -80,6 +81,7 @@ import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { getPaymentPopupFeatures, isBuiltInAlipayMethod, isBuiltInWxpayMethod } from '@/components/payment/providerConfig'
+import { shouldRenderQRCodeAsImage } from '@/components/payment/qrRendering'
 import type { PaymentOrder } from '@/types/payment'
 import { currencySymbol } from '@/components/payment/currency'
 import QRCode from 'qrcode'
@@ -107,6 +109,7 @@ const appStore = useAppStore()
 
 const qrCanvas = ref<HTMLCanvasElement | null>(null)
 const qrUrl = ref('')
+const qrImageUrl = computed(() => shouldRenderQRCodeAsImage(qrUrl.value) ? qrUrl.value.trim() : '')
 const remainingSeconds = ref(0)
 const expired = ref(false)
 const cancelling = ref(false)
@@ -164,7 +167,7 @@ function reopenPopup() {
 
 async function renderQR() {
   await nextTick()
-  if (!qrCanvas.value || !qrUrl.value) return
+  if (qrImageUrl.value || !qrCanvas.value || !qrUrl.value) return
   const logoSrc = getLogoForType()
   await QRCode.toCanvas(qrCanvas.value, qrUrl.value, {
     width: 220,
