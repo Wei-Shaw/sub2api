@@ -180,6 +180,12 @@
               </span>
             </div>
           </div>
+          <div v-if="orderSummaryRows.length" class="w-full rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm dark:border-dark-600 dark:bg-dark-800/80">
+            <div v-for="row in orderSummaryRows" :key="row.key" class="flex items-center justify-between gap-4 py-1">
+              <span class="text-gray-500 dark:text-gray-400">{{ row.label }}</span>
+              <span :class="['text-right font-medium text-gray-900 dark:text-white', row.emphasis ? 'text-lg font-bold text-primary-600 dark:text-primary-400' : '']">{{ row.value }}</span>
+            </div>
+          </div>
           <p v-if="scanHint" class="text-center text-sm text-gray-500 dark:text-gray-400">{{ scanHint }}</p>
           <button v-if="payUrl" class="btn btn-secondary text-sm" @click="reopenPopup">
             {{ t('payment.qr.openPayWindow') }}
@@ -251,6 +257,10 @@ const props = defineProps<{
   payUrl?: string
   orderType?: string
   currency?: string
+  paymentAmount?: number
+  ledgerAmount?: number
+  paymentCurrency?: string
+  ledgerCurrency?: string
   outTradeNo?: string
   mobileAlipayDeepLink?: boolean
 }>()
@@ -272,7 +282,7 @@ const cancelling = ref(false)
 const paidOrder = ref<PaymentOrder | null>(null)
 const deepLinkState = ref<AlipayDeepLinkState>('idle')
 const deepLinkFallbackVisible = ref(false)
-const paymentCurrency = computed(() => normalizePaymentCurrency(props.currency))
+const paymentCurrency = computed(() => normalizePaymentCurrency(props.paymentCurrency || props.currency))
 const localeCode = computed(() => {
   const raw = i18n.locale as unknown
   if (typeof raw === 'string') return raw
@@ -341,6 +351,62 @@ const displayOrderNumber = computed(() => props.outTradeNo || `#${props.orderId}
 function formatGatewayAmount(value: number, currency?: string | null): string {
   return formatPaymentAmount(value, currency || paymentCurrency.value, localeCode.value)
 }
+
+interface OrderSummaryRow {
+  key: string
+  label: string
+  value: string
+  emphasis?: boolean
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+const orderSummaryRows = computed<OrderSummaryRow[]>(() => {
+  const rows: OrderSummaryRow[] = []
+  const payCurrency = paymentCurrency.value || 'VND'
+  const ledgerCurrency = normalizePaymentCurrency(props.ledgerCurrency || 'USD')
+
+  if (props.outTradeNo) {
+    rows.push({ key: 'orderNo', label: t('payment.orders.orderNo'), value: props.outTradeNo })
+  }
+
+  rows.push({
+    key: 'orderType',
+    label: t('payment.orders.orderType'),
+    value: props.orderType === 'subscription'
+      ? t('payment.admin.subscriptionOrder')
+      : t('payment.admin.balanceOrder'),
+  })
+
+  if (isFiniteNumber(props.payAmount)) {
+    rows.push({
+      key: 'payAmount',
+      label: t('payment.orders.payAmount'),
+      value: formatMoney(props.payAmount, payCurrency),
+      emphasis: true,
+    })
+  }
+
+  if (isFiniteNumber(props.paymentAmount) && props.paymentAmount !== props.payAmount) {
+    rows.push({
+      key: 'baseAmount',
+      label: t('payment.orders.baseAmount'),
+      value: formatMoney(props.paymentAmount, payCurrency),
+    })
+  }
+
+  if (props.orderType === 'balance' && isFiniteNumber(props.ledgerAmount)) {
+    rows.push({
+      key: 'creditedBalance',
+      label: t('payment.creditedBalance'),
+      value: formatMoney(props.ledgerAmount, ledgerCurrency),
+    })
+  }
+
+  return rows
+})
 
 function isSuccessStatus(status: string | null | undefined): boolean {
   return status === 'COMPLETED' || status === 'PAID' || status === 'RECHARGING'

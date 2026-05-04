@@ -338,4 +338,37 @@ describe('PaymentStatusPanel', () => {
     expect(wrapper.find('canvas').exists()).toBe(false)
     expect(toCanvas).not.toHaveBeenCalled()
   })
+
+  it('shows SePay order details next to the QR code so users know what they are buying', async () => {
+    const wrapper = mount(PaymentStatusPanel, {
+      props: {
+        orderId: 42,
+        qrCode: 'https://qr.sepay.vn/img?amount=50000&des=VC20260429AbC123xY',
+        expiresAt: '2099-01-01T12:30:00Z',
+        paymentType: 'sepay',
+        orderType: 'balance',
+        payAmount: 50000,
+        paymentAmount: 50000,
+        ledgerAmount: 3.39,
+        paymentCurrency: 'VND',
+        ledgerCurrency: 'USD',
+        outTradeNo: 'vclaw_20260429AbC123xY',
+      },
+      global: {
+        stubs: {
+          Icon: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('payment.orders.orderNo')
+    expect(text).toContain('vclaw_20260429AbC123xY')
+    expect(text).toContain('payment.orders.payAmount')
+    expect(text).toContain('₫50,000')
+    expect(text).toContain('payment.creditedBalance')
+    expect(text).toContain('$3.39')
+  })
 })
