@@ -223,7 +223,7 @@ function createVue(): HostVue {
  *   - i18n 也是同一个实例, 让 sdk.i18n.t 在 plugin app 内的 useI18n() 也能用
  *   - 错误隔离: app.config.errorHandler 兜住 plugin 渲染抛错, 不冒泡到 host 主 app
  */
-function createRuntime(pinia: Pinia): HostRuntime {
+function createRuntime(pinia: Pinia, router: Router): HostRuntime {
   function createPluginApp(
     rootComponent: Component,
     target: Element,
@@ -232,6 +232,12 @@ function createRuntime(pinia: Pinia): HostRuntime {
     const app = createApp(rootComponent)
     app.use(pinia)
     app.use(i18n)
+    // Share the host's vue-router so plugin views can call useRoute() /
+    // useRouter() and have route.query / router.push({...}) work natively.
+    // Without this, plugin pages mounted at host routes (e.g. /recharge)
+    // would see useRoute() return undefined, breaking any view migrated
+    // from the host SPA.
+    app.use(router)
     if (options?.components) {
       for (const [name, component] of Object.entries(options.components)) {
         app.component(name, component)
@@ -334,7 +340,7 @@ export function createHostSdk(router: Router, pinia: Pinia): HostSdk {
     auth: createAuth(),
     http: createHttp(),
     vue: createVue(),
-    runtime: createRuntime(pinia),
+    runtime: createRuntime(pinia, router),
     keys: createKeys(),
   }
 }
