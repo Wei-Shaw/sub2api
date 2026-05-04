@@ -6,6 +6,8 @@
 import { apiClient } from './client'
 import type {
   LoginRequest,
+  InviteLoginRequest,
+  RedeemLoginRequest,
   RegisterRequest,
   AuthResponse,
   CurrentUserResponse,
@@ -88,21 +90,45 @@ export function clearAuthToken(): void {
  * @param credentials - Email and password
  * @returns Authentication response with token and user data, or 2FA required response
  */
+function persistAuthResponse(data: AuthResponse): void {
+  setAuthToken(data.access_token)
+  if (data.refresh_token) {
+    setRefreshToken(data.refresh_token)
+  }
+  if (data.expires_in) {
+    setTokenExpiresAt(data.expires_in)
+  }
+  localStorage.setItem('auth_user', JSON.stringify(data.user))
+}
+
 export async function login(credentials: LoginRequest): Promise<LoginResponse> {
   const { data } = await apiClient.post<LoginResponse>('/auth/login', credentials)
 
   // Only store token if 2FA is not required
   if (!isTotp2FARequired(data)) {
-    setAuthToken(data.access_token)
-    if (data.refresh_token) {
-      setRefreshToken(data.refresh_token)
-    }
-    if (data.expires_in) {
-      setTokenExpiresAt(data.expires_in)
-    }
-    localStorage.setItem('auth_user', JSON.stringify(data.user))
+    persistAuthResponse(data)
   }
 
+  return data
+}
+
+/**
+ * Redeem-code login for the web UI.
+ * Does not accept device binding fields; V-Claw/device flows use a separate API.
+ */
+export async function redeemLogin(request: RedeemLoginRequest): Promise<AuthResponse> {
+  const { data } = await apiClient.post<AuthResponse>('/auth/redeem-login', request)
+  persistAuthResponse(data)
+  return data
+}
+
+/**
+ * Device-bound invite login used by V-Claw.
+ * Supports first-time bootstrap codes and device-login codes that reopen an existing account.
+ */
+export async function inviteLogin(request: InviteLoginRequest): Promise<AuthResponse> {
+  const { data } = await apiClient.post<AuthResponse>('/auth/invite-login', request)
+  persistAuthResponse(data)
   return data
 }
 
@@ -659,6 +685,8 @@ export async function exchangePendingOAuthCompletion(
 
 export const authAPI = {
   login,
+  redeemLogin,
+  inviteLogin,
   login2FA,
   isTotp2FARequired,
   register,

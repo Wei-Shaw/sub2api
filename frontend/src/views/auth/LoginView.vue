@@ -10,73 +10,136 @@
           {{ t('auth.signInToAccount') }}
         </p>
       </div>
-      <!-- Login Form -->
-      <form @submit.prevent="handleLogin" class="space-y-5">
-        <!-- Email Input -->
-        <div>
-          <label for="email" class="input-label">
-            {{ t('auth.emailLabel') }}
-          </label>
-          <div class="relative">
-            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <Icon name="mail" size="md" class="text-gray-400 dark:text-dark-500" />
-            </div>
-            <input
-              id="email"
-              v-model="formData.email"
-              type="email"
-              required
-              autofocus
-              autocomplete="email"
-              :disabled="authActionDisabled"
-              class="input pl-11"
-              :class="{ 'input-error': errors.email }"
-              :placeholder="t('auth.emailPlaceholder')"
-            />
-          </div>
+      <div class="rounded-2xl border border-gray-200 bg-gray-50 p-1 dark:border-dark-700 dark:bg-dark-800/80">
+        <div class="grid grid-cols-2 gap-1">
+          <button
+            type="button"
+            :class="modeButtonClass('password')"
+            :disabled="isLoading"
+            @click="switchLoginMode('password')"
+          >
+            <Icon name="mail" size="sm" class="mr-2" />
+            {{ t('auth.loginWithEmail') }}
+          </button>
+          <button
+            type="button"
+            :class="modeButtonClass('redeem')"
+            :disabled="isLoading"
+            @click="switchLoginMode('redeem')"
+          >
+            <Icon name="gift" size="sm" class="mr-2" />
+            {{ t('auth.loginWithRedeemCode') }}
+          </button>
         </div>
+      </div>
 
-        <!-- Password Input -->
-        <div>
-          <label for="password" class="input-label">
-            {{ t('auth.passwordLabel') }}
-          </label>
-          <div class="relative">
-            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
-              <Icon name="lock" size="md" class="text-gray-400 dark:text-dark-500" />
+      <!-- Login Form -->
+      <form @submit.prevent="handleSubmit" class="space-y-5">
+        <template v-if="loginMode === 'password'">
+          <!-- Email Input -->
+          <div>
+            <label for="email" class="input-label">
+              {{ t('auth.emailLabel') }}
+            </label>
+            <div class="relative">
+              <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+                <Icon name="mail" size="md" class="text-gray-400 dark:text-dark-500" />
+              </div>
+              <input
+                id="email"
+                v-model="formData.email"
+                type="email"
+                required
+                autofocus
+                autocomplete="email"
+                :disabled="authActionDisabled"
+                class="input pl-11"
+                :class="{ 'input-error': errors.email }"
+                :placeholder="t('auth.emailPlaceholder')"
+              />
             </div>
-            <input
-              id="password"
-              v-model="formData.password"
-              :type="showPassword ? 'text' : 'password'"
-              required
-              autocomplete="current-password"
-              :disabled="authActionDisabled"
-              class="input pl-11 pr-11"
-              :class="{ 'input-error': errors.password }"
-              :placeholder="t('auth.passwordPlaceholder')"
-            />
-            <button
-              type="button"
-              @click="showPassword = !showPassword"
-              :disabled="authActionDisabled"
-              class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-dark-300"
-            >
-              <Icon v-if="showPassword" name="eyeOff" size="md" />
-              <Icon v-else name="eye" size="md" />
-            </button>
+            <p v-if="errors.email" class="input-error-text">
+              {{ errors.email }}
+            </p>
           </div>
-          <div class="mt-1 flex items-center justify-between">
-            <span></span>
-            <router-link
-              v-if="passwordResetEnabled && !backendModeEnabled"
-              to="/forgot-password"
-              class="text-sm font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
-            >
-              {{ t('auth.forgotPassword') }}
-            </router-link>
+
+          <!-- Password Input -->
+          <div>
+            <label for="password" class="input-label">
+              {{ t('auth.passwordLabel') }}
+            </label>
+            <div class="relative">
+              <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+                <Icon name="lock" size="md" class="text-gray-400 dark:text-dark-500" />
+              </div>
+              <input
+                id="password"
+                v-model="formData.password"
+                :type="showPassword ? 'text' : 'password'"
+                required
+                autocomplete="current-password"
+                :disabled="authActionDisabled"
+                class="input pl-11 pr-11"
+                :class="{ 'input-error': errors.password }"
+                :placeholder="t('auth.passwordPlaceholder')"
+              />
+              <button
+                type="button"
+                @click="showPassword = !showPassword"
+                :disabled="authActionDisabled"
+                class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-dark-300"
+              >
+                <Icon v-if="showPassword" name="eyeOff" size="md" />
+                <Icon v-else name="eye" size="md" />
+              </button>
+            </div>
+            <div class="mt-1 flex items-center justify-between">
+              <p v-if="errors.password" class="input-error-text">
+                {{ errors.password }}
+              </p>
+              <span v-else></span>
+              <router-link
+                v-if="passwordResetEnabled && !backendModeEnabled"
+                to="/forgot-password"
+                class="text-sm font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+              >
+                {{ t('auth.forgotPassword') }}
+              </router-link>
+            </div>
           </div>
-        </div>
+        </template>
+
+        <template v-else>
+          <div class="rounded-xl border border-primary-200 bg-primary-50 p-4 text-sm text-primary-700 dark:border-primary-800/50 dark:bg-primary-900/20 dark:text-primary-300">
+            <p class="font-medium">{{ t('auth.redeemCodeHint') }}</p>
+          </div>
+
+          <div>
+            <label for="invitation-code" class="input-label">
+              {{ t('auth.redeemCodeLabel') }}
+            </label>
+            <div class="relative">
+              <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5">
+                <Icon name="gift" size="md" class="text-gray-400 dark:text-dark-500" />
+              </div>
+              <input
+                id="invitation-code"
+                v-model="inviteForm.invitation_code"
+                type="text"
+                required
+                autofocus
+                autocapitalize="characters"
+                :disabled="authActionDisabled"
+                class="input pl-11 uppercase"
+                :class="{ 'input-error': errors.invitationCode }"
+                :placeholder="t('auth.redeemCodePlaceholder')"
+              />
+            </div>
+            <p v-if="errors.invitationCode" class="input-error-text">
+              {{ errors.invitationCode }}
+            </p>
+          </div>
+        </template>
 
         <!-- Turnstile Widget -->
         <div v-if="turnstileEnabled && turnstileSiteKey">
@@ -87,7 +150,26 @@
             @expire="onTurnstileExpire"
             @error="onTurnstileError"
           />
+          <p v-if="errors.turnstile" class="input-error-text mt-2 text-center">
+            {{ errors.turnstile }}
+          </p>
         </div>
+
+        <transition name="fade">
+          <div
+            v-if="errorMessage"
+            class="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/50 dark:bg-red-900/20"
+          >
+            <div class="flex items-start gap-3">
+              <div class="flex-shrink-0">
+                <Icon name="exclamationCircle" size="md" class="text-red-500" />
+              </div>
+              <p class="text-sm text-red-700 dark:text-red-400">
+                {{ errorMessage }}
+              </p>
+            </div>
+          </div>
+        </transition>
 
         <!-- Submit Button -->
         <button
@@ -115,8 +197,8 @@
               d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
             ></path>
           </svg>
-          <Icon v-else name="login" size="md" class="mr-2" />
-          {{ isLoading ? t('auth.signingIn') : t('auth.signIn') }}
+          <Icon v-else :name="loginMode === 'redeem' ? 'gift' : 'login'" size="md" class="mr-2" />
+          {{ submitLabel }}
         </button>
 
         <LoginAgreementPrompt
@@ -244,6 +326,7 @@ const passkeyLoading = ref<boolean>(false)
 const errorMessage = ref<string>('')
 const showPassword = ref<boolean>(false)
 const publicSettingsLoaded = ref<boolean>(false)
+const loginMode = ref<'password' | 'redeem'>('password')
 
 // Public settings
 const turnstileEnabled = ref<boolean>(false)
@@ -281,14 +364,26 @@ const formData = reactive({
   password: ''
 })
 
+const inviteForm = reactive({
+  invitation_code: ''
+})
+
 const errors = reactive({
   email: '',
   password: '',
+  invitationCode: '',
   turnstile: ''
 })
 
+const submitLabel = computed(() => {
+  if (loginMode.value === 'redeem') {
+    return isLoading.value ? t('auth.redeemSigningIn') : t('auth.redeemSignIn')
+  }
+  return isLoading.value ? t('auth.signingIn') : t('auth.signIn')
+})
+
 const validationToastMessage = computed(
-  () => errors.email || errors.password || errors.turnstile || ''
+  () => errors.email || errors.password || errors.invitationCode || errors.turnstile || ''
 )
 
 const agreementGateActive = computed(
@@ -343,7 +438,6 @@ onMounted(async () => {
     oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
     githubOAuthEnabled.value = settings.github_oauth_enabled
     googleOAuthEnabled.value = settings.google_oauth_enabled
-    backendModeEnabled.value = settings.backend_mode_enabled
     passwordResetEnabled.value = settings.password_reset_enabled
     passkeyEnabled.value = settings.passkey_enabled === true
     applyLoginAgreementSettings(settings)
@@ -418,6 +512,25 @@ function rejectLoginAgreement(): void {
   appStore.showWarning(t('legal.loginAgreementPrompt.loginRejectedWarning'))
 }
 
+function modeButtonClass(mode: 'password' | 'redeem'): string {
+  const isActive = loginMode.value === mode
+  return [
+    'inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-medium transition-colors',
+    isActive
+      ? 'bg-white text-primary-600 shadow-sm dark:bg-dark-700 dark:text-primary-300'
+      : 'text-gray-500 hover:text-gray-700 dark:text-dark-300 dark:hover:text-white'
+  ].join(' ')
+}
+
+function switchLoginMode(mode: 'password' | 'redeem'): void {
+  loginMode.value = mode
+  errorMessage.value = ''
+  errors.email = ''
+  errors.password = ''
+  errors.invitationCode = ''
+  errors.turnstile = ''
+}
+
 // ==================== Turnstile Handlers ====================
 
 function onTurnstileVerify(token: string): void {
@@ -441,6 +554,7 @@ function validateForm(): boolean {
   // Reset errors
   errors.email = ''
   errors.password = ''
+  errors.invitationCode = ''
   errors.turnstile = ''
 
   let isValid = true
@@ -453,22 +567,30 @@ function validateForm(): boolean {
     return false
   }
 
-  // Email validation
-  if (!formData.email.trim()) {
-    errors.email = t('auth.emailRequired')
-    isValid = false
-  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-    errors.email = t('auth.invalidEmail')
-    isValid = false
-  }
+  if (loginMode.value === 'password') {
+    // Email validation
+    if (!formData.email.trim()) {
+      errors.email = t('auth.emailRequired')
+      isValid = false
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      errors.email = t('auth.invalidEmail')
+      isValid = false
+    }
 
-  // Password validation
-  if (!formData.password) {
-    errors.password = t('auth.passwordRequired')
-    isValid = false
-  } else if (formData.password.length < 6) {
-    errors.password = t('auth.passwordMinLength')
-    isValid = false
+    // Password validation
+    if (!formData.password) {
+      errors.password = t('auth.passwordRequired')
+      isValid = false
+    } else if (formData.password.length < 6) {
+      errors.password = t('auth.passwordMinLength')
+      isValid = false
+    }
+  } else {
+    inviteForm.invitation_code = inviteForm.invitation_code.trim().toUpperCase()
+    if (!inviteForm.invitation_code) {
+      errors.invitationCode = t('auth.redeemCodeRequired')
+      isValid = false
+    }
   }
 
   // Turnstile validation
@@ -480,9 +602,70 @@ function validateForm(): boolean {
   return isValid
 }
 
+function resetTurnstile(): void {
+  if (turnstileRef.value) {
+    turnstileRef.value.reset()
+    turnstileToken.value = ''
+  }
+}
+
+function setErrorMessage(error: unknown, fallback: string): void {
+  const err = error as { message?: string; response?: { data?: { detail?: string; message?: string } } }
+  errorMessage.value = err.response?.data?.detail || err.response?.data?.message || err.message || fallback
+  appStore.showError(errorMessage.value)
+}
+
+async function redirectAfterPasswordLogin(): Promise<void> {
+  const redirectTo = (router.currentRoute.value.query.redirect as string) || '/dashboard'
+  await router.push(redirectTo)
+}
+
+async function redirectAfterRedeemLogin(): Promise<void> {
+  await router.push({
+    path: '/profile',
+    query: { inviteBootstrap: '1' }
+  })
+}
+
 // ==================== Form Handlers ====================
 
-async function handleLogin(): Promise<void> {
+async function handlePasswordLogin(): Promise<void> {
+  const response = await authStore.login({
+    email: formData.email,
+    password: formData.password,
+    turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined
+  })
+
+  // Check if 2FA is required
+  if (isTotp2FARequired(response)) {
+    const totpResponse = response as TotpLoginResponse
+    totpTempToken.value = totpResponse.temp_token || ''
+    totpUserEmailMasked.value = totpResponse.user_email_masked || ''
+    show2FAModal.value = true
+    isLoading.value = false
+    return
+  }
+
+  // Show success toast
+  clearAllAffiliateReferralCodes()
+  appStore.showSuccess(t('auth.loginSuccess'))
+
+  // Redirect to dashboard or intended route
+  await redirectAfterPasswordLogin()
+}
+
+async function handleRedeemLogin(): Promise<void> {
+  await authStore.redeemLogin({
+    invitation_code: inviteForm.invitation_code,
+    turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined
+  })
+
+  clearAllAffiliateReferralCodes()
+  appStore.showSuccess(t('auth.redeemLoginSuccess'))
+  await redirectAfterRedeemLogin()
+}
+
+async function handleSubmit(): Promise<void> {
   // Clear previous error
   errorMessage.value = ''
 
@@ -494,41 +677,15 @@ async function handleLogin(): Promise<void> {
   isLoading.value = true
 
   try {
-    // Call auth store login
-    const response = await authStore.login({
-      email: formData.email,
-      password: formData.password,
-      turnstile_token: turnstileEnabled.value ? turnstileToken.value : undefined
-    })
-
-    // Check if 2FA is required
-    if (isTotp2FARequired(response)) {
-      const totpResponse = response as TotpLoginResponse
-      totpTempToken.value = totpResponse.temp_token || ''
-      totpUserEmailMasked.value = totpResponse.user_email_masked || ''
-      show2FAModal.value = true
-      isLoading.value = false
+    if (loginMode.value === 'redeem') {
+      await handleRedeemLogin()
       return
     }
 
-    // Show success toast
-    clearAllAffiliateReferralCodes()
-    appStore.showSuccess(t('auth.loginSuccess'))
-
-    // Redirect to dashboard or intended route
-    const redirectTo = (router.currentRoute.value.query.redirect as string) || '/dashboard'
-    await router.push(redirectTo)
+    await handlePasswordLogin()
   } catch (error: unknown) {
-    // Reset Turnstile on error
-    if (turnstileRef.value) {
-      turnstileRef.value.reset()
-      turnstileToken.value = ''
-    }
-
-    errorMessage.value = extractI18nErrorMessage(error, t, 'auth.errors', t('auth.loginFailed'))
-
-    // Also show error toast
-    appStore.showError(errorMessage.value)
+    resetTurnstile()
+    setErrorMessage(error, loginMode.value === 'redeem' ? t('auth.redeemLoginFailed') : t('auth.loginFailed'))
   } finally {
     isLoading.value = false
   }
@@ -577,8 +734,7 @@ async function handle2FAVerify(code: string): Promise<void> {
     appStore.showSuccess(t('auth.loginSuccess'))
 
     // Redirect to dashboard or intended route
-    const redirectTo = (router.currentRoute.value.query.redirect as string) || '/dashboard'
-    await router.push(redirectTo)
+    await redirectAfterPasswordLogin()
   } catch (error: unknown) {
     const err = error as { message?: string; response?: { data?: { message?: string } } }
     const message = err.response?.data?.message || err.message || t('profile.totp.loginFailed')
