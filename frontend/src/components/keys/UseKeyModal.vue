@@ -694,16 +694,23 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     }
   }
 
-  const openCodeBuiltinToolsForModel = (id: string) => ({
+  const openCodeBuiltinToolsForModel = (_id: string) => ({
+    web_search: true
+  })
+
+  const openCodeImageGenerationBuiltinTools = () => ({
     web_search: true,
-    ...(id.toLowerCase().startsWith('gpt-5.5')
-      ? {
-          image_generation: {
-            model: 'gpt-image-2',
-            output_format: 'png'
-          }
-        }
-      : {})
+    image_generation: {
+      enabled: true,
+      model: 'gpt-image-2',
+      output_format: 'png'
+    }
+  })
+
+  const openCodeImageVariant = () => ({
+    metadata: {
+      builtin_tools: openCodeImageGenerationBuiltinTools()
+    }
   })
 
   // Mirrors the upstream runtime-derived model set, not the UI custom-provider
@@ -746,7 +753,7 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       })
     )
 
-  const withSysVariants = <T extends { id: string; name: string }>(models: Record<string, T>) => {
+  const withSysVariants = <T extends { id: string; name: string; options?: Record<string, unknown>; headers?: Record<string, unknown>; variants?: Record<string, unknown> }>(models: Record<string, T>) => {
     const expanded: Record<string, T> = {}
 
     for (const [id, config] of Object.entries(models)) {
@@ -754,7 +761,10 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       expanded[`${id}-Sys`] = {
         ...config,
         id: `${config.id}-Sys`,
-        name: `${config.name} (Sys)`
+        name: `${config.name} (Sys)`,
+        ...(config.options ? { options: { ...config.options } } : {}),
+        ...(config.headers ? { headers: { ...config.headers } } : {}),
+        ...(config.variants ? { variants: { ...config.variants } } : {})
       }
     }
 
@@ -794,6 +804,14 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
 
   const openCodeOpenAIBaseModels = buildOpenCodeOpenAIBaseModels(openaiSource ?? {})
   const openaiModels = withSysVariants(openCodeOpenAIBaseModels)
+  for (const [id, model] of Object.entries(openaiModels)) {
+    if (id.toLowerCase().startsWith('gpt-5.5')) {
+      model.variants = {
+        ...(model.variants ?? {}),
+        image: openCodeImageVariant()
+      }
+    }
+  }
   const geminiModels = {
     'gemini-2.0-flash': {
       name: 'Gemini 2.0 Flash',
@@ -1089,7 +1107,20 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
             options: {
               store: false
             }
-          }
+          },
+          ...(platform === 'sub2api-openai'
+            ? {
+                image: {
+                  mode: 'subagent',
+                  description: 'Generate images with GPT-5.5 Image Fast (Sys)',
+                  model: 'sub2api-openai/gpt-5.5-fast-Sys',
+                  variant: 'image',
+                  options: {
+                    store: false
+                  }
+                }
+              }
+            : {})
         }
       : undefined
 
