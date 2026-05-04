@@ -485,12 +485,14 @@ func normalizeKnownCodexModel(model string) (string, bool) {
 		return model, true
 	}
 
-	modelID := model
-	if strings.Contains(modelID, "/") {
-		parts := strings.Split(modelID, "/")
-		modelID = parts[len(parts)-1]
-	}
+	modelID := lastOpenAIModelSegment(model)
 
+	if normalized := canonicalizeOpenAIModelAliasSpelling(modelID); normalized != "" {
+		modelID = normalized
+	}
+	if mapped := normalizeKnownOpenAICodexModel(modelID); mapped != "" {
+		return mapped, true
+	}
 	key := codexModelLookupKey(modelID)
 	if key == "" {
 		return "", false

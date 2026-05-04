@@ -863,6 +863,8 @@ export default {
     perMillionTokens: '/ 1M Token',
     unitPrice: '单次价格',
     imageUnitPrice: '单张价格',
+    imageTotalPrice: '图片总价',
+    imageCount: '图片张数',
     cacheRead: '读取',
     cacheWrite: '写入',
     serviceTier: '服务档位',
@@ -2230,7 +2232,13 @@ export default {
       },
       imagePricing: {
         title: '图片生成计费',
-        description: '配置图片生成模型的图片生成价格，留空则使用默认价格'
+        description: '配置图片生成能力和图片基础单价，留空则使用默认价格',
+        allowImageGeneration: '允许当前分组生图',
+        independentMultiplier: '生图倍率独立',
+        imageMultiplier: '生图独立倍率',
+        modeHint: '默认关闭独立倍率时，图片费用 = 图片价格 × 当前分组有效倍率；开启独立倍率后，图片费用 = 图片价格 × 生图独立倍率。',
+        finalPricePreview: '最终单张价格预览',
+        notConfigured: '未配置'
       },
       claudeCode: {
         title: 'Claude Code 客户端限制',

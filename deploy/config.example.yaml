@@ -340,6 +340,30 @@ gateway:
   # Stream keepalive interval (seconds), 0=disable
   # 流式 keepalive 间隔（秒），0=禁用
   stream_keepalive_interval: 10
+  # Image stream data interval timeout (seconds), 0=disable; independent from ordinary text streams
+  # 图片流数据间隔超时（秒），0=禁用；独立于普通文本流式
+  image_stream_data_interval_timeout: 900
+  # Image stream keepalive interval (seconds), 0=disable; independent from ordinary text streams
+  # 图片流式 keepalive 间隔（秒），0=禁用；独立于普通文本流式
+  image_stream_keepalive_interval: 10
+  # Image generation independent concurrency limiter (process-local, default disabled)
+  # 图片生成独立并发限制（进程级，默认关闭；多实例总上限约为实例数×该值）
+  image_concurrency:
+    # Enable image-only concurrency protection; false keeps existing behavior unchanged
+    # 是否启用图片独立并发保护；false 保持现有行为不变
+    enabled: false
+    # Max concurrent image generation requests in this process, 0=unlimited
+    # 当前进程允许同时处理的图片生成请求数，0=不限制
+    max_concurrent_requests: 0
+    # Overflow mode when the image concurrency limit is full: reject/wait
+    # 图片并发满时的处理方式：reject=立即拒绝，wait=等待槽位
+    overflow_mode: "reject"
+    # Wait timeout for overflow_mode=wait (seconds), 0=do not wait
+    # wait 模式等待图片并发槽位的超时时间（秒），0=不等待
+    wait_timeout_seconds: 30
+    # Max image requests waiting in this process when overflow_mode=wait, 0=unlimited
+    # wait 模式当前进程允许排队等待的图片请求数，0=不限制
+    max_waiting_requests: 100
   # SSE max line size in bytes (default: 40MB)
   # SSE 单行最大字节数（默认 40MB）
   max_line_size: 41943040
