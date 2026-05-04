@@ -1517,6 +1517,7 @@ func TestOpenAIChatCompletions_ImageScheduleRequirementSkipsDefaultModelFallback
 		User:    &service.User{ID: 4},
 	})
 	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 4, Concurrency: 1})
+	c.Set(string(middleware.ContextKeyUserRole), service.RoleAdmin)
 
 	var capturedReqs []service.OpenAIAccountScheduleRequest
 	h := newOpenAIHandlerCapturingScheduleRequestForTest(t, func(ctx context.Context, req service.OpenAIAccountScheduleRequest) (*service.AccountSelectionResult, service.OpenAIAccountScheduleDecision, error) {
