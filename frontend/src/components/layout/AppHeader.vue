@@ -235,8 +235,7 @@ const user = computed(() => authStore.user)
 const dropdownOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
-const defaultDocsUrl = 'https://docs.devrouter.dev/'
-const docUrl = computed(() => appStore.docUrl?.trim() || defaultDocsUrl)
+const docUrl = computed(() => appStore.docUrl?.trim() || '')
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
 
 // 只在标准模式的管理员下显示新手引导按钮
