@@ -40,12 +40,54 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	if err := json.Unmarshal(body, &anthropicReq); err != nil {
 		return nil, fmt.Errorf("parse anthropic request: %w", err)
 REDACTED
+	anthropicDigestReq := cloneAnthropicRequestForDigest(&anthropicReq)
 	originalModel := anthropicReq.Model
 	applyOpenAICompatModelNormalization(&anthropicReq)
 	normalizedModel := anthropicReq.Model
 	clientStream := anthropicReq.Stream // client's original stream preference
 
-	// 2. Convert Anthropic → Responses
+	// 2. Model mapping
+	billingModel := resolveOpenAIForwardModel(account, normalizedModel, defaultMappedModel)
+	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
+	promptCacheKey = strings.TrimSpace(promptCacheKey)
+	apiKeyID := getAPIKeyIDFromContext(c)
+	anthropicDigestChain := ""
+	anthropicMatchedDigestChain := ""
+	compatPromptCacheInjected := false
+	if promptCacheKey == "" && shouldAutoInjectPromptCacheKeyForCompat(upstreamModel) {
+		promptCacheKey = promptCacheKeyFromAnthropicMetadataSession(&anthropicReq)
+		if promptCacheKey == "" {
+			promptCacheKey = deriveAnthropicCacheControlPromptCacheKey(&anthropicReq)
+	REDACTED
+		if promptCacheKey == "" {
+			anthropicDigestChain = buildOpenAICompatAnthropicDigestChain(anthropicDigestReq)
+			if reusedKey, matchedChain := s.findOpenAICompatAnthropicDigestPromptCacheKey(account, apiKeyID, anthropicDigestChain); reusedKey != "" {
+				promptCacheKey = reusedKey
+				anthropicMatchedDigestChain = matchedChain
+		REDACTED else {
+				promptCacheKey = promptCacheKeyFromAnthropicDigest(anthropicDigestChain)
+		REDACTED
+	REDACTED
+		compatPromptCacheInjected = promptCacheKey != ""
+REDACTED
+	compatReplayTrimmed := false
+	compatReplayGuardEnabled := shouldAutoInjectPromptCacheKeyForCompat(upstreamModel)
+	compatContinuationEnabled := openAICompatContinuationEnabled(account, upstreamModel)
+	previousResponseID := ""
+	if compatContinuationEnabled {
+		previousResponseID = s.getOpenAICompatSessionResponseID(ctx, c, account, promptCacheKey)
+REDACTED
+	compatContinuationDisabled := compatContinuationEnabled &&
+		s.isOpenAICompatSessionContinuationDisabled(ctx, c, account, promptCacheKey)
+	compatTurnState := ""
+	// OAuth/Plus relies on session_id + x-codex-turn-state; trimming to a
+	// sliding 12-message window makes the cached prefix stall at system/tools.
+	// Keep full replay there so upstream prompt caching can grow turn by turn.
+	if compatReplayGuardEnabled && account.Type != AccountTypeOAuth && previousResponseID == "" && !compatContinuationDisabled {
+		compatReplayTrimmed = applyAnthropicCompatFullReplayGuard(&anthropicReq)
+REDACTED
+
+	// 3. Convert Anthropic → Responses after compatibility-only replay guard.
 	responsesReq, err := apicompat.AnthropicToResponses(&anthropicReq)
 	if err != nil {
 		return nil, fmt.Errorf("convert anthropic to responses: %w", err)
@@ -56,24 +98,50 @@ REDACTED
 	responsesReq.Stream = true
 	isStream := true
 
-	// 2b. Handle BetaFastMode → service_tier: "priority"
+	// 3b. Handle BetaFastMode → service_tier: "priority"
 	if containsBetaToken(c.GetHeader("anthropic-beta"), claude.BetaFastMode) {
 		responsesReq.ServiceTier = "priority"
 REDACTED
 
-	// 3. Model mapping
-	billingModel := resolveOpenAIForwardModel(account, normalizedModel, defaultMappedModel)
-	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	responsesReq.Model = upstreamModel
+	if previousResponseID != "" {
+		responsesReq.PreviousResponseID = previousResponseID
+		trimAnthropicCompatResponsesInputToLatestTurn(responsesReq)
+REDACTED
+	if compatReplayGuardEnabled && account.Type != AccountTypeOAuth {
+		appendOpenAICompatClaudeCodeTodoGuard(responsesReq)
+REDACTED
 
-	logger.L().Debug("openai messages: model mapping applied",
+	logFields := []zap.Field{
 		zap.Int64("account_id", account.ID),
 		zap.String("original_model", originalModel),
 		zap.String("normalized_model", normalizedModel),
 		zap.String("billing_model", billingModel),
 		zap.String("upstream_model", upstreamModel),
 		zap.Bool("stream", isStream),
-	)
+REDACTED
+	if compatPromptCacheInjected {
+		logFields = append(logFields,
+			zap.Bool("compat_prompt_cache_key_injected", true),
+			zap.String("compat_prompt_cache_key_sha256", hashSensitiveValueForLog(promptCacheKey)),
+		)
+REDACTED
+	if compatReplayTrimmed {
+		logFields = append(logFields,
+			zap.Bool("compat_full_replay_trimmed", true),
+			zap.Int("compat_messages_after_trim", len(anthropicReq.Messages)),
+		)
+REDACTED
+	if previousResponseID != "" {
+		logFields = append(logFields,
+			zap.Bool("compat_previous_response_id_attached", true),
+			zap.String("compat_previous_response_id", truncateOpenAIWSLogValue(previousResponseID, openAIWSIDValueMaxLen)),
+		)
+REDACTED
+	if compatTurnState != "" {
+		logFields = append(logFields, zap.Bool("compat_turn_state_attached", true))
+REDACTED
+	logger.L().Debug("openai messages: model mapping applied", logFields...)
 
 	// 4. Marshal Responses request body, then apply OAuth codex transform
 	responsesBody, err := json.Marshal(responsesReq)
@@ -86,7 +154,10 @@ REDACTED
 		if err := json.Unmarshal(responsesBody, &reqBody); err != nil {
 			return nil, fmt.Errorf("unmarshal for codex transform: %w", err)
 	REDACTED
-		codexResult := applyCodexOAuthTransform(reqBody, false, false)
+		codexResult := applyCodexOAuthTransformWithOptions(reqBody, codexOAuthTransformOptions{
+			SkipDefaultInstructions: true,
+			PreserveToolCallIDs:     true,
+	REDACTED)
 		forcedTemplateText := ""
 		if s.cfg != nil {
 			forcedTemplateText = s.cfg.Gateway.ForcedCodexInstructionsTemplate
@@ -96,6 +167,9 @@ REDACTED
 			templateUpstreamModel = codexResult.NormalizedModel
 	REDACTED
 		existingInstructions, _ := reqBody["instructions"].(string)
+		if strings.TrimSpace(existingInstructions) == "" {
+			existingInstructions = extractPromptLikeInstructionsFromInput(reqBody)
+	REDACTED
 		if _, err := applyForcedCodexInstructionsTemplate(reqBody, forcedTemplateText, forcedCodexInstructionsTemplateData{
 			ExistingInstructions: strings.TrimSpace(existingInstructions),
 			OriginalModel:        originalModel,
@@ -105,13 +179,19 @@ REDACTED
 	REDACTED); err != nil {
 			return nil, err
 	REDACTED
+		ensureCodexOAuthInstructionsField(reqBody)
+		if shouldAutoInjectPromptCacheKeyForCompat(upstreamModel) {
+			appendOpenAICompatClaudeCodeTodoGuardToRequestBody(reqBody)
+	REDACTED
 		if codexResult.NormalizedModel != "" {
 			upstreamModel = codexResult.NormalizedModel
 	REDACTED
 		if codexResult.PromptCacheKey != "" {
 			promptCacheKey = codexResult.PromptCacheKey
-	REDACTED else if promptCacheKey != "" {
-			reqBody["prompt_cache_key"] = promptCacheKey
+	REDACTED
+		delete(reqBody, "prompt_cache_key")
+		if shouldAutoInjectPromptCacheKeyForCompat(upstreamModel) {
+			compatTurnState = s.getOpenAICompatSessionTurnState(ctx, c, account, promptCacheKey)
 	REDACTED
 		// OAuth codex transform forces stream=true upstream, so always use
 		// the streaming response handler regardless of what the client asked.
@@ -174,8 +254,25 @@ REDACTED
 	// Override session_id with a deterministic UUID derived from the isolated
 	// session key, ensuring different API keys produce different upstream sessions.
 	if promptCacheKey != "" {
-		apiKeyID := getAPIKeyIDFromContext(c)
-		upstreamReq.Header.Set("session_id", generateSessionUUID(isolateOpenAISessionID(apiKeyID, promptCacheKey)))
+		isolatedSessionID := generateSessionUUID(isolateOpenAISessionID(apiKeyID, promptCacheKey))
+		upstreamReq.Header.Set("session_id", isolatedSessionID)
+		if upstreamReq.Header.Get("conversation_id") != "" {
+			upstreamReq.Header.Set("conversation_id", isolatedSessionID)
+	REDACTED
+REDACTED
+	if account.Type == AccountTypeOAuth {
+		// Anthropic Messages compatibility uses the ChatGPT Codex SSE endpoint.
+		// Match airgate-openai's request shape: the SSE endpoint does not need
+		// the Responses experimental beta header, and forcing originator can make
+		// ChatGPT select a different internal continuation path.
+		upstreamReq.Header.Del("OpenAI-Beta")
+		upstreamReq.Header.Del("originator")
+REDACTED
+	if account.Type == AccountTypeOAuth && promptCacheKey != "" && strings.TrimSpace(c.GetHeader("conversation_id")) == "" {
+		upstreamReq.Header.Del("conversation_id")
+REDACTED
+	if compatTurnState != "" && upstreamReq.Header.Get("x-codex-turn-state") == "" {
+		upstreamReq.Header.Set("x-codex-turn-state", compatTurnState)
 REDACTED
 
 	// 7. Send request
@@ -208,6 +305,19 @@ REDACTED
 
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+		if previousResponseID != "" && (isOpenAICompatPreviousResponseNotFound(resp.StatusCode, upstreamMsg, respBody) || isOpenAICompatPreviousResponseUnsupported(resp.StatusCode, upstreamMsg, respBody)) {
+			if isOpenAICompatPreviousResponseUnsupported(resp.StatusCode, upstreamMsg, respBody) {
+				s.disableOpenAICompatSessionContinuation(ctx, c, account, promptCacheKey)
+		REDACTED else {
+				s.deleteOpenAICompatSessionResponseID(ctx, c, account, promptCacheKey)
+		REDACTED
+			logger.L().Info("openai messages: previous_response_id unavailable, retrying without continuation",
+				zap.Int64("account_id", account.ID),
+				zap.String("previous_response_id", truncateOpenAIWSLogValue(previousResponseID, openAIWSIDValueMaxLen)),
+				zap.String("upstream_model", upstreamModel),
+			)
+			return s.ForwardAsAnthropic(ctx, c, account, body, promptCacheKey, defaultMappedModel)
+	REDACTED
 		if s.shouldFailoverOpenAIUpstreamResponse(resp.StatusCode, upstreamMsg, respBody) {
 			upstreamDetail := ""
 			if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
@@ -240,6 +350,12 @@ REDACTED
 		return s.handleAnthropicErrorResponse(resp, c, account)
 REDACTED
 
+	if account.Type == AccountTypeOAuth && promptCacheKey != "" {
+		if turnState := strings.TrimSpace(resp.Header.Get("x-codex-turn-state")); turnState != "" {
+			s.bindOpenAICompatSessionTurnState(ctx, c, account, promptCacheKey, turnState)
+	REDACTED
+REDACTED
+
 	// 9. Handle normal response
 	// Upstream is always streaming; choose response format based on client preference.
 	var result *OpenAIForwardResult
@@ -253,6 +369,12 @@ REDACTED
 
 	// Propagate ServiceTier and ReasoningEffort to result for billing
 	if handleErr == nil && result != nil {
+		if compatContinuationEnabled && promptCacheKey != "" && result.ResponseID != "" {
+			s.bindOpenAICompatSessionResponseID(ctx, c, account, promptCacheKey, result.ResponseID)
+	REDACTED
+		if promptCacheKey != "" && anthropicDigestChain != "" {
+			s.bindOpenAICompatAnthropicDigestPromptCacheKey(account, apiKeyID, anthropicDigestChain, promptCacheKey, anthropicMatchedDigestChain)
+	REDACTED
 		if responsesReq.ServiceTier != "" {
 			st := responsesReq.ServiceTier
 			result.ServiceTier = &st
@@ -271,6 +393,19 @@ REDACTED
 REDACTED
 
 	return result, handleErr
+REDACTED
+
+func ensureCodexOAuthInstructionsField(reqBody map[string]any) {
+	if reqBody == nil {
+		return
+REDACTED
+	if value, ok := reqBody["instructions"]; !ok || value == nil {
+		reqBody["instructions"] = ""
+		return
+REDACTED
+	if _, ok := reqBody["instructions"].(string); !ok {
+		reqBody["instructions"] = ""
+REDACTED
 REDACTED
 
 // handleAnthropicErrorResponse reads an upstream error and returns it in
@@ -322,6 +457,7 @@ REDACTED
 
 	return &OpenAIForwardResult{
 		RequestID:     requestID,
+		ResponseID:    finalResponse.ID,
 		Usage:         usage,
 		Model:         originalModel,
 		BillingModel:  billingModel,
@@ -505,6 +641,7 @@ REDACTED
 	state := apicompat.NewResponsesEventToAnthropicState()
 	state.Model = originalModel
 	var usage OpenAIUsage
+	responseID := ""
 	var firstTokenMs *int
 	firstChunk := true
 	clientDisconnected := false
@@ -534,6 +671,7 @@ REDACTED
 	resultWithUsage := func() *OpenAIForwardResult {
 		return &OpenAIForwardResult{
 			RequestID:     requestID,
+			ResponseID:    responseID,
 			Usage:         usage,
 			Model:         originalModel,
 			BillingModel:  billingModel,
@@ -563,8 +701,13 @@ REDACTED
 
 		// 仅按兼容转换器支持的终止事件提取 usage，避免无意扩大事件语义。
 		isTerminalEvent := isOpenAICompatResponsesTerminalEvent(event.Type)
-		if isTerminalEvent && event.Response != nil && event.Response.Usage != nil {
-			usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
+		if isTerminalEvent && event.Response != nil {
+			if id := strings.TrimSpace(event.Response.ID); id != "" {
+				responseID = id
+		REDACTED
+			if event.Response.Usage != nil {
+				usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
+		REDACTED
 	REDACTED
 
 		// Convert to Anthropic events

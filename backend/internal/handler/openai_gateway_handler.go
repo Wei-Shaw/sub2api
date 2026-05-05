@@ -632,21 +632,7 @@ REDACTED
 
 	sessionHash := h.gatewayService.GenerateSessionHash(c, body)
 	promptCacheKey := h.gatewayService.ExtractSessionID(c, body)
-
-	// Anthropic 格式的请求在 metadata.user_id 中携带 session 标识，
-	// 而非 OpenAI 的 session_id/conversation_id headers。
-	// 从中派生 sessionHash（sticky session）和 promptCacheKey（upstream cache）。
-	if sessionHash == "" || promptCacheKey == "" {
-		if userID := strings.TrimSpace(gjson.GetBytes(body, "metadata.user_id").String()); userID != "" {
-			seed := reqModel + "-" + userID
-			if promptCacheKey == "" {
-				promptCacheKey = service.GenerateSessionUUID(seed)
-		REDACTED
-			if sessionHash == "" {
-				sessionHash = service.DeriveSessionHashFromSeed(seed)
-		REDACTED
-	REDACTED
-REDACTED
+	sessionHash, promptCacheKey = resolveOpenAIMessagesMetadataSession(sessionHash, promptCacheKey, reqModel, body)
 
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
@@ -828,6 +814,20 @@ REDACTED
 		)
 		return
 REDACTED
+REDACTED
+
+func resolveOpenAIMessagesMetadataSession(sessionHash, promptCacheKey, reqModel string, body []byte) (string, string) {
+	// Anthropic metadata.user_id 只作为账号粘性信号。上游 GPT/Codex 缓存键
+	// 交给 ForwardAsAnthropic 从 cache_control 或完整消息 digest 派生，避免
+	// 固定 metadata key 压住后续 turn 的缓存滚动。
+	if sessionHash != "" {
+		return sessionHash, promptCacheKey
+REDACTED
+	if userID := strings.TrimSpace(gjson.GetBytes(body, "metadata.user_id").String()); userID != "" {
+		seed := reqModel + "-" + userID
+		sessionHash = service.DeriveSessionHashFromSeed(seed)
+REDACTED
+	return sessionHash, promptCacheKey
 REDACTED
 
 // anthropicErrorResponse writes an error in Anthropic Messages API format.

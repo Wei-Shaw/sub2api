@@ -44,6 +44,39 @@ REDACTED
 	require.Equal(t, "fc1", second["call_id"])
 REDACTED
 
+func TestApplyCodexOAuthTransform_MessagesBridgePromptCacheKeyIsHeaderOnly(t *testing.T) {
+	reqBody := map[string]any{
+		"model":            "gpt-5.5",
+		"prompt_cache_key": "anthropic-metadata-session-1",
+		"input": []any{
+			map[string]any{
+				"type": "message",
+				"role": "developer",
+				"content": []any{
+					map[string]any{
+						"type": "input_text",
+						"text": openAICompatClaudeCodeTodoGuardMarker,
+				REDACTED,
+			REDACTED,
+		REDACTED,
+			map[string]any{
+				"type":    "message",
+				"role":    "user",
+				"content": "hello",
+		REDACTED,
+	REDACTED,
+REDACTED
+
+	result := applyCodexOAuthTransformWithOptions(reqBody, codexOAuthTransformOptions{
+		SkipDefaultInstructions: true,
+		PreserveToolCallIDs:     true,
+REDACTED)
+
+	require.Equal(t, "anthropic-metadata-session-1", result.PromptCacheKey)
+	require.True(t, result.Modified)
+	require.NotContains(t, reqBody, "prompt_cache_key")
+REDACTED
+
 func TestApplyCodexOAuthTransform_ToolContinuationPreservesNativeMessageAndReasoningIDs(t *testing.T) {
 	reqBody := map[string]any{
 		"model": "gpt-5.2",
