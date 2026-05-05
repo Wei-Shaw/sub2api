@@ -144,7 +144,7 @@ func TestAccountHandler_ResetQuota_OpenAIAccountTriggersAutoTest(t *testing.T) {
 	}
 	rateLimitSvc := service.NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
 	upstream := &accountHandlerTestHTTPUpstream{}
-	accountTestSvc := service.NewAccountTestService(repo, nil, nil, upstream, &config.Config{}, &service.TLSFingerprintProfileService{})
+	accountTestSvc := service.NewAccountTestService(repo, nil, nil, nil, upstream, &config.Config{}, &service.TLSFingerprintProfileService{})
 
 	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, rateLimitSvc, nil, accountTestSvc, nil, nil, nil, nil, nil)
 
@@ -196,7 +196,7 @@ func TestAccountHandler_BatchTest_ReturnsSummary(t *testing.T) {
 	}
 	rateLimitSvc := service.NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
 	upstream := &accountHandlerTestHTTPUpstream{}
-	accountTestSvc := service.NewAccountTestService(repo, nil, nil, upstream, &config.Config{}, &service.TLSFingerprintProfileService{})
+	accountTestSvc := service.NewAccountTestService(repo, nil, nil, nil, upstream, &config.Config{}, &service.TLSFingerprintProfileService{})
 
 	handler := NewAccountHandler(adminSvc, nil, nil, nil, nil, rateLimitSvc, nil, accountTestSvc, nil, nil, nil, nil, nil)
 
