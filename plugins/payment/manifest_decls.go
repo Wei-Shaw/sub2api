@@ -178,12 +178,14 @@ var menuItemDecls = []pluginsdk.MenuItemDecl{
 			},
 		},
 	},
-	// User-facing "充值" entry surfaces the recharge view.
+	// User-facing "充值/订阅" entry surfaces the recharge + subscription view.
+	// Matches the release-branch host entry: same label, same icon
+	// (RechargeSubscriptionIcon mirrored into pluginsdk.IconRechargeSubscription).
 	{
 		Path:          "/recharge",
-		IconSVG:       pluginsdk.IconCog,
-		Labels:        pluginsdk.Labels("充值", "Recharge"),
-		Descriptions:  pluginsdk.Descriptions("为账户余额充值", "Top up your account balance"),
+		IconSVG:       pluginsdk.IconRechargeSubscription,
+		Labels:        pluginsdk.Labels("充值/订阅", "Recharge/Subscribe"),
+		Descriptions:  pluginsdk.Descriptions("为账户余额充值或购买订阅", "Top up balance or buy a subscription"),
 		Section:       pluginsdk.SectionUser,
 		Placement:     &pluginsdk.Placement{Group: pluginsdk.PlacementUserMain, Order: 60},
 		SortOrder:     300,
