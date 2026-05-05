@@ -3135,6 +3135,12 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		if turnPrevRecoveryTried || !s.openAIWSIngressPreviousResponseRecoveryEnabled() {
 			return false
 		}
+		// 携带 function_call_output 的请求不能丢弃 previous_response_id：
+		// 上游 API 需要 response chain 来匹配 tool_result 与之前的 tool_use，
+		// 丢弃后会导致 "No tool call found for function call output" 400 错误。
+		if gjson.GetBytes(currentPayload, `input.#(type=="function_call_output")`).Exists() {
+			return false
+		}
 		if isStrictAffinityTurn(currentPayload) {
 			// Layer 2：严格亲和链路命中 previous_response_not_found 时，降级为“去掉 previous_response_id 后重放一次”。
 			// 该错误说明续链锚点已失效，继续 strict fail-close 只会直接中断本轮请求。
@@ -3401,7 +3407,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					truncateOpenAIWSLogValue(pingErr.Error(), openAIWSLogValueMaxLen),
 				)
 				if forcePreferredConn {
-					if !turnPrevRecoveryTried && currentPreviousResponseID != "" {
+					// 携带 function_call_output 的请求不能丢弃 previous_response_id：
+					// 上游 API 需要 response chain 来匹配 tool_result 与之前的 tool_use，
+					// 丢弃后会导致 "No tool call found for function call output" 400 错误。
+					hasFCOutput := gjson.GetBytes(currentPayload, `input.#(type=="function_call_output")`).Exists()
+					if !turnPrevRecoveryTried && currentPreviousResponseID != "" && !hasFCOutput {
 						updatedPayload, removed, dropErr := dropPreviousResponseIDFromRawPayload(currentPayload)
 						if dropErr != nil || !removed {
 							reason := "not_removed"
