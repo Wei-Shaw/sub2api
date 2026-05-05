@@ -363,8 +363,8 @@ describe('ModelsView', () => {
     expect(wrapper.get('[data-testid="platform-filter"]').text()).toContain('OpenAI')
     expect(wrapper.get('[data-testid="platform-filter"]').text()).not.toContain('openai')
     expect(wrapper.text()).toContain('claude-sonnet-4')
-    expect(wrapper.text()).toContain('¥3.00')
-    expect(wrapper.text()).toContain('¥15.00')
+    expect(wrapper.text()).toContain('¥21.00')
+    expect(wrapper.text()).toContain('¥105.00')
     expect(wrapper.findAll('.model-channel-card').length).toBe(5)
     expect(wrapper.findAll('.model-channel-platform-badge').map((badge) => badge.text())).toEqual([
       'OpenAI',
@@ -400,7 +400,7 @@ describe('ModelsView', () => {
     ])
     expect(wrapper.text()).not.toContain('缓存写')
     expect(wrapper.text()).not.toContain('图片')
-    expect(wrapper.text()).toContain('0.7折')
+    expect(wrapper.text()).toContain('0.6折')
     expect(wrapper.find('col.model-name-width').classes()).toContain('w-[18%]')
     expect(wrapper.find('col.model-billing-mode-width').classes()).toContain('w-[7%]')
     expect(wrapper.find('th.model-billing-mode-column').classes()).toContain('px-2')
@@ -408,23 +408,117 @@ describe('ModelsView', () => {
     expect(wrapper.findAll('td.model-price-cell')).toHaveLength(3)
     expect(wrapper.find('td.model-price-cell').classes()).toContain('text-left')
     expect(wrapper.find('td.model-price-cell .model-site-price').classes()).not.toContain('text-primary-700')
-    expect(wrapper.find('td.model-price-cell .model-site-price').text()).toContain('本站¥1.00')
-    expect(wrapper.find('.model-discount-badge').text()).toBe('0.7折')
+    expect(wrapper.find('td.model-price-cell .model-site-price').text()).toContain('本站¥0.80')
+    expect(wrapper.find('.model-discount-badge').text()).toBe('0.6折')
     expect(wrapper.find('[data-testid="currency-cny"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="model-plaza-actions"]').element.children[0]).toBe(
       wrapper.get('[data-testid="models-refresh"]').element,
     )
     const currencyButtons = wrapper.findAll('[data-testid^="currency-"]')
     expect(currencyButtons.map((button) => button.text())).toEqual(['CNY', 'USD'])
-    expect(wrapper.text()).toContain('本站¥1.00')
+    expect(wrapper.text()).toContain('本站¥0.80')
     expect(wrapper.text()).toContain('官方¥14.00')
     expect(wrapper.text()).not.toContain('省')
 
     await wrapper.get('[data-testid="currency-usd"]').trigger('click')
 
-    expect(wrapper.text()).toContain('本站$0.14')
+    expect(wrapper.text()).toContain('本站$0.11')
     expect(wrapper.text()).toContain('官方$2.00')
     expect(wrapper.text()).not.toContain('省')
     expect(wrapper.text()).not.toContain('claude-sonnet-4')
+  })
+
+  it('uses the lowest visible group multiplier when showing model plaza site prices', async () => {
+    getUserGroupRates.mockResolvedValue({ 3: 0.4 })
+    getAvailable.mockResolvedValue([
+      {
+        name: 'OpenAI 渠道',
+        description: '多分组渠道',
+        platforms: [
+          {
+            platform: 'openai',
+            groups: [
+              {
+                id: 1,
+                name: '默认组',
+                platform: 'openai',
+                subscription_type: 'standard',
+                rate_multiplier: 0.8,
+                is_exclusive: false,
+              },
+              {
+                id: 2,
+                name: '低价组',
+                platform: 'openai',
+                subscription_type: 'standard',
+                rate_multiplier: 0.5,
+                is_exclusive: false,
+              },
+              {
+                id: 3,
+                name: '用户专属组',
+                platform: 'openai',
+                subscription_type: 'standard',
+                rate_multiplier: 0.9,
+                is_exclusive: true,
+              },
+            ],
+            supported_models: [
+              {
+                name: 'gpt-4.1',
+                platform: 'openai',
+                pricing: {
+                  billing_mode: 'token',
+                  input_price: 0.000001,
+                  output_price: 0.000004,
+                  cache_write_price: null,
+                  cache_read_price: 0.0000001,
+                  image_output_price: null,
+                  per_request_price: null,
+                  intervals: [],
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ])
+    getModelPricingBatch.mockResolvedValue({
+      prices: {
+        'gpt-4.1': {
+          found: true,
+          billing_mode: 'token',
+          input_price: 0.000002,
+          output_price: 0.000008,
+          cache_write_price: null,
+          cache_read_price: 0.0000002,
+          image_output_price: null,
+          per_request_price: null,
+        },
+      },
+    })
+
+    const wrapper = mount(ModelsView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          Icon: { template: '<span />' },
+          PlatformIcon: { template: '<span />' },
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.model-channel-group-badges').text()).toContain('分组倍率x0.4')
+    expect(wrapper.text()).toContain('本站¥0.40')
+    expect(wrapper.text()).toContain('本站¥1.60')
+    expect(wrapper.text()).toContain('本站¥0.04')
+    expect(wrapper.find('.model-discount-badge').text()).toBe('0.3折')
+
+    await wrapper.get('[data-testid="currency-usd"]').trigger('click')
+
+    expect(wrapper.text()).toContain('本站$0.06')
+    expect(wrapper.text()).toContain('本站$0.23')
+    expect(wrapper.text()).toContain('本站$0.01')
   })
 })

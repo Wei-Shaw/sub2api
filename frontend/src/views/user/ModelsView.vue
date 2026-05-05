@@ -142,20 +142,20 @@
                         </td>
                         <td class="model-billing-mode-cell px-2 py-3 text-xs text-gray-500 dark:text-gray-400">{{ model.pricing?.billing_mode ? billingModeLabel(model.pricing.billing_mode) : '-' }}</td>
                         <td class="model-price-cell px-3 py-3 text-left">
-                          <div class="model-site-price font-mono text-sm font-medium text-gray-800 dark:text-gray-200">{{ formatTokenComparison(model, 'input_price').site }}</div>
-                          <div class="mt-1 font-mono text-[11px] text-gray-400 dark:text-gray-500">{{ formatTokenComparison(model, 'input_price').official }}</div>
+                          <div class="model-site-price font-mono text-sm font-medium text-gray-800 dark:text-gray-200">{{ formatTokenComparison(model, 'input_price', channel.groups).site }}</div>
+                          <div class="mt-1 font-mono text-[11px] text-gray-400 dark:text-gray-500">{{ formatTokenComparison(model, 'input_price', channel.groups).official }}</div>
                         </td>
                         <td class="model-price-cell px-3 py-3 text-left">
-                          <div class="model-site-price font-mono text-sm font-medium text-gray-800 dark:text-gray-200">{{ formatTokenComparison(model, 'output_price').site }}</div>
-                          <div class="mt-1 font-mono text-[11px] text-gray-400 dark:text-gray-500">{{ formatTokenComparison(model, 'output_price').official }}</div>
+                          <div class="model-site-price font-mono text-sm font-medium text-gray-800 dark:text-gray-200">{{ formatTokenComparison(model, 'output_price', channel.groups).site }}</div>
+                          <div class="mt-1 font-mono text-[11px] text-gray-400 dark:text-gray-500">{{ formatTokenComparison(model, 'output_price', channel.groups).official }}</div>
                         </td>
                         <td class="model-price-cell px-3 py-3 text-left">
-                          <div class="model-site-price font-mono text-sm font-medium text-gray-800 dark:text-gray-200">{{ formatTokenComparison(model, 'cache_read_price').site }}</div>
-                          <div class="mt-1 font-mono text-[11px] text-gray-400 dark:text-gray-500">{{ formatTokenComparison(model, 'cache_read_price').official }}</div>
+                          <div class="model-site-price font-mono text-sm font-medium text-gray-800 dark:text-gray-200">{{ formatTokenComparison(model, 'cache_read_price', channel.groups).site }}</div>
+                          <div class="mt-1 font-mono text-[11px] text-gray-400 dark:text-gray-500">{{ formatTokenComparison(model, 'cache_read_price', channel.groups).official }}</div>
                         </td>
                         <td class="px-3 py-3 text-left">
                           <span class="model-discount-badge inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 font-mono text-xs font-semibold text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
-                            {{ formatDiscount(model) }}
+                            {{ formatDiscount(model, channel.groups) }}
                           </span>
                         </td>
                       </tr>
@@ -285,8 +285,8 @@ function formatCurrencyAmount(amount: number): string {
   return `${selectedCurrency.value === 'CNY' ? '¥' : '$'}${amount.toFixed(2)}`
 }
 
-function siteAmount(value: number, scale: number): number {
-  const cnyAmount = value * scale
+function siteAmount(value: number, scale: number, rateMultiplier: number): number {
+  const cnyAmount = value * scale * rateMultiplier
   return selectedCurrency.value === 'CNY' ? cnyAmount : cnyAmount / CNY_RATE
 }
 
@@ -295,9 +295,9 @@ function officialAmount(value: number, scale: number): number {
   return selectedCurrency.value === 'CNY' ? usdAmount * CNY_RATE : usdAmount
 }
 
-function formatSitePrice(value: number | null, scale: number): string {
+function formatSitePrice(value: number | null, scale: number, rateMultiplier: number): string {
   if (value == null) return '-'
-  return formatCurrencyAmount(siteAmount(value, scale))
+  return formatCurrencyAmount(siteAmount(value, scale, rateMultiplier))
 }
 
 function formatOfficialPrice(value: number | null, scale: number): string {
@@ -312,11 +312,11 @@ interface PriceComparisonDisplay {
   official: string
 }
 
-function formatTokenComparison(model: UserSupportedModel, field: TokenPriceField): PriceComparisonDisplay {
-  return formatComparison(model, field, 1_000_000)
+function formatTokenComparison(model: UserSupportedModel, field: TokenPriceField, groups: UserAvailableGroup[]): PriceComparisonDisplay {
+  return formatComparison(model, field, 1_000_000, lowestEffectiveRateMultiplier(groups))
 }
 
-function formatComparison(model: UserSupportedModel, field: keyof OfficialModelPricing, scale: number): PriceComparisonDisplay {
+function formatComparison(model: UserSupportedModel, field: keyof OfficialModelPricing, scale: number, rateMultiplier: number): PriceComparisonDisplay {
   const siteValue = model.pricing?.[field]
   if (typeof siteValue !== 'number') {
     return {
@@ -327,14 +327,15 @@ function formatComparison(model: UserSupportedModel, field: keyof OfficialModelP
   const official = officialPricingByModel.value[normalizeModelKey(model.name)] ?? getOfficialModelPricing(model.platform, model.name)
   const officialValue = official?.[field]
   return {
-    site: `${t('models.sitePrice')}${formatSitePrice(siteValue, scale)}`,
+    site: `${t('models.sitePrice')}${formatSitePrice(siteValue, scale, rateMultiplier)}`,
     official: `${t('models.officialPrice')}${typeof officialValue === 'number' ? formatOfficialPrice(officialValue, scale) : '-'}`,
   }
 }
 
-function formatDiscount(model: UserSupportedModel): string {
+function formatDiscount(model: UserSupportedModel, groups: UserAvailableGroup[]): string {
   if (!model.pricing) return '-'
   const official = officialPricingByModel.value[normalizeModelKey(model.name)] ?? getOfficialModelPricing(model.platform, model.name)
+  const rateMultiplier = lowestEffectiveRateMultiplier(groups)
   const fields: Array<{ field: keyof OfficialModelPricing, scale: number }> = [
     { field: 'input_price', scale: 1_000_000 },
     { field: 'output_price', scale: 1_000_000 },
@@ -346,9 +347,17 @@ function formatDiscount(model: UserSupportedModel): string {
     const siteValue = model.pricing[field]
     const officialValue = official?.[field]
     if (typeof siteValue !== 'number' || typeof officialValue !== 'number' || officialValue <= 0) continue
-    return `${(siteAmount(siteValue, scale) / officialAmount(officialValue, scale) * 10).toFixed(1)}折`
+    return `${(siteAmount(siteValue, scale, rateMultiplier) / officialAmount(officialValue, scale) * 10).toFixed(1)}折`
   }
   return '-'
+}
+
+function lowestEffectiveRateMultiplier(groups: UserAvailableGroup[]): number {
+  const rates = groups
+    .map((group) => Number(userGroupRates.value[group.id] ?? group.rate_multiplier))
+    .filter((rate) => Number.isFinite(rate))
+    .map((rate) => Math.max(rate, 0))
+  return rates.length > 0 ? Math.min(...rates) : 1
 }
 
 function normalizeModelKey(modelName: string): string {

@@ -997,7 +997,7 @@ export default {
 
   models: {
     title: '模型广场',
-    description: '查看当前可用平台、模型与价格信息。汇率按1:7折算（单位：百万tokens）',
+    description: '查看当前可用平台、模型与价格信息，当前列表显示价格即是最终价格（汇率按1:7折算，单位：1M/tokens）。',
     searchPlaceholder: '搜索渠道、平台或模型',
     platformFilter: '平台筛选',
     allPlatforms: '全部平台',
