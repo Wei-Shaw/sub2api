@@ -844,6 +844,8 @@ export default {
     perMillionTokens: '/ 1M tokens',
     unitPrice: 'Per-request price',
     imageUnitPrice: 'Per-image price',
+    imageTotalPrice: 'Image total price',
+    imageCount: 'Image count',
     cacheRead: 'Read',
     cacheWrite: 'Write',
     serviceTier: 'Service tier',
@@ -2050,7 +2052,13 @@ export default {
       REDACTED,
       imagePricing: {
         title: 'Image Generation Pricing',
-        description: 'Configure pricing for image generation models. Leave empty to use default prices.'
+        description: 'Configure image generation access and base image prices. Leave empty to use default prices.',
+        allowImageGeneration: 'Allow image generation for this group',
+        independentMultiplier: 'Use independent image multiplier',
+        imageMultiplier: 'Image multiplier',
+        modeHint: 'By default, image billing uses image price × current effective group multiplier. Independent mode uses image price × image multiplier.',
+        finalPricePreview: 'Final per-image price preview',
+        notConfigured: 'Not configured'
       REDACTED,
       claudeCode: {
         title: 'Claude Code Client Restriction',

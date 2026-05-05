@@ -217,6 +217,48 @@ REDACTED
 	return _c
 REDACTED
 
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (_c *GroupCreate) SetAllowImageGeneration(v bool) *GroupCreate {
+	_c.mutation.SetAllowImageGeneration(v)
+	return _c
+REDACTED
+
+// SetNillableAllowImageGeneration sets the "allow_image_generation" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAllowImageGeneration(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetAllowImageGeneration(*v)
+REDACTED
+	return _c
+REDACTED
+
+// SetImageRateIndependent sets the "image_rate_independent" field.
+func (_c *GroupCreate) SetImageRateIndependent(v bool) *GroupCreate {
+	_c.mutation.SetImageRateIndependent(v)
+	return _c
+REDACTED
+
+// SetNillableImageRateIndependent sets the "image_rate_independent" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImageRateIndependent(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetImageRateIndependent(*v)
+REDACTED
+	return _c
+REDACTED
+
+// SetImageRateMultiplier sets the "image_rate_multiplier" field.
+func (_c *GroupCreate) SetImageRateMultiplier(v float64) *GroupCreate {
+	_c.mutation.SetImageRateMultiplier(v)
+	return _c
+REDACTED
+
+// SetNillableImageRateMultiplier sets the "image_rate_multiplier" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImageRateMultiplier(v *float64) *GroupCreate {
+	if v != nil {
+		_c.SetImageRateMultiplier(*v)
+REDACTED
+	return _c
+REDACTED
+
 // SetImagePrice1k sets the "image_price_1k" field.
 func (_c *GroupCreate) SetImagePrice1k(v float64) *GroupCreate {
 	_c.mutation.SetImagePrice1k(v)
@@ -604,6 +646,18 @@ REDACTED
 		v := group.DefaultDefaultValidityDays
 		_c.mutation.SetDefaultValidityDays(v)
 REDACTED
+	if _, ok := _c.mutation.AllowImageGeneration(); !ok {
+		v := group.DefaultAllowImageGeneration
+		_c.mutation.SetAllowImageGeneration(v)
+REDACTED
+	if _, ok := _c.mutation.ImageRateIndependent(); !ok {
+		v := group.DefaultImageRateIndependent
+		_c.mutation.SetImageRateIndependent(v)
+REDACTED
+	if _, ok := _c.mutation.ImageRateMultiplier(); !ok {
+		v := group.DefaultImageRateMultiplier
+		_c.mutation.SetImageRateMultiplier(v)
+REDACTED
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		v := group.DefaultClaudeCodeOnly
 		_c.mutation.SetClaudeCodeOnly(v)
@@ -699,6 +753,15 @@ REDACTED
 REDACTED
 	if _, ok := _c.mutation.DefaultValidityDays(); !ok {
 		return &ValidationError{Name: "default_validity_days", err: errors.New(`ent: missing required field "Group.default_validity_days"`)REDACTED
+REDACTED
+	if _, ok := _c.mutation.AllowImageGeneration(); !ok {
+		return &ValidationError{Name: "allow_image_generation", err: errors.New(`ent: missing required field "Group.allow_image_generation"`)REDACTED
+REDACTED
+	if _, ok := _c.mutation.ImageRateIndependent(); !ok {
+		return &ValidationError{Name: "image_rate_independent", err: errors.New(`ent: missing required field "Group.image_rate_independent"`)REDACTED
+REDACTED
+	if _, ok := _c.mutation.ImageRateMultiplier(); !ok {
+		return &ValidationError{Name: "image_rate_multiplier", err: errors.New(`ent: missing required field "Group.image_rate_multiplier"`)REDACTED
 REDACTED
 	if _, ok := _c.mutation.ClaudeCodeOnly(); !ok {
 		return &ValidationError{Name: "claude_code_only", err: errors.New(`ent: missing required field "Group.claude_code_only"`)REDACTED
@@ -820,6 +883,18 @@ REDACTED
 	if value, ok := _c.mutation.DefaultValidityDays(); ok {
 		_spec.SetField(group.FieldDefaultValidityDays, field.TypeInt, value)
 		_node.DefaultValidityDays = value
+REDACTED
+	if value, ok := _c.mutation.AllowImageGeneration(); ok {
+		_spec.SetField(group.FieldAllowImageGeneration, field.TypeBool, value)
+		_node.AllowImageGeneration = value
+REDACTED
+	if value, ok := _c.mutation.ImageRateIndependent(); ok {
+		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
+		_node.ImageRateIndependent = value
+REDACTED
+	if value, ok := _c.mutation.ImageRateMultiplier(); ok {
+		_spec.SetField(group.FieldImageRateMultiplier, field.TypeFloat64, value)
+		_node.ImageRateMultiplier = value
 REDACTED
 	if value, ok := _c.mutation.ImagePrice1k(); ok {
 		_spec.SetField(group.FieldImagePrice1k, field.TypeFloat64, value)
@@ -1258,6 +1333,48 @@ REDACTED
 // AddDefaultValidityDays adds v to the "default_validity_days" field.
 func (u *GroupUpsert) AddDefaultValidityDays(v int) *GroupUpsert {
 	u.Add(group.FieldDefaultValidityDays, v)
+	return u
+REDACTED
+
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (u *GroupUpsert) SetAllowImageGeneration(v bool) *GroupUpsert {
+	u.Set(group.FieldAllowImageGeneration, v)
+	return u
+REDACTED
+
+// UpdateAllowImageGeneration sets the "allow_image_generation" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAllowImageGeneration() *GroupUpsert {
+	u.SetExcluded(group.FieldAllowImageGeneration)
+	return u
+REDACTED
+
+// SetImageRateIndependent sets the "image_rate_independent" field.
+func (u *GroupUpsert) SetImageRateIndependent(v bool) *GroupUpsert {
+	u.Set(group.FieldImageRateIndependent, v)
+	return u
+REDACTED
+
+// UpdateImageRateIndependent sets the "image_rate_independent" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImageRateIndependent() *GroupUpsert {
+	u.SetExcluded(group.FieldImageRateIndependent)
+	return u
+REDACTED
+
+// SetImageRateMultiplier sets the "image_rate_multiplier" field.
+func (u *GroupUpsert) SetImageRateMultiplier(v float64) *GroupUpsert {
+	u.Set(group.FieldImageRateMultiplier, v)
+	return u
+REDACTED
+
+// UpdateImageRateMultiplier sets the "image_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImageRateMultiplier() *GroupUpsert {
+	u.SetExcluded(group.FieldImageRateMultiplier)
+	return u
+REDACTED
+
+// AddImageRateMultiplier adds v to the "image_rate_multiplier" field.
+func (u *GroupUpsert) AddImageRateMultiplier(v float64) *GroupUpsert {
+	u.Add(group.FieldImageRateMultiplier, v)
 	return u
 REDACTED
 
@@ -1837,6 +1954,55 @@ REDACTED
 func (u *GroupUpsertOne) UpdateDefaultValidityDays() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateDefaultValidityDays()
+REDACTED)
+REDACTED
+
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (u *GroupUpsertOne) SetAllowImageGeneration(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowImageGeneration(v)
+REDACTED)
+REDACTED
+
+// UpdateAllowImageGeneration sets the "allow_image_generation" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAllowImageGeneration() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowImageGeneration()
+REDACTED)
+REDACTED
+
+// SetImageRateIndependent sets the "image_rate_independent" field.
+func (u *GroupUpsertOne) SetImageRateIndependent(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageRateIndependent(v)
+REDACTED)
+REDACTED
+
+// UpdateImageRateIndependent sets the "image_rate_independent" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImageRateIndependent() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageRateIndependent()
+REDACTED)
+REDACTED
+
+// SetImageRateMultiplier sets the "image_rate_multiplier" field.
+func (u *GroupUpsertOne) SetImageRateMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageRateMultiplier(v)
+REDACTED)
+REDACTED
+
+// AddImageRateMultiplier adds v to the "image_rate_multiplier" field.
+func (u *GroupUpsertOne) AddImageRateMultiplier(v float64) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddImageRateMultiplier(v)
+REDACTED)
+REDACTED
+
+// UpdateImageRateMultiplier sets the "image_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImageRateMultiplier() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageRateMultiplier()
 REDACTED)
 REDACTED
 
@@ -2629,6 +2795,55 @@ REDACTED
 func (u *GroupUpsertBulk) UpdateDefaultValidityDays() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateDefaultValidityDays()
+REDACTED)
+REDACTED
+
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (u *GroupUpsertBulk) SetAllowImageGeneration(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAllowImageGeneration(v)
+REDACTED)
+REDACTED
+
+// UpdateAllowImageGeneration sets the "allow_image_generation" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAllowImageGeneration() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAllowImageGeneration()
+REDACTED)
+REDACTED
+
+// SetImageRateIndependent sets the "image_rate_independent" field.
+func (u *GroupUpsertBulk) SetImageRateIndependent(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageRateIndependent(v)
+REDACTED)
+REDACTED
+
+// UpdateImageRateIndependent sets the "image_rate_independent" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImageRateIndependent() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageRateIndependent()
+REDACTED)
+REDACTED
+
+// SetImageRateMultiplier sets the "image_rate_multiplier" field.
+func (u *GroupUpsertBulk) SetImageRateMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageRateMultiplier(v)
+REDACTED)
+REDACTED
+
+// AddImageRateMultiplier adds v to the "image_rate_multiplier" field.
+func (u *GroupUpsertBulk) AddImageRateMultiplier(v float64) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.AddImageRateMultiplier(v)
+REDACTED)
+REDACTED
+
+// UpdateImageRateMultiplier sets the "image_rate_multiplier" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImageRateMultiplier() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageRateMultiplier()
 REDACTED)
 REDACTED
 

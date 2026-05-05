@@ -291,9 +291,23 @@
               </div>
             </template>
             <!-- Per-request / image billing: show unit price -->
+            <template v-else-if="tooltipData?.billing_mode === BILLING_MODE_IMAGE">
+              <div class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.imageCount') REDACTEDREDACTED</span>
+                <span class="font-medium text-white">{{ tooltipData.image_count REDACTEDREDACTED{{ t('usage.imageUnit') REDACTEDREDACTED ({{ tooltipData.image_size || '2K' REDACTEDREDACTED)</span>
+              </div>
+              <div class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.imageUnitPrice') REDACTEDREDACTED</span>
+                <span class="font-medium text-sky-300">${{ imageUnitPrice(tooltipData).toFixed(6) REDACTEDREDACTED</span>
+              </div>
+              <div class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.imageTotalPrice') REDACTEDREDACTED</span>
+                <span class="font-medium text-white">${{ tooltipData.total_cost?.toFixed(6) || '0.000000' REDACTEDREDACTED</span>
+              </div>
+            </template>
             <div v-else class="flex items-center justify-between gap-4">
-              <span class="text-gray-400">{{ tooltipData.billing_mode === BILLING_MODE_IMAGE ? t('usage.imageUnitPrice') : t('usage.unitPrice') REDACTEDREDACTED</span>
-              <span class="font-medium text-sky-300">${{ tooltipData.total_cost?.toFixed(6) || '0.000000' REDACTEDREDACTED</span>
+              <span class="text-gray-400">{{ t('usage.unitPrice') REDACTEDREDACTED</span>
+              <span class="font-medium text-sky-300">${{ tooltipData?.total_cost?.toFixed(6) || '0.000000' REDACTEDREDACTED</span>
             </div>
             <div v-if="tooltipData && tooltipData.cache_creation_cost > 0" class="flex items-center justify-between gap-4">
               <span class="text-gray-400">{{ t('admin.usage.cacheCreationCost') REDACTEDREDACTED</span>
@@ -358,6 +372,13 @@ function accountBilled(row: { total_cost?: number | null; account_stats_cost?: n
   const base = row.account_stats_cost != null ? row.account_stats_cost : (row.total_cost ?? 0)
   const result = base * (row.account_rate_multiplier ?? 1)
   return Number.isNaN(result) ? 0 : result
+REDACTED
+
+function imageUnitPrice(row: AdminUsageLog | null): number {
+  if (!row || row.image_count <= 0) return 0
+  const total = row.total_cost ?? 0
+  const price = total / row.image_count
+  return Number.isFinite(price) ? price : 0
 REDACTED
 
 import DataTable from '@/components/common/DataTable.vue'

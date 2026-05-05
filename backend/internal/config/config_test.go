@@ -1283,6 +1283,46 @@ REDACTED{
 			wantErr: "gateway.stream_data_interval_timeout must be non-negative",
 	REDACTED,
 		{
+			name:    "gateway image stream keepalive range",
+			mutate:  func(c *Config) { c.Gateway.ImageStreamKeepaliveInterval = 4 REDACTED,
+			wantErr: "gateway.image_stream_keepalive_interval",
+	REDACTED,
+		{
+			name:    "gateway image stream keepalive negative",
+			mutate:  func(c *Config) { c.Gateway.ImageStreamKeepaliveInterval = -1 REDACTED,
+			wantErr: "gateway.image_stream_keepalive_interval must be non-negative",
+	REDACTED,
+		{
+			name:    "gateway image stream data interval range",
+			mutate:  func(c *Config) { c.Gateway.ImageStreamDataIntervalTimeout = 30 REDACTED,
+			wantErr: "gateway.image_stream_data_interval_timeout",
+	REDACTED,
+		{
+			name:    "gateway image stream data interval negative",
+			mutate:  func(c *Config) { c.Gateway.ImageStreamDataIntervalTimeout = -1 REDACTED,
+			wantErr: "gateway.image_stream_data_interval_timeout must be non-negative",
+	REDACTED,
+		{
+			name:    "gateway image concurrency max negative",
+			mutate:  func(c *Config) { c.Gateway.ImageConcurrency.MaxConcurrentRequests = -1 REDACTED,
+			wantErr: "gateway.image_concurrency.max_concurrent_requests must be non-negative",
+	REDACTED,
+		{
+			name:    "gateway image concurrency overflow mode invalid",
+			mutate:  func(c *Config) { c.Gateway.ImageConcurrency.OverflowMode = "queue" REDACTED,
+			wantErr: "gateway.image_concurrency.overflow_mode",
+	REDACTED,
+		{
+			name:    "gateway image concurrency wait timeout negative",
+			mutate:  func(c *Config) { c.Gateway.ImageConcurrency.WaitTimeoutSeconds = -1 REDACTED,
+			wantErr: "gateway.image_concurrency.wait_timeout_seconds must be non-negative",
+	REDACTED,
+		{
+			name:    "gateway image concurrency max waiting negative",
+			mutate:  func(c *Config) { c.Gateway.ImageConcurrency.MaxWaitingRequests = -1 REDACTED,
+			wantErr: "gateway.image_concurrency.max_waiting_requests must be non-negative",
+	REDACTED,
+		{
 			name:    "gateway max line size",
 			mutate:  func(c *Config) { c.Gateway.MaxLineSize = 1024 REDACTED,
 			wantErr: "gateway.max_line_size must be at least",
@@ -1752,5 +1792,43 @@ REDACTED
 REDACTED
 	if cfg.Gateway.UsageRecord.AutoScaleCooldownSeconds != 10 {
 		t.Fatalf("auto_scale_cooldown_seconds = %d, want 10", cfg.Gateway.UsageRecord.AutoScaleCooldownSeconds)
+REDACTED
+REDACTED
+
+func TestLoad_DefaultGatewayImageStreamConfig(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+REDACTED
+	if cfg.Gateway.StreamDataIntervalTimeout != 180 {
+		t.Fatalf("stream_data_interval_timeout = %d, want 180", cfg.Gateway.StreamDataIntervalTimeout)
+REDACTED
+	if cfg.Gateway.StreamKeepaliveInterval != 10 {
+		t.Fatalf("stream_keepalive_interval = %d, want 10", cfg.Gateway.StreamKeepaliveInterval)
+REDACTED
+	if cfg.Gateway.ImageStreamDataIntervalTimeout != 900 {
+		t.Fatalf("image_stream_data_interval_timeout = %d, want 900", cfg.Gateway.ImageStreamDataIntervalTimeout)
+REDACTED
+	if cfg.Gateway.ImageStreamKeepaliveInterval != 10 {
+		t.Fatalf("image_stream_keepalive_interval = %d, want 10", cfg.Gateway.ImageStreamKeepaliveInterval)
+REDACTED
+	if cfg.Gateway.ImageConcurrency.Enabled {
+		t.Fatalf("image_concurrency.enabled = true, want false")
+REDACTED
+	if cfg.Gateway.ImageConcurrency.MaxConcurrentRequests != 0 {
+		t.Fatalf("image_concurrency.max_concurrent_requests = %d, want 0", cfg.Gateway.ImageConcurrency.MaxConcurrentRequests)
+REDACTED
+	if cfg.Gateway.ImageConcurrency.OverflowMode != ImageConcurrencyOverflowModeReject {
+		t.Fatalf("image_concurrency.overflow_mode = %q, want %q", cfg.Gateway.ImageConcurrency.OverflowMode, ImageConcurrencyOverflowModeReject)
+REDACTED
+	if cfg.Gateway.ImageConcurrency.WaitTimeoutSeconds != 30 {
+		t.Fatalf("image_concurrency.wait_timeout_seconds = %d, want 30", cfg.Gateway.ImageConcurrency.WaitTimeoutSeconds)
+REDACTED
+	if cfg.Gateway.ImageConcurrency.MaxWaitingRequests != 100 {
+		t.Fatalf("image_concurrency.max_waiting_requests = %d, want 100", cfg.Gateway.ImageConcurrency.MaxWaitingRequests)
+REDACTED
+	if cfg.Gateway.ImageStreamDataIntervalTimeout <= cfg.Gateway.StreamDataIntervalTimeout {
+		t.Fatalf("image stream timeout = %d, want greater than ordinary stream timeout %d", cfg.Gateway.ImageStreamDataIntervalTimeout, cfg.Gateway.StreamDataIntervalTimeout)
 REDACTED
 REDACTED

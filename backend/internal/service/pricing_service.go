@@ -625,6 +625,9 @@ REDACTED
 REDACTED
 
 	model = strings.TrimLeft(model, "/")
+	if canonical := canonicalizeOpenAIModelAliasSpelling(model); canonical != "" {
+		return canonical
+REDACTED
 	return model
 REDACTED
 

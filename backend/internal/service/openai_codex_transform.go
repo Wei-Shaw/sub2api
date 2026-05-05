@@ -485,12 +485,14 @@ REDACTED
 		return model, true
 REDACTED
 
-	modelID := model
-	if strings.Contains(modelID, "/") {
-		parts := strings.Split(modelID, "/")
-		modelID = parts[len(parts)-1]
-REDACTED
+	modelID := lastOpenAIModelSegment(model)
 
+	if normalized := canonicalizeOpenAIModelAliasSpelling(modelID); normalized != "" {
+		modelID = normalized
+REDACTED
+	if mapped := normalizeKnownOpenAICodexModel(modelID); mapped != "" {
+		return mapped, true
+REDACTED
 	key := codexModelLookupKey(modelID)
 	if key == "" {
 		return "", false
