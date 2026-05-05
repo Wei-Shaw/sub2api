@@ -141,3 +141,24 @@ output/
 # Release artifacts (scripts/release.sh)
 # ===================
 /dist/
+
+# ===================
+# Local scratch / external references
+# ===================
+.factory/
+000-references/
+cocoapi-adapter/
+logs
+USER_GUIDE.md
+commands.md
+research_prompt.md
+temp.md
+temp2.md
+test_hash.go
+sub2api GrowthBook Flag 覆写方案.md
+
+# ===================
+# Local certificate/key material
+# ===================
+*.csr
+*.pem
