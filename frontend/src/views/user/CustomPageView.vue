@@ -202,7 +202,9 @@ async function fetchAndRenderMarkdown(slug: string) {
   tocItems.value = []
   activeHeadingId.value = ''
   try {
-    const resp = await fetch(`/api/v1/pages/${encodeURIComponent(slug)REDACTED`)
+    const resp = await fetch(`/api/v1/pages/${encodeURIComponent(slug)REDACTED`, {
+      headers: authStore.token ? { Authorization: `Bearer ${authStore.tokenREDACTED` REDACTED : {REDACTED,
+    REDACTED)
     if (!resp.ok) {
       renderedHtml.value = '<p class="text-red-500">Page not found</p>'
       return
