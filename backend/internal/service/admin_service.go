@@ -33,6 +33,7 @@ type AdminService interface {
 	UpdateUser(ctx context.Context, id int64, input *UpdateUserInput) (*User, error)
 	DeleteUser(ctx context.Context, id int64) error
 	UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*User, error)
+	BatchUpdateConcurrency(ctx context.Context, userIDs []int64, value int, mode string) (int, error)
 	GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int, sortBy, sortOrder string) ([]APIKey, int64, error)
 	GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error)
 	GetUserRPMStatus(ctx context.Context, userID int64) (*UserRPMStatus, error)
@@ -815,6 +816,39 @@ REDACTED
 		s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, id)
 REDACTED
 	return nil
+REDACTED
+
+func (s *adminServiceImpl) BatchUpdateConcurrency(ctx context.Context, userIDs []int64, value int, mode string) (int, error) {
+	cleaned := make([]int64, 0, len(userIDs))
+	for _, uid := range userIDs {
+		if uid > 0 {
+			cleaned = append(cleaned, uid)
+	REDACTED
+REDACTED
+	if len(cleaned) == 0 {
+		return 0, nil
+REDACTED
+
+	var affected int
+	var err error
+	switch mode {
+	case "set":
+		affected, err = s.userRepo.BatchSetConcurrency(ctx, cleaned, value)
+	case "add":
+		affected, err = s.userRepo.BatchAddConcurrency(ctx, cleaned, value)
+	default:
+		return 0, errors.New("invalid mode: must be 'set' or 'add'")
+REDACTED
+	if err != nil {
+		return 0, err
+REDACTED
+
+	if s.authCacheInvalidator != nil {
+		for _, uid := range cleaned {
+			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, uid)
+	REDACTED
+REDACTED
+	return affected, nil
 REDACTED
 
 func (s *adminServiceImpl) UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*User, error) {
