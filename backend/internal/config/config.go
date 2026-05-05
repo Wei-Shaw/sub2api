@@ -777,6 +777,24 @@ type GatewayConfig struct {
 	//
 	// 推荐生产值：10000（10秒）。
 	BoundSessionSwitchJitterMaxMs int `mapstructure:"bound_session_switch_jitter_max_ms"`
+
+	// IdentityProfileInjectEnabled: 是否启用 P0-3 长期身份画像注入（默认 false）。
+	//
+	// 语义：开启后，同一 sub2api 用户在同一平台上的连续请求，对外呈现稳定的
+	// device_id（Anthropic）/ originator + session_id 用户段（OpenAI）等指纹要素。
+	// 关闭时（默认）保持 v0.1.135 之前的 per-account 派生行为，便于灰度回滚。
+	//
+	// 注意：开启后只覆盖 device_id 这一段，**不动** stainless / UA 头（per-account
+	// fingerprint 已经稳定，盲覆盖会破坏已 mimic 链路）。
+	IdentityProfileInjectEnabled bool `mapstructure:"identity_profile_inject_enabled"`
+
+	// IdentityProfileRotationDays: 身份画像的旋转周期（天），>0 时覆盖 ltb_ttl_days
+	// 的同步行为（P0-3 §4.4 task 3）。
+	//
+	// 语义：默认 0 = 与 LongTermBindingTTLDays 对齐（让 P0-2/P0-3 节奏一致）。
+	// 当观察到"账号绑定 + 设备指纹一起换"是异常信号时，可将此值设大于 ltb 让画像
+	// 旋转更慢；设小于 ltb 让画像翻新更频繁。
+	IdentityProfileRotationDays int `mapstructure:"identity_profile_rotation_days"`
 }
 
 // UserMessageQueueConfig 用户消息串行队列配置

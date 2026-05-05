@@ -619,6 +619,7 @@ func TestNewOpenAIGatewayService_InitializesOpenAIWSResolver(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil, // identityProfileService (P0-3)
 	)
 
 	decision := svc.getOpenAIWSProtocolResolver().Resolve(nil)

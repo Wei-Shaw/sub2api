@@ -45,6 +45,7 @@ func newGatewayRecordUsageServiceForTest(usageRepo UsageLogRepository, userRepo 
 		nil,
 		nil,
 		nil,
+		nil, // identityProfileService (P0-3)
 	)
 }
 

@@ -1209,6 +1209,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyGatewaySessionAccountFanoutWindowSec] = strconv.Itoa(settings.SessionAccountFanoutWindowSec)
 	updates[SettingKeyGatewayBoundSessionSwitchJitterMinMs] = strconv.Itoa(settings.BoundSessionSwitchJitterMinMs)
 	updates[SettingKeyGatewayBoundSessionSwitchJitterMaxMs] = strconv.Itoa(settings.BoundSessionSwitchJitterMaxMs)
+	updates[SettingKeyGatewayIdentityProfileInjectEnabled] = strconv.FormatBool(settings.IdentityProfileInjectEnabled)
+	updates[SettingKeyGatewayIdentityProfileRotationDays] = strconv.Itoa(settings.IdentityProfileRotationDays)
 
 	// Model fallback configuration
 	updates[SettingKeyEnableModelFallback] = strconv.FormatBool(settings.EnableModelFallback)
@@ -1312,6 +1314,8 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		s.cfg.Gateway.SessionAccountFanoutWindowSec = settings.SessionAccountFanoutWindowSec
 		s.cfg.Gateway.BoundSessionSwitchJitterMinMs = settings.BoundSessionSwitchJitterMinMs
 		s.cfg.Gateway.BoundSessionSwitchJitterMaxMs = settings.BoundSessionSwitchJitterMaxMs
+		s.cfg.Gateway.IdentityProfileInjectEnabled = settings.IdentityProfileInjectEnabled
+		s.cfg.Gateway.IdentityProfileRotationDays = settings.IdentityProfileRotationDays
 	}
 
 	// 先使 inflight singleflight 失效，再刷新缓存，缩小旧值覆盖新值的竞态窗口
@@ -1356,6 +1360,7 @@ func normalizeAccountSharingHardeningSettings(settings *SystemSettings) {
 	settings.SessionAccountFanoutWindowSec = nonNegativeInt(settings.SessionAccountFanoutWindowSec)
 	settings.BoundSessionSwitchJitterMinMs = nonNegativeInt(settings.BoundSessionSwitchJitterMinMs)
 	settings.BoundSessionSwitchJitterMaxMs = nonNegativeInt(settings.BoundSessionSwitchJitterMaxMs)
+	settings.IdentityProfileRotationDays = nonNegativeInt(settings.IdentityProfileRotationDays)
 }
 
 func nonNegativeInt(v int) int {
@@ -1956,6 +1961,8 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyGatewaySessionAccountFanoutWindowSec:         strconv.Itoa(nonNegativeInt(s.cfg.Gateway.SessionAccountFanoutWindowSec)),
 		SettingKeyGatewayBoundSessionSwitchJitterMinMs:         strconv.Itoa(nonNegativeInt(s.cfg.Gateway.BoundSessionSwitchJitterMinMs)),
 		SettingKeyGatewayBoundSessionSwitchJitterMaxMs:         strconv.Itoa(nonNegativeInt(s.cfg.Gateway.BoundSessionSwitchJitterMaxMs)),
+		SettingKeyGatewayIdentityProfileInjectEnabled:          strconv.FormatBool(s.cfg.Gateway.IdentityProfileInjectEnabled),
+		SettingKeyGatewayIdentityProfileRotationDays:           strconv.Itoa(nonNegativeInt(s.cfg.Gateway.IdentityProfileRotationDays)),
 		SettingKeyAuthSourceDefaultEmailBalance:                "0",
 		SettingKeyAuthSourceDefaultEmailConcurrency:            "5",
 		SettingKeyAuthSourceDefaultEmailSubscriptions:          "[]",
@@ -2133,6 +2140,14 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}))
 	result.BoundSessionSwitchJitterMaxMs = parseNonNegativeIntSetting(settings[SettingKeyGatewayBoundSessionSwitchJitterMaxMs], gatewayConfigValue(s.cfg, func(g config.GatewayConfig) int {
 		return g.BoundSessionSwitchJitterMaxMs
+	}))
+	if v, ok := settings[SettingKeyGatewayIdentityProfileInjectEnabled]; ok {
+		result.IdentityProfileInjectEnabled = v == "true"
+	} else if s.cfg != nil {
+		result.IdentityProfileInjectEnabled = s.cfg.Gateway.IdentityProfileInjectEnabled
+	}
+	result.IdentityProfileRotationDays = parseNonNegativeIntSetting(settings[SettingKeyGatewayIdentityProfileRotationDays], gatewayConfigValue(s.cfg, func(g config.GatewayConfig) int {
+		return g.IdentityProfileRotationDays
 	}))
 
 	// 敏感信息直接返回，方便测试连接时使用

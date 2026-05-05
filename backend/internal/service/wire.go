@@ -331,13 +331,18 @@ func ProvideIdempotencyCleanupService(repo IdempotencyRepository, cfg *config.Co
 
 // ProvideIdentityProfileService 构造 P0-3 (sub2api_user, platform) 维度的伪
 // 指纹画像服务。secret 取 cfg.JWT.Secret（已通过 security_secrets bootstrap 持久化），
-// 旋转周期复用 cfg.Gateway.LongTermBindingTTLDays，让 P0-2 / P0-3 同步轮换。
+// 旋转周期默认复用 cfg.Gateway.LongTermBindingTTLDays，让 P0-2 / P0-3 同步轮换；
+// 当 cfg.Gateway.IdentityProfileRotationDays > 0 时使用该值（解耦 P0-2/P0-3 节奏）。
 func ProvideIdentityProfileService(cfg *config.Config) *IdentityProfileService {
 	secret := ""
 	rotation := 0
 	if cfg != nil {
 		secret = cfg.JWT.Secret
-		rotation = cfg.Gateway.LongTermBindingTTLDays
+		if cfg.Gateway.IdentityProfileRotationDays > 0 {
+			rotation = cfg.Gateway.IdentityProfileRotationDays
+		} else {
+			rotation = cfg.Gateway.LongTermBindingTTLDays
+		}
 	}
 	return NewIdentityProfileService(secret, rotation)
 }

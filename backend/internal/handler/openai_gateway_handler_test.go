@@ -997,6 +997,7 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		channelSvc,
 		nil,
 		nil,
+		nil, // identityProfileService (P0-3)
 	)
 
 	cache := &concurrencyCacheMock{

@@ -256,6 +256,90 @@ func crossAccountJitterDelay() time.Duration {
 	return time.Duration(n*600/65536) * time.Millisecond
 }
 
+// recordOpenAIFanoutAndCheckExhausted 是为 OpenAI 原生 failover loop 提供的"轻量
+// 版" P0-3 反扫荡入口（瑕疵 2 修复）。
+//
+// OpenAI 三条原生路径（ChatCompletions / Responses / Messages）没有走 FailoverState，
+// 而是手写循环（failedAccountIDs map + lastFailoverErr + switchCount）。这个 helper
+// 在 handler 决定切号前记录一次失败账号，并检查 sessionHash 维度的 fanout 是否超限。
+//
+// 行为与 FailoverState.HandleFailoverError 中的 fanout 段保持一致：
+//   - limiter 为 nil 或 sessionHash 为空 → 退化为 noop（不阻断）。
+//   - 配置侧 fanout limit ≤ 0 → 同样 noop（向后兼容）。
+//   - 超限 → 返回 true，调用方应改走 failover-exhausted 错误响应。
+//
+// 返回 true 表示"已达 fanout 上限，请勿继续切号"。
+func recordOpenAIFanoutAndCheckExhausted(
+	ctx context.Context,
+	limiter SessionFanoutLimiter,
+	provider sessionFanoutConfigProvider,
+	accountID int64,
+	sessionHash string,
+	groupID *int64,
+	upstreamStatus int,
+	reqLog *zap.Logger,
+) bool {
+	if limiter == nil || sessionHash == "" || provider == nil {
+		return false
+	}
+	fanoutLimit, _, _ := provider.GetSessionFanoutConfig()
+	if fanoutLimit <= 0 {
+		return false
+	}
+	_ = limiter.RecordSessionFanout(ctx, groupID, sessionHash, accountID)
+	exhausted, count := limiter.IsSessionFanoutExhausted(ctx, groupID, sessionHash)
+	if !exhausted {
+		return false
+	}
+	if reqLog != nil {
+		reqLog.Warn("openai.failover_fanout_exhausted",
+			zap.Int64("account_id", accountID),
+			zap.String("session_hash", shortSessionHash(sessionHash)),
+			zap.Int("fanout_count", count),
+			zap.Int("fanout_limit", fanoutLimit),
+			zap.Int("upstream_status", upstreamStatus),
+		)
+	}
+	return true
+}
+
+// applyOpenAIFailoverJitter 是 OpenAI 原生 failover loop 用的抖动延迟入口
+// （瑕疵 2 修复）。语义对齐 FailoverState.HandleFailoverError 中的抖动段：
+//
+//   - 第 1 次切换不引入抖动（避免单纯 token 失效拖慢正常用户）。
+//   - 第 2 次起：绑定会话使用 boundJitter[min,max]（默认 2-10s），普通会话使用
+//     0-600ms 的 crossAccountJitterDelay。
+//
+// switchCountAfterIncrement 是 switchCount++ 之后的值（即"本次切换是第几次"）。
+// 返回 false 表示 ctx 已取消，调用方应直接 return。
+func applyOpenAIFailoverJitter(
+	ctx context.Context,
+	provider sessionFanoutConfigProvider,
+	hasBoundSession bool,
+	switchCountAfterIncrement int,
+	reqLog *zap.Logger,
+) bool {
+	if switchCountAfterIncrement < 2 {
+		return true
+	}
+	var boundJitterMin, boundJitterMax time.Duration
+	if provider != nil {
+		_, boundJitterMin, boundJitterMax = provider.GetSessionFanoutConfig()
+	}
+	var jitterDelay time.Duration
+	if hasBoundSession && boundJitterMax > 0 {
+		jitterDelay = boundSessionJitterDelay(boundJitterMin, boundJitterMax)
+		if reqLog != nil {
+			reqLog.Debug("openai.failover_bound_session_jitter",
+				zap.Duration("jitter_delay", jitterDelay),
+			)
+		}
+	} else {
+		jitterDelay = crossAccountJitterDelay()
+	}
+	return sleepWithContext(ctx, jitterDelay)
+}
+
 // boundSessionJitterDelay 返回 min-max 范围内的随机抖动延迟，用于绑定会话切号 (P0-3)。
 // 绑定会话切号需要更长的延迟（默认 2-10s）以进一步打散内容关联信号。
 func boundSessionJitterDelay(min, max time.Duration) time.Duration {
