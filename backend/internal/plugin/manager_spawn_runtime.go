@@ -128,6 +128,11 @@ func (m *PluginManager) spawnStartHealth(sc *spawnCtx) error {
 		m.handleUnhealthy(sc.inst)
 	})
 	go m.waitProcessExit(sc.inst)
+	// Prefetch entry.js / entry.css content hashes off the spawn pipeline.
+	// The result populates EntryJSHash / EntryCSSHash so the next manifest
+	// snapshot publishes URLs with `?v=<hash>`, letting browsers refetch
+	// after a redeploy without sitting on a stale 5-minute disk cache.
+	go m.prefetchEntryHashes(sc.inst)
 	sc.healthCancel = healthCancel
 	return nil
 }

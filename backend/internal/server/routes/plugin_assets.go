@@ -33,9 +33,31 @@ var pluginAssetMimeByExt = map[string]string{
 
 const (
 	// pluginAssetCacheControl 给 5 分钟的可缓存窗口, 加 must-revalidate 让浏览器
-	// 在 ETag 命中时仍走 304, 避免插件热更新后客户端长时间持有旧 bundle.
+	// 在 ETag 命中时仍走 304. 用于无 cache-busting 版本号的请求 (importmap
+	// 共享 runtime, plugin 启动后 prefetch 还没完成时拿到旧 manifest 的
+	// 客户端). 这条路径仍依赖 ETag 校验来避免长时间持有旧 bundle.
 	pluginAssetCacheControl = "public, max-age=300, must-revalidate"
+
+	// pluginAssetVersionedCacheControl 用于 URL 上带 ?v=<content-hash> 的请求.
+	// 因为 hash 变 → URL 变 → 拉新资源, 老 URL 永远对应同一份字节, 所以可以
+	// 安全地 immutable 缓存一年, 节省 304 验证带宽与延迟. 触发条件: query 里
+	// 有非空 v 参数 (manager_frontend.go 在插件 bundle 已知 hash 时拼上).
+	pluginAssetVersionedCacheControl = "public, max-age=31536000, immutable"
+
+	// pluginAssetVersionQueryKey 是 entry_js_url / entry_css_url 上 cache-busting
+	// query 参数名. 与 manager_frontend.go 的 withVersionQuery 对齐.
+	pluginAssetVersionQueryKey = "v"
 )
+
+// pickPluginAssetCacheControl 按当前请求是否带 ?v=<hash> 选择对应的
+// Cache-Control 值. 命名常量在一处, 调用方只看动词. 复用同一份决策, 让
+// importmap shared / plugin entry / plugin-sdk 三条 serve 路径行为一致.
+func pickPluginAssetCacheControl(c *gin.Context) string {
+	if c.Query(pluginAssetVersionQueryKey) != "" {
+		return pluginAssetVersionedCacheControl
+	}
+	return pluginAssetCacheControl
+}
 
 // sharedRuntimeReExport 表名 -> 浏览器侧 ESM proxy 源码模板.
 // 每个文件输出 4-12 行 ESM, named exports 直接读取 window 上 host 已注入的
@@ -212,7 +234,7 @@ func servePluginSharedAsset(c *gin.Context, asset string) {
 		return
 	}
 	c.Header("ETag", etag)
-	c.Header("Cache-Control", pluginAssetCacheControl)
+	c.Header("Cache-Control", pickPluginAssetCacheControl(c))
 	c.Data(http.StatusOK, "application/javascript; charset=utf-8", []byte(body))
 }
 
@@ -232,7 +254,7 @@ func servePluginSdkBundle(c *gin.Context, asset string) {
 		return
 	}
 	c.Header("ETag", etag)
-	c.Header("Cache-Control", pluginAssetCacheControl)
+	c.Header("Cache-Control", pickPluginAssetCacheControl(c))
 	mime := "application/javascript; charset=utf-8"
 	if strings.HasSuffix(asset, ".css") {
 		mime = "text/css; charset=utf-8"
@@ -290,7 +312,7 @@ func RegisterPluginAssetRoutes(r *gin.Engine, pm *plugin.PluginManager) {
 			mime = "application/octet-stream"
 		}
 		c.Header("ETag", asset.ETag)
-		c.Header("Cache-Control", pluginAssetCacheControl)
+		c.Header("Cache-Control", pickPluginAssetCacheControl(c))
 		c.Data(http.StatusOK, mime, asset.Data)
 	})
 }

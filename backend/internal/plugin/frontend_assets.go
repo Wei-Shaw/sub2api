@@ -140,3 +140,20 @@ func computeETag(data []byte) string {
 	sum := sha256.Sum256(data)
 	return `"` + hex.EncodeToString(sum[:16]) + `"`
 }
+
+// shortContentHashLen 是 entry_js_url / entry_css_url 上 ?v= 参数的长度
+// (hex 字符数). 8 hex char = 4 byte = 2^32 唯一空间, 对单插件单 bundle 的
+// 版本去重足够; 不需要全 SHA-256 — query 只是给浏览器一个稳定的"新版本"
+// 信号, 真正的内容校验由 ETag (16 byte) 完成.
+const shortContentHashLen = 8
+
+// computeShortHash 返回 sha256 前 N/2 字节的 hex 表示 (N hex chars),
+// 用作 plugin entry 资源 URL 的 cache-busting query 值. data 为空时返
+// 回空串, 让上游"无 hash 时不拼 ?v="的退化路径直接判空即可.
+func computeShortHash(data []byte) string {
+	if len(data) == 0 {
+		return ""
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:shortContentHashLen/2])
+}

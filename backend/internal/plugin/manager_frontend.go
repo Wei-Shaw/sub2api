@@ -1,7 +1,10 @@
 package plugin
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"time"
 
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
@@ -65,15 +68,17 @@ func buildManifestEntry(inst *PluginInstance) map[string]any {
 		"menu_items":   convertMenuItems(frontend.GetMenuItems()),
 		"routes":       convertRoutes(frontend.GetRoutes()),
 	}
+	name := inst.Manifest.GetName()
 	if entryJS := frontend.GetEntryJs(); entryJS != "" {
 		entry["entry_js"] = entryJS
 		// entry_js_url 是前端实际访问的 HTTP 路径; 走核心代理 -> gRPC GetFrontendBundle.
-		// 路径里的 plugin name 使用 manifest.GetName(), 与 PluginInstance.Name 等价.
-		entry["entry_js_url"] = pluginAssetsURLPrefix + inst.Manifest.GetName() + "/" + entryJS
+		// `?v=<hash>` 让浏览器在 plugin 重建后自动拉新 bundle, 不再受
+		// pluginAssetCacheControl 的 max-age 阻塞 (见 prefetchEntryHashes).
+		entry["entry_js_url"] = withVersionQuery(pluginAssetsURLPrefix+name+"/"+entryJS, inst.EntryJSHash)
 	}
 	if entryCSS := frontend.GetEntryCss(); entryCSS != "" {
 		entry["entry_css"] = entryCSS
-		entry["entry_css_url"] = pluginAssetsURLPrefix + inst.Manifest.GetName() + "/" + entryCSS
+		entry["entry_css_url"] = withVersionQuery(pluginAssetsURLPrefix+name+"/"+entryCSS, inst.EntryCSSHash)
 	}
 	// settings_component_path: plugins that ship a custom settings UI surface
 	// the component name here so PluginSettingsForm.vue can mount it instead
@@ -147,4 +152,83 @@ func convertRoutes(routes []*pluginsdk.RouteDefinition) []map[string]any {
 		})
 	}
 	return out
+}
+
+// withVersionQuery returns rawURL with `?v=<hash>` appended when hash is
+// non-empty, otherwise rawURL unchanged. Plugin entry URLs that lack a
+// hash (prefetch failed, plugin has no frontend yet) fall back to the
+// short Cache-Control window applied by the asset handler when no `v`
+// query is present.
+func withVersionQuery(rawURL, hash string) string {
+	if hash == "" {
+		return rawURL
+	}
+	return rawURL + "?v=" + hash
+}
+
+// entryAssetPrefetchTimeout caps a single entry.js / entry.css prefetch.
+// Hashing 1 MB twice fits comfortably within 30s on the host's loopback
+// gRPC; the timeout exists to bound a stuck plugin, not to be reached
+// in the steady state.
+const entryAssetPrefetchTimeout = 30 * time.Second
+
+// prefetchEntryHashes pulls the plugin's entry.js and entry.css bytes
+// once after StateRunning, computes a short content hash, and stamps
+// EntryJSHash / EntryCSSHash on the instance so the next
+// GetPluginManifestsJSON snapshot publishes URLs with `?v=<hash>`.
+//
+// Best-effort: a missing bundle, a timeout, or a plugin that has gone
+// down by the time we get here all leave the corresponding hash empty.
+// In that case the URL omits the version query and falls through to
+// the shorter `pluginAssetCacheControl` lifetime — the page still
+// works, browsers just hold the asset for fewer minutes than they
+// would on the hashed path.
+//
+// Runs in its own goroutine off the spawn pipeline so the prefetch
+// gRPC roundtrip never blocks lifecycle progression.
+func (m *PluginManager) prefetchEntryHashes(inst *PluginInstance) {
+	if inst == nil {
+		return
+	}
+	inst.mu.Lock()
+	manifest := inst.Manifest
+	inst.mu.Unlock()
+	if manifest == nil {
+		return
+	}
+	frontend := manifest.GetFrontend()
+	if frontend == nil {
+		return
+	}
+
+	jsHash := m.fetchAndHash(inst.Name, frontend.GetEntryJs())
+	cssHash := m.fetchAndHash(inst.Name, frontend.GetEntryCss())
+
+	inst.mu.Lock()
+	inst.EntryJSHash = jsHash
+	inst.EntryCSSHash = cssHash
+	inst.mu.Unlock()
+}
+
+// fetchAndHash resolves one entry asset and returns its short content
+// hash, or empty when the plugin declares no asset / the fetch fails.
+// The plugin-not-running case is treated as a soft miss (warn-level
+// log) — the manager will recompute on the next spawnAndConnect.
+func (m *PluginManager) fetchAndHash(pluginName, assetPath string) string {
+	if assetPath == "" {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), entryAssetPrefetchTimeout)
+	defer cancel()
+	asset, err := m.FetchFrontendAsset(ctx, pluginName, assetPath)
+	if err != nil {
+		level := m.logger.Warn
+		if errors.Is(err, ErrPluginNotRunning) {
+			level = m.logger.Debug
+		}
+		level("plugin entry asset prefetch failed",
+			"plugin", pluginName, "asset", assetPath, "error", err)
+		return ""
+	}
+	return computeShortHash(asset.Data)
 }

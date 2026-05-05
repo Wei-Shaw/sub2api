@@ -181,6 +181,8 @@ func (m *PluginManager) clearInstanceState(sx *stopCtx) {
 	sx.inst.GRPCAddr = ""
 	sx.inst.HTTPAddr = ""
 	sx.inst.Exited = nil
+	sx.inst.EntryJSHash = ""
+	sx.inst.EntryCSSHash = ""
 }
 
 // =============================================================

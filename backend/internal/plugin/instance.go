@@ -58,6 +58,17 @@ type PluginInstance struct {
 	// Detached in detachExtensions and re-created on the next spawnAndConnect.
 	maintenanceClient *MaintenanceExtensionClient
 
+	// EntryJSHash / EntryCSSHash hold the short content hash (8 hex chars)
+	// of the plugin's entry.js / entry.css bundle, prefetched once after
+	// the plugin transitions to StateRunning. Empty when the plugin ships
+	// no frontend bundle, the prefetch failed, or it has not run yet.
+	// Read by buildManifestEntry to suffix entry_*_url with `?v=<hash>` so
+	// browsers automatically refetch after a redeploy instead of holding
+	// a stale disk cache. Cleared together with the lifecycle/connection
+	// fields in clearInstanceState so a restart recomputes them.
+	EntryJSHash  string
+	EntryCSSHash string
+
 	// Exited closes after waitProcessExit returns from cmd.Wait(). Lets
 	// stopInstance wait for the process to actually exit *without* calling
 	// cmd.Wait() a second time — the first Wait() reaps the child, any
