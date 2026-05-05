@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestInviteBootstrapHelpersTreatDeviceLoginAsBalanceBootstrap(t *testing.T) {
+func TestInviteBootstrapHelpersPreferSubscriptionForDeviceLoginBootstrap(t *testing.T) {
 	deviceRedeem := &RedeemCode{Type: RedeemTypeDeviceLogin}
 	subscriptionGroup := Group{
 		ID:                  11,
@@ -44,12 +44,12 @@ func TestInviteBootstrapHelpersTreatDeviceLoginAsBalanceBootstrap(t *testing.T) 
 	}
 
 	require.True(t, isInviteLoginBootstrapRedeemType(RedeemTypeDeviceLogin))
-	require.False(t, isGroupEligibleForInviteBootstrap(deviceRedeem, subscriptionGroup))
+	require.True(t, isGroupEligibleForInviteBootstrap(deviceRedeem, subscriptionGroup))
 	require.True(t, isGroupEligibleForInviteBootstrap(deviceRedeem, balanceCheap))
-	require.True(t, isInviteBootstrapGroupBetter(deviceRedeem, balanceCheap, balanceExpensive))
+	require.True(t, isInviteBootstrapGroupBetter(deviceRedeem, subscriptionGroup, balanceCheap))
 
 	selected := selectInviteBootstrapGroupsForRedeem(deviceRedeem, []Group{subscriptionGroup, balanceExpensive, balanceCheap, balanceOtherPlatform})
 	require.Len(t, selected, 2)
-	require.Equal(t, balanceCheap.ID, selected["openai"].ID)
+	require.Equal(t, subscriptionGroup.ID, selected["openai"].ID)
 	require.Equal(t, balanceOtherPlatform.ID, selected["anthropic"].ID)
 }
