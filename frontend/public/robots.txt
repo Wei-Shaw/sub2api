@@ -1,0 +1,26 @@
+User-agent: *
+Allow: /
+Allow: /en.html
+Allow: /login
+Allow: /register
+Allow: /home
+Disallow: /admin/
+Disallow: /dashboard
+Disallow: /keys
+Disallow: /usage
+Disallow: /orders
+Disallow: /profile
+Disallow: /subscriptions
+Disallow: /purchase
+Disallow: /payment/
+Disallow: /redeem
+Disallow: /auth/
+Disallow: /email-verify
+Disallow: /reset-password
+Disallow: /forgot-password
+Disallow: /key-usage
+Disallow: /setup
+Disallow: /api/
+Disallow: /v1/
+
+Sitemap: https://tokenzhijia.shop/sitemap.xml

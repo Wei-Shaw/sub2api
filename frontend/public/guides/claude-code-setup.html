@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+
+    <title>Claude Code 接入中转 API 教程（便宜 50%+） | Token之家</title>
+    <meta name="description" content="Claude Code 配置中转 API 完整教程：5 分钟接入 Token之家，省一半订阅费，支持 Sonnet 4 / Opus / Haiku。含环境变量、常见报错、验证脚本。" />
+    <meta name="keywords" content="claude code 中转, claude code 配置, claude code 中转站, ANTHROPIC_BASE_URL, claude code cheap api" />
+    <meta name="robots" content="index,follow" />
+    <meta name="theme-color" content="#14b8a6" />
+
+    <link rel="canonical" href="https://tokenzhijia.shop/guides/claude-code-setup.html" />
+    <link rel="alternate" hreflang="zh-CN" href="https://tokenzhijia.shop/guides/claude-code-setup.html" />
+    <link rel="alternate" hreflang="en" href="https://tokenzhijia.shop/en/guides/claude-code-setup.html" />
+    <link rel="alternate" hreflang="x-default" href="https://tokenzhijia.shop/guides/claude-code-setup.html" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://tokenzhijia.shop/guides/claude-code-setup.html" />
+    <meta property="og:title" content="Claude Code 接入中转 API 教程" />
+    <meta property="og:description" content="5 分钟配置 Claude Code 使用 Token之家中转，省一半订阅费。" />
+    <meta property="og:image" content="https://tokenzhijia.shop/logo.png" />
+    <meta property="og:site_name" content="Token之家" />
+    <meta property="og:locale" content="zh_CN" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Claude Code 接入中转 API 教程" />
+    <meta name="twitter:description" content="5 分钟配置 Claude Code 使用 Token之家中转，省一半订阅费。" />
+    <meta name="twitter:image" content="https://tokenzhijia.shop/logo.png" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "HowTo",
+      "name": "Claude Code 接入中转 API",
+      "description": "5 分钟将 Claude Code 官方 CLI 接入 Token之家中转。",
+      "inLanguage": "zh-CN",
+      "totalTime": "PT5M",
+      "supply": [
+        { "@type": "HowToSupply", "name": "Token之家 账号与 API 密钥" },
+        { "@type": "HowToSupply", "name": "Node.js 18+" }
+      ],
+      "step": [
+        { "@type": "HowToStep", "name": "安装 Claude Code", "text": "npm install -g @anthropic-ai/claude-code" },
+        { "@type": "HowToStep", "name": "获取中转密钥", "text": "注册 Token之家 后在后台创建 API 密钥" },
+        { "@type": "HowToStep", "name": "设置环境变量", "text": "export ANTHROPIC_BASE_URL 与 ANTHROPIC_API_KEY 指向中转" },
+        { "@type": "HowToStep", "name": "启动并验证", "text": "在项目目录运行 claude，确认已连上中转" }
+      ]
+    }
+    </script>
+
+    <link rel="stylesheet" href="/assets/seo.css" />
+  </head>
+  <body>
+    <div class="seo-bg-decor"></div>
+
+    <header class="seo-header">
+      <div class="seo-container-wide">
+        <nav class="seo-nav">
+          <a class="seo-logo" href="/">
+            <img src="/logo.png" alt="Token之家 logo" width="36" height="36" />
+            <span class="seo-logo-text">Token之家</span>
+          </a>
+          <div class="seo-nav-links">
+            <a class="seo-nav-link" href="/en/guides/claude-code-setup.html" hreflang="en" rel="alternate">English</a>
+            <a class="seo-nav-link" href="/login">登录</a>
+            <a class="seo-btn-primary" href="/register">注册 →</a>
+          </div>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="seo-container">
+        <article>
+          <h1>Claude Code 接入中转 API 教程</h1>
+          <p class="seo-lede">
+            Claude Code 官方订阅按月收费，高频使用时账单不小。把 <code>ANTHROPIC_BASE_URL</code>
+            指向 Token之家，按实际 token 计费，<strong>通常省 50% 以上</strong>，
+            Sonnet 4 / Opus / Haiku 都能用。全程 5 分钟。
+          </p>
+
+          <div class="seo-tldr">
+            <p><strong>核心就两行：</strong> <code>ANTHROPIC_BASE_URL=https://tokenzhijia.shop</code> +
+            <code>ANTHROPIC_API_KEY=你在后台创建的密钥</code>。下面是每一步的细节。</p>
+          </div>
+
+          <h2>开始之前</h2>
+          <ul>
+            <li>Node.js ≥ 18（<code>node -v</code> 验证）</li>
+            <li>一个 <a href="/register">Token之家账号</a> 和里面的 API 密钥</li>
+            <li>终端权限可以写环境变量（macOS / Linux / Windows 都行）</li>
+          </ul>
+
+          <h2>一步步配置</h2>
+          <ol class="seo-steps">
+            <li>
+              <h3>安装 Claude Code</h3>
+              <p>官方 CLI，npm 全局安装：</p>
+              <pre><code>npm install -g @anthropic-ai/claude-code</code></pre>
+              <p>安装完成后 <code>claude --version</code> 应能看到版本号。</p>
+            </li>
+
+            <li>
+              <h3>在 Token之家创建 API 密钥</h3>
+              <p><a href="/register">注册登录</a>后进入「API 密钥」页，点「创建密钥」。
+              建议给每个项目单独一个密钥，方便用量追踪与快速吊销。</p>
+              <div class="seo-warn">
+                <p><strong>密钥只显示一次。</strong>创建后立即复制保存。丢了只能重建。</p>
+              </div>
+            </li>
+
+            <li>
+              <h3>设置环境变量</h3>
+              <p>两种做法，按你的偏好选。</p>
+
+              <p><strong>临时（当前 shell 有效）：</strong></p>
+<pre><code># macOS / Linux
+export ANTHROPIC_BASE_URL="https://tokenzhijia.shop"
+export ANTHROPIC_API_KEY="你的 Token之家密钥"
+
+# Windows PowerShell
+$env:ANTHROPIC_BASE_URL = "https://tokenzhijia.shop"
+$env:ANTHROPIC_API_KEY = "你的 Token之家密钥"</code></pre>
+
+              <p><strong>永久（每次新终端都生效）：</strong></p>
+<pre><code># 写入 shell 配置（根据你的 shell 选一个）
+echo 'export ANTHROPIC_BASE_URL="https://tokenzhijia.shop"' >> ~/.zshrc
+echo 'export ANTHROPIC_API_KEY="你的密钥"' >> ~/.zshrc
+source ~/.zshrc</code></pre>
+              <p>bash 用户把 <code>~/.zshrc</code> 换成 <code>~/.bashrc</code>。</p>
+            </li>
+
+            <li>
+              <h3>启动 Claude Code 验证</h3>
+              <p>进入任意项目目录运行：</p>
+              <pre><code>cd your-project
+claude</code></pre>
+              <p>第一次启动会问你几个配置问题（模型偏好、工具权限），照默认走就行。
+              然后随便问一句「帮我看看这个项目结构」，如果回复正常，说明中转通了。</p>
+            </li>
+
+            <li>
+              <h3>查看用量与账单</h3>
+              <p>回到 <a href="/usage">Token之家后台 → 用量</a>，能看到每次 Claude Code 请求的：</p>
+              <ul>
+                <li>调用模型（Sonnet 4 / Opus / Haiku）</li>
+                <li>输入 / 输出 token 数</li>
+                <li>实际扣费</li>
+                <li>时间戳与请求 ID</li>
+              </ul>
+              <p>余额低于阈值会邮件通知，避免突然停服。</p>
+            </li>
+          </ol>
+
+          <h2>常见报错与修复</h2>
+          <div class="seo-table-wrap">
+            <table class="seo-table">
+              <thead>
+                <tr><th>报错信息</th><th>原因</th><th>修复</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>401 Unauthorized</code></td>
+                  <td>密钥错误或未设置</td>
+                  <td>检查 <code>echo $ANTHROPIC_API_KEY</code> 是否输出你的密钥</td>
+                </tr>
+                <tr>
+                  <td><code>ENOTFOUND tokenzhijia.shop</code></td>
+                  <td>网络不通或 DNS 解析失败</td>
+                  <td>确认本地能 <code>curl https://tokenzhijia.shop</code></td>
+                </tr>
+                <tr>
+                  <td><code>429 Too Many Requests</code></td>
+                  <td>短时间内请求过多</td>
+                  <td>等待片刻或联系客服提额</td>
+                </tr>
+                <tr>
+                  <td><code>402 Insufficient Balance</code></td>
+                  <td>余额不足</td>
+                  <td>后台充值，最低 $1</td>
+                </tr>
+                <tr>
+                  <td><code>model not supported</code></td>
+                  <td>Claude Code 请求了中转未开放的模型</td>
+                  <td>使用 <code>claude config</code> 切换到 Sonnet 4 / Opus / Haiku</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>进阶：多项目 / 多账号</h2>
+          <p>
+            每个项目想用独立密钥？在项目根目录创建 <code>.env</code> 或在 <code>package.json</code>
+            启动脚本里覆盖环境变量即可：
+          </p>
+<pre><code># 项目 A 的 .env
+ANTHROPIC_BASE_URL=https://tokenzhijia.shop
+ANTHROPIC_API_KEY=sk-xxxxx-project-a
+
+# 启动时
+source .env && claude</code></pre>
+          <p>后台也可以给同一个账号创建多个密钥，分别查账单。</p>
+
+          <h2>为什么中转比官方便宜</h2>
+          <p>
+            Claude Code 官方订阅按月收费，无论用多少都是固定价。中转站把多个订阅账号的额度池化，
+            按你实际的 token 用量计费 —— 不用满的月份你不亏，用超的月份也不会被单账号限速。
+            详见 <a href="/compare/claude-code-relay-vs-subscription.html">Claude Code 中转 vs 官方订阅</a>。
+          </p>
+
+          <section class="seo-cta-block">
+            <h2 class="seo-mt-0">拿密钥，省一半 Claude Code 费用</h2>
+            <p>1 分钟注册，充 $1 就能开始测试，按量计费，用多少扣多少。</p>
+            <a class="seo-btn-cta" href="/register">免费注册 →</a>
+            <a class="seo-btn-ghost" href="/login">已有账号登录</a>
+          </section>
+
+          <h2>常见问题</h2>
+          <div class="seo-faq">
+            <div class="seo-faq-item">
+              <h3>支持 Claude Code 的所有功能吗？</h3>
+              <p>支持。Claude Code 的对话、工具调用、文件编辑、bash 执行都正常工作。MCP 服务器配置也不受影响。</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>粘性会话怎么处理？</h3>
+              <p>同一个密钥的连续请求会尽量落到同一个上游账号，保持对话上下文缓存命中，省更多钱。</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>能和 Cursor、Cline 一起用吗？</h3>
+              <p>能。同一把密钥可以同时被 <a href="/guides/cursor-claude-proxy.html">Cursor</a>、
+              <a href="/guides/cline-cheap-claude.html">Cline</a>、Claude Code 共享使用。</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>企业用能否开发票？</h3>
+              <p>可以。后台支持导出 CSV 账单，联系客服可出具发票。</p>
+            </div>
+          </div>
+
+          <section class="seo-related">
+            <h2>相关教程</h2>
+            <ul class="seo-related-list">
+              <li><a href="/guides/cursor-claude-proxy.html"><strong>Cursor 配置 Claude 中转</strong><span>IDE 内直接用</span></a></li>
+              <li><a href="/guides/cline-cheap-claude.html"><strong>Cline 使用便宜 Claude API</strong><span>VS Code agent</span></a></li>
+              <li><a href="/examples/claude-api-python.html"><strong>Claude API Python 调用示例</strong><span>程序里直接调</span></a></li>
+              <li><a href="/glossary/what-is-claude-code.html"><strong>Claude Code 是什么？</strong><span>基础扫盲</span></a></li>
+            </ul>
+          </section>
+        </article>
+      </div>
+    </main>
+
+    <footer class="seo-footer">
+      <div class="seo-container">
+        <p>
+          <a href="/">首页</a> ·
+          <a href="/en/guides/claude-code-setup.html" hreflang="en" rel="alternate">English</a> ·
+          <a href="/login">登录</a> ·
+          <a href="/register">注册</a>
+        </p>
+        <p>© Token之家 · Claude / Claude Code / ChatGPT 中转站</p>
+      </div>
+    </footer>
+  </body>
+</html>

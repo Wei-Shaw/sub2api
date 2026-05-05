@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://tokenzhijia.shop/</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://tokenzhijia.shop/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://tokenzhijia.shop/en.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenzhijia.shop/"/>
+    <lastmod>2026-04-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://tokenzhijia.shop/en.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://tokenzhijia.shop/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://tokenzhijia.shop/en.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenzhijia.shop/"/>
+    <lastmod>2026-04-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://tokenzhijia.shop/login</loc>
+    <lastmod>2026-04-18</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://tokenzhijia.shop/register</loc>
+    <lastmod>2026-04-18</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+</urlset>

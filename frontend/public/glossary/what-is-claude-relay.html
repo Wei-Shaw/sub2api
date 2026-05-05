@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+
+    <title>什么是 Claude 中转站？一文讲清原理、价格、选择标准 | Token之家</title>
+    <meta name="description" content="Claude 中转站是什么？怎么工作？为什么能比官方便宜？本文用简单比喻解释中转站原理、价格逻辑、选型标准，帮你判断值不值得用。" />
+    <meta name="keywords" content="claude 中转站是什么, claude 中转, claude api 中转, 什么是中转站, claude 中转原理, openai 中转" />
+    <meta name="robots" content="index,follow" />
+    <meta name="theme-color" content="#14b8a6" />
+
+    <link rel="canonical" href="https://tokenzhijia.shop/glossary/what-is-claude-relay.html" />
+    <link rel="alternate" hreflang="zh-CN" href="https://tokenzhijia.shop/glossary/what-is-claude-relay.html" />
+    <link rel="alternate" hreflang="en" href="https://tokenzhijia.shop/en/glossary/what-is-claude-relay.html" />
+    <link rel="alternate" hreflang="x-default" href="https://tokenzhijia.shop/glossary/what-is-claude-relay.html" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://tokenzhijia.shop/glossary/what-is-claude-relay.html" />
+    <meta property="og:title" content="什么是 Claude 中转站？" />
+    <meta property="og:description" content="Claude 中转站的原理、价格、选型标准一文讲清。" />
+    <meta property="og:image" content="https://tokenzhijia.shop/logo.png" />
+    <meta property="og:site_name" content="Token之家" />
+    <meta property="og:locale" content="zh_CN" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="什么是 Claude 中转站？" />
+    <meta name="twitter:description" content="Claude 中转站的原理、价格、选型标准一文讲清。" />
+    <meta name="twitter:image" content="https://tokenzhijia.shop/logo.png" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "DefinedTerm",
+      "name": "Claude 中转站",
+      "description": "Claude 中转站是一种在开发者与 Anthropic API 之间转发请求的代理服务，通过池化多个账号提供更便宜、更稳定的 Claude API 访问。",
+      "inDefinedTermSet": "https://tokenzhijia.shop/glossary/",
+      "inLanguage": "zh-CN",
+      "url": "https://tokenzhijia.shop/glossary/what-is-claude-relay.html"
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Article",
+      "headline": "什么是 Claude 中转站？",
+      "author": { "@type": "Organization", "name": "Token之家" },
+      "publisher": { "@type": "Organization", "name": "Token之家", "logo": { "@type": "ImageObject", "url": "https://tokenzhijia.shop/logo.png" } },
+      "datePublished": "2026-04-18",
+      "dateModified": "2026-04-18",
+      "inLanguage": "zh-CN"
+    }
+    </script>
+
+    <link rel="stylesheet" href="/assets/seo.css" />
+  </head>
+  <body>
+    <div class="seo-bg-decor"></div>
+
+    <header class="seo-header">
+      <div class="seo-container-wide">
+        <nav class="seo-nav">
+          <a class="seo-logo" href="/">
+            <img src="/logo.png" alt="Token之家 logo" width="36" height="36" />
+            <span class="seo-logo-text">Token之家</span>
+          </a>
+          <div class="seo-nav-links">
+            <a class="seo-nav-link" href="/en/glossary/what-is-claude-relay.html" hreflang="en" rel="alternate">English</a>
+            <a class="seo-nav-link" href="/login">登录</a>
+            <a class="seo-btn-primary" href="/register">注册 →</a>
+          </div>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="seo-container">
+        <article>
+          <h1>什么是 Claude 中转站？</h1>
+          <p class="seo-lede">
+            如果你搜过「便宜的 Claude API」「Claude 怎么省钱」，八成会遇到「中转站」这个词。
+            这篇讲清楚中转站到底是什么、怎么工作、为什么能比官方便宜、值不值得用。
+          </p>
+
+          <div class="seo-tldr">
+            <p><strong>一句话定义：</strong>Claude 中转站是一个 API 代理服务，
+            把你的请求转发到真正的 Anthropic 上游，中间通过账号池化和批量议价，
+            给你更便宜的单价和更稳定的可用性。</p>
+          </div>
+
+          <h2>用一个比喻</h2>
+          <p>
+            想象 Anthropic 是电信运营商，卖月租套餐。你家一个月只打 100 分钟电话，
+            但必须买月付 200 分钟的套餐，多付了一半钱。
+          </p>
+          <p>
+            这时候来了一个二房东，他从多个运营商批发大量套餐，
+            <strong>把没用完的分钟数合到一起</strong>，
+            然后按你实际拨打的分钟数零售给你。这就是中转站。
+          </p>
+          <p>
+            在 AI API 场景里，「分钟数」换成了「token」，「月租套餐」换成了 Claude/ChatGPT 的官方订阅。
+            中转站帮你把沉没成本挤出来，每一个 token 都花在你真正用了的地方。
+          </p>
+
+          <h2>具体是怎么省的？</h2>
+          <ol>
+            <li>
+              <strong>账号池化</strong>：中转站运营着大量官方账号（可能上百个），每个账号都有订阅配额。
+              你的单次请求会被路由到当前最空闲的账号上。
+            </li>
+            <li>
+              <strong>淡季补峰</strong>：晚上、周末是低峰期，官方账号的订阅额度闲置。
+              中转站把这些闲置时段卖给有需要的开发者，等于二次利用产能。
+            </li>
+            <li>
+              <strong>批量议价</strong>：运营商规模大了可以拿到企业价、团队价。
+              个人用户没这个资格，但通过中转站就能间接享受到。
+            </li>
+            <li>
+              <strong>缓存复用</strong>：同一段长系统提示被多个用户请求时，
+              上游的提示缓存命中率极高，成本骤降。
+            </li>
+          </ol>
+
+          <h2>中转站长什么样？</h2>
+          <p>用起来对你几乎透明 —— 只需要改一个 <code>base_url</code>：</p>
+<pre><code># 原本直接调 Anthropic
+client = anthropic.Anthropic(
+    api_key="sk-ant-xxx",
+    # base_url 默认 https://api.anthropic.com
+)
+
+# 改成中转
+client = anthropic.Anthropic(
+    api_key="你的中转站密钥",   # 换成中转站签发的密钥
+    base_url="https://tokenzhijia.shop",  # 新 URL
+)</code></pre>
+          <p>你的业务代码其他地方一行不用改。Claude Code、Cursor、Cline 都是同样的套路。</p>
+
+          <h2>中转站的三种流派</h2>
+          <div class="seo-table-wrap">
+            <table class="seo-table">
+              <thead>
+                <tr><th>类型</th><th>特点</th><th>风险</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>自托管开源</strong></td>
+                  <td>自己跑在自己服务器上，自己买账号、自己运维</td>
+                  <td>要懂技术，出问题自己扛，账号封了自己找</td>
+                </tr>
+                <tr>
+                  <td><strong>托管服务（如 Token之家）</strong></td>
+                  <td>运营方负责账号池、风控、稳定性，按量计费</td>
+                  <td>选错运营方可能跑路 — 选有运营记录的</td>
+                </tr>
+                <tr>
+                  <td><strong>纯倒卖（灰色）</strong></td>
+                  <td>一个人挂一两个账号当中转卖</td>
+                  <td>账号一封就停服，不建议用于生产</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>怎么挑一个靠谱的？</h2>
+          <ul>
+            <li><strong>看运营时间</strong>：跑了半年以上的相对稳定</li>
+            <li><strong>看账号池规模</strong>：用户数 / 账号数的比例不能过大，否则限流</li>
+            <li><strong>看文档与客服</strong>：响应慢的运营方出问题时也慢</li>
+            <li><strong>看价格透明度</strong>：按量计费、明细账单，警惕「无限量 xx 元」的噱头</li>
+            <li><strong>看数据政策</strong>：正规中转不记录提示内容，只记元数据用于计费</li>
+          </ul>
+
+          <h2>中转 vs 官方的权衡</h2>
+          <div class="seo-grid">
+            <div class="seo-card">
+              <h3>用中转划算的场景</h3>
+              <ul>
+                <li>日常用量不固定，不想被月租绑定</li>
+                <li>需要同时用 Claude、GPT、Gemini</li>
+                <li>个人开发者 / 小团队</li>
+                <li>做原型、测试、学习</li>
+                <li>预算有限，对延迟不敏感到毫秒级</li>
+              </ul>
+            </div>
+            <div class="seo-card">
+              <h3>还是走官方的场景</h3>
+              <ul>
+                <li>企业合规要求直签供应商</li>
+                <li>需要 SLA、专属支持</li>
+                <li>上下文包含高度敏感数据</li>
+                <li>想用刚发布的尖端模型（中转可能晚几天接入）</li>
+              </ul>
+            </div>
+          </div>
+
+          <h2>一个现实的账单对比</h2>
+          <p>假设你每月用 Claude Sonnet 4 生成约 1000 万输入 + 200 万输出 token：</p>
+          <div class="seo-table-wrap">
+            <table class="seo-table">
+              <thead>
+                <tr><th>方案</th><th>月账单</th><th>说明</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>官方直付</td><td>$30 + $30 = $60</td><td>按公布价</td></tr>
+                <tr><td>官方 + 提示缓存</td><td>约 $25-40</td><td>缓存命中有折扣</td></tr>
+                <tr><td>Token之家中转</td><td>约 $20-40</td><td>按实际结算，<a href="/register">注册后看实时</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            用量越大，中转优势越明显。如果你月用不到百万 token，
+            官方和中转差距就没那么大了，选自己用着顺手的就好。
+          </p>
+
+          <section class="seo-cta-block">
+            <h2 class="seo-mt-0">1 分钟体验 Token之家中转</h2>
+            <p>免费注册，送测试额度，按量计费。觉得不好随时停用。</p>
+            <a class="seo-btn-cta" href="/register">免费注册 →</a>
+            <a class="seo-btn-ghost" href="/login">已有账号</a>
+          </section>
+
+          <h2>常见问题</h2>
+          <div class="seo-faq">
+            <div class="seo-faq-item">
+              <h3>中转站合法吗？</h3>
+              <p>运营方代买、代用官方订阅，在法律上属于商业代理关系。正规中转与官方没有根本冲突。关键看运营方是否遵守上游使用协议。</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>为什么价格能比官方还低？</h3>
+              <p>本质是把订阅制的沉没成本抹平。官方订阅按月收整额，中转按实际用量结算 — 多数用户月付了但没用满，中转把这部分余量二次分发。</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>会不会被中转方看到我的提示词？</h3>
+              <p>正规中转不会 — 请求是加密转发，元数据仅用于计费。但仍建议避免把高度敏感数据（密钥、身份证号）传给任何 LLM，无论官方还是中转。</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>中转会比官方慢吗？</h3>
+              <p>一般增加 10-50ms。瓶颈在上游模型本身的响应，中转层的开销很小。</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>能用 Claude Code 吗？</h3>
+              <p>能。Claude Code 支持自定义 <code>ANTHROPIC_BASE_URL</code>，配置方法见
+              <a href="/guides/claude-code-setup.html">Claude Code 接入中转教程</a>。</p>
+            </div>
+          </div>
+
+          <section class="seo-related">
+            <h2>继续阅读</h2>
+            <ul class="seo-related-list">
+              <li><a href="/glossary/what-is-claude-code.html"><strong>Claude Code 是什么？</strong><span>官方 CLI 编程助手</span></a></li>
+              <li><a href="/glossary/what-is-an-ai-token.html"><strong>Token 是什么？</strong><span>计费单位基础</span></a></li>
+              <li><a href="/compare/tokenzhijia-vs-official-claude.html"><strong>中转 vs 官方直购</strong><span>详细对比</span></a></li>
+              <li><a href="/guides/claude-code-setup.html"><strong>Claude Code 接入中转</strong><span>配置教程</span></a></li>
+            </ul>
+          </section>
+        </article>
+      </div>
+    </main>
+
+    <footer class="seo-footer">
+      <div class="seo-container">
+        <p>
+          <a href="/">首页</a> ·
+          <a href="/en/glossary/what-is-claude-relay.html" hreflang="en" rel="alternate">English</a> ·
+          <a href="/login">登录</a> ·
+          <a href="/register">注册</a>
+        </p>
+        <p>© Token之家 · Claude / Claude Code / ChatGPT 中转站</p>
+      </div>
+    </footer>
+  </body>
+</html>

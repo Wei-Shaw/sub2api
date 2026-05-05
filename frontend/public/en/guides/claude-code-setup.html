@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+
+    <title>Claude Code Setup with a Cheap Claude API (2026 guide) | Token之家</title>
+    <meta name="description" content="Configure Claude Code CLI with Token之家 in 5 minutes. Point ANTHROPIC_BASE_URL at the proxy, pay per token, save 50%+ vs the official subscription. Includes error fixes." />
+    <meta name="keywords" content="claude code setup, claude code proxy, ANTHROPIC_BASE_URL, cheap claude api, claude code cli, claude code configuration" />
+    <meta name="robots" content="index,follow" />
+    <meta name="theme-color" content="#14b8a6" />
+
+    <link rel="canonical" href="https://tokenzhijia.shop/en/guides/claude-code-setup.html" />
+    <link rel="alternate" hreflang="zh-CN" href="https://tokenzhijia.shop/guides/claude-code-setup.html" />
+    <link rel="alternate" hreflang="en" href="https://tokenzhijia.shop/en/guides/claude-code-setup.html" />
+    <link rel="alternate" hreflang="x-default" href="https://tokenzhijia.shop/guides/claude-code-setup.html" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://tokenzhijia.shop/en/guides/claude-code-setup.html" />
+    <meta property="og:title" content="Claude Code Setup with a Cheap Claude API" />
+    <meta property="og:description" content="Point ANTHROPIC_BASE_URL at Token之家 in 5 minutes. Save 50%+ vs the official subscription." />
+    <meta property="og:image" content="https://tokenzhijia.shop/logo.png" />
+    <meta property="og:site_name" content="Token之家" />
+    <meta property="og:locale" content="en_US" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Claude Code Setup with a Cheap Claude API" />
+    <meta name="twitter:description" content="Point ANTHROPIC_BASE_URL at Token之家 in 5 minutes. Save 50%+ vs the official subscription." />
+    <meta name="twitter:image" content="https://tokenzhijia.shop/logo.png" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "HowTo",
+      "name": "Set up Claude Code with a proxy",
+      "description": "Configure Anthropic's Claude Code CLI to use Token之家 in 5 minutes.",
+      "inLanguage": "en",
+      "totalTime": "PT5M",
+      "supply": [
+        { "@type": "HowToSupply", "name": "Token之家 account + API key" },
+        { "@type": "HowToSupply", "name": "Node.js 18+" }
+      ],
+      "step": [
+        { "@type": "HowToStep", "name": "Install Claude Code", "text": "npm install -g @anthropic-ai/claude-code" },
+        { "@type": "HowToStep", "name": "Create an API key", "text": "Sign up on Token之家 and create a key from the dashboard" },
+        { "@type": "HowToStep", "name": "Set env vars", "text": "Export ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY pointing at the proxy" },
+        { "@type": "HowToStep", "name": "Run and verify", "text": "Run claude inside any project and confirm it routes through the proxy" }
+      ]
+    }
+    </script>
+
+    <link rel="stylesheet" href="/assets/seo.css" />
+  </head>
+  <body>
+    <div class="seo-bg-decor"></div>
+
+    <header class="seo-header">
+      <div class="seo-container-wide">
+        <nav class="seo-nav">
+          <a class="seo-logo" href="/en.html">
+            <img src="/logo.png" alt="Token之家 logo" width="36" height="36" />
+            <span class="seo-logo-text">Token之家</span>
+          </a>
+          <div class="seo-nav-links">
+            <a class="seo-nav-link" href="/guides/claude-code-setup.html" hreflang="zh-CN" rel="alternate">中文</a>
+            <a class="seo-nav-link" href="/login">Log in</a>
+            <a class="seo-btn-primary" href="/register">Sign up →</a>
+          </div>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="seo-container">
+        <article>
+          <h1>Claude Code Setup with a Cheap Claude API</h1>
+          <p class="seo-lede">
+            Claude Code's official subscription is a flat monthly fee that adds up fast if you
+            use it daily. Point <code>ANTHROPIC_BASE_URL</code> at Token之家 instead, pay per
+            token actually used, and <strong>typically save 50%+</strong>. Works with Sonnet 4,
+            Opus, and Haiku. 5 minutes end-to-end.
+          </p>
+
+          <div class="seo-tldr">
+            <p><strong>The core is two env vars:</strong> <code>ANTHROPIC_BASE_URL=https://tokenzhijia.shop</code>
+            and <code>ANTHROPIC_API_KEY=your_proxy_key</code>. Details below.</p>
+          </div>
+
+          <h2>Prerequisites</h2>
+          <ul>
+            <li>Node.js 18+ (<code>node -v</code> to check)</li>
+            <li>A <a href="/register">Token之家 account</a> with an API key</li>
+            <li>Terminal access to set environment variables (macOS / Linux / Windows)</li>
+          </ul>
+
+          <h2>Step-by-step</h2>
+          <ol class="seo-steps">
+            <li>
+              <h3>Install Claude Code</h3>
+              <p>Anthropic's official CLI via npm:</p>
+              <pre><code>npm install -g @anthropic-ai/claude-code</code></pre>
+              <p><code>claude --version</code> should print the installed version.</p>
+            </li>
+
+            <li>
+              <h3>Create an API key on Token之家</h3>
+              <p><a href="/register">Sign up</a> → API Keys → "Create key". Use one key per project
+              so you can track usage and revoke independently.</p>
+              <div class="seo-warn">
+                <p><strong>The key is shown only once.</strong> Copy it immediately. Lost keys can't
+                be recovered — only regenerated.</p>
+              </div>
+            </li>
+
+            <li>
+              <h3>Set the environment variables</h3>
+              <p>Pick temporary or persistent:</p>
+
+              <p><strong>Temporary (current shell):</strong></p>
+<pre><code># macOS / Linux
+export ANTHROPIC_BASE_URL="https://tokenzhijia.shop"
+export ANTHROPIC_API_KEY="your_token_home_key"
+
+# Windows PowerShell
+$env:ANTHROPIC_BASE_URL = "https://tokenzhijia.shop"
+$env:ANTHROPIC_API_KEY = "your_token_home_key"</code></pre>
+
+              <p><strong>Persistent (every new shell):</strong></p>
+<pre><code>echo 'export ANTHROPIC_BASE_URL="https://tokenzhijia.shop"' >> ~/.zshrc
+echo 'export ANTHROPIC_API_KEY="your_key"' >> ~/.zshrc
+source ~/.zshrc</code></pre>
+              <p>On bash, replace <code>~/.zshrc</code> with <code>~/.bashrc</code>.</p>
+            </li>
+
+            <li>
+              <h3>Verify</h3>
+              <p>Inside any project:</p>
+              <pre><code>cd your-project
+claude</code></pre>
+              <p>First launch asks a few config questions (model preference, tool permissions) —
+              defaults are fine. Then try "summarize this repo" — a normal response means the
+              proxy is working.</p>
+            </li>
+
+            <li>
+              <h3>Watch usage and billing</h3>
+              <p>On the <a href="/usage">Token之家 Usage page</a> you'll see for each Claude Code
+              request:</p>
+              <ul>
+                <li>Model used (Sonnet 4 / Opus / Haiku)</li>
+                <li>Input + output tokens</li>
+                <li>Cost charged</li>
+                <li>Timestamp + request ID</li>
+              </ul>
+              <p>Email alerts fire when balance drops below your threshold so you don't get cut off mid-task.</p>
+            </li>
+          </ol>
+
+          <h2>Common errors and fixes</h2>
+          <div class="seo-table-wrap">
+            <table class="seo-table">
+              <thead>
+                <tr><th>Error</th><th>Cause</th><th>Fix</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><code>401 Unauthorized</code></td>
+                  <td>Wrong or unset API key</td>
+                  <td>Check <code>echo $ANTHROPIC_API_KEY</code> returns your key</td>
+                </tr>
+                <tr>
+                  <td><code>ENOTFOUND tokenzhijia.shop</code></td>
+                  <td>No network or DNS failure</td>
+                  <td>Confirm <code>curl https://tokenzhijia.shop</code> works</td>
+                </tr>
+                <tr>
+                  <td><code>429 Too Many Requests</code></td>
+                  <td>Too many calls in short window</td>
+                  <td>Wait briefly or contact support for a limit raise</td>
+                </tr>
+                <tr>
+                  <td><code>402 Insufficient Balance</code></td>
+                  <td>Account out of funds</td>
+                  <td>Top up from the dashboard (min $1)</td>
+                </tr>
+                <tr>
+                  <td><code>model not supported</code></td>
+                  <td>Requested a model not in pool</td>
+                  <td>Run <code>claude config</code> and select Sonnet 4 / Opus / Haiku</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Advanced: per-project keys</h2>
+          <p>
+            Want different keys for different projects? Create a <code>.env</code> in the project
+            root or override inside your npm script:
+          </p>
+<pre><code># Project A's .env
+ANTHROPIC_BASE_URL=https://tokenzhijia.shop
+ANTHROPIC_API_KEY=sk-xxxxx-project-a
+
+# Launch
+source .env && claude</code></pre>
+          <p>You can create multiple keys under the same Token之家 account — each with its own
+          billing view.</p>
+
+          <h2>Why a proxy is cheaper than a subscription</h2>
+          <p>
+            Claude Code's official plan is a flat fee whether you use it all or not. A proxy pools
+            many subscriptions and bills by the token you actually consume — no waste on idle
+            months, no throttling on heavy months. Full breakdown:
+            <a href="/en/compare/claude-code-relay-vs-subscription.html">Claude Code Proxy vs Official Subscription</a>.
+          </p>
+
+          <section class="seo-cta-block">
+            <h2 class="seo-mt-0">Grab a key and cut your Claude Code bill in half</h2>
+            <p>1-minute signup, $1 minimum top-up, pay per token, cancel anytime.</p>
+            <a class="seo-btn-cta" href="/register">Sign up free →</a>
+            <a class="seo-btn-ghost" href="/login">Already a member</a>
+          </section>
+
+          <h2>FAQ</h2>
+          <div class="seo-faq">
+            <div class="seo-faq-item">
+              <h3>Do all Claude Code features work?</h3>
+              <p>Yes — conversations, tool calls, file edits, shell execution, and MCP server configs all work unchanged.</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>How are sticky sessions handled?</h3>
+              <p>Consecutive requests from the same key are routed to the same upstream account when possible, preserving conversation cache and saving more.</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>Can I use Cursor and Cline with the same key?</h3>
+              <p>Yes. One key works across <a href="/en/guides/cursor-claude-proxy.html">Cursor</a>,
+              <a href="/en/guides/cline-cheap-claude.html">Cline</a>, and Claude Code simultaneously.</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>Team billing and invoices?</h3>
+              <p>Yes. Export CSV statements from the dashboard; contact support for formal invoices.</p>
+            </div>
+          </div>
+
+          <section class="seo-related">
+            <h2>Related guides</h2>
+            <ul class="seo-related-list">
+              <li><a href="/en/guides/cursor-claude-proxy.html"><strong>Cursor with Cheap Claude API</strong><span>IDE integration</span></a></li>
+              <li><a href="/en/guides/cline-cheap-claude.html"><strong>Cline with Cheap Claude API</strong><span>VS Code agent</span></a></li>
+              <li><a href="/en/examples/claude-api-python.html"><strong>Claude API Python Example</strong><span>Programmatic use</span></a></li>
+              <li><a href="/en/glossary/what-is-claude-code.html"><strong>What Is Claude Code?</strong><span>Primer</span></a></li>
+            </ul>
+          </section>
+        </article>
+      </div>
+    </main>
+
+    <footer class="seo-footer">
+      <div class="seo-container">
+        <p>
+          <a href="/en.html">Home</a> ·
+          <a href="/guides/claude-code-setup.html" hreflang="zh-CN" rel="alternate">中文</a> ·
+          <a href="/login">Log in</a> ·
+          <a href="/register">Sign up</a>
+        </p>
+        <p>© Token之家 · Claude / Claude Code / ChatGPT API gateway</p>
+      </div>
+    </footer>
+  </body>
+</html>

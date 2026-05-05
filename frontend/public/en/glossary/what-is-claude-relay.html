@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+
+    <title>What Is a Claude API Proxy? How It Works &amp; Why It's Cheaper | Token之家</title>
+    <meta name="description" content="A Claude API proxy (also 'relay' or 'gateway') forwards your requests to Anthropic through a pool of accounts — giving you pay-as-you-go pricing below direct. How it works, tradeoffs, selection tips." />
+    <meta name="keywords" content="claude api proxy, what is claude relay, claude gateway, cheap claude api, openai proxy, claude api middleware" />
+    <meta name="robots" content="index,follow" />
+    <meta name="theme-color" content="#14b8a6" />
+
+    <link rel="canonical" href="https://tokenzhijia.shop/en/glossary/what-is-claude-relay.html" />
+    <link rel="alternate" hreflang="zh-CN" href="https://tokenzhijia.shop/glossary/what-is-claude-relay.html" />
+    <link rel="alternate" hreflang="en" href="https://tokenzhijia.shop/en/glossary/what-is-claude-relay.html" />
+    <link rel="alternate" hreflang="x-default" href="https://tokenzhijia.shop/glossary/what-is-claude-relay.html" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://tokenzhijia.shop/en/glossary/what-is-claude-relay.html" />
+    <meta property="og:title" content="What Is a Claude API Proxy?" />
+    <meta property="og:description" content="A plain-English explainer of how Claude API proxies (relays, gateways) work and why they're cheaper." />
+    <meta property="og:image" content="https://tokenzhijia.shop/logo.png" />
+    <meta property="og:site_name" content="Token之家" />
+    <meta property="og:locale" content="en_US" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="What Is a Claude API Proxy?" />
+    <meta name="twitter:description" content="A plain-English explainer of how Claude API proxies (relays, gateways) work and why they're cheaper." />
+    <meta name="twitter:image" content="https://tokenzhijia.shop/logo.png" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "DefinedTerm",
+      "name": "Claude API Proxy",
+      "alternateName": ["Claude API Relay", "Claude API Gateway"],
+      "description": "A service that forwards developer API requests to Anthropic's Claude through a pool of upstream accounts, offering pay-as-you-go pricing below official list rates.",
+      "inDefinedTermSet": "https://tokenzhijia.shop/en/glossary/",
+      "inLanguage": "en",
+      "url": "https://tokenzhijia.shop/en/glossary/what-is-claude-relay.html"
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Article",
+      "headline": "What Is a Claude API Proxy?",
+      "author": { "@type": "Organization", "name": "Token之家" },
+      "publisher": { "@type": "Organization", "name": "Token之家", "logo": { "@type": "ImageObject", "url": "https://tokenzhijia.shop/logo.png" } },
+      "datePublished": "2026-04-18",
+      "dateModified": "2026-04-18",
+      "inLanguage": "en"
+    }
+    </script>
+
+    <link rel="stylesheet" href="/assets/seo.css" />
+  </head>
+  <body>
+    <div class="seo-bg-decor"></div>
+
+    <header class="seo-header">
+      <div class="seo-container-wide">
+        <nav class="seo-nav">
+          <a class="seo-logo" href="/en.html">
+            <img src="/logo.png" alt="Token之家 logo" width="36" height="36" />
+            <span class="seo-logo-text">Token之家</span>
+          </a>
+          <div class="seo-nav-links">
+            <a class="seo-nav-link" href="/glossary/what-is-claude-relay.html" hreflang="zh-CN" rel="alternate">中文</a>
+            <a class="seo-nav-link" href="/login">Log in</a>
+            <a class="seo-btn-primary" href="/register">Sign up →</a>
+          </div>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="seo-container">
+        <article>
+          <h1>What Is a Claude API Proxy?</h1>
+          <p class="seo-lede">
+            If you've searched "cheap Claude API" or "Claude API alternatives", you've probably
+            seen the terms <em>proxy</em>, <em>relay</em>, or <em>gateway</em>. Here's what they
+            mean, how they work, why they're cheaper than paying Anthropic directly, and how to
+            pick a trustworthy one.
+          </p>
+
+          <div class="seo-tldr">
+            <p><strong>Definition:</strong> A Claude API proxy is a service that sits between you
+            and Anthropic, forwarding your requests through a pool of upstream accounts.
+            Pooling + pay-as-you-go billing gets you a lower per-token price and more stable
+            availability than any single direct account.</p>
+          </div>
+
+          <h2>An analogy</h2>
+          <p>
+            Think of Anthropic as a mobile carrier selling monthly plans. Your personal usage is
+            100 minutes a month, but the cheapest plan is 200 minutes — you're paying for 100
+            unused minutes every month.
+          </p>
+          <p>
+            A proxy is the "reseller" who buys dozens of plans from the carrier, pools unused
+            minutes across all of them, and sells <strong>only what you actually use</strong>,
+            billed by the minute.
+          </p>
+          <p>
+            Swap "minutes" for "tokens" and "monthly plan" for "Anthropic subscription" — that's
+            what a Claude API proxy does.
+          </p>
+
+          <h2>How does it actually save money?</h2>
+          <ol>
+            <li>
+              <strong>Account pooling</strong>: the proxy operates many upstream accounts (often
+              hundreds). Each request is routed to the most idle one right now.
+            </li>
+            <li>
+              <strong>Valley-filling</strong>: nights and weekends have spare capacity on
+              per-account rate limits. Selling that spare capacity to other developers turns
+              sunk cost into revenue.
+            </li>
+            <li>
+              <strong>Bulk pricing</strong>: a big operator can access team/enterprise rates that
+              individuals can't. You get the discount through the proxy.
+            </li>
+            <li>
+              <strong>Cache reuse</strong>: when many users send similar long system prompts,
+              upstream prompt caches hit more often, cutting input cost dramatically.
+            </li>
+          </ol>
+
+          <h2>What does switching look like?</h2>
+          <p>For you, nearly transparent — you change one <code>base_url</code>:</p>
+<pre><code># Directly to Anthropic
+client = anthropic.Anthropic(
+    api_key="sk-ant-xxx",
+    # base_url defaults to https://api.anthropic.com
+)
+
+# Through a proxy
+client = anthropic.Anthropic(
+    api_key="YOUR_PROXY_KEY",    # issued by the proxy
+    base_url="https://tokenzhijia.shop",
+)</code></pre>
+          <p>The rest of your code is unchanged. Claude Code, Cursor, and Cline work the same way.</p>
+
+          <h2>Three flavors of proxy</h2>
+          <div class="seo-table-wrap">
+            <table class="seo-table">
+              <thead>
+                <tr><th>Type</th><th>Traits</th><th>Risks</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Self-hosted OSS</strong></td>
+                  <td>You run the proxy on your box, buy accounts, do ops yourself</td>
+                  <td>Technical lift; you handle bans / outages alone</td>
+                </tr>
+                <tr>
+                  <td><strong>Managed service (e.g. Token之家)</strong></td>
+                  <td>Operator runs the pool, risk, reliability; you pay per use</td>
+                  <td>Pick a reputable one — some fly-by-night operators disappear</td>
+                </tr>
+                <tr>
+                  <td><strong>Single-account reseller</strong></td>
+                  <td>Individual renting out one or two accounts</td>
+                  <td>Single account bans = outage. Not production-safe</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>How to pick a trustworthy one</h2>
+          <ul>
+            <li><strong>Runtime history</strong>: been around 6+ months is a decent signal</li>
+            <li><strong>Pool-to-user ratio</strong>: too many users per account means throttling</li>
+            <li><strong>Docs + support</strong>: slow docs = slow ops when things break</li>
+            <li><strong>Price transparency</strong>: per-token billing with detailed logs beats "unlimited for $X" gimmicks</li>
+            <li><strong>Data policy</strong>: legitimate proxies don't log prompt content, only metadata for billing</li>
+          </ul>
+
+          <h2>Proxy vs direct: tradeoffs</h2>
+          <div class="seo-grid">
+            <div class="seo-card">
+              <h3>Proxy wins when…</h3>
+              <ul>
+                <li>Usage is bursty — monthly flat fees waste money</li>
+                <li>You want Claude + GPT + Gemini through one key</li>
+                <li>Solo dev or small team</li>
+                <li>Prototyping / learning / side projects</li>
+                <li>Budget matters more than microsecond latency</li>
+              </ul>
+            </div>
+            <div class="seo-card">
+              <h3>Direct wins when…</h3>
+              <ul>
+                <li>Enterprise compliance needs a direct vendor contract</li>
+                <li>You need SLAs and dedicated support</li>
+                <li>Prompts contain highly sensitive data</li>
+                <li>You want brand-new models on day-zero (proxies sometimes lag a few days)</li>
+              </ul>
+            </div>
+          </div>
+
+          <h2>A realistic bill comparison</h2>
+          <p>Suppose you use Claude Sonnet 4 at ~10M input + 2M output tokens per month:</p>
+          <div class="seo-table-wrap">
+            <table class="seo-table">
+              <thead>
+                <tr><th>Option</th><th>Monthly bill</th><th>Notes</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Direct (list price)</td><td>$30 + $30 = $60</td><td>Published rates</td></tr>
+                <tr><td>Direct + prompt caching</td><td>~$25–40</td><td>With consistent cache hits</td></tr>
+                <tr><td>Token之家 proxy</td><td>~$20–40</td><td>Live rate, <a href="/register">register to see</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            Bigger usage → bigger proxy advantage. Under a million tokens a month, the gap is small;
+            pick whatever feels nicest.
+          </p>
+
+          <section class="seo-cta-block">
+            <h2 class="seo-mt-0">Try Token之家 in 1 minute</h2>
+            <p>Free signup with trial credit. Pay only for what you use. Leave anytime.</p>
+            <a class="seo-btn-cta" href="/register">Sign up free →</a>
+            <a class="seo-btn-ghost" href="/login">Already a member</a>
+          </section>
+
+          <h2>FAQ</h2>
+          <div class="seo-faq">
+            <div class="seo-faq-item">
+              <h3>Is using a proxy legal?</h3>
+              <p>Proxies operate as commercial resellers — legally a standard agency relationship. Reputable operators respect upstream terms. Sketchy ones don't; avoid them.</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>Why can it be cheaper than Anthropic's own pay-as-you-go?</h3>
+              <p>The "waste" of unused subscription capacity is what's being recycled. Many accounts paying for unused quota = pool surplus = lower unit cost for buyers.</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>Can the proxy see my prompts?</h3>
+              <p>Legitimate proxies don't log prompt bodies — only request metadata for billing. That said, don't feed any LLM (proxy or direct) secrets like API keys or credentials.</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>Is a proxy slower?</h3>
+              <p>Usually adds 10–50ms. Upstream model TTFB dominates latency; the proxy layer is cheap.</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>Does Claude Code work through a proxy?</h3>
+              <p>Yes. Claude Code honors <code>ANTHROPIC_BASE_URL</code> — see the <a href="/en/guides/claude-code-setup.html">Claude Code setup guide</a>.</p>
+            </div>
+          </div>
+
+          <section class="seo-related">
+            <h2>Keep reading</h2>
+            <ul class="seo-related-list">
+              <li><a href="/en/glossary/what-is-claude-code.html"><strong>What Is Claude Code?</strong><span>Official coding CLI</span></a></li>
+              <li><a href="/en/glossary/what-is-an-ai-token.html"><strong>What Is a Token?</strong><span>Billing unit basics</span></a></li>
+              <li><a href="/en/compare/tokenzhijia-vs-official-claude.html"><strong>Proxy vs Direct Anthropic</strong><span>Detailed comparison</span></a></li>
+              <li><a href="/en/guides/claude-code-setup.html"><strong>Claude Code Setup with Proxy</strong><span>Setup tutorial</span></a></li>
+            </ul>
+          </section>
+        </article>
+      </div>
+    </main>
+
+    <footer class="seo-footer">
+      <div class="seo-container">
+        <p>
+          <a href="/en.html">Home</a> ·
+          <a href="/glossary/what-is-claude-relay.html" hreflang="zh-CN" rel="alternate">中文</a> ·
+          <a href="/login">Log in</a> ·
+          <a href="/register">Sign up</a>
+        </p>
+        <p>© Token之家 · Claude / Claude Code / ChatGPT API gateway</p>
+      </div>
+    </footer>
+  </body>
+</html>
