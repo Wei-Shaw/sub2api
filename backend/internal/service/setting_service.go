@@ -2778,6 +2778,55 @@ REDACTED
 	return s.settingRepo.Set(ctx, SettingKeyOverloadCooldownSettings, string(data))
 REDACTED
 
+// GetRateLimit429CooldownSettings 获取429默认回避配置
+func (s *SettingService) GetRateLimit429CooldownSettings(ctx context.Context) (*RateLimit429CooldownSettings, error) {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyRateLimit429CooldownSettings)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return DefaultRateLimit429CooldownSettings(), nil
+	REDACTED
+		return nil, fmt.Errorf("get 429 cooldown settings: %w", err)
+REDACTED
+	if value == "" {
+		return DefaultRateLimit429CooldownSettings(), nil
+REDACTED
+
+	var settings RateLimit429CooldownSettings
+	if err := json.Unmarshal([]byte(value), &settings); err != nil {
+		return DefaultRateLimit429CooldownSettings(), nil
+REDACTED
+
+	if settings.CooldownSeconds < 1 {
+		settings.CooldownSeconds = 1
+REDACTED
+	if settings.CooldownSeconds > 7200 {
+		settings.CooldownSeconds = 7200
+REDACTED
+
+	return &settings, nil
+REDACTED
+
+// SetRateLimit429CooldownSettings 设置429默认回避配置
+func (s *SettingService) SetRateLimit429CooldownSettings(ctx context.Context, settings *RateLimit429CooldownSettings) error {
+	if settings == nil {
+		return fmt.Errorf("settings cannot be nil")
+REDACTED
+
+	if settings.CooldownSeconds < 1 || settings.CooldownSeconds > 7200 {
+		if settings.Enabled {
+			return fmt.Errorf("cooldown_seconds must be between 1-7200")
+	REDACTED
+		settings.CooldownSeconds = 5
+REDACTED
+
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return fmt.Errorf("marshal 429 cooldown settings: %w", err)
+REDACTED
+
+	return s.settingRepo.Set(ctx, SettingKeyRateLimit429CooldownSettings, string(data))
+REDACTED
+
 // GetOIDCConnectOAuthConfig 返回用于登录的“最终生效” OIDC 配置。
 //
 // 优先级：
