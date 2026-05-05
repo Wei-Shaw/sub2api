@@ -144,6 +144,24 @@ func TestImageAsyncFinalError_PreservesPreviousPolicyErrorWhenSchedulerAddsModel
 	require.Same(t, previous, selected)
 }
 
+func TestResolveOpenAIMessagesMetadataSession_DoesNotDerivePromptCacheKey(t *testing.T) {
+	body := []byte(`{"model":"claude-sonnet-4-5","metadata":{"user_id":"claude-code-session"},"messages":[{"role":"user","content":"hello"}]}`)
+
+	sessionHash, promptCacheKey := resolveOpenAIMessagesMetadataSession("", "", "claude-sonnet-4-5", body)
+
+	require.NotEmpty(t, sessionHash)
+	require.Empty(t, promptCacheKey)
+}
+
+func TestResolveOpenAIMessagesMetadataSession_PreservesExplicitPromptCacheKey(t *testing.T) {
+	body := []byte(`{"metadata":{"user_id":"claude-code-session"}}`)
+
+	sessionHash, promptCacheKey := resolveOpenAIMessagesMetadataSession("", "explicit-cache", "claude-sonnet-4-5", body)
+
+	require.NotEmpty(t, sessionHash)
+	require.Equal(t, "explicit-cache", promptCacheKey)
+}
+
 func TestOpenAIHandleStreamingAwareError_NonStreaming(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
