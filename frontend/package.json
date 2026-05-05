@@ -19,7 +19,7 @@
     "@stripe/stripe-js": "^9.0.1",
     "@tanstack/vue-virtual": "^3.13.23",
     "@vueuse/core": "^10.7.0",
-    "axios": "^1.15.0",
+    "axios": "^1.16.0",
     "chart.js": "^4.4.1",
     "dompurify": "^3.3.1",
     "driver.js": "^1.4.0",
