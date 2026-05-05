@@ -22,9 +22,11 @@ type AccountModelFilterGroup struct {
 }
 
 const (
-	AccountModelFilterLimited   = "__limited__"
-	AccountModelFilterUnlimited = "__unlimited__"
+	AccountModelFilterLimited                      = "__limited__"
+	AccountModelFilterUnlimited                    = "__unlimited__"
 	AccountStatusFilterActiveExcludingQuotaStopped = "active_excluding_quota_stopped"
+	AccountStatusFilterOpenAI5HUsedZero            = "openai_5h_used_zero"
+	AccountStatusFilterOpenAI7DUsedZero            = "openai_7d_used_zero"
 )
 
 func ListAccountModelFilterGroups() []AccountModelFilterGroup {
@@ -167,6 +169,10 @@ func MatchesAccountListStatusFilter(account *Account, requestedStatus string, no
 			!account.Schedulable &&
 			!isAccountRateLimitedAt(account, now) &&
 			!isAccountTempUnschedulableAt(account, now)
+	case AccountStatusFilterOpenAI5HUsedZero:
+		return isOpenAIUsagePercentExactlyZero(account, "codex_5h_used_percent")
+	case AccountStatusFilterOpenAI7DUsedZero:
+		return isOpenAIUsagePercentExactlyZero(account, "codex_7d_used_percent")
 	default:
 		return account.Status == requestedStatus
 	}
