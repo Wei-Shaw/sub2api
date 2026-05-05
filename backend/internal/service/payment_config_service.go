@@ -231,6 +231,17 @@ func NewPaymentConfigService(entClient *dbent.Client, settingRepo SettingReposit
 	return &PaymentConfigService{entClient: entClient, settingRepo: settingRepo, encryptionKey: encryptionKey}
 }
 
+func (s *PaymentConfigService) GetFrontendURL(ctx context.Context) string {
+	if s == nil || s.settingRepo == nil {
+		return ""
+	}
+	val, err := s.settingRepo.GetValue(ctx, SettingKeyFrontendURL)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(val)
+}
+
 // IsPaymentEnabled returns whether the payment system is enabled.
 func (s *PaymentConfigService) IsPaymentEnabled(ctx context.Context) bool {
 	val, err := s.settingRepo.GetValue(ctx, SettingPaymentEnabled)

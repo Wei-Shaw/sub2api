@@ -162,6 +162,7 @@ type CreatePaymentResponse struct {
 	OAuth        *WechatOAuthInfo        // WeChat OAuth bootstrap payload when required
 	JSAPI        *WechatJSAPIPayload     // WeChat JSAPI invocation payload when ready
 	CheckoutID   string                  // Provider-specific hosted checkout/session/transaction ID
+	CheckoutURL  string                  // Provider-specific hosted checkout/session URL
 }
 
 // QueryOrderResponse describes the payment status from the upstream provider.

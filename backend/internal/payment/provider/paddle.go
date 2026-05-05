@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -40,7 +41,12 @@ type Paddle struct {
 
 type paddleTransactionPayload struct {
 	Items      []paddleTransactionItem `json:"items"`
+	Checkout   *paddleCheckout         `json:"checkout,omitempty"`
 	CustomData map[string]any          `json:"custom_data,omitempty"`
+}
+
+type paddleCheckout struct {
+	URL *string `json:"url"`
 }
 
 type paddleTransactionItem struct {
@@ -79,8 +85,13 @@ type paddleTransactionEnvelope struct {
 				Total string `json:"total"`
 			} `json:"totals"`
 		} `json:"details"`
-		BilledAt string `json:"billed_at"`
+		Checkout *paddleTransactionCheckout `json:"checkout"`
+		BilledAt string                     `json:"billed_at"`
 	} `json:"data"`
+}
+
+type paddleTransactionCheckout struct {
+	URL string `json:"url"`
 }
 
 type paddleWebhookEnvelope struct {
@@ -128,6 +139,7 @@ func (p *Paddle) CreatePayment(ctx context.Context, req payment.CreatePaymentReq
 		return nil, fmt.Errorf("paddle create payment: %w", err)
 	}
 	payload := paddleTransactionPayload{
+		Checkout: p.buildHostedCheckout(),
 		CustomData: map[string]any{
 			"orderId":          req.OrderID,
 			"paymentType":      req.PaymentType,
@@ -173,10 +185,50 @@ func (p *Paddle) CreatePayment(ctx context.Context, req payment.CreatePaymentReq
 	if strings.TrimSpace(resp.Data.ID) == "" {
 		return nil, fmt.Errorf("paddle create payment: missing transaction id")
 	}
+	checkoutURL := ""
+	if resp.Data.Checkout != nil {
+		checkoutURL = strings.TrimSpace(resp.Data.Checkout.URL)
+	}
+	if checkoutURL != "" {
+		if err := validateHostedCheckoutURL(checkoutURL); err != nil {
+			return nil, fmt.Errorf("paddle create payment: invalid hosted checkout url: %w", err)
+		}
+	}
 	return &payment.CreatePaymentResponse{
-		TradeNo:    resp.Data.ID,
-		CheckoutID: resp.Data.ID,
+		TradeNo:     resp.Data.ID,
+		CheckoutID:  resp.Data.ID,
+		CheckoutURL: checkoutURL,
 	}, nil
+}
+
+func (p *Paddle) buildHostedCheckout() *paddleCheckout {
+	checkoutURL := firstNonEmpty(
+		p.config["checkoutUrl"],
+		p.config["checkoutURL"],
+		p.config["checkout_url"],
+		p.config["paymentUrl"],
+		p.config["paymentURL"],
+		p.config["payment_url"],
+		p.config["payUrl"],
+		p.config["pay_url"],
+	)
+	if checkoutURL == "" {
+		// Paddle treats checkout.url:null as "use the default payment URL" and
+		// returns a unique hosted checkout URL with the transaction ID attached.
+		return &paddleCheckout{}
+	}
+	return &paddleCheckout{URL: &checkoutURL}
+}
+
+func validateHostedCheckoutURL(rawURL string) error {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || !parsed.IsAbs() || parsed.Host == "" {
+		return fmt.Errorf("must be an absolute URL")
+	}
+	if parsed.Scheme != "https" {
+		return fmt.Errorf("must use https")
+	}
+	return nil
 }
 
 func (p *Paddle) QueryOrder(ctx context.Context, tradeNo string) (*payment.QueryOrderResponse, error) {

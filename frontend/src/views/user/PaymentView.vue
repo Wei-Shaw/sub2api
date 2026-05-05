@@ -1207,6 +1207,40 @@ async function attemptMobileQrFallback(err: unknown, context: MobileQrFallbackCo
   }
 }
 
+function queryValue(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (Array.isArray(value) && typeof value[0] === 'string') return value[0]
+  return ''
+}
+
+async function resumeFirstPartyPaddleCheckoutFromQuery(): Promise<boolean> {
+  const checkoutId = queryValue(route.query.checkout_id)
+  if (!checkoutId) {
+    return false
+  }
+  const orderId = Number(queryValue(route.query.order_id)) || 0
+  const expiresAt = queryValue(route.query.expires_at)
+  const outTradeNo = queryValue(route.query.out_trade_no)
+  const resumeToken = queryValue(route.query.resume_token)
+  const snapshot: PaymentRecoverySnapshot = {
+    ...emptyPaymentState(),
+    orderId,
+    amount: 0,
+    expiresAt,
+    paymentType: 'paddle',
+    checkoutId,
+    outTradeNo,
+    resumeToken,
+    createdAt: Date.now(),
+  }
+  selectedMethod.value = 'paddle'
+  paymentState.value = snapshot
+  paymentPhase.value = 'paddle'
+  persistRecoverySnapshot(snapshot)
+  await router.replace({ path: route.path, query: { ...route.query, source: 'first_party_checkout' } })
+  return true
+}
+
 function applyScenarioError(err: unknown, paymentMethod: string): boolean {
   const descriptor = describePaymentScenarioError(err, {
     paymentMethod,
@@ -1277,6 +1311,10 @@ onMounted(async () => {
     if (typeof window !== 'undefined') {
       if (hasWechatResumeQuery(route.query)) {
         removeRecoverySnapshot()
+      }
+      if (await resumeFirstPartyPaddleCheckoutFromQuery()) {
+        loading.value = false
+        return
       }
       const routeResumeToken = typeof route.query.resume_token === 'string'
         ? route.query.resume_token

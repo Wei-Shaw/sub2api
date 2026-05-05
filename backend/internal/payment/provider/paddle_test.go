@@ -117,8 +117,14 @@ func TestPaddleCreatePaymentSendsHostedCheckoutTransactionPayload(t *testing.T) 
 		if payload.CustomData["orderId"] != "vclaw_123" {
 			t.Fatalf("custom orderId = %v, want vclaw_123", payload.CustomData["orderId"])
 		}
+		if payload.Checkout == nil {
+			t.Fatal("checkout payload is nil, want hosted checkout object")
+		}
+		if payload.Checkout.URL != nil {
+			t.Fatalf("checkout.url = %q, want nil default payment link", *payload.Checkout.URL)
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"data":{"id":"txn_123"}}`))
+		_, _ = w.Write([]byte(`{"data":{"id":"txn_123","checkout":{"url":"https://buy.paddle.com/checkout/txn_123"}}}`))
 	}))
 	defer server.Close()
 
@@ -141,6 +147,12 @@ func TestPaddleCreatePaymentSendsHostedCheckoutTransactionPayload(t *testing.T) 
 	}
 	if resp.TradeNo != "txn_123" || resp.CheckoutID != "txn_123" {
 		t.Fatalf("response = %+v, want txn_123 trade and checkout IDs", resp)
+	}
+	if resp.CheckoutURL != "https://buy.paddle.com/checkout/txn_123" {
+		t.Fatalf("checkout_url = %q, want Paddle hosted URL", resp.CheckoutURL)
+	}
+	if resp.PayURL != "" {
+		t.Fatalf("pay_url = %q, want empty because checkout_url is canonical", resp.PayURL)
 	}
 }
 
@@ -172,6 +184,34 @@ func TestPaddleCreatePaymentReturnsUpstreamStatusBody(t *testing.T) {
 	}
 }
 
+func TestPaddleCreatePaymentAllowsMissingHostedCheckoutURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"id":"txn_123"}}`))
+	}))
+	defer server.Close()
+
+	p, err := NewPaddle("paddle-1", map[string]string{"apiKey": "***", "apiBase": server.URL})
+	if err != nil {
+		t.Fatalf("NewPaddle() error = %v", err)
+	}
+	resp, err := p.CreatePayment(context.Background(), payment.CreatePaymentRequest{
+		OrderID:         "vclaw_123",
+		Amount:          "5000",
+		PaymentCurrency: "KRW",
+		PaymentType:     "paddle",
+	})
+	if err != nil {
+		t.Fatalf("CreatePayment() error = %v", err)
+	}
+	if resp.TradeNo != "txn_123" || resp.CheckoutID != "txn_123" {
+		t.Fatalf("response = %+v, want txn_123 trade and checkout IDs", resp)
+	}
+	if resp.CheckoutURL != "" {
+		t.Fatalf("checkout_url = %q, want service-layer first-party checkout URL", resp.CheckoutURL)
+	}
+}
+
 func TestPaddleCreatePaymentDefaultsEmptySubjectToVClawCredit(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var payload paddleTransactionPayload
@@ -186,7 +226,7 @@ func TestPaddleCreatePaymentDefaultsEmptySubjectToVClawCredit(t *testing.T) {
 			t.Fatalf("paddle label = price %q product %q, want VClaw Credit", item.Price.Name, item.Price.Product.Name)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"data":{"id":"txn_123"}}`))
+		_, _ = w.Write([]byte(`{"data":{"id":"txn_123","checkout":{"url":"https://buy.paddle.com/checkout/txn_123"}}}`))
 	}))
 	defer server.Close()
 

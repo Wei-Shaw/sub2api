@@ -314,6 +314,19 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/checkout',
+    name: 'FirstPartyCheckout',
+    component: () => import('@/views/user/PaymentView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Checkout',
+      titleKey: 'payment.title',
+      descriptionKey: 'purchase.description',
+      requiresPayment: true
+    }
+  },
+  {
     path: '/orders',
     name: 'OrderList',
     component: () => import('@/views/user/UserOrdersView.vue'),

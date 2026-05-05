@@ -451,6 +451,61 @@ func TestBuildPaymentSubjectAppliesAffixToSubscriptionPlanDefaultName(t *testing
 	}
 }
 
+func TestBuildCreateOrderResponseUsesSingleCanonicalCheckoutURL(t *testing.T) {
+	t.Parallel()
+
+	resp := buildCreateOrderResponse(
+		&dbent.PaymentOrder{
+			ID:         123,
+			Amount:     50,
+			ExpiresAt:  time.Date(2026, 5, 5, 12, 0, 0, 0, time.UTC),
+			OutTradeNo: "vclaw_123",
+		},
+		CreateOrderRequest{PaymentType: payment.TypePaddle},
+		50,
+		&payment.InstanceSelection{ProviderKey: payment.TypePaddle, PaymentMode: "redirect"},
+		&payment.CreatePaymentResponse{
+			TradeNo:     "txn_123",
+			CheckoutID:  "txn_123",
+			CheckoutURL: "https://token.v-claw.org/checkout?checkout_id=txn_123",
+		},
+		payment.CreatePaymentResultOrderCreated,
+	)
+
+	if resp.CheckoutURL != "https://token.v-claw.org/checkout?checkout_id=txn_123" {
+		t.Fatalf("checkout_url = %q, want first-party checkout URL", resp.CheckoutURL)
+	}
+	if resp.PayURL != "" {
+		t.Fatalf("pay_url = %q, want empty because checkout_url is canonical", resp.PayURL)
+	}
+	if resp.CheckoutID != "txn_123" {
+		t.Fatalf("checkout_id = %q, want txn_123", resp.CheckoutID)
+	}
+}
+
+func TestBuildFirstPartyCheckoutURLUsesFrontendCheckoutRoute(t *testing.T) {
+	t.Parallel()
+
+	expiresAt := time.Date(2026, 5, 5, 12, 0, 0, 0, time.UTC)
+	got, err := buildFirstPartyCheckoutURL(
+		"https://token.v-claw.org/app/",
+		&dbent.PaymentOrder{ID: 123, OutTradeNo: "vclaw_123", ExpiresAt: expiresAt},
+		"txn_123",
+		"resume_123",
+	)
+	if err != nil {
+		t.Fatalf("buildFirstPartyCheckoutURL() error = %v", err)
+	}
+	if !strings.HasPrefix(got, "https://token.v-claw.org/app/checkout?") {
+		t.Fatalf("checkout URL = %q, want first-party /checkout route", got)
+	}
+	for _, want := range []string{"checkout_id=txn_123", "order_id=123", "out_trade_no=vclaw_123", "provider=paddle", "resume_token=resume_123"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("checkout URL = %q, missing %s", got, want)
+		}
+	}
+}
+
 func TestMaybeBuildWeChatOAuthRequiredResponse(t *testing.T) {
 	t.Setenv("PAYMENT_RESUME_SIGNING_KEY", "0123456789abcdef0123456789abcdef")
 
