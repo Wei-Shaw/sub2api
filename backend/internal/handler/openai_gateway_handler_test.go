@@ -92,6 +92,24 @@ REDACTED
 REDACTED
 REDACTED
 
+func TestResolveOpenAIMessagesMetadataSession_DoesNotDerivePromptCacheKey(t *testing.T) {
+	body := []byte(`{"model":"claude-sonnet-4-5","metadata":{"user_id":"claude-code-session"REDACTED,"messages":[{"role":"user","content":"hello"REDACTED]REDACTED`)
+
+	sessionHash, promptCacheKey := resolveOpenAIMessagesMetadataSession("", "", "claude-sonnet-4-5", body)
+
+	require.NotEmpty(t, sessionHash)
+	require.Empty(t, promptCacheKey)
+REDACTED
+
+func TestResolveOpenAIMessagesMetadataSession_PreservesExplicitPromptCacheKey(t *testing.T) {
+	body := []byte(`{"metadata":{"user_id":"claude-code-session"REDACTEDREDACTED`)
+
+	sessionHash, promptCacheKey := resolveOpenAIMessagesMetadataSession("", "explicit-cache", "claude-sonnet-4-5", body)
+
+	require.NotEmpty(t, sessionHash)
+	require.Equal(t, "explicit-cache", promptCacheKey)
+REDACTED
+
 func TestOpenAIHandleStreamingAwareError_NonStreaming(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
