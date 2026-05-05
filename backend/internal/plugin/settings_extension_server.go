@@ -96,8 +96,15 @@ func (s *SettingsExtensionServer) Get(
 
 // Set implements pb.SettingsExtensionServer.Set. The plugin can only
 // write keys inside its own namespace (caller identity comes from the
-// gRPC metadata header). Visibility / schema validation runs at the
-// host service layer just like admin REST writes.
+// gRPC metadata header). Schema validation runs at the host service
+// layer just like admin REST writes.
+//
+// Source is SetSourceInternal: writes originating from the plugin itself
+// (even when triggered by an admin HTTP request into the plugin's own
+// endpoint) are plugin-internal and may legitimately touch keys with
+// visibility=backend. The generic admin plugin-settings dialog stays
+// guarded because that path goes through the REST handler which uses
+// SetSourceAdmin.
 func (s *SettingsExtensionServer) Set(
 	ctx context.Context, req *pb.SettingsSetRequest,
 ) (*pb.SettingsSetResponse, error) {
@@ -109,7 +116,7 @@ func (s *SettingsExtensionServer) Set(
 		return nil, status.Error(codes.InvalidArgument, "settings: empty key")
 	}
 	rev, err := s.svc.SetByKeyWithSource(ctx, pluginName, req.GetKey(),
-		req.GetValueJson(), service.SetSourceAdmin)
+		req.GetValueJson(), service.SetSourceInternal)
 	if err != nil {
 		s.logger.Warn("settings set failed",
 			"plugin", pluginName, "key", req.GetKey(), "error", err)
