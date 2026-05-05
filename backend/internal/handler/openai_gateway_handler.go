@@ -15,6 +15,7 @@ import (
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -102,6 +103,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
 	}
+	// P0-3 §4.4 task 2: 将 subject.UserID 写入 ctx，供 service 层 IdentityProfile 注入读取。
+	c.Set(string(ctxkey.SubjectUserID), subject.UserID)
 	reqLog := requestLogger(
 		c,
 		"handler.openai_gateway.responses",
@@ -244,6 +247,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		openaiLTBGroupID = *apiKey.GroupID
 	}
 	openaiProjectFP, openaiIsStableFP := "", false
+	openaiHasBoundSession := false
 	if h.coreGateway != nil {
 		openaiProjectFP, openaiIsStableFP = h.coreGateway.ExtractProjectFPRaw(
 			"",
@@ -256,12 +260,18 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				if err := h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionHash, ltbAccountID); err != nil {
 					reqLog.Debug("openai.ltb_warm_sticky_failed", zap.Int64("account_id", ltbAccountID), zap.Error(err))
 				} else {
+					openaiHasBoundSession = true
 					reqLog.Debug("openai.ltb_resolved",
 						zap.Int64("account_id", ltbAccountID),
 						zap.Bool("stable_fp", openaiIsStableFP),
 					)
 				}
 			}
+		}
+		// 瑕疵 1 修复：把 projectFP 写入 ctx，让 service 层 6 处 binding 自动清理
+		// 路径在上游 401 / 账号被禁 / sticky cache miss 时也能命中。
+		if openaiProjectFP != "" {
+			c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.PrefetchedProjectFP, openaiProjectFP))
 		}
 	}
 
@@ -378,6 +388,20 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				h.gatewayService.RecordOpenAIAccountSwitch()
 				failedAccountIDs[account.ID] = struct{}{}
 				lastFailoverErr = failoverErr
+				// 瑕疵 2 修复：P0-3 sessionHash 维度反扫荡。
+				if recordOpenAIFanoutAndCheckExhausted(
+					c.Request.Context(),
+					h.coreGateway,
+					h.coreGateway,
+					account.ID,
+					sessionHash,
+					apiKey.GroupID,
+					failoverErr.StatusCode,
+					reqLog,
+				) {
+					h.handleFailoverExhausted(c, failoverErr, streamStarted)
+					return
+				}
 				if switchCount >= maxAccountSwitches {
 					h.handleFailoverExhausted(c, failoverErr, streamStarted)
 					return
@@ -389,6 +413,16 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					zap.Int("switch_count", switchCount),
 					zap.Int("max_switches", maxAccountSwitches),
 				)
+				// 瑕疵 2 修复：P0-3 跨账号抖动。
+				if !applyOpenAIFailoverJitter(
+					c.Request.Context(),
+					h.coreGateway,
+					openaiHasBoundSession,
+					switchCount,
+					reqLog,
+				) {
+					return
+				}
 				continue
 			}
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
@@ -557,6 +591,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		h.anthropicErrorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
 	}
+	// P0-3 §4.4 task 2: 将 subject.UserID 写入 ctx，供 service 层 IdentityProfile 注入读取。
+	c.Set(string(ctxkey.SubjectUserID), subject.UserID)
 	reqLog := requestLogger(
 		c,
 		"handler.openai_gateway.messages",
@@ -668,6 +704,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		openaiMsgLTBGroupID = *apiKey.GroupID
 	}
 	openaiMsgProjectFP, openaiMsgIsStableFP := "", false
+	openaiMsgHasBoundSession := false
 	if h.coreGateway != nil {
 		openaiMsgProjectFP, openaiMsgIsStableFP = h.coreGateway.ExtractProjectFPRaw(
 			metadataUserID,
@@ -680,12 +717,18 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				if err := h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionHash, ltbAccountID); err != nil {
 					reqLog.Debug("openai_messages.ltb_warm_sticky_failed", zap.Int64("account_id", ltbAccountID), zap.Error(err))
 				} else {
+					openaiMsgHasBoundSession = true
 					reqLog.Debug("openai_messages.ltb_resolved",
 						zap.Int64("account_id", ltbAccountID),
 						zap.Bool("stable_fp", openaiMsgIsStableFP),
 					)
 				}
 			}
+		}
+		// 瑕疵 1 修复：把 projectFP 写入 ctx，让 service 层 6 处 binding 自动清理
+		// 路径在上游 401 / 账号被禁 / sticky cache miss 时也能命中。
+		if openaiMsgProjectFP != "" {
+			c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.PrefetchedProjectFP, openaiMsgProjectFP))
 		}
 	}
 
@@ -796,6 +839,20 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				h.gatewayService.RecordOpenAIAccountSwitch()
 				failedAccountIDs[account.ID] = struct{}{}
 				lastFailoverErr = failoverErr
+				// 瑕疵 2 修复：P0-3 sessionHash 维度反扫荡。
+				if recordOpenAIFanoutAndCheckExhausted(
+					c.Request.Context(),
+					h.coreGateway,
+					h.coreGateway,
+					account.ID,
+					sessionHash,
+					apiKey.GroupID,
+					failoverErr.StatusCode,
+					reqLog,
+				) {
+					h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
+					return
+				}
 				if switchCount >= maxAccountSwitches {
 					h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
 					return
@@ -807,6 +864,16 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					zap.Int("switch_count", switchCount),
 					zap.Int("max_switches", maxAccountSwitches),
 				)
+				// 瑕疵 2 修复：P0-3 跨账号抖动。
+				if !applyOpenAIFailoverJitter(
+					c.Request.Context(),
+					h.coreGateway,
+					openaiMsgHasBoundSession,
+					switchCount,
+					reqLog,
+				) {
+					return
+				}
 				continue
 			}
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
@@ -1107,6 +1174,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
 	}
+	// P0-3 §4.4 task 2: 将 subject.UserID 写入 ctx，供 service 层 IdentityProfile 注入读取。
+	c.Set(string(ctxkey.SubjectUserID), subject.UserID)
 
 	reqLog := requestLogger(
 		c,

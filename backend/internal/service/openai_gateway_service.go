@@ -350,6 +350,9 @@ type OpenAIGatewayService struct {
 	openaiWSRetryMetrics  openAIWSRetryMetrics
 	responseHeaderFilter  *responseheaders.CompiledHeaderFilter
 	codexSnapshotThrottle *accountWriteThrottle
+
+	// P0-3: (sub2api_user, platform) 维度伪指纹画像。可空。
+	identityProfileService *IdentityProfileService
 }
 
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
@@ -374,6 +377,7 @@ func NewOpenAIGatewayService(
 	channelService *ChannelService,
 	balanceNotifyService *BalanceNotifyService,
 	settingService *SettingService,
+	identityProfileService *IdentityProfileService,
 ) *OpenAIGatewayService {
 	svc := &OpenAIGatewayService{
 		accountRepo:         accountRepo,
@@ -407,6 +411,7 @@ func NewOpenAIGatewayService(
 		settingService:        settingService,
 		responseHeaderFilter:  compileResponseHeaderFilter(cfg),
 		codexSnapshotThrottle: newAccountWriteThrottle(openAICodexSnapshotPersistMinInterval),
+		identityProfileService: identityProfileService,
 	}
 	svc.logOpenAIWSModeBootstrap()
 	return svc
@@ -885,12 +890,26 @@ func getAPIKeyIDFromContext(c *gin.Context) int64 {
 // 确保不同 API Key 的用户即使使用相同的原始 session_id/conversation_id，
 // 到达上游的标识符也不同，防止跨用户会话碰撞。
 func isolateOpenAISessionID(apiKeyID int64, raw string) string {
+	return isolateOpenAISessionIDWithUserSeed(apiKeyID, "", raw)
+}
+
+// isolateOpenAISessionIDWithUserSeed 在 isolateOpenAISessionID 基础上额外混入
+// 用户级种子（P0-3 §4.4 task 2）。userSeed=="" 时与 isolateOpenAISessionID 完全
+// 等价，向后兼容。
+//
+// 注意：种子只影响哈希结果，不会泄漏到上游；上游看到的仍然是 16 hex。
+func isolateOpenAISessionIDWithUserSeed(apiKeyID int64, userSeed, raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return ""
 	}
 	h := xxhash.New()
 	_, _ = fmt.Fprintf(h, "k%d:", apiKeyID)
+	if userSeed != "" {
+		_, _ = h.WriteString("u")
+		_, _ = h.WriteString(userSeed)
+		_, _ = h.WriteString(":")
+	}
 	_, _ = h.WriteString(raw)
 	return fmt.Sprintf("%016x", h.Sum64())
 }
@@ -3753,18 +3772,22 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		req.Header.Set("OpenAI-Beta", "responses=experimental")
 		req.Header.Set("originator", resolveOpenAIUpstreamOriginator(c, isCodexCLI))
 		apiKeyID := getAPIKeyIDFromContext(c)
+		// P0-3 §4.4 task 2：把 (sub2api_user, OpenAI) 维度的 MachineID 作为混入种子，
+		// 让同一用户跨 apiKey 的 session_id 派生出稳定但仍互不冲突的值。注入未启用时
+		// userSeed=""，行为与历史 isolateOpenAISessionID 完全一致。
+		userSeed := s.stableOpenAISessionUserSeed(c)
 		if isOpenAIResponsesCompactPath(c) {
 			req.Header.Set("accept", "application/json")
 			if req.Header.Get("version") == "" {
 				req.Header.Set("version", codexCLIVersion)
 			}
 			compactSession := resolveOpenAICompactSessionID(c)
-			req.Header.Set("session_id", isolateOpenAISessionID(apiKeyID, compactSession))
+			req.Header.Set("session_id", isolateOpenAISessionIDWithUserSeed(apiKeyID, userSeed, compactSession))
 		} else {
 			req.Header.Set("accept", "text/event-stream")
 		}
 		if promptCacheKey != "" {
-			isolated := isolateOpenAISessionID(apiKeyID, promptCacheKey)
+			isolated := isolateOpenAISessionIDWithUserSeed(apiKeyID, userSeed, promptCacheKey)
 			req.Header.Set("conversation_id", isolated)
 			req.Header.Set("session_id", isolated)
 		}

@@ -11,6 +11,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -37,6 +38,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		h.errorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
 	}
+	// P0-3 §4.4 task 2: 将 subject.UserID 写入 ctx，供 service 层 IdentityProfile 注入读取。
+	c.Set(string(ctxkey.SubjectUserID), subject.UserID)
 	reqLog := requestLogger(
 		c,
 		"handler.openai_gateway.chat_completions",
@@ -120,6 +123,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		chatLTBGroupID = *apiKey.GroupID
 	}
 	chatProjectFP, chatIsStableFP := "", false
+	chatHasBoundSession := false
 	if h.coreGateway != nil {
 		chatProjectFP, chatIsStableFP = h.coreGateway.ExtractProjectFPRaw(
 			"", // ChatCompletions 没有 metadata.user_id 约定，走 IP fallback
@@ -132,12 +136,20 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				if err := h.gatewayService.BindStickySession(c.Request.Context(), apiKey.GroupID, sessionHash, ltbAccountID); err != nil {
 					reqLog.Debug("openai_chat_completions.ltb_warm_sticky_failed", zap.Int64("account_id", ltbAccountID), zap.Error(err))
 				} else {
+					chatHasBoundSession = true
 					reqLog.Debug("openai_chat_completions.ltb_resolved",
 						zap.Int64("account_id", ltbAccountID),
 						zap.Bool("stable_fp", chatIsStableFP),
 					)
 				}
 			}
+		}
+		// 瑕疵 1 修复：把 projectFP 写入 ctx，让 service 层的 6 处 binding 自动清理
+		// 路径在上游 401 / 账号被禁 / sticky cache miss 时也能命中。否则 OpenAI
+		// 用户的失效 binding 只能等后台 cleanup（最长 1 小时）或 lazy delete，
+		// 导致 WriteRebindTotal 计数膨胀。
+		if chatProjectFP != "" {
+			c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), ctxkey.PrefetchedProjectFP, chatProjectFP))
 		}
 	}
 
@@ -239,6 +251,22 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				h.gatewayService.RecordOpenAIAccountSwitch()
 				failedAccountIDs[account.ID] = struct{}{}
 				lastFailoverErr = failoverErr
+				// 瑕疵 2 修复：P0-3 sessionHash 维度反扫荡。
+				// OpenAI 原生 loop 不走 FailoverState，所以这里手动调用 helper，
+				// 行为与 FailoverState.HandleFailoverError 中的 fanout 段一致。
+				if recordOpenAIFanoutAndCheckExhausted(
+					c.Request.Context(),
+					h.coreGateway,
+					h.coreGateway,
+					account.ID,
+					sessionHash,
+					apiKey.GroupID,
+					failoverErr.StatusCode,
+					reqLog,
+				) {
+					h.handleFailoverExhausted(c, failoverErr, streamStarted)
+					return
+				}
 				if switchCount >= maxAccountSwitches {
 					h.handleFailoverExhausted(c, failoverErr, streamStarted)
 					return
@@ -250,6 +278,17 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					zap.Int("switch_count", switchCount),
 					zap.Int("max_switches", maxAccountSwitches),
 				)
+				// 瑕疵 2 修复：P0-3 跨账号抖动。绑定会话使用更长延迟（默认 2-10s），
+				// 普通会话维持 0-600ms。第 1 次切换不引入抖动。
+				if !applyOpenAIFailoverJitter(
+					c.Request.Context(),
+					h.coreGateway,
+					chatHasBoundSession,
+					switchCount,
+					reqLog,
+				) {
+					return
+				}
 				continue
 			}
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)

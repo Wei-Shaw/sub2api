@@ -205,6 +205,8 @@ const (
 	SettingKeyGatewaySessionAccountFanoutWindowSec         = "session_account_fanout_window_sec"
 	SettingKeyGatewayBoundSessionSwitchJitterMinMs         = "bound_session_switch_jitter_min_ms"
 	SettingKeyGatewayBoundSessionSwitchJitterMaxMs         = "bound_session_switch_jitter_max_ms"
+	SettingKeyGatewayIdentityProfileInjectEnabled          = "identity_profile_inject_enabled"
+	SettingKeyGatewayIdentityProfileRotationDays           = "identity_profile_rotation_days"
 
 	// 第三方认证来源默认授予配置
 	SettingKeyAuthSourceDefaultEmailBalance            = "auth_source_default_email_balance"

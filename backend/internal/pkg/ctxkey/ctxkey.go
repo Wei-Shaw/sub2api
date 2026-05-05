@@ -59,4 +59,10 @@ const (
 	// PrefetchedProjectFP stores the project fingerprint computed by the handler for long-term binding (P0-2).
 	// Used for binding invalidation when shouldClearStickySession() is triggered.
 	PrefetchedProjectFP Key = "ctx_prefetched_project_fp"
+
+	// SubjectUserID stores the authenticated sub2api user id (subject.UserID).
+	// Used by P0-3 identity profile injection — service layer reads this to derive
+	// per-user pseudo identity (device_id / originator / session_id) without depending
+	// on the middleware package.
+	SubjectUserID Key = "ctx_subject_user_id"
 )

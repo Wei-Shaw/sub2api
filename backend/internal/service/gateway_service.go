@@ -603,6 +603,10 @@ type GatewayService struct {
 	// P0-2: 长期绑定相关字段
 	bindingRepo           UserAccountBindingRepository
 	bindingThresholdCache *gocache.Cache // in-process counter for unstable FP write threshold
+
+	// P0-3: (sub2api_user, platform) 维度的伪指纹画像。可空，当 cfg.Gateway.
+	// IdentityProfileInjectEnabled=false 时即使非空也不会被 hot-path 消费。
+	identityProfileService *IdentityProfileService
 }
 
 // NewGatewayService creates a new GatewayService
@@ -634,6 +638,7 @@ func NewGatewayService(
 	resolver *ModelPricingResolver,
 	balanceNotifyService *BalanceNotifyService,
 	bindingRepo UserAccountBindingRepository,
+	identityProfileService *IdentityProfileService,
 ) *GatewayService {
 	userGroupRateTTL := resolveUserGroupRateCacheTTL(cfg)
 	modelsListTTL := resolveModelsListCacheTTL(cfg)
@@ -671,6 +676,7 @@ func NewGatewayService(
 		balanceNotifyService:  balanceNotifyService,
 		bindingRepo:           bindingRepo,
 		bindingThresholdCache: gocache.New(30*time.Minute, 5*time.Minute),
+		identityProfileService: identityProfileService,
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
@@ -7042,6 +7048,11 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		}
 	}
 
+	// P0-3 §4.4 task 2：把 device_id 段切到 (sub2api_user, anthropic) 维度的稳定值。
+	// 必须在 RewriteUserIDWithMasking 之后才有意义（前者保证 metadata.user_id
+	// 已经存在）。配置侧默认关闭，需 admin 显式 opt-in。
+	body = s.applyIdentityProfileToAnthropicBody(c, body)
+
 	// 稳定化 tools 数组排序，防止 MCP 工具异步注册导致的顺序抖动破坏 prompt cache prefix
 	body = stabilizeToolOrder(body)
 
@@ -10314,6 +10325,10 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 			}
 		}
 	}
+
+	// P0-3 §4.4 task 2：count_tokens 路径同样注入 device_id（与 messages 路径一致），
+	// 让上游看不到"同一用户两个 endpoint 的 device_id 不一致"这种关联信号。
+	body = s.applyIdentityProfileToAnthropicBody(c, body)
 
 	// 稳定化 tools 数组排序，防止 MCP 工具异步注册导致的顺序抖动破坏 prompt cache prefix
 	body = stabilizeToolOrder(body)

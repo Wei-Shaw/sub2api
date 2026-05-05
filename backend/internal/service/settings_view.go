@@ -123,6 +123,8 @@ type SystemSettings struct {
 	SessionAccountFanoutWindowSec         int
 	BoundSessionSwitchJitterMinMs         int
 	BoundSessionSwitchJitterMaxMs         int
+	IdentityProfileInjectEnabled          bool
+	IdentityProfileRotationDays           int
 
 	// Model fallback configuration
 	EnableModelFallback      bool   `json:"enable_model_fallback"`

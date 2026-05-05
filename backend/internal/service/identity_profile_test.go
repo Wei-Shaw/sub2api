@@ -101,3 +101,59 @@ func TestIdentityProfileService_EmptyInputsAreSafe(t *testing.T) {
 	b := svc.Profile(0, "", now)
 	require.Equal(t, a.MachineID, b.MachineID, "deterministic even with zero/empty inputs")
 }
+
+// TestIdentityProfileService_DeviceIDHex64 验证 P0-3 §4.4 task 2 引入的 64-hex
+// 字段：长度、与 MachineID 互不相同、跨用户低碰撞、跨 rotation 翻新。
+// 该字段用于 Anthropic metadata.user_id 中的 device_id 段（必须 64 hex）。
+func TestIdentityProfileService_DeviceIDHex64(t *testing.T) {
+	svc := NewIdentityProfileService(testIdentityProfileSecret, 14)
+	now := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+
+	t.Run("长度严格 64 hex", func(t *testing.T) {
+		p := svc.Profile(42, PlatformAnthropic, now)
+		require.Len(t, p.DeviceIDHex64, 64, "device_id_hex64 must be 64 hex chars")
+		// 应该都是 hex
+		for _, ch := range p.DeviceIDHex64 {
+			require.True(t,
+				(ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'),
+				"device_id_hex64 contains non-hex char %q", ch,
+			)
+		}
+	})
+
+	t.Run("与 MachineID 不同 scope（不同派生）", func(t *testing.T) {
+		p := svc.Profile(42, PlatformAnthropic, now)
+		// MachineID 32 字符；DeviceIDHex64 64 字符；前 32 字符也不应相等（不同 scope）
+		require.NotEqual(t, p.MachineID, p.DeviceIDHex64[:32],
+			"device_id_hex64 应使用独立 scope 派生，不能是 MachineID 的简单延展")
+	})
+
+	t.Run("同 user × 同窗口幂等", func(t *testing.T) {
+		a := svc.Profile(42, PlatformAnthropic, now)
+		b := svc.Profile(42, PlatformAnthropic, now.Add(2*time.Hour))
+		require.Equal(t, a.DeviceIDHex64, b.DeviceIDHex64)
+	})
+
+	t.Run("不同 user 低碰撞（200 样本）", func(t *testing.T) {
+		unique := make(map[string]struct{})
+		for uid := int64(1); uid <= 200; uid++ {
+			p := svc.Profile(uid, PlatformAnthropic, now)
+			unique[p.DeviceIDHex64] = struct{}{}
+		}
+		require.GreaterOrEqual(t, len(unique), 195, "device_id_hex64 collision should be extremely rare")
+	})
+
+	t.Run("跨平台不同", func(t *testing.T) {
+		anthropic := svc.Profile(42, PlatformAnthropic, now)
+		openai := svc.Profile(42, PlatformOpenAI, now)
+		require.NotEqual(t, anthropic.DeviceIDHex64, openai.DeviceIDHex64)
+	})
+
+	t.Run("跨旋转窗口翻新", func(t *testing.T) {
+		t0 := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+		t1 := t0.Add(20 * 24 * time.Hour)
+		a := svc.Profile(42, PlatformAnthropic, t0)
+		b := svc.Profile(42, PlatformAnthropic, t1)
+		require.NotEqual(t, a.DeviceIDHex64, b.DeviceIDHex64)
+	})
+}

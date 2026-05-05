@@ -19,13 +19,22 @@ import (
 // 一个上游账号被同一组「真实设备特征」长期使用，而不是每次请求都暴露不同
 // 的客户端组合（这是 sub2api 此前最容易暴露代理身份的地方）。
 //
-// 注意：本结构体目前仅用于读取层（hot-path 注入由后续切片完成）。所有字段
-// 都是从候选池里通过 HMAC 派生的「拟真」候选，不是从数据库查出来的真实
+// 字段语义（按 hot-path 注入位点划分）：
+//   - MachineID（32 hex / 16 字节）：用于 OpenAI originator / session_id 派生。
+//   - DeviceIDHex64（64 hex / 32 字节）：用于 Anthropic metadata.user_id 中
+//     device_id 段；该段历史上一直是 64 hex，所以这里给一个独立长度的派生而不
+//     是把 MachineID 拼接两次。
+//   - OS / Arch / Locale / Timezone / UserAgentVersion：候选池采样，用于未来
+//     X-Stainless-* 等头注入（当前不直接落到 hot-path）。
+//
+// 注意：本结构体目前仅用于读取层（hot-path 注入由 P0-3 §4.4 切片完成）。所有
+// 字段都是从候选池里通过 HMAC 派生的「拟真」候选，不是从数据库查出来的真实
 // 客户端值。
 type IdentityProfile struct {
 	UserID           int64
 	Platform         string
 	MachineID        string
+	DeviceIDHex64    string
 	OS               string
 	Arch             string
 	Locale           string
@@ -119,6 +128,7 @@ func (s *IdentityProfileService) Profile(userID int64, platform string, now time
 	seed := fmt.Sprintf("identity-profile|%d|%s|%s", userID, plat, rotationSalt)
 
 	machineID := s.deriveHexID(seed, "machine", 16)
+	deviceIDHex64 := s.deriveHexID(seed, "device_id_hex64", 32)
 	osValue := pickFromPool(s.deriveUint32(seed, "os"), identityProfileOSPool)
 	arch := pickFromPool(s.deriveUint32(seed, "arch"), identityProfileArchPool)
 	locale := pickFromPool(s.deriveUint32(seed, "locale"), identityProfileLocalePool)
@@ -129,6 +139,7 @@ func (s *IdentityProfileService) Profile(userID int64, platform string, now time
 		UserID:           userID,
 		Platform:         plat,
 		MachineID:        machineID,
+		DeviceIDHex64:    deviceIDHex64,
 		OS:               osValue,
 		Arch:             arch,
 		Locale:           locale,

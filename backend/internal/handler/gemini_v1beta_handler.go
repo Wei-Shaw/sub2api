@@ -144,6 +144,8 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		googleError(c, http.StatusInternalServerError, "User context not found")
 		return
 	}
+	// P0-3 §4.4 task 2: 将 subject.UserID 写入 ctx，供 service 层 IdentityProfile 注入读取。
+	c.Set(string(ctxkey.SubjectUserID), authSubject.UserID)
 	reqLog := requestLogger(
 		c,
 		"handler.gemini_v1beta.models",
