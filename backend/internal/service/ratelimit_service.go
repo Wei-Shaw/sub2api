@@ -955,9 +955,6 @@ func (s *RateLimitService) get429FallbackCooldown(ctx context.Context, account *
 	}
 
 	seconds := defaultRateLimit429CooldownSeconds
-	if s.cfg != nil && s.cfg.RateLimit.RateLimit429CooldownSeconds > 0 {
-		seconds = s.cfg.RateLimit.RateLimit429CooldownSeconds
-	}
 	seconds = clampRateLimit429CooldownSeconds(seconds)
 	return time.Duration(seconds) * time.Second, true
 }
