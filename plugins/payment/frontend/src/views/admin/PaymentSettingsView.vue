@@ -17,19 +17,10 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
-      <!-- Save action. AppHeader already renders the page title and
-           description from the menu manifest, so an in-page h1 would be
-           a duplicate banner. Keep only the primary action button. -->
-      <div class="flex justify-end">
-        <button
-          type="button"
-          class="btn btn-primary"
-          :disabled="saving || loading"
-          @click="saveSettings"
-        >
-          {{ saving ? t('common.saving') : t('common.save') }}
-        </button>
-      </div>
+      <!-- Save buttons live at the end of each card (main settings +
+           provider list), where the user finishes editing. AppHeader
+           already renders the page title from the menu manifest so we
+           don't add a top-of-page action bar. -->
 
       <!-- Loading state -->
       <div v-if="loading" class="card p-6 text-sm text-gray-500 dark:text-gray-400">
@@ -366,6 +357,20 @@
                 </div>
               </div>
             </template>
+
+            <!-- Save action #1: end of main settings card. Saves the
+                 whole form (same handler as the trailing button below
+                 the provider list). -->
+            <div class="flex justify-end pt-2">
+              <button
+                type="button"
+                class="btn btn-primary"
+                :disabled="saving || loading"
+                @click="saveSettings"
+              >
+                {{ saving ? t('common.saving') : t('common.save') }}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -386,6 +391,21 @@
           @toggle-type="handleToggleType"
           @reorder="handleReorderProviders"
         />
+
+        <!-- Save action #2: end of provider list. Same handler as the
+             button inside the main settings card — both persist the
+             whole settings form. Only rendered when the provider list
+             is visible (payment_enabled). -->
+        <div v-if="form.payment_enabled" class="flex justify-end">
+          <button
+            type="button"
+            class="btn btn-primary"
+            :disabled="saving || loading"
+            @click="saveSettings"
+          >
+            {{ saving ? t('common.saving') : t('common.save') }}
+          </button>
+        </div>
 
         <!-- Provider create / edit dialog -->
         <PaymentProviderDialog
