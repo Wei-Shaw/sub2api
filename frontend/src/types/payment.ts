@@ -277,6 +277,7 @@ export interface CreateOrderResult {
   fx_timestamp?: string
   pay_url?: string
   qr_code?: string
+  checkout_url?: string
   client_secret?: string
   intent_id?: string
   currency?: string

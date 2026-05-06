@@ -189,6 +189,93 @@ describe('decidePaymentLaunch', () => {
     expect(decision.paymentState.qrCode).toBe('https://pay.example.com/qr/session')
   })
 
+  it('uses checkout_url as redirect URL when a provider exposes only canonical checkout_url', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      checkout_url: 'https://checkout.example.com/session/abc',
+      payment_mode: 'redirect',
+    }), {
+      visibleMethod: 'alipay',
+      orderType: 'balance',
+      isMobile: false,
+    })
+
+    expect(decision.kind).toBe('redirect_waiting')
+    expect(decision.paymentState.payUrl).toBe('https://checkout.example.com/session/abc')
+    expect(decision.recovery.payUrl).toBe('https://checkout.example.com/session/abc')
+  })
+
+  it('normalizes launch data for SePay, Alipay, WeChat, and Paddle provider contracts', () => {
+    const scenarios = [
+      {
+        name: 'sepay provider-generated QR image URL',
+        result: createOrderResult({
+          qr_code: 'https://qr.sepay.vn/img?acc=123&bank=MBBank&amount=50000&des=VC123',
+          payment_mode: 'qrcode',
+        }),
+        context: { visibleMethod: 'sepay', orderType: 'balance' as const, isMobile: false },
+        expectedKind: 'qr_waiting',
+        expectedQrCode: 'https://qr.sepay.vn/img?acc=123&bank=MBBank&amount=50000&des=VC123',
+      },
+      {
+        name: 'alipay canonical hosted checkout URL',
+        result: createOrderResult({
+          checkout_url: 'https://checkout.alipay.example.com/session/abc',
+          payment_mode: 'redirect',
+        }),
+        context: { visibleMethod: 'alipay', orderType: 'balance' as const, isMobile: false },
+        expectedKind: 'redirect_waiting',
+        expectedPayUrl: 'https://checkout.alipay.example.com/session/abc',
+      },
+      {
+        name: 'wechat native QR payload',
+        result: createOrderResult({
+          qr_code: 'weixin://wxpay/bizpayurl?pr=test',
+          payment_mode: 'native',
+        }),
+        context: { visibleMethod: 'wxpay', orderType: 'balance' as const, isMobile: false },
+        expectedKind: 'qr_waiting',
+        expectedQrCode: 'weixin://wxpay/bizpayurl?pr=test',
+      },
+      {
+        name: 'paddle first-party checkout URL with provider checkout id',
+        result: createOrderResult({
+          checkout_id: 'txn_123',
+          checkout_url: 'https://token.v-claw.org/checkout?provider=paddle&checkout_id=txn_123',
+          payment_mode: 'redirect',
+        }),
+        context: { visibleMethod: 'paddle', orderType: 'subscription' as const, isMobile: false },
+        expectedKind: 'redirect_waiting',
+        expectedPayUrl: 'https://token.v-claw.org/checkout?provider=paddle&checkout_id=txn_123',
+      },
+    ]
+
+    scenarios.forEach((scenario) => {
+      const decision = decidePaymentLaunch(scenario.result, scenario.context)
+      expect(decision.kind, scenario.name).toBe(scenario.expectedKind)
+      if (scenario.expectedPayUrl) {
+        expect(decision.paymentState.payUrl, scenario.name).toBe(scenario.expectedPayUrl)
+      }
+      if (scenario.expectedQrCode) {
+        expect(decision.paymentState.qrCode, scenario.name).toBe(scenario.expectedQrCode)
+      }
+    })
+  })
+
+  it('keeps legacy inline Paddle launch when the provider exposes checkout_id without a launch URL', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      checkout_id: 'txn_inline_only',
+      payment_mode: 'redirect',
+    }), {
+      visibleMethod: 'paddle',
+      orderType: 'subscription',
+      isMobile: false,
+    })
+
+    expect(decision.kind).toBe('unhandled')
+    expect(decision.paymentState.checkoutId).toBe('txn_inline_only')
+    expect(decision.paymentState.payUrl).toBe('')
+  })
+
   it('returns wechat oauth launch when backend requires in-app authorization', () => {
     const decision = decidePaymentLaunch(createOrderResult({
       result_type: 'oauth_required',

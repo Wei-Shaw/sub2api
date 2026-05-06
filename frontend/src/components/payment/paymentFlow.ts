@@ -172,7 +172,7 @@ export function decidePaymentLaunch(
     qrCode: result.qr_code || '',
     expiresAt: result.expires_at || '',
     paymentType: visibleMethod,
-    payUrl: result.pay_url || '',
+    payUrl: result.pay_url || result.checkout_url || '',
     outTradeNo: result.out_trade_no || '',
     clientSecret: result.client_secret || '',
     intentId: result.intent_id || '',
@@ -199,7 +199,7 @@ export function decidePaymentLaunch(
     return { kind: 'airwallex_route', paymentState, recovery: paymentState }
   }
 
-  if (baseState.checkoutId) {
+  if (baseState.checkoutId && !baseState.payUrl) {
     return { kind: 'unhandled', paymentState: baseState, recovery: baseState }
   }
 
