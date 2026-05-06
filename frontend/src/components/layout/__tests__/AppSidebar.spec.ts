@@ -35,6 +35,8 @@ describe('AppSidebar secondary-development navigation contract', () => {
   it('keeps profile, hides user channel status, and adds unified user entries', () => {
     expect(componentSource).toContain("path: '/profile'")
     expect(componentSource).toContain("path: '/models'")
+    expect(componentSource).toContain("path: '/images', label: t('nav.imageGeneration')")
+    expect(componentSource).toContain('const flagImageGeneration = makeSidebarFlag(FeatureFlags.imageGeneration)')
     expect(componentSource).not.toContain("path: '/docs'")
     expect(componentSource).toContain("path: '/recharge-subscription'")
     expect(componentSource).not.toContain("path: '/monitor', label: t('nav.channelStatus')")

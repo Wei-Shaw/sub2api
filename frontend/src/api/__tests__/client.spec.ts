@@ -7,6 +7,19 @@ vi.mock('@/i18n', () => ({
   getLocale: () => 'zh-CN',
 }))
 
+vi.hoisted(() => {
+  const store = new Map<string, string>()
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: {
+      getItem: vi.fn((key: string) => store.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => store.set(key, value)),
+      removeItem: vi.fn((key: string) => store.delete(key)),
+      clear: vi.fn(() => store.clear()),
+    },
+    configurable: true,
+  })
+})
+
 describe('API Client', () => {
   let apiClient: AxiosInstance
 
@@ -42,6 +55,26 @@ describe('API Client', () => {
 
       const config = adapter.mock.calls[0][0]
       expect(config.headers.get('Authorization')).toBe('Bearer my-jwt-token')
+    })
+
+    it('保留调用方显式传入的 Authorization 头', async () => {
+      localStorage.setItem('auth_token', 'my-jwt-token')
+
+      const adapter = vi.fn().mockResolvedValue({
+        status: 200,
+        data: { code: 0, data: {} },
+        headers: {},
+        config: {},
+        statusText: 'OK',
+      })
+      apiClient.defaults.adapter = adapter
+
+      await apiClient.post('/images/generations', {}, {
+        headers: { Authorization: 'Bearer selected-api-key' },
+      })
+
+      const config = adapter.mock.calls[0][0]
+      expect(config.headers.get('Authorization')).toBe('Bearer selected-api-key')
     })
 
     it('无 token 时不附加 Authorization 头', async () => {

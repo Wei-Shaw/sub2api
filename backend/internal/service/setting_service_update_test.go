@@ -224,6 +224,17 @@ func TestSettingService_UpdateSettings_TablePreferences(t *testing.T) {
 	require.Equal(t, "[20,100]", repo.updates[SettingKeyTablePageSizeOptions])
 }
 
+func TestSettingService_UpdateSettings_PersistsImageGenerationFeatureFlag(t *testing.T) {
+	repo := &settingUpdateRepoStub{}
+	svc := NewSettingService(repo, &config.Config{})
+
+	err := svc.UpdateSettings(context.Background(), &SystemSettings{
+		ImageGenerationEnabled: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "true", repo.updates[SettingKeyImageGenerationEnabled])
+}
+
 func TestSettingService_UpdateSettings_PaymentVisibleMethodsAndAdvancedScheduler(t *testing.T) {
 	repo := &settingUpdateRepoStub{}
 	svc := NewSettingService(repo, &config.Config{})

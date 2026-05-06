@@ -280,6 +280,11 @@ const (
 	// sidebar entry is hidden. Defaults to false (opt-in feature).
 	SettingKeyAvailableChannelsEnabled = "available_channels_enabled"
 
+	// SettingKeyImageGenerationEnabled is a DB-backed soft switch for the user-facing
+	// image generation tool. Defaults to false because OpenAI image models and pricing
+	// must be configured before exposing the entry point.
+	SettingKeyImageGenerationEnabled = "image_generation_enabled"
+
 	// =========================
 	// Overload Cooldown (529)
 	// =========================

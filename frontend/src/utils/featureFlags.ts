@@ -104,6 +104,11 @@ export const FeatureFlags = {
     mode: 'opt-in',
     label: 'Available Channels',
   }),
+  imageGeneration: defineFlag({
+    key: 'image_generation_enabled',
+    mode: 'opt-in',
+    label: 'Image Generation',
+  }),
   payment: defineFlag({
     key: 'payment_enabled',
     mode: 'opt-out',

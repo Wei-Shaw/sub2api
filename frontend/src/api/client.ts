@@ -57,7 +57,7 @@ apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     // Attach token from localStorage
     const token = localStorage.getItem('auth_token')
-    if (token && config.headers) {
+    if (token && config.headers && !config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${token}`
     }
 

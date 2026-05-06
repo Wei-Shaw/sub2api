@@ -2,6 +2,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, h } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
 
+vi.hoisted(() => {
+  Object.defineProperty(globalThis, "localStorage", {
+    value: {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+    },
+    configurable: true,
+  });
+});
+
 import SettingsView from "../SettingsView.vue";
 
 const {
@@ -74,6 +85,31 @@ vi.mock("@/api", () => ({
       deleteProvider,
     },
   },
+}));
+
+vi.mock("@/api/admin/settings", () => ({
+  default: {},
+  appendAuthSourceDefaultsToUpdateRequest: vi.fn(),
+  buildAuthSourceDefaultsState: () => ({
+    email: { balance: 0, concurrency: 5, subscriptions: [], grant_on_signup: false, grant_on_first_bind: false },
+    linuxdo: { balance: 0, concurrency: 5, subscriptions: [], grant_on_signup: false, grant_on_first_bind: false },
+    oidc: { balance: 0, concurrency: 5, subscriptions: [], grant_on_signup: false, grant_on_first_bind: false },
+    wechat: { balance: 0, concurrency: 5, subscriptions: [], grant_on_signup: false, grant_on_first_bind: false },
+  }),
+  defaultWeChatConnectScopesForMode: () => '',
+  deriveWeChatConnectStoredMode: (_open: boolean, mp: boolean, mobile: boolean) =>
+    mobile ? 'mobile' : mp ? 'mp' : 'open',
+  normalizeDefaultSubscriptionSettings: (items: unknown[]) => items,
+  resolveWeChatConnectModeCapabilities: (openEnabled: boolean, mpEnabled: boolean, mobileEnabled: boolean) => ({
+    openEnabled,
+    mpEnabled,
+    mobileEnabled,
+  }),
+}));
+
+vi.mock("@/api/admin/affiliates", () => ({
+  default: {},
+  affiliatesAPI: {},
 }));
 
 vi.mock("@/stores", () => ({
@@ -153,6 +189,11 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.paymentVisibleMethods.sourceRequiredError": "{title} 已启用，请先选择支付来源。",
     "admin.settings.payment.configGuide": "查看支付配置说明",
     "admin.settings.payment.findProvider": "查看支持的支付方式",
+    "admin.settings.features.imageGeneration.title": "文生图",
+    "admin.settings.features.imageGeneration.description": "控制用户侧文生图工具入口是否展示。",
+    "admin.settings.features.imageGeneration.enabled": "启用文生图入口",
+    "admin.settings.features.imageGeneration.enabledHint": "启用前请确认 OpenAI 分组、图片模型和渠道图片计费已配置。",
+    "admin.settings.features.imageGeneration.configureLink": "前往渠道定价",
     "admin.settings.openaiExperimentalScheduler.title": "OpenAI 实验调度策略",
     "admin.settings.openaiExperimentalScheduler.description": "默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。",
     "admin.settings.site.uploadImage": "上传图片",
@@ -393,6 +434,7 @@ const baseSettingsResponse = {
   balance_low_notify_recharge_url: "",
   account_quota_notify_enabled: false,
   account_quota_notify_emails: [],
+  image_generation_enabled: false,
 };
 
 function mountView() {
@@ -679,6 +721,29 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(paymentHelpImageUpload).toBeDefined();
     expect(paymentHelpImageUpload?.attributes("data-upload-label")).toBe("上传图片");
     expect(paymentHelpImageUpload?.attributes("data-remove-label")).toBe("移除");
+  });
+
+  it("renders and submits the image generation feature switch", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      image_generation_enabled: true,
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("文生图");
+    expect(wrapper.text()).toContain("启用文生图入口");
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        image_generation_enabled: true,
+      }),
+    );
   });
 });
 

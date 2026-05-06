@@ -357,6 +357,7 @@ export default {
     profile: '个人资料',
     notLoggedIn: '未登录',
     modelPlaza: '模型广场',
+    imageGeneration: '文生图',
     usageDocs: '使用文档',
     rechargeSubscription: '充值订阅',
     users: '用户管理',
@@ -993,6 +994,26 @@ export default {
       unitPerMillion: '/ 1M token',
       unitPerRequest: '/ 次'
     }
+  },
+
+  imageGeneration: {
+    title: '文生图',
+    description: '通过已配置的 OpenAI 图片模型生成图片。',
+    prompt: '提示词',
+    promptPlaceholder: '描述你想生成的图片内容',
+    generate: '生成图片',
+    generating: '生成中...',
+    apiKey: 'API 密钥',
+    selectApiKey: '选择 API 密钥',
+    selectModel: '选择文生图模型',
+    model: '模型',
+    size: '尺寸',
+    quality: '质量',
+    referenceImages: '参考图',
+    uploadReference: '上传参考图',
+    disabled: '文生图入口当前未启用，请联系管理员在系统设置中开启。',
+    empty: '生成结果会显示在这里。',
+    error: '图片生成失败'
   },
 
   models: {
@@ -5071,6 +5092,13 @@ export default {
           configureLink: '前往 渠道管理 > 渠道定价 配置模型价格',
           enabled: '启用可用渠道',
           enabledHint: '关闭后用户端侧边栏入口隐藏，接口返回空数组。',
+        },
+        imageGeneration: {
+          title: '文生图',
+          description: '控制用户侧文生图工具入口是否展示。',
+          configureLink: '前往 渠道管理 > 渠道定价 配置图片模型价格',
+          enabled: '启用文生图入口',
+          enabledHint: '启用前请确认 OpenAI 分组、图片模型和渠道图片计费已配置。',
         },
         affiliate: {
           title: '邀请返利',

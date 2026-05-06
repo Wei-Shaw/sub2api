@@ -76,6 +76,8 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 
+		ImageGenerationEnabled: settings.ImageGenerationEnabled,
+
 		AffiliateEnabled: settings.AffiliateEnabled,
 	})
 }

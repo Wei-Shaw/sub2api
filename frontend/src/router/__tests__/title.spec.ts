@@ -39,6 +39,8 @@ describe('resolveDocumentTitle', () => {
     const routerSource = readFileSync(resolve(process.cwd(), 'src/router/index.ts'), 'utf8')
 
     expect(routerSource).toContain("path: '/models'")
+    expect(routerSource).toContain("path: '/images'")
+    expect(routerSource).toContain("titleKey: 'nav.imageGeneration'")
     expect(routerSource).not.toContain("path: '/docs'")
     expect(routerSource).toContain("path: '/recharge-subscription'")
     expect(routerSource).toContain("path: '/profile'")

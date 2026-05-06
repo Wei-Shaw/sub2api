@@ -357,6 +357,7 @@ export default {
     profile: 'Profile',
     notLoggedIn: 'Not logged in',
     modelPlaza: 'Model Plaza',
+    imageGeneration: 'Image Generation',
     usageDocs: 'Usage Docs',
     rechargeSubscription: 'Recharge & Subscription',
     users: 'Users',
@@ -989,6 +990,26 @@ export default {
       unitPerMillion: '/ 1M tokens',
       unitPerRequest: '/ request'
     }
+  },
+
+  imageGeneration: {
+    title: 'Image Generation',
+    description: 'Generate images with the configured OpenAI image models.',
+    prompt: 'Prompt',
+    promptPlaceholder: 'Describe the image you want to generate',
+    generate: 'Generate',
+    generating: 'Generating...',
+    apiKey: 'API Key',
+    selectApiKey: 'Select API Key',
+    selectModel: 'Select image model',
+    model: 'Model',
+    size: 'Size',
+    quality: 'Quality',
+    referenceImages: 'Reference Images',
+    uploadReference: 'Upload references',
+    disabled: 'Image generation is currently disabled. Ask an administrator to enable it in system settings.',
+    empty: 'Generated images will appear here.',
+    error: 'Image generation failed'
   },
 
   models: {
@@ -4908,6 +4929,13 @@ export default {
           configureLink: 'Configure model pricing in Channel Management > Channel Pricing',
           enabled: 'Enable Available Channels',
           enabledHint: 'When off, the sidebar entry is hidden and the endpoint returns an empty list.',
+        },
+        imageGeneration: {
+          title: 'Image Generation',
+          description: 'Control whether the user-facing image generation tool is shown.',
+          configureLink: 'Configure image model pricing in Channel Management > Channel Pricing',
+          enabled: 'Enable Image Generation',
+          enabledHint: 'Before enabling, confirm OpenAI groups, image models, and image pricing are configured.',
         },
         affiliate: {
           title: 'Affiliate (Invite Rebate)',
