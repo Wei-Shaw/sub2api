@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 
+	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/oauth"
@@ -168,10 +169,22 @@ func (h *AuthHandler) emailOAuthCallbackWithProfile(
 		UpstreamMetadata: profile.Metadata,
 	}
 	affiliateCode := h.emailOAuthAffiliateCode(c)
+	if shouldCreate, err := h.emailOAuthShouldCreatePendingRegistration(c.Request.Context(), input); err != nil {
+		redirectOAuthError(c, frontendCallback, infraerrors.Reason(err), infraerrors.Message(err), "")
+		return
+	} else if shouldCreate {
+		if pendingErr := h.createEmailOAuthRegistrationPendingSession(c, provider, frontendCallback, redirectTo, profile); pendingErr != nil {
+			redirectOAuthError(c, frontendCallback, infraerrors.Reason(pendingErr), infraerrors.Message(pendingErr), "")
+			return
+		}
+		redirectToFrontendCallback(c, frontendCallback)
+		return
+	}
+
 	tokenPair, user, err := h.authService.LoginOrRegisterVerifiedEmailOAuthWithInvitation(c.Request.Context(), input, "", affiliateCode)
 	if err != nil {
 		if errors.Is(err, service.ErrOAuthInvitationRequired) {
-			if pendingErr := h.createEmailOAuthInvitationPendingSession(c, provider, frontendCallback, redirectTo, profile); pendingErr != nil {
+			if pendingErr := h.createEmailOAuthRegistrationPendingSession(c, provider, frontendCallback, redirectTo, profile); pendingErr != nil {
 				redirectOAuthError(c, frontendCallback, infraerrors.Reason(pendingErr), infraerrors.Message(pendingErr), "")
 				return
 			}
@@ -195,6 +208,35 @@ func (h *AuthHandler) emailOAuthCallbackWithProfile(
 	redirectWithFragment(c, frontendCallback, fragment)
 }
 
+func (h *AuthHandler) emailOAuthShouldCreatePendingRegistration(ctx context.Context, input service.EmailOAuthIdentityInput) (bool, error) {
+	client := h.entClient()
+	if client == nil {
+		return false, infraerrors.ServiceUnavailable("PENDING_AUTH_NOT_READY", "pending auth service is not ready")
+	}
+	identityUser, err := h.findOAuthIdentityUser(ctx, service.PendingAuthIdentityKey{
+		ProviderType:    strings.TrimSpace(input.ProviderType),
+		ProviderKey:     strings.TrimSpace(input.ProviderKey),
+		ProviderSubject: strings.TrimSpace(input.ProviderSubject),
+	})
+	if err != nil {
+		return false, err
+	}
+	email := strings.TrimSpace(strings.ToLower(input.Email))
+	if identityUser != nil {
+		if !strings.EqualFold(strings.TrimSpace(identityUser.Email), email) {
+			return false, infraerrors.Conflict("AUTH_IDENTITY_EMAIL_MISMATCH", "oauth identity belongs to a different email")
+		}
+		return false, nil
+	}
+	if _, err := findUserByNormalizedEmail(ctx, client, email); err != nil {
+		if errors.Is(err, service.ErrUserNotFound) {
+			return true, nil
+		}
+		return false, err
+	}
+	return false, nil
+}
+
 func (h *AuthHandler) emailOAuthAffiliateCode(c *gin.Context) string {
 	if c == nil {
 		return ""
@@ -205,7 +247,7 @@ func (h *AuthHandler) emailOAuthAffiliateCode(c *gin.Context) string {
 	return ""
 }
 
-func (h *AuthHandler) createEmailOAuthInvitationPendingSession(
+func (h *AuthHandler) createEmailOAuthRegistrationPendingSession(
 	c *gin.Context,
 	provider string,
 	frontendCallback string,
@@ -247,14 +289,22 @@ func (h *AuthHandler) createEmailOAuthInvitationPendingSession(
 		}
 	}
 
+	invitationRequired := h != nil && h.settingSvc != nil && h.settingSvc.IsInvitationCodeEnabled(c.Request.Context())
+	pendingError := "registration_completion_required"
+	choiceReason := "registration_completion_required"
+	if invitationRequired {
+		pendingError = "invitation_required"
+		choiceReason = "invitation_required"
+	}
 	completionResponse := map[string]any{
 		"step":                      oauthPendingChoiceStep,
-		"error":                     "invitation_required",
-		"choice_reason":             "invitation_required",
+		"error":                     pendingError,
+		"choice_reason":             choiceReason,
 		"adoption_required":         false,
 		"create_account_allowed":    true,
 		"existing_account_bindable": false,
 		"force_email_on_signup":     true,
+		"invitation_required":       invitationRequired,
 		"email":                     email,
 		"resolved_email":            email,
 		"provider":                  provider,
@@ -276,7 +326,8 @@ func (h *AuthHandler) createEmailOAuthInvitationPendingSession(
 }
 
 type completeEmailOAuthRequest struct {
-	InvitationCode string `json:"invitation_code" binding:"required"`
+	Password       string `json:"password" binding:"required,min=6"`
+	InvitationCode string `json:"invitation_code,omitempty"`
 	AffCode        string `json:"aff_code,omitempty"`
 }
 
@@ -310,21 +361,12 @@ func (h *AuthHandler) completeEmailOAuthRegistration(c *gin.Context, provider st
 		affiliateCode = pendingSessionStringValue(session.UpstreamIdentityClaims, "aff_code")
 	}
 
-	tokenPair, user, err := h.authService.LoginOrRegisterVerifiedEmailOAuthWithInvitation(
+	tokenPair, user, err := h.authService.RegisterVerifiedOAuthEmailAccount(
 		c.Request.Context(),
-		service.EmailOAuthIdentityInput{
-			ProviderType:     strings.TrimSpace(session.ProviderType),
-			ProviderKey:      strings.TrimSpace(session.ProviderKey),
-			ProviderSubject:  strings.TrimSpace(session.ProviderSubject),
-			Email:            strings.TrimSpace(session.ResolvedEmail),
-			EmailVerified:    true,
-			Username:         pendingSessionStringValue(session.UpstreamIdentityClaims, "username"),
-			DisplayName:      pendingSessionStringValue(session.UpstreamIdentityClaims, "suggested_display_name"),
-			AvatarURL:        pendingSessionStringValue(session.UpstreamIdentityClaims, "suggested_avatar_url"),
-			UpstreamMetadata: clonePendingMap(session.UpstreamIdentityClaims),
-		},
+		strings.TrimSpace(session.ResolvedEmail),
+		req.Password,
 		strings.TrimSpace(req.InvitationCode),
-		affiliateCode,
+		strings.TrimSpace(session.ProviderType),
 	)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -342,13 +384,46 @@ func (h *AuthHandler) completeEmailOAuthRegistration(c *gin.Context, provider st
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
+	txCtx := dbent.NewTxContext(c.Request.Context(), tx)
+	sessionForBinding := *session
+	sessionForBinding.UpstreamIdentityClaims = clonePendingMap(session.UpstreamIdentityClaims)
+	if strings.TrimSpace(req.InvitationCode) != "" {
+		sessionForBinding.UpstreamIdentityClaims["invitation_code"] = strings.TrimSpace(req.InvitationCode)
+	}
+	decision, err := h.ensurePendingOAuthAdoptionDecision(c, session.ID, oauthAdoptionDecisionRequest{})
+	if err != nil {
+		_ = tx.Rollback()
+		_ = h.authService.RollbackOAuthEmailAccountCreation(c.Request.Context(), user.ID, strings.TrimSpace(req.InvitationCode))
+		response.ErrorFrom(c, err)
+		return
+	}
+	if err := applyPendingOAuthBinding(txCtx, client, h.authService, h.userService, &sessionForBinding, decision, &user.ID, true, false); err != nil {
+		_ = tx.Rollback()
+		_ = h.authService.RollbackOAuthEmailAccountCreation(c.Request.Context(), user.ID, strings.TrimSpace(req.InvitationCode))
+		respondPendingOAuthBindingApplyError(c, err)
+		return
+	}
+	if err := h.authService.FinalizeOAuthEmailAccount(
+		txCtx,
+		user,
+		strings.TrimSpace(req.InvitationCode),
+		strings.TrimSpace(session.ProviderType),
+		affiliateCode,
+	); err != nil {
+		_ = tx.Rollback()
+		_ = h.authService.RollbackOAuthEmailAccountCreation(c.Request.Context(), user.ID, strings.TrimSpace(req.InvitationCode))
+		response.ErrorFrom(c, err)
+		return
+	}
 	if err := consumePendingOAuthBrowserSessionTx(c.Request.Context(), tx, session); err != nil {
 		_ = tx.Rollback()
+		_ = h.authService.RollbackOAuthEmailAccountCreation(c.Request.Context(), user.ID, strings.TrimSpace(req.InvitationCode))
 		clearCookies()
 		response.ErrorFrom(c, err)
 		return
 	}
 	if err := tx.Commit(); err != nil {
+		_ = h.authService.RollbackOAuthEmailAccountCreation(c.Request.Context(), user.ID, strings.TrimSpace(req.InvitationCode))
 		response.ErrorFrom(c, infraerrors.InternalServer("PENDING_AUTH_BIND_APPLY_FAILED", "failed to consume pending oauth session").WithCause(err))
 		return
 	}
@@ -438,17 +513,17 @@ func parseGitHubOAuthProfile(ctx context.Context, cfg config.EmailOAuthProviderC
 	if subject == "" {
 		return nil, errors.New("github user id is missing")
 	}
-	email := strings.TrimSpace(gjson.Get(body, "email").String())
-	emailVerified := email != ""
-	if strings.TrimSpace(cfg.EmailsURL) != "" {
-		if verifiedEmail, err := fetchGitHubPrimaryVerifiedEmail(ctx, cfg.EmailsURL, token.AccessToken); err == nil && verifiedEmail != "" {
-			email = verifiedEmail
-			emailVerified = true
-		} else if email == "" && err != nil {
-			return nil, err
-		}
+	email := ""
+	emailsURL := strings.TrimSpace(cfg.EmailsURL)
+	if emailsURL == "" {
+		return nil, errors.New("github verified email is missing")
 	}
-	if email == "" || !emailVerified {
+	verifiedEmail, err := fetchGitHubPrimaryVerifiedEmail(ctx, emailsURL, token.AccessToken)
+	if err != nil {
+		return nil, err
+	}
+	email = verifiedEmail
+	if email == "" {
 		return nil, errors.New("github verified email is missing")
 	}
 	login := strings.TrimSpace(gjson.Get(body, "login").String())
