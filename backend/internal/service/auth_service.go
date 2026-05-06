@@ -775,6 +775,10 @@ REDACTED
 		return defaults.OIDC, true
 	case "wechat":
 		return defaults.WeChat, true
+	case "github":
+		return defaults.GitHub, true
+	case "google":
+		return defaults.Google, true
 	default:
 		return ProviderDefaultGrantSettings{REDACTED, false
 REDACTED
