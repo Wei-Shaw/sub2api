@@ -68,7 +68,7 @@
         <!-- Fallback: full Payment Element (no method param or unknown method) -->
         <template v-else-if="showPaymentElement">
           <div class="card p-6">
-            <div id="stripe-payment-element" class="min-h-[200px]"></div>
+            <div ref="stripeMountEl" class="min-h-[200px]"></div>
             <p v-if="stripeError" class="mt-4 text-sm text-red-600 dark:text-red-400">{{ stripeError }}</p>
             <button class="btn btn-stripe mt-6 w-full py-3 text-base" :disabled="stripeSubmitting || !stripeReady" @click="handleGenericPay">
               <span v-if="stripeSubmitting" class="flex items-center justify-center gap-2">
@@ -125,6 +125,11 @@ const order = ref<PaymentOrder | null>(null)
 const wechatQrUrl = ref('')
 const redirecting = ref(false)
 const showPaymentElement = ref(false)
+// Plugin views render inside a Shadow DOM root, so Stripe's
+// document.querySelector('#stripe-payment-element') can't find anything.
+// Mount via a template ref (HTMLElement) instead — Stripe accepts both
+// CSS selectors and DOM nodes.
+const stripeMountEl = ref<HTMLElement | null>(null)
 
 let stripeInstance: Stripe | null = null
 let elementsInstance: StripeElements | null = null
@@ -216,6 +221,10 @@ async function confirmWechatPay(stripe: Stripe, clientSecret: string) {
 }
 
 function mountPaymentElement(stripe: Stripe, clientSecret: string) {
+  if (!stripeMountEl.value) {
+    stripeError.value = t('payment.stripeLoadFailed')
+    return
+  }
   const isDark = document.documentElement.classList.contains('dark')
   const elements = stripe.elements({
     clientSecret,
@@ -226,7 +235,7 @@ function mountPaymentElement(stripe: Stripe, clientSecret: string) {
     layout: 'tabs',
     paymentMethodOrder: ['alipay', 'wechat_pay', 'card', 'link'],
   } as Record<string, unknown>)
-  paymentElement.mount('#stripe-payment-element')
+  paymentElement.mount(stripeMountEl.value)
   paymentElement.on('ready', () => { stripeReady.value = true })
 }
 
