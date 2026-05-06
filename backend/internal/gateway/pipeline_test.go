@@ -20,10 +20,10 @@ type forwardFunc func(ctx context.Context, w http.ResponseWriter, req *ForwardRe
 type shouldFailoverFunc func(ctx context.Context, req *ForwardRequest, err error) bool
 
 type pipelineMockProvider struct {
-	platform       string
-	protocols      []string
-	forwardFn      forwardFunc
-	shouldFailFn   shouldFailoverFunc
+	platform     string
+	protocols    []string
+	forwardFn    forwardFunc
+	shouldFailFn shouldFailoverFunc
 }
 
 func (m *pipelineMockProvider) Platform() string    { return m.platform }
