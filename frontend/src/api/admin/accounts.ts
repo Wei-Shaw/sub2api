@@ -630,6 +630,32 @@ export async function setPrivacy(id: number): Promise<Account> {
   return data
 }
 
+/**
+ * Recent account user type
+ */
+export interface RecentAccountUser {
+  user_id: number
+  email: string
+  requests: number
+  account_cost: number
+  user_cost: number
+  last_used_at: string
+}
+
+/**
+ * Get recent users of an account (last 5 minutes)
+ * @param id - Account ID
+ * @returns List of recent users
+ */
+export async function getRecentUsers(id: number, params?: {
+  start_date?: string
+  end_date?: string
+  timezone?: string
+}): Promise<{ users: RecentAccountUser[] }> {
+  const { data } = await apiClient.get<{ users: RecentAccountUser[] }>(`/admin/accounts/${id}/recent-users`, { params })
+  return data
+}
+
 export const accountsAPI = {
   list,
   listWithEtag,
@@ -666,7 +692,8 @@ export const accountsAPI = {
   getAntigravityDefaultModelMapping,
   batchClearError,
   batchRefresh,
-  setPrivacy
+  setPrivacy,
+  getRecentUsers
 }
 
 export default accountsAPI

@@ -77,6 +77,21 @@ type UsageLogRepository interface {
 	GetAccountStatsAggregated(ctx context.Context, accountID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error)
 	GetModelStatsAggregated(ctx context.Context, modelName string, startTime, endTime time.Time) (*usagestats.UsageStats, error)
 	GetDailyStatsAggregated(ctx context.Context, userID int64, startTime, endTime time.Time) ([]map[string]any, error)
+
+	// GetRecentAccountUsers returns users who used the account in the last N minutes
+	GetRecentAccountUsers(ctx context.Context, accountID int64, minutes int) ([]RecentAccountUser, error)
+	// GetAccountUsersByTimeRange returns users who used the account within the selected time range.
+	GetAccountUsersByTimeRange(ctx context.Context, accountID int64, startTime, endTime time.Time) ([]RecentAccountUser, error)
+}
+
+// RecentAccountUser represents a user who recently used an account
+type RecentAccountUser struct {
+	UserID      int64     `json:"user_id"`
+	Email       string    `json:"email"`
+	Requests    int64     `json:"requests"`
+	AccountCost float64   `json:"account_cost"`
+	UserCost    float64   `json:"user_cost"`
+	LastUsedAt  time.Time `json:"last_used_at"`
 }
 
 type accountWindowStatsBatchReader interface {
@@ -1334,4 +1349,14 @@ func buildGeminiUsageProgress(used, limit int64, resetAt time.Time, tokens int64
 // 用于账号列表页面显示当前窗口费用
 func (s *AccountUsageService) GetAccountWindowStats(ctx context.Context, accountID int64, startTime time.Time) (*usagestats.AccountStats, error) {
 	return s.usageLogRepo.GetAccountWindowStats(ctx, accountID, startTime)
+}
+
+// GetRecentAccountUsers returns users who used the account in the last N minutes
+func (s *AccountUsageService) GetRecentAccountUsers(ctx context.Context, accountID int64, minutes int) ([]RecentAccountUser, error) {
+	return s.usageLogRepo.GetRecentAccountUsers(ctx, accountID, minutes)
+}
+
+// GetAccountUsersByTimeRange returns users who used the account within the selected time range.
+func (s *AccountUsageService) GetAccountUsersByTimeRange(ctx context.Context, accountID int64, startTime, endTime time.Time) ([]RecentAccountUser, error) {
+	return s.usageLogRepo.GetAccountUsersByTimeRange(ctx, accountID, startTime, endTime)
 }
