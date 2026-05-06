@@ -64,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { extractI18nErrorMessage } from '../../utils/apiError'
@@ -111,6 +111,38 @@ const selectedType = ref('')
 let stripeInstance: Stripe | null = null
 let elementsInstance: StripeElements | null = null
 
+// Light-DOM mount node — Stripe Elements does not render inside the
+// plugin's Shadow Root (styles injected into document.head don't reach
+// the shadow tree, and Stripe's iframe layout sync uses document-level
+// APIs). Append a div to document.body and pin it over the shadow-DOM
+// placeholder via fixed positioning + ResizeObserver.
+let lightDomMount: HTMLDivElement | null = null
+let lightDomResizeObserver: ResizeObserver | null = null
+
+function syncLightDomMountPosition() {
+  if (!lightDomMount || !stripeMount.value) return
+  const rect = stripeMount.value.getBoundingClientRect()
+  lightDomMount.style.position = 'fixed'
+  lightDomMount.style.top = `${rect.top}px`
+  lightDomMount.style.left = `${rect.left}px`
+  lightDomMount.style.width = `${rect.width}px`
+  lightDomMount.style.minHeight = `${rect.height}px`
+  lightDomMount.style.zIndex = '10'
+}
+
+function cleanupLightDomMount() {
+  if (lightDomResizeObserver) {
+    lightDomResizeObserver.disconnect()
+    lightDomResizeObserver = null
+  }
+  window.removeEventListener('resize', syncLightDomMountPosition)
+  window.removeEventListener('scroll', syncLightDomMountPosition, true)
+  if (lightDomMount) {
+    lightDomMount.remove()
+    lightDomMount = null
+  }
+}
+
 onMounted(async () => {
   try {
     const { loadStripe } = await import('@stripe/stripe-js')
@@ -122,6 +154,16 @@ onMounted(async () => {
     await nextTick()
     if (!stripeMount.value) return
 
+    cleanupLightDomMount()
+    lightDomMount = document.createElement('div')
+    lightDomMount.dataset.stripePaymentMount = '1'
+    document.body.appendChild(lightDomMount)
+    syncLightDomMountPosition()
+    lightDomResizeObserver = new ResizeObserver(syncLightDomMountPosition)
+    lightDomResizeObserver.observe(stripeMount.value)
+    window.addEventListener('resize', syncLightDomMountPosition)
+    window.addEventListener('scroll', syncLightDomMountPosition, true)
+
     const isDark = document.documentElement.classList.contains('dark')
     const elements = stripe.elements({
       clientSecret: props.clientSecret,
@@ -132,7 +174,7 @@ onMounted(async () => {
       layout: 'tabs',
       paymentMethodOrder: ['alipay', 'wechat_pay', 'card', 'link'],
     } as Record<string, unknown>)
-    paymentElement.mount(stripeMount.value)
+    paymentElement.mount(lightDomMount)
     paymentElement.on('ready', () => { ready.value = true })
     paymentElement.on('change', (event: { value: { type: string } }) => {
       selectedType.value = event.value.type
@@ -142,6 +184,10 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+})
+
+onUnmounted(() => {
+  cleanupLightDomMount()
 })
 
 async function handlePay() {

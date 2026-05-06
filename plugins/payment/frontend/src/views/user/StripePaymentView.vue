@@ -223,11 +223,57 @@ async function confirmWechatPay(stripe: Stripe, clientSecret: string) {
   }
 }
 
+// Light-DOM mount node + viewport sync state. Stripe Elements injects
+// styles into document.head and reads layout via document-level APIs —
+// neither of which work when the mount node lives inside the plugin's
+// Shadow Root, leaving the Payment Element stuck in skeleton state and
+// never firing its `ready` event. Mount Stripe to a div appended to
+// document.body and pin it over the in-shadow placeholder via fixed
+// positioning + ResizeObserver. The placeholder stays in shadow DOM so
+// the rest of the page layout (Tailwind utility classes, dark mode,
+// AppLayout chrome on the in-app variant) keeps working.
+let lightDomMount: HTMLDivElement | null = null
+let lightDomResizeObserver: ResizeObserver | null = null
+
+function syncLightDomMountPosition() {
+  if (!lightDomMount || !stripeMountEl.value) return
+  const rect = stripeMountEl.value.getBoundingClientRect()
+  lightDomMount.style.position = 'fixed'
+  lightDomMount.style.top = `${rect.top}px`
+  lightDomMount.style.left = `${rect.left}px`
+  lightDomMount.style.width = `${rect.width}px`
+  lightDomMount.style.minHeight = `${rect.height}px`
+  lightDomMount.style.zIndex = '10'
+}
+
+function cleanupLightDomMount() {
+  if (lightDomResizeObserver) {
+    lightDomResizeObserver.disconnect()
+    lightDomResizeObserver = null
+  }
+  window.removeEventListener('resize', syncLightDomMountPosition)
+  window.removeEventListener('scroll', syncLightDomMountPosition, true)
+  if (lightDomMount) {
+    lightDomMount.remove()
+    lightDomMount = null
+  }
+}
+
 function mountPaymentElement(stripe: Stripe, clientSecret: string) {
   if (!stripeMountEl.value) {
     stripeError.value = t('payment.stripeLoadFailed')
     return
   }
+  cleanupLightDomMount()
+  lightDomMount = document.createElement('div')
+  lightDomMount.dataset.stripePaymentMount = '1'
+  document.body.appendChild(lightDomMount)
+  syncLightDomMountPosition()
+  lightDomResizeObserver = new ResizeObserver(syncLightDomMountPosition)
+  lightDomResizeObserver.observe(stripeMountEl.value)
+  window.addEventListener('resize', syncLightDomMountPosition)
+  window.addEventListener('scroll', syncLightDomMountPosition, true)
+
   const isDark = document.documentElement.classList.contains('dark')
   const elements = stripe.elements({
     clientSecret,
@@ -238,7 +284,7 @@ function mountPaymentElement(stripe: Stripe, clientSecret: string) {
     layout: 'tabs',
     paymentMethodOrder: ['alipay', 'wechat_pay', 'card', 'link'],
   } as Record<string, unknown>)
-  paymentElement.mount(stripeMountEl.value)
+  paymentElement.mount(lightDomMount)
   paymentElement.on('ready', () => { stripeReady.value = true })
 }
 
@@ -297,5 +343,6 @@ function scheduleClose() {
 onUnmounted(() => {
   if (redirectTimer) clearTimeout(redirectTimer)
   if (pollTimer) clearInterval(pollTimer)
+  cleanupLightDomMount()
 })
 </script>
