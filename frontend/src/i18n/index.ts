@@ -16,13 +16,37 @@ function isLocaleCode(value: string): value is LocaleCode {
   return value === 'en' || value === 'zh'
 }
 
+function readStoredLocale(): string | null {
+  try {
+    const storage = globalThis.localStorage
+    if (typeof storage?.getItem === 'function') {
+      return storage.getItem(LOCALE_KEY)
+    }
+  } catch {
+    // localStorage can be unavailable in tests, privacy modes, or restricted webviews.
+  }
+  return null
+}
+
+function writeStoredLocale(locale: LocaleCode): void {
+  try {
+    const storage = globalThis.localStorage
+    if (typeof storage?.setItem === 'function') {
+      storage.setItem(LOCALE_KEY, locale)
+    }
+  } catch {
+    // Keep language switching usable even when persistence is blocked.
+  }
+}
+
 function getDefaultLocale(): LocaleCode {
-  const saved = localStorage.getItem(LOCALE_KEY)
+  const saved = readStoredLocale()
   if (saved && isLocaleCode(saved)) {
     return saved
   }
 
-  const browserLang = navigator.language.toLowerCase()
+  const browserLang =
+    typeof globalThis.navigator?.language === 'string' ? globalThis.navigator.language.toLowerCase() : ''
   if (browserLang.startsWith('zh')) {
     return 'zh'
   }
@@ -66,7 +90,7 @@ export async function setLocale(locale: string): Promise<void> {
 
   await loadLocaleMessages(locale)
   i18n.global.locale.value = locale
-  localStorage.setItem(LOCALE_KEY, locale)
+  writeStoredLocale(locale)
   document.documentElement.setAttribute('lang', locale)
 
   // 同步更新浏览器页签标题，使其跟随语言切换

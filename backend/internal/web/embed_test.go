@@ -31,6 +31,15 @@ func TestInjectSiteTitle(t *testing.T) {
 		assert.NotContains(t, string(result), "Sub2API")
 	})
 
+	t.Run("preserves_optimized_tokenprovider_title", func(t *testing.T) {
+		html := []byte(`<html><head><title>TokenProvider — Claude / Claude Code / ChatGPT 中转站</title></head><body></body></html>`)
+		settingsJSON := []byte(`{"site_name":"TokenProvider"}`)
+
+		result := injectSiteTitle(html, settingsJSON)
+
+		assert.Equal(t, string(html), string(result))
+	})
+
 	t.Run("returns_unchanged_when_site_name_empty", func(t *testing.T) {
 		html := []byte(`<html><head><title>Sub2API - AI API Gateway</title></head><body></body></html>`)
 		settingsJSON := []byte(`{"site_name":""}`)
@@ -328,6 +337,32 @@ func TestFrontendServer_ServeIndexHTML(t *testing.T) {
 		assert.Empty(t, w2.Body.String())
 	})
 
+	t.Run("does_not_return_304_for_unknown_route_matching_etag", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]string{"test": "value"},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		w1 := httptest.NewRecorder()
+		req1 := httptest.NewRequest(http.MethodGet, "/", nil)
+		router.ServeHTTP(w1, req1)
+		etag := w1.Header().Get("ETag")
+		require.NotEmpty(t, etag)
+
+		w2 := httptest.NewRecorder()
+		req2 := httptest.NewRequest(http.MethodGet, "/does-not-exist-seo-test", nil)
+		req2.Header.Set("If-None-Match", etag)
+		router.ServeHTTP(w2, req2)
+
+		assert.Equal(t, http.StatusNotFound, w2.Code)
+		assert.Contains(t, w2.Body.String(), "<!doctype html>")
+	})
+
 	t.Run("sets_cache_control_header", func(t *testing.T) {
 		provider := &mockSettingsProvider{
 			settings: map[string]string{"test": "value"},
@@ -506,8 +541,8 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		spaPaths := []string{
 			"/",
 			"/dashboard",
-			"/users/123",
-			"/settings/profile",
+			"/profile",
+			"/admin/accounts/123/dashboard",
 		}
 
 		for _, path := range spaPaths {
@@ -520,6 +555,26 @@ func TestFrontendServer_Middleware(t *testing.T) {
 				assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
 			})
 		}
+	})
+
+	t.Run("serves_index_with_404_for_unknown_frontend_routes", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]string{"test": "value"},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/does-not-exist-seo-test", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
+		assert.Contains(t, w.Body.String(), "<!doctype html>")
 	})
 
 	t.Run("serves_static_files", func(t *testing.T) {
@@ -617,7 +672,7 @@ func TestServeEmbeddedFrontend(t *testing.T) {
 		router := gin.New()
 		router.Use(middleware)
 
-		spaPaths := []string{"/dashboard", "/users/123", "/settings"}
+		spaPaths := []string{"/dashboard", "/profile", "/admin/settings"}
 
 		for _, path := range spaPaths {
 			t.Run(path, func(t *testing.T) {
@@ -629,6 +684,21 @@ func TestServeEmbeddedFrontend(t *testing.T) {
 				assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
 			})
 		}
+	})
+
+	t.Run("serves_index_html_with_404_for_unknown_frontend_routes", func(t *testing.T) {
+		middleware := ServeEmbeddedFrontend()
+
+		router := gin.New()
+		router.Use(middleware)
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/does-not-exist-seo-test", nil)
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
+		assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
+		assert.Contains(t, w.Body.String(), "<!doctype html>")
 	})
 
 	t.Run("skips_api_routes", func(t *testing.T) {
