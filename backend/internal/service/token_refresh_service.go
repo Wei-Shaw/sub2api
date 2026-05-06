@@ -472,6 +472,10 @@ func (s *TokenRefreshService) ensureOpenAIPrivacy(ctx context.Context, account *
 			"account_id", account.ID,
 			"privacy_mode", mode,
 		)
+		if account.Extra == nil {
+			account.Extra = make(map[string]any)
+		}
+		account.Extra["privacy_mode"] = mode
 	}
 }
 
