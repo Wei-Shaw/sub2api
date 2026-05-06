@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/gateway"
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
 )
 
@@ -58,6 +59,12 @@ type Handlers struct {
 	UserServiceQuota *UserServiceQuotaHandler
 	// AvailableChannel / ChannelMonitor (user) 已迁移到 plugins/channel-management/
 	Upload *UploadHandler
+
+	// GatewayPipeline is the Phase 1 M5 gateway pipeline. Currently held
+	// for compile-time validation only; handler methods continue to use
+	// their existing per-platform dispatch logic. Future milestones will
+	// progressively route endpoints through the pipeline.
+	GatewayPipeline *gateway.GatewayPipeline
 }
 
 // BuildInfo contains build-time information

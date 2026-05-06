@@ -68,6 +68,11 @@ func NewGatewayPipeline(
 	}
 }
 
+// Registry returns the provider registry for diagnostic / health
+// inspection. Routes can use this to verify provider wiring without
+// triggering a full Execute lifecycle.
+func (p *GatewayPipeline) Registry() *ProviderRegistry { return p.registry }
+
 // Execute runs the full gateway request lifecycle. It is the single
 // entry point that replaces the per-platform if/else chains in the
 // gateway handler.

@@ -180,6 +180,11 @@ func RegisterGatewayRoutes(
 		h.OpenAIGateway.Images(c)
 	})
 
+	// Pipeline health: verify provider registry wiring (diagnostic only, no auth).
+	if h.GatewayPipeline != nil {
+		r.GET("/_debug/pipeline-health", pipelineHealthHandler(h))
+	}
+
 	// Antigravity 模型列表
 	r.GET("/antigravity/models", gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.Gateway.AntigravityModels)
 
@@ -222,4 +227,23 @@ func getGroupPlatform(c *gin.Context) string {
 		return ""
 	}
 	return apiKey.Group.Platform
+}
+
+// pipelineHealthHandler returns a gin handler that reports which
+// providers are registered in the GatewayPipeline's registry.
+// This is a diagnostic-only endpoint (no auth) used to verify M5
+// wiring without triggering any real request lifecycle.
+func pipelineHealthHandler(h *handler.Handlers) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		registry := h.GatewayPipeline.Registry()
+		protocols := []string{"anthropic", "openai", "gemini"}
+		result := make(map[string]int, len(protocols))
+		for _, proto := range protocols {
+			result[proto] = len(registry.ForProtocol(proto))
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"status":    "ok",
+			"providers": result,
+		})
+	}
 }

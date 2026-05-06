@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/gateway"
 	"github.com/Wei-Shaw/sub2api/internal/handler/admin"
 	"github.com/Wei-Shaw/sub2api/internal/plugin"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -113,6 +114,7 @@ func ProvideHandlers(
 	totpHandler *TotpHandler,
 	userServiceQuotaHandler *UserServiceQuotaHandler,
 	uploadHandler *UploadHandler,
+	gatewayPipeline *gateway.GatewayPipeline,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
@@ -131,6 +133,7 @@ func ProvideHandlers(
 		Totp:             totpHandler,
 		UserServiceQuota: userServiceQuotaHandler,
 		Upload:           uploadHandler,
+		GatewayPipeline:  gatewayPipeline,
 	}
 }
 
