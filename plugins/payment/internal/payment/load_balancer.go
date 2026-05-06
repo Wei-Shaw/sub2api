@@ -359,17 +359,21 @@ func (lb *DefaultLoadBalancer) decryptConfig(stored string) (map[string]string, 
 	return nil, nil
 }
 
-// rewriteLegacyWebhookURLs upgrades pre-plugin-migration notifyUrl values
-// in-place. The legacy host served webhooks at /api/v1/payment/webhook/*
-// but after the migration to plugins/payment those paths live behind the
-// plugin gateway at /api/v1/plugin/payment/webhook/*. Existing provider
-// rows still carry the old path; rewriting on read lets them keep
-// working without requiring the operator to re-save every provider.
+// rewriteLegacyWebhookURLs strips the /plugin/ segment that briefly
+// crept into stored notifyUrl values during the plugin-migration
+// window. The canonical webhook paths now match the original host paths
+// (/api/v1/payment/webhook/*) — see plugins/payment/manifest_decls.go.
+// Records saved BEFORE the migration already use the canonical path
+// (no rewrite needed); records saved during the window between the
+// migration and this fix carry /api/v1/plugin/payment/webhook/* and
+// would 404 since the plugin no longer serves that prefix. Rewriting
+// on read lets them keep working without requiring the operator to
+// re-save every provider.
 func rewriteLegacyWebhookURLs(config map[string]string) {
-	const legacy = "/api/v1/payment/webhook/"
-	const replacement = "/api/v1/plugin/payment/webhook/"
-	if v, ok := config["notifyUrl"]; ok && strings.Contains(v, legacy) {
-		config["notifyUrl"] = strings.Replace(v, legacy, replacement, 1)
+	const transitional = "/api/v1/plugin/payment/webhook/"
+	const canonical = "/api/v1/payment/webhook/"
+	if v, ok := config["notifyUrl"]; ok && strings.Contains(v, transitional) {
+		config["notifyUrl"] = strings.Replace(v, transitional, canonical, 1)
 	}
 }
 

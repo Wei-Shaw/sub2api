@@ -1,9 +1,12 @@
 /**
  * User Payment API endpoints (plugin frontend).
  *
- * Routed through the host axios instance (host already injects /api/v1 baseURL
- * + auth interceptors). All paths target the plugin gateway at
- * /api/v1/plugin/payment/* so they are forwarded to the plugin gRPC handler.
+ * Routed through the host axios instance (host already injects /api/v1
+ * baseURL + auth interceptors). Paths intentionally re-use the
+ * pre-migration host prefix /api/v1/payment/* so external integrations
+ * and old bookmarks keep working — the host's per-plugin namespace gate
+ * recognises /api/v1/<plugin>/ as the payment plugin's own namespace
+ * and the plugin's gin engine registers handlers under that prefix.
  */
 
 import { getClient } from './client'
@@ -19,7 +22,7 @@ import type {
 } from '../types/payment'
 import type { BasePaginationResponse } from '../types'
 
-const BASE = '/plugin/payment'
+const BASE = '/payment'
 
 export const paymentAPI = {
   /** Get payment configuration (enabled types, limits, etc.) */

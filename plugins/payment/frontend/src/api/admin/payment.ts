@@ -1,9 +1,11 @@
 /**
  * Admin Payment API endpoints (plugin frontend).
  *
- * Routed through the host axios instance with auth/api-version baseURL. Paths
- * point at /api/v1/plugin/payment/admin/* so the plugin gateway forwards
- * them to the plugin gRPC handler.
+ * Routed through the host axios instance with auth/api-version baseURL.
+ * Paths re-use the pre-migration host prefix /api/v1/admin/payment/*;
+ * the host's per-plugin namespace gate recognises /api/v1/admin/<plugin>/
+ * as the payment plugin's own admin namespace and forwards to the
+ * plugin gRPC handler unchanged.
  */
 
 import { getClient } from '../client'
@@ -16,7 +18,7 @@ import type {
 } from '../../types/payment'
 import type { BasePaginationResponse } from '../../types'
 
-const BASE = '/plugin/payment/admin'
+const BASE = '/admin/payment'
 
 /**
  * Admin-facing payment config returned by GET /admin/config.

@@ -92,3 +92,46 @@ func TestRouteGate_EmptyPathSilentlySkipped(t *testing.T) {
 		t.Fatalf("expected empty paths to be skipped, got %v", err)
 	}
 }
+
+// /api/v1/<name>/* is the original-style prefix used before the plugin
+// migration (e.g. /api/v1/payment/orders). Allowed without capability so
+// plugins can keep their pre-migration URLs and avoid breaking external
+// integrations that have those URLs hardcoded.
+func TestRouteGate_OriginalAPIPrefixAllowed(t *testing.T) {
+	m := mkManifest(nil, []string{
+		"/api/v1/demo/foo",
+		"/api/v1/demo/orders/:id",
+	})
+	if err := validatePluginRoutePaths("demo", m, nil); err != nil {
+		t.Fatalf("expected /api/v1/demo/* to pass own-namespace, got %v", err)
+	}
+}
+
+// /api/v1/admin/<name>/* is the original-style admin prefix. Even though
+// /api/v1/admin/* is host-reserved at large, the per-plugin second
+// segment scopes ownership the same way /api/v1/plugin/<name>/ does, so
+// it is allowed without capability.
+func TestRouteGate_OriginalAdminPrefixAllowed(t *testing.T) {
+	m := mkManifest(nil, []string{
+		"/api/v1/admin/demo/dashboard",
+		"/api/v1/admin/demo/orders/:id/refund",
+	})
+	if err := validatePluginRoutePaths("demo", m, nil); err != nil {
+		t.Fatalf("expected /api/v1/admin/demo/* to pass own-namespace, got %v", err)
+	}
+}
+
+// A foreign admin path remains host-reserved even when the registering
+// plugin holds every capability — namespace boundary is the second
+// segment, not the registration capability.
+func TestRouteGate_OtherPluginAdminPathDenied(t *testing.T) {
+	m := mkManifest(nil, []string{"/api/v1/admin/other-plugin/foo"})
+	err := validatePluginRoutePaths("demo", m,
+		[]string{"http.register.gateway", "db.core.write"})
+	if err == nil {
+		t.Fatal("expected denial — admin path outside demo's own namespace")
+	}
+	if !strings.Contains(err.Error(), "host-reserved") {
+		t.Fatalf("error should mention host-reserved, got %v", err)
+	}
+}

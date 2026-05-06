@@ -47,10 +47,21 @@ const (
 // hello-world / channel-management today; "/plugins/<name>/" is recognised
 // as an alternative form for forward compatibility with the route table
 // comment in route_table.go.
+//
+// The two trailing prefixes — "/api/v1/<name>/" and "/api/v1/admin/<name>/"
+// — let plugins keep the same URLs they served before being lifted out of
+// the host monolith, so external integrations (Stripe Dashboard webhook
+// URLs, Alipay/WeChat merchant notifyUrl fields) keep working without any
+// operator action. The admin variant is namespaced by plugin name in the
+// second segment so it cannot shadow host-owned admin routes like
+// /api/v1/admin/users — see validatePluginRoutePaths for the matching
+// host-reserved guard.
 func pluginOwnNamespacePrefixes(pluginName string) []string {
 	return []string{
 		pluginNamespacePrefixAPIv1 + pluginName + "/",
 		pluginNamespacePrefixLegacy + pluginName + "/",
+		"/api/v1/" + pluginName + "/",
+		adminReservedPrefix + pluginName + "/",
 	}
 }
 
@@ -89,11 +100,17 @@ func validatePluginRoutePaths(pluginName string, manifest *pluginsdk.ManifestRes
 		if path == "" {
 			return nil
 		}
-		if strings.HasPrefix(path, adminReservedPrefix) {
-			return fmt.Errorf("plugin %q cannot register admin path %q (host-reserved)", pluginName, path)
-		}
+		// Own namespace (any of the four prefixes returned above) is
+		// always allowed. Check this BEFORE the admin-reserved guard so
+		// /api/v1/admin/<name>/* lands as own-namespace, not as
+		// host-reserved — the per-plugin second segment is the
+		// namespace boundary that keeps two plugins (or a plugin and
+		// the host) from colliding on /api/v1/admin/<other>/...
 		if isOwn(path) {
 			return nil
+		}
+		if strings.HasPrefix(path, adminReservedPrefix) {
+			return fmt.Errorf("plugin %q cannot register admin path %q (host-reserved)", pluginName, path)
 		}
 		if !hasGatewayCap {
 			return fmt.Errorf("plugin %q registers path %q outside own namespace; declare capability %q in manifest", pluginName, path, capabilityHTTPRegisterGateway)

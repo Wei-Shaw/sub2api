@@ -28,10 +28,16 @@ const (
 	pluginVersion     = "0.1.0"
 	pluginDescription = "Payment orders, providers, fulfillment, refunds and webhooks"
 
-	// pluginRoutePrefix is the path prefix the core gateway uses when
-	// proxying plugin endpoints to this plugin. It MUST match the prefix
-	// declared in PluginEndpoints below.
-	pluginRoutePrefix = "/api/v1/plugin/" + pluginName
+	// userRoutePrefix and adminRoutePrefix are the prefixes the core
+	// gateway uses when proxying plugin endpoints to this plugin. They
+	// match the pre-migration host paths so external integrations
+	// (Stripe Dashboard webhook URLs, Alipay/WeChat merchant notifyUrl
+	// fields) keep working without operator action. The host's
+	// per-plugin namespace gate accepts both prefixes for plugin
+	// "payment" — see backend/internal/plugin/manager_routes.go
+	// pluginOwnNamespacePrefixes.
+	userRoutePrefix  = "/api/v1/" + pluginName
+	adminRoutePrefix = "/api/v1/admin/" + pluginName
 
 	// orderExpiryJobInterval defines how often the leader replica checks
 	// for timed-out PENDING orders and transitions them to EXPIRED. The
@@ -77,7 +83,8 @@ type PaymentPlugin struct {
 	// entClient is the ent ORM client backed by the SDK's SQL proxy.
 	entClient *pluginent.Client
 
-	// engine is the Gin HTTP engine the SDK mounts under pluginRoutePrefix.
+	// engine is the Gin HTTP engine the SDK mounts at "/" so the plugin
+	// can register handlers under both userRoutePrefix and adminRoutePrefix.
 	// Built once at construction time so that RegisterHTTP (called before
 	// Init) can hand it to the SDK and Init can plug services into it.
 	engine *gin.Engine
@@ -260,37 +267,40 @@ func (p *PaymentPlugin) Shutdown() error {
 	return nil
 }
 
-// RegisterHTTP hands the Gin engine to the SDK. The engine is mounted at
-// the plugin's gateway prefix so paths in routes match the manifest
-// declarations.
+// RegisterHTTP hands the Gin engine to the SDK. We mount on "/" so the
+// engine sees the full request path — the plugin registers handlers at
+// the original /api/v1/payment/* and /api/v1/admin/payment/* prefixes
+// directly (see registerRoutes), and the host's reverse proxy forwards
+// the inbound URL untouched.
 func (p *PaymentPlugin) RegisterHTTP(mux pluginsdk.HTTPMux) {
 	if p.engine == nil {
 		gin.SetMode(gin.ReleaseMode)
 		p.engine = gin.New()
 		p.engine.Use(gin.Recovery())
 	}
-	mux.Handle(pluginRoutePrefix+"/", p.engine)
+	mux.Handle("/", p.engine)
 }
 
 // registerRoutes attaches the payment routes to the Gin engine. Called
 // from Init once handlers are constructed. The route layout mirrors the
-// legacy backend gateway prefixes so the frontend bundle does not need
-// to relearn URLs after the cut-over.
+// pre-migration host paths exactly so external integrations (Stripe
+// Dashboard webhooks, Alipay/WeChat notifyUrls) and the existing admin
+// frontend keep working without any URL changes.
 func (p *PaymentPlugin) registerRoutes() {
 	if p.engine == nil {
 		// RegisterHTTP was not called (e.g. --no-http); skip routing.
 		return
 	}
-	api := p.engine.Group(pluginRoutePrefix)
+	user := p.engine.Group(userRoutePrefix)
 	if p.userHandler != nil {
-		p.userHandler.RegisterRoutes(api)
-		p.userHandler.RegisterPublicRoutes(api.Group("/public"))
+		p.userHandler.RegisterRoutes(user)
+		p.userHandler.RegisterPublicRoutes(user.Group("/public"))
 	}
 	if p.webhookHandler != nil {
-		p.webhookHandler.RegisterRoutes(api.Group("/webhook"))
+		p.webhookHandler.RegisterRoutes(user.Group("/webhook"))
 	}
 	if p.adminHandler != nil {
-		p.adminHandler.RegisterRoutes(api.Group("/admin"))
+		p.adminHandler.RegisterRoutes(p.engine.Group(adminRoutePrefix))
 	}
 }
 

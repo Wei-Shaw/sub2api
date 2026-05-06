@@ -8,9 +8,10 @@ import type { AxiosInstance } from 'axios'
  * for all HTTP calls so authentication and error handling stay consistent
  * with the host app.
  *
- * Plugin endpoints live under /api/v1/plugin/payment/* — the apiClient is
- * already configured with `/api/v1` baseURL by the host, so call sites use
- * paths like `/plugin/payment/orders`.
+ * Plugin endpoints live under /api/v1/payment/* and /api/v1/admin/payment/*
+ * (the original pre-migration host paths). The host's apiClient is
+ * configured with `/api/v1` baseURL, so call sites use paths like
+ * `/payment/orders` or `/admin/payment/dashboard`.
  */
 
 let client: AxiosInstance | null = null

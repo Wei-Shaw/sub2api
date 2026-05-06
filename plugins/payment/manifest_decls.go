@@ -19,42 +19,45 @@ import (
 )
 
 // endpointDecls enumerates the HTTP endpoints the plugin publishes through
-// the host gateway. Paths include the pluginRoutePrefix so the host can
-// forward by exact-prefix match without a second lookup table.
+// the host gateway. Paths intentionally re-use the pre-migration host
+// prefixes (/api/v1/payment/* for user/webhook/public, /api/v1/admin/payment/*
+// for admin) so external integrations and the existing admin frontend
+// continue to work without any URL changes. The host gate accepts both
+// prefixes for this plugin name.
 var endpointDecls = []pluginsdk.EndpointDecl{
 	// -------- User-facing (auth=user) --------
-	{Path: pluginRoutePrefix + "/config", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
-	{Path: pluginRoutePrefix + "/checkout-info", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
-	{Path: pluginRoutePrefix + "/plans", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
-	{Path: pluginRoutePrefix + "/limits", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
-	{Path: pluginRoutePrefix + "/orders", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeUser},
-	{Path: pluginRoutePrefix + "/orders/verify", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeUser},
-	{Path: pluginRoutePrefix + "/orders/my", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
-	{Path: pluginRoutePrefix + "/orders/refund-eligible-providers", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
-	{Path: pluginRoutePrefix + "/orders/:id", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
-	{Path: pluginRoutePrefix + "/orders/:id/cancel", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeUser},
-	{Path: pluginRoutePrefix + "/orders/:id/refund-request", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeUser},
+	{Path: userRoutePrefix + "/config", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
+	{Path: userRoutePrefix + "/checkout-info", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
+	{Path: userRoutePrefix + "/plans", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
+	{Path: userRoutePrefix + "/limits", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
+	{Path: userRoutePrefix + "/orders", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeUser},
+	{Path: userRoutePrefix + "/orders/verify", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeUser},
+	{Path: userRoutePrefix + "/orders/my", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
+	{Path: userRoutePrefix + "/orders/refund-eligible-providers", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
+	{Path: userRoutePrefix + "/orders/:id", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeUser},
+	{Path: userRoutePrefix + "/orders/:id/cancel", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeUser},
+	{Path: userRoutePrefix + "/orders/:id/refund-request", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeUser},
 
 	// -------- Public (auth=none) — webhooks + resume lookup --------
-	{Path: pluginRoutePrefix + "/public/orders/verify", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeNone},
-	{Path: pluginRoutePrefix + "/public/orders/resolve", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeNone},
-	{Path: pluginRoutePrefix + "/webhook/easypay", Methods: []string{http.MethodGet, http.MethodPost}, AuthType: pluginsdk.AuthTypeNone},
-	{Path: pluginRoutePrefix + "/webhook/alipay", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeNone},
-	{Path: pluginRoutePrefix + "/webhook/wxpay", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeNone},
-	{Path: pluginRoutePrefix + "/webhook/stripe", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeNone},
+	{Path: userRoutePrefix + "/public/orders/verify", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeNone},
+	{Path: userRoutePrefix + "/public/orders/resolve", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeNone},
+	{Path: userRoutePrefix + "/webhook/easypay", Methods: []string{http.MethodGet, http.MethodPost}, AuthType: pluginsdk.AuthTypeNone},
+	{Path: userRoutePrefix + "/webhook/alipay", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeNone},
+	{Path: userRoutePrefix + "/webhook/wxpay", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeNone},
+	{Path: userRoutePrefix + "/webhook/stripe", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeNone},
 
 	// -------- Admin (auth=admin) --------
-	{Path: pluginRoutePrefix + "/admin/dashboard", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeAdmin},
-	{Path: pluginRoutePrefix + "/admin/config", Methods: []string{http.MethodGet, http.MethodPut}, AuthType: pluginsdk.AuthTypeAdmin},
-	{Path: pluginRoutePrefix + "/admin/orders", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeAdmin},
-	{Path: pluginRoutePrefix + "/admin/orders/:id", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeAdmin},
-	{Path: pluginRoutePrefix + "/admin/orders/:id/cancel", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeAdmin},
-	{Path: pluginRoutePrefix + "/admin/orders/:id/retry", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeAdmin},
-	{Path: pluginRoutePrefix + "/admin/orders/:id/refund", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeAdmin},
-	{Path: pluginRoutePrefix + "/admin/plans", Methods: []string{http.MethodGet, http.MethodPost}, AuthType: pluginsdk.AuthTypeAdmin},
-	{Path: pluginRoutePrefix + "/admin/plans/:id", Methods: []string{http.MethodPut, http.MethodDelete}, AuthType: pluginsdk.AuthTypeAdmin},
-	{Path: pluginRoutePrefix + "/admin/providers", Methods: []string{http.MethodGet, http.MethodPost}, AuthType: pluginsdk.AuthTypeAdmin},
-	{Path: pluginRoutePrefix + "/admin/providers/:id", Methods: []string{http.MethodPut, http.MethodDelete}, AuthType: pluginsdk.AuthTypeAdmin},
+	{Path: adminRoutePrefix + "/dashboard", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeAdmin},
+	{Path: adminRoutePrefix + "/config", Methods: []string{http.MethodGet, http.MethodPut}, AuthType: pluginsdk.AuthTypeAdmin},
+	{Path: adminRoutePrefix + "/orders", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeAdmin},
+	{Path: adminRoutePrefix + "/orders/:id", Methods: []string{http.MethodGet}, AuthType: pluginsdk.AuthTypeAdmin},
+	{Path: adminRoutePrefix + "/orders/:id/cancel", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeAdmin},
+	{Path: adminRoutePrefix + "/orders/:id/retry", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeAdmin},
+	{Path: adminRoutePrefix + "/orders/:id/refund", Methods: []string{http.MethodPost}, AuthType: pluginsdk.AuthTypeAdmin},
+	{Path: adminRoutePrefix + "/plans", Methods: []string{http.MethodGet, http.MethodPost}, AuthType: pluginsdk.AuthTypeAdmin},
+	{Path: adminRoutePrefix + "/plans/:id", Methods: []string{http.MethodPut, http.MethodDelete}, AuthType: pluginsdk.AuthTypeAdmin},
+	{Path: adminRoutePrefix + "/providers", Methods: []string{http.MethodGet, http.MethodPost}, AuthType: pluginsdk.AuthTypeAdmin},
+	{Path: adminRoutePrefix + "/providers/:id", Methods: []string{http.MethodPut, http.MethodDelete}, AuthType: pluginsdk.AuthTypeAdmin},
 }
 
 // capabilityDecls lists the host capabilities this plugin needs. Changes
