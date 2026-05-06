@@ -122,9 +122,9 @@ POC-C §6 列了 4 个 DTO（ParsedRequest / ForwardResult / ClaudeUsage / OpenA
 
 | # | 问题 | 当前答案 | 状态 |
 |---|---|---|---|
-| Q1 | Manifest 字段命名 `Protocol` + `RequiredAccountPlatform`？ | 推荐方案，等用户拍板 | ⏳ 用户判断 |
+| Q1 | Manifest 字段命名 `Protocol` + `RequiredAccountPlatform`？ | **YES** — 激进版（用户已拍板） | ✅ 已收敛 |
 | Q2 | 流式 P99 增量 ≤ 2 ms？ | POC-A 设计就绪，待 implementer 跑 24 组实验 | ⏳ 待 PoC |
-| Q3 | OAuth refresh 能否在 plugin 进程？ | **NO** — token provider 整体留 host（POC-B） | ✅ 已收敛 |
+| Q3 | 凭据管理放哪？ | **SDK 提供通用 OAuth + API Key 抽象 + 支持自定义鉴权注册**。Plugin 拿完整 credentials，refresh / 锁 / cache 由 SDK 封装。POC-B 的并发保护结论仍有效，但实现方式从"token 留 host"改为"SDK 内 singleflight + host Redis 锁 RPC"。 | ✅ 已收敛（用户修正） |
 | Q4 | OpenAI 端点是否预留 `(antigravity, openai)`？ | 待用户业务判断（antigravity 是否真提供 openai 协议） | ⏳ 用户判断 |
 | Q5 | `gateway.endpoint.owner` 是否合并进 `gateway.provider`？ | 倾向合并（提案推荐） | ✅ 倾向定 |
 | Q6 | Gemini `/v1beta/*` 的 google-auth 鉴权链？ | POC-C §3.3 没专门处理；建议 endpoint manifest 加 `AuthType="apikey-google"` 并复用现有 `APIKeyAuthWithSubscriptionGoogle` 中间件 | ⏳ 阶段二实施时定 |
@@ -133,7 +133,7 @@ POC-C §6 列了 4 个 DTO（ParsedRequest / ForwardResult / ClaudeUsage / OpenA
 | Q9 | 双写灰度方案？ | **per-platform manifest-driven**（POC-C §7），fallback 即降级 | ✅ 已收敛 |
 | Q10 | RecordUsage 是否留 host？ | **YES**（POC-C §4） | ✅ 已收敛 |
 
-**6/10 已收敛**，2 个等用户判断（Q1 字段命名、Q4 OpenAI 业务判断），2 个等执行（Q2 PoC、Q6 阶段二）。
+**7/10 已收敛**，1 个等用户判断（Q4 OpenAI 业务判断），2 个等执行（Q2 PoC、Q6 阶段二）。
 
 ---
 
