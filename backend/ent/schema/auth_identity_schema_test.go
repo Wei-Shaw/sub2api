@@ -83,10 +83,10 @@ REDACTED
 	require.Equal(t, 1, signupSource.Validators)
 
 	validator := requireStringFieldValidator(t, User{REDACTED.Fields(), "signup_source")
-	for _, value := range []string{"email", "linuxdo", "wechat", "oidc"REDACTED {
+	for _, value := range []string{"email", "linuxdo", "wechat", "oidc", "github", "google"REDACTED {
 		require.NoError(t, validator(value))
 REDACTED
-	require.Error(t, validator("github"))
+	require.Error(t, validator("unknown"))
 REDACTED
 
 func requireSchema(t *testing.T, schemas map[string]*load.Schema, name string) *load.Schema {
