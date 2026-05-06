@@ -4474,7 +4474,13 @@ func (s *OpenAIGatewayService) parseSSEUsageBytes(data []byte, usage *OpenAIUsag
 	usage.InputTokens = int(gjson.GetBytes(data, "response.usage.input_tokens").Int())
 	usage.OutputTokens = int(gjson.GetBytes(data, "response.usage.output_tokens").Int())
 	usage.CacheReadInputTokens = int(gjson.GetBytes(data, "response.usage.input_tokens_details.cached_tokens").Int())
-	usage.ImageOutputTokens = int(gjson.GetBytes(data, "response.usage.output_tokens_details.image_tokens").Int())
+	imageTokens := int(gjson.GetBytes(data, "response.usage.output_tokens_details.image_tokens").Int())
+	if imageTokens == 0 {
+		// Fallback: codex /v1/responses with image_generation tool returns usage under tool_usage.image_gen
+		// See https://github.com/Wei-Shaw/sub2api/issues/1999
+		imageTokens = int(gjson.GetBytes(data, "response.tool_usage.image_gen.output_tokens_details.image_tokens").Int())
+	}
+	usage.ImageOutputTokens = imageTokens
 }
 
 func extractOpenAIUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {
@@ -4487,12 +4493,18 @@ func extractOpenAIUsageFromJSONBytes(body []byte) (OpenAIUsage, bool) {
 		"usage.output_tokens",
 		"usage.input_tokens_details.cached_tokens",
 		"usage.output_tokens_details.image_tokens",
+		// Fallback for codex /v1/responses with image_generation tool — see issue #1999
+		"tool_usage.image_gen.output_tokens_details.image_tokens",
 	)
+	imageTokens := int(values[3].Int())
+	if imageTokens == 0 {
+		imageTokens = int(values[4].Int())
+	}
 	return OpenAIUsage{
 		InputTokens:          int(values[0].Int()),
 		OutputTokens:         int(values[1].Int()),
 		CacheReadInputTokens: int(values[2].Int()),
-		ImageOutputTokens:    int(values[3].Int()),
+		ImageOutputTokens:    imageTokens,
 	}, true
 }
 
