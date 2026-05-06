@@ -347,6 +347,10 @@ export default {
     usage: 'Usage',
     redeem: 'Redeem',
     affiliate: 'Affiliate Rebates',
+    affiliateManagement: 'Affiliate Rebates',
+    affiliateInviteRecords: 'Invite Records',
+    affiliateRebateRecords: 'Rebate Records',
+    affiliateTransferRecords: 'Transfer Records',
     profile: 'Profile',
     users: 'Users',
     groups: 'Groups',
@@ -1046,6 +1050,7 @@ export default {
     recentActivity: 'Recent Activity',
     historyWillAppear: 'Your redemption history will appear here',
     balanceAddedRedeem: 'Balance Added (Redeem)',
+    balanceAddedAffiliate: 'Balance Added (Affiliate Transfer)',
     balanceAddedAdmin: 'Balance Added (Admin)',
     balanceDeductedAdmin: 'Balance Deducted (Admin)',
     concurrencyAddedRedeem: 'Concurrency Added (Redeem)',
@@ -1635,6 +1640,49 @@ export default {
       }
     },
 
+    affiliates: {
+      invitesDescription: 'View site-wide inviter and invitee relationships',
+      rebatesDescription: 'View recharge orders that generated affiliate rebates',
+      transfersDescription: 'View affiliate quota transfers into account balance',
+      errors: {
+        loadFailed: 'Failed to load affiliate records'
+      },
+      records: {
+        search: 'Search',
+        searchPlaceholder: 'Email, username, user ID, or order number',
+        startAt: 'Start date',
+        endAt: 'End date',
+        inviter: 'Inviter',
+        invitee: 'Invitee',
+        user: 'User',
+        affCode: 'Invite Code',
+        order: 'Order',
+        totalRebate: 'Total Rebate',
+        orderAmount: 'Top-up Amount',
+        payAmount: 'Paid Amount',
+        rebateAmount: 'Rebate Amount',
+        paymentType: 'Payment Method',
+        orderStatus: 'Order Status',
+        transferAmount: 'Transfer Amount',
+        balanceAfter: 'Balance After',
+        availableQuotaAfter: 'Available After',
+        frozenQuotaAfter: 'Frozen After',
+        historyQuotaAfter: 'Historical Rebate After',
+        invitedAt: 'Invited At',
+        rebatedAt: 'Rebated At',
+        transferredAt: 'Transferred At'
+      },
+      overview: {
+        title: 'Affiliate User Overview',
+        affCode: 'Invite Code',
+        rebateRate: 'Rebate Rate',
+        invitedCount: 'Invited Users',
+        rebatedInviteeCount: 'Rebated Invitees',
+        availableQuota: 'Available Quota',
+        historyQuota: 'Historical Rebate'
+      }
+    },
+
     // Users
     users: {
       title: 'User Management',
@@ -1787,6 +1835,7 @@ export default {
       noBalanceHistory: 'No records found for this user',
       allTypes: 'All Types',
       typeBalance: 'Balance (Redeem)',
+      typeAffiliateBalance: 'Balance (Affiliate Transfer)',
       typeAdminBalance: 'Balance (Admin)',
       typeConcurrency: 'Concurrency (Redeem)',
       typeAdminConcurrency: 'Concurrency (Admin)',

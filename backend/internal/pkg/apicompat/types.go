@@ -314,7 +314,7 @@ type ResponsesOutputTokensDetails struct {
 type ResponsesStreamEvent struct {
 	Type string `json:"type"`
 
-	// response.created / response.completed / response.failed / response.incomplete
+	// response.created / response.completed / response.done / response.failed / response.incomplete
 	Response *ResponsesResponse `json:"response,omitempty"`
 
 	// response.output_item.added / response.output_item.done
