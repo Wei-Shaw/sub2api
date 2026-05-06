@@ -140,6 +140,7 @@ const invitationError = ref('')
 const pendingProvider = ref<'github' | 'google'>('github')
 const redirectTo = ref('/dashboard')
 const invalidCallback = ref(false)
+const EMAIL_OAUTH_PENDING_PROVIDER_KEY = 'email_oauth_pending_provider'
 
 type EmailOAuthPendingCompletion = Partial<OAuthTokenResponse> & {
   error?: string
@@ -190,9 +191,37 @@ function sanitizeRedirectPath(path: string | null | undefined): string {
   return path
 REDACTED
 
+function readPendingEmailOAuthProvider(): 'github' | 'google' | null {
+  if (typeof window === 'undefined') return null
+  const provider = window.sessionStorage.getItem(EMAIL_OAUTH_PENDING_PROVIDER_KEY)
+  if (provider === 'github' || provider === 'google') return provider
+  return null
+REDACTED
+
+function redirectProviderCallbackToBackend(provider: 'github' | 'google'): void {
+  if (typeof window === 'undefined') return
+  const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
+  const normalized = apiBase.replace(/\/$/, '')
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(route.query)) {
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item != null) params.append(key, String(item))
+      REDACTED)
+    REDACTED else if (value != null) {
+      params.set(key, String(value))
+    REDACTED
+  REDACTED
+  const suffix = params.toString() ? `?${params.toString()REDACTED` : ''
+  window.location.href = `${normalizedREDACTED/auth/oauth/${providerREDACTED/callback${suffixREDACTED`
+REDACTED
+
 async function finalizeTokenResponse(tokenResponse: OAuthTokenResponse, redirect: string) {
   persistOAuthTokenContext(tokenResponse)
   await authStore.setToken(tokenResponse.access_token)
+  if (typeof window !== 'undefined') {
+    window.sessionStorage.removeItem(EMAIL_OAUTH_PENDING_PROVIDER_KEY)
+  REDACTED
   clearAllAffiliateReferralCodes()
   appStore.showSuccess(t('auth.loginSuccess'))
   await router.replace(sanitizeRedirectPath(redirect))
@@ -274,6 +303,11 @@ onMounted(async () => {
   REDACTED
   if (!tokenResponse) {
     if (route.path === '/auth/oauth/callback') {
+      const pendingEmailOAuthProvider = readPendingEmailOAuthProvider()
+      if (pendingEmailOAuthProvider && code.value && state.value) {
+        redirectProviderCallbackToBackend(pendingEmailOAuthProvider)
+        return
+      REDACTED
       await resumePendingEmailOAuth()
     REDACTED
     return
