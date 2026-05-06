@@ -11,31 +11,68 @@
         </p>
       </div>
 
-      <div v-else-if="needsInvitation" class="card p-6">
+      <div v-else-if="needsRegistrationCompletion" class="card p-6">
         <h1 class="text-lg font-semibold text-gray-900 dark:text-white">
           {{ t('auth.oidc.callbackTitle', { providerName REDACTED) REDACTEDREDACTED
         </h1>
         <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
-          {{ t('auth.oidc.invitationRequired', { providerName REDACTED) REDACTEDREDACTED
+          {{ registrationHint REDACTEDREDACTED
         </p>
 
         <div class="mt-6 space-y-4">
-          <input
-            v-model="invitationCode"
-            type="text"
-            class="input w-full"
-            :placeholder="t('auth.invitationCodePlaceholder')"
-            :disabled="isSubmitting"
-            @keyup.enter="handleSubmitInvitation"
-          />
-          <p v-if="invitationError" class="text-sm text-red-600 dark:text-red-400">
-            {{ invitationError REDACTEDREDACTED
+          <div>
+            <label class="input-label">{{ t('auth.emailLabel') REDACTEDREDACTED</label>
+            <input
+              class="input w-full"
+              type="email"
+              :value="registrationEmail"
+              readonly
+              disabled
+            />
+          </div>
+          <div>
+            <label class="input-label">{{ t('auth.passwordLabel') REDACTEDREDACTED</label>
+            <input
+              v-model="password"
+              type="password"
+              class="input w-full"
+              :placeholder="t('auth.createPasswordPlaceholder')"
+              :disabled="isSubmitting"
+              autocomplete="new-password"
+              @keyup.enter="handleSubmitRegistration"
+            />
+          </div>
+          <div>
+            <label class="input-label">{{ t('auth.confirmPassword') REDACTEDREDACTED</label>
+            <input
+              v-model="confirmPassword"
+              type="password"
+              class="input w-full"
+              :placeholder="t('auth.confirmPasswordPlaceholder')"
+              :disabled="isSubmitting"
+              autocomplete="new-password"
+              @keyup.enter="handleSubmitRegistration"
+            />
+          </div>
+          <div v-if="invitationRequired">
+            <label class="input-label">{{ t('auth.invitationCodeLabel') REDACTEDREDACTED</label>
+            <input
+              v-model="invitationCode"
+              type="text"
+              class="input w-full"
+              :placeholder="t('auth.invitationCodePlaceholder')"
+              :disabled="isSubmitting"
+              @keyup.enter="handleSubmitRegistration"
+            />
+          </div>
+          <p v-if="registrationError" class="text-sm text-red-600 dark:text-red-400">
+            {{ registrationError REDACTEDREDACTED
           </p>
           <button
             class="btn btn-primary w-full"
             type="button"
-            :disabled="isSubmitting || !invitationCode.trim()"
-            @click="handleSubmitInvitation"
+            :disabled="isSubmitting || !canSubmitRegistration"
+            @click="handleSubmitRegistration"
           >
             {{ isSubmitting ? t('common.processing') : t('auth.oidc.completeRegistration') REDACTEDREDACTED
           </button>
@@ -134,9 +171,13 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 const isProcessing = ref(false)
 const isSubmitting = ref(false)
-const needsInvitation = ref(false)
+const needsRegistrationCompletion = ref(false)
+const invitationRequired = ref(false)
+const registrationEmail = ref('')
+const password = ref('')
+const confirmPassword = ref('')
 const invitationCode = ref('')
-const invitationError = ref('')
+const registrationError = ref('')
 const pendingProvider = ref<'github' | 'google'>('github')
 const redirectTo = ref('/dashboard')
 const invalidCallback = ref(false)
@@ -146,6 +187,9 @@ type EmailOAuthPendingCompletion = Partial<OAuthTokenResponse> & {
   error?: string
   provider?: string
   redirect?: string
+  email?: string
+  resolved_email?: string
+  invitation_required?: boolean
 REDACTED
 
 const code = computed(() => (route.query.code as string) || '')
@@ -161,6 +205,18 @@ REDACTED)
 const providerName = computed(() =>
   pendingProvider.value === 'google' ? 'Google' : 'GitHub'
 )
+const registrationHint = computed(() =>
+  invitationRequired.value
+    ? t('auth.oidc.invitationRequired', { providerName: providerName.value REDACTED)
+    : t('auth.oidc.completeRegistration')
+)
+const canSubmitRegistration = computed(() => {
+  if (!registrationEmail.value.trim()) return false
+  if (password.value.length < 6) return false
+  if (password.value !== confirmPassword.value) return false
+  if (invitationRequired.value && !invitationCode.value.trim()) return false
+  return true
+REDACTED)
 
 function parseFragmentParams(): URLSearchParams {
   const raw = typeof window !== 'undefined' ? window.location.hash : ''
@@ -247,8 +303,10 @@ async function resumePendingEmailOAuth() {
     REDACTED
     redirectTo.value = sanitizeRedirectPath(completionRedirect)
 
-    if (completion.error === 'invitation_required') {
-      needsInvitation.value = true
+    if (completion.error === 'invitation_required' || completion.error === 'registration_completion_required') {
+      invitationRequired.value = completion.error === 'invitation_required' || completion.invitation_required === true
+      registrationEmail.value = String(completion.resolved_email || completion.email || '').trim()
+      needsRegistrationCompletion.value = true
       isProcessing.value = false
       return
     REDACTED
@@ -260,30 +318,46 @@ async function resumePendingEmailOAuth() {
     appStore.showError(message)
     invalidCallback.value = true
   REDACTED finally {
-    if (!needsInvitation.value) {
+    if (!needsRegistrationCompletion.value) {
       isProcessing.value = false
     REDACTED
   REDACTED
 REDACTED
 
-async function handleSubmitInvitation() {
-  invitationError.value = ''
+async function handleSubmitRegistration() {
+  registrationError.value = ''
+  if (!registrationEmail.value.trim()) {
+    registrationError.value = t('auth.emailRequired')
+    return
+  REDACTED
+  if (password.value.length < 6) {
+    registrationError.value = t('auth.passwordMinLength')
+    return
+  REDACTED
+  if (password.value !== confirmPassword.value) {
+    registrationError.value = t('auth.passwordsDoNotMatch')
+    return
+  REDACTED
   const code = invitationCode.value.trim()
-  if (!code) return
+  if (invitationRequired.value && !code) return
 
   isSubmitting.value = true
   try {
+    const payload: { password: string; invitation_code?: string; aff_code?: string REDACTED = {
+      password: password.value,
+      ...oauthAffiliatePayload(loadOAuthAffiliateCode())
+    REDACTED
+    if (invitationRequired.value) {
+      payload.invitation_code = code
+    REDACTED
     const { data REDACTED = await apiClient.post<OAuthTokenResponse>(
       `/auth/oauth/${pendingProvider.valueREDACTED/complete-registration`,
-      {
-        invitation_code: code,
-        ...oauthAffiliatePayload(loadOAuthAffiliateCode())
-      REDACTED
+      payload
     )
     await finalizeTokenResponse(data, redirectTo.value)
   REDACTED catch (e: unknown) {
     const err = e as { message?: string; response?: { data?: { message?: string REDACTED REDACTED REDACTED
-    invitationError.value =
+    registrationError.value =
       err.response?.data?.message || err.message || t('auth.oidc.completeRegistrationFailed')
   REDACTED finally {
     isSubmitting.value = false
