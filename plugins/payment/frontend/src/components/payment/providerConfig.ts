@@ -62,12 +62,18 @@ export function getPaymentPopupFeatures(): string {
   return `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`
 }
 
-/** Webhook paths for each provider (relative to origin). */
+/** Webhook paths for each provider (relative to origin).
+ * Path moved to /api/v1/plugin/payment/webhook/* during plugin migration —
+ * the host gateway no longer registers the legacy /api/v1/payment/webhook/*
+ * routes, so any provider config saved with the old path will produce
+ * 404s on Alipay/WeChat/EasyPay notifications. The plugin rewrites
+ * legacy stored URLs on read (decryptConfig) so existing rows keep
+ * working until the operator re-saves them. */
 export const WEBHOOK_PATHS: Record<string, string> = {
-  easypay: '/api/v1/payment/webhook/easypay',
-  alipay: '/api/v1/payment/webhook/alipay',
-  wxpay: '/api/v1/payment/webhook/wxpay',
-  stripe: '/api/v1/payment/webhook/stripe',
+  easypay: '/api/v1/plugin/payment/webhook/easypay',
+  alipay: '/api/v1/plugin/payment/webhook/alipay',
+  wxpay: '/api/v1/plugin/payment/webhook/wxpay',
+  stripe: '/api/v1/plugin/payment/webhook/stripe',
 }
 
 export const RETURN_PATH = '/payment/result'

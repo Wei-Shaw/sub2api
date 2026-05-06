@@ -341,6 +341,7 @@ func (lb *DefaultLoadBalancer) decryptConfig(stored string) (map[string]string, 
 	}
 	var config map[string]string
 	if err := json.Unmarshal([]byte(stored), &config); err == nil {
+		rewriteLegacyWebhookURLs(config)
 		return config, nil
 	}
 	// Deprecated: legacy AES-256-GCM ciphertext fallback — scheduled for removal.
@@ -348,6 +349,7 @@ func (lb *DefaultLoadBalancer) decryptConfig(stored string) (map[string]string, 
 		//nolint:staticcheck // SA1019: intentional legacy fallback, scheduled for removal
 		if plaintext, err := Decrypt(stored, lb.encryptionKey); err == nil {
 			if err := json.Unmarshal([]byte(plaintext), &config); err == nil {
+				rewriteLegacyWebhookURLs(config)
 				return config, nil
 			}
 		}
@@ -355,6 +357,20 @@ func (lb *DefaultLoadBalancer) decryptConfig(stored string) (map[string]string, 
 	slog.Warn("payment provider config unreadable, treating as empty for re-entry",
 		"stored_len", len(stored))
 	return nil, nil
+}
+
+// rewriteLegacyWebhookURLs upgrades pre-plugin-migration notifyUrl values
+// in-place. The legacy host served webhooks at /api/v1/payment/webhook/*
+// but after the migration to plugins/payment those paths live behind the
+// plugin gateway at /api/v1/plugin/payment/webhook/*. Existing provider
+// rows still carry the old path; rewriting on read lets them keep
+// working without requiring the operator to re-save every provider.
+func rewriteLegacyWebhookURLs(config map[string]string) {
+	const legacy = "/api/v1/payment/webhook/"
+	const replacement = "/api/v1/plugin/payment/webhook/"
+	if v, ok := config["notifyUrl"]; ok && strings.Contains(v, legacy) {
+		config["notifyUrl"] = strings.Replace(v, legacy, replacement, 1)
+	}
 }
 
 // GetInstanceDailyAmount returns the total completed order amount for an instance today.
