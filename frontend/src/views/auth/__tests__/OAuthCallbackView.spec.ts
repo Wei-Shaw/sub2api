@@ -4,6 +4,7 @@ import OAuthCallbackView from '@/views/auth/OAuthCallbackView.vue'
 
 const {
   routeState,
+  locationState,
   routerReplaceMock,
   showErrorMock,
   showSuccessMock,
@@ -15,6 +16,12 @@ const {
   routeState: {
     path: '/auth/callback',
     query: {} as Record<string, unknown>,
+  },
+  locationState: {
+    current: {
+      href: 'http://localhost/auth/callback',
+      hash: '',
+    } as { href: string; hash: string },
   },
   routerReplaceMock: vi.fn(),
   showErrorMock: vi.fn(),
@@ -73,7 +80,14 @@ describe('OAuthCallbackView', () => {
   beforeEach(() => {
     routeState.path = '/auth/callback'
     routeState.query = {}
-    window.location.hash = ''
+    locationState.current = {
+      href: 'http://localhost/auth/callback',
+      hash: '',
+    }
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: locationState.current,
+    })
     routerReplaceMock.mockReset()
     showErrorMock.mockReset()
     showSuccessMock.mockReset()
@@ -122,6 +136,23 @@ describe('OAuthCallbackView', () => {
     expect(wrapper.text()).toContain('auth.oauth.invalidCallbackTitle')
     expect(wrapper.text()).toContain('auth.oauth.invalidCallbackHint')
     expect(wrapper.find('input[readonly]').exists()).toBe(false)
+  })
+
+  it('forwards frontend email oauth provider callbacks back to the backend callback endpoint', async () => {
+    routeState.path = '/auth/oauth/callback'
+    routeState.query = {
+      code: 'provider-code',
+      state: 'provider-state',
+    }
+    window.sessionStorage.setItem('email_oauth_pending_provider', 'google')
+
+    mount(OAuthCallbackView)
+    await vi.dynamicImportSettled()
+
+    expect(locationState.current.href).toBe(
+      '/api/v1/auth/oauth/google/callback?code=provider-code&state=provider-state'
+    )
+    expect(exchangePendingOAuthCompletionMock).not.toHaveBeenCalled()
   })
 
   it('submits stored affiliate code when completing invited email oauth registration', async () => {
