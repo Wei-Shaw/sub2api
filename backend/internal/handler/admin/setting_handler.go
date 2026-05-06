@@ -263,6 +263,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 
 		AffiliateEnabled: settings.AffiliateEnabled,
+
+		BillingStatementEmailConfig: settings.BillingStatementEmailConfig,
 	}
 
 	// OpenAI fast policy (stored under a dedicated setting key)
@@ -568,6 +570,9 @@ type UpdateSettingsRequest struct {
 
 	// 风控中心功能开关
 	RiskControlEnabled *bool `json:"risk_control_enabled"`
+
+	// Billing statement email config (JSON string, only updated when non-empty)
+	BillingStatementEmailConfig *string `json:"billing_statement_email_config,omitempty"`
 
 	// OpenAI fast/flex policy (optional, only updated when provided)
 	OpenAIFastPolicySettings *dto.OpenAIFastPolicySettings `json:"openai_fast_policy_settings,omitempty"`
@@ -1505,6 +1510,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.RiskControlEnabled
 		}(),
+		BillingStatementEmailConfig: func() string {
+			if req.BillingStatementEmailConfig != nil {
+				return *req.BillingStatementEmailConfig
+			}
+			return previousSettings.BillingStatementEmailConfig
+		}(),
 	}
 
 	authSourceDefaults := &service.AuthSourceDefaultSettings{
@@ -1783,9 +1794,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
 
-		AffiliateEnabled: updatedSettings.AffiliateEnabled,
-
-		RiskControlEnabled: updatedSettings.RiskControlEnabled,
+		AffiliateEnabled:            updatedSettings.AffiliateEnabled,
+		RiskControlEnabled:          updatedSettings.RiskControlEnabled,
+		BillingStatementEmailConfig: updatedSettings.BillingStatementEmailConfig,
 	}
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
 		slog.Error("openai_fast_policy_settings_get_failed", "error", err)

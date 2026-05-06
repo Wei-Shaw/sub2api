@@ -7,6 +7,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -175,6 +176,11 @@ type UpdateProfileRequest struct {
 	BalanceNotifyEnabled   *bool    `json:"balance_notify_enabled"`
 	BalanceNotifyThreshold *float64 `json:"balance_notify_threshold"`
 	Timezone               *string  `json:"timezone"`
+
+	// Billing statement email preferences
+	BillingStatementDailyEnabled   *bool `json:"billing_statement_daily_enabled"`
+	BillingStatementWeeklyEnabled  *bool `json:"billing_statement_weekly_enabled"`
+	BillingStatementMonthlyEnabled *bool `json:"billing_statement_monthly_enabled"`
 }
 
 type UserAvatar struct {
@@ -244,6 +250,7 @@ func (s *UserService) GetProfile(ctx context.Context, userID int64) (*User, erro
 	if err := s.hydrateUserAvatar(ctx, user); err != nil {
 		return nil, fmt.Errorf("get user avatar: %w", err)
 	}
+	s.hydrateBillingStatementPreference(ctx, user)
 	s.hydrateUserTimezone(ctx, user)
 	return user, nil
 }
@@ -462,9 +469,85 @@ func (s *UserService) updateProfile(ctx context.Context, userID int64, req Updat
 			return nil, oldConcurrency, fmt.Errorf("update user timezone: %w", err)
 		}
 	}
+
+	// Update billing statement preferences if any field is provided
+	if req.BillingStatementDailyEnabled != nil || req.BillingStatementWeeklyEnabled != nil || req.BillingStatementMonthlyEnabled != nil {
+		if err := s.updateBillingStatementPreference(ctx, userID, req); err != nil {
+			return nil, oldConcurrency, fmt.Errorf("update billing statement preference: %w", err)
+		}
+	}
+	s.hydrateBillingStatementPreference(ctx, user)
 	s.hydrateUserTimezone(ctx, user)
 
 	return user, oldConcurrency, nil
+}
+
+// hydrateBillingStatementPreference reads the user's billing statement preference from settings
+// and populates the User struct fields. Defaults to all-disabled if not found.
+func (s *UserService) hydrateBillingStatementPreference(ctx context.Context, user *User) {
+	if user == nil || s.settingRepo == nil {
+		return
+	}
+	key := SettingKeyBillingStatementUserPreferencePrefix + strconv.FormatInt(user.ID, 10)
+	raw, err := s.settingRepo.GetValue(ctx, key)
+	if err != nil || strings.TrimSpace(raw) == "" {
+		pref := DefaultBillingStatementUserPreference()
+		user.BillingStatementDailyEnabled = pref.DailyEnabled
+		user.BillingStatementWeeklyEnabled = pref.WeeklyEnabled
+		user.BillingStatementMonthlyEnabled = pref.MonthlyEnabled
+		return
+	}
+	pref := ParseBillingStatementUserPreference(raw)
+	user.BillingStatementDailyEnabled = pref.DailyEnabled
+	user.BillingStatementWeeklyEnabled = pref.WeeklyEnabled
+	user.BillingStatementMonthlyEnabled = pref.MonthlyEnabled
+}
+
+// updateBillingStatementPreference updates the user's billing statement preference in settings.
+func (s *UserService) updateBillingStatementPreference(ctx context.Context, userID int64, req UpdateProfileRequest) error {
+	if s.settingRepo == nil {
+		return nil
+	}
+	key := SettingKeyBillingStatementUserPreferencePrefix + strconv.FormatInt(userID, 10)
+	adminCfg, err := s.settingRepo.GetValue(ctx, SettingKeyBillingStatementEmailConfig)
+	if err == nil {
+		cfg := ParseBillingStatementEmailConfig(adminCfg)
+		if !cfg.Enabled {
+			// Global feature disabled: keep stored user preference untouched.
+			return nil
+		}
+		if req.BillingStatementDailyEnabled != nil && !cfg.DailyEnabled {
+			req.BillingStatementDailyEnabled = nil
+		}
+		if req.BillingStatementWeeklyEnabled != nil && !cfg.WeeklyEnabled {
+			req.BillingStatementWeeklyEnabled = nil
+		}
+		if req.BillingStatementMonthlyEnabled != nil && !cfg.MonthlyEnabled {
+			req.BillingStatementMonthlyEnabled = nil
+		}
+	}
+
+	// Read existing preference
+	raw, _ := s.settingRepo.GetValue(ctx, key)
+	pref := ParseBillingStatementUserPreference(raw)
+
+	// Apply updates
+	if req.BillingStatementDailyEnabled != nil {
+		pref.DailyEnabled = *req.BillingStatementDailyEnabled
+	}
+	if req.BillingStatementWeeklyEnabled != nil {
+		pref.WeeklyEnabled = *req.BillingStatementWeeklyEnabled
+	}
+	if req.BillingStatementMonthlyEnabled != nil {
+		pref.MonthlyEnabled = *req.BillingStatementMonthlyEnabled
+	}
+
+	// Serialize and save
+	data, err := json.Marshal(pref)
+	if err != nil {
+		return fmt.Errorf("marshal billing statement preference: %w", err)
+	}
+	return s.settingRepo.Set(ctx, key, string(data))
 }
 
 func userTimezoneSettingKey(userID int64) string {
@@ -1015,6 +1098,8 @@ func (s *UserService) GetByID(ctx context.Context, id int64) (*User, error) {
 	if err := s.hydrateUserAvatar(ctx, user); err != nil {
 		return nil, fmt.Errorf("get user avatar: %w", err)
 	}
+	s.hydrateBillingStatementPreference(ctx, user)
+	s.hydrateUserTimezone(ctx, user)
 	return user, nil
 }
 

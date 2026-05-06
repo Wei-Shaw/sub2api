@@ -30,6 +30,11 @@ type User struct {
 	RPMLimit int    `json:"rpm_limit"`
 	Timezone string `json:"timezone"`
 
+	// 账单邮件偏好
+	BillingStatementDailyEnabled   bool `json:"billing_statement_daily_enabled"`
+	BillingStatementWeeklyEnabled  bool `json:"billing_statement_weekly_enabled"`
+	BillingStatementMonthlyEnabled bool `json:"billing_statement_monthly_enabled"`
+
 	APIKeys       []APIKey           `json:"api_keys,omitempty"`
 	Subscriptions []UserSubscription `json:"subscriptions,omitempty"`
 }

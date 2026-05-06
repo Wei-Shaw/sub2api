@@ -5974,6 +5974,61 @@
               </div>
             </div>
           </div>
+
+          <!-- Billing Statement Email -->
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h3 class="text-base font-medium text-gray-900 dark:text-white">
+                {{ t('admin.settings.billingStatement.title') }}
+              </h3>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.billingStatement.description') }}
+              </p>
+            </div>
+            <div class="px-6 py-6 space-y-4">
+              <div class="flex items-center justify-between">
+                <label class="mb-0 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.billingStatement.enabled') }}
+                </label>
+                <Toggle v-model="billingStatementForm.enabled" />
+              </div>
+              <template v-if="billingStatementForm.enabled">
+                <div class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700">
+                  <label class="mb-0 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.billingStatement.dailyEnabled') }}
+                  </label>
+                  <Toggle v-model="billingStatementForm.daily_enabled" />
+                </div>
+                <div v-if="billingStatementForm.daily_enabled">
+                  <label class="input-label">{{ t('admin.settings.billingStatement.dailySchedule') }}</label>
+                  <input v-model="billingStatementForm.daily_schedule" type="text" class="input font-mono" placeholder="0 8 * * *" />
+                  <p class="mt-1 text-xs text-gray-400">{{ t('admin.settings.billingStatement.scheduleHint') }}</p>
+                </div>
+                <div class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700">
+                  <label class="mb-0 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.billingStatement.weeklyEnabled') }}
+                  </label>
+                  <Toggle v-model="billingStatementForm.weekly_enabled" />
+                </div>
+                <div v-if="billingStatementForm.weekly_enabled">
+                  <label class="input-label">{{ t('admin.settings.billingStatement.weeklySchedule') }}</label>
+                  <input v-model="billingStatementForm.weekly_schedule" type="text" class="input font-mono" placeholder="0 8 * * 1" />
+                  <p class="mt-1 text-xs text-gray-400">{{ t('admin.settings.billingStatement.scheduleHint') }}</p>
+                </div>
+                <div class="flex items-center justify-between border-t border-gray-100 pt-4 dark:border-dark-700">
+                  <label class="mb-0 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t('admin.settings.billingStatement.monthlyEnabled') }}
+                  </label>
+                  <Toggle v-model="billingStatementForm.monthly_enabled" />
+                </div>
+                <div v-if="billingStatementForm.monthly_enabled">
+                  <label class="input-label">{{ t('admin.settings.billingStatement.monthlySchedule') }}</label>
+                  <input v-model="billingStatementForm.monthly_schedule" type="text" class="input font-mono" placeholder="0 8 1 * *" />
+                  <p class="mt-1 text-xs text-gray-400">{{ t('admin.settings.billingStatement.scheduleHint') }}</p>
+                </div>
+              </template>
+            </div>
+          </div>
         </div>
         <!-- /Tab: Email -->
 
@@ -6497,6 +6552,17 @@ const form = reactive<SettingsForm>({
   // Affiliate (邀请返利) feature switch
   affiliate_enabled: false,
 });
+
+// Billing statement email form
+const billingStatementForm = reactive({
+  enabled: false,
+  daily_enabled: false,
+  weekly_enabled: false,
+  monthly_enabled: false,
+  daily_schedule: '0 8 * * *',
+  weekly_schedule: '0 8 * * 1',
+  monthly_schedule: '0 8 1 * *',
+})
 
 const authSourceDefaults = reactive<AuthSourceDefaultsState>(
   buildAuthSourceDefaultsState({}),
@@ -7198,6 +7264,16 @@ async function loadSettings() {
       openaiFastPolicyLoaded.value = true;
     }
 
+    // Load billing statement email config
+    if (settings.billing_statement_email_config) {
+      try {
+        const bsCfg = JSON.parse(settings.billing_statement_email_config)
+        if (bsCfg && typeof bsCfg === 'object') {
+          Object.assign(billingStatementForm, bsCfg)
+        }
+      } catch { /* ignore parse errors */ }
+    }
+
     // Load web search emulation config separately
     await loadWebSearchConfig();
   } catch (error: unknown) {
@@ -7599,6 +7675,15 @@ async function saveSettings() {
       available_channels_enabled: form.available_channels_enabled,
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,
+      billing_statement_email_config: JSON.stringify({
+        enabled: billingStatementForm.enabled,
+        daily_enabled: billingStatementForm.daily_enabled,
+        weekly_enabled: billingStatementForm.weekly_enabled,
+        monthly_enabled: billingStatementForm.monthly_enabled,
+        daily_schedule: billingStatementForm.daily_schedule || '0 8 * * *',
+        weekly_schedule: billingStatementForm.weekly_schedule || '0 8 * * 1',
+        monthly_schedule: billingStatementForm.monthly_schedule || '0 8 1 * *',
+      }),
     };
 
     // 仅当 openai_fast_policy_settings 已成功从后端加载时才回写，

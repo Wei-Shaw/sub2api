@@ -43,6 +43,16 @@
         :user-email="user.email"
       />
 
+      <ProfileBillingStatementCard
+        v-if="user && billingStatementEmailEnabled"
+        :daily-enabled-init="user.billing_statement_daily_enabled ?? false"
+        :weekly-enabled-init="user.billing_statement_weekly_enabled ?? false"
+        :monthly-enabled-init="user.billing_statement_monthly_enabled ?? false"
+        :daily-available="billingStatementDailyEnabled"
+        :weekly-available="billingStatementWeeklyEnabled"
+        :monthly-available="billingStatementMonthlyEnabled"
+      />
+
       <ProfileTotpCard />
     </div>
   </AppLayout>
@@ -54,6 +64,7 @@ import { useI18n } from 'vue-i18n'
 import { Icon } from '@/components/icons'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import ProfileBalanceNotifyCard from '@/components/user/profile/ProfileBalanceNotifyCard.vue'
+import ProfileBillingStatementCard from '@/components/user/profile/ProfileBillingStatementCard.vue'
 import ProfileInfoCard from '@/components/user/profile/ProfileInfoCard.vue'
 import ProfilePasswordForm from '@/components/user/profile/ProfilePasswordForm.vue'
 import ProfileTotpCard from '@/components/user/profile/ProfileTotpCard.vue'
@@ -70,6 +81,10 @@ const contactInfo = ref('')
 const balanceLowNotifyEnabled = ref(false)
 const systemDefaultThreshold = ref(0)
 const serverTimezone = ref('UTC')
+const billingStatementEmailEnabled = ref(false)
+const billingStatementDailyEnabled = ref(false)
+const billingStatementWeeklyEnabled = ref(false)
+const billingStatementMonthlyEnabled = ref(false)
 const linuxdoOAuthEnabled = ref(false)
 const wechatOAuthEnabled = ref(false)
 const wechatOAuthOpenEnabled = ref<boolean | undefined>(undefined)
@@ -91,6 +106,10 @@ onMounted(async () => {
       balanceLowNotifyEnabled.value = settings.balance_low_notify_enabled ?? false
       systemDefaultThreshold.value = settings.balance_low_notify_threshold ?? 0
       serverTimezone.value = settings.server_timezone || 'UTC'
+      billingStatementEmailEnabled.value = settings.billing_statement_email_enabled ?? false
+      billingStatementDailyEnabled.value = settings.billing_statement_daily_enabled ?? false
+      billingStatementWeeklyEnabled.value = settings.billing_statement_weekly_enabled ?? false
+      billingStatementMonthlyEnabled.value = settings.billing_statement_monthly_enabled ?? false
       linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled ?? false
       wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
       wechatOAuthOpenEnabled.value = typeof settings.wechat_oauth_open_enabled === 'boolean'
