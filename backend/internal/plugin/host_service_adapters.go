@@ -17,6 +17,7 @@ package plugin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -144,18 +145,20 @@ type hostSubscriptionService interface {
 	AssignOrExtendSubscription(ctx context.Context, input *service.AssignSubscriptionInput) (*service.UserSubscription, bool, error)
 	ExtendSubscription(ctx context.Context, subscriptionID int64, days int) (*service.UserSubscription, error)
 	GetActiveSubscription(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error)
+	RevokeSubscription(ctx context.Context, subscriptionID int64) error
 }
 
 // HostSubscriptionAdapter implements HostSubscriptionAssigner.
 type HostSubscriptionAdapter struct {
 	svc  hostSubscriptionService
 	idem *HostIdempotencyStore
+	log  *slog.Logger
 }
 
 // NewHostSubscriptionAdapter constructs an adapter; both arguments are
 // required.
 func NewHostSubscriptionAdapter(svc hostSubscriptionService, idem *HostIdempotencyStore) *HostSubscriptionAdapter {
-	return &HostSubscriptionAdapter{svc: svc, idem: idem}
+	return &HostSubscriptionAdapter{svc: svc, idem: idem, log: slog.Default()}
 }
 
 // assignPayload is persisted on AssignSubscription replays.
@@ -221,6 +224,29 @@ func (a *HostSubscriptionAdapter) RevokeSubscriptionDays(
 			}
 			updated, err := a.svc.ExtendSubscription(ctx, sub.ID, -days)
 			if err != nil {
+				// Fallback: when the deduction would push the
+				// subscription past its expiry, revoke the
+				// whole subscription instead of failing the
+				// refund. This mirrors the legacy host-side
+				// behaviour from before the plugin migration.
+				if errors.Is(err, service.ErrAdjustWouldExpire) {
+					if a.log != nil {
+						a.log.Info("subscription deduction would expire; revoking entire subscription",
+							"subscription_id", sub.ID,
+							"user_id", userID,
+							"group_id", groupID,
+							"requested_days", days,
+							"reason", reason,
+						)
+					}
+					if revokeErr := a.svc.RevokeSubscription(ctx, sub.ID); revokeErr != nil {
+						return nil, fmt.Errorf("revoke subscription fallback: %w", revokeErr)
+					}
+					// Subscription removed — surface
+					// expires_at = 0 to signal "no longer
+					// active" to the caller.
+					return json.Marshal(revokePayload{ExpiresAtUnix: 0})
+				}
 				return nil, fmt.Errorf("revoke days: %w", err)
 			}
 			return json.Marshal(revokePayload{ExpiresAtUnix: updated.ExpiresAt.Unix()})

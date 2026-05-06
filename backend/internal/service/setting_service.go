@@ -127,6 +127,7 @@ type SettingService struct {
 	version                 string // Application version
 	webSearchManagerBuilder WebSearchManagerBuilder
 	rectifierCache          RectifierSettingsCache // 可选：跨实例 rectifier 设置缓存，nil 时退化为直查 DB
+	pluginFlagProvider      PluginPublicFlagProvider // 可选：插件公共标志聚合器（plugin manager 实现）
 }
 
 type ProviderDefaultGrantSettings struct {
@@ -400,6 +401,22 @@ func (s *SettingService) SetRectifierSettingsCache(cache RectifierSettingsCache)
 	s.rectifierCache = cache
 }
 
+// PluginPublicFlagProvider is the host-side seam SettingService uses to merge
+// plugin-declared public flags into PublicSettings without coupling to the
+// plugin manager package directly. The wire layer points this at
+// *plugin.PluginManager (which implements GetPublicFlags). Returning a nil
+// or empty map degrades gracefully — host-only fields remain available.
+type PluginPublicFlagProvider interface {
+	GetPublicFlags(ctx context.Context) map[string]any
+}
+
+// SetPluginPublicFlagProvider wires the plugin-flag aggregator. Pass nil to
+// disable; the host-only PublicSettings fields are still served. Wired in
+// wire_gen.go after the plugin manager is constructed.
+func (s *SettingService) SetPluginPublicFlagProvider(p PluginPublicFlagProvider) {
+	s.pluginFlagProvider = p
+}
+
 // GetAllSettings 获取所有系统设置
 func (s *SettingService) GetAllSettings(ctx context.Context) (*SystemSettings, error) {
 	settings, err := s.settingRepo.GetAll(ctx)
@@ -519,7 +536,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		balanceLowNotifyThreshold = v
 	}
 
-	return &PublicSettings{
+	result := &PublicSettings{
 		RegistrationEnabled:              settings[SettingKeyRegistrationEnabled] == "true",
 		EmailVerifyEnabled:               emailVerifyEnabled,
 		ForceEmailOnThirdPartySignup:     settings[SettingKeyForceEmailOnThirdPartySignup] == "true",
@@ -565,7 +582,16 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		ServiceQuotaEnabled:      settings[SettingKeyServiceQuotaEnabled] == "true",
 
 		AffiliateEnabled: settings[SettingKeyAffiliateEnabled] == "true",
-	}, nil
+	}
+
+	// 把所有 running plugin 声明的 PublicFlags 合并进来。Provider 未注入或返回
+	// 空 map 时不影响 host 字段；冲突仲裁与类型化由 provider 自身负责。
+	if s.pluginFlagProvider != nil {
+		if flags := s.pluginFlagProvider.GetPublicFlags(ctx); len(flags) > 0 {
+			result.PluginFlags = flags
+		}
+	}
+	return result, nil
 }
 
 // channelMonitorIntervalMin / channelMonitorIntervalMax bound the default interval
@@ -714,6 +740,44 @@ type PublicSettingsInjectionPayload struct {
 	AvailableChannelsEnabled             bool `json:"available_channels_enabled"`
 	ServiceQuotaEnabled                  bool `json:"service_quota_enabled"`
 	AffiliateEnabled                     bool `json:"affiliate_enabled"`
+
+	// PluginFlags carries the union of plugin-declared PublicFlags. Tagged
+	// "-" so the schema-drift test (public_settings_injection_schema_test.go)
+	// ignores it; MarshalJSON below flattens these into top-level JSON keys
+	// so frontend bootstrap reads cachedPublicSettings.payment_enabled etc.
+	// just like host fields.
+	PluginFlags map[string]any `json:"-"`
+}
+
+// MarshalJSON flattens PluginFlags into the top-level JSON object so the
+// SSR-injected envelope stays compatible with the frontend's
+// cachedPublicSettings.<key> access pattern. Host fields take precedence:
+// a plugin flag whose key duplicates a host field is dropped silently here
+// (the manager-side reservation list catches this earlier with a warn).
+func (p PublicSettingsInjectionPayload) MarshalJSON() ([]byte, error) {
+	type alias PublicSettingsInjectionPayload
+	base, err := json.Marshal(alias(p))
+	if err != nil {
+		return nil, err
+	}
+	if len(p.PluginFlags) == 0 {
+		return base, nil
+	}
+	merged := make(map[string]json.RawMessage)
+	if err := json.Unmarshal(base, &merged); err != nil {
+		return nil, err
+	}
+	for k, v := range p.PluginFlags {
+		if _, exists := merged[k]; exists {
+			continue
+		}
+		b, err := json.Marshal(v)
+		if err != nil {
+			continue
+		}
+		merged[k] = b
+	}
+	return json.Marshal(merged)
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -769,6 +833,8 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
 		ServiceQuotaEnabled:                  settings.ServiceQuotaEnabled,
 		AffiliateEnabled:                     settings.AffiliateEnabled,
+
+		PluginFlags: settings.PluginFlags,
 	}, nil
 }
 

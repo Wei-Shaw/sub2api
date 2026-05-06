@@ -26,7 +26,14 @@ import (
 type Application struct {
 	Server        *http.Server
 	PluginManager *plugin.PluginManager
-	Cleanup       func()
+	// Cfg is exposed so main.go can run host-side reconciliation steps
+	// (e.g. BUG #64 payment resume signing-key backfill) that must read
+	// the resolved configuration without re-loading it.
+	Cfg *config.Config
+	// PluginSettings is exposed for the same reason: main.go drives the
+	// post-Start payment-plugin signing-key backfill via this service.
+	PluginSettings *service.PluginSettingsService
+	Cleanup        func()
 }
 
 func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
@@ -57,7 +64,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		providePluginManager,
 
 		// Application struct
-		wire.Struct(new(Application), "Server", "PluginManager", "Cleanup"),
+		wire.Struct(new(Application), "Server", "PluginManager", "Cfg", "PluginSettings", "Cleanup"),
 	)
 	return nil, nil
 }

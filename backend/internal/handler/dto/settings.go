@@ -234,6 +234,47 @@ type PublicSettings struct {
 	ServiceQuotaEnabled      bool `json:"service_quota_enabled"`
 
 	AffiliateEnabled bool `json:"affiliate_enabled"`
+
+	// PluginFlags carries the union of plugin-declared PublicFlags. Tagged
+	// "-" so the schema-drift test ignores it; MarshalJSON below flattens
+	// these into top-level JSON keys so frontend code can read
+	// cachedPublicSettings.payment_enabled identically to host fields.
+	PluginFlags map[string]any `json:"-"`
+}
+
+// MarshalJSON flattens PluginFlags into the top-level JSON object so the
+// /api/v1/settings/public response stays compatible with the frontend's
+// cachedPublicSettings.<key> access pattern. Host fields take precedence:
+// a plugin flag whose key duplicates a host field is dropped silently here
+// (the manager-side reservation list catches this earlier with a warn).
+//
+// Value receiver intentional — both PublicSettings and *PublicSettings
+// dispatch through this method (a pointer receiver would be skipped when
+// the value is passed by copy from the handler layer).
+func (p PublicSettings) MarshalJSON() ([]byte, error) {
+	type alias PublicSettings
+	base, err := json.Marshal(alias(p))
+	if err != nil {
+		return nil, err
+	}
+	if len(p.PluginFlags) == 0 {
+		return base, nil
+	}
+	merged := make(map[string]json.RawMessage)
+	if err := json.Unmarshal(base, &merged); err != nil {
+		return nil, err
+	}
+	for k, v := range p.PluginFlags {
+		if _, exists := merged[k]; exists {
+			continue
+		}
+		b, err := json.Marshal(v)
+		if err != nil {
+			continue
+		}
+		merged[k] = b
+	}
+	return json.Marshal(merged)
 }
 
 // OverloadCooldownSettings 529过载冷却配置 DTO

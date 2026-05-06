@@ -234,6 +234,14 @@ type PublicSettings struct {
 
 	// Affiliate (邀请返利) feature toggle
 	AffiliateEnabled bool `json:"affiliate_enabled"`
+
+	// PluginFlags carries the union of PublicFlags declared by all running
+	// plugins (key → value). Flattened into the JSON envelope at the dto/
+	// PublicSettings boundary so the frontend can read them as top-level
+	// fields (cachedPublicSettings.payment_enabled etc.). Tagged "-" here
+	// because the flatten happens in dto.PublicSettings.MarshalJSON; this
+	// struct keeps it side-band for in-process consumers.
+	PluginFlags map[string]any `json:"-"`
 }
 
 type WeChatConnectOAuthConfig struct {

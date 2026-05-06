@@ -78,5 +78,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		ServiceQuotaEnabled:      settings.ServiceQuotaEnabled,
 
 		AffiliateEnabled: settings.AffiliateEnabled,
+
+		PluginFlags: settings.PluginFlags,
 	})
 }

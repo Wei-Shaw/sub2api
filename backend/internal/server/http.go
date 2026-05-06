@@ -103,18 +103,28 @@ func ProvideRouter(
 
 // ProvidePluginRouter 提供插件路由包装器。
 // 它包裹 gin.Engine，在请求到达 Gin 之前先匹配插件路由表。
+//
+// settingService 用于注入 backend mode 守卫:开启 backend_mode_enabled
+// 后,普通用户访问 user-facing 插件路由(非 /api/v1/admin/*)将被 403
+// 拦截——与 host 内置路由的 BackendModeUserGuard 行为一致,弥补 BUG #66
+// (插件迁移后丢失运营开关)。
 func ProvidePluginRouter(
 	router *gin.Engine,
 	jwtAuth middleware2.JWTAuthMiddleware,
 	adminAuth middleware2.AdminAuthMiddleware,
 	apiKeyAuth middleware2.APIKeyAuthMiddleware,
+	settingService *service.SettingService,
 ) *plugin.PluginRouter {
-	return plugin.NewPluginRouter(
+	pr := plugin.NewPluginRouter(
 		router,
 		gin.HandlerFunc(jwtAuth),
 		gin.HandlerFunc(adminAuth),
 		gin.HandlerFunc(apiKeyAuth),
 	)
+	if settingService != nil {
+		pr.SetBackendModeChecker(settingService.IsBackendModeEnabled)
+	}
+	return pr
 }
 
 // ProvideHTTPServer 提供 HTTP 服务器

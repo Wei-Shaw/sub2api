@@ -124,6 +124,32 @@ func newPaymentResumeService(signingKey []byte, verifyFallbacks ...[]byte) *paym
 	return svc
 }
 
+// ResolveResumeSigningKeyHex returns the host-side primary resume-token
+// signing key encoded as a 64-char hex string, suitable for backfilling
+// the payment plugin's `resume_signing_key_hex` setting on first boot.
+// Returns ("", false) when neither PAYMENT_RESUME_SIGNING_KEY nor the
+// TOTP-derived legacy key is configured — the caller should skip the
+// backfill in that case so an operator-installed key is not overwritten
+// with empty.
+//
+// Selection mirrors newLegacyAwarePaymentResumeService:
+// PAYMENT_RESUME_SIGNING_KEY (env) wins over the TOTP-derived legacy key.
+// We deliberately do NOT include the legacy fallback in the returned
+// value; operators who need rotation can append additional keys to the
+// plugin setting in the comma-separated form (the plugin verify side
+// supports multi-key parsing — see plugins/payment/service/payment_resume_service.go).
+func ResolveResumeSigningKeyHex(cfg *config.Config) (string, bool) {
+	var legacyKey []byte
+	if key, err := derivePaymentEncryptionKey(cfg); err == nil {
+		legacyKey = key
+	}
+	signingKey, _ := resolvePaymentResumeSigningKeys(legacyKey)
+	if len(signingKey) == 0 {
+		return "", false
+	}
+	return hex.EncodeToString(signingKey), true
+}
+
 // newLegacyAwarePaymentResumeService chooses an explicit
 // PAYMENT_RESUME_SIGNING_KEY from env over the legacy TOTP-derived key,
 // keeping the legacy key as a verify-only fallback when both differ.

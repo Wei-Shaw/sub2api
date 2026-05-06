@@ -294,6 +294,11 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 		pluginManager.SetSettings(pluginSettingsService, func(resolver func(ctx context.Context) string) plugin.SettingsExtensionRegistrar {
 			return plugin.NewSettingsExtensionServer(pluginSettingsService, resolver)
 		})
+		// PublicFlags resolution shares the same store SDK Settings writes
+		// through so /api/v1/settings/public reflects live admin edits without
+		// a manager restart. See manager_public_flags.go for the contract.
+		pluginManager.SetPluginSettingsReader(pluginSettingsService)
+		settingService.SetPluginPublicFlagProvider(pluginManager)
 	}
 	if pluginManager != nil {
 		// Plugin Hook Phase B: register the event publisher with the plugin
@@ -357,7 +362,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	adminAuthMiddleware := middleware.NewAdminAuthMiddleware(authService, userService, settingService)
 	apiKeyAuthMiddleware := middleware.NewAPIKeyAuthMiddleware(apiKeyService, subscriptionService, configConfig)
 	engine := server.ProvideRouter(configConfig, handlers, jwtAuthMiddleware, adminAuthMiddleware, apiKeyAuthMiddleware, apiKeyService, subscriptionService, opsService, settingService, redisClient, pluginManager)
-	pluginRouter := server.ProvidePluginRouter(engine, jwtAuthMiddleware, adminAuthMiddleware, apiKeyAuthMiddleware)
+	pluginRouter := server.ProvidePluginRouter(engine, jwtAuthMiddleware, adminAuthMiddleware, apiKeyAuthMiddleware, settingService)
 	if pluginManager != nil {
 		pluginManager.BindRouter(pluginRouter)
 	}
@@ -376,9 +381,11 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	scheduledTestRunnerService := service.ProvideScheduledTestRunnerService(scheduledTestPlanRepository, scheduledTestService, accountTestService, rateLimitService, configConfig)
 	v := provideCleanup(client, redisClient, opsMetricsCollector, opsAggregationService, opsAlertEvaluatorService, opsCleanupService, opsScheduledReportService, opsSystemLogSink, schedulerSnapshotService, tokenRefreshService, accountExpiryService, subscriptionExpiryService, usageCleanupService, idempotencyCleanupService, pricingService, emailQueueService, billingCacheService, usageRecordWorkerPool, subscriptionService, oAuthService, openAIOAuthService, geminiOAuthService, antigravityOAuthService, openAIGatewayService, scheduledTestRunnerService, backupService, pluginManager)
 	application := &Application{
-		Server:        httpServer,
-		PluginManager: pluginManager,
-		Cleanup:       v,
+		Server:         httpServer,
+		PluginManager:  pluginManager,
+		Cfg:            configConfig,
+		PluginSettings: pluginSettingsService,
+		Cleanup:        v,
 	}
 	return application, nil
 }
@@ -388,7 +395,14 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 type Application struct {
 	Server        *http.Server
 	PluginManager *plugin.PluginManager
-	Cleanup       func()
+	// Cfg is exposed so main.go can run host-side reconciliation steps
+	// (e.g. BUG #64 payment resume signing-key backfill) that must read
+	// the resolved configuration without re-loading it.
+	Cfg *config.Config
+	// PluginSettings is exposed for the same reason: main.go drives the
+	// post-Start payment-plugin signing-key backfill via this service.
+	PluginSettings *service.PluginSettingsService
+	Cleanup        func()
 }
 
 func providePrivacyClientFactory() service.PrivacyClientFactory {

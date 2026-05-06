@@ -1,6 +1,8 @@
 package plugin
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -15,6 +17,19 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	pluginsdkroot "github.com/Wei-Shaw/sub2api/plugin-sdk"
 )
+
+// adminRoutePrefix 标记由 host 视为"管理员管理面板"的插件路径根。
+// 处于此前缀下的路由（如 /api/v1/admin/payment/...）由 admin 鉴权
+// middleware 把关,不受 backend mode 用户开关影响——即便系统设置
+// 处于 backend_mode_enabled=true,运营人员仍需要访问这些端点。
+const adminRoutePrefix = "/api/v1/admin/"
+
+// BackendModeChecker 是 host 注入的回调:返回 true 表示当前应当封禁
+// 普通用户访问 user-facing 路由(系统设置 backend_mode_enabled=true)。
+// 用回调而非直接 import service 包,遵循"不让 plugin 路由层依赖具体业务
+// service 实现"的解耦原则——同时保留单元测试中无依赖构造 PluginRouter
+// 的能力(router_middleware_test.go / proxy_smoke_test.go)。
+type BackendModeChecker func(ctx context.Context) bool
 
 // Header names exposed to plugins. They are also documented in
 // plugin-sdk/README.md. New plugin authors should rely on these constants via
@@ -43,6 +58,11 @@ type PluginRouter struct {
 	adminAuth   gin.HandlerFunc
 	apiKeyAuth  gin.HandlerFunc
 
+	// backendModeChecker 由 host 通过 SetBackendModeChecker 注入,可能为 nil
+	// (单元测试 / 没有接入 SettingService 的场景)。
+	// 用 atomic.Pointer 保证读路径无锁,允许 host 在生命周期任意时刻替换。
+	backendModeChecker atomic.Pointer[BackendModeChecker]
+
 	// proxies 缓存反向代理实例,避免每次请求重新构造。
 	proxies sync.Map // map[string]*httputil.ReverseProxy
 }
@@ -66,6 +86,46 @@ func (r *PluginRouter) SwapRouteTable(table *RouteTable) {
 		table = NewRouteTable()
 	}
 	r.routeTable.Store(table)
+}
+
+// SetBackendModeChecker 注入"是否禁用普通用户自助操作"的回调。
+// host 在 wire 时把 SettingService.IsBackendModeEnabled 包装成 closure
+// 传入。传 nil 等价于关闭 backend mode 守卫——这是单元测试 / 早期启动
+// 阶段(SettingService 尚未就绪)的默认行为。
+func (r *PluginRouter) SetBackendModeChecker(fn BackendModeChecker) {
+	if fn == nil {
+		r.backendModeChecker.Store(nil)
+		return
+	}
+	r.backendModeChecker.Store(&fn)
+}
+
+// shouldBlockBackendMode 判定当前请求是否应当被 backend mode 守卫拦截。
+// 决策规则与原 BackendModeUserGuard 中间件保持一致:
+//  1. 路径以 /api/v1/admin/ 开头 → 永远放行(admin 路由由 admin 鉴权把关)
+//  2. checker 未注入或返回 false → 放行
+//  3. 已通过 jwt 鉴权且角色为 admin → 放行
+//  4. 其它情况(普通用户访问 user-facing 插件路由) → 拦截
+//
+// 该方法在 ServeHTTP 中于鉴权之后调用,因此 authCtx 已携带角色信息。
+func (r *PluginRouter) shouldBlockBackendMode(ctx context.Context, path string, authCtx *gin.Context) bool {
+	if strings.HasPrefix(path, adminRoutePrefix) {
+		return false
+	}
+	checkerPtr := r.backendModeChecker.Load()
+	if checkerPtr == nil {
+		return false
+	}
+	checker := *checkerPtr
+	if checker == nil || !checker(ctx) {
+		return false
+	}
+	if authCtx != nil {
+		if role, ok := middleware.GetUserRoleFromContext(authCtx); ok && role == "admin" {
+			return false
+		}
+	}
+	return true
 }
 
 // CurrentTable 返回当前路由表快照,主要供测试与状态接口使用。
@@ -96,12 +156,57 @@ func (r *PluginRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// Backend mode 守卫:仅对 user-facing 路由生效(/api/v1/admin/* 永远放行)。
+	// 必须放在鉴权之后——shouldBlockBackendMode 需要从 authCtx 读取用户角色,
+	// admin 仍可继续访问以便运营调试。这里的语义与原 routes/payment.go 中
+	// `middleware.BackendModeUserGuard(settingService)` 完全一致;BUG #66
+	// 遗留的"插件迁移后用户绕过 backend mode"问题在此修复。
+	if r.shouldBlockBackendMode(req.Context(), req.URL.Path, authCtx) {
+		r.respondBackendModeBlocked(w, req, entry.PluginName)
+		return
+	}
+
 	r.proxyTo(w, req, authCtx, entry)
+}
+
+// respondBackendModeBlocked 写出 403 + 结构化日志。
+//
+// 直接构造 envelope 而不再走一次 gin.Engine: 上游 ServeHTTP 已经在同
+// 一个 ResponseWriter 上跑过一次鉴权 engine, 再创建第二个 engine 写
+// JSON 会让 recorder/真实 ResponseWriter 把状态码当成"已 committed"
+// 而记成 200(参见 net/http/httptest.ResponseRecorder.Code 默认值与
+// gin.Context.JSON 的 WriteHeader 时序)。直接写 header + 编码后字节
+// 既避免该陷阱,也少一次反射开销。
+//
+// 响应体格式与 internal/pkg/response.Forbidden 完全一致(code/message
+// 顶层字段),因此前端不需要为 plugin 路由再加一套错误解析分支。debug
+// 级日志记下被拒的关键 metadata,但避免把每次封禁打到 info 以免刷日志。
+func (r *PluginRouter) respondBackendModeBlocked(w http.ResponseWriter, req *http.Request, pluginName string) {
+	slog.Debug("plugin route blocked by backend mode",
+		"plugin", pluginName,
+		"path", req.URL.Path,
+		"method", req.Method,
+	)
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusForbidden)
+	// 静态字符串避免引入 encoding/json 仅为这一处响应。字段顺序与
+	// response.Response 结构体一致(Code → Message → Reason → Metadata),
+	// 后两者为空时按 JSON 习惯省略以匹配 omitempty 行为。
+	const body = `{"code":403,"message":"Backend mode is active. User self-service is disabled."}`
+	_, _ = w.Write([]byte(body))
 }
 
 // runAuthMiddleware 通过临时 gin.Engine 执行匹配 authType 的鉴权中间件。
 // 返回的 *gin.Context 在通过时携带鉴权信息(无鉴权时返回 nil ctx + ok=true)。
 // ok=false 表示鉴权失败,响应已经被中间件写出,调用方应直接返回。
+//
+// 注意鉴权 engine 在内部用一个 bufferedAuthWriter 而非直接拿 w:
+// 鉴权"成功"路径上 Gin 的 default writer 会在 handler 链末尾隐式调用
+// WriteHeader(200) 提交状态码——这会让后续 BackendMode 守卫 / proxy
+// 改写状态码失效(httptest.ResponseRecorder 与真实 http.ResponseWriter
+// 都遵循"first WriteHeader wins")。bufferedAuthWriter 把鉴权阶段的
+// header / body 全部缓存,仅在鉴权失败(c.IsAborted())时一次性 flush
+// 到 w; 成功路径下整个缓冲被丢弃,w 的写入语义保持原状。
 func (r *PluginRouter) runAuthMiddleware(w http.ResponseWriter, req *http.Request, authType string) (*gin.Context, bool) {
 	if authType == "" || authType == AuthTypeNone {
 		return nil, true
@@ -133,12 +238,62 @@ func (r *PluginRouter) runAuthMiddleware(w http.ResponseWriter, req *http.Reques
 	engine.Any("/*any", func(c *gin.Context) {
 		captured = c
 	})
-	engine.ServeHTTP(w, req)
-	if captured == nil {
-		// handler 已 abort,响应已写出。
+	buf := &bufferedAuthWriter{header: http.Header{}}
+	engine.ServeHTTP(buf, req)
+	if captured == nil || captured.IsAborted() {
+		// 鉴权 middleware 已 abort, 把缓冲的响应原样转发给真实 writer。
+		buf.flushTo(w)
 		return nil, false
 	}
+	// 鉴权成功: 丢弃缓冲(仅含 Gin 隐式追加的 200 状态码), 让后续阶段
+	// 自由写 header。
 	return captured, true
+}
+
+// bufferedAuthWriter 记录鉴权 engine 写出的 status / header / body, 但
+// 不立刻提交到底层 ResponseWriter。仅用于 runAuthMiddleware 内部, 避免
+// Gin 隐式 WriteHeader(200) 污染上层 BackendMode 守卫与 proxy 的状态码
+// 写入权。
+type bufferedAuthWriter struct {
+	header     http.Header
+	statusCode int
+	body       []byte
+	written    bool
+}
+
+func (b *bufferedAuthWriter) Header() http.Header { return b.header }
+
+func (b *bufferedAuthWriter) WriteHeader(statusCode int) {
+	if b.written {
+		return
+	}
+	b.statusCode = statusCode
+	b.written = true
+}
+
+func (b *bufferedAuthWriter) Write(p []byte) (int, error) {
+	if !b.written {
+		b.statusCode = http.StatusOK
+		b.written = true
+	}
+	b.body = append(b.body, p...)
+	return len(p), nil
+}
+
+// flushTo 把缓冲的 status / header / body 一次性提交到 w。
+// 鉴权失败路径上调用; 成功路径直接丢弃缓冲不调用此方法。
+func (b *bufferedAuthWriter) flushTo(w http.ResponseWriter) {
+	dst := w.Header()
+	for k, vv := range b.header {
+		dst[k] = vv
+	}
+	if b.statusCode == 0 {
+		b.statusCode = http.StatusOK
+	}
+	w.WriteHeader(b.statusCode)
+	if len(b.body) > 0 {
+		_, _ = w.Write(b.body)
+	}
 }
 
 // proxyTo 把请求反向代理到插件进程。

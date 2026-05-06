@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/internal/setup"
 	"github.com/Wei-Shaw/sub2api/internal/web"
 
@@ -158,6 +159,26 @@ func runMainServer() {
 			log.Printf("Warning: plugin manager start failed: %v", err)
 		}
 		startCancel()
+
+		// BUG #64 fix: backfill the payment plugin's resume-token signing
+		// key from the host's PAYMENT_RESUME_SIGNING_KEY / TOTP-derived
+		// fallback so the plugin verify side stays in sync with what the
+		// host (auth_wechat_payment_compat.go) mints. Idempotent — once
+		// an operator has explicitly written a value (including the
+		// comma-separated rotation form supported by the plugin), the
+		// backfill leaves it intact. Runs in a background goroutine so a
+		// slow plugin spawn does not delay the HTTP listen loop.
+		if app.PluginSettings != nil {
+			if hostKeyHex, ok := handler.ResolveResumeSigningKeyHex(app.Cfg); ok {
+				go func() {
+					ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+					defer cancel()
+					if err := service.BackfillPaymentResumeSigningKey(ctx, app.PluginSettings, hostKeyHex); err != nil {
+						log.Printf("Warning: payment resume signing key backfill failed: %v", err)
+					}
+				}()
+			}
+		}
 	}
 
 	// 启动服务器

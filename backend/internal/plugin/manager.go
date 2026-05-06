@@ -102,6 +102,14 @@ type PluginManager struct {
 	// so that running without the plugin settings subsystem incurs no
 	// additional gRPC services.
 	settingsServer SettingsExtensionRegistrar
+	// settingsReader is the read-only seam GetPublicFlags uses to resolve
+	// PublicFlagSourceSettings declarations against a plugin's settings
+	// store. Wired via SetPluginSettingsReader before Start; nil disables
+	// settings-backed flag values (they fall back to the declared default).
+	// The wire layer typically points this at the same
+	// *service.PluginSettingsService instance used by SetSettings, so the
+	// public-flags read path sees the same data as plugin SDK Get calls.
+	settingsReader PluginSettingsReader
 	// frontendCacheInvalidator clears the FrontendServer HTML cache so the
 	// next first-byte response carries an up-to-date __PLUGIN_MANIFESTS__
 	// payload. Wired in via SetFrontendCacheInvalidator from server/router.go

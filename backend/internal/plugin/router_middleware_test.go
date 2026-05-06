@@ -3,6 +3,7 @@
 package plugin
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -255,5 +256,97 @@ func TestPluginRouter_TraceparentPassThroughToAuth(t *testing.T) {
 
 	if seenTrace != validTP {
 		t.Fatalf("auth handler ctx traceparent = %q, want %q", seenTrace, validTP)
+	}
+}
+
+// backendModeRouter 构造一个挂上 user-facing payment plugin 路由的
+// PluginRouter, 鉴权用一个 stub middleware: 把固定 role 写入 gin.Context
+// 以便 BackendMode 守卫能读到。enableBackendMode 控制 checker 是否返回 true。
+func backendModeRouter(t *testing.T, role string, enableBackendMode bool) *PluginRouter {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	stubAuth := func(c *gin.Context) {
+		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 7})
+		c.Set(string(middleware.ContextKeyUserRole), role)
+		c.Next()
+	}
+	pr := NewPluginRouter(http.NotFoundHandler(), stubAuth, stubAuth, stubAuth)
+	pr.SetBackendModeChecker(func(ctx context.Context) bool { return enableBackendMode })
+	return pr
+}
+
+func backendModeMountPaymentRoute(pr *PluginRouter, prefix, authType string) {
+	pr.SwapRouteTable(NewRouteTable().AddPlugin("payment", []RouteEntry{{
+		Method:     "*",
+		PathPrefix: prefix,
+		AuthType:   authType,
+		ProxyURL:   "http://127.0.0.1:1", // unreachable; should not be reached when blocked
+	}}))
+}
+
+// TestPluginRouter_BackendModeBlocksUserOnUserFacingRoute is the BUG #66
+// regression: when backend_mode_enabled=true a normal user POSTing to
+// /api/v1/payment/orders must be 403'd before the request is proxied to the
+// payment plugin process.
+func TestPluginRouter_BackendModeBlocksUserOnUserFacingRoute(t *testing.T) {
+	pr := backendModeRouter(t, "user", true)
+	backendModeMountPaymentRoute(pr, "/api/v1/payment/", AuthTypeUser)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/payment/orders", nil)
+	pr.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 from backend mode guard, got %d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+// TestPluginRouter_BackendModeAllowsAdminOnUserFacingRoute confirms the same
+// user-facing route stays open for admin role even with backend mode on,
+// matching the legacy BackendModeUserGuard semantics.
+func TestPluginRouter_BackendModeAllowsAdminOnUserFacingRoute(t *testing.T) {
+	pr := backendModeRouter(t, "admin", true)
+	backendModeMountPaymentRoute(pr, "/api/v1/payment/", AuthTypeUser)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/payment/orders", nil)
+	pr.ServeHTTP(rec, req)
+
+	// Admin passes the guard; the request then fails at the unreachable proxy.
+	// Either 502 (bad gateway) or any non-403 indicates the guard did not block.
+	if rec.Code == http.StatusForbidden {
+		t.Fatalf("admin must not be blocked by backend mode, got 403 body=%q", rec.Body.String())
+	}
+}
+
+// TestPluginRouter_BackendModeNeverBlocksAdminPath confirms /api/v1/admin/*
+// plugin routes are exempt from the user-facing guard regardless of role.
+// Admin authn middleware is the gatekeeper for those endpoints.
+func TestPluginRouter_BackendModeNeverBlocksAdminPath(t *testing.T) {
+	pr := backendModeRouter(t, "user", true)
+	backendModeMountPaymentRoute(pr, "/api/v1/admin/payment/", AuthTypeAdmin)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/payment/dashboard", nil)
+	pr.ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusForbidden {
+		t.Fatalf("admin-prefix routes must skip backend mode guard, got 403 body=%q", rec.Body.String())
+	}
+}
+
+// TestPluginRouter_BackendModeDisabledLetsUserThrough confirms that when
+// the host has no checker installed (or it returns false) the guard is a
+// no-op — preserves test/proxy behaviour for environments that never opt in.
+func TestPluginRouter_BackendModeDisabledLetsUserThrough(t *testing.T) {
+	pr := backendModeRouter(t, "user", false)
+	backendModeMountPaymentRoute(pr, "/api/v1/payment/", AuthTypeUser)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/payment/orders", nil)
+	pr.ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusForbidden {
+		t.Fatalf("user must pass when backend mode is disabled, got 403 body=%q", rec.Body.String())
 	}
 }
