@@ -18,6 +18,7 @@ import (
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	pluginent "github.com/Wei-Shaw/sub2api/plugins/payment/ent"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/handler"
+	paymentpkg "github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment"
 	"github.com/Wei-Shaw/sub2api/plugins/payment/service"
 )
 
@@ -175,14 +176,26 @@ func (p *PaymentPlugin) buildServices(ctx pluginsdk.PluginContext) {
 		ctx.DB(),
 		ctx.Logger(),
 	)
+	// Provider registry stays empty until the first SelectInstance call
+	// hydrates it from the DB. The load balancer is the actual gate
+	// guarding errPaymentServiceUnavailable, so wiring just these two is
+	// enough for the read/write paths to leave the 503 fast-path. The
+	// legacy AES-key fallback in decryptConfig is the only consumer of
+	// the encryptionKey arg; modern records are plaintext JSON, so a nil
+	// key is the right default for new deployments.
+	loadBalancer := paymentpkg.NewDefaultLoadBalancer(p.entClient, nil)
+	registry := paymentpkg.NewRegistry()
+
 	p.paymentService = service.NewPaymentService(service.PaymentServiceDeps{
-		EntClient: p.entClient,
-		Config:    p.configService,
-		Host:      hostPayment,
-		Events:    ctx.Events(),
-		Secrets:   ctx.Secrets(),
-		Settings:  ctx.Settings(),
-		Logger:    ctx.Logger(),
+		EntClient:    p.entClient,
+		Registry:     registry,
+		LoadBalancer: loadBalancer,
+		Config:       p.configService,
+		Host:         hostPayment,
+		Events:       ctx.Events(),
+		Secrets:      ctx.Secrets(),
+		Settings:     ctx.Settings(),
+		Logger:       ctx.Logger(),
 	})
 }
 

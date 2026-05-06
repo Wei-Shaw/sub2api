@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"math/rand/v2"
 	"sync"
@@ -10,8 +11,10 @@ import (
 	"github.com/shopspring/decimal"
 
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk"
+	"github.com/Wei-Shaw/sub2api/plugins/payment/ent/paymentproviderinstance"
 	pluginent "github.com/Wei-Shaw/sub2api/plugins/payment/ent"
 	paymentpkg "github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment"
+	"github.com/Wei-Shaw/sub2api/plugins/payment/internal/payment/provider"
 )
 
 // --- Order status constants (re-exported from internal/payment) ---
@@ -130,11 +133,7 @@ func (s *PaymentService) Registry() *paymentpkg.Registry {
 
 // EnsureProviders lazily initialises the provider registry on first
 // call. Subsequent invocations are cheap.
-//
-// TODO(payment-migration): the actual loadProviders body lives in the
-// payment_services_wip-tagged files. Until that block is ported the
-// registry stays empty and CreateOrder fails fast with a 503.
-func (s *PaymentService) EnsureProviders(_ context.Context) {
+func (s *PaymentService) EnsureProviders(ctx context.Context) {
 	if s == nil {
 		return
 	}
@@ -143,16 +142,15 @@ func (s *PaymentService) EnsureProviders(_ context.Context) {
 	if s.providersLoaded {
 		return
 	}
+	s.loadProviders(ctx)
 	s.providersLoaded = true
-	if s.logger != nil {
-		s.logger.Warn("payment: EnsureProviders called but loadProviders is not yet ported")
-	}
 }
 
 // RefreshProviders re-reads the configured provider instances from the
-// database and rebuilds the registry. Currently a no-op pending the
-// loadProviders port — see EnsureProviders.
-func (s *PaymentService) RefreshProviders(_ context.Context) {
+// database and rebuilds the registry. Called from admin write paths
+// (provider create/update/delete) so a config change takes effect
+// without restarting the plugin.
+func (s *PaymentService) RefreshProviders(ctx context.Context) {
 	if s == nil {
 		return
 	}
@@ -161,8 +159,46 @@ func (s *PaymentService) RefreshProviders(_ context.Context) {
 	if s.registry != nil {
 		s.registry.Clear()
 	}
-	if s.logger != nil {
-		s.logger.Warn("payment: RefreshProviders called but loadProviders is not yet ported")
+	s.loadProviders(ctx)
+	s.providersLoaded = true
+}
+
+// loadProviders enumerates all enabled payment_provider_instances rows
+// and registers a Provider in the registry for each one. Decryption
+// failures and unknown provider keys are logged and skipped so a single
+// bad row cannot stop the rest from coming online.
+func (s *PaymentService) loadProviders(ctx context.Context) {
+	if s.entClient == nil || s.loadBalancer == nil || s.registry == nil {
+		return
+	}
+	instances, err := s.entClient.PaymentProviderInstance.Query().
+		Where(paymentproviderinstance.EnabledEQ(true)).
+		All(ctx)
+	if err != nil {
+		s.logger.Error("payment: failed to query provider instances", "error", err)
+		return
+	}
+	for _, inst := range instances {
+		cfg, err := s.loadBalancer.GetInstanceConfig(ctx, int64(inst.ID))
+		if err != nil {
+			s.logger.Warn("payment: failed to decrypt config for instance",
+				"instance_id", inst.ID, "error", err)
+			continue
+		}
+		if cfg == nil {
+			cfg = map[string]string{}
+		}
+		if inst.PaymentMode != "" {
+			cfg["paymentMode"] = inst.PaymentMode
+		}
+		instID := fmt.Sprintf("%d", inst.ID)
+		p, err := provider.CreateProvider(inst.ProviderKey, instID, cfg)
+		if err != nil {
+			s.logger.Warn("payment: failed to create provider for instance",
+				"instance_id", inst.ID, "key", inst.ProviderKey, "error", err)
+			continue
+		}
+		s.registry.Register(p)
 	}
 }
 
