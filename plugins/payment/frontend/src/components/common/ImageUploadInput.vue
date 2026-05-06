@@ -35,7 +35,7 @@
           :disabled="uploading"
           @click="onClear"
         >
-          {{ removeLabel || t('common.delete') }}
+          {{ removeLabel || t('payment.adminSettings.helpImageRemove') }}
         </button>
       </div>
     </div>
@@ -46,7 +46,7 @@
         :class="{ 'pointer-events-none opacity-60': uploading }"
       >
         <LoadingSpinner v-if="uploading" size="sm" color="primary" />
-        <span>{{ uploading ? t('common.loading') : (uploadLabel || t('common.upload')) }}</span>
+        <span>{{ uploading ? t('payment.adminSettings.helpImageUploading') : (uploadLabel || t('payment.adminSettings.helpImageUpload')) }}</span>
         <input
           type="file"
           class="hidden"

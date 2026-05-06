@@ -342,7 +342,10 @@
                   <label class="input-label">
                     {{ t('payment.adminSettings.helpImage') }}
                   </label>
-                  <ImageUploadInput v-model="form.payment_help_image_url" />
+                  <ImageUploadInput
+                    v-model="form.payment_help_image_url"
+                    :hint="t('payment.adminSettings.helpImageHint')"
+                  />
                 </div>
                 <div>
                   <label class="input-label">
