@@ -797,6 +797,14 @@ main() {
             cd "$INSTALL_DIR"
             print_info "Syncing code (for Dockerfile.runtime and script updates)..."
             sync_repo_to_deploy_branch
+            # curl|bash keeps functions in this process; git pull only updates files on disk.
+            # Re-exec the checkout copy so upgrade uses the same script as HEAD (avoids stale fast-download URLs).
+            local _pulled _running
+            _pulled="$(readlink -f "$INSTALL_DIR/deploy/install-custom.sh" 2>/dev/null || echo "$INSTALL_DIR/deploy/install-custom.sh")"
+            _running="$(readlink -f "${BASH_SOURCE[0]:-}" 2>/dev/null || true)"
+            if [ -z "$_running" ] || [ "$_running" != "$_pulled" ]; then
+                exec bash "$INSTALL_DIR/deploy/install-custom.sh" "$@"
+            fi
             do_upgrade_fast
             exit 0
             ;;
