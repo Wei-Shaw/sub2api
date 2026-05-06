@@ -439,10 +439,7 @@ func parseGitHubOAuthProfile(ctx context.Context, cfg config.EmailOAuthProviderC
 		return nil, errors.New("github user id is missing")
 	}
 	email := strings.TrimSpace(gjson.Get(body, "email").String())
-	emailVerified := false
-	if email != "" {
-		emailVerified = true
-	}
+	emailVerified := email != ""
 	if strings.TrimSpace(cfg.EmailsURL) != "" {
 		if verifiedEmail, err := fetchGitHubPrimaryVerifiedEmail(ctx, cfg.EmailsURL, token.AccessToken); err == nil && verifiedEmail != "" {
 			email = verifiedEmail
