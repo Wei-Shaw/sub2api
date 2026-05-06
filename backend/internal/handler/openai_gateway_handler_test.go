@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -15,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/model"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	coderws "github.com/coder/websocket"
@@ -28,6 +30,41 @@ import (
 
 type openAIAccountSchedulerStub struct {
 	selectFn func(ctx context.Context, req service.OpenAIAccountScheduleRequest) (*service.AccountSelectionResult, service.OpenAIAccountScheduleDecision, error)
+}
+
+type handlerHTTPUpstreamResponse struct {
+	statusCode  int
+	contentType string
+	body        string
+}
+
+type handlerHTTPUpstreamSequenceRecorder struct {
+	responses []handlerHTTPUpstreamResponse
+	bodies    [][]byte
+	callCount int
+}
+
+func (u *handlerHTTPUpstreamSequenceRecorder) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		return nil, err
+	}
+	u.bodies = append(u.bodies, append([]byte(nil), body...))
+	idx := u.callCount
+	u.callCount++
+	if idx >= len(u.responses) {
+		return nil, errors.New("unexpected handler HTTP upstream call")
+	}
+	resp := u.responses[idx]
+	return &http.Response{
+		StatusCode: resp.statusCode,
+		Header:     http.Header{"Content-Type": []string{resp.contentType}},
+		Body:       io.NopCloser(strings.NewReader(resp.body)),
+	}, nil
+}
+
+func (u *handlerHTTPUpstreamSequenceRecorder) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, profile *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
 }
 
 func (s *openAIAccountSchedulerStub) Select(ctx context.Context, req service.OpenAIAccountScheduleRequest) (*service.AccountSelectionResult, service.OpenAIAccountScheduleDecision, error) {
@@ -1424,6 +1461,223 @@ func TestOpenAIResponses_MetadataBuiltinImageScheduleRequirement(t *testing.T) {
 	require.Equal(t, http.StatusServiceUnavailable, w.Code)
 	require.Equal(t, "no_available_accounts", gjson.Get(w.Body.String(), "error.type").String())
 	require.Equal(t, "No available OpenAI accounts support both gpt-5.5 and gpt-image-2 image_generation", gjson.Get(w.Body.String(), "error.message").String())
+}
+
+func TestOpenAIResponsesHandler_OpenCodeMetadataImageGenerationContinuesServerSide(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const pngB64Handler = "iVBORw0KGgppbWFnZS1ieXRlcw=="
+	firstStream := strings.Join([]string{
+		"event: response.output_item.done",
+		`data: {"type":"response.output_item.done","output_index":0,"item":{"id":"ig_1","type":"image_generation_call","status":"completed","result":"` + pngB64Handler + `","output_format":"png"}}`,
+		"",
+		"event: response.completed",
+		`data: {"type":"response.completed","response":{"id":"resp_img","output":[{"id":"ig_1","type":"image_generation_call","status":"completed","result":"` + pngB64Handler + `","output_format":"png"}],"usage":{"input_tokens":1,"output_tokens":2}}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	secondStream := strings.Join([]string{
+		"event: response.output_item.added",
+		`data: {"type":"response.output_item.added","output_index":1,"item":{"id":"msg_continue","type":"message","status":"in_progress","role":"assistant","content":[]}}`,
+		"",
+		"event: response.output_text.delta",
+		`data: {"type":"response.output_text.delta","output_index":1,"content_index":0,"item_id":"msg_continue","delta":"continued after handler image"}`,
+		"",
+		"event: response.output_item.done",
+		`data: {"type":"response.output_item.done","output_index":1,"item":{"id":"msg_continue","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"continued after handler image","annotations":[]}]}}`,
+		"",
+		"event: response.completed",
+		`data: {"type":"response.completed","response":{"id":"resp_continue","output":[{"id":"msg_continue","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"continued after handler image","annotations":[]}]}],"usage":{"input_tokens":3,"output_tokens":4}}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+
+	upstream := &handlerHTTPUpstreamSequenceRecorder{responses: []handlerHTTPUpstreamResponse{
+		{
+			statusCode:  http.StatusOK,
+			contentType: "text/event-stream",
+			body:        firstStream,
+		},
+		{
+			statusCode:  http.StatusOK,
+			contentType: "text/event-stream",
+			body:        secondStream,
+		},
+	}}
+
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	cfg.Server.FrontendURL = "https://example.com"
+	store := service.NewOpenAIGeneratedImageStore(t.TempDir())
+	gatewayService := service.NewOpenAIGatewayService(
+		nil, nil, nil, nil, nil, nil, nil, cfg, nil,
+		service.NewConcurrencyService(&concurrencyCacheMock{}), nil, nil, nil,
+		upstream, nil, nil, nil, nil, nil, store, nil,
+	)
+	account := &service.Account{
+		ID:          9301,
+		Name:        "openai-oauth",
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":       "oauth-token",
+			"chatgpt_account_id": "chatgpt-acc",
+			"plan_type":          "plus",
+		},
+	}
+	scheduleCalled := false
+	setUnexportedFieldForTest(t, gatewayService, "openaiScheduler", &openAIAccountSchedulerStub{
+		selectFn: func(ctx context.Context, req service.OpenAIAccountScheduleRequest) (*service.AccountSelectionResult, service.OpenAIAccountScheduleDecision, error) {
+			scheduleCalled = true
+			require.Equal(t, service.OpenAIUpstreamTransportAny, req.RequiredTransport)
+			requireOpenAIResponsesImageScheduleRequirement(t, req, "gpt-5.5")
+			return &service.AccountSelectionResult{
+				Account:       account,
+				Acquired:      true,
+				ReleaseFunc:   func() {},
+				SelectedGroup: string(service.TargetGroupActive),
+			}, service.OpenAIAccountScheduleDecision{Layer: "load_balance"}, nil
+		},
+	})
+
+	billingService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg)
+	defer billingService.Stop()
+	h := &OpenAIGatewayHandler{
+		gatewayService:      gatewayService,
+		billingCacheService: billingService,
+		apiKeyService:       &service.APIKeyService{},
+		concurrencyHelper: NewConcurrencyHelper(service.NewConcurrencyService(&concurrencyCacheMock{
+			acquireUserSlotFn: func(ctx context.Context, userID int64, maxConcurrency int, requestID string) (bool, error) {
+				return true, nil
+			},
+		}), SSEPingFormatNone, time.Second),
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(`{"model":"gpt-5.5-Sys","stream":true,"input":[{"role":"user","content":[{"type":"input_text","text":"draw and continue"}]}],"metadata":{"builtin_tools":{"web_search":true,"image_generation":{"enabled":true,"model":"gpt-image-2","output_format":"png"}}},"tool_choice":{"type":"image_generation"}}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("User-Agent", "opencode/1.0")
+	groupID := int64(93)
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 930, GroupID: &groupID, User: &service.User{ID: 9}})
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 9, Concurrency: 1})
+
+	h.Responses(c)
+
+	require.True(t, scheduleCalled)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, 2, upstream.callCount)
+	firstBody := string(upstream.bodies[0])
+	require.NotContains(t, firstBody, "metadata")
+	require.Contains(t, firstBody, `"type":"image_generation"`)
+	require.Contains(t, firstBody, `"type":"web_search"`)
+	require.Contains(t, firstBody, `"model":"gpt-5.5"`)
+	secondBody := string(upstream.bodies[1])
+	require.Contains(t, secondBody, `"type":"function_call"`)
+	require.Contains(t, secondBody, `"type":"function_call_output"`)
+	require.Contains(t, secondBody, "[[sub2api-generated-image:id=img_")
+	require.Contains(t, secondBody, "Temporary download URL: https://example.com/sub2api/generated-images/img_")
+	require.Contains(t, secondBody, "Immediately use the available shell, command-line, or network-access tool")
+	require.NotContains(t, secondBody, pngB64Handler)
+	clientBody := w.Body.String()
+	require.Contains(t, clientBody, "[[sub2api-generated-image:id=img_")
+	require.Contains(t, clientBody, "continued after handler image")
+	require.Equal(t, 1, strings.Count(clientBody, "event: response.completed"))
+	require.Equal(t, 1, strings.Count(clientBody, "data: [DONE]"))
+	require.NotContains(t, clientBody, "image_generation_call")
+	require.NotContains(t, clientBody, pngB64Handler)
+}
+
+func TestOpenAIResponsesHandler_SysNativeImageToolPreservesToolChoiceAndTools(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	stream := strings.Join([]string{
+		"event: response.completed",
+		`data: {"type":"response.completed","response":{"id":"resp_native","output":[{"id":"msg_native","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","text":"ok","annotations":[]}]}],"usage":{"input_tokens":1,"output_tokens":1}}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &handlerHTTPUpstreamSequenceRecorder{responses: []handlerHTTPUpstreamResponse{{
+		statusCode:  http.StatusOK,
+		contentType: "text/event-stream",
+		body:        stream,
+	}}}
+
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	gatewayService := service.NewOpenAIGatewayService(
+		nil, nil, nil, nil, nil, nil, nil, cfg, nil,
+		service.NewConcurrencyService(&concurrencyCacheMock{}), nil, nil, nil,
+		upstream, nil, nil, nil, nil, nil, nil, nil,
+	)
+	account := &service.Account{
+		ID:          9302,
+		Name:        "openai-oauth-native",
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":       "oauth-token",
+			"chatgpt_account_id": "chatgpt-acc",
+			"plan_type":          "plus",
+		},
+	}
+	scheduleCalled := false
+	setUnexportedFieldForTest(t, gatewayService, "openaiScheduler", &openAIAccountSchedulerStub{
+		selectFn: func(ctx context.Context, req service.OpenAIAccountScheduleRequest) (*service.AccountSelectionResult, service.OpenAIAccountScheduleDecision, error) {
+			scheduleCalled = true
+			requireOpenAIResponsesImageScheduleRequirement(t, req, "gpt-5.5")
+			require.Equal(t, service.TargetGroupExhausted, req.TargetGroup)
+			return &service.AccountSelectionResult{
+				Account:       account,
+				Acquired:      true,
+				ReleaseFunc:   func() {},
+				SelectedGroup: string(service.TargetGroupExhausted),
+			}, service.OpenAIAccountScheduleDecision{Layer: "load_balance", SelectedGroup: string(service.TargetGroupExhausted)}, nil
+		},
+	})
+
+	billingService := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg)
+	defer billingService.Stop()
+	h := &OpenAIGatewayHandler{
+		gatewayService:      gatewayService,
+		billingCacheService: billingService,
+		apiKeyService:       &service.APIKeyService{},
+		concurrencyHelper: NewConcurrencyHelper(service.NewConcurrencyService(&concurrencyCacheMock{
+			acquireUserSlotFn: func(ctx context.Context, userID int64, maxConcurrency int, requestID string) (bool, error) {
+				return true, nil
+			},
+		}), SSEPingFormatNone, time.Second),
+	}
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(`{"model":"gpt-5.5-Sys","stream":true,"input":[{"role":"user","content":[{"type":"input_text","text":"画一只小猫"}]}],"tools":[{"type":"function","name":"bash","description":"Run shell commands","parameters":{"type":"object","properties":{"cmd":{"type":"string"}},"required":["cmd"],"additionalProperties":false}},{"type":"image_generation","model":"gpt-image-2","output_format":"png"}],"tool_choice":{"type":"image_generation"},"parallel_tool_calls":false}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Request.Header.Set("User-Agent", "opencode/1.0")
+	groupID := int64(94)
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 940, GroupID: &groupID, User: &service.User{ID: 10}})
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 10, Concurrency: 1})
+
+	h.Responses(c)
+
+	require.True(t, scheduleCalled)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, 1, upstream.callCount)
+	firstBody := string(upstream.bodies[0])
+	require.Contains(t, firstBody, `"model":"gpt-5.5"`)
+	require.Contains(t, firstBody, `"type":"image_generation"`)
+	require.Contains(t, firstBody, `"model":"gpt-image-2"`)
+	require.Contains(t, firstBody, `"output_format":"png"`)
+	require.Contains(t, firstBody, `"type":"function"`)
+	require.Contains(t, firstBody, `"name":"bash"`)
+	require.Contains(t, firstBody, `"tool_choice":{"type":"image_generation"}`)
+	require.Contains(t, firstBody, `"call_id":"sys_dummy"`)
+	require.NotContains(t, firstBody, `"metadata"`)
 }
 
 func TestOpenAIResponses_NativeImageToolScheduleRequirement(t *testing.T) {

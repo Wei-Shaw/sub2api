@@ -312,6 +312,7 @@ type ResponsesInputTokensDetails struct {
 // ResponsesOutputTokensDetails breaks down output token usage.
 type ResponsesOutputTokensDetails struct {
 	ReasoningTokens int `json:"reasoning_tokens,omitempty"`
+	ImageTokens     int `json:"image_tokens,omitempty"`
 }
 
 // ---------------------------------------------------------------------------

@@ -1986,6 +1986,18 @@ func (r *openAIProjectionViewResult) selectedGroupForTarget(accountID int64, tar
 	return r.selectedGroupForAccount(accountID)
 }
 
+func (r *openAIProjectionViewResult) forResponsesImageGenerationRequirement(requirement *OpenAIResponsesImageGenerationRequirement) *openAIProjectionViewResult {
+	requirement = requirement.normalized()
+	if requirement == nil || r == nil || r.state == nil || r.state.Projection == nil {
+		return r
+	}
+	if view, ok := r.state.Projection.ViewForResponsesImageGeneration(requirement); ok {
+		return &openAIProjectionViewResult{state: r.state, view: view, canonicalModel: view.CanonicalModel}
+	}
+	view := OpenAIModelRoleView{CanonicalModel: requirement.MainModel}
+	return &openAIProjectionViewResult{state: r.state, view: view, canonicalModel: view.CanonicalModel}
+}
+
 func (r *openAIProjectionViewResult) bindingMatches(binding *openAIAffinityBinding) bool {
 	if r == nil || binding == nil {
 		return false
@@ -2409,6 +2421,13 @@ func (s *OpenAIGatewayService) listOpenAIExhaustedWithReserveOverlay(ctx context
 	if err != nil {
 		return nil, nil, err
 	}
+	return s.listOpenAIExhaustedWithReserveOverlayFromView(ctx, projectionView)
+}
+
+func (s *OpenAIGatewayService) listOpenAIExhaustedWithReserveOverlayFromView(ctx context.Context, projectionView *openAIProjectionViewResult) ([]Account, []Account, error) {
+	if projectionView == nil {
+		return nil, nil, ErrSchedulerCacheNotReady
+	}
 	exhaustedAccounts, err := s.loadOpenAIProjectionAccounts(ctx, projectionView.state, projectionView.view.ExhaustedBaseIDs)
 	if err != nil {
 		return nil, nil, err
@@ -2584,14 +2603,39 @@ func (s *OpenAIGatewayService) resolveFreshOpenAIExhaustedAccount(ctx context.Co
 }
 
 func (s *OpenAIGatewayService) resolveFreshProjectedOpenAIAccount(ctx context.Context, groupID *int64, account *Account, requestedModel string, selectedGroup string, targetGroup AccountTargetGroup, requireCompact bool) *Account {
+	return s.resolveFreshProjectedOpenAIAccountWithView(ctx, groupID, account, requestedModel, selectedGroup, targetGroup, requireCompact, nil)
+}
+
+func (s *OpenAIGatewayService) resolveFreshProjectedOpenAIAccountWithView(ctx context.Context, groupID *int64, account *Account, requestedModel string, selectedGroup string, targetGroup AccountTargetGroup, requireCompact bool, projectionView *openAIProjectionViewResult) *Account {
 	switch normalizeOpenAISelectedGroup(selectedGroup) {
 	case openAISelectedGroupReserve:
+		if projectionView != nil {
+			return s.resolveFreshOpenAIReserveAccountFromView(ctx, account, requestedModel, targetGroup, requireCompact, projectionView)
+		}
 		return s.resolveFreshOpenAIReserveAccount(ctx, groupID, account, requestedModel, targetGroup, requireCompact)
 	case string(TargetGroupExhausted):
 		return s.resolveFreshOpenAIExhaustedAccount(ctx, groupID, account, requestedModel, requireCompact)
 	default:
 		return s.resolveFreshSchedulableOpenAIAccount(ctx, account, requestedModel, targetGroup, requireCompact)
 	}
+}
+
+func (s *OpenAIGatewayService) resolveFreshOpenAIReserveAccountFromView(ctx context.Context, account *Account, requestedModel string, targetGroup AccountTargetGroup, requireCompact bool, projectionView *openAIProjectionViewResult) *Account {
+	if account == nil || projectionView == nil || !projectionView.containsReserve(account.ID) {
+		return nil
+	}
+	fresh := account
+	if s != nil && s.schedulerSnapshot != nil {
+		current, err := s.getSchedulableAccount(ctx, account.ID)
+		if err != nil || current == nil {
+			return nil
+		}
+		fresh = current
+	}
+	if !isCurrentOpenAIReserveSelectionValid(fresh, requestedModel, targetGroup) || (requireCompact && openAICompactSupportTier(fresh) == 0) {
+		return nil
+	}
+	return fresh
 }
 
 func (s *OpenAIGatewayService) resolveFreshOpenAIReserveAccount(ctx context.Context, groupID *int64, account *Account, requestedModel string, targetGroup AccountTargetGroup, requireCompact bool) *Account {
@@ -2946,14 +2990,41 @@ func (s *OpenAIGatewayService) recheckSelectedOpenAIReserveAccountFromDB(ctx con
 }
 
 func (s *OpenAIGatewayService) recheckSelectedProjectedOpenAIAccountFromDB(ctx context.Context, groupID *int64, account *Account, requestedModel string, selectedGroup string, targetGroup AccountTargetGroup) *Account {
+	return s.recheckSelectedProjectedOpenAIAccountFromDBWithView(ctx, groupID, account, requestedModel, selectedGroup, targetGroup, nil)
+}
+
+func (s *OpenAIGatewayService) recheckSelectedProjectedOpenAIAccountFromDBWithView(ctx context.Context, groupID *int64, account *Account, requestedModel string, selectedGroup string, targetGroup AccountTargetGroup, projectionView *openAIProjectionViewResult) *Account {
 	switch normalizeOpenAISelectedGroup(selectedGroup) {
 	case openAISelectedGroupReserve:
+		if projectionView != nil {
+			return s.recheckSelectedOpenAIReserveAccountFromDBWithView(ctx, account, requestedModel, targetGroup, projectionView)
+		}
 		return s.recheckSelectedOpenAIReserveAccountFromDB(ctx, groupID, account, requestedModel, targetGroup)
 	case string(TargetGroupExhausted):
 		return s.recheckSelectedOpenAIExhaustedAccountFromDB(ctx, groupID, account, requestedModel, false)
 	default:
 		return s.recheckSelectedOpenAIAccountFromDB(ctx, account, requestedModel, targetGroup, false)
 	}
+}
+
+func (s *OpenAIGatewayService) recheckSelectedOpenAIReserveAccountFromDBWithView(ctx context.Context, account *Account, requestedModel string, targetGroup AccountTargetGroup, projectionView *openAIProjectionViewResult) *Account {
+	if account == nil || projectionView == nil || !projectionView.containsReserve(account.ID) {
+		return nil
+	}
+	if s == nil || s.schedulerSnapshot == nil || s.accountRepo == nil {
+		if !isCurrentOpenAIReserveSelectionValid(account, requestedModel, targetGroup) {
+			return nil
+		}
+		return account
+	}
+	latest, err := s.accountRepo.GetByID(ctx, account.ID)
+	if err != nil || latest == nil {
+		return nil
+	}
+	if !isCurrentOpenAIReserveSelectionValid(latest, requestedModel, targetGroup) {
+		return nil
+	}
+	return latest
 }
 
 func (s *OpenAIGatewayService) getSchedulableAccount(ctx context.Context, accountID int64) (*Account, error) {

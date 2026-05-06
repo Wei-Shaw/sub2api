@@ -574,7 +574,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 
 	previousResponseID := req.PreviousResponseID
 	if previousResponseID != "" {
-		selection, affinityBinding, err := s.service.SelectAccountByPreviousResponseID(
+		selection, affinityBinding, err := s.service.SelectAccountByPreviousResponseIDWithResponsesImageGeneration(
 			ctx,
 			req.GroupID,
 			previousResponseID,
@@ -582,6 +582,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 			req.TargetGroup,
 			req.ExcludedIDs,
 			req.RequireCompact,
+			req.RequiredResponsesImageGeneration,
 		)
 		if err != nil {
 			return nil, decision, err
@@ -749,6 +750,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		}
 	}
 	if projectionView != nil {
+		projectionView = projectionView.forResponsesImageGenerationRequirement(req.RequiredResponsesImageGeneration)
 		if affinityBinding != nil && !projectionView.bindingMatches(affinityBinding) {
 			_ = s.service.deleteOpenAIStickyAffinityBinding(ctx, req.GroupID, sessionHash)
 			affinityBinding = nil
@@ -827,7 +829,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		_ = s.service.clearOpenAIStickySessionBindings(ctx, req.GroupID, sessionHash)
 		return nil, nil
 	}
-	account = s.service.recheckSelectedProjectedOpenAIAccountFromDB(ctx, req.GroupID, account, req.RequestedModel, selectedGroup, req.TargetGroup)
+	account = s.service.recheckSelectedProjectedOpenAIAccountFromDBWithView(ctx, req.GroupID, account, req.RequestedModel, selectedGroup, req.TargetGroup, projectionView)
 	if account == nil || !s.isAccountTransportCompatible(account, req.RequiredTransport) || !account.SupportsOpenAIImageCapability(req.RequiredImageCapability) || !accountSupportsOpenAIResponsesImageGenerationRequirement(account, req.RequiredResponsesImageGeneration) || (req.RequireCompact && openAICompactSupportTier(account) == 0) {
 		if sticky != nil {
 			sticky.setEvalResult(openAIStickyEvalResultMissBindingInvalid)
@@ -1105,10 +1107,13 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		if err != nil {
 			return nil, "", 0, 0, 0, nil, err
 		}
+		if projectionView != nil {
+			projectionView = projectionView.forResponsesImageGenerationRequirement(req.RequiredResponsesImageGeneration)
+		}
 	}
 	if req.TargetGroup == TargetGroupExhausted {
 		if projectionView != nil {
-			accounts, reserveAccounts, err = s.service.listOpenAIExhaustedWithReserveOverlay(ctx, req.GroupID, req.RequestedModel)
+			accounts, reserveAccounts, err = s.service.listOpenAIExhaustedWithReserveOverlayFromView(ctx, projectionView)
 		} else if allowLegacyFallback && req.RequestedModel != "" && s.service != nil && s.service.schedulerSnapshot != nil {
 			accounts, err = s.service.listSchedulableAccounts(ctx, req.GroupID, req.TargetGroup)
 			if err == nil {
@@ -1126,7 +1131,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		accounts, err = s.service.listSchedulableAccounts(ctx, req.GroupID, req.TargetGroup)
 		if err == nil && (req.TargetGroup == TargetGroupAny || req.TargetGroup == TargetGroupActive) {
 			if projectionView != nil {
-				_, reserveAccounts, err = s.service.listOpenAIExhaustedWithReserveOverlay(ctx, req.GroupID, req.RequestedModel)
+				_, reserveAccounts, err = s.service.listOpenAIExhaustedWithReserveOverlayFromView(ctx, projectionView)
 			} else {
 				reserveAccounts, err = s.service.listCurrentOpenAILegacyReserveOverlay(ctx, req.GroupID, req.RequestedModel)
 			}
@@ -1469,11 +1474,11 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 	}
 
 	prepareCandidate := func(candidate openAIAccountCandidateScore) (*Account, bool) {
-		fresh := s.service.resolveFreshProjectedOpenAIAccount(ctx, req.GroupID, candidate.account, req.RequestedModel, candidate.selectedGroup, req.TargetGroup, req.RequireCompact)
+		fresh := s.service.resolveFreshProjectedOpenAIAccountWithView(ctx, req.GroupID, candidate.account, req.RequestedModel, candidate.selectedGroup, req.TargetGroup, req.RequireCompact, projectionView)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !fresh.SupportsOpenAIImageCapability(req.RequiredImageCapability) || !accountSupportsOpenAIResponsesImageGenerationRequirement(fresh, req.RequiredResponsesImageGeneration) {
 			return nil, false
 		}
-		fresh = s.service.recheckSelectedProjectedOpenAIAccountFromDB(ctx, req.GroupID, fresh, req.RequestedModel, candidate.selectedGroup, req.TargetGroup)
+		fresh = s.service.recheckSelectedProjectedOpenAIAccountFromDBWithView(ctx, req.GroupID, fresh, req.RequestedModel, candidate.selectedGroup, req.TargetGroup, projectionView)
 		if fresh == nil || !s.isAccountTransportCompatible(fresh, req.RequiredTransport) || !fresh.SupportsOpenAIImageCapability(req.RequiredImageCapability) || !accountSupportsOpenAIResponsesImageGenerationRequirement(fresh, req.RequiredResponsesImageGeneration) {
 			return nil, false
 		}

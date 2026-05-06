@@ -237,6 +237,56 @@ func TestPreviousResponseReserveBindingReadsSameProjectionKeyAsSysModel(t *testi
 	}
 }
 
+func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_ResponsesImageGenerationUsesImageProjection(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(2802)
+	responseID := "resp_prev_image_projection_reserve"
+	exhaustedAccount := newOpenAIProjectionExhaustedAccount(3421, 1, []string{"gpt-5.5"})
+	freeReserve := newOpenAIProjectionActiveAccount(3422, 1, 20, []string{"gpt-5.5"})
+	paidImageReserve := newOpenAIProjectionPaidTierAccount(3423, 1, "team", []string{"gpt-5.5", "gpt-image-2"})
+	paidImageReserve.Extra["openai_oauth_responses_websockets_v2_enabled"] = true
+	projection := BuildOpenAIModelSubsetProjection(&OpenAIProjectionInputs{
+		Bucket:           SchedulerBucket{GroupID: groupID, Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+		CanonicalCatalog: []string{"gpt-5.5"},
+		AccountsAll:      []Account{exhaustedAccount, freeReserve, paidImageReserve},
+	})
+	cache := newOpenAIAffinityGatewayCacheStub()
+	store := NewOpenAIWSStateStore(cache)
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{exhaustedAccount, freeReserve, paidImageReserve}},
+		cache:              cache,
+		cfg:                newOpenAIWSV2TestConfig(),
+		schedulerSnapshot:  &SchedulerSnapshotService{cache: &openAISnapshotCacheStub{openAIState: newOpenAIBucketStateForTest([]Account{exhaustedAccount, freeReserve, paidImageReserve}, 71, projection.Models, projection)}},
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+		openaiWSStateStore: store,
+	}
+	projectionBuiltAt := time.Unix(1_716_000_000, 0).UTC()
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, responseID, paidImageReserve.ID, time.Hour))
+	cache.setAffinityBinding(t, openAIResponseAffinityBindingNamespace, groupID, responseID, &openAIAffinityBinding{
+		BoundAccountID:     paidImageReserve.ID,
+		AffinityDomain:     openAISelectedGroupReserve,
+		SelectedGroup:      openAISelectedGroupReserve,
+		ProjectionVersion:  71,
+		ProjectionModelKey: "gpt-5.5",
+		ProjectionBuiltAt:  &projectionBuiltAt,
+	}, time.Hour)
+
+	selection, binding, err := svc.SelectAccountByPreviousResponseIDWithResponsesImageGeneration(ctx, &groupID, responseID, "gpt-5.5", TargetGroupExhausted, nil, false, &OpenAIResponsesImageGenerationRequirement{Enabled: true, MainModel: "gpt-5.5", ImageModel: "gpt-image-2"})
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, paidImageReserve.ID, selection.Account.ID)
+	require.Equal(t, openAISelectedGroupReserve, selection.SelectedGroup)
+	require.NotNil(t, binding)
+	require.Equal(t, openAISelectedGroupReserve, binding.SelectedGroup)
+	require.Equal(t, openAISelectedGroupReserve, binding.AffinityDomain)
+	require.Equal(t, int64(71), binding.ProjectionVersion)
+	require.Equal(t, "gpt-5.5", binding.ProjectionModelKey)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
 func TestWSContinuationReserveBindingAcceptedForActiveAny(t *testing.T) {
 	ctx := context.Background()
 	exhaustedBase := newOpenAIExhaustedAccountForTest(43001, 4)

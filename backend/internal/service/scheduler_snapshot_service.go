@@ -794,6 +794,11 @@ func (s *SchedulerSnapshotService) publishBucketSnapshot(ctx context.Context, bu
 	if err != nil {
 		return err
 	}
+	if previousState, hit, err := s.cache.GetOpenAIBucketState(ctx, bucket); err != nil {
+		return err
+	} else if hit && previousState != nil {
+		inputs.PreviousProjection = previousState.Projection
+	}
 	state := &OpenAISchedulerBucketState{
 		Accounts:           ptrAccounts(accounts),
 		ProjectionAccounts: ptrAccounts(inputs.AccountsAll),

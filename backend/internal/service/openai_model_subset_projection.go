@@ -23,11 +23,12 @@ type OpenAIModelCapabilitySnapshot struct {
 }
 
 type OpenAIProjectionInputs struct {
-	Bucket            SchedulerBucket
-	CanonicalCatalog  []string
-	AccountsAll       []Account
-	ExhaustedBroadIDs map[int64]struct{}
-	CapabilityByID    map[int64]OpenAIModelCapabilitySnapshot
+	Bucket             SchedulerBucket
+	CanonicalCatalog   []string
+	AccountsAll        []Account
+	ExhaustedBroadIDs  map[int64]struct{}
+	CapabilityByID     map[int64]OpenAIModelCapabilitySnapshot
+	PreviousProjection *OpenAIModelSubsetProjection
 }
 
 type OpenAIModelRoleView struct {
@@ -37,9 +38,10 @@ type OpenAIModelRoleView struct {
 }
 
 type OpenAIModelSubsetProjection struct {
-	Bucket            SchedulerBucket
-	AccountReserveIDs map[int64]struct{}
-	Models            map[string]OpenAIModelRoleView
+	Bucket                         SchedulerBucket
+	AccountReserveIDs              map[int64]struct{}
+	Models                         map[string]OpenAIModelRoleView
+	ResponsesImageGenerationModels map[string]OpenAIModelRoleView `json:"responses_image_generation_models,omitempty"`
 }
 
 type openAIProjectionModelMembers struct {
@@ -56,6 +58,19 @@ func (p *OpenAIModelSubsetProjection) ViewForModel(model string) (OpenAIModelRol
 		return view, true
 	}
 	return OpenAIModelRoleView{CanonicalModel: canonical}, false
+}
+
+func (p *OpenAIModelSubsetProjection) ViewForResponsesImageGeneration(requirement *OpenAIResponsesImageGenerationRequirement) (OpenAIModelRoleView, bool) {
+	requirement = requirement.normalized()
+	if requirement == nil || p == nil || p.ResponsesImageGenerationModels == nil {
+		return OpenAIModelRoleView{}, false
+	}
+	key := openAIResponsesImageGenerationProjectionKey(requirement.MainModel, requirement.ImageModel)
+	if key == "" {
+		return OpenAIModelRoleView{}, false
+	}
+	view, ok := p.ResponsesImageGenerationModels[key]
+	return view, ok
 }
 
 func BuildOpenAIModelSubsetProjection(inputs *OpenAIProjectionInputs) *OpenAIModelSubsetProjection {
@@ -79,7 +94,17 @@ func BuildOpenAIModelSubsetProjection(inputs *OpenAIProjectionInputs) *OpenAIMod
 		projection.AccountReserveIDs[accountID] = struct{}{}
 	}
 	projection.Models = liftModelSubsetReserveIdentities(localViews, supportedModels, liftableReserveIDs)
+	projection.ResponsesImageGenerationModels = buildOpenAIResponsesImageGenerationRoleViews(inputs, projection)
 	return projection
+}
+
+func openAIResponsesImageGenerationProjectionKey(mainModel string, imageModel string) string {
+	mainModel = NormalizeOpenAIProjectionModelKey(mainModel)
+	imageModel = normalizeOpenAIImageGenerationBuiltinModel(imageModel)
+	if mainModel == "" || imageModel != openAIImageGenerationBuiltinDefaultModel {
+		return ""
+	}
+	return mainModel + "|responses_image_generation|" + imageModel
 }
 
 func BuildOpenAICanonicalModelCatalog(accounts []Account, explicitCapabilityModels []string, configuredModels []string) []string {
@@ -390,6 +415,167 @@ func liftModelSubsetReserveIdentities(local map[string]OpenAIModelRoleView, supp
 		}
 	}
 	return lifted
+}
+
+func buildOpenAIResponsesImageGenerationRoleViews(inputs *OpenAIProjectionInputs, base *OpenAIModelSubsetProjection) map[string]OpenAIModelRoleView {
+	if inputs == nil || base == nil || len(base.Models) == 0 {
+		return nil
+	}
+	catalog := canonicalizeOpenAIProjectionCatalog(inputs.CanonicalCatalog)
+	catalogSet := stringSliceToSet(catalog)
+	views := make(map[string]OpenAIModelRoleView)
+	for _, mainModel := range catalog {
+		if normalizeOpenAIImageGenerationBuiltinModel(mainModel) == openAIImageGenerationBuiltinDefaultModel {
+			continue
+		}
+		key := openAIResponsesImageGenerationProjectionKey(mainModel, openAIImageGenerationBuiltinDefaultModel)
+		if key == "" {
+			continue
+		}
+		views[key] = buildOpenAIResponsesImageGenerationRoleView(inputs, base, catalogSet, key, mainModel)
+	}
+	if len(views) == 0 {
+		return nil
+	}
+	return views
+}
+
+func buildOpenAIResponsesImageGenerationRoleView(inputs *OpenAIProjectionInputs, base *OpenAIModelSubsetProjection, catalogSet map[string]struct{}, key string, mainModel string) OpenAIModelRoleView {
+	active := make([]Account, 0, len(inputs.AccountsAll))
+	exhausted := make([]Account, 0, len(inputs.AccountsAll))
+	for _, account := range inputs.AccountsAll {
+		snapshot, ok := inputs.CapabilityByID[account.ID]
+		if !ok {
+			snapshot = buildOpenAIModelCapabilitySnapshot(account)
+		}
+		if !accountSupportsOpenAIResponsesImageGenerationProjection(account, mainModel, openAIImageGenerationBuiltinDefaultModel, snapshot, catalogSet) {
+			continue
+		}
+		if account.IsSchedulableForTargetGroup(TargetGroupExhausted) {
+			exhausted = append(exhausted, account)
+			continue
+		}
+		if account.IsSchedulableForTargetGroup(TargetGroupActive) {
+			active = append(active, account)
+		}
+	}
+	return OpenAIModelRoleView{
+		CanonicalModel:     mainModel,
+		ExhaustedBaseIDs:   sortedOpenAIProjectionIDs(exhausted),
+		ReserveOverflowIDs: sortedOpenAIProjectionIDs(buildOpenAIResponsesImageGenerationReserveOverflowPool(active, exhausted, collectOpenAIResponsesImageGenerationPreferredReserveIDs(base, inputs.PreviousProjection, key))),
+	}
+
+}
+
+func accountSupportsOpenAIResponsesImageGenerationProjection(account Account, mainModel string, imageModel string, snapshot OpenAIModelCapabilitySnapshot, catalog map[string]struct{}) bool {
+	if !account.IsOpenAI() {
+		return false
+	}
+	if account.IsOpenAIOAuth() {
+		planType := strings.TrimSpace(account.GetCredential("plan_type"))
+		if planType == "" || strings.EqualFold(planType, "free") {
+			return false
+		}
+	}
+	if !account.SupportsProjectionModel(mainModel, snapshot, catalog) {
+		return false
+	}
+	normalizedImage := normalizeOpenAIImageGenerationBuiltinModel(imageModel)
+	if normalizedImage != openAIImageGenerationBuiltinDefaultModel {
+		return false
+	}
+	return account.hasExplicitOpenAIResponsesImageModelEvidence(normalizedImage)
+}
+
+func buildOpenAIResponsesImageGenerationReserveOverflowPool(activeAccounts []Account, exhaustedAccounts []Account, preferredReserveIDs []int64) []Account {
+	reserveCandidates := buildOpenAIReserveCandidatePool(activeAccounts)
+	if len(reserveCandidates) == 0 {
+		reserveCandidates = buildOpenAIModelSubsetReserveCandidatePool(activeAccounts)
+	}
+	return buildOpenAIReserveOverflowPoolFromCandidatesWithPreferred(reserveCandidates, exhaustedAccounts, preferredReserveIDs)
+}
+
+func buildOpenAIReserveOverflowPoolFromCandidatesWithPreferred(reserveCandidates []Account, exhaustedAccounts []Account, preferredReserveIDs []int64) []Account {
+	if len(reserveCandidates) == 0 {
+		return nil
+	}
+	exhaustedCapacity := calculateOpenAIConcurrentCapacity(exhaustedAccounts)
+	activeReserveCapacity := calculateOpenAIConcurrentCapacity(reserveCandidates)
+	totalCapacity := exhaustedCapacity + activeReserveCapacity
+	if totalCapacity <= 0 {
+		return nil
+	}
+	targetCapacity := (totalCapacity*60 + 99) / 100
+	reserveNeeded := targetCapacity - exhaustedCapacity
+	if reserveNeeded <= 0 {
+		return nil
+	}
+	byID := make(map[int64]Account, len(reserveCandidates))
+	for _, account := range reserveCandidates {
+		byID[account.ID] = account
+	}
+	reservePool := make([]Account, 0, len(reserveCandidates))
+	selected := make(map[int64]struct{})
+	reserveCapacity := 0
+	appendCandidate := func(account Account) bool {
+		if _, ok := selected[account.ID]; ok {
+			return reserveCapacity >= reserveNeeded
+		}
+		reservePool = append(reservePool, account)
+		selected[account.ID] = struct{}{}
+		if account.Concurrency > 0 {
+			reserveCapacity += account.Concurrency
+		}
+		return reserveCapacity >= reserveNeeded
+	}
+	for _, accountID := range preferredReserveIDs {
+		account, ok := byID[accountID]
+		if !ok {
+			continue
+		}
+		if appendCandidate(account) {
+			return reservePool
+		}
+	}
+	for i := len(reserveCandidates) - 1; i >= 0; i-- {
+		if appendCandidate(reserveCandidates[i]) {
+			break
+		}
+	}
+	return reservePool
+}
+
+func collectOpenAIResponsesImageGenerationPreferredReserveIDs(base *OpenAIModelSubsetProjection, previous *OpenAIModelSubsetProjection, key string) []int64 {
+	seen := make(map[int64]struct{})
+	reserveIDs := make([]int64, 0)
+	appendID := func(accountID int64) {
+		if _, ok := seen[accountID]; ok {
+			return
+		}
+		seen[accountID] = struct{}{}
+		reserveIDs = append(reserveIDs, accountID)
+	}
+	if previous != nil && previous.ResponsesImageGenerationModels != nil {
+		if previousView, ok := previous.ResponsesImageGenerationModels[key]; ok {
+			for _, accountID := range previousView.ReserveOverflowIDs {
+				appendID(accountID)
+			}
+		}
+	}
+	if base != nil {
+		models := make([]string, 0, len(base.Models))
+		for model := range base.Models {
+			models = append(models, model)
+		}
+		sort.Strings(models)
+		for _, model := range models {
+			view := base.Models[model]
+			for _, accountID := range view.ReserveOverflowIDs {
+				appendID(accountID)
+			}
+		}
+	}
+	return reserveIDs
 }
 
 func sortedOpenAIProjectionIDs(accounts []Account) []int64 {

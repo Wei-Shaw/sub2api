@@ -414,6 +414,103 @@ func TestBuildOpenAIModelSubsetProjection_AsymmetricMatrixLiftsReserveAcrossSupp
 	require.ElementsMatch(t, []int64{1, 3}, projectionReserveIDSlice(projection.AccountReserveIDs))
 }
 
+func TestBuildOpenAIModelSubsetProjection_ResponsesImageGenerationInheritsReserveIdentity(t *testing.T) {
+	t.Parallel()
+
+	previousReserve := newOpenAIProjectionPaidTierAccount(71, 1, "team", []string{"gpt-5.5", "gpt-image-2"})
+	otherSubsetReserve := newOpenAIProjectionPaidTierAccount(72, 1, "team", []string{"gpt-5.4", "gpt-5.5", "gpt-image-2"})
+	currentReserve := newOpenAIProjectionPaidTierAccount(73, 1, "team", []string{"gpt-5.5", "gpt-image-2"})
+	exhausted55 := newOpenAIProjectionExhaustedAccount(74, 2, []string{"gpt-5.5", "gpt-image-2"})
+	key := openAIResponsesImageGenerationProjectionKey("gpt-5.5", "gpt-image-2")
+
+	projection := BuildOpenAIModelSubsetProjection(&OpenAIProjectionInputs{
+		Bucket:           SchedulerBucket{GroupID: 2, Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+		CanonicalCatalog: []string{"gpt-5.4", "gpt-5.5"},
+		AccountsAll:      []Account{previousReserve, otherSubsetReserve, currentReserve, exhausted55},
+		PreviousProjection: &OpenAIModelSubsetProjection{ResponsesImageGenerationModels: map[string]OpenAIModelRoleView{
+			key: {CanonicalModel: "gpt-5.5", ReserveOverflowIDs: []int64{previousReserve.ID}},
+		}},
+	})
+
+	base54, ok := projection.ViewForModel("gpt-5.4")
+	require.True(t, ok)
+	require.Contains(t, base54.ReserveOverflowIDs, otherSubsetReserve.ID)
+	base55, ok := projection.ViewForModel("gpt-5.5")
+	require.True(t, ok)
+	require.NotContains(t, base55.ReserveOverflowIDs, previousReserve.ID)
+	view, ok := projection.ViewForResponsesImageGeneration(&OpenAIResponsesImageGenerationRequirement{Enabled: true, MainModel: "gpt-5.5", ImageModel: "gpt-image-2"})
+	require.True(t, ok)
+	require.ElementsMatch(t, []int64{previousReserve.ID}, view.ReserveOverflowIDs)
+	require.NotContains(t, view.ExhaustedBaseIDs, previousReserve.ID)
+}
+
+func TestBuildOpenAIModelSubsetProjection_ResponsesImageGenerationPrefersOtherSubsetReserveWithinCapacity(t *testing.T) {
+	t.Parallel()
+
+	otherSubsetReserve := newOpenAIProjectionPaidTierAccount(82, 1, "team", []string{"gpt-5.4", "gpt-5.5", "gpt-image-2"})
+	currentReserve := newOpenAIProjectionPaidTierAccount(83, 1, "team", []string{"gpt-5.5", "gpt-image-2"})
+	exhausted55 := newOpenAIProjectionExhaustedAccount(84, 2, []string{"gpt-5.5", "gpt-image-2"})
+
+	projection := BuildOpenAIModelSubsetProjection(&OpenAIProjectionInputs{
+		Bucket:           SchedulerBucket{GroupID: 2, Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+		CanonicalCatalog: []string{"gpt-5.4", "gpt-5.5"},
+		AccountsAll:      []Account{otherSubsetReserve, currentReserve, exhausted55},
+	})
+
+	base54, ok := projection.ViewForModel("gpt-5.4")
+	require.True(t, ok)
+	require.Contains(t, base54.ReserveOverflowIDs, otherSubsetReserve.ID)
+	base55, ok := projection.ViewForModel("gpt-5.5")
+	require.True(t, ok)
+	require.Contains(t, base55.ReserveOverflowIDs, currentReserve.ID)
+	view, ok := projection.ViewForResponsesImageGeneration(&OpenAIResponsesImageGenerationRequirement{Enabled: true, MainModel: "gpt-5.5", ImageModel: "gpt-image-2"})
+	require.True(t, ok)
+	require.ElementsMatch(t, []int64{otherSubsetReserve.ID}, view.ReserveOverflowIDs)
+}
+
+func TestBuildOpenAIModelSubsetProjection_ResponsesImageGenerationFillsRemainingCapacityAfterPreviousReserve(t *testing.T) {
+	t.Parallel()
+
+	previousReserve := newOpenAIProjectionPaidTierAccount(91, 1, "team", []string{"gpt-5.5", "gpt-image-2"})
+	otherSubsetReserve := newOpenAIProjectionPaidTierAccount(92, 1, "team", []string{"gpt-5.4", "gpt-5.5", "gpt-image-2"})
+	currentReserve := newOpenAIProjectionPaidTierAccount(93, 1, "team", []string{"gpt-5.5", "gpt-image-2"})
+	exhausted55 := newOpenAIProjectionExhaustedAccount(94, 1, []string{"gpt-5.5", "gpt-image-2"})
+	key := openAIResponsesImageGenerationProjectionKey("gpt-5.5", "gpt-image-2")
+
+	projection := BuildOpenAIModelSubsetProjection(&OpenAIProjectionInputs{
+		Bucket:           SchedulerBucket{GroupID: 2, Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+		CanonicalCatalog: []string{"gpt-5.4", "gpt-5.5"},
+		AccountsAll:      []Account{previousReserve, otherSubsetReserve, currentReserve, exhausted55},
+		PreviousProjection: &OpenAIModelSubsetProjection{ResponsesImageGenerationModels: map[string]OpenAIModelRoleView{
+			key: {CanonicalModel: "gpt-5.5", ReserveOverflowIDs: []int64{previousReserve.ID}},
+		}},
+	})
+
+	view, ok := projection.ViewForResponsesImageGeneration(&OpenAIResponsesImageGenerationRequirement{Enabled: true, MainModel: "gpt-5.5", ImageModel: "gpt-image-2"})
+	require.True(t, ok)
+	require.ElementsMatch(t, []int64{previousReserve.ID, otherSubsetReserve.ID}, view.ReserveOverflowIDs)
+	require.NotContains(t, view.ReserveOverflowIDs, currentReserve.ID)
+}
+
+func TestBuildOpenAIModelSubsetProjection_ResponsesImageGenerationRequiresProjectionMainModelSupport(t *testing.T) {
+	t.Parallel()
+
+	imageOnly := newOpenAIProjectionPaidTierAccount(101, 1, "team", []string{"gpt-image-2"})
+	exhausted55 := newOpenAIProjectionExhaustedAccount(102, 1, []string{"gpt-5.5", "gpt-image-2"})
+
+	projection := BuildOpenAIModelSubsetProjection(&OpenAIProjectionInputs{
+		Bucket:           SchedulerBucket{GroupID: 2, Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+		CanonicalCatalog: []string{"gpt-5.5"},
+		AccountsAll:      []Account{imageOnly, exhausted55},
+	})
+
+	view, ok := projection.ViewForResponsesImageGeneration(&OpenAIResponsesImageGenerationRequirement{Enabled: true, MainModel: "gpt-5.5", ImageModel: "gpt-image-2"})
+	require.True(t, ok)
+	require.ElementsMatch(t, []int64{exhausted55.ID}, view.ExhaustedBaseIDs)
+	require.NotContains(t, view.ReserveOverflowIDs, imageOnly.ID)
+	require.Empty(t, view.ReserveOverflowIDs)
+}
+
 func TestBuildOpenAIModelSubsetProjection_ExhaustedEmptyMeansOneHundredPercent(t *testing.T) {
 	t.Parallel()
 

@@ -706,6 +706,177 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_ResponsesImageGeneratio
 	}
 }
 
+func TestOpenAIGatewayService_SelectAccountWithScheduler_SysResponsesImageGenerationUsesPaidImageReserveWhenFreeReserveCannot(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(10113)
+	exhaustedAccount := newOpenAIProjectionExhaustedAccount(36131, 1, []string{"gpt-5.5"})
+	freeReserve := newOpenAIProjectionActiveAccount(36132, 1, 20, []string{"gpt-5.5"})
+	paidImageReserve := newOpenAIProjectionPaidTierAccount(36133, 1, "team", []string{"gpt-5.5", "gpt-image-2"})
+	projection := BuildOpenAIModelSubsetProjection(&OpenAIProjectionInputs{
+		Bucket:           SchedulerBucket{GroupID: groupID, Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+		CanonicalCatalog: []string{"gpt-5.5"},
+		AccountsAll:      []Account{exhaustedAccount, freeReserve, paidImageReserve},
+	})
+	loadMap := map[int64]*AccountLoadInfo{
+		exhaustedAccount.ID: {AccountID: exhaustedAccount.ID, CurrentConcurrency: 1, LoadRate: 100},
+		freeReserve.ID:      {AccountID: freeReserve.ID, CurrentConcurrency: 0, LoadRate: 0},
+		paidImageReserve.ID: {AccountID: paidImageReserve.ID, CurrentConcurrency: 0, LoadRate: 0},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.LBTopK = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 1
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{exhaustedAccount, freeReserve, paidImageReserve}},
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                cfg,
+		schedulerSnapshot:  &SchedulerSnapshotService{cache: &openAISnapshotCacheStub{openAIState: newOpenAIBucketStateForTest([]Account{exhaustedAccount, freeReserve, paidImageReserve}, 31, projection.Models, projection)}},
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{loadMap: loadMap}),
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+	}
+
+	selection, decision, err := svc.SelectAccountWithSchedulerRequest(ctx, OpenAIAccountScheduleRequest{
+		GroupID:        &groupID,
+		TargetGroup:    TargetGroupExhausted,
+		SessionHash:    "session_hash_sys_image_paid_reserve",
+		RequestedModel: "gpt-5.5",
+		RequiredResponsesImageGeneration: &OpenAIResponsesImageGenerationRequirement{
+			Enabled:    true,
+			MainModel:  "gpt-5.5",
+			ImageModel: "gpt-image-2",
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, paidImageReserve.ID, selection.Account.ID)
+	require.Equal(t, openAISelectedGroupReserve, decision.SelectedGroup)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_NonImageUsesClassicReserveWhenImageReservePresent(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(10114)
+	exhaustedAccount := newOpenAIProjectionExhaustedAccount(36141, 1, []string{"gpt-5.5"})
+	freeReserve := newOpenAIProjectionActiveAccount(36142, 1, 20, []string{"gpt-5.5"})
+	paidImageReserve := newOpenAIProjectionPaidTierAccount(36143, 1, "team", []string{"gpt-5.5", "gpt-image-2"})
+	freeReserve.Priority = 100
+	paidImageReserve.Priority = -100
+	projection := BuildOpenAIModelSubsetProjection(&OpenAIProjectionInputs{
+		Bucket:           SchedulerBucket{GroupID: groupID, Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+		CanonicalCatalog: []string{"gpt-5.5"},
+		AccountsAll:      []Account{exhaustedAccount, freeReserve, paidImageReserve},
+	})
+	view, ok := projection.ViewForModel("gpt-5.5")
+	require.True(t, ok)
+	require.Contains(t, view.ReserveOverflowIDs, freeReserve.ID)
+	require.NotContains(t, view.ReserveOverflowIDs, paidImageReserve.ID)
+	_, paidIsClassicReserve := projection.AccountReserveIDs[paidImageReserve.ID]
+	require.False(t, paidIsClassicReserve)
+	loadMap := map[int64]*AccountLoadInfo{
+		exhaustedAccount.ID: {AccountID: exhaustedAccount.ID, CurrentConcurrency: 1, LoadRate: 100},
+		freeReserve.ID:      {AccountID: freeReserve.ID, CurrentConcurrency: 0, LoadRate: 0},
+		paidImageReserve.ID: {AccountID: paidImageReserve.ID, CurrentConcurrency: 0, LoadRate: 0},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.LBTopK = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 1
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{exhaustedAccount, freeReserve, paidImageReserve}},
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                cfg,
+		schedulerSnapshot:  &SchedulerSnapshotService{cache: &openAISnapshotCacheStub{openAIState: newOpenAIBucketStateForTest([]Account{exhaustedAccount, freeReserve, paidImageReserve}, 32, projection.Models, projection)}},
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{loadMap: loadMap}),
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+	}
+
+	selection, decision, err := svc.SelectAccountWithSchedulerRequest(ctx, OpenAIAccountScheduleRequest{
+		GroupID:        &groupID,
+		TargetGroup:    TargetGroupExhausted,
+		SessionHash:    "session_hash_sys_non_image_classic_reserve",
+		RequestedModel: "gpt-5.5",
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, freeReserve.ID, selection.Account.ID)
+	require.Equal(t, openAISelectedGroupReserve, decision.SelectedGroup)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_ResponsesImageGenerationKeepsPreviousSubsetReserve(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(10115)
+	exhaustedAccount := newOpenAIProjectionExhaustedAccount(36151, 2, []string{"gpt-5.5", "gpt-image-2"})
+	previousImageReserve := newOpenAIProjectionPaidTierAccount(36152, 1, "team", []string{"gpt-5.5", "gpt-image-2"})
+	otherSubsetReserve := newOpenAIProjectionPaidTierAccount(36153, 1, "team", []string{"gpt-5.4", "gpt-5.5", "gpt-image-2"})
+	currentReserve := newOpenAIProjectionPaidTierAccount(36154, 1, "team", []string{"gpt-5.5", "gpt-image-2"})
+	previousImageReserve.Priority = -100
+	otherSubsetReserve.Priority = 100
+	currentReserve.Priority = 100
+	key := openAIResponsesImageGenerationProjectionKey("gpt-5.5", "gpt-image-2")
+	projection := BuildOpenAIModelSubsetProjection(&OpenAIProjectionInputs{
+		Bucket:           SchedulerBucket{GroupID: groupID, Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+		CanonicalCatalog: []string{"gpt-5.4", "gpt-5.5"},
+		AccountsAll:      []Account{exhaustedAccount, previousImageReserve, otherSubsetReserve, currentReserve},
+		PreviousProjection: &OpenAIModelSubsetProjection{ResponsesImageGenerationModels: map[string]OpenAIModelRoleView{
+			key: {CanonicalModel: "gpt-5.5", ReserveOverflowIDs: []int64{previousImageReserve.ID}},
+		}},
+	})
+	imageView, ok := projection.ViewForResponsesImageGeneration(&OpenAIResponsesImageGenerationRequirement{Enabled: true, MainModel: "gpt-5.5", ImageModel: "gpt-image-2"})
+	require.True(t, ok)
+	require.Contains(t, imageView.ReserveOverflowIDs, previousImageReserve.ID)
+	loadMap := map[int64]*AccountLoadInfo{
+		exhaustedAccount.ID:     {AccountID: exhaustedAccount.ID, CurrentConcurrency: 2, LoadRate: 100},
+		previousImageReserve.ID: {AccountID: previousImageReserve.ID, CurrentConcurrency: 0, LoadRate: 0},
+		otherSubsetReserve.ID:   {AccountID: otherSubsetReserve.ID, CurrentConcurrency: 0, LoadRate: 0},
+		currentReserve.ID:       {AccountID: currentReserve.ID, CurrentConcurrency: 0, LoadRate: 0},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.LBTopK = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 1
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: []Account{exhaustedAccount, previousImageReserve, otherSubsetReserve, currentReserve}},
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                cfg,
+		schedulerSnapshot:  &SchedulerSnapshotService{cache: &openAISnapshotCacheStub{openAIState: newOpenAIBucketStateForTest([]Account{exhaustedAccount, previousImageReserve, otherSubsetReserve, currentReserve}, 33, projection.Models, projection)}},
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{loadMap: loadMap}),
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+	}
+
+	selection, decision, err := svc.SelectAccountWithSchedulerRequest(ctx, OpenAIAccountScheduleRequest{
+		GroupID:        &groupID,
+		TargetGroup:    TargetGroupExhausted,
+		SessionHash:    "session_hash_sys_image_previous_reserve",
+		RequestedModel: "gpt-5.5",
+		RequiredResponsesImageGeneration: &OpenAIResponsesImageGenerationRequirement{
+			Enabled:    true,
+			MainModel:  "gpt-5.5",
+			ImageModel: "gpt-image-2",
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, previousImageReserve.ID, selection.Account.ID)
+	require.Equal(t, openAISelectedGroupReserve, decision.SelectedGroup)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
 func TestOpenAIGatewayService_SelectAccountWithScheduler_ResponsesImageGenerationClearsUnsupportedSticky(t *testing.T) {
 	resetOpenAIAdvancedSchedulerSettingCacheForTest()
 
@@ -5382,35 +5553,49 @@ func newOpenAIProjectedReserveRecheckServiceForTest(cache *openAIAffinityGateway
 	}
 }
 
-func newOpenAIBucketStateForTest(accounts []Account, projectionVersion int64, models map[string]OpenAIModelRoleView) *OpenAISchedulerBucketState {
+func newOpenAIBucketStateForTest(accounts []Account, projectionVersion int64, models map[string]OpenAIModelRoleView, projectionOpt ...*OpenAIModelSubsetProjection) *OpenAISchedulerBucketState {
 	accountPtrs := make([]*Account, 0, len(accounts))
 	for i := range accounts {
 		cloned := accounts[i]
 		accountPtrs = append(accountPtrs, &cloned)
 	}
-	projectionModels := make(map[string]OpenAIModelRoleView, len(models))
-	accountReserveIDs := make(map[int64]struct{})
-	for model, view := range models {
-		canonical := NormalizeOpenAIProjectionModelKey(model)
-		if canonical == "" {
-			continue
+	projection := (*OpenAIModelSubsetProjection)(nil)
+	if len(projectionOpt) > 0 && projectionOpt[0] != nil {
+		projection = projectionOpt[0]
+	} else {
+		projectionModels := make(map[string]OpenAIModelRoleView, len(models))
+		accountReserveIDs := make(map[int64]struct{})
+		classicReserveIDs := make(map[int64]struct{})
+		for _, account := range accounts {
+			if account.IsOpenAIReserveCandidate() {
+				classicReserveIDs[account.ID] = struct{}{}
+			}
 		}
-		view.CanonicalModel = canonical
-		projectionModels[canonical] = view
-		for _, accountID := range view.ReserveOverflowIDs {
-			accountReserveIDs[accountID] = struct{}{}
+		for model, view := range models {
+			canonical := NormalizeOpenAIProjectionModelKey(model)
+			if canonical == "" {
+				continue
+			}
+			view.CanonicalModel = canonical
+			projectionModels[canonical] = view
+			for _, accountID := range view.ReserveOverflowIDs {
+				if _, ok := classicReserveIDs[accountID]; ok {
+					accountReserveIDs[accountID] = struct{}{}
+				}
+			}
+		}
+		projection = &OpenAIModelSubsetProjection{
+			Bucket:            SchedulerBucket{Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
+			AccountReserveIDs: accountReserveIDs,
+			Models:            projectionModels,
 		}
 	}
 	return &OpenAISchedulerBucketState{
 		Accounts:           accountPtrs,
 		ProjectionAccounts: append([]*Account(nil), accountPtrs...),
-		Projection: &OpenAIModelSubsetProjection{
-			Bucket:            SchedulerBucket{Platform: PlatformOpenAI, Mode: SchedulerModeSingle},
-			AccountReserveIDs: accountReserveIDs,
-			Models:            projectionModels,
-		},
-		ProjectionVersion: projectionVersion,
-		BuiltAt:           time.Unix(1_716_000_000, 0).UTC(),
+		Projection:         projection,
+		ProjectionVersion:  projectionVersion,
+		BuiltAt:            time.Unix(1_716_000_000, 0).UTC(),
 	}
 }
 

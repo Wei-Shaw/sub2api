@@ -224,6 +224,15 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	if promptCacheKey != "" {
 		upstreamReq.Header.Set("session_id", generateSessionUUID(promptCacheKey))
 	}
+	var openCodeImageContinuation *openCodeImageServerContinuationContext
+	if isOpenCodeResponsesClient(c) {
+		openCodeImageContinuation = &openCodeImageServerContinuationContext{
+			RequestBody:    responsesBody,
+			Token:          token,
+			PromptCacheKey: promptCacheKey,
+			IsCodexCLI:     false,
+		}
+	}
 
 	// 7. Send request
 	proxyURL := ""
@@ -295,7 +304,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	if clientStream {
 		result, handleErr = s.handleChatStreamingResponse(resp, c, originalModel, billingModel, upstreamModel, includeUsage, startTime)
 	} else {
-		result, handleErr = s.handleChatBufferedStreamingResponse(resp, c, originalModel, billingModel, upstreamModel, startTime)
+		result, handleErr = s.handleChatBufferedStreamingResponse(ctx, resp, c, account, originalModel, billingModel, upstreamModel, startTime, openCodeImageContinuation)
 	}
 
 	// Propagate ServiceTier and ReasoningEffort to result for billing
@@ -369,12 +378,15 @@ func (s *OpenAIGatewayService) handleChatCompletionsErrorResponse(
 // upstream, finds the terminal event, converts to a Chat Completions JSON
 // response, and writes it to the client.
 func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
+	ctx context.Context,
 	resp *http.Response,
 	c *gin.Context,
+	account *Account,
 	originalModel string,
 	billingModel string,
 	upstreamModel string,
 	startTime time.Time,
+	continuation *openCodeImageServerContinuationContext,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
@@ -420,6 +432,9 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 				if event.Response.Usage.InputTokensDetails != nil {
 					usage.CacheReadInputTokens = event.Response.Usage.InputTokensDetails.CachedTokens
 				}
+				if event.Response.Usage.OutputTokensDetails != nil {
+					usage.ImageOutputTokens = event.Response.Usage.OutputTokensDetails.ImageTokens
+				}
 			}
 		}
 	}
@@ -441,6 +456,11 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	// When the terminal event has an empty output array, reconstruct from
 	// accumulated delta events so the client receives the full content.
 	acc.SupplementResponseOutput(finalResponse)
+	var err error
+	finalResponse, usage, err = s.applyOpenCodeImageContinuationToChatBufferedResponse(ctx, c, account, finalResponse, usage, originalModel, upstreamModel, continuation)
+	if err != nil {
+		return nil, err
+	}
 
 	chatResp := apicompat.ResponsesToChatCompletions(finalResponse, originalModel)
 
@@ -458,6 +478,57 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 		Stream:        false,
 		Duration:      time.Since(startTime),
 	}, nil
+}
+
+func (s *OpenAIGatewayService) applyOpenCodeImageContinuationToChatBufferedResponse(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	finalResponse *apicompat.ResponsesResponse,
+	usage OpenAIUsage,
+	originalModel string,
+	mappedModel string,
+	continuation *openCodeImageServerContinuationContext,
+) (*apicompat.ResponsesResponse, OpenAIUsage, error) {
+	if finalResponse == nil || !isOpenCodeResponsesClient(c) {
+		return finalResponse, usage, nil
+	}
+	body, err := json.Marshal(finalResponse)
+	if err != nil {
+		return nil, usage, fmt.Errorf("marshal opencode chat completions response: %w", err)
+	}
+	filteredBody, generated, changed, err := rewriteOpenCodeImageGenerationOutputWithGenerated(ctx, body, s.generatedImageStore, openCodeImageRewriteOptions{
+		BaseURL: s.resolveOpenCodeImageDownloadBaseURL(ctx, c),
+	})
+	if err != nil {
+		return nil, usage, fmt.Errorf("rewrite opencode chat completions image generation output: %w", err)
+	}
+	if changed {
+		body = filteredBody
+	}
+	if len(generated) > 0 && continuation != nil {
+		continuedBody, continuedUsage, continued, err := s.openCodeImageServerContinuationResponse(ctx, c, account, originalModel, mappedModel, continuation, generated)
+		if err != nil {
+			return nil, usage, err
+		}
+		if continued {
+			mergedBody, err := mergeOpenCodeImageContinuationResponseBodies(body, continuedBody)
+			if err != nil {
+				return nil, usage, err
+			}
+			body = mergedBody
+			addOpenAIUsage(&usage, continuedUsage)
+			changed = true
+		}
+	}
+	if !changed {
+		return finalResponse, usage, nil
+	}
+	var next apicompat.ResponsesResponse
+	if err := json.Unmarshal(body, &next); err != nil {
+		return nil, usage, fmt.Errorf("unmarshal opencode chat completions response: %w", err)
+	}
+	return &next, usage, nil
 }
 
 // handleChatStreamingResponse reads Responses SSE events from upstream,

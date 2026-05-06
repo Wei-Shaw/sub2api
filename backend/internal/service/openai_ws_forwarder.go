@@ -3805,9 +3805,23 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 	excludedIDs map[int64]struct{},
 	requireCompact bool,
 ) (*AccountSelectionResult, *openAIAffinityBinding, error) {
+	return s.SelectAccountByPreviousResponseIDWithResponsesImageGeneration(ctx, groupID, previousResponseID, requestedModel, targetGroup, excludedIDs, requireCompact, nil)
+}
+
+func (s *OpenAIGatewayService) SelectAccountByPreviousResponseIDWithResponsesImageGeneration(
+	ctx context.Context,
+	groupID *int64,
+	previousResponseID string,
+	requestedModel string,
+	targetGroup AccountTargetGroup,
+	excludedIDs map[int64]struct{},
+	requireCompact bool,
+	responsesImageGeneration *OpenAIResponsesImageGenerationRequirement,
+) (*AccountSelectionResult, *openAIAffinityBinding, error) {
 	if s == nil {
 		return nil, nil, nil
 	}
+	responsesImageGeneration = responsesImageGeneration.normalized()
 	responseID := strings.TrimSpace(previousResponseID)
 	if responseID == "" {
 		return nil, nil, nil
@@ -3853,6 +3867,7 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 		}
 	}
 	if projectionView != nil {
+		projectionView = projectionView.forResponsesImageGenerationRequirement(responsesImageGeneration)
 		if affinityBinding != nil && !projectionView.bindingMatches(affinityBinding) {
 			deleteOpenAIWSResponseAffinityBinding(ctx, store, derefGroupID(groupID), responseID)
 			affinityBinding = nil
@@ -3899,8 +3914,15 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 	if requestedModel != "" && (projectionView == nil || selectedGroup == string(TargetGroupActive)) && !account.IsModelSupported(requestedModel) {
 		return nil, nil, nil
 	}
-	account = s.recheckSelectedProjectedOpenAIAccountFromDB(ctx, groupID, account, requestedModel, selectedGroup, targetGroup)
+	if !accountSupportsOpenAIResponsesImageGenerationRequirement(account, responsesImageGeneration) {
+		return nil, nil, nil
+	}
+	account = s.recheckSelectedProjectedOpenAIAccountFromDBWithView(ctx, groupID, account, requestedModel, selectedGroup, targetGroup, projectionView)
 	if account == nil {
+		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
+		return nil, nil, nil
+	}
+	if !accountSupportsOpenAIResponsesImageGenerationRequirement(account, responsesImageGeneration) {
 		_ = store.DeleteResponseAccount(ctx, derefGroupID(groupID), responseID)
 		return nil, nil, nil
 	}

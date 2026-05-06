@@ -2044,6 +2044,64 @@ func TestResponsesShapeChatCompletionsBuiltinToolsAugmentsAndStripsPrivateField(
 	require.NotContains(t, imageTool, "enabled")
 }
 
+func TestResponsesShapeChatCompletions_OpenCodeImageGenerationContinuesServerSide(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.5-Sys","stream":false,"input":[{"role":"user","content":"draw a cat and continue"}],"metadata":{"builtin_tools":{"image_generation":{"enabled":true,"model":"gpt-image-2","output_format":"png"}}},"tool_choice":{"type":"image_generation"}}`)
+	c, rec := newOpenAITestContext(t, "/v1/chat/completions", body)
+	c.Request.Header.Set("User-Agent", "opencode/1.0")
+
+	upstream := &httpUpstreamSequenceRecorder{responses: []*http.Response{
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+				`event: response.completed`,
+				`data: {"type":"response.completed","response":{"id":"resp_img","object":"response","model":"gpt-5.5","status":"completed","output":[{"id":"ig_1","type":"image_generation_call","status":"completed","result":"` + pngB64 + `","output_format":"png"}],"usage":{"input_tokens":7,"output_tokens":9,"output_tokens_details":{"image_tokens":4}}}}`,
+				``,
+				`data: [DONE]`,
+			}, "\n"))),
+		},
+		{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"id":"resp_continue","object":"response","model":"gpt-5.5","status":"completed","output":[{"type":"message","id":"msg_continue","role":"assistant","status":"completed","content":[{"type":"output_text","text":"continued chat after image"}]}],"usage":{"input_tokens":3,"output_tokens":5}}`)),
+		},
+	}}
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Server.FrontendURL = "https://example.com"
+	svc := &OpenAIGatewayService{cfg: cfg, httpUpstream: upstream, generatedImageStore: newTestOpenAIGeneratedImageStore(t, fixedNow)}
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+
+	result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "")
+
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, 2, upstream.callCount, "OpenCode chat completions image responses must trigger server-side continuation")
+	require.Len(t, upstream.bodies, 2)
+
+	continuedBody := string(upstream.bodies[1])
+	require.Contains(t, continuedBody, `"type":"function_call"`)
+	require.Contains(t, continuedBody, `"type":"function_call_output"`)
+	require.Contains(t, continuedBody, openCodeImageServerContinuationToolName)
+	require.Contains(t, continuedBody, "download the image from the URL above")
+	require.NotContains(t, continuedBody, `"tool_choice"`)
+	require.NotContains(t, continuedBody, pngB64)
+
+	clientBody := rec.Body.String()
+	require.Contains(t, clientBody, "Generated image saved by sub2api")
+	require.Contains(t, clientBody, "https://example.com/sub2api/generated-images/")
+	require.Contains(t, clientBody, "continued chat after image")
+	require.NotContains(t, clientBody, "image_generation_call")
+	require.NotContains(t, clientBody, pngB64)
+	require.EqualValues(t, 10, gjson.Get(clientBody, "usage.prompt_tokens").Int())
+	require.EqualValues(t, 14, gjson.Get(clientBody, "usage.completion_tokens").Int())
+	require.EqualValues(t, 24, gjson.Get(clientBody, "usage.total_tokens").Int())
+	require.NotNil(t, result)
+	require.Equal(t, 10, result.Usage.InputTokens)
+	require.Equal(t, 14, result.Usage.OutputTokens)
+	require.Equal(t, 4, result.Usage.ImageOutputTokens)
+}
+
 func TestResponsesShapeChatCompletionsBuiltinToolsMatchesExplicitToolPromptCacheKey(t *testing.T) {
 	forward := func(t *testing.T, body []byte) map[string]any {
 		t.Helper()
@@ -2516,6 +2574,29 @@ func TestOpenAIGatewayService_ProjectionMissFailsClosedWithoutLiveReserveFallbac
 
 	_, _, err := svc.listOpenAIExhaustedWithReserveOverlay(ctx, &groupID, "gpt-5.6")
 	require.ErrorIs(t, err, ErrSchedulerCacheNotReady)
+}
+
+func TestOpenAIProjectionViewForResponsesImageGenerationMissingViewFailsClosed(t *testing.T) {
+	imageReserve := newOpenAIProjectionPaidTierAccount(6411, 1, "team", []string{"gpt-5.5", "gpt-image-2"})
+	state := newOpenAIBucketStateForTest([]Account{imageReserve}, 12, map[string]OpenAIModelRoleView{
+		"gpt-5.5": {
+			CanonicalModel:     "gpt-5.5",
+			ReserveOverflowIDs: []int64{imageReserve.ID},
+		},
+	})
+	projectionView := &openAIProjectionViewResult{
+		state:          state,
+		view:           state.Projection.Models["gpt-5.5"],
+		canonicalModel: "gpt-5.5",
+	}
+
+	imageView := projectionView.forResponsesImageGenerationRequirement(&OpenAIResponsesImageGenerationRequirement{Enabled: true, MainModel: "gpt-5.5", ImageModel: "gpt-image-2"})
+
+	require.NotNil(t, imageView)
+	require.Equal(t, "gpt-5.5", imageView.canonicalModel)
+	require.Empty(t, imageView.view.ExhaustedBaseIDs)
+	require.Empty(t, imageView.view.ReserveOverflowIDs)
+	require.False(t, imageView.containsReserve(imageReserve.ID))
 }
 
 func TestOpenAIGatewayService_LoadOpenAIProjectionAccounts_UsesBundleWithoutGetAccountFallback(t *testing.T) {
@@ -5334,7 +5415,7 @@ func TestHandleChatBufferedStreamingResponse_ReconstructsEmptyOutputFromDelta(t 
 		}, "\n"))),
 	}
 
-	result, err := svc.handleChatBufferedStreamingResponse(resp, c, "gpt-4o", "gpt-4o", "gpt-4o", time.Now())
+	result, err := svc.handleChatBufferedStreamingResponse(context.Background(), resp, c, nil, "gpt-4o", "gpt-4o", "gpt-4o", time.Now(), nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Equal(t, 2, result.Usage.InputTokens)
