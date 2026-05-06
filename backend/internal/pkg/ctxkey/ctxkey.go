@@ -55,4 +55,7 @@ const (
 
 	// ClaudeCodeVersion stores the extracted Claude Code version from User-Agent (e.g. "2.1.22")
 	ClaudeCodeVersion Key = "ctx_claude_code_version"
+
+	// Sub2APIUserID 当前请求的系统用户 ID，用于账号并发槽位中编码用户信息以支持实时活跃用户统计
+	Sub2APIUserID Key = "ctx_sub2api_user_id"
 )

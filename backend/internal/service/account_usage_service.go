@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -86,12 +87,13 @@ type UsageLogRepository interface {
 
 // RecentAccountUser represents a user who recently used an account
 type RecentAccountUser struct {
-	UserID      int64     `json:"user_id"`
-	Email       string    `json:"email"`
-	Requests    int64     `json:"requests"`
-	AccountCost float64   `json:"account_cost"`
-	UserCost    float64   `json:"user_cost"`
-	LastUsedAt  time.Time `json:"last_used_at"`
+	UserID          int64     `json:"user_id"`
+	Email           string    `json:"email"`
+	Requests        int64     `json:"requests"`
+	AccountCost     float64   `json:"account_cost"`
+	UserCost        float64   `json:"user_cost"`
+	LastUsedAt      time.Time `json:"last_used_at"`
+	CurrentRequests int64     `json:"current_requests"`
 }
 
 type accountWindowStatsBatchReader interface {
@@ -281,6 +283,8 @@ type AccountUsageService struct {
 	cache                   *UsageCache
 	identityCache           IdentityCache
 	tlsFPProfileService     *TLSFingerprintProfileService
+	concurrencyService      *ConcurrencyService
+	userRepo                UserRepository
 }
 
 // NewAccountUsageService 创建AccountUsageService实例
@@ -304,6 +308,18 @@ func NewAccountUsageService(
 		identityCache:           identityCache,
 		tlsFPProfileService:     tlsFPProfileService,
 	}
+}
+
+// SetConcurrencyService sets the concurrency service for real-time active user tracking.
+// Called after construction to avoid circular dependency.
+func (s *AccountUsageService) SetConcurrencyService(cs *ConcurrencyService) {
+	s.concurrencyService = cs
+}
+
+// SetUserRepository sets the user repository for resolving user emails.
+// Called after construction to avoid circular dependency.
+func (s *AccountUsageService) SetUserRepository(repo UserRepository) {
+	s.userRepo = repo
 }
 
 // GetUsage 获取账号使用量
@@ -1351,9 +1367,64 @@ func (s *AccountUsageService) GetAccountWindowStats(ctx context.Context, account
 	return s.usageLogRepo.GetAccountWindowStats(ctx, accountID, startTime)
 }
 
-// GetRecentAccountUsers returns users who used the account in the last N minutes
+// GetRecentAccountUsers returns users who used the account in the last N minutes,
+// merged with real-time in-flight request data from Redis concurrency slots.
+// Users with current requests appear even if they have no usage log entry.
 func (s *AccountUsageService) GetRecentAccountUsers(ctx context.Context, accountID int64, minutes int) ([]RecentAccountUser, error) {
-	return s.usageLogRepo.GetRecentAccountUsers(ctx, accountID, minutes)
+	// 1. Get usage log recent users
+	logUsers, err := s.usageLogRepo.GetRecentAccountUsers(ctx, accountID, minutes)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Get real-time active user concurrency from Redis
+	var activeUsers map[int64]int
+	if s.concurrencyService != nil {
+		activeUsers, _ = s.concurrencyService.GetAccountActiveUserConcurrency(ctx, accountID)
+	}
+
+	if len(activeUsers) == 0 {
+		return logUsers, nil
+	}
+
+	// 3. Build map of existing log users by userID
+	userMap := make(map[int64]*RecentAccountUser, len(logUsers))
+	for i := range logUsers {
+		userMap[logUsers[i].UserID] = &logUsers[i]
+	}
+
+	// 4. Merge: set CurrentRequests on existing users, add new Redis-only users
+	for userID, count := range activeUsers {
+		if existing, ok := userMap[userID]; ok {
+			existing.CurrentRequests = int64(count)
+		} else {
+			// Redis-only user: resolve email from UserRepository
+			email := ""
+			if s.userRepo != nil {
+				if user, userErr := s.userRepo.GetByID(ctx, userID); userErr == nil && user != nil {
+					email = user.Email
+				}
+			}
+			newUser := RecentAccountUser{
+				UserID:          userID,
+				Email:           email,
+				CurrentRequests: int64(count),
+				LastUsedAt:      time.Now(),
+			}
+			userMap[userID] = &newUser
+			logUsers = append(logUsers, newUser)
+		}
+	}
+
+	// 5. Sort: current_requests desc first, then last_used_at desc
+	sort.Slice(logUsers, func(i, j int) bool {
+		if logUsers[i].CurrentRequests != logUsers[j].CurrentRequests {
+			return logUsers[i].CurrentRequests > logUsers[j].CurrentRequests
+		}
+		return logUsers[i].LastUsedAt.After(logUsers[j].LastUsedAt)
+	})
+
+	return logUsers, nil
 }
 
 // GetAccountUsersByTimeRange returns users who used the account within the selected time range.

@@ -637,6 +637,7 @@ export interface RecentAccountUser {
   user_id: number
   email: string
   requests: number
+  current_requests: number
   account_cost: number
   user_cost: number
   last_used_at: string

@@ -36,7 +36,7 @@
               </button>
               <div
                 v-if="showAutoRefreshDropdown"
-                class="absolute right-0 z-50 mt-2 w-56 origin-top-right rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+                class="fixed left-3 right-3 top-20 z-50 mt-2 w-auto origin-top-right rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800 md:absolute md:left-auto md:right-0 md:top-auto md:w-56"
               >
                 <div class="p-2">
                   <button
@@ -103,6 +103,9 @@
           <template #cell-stats_account_cost="{ row }">
             <span class="tabular-nums">{{ formatCost(row.stats_account_cost) }}</span>
           </template>
+          <template #cell-stats_user_cost="{ row }">
+            <span class="tabular-nums">{{ formatCost(row.stats_user_cost) }}</span>
+          </template>
           <template #cell-actions="{ row }">
             <button
               @click="openDetail(row)"
@@ -164,8 +167,8 @@
           <div v-else-if="recentUsers.length === 0" class="rounded-lg border border-dashed border-gray-200 py-6 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400">
             {{ t('admin.accountStats.noRecentUsers') }}
           </div>
-          <div v-else class="overflow-hidden rounded-lg border border-gray-200 dark:border-dark-700">
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <div v-else class="overflow-x-auto rounded-lg border border-gray-200 dark:border-dark-700">
+            <table class="w-full min-w-[640px] divide-y divide-gray-200 dark:divide-gray-700 sm:min-w-full">
               <thead class="bg-gray-50 dark:bg-dark-800">
                 <tr>
                   <th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.accountStats.user') }}</th>
@@ -190,7 +193,7 @@
                     </div>
                   </td>
                   <td class="whitespace-nowrap px-3 py-2.5 text-sm text-gray-600 dark:text-gray-300">{{ user.email || '-' }}</td>
-                  <td class="whitespace-nowrap px-3 py-2.5 text-right text-sm tabular-nums text-gray-700 dark:text-gray-300">{{ currentRequestsForUser(user.user_id) }}</td>
+                  <td class="whitespace-nowrap px-3 py-2.5 text-right text-sm tabular-nums text-gray-700 dark:text-gray-300">{{ user.current_requests || 0 }}</td>
                   <td class="whitespace-nowrap px-3 py-2.5 text-right text-sm tabular-nums text-gray-700 dark:text-gray-300">{{ formatCost(user.account_cost) }}</td>
                   <td class="whitespace-nowrap px-3 py-2.5 text-right text-sm tabular-nums text-gray-700 dark:text-gray-300">{{ formatCost(user.user_cost) }}</td>
                   <td class="whitespace-nowrap px-3 py-2.5 text-right text-sm text-gray-500 dark:text-gray-400">{{ formatRelativeTime(user.last_used_at) }}</td>
@@ -210,7 +213,7 @@
             {{ t('admin.accountStats.noRangeUsers') }}
           </div>
           <div v-else class="overflow-x-auto rounded-lg border border-gray-200 dark:border-dark-700">
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+            <table class="w-full min-w-[640px] divide-y divide-gray-200 dark:divide-gray-700 sm:min-w-full">
               <thead class="bg-gray-50 dark:bg-dark-800">
                 <tr>
                   <th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('admin.accountStats.user') }}</th>
@@ -290,7 +293,6 @@ const detailStats = ref<any>(null)
 const rangeUsers = ref<RecentAccountUser[]>([])
 const recentUsers = ref<RecentAccountUser[]>([])
 const detailUsersLoading = ref(false)
-const userConcurrencyByID = ref<Record<number, number>>({})
 
 // Auto refresh
 const autoRefreshDropdownRef = ref<HTMLElement | null>(null)
@@ -325,6 +327,7 @@ const columns = computed(() => [
   { key: 'stats_requests', label: t('admin.accountStats.requests'), width: '100px', align: 'right' as const, sortable: true },
   { key: 'stats_tokens', label: t('admin.accountStats.tokens'), width: '100px', align: 'right' as const, sortable: true },
   { key: 'stats_account_cost', label: t('admin.accountStats.accountBilling'), width: '120px', align: 'right' as const, sortable: true },
+  { key: 'stats_user_cost', label: t('admin.accountStats.userCharge'), width: '120px', align: 'right' as const, sortable: true },
   { key: 'actions', label: t('admin.accountStats.actions'), width: '100px', align: 'center' as const }
 ])
 
@@ -560,21 +563,15 @@ async function openDetail(account: any) {
 async function loadDetailUsers(accountId: number, options?: { silent?: boolean }) {
   if (!options?.silent) detailUsersLoading.value = true
   try {
-    const [rangeResult, recentResult, userConcurrencyResult] = await Promise.all([
+    const [rangeResult, recentResult] = await Promise.all([
       adminAPI.accounts.getRecentUsers(accountId, {
         start_date: startDate.value,
         end_date: endDate.value,
       }),
-      adminAPI.accounts.getRecentUsers(accountId),
-      adminAPI.ops.getUserConcurrencyStats()
+      adminAPI.accounts.getRecentUsers(accountId)
     ])
     rangeUsers.value = rangeResult.users || []
     recentUsers.value = recentResult.users || []
-    const nextConcurrency: Record<number, number> = {}
-    for (const [userID, info] of Object.entries(userConcurrencyResult.user || {})) {
-      nextConcurrency[Number(userID)] = info.current_in_use || 0
-    }
-    userConcurrencyByID.value = nextConcurrency
   } catch (err) {
     console.error('Failed to load account users:', err)
   } finally {
@@ -582,14 +579,8 @@ async function loadDetailUsers(accountId: number, options?: { silent?: boolean }
   }
 }
 
-function currentRequestsForUser(userID: number): number {
-  return userConcurrencyByID.value[userID] || 0
-}
-
 function isUserActive(user: RecentAccountUser): boolean {
-  const lastUsed = new Date(user.last_used_at)
-  const oneMinuteAgo = new Date(Date.now() - 60 * 1000)
-  return lastUsed > oneMinuteAgo
+  return (user.current_requests || 0) > 0
 }
 
 // Formatting helpers
@@ -605,3 +596,9 @@ function formatCost(cost: number | undefined | null): string {
   return '$' + cost.toFixed(4)
 }
 </script>
+
+<style scoped>
+:deep(.table-wrapper) {
+  scrollbar-gutter: auto !important;
+}
+</style>
