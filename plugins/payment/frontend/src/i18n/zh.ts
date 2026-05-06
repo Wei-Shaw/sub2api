@@ -113,8 +113,8 @@ export default {
       PENDING_ORDERS: '该服务商有未完成的订单，请等待订单完成后再操作',
       mobilePaymentFallbackToQr: '当前设备无法直接跳转支付，已切换为扫码支付',
       // 通用 / 未分类
-      INTERNAL_ERROR: '服务暂不可用，请稍后重试',
-      UNKNOWN: '服务暂不可用，请稍后重试',
+      INTERNAL_ERROR: '服务异常：{cause}',
+      UNKNOWN: '服务异常：{cause}',
       VALIDATION_ERROR: '请求参数有误',
       INVALID_INPUT: '请求参数有误',
       NOT_FOUND: '资源不存在',

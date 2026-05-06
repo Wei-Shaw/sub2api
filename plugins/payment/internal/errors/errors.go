@@ -142,7 +142,16 @@ func FromError(err error) *ApplicationError {
 	if se := new(ApplicationError); errors.As(err, &se) {
 		return se
 	}
-	return New(UnknownCode, UnknownReason, UnknownMessage).WithCause(err)
+	// Non-ApplicationError fallback. Preserve the underlying cause text in
+	// both the response message and metadata.cause so the client / frontend
+	// can show the operator a real diagnostic instead of the generic
+	// UnknownMessage. SanitizeCauseForLog redacts sensitive SQL/network
+	// fragments and bounds the size — same rules used by the slog handler,
+	// so what the UI reports lines up with what shows up in logs.
+	causeText := SanitizeCauseForLog(err)
+	appErr := New(UnknownCode, UnknownReason, causeText).WithCause(err)
+	appErr.Metadata = map[string]string{"cause": causeText}
+	return appErr
 }
 
 // BadRequest returns a 400 ApplicationError.

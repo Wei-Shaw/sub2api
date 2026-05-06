@@ -113,8 +113,8 @@ export default {
       PENDING_ORDERS: 'This provider has pending orders. Please wait for them to complete before making changes.',
       mobilePaymentFallbackToQr: 'This device cannot redirect to the payment page; switched to QR code payment.',
       // Generic
-      INTERNAL_ERROR: 'Service temporarily unavailable. Please try again later.',
-      UNKNOWN: 'Service temporarily unavailable. Please try again later.',
+      INTERNAL_ERROR: 'Service error: {cause}',
+      UNKNOWN: 'Service error: {cause}',
       VALIDATION_ERROR: 'Invalid request parameters.',
       INVALID_INPUT: 'Invalid request parameters.',
       NOT_FOUND: 'Resource not found.',
