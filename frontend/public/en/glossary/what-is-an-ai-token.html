@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+
+    <title>What Is an AI Token? (LLM Billing Explained, 2026) | TokenProvider</title>
+    <meta name="description" content="An LLM token is a sub-word fragment used for billing and context limits. This page explains how Claude, ChatGPT, and Gemini count tokens, why input is cheaper than output, and how to estimate costs before you call the API." />
+    <meta name="keywords" content="what is an ai token, llm token, gpt token, claude token, token pricing, openai token count, how tokens work" />
+    <meta name="robots" content="index,follow" />
+    <meta name="theme-color" content="#14b8a6" />
+
+    <link rel="canonical" href="https://tokenprovider.store/en/glossary/what-is-an-ai-token.html" />
+    <link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/glossary/what-is-an-ai-token.html" />
+    <link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/glossary/what-is-an-ai-token.html" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://tokenprovider.store/en/glossary/what-is-an-ai-token.html" />
+    <meta property="og:title" content="What Is an AI Token? (LLM Billing Explained)" />
+    <meta property="og:description" content="LLM tokens explained: what they are, how Claude/ChatGPT/Gemini count them, and how to estimate cost." />
+    <meta property="og:image" content="https://tokenprovider.store/logo.png" />
+    <meta property="og:site_name" content="TokenProvider" />
+    <meta property="og:locale" content="en_US" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="What Is an AI Token?" />
+    <meta name="twitter:description" content="LLM tokens explained: what they are, how they're counted, and how to estimate cost." />
+    <meta name="twitter:image" content="https://tokenprovider.store/logo.png" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "DefinedTerm",
+      "name": "AI Token",
+      "alternateName": "LLM Token",
+      "description": "A token is the smallest unit of text that a large language model reads or generates. LLM APIs bill per token of input and output.",
+      "inDefinedTermSet": "https://tokenprovider.store/en/glossary/",
+      "url": "https://tokenprovider.store/en/glossary/what-is-an-ai-token.html"
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Article",
+      "headline": "What Is an AI Token?",
+      "description": "Plain-English explanation of LLM tokens, how Claude, ChatGPT, and Gemini count them, and how to estimate cost.",
+      "author": { "@type": "Organization", "name": "TokenProvider" },
+      "publisher": { "@type": "Organization", "name": "TokenProvider", "logo": { "@type": "ImageObject", "url": "https://tokenprovider.store/logo.png" } },
+      "datePublished": "2026-05-07",
+      "dateModified": "2026-05-07",
+      "inLanguage": "en",
+      "mainEntityOfPage": "https://tokenprovider.store/en/glossary/what-is-an-ai-token.html"
+    }
+    </script>
+
+    <link rel="stylesheet" href="/assets/seo.css" />
+  </head>
+  <body>
+    <div class="seo-bg-decor"></div>
+
+    <header class="seo-header">
+      <div class="seo-container-wide">
+        <nav class="seo-nav">
+          <a class="seo-logo" href="/en.html">
+            <img src="/logo.png" alt="TokenProvider logo" width="36" height="36" />
+            <span class="seo-logo-text">TokenProvider</span>
+          </a>
+          <div class="seo-nav-links">
+            <a class="seo-nav-link" href="/en.html">Home</a>
+            <a class="seo-nav-link" href="/login">Log in</a>
+            <a class="seo-btn-primary" href="/register">Sign up →</a>
+          </div>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="seo-container">
+        <article>
+          <h1>What Is an AI Token?</h1>
+          <p class="seo-lede">
+            A <strong>token</strong> is the smallest unit of text a large language model reads or
+            writes. Not a word, not a character — usually a sub-word fragment. Every modern LLM
+            API (Claude, ChatGPT, Gemini) bills per token of input <em>plus</em> per token of
+            output, which is why the same prompt has predictable cost no matter the language or
+            wording.
+          </p>
+
+          <div class="seo-tldr">
+            <p><strong>Rule of thumb:</strong> 1 token ≈ <strong>4 characters</strong> of English,
+            or about <strong>0.75 words</strong>. So a typical 250-word email is roughly 330
+            tokens. Chinese, Japanese, code, and emoji tokenize differently.</p>
+          </div>
+
+          <h2>Why tokens, not words?</h2>
+          <p>Models read text after passing it through a <em>tokenizer</em> — a fixed vocabulary
+          of common substrings (e.g., "ing", "tion", " the"). Splitting on substrings instead of
+          words gives the model a constant-size vocabulary that handles new words, code, and
+          languages it has never seen, by composing them from familiar fragments.</p>
+
+          <p>Example tokenization of "Tokenization is unsupervised":</p>
+<pre><code>["Token", "ization", " is", " un", "super", "vised"]   ← 6 tokens
+("Tokenization is unsupervised" = 28 characters)</code></pre>
+
+          <h2>How input and output tokens differ</h2>
+          <div class="seo-table-wrap">
+            <table class="seo-table">
+              <thead><tr><th></th><th>Input tokens</th><th>Output tokens</th></tr></thead>
+              <tbody>
+                <tr><td>What they are</td><td>Tokens you send (prompt + history)</td><td>Tokens the model generates</td></tr>
+                <tr><td>Typical price</td><td>1×</td><td>3–5× input</td></tr>
+                <tr><td>Why pricier</td><td>Just read</td><td>Generated one-by-one through full model</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Output is more expensive because each token requires a full forward pass through the
+          model. Long prompts are cheap, long answers are not.</p>
+
+          <h2>Token counts for popular models (2026)</h2>
+          <div class="seo-table-wrap">
+            <table class="seo-table">
+              <thead><tr><th>Model</th><th>Input / 1M</th><th>Output / 1M</th><th>Context limit</th></tr></thead>
+              <tbody>
+                <tr><td>Claude Sonnet 4</td><td>$3</td><td>$15</td><td>200k</td></tr>
+                <tr><td>Claude Opus 4</td><td>$15</td><td>$75</td><td>200k</td></tr>
+                <tr><td>Claude Haiku 4</td><td>$0.80</td><td>$4</td><td>200k</td></tr>
+                <tr><td>GPT-4o</td><td>$2.50</td><td>$10</td><td>128k</td></tr>
+                <tr><td>GPT-4o mini</td><td>$0.15</td><td>$0.60</td><td>128k</td></tr>
+                <tr><td>Gemini 2.5 Pro</td><td>$1.25</td><td>$5</td><td>2M</td></tr>
+                <tr><td>Gemini 2.5 Flash</td><td>$0.075</td><td>$0.30</td><td>1M</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Prices verified May 2026; check vendor pricing pages for current rates.</p>
+
+          <h2>How to estimate cost before you call</h2>
+          <ol>
+            <li>Count characters in your prompt (system + user messages + history).</li>
+            <li>Divide by 4 → approximate input tokens.</li>
+            <li>Estimate expected response length (e.g., 300 words ≈ 400 output tokens).</li>
+            <li>Multiply by per-token price for your model.</li>
+          </ol>
+
+          <p>Example: GPT-4o, 2,000-char prompt + 400 output tokens<br>
+          (2000/4) × $0.0000025 + 400 × $0.00001 = $0.00125 + $0.004 = <strong>$0.00525</strong> per call.</p>
+
+          <h2>Counting exactly (no guessing)</h2>
+          <p>For exact counts:</p>
+          <ul>
+            <li><strong>OpenAI:</strong> the <code>tiktoken</code> Python package
+              (<code>encoding_for_model("gpt-4o")</code>) gives per-message counts.</li>
+            <li><strong>Anthropic:</strong> the SDK exposes
+              <code>client.messages.count_tokens()</code> (no model run, free).</li>
+            <li><strong>Gemini:</strong> the SDK exposes <code>client.models.count_tokens()</code>.</li>
+          </ul>
+          <p>Every API response also returns actual <code>usage.input_tokens</code> /
+          <code>output_tokens</code> — log them, sum daily, you have ground truth billing.</p>
+
+          <h2>Token quirks to budget for</h2>
+          <ul>
+            <li><strong>Conversation history grows linearly:</strong> each follow-up resends every
+              prior turn. By turn 20, prompts are huge.</li>
+            <li><strong>Code costs more:</strong> indentation and identifiers tokenize less
+              efficiently than prose. Expect ~3 chars/token for source code.</li>
+            <li><strong>Non-Latin scripts cost more per character:</strong> Chinese / Japanese /
+              Korean often run 1.5–3 chars per token.</li>
+            <li><strong>System prompts charge every call:</strong> a 2k-token system prompt costs
+              you 2k tokens on every request — use prompt caching when available.</li>
+          </ul>
+
+          <h2>Save tokens (and money)</h2>
+          <ul>
+            <li>Trim system prompts. Specifics beat verbosity.</li>
+            <li>Cap <code>max_tokens</code> to the actual length you need.</li>
+            <li>Use <strong>prompt caching</strong> (Claude / Gemini) for the static parts of long prompts — caches cost 10–25% of normal input.</li>
+            <li>Pick the smallest model that solves the task. Sonnet for code, Haiku for triage.</li>
+            <li>Use a discount proxy: same tokens, lower per-token rate.</li>
+          </ul>
+
+          <section class="seo-cta-block">
+            <h2 class="seo-mt-0">Same tokens, ~50% off</h2>
+            <p>TokenProvider routes Claude / ChatGPT / Gemini through one key, billed per token at a discount.</p>
+            <a class="seo-btn-cta" href="/register">Sign up free →</a>
+            <a class="seo-btn-ghost" href="/login">Already a member</a>
+          </section>
+
+          <section class="seo-related">
+            <h2>Related reading</h2>
+            <ul class="seo-related-list">
+              <li><a href="/en/glossary/what-is-claude-relay.html"><strong>What Is a Claude API Proxy?</strong><span>Pricing mechanism</span></a></li>
+              <li><a href="/en/glossary/what-is-claude-code.html"><strong>What Is Claude Code?</strong><span>Anthropic's CLI</span></a></li>
+              <li><a href="/en/compare/claude-vs-chatgpt-api.html"><strong>Claude vs ChatGPT API</strong><span>Side-by-side</span></a></li>
+              <li><a href="/en/examples/claude-api-python.html"><strong>Python Example</strong><span>See token usage in code</span></a></li>
+            </ul>
+          </section>
+        </article>
+      </div>
+    </main>
+
+    <footer class="seo-footer">
+      <div class="seo-container">
+        <p>
+          <a href="/en.html">Home</a> ·
+          <a href="/login">Log in</a> ·
+          <a href="/register">Sign up</a>
+        </p>
+        <p>© TokenProvider · Claude / Claude Code / ChatGPT API gateway</p>
+      </div>
+    </footer>
+  </body>
+</html>

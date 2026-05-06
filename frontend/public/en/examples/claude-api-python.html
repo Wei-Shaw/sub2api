@@ -5,29 +5,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="/logo.png" />
 
-    <title>Claude API Python Example (2026, streaming &amp; tools) | Token之家</title>
+    <title>Claude API Python Example (2026, streaming &amp; tools) | TokenProvider</title>
     <meta name="description" content="Claude API Python example: OpenAI SDK and Anthropic SDK, streaming, function calling, multi-turn chat, error handling. Copy-paste ready. Uses a cheap proxy by default." />
     <meta name="keywords" content="claude api python, claude python example, anthropic python sdk, cheap claude api, claude api tutorial, claude sdk" />
     <meta name="robots" content="index,follow" />
     <meta name="theme-color" content="#14b8a6" />
 
-    <link rel="canonical" href="https://tokenzhijia.shop/en/examples/claude-api-python.html" />
-    <link rel="alternate" hreflang="zh-CN" href="https://tokenzhijia.shop/examples/claude-api-python.html" />
-    <link rel="alternate" hreflang="en" href="https://tokenzhijia.shop/en/examples/claude-api-python.html" />
-    <link rel="alternate" hreflang="x-default" href="https://tokenzhijia.shop/examples/claude-api-python.html" />
+    <link rel="canonical" href="https://tokenprovider.store/en/examples/claude-api-python.html" />
+    <link rel="alternate" hreflang="zh-CN" href="https://tokenprovider.store/examples/claude-api-python.html" />
+    <link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/examples/claude-api-python.html" />
+    <link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/examples/claude-api-python.html" />
 
     <meta property="og:type" content="article" />
-    <meta property="og:url" content="https://tokenzhijia.shop/en/examples/claude-api-python.html" />
+    <meta property="og:url" content="https://tokenprovider.store/en/examples/claude-api-python.html" />
     <meta property="og:title" content="Claude API Python Example (2026)" />
     <meta property="og:description" content="Copy-paste Python examples for Claude API: streaming, tools, multi-turn, errors." />
-    <meta property="og:image" content="https://tokenzhijia.shop/logo.png" />
-    <meta property="og:site_name" content="Token之家" />
+    <meta property="og:image" content="https://tokenprovider.store/logo.png" />
+    <meta property="og:site_name" content="TokenProvider" />
     <meta property="og:locale" content="en_US" />
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Claude API Python Example (2026)" />
     <meta name="twitter:description" content="Copy-paste Python examples for Claude API: streaming, tools, multi-turn, errors." />
-    <meta name="twitter:image" content="https://tokenzhijia.shop/logo.png" />
+    <meta name="twitter:image" content="https://tokenprovider.store/logo.png" />
 
     <script type="application/ld+json">
     {
@@ -35,8 +35,8 @@
       "@type": "TechArticle",
       "headline": "Claude API Python Example",
       "description": "How to call the Claude API from Python using either the OpenAI SDK or Anthropic SDK.",
-      "author": { "@type": "Organization", "name": "Token之家" },
-      "publisher": { "@type": "Organization", "name": "Token之家", "logo": { "@type": "ImageObject", "url": "https://tokenzhijia.shop/logo.png" } },
+      "author": { "@type": "Organization", "name": "TokenProvider" },
+      "publisher": { "@type": "Organization", "name": "TokenProvider", "logo": { "@type": "ImageObject", "url": "https://tokenprovider.store/logo.png" } },
       "datePublished": "2026-04-18",
       "dateModified": "2026-04-18",
       "inLanguage": "en",
@@ -54,8 +54,8 @@
       <div class="seo-container-wide">
         <nav class="seo-nav">
           <a class="seo-logo" href="/en.html">
-            <img src="/logo.png" alt="Token之家 logo" width="36" height="36" />
-            <span class="seo-logo-text">Token之家</span>
+            <img src="/logo.png" alt="TokenProvider logo" width="36" height="36" />
+            <span class="seo-logo-text">TokenProvider</span>
           </a>
           <div class="seo-nav-links">
             <a class="seo-nav-link" href="/examples/claude-api-python.html" hreflang="zh-CN" rel="alternate">中文</a>
@@ -73,20 +73,20 @@
           <p class="seo-lede">
             How do you call the Claude API from Python? Below are copy-paste-ready examples:
             two SDKs, streaming, function calling, multi-turn chat, and proper error handling.
-            Default <code>base_url</code> points at <a href="/register">Token之家</a>, which
+            Default <code>base_url</code> points at <a href="/register">TokenProvider</a>, which
             costs 50%+ less than direct Anthropic.
           </p>
 
           <div class="seo-tldr">
             <p><strong>Three-line version:</strong> install <code>openai</code>, set
-            <code>base_url</code> to tokenzhijia.shop, use <code>model="claude-sonnet-4"</code>.
+            <code>base_url</code> to tokenprovider.store, use <code>model="claude-sonnet-4"</code>.
             Every snippet below runs as-is.</p>
           </div>
 
           <h2>Prerequisites</h2>
           <ul>
             <li>Python 3.8+</li>
-            <li>A <a href="/register">Token之家 API key</a> (free signup, $1 minimum top-up)</li>
+            <li>A <a href="/register">TokenProvider API key</a> (free signup, $1 minimum top-up)</li>
             <li>Pick an SDK: <code>openai</code> (universal) or <code>anthropic</code> (official)</li>
           </ul>
           <pre><code>pip install openai       # Option A: OpenAI SDK (also calls GPT, Gemini)
@@ -98,7 +98,7 @@ pip install anthropic    # Option B: Anthropic official SDK</code></pre>
 
 client = OpenAI(
     api_key="YOUR_TOKEN_HOME_KEY",
-    base_url="https://tokenzhijia.shop/v1",
+    base_url="https://tokenprovider.store/v1",
 )
 
 resp = client.chat.completions.create(
@@ -125,7 +125,7 @@ print(f"Used {resp.usage.total_tokens} tokens")</code></pre>
 
 client = anthropic.Anthropic(
     api_key="YOUR_TOKEN_HOME_KEY",
-    base_url="https://tokenzhijia.shop",   # NOTE: no /v1 suffix
+    base_url="https://tokenprovider.store",   # NOTE: no /v1 suffix
 )
 
 msg = client.messages.create(
@@ -150,7 +150,7 @@ print(f"Input {msg.usage.input_tokens}  Output {msg.usage.output_tokens}")</code
 
 client = OpenAI(
     api_key="YOUR_KEY",
-    base_url="https://tokenzhijia.shop/v1",
+    base_url="https://tokenprovider.store/v1",
 )
 
 stream = client.chat.completions.create(
@@ -170,7 +170,7 @@ print()</code></pre>
 <pre><code>import json
 from openai import OpenAI
 
-client = OpenAI(api_key="YOUR_KEY", base_url="https://tokenzhijia.shop/v1")
+client = OpenAI(api_key="YOUR_KEY", base_url="https://tokenprovider.store/v1")
 
 tools = [{
     "type": "function",
@@ -219,7 +219,7 @@ print(ask("What about asyncio.gather vs wait?"))   # second turn carries context
           <h2>Error handling</h2>
 <pre><code>from openai import OpenAI, RateLimitError, AuthenticationError, APIError
 
-client = OpenAI(api_key="YOUR_KEY", base_url="https://tokenzhijia.shop/v1")
+client = OpenAI(api_key="YOUR_KEY", base_url="https://tokenprovider.store/v1")
 
 try:
     resp = client.chat.completions.create(
@@ -261,7 +261,7 @@ except APIError as e:
             </div>
             <div class="seo-faq-item">
               <h3>How do I control concurrency?</h3>
-              <p>Use <code>httpx.AsyncClient</code> or <code>asyncio.Semaphore</code>. Token之家 has generous per-key limits but burst-heavy callers will still see 429.</p>
+              <p>Use <code>httpx.AsyncClient</code> or <code>asyncio.Semaphore</code>. TokenProvider has generous per-key limits but burst-heavy callers will still see 429.</p>
             </div>
             <div class="seo-faq-item">
               <h3>Can I call Claude Code from Python?</h3>
@@ -290,7 +290,7 @@ except APIError as e:
           <a href="/login">Log in</a> ·
           <a href="/register">Sign up</a>
         </p>
-        <p>© Token之家 · Claude / Claude Code / ChatGPT API gateway</p>
+        <p>© TokenProvider · Claude / Claude Code / ChatGPT API gateway</p>
       </div>
     </footer>
   </body>

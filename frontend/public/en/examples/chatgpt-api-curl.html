@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+
+    <title>ChatGPT API curl Example (2026): Streaming, JSON, Tool Calls | TokenProvider</title>
+    <meta name="description" content="Copy-paste curl examples for the ChatGPT / OpenAI API: chat completions, streaming SSE, JSON mode, function calling, and image input. Works with the official endpoint and any compatible proxy." />
+    <meta name="keywords" content="chatgpt api curl, openai api curl, chat completions curl, openai streaming curl, openai api example, gpt-4o curl" />
+    <meta name="robots" content="index,follow" />
+    <meta name="theme-color" content="#14b8a6" />
+
+    <link rel="canonical" href="https://tokenprovider.store/en/examples/chatgpt-api-curl.html" />
+    <link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/examples/chatgpt-api-curl.html" />
+    <link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/examples/chatgpt-api-curl.html" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://tokenprovider.store/en/examples/chatgpt-api-curl.html" />
+    <meta property="og:title" content="ChatGPT API curl Example (2026)" />
+    <meta property="og:description" content="curl recipes for OpenAI's API: chat, streaming, JSON mode, function calls, image input." />
+    <meta property="og:image" content="https://tokenprovider.store/logo.png" />
+    <meta property="og:site_name" content="TokenProvider" />
+    <meta property="og:locale" content="en_US" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="ChatGPT API curl Example (2026)" />
+    <meta name="twitter:description" content="curl recipes for OpenAI's API." />
+    <meta name="twitter:image" content="https://tokenprovider.store/logo.png" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      "headline": "ChatGPT API curl Example (2026)",
+      "description": "Working curl commands for the OpenAI Chat Completions API: streaming, JSON mode, function calls, and vision.",
+      "author": { "@type": "Organization", "name": "TokenProvider" },
+      "publisher": { "@type": "Organization", "name": "TokenProvider", "logo": { "@type": "ImageObject", "url": "https://tokenprovider.store/logo.png" } },
+      "datePublished": "2026-05-07",
+      "dateModified": "2026-05-07",
+      "inLanguage": "en",
+      "proficiencyLevel": "Beginner",
+      "mainEntityOfPage": "https://tokenprovider.store/en/examples/chatgpt-api-curl.html"
+    }
+    </script>
+
+    <link rel="stylesheet" href="/assets/seo.css" />
+  </head>
+  <body>
+    <div class="seo-bg-decor"></div>
+
+    <header class="seo-header">
+      <div class="seo-container-wide">
+        <nav class="seo-nav">
+          <a class="seo-logo" href="/en.html">
+            <img src="/logo.png" alt="TokenProvider logo" width="36" height="36" />
+            <span class="seo-logo-text">TokenProvider</span>
+          </a>
+          <div class="seo-nav-links">
+            <a class="seo-nav-link" href="/en.html">Home</a>
+            <a class="seo-nav-link" href="/login">Log in</a>
+            <a class="seo-btn-primary" href="/register">Sign up →</a>
+          </div>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="seo-container">
+        <article>
+          <h1>ChatGPT API curl Example (2026)</h1>
+          <p class="seo-lede">
+            <code>curl</code> is the fastest way to verify the OpenAI Chat Completions API — no
+            SDK install, no language runtime, no surprises. Below are working recipes for chat,
+            streaming, JSON mode, function calling, and vision input, all against
+            <code>/v1/chat/completions</code>.
+          </p>
+
+          <div class="seo-tldr">
+            <p><strong>The minimum viable request</strong> is one POST with
+            <code>Authorization: Bearer $KEY</code>, a <code>model</code>, and a
+            <code>messages</code> array. Everything else is optional.</p>
+          </div>
+
+          <h2>Setup: one env var</h2>
+<pre><code># Use the official OpenAI endpoint
+export OPENAI_API_KEY="sk-..."
+export BASE_URL="https://api.openai.com"
+
+# Or use a unified proxy (works for Claude + ChatGPT + Gemini with one key)
+export OPENAI_API_KEY="your_proxy_key"
+export BASE_URL="https://tokenprovider.store"</code></pre>
+
+          <h2>1. Basic chat completion</h2>
+<pre><code>curl -sS "$BASE_URL/v1/chat/completions" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o-mini",
+    "messages": [
+      {"role": "system", "content": "You are concise."},
+      {"role": "user",   "content": "What is the capital of Japan?"}
+    ]
+  }'</code></pre>
+          <p>Response is a single JSON object with <code>choices[0].message.content</code>.</p>
+
+          <h2>2. Streaming (Server-Sent Events)</h2>
+<pre><code>curl -sN "$BASE_URL/v1/chat/completions" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o-mini",
+    "stream": true,
+    "messages": [{"role":"user","content":"Count from 1 to 10 slowly."}]
+  }'</code></pre>
+          <p>Response is a stream of <code>data: {…}</code> lines terminated by
+          <code>data: [DONE]</code>. The <code>-N</code> flag disables curl buffering.
+          Pipe through <code>jq</code> to see deltas:</p>
+<pre><code>... | grep -oP 'data: \K\{.*\}' | jq -r '.choices[0].delta.content // empty'</code></pre>
+
+          <h2>3. JSON mode (structured output)</h2>
+<pre><code>curl -sS "$BASE_URL/v1/chat/completions" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o-mini",
+    "response_format": {"type": "json_object"},
+    "messages": [
+      {"role":"system","content":"Reply only with JSON."},
+      {"role":"user","content":"Three programming languages with their year, as JSON."}
+    ]
+  }'</code></pre>
+          <p>The model is constrained to emit a single valid JSON document. Always include the
+          word "json" somewhere in the system or user prompt — the API requires it when
+          <code>response_format</code> is set.</p>
+
+          <h2>4. Function / tool calling</h2>
+<pre><code>curl -sS "$BASE_URL/v1/chat/completions" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o-mini",
+    "messages": [{"role":"user","content":"Weather in Tokyo today?"}],
+    "tools": [{
+      "type": "function",
+      "function": {
+        "name": "get_weather",
+        "description": "Get current weather for a city",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "city": {"type": "string"},
+            "unit": {"type": "string", "enum": ["c","f"]}
+          },
+          "required": ["city"]
+        }
+      }
+    }],
+    "tool_choice": "auto"
+  }'</code></pre>
+          <p>Response will include <code>choices[0].message.tool_calls[]</code> with the chosen
+          function name and JSON-serialized arguments. Execute the tool yourself, then send a
+          second request with role <code>tool</code> containing the result.</p>
+
+          <h2>5. Vision (image input)</h2>
+<pre><code>curl -sS "$BASE_URL/v1/chat/completions" \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o",
+    "messages": [{
+      "role": "user",
+      "content": [
+        {"type": "text", "text": "Describe this image in one sentence."},
+        {"type": "image_url", "image_url": {"url": "https://example.com/cat.jpg"}}
+      ]
+    }]
+  }'</code></pre>
+          <p>For local files: base64-encode and pass as
+          <code>"url": "data:image/jpeg;base64,..."</code>.</p>
+
+          <h2>6. Useful headers</h2>
+          <div class="seo-table-wrap">
+            <table class="seo-table">
+              <thead>
+                <tr><th>Header</th><th>Why</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>OpenAI-Organization: org_xxx</code></td><td>Charge a specific org if your key has multiple</td></tr>
+                <tr><td><code>OpenAI-Beta: assistants=v2</code></td><td>Opt into beta endpoints (Assistants API, etc.)</td></tr>
+                <tr><td><code>x-request-id: my-trace-id</code></td><td>Echoed back in response headers — useful for debugging</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Common errors</h2>
+          <div class="seo-table-wrap">
+            <table class="seo-table">
+              <thead><tr><th>Status</th><th>Meaning</th><th>Fix</th></tr></thead>
+              <tbody>
+                <tr><td>401</td><td>Bad or missing key</td><td>Check <code>echo $OPENAI_API_KEY</code></td></tr>
+                <tr><td>429</td><td>Rate limit / quota</td><td>Back off or top up balance</td></tr>
+                <tr><td>400 model_not_found</td><td>Wrong model name</td><td>Use <code>gpt-4o-mini</code>, <code>gpt-4o</code>, etc.</td></tr>
+                <tr><td>413</td><td>Payload too large</td><td>Trim conversation history</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Switching to a unified proxy</h2>
+          <p>TokenProvider implements the same <code>/v1/chat/completions</code> contract. Same curl,
+          same JSON, same headers — change <code>BASE_URL</code> only. The proxy also accepts the
+          Anthropic and Gemini protocols on the same key, so one bash export gives you all three
+          vendors. Setup: <a href="/en/guides/claude-code-setup.html">5-min setup guide</a>.</p>
+
+          <section class="seo-cta-block">
+            <h2 class="seo-mt-0">One key, three vendors, ~50% off</h2>
+            <p>Same curl examples work — just change the base URL. $1 minimum top-up.</p>
+            <a class="seo-btn-cta" href="/register">Sign up free →</a>
+            <a class="seo-btn-ghost" href="/login">Already a member</a>
+          </section>
+
+          <section class="seo-related">
+            <h2>More code examples</h2>
+            <ul class="seo-related-list">
+              <li><a href="/en/examples/claude-api-python.html"><strong>Claude API Python Example</strong><span>SDK + streaming</span></a></li>
+              <li><a href="/en/examples/claude-api-nodejs.html"><strong>Claude API Node.js Example</strong><span>TypeScript</span></a></li>
+              <li><a href="/en/examples/gemini-api-example.html"><strong>Gemini API Example</strong><span>Google models</span></a></li>
+              <li><a href="/en/glossary/what-is-an-ai-token.html"><strong>What Is an AI Token?</strong><span>Billing basics</span></a></li>
+            </ul>
+          </section>
+        </article>
+      </div>
+    </main>
+
+    <footer class="seo-footer">
+      <div class="seo-container">
+        <p>
+          <a href="/en.html">Home</a> ·
+          <a href="/login">Log in</a> ·
+          <a href="/register">Sign up</a>
+        </p>
+        <p>© TokenProvider · Claude / Claude Code / ChatGPT API gateway</p>
+      </div>
+    </footer>
+  </body>
+</html>

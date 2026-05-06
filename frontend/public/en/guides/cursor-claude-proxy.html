@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+
+    <title>Cursor + Claude API Proxy: Cheap Claude in 2 Minutes (2026) | TokenProvider</title>
+    <meta name="description" content="Configure Cursor IDE to route Claude requests through a pay-as-you-go proxy. Bring-your-own key in Cursor settings, point at the proxy URL, and cut your Claude bill 30-60%. Step-by-step." />
+    <meta name="keywords" content="cursor claude proxy, cursor anthropic api, cursor cheap claude, cursor api key, cursor sonnet 4, cursor base url" />
+    <meta name="robots" content="index,follow" />
+    <meta name="theme-color" content="#14b8a6" />
+
+    <link rel="canonical" href="https://tokenprovider.store/en/guides/cursor-claude-proxy.html" />
+    <link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/guides/cursor-claude-proxy.html" />
+    <link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/guides/cursor-claude-proxy.html" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://tokenprovider.store/en/guides/cursor-claude-proxy.html" />
+    <meta property="og:title" content="Cursor + Claude API Proxy (2026)" />
+    <meta property="og:description" content="Bring-your-own key + base URL = cheap Claude inside Cursor. 2-minute setup." />
+    <meta property="og:image" content="https://tokenprovider.store/logo.png" />
+    <meta property="og:site_name" content="TokenProvider" />
+    <meta property="og:locale" content="en_US" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Cursor + Claude API Proxy (2026)" />
+    <meta name="twitter:description" content="Bring-your-own key + base URL = cheap Claude inside Cursor." />
+    <meta name="twitter:image" content="https://tokenprovider.store/logo.png" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "HowTo",
+      "name": "Configure Cursor with a Cheap Claude API",
+      "description": "Use Cursor's bring-your-own-key flow to route Claude requests through a pay-as-you-go proxy.",
+      "inLanguage": "en",
+      "totalTime": "PT2M",
+      "supply": [
+        { "@type": "HowToSupply", "name": "Cursor IDE" },
+        { "@type": "HowToSupply", "name": "TokenProvider account + API key" }
+      ],
+      "step": [
+        { "@type": "HowToStep", "name": "Open Cursor settings", "text": "Cmd/Ctrl + , then open Models tab" },
+        { "@type": "HowToStep", "name": "Enable Claude with custom key", "text": "Tick the Claude / Anthropic API toggle and paste the proxy key" },
+        { "@type": "HowToStep", "name": "Override base URL", "text": "Use the OpenAI Base URL field — Cursor reuses it for Anthropic-compatible endpoints" },
+        { "@type": "HowToStep", "name": "Verify", "text": "Open chat, ask anything, confirm a normal response" }
+      ]
+    }
+    </script>
+
+    <link rel="stylesheet" href="/assets/seo.css" />
+  </head>
+  <body>
+    <div class="seo-bg-decor"></div>
+
+    <header class="seo-header">
+      <div class="seo-container-wide">
+        <nav class="seo-nav">
+          <a class="seo-logo" href="/en.html">
+            <img src="/logo.png" alt="TokenProvider logo" width="36" height="36" />
+            <span class="seo-logo-text">TokenProvider</span>
+          </a>
+          <div class="seo-nav-links">
+            <a class="seo-nav-link" href="/en.html">Home</a>
+            <a class="seo-nav-link" href="/login">Log in</a>
+            <a class="seo-btn-primary" href="/register">Sign up →</a>
+          </div>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="seo-container">
+        <article>
+          <h1>Cursor + Claude API Proxy</h1>
+          <p class="seo-lede">
+            Cursor's $20 / $40 plan is great until you start using Sonnet for everything and burn
+            through your monthly request quota in two weeks. The fix:
+            <strong>bring your own Claude API key</strong> via a pay-as-you-go proxy. Cursor adds
+            an OpenAI-style Base URL field exactly for this. Setup time: 2 minutes.
+          </p>
+
+          <div class="seo-tldr">
+            <p><strong>The two fields:</strong> Override OpenAI Base URL =
+            <code>https://tokenprovider.store/v1</code>, paste your proxy key in the OpenAI key
+            slot, and Cursor will route both ChatGPT and Claude requests through it (proxy speaks
+            both protocols on the same key).</p>
+          </div>
+
+          <h2>Two integration paths</h2>
+          <p>Cursor exposes two ways to bring your own model:</p>
+          <ol>
+            <li><strong>OpenAI key + base URL</strong> — easiest. Works for any
+              OpenAI-compatible endpoint, including a proxy that forwards to Claude/Gemini under
+              the hood by model name.</li>
+            <li><strong>Anthropic key</strong> — direct Anthropic-protocol field. Cursor sends
+              raw <code>messages</code> requests, no OpenAI translation.</li>
+          </ol>
+          <p>Path 1 is simpler and unlocks ChatGPT + Claude + Gemini in one slot. Path 2 gives a
+          native Anthropic experience but only for Claude models.</p>
+
+          <h2>Path 1: OpenAI-compatible base URL (recommended)</h2>
+          <ol class="seo-steps">
+            <li>
+              <h3>Open Cursor settings</h3>
+              <p><kbd>Cmd</kbd> + <kbd>,</kbd> (macOS) or <kbd>Ctrl</kbd> + <kbd>,</kbd> (Windows/Linux) → <strong>Models</strong> tab.</p>
+            </li>
+
+            <li>
+              <h3>Tick "OpenAI API Key"</h3>
+              <p>Paste your TokenProvider key in the OpenAI key field (yes, the OpenAI field — the
+              proxy accepts an OpenAI-shaped key here).</p>
+            </li>
+
+            <li>
+              <h3>Click "Override OpenAI Base URL"</h3>
+              <p>Enter: <code>https://tokenprovider.store/v1</code><br>
+              Click <strong>Verify</strong> — should show a green check.</p>
+              <div class="seo-warn">
+                <p>Include the <code>/v1</code> suffix here (Cursor expects it). For Claude Code
+                or the Anthropic SDK base URL you'd <em>omit</em> /v1 — different conventions.</p>
+              </div>
+            </li>
+
+            <li>
+              <h3>Add the Claude models you want to use</h3>
+              <p>Cursor → Models tab → "Add custom model". Add e.g.:</p>
+              <ul>
+                <li><code>claude-sonnet-4-20250514</code></li>
+                <li><code>claude-opus-4-20250514</code></li>
+                <li><code>claude-haiku-4-20250514</code></li>
+                <li><code>gpt-4o</code></li>
+              </ul>
+              <p>Cursor sends each model name as-is to the proxy, which routes to the right vendor.</p>
+            </li>
+
+            <li>
+              <h3>Test in chat</h3>
+              <p>Open Composer (<kbd>Cmd</kbd> + <kbd>I</kbd>), select Sonnet 4 from the model
+              picker, ask "describe this file." A normal response = it's routing correctly.</p>
+            </li>
+          </ol>
+
+          <h2>Path 2: Native Anthropic key</h2>
+          <p>If you prefer a direct Anthropic-protocol path:</p>
+          <ol>
+            <li>Cursor settings → Models → tick <strong>Anthropic API Key</strong>.</li>
+            <li>Paste your proxy key.</li>
+            <li>Cursor unfortunately doesn't expose a base URL override for the Anthropic field
+              in all builds. If yours doesn't, use Path 1 — same outcome.</li>
+          </ol>
+
+          <h2>What you'll see in the dashboard</h2>
+          <p>Every Cursor request shows up in the <a href="/usage">TokenProvider Usage page</a> with
+          the model used, tokens billed, and a request ID. Patterns to watch:</p>
+          <ul>
+            <li><strong>Tab autocomplete = many tiny requests</strong> — these add up over a day.
+              Switch autocomplete to Cursor's built-in fast model if you want to save here.</li>
+            <li><strong>Composer = bigger, less frequent requests</strong> — main cost driver.</li>
+            <li><strong>Apply diff = a second model call</strong> — included in token spend; budget for it.</li>
+          </ul>
+
+          <h2>Common errors</h2>
+          <div class="seo-table-wrap">
+            <table class="seo-table">
+              <thead><tr><th>Error</th><th>Cause</th><th>Fix</th></tr></thead>
+              <tbody>
+                <tr><td>"Verify" fails</td><td>Wrong base URL or missing <code>/v1</code></td><td>Use exactly <code>https://tokenprovider.store/v1</code></td></tr>
+                <tr><td>"Model not found"</td><td>Custom model name typo</td><td>Use full versioned name like <code>claude-sonnet-4-20250514</code></td></tr>
+                <tr><td>401</td><td>Wrong key</td><td>Regenerate from the <a href="/keys">Keys page</a></td></tr>
+                <tr><td>429</td><td>Hard rate-limit on free Cursor tier</td><td>Switch to a Pro Cursor plan + still use your proxy key</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>FAQ</h2>
+          <div class="seo-faq">
+            <div class="seo-faq-item">
+              <h3>Does this still let me use Cursor Pro?</h3>
+              <p>Yes. Cursor Pro and bring-your-own-key are independent — Pro covers the in-IDE
+              features, the key controls which API the model calls hit. Many devs run Cursor Pro
+              ($20/mo) + proxy key (pay-as-you-go) and still pay less than Cursor's $40 tier.</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>Will Cursor's "fast apply" still work?</h3>
+              <p>Yes — fast apply uses the same configured model. You'll see two requests per
+              edit (one for the change, one for apply).</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>Can I split usage across teammates?</h3>
+              <p>Create one proxy key per developer, watch per-key usage in the dashboard, and
+              you have transparent per-person billing without managing Cursor team seats.</p>
+            </div>
+            <div class="seo-faq-item">
+              <h3>Latency hit?</h3>
+              <p>+20–80 ms over direct API. TTFT for code completions is dominated by the model
+              itself, not the proxy hop.</p>
+            </div>
+          </div>
+
+          <section class="seo-cta-block">
+            <h2 class="seo-mt-0">Cursor + cheap Claude — same workflow, lower bill</h2>
+            <p>$1 minimum top-up, pay per token, cancel anytime.</p>
+            <a class="seo-btn-cta" href="/register">Sign up free →</a>
+            <a class="seo-btn-ghost" href="/login">Already a member</a>
+          </section>
+
+          <section class="seo-related">
+            <h2>Related guides</h2>
+            <ul class="seo-related-list">
+              <li><a href="/en/guides/claude-code-setup.html"><strong>Claude Code Setup</strong><span>Anthropic CLI</span></a></li>
+              <li><a href="/en/guides/cline-cheap-claude.html"><strong>Cline + Cheap Claude</strong><span>VS Code agent</span></a></li>
+              <li><a href="/en/examples/claude-api-nodejs.html"><strong>Claude API Node.js Example</strong><span>Same key, programmatic</span></a></li>
+              <li><a href="/en/compare/claude-vs-chatgpt-api.html"><strong>Claude vs ChatGPT API</strong><span>Pick the right model</span></a></li>
+            </ul>
+          </section>
+        </article>
+      </div>
+    </main>
+
+    <footer class="seo-footer">
+      <div class="seo-container">
+        <p>
+          <a href="/en.html">Home</a> ·
+          <a href="/login">Log in</a> ·
+          <a href="/register">Sign up</a>
+        </p>
+        <p>© TokenProvider · Claude / Claude Code / ChatGPT API gateway</p>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -23,4 +23,4 @@ Disallow: /setup
 Disallow: /api/
 Disallow: /v1/
 
-Sitemap: https://tokenzhijia.shop/sitemap.xml
+Sitemap: https://tokenprovider.store/sitemap.xml

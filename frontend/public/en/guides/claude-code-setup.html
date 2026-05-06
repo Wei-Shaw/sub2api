@@ -5,45 +5,45 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="/logo.png" />
 
-    <title>Claude Code Setup with a Cheap Claude API (2026 guide) | Token之家</title>
-    <meta name="description" content="Configure Claude Code CLI with Token之家 in 5 minutes. Point ANTHROPIC_BASE_URL at the proxy, pay per token, save 50%+ vs the official subscription. Includes error fixes." />
+    <title>Claude Code Setup with a Cheap Claude API (2026 guide) | TokenProvider</title>
+    <meta name="description" content="Configure Claude Code CLI with TokenProvider in 5 minutes. Point ANTHROPIC_BASE_URL at the proxy, pay per token, save 50%+ vs the official subscription. Includes error fixes." />
     <meta name="keywords" content="claude code setup, claude code proxy, ANTHROPIC_BASE_URL, cheap claude api, claude code cli, claude code configuration" />
     <meta name="robots" content="index,follow" />
     <meta name="theme-color" content="#14b8a6" />
 
-    <link rel="canonical" href="https://tokenzhijia.shop/en/guides/claude-code-setup.html" />
-    <link rel="alternate" hreflang="zh-CN" href="https://tokenzhijia.shop/guides/claude-code-setup.html" />
-    <link rel="alternate" hreflang="en" href="https://tokenzhijia.shop/en/guides/claude-code-setup.html" />
-    <link rel="alternate" hreflang="x-default" href="https://tokenzhijia.shop/guides/claude-code-setup.html" />
+    <link rel="canonical" href="https://tokenprovider.store/en/guides/claude-code-setup.html" />
+    <link rel="alternate" hreflang="zh-CN" href="https://tokenprovider.store/guides/claude-code-setup.html" />
+    <link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/guides/claude-code-setup.html" />
+    <link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/guides/claude-code-setup.html" />
 
     <meta property="og:type" content="article" />
-    <meta property="og:url" content="https://tokenzhijia.shop/en/guides/claude-code-setup.html" />
+    <meta property="og:url" content="https://tokenprovider.store/en/guides/claude-code-setup.html" />
     <meta property="og:title" content="Claude Code Setup with a Cheap Claude API" />
-    <meta property="og:description" content="Point ANTHROPIC_BASE_URL at Token之家 in 5 minutes. Save 50%+ vs the official subscription." />
-    <meta property="og:image" content="https://tokenzhijia.shop/logo.png" />
-    <meta property="og:site_name" content="Token之家" />
+    <meta property="og:description" content="Point ANTHROPIC_BASE_URL at TokenProvider in 5 minutes. Save 50%+ vs the official subscription." />
+    <meta property="og:image" content="https://tokenprovider.store/logo.png" />
+    <meta property="og:site_name" content="TokenProvider" />
     <meta property="og:locale" content="en_US" />
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Claude Code Setup with a Cheap Claude API" />
-    <meta name="twitter:description" content="Point ANTHROPIC_BASE_URL at Token之家 in 5 minutes. Save 50%+ vs the official subscription." />
-    <meta name="twitter:image" content="https://tokenzhijia.shop/logo.png" />
+    <meta name="twitter:description" content="Point ANTHROPIC_BASE_URL at TokenProvider in 5 minutes. Save 50%+ vs the official subscription." />
+    <meta name="twitter:image" content="https://tokenprovider.store/logo.png" />
 
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "HowTo",
       "name": "Set up Claude Code with a proxy",
-      "description": "Configure Anthropic's Claude Code CLI to use Token之家 in 5 minutes.",
+      "description": "Configure Anthropic's Claude Code CLI to use TokenProvider in 5 minutes.",
       "inLanguage": "en",
       "totalTime": "PT5M",
       "supply": [
-        { "@type": "HowToSupply", "name": "Token之家 account + API key" },
+        { "@type": "HowToSupply", "name": "TokenProvider account + API key" },
         { "@type": "HowToSupply", "name": "Node.js 18+" }
       ],
       "step": [
         { "@type": "HowToStep", "name": "Install Claude Code", "text": "npm install -g @anthropic-ai/claude-code" },
-        { "@type": "HowToStep", "name": "Create an API key", "text": "Sign up on Token之家 and create a key from the dashboard" },
+        { "@type": "HowToStep", "name": "Create an API key", "text": "Sign up on TokenProvider and create a key from the dashboard" },
         { "@type": "HowToStep", "name": "Set env vars", "text": "Export ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY pointing at the proxy" },
         { "@type": "HowToStep", "name": "Run and verify", "text": "Run claude inside any project and confirm it routes through the proxy" }
       ]
@@ -59,8 +59,8 @@
       <div class="seo-container-wide">
         <nav class="seo-nav">
           <a class="seo-logo" href="/en.html">
-            <img src="/logo.png" alt="Token之家 logo" width="36" height="36" />
-            <span class="seo-logo-text">Token之家</span>
+            <img src="/logo.png" alt="TokenProvider logo" width="36" height="36" />
+            <span class="seo-logo-text">TokenProvider</span>
           </a>
           <div class="seo-nav-links">
             <a class="seo-nav-link" href="/guides/claude-code-setup.html" hreflang="zh-CN" rel="alternate">中文</a>
@@ -77,20 +77,20 @@
           <h1>Claude Code Setup with a Cheap Claude API</h1>
           <p class="seo-lede">
             Claude Code's official subscription is a flat monthly fee that adds up fast if you
-            use it daily. Point <code>ANTHROPIC_BASE_URL</code> at Token之家 instead, pay per
+            use it daily. Point <code>ANTHROPIC_BASE_URL</code> at TokenProvider instead, pay per
             token actually used, and <strong>typically save 50%+</strong>. Works with Sonnet 4,
             Opus, and Haiku. 5 minutes end-to-end.
           </p>
 
           <div class="seo-tldr">
-            <p><strong>The core is two env vars:</strong> <code>ANTHROPIC_BASE_URL=https://tokenzhijia.shop</code>
+            <p><strong>The core is two env vars:</strong> <code>ANTHROPIC_BASE_URL=https://tokenprovider.store</code>
             and <code>ANTHROPIC_API_KEY=your_proxy_key</code>. Details below.</p>
           </div>
 
           <h2>Prerequisites</h2>
           <ul>
             <li>Node.js 18+ (<code>node -v</code> to check)</li>
-            <li>A <a href="/register">Token之家 account</a> with an API key</li>
+            <li>A <a href="/register">TokenProvider account</a> with an API key</li>
             <li>Terminal access to set environment variables (macOS / Linux / Windows)</li>
           </ul>
 
@@ -104,7 +104,7 @@
             </li>
 
             <li>
-              <h3>Create an API key on Token之家</h3>
+              <h3>Create an API key on TokenProvider</h3>
               <p><a href="/register">Sign up</a> → API Keys → "Create key". Use one key per project
               so you can track usage and revoke independently.</p>
               <div class="seo-warn">
@@ -119,15 +119,15 @@
 
               <p><strong>Temporary (current shell):</strong></p>
 <pre><code># macOS / Linux
-export ANTHROPIC_BASE_URL="https://tokenzhijia.shop"
+export ANTHROPIC_BASE_URL="https://tokenprovider.store"
 export ANTHROPIC_API_KEY="your_token_home_key"
 
 # Windows PowerShell
-$env:ANTHROPIC_BASE_URL = "https://tokenzhijia.shop"
+$env:ANTHROPIC_BASE_URL = "https://tokenprovider.store"
 $env:ANTHROPIC_API_KEY = "your_token_home_key"</code></pre>
 
               <p><strong>Persistent (every new shell):</strong></p>
-<pre><code>echo 'export ANTHROPIC_BASE_URL="https://tokenzhijia.shop"' >> ~/.zshrc
+<pre><code>echo 'export ANTHROPIC_BASE_URL="https://tokenprovider.store"' >> ~/.zshrc
 echo 'export ANTHROPIC_API_KEY="your_key"' >> ~/.zshrc
 source ~/.zshrc</code></pre>
               <p>On bash, replace <code>~/.zshrc</code> with <code>~/.bashrc</code>.</p>
@@ -145,7 +145,7 @@ claude</code></pre>
 
             <li>
               <h3>Watch usage and billing</h3>
-              <p>On the <a href="/usage">Token之家 Usage page</a> you'll see for each Claude Code
+              <p>On the <a href="/usage">TokenProvider Usage page</a> you'll see for each Claude Code
               request:</p>
               <ul>
                 <li>Model used (Sonnet 4 / Opus / Haiku)</li>
@@ -170,9 +170,9 @@ claude</code></pre>
                   <td>Check <code>echo $ANTHROPIC_API_KEY</code> returns your key</td>
                 </tr>
                 <tr>
-                  <td><code>ENOTFOUND tokenzhijia.shop</code></td>
+                  <td><code>ENOTFOUND tokenprovider.store</code></td>
                   <td>No network or DNS failure</td>
-                  <td>Confirm <code>curl https://tokenzhijia.shop</code> works</td>
+                  <td>Confirm <code>curl https://tokenprovider.store</code> works</td>
                 </tr>
                 <tr>
                   <td><code>429 Too Many Requests</code></td>
@@ -199,12 +199,12 @@ claude</code></pre>
             root or override inside your npm script:
           </p>
 <pre><code># Project A's .env
-ANTHROPIC_BASE_URL=https://tokenzhijia.shop
+ANTHROPIC_BASE_URL=https://tokenprovider.store
 ANTHROPIC_API_KEY=sk-xxxxx-project-a
 
 # Launch
 source .env && claude</code></pre>
-          <p>You can create multiple keys under the same Token之家 account — each with its own
+          <p>You can create multiple keys under the same TokenProvider account — each with its own
           billing view.</p>
 
           <h2>Why a proxy is cheaper than a subscription</h2>
@@ -264,7 +264,7 @@ source .env && claude</code></pre>
           <a href="/login">Log in</a> ·
           <a href="/register">Sign up</a>
         </p>
-        <p>© Token之家 · Claude / Claude Code / ChatGPT API gateway</p>
+        <p>© TokenProvider · Claude / Claude Code / ChatGPT API gateway</p>
       </div>
     </footer>
   </body>

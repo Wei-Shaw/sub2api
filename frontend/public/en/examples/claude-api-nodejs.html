@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+
+    <title>Claude API Node.js Example (2026, streaming &amp; tools) | TokenProvider</title>
+    <meta name="description" content="Working TypeScript and Node.js examples for the Anthropic Claude API: install, basic call, streaming, tool use, vision input, and error handling. Switch base URL to use a cheaper proxy." />
+    <meta name="keywords" content="claude api nodejs, claude api typescript, anthropic sdk nodejs, claude streaming javascript, claude tool use nodejs, claude code example" />
+    <meta name="robots" content="index,follow" />
+    <meta name="theme-color" content="#14b8a6" />
+
+    <link rel="canonical" href="https://tokenprovider.store/en/examples/claude-api-nodejs.html" />
+    <link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/examples/claude-api-nodejs.html" />
+    <link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/examples/claude-api-nodejs.html" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://tokenprovider.store/en/examples/claude-api-nodejs.html" />
+    <meta property="og:title" content="Claude API Node.js Example (2026)" />
+    <meta property="og:description" content="TypeScript and Node.js recipes for the Anthropic Claude API — streaming, tools, vision." />
+    <meta property="og:image" content="https://tokenprovider.store/logo.png" />
+    <meta property="og:site_name" content="TokenProvider" />
+    <meta property="og:locale" content="en_US" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Claude API Node.js Example (2026)" />
+    <meta name="twitter:description" content="TypeScript and Node.js recipes for the Anthropic Claude API." />
+    <meta name="twitter:image" content="https://tokenprovider.store/logo.png" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      "headline": "Claude API Node.js Example (2026)",
+      "description": "Install the Anthropic SDK, make a basic call, stream tokens, use tools, and handle errors in Node.js / TypeScript.",
+      "author": { "@type": "Organization", "name": "TokenProvider" },
+      "publisher": { "@type": "Organization", "name": "TokenProvider", "logo": { "@type": "ImageObject", "url": "https://tokenprovider.store/logo.png" } },
+      "datePublished": "2026-05-07",
+      "dateModified": "2026-05-07",
+      "inLanguage": "en",
+      "proficiencyLevel": "Beginner",
+      "mainEntityOfPage": "https://tokenprovider.store/en/examples/claude-api-nodejs.html"
+    }
+    </script>
+
+    <link rel="stylesheet" href="/assets/seo.css" />
+  </head>
+  <body>
+    <div class="seo-bg-decor"></div>
+
+    <header class="seo-header">
+      <div class="seo-container-wide">
+        <nav class="seo-nav">
+          <a class="seo-logo" href="/en.html">
+            <img src="/logo.png" alt="TokenProvider logo" width="36" height="36" />
+            <span class="seo-logo-text">TokenProvider</span>
+          </a>
+          <div class="seo-nav-links">
+            <a class="seo-nav-link" href="/en.html">Home</a>
+            <a class="seo-nav-link" href="/login">Log in</a>
+            <a class="seo-btn-primary" href="/register">Sign up →</a>
+          </div>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="seo-container">
+        <article>
+          <h1>Claude API Node.js Example (2026)</h1>
+          <p class="seo-lede">
+            Anthropic ships a first-party TypeScript SDK that handles authentication, streaming,
+            and retry logic. The recipes below take you from <code>npm install</code> to a
+            working tool-using agent in under 50 lines. Same code works against
+            <code>api.anthropic.com</code> or any compatible proxy by changing one constructor option.
+          </p>
+
+          <div class="seo-tldr">
+            <p><strong>The minimum is 4 lines:</strong> <code>new Anthropic({ apiKey })</code>,
+            then <code>await client.messages.create({ model, max_tokens, messages })</code>.</p>
+          </div>
+
+          <h2>Install</h2>
+<pre><code>npm install @anthropic-ai/sdk
+# or
+pnpm add @anthropic-ai/sdk</code></pre>
+          <p>Requires Node.js 18+. The SDK is pure ESM with TypeScript types built in.</p>
+
+          <h2>1. Basic call</h2>
+<pre><code>import Anthropic from "@anthropic-ai/sdk";
+
+const client = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY!,
+  // baseURL: "https://tokenprovider.store",  // uncomment to use a proxy
+});
+
+const msg = await client.messages.create({
+  model: "claude-sonnet-4-20250514",
+  max_tokens: 256,
+  messages: [{ role: "user", content: "What is the capital of Japan?" }],
+});
+
+console.log(msg.content[0].type === "text" ? msg.content[0].text : "");</code></pre>
+
+          <h2>2. Streaming tokens as they arrive</h2>
+<pre><code>const stream = client.messages.stream({
+  model: "claude-sonnet-4-20250514",
+  max_tokens: 1024,
+  messages: [{ role: "user", content: "Write a haiku about TypeScript." }],
+});
+
+for await (const event of stream) {
+  if (
+    event.type === "content_block_delta" &&
+    event.delta.type === "text_delta"
+  ) {
+    process.stdout.write(event.delta.text);
+  }
+}
+
+const final = await stream.finalMessage();
+console.log("\nUsage:", final.usage);</code></pre>
+          <p>The SDK also exposes higher-level helpers like <code>stream.on("text", ...)</code> if
+          you prefer event emitters.</p>
+
+          <h2>3. Tool use (function calling)</h2>
+<pre><code>const tools: Anthropic.Tool[] = [{
+  name: "get_weather",
+  description: "Get current weather for a city",
+  input_schema: {
+    type: "object",
+    properties: {
+      city: { type: "string" },
+      unit: { type: "string", enum: ["c", "f"] },
+    },
+    required: ["city"],
+  },
+}];
+
+const result = await client.messages.create({
+  model: "claude-sonnet-4-20250514",
+  max_tokens: 512,
+  tools,
+  messages: [{ role: "user", content: "Weather in Tokyo today?" }],
+});
+
+const toolBlock = result.content.find(
+  (b): b is Anthropic.ToolUseBlock =&gt; b.type === "tool_use",
+);
+
+if (toolBlock) {
+  console.log("Tool:", toolBlock.name, "Args:", toolBlock.input);
+  // …call your real weather function, then send a follow-up:
+  // role: "user", content: [{ type: "tool_result", tool_use_id, content }]
+}</code></pre>
+
+          <h2>4. Vision (image input)</h2>
+<pre><code>import { readFileSync } from "node:fs";
+
+const imageData = readFileSync("./screenshot.png").toString("base64");
+
+const result = await client.messages.create({
+  model: "claude-sonnet-4-20250514",
+  max_tokens: 512,
+  messages: [{
+    role: "user",
+    content: [
+      { type: "image", source: { type: "base64", media_type: "image/png", data: imageData } },
+      { type: "text", text: "What does this UI mockup show?" },
+    ],
+  }],
+});</code></pre>
+
+          <h2>5. Error handling and retries</h2>
+<pre><code>try {
+  const msg = await client.messages.create({ /* … */ });
+} catch (err) {
+  if (err instanceof Anthropic.APIError) {
+    console.error(err.status, err.message);
+    // err.status: 401 / 429 / 500 etc.
+  } else {
+    throw err;
+  }
+}
+
+// SDK already retries idempotent failures up to 2x with backoff.
+// Configure: new Anthropic({ apiKey, maxRetries: 3 })</code></pre>
+
+          <h2>6. Streaming + tools combined</h2>
+          <p>Real agents stream the assistant's reasoning text and detect tool calls as they
+          appear in the stream. The SDK's <code>stream.on("contentBlock", ...)</code> event fires
+          for each completed block, so you can process tool calls without buffering the entire
+          response.</p>
+
+          <h2>Switching to a proxy</h2>
+<pre><code>const client = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY!,
+  baseURL: "https://tokenprovider.store",   // only line to change
+});</code></pre>
+          <p>The proxy implements the full Messages API contract — same SDK methods, same
+          response shapes, same streaming events. Use the same key for Claude Code, Cursor, and
+          your scripts.</p>
+
+          <section class="seo-cta-block">
+            <h2 class="seo-mt-0">Same SDK, ~50% off the bill</h2>
+            <p>Switch <code>baseURL</code> and you're on pay-as-you-go. $1 minimum top-up.</p>
+            <a class="seo-btn-cta" href="/register">Sign up free →</a>
+            <a class="seo-btn-ghost" href="/login">Already a member</a>
+          </section>
+
+          <section class="seo-related">
+            <h2>More examples</h2>
+            <ul class="seo-related-list">
+              <li><a href="/en/examples/claude-api-python.html"><strong>Claude API Python Example</strong><span>asyncio + streaming</span></a></li>
+              <li><a href="/en/examples/chatgpt-api-curl.html"><strong>ChatGPT API curl</strong><span>Quick verification</span></a></li>
+              <li><a href="/en/examples/gemini-api-example.html"><strong>Gemini API Example</strong><span>Google models</span></a></li>
+              <li><a href="/en/guides/claude-code-setup.html"><strong>Claude Code Setup</strong><span>CLI install</span></a></li>
+            </ul>
+          </section>
+        </article>
+      </div>
+    </main>
+
+    <footer class="seo-footer">
+      <div class="seo-container">
+        <p>
+          <a href="/en.html">Home</a> ·
+          <a href="/login">Log in</a> ·
+          <a href="/register">Sign up</a>
+        </p>
+        <p>© TokenProvider · Claude / Claude Code / ChatGPT API gateway</p>
+      </div>
+    </footer>
+  </body>
+</html>
