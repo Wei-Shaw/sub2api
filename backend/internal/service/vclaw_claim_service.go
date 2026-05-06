@@ -11,6 +11,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 )
 
 var ErrVClawClaimNotImplemented = infraerrors.ServiceUnavailable(
@@ -19,12 +20,13 @@ var ErrVClawClaimNotImplemented = infraerrors.ServiceUnavailable(
 )
 
 type VClawClaimService struct {
-	entClient      *dbent.Client
-	userRepo       UserRepository
-	redeemRepo     RedeemCodeRepository
-	userDeviceRepo UserDeviceRepository
-	cfg            *config.Config
-	settingService *SettingService
+	entClient          *dbent.Client
+	userRepo           UserRepository
+	redeemRepo         RedeemCodeRepository
+	userDeviceRepo     UserDeviceRepository
+	cfg                *config.Config
+	settingService     *SettingService
+	defaultSubAssigner DefaultSubscriptionAssigner
 }
 
 func NewVClawClaimService(
@@ -34,14 +36,16 @@ func NewVClawClaimService(
 	userDeviceRepo UserDeviceRepository,
 	cfg *config.Config,
 	settingService *SettingService,
+	defaultSubAssigner DefaultSubscriptionAssigner,
 ) *VClawClaimService {
 	return &VClawClaimService{
-		entClient:      entClient,
-		userRepo:       userRepo,
-		redeemRepo:     redeemRepo,
-		userDeviceRepo: userDeviceRepo,
-		cfg:            cfg,
-		settingService: settingService,
+		entClient:          entClient,
+		userRepo:           userRepo,
+		redeemRepo:         redeemRepo,
+		userDeviceRepo:     userDeviceRepo,
+		cfg:                cfg,
+		settingService:     settingService,
+		defaultSubAssigner: defaultSubAssigner,
 	}
 }
 
@@ -176,6 +180,7 @@ func (s *VClawClaimService) createFirstClaim(ctx context.Context, req VClawClaim
 		if err := s.applyDeviceClaimBonus(runCtx, user, deviceHash, now); err != nil {
 			return nil, err
 		}
+		s.assignFirstDeviceClaimSubscriptions(runCtx, user.ID)
 		loginCodeText, err := GenerateRedeemCodeForType(RedeemTypeDeviceLogin)
 		if err != nil {
 			return nil, fmt.Errorf("generate device login code: %w", err)
@@ -245,6 +250,22 @@ func (s *VClawClaimService) createFirstClaim(ctx context.Context, req VClawClaim
 		return nil, ErrServiceUnavailable
 	}
 	return result, nil
+}
+
+func (s *VClawClaimService) assignFirstDeviceClaimSubscriptions(ctx context.Context, userID int64) {
+	if s == nil || s.settingService == nil || s.defaultSubAssigner == nil || userID <= 0 {
+		return
+	}
+	for _, item := range s.settingService.GetDefaultSubscriptions(ctx) {
+		if _, _, err := s.defaultSubAssigner.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{
+			UserID:       userID,
+			GroupID:      item.GroupID,
+			ValidityDays: item.ValidityDays,
+			Notes:        "auto assigned by first device claim",
+		}); err != nil {
+			logger.LegacyPrintf("service.vclaw_claim", "[VClawClaim] Failed to assign first device claim subscription: user_id=%d group_id=%d err=%v", userID, item.GroupID, err)
+		}
+	}
 }
 
 func normalizeDeviceHash(value string) string {

@@ -327,8 +327,7 @@ func TestAuthServiceInviteLoginAcceptsDeviceLoginCode(t *testing.T) {
 	require.NotNil(t, bootstrapSvc.createdKeys[1].GroupID)
 	require.Equal(t, int64(103), *bootstrapSvc.createdKeys[0].GroupID)
 	require.Equal(t, int64(201), *bootstrapSvc.createdKeys[1].GroupID)
-	require.Len(t, assigner.calls, 1)
-	require.Equal(t, int64(201), assigner.calls[0].GroupID)
+	require.Empty(t, assigner.calls)
 }
 
 func TestAuthServiceInviteLoginAllowsWebLoginWithoutDeviceHash(t *testing.T) {

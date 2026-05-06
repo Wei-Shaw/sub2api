@@ -7,14 +7,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
 
 type vclawClaimRedeemRepoStub struct {
-	codes    map[string]*RedeemCode
+	codes     map[string]*RedeemCode
 	codesByID map[int64]*RedeemCode
-	created  []*RedeemCode
+	created   []*RedeemCode
 }
 
 func (s *vclawClaimRedeemRepoStub) Create(ctx context.Context, code *RedeemCode) error {
@@ -39,8 +40,8 @@ func (s *vclawClaimRedeemRepoStub) Create(ctx context.Context, code *RedeemCode)
 }
 
 func (s *vclawClaimRedeemRepoStub) CreateBatch(context.Context, []RedeemCode) error { return nil }
-func (s *vclawClaimRedeemRepoStub) Update(context.Context, *RedeemCode) error { return nil }
-func (s *vclawClaimRedeemRepoStub) Delete(context.Context, int64) error { return nil }
+func (s *vclawClaimRedeemRepoStub) Update(context.Context, *RedeemCode) error       { return nil }
+func (s *vclawClaimRedeemRepoStub) Delete(context.Context, int64) error             { return nil }
 func (s *vclawClaimRedeemRepoStub) List(context.Context, pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
@@ -84,9 +85,10 @@ func (s *vclawClaimRedeemRepoStub) GetByCode(ctx context.Context, code string) (
 }
 
 type vclawClaimUserDeviceRepoStub struct {
-	byDeviceHash       map[string]*UserDevice
+	byDeviceHash        map[string]*UserDevice
 	byClaimRedeemCodeID map[int64]*UserDevice
-	updatedClaimedIDs  []int64
+	created             []*UserDevice
+	updatedClaimedIDs   []int64
 }
 
 func (s *vclawClaimUserDeviceRepoStub) GetByDeviceHash(ctx context.Context, deviceHash string) (*UserDevice, error) {
@@ -117,12 +119,35 @@ func (s *vclawClaimUserDeviceRepoStub) GetByClaimRedeemCodeID(ctx context.Contex
 	return &clone, nil
 }
 
-func (s *vclawClaimUserDeviceRepoStub) Create(context.Context, *UserDevice) error { return nil }
+func (s *vclawClaimUserDeviceRepoStub) Create(_ context.Context, device *UserDevice) error {
+	if device == nil {
+		return nil
+	}
+	clone := *device
+	if clone.ID == 0 {
+		clone.ID = int64(len(s.created) + 1000)
+	}
+	device.ID = clone.ID
+	if s.byDeviceHash == nil {
+		s.byDeviceHash = map[string]*UserDevice{}
+	}
+	s.byDeviceHash[normalizeDeviceHash(clone.DeviceHash)] = &clone
+	if clone.ClaimRedeemCodeID != nil {
+		if s.byClaimRedeemCodeID == nil {
+			s.byClaimRedeemCodeID = map[int64]*UserDevice{}
+		}
+		s.byClaimRedeemCodeID[*clone.ClaimRedeemCodeID] = &clone
+	}
+	s.created = append(s.created, &clone)
+	return nil
+}
 func (s *vclawClaimUserDeviceRepoStub) UpdateLastClaimedAt(_ context.Context, id int64, _ time.Time) error {
 	s.updatedClaimedIDs = append(s.updatedClaimedIDs, id)
 	return nil
 }
-func (s *vclawClaimUserDeviceRepoStub) UpdateLastLoginAt(context.Context, int64, time.Time) error { return nil }
+func (s *vclawClaimUserDeviceRepoStub) UpdateLastLoginAt(context.Context, int64, time.Time) error {
+	return nil
+}
 
 func TestVClawClaimServiceResumesUsedClaimCodeByBinding(t *testing.T) {
 	now := time.Now().UTC()
@@ -159,7 +184,7 @@ func TestVClawClaimServiceResumesUsedClaimCodeByBinding(t *testing.T) {
 		byClaimRedeemCodeID: map[int64]*UserDevice{claimCode.ID: binding},
 	}
 
-	svc := NewVClawClaimService(nil, &mockUserRepo{}, redeemRepo, deviceRepo, nil, nil)
+	svc := NewVClawClaimService(nil, &mockUserRepo{}, redeemRepo, deviceRepo, nil, nil, nil)
 	result, err := svc.Claim(context.Background(), VClawClaimRequest{
 		ClaimCode: claimCode.Code,
 		Device: VClawDeviceInput{
@@ -195,7 +220,7 @@ func TestVClawClaimServiceRejectsUsedClaimCodeWithoutBinding(t *testing.T) {
 	}
 	deviceRepo := &vclawClaimUserDeviceRepoStub{}
 
-	svc := NewVClawClaimService(nil, &mockUserRepo{}, redeemRepo, deviceRepo, nil, nil)
+	svc := NewVClawClaimService(nil, &mockUserRepo{}, redeemRepo, deviceRepo, nil, nil, nil)
 	result, err := svc.Claim(context.Background(), VClawClaimRequest{
 		ClaimCode: claimCode.Code,
 		Device: VClawDeviceInput{
@@ -208,6 +233,46 @@ func TestVClawClaimServiceRejectsUsedClaimCodeWithoutBinding(t *testing.T) {
 
 	require.Nil(t, result)
 	require.ErrorIs(t, err, ErrClaimCodeInvalid)
+}
+
+func TestVClawClaimServiceFirstClaimAssignsDefaultSubscriptionOnce(t *testing.T) {
+	const deviceHash = "ac0addf134d4ac9d6ac98ffdb1f4796dd2b27d6ab2b66ec0bab9e181a007b668"
+
+	userRepo := &userRepoStub{nextID: 102}
+	redeemRepo := &vclawClaimRedeemRepoStub{}
+	deviceRepo := &vclawClaimUserDeviceRepoStub{}
+	assigner := &defaultSubscriptionAssignerStub{}
+	settingService := NewSettingService(&settingRepoStub{values: map[string]string{
+		SettingKeyDefaultSubscriptions: `[{"group_id":8,"validity_days":3}]`,
+	}}, &config.Config{})
+	svc := NewVClawClaimService(nil, userRepo, redeemRepo, deviceRepo, &config.Config{}, settingService, assigner)
+	req := VClawClaimRequest{
+		Device: VClawDeviceInput{
+			DeviceHash:         deviceHash,
+			FingerprintVersion: 1,
+			Platform:           "windows",
+			Arch:               "amd64",
+		},
+	}
+
+	first, err := svc.Claim(context.Background(), req)
+
+	require.NoError(t, err)
+	require.NotNil(t, first)
+	require.Equal(t, "first_claim", first.Mode)
+	require.Equal(t, int64(102), first.UserID)
+	require.Len(t, assigner.calls, 1)
+	require.Equal(t, int64(8), assigner.calls[0].GroupID)
+	require.Equal(t, 3, assigner.calls[0].ValidityDays)
+	require.Equal(t, "auto assigned by first device claim", assigner.calls[0].Notes)
+
+	resume, err := svc.Claim(context.Background(), req)
+
+	require.NoError(t, err)
+	require.NotNil(t, resume)
+	require.Equal(t, "resume", resume.Mode)
+	require.Equal(t, first.DeviceLoginCode, resume.DeviceLoginCode)
+	require.Len(t, assigner.calls, 1)
 }
 
 func validDeviceHash(seed byte) string {

@@ -63,9 +63,6 @@ func (s *AuthService) completeDeviceInviteLogin(ctx context.Context, input Invit
 
 	var bootstrapKeys []InviteBootstrapAPIKey
 	if !allowWebLoginWithoutDeviceHash {
-		grantPlan := s.resolveSignupGrantPlan(ctx, "invite_login")
-		s.assignSubscriptions(ctx, user.ID, grantPlan.Subscriptions, "auto assigned by invite login")
-
 		bootstrapKeys, err = s.provisionInviteBootstrapAPIKeys(ctx, user.ID, code)
 		if err != nil {
 			return nil, err
