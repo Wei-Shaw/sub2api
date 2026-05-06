@@ -311,6 +311,8 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		accounts.POST("/bulk-update", h.Admin.Account.BulkUpdate)
 		accounts.POST("/batch-clear-error", h.Admin.Account.BatchClearError)
 		accounts.POST("/batch-refresh", h.Admin.Account.BatchRefresh)
+		accounts.POST("/batch-set-privacy", h.Admin.Account.BatchSetPrivacy)
+		accounts.POST("/batch-clear-privacy", h.Admin.Account.BatchClearPrivacy)
 
 		// Antigravity 默认模型映射
 		accounts.GET("/antigravity/default-model-mapping", h.Admin.Account.GetAntigravityDefaultModelMapping)

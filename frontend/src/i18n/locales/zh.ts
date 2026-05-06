@@ -3200,9 +3200,16 @@ export default {
         disableScheduling: '批量停止调度',
         resetStatus: '批量重置状态',
         refreshToken: '批量刷新令牌',
+        setPrivacy: '批量设置隐私',
+        clearPrivacy: '批量清除隐私状态',
+        confirmSetPrivacy: '将向 OpenAI 发起 API 请求，强制把所选账号的训练数据共享设为关闭。是否继续？',
+        confirmClearPrivacy: '将清空所选账号本地保存的隐私状态（不调用 OpenAI），下次刷新时会重新检查并设置。是否继续？',
         resetStatusSuccess: '已成功重置 {count} 个账号状态',
         refreshTokenSuccess: '已成功刷新 {count} 个账号令牌',
-        partialSuccess: '操作部分完成：{success} 成功，{failed} 失败'
+        setPrivacySuccess: '已成功为 {count} 个账号设置隐私',
+        clearPrivacySuccess: '已成功清除 {count} 个账号的隐私状态',
+        partialSuccess: '操作部分完成：{success} 成功，{failed} 失败',
+        partialSuccessWithSkipped: '操作部分完成：{success} 成功，{failed} 失败，{skipped} 已跳过（非 OpenAI OAuth 账号）'
       },
       bulkEdit: {
         title: '批量编辑账号',

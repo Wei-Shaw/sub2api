@@ -2200,6 +2200,204 @@ func (h *AccountHandler) BatchRefreshTier(c *gin.Context) {
 	response.Success(c, results)
 }
 
+// BatchSetPrivacy handles batch setting privacy for OpenAI OAuth accounts
+// POST /api/v1/admin/accounts/batch-set-privacy
+func (h *AccountHandler) BatchSetPrivacy(c *gin.Context) {
+	var req struct {
+		AccountIDs []int64 `json:"account_ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if len(req.AccountIDs) == 0 {
+		response.BadRequest(c, "account_ids is required")
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	accounts, err := h.adminService.GetAccountsByIDs(ctx, req.AccountIDs)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	// 建立已获取账号的 ID 集合，检测缺失的 ID
+	foundIDs := make(map[int64]bool, len(accounts))
+	for _, acc := range accounts {
+		if acc != nil {
+			foundIDs[acc.ID] = true
+		}
+	}
+
+	const maxConcurrency = 5
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(maxConcurrency)
+
+	var mu sync.Mutex
+	var successCount, failedCount, skippedCount int
+	var errors []gin.H
+
+	// 将不存在的账号 ID 标记为失败
+	for _, id := range req.AccountIDs {
+		if !foundIDs[id] {
+			mu.Lock()
+			failedCount++
+			errors = append(errors, gin.H{
+				"account_id": id,
+				"error":      "账号不存在",
+			})
+			mu.Unlock()
+		}
+	}
+
+	for _, account := range accounts {
+		acc := account // 闭包捕获
+		if acc == nil {
+			continue
+		}
+		g.Go(func() error {
+			// 跳过非 OpenAI OAuth 账号
+			if acc.Platform != service.PlatformOpenAI || acc.Type != service.AccountTypeOAuth {
+				mu.Lock()
+				skippedCount++
+				errors = append(errors, gin.H{
+					"account_id": acc.ID,
+					"error":      "跳过：仅 OpenAI OAuth 账号支持设置隐私",
+				})
+				mu.Unlock()
+				return nil
+			}
+			mode := h.adminService.ForceOpenAIPrivacy(gctx, acc)
+			mu.Lock()
+			if mode == "" {
+				failedCount++
+				errors = append(errors, gin.H{
+					"account_id": acc.ID,
+					"error":      "设置隐私失败：缺少 access_token 或请求失败",
+				})
+			} else {
+				successCount++
+			}
+			mu.Unlock()
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{
+		"total":   len(req.AccountIDs),
+		"success": successCount,
+		"failed":  failedCount,
+		"skipped": skippedCount,
+		"errors":  errors,
+	})
+}
+
+// BatchClearPrivacy handles batch clearing privacy_mode for OpenAI OAuth accounts
+// POST /api/v1/admin/accounts/batch-clear-privacy
+func (h *AccountHandler) BatchClearPrivacy(c *gin.Context) {
+	var req struct {
+		AccountIDs []int64 `json:"account_ids"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if len(req.AccountIDs) == 0 {
+		response.BadRequest(c, "account_ids is required")
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	accounts, err := h.adminService.GetAccountsByIDs(ctx, req.AccountIDs)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	// 建立已获取账号的 ID 集合，检测缺失的 ID
+	foundIDs := make(map[int64]bool, len(accounts))
+	for _, acc := range accounts {
+		if acc != nil {
+			foundIDs[acc.ID] = true
+		}
+	}
+
+	const maxConcurrency = 10
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(maxConcurrency)
+
+	var mu sync.Mutex
+	var successCount, failedCount, skippedCount int
+	var batchErrors []gin.H
+
+	// 将不存在的账号 ID 标记为失败
+	for _, id := range req.AccountIDs {
+		if !foundIDs[id] {
+			mu.Lock()
+			failedCount++
+			batchErrors = append(batchErrors, gin.H{
+				"account_id": id,
+				"error":      "账号不存在",
+			})
+			mu.Unlock()
+		}
+	}
+
+	for _, account := range accounts {
+		acc := account // 闭包捕获
+		if acc == nil {
+			continue
+		}
+		g.Go(func() error {
+			// 跳过非 OpenAI OAuth 账号
+			if acc.Platform != service.PlatformOpenAI || acc.Type != service.AccountTypeOAuth {
+				mu.Lock()
+				skippedCount++
+				batchErrors = append(batchErrors, gin.H{
+					"account_id": acc.ID,
+					"error":      "跳过：仅 OpenAI OAuth 账号支持清除隐私状态",
+				})
+				mu.Unlock()
+				return nil
+			}
+			clearErr := h.adminService.ClearAccountPrivacyMode(gctx, acc)
+			mu.Lock()
+			if clearErr != nil {
+				failedCount++
+				batchErrors = append(batchErrors, gin.H{
+					"account_id": acc.ID,
+					"error":      clearErr.Error(),
+				})
+			} else {
+				successCount++
+			}
+			mu.Unlock()
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{
+		"total":   len(req.AccountIDs),
+		"success": successCount,
+		"failed":  failedCount,
+		"skipped": skippedCount,
+		"errors":  batchErrors,
+	})
+}
+
 // GetAntigravityDefaultModelMapping 获取 Antigravity 平台的默认模型映射
 // GET /api/v1/admin/accounts/antigravity/default-model-mapping
 func (h *AccountHandler) GetAntigravityDefaultModelMapping(c *gin.Context) {

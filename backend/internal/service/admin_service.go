@@ -84,6 +84,10 @@ type AdminService interface {
 	ForceOpenAIPrivacy(ctx context.Context, account *Account) string
 	// ForceAntigravityPrivacy 强制重新设置 Antigravity OAuth 账号隐私，无论当前状态。
 	ForceAntigravityPrivacy(ctx context.Context, account *Account) string
+	// ClearAccountPrivacyMode 清除账号的 privacy_mode 字段（设置为空字符串），
+	// 使下次 EnsureOpenAIPrivacy 能重新生效。
+	// 仅对 OpenAI OAuth 账号操作，其他账号类型返回 error。
+	ClearAccountPrivacyMode(ctx context.Context, account *Account) error
 	SetAccountSchedulable(ctx context.Context, id int64, schedulable bool) (*Account, error)
 	BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error)
 	CheckMixedChannelRisk(ctx context.Context, currentAccountID int64, currentAccountPlatform string, groupIDs []int64) error
@@ -3695,4 +3699,22 @@ func (s *adminServiceImpl) ForceAntigravityPrivacy(ctx context.Context, account 
 	}
 	applyAntigravityPrivacyMode(account, mode)
 	return mode
+}
+
+// ClearAccountPrivacyMode 清除账号的 privacy_mode 字段（设置为空字符串），
+// 使下次 EnsureOpenAIPrivacy 能重新尝试设置。
+// 仅对 OpenAI OAuth 账号操作，其他平台或类型返回 error。
+func (s *adminServiceImpl) ClearAccountPrivacyMode(ctx context.Context, account *Account) error {
+	if account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
+		return errors.New("仅 OpenAI OAuth 账号支持清除隐私状态")
+	}
+	if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{"privacy_mode": ""}); err != nil {
+		logger.LegacyPrintf("service.admin", "clear_openai_privacy_mode_failed: account_id=%d err=%v", account.ID, err)
+		return err
+	}
+	if account.Extra == nil {
+		account.Extra = make(map[string]any)
+	}
+	account.Extra["privacy_mode"] = ""
+	return nil
 }

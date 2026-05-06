@@ -3053,9 +3053,16 @@ export default {
         disableScheduling: 'Disable Scheduling',
         resetStatus: 'Reset Status',
         refreshToken: 'Refresh Token',
+        setPrivacy: 'Set Privacy',
+        clearPrivacy: 'Clear Privacy Status',
+        confirmSetPrivacy: 'This will call the OpenAI API to force training data sharing OFF for the selected accounts. Continue?',
+        confirmClearPrivacy: 'This will clear the locally stored privacy state (no OpenAI call) so the next refresh re-checks and applies it. Continue?',
         resetStatusSuccess: 'Successfully reset {count} account(s) status',
         refreshTokenSuccess: 'Successfully refreshed {count} account(s) token',
-        partialSuccess: 'Partially completed: {success} succeeded, {failed} failed'
+        setPrivacySuccess: 'Successfully set privacy for {count} account(s)',
+        clearPrivacySuccess: 'Successfully cleared privacy status for {count} account(s)',
+        partialSuccess: 'Partially completed: {success} succeeded, {failed} failed',
+        partialSuccessWithSkipped: 'Partially completed: {success} succeeded, {failed} failed, {skipped} skipped (non-OpenAI OAuth)'
       },
       bulkEdit: {
         title: 'Bulk Edit Accounts',
