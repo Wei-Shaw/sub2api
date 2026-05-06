@@ -112,8 +112,11 @@ const route = useRoute()
 const router = useRouter()
 const paymentStore = usePaymentStore()
 
-// Popup mode: skip AppLayout when opened with a specific method (alipay/wechat_pay)
-const isPopup = computed(() => !!route.query.method)
+// Popup mode: skip AppLayout when opened with either a specific
+// sub-method (alipay/wechat_pay) OR an explicit popup=1 flag — the
+// latter is set by PaymentView when the dedicated Stripe button opens
+// the page in window.open() and there is no preset method to key off.
+const isPopup = computed(() => !!route.query.method || route.query.popup === '1')
 
 const loading = ref(true)
 const initError = ref('')

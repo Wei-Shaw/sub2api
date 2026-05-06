@@ -156,9 +156,11 @@ export function decidePaymentLaunch(
     const stripeMethod: StripeVisibleMethod | undefined = isStripeButton
       ? undefined
       : visibleMethod === 'wxpay' ? 'wechat_pay' : 'alipay'
-    const kind: PaymentLaunchKind = stripeMethod === 'alipay' && !context.isMobile
-      ? 'stripe_popup'
-      : 'stripe_route'
+    // Desktop always uses a popup window so the host page stays in
+    // place while Stripe collects the payment details (matches Alipay /
+    // WeChat behaviour). Mobile falls back to a full-page redirect
+    // because popups are unreliable on small screens / in-app browsers.
+    const kind: PaymentLaunchKind = context.isMobile ? 'stripe_route' : 'stripe_popup'
     const payUrl = kind === 'stripe_popup'
       ? context.stripePopupUrl || context.stripeRouteUrl || ''
       : context.stripeRouteUrl || context.stripePopupUrl || ''

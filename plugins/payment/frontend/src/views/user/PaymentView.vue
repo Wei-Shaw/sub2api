@@ -748,12 +748,28 @@ async function createOrder(orderAmount: string, orderType: OrderType, planId?: n
         },
       }).href
       : ''
+    // Popup variant carries an explicit popup=1 flag so StripePaymentView
+    // collapses its layout (no host AppLayout, no extra padding) — needed
+    // when the dedicated Stripe button opens in window.open(): there is
+    // no preset method query to fall back on for the popup styling.
+    const stripePopupUrl = result.client_secret
+      ? router.resolve({
+        path: '/payment/stripe',
+        query: {
+          order_id: String(result.order_id),
+          client_secret: result.client_secret,
+          method: stripeMethod || undefined,
+          resume_token: result.resume_token || undefined,
+          popup: '1',
+        },
+      }).href
+      : ''
     const decision = decidePaymentLaunch(result, {
       visibleMethod,
       orderType,
       isMobile: isMobileDevice(),
       isWechatBrowser: typeof window !== 'undefined' && /MicroMessenger/i.test(window.navigator.userAgent),
-      stripePopupUrl: stripeRouteUrl,
+      stripePopupUrl,
       stripeRouteUrl,
     })
 
