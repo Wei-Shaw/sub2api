@@ -51,16 +51,22 @@
         <span class="text-sm text-gray-600 dark:text-gray-400">#{{ value }}</span>
       </template>
 
-      <template #cell-pay_amount="{ value, row }">
-        <div class="text-sm">
-          <span class="font-medium text-gray-900 dark:text-white">¥{{ formatMoney(value) }}</span>
-          <span v-if="hasFeeRate(row.fee_rate)" class="ml-1 text-xs text-gray-400" :title="t('payment.orders.fee') + ': ' + row.fee_rate + '%'">
-            ({{ row.fee_rate }}%)
-          </span>
-          <div v-if="row.amount !== row.pay_amount" class="text-xs text-gray-500">
-            {{ t('payment.orders.creditedAmount') }}: {{ row.order_type === 'balance' ? '$' : '¥' }}{{ formatMoney(row.amount) }}
-          </div>
-        </div>
+      <template #cell-pay_amount="{ value }">
+        <span class="text-sm font-medium text-gray-900 dark:text-white">¥{{ formatMoney(value) }}</span>
+      </template>
+
+      <template #cell-fee_rate="{ row }">
+        <span
+          v-if="hasFeeRate(row.fee_rate)"
+          class="text-sm text-gray-700 dark:text-gray-300"
+        >{{ row.fee_rate }}%</span>
+        <span v-else class="text-xs text-gray-400">—</span>
+      </template>
+
+      <template #cell-credited_amount="{ row }">
+        <span class="text-sm text-gray-700 dark:text-gray-300">
+          {{ row.order_type === 'balance' ? '$' : '¥' }}{{ formatMoney(row.amount) }}
+        </span>
       </template>
 
       <template #cell-payment_type="{ value }">
@@ -192,6 +198,8 @@ const columns = computed<Column[]>(() => [
   { key: 'id', label: t('payment.orders.orderId') },
   { key: 'user_id', label: t('payment.orders.userId') },
   { key: 'pay_amount', label: t('payment.orders.payAmount') },
+  { key: 'fee_rate', label: t('payment.orders.fee') },
+  { key: 'credited_amount', label: t('payment.orders.creditedAmount') },
   { key: 'payment_type', label: t('payment.orders.paymentMethod') },
   { key: 'status', label: t('payment.orders.status') },
   { key: 'order_type', label: t('payment.orders.orderType') },

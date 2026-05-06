@@ -17,16 +17,10 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
-      <!-- Page header -->
-      <div class="flex items-center justify-between">
-        <div>
-          <h1 class="text-xl font-bold text-gray-900 dark:text-white">
-            {{ t('payment.adminSettings.title') }}
-          </h1>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {{ t('payment.adminSettings.description') }}
-          </p>
-        </div>
+      <!-- Save action. AppHeader already renders the page title and
+           description from the menu manifest, so an in-page h1 would be
+           a duplicate banner. Keep only the primary action button. -->
+      <div class="flex justify-end">
         <button
           type="button"
           class="btn btn-primary"
@@ -43,16 +37,11 @@
       </div>
 
       <template v-else>
-        <!-- Payment system settings -->
+        <!-- Payment system settings. Card header intentionally omitted —
+             the page header + AppHeader breadcrumb already show the same
+             "支付配置" title and description, a third in-card repeat is
+             pure noise. -->
         <div class="card">
-          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
-            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-              {{ t('payment.adminSettings.title') }}
-            </h2>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {{ t('payment.adminSettings.description') }}
-            </p>
-          </div>
           <div class="space-y-4 p-6">
             <!-- Enable toggle -->
             <div class="flex items-center justify-between">
