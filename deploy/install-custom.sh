@@ -449,13 +449,19 @@ _upgrade_fast_preflight() {
         exit $?
     fi
 
-    # Disk check: need at least 1GB free in /tmp and /var/lib/docker
-    local free_tmp free_docker
+    # Disk check: need at least 1GB free in /tmp and DockerRootDir.
+    # Do NOT hardcode /var/lib/docker because many hosts customize data-root.
+    local free_tmp free_docker docker_root
     free_tmp=$(df -Pm /tmp 2>/dev/null | awk 'NR==2 {print $4}')
-    free_docker=$(df -Pm /var/lib/docker 2>/dev/null | awk 'NR==2 {print $4}')
+    docker_root=$(docker info -f '{{.DockerRootDir}}' 2>/dev/null || true)
+    if [ -n "$docker_root" ]; then
+        free_docker=$(df -Pm "$docker_root" 2>/dev/null | awk 'NR==2 {print $4}')
+    else
+        free_docker=""
+    fi
     if [ "${free_tmp:-0}" -lt 1024 ] || [ "${free_docker:-0}" -lt 1024 ]; then
-        print_error "Insufficient disk space. Need >1GB free in /tmp and /var/lib/docker."
-        print_error "  /tmp free: ${free_tmp:-?}MB, /var/lib/docker free: ${free_docker:-?}MB"
+        print_error "Insufficient disk space. Need >1GB free in /tmp and DockerRootDir."
+        print_error "  /tmp free: ${free_tmp:-?}MB, DockerRootDir(${docker_root:-unknown}) free: ${free_docker:-?}MB"
         exit 1
     fi
 }
