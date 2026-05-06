@@ -79,13 +79,18 @@ type WeChatPaymentResumeClaims struct {
 
 // PaymentResumeService creates / validates HMAC-signed resume tokens.
 // The signing key is sourced from plugin settings (resume_signing_key_hex);
-// rotating the key invalidates all outstanding resume tokens, which is
-// the desired property for a security-sensitive bearer credential.
+// rotating the key invalidates all outstanding resume tokens unless the
+// operator keeps the previous key on the comma-separated rotation list
+// (see signingKeys for the parsing rules).
 type PaymentResumeService struct {
 	settings pluginsdk.SettingsClient
 
-	mu  sync.RWMutex
-	key []byte
+	mu sync.RWMutex
+	// keys[0] is the primary key used for minting new tokens; the rest
+	// are verify-only fallbacks kept around so tokens minted under a
+	// previous key remain valid for their TTL after the operator
+	// rotates. Empty until the first successful settings read.
+	keys [][]byte
 }
 
 // NewPaymentResumeService constructs a resume service wired to the SDK
@@ -96,13 +101,27 @@ func NewPaymentResumeService(settings pluginsdk.SettingsClient) *PaymentResumeSe
 	return &PaymentResumeService{settings: settings}
 }
 
-// signingKey returns the active HMAC key, fetching it from settings on
-// first call. Returns ServiceUnavailable when no key is configured so
-// the caller can surface a clear error to the operator.
-func (s *PaymentResumeService) signingKey(ctx context.Context) ([]byte, error) {
+// resumeSigningMinKeyBytes is the minimum HMAC key length we accept.
+// Matches the previous single-key implementation so a comma-separated
+// rotation list cannot smuggle a shorter key past validation.
+const resumeSigningMinKeyBytes = 16
+
+// signingKeys returns every active HMAC key in priority order. keys[0]
+// is the primary mint key; subsequent entries are verify-only fallbacks
+// supplied by the operator for rotation. The first call fetches the
+// setting from the SDK; subsequent calls return the cached slice until
+// invalidateCachedKey is called.
+//
+// The setting value is parsed as a comma-separated list of hex strings
+// so rotation works without a plugin restart: the operator writes
+// "<new_hex>,<old_hex>" and tokens minted under either key keep
+// verifying. Whitespace inside the list is trimmed; empty segments are
+// dropped silently. A list that decodes to zero usable keys returns
+// ServiceUnavailable just like an empty single-key value would.
+func (s *PaymentResumeService) signingKeys(ctx context.Context) ([][]byte, error) {
 	s.mu.RLock()
-	if len(s.key) > 0 {
-		k := s.key
+	if len(s.keys) > 0 {
+		k := s.keys
 		s.mu.RUnlock()
 		return k, nil
 	}
@@ -110,8 +129,8 @@ func (s *PaymentResumeService) signingKey(ctx context.Context) ([]byte, error) {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(s.key) > 0 {
-		return s.key, nil
+	if len(s.keys) > 0 {
+		return s.keys, nil
 	}
 	if s.settings == nil {
 		return nil, infraerrors.ServiceUnavailable(paymentResumeNotConfiguredCode, paymentResumeNotConfiguredMessage)
@@ -130,17 +149,40 @@ func (s *PaymentResumeService) signingKey(ctx context.Context) ([]byte, error) {
 	if rawKey == "" {
 		return nil, infraerrors.ServiceUnavailable(paymentResumeNotConfiguredCode, paymentResumeNotConfiguredMessage)
 	}
-	decoded, err := hex.DecodeString(rawKey)
+
+	parts := strings.Split(rawKey, ",")
+	parsed := make([][]byte, 0, len(parts))
+	for _, part := range parts {
+		segment := strings.TrimSpace(part)
+		if segment == "" {
+			continue
+		}
+		decoded, err := hex.DecodeString(segment)
+		if err != nil {
+			return nil, infraerrors.ServiceUnavailable(paymentResumeNotConfiguredCode,
+				"resume signing key is not valid hex")
+		}
+		if len(decoded) < resumeSigningMinKeyBytes {
+			return nil, infraerrors.ServiceUnavailable(paymentResumeNotConfiguredCode,
+				"resume signing key must be at least 16 bytes")
+		}
+		parsed = append(parsed, decoded)
+	}
+	if len(parsed) == 0 {
+		return nil, infraerrors.ServiceUnavailable(paymentResumeNotConfiguredCode, paymentResumeNotConfiguredMessage)
+	}
+	s.keys = parsed
+	return s.keys, nil
+}
+
+// primarySigningKey returns the key used for minting new tokens. Always
+// keys[0] from signingKeys.
+func (s *PaymentResumeService) primarySigningKey(ctx context.Context) ([]byte, error) {
+	keys, err := s.signingKeys(ctx)
 	if err != nil {
-		return nil, infraerrors.ServiceUnavailable(paymentResumeNotConfiguredCode,
-			"resume signing key is not valid hex")
+		return nil, err
 	}
-	if len(decoded) < 16 {
-		return nil, infraerrors.ServiceUnavailable(paymentResumeNotConfiguredCode,
-			"resume signing key must be at least 16 bytes")
-	}
-	s.key = decoded
-	return s.key, nil
+	return keys[0], nil
 }
 
 // invalidateCachedKey is exposed for test harnesses that rotate the
@@ -148,7 +190,7 @@ func (s *PaymentResumeService) signingKey(ctx context.Context) ([]byte, error) {
 // settings watch loop in the SDK.
 func (s *PaymentResumeService) invalidateCachedKey() {
 	s.mu.Lock()
-	s.key = nil
+	s.keys = nil
 	s.mu.Unlock()
 }
 
@@ -334,7 +376,7 @@ func splitHostPortDefault(raw string) (string, string) {
 // CreateToken signs claims and returns the resume token (payload.sig).
 // Validates required fields and stamps timestamps when missing.
 func (s *PaymentResumeService) CreateToken(ctx context.Context, claims ResumeTokenClaims) (string, error) {
-	key, err := s.signingKey(ctx)
+	key, err := s.primarySigningKey(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -351,14 +393,16 @@ func (s *PaymentResumeService) CreateToken(ctx context.Context, claims ResumeTok
 }
 
 // ParseToken verifies the signature, decodes the payload, and rejects
-// expired or malformed tokens with a 400 ApplicationError.
+// expired or malformed tokens with a 400 ApplicationError. Verification
+// tries every configured key (primary + rotation fallbacks) so tokens
+// minted under a previous key remain valid until they expire.
 func (s *PaymentResumeService) ParseToken(ctx context.Context, token string) (*ResumeTokenClaims, error) {
-	key, err := s.signingKey(ctx)
+	keys, err := s.signingKeys(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var claims ResumeTokenClaims
-	if err := parseSignedToken(key, token, &claims); err != nil {
+	if err := parseSignedTokenAnyKey(keys, token, &claims); err != nil {
 		return nil, infraerrors.BadRequest("INVALID_RESUME_TOKEN", "resume token payload is invalid")
 	}
 	if claims.OrderID <= 0 {
@@ -372,7 +416,7 @@ func (s *PaymentResumeService) ParseToken(ctx context.Context, token string) (*R
 
 // CreateWeChatPaymentResumeToken signs the in-WeChat resume payload.
 func (s *PaymentResumeService) CreateWeChatPaymentResumeToken(ctx context.Context, claims WeChatPaymentResumeClaims) (string, error) {
-	key, err := s.signingKey(ctx)
+	key, err := s.primarySigningKey(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -401,13 +445,14 @@ func (s *PaymentResumeService) CreateWeChatPaymentResumeToken(ctx context.Contex
 
 // ParseWeChatPaymentResumeToken validates and decodes the in-WeChat
 // resume payload, rejecting tokens whose token-type field is wrong.
+// Verification tries every configured key (primary + rotation fallbacks).
 func (s *PaymentResumeService) ParseWeChatPaymentResumeToken(ctx context.Context, token string) (*WeChatPaymentResumeClaims, error) {
-	key, err := s.signingKey(ctx)
+	keys, err := s.signingKeys(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var claims WeChatPaymentResumeClaims
-	if err := parseSignedToken(key, token, &claims); err != nil {
+	if err := parseSignedTokenAnyKey(keys, token, &claims); err != nil {
 		return nil, infraerrors.BadRequest("INVALID_WECHAT_PAYMENT_RESUME_TOKEN", "wechat payment resume token payload is invalid")
 	}
 	if claims.TokenType != wechatPaymentResumeTokenType {
@@ -443,13 +488,29 @@ func createSignedToken(key []byte, claims any) (string, error) {
 	return encodedPayload + "." + signPaymentResumePayload(encodedPayload, key), nil
 }
 
-func parseSignedToken(key []byte, token string, dest any) error {
+// parseSignedTokenAnyKey verifies token against every key in keys
+// (primary + rotation fallbacks) and decodes the payload into dest on
+// the first signature match. Returns the same malformed/mismatch errors
+// as parseSignedToken when no key validates so callers do not have to
+// reason about per-key failure modes.
+func parseSignedTokenAnyKey(keys [][]byte, token string, dest any) error {
+	if len(keys) == 0 {
+		return infraerrors.BadRequest("INVALID_RESUME_TOKEN", "resume token signature mismatch")
+	}
 	parts := strings.Split(token, ".")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return infraerrors.BadRequest("INVALID_RESUME_TOKEN", "resume token is malformed")
 	}
-	expected := signPaymentResumePayload(parts[0], key)
-	if !hmac.Equal([]byte(parts[1]), []byte(expected)) {
+	signature := []byte(parts[1])
+	matched := false
+	for _, key := range keys {
+		expected := signPaymentResumePayload(parts[0], key)
+		if hmac.Equal(signature, []byte(expected)) {
+			matched = true
+			break
+		}
+	}
+	if !matched {
 		return infraerrors.BadRequest("INVALID_RESUME_TOKEN", "resume token signature mismatch")
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(parts[0])

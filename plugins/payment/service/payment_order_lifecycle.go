@@ -26,6 +26,10 @@ const (
 	rateLimitModeFixed         = "fixed"
 	checkPaidResultAlreadyPaid = "already_paid"
 	checkPaidResultCancelled   = "cancelled"
+	// checkPaidResultExpired is returned by cancelCore when an order
+	// successfully transitioned from PENDING to EXPIRED via the CAS
+	// update (i.e. expiry sweep actually flipped the row, not a no-op).
+	checkPaidResultExpired = "expired"
 )
 
 // errLifecycleServiceUnavailable signals the plugin service was constructed
@@ -167,6 +171,9 @@ func (s *PaymentService) cancelCore(ctx context.Context, o *pluginent.PaymentOrd
 			auditAction = "ORDER_EXPIRED"
 		}
 		s.writeAuditLog(ctx, int64(o.ID), auditAction, op, map[string]any{"detail": ad})
+		if fs == OrderStatusExpired {
+			return checkPaidResultExpired, nil
+		}
 	}
 	return checkPaidResultCancelled, nil
 }
@@ -389,25 +396,33 @@ func normalizeOrderLookupOutTradeNo(raw string) (string, error) {
 // ExpireTimedOutOrders sweeps orders whose timeout has elapsed and
 // transitions them to EXPIRED. Each candidate is first reconciled
 // against the upstream provider so a payment that arrived inside the
-// grace window is not lost.
-func (s *PaymentService) ExpireTimedOutOrders(ctx context.Context) error {
+// grace window is not lost. Returns the number of orders successfully
+// transitioned to EXPIRED so the caller can emit a single summary log
+// (and avoid one log line per order).
+func (s *PaymentService) ExpireTimedOutOrders(ctx context.Context) (int, error) {
 	if s == nil || s.entClient == nil {
-		return nil
+		return 0, nil
 	}
 	now := time.Now()
 	orders, err := s.entClient.PaymentOrder.Query().
 		Where(paymentorder.StatusEQ(OrderStatusPending), paymentorder.ExpiresAtLTE(now)).
 		All(ctx)
 	if err != nil {
-		return fmt.Errorf("query expired: %w", err)
+		return 0, fmt.Errorf("query expired: %w", err)
 	}
+	expired := 0
 	for _, o := range orders {
 		outcome, _ := s.cancelCore(ctx, o, OrderStatusExpired, "system", "order expired")
-		if outcome == checkPaidResultAlreadyPaid && s.logger != nil {
-			s.logger.Info("order was paid during expiry sweep", "order_id", o.ID)
+		switch outcome {
+		case checkPaidResultExpired:
+			expired++
+		case checkPaidResultAlreadyPaid:
+			if s.logger != nil {
+				s.logger.Info("order was paid during expiry sweep", "order_id", o.ID)
+			}
 		}
 	}
-	return nil
+	return expired, nil
 }
 
 // getOrderProvider creates a provider using the order's pinned instance
@@ -431,6 +446,14 @@ func (s *PaymentService) getOrderProvider(ctx context.Context, o *pluginent.Paym
 	}
 	if s.registry == nil {
 		return nil, fmt.Errorf("order %d provider registry is unavailable", o.ID)
+	}
+	// Ambiguity guard: if multiple enabled instances share the same
+	// provider_key, we cannot pick one safely — refunds (and other
+	// instance-pinned operations) might hit the wrong merchant. Mirror
+	// the webhook-side check so legacy orders without snapshot/instance
+	// are rejected explicitly instead of silently routing.
+	if !s.webhookRegistryFallbackAllowed(ctx, providerKey) {
+		return nil, fmt.Errorf("order %d provider fallback is ambiguous for %s", o.ID, providerKey)
 	}
 	s.EnsureProviders(ctx)
 	return s.registry.GetProvider(o.PaymentType)

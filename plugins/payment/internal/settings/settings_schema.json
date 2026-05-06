@@ -27,6 +27,6 @@
     "visible_method_wxpay_source": {"type": "string", "default": "official", "x-visibility": "backend"},
     "visible_method_alipay_enabled": {"type": "boolean", "default": true, "x-visibility": "backend"},
     "visible_method_wxpay_enabled": {"type": "boolean", "default": true, "x-visibility": "backend"},
-    "resume_signing_key_hex": {"type": "string", "default": "", "x-visibility": "secret"}
+    "resume_signing_key_hex": {"type": "string", "default": "", "x-visibility": "secret", "description": "HMAC signing key for payment resume tokens. Single 64-hex-char value, or a comma-separated list for rotation: the first key signs new tokens, every key verifies (so tokens minted under a previous key keep validating until they expire). Auto-backfilled from the host's PAYMENT_RESUME_SIGNING_KEY / TOTP-derived legacy key on first boot when empty."}
   }
 }

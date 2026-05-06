@@ -99,6 +99,21 @@ func TestCalculatePayAmount(t *testing.T) {
 			feeRate:  "7.77",
 			expected: "35.92",
 		},
+		{
+			// rechargeAmount 100.001 banker-rounds to 100.00 (sub-cent dust).
+			// Fee must use the rounded amount as base so it does not charge
+			// for the dropped 0.001 cent:
+			//   amount = 100.00
+			//   fee    = 100.00 * 1% = 1.0000 -> RoundUp(2) = 1.00
+			//   total  = 101.00
+			// Using the unrounded rechargeAmount as base would produce
+			//   100.001 * 1% = 1.00001 -> RoundUp(2) = 1.01 -> 101.01
+			// which charges the user a cent for sub-cent dust.
+			name:     "fee base aligns with banker-rounded amount",
+			amount:   "100.001",
+			feeRate:  "1",
+			expected: "101.00",
+		},
 	}
 
 	for _, tt := range tests {

@@ -245,12 +245,23 @@ func (p *PaymentPlugin) registerOrderExpiryJob(ctx pluginsdk.PluginContext) erro
 }
 
 // handleOrderExpiry is invoked once per orderExpiryJobInterval on the
-// leader replica. It delegates the actual sweep to the payment service.
+// leader replica. It delegates the actual sweep to the payment service
+// and emits a single info log when the sweep actually expired anything,
+// so operators see batch counts without flooding the log every minute.
 func (p *PaymentPlugin) handleOrderExpiry(ctx context.Context, _ string) error {
 	if p.paymentService == nil {
 		return nil
 	}
-	return p.paymentService.ExpireTimedOutOrders(ctx)
+	expired, err := p.paymentService.ExpireTimedOutOrders(ctx)
+	if err != nil {
+		return err
+	}
+	if expired > 0 {
+		if c := p.ctx.Load(); c != nil {
+			(*c).Logger().Info("payment: expired orders", "count", expired)
+		}
+	}
+	return nil
 }
 
 // Shutdown releases plugin-owned resources. Called once by the SDK when

@@ -16,6 +16,6 @@ func CalculatePayAmount(rechargeAmount, feeRate decimal.Decimal) decimal.Decimal
 	if feeRate.Sign() <= 0 {
 		return amount
 	}
-	fee := rechargeAmount.Mul(feeRate).Div(decimal.NewFromInt(100)).RoundUp(2)
+	fee := amount.Mul(feeRate).Div(decimal.NewFromInt(100)).RoundUp(2)
 	return amount.Add(fee)
 }
