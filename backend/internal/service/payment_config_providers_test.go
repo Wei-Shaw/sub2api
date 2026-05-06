@@ -337,7 +337,7 @@ func TestCreateProviderInstanceAllowsVisibleMethodProvidersFromDifferentSources(
 	_, err = svc.CreateProviderInstance(ctx, CreateProviderInstanceRequest{
 		ProviderKey:    "alipay",
 		Name:           "Official Alipay",
-		Config:         map[string]string{"appId": "app-1", "privateKey": "private-key"},
+		Config:         validAlipayProviderConfig(t),
 		SupportedTypes: []string{"alipay"},
 		Enabled:        true,
 	})
@@ -742,10 +742,18 @@ func boolPtrValue(v bool) *bool {
 
 func validAlipayProviderConfig(t *testing.T) map[string]string {
 	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	privDER, err := x509.MarshalPKCS8PrivateKey(key)
+	require.NoError(t, err)
+	pubDER, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	require.NoError(t, err)
 
 	return map[string]string{
 		"appId":      "alipay-app-test",
-		"privateKey": "alipay-private-key-test",
+		"privateKey": string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privDER})),
+		"publicKey":  string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})),
 		"notifyUrl":  "https://merchant.example.com/alipay/notify",
 		"returnUrl":  "https://merchant.example.com/alipay/return",
 	}

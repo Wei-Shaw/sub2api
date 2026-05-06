@@ -11,6 +11,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	"github.com/smartwalle/alipay/v3"
+	"github.com/smartwalle/ncrypto"
 )
 
 // Alipay product codes.
@@ -50,16 +51,55 @@ type Alipay struct {
 
 // NewAlipay creates a new Alipay provider instance.
 func NewAlipay(instanceID string, config map[string]string) (*Alipay, error) {
-	required := []string{"appId", "privateKey"}
-	for _, k := range required {
-		if config[k] == "" {
-			return nil, fmt.Errorf("alipay config missing required key: %s", k)
-		}
+	if err := validateAlipayConfig(config); err != nil {
+		return nil, err
 	}
 	return &Alipay{
 		instanceID: instanceID,
 		config:     config,
 	}, nil
+}
+
+func validateAlipayConfig(config map[string]string) error {
+	if strings.TrimSpace(config["appId"]) == "" {
+		return fmt.Errorf("alipay config missing required key: appId")
+	}
+	if err := validateAlipayPrivateKey(config["privateKey"]); err != nil {
+		return err
+	}
+	pubKey := config["publicKey"]
+	if strings.TrimSpace(pubKey) == "" {
+		pubKey = config["alipayPublicKey"]
+	}
+	if err := validateAlipayPublicKey(pubKey); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateAlipayPrivateKey(privateKey string) error {
+	privateKey = strings.TrimSpace(privateKey)
+	if privateKey == "" {
+		return fmt.Errorf("alipay config missing required key: privateKey")
+	}
+	if _, err := ncrypto.DecodePrivateKey([]byte(privateKey)).PKCS1().RSAPrivateKey(); err == nil {
+		return nil
+	}
+	if _, err := ncrypto.DecodePrivateKey([]byte(privateKey)).PKCS8().RSAPrivateKey(); err == nil {
+		return nil
+	}
+	return fmt.Errorf("alipay config invalid privateKey: must be the Alipay app RSA private key")
+}
+
+func validateAlipayPublicKey(publicKey string) error {
+	publicKey = strings.TrimSpace(publicKey)
+	if publicKey == "" {
+		return fmt.Errorf("alipay config missing required key: publicKey (or alipayPublicKey)")
+	}
+	if _, err := ncrypto.DecodePublicKey([]byte(publicKey)).PKIX().RSAPublicKey(); err != nil {
+		return fmt.Errorf("alipay config invalid publicKey: must be the Alipay RSA public key")
+	}
+	return nil
 }
 
 func (a *Alipay) getClient() (*alipay.Client, error) {

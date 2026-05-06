@@ -4,6 +4,10 @@ package provider
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/base64"
 	"errors"
 	"net/url"
 	"strings"
@@ -62,10 +66,7 @@ func TestIsTradeNotExist(t *testing.T) {
 func TestNewAlipay(t *testing.T) {
 	t.Parallel()
 
-	validConfig := map[string]string{
-		"appId":      "2021001234567890",
-		"privateKey": "MIIEvQIBADANBgkqhkiG9w0BAQEFAASC...",
-	}
+	validConfig := newAlipayTestConfig(t)
 
 	// helper to clone and override config fields
 	withOverride := func(overrides map[string]string) map[string]string {
@@ -91,6 +92,11 @@ func TestNewAlipay(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "valid config accepts alipayPublicKey alias",
+			config:  withOverride(map[string]string{"publicKey": "", "alipayPublicKey": validConfig["publicKey"]}),
+			wantErr: false,
+		},
+		{
 			name:      "missing appId",
 			config:    withOverride(map[string]string{"appId": ""}),
 			wantErr:   true,
@@ -101,6 +107,24 @@ func TestNewAlipay(t *testing.T) {
 			config:    withOverride(map[string]string{"privateKey": ""}),
 			wantErr:   true,
 			errSubstr: "privateKey",
+		},
+		{
+			name:      "public key stored as privateKey is rejected",
+			config:    withOverride(map[string]string{"privateKey": validConfig["publicKey"]}),
+			wantErr:   true,
+			errSubstr: "invalid privateKey",
+		},
+		{
+			name:      "missing publicKey",
+			config:    withOverride(map[string]string{"publicKey": ""}),
+			wantErr:   true,
+			errSubstr: "publicKey",
+		},
+		{
+			name:      "private key stored as publicKey is rejected",
+			config:    withOverride(map[string]string{"publicKey": validConfig["privateKey"]}),
+			wantErr:   true,
+			errSubstr: "invalid publicKey",
 		},
 		{
 			name:      "nil config map returns error for appId",
@@ -133,6 +157,25 @@ func TestNewAlipay(t *testing.T) {
 				t.Errorf("instanceID = %q, want %q", got.instanceID, "test-instance")
 			}
 		})
+	}
+}
+
+func newAlipayTestConfig(t *testing.T) map[string]string {
+	t.Helper()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate rsa key: %v", err)
+	}
+	privateDER := x509.MarshalPKCS1PrivateKey(key)
+	publicDER, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil {
+		t.Fatalf("marshal public key: %v", err)
+	}
+	return map[string]string{
+		"appId":      "2021001234567890",
+		"privateKey": base64.StdEncoding.EncodeToString(privateDER),
+		"publicKey":  base64.StdEncoding.EncodeToString(publicDER),
 	}
 }
 

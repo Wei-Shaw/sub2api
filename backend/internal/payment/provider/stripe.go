@@ -299,14 +299,21 @@ func stripeRefundProviderStatus(status stripe.RefundStatus) string {
 	}
 }
 
-func stripeIntentCurrency(raw stripe.Currency, fallback string) string {
-	currency, err := payment.NormalizePaymentCurrency(string(raw))
-	if err != nil || currency == payment.DefaultPaymentCurrency && strings.TrimSpace(string(raw)) == "" {
-		normalizedFallback, fallbackErr := payment.NormalizePaymentCurrency(fallback)
-		if fallbackErr == nil {
-			return normalizedFallback
-		}
+func normalizeStripeCurrency(raw string) string {
+	currency, err := payment.NormalizePaymentCurrency(raw)
+	if err != nil {
 		return payment.DefaultPaymentCurrency
+	}
+	return currency
+}
+
+func stripeIntentCurrency(raw stripe.Currency, fallback string) string {
+	if strings.TrimSpace(string(raw)) == "" {
+		return normalizeStripeCurrency(fallback)
+	}
+	currency, err := payment.NormalizePaymentCurrency(string(raw))
+	if err != nil {
+		return normalizeStripeCurrency(fallback)
 	}
 	return currency
 }

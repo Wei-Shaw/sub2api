@@ -12,6 +12,7 @@ describe('parseWechatResumeRoute', () => {
       order_type: 'subscription',
       plan_id: '7',
       quote_id: 'quote-123',
+      payment_currency: 'krw',
     }, [], 88)).toEqual({
       wechatResumeToken: 'resume-token-123',
       paymentType: 'wxpay',
@@ -19,6 +20,7 @@ describe('parseWechatResumeRoute', () => {
       orderAmount: 0,
       planId: 7,
       quoteId: 'quote-123',
+      paymentCurrency: 'KRW',
     })
   })
 
@@ -30,6 +32,7 @@ describe('parseWechatResumeRoute', () => {
       amount: '12.5',
       order_type: 'balance',
       quote_id: 'quote-openid-123',
+      payment_currency: 'vnd',
     }, [], 88)).toEqual({
       openid: 'openid-123',
       paymentType: 'wxpay',
@@ -37,6 +40,7 @@ describe('parseWechatResumeRoute', () => {
       orderAmount: 12.5,
       planId: undefined,
       quoteId: 'quote-openid-123',
+      paymentCurrency: 'VND',
     })
   })
 })
@@ -53,6 +57,8 @@ describe('stripWechatResumeQuery', () => {
       order_type: 'subscription',
       plan_id: '7',
       quote_id: 'quote-123',
+      amount_mode: 'ledger',
+      payment_currency: 'KRW',
       state: 'state-123',
       scope: 'snsapi_base',
     })).toEqual({

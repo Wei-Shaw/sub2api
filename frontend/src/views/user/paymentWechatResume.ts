@@ -10,6 +10,7 @@ export interface ParsedWechatResumeRoute {
   openid?: string
   wechatResumeToken?: string
   quoteId?: string
+  paymentCurrency?: string
 }
 
 function readQueryString(query: LocationQuery, key: string): string {
@@ -39,6 +40,7 @@ export function parseWechatResumeRoute(
 
   const wechatResumeToken = readQueryString(query, 'wechat_resume_token')
   const quoteId = readQueryString(query, 'quote_id')
+  const paymentCurrency = readQueryString(query, 'payment_currency').trim().toUpperCase()
   const paymentType = normalizeVisibleMethod(readQueryString(query, 'payment_type')) || 'wxpay'
   const planId = Number.parseInt(readQueryString(query, 'plan_id'), 10)
   const hasPlanId = Number.isFinite(planId) && planId > 0
@@ -54,6 +56,7 @@ export function parseWechatResumeRoute(
       orderAmount: 0,
       planId: hasPlanId ? planId : undefined,
       quoteId: quoteId || undefined,
+      paymentCurrency: paymentCurrency || undefined,
     }
   }
 
@@ -76,6 +79,7 @@ export function parseWechatResumeRoute(
     orderAmount,
     planId: hasPlanId ? planId : undefined,
     quoteId: quoteId || undefined,
+    paymentCurrency: paymentCurrency || undefined,
   }
 }
 
@@ -91,5 +95,7 @@ export function stripWechatResumeQuery(query: LocationQuery): LocationQueryRaw {
   delete nextQuery.order_type
   delete nextQuery.plan_id
   delete nextQuery.quote_id
+  delete nextQuery.amount_mode
+  delete nextQuery.payment_currency
   return nextQuery
 }

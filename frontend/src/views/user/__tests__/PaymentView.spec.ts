@@ -22,6 +22,7 @@ const showError = vi.hoisted(() => vi.fn())
 const showInfo = vi.hoisted(() => vi.fn())
 const showWarning = vi.hoisted(() => vi.fn())
 const getCheckoutInfo = vi.hoisted(() => vi.fn())
+const createQuote = vi.hoisted(() => vi.fn())
 const resolveOrderPublicByResumeToken = vi.hoisted(() => vi.fn())
 const verifyOrderPublic = vi.hoisted(() => vi.fn())
 const bridgeInvoke = vi.hoisted(() => vi.fn())
@@ -83,6 +84,7 @@ vi.mock('@/stores', () => ({
 vi.mock('@/api/payment', () => ({
   paymentAPI: {
     getCheckoutInfo,
+    createQuote,
     resolveOrderPublicByResumeToken,
     verifyOrderPublic,
   },
@@ -116,6 +118,13 @@ function checkoutInfoFixture(overrides: Partial<CheckoutInfoResponse> = {}) {
     help_text: '',
     help_image_url: '',
     stripe_publishable_key: '',
+    paddle_client_token: '',
+    paddle_environment: 'sandbox',
+    ledger_currency: 'USD',
+    allowed_payment_currencies: ['USD'],
+    manual_fx_rates: { USD: 1 },
+    currency_meta: { USD: { minor_units: 2, symbol: '$' } },
+    fx_status: { source: 'manual', stale_after_seconds: 86400, stale: false, missing_currencies: [] },
   }
 
   return {
@@ -493,6 +502,7 @@ describe('PaymentView payment methods', () => {
     showWarning.mockReset()
     getCheckoutInfo.mockReset()
     bridgeInvoke.mockReset()
+    createQuote.mockReset()
     resolveOrderPublicByResumeToken.mockReset()
     verifyOrderPublic.mockReset()
     window.localStorage.clear()
@@ -552,6 +562,104 @@ describe('PaymentView payment methods', () => {
     expect(wrapper.get('[data-testid="payment-method-selector"]').text()).toContain('paddle:true')
     expect(wrapper.get('[data-testid="payment-method-selector"]').text()).toContain('sepay:false')
   })
+
+
+  it('creates a ledger-mode quote and passes currency snapshot for subscription checkout', async () => {
+    getCheckoutInfo.mockReset().mockResolvedValue({
+      data: {
+        ...checkoutInfoWithPlansFixture().data,
+        balance_disabled: true,
+        methods: {
+          paddle: {
+            daily_limit: 0,
+            daily_used: 0,
+            daily_remaining: 0,
+            single_min: 0,
+            single_max: 0,
+            fee_rate: 0,
+            available: true,
+            allowed_payment_currencies: ['KRW'],
+          },
+        },
+        allowed_payment_currencies: ['KRW'],
+        ledger_currency: 'USD',
+        manual_fx_rates: { USD: 1, KRW: 0.0007 },
+        currency_meta: { USD: { minor_units: 2, symbol: '$' }, KRW: { minor_units: 0, symbol: '₩' } },
+        fx_status: { source: 'manual', stale_after_seconds: 86400, stale: false, missing_currencies: [] },
+      },
+    })
+    createQuote.mockResolvedValueOnce({
+      data: {
+        quote_id: 'quote-sub-krw',
+        expires_at: '2099-01-01T00:10:00.000Z',
+        amount: 128,
+        amount_mode: 'ledger',
+        payment_amount: 182857,
+        payment_currency: 'KRW',
+        ledger_amount: 128,
+        ledger_currency: 'USD',
+        fx_rate: 0.0007,
+        fx_source: 'manual',
+        fx_timestamp: '2099-01-01T00:00:00.000Z',
+      },
+    })
+    createOrder.mockResolvedValueOnce({
+      order_id: 998,
+      amount: 128,
+      pay_amount: 182857,
+      payment_amount: 182857,
+      ledger_amount: 128,
+      payment_currency: 'KRW',
+      ledger_currency: 'USD',
+      fee_rate: 0,
+      expires_at: '2099-01-01T00:10:00.000Z',
+      payment_type: 'paddle',
+      checkout_id: 'txn_998',
+      out_trade_no: 'vclaw_998',
+      payment_mode: 'inline',
+    })
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          Teleport: true,
+          Transition: false,
+          AppLayout: { template: '<div><slot /></div>' },
+          PaymentMethodSelector: true,
+          SubscriptionPlanCard: {
+            props: ['plan'],
+            emits: ['select'],
+            template: `<button data-testid="select-plan" @click="$emit('select', plan)">{{ plan.name }}</button>`,
+          },
+        },
+      },
+    })
+    await flushPromises()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="select-plan"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('button.btn').trigger('click')
+    await flushPromises()
+
+    expect(createQuote).toHaveBeenCalledWith(expect.objectContaining({
+      amount: 128,
+      amount_mode: 'ledger',
+      payment_currency: 'KRW',
+      payment_type: 'paddle',
+      order_type: 'subscription',
+      plan_id: 7,
+    }))
+    expect(createOrder).toHaveBeenCalledWith(expect.objectContaining({
+      amount: 128,
+      amount_mode: 'ledger',
+      payment_currency: 'KRW',
+      payment_type: 'paddle',
+      order_type: 'subscription',
+      plan_id: 7,
+      quote_id: 'quote-sub-krw',
+    }))
+  })
 })
 describe('PaymentView WeChat JSAPI flow', () => {
   beforeEach(() => {
@@ -569,6 +677,7 @@ describe('PaymentView WeChat JSAPI flow', () => {
     showError.mockReset()
     showInfo.mockReset()
     showWarning.mockReset()
+    createQuote.mockReset()
     getCheckoutInfo.mockReset().mockResolvedValue(checkoutInfoFixture())
     bridgeInvoke.mockReset()
     window.localStorage.clear()
@@ -740,7 +849,7 @@ describe('PaymentView WeChat JSAPI flow', () => {
     }))
     expect(locationState.href).toContain('/api/v1/auth/oauth/wechat/payment/start?')
     expect(new URL(locationState.href, 'http://localhost').searchParams.get('redirect')).toBe(
-      '/purchase?from=wechat&payment_type=wxpay&order_type=subscription&plan_id=7',
+      '/purchase?from=wechat&payment_type=wxpay&order_type=subscription&amount_mode=ledger&payment_currency=USD&plan_id=7',
     )
 
     Object.defineProperty(window, 'location', {

@@ -130,13 +130,13 @@ func TestGwRefundRejectsAlipayMerchantIdentitySnapshotMismatch(t *testing.T) {
 		Save(ctx)
 	require.NoError(t, err)
 
+	config := validAlipayProviderConfig(t)
+	config["appId"] = "runtime-alipay-app"
+
 	inst, err := client.PaymentProviderInstance.Create().
 		SetProviderKey(payment.TypeAlipay).
 		SetName("alipay-refund-mismatch-instance").
-		SetConfig(encryptWebhookProviderConfig(t, map[string]string{
-			"appId":      "runtime-alipay-app",
-			"privateKey": "runtime-private-key",
-		})).
+		SetConfig(encryptWebhookProviderConfig(t, config)).
 		SetSupportedTypes("alipay").
 		SetEnabled(true).
 		SetRefundEnabled(true).
