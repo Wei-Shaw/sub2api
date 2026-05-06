@@ -2,9 +2,9 @@ package gateway
 
 import (
 	"context"
-	"errors"
 	"net/http"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -20,8 +20,8 @@ func NewOpenAIProvider(svc *service.OpenAIGatewayService) *OpenAIProvider {
 	return &OpenAIProvider{openaiService: svc}
 }
 
-func (p *OpenAIProvider) Platform() string   { return "openai" }
-func (p *OpenAIProvider) Protocols() []string { return []string{"openai"} }
+func (p *OpenAIProvider) Platform() string    { return domain.PlatformOpenAI }
+func (p *OpenAIProvider) Protocols() []string { return []string{domain.PlatformOpenAI} }
 
 // Forward delegates to OpenAIGatewayService.Forward with the raw body
 // and maps the OpenAIForwardResult back to the common ForwardResult.
@@ -44,8 +44,7 @@ func (p *OpenAIProvider) Forward(
 func (p *OpenAIProvider) ShouldFailover(
 	_ context.Context, _ *ForwardRequest, err error,
 ) bool {
-	var failoverErr *service.UpstreamFailoverError
-	return errors.As(err, &failoverErr)
+	return DefaultShouldFailover(err)
 }
 
 // openaiResultToForwardResult maps a service.OpenAIForwardResult to the

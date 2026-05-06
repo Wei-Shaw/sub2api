@@ -2,8 +2,19 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"net/http"
+
+	"github.com/Wei-Shaw/sub2api/internal/service"
 )
+
+// DefaultShouldFailover returns true when the error wraps an
+// UpstreamFailoverError, signalling the Pipeline to try the next
+// account. All built-in providers share this logic.
+func DefaultShouldFailover(err error) bool {
+	var failoverErr *service.UpstreamFailoverError
+	return errors.As(err, &failoverErr)
+}
 
 // GatewayProvider is the platform-specific upstream forwarder interface.
 // Each platform (anthropic / openai / antigravity) implements this; the

@@ -249,7 +249,13 @@ func (p *GatewayPipeline) resolveSessionHash(c *gin.Context, req *ForwardRequest
 	if req.SessionHash == "" {
 		return
 	}
-	cachedID, _ := p.gatewayService.GetCachedSessionAccountID(ctx, req.GroupID, req.SessionHash)
+	cachedID, err := p.gatewayService.GetCachedSessionAccountID(ctx, req.GroupID, req.SessionHash)
+	if err != nil {
+		slog.Debug("pipeline.sticky_session_lookup_failed",
+			"session_hash", req.SessionHash,
+			"error", err,
+		)
+	}
 	if cachedID > 0 {
 		slog.Debug("pipeline.sticky_session_hit",
 			"session_hash", req.SessionHash,

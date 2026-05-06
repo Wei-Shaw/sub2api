@@ -2,10 +2,10 @@ package gateway
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -22,8 +22,10 @@ func NewAntigravityProvider(svc *service.AntigravityGatewayService) *Antigravity
 	return &AntigravityProvider{antigravityService: svc}
 }
 
-func (p *AntigravityProvider) Platform() string   { return "antigravity" }
-func (p *AntigravityProvider) Protocols() []string { return []string{"anthropic", "gemini"} }
+func (p *AntigravityProvider) Platform() string { return domain.PlatformAntigravity }
+func (p *AntigravityProvider) Protocols() []string {
+	return []string{domain.PlatformAnthropic, domain.PlatformGemini}
+}
 
 // Forward dispatches to the appropriate AntigravityGatewayService method
 // based on req.Protocol.
@@ -33,9 +35,9 @@ func (p *AntigravityProvider) Forward(
 	req *ForwardRequest,
 ) (*ForwardResult, error) {
 	switch req.Protocol {
-	case "anthropic":
+	case domain.PlatformAnthropic:
 		return p.forwardAnthropic(ctx, req)
-	case "gemini":
+	case domain.PlatformGemini:
 		return p.forwardGemini(ctx, req)
 	default:
 		return nil, fmt.Errorf("antigravity: unsupported protocol %q", req.Protocol)
@@ -47,8 +49,7 @@ func (p *AntigravityProvider) Forward(
 func (p *AntigravityProvider) ShouldFailover(
 	_ context.Context, _ *ForwardRequest, err error,
 ) bool {
-	var failoverErr *service.UpstreamFailoverError
-	return errors.As(err, &failoverErr)
+	return DefaultShouldFailover(err)
 }
 
 func (p *AntigravityProvider) forwardAnthropic(
@@ -61,7 +62,7 @@ func (p *AntigravityProvider) forwardAnthropic(
 	if err != nil {
 		return nil, err
 	}
-	return antigravityResultToForwardResult(result), nil
+	return ServiceResultToForwardResult(result), nil
 }
 
 func (p *AntigravityProvider) forwardGemini(
@@ -75,27 +76,5 @@ func (p *AntigravityProvider) forwardGemini(
 	if err != nil {
 		return nil, err
 	}
-	return antigravityResultToForwardResult(result), nil
-}
-
-// antigravityResultToForwardResult maps a service.ForwardResult (shared
-// with Anthropic) to the protocol-agnostic gateway.ForwardResult.
-// Antigravity returns the same service.ForwardResult type as Anthropic.
-func antigravityResultToForwardResult(r *service.ForwardResult) *ForwardResult {
-	return &ForwardResult{
-		RequestID:           r.RequestID,
-		Model:               r.Model,
-		UpstreamModel:       r.UpstreamModel,
-		Stream:              r.Stream,
-		Duration:            r.Duration,
-		FirstTokenMs:        r.FirstTokenMs,
-		InputTokens:         int64(r.Usage.InputTokens),
-		OutputTokens:        int64(r.Usage.OutputTokens),
-		CacheCreationTokens: int64(r.Usage.CacheCreationInputTokens),
-		CacheReadTokens:     int64(r.Usage.CacheReadInputTokens),
-		ImageOutputTokens:   int64(r.Usage.ImageOutputTokens),
-		ClientDisconnect:    r.ClientDisconnect,
-		ImageCount:          r.ImageCount,
-		ImageSize:           r.ImageSize,
-	}
+	return ServiceResultToForwardResult(result), nil
 }
