@@ -116,19 +116,21 @@ func (s *PaymentResumeService) signingKey(ctx context.Context) ([]byte, error) {
 	if s.settings == nil {
 		return nil, infraerrors.ServiceUnavailable(paymentResumeNotConfiguredCode, paymentResumeNotConfiguredMessage)
 	}
-	var raw struct {
-		Key string `json:"resume_signing_key_hex"`
-	}
-	if err := s.settings.GetTyped(ctx, "", &raw); err != nil {
+	// SETTINGS-V2 stores one row per key; the host SettingsExtension.Get
+	// rejects empty keys with InvalidArgument. Always request the
+	// specific setting (which is a JSON-encoded string).
+	var rawKey string
+	if err := s.settings.GetTyped(ctx, resumeSigningKeySettingKey, &rawKey); err != nil {
 		if errors.Is(err, pluginsdk.ErrSettingNotFound) {
 			return nil, infraerrors.ServiceUnavailable(paymentResumeNotConfiguredCode, paymentResumeNotConfiguredMessage)
 		}
 		return nil, fmt.Errorf("read resume signing key: %w", err)
 	}
-	if strings.TrimSpace(raw.Key) == "" {
+	rawKey = strings.TrimSpace(rawKey)
+	if rawKey == "" {
 		return nil, infraerrors.ServiceUnavailable(paymentResumeNotConfiguredCode, paymentResumeNotConfiguredMessage)
 	}
-	decoded, err := hex.DecodeString(strings.TrimSpace(raw.Key))
+	decoded, err := hex.DecodeString(rawKey)
 	if err != nil {
 		return nil, infraerrors.ServiceUnavailable(paymentResumeNotConfiguredCode,
 			"resume signing key is not valid hex")
