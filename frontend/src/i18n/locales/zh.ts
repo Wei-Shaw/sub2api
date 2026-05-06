@@ -483,6 +483,9 @@ export default {
       completing: '正在完成注册...',
       completeRegistrationFailed: '注册失败，请检查邀请码后重试。'
     },
+    emailOAuth: {
+      signIn: '使用 {providerName} 登录'
+    },
     oidc: {
       signIn: '使用 {providerName} 登录',
       callbackTitle: '正在完成 {providerName} 登录',
@@ -541,6 +544,8 @@ export default {
     oauth: {
       callbackTitle: 'OAuth 回调',
       callbackHint: '按需将授权码和状态值复制回后台授权流程。',
+      invalidCallbackTitle: '无效的登录回调',
+      invalidCallbackHint: '当前页面缺少有效的授权结果，请返回登录页重新发起快捷登录。',
       code: '授权码',
       state: '状态',
       fullUrl: '完整URL'

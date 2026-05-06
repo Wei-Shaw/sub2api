@@ -11,35 +11,6 @@
         </p>
       </div>
 
-      <div v-if="linuxdoOAuthEnabled || wechatOAuthEnabled || oidcOAuthEnabled" class="space-y-4">
-        <LinuxDoOAuthSection
-          v-if="linuxdoOAuthEnabled"
-          :disabled="isLoading"
-          :aff-code="formData.aff_code"
-          :show-divider="false"
-        />
-        <WechatOAuthSection
-          v-if="wechatOAuthEnabled"
-          :disabled="isLoading"
-          :aff-code="formData.aff_code"
-          :show-divider="false"
-        />
-        <OidcOAuthSection
-          v-if="oidcOAuthEnabled"
-          :disabled="isLoading"
-          :provider-name="oidcOAuthProviderName"
-          :aff-code="formData.aff_code"
-          :show-divider="false"
-        />
-        <div class="flex items-center gap-3">
-          <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
-          <span class="text-xs text-gray-500 dark:text-dark-400">
-            {{ t('auth.oauthOrContinue') }}
-          </span>
-          <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
-        </div>
-      </div>
-
       <!-- Registration Disabled Message -->
       <div
         v-if="!registrationEnabled && settingsLoaded"
@@ -256,7 +227,46 @@
                 : t('auth.createAccount')
           }}
         </button>
+
       </form>
+
+      <div v-if="showOAuthLogin" class="space-y-3 pt-1">
+        <div class="flex items-center gap-3">
+          <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
+          <span class="text-xs text-gray-500 dark:text-dark-400">
+            {{ t('auth.oauthOrContinue') }}
+          </span>
+          <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
+        </div>
+
+        <EmailOAuthButtons
+          :disabled="isLoading"
+          :aff-code="formData.aff_code"
+          :github-enabled="githubOAuthEnabled"
+          :google-enabled="googleOAuthEnabled"
+          :show-divider="false"
+        />
+
+        <LinuxDoOAuthSection
+          v-if="linuxdoOAuthEnabled"
+          :disabled="isLoading"
+          :aff-code="formData.aff_code"
+          :show-divider="false"
+        />
+        <WechatOAuthSection
+          v-if="wechatOAuthEnabled"
+          :disabled="isLoading"
+          :aff-code="formData.aff_code"
+          :show-divider="false"
+        />
+        <OidcOAuthSection
+          v-if="oidcOAuthEnabled"
+          :disabled="isLoading"
+          :provider-name="oidcOAuthProviderName"
+          :aff-code="formData.aff_code"
+          :show-divider="false"
+        />
+      </div>
     </div>
 
     <!-- Footer -->
@@ -282,6 +292,7 @@ import { AuthLayout } from '@/components/layout'
 import LinuxDoOAuthSection from '@/components/auth/LinuxDoOAuthSection.vue'
 import OidcOAuthSection from '@/components/auth/OidcOAuthSection.vue'
 import WechatOAuthSection from '@/components/auth/WechatOAuthSection.vue'
+import EmailOAuthButtons from '@/components/auth/EmailOAuthButtons.vue'
 import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { useAuthStore, useAppStore } from '@/stores'
@@ -330,6 +341,8 @@ const linuxdoOAuthEnabled = ref<boolean>(false)
 const wechatOAuthEnabled = ref<boolean>(false)
 const oidcOAuthEnabled = ref<boolean>(false)
 const oidcOAuthProviderName = ref<string>('OIDC')
+const githubOAuthEnabled = ref<boolean>(false)
+const googleOAuthEnabled = ref<boolean>(false)
 const registrationEmailSuffixWhitelist = ref<string[]>([])
 
 // Turnstile
@@ -380,6 +393,15 @@ const validationToastMessage = computed(() =>
   ''
 )
 
+const showOAuthLogin = computed(
+  () =>
+    linuxdoOAuthEnabled.value ||
+    wechatOAuthEnabled.value ||
+    oidcOAuthEnabled.value ||
+    githubOAuthEnabled.value ||
+    googleOAuthEnabled.value
+)
+
 watch(validationToastMessage, (value, previousValue) => {
   if (value && value !== previousValue) {
     appStore.showError(value)
@@ -412,6 +434,8 @@ onMounted(async () => {
     wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
     oidcOAuthEnabled.value = settings.oidc_oauth_enabled
     oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
+    githubOAuthEnabled.value = settings.github_oauth_enabled
+    googleOAuthEnabled.value = settings.google_oauth_enabled
     registrationEmailSuffixWhitelist.value = normalizeRegistrationEmailSuffixWhitelist(
       settings.registration_email_suffix_whitelist || []
     )

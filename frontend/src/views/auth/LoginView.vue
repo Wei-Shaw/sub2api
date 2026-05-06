@@ -10,33 +10,6 @@
           {{ t('auth.signInToAccount') }}
         </p>
       </div>
-
-  <div v-if="!backendModeEnabled && (linuxdoOAuthEnabled || wechatOAuthEnabled || oidcOAuthEnabled)" class="space-y-4">
-        <LinuxDoOAuthSection
-          v-if="linuxdoOAuthEnabled"
-          :disabled="isLoading"
-          :show-divider="false"
-        />
-        <WechatOAuthSection
-          v-if="wechatOAuthEnabled"
-          :disabled="isLoading"
-          :show-divider="false"
-        />
-        <OidcOAuthSection
-          v-if="oidcOAuthEnabled"
-          :disabled="isLoading"
-          :provider-name="oidcOAuthProviderName"
-          :show-divider="false"
-        />
-        <div class="flex items-center gap-3">
-          <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
-          <span class="text-xs text-gray-500 dark:text-dark-400">
-            {{ t('auth.oauthOrContinue') }}
-          </span>
-          <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
-        </div>
-      </div>
-
       <!-- Login Form -->
       <form @submit.prevent="handleLogin" class="space-y-5">
         <!-- Email Input -->
@@ -144,6 +117,40 @@
           <Icon v-else name="login" size="md" class="mr-2" />
           {{ isLoading ? t('auth.signingIn') : t('auth.signIn') }}
         </button>
+
+        <div v-if="showOAuthLogin" class="space-y-3 pt-1">
+          <div class="flex items-center gap-3">
+            <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
+            <span class="text-xs text-gray-500 dark:text-dark-400">
+              {{ t('auth.oauthOrContinue') }}
+            </span>
+            <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
+          </div>
+
+          <EmailOAuthButtons
+            :disabled="isLoading"
+            :github-enabled="githubOAuthEnabled"
+            :google-enabled="googleOAuthEnabled"
+            :show-divider="false"
+          />
+
+          <LinuxDoOAuthSection
+            v-if="linuxdoOAuthEnabled"
+            :disabled="isLoading"
+            :show-divider="false"
+          />
+          <WechatOAuthSection
+            v-if="wechatOAuthEnabled"
+            :disabled="isLoading"
+            :show-divider="false"
+          />
+          <OidcOAuthSection
+            v-if="oidcOAuthEnabled"
+            :disabled="isLoading"
+            :provider-name="oidcOAuthProviderName"
+            :show-divider="false"
+          />
+        </div>
       </form>
     </div>
 
@@ -180,6 +187,7 @@ import { AuthLayout } from '@/components/layout'
 import LinuxDoOAuthSection from '@/components/auth/LinuxDoOAuthSection.vue'
 import OidcOAuthSection from '@/components/auth/OidcOAuthSection.vue'
 import WechatOAuthSection from '@/components/auth/WechatOAuthSection.vue'
+import EmailOAuthButtons from '@/components/auth/EmailOAuthButtons.vue'
 import TotpLoginModal from '@/components/auth/TotpLoginModal.vue'
 import Icon from '@/components/icons/Icon.vue'
 import TurnstileWidget from '@/components/TurnstileWidget.vue'
@@ -211,6 +219,8 @@ const wechatOAuthEnabled = ref<boolean>(false)
 const backendModeEnabled = ref<boolean>(false)
 const oidcOAuthEnabled = ref<boolean>(false)
 const oidcOAuthProviderName = ref<string>('OIDC')
+const githubOAuthEnabled = ref<boolean>(false)
+const googleOAuthEnabled = ref<boolean>(false)
 const passwordResetEnabled = ref<boolean>(false)
 
 // Turnstile
@@ -236,6 +246,16 @@ const errors = reactive({
 
 const validationToastMessage = computed(
   () => errors.email || errors.password || errors.turnstile || ''
+)
+
+const showOAuthLogin = computed(
+  () =>
+    !backendModeEnabled.value &&
+    (linuxdoOAuthEnabled.value ||
+      wechatOAuthEnabled.value ||
+      oidcOAuthEnabled.value ||
+      githubOAuthEnabled.value ||
+      googleOAuthEnabled.value)
 )
 
 watch(validationToastMessage, (value, previousValue) => {
@@ -264,6 +284,8 @@ onMounted(async () => {
     backendModeEnabled.value = settings.backend_mode_enabled
     oidcOAuthEnabled.value = settings.oidc_oauth_enabled
     oidcOAuthProviderName.value = settings.oidc_oauth_provider_name || 'OIDC'
+    githubOAuthEnabled.value = settings.github_oauth_enabled
+    googleOAuthEnabled.value = settings.google_oauth_enabled
     backendModeEnabled.value = settings.backend_mode_enabled
     passwordResetEnabled.value = settings.password_reset_enabled
   } catch (error) {
