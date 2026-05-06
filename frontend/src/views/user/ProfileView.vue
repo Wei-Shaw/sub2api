@@ -12,6 +12,7 @@
         :wechat-enabled="wechatOAuthEnabled"
         :wechat-open-enabled="wechatOAuthOpenEnabled"
         :wechat-mp-enabled="wechatOAuthMPEnabled"
+        :server-timezone="serverTimezone"
       />
 
       <div
@@ -68,6 +69,7 @@ const user = computed(() => authStore.user)
 const contactInfo = ref('')
 const balanceLowNotifyEnabled = ref(false)
 const systemDefaultThreshold = ref(0)
+const serverTimezone = ref('UTC')
 const linuxdoOAuthEnabled = ref(false)
 const wechatOAuthEnabled = ref(false)
 const wechatOAuthOpenEnabled = ref<boolean | undefined>(undefined)
@@ -88,6 +90,7 @@ onMounted(async () => {
       contactInfo.value = settings.contact_info || ''
       balanceLowNotifyEnabled.value = settings.balance_low_notify_enabled ?? false
       systemDefaultThreshold.value = settings.balance_low_notify_threshold ?? 0
+      serverTimezone.value = settings.server_timezone || 'UTC'
       linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled ?? false
       wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
       wechatOAuthOpenEnabled.value = typeof settings.wechat_oauth_open_enabled === 'boolean'

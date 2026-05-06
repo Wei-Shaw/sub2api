@@ -1102,6 +1102,8 @@ export default {
     administrator: '管理员',
     user: '用户',
     username: '用户名',
+    timezone: '时区',
+    timezoneHelp: '用于按你的本地时间展示数据。留空时使用服务器时区：{timezone}',
     email: '邮箱',
     status: '状态',
     role: '角色',

@@ -284,6 +284,7 @@ type PublicSettings struct {
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
 	RiskControlEnabled bool `json:"risk_control_enabled"`
+	ServerTimezone     string `json:"server_timezone"`
 }
 
 type LoginAgreementDocument struct {

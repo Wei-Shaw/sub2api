@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	xdraw "golang.org/x/image/draw"
 	"golang.org/x/sync/singleflight"
 )
@@ -173,6 +174,7 @@ type UpdateProfileRequest struct {
 	Concurrency            *int     `json:"concurrency"`
 	BalanceNotifyEnabled   *bool    `json:"balance_notify_enabled"`
 	BalanceNotifyThreshold *float64 `json:"balance_notify_threshold"`
+	Timezone               *string  `json:"timezone"`
 }
 
 type UserAvatar struct {
@@ -242,6 +244,7 @@ func (s *UserService) GetProfile(ctx context.Context, userID int64) (*User, erro
 	if err := s.hydrateUserAvatar(ctx, user); err != nil {
 		return nil, fmt.Errorf("get user avatar: %w", err)
 	}
+	s.hydrateUserTimezone(ctx, user)
 	return user, nil
 }
 
@@ -454,8 +457,69 @@ func (s *UserService) updateProfile(ctx context.Context, userID int64, req Updat
 	if err := s.userRepo.Update(ctx, user); err != nil {
 		return nil, oldConcurrency, fmt.Errorf("update user: %w", err)
 	}
+	if req.Timezone != nil {
+		if err := s.updateUserTimezone(ctx, userID, *req.Timezone); err != nil {
+			return nil, oldConcurrency, fmt.Errorf("update user timezone: %w", err)
+		}
+	}
+	s.hydrateUserTimezone(ctx, user)
 
 	return user, oldConcurrency, nil
+}
+
+func userTimezoneSettingKey(userID int64) string {
+	return SettingKeyUserTimezonePrefix + strconv.FormatInt(userID, 10)
+}
+
+func defaultUserTimezone() string {
+	if name := strings.TrimSpace(timezone.Name()); name != "" && name != "Local" {
+		return name
+	}
+	if loc := timezone.Location(); loc != nil {
+		if name := strings.TrimSpace(loc.String()); name != "" && name != "Local" {
+			return name
+		}
+	}
+	return "UTC"
+}
+
+func normalizeUserTimezone(value string) (string, error) {
+	tz := strings.TrimSpace(value)
+	if tz == "" {
+		return defaultUserTimezone(), nil
+	}
+	if _, err := time.LoadLocation(tz); err != nil {
+		return "", infraerrors.BadRequest("USER_TIMEZONE_INVALID", "timezone must be a valid IANA timezone name")
+	}
+	return tz, nil
+}
+
+func (s *UserService) hydrateUserTimezone(ctx context.Context, user *User) {
+	if user == nil {
+		return
+	}
+	user.Timezone = defaultUserTimezone()
+	if s.settingRepo == nil {
+		return
+	}
+	raw, err := s.settingRepo.GetValue(ctx, userTimezoneSettingKey(user.ID))
+	if err != nil || strings.TrimSpace(raw) == "" {
+		return
+	}
+	if tz, err := normalizeUserTimezone(raw); err == nil {
+		user.Timezone = tz
+	}
+}
+
+func (s *UserService) updateUserTimezone(ctx context.Context, userID int64, value string) error {
+	if s.settingRepo == nil {
+		return nil
+	}
+	tz, err := normalizeUserTimezone(value)
+	if err != nil {
+		return err
+	}
+	return s.settingRepo.Set(ctx, userTimezoneSettingKey(userID), tz)
 }
 
 func (s *UserService) SetAvatar(ctx context.Context, userID int64, raw string) (*UserAvatar, error) {

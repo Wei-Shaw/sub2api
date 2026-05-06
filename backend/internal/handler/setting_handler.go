@@ -86,6 +86,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		AffiliateEnabled: settings.AffiliateEnabled,
 
 		RiskControlEnabled: settings.RiskControlEnabled,
+		ServerTimezone:     settings.ServerTimezone,
 	})
 }
 

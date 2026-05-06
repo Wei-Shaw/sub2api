@@ -1098,6 +1098,8 @@ export default {
     administrator: 'Administrator',
     user: 'User',
     username: 'Username',
+    timezone: 'Timezone',
+    timezoneHelp: 'Used to display data in your local time. Leave empty to use server timezone: {timezone}',
     email: 'Email',
     status: 'Status',
     role: 'Role',

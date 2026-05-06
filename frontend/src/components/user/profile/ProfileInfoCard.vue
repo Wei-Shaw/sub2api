@@ -126,6 +126,8 @@
             <div class="rounded-3xl border border-gray-100 bg-gray-50/80 p-5 dark:border-dark-700 dark:bg-dark-900/30">
               <ProfileEditForm
                 :initial-username="user?.username || ''"
+                :initial-timezone="user?.timezone || ''"
+                :server-timezone="serverTimezone"
                 embedded
               />
             </div>
@@ -195,6 +197,7 @@ const props = withDefaults(defineProps<{
   wechatEnabled?: boolean
   wechatOpenEnabled?: boolean
   wechatMpEnabled?: boolean
+  serverTimezone?: string
 }>(), {
   linuxdoEnabled: false,
   oidcEnabled: false,
@@ -202,6 +205,7 @@ const props = withDefaults(defineProps<{
   wechatEnabled: false,
   wechatOpenEnabled: undefined,
   wechatMpEnabled: undefined,
+  serverTimezone: 'UTC',
 })
 
 const { t } = useI18n()

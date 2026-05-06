@@ -382,6 +382,9 @@ const (
 
 	// Web Search Emulation
 	SettingKeyWebSearchEmulationConfig = "web_search_emulation_config" // JSON 配置
+
+	// User Timezone Preference (用户时区偏好)
+	SettingKeyUserTimezonePrefix = "user_timezone:" // + userID
 )
 
 // AdminAPIKeyPrefix is the prefix for admin API keys (distinct from user "sk-" keys).
