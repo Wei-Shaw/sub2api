@@ -14,11 +14,11 @@ import (
 
 // envelope is the JSON shape every response uses.
 type envelope struct {
-	Code    int               `json:"code"`
-	Message string            `json:"message,omitempty"`
-	Reason  string            `json:"reason,omitempty"`
-	Data    any               `json:"data,omitempty"`
-	Details map[string]string `json:"details,omitempty"`
+	Code     int               `json:"code"`
+	Message  string            `json:"message,omitempty"`
+	Reason   string            `json:"reason,omitempty"`
+	Data     any               `json:"data,omitempty"`
+	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
 // Success writes a 200 OK with the provided data.
@@ -44,10 +44,10 @@ func Error(c *gin.Context, statusCode int, message string) {
 // ErrorWithDetails writes an error response with a reason and metadata.
 func ErrorWithDetails(c *gin.Context, statusCode int, message, reason string, metadata map[string]string) {
 	c.JSON(statusCode, envelope{
-		Code:    statusCode,
-		Message: message,
-		Reason:  reason,
-		Details: metadata,
+		Code:     statusCode,
+		Message:  message,
+		Reason:   reason,
+		Metadata: metadata,
 	})
 }
 
@@ -59,10 +59,10 @@ func ErrorFrom(c *gin.Context, err error) bool {
 	}
 	statusCode, status := infraerrors.ToHTTP(err)
 	c.JSON(statusCode, envelope{
-		Code:    int(status.Code),
-		Message: status.Message,
-		Reason:  status.Reason,
-		Details: status.Metadata,
+		Code:     int(status.Code),
+		Message:  status.Message,
+		Reason:   status.Reason,
+		Metadata: status.Metadata,
 	})
 	return statusCode != http.StatusOK
 }
