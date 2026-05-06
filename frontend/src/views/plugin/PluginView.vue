@@ -1,6 +1,6 @@
 <template>
-  <AppLayout>
-    <div class="plugin-view">
+  <component :is="standalone ? 'div' : AppLayout" :class="standalone ? 'plugin-view-standalone' : ''">
+    <div class="plugin-view" :class="standalone ? 'plugin-view--standalone' : ''">
       <section class="plugin-view__body">
         <!-- 加载中 -->
         <div v-if="state === 'loading'" class="plugin-view__placeholder">
@@ -30,7 +30,7 @@
         <div ref="shadowHost" class="plugin-view__shadow-host" :data-state="state" />
       </section>
     </div>
-  </AppLayout>
+  </component>
 </template>
 
 <script setup lang="ts">
@@ -59,6 +59,11 @@ const route = useRoute()
 const pluginName = computed(() => stringMeta('pluginName'))
 const displayName = computed(() => stringMeta('pluginDisplayName'))
 const componentPath = computed(() => stringMeta('componentPath'))
+// chrome="none" tells the host to render the plugin page without the
+// admin sidebar/header — used for payment callbacks (Stripe / Alipay /
+// WeChat return URLs) that must look like a standalone confirmation
+// page rather than an in-app screen.
+const standalone = computed(() => stringMeta('chrome') === 'none')
 
 const pageName = computed(() => {
   const param = route.params.pageName
@@ -216,6 +221,21 @@ function stringMeta(key: string): string {
      TablePageLayout: 64px header + lg:p-8 top/bottom padding (2rem × 2). */
   height: calc(100vh - 64px - 4rem);
   min-height: 0;
+}
+
+/* chrome="none" — no AppLayout means the plugin owns the full viewport. */
+.plugin-view--standalone {
+  height: 100vh;
+  gap: 0;
+}
+
+.plugin-view-standalone {
+  min-height: 100vh;
+  background-color: rgb(249, 250, 251);
+}
+
+:global(.dark) .plugin-view-standalone {
+  background-color: rgb(15, 23, 42);
 }
 
 .plugin-view__body {

@@ -189,6 +189,17 @@ export function registerPluginRoutes(router: Router): void {
       const matchedMenu = findMenuItemByPath(manifest.menu_items, route.path)
       const fallbackLabels = matchedMenu ? matchedMenu.labels : {}
       const fallbackDescriptions = matchedMenu ? matchedMenu.descriptions : {}
+      // RouteDecl.Meta is map<string,string>, but the host router treats
+      // requiresAuth/requiresAdmin as booleans. Coerce "false"/"true" so
+      // plugins can declare standalone callback pages (Stripe / Alipay /
+      // WeChat returnURLs) without going through every host gate.
+      const pluginMeta = { ...route.meta } as Record<string, unknown>
+      if (typeof pluginMeta.requiresAuth === 'string') {
+        pluginMeta.requiresAuth = pluginMeta.requiresAuth.toLowerCase() === 'true'
+      }
+      if (typeof pluginMeta.requiresAdmin === 'string') {
+        pluginMeta.requiresAdmin = pluginMeta.requiresAdmin.toLowerCase() === 'true'
+      }
       const record: RouteRecordRaw = {
         path: route.path,
         name: route.name || `Plugin_${manifest.name}_${route.path}`,
@@ -200,7 +211,7 @@ export function registerPluginRoutes(router: Router): void {
           componentPath: route.component_path,
           pluginLabels: fallbackLabels,
           pluginDescriptions: fallbackDescriptions,
-          ...route.meta,
+          ...pluginMeta,
         },
       }
       // 避免与已注册路由名重名:同名时跳过并给出 console 警告。

@@ -196,6 +196,15 @@ var menuItemDecls = []pluginsdk.MenuItemDecl{
 // routeDecls maps SPA URLs onto Vue component paths. The matching files
 // ship in the frontend/dist/entry.js install() export. Phase 2 of the
 // payment plugin migration replaces the stub bundle with real components.
+//
+// Standalone callback routes (qrcode / result / stripe / stripe-popup /
+// wechat-payment-callback) declare Meta = {chrome: "none",
+// requiresAuth: "false"} so the host renders them without the admin
+// sidebar/header and skips the auth gate. They are entry points returned
+// from external payment providers and must look like a clean
+// confirmation page rather than an in-app screen.
+var standaloneCallbackMeta = map[string]string{"chrome": "none", "requiresAuth": "false"}
+
 var routeDecls = []pluginsdk.RouteDecl{
 	// Admin
 	{Path: "/admin/payment/dashboard", Name: "AdminPaymentDashboard", ComponentPath: "PaymentDashboardView.vue"},
@@ -204,15 +213,15 @@ var routeDecls = []pluginsdk.RouteDecl{
 	{Path: "/admin/payment/providers", Name: "AdminPaymentProviders", ComponentPath: "PaymentProvidersView.vue"},
 	{Path: "/admin/payment/settings", Name: "AdminPaymentSettings", ComponentPath: "PaymentSettingsView.vue"},
 
-	// User-facing
+	// User-facing in-app pages (keep host chrome).
 	{Path: "/recharge", Name: "UserRecharge", ComponentPath: "RechargeView.vue"},
 	{Path: "/purchase", Name: "UserPurchase", ComponentPath: "PaymentView.vue"},
 	{Path: "/orders", Name: "UserOrders", ComponentPath: "UserOrdersView.vue"},
-	{Path: "/payment/qrcode", Name: "PaymentQRCode", ComponentPath: "PaymentQRCodeView.vue"},
-	{Path: "/payment/result", Name: "PaymentResult", ComponentPath: "PaymentResultView.vue"},
-	{Path: "/payment/stripe", Name: "PaymentStripe", ComponentPath: "StripePaymentView.vue"},
-	{Path: "/payment/stripe-popup", Name: "PaymentStripePopup", ComponentPath: "StripePopupView.vue"},
 
-	// Auth callback (no auth, no chrome)
-	{Path: "/auth/wechat/payment/callback", Name: "WechatPaymentCallback", ComponentPath: "WechatPaymentCallbackView.vue"},
+	// Standalone callback / QR pages (no host chrome, no auth gate).
+	{Path: "/payment/qrcode", Name: "PaymentQRCode", ComponentPath: "PaymentQRCodeView.vue", Meta: standaloneCallbackMeta},
+	{Path: "/payment/result", Name: "PaymentResult", ComponentPath: "PaymentResultView.vue", Meta: standaloneCallbackMeta},
+	{Path: "/payment/stripe", Name: "PaymentStripe", ComponentPath: "StripePaymentView.vue", Meta: standaloneCallbackMeta},
+	{Path: "/payment/stripe-popup", Name: "PaymentStripePopup", ComponentPath: "StripePopupView.vue", Meta: standaloneCallbackMeta},
+	{Path: "/auth/wechat/payment/callback", Name: "WechatPaymentCallback", ComponentPath: "WechatPaymentCallbackView.vue", Meta: standaloneCallbackMeta},
 }
