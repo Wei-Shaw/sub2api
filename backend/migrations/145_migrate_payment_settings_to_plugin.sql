@@ -11,7 +11,7 @@
 --   plugins/payment/internal/settings/settings_schema.json.
 --
 -- Idempotency:
---   ON CONFLICT DO NOTHING 鈥?re-running the migration after operators have
+--   ON CONFLICT DO NOTHING — re-running the migration after operators have
 --   tuned plugin settings via the new admin form must NOT clobber their
 --   values. Initial cut-over only.
 --
@@ -22,7 +22,7 @@
 --   - ENABLED_PAYMENT_TYPES is a CSV; we cast to a JSONB array.
 --   - Cancel rate-limit settings are window+unit+mode tuples.
 --   - Stripe-specific provider config lives in payment_provider_instances
---     (already migrated to the plugin's ent client) 鈥?no settings here.
+--     (already migrated to the plugin's ent client) — no settings here.
 
 INSERT INTO plugin_settings (plugin_name, key, value_json, revision, updated_at)
 SELECT 'payment', plugin_key, plugin_value, 1, NOW()
@@ -109,18 +109,8 @@ FROM (
            to_jsonb(COALESCE((SELECT value FROM settings WHERE key='CANCEL_RATE_LIMIT_UNIT'), 'minute'))
     UNION ALL
     -- cancel_rate_limit_window_mode
-    --   Plugin schema only allows {'fixed','rolling'}; legacy host setting
-    --   used 'sliding' which the plugin rejects. Map legacy 'sliding' ->
-    --   'rolling' (semantically equivalent) and default to 'rolling' when
-    --   absent so the migrated value always satisfies the plugin schema.
     SELECT 'cancel_rate_limit_window_mode',
-           to_jsonb(
-             CASE
-               WHEN COALESCE((SELECT value FROM settings WHERE key='CANCEL_RATE_LIMIT_WINDOW_MODE'), 'rolling') = 'sliding'
-                 THEN 'rolling'
-               ELSE COALESCE((SELECT value FROM settings WHERE key='CANCEL_RATE_LIMIT_WINDOW_MODE'), 'rolling')
-             END
-           )
+           to_jsonb(COALESCE((SELECT value FROM settings WHERE key='CANCEL_RATE_LIMIT_WINDOW_MODE'), 'sliding'))
     UNION ALL
     -- visible_method_alipay_enabled
     SELECT 'visible_method_alipay_enabled',
