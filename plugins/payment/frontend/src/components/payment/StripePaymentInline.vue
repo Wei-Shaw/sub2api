@@ -115,9 +115,13 @@ let elementsInstance: StripeElements | null = null
 // plugin's Shadow Root (styles injected into document.head don't reach
 // the shadow tree, and Stripe's iframe layout sync uses document-level
 // APIs). Append a div to document.body and pin it over the shadow-DOM
-// placeholder via fixed positioning + ResizeObserver.
+// placeholder via fixed positioning + ResizeObserver. A second
+// ResizeObserver pushes the iframe's actual height back to the
+// placeholder so siblings rendered below stay clear of the iframe when
+// the Element grows.
 let lightDomMount: HTMLDivElement | null = null
-let lightDomResizeObserver: ResizeObserver | null = null
+let placeholderResizeObserver: ResizeObserver | null = null
+let contentResizeObserver: ResizeObserver | null = null
 
 function syncLightDomMountPosition() {
   if (!lightDomMount || !stripeMount.value) return
@@ -126,14 +130,25 @@ function syncLightDomMountPosition() {
   lightDomMount.style.top = `${rect.top}px`
   lightDomMount.style.left = `${rect.left}px`
   lightDomMount.style.width = `${rect.width}px`
-  lightDomMount.style.minHeight = `${rect.height}px`
   lightDomMount.style.zIndex = '10'
 }
 
+function syncPlaceholderHeight() {
+  if (!lightDomMount || !stripeMount.value) return
+  const measured = lightDomMount.scrollHeight
+  if (measured > 0) {
+    stripeMount.value.style.height = `${measured}px`
+  }
+}
+
 function cleanupLightDomMount() {
-  if (lightDomResizeObserver) {
-    lightDomResizeObserver.disconnect()
-    lightDomResizeObserver = null
+  if (placeholderResizeObserver) {
+    placeholderResizeObserver.disconnect()
+    placeholderResizeObserver = null
+  }
+  if (contentResizeObserver) {
+    contentResizeObserver.disconnect()
+    contentResizeObserver = null
   }
   window.removeEventListener('resize', syncLightDomMountPosition)
   window.removeEventListener('scroll', syncLightDomMountPosition, true)
@@ -159,8 +174,10 @@ onMounted(async () => {
     lightDomMount.dataset.stripePaymentMount = '1'
     document.body.appendChild(lightDomMount)
     syncLightDomMountPosition()
-    lightDomResizeObserver = new ResizeObserver(syncLightDomMountPosition)
-    lightDomResizeObserver.observe(stripeMount.value)
+    placeholderResizeObserver = new ResizeObserver(syncLightDomMountPosition)
+    placeholderResizeObserver.observe(stripeMount.value)
+    contentResizeObserver = new ResizeObserver(syncPlaceholderHeight)
+    contentResizeObserver.observe(lightDomMount)
     window.addEventListener('resize', syncLightDomMountPosition)
     window.addEventListener('scroll', syncLightDomMountPosition, true)
 

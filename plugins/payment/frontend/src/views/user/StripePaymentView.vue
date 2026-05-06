@@ -232,8 +232,15 @@ async function confirmWechatPay(stripe: Stripe, clientSecret: string) {
 // positioning + ResizeObserver. The placeholder stays in shadow DOM so
 // the rest of the page layout (Tailwind utility classes, dark mode,
 // AppLayout chrome on the in-app variant) keeps working.
+//
+// Two-way height sync: a placeholder ResizeObserver keeps the light-DOM
+// position locked while the page reflows; a content ResizeObserver
+// pushes the Stripe iframe's actual height back to the placeholder so
+// the buttons rendered below the placeholder stay clear of the iframe
+// when the Element grows (e.g. switching tabs reveals more text).
 let lightDomMount: HTMLDivElement | null = null
-let lightDomResizeObserver: ResizeObserver | null = null
+let placeholderResizeObserver: ResizeObserver | null = null
+let contentResizeObserver: ResizeObserver | null = null
 
 function syncLightDomMountPosition() {
   if (!lightDomMount || !stripeMountEl.value) return
@@ -242,14 +249,25 @@ function syncLightDomMountPosition() {
   lightDomMount.style.top = `${rect.top}px`
   lightDomMount.style.left = `${rect.left}px`
   lightDomMount.style.width = `${rect.width}px`
-  lightDomMount.style.minHeight = `${rect.height}px`
   lightDomMount.style.zIndex = '10'
 }
 
+function syncPlaceholderHeight() {
+  if (!lightDomMount || !stripeMountEl.value) return
+  const measured = lightDomMount.scrollHeight
+  if (measured > 0) {
+    stripeMountEl.value.style.height = `${measured}px`
+  }
+}
+
 function cleanupLightDomMount() {
-  if (lightDomResizeObserver) {
-    lightDomResizeObserver.disconnect()
-    lightDomResizeObserver = null
+  if (placeholderResizeObserver) {
+    placeholderResizeObserver.disconnect()
+    placeholderResizeObserver = null
+  }
+  if (contentResizeObserver) {
+    contentResizeObserver.disconnect()
+    contentResizeObserver = null
   }
   window.removeEventListener('resize', syncLightDomMountPosition)
   window.removeEventListener('scroll', syncLightDomMountPosition, true)
@@ -269,8 +287,10 @@ function mountPaymentElement(stripe: Stripe, clientSecret: string) {
   lightDomMount.dataset.stripePaymentMount = '1'
   document.body.appendChild(lightDomMount)
   syncLightDomMountPosition()
-  lightDomResizeObserver = new ResizeObserver(syncLightDomMountPosition)
-  lightDomResizeObserver.observe(stripeMountEl.value)
+  placeholderResizeObserver = new ResizeObserver(syncLightDomMountPosition)
+  placeholderResizeObserver.observe(stripeMountEl.value)
+  contentResizeObserver = new ResizeObserver(syncPlaceholderHeight)
+  contentResizeObserver.observe(lightDomMount)
   window.addEventListener('resize', syncLightDomMountPosition)
   window.addEventListener('scroll', syncLightDomMountPosition, true)
 
