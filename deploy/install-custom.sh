@@ -521,7 +521,9 @@ _upgrade_fast_resolve_versions() {
 # Aborts on checksum failure (does NOT fall back — signals tampering or corruption).
 _upgrade_fast_download() {
     STAGE_DIR=$(mktemp -d -t sub2api-upgrade-XXXXXX)
-    local asset="sub2api-linux-amd64.tar.gz"
+    # Must match .goreleaser.yaml archives.name_template: sub2api_{Version}_linux_amd64.tar.gz
+    local version_num="${TARGET_VERSION#v}"
+    local asset="sub2api_${version_num}_linux_amd64.tar.gz"
     local base_url="https://github.com/${GITHUB_REPO}/releases/download/${TARGET_VERSION}"
     local tarball_url="${base_url}/${asset}"
     local checksums_url="${base_url}/checksums.txt"
@@ -563,9 +565,13 @@ _upgrade_fast_download() {
 
     print_info "Extracting binary..."
     tar -xzf "$STAGE_DIR/$asset" -C "$STAGE_DIR"
+    # GoReleaser binary name is sub2api; Dockerfile.runtime expects build context file "server"
+    if [ -x "$STAGE_DIR/sub2api" ]; then
+        mv "$STAGE_DIR/sub2api" "$STAGE_DIR/server"
+    fi
     if [ ! -x "$STAGE_DIR/server" ]; then
         rm -rf "$STAGE_DIR"
-        print_error "Extracted tarball did not contain executable 'server'."
+        print_error "Extracted tarball did not contain executable 'sub2api' (or 'server')."
         exit 1
     fi
 
