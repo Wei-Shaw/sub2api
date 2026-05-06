@@ -57,7 +57,7 @@
               <p class="mt-1 text-base font-semibold text-gray-900 dark:text-white">{{ user?.username || '' }}</p>
               <p class="mt-0.5 text-sm font-medium text-green-600 dark:text-green-400">{{ t('payment.currentBalance') }}: {{ user?.balance?.toFixed(2) || '0.00' }}</p>
             </div>
-            <div v-if="visibleMethodTypes.length === 0" class="card py-16 text-center">
+            <div v-if="currencySelectableMethods.length === 0" class="card py-16 text-center">
               <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
             </div>
             <template v-else>
@@ -82,7 +82,7 @@
               />
               <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
             </div>
-            <div v-if="visibleMethodTypes.length >= 1" class="card p-6">
+            <div v-if="showPaymentMethodSelector" class="card p-6">
               <PaymentMethodSelector
                 :methods="methodOptions"
                 :selected="selectedMethod"
@@ -190,7 +190,7 @@
                   </option>
                 </select>
               </div>
-              <div v-if="visibleMethodTypes.length >= 1" class="card p-6">
+              <div v-if="showPaymentMethodSelector" class="card p-6">
                 <PaymentMethodSelector
                   :methods="subMethodOptions"
                   :selected="selectedMethod"
@@ -606,7 +606,7 @@ const paymentCurrency = computed(() => {
 })
 const paymentCurrencyMeta = computed(() => currencyMeta(paymentCurrency.value, checkout.value.currency_meta))
 const paymentMinorUnits = computed(() => currencyMinorUnits(paymentCurrency.value, checkout.value.currency_meta))
-const enabledMethods = computed(() => Object.keys(visibleMethods.value).filter(methodSupportsSelectedCurrency))
+const enabledMethods = computed(() => Object.keys(visibleMethods.value).filter(methodSupportsCurrentSelection))
 const validAmount = computed(() => amount.value ?? 0)
 const ledgerPreviewAmount = computed(() => ledgerAmountFromPayment(
   validAmount.value,
@@ -667,6 +667,31 @@ function methodSupportsSelectedCurrency(method: string): boolean {
   if (['stripe', 'alipay', 'wxpay', 'easypay', 'card', 'link', 'alipay_direct', 'wxpay_direct'].includes(method)) return currency === 'CNY'
   if (method === 'paddle') return true
   return currency === ledgerCurrency.value
+}
+
+function sortMethodsByDisplayOrder(methods: string[]): string[] {
+  const order: readonly string[] = METHOD_ORDER
+  return [...methods].sort((a, b) => {
+    const ai = order.indexOf(a as typeof METHOD_ORDER[number])
+    const bi = order.indexOf(b as typeof METHOD_ORDER[number])
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
+  })
+}
+
+function methodSupportsCurrentSelection(method: string): boolean {
+  const ml = visibleMethods.value[method]
+  return !!ml && ml.available !== false && methodSupportsSelectedCurrency(method)
+}
+
+const currencySelectableMethods = computed(() =>
+  sortMethodsByDisplayOrder(visibleMethodTypes.value.filter(methodSupportsCurrentSelection))
+)
+const showPaymentMethodSelector = computed(() => currencySelectableMethods.value.length > 1)
+
+function selectDefaultMethodForCurrency() {
+  const currentMethod = selectedMethod.value
+  if (currentMethod && currencySelectableMethods.value.includes(currentMethod)) return
+  selectedMethod.value = currencySelectableMethods.value[0] || ''
 }
 
 // Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
@@ -744,14 +769,13 @@ function formatSelectedSubscriptionPaymentAmount(value: number): string {
 }
 
 const methodOptions = computed<PaymentMethodOption[]>(() =>
-  visibleMethodTypes.value.map((type) => {
+  currencySelectableMethods.value.map((type) => {
     const ml = visibleMethods.value[type]
-    const supportsCurrency = methodSupportsSelectedCurrency(type)
     return {
       type,
       display_name: ml?.display_name,
       fee_rate: ml?.fee_rate ?? 0,
-      available: supportsCurrency && ml?.available !== false && amountFitsMethod(validAmount.value, type),
+      available: amountFitsMethod(validAmount.value, type),
     }
   })
 )
@@ -785,8 +809,8 @@ const amountError = computed(() => {
 
 const canSubmit = computed(() =>
   validAmount.value > 0
+    && methodSupportsCurrentSelection(selectedMethod.value)
     && amountFitsMethod(validAmount.value, selectedMethod.value)
-    && selectedLimit.value?.available !== false
 )
 
 const subPaymentAmount = computed(() => {
@@ -814,9 +838,8 @@ function subscriptionTotalAmountForCurrency(value: number, currency: string): nu
 // Subscription-specific: method options based on gateway pay amount
 const subMethodOptions = computed<PaymentMethodOption[]>(() => {
   const planPrice = selectedPlan.value?.price ?? 0
-  return visibleMethodTypes.value.map((type) => {
+  return currencySelectableMethods.value.map((type) => {
     const ml = visibleMethods.value[type]
-    const supportsCurrency = methodSupportsSelectedCurrency(type)
     const withinLimits = planPrice <= 0
       || (((ml?.single_min ?? 0) <= 0 || planPrice >= (ml?.single_min ?? 0))
         && ((ml?.single_max ?? 0) <= 0 || planPrice <= (ml?.single_max ?? 0)))
@@ -825,17 +848,20 @@ const subMethodOptions = computed<PaymentMethodOption[]>(() => {
       type,
       display_name: ml?.display_name,
       fee_rate: ml?.fee_rate ?? 0,
-      available: supportsCurrency && ml?.available !== false && withinLimits && amountFitsMethod(payAmountForMethod, type),
+      available: ml?.available !== false && withinLimits && amountFitsMethod(payAmountForMethod, type),
     }
   })
 })
 
-const canSubmitSubscription = computed(() =>
-  selectedPlan.value !== null
-    && amountFitsMethod(subTotalAmount.value, selectedMethod.value)
-    && selectedLimit.value?.available !== false
-)
-
+const canSubmitSubscription = computed(() => {
+  if (selectedPlan.value === null) return false
+  const ml = selectedLimit.value
+  if (!ml || !methodSupportsCurrentSelection(selectedMethod.value)) return false
+  const price = selectedPlan.value.price
+  if (ml.single_min > 0 && price < ml.single_min) return false
+  if (ml.single_max > 0 && price > ml.single_max) return false
+  return true
+})
 // Auto-switch to first available method when current selection can't handle the amount
 watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) => {
   if (amt <= 0 || amountFitsMethod(amt, method)) return
@@ -845,14 +871,10 @@ watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) 
 
 watch(paymentCurrency, () => {
   amount.value = null
-  const order: readonly string[] = METHOD_ORDER
-  const nextMethod = [...enabledMethods.value].sort((a, b) => {
-    const ai = order.indexOf(a as typeof METHOD_ORDER[number])
-    const bi = order.indexOf(b as typeof METHOD_ORDER[number])
-    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
-  })[0]
-  selectedMethod.value = nextMethod || ''
+  selectDefaultMethodForCurrency()
 })
+
+watch(currencySelectableMethods, selectDefaultMethodForCurrency, { immediate: true })
 
 // Payment button class: follows selected payment method color
 const paymentButtonClass = computed(() => {
@@ -1402,15 +1424,7 @@ onMounted(async () => {
     const res = await paymentAPI.getCheckoutInfo()
     checkout.value = res.data
     selectedPaymentCurrency.value = availablePaymentCurrencies.value[0]
-    if (enabledMethods.value.length) {
-      const order: readonly string[] = METHOD_ORDER
-      const sorted = [...enabledMethods.value].sort((a, b) => {
-        const ai = order.indexOf(a)
-        const bi = order.indexOf(b)
-        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
-      })
-      selectedMethod.value = sorted[0]
-    }
+    selectDefaultMethodForCurrency()
     if (typeof window !== 'undefined') {
       if (hasWechatResumeQuery(route.query)) {
         removeRecoverySnapshot()

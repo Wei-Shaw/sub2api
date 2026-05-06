@@ -427,6 +427,16 @@ describe('PaymentView payment recovery', () => {
     getCheckoutInfo.mockResolvedValue(checkoutInfoFixture({
       methods: {
         wxpay: checkoutInfoFixture().data.methods.wxpay,
+        paddle: {
+          daily_limit: 0,
+          daily_used: 0,
+          daily_remaining: 0,
+          single_min: 0,
+          single_max: 0,
+          fee_rate: 0,
+          available: true,
+          allowed_payment_currencies: ['USD'],
+        },
         ldc: {
           daily_limit: 0,
           daily_used: 0,
@@ -509,12 +519,22 @@ describe('PaymentView payment methods', () => {
     delete (window as Window & { WeixinJSBridge?: { invoke: typeof bridgeInvoke } }).WeixinJSBridge
   })
 
-  it('shows SePay as a payment method option even when another currency is selected', async () => {
-    getCheckoutInfo.mockResolvedValue({
+  it('shows only currency-compatible payment method options when multiple providers are available', async () => {
+    getCheckoutInfo.mockReset().mockResolvedValue({
       data: {
         ...checkoutInfoFixture().data,
         methods: {
           paddle: {
+            daily_limit: 0,
+            daily_used: 0,
+            daily_remaining: 0,
+            single_min: 0,
+            single_max: 0,
+            fee_rate: 0,
+            available: true,
+            allowed_payment_currencies: ['KRW'],
+          },
+          stripe: {
             daily_limit: 0,
             daily_used: 0,
             daily_remaining: 0,
@@ -560,8 +580,181 @@ describe('PaymentView payment methods', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-testid="payment-method-selector"]').text()).toContain('paddle:true')
-    expect(wrapper.get('[data-testid="payment-method-selector"]').text()).toContain('sepay:false')
+    expect(wrapper.get('[data-testid="payment-method-selector"]').text()).toContain('stripe:true')
+    expect(wrapper.get('[data-testid="payment-method-selector"]').text()).not.toContain('sepay')
   })
+
+  it('hides payment method selector and auto-selects the only provider for the selected currency', async () => {
+    getCheckoutInfo.mockReset().mockResolvedValue({
+      data: {
+        ...checkoutInfoFixture().data,
+        methods: {
+          paddle: {
+            daily_limit: 0,
+            daily_used: 0,
+            daily_remaining: 0,
+            single_min: 0,
+            single_max: 0,
+            fee_rate: 0,
+            available: true,
+            allowed_payment_currencies: ['KRW'],
+          },
+          sepay: {
+            daily_limit: 0,
+            daily_used: 0,
+            daily_remaining: 0,
+            single_min: 0,
+            single_max: 0,
+            fee_rate: 0,
+            available: true,
+            allowed_payment_currencies: ['VND'],
+          },
+        },
+        allowed_payment_currencies: ['KRW', 'VND'],
+        ledger_currency: 'USD',
+        manual_fx_rates: { USD: 1, KRW: 0.0007, VND: 0.00004 },
+        currency_meta: { USD: { minor_units: 2, symbol: '$' }, KRW: { minor_units: 0, symbol: '₩' }, VND: { minor_units: 0, symbol: '₫' } },
+        fx_status: { source: 'manual', stale_after_seconds: 86400, stale: false, missing_currencies: [] },
+      },
+    })
+    createQuote.mockResolvedValueOnce({
+      data: {
+        quote_id: 'quote-krw-paddle',
+        expires_at: '2099-01-01T00:10:00.000Z',
+        amount: 10000,
+        amount_mode: 'payment',
+        payment_amount: 10000,
+        payment_currency: 'KRW',
+        ledger_amount: 7,
+        ledger_currency: 'USD',
+        fx_rate: 0.0007,
+        fx_source: 'manual',
+        fx_timestamp: '2099-01-01T00:00:00.000Z',
+      },
+    })
+    createOrder.mockResolvedValueOnce({
+      order_id: 997,
+      amount: 10000,
+      pay_amount: 10000,
+      payment_amount: 10000,
+      ledger_amount: 7,
+      payment_currency: 'KRW',
+      ledger_currency: 'USD',
+      fee_rate: 0,
+      expires_at: '2099-01-01T00:10:00.000Z',
+      payment_type: 'paddle',
+      checkout_id: 'txn_997',
+      out_trade_no: 'vclaw_997',
+      payment_mode: 'inline',
+    })
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          Teleport: true,
+          Transition: false,
+          AppLayout: { template: '<div><slot /></div>' },
+          PaymentMethodSelector: {
+            props: ['methods'],
+            template: '<div data-testid="payment-method-selector"><span v-for="method in methods" :key="method.type">{{ method.type }}:{{ method.available }}</span></div>',
+          },
+        },
+      },
+    })
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="payment-method-selector"]').exists()).toBe(false)
+
+    const amountInput = wrapper.findComponent({ name: 'AmountInput' })
+    await amountInput.vm.$emit('update:modelValue', 10000)
+    await flushPromises()
+    await wrapper.get('button.btn').trigger('click')
+    await flushPromises()
+
+    expect(createQuote).toHaveBeenCalledWith(expect.objectContaining({
+      amount: 10000,
+      amount_mode: 'payment',
+      payment_currency: 'KRW',
+      payment_type: 'paddle',
+      order_type: 'balance',
+    }))
+    expect(createOrder).toHaveBeenCalledWith(expect.objectContaining({
+      amount: 10000,
+      amount_mode: 'payment',
+      payment_currency: 'KRW',
+      payment_type: 'paddle',
+      order_type: 'balance',
+      quote_id: 'quote-krw-paddle',
+    }))
+  })
+
+  it('shows payment method selector when the selected currency has multiple providers', async () => {
+    getCheckoutInfo.mockReset().mockResolvedValue({
+      data: {
+        ...checkoutInfoFixture().data,
+        methods: {
+          paddle: {
+            daily_limit: 0,
+            daily_used: 0,
+            daily_remaining: 0,
+            single_min: 0,
+            single_max: 0,
+            fee_rate: 0,
+            available: true,
+            allowed_payment_currencies: ['USD'],
+          },
+          stripe: {
+            daily_limit: 0,
+            daily_used: 0,
+            daily_remaining: 0,
+            single_min: 0,
+            single_max: 0,
+            fee_rate: 0,
+            available: true,
+            allowed_payment_currencies: ['USD'],
+          },
+          sepay: {
+            daily_limit: 0,
+            daily_used: 0,
+            daily_remaining: 0,
+            single_min: 0,
+            single_max: 0,
+            fee_rate: 0,
+            available: true,
+            allowed_payment_currencies: ['VND'],
+          },
+        },
+        allowed_payment_currencies: ['USD', 'VND'],
+        ledger_currency: 'USD',
+        manual_fx_rates: { USD: 1, VND: 0.00004 },
+        currency_meta: { USD: { minor_units: 2, symbol: '$' }, VND: { minor_units: 0, symbol: '₫' } },
+        fx_status: { source: 'manual', stale_after_seconds: 86400, stale: false, missing_currencies: [] },
+      },
+    })
+
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          Teleport: true,
+          Transition: false,
+          AppLayout: { template: '<div><slot /></div>' },
+          PaymentMethodSelector: {
+            props: ['methods'],
+            template: '<div data-testid="payment-method-selector"><span v-for="method in methods" :key="method.type">{{ method.type }}:{{ method.available }}</span></div>',
+          },
+        },
+      },
+    })
+    await flushPromises()
+    await flushPromises()
+
+    const selector = wrapper.get('[data-testid="payment-method-selector"]')
+    expect(selector.text()).toContain('stripe:true')
+    expect(selector.text()).toContain('paddle:true')
+    expect(selector.text()).not.toContain('sepay')
+  })
+
 
 
   it('creates a ledger-mode quote and passes currency snapshot for subscription checkout', async () => {
