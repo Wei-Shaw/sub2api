@@ -17,7 +17,7 @@ import type {
 } from '@/types/payment'
 import type { BasePaginationResponse } from '@/types'
 
-export interface PublicOrderVerifyResult {
+export type PublicOrderVerifyResult = Partial<PaymentOrder> & {
   out_trade_no: string
   status: string
   paid: boolean

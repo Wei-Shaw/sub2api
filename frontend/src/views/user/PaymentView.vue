@@ -40,6 +40,9 @@
             :checkout-id="paymentState.checkoutId"
             :client-token="checkout.paddle_client_token ?? ''"
             :environment="checkout.paddle_environment"
+            :order="paddleCheckoutOrder"
+            :plan="paddleCheckoutPlan"
+            :currency-meta="checkout.currency_meta"
             @back="resetPayment"
             @completed="onPaddleCompleted"
           />
@@ -291,11 +294,11 @@ import { useAuthStore } from '@/stores/auth'
 import { usePaymentStore } from '@/stores/payment'
 import { useSubscriptionStore } from '@/stores/subscriptions'
 import { useAppStore } from '@/stores'
-import { paymentAPI } from '@/api/payment'
+import { paymentAPI, type PublicOrderVerifyResult } from '@/api/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel, type PeakRateFields } from '@/utils/peak-rate'
-import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType } from '@/types/payment'
+import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType, PaymentOrder } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
@@ -441,6 +444,12 @@ async function invokeWechatJsapiPayment(payload: Record<string, unknown>): Promi
 }
 
 const paymentState = ref<PaymentRecoverySnapshot>(emptyPaymentState())
+const paddleCheckoutOrder = ref<PaymentOrder | null>(null)
+const paddleCheckoutPlan = computed(() => {
+  const planId = paddleCheckoutOrder.value?.plan_id
+  if (!planId) return selectedPlan.value
+  return checkout.value.plans.find(plan => plan.id === planId) ?? selectedPlan.value
+})
 
 function persistRecoverySnapshot(snapshot: PaymentRecoverySnapshot) {
   if (typeof window === 'undefined' || !snapshot.orderId) return
@@ -455,6 +464,7 @@ function removeRecoverySnapshot() {
 function resetPayment() {
   paymentPhase.value = 'select'
   paymentState.value = emptyPaymentState()
+  paddleCheckoutOrder.value = null
   removeRecoverySnapshot()
 }
 
@@ -999,6 +1009,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
     if (decision.kind === 'unhandled') {
       if (decision.paymentState.checkoutId) {
         paymentState.value = decision.paymentState
+        paddleCheckoutOrder.value = buildPaddleOrderFromCreateResult(result, orderType, planId)
         paymentPhase.value = 'paddle'
         persistRecoverySnapshot(decision.recovery)
         return
@@ -1207,6 +1218,75 @@ async function attemptMobileQrFallback(err: unknown, context: MobileQrFallbackCo
   }
 }
 
+function buildPaddleOrderFromCreateResult(
+  result: CreateOrderResult & { resume_token?: string },
+  orderType: OrderType,
+  planId?: number,
+): PaymentOrder {
+  const paymentCurrencyCode = result.payment_currency || paymentCurrency.value || ledgerCurrency.value
+  const ledgerCurrencyCode = result.ledger_currency || ledgerCurrency.value
+  return {
+    id: Number(result.order_id || 0),
+    user_id: 0,
+    amount: Number(result.amount || 0),
+    pay_amount: Number(result.pay_amount || result.amount || 0),
+    payment_amount: Number(result.payment_amount || result.pay_amount || result.amount || 0),
+    ledger_amount: Number(result.ledger_amount || result.amount || 0),
+    payment_currency: paymentCurrencyCode,
+    ledger_currency: ledgerCurrencyCode,
+    fee_rate: Number(result.fee_rate || 0),
+    payment_type: result.payment_type || 'paddle',
+    out_trade_no: result.out_trade_no || '',
+    status: 'PENDING',
+    order_type: orderType,
+    created_at: new Date().toISOString(),
+    expires_at: result.expires_at || '',
+    refund_amount: 0,
+    plan_id: planId,
+  }
+}
+
+function buildPaddleOrderFromPublicResult(result: PublicOrderVerifyResult): PaymentOrder {
+  const paymentCurrencyCode = result.payment_currency || result.currency || paymentCurrency.value || ledgerCurrency.value
+  const ledgerCurrencyCode = result.ledger_currency || ledgerCurrency.value
+  const amount = Number(result.amount || result.pay_amount || result.payment_amount || result.ledger_amount || 0)
+  return {
+    id: Number(result.id || 0),
+    user_id: Number(result.user_id || 0),
+    amount,
+    pay_amount: Number(result.pay_amount || amount),
+    payment_amount: Number(result.payment_amount || result.pay_amount || amount),
+    ledger_amount: Number(result.ledger_amount || result.amount || amount),
+    payment_currency: paymentCurrencyCode,
+    ledger_currency: ledgerCurrencyCode,
+    fee_rate: Number(result.fee_rate || 0),
+    payment_type: result.payment_type || 'paddle',
+    out_trade_no: result.out_trade_no || '',
+    status: (result.status || 'PENDING') as PaymentOrder['status'],
+    order_type: (result.order_type || 'balance') as OrderType,
+    created_at: result.created_at || new Date().toISOString(),
+    expires_at: result.expires_at || '',
+    refund_amount: Number(result.refund_amount || 0),
+    plan_id: result.plan_id,
+  }
+}
+
+async function resolvePaddleCheckoutOrder(resumeToken: string, outTradeNo: string): Promise<PaymentOrder | null> {
+  try {
+    if (resumeToken) {
+      const result = await paymentAPI.resolveOrderPublicByResumeToken(resumeToken)
+      return buildPaddleOrderFromPublicResult(result.data)
+    }
+    if (outTradeNo) {
+      const result = await paymentAPI.verifyOrderPublic(outTradeNo)
+      return buildPaddleOrderFromPublicResult(result.data)
+    }
+  } catch (_err: unknown) {
+    return null
+  }
+  return null
+}
+
 function queryValue(value: unknown): string {
   if (typeof value === 'string') return value
   if (Array.isArray(value) && typeof value[0] === 'string') return value[0]
@@ -1235,6 +1315,7 @@ async function resumeFirstPartyPaddleCheckoutFromQuery(): Promise<boolean> {
   }
   selectedMethod.value = 'paddle'
   paymentState.value = snapshot
+  paddleCheckoutOrder.value = await resolvePaddleCheckoutOrder(resumeToken, outTradeNo)
   paymentPhase.value = 'paddle'
   persistRecoverySnapshot(snapshot)
   await router.replace({ path: route.path, query: { ...route.query, source: 'first_party_checkout' } })

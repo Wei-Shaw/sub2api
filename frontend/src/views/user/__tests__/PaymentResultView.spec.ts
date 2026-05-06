@@ -46,7 +46,7 @@ vi.mock('@/api/payment', () => ({
 
 import PaymentResultView from '../PaymentResultView.vue'
 import { PAYMENT_RECOVERY_STORAGE_KEY } from '@/components/payment/paymentFlow'
-import { formatPaymentAmount } from '@/components/payment/currency'
+import { formatMoney } from '@/utils/money'
 
 const orderFactory = (status: string) => ({
   id: 42,
@@ -472,7 +472,7 @@ describe('PaymentResultView', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain(formatPaymentAmount(103, 'HKD'))
+    expect(wrapper.text()).toContain(formatMoney(103, 'HKD'))
   })
 
   it('normalizes aliased payment methods before rendering the label', async () => {
