@@ -331,12 +331,12 @@
                   <button
                     type="button"
                     class="btn btn-secondary inline-flex items-center gap-2"
-                    :disabled="apiKeyTesting || !configForm.api_key_configured || configForm.clear_api_key"
-	                    @click="testApiKeys(false)"
-	                  >
-	                    <Icon name="shield" size="sm" />
-	                    {{ storedApiKeyTestButtonText }}
-	                  </button>
+                    :disabled="apiKeyTesting || effectiveStoredApiKeyCount === 0 || pendingDeletedApiKeyCount > 0 || configForm.clear_api_key || configForm.api_keys_mode === 'replace'"
+                    @click="testApiKeys(false)"
+                  >
+                    <Icon name="shield" size="sm" />
+                    {{ storedApiKeyTestButtonText }}
+                  </button>
                   <button
                     v-if="configForm.api_key_configured"
                     type="button"
@@ -351,10 +351,36 @@
 
               <div class="grid grid-cols-1 gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_minmax(360px,440px)]">
                 <div class="space-y-3">
+                  <div class="flex flex-col gap-2 rounded-lg border border-gray-100 bg-gray-50 p-2 dark:border-dark-700 dark:bg-dark-900/30 sm:flex-row sm:items-center sm:justify-between">
+                    <div class="text-xs leading-5 text-gray-500 dark:text-gray-400">
+                      <span class="font-medium text-gray-700 dark:text-gray-200">{{ t('admin.riskControl.apiKeysWriteMode') }}</span>
+                      <span class="ml-2">{{ apiKeysModeHint }}</span>
+                    </div>
+                    <div class="inline-flex rounded-lg bg-white p-1 shadow-sm dark:bg-dark-800">
+                      <button
+                        type="button"
+                        class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+                        :class="configForm.api_keys_mode === 'append' ? 'bg-primary-500 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700'"
+                        :disabled="configForm.clear_api_key"
+                        @click="setAPIKeysMode('append')"
+                      >
+                        {{ t('admin.riskControl.apiKeysModeAppend') }}
+                      </button>
+                      <button
+                        type="button"
+                        class="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+                        :class="configForm.api_keys_mode === 'replace' ? 'bg-amber-500 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700'"
+                        :disabled="configForm.clear_api_key"
+                        @click="setAPIKeysMode('replace')"
+                      >
+                        {{ t('admin.riskControl.apiKeysModeReplace') }}
+                      </button>
+                    </div>
+                  </div>
                   <textarea
                     v-model="configForm.api_keys_text"
                     class="input min-h-44 resize-y font-mono text-sm"
-                    :placeholder="apiKeyPlaceholder"
+                    :placeholder="apiKeysPlaceholder"
                     autocomplete="new-password"
                     :disabled="configForm.clear_api_key"
                   ></textarea>
@@ -367,6 +393,12 @@
                     </span>
                     <span v-if="configForm.clear_api_key" class="inline-flex rounded-md bg-red-50 px-2 py-1 text-red-700 dark:bg-red-900/20 dark:text-red-300">
                       {{ t('admin.riskControl.apiKeyWillClear') }}
+                    </span>
+                    <span v-else-if="pendingDeletedApiKeyCount > 0" class="inline-flex rounded-md bg-amber-50 px-2 py-1 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                      {{ t('admin.riskControl.apiKeyPendingDeleteCount', { count: pendingDeletedApiKeyCount }) }}
+                    </span>
+                    <span v-if="configForm.api_keys_mode === 'replace'" class="inline-flex rounded-md bg-amber-50 px-2 py-1 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                      {{ t('admin.riskControl.apiKeysReplaceWarning') }}
                     </span>
                   </div>
 
@@ -431,12 +463,12 @@
                 </div>
 
                 <div class="rounded-lg border border-gray-100 bg-gray-50 p-3 dark:border-dark-700 dark:bg-dark-900/30">
-                  <div class="mb-3 flex items-center justify-between gap-3">
-                    <div>
+                  <div class="mb-3 flex items-start justify-between gap-3">
+                    <div class="min-w-0">
                       <p class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.riskControl.apiKeyHealth') }}</p>
                       <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.apiKeyFreezeRule') }}</p>
                     </div>
-                    <span class="inline-flex rounded-md bg-white px-2 py-1 text-xs font-medium text-gray-600 shadow-sm dark:bg-dark-800 dark:text-gray-300">
+                    <span class="inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-white px-2 py-0.5 text-[11px] font-medium leading-5 text-gray-600 shadow-sm dark:bg-dark-800 dark:text-gray-300">
                       {{ t('admin.riskControl.apiKeyRows', { count: apiKeyRows.length }) }}
                     </span>
                   </div>
@@ -446,33 +478,61 @@
                     <p class="mt-2 text-sm font-medium text-gray-700 dark:text-gray-200">{{ t('admin.riskControl.apiKeyHealthEmpty') }}</p>
                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.riskControl.apiKeyHealthEmptyHint') }}</p>
                   </div>
-                  <div v-else class="max-h-72 space-y-2 overflow-y-auto pr-1">
-                    <div
-                      v-for="(row, index) in apiKeyRows"
-                      :key="apiKeyRowKey(row, index)"
-                      class="rounded-lg border border-gray-100 bg-white p-3 shadow-sm dark:border-dark-700 dark:bg-dark-800"
-                    >
-                      <div class="flex items-start justify-between gap-3">
-                        <div class="min-w-0">
-                          <div class="flex min-w-0 flex-wrap items-center gap-2">
-                            <span class="truncate font-mono text-sm font-semibold text-gray-900 dark:text-white">{{ row.masked || '-' }}</span>
-                            <span
-                              class="inline-flex rounded-md px-1.5 py-0.5 text-[11px] font-medium"
-                              :class="row.configured ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'"
-                            >
-                              {{ row.configured ? t('admin.riskControl.apiKeyConfigured') : t('admin.riskControl.apiKeyTemporary') }}
-                            </span>
+                  <div v-else class="space-y-2">
+                    <div class="space-y-2" :class="apiKeyRowsExpanded ? 'max-h-72 overflow-y-auto pr-1' : ''">
+                      <div
+                        v-for="(row, index) in visibleApiKeyRows"
+                        :key="apiKeyRowKey(row, index)"
+                        class="rounded-lg border bg-white p-2.5 shadow-sm dark:bg-dark-800"
+                        :class="isStoredApiKeyPendingDelete(row) ? 'border-amber-200 opacity-70 dark:border-amber-800/60' : 'border-gray-100 dark:border-dark-700'"
+                      >
+                        <div class="flex items-start justify-between gap-2">
+                          <div class="min-w-0">
+                            <div class="flex min-w-0 flex-wrap items-center gap-2">
+                              <span class="truncate font-mono text-sm font-semibold text-gray-900 dark:text-white">{{ row.masked || '-' }}</span>
+                              <span
+                                class="inline-flex rounded-md px-1.5 py-0.5 text-[11px] font-medium"
+                                :class="row.configured ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300' : 'bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'"
+                              >
+                                {{ isStoredApiKeyPendingDelete(row) ? t('admin.riskControl.apiKeyPendingDelete') : row.configured ? t('admin.riskControl.apiKeyConfigured') : t('admin.riskControl.apiKeyTemporary') }}
+                              </span>
+                            </div>
+                            <p class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{{ apiKeyStatusMeta(row) }}</p>
                           </div>
-                          <p class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{{ apiKeyStatusMeta(row) }}</p>
+                          <div class="flex flex-shrink-0 items-center gap-1.5">
+                            <span class="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium" :class="apiKeyStatusBadgeClass(row.status)">
+                              <span class="h-1.5 w-1.5 rounded-full" :class="apiKeyStatusDotClass(row.status)"></span>
+                              {{ apiKeyStatusLabel(row.status) }}
+                            </span>
+                            <button
+                              v-if="row.configured && !configForm.clear_api_key"
+                              type="button"
+                              class="inline-flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-dark-700 dark:hover:text-gray-200"
+                              :title="isStoredApiKeyPendingDelete(row) ? t('admin.riskControl.undoDeleteApiKey') : t('admin.riskControl.deleteApiKey')"
+                              @click="toggleDeleteStoredApiKey(row)"
+                            >
+                              <Icon :name="isStoredApiKeyPendingDelete(row) ? 'refresh' : 'trash'" size="xs" />
+                            </button>
+                          </div>
                         </div>
-                        <span class="inline-flex flex-shrink-0 items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium" :class="apiKeyStatusBadgeClass(row.status)">
-                          <span class="h-1.5 w-1.5 rounded-full" :class="apiKeyStatusDotClass(row.status)"></span>
-                          {{ apiKeyStatusLabel(row.status) }}
-                        </span>
+                        <p v-if="row.last_error" class="mt-1.5 rounded-md bg-amber-50 px-2 py-1.5 text-xs leading-5 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                          {{ row.last_error }}
+                        </p>
                       </div>
-                      <p v-if="row.last_error" class="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-xs leading-5 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
-                        {{ row.last_error }}
-                      </p>
+                    </div>
+
+                    <div v-if="canToggleApiKeyRows" class="flex items-center justify-between gap-3 rounded-lg border border-dashed border-gray-200 bg-white px-3 py-2 text-xs text-gray-500 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400">
+                      <span class="min-w-0 truncate">
+                        {{ apiKeyRowsExpanded ? t('admin.riskControl.apiKeyRowsExpanded', { count: apiKeyRows.length }) : t('admin.riskControl.apiKeyRowsCollapsed', { count: hiddenApiKeyRowCount }) }}
+                      </span>
+                      <button
+                        type="button"
+                        class="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 font-medium text-primary-600 transition-colors hover:bg-primary-50 hover:text-primary-700 dark:text-primary-300 dark:hover:bg-primary-900/20"
+                        @click="apiKeyRowsExpanded = !apiKeyRowsExpanded"
+                      >
+                        <Icon :name="apiKeyRowsExpanded ? 'chevronUp' : 'chevronDown'" size="xs" />
+                        {{ apiKeyRowsExpanded ? t('admin.riskControl.collapseApiKeyRows') : t('admin.riskControl.expandApiKeyRows') }}
+                      </button>
                     </div>
                   </div>
 
@@ -780,6 +840,7 @@ import { formatDateTime as formatDateTimeValue } from '@/utils/format'
 
 type SettingsTab = 'basic' | 'scope' | 'runtime' | 'response' | 'retention'
 type WorkerSlotState = 'active' | 'idle' | 'disabled'
+type APIKeysWriteMode = 'append' | 'replace'
 type OverviewIcon = 'shield' | 'key' | 'users' | 'document'
 type OverviewItem = {
   key: string
@@ -798,8 +859,9 @@ type ModerationScoreRow = {
   hit: boolean
 }
 
-const maxModerationTestImages = 4
+const maxModerationTestImages = 1
 const maxModerationTestImageSize = 8 * 1024 * 1024
+const maxVisibleApiKeyRows: number = 3
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -819,6 +881,8 @@ const groups = ref<AdminGroup[]>([])
 const logs = ref<ContentModerationLog[]>([])
 const status = ref<ContentModerationRuntimeStatus | null>(null)
 const testedApiKeyStatuses = ref<ContentModerationAPIKeyStatus[]>([])
+const pendingDeleteApiKeyHashes = ref<string[]>([])
+const apiKeyRowsExpanded = ref<boolean>(false)
 const moderationTestPrompt = ref('')
 const moderationTestImages = ref<string[]>([])
 const moderationTestResult = ref<ContentModerationTestAuditResult | null>(null)
@@ -836,6 +900,7 @@ const configForm = reactive({
   api_key_count: 0,
   api_key_masks: [] as string[],
   api_key_statuses: [] as ContentModerationAPIKeyStatus[],
+  api_keys_mode: 'append' as APIKeysWriteMode,
   clear_api_key: false,
   timeout_ms: 3000,
   retry_count: 2,
@@ -922,13 +987,23 @@ const filteredGroups = computed(() => {
   })
 })
 
-const apiKeyPlaceholder = computed(() => {
-  if (configForm.clear_api_key) return t('admin.riskControl.apiKeyWillClear')
-  if (configForm.api_key_configured) return t('admin.riskControl.apiKeysPlaceholderKeep')
-  return t('admin.riskControl.apiKeysPlaceholder')
-})
-
 const inputApiKeyCount = computed(() => parseApiKeys(configForm.api_keys_text).length)
+
+const pendingDeletedApiKeyCount = computed(() => pendingDeleteApiKeyHashes.value.length)
+
+const effectiveStoredApiKeyCount = computed(() => Math.max(0, configForm.api_key_count - pendingDeletedApiKeyCount.value))
+
+const apiKeysPlaceholder = computed(() => (
+  configForm.api_keys_mode === 'replace'
+    ? t('admin.riskControl.apiKeysPlaceholderReplace')
+    : t('admin.riskControl.apiKeysPlaceholder')
+))
+
+const apiKeysModeHint = computed(() => (
+  configForm.api_keys_mode === 'replace'
+    ? t('admin.riskControl.apiKeysModeReplaceHint')
+    : t('admin.riskControl.apiKeysModeAppendHint')
+))
 
 const hasModerationAuditInput = computed(() => {
   return moderationTestPrompt.value.trim() !== '' || moderationTestImages.value.length > 0
@@ -954,6 +1029,19 @@ const apiKeyRows = computed<ContentModerationAPIKeyStatus[]>(() => [
   ...testedApiKeyStatuses.value,
 ])
 
+const visibleApiKeyRows = computed<ContentModerationAPIKeyStatus[]>(() => {
+  if (apiKeyRowsExpanded.value) return apiKeyRows.value
+  return apiKeyRows.value.slice(0, maxVisibleApiKeyRows)
+})
+
+const hiddenApiKeyRowCount = computed<number>(() => Math.max(0, apiKeyRows.value.length - visibleApiKeyRows.value.length))
+
+const canToggleApiKeyRows = computed<boolean>(() => apiKeyRows.value.length > maxVisibleApiKeyRows)
+
+const activeSavedApiKeyRows = computed<ContentModerationAPIKeyStatus[]>(() => (
+  savedApiKeyRows.value.filter((row) => !isStoredApiKeyPendingDelete(row))
+))
+
 const apiKeyHealthBadges = computed<Array<{ status: ContentModerationAPIKeyStatus['status']; count: number }>>(() => {
   const counts: Record<ContentModerationAPIKeyStatus['status'], number> = {
     ok: 0,
@@ -961,11 +1049,11 @@ const apiKeyHealthBadges = computed<Array<{ status: ContentModerationAPIKeyStatu
     frozen: 0,
     unknown: 0,
   }
-  for (const row of savedApiKeyRows.value) {
+  for (const row of activeSavedApiKeyRows.value) {
     counts[row.status] = (counts[row.status] ?? 0) + 1
   }
-  if (savedApiKeyRows.value.length === 0 && configForm.api_key_count > 0) {
-    counts.unknown = configForm.api_key_count
+  if (activeSavedApiKeyRows.value.length === 0 && effectiveStoredApiKeyCount.value > 0) {
+    counts.unknown = effectiveStoredApiKeyCount.value
   }
   return (['ok', 'frozen', 'error', 'unknown'] as Array<ContentModerationAPIKeyStatus['status']>)
     .map((item) => ({ status: item, count: counts[item] }))
@@ -1085,8 +1173,11 @@ function applyConfig(config: ContentModerationConfig) {
   configForm.api_key_count = config.api_key_count || 0
   configForm.api_key_masks = Array.isArray(config.api_key_masks) ? [...config.api_key_masks] : []
   configForm.api_key_statuses = Array.isArray(config.api_key_statuses) ? [...config.api_key_statuses] : []
+  configForm.api_keys_mode = 'append'
   configForm.clear_api_key = false
+  pendingDeleteApiKeyHashes.value = []
   testedApiKeyStatuses.value = []
+  apiKeyRowsExpanded.value = false
   configForm.timeout_ms = config.timeout_ms || 3000
   configForm.retry_count = config.retry_count ?? 2
   configForm.sample_rate = config.sample_rate ?? 100
@@ -1119,6 +1210,7 @@ async function loadAll() {
     status.value = runtimeStatus
     if (Array.isArray(runtimeStatus.api_key_statuses)) {
       configForm.api_key_statuses = [...runtimeStatus.api_key_statuses]
+      prunePendingDeleteAPIKeyHashes()
     }
     await loadLogs()
   } catch (err: unknown) {
@@ -1135,6 +1227,7 @@ async function loadStatus(silent = true) {
     status.value = runtimeStatus
     if (Array.isArray(runtimeStatus.api_key_statuses)) {
       configForm.api_key_statuses = [...runtimeStatus.api_key_statuses]
+      prunePendingDeleteAPIKeyHashes()
     }
   } catch (err: unknown) {
     if (!silent) {
@@ -1173,9 +1266,17 @@ async function saveConfig() {
       pre_hash_check_enabled: configForm.pre_hash_check_enabled,
     }
     const keys = parseApiKeys(configForm.api_keys_text)
+    if (!payload.clear_api_key && configForm.api_keys_mode === 'replace' && keys.length === 0) {
+      appStore.showError(t('admin.riskControl.apiKeysReplaceNoInput'))
+      return
+    }
     if (keys.length > 0) {
       payload.api_keys = keys
+      payload.api_keys_mode = configForm.api_keys_mode
       payload.clear_api_key = false
+    }
+    if (!payload.clear_api_key && configForm.api_keys_mode !== 'replace' && pendingDeleteApiKeyHashes.value.length > 0) {
+      payload.delete_api_key_hashes = [...pendingDeleteApiKeyHashes.value]
     }
 
     const updated = await adminAPI.riskControl.updateConfig(payload)
@@ -1305,7 +1406,16 @@ function toggleClearApiKey() {
   configForm.clear_api_key = !configForm.clear_api_key
   if (configForm.clear_api_key) {
     configForm.api_keys_text = ''
+    configForm.api_keys_mode = 'append'
     testedApiKeyStatuses.value = []
+    pendingDeleteApiKeyHashes.value = []
+  }
+}
+
+function setAPIKeysMode(mode: APIKeysWriteMode) {
+  configForm.api_keys_mode = mode
+  if (mode === 'replace') {
+    pendingDeleteApiKeyHashes.value = []
   }
 }
 
@@ -1348,6 +1458,25 @@ function mergeConfiguredAPIKeyStatuses(items: ContentModerationAPIKeyStatus[]) {
   }
   const updates = new Map(items.map((item) => [item.key_hash, item]))
   configForm.api_key_statuses = configForm.api_key_statuses.map((item) => updates.get(item.key_hash) ?? item)
+}
+
+function toggleDeleteStoredApiKey(row: ContentModerationAPIKeyStatus) {
+  if (!row.configured || !row.key_hash) return
+  const index = pendingDeleteApiKeyHashes.value.indexOf(row.key_hash)
+  if (index >= 0) {
+    pendingDeleteApiKeyHashes.value.splice(index, 1)
+    return
+  }
+  pendingDeleteApiKeyHashes.value.push(row.key_hash)
+}
+
+function isStoredApiKeyPendingDelete(row: ContentModerationAPIKeyStatus): boolean {
+  return row.configured && row.key_hash !== '' && pendingDeleteApiKeyHashes.value.includes(row.key_hash)
+}
+
+function prunePendingDeleteAPIKeyHashes() {
+  const currentHashes = new Set(savedApiKeyRows.value.map((row) => row.key_hash).filter(Boolean))
+  pendingDeleteApiKeyHashes.value = pendingDeleteApiKeyHashes.value.filter((hash) => currentHashes.has(hash))
 }
 
 function clearModerationTestInput() {
