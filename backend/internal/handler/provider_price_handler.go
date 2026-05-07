@@ -337,6 +337,8 @@ func filterModelsByGroupScope(group *service.Group, models []string) []string {
 		return models
 	}
 
+	applyImageGate := group.Platform == service.PlatformGemini || group.Platform == service.PlatformAntigravity
+
 	allowedScopes := make(map[string]struct{}, len(group.SupportedModelScopes))
 	for _, scope := range group.SupportedModelScopes {
 		scope = strings.TrimSpace(strings.ToLower(scope))
@@ -345,23 +347,27 @@ func filterModelsByGroupScope(group *service.Group, models []string) []string {
 		}
 	}
 
-	if len(allowedScopes) == 0 {
-		return models
-	}
-
 	filtered := make([]string, 0, len(models))
 	for _, model := range models {
-		if modelAllowedByScope(group, allowedScopes, model) {
+		if modelAllowedByScope(group, allowedScopes, model, applyImageGate) {
 			filtered = append(filtered, model)
 		}
 	}
 	return filtered
 }
 
-func modelAllowedByScope(group *service.Group, allowedScopes map[string]struct{}, model string) bool {
+func modelAllowedByScope(group *service.Group, allowedScopes map[string]struct{}, model string, applyImageGate bool) bool {
 	modelLower := strings.ToLower(strings.TrimSpace(model))
 	if modelLower == "" {
 		return false
+	}
+
+	if applyImageGate && isImageLikeModel(modelLower) && !group.AllowImageGeneration {
+		return false
+	}
+
+	if len(allowedScopes) == 0 {
+		return true
 	}
 
 	switch group.Platform {

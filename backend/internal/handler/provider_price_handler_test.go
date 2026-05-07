@@ -351,6 +351,23 @@ func TestProviderPriceHandler_UsesChannelSupportedModelsWhenGatewayModelsAreEmpt
 	}
 }
 
+func TestFilterModelsByGroupScope_RespectsImageGenerationGate(t *testing.T) {
+	group := &service.Group{
+		Platform:             service.PlatformGemini,
+		AllowImageGeneration: false,
+		SupportedModelScopes: []string{"gemini_text", "gemini_image"},
+	}
+
+	models := filterModelsByGroupScope(group, []string{
+		"gemini-2.5-flash",
+		"gemini-2.5-flash-image",
+	})
+
+	if len(models) != 1 || models[0] != "gemini-2.5-flash" {
+		t.Fatalf("unexpected filtered models: %+v", models)
+	}
+}
+
 func floatPtr(v float64) *float64 {
 	return &v
 }
