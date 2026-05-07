@@ -1000,20 +1000,10 @@ func calculateOpenAI429ResetTime(headers http.Header) *time.Time {
 		return &resetAt
 	}
 
-	// 都未达到100%但收到429，使用较长的重置时间
-	var maxResetSecs int
-	if normalized.Reset7dSeconds != nil && *normalized.Reset7dSeconds > maxResetSecs {
-		maxResetSecs = *normalized.Reset7dSeconds
-	}
-	if normalized.Reset5hSeconds != nil && *normalized.Reset5hSeconds > maxResetSecs {
-		maxResetSecs = *normalized.Reset5hSeconds
-	}
-	if maxResetSecs > 0 {
-		resetAt := now.Add(time.Duration(maxResetSecs) * time.Second)
-		slog.Info("openai_429_using_max_reset", "max_reset_seconds", maxResetSecs, "reset_at", resetAt)
-		return &resetAt
-	}
-
+	// 两个用量窗口都未耗尽时，429 通常来自短暂 RPM/TPM 突发限制。
+	// x-codex-*-reset-after-seconds 表示用量窗口重置时间，不应当被当作本次
+	// 突发限流的冷却时间；返回 nil 让调用方使用短 fallback cooldown。
+	slog.Info("openai_429_codex_windows_not_exhausted_using_fallback")
 	return nil
 }
 

@@ -58,7 +58,7 @@ func (r stubOpenAIAccountRepo) GetByID(ctx context.Context, id int64) (*Account,
 func (r stubOpenAIAccountRepo) ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]Account, error) {
 	var result []Account
 	for _, acc := range r.accounts {
-		if acc.Platform == platform {
+		if acc.Platform == platform && acc.IsSchedulable() {
 			result = append(result, acc)
 		}
 	}
@@ -68,7 +68,7 @@ func (r stubOpenAIAccountRepo) ListSchedulableByGroupIDAndPlatform(ctx context.C
 func (r stubOpenAIAccountRepo) ListSchedulableByPlatform(ctx context.Context, platform string) ([]Account, error) {
 	var result []Account
 	for _, acc := range r.accounts {
-		if acc.Platform == platform {
+		if acc.Platform == platform && acc.IsSchedulable() {
 			result = append(result, acc)
 		}
 	}
@@ -77,6 +77,68 @@ func (r stubOpenAIAccountRepo) ListSchedulableByPlatform(ctx context.Context, pl
 
 func (r stubOpenAIAccountRepo) ListSchedulableUngroupedByPlatform(ctx context.Context, platform string) ([]Account, error) {
 	return r.ListSchedulableByPlatform(ctx, platform)
+}
+
+func (r stubOpenAIAccountRepo) ListByGroup(ctx context.Context, groupID int64) ([]Account, error) {
+	var result []Account
+	for _, acc := range r.accounts {
+		if acc.Status != StatusActive {
+			continue
+		}
+		matched := len(acc.AccountGroups) == 0 && len(acc.GroupIDs) == 0
+		for _, ag := range acc.AccountGroups {
+			if ag.GroupID == groupID {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			for _, gid := range acc.GroupIDs {
+				if gid == groupID {
+					matched = true
+					break
+				}
+			}
+		}
+		if matched {
+			result = append(result, acc)
+		}
+	}
+	return result, nil
+}
+
+func (r stubOpenAIAccountRepo) ListByPlatform(ctx context.Context, platform string) ([]Account, error) {
+	var result []Account
+	for _, acc := range r.accounts {
+		if acc.Platform == platform && acc.Status == StatusActive {
+			result = append(result, acc)
+		}
+	}
+	return result, nil
+}
+
+func (r stubOpenAIAccountRepo) ClearRateLimit(ctx context.Context, id int64) error {
+	for i := range r.accounts {
+		if r.accounts[i].ID == id {
+			r.accounts[i].RateLimitedAt = nil
+			r.accounts[i].RateLimitResetAt = nil
+			r.accounts[i].OverloadUntil = nil
+			return nil
+		}
+	}
+	return errors.New("account not found")
+}
+
+func (r stubOpenAIAccountRepo) ClearAntigravityQuotaScopes(ctx context.Context, id int64) error {
+	return nil
+}
+
+func (r stubOpenAIAccountRepo) ClearModelRateLimits(ctx context.Context, id int64) error {
+	return nil
+}
+
+func (r stubOpenAIAccountRepo) ClearTempUnschedulable(ctx context.Context, id int64) error {
+	return nil
 }
 
 type stubConcurrencyCache struct {
@@ -807,6 +869,35 @@ func TestOpenAISelectAccountForModelWithExclusions_NoAccounts(t *testing.T) {
 	}
 }
 
+func TestOpenAISelectAccountForModelWithExclusions_RecoversRateLimitedProbeAccount(t *testing.T) {
+	groupID := int64(42)
+	resetAt := time.Now().Add(30 * time.Minute)
+	repo := stubOpenAIAccountRepo{
+		accounts: []Account{
+			{ID: 9, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1, RateLimitResetAt: &resetAt, AccountGroups: []AccountGroup{{GroupID: groupID}}},
+		},
+	}
+	cache := &stubGatewayCache{}
+	rateLimitService := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+
+	svc := &OpenAIGatewayService{
+		accountRepo:      repo,
+		cache:            cache,
+		rateLimitService: rateLimitService,
+	}
+
+	acc, err := svc.SelectAccountForModelWithExclusions(context.Background(), &groupID, "recover-session", "gpt-4", nil)
+	if err != nil {
+		t.Fatalf("SelectAccountForModelWithExclusions error: %v", err)
+	}
+	if acc == nil || acc.ID != 9 {
+		t.Fatalf("expected recovered account 9, got %#v", acc)
+	}
+	if acc.RateLimitResetAt != nil {
+		t.Fatalf("expected rate limit to be cleared")
+	}
+}
+
 func TestOpenAISelectAccountWithLoadAwareness_NoCandidates(t *testing.T) {
 	groupID := int64(1)
 	resetAt := time.Now().Add(1 * time.Hour)
@@ -830,6 +921,42 @@ func TestOpenAISelectAccountWithLoadAwareness_NoCandidates(t *testing.T) {
 	}
 	if selection != nil {
 		t.Fatalf("expected nil selection")
+	}
+}
+
+func TestOpenAISelectAccountWithLoadAwareness_RecoversRateLimitedProbeAccount(t *testing.T) {
+	groupID := int64(1)
+	soon := time.Now().Add(5 * time.Minute)
+	later := time.Now().Add(1 * time.Hour)
+	repo := stubOpenAIAccountRepo{
+		accounts: []Account{
+			{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 2, RateLimitResetAt: &later, AccountGroups: []AccountGroup{{GroupID: groupID}}},
+			{ID: 2, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Concurrency: 1, Priority: 1, RateLimitResetAt: &soon, AccountGroups: []AccountGroup{{GroupID: groupID}}},
+		},
+	}
+	cache := &stubGatewayCache{}
+	concurrencyCache := stubConcurrencyCache{}
+	rateLimitService := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+
+	svc := &OpenAIGatewayService{
+		accountRepo:        repo,
+		cache:              cache,
+		concurrencyService: NewConcurrencyService(concurrencyCache),
+		rateLimitService:   rateLimitService,
+	}
+
+	selection, err := svc.SelectAccountWithLoadAwareness(context.Background(), &groupID, "", "gpt-4", nil)
+	if err != nil {
+		t.Fatalf("SelectAccountWithLoadAwareness error: %v", err)
+	}
+	if selection == nil || selection.Account == nil || selection.Account.ID != 2 {
+		t.Fatalf("expected recovered account 2, got %#v", selection)
+	}
+	if selection.Account.RateLimitResetAt != nil {
+		t.Fatalf("expected recovered account rate limit to be cleared")
+	}
+	if !selection.Acquired {
+		t.Fatalf("expected recovered account slot to be acquired")
 	}
 }
 

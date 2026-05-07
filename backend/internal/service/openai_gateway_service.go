@@ -1369,6 +1369,12 @@ func (s *OpenAIGatewayService) selectAccountForModelWithExclusions(ctx context.C
 	selected, compactBlocked := s.selectBestAccount(ctx, groupID, accounts, requestedModel, excludedIDs, requireCompact)
 
 	if selected == nil {
+		if recovered := s.tryRecoverOpenAIRateLimitedAccountForProbe(ctx, groupID, requestedModel, excludedIDs, requireCompact); recovered != nil {
+			if sessionHash != "" {
+				_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, recovered.ID, openaiStickySessionTTL)
+			}
+			return recovered, nil
+		}
 		return nil, noAvailableOpenAISelectionError(requestedModel, compactBlocked)
 	}
 
@@ -1593,6 +1599,21 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		return nil, err
 	}
 	if len(accounts) == 0 {
+		if recovered := s.tryRecoverOpenAIRateLimitedAccountForProbe(ctx, groupID, requestedModel, excludedIDs, requireCompact); recovered != nil {
+			result, err := s.tryAcquireAccountSlot(ctx, recovered.ID, recovered.Concurrency)
+			if err == nil && result.Acquired {
+				if sessionHash != "" {
+					_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, recovered.ID, openaiStickySessionTTL)
+				}
+				return newOpenAISelectionResult(recovered, true, result.ReleaseFunc, nil), nil
+			}
+			return newOpenAISelectionResult(recovered, false, nil, &AccountWaitPlan{
+				AccountID:      recovered.ID,
+				MaxConcurrency: recovered.Concurrency,
+				Timeout:        cfg.FallbackWaitTimeout,
+				MaxWaiting:     cfg.FallbackMaxWaiting,
+			}), nil
+		}
 		return nil, ErrNoAvailableAccounts
 	}
 
@@ -1667,6 +1688,21 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	}
 
 	if len(candidates) == 0 {
+		if recovered := s.tryRecoverOpenAIRateLimitedAccountForProbe(ctx, groupID, requestedModel, excludedIDs, requireCompact); recovered != nil {
+			result, err := s.tryAcquireAccountSlot(ctx, recovered.ID, recovered.Concurrency)
+			if err == nil && result.Acquired {
+				if sessionHash != "" {
+					_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, recovered.ID, openaiStickySessionTTL)
+				}
+				return newOpenAISelectionResult(recovered, true, result.ReleaseFunc, nil), nil
+			}
+			return newOpenAISelectionResult(recovered, false, nil, &AccountWaitPlan{
+				AccountID:      recovered.ID,
+				MaxConcurrency: recovered.Concurrency,
+				Timeout:        cfg.FallbackWaitTimeout,
+				MaxWaiting:     cfg.FallbackMaxWaiting,
+			}), nil
+		}
 		return nil, ErrNoAvailableAccounts
 	}
 
@@ -1812,7 +1848,155 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	if requireCompact && baseCandidateCount > 0 {
 		return nil, ErrNoAvailableCompactAccounts
 	}
+	if recovered := s.tryRecoverOpenAIRateLimitedAccountForProbe(ctx, groupID, requestedModel, excludedIDs, requireCompact); recovered != nil {
+		result, err := s.tryAcquireAccountSlot(ctx, recovered.ID, recovered.Concurrency)
+		if err == nil && result.Acquired {
+			if sessionHash != "" {
+				_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, recovered.ID, openaiStickySessionTTL)
+			}
+			return newOpenAISelectionResult(recovered, true, result.ReleaseFunc, nil), nil
+		}
+		return newOpenAISelectionResult(recovered, false, nil, &AccountWaitPlan{
+			AccountID:      recovered.ID,
+			MaxConcurrency: recovered.Concurrency,
+			Timeout:        cfg.FallbackWaitTimeout,
+			MaxWaiting:     cfg.FallbackMaxWaiting,
+		}), nil
+	}
 	return nil, ErrNoAvailableAccounts
+}
+
+func (s *OpenAIGatewayService) tryRecoverOpenAIRateLimitedAccountForProbe(ctx context.Context, groupID *int64, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool) *Account {
+	if s == nil || s.accountRepo == nil || s.rateLimitService == nil {
+		return nil
+	}
+
+	accounts, err := s.listActiveOpenAIAccountsForRateLimitProbe(ctx, groupID)
+	if err != nil {
+		slog.Warn("openai_rate_limit_probe_list_failed", "group_id", derefGroupID(groupID), "error", err)
+		return nil
+	}
+
+	var candidate *Account
+	for i := range accounts {
+		acc := &accounts[i]
+		if _, excluded := excludedIDs[acc.ID]; excluded {
+			continue
+		}
+		if !isOpenAIAccountProbeRecoveryCandidate(acc, requestedModel, requireCompact) {
+			continue
+		}
+		if groupID != nil && s.needsUpstreamChannelRestrictionCheck(ctx, groupID) &&
+			s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel, requireCompact) {
+			continue
+		}
+		if candidate == nil || openAIRateLimitProbeCandidateLess(acc, candidate) {
+			candidate = acc
+		}
+	}
+	if candidate == nil {
+		return nil
+	}
+
+	if err := s.rateLimitService.ClearRateLimit(ctx, candidate.ID); err != nil {
+		slog.Warn("openai_rate_limit_probe_clear_failed", "account_id", candidate.ID, "error", err)
+		return nil
+	}
+
+	recovered, err := s.accountRepo.GetByID(ctx, candidate.ID)
+	if err != nil || recovered == nil {
+		slog.Warn("openai_rate_limit_probe_get_recovered_failed", "account_id", candidate.ID, "error", err)
+		return nil
+	}
+	if !isOpenAIAccountEligibleForRequest(recovered, requestedModel, requireCompact) {
+		return nil
+	}
+	slog.Info("openai_rate_limit_probe_account_recovered", "account_id", recovered.ID, "group_id", derefGroupID(groupID))
+	return recovered
+}
+
+func (s *OpenAIGatewayService) listActiveOpenAIAccountsForRateLimitProbe(ctx context.Context, groupID *int64) ([]Account, error) {
+	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
+		return s.accountRepo.ListByPlatform(ctx, PlatformOpenAI)
+	}
+	if groupID != nil {
+		accounts, err := s.accountRepo.ListByGroup(ctx, *groupID)
+		if err != nil {
+			return nil, err
+		}
+		filtered := accounts[:0]
+		for _, acc := range accounts {
+			if acc.Platform == PlatformOpenAI {
+				filtered = append(filtered, acc)
+			}
+		}
+		return filtered, nil
+	}
+	accounts, err := s.accountRepo.ListByPlatform(ctx, PlatformOpenAI)
+	if err != nil {
+		return nil, err
+	}
+	filtered := accounts[:0]
+	for _, acc := range accounts {
+		if len(acc.AccountGroups) == 0 && len(acc.GroupIDs) == 0 {
+			filtered = append(filtered, acc)
+		}
+	}
+	return filtered, nil
+}
+
+func isOpenAIAccountProbeRecoveryCandidate(account *Account, requestedModel string, requireCompact bool) bool {
+	if account == nil || account.Platform != PlatformOpenAI || account.Status != StatusActive || !account.Schedulable {
+		return false
+	}
+	now := time.Now()
+	if account.AutoPauseOnExpired && account.ExpiresAt != nil && !now.Before(*account.ExpiresAt) {
+		return false
+	}
+	if account.IsAPIKeyOrBedrock() && account.IsQuotaExceeded() {
+		return false
+	}
+	if account.OverloadUntil != nil && now.Before(*account.OverloadUntil) {
+		return false
+	}
+	if account.TempUnschedulableUntil != nil && now.Before(*account.TempUnschedulableUntil) {
+		return false
+	}
+	if account.RateLimitResetAt == nil || !now.Before(*account.RateLimitResetAt) {
+		return false
+	}
+	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
+		return false
+	}
+	if requireCompact && openAICompactSupportTier(account) == 0 {
+		return false
+	}
+	if remaining := account.GetRateLimitRemainingTimeWithContext(context.Background(), requestedModel); remaining > 0 {
+		return false
+	}
+	return true
+}
+
+func openAIRateLimitProbeCandidateLess(candidate, current *Account) bool {
+	if candidate.RateLimitResetAt != nil && current.RateLimitResetAt != nil && !candidate.RateLimitResetAt.Equal(*current.RateLimitResetAt) {
+		return candidate.RateLimitResetAt.Before(*current.RateLimitResetAt)
+	}
+	if candidate.Priority != current.Priority {
+		return candidate.Priority < current.Priority
+	}
+	switch {
+	case candidate.LastUsedAt == nil && current.LastUsedAt != nil:
+		return true
+	case candidate.LastUsedAt != nil && current.LastUsedAt == nil:
+		return false
+	case candidate.LastUsedAt == nil && current.LastUsedAt == nil:
+		return candidate.ID < current.ID
+	default:
+		if !candidate.LastUsedAt.Equal(*current.LastUsedAt) {
+			return candidate.LastUsedAt.Before(*current.LastUsedAt)
+		}
+		return candidate.ID < current.ID
+	}
 }
 
 func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64) ([]Account, error) {
@@ -1918,12 +2102,16 @@ func (s *OpenAIGatewayService) newSelectionResult(ctx context.Context, account *
 	if err != nil {
 		return nil, err
 	}
+	return newOpenAISelectionResult(hydrated, acquired, release, waitPlan), nil
+}
+
+func newOpenAISelectionResult(account *Account, acquired bool, release func(), waitPlan *AccountWaitPlan) *AccountSelectionResult {
 	return &AccountSelectionResult{
-		Account:     hydrated,
+		Account:     account,
 		Acquired:    acquired,
 		ReleaseFunc: release,
 		WaitPlan:    waitPlan,
-	}, nil
+	}
 }
 
 func (s *OpenAIGatewayService) schedulingConfig() config.GatewaySchedulingConfig {
