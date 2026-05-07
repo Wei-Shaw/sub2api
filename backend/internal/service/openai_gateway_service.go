@@ -5210,6 +5210,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 	if s.rateLimitService != nil && input.Account != nil && input.Account.Platform == PlatformOpenAI {
 		s.rateLimitService.ResetOpenAI403Counter(ctx, input.Account.ID)
+		s.rateLimitService.resetTempUnschedCounters(input.Account.ID)
 	}
 
 	apiKey := input.APIKey

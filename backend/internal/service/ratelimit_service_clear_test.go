@@ -94,6 +94,8 @@ func TestRateLimitService_ClearRateLimit_AlsoClearsTempUnschedulable(t *testing.
 	repo := &rateLimitClearRepoStub{}
 	cache := &tempUnschedCacheRecorder{}
 	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, cache)
+	svc.incrementTempUnschedCounter(42, openAI503BurstCounterScopeDefault, time.Minute)
+	svc.incrementTempUnschedCounter(99, openAI503BurstCounterScopeDefault, time.Minute)
 
 	err := svc.ClearRateLimit(context.Background(), 42)
 	require.NoError(t, err)
@@ -103,6 +105,8 @@ func TestRateLimitService_ClearRateLimit_AlsoClearsTempUnschedulable(t *testing.
 	require.Equal(t, 1, repo.clearModelRateLimitCalls)
 	require.Equal(t, 1, repo.clearTempUnschedCalls)
 	require.Equal(t, []int64{42}, cache.deletedIDs)
+	require.NotContains(t, svc.tempUnschedCounters, "42:"+openAI503BurstCounterScopeDefault)
+	require.Contains(t, svc.tempUnschedCounters, "99:"+openAI503BurstCounterScopeDefault)
 }
 
 func TestRateLimitService_ClearRateLimit_ClearTempUnschedulableFailed(t *testing.T) {

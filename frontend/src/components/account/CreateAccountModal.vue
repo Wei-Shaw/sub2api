@@ -1985,6 +1985,17 @@
                     :placeholder="t('admin.accounts.tempUnschedulable.durationPlaceholder')"
                   />
                 </div>
+                <div>
+                  <label class="input-label">{{ t('admin.accounts.tempUnschedulable.triggerCount') }}</label>
+                  <input
+                    v-model.number="rule.trigger_count"
+                    type="number"
+                    min="1"
+                    class="input"
+                    :placeholder="t('admin.accounts.tempUnschedulable.triggerCountPlaceholder')"
+                  />
+                  <p class="input-hint">{{ t('admin.accounts.tempUnschedulable.triggerCountHint') }}</p>
+                </div>
                 <div class="sm:col-span-2">
                   <label class="input-label">{{ t('admin.accounts.tempUnschedulable.keywords') }}</label>
                   <input
@@ -3240,6 +3251,7 @@ interface ModelMapping {
 interface TempUnschedRuleForm {
   error_code: number | null
   keywords: string
+  trigger_count: number | null
   duration_minutes: number | null
   description: string
 }
@@ -3457,6 +3469,7 @@ const tempUnschedPresets = computed(() => [
     rule: {
       error_code: 529,
       keywords: 'overloaded, too many',
+      trigger_count: 1,
       duration_minutes: 60,
       description: t('admin.accounts.tempUnschedulable.presets.overloadDesc')
     }
@@ -3466,6 +3479,7 @@ const tempUnschedPresets = computed(() => [
     rule: {
       error_code: 429,
       keywords: 'rate limit, too many requests',
+      trigger_count: 1,
       duration_minutes: 10,
       description: t('admin.accounts.tempUnschedulable.presets.rateLimitDesc')
     }
@@ -3475,6 +3489,7 @@ const tempUnschedPresets = computed(() => [
     rule: {
       error_code: 503,
       keywords: 'unavailable, maintenance',
+      trigger_count: 3,
       duration_minutes: 30,
       description: t('admin.accounts.tempUnschedulable.presets.unavailableDesc')
     }
@@ -3817,6 +3832,7 @@ const addTempUnschedRule = (preset?: TempUnschedRuleForm) => {
   tempUnschedRules.value.push({
     error_code: null,
     keywords: '',
+    trigger_count: 1,
     duration_minutes: 30,
     description: ''
   })
@@ -3839,12 +3855,14 @@ const buildTempUnschedRules = (rules: TempUnschedRuleForm[]) => {
   const out: Array<{
     error_code: number
     keywords: string[]
+    trigger_count: number
     duration_minutes: number
     description: string
   }> = []
 
   for (const rule of rules) {
     const errorCode = Number(rule.error_code)
+    const triggerCount = Number(rule.trigger_count)
     const duration = Number(rule.duration_minutes)
     const keywords = splitTempUnschedKeywords(rule.keywords)
     if (!Number.isFinite(errorCode) || errorCode < 100 || errorCode > 599) {
@@ -3859,6 +3877,7 @@ const buildTempUnschedRules = (rules: TempUnschedRuleForm[]) => {
     out.push({
       error_code: Math.trunc(errorCode),
       keywords,
+      trigger_count: Number.isFinite(triggerCount) && triggerCount > 0 ? Math.trunc(triggerCount) : 1,
       duration_minutes: Math.trunc(duration),
       description: rule.description.trim()
     })

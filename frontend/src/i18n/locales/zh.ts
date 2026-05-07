@@ -3068,6 +3068,9 @@ export default {
         ruleIndex: '规则 #{index}',
         errorCode: '错误码',
         errorCodePlaceholder: '例如 429',
+        triggerCount: '触发次数',
+        triggerCountPlaceholder: '例如 3',
+        triggerCountHint: '同一规则在窗口内累计命中达到该次数后，才会临时停调。默认 1 次即触发。',
         durationMinutes: '持续时间（分钟）',
         durationPlaceholder: '例如 30',
         keywords: '关键词',
@@ -3098,7 +3101,7 @@ export default {
           rateLimitLabel: '429 限流',
           rateLimitDesc: '触发限流 - 暂停 10 分钟',
           unavailableLabel: '503 维护',
-          unavailableDesc: '服务不可用 - 暂停 30 分钟'
+          unavailableDesc: '服务不可用 - 连续 3 次后暂停 30 分钟'
         }
       },
       usageWindow: {
@@ -4625,6 +4628,7 @@ export default {
         model: '模型',
         group: '分组',
         user: '用户',
+        scheduledAccount: '调度账号',
         userId: '用户 ID',
         account: '账号',
         accountId: '账号 ID',
@@ -4729,6 +4733,7 @@ export default {
         model: '模型',
         group: '分组',
         user: '用户',
+        scheduledAccount: '调度账号',
         account: '账号',
         latency: '请求时长',
         businessLimited: '业务限制',
@@ -4818,6 +4823,7 @@ export default {
           kind: '类型',
           platform: '平台',
           model: '模型',
+          scheduledAccount: '调度账号',
           duration: '耗时',
           status: '状态码',
           requestId: '请求ID',

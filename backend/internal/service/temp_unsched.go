@@ -12,6 +12,8 @@ type TempUnschedState struct {
 	StatusCode      int    `json:"status_code"`       // 触发的错误码
 	MatchedKeyword  string `json:"matched_keyword"`   // 匹配的关键词
 	RuleIndex       int    `json:"rule_index"`        // 触发的规则索引
+	HitCount        int    `json:"hit_count,omitempty"`
+	TriggerCount    int    `json:"trigger_count,omitempty"`
 	ErrorMessage    string `json:"error_message"`     // 错误消息
 }
 
