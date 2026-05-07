@@ -152,9 +152,9 @@ gateway:
   # Max request body size in bytes (default: 256MB)
   # 请求体最大字节数（默认 256MB）
   max_body_size: 268435456
-  # Max bytes to read for non-stream upstream responses (default: 8MB)
-  # 非流式上游响应体读取上限（默认 8MB）
-  upstream_response_read_max_bytes: 8388608
+  # Max bytes to read for non-stream upstream responses (default: 128MB)
+  # 非流式上游响应体读取上限（默认 128MB，可容纳 base64 图片响应）
+  upstream_response_read_max_bytes: 134217728
   # Max bytes to read for proxy probe responses (default: 1MB)
   # 代理探测响应体读取上限（默认 1MB）
   proxy_probe_response_read_max_bytes: 1048576

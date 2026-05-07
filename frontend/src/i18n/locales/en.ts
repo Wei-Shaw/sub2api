@@ -1007,9 +1007,25 @@ export default {
     quality: 'Quality',
     referenceImages: 'Reference Images',
     uploadReference: 'Upload references',
+    options: 'Options',
+    optionsHint: 'Defaults are used unless you change size or quality.',
+    aspectRatio: 'Aspect ratio',
+    aspectSquare: 'Square',
+    aspectPortrait: 'Portrait',
+    aspectLandscape: 'Landscape',
+    resolution: 'Resolution',
     disabled: 'Image generation is currently disabled. Ask an administrator to enable it in system settings.',
     empty: 'Generated images will appear here.',
-    error: 'Image generation failed'
+    error: 'Image generation failed',
+    download: 'Download',
+    downloadFailed: 'Failed to download image',
+    useAsReference: 'Use as reference',
+    referenceFailed: 'Unable to use this image as a reference',
+    sessionImages: 'Session image history',
+    sessionImagesHint: 'Images generated on this page are kept here for download or reference edits.',
+    sessionImagesEmpty: 'Generated images from this session will appear here.',
+    sessionImageCount: '{count} images',
+    duration: 'Time'
   },
 
   models: {

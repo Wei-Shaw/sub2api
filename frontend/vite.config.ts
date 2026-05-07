@@ -113,11 +113,19 @@ export default defineConfig(({ mode }) => {
       proxy: {
         '/api': {
           target: backendUrl,
-          changeOrigin: true
+          changeOrigin: true,
+          proxyTimeout: 0,
+          timeout: 0
         },
         '/v1': {
           target: backendUrl,
           changeOrigin: true
+        },
+        '/images': {
+          target: backendUrl,
+          changeOrigin: true,
+          proxyTimeout: 0,
+          timeout: 0
         },
         '/setup': {
           target: backendUrl,

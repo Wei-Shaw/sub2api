@@ -473,6 +473,8 @@ func normalizeOpenAIImageSizeTier(size string) string {
 		return "1K"
 	case "1536x1024", "1024x1536", "1792x1024", "1024x1792", "", "auto":
 		return "2K"
+	case "2048x2048", "3072x2048", "2048x3072":
+		return "4K"
 	default:
 		return "2K"
 	}

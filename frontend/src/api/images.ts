@@ -24,6 +24,8 @@ export interface ImageGenerationResponse {
   data: GeneratedImage[]
 }
 
+const IMAGE_REQUEST_TIMEOUT_MS = 0
+
 function authHeaders(apiKey: string) {
   return apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined
 }
@@ -31,6 +33,7 @@ function authHeaders(apiKey: string) {
 export async function generateImage(payload: ImageGenerationRequest, apiKey = ''): Promise<ImageGenerationResponse> {
   const { data } = await apiClient.post<ImageGenerationResponse>('/images/generations', payload, {
     headers: authHeaders(apiKey),
+    timeout: IMAGE_REQUEST_TIMEOUT_MS,
   })
   return data
 }
@@ -49,6 +52,7 @@ export async function editImage(payload: ImageEditRequest, apiKey = ''): Promise
 
   const { data } = await apiClient.post<ImageGenerationResponse>('/images/edits', form, {
     headers: authHeaders(apiKey),
+    timeout: IMAGE_REQUEST_TIMEOUT_MS,
   })
   return data
 }

@@ -189,9 +189,9 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.paymentVisibleMethods.sourceRequiredError": "{title} 已启用，请先选择支付来源。",
     "admin.settings.payment.configGuide": "查看支付配置说明",
     "admin.settings.payment.findProvider": "查看支持的支付方式",
-    "admin.settings.features.imageGeneration.title": "文生图",
-    "admin.settings.features.imageGeneration.description": "控制用户侧文生图工具入口是否展示。",
-    "admin.settings.features.imageGeneration.enabled": "启用文生图入口",
+    "admin.settings.features.imageGeneration.title": "AI生图",
+    "admin.settings.features.imageGeneration.description": "控制用户侧AI生图工具入口是否展示。",
+    "admin.settings.features.imageGeneration.enabled": "启用AI生图入口",
     "admin.settings.features.imageGeneration.enabledHint": "启用前请确认 OpenAI 分组、图片模型和渠道图片计费已配置。",
     "admin.settings.features.imageGeneration.configureLink": "前往渠道定价",
     "admin.settings.openaiExperimentalScheduler.title": "OpenAI 实验调度策略",
@@ -733,8 +733,8 @@ describe("admin SettingsView payment visible method controls", () => {
 
     await flushPromises();
 
-    expect(wrapper.text()).toContain("文生图");
-    expect(wrapper.text()).toContain("启用文生图入口");
+    expect(wrapper.text()).toContain("AI生图");
+    expect(wrapper.text()).toContain("启用AI生图入口");
 
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();

@@ -951,7 +951,7 @@ func validateNoConflictingMappings(mapping map[string]map[string]string) error {
 
 func validatePricingIntervals(pricingList []ChannelModelPricing) error {
 	for _, pricing := range pricingList {
-		if err := ValidateIntervals(pricing.Intervals); err != nil {
+		if err := validatePricingIntervalsForMode(pricing); err != nil {
 			return infraerrors.BadRequest(
 				"INVALID_PRICING_INTERVALS",
 				fmt.Sprintf("invalid pricing intervals for platform '%s' models %v: %v",
@@ -960,6 +960,13 @@ func validatePricingIntervals(pricingList []ChannelModelPricing) error {
 		}
 	}
 	return nil
+}
+
+func validatePricingIntervalsForMode(pricing ChannelModelPricing) error {
+	if pricing.BillingMode == BillingModeImage {
+		return ValidateImageTiers(pricing.Intervals)
+	}
+	return ValidateIntervals(pricing.Intervals)
 }
 
 // detectConflicts 在一组 modelEntry 中检测冲突，返回带有 errCode 和 label 的错误

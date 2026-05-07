@@ -30,6 +30,18 @@ func RegisterGatewayRoutes(
 	// 未分组 Key 拦截中间件（按协议格式区分错误响应）
 	requireGroupAnthropic := middleware.RequireGroupAssignment(settingService, middleware.AnthropicErrorWriter)
 	requireGroupGoogle := middleware.RequireGroupAssignment(settingService, middleware.GoogleErrorWriter)
+	openAIImagesHandler := func(c *gin.Context) {
+		if getGroupPlatform(c) != service.PlatformOpenAI {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": gin.H{
+					"type":    "not_found_error",
+					"message": "Images API is not supported for this platform",
+				},
+			})
+			return
+		}
+		h.OpenAIGateway.Images(c)
+	}
 
 	// API网关（Claude API兼容）
 	gateway := r.Group("/v1")
@@ -89,28 +101,10 @@ func RegisterGatewayRoutes(
 			h.Gateway.ChatCompletions(c)
 		})
 		gateway.POST("/images/generations", func(c *gin.Context) {
-			if getGroupPlatform(c) != service.PlatformOpenAI {
-				c.JSON(http.StatusNotFound, gin.H{
-					"error": gin.H{
-						"type":    "not_found_error",
-						"message": "Images API is not supported for this platform",
-					},
-				})
-				return
-			}
-			h.OpenAIGateway.Images(c)
+			openAIImagesHandler(c)
 		})
 		gateway.POST("/images/edits", func(c *gin.Context) {
-			if getGroupPlatform(c) != service.PlatformOpenAI {
-				c.JSON(http.StatusNotFound, gin.H{
-					"error": gin.H{
-						"type":    "not_found_error",
-						"message": "Images API is not supported for this platform",
-					},
-				})
-				return
-			}
-			h.OpenAIGateway.Images(c)
+			openAIImagesHandler(c)
 		})
 	}
 
@@ -156,28 +150,16 @@ func RegisterGatewayRoutes(
 		h.Gateway.ChatCompletions(c)
 	})
 	r.POST("/images/generations", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
-		if getGroupPlatform(c) != service.PlatformOpenAI {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": gin.H{
-					"type":    "not_found_error",
-					"message": "Images API is not supported for this platform",
-				},
-			})
-			return
-		}
-		h.OpenAIGateway.Images(c)
+		openAIImagesHandler(c)
 	})
 	r.POST("/images/edits", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
-		if getGroupPlatform(c) != service.PlatformOpenAI {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": gin.H{
-					"type":    "not_found_error",
-					"message": "Images API is not supported for this platform",
-				},
-			})
-			return
-		}
-		h.OpenAIGateway.Images(c)
+		openAIImagesHandler(c)
+	})
+	r.POST("/api/v1/images/generations", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
+		openAIImagesHandler(c)
+	})
+	r.POST("/api/v1/images/edits", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
+		openAIImagesHandler(c)
 	})
 
 	// Antigravity 模型列表

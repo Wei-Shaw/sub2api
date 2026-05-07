@@ -116,8 +116,12 @@ export function findModelConflict(models: string[]): [string, string] | null {
 // ── 区间校验 ──────────────────────────────────────────────
 
 /** 校验区间列表的合法性，返回错误消息；通过则返回 null */
-export function validateIntervals(intervals: IntervalFormEntry[]): string | null {
+export function validateIntervals(intervals: IntervalFormEntry[], mode: BillingMode = 'token'): string | null {
   if (!intervals || intervals.length === 0) return null
+
+  if (mode === 'image') {
+    return validateImageTiers(intervals)
+  }
 
   // 按 min_tokens 排序（不修改原数组）
   const sorted = [...intervals].sort((a, b) => a.min_tokens - b.min_tokens)
@@ -127,6 +131,24 @@ export function validateIntervals(intervals: IntervalFormEntry[]): string | null
     if (err) return err
   }
   return checkIntervalOverlap(sorted)
+}
+
+function validateImageTiers(intervals: IntervalFormEntry[]): string | null {
+  const seen = new Set<string>()
+  for (let i = 0; i < intervals.length; i++) {
+    const iv = intervals[i]
+    const label = iv.tier_label.trim().toUpperCase()
+    if (!label) {
+      return `层级 #${i + 1}: 分辨率不能为空`
+    }
+    if (seen.has(label)) {
+      return `层级 #${i + 1}: 分辨率 ${label} 重复`
+    }
+    seen.add(label)
+    const err = validateIntervalPrices(iv, i)
+    if (err) return err
+  }
+  return null
 }
 
 function validateSingleInterval(iv: IntervalFormEntry, idx: number): string | null {

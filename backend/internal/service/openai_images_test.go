@@ -41,6 +41,24 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_JSON(t *testing.T) {
 	require.False(t, parsed.Multipart)
 }
 
+func TestOpenAIGatewayServiceParseOpenAIImagesRequest_4KSizeTier(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a poster","size":"3072x2048","quality":"high"}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	svc := &OpenAIGatewayService{}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+	require.NotNil(t, parsed)
+	require.Equal(t, "3072x2048", parsed.Size)
+	require.Equal(t, "4K", parsed.SizeTier)
+}
+
 func TestOpenAIGatewayServiceParseOpenAIImagesRequest_MultipartEdit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

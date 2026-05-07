@@ -55,6 +55,12 @@ const getUserTimezone = (): string => {
 
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
+    if (config.data instanceof FormData && config.headers) {
+      config.headers.delete?.('Content-Type')
+      delete (config.headers as Record<string, unknown>)['Content-Type']
+      delete (config.headers as Record<string, unknown>)['content-type']
+    }
+
     // Attach token from localStorage
     const token = localStorage.getItem('auth_token')
     if (token && config.headers && !config.headers.Authorization) {
@@ -275,6 +281,14 @@ apiClient.interceptors.response.use(
         error: apiData.error,
         message: apiData.message || apiData.detail || error.message,
         metadata: apiData.metadata,
+      })
+    }
+
+    if (error.code === 'ECONNABORTED') {
+      return Promise.reject({
+        status: 0,
+        code: 'REQUEST_TIMEOUT',
+        message: 'Request timed out. Please try again.'
       })
     }
 

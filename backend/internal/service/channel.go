@@ -283,6 +283,27 @@ func ValidateIntervals(intervals []PricingInterval) error {
 	return validateIntervalOverlap(sorted)
 }
 
+// ValidateImageTiers 校验图片计费层级。
+// 图片模式按 TierLabel（如 1K/2K/4K）命中价格，MinTokens/MaxTokens 不参与分辨率计费。
+func ValidateImageTiers(intervals []PricingInterval) error {
+	seen := make(map[string]struct{}, len(intervals))
+	for i := range intervals {
+		iv := &intervals[i]
+		label := strings.ToUpper(strings.TrimSpace(iv.TierLabel))
+		if label == "" {
+			return fmt.Errorf("tier #%d: tier_label is required", i+1)
+		}
+		if _, ok := seen[label]; ok {
+			return fmt.Errorf("tier #%d: duplicate tier_label %q", i+1, label)
+		}
+		seen[label] = struct{}{}
+		if err := validateIntervalPrices(iv, i); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // validateSingleInterval 校验单个区间的字段合法性
 func validateSingleInterval(iv *PricingInterval, idx int) error {
 	if iv.MinTokens < 0 {

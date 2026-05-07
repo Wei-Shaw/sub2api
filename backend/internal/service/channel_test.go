@@ -434,6 +434,22 @@ func TestValidateIntervals_UnboundedNotLast(t *testing.T) {
 	require.Contains(t, err.Error(), "last")
 }
 
+func TestValidatePricingIntervals_AllowsImageTiersWithUnboundedTokenRanges(t *testing.T) {
+	err := validatePricingIntervals([]ChannelModelPricing{
+		{
+			Platform:    "openai",
+			Models:      []string{"gpt-image-2"},
+			BillingMode: BillingModeImage,
+			Intervals: []PricingInterval{
+				{MinTokens: 0, MaxTokens: nil, TierLabel: "1K", PerRequestPrice: testPtrFloat64(0.04)},
+				{MinTokens: 0, MaxTokens: nil, TierLabel: "2K", PerRequestPrice: testPtrFloat64(0.08)},
+				{MinTokens: 0, MaxTokens: nil, TierLabel: "4K", PerRequestPrice: testPtrFloat64(0.16)},
+			},
+		},
+	})
+	require.NoError(t, err)
+}
+
 func TestSupportedModels_ExactKeysAndPricing(t *testing.T) {
 	ch := &Channel{
 		ModelPricing: []ChannelModelPricing{

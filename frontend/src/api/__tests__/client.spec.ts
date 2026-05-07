@@ -140,6 +140,27 @@ describe('API Client', () => {
       const config = adapter.mock.calls[0][0]
       expect(config.withCredentials).toBe(true)
     })
+
+    it('FormData 请求不会被默认 JSON Content-Type 序列化', async () => {
+      const adapter = vi.fn().mockResolvedValue({
+        status: 200,
+        data: { code: 0, data: {} },
+        headers: {},
+        config: {},
+        statusText: 'OK',
+      })
+      apiClient.defaults.adapter = adapter
+
+      const form = new FormData()
+      form.append('n', '1')
+      form.append('image', new File(['image'], 'ref.png', { type: 'image/png' }))
+
+      await apiClient.post('/images/edits', form)
+
+      const config = adapter.mock.calls[0][0]
+      expect(config.data).toBe(form)
+      expect(config.headers.get('Content-Type')).not.toBe('application/json')
+    })
   })
 
   // --- 响应拦截器 ---
@@ -220,6 +241,23 @@ describe('API Client', () => {
   // --- 网络错误 ---
 
   describe('网络错误', () => {
+    it('超时错误返回更明确的错误信息', async () => {
+      const adapter = vi.fn().mockRejectedValue({
+        code: 'ECONNABORTED',
+        message: 'timeout of 30000ms exceeded',
+        config: { url: '/images/generations' },
+      })
+      apiClient.defaults.adapter = adapter
+
+      await expect(apiClient.get('/images/generations')).rejects.toEqual(
+        expect.objectContaining({
+          status: 0,
+          code: 'REQUEST_TIMEOUT',
+          message: 'Request timed out. Please try again.',
+        })
+      )
+    })
+
     it('网络错误返回 status 0 的错误', async () => {
       const adapter = vi.fn().mockRejectedValue({
         code: 'ERR_NETWORK',
