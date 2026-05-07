@@ -219,9 +219,6 @@ type SystemSettings struct {
 	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 
-	// Image Generation feature switch (user-facing tool)
-	ImageGenerationEnabled bool `json:"image_generation_enabled"`
-
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
