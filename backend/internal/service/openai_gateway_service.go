@@ -3292,6 +3292,28 @@ func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool 
 	return true
 }
 
+func (s *OpenAIGatewayService) handleOpenAIStreamFailedTempUnschedulable(ctx context.Context, account *Account, payload []byte, message string) {
+	if s == nil || s.rateLimitService == nil || account == nil {
+		return
+	}
+	body := bytes.TrimSpace(payload)
+	if len(body) == 0 {
+		message = strings.TrimSpace(message)
+		if message == "" {
+			return
+		}
+		body, _ = json.Marshal(gin.H{"error": gin.H{"message": message}})
+	}
+	if s.rateLimitService.HandleTempUnschedulable(ctx, account, http.StatusBadGateway, body) {
+		slog.Info(
+			"openai_stream_failed_temp_unschedulable",
+			"account_id", account.ID,
+			"synthetic_status_code", http.StatusBadGateway,
+			"message", truncateForLog([]byte(message), 512),
+		)
+	}
+}
+
 func (s *OpenAIGatewayService) newOpenAIStreamFailoverError(
 	c *gin.Context,
 	account *Account,
@@ -3418,6 +3440,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			eventType := strings.TrimSpace(gjson.Get(trimmedData, "type").String())
 			if eventType == "response.failed" {
 				failedMessage = extractOpenAISSEErrorMessage(dataBytes)
+				s.handleOpenAIStreamFailedTempUnschedulable(ctx, account, dataBytes, failedMessage)
 				if !openAIStreamClientOutputStarted(c, clientOutputStarted) && openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
 					return &openaiStreamingResultPassthrough{usage: usage, firstTokenMs: firstTokenMs},
 						s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage)
@@ -4223,6 +4246,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			forceFlushFailedEvent := false
 			if eventType == "response.failed" {
 				failedMessage = extractOpenAISSEErrorMessage(dataBytes)
+				s.handleOpenAIStreamFailedTempUnschedulable(ctx, account, dataBytes, failedMessage)
 				if !openAIStreamClientOutputStarted(c, clientOutputStarted) && openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
 					sawFailedEvent = true
 					streamFailoverErr = s.newOpenAIStreamFailoverError(c, account, false, upstreamRequestID, dataBytes, failedMessage)
