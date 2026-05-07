@@ -2318,6 +2318,9 @@ export default {
         codexCLIOnlyDesc:
           'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',
         modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model whitelist/mapping will not take effect.',
+        compactSupported: 'Compact',
+        compactUnsupported: 'No Compact',
+        compactUnknown: 'Compact?',
       },
       anthropic: {
         apiKeyPassthrough: 'Auto passthrough (auth only)',
