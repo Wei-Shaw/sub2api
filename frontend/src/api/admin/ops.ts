@@ -184,6 +184,8 @@ export interface OpsRequestDetail {
   api_key_id?: number | null
   account_id?: number | null
   account_name?: string
+  scheduled_account_id?: number | null
+  scheduled_account_name?: string
   group_id?: number | null
 
   stream?: boolean
@@ -964,6 +966,8 @@ export interface OpsErrorLog {
   api_key_id?: number | null
   account_id?: number | null
   account_name: string
+  scheduled_account_id?: number | null
+  scheduled_account_name?: string
   group_id?: number | null
   group_name: string
 

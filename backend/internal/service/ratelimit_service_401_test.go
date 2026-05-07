@@ -16,6 +16,8 @@ import (
 type rateLimitAccountRepoStub struct {
 	mockAccountRepoForGemini
 	setErrorCalls          int
+	setSchedulableCalls    int
+	lastSchedulable        *bool
 	tempCalls              int
 	updateCredentialsCalls int
 	lastCredentials        map[string]any
@@ -26,6 +28,13 @@ type rateLimitAccountRepoStub struct {
 func (r *rateLimitAccountRepoStub) SetError(ctx context.Context, id int64, errorMsg string) error {
 	r.setErrorCalls++
 	r.lastErrorMsg = errorMsg
+	return nil
+}
+
+func (r *rateLimitAccountRepoStub) SetSchedulable(ctx context.Context, id int64, schedulable bool) error {
+	r.setSchedulableCalls++
+	v := schedulable
+	r.lastSchedulable = &v
 	return nil
 }
 

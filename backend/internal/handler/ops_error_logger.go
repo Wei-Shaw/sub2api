@@ -25,7 +25,7 @@ const (
 	opsModelKey       = "ops_model"
 	opsStreamKey      = "ops_stream"
 	opsRequestBodyKey = "ops_request_body"
-	opsAccountIDKey   = "ops_account_id"
+	opsAccountIDKey   = service.OpsSelectedAccountIDKey
 
 	opsUpstreamModelKey = "ops_upstream_model"
 	opsRequestTypeKey   = "ops_request_type"
@@ -376,21 +376,15 @@ func attachOpsRequestBodyToEntry(c *gin.Context, entry *service.OpsInsertErrorLo
 	opsErrorLogSanitized.Add(1)
 }
 
-func setOpsSelectedAccount(c *gin.Context, accountID int64, platform ...string) {
+func setOpsSelectedAccount(c *gin.Context, accountID int64, accountName string, platform ...string) {
 	if c == nil || accountID <= 0 {
 		return
 	}
-	c.Set(opsAccountIDKey, accountID)
-	if c.Request != nil {
-		ctx := context.WithValue(c.Request.Context(), ctxkey.AccountID, accountID)
-		if len(platform) > 0 {
-			p := strings.TrimSpace(platform[0])
-			if p != "" {
-				ctx = context.WithValue(ctx, ctxkey.Platform, p)
-			}
-		}
-		c.Request = c.Request.WithContext(ctx)
+	selectedPlatform := ""
+	if len(platform) > 0 {
+		selectedPlatform = strings.TrimSpace(platform[0])
 	}
+	service.SetOpsSelectedAccount(c, accountID, accountName, selectedPlatform)
 }
 
 type opsCaptureWriter struct {
@@ -524,7 +518,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 			model, _ := c.Get(opsModelKey)
 			streamV, _ := c.Get(opsStreamKey)
-			accountIDV, _ := c.Get(opsAccountIDKey)
+			selectedAccount := service.GetOpsSelectedAccountSnapshot(c)
 
 			var modelName string
 			if s, ok := model.(string); ok {
@@ -545,7 +539,8 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				}
 			}
 			if accountID == nil {
-				if v, ok := accountIDV.(int64); ok && v > 0 {
+				if selectedAccount.ID > 0 {
+					v := selectedAccount.ID
 					accountID = &v
 				}
 			}
@@ -750,7 +745,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 		model, _ := c.Get(opsModelKey)
 		streamV, _ := c.Get(opsStreamKey)
-		accountIDV, _ := c.Get(opsAccountIDKey)
+		selectedAccount := service.GetOpsSelectedAccountSnapshot(c)
 
 		var modelName string
 		if s, ok := model.(string); ok {
@@ -761,7 +756,8 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			stream = b
 		}
 		var accountID *int64
-		if v, ok := accountIDV.(int64); ok && v > 0 {
+		if selectedAccount.ID > 0 {
+			v := selectedAccount.ID
 			accountID = &v
 		}
 
@@ -1134,7 +1130,7 @@ func classifyOpsPhase(errType, message, code string) string {
 	case "upstream_error", "overloaded_error":
 		return "upstream"
 	case "api_error":
-		if strings.Contains(msg, opsErrNoAvailableAccounts) {
+		if strings.Contains(msg, opsErrNoAvailableAccounts) || strings.Contains(msg, "openai account selection failed at") {
 			return "routing"
 		}
 		return "internal"

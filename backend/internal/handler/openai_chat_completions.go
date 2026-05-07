@@ -143,7 +143,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if len(failedAccountIDs) == 0 {
-				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
+				msg := selectionUnavailableMessage(err)
+				annotateOpenAISelectionFailure(c, h.gatewayService, apiKey.GroupID, sessionHash, err, msg)
+				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", msg, streamStarted)
 				return
 			} else {
 				if lastFailoverErr != nil {
@@ -155,6 +157,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			}
 		}
 		if selection == nil || selection.Account == nil {
+			annotateOpenAISelectionFailure(c, h.gatewayService, apiKey.GroupID, sessionHash, nil, "No available accounts")
 			h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "No available accounts", streamStarted)
 			return
 		}
@@ -162,7 +165,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
 		reqLog.Debug("openai_chat_completions.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		_ = scheduleDecision
-		setOpsSelectedAccount(c, account.ID, account.Platform)
+		setOpsSelectedAccount(c, account.ID, account.Name, account.Platform)
 
 		accountReleaseFunc, acquired := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
 		if !acquired {

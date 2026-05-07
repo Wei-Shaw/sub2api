@@ -80,6 +80,8 @@ const (
 	openAI503BurstCounterScopeDefault = "builtin:openai:503"
 )
 
+const openAI400CapabilityKeyword = "unsupported responses tool type"
+
 // NewRateLimitService 创建RateLimitService实例
 func NewRateLimitService(accountRepo AccountRepository, usageRepo UsageLogRepository, cfg *config.Config, geminiQuotaService *GeminiQuotaService, tempUnschedCache TempUnschedCache) *RateLimitService {
 	return &RateLimitService{
@@ -145,6 +147,16 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 // HandleUpstreamError 处理上游错误响应，标记账号状态
 // 返回是否应该停止该账号的调度
 func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte) (shouldDisable bool) {
+	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(responseBody))
+	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
+	if upstreamMsg != "" {
+		upstreamMsg = truncateForLog([]byte(upstreamMsg), 512)
+	}
+
+	if statusCode == http.StatusBadRequest && s.handleOpenAI400CapabilityMismatch(ctx, account, upstreamMsg, responseBody) {
+		return true
+	}
+
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
 
 	// 池模式默认不标记本地账号状态；仅当用户显式配置自定义错误码时按本地策略处理。
@@ -166,12 +178,6 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		if s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
 			return true
 		}
-	}
-
-	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(responseBody))
-	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
-	if upstreamMsg != "" {
-		upstreamMsg = truncateForLog([]byte(upstreamMsg), 512)
 	}
 
 	switch statusCode {
@@ -969,6 +975,36 @@ func (s *RateLimitService) handleOpenAI503Burst(ctx context.Context, account *Ac
 		"threshold", openAI503BurstDisableThreshold,
 	)
 	return true
+}
+
+func (s *RateLimitService) handleOpenAI400CapabilityMismatch(ctx context.Context, account *Account, upstreamMsg string, responseBody []byte) bool {
+	if s == nil || account == nil || account.Platform != PlatformOpenAI {
+		return false
+	}
+	if !isOpenAI400CapabilityMismatch(upstreamMsg, responseBody) {
+		return false
+	}
+
+	if err := s.accountRepo.SetSchedulable(ctx, account.ID, false); err != nil {
+		slog.Warn("openai_400_capability_disable_schedulable_failed", "account_id", account.ID, "error", err)
+		return false
+	}
+	s.resetTempUnschedCounters(account.ID)
+	slog.Warn(
+		"openai_400_capability_schedulable_disabled",
+		"account_id", account.ID,
+		"account_name", account.Name,
+		"message", upstreamMsg,
+	)
+	return true
+}
+
+func isOpenAI400CapabilityMismatch(upstreamMsg string, responseBody []byte) bool {
+	text := strings.ToLower(strings.TrimSpace(upstreamMsg))
+	if text == "" && len(responseBody) > 0 {
+		text = strings.ToLower(string(responseBody))
+	}
+	return strings.Contains(text, openAI400CapabilityKeyword)
 }
 
 // handle429 处理429限流错误

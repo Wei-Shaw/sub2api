@@ -147,8 +147,11 @@ func TestOpenAIGatewayService_OAuthMessagesBridgeDoesNotInjectDefaultInstruction
 
 type openAIPassthroughFailoverRepo struct {
 	stubOpenAIAccountRepo
-	rateLimitCalls []time.Time
-	overloadCalls  []time.Time
+	rateLimitCalls     []time.Time
+	overloadCalls      []time.Time
+	tempCalls          []time.Time
+	tempReasons        []string
+	setSchedulableArgs []bool
 }
 
 func (r *openAIPassthroughFailoverRepo) SetRateLimited(_ context.Context, _ int64, resetAt time.Time) error {
@@ -158,6 +161,17 @@ func (r *openAIPassthroughFailoverRepo) SetRateLimited(_ context.Context, _ int6
 
 func (r *openAIPassthroughFailoverRepo) SetOverloaded(_ context.Context, _ int64, until time.Time) error {
 	r.overloadCalls = append(r.overloadCalls, until)
+	return nil
+}
+
+func (r *openAIPassthroughFailoverRepo) SetTempUnschedulable(_ context.Context, _ int64, until time.Time, reason string) error {
+	r.tempCalls = append(r.tempCalls, until)
+	r.tempReasons = append(r.tempReasons, reason)
+	return nil
+}
+
+func (r *openAIPassthroughFailoverRepo) SetSchedulable(_ context.Context, _ int64, schedulable bool) error {
+	r.setSchedulableArgs = append(r.setSchedulableArgs, schedulable)
 	return nil
 }
 
@@ -881,6 +895,64 @@ func TestOpenAIGatewayService_OpenAIPassthrough_429And529TriggerFailover(t *test
 			tc.assertRepo(t, repo, start)
 		})
 	}
+}
+
+func TestOpenAIGatewayService_OpenAIPassthrough_400CapabilityDisablesSchedulableAndTriggersFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(nil))
+	c.Request.Header.Set("User-Agent", "codex_cli_rs/0.1.0")
+
+	body := `{"error":{"code":"invalid_request","message":"unsupported responses tool type ` + "`custom`" + `","type":"invalid_request_error"}}`
+	resp := &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid-400-capability"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+	upstream := &httpUpstreamRecorder{resp: resp}
+	repo := &openAIPassthroughFailoverRepo{}
+	rateSvc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+
+	svc := &OpenAIGatewayService{
+		cfg:              &config.Config{Gateway: config.GatewayConfig{ForceCodexCLI: false}},
+		httpUpstream:     upstream,
+		rateLimitService: rateSvc,
+	}
+	account := &Account{
+		ID:             123,
+		Name:           "acc",
+		Platform:       PlatformOpenAI,
+		Type:           AccountTypeAPIKey,
+		Concurrency:    1,
+		Credentials:    map[string]any{"api_key": "sk-test"},
+		Extra:          map[string]any{"openai_passthrough": true},
+		Status:         StatusActive,
+		Schedulable:    true,
+		RateMultiplier: f64p(1),
+	}
+	originalBody := []byte(`{"model":"gpt-5.2","stream":false,"input":[{"type":"text","text":"hi"}]}`)
+
+	_, err := svc.Forward(context.Background(), c, account, originalBody)
+	require.Error(t, err)
+
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadRequest, failoverErr.StatusCode)
+	require.False(t, c.Writer.Written(), "命中内置 400 能力错误后应让上层换号，而不是直接写回客户端")
+	require.Empty(t, repo.tempCalls)
+	require.Empty(t, repo.tempReasons)
+	require.Equal(t, []bool{false}, repo.setSchedulableArgs)
+
+	v, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	arr, ok := v.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.NotEmpty(t, arr)
+	require.True(t, arr[len(arr)-1].Passthrough)
+	require.Equal(t, "failover", arr[len(arr)-1].Kind)
+	require.Equal(t, http.StatusBadRequest, arr[len(arr)-1].UpstreamStatusCode)
 }
 
 func TestOpenAIGatewayService_OAuthPassthrough_NonCodexUAFallbackToCodexUA(t *testing.T) {

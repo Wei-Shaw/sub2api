@@ -142,7 +142,7 @@
 
               <!-- Scheduled Account -->
               <td class="px-4 py-2">
-                <el-tooltip v-if="log.account_id || log.account_name" :content="scheduledAccountTooltip(log)" placement="top" :show-after="500">
+                <el-tooltip v-if="log.scheduled_account_id || log.scheduled_account_name || log.account_id || log.account_name" :content="scheduledAccountTooltip(log)" placement="top" :show-after="500">
                   <span class="max-w-[140px] truncate text-xs font-medium text-gray-900 dark:text-gray-200">
                     {{ displayScheduledAccount(log) }}
                   </span>
@@ -242,6 +242,9 @@ function userTooltip(log: OpsErrorLog): string {
 }
 
 function displayScheduledAccount(log: OpsErrorLog): string {
+  const scheduledName = String(log.scheduled_account_name || '').trim()
+  if (scheduledName) return scheduledName
+  if (log.scheduled_account_id != null) return String(log.scheduled_account_id)
   const name = String(log.account_name || '').trim()
   if (name) return name
   if (log.account_id != null) return String(log.account_id)
@@ -250,6 +253,9 @@ function displayScheduledAccount(log: OpsErrorLog): string {
 
 function scheduledAccountTooltip(log: OpsErrorLog): string {
   const parts: string[] = []
+  if (log.scheduled_account_id != null) parts.push(`${t('admin.ops.errorLog.accountId')} ${log.scheduled_account_id}`)
+  if (log.scheduled_account_name) parts.push(log.scheduled_account_name)
+  if (parts.length > 0) return parts.join('\n')
   if (log.account_id != null) parts.push(`${t('admin.ops.errorLog.accountId')} ${log.account_id}`)
   if (log.account_name) parts.push(log.account_name)
   return parts.join('\n') || '-'

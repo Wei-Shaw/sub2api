@@ -254,17 +254,21 @@ function userMeta(d: OpsErrorDetail | null): string {
   return `${t('admin.ops.errorLog.userId')} ${d.user_id}`
 }
 
-function displayScheduledAccount(d: Pick<OpsErrorDetail, 'account_name' | 'account_id'> | null): string {
+function displayScheduledAccount(d: Pick<OpsErrorDetail, 'scheduled_account_name' | 'scheduled_account_id' | 'account_name' | 'account_id'> | null): string {
   if (!d) return '—'
+  const scheduledName = String(d.scheduled_account_name || '').trim()
+  if (scheduledName) return scheduledName
+  if (d.scheduled_account_id != null) return String(d.scheduled_account_id)
   const name = String(d.account_name || '').trim()
   if (name) return name
   if (d.account_id != null) return String(d.account_id)
   return '—'
 }
 
-function scheduledAccountMeta(d: Pick<OpsErrorDetail, 'account_id'> | null): string {
-  if (!d || d.account_id == null) return '—'
-  return `${t('admin.ops.errorLog.accountId')} ${d.account_id}`
+function scheduledAccountMeta(d: Pick<OpsErrorDetail, 'scheduled_account_id' | 'account_id'> | null): string {
+  const accountID = d?.scheduled_account_id ?? d?.account_id
+  if (accountID == null) return '—'
+  return `${t('admin.ops.errorLog.accountId')} ${accountID}`
 }
 
 function formatRequestTypeLabel(type: number | null | undefined): string {

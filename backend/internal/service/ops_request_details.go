@@ -32,11 +32,13 @@ type OpsRequestDetail struct {
 	Severity string `json:"severity,omitempty"`
 	Message  string `json:"message,omitempty"`
 
-	UserID      *int64 `json:"user_id,omitempty"`
-	APIKeyID    *int64 `json:"api_key_id,omitempty"`
-	AccountID   *int64 `json:"account_id,omitempty"`
-	AccountName string `json:"account_name,omitempty"`
-	GroupID     *int64 `json:"group_id,omitempty"`
+	UserID               *int64 `json:"user_id,omitempty"`
+	APIKeyID             *int64 `json:"api_key_id,omitempty"`
+	AccountID            *int64 `json:"account_id,omitempty"`
+	AccountName          string `json:"account_name,omitempty"`
+	ScheduledAccountID   *int64 `json:"scheduled_account_id,omitempty"`
+	ScheduledAccountName string `json:"scheduled_account_name,omitempty"`
+	GroupID              *int64 `json:"group_id,omitempty"`
 
 	Stream bool `json:"stream"`
 }

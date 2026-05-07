@@ -103,7 +103,8 @@ WITH combined AS (
     ul.account_id AS account_id,
     COALESCE(a.name, '') AS account_name,
     ul.group_id AS group_id,
-    ul.stream AS stream
+    ul.stream AS stream,
+    ''::TEXT AS upstream_errors
   FROM usage_logs ul
   LEFT JOIN groups g ON g.id = ul.group_id
   LEFT JOIN accounts a ON a.id = ul.account_id
@@ -128,7 +129,8 @@ WITH combined AS (
     o.account_id AS account_id,
     COALESCE(a.name, '') AS account_name,
     o.group_id AS group_id,
-    o.stream AS stream
+    o.stream AS stream,
+    COALESCE(o.upstream_errors::text, '') AS upstream_errors
   FROM ops_error_logs o
   LEFT JOIN groups g ON g.id = o.group_id
   LEFT JOIN accounts a ON a.id = o.account_id
@@ -178,7 +180,8 @@ SELECT
   account_id,
   account_name,
   group_id,
-  stream
+  stream,
+  upstream_errors
 FROM combined
 %s
 %s
@@ -230,7 +233,8 @@ LIMIT $%d OFFSET $%d
 			accountName sql.NullString
 			groupID     sql.NullInt64
 
-			stream bool
+			stream            bool
+			upstreamErrorsRaw string
 		)
 
 		if err := rows.Scan(
@@ -251,6 +255,7 @@ LIMIT $%d OFFSET $%d
 			&accountName,
 			&groupID,
 			&stream,
+			&upstreamErrorsRaw,
 		); err != nil {
 			return nil, 0, err
 		}
@@ -277,6 +282,7 @@ LIMIT $%d OFFSET $%d
 
 			Stream: stream,
 		}
+		item.ScheduledAccountID, item.ScheduledAccountName = service.ResolveOpsScheduledAccount(item.AccountID, item.AccountName, upstreamErrorsRaw)
 
 		if item.Platform == "" {
 			item.Platform = "unknown"

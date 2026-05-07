@@ -137,6 +137,9 @@ async function handleCopyRequestId(requestId: string) {
 }
 
 function displayScheduledAccount(row: OpsRequestDetail): string {
+  const scheduledName = String(row.scheduled_account_name || '').trim()
+  if (scheduledName) return scheduledName
+  if (row.scheduled_account_id != null) return String(row.scheduled_account_id)
   const name = String(row.account_name || '').trim()
   if (name) return name
   if (row.account_id != null) return String(row.account_id)

@@ -35,6 +35,61 @@ func TestRateLimitService_HandleUpstreamError_OpenAI503BurstTempUnschedulable(t 
 	require.Equal(t, openAI503BurstDisableThreshold, state.TriggerCount)
 }
 
+func TestRateLimitService_HandleUpstreamError_OpenAI400CapabilityTempUnschedulable(t *testing.T) {
+	repo := &rateLimitAccountRepoStub{}
+	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID:       403,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+	}
+	body := []byte(`{"error":{"code":"invalid_request","message":"unsupported responses tool type ` + "`custom`" + `","type":"invalid_request_error"}}`)
+
+	require.True(t, service.HandleUpstreamError(context.Background(), account, http.StatusBadRequest, http.Header{}, body))
+
+	require.Equal(t, 0, repo.tempCalls)
+	require.Equal(t, 0, repo.setErrorCalls)
+	require.Equal(t, 1, repo.setSchedulableCalls)
+	require.NotNil(t, repo.lastSchedulable)
+	require.False(t, *repo.lastSchedulable)
+}
+
+func TestRateLimitService_HandleUpstreamError_OpenAI400GenericDoesNotDisableSchedulable(t *testing.T) {
+	repo := &rateLimitAccountRepoStub{}
+	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID:       404,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+	}
+	body := []byte(`{"error":{"message":"unknown parameter: temperature","type":"invalid_request_error"}}`)
+
+	require.False(t, service.HandleUpstreamError(context.Background(), account, http.StatusBadRequest, http.Header{}, body))
+	require.Equal(t, 0, repo.tempCalls)
+	require.Equal(t, 0, repo.setErrorCalls)
+	require.Equal(t, 0, repo.setSchedulableCalls)
+}
+
+func TestRateLimitService_HandleUpstreamError_OpenAI400CapabilityBypassesCustomErrorCodeSkip(t *testing.T) {
+	repo := &rateLimitAccountRepoStub{}
+	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID:       405,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"custom_error_codes_enabled": true,
+			"custom_error_codes":         []any{float64(http.StatusServiceUnavailable)},
+		},
+	}
+	body := []byte(`{"error":{"message":"unsupported responses tool type ` + "`custom`" + `","type":"invalid_request_error"}}`)
+
+	require.True(t, service.HandleUpstreamError(context.Background(), account, http.StatusBadRequest, http.Header{}, body))
+	require.Equal(t, 1, repo.setSchedulableCalls)
+	require.NotNil(t, repo.lastSchedulable)
+	require.False(t, *repo.lastSchedulable)
+}
+
 func TestRateLimitService_HandleTempUnschedulable_RespectsTriggerCount(t *testing.T) {
 	repo := &rateLimitAccountRepoStub{}
 	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
