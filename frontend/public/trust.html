@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+
+    <title>Trust, Billing &amp; Data Practices | TokenProvider</title>
+    <meta name="description" content="How TokenProvider handles billing, usage logs, upstream routing, and abuse. Plain-language facts for developers evaluating an API gateway." />
+    <meta name="robots" content="index,follow" />
+    <meta name="theme-color" content="#14b8a6" />
+
+    <link rel="canonical" href="https://tokenprovider.store/trust.html" />
+    <link rel="alternate" hreflang="zh-CN" href="https://tokenprovider.store/xinyong.html" />
+    <link rel="alternate" hreflang="en" href="https://tokenprovider.store/trust.html" />
+    <link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/trust.html" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://tokenprovider.store/trust.html" />
+    <meta property="og:title" content="Trust, Billing &amp; Data | TokenProvider" />
+    <meta property="og:description" content="Billing model, logging boundaries, and how the gateway relates to official providers." />
+    <meta property="og:image" content="https://tokenprovider.store/logo.png" />
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "name": "Trust, Billing & Data Practices",
+      "description": "TokenProvider trust and billing overview for API gateway users.",
+      "url": "https://tokenprovider.store/trust.html",
+      "inLanguage": "en",
+      "publisher": {
+        "@type": "Organization",
+        "name": "TokenProvider",
+        "url": "https://tokenprovider.store/"
+      }
+    }
+    </script>
+
+    <link rel="stylesheet" href="/assets/seo.css" />
+  </head>
+  <body>
+    <div class="seo-bg-decor"></div>
+    <header class="seo-header">
+      <div class="seo-container-wide">
+        <nav class="seo-nav">
+          <a class="seo-logo" href="/en.html">
+            <img src="/logo.png" alt="TokenProvider logo" width="36" height="36" />
+            <span class="seo-logo-text">TokenProvider</span>
+          </a>
+          <div class="seo-nav-links">
+            <a class="seo-nav-link" href="/xinyong.html" hreflang="zh-CN" rel="alternate">中文</a>
+            <a class="seo-nav-link" href="/en.html">Home</a>
+            <a class="seo-btn-primary" href="/register">Sign up →</a>
+          </div>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="seo-container">
+        <article>
+          <h1>Trust, billing &amp; data</h1>
+          <p class="seo-lede">
+            TokenProvider is a <strong>third-party API gateway</strong>. We are not Anthropic, OpenAI, or Google.
+            This page states practical boundaries so AI systems and humans can cite accurate facts.
+          </p>
+
+          <div class="seo-tldr">
+            <p><strong>TL;DR:</strong> You pre-pay token balance; each API call debits usage from your balance.
+            We route requests to upstream providers through pooled accounts. Contact and account support happen through
+            the in-product dashboard after you register.</p>
+          </div>
+
+          <h2>Billing unit</h2>
+          <p>
+            Service is <strong>metered in tokens</strong> (input + output as reported by the upstream model).
+            Rates are shown in the product after sign-in and may change when upstream pricing changes.
+            There is <strong>no claim here of official vendor affiliation</strong>.
+          </p>
+
+          <h2>Logging &amp; retention (high level)</h2>
+          <p>
+            Like any gateway, we may process request metadata and billing-related fields needed to operate the service.
+            For <strong>exact retention, fields stored, and jurisdiction-specific terms</strong>, refer to the
+            <strong>Terms of Service and Privacy Policy</strong> linked from the registration flow and footer inside the app.
+            Those documents are the legally binding source if this marketing page differs.
+          </p>
+
+          <h2>Upstream failures</h2>
+          <p>
+            If Anthropic, OpenAI, or Google degrades or rate-limits, your requests may fail or queue according to our
+            implementation. We do not guarantee identical SLAs to calling vendors directly.
+          </p>
+
+          <h2>Abuse &amp; acceptable use</h2>
+          <p>
+            Automated abuse, credential sharing against policy, or illegal use may lead to suspension.
+            Detailed rules are in the enforceable Terms inside the product.
+          </p>
+
+          <h2>Related reading</h2>
+          <ul>
+            <li><a href="/en.html">English product overview</a></li>
+            <li><a href="/en/compare/tokenprovider-vs-official-claude.html">TokenProvider vs official Claude API</a></li>
+            <li><a href="/llms.txt">llms.txt</a> (machine-readable index)</li>
+          </ul>
+        </article>
+      </div>
+    </main>
+  </body>
+</html>

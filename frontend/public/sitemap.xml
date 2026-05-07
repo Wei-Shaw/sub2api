@@ -170,4 +170,24 @@
     <priority>0.7</priority>
   </url>
 
+  <!-- Trust & GEO -->
+  <url>
+    <loc>https://tokenprovider.store/trust.html</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/trust.html"/>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://tokenprovider.store/xinyong.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/trust.html"/>
+    <lastmod>2026-05-07</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.65</priority>
+  </url>
+  <url>
+    <loc>https://tokenprovider.store/xinyong.html</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://tokenprovider.store/xinyong.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/trust.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/trust.html"/>
+    <lastmod>2026-05-07</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.65</priority>
+  </url>
+
 </urlset>

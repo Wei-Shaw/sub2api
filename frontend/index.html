@@ -65,19 +65,68 @@
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "TokenProvider",
-      "alternateName": ["Token Provider", "AI API Gateway"],
-      "description": "Claude、Claude Code、ChatGPT、Gemini 一站式 API 中转站，便宜稳定，按量计费。",
-      "url": "https://tokenprovider.store/",
-      "applicationCategory": "DeveloperApplication",
-      "operatingSystem": "Web",
-      "offers": {
-        "@type": "Offer",
-        "priceCurrency": "CNY",
-        "description": "按量计费，注册后查看实时费率。"
-      },
-      "inLanguage": ["zh-CN", "en"]
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://tokenprovider.store/#organization",
+          "name": "TokenProvider",
+          "url": "https://tokenprovider.store/",
+          "logo": { "@type": "ImageObject", "url": "https://tokenprovider.store/logo.png" }
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://tokenprovider.store/#website",
+          "url": "https://tokenprovider.store/",
+          "name": "TokenProvider",
+          "publisher": { "@id": "https://tokenprovider.store/#organization" },
+          "inLanguage": ["zh-CN", "en"]
+        },
+        {
+          "@type": "SoftwareApplication",
+          "name": "TokenProvider",
+          "alternateName": ["Token Provider", "AI API Gateway"],
+          "description": "Claude、Claude Code、ChatGPT、Gemini 一站式 API 中转站，便宜稳定，按量计费。",
+          "url": "https://tokenprovider.store/",
+          "applicationCategory": "DeveloperApplication",
+          "operatingSystem": "Web",
+          "publisher": { "@id": "https://tokenprovider.store/#organization" },
+          "offers": {
+            "@type": "Offer",
+            "priceCurrency": "CNY",
+            "description": "按量计费，以 token 为单位扣减；注册后在控制台查看实时费率。"
+          },
+          "inLanguage": ["zh-CN", "en"]
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "TokenProvider 是什么？",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "TokenProvider 是面向开发者的第三方 API 网关，用统一密钥与 OpenAI 兼容接口访问 Claude、Claude Code、ChatGPT、Gemini 等模型；请求经网关转发至上游官方 API，并按 token 计量扣费。"
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "计费方式是怎样的？",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "采用预购余额 + 按量扣费：每次请求按输入与输出 token 从账户余额扣除；具体单价、最小充值以登录后控制台展示为准，并可能随上游官方调价调整。"
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "与直接订阅官方有什么区别？",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "网关通过账号池与路由聚合提供统一接入与按量计费；不替代官方服务条款。直连官方需分别订阅各厂商；使用网关时仍需遵守各上游可接受用途与本地法律。"
+              }
+            }
+          ]
+        }
+      ]
     }
     </script>
   </head>
@@ -96,11 +145,62 @@
           TokenProvider 提供 Claude、Claude Code、ChatGPT、Gemini 的一站式 API 中转服务，
           支持按量计费、实时账单、统一密钥和稳定的开发者接入体验。
         </p>
+
+        <h2>一句话说明</h2>
+        <p>
+          面向开发者的 <strong>第三方 API 网关</strong>：使用 OpenAI 兼容的 Base URL 与密钥，
+          将请求路由到上游官方模型，按 <strong>token</strong> 计量扣费；适合需要多模型统一接入、按量付费的团队与个人。
+        </p>
+
+        <h2>核心能力（可引用要点）</h2>
+        <ul>
+          <li><strong>统一接入：</strong>同一套密钥与端点风格对接 Claude、Claude Code、ChatGPT、Gemini 等（以实际上线模型为准）。</li>
+          <li><strong>按量计费：</strong>预购余额，按每次请求的输入/输出 token 扣减；费率在注册登录后的控制台展示。</li>
+          <li><strong>长对话：</strong>支持粘性会话等网关能力，便于 Claude Code 与长上下文场景（以产品文档为准）。</li>
+          <li><strong>静态文档：</strong>对比、教程、术语与代码示例以 <code>.html</code> 静态页发布，便于检索与引用。</li>
+        </ul>
+
+        <h2>计费与账单</h2>
+        <p>
+          计费单位为 <strong>token</strong>（由上游模型统计）。最小充值、单价与币种以<strong>控制台实时展示</strong>为准。
+          TokenProvider <strong>不是</strong> Anthropic、OpenAI 或 Google 的官方产品；网关仅转发与聚合接入。
+        </p>
+
+        <h2>常见问题</h2>
+        <h3>TokenProvider 是什么？</h3>
+        <p>
+          第三方 API 网关：把您的应用请求转发到官方上游 API，并提供统一鉴权、计费与路由；详见
+          <a href="/glossary/what-is-claude-relay.html">什么是 Claude 中转站</a>。
+        </p>
+        <h3>计费方式是怎样的？</h3>
+        <p>
+          预购余额 + 按请求扣减 token 费用；账单与用量明细在登录后的控制台查看。
+        </p>
+        <h3>和直接订阅官方有什么区别？</h3>
+        <p>
+          官方需分别开通各厂商；网关提供统一入口与按量池化接入。合规与数据细节请参阅应用内条款；概要见
+          <a href="/xinyong.html">信任与合规（中文）</a> 或 <a href="/trust.html" hreflang="en">Trust (English)</a>。
+        </p>
+
+        <h2>高信息密度页面（英文，利于 AI 引用）</h2>
+        <p>以下页面为静态 HTML，含对比表、FAQ 与可运行示例：</p>
+        <ul>
+          <li><a href="/en.html" hreflang="en">English 产品总览与 FAQ</a></li>
+          <li><a href="/en/compare/claude-vs-chatgpt-api.html">Claude API vs ChatGPT API</a></li>
+          <li><a href="/en/compare/claude-code-relay-vs-subscription.html">Claude Code：代理 vs 订阅</a></li>
+          <li><a href="/en/guides/claude-code-setup.html">Claude Code 5 分钟配置</a></li>
+          <li><a href="/en/glossary/what-is-claude-relay.html">What is a Claude API proxy?</a></li>
+        </ul>
+
+        <h2>机器可读索引</h2>
+        <p><a href="/llms.txt">llms.txt</a> — 面向 LLM 与抓取工具的核心 URL 列表与使用边界说明。</p>
+
         <nav aria-label="SEO pages">
           <a href="/guides/claude-code-setup.html">Claude Code 接入教程</a>
           <a href="/compare/claude-vs-chatgpt-api.html">Claude API vs ChatGPT API 对比</a>
           <a href="/glossary/what-is-claude-relay.html">什么是 Claude 中转站</a>
           <a href="/examples/claude-api-python.html">Claude API Python 示例</a>
+          <a href="/xinyong.html">信任与合规</a>
           <a href="/en.html" hreflang="en">English</a>
         </nav>
       </main>

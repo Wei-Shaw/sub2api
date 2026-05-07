@@ -33,20 +33,40 @@
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "TokenProvider",
-      "alternateName": ["Token Provider", "AI API Gateway"],
-      "description": "Cheap Claude API, Claude Code API, ChatGPT API, and Gemini API through a unified pay-as-you-go token gateway.",
-      "url": "https://tokenprovider.store/en.html",
-      "applicationCategory": "DeveloperApplication",
-      "operatingSystem": "Web",
-      "offers": {
-        "@type": "Offer",
-        "priceCurrency": "USD",
-        "price": "0",
-        "description": "Pay-as-you-go tokens. Register to see current rates."
-      },
-      "inLanguage": ["en", "zh-CN"]
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://tokenprovider.store/#organization",
+          "name": "TokenProvider",
+          "url": "https://tokenprovider.store/",
+          "logo": { "@type": "ImageObject", "url": "https://tokenprovider.store/logo.png" }
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://tokenprovider.store/#website",
+          "url": "https://tokenprovider.store/en.html",
+          "name": "TokenProvider",
+          "publisher": { "@id": "https://tokenprovider.store/#organization" },
+          "inLanguage": ["en", "zh-CN"]
+        },
+        {
+          "@type": "SoftwareApplication",
+          "name": "TokenProvider",
+          "alternateName": ["Token Provider", "AI API Gateway"],
+          "description": "Cheap Claude API, Claude Code API, ChatGPT API, and Gemini API through a unified pay-as-you-go token gateway.",
+          "url": "https://tokenprovider.store/en.html",
+          "applicationCategory": "DeveloperApplication",
+          "operatingSystem": "Web",
+          "publisher": { "@id": "https://tokenprovider.store/#organization" },
+          "offers": {
+            "@type": "Offer",
+            "priceCurrency": "USD",
+            "price": "0",
+            "description": "Pay-as-you-go tokens (metered). Register to see current per-token rates."
+          },
+          "inLanguage": ["en", "zh-CN"]
+        }
+      ]
     }
     </script>
 
@@ -420,6 +440,8 @@
         <p>
           <a href="/">中文</a> ·
           <a href="/en.html">English</a> ·
+          <a href="/trust.html">Trust &amp; billing</a> ·
+          <a href="/llms.txt">llms.txt</a> ·
           <a href="/login">Log in</a> ·
           <a href="/register">Sign up</a>
         </p>
