@@ -3354,7 +3354,7 @@ export default {
       targetNoWildcard: '目标模型不能包含通配符 *',
       searchModels: '搜索模型...',
       noMatchingModels: '没有匹配的模型',
-      fillRelatedModels: '填入相关模型',
+      fillRelatedModels: '同步最新支持模型',
       clearAllModels: '清除所有模型',
       customModelName: '自定义模型名称',
       enterCustomModelName: '输入自定义模型名称',
