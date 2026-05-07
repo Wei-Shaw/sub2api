@@ -229,6 +229,67 @@ REDACTED
 	require.Equal(t, "oidc", userRepo.created[0].SignupSource)
 REDACTED
 
+func TestRegisterOAuthEmailAccountKeepsGitHubAndGoogleSignupSource(t *testing.T) {
+	tests := []struct {
+		name         string
+		email        string
+		signupSource string
+		want         string
+REDACTED{
+		{
+			name:         "github",
+			email:        "github@example.com",
+			signupSource: " GitHub ",
+			want:         "github",
+	REDACTED,
+		{
+			name:         "google",
+			email:        "google@example.com",
+			signupSource: " Google ",
+			want:         "google",
+	REDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			userRepo := &userRepoStub{nextID: 43REDACTED
+			emailCache := &emailCacheStub{
+				data: &VerificationCodeData{
+					Code:      "246810",
+					Attempts:  0,
+					CreatedAt: time.Now().UTC(),
+					ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
+			REDACTED,
+		REDACTED
+			authService := newOAuthEmailFlowAuthService(
+				userRepo,
+				&redeemCodeRepoStub{REDACTED,
+				&refreshTokenCacheStub{REDACTED,
+				map[string]string{
+					SettingKeyRegistrationEnabled: "true",
+					SettingKeyEmailVerifyEnabled:  "true",
+			REDACTED,
+				emailCache,
+			)
+
+			tokenPair, user, err := authService.RegisterOAuthEmailAccount(
+				context.Background(),
+				tt.email,
+				"secret-123",
+				"246810",
+				"",
+				tt.signupSource,
+			)
+
+		REDACTED
+			require.NotNil(t, tokenPair)
+			require.NotNil(t, user)
+			require.Len(t, userRepo.created, 1)
+			require.Equal(t, tt.want, userRepo.created[0].SignupSource)
+	REDACTED)
+REDACTED
+REDACTED
+
 func TestRegisterOAuthEmailAccountFallsBackUnknownSignupSourceToEmail(t *testing.T) {
 	userRepo := &userRepoStub{nextID: 43REDACTED
 	emailCache := &emailCacheStub{
@@ -256,7 +317,7 @@ REDACTED
 		"secret-123",
 		"246810",
 		"",
-		"github",
+		"unknown-provider",
 	)
 
 REDACTED

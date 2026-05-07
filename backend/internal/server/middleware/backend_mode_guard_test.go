@@ -247,6 +247,30 @@ REDACTED{
 			wantStatus: http.StatusOK,
 	REDACTED,
 		{
+			name:       "enabled_blocks_github_oauth_start",
+			enabled:    "true",
+			path:       "/api/v1/auth/oauth/github/start",
+			wantStatus: http.StatusForbidden,
+	REDACTED,
+		{
+			name:       "enabled_allows_github_oauth_callback",
+			enabled:    "true",
+			path:       "/api/v1/auth/oauth/github/callback",
+			wantStatus: http.StatusOK,
+	REDACTED,
+		{
+			name:       "enabled_blocks_google_oauth_start",
+			enabled:    "true",
+			path:       "/api/v1/auth/oauth/google/start",
+			wantStatus: http.StatusForbidden,
+	REDACTED,
+		{
+			name:       "enabled_allows_google_oauth_callback",
+			enabled:    "true",
+			path:       "/api/v1/auth/oauth/google/callback",
+			wantStatus: http.StatusOK,
+	REDACTED,
+		{
 			name:       "enabled_allows_oauth_pending_exchange",
 			enabled:    "true",
 			path:       "/api/v1/auth/oauth/pending/exchange",
