@@ -521,30 +521,42 @@ _upgrade_fast_resolve_versions() {
 # Aborts on checksum failure (does NOT fall back — signals tampering or corruption).
 _upgrade_fast_download() {
     STAGE_DIR=$(mktemp -d -t sub2api-upgrade-XXXXXX)
-    # Must match .goreleaser.yaml archives.name_template: sub2api_{Version}_linux_amd64.tar.gz
     local version_num="${TARGET_VERSION#v}"
-    local asset="sub2api_${version_num}_linux_amd64.tar.gz"
     local base_url="https://github.com/${GITHUB_REPO}/releases/download/${TARGET_VERSION}"
-    local tarball_url="${base_url}/${asset}"
     local checksums_url="${base_url}/checksums.txt"
-
-    print_info "Downloading $asset ..."
-    local attempt=0
-    while [ $attempt -lt 3 ]; do
-        if curl -fsSL --max-time 300 -o "$STAGE_DIR/$asset" "$tarball_url" \
-           && curl -fsSL --max-time 60 -o "$STAGE_DIR/checksums.txt" "$checksums_url"; then
+    # Two release paths must both work:
+    # - GitHub Actions + .goreleaser.yaml → sub2api_${ver}_linux_amd64.tar.gz (binary "sub2api")
+    # - scripts/release.sh (local)        → sub2api-linux-amd64.tar.gz (binary "server")
+    local asset=""
+    local cand
+    for cand in "sub2api_${version_num}_linux_amd64.tar.gz" "sub2api-linux-amd64.tar.gz"; do
+        print_info "Trying release asset: $cand ..."
+        local attempt=0
+        local got=0
+        while [ $attempt -lt 3 ]; do
+            rm -f "$STAGE_DIR/checksums.txt" "$STAGE_DIR/$cand"
+            if curl -fsSL --max-time 300 -o "$STAGE_DIR/$cand" "${base_url}/${cand}" \
+               && curl -fsSL --max-time 60 -o "$STAGE_DIR/checksums.txt" "$checksums_url" \
+               && [ -s "$STAGE_DIR/$cand" ] && [ -s "$STAGE_DIR/checksums.txt" ]; then
+                asset="$cand"
+                got=1
+                break
+            fi
+            attempt=$((attempt + 1))
+            if [ $attempt -lt 3 ]; then
+                print_warning "Download failed (attempt $attempt/3), retrying in 5s..."
+                sleep 5
+            fi
+        done
+        if [ "$got" = 1 ]; then
             break
         fi
-        attempt=$((attempt + 1))
-        if [ $attempt -lt 3 ]; then
-            print_warning "Download failed (attempt $attempt/3), retrying in 5s..."
-            sleep 5
-        fi
+        print_warning "Could not download $cand (missing on release or network error)."
     done
 
-    if [ ! -s "$STAGE_DIR/$asset" ] || [ ! -s "$STAGE_DIR/checksums.txt" ]; then
+    if [ -z "$asset" ] || [ ! -s "$STAGE_DIR/$asset" ] || [ ! -s "$STAGE_DIR/checksums.txt" ]; then
         rm -rf "$STAGE_DIR"
-        print_warning "Failed to download release assets after 3 attempts."
+        print_warning "Failed to download release assets after trying all known filenames."
         if [ "${NO_RELEASE_FALLBACK:-0}" = "1" ]; then
             print_error "NO_RELEASE_FALLBACK=1 set; not falling back."
             exit 1
@@ -554,6 +566,7 @@ _upgrade_fast_download() {
         exit $?
     fi
 
+    print_info "Using asset: $asset"
     print_info "Verifying sha256..."
     (cd "$STAGE_DIR" && grep "  ${asset}$" checksums.txt | sha256sum -c -) || {
         rm -rf "$STAGE_DIR"
