@@ -11,6 +11,38 @@
     <meta name="robots" content="index,follow" />
     <meta name="theme-color" content="#14b8a6" />
 
+    <!-- Anti-FOUC: SEO 静态壳保留在 DOM 内供爬虫索引；挂载前隐藏，避免无样式文字一闪 -->
+    <style id="anti-fouc">
+      #app {
+        opacity: 0;
+      }
+      html.app-ready #app {
+        opacity: 1;
+        transition: opacity 0.2s ease-out;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        html.app-ready #app {
+          transition: none;
+        }
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #f9fafb;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background: #020617;
+        }
+      }
+      html.dark body {
+        background: #020617;
+      }
+      html:not(.dark) body {
+        background: #f9fafb;
+      }
+    </style>
+
     <link rel="canonical" href="https://tokenprovider.store/" />
     <link rel="alternate" hreflang="zh-CN" href="https://tokenprovider.store/" />
     <link rel="alternate" hreflang="en" href="https://tokenprovider.store/en.html" />
@@ -50,6 +82,13 @@
     </script>
   </head>
   <body>
+    <noscript>
+      <style>
+        #app {
+          opacity: 1 !important;
+        }
+      </style>
+    </noscript>
     <div id="app">
       <main>
         <h1>TokenProvider — Claude / Claude Code / ChatGPT 中转站</h1>

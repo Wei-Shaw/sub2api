@@ -1,4 +1,4 @@
-import { createApp } from 'vue'
+import { createApp, nextTick } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
@@ -40,6 +40,13 @@ async function bootstrap() {
   // 等待路由器完成初始导航后再挂载，避免竞态条件导致的空白渲染
   await router.isReady()
   app.mount('#app')
+  await nextTick()
+  // 双 rAF：等浏览器合并样式并完成首帧绘制后再显示，消除 index.html 内 SEO 壳的无样式闪烁
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      document.documentElement.classList.add('app-ready')
+    })
+  })
 }
 
 bootstrap()
