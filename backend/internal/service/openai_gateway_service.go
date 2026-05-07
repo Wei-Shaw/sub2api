@@ -2221,6 +2221,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	isCompactRequest := isOpenAIResponsesCompactPath(c)
 	compactMapped := false
 	if isCompactRequest {
+		// Force stream=true for compact to prevent proxy NAT idle timeout (EOF).
+		if v, _ := reqBody["stream"].(bool); !v {
+			reqBody["stream"] = true
+			reqStream = true
+			bodyModified = true
+		}
 		compactMappedModel := resolveOpenAICompactForwardModel(account, billingModel)
 		if compactMappedModel != "" && compactMappedModel != billingModel {
 			compactMapped = true
@@ -3880,7 +3886,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		}
 		apiKeyID := getAPIKeyIDFromContext(c)
 		if isOpenAIResponsesCompactPath(c) {
-			req.Header.Set("accept", "application/json")
+			req.Header.Set("accept", "text/event-stream")
 			if req.Header.Get("version") == "" {
 				req.Header.Set("version", codexCLIVersion)
 			}
