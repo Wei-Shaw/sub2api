@@ -3162,7 +3162,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 		clientSessionID := strings.TrimSpace(req.Header.Get("session_id"))
 		clientConversationID := strings.TrimSpace(req.Header.Get("conversation_id"))
 		if isOpenAIResponsesCompactPath(c) {
-			req.Header.Set("accept", "application/json")
+			req.Header.Set("accept", "text/event-stream")
 			if req.Header.Get("version") == "" {
 				req.Header.Set("version", codexCLIVersion)
 			}
@@ -5762,7 +5762,9 @@ func extractOpenAIRequestMetaFromBody(body []byte) (model string, stream bool, p
 
 // normalizeOpenAIPassthroughOAuthBody 将透传 OAuth 请求体收敛为旧链路关键行为：
 // 1) 删除 ChatGPT internal API 不支持的顶层 Responses 参数
-// 2) store=false 3) 非 compact 保持 stream=true；compact 强制 stream=false
+// 2) store=false 3) 非 compact 保持 stream=true；compact 也强制 stream=true
+//    compact 使用 SSE 流式以防止代理中间层 NAT 空闲超时断开连接（EOF）。
+//    Codex CLI v2 (compact_remote_v2.rs) 已原生使用 stream=true 调用 compact。
 func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, bool, error) {
 	if len(body) == 0 {
 		return body, false, nil
@@ -5792,10 +5794,10 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 			normalized = next
 			changed = true
 		}
-		if stream := gjson.GetBytes(normalized, "stream"); stream.Exists() {
-			next, err := sjson.DeleteBytes(normalized, "stream")
+		if stream := gjson.GetBytes(normalized, "stream"); !stream.Exists() || stream.Type != gjson.True {
+			next, err := sjson.SetBytes(normalized, "stream", true)
 			if err != nil {
-				return body, false, fmt.Errorf("normalize passthrough body delete stream: %w", err)
+				return body, false, fmt.Errorf("normalize passthrough body compact stream=true: %w", err)
 			}
 			normalized = next
 			changed = true

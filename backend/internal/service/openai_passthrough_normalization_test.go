@@ -28,6 +28,15 @@ func TestNormalizeOpenAIPassthroughOAuthBody_CompactRemovesUnsupportedUser(t *te
 	require.True(t, changed)
 	require.False(t, gjson.GetBytes(normalized, "user").Exists())
 	require.False(t, gjson.GetBytes(normalized, "metadata").Exists())
-	require.False(t, gjson.GetBytes(normalized, "stream").Exists())
+	require.True(t, gjson.GetBytes(normalized, "stream").Bool(), "compact should use stream=true to prevent proxy NAT idle timeout")
 	require.False(t, gjson.GetBytes(normalized, "store").Exists())
+}
+
+func TestNormalizeOpenAIPassthroughOAuthBody_CompactSetsStreamTrue(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.5","input":"hello"}`)
+
+	normalized, changed, err := normalizeOpenAIPassthroughOAuthBody(body, true)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.True(t, gjson.GetBytes(normalized, "stream").Bool(), "compact without stream field should get stream=true injected")
 }
