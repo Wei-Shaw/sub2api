@@ -11,3 +11,22 @@ export function parseJsonLd(text) {
 export function serializeJsonLd(obj) {
   return JSON.stringify(obj, null, 2);
 }
+
+export function findJsonLdScripts($) {
+  const out = [];
+  $('script[type="application/ld+json"]').each((i, el) => {
+    const $el = $(el);
+    const text = $el.contents().text();
+    out.push({ index: i, $el, data: parseJsonLd(text) });
+  });
+  return out;
+}
+
+export function replaceJsonLdInDom($, entry) {
+  const next = serializeJsonLd(entry.data);
+  // Reset the element's content to a freshly serialized JSON block. Keep the
+  // surrounding whitespace pattern that the static pages already use:
+  // <script type="application/ld+json">\n    {...}\n    </script>
+  entry.$el.empty();
+  entry.$el.append(`\n    ${next}\n    `);
+}
