@@ -23,10 +23,11 @@ func TestOpenAIGatewayService_Forward_CompactOnlyModelMappingOverridesOAuthUpstr
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
+	sseBody := "data: {\"type\":\"response.completed\",\"id\":\"resp_123\",\"status\":\"completed\",\"model\":\"gpt-5.4-openai-compact\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}\n\ndata: [DONE]\n\n"
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid-compact-map"}},
-		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_123","status":"completed","model":"gpt-5.4-openai-compact","output":[],"usage":{"input_tokens":1,"output_tokens":1}}`)),
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid-compact-map"}},
+		Body:       io.NopCloser(strings.NewReader(sseBody)),
 	}}
 
 	svc := &OpenAIGatewayService{httpUpstream: upstream}

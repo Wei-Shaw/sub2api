@@ -1781,7 +1781,7 @@ func TestNormalizeOpenAICompactRequestBodyPreservesCurrentCodexPayloadFields(t *
 	require.Equal(t, "low", gjson.GetBytes(normalized, "text.verbosity").String())
 	require.Equal(t, "resp_123", gjson.GetBytes(normalized, "previous_response_id").String())
 	require.False(t, gjson.GetBytes(normalized, "store").Exists())
-	require.False(t, gjson.GetBytes(normalized, "stream").Exists())
+	require.True(t, gjson.GetBytes(normalized, "stream").Exists(), "stream should be preserved in compact whitelist")
 	require.False(t, gjson.GetBytes(normalized, "prompt_cache_key").Exists())
 }
 
@@ -1817,7 +1817,7 @@ func TestOpenAIBuildUpstreamRequestCompactForcesJSONAcceptForOAuth(t *testing.T)
 	req, err := svc.buildUpstreamRequest(c.Request.Context(), c, account, []byte(`{"model":"gpt-5"}`), "token", false, "", true)
 	require.NoError(t, err)
 	require.Equal(t, chatgptCodexURL+"/compact", req.URL.String())
-	require.Equal(t, "application/json", req.Header.Get("Accept"))
+	require.Equal(t, "text/event-stream", req.Header.Get("Accept"))
 	require.Equal(t, codexCLIVersion, req.Header.Get("Version"))
 	require.NotEmpty(t, req.Header.Get("Session_Id"))
 }
