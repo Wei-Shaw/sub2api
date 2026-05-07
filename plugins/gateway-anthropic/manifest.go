@@ -50,6 +50,26 @@ func buildManifest() *pluginsdk.Manifest {
 						SortOrder:   4,
 						BadgeLabel:  "Bedrock",
 					},
+					{
+						Type:        "service_account",
+						DisplayName: "Vertex AI",
+						Description: "Vertex AI access via Google Service Account",
+						SortOrder:   5,
+						BadgeLabel:  "Vertex",
+					},
+				},
+				CapacityDisplay: &pluginsdk.CapacityDisplayConfig{
+					ShowConcurrency: true,
+					ExtraRows: []pluginsdk.DisplayRow{
+						{Label: "WindowCost", Source: "window_cost_limit", Format: "cost_progress"},
+						{Label: "Sessions", Source: "max_sessions", Format: "count_progress"},
+						{Label: "RPM", Source: "base_rpm", Format: "rpm_progress"},
+					},
+				},
+				UsageDisplay: &pluginsdk.UsageDisplayConfig{
+					WindowLabel:  "5h",
+					ShowReqCount: true,
+					ShowCost:     true,
 				},
 				TestConfig: &pluginsdk.TestConnectionConfig{
 					ModelSelector:    true,

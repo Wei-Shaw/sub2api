@@ -44,9 +44,12 @@ func buildManifest() *pluginsdk.Manifest {
 						BadgeLabel:  "Upstream",
 					},
 				},
-				TestConfig: &pluginsdk.TestConnectionConfig{
-					ModelSelector:    true,
-					DefaultTestModel: "claude-sonnet-4-5",
+				CapacityDisplay: &pluginsdk.CapacityDisplayConfig{
+					ShowConcurrency: true,
+				},
+				UsageDisplay: &pluginsdk.UsageDisplayConfig{
+					ShowReqCount: true,
+					ShowCost:     true,
 				},
 				PrivacyStates: []pluginsdk.PrivacyStateDecl{
 					{
@@ -61,6 +64,10 @@ func buildManifest() *pluginsdk.Manifest {
 						BadgeColor:  "red",
 						IsSet:       false,
 					},
+				},
+				TestConfig: &pluginsdk.TestConnectionConfig{
+					ModelSelector:    true,
+					DefaultTestModel: "claude-sonnet-4-5",
 				},
 			},
 		},

@@ -249,11 +249,13 @@ import { Select } from '@sub2api/plugin-sdk'
 import TextArea from '@/components/common/TextArea.vue'
 import { Icon } from '@/components/icons'
 import { useClipboard } from '@/composables/useClipboard'
+import { usePlatforms } from '@/composables/usePlatforms'
 import { adminAPI } from '@/api/admin'
 import type { Account, ClaudeModel } from '@/types'
 
 const { t } = useI18n()
 const { copyToClipboard } = useClipboard()
+const { getPlatformDecl } = usePlatforms()
 
 interface OutputLine {
   text: string
@@ -308,6 +310,7 @@ const supportsOpenAIImageTest = computed(() => {
 
 const supportsImageTest = computed(() => supportsGeminiImageTest.value || supportsOpenAIImageTest.value)
 
+/** Sort models using the prioritized Gemini model list (fallback for gemini/antigravity). */
 const sortTestModels = (models: ClaudeModel[]) => {
   const priorityMap = new Map(prioritizedGeminiModels.map((id, index) => [id, index]))
 
@@ -350,9 +353,14 @@ const loadAvailableModels = async () => {
     availableModels.value = props.account.platform === 'gemini' || props.account.platform === 'antigravity'
       ? sortTestModels(models)
       : models
-    // Default selection by platform
+    // Default selection: prefer plugin declaration, then fallback to legacy heuristics
     if (availableModels.value.length > 0) {
-      if (props.account.platform === 'gemini') {
+      const platformDecl = getPlatformDecl(props.account.platform)
+      const pluginDefaultModel = platformDecl?.test_config?.default_test_model
+      if (pluginDefaultModel) {
+        const match = availableModels.value.find((m) => m.id === pluginDefaultModel)
+        selectedModelId.value = match?.id || availableModels.value[0].id
+      } else if (props.account.platform === 'gemini') {
         selectedModelId.value = availableModels.value[0].id
       } else {
         // Try to select Sonnet as default, otherwise use first model

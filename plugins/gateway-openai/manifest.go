@@ -37,6 +37,34 @@ func buildManifest() *pluginsdk.Manifest {
 						BadgeLabel:  "Key",
 					},
 				},
+				CapacityDisplay: &pluginsdk.CapacityDisplayConfig{
+					ShowConcurrency: true,
+				},
+				UsageDisplay: &pluginsdk.UsageDisplayConfig{
+					WindowLabel:  "5h",
+					ShowReqCount: true,
+					ShowCost:     false,
+				},
+				PrivacyStates: []pluginsdk.PrivacyStateDecl{
+					{
+						Value:       "training_off",
+						DisplayName: "Private",
+						BadgeColor:  "green",
+						IsSet:       true,
+					},
+					{
+						Value:       "training_set_cf_blocked",
+						DisplayName: "CF Blocked",
+						BadgeColor:  "yellow",
+						IsSet:       false,
+					},
+					{
+						Value:       "training_set_failed",
+						DisplayName: "Failed",
+						BadgeColor:  "red",
+						IsSet:       false,
+					},
+				},
 				TestConfig: &pluginsdk.TestConnectionConfig{
 					ModelSelector:    true,
 					DefaultTestModel: "gpt-4o",

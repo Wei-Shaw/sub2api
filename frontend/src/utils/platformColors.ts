@@ -203,6 +203,38 @@ export function dynamicTextClass(themeColor: string): string {
   return `text-${tw}-600 dark:text-${tw}-400`
 }
 
+// ── Dynamic helpers for PlatformTypeBadge / GroupBadge ────────────────
+
+/** Platform badge (PlatformTypeBadge platformClass) */
+export function dynamicPlatformBadgeClass(themeColor: string): string {
+  const tw = themeColorToTailwind(themeColor)
+  return `bg-${tw}-100 text-${tw}-700 dark:bg-${tw}-900/30 dark:text-${tw}-400`
+}
+
+/** Type badge — slightly lighter text (PlatformTypeBadge typeClass) */
+export function dynamicTypeBadgeClass(themeColor: string): string {
+  const tw = themeColorToTailwind(themeColor)
+  return `bg-${tw}-100 text-${tw}-600 dark:bg-${tw}-900/30 dark:text-${tw}-400`
+}
+
+/** Group subscription badge (GroupBadge badgeClass subscription variant) */
+export function dynamicGroupSubBadgeClass(themeColor: string): string {
+  const tw = themeColorToTailwind(themeColor)
+  return `bg-${tw}-100 text-${tw}-700 dark:bg-${tw}-900/30 dark:text-${tw}-400`
+}
+
+/** Group standard badge (GroupBadge badgeClass standard variant) */
+export function dynamicGroupStdBadgeClass(themeColor: string): string {
+  const tw = themeColorToTailwind(themeColor)
+  return `bg-${tw}-50 text-${tw}-700 dark:bg-${tw}-900/20 dark:text-${tw}-400`
+}
+
+/** Subscription label (GroupBadge labelClass normal state) */
+export function dynamicSubLabelClass(themeColor: string): string {
+  const tw = themeColorToTailwind(themeColor)
+  return `bg-${tw}-200/60 text-${tw}-800 dark:bg-${tw}-800/40 dark:text-${tw}-300`
+}
+
 // Registry for dynamic platform labels (from API)
 const dynamicLabels = new Map<string, string>()
 

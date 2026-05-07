@@ -100,17 +100,11 @@
             <span
               :class="[
                 'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium',
-                value === 'anthropic'
-                  ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-                  : value === 'openai'
-                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                    : value === 'antigravity'
-                      ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                dynamicPlatformBadgeClass(getPlatformThemeColor(value)),
               ]"
             >
               <PlatformIcon :platform="value" size="xs" />
-              {{ t("admin.groups.platforms." + value) }}
+              {{ getPlatformDisplayName(value) }}
             </span>
           </template>
 
@@ -2657,16 +2651,10 @@
                 <span
                   :class="[
                     'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
-                    group.platform === 'anthropic'
-                      ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
-                      : group.platform === 'openai'
-                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                        : group.platform === 'antigravity'
-                          ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                          : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                    dynamicPlatformBadgeClass(getPlatformThemeColor(group.platform)),
                   ]"
                 >
-                  {{ t("admin.groups.platforms." + group.platform) }}
+                  {{ getPlatformDisplayName(group.platform) }}
                 </span>
               </div>
             </div>
@@ -2766,10 +2754,45 @@ import {
   resetMessagesDispatchFormState,
   type MessagesDispatchMappingRow,
 } from "./groupsMessagesDispatch";
+import { usePlatforms } from "@/composables/usePlatforms";
+import { dynamicPlatformBadgeClass } from "@/utils/platformColors";
 
 const { t } = useI18n();
 const appStore = useAppStore();
 const onboardingStore = useOnboardingStore();
+const { platforms, fetchPlatforms } = usePlatforms();
+
+const FALLBACK_PLATFORMS = [
+  { value: "anthropic", label: "Anthropic", theme_color: "#ea580c" },
+  { value: "openai", label: "OpenAI", theme_color: "#10b981" },
+  { value: "gemini", label: "Gemini", theme_color: "#2563eb" },
+  { value: "antigravity", label: "Antigravity", theme_color: "#7c3aed" },
+];
+
+const dynamicPlatformList = computed(() => {
+  if (platforms.value.length > 0) {
+    return platforms.value.map((p) => ({
+      value: p.platform,
+      label: p.display_name,
+      theme_color: p.theme_color,
+    }));
+  }
+  return FALLBACK_PLATFORMS;
+});
+
+const getPlatformThemeColor = (platform: string): string => {
+  const decl = platforms.value.find((p) => p.platform === platform);
+  if (decl) return decl.theme_color;
+  const fb = FALLBACK_PLATFORMS.find((p) => p.value === platform);
+  return fb?.theme_color || "";
+};
+
+const getPlatformDisplayName = (platform: string): string => {
+  const decl = platforms.value.find((p) => p.platform === platform);
+  if (decl) return decl.display_name;
+  const fb = FALLBACK_PLATFORMS.find((p) => p.value === platform);
+  return fb?.label || platform;
+};
 
 const columns = computed<Column[]>(() => [
   { key: "name", label: t("admin.groups.columns.name"), sortable: true },
@@ -2821,19 +2844,13 @@ const exclusiveOptions = computed(() => [
   { value: "false", label: t("admin.groups.nonExclusive") },
 ]);
 
-const platformOptions = computed(() => [
-  { value: "anthropic", label: "Anthropic" },
-  { value: "openai", label: "OpenAI" },
-  { value: "gemini", label: "Gemini" },
-  { value: "antigravity", label: "Antigravity" },
-]);
+const platformOptions = computed(() =>
+  dynamicPlatformList.value.map((p) => ({ value: p.value, label: p.label })),
+);
 
 const platformFilterOptions = computed(() => [
   { value: "", label: t("admin.groups.allPlatforms") },
-  { value: "anthropic", label: "Anthropic" },
-  { value: "openai", label: "OpenAI" },
-  { value: "gemini", label: "Gemini" },
-  { value: "antigravity", label: "Antigravity" },
+  ...dynamicPlatformList.value.map((p) => ({ value: p.value, label: p.label })),
 ]);
 
 const editStatusOptions = computed(() => [
@@ -3864,6 +3881,7 @@ const saveSortOrder = async () => {
 };
 
 onMounted(() => {
+  fetchPlatforms();
   loadGroups();
   document.addEventListener("click", handleClickOutside);
 });

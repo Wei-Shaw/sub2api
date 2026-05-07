@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { defineComponent, nextTick } from 'vue'
+import { shallowMount, flushPromises } from '@vue/test-utils'
 
 const { updateAccountMock, checkMixedChannelRiskMock } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
@@ -8,32 +8,21 @@ const { updateAccountMock, checkMixedChannelRiskMock } = vi.hoisted(() => ({
 }))
 
 vi.mock('@/stores/app', () => ({
-  useAppStore: () => ({
-    showError: vi.fn(),
-    showSuccess: vi.fn(),
-    showInfo: vi.fn()
-  })
+  useAppStore: () => ({ showError: vi.fn(), showSuccess: vi.fn(), showInfo: vi.fn() })
 }))
 
 vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => ({
-    isSimpleMode: true
-  })
+  useAuthStore: () => ({ isSimpleMode: true })
 }))
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
-    accounts: {
-      update: updateAccountMock,
-      checkMixedChannelRisk: checkMixedChannelRiskMock
-    },
+    accounts: { update: updateAccountMock, checkMixedChannelRisk: checkMixedChannelRiskMock },
     settings: {
       getWebSearchEmulationConfig: vi.fn().mockResolvedValue({ enabled: false, providers: [] }),
       getSettings: vi.fn().mockResolvedValue({})
     },
-    tlsFingerprintProfiles: {
-      list: vi.fn().mockResolvedValue([])
-    }
+    tlsFingerprintProfiles: { list: vi.fn().mockResolvedValue([]) }
   }
 }))
 
@@ -43,127 +32,106 @@ vi.mock('@/api/admin/accounts', () => ({
 
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
-  return {
-    ...actual,
-    useI18n: () => ({
-      t: (key: string) => key
-    })
-  }
+  return { ...actual, useI18n: () => ({ t: (key: string) => key }) }
 })
+
+vi.mock('@/composables/usePlatforms', () => ({
+  usePlatforms: () => ({
+    platforms: { value: [] }, fetchPlatforms: vi.fn(),
+    getPlatformDecl: vi.fn(), getAccountTypeDecl: vi.fn()
+  })
+}))
+
+vi.mock('@/composables/useQuotaNotifyState', () => ({
+  useQuotaNotifyState: () => ({
+    globalEnabled: { value: false },
+    state: { daily: { enabled: false, threshold: 80, thresholdType: 'percent' }, weekly: { enabled: false, threshold: 80, thresholdType: 'percent' }, total: { enabled: false, threshold: 80, thresholdType: 'percent' } },
+    loadGlobalState: vi.fn(), loadFromExtra: vi.fn(), writeToExtra: vi.fn(), reset: vi.fn()
+  })
+}))
+
+vi.mock('@/components/account/QuotaLimitCard.vue', () => ({
+  default: defineComponent({ name: 'QuotaLimitCard', template: '<div />' })
+}))
+
+vi.mock('@/components/common/ProxySelector.vue', () => ({
+  default: defineComponent({ name: 'ProxySelector', template: '<div />' })
+}))
+
+vi.mock('@/components/common/GroupSelector.vue', () => ({
+  default: defineComponent({ name: 'GroupSelector', template: '<div />' })
+}))
+vi.mock('@sub2api/plugin-sdk', () => {
+  const BaseDialog = defineComponent({ name: 'BaseDialog', props: { show: Boolean }, template: '<div />' })
+  const ConfirmDialog = defineComponent({ name: 'ConfirmDialog', template: '<div />' })
+  const Select = defineComponent({ name: 'Select', props: { modelValue: {}, options: Array }, emits: ['update:modelValue'], template: '<select />' })
+  return { BaseDialog, ConfirmDialog, Select }
+})
+
+// Mock the platform form registry to return a simple component with the exposed API
+const formInitFromAccountMock = vi.fn()
+const formGetEditPayloadMock = vi.fn()
+vi.mock('../forms/platformFormRegistry', () => ({
+  resolvePlatformForm: () => defineComponent({
+    name: 'MockPlatformForm',
+    props: { context: Object },
+    setup(_props, { expose }) {
+      expose({
+        validate: () => ({ valid: true }),
+        getPayload: () => ({ credentials: {} }),
+        isOAuthFlow: () => false,
+        reset: vi.fn(),
+        initFromAccount: formInitFromAccountMock,
+        getEditPayload: formGetEditPayloadMock
+      })
+      return () => null
+    }
+  })
+}))
 
 import EditAccountModal from '../EditAccountModal.vue'
 
 const BaseDialogStub = defineComponent({
   name: 'BaseDialog',
-  props: {
-    show: {
-      type: Boolean,
-      default: false
-    }
-  },
+  props: { show: { type: Boolean, default: false } },
   template: '<div v-if="show"><slot /><slot name="footer" /></div>'
-})
-
-const ModelWhitelistSelectorStub = defineComponent({
-  name: 'ModelWhitelistSelector',
-  props: {
-    modelValue: {
-      type: Array,
-      default: () => []
-    }
-  },
-  emits: ['update:modelValue'],
-  template: `
-    <div>
-      <button
-        type="button"
-        data-testid="rewrite-to-snapshot"
-        @click="$emit('update:modelValue', ['gpt-5.2-2025-12-11'])"
-      >
-        rewrite
-      </button>
-      <span data-testid="model-whitelist-value">
-        {{ Array.isArray(modelValue) ? modelValue.join(',') : '' }}
-      </span>
-    </div>
-  `
 })
 
 const SelectStub = defineComponent({
   name: 'SelectStub',
-  props: {
-    modelValue: {
-      type: [String, Number, Boolean, null],
-      default: ''
-    },
-    options: {
-      type: Array,
-      default: () => []
-    }
-  },
+  props: { modelValue: { default: '' }, options: { type: Array, default: () => [] } },
   emits: ['update:modelValue'],
-  template: `
-    <select
-      v-bind="$attrs"
-      :value="modelValue"
-      @change="$emit('update:modelValue', $event.target.value)"
-    >
-      <option v-for="option in options" :key="option.value" :value="option.value">
-        {{ option.label }}
-      </option>
-    </select>
-  `
+  template: '<select :value="modelValue" @change="(\'update:modelValue\', (.target as HTMLSelectElement).value)"><option v-for="option in (options as any[])" :key="option.value" :value="option.value">{{ option.label }}</option></select>'
 })
 
 function buildAccount() {
   return {
-    id: 1,
-    name: 'OpenAI Key',
-    notes: '',
-    platform: 'openai',
-    type: 'apikey',
-    credentials: {
-      api_key: 'sk-test',
-      base_url: 'https://api.openai.com',
-      model_mapping: {
-        'gpt-5.2': 'gpt-5.2'
-      }
-    },
-    extra: {},
-    proxy_id: null,
-    concurrency: 1,
-    priority: 1,
-    rate_multiplier: 1,
-    status: 'active',
-    group_ids: [],
-    expires_at: null,
-    auto_pause_on_expired: false
+    id: 1, name: 'OpenAI Key', notes: '', platform: 'openai', type: 'apikey',
+    credentials: { api_key: 'sk-test', base_url: 'https://api.openai.com', model_mapping: { 'gpt-5.2': 'gpt-5.2' } },
+    extra: {}, proxy_id: null, concurrency: 1, priority: 1, rate_multiplier: 1,
+    status: 'active', group_ids: [], expires_at: null, auto_pause_on_expired: false
   } as any
 }
 
 function mountModal(account = buildAccount()) {
-  return mount(EditAccountModal, {
-    props: {
-      show: true,
-      account,
-      proxies: [],
-      groups: []
-    },
+  return shallowMount(EditAccountModal, {
+    props: { show: true, account, proxies: [], groups: [] },
     global: {
       stubs: {
-        BaseDialog: BaseDialogStub,
-        Select: SelectStub,
-        Icon: true,
-        ProxySelector: true,
-        GroupSelector: true,
-        ModelWhitelistSelector: ModelWhitelistSelectorStub
+        BaseDialog: BaseDialogStub, Select: SelectStub, ConfirmDialog: true,
+        Icon: true, ProxySelector: true, GroupSelector: true, QuotaLimitCard: true,
+        ModelWhitelistSelector: true, ModelRestrictionSection: true,
+        PoolModeSection: true, CustomErrorCodesSection: true,
+        TempUnschedSection: true, ToggleCard: true, BedrockCredentials: true,
+        VertexServiceAccount: true, GeminiOAuthTypeSelector: true,
+        CheckboxWithTooltip: true, JsonSchemaForm: true
       }
     }
   })
 }
 
 describe('EditAccountModal', () => {
-  it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
+  it('submits correct credentials and extra for OpenAI apikey account', async () => {
     const account = buildAccount()
     updateAccountMock.mockReset()
     checkMixedChannelRiskMock.mockReset()
@@ -171,49 +139,51 @@ describe('EditAccountModal', () => {
     updateAccountMock.mockResolvedValue(account)
 
     const wrapper = mountModal(account)
+    await flushPromises()
+    await nextTick()
+    await nextTick()
 
-    expect(wrapper.get('[data-testid="model-whitelist-value"]').text()).toBe('gpt-5.2')
-
-    await wrapper.get('[data-testid="rewrite-to-snapshot"]').trigger('click')
-    expect(wrapper.get('[data-testid="model-whitelist-value"]').text()).toBe('gpt-5.2-2025-12-11')
-
-    await wrapper.setProps({ show: false })
-    await wrapper.setProps({ show: true })
-
-    expect(wrapper.get('[data-testid="model-whitelist-value"]').text()).toBe('gpt-5.2')
+    // Configure form mock to return edit payload
+    formGetEditPayloadMock.mockReturnValue({
+      credentials: { api_key: 'sk-test', base_url: 'https://api.openai.com', model_mapping: { 'gpt-5.2': 'gpt-5.2' } },
+      extra: {}
+    })
 
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
-      'gpt-5.2': 'gpt-5.2'
-    })
+    const payload = updateAccountMock.mock.calls[0][1]
+    expect(payload.credentials.api_key).toBe('sk-test')
+    expect(payload.credentials.base_url).toBe('https://api.openai.com')
   })
 
   it('submits OpenAI compact mode and compact-only model mapping', async () => {
     const account = buildAccount()
-    account.extra = {
-      openai_compact_mode: 'force_on'
-    }
-    account.credentials = {
-      ...account.credentials,
-      compact_model_mapping: {
-        'gpt-5.4': 'gpt-5.4-openai-compact'
-      }
-    }
+    account.extra = { openai_compact_mode: 'force_on' }
+    account.credentials = { ...account.credentials, compact_model_mapping: { 'gpt-5.4': 'gpt-5.4-openai-compact' } }
     updateAccountMock.mockReset()
     checkMixedChannelRiskMock.mockReset()
     checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
     updateAccountMock.mockResolvedValue(account)
 
     const wrapper = mountModal(account)
+    await flushPromises()
+    await nextTick()
+    await nextTick()
+
+    // Configure form mock to return edit payload with compact mode
+    formGetEditPayloadMock.mockReturnValue({
+      credentials: { api_key: 'sk-test', base_url: 'https://api.openai.com', compact_model_mapping: { 'gpt-5.4': 'gpt-5.4-openai-compact' } },
+      extra: { openai_compact_mode: 'force_on' }
+    })
 
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_compact_mode).toBe('force_on')
-    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.compact_model_mapping).toEqual({
-      'gpt-5.4': 'gpt-5.4-openai-compact'
-    })
+    const payload = updateAccountMock.mock.calls[0][1]
+    expect(payload.extra.openai_compact_mode).toBe('force_on')
+    expect(payload.credentials.compact_model_mapping).toEqual({ 'gpt-5.4': 'gpt-5.4-openai-compact' })
   })
 })

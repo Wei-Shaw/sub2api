@@ -44,8 +44,10 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import GroupBadge from './GroupBadge.vue'
 import type { AdminGroup, GroupPlatform } from '@/types'
+import { usePlatforms } from '@/composables/usePlatforms'
 
 const { t } = useI18n()
+const { platforms } = usePlatforms()
 
 interface Props {
   modelValue: number[]
@@ -59,16 +61,27 @@ const emit = defineEmits<{
   'update:modelValue': [value: number[]]
 }>()
 
+// Platforms compatible with antigravity mixed scheduling.
+// TODO: replace with plugin declaration compatible_platforms when available.
+const FALLBACK_MIXED_PLATFORMS = ['antigravity', 'anthropic', 'gemini']
+
+const mixedSchedulingPlatforms = computed<string[]>(() => {
+  // Read all known platform IDs dynamically; fall back to hardcoded list
+  if (platforms.value.length > 0) {
+    return platforms.value.map((p) => p.platform)
+  }
+  return FALLBACK_MIXED_PLATFORMS
+})
+
 // Filter groups by platform if specified
 const filteredGroups = computed(() => {
   if (!props.platform) {
     return props.groups
   }
-  // antigravity 账户启用混合调度后，可选择 anthropic/gemini 分组
+  // antigravity 账户启用混合调度后，可选择 compatible 平台的分组
   if (props.platform === 'antigravity' && props.mixedScheduling) {
-    return props.groups.filter(
-      (g) => g.platform === 'antigravity' || g.platform === 'anthropic' || g.platform === 'gemini'
-    )
+    const allowed = new Set(mixedSchedulingPlatforms.value)
+    return props.groups.filter((g) => allowed.has(g.platform))
   }
   // 默认：只能选择同 platform 的分组
   return props.groups.filter((g) => g.platform === props.platform)

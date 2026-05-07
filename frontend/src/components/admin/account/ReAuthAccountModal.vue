@@ -14,13 +14,7 @@
           <div
             :class="[
               'flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br',
-              isOpenAILike
-                ? 'from-green-500 to-green-600'
-                : isGemini
-                  ? 'from-blue-500 to-blue-600'
-                  : isAntigravity
-                    ? 'from-purple-500 to-purple-600'
-                    : 'from-orange-500 to-orange-600'
+              platformGradientClass
             ]"
           >
             <Icon name="sparkles" size="md" class="text-white" />
@@ -30,15 +24,7 @@
               account.name
             }}</span>
             <span class="text-sm text-gray-500 dark:text-gray-400">
-              {{
-                isOpenAI
-                  ? t('admin.accounts.openaiAccount')
-                  : isGemini
-                    ? t('admin.accounts.geminiAccount')
-                    : isAntigravity
-                      ? t('admin.accounts.antigravityAccount')
-                      : t('admin.accounts.claudeCodeAccount')
-              }}
+              {{ platformAccountLabel }}
             </span>
           </div>
         </div>
@@ -192,6 +178,7 @@ import {
 import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
+import { usePlatforms } from '@/composables/usePlatforms'
 import type { Account } from '@/types'
 import { BaseDialog } from '@sub2api/plugin-sdk'
 import Icon from '@/components/icons/Icon.vue'
@@ -221,6 +208,7 @@ const emit = defineEmits<{
 
 const appStore = useAppStore()
 const { t } = useI18n()
+const { getPlatformDecl } = usePlatforms()
 
 // OAuth composables
 const claudeOAuth = useAccountOAuth()
@@ -241,6 +229,29 @@ const isOpenAILike = computed(() => isOpenAI.value)
 const isGemini = computed(() => props.account?.platform === 'gemini')
 const isAnthropic = computed(() => props.account?.platform === 'anthropic')
 const isAntigravity = computed(() => props.account?.platform === 'antigravity')
+
+// Dynamic theme from plugin declarations (with hardcoded fallbacks)
+const platformGradientClass = computed(() => {
+  const decl = props.account ? getPlatformDecl(props.account.platform) : undefined
+  if (decl?.theme_color) {
+    return `from-${decl.theme_color}-500 to-${decl.theme_color}-600`
+  }
+  if (isOpenAILike.value) return 'from-green-500 to-green-600'
+  if (isGemini.value) return 'from-blue-500 to-blue-600'
+  if (isAntigravity.value) return 'from-purple-500 to-purple-600'
+  return 'from-orange-500 to-orange-600'
+})
+
+const platformAccountLabel = computed(() => {
+  const decl = props.account ? getPlatformDecl(props.account.platform) : undefined
+  if (decl?.display_name) {
+    return `${decl.display_name} ${t('admin.accounts.account')}`
+  }
+  if (isOpenAI.value) return t('admin.accounts.openaiAccount')
+  if (isGemini.value) return t('admin.accounts.geminiAccount')
+  if (isAntigravity.value) return t('admin.accounts.antigravityAccount')
+  return t('admin.accounts.claudeCodeAccount')
+})
 
 // Computed - current OAuth state based on platform
 const currentAuthUrl = computed(() => {

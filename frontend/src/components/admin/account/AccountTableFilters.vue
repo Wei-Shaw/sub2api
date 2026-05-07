@@ -36,7 +36,7 @@ const updateStatus = (value: string | number | boolean | null) => { emit('update
 const updatePrivacyMode = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, privacy_mode: value }) }
 const updateGroup = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, group: value }) }
 
-const BUILTIN_PLATFORMS = [
+const FALLBACK_PLATFORMS = [
   { value: 'anthropic', label: 'Anthropic' },
   { value: 'openai', label: 'OpenAI' },
   { value: 'gemini', label: 'Gemini' },
@@ -44,40 +44,35 @@ const BUILTIN_PLATFORMS = [
 ]
 
 const pOpts = computed(() => {
-  const builtinIds = new Set(BUILTIN_PLATFORMS.map(p => p.value))
-  const pluginPlatforms = platforms.value
-    .filter(p => !builtinIds.has(p.platform))
-    .map(p => ({ value: p.platform, label: p.display_name }))
+  const fromApi = platforms.value.map(p => ({ value: p.platform, label: p.display_name }))
+  const platformList = fromApi.length > 0 ? fromApi : FALLBACK_PLATFORMS
   return [
     { value: '', label: t('admin.accounts.allPlatforms') },
-    ...BUILTIN_PLATFORMS,
-    ...pluginPlatforms,
+    ...platformList,
   ]
 })
 
-const BUILTIN_TYPES = [
-  { value: 'oauth', label: 'admin.accounts.oauthType' },
-  { value: 'setup-token', label: 'admin.accounts.setupToken' },
-  { value: 'apikey', label: 'admin.accounts.apiKey' },
+const FALLBACK_TYPES = [
+  { value: 'oauth', label: 'OAuth' },
+  { value: 'setup-token', label: 'Setup Token' },
+  { value: 'apikey', label: 'API Key' },
   { value: 'bedrock', label: 'AWS Bedrock' },
 ]
 
 const tOpts = computed(() => {
-  const builtinIds = new Set(BUILTIN_TYPES.map(t => t.value))
-  const pluginTypes = platforms.value
+  const fromApi = platforms.value
     .flatMap(p => p.account_types)
-    .filter(at => !builtinIds.has(at.type))
     .map(at => ({ value: at.type, label: at.display_name }))
   const seen = new Set<string>()
-  const deduped = pluginTypes.filter(t => {
+  const deduped = fromApi.filter(t => {
     if (seen.has(t.value)) return false
     seen.add(t.value)
     return true
   })
+  const typeList = deduped.length > 0 ? deduped : FALLBACK_TYPES
   return [
     { value: '', label: t('admin.accounts.allTypes') },
-    ...BUILTIN_TYPES.map(bt => ({ value: bt.value, label: bt.label.startsWith('admin.') ? t(bt.label) : bt.label })),
-    ...deduped,
+    ...typeList,
   ]
 })
 
@@ -92,23 +87,20 @@ const sOpts = computed(() => [
 ])
 
 const privacyOpts = computed(() => {
-  const builtinPrivacy = [
+  const base = [
     { value: '', label: t('admin.accounts.allPrivacyModes') },
     { value: '__unset__', label: t('admin.accounts.privacyUnset') },
-    { value: 'training_off', label: 'Privacy' },
-    { value: 'training_set_cf_blocked', label: 'CF' },
-    { value: 'training_set_failed', label: 'Fail' },
   ]
-  const pluginPrivacy = platforms.value
+  const fromPlugins = platforms.value
     .flatMap(p => p.privacy_states || [])
     .map(ps => ({ value: ps.value, label: ps.display_name }))
-  const seen = new Set(builtinPrivacy.map(p => p.value))
-  const deduped = pluginPrivacy.filter(p => {
+  const seen = new Set<string>()
+  const deduped = fromPlugins.filter(p => {
     if (seen.has(p.value)) return false
     seen.add(p.value)
     return true
   })
-  return [...builtinPrivacy, ...deduped]
+  return [...base, ...deduped]
 })
 
 const gOpts = computed(() => [

@@ -30,6 +30,7 @@ func buildManifest() *pluginsdk.Manifest {
 						BadgeLabel:  "OAuth",
 						SubTypes: []pluginsdk.SubTypeOption{
 							{Value: "google_one", Label: "Google One"},
+							{Value: "code_assist", Label: "Code Assist"},
 							{Value: "aistudio", Label: "AI Studio"},
 						},
 					},
@@ -47,6 +48,14 @@ func buildManifest() *pluginsdk.Manifest {
 						SortOrder:   3,
 						BadgeLabel:  "SA",
 					},
+				},
+				CapacityDisplay: &pluginsdk.CapacityDisplayConfig{
+					ShowConcurrency: true,
+				},
+				UsageDisplay: &pluginsdk.UsageDisplayConfig{
+					WindowLabel:  "1d",
+					ShowReqCount: true,
+					ShowCost:     true,
 				},
 				TestConfig: &pluginsdk.TestConnectionConfig{
 					ModelSelector:    true,
