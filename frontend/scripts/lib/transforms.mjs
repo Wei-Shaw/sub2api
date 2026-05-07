@@ -1,8 +1,13 @@
 // Composable transforms: each takes (data, ctx?) → data. All are pure and idempotent.
 
-import { ORG_SCHEMA, WEBSITE_SCHEMA, PERSON_AUTHOR } from './schema-rules.mjs';
+import { ORG_SCHEMA, WEBSITE_SCHEMA, SERVICE_SCHEMA, SPEAKABLE, PERSON_AUTHOR } from './schema-rules.mjs';
 
 const AUTHOR_TYPES = new Set(['Article', 'TechArticle', 'NewsArticle', 'BlogPosting', 'HowTo']);
+
+const HOMEPAGE_CANONICALS = new Set([
+  'https://tokenprovider.store/',
+  'https://tokenprovider.store/en.html'
+]);
 
 function ensureGraph(data) {
   if (Array.isArray(data['@graph'])) return data;
@@ -46,4 +51,34 @@ export function upgradeArticleAuthor(data, lang) {
     return out;
   }
   return applyAuthorOnNode(out, lang);
+}
+
+function applySpeakableOnNode(node) {
+  if (node && node['@type'] === 'FAQPage' && !node.speakable) {
+    return { ...node, speakable: structuredClone(SPEAKABLE) };
+  }
+  return node;
+}
+
+export function addSpeakableToFAQPage(data) {
+  const out = structuredClone(data);
+  if (Array.isArray(out['@graph'])) {
+    out['@graph'] = out['@graph'].map(applySpeakableOnNode);
+    return out;
+  }
+  return applySpeakableOnNode(out);
+}
+
+export function injectServiceOnHomepages(data, canonical) {
+  if (!HOMEPAGE_CANONICALS.has(canonical)) return data;
+  const out = structuredClone(data);
+  if (!Array.isArray(out['@graph'])) {
+    const { '@context': ctx, ...rest } = out;
+    return {
+      '@context': ctx || 'https://schema.org',
+      '@graph': [rest, structuredClone(SERVICE_SCHEMA)]
+    };
+  }
+  upsertById(out['@graph'], structuredClone(SERVICE_SCHEMA));
+  return out;
 }

@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { upgradeOrganization, upgradeWebSite, upgradeArticleAuthor } from '../lib/transforms.mjs';
+import {
+  upgradeOrganization,
+  upgradeWebSite,
+  upgradeArticleAuthor,
+  addSpeakableToFAQPage,
+  injectServiceOnHomepages
+} from '../lib/transforms.mjs';
 
 test('upgradeOrganization replaces existing Org node by @id', () => {
   const data = {
@@ -107,4 +113,55 @@ test('upgradeArticleAuthor is idempotent (Person → Person)', () => {
   }, 'en');
   const twice = upgradeArticleAuthor(once, 'en');
   assert.deepEqual(once, twice);
+});
+
+test('addSpeakableToFAQPage adds speakable to FAQPage in @graph', () => {
+  const data = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      { '@type': 'FAQPage', mainEntity: [{ '@type': 'Question', name: 'Q' }] }
+    ]
+  };
+  const out = addSpeakableToFAQPage(data);
+  const faq = out['@graph'].find(n => n['@type'] === 'FAQPage');
+  assert.equal(faq.speakable['@type'], 'SpeakableSpecification');
+  assert.ok(faq.speakable.cssSelector.includes('.seo-tldr'));
+});
+
+test('addSpeakableToFAQPage handles single-node FAQPage', () => {
+  const out = addSpeakableToFAQPage({
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: []
+  });
+  assert.ok(out.speakable);
+});
+
+test('addSpeakableToFAQPage idempotent', () => {
+  const start = { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: [] };
+  const once = addSpeakableToFAQPage(start);
+  const twice = addSpeakableToFAQPage(once);
+  assert.deepEqual(once, twice);
+});
+
+test('injectServiceOnHomepages adds Service node when canonical is en.html', () => {
+  const data = { '@context': 'https://schema.org', '@graph': [] };
+  const out = injectServiceOnHomepages(data, 'https://tokenprovider.store/en.html');
+  assert.ok(out['@graph'].some(n => n['@type'] === 'Service'));
+});
+
+test('injectServiceOnHomepages adds Service when canonical is the bare domain', () => {
+  const out = injectServiceOnHomepages(
+    { '@context': 'https://schema.org', '@graph': [] },
+    'https://tokenprovider.store/'
+  );
+  assert.ok(out['@graph'].some(n => n['@type'] === 'Service'));
+});
+
+test('injectServiceOnHomepages skips non-home pages', () => {
+  const out = injectServiceOnHomepages(
+    { '@context': 'https://schema.org', '@graph': [] },
+    'https://tokenprovider.store/en/compare/x.html'
+  );
+  assert.equal(out['@graph'].length, 0);
 });
