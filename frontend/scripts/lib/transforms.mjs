@@ -1,8 +1,16 @@
 // Composable transforms: each takes (data, ctx?) → data. All are pure and idempotent.
 
-import { ORG_SCHEMA, WEBSITE_SCHEMA, SERVICE_SCHEMA, SPEAKABLE, PERSON_AUTHOR } from './schema-rules.mjs';
+import {
+  ORG_SCHEMA,
+  WEBSITE_SCHEMA,
+  SERVICE_SCHEMA,
+  SPEAKABLE,
+  PERSON_AUTHOR,
+  CONFIG
+} from './schema-rules.mjs';
 
 const AUTHOR_TYPES = new Set(['Article', 'TechArticle', 'NewsArticle', 'BlogPosting', 'HowTo']);
+const DATED_TYPES = new Set(['Article', 'TechArticle', 'NewsArticle', 'BlogPosting']);
 
 const HOMEPAGE_CANONICALS = new Set([
   'https://tokenprovider.store/',
@@ -81,4 +89,37 @@ export function injectServiceOnHomepages(data, canonical) {
   }
   upsertById(out['@graph'], structuredClone(SERVICE_SCHEMA));
   return out;
+}
+
+export function addBreadcrumbIfMissing(data, breadcrumb) {
+  const hasBreadcrumb =
+    data['@type'] === 'BreadcrumbList' ||
+    (Array.isArray(data['@graph']) && data['@graph'].some(n => n['@type'] === 'BreadcrumbList'));
+  if (hasBreadcrumb) return data;
+  const out = structuredClone(data);
+  if (Array.isArray(out['@graph'])) {
+    out['@graph'].push(structuredClone(breadcrumb));
+    return out;
+  }
+  const { '@context': ctx, ...rest } = out;
+  return {
+    '@context': ctx || 'https://schema.org',
+    '@graph': [rest, structuredClone(breadcrumb)]
+  };
+}
+
+function applyDateOnNode(node) {
+  if (node && node['@type'] && DATED_TYPES.has(node['@type']) && node.dateModified) {
+    return { ...node, dateModified: CONFIG.todayIso };
+  }
+  return node;
+}
+
+export function refreshDateModified(data) {
+  const out = structuredClone(data);
+  if (Array.isArray(out['@graph'])) {
+    out['@graph'] = out['@graph'].map(applyDateOnNode);
+    return out;
+  }
+  return applyDateOnNode(out);
 }

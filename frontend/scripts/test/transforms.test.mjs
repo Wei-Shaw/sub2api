@@ -5,7 +5,9 @@ import {
   upgradeWebSite,
   upgradeArticleAuthor,
   addSpeakableToFAQPage,
-  injectServiceOnHomepages
+  injectServiceOnHomepages,
+  addBreadcrumbIfMissing,
+  refreshDateModified
 } from '../lib/transforms.mjs';
 
 test('upgradeOrganization replaces existing Org node by @id', () => {
@@ -164,4 +166,57 @@ test('injectServiceOnHomepages skips non-home pages', () => {
     'https://tokenprovider.store/en/compare/x.html'
   );
   assert.equal(out['@graph'].length, 0);
+});
+
+test('addBreadcrumbIfMissing inserts BreadcrumbList when none present', () => {
+  const data = { '@context': 'https://schema.org', '@graph': [{ '@type': 'TechArticle', headline: 'X' }] };
+  const breadcrumb = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'TokenProvider', item: 'https://tokenprovider.store/en.html' },
+      { '@type': 'ListItem', position: 2, name: 'X', item: 'https://tokenprovider.store/en/examples/x.html' }
+    ]
+  };
+  const out = addBreadcrumbIfMissing(data, breadcrumb);
+  assert.ok(out['@graph'].some(n => n['@type'] === 'BreadcrumbList'));
+});
+
+test('addBreadcrumbIfMissing is no-op when BreadcrumbList already present', () => {
+  const existingBc = { '@type': 'BreadcrumbList', itemListElement: [{ position: 1, name: 'A', item: 'x' }] };
+  const data = { '@context': 'https://schema.org', '@graph': [existingBc] };
+  const newBc = { '@type': 'BreadcrumbList', itemListElement: [] };
+  const out = addBreadcrumbIfMissing(data, newBc);
+  const bcs = out['@graph'].filter(n => n['@type'] === 'BreadcrumbList');
+  assert.equal(bcs.length, 1);
+  assert.deepEqual(bcs[0], existingBc);
+});
+
+test('refreshDateModified updates Article.dateModified to today', () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const data = {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    datePublished: '2026-04-18',
+    dateModified: '2026-04-18'
+  };
+  const out = refreshDateModified(data);
+  assert.equal(out.dateModified, today);
+  assert.equal(out.datePublished, '2026-04-18');
+});
+
+test('refreshDateModified descends into @graph', () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const data = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      { '@type': 'Article', dateModified: '2026-04-18' },
+      { '@type': 'TechArticle', dateModified: '2026-04-18' },
+      { '@type': 'Organization', name: 'X' }
+    ]
+  };
+  const out = refreshDateModified(data);
+  assert.equal(out['@graph'][0].dateModified, today);
+  assert.equal(out['@graph'][1].dateModified, today);
+  assert.equal(out['@graph'][2].dateModified, undefined);
 });
