@@ -68,8 +68,7 @@ func TestApplyCodexOAuthTransform_MessagesBridgePromptCacheKeyIsHeaderOnly(t *te
 	}
 
 	result := applyCodexOAuthTransformWithOptions(reqBody, codexOAuthTransformOptions{
-		SkipDefaultInstructions: true,
-		PreserveToolCallIDs:     true,
+		PreserveToolCallIDs: true,
 	})
 
 	require.Equal(t, "anthropic-metadata-session-1", result.PromptCacheKey)
@@ -932,9 +931,7 @@ func TestApplyCodexOAuthTransform_CodexCLI_PreservesExistingInstructions(t *test
 	_ = result
 }
 
-func TestApplyCodexOAuthTransform_CodexCLI_SuppliesDefaultWhenEmpty(t *testing.T) {
-	// Codex CLI 场景：无 instructions 时补充默认值
-
+func TestApplyCodexOAuthTransform_CodexCLI_UsesEmptyInstructionsWhenMissing(t *testing.T) {
 	reqBody := map[string]any{
 		"model": "gpt-5.1",
 		// 没有 instructions 字段
@@ -942,9 +939,18 @@ func TestApplyCodexOAuthTransform_CodexCLI_SuppliesDefaultWhenEmpty(t *testing.T
 
 	result := applyCodexOAuthTransform(reqBody, true, false) // isCodexCLI=true
 
-	instructions, ok := reqBody["instructions"].(string)
-	require.True(t, ok)
-	require.NotEmpty(t, instructions)
+	require.Equal(t, "", reqBody["instructions"])
+	require.True(t, result.Modified)
+}
+
+func TestApplyCodexOAuthTransform_NonCodexCLI_UsesEmptyInstructionsWhenMissing(t *testing.T) {
+	reqBody := map[string]any{
+		"model": "gpt-5.1",
+	}
+
+	result := applyCodexOAuthTransform(reqBody, false, false)
+
+	require.Equal(t, "", reqBody["instructions"])
 	require.True(t, result.Modified)
 }
 

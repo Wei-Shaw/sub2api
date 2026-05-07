@@ -2137,11 +2137,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		patchDisabled = true
 	}
 
-	// 非透传模式下，instructions 为空时注入默认指令。
-	if isInstructionsEmpty(reqBody) && !compatMessagesBridge {
-		reqBody["instructions"] = "You are a helpful coding assistant."
+	if ensureEmptyInstructionsField(reqBody) {
 		bodyModified = true
-		markPatchSet("instructions", "You are a helpful coding assistant.")
+		markPatchSet("instructions", "")
 	}
 
 	if codexImageGenerationBridgeEnabled && ensureOpenAIResponsesImageGenerationTool(reqBody) {
@@ -2270,10 +2268,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		codexResult := codexTransformResult{}
 		if compatMessagesBridge {
 			codexResult = applyCodexOAuthTransformWithOptions(reqBody, codexOAuthTransformOptions{
-				IsCodexCLI:              isCodexCLI,
-				IsCompact:               isCompactRequest,
-				SkipDefaultInstructions: true,
-				PreserveToolCallIDs:     true,
+				IsCodexCLI:          isCodexCLI,
+				IsCompact:           isCompactRequest,
+				PreserveToolCallIDs: true,
 			})
 			ensureCodexOAuthInstructionsField(reqBody)
 			bodyModified = true
