@@ -25,6 +25,14 @@ const (
 	NonceHTMLPlaceholder = "__CSP_NONCE_VALUE__"
 )
 
+// Served via fs.ReadFile instead of http.FileServer to avoid rare proxy/FileServer
+// edge cases and to set stable Content-Type for crawlers (sitemap / robots / llms).
+var seoStaticFiles = map[string]string{
+	"sitemap.xml": "application/xml; charset=utf-8",
+	"robots.txt":  "text/plain; charset=utf-8",
+	"llms.txt":    "text/plain; charset=utf-8",
+}
+
 //go:embed all:dist
 var frontendFS embed.FS
 
@@ -98,6 +106,10 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 			cleanPath = "index.html"
 		}
 
+		if s.serveSeoStaticIfMatch(c, cleanPath) {
+			return
+		}
+
 		// For index.html or known SPA routes, serve with injected settings.
 		// Unknown frontend paths still receive the app shell, but with a 404 status
 		// so crawlers do not treat arbitrary URLs as valid pages.
@@ -127,6 +139,24 @@ func (s *FrontendServer) fileExists(path string) bool {
 		return false
 	}
 	_ = file.Close()
+	return true
+}
+
+func (s *FrontendServer) serveSeoStaticIfMatch(c *gin.Context, cleanPath string) bool {
+	ct, ok := seoStaticFiles[cleanPath]
+	if !ok {
+		return false
+	}
+	if s.tryServeOverride(c, cleanPath) {
+		return true
+	}
+	b, err := fs.ReadFile(s.distFS, cleanPath)
+	if err != nil {
+		return false
+	}
+	c.Header("Cache-Control", "public, max-age=86400")
+	c.Data(http.StatusOK, ct, b)
+	c.Abort()
 	return true
 }
 
@@ -286,6 +316,10 @@ func ServeEmbeddedFrontend() gin.HandlerFunc {
 			cleanPath = "index.html"
 		}
 
+		if serveSeoStaticLegacy(c, distFS, overrideDir, cleanPath) {
+			return
+		}
+
 		if file, err := distFS.Open(cleanPath); err == nil {
 			_ = file.Close()
 			// Try local override first
@@ -303,6 +337,24 @@ func ServeEmbeddedFrontend() gin.HandlerFunc {
 		}
 		serveIndexHTML(c, distFS, status)
 	}
+}
+
+func serveSeoStaticLegacy(c *gin.Context, distFS fs.FS, overrideDir, cleanPath string) bool {
+	ct, ok := seoStaticFiles[cleanPath]
+	if !ok {
+		return false
+	}
+	if tryServeOverrideFile(c, overrideDir, cleanPath) {
+		return true
+	}
+	b, err := fs.ReadFile(distFS, cleanPath)
+	if err != nil {
+		return false
+	}
+	c.Header("Cache-Control", "public, max-age=86400")
+	c.Data(http.StatusOK, ct, b)
+	c.Abort()
+	return true
 }
 
 // tryServeOverrideFile is a standalone version of tryServeOverride for legacy usage.

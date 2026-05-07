@@ -596,6 +596,36 @@ func TestFrontendServer_Middleware(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Header().Get("Content-Type"), "image/png")
 	})
+
+	t.Run("serves_seo_static_with_explicit_content_type", func(t *testing.T) {
+		provider := &mockSettingsProvider{
+			settings: map[string]string{"test": "value"},
+		}
+
+		server, err := NewFrontendServer(provider)
+		require.NoError(t, err)
+
+		router := gin.New()
+		router.Use(server.Middleware())
+
+		tests := []struct {
+			path string
+			ct   string
+		}{
+			{"/robots.txt", "text/plain"},
+			{"/llms.txt", "text/plain"},
+			{"/sitemap.xml", "application/xml"},
+		}
+		for _, tt := range tests {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusOK, w.Code, tt.path)
+			assert.Contains(t, w.Header().Get("Content-Type"), tt.ct, tt.path)
+			assert.NotEmpty(t, w.Body.String(), tt.path)
+		}
+	})
 }
 
 func TestNewFrontendServer(t *testing.T) {
@@ -649,6 +679,22 @@ func TestServeEmbeddedFrontend(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assert.Contains(t, w.Header().Get("Content-Type"), "image/png")
+	})
+
+	t.Run("serves_seo_static_with_explicit_content_type", func(t *testing.T) {
+		middleware := ServeEmbeddedFrontend()
+
+		router := gin.New()
+		router.Use(middleware)
+
+		for _, path := range []string{"/robots.txt", "/llms.txt", "/sitemap.xml"} {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusOK, w.Code, path)
+			assert.NotEmpty(t, w.Body.String(), path)
+		}
 	})
 
 	t.Run("serves_index_html_for_root", func(t *testing.T) {

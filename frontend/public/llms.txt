@@ -43,7 +43,13 @@
 - Trust, logging, and billing overview: https://tokenprovider.store/trust.html
 - 信任与合规（中文）: https://tokenprovider.store/xinyong.html
 
+## Terms & privacy (public summary)
+
+- Full Terms of Service and Privacy Policy are accepted in-product at registration; the latest legal text is available in the account dashboard after you log in.
+- For a crawler-friendly summary of logging boundaries, billing, refunds posture, and non-affiliation with Anthropic/OpenAI/Google, use the trust pages above.
+
 ## Machine-readable discovery
 
 - Sitemap: https://tokenprovider.store/sitemap.xml
 - Robots: https://tokenprovider.store/robots.txt
+- This file: https://tokenprovider.store/llms.txt
