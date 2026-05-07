@@ -504,6 +504,8 @@ export default {
         passwordPlaceholder: 'Enter password (leave empty to keep unchanged)',
         roleLabel: 'Role',
         selectRole: 'Select role',
+        role: 'Role',
+        roleHint: 'Choose the permission level for this admin-created user.',
         balanceLabel: 'Balance',
         concurrencyLabel: 'Concurrency',
         statusLabel: 'Status',

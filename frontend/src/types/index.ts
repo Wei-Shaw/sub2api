@@ -1879,7 +1879,7 @@ export interface UpdateUserRequest {
   password?: string
   username?: string
   notes?: string
-  role?: 'admin' | 'user'
+  role?: UserRole
   balance?: number
   concurrency?: number
   rpm_limit?: number

@@ -63,6 +63,7 @@ func TestAdminService_CreateUser_UsesDefaultBalanceWhenBalanceOmitted(t *testing
 	require.NoError(t, err)
 	require.NotNil(t, user)
 	require.Equal(t, 0.02, user.Balance)
+	require.Equal(t, RoleUser, user.Role)
 	require.Len(t, repo.created, 1)
 	require.Equal(t, 0.02, repo.created[0].Balance)
 }
@@ -91,6 +92,34 @@ func TestAdminService_CreateUser_ExplicitZeroBalanceOverridesDefault(t *testing.
 	require.Equal(t, 0.0, user.Balance)
 	require.Len(t, repo.created, 1)
 	require.Equal(t, 0.0, repo.created[0].Balance)
+}
+
+func TestAdminService_CreateUser_WithExplicitRole(t *testing.T) {
+	repo := &userRepoStub{nextID: 13}
+	svc := &adminServiceImpl{userRepo: repo}
+
+	user, err := svc.CreateUser(context.Background(), &CreateUserInput{
+		Email:    "marketer@test.com",
+		Password: "strong-pass",
+		Role:     RoleMarketing,
+	})
+	require.NoError(t, err)
+	require.Equal(t, RoleMarketing, user.Role)
+	require.Len(t, repo.created, 1)
+	require.Equal(t, RoleMarketing, repo.created[0].Role)
+}
+
+func TestAdminService_CreateUser_InvalidRole(t *testing.T) {
+	repo := &userRepoStub{nextID: 14}
+	svc := &adminServiceImpl{userRepo: repo}
+
+	_, err := svc.CreateUser(context.Background(), &CreateUserInput{
+		Email:    "invalid-role@test.com",
+		Password: "strong-pass",
+		Role:     "sales",
+	})
+	require.Error(t, err)
+	require.Empty(t, repo.created)
 }
 
 func TestAdminService_CreateUser_EmailExists(t *testing.T) {

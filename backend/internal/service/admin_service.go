@@ -143,7 +143,7 @@ type CreateUserInput struct {
 	Password      string
 	Username      string
 	Notes         string
-	Role          string // 空字符串表示使用默认角色(user);合法值 admin/user
+	Role          string // 空字符串表示使用默认角色(user);合法值 admin/marketing/user
 	Balance       *float64
 	Concurrency   int
 	RPMLimit      int
@@ -157,7 +157,7 @@ type UpdateUserInput struct {
 	Password      string
 	Username      *string
 	Notes         *string
-	Role          string   // 空字符串表示"未提供"(不修改);合法值 admin/user
+	Role          string   // 空字符串表示"未提供"(不修改);合法值 admin/marketing/user
 	Balance       *float64 // 使用指针区分"未提供"和"设置为0"
 	Concurrency   *int     // 使用指针区分"未提供"和"设置为0"
 	RPMLimit      *int     // 使用指针区分"未提供"和"设置为0"

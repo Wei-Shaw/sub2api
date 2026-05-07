@@ -1796,6 +1796,8 @@ export default {
         notesHint: 'Ghi chú này chỉ hiển thị với quản trị viên',
         passwordLabel: 'Mật khẩu',
         passwordPlaceholder: 'Vui lòng nhập mật khẩu (để trống nếu không thay đổi)',
+        role: 'Vai trò',
+        roleHint: 'Chọn cấp quyền cho người dùng này.',
         roleLabel: 'Vai trò',
         selectRole: 'Chọn vai trò',
         balanceLabel: 'Số dư',

@@ -41,7 +41,10 @@ func (s *vclawClaimRedeemRepoStub) Create(ctx context.Context, code *RedeemCode)
 
 func (s *vclawClaimRedeemRepoStub) CreateBatch(context.Context, []RedeemCode) error { return nil }
 func (s *vclawClaimRedeemRepoStub) Update(context.Context, *RedeemCode) error       { return nil }
-func (s *vclawClaimRedeemRepoStub) Delete(context.Context, int64) error             { return nil }
+func (s *vclawClaimRedeemRepoStub) BatchUpdate(context.Context, []int64, RedeemCodeBatchUpdateFields) (int64, error) {
+	return 0, nil
+}
+func (s *vclawClaimRedeemRepoStub) Delete(context.Context, int64) error { return nil }
 func (s *vclawClaimRedeemRepoStub) List(context.Context, pagination.PaginationParams) ([]RedeemCode, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }

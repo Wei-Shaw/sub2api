@@ -572,6 +572,8 @@ export default {
         notesHint: '此备注仅对管理员可见',
         passwordLabel: '密码',
         passwordPlaceholder: '请输入密码（留空则不修改）',
+        role: '角色',
+        roleHint: '选择此用户的权限级别',
         roleLabel: '角色',
         selectRole: '选择角色',
         balanceLabel: '余额',

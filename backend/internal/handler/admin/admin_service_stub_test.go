@@ -27,6 +27,9 @@ type stubAdminService struct {
 	updatedGroups                       []*service.UpdateGroupInput
 	createdAccounts                     []*service.CreateAccountInput
 	createdProxies                      []*service.CreateProxyInput
+	createdUsers                        []*service.CreateUserInput
+	updatedUserIDs                      []int64
+	updatedUsers                        []*service.UpdateUserInput
 	updatedProxyIDs                     []int64
 	updatedProxies                      []*service.UpdateProxyInput
 	testedProxyIDs                      []int64
@@ -176,12 +179,15 @@ func (s *stubAdminService) GetUserIncludeDeleted(ctx context.Context, id int64) 
 }
 
 func (s *stubAdminService) CreateUser(ctx context.Context, input *service.CreateUserInput) (*service.User, error) {
-	user := service.User{ID: 100, Email: input.Email, Status: service.StatusActive}
+	s.createdUsers = append(s.createdUsers, input)
+	user := service.User{ID: 100, Email: input.Email, Role: input.Role, Status: service.StatusActive}
 	return &user, nil
 }
 
 func (s *stubAdminService) UpdateUser(ctx context.Context, id int64, input *service.UpdateUserInput) (*service.User, error) {
-	user := service.User{ID: id, Email: "updated@example.com", Status: service.StatusActive}
+	s.updatedUserIDs = append(s.updatedUserIDs, id)
+	s.updatedUsers = append(s.updatedUsers, input)
+	user := service.User{ID: id, Email: "updated@example.com", Role: input.Role, Status: service.StatusActive}
 	return &user, nil
 }
 

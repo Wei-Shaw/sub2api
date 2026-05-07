@@ -1796,6 +1796,8 @@ export default {
         notesHint: '이 메모는 관리자만 볼 수 있습니다',
         passwordLabel: '비밀번호',
         passwordPlaceholder: '비밀번호를 입력하세요(비워 두면 변경하지 않음)',
+        role: '역할',
+        roleHint: '이 사용자의 권한 수준을 선택합니다.',
         roleLabel: '역할',
         selectRole: '역할 선택',
         balanceLabel: '잔액',
