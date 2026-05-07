@@ -8,7 +8,7 @@
     <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/en.html"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://tokenprovider.store/"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en.html"/>
-    <lastmod>2026-05-07</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
@@ -17,7 +17,7 @@
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://tokenprovider.store/"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/en.html"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en.html"/>
-    <lastmod>2026-05-07</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
@@ -26,7 +26,7 @@
     <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/llms.txt"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://tokenprovider.store/llms.txt"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/llms.txt"/>
-    <lastmod>2026-05-07</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.55</priority>
   </url>
@@ -37,7 +37,7 @@
     <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/compare/claude-vs-chatgpt-api.html"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://tokenprovider.store/compare/claude-vs-chatgpt-api.html"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/compare/claude-vs-chatgpt-api.html"/>
-    <lastmod>2026-05-07</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.85</priority>
   </url>
@@ -45,7 +45,7 @@
     <loc>https://tokenprovider.store/en/compare/claude-code-relay-vs-subscription.html</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/compare/claude-code-relay-vs-subscription.html"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/compare/claude-code-relay-vs-subscription.html"/>
-    <lastmod>2026-05-07</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.85</priority>
   </url>
@@ -53,7 +53,7 @@
     <loc>https://tokenprovider.store/en/compare/tokenprovider-vs-official-claude.html</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/compare/tokenprovider-vs-official-claude.html"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/compare/tokenprovider-vs-official-claude.html"/>
-    <lastmod>2026-05-07</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -62,7 +62,7 @@
     <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/guides/claude-code-setup.html"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://tokenprovider.store/guides/claude-code-setup.html"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/guides/claude-code-setup.html"/>
-    <lastmod>2026-05-07</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.85</priority>
   </url>
@@ -70,7 +70,7 @@
     <loc>https://tokenprovider.store/en/guides/cursor-claude-proxy.html</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/guides/cursor-claude-proxy.html"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/guides/cursor-claude-proxy.html"/>
-    <lastmod>2026-05-07</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -78,7 +78,7 @@
     <loc>https://tokenprovider.store/en/guides/cline-cheap-claude.html</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/guides/cline-cheap-claude.html"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/guides/cline-cheap-claude.html"/>
-    <lastmod>2026-05-07</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -87,7 +87,7 @@
     <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/examples/claude-api-python.html"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://tokenprovider.store/examples/claude-api-python.html"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/examples/claude-api-python.html"/>
-    <lastmod>2026-05-07</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -95,7 +95,7 @@
     <loc>https://tokenprovider.store/en/examples/claude-api-nodejs.html</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/examples/claude-api-nodejs.html"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/examples/claude-api-nodejs.html"/>
-    <lastmod>2026-05-07</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -103,7 +103,7 @@
     <loc>https://tokenprovider.store/en/examples/chatgpt-api-curl.html</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/examples/chatgpt-api-curl.html"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/examples/chatgpt-api-curl.html"/>
-    <lastmod>2026-05-07</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -111,7 +111,7 @@
     <loc>https://tokenprovider.store/en/examples/gemini-api-example.html</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/examples/gemini-api-example.html"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/examples/gemini-api-example.html"/>
-    <lastmod>2026-05-07</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -120,7 +120,7 @@
     <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/glossary/what-is-claude-relay.html"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://tokenprovider.store/glossary/what-is-claude-relay.html"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/glossary/what-is-claude-relay.html"/>
-    <lastmod>2026-05-07</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.75</priority>
   </url>
@@ -128,7 +128,7 @@
     <loc>https://tokenprovider.store/en/glossary/what-is-claude-code.html</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/glossary/what-is-claude-code.html"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/glossary/what-is-claude-code.html"/>
-    <lastmod>2026-05-07</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.75</priority>
   </url>
@@ -136,7 +136,7 @@
     <loc>https://tokenprovider.store/en/glossary/what-is-an-ai-token.html</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/glossary/what-is-an-ai-token.html"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/glossary/what-is-an-ai-token.html"/>
-    <lastmod>2026-05-07</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.75</priority>
   </url>
@@ -147,7 +147,7 @@
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://tokenprovider.store/compare/claude-vs-chatgpt-api.html"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/compare/claude-vs-chatgpt-api.html"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/compare/claude-vs-chatgpt-api.html"/>
-    <lastmod>2026-05-07</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -156,7 +156,7 @@
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://tokenprovider.store/guides/claude-code-setup.html"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/guides/claude-code-setup.html"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/guides/claude-code-setup.html"/>
-    <lastmod>2026-05-07</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -165,7 +165,7 @@
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://tokenprovider.store/examples/claude-api-python.html"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/examples/claude-api-python.html"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/examples/claude-api-python.html"/>
-    <lastmod>2026-05-07</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -174,7 +174,7 @@
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://tokenprovider.store/glossary/what-is-claude-relay.html"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/en/glossary/what-is-claude-relay.html"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/en/glossary/what-is-claude-relay.html"/>
-    <lastmod>2026-05-07</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -185,7 +185,7 @@
     <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/trust.html"/>
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://tokenprovider.store/xinyong.html"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/trust.html"/>
-    <lastmod>2026-05-07</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.65</priority>
   </url>
@@ -194,7 +194,7 @@
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://tokenprovider.store/xinyong.html"/>
     <xhtml:link rel="alternate" hreflang="en" href="https://tokenprovider.store/trust.html"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://tokenprovider.store/trust.html"/>
-    <lastmod>2026-05-07</lastmod>
+    <lastmod>2026-05-08</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.65</priority>
   </url>
