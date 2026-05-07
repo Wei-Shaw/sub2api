@@ -301,13 +301,14 @@ REDACTED
 REDACTED
 
 func TestRedactContentModerationSecrets_LongHexAndTokens(t *testing.T) {
-	input := "你哈市多大事cf5bbdc4cd508f3aaf0d2070d529d4a4ac29099f8ecc357f696df28e1df91554 token=REDACTED Bearer REDACTED"
+	input := "你哈市多大事cf5bbdc4cd508f3aaf0d2070d529d4a4ac29099f8ecc357f696df28e1df91554 token=REDACTED Bearer REDACTED https://example.com/private/path?token=abc123"
 
 	out := redactContentModerationSecrets(input)
 
 	require.NotContains(t, out, "cf5bbdc4cd508f3aaf0d2070d529d4a4ac29099f8ecc357f696df28e1df91554")
 	require.NotContains(t, out, "REDACTED")
 	require.NotContains(t, out, "eyJhbGciOiJIUzI1NiJ9")
+	require.NotContains(t, out, "https://example.com/private/path")
 	require.Contains(t, out, "[已脱敏]")
 REDACTED
 
@@ -318,6 +319,61 @@ func TestContentModerationConfigNormalize_NonHitRetentionMaxThreeDays(t *testing
 	cfg.normalize()
 
 	require.Equal(t, 3, cfg.NonHitRetentionDays)
+REDACTED
+
+func TestContentModerationUpdateConfig_AppendsAndDeletesAPIKeys(t *testing.T) {
+	cfg := defaultContentModerationConfig()
+	cfg.APIKeys = []string{"sk-old-a", "sk-old-b"REDACTED
+	rawCfg, err := json.Marshal(cfg)
+REDACTED
+
+	repo := &contentModerationTestSettingRepo{values: map[string]string{
+		SettingKeyContentModerationConfig: string(rawCfg),
+REDACTEDREDACTED
+	svc := NewContentModerationService(repo, nil, nil, nil, nil, nil, nil)
+	deleteHashes := []string{moderationAPIKeyHash("sk-old-a")REDACTED
+	addKeys := []string{"sk-new-c", "sk-old-b"REDACTED
+
+	view, err := svc.UpdateConfig(context.Background(), UpdateContentModerationConfigInput{
+		APIKeys:            &addKeys,
+		DeleteAPIKeyHashes: &deleteHashes,
+REDACTED)
+
+REDACTED
+	require.Equal(t, 2, view.APIKeyCount)
+	require.Equal(t, []string{maskSecretTail("sk-old-b"), maskSecretTail("sk-new-c")REDACTED, view.APIKeyMasks)
+
+	var saved ContentModerationConfig
+	require.NoError(t, json.Unmarshal([]byte(repo.values[SettingKeyContentModerationConfig]), &saved))
+	require.Equal(t, []string{"sk-old-b", "sk-new-c"REDACTED, saved.apiKeys())
+REDACTED
+
+func TestContentModerationUpdateConfig_ReplacesAPIKeysWhenRequested(t *testing.T) {
+	cfg := defaultContentModerationConfig()
+	cfg.APIKeys = []string{"sk-old-a", "sk-old-b"REDACTED
+	rawCfg, err := json.Marshal(cfg)
+REDACTED
+
+	repo := &contentModerationTestSettingRepo{values: map[string]string{
+		SettingKeyContentModerationConfig: string(rawCfg),
+REDACTEDREDACTED
+	svc := NewContentModerationService(repo, nil, nil, nil, nil, nil, nil)
+	deleteHashes := []string{moderationAPIKeyHash("sk-old-a")REDACTED
+	replaceKeys := []string{"sk-new-only"REDACTED
+
+	view, err := svc.UpdateConfig(context.Background(), UpdateContentModerationConfigInput{
+		APIKeys:            &replaceKeys,
+		APIKeysMode:        contentModerationAPIKeysModeReplace,
+		DeleteAPIKeyHashes: &deleteHashes,
+REDACTED)
+
+REDACTED
+	require.Equal(t, 1, view.APIKeyCount)
+	require.Equal(t, []string{maskSecretTail("sk-new-only")REDACTED, view.APIKeyMasks)
+
+	var saved ContentModerationConfig
+	require.NoError(t, json.Unmarshal([]byte(repo.values[SettingKeyContentModerationConfig]), &saved))
+	require.Equal(t, []string{"sk-new-only"REDACTED, saved.apiKeys())
 REDACTED
 
 func TestExtractContentModerationInput_AnthropicImageSourceOnlyParticipatesInMemory(t *testing.T) {
@@ -393,6 +449,32 @@ REDACTED`)
 
 	require.Equal(t, "replace background", input.Text)
 	require.Equal(t, []string{"https://example.com/source.png", "data:image/png;base64,aGVsbG8="REDACTED, input.Images)
+REDACTED
+
+func TestContentModerationInput_NormalizeRandomSamplesOneImageForModerationAPI(t *testing.T) {
+	images := []string{
+		"data:image/png;base64,Zmlyc3Q=",
+		"data:image/png;base64,c2Vjb25k",
+REDACTED
+	input := ContentModerationInput{
+		Text:   "check image",
+		Images: append([]string(nil), images...),
+REDACTED
+	input.Normalize()
+
+	require.Len(t, input.Images, 1)
+	require.Contains(t, images, input.Images[0])
+	require.Len(t, input.ModerationInput(), 2)
+REDACTED
+
+func TestBuildModerationTestInputRejectsMultipleImages(t *testing.T) {
+	_, _, err := buildModerationTestInput("check image", []string{
+		"data:image/png;base64,Zmlyc3Q=",
+		"data:image/png;base64,c2Vjb25k",
+REDACTED)
+
+REDACTED
+	require.Contains(t, err.Error(), "最多上传 1 张测试图片")
 REDACTED
 
 func TestExtractContentModerationInput_OpenAIResponsesCodexPayloadUsesLastUserMessage(t *testing.T) {
@@ -560,6 +642,105 @@ REDACTED, nil)
 	require.Equal(t, 0.65, result.HighestScore)
 	require.Equal(t, 0.65, result.CompositeScore)
 	require.Equal(t, 0.98, result.Thresholds["harassment"])
+REDACTED
+
+func TestContentModerationCallModeration_400DoesNotFreezeAPIKey(t *testing.T) {
+	requestCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"message":"Number of images (5) exceeds maximum of 1","type":"invalid_request_error","param":"input","code":"too_many_images"REDACTEDREDACTED`))
+REDACTED))
+	defer server.Close()
+
+	cfg := defaultContentModerationConfig()
+	cfg.BaseURL = server.URL
+	cfg.APIKeys = []string{"sk-test"REDACTED
+	cfg.RetryCount = 5
+	svc := NewContentModerationService(nil, nil, nil, nil, nil, nil, nil)
+
+	_, err := svc.callModeration(context.Background(), cfg, "hello")
+
+REDACTED
+	require.Equal(t, 1, requestCount)
+	status := svc.apiKeyStatusForHash(0, moderationAPIKeyHash("sk-test"), maskSecretTail("sk-test"), true)
+	require.Equal(t, "error", status.Status)
+	require.Equal(t, http.StatusBadRequest, status.LastHTTPStatus)
+	require.Zero(t, status.FailureCount)
+	require.Nil(t, status.FrozenUntil)
+REDACTED
+
+func TestContentModerationCallModeration_FreezesByHTTPStatus(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		minFreeze  time.Duration
+		maxFreeze  time.Duration
+REDACTED{
+		{name: "401 freezes ten minutes", statusCode: http.StatusUnauthorized, minFreeze: 9*time.Minute + 55*time.Second, maxFreeze: 10*time.Minute + time.SecondREDACTED,
+		{name: "403 freezes ten minutes", statusCode: http.StatusForbidden, minFreeze: 9*time.Minute + 55*time.Second, maxFreeze: 10*time.Minute + time.SecondREDACTED,
+		{name: "429 freezes one minute", statusCode: http.StatusTooManyRequests, minFreeze: 55 * time.Second, maxFreeze: time.Minute + time.SecondREDACTED,
+		{name: "529 freezes one minute", statusCode: 529, minFreeze: 55 * time.Second, maxFreeze: time.Minute + time.SecondREDACTED,
+		{name: "500 freezes ten seconds", statusCode: http.StatusInternalServerError, minFreeze: 5 * time.Second, maxFreeze: 11 * time.SecondREDACTED,
+REDACTED
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.statusCode)
+				_, _ = w.Write([]byte(`{"error":{"message":"upstream error"REDACTEDREDACTED`))
+		REDACTED))
+			defer server.Close()
+
+			cfg := defaultContentModerationConfig()
+			cfg.BaseURL = server.URL
+			cfg.APIKeys = []string{"sk-test"REDACTED
+			cfg.RetryCount = 0
+			svc := NewContentModerationService(nil, nil, nil, nil, nil, nil, nil)
+
+			_, err := svc.callModeration(context.Background(), cfg, "hello")
+
+		REDACTED
+			status := svc.apiKeyStatusForHash(0, moderationAPIKeyHash("sk-test"), maskSecretTail("sk-test"), true)
+			require.Equal(t, "frozen", status.Status)
+			require.Equal(t, tt.statusCode, status.LastHTTPStatus)
+			require.Equal(t, 1, status.FailureCount)
+			require.NotNil(t, status.FrozenUntil)
+			remaining := time.Until(*status.FrozenUntil)
+			require.GreaterOrEqual(t, remaining, tt.minFreeze)
+			require.LessOrEqual(t, remaining, tt.maxFreeze)
+	REDACTED)
+REDACTED
+REDACTED
+
+func TestContentModerationTestAPIKeys_400DoesNotFreezeAPIKey(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"message":"invalid moderation request"REDACTEDREDACTED`))
+REDACTED))
+	defer server.Close()
+
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{REDACTEDREDACTED,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	result, err := svc.TestAPIKeys(context.Background(), TestContentModerationAPIKeysInput{
+		APIKeys: []string{"sk-test"REDACTED,
+		BaseURL: server.URL,
+		Prompt:  "hello",
+REDACTED)
+
+REDACTED
+	require.Len(t, result.Items, 1)
+	require.Equal(t, "error", result.Items[0].Status)
+	require.Equal(t, http.StatusBadRequest, result.Items[0].LastHTTPStatus)
+	require.Zero(t, result.Items[0].FailureCount)
+	require.Nil(t, result.Items[0].FrozenUntil)
 REDACTED
 
 func TestContentModerationCheck_PreHashUsesRedisHashCache(t *testing.T) {
