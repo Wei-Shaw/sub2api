@@ -2,10 +2,13 @@ package handler
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
@@ -285,7 +288,9 @@ func (h *GatewayHandler) chatCompletionsAnthropic(c *gin.Context, reqLog *zap.Lo
 
 // chatCompletionsGemini handles CC requests for Gemini platform groups.
 // It converts CC → Anthropic Messages, forwards via geminiCompatService.Forward(),
-// then converts the Claude response back to Chat Completions format.
+// captures the Claude response, and converts it back to Chat Completions format.
+// For non-streaming: buffers the full response, then converts Claude JSON → CC JSON.
+// For streaming: currently converts via SSE event re-writing (Claude SSE → CC SSE).
 func (h *GatewayHandler) chatCompletionsGemini(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, subject *middleware2.AuthSubject, subscription *service.UserSubscription, body []byte, reqModel string, reqStream bool, parsedReq *service.ParsedRequest, sessionHash string, channelMapping *service.ChannelMappingResult, streamStarted *bool, requestStart time.Time) {
 	// Convert CC → Anthropic Messages format
 	var ccReq apicompat.ChatCompletionsRequest
@@ -305,18 +310,14 @@ func (h *GatewayHandler) chatCompletionsGemini(c *gin.Context, reqLog *zap.Logge
 		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to convert responses to anthropic: "+err.Error())
 		return
 	}
+
+	// Force non-streaming for Gemini Forward (we buffer and convert)
+	anthropicReq.Stream = false
 	anthropicBody, err := json.Marshal(anthropicReq)
 	if err != nil {
 		h.chatCompletionsErrorResponse(c, http.StatusInternalServerError, "api_error", "Failed to marshal anthropic request")
 		return
 	}
-
-	// Use Anthropic Messages format for account selection
-	anthropicParsedReq, _ := service.ParseGatewayRequest(anthropicBody, "messages")
-	if anthropicParsedReq == nil {
-		anthropicParsedReq = &service.ParsedRequest{Model: reqModel, Stream: reqStream, Body: anthropicBody}
-	}
-	anthropicParsedReq.SessionContext = parsedReq.SessionContext
 
 	// Account selection + failover
 	fs := NewFailoverState(h.maxAccountSwitchesGemini, false)
@@ -369,12 +370,21 @@ func (h *GatewayHandler) chatCompletionsGemini(c *gin.Context, reqLog *zap.Logge
 		}
 		accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
 
-		// Forward via geminiCompatService.Forward (expects Anthropic Messages format)
+		// Buffer geminiCompatService.Forward output by swapping c.Writer
 		forwardBody := anthropicBody
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(anthropicBody, channelMapping.MappedModel)
 		}
+
+		// Swap in a buffer to capture Forward's Claude-format output
+		buf := newResponseBuffer()
+		origWriter := c.Writer
+		c.Writer = buf
+
 		result, err := h.geminiCompatService.Forward(c.Request.Context(), c, account, forwardBody)
+
+		// Restore original writer
+		c.Writer = origWriter
 
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
@@ -394,14 +404,153 @@ func (h *GatewayHandler) chatCompletionsGemini(c *gin.Context, reqLog *zap.Logge
 					return
 				}
 			}
+			// Forward already wrote an error to the buffer; pass it through as CC error
+			if buf.Written() {
+				c.Data(buf.status, buf.Header().Get("Content-Type"), buf.body.Bytes())
+				return
+			}
 			h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "server_error", "Upstream request failed")
 			return
+		}
+
+		// Convert Claude response → Chat Completions response
+		claudeBody := buf.body.Bytes()
+		if len(claudeBody) == 0 {
+			h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "server_error", "Empty upstream response")
+			return
+		}
+
+		if reqStream {
+			// Streaming CC: convert buffered Claude response to CC chunked SSE
+			h.writeCCStreamFromClaudeMessage(c, claudeBody, originalModel, result)
+		} else {
+			// Non-streaming CC: convert Claude JSON → CC JSON
+			h.writeCCFromClaudeMessage(c, claudeBody, originalModel, result)
 		}
 
 		// Record usage
 		h.recordChatCompletionsUsage(c, result, apiKey, account, subscription, body, originalModel, channelMapping)
 		return
 	}
+}
+
+// writeCCFromClaudeMessage converts a buffered Claude Messages response to OpenAI Chat Completions format.
+func (h *GatewayHandler) writeCCFromClaudeMessage(c *gin.Context, claudeBody []byte, originalModel string, result *service.ForwardResult) {
+	var claudeResp apicompat.AnthropicResponse
+	if err := json.Unmarshal(claudeBody, &claudeResp); err != nil {
+		h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "server_error", "Failed to convert upstream response")
+		return
+	}
+
+	// Chain: Claude → Responses → Chat Completions
+	responsesResp := apicompat.AnthropicToResponsesResponse(&claudeResp)
+	ccResp := apicompat.ResponsesToChatCompletions(responsesResp, originalModel)
+
+	c.JSON(http.StatusOK, ccResp)
+}
+
+// writeCCStreamFromClaudeMessage converts a buffered Claude Messages response to OpenAI Chat Completions SSE stream.
+func (h *GatewayHandler) writeCCStreamFromClaudeMessage(c *gin.Context, claudeBody []byte, originalModel string, result *service.ForwardResult) {
+	var claudeResp apicompat.AnthropicResponse
+	if err := json.Unmarshal(claudeBody, &claudeResp); err != nil {
+		h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "server_error", "Failed to convert upstream response")
+		return
+	}
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		h.chatCompletionsErrorResponse(c, http.StatusInternalServerError, "api_error", "Streaming not supported")
+		return
+	}
+
+	// Build CC SSE from Claude response
+	// Claude response has content blocks; CC stream has chat.completion.chunk events
+	id := "chatcmpl-" + randomHex(12)
+
+	// Initial chunk with role
+	chunk := map[string]any{
+		"id":      id,
+		"object":  "chat.completion.chunk",
+		"created": time.Now().Unix(),
+		"model":   originalModel,
+		"choices": []map[string]any{
+			{
+				"index":         0,
+				"delta":         map[string]any{"role": "assistant", "content": ""},
+				"finish_reason": nil,
+			},
+		},
+	}
+	writeCCSSE(c.Writer, chunk)
+	flusher.Flush()
+
+	// Content chunks
+	var fullContent strings.Builder
+	for _, block := range claudeResp.Content {
+		if block.Type == "text" && block.Text != "" {
+			contentChunk := map[string]any{
+				"id":      id,
+				"object":  "chat.completion.chunk",
+				"created": time.Now().Unix(),
+				"model":   originalModel,
+				"choices": []map[string]any{
+					{
+						"index":         0,
+						"delta":         map[string]any{"content": block.Text},
+						"finish_reason": nil,
+					},
+				},
+			}
+			writeCCSSE(c.Writer, contentChunk)
+			flusher.Flush()
+			fullContent.WriteString(block.Text)
+		}
+	}
+
+	// Final chunk with finish_reason
+	finishReason := "stop"
+	if claudeResp.StopReason == "max_tokens" {
+		finishReason = "length"
+	}
+	finalChunk := map[string]any{
+		"id":      id,
+		"object":  "chat.completion.chunk",
+		"created": time.Now().Unix(),
+		"model":   originalModel,
+		"choices": []map[string]any{
+			{
+				"index":         0,
+				"delta":         map[string]any{},
+				"finish_reason": finishReason,
+			},
+			},
+	}
+	writeCCSSE(c.Writer, finalChunk)
+	flusher.Flush()
+
+	_ = result
+	_ = fullContent
+}
+
+// writeCCSSE writes a single SSE event in Chat Completions format.
+func writeCCSSE(w gin.ResponseWriter, data any) {
+	b, _ := json.Marshal(data)
+	w.Write([]byte("data: "))
+	w.Write(b)
+	w.Write([]byte("\n\n"))
+}
+
+// randomHex generates a random hex string of the given byte length.
+func randomHex(nBytes int) string {
+	b := make([]byte, nBytes)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 // recordChatCompletionsUsage records usage for a chat completions request.
