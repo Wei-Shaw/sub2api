@@ -5234,6 +5234,7 @@ export default {
       description: '管理注册、邮箱验证、默认值和 SMTP 设置',
       tabs: {
         general: '通用设置',
+        agreement: '登录条款',
         features: '功能开关',
         security: '安全与认证',
         users: '用户默认值',

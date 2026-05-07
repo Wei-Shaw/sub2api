@@ -5071,6 +5071,7 @@ export default {
       description: 'Manage registration, email verification, default values, and SMTP settings',
       tabs: {
         general: 'General',
+        agreement: 'Agreement',
         features: 'Feature Switches',
         security: 'Security',
         users: 'Users',

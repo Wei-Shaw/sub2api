@@ -117,6 +117,10 @@ REDACTED
 		InvitationCodeEnabled:                  settings.InvitationCodeEnabled,
 		TotpEnabled:                            settings.TotpEnabled,
 		TotpEncryptionKeyConfigured:            h.settingService.IsTotpEncryptionKeyConfigured(),
+		LoginAgreementEnabled:                  settings.LoginAgreementEnabled,
+		LoginAgreementMode:                     settings.LoginAgreementMode,
+		LoginAgreementUpdatedAt:                settings.LoginAgreementUpdatedAt,
+		LoginAgreementDocuments:                loginAgreementDocumentsToDTO(settings.LoginAgreementDocuments),
 		SMTPHost:                               settings.SMTPHost,
 		SMTPPort:                               settings.SMTPPort,
 		SMTPUsername:                           settings.SMTPUsername,
@@ -305,17 +309,50 @@ REDACTED
 	return &service.OpenAIFastPolicySettings{Rules: rulesREDACTED
 REDACTED
 
+func loginAgreementDocumentsToDTO(items []service.LoginAgreementDocument) []dto.LoginAgreementDocument {
+	result := make([]dto.LoginAgreementDocument, 0, len(items))
+	for _, item := range items {
+		result = append(result, dto.LoginAgreementDocument{
+			ID:        item.ID,
+			Title:     item.Title,
+			ContentMD: item.ContentMD,
+	REDACTED)
+REDACTED
+	return result
+REDACTED
+
+func loginAgreementDocumentsToService(items []dto.LoginAgreementDocument) []service.LoginAgreementDocument {
+	result := make([]service.LoginAgreementDocument, 0, len(items))
+	for _, item := range items {
+		title := strings.TrimSpace(item.Title)
+		content := strings.TrimSpace(item.ContentMD)
+		if title == "" && content == "" {
+			continue
+	REDACTED
+		result = append(result, service.LoginAgreementDocument{
+			ID:        strings.TrimSpace(item.ID),
+			Title:     title,
+			ContentMD: content,
+	REDACTED)
+REDACTED
+	return result
+REDACTED
+
 // UpdateSettingsRequest 更新设置请求
 type UpdateSettingsRequest struct {
 	// 注册设置
-	RegistrationEnabled              bool     `json:"registration_enabled"`
-	EmailVerifyEnabled               bool     `json:"email_verify_enabled"`
-	RegistrationEmailSuffixWhitelist []string `json:"registration_email_suffix_whitelist"`
-	PromoCodeEnabled                 bool     `json:"promo_code_enabled"`
-	PasswordResetEnabled             bool     `json:"password_reset_enabled"`
-	FrontendURL                      string   `json:"frontend_url"`
-	InvitationCodeEnabled            bool     `json:"invitation_code_enabled"`
-	TotpEnabled                      bool     `json:"totp_enabled"` // TOTP 双因素认证
+	RegistrationEnabled              bool                         `json:"registration_enabled"`
+	EmailVerifyEnabled               bool                         `json:"email_verify_enabled"`
+	RegistrationEmailSuffixWhitelist []string                     `json:"registration_email_suffix_whitelist"`
+	PromoCodeEnabled                 bool                         `json:"promo_code_enabled"`
+	PasswordResetEnabled             bool                         `json:"password_reset_enabled"`
+	FrontendURL                      string                       `json:"frontend_url"`
+	InvitationCodeEnabled            bool                         `json:"invitation_code_enabled"`
+	TotpEnabled                      bool                         `json:"totp_enabled"` // TOTP 双因素认证
+	LoginAgreementEnabled            bool                         `json:"login_agreement_enabled"`
+	LoginAgreementMode               string                       `json:"login_agreement_mode"`
+	LoginAgreementUpdatedAt          string                       `json:"login_agreement_updated_at"`
+	LoginAgreementDocuments          []dto.LoginAgreementDocument `json:"login_agreement_documents"`
 
 	// 邮件服务设置
 	SMTPHost     string `json:"smtp_host"`
@@ -667,6 +704,44 @@ REDACTED
 			response.BadRequest(c, "Cannot enable TOTP: TOTP_ENCRYPTION_KEY environment variable must be configured first. Generate a key with 'openssl rand -hex 32' and set it in your environment.")
 			return
 	REDACTED
+REDACTED
+	loginAgreementMode := strings.ToLower(strings.TrimSpace(req.LoginAgreementMode))
+	if loginAgreementMode == "" {
+		loginAgreementMode = strings.ToLower(strings.TrimSpace(previousSettings.LoginAgreementMode))
+REDACTED
+	switch loginAgreementMode {
+	case "", "modal":
+		loginAgreementMode = "modal"
+	case "checkbox":
+	default:
+		response.BadRequest(c, "Login agreement mode must be modal or checkbox")
+		return
+REDACTED
+	loginAgreementUpdatedAt := strings.TrimSpace(req.LoginAgreementUpdatedAt)
+	if loginAgreementUpdatedAt == "" {
+		loginAgreementUpdatedAt = strings.TrimSpace(previousSettings.LoginAgreementUpdatedAt)
+REDACTED
+	loginAgreementDocuments := loginAgreementDocumentsToService(req.LoginAgreementDocuments)
+	if len(loginAgreementDocuments) == 0 {
+		loginAgreementDocuments = previousSettings.LoginAgreementDocuments
+REDACTED
+	for _, doc := range loginAgreementDocuments {
+		if strings.TrimSpace(doc.Title) == "" {
+			response.BadRequest(c, "Login agreement document title is required")
+			return
+	REDACTED
+		if len(doc.Title) > 80 {
+			response.BadRequest(c, "Login agreement document title is too long (max 80 characters)")
+			return
+	REDACTED
+		if len(doc.ContentMD) > 200*1024 {
+			response.BadRequest(c, "Login agreement document content is too large (max 200KB)")
+			return
+	REDACTED
+REDACTED
+	if req.LoginAgreementEnabled && len(loginAgreementDocuments) == 0 {
+		response.BadRequest(c, "Login agreement documents are required when enabled")
+		return
 REDACTED
 
 	// LinuxDo Connect 参数验证
@@ -1193,6 +1268,10 @@ REDACTED
 		FrontendURL:                      req.FrontendURL,
 		InvitationCodeEnabled:            req.InvitationCodeEnabled,
 		TotpEnabled:                      req.TotpEnabled,
+		LoginAgreementEnabled:            req.LoginAgreementEnabled,
+		LoginAgreementMode:               loginAgreementMode,
+		LoginAgreementUpdatedAt:          loginAgreementUpdatedAt,
+		LoginAgreementDocuments:          loginAgreementDocuments,
 		SMTPHost:                         req.SMTPHost,
 		SMTPPort:                         req.SMTPPort,
 		SMTPUsername:                     req.SMTPUsername,
@@ -1561,6 +1640,10 @@ REDACTED
 		InvitationCodeEnabled:                  updatedSettings.InvitationCodeEnabled,
 		TotpEnabled:                            updatedSettings.TotpEnabled,
 		TotpEncryptionKeyConfigured:            h.settingService.IsTotpEncryptionKeyConfigured(),
+		LoginAgreementEnabled:                  updatedSettings.LoginAgreementEnabled,
+		LoginAgreementMode:                     updatedSettings.LoginAgreementMode,
+		LoginAgreementUpdatedAt:                updatedSettings.LoginAgreementUpdatedAt,
+		LoginAgreementDocuments:                loginAgreementDocumentsToDTO(updatedSettings.LoginAgreementDocuments),
 		SMTPHost:                               updatedSettings.SMTPHost,
 		SMTPPort:                               updatedSettings.SMTPPort,
 		SMTPUsername:                           updatedSettings.SMTPUsername,
@@ -1771,6 +1854,18 @@ REDACTED
 REDACTED
 	if before.TotpEnabled != after.TotpEnabled {
 		changed = append(changed, "totp_enabled")
+REDACTED
+	if before.LoginAgreementEnabled != after.LoginAgreementEnabled {
+		changed = append(changed, "login_agreement_enabled")
+REDACTED
+	if before.LoginAgreementMode != after.LoginAgreementMode {
+		changed = append(changed, "login_agreement_mode")
+REDACTED
+	if before.LoginAgreementUpdatedAt != after.LoginAgreementUpdatedAt {
+		changed = append(changed, "login_agreement_updated_at")
+REDACTED
+	if !equalLoginAgreementDocuments(before.LoginAgreementDocuments, after.LoginAgreementDocuments) {
+		changed = append(changed, "login_agreement_documents")
 REDACTED
 	if before.SMTPHost != after.SMTPHost {
 		changed = append(changed, "smtp_host")
@@ -2266,6 +2361,18 @@ func equalDefaultSubscriptions(a, b []service.DefaultSubscriptionSetting) bool {
 REDACTED
 	for i := range a {
 		if a[i].GroupID != b[i].GroupID || a[i].ValidityDays != b[i].ValidityDays {
+			return false
+	REDACTED
+REDACTED
+	return true
+REDACTED
+
+func equalLoginAgreementDocuments(a, b []service.LoginAgreementDocument) bool {
+	if len(a) != len(b) {
+		return false
+REDACTED
+	for i := range a {
+		if a[i].ID != b[i].ID || a[i].Title != b[i].Title || a[i].ContentMD != b[i].ContentMD {
 			return false
 	REDACTED
 REDACTED
