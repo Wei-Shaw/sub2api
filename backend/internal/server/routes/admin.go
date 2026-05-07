@@ -92,8 +92,25 @@ func RegisterAdminRoutes(
 		// 渠道监控
 		registerChannelMonitorRoutes(admin, h)
 
+		// 风控中心
+		registerContentModerationRoutes(admin, h)
+
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
+	}
+}
+
+func registerContentModerationRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	risk := admin.Group("/risk-control")
+	{
+		risk.GET("/config", h.Admin.ContentModeration.GetConfig)
+		risk.PUT("/config", h.Admin.ContentModeration.UpdateConfig)
+		risk.POST("/api-keys/test", h.Admin.ContentModeration.TestAPIKeys)
+		risk.GET("/status", h.Admin.ContentModeration.GetStatus)
+		risk.GET("/logs", h.Admin.ContentModeration.ListLogs)
+		risk.POST("/users/:user_id/unban", h.Admin.ContentModeration.UnbanUser)
+		risk.DELETE("/hashes", h.Admin.ContentModeration.DeleteFlaggedHash)
+		risk.DELETE("/hashes/all", h.Admin.ContentModeration.ClearFlaggedHashes)
 	}
 }
 

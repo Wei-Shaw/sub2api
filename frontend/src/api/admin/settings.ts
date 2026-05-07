@@ -444,6 +444,7 @@ export interface SystemSettings {
 
   // Payment configuration
   payment_enabled: boolean;
+  risk_control_enabled: boolean;
   payment_min_amount: number;
   payment_max_amount: number;
   payment_daily_limit: number;
@@ -613,6 +614,7 @@ export interface UpdateSettingsRequest {
   enable_anthropic_cache_ttl_1h_injection?: boolean;
   // Payment configuration
   payment_enabled?: boolean;
+  risk_control_enabled?: boolean;
   payment_min_amount?: number;
   payment_max_amount?: number;
   payment_daily_limit?: number;
