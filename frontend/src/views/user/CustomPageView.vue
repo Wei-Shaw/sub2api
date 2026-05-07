@@ -197,6 +197,29 @@ function generateHeadingId(text: string, index: number): string {
   return base ? `${base}-${index}` : `heading-${index}`
 }
 
+function isRelativeMarkdownAsset(src: string): boolean {
+  const trimmed = src.trim()
+  if (!trimmed || /^[a-z][a-z0-9+.-]*:/i.test(trimmed) || trimmed.startsWith('//') || trimmed.startsWith('/')) {
+    return false
+  }
+  const [pathPart] = trimmed.split(/([?#].*)/, 2)
+  return pathPart
+    .split('/')
+    .filter((part) => part && part !== '.')
+    .every((part) => part !== '..' && !part.includes('\\'))
+}
+
+function buildPageImageUrl(slug: string, src: string): string {
+  const trimmed = src.trim()
+  const [pathPart, suffix = ''] = trimmed.split(/([?#].*)/, 2)
+  const encodedPath = pathPart
+    .split('/')
+    .filter((part) => part && part !== '.')
+    .map((part) => encodeURIComponent(part))
+    .join('/')
+  return `/api/v1/pages/${encodeURIComponent(slug)}/images/${encodedPath}${suffix}`
+}
+
 async function fetchAndRenderMarkdown(slug: string) {
   loading.value = true
   tocItems.value = []
@@ -212,8 +235,8 @@ async function fetchAndRenderMarkdown(slug: string) {
     let raw = await resp.text()
 
     raw = raw.replace(
-      /!\[([^\]]*)\]\((?!https?:\/\/)([^)]+)\)/g,
-      (_, alt, src) => `![${alt}](/api/v1/pages/${slug}/images/${src})`
+      /!\[([^\]]*)\]\(([^)]+)\)/g,
+      (match, alt, src) => isRelativeMarkdownAsset(src) ? `![${alt}](${buildPageImageUrl(slug, src)})` : match
     )
 
     const html = marked.parse(raw) as string
