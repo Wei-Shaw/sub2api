@@ -16,6 +16,7 @@ func RegisterPaymentRoutes(
 	paymentHandler *handler.PaymentHandler,
 	webhookHandler *handler.PaymentWebhookHandler,
 	adminPaymentHandler *admin.PaymentHandler,
+	adminInvoiceHandler *admin.InvoiceHandler,
 	jwtAuth middleware.JWTAuthMiddleware,
 	adminAuth middleware.AdminAuthMiddleware,
 	settingService *service.SettingService,
@@ -63,6 +64,9 @@ func RegisterPaymentRoutes(
 		{
 			requests.GET("", paymentHandler.ListInvoiceRequests)
 			requests.POST("", paymentHandler.CreateInvoiceRequest)
+			requests.GET("/:id", paymentHandler.GetInvoiceRequest)
+			requests.DELETE("/:id", paymentHandler.CancelInvoiceRequest)
+			requests.GET("/:id/file", paymentHandler.DownloadInvoiceFile)
 		}
 	}
 
@@ -91,6 +95,16 @@ func RegisterPaymentRoutes(
 	adminGroup := v1.Group("/admin/payment")
 	adminGroup.Use(gin.HandlerFunc(adminAuth))
 	{
+		// Invoice management
+		adminInvoices := adminGroup.Group("/invoices")
+		{
+			adminInvoices.GET("", adminInvoiceHandler.ListInvoiceRequests)
+			adminInvoices.GET("/:id", adminInvoiceHandler.GetInvoiceRequest)
+			adminInvoices.POST("/:id/complete", adminInvoiceHandler.CompleteInvoiceRequest)
+			adminInvoices.POST("/:id/reject", adminInvoiceHandler.RejectInvoiceRequest)
+			adminInvoices.GET("/:id/file", adminInvoiceHandler.DownloadInvoiceFile)
+		}
+
 		// Dashboard
 		adminGroup.GET("/dashboard", adminPaymentHandler.GetDashboard)
 

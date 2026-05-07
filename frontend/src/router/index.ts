@@ -634,6 +634,19 @@ const routes: RouteRecordRaw[] = [
       requiresPayment: true
     }
   },
+  {
+    path: '/admin/invoices',
+    name: 'AdminInvoices',
+    component: () => import('@/views/admin/AdminInvoicesView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Invoice Management',
+      titleKey: 'invoice.admin.title',
+      descriptionKey: 'invoice.admin.description',
+      requiresPayment: true
+    }
+  },
 
   // ==================== 404 Not Found ====================
   {

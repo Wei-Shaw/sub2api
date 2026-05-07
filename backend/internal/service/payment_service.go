@@ -182,12 +182,23 @@ type PaymentService struct {
 	groupRepo        GroupRepository
 	resumeService    *PaymentResumeService
 	affiliateService *AffiliateService
+	invoiceNotifier  *NotificationService // optional, set via SetInvoiceNotifier
 }
 
 func NewPaymentService(entClient *dbent.Client, registry *payment.Registry, loadBalancer payment.LoadBalancer, redeemService *RedeemService, subscriptionSvc *SubscriptionService, configService *PaymentConfigService, userRepo UserRepository, groupRepo GroupRepository, affiliateService *AffiliateService) *PaymentService {
 	svc := &PaymentService{entClient: entClient, registry: registry, loadBalancer: newVisibleMethodLoadBalancer(loadBalancer, configService), redeemService: redeemService, subscriptionSvc: subscriptionSvc, configService: configService, userRepo: userRepo, groupRepo: groupRepo, affiliateService: affiliateService}
 	svc.resumeService = psNewPaymentResumeService(configService)
 	return svc
+}
+
+// SetInvoiceNotifier injects the notification service used for invoice/refund hooks.
+// This is intentionally a setter (not a constructor arg) to avoid widening
+// NewPaymentService's signature. Pass nil to disable in-app notifications.
+func (s *PaymentService) SetInvoiceNotifier(n *NotificationService) {
+	if s == nil {
+		return
+	}
+	s.invoiceNotifier = n
 }
 
 // --- Provider Registry ---

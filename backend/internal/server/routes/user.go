@@ -96,6 +96,15 @@ func RegisterUserRoutes(
 			announcements.POST("/:id/read", h.Announcement.MarkRead)
 		}
 
+		// 站内通知
+		notifications := authenticated.Group("/notifications")
+		{
+			notifications.GET("", h.Notification.List)
+			notifications.GET("/unread-count", h.Notification.UnreadCount)
+			notifications.POST("/:id/read", h.Notification.MarkRead)
+			notifications.POST("/read-all", h.Notification.MarkAllRead)
+		}
+
 		// 卡密兑换
 		redeem := authenticated.Group("/redeem")
 		{

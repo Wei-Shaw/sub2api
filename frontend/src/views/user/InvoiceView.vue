@@ -107,6 +107,13 @@
                     <span :class="statusBadgeClass(request.status)">
                       {{ t(`invoice.status.${request.status}`) }}
                     </span>
+                    <span
+                      v-if="request.has_refunded_orders"
+                      class="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                      :title="t('invoice.refundCoupling.tooltip')"
+                    >
+                      {{ t('invoice.refundCoupling.badge') }}
+                    </span>
                   </div>
                   <div class="grid gap-x-8 gap-y-1 text-sm text-gray-600 dark:text-gray-300 md:grid-cols-2">
                     <div>
@@ -146,6 +153,35 @@
                   {{ order.out_trade_no }}
                 </span>
               </div>
+
+              <div class="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3 dark:border-dark-700">
+                <span v-if="request.invoice_no" class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('invoice.fields.invoiceNo') }}:
+                  <span class="ml-1 font-mono font-medium text-gray-700 dark:text-gray-200">{{ request.invoice_no }}</span>
+                </span>
+                <div class="ml-auto flex gap-2">
+                  <button
+                    v-if="request.status === 'completed' && request.has_file"
+                    type="button"
+                    class="btn btn-secondary btn-sm"
+                    :disabled="downloadingId === request.id"
+                    @click="downloadInvoice(request)"
+                  >
+                    <Icon name="download" size="sm" class="mr-1" />
+                    {{ downloadingId === request.id ? t('common.processing') : t('invoice.actions.downloadFile') }}
+                  </button>
+                  <button
+                    v-if="request.status === 'pending'"
+                    type="button"
+                    class="btn btn-secondary btn-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                    :disabled="cancellingId === request.id"
+                    @click="cancelTarget = request"
+                  >
+                    <Icon name="x" size="sm" class="mr-1" />
+                    {{ t('invoice.actions.cancelRequest') }}
+                  </button>
+                </div>
+              </div>
             </article>
           </div>
 
@@ -184,6 +220,12 @@
                   <h3 class="truncate text-base font-semibold text-gray-900 dark:text-white">{{ profile.title }}</h3>
                   <span v-if="profile.is_default" class="rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
                     {{ t('invoice.profiles.default') }}
+                  </span>
+                  <span
+                    class="rounded-full px-2 py-0.5 text-xs font-medium"
+                    :class="profile.invoice_type === 'vat_special' ? 'bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300' : 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-300'"
+                  >
+                    {{ t(`invoice.invoiceTypes.${profile.invoice_type || 'general'}`) }}
                   </span>
                 </div>
                 <p class="mt-1 break-all font-mono text-sm text-gray-600 dark:text-gray-300">{{ profile.tax_number }}</p>
@@ -356,33 +398,76 @@
       @close="closeProfileDialog"
     >
       <form class="grid gap-4 md:grid-cols-2" @submit.prevent="submitProfile">
+        <div class="md:col-span-2">
+          <label class="input-label">{{ t('invoice.fields.invoiceType') }}</label>
+          <div class="mt-2 flex flex-wrap gap-2">
+            <label
+              v-for="opt in invoiceTypeOptions"
+              :key="opt.value"
+              class="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm transition-colors hover:border-primary-300 dark:border-dark-700 dark:hover:border-primary-700"
+              :class="profileForm.invoice_type === opt.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-500 dark:bg-primary-900/20 dark:text-primary-300' : 'text-gray-600 dark:text-gray-300'"
+            >
+              <input
+                v-model="profileForm.invoice_type"
+                type="radio"
+                class="h-4 w-4"
+                :value="opt.value"
+              />
+              <span>{{ opt.label }}</span>
+            </label>
+          </div>
+          <p v-if="isVATSpecial" class="mt-2 text-xs text-amber-600 dark:text-amber-400">
+            {{ t('invoice.profiles.vatRequiredHint') }}
+          </p>
+        </div>
         <div>
-          <label class="input-label">{{ t('invoice.fields.title') }}</label>
+          <label class="input-label">
+            {{ t('invoice.fields.title') }}
+            <span class="text-red-500">*</span>
+          </label>
           <input v-model="profileForm.title" type="text" class="input mt-1 w-full" maxlength="255" required />
         </div>
         <div>
-          <label class="input-label">{{ t('invoice.fields.taxNumber') }}</label>
+          <label class="input-label">
+            {{ t('invoice.fields.taxNumber') }}
+            <span class="text-red-500">*</span>
+          </label>
           <input v-model="profileForm.tax_number" type="text" class="input mt-1 w-full" maxlength="64" required />
         </div>
         <div>
-          <label class="input-label">{{ t('invoice.fields.email') }}</label>
+          <label class="input-label">
+            {{ t('invoice.fields.email') }}
+            <span class="text-red-500">*</span>
+          </label>
           <input v-model="profileForm.email" type="email" class="input mt-1 w-full" maxlength="255" required />
         </div>
         <div>
-          <label class="input-label">{{ t('invoice.fields.phone') }}</label>
-          <input v-model="profileForm.phone" type="text" class="input mt-1 w-full" maxlength="64" />
+          <label class="input-label">
+            {{ t('invoice.fields.phone') }}
+            <span v-if="isVATSpecial" class="text-red-500">*</span>
+          </label>
+          <input v-model="profileForm.phone" type="text" class="input mt-1 w-full" maxlength="64" :required="isVATSpecial" />
         </div>
         <div>
-          <label class="input-label">{{ t('invoice.fields.bankName') }}</label>
-          <input v-model="profileForm.bank_name" type="text" class="input mt-1 w-full" maxlength="255" />
+          <label class="input-label">
+            {{ t('invoice.fields.bankName') }}
+            <span v-if="isVATSpecial" class="text-red-500">*</span>
+          </label>
+          <input v-model="profileForm.bank_name" type="text" class="input mt-1 w-full" maxlength="255" :required="isVATSpecial" />
         </div>
         <div>
-          <label class="input-label">{{ t('invoice.fields.bankAccount') }}</label>
-          <input v-model="profileForm.bank_account" type="text" class="input mt-1 w-full" maxlength="128" />
+          <label class="input-label">
+            {{ t('invoice.fields.bankAccount') }}
+            <span v-if="isVATSpecial" class="text-red-500">*</span>
+          </label>
+          <input v-model="profileForm.bank_account" type="text" class="input mt-1 w-full" maxlength="128" :required="isVATSpecial" />
         </div>
         <div class="md:col-span-2">
-          <label class="input-label">{{ t('invoice.fields.address') }}</label>
-          <input v-model="profileForm.address" type="text" class="input mt-1 w-full" maxlength="500" />
+          <label class="input-label">
+            {{ t('invoice.fields.address') }}
+            <span v-if="isVATSpecial" class="text-red-500">*</span>
+          </label>
+          <input v-model="profileForm.address" type="text" class="input mt-1 w-full" maxlength="500" :required="isVATSpecial" />
         </div>
       </form>
       <template #footer>
@@ -403,6 +488,16 @@
       danger
       @confirm="confirmDeleteProfile"
       @cancel="deleteTarget = null"
+    />
+
+    <ConfirmDialog
+      :show="!!cancelTarget"
+      :title="t('invoice.actions.cancelRequest')"
+      :message="t('invoice.messages.cancelConfirm', { serial: cancelTarget?.serial_no || '' })"
+      :confirm-text="t('invoice.actions.cancelRequest')"
+      danger
+      @confirm="confirmCancelRequest"
+      @cancel="cancelTarget = null"
     />
   </AppLayout>
 </template>
@@ -441,6 +536,7 @@ interface ProfileForm {
   phone: string
   bank_name: string
   bank_account: string
+  invoice_type: 'general' | 'vat_special'
 }
 
 const { t } = useI18n()
@@ -462,6 +558,9 @@ const selectedProfileId = ref<number | null>(null)
 const profileDialogOpen = ref(false)
 const editingProfile = ref<InvoiceProfile | null>(null)
 const deleteTarget = ref<InvoiceProfile | null>(null)
+const cancelTarget = ref<InvoiceRequest | null>(null)
+const cancellingId = ref<number | null>(null)
+const downloadingId = ref<number | null>(null)
 
 const requestPagination = reactive({ page: 1, page_size: 20, total: 0 })
 const orderPagination = reactive({ page: 1, page_size: 20, total: 0 })
@@ -482,8 +581,16 @@ const profileForm = reactive<ProfileForm>({
   address: '',
   phone: '',
   bank_name: '',
-  bank_account: ''
+  bank_account: '',
+  invoice_type: 'general'
 })
+
+const invoiceTypeOptions = computed(() => [
+  { value: 'general' as const, label: t('invoice.invoiceTypes.general') },
+  { value: 'vat_special' as const, label: t('invoice.invoiceTypes.vat_special') }
+])
+
+const isVATSpecial = computed(() => profileForm.invoice_type === 'vat_special')
 
 const tabs = computed<Array<{ value: InvoiceTab; label: string; icon: TabIcon }>>(() => [
   { value: 'requests', label: t('invoice.tabs.requests'), icon: 'document' },
@@ -734,6 +841,7 @@ function openEditProfile(profile: InvoiceProfile) {
   profileForm.phone = profile.phone || ''
   profileForm.bank_name = profile.bank_name || ''
   profileForm.bank_account = profile.bank_account || ''
+  profileForm.invoice_type = profile.invoice_type || 'general'
   profileDialogOpen.value = true
 }
 
@@ -751,6 +859,7 @@ function resetProfileForm() {
   profileForm.phone = ''
   profileForm.bank_name = ''
   profileForm.bank_account = ''
+  profileForm.invoice_type = 'general'
 }
 
 async function submitProfile() {
@@ -789,6 +898,48 @@ async function confirmDeleteProfile() {
   }
 }
 
+async function confirmCancelRequest() {
+  if (!cancelTarget.value) return
+  const target = cancelTarget.value
+  cancellingId.value = target.id
+  try {
+    await invoiceAPI.cancelRequest(target.id)
+    appStore.showSuccess(t('invoice.messages.cancelled'))
+    cancelTarget.value = null
+    await Promise.all([fetchRequests(), fetchInvoiceableOrders()])
+  } catch (err: unknown) {
+    showInvoiceError(err)
+  } finally {
+    cancellingId.value = null
+  }
+}
+
+async function downloadInvoice(request: InvoiceRequest) {
+  if (downloadingId.value !== null) return
+  downloadingId.value = request.id
+  try {
+    const res = await invoiceAPI.downloadFile(request.id)
+    const blob = res.data instanceof Blob ? res.data : new Blob([res.data as BlobPart])
+    const filename = request.invoice_file_name || `invoice_${request.serial_no}`
+    triggerBlobDownload(blob, filename)
+  } catch (err: unknown) {
+    showInvoiceError(err)
+  } finally {
+    downloadingId.value = null
+  }
+}
+
+function triggerBlobDownload(blob: Blob, filename: string) {
+  const url = window.URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  window.URL.revokeObjectURL(url)
+}
+
 async function setDefaultProfile(id: number) {
   actionLoading.value = true
   try {
@@ -817,7 +968,8 @@ function buildProfilePayload(): InvoiceProfilePayload | null {
     address: trimOrNull(profileForm.address),
     phone: trimOrNull(profileForm.phone),
     bank_name: trimOrNull(profileForm.bank_name),
-    bank_account: trimOrNull(profileForm.bank_account)
+    bank_account: trimOrNull(profileForm.bank_account),
+    invoice_type: profileForm.invoice_type
   }
 }
 

@@ -41,5 +41,26 @@ export const invoiceAPI = {
 
   listRequests(params?: InvoiceRequestListParams) {
     return apiClient.get<BasePaginationResponse<InvoiceRequest>>('/invoice/requests', { params })
+  },
+
+  getRequest(id: number) {
+    return apiClient.get<InvoiceRequest>(`/invoice/requests/${id}`)
+  },
+
+  cancelRequest(id: number) {
+    return apiClient.delete(`/invoice/requests/${id}`)
+  },
+
+  /**
+   * Returns the URL for downloading the user's invoice file.
+   * The endpoint requires JWT auth — use this with apiClient.get if you need a Blob,
+   * or open in a new tab via window.open which forwards cookies/headers.
+   */
+  buildDownloadURL(id: number): string {
+    return `/api/v1/invoice/requests/${id}/file`
+  },
+
+  downloadFile(id: number) {
+    return apiClient.get<Blob>(`/invoice/requests/${id}/file`, { responseType: 'blob' })
   }
 }

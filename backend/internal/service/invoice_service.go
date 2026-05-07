@@ -21,7 +21,17 @@ const (
 	InvoiceStatusRejected  = "rejected"
 
 	maxInvoiceOrdersPerRequest = 100
+
+	// Invoice profile types.
+	InvoiceTypeGeneral    = "general"     // 普通发票
+	InvoiceTypeVATSpecial = "vat_special" // 增值税专用发票
 )
+
+// validInvoiceTypes lists all allowed invoice_type values.
+var validInvoiceTypes = map[string]bool{
+	InvoiceTypeGeneral:    true,
+	InvoiceTypeVATSpecial: true,
+}
 
 type InvoiceProfile struct {
 	ID          int64     `json:"id"`
@@ -33,6 +43,7 @@ type InvoiceProfile struct {
 	Phone       *string   `json:"phone,omitempty"`
 	BankName    *string   `json:"bank_name,omitempty"`
 	BankAccount *string   `json:"bank_account,omitempty"`
+	InvoiceType string    `json:"invoice_type"`
 	IsDefault   bool      `json:"is_default"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
@@ -46,6 +57,7 @@ type InvoiceProfileInput struct {
 	Phone       *string `json:"phone"`
 	BankName    *string `json:"bank_name"`
 	BankAccount *string `json:"bank_account"`
+	InvoiceType string  `json:"invoice_type"`
 }
 
 type InvoiceProfileSnapshot struct {
@@ -56,6 +68,7 @@ type InvoiceProfileSnapshot struct {
 	Phone       *string `json:"phone,omitempty"`
 	BankName    *string `json:"bank_name,omitempty"`
 	BankAccount *string `json:"bank_account,omitempty"`
+	InvoiceType string  `json:"invoice_type,omitempty"`
 }
 
 type InvoiceRequest struct {
@@ -71,6 +84,27 @@ type InvoiceRequest struct {
 	UpdatedAt       time.Time              `json:"updated_at"`
 	CompletedAt     *time.Time             `json:"completed_at,omitempty"`
 	Orders          []InvoiceRequestOrder  `json:"orders"`
+
+	// Admin-processing fields
+	InvoiceNo       *string    `json:"invoice_no,omitempty"`
+	InvoiceFileName *string    `json:"invoice_file_name,omitempty"`
+	InvoiceFileSize *int64     `json:"invoice_file_size,omitempty"`
+	InvoiceFileMime *string    `json:"invoice_file_mime,omitempty"`
+	HasFile         bool       `json:"has_file"`
+	ProcessedBy     *int64     `json:"processed_by,omitempty"`
+	ProcessedAt     *time.Time `json:"processed_at,omitempty"`
+
+	// Refund coupling fields (set automatically when associated orders are refunded)
+	HasRefundedOrders bool       `json:"has_refunded_orders"`
+	VoidedAt          *time.Time `json:"voided_at,omitempty"`
+	VoidedReason      *string    `json:"voided_reason,omitempty"`
+}
+
+// AdminInvoiceRequest extends InvoiceRequest with the requester's basic info (admin view only).
+type AdminInvoiceRequest struct {
+	InvoiceRequest
+	Username  string `json:"username,omitempty"`
+	UserEmail string `json:"user_email,omitempty"`
 }
 
 type InvoiceRequestOrder struct {
@@ -117,6 +151,14 @@ func normalizeInvoiceProfileInput(input InvoiceProfileInput) (InvoiceProfileInpu
 	input.BankName = normalizeOptionalString(input.BankName)
 	input.BankAccount = normalizeOptionalString(input.BankAccount)
 
+	input.InvoiceType = strings.TrimSpace(input.InvoiceType)
+	if input.InvoiceType == "" {
+		input.InvoiceType = InvoiceTypeGeneral
+	}
+	if !validInvoiceTypes[input.InvoiceType] {
+		return input, infraerrors.BadRequest("INVOICE_TYPE_INVALID", "invoice type is invalid")
+	}
+
 	switch {
 	case input.Title == "":
 		return input, infraerrors.BadRequest("INVOICE_TITLE_REQUIRED", "invoice title is required")
@@ -133,6 +175,22 @@ func normalizeInvoiceProfileInput(input InvoiceProfileInput) (InvoiceProfileInpu
 	}
 	if _, err := mail.ParseAddress(input.Email); err != nil {
 		return input, infraerrors.BadRequest("INVOICE_EMAIL_INVALID", "invoice email is invalid")
+	}
+
+	// VAT special invoice (增值税专用发票) requires bank info and registered address.
+	if input.InvoiceType == InvoiceTypeVATSpecial {
+		if input.Address == nil || strings.TrimSpace(*input.Address) == "" {
+			return input, infraerrors.BadRequest("INVOICE_VAT_ADDRESS_REQUIRED", "registered address is required for VAT special invoice")
+		}
+		if input.Phone == nil || strings.TrimSpace(*input.Phone) == "" {
+			return input, infraerrors.BadRequest("INVOICE_VAT_PHONE_REQUIRED", "phone is required for VAT special invoice")
+		}
+		if input.BankName == nil || strings.TrimSpace(*input.BankName) == "" {
+			return input, infraerrors.BadRequest("INVOICE_VAT_BANK_NAME_REQUIRED", "bank name is required for VAT special invoice")
+		}
+		if input.BankAccount == nil || strings.TrimSpace(*input.BankAccount) == "" {
+			return input, infraerrors.BadRequest("INVOICE_VAT_BANK_ACCOUNT_REQUIRED", "bank account is required for VAT special invoice")
+		}
 	}
 	return input, nil
 }
@@ -157,8 +215,12 @@ func invoiceSnapshotFromProfile(profile InvoiceProfile) InvoiceProfileSnapshot {
 		Phone:       profile.Phone,
 		BankName:    profile.BankName,
 		BankAccount: profile.BankAccount,
+		InvoiceType: profile.InvoiceType,
 	}
 }
+
+// invoiceProfileColumns lists the columns selected from invoice_profiles in scan-order.
+const invoiceProfileColumns = `id, user_id, title, tax_number, email, address, phone, bank_name, bank_account, invoice_type, is_default, created_at, updated_at`
 
 func scanInvoiceProfile(scanner interface {
 	Scan(dest ...any) error
@@ -174,6 +236,7 @@ func scanInvoiceProfile(scanner interface {
 		&profile.Phone,
 		&profile.BankName,
 		&profile.BankAccount,
+		&profile.InvoiceType,
 		&profile.IsDefault,
 		&profile.CreatedAt,
 		&profile.UpdatedAt,
@@ -189,7 +252,7 @@ func (s *PaymentService) ListInvoiceProfiles(ctx context.Context, userID int64) 
 		return nil, err
 	}
 	rows, err := db.QueryContext(ctx, `
-		SELECT id, user_id, title, tax_number, email, address, phone, bank_name, bank_account, is_default, created_at, updated_at
+		SELECT `+invoiceProfileColumns+`
 		FROM invoice_profiles
 		WHERE user_id = $1
 		ORDER BY is_default DESC, updated_at DESC, id DESC
@@ -234,10 +297,10 @@ func (s *PaymentService) CreateInvoiceProfile(ctx context.Context, userID int64,
 	}
 
 	profile, err := scanInvoiceProfile(tx.QueryRowContext(ctx, `
-		INSERT INTO invoice_profiles (user_id, title, tax_number, email, address, phone, bank_name, bank_account, is_default)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		RETURNING id, user_id, title, tax_number, email, address, phone, bank_name, bank_account, is_default, created_at, updated_at
-	`, userID, input.Title, input.TaxNumber, input.Email, input.Address, input.Phone, input.BankName, input.BankAccount, existingCount == 0))
+		INSERT INTO invoice_profiles (user_id, title, tax_number, email, address, phone, bank_name, bank_account, invoice_type, is_default)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		RETURNING `+invoiceProfileColumns+`
+	`, userID, input.Title, input.TaxNumber, input.Email, input.Address, input.Phone, input.BankName, input.BankAccount, input.InvoiceType, existingCount == 0))
 	if err != nil {
 		return nil, infraerrors.InternalServer("INVOICE_PROFILE_CREATE_FAILED", "failed to create invoice profile").WithCause(err)
 	}
@@ -265,10 +328,11 @@ func (s *PaymentService) UpdateInvoiceProfile(ctx context.Context, userID, profi
 			phone = $7,
 			bank_name = $8,
 			bank_account = $9,
+			invoice_type = $10,
 			updated_at = NOW()
 		WHERE id = $1 AND user_id = $2
-		RETURNING id, user_id, title, tax_number, email, address, phone, bank_name, bank_account, is_default, created_at, updated_at
-	`, profileID, userID, input.Title, input.TaxNumber, input.Email, input.Address, input.Phone, input.BankName, input.BankAccount))
+		RETURNING `+invoiceProfileColumns+`
+	`, profileID, userID, input.Title, input.TaxNumber, input.Email, input.Address, input.Phone, input.BankName, input.BankAccount, input.InvoiceType))
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, infraerrors.NotFound("INVOICE_PROFILE_NOT_FOUND", "invoice profile not found")
@@ -346,7 +410,7 @@ func (s *PaymentService) SetDefaultInvoiceProfile(ctx context.Context, userID, p
 		UPDATE invoice_profiles
 		SET is_default = true, updated_at = NOW()
 		WHERE id = $1 AND user_id = $2
-		RETURNING id, user_id, title, tax_number, email, address, phone, bank_name, bank_account, is_default, created_at, updated_at
+		RETURNING `+invoiceProfileColumns+`
 	`, profileID, userID))
 	if err != nil {
 		return nil, infraerrors.InternalServer("INVOICE_PROFILE_DEFAULT_FAILED", "failed to set default invoice profile").WithCause(err)
@@ -380,7 +444,7 @@ func (s *PaymentService) CreateInvoiceRequest(ctx context.Context, userID int64,
 	defer rollbackIfActive(tx)
 
 	profile, err := scanInvoiceProfile(tx.QueryRowContext(ctx, `
-		SELECT id, user_id, title, tax_number, email, address, phone, bank_name, bank_account, is_default, created_at, updated_at
+		SELECT `+invoiceProfileColumns+`
 		FROM invoice_profiles
 		WHERE id = $1 AND user_id = $2
 	`, input.ProfileID, userID))
@@ -423,30 +487,14 @@ func (s *PaymentService) CreateInvoiceRequest(ctx context.Context, userID int64,
 	}
 
 	serialNo := generateInvoiceSerialNo()
-	var req InvoiceRequest
-	var profileSnapshotRaw []byte
-	err = tx.QueryRowContext(ctx, `
+	row := tx.QueryRowContext(ctx, `
 		INSERT INTO invoice_requests (user_id, profile_id, serial_no, status, profile_snapshot, total_amount)
 		VALUES ($1, $2, $3, $4, $5::jsonb, $6)
-		RETURNING id, user_id, profile_id, serial_no, status, profile_snapshot, total_amount::float8, reject_reason, created_at, updated_at, completed_at
-	`, userID, input.ProfileID, serialNo, InvoiceStatusPending, string(snapshotBytes), totalAmount).Scan(
-		&req.ID,
-		&req.UserID,
-		&req.ProfileID,
-		&req.SerialNo,
-		&req.Status,
-		&profileSnapshotRaw,
-		&req.TotalAmount,
-		&req.RejectReason,
-		&req.CreatedAt,
-		&req.UpdatedAt,
-		&req.CompletedAt,
-	)
+		RETURNING `+invoiceRequestColumns,
+		userID, input.ProfileID, serialNo, InvoiceStatusPending, string(snapshotBytes), totalAmount)
+	req, err := scanInvoiceRequest(row)
 	if err != nil {
-		return nil, infraerrors.InternalServer("INVOICE_REQUEST_CREATE_FAILED", "failed to create invoice request").WithCause(err)
-	}
-	if err := json.Unmarshal(profileSnapshotRaw, &req.ProfileSnapshot); err != nil {
-		return nil, infraerrors.InternalServer("INVOICE_REQUEST_CREATE_FAILED", "failed to decode invoice profile snapshot").WithCause(err)
+		return nil, err
 	}
 	for _, order := range orders {
 		if _, err := tx.ExecContext(ctx, `
@@ -482,7 +530,7 @@ func (s *PaymentService) ListInvoiceRequests(ctx context.Context, userID int64, 
 	queryArgs := append([]any{}, args...)
 	queryArgs = append(queryArgs, params.PageSize, (params.Page-1)*params.PageSize)
 	rows, err := db.QueryContext(ctx, `
-		SELECT id, user_id, profile_id, serial_no, status, profile_snapshot, total_amount::float8, reject_reason, created_at, updated_at, completed_at
+		SELECT `+invoiceRequestColumns+`
 		FROM invoice_requests
 		`+where+`
 		ORDER BY created_at DESC, id DESC
@@ -563,11 +611,15 @@ func (s *PaymentService) ListInvoiceableOrders(ctx context.Context, userID int64
 	return orders, total, nil
 }
 
+// invoiceRequestColumns is the canonical SELECT list for invoice_requests.
+const invoiceRequestColumns = `id, user_id, profile_id, serial_no, status, profile_snapshot, total_amount::float8, reject_reason, created_at, updated_at, completed_at, invoice_no, invoice_file_path, invoice_file_size, invoice_file_name, invoice_file_mime, processed_by, processed_at, has_refunded_orders, voided_at, voided_reason`
+
 func scanInvoiceRequest(scanner interface {
 	Scan(dest ...any) error
 }) (InvoiceRequest, error) {
 	var req InvoiceRequest
 	var profileSnapshotRaw []byte
+	var filePath sql.NullString
 	if err := scanner.Scan(
 		&req.ID,
 		&req.UserID,
@@ -580,9 +632,20 @@ func scanInvoiceRequest(scanner interface {
 		&req.CreatedAt,
 		&req.UpdatedAt,
 		&req.CompletedAt,
+		&req.InvoiceNo,
+		&filePath,
+		&req.InvoiceFileSize,
+		&req.InvoiceFileName,
+		&req.InvoiceFileMime,
+		&req.ProcessedBy,
+		&req.ProcessedAt,
+		&req.HasRefundedOrders,
+		&req.VoidedAt,
+		&req.VoidedReason,
 	); err != nil {
 		return InvoiceRequest{}, infraerrors.InternalServer("INVOICE_REQUEST_SCAN_FAILED", "failed to scan invoice request").WithCause(err)
 	}
+	req.HasFile = filePath.Valid && filePath.String != ""
 	if len(profileSnapshotRaw) > 0 {
 		if err := json.Unmarshal(profileSnapshotRaw, &req.ProfileSnapshot); err != nil {
 			return InvoiceRequest{}, infraerrors.InternalServer("INVOICE_REQUEST_SCAN_FAILED", "failed to decode invoice profile snapshot").WithCause(err)
