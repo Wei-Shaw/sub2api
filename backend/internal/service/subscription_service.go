@@ -151,12 +151,74 @@ type AssignSubscriptionInput struct {
 	Notes        string
 }
 
+// RestoreSubscriptionSnapshotInput restores an exact subscription snapshot for admin rollback.
+type RestoreSubscriptionSnapshotInput struct {
+	UserID             int64
+	GroupID            int64
+	StartsAt           time.Time
+	ExpiresAt          time.Time
+	Status             string
+	DailyWindowStart   *time.Time
+	WeeklyWindowStart  *time.Time
+	MonthlyWindowStart *time.Time
+	DailyUsageUSD      float64
+	WeeklyUsageUSD     float64
+	MonthlyUsageUSD    float64
+	AssignedBy         *int64
+	AssignedAt         time.Time
+	Notes              string
+}
+
 // AssignSubscription 分配订阅给用户（不允许重复分配）
 func (s *SubscriptionService) AssignSubscription(ctx context.Context, input *AssignSubscriptionInput) (*UserSubscription, error) {
 	sub, _, err := s.assignSubscriptionWithReuse(ctx, input)
 	if err != nil {
 		return nil, err
 	}
+	return sub, nil
+}
+
+// RestoreSubscriptionSnapshot creates a subscription from an exact snapshot.
+func (s *SubscriptionService) RestoreSubscriptionSnapshot(ctx context.Context, input RestoreSubscriptionSnapshotInput) (*UserSubscription, error) {
+	if input.UserID <= 0 || input.GroupID <= 0 {
+		return nil, infraerrors.BadRequest("INVALID_SUBSCRIPTION_RESTORE", "user_id and group_id are required")
+	}
+
+	now := time.Now()
+	sub := &UserSubscription{
+		UserID:             input.UserID,
+		GroupID:            input.GroupID,
+		StartsAt:           input.StartsAt,
+		ExpiresAt:          input.ExpiresAt,
+		Status:             input.Status,
+		DailyWindowStart:   input.DailyWindowStart,
+		WeeklyWindowStart:  input.WeeklyWindowStart,
+		MonthlyWindowStart: input.MonthlyWindowStart,
+		DailyUsageUSD:      input.DailyUsageUSD,
+		WeeklyUsageUSD:     input.WeeklyUsageUSD,
+		MonthlyUsageUSD:    input.MonthlyUsageUSD,
+		AssignedBy:         input.AssignedBy,
+		AssignedAt:         input.AssignedAt,
+		Notes:              input.Notes,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	}
+	if sub.Status == "" {
+		sub.Status = SubscriptionStatusActive
+	}
+	if sub.AssignedAt.IsZero() {
+		sub.AssignedAt = now
+	}
+
+	if err := s.userSubRepo.Create(ctx, sub); err != nil {
+		return nil, err
+	}
+
+	s.InvalidateSubCache(sub.UserID, sub.GroupID)
+	if s.billingCacheService != nil {
+		_ = s.billingCacheService.InvalidateSubscription(ctx, sub.UserID, sub.GroupID)
+	}
+
 	return sub, nil
 }
 

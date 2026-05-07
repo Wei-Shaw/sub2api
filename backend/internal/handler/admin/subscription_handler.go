@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"strconv"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -52,6 +53,24 @@ type BulkAssignSubscriptionRequest struct {
 	GroupID      int64   `json:"group_id" binding:"required"`
 	ValidityDays int     `json:"validity_days" binding:"omitempty,max=36500"` // max 100 years
 	Notes        string  `json:"notes"`
+}
+
+// RestoreSubscriptionSnapshotRequest represents an exact subscription snapshot restore request.
+type RestoreSubscriptionSnapshotRequest struct {
+	UserID             int64      `json:"user_id" binding:"required"`
+	GroupID            int64      `json:"group_id" binding:"required"`
+	StartsAt           time.Time  `json:"starts_at" binding:"required"`
+	ExpiresAt          time.Time  `json:"expires_at" binding:"required"`
+	Status             string     `json:"status"`
+	DailyWindowStart   *time.Time `json:"daily_window_start"`
+	WeeklyWindowStart  *time.Time `json:"weekly_window_start"`
+	MonthlyWindowStart *time.Time `json:"monthly_window_start"`
+	DailyUsageUSD      float64    `json:"daily_usage_usd"`
+	WeeklyUsageUSD     float64    `json:"weekly_usage_usd"`
+	MonthlyUsageUSD    float64    `json:"monthly_usage_usd"`
+	AssignedBy         *int64     `json:"assigned_by"`
+	AssignedAt         time.Time  `json:"assigned_at"`
+	Notes              string     `json:"notes"`
 }
 
 // AdjustSubscriptionRequest represents adjust subscription request (extend or shorten)
@@ -184,6 +203,39 @@ func (h *SubscriptionHandler) BulkAssign(c *gin.Context) {
 	}
 
 	response.Success(c, dto.BulkAssignResultFromService(result))
+}
+
+// RestoreSnapshot restores an exact subscription snapshot.
+// POST /api/v1/admin/subscriptions/restore
+func (h *SubscriptionHandler) RestoreSnapshot(c *gin.Context) {
+	var req RestoreSubscriptionSnapshotRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	subscription, err := h.subscriptionService.RestoreSubscriptionSnapshot(c.Request.Context(), service.RestoreSubscriptionSnapshotInput{
+		UserID:             req.UserID,
+		GroupID:            req.GroupID,
+		StartsAt:           req.StartsAt,
+		ExpiresAt:          req.ExpiresAt,
+		Status:             req.Status,
+		DailyWindowStart:   req.DailyWindowStart,
+		WeeklyWindowStart:  req.WeeklyWindowStart,
+		MonthlyWindowStart: req.MonthlyWindowStart,
+		DailyUsageUSD:      req.DailyUsageUSD,
+		WeeklyUsageUSD:     req.WeeklyUsageUSD,
+		MonthlyUsageUSD:    req.MonthlyUsageUSD,
+		AssignedBy:         req.AssignedBy,
+		AssignedAt:         req.AssignedAt,
+		Notes:              req.Notes,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.UserSubscriptionFromServiceAdmin(subscription))
 }
 
 // Extend handles adjusting a subscription (extend or shorten)
