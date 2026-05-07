@@ -162,3 +162,4 @@ sub2api GrowthBook Flag 覆写方案.md
 # ===================
 *.csr
 *.pem
+artifacts/
