@@ -5762,9 +5762,9 @@ func extractOpenAIRequestMetaFromBody(body []byte) (model string, stream bool, p
 
 // normalizeOpenAIPassthroughOAuthBody 将透传 OAuth 请求体收敛为旧链路关键行为：
 // 1) 删除 ChatGPT internal API 不支持的顶层 Responses 参数
-// 2) store=false 3) 非 compact 保持 stream=true；compact 也强制 stream=true
-//    compact 使用 SSE 流式以防止代理中间层 NAT 空闲超时断开连接（EOF）。
-//    Codex CLI v2 (compact_remote_v2.rs) 已原生使用 stream=true 调用 compact。
+// 2) store=false 3) compact 和非 compact 均强制 stream=true
+// compact 使用 SSE 流式以防止代理中间层 NAT 空闲超时断开连接（EOF）。
+// Codex CLI v2 (compact_remote_v2.rs) 已原生使用 stream=true 调用 compact。
 func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, bool, error) {
 	if len(body) == 0 {
 		return body, false, nil
