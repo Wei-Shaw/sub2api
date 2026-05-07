@@ -957,6 +957,36 @@ func TestOpenCodeImageServerContinuationOutput_InstructsAgentToDownloadImmediate
 	require.NotContains(t, output, "sub2api-image marker")
 }
 
+func TestBuildOpenCodeImageServerContinuationBody_RemovesImageGenerationToolForDownloadContinuation(t *testing.T) {
+	body := mustJSONBytes(t, map[string]any{
+		"input":       "draw a cat",
+		"tool_choice": map[string]any{"type": "image_generation"},
+		"tools": []any{
+			map[string]any{"type": "function", "name": "context_tool"},
+			map[string]any{"type": "image_generation", "model": "gpt-image-2", "output_format": "png"},
+			map[string]any{"type": "function", "name": "bash"},
+		},
+	})
+	messageText := "Generated image saved by sub2api.\nImage reference: " + openCodeSpecificImageMarkerForTest(testImageID) + "\nTemporary download URL: " + openCodeGeneratedImageDownloadURLForTest("https://example.com", testImageID)
+	generated := []openCodeImageGeneratedMessage{{
+		Message: openCodeSub2APIImageMessageForTest(testImageID, messageText),
+		Record:  &OpenAIGeneratedImageRecord{ID: testImageID, Filename: testImageID + ".png"},
+	}}
+
+	patched, changed, err := buildOpenCodeImageServerContinuationBody(body, generated)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(patched, "tool_choice").Exists())
+	require.Equal(t, "function", gjson.GetBytes(patched, "tools.0.type").String())
+	require.Equal(t, "context_tool", gjson.GetBytes(patched, "tools.0.name").String())
+	require.Equal(t, "function", gjson.GetBytes(patched, "tools.1.type").String())
+	require.Equal(t, "bash", gjson.GetBytes(patched, "tools.1.name").String())
+	require.False(t, gjson.GetBytes(patched, `tools.#(type="image_generation")`).Exists())
+	require.Equal(t, openCodeImageServerContinuationToolName, gjson.GetBytes(patched, "input.1.name").String())
+	require.Equal(t, "function_call_output", gjson.GetBytes(patched, "input.2.type").String())
+}
+
 func TestRewriteOpenCodeImageGenerationOutput_ImageCallWithoutResultBecomesText(t *testing.T) {
 	store := newTestOpenAIGeneratedImageStore(t, fixedNow)
 	body := []byte(`{"id":"resp_1","output":[{"id":"ig_1","type":"image_generation_call","status":"completed"}],"usage":{"input_tokens":1,"output_tokens":2}}`)

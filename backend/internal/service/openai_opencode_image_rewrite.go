@@ -231,6 +231,7 @@ func buildOpenCodeImageServerContinuationBody(body []byte, generated []openCodeI
 		return body, false, nil
 	}
 	reqBody["input"] = input
+	removeOpenCodeImageGenerationToolsForContinuation(reqBody)
 	if isOpenCodeImageGenerationToolChoice(reqBody["tool_choice"]) {
 		delete(reqBody, "tool_choice")
 	}
@@ -239,6 +240,32 @@ func buildOpenCodeImageServerContinuationBody(body []byte, generated []openCodeI
 		return body, false, err
 	}
 	return patched, true, nil
+}
+
+func removeOpenCodeImageGenerationToolsForContinuation(reqBody map[string]any) bool {
+	tools, ok := reqBody["tools"].([]any)
+	if !ok || len(tools) == 0 {
+		return false
+	}
+	filtered := make([]any, 0, len(tools))
+	removed := false
+	for _, rawTool := range tools {
+		tool, ok := rawTool.(map[string]any)
+		if ok && strings.TrimSpace(asStringMaybe(tool["type"])) == "image_generation" {
+			removed = true
+			continue
+		}
+		filtered = append(filtered, rawTool)
+	}
+	if !removed {
+		return false
+	}
+	if len(filtered) == 0 {
+		delete(reqBody, "tools")
+		return true
+	}
+	reqBody["tools"] = filtered
+	return true
 }
 
 func normalizeOpenCodeImageContinuationInput(raw any) ([]any, bool) {
