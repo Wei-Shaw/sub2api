@@ -30,3 +30,21 @@ export function replaceJsonLdInDom($, entry) {
   entry.$el.empty();
   entry.$el.append(`\n    ${next}\n    `);
 }
+
+export function inferLangFromHtml($) {
+  return $('html').attr('lang') || 'en';
+}
+
+export function inferBreadcrumbFromPage($, homeUrl) {
+  const canonical = $('link[rel="canonical"]').attr('href');
+  const title = $('title').text();
+  const pageName = title.split('|')[0].trim();
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'TokenProvider', item: homeUrl },
+      { '@type': 'ListItem', position: 2, name: pageName, item: canonical }
+    ]
+  };
+}

@@ -8,7 +8,9 @@ import {
   parseJsonLd,
   serializeJsonLd,
   findJsonLdScripts,
-  replaceJsonLdInDom
+  replaceJsonLdInDom,
+  inferLangFromHtml,
+  inferBreadcrumbFromPage
 } from '../lib/html-utils.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -68,5 +70,43 @@ test('replaceJsonLdInDom updates the matching script tag content in place', asyn
   const reread = findJsonLdScripts($$);
   const article = reread.find(s => s.data['@type'] === 'Article');
   assert.equal(article.data.headline, 'NEW');
+});
+
+test('inferLangFromHtml reads <html lang="...">', () => {
+  const $ = cheerio.load('<html lang="zh-CN"></html>');
+  assert.equal(inferLangFromHtml($), 'zh-CN');
+});
+
+test('inferLangFromHtml defaults to "en" when missing', () => {
+  const $ = cheerio.load('<html></html>');
+  assert.equal(inferLangFromHtml($), 'en');
+});
+
+test('inferBreadcrumbFromPage builds 2-step list from canonical+title', () => {
+  const $ = cheerio.load(`
+    <link rel="canonical" href="https://tokenprovider.store/en/examples/test.html" />
+    <title>Test Example | TokenProvider</title>
+  `);
+  const bc = inferBreadcrumbFromPage($, 'https://tokenprovider.store/en.html');
+  assert.deepEqual(bc, {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'TokenProvider', item: 'https://tokenprovider.store/en.html' },
+      { '@type': 'ListItem', position: 2, name: 'Test Example', item: 'https://tokenprovider.store/en/examples/test.html' }
+    ]
+  });
+});
+
+test('inferBreadcrumbFromPage uses ZH home for lang=zh-CN', () => {
+  const $ = cheerio.load(`
+    <html lang="zh-CN">
+    <link rel="canonical" href="https://tokenprovider.store/compare/test.html" />
+    <title>测试对比 | TokenProvider</title>
+    </html>
+  `);
+  const bc = inferBreadcrumbFromPage($, 'https://tokenprovider.store/');
+  assert.equal(bc.itemListElement[0].item, 'https://tokenprovider.store/');
+  assert.equal(bc.itemListElement[1].name, '测试对比');
 });
 
