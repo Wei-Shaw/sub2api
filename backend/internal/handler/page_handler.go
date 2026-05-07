@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -111,15 +112,9 @@ REDACTED
 		return
 REDACTED
 
-	if filename == "" || strings.Contains(filename, "..") || strings.Contains(filename, "/") || strings.Contains(filename, "\\") {
-		c.Status(http.StatusNotFound)
-		return
-REDACTED
-
 	imagesDir := filepath.Join(h.pagesDir, slug)
-	filePath := filepath.Join(imagesDir, filename)
-	cleaned := filepath.Clean(filePath)
-	if !strings.HasPrefix(cleaned, filepath.Clean(imagesDir)) {
+	cleaned, ok := resolvePageImagePath(h.pagesDir, imagesDir, filename)
+	if !ok {
 		c.Status(http.StatusNotFound)
 		return
 REDACTED
@@ -131,6 +126,79 @@ REDACTED
 REDACTED
 
 	c.File(cleaned)
+REDACTED
+
+func resolvePageImagePath(pagesDir, imagesDir, filename string) (string, bool) {
+	relPath, ok := cleanPageImageRelativePath(filename)
+	if !ok {
+		return "", false
+REDACTED
+
+	cleanedPagesDir := filepath.Clean(pagesDir)
+	cleanedImagesDir := filepath.Clean(imagesDir)
+	cleanedTarget := filepath.Clean(filepath.Join(cleanedImagesDir, relPath))
+	if !isPathWithinBase(cleanedTarget, cleanedImagesDir) {
+		return "", false
+REDACTED
+
+	realPagesDir, err := filepath.EvalSymlinks(cleanedPagesDir)
+	if err != nil {
+		return "", false
+REDACTED
+	realImagesDir, err := filepath.EvalSymlinks(cleanedImagesDir)
+	if err != nil || !isPathWithinBase(realImagesDir, realPagesDir) {
+		return "", false
+REDACTED
+	realTarget, err := filepath.EvalSymlinks(cleanedTarget)
+	if err != nil || !isPathWithinBase(realTarget, realImagesDir) {
+		return "", false
+REDACTED
+	return realTarget, true
+REDACTED
+
+func cleanPageImageRelativePath(filename string) (string, bool) {
+	if filename == "" {
+		return "", false
+REDACTED
+	if strings.HasPrefix(filename, "/") {
+		return "", false
+REDACTED
+	decoded, err := url.PathUnescape(filename)
+	if err != nil {
+		return "", false
+REDACTED
+	if decoded == "" || strings.HasPrefix(decoded, "/") || strings.Contains(decoded, "\\") || strings.ContainsRune(decoded, 0) {
+		return "", false
+REDACTED
+
+	parts := make([]string, 0)
+	for _, part := range strings.Split(decoded, "/") {
+		switch part {
+		case "", ".":
+			continue
+		case "..":
+			return "", false
+		default:
+			parts = append(parts, part)
+	REDACTED
+REDACTED
+	if len(parts) == 0 {
+		return "", false
+REDACTED
+
+	relPath := filepath.Join(parts...)
+	if filepath.IsAbs(relPath) || filepath.VolumeName(relPath) != "" {
+		return "", false
+REDACTED
+	return relPath, true
+REDACTED
+
+func isPathWithinBase(path, base string) bool {
+	rel, err := filepath.Rel(filepath.Clean(base), filepath.Clean(path))
+	if err != nil {
+		return false
+REDACTED
+	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 REDACTED
 
 // findSlugVisibility looks up the slug in custom_menu_items and returns (visibility, found).
