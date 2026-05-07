@@ -2,12 +2,14 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -16,10 +18,10 @@ import (
 	"go.uber.org/zap"
 )
 
-// ChatCompletions handles OpenAI Chat Completions API endpoint for Anthropic platform groups.
+// ChatCompletions handles OpenAI Chat Completions API endpoint.
 // POST /v1/chat/completions
-// This converts Chat Completions requests to Anthropic format (via Responses format chain),
-// forwards to Anthropic upstream, and converts responses back to Chat Completions format.
+// For Anthropic platform groups: converts CC → Anthropic Messages → forwards to Anthropic → converts back to CC.
+// For Gemini platform groups: converts CC → Anthropic Messages → forwards to Gemini (via geminiCompatService) → converts back to CC.
 func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	streamStarted := false
 
@@ -36,6 +38,8 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		h.chatCompletionsErrorResponse(c, http.StatusInternalServerError, "api_error", "User context not found")
 		return
 	}
+
+	subjectPtr := &subject
 	reqLog := requestLogger(
 		c,
 		"handler.gateway.chat_completions",
@@ -43,6 +47,15 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		zap.Int64("api_key_id", apiKey.ID),
 		zap.Any("group_id", apiKey.GroupID),
 	)
+
+	// Determine platform
+	platform := ""
+	forcePlatform, hasForcePlatform := middleware2.GetForcePlatformFromContext(c)
+	if hasForcePlatform {
+		platform = forcePlatform
+	} else if apiKey.Group != nil {
+		platform = apiKey.Group.Platform
+	}
 
 	// Read request body
 	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
@@ -76,7 +89,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	}
 	reqModel := modelResult.String()
 	reqStream := gjson.GetBytes(body, "stream").Bool()
-	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream))
+	reqLog = reqLog.With(zap.String("model", reqModel), zap.Bool("stream", reqStream), zap.String("platform", platform))
 
 	setOpsRequestContext(c, reqModel, reqStream, body)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
@@ -162,6 +175,19 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	}
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
 
+	// === Gemini platform: dedicated forwarding path ===
+	if platform == service.PlatformGemini {
+		h.chatCompletionsGemini(c, reqLog, apiKey, subjectPtr, subscription, body, reqModel, reqStream, parsedReq, sessionHash, &channelMapping, &streamStarted, requestStart)
+		return
+	}
+
+	// === Non-Gemini platform: original ForwardAsChatCompletions path ===
+	h.chatCompletionsAnthropic(c, reqLog, apiKey, subjectPtr, subscription, body, reqModel, reqStream, parsedReq, sessionHash, &channelMapping, &streamStarted, requestStart)
+}
+
+// chatCompletionsAnthropic is the original ChatCompletions path for Anthropic/OpenAI platforms.
+// It converts CC → Anthropic Messages, forwards to Anthropic upstream, and converts back to CC.
+func (h *GatewayHandler) chatCompletionsAnthropic(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, subject *middleware2.AuthSubject, subscription *service.UserSubscription, body []byte, reqModel string, reqStream bool, parsedReq *service.ParsedRequest, sessionHash string, channelMapping *service.ChannelMappingResult, streamStarted *bool, requestStart time.Time) {
 	// 3. Account selection + failover loop
 	fs := NewFailoverState(h.maxAccountSwitches, false)
 
@@ -180,7 +206,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				return
 			default:
 				if fs.LastFailoverErr != nil {
-					h.handleCCFailoverExhausted(c, fs.LastFailoverErr, streamStarted)
+					h.handleCCFailoverExhausted(c, fs.LastFailoverErr, *streamStarted)
 				} else {
 					h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "server_error", "All available accounts exhausted")
 				}
@@ -203,11 +229,11 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				selection.WaitPlan.MaxConcurrency,
 				selection.WaitPlan.Timeout,
 				reqStream,
-				&streamStarted,
+				streamStarted,
 			)
 			if err != nil {
 				reqLog.Warn("gateway.cc.account_slot_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
-				h.handleConcurrencyError(c, err, "account", streamStarted)
+				h.handleConcurrencyError(c, err, "account", *streamStarted)
 				return
 			}
 		}
@@ -237,13 +263,13 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				case FailoverContinue:
 					continue
 				case FailoverExhausted:
-					h.handleCCFailoverExhausted(c, fs.LastFailoverErr, streamStarted)
+					h.handleCCFailoverExhausted(c, fs.LastFailoverErr, *streamStarted)
 					return
 				case FailoverCanceled:
 					return
 				}
 			}
-			h.ensureForwardErrorResponse(c, streamStarted)
+			h.ensureForwardErrorResponse(c, *streamStarted)
 			reqLog.Error("gateway.cc.forward_failed",
 				zap.Int64("account_id", account.ID),
 				zap.Error(err),
@@ -252,35 +278,158 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		}
 
 		// 6. Record usage
-		userAgent := c.GetHeader("User-Agent")
-		clientIP := ip.GetClientIP(c)
-		requestPayloadHash := service.HashUsageRequestPayload(body)
-		inboundEndpoint := GetInboundEndpoint(c)
-		upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
-
-		h.submitUsageRecordTask(func(ctx context.Context) {
-			if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
-				Result:             result,
-				APIKey:             apiKey,
-				User:               apiKey.User,
-				Account:            account,
-				Subscription:       subscription,
-				InboundEndpoint:    inboundEndpoint,
-				UpstreamEndpoint:   upstreamEndpoint,
-				UserAgent:          userAgent,
-				IPAddress:          clientIP,
-				RequestPayloadHash: requestPayloadHash,
-				APIKeyService:      h.apiKeyService,
-				ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
-			}); err != nil {
-				reqLog.Error("gateway.cc.record_usage_failed",
-					zap.Int64("account_id", account.ID),
-					zap.Error(err),
-				)
-			}
-		})
+		h.recordChatCompletionsUsage(c, result, apiKey, account, subscription, body, reqModel, channelMapping)
 		return
 	}
+}
+
+// chatCompletionsGemini handles CC requests for Gemini platform groups.
+// It converts CC → Anthropic Messages, forwards via geminiCompatService.Forward(),
+// then converts the Claude response back to Chat Completions format.
+func (h *GatewayHandler) chatCompletionsGemini(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, subject *middleware2.AuthSubject, subscription *service.UserSubscription, body []byte, reqModel string, reqStream bool, parsedReq *service.ParsedRequest, sessionHash string, channelMapping *service.ChannelMappingResult, streamStarted *bool, requestStart time.Time) {
+	// Convert CC → Anthropic Messages format
+	var ccReq apicompat.ChatCompletionsRequest
+	if err := json.Unmarshal(body, &ccReq); err != nil {
+		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse chat completions request")
+		return
+	}
+	originalModel := ccReq.Model
+
+	responsesReq, err := apicompat.ChatCompletionsToResponses(&ccReq)
+	if err != nil {
+		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to convert chat completions to responses: "+err.Error())
+		return
+	}
+	anthropicReq, err := apicompat.ResponsesToAnthropicRequest(responsesReq)
+	if err != nil {
+		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to convert responses to anthropic: "+err.Error())
+		return
+	}
+	anthropicBody, err := json.Marshal(anthropicReq)
+	if err != nil {
+		h.chatCompletionsErrorResponse(c, http.StatusInternalServerError, "api_error", "Failed to marshal anthropic request")
+		return
+	}
+
+	// Use Anthropic Messages format for account selection
+	anthropicParsedReq, _ := service.ParseGatewayRequest(anthropicBody, "messages")
+	if anthropicParsedReq == nil {
+		anthropicParsedReq = &service.ParsedRequest{Model: reqModel, Stream: reqStream, Body: anthropicBody}
+	}
+	anthropicParsedReq.SessionContext = parsedReq.SessionContext
+
+	// Account selection + failover
+	fs := NewFailoverState(h.maxAccountSwitchesGemini, false)
+
+	sessionKey := sessionHash
+	if sessionHash != "" {
+		sessionKey = "gemini:" + sessionHash
+	}
+
+	for {
+		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, "", int64(0))
+		if err != nil {
+			if len(fs.FailedAccountIDs) == 0 {
+				h.chatCompletionsErrorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts: "+err.Error())
+				return
+			}
+			action := fs.HandleSelectionExhausted(c.Request.Context())
+			switch action {
+			case FailoverContinue:
+				continue
+			case FailoverCanceled:
+				return
+			default:
+				if fs.LastFailoverErr != nil {
+					h.handleCCFailoverExhausted(c, fs.LastFailoverErr, *streamStarted)
+				} else {
+					h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "server_error", "All available accounts exhausted")
+				}
+				return
+			}
+		}
+		account := selection.Account
+		setOpsSelectedAccount(c, account.ID, account.Platform)
+
+		// Acquire account concurrency slot
+		accountReleaseFunc := selection.ReleaseFunc
+		if !selection.Acquired {
+			if selection.WaitPlan == nil {
+				h.chatCompletionsErrorResponse(c, http.StatusServiceUnavailable, "api_error", "No available accounts")
+				return
+			}
+			accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
+				c, account.ID, selection.WaitPlan.MaxConcurrency, selection.WaitPlan.Timeout, reqStream, streamStarted,
+			)
+			if err != nil {
+				reqLog.Warn("gateway.cc.gemini.account_slot_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+				h.handleConcurrencyError(c, err, "account", *streamStarted)
+				return
+			}
+		}
+		accountReleaseFunc = wrapReleaseOnDone(c.Request.Context(), accountReleaseFunc)
+
+		// Forward via geminiCompatService.Forward (expects Anthropic Messages format)
+		forwardBody := anthropicBody
+		if channelMapping.Mapped {
+			forwardBody = h.gatewayService.ReplaceModelInBody(anthropicBody, channelMapping.MappedModel)
+		}
+		result, err := h.geminiCompatService.Forward(c.Request.Context(), c, account, forwardBody)
+
+		if accountReleaseFunc != nil {
+			accountReleaseFunc()
+		}
+
+		if err != nil {
+			var failoverErr *service.UpstreamFailoverError
+			if errors.As(err, &failoverErr) {
+				action := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, failoverErr)
+				switch action {
+				case FailoverContinue:
+					continue
+				case FailoverExhausted:
+					h.handleCCFailoverExhausted(c, fs.LastFailoverErr, *streamStarted)
+					return
+				case FailoverCanceled:
+					return
+				}
+			}
+			h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "server_error", "Upstream request failed")
+			return
+		}
+
+		// Record usage
+		h.recordChatCompletionsUsage(c, result, apiKey, account, subscription, body, originalModel, channelMapping)
+		return
+	}
+}
+
+// recordChatCompletionsUsage records usage for a chat completions request.
+func (h *GatewayHandler) recordChatCompletionsUsage(c *gin.Context, result *service.ForwardResult, apiKey *service.APIKey, account *service.Account, subscription *service.UserSubscription, body []byte, reqModel string, channelMapping *service.ChannelMappingResult) {
+	userAgent := c.GetHeader("User-Agent")
+	clientIP := ip.GetClientIP(c)
+	requestPayloadHash := service.HashUsageRequestPayload(body)
+	inboundEndpoint := GetInboundEndpoint(c)
+	upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
+
+	h.submitUsageRecordTask(func(ctx context.Context) {
+		if err := h.gatewayService.RecordUsage(ctx, &service.RecordUsageInput{
+			Result:             result,
+			APIKey:             apiKey,
+			User:               apiKey.User,
+			Account:            account,
+			Subscription:       subscription,
+			InboundEndpoint:    inboundEndpoint,
+			UpstreamEndpoint:   upstreamEndpoint,
+			UserAgent:          userAgent,
+			IPAddress:          clientIP,
+			RequestPayloadHash: requestPayloadHash,
+			APIKeyService:      h.apiKeyService,
+			ChannelUsageFields: channelMapping.ToUsageFields(reqModel, result.UpstreamModel),
+		}); err != nil {
+			// Usage recording is best-effort; don't fail the request.
+		}
+	})
 }
 
 // chatCompletionsErrorResponse writes an error in OpenAI Chat Completions format.
