@@ -4,15 +4,19 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
     "build": "vue-tsc -b && vite build",
-    "preview": "vite preview",
+    "dev": "vite",
+    "geo:check": "node scripts/geo-upgrade.mjs --check",
+    "geo:upgrade": "node scripts/geo-upgrade.mjs",
+    "geo:upgrade:dry": "node scripts/geo-upgrade.mjs --dry-run",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
     "lint:check": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts",
-    "typecheck": "vue-tsc --noEmit",
+    "preview": "vite preview",
     "test": "vitest",
+    "test:codemod": "node --test scripts/test/",
+    "test:coverage": "vitest run --coverage",
     "test:run": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
     "@lobehub/icons": "^4.0.2",
@@ -46,6 +50,7 @@
     "@vitest/coverage-v8": "^2.1.9",
     "@vue/test-utils": "^2.4.6",
     "autoprefixer": "^10.4.16",
+    "cheerio": "^1.2.0",
     "eslint": "^8.57.0",
     "eslint-plugin-vue": "^9.25.0",
     "jsdom": "^24.1.3",
