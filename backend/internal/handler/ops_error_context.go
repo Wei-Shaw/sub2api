@@ -3,7 +3,6 @@ package handler
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -12,7 +11,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const scheduledAccountDebugHeader = "X-Sub2api-Scheduled-Account"
 const noScheduledAccountLabel = "No scheduled account"
 
 func selectionUnavailableMessage(err error) string {
@@ -29,32 +27,9 @@ func selectionUnavailableMessage(err error) string {
 	return fallback + ": " + msg
 }
 
-func decorateScheduledAccountErrorMessage(c *gin.Context, status int, message string) string {
+func decorateScheduledAccountErrorMessage(_ *gin.Context, _ int, message string) string {
 	message = strings.TrimSpace(message)
-	if c == nil {
-		return message
-	}
-
-	snapshot := service.GetOpsSelectedAccountSnapshot(c)
-	accountName := strings.TrimSpace(snapshot.Name)
-	if accountName == "" {
-		return message
-	}
-
-	if c.Writer != nil {
-		c.Header(scheduledAccountDebugHeader, accountName)
-	}
-
-	if status < http.StatusInternalServerError && status != http.StatusBadGateway && status != http.StatusServiceUnavailable {
-		return message
-	}
-	if strings.Contains(strings.ToLower(message), "scheduled account:") {
-		return message
-	}
-	if message == "" {
-		message = http.StatusText(status)
-	}
-	return fmt.Sprintf("%s [scheduled account: %s]", message, accountName)
+	return message
 }
 
 func ensureOpsUpstreamErrorEvent(c *gin.Context, statusCode int, kind, message string) {

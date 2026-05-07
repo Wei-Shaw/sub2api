@@ -51,7 +51,7 @@
         <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
           <div class="text-xs font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.errorDetail.platform') }}</div>
           <div class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
-            {{ detail.platform || '—' }}
+            {{ displayPlatform(detail) }}
           </div>
         </div>
 
@@ -86,7 +86,10 @@
         <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
           <div class="text-xs font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.errorDetail.upstreamEndpoint') }}</div>
           <div class="mt-1 break-all font-mono text-sm font-medium text-gray-900 dark:text-white">
-            {{ detail.upstream_endpoint || '—' }}
+            {{ displayUpstreamEndpoint(detail) }}
+          </div>
+          <div v-if="showNoUpstreamCallHint(detail)" class="mt-1 text-xs text-gray-400">
+            {{ t('admin.ops.errorDetail.noUpstreamCall') }}
           </div>
         </div>
 
@@ -128,7 +131,7 @@
         </div>
 
         <div v-if="!correlatedUpstreamLoading && !correlatedUpstreamErrors.length" class="mt-3 text-sm text-gray-500 dark:text-gray-400">
-          {{ t('common.noData') }}
+          {{ showNoUpstreamCallHint(detail) ? t('admin.ops.errorDetail.noUpstreamCall') : t('common.noData') }}
         </div>
 
         <div v-else class="mt-4 space-y-3">
@@ -172,7 +175,7 @@
             <div class="mt-3 grid grid-cols-1 gap-2 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-2">
               <div>
                 <span class="text-gray-400">{{ t('admin.ops.errorDetail.upstreamEvent.account') }}:</span>
-                <span class="ml-1 font-medium">{{ displayScheduledAccount(ev) }}</span>
+                <span class="ml-1 font-medium">{{ displayEventAccount(ev) }}</span>
               </div>
               <div>
                 <span class="text-gray-400">{{ t('admin.ops.errorDetail.upstreamEvent.status') }}:</span>
@@ -206,6 +209,7 @@ import { useAppStore } from '@/stores'
 import { opsAPI, type OpsErrorDetail } from '@/api/admin/ops'
 import { formatDateTime } from '@/utils/format'
 import { resolvePrimaryResponseBody, resolveUpstreamPayload } from '../utils/errorDetailResponse'
+import { isAuthFailureBeforeScheduling } from '../utils/opsErrorDisplay'
 
 interface Props {
   show: boolean
@@ -254,21 +258,57 @@ function userMeta(d: OpsErrorDetail | null): string {
   return `${t('admin.ops.errorLog.userId')} ${d.user_id}`
 }
 
-function displayScheduledAccount(d: Pick<OpsErrorDetail, 'scheduled_account_name' | 'scheduled_account_id' | 'account_name' | 'account_id'> | null): string {
+function displayScheduledAccount(d: OpsErrorDetail | null): string {
   if (!d) return '—'
+  if (isAuthFailureBeforeScheduling(d)) {
+    return t('admin.ops.errorDetail.scheduledAccountNotEntered')
+  }
   const scheduledName = String(d.scheduled_account_name || '').trim()
   if (scheduledName) return scheduledName
   if (d.scheduled_account_id != null) return String(d.scheduled_account_id)
-  const name = String(d.account_name || '').trim()
-  if (name) return name
-  if (d.account_id != null) return String(d.account_id)
   return '—'
 }
 
-function scheduledAccountMeta(d: Pick<OpsErrorDetail, 'scheduled_account_id' | 'account_id'> | null): string {
-  const accountID = d?.scheduled_account_id ?? d?.account_id
-  if (accountID == null) return '—'
-  return `${t('admin.ops.errorLog.accountId')} ${accountID}`
+function displayEventAccount(d: OpsErrorDetail | null): string {
+  if (!d) return '—'
+
+  const scheduledName = String(d.scheduled_account_name || '').trim()
+  if (scheduledName) return scheduledName
+  if (d.scheduled_account_id != null) return String(d.scheduled_account_id)
+
+  const accountName = String(d.account_name || '').trim()
+  if (accountName) return accountName
+  if (d.account_id != null) return String(d.account_id)
+
+  return '—'
+}
+
+function scheduledAccountMeta(d: OpsErrorDetail | null): string {
+  if (!d || isAuthFailureBeforeScheduling(d)) return '—'
+  if (d.scheduled_account_id == null) return '—'
+  return `${t('admin.ops.errorLog.accountId')} ${d.scheduled_account_id}`
+}
+
+function displayPlatform(d: OpsErrorDetail | null): string {
+  const platform = String(d?.platform || '').trim()
+  if (platform) return platform
+  if (isAuthFailureBeforeScheduling(d)) {
+    return t('admin.ops.errorDetail.platformUnknownBeforeAuth')
+  }
+  return '—'
+}
+
+function displayUpstreamEndpoint(d: OpsErrorDetail | null): string {
+  if (isAuthFailureBeforeScheduling(d)) {
+    return t('admin.ops.errorDetail.notApplicable')
+  }
+  const endpoint = String(d?.upstream_endpoint || '').trim()
+  if (endpoint) return endpoint
+  return '—'
+}
+
+function showNoUpstreamCallHint(d: OpsErrorDetail | null): boolean {
+  return isAuthFailureBeforeScheduling(d)
 }
 
 function formatRequestTypeLabel(type: number | null | undefined): string {

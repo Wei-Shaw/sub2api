@@ -132,7 +132,7 @@ func TestOpenAIHandleStreamingAwareError_NonStreaming(t *testing.T) {
 	assert.Equal(t, "test error", errorObj["message"])
 }
 
-func TestOpenAIHandleStreamingAwareError_NonStreaming503IncludesScheduledAccount(t *testing.T) {
+func TestOpenAIHandleStreamingAwareError_NonStreaming503DoesNotExposeScheduledAccount(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -143,7 +143,7 @@ func TestOpenAIHandleStreamingAwareError_NonStreaming503IncludesScheduledAccount
 	h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", false)
 
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
-	assert.Equal(t, "pool-account-42", w.Header().Get(scheduledAccountDebugHeader))
+	assert.Empty(t, w.Header().Get("X-Sub2api-Scheduled-Account"))
 
 	var parsed map[string]any
 	err := json.Unmarshal(w.Body.Bytes(), &parsed)
@@ -151,7 +151,7 @@ func TestOpenAIHandleStreamingAwareError_NonStreaming503IncludesScheduledAccount
 	errorObj, ok := parsed["error"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "api_error", errorObj["type"])
-	assert.Equal(t, "Service temporarily unavailable [scheduled account: pool-account-42]", errorObj["message"])
+	assert.Equal(t, "Service temporarily unavailable", errorObj["message"])
 }
 
 func TestOpenAIHandleFailoverExhaustedSimple_BackfillsUpstreamEvent(t *testing.T) {

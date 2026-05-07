@@ -889,6 +889,9 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				}
 			}
 		}
+		if shouldSuppressUpstreamEndpoint(entry) {
+			entry.UpstreamEndpoint = ""
+		}
 
 		if apiKey != nil {
 			entry.APIKeyID = &apiKey.ID
@@ -1071,6 +1074,47 @@ func guessPlatformFromPath(path string) string {
 	}
 }
 
+func isLocalGatewayMetadataEndpoint(inbound, rawRequestPath string) bool {
+	normalizedInbound := strings.TrimSpace(inbound)
+	if normalizedInbound != "" {
+		normalizedInbound = NormalizeInboundEndpoint(normalizedInbound)
+	}
+	switch normalizedInbound {
+	case "/v1/models", "/v1/usage":
+		return true
+	}
+
+	raw := strings.ToLower(strings.TrimRight(strings.TrimSpace(rawRequestPath), "/"))
+	switch raw {
+	case "/v1/models", "/v1/usage", "/antigravity/models", "/antigravity/v1/models", "/antigravity/v1/usage":
+		return true
+	default:
+		return false
+	}
+}
+
+func shouldSuppressUpstreamEndpoint(entry *service.OpsInsertErrorLogInput) bool {
+	if entry == nil {
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSpace(entry.ErrorPhase), "auth") {
+		return false
+	}
+	if !isLocalGatewayMetadataEndpoint(entry.InboundEndpoint, entry.RequestPath) {
+		return false
+	}
+	if entry.UpstreamStatusCode != nil || len(entry.UpstreamErrors) > 0 {
+		return false
+	}
+	if entry.UpstreamErrorMessage != nil && strings.TrimSpace(*entry.UpstreamErrorMessage) != "" {
+		return false
+	}
+	if entry.UpstreamErrorDetail != nil && strings.TrimSpace(*entry.UpstreamErrorDetail) != "" {
+		return false
+	}
+	return true
+}
+
 // isKnownOpsErrorType returns true if t is a recognized error type used by the
 // ops classification pipeline.  Upstream proxies sometimes return garbage values
 // (e.g. the Go-serialized literal "<nil>") which would pollute phase/severity
@@ -1093,15 +1137,21 @@ func isKnownOpsErrorType(t string) bool {
 }
 
 func normalizeOpsErrorType(errType string, code string) string {
-	if errType != "" && isKnownOpsErrorType(errType) {
-		return errType
+	normalizedType := strings.TrimSpace(errType)
+	if normalizedType != "" && isKnownOpsErrorType(normalizedType) && normalizedType != "api_error" {
+		return normalizedType
 	}
-	switch strings.TrimSpace(code) {
-	case opsCodeInsufficientBalance:
+	switch strings.ToLower(strings.TrimSpace(code)) {
+	case opsErrInvalidAPIKey, opsErrAPIKeyRequired:
+		return "authentication_error"
+	case strings.ToLower(opsCodeInsufficientBalance):
 		return "billing_error"
-	case opsCodeUsageLimitExceeded, opsCodeSubscriptionNotFound, opsCodeSubscriptionInvalid:
+	case strings.ToLower(opsCodeUsageLimitExceeded), strings.ToLower(opsCodeSubscriptionNotFound), strings.ToLower(opsCodeSubscriptionInvalid):
 		return "subscription_error"
 	default:
+		if normalizedType != "" && isKnownOpsErrorType(normalizedType) {
+			return normalizedType
+		}
 		return "api_error"
 	}
 }

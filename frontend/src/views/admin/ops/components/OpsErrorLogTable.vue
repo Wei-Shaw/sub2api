@@ -95,7 +95,7 @@
               <!-- Platform -->
               <td class="whitespace-nowrap px-4 py-2">
                 <span class="inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-gray-600 dark:bg-dark-700 dark:text-gray-300">
-                  {{ log.platform || '-' }}
+                  {{ displayPlatform(log) }}
                 </span>
               </td>
 
@@ -142,12 +142,14 @@
 
               <!-- Scheduled Account -->
               <td class="px-4 py-2">
-                <el-tooltip v-if="log.scheduled_account_id || log.scheduled_account_name || log.account_id || log.account_name" :content="scheduledAccountTooltip(log)" placement="top" :show-after="500">
+                <el-tooltip v-if="scheduledAccountTooltip(log)" :content="scheduledAccountTooltip(log)" placement="top" :show-after="500">
                   <span class="max-w-[140px] truncate text-xs font-medium text-gray-900 dark:text-gray-200">
                     {{ displayScheduledAccount(log) }}
                   </span>
                 </el-tooltip>
-                <span v-else class="text-xs text-gray-400">-</span>
+                <span v-else :class="isAuthFailureBeforeScheduling(log) ? 'text-xs font-medium text-gray-900 dark:text-gray-200' : 'text-xs text-gray-400'">
+                  {{ displayScheduledAccount(log) }}
+                </span>
               </td>
 
               <!-- Status -->
@@ -218,6 +220,7 @@ import { useI18n } from 'vue-i18n'
 import Pagination from '@/components/common/Pagination.vue'
 import type { OpsErrorLog } from '@/api/admin/ops'
 import { getSeverityClass, formatDateTime } from '../utils/opsFormatters'
+import { isAuthFailureBeforeScheduling } from '../utils/opsErrorDisplay'
 
 const { t } = useI18n()
 
@@ -242,23 +245,30 @@ function userTooltip(log: OpsErrorLog): string {
 }
 
 function displayScheduledAccount(log: OpsErrorLog): string {
+  if (isAuthFailureBeforeScheduling(log)) {
+    return t('admin.ops.errorDetail.scheduledAccountNotEntered')
+  }
   const scheduledName = String(log.scheduled_account_name || '').trim()
   if (scheduledName) return scheduledName
   if (log.scheduled_account_id != null) return String(log.scheduled_account_id)
-  const name = String(log.account_name || '').trim()
-  if (name) return name
-  if (log.account_id != null) return String(log.account_id)
   return '-'
 }
 
 function scheduledAccountTooltip(log: OpsErrorLog): string {
+  if (isAuthFailureBeforeScheduling(log)) return ''
   const parts: string[] = []
   if (log.scheduled_account_id != null) parts.push(`${t('admin.ops.errorLog.accountId')} ${log.scheduled_account_id}`)
   if (log.scheduled_account_name) parts.push(log.scheduled_account_name)
-  if (parts.length > 0) return parts.join('\n')
-  if (log.account_id != null) parts.push(`${t('admin.ops.errorLog.accountId')} ${log.account_id}`)
-  if (log.account_name) parts.push(log.account_name)
-  return parts.join('\n') || '-'
+  return parts.join('\n')
+}
+
+function displayPlatform(log: OpsErrorLog): string {
+  const platform = String(log.platform || '').trim()
+  if (platform) return platform
+  if (isAuthFailureBeforeScheduling(log)) {
+    return t('admin.ops.errorDetail.platformUnknownBeforeAuth')
+  }
+  return '-'
 }
 
 function formatEndpointTooltip(log: OpsErrorLog): string {
