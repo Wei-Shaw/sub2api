@@ -568,7 +568,24 @@ _upgrade_fast_download() {
 
     print_info "Using asset: $asset"
     print_info "Verifying sha256..."
-    (cd "$STAGE_DIR" && grep "  ${asset}$" checksums.txt | sha256sum -c -) || {
+    # GoReleaser uses GNU-style lines: "hash  name" or "hash *name"; piping to sha256sum -c
+    # fails if grep does not match the asterisk form. Compare digests explicitly.
+    (
+        cd "$STAGE_DIR" || exit 1
+        _ck_line="$(grep -F "$asset" checksums.txt | head -1 | tr -d '\r')"
+        if [ -z "$_ck_line" ]; then
+            print_error "No checksum line containing '$asset' in checksums.txt."
+            exit 1
+        fi
+        _expected="$(printf '%s\n' "$_ck_line" | awk '{print $1}')"
+        _actual="$(sha256sum "$asset" | awk '{print $1}')"
+        if [ "$_expected" != "$_actual" ]; then
+            print_error "Checksum mismatch for $asset."
+            print_error "Expected (from release): $_expected"
+            print_error "Actual (downloaded):    $_actual"
+            exit 1
+        fi
+    ) || {
         rm -rf "$STAGE_DIR"
         print_error "Checksum verification failed. Possible tampering or corruption."
         print_error "Not falling back — please investigate."
