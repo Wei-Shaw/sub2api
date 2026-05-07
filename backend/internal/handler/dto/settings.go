@@ -200,6 +200,9 @@ type SystemSettings struct {
 	// Image Generation feature switch (user-facing tool)
 	ImageGenerationEnabled bool `json:"image_generation_enabled"`
 
+	// 风控中心功能开关
+	RiskControlEnabled bool `json:"risk_control_enabled"`
+
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
@@ -261,6 +264,8 @@ type PublicSettings struct {
 	ImageGenerationEnabled bool `json:"image_generation_enabled"`
 
 	AffiliateEnabled bool `json:"affiliate_enabled"`
+
+	RiskControlEnabled bool `json:"risk_control_enabled"`
 }
 
 // OverloadCooldownSettings 529过载冷却配置 DTO
