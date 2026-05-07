@@ -186,6 +186,7 @@ import TurnstileWidget from '@/components/TurnstileWidget.vue'
 import { useAuthStore, useAppStore REDACTED from '@/stores'
 import { getPublicSettings, isTotp2FARequired, isWeChatWebOAuthEnabled REDACTED from '@/api/auth'
 import type { TotpLoginResponse REDACTED from '@/types'
+import { extractI18nErrorMessage REDACTED from '@/utils/apiError'
 import { clearAllAffiliateReferralCodes REDACTED from '@/utils/oauthAffiliate'
 
 const { t REDACTED = useI18n()
@@ -369,16 +370,7 @@ async function handleLogin(): Promise<void> {
       turnstileToken.value = ''
     REDACTED
 
-    // Handle login error
-    const err = error as { message?: string; response?: { data?: { detail?: string REDACTED REDACTED REDACTED
-
-    if (err.response?.data?.detail) {
-      errorMessage.value = err.response.data.detail
-    REDACTED else if (err.message) {
-      errorMessage.value = err.message
-    REDACTED else {
-      errorMessage.value = t('auth.loginFailed')
-    REDACTED
+    errorMessage.value = extractI18nErrorMessage(error, t, 'auth.errors', t('auth.loginFailed'))
 
     // Also show error toast
     appStore.showError(errorMessage.value)

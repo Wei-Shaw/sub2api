@@ -90,6 +90,69 @@ type OpenAIImagesRequest struct {
 	bodyHash           string
 REDACTED
 
+func (r *OpenAIImagesRequest) ModerationBody() []byte {
+	if r == nil {
+		return nil
+REDACTED
+	payload := map[string]any{REDACTED
+	if prompt := strings.TrimSpace(r.Prompt); prompt != "" {
+		payload["prompt"] = prompt
+REDACTED
+	images := r.moderationImages()
+	if len(images) > 0 {
+		payload["images"] = images
+REDACTED
+	if len(payload) == 0 {
+		return nil
+REDACTED
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil
+REDACTED
+	return body
+REDACTED
+
+func (r *OpenAIImagesRequest) moderationImages() []map[string]string {
+	if r == nil {
+		return nil
+REDACTED
+	images := make([]map[string]string, 0, len(r.InputImageURLs)+len(r.Uploads)+1)
+	for _, imageURL := range r.InputImageURLs {
+		imageURL = strings.TrimSpace(imageURL)
+		if imageURL != "" {
+			images = append(images, map[string]string{"image_url": imageURLREDACTED)
+	REDACTED
+REDACTED
+	for _, upload := range r.Uploads {
+		if dataURL := upload.ModerationDataURL(); dataURL != "" {
+			images = append(images, map[string]string{"image_url": dataURLREDACTED)
+	REDACTED
+REDACTED
+	if maskURL := strings.TrimSpace(r.MaskImageURL); maskURL != "" {
+		images = append(images, map[string]string{"image_url": maskURLREDACTED)
+REDACTED
+	if r.MaskUpload != nil {
+		if dataURL := r.MaskUpload.ModerationDataURL(); dataURL != "" {
+			images = append(images, map[string]string{"image_url": dataURLREDACTED)
+	REDACTED
+REDACTED
+	return images
+REDACTED
+
+func (u OpenAIImagesUpload) ModerationDataURL() string {
+	if len(u.Data) == 0 {
+		return ""
+REDACTED
+	contentType := strings.TrimSpace(u.ContentType)
+	if contentType == "" {
+		contentType = http.DetectContentType(u.Data)
+REDACTED
+	if !strings.HasPrefix(strings.ToLower(contentType), "image/") {
+		return ""
+REDACTED
+	return fmt.Sprintf("data:%s;base64,%s", contentType, base64.StdEncoding.EncodeToString(u.Data))
+REDACTED
+
 func (r *OpenAIImagesRequest) IsEdits() bool {
 	return r != nil && r.Endpoint == openAIImagesEditsEndpoint
 REDACTED

@@ -77,5 +77,7 @@ REDACTED
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 
 		AffiliateEnabled: settings.AffiliateEnabled,
+
+		RiskControlEnabled: settings.RiskControlEnabled,
 REDACTED)
 REDACTED
