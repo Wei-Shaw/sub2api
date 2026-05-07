@@ -267,7 +267,7 @@ func (in *ContentModerationInput) Normalize() {
 		return
 	}
 	in.Text = trimRunes(normalizeContentModerationText(in.Text), maxModerationInputRunes)
-	in.Images = limitContentModerationImages(normalizeModerationImages(in.Images))
+	in.Images = normalizeModerationImages(in.Images)
 }
 
 func (in ContentModerationInput) IsEmpty() bool {
