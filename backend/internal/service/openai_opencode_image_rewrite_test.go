@@ -932,6 +932,10 @@ func TestOpenCodeImageServerContinuationOutput_InstructsAgentToDownloadImmediate
 
 	require.Contains(t, output, messageText)
 	require.Contains(t, output, "Synthetic image generation continuation inserted by sub2api")
+	require.Contains(t, output, "Your next assistant output item must be a function_call, not a message")
+	require.Contains(t, output, "Emit exactly one available download-capable tool call now")
+	require.Contains(t, output, "Do not answer in plain text before the tool call")
+	require.Contains(t, output, "Choose an available tool capable of fetching or downloading the Temporary download URL to a local temporary file")
 	require.Contains(t, output, "Immediately use the available shell, command-line, or network-access tool")
 	require.Contains(t, output, "download the image from the URL above")
 	require.Contains(t, output, "Do not stop after image generation")
@@ -949,6 +953,7 @@ func TestOpenCodeImageServerContinuationOutput_InstructsAgentToDownloadImmediate
 	require.Contains(t, output, "save it to a temporary directory")
 	require.Contains(t, output, "Only if no tool can access the URL")
 	require.Contains(t, output, "generated image reference marker")
+	require.NotContains(t, output, "bash")
 	require.NotContains(t, output, "sub2api-image marker")
 }
 

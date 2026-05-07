@@ -259,6 +259,10 @@ func normalizeOpenCodeImageContinuationInput(raw any) ([]any, bool) {
 func openCodeImageServerContinuationOutput(messageText string) string {
 	return messageText + "\n\n" + strings.Join([]string{
 		"Synthetic image generation continuation inserted by sub2api for OpenCode.",
+		"Your next assistant output item must be a function_call, not a message.",
+		"Emit exactly one available download-capable tool call now; do not emit final text first.",
+		"Do not answer in plain text before the tool call.",
+		"Choose an available tool capable of fetching or downloading the Temporary download URL to a local temporary file; do not wait for a more specific tool if a shell, command-line, or network-access tool is available.",
 		"The image generation tool already completed and produced the real image result above.",
 		"The saved image URL expires quickly; it is a short-lived bearer URL and may expire within about 1 hour, so download before any other action.",
 		"Do not delay for any reason.",
