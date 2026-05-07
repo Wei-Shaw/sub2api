@@ -13,7 +13,7 @@
     "lint:check": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts",
     "preview": "vite preview",
     "test": "vitest",
-    "test:codemod": "node --test scripts/test/",
+    "test:codemod": "node --test scripts/test/*.test.mjs",
     "test:coverage": "vitest run --coverage",
     "test:run": "vitest run",
     "typecheck": "vue-tsc --noEmit"
