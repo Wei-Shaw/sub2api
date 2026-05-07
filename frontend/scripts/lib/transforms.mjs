@@ -134,35 +134,44 @@ export function refreshDateModified(data) {
 const ZH_HOME = 'https://tokenprovider.store/';
 const EN_HOME = 'https://tokenprovider.store/en.html';
 
-export function processHtml(html) {
-  // Preserve leading doctype: cheerio.load can drop it on .html() output
-  // depending on options/version; capture and re-prepend if needed.
-  const doctypeMatch = html.match(/^\s*<!doctype[^>]*>/i);
-  const doctype = doctypeMatch ? doctypeMatch[0] : '';
+const JSONLD_BLOCK_RE = /<script\s+type="application\/ld\+json"\s*>([\s\S]*?)<\/script>/g;
 
+// Re-serialize a JSON-LD object so that it matches the indent style used by
+// the existing static pages: each line of the JSON gets 4 leading spaces so
+// the block lines up with the opening <script> tag.
+function reserializeJsonLd(data) {
+  const json = JSON.stringify(data, null, 2);
+  return json.split('\n').map(line => '    ' + line).join('\n');
+}
+
+export function processHtml(html) {
   const $ = cheerio.load(html, { xmlMode: false, decodeEntities: false });
   const lang = inferLangFromHtml($);
   const homeUrl = lang === 'zh-CN' ? ZH_HOME : EN_HOME;
   const canonical = $('link[rel="canonical"]').attr('href') || '';
-
-  const scripts = findJsonLdScripts($);
   const isHomepage = canonical === ZH_HOME || canonical === EN_HOME;
 
-  // Whether *any* script in the page already contains a BreadcrumbList,
-  // either as the root or nested inside a @graph array.
-  let breadcrumbPresent = scripts.some(s =>
-    s.data['@type'] === 'BreadcrumbList' ||
-    (Array.isArray(s.data['@graph']) && s.data['@graph'].some(n => n['@type'] === 'BreadcrumbList'))
+  // Locate every JSON-LD block in the original source string. We only ever
+  // mutate the inside of these blocks; the surrounding HTML is preserved
+  // byte-for-byte (no cheerio re-serialization, no doctype rewrites, no
+  // self-closing tag mangling).
+  const matches = [...html.matchAll(JSONLD_BLOCK_RE)];
+  const entries = matches.map(m => ({
+    full: m[0],
+    inner: m[1],
+    data: JSON.parse(m[1])
+  }));
+
+  let breadcrumbPresent = entries.some(e =>
+    e.data['@type'] === 'BreadcrumbList' ||
+    (Array.isArray(e.data['@graph']) && e.data['@graph'].some(n => n['@type'] === 'BreadcrumbList'))
   );
 
-  // Org / WebSite / Service nodes belong on a single @graph script. Track
-  // whether they have been planted so we don't duplicate when multiple
-  // graph scripts exist.
   let orgPlanted = false;
   let webSitePlanted = false;
   let servicePlanted = false;
 
-  for (const entry of scripts) {
+  for (const entry of entries) {
     let next = entry.data;
     const isGraph = Array.isArray(next['@graph']);
 
@@ -184,27 +193,25 @@ export function processHtml(html) {
     next = refreshDateModified(next);
 
     entry.data = next;
-    replaceJsonLdInDom($, entry);
   }
 
-  // BreadcrumbList backfill: only when missing AND the page is a content page
-  // (not a homepage). Inline if there is a @graph script; otherwise append a
-  // fresh JSON-LD block to <head>.
-  if (!breadcrumbPresent && canonical && canonical !== ZH_HOME && canonical !== EN_HOME) {
+  // Splice updated JSON-LD blocks back into the original HTML string.
+  let out = html;
+  for (const entry of entries) {
+    const newInner = `\n${reserializeJsonLd(entry.data)}\n    `;
+    const newBlock = `<script type="application/ld+json">${newInner}</script>`;
+    // Replace the first occurrence of the original block in `out`. Using
+    // split/join avoids regex special-character pitfalls in the matched text.
+    out = out.replace(entry.full, newBlock);
+  }
+
+  // BreadcrumbList backfill: only when missing AND the page is a content page.
+  if (!breadcrumbPresent && canonical && !isHomepage) {
     const inferred = inferBreadcrumbFromPage($, homeUrl);
-    const firstGraph = scripts.find(s => Array.isArray(s.data['@graph']));
-    if (firstGraph) {
-      firstGraph.data = addBreadcrumbIfMissing(firstGraph.data, inferred);
-      replaceJsonLdInDom($, firstGraph);
-    } else {
-      const serialized = JSON.stringify(inferred, null, 2);
-      $('head').append(`\n    <script type="application/ld+json">\n    ${serialized}\n    </script>`);
-    }
+    const newBlock = `    <script type="application/ld+json">\n${reserializeJsonLd(inferred)}\n    </script>\n`;
+    // Insert immediately before </head>, preserving the existing indent of </head>.
+    out = out.replace(/(\s*)<\/head>/, `\n${newBlock}$1</head>`);
   }
 
-  let out = $.html();
-  if (doctype && !/^\s*<!doctype/i.test(out)) {
-    out = `${doctype}\n${out}`;
-  }
   return out;
 }
