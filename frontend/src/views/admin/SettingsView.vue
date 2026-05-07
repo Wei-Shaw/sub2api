@@ -8918,12 +8918,6 @@ watch(
     0 1px 2px rgb(0 0 0 / 0.02);
 }
 
-@media (min-width: 640px) {
-  .settings-tabs {
-    @apply flex;
-  }
-}
-
 .settings-tab {
   @apply relative flex flex-1 items-center justify-center gap-1.5
          whitespace-nowrap rounded-xl px-2.5 py-2
