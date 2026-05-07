@@ -3343,13 +3343,12 @@ const handleSubmit = async () => {
       REDACTED
 
       // Handle API key
+      // 后端响应已脱敏：currentCredentials 不会再包含 api_key 原文。
+      // 用户填入新值则覆盖；留空且后端已存在旧 key（看 credentials_status）则不带 api_key 字段，
+      // 由后端合并保留；两者都无才报错。
       if (editApiKey.value.trim()) {
-        // User provided a new API key
         newCredentials.api_key = editApiKey.value.trim()
-      REDACTED else if (currentCredentials.api_key) {
-        // Preserve existing api_key
-        newCredentials.api_key = currentCredentials.api_key
-      REDACTED else {
+      REDACTED else if (!props.account.credentials_status?.has_api_key) {
         appStore.showError(t('admin.accounts.apiKeyIsRequired'))
         return
       REDACTED
@@ -3434,7 +3433,11 @@ const handleSubmit = async () => {
         return
       REDACTED
 
-      if (!currentCredentials.service_account_json && !currentCredentials.service_account) {
+      // SA JSON 已脱敏不再随 credentials 返回，存在性改读 credentials_status。
+      const hasExistingServiceAccountJson =
+        props.account.credentials_status?.has_service_account_json ||
+        props.account.credentials_status?.has_service_account
+      if (!hasExistingServiceAccountJson) {
         appStore.showError(t('admin.accounts.vertexSaJsonRequired'))
         return
       REDACTED
