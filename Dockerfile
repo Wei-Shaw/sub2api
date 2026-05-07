@@ -21,7 +21,7 @@ FROM ${NODE_IMAGE} AS frontend-builder
 WORKDIR /app/frontend
 
 # Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@9 --activate
 
 # Install dependencies first (better caching)
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
@@ -99,7 +99,7 @@ FROM ${NODE_IMAGE} AS plugin-frontend-builder
 
 WORKDIR /src
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@9 --activate
 ENV PNPM_HOME=/pnpm-store
 
 # Copy plugin source (deps + src). Host frontend node_modules also needs to be
