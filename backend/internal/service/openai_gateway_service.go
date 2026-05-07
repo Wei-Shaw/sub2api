@@ -5095,7 +5095,9 @@ func normalizeOpenAICompactRequestBody(body []byte) ([]byte, bool, error) {
 
 	normalized := []byte(`{}`)
 	// Keep the current Codex /compact schema while still dropping request-scoped
-	// fields such as prompt_cache_key, store, and stream.
+	// fields such as prompt_cache_key and store.
+	// stream is preserved so normalizeOpenAIPassthroughOAuthBody can set it to
+	// true for SSE streaming (prevents proxy NAT idle timeout on long compacts).
 	for _, field := range []string{
 		"model",
 		"input",
@@ -5105,6 +5107,7 @@ func normalizeOpenAICompactRequestBody(body []byte) ([]byte, bool, error) {
 		"reasoning",
 		"text",
 		"previous_response_id",
+		"stream",
 	} {
 		value := gjson.GetBytes(body, field)
 		if !value.Exists() {
