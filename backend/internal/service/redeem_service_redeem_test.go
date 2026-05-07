@@ -61,7 +61,7 @@ func (r *redeemRejectRepo) List(ctx context.Context, params pagination.Paginatio
 	panic("unexpected List call")
 }
 
-func (r *redeemRejectRepo) ListWithFilters(ctx context.Context, params pagination.PaginationParams, codeType, status, search string) ([]RedeemCode, *pagination.PaginationResult, error) {
+func (r *redeemRejectRepo) ListWithFilters(ctx context.Context, params pagination.PaginationParams, codeType, status, search string, createdBy *int64) ([]RedeemCode, *pagination.PaginationResult, error) {
 	panic("unexpected ListWithFilters call")
 }
 

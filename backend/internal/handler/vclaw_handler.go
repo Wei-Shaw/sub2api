@@ -22,6 +22,7 @@ func NewVClawHandler(claimService *service.VClawClaimService) *VClawHandler {
 // VClawClaimRequest is the public request body for the machine claim endpoint.
 type VClawClaimRequest struct {
 	ClaimCode string `json:"claim_code"`
+	AffCode   string `json:"aff_code"`
 	Device    struct {
 		DeviceHash         string `json:"device_hash" binding:"required"`
 		FingerprintVersion int    `json:"fingerprint_version" binding:"required"`
@@ -43,6 +44,7 @@ func (h *VClawHandler) Claim(c *gin.Context) {
 
 	result, err := h.claimService.Claim(c.Request.Context(), service.VClawClaimRequest{
 		ClaimCode: req.ClaimCode,
+		AffCode:   req.AffCode,
 		Device: service.VClawDeviceInput{
 			DeviceHash:         req.Device.DeviceHash,
 			FingerprintVersion: req.Device.FingerprintVersion,

@@ -18,7 +18,7 @@ type PromoCodeRepository interface {
 
 	// 列表查询
 	List(ctx context.Context, params pagination.PaginationParams) ([]PromoCode, *pagination.PaginationResult, error)
-	ListWithFilters(ctx context.Context, params pagination.PaginationParams, status, search string) ([]PromoCode, *pagination.PaginationResult, error)
+	ListWithFilters(ctx context.Context, params pagination.PaginationParams, status, search string, createdBy *int64) ([]PromoCode, *pagination.PaginationResult, error)
 
 	// 使用记录
 	CreateUsage(ctx context.Context, usage *PromoCodeUsage) error

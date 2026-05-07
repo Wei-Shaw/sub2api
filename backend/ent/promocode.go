@@ -10,6 +10,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
+	"github.com/Wei-Shaw/sub2api/ent/user"
 )
 
 // PromoCode is the model entity for the PromoCode schema.
@@ -31,6 +32,8 @@ type PromoCode struct {
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 	// 备注
 	Notes *string `json:"notes,omitempty"`
+	// 创建该优惠码的后台用户ID
+	CreatedBy *int64 `json:"created_by,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// UpdatedAt holds the value of the "updated_at" field.
@@ -45,9 +48,11 @@ type PromoCode struct {
 type PromoCodeEdges struct {
 	// UsageRecords holds the value of the usage_records edge.
 	UsageRecords []*PromoCodeUsage `json:"usage_records,omitempty"`
+	// Creator holds the value of the creator edge.
+	Creator *User `json:"creator,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [1]bool
+	loadedTypes [2]bool
 }
 
 // UsageRecordsOrErr returns the UsageRecords value or an error if the edge
@@ -59,6 +64,17 @@ func (e PromoCodeEdges) UsageRecordsOrErr() ([]*PromoCodeUsage, error) {
 	return nil, &NotLoadedError{edge: "usage_records"}
 }
 
+// CreatorOrErr returns the Creator value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e PromoCodeEdges) CreatorOrErr() (*User, error) {
+	if e.Creator != nil {
+		return e.Creator, nil
+	} else if e.loadedTypes[1] {
+		return nil, &NotFoundError{label: user.Label}
+	}
+	return nil, &NotLoadedError{edge: "creator"}
+}
+
 // scanValues returns the types for scanning values from sql.Rows.
 func (*PromoCode) scanValues(columns []string) ([]any, error) {
 	values := make([]any, len(columns))
@@ -66,7 +82,7 @@ func (*PromoCode) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case promocode.FieldBonusAmount:
 			values[i] = new(sql.NullFloat64)
-		case promocode.FieldID, promocode.FieldMaxUses, promocode.FieldUsedCount:
+		case promocode.FieldID, promocode.FieldMaxUses, promocode.FieldUsedCount, promocode.FieldCreatedBy:
 			values[i] = new(sql.NullInt64)
 		case promocode.FieldCode, promocode.FieldStatus, promocode.FieldNotes:
 			values[i] = new(sql.NullString)
@@ -137,6 +153,13 @@ func (_m *PromoCode) assignValues(columns []string, values []any) error {
 				_m.Notes = new(string)
 				*_m.Notes = value.String
 			}
+		case promocode.FieldCreatedBy:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field created_by", values[i])
+			} else if value.Valid {
+				_m.CreatedBy = new(int64)
+				*_m.CreatedBy = value.Int64
+			}
 		case promocode.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -165,6 +188,11 @@ func (_m *PromoCode) Value(name string) (ent.Value, error) {
 // QueryUsageRecords queries the "usage_records" edge of the PromoCode entity.
 func (_m *PromoCode) QueryUsageRecords() *PromoCodeUsageQuery {
 	return NewPromoCodeClient(_m.config).QueryUsageRecords(_m)
+}
+
+// QueryCreator queries the "creator" edge of the PromoCode entity.
+func (_m *PromoCode) QueryCreator() *UserQuery {
+	return NewPromoCodeClient(_m.config).QueryCreator(_m)
 }
 
 // Update returns a builder for updating this PromoCode.
@@ -213,6 +241,11 @@ func (_m *PromoCode) String() string {
 	if v := _m.Notes; v != nil {
 		builder.WriteString("notes=")
 		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.CreatedBy; v != nil {
+		builder.WriteString("created_by=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")

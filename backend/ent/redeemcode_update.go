@@ -154,6 +154,26 @@ func (_u *RedeemCodeUpdate) ClearNotes() *RedeemCodeUpdate {
 	return _u
 }
 
+// SetCreatedBy sets the "created_by" field.
+func (_u *RedeemCodeUpdate) SetCreatedBy(v int64) *RedeemCodeUpdate {
+	_u.mutation.SetCreatedBy(v)
+	return _u
+}
+
+// SetNillableCreatedBy sets the "created_by" field if the given value is not nil.
+func (_u *RedeemCodeUpdate) SetNillableCreatedBy(v *int64) *RedeemCodeUpdate {
+	if v != nil {
+		_u.SetCreatedBy(*v)
+	}
+	return _u
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (_u *RedeemCodeUpdate) ClearCreatedBy() *RedeemCodeUpdate {
+	_u.mutation.ClearCreatedBy()
+	return _u
+}
+
 // SetExpiresAt sets the "expires_at" field.
 func (_u *RedeemCodeUpdate) SetExpiresAt(v time.Time) *RedeemCodeUpdate {
 	_u.mutation.SetExpiresAt(v)
@@ -239,6 +259,25 @@ func (_u *RedeemCodeUpdate) SetGroup(v *Group) *RedeemCodeUpdate {
 	return _u.SetGroupID(v.ID)
 }
 
+// SetCreatorID sets the "creator" edge to the User entity by ID.
+func (_u *RedeemCodeUpdate) SetCreatorID(id int64) *RedeemCodeUpdate {
+	_u.mutation.SetCreatorID(id)
+	return _u
+}
+
+// SetNillableCreatorID sets the "creator" edge to the User entity by ID if the given value is not nil.
+func (_u *RedeemCodeUpdate) SetNillableCreatorID(id *int64) *RedeemCodeUpdate {
+	if id != nil {
+		_u = _u.SetCreatorID(*id)
+	}
+	return _u
+}
+
+// SetCreator sets the "creator" edge to the User entity.
+func (_u *RedeemCodeUpdate) SetCreator(v *User) *RedeemCodeUpdate {
+	return _u.SetCreatorID(v.ID)
+}
+
 // AddClaimedDeviceIDs adds the "claimed_devices" edge to the UserDevice entity by IDs.
 func (_u *RedeemCodeUpdate) AddClaimedDeviceIDs(ids ...int64) *RedeemCodeUpdate {
 	_u.mutation.AddClaimedDeviceIDs(ids...)
@@ -283,6 +322,12 @@ func (_u *RedeemCodeUpdate) ClearUser() *RedeemCodeUpdate {
 // ClearGroup clears the "group" edge to the Group entity.
 func (_u *RedeemCodeUpdate) ClearGroup() *RedeemCodeUpdate {
 	_u.mutation.ClearGroup()
+	return _u
+}
+
+// ClearCreator clears the "creator" edge to the User entity.
+func (_u *RedeemCodeUpdate) ClearCreator() *RedeemCodeUpdate {
+	_u.mutation.ClearCreator()
 	return _u
 }
 
@@ -477,6 +522,35 @@ func (_u *RedeemCodeUpdate) sqlSave(ctx context.Context) (_node int, err error) 
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.CreatorCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   redeemcode.CreatorTable,
+			Columns: []string{redeemcode.CreatorColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.CreatorIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   redeemcode.CreatorTable,
+			Columns: []string{redeemcode.CreatorColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -717,6 +791,26 @@ func (_u *RedeemCodeUpdateOne) ClearNotes() *RedeemCodeUpdateOne {
 	return _u
 }
 
+// SetCreatedBy sets the "created_by" field.
+func (_u *RedeemCodeUpdateOne) SetCreatedBy(v int64) *RedeemCodeUpdateOne {
+	_u.mutation.SetCreatedBy(v)
+	return _u
+}
+
+// SetNillableCreatedBy sets the "created_by" field if the given value is not nil.
+func (_u *RedeemCodeUpdateOne) SetNillableCreatedBy(v *int64) *RedeemCodeUpdateOne {
+	if v != nil {
+		_u.SetCreatedBy(*v)
+	}
+	return _u
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (_u *RedeemCodeUpdateOne) ClearCreatedBy() *RedeemCodeUpdateOne {
+	_u.mutation.ClearCreatedBy()
+	return _u
+}
+
 // SetExpiresAt sets the "expires_at" field.
 func (_u *RedeemCodeUpdateOne) SetExpiresAt(v time.Time) *RedeemCodeUpdateOne {
 	_u.mutation.SetExpiresAt(v)
@@ -802,6 +896,25 @@ func (_u *RedeemCodeUpdateOne) SetGroup(v *Group) *RedeemCodeUpdateOne {
 	return _u.SetGroupID(v.ID)
 }
 
+// SetCreatorID sets the "creator" edge to the User entity by ID.
+func (_u *RedeemCodeUpdateOne) SetCreatorID(id int64) *RedeemCodeUpdateOne {
+	_u.mutation.SetCreatorID(id)
+	return _u
+}
+
+// SetNillableCreatorID sets the "creator" edge to the User entity by ID if the given value is not nil.
+func (_u *RedeemCodeUpdateOne) SetNillableCreatorID(id *int64) *RedeemCodeUpdateOne {
+	if id != nil {
+		_u = _u.SetCreatorID(*id)
+	}
+	return _u
+}
+
+// SetCreator sets the "creator" edge to the User entity.
+func (_u *RedeemCodeUpdateOne) SetCreator(v *User) *RedeemCodeUpdateOne {
+	return _u.SetCreatorID(v.ID)
+}
+
 // AddClaimedDeviceIDs adds the "claimed_devices" edge to the UserDevice entity by IDs.
 func (_u *RedeemCodeUpdateOne) AddClaimedDeviceIDs(ids ...int64) *RedeemCodeUpdateOne {
 	_u.mutation.AddClaimedDeviceIDs(ids...)
@@ -846,6 +959,12 @@ func (_u *RedeemCodeUpdateOne) ClearUser() *RedeemCodeUpdateOne {
 // ClearGroup clears the "group" edge to the Group entity.
 func (_u *RedeemCodeUpdateOne) ClearGroup() *RedeemCodeUpdateOne {
 	_u.mutation.ClearGroup()
+	return _u
+}
+
+// ClearCreator clears the "creator" edge to the User entity.
+func (_u *RedeemCodeUpdateOne) ClearCreator() *RedeemCodeUpdateOne {
+	_u.mutation.ClearCreator()
 	return _u
 }
 
@@ -1070,6 +1189,35 @@ func (_u *RedeemCodeUpdateOne) sqlSave(ctx context.Context) (_node *RedeemCode, 
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.CreatorCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   redeemcode.CreatorTable,
+			Columns: []string{redeemcode.CreatorColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.CreatorIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   redeemcode.CreatorTable,
+			Columns: []string{redeemcode.CreatorColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

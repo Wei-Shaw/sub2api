@@ -243,7 +243,7 @@ export default {
       title: 'Redeem Code Management',
       description: 'Generate and manage redeem codes',
       generateCodes: 'Generate Codes',
-      searchCodes: 'Search codes or email...',
+      searchCodes: 'Search codes, user email, or creator email...',
       allTypes: 'All Types',
       allStatus: 'All Status',
       balance: 'Balance',
@@ -262,6 +262,7 @@ export default {
         usedAt: 'Used At',
         createdAt: 'Created At',
         expiresAt: 'Expires At',
+        createdBy: 'Created By',
         actions: 'Actions'
       },
       userPrefix: 'User #{id}',
@@ -387,6 +388,7 @@ export default {
         notifyMode: 'Notify Mode',
         targeting: 'Targeting',
         timeRange: 'Schedule',
+        createdBy: 'Created By',
         createdAt: 'Created At',
         actions: 'Actions'
       },
@@ -453,7 +455,7 @@ export default {
       createCode: 'Create Promo Code',
       editCode: 'Edit Promo Code',
       deleteCode: 'Delete Promo Code',
-      searchCodes: 'Search codes...',
+      searchCodes: 'Search codes or creator email...',
       allStatus: 'All Status',
       columns: {
         code: 'Code',
@@ -463,6 +465,7 @@ export default {
         usage: 'Usage',
         status: 'Status',
         expiresAt: 'Expires At',
+        createdBy: 'Created By',
         createdAt: 'Created At',
         actions: 'Actions'
       },

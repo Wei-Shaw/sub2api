@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -95,8 +96,13 @@ func (h *RedeemHandler) List(c *gin.Context) {
 	if len(search) > 100 {
 		search = search[:100]
 	}
+	createdBy, err := parseOptionalInt64Query(c, "created_by")
+	if err != nil {
+		response.BadRequest(c, "Invalid created_by")
+		return
+	}
 
-	codes, total, err := h.adminService.ListRedeemCodes(c.Request.Context(), page, pageSize, codeType, status, search, sortBy, sortOrder)
+	codes, total, err := h.adminService.ListRedeemCodes(c.Request.Context(), page, pageSize, codeType, status, search, sortBy, sortOrder, createdBy)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -135,6 +141,7 @@ func (h *RedeemHandler) Generate(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
+	createdBy := currentAdminUserID(c)
 
 	expiresAt, err := resolveRedeemCodeExpiresAt(req.ExpiresAt, req.ExpiresInDays)
 	if err != nil {
@@ -150,6 +157,7 @@ func (h *RedeemHandler) Generate(c *gin.Context) {
 			GroupID:      req.GroupID,
 			ValidityDays: req.ValidityDays,
 			ExpiresAt:    expiresAt,
+			CreatedBy:    createdBy,
 		})
 		if execErr != nil {
 			return nil, execErr
@@ -182,6 +190,8 @@ func (h *RedeemHandler) CreateAndRedeem(c *gin.Context) {
 	if req.Type == "" {
 		req.Type = "balance"
 	}
+
+	createdBy := currentAdminUserID(c)
 
 	if req.Type == "subscription" {
 		if req.GroupID == nil {
@@ -218,6 +228,7 @@ func (h *RedeemHandler) CreateAndRedeem(c *gin.Context) {
 			GroupID:      req.GroupID,
 			ValidityDays: req.ValidityDays,
 			ExpiresAt:    expiresAt,
+			CreatedBy:    createdBy,
 		})
 		if createErr != nil {
 			// Unique code race: if code now exists, use idempotent semantics by used_by.
@@ -264,6 +275,25 @@ func (h *RedeemHandler) resolveCreateAndRedeemExisting(ctx context.Context, exis
 	}
 
 	return nil, infraerrors.Conflict("REDEEM_CODE_CONFLICT", "redeem code already used by another user")
+}
+
+func currentAdminUserID(c *gin.Context) *int64 {
+	if subject, ok := middleware.GetAuthSubjectFromContext(c); ok && subject.UserID > 0 {
+		return &subject.UserID
+	}
+	return nil
+}
+
+func parseOptionalInt64Query(c *gin.Context, key string) (*int64, error) {
+	value := strings.TrimSpace(c.Query(key))
+	if value == "" {
+		return nil, nil
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
 }
 
 // Delete handles deleting a redeem code
@@ -399,9 +429,14 @@ func (h *RedeemHandler) Export(c *gin.Context) {
 	if len(search) > 100 {
 		search = search[:100]
 	}
+	createdBy, err := parseOptionalInt64Query(c, "created_by")
+	if err != nil {
+		response.BadRequest(c, "Invalid created_by")
+		return
+	}
 
 	// Get all codes without pagination (use large page size)
-	codes, _, err := h.adminService.ListRedeemCodes(c.Request.Context(), 1, 10000, codeType, status, search, sortBy, sortOrder)
+	codes, _, err := h.adminService.ListRedeemCodes(c.Request.Context(), 1, 10000, codeType, status, search, sortBy, sortOrder, createdBy)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

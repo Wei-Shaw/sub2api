@@ -90,7 +90,7 @@ func (s *redeemCodeRepoStub) List(context.Context, pagination.PaginationParams) 
 	panic("unexpected List call")
 }
 
-func (s *redeemCodeRepoStub) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string) ([]RedeemCode, *pagination.PaginationResult, error) {
+func (s *redeemCodeRepoStub) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *int64) ([]RedeemCode, *pagination.PaginationResult, error) {
 	panic("unexpected ListWithFilters call")
 }
 

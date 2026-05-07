@@ -8,6 +8,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -53,6 +54,11 @@ func (h *PromoHandler) List(c *gin.Context) {
 	if len(search) > 100 {
 		search = search[:100]
 	}
+	createdBy, err := parseOptionalInt64Query(c, "created_by")
+	if err != nil {
+		response.BadRequest(c, "Invalid created_by")
+		return
+	}
 
 	params := pagination.PaginationParams{
 		Page:      page,
@@ -61,7 +67,7 @@ func (h *PromoHandler) List(c *gin.Context) {
 		SortOrder: c.DefaultQuery("sort_order", "desc"),
 	}
 
-	codes, paginationResult, err := h.promoService.List(c.Request.Context(), params, status, search)
+	codes, paginationResult, err := h.promoService.List(c.Request.Context(), params, status, search, createdBy)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -106,6 +112,9 @@ func (h *PromoHandler) Create(c *gin.Context) {
 		BonusAmount: req.BonusAmount,
 		MaxUses:     req.MaxUses,
 		Notes:       req.Notes,
+	}
+	if subject, ok := middleware.GetAuthSubjectFromContext(c); ok && subject.UserID > 0 {
+		input.CreatedBy = &subject.UserID
 	}
 
 	if req.ExpiresAt != nil {

@@ -712,6 +712,20 @@ func ProvideAuthService(
 	return svc
 }
 
+// ProvideVClawClaimService wires the V-Claw claim service with affiliate support.
+func ProvideVClawClaimService(
+	entClient *dbent.Client,
+	userRepo UserRepository,
+	redeemRepo RedeemCodeRepository,
+	userDeviceRepo UserDeviceRepository,
+	cfg *config.Config,
+	settingService *SettingService,
+	defaultSubAssigner DefaultSubscriptionAssigner,
+	affiliateService *AffiliateService,
+) *VClawClaimService {
+	return NewVClawClaimService(entClient, userRepo, redeemRepo, userDeviceRepo, cfg, settingService, defaultSubAssigner, affiliateService)
+}
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
@@ -826,7 +840,7 @@ var ProviderSet = wire.NewSet(
 	ProvideBalanceNotifyService,
 	ProvideChannelMonitorService,
 	ProvideChannelMonitorRunner,
-	NewVClawClaimService,
+	ProvideVClawClaimService,
 	NewChannelMonitorRequestTemplateService,
 	ProvideUserPlatformQuotaUsageFlusher,
 )

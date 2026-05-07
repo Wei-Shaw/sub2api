@@ -146,7 +146,7 @@ func (r *paymentOrderLifecycleRedeemRepo) List(context.Context, pagination.Pagin
 	panic("unexpected call")
 }
 
-func (r *paymentOrderLifecycleRedeemRepo) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string) ([]RedeemCode, *pagination.PaginationResult, error) {
+func (r *paymentOrderLifecycleRedeemRepo) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, *int64) ([]RedeemCode, *pagination.PaginationResult, error) {
 	panic("unexpected call")
 }
 

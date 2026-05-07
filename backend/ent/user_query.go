@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
+	"github.com/Wei-Shaw/sub2api/ent/promocode"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
@@ -40,6 +41,8 @@ type UserQuery struct {
 	predicates                []predicate.User
 	withAPIKeys               *APIKeyQuery
 	withRedeemCodes           *RedeemCodeQuery
+	withCreatedRedeemCodes    *RedeemCodeQuery
+	withCreatedPromoCodes     *PromoCodeQuery
 	withSubscriptions         *UserSubscriptionQuery
 	withAssignedSubscriptions *UserSubscriptionQuery
 	withAnnouncementReads     *AnnouncementReadQuery
@@ -127,6 +130,50 @@ func (_q *UserQuery) QueryRedeemCodes() *RedeemCodeQuery {
 			sqlgraph.From(user.Table, user.FieldID, selector),
 			sqlgraph.To(redeemcode.Table, redeemcode.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, user.RedeemCodesTable, user.RedeemCodesColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryCreatedRedeemCodes chains the current query on the "created_redeem_codes" edge.
+func (_q *UserQuery) QueryCreatedRedeemCodes() *RedeemCodeQuery {
+	query := (&RedeemCodeClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(redeemcode.Table, redeemcode.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.CreatedRedeemCodesTable, user.CreatedRedeemCodesColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryCreatedPromoCodes chains the current query on the "created_promo_codes" edge.
+func (_q *UserQuery) QueryCreatedPromoCodes() *PromoCodeQuery {
+	query := (&PromoCodeClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(promocode.Table, promocode.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.CreatedPromoCodesTable, user.CreatedPromoCodesColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -614,6 +661,8 @@ func (_q *UserQuery) Clone() *UserQuery {
 		predicates:                append([]predicate.User{}, _q.predicates...),
 		withAPIKeys:               _q.withAPIKeys.Clone(),
 		withRedeemCodes:           _q.withRedeemCodes.Clone(),
+		withCreatedRedeemCodes:    _q.withCreatedRedeemCodes.Clone(),
+		withCreatedPromoCodes:     _q.withCreatedPromoCodes.Clone(),
 		withSubscriptions:         _q.withSubscriptions.Clone(),
 		withAssignedSubscriptions: _q.withAssignedSubscriptions.Clone(),
 		withAnnouncementReads:     _q.withAnnouncementReads.Clone(),
@@ -652,6 +701,28 @@ func (_q *UserQuery) WithRedeemCodes(opts ...func(*RedeemCodeQuery)) *UserQuery 
 		opt(query)
 	}
 	_q.withRedeemCodes = query
+	return _q
+}
+
+// WithCreatedRedeemCodes tells the query-builder to eager-load the nodes that are connected to
+// the "created_redeem_codes" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithCreatedRedeemCodes(opts ...func(*RedeemCodeQuery)) *UserQuery {
+	query := (&RedeemCodeClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withCreatedRedeemCodes = query
+	return _q
+}
+
+// WithCreatedPromoCodes tells the query-builder to eager-load the nodes that are connected to
+// the "created_promo_codes" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithCreatedPromoCodes(opts ...func(*PromoCodeQuery)) *UserQuery {
+	query := (&PromoCodeClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withCreatedPromoCodes = query
 	return _q
 }
 
@@ -876,9 +947,11 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 	var (
 		nodes       = []*User{}
 		_spec       = _q.querySpec()
-		loadedTypes = [15]bool{
+		loadedTypes = [17]bool{
 			_q.withAPIKeys != nil,
 			_q.withRedeemCodes != nil,
+			_q.withCreatedRedeemCodes != nil,
+			_q.withCreatedPromoCodes != nil,
 			_q.withSubscriptions != nil,
 			_q.withAssignedSubscriptions != nil,
 			_q.withAnnouncementReads != nil,
@@ -926,6 +999,20 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 		if err := _q.loadRedeemCodes(ctx, query, nodes,
 			func(n *User) { n.Edges.RedeemCodes = []*RedeemCode{} },
 			func(n *User, e *RedeemCode) { n.Edges.RedeemCodes = append(n.Edges.RedeemCodes, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withCreatedRedeemCodes; query != nil {
+		if err := _q.loadCreatedRedeemCodes(ctx, query, nodes,
+			func(n *User) { n.Edges.CreatedRedeemCodes = []*RedeemCode{} },
+			func(n *User, e *RedeemCode) { n.Edges.CreatedRedeemCodes = append(n.Edges.CreatedRedeemCodes, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withCreatedPromoCodes; query != nil {
+		if err := _q.loadCreatedPromoCodes(ctx, query, nodes,
+			func(n *User) { n.Edges.CreatedPromoCodes = []*PromoCode{} },
+			func(n *User, e *PromoCode) { n.Edges.CreatedPromoCodes = append(n.Edges.CreatedPromoCodes, e) }); err != nil {
 			return nil, err
 		}
 	}
@@ -1085,6 +1172,72 @@ func (_q *UserQuery) loadRedeemCodes(ctx context.Context, query *RedeemCodeQuery
 		node, ok := nodeids[*fk]
 		if !ok {
 			return fmt.Errorf(`unexpected referenced foreign-key "used_by" returned %v for node %v`, *fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadCreatedRedeemCodes(ctx context.Context, query *RedeemCodeQuery, nodes []*User, init func(*User), assign func(*User, *RedeemCode)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int64]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(redeemcode.FieldCreatedBy)
+	}
+	query.Where(predicate.RedeemCode(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.CreatedRedeemCodesColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.CreatedBy
+		if fk == nil {
+			return fmt.Errorf(`foreign-key "created_by" is nil for node %v`, n.ID)
+		}
+		node, ok := nodeids[*fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "created_by" returned %v for node %v`, *fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadCreatedPromoCodes(ctx context.Context, query *PromoCodeQuery, nodes []*User, init func(*User), assign func(*User, *PromoCode)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int64]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(promocode.FieldCreatedBy)
+	}
+	query.Where(predicate.PromoCode(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.CreatedPromoCodesColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.CreatedBy
+		if fk == nil {
+			return fmt.Errorf(`foreign-key "created_by" is nil for node %v`, n.ID)
+		}
+		node, ok := nodeids[*fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "created_by" returned %v for node %v`, *fk, n.ID)
 		}
 		assign(node, n)
 	}

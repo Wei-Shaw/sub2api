@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
+	"github.com/Wei-Shaw/sub2api/ent/user"
 )
 
 // PromoCodeQuery is the builder for querying PromoCode entities.
@@ -26,6 +27,7 @@ type PromoCodeQuery struct {
 	inters           []Interceptor
 	predicates       []predicate.PromoCode
 	withUsageRecords *PromoCodeUsageQuery
+	withCreator      *UserQuery
 	modifiers        []func(*sql.Selector)
 	// intermediate query (i.e. traversal path).
 	sql  *sql.Selector
@@ -78,6 +80,28 @@ func (_q *PromoCodeQuery) QueryUsageRecords() *PromoCodeUsageQuery {
 			sqlgraph.From(promocode.Table, promocode.FieldID, selector),
 			sqlgraph.To(promocodeusage.Table, promocodeusage.FieldID),
 			sqlgraph.Edge(sqlgraph.O2M, false, promocode.UsageRecordsTable, promocode.UsageRecordsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryCreator chains the current query on the "creator" edge.
+func (_q *PromoCodeQuery) QueryCreator() *UserQuery {
+	query := (&UserClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(promocode.Table, promocode.FieldID, selector),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, promocode.CreatorTable, promocode.CreatorColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -278,6 +302,7 @@ func (_q *PromoCodeQuery) Clone() *PromoCodeQuery {
 		inters:           append([]Interceptor{}, _q.inters...),
 		predicates:       append([]predicate.PromoCode{}, _q.predicates...),
 		withUsageRecords: _q.withUsageRecords.Clone(),
+		withCreator:      _q.withCreator.Clone(),
 		// clone intermediate query.
 		sql:  _q.sql.Clone(),
 		path: _q.path,
@@ -292,6 +317,17 @@ func (_q *PromoCodeQuery) WithUsageRecords(opts ...func(*PromoCodeUsageQuery)) *
 		opt(query)
 	}
 	_q.withUsageRecords = query
+	return _q
+}
+
+// WithCreator tells the query-builder to eager-load the nodes that are connected to
+// the "creator" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *PromoCodeQuery) WithCreator(opts ...func(*UserQuery)) *PromoCodeQuery {
+	query := (&UserClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withCreator = query
 	return _q
 }
 
@@ -373,8 +409,9 @@ func (_q *PromoCodeQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Pr
 	var (
 		nodes       = []*PromoCode{}
 		_spec       = _q.querySpec()
-		loadedTypes = [1]bool{
+		loadedTypes = [2]bool{
 			_q.withUsageRecords != nil,
+			_q.withCreator != nil,
 		}
 	)
 	_spec.ScanValues = func(columns []string) ([]any, error) {
@@ -402,6 +439,12 @@ func (_q *PromoCodeQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*Pr
 		if err := _q.loadUsageRecords(ctx, query, nodes,
 			func(n *PromoCode) { n.Edges.UsageRecords = []*PromoCodeUsage{} },
 			func(n *PromoCode, e *PromoCodeUsage) { n.Edges.UsageRecords = append(n.Edges.UsageRecords, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withCreator; query != nil {
+		if err := _q.loadCreator(ctx, query, nodes, nil,
+			func(n *PromoCode, e *User) { n.Edges.Creator = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -438,6 +481,38 @@ func (_q *PromoCodeQuery) loadUsageRecords(ctx context.Context, query *PromoCode
 	}
 	return nil
 }
+func (_q *PromoCodeQuery) loadCreator(ctx context.Context, query *UserQuery, nodes []*PromoCode, init func(*PromoCode), assign func(*PromoCode, *User)) error {
+	ids := make([]int64, 0, len(nodes))
+	nodeids := make(map[int64][]*PromoCode)
+	for i := range nodes {
+		if nodes[i].CreatedBy == nil {
+			continue
+		}
+		fk := *nodes[i].CreatedBy
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(user.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "created_by" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
 
 func (_q *PromoCodeQuery) sqlCount(ctx context.Context) (int, error) {
 	_spec := _q.querySpec()
@@ -466,6 +541,9 @@ func (_q *PromoCodeQuery) querySpec() *sqlgraph.QuerySpec {
 			if fields[i] != promocode.FieldID {
 				_spec.Node.Columns = append(_spec.Node.Columns, fields[i])
 			}
+		}
+		if _q.withCreator != nil {
+			_spec.Node.AddColumnOnce(promocode.FieldCreatedBy)
 		}
 	}
 	if ps := _q.predicates; len(ps) > 0 {

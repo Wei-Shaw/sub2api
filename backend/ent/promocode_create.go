@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
+	"github.com/Wei-Shaw/sub2api/ent/user"
 )
 
 // PromoCodeCreate is the builder for creating a PromoCode entity.
@@ -113,6 +114,20 @@ func (_c *PromoCodeCreate) SetNillableNotes(v *string) *PromoCodeCreate {
 	return _c
 }
 
+// SetCreatedBy sets the "created_by" field.
+func (_c *PromoCodeCreate) SetCreatedBy(v int64) *PromoCodeCreate {
+	_c.mutation.SetCreatedBy(v)
+	return _c
+}
+
+// SetNillableCreatedBy sets the "created_by" field if the given value is not nil.
+func (_c *PromoCodeCreate) SetNillableCreatedBy(v *int64) *PromoCodeCreate {
+	if v != nil {
+		_c.SetCreatedBy(*v)
+	}
+	return _c
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (_c *PromoCodeCreate) SetCreatedAt(v time.Time) *PromoCodeCreate {
 	_c.mutation.SetCreatedAt(v)
@@ -154,6 +169,25 @@ func (_c *PromoCodeCreate) AddUsageRecords(v ...*PromoCodeUsage) *PromoCodeCreat
 		ids[i] = v[i].ID
 	}
 	return _c.AddUsageRecordIDs(ids...)
+}
+
+// SetCreatorID sets the "creator" edge to the User entity by ID.
+func (_c *PromoCodeCreate) SetCreatorID(id int64) *PromoCodeCreate {
+	_c.mutation.SetCreatorID(id)
+	return _c
+}
+
+// SetNillableCreatorID sets the "creator" edge to the User entity by ID if the given value is not nil.
+func (_c *PromoCodeCreate) SetNillableCreatorID(id *int64) *PromoCodeCreate {
+	if id != nil {
+		_c = _c.SetCreatorID(*id)
+	}
+	return _c
+}
+
+// SetCreator sets the "creator" edge to the User entity.
+func (_c *PromoCodeCreate) SetCreator(v *User) *PromoCodeCreate {
+	return _c.SetCreatorID(v.ID)
 }
 
 // Mutation returns the PromoCodeMutation object of the builder.
@@ -329,6 +363,23 @@ func (_c *PromoCodeCreate) createSpec() (*PromoCode, *sqlgraph.CreateSpec) {
 		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
+	if nodes := _c.mutation.CreatorIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   promocode.CreatorTable,
+			Columns: []string{promocode.CreatorColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_node.CreatedBy = &nodes[0]
+		_spec.Edges = append(_spec.Edges, edge)
+	}
 	return _node, _spec
 }
 
@@ -492,6 +543,24 @@ func (u *PromoCodeUpsert) UpdateNotes() *PromoCodeUpsert {
 // ClearNotes clears the value of the "notes" field.
 func (u *PromoCodeUpsert) ClearNotes() *PromoCodeUpsert {
 	u.SetNull(promocode.FieldNotes)
+	return u
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (u *PromoCodeUpsert) SetCreatedBy(v int64) *PromoCodeUpsert {
+	u.Set(promocode.FieldCreatedBy, v)
+	return u
+}
+
+// UpdateCreatedBy sets the "created_by" field to the value that was provided on create.
+func (u *PromoCodeUpsert) UpdateCreatedBy() *PromoCodeUpsert {
+	u.SetExcluded(promocode.FieldCreatedBy)
+	return u
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (u *PromoCodeUpsert) ClearCreatedBy() *PromoCodeUpsert {
+	u.SetNull(promocode.FieldCreatedBy)
 	return u
 }
 
@@ -682,6 +751,27 @@ func (u *PromoCodeUpsertOne) UpdateNotes() *PromoCodeUpsertOne {
 func (u *PromoCodeUpsertOne) ClearNotes() *PromoCodeUpsertOne {
 	return u.Update(func(s *PromoCodeUpsert) {
 		s.ClearNotes()
+	})
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (u *PromoCodeUpsertOne) SetCreatedBy(v int64) *PromoCodeUpsertOne {
+	return u.Update(func(s *PromoCodeUpsert) {
+		s.SetCreatedBy(v)
+	})
+}
+
+// UpdateCreatedBy sets the "created_by" field to the value that was provided on create.
+func (u *PromoCodeUpsertOne) UpdateCreatedBy() *PromoCodeUpsertOne {
+	return u.Update(func(s *PromoCodeUpsert) {
+		s.UpdateCreatedBy()
+	})
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (u *PromoCodeUpsertOne) ClearCreatedBy() *PromoCodeUpsertOne {
+	return u.Update(func(s *PromoCodeUpsert) {
+		s.ClearCreatedBy()
 	})
 }
 
@@ -1040,6 +1130,27 @@ func (u *PromoCodeUpsertBulk) UpdateNotes() *PromoCodeUpsertBulk {
 func (u *PromoCodeUpsertBulk) ClearNotes() *PromoCodeUpsertBulk {
 	return u.Update(func(s *PromoCodeUpsert) {
 		s.ClearNotes()
+	})
+}
+
+// SetCreatedBy sets the "created_by" field.
+func (u *PromoCodeUpsertBulk) SetCreatedBy(v int64) *PromoCodeUpsertBulk {
+	return u.Update(func(s *PromoCodeUpsert) {
+		s.SetCreatedBy(v)
+	})
+}
+
+// UpdateCreatedBy sets the "created_by" field to the value that was provided on create.
+func (u *PromoCodeUpsertBulk) UpdateCreatedBy() *PromoCodeUpsertBulk {
+	return u.Update(func(s *PromoCodeUpsert) {
+		s.UpdateCreatedBy()
+	})
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (u *PromoCodeUpsertBulk) ClearCreatedBy() *PromoCodeUpsertBulk {
+	return u.Update(func(s *PromoCodeUpsert) {
+		s.ClearCreatedBy()
 	})
 }
 

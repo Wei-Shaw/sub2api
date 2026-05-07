@@ -581,19 +581,21 @@ func RedeemCodeFromServiceAdmin(rc *service.RedeemCode) *AdminRedeemCode {
 
 func redeemCodeFromServiceBase(rc *service.RedeemCode) RedeemCode {
 	out := RedeemCode{
-		ID:           rc.ID,
-		Code:         rc.Code,
-		Type:         rc.Type,
-		Value:        rc.Value,
-		Status:       rc.Status,
-		UsedBy:       rc.UsedBy,
-		UsedAt:       rc.UsedAt,
-		CreatedAt:    rc.CreatedAt,
-		ExpiresAt:    rc.ExpiresAt,
-		GroupID:      rc.GroupID,
-		ValidityDays: rc.ValidityDays,
-		User:         UserFromServiceShallow(rc.User),
-		Group:        GroupFromServiceShallow(rc.Group),
+		ID:            rc.ID,
+		Code:          rc.Code,
+		Type:          rc.Type,
+		Value:         rc.Value,
+		Status:        rc.Status,
+		UsedBy:        rc.UsedBy,
+		UsedAt:        rc.UsedAt,
+		CreatedAt:     rc.CreatedAt,
+		ExpiresAt:     rc.ExpiresAt,
+		GroupID:       rc.GroupID,
+		ValidityDays:  rc.ValidityDays,
+		CreatedBy:     rc.CreatedBy,
+		CreatedByUser: UserFromServiceShallow(rc.CreatedByUser),
+		User:          UserFromServiceShallow(rc.User),
+		Group:         GroupFromServiceShallow(rc.Group),
 	}
 	if rc.IsExpired() {
 		out.Status = service.StatusExpired
@@ -808,7 +810,28 @@ func userSubscriptionFromServiceBase(sub *service.UserSubscription) UserSubscrip
 		RevokedAt:          sub.DeletedAt,
 		User:               UserFromServiceShallow(sub.User),
 		Group:              GroupFromServiceShallow(sub.Group),
+		DeviceIdentityCode: deviceIdentityCodeFromUser(sub.User),
+		DeviceIdentityType: deviceIdentityTypeFromUser(sub.User),
+		HasDeviceBinding:   userHasDeviceBinding(sub.User),
 	}
+}
+
+func deviceIdentityCodeFromUser(user *service.User) *string {
+	if user == nil {
+		return nil
+	}
+	return user.PrimaryRedeemCode
+}
+
+func deviceIdentityTypeFromUser(user *service.User) *string {
+	if user == nil {
+		return nil
+	}
+	return user.PrimaryRedeemType
+}
+
+func userHasDeviceBinding(user *service.User) bool {
+	return user != nil && user.HasDeviceBinding
 }
 
 func BulkAssignResultFromService(r *service.BulkAssignResult) *BulkAssignResult {
@@ -839,16 +862,18 @@ func PromoCodeFromService(pc *service.PromoCode) *PromoCode {
 		return nil
 	}
 	return &PromoCode{
-		ID:          pc.ID,
-		Code:        pc.Code,
-		BonusAmount: pc.BonusAmount,
-		MaxUses:     pc.MaxUses,
-		UsedCount:   pc.UsedCount,
-		Status:      pc.Status,
-		ExpiresAt:   pc.ExpiresAt,
-		Notes:       pc.Notes,
-		CreatedAt:   pc.CreatedAt,
-		UpdatedAt:   pc.UpdatedAt,
+		ID:            pc.ID,
+		Code:          pc.Code,
+		BonusAmount:   pc.BonusAmount,
+		MaxUses:       pc.MaxUses,
+		UsedCount:     pc.UsedCount,
+		Status:        pc.Status,
+		ExpiresAt:     pc.ExpiresAt,
+		Notes:         pc.Notes,
+		CreatedBy:     pc.CreatedBy,
+		CreatedByUser: UserFromServiceShallow(pc.CreatedByUser),
+		CreatedAt:     pc.CreatedAt,
+		UpdatedAt:     pc.UpdatedAt,
 	}
 }
 

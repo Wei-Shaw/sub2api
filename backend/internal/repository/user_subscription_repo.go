@@ -7,8 +7,10 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
+	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/ent/userdevice"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -317,6 +319,9 @@ func (r *userSubscriptionRepository) List(ctx context.Context, params pagination
 			return nil, nil, err
 		}
 	}
+	if err := r.hydrateSubscriptionDeviceIdentities(ctx, result); err != nil {
+		return nil, nil, err
+	}
 
 	return result, paginationResultFromTotal(int64(total), params), nil
 }
@@ -599,6 +604,45 @@ func (r *userSubscriptionRepository) attachUserSubscriptionRelations(ctx context
 	return nil
 }
 
+func (r *userSubscriptionRepository) hydrateSubscriptionDeviceIdentities(ctx context.Context, subs []service.UserSubscription) error {
+	userIDs := make([]int64, 0, len(subs))
+	seen := make(map[int64]struct{}, len(subs))
+	for i := range subs {
+		if subs[i].User == nil {
+			continue
+		}
+		userID := subs[i].User.ID
+		if _, ok := seen[userID]; ok {
+			continue
+		}
+		seen[userID] = struct{}{}
+		userIDs = append(userIDs, userID)
+	}
+	if len(userIDs) == 0 {
+		return nil
+	}
+
+	codesByUser, typesByUser, err := r.loadSubscriptionPrimaryRedeemCodes(ctx, userIDs)
+	if err != nil {
+		return err
+	}
+	bindingsByUser, err := r.loadSubscriptionDeviceBindings(ctx, userIDs)
+	if err != nil {
+		return err
+	}
+
+	for i := range subs {
+		if subs[i].User == nil {
+			continue
+		}
+		userID := subs[i].User.ID
+		subs[i].User.PrimaryRedeemCode = codesByUser[userID]
+		subs[i].User.PrimaryRedeemType = typesByUser[userID]
+		subs[i].User.HasDeviceBinding = bindingsByUser[userID]
+	}
+	return nil
+}
+
 func uniqueInt64s(values []int64) []int64 {
 	seen := make(map[int64]struct{}, len(values))
 	out := make([]int64, 0, len(values))
@@ -610,6 +654,75 @@ func uniqueInt64s(values []int64) []int64 {
 		out = append(out, v)
 	}
 	return out
+}
+
+func (r *userSubscriptionRepository) loadSubscriptionPrimaryRedeemCodes(ctx context.Context, userIDs []int64) (map[int64]*string, map[int64]*string, error) {
+	codesByUser := make(map[int64]*string, len(userIDs))
+	typesByUser := make(map[int64]*string, len(userIDs))
+	if len(userIDs) == 0 {
+		return codesByUser, typesByUser, nil
+	}
+
+	client := clientFromContext(ctx, r.client)
+	devices, err := client.UserDevice.Query().
+		Where(userdevice.UserIDIn(userIDs...)).
+		WithLoginRedeemCode().
+		Order(dbent.Desc(userdevice.FieldLastLoginAt), dbent.Desc(userdevice.FieldLastClaimedAt), dbent.Desc(userdevice.FieldCreatedAt), dbent.Desc(userdevice.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, device := range devices {
+		if _, exists := codesByUser[device.UserID]; exists || device.Edges.LoginRedeemCode == nil {
+			continue
+		}
+		code := device.Edges.LoginRedeemCode.Code
+		redeemType := device.Edges.LoginRedeemCode.Type
+		codesByUser[device.UserID] = &code
+		typesByUser[device.UserID] = &redeemType
+	}
+
+	identityTypes := []string{service.RedeemTypeDeviceLogin, service.RedeemTypeDeviceClaim, service.RedeemTypeInvitation}
+	redeems, err := client.RedeemCode.Query().
+		Where(redeemcode.UsedByIn(userIDs...), redeemcode.TypeIn(identityTypes...)).
+		Order(dbent.Desc(redeemcode.FieldUsedAt), dbent.Desc(redeemcode.FieldCreatedAt), dbent.Desc(redeemcode.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, redeem := range redeems {
+		if redeem.UsedBy == nil {
+			continue
+		}
+		userID := *redeem.UsedBy
+		if _, exists := codesByUser[userID]; exists {
+			continue
+		}
+		code := redeem.Code
+		redeemType := redeem.Type
+		codesByUser[userID] = &code
+		typesByUser[userID] = &redeemType
+	}
+	return codesByUser, typesByUser, nil
+}
+
+func (r *userSubscriptionRepository) loadSubscriptionDeviceBindings(ctx context.Context, userIDs []int64) (map[int64]bool, error) {
+	bindingsByUser := make(map[int64]bool, len(userIDs))
+	if len(userIDs) == 0 {
+		return bindingsByUser, nil
+	}
+
+	client := clientFromContext(ctx, r.client)
+	devices, err := client.UserDevice.Query().
+		Where(userdevice.UserIDIn(userIDs...)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, device := range devices {
+		bindingsByUser[device.UserID] = true
+	}
+	return bindingsByUser, nil
 }
 
 func userSubscriptionEntityToService(m *dbent.UserSubscription) *service.UserSubscription {

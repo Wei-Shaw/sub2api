@@ -34,6 +34,7 @@ func (r *redeemCodeRepository) Create(ctx context.Context, code *service.RedeemC
 		SetNillableUsedBy(code.UsedBy).
 		SetNillableUsedAt(code.UsedAt).
 		SetNillableGroupID(code.GroupID).
+		SetNillableCreatedBy(code.CreatedBy).
 		Save(ctx)
 	if err == nil {
 		code.ID = created.ID
@@ -60,7 +61,8 @@ func (r *redeemCodeRepository) CreateBatch(ctx context.Context, codes []service.
 			SetNillableExpiresAt(c.ExpiresAt).
 			SetNillableUsedBy(c.UsedBy).
 			SetNillableUsedAt(c.UsedAt).
-			SetNillableGroupID(c.GroupID)
+			SetNillableGroupID(c.GroupID).
+			SetNillableCreatedBy(c.CreatedBy)
 		builders = append(builders, b)
 	}
 
@@ -70,6 +72,7 @@ func (r *redeemCodeRepository) CreateBatch(ctx context.Context, codes []service.
 func (r *redeemCodeRepository) GetByID(ctx context.Context, id int64) (*service.RedeemCode, error) {
 	m, err := r.client.RedeemCode.Query().
 		Where(redeemcode.IDEQ(id)).
+		WithCreator().
 		Only(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
@@ -99,10 +102,10 @@ func (r *redeemCodeRepository) Delete(ctx context.Context, id int64) error {
 }
 
 func (r *redeemCodeRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.RedeemCode, *pagination.PaginationResult, error) {
-	return r.ListWithFilters(ctx, params, "", "", "")
+	return r.ListWithFilters(ctx, params, "", "", "", nil)
 }
 
-func (r *redeemCodeRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, codeType, status, search string) ([]service.RedeemCode, *pagination.PaginationResult, error) {
+func (r *redeemCodeRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, codeType, status, search string, createdBy *int64) ([]service.RedeemCode, *pagination.PaginationResult, error) {
 	q := r.client.RedeemCode.Query()
 
 	if codeType != "" {
@@ -136,9 +139,14 @@ func (r *redeemCodeRepository) ListWithFilters(ctx context.Context, params pagin
 		q = q.Where(
 			redeemcode.Or(
 				redeemcode.CodeContainsFold(search),
+				redeemcode.NotesContainsFold(search),
 				redeemcode.HasUserWith(user.EmailContainsFold(search)),
+				redeemcode.HasCreatorWith(user.EmailContainsFold(search)),
 			),
 		)
+	}
+	if createdBy != nil {
+		q = q.Where(redeemcode.CreatedByEQ(*createdBy))
 	}
 
 	total, err := q.Count(ctx)
@@ -149,6 +157,7 @@ func (r *redeemCodeRepository) ListWithFilters(ctx context.Context, params pagin
 	codesQuery := q.
 		WithUser().
 		WithGroup().
+		WithCreator().
 		Offset(params.Offset()).
 		Limit(params.Limit())
 	for _, order := range redeemCodeListOrder(params) {
@@ -421,6 +430,7 @@ func redeemCodeEntityToService(m *dbent.RedeemCode) *service.RedeemCode {
 		UsedBy:       m.UsedBy,
 		UsedAt:       m.UsedAt,
 		Notes:        derefString(m.Notes),
+		CreatedBy:    m.CreatedBy,
 		CreatedAt:    m.CreatedAt,
 		ExpiresAt:    m.ExpiresAt,
 		GroupID:      m.GroupID,
@@ -431,6 +441,9 @@ func redeemCodeEntityToService(m *dbent.RedeemCode) *service.RedeemCode {
 	}
 	if m.Edges.Group != nil {
 		out.Group = groupEntityToService(m.Edges.Group)
+	}
+	if m.Edges.Creator != nil {
+		out.CreatedByUser = userEntityToService(m.Edges.Creator)
 	}
 	return out
 }

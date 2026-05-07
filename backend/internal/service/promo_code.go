@@ -14,11 +14,13 @@ type PromoCode struct {
 	Status      string
 	ExpiresAt   *time.Time
 	Notes       string
+	CreatedBy   *int64
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 
 	// 关联
-	UsageRecords []PromoCodeUsage
+	UsageRecords  []PromoCodeUsage
+	CreatedByUser *User
 }
 
 // PromoCodeUsage 优惠码使用记录
@@ -60,6 +62,7 @@ type CreatePromoCodeInput struct {
 	MaxUses     int
 	ExpiresAt   *time.Time
 	Notes       string
+	CreatedBy   *int64
 }
 
 // UpdatePromoCodeInput 更新优惠码输入

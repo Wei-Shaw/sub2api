@@ -185,9 +185,9 @@
           @sort="handleSort"
         >
           <template #cell-user="{ row }">
-            <div class="flex items-center gap-2">
+            <div class="flex min-w-0 items-center gap-2">
               <div
-                class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30"
+                class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-900/30"
               >
                 <span class="text-sm font-medium text-primary-700 dark:text-primary-300">
                   {{ userColumnMode === 'email'
@@ -196,12 +196,34 @@
                   }}
                 </span>
               </div>
-              <span class="font-medium text-gray-900 dark:text-white">
-                {{ userColumnMode === 'email'
-                  ? (row.user?.email || t('admin.redeem.userPrefix', { id: row.user_id }))
-                  : (row.user?.username || '-')
-                }}
-              </span>
+              <div class="min-w-0 space-y-1">
+                <div
+                  class="max-w-[22rem] truncate font-medium text-gray-900 dark:text-white"
+                  :title="getSubscriptionUserTitle(row)"
+                >
+                  {{ userColumnMode === 'email'
+                    ? (row.user?.email || t('admin.redeem.userPrefix', { id: row.user_id }))
+                    : (row.user?.username || '-')
+                  }}
+                </div>
+                <div class="flex min-w-0 flex-wrap items-center gap-1.5">
+                  <span class="text-xs text-gray-500 dark:text-gray-400">#{{ row.user_id }}</span>
+                  <span
+                    v-if="getSubscriptionIdentityCode(row)"
+                    class="inline-flex max-w-[16rem] items-center rounded bg-blue-50 px-1.5 py-0.5 font-mono text-xs text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                    :title="getSubscriptionIdentityCode(row) || undefined"
+                  >
+                    <span class="mr-1 shrink-0 text-[10px] uppercase tracking-wide text-blue-500 dark:text-blue-400">{{ t('admin.subscriptions.deviceCode') }}</span>
+                    <span class="truncate">{{ getSubscriptionIdentityCode(row) }}</span>
+                  </span>
+                  <span
+                    v-else-if="row.has_device_binding"
+                    class="inline-flex items-center rounded bg-emerald-50 px-1.5 py-0.5 text-xs text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                  >
+                    {{ t('admin.subscriptions.deviceBound') }}
+                  </span>
+                </div>
+              </div>
             </div>
           </template>
 
@@ -218,7 +240,7 @@
           </template>
 
           <template #cell-usage="{ row }">
-            <div class="min-w-[280px] space-y-2">
+            <div class="min-w-[220px] max-w-[18rem] space-y-2">
               <!-- Daily Usage -->
               <div v-if="row.group?.daily_limit_usd" class="usage-row">
                 <div class="flex items-center gap-2">
@@ -389,31 +411,31 @@
           </template>
 
           <template #cell-actions="{ row }">
-            <div class="flex items-center gap-1">
+            <div class="grid min-w-[9rem] grid-cols-3 gap-1">
               <button
                 v-if="row.status === 'active' || row.status === 'expired'"
                 @click="handleExtend(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
+                class="flex min-w-0 flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 dark:hover:text-blue-400"
               >
                 <Icon name="calendar" size="sm" />
-                <span class="text-xs">{{ t('admin.subscriptions.adjust') }}</span>
+                <span class="max-w-full truncate text-xs">{{ t('admin.subscriptions.adjust') }}</span>
               </button>
               <button
                 v-if="row.status === 'active'"
                 @click="handleResetQuota(row)"
                 :disabled="resettingQuota && resettingSubscription?.id === row.id"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-orange-900/20 dark:hover:text-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
+                class="flex min-w-0 flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-orange-900/20 dark:hover:text-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Icon name="refresh" size="sm" />
-                <span class="text-xs">{{ t('admin.subscriptions.resetQuota') }}</span>
+                <span class="max-w-full truncate text-xs">{{ t('admin.subscriptions.resetQuota') }}</span>
               </button>
               <button
                 v-if="row.status === 'active'"
                 @click="handleRevoke(row)"
-                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                class="flex min-w-0 flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
               >
                 <Icon name="ban" size="sm" />
-                <span class="text-xs">{{ t('admin.subscriptions.revoke') }}</span>
+                <span class="max-w-full truncate text-xs">{{ t('admin.subscriptions.revoke') }}</span>
               </button>
               <button
                 v-if="row.status === 'revoked'"
@@ -857,13 +879,14 @@ const allColumns = computed<Column[]>(() => [
     label: userColumnMode.value === 'email'
       ? t('admin.subscriptions.columns.user')
       : t('admin.users.columns.username'),
-    sortable: false
+    sortable: false,
+    width: '360px'
   },
-  { key: 'group', label: t('admin.subscriptions.columns.group'), sortable: false },
-  { key: 'usage', label: t('admin.subscriptions.columns.usage'), sortable: false },
-  { key: 'expires_at', label: t('admin.subscriptions.columns.expires'), sortable: true },
-  { key: 'status', label: t('admin.subscriptions.columns.status'), sortable: true },
-  { key: 'actions', label: t('admin.subscriptions.columns.actions'), sortable: false }
+  { key: 'group', label: t('admin.subscriptions.columns.group'), sortable: false, width: '220px' },
+  { key: 'usage', label: t('admin.subscriptions.columns.usage'), sortable: false, width: '300px' },
+  { key: 'expires_at', label: t('admin.subscriptions.columns.expires'), sortable: true, width: '150px' },
+  { key: 'status', label: t('admin.subscriptions.columns.status'), sortable: true, width: '140px' },
+  { key: 'actions', label: t('admin.subscriptions.columns.actions'), sortable: false, width: '170px' }
 ])
 
 // Columns that can be toggled (exclude user and actions which are always visible)
@@ -875,7 +898,7 @@ const toggleableColumns = computed(() =>
 const hiddenColumns = reactive<Set<string>>(new Set())
 
 // Default hidden columns
-const DEFAULT_HIDDEN_COLUMNS: string[] = []
+const DEFAULT_HIDDEN_COLUMNS: string[] = ['status']
 
 // localStorage key
 const HIDDEN_COLUMNS_KEY = 'subscription-hidden-columns'
@@ -961,6 +984,17 @@ let userSearchTimeout: ReturnType<typeof setTimeout> | null = null
 const getUserSearchDisplay = (user: SimpleUser) => {
   const identityCode = user.primary_redeem_code?.trim()
   return identityCode ? `${user.email} · ${identityCode}` : user.email
+}
+
+const getSubscriptionIdentityCode = (subscription: UserSubscription) =>
+  subscription.device_identity_code?.trim() || ''
+
+const getSubscriptionUserTitle = (subscription: UserSubscription) => {
+  const identityCode = getSubscriptionIdentityCode(subscription)
+  const userLabel = userColumnMode.value === 'email'
+    ? (subscription.user?.email || t('admin.redeem.userPrefix', { id: subscription.user_id }))
+    : (subscription.user?.username || '-')
+  return identityCode ? `${userLabel} · ${identityCode}` : userLabel
 }
 
 const filters = reactive({

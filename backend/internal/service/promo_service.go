@@ -198,6 +198,7 @@ func (s *PromoService) Create(ctx context.Context, input *CreatePromoCodeInput) 
 		Status:      PromoCodeStatusActive,
 		ExpiresAt:   input.ExpiresAt,
 		Notes:       input.Notes,
+		CreatedBy:   input.CreatedBy,
 	}
 
 	if err := s.promoRepo.Create(ctx, promoCode); err != nil {
@@ -261,8 +262,8 @@ func (s *PromoService) Delete(ctx context.Context, id int64) error {
 }
 
 // List 获取优惠码列表
-func (s *PromoService) List(ctx context.Context, params pagination.PaginationParams, status, search string) ([]PromoCode, *pagination.PaginationResult, error) {
-	return s.promoRepo.ListWithFilters(ctx, params, status, search)
+func (s *PromoService) List(ctx context.Context, params pagination.PaginationParams, status, search string, createdBy *int64) ([]PromoCode, *pagination.PaginationResult, error) {
+	return s.promoRepo.ListWithFilters(ctx, params, status, search, createdBy)
 }
 
 // ListUsages 获取使用记录

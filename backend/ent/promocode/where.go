@@ -90,6 +90,11 @@ func Notes(v string) predicate.PromoCode {
 	return predicate.PromoCode(sql.FieldEQ(FieldNotes, v))
 }
 
+// CreatedBy applies equality check predicate on the "created_by" field. It's identical to CreatedByEQ.
+func CreatedBy(v int64) predicate.PromoCode {
+	return predicate.PromoCode(sql.FieldEQ(FieldCreatedBy, v))
+}
+
 // CreatedAt applies equality check predicate on the "created_at" field. It's identical to CreatedAtEQ.
 func CreatedAt(v time.Time) predicate.PromoCode {
 	return predicate.PromoCode(sql.FieldEQ(FieldCreatedAt, v))
@@ -475,6 +480,36 @@ func NotesContainsFold(v string) predicate.PromoCode {
 	return predicate.PromoCode(sql.FieldContainsFold(FieldNotes, v))
 }
 
+// CreatedByEQ applies the EQ predicate on the "created_by" field.
+func CreatedByEQ(v int64) predicate.PromoCode {
+	return predicate.PromoCode(sql.FieldEQ(FieldCreatedBy, v))
+}
+
+// CreatedByNEQ applies the NEQ predicate on the "created_by" field.
+func CreatedByNEQ(v int64) predicate.PromoCode {
+	return predicate.PromoCode(sql.FieldNEQ(FieldCreatedBy, v))
+}
+
+// CreatedByIn applies the In predicate on the "created_by" field.
+func CreatedByIn(vs ...int64) predicate.PromoCode {
+	return predicate.PromoCode(sql.FieldIn(FieldCreatedBy, vs...))
+}
+
+// CreatedByNotIn applies the NotIn predicate on the "created_by" field.
+func CreatedByNotIn(vs ...int64) predicate.PromoCode {
+	return predicate.PromoCode(sql.FieldNotIn(FieldCreatedBy, vs...))
+}
+
+// CreatedByIsNil applies the IsNil predicate on the "created_by" field.
+func CreatedByIsNil() predicate.PromoCode {
+	return predicate.PromoCode(sql.FieldIsNull(FieldCreatedBy))
+}
+
+// CreatedByNotNil applies the NotNil predicate on the "created_by" field.
+func CreatedByNotNil() predicate.PromoCode {
+	return predicate.PromoCode(sql.FieldNotNull(FieldCreatedBy))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.PromoCode {
 	return predicate.PromoCode(sql.FieldEQ(FieldCreatedAt, v))
@@ -570,6 +605,29 @@ func HasUsageRecords() predicate.PromoCode {
 func HasUsageRecordsWith(preds ...predicate.PromoCodeUsage) predicate.PromoCode {
 	return predicate.PromoCode(func(s *sql.Selector) {
 		step := newUsageRecordsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasCreator applies the HasEdge predicate on the "creator" edge.
+func HasCreator() predicate.PromoCode {
+	return predicate.PromoCode(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, CreatorTable, CreatorColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasCreatorWith applies the HasEdge predicate on the "creator" edge with a given conditions (other predicates).
+func HasCreatorWith(preds ...predicate.User) predicate.PromoCode {
+	return predicate.PromoCode(func(s *sql.Selector) {
+		step := newCreatorStep()
 		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
 			for _, p := range preds {
 				p(s)

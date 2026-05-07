@@ -3896,8 +3896,9 @@ export default {
         status: 'Trạng thái',
         usedBy: 'Người sử dụng',
         usedAt: 'Thời gian sử dụng',
+        createdBy: 'Người tạo',
         createdAt: 'Thời gian tạo',
-        actions: 'Thao tác'
+        actions: 'Thao tác' 
       },
       types: {
         balance: 'Số dư',
@@ -3918,7 +3919,7 @@ export default {
       allStatus: 'Tất cả trạng thái',
       unused: 'Chưa sử dụng',
       used: 'Đã sử dụng',
-      searchCodes: 'Tìm mã đổi hoặc email...',
+      searchCodes: 'Tìm mã đổi, email người dùng hoặc email người tạo...',
       exportCsv: 'Xuất CSV',
       deleteAllUnused: 'Xóa tất cả mã chưa sử dụng',
       deleteCodeConfirm: 'Bạn có chắc muốn xóa mã đổi này không? Hành động này không thể hoàn tác.',
@@ -4074,7 +4075,7 @@ export default {
       createCode: 'Tạo mã khuyến mãi',
       editCode: 'Chỉnh sửa mã khuyến mãi',
       deleteCode: 'Xóa mã khuyến mãi',
-      searchCodes: 'Tìm mã khuyến mãi...',
+      searchCodes: 'Tìm mã khuyến mãi hoặc email người tạo...',
       allStatus: 'Tất cả trạng thái',
       columns: {
         code: 'Mã khuyến mãi',
@@ -4084,8 +4085,9 @@ export default {
         usage: 'Lượng sử dụng',
         status: 'Trạng thái',
         expiresAt: 'Hết hạn lúc',
+        createdBy: 'Người tạo',
         createdAt: 'Thời gian tạo',
-        actions: 'Thao tác'
+        actions: 'Thao tác' 
       },
       // Nhãn biểu mẫu (cấu trúc phẳng để thuận tiện dùng trong template)
       code: 'Mã khuyến mãi',

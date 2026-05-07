@@ -67,6 +67,10 @@ const (
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
 	EdgeRedeemCodes = "redeem_codes"
+	// EdgeCreatedRedeemCodes holds the string denoting the created_redeem_codes edge name in mutations.
+	EdgeCreatedRedeemCodes = "created_redeem_codes"
+	// EdgeCreatedPromoCodes holds the string denoting the created_promo_codes edge name in mutations.
+	EdgeCreatedPromoCodes = "created_promo_codes"
 	// EdgeSubscriptions holds the string denoting the subscriptions edge name in mutations.
 	EdgeSubscriptions = "subscriptions"
 	// EdgeAssignedSubscriptions holds the string denoting the assigned_subscriptions edge name in mutations.
@@ -109,6 +113,20 @@ const (
 	RedeemCodesInverseTable = "redeem_codes"
 	// RedeemCodesColumn is the table column denoting the redeem_codes relation/edge.
 	RedeemCodesColumn = "used_by"
+	// CreatedRedeemCodesTable is the table that holds the created_redeem_codes relation/edge.
+	CreatedRedeemCodesTable = "redeem_codes"
+	// CreatedRedeemCodesInverseTable is the table name for the RedeemCode entity.
+	// It exists in this package in order to avoid circular dependency with the "redeemcode" package.
+	CreatedRedeemCodesInverseTable = "redeem_codes"
+	// CreatedRedeemCodesColumn is the table column denoting the created_redeem_codes relation/edge.
+	CreatedRedeemCodesColumn = "created_by"
+	// CreatedPromoCodesTable is the table that holds the created_promo_codes relation/edge.
+	CreatedPromoCodesTable = "promo_codes"
+	// CreatedPromoCodesInverseTable is the table name for the PromoCode entity.
+	// It exists in this package in order to avoid circular dependency with the "promocode" package.
+	CreatedPromoCodesInverseTable = "promo_codes"
+	// CreatedPromoCodesColumn is the table column denoting the created_promo_codes relation/edge.
+	CreatedPromoCodesColumn = "created_by"
 	// SubscriptionsTable is the table that holds the subscriptions relation/edge.
 	SubscriptionsTable = "user_subscriptions"
 	// SubscriptionsInverseTable is the table name for the UserSubscription entity.
@@ -457,6 +475,34 @@ func ByRedeemCodes(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByCreatedRedeemCodesCount orders the results by created_redeem_codes count.
+func ByCreatedRedeemCodesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newCreatedRedeemCodesStep(), opts...)
+	}
+}
+
+// ByCreatedRedeemCodes orders the results by created_redeem_codes terms.
+func ByCreatedRedeemCodes(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newCreatedRedeemCodesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
+// ByCreatedPromoCodesCount orders the results by created_promo_codes count.
+func ByCreatedPromoCodesCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newCreatedPromoCodesStep(), opts...)
+	}
+}
+
+// ByCreatedPromoCodes orders the results by created_promo_codes terms.
+func ByCreatedPromoCodes(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newCreatedPromoCodesStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // BySubscriptionsCount orders the results by subscriptions count.
 func BySubscriptionsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -650,6 +696,20 @@ func newRedeemCodesStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(RedeemCodesInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, RedeemCodesTable, RedeemCodesColumn),
+	)
+}
+func newCreatedRedeemCodesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(CreatedRedeemCodesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, CreatedRedeemCodesTable, CreatedRedeemCodesColumn),
+	)
+}
+func newCreatedPromoCodesStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(CreatedPromoCodesInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, CreatedPromoCodesTable, CreatedPromoCodesColumn),
 	)
 }
 func newSubscriptionsStep() *sqlgraph.Step {

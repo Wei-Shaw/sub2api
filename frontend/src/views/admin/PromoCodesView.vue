@@ -103,6 +103,14 @@
             </span>
           </template>
 
+          <template #cell-created_by="{ value, row }">
+            <div class="min-w-0 max-w-56 text-sm text-gray-500 dark:text-dark-400">
+              <p class="truncate" :title="row.created_by_user?.email || ''">
+                {{ row.created_by_user?.email || (value ? `#${value}` : '-') }}
+              </p>
+            </div>
+          </template>
+
           <template #cell-created_at="{ value }">
             <span class="text-sm text-gray-500 dark:text-dark-400">
               {{ formatDateTime(value) }}
@@ -483,6 +491,7 @@ const columns = computed<Column[]>(() => [
   { key: 'usage', label: t('admin.promo.columns.usage') },
   { key: 'status', label: t('admin.promo.columns.status'), sortable: true },
   { key: 'expires_at', label: t('admin.promo.columns.expiresAt'), sortable: true },
+  { key: 'created_by', label: t('admin.promo.columns.createdBy') },
   { key: 'created_at', label: t('admin.promo.columns.createdAt'), sortable: true },
   { key: 'actions', label: t('admin.promo.columns.actions') }
 ])

@@ -33,6 +33,8 @@ type RedeemCode struct {
 	UsedAt *time.Time `json:"used_at,omitempty"`
 	// Notes holds the value of the "notes" field.
 	Notes *string `json:"notes,omitempty"`
+	// CreatedBy holds the value of the "created_by" field.
+	CreatedBy *int64 `json:"created_by,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	// ExpiresAt holds the value of the "expires_at" field.
@@ -53,13 +55,15 @@ type RedeemCodeEdges struct {
 	User *User `json:"user,omitempty"`
 	// Group holds the value of the group edge.
 	Group *Group `json:"group,omitempty"`
+	// Creator holds the value of the creator edge.
+	Creator *User `json:"creator,omitempty"`
 	// ClaimedDevices holds the value of the claimed_devices edge.
 	ClaimedDevices []*UserDevice `json:"claimed_devices,omitempty"`
 	// LoginDevices holds the value of the login_devices edge.
 	LoginDevices []*UserDevice `json:"login_devices,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [4]bool
+	loadedTypes [5]bool
 }
 
 // UserOrErr returns the User value or an error if the edge
@@ -84,10 +88,21 @@ func (e RedeemCodeEdges) GroupOrErr() (*Group, error) {
 	return nil, &NotLoadedError{edge: "group"}
 }
 
+// CreatorOrErr returns the Creator value or an error if the edge
+// was not loaded in eager-loading, or loaded but was not found.
+func (e RedeemCodeEdges) CreatorOrErr() (*User, error) {
+	if e.Creator != nil {
+		return e.Creator, nil
+	} else if e.loadedTypes[2] {
+		return nil, &NotFoundError{label: user.Label}
+	}
+	return nil, &NotLoadedError{edge: "creator"}
+}
+
 // ClaimedDevicesOrErr returns the ClaimedDevices value or an error if the edge
 // was not loaded in eager-loading.
 func (e RedeemCodeEdges) ClaimedDevicesOrErr() ([]*UserDevice, error) {
-	if e.loadedTypes[2] {
+	if e.loadedTypes[3] {
 		return e.ClaimedDevices, nil
 	}
 	return nil, &NotLoadedError{edge: "claimed_devices"}
@@ -96,7 +111,7 @@ func (e RedeemCodeEdges) ClaimedDevicesOrErr() ([]*UserDevice, error) {
 // LoginDevicesOrErr returns the LoginDevices value or an error if the edge
 // was not loaded in eager-loading.
 func (e RedeemCodeEdges) LoginDevicesOrErr() ([]*UserDevice, error) {
-	if e.loadedTypes[3] {
+	if e.loadedTypes[4] {
 		return e.LoginDevices, nil
 	}
 	return nil, &NotLoadedError{edge: "login_devices"}
@@ -109,7 +124,7 @@ func (*RedeemCode) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case redeemcode.FieldValue:
 			values[i] = new(sql.NullFloat64)
-		case redeemcode.FieldID, redeemcode.FieldUsedBy, redeemcode.FieldGroupID, redeemcode.FieldValidityDays:
+		case redeemcode.FieldID, redeemcode.FieldUsedBy, redeemcode.FieldCreatedBy, redeemcode.FieldGroupID, redeemcode.FieldValidityDays:
 			values[i] = new(sql.NullInt64)
 		case redeemcode.FieldCode, redeemcode.FieldType, redeemcode.FieldStatus, redeemcode.FieldNotes:
 			values[i] = new(sql.NullString)
@@ -181,6 +196,13 @@ func (_m *RedeemCode) assignValues(columns []string, values []any) error {
 				_m.Notes = new(string)
 				*_m.Notes = value.String
 			}
+		case redeemcode.FieldCreatedBy:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field created_by", values[i])
+			} else if value.Valid {
+				_m.CreatedBy = new(int64)
+				*_m.CreatedBy = value.Int64
+			}
 		case redeemcode.FieldCreatedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
 				return fmt.Errorf("unexpected type %T for field created_at", values[i])
@@ -228,6 +250,11 @@ func (_m *RedeemCode) QueryUser() *UserQuery {
 // QueryGroup queries the "group" edge of the RedeemCode entity.
 func (_m *RedeemCode) QueryGroup() *GroupQuery {
 	return NewRedeemCodeClient(_m.config).QueryGroup(_m)
+}
+
+// QueryCreator queries the "creator" edge of the RedeemCode entity.
+func (_m *RedeemCode) QueryCreator() *UserQuery {
+	return NewRedeemCodeClient(_m.config).QueryCreator(_m)
 }
 
 // QueryClaimedDevices queries the "claimed_devices" edge of the RedeemCode entity.
@@ -288,6 +315,11 @@ func (_m *RedeemCode) String() string {
 	if v := _m.Notes; v != nil {
 		builder.WriteString("notes=")
 		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.CreatedBy; v != nil {
+		builder.WriteString("created_by=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
 	}
 	builder.WriteString(", ")
 	builder.WriteString("created_at=")

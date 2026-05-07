@@ -59,6 +59,9 @@ func (RedeemCode) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "text"}),
+		field.Int64("created_by").
+			Optional().
+			Nillable(),
 		field.Time("created_at").
 			Immutable().
 			Default(time.Now).
@@ -85,6 +88,10 @@ func (RedeemCode) Edges() []ent.Edge {
 			Ref("redeem_codes").
 			Field("group_id").
 			Unique(),
+		edge.From("creator", User.Type).
+			Ref("created_redeem_codes").
+			Field("created_by").
+			Unique(),
 		edge.To("claimed_devices", UserDevice.Type),
 		edge.To("login_devices", UserDevice.Type),
 	}
@@ -97,5 +104,6 @@ func (RedeemCode) Indexes() []ent.Index {
 		index.Fields("used_by"),
 		index.Fields("group_id"),
 		index.Fields("expires_at"),
+		index.Fields("created_by"),
 	}
 }

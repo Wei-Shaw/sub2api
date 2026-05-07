@@ -29,6 +29,7 @@ type RedeemCodeQuery struct {
 	predicates         []predicate.RedeemCode
 	withUser           *UserQuery
 	withGroup          *GroupQuery
+	withCreator        *UserQuery
 	withClaimedDevices *UserDeviceQuery
 	withLoginDevices   *UserDeviceQuery
 	modifiers          []func(*sql.Selector)
@@ -105,6 +106,28 @@ func (_q *RedeemCodeQuery) QueryGroup() *GroupQuery {
 			sqlgraph.From(redeemcode.Table, redeemcode.FieldID, selector),
 			sqlgraph.To(group.Table, group.FieldID),
 			sqlgraph.Edge(sqlgraph.M2O, true, redeemcode.GroupTable, redeemcode.GroupColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
+// QueryCreator chains the current query on the "creator" edge.
+func (_q *RedeemCodeQuery) QueryCreator() *UserQuery {
+	query := (&UserClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(redeemcode.Table, redeemcode.FieldID, selector),
+			sqlgraph.To(user.Table, user.FieldID),
+			sqlgraph.Edge(sqlgraph.M2O, true, redeemcode.CreatorTable, redeemcode.CreatorColumn),
 		)
 		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
 		return fromU, nil
@@ -350,6 +373,7 @@ func (_q *RedeemCodeQuery) Clone() *RedeemCodeQuery {
 		predicates:         append([]predicate.RedeemCode{}, _q.predicates...),
 		withUser:           _q.withUser.Clone(),
 		withGroup:          _q.withGroup.Clone(),
+		withCreator:        _q.withCreator.Clone(),
 		withClaimedDevices: _q.withClaimedDevices.Clone(),
 		withLoginDevices:   _q.withLoginDevices.Clone(),
 		// clone intermediate query.
@@ -377,6 +401,17 @@ func (_q *RedeemCodeQuery) WithGroup(opts ...func(*GroupQuery)) *RedeemCodeQuery
 		opt(query)
 	}
 	_q.withGroup = query
+	return _q
+}
+
+// WithCreator tells the query-builder to eager-load the nodes that are connected to
+// the "creator" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *RedeemCodeQuery) WithCreator(opts ...func(*UserQuery)) *RedeemCodeQuery {
+	query := (&UserClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withCreator = query
 	return _q
 }
 
@@ -480,9 +515,10 @@ func (_q *RedeemCodeQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*R
 	var (
 		nodes       = []*RedeemCode{}
 		_spec       = _q.querySpec()
-		loadedTypes = [4]bool{
+		loadedTypes = [5]bool{
 			_q.withUser != nil,
 			_q.withGroup != nil,
+			_q.withCreator != nil,
 			_q.withClaimedDevices != nil,
 			_q.withLoginDevices != nil,
 		}
@@ -517,6 +553,12 @@ func (_q *RedeemCodeQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*R
 	if query := _q.withGroup; query != nil {
 		if err := _q.loadGroup(ctx, query, nodes, nil,
 			func(n *RedeemCode, e *Group) { n.Edges.Group = e }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withCreator; query != nil {
+		if err := _q.loadCreator(ctx, query, nodes, nil,
+			func(n *RedeemCode, e *User) { n.Edges.Creator = e }); err != nil {
 			return nil, err
 		}
 	}
@@ -594,6 +636,38 @@ func (_q *RedeemCodeQuery) loadGroup(ctx context.Context, query *GroupQuery, nod
 		nodes, ok := nodeids[n.ID]
 		if !ok {
 			return fmt.Errorf(`unexpected foreign-key "group_id" returned %v`, n.ID)
+		}
+		for i := range nodes {
+			assign(nodes[i], n)
+		}
+	}
+	return nil
+}
+func (_q *RedeemCodeQuery) loadCreator(ctx context.Context, query *UserQuery, nodes []*RedeemCode, init func(*RedeemCode), assign func(*RedeemCode, *User)) error {
+	ids := make([]int64, 0, len(nodes))
+	nodeids := make(map[int64][]*RedeemCode)
+	for i := range nodes {
+		if nodes[i].CreatedBy == nil {
+			continue
+		}
+		fk := *nodes[i].CreatedBy
+		if _, ok := nodeids[fk]; !ok {
+			ids = append(ids, fk)
+		}
+		nodeids[fk] = append(nodeids[fk], nodes[i])
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	query.Where(user.IDIn(ids...))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		nodes, ok := nodeids[n.ID]
+		if !ok {
+			return fmt.Errorf(`unexpected foreign-key "created_by" returned %v`, n.ID)
 		}
 		for i := range nodes {
 			assign(nodes[i], n)
@@ -698,6 +772,9 @@ func (_q *RedeemCodeQuery) querySpec() *sqlgraph.QuerySpec {
 		}
 		if _q.withGroup != nil {
 			_spec.Node.AddColumnOnce(redeemcode.FieldGroupID)
+		}
+		if _q.withCreator != nil {
+			_spec.Node.AddColumnOnce(redeemcode.FieldCreatedBy)
 		}
 	}
 	if ps := _q.predicates; len(ps) > 0 {

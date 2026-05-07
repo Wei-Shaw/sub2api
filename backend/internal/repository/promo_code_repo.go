@@ -7,6 +7,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
+	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -34,6 +35,9 @@ func (r *promoCodeRepository) Create(ctx context.Context, code *service.PromoCod
 	if code.ExpiresAt != nil {
 		builder.SetExpiresAt(*code.ExpiresAt)
 	}
+	if code.CreatedBy != nil {
+		builder.SetCreatedBy(*code.CreatedBy)
+	}
 
 	created, err := builder.Save(ctx)
 	if err != nil {
@@ -49,6 +53,7 @@ func (r *promoCodeRepository) Create(ctx context.Context, code *service.PromoCod
 func (r *promoCodeRepository) GetByID(ctx context.Context, id int64) (*service.PromoCode, error) {
 	m, err := r.client.PromoCode.Query().
 		Where(promocode.IDEQ(id)).
+		WithCreator().
 		Only(ctx)
 	if err != nil {
 		if dbent.IsNotFound(err) {
@@ -127,17 +132,26 @@ func (r *promoCodeRepository) Delete(ctx context.Context, id int64) error {
 }
 
 func (r *promoCodeRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.PromoCode, *pagination.PaginationResult, error) {
-	return r.ListWithFilters(ctx, params, "", "")
+	return r.ListWithFilters(ctx, params, "", "", nil)
 }
 
-func (r *promoCodeRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, status, search string) ([]service.PromoCode, *pagination.PaginationResult, error) {
+func (r *promoCodeRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, status, search string, createdBy *int64) ([]service.PromoCode, *pagination.PaginationResult, error) {
 	q := r.client.PromoCode.Query()
 
 	if status != "" {
 		q = q.Where(promocode.StatusEQ(status))
 	}
 	if search != "" {
-		q = q.Where(promocode.CodeContainsFold(search))
+		q = q.Where(promocode.Or(
+			promocode.CodeContainsFold(search),
+			promocode.NotesContainsFold(search),
+			promocode.HasCreatorWith(
+				user.EmailContainsFold(search),
+			),
+		))
+	}
+	if createdBy != nil {
+		q = q.Where(promocode.CreatedByEQ(*createdBy))
 	}
 
 	total, err := q.Clone().Count(ctx)
@@ -146,6 +160,7 @@ func (r *promoCodeRepository) ListWithFilters(ctx context.Context, params pagina
 	}
 
 	codesQuery := q.
+		WithCreator().
 		Offset(params.Offset()).
 		Limit(params.Limit())
 	for _, order := range promoCodeListOrder(params) {
@@ -258,7 +273,7 @@ func promoCodeEntityToService(m *dbent.PromoCode) *service.PromoCode {
 	if m == nil {
 		return nil
 	}
-	return &service.PromoCode{
+	out := &service.PromoCode{
 		ID:          m.ID,
 		Code:        m.Code,
 		BonusAmount: m.BonusAmount,
@@ -267,9 +282,14 @@ func promoCodeEntityToService(m *dbent.PromoCode) *service.PromoCode {
 		Status:      m.Status,
 		ExpiresAt:   m.ExpiresAt,
 		Notes:       derefString(m.Notes),
+		CreatedBy:   m.CreatedBy,
 		CreatedAt:   m.CreatedAt,
 		UpdatedAt:   m.UpdatedAt,
 	}
+	if m.Edges.Creator != nil {
+		out.CreatedByUser = userEntityToService(m.Edges.Creator)
+	}
+	return out
 }
 
 func promoCodeEntitiesToService(models []*dbent.PromoCode) []service.PromoCode {

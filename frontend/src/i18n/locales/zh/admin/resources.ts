@@ -249,6 +249,7 @@ export default {
         usedBy: '使用者',
         usedAt: '使用时间',
         expiresAt: '过期时间',
+        createdBy: '创建人',
         createdAt: '创建时间',
         actions: '操作'
       },
@@ -271,7 +272,7 @@ export default {
       allStatus: '全部状态',
       unused: '未使用',
       used: '已使用',
-      searchCodes: '搜索兑换码或邮箱...',
+      searchCodes: '搜索兑换码、用户邮箱或创建人邮箱...',
       exportCsv: '导出 CSV',
       batchUpdate: '批量修改',
       batchUpdateTitle: '批量修改兑换码',
@@ -450,7 +451,7 @@ export default {
       createCode: '创建优惠码',
       editCode: '编辑优惠码',
       deleteCode: '删除优惠码',
-      searchCodes: '搜索优惠码...',
+      searchCodes: '搜索优惠码或创建人邮箱...',
       allStatus: '全部状态',
       columns: {
         code: '优惠码',
@@ -460,6 +461,7 @@ export default {
         usage: '使用量',
         status: '状态',
         expiresAt: '过期时间',
+        createdBy: '创建人',
         createdAt: '创建时间',
         actions: '操作'
       },

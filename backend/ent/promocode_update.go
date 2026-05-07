@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
+	"github.com/Wei-Shaw/sub2api/ent/user"
 )
 
 // PromoCodeUpdate is the builder for updating PromoCode entities.
@@ -160,6 +161,26 @@ func (_u *PromoCodeUpdate) ClearNotes() *PromoCodeUpdate {
 	return _u
 }
 
+// SetCreatedBy sets the "created_by" field.
+func (_u *PromoCodeUpdate) SetCreatedBy(v int64) *PromoCodeUpdate {
+	_u.mutation.SetCreatedBy(v)
+	return _u
+}
+
+// SetNillableCreatedBy sets the "created_by" field if the given value is not nil.
+func (_u *PromoCodeUpdate) SetNillableCreatedBy(v *int64) *PromoCodeUpdate {
+	if v != nil {
+		_u.SetCreatedBy(*v)
+	}
+	return _u
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (_u *PromoCodeUpdate) ClearCreatedBy() *PromoCodeUpdate {
+	_u.mutation.ClearCreatedBy()
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *PromoCodeUpdate) SetUpdatedAt(v time.Time) *PromoCodeUpdate {
 	_u.mutation.SetUpdatedAt(v)
@@ -179,6 +200,25 @@ func (_u *PromoCodeUpdate) AddUsageRecords(v ...*PromoCodeUsage) *PromoCodeUpdat
 		ids[i] = v[i].ID
 	}
 	return _u.AddUsageRecordIDs(ids...)
+}
+
+// SetCreatorID sets the "creator" edge to the User entity by ID.
+func (_u *PromoCodeUpdate) SetCreatorID(id int64) *PromoCodeUpdate {
+	_u.mutation.SetCreatorID(id)
+	return _u
+}
+
+// SetNillableCreatorID sets the "creator" edge to the User entity by ID if the given value is not nil.
+func (_u *PromoCodeUpdate) SetNillableCreatorID(id *int64) *PromoCodeUpdate {
+	if id != nil {
+		_u = _u.SetCreatorID(*id)
+	}
+	return _u
+}
+
+// SetCreator sets the "creator" edge to the User entity.
+func (_u *PromoCodeUpdate) SetCreator(v *User) *PromoCodeUpdate {
+	return _u.SetCreatorID(v.ID)
 }
 
 // Mutation returns the PromoCodeMutation object of the builder.
@@ -205,6 +245,12 @@ func (_u *PromoCodeUpdate) RemoveUsageRecords(v ...*PromoCodeUsage) *PromoCodeUp
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveUsageRecordIDs(ids...)
+}
+
+// ClearCreator clears the "creator" edge to the User entity.
+func (_u *PromoCodeUpdate) ClearCreator() *PromoCodeUpdate {
+	_u.mutation.ClearCreator()
+	return _u
 }
 
 // Save executes the query and returns the number of nodes affected by the update operation.
@@ -347,6 +393,35 @@ func (_u *PromoCodeUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(promocodeusage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.CreatorCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   promocode.CreatorTable,
+			Columns: []string{promocode.CreatorColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.CreatorIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   promocode.CreatorTable,
+			Columns: []string{promocode.CreatorColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -505,6 +580,26 @@ func (_u *PromoCodeUpdateOne) ClearNotes() *PromoCodeUpdateOne {
 	return _u
 }
 
+// SetCreatedBy sets the "created_by" field.
+func (_u *PromoCodeUpdateOne) SetCreatedBy(v int64) *PromoCodeUpdateOne {
+	_u.mutation.SetCreatedBy(v)
+	return _u
+}
+
+// SetNillableCreatedBy sets the "created_by" field if the given value is not nil.
+func (_u *PromoCodeUpdateOne) SetNillableCreatedBy(v *int64) *PromoCodeUpdateOne {
+	if v != nil {
+		_u.SetCreatedBy(*v)
+	}
+	return _u
+}
+
+// ClearCreatedBy clears the value of the "created_by" field.
+func (_u *PromoCodeUpdateOne) ClearCreatedBy() *PromoCodeUpdateOne {
+	_u.mutation.ClearCreatedBy()
+	return _u
+}
+
 // SetUpdatedAt sets the "updated_at" field.
 func (_u *PromoCodeUpdateOne) SetUpdatedAt(v time.Time) *PromoCodeUpdateOne {
 	_u.mutation.SetUpdatedAt(v)
@@ -524,6 +619,25 @@ func (_u *PromoCodeUpdateOne) AddUsageRecords(v ...*PromoCodeUsage) *PromoCodeUp
 		ids[i] = v[i].ID
 	}
 	return _u.AddUsageRecordIDs(ids...)
+}
+
+// SetCreatorID sets the "creator" edge to the User entity by ID.
+func (_u *PromoCodeUpdateOne) SetCreatorID(id int64) *PromoCodeUpdateOne {
+	_u.mutation.SetCreatorID(id)
+	return _u
+}
+
+// SetNillableCreatorID sets the "creator" edge to the User entity by ID if the given value is not nil.
+func (_u *PromoCodeUpdateOne) SetNillableCreatorID(id *int64) *PromoCodeUpdateOne {
+	if id != nil {
+		_u = _u.SetCreatorID(*id)
+	}
+	return _u
+}
+
+// SetCreator sets the "creator" edge to the User entity.
+func (_u *PromoCodeUpdateOne) SetCreator(v *User) *PromoCodeUpdateOne {
+	return _u.SetCreatorID(v.ID)
 }
 
 // Mutation returns the PromoCodeMutation object of the builder.
@@ -550,6 +664,12 @@ func (_u *PromoCodeUpdateOne) RemoveUsageRecords(v ...*PromoCodeUsage) *PromoCod
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveUsageRecordIDs(ids...)
+}
+
+// ClearCreator clears the "creator" edge to the User entity.
+func (_u *PromoCodeUpdateOne) ClearCreator() *PromoCodeUpdateOne {
+	_u.mutation.ClearCreator()
+	return _u
 }
 
 // Where appends a list predicates to the PromoCodeUpdate builder.
@@ -722,6 +842,35 @@ func (_u *PromoCodeUpdateOne) sqlSave(ctx context.Context) (_node *PromoCode, er
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(promocodeusage.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.CreatorCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   promocode.CreatorTable,
+			Columns: []string{promocode.CreatorColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.CreatorIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.M2O,
+			Inverse: true,
+			Table:   promocode.CreatorTable,
+			Columns: []string{promocode.CreatorColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(user.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

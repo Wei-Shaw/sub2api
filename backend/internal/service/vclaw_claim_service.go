@@ -27,6 +27,7 @@ type VClawClaimService struct {
 	cfg                *config.Config
 	settingService     *SettingService
 	defaultSubAssigner DefaultSubscriptionAssigner
+	affiliateService   *AffiliateService
 }
 
 func NewVClawClaimService(
@@ -37,6 +38,7 @@ func NewVClawClaimService(
 	cfg *config.Config,
 	settingService *SettingService,
 	defaultSubAssigner DefaultSubscriptionAssigner,
+	affiliateService *AffiliateService,
 ) *VClawClaimService {
 	return &VClawClaimService{
 		entClient:          entClient,
@@ -46,6 +48,7 @@ func NewVClawClaimService(
 		cfg:                cfg,
 		settingService:     settingService,
 		defaultSubAssigner: defaultSubAssigner,
+		affiliateService:   affiliateService,
 	}
 }
 
@@ -60,6 +63,7 @@ type VClawDeviceInput struct {
 
 type VClawClaimRequest struct {
 	ClaimCode string
+	AffCode   string
 	Device    VClawDeviceInput
 }
 
@@ -180,6 +184,7 @@ func (s *VClawClaimService) createFirstClaim(ctx context.Context, req VClawClaim
 		if err := s.applyDeviceClaimBonus(runCtx, user, deviceHash, now); err != nil {
 			return nil, err
 		}
+		s.bindFirstClaimAffiliate(runCtx, user.ID, req.AffCode)
 		s.assignFirstDeviceClaimSubscriptions(runCtx, user.ID)
 		loginCodeText, err := GenerateRedeemCodeForType(RedeemTypeDeviceLogin)
 		if err != nil {
@@ -264,6 +269,20 @@ func (s *VClawClaimService) assignFirstDeviceClaimSubscriptions(ctx context.Cont
 			Notes:        "auto assigned by first device claim",
 		}); err != nil {
 			logger.LegacyPrintf("service.vclaw_claim", "[VClawClaim] Failed to assign first device claim subscription: user_id=%d group_id=%d err=%v", userID, item.GroupID, err)
+		}
+	}
+}
+
+func (s *VClawClaimService) bindFirstClaimAffiliate(ctx context.Context, userID int64, affCode string) {
+	if s == nil || s.affiliateService == nil || userID <= 0 {
+		return
+	}
+	if _, err := s.affiliateService.EnsureUserAffiliate(ctx, userID); err != nil {
+		logger.LegacyPrintf("service.vclaw_claim", "[VClawClaim] Failed to initialize affiliate profile for user %d: %v", userID, err)
+	}
+	if code := strings.TrimSpace(affCode); code != "" {
+		if err := s.affiliateService.BindInviterByCode(ctx, userID, code); err != nil {
+			logger.LegacyPrintf("service.vclaw_claim", "[VClawClaim] Failed to bind affiliate inviter for user %d: %v", userID, err)
 		}
 	}
 }

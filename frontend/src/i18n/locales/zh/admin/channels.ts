@@ -629,6 +629,8 @@ export default {
       hoursMinutesRemaining: '剩余 {hours} 小时 {minutes} 分钟',
       minutesRemaining: '剩余 {minutes} 分钟',
       remainingDays: '剩余天数',
+      deviceCode: '设备码',
+      deviceBound: '已绑定设备',
       noExpiration: '无过期时间',
       status: {
         active: '生效中',

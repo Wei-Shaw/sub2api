@@ -61,6 +61,10 @@ func (PromoCode) Fields() []ent.Field {
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "text"}).
 			Comment("备注"),
+		field.Int64("created_by").
+			Optional().
+			Nillable().
+			Comment("创建该优惠码的后台用户ID"),
 		field.Time("created_at").
 			Immutable().
 			Default(time.Now).
@@ -75,6 +79,10 @@ func (PromoCode) Fields() []ent.Field {
 func (PromoCode) Edges() []ent.Edge {
 	return []ent.Edge{
 		edge.To("usage_records", PromoCodeUsage.Type),
+		edge.From("creator", User.Type).
+			Ref("created_promo_codes").
+			Field("created_by").
+			Unique(),
 	}
 }
 
@@ -83,5 +91,6 @@ func (PromoCode) Indexes() []ent.Index {
 		// code 字段已在 Fields() 中声明 Unique()，无需重复索引
 		index.Fields("status"),
 		index.Fields("expires_at"),
+		index.Fields("created_by"),
 	}
 }

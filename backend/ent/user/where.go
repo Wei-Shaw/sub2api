@@ -1431,6 +1431,52 @@ func HasRedeemCodesWith(preds ...predicate.RedeemCode) predicate.User {
 	})
 }
 
+// HasCreatedRedeemCodes applies the HasEdge predicate on the "created_redeem_codes" edge.
+func HasCreatedRedeemCodes() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, CreatedRedeemCodesTable, CreatedRedeemCodesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasCreatedRedeemCodesWith applies the HasEdge predicate on the "created_redeem_codes" edge with a given conditions (other predicates).
+func HasCreatedRedeemCodesWith(preds ...predicate.RedeemCode) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newCreatedRedeemCodesStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
+// HasCreatedPromoCodes applies the HasEdge predicate on the "created_promo_codes" edge.
+func HasCreatedPromoCodes() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, CreatedPromoCodesTable, CreatedPromoCodesColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasCreatedPromoCodesWith applies the HasEdge predicate on the "created_promo_codes" edge with a given conditions (other predicates).
+func HasCreatedPromoCodesWith(preds ...predicate.PromoCode) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newCreatedPromoCodesStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasSubscriptions applies the HasEdge predicate on the "subscriptions" edge.
 func HasSubscriptions() predicate.User {
 	return predicate.User(func(s *sql.Selector) {
