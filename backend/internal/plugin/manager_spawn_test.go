@@ -245,6 +245,7 @@ func TestSpawnPipeline_StagesContract(t *testing.T) {
 		{"route_install", true},
 		{"health", false},
 		{"pricing", false},
+		{"platforms", true},
 		{"maintenance", false},
 	}
 	if len(stages) != len(want) {

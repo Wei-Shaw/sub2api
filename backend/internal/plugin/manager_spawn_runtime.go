@@ -1,9 +1,10 @@
-package plugin
+﻿package plugin
 
 import (
 	"context"
 	"fmt"
 
+	sdkroot "github.com/Wei-Shaw/sub2api/plugin-sdk"
 	pluginsdk "github.com/Wei-Shaw/sub2api/plugin-sdk/proto/pluginsdk"
 )
 
@@ -151,6 +152,85 @@ func (m *PluginManager) spawnTryPricing(sc *spawnCtx) error {
 	return nil
 }
 
+
+// -------------------------------------------------------------
+// Stage: platforms — register platform declarations from manifest
+// -------------------------------------------------------------
+
+func (m *PluginManager) spawnRegisterPlatforms(sc *spawnCtx) error {
+	pbPlatforms := sc.manifest.GetPlatforms()
+	if len(pbPlatforms) == 0 {
+		return nil
+	}
+	for _, pbDecl := range pbPlatforms {
+		decl := sdkroot.PlatformDeclFromProto(pbDecl)
+		if !m.platformRegistry.Register(sc.inst.Name, decl, sc.conn) {
+			m.logger.Warn("platform already registered, skipping",
+				"plugin", sc.inst.Name,
+				"platform", decl.Platform,
+			)
+		} else {
+			m.logger.Info("platform registered",
+				"plugin", sc.inst.Name,
+				"platform", decl.Platform,
+				"account_types", len(decl.AccountTypes),
+			)
+			// Register a gateway provider so the pipeline can forward
+			// requests to this plugin's platform.
+			m.registerGatewayProvider(sc, decl.Platform)
+		}
+	}
+	m.invalidateFrontendCache()
+	return nil
+}
+
+// registerGatewayProvider creates and registers a PluginGatewayProvider for
+// the given platform. The protocols default to [platform] (same convention
+// as the host-internal adapters). No-op if SetGatewayProviderRegistry was
+// not called.
+func (m *PluginManager) registerGatewayProvider(sc *spawnCtx, platform string) {
+	m.mu.RLock()
+	registry := m.gatewayProviderRegistry
+	m.mu.RUnlock()
+	if registry == nil {
+		return
+	}
+	// Plugins declare which protocols they handle. Default: the platform
+	// itself (e.g. "anthropic" platform handles "anthropic" protocol).
+	protocols := []string{platform}
+	registry.RegisterPlugin(platform, protocols, sc.inst.Name, sc.conn)
+	m.logger.Info("gateway provider registered",
+		"plugin", sc.inst.Name,
+		"platform", platform,
+	)
+}
+
+func (m *PluginManager) spawnRollbackPlatforms(sc *spawnCtx) {
+	m.unregisterGatewayProviders(sc.inst.Name, sc.manifest)
+	m.platformRegistry.Unregister(sc.inst.Name)
+	m.invalidateFrontendCache()
+}
+
+// unregisterGatewayProviders removes all gateway providers registered by
+// the named plugin. Called during rollback and stop.
+func (m *PluginManager) unregisterGatewayProviders(pluginName string, manifest *pluginsdk.ManifestResponse) {
+	m.mu.RLock()
+	registry := m.gatewayProviderRegistry
+	m.mu.RUnlock()
+	if registry == nil {
+		return
+	}
+	if manifest == nil {
+		return
+	}
+	for _, pbDecl := range manifest.GetPlatforms() {
+		registry.UnregisterPlugin(pbDecl.GetPlatform())
+		m.logger.Info("gateway provider unregistered",
+			"plugin", pluginName,
+			"platform", pbDecl.GetPlatform(),
+		)
+	}
+}
 // -------------------------------------------------------------
 // Stage: maintenance — attach MaintenanceExtension client (best-effort)
 // -------------------------------------------------------------

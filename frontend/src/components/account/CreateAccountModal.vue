@@ -147,6 +147,22 @@
             <Icon name="cloud" size="sm" />
             Antigravity
           </button>
+          <!-- Plugin-declared platforms -->
+          <button
+            v-for="pp in pluginPlatforms"
+            :key="pp.platform"
+            type="button"
+            @click="form.platform = pp.platform"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === pp.platform
+                ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-600 dark:text-gray-100'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon :platform="pp.platform" :icon-svg="pp.icon_svg" size="sm" />
+            {{ pp.display_name }}
+          </button>
         </div>
       </div>
 
@@ -2438,6 +2454,51 @@
         </div>
       </div>
 
+
+      <!-- Plugin Platform: Credential + Extra Schema Form -->
+      <div v-if="isPluginPlatform" class="space-y-5">
+        <div v-if="selectedPluginPlatform">
+          <!-- Account Type Selection -->
+          <div v-if="selectedPluginPlatform.account_types.length > 1" class="mb-4">
+            <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
+            <div class="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <button
+                v-for="at in selectedPluginPlatform.account_types"
+                :key="at.type"
+                type="button"
+                @click="form.type = at.type"
+                :class="[
+                  'flex items-center gap-2 rounded-lg border-2 p-3 text-left transition-all',
+                  form.type === at.type
+                    ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                    : 'border-gray-200 hover:border-primary-300 dark:border-dark-600'
+                ]"
+              >
+                <span class="text-sm font-medium text-gray-900 dark:text-white">{{ at.display_name }}</span>
+                <span v-if="at.description" class="text-xs text-gray-500">{{ at.description }}</span>
+              </button>
+            </div>
+          </div>
+          <!-- Credential Fields -->
+          <div v-if="pluginCredentialSchema" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+            <h3 class="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.credentials') }}</h3>
+            <JsonSchemaForm
+              :schema="pluginCredentialSchema"
+              :model-value="pluginCredentials"
+              @update:model-value="pluginCredentials = $event"
+            />
+          </div>
+          <!-- Extra Fields -->
+          <div v-if="pluginExtraSchema" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+            <h3 class="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.extra') }}</h3>
+            <JsonSchemaForm
+              :schema="pluginExtraSchema"
+              :model-value="pluginExtra"
+              @update:model-value="pluginExtra = $event"
+            />
+          </div>
+        </div>
+      </div>
       <div>
         <label class="input-label">{{ t('admin.accounts.proxy') }}</label>
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
@@ -3089,7 +3150,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import {
@@ -3142,6 +3203,9 @@ import {
   type OpenAIWSMode
 } from '@/utils/openaiWsMode'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
+import { usePlatforms } from '@/composables/usePlatforms'
+import JsonSchemaForm from '@/components/common/JsonSchemaForm.vue'
+import PlatformIcon from '@/components/common/PlatformIcon.vue'
 
 // Type for exposed OAuthAuthorizationFlow component
 // Note: defineExpose automatically unwraps refs, so we use the unwrapped types
@@ -3246,6 +3310,11 @@ interface TempUnschedRuleForm {
 
 // State
 const step = ref(1)
+
+// Plugin platform state
+const { platforms, fetchPlatforms, getPlatformDecl, getAccountTypeDecl } = usePlatforms()
+const pluginCredentials = ref<Record<string, unknown>>({})
+const pluginExtra = ref<Record<string, unknown>>({})
 const submitting = ref(false)
 const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_account'>('oauth-based') // UI selection for account category
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
@@ -3451,6 +3520,28 @@ const geminiHelpLinks = {
 
 // Computed: current preset mappings based on platform
 const presetMappings = computed(() => getPresetMappingsByPlatform(form.platform))
+// Plugin platform computed
+const BUILTIN_PLATFORMS = new Set(['anthropic', 'openai', 'gemini', 'antigravity'])
+const pluginPlatforms = computed(() =>
+  platforms.value.filter(p => !BUILTIN_PLATFORMS.has(p.platform))
+)
+const isPluginPlatform = computed(() =>
+  !BUILTIN_PLATFORMS.has(form.platform)
+)
+const selectedPluginPlatform = computed(() =>
+  getPlatformDecl(form.platform)
+)
+const selectedPluginAccountType = computed(() =>
+  getAccountTypeDecl(form.platform, form.type)
+)
+const pluginCredentialSchema = computed(() => {
+  const at = selectedPluginAccountType.value
+  return at?.credential_schema as Record<string, unknown> | null ?? null
+})
+const pluginExtraSchema = computed(() => {
+  const at = selectedPluginAccountType.value
+  return at?.extra_schema as Record<string, unknown> | null ?? null
+})
 const tempUnschedPresets = computed(() => [
   {
     label: t('admin.accounts.tempUnschedulable.presets.overloadLabel'),
@@ -3535,6 +3626,7 @@ const canExchangeCode = computed(() => {
 })
 
 // Watchers
+onMounted(() => { fetchPlatforms() })
 watch(
   () => props.show,
   (newVal) => {
@@ -3660,6 +3752,16 @@ watch(
 
     geminiOAuth.resetState()
     antigravityOAuth.resetState()
+
+    // Plugin platform: auto-set account type and reset form data
+    if (!BUILTIN_PLATFORMS.has(newPlatform)) {
+      const decl = getPlatformDecl(newPlatform)
+      if (decl?.account_types.length) {
+        form.type = decl.account_types[0].type
+      }
+      pluginCredentials.value = {}
+      pluginExtra.value = {}
+    }
   }
 )
 
@@ -4258,6 +4360,32 @@ const handleSubmit = async () => {
       return
     }
     step.value = 2
+    return
+  }
+
+  // Plugin platform submission
+  if (isPluginPlatform.value) {
+    if (!form.name.trim()) {
+      appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
+      return
+    }
+    const request: CreateAccountRequest = {
+      name: form.name,
+      notes: form.notes || undefined,
+      platform: form.platform,
+      type: form.type || selectedPluginPlatform.value?.account_types[0]?.type || 'default',
+      credentials: pluginCredentials.value as Record<string, unknown>,
+      extra: Object.keys(pluginExtra.value).length > 0 ? pluginExtra.value as Record<string, unknown> : undefined,
+      proxy_id: form.proxy_id || undefined,
+      concurrency: form.concurrency || 1,
+      priority: form.priority || 1,
+      rate_multiplier: form.rate_multiplier,
+      load_factor: form.load_factor ?? undefined,
+      group_ids: form.group_ids,
+      expires_at: form.expires_at,
+      auto_pause_on_expired: autoPauseOnExpired.value,
+    }
+    await doCreateAccount(request)
     return
   }
 

@@ -94,6 +94,8 @@ func RegisterAdminRoutes(
 		// 插件管理
 		registerPluginRoutes(admin, h)
 		registerPluginSettingsRoutes(admin, h)
+		// 平台管理
+		registerPlatformRoutes(admin, h)
 
 		// 服务限额（Service Quota）
 		registerServiceQuotaRoutes(admin, h)
@@ -648,5 +650,17 @@ func registerAffiliateRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 			users.PUT("/:user_id", h.Admin.Affiliate.UpdateUserSettings)
 			users.DELETE("/:user_id", h.Admin.Affiliate.ClearUserSettings)
 		}
+	}
+}
+
+// registerPlatformRoutes wires the platforms API endpoints.
+//
+//	GET /api/v1/admin/platforms             — all registered platforms
+//	GET /api/v1/admin/platforms/:platform   — single platform details
+func registerPlatformRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	platforms := admin.Group("/platforms")
+	{
+		platforms.GET("", h.Admin.Platform.List)
+		platforms.GET("/:platform", h.Admin.Platform.Get)
 	}
 }

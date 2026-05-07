@@ -165,6 +165,8 @@ func (m *PluginManager) detachExtensions(sx *stopCtx) {
 	}
 	m.detachPricingClient(pricingClient)
 	m.detachMaintenanceClient(maintenanceClient)
+	m.unregisterGatewayProviders(sx.name, sx.inst.Manifest)
+	m.platformRegistry.Unregister(sx.name)
 	if m.settingsService != nil {
 		m.settingsService.UnregisterSchema(sx.name)
 	}

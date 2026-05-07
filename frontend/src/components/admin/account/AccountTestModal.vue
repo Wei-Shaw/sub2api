@@ -238,11 +238,13 @@ import { Select } from '@sub2api/plugin-sdk'
 import TextArea from '@/components/common/TextArea.vue'
 import { Icon } from '@/components/icons'
 import { useClipboard } from '@/composables/useClipboard'
+import { usePlatforms } from '@/composables/usePlatforms'
 import { adminAPI } from '@/api/admin'
 import type { Account, ClaudeModel } from '@/types'
 
 const { t } = useI18n()
 const { copyToClipboard } = useClipboard()
+const { getPlatformDecl } = usePlatforms()
 
 interface OutputLine {
   text: string
@@ -334,7 +336,13 @@ const loadAvailableModels = async () => {
       : models
     // Default selection by platform
     if (availableModels.value.length > 0) {
-      if (props.account.platform === 'gemini') {
+      const platformDecl = getPlatformDecl(props.account.platform)
+      const pluginDefaultModel = platformDecl?.test_config?.default_test_model
+      if (pluginDefaultModel) {
+        // Plugin platform: use declared default test model if available in list
+        const match = availableModels.value.find((m) => m.id === pluginDefaultModel)
+        selectedModelId.value = match?.id || availableModels.value[0].id
+      } else if (props.account.platform === 'gemini') {
         selectedModelId.value = availableModels.value[0].id
       } else {
         // Try to select Sonnet as default, otherwise use first model

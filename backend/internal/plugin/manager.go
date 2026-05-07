@@ -172,6 +172,17 @@ type PluginManager struct {
 	hostSubscription    HostSubscriptionAssigner
 	hostAffiliate       HostAffiliateAccruer
 	hostUserLookup      HostUserLookup
+
+	// platformRegistry collects platform declarations from all loaded gateway
+	// plugins and provides lookup APIs for the account handler.
+	platformRegistry *PlatformRegistry
+
+	// gatewayProviderRegistry is the host's ProviderRegistry used by the
+	// gateway pipeline. When a plugin declares a platform, the manager creates
+	// a PluginGatewayProvider and registers it here so the pipeline can
+	// forward requests to the plugin. Set via SetGatewayProviderRegistry
+	// before Start; nil disables gateway provider auto-registration.
+	gatewayProviderRegistry GatewayProviderRegistry
 }
 
 // NewPluginManager 构造 manager。
@@ -191,14 +202,15 @@ func NewPluginManager(db *sql.DB, rdb *redis.Client, cfg Config, router *PluginR
 	}
 
 	return &PluginManager{
-		plugins:    make(map[string]*PluginInstance),
-		repo:       repo,
-		router:     router,
-		sdkServer:  sdk,
-		cfg:        cfg,
-		db:         db,
-		logger:     slog.Default().With("component", "plugin_manager"),
-		instanceID: uuid.NewString(),
+		plugins:          make(map[string]*PluginInstance),
+		repo:             repo,
+		router:           router,
+		sdkServer:        sdk,
+		cfg:              cfg,
+		db:               db,
+		logger:           slog.Default().With("component", "plugin_manager"),
+		instanceID:       uuid.NewString(),
+		platformRegistry: NewPlatformRegistry(),
 	}, nil
 }
 

@@ -1246,6 +1246,26 @@
         </div>
       </div>
 
+      <!-- Plugin Platform: Credential + Extra Schema Form -->
+      <div v-if="isPluginPlatform && selectedPluginPlatform">
+        <div v-if="pluginCredentialSchema" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+          <h3 class="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.credentials') }}</h3>
+          <JsonSchemaForm
+            :schema="pluginCredentialSchema"
+            :model-value="pluginCredentials"
+            @update:model-value="pluginCredentials = $event"
+          />
+        </div>
+        <div v-if="pluginExtraSchema" class="border-t border-gray-200 pt-4 mt-4 dark:border-dark-600">
+          <h3 class="mb-3 text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.accounts.extra') }}</h3>
+          <JsonSchemaForm
+            :schema="pluginExtraSchema"
+            :model-value="pluginExtra"
+            @update:model-value="pluginExtra = $event"
+          />
+        </div>
+      </div>
+
       <div>
         <label class="input-label">{{ t('admin.accounts.proxy') }}</label>
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
@@ -2116,7 +2136,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
@@ -2150,6 +2170,8 @@ import {
   buildModelMappingObject,
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
+import { usePlatforms } from '@/composables/usePlatforms'
+import JsonSchemaForm from '@/components/common/JsonSchemaForm.vue'
 
 interface Props {
   show: boolean
@@ -2167,6 +2189,29 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+
+// Plugin platform state
+const { fetchPlatforms, getPlatformDecl, getAccountTypeDecl } = usePlatforms()
+const pluginCredentials = ref<Record<string, unknown>>({})
+const pluginExtra = ref<Record<string, unknown>>({})
+
+const BUILTIN_PLATFORMS = new Set(['anthropic', 'openai', 'gemini', 'antigravity'])
+const isPluginPlatform = computed(() =>
+  props.account != null && !BUILTIN_PLATFORMS.has(props.account.platform)
+)
+const selectedPluginPlatform = computed(() =>
+  props.account ? getPlatformDecl(props.account.platform) : undefined
+)
+const pluginCredentialSchema = computed(() => {
+  if (!props.account) return null
+  const at = getAccountTypeDecl(props.account.platform, props.account.type)
+  return (at?.credential_schema as Record<string, unknown> | null) ?? null
+})
+const pluginExtraSchema = computed(() => {
+  if (!props.account) return null
+  const at = getAccountTypeDecl(props.account.platform, props.account.type)
+  return (at?.extra_schema as Record<string, unknown> | null) ?? null
+})
 
 // Platform-specific hint for Base URL
 const baseUrlHint = computed(() => {
@@ -2755,6 +2800,15 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     selectedErrorCodes.value = []
   }
   editApiKey.value = ''
+
+  // Initialize plugin platform credentials/extra from existing account data
+  if (!BUILTIN_PLATFORMS.has(newAccount.platform)) {
+    pluginCredentials.value = { ...((newAccount.credentials as Record<string, unknown>) || {}) }
+    pluginExtra.value = { ...((newAccount.extra as Record<string, unknown>) || {}) }
+  } else {
+    pluginCredentials.value = {}
+    pluginExtra.value = {}
+  }
 }
 
 async function loadTLSProfiles() {
@@ -2779,6 +2833,8 @@ watch(
   },
   { immediate: true }
 )
+
+onMounted(() => { fetchPlatforms() })
 
 // Model mapping helpers
 const addModelMapping = () => {
@@ -3395,6 +3451,10 @@ const handleSubmit = async () => {
       }
 
       updatePayload.credentials = newCredentials
+    } else if (isPluginPlatform.value) {
+      // Plugin platform: use credentials/extra from JsonSchemaForm
+      updatePayload.credentials = { ...pluginCredentials.value }
+      updatePayload.extra = { ...pluginExtra.value }
     } else {
       // For oauth/setup-token types, only update intercept_warmup_requests if changed
       const currentCredentials = (props.account.credentials as Record<string, unknown>) || {}

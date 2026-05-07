@@ -227,6 +227,12 @@ type Manifest struct {
 	// callback as props; see frontend/src/components/admin/PluginSettingsForm.vue
 	// for the host-side wiring.
 	SettingsComponentPath string
+
+	// Platforms declares the account platforms this gateway plugin provides.
+	// Each platform defines display metadata, account types, and UI
+	// customization. The host registers these into PlatformRegistry at
+	// plugin load time. See manifest_platform.go for type definitions.
+	Platforms []PlatformDecl
 }
 
 // PublicFlagSource enumerates where the host should read a public flag's

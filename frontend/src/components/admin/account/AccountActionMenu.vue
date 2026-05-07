@@ -45,6 +45,20 @@
               <Icon name="refresh" size="sm" />
               {{ t('admin.accounts.resetQuota') }}
             </button>
+            <!-- Plugin Custom Actions -->
+            <template v-if="pluginCustomActions.length">
+              <div class="my-1 border-t border-gray-200 dark:border-gray-700"></div>
+              <button
+                v-for="action in pluginCustomActions"
+                :key="action.action_id"
+                @click="executeCustomAction(action)"
+                class="flex w-full items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-dark-700"
+              >
+                <span v-if="action.icon_svg" v-html="action.icon_svg" class="h-4 w-4"></span>
+                <Icon v-else name="grid" size="sm" class="text-gray-500" />
+                {{ action.labels[$i18n.locale] || action.labels['en'] || action.action_id }}
+              </button>
+            </template>
           </template>
         </div>
       </div>
@@ -56,11 +70,28 @@
 import { computed, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@/components/icons'
+import { usePlatforms } from '@/composables/usePlatforms'
+import type { CustomActionDeclaration } from '@/api/admin/platforms'
 import type { Account } from '@/types'
 
 const props = defineProps<{ show: boolean; account: Account | null; position: { top: number; left: number } | null }>()
-const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'reauth', 'refresh-token', 'recover-state', 'reset-quota', 'set-privacy'])
+const emit = defineEmits(['close', 'test', 'stats', 'schedule', 'reauth', 'refresh-token', 'recover-state', 'reset-quota', 'set-privacy', 'custom-action'])
 const { t } = useI18n()
+const { getPlatformDecl } = usePlatforms()
+
+const pluginCustomActions = computed<CustomActionDeclaration[]>(() => {
+  if (!props.account) return []
+  const decl = getPlatformDecl(props.account.platform)
+  return decl?.custom_actions ?? []
+})
+
+const executeCustomAction = (action: CustomActionDeclaration) => {
+  if (props.account) {
+    emit('custom-action', props.account, action)
+  }
+  emit('close')
+}
+
 const isRateLimited = computed(() => {
   if (props.account?.rate_limit_reset_at && new Date(props.account.rate_limit_reset_at) > new Date()) {
     return true

@@ -1197,3 +1197,304 @@ message ResolveModelPricingResponse {
   string image_output_price_per_token = 6;
 }
 
+// ============================================================
+// AccountPlatformExtension — plugin-provided, host-called
+// ============================================================
+
+// AccountPlatformExtension is implemented by gateway plugins that own
+// account platforms. The host discovers it via lazy gRPC invocation
+// (codes.Unimplemented = not available, same pattern as PricingExtension).
+service AccountPlatformExtension {
+  // ValidateAccountData validates credentials/extra before host persists.
+  rpc ValidateAccountData(ValidateAccountDataRequest)
+      returns (ValidateAccountDataResponse);
+
+  // TestConnection performs a platform-specific connectivity test.
+  // Returns a stream of events compatible with the host SSE format.
+  rpc TestConnection(TestConnectionRequest)
+      returns (stream TestConnectionEvent);
+
+  // RefreshToken performs platform-specific token refresh.
+  rpc RefreshToken(RefreshTokenRequest)
+      returns (RefreshTokenResponse);
+
+  // RefreshTier refreshes account tier/plan info from upstream.
+  rpc RefreshTier(RefreshTierRequest)
+      returns (RefreshTierResponse);
+
+  // GetAvailableModels returns models available for an account.
+  rpc GetAvailableModels(GetAvailableModelsRequest)
+      returns (GetAvailableModelsResponse);
+
+  // ExecuteCustomAction handles plugin-defined custom actions.
+  rpc ExecuteCustomAction(ExecuteCustomActionRequest)
+      returns (ExecuteCustomActionResponse);
+}
+
+message ValidateAccountDataRequest {
+  string platform = 1;
+  string account_type = 2;
+  bytes credentials_json = 3;
+  bytes extra_json = 4;
+  bool is_update = 5;
+  int64 account_id = 6;
+}
+
+message ValidateAccountDataResponse {
+  bool valid = 1;
+  // field_errors maps field path to error message.
+  map<string, string> field_errors = 2;
+  // processed_credentials_json is the transformed credentials to persist.
+  // Empty = use original input.
+  bytes processed_credentials_json = 3;
+  bytes processed_extra_json = 4;
+}
+
+message TestConnectionRequest {
+  int64 account_id = 1;
+  string platform = 2;
+  string account_type = 3;
+  bytes credentials_json = 4;
+  bytes extra_json = 5;
+  string model_id = 6;
+}
+
+message TestConnectionEvent {
+  // type: "test_start" | "content" | "test_end" | "error"
+  string type = 1;
+  string text = 2;
+  string model = 3;
+  bool success = 4;
+  string error = 5;
+  bytes data_json = 6;
+}
+
+message RefreshTokenRequest {
+  int64 account_id = 1;
+  string platform = 2;
+  string account_type = 3;
+  bytes credentials_json = 4;
+  bytes extra_json = 5;
+}
+
+message RefreshTokenResponse {
+  bool success = 1;
+  string error = 2;
+  bytes updated_credentials_json = 3;
+  bytes updated_extra_json = 4;
+}
+
+message RefreshTierRequest {
+  int64 account_id = 1;
+  string platform = 2;
+  string account_type = 3;
+  bytes credentials_json = 4;
+  bytes extra_json = 5;
+}
+
+message RefreshTierResponse {
+  bool success = 1;
+  string error = 2;
+  bytes updated_extra_json = 3;
+}
+
+message GetAvailableModelsRequest {
+  int64 account_id = 1;
+  string platform = 2;
+  string account_type = 3;
+  bytes credentials_json = 4;
+  bytes extra_json = 5;
+}
+
+message GetAvailableModelsResponse {
+  repeated AvailableModelInfo models = 1;
+}
+
+message AvailableModelInfo {
+  string model_id = 1;
+  string display_name = 2;
+  bool available = 3;
+}
+
+message ExecuteCustomActionRequest {
+  string action_id = 1;
+  int64 account_id = 2;
+  string platform = 3;
+  bytes credentials_json = 4;
+  bytes extra_json = 5;
+  bytes payload_json = 6;
+}
+
+message ExecuteCustomActionResponse {
+  bool success = 1;
+  string error = 2;
+  bytes result_json = 3;
+  bytes updated_credentials_json = 4;
+  bytes updated_extra_json = 5;
+}
+
+// ============================================================
+// GatewayProviderExtension — plugin-provided, host-called
+// ============================================================
+//
+// GatewayProviderExtension allows plugins to handle gateway request
+// forwarding. The host calls Forward with the parsed request context;
+// the plugin streams back response chunks (headers, body bytes, trailers)
+// that the host pipes to the downstream HTTP client.
+//
+// This is the gRPC equivalent of the in-process GatewayProvider interface
+// (backend/internal/gateway/provider.go). Phase 2+ plugins implement this
+// service to handle upstream API forwarding for their platform.
+//
+// Failure model:
+//   - Forward streams GatewayForwardChunk messages; the host writes each
+//     chunk to the downstream http.ResponseWriter as it arrives.
+//   - If the plugin returns a gRPC error before sending any chunk, the
+//     host treats it as a forward failure and may failover to another
+//     account (subject to ShouldFailover).
+//   - If the plugin has already sent header/body chunks, the host sets
+//     UpstreamAccepted=true and will NOT failover on subsequent errors.
+//   - ShouldFailover is called synchronously after a forward failure;
+//     plugins return true to indicate the error is transient and another
+//     account should be tried.
+service GatewayProviderExtension {
+  // Forward handles a single gateway request. The plugin receives the full
+  // request context (account credentials, model, body, headers) and streams
+  // back the upstream response as chunked data.
+  rpc Forward(GatewayForwardRequest) returns (stream GatewayForwardChunk);
+
+  // ShouldFailover asks the plugin whether a failed forward should be
+  // retried with a different account.
+  rpc ShouldFailover(GatewayFailoverRequest) returns (GatewayFailoverResponse);
+}
+
+// GatewayForwardRequest carries the full request context for a gateway
+// forward operation. It is the gRPC equivalent of gateway.ForwardRequest,
+// minus the non-serializable fields (http.ResponseWriter, *gin.Context).
+message GatewayForwardRequest {
+  // --- request identity ---
+  string request_id = 1;
+  string model = 2;
+  bool stream = 3;
+  string protocol = 4;     // "anthropic" / "openai" / "gemini"
+
+  // --- request body ---
+  bytes raw_body = 5;
+
+  // --- account info (the selected account to forward through) ---
+  GatewayAccountInfo account = 6;
+
+  // --- request metadata ---
+  map<string, string> headers = 7;   // relevant upstream headers
+  string method = 8;                 // HTTP method (GET/POST)
+  string path = 9;                   // original request path
+
+  // --- scheduling context ---
+  int64 group_id = 10;               // 0 = no group constraint
+  string session_hash = 11;
+  string metadata_user_id = 12;
+  int64 user_id = 13;
+  int32 switch_count = 14;           // failover counter
+
+  // --- platform-specific ---
+  string gemini_action = 15;         // only when protocol == "gemini"
+  bool is_sticky_session = 16;
+}
+
+// GatewayAccountInfo carries the account credentials and metadata the
+// plugin needs to make upstream API calls. Sensitive fields (credentials)
+// are passed as opaque JSON so each platform plugin can decode its own
+// credential schema.
+message GatewayAccountInfo {
+  int64 account_id = 1;
+  string platform = 2;
+  string account_type = 3;
+  bytes credentials_json = 4;   // JSON-encoded map[string]any
+  bytes extra_json = 5;         // JSON-encoded map[string]any
+  string name = 6;
+}
+
+// GatewayForwardChunk is a single piece of the streamed response from the
+// plugin back to the host. The host writes these to the downstream HTTP
+// client in order. Exactly one of the chunk types is set per message.
+message GatewayForwardChunk {
+  oneof chunk {
+    GatewayResponseHeaders headers = 1;
+    GatewayResponseBody body = 2;
+    GatewayResponseTrailers trailers = 3;
+    GatewayResponseDone done = 4;
+  }
+}
+
+// GatewayResponseHeaders is the first chunk sent by the plugin, carrying
+// the HTTP response status and headers that the host should write to the
+// downstream client before streaming body data.
+message GatewayResponseHeaders {
+  int32 status_code = 1;
+  map<string, string> headers = 2;
+}
+
+// GatewayResponseBody carries a chunk of the response body. For SSE
+// streams, each SSE event may be one or more body chunks.
+message GatewayResponseBody {
+  bytes data = 1;
+}
+
+// GatewayResponseTrailers carries optional HTTP trailers sent after the
+// body is complete. Most APIs don't use trailers, but they are supported
+// for completeness.
+message GatewayResponseTrailers {
+  map<string, string> trailers = 1;
+}
+
+// GatewayResponseDone signals the end of the forward stream. It carries
+// the usage/timing data that the host needs for billing and logging.
+message GatewayResponseDone {
+  // result carries the usage data for billing; nil means no usage to record.
+  GatewayForwardResult result = 1;
+  // error is set when the forward failed after partial streaming. The host
+  // logs it but cannot failover because upstream already accepted.
+  string error = 2;
+}
+
+// GatewayForwardResult carries usage and timing data produced by the
+// plugin's forward operation. This is the gRPC equivalent of
+// gateway.ForwardResult.
+message GatewayForwardResult {
+  string request_id = 1;
+  string model = 2;
+  string upstream_model = 3;
+  bool stream = 4;
+  int64 duration_ms = 5;
+  int32 first_token_ms = 6;  // 0 = not measured
+
+  // Token counts
+  int64 input_tokens = 10;
+  int64 output_tokens = 11;
+  int64 cache_creation_tokens = 12;
+  int64 cache_read_tokens = 13;
+  int64 image_output_tokens = 14;
+
+  // Client behaviour
+  bool client_disconnect = 20;
+
+  // Image generation billing fields
+  int32 image_count = 21;
+  string image_size = 22;     // "1K" / "2K" / "4K"
+}
+
+// GatewayFailoverRequest is sent to ShouldFailover after a forward failure.
+// It carries the request context and the error that caused the failure so
+// the plugin can decide whether to retry with another account.
+message GatewayFailoverRequest {
+  GatewayForwardRequest request = 1;
+  string error_message = 2;
+  string error_type = 3;   // Go type name of the error (e.g. "UpstreamFailoverError")
+}
+
+// GatewayFailoverResponse carries the plugin's decision on whether to
+// retry the failed forward with a different account.
+message GatewayFailoverResponse {
+  bool should_failover = 1;
+}
+

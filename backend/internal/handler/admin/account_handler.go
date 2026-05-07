@@ -24,6 +24,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/plugin"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -76,6 +77,7 @@ type AccountHandler struct {
 	tokenCacheInvalidator   service.TokenCacheInvalidator
 	// serviceQuotaSvc 用于在删除 account 后失效服务限额缓存（FK CASCADE 自动删除关联，但缓存不感知）。
 	serviceQuotaSvc service.ServiceQuotaService
+	platformRegistry *plugin.PlatformRegistry
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -94,6 +96,7 @@ func NewAccountHandler(
 	rpmCache service.RPMCache,
 	tokenCacheInvalidator service.TokenCacheInvalidator,
 	serviceQuotaSvc service.ServiceQuotaService,
+	platformRegistry *plugin.PlatformRegistry,
 ) *AccountHandler {
 	return &AccountHandler{
 		adminService:            adminService,
@@ -110,6 +113,7 @@ func NewAccountHandler(
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
 		serviceQuotaSvc:         serviceQuotaSvc,
+		platformRegistry:    platformRegistry,
 	}
 }
 
@@ -828,6 +832,11 @@ func (h *AccountHandler) PreviewFromCRS(c *gin.Context) {
 func (h *AccountHandler) refreshSingleAccount(ctx context.Context, account *service.Account) (*service.Account, string, error) {
 	if !account.IsOAuth() {
 		return nil, "", infraerrors.BadRequest("NOT_OAUTH", "cannot refresh non-OAuth account")
+	}
+
+	// Try plugin delegation first
+	if updated, handled, err := h.tryPluginRefreshToken(ctx, account); handled {
+		return updated, "", err
 	}
 
 	var newCredentials map[string]any
@@ -1865,6 +1874,11 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 		return
 	}
 
+
+	// Try plugin delegation first
+	if h.tryPluginGetModels(c, account) {
+		return
+	}
 	// Handle OpenAI accounts
 	if account.IsOpenAI() {
 		// OpenAI 自动透传会绕过常规模型改写，测试/模型列表也应回落到默认模型集。
@@ -2050,6 +2064,11 @@ func (h *AccountHandler) RefreshTier(c *gin.Context) {
 		return
 	}
 
+
+	// Try plugin delegation first
+	if h.tryPluginRefreshTier(c, account) {
+		return
+	}
 	if account.Platform != service.PlatformGemini || account.Type != service.AccountTypeOAuth {
 		response.ErrorFrom(c, infraerrors.BadRequest(errReasonAccountTierRefreshUnsupported, "only Gemini OAuth accounts support tier refresh"))
 		return

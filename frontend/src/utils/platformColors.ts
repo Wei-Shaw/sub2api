@@ -163,3 +163,66 @@ export function platformLabel(p: string): string {
     default: return p || 'API'
   }
 }
+
+// ── Dynamic platform support ─────────────────────────────────────────
+// Plugin-declared platforms provide a theme_color (CSS color string like
+// "#7c3aed" or "purple"). These helpers generate Tailwind-compatible
+// classes or fall back to the default slate palette.
+
+const CSS_COLOR_TO_TAILWIND: Record<string, string> = {
+  '#ea580c': 'orange', '#f97316': 'orange',
+  '#16a34a': 'green', '#22c55e': 'green', '#10b981': 'emerald',
+  '#7c3aed': 'purple', '#a855f7': 'purple',
+  '#2563eb': 'blue', '#3b82f6': 'blue',
+  '#dc2626': 'red', '#ef4444': 'red',
+  '#0891b2': 'cyan', '#06b6d4': 'cyan',
+  '#d97706': 'amber', '#f59e0b': 'amber',
+  '#ec4899': 'pink', '#db2777': 'pink',
+  '#059669': 'emerald',
+  '#4f46e5': 'indigo', '#6366f1': 'indigo',
+  '#0d9488': 'teal', '#14b8a6': 'teal',
+}
+
+function themeColorToTailwind(themeColor: string): string {
+  if (!themeColor) return 'slate'
+  const lower = themeColor.toLowerCase()
+  // Direct color name
+  if (['orange', 'green', 'emerald', 'purple', 'blue', 'red', 'cyan', 'amber', 'pink', 'indigo', 'teal', 'slate'].includes(lower)) {
+    return lower
+  }
+  return CSS_COLOR_TO_TAILWIND[lower] || 'slate'
+}
+
+export function dynamicBadgeClass(themeColor: string): string {
+  const tw = themeColorToTailwind(themeColor)
+  return `bg-${tw}-500/10 text-${tw}-600 border-${tw}-500/30 dark:text-${tw}-400`
+}
+
+export function dynamicTextClass(themeColor: string): string {
+  const tw = themeColorToTailwind(themeColor)
+  return `text-${tw}-600 dark:text-${tw}-400`
+}
+
+// Registry for dynamic platform labels (from API)
+const dynamicLabels = new Map<string, string>()
+
+export function registerPlatformLabel(platform: string, label: string) {
+  dynamicLabels.set(platform, label)
+}
+
+export function registerPlatformLabels(platforms: Array<{ platform: string; display_name: string }>) {
+  for (const p of platforms) {
+    dynamicLabels.set(p.platform, p.display_name)
+  }
+}
+
+// Override platformLabel to check dynamic registry first
+const _originalPlatformLabel = platformLabel
+export { _originalPlatformLabel }
+
+// Re-export with dynamic support
+export function dynamicPlatformLabel(p: string): string {
+  const dynamic = dynamicLabels.get(p)
+  if (dynamic) return dynamic
+  return platformLabel(p)
+}

@@ -29,6 +29,7 @@ func (m *Manifest) toProto() *pb.ManifestResponse {
 		OwnedTables:           append([]string(nil), m.OwnedTables...),
 		PublicFlags:           publicFlagsToProto(m.PublicFlags),
 		SettingsComponentPath: m.SettingsComponentPath,
+		Platforms:             platformsToProto(m.Platforms),
 	}
 	if m.Frontend != nil {
 		resp.Frontend = m.Frontend.toProto()

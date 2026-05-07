@@ -73,6 +73,31 @@ type AccountStatsResolverRegistrar interface {
 	SetAccountStatsResolver(resolver service.AccountStatsCostResolver)
 }
 
+// GatewayProviderRegistry is the minimal surface PluginManager needs to
+// register / unregister plugin-backed gateway providers as plugins start
+// and stop. The wire layer provides an adapter that wraps
+// gateway.ProviderRegistry + gateway.NewPluginGatewayProvider, avoiding
+// a circular import between plugin and gateway packages.
+type GatewayProviderRegistry interface {
+	// RegisterPlugin creates a PluginGatewayProvider for the given platform
+	// and registers it into the ProviderRegistry. Called during spawn when
+	// the plugin declares gateway platforms.
+	RegisterPlugin(platform string, protocols []string, pluginName string, conn *grpc.ClientConn)
+	// UnregisterPlugin removes the provider for the given platform.
+	UnregisterPlugin(platform string)
+}
+
+// SetGatewayProviderRegistry wires the gateway ProviderRegistry so the
+// manager can auto-register PluginGatewayProviders when plugins that
+// declare gateway platforms are loaded. Pass nil to disable. Must be
+// called before Start; calling after has no effect on already-running
+// plugins.
+func (m *PluginManager) SetGatewayProviderRegistry(registry GatewayProviderRegistry) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.gatewayProviderRegistry = registry
+}
+
 // SetFrontendCacheInvalidator wires a callback the manager invokes whenever
 // the active plugin set or any plugin's manifest changes. server/router.go
 // passes FrontendServer.InvalidateCache so the next HTML render reflects the
@@ -300,4 +325,10 @@ func (m *PluginManager) rebuildHostServiceLocked() {
 // SDKAddr 返回 SDK gRPC 实际监听地址,主要用于测试与诊断。
 func (m *PluginManager) SDKAddr() string {
 	return m.sdkAddr
+}
+
+// PlatformRegistry returns the registry of account platforms declared by
+// gateway plugins. Used by the account handler and frontend API.
+func (m *PluginManager) PlatformRegistry() *PlatformRegistry {
+	return m.platformRegistry
 }

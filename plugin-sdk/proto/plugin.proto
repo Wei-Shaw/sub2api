@@ -214,6 +214,12 @@ message ManifestResponse {
   // of rendering the generic JSON-schema form. Empty string = fall back
   // to the schema renderer (legacy behaviour).
   string settings_component_path = 50;
+
+  // platforms declares the account platforms this gateway plugin provides.
+  // Each platform defines display metadata, account types, and UI
+  // customization. The host registers these into the PlatformRegistry on
+  // plugin load and renders them on account management pages.
+  repeated PlatformDeclaration platforms = 60;
 }
 
 // PublicFlagDecl is a single entry in ManifestResponse.public_flags.
@@ -358,4 +364,100 @@ message GetMigrationResponse {
   // re-checks this against MigrationDecl.checksum_sha256 to reject drift.
   string checksum_sha256   = 3;
   bool   non_transactional = 4;
+}
+
+// ============================================================
+// Platform Declaration — account platforms provided by plugins
+// ============================================================
+
+// PlatformDeclaration describes an account platform a gateway plugin provides.
+// The host registers these into PlatformRegistry at plugin load time.
+message PlatformDeclaration {
+  // platform is the unique identifier stored in account.platform column.
+  // Lowercase alphanumeric + hyphens (e.g. "anthropic", "openai").
+  string platform = 1;
+  string display_name = 2;
+  // icon_svg is the complete SVG markup for the platform icon.
+  string icon_svg = 3;
+  // theme_color is CSS color for platform badges (e.g. "#f97316").
+  string theme_color = 4;
+  repeated AccountTypeDeclaration account_types = 5;
+  CapacityDisplayConfig capacity_display = 6;
+  UsageDisplayConfig usage_display = 7;
+  repeated CustomActionDeclaration custom_actions = 8;
+  TestConnectionConfig test_config = 9;
+  // sort_order in platform selector tabs. Lower = first.
+  int32 sort_order = 10;
+  // privacy_states for the Privacy filter dropdown. Empty = N/A.
+  repeated PrivacyState privacy_states = 11;
+}
+
+// AccountTypeDeclaration describes an account type within a platform.
+message AccountTypeDeclaration {
+  string type = 1;
+  string display_name = 2;
+  string description = 3;
+  string icon_svg = 4;
+  string theme_color = 5;
+  // credential_schema is JSON Schema (Draft-07) for credential fields.
+  // Host renders a form when no custom component is provided.
+  bytes credential_schema = 6;
+  // extra_schema is JSON Schema for extra fields.
+  bytes extra_schema = 7;
+  // form_component_path names a Vue component the plugin ships for
+  // this type's creation/edit form. Empty = use schema renderer.
+  string form_component_path = 8;
+  // sub_types for type sub-options (e.g. "OAuth" vs "Setup Token").
+  repeated SubTypeOption sub_types = 9;
+  int32 sort_order = 10;
+  // badge_label is the short text on the list view type badge.
+  string badge_label = 11;
+}
+
+message SubTypeOption {
+  string value = 1;
+  string label = 2;
+}
+
+message CapacityDisplayConfig {
+  bool show_concurrency = 1;
+  repeated DisplayRow extra_rows = 2;
+}
+
+message UsageDisplayConfig {
+  string component_path = 1;
+  string window_label = 2;
+  bool show_req_count = 3;
+  bool show_cost = 4;
+  repeated DisplayRow extra_rows = 5;
+}
+
+message DisplayRow {
+  string label = 1;
+  string source = 2;
+  string format = 3;
+}
+
+message CustomActionDeclaration {
+  string action_id = 1;
+  string icon_svg = 2;
+  map<string, string> labels = 3;
+  // action_type: "api_call" | "open_modal"
+  string action_type = 4;
+  string api_endpoint = 5;
+  string component_path = 6;
+  int32 sort_order = 7;
+}
+
+message TestConnectionConfig {
+  bool model_selector = 1;
+  string test_component_path = 2;
+  string default_test_model = 3;
+}
+
+message PrivacyState {
+  string value = 1;
+  string display_name = 2;
+  string badge_color = 3;
+  bool is_set = 4;
 }

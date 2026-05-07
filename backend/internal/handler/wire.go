@@ -41,6 +41,7 @@ func ProvideAdminHandlers(
 	pluginHandler *admin.PluginHandler,
 	pluginSettingsHandler *admin.PluginSettingsHandler,
 	uploadHandler *admin.UploadHandler,
+	platformHandler *admin.PlatformHandler,
 ) *AdminHandlers {
 	return &AdminHandlers{
 		Dashboard:             dashboardHandler,
@@ -73,6 +74,7 @@ func ProvideAdminHandlers(
 		Plugin:                pluginHandler,
 		PluginSettings:        pluginSettingsHandler,
 		Upload:                uploadHandler,
+		Platform:            platformHandler,
 	}
 }
 
@@ -137,6 +139,15 @@ func ProvideHandlers(
 	}
 }
 
+
+// ProvidePlatformHandler creates admin.PlatformHandler.
+// When plugins are disabled (manager is nil), the handler returns empty lists.
+func ProvidePlatformHandler(manager *plugin.PluginManager) *admin.PlatformHandler {
+	if manager == nil {
+		return admin.NewPlatformHandler(plugin.NewPlatformRegistry())
+	}
+	return admin.NewPlatformHandler(manager.PlatformRegistry())
+}
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
 	// Top-level handlers
@@ -187,6 +198,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewUploadHandler,
 	ProvidePluginHandler,
 	ProvidePluginSettingsHandler,
+	ProvidePlatformHandler,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,
