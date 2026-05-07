@@ -361,7 +361,7 @@ func TestOpenAIGatewayService_OAuthPassthrough_CompactUsesSSEStreaming(t *testin
 
 	originalBody := []byte(`{"model":"gpt-5.1-codex","stream":true,"store":true,"instructions":"local-test-instructions","input":[{"type":"text","text":"compact me"}]}`)
 
-	sseBody := "event: response.completed\ndata: {\"id\":\"cmp_123\",\"output\":[],\"usage\":{\"input_tokens\":11,\"output_tokens\":22}}\n\n"
+	sseBody := "data: {\"type\":\"response.completed\",\"id\":\"cmp_123\",\"output\":[],\"usage\":{\"input_tokens\":11,\"output_tokens\":22}}\n\ndata: [DONE]\n\n"
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid-compact"}},

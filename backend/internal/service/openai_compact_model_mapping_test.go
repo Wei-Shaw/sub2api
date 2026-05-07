@@ -102,7 +102,7 @@ func TestOpenAIGatewayService_OAuthPassthrough_CompactOnlyModelMappingOverridesU
 	c.Request.Header.Set("Content-Type", "application/json")
 
 	originalBody := []byte(`{"model":"gpt-5.4","stream":true,"store":true,"instructions":"compact-pass","input":[{"type":"text","text":"compact me"}]}`)
-	sseBody := "event: response.completed\ndata: {\"id\":\"cmp_124\",\"model\":\"gpt-5.4-openai-compact\",\"output\":[],\"usage\":{\"input_tokens\":2,\"output_tokens\":3}}\n\n"
+	sseBody := "data: {\"type\":\"response.completed\",\"id\":\"cmp_124\",\"model\":\"gpt-5.4-openai-compact\",\"output\":[],\"usage\":{\"input_tokens\":2,\"output_tokens\":3}}\n\ndata: [DONE]\n\n"
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid-compact-pass-map"}},
