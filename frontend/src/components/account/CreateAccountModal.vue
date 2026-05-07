@@ -902,6 +902,12 @@
               {{ t('admin.accounts.mapRequestModels') }}
             </p>
           </div>
+          <ModelMappingBulkImporter
+            :title="t('admin.accounts.bulkImportMappings')"
+            :hint="t('admin.accounts.bulkImportMappingsHint')"
+            :placeholder="t('admin.accounts.bulkImportMappingsPlaceholder')"
+            @import="importAntigravityModelMappings"
+          />
 
           <div v-if="antigravityModelMappings.length > 0" class="mb-3 space-y-2">
             <div
@@ -1153,6 +1159,12 @@
                   {{ t('admin.accounts.mapRequestModels') }}
                 </p>
               </div>
+              <ModelMappingBulkImporter
+                :title="t('admin.accounts.bulkImportMappings')"
+                :hint="t('admin.accounts.bulkImportMappingsHint')"
+                :placeholder="t('admin.accounts.bulkImportMappingsPlaceholder')"
+                @import="importModelMappings"
+              />
 
             <!-- Model Mapping List -->
             <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
@@ -1805,6 +1817,12 @@
                 {{ t('admin.accounts.mapRequestModels') }}
               </p>
             </div>
+            <ModelMappingBulkImporter
+              :title="t('admin.accounts.bulkImportMappings')"
+              :hint="t('admin.accounts.bulkImportMappingsHint')"
+              :placeholder="t('admin.accounts.bulkImportMappingsPlaceholder')"
+              @import="importModelMappings"
+            />
 
             <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
               <div
@@ -2640,6 +2658,12 @@
         <div>
           <label class="input-label">{{ t('admin.accounts.openai.compactModelMapping') }}</label>
           <p class="input-hint">{{ t('admin.accounts.openai.compactModelMappingDesc') }}</p>
+          <ModelMappingBulkImporter
+            :title="t('admin.accounts.bulkImportMappings')"
+            :hint="t('admin.accounts.bulkImportMappingsHint')"
+            :placeholder="t('admin.accounts.bulkImportMappingsPlaceholder')"
+            @import="importOpenAICompactModelMappings"
+          />
           <div v-if="openAICompactModelMappings.length > 0" class="mb-3 space-y-2">
             <div
               v-for="(mapping, index) in openAICompactModelMappings"
@@ -2744,6 +2768,16 @@
               ></div>
             </div>
           </div>
+        </div>
+
+        <div>
+          <label class="input-label">{{ t('admin.accounts.displayGroups') }}</label>
+          <DelimitedTagInput
+            v-model="uiDisplayGroups"
+            :placeholder="t('admin.accounts.displayGroupsPlaceholder')"
+            :hint="t('admin.accounts.displayGroupsHint')"
+            tag-class="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+          />
         </div>
 
         <!-- Group Selection - 仅标准模式显示 -->
@@ -3138,10 +3172,13 @@ import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
+import DelimitedTagInput from '@/components/common/DelimitedTagInput.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import ModelMappingBulkImporter from '@/components/account/ModelMappingBulkImporter.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import { applyInterceptWarmup } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
+import { mergeModelMappings, writeUIDisplayGroupsToExtra } from '@/utils/accountFormBulk'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
 import {
@@ -3293,6 +3330,7 @@ const codexCLIOnlyEnabled = ref(false)
 const anthropicPassthroughEnabled = ref(false)
 const webSearchEmulationMode = ref('default')
 const webSearchGlobalEnabled = ref(false)
+const uiDisplayGroups = ref<string[]>([])
 const {
   globalEnabled: quotaNotifyGlobalEnabled,
   state: quotaNotifyState,
@@ -3755,12 +3793,42 @@ const addPresetMapping = (from: string, to: string) => {
   modelMappings.value.push({ from, to })
 }
 
+const importModelMappings = (raw: string) => {
+  const before = JSON.stringify(modelMappings.value)
+  const merged = mergeModelMappings(modelMappings.value, raw)
+  if (JSON.stringify(merged) === before) {
+    appStore.showInfo(t('admin.accounts.noValidMappingsImported'))
+    return
+  }
+  modelMappings.value = merged
+}
+
 const addAntigravityModelMapping = () => {
   antigravityModelMappings.value.push({ from: '', to: '' })
 }
 
+const importAntigravityModelMappings = (raw: string) => {
+  const before = JSON.stringify(antigravityModelMappings.value)
+  const merged = mergeModelMappings(antigravityModelMappings.value, raw)
+  if (JSON.stringify(merged) === before) {
+    appStore.showInfo(t('admin.accounts.noValidMappingsImported'))
+    return
+  }
+  antigravityModelMappings.value = merged
+}
+
 const removeAntigravityModelMapping = (index: number) => {
   antigravityModelMappings.value.splice(index, 1)
+}
+
+const importOpenAICompactModelMappings = (raw: string) => {
+  const before = JSON.stringify(openAICompactModelMappings.value)
+  const merged = mergeModelMappings(openAICompactModelMappings.value, raw)
+  if (JSON.stringify(merged) === before) {
+    appStore.showInfo(t('admin.accounts.noValidMappingsImported'))
+    return
+  }
+  openAICompactModelMappings.value = merged
 }
 
 const addAntigravityPresetMapping = (from: string, to: string) => {
@@ -4042,6 +4110,7 @@ const resetForm = () => {
   openAICompactModelMappings.value = []
   modelRestrictionMode.value = 'whitelist'
   allowedModels.value = [...claudeModels] // Default fill related models
+  uiDisplayGroups.value = []
 
   antigravityModelRestrictionMode.value = 'mapping'
   antigravityWhitelistModels.value = []
@@ -4542,6 +4611,7 @@ const createAccountAndFinish = async (
       finalExtra = quotaExtra
     }
   }
+  finalExtra = writeUIDisplayGroupsToExtra(finalExtra, uiDisplayGroups.value)
   if (platform === 'openai') {
     const compactModelMapping = buildOpenAICompactModelMapping()
     if (compactModelMapping) {

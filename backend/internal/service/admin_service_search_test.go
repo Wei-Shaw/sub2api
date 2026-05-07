@@ -23,6 +23,21 @@ type accountRepoStubForAdminList struct {
 	listWithFiltersAccounts []Account
 	listWithFiltersResult   *pagination.PaginationResult
 	listWithFiltersErr      error
+
+	listWithAdminFiltersCalls        int
+	listWithAdminFiltersParams       pagination.PaginationParams
+	listWithAdminFiltersPlatform     string
+	listWithAdminFiltersType         string
+	listWithAdminFiltersStatus       string
+	listWithAdminFiltersSchedulable  string
+	listWithAdminFiltersSearch       string
+	listWithAdminFiltersPrivacy      string
+	listWithAdminFiltersDisplayGroup string
+	listWithAdminFiltersNamePrefix   string
+	listWithAdminFiltersSearchRegex  string
+	listWithAdminFiltersAccounts     []Account
+	listWithAdminFiltersResult       *pagination.PaginationResult
+	listWithAdminFiltersErr          error
 }
 
 func (s *accountRepoStubForAdminList) ListWithFilters(_ context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, *pagination.PaginationResult, error) {
@@ -48,6 +63,42 @@ func (s *accountRepoStubForAdminList) ListWithFilters(_ context.Context, params 
 	}
 
 	return s.listWithFiltersAccounts, result, nil
+}
+
+func (s *accountRepoStubForAdminList) ListWithAdminFilters(_ context.Context, params pagination.PaginationParams, platform, accountType, status, schedulable, search string, groupID int64, privacyMode, displayGroup, namePrefix, searchRegex string) ([]Account, *pagination.PaginationResult, error) {
+	if schedulable == "" && displayGroup == "" && namePrefix == "" && searchRegex == "" &&
+		s.listWithAdminFiltersErr == nil &&
+		len(s.listWithAdminFiltersAccounts) == 0 &&
+		s.listWithAdminFiltersResult == nil {
+		return s.ListWithFilters(context.Background(), params, platform, accountType, status, search, groupID, privacyMode)
+	}
+
+	s.listWithAdminFiltersCalls++
+	s.listWithAdminFiltersParams = params
+	s.listWithAdminFiltersPlatform = platform
+	s.listWithAdminFiltersType = accountType
+	s.listWithAdminFiltersStatus = status
+	s.listWithAdminFiltersSchedulable = schedulable
+	s.listWithAdminFiltersSearch = search
+	s.listWithAdminFiltersPrivacy = privacyMode
+	s.listWithAdminFiltersDisplayGroup = displayGroup
+	s.listWithAdminFiltersNamePrefix = namePrefix
+	s.listWithAdminFiltersSearchRegex = searchRegex
+
+	if s.listWithAdminFiltersErr != nil {
+		return nil, nil, s.listWithAdminFiltersErr
+	}
+
+	result := s.listWithAdminFiltersResult
+	if result == nil {
+		result = &pagination.PaginationResult{
+			Total:    int64(len(s.listWithAdminFiltersAccounts)),
+			Page:     params.Page,
+			PageSize: params.PageSize,
+		}
+	}
+
+	return s.listWithAdminFiltersAccounts, result, nil
 }
 
 type proxyRepoStubForAdminList struct {
@@ -170,7 +221,7 @@ func TestAdminService_ListAccounts_WithSearch(t *testing.T) {
 		}
 		svc := &adminServiceImpl{accountRepo: repo}
 
-		accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformGemini, AccountTypeOAuth, StatusActive, "acc", 0, "", "name", "ASC")
+		accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformGemini, AccountTypeOAuth, StatusActive, "", "acc", 0, "", "", "", "", "name", "ASC")
 		require.NoError(t, err)
 		require.Equal(t, int64(10), total)
 		require.Equal(t, []Account{{ID: 1, Name: "acc"}}, accounts)
@@ -192,11 +243,47 @@ func TestAdminService_ListAccounts_WithPrivacyMode(t *testing.T) {
 		}
 		svc := &adminServiceImpl{accountRepo: repo}
 
-		accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformOpenAI, AccountTypeOAuth, StatusActive, "acc2", 0, PrivacyModeCFBlocked, "", "")
+		accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformOpenAI, AccountTypeOAuth, StatusActive, "", "acc2", 0, PrivacyModeCFBlocked, "", "", "", "", "")
 		require.NoError(t, err)
 		require.Equal(t, int64(1), total)
 		require.Equal(t, []Account{{ID: 2, Name: "acc2"}}, accounts)
 		require.Equal(t, PrivacyModeCFBlocked, repo.listWithFiltersPrivacy)
+	})
+}
+
+func TestAdminService_ListAccounts_WithNamePrefix(t *testing.T) {
+	t.Run("name_prefix 参数走高级筛选仓储", func(t *testing.T) {
+		repo := &accountRepoStubForAdminList{
+			listWithAdminFiltersAccounts: []Account{{ID: 3, Name: "prod-main"}},
+			listWithAdminFiltersResult:   &pagination.PaginationResult{Total: 1},
+		}
+		svc := &adminServiceImpl{accountRepo: repo}
+
+		accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformOpenAI, AccountTypeOAuth, StatusActive, "", "prod", 0, "", "pool-a", "prod", "^prod", "name", "ASC")
+		require.NoError(t, err)
+		require.Equal(t, int64(1), total)
+		require.Equal(t, []Account{{ID: 3, Name: "prod-main"}}, accounts)
+		require.Equal(t, 1, repo.listWithAdminFiltersCalls)
+		require.Equal(t, "pool-a", repo.listWithAdminFiltersDisplayGroup)
+		require.Equal(t, "prod", repo.listWithAdminFiltersNamePrefix)
+		require.Equal(t, "^prod", repo.listWithAdminFiltersSearchRegex)
+	})
+}
+
+func TestAdminService_ListAccounts_WithSchedulableFilter(t *testing.T) {
+	t.Run("schedulable 参数走高级筛选仓储", func(t *testing.T) {
+		repo := &accountRepoStubForAdminList{
+			listWithAdminFiltersAccounts: []Account{{ID: 4, Name: "disabled-acc", Schedulable: false}},
+			listWithAdminFiltersResult:   &pagination.PaginationResult{Total: 1},
+		}
+		svc := &adminServiceImpl{accountRepo: repo}
+
+		accounts, total, err := svc.ListAccounts(context.Background(), 1, 20, PlatformOpenAI, AccountTypeOAuth, "", "false", "", 0, "", "", "", "", "name", "ASC")
+		require.NoError(t, err)
+		require.Equal(t, int64(1), total)
+		require.Equal(t, []Account{{ID: 4, Name: "disabled-acc", Schedulable: false}}, accounts)
+		require.Equal(t, 1, repo.listWithAdminFiltersCalls)
+		require.Equal(t, "false", repo.listWithAdminFiltersSchedulable)
 	})
 }
 

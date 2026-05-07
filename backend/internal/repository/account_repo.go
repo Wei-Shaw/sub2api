@@ -60,8 +60,9 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 }
 
 var schedulerNeutralExtraKeys = map[string]struct{}{
-	"codex_usage_updated_at":     {},
-	"session_window_utilization": {},
+	"codex_usage_updated_at":               {},
+	"session_window_utilization":           {},
+	service.AccountUIDisplayGroupsExtraKey: {},
 }
 
 // NewAccountRepository 创建账户仓储实例。
@@ -461,6 +462,10 @@ func (r *accountRepository) List(ctx context.Context, params pagination.Paginati
 }
 
 func (r *accountRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]service.Account, *pagination.PaginationResult, error) {
+	return r.ListWithAdminFilters(ctx, params, platform, accountType, status, "", search, groupID, privacyMode, "", "", "")
+}
+
+func (r *accountRepository) ListWithAdminFilters(ctx context.Context, params pagination.PaginationParams, platform, accountType, status, schedulable, search string, groupID int64, privacyMode, displayGroup, namePrefix, searchRegex string) ([]service.Account, *pagination.PaginationResult, error) {
 	q := r.client.Account.Query()
 
 	if platform != "" {
@@ -468,6 +473,9 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 	}
 	if accountType != "" {
 		q = q.Where(dbaccount.TypeEQ(accountType))
+	}
+	if schedulable != "" {
+		q = q.Where(dbaccount.SchedulableEQ(schedulable == "true"))
 	}
 	if status != "" {
 		switch status {
@@ -533,6 +541,16 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 	if search != "" {
 		q = q.Where(dbaccount.NameContainsFold(search))
 	}
+	if namePrefix != "" {
+		q = q.Where(dbpredicate.Account(func(s *entsql.Selector) {
+			s.Where(entsql.P(func(b *entsql.Builder) {
+				b.WriteString("COALESCE(").
+					Ident(s.C(dbaccount.FieldName)).
+					WriteString(", '') ILIKE ").
+					Arg(escapeLike(namePrefix) + "%")
+			}))
+		}))
+	}
 	if groupID == service.AccountListGroupUngrouped {
 		q = q.Where(dbaccount.Not(dbaccount.HasAccountGroups()))
 	} else if groupID > 0 {
@@ -550,6 +568,40 @@ func (r *accountRepository) ListWithFilters(ctx context.Context, params paginati
 			default:
 				s.Where(sqljson.ValueEQ(dbaccount.FieldExtra, privacyMode, path))
 			}
+		}))
+	}
+	if displayGroup != "" {
+		q = q.Where(dbpredicate.Account(func(s *entsql.Selector) {
+			s.Where(entsql.P(func(b *entsql.Builder) {
+				b.WriteString("COALESCE(").
+					Ident(s.C(dbaccount.FieldExtra)).
+					WriteString("->'").
+					WriteString(service.AccountUIDisplayGroupsExtraKey).
+					WriteString("', '[]'::jsonb) ? ").
+					Arg(displayGroup)
+			}))
+		}))
+	}
+	if searchRegex != "" {
+		q = q.Where(dbpredicate.Account(func(s *entsql.Selector) {
+			s.Where(entsql.P(func(b *entsql.Builder) {
+				b.WriteByte('(').
+					WriteString("COALESCE(").
+					Ident(s.C(dbaccount.FieldName)).
+					WriteString(", '') ~* ").
+					Arg(searchRegex).
+					WriteString(" OR COALESCE(").
+					Ident(s.C(dbaccount.FieldNotes)).
+					WriteString(", '') ~* ").
+					Arg(searchRegex).
+					WriteString(" OR COALESCE(").
+					Ident(s.C(dbaccount.FieldExtra)).
+					WriteString("->>'").
+					WriteString(service.AccountUIDisplayGroupsExtraKey).
+					WriteString("', '') ~* ").
+					Arg(searchRegex).
+					WriteByte(')')
+			}))
 		}))
 	}
 

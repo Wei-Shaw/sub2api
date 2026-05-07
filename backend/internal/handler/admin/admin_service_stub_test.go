@@ -34,15 +34,19 @@ type stubAdminService struct {
 		groupIDs  []int64
 	}
 	lastListAccounts struct {
-		platform    string
-		accountType string
-		status      string
-		search      string
-		groupID     int64
-		privacyMode string
-		sortBy      string
-		sortOrder   string
-		calls       int
+		platform     string
+		accountType  string
+		status       string
+		schedulable  string
+		search       string
+		groupID      int64
+		privacyMode  string
+		displayGroup string
+		namePrefix   string
+		searchRegex  string
+		sortBy       string
+		sortOrder    string
+		calls        int
 	}
 	lastListUsers struct {
 		page      int
@@ -299,13 +303,17 @@ func (s *stubAdminService) BatchSetGroupRPMOverrides(_ context.Context, _ int64,
 	return nil
 }
 
-func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]service.Account, int64, error) {
+func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, schedulable, search string, groupID int64, privacyMode, displayGroup, namePrefix, searchRegex, sortBy, sortOrder string) ([]service.Account, int64, error) {
 	s.lastListAccounts.platform = platform
 	s.lastListAccounts.accountType = accountType
 	s.lastListAccounts.status = status
+	s.lastListAccounts.schedulable = schedulable
 	s.lastListAccounts.search = search
 	s.lastListAccounts.groupID = groupID
 	s.lastListAccounts.privacyMode = privacyMode
+	s.lastListAccounts.displayGroup = displayGroup
+	s.lastListAccounts.namePrefix = namePrefix
+	s.lastListAccounts.searchRegex = searchRegex
 	s.lastListAccounts.sortBy = sortBy
 	s.lastListAccounts.sortOrder = sortOrder
 	s.lastListAccounts.calls++
