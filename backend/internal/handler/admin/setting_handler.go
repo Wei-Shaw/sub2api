@@ -998,17 +998,27 @@ REDACTED
 				response.BadRequest(c, "Custom menu item label is too long (max 50 characters)")
 				return
 		REDACTED
-			if strings.TrimSpace(item.URL) == "" {
-				response.BadRequest(c, "Custom menu item URL is required")
-				return
-		REDACTED
-			if len(item.URL) > maxMenuItemURLLen {
-				response.BadRequest(c, "Custom menu item URL is too long (max 2048 characters)")
-				return
-		REDACTED
-			if err := config.ValidateAbsoluteHTTPURL(strings.TrimSpace(item.URL)); err != nil {
-				response.BadRequest(c, "Custom menu item URL must be an absolute http(s) URL")
-				return
+			urlTrimmed := strings.TrimSpace(item.URL)
+			if strings.HasPrefix(urlTrimmed, "md:") {
+				// Markdown page mode: URL = "md:<slug>"
+				slug := strings.TrimPrefix(urlTrimmed, "md:")
+				if slug == "" {
+					response.BadRequest(c, "Custom menu item markdown slug cannot be empty (use md:slug format)")
+					return
+			REDACTED
+		REDACTED else {
+				if urlTrimmed == "" {
+					response.BadRequest(c, "Custom menu item URL is required (use md:slug for markdown pages)")
+					return
+			REDACTED
+				if len(item.URL) > maxMenuItemURLLen {
+					response.BadRequest(c, "Custom menu item URL is too long (max 2048 characters)")
+					return
+			REDACTED
+				if err := config.ValidateAbsoluteHTTPURL(urlTrimmed); err != nil {
+					response.BadRequest(c, "Custom menu item URL must be an absolute http(s) URL or md:<slug>")
+					return
+			REDACTED
 		REDACTED
 			if item.Visibility != "user" && item.Visibility != "admin" {
 				response.BadRequest(c, "Custom menu item visibility must be 'user' or 'admin'")

@@ -208,6 +208,7 @@ REDACTED
 		nil,
 		client,
 		nil,
+		nil,
 	)
 	registry := payment.NewRegistry()
 	provider := &paymentOrderLifecycleQueryProvider{
@@ -308,6 +309,7 @@ REDACTED
 		nil,
 		client,
 		nil,
+		nil,
 	)
 	registry := payment.NewRegistry()
 	provider := &paymentOrderLifecycleQueryProvider{
@@ -397,6 +399,7 @@ REDACTED
 		nil,
 		nil,
 		client,
+		nil,
 		nil,
 	)
 	registry := payment.NewRegistry()
@@ -495,6 +498,7 @@ REDACTED
 		nil,
 		nil,
 		client,
+		nil,
 		nil,
 	)
 	registry := payment.NewRegistry()

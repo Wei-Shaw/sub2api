@@ -1542,6 +1542,15 @@ REDACTED
 	return value == "true"
 REDACTED
 
+// GetCustomMenuItemsRaw returns the raw JSON string of custom_menu_items setting.
+func (s *SettingService) GetCustomMenuItemsRaw(ctx context.Context) string {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyCustomMenuItems)
+	if err != nil {
+		return "[]"
+REDACTED
+	return value
+REDACTED
+
 // IsAffiliateEnabled 检查是否启用邀请返利功能（总开关）
 func (s *SettingService) IsAffiliateEnabled(ctx context.Context) bool {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeyAffiliateEnabled)

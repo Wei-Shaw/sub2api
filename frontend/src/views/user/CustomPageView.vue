@@ -27,6 +27,56 @@
           </div>
         </div>
 
+        <!-- Markdown mode with TOC -->
+        <div v-else-if="isMarkdownMode" class="flex h-full overflow-hidden">
+          <!-- TOC Sidebar -->
+          <aside
+            v-show="tocVisible"
+            class="toc-sidebar"
+          >
+            <div class="toc-header">
+              <span class="toc-title">目录</span>
+              <button class="toc-close-btn" @click="tocVisible = false">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+              </button>
+            </div>
+            <nav class="toc-nav">
+              <a
+                v-for="item in tocItems"
+                :key="item.id"
+                :href="'#' + item.id"
+                class="toc-item"
+                :class="[
+                  `toc-level-${item.levelREDACTED`,
+                  { 'toc-active': activeHeadingId === item.id REDACTED
+                ]"
+                @click.prevent="scrollToHeading(item.id)"
+              >
+                {{ item.text REDACTEDREDACTED
+              </a>
+            </nav>
+          </aside>
+
+          <!-- TOC Toggle Button (when collapsed) -->
+          <button
+            v-show="!tocVisible && tocItems.length > 0"
+            class="toc-toggle-btn"
+            @click="tocVisible = true"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+            <span class="ml-1 text-xs">目录</span>
+          </button>
+
+          <!-- Content -->
+          <div
+            ref="markdownContainer"
+            class="markdown-page-content flex-1 h-full overflow-auto p-6 md:p-10"
+            v-html="renderedHtml"
+            @scroll="onContentScroll"
+          ></div>
+        </div>
+
+        <!-- URL not configured -->
         <div v-else-if="!isValidUrl" class="flex h-full items-center justify-center p-10 text-center">
           <div class="max-w-md">
             <div
@@ -43,6 +93,7 @@
           </div>
         </div>
 
+        <!-- Iframe embed mode -->
         <div v-else class="custom-embed-shell">
           <a
             :href="embeddedUrl"
@@ -65,7 +116,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref REDACTED from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch REDACTED from 'vue'
 import { useRoute REDACTED from 'vue-router'
 import { useI18n REDACTED from 'vue-i18n'
 import { useAppStore REDACTED from '@/stores'
@@ -74,6 +125,14 @@ import { useAdminSettingsStore REDACTED from '@/stores/adminSettings'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { buildEmbeddedUrl, detectTheme REDACTED from '@/utils/embedded-url'
+import { marked REDACTED from 'marked'
+import DOMPurify from 'dompurify'
+
+interface TocItem {
+  id: string
+  text: string
+  level: number
+REDACTED
 
 const { t, locale REDACTED = useI18n()
 const route = useRoute()
@@ -83,25 +142,38 @@ const adminSettingsStore = useAdminSettingsStore()
 
 const loading = ref(false)
 const pageTheme = ref<'light' | 'dark'>('light')
+const renderedHtml = ref('')
+const markdownContainer = ref<HTMLElement | null>(null)
+const tocItems = ref<TocItem[]>([])
+const tocVisible = ref(typeof window !== 'undefined' ? window.innerWidth > 768 : true)
+const activeHeadingId = ref('')
 let themeObserver: MutationObserver | null = null
 
 const menuItemId = computed(() => route.params.id as string)
 
 const menuItem = computed(() => {
   const id = menuItemId.value
-  // Try public settings first (contains user-visible items)
   const publicItems = appStore.cachedPublicSettings?.custom_menu_items ?? []
   const found = publicItems.find((item) => item.id === id) ?? null
   if (found) return found
-  // For admin users, also check admin settings (contains admin-only items)
   if (authStore.isAdmin) {
     return adminSettingsStore.customMenuItems.find((item) => item.id === id) ?? null
   REDACTED
   return null
 REDACTED)
 
+const markdownSlug = computed(() => {
+  const item = menuItem.value
+  if (!item) return ''
+  if (item.page_slug) return item.page_slug
+  if (item.url?.startsWith('md:')) return item.url.slice(3)
+  return ''
+REDACTED)
+
+const isMarkdownMode = computed(() => !!markdownSlug.value)
+
 const embeddedUrl = computed(() => {
-  if (!menuItem.value) return ''
+  if (!menuItem.value || isMarkdownMode.value) return ''
   return buildEmbeddedUrl(
     menuItem.value.url,
     authStore.user?.id,
@@ -112,9 +184,140 @@ const embeddedUrl = computed(() => {
 REDACTED)
 
 const isValidUrl = computed(() => {
+  if (isMarkdownMode.value) return false
   const url = embeddedUrl.value
   return url.startsWith('http://') || url.startsWith('https://')
 REDACTED)
+
+function generateHeadingId(text: string, index: number): string {
+  const base = text
+    .toLowerCase()
+    .replace(/[^\w一-鿿]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return base ? `${baseREDACTED-${indexREDACTED` : `heading-${indexREDACTED`
+REDACTED
+
+async function fetchAndRenderMarkdown(slug: string) {
+  loading.value = true
+  tocItems.value = []
+  activeHeadingId.value = ''
+  try {
+    const resp = await fetch(`/api/v1/pages/${encodeURIComponent(slug)REDACTED`, {
+      headers: authStore.token ? { Authorization: `Bearer ${authStore.tokenREDACTED` REDACTED : {REDACTED,
+    REDACTED)
+    if (!resp.ok) {
+      renderedHtml.value = '<p class="text-red-500">Page not found</p>'
+      return
+    REDACTED
+    let raw = await resp.text()
+
+    raw = raw.replace(
+      /!\[([^\]]*)\]\((?!https?:\/\/)([^)]+)\)/g,
+      (_, alt, src) => `![${altREDACTED](/api/v1/pages/${slugREDACTED/images/${srcREDACTED)`
+    )
+
+    const html = marked.parse(raw) as string
+    const sanitized = DOMPurify.sanitize(html, {
+      ADD_TAGS: ['iframe'],
+      ADD_ATTR: ['allowfullscreen', 'frameborder', 'src'],
+    REDACTED)
+
+    // Inject IDs into headings and build TOC
+    const toc: TocItem[] = []
+    let headingIndex = 0
+    const withIds = sanitized.replace(
+      /<(h[1-4])[^>]*>(.*?)<\/h[1-4]>/gi,
+      (_, tag: string, content: string) => {
+        const level = parseInt(tag[1])
+        const text = content.replace(/<[^>]+>/g, '').trim()
+        const id = generateHeadingId(text, headingIndex++)
+        toc.push({ id, text, level REDACTED)
+        return `<${tagREDACTED id="${idREDACTED">${contentREDACTED</${tagREDACTED>`
+      REDACTED
+    )
+
+    renderedHtml.value = withIds
+    tocItems.value = toc
+  REDACTED catch {
+    renderedHtml.value = '<p class="text-red-500">Failed to load page</p>'
+  REDACTED finally {
+    loading.value = false
+    await nextTick()
+    await nextTick()
+    injectCopyButtons()
+  REDACTED
+REDACTED
+
+function scrollToHeading(id: string) {
+  const container = markdownContainer.value
+  if (!container) return
+  const el = container.querySelector(`#${CSS.escape(id)REDACTED`)
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' REDACTED)
+    activeHeadingId.value = id
+    if (window.innerWidth <= 640) {
+      tocVisible.value = false
+    REDACTED
+  REDACTED
+REDACTED
+
+let scrollRafId = 0
+function onContentScroll() {
+  if (scrollRafId) return
+  scrollRafId = requestAnimationFrame(() => {
+    scrollRafId = 0
+    const container = markdownContainer.value
+    if (!container || tocItems.value.length === 0) return
+
+    const containerRect = container.getBoundingClientRect()
+    let current = ''
+
+    for (const item of tocItems.value) {
+      const el = container.querySelector(`#${CSS.escape(item.id)REDACTED`) as HTMLElement | null
+      if (el) {
+        const elRect = el.getBoundingClientRect()
+        if (elRect.top - containerRect.top <= 100) {
+          current = item.id
+        REDACTED
+      REDACTED
+    REDACTED
+    activeHeadingId.value = current
+  REDACTED)
+REDACTED
+
+function injectCopyButtons() {
+  const container = markdownContainer.value
+  if (!container) return
+
+  container.querySelectorAll('pre').forEach((pre) => {
+    if (pre.querySelector('.copy-btn')) return
+    const btn = document.createElement('button')
+    btn.className = 'copy-btn'
+    btn.textContent = '复制'
+    btn.addEventListener('click', async () => {
+      const code = pre.querySelector('code')?.textContent ?? pre.textContent ?? ''
+      try {
+        await navigator.clipboard.writeText(code)
+        btn.textContent = '已复制 ✓'
+        setTimeout(() => { btn.textContent = '复制' REDACTED, 2000)
+      REDACTED catch {
+        btn.textContent = '失败'
+        setTimeout(() => { btn.textContent = '复制' REDACTED, 2000)
+      REDACTED
+    REDACTED)
+    pre.style.position = 'relative'
+    pre.appendChild(btn)
+  REDACTED)
+REDACTED
+
+watch(markdownSlug, (slug) => {
+  if (slug) {
+    fetchAndRenderMarkdown(slug)
+  REDACTED else {
+    renderedHtml.value = ''
+    tocItems.value = []
+  REDACTED
+REDACTED, { immediate: true REDACTED)
 
 onMounted(async () => {
   pageTheme.value = detectTheme()
@@ -152,6 +355,64 @@ REDACTED)
   height: calc(100vh - 64px - 4rem);
 REDACTED
 
+.toc-sidebar {
+  @apply flex flex-col h-full border-r border-gray-200 dark:border-dark-600 bg-gray-50 dark:bg-dark-800;
+  width: min(240px, 30%);
+  min-width: 160px;
+  max-width: 280px;
+  overflow: hidden;
+REDACTED
+
+@media (max-width: 640px) {
+  .toc-sidebar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 20;
+    width: 70%;
+    max-width: 240px;
+    height: 100%;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+  REDACTED
+REDACTED
+
+.toc-header {
+  @apply flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-dark-600;
+REDACTED
+
+.toc-title {
+  @apply text-sm font-semibold text-gray-700 dark:text-dark-200;
+REDACTED
+
+.toc-close-btn {
+  @apply p-1 rounded text-gray-400 hover:text-gray-600 dark:hover:text-dark-200 hover:bg-gray-200 dark:hover:bg-dark-600 transition-colors;
+REDACTED
+
+.toc-nav {
+  @apply flex-1 overflow-y-auto py-2 px-2;
+REDACTED
+
+.toc-item {
+  @apply block px-2 py-1.5 text-sm rounded transition-colors truncate;
+  @apply text-gray-600 dark:text-dark-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-200 dark:hover:bg-dark-600;
+REDACTED
+
+.toc-item.toc-active {
+  @apply text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/20 font-medium;
+REDACTED
+
+.toc-level-1 { padding-left: 8px; REDACTED
+.toc-level-2 { padding-left: 20px; REDACTED
+.toc-level-3 { padding-left: 32px; REDACTED
+.toc-level-4 { padding-left: 44px; REDACTED
+
+.toc-toggle-btn {
+  @apply absolute left-2 top-2 z-10 flex items-center px-2 py-1.5 rounded-md text-sm;
+  @apply bg-white dark:bg-dark-700 border border-gray-200 dark:border-dark-500;
+  @apply text-gray-600 dark:text-dark-300 hover:bg-gray-100 dark:hover:bg-dark-600;
+  @apply shadow-sm transition-colors cursor-pointer;
+REDACTED
+
 .custom-embed-shell {
   @apply relative;
   @apply h-full w-full overflow-hidden rounded-2xl;
@@ -174,4 +435,47 @@ REDACTED
   box-shadow: none;
   background: transparent;
 REDACTED
+</style>
+
+<style>
+.markdown-page-content {
+  line-height: 1.7;
+  color: inherit;
+REDACTED
+.markdown-page-content h1 { @apply text-3xl font-bold mt-8 mb-4 pb-2 border-b border-gray-200 dark:border-dark-600; REDACTED
+.markdown-page-content h2 { @apply text-2xl font-bold mt-6 mb-3; REDACTED
+.markdown-page-content h3 { @apply text-xl font-semibold mt-5 mb-2; REDACTED
+.markdown-page-content h4 { @apply text-lg font-semibold mt-4 mb-2; REDACTED
+.markdown-page-content p { @apply mb-4; REDACTED
+.markdown-page-content ul { @apply list-disc pl-6 mb-4; REDACTED
+.markdown-page-content ol { @apply list-decimal pl-6 mb-4; REDACTED
+.markdown-page-content li { @apply mb-1; REDACTED
+.markdown-page-content a { @apply text-primary-500 hover:text-primary-600 underline; REDACTED
+.markdown-page-content blockquote { @apply border-l-4 border-gray-300 dark:border-dark-500 pl-4 italic text-gray-600 dark:text-dark-300 my-4; REDACTED
+.markdown-page-content img { @apply max-w-full h-auto rounded-lg my-4; REDACTED
+.markdown-page-content table { @apply w-full border-collapse my-4; REDACTED
+.markdown-page-content th { @apply border border-gray-300 dark:border-dark-500 px-3 py-2 bg-gray-50 dark:bg-dark-700 font-semibold text-left; REDACTED
+.markdown-page-content td { @apply border border-gray-300 dark:border-dark-500 px-3 py-2; REDACTED
+.markdown-page-content code { @apply bg-gray-100 dark:bg-dark-700 px-1.5 py-0.5 rounded text-sm font-mono; REDACTED
+.markdown-page-content pre { @apply bg-gray-900 dark:bg-dark-900 text-gray-100 p-4 rounded-lg overflow-x-auto my-4 relative; REDACTED
+.markdown-page-content pre code { @apply bg-transparent p-0 text-inherit; REDACTED
+.markdown-page-content hr { @apply my-6 border-gray-200 dark:border-dark-600; REDACTED
+
+.copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s, background 0.2s;
+  font-family: inherit;
+REDACTED
+.copy-btn:hover { background: rgba(255, 255, 255, 0.25); REDACTED
+pre:hover .copy-btn { opacity: 1; REDACTED
 </style>
