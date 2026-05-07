@@ -1,5 +1,6 @@
 // Composable transforms: each takes (data, ctx?) → data. All are pure and idempotent.
 
+import * as cheerio from 'cheerio';
 import {
   ORG_SCHEMA,
   WEBSITE_SCHEMA,
@@ -8,6 +9,12 @@ import {
   PERSON_AUTHOR,
   CONFIG
 } from './schema-rules.mjs';
+import {
+  findJsonLdScripts,
+  replaceJsonLdInDom,
+  inferLangFromHtml,
+  inferBreadcrumbFromPage
+} from './html-utils.mjs';
 
 const AUTHOR_TYPES = new Set(['Article', 'TechArticle', 'NewsArticle', 'BlogPosting', 'HowTo']);
 const DATED_TYPES = new Set(['Article', 'TechArticle', 'NewsArticle', 'BlogPosting']);
@@ -122,4 +129,82 @@ export function refreshDateModified(data) {
     return out;
   }
   return applyDateOnNode(out);
+}
+
+const ZH_HOME = 'https://tokenprovider.store/';
+const EN_HOME = 'https://tokenprovider.store/en.html';
+
+export function processHtml(html) {
+  // Preserve leading doctype: cheerio.load can drop it on .html() output
+  // depending on options/version; capture and re-prepend if needed.
+  const doctypeMatch = html.match(/^\s*<!doctype[^>]*>/i);
+  const doctype = doctypeMatch ? doctypeMatch[0] : '';
+
+  const $ = cheerio.load(html, { xmlMode: false, decodeEntities: false });
+  const lang = inferLangFromHtml($);
+  const homeUrl = lang === 'zh-CN' ? ZH_HOME : EN_HOME;
+  const canonical = $('link[rel="canonical"]').attr('href') || '';
+
+  const scripts = findJsonLdScripts($);
+  const isHomepage = canonical === ZH_HOME || canonical === EN_HOME;
+
+  // Whether *any* script in the page already contains a BreadcrumbList,
+  // either as the root or nested inside a @graph array.
+  let breadcrumbPresent = scripts.some(s =>
+    s.data['@type'] === 'BreadcrumbList' ||
+    (Array.isArray(s.data['@graph']) && s.data['@graph'].some(n => n['@type'] === 'BreadcrumbList'))
+  );
+
+  // Org / WebSite / Service nodes belong on a single @graph script. Track
+  // whether they have been planted so we don't duplicate when multiple
+  // graph scripts exist.
+  let orgPlanted = false;
+  let webSitePlanted = false;
+  let servicePlanted = false;
+
+  for (const entry of scripts) {
+    let next = entry.data;
+    const isGraph = Array.isArray(next['@graph']);
+
+    if (isGraph && !orgPlanted) {
+      next = upgradeOrganization(next);
+      orgPlanted = true;
+    }
+    if (isGraph && !webSitePlanted) {
+      next = upgradeWebSite(next);
+      webSitePlanted = true;
+    }
+    if (isHomepage && isGraph && !servicePlanted) {
+      next = injectServiceOnHomepages(next, canonical);
+      servicePlanted = true;
+    }
+
+    next = upgradeArticleAuthor(next, lang);
+    next = addSpeakableToFAQPage(next);
+    next = refreshDateModified(next);
+
+    entry.data = next;
+    replaceJsonLdInDom($, entry);
+  }
+
+  // BreadcrumbList backfill: only when missing AND the page is a content page
+  // (not a homepage). Inline if there is a @graph script; otherwise append a
+  // fresh JSON-LD block to <head>.
+  if (!breadcrumbPresent && canonical && canonical !== ZH_HOME && canonical !== EN_HOME) {
+    const inferred = inferBreadcrumbFromPage($, homeUrl);
+    const firstGraph = scripts.find(s => Array.isArray(s.data['@graph']));
+    if (firstGraph) {
+      firstGraph.data = addBreadcrumbIfMissing(firstGraph.data, inferred);
+      replaceJsonLdInDom($, firstGraph);
+    } else {
+      const serialized = JSON.stringify(inferred, null, 2);
+      $('head').append(`\n    <script type="application/ld+json">\n    ${serialized}\n    </script>`);
+    }
+  }
+
+  let out = $.html();
+  if (doctype && !/^\s*<!doctype/i.test(out)) {
+    out = `${doctype}\n${out}`;
+  }
+  return out;
 }
