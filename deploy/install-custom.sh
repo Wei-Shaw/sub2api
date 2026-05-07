@@ -527,32 +527,87 @@ _upgrade_fast_download() {
     # Two release paths must both work:
     # - GitHub Actions + .goreleaser.yaml → sub2api_${ver}_linux_amd64.tar.gz (binary "sub2api")
     # - scripts/release.sh (local)        → sub2api-linux-amd64.tar.gz (binary "server")
+    #
+    # Mixed releases can expose BOTH tarballs on GitHub while checksums.txt only lists one
+    # (e.g. local release overwrites checksums). Always download checksums first, then pick
+    # a tarball name that appears in that file; otherwise fall back to trying downloads.
+
+    print_info "Downloading checksums.txt ..."
+    local attempt=0
+    while [ $attempt -lt 3 ]; do
+        rm -f "$STAGE_DIR/checksums.txt"
+        if curl -fsSL --max-time 60 -o "$STAGE_DIR/checksums.txt" "$checksums_url" \
+           && [ -s "$STAGE_DIR/checksums.txt" ]; then
+            break
+        fi
+        attempt=$((attempt + 1))
+        if [ $attempt -lt 3 ]; then
+            print_warning "checksums.txt download failed (attempt $attempt/3), retrying in 5s..."
+            sleep 5
+        fi
+    done
+
+    if [ ! -s "$STAGE_DIR/checksums.txt" ]; then
+        rm -rf "$STAGE_DIR"
+        print_warning "Failed to download checksums.txt."
+        if [ "${NO_RELEASE_FALLBACK:-0}" = "1" ]; then
+            print_error "NO_RELEASE_FALLBACK=1 set; not falling back."
+            exit 1
+        fi
+        print_info "Falling back to source build..."
+        do_upgrade
+        exit $?
+    fi
+
     local asset=""
     local cand
     for cand in "sub2api_${version_num}_linux_amd64.tar.gz" "sub2api-linux-amd64.tar.gz"; do
-        print_info "Trying release asset: $cand ..."
-        local attempt=0
-        local got=0
-        while [ $attempt -lt 3 ]; do
-            rm -f "$STAGE_DIR/checksums.txt" "$STAGE_DIR/$cand"
-            if curl -fsSL --max-time 300 -o "$STAGE_DIR/$cand" "${base_url}/${cand}" \
-               && curl -fsSL --max-time 60 -o "$STAGE_DIR/checksums.txt" "$checksums_url" \
-               && [ -s "$STAGE_DIR/$cand" ] && [ -s "$STAGE_DIR/checksums.txt" ]; then
-                asset="$cand"
-                got=1
-                break
+        if grep -qF "$cand" "$STAGE_DIR/checksums.txt"; then
+            asset="$cand"
+            print_info "Checksums lists asset: $cand"
+            break
+        fi
+    done
+
+    if [ -z "$asset" ]; then
+        print_warning "No known tarball name found in checksums.txt; trying downloads in preference order."
+    fi
+
+    _upgrade_fast_curl_tarball() {
+        local name="$1"
+        local tries=0
+        while [ $tries -lt 3 ]; do
+            rm -f "$STAGE_DIR/$name"
+            if curl -fsSL --max-time 300 -o "$STAGE_DIR/$name" "${base_url}/${name}" \
+               && [ -s "$STAGE_DIR/$name" ]; then
+                return 0
             fi
-            attempt=$((attempt + 1))
-            if [ $attempt -lt 3 ]; then
-                print_warning "Download failed (attempt $attempt/3), retrying in 5s..."
+            tries=$((tries + 1))
+            if [ $tries -lt 3 ]; then
+                print_warning "Download $name failed (attempt $tries/3), retrying in 5s..."
                 sleep 5
             fi
         done
-        if [ "$got" = 1 ]; then
-            break
+        return 1
+    }
+
+    if [ -n "$asset" ]; then
+        print_info "Downloading $asset ..."
+        if ! _upgrade_fast_curl_tarball "$asset"; then
+            asset=""
         fi
-        print_warning "Could not download $cand (missing on release or network error)."
-    done
+    fi
+
+    if [ -z "$asset" ]; then
+        for cand in "sub2api_${version_num}_linux_amd64.tar.gz" "sub2api-linux-amd64.tar.gz"; do
+            print_info "Trying release asset: $cand ..."
+            if _upgrade_fast_curl_tarball "$cand"; then
+                asset="$cand"
+                break
+            fi
+            print_warning "Could not download $cand (missing on release or network error)."
+        done
+    fi
 
     if [ -z "$asset" ] || [ ! -s "$STAGE_DIR/$asset" ] || [ ! -s "$STAGE_DIR/checksums.txt" ]; then
         rm -rf "$STAGE_DIR"
