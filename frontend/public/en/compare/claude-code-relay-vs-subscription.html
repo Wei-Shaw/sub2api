@@ -34,8 +34,27 @@
       "@type": "Article",
       "headline": "Claude Code Proxy vs Official Subscription (2026)",
       "description": "Cost, latency, and feature comparison between Anthropic's official Claude Code subscription and a pay-as-you-go proxy.",
-      "author": { "@type": "Organization", "name": "TokenProvider" },
-      "publisher": { "@type": "Organization", "name": "TokenProvider", "logo": { "@type": "ImageObject", "url": "https://tokenprovider.store/logo.png" } },
+      "author": {
+        "@type": "Person",
+        "name": "TokenProvider Engineering Team",
+        "worksFor": {
+          "@id": "https://tokenprovider.store/#organization"
+        },
+        "knowsAbout": [
+          "Claude API",
+          "ChatGPT API",
+          "AI API gateways",
+          "API integration"
+        ]
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "TokenProvider",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://tokenprovider.store/logo.png"
+        }
+      },
       "datePublished": "2026-05-07",
       "dateModified": "2026-05-07",
       "inLanguage": "en",
@@ -47,11 +66,47 @@
       "@context": "https://schema.org",
       "@type": "FAQPage",
       "mainEntity": [
-        { "@type": "Question", "name": "When does the official Claude Code subscription win?", "acceptedAnswer": { "@type": "Answer", "text": "Heavy daily users (8+ hours, large multi-file refactors) who consistently consume more than the equivalent token cost of $20/month. For everyone else, pay-as-you-go is cheaper." } },
-        { "@type": "Question", "name": "Will a proxy throttle me?", "acceptedAnswer": { "@type": "Answer", "text": "A pooled proxy spreads load across many upstream accounts. Per-key limits are generally higher than the single-account caps imposed by the official subscription on heavy days." } },
-        { "@type": "Question", "name": "Do I lose any Claude Code features?", "acceptedAnswer": { "@type": "Answer", "text": "No. Tool calls, file edits, MCP servers, and shell execution all work identically. The proxy only changes the network destination of API requests." } },
-        { "@type": "Question", "name": "Can I switch back if I don't like it?", "acceptedAnswer": { "@type": "Answer", "text": "Yes — unset ANTHROPIC_BASE_URL and Claude Code routes back to api.anthropic.com. There is no lock-in." } }
-      ]
+        {
+          "@type": "Question",
+          "name": "When does the official Claude Code subscription win?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Heavy daily users (8+ hours, large multi-file refactors) who consistently consume more than the equivalent token cost of $20/month. For everyone else, pay-as-you-go is cheaper."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Will a proxy throttle me?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "A pooled proxy spreads load across many upstream accounts. Per-key limits are generally higher than the single-account caps imposed by the official subscription on heavy days."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Do I lose any Claude Code features?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. Tool calls, file edits, MCP servers, and shell execution all work identically. The proxy only changes the network destination of API requests."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I switch back if I don't like it?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes — unset ANTHROPIC_BASE_URL and Claude Code routes back to api.anthropic.com. There is no lock-in."
+          }
+        }
+      ],
+      "speakable": {
+        "@type": "SpeakableSpecification",
+        "cssSelector": [
+          ".seo-tldr",
+          ".seo-faq h3",
+          ".seo-faq p:first-of-type"
+        ]
+      }
     }
     </script>
     <script type="application/ld+json">
@@ -59,8 +114,18 @@
       "@context": "https://schema.org",
       "@type": "BreadcrumbList",
       "itemListElement": [
-        { "@type": "ListItem", "position": 1, "name": "TokenProvider", "item": "https://tokenprovider.store/en.html" },
-        { "@type": "ListItem", "position": 2, "name": "Claude Code proxy vs subscription", "item": "https://tokenprovider.store/en/compare/claude-code-relay-vs-subscription.html" }
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "TokenProvider",
+          "item": "https://tokenprovider.store/en.html"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Claude Code proxy vs subscription",
+          "item": "https://tokenprovider.store/en/compare/claude-code-relay-vs-subscription.html"
+        }
       ]
     }
     </script>

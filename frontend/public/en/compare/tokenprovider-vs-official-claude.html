@@ -34,8 +34,27 @@
       "@type": "Article",
       "headline": "TokenProvider vs Official Claude API (2026)",
       "description": "Pricing, latency, model coverage, and billing comparison between TokenProvider and api.anthropic.com.",
-      "author": { "@type": "Organization", "name": "TokenProvider" },
-      "publisher": { "@type": "Organization", "name": "TokenProvider", "logo": { "@type": "ImageObject", "url": "https://tokenprovider.store/logo.png" } },
+      "author": {
+        "@type": "Person",
+        "name": "TokenProvider Engineering Team",
+        "worksFor": {
+          "@id": "https://tokenprovider.store/#organization"
+        },
+        "knowsAbout": [
+          "Claude API",
+          "ChatGPT API",
+          "AI API gateways",
+          "API integration"
+        ]
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "TokenProvider",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://tokenprovider.store/logo.png"
+        }
+      },
       "datePublished": "2026-05-07",
       "dateModified": "2026-05-07",
       "inLanguage": "en",
@@ -47,11 +66,47 @@
       "@context": "https://schema.org",
       "@type": "FAQPage",
       "mainEntity": [
-        { "@type": "Question", "name": "Is using a Claude proxy allowed?", "acceptedAnswer": { "@type": "Answer", "text": "Yes — the Anthropic API is a paid commercial service. Pooled resellers operate within Anthropic's commercial terms by holding the upstream accounts and reselling capacity." } },
-        { "@type": "Question", "name": "Why is the proxy cheaper?", "acceptedAnswer": { "@type": "Answer", "text": "Volume discounts, smoothing of unused subscription capacity across many users, and operating margin stacked under official retail price." } },
-        { "@type": "Question", "name": "Will my prompts be logged?", "acceptedAnswer": { "@type": "Answer", "text": "TokenProvider only stores billing metadata (token counts, model, timestamp). Prompt and response bodies are not retained server-side. Use a self-hosted proxy if you need stricter guarantees." } },
-        { "@type": "Question", "name": "What if the proxy goes down?", "acceptedAnswer": { "@type": "Answer", "text": "Claude Code and SDKs read ANTHROPIC_BASE_URL at startup. Unset it and you're back on api.anthropic.com immediately. Keep an official key as a fallback." } }
-      ]
+        {
+          "@type": "Question",
+          "name": "Is using a Claude proxy allowed?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes — the Anthropic API is a paid commercial service. Pooled resellers operate within Anthropic's commercial terms by holding the upstream accounts and reselling capacity."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Why is the proxy cheaper?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Volume discounts, smoothing of unused subscription capacity across many users, and operating margin stacked under official retail price."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Will my prompts be logged?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "TokenProvider only stores billing metadata (token counts, model, timestamp). Prompt and response bodies are not retained server-side. Use a self-hosted proxy if you need stricter guarantees."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What if the proxy goes down?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Claude Code and SDKs read ANTHROPIC_BASE_URL at startup. Unset it and you're back on api.anthropic.com immediately. Keep an official key as a fallback."
+          }
+        }
+      ],
+      "speakable": {
+        "@type": "SpeakableSpecification",
+        "cssSelector": [
+          ".seo-tldr",
+          ".seo-faq h3",
+          ".seo-faq p:first-of-type"
+        ]
+      }
     }
     </script>
     <script type="application/ld+json">
@@ -59,8 +114,18 @@
       "@context": "https://schema.org",
       "@type": "BreadcrumbList",
       "itemListElement": [
-        { "@type": "ListItem", "position": 1, "name": "TokenProvider", "item": "https://tokenprovider.store/en.html" },
-        { "@type": "ListItem", "position": 2, "name": "TokenProvider vs official Claude API", "item": "https://tokenprovider.store/en/compare/tokenprovider-vs-official-claude.html" }
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "TokenProvider",
+          "item": "https://tokenprovider.store/en.html"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "TokenProvider vs official Claude API",
+          "item": "https://tokenprovider.store/en/compare/tokenprovider-vs-official-claude.html"
+        }
       ]
     }
     </script>

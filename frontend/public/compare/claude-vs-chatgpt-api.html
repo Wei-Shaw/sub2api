@@ -35,10 +35,29 @@
       "@type": "Article",
       "headline": "Claude API vs ChatGPT API 对比（2026）",
       "description": "Claude 与 ChatGPT API 的价格、性能、能力对比，含中转省钱方案。",
-      "author": { "@type": "Organization", "name": "TokenProvider" },
-      "publisher": { "@type": "Organization", "name": "TokenProvider", "logo": { "@type": "ImageObject", "url": "https://tokenprovider.store/logo.png" } },
+      "author": {
+        "@type": "Person",
+        "name": "TokenProvider 工程团队",
+        "worksFor": {
+          "@id": "https://tokenprovider.store/#organization"
+        },
+        "knowsAbout": [
+          "Claude API",
+          "ChatGPT API",
+          "AI API gateways",
+          "API integration"
+        ]
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "TokenProvider",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://tokenprovider.store/logo.png"
+        }
+      },
       "datePublished": "2026-04-18",
-      "dateModified": "2026-04-18",
+      "dateModified": "2026-05-07",
       "inLanguage": "zh-CN",
       "mainEntityOfPage": "https://tokenprovider.store/compare/claude-vs-chatgpt-api.html"
     }
@@ -48,15 +67,72 @@
       "@context": "https://schema.org",
       "@type": "FAQPage",
       "mainEntity": [
-        { "@type": "Question", "name": "Claude API 和 ChatGPT API 哪个更便宜？", "acceptedAnswer": { "@type": "Answer", "text": "官方价差不大，Haiku 与 GPT-4o mini 价位类似。总体便宜程度取决于是用官方还是中转，中转站通常可便宜 30-70%。" } },
-        { "@type": "Question", "name": "写代码用 Claude 还是 GPT？", "acceptedAnswer": { "@type": "Answer", "text": "Claude Sonnet 系列在多文件代码理解与编辑上更强，SWE-bench 表现长期领先；GPT-4o 在通用对话与工具调用链上更成熟。" } },
-        { "@type": "Question", "name": "能在一个账号里同时用 Claude 和 ChatGPT 吗？", "acceptedAnswer": { "@type": "Answer", "text": "官方需要分别订阅。TokenProvider这类中转站可以一个密钥同时调用 Claude、ChatGPT、Gemini。" } },
-        { "@type": "Question", "name": "中转会不会慢？", "acceptedAnswer": { "@type": "Answer", "text": "正常中转只增加几十毫秒。瓶颈主要是上游模型本身的 TTFB，中转层影响有限。" } }
-      ]
+        {
+          "@type": "Question",
+          "name": "Claude API 和 ChatGPT API 哪个更便宜？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "官方价差不大，Haiku 与 GPT-4o mini 价位类似。总体便宜程度取决于是用官方还是中转，中转站通常可便宜 30-70%。"
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "写代码用 Claude 还是 GPT？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Claude Sonnet 系列在多文件代码理解与编辑上更强，SWE-bench 表现长期领先；GPT-4o 在通用对话与工具调用链上更成熟。"
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "能在一个账号里同时用 Claude 和 ChatGPT 吗？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "官方需要分别订阅。TokenProvider这类中转站可以一个密钥同时调用 Claude、ChatGPT、Gemini。"
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "中转会不会慢？",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "正常中转只增加几十毫秒。瓶颈主要是上游模型本身的 TTFB，中转层影响有限。"
+          }
+        }
+      ],
+      "speakable": {
+        "@type": "SpeakableSpecification",
+        "cssSelector": [
+          ".seo-tldr",
+          ".seo-faq h3",
+          ".seo-faq p:first-of-type"
+        ]
+      }
     }
     </script>
 
     <link rel="stylesheet" href="/assets/seo.css" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "TokenProvider",
+          "item": "https://tokenprovider.store/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Claude API vs ChatGPT API 对比：价格、性能、中转选择（2026）",
+          "item": "https://tokenprovider.store/compare/claude-vs-chatgpt-api.html"
+        }
+      ]
+    }
+    </script>
+
   </head>
   <body>
     <div class="seo-bg-decor"></div>

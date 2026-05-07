@@ -38,19 +38,62 @@
       "inLanguage": "zh-CN",
       "totalTime": "PT5M",
       "supply": [
-        { "@type": "HowToSupply", "name": "TokenProvider 账号与 API 密钥" },
-        { "@type": "HowToSupply", "name": "Node.js 18+" }
+        {
+          "@type": "HowToSupply",
+          "name": "TokenProvider 账号与 API 密钥"
+        },
+        {
+          "@type": "HowToSupply",
+          "name": "Node.js 18+"
+        }
       ],
       "step": [
-        { "@type": "HowToStep", "name": "安装 Claude Code", "text": "npm install -g @anthropic-ai/claude-code" },
-        { "@type": "HowToStep", "name": "获取中转密钥", "text": "注册 TokenProvider 后在后台创建 API 密钥" },
-        { "@type": "HowToStep", "name": "设置环境变量", "text": "export ANTHROPIC_BASE_URL 与 ANTHROPIC_API_KEY 指向中转" },
-        { "@type": "HowToStep", "name": "启动并验证", "text": "在项目目录运行 claude，确认已连上中转" }
+        {
+          "@type": "HowToStep",
+          "name": "安装 Claude Code",
+          "text": "npm install -g @anthropic-ai/claude-code"
+        },
+        {
+          "@type": "HowToStep",
+          "name": "获取中转密钥",
+          "text": "注册 TokenProvider 后在后台创建 API 密钥"
+        },
+        {
+          "@type": "HowToStep",
+          "name": "设置环境变量",
+          "text": "export ANTHROPIC_BASE_URL 与 ANTHROPIC_API_KEY 指向中转"
+        },
+        {
+          "@type": "HowToStep",
+          "name": "启动并验证",
+          "text": "在项目目录运行 claude，确认已连上中转"
+        }
       ]
     }
     </script>
 
     <link rel="stylesheet" href="/assets/seo.css" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "TokenProvider",
+          "item": "https://tokenprovider.store/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Claude Code 接入中转 API 教程（便宜 50%+）",
+          "item": "https://tokenprovider.store/guides/claude-code-setup.html"
+        }
+      ]
+    }
+    </script>
+
   </head>
   <body>
     <div class="seo-bg-decor"></div>

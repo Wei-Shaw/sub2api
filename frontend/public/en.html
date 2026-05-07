@@ -38,33 +38,125 @@
           "@type": "Organization",
           "@id": "https://tokenprovider.store/#organization",
           "name": "TokenProvider",
+          "alternateName": [
+            "Token Provider",
+            "TokenProvider AI Gateway"
+          ],
           "url": "https://tokenprovider.store/",
-          "logo": { "@type": "ImageObject", "url": "https://tokenprovider.store/logo.png" }
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://tokenprovider.store/logo.png",
+            "width": 512,
+            "height": 512
+          },
+          "description": "Third-party API gateway for Claude, Claude Code, ChatGPT, and Gemini. Pay-as-you-go tokens, sticky sessions, OpenAI-compatible.",
+          "foundingDate": "2024",
+          "knowsAbout": [
+            "Claude API",
+            "Claude Code",
+            "ChatGPT API",
+            "Gemini API",
+            "AI API gateway",
+            "OpenAI-compatible proxy"
+          ],
+          "sameAs": [
+            "https://t.me/tokenprovider_official"
+          ],
+          "contactPoint": {
+            "@type": "ContactPoint",
+            "contactType": "customer support",
+            "url": "https://t.me/tokenprovider_official",
+            "availableLanguage": [
+              "en",
+              "zh-CN"
+            ]
+          }
         },
         {
           "@type": "WebSite",
           "@id": "https://tokenprovider.store/#website",
-          "url": "https://tokenprovider.store/en.html",
+          "url": "https://tokenprovider.store/",
           "name": "TokenProvider",
-          "publisher": { "@id": "https://tokenprovider.store/#organization" },
-          "inLanguage": ["en", "zh-CN"]
+          "alternateName": "Token Provider",
+          "publisher": {
+            "@id": "https://tokenprovider.store/#organization"
+          },
+          "inLanguage": [
+            "en",
+            "zh-CN"
+          ]
         },
         {
           "@type": "SoftwareApplication",
           "name": "TokenProvider",
-          "alternateName": ["Token Provider", "AI API Gateway"],
+          "alternateName": [
+            "Token Provider",
+            "AI API Gateway"
+          ],
           "description": "Cheap Claude API, Claude Code API, ChatGPT API, and Gemini API through a unified pay-as-you-go token gateway.",
           "url": "https://tokenprovider.store/en.html",
           "applicationCategory": "DeveloperApplication",
           "operatingSystem": "Web",
-          "publisher": { "@id": "https://tokenprovider.store/#organization" },
+          "publisher": {
+            "@id": "https://tokenprovider.store/#organization"
+          },
           "offers": {
             "@type": "Offer",
             "priceCurrency": "USD",
             "price": "0",
             "description": "Pay-as-you-go tokens (metered). Register to see current per-token rates."
           },
-          "inLanguage": ["en", "zh-CN"]
+          "inLanguage": [
+            "en",
+            "zh-CN"
+          ]
+        },
+        {
+          "@type": "Service",
+          "@id": "https://tokenprovider.store/#service",
+          "serviceType": "AI API gateway",
+          "provider": {
+            "@id": "https://tokenprovider.store/#organization"
+          },
+          "areaServed": "Worldwide",
+          "audience": {
+            "@type": "Audience",
+            "audienceType": "Developers"
+          },
+          "hasOfferCatalog": {
+            "@type": "OfferCatalog",
+            "name": "TokenProvider model routing",
+            "itemListElement": [
+              {
+                "@type": "Offer",
+                "itemOffered": {
+                  "@type": "Service",
+                  "name": "Claude API relay"
+                }
+              },
+              {
+                "@type": "Offer",
+                "itemOffered": {
+                  "@type": "Service",
+                  "name": "Claude Code relay (ANTHROPIC_BASE_URL)"
+                }
+              },
+              {
+                "@type": "Offer",
+                "itemOffered": {
+                  "@type": "Service",
+                  "name": "ChatGPT API relay (OpenAI-compatible)"
+                }
+              },
+              {
+                "@type": "Offer",
+                "itemOffered": {
+                  "@type": "Service",
+                  "name": "Gemini API relay"
+                }
+              }
+            ]
+          }
         }
       ]
     }

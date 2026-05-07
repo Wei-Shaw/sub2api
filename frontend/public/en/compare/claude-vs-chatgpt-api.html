@@ -35,10 +35,29 @@
       "@type": "Article",
       "headline": "Claude API vs ChatGPT API (2026)",
       "description": "Pricing, speed, context, coding skill, and how a proxy cuts cost.",
-      "author": { "@type": "Organization", "name": "TokenProvider" },
-      "publisher": { "@type": "Organization", "name": "TokenProvider", "logo": { "@type": "ImageObject", "url": "https://tokenprovider.store/logo.png" } },
+      "author": {
+        "@type": "Person",
+        "name": "TokenProvider Engineering Team",
+        "worksFor": {
+          "@id": "https://tokenprovider.store/#organization"
+        },
+        "knowsAbout": [
+          "Claude API",
+          "ChatGPT API",
+          "AI API gateways",
+          "API integration"
+        ]
+      },
+      "publisher": {
+        "@type": "Organization",
+        "name": "TokenProvider",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://tokenprovider.store/logo.png"
+        }
+      },
       "datePublished": "2026-04-18",
-      "dateModified": "2026-04-18",
+      "dateModified": "2026-05-07",
       "inLanguage": "en",
       "mainEntityOfPage": "https://tokenprovider.store/en/compare/claude-vs-chatgpt-api.html"
     }
@@ -48,11 +67,47 @@
       "@context": "https://schema.org",
       "@type": "FAQPage",
       "mainEntity": [
-        { "@type": "Question", "name": "Is Claude API cheaper than ChatGPT API?", "acceptedAnswer": { "@type": "Answer", "text": "Flagship pricing is nearly identical; small-tier models (Haiku vs GPT-4o mini) differ by cents. The real savings come from using a proxy, which typically cuts 30-70% off official pay-as-you-go." } },
-        { "@type": "Question", "name": "Which is better for coding?", "acceptedAnswer": { "@type": "Answer", "text": "Claude Sonnet leads on SWE-bench and multi-file code editing. GPT-4o is strong for quick scripts and tool-chain-heavy prototypes." } },
-        { "@type": "Question", "name": "Can I use both with one key?", "acceptedAnswer": { "@type": "Answer", "text": "Not officially — each vendor needs its own subscription. Proxies like TokenProvider give you one key that routes to Claude, ChatGPT, and Gemini." } },
-        { "@type": "Question", "name": "Will a proxy slow things down?", "acceptedAnswer": { "@type": "Answer", "text": "Adds tens of milliseconds at most. Upstream model TTFB dominates latency, not the proxy layer." } }
-      ]
+        {
+          "@type": "Question",
+          "name": "Is Claude API cheaper than ChatGPT API?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Flagship pricing is nearly identical; small-tier models (Haiku vs GPT-4o mini) differ by cents. The real savings come from using a proxy, which typically cuts 30-70% off official pay-as-you-go."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Which is better for coding?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Claude Sonnet leads on SWE-bench and multi-file code editing. GPT-4o is strong for quick scripts and tool-chain-heavy prototypes."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I use both with one key?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Not officially — each vendor needs its own subscription. Proxies like TokenProvider give you one key that routes to Claude, ChatGPT, and Gemini."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Will a proxy slow things down?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Adds tens of milliseconds at most. Upstream model TTFB dominates latency, not the proxy layer."
+          }
+        }
+      ],
+      "speakable": {
+        "@type": "SpeakableSpecification",
+        "cssSelector": [
+          ".seo-tldr",
+          ".seo-faq h3",
+          ".seo-faq p:first-of-type"
+        ]
+      }
     }
     </script>
     <script type="application/ld+json">
@@ -60,8 +115,18 @@
       "@context": "https://schema.org",
       "@type": "BreadcrumbList",
       "itemListElement": [
-        { "@type": "ListItem", "position": 1, "name": "TokenProvider", "item": "https://tokenprovider.store/en.html" },
-        { "@type": "ListItem", "position": 2, "name": "Claude API vs ChatGPT API", "item": "https://tokenprovider.store/en/compare/claude-vs-chatgpt-api.html" }
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "TokenProvider",
+          "item": "https://tokenprovider.store/en.html"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Claude API vs ChatGPT API",
+          "item": "https://tokenprovider.store/en/compare/claude-vs-chatgpt-api.html"
+        }
       ]
     }
     </script>
