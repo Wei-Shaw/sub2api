@@ -77,10 +77,10 @@ func (User) Fields() []ent.Field {
 		field.String("signup_source").
 			Validate(func(value string) error {
 				switch value {
-				case "email", "linuxdo", "wechat", "oidc":
+				case "email", "linuxdo", "wechat", "oidc", "github", "google":
 					return nil
 				default:
-					return fmt.Errorf("must be one of email, linuxdo, wechat, oidc")
+					return fmt.Errorf("must be one of email, linuxdo, wechat, oidc, github, google")
 				}
 			}).
 			Default("email"),

@@ -142,3 +142,16 @@ func TestMigration134AddsAffiliateLedgerAuditFieldsWithoutJSONCast(t *testing.T)
 	require.Contains(t, sql, "COUNT(*) OVER (PARTITION BY ual.id) AS ledger_match_count")
 	require.NotContains(t, sql, "detail::jsonb")
 }
+
+func TestMigration135AllowsGitHubAndGoogleAuthProviders(t *testing.T) {
+	content, err := FS.ReadFile("135_allow_email_oauth_provider_types.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "users_signup_source_check")
+	require.Contains(t, sql, "auth_identities_provider_type_check")
+	require.Contains(t, sql, "auth_identity_channels_provider_type_check")
+	require.Contains(t, sql, "pending_auth_sessions_provider_type_check")
+	require.Contains(t, sql, "'github'")
+	require.Contains(t, sql, "'google'")
+}

@@ -90,6 +90,69 @@ type OpenAIImagesRequest struct {
 	bodyHash           string
 }
 
+func (r *OpenAIImagesRequest) ModerationBody() []byte {
+	if r == nil {
+		return nil
+	}
+	payload := map[string]any{}
+	if prompt := strings.TrimSpace(r.Prompt); prompt != "" {
+		payload["prompt"] = prompt
+	}
+	images := r.moderationImages()
+	if len(images) > 0 {
+		payload["images"] = images
+	}
+	if len(payload) == 0 {
+		return nil
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil
+	}
+	return body
+}
+
+func (r *OpenAIImagesRequest) moderationImages() []map[string]string {
+	if r == nil {
+		return nil
+	}
+	images := make([]map[string]string, 0, len(r.InputImageURLs)+len(r.Uploads)+1)
+	for _, imageURL := range r.InputImageURLs {
+		imageURL = strings.TrimSpace(imageURL)
+		if imageURL != "" {
+			images = append(images, map[string]string{"image_url": imageURL})
+		}
+	}
+	for _, upload := range r.Uploads {
+		if dataURL := upload.ModerationDataURL(); dataURL != "" {
+			images = append(images, map[string]string{"image_url": dataURL})
+		}
+	}
+	if maskURL := strings.TrimSpace(r.MaskImageURL); maskURL != "" {
+		images = append(images, map[string]string{"image_url": maskURL})
+	}
+	if r.MaskUpload != nil {
+		if dataURL := r.MaskUpload.ModerationDataURL(); dataURL != "" {
+			images = append(images, map[string]string{"image_url": dataURL})
+		}
+	}
+	return images
+}
+
+func (u OpenAIImagesUpload) ModerationDataURL() string {
+	if len(u.Data) == 0 {
+		return ""
+	}
+	contentType := strings.TrimSpace(u.ContentType)
+	if contentType == "" {
+		contentType = http.DetectContentType(u.Data)
+	}
+	if !strings.HasPrefix(strings.ToLower(contentType), "image/") {
+		return ""
+	}
+	return fmt.Sprintf("data:%s;base64,%s", contentType, base64.StdEncoding.EncodeToString(u.Data))
+}
+
 func (r *OpenAIImagesRequest) IsEdits() bool {
 	return r != nil && r.Endpoint == openAIImagesEditsEndpoint
 }

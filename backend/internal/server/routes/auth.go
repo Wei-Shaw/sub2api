@@ -63,6 +63,22 @@ func RegisterAuthRoutes(
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.ResetPassword)
 		auth.GET("/oauth/linuxdo/start", h.Auth.LinuxDoOAuthStart)
+		auth.GET("/oauth/github/start", h.Auth.GitHubOAuthStart)
+		auth.GET("/oauth/github/callback", h.Auth.GitHubOAuthCallback)
+		auth.POST("/oauth/github/complete-registration",
+			rateLimiter.LimitWithOptions("oauth-github-complete", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.CompleteGitHubOAuthRegistration,
+		)
+		auth.GET("/oauth/google/start", h.Auth.GoogleOAuthStart)
+		auth.GET("/oauth/google/callback", h.Auth.GoogleOAuthCallback)
+		auth.POST("/oauth/google/complete-registration",
+			rateLimiter.LimitWithOptions("oauth-google-complete", 10, time.Minute, middleware.RateLimitOptions{
+				FailureMode: middleware.RateLimitFailClose,
+			}),
+			h.Auth.CompleteGoogleOAuthRegistration,
+		)
 		auth.GET("/oauth/linuxdo/bind/start", func(c *gin.Context) {
 			query := c.Request.URL.Query()
 			query.Set("intent", "bind_current_user")
