@@ -29,6 +29,7 @@
                 :options="[
                   { value: '', label: t('admin.users.allRoles') },
                   { value: 'admin', label: t('admin.users.admin') },
+                  { value: 'marketing', label: t('admin.users.marketing') },
                   { value: 'user', label: t('admin.users.user') }
                 ]"
                 @change="applyFilter"
@@ -354,7 +355,7 @@
           </template>
 
           <template #cell-role="{ value }">
-            <span :class="['badge', value === 'admin' ? 'badge-purple' : 'badge-gray']">
+            <span :class="['badge', roleBadgeClass(value)]">
               {{ t('admin.users.roles.' + value) }}
             </span>
           </template>
@@ -840,6 +841,12 @@ import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryM
 import GroupReplaceModal from '@/components/admin/user/GroupReplaceModal.vue'
 
 const appStore = useAppStore()
+
+const roleBadgeClass = (role: string) => {
+  if (role === 'admin') return 'badge-purple'
+  if (role === 'marketing') return 'badge-primary'
+  return 'badge-gray'
+}
 
 // Generate dynamic attribute columns from enabled definitions
 const attributeColumns = computed<Column[]>(() =>

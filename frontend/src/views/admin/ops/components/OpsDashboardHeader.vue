@@ -21,7 +21,7 @@ interface Props {
   queryMode: string
   loading: boolean
   lastUpdated: Date | null
-  thresholds?: OpsMetricThresholds | null // 阈值配置
+  thresholds?: OpsMetricThresholds | null // threshold configuration
   autoRefreshEnabled?: boolean
   autoRefreshCountdown?: number
   fullscreen?: boolean

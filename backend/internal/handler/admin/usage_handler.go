@@ -352,7 +352,7 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 	response.Success(c, stats)
 }
 
-// SearchUsers handles searching users by email keyword
+// SearchUsers handles searching users by email, API key, redeem code, or device code keyword
 // GET /api/v1/admin/usage/search-users
 func (h *UsageHandler) SearchUsers(c *gin.Context) {
 	keyword := c.Query("q")
@@ -361,26 +361,37 @@ func (h *UsageHandler) SearchUsers(c *gin.Context) {
 		return
 	}
 
-	// Limit to 30 results
-	users, _, err := h.adminService.ListUsers(c.Request.Context(), 1, 30, service.UserListFilters{Search: keyword, IncludeDeleted: true}, "email", "asc")
+	includeSubscriptions := false
+	// Limit to 30 results; selector needs deleted users and identity hints, not subscription rows.
+	users, _, err := h.adminService.ListUsers(c.Request.Context(), 1, 30, service.UserListFilters{
+		Search:               keyword,
+		IncludeDeleted:       true,
+		IncludeSubscriptions: &includeSubscriptions,
+	}, "email", "asc")
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
 
-	// Return simplified user list (only id, email and deleted flag)
+	// Return simplified user list with deletion status and identity-code hints for admin selectors.
 	type SimpleUser struct {
-		ID      int64  `json:"id"`
-		Email   string `json:"email"`
-		Deleted bool   `json:"deleted"`
+		ID                int64   `json:"id"`
+		Email             string  `json:"email"`
+		Deleted           bool    `json:"deleted"`
+		PrimaryRedeemCode *string `json:"primary_redeem_code,omitempty"`
+		PrimaryRedeemType *string `json:"primary_redeem_type,omitempty"`
+		HasDeviceBinding  bool    `json:"has_device_binding"`
 	}
 
 	result := make([]SimpleUser, len(users))
 	for i, u := range users {
 		result[i] = SimpleUser{
-			ID:      u.ID,
-			Email:   u.Email,
-			Deleted: u.DeletedAt != nil,
+			ID:                u.ID,
+			Email:             u.Email,
+			Deleted:           u.DeletedAt != nil,
+			PrimaryRedeemCode: u.PrimaryRedeemCode,
+			PrimaryRedeemType: u.PrimaryRedeemType,
+			HasDeviceBinding:  u.HasDeviceBinding,
 		}
 	}
 

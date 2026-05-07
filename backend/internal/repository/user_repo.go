@@ -589,6 +589,9 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 				dbuser.NotesContainsFold(filters.Search),
 				dbuser.HasAPIKeysWith(apikey.KeyContainsFold(filters.Search)),
 				dbuser.HasRedeemCodesWith(redeemcode.CodeContainsFold(filters.Search)),
+				dbuser.HasDevicesWith(userdevice.DeviceHashContainsFold(filters.Search)),
+				dbuser.HasDevicesWith(userdevice.HasClaimRedeemCodeWith(redeemcode.CodeContainsFold(filters.Search))),
+				dbuser.HasDevicesWith(userdevice.HasLoginRedeemCodeWith(redeemcode.CodeContainsFold(filters.Search))),
 			),
 		)
 	}

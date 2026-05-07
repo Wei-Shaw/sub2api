@@ -204,7 +204,7 @@ const appStore = useAppStore()
 
 const groups = ref<Group[]>([])
 const groupConfigs = ref<GroupRateConfig[]>([])
-const originalGroupRates = ref<Record<number, number>>({}) // 记录原始专属倍率，用于检测删除
+const originalGroupRates = ref<Record<number, number>>({}) // original dedicated rate multipliers for delete detection
 const loading = ref(false)
 const submitting = ref(false)
 

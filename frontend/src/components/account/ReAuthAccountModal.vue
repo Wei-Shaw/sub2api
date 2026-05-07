@@ -106,7 +106,7 @@
             <span class="text-xs text-gray-500 dark:text-gray-400">
               {{
                 geminiOAuthType === 'google_one'
-                  ? t('admin.accounts.gemini.oauthType.googleOneDesc')
+                  ? t('admin.accounts.gemini.oauthType.googleOneAccount')
                   : geminiOAuthType === 'code_assist'
                     ? t('admin.accounts.gemini.oauthType.builtInDesc')
                     : t('admin.accounts.gemini.oauthType.customDesc')

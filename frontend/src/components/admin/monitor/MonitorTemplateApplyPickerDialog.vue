@@ -61,7 +61,7 @@
             v-if="!m.enabled"
             class="ml-auto rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500 dark:bg-dark-700 dark:text-gray-400"
           >
-            {{ t('admin.channelMonitor.onlyDisabled').replace(/^仅|^Only /, '') }}
+            {{ t('admin.channelMonitor.onlyDisabled').replace(/^(?:\u4ec5|Only )/, '') }}
           </span>
         </li>
       </ul>

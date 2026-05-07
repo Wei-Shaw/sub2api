@@ -71,6 +71,14 @@ func (u *User) IsAdmin() bool {
 	return u.Role == RoleAdmin
 }
 
+func (u *User) IsMarketing() bool {
+	return u.Role == RoleMarketing
+}
+
+func (u *User) HasAdminConsoleAccess() bool {
+	return u.IsAdmin() || u.IsMarketing()
+}
+
 func (u *User) IsActive() bool {
 	return u.Status == StatusActive
 }

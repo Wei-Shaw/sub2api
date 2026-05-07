@@ -177,6 +177,11 @@ export default {
     enterApiKey: 'API Key를 입력하세요',
     querySuccess: '조회 성공',
     queryFailed: '조회 실패',
+    windowUnits: {
+      day: 'D',
+      week: 'W',
+      month: 'M'
+    },
     queryFailedRetry: '조회에 실패했습니다. 잠시 후 다시 시도하세요',
   },
 
@@ -223,6 +228,7 @@ export default {
       passwordMismatch: '비밀번호가 일치하지 않습니다'
     },
     ready: {
+      autoRefreshRemaining: '다음 새로고침까지 {seconds}초',
       title: '설치 준비 완료',
       description: '설정을 확인하고 설치를 완료하세요',
       database: '데이터베이스',
@@ -526,6 +532,9 @@ export default {
     wechatProviderName: 'WeChat',
     wechatCallbackPageTitle: 'WeChat 로그인 콜백',
     wechatPaymentCallbackPageTitle: 'WeChat 결제 콜백',
+    wechatConnect: {
+      mobileOnlyHint: '이 사이트는 WeChat 모바일 앱 로그인만 구성되어 있습니다. 네이티브 앱에서 WeChat SDK를 통해 계속 진행하세요.'
+    },
     wechatPayment: {
       callbackTitle: 'WeChat 결제 복원 중',
       callbackProcessing: 'WeChat 결제를 복원하는 중...',
@@ -1451,7 +1460,22 @@ export default {
         restoreConfirm: '이 백업으로 복원하시겠습니까? 현재 데이터베이스가 덮어써집니다!',
         restorePasswordPrompt: '복원 작업을 확인하려면 관리자 비밀번호를 입력하세요',
         restoreSuccess: '데이터베이스가 성공적으로 복원되었습니다',
-        deleteConfirm: '이 백업을 삭제하시겠습니까?',
+        intervalValidation: {
+        minTokensNonNegative: '구간 #{index}: 최소 token 수({value})는 음수일 수 없습니다',
+        maxTokensPositive: '구간 #{index}: 최대 token 수({value})는 0보다 커야 합니다',
+        maxTokensGreaterThanMin: '구간 #{index}: 최대 token 수({max})는 최소 token 수({min})보다 커야 합니다',
+        priceNonNegative: '구간 #{index}: {name}은(는) 음수일 수 없습니다',
+        unboundedLast: '구간 #{index}: 무제한 구간(max tokens 비움)은 마지막 구간만 가능합니다',
+        overlap: '구간 #{prevIndex}와 #{index}가 겹칩니다: 이전 상한({prevMax})이 현재 하한({min})보다 큽니다',
+        priceNames: {
+          input: '입력 가격',
+          output: '출력 가격',
+          cacheWrite: '캐시 쓰기 가격',
+          cacheRead: '캐시 읽기 가격',
+          perRequest: '요청당 가격'
+        }
+      },
+      deleteConfirm: '이 백업을 삭제하시겠습니까?',
         deleted: '백업이 삭제되었습니다'
       },
       r2Guide: {
@@ -1671,7 +1695,7 @@ export default {
       deleteUser: '사용자 삭제',
       deleteConfirmMessage: "사용자 '{email}' 을(를) 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
       searchPlaceholder: '이메일/사용자명/메모/API Key/redeem code 퍼지 검색...',
-      searchUsers: '이메일/사용자명/메모/API Key/redeem code 퍼지 검색',
+      searchUsers: '이메일/사용자명/메모/API Key/redeem code/기기 코드 퍼지 검색',
       roleFilter: '역할 필터',
       allRoles: '모든 역할',
       allStatus: '모든 상태',
@@ -1681,6 +1705,7 @@ export default {
       statusFilter: '상태 필터',
       allStatuses: '모든 상태',
       admin: '관리자',
+      marketing: '마케팅',
       user: '사용자',
       disabled: '비활성화',
       email: '이메일',
@@ -1758,6 +1783,7 @@ export default {
       deleteConfirm: "사용자 '{email}' 을(를) 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
       roles: {
         admin: '관리자',
+        marketing: '마케팅',
         user: '사용자'
       },
       form: {
@@ -2139,7 +2165,16 @@ export default {
         tooltipEdit: '같은 플랫폼의 그룹을 하나 이상 선택하면 저장 후 현재 그룹의 계정이 해당 그룹들의 계정으로 대체됩니다(중복 제거).',
         selectPlaceholder: '계정을 복사할 그룹 선택...',
         hint: '여러 그룹 선택 가능, 계정은 자동으로 중복 제거됩니다',
+        optionLabel: '{name} ({count}개 계정)',
         hintEdit: '⚠️ 주의: 현재 그룹의 모든 계정 바인딩이 대체됩니다'
+      },
+      accountFilter: {
+        title: '계정 필터 제어',
+        requireOAuthOnly: 'OAuth 계정만 허용',
+        oauthOnlyEnabled: '활성화됨 — API Key 계정 제외',
+        requirePrivacySet: '개인정보 보호 설정 계정만 허용',
+        privacySetEnabled: '활성화됨 — Privacy 미설정 계정 제외',
+        disabled: '비활성화됨'
       },
       modelRouting: {
         title: '모델 라우팅 설정',
@@ -2222,6 +2257,21 @@ export default {
     channels: {
       title: '채널 관리',
       description: '채널과 사용자 정의 모델 가격을 관리합니다',
+      intervalValidation: {
+        minTokensNonNegative: '구간 #{index}: 최소 토큰 수({value})는 음수일 수 없습니다',
+        maxTokensPositive: '구간 #{index}: 최대 토큰 수({value})는 0보다 커야 합니다',
+        maxTokensGreaterThanMin: '구간 #{index}: 최대 토큰 수({max})는 최소 토큰 수({min})보다 커야 합니다',
+        priceNonNegative: '구간 #{index}: {name}은(는) 음수일 수 없습니다',
+        unboundedLast: '구간 #{index}: 상한 없는 구간(최대 토큰 비움)은 마지막 구간에만 둘 수 있습니다',
+        overlap: '구간 #{prevIndex}와 #{index}가 겹칩니다: 이전 상한({prevMax})이 현재 하한({min})보다 큽니다',
+        priceNames: {
+          input: '입력 가격',
+          output: '출력 가격',
+          cacheWrite: '캐시 쓰기 가격',
+          cacheRead: '캐시 읽기 가격',
+          perRequest: '요청당 가격'
+        }
+      },
       searchChannels: '채널 검색...',
       createChannel: '채널 생성',
       editChannel: '채널 편집',
@@ -3443,7 +3493,17 @@ export default {
           customTitle: '사용자 지정 인증(AI Studio OAuth)',
           customDesc: '관리자가 미리 설정한 OAuth 클라이언트를 사용하며 조직 관리에 적합합니다.',
           customRequirement: '관리자가 Client ID를 구성하고 테스트 사용자 허용 목록에 추가해야 합니다.',
+          googleOneDesc: '개인 계정, Google One 구독 할당량 사용',
+          codeAssistDesc: '엔터프라이즈 등급, GCP 프로젝트 필요',
+          codeAssistRequirement: 'GCP 프로젝트를 활성화하고 결제 카드를 연결해야 합니다',
+          googleOneAccount: '개인 계정',
+          gcpCodeAssistAccount: 'GCP Code Assist 계정',
+          showAdvanced: '고급 옵션 표시(사용자 OAuth Client)',
+          hideAdvanced: '고급 옵션 숨기기(사용자 OAuth Client)',
           badges: {
+            recommendedPersonal: '개인 사용자 추천',
+            noGcp: 'GCP 불필요',
+            enterpriseUser: '기업 사용자',
             recommended: '추천',
             highConcurrency: '고동시성',
             noAdmin: '관리자 설정 불필요',
@@ -3461,6 +3521,7 @@ export default {
           activationTitle: '서비스 활성화',
           activationItems: {
             geminiWeb: 'Gemini Web을 활성화하여 User not initialized 오류를 방지하세요.',
+            changeCountryAssociation: '국가 연결 변경',
             gcpProject: 'GCP 프로젝트를 활성화하여 Code Assist에 필요한 Project ID를 가져오세요.'
           },
           links: {
@@ -4068,7 +4129,7 @@ export default {
       title: '사용 기록',
       description: '모든 사용자의 사용 기록을 확인하고 관리합니다',
       userFilter: '사용자',
-      searchUserPlaceholder: '이메일로 사용자 검색...',
+      searchUserPlaceholder: '이메일 또는 기기 코드로 사용자 검색...',
       searchApiKeyPlaceholder: '이름으로 API 키 검색...',
       searchAccountPlaceholder: '이름으로 계정 검색...',
       selectedUser: '선택됨',
@@ -4142,6 +4203,47 @@ export default {
     ops: {
       title: '운영 모니터링',
       description: '운영 모니터링 및 장애 분석',
+      systemLogs: {
+        title: '시스템 로그',
+        description: '최신순으로 표시되며 필터, 검색, 현재 조건 기준 정리를 지원합니다.',
+        allLevels: '모든 레벨',
+        loadFailed: '시스템 로그를 불러오지 못했습니다',
+        runtimeSaved: '로그 런타임 구성이 적용되었습니다',
+        runtimeSaveFailed: '로그 구성을 저장하지 못했습니다',
+        resetConfirm: '시작 구성(env/yaml)으로 되돌리고 즉시 적용할까요?',
+        resetSuccess: '시작 로그 구성으로 되돌렸습니다',
+        resetFailed: '로그 구성을 되돌리지 못했습니다',
+        cleanupConfirm: '현재 필터로 시스템 로그를 정리할까요? 이 작업은 되돌릴 수 없습니다.',
+        cleanupSuccess: '정리 완료, {count}개 로그를 삭제했습니다',
+        cleanupFailed: '시스템 로그 정리에 실패했습니다',
+        queue: '큐',
+        written: '기록',
+        dropped: '드롭',
+        failed: '실패',
+        runtimeConfig: '런타임 로그 구성(즉시 적용)',
+        level: '레벨',
+        stacktraceLevel: '스택트레이스 레벨',
+        samplingInitial: '초기 샘플링',
+        samplingThereafter: '이후 샘플링',
+        retentionDays: '보존 일수',
+        saveAndApply: '저장 및 적용',
+        resetDefaults: '기본값으로 되돌리기',
+        lastWriteError: '최근 쓰기 오류: ',
+        timeRange: '시간 범위',
+        startTime: '시작 시간(선택)',
+        endTime: '종료 시간(선택)',
+        component: '컴포넌트',
+        componentPlaceholder: '예: http.access',
+        platform: '플랫폼',
+        model: '모델',
+        keyword: '키워드',
+        keywordPlaceholder: '메시지/request_id',
+        cleanupCurrentFilter: '현재 필터 정리',
+        refreshHealth: '상태 지표 새로고침',
+        noLogs: '시스템 로그가 없습니다',
+        time: '시간',
+        details: '로그 상세'
+      },
       // Dashboard
       systemHealth: '시스템 상태',
       overview: '개요',
@@ -5103,6 +5205,36 @@ export default {
         redirectUrlSetAndCopied: '현재 사이트 기준으로 콜백 주소를 생성하여 클립보드에 복사했습니다',
         frontendRedirectUrl: '프론트엔드 콜백 경로',
         frontendRedirectUrlPlaceholder: '/auth/oidc/callback',
+        modes: {
+          open: {
+            title: 'PC 앱',
+            description: '데스크톱 브라우저는 WeChat Open Platform QR 로그인으로 로그인합니다. Official Account 또는 Mobile App과 함께 사용할 수 있습니다.',
+            appIdLabel: 'PC App ID',
+            appIdPlaceholder: 'WeChat Open Platform PC App ID',
+            appSecretLabel: 'PC App Secret',
+            appSecretPlaceholder: 'WeChat Open Platform PC App Secret'
+          },
+          mp: {
+            title: 'Official Account',
+            description: 'WeChat 브라우저 안에서만 사용할 수 있으며 WeChat 외부에서는 사용할 수 없음으로 표시됩니다.',
+            appIdLabel: 'Official Account App ID',
+            appIdPlaceholder: 'Official Account App ID',
+            appSecretLabel: 'Official Account App Secret',
+            appSecretPlaceholder: 'Official Account App Secret'
+          },
+          mobile: {
+            title: 'Mobile App',
+            description: '네이티브 모바일 클라이언트는 WeChat SDK로 인증을 시작합니다. 웹 UI에서는 이 흐름을 직접 시작하지 않습니다.',
+            appIdLabel: 'Mobile App ID',
+            appIdPlaceholder: 'Mobile App ID',
+            appSecretLabel: 'Mobile App Secret',
+            appSecretPlaceholder: 'Mobile App Secret'
+          }
+        },
+        unionIdWarning: 'PC App을 Official Account 또는 Mobile App과 함께 활성화할 경우 안정적인 UnionID 계정 병합을 위해 같은 WeChat Open Platform 계정에 속해야 합니다.',
+        browserRedirectUrlLabel: '브라우저 Redirect URL',
+        browserRedirectUrlHint: 'PC App 및 Official Account 브라우저 callback에 사용됩니다. 네이티브 모바일 SDK 흐름은 이 브라우저 callback에서 직접 시작하지 않습니다.',
+        mpMobileConflict: 'Official Account와 Mobile App은 동시에 활성화할 수 없습니다.',
         frontendRedirectUrlHint: '백엔드 콜백 완료 후 이 프론트엔드 경로로 리다이렉트합니다',
         tokenAuthMethod: 'Token 인증 방식',
         clockSkewSeconds: '시계 오차(초)',
@@ -5844,6 +5976,13 @@ export default {
         methodHint: '프론트 결제 페이지에서 이 방식을 표시할지와 표시 시 사용할 소스 키를 제어합니다.',
         sourceLabel: '결제 소스',
         sourceHint: '활성화 후에는 반드시 하나의 소스를 선택해야 합니다. 설정되지 않은 상태에서는 외부에 이 결제 방식이 표시되지 않습니다.',
+        sources: {
+          notConfigured: '구성되지 않음',
+          officialAlipay: '공식 Alipay',
+          easypayAlipay: 'EasyPay Alipay',
+          officialWxpay: '공식 WeChat Pay',
+          easypayWxpay: 'EasyPay WeChat Pay'
+        },
         sourceRequiredError: '{title}이(가) 활성화되었습니다. 먼저 결제 소스를 선택하세요.'
       },
       openaiExperimentalScheduler: {

@@ -197,8 +197,9 @@ func validateJWTForAdmin(
 		return false
 	}
 
-	// 检查管理员权限
-	if !user.IsAdmin() {
+	// 检查后台控制台访问权限（admin 或 marketing）。
+	// 更细的路由级权限由 AdminRoleAccessMiddleware 继续收敛。
+	if !user.HasAdminConsoleAccess() {
 		AbortWithError(c, 403, "FORBIDDEN", "Admin access required")
 		return false
 	}

@@ -177,6 +177,11 @@ export default {
     enterApiKey: 'Vui lòng nhập API Key',
     querySuccess: 'Tra cứu thành công',
     queryFailed: 'Tra cứu thất bại',
+    windowUnits: {
+      day: 'D',
+      week: 'W',
+      month: 'M'
+    },
     queryFailedRetry: 'Tra cứu thất bại, vui lòng thử lại sau',
   },
 
@@ -223,6 +228,7 @@ export default {
       passwordMismatch: 'Mật khẩu không khớp'
     },
     ready: {
+      autoRefreshRemaining: 'Còn {seconds}s đến lần làm mới tiếp theo',
       title: 'Sẵn sàng cài đặt',
       description: 'Kiểm tra cấu hình của bạn và hoàn tất cài đặt',
       database: 'Cơ sở dữ liệu',
@@ -526,6 +532,9 @@ export default {
     wechatProviderName: 'WeChat',
     wechatCallbackPageTitle: 'Callback đăng nhập WeChat',
     wechatPaymentCallbackPageTitle: 'Callback thanh toán WeChat',
+    wechatConnect: {
+      mobileOnlyHint: 'Site hiện chỉ cấu hình đăng nhập WeChat Mobile App. Hãy tiếp tục từ app native qua WeChat SDK.'
+    },
     wechatPayment: {
       callbackTitle: 'Đang khôi phục thanh toán WeChat',
       callbackProcessing: 'Đang khôi phục thanh toán WeChat...',
@@ -1451,7 +1460,22 @@ export default {
         restoreConfirm: 'Bạn có chắc muốn khôi phục từ bản sao lưu này không? Thao tác này sẽ ghi đè cơ sở dữ liệu hiện tại!',
         restorePasswordPrompt: 'Vui lòng nhập mật khẩu quản trị viên để xác nhận thao tác khôi phục',
         restoreSuccess: 'Khôi phục cơ sở dữ liệu thành công',
-        deleteConfirm: 'Bạn có chắc muốn xóa bản sao lưu này không?',
+        intervalValidation: {
+        minTokensNonNegative: 'Khoảng #{index}: số token tối thiểu ({value}) không được âm',
+        maxTokensPositive: 'Khoảng #{index}: số token tối đa ({value}) phải lớn hơn 0',
+        maxTokensGreaterThanMin: 'Khoảng #{index}: số token tối đa ({max}) phải lớn hơn số token tối thiểu ({min})',
+        priceNonNegative: 'Khoảng #{index}: {name} không được âm',
+        unboundedLast: 'Khoảng #{index}: khoảng không giới hạn (để trống max tokens) chỉ được là khoảng cuối',
+        overlap: 'Khoảng #{prevIndex} và #{index} bị chồng lấn: cận trên khoảng trước ({prevMax}) lớn hơn cận dưới hiện tại ({min})',
+        priceNames: {
+          input: 'Giá input',
+          output: 'Giá output',
+          cacheWrite: 'Giá cache write',
+          cacheRead: 'Giá cache read',
+          perRequest: 'Giá mỗi request'
+        }
+      },
+      deleteConfirm: 'Bạn có chắc muốn xóa bản sao lưu này không?',
         deleted: 'Đã xóa bản sao lưu'
       },
       r2Guide: {
@@ -1671,7 +1695,7 @@ export default {
       deleteUser: 'Xóa người dùng',
       deleteConfirmMessage: "Bạn có chắc muốn xóa người dùng '{email}' không? Thao tác này không thể hoàn tác.",
       searchPlaceholder: 'Tìm mờ theo email / tên người dùng / ghi chú / API Key / redeem code...',
-      searchUsers: 'Tìm mờ theo email / tên người dùng / ghi chú / API Key / redeem code',
+      searchUsers: 'Tìm mờ theo email / tên người dùng / ghi chú / API Key / redeem code / mã thiết bị',
       roleFilter: 'Lọc theo vai trò',
       allRoles: 'Tất cả vai trò',
       allStatus: 'Tất cả trạng thái',
@@ -1681,6 +1705,7 @@ export default {
       statusFilter: 'Lọc theo trạng thái',
       allStatuses: 'Tất cả trạng thái',
       admin: 'Quản trị viên',
+      marketing: 'Marketing',
       user: 'Người dùng',
       disabled: 'Vô hiệu hóa',
       email: 'Email',
@@ -1758,6 +1783,7 @@ export default {
       deleteConfirm: "Bạn có chắc muốn xóa người dùng '{email}' không? Thao tác này không thể hoàn tác.",
       roles: {
         admin: 'Quản trị viên',
+        marketing: 'Marketing',
         user: 'Người dùng'
       },
       form: {
@@ -2139,7 +2165,16 @@ export default {
         tooltipEdit: 'Chọn một hoặc nhiều nhóm cùng nền tảng; sau khi lưu, các tài khoản của nhóm hiện tại sẽ được thay thế bằng tài khoản của các nhóm đó (tự loại trùng).',
         selectPlaceholder: 'Chọn nhóm để sao chép tài khoản...',
         hint: 'Có thể chọn nhiều nhóm; tài khoản sẽ tự động được loại trùng',
+        optionLabel: '{name} ({count} tài khoản)',
         hintEdit: '⚠️ Lưu ý: thao tác này sẽ thay thế toàn bộ liên kết tài khoản của nhóm hiện tại'
+      },
+      accountFilter: {
+        title: 'Điều khiển lọc tài khoản',
+        requireOAuthOnly: 'Chỉ cho phép tài khoản OAuth',
+        oauthOnlyEnabled: 'Đã bật — loại trừ tài khoản API Key',
+        requirePrivacySet: 'Chỉ cho phép tài khoản đã cấu hình bảo vệ riêng tư',
+        privacySetEnabled: 'Đã bật — loại trừ tài khoản chưa cấu hình Privacy',
+        disabled: 'Chưa bật'
       },
       modelRouting: {
         title: 'Cấu hình định tuyến model',
@@ -2222,6 +2257,21 @@ export default {
     channels: {
       title: 'Quản lý kênh',
       description: 'Quản lý kênh và cấu hình giá mô hình tùy chỉnh',
+      intervalValidation: {
+        minTokensNonNegative: 'Khoảng #{index}: số token tối thiểu ({value}) không được âm',
+        maxTokensPositive: 'Khoảng #{index}: số token tối đa ({value}) phải lớn hơn 0',
+        maxTokensGreaterThanMin: 'Khoảng #{index}: số token tối đa ({max}) phải lớn hơn số token tối thiểu ({min})',
+        priceNonNegative: 'Khoảng #{index}: {name} không được âm',
+        unboundedLast: 'Khoảng #{index}: khoảng không giới hạn (để trống token tối đa) chỉ được là khoảng cuối cùng',
+        overlap: 'Khoảng #{prevIndex} và #{index} bị chồng lấn: cận trên trước đó ({prevMax}) lớn hơn cận dưới hiện tại ({min})',
+        priceNames: {
+          input: 'Giá input',
+          output: 'Giá output',
+          cacheWrite: 'Giá ghi cache',
+          cacheRead: 'Giá đọc cache',
+          perRequest: 'Giá mỗi request'
+        }
+      },
       searchChannels: 'Tìm kiếm kênh...',
       createChannel: 'Tạo kênh',
       editChannel: 'Chỉnh sửa kênh',
@@ -3443,7 +3493,17 @@ export default {
           customTitle: 'Ủy quyền tùy chỉnh (AI Studio OAuth)',
           customDesc: 'Dùng OAuth client do quản trị viên cấu hình sẵn, phù hợp cho quản lý theo tổ chức.',
           customRequirement: 'Yêu cầu quản trị viên cấu hình Client ID và thêm vào whitelist người dùng thử nghiệm.',
+          googleOneDesc: 'Tài khoản cá nhân, dùng hạn mức thuê bao Google One',
+          codeAssistDesc: 'Cấp doanh nghiệp, cần dự án GCP',
+          codeAssistRequirement: 'Cần kích hoạt dự án GCP và liên kết thẻ thanh toán',
+          googleOneAccount: 'Tài khoản cá nhân',
+          gcpCodeAssistAccount: 'Tài khoản GCP Code Assist',
+          showAdvanced: 'Hiện tuỳ chọn nâng cao (OAuth Client tự dựng)',
+          hideAdvanced: 'Ẩn tuỳ chọn nâng cao (OAuth Client tự dựng)',
           badges: {
+            recommendedPersonal: 'Khuyến nghị cho cá nhân',
+            noGcp: 'Không cần GCP',
+            enterpriseUser: 'Người dùng doanh nghiệp',
             recommended: 'Khuyến nghị',
             highConcurrency: 'Đồng thời cao',
             noAdmin: 'Không cần quản trị viên cấu hình',
@@ -3461,6 +3521,7 @@ export default {
           activationTitle: 'Kích hoạt dịch vụ',
           activationItems: {
             geminiWeb: 'Kích hoạt Gemini Web để tránh lỗi User not initialized.',
+            changeCountryAssociation: 'Đổi vùng tài khoản',
             gcpProject: 'Kích hoạt dự án GCP để lấy Project ID cần cho Code Assist.'
           },
           links: {
@@ -4068,7 +4129,7 @@ export default {
       title: 'Bản ghi sử dụng',
       description: 'Xem và quản lý bản ghi sử dụng của tất cả người dùng',
       userFilter: 'Người dùng',
-      searchUserPlaceholder: 'Tìm người dùng theo email...',
+      searchUserPlaceholder: 'Tìm người dùng theo email hoặc mã thiết bị...',
       searchApiKeyPlaceholder: 'Tìm khóa API theo tên...',
       searchAccountPlaceholder: 'Tìm tài khoản theo tên...',
       selectedUser: 'Đã chọn',
@@ -4142,6 +4203,47 @@ export default {
     ops: {
       title: 'Giám sát vận hành',
       description: 'Giám sát vận hành và xử lý sự cố',
+      systemLogs: {
+        title: 'Nhật ký hệ thống',
+        description: 'Mặc định sắp xếp mới nhất trước; hỗ trợ lọc, tìm kiếm và dọn theo điều kiện hiện tại.',
+        allLevels: 'Tất cả cấp độ',
+        loadFailed: 'Không tải được nhật ký hệ thống',
+        runtimeSaved: 'Cấu hình log runtime đã có hiệu lực',
+        runtimeSaveFailed: 'Không lưu được cấu hình log',
+        resetConfirm: 'Khôi phục cấu hình lúc khởi động (env/yaml) và áp dụng ngay?',
+        resetSuccess: 'Đã khôi phục cấu hình log lúc khởi động',
+        resetFailed: 'Không khôi phục được cấu hình log',
+        cleanupConfirm: 'Dọn nhật ký hệ thống theo bộ lọc hiện tại? Thao tác này không thể hoàn tác.',
+        cleanupSuccess: 'Dọn xong, đã xóa {count} dòng log',
+        cleanupFailed: 'Không dọn được nhật ký hệ thống',
+        queue: 'Hàng đợi',
+        written: 'Đã ghi',
+        dropped: 'Đã bỏ',
+        failed: 'Lỗi',
+        runtimeConfig: 'Cấu hình log runtime (áp dụng ngay)',
+        level: 'Cấp độ',
+        stacktraceLevel: 'Ngưỡng stacktrace',
+        samplingInitial: 'Mẫu ban đầu',
+        samplingThereafter: 'Mẫu sau đó',
+        retentionDays: 'Số ngày giữ lại',
+        saveAndApply: 'Lưu và áp dụng',
+        resetDefaults: 'Khôi phục mặc định',
+        lastWriteError: 'Lỗi ghi gần nhất: ',
+        timeRange: 'Khoảng thời gian',
+        startTime: 'Thời gian bắt đầu (tuỳ chọn)',
+        endTime: 'Thời gian kết thúc (tuỳ chọn)',
+        component: 'Thành phần',
+        componentPlaceholder: 'VD: http.access',
+        platform: 'Nền tảng',
+        model: 'Model',
+        keyword: 'Từ khoá',
+        keywordPlaceholder: 'Nội dung/request_id',
+        cleanupCurrentFilter: 'Dọn theo bộ lọc hiện tại',
+        refreshHealth: 'Làm mới chỉ số sức khoẻ',
+        noLogs: 'Chưa có nhật ký hệ thống',
+        time: 'Thời gian',
+        details: 'Chi tiết log'
+      },
       // Dashboard
       systemHealth: 'Sức khỏe hệ thống',
       overview: 'Tổng quan',
@@ -5103,6 +5205,36 @@ export default {
         redirectUrlSetAndCopied: 'Đã tạo địa chỉ callback từ site hiện tại và sao chép vào clipboard',
         frontendRedirectUrl: 'Đường dẫn callback frontend',
         frontendRedirectUrlPlaceholder: '/auth/oidc/callback',
+        modes: {
+          open: {
+            title: 'Ứng dụng PC',
+            description: 'Trình duyệt desktop đăng nhập bằng QR qua WeChat Open Platform. Có thể dùng đồng thời với Official Account hoặc Mobile App.',
+            appIdLabel: 'PC App ID',
+            appIdPlaceholder: 'WeChat Open Platform PC App ID',
+            appSecretLabel: 'PC App Secret',
+            appSecretPlaceholder: 'WeChat Open Platform PC App Secret'
+          },
+          mp: {
+            title: 'Official Account',
+            description: 'Chỉ dùng được trong trình duyệt WeChat; ngoài WeChat sẽ hiển thị là không khả dụng.',
+            appIdLabel: 'Official Account App ID',
+            appIdPlaceholder: 'Official Account App ID',
+            appSecretLabel: 'Official Account App Secret',
+            appSecretPlaceholder: 'Official Account App Secret'
+          },
+          mobile: {
+            title: 'Mobile App',
+            description: 'Client mobile native mở uỷ quyền qua WeChat SDK. Web UI không trực tiếp khởi chạy luồng này.',
+            appIdLabel: 'Mobile App ID',
+            appIdPlaceholder: 'Mobile App ID',
+            appSecretLabel: 'Mobile App Secret',
+            appSecretPlaceholder: 'Mobile App Secret'
+          }
+        },
+        unionIdWarning: 'Khi bật PC App cùng Official Account hoặc Mobile App, các ứng dụng nên thuộc cùng một WeChat Open Platform để UnionID gộp danh tính ổn định.',
+        browserRedirectUrlLabel: 'URL callback trình duyệt',
+        browserRedirectUrlHint: 'Dùng cho callback trình duyệt của PC App và Official Account. Luồng native mobile SDK không khởi chạy trực tiếp từ callback trình duyệt này.',
+        mpMobileConflict: 'Official Account và Mobile App không thể bật cùng lúc.',
         frontendRedirectUrlHint: 'Sau khi backend callback hoàn tất sẽ chuyển hướng tới đường dẫn frontend này',
         tokenAuthMethod: 'Phương thức xác thực token',
         clockSkewSeconds: 'Độ lệch đồng hồ (giây)',
@@ -5844,6 +5976,13 @@ export default {
         methodHint: 'Kiểm soát việc phương thức này có hiển thị trên trang thanh toán frontend hay không, đồng thời xác định source key khi hiển thị.',
         sourceLabel: 'Nguồn thanh toán',
         sourceHint: 'Sau khi bật phải chọn rõ một nguồn; nếu chưa cấu hình thì phương thức thanh toán này sẽ không hiển thị ra bên ngoài.',
+        sources: {
+          notConfigured: 'Chưa cấu hình',
+          officialAlipay: 'Alipay chính thức',
+          easypayAlipay: 'EasyPay Alipay',
+          officialWxpay: 'WeChat Pay chính thức',
+          easypayWxpay: 'EasyPay WeChat Pay'
+        },
         sourceRequiredError: '{title} đã được bật, vui lòng chọn nguồn thanh toán trước.'
       },
       openaiExperimentalScheduler: {

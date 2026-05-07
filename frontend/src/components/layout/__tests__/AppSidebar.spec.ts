@@ -53,3 +53,16 @@ describe('AppSidebar header styles', () => {
     expect(sidebarBrandBlockMatch?.[0]).not.toContain('overflow: hidden;')
   })
 })
+
+describe('AppSidebar marketing role visibility', () => {
+  it('renders the admin-console shell for marketing users', () => {
+    expect(componentSource).toContain('<template v-if="hasAdminConsoleAccess">')
+    expect(componentSource).toContain('const hasAdminConsoleAccess = computed(() => authStore.hasAdminConsoleAccess)')
+  })
+
+  it('keeps marketing menu limited to sales/support resources', () => {
+    expect(componentSource).toContain("roles: ['admin', 'marketing']")
+    expect(componentSource).toContain("{ path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon, roles: ['admin'] }")
+    expect(componentSource).toContain("{ path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon, hideInSimpleMode: true, roles: ['admin'] }")
+  })
+})

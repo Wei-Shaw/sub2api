@@ -27,17 +27,17 @@ describe('admin settings payment visible method helpers', () => {
     expect(getPaymentVisibleMethodSourceOptions('alipay')).toEqual([
       {
         value: '',
-        labelZh: '未配置',
+        labelKey: 'admin.settings.paymentVisibleMethods.sources.notConfigured',
         labelEn: 'Not configured',
       },
       {
         value: 'official_alipay',
-        labelZh: '支付宝官方',
+        labelKey: 'admin.settings.paymentVisibleMethods.sources.officialAlipay',
         labelEn: 'Official Alipay',
       },
       {
         value: 'easypay_alipay',
-        labelZh: '易支付支付宝',
+        labelKey: 'admin.settings.paymentVisibleMethods.sources.easypayAlipay',
         labelEn: 'EasyPay Alipay',
       },
     ])
@@ -45,17 +45,17 @@ describe('admin settings payment visible method helpers', () => {
     expect(getPaymentVisibleMethodSourceOptions('wxpay')).toEqual([
       {
         value: '',
-        labelZh: '未配置',
+        labelKey: 'admin.settings.paymentVisibleMethods.sources.notConfigured',
         labelEn: 'Not configured',
       },
       {
         value: 'official_wxpay',
-        labelZh: '微信官方',
+        labelKey: 'admin.settings.paymentVisibleMethods.sources.officialWxpay',
         labelEn: 'Official WeChat Pay',
       },
       {
         value: 'easypay_wxpay',
-        labelZh: '易支付微信',
+        labelKey: 'admin.settings.paymentVisibleMethods.sources.easypayWxpay',
         labelEn: 'EasyPay WeChat Pay',
       },
     ])

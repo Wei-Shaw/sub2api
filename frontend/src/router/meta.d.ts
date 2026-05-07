@@ -20,6 +20,13 @@ declare module 'vue-router' {
     requiresAdmin?: boolean
 
     /**
+     * Whether marketing role can access this admin-console route.
+     * Full admin-only routes should leave this false/undefined.
+     * @default false
+     */
+    allowMarketing?: boolean
+
+    /**
      * Page title for this route
      */
     title?: string

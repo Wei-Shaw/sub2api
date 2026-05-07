@@ -47,6 +47,14 @@ const fakeAdminUser = {
   role: 'admin' as const,
 }
 
+const fakeMarketingUser = {
+  ...fakeUser,
+  id: 3,
+  username: 'marketing',
+  email: 'marketing@example.com',
+  role: 'marketing' as const,
+}
+
 const fakeAuthResponse = {
   access_token: 'test-token-123',
   refresh_token: 'refresh-token-456',
@@ -366,6 +374,18 @@ describe('useAuthStore', () => {
       expect(store.isAdmin).toBe(true)
     })
 
+    it('marketing user is not full admin', async () => {
+      const marketingResponse = { ...fakeAuthResponse, user: { ...fakeMarketingUser } }
+      mockLogin.mockResolvedValue(marketingResponse)
+      const store = useAuthStore()
+
+      await store.login({ email: 'marketing@example.com', password: '123456' })
+
+      expect(store.isAdmin).toBe(false)
+      expect(store.isMarketing).toBe(true)
+      expect(store.hasAdminConsoleAccess).toBe(true)
+    })
+
     it('普通用户返回 false', async () => {
       mockLogin.mockResolvedValue(fakeAuthResponse)
       const store = useAuthStore()
@@ -373,11 +393,15 @@ describe('useAuthStore', () => {
       await store.login({ email: 'test@example.com', password: '123456' })
 
       expect(store.isAdmin).toBe(false)
+      expect(store.isMarketing).toBe(false)
+      expect(store.hasAdminConsoleAccess).toBe(false)
     })
 
     it('未登录时返回 false', () => {
       const store = useAuthStore()
       expect(store.isAdmin).toBe(false)
+      expect(store.isMarketing).toBe(false)
+      expect(store.hasAdminConsoleAccess).toBe(false)
     })
   })
 

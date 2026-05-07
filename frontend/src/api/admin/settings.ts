@@ -92,13 +92,13 @@ export type WeChatConnectMode = "open" | "mp" | "mobile";
 
 export interface PaymentVisibleMethodSourceOption {
   value: PaymentVisibleMethodSource;
-  labelZh: string;
+  labelKey: string;
   labelEn: string;
 }
 
 export interface WeChatConnectModeOption {
   value: WeChatConnectMode;
-  labelZh: string;
+  labelKey: string;
   labelEn: string;
 }
 
@@ -118,28 +118,28 @@ const PAYMENT_VISIBLE_METHOD_SOURCE_OPTIONS: Record<
   PaymentVisibleMethodSourceOption[]
 > = {
   alipay: [
-    { value: "", labelZh: "未配置", labelEn: "Not configured" },
+    { value: "", labelKey: "admin.settings.paymentVisibleMethods.sources.notConfigured", labelEn: "Not configured" },
     {
       value: "official_alipay",
-      labelZh: "支付宝官方",
+      labelKey: "admin.settings.paymentVisibleMethods.sources.officialAlipay",
       labelEn: "Official Alipay",
     },
     {
       value: "easypay_alipay",
-      labelZh: "易支付支付宝",
+      labelKey: "admin.settings.paymentVisibleMethods.sources.easypayAlipay",
       labelEn: "EasyPay Alipay",
     },
   ],
   wxpay: [
-    { value: "", labelZh: "未配置", labelEn: "Not configured" },
+    { value: "", labelKey: "admin.settings.paymentVisibleMethods.sources.notConfigured", labelEn: "Not configured" },
     {
       value: "official_wxpay",
-      labelZh: "微信官方",
+      labelKey: "admin.settings.paymentVisibleMethods.sources.officialWxpay",
       labelEn: "Official WeChat Pay",
     },
     {
       value: "easypay_wxpay",
-      labelZh: "易支付微信",
+      labelKey: "admin.settings.paymentVisibleMethods.sources.easypayWxpay",
       labelEn: "EasyPay WeChat Pay",
     },
   ],
@@ -167,15 +167,15 @@ const PAYMENT_VISIBLE_METHOD_SOURCE_ALIASES: Record<
   },
 };
 const WECHAT_CONNECT_MODE_OPTIONS: WeChatConnectModeOption[] = [
-  { value: "open", labelZh: "PC 应用", labelEn: "PC App" },
+  { value: "open", labelKey: "admin.settings.wechatConnect.modes.open.title", labelEn: "PC App" },
   {
     value: "mp",
-    labelZh: "公众号",
+    labelKey: "admin.settings.wechatConnect.modes.mp.title",
     labelEn: "Official Account",
   },
   {
     value: "mobile",
-    labelZh: "移动应用",
+    labelKey: "admin.settings.wechatConnect.modes.mobile.title",
     labelEn: "Mobile App",
   },
 ];

@@ -10,6 +10,7 @@ import (
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/enttest"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 
@@ -147,6 +148,55 @@ func TestUserRepositoryGetByEmailReportsNormalizedEmailConflict(t *testing.T) {
 	_, err = repo.GetByEmail(ctx, "conflict@example.com")
 	require.Error(t, err)
 	require.ErrorContains(t, err, "normalized email lookup matched multiple users")
+}
+
+func TestUserRepositoryListWithFiltersSearchesDeviceLoginCodeWithoutRedeemUsedBy(t *testing.T) {
+	repo, client := newUserEntRepo(t)
+	ctx := context.Background()
+
+	target := &service.User{
+		Email:        "device-search@example.com",
+		Username:     "device-search",
+		PasswordHash: "hash",
+		Role:         service.RoleUser,
+		Status:       service.StatusActive,
+	}
+	require.NoError(t, repo.Create(ctx, target))
+	require.NoError(t, repo.Create(ctx, &service.User{
+		Email:        "other-device-search@example.com",
+		Username:     "other-device-search",
+		PasswordHash: "hash",
+		Role:         service.RoleUser,
+		Status:       service.StatusActive,
+	}))
+
+	loginCode, err := client.RedeemCode.Create().
+		SetCode("DLG-DEVICE-SEARCH-0001").
+		SetType(service.RedeemTypeDeviceLogin).
+		SetStatus(service.StatusUsed).
+		SetUsedAt(time.Now()).
+		Save(ctx)
+	require.NoError(t, err)
+
+	_, err = client.UserDevice.Create().
+		SetUserID(target.ID).
+		SetDeviceHash("device-search-hash-0001").
+		SetPlatform("windows").
+		SetArch("x64").
+		SetLoginRedeemCodeID(loginCode.ID).
+		Save(ctx)
+	require.NoError(t, err)
+
+	users, page, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, service.UserListFilters{Search: "DLG-DEVICE"})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), page.Total)
+	require.Len(t, users, 1)
+	require.Equal(t, target.ID, users[0].ID)
+	require.NotNil(t, users[0].PrimaryRedeemCode)
+	require.Equal(t, "DLG-DEVICE-SEARCH-0001", *users[0].PrimaryRedeemCode)
+	require.NotNil(t, users[0].PrimaryRedeemType)
+	require.Equal(t, service.RedeemTypeDeviceLogin, *users[0].PrimaryRedeemType)
+	require.True(t, users[0].HasDeviceBinding)
 }
 
 func TestUserRepositoryCreateSerializesNormalizedEmailConflictsUnderConcurrency(t *testing.T) {

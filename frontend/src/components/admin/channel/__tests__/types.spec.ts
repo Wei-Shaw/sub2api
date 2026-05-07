@@ -70,14 +70,14 @@ describe('validateIntervals', () => {
       const intervals: IntervalFormEntry[] = [
         makeInterval({ tier_label: '1K', per_request_price: -1 }),
       ]
-      expect(validateIntervals(intervals, 'image', t)).toContain('negativePrice')
+      expect(validateIntervals(intervals, 'image', t)).toContain('priceNonNegative')
     })
 
     it('still rejects max <= min on a single tier', () => {
       const intervals: IntervalFormEntry[] = [
         makeInterval({ tier_label: '1K', min_tokens: 100, max_tokens: 50, per_request_price: 0.04 }),
       ]
-      expect(validateIntervals(intervals, 'image', t)).toContain('maxGreaterThanMin')
+      expect(validateIntervals(intervals, 'image', t)).toContain('maxTokensGreaterThanMin')
     })
   })
 })

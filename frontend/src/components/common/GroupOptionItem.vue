@@ -66,8 +66,6 @@ import type { SubscriptionType, GroupPlatform } from '@/types'
 import { useAppStore } from '@/stores/app'
 import { formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
 
-const { t } = useI18n()
-
 interface Props {
   name: string
   platform: GroupPlatform
@@ -82,6 +80,8 @@ interface Props {
   selected?: boolean
   showCheckmark?: boolean
 }
+
+const { t } = useI18n()
 
 const props = withDefaults(defineProps<Props>(), {
   subscriptionType: 'standard',
