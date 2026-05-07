@@ -48,10 +48,10 @@ pnpm-debug.log*
 # ===================
 # 环境配置
 # ===================
-.env
 .env.local
 .env.*.local
 *.env
+/.env
 !.env.example
 docker-compose.override.yml
 
