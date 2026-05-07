@@ -3136,6 +3136,18 @@ export default {
         codexCLIOnly: 'Codex official clients only',
         codexCLIOnlyDesc:
           'Only applies to OpenAI OAuth. When enabled, only Codex official client families are allowed; when disabled, the gateway bypasses this restriction and keeps existing behavior.',
+        codexImageGenerationBridge: 'Codex image-generation bridge',
+        codexImageGenerationBridgeDesc:
+          'Account policy takes precedence over channel and global settings. Only controls whether Codex requests through the /responses text endpoint receive the image_generation tool; standalone image-generation endpoints are unaffected.',
+        codexImageGenerationBridgeInherit: 'Follow channel',
+        codexImageGenerationBridgeInheritDesc: 'Do not write an account override; use the channel or global policy.',
+        codexImageGenerationBridgeEnabled: 'Force on',
+        codexImageGenerationBridgeEnabledDesc: 'Allow image tool injection for Codex /responses requests.',
+        codexImageGenerationBridgeDisabled: 'Force off',
+        codexImageGenerationBridgeDisabledDesc: 'Block image tool injection for Codex /responses requests.',
+        codexImageGenerationBridgeBadgeInherit: 'Channel policy',
+        codexImageGenerationBridgeBadgeEnabled: 'Account on',
+        codexImageGenerationBridgeBadgeDisabled: 'Account off',
         compactMode: 'Compact mode',
         compactModeDesc:
           'Controls how this account participates in /responses/compact routing. Auto follows probe results, Force On always allows, Force Off always excludes.',
@@ -3147,7 +3159,8 @@ export default {
           'Only applies to /responses/compact. Use this when the upstream compact endpoint requires a special compact model.',
         compactSupported: 'Compact supported',
         compactUnsupported: 'Compact unsupported',
-        compactUnknown: 'Compact unknown',
+        compactAuto: 'Compact Auto',
+        compactUnknown: 'Compact Auto',
         compactLastChecked: 'Last compact probe',
         testMode: 'Test mode',
         testModeDefault: 'Default request',
