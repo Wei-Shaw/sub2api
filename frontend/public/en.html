@@ -331,6 +331,28 @@
         .btn-ghost { background: rgba(17, 24, 39, 0.7); color: var(--text); }
         .provider-badge { background: rgba(20, 184, 166, 0.18); }
       }
+
+      /* Crawler-friendly TL;DR + Related reading blocks (also targeted by speakable schema). */
+      .seo-tldr {
+        margin: 16px 0 24px;
+        padding: 14px 18px;
+        border-left: 4px solid var(--primary);
+        background: rgba(20, 184, 166, 0.08);
+        border-radius: 8px;
+        font-size: 16px;
+        line-height: 1.6;
+      }
+      .seo-related {
+        margin: 32px 0 16px;
+        padding: 20px 24px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--card);
+      }
+      .seo-related h2 { font-size: 20px; margin-bottom: 12px; }
+      .seo-related ul { list-style: disc; padding-left: 20px; }
+      .seo-related li { margin: 6px 0; line-height: 1.6; }
+      .seo-related a { color: var(--primary); text-decoration: underline; }
     </style>
   </head>
   <body>
@@ -354,6 +376,10 @@
 
     <main>
       <div class="container">
+        <div class="seo-tldr">
+          <p><strong>TL;DR:</strong> TokenProvider is a third-party API gateway: one OpenAI-compatible base URL gives you Claude, Claude Code, ChatGPT, and Gemini access with a single key. Tokens are metered per request; rates appear in the dashboard after sign-up. Not an official Anthropic, OpenAI, or Google product.</p>
+        </div>
+
         <section class="hero">
           <h1>Cheap Claude API, ChatGPT API &amp; Token Gateway</h1>
           <p class="lede">
@@ -523,6 +549,18 @@
             <a href="/register" class="btn-cta">Create your account →</a>
             <a href="/" class="btn-ghost" hreflang="zh-CN" rel="alternate">中文版</a>
           </div>
+        </section>
+
+        <section class="seo-related" aria-label="Related reading">
+          <h2>Related reading</h2>
+          <ul>
+            <li><a href="/en/glossary/what-is-claude-relay.html">What is a Claude API proxy?</a> — 5-minute primer</li>
+            <li><a href="/en/compare/claude-vs-chatgpt-api.html">Claude API vs ChatGPT API (2026)</a> — pricing &amp; coding</li>
+            <li><a href="/en/guides/claude-code-setup.html">Claude Code setup with cheap proxy</a> — 5 minutes</li>
+            <li><a href="/en/examples/claude-api-python.html">Claude API Python example</a> — copy-paste ready</li>
+            <li><a href="/trust.html">Trust, billing &amp; data</a> — what we log and bill</li>
+            <li><a href="/" hreflang="zh-CN" rel="alternate">中文版</a></li>
+          </ul>
         </section>
       </div>
     </main>
