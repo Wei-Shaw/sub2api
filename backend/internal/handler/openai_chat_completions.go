@@ -81,6 +81,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	setOpsRequestContext(c, reqModel, reqStream, body)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
+	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIChat, reqModel, body); decision != nil && decision.Blocked {
+		h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
+		return
+	}
+
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 
@@ -121,7 +126,6 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	var lastFailoverErr *service.UpstreamFailoverError
 
 	for {
-		c.Set("openai_chat_completions_fallback_model", "")
 		reqLog.Debug("openai_chat_completions.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
 		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithScheduler(
 			c.Request.Context(),
@@ -139,32 +143,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if len(failedAccountIDs) == 0 {
-				defaultModel := ""
-				if apiKey.Group != nil {
-					defaultModel = apiKey.Group.DefaultMappedModel
-				}
-				if defaultModel != "" && defaultModel != reqModel {
-					reqLog.Info("openai_chat_completions.fallback_to_default_model",
-						zap.String("default_mapped_model", defaultModel),
-					)
-					selection, scheduleDecision, err = h.gatewayService.SelectAccountWithScheduler(
-						c.Request.Context(),
-						apiKey.GroupID,
-						"",
-						sessionHash,
-						defaultModel,
-						failedAccountIDs,
-						service.OpenAIUpstreamTransportAny,
-						false,
-					)
-					if err == nil && selection != nil {
-						c.Set("openai_chat_completions_fallback_model", defaultModel)
-					}
-				}
-				if err != nil {
-					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
-					return
-				}
+				h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable", streamStarted)
+				return
 			} else {
 				if lastFailoverErr != nil {
 					h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
@@ -192,12 +172,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
 
-		defaultMappedModel := resolveOpenAIForwardDefaultMappedModel(apiKey, c.GetString("openai_chat_completions_fallback_model"))
 		forwardBody := body
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
 		}
-		result, err := h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, promptCacheKey, defaultMappedModel)
+		result, err := h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, promptCacheKey, "")
 
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		if accountReleaseFunc != nil {
@@ -213,52 +192,60 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			service.SetOpsLatencyMs(c, service.OpsTimeToFirstTokenMsKey, int64(*result.FirstTokenMs))
 		}
 		if err != nil {
-			var failoverErr *service.UpstreamFailoverError
-			if errors.As(err, &failoverErr) {
-				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
-				// Pool mode: retry on the same account
-				if failoverErr.RetryableOnSameAccount {
-					retryLimit := account.GetPoolModeRetryCount()
-					if sameAccountRetryCount[account.ID] < retryLimit {
-						sameAccountRetryCount[account.ID]++
-						reqLog.Warn("openai_chat_completions.pool_mode_same_account_retry",
-							zap.Int64("account_id", account.ID),
-							zap.Int("upstream_status", failoverErr.StatusCode),
-							zap.Int("retry_limit", retryLimit),
-							zap.Int("retry_count", sameAccountRetryCount[account.ID]),
-						)
-						select {
-						case <-c.Request.Context().Done():
-							return
-						case <-time.After(sameAccountRetryDelay):
-						}
-						continue
-					}
-				}
-				h.gatewayService.RecordOpenAIAccountSwitch()
-				failedAccountIDs[account.ID] = struct{}{}
-				lastFailoverErr = failoverErr
-				if switchCount >= maxAccountSwitches {
-					h.handleFailoverExhausted(c, failoverErr, streamStarted)
-					return
-				}
-				switchCount++
-				reqLog.Warn("openai_chat_completions.upstream_failover_switching",
+			if result != nil && result.ImageCount > 0 {
+				reqLog.Warn("openai_chat_completions.forward_partial_error_with_image_result",
 					zap.Int64("account_id", account.ID),
-					zap.Int("upstream_status", failoverErr.StatusCode),
-					zap.Int("switch_count", switchCount),
-					zap.Int("max_switches", maxAccountSwitches),
+					zap.Int("image_count", result.ImageCount),
+					zap.Error(err),
 				)
-				continue
+			} else {
+				var failoverErr *service.UpstreamFailoverError
+				if errors.As(err, &failoverErr) {
+					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
+					// Pool mode: retry on the same account
+					if failoverErr.RetryableOnSameAccount {
+						retryLimit := account.GetPoolModeRetryCount()
+						if sameAccountRetryCount[account.ID] < retryLimit {
+							sameAccountRetryCount[account.ID]++
+							reqLog.Warn("openai_chat_completions.pool_mode_same_account_retry",
+								zap.Int64("account_id", account.ID),
+								zap.Int("upstream_status", failoverErr.StatusCode),
+								zap.Int("retry_limit", retryLimit),
+								zap.Int("retry_count", sameAccountRetryCount[account.ID]),
+							)
+							select {
+							case <-c.Request.Context().Done():
+								return
+							case <-time.After(sameAccountRetryDelay):
+							}
+							continue
+						}
+					}
+					h.gatewayService.RecordOpenAIAccountSwitch()
+					failedAccountIDs[account.ID] = struct{}{}
+					lastFailoverErr = failoverErr
+					if switchCount >= maxAccountSwitches {
+						h.handleFailoverExhausted(c, failoverErr, streamStarted)
+						return
+					}
+					switchCount++
+					reqLog.Warn("openai_chat_completions.upstream_failover_switching",
+						zap.Int64("account_id", account.ID),
+						zap.Int("upstream_status", failoverErr.StatusCode),
+						zap.Int("switch_count", switchCount),
+						zap.Int("max_switches", maxAccountSwitches),
+					)
+					continue
+				}
+				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
+				wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
+				reqLog.Warn("openai_chat_completions.forward_failed",
+					zap.Int64("account_id", account.ID),
+					zap.Bool("fallback_error_response_written", wroteFallback),
+					zap.Error(err),
+				)
+				return
 			}
-			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
-			wroteFallback := h.ensureForwardErrorResponse(c, streamStarted)
-			reqLog.Warn("openai_chat_completions.forward_failed",
-				zap.Int64("account_id", account.ID),
-				zap.Bool("fallback_error_response_written", wroteFallback),
-				zap.Error(err),
-			)
-			return
 		}
 		if result != nil {
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, true, result.FirstTokenMs)
@@ -268,16 +255,18 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 		userAgent := c.GetHeader("User-Agent")
 		clientIP := ip.GetClientIP(c)
+		inboundEndpoint := GetInboundEndpoint(c)
+		upstreamEndpoint := resolveRawCCUpstreamEndpoint(c, account)
 
-		h.submitUsageRecordTask(func(ctx context.Context) {
+		h.submitOpenAIUsageRecordTask(result, func(ctx context.Context) {
 			if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 				Result:             result,
 				APIKey:             apiKey,
 				User:               apiKey.User,
 				Account:            account,
 				Subscription:       subscription,
-				InboundEndpoint:    GetInboundEndpoint(c),
-				UpstreamEndpoint:   resolveRawCCUpstreamEndpoint(c, account),
+				InboundEndpoint:    inboundEndpoint,
+				UpstreamEndpoint:   upstreamEndpoint,
 				UserAgent:          userAgent,
 				IPAddress:          clientIP,
 				APIKeyService:      h.apiKeyService,

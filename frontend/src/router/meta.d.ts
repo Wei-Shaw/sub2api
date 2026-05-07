@@ -62,6 +62,12 @@ declare module 'vue-router' {
     requiresActiveReferral?: boolean
 
     /**
+     * Whether this route requires risk control feature to be enabled
+     * @default false
+     */
+    requiresRiskControl?: boolean
+
+    /**
      * i18n key for the page title
      */
     titleKey?: string

@@ -5397,6 +5397,16 @@ const form = reactive<SettingsForm>({
   oidc_connect_userinfo_email_path: "",
   oidc_connect_userinfo_id_path: "",
   oidc_connect_userinfo_username_path: "",
+  github_oauth_enabled: false,
+  github_oauth_client_id: "",
+  github_oauth_client_secret_configured: false,
+  github_oauth_redirect_url: "",
+  github_oauth_frontend_redirect_url: "/auth/oauth/callback",
+  google_oauth_enabled: false,
+  google_oauth_client_id: "",
+  google_oauth_client_secret_configured: false,
+  google_oauth_redirect_url: "",
+  google_oauth_frontend_redirect_url: "/auth/oauth/callback",
   // Model fallback
   enable_model_fallback: false,
   fallback_model_anthropic: "claude-3-5-sonnet-20241022",
@@ -5422,6 +5432,7 @@ const form = reactive<SettingsForm>({
   enable_metadata_passthrough: false,
   enable_cch_signing: false,
   enable_anthropic_cache_ttl_1h_injection: false,
+  risk_control_enabled: false,
   // Balance & quota notification
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
@@ -6308,6 +6319,16 @@ async function saveSettings() {
       oidc_connect_userinfo_id_path: form.oidc_connect_userinfo_id_path,
       oidc_connect_userinfo_username_path:
         form.oidc_connect_userinfo_username_path,
+      github_oauth_enabled: form.github_oauth_enabled,
+      github_oauth_client_id: form.github_oauth_client_id,
+      github_oauth_redirect_url: form.github_oauth_redirect_url,
+      github_oauth_frontend_redirect_url:
+        form.github_oauth_frontend_redirect_url,
+      google_oauth_enabled: form.google_oauth_enabled,
+      google_oauth_client_id: form.google_oauth_client_id,
+      google_oauth_redirect_url: form.google_oauth_redirect_url,
+      google_oauth_frontend_redirect_url:
+        form.google_oauth_frontend_redirect_url,
       enable_model_fallback: form.enable_model_fallback,
       fallback_model_anthropic: form.fallback_model_anthropic,
       fallback_model_openai: form.fallback_model_openai,
@@ -6323,6 +6344,7 @@ async function saveSettings() {
       enable_cch_signing: form.enable_cch_signing,
       enable_anthropic_cache_ttl_1h_injection:
         form.enable_anthropic_cache_ttl_1h_injection,
+      risk_control_enabled: form.risk_control_enabled,
       // Payment configuration
       payment_enabled: form.payment_enabled,
       payment_min_amount: Number(form.payment_min_amount) || 0,

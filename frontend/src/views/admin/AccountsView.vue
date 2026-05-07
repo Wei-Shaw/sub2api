@@ -196,21 +196,27 @@
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">-</span>
           </template>
           <template #cell-platform_type="{ row }">
-            <div class="flex flex-wrap items-center gap-1">
-              <PlatformTypeBadge :platform="row.platform" :type="row.type" :plan-type="row.credentials?.plan_type" :privacy-mode="row.extra?.privacy_mode" :subscription-expires-at="row.credentials?.subscription_expires_at" />
-              <span
-                v-if="getOpenAICompactLabel(row)"
-                :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', getOpenAICompactClass(row)]"
+            <div class="flex min-w-0 flex-col gap-1">
+              <div class="flex flex-wrap items-center gap-1">
+                <PlatformTypeBadge :platform="row.platform" :type="row.type" :plan-type="row.credentials?.plan_type" :privacy-mode="row.extra?.privacy_mode" :subscription-expires-at="row.credentials?.subscription_expires_at" />
+                <span
+                  v-if="getAntigravityTierLabel(row)"
+                  :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', getAntigravityTierClass(row)]"
+                >
+                  {{ getAntigravityTierLabel(row) }}
+                </span>
+              </div>
+              <div
+                v-if="getOpenAICompactMeta(row)"
+                :class="[
+                  'inline-flex items-center gap-1.5 pl-0.5 text-[11px] font-medium leading-4',
+                  getOpenAICompactMeta(row)?.className
+                ]"
                 :title="getOpenAICompactTitle(row)"
               >
-                {{ getOpenAICompactLabel(row) }}
-              </span>
-              <span
-                v-if="getAntigravityTierLabel(row)"
-                :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', getAntigravityTierClass(row)]"
-              >
-                {{ getAntigravityTierLabel(row) }}
-              </span>
+                <span :class="['h-1.5 w-1.5 rounded-full', getOpenAICompactMeta(row)?.dotClass]" />
+                <span>{{ getOpenAICompactMeta(row)?.label }}</span>
+              </div>
             </div>
           </template>
           <template #cell-capacity="{ row }">
@@ -983,41 +989,51 @@ function getAntigravityTierLabel(row: any): string | null {
   }
 }
 
-function getOpenAICompactState(row: any): 'supported' | 'unsupported' | 'unknown' | null {
+type OpenAICompactBadgeState = 'active' | 'blocked' | 'auto'
+
+function getOpenAICompactState(row: any): OpenAICompactBadgeState | null {
   if (row.platform !== 'openai' || (row.type !== 'oauth' && row.type !== 'apikey')) return null
   const extra = row.extra as Record<string, unknown> | undefined
   const mode = typeof extra?.openai_compact_mode === 'string' ? extra.openai_compact_mode : 'auto'
-  if (mode === 'force_on') return 'supported'
-  if (mode === 'force_off') return 'unsupported'
+  if (mode === 'force_on') return 'active'
+  if (mode === 'force_off') return 'blocked'
   if (typeof extra?.openai_compact_supported === 'boolean') {
-    return extra.openai_compact_supported ? 'supported' : 'unsupported'
+    return extra.openai_compact_supported ? 'active' : 'blocked'
   }
-  return 'unknown'
+  return 'auto'
 }
 
-function getOpenAICompactLabel(row: any): string | null {
-  switch (getOpenAICompactState(row)) {
-    case 'supported': return t('admin.accounts.openai.compactSupported')
-    case 'unsupported': return t('admin.accounts.openai.compactUnsupported')
-    case 'unknown': return t('admin.accounts.openai.compactUnknown')
-    default: return null
-  }
-}
-
-function getOpenAICompactClass(row: any): string {
-  switch (getOpenAICompactState(row)) {
-    case 'supported': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
-    case 'unsupported': return 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
-    case 'unknown': return 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
-    default: return ''
+function getOpenAICompactMeta(row: any): { label: string; className: string; dotClass: string } | null {
+  const state = getOpenAICompactState(row)
+  if (!state) return null
+  switch (state) {
+    case 'active':
+      return {
+        label: t('admin.accounts.openai.compactSupported'),
+        className: 'text-emerald-600 dark:text-emerald-300',
+        dotClass: 'bg-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.14)]'
+      }
+    case 'blocked':
+      return {
+        label: t('admin.accounts.openai.compactUnsupported'),
+        className: 'text-rose-600 dark:text-rose-300',
+        dotClass: 'bg-rose-500 shadow-[0_0_0_2px_rgba(244,63,94,0.14)]'
+      }
+    case 'auto':
+      return {
+        label: t('admin.accounts.openai.compactAuto'),
+        className: 'text-slate-500 dark:text-slate-400',
+        dotClass: 'bg-slate-300 dark:bg-slate-500'
+      }
   }
 }
 
 function getOpenAICompactTitle(row: any): string {
   const extra = row.extra as Record<string, unknown> | undefined
   const checkedAt = typeof extra?.openai_compact_checked_at === 'string' ? extra.openai_compact_checked_at : ''
-  if (!checkedAt) return getOpenAICompactLabel(row) || ''
-  return `${getOpenAICompactLabel(row)} | ${t('admin.accounts.openai.compactLastChecked')}: ${formatDateTime(new Date(checkedAt))}`
+  const label = getOpenAICompactMeta(row)?.label || ''
+  if (!checkedAt) return label
+  return `${label} | ${t('admin.accounts.openai.compactLastChecked')}: ${formatDateTime(new Date(checkedAt))}`
 }
 
 function getAntigravityTierClass(row: any): string {

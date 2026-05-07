@@ -194,7 +194,8 @@ type SystemSettings struct {
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
 	// Affiliate (邀请返利) feature switch
-	AffiliateEnabled bool `json:"affiliate_enabled"`
+	AffiliateEnabled   bool `json:"affiliate_enabled"`
+	RiskControlEnabled bool `json:"risk_control_enabled"`
 
 	// OpenAI fast/flex policy
 	OpenAIFastPolicySettings *OpenAIFastPolicySettings `json:"openai_fast_policy_settings,omitempty"`
@@ -237,6 +238,8 @@ type PublicSettings struct {
 	WeChatOAuthMobileEnabled         bool             `json:"wechat_oauth_mobile_enabled"`
 	OIDCOAuthEnabled                 bool             `json:"oidc_oauth_enabled"`
 	OIDCOAuthProviderName            string           `json:"oidc_oauth_provider_name"`
+	GitHubOAuthEnabled               bool             `json:"github_oauth_enabled"`
+	GoogleOAuthEnabled               bool             `json:"google_oauth_enabled"`
 	SoraClientEnabled                bool             `json:"sora_client_enabled"`
 	BackendModeEnabled               bool             `json:"backend_mode_enabled"`
 	PaymentEnabled                   bool             `json:"payment_enabled"`
@@ -251,6 +254,7 @@ type PublicSettings struct {
 
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 	AffiliateEnabled         bool `json:"affiliate_enabled"`
+	RiskControlEnabled       bool `json:"risk_control_enabled"`
 }
 
 // OverloadCooldownSettings 529过载冷却配置 DTO
@@ -260,6 +264,11 @@ type OverloadCooldownSettings struct {
 }
 
 // StreamTimeoutSettings 流超时处理配置 DTO
+type RateLimit429CooldownSettings struct {
+	Enabled         bool `json:"enabled"`
+	CooldownSeconds int  `json:"cooldown_seconds"`
+}
+
 type StreamTimeoutSettings struct {
 	Enabled                bool   `json:"enabled"`
 	Action                 string `json:"action"`

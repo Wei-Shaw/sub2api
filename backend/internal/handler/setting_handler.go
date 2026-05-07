@@ -63,6 +63,8 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		WeChatOAuthMobileEnabled:         settings.WeChatOAuthMobileEnabled,
 		OIDCOAuthEnabled:                 settings.OIDCOAuthEnabled,
 		OIDCOAuthProviderName:            settings.OIDCOAuthProviderName,
+		GitHubOAuthEnabled:               settings.GitHubOAuthEnabled,
+		GoogleOAuthEnabled:               settings.GoogleOAuthEnabled,
 		BackendModeEnabled:               settings.BackendModeEnabled,
 		PaymentEnabled:                   settings.PaymentEnabled,
 		Version:                          h.version,
@@ -77,5 +79,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 
 		AffiliateEnabled: settings.AffiliateEnabled,
+
+		RiskControlEnabled: settings.RiskControlEnabled,
 	})
 }

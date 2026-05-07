@@ -28,6 +28,15 @@ const (
 	redeemLockDuration      = 10 * time.Second // 锁超时时间，防止死锁
 )
 
+type ctxKeySkipRedeemAffiliate struct{}
+
+// ContextSkipRedeemAffiliate returns a context that suppresses the redeem-level
+// affiliate rebate. Used by payment fulfillment which handles rebate separately
+// via applyAffiliateRebateForOrder (with audit-log deduplication).
+func ContextSkipRedeemAffiliate(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ctxKeySkipRedeemAffiliate{}, true)
+}
+
 // RedeemCache defines cache operations for redeem service
 type RedeemCache interface {
 	GetRedeemAttemptCount(ctx context.Context, userID int64) (int, error)

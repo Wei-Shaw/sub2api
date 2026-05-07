@@ -74,6 +74,16 @@ func (Group) Fields() []ent.Field {
 			Default(30),
 
 		// 图片生成计费配置（antigravity 和 gemini 平台使用）
+		field.Bool("allow_image_generation").
+			Default(false).
+			Comment("是否允许该分组使用图片生成能力"),
+		field.Bool("image_rate_independent").
+			Default(false).
+			Comment("图片生成是否使用独立倍率；false 表示共享分组有效倍率"),
+		field.Float("image_rate_multiplier").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
+			Default(1.0).
+			Comment("图片生成独立倍率，仅 image_rate_independent=true 时生效"),
 		field.Float("image_price_1k").
 			Optional().
 			Nillable().

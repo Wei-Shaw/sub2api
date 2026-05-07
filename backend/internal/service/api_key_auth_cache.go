@@ -8,6 +8,7 @@ type APIKeyAuthSnapshot struct {
 	APIKeyID    int64                    `json:"api_key_id"`
 	UserID      int64                    `json:"user_id"`
 	GroupID     *int64                   `json:"group_id,omitempty"`
+	Name        string                   `json:"name"`
 	Status      string                   `json:"status"`
 	IPWhitelist []string                 `json:"ip_whitelist,omitempty"`
 	IPBlacklist []string                 `json:"ip_blacklist,omitempty"`
@@ -63,6 +64,9 @@ type APIKeyAuthGroupSnapshot struct {
 	DailyLimitUSD                   *float64 `json:"daily_limit_usd,omitempty"`
 	WeeklyLimitUSD                  *float64 `json:"weekly_limit_usd,omitempty"`
 	MonthlyLimitUSD                 *float64 `json:"monthly_limit_usd,omitempty"`
+	AllowImageGeneration            bool     `json:"allow_image_generation"`
+	ImageRateIndependent            bool     `json:"image_rate_independent"`
+	ImageRateMultiplier             float64  `json:"image_rate_multiplier"`
 	ImagePrice1K                    *float64 `json:"image_price_1k,omitempty"`
 	ImagePrice2K                    *float64 `json:"image_price_2k,omitempty"`
 	ImagePrice4K                    *float64 `json:"image_price_4k,omitempty"`

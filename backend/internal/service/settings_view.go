@@ -88,6 +88,18 @@ type SystemSettings struct {
 	OIDCConnectUserInfoEmailPath      string
 	OIDCConnectUserInfoIDPath         string
 	OIDCConnectUserInfoUsernamePath   string
+	GitHubOAuthEnabled                bool
+	GitHubOAuthClientID               string
+	GitHubOAuthClientSecret           string
+	GitHubOAuthClientSecretConfigured bool
+	GitHubOAuthRedirectURL            string
+	GitHubOAuthFrontendRedirectURL    string
+	GoogleOAuthEnabled                bool
+	GoogleOAuthClientID               string
+	GoogleOAuthClientSecret           string
+	GoogleOAuthClientSecretConfigured bool
+	GoogleOAuthRedirectURL            string
+	GoogleOAuthFrontendRedirectURL    string
 
 	SiteName                    string
 	SiteLogo                    string
@@ -132,6 +144,8 @@ type SystemSettings struct {
 
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
+	AffiliateEnabled         bool `json:"affiliate_enabled"`
+	RiskControlEnabled       bool `json:"risk_control_enabled"`
 
 	// Claude Code version check
 	MinClaudeCodeVersion string
@@ -212,6 +226,8 @@ type PublicSettings struct {
 	PaymentEnabled           bool
 	OIDCOAuthEnabled         bool
 	OIDCOAuthProviderName    string
+	GitHubOAuthEnabled       bool
+	GoogleOAuthEnabled       bool
 	Version                  string
 
 	BalanceLowNotifyEnabled     bool
@@ -226,6 +242,7 @@ type PublicSettings struct {
 	// Available Channels feature (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 	AffiliateEnabled         bool `json:"affiliate_enabled"`
+	RiskControlEnabled       bool `json:"risk_control_enabled"`
 }
 
 type WeChatConnectOAuthConfig struct {
