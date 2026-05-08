@@ -24,6 +24,8 @@ type stubAdminService struct {
 	updatedProxyIDs      []int64
 	updatedProxies       []*service.UpdateProxyInput
 	testedProxyIDs       []int64
+	getAccountByID       map[int64]*service.Account
+	resetAccountQuotaIDs []int64
 	createAccountErr     error
 	updateAccountErr     error
 	bulkUpdateAccountErr error
@@ -34,15 +36,18 @@ type stubAdminService struct {
 		groupIDs  []int64
 	}
 	lastListAccounts struct {
-		platform    string
-		accountType string
-		status      string
-		search      string
-		groupID     int64
-		privacyMode string
-		sortBy      string
-		sortOrder   string
-		calls       int
+		platform      string
+		accountType   string
+		status        string
+		search        string
+		groupID       int64
+		model         string
+		quotaStrategy string
+		proxyFilter   string
+		privacyMode   string
+		sortBy        string
+		sortOrder     string
+		calls         int
 	}
 	lastListUsers struct {
 		page      int
@@ -299,12 +304,15 @@ func (s *stubAdminService) BatchSetGroupRPMOverrides(_ context.Context, _ int64,
 	return nil
 }
 
-func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]service.Account, int64, error) {
+func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, model, quotaStrategy, proxyFilter, privacyMode string, sortBy, sortOrder string) ([]service.Account, int64, error) {
 	s.lastListAccounts.platform = platform
 	s.lastListAccounts.accountType = accountType
 	s.lastListAccounts.status = status
 	s.lastListAccounts.search = search
 	s.lastListAccounts.groupID = groupID
+	s.lastListAccounts.model = model
+	s.lastListAccounts.quotaStrategy = quotaStrategy
+	s.lastListAccounts.proxyFilter = proxyFilter
 	s.lastListAccounts.privacyMode = privacyMode
 	s.lastListAccounts.sortBy = sortBy
 	s.lastListAccounts.sortOrder = sortOrder
@@ -313,6 +321,9 @@ func (s *stubAdminService) ListAccounts(ctx context.Context, page, pageSize int,
 }
 
 func (s *stubAdminService) GetAccount(ctx context.Context, id int64) (*service.Account, error) {
+	if account, ok := s.getAccountByID[id]; ok && account != nil {
+		return account, nil
+	}
 	account := service.Account{ID: id, Name: "account", Status: service.StatusActive}
 	return &account, nil
 }
@@ -590,6 +601,7 @@ func (s *stubAdminService) AdminResetAPIKeyRateLimitUsage(ctx context.Context, k
 }
 
 func (s *stubAdminService) ResetAccountQuota(ctx context.Context, id int64) error {
+	s.resetAccountQuotaIDs = append(s.resetAccountQuotaIDs, id)
 	return nil
 }
 

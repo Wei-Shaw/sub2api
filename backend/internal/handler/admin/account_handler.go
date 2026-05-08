@@ -233,6 +233,9 @@ func (h *AccountHandler) List(c *gin.Context) {
 	accountType := c.Query("type")
 	status := c.Query("status")
 	search := c.Query("search")
+	model := strings.TrimSpace(c.Query("model"))
+	quotaStrategy := strings.TrimSpace(c.Query("quota_strategy"))
+	proxyFilter := strings.TrimSpace(c.Query("proxy_filter"))
 	privacyMode := strings.TrimSpace(c.Query("privacy_mode"))
 	sortBy := c.DefaultQuery("sort_by", "name")
 	sortOrder := c.DefaultQuery("sort_order", "asc")
@@ -261,7 +264,7 @@ func (h *AccountHandler) List(c *gin.Context) {
 		}
 	}
 
-	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, privacyMode, sortBy, sortOrder)
+	accounts, total, err := h.adminService.ListAccounts(c.Request.Context(), page, pageSize, platform, accountType, status, search, groupID, model, quotaStrategy, proxyFilter, privacyMode, sortBy, sortOrder)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -1758,6 +1761,12 @@ func (h *AccountHandler) ClearRateLimit(c *gin.Context) {
 	response.Success(c, h.buildAccountResponseWithRuntime(c.Request.Context(), account))
 }
 
+func (h *AccountHandler) GetFilterModels(c *gin.Context) {
+	platform := strings.TrimSpace(c.Query("platform"))
+	groups := service.ListAccountModelFilterGroups()
+	response.Success(c, service.FilterAccountModelGroupsByPlatform(groups, platform))
+}
+
 // ResetQuota handles resetting account quota usage
 // POST /api/v1/admin/accounts/:id/reset-quota
 func (h *AccountHandler) ResetQuota(c *gin.Context) {
@@ -1770,6 +1779,15 @@ func (h *AccountHandler) ResetQuota(c *gin.Context) {
 	if err := h.adminService.ResetAccountQuota(c.Request.Context(), accountID); err != nil {
 		response.InternalError(c, "Failed to reset account quota: "+err.Error())
 		return
+	}
+
+	if h.rateLimitService != nil {
+		if _, err := h.rateLimitService.RecoverAccountState(c.Request.Context(), accountID, service.AccountRecoveryOptions{
+			InvalidateToken: true,
+		}); err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
 	}
 
 	account, err := h.adminService.GetAccount(c.Request.Context(), accountID)
@@ -2225,7 +2243,7 @@ func (h *AccountHandler) BatchRefreshTier(c *gin.Context) {
 	accounts := make([]*service.Account, 0)
 
 	if len(req.AccountIDs) == 0 {
-		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "", "name", "asc")
+		allAccounts, _, err := h.adminService.ListAccounts(ctx, 1, 10000, "gemini", "oauth", "", "", 0, "", "", "", "", "name", "asc")
 		if err != nil {
 			response.ErrorFrom(c, err)
 			return

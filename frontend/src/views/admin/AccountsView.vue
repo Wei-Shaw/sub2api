@@ -7,7 +7,9 @@
             v-model:searchQuery="params.search"
             :filters="params"
             :groups="groups"
-            @update:filters="(newFilters) => Object.assign(params, newFilters)"
+            :model-groups="accountModelGroups"
+            :proxy-filter-proxies="proxyFilterProxies"
+            @update:filters="updateAccountFilters"
             @change="debouncedReload"
             @update:searchQuery="debouncedReload"
           />
@@ -408,6 +410,7 @@ import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { normalizeAccountModelFilterValue, type AccountModelFilterGroup } from '@/components/admin/account/accountModelFilter'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
@@ -419,7 +422,9 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 
 const proxies = ref<AccountProxy[]>([])
+const proxyFilterProxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
+const accountModelGroups = ref<AccountModelFilterGroup[]>([])
 const accountTableRef = ref<HTMLElement | null>(null)
 const dataTableRef = ref<InstanceType<typeof DataTable> | null>(null)
 type AccountBulkEditTarget =
@@ -433,6 +438,9 @@ type AccountBulkEditTarget =
       mode: 'filtered'
       filters: {
         platform?: string
+        model?: string
+        quota_strategy?: string
+        proxy_filter?: string
         type?: string
         status?: string
         group?: string
@@ -724,6 +732,9 @@ const {
   fetchFn: adminAPI.accounts.list,
   initialParams: {
     platform: '',
+    model: '',
+    quota_strategy: '',
+    proxy_filter: '',
     type: '',
     status: '',
     privacy_mode: '',
@@ -928,6 +939,9 @@ const refreshAccountsIncrementally = async () => {
       pagination.page_size,
       toRaw(params) as {
         platform?: string
+        model?: string
+        quota_strategy?: string
+        proxy_filter?: string
         type?: string
         status?: string
         privacy_mode?: string
@@ -1359,6 +1373,9 @@ const buildBulkEditFilterSnapshot = () => {
   const sortOrder: AccountSortOrder = rawParams.sort_order === 'desc' ? 'desc' : 'asc'
   return {
     platform: typeof rawParams.platform === 'string' ? rawParams.platform : '',
+    model: typeof rawParams.model === 'string' ? rawParams.model : '',
+    quota_strategy: typeof rawParams.quota_strategy === 'string' ? rawParams.quota_strategy : '',
+    proxy_filter: typeof rawParams.proxy_filter === 'string' ? rawParams.proxy_filter : '',
     type: typeof rawParams.type === 'string' ? rawParams.type : '',
     status: typeof rawParams.status === 'string' ? rawParams.status : '',
     group: typeof rawParams.group === 'string' ? rawParams.group : '',
@@ -1406,10 +1423,46 @@ const handleBulkUpdated = () => {
   reload()
 }
 const handleDataImported = () => { showImportData.value = false; reload() }
+const updateAccountFilters = (newFilters: Record<string, any>) => {
+  Object.assign(params, newFilters)
+}
+
+const loadAccountModelGroups = async (platform?: string) => {
+  const normalizedPlatform = String(platform || '')
+  params.model = normalizeAccountModelFilterValue(accountModelGroups.value, normalizedPlatform, String(params.model || ''))
+  try {
+    accountModelGroups.value = await adminAPI.accounts.getFilterModels(normalizedPlatform || undefined)
+    params.model = normalizeAccountModelFilterValue(accountModelGroups.value, normalizedPlatform, String(params.model || ''))
+  } catch (error) {
+    console.error('Failed to load account filter models:', error)
+    accountModelGroups.value = []
+    params.model = ''
+  }
+}
+
+const loadAllProxyFilterProxies = async (): Promise<AccountProxy[]> => {
+  const pageSize = 500
+  const allProxies: AccountProxy[] = []
+  let page = 1
+
+  for (;;) {
+    const result = await adminAPI.proxies.list(page, pageSize)
+    allProxies.push(...(result.items || []))
+    if (!result.pages || page >= result.pages || (result.items || []).length === 0) {
+      break
+    }
+    page += 1
+  }
+
+  return allProxies
+}
 const ACCOUNT_UNGROUPED_GROUP_QUERY_VALUE = 'ungrouped'
 const ACCOUNT_PRIVACY_MODE_UNSET_QUERY_VALUE = '__unset__'
 const buildAccountQueryFilters = () => ({
   platform: params.platform || '',
+  model: params.model || '',
+  quota_strategy: params.quota_strategy || '',
+  proxy_filter: params.proxy_filter || '',
   type: params.type || '',
   status: params.status || '',
   group: params.group || '',
@@ -1738,14 +1791,38 @@ const handleClickOutside = (event: MouseEvent) => {
   }
 }
 
+watch(
+  () => params.platform,
+  (platform) => {
+    loadAccountModelGroups(String(platform || ''))
+  }
+)
+
 onMounted(async () => {
   load()
-  try {
-    const [p, g] = await Promise.all([adminAPI.proxies.getAll(), adminAPI.groups.getAll()])
-    proxies.value = p
-    groups.value = g
-  } catch (error) {
-    console.error('Failed to load proxies/groups:', error)
+  const results = await Promise.allSettled([
+    adminAPI.proxies.getAll(),
+    loadAllProxyFilterProxies(),
+    adminAPI.groups.getAll(),
+    loadAccountModelGroups(String(params.platform || ''))
+  ])
+  if (results[0].status === 'fulfilled') {
+    proxies.value = results[0].value
+  } else {
+    console.error('Failed to load proxies:', results[0].reason)
+  }
+  if (results[1].status === 'fulfilled') {
+    proxyFilterProxies.value = results[1].value
+  } else {
+    console.error('Failed to load proxy filter options:', results[1].reason)
+  }
+  if (results[2].status === 'fulfilled') {
+    groups.value = results[2].value
+  } else {
+    console.error('Failed to load groups:', results[2].reason)
+  }
+  if (results[3].status !== 'fulfilled') {
+    console.error('Failed to load model filter options:', results[3].reason)
   }
   window.addEventListener('scroll', handleScroll, true)
   document.addEventListener('click', handleClickOutside)

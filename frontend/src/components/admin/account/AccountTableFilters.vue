@@ -8,6 +8,9 @@
       @search="$emit('change')"
     />
     <Select :model-value="filters.platform" class="w-40" :options="pOpts" @update:model-value="updatePlatform" @change="$emit('change')" />
+    <Select :model-value="filters.model" class="w-52" :options="modelOpts" @update:model-value="updateModel" @change="$emit('change')" />
+    <Select :model-value="filters.quota_strategy" class="w-40" :options="qOpts" @update:model-value="updateQuotaStrategy" @change="$emit('change')" />
+    <Select :model-value="filters.proxy_filter" class="w-52" :options="proxyOpts" @update:model-value="updateProxyFilter" @change="$emit('change')" />
     <Select :model-value="filters.type" class="w-40" :options="tOpts" @update:model-value="updateType" @change="$emit('change')" />
     <Select :model-value="filters.status" class="w-40" :options="sOpts" @update:model-value="updateStatus" @change="$emit('change')" />
     <Select :model-value="filters.privacy_mode" class="w-40" :options="privacyOpts" @update:model-value="updatePrivacyMode" @change="$emit('change')" />
@@ -17,15 +20,38 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'; import { useI18n } from 'vue-i18n'; import Select from '@/components/common/Select.vue'; import SearchInput from '@/components/common/SearchInput.vue'
-import type { AdminGroup } from '@/types'
-const props = defineProps<{ searchQuery: string; filters: Record<string, any>; groups?: AdminGroup[] }>()
+import type { AdminGroup, Proxy } from '@/types'
+import { buildAccountModelFilterOptions, type AccountModelFilterGroup } from './accountModelFilter'
+import { buildAccountProxyFilterOptions } from './accountProxyFilter'
+const props = defineProps<{ searchQuery: string; filters: Record<string, any>; groups?: AdminGroup[]; modelGroups?: AccountModelFilterGroup[]; proxyFilterProxies?: Proxy[] }>()
 const emit = defineEmits(['update:searchQuery', 'update:filters', 'change']); const { t } = useI18n()
 const updatePlatform = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, platform: value }) }
+const updateModel = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, model: value }) }
+const updateQuotaStrategy = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, quota_strategy: value }) }
+const updateProxyFilter = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, proxy_filter: value }) }
 const updateType = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, type: value }) }
 const updateStatus = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, status: value }) }
 const updatePrivacyMode = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, privacy_mode: value }) }
 const updateGroup = (value: string | number | boolean | null) => { emit('update:filters', { ...props.filters, group: value }) }
 const pOpts = computed(() => [{ value: '', label: t('admin.accounts.allPlatforms') }, { value: 'anthropic', label: 'Anthropic' }, { value: 'openai', label: 'OpenAI' }, { value: 'gemini', label: 'Gemini' }, { value: 'antigravity', label: 'Antigravity' }])
+const modelOpts = computed(() => buildAccountModelFilterOptions(props.modelGroups || [], String(props.filters.platform || ''), {
+  allLabel: '全部模型',
+  restrictedLabel: '有限制模型',
+  unrestrictedLabel: '无限制模型'
+}))
+const qOpts = computed(() => [
+  { value: '', label: t('admin.accounts.allQuotaStrategies') },
+  { value: 'prefer_5h', label: t('admin.accounts.quotaStrategy.prefer5h') },
+  { value: 'prefer_7d', label: t('admin.accounts.quotaStrategy.prefer7d') },
+  { value: 'enabled', label: t('admin.accounts.quotaStrategy.enabled') },
+  { value: 'disabled', label: t('admin.accounts.quotaStrategy.disabled') }
+])
+const proxyOpts = computed(() => buildAccountProxyFilterOptions(props.proxyFilterProxies || [], {
+  allLabel: '全部代理',
+  configuredLabel: '有配置',
+  unconfiguredLabel: '未配置',
+  separatorLabel: '具体代理'
+}))
 const tOpts = computed(() => [{ value: '', label: t('admin.accounts.allTypes') }, { value: 'oauth', label: t('admin.accounts.oauthType') }, { value: 'setup-token', label: t('admin.accounts.setupToken') }, { value: 'apikey', label: t('admin.accounts.apiKey') }, { value: 'bedrock', label: 'AWS Bedrock' }])
 const sOpts = computed(() => [
   { value: '', label: t('admin.accounts.allStatus') },
