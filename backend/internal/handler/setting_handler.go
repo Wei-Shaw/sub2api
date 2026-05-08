@@ -61,6 +61,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		TablePageSizeOptions:             settings.TablePageSizeOptions,
 		CustomMenuItems:                  dto.ParseUserVisibleMenuItems(settings.CustomMenuItems),
 		CustomEndpoints:                  dto.ParseCustomEndpoints(settings.CustomEndpoints),
+		AIToolRewriteRules:               dto.ParseAIToolRewriteRules(settings.AIToolRewriteRules),
 		LinuxDoOAuthEnabled:              settings.LinuxDoOAuthEnabled,
 		WeChatOAuthEnabled:               settings.WeChatOAuthEnabled,
 		WeChatOAuthOpenEnabled:           settings.WeChatOAuthOpenEnabled,

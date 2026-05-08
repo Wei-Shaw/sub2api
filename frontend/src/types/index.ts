@@ -179,6 +179,14 @@ export interface CustomEndpoint {
   description: string
 }
 
+export interface AIToolRewriteRule {
+  enabled: boolean
+  platform: '' | GroupPlatform
+  client: '' | 'claude' | 'codex' | 'codex-ws' | 'gemini' | 'opencode'
+  find: string
+  replace: string
+}
+
 export interface LoginAgreementDocument {
   id: string
   title: string
@@ -214,6 +222,7 @@ export interface PublicSettings {
   table_page_size_options: number[]
   custom_menu_items: CustomMenuItem[]
   custom_endpoints: CustomEndpoint[]
+  ai_tool_rewrite_rules?: AIToolRewriteRule[]
   linuxdo_oauth_enabled: boolean
   wechat_oauth_enabled: boolean
   wechat_oauth_open_enabled?: boolean

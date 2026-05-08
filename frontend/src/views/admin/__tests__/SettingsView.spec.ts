@@ -2,6 +2,29 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { defineComponent, h } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
 
+vi.hoisted(() => {
+  const storage = new Map<string, string>();
+  Object.defineProperty(globalThis, "localStorage", {
+    value: {
+      getItem: vi.fn((key: string) => storage.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => {
+        storage.set(key, String(value));
+      }),
+      removeItem: vi.fn((key: string) => {
+        storage.delete(key);
+      }),
+      clear: vi.fn(() => {
+        storage.clear();
+      }),
+      key: vi.fn((index: number) => Array.from(storage.keys())[index] ?? null),
+      get length() {
+        return storage.size;
+      },
+    },
+    configurable: true,
+  });
+});
+
 import SettingsView from "../SettingsView.vue";
 
 const {
@@ -163,6 +186,19 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.openaiExperimentalScheduler.description": "默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑，不代表上游 OpenAI 官方能力。",
     "admin.settings.site.uploadImage": "上传图片",
     "admin.settings.site.remove": "移除",
+    "admin.settings.site.aiToolRewriteRules.title": "AI 工具配置替换规则",
+    "admin.settings.site.aiToolRewriteRules.description": "对「使用密钥」弹窗生成的工具配置内容做普通字符串替换，按规则顺序执行",
+    "admin.settings.site.aiToolRewriteRules.publicWarning": "规则会通过公开设置下发给用户侧，请不要填写 API Key、Token 或其他敏感信息。",
+    "admin.settings.site.aiToolRewriteRules.itemLabel": "规则 #{n}",
+    "admin.settings.site.aiToolRewriteRules.platform": "平台",
+    "admin.settings.site.aiToolRewriteRules.client": "工具",
+    "admin.settings.site.aiToolRewriteRules.anyPlatform": "全部平台",
+    "admin.settings.site.aiToolRewriteRules.anyClient": "全部工具",
+    "admin.settings.site.aiToolRewriteRules.find": "查找内容",
+    "admin.settings.site.aiToolRewriteRules.findPlaceholder": "例如：model = \"gpt-5.4\"",
+    "admin.settings.site.aiToolRewriteRules.replace": "替换为",
+    "admin.settings.site.aiToolRewriteRules.replacePlaceholder": "例如：model = \"gpt-5.5\"",
+    "admin.settings.site.aiToolRewriteRules.add": "添加规则",
   };
   return {
     ...actual,
@@ -304,6 +340,7 @@ const baseSettingsResponse = {
   backend_mode_enabled: false,
   custom_menu_items: [],
   custom_endpoints: [],
+  ai_tool_rewrite_rules: [],
   frontend_url: "",
   smtp_host: "",
   smtp_port: 587,
@@ -452,6 +489,16 @@ async function openUsersTab(wrapper: ReturnType<typeof mountView>) {
   await flushPromises();
 }
 
+async function openGeneralTab(wrapper: ReturnType<typeof mountView>) {
+  const generalTabButton = wrapper
+    .findAll("button")
+    .find((node) => node.text().includes("admin.settings.tabs.general"));
+
+  expect(generalTabButton).toBeDefined();
+  await generalTabButton?.trigger("click");
+  await flushPromises();
+}
+
 describe("admin SettingsView payment visible method controls", () => {
   beforeEach(() => {
     getSettings.mockReset();
@@ -597,6 +644,60 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
         enable_anthropic_cache_ttl_1h_injection: true,
+      }),
+    );
+  });
+
+  it("loads and submits AI tool rewrite rules", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      ai_tool_rewrite_rules: [
+        {
+          enabled: true,
+          platform: "openai",
+          client: "codex",
+          find: 'model = "gpt-5.4"',
+          replace: 'model = "gpt-5.5"',
+        },
+      ],
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openGeneralTab(wrapper);
+
+    expect(wrapper.text()).toContain("AI 工具配置替换规则");
+    expect(wrapper.text()).toContain("规则会通过公开设置下发给用户侧");
+
+    const textareas = wrapper.findAll("textarea");
+    const findInput = textareas.find(
+      (node) =>
+        (node.element as HTMLTextAreaElement).value === 'model = "gpt-5.4"',
+    );
+    const replaceInput = textareas.find(
+      (node) =>
+        (node.element as HTMLTextAreaElement).value === 'model = "gpt-5.5"',
+    );
+    expect(findInput).toBeDefined();
+    expect(replaceInput).toBeDefined();
+
+    await replaceInput!.setValue('model = "gpt-5.6"');
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ai_tool_rewrite_rules: [
+          {
+            enabled: true,
+            platform: "openai",
+            client: "codex",
+            find: 'model = "gpt-5.4"',
+            replace: 'model = "gpt-5.6"',
+          },
+        ],
       }),
     );
   });

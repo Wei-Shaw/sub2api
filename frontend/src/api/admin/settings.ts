@@ -5,6 +5,7 @@
 
 import { apiClient } from "../client";
 import type {
+  AIToolRewriteRule,
   CustomEndpoint,
   CustomMenuItem,
   LoginAgreementDocument,
@@ -377,6 +378,7 @@ export interface SystemSettings {
   backend_mode_enabled: boolean;
   custom_menu_items: CustomMenuItem[];
   custom_endpoints: CustomEndpoint[];
+  ai_tool_rewrite_rules: AIToolRewriteRule[];
   // SMTP settings
   smtp_host: string;
   smtp_port: number;
@@ -593,6 +595,7 @@ export interface UpdateSettingsRequest {
   backend_mode_enabled?: boolean;
   custom_menu_items?: CustomMenuItem[];
   custom_endpoints?: CustomEndpoint[];
+  ai_tool_rewrite_rules?: AIToolRewriteRule[];
   smtp_host?: string;
   smtp_port?: number;
   smtp_username?: string;

@@ -197,6 +197,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		TablePageSizeOptions:                   settings.TablePageSizeOptions,
 		CustomMenuItems:                        dto.ParseCustomMenuItems(settings.CustomMenuItems),
 		CustomEndpoints:                        dto.ParseCustomEndpoints(settings.CustomEndpoints),
+		AIToolRewriteRules:                     dto.ParseAIToolRewriteRules(settings.AIToolRewriteRules),
 		DefaultConcurrency:                     settings.DefaultConcurrency,
 		DefaultBalance:                         settings.DefaultBalance,
 		RiskControlEnabled:                     settings.RiskControlEnabled,
@@ -338,6 +339,67 @@ func loginAgreementDocumentsToService(items []dto.LoginAgreementDocument) []serv
 	return result
 }
 
+func normalizeAIToolRewriteRules(input []dto.AIToolRewriteRule) ([]dto.AIToolRewriteRule, string) {
+	const (
+		maxAIToolRewriteRules          = 50
+		maxAIToolRewriteRuleScopeLen   = 32
+		maxAIToolRewriteRulePatternLen = 20 * 1024
+	)
+
+	if len(input) > maxAIToolRewriteRules {
+		return nil, "Too many AI tool rewrite rules (max 50)"
+	}
+
+	validPlatforms := map[string]struct{}{
+		"":            {},
+		"anthropic":   {},
+		"openai":      {},
+		"gemini":      {},
+		"antigravity": {},
+	}
+	validClients := map[string]struct{}{
+		"":         {},
+		"claude":   {},
+		"codex":    {},
+		"codex-ws": {},
+		"gemini":   {},
+		"opencode": {},
+	}
+
+	rules := make([]dto.AIToolRewriteRule, 0, len(input))
+	for _, rule := range input {
+		platform := strings.ToLower(strings.TrimSpace(rule.Platform))
+		client := strings.ToLower(strings.TrimSpace(rule.Client))
+		if len(platform) > maxAIToolRewriteRuleScopeLen {
+			return nil, "AI tool rewrite rule platform is too long (max 32 characters)"
+		}
+		if len(client) > maxAIToolRewriteRuleScopeLen {
+			return nil, "AI tool rewrite rule client is too long (max 32 characters)"
+		}
+		if _, ok := validPlatforms[platform]; !ok {
+			return nil, "AI tool rewrite rule platform is invalid"
+		}
+		if _, ok := validClients[client]; !ok {
+			return nil, "AI tool rewrite rule client is invalid"
+		}
+		if len(rule.Find) > maxAIToolRewriteRulePatternLen {
+			return nil, "AI tool rewrite rule find text is too long (max 20KB)"
+		}
+		if len(rule.Replace) > maxAIToolRewriteRulePatternLen {
+			return nil, "AI tool rewrite rule replace text is too long (max 20KB)"
+		}
+		rules = append(rules, dto.AIToolRewriteRule{
+			Enabled:  rule.Enabled,
+			Platform: platform,
+			Client:   client,
+			Find:     rule.Find,
+			Replace:  rule.Replace,
+		})
+	}
+
+	return rules, ""
+}
+
 // UpdateSettingsRequest 更新设置请求
 type UpdateSettingsRequest struct {
 	// 注册设置
@@ -428,20 +490,21 @@ type UpdateSettingsRequest struct {
 	GoogleOAuthFrontendRedirectURL string `json:"google_oauth_frontend_redirect_url"`
 
 	// OEM设置
-	SiteName                    string                `json:"site_name"`
-	SiteLogo                    string                `json:"site_logo"`
-	SiteSubtitle                string                `json:"site_subtitle"`
-	APIBaseURL                  string                `json:"api_base_url"`
-	ContactInfo                 string                `json:"contact_info"`
-	DocURL                      string                `json:"doc_url"`
-	HomeContent                 string                `json:"home_content"`
-	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
-	PurchaseSubscriptionEnabled *bool                 `json:"purchase_subscription_enabled"`
-	PurchaseSubscriptionURL     *string               `json:"purchase_subscription_url"`
-	TableDefaultPageSize        int                   `json:"table_default_page_size"`
-	TablePageSizeOptions        []int                 `json:"table_page_size_options"`
-	CustomMenuItems             *[]dto.CustomMenuItem `json:"custom_menu_items"`
-	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
+	SiteName                    string                   `json:"site_name"`
+	SiteLogo                    string                   `json:"site_logo"`
+	SiteSubtitle                string                   `json:"site_subtitle"`
+	APIBaseURL                  string                   `json:"api_base_url"`
+	ContactInfo                 string                   `json:"contact_info"`
+	DocURL                      string                   `json:"doc_url"`
+	HomeContent                 string                   `json:"home_content"`
+	HideCcsImportButton         bool                     `json:"hide_ccs_import_button"`
+	PurchaseSubscriptionEnabled *bool                    `json:"purchase_subscription_enabled"`
+	PurchaseSubscriptionURL     *string                  `json:"purchase_subscription_url"`
+	TableDefaultPageSize        int                      `json:"table_default_page_size"`
+	TablePageSizeOptions        []int                    `json:"table_page_size_options"`
+	CustomMenuItems             *[]dto.CustomMenuItem    `json:"custom_menu_items"`
+	CustomEndpoints             *[]dto.CustomEndpoint    `json:"custom_endpoints"`
+	AIToolRewriteRules          *[]dto.AIToolRewriteRule `json:"ai_tool_rewrite_rules"`
 
 	// 默认配置
 	DefaultConcurrency                       int                               `json:"default_concurrency"`
@@ -1216,6 +1279,21 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		customEndpointsJSON = string(endpointBytes)
 	}
 
+	aiToolRewriteRulesJSON := previousSettings.AIToolRewriteRules
+	if req.AIToolRewriteRules != nil {
+		rules, errMessage := normalizeAIToolRewriteRules(*req.AIToolRewriteRules)
+		if errMessage != "" {
+			response.BadRequest(c, errMessage)
+			return
+		}
+		ruleBytes, err := json.Marshal(rules)
+		if err != nil {
+			response.BadRequest(c, "Failed to serialize AI tool rewrite rules")
+			return
+		}
+		aiToolRewriteRulesJSON = string(ruleBytes)
+	}
+
 	// Ops metrics collector interval validation (seconds).
 	if req.OpsMetricsIntervalSeconds != nil {
 		v := *req.OpsMetricsIntervalSeconds
@@ -1348,6 +1426,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TablePageSizeOptions:             req.TablePageSizeOptions,
 		CustomMenuItems:                  customMenuJSON,
 		CustomEndpoints:                  customEndpointsJSON,
+		AIToolRewriteRules:               aiToolRewriteRulesJSON,
 		DefaultConcurrency:               req.DefaultConcurrency,
 		DefaultBalance:                   req.DefaultBalance,
 		AffiliateRebateRate:              affiliateRebateRate,
@@ -1720,6 +1799,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		TablePageSizeOptions:                   updatedSettings.TablePageSizeOptions,
 		CustomMenuItems:                        dto.ParseCustomMenuItems(updatedSettings.CustomMenuItems),
 		CustomEndpoints:                        dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
+		AIToolRewriteRules:                     dto.ParseAIToolRewriteRules(updatedSettings.AIToolRewriteRules),
 		DefaultConcurrency:                     updatedSettings.DefaultConcurrency,
 		DefaultBalance:                         updatedSettings.DefaultBalance,
 		AffiliateRebateRate:                    updatedSettings.AffiliateRebateRate,
@@ -2130,6 +2210,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.CustomEndpoints != after.CustomEndpoints {
 		changed = append(changed, "custom_endpoints")
+	}
+	if before.AIToolRewriteRules != after.AIToolRewriteRules {
+		changed = append(changed, "ai_tool_rewrite_rules")
 	}
 	if before.EnableFingerprintUnification != after.EnableFingerprintUnification {
 		changed = append(changed, "enable_fingerprint_unification")

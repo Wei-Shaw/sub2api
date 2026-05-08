@@ -591,6 +591,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyTablePageSizeOptions,
 		SettingKeyCustomMenuItems,
 		SettingKeyCustomEndpoints,
+		SettingKeyAIToolRewriteRules,
 		SettingKeyLinuxDoConnectEnabled,
 		SettingKeyWeChatConnectEnabled,
 		SettingKeyWeChatConnectAppID,
@@ -708,6 +709,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		TablePageSizeOptions:             tablePageSizeOptions,
 		CustomMenuItems:                  settings[SettingKeyCustomMenuItems],
 		CustomEndpoints:                  settings[SettingKeyCustomEndpoints],
+		AIToolRewriteRules:               settings[SettingKeyAIToolRewriteRules],
 		LinuxDoOAuthEnabled:              linuxDoEnabled,
 		WeChatOAuthEnabled:               weChatEnabled,
 		WeChatOAuthOpenEnabled:           weChatOpenEnabled,
@@ -862,6 +864,7 @@ type PublicSettingsInjectionPayload struct {
 	TablePageSizeOptions             []int                    `json:"table_page_size_options"`
 	CustomMenuItems                  json.RawMessage          `json:"custom_menu_items"`
 	CustomEndpoints                  json.RawMessage          `json:"custom_endpoints"`
+	AIToolRewriteRules               json.RawMessage          `json:"ai_tool_rewrite_rules"`
 	LinuxDoOAuthEnabled              bool                     `json:"linuxdo_oauth_enabled"`
 	WeChatOAuthEnabled               bool                     `json:"wechat_oauth_enabled"`
 	WeChatOAuthOpenEnabled           bool                     `json:"wechat_oauth_open_enabled"`
@@ -926,6 +929,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		TablePageSizeOptions:             settings.TablePageSizeOptions,
 		CustomMenuItems:                  filterUserVisibleMenuItems(settings.CustomMenuItems),
 		CustomEndpoints:                  safeRawJSONArray(settings.CustomEndpoints),
+		AIToolRewriteRules:               safeRawJSONArray(settings.AIToolRewriteRules),
 		LinuxDoOAuthEnabled:              settings.LinuxDoOAuthEnabled,
 		WeChatOAuthEnabled:               settings.WeChatOAuthEnabled,
 		WeChatOAuthOpenEnabled:           settings.WeChatOAuthOpenEnabled,
@@ -1504,6 +1508,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyTablePageSizeOptions] = string(tablePageSizeOptionsJSON)
 	updates[SettingKeyCustomMenuItems] = settings.CustomMenuItems
 	updates[SettingKeyCustomEndpoints] = settings.CustomEndpoints
+	updates[SettingKeyAIToolRewriteRules] = settings.AIToolRewriteRules
 
 	// 默认配置
 	updates[SettingKeyDefaultConcurrency] = strconv.Itoa(settings.DefaultConcurrency)
@@ -2233,6 +2238,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyTablePageSizeOptions:                     "[10,20,50,100]",
 		SettingKeyCustomMenuItems:                          "[]",
 		SettingKeyCustomEndpoints:                          "[]",
+		SettingKeyAIToolRewriteRules:                       "[]",
 		SettingKeyWeChatConnectEnabled:                     "false",
 		SettingKeyWeChatConnectAppID:                       "",
 		SettingKeyWeChatConnectAppSecret:                   "",
@@ -2410,6 +2416,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		PurchaseSubscriptionURL:          strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
 		CustomMenuItems:                  settings[SettingKeyCustomMenuItems],
 		CustomEndpoints:                  settings[SettingKeyCustomEndpoints],
+		AIToolRewriteRules:               settings[SettingKeyAIToolRewriteRules],
 		BackendModeEnabled:               settings[SettingKeyBackendModeEnabled] == "true",
 	}
 	result.TableDefaultPageSize, result.TablePageSizeOptions = parseTablePreferences(
