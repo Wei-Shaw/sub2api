@@ -211,9 +211,7 @@ REDACTED
 		REDACTED)
 			continue
 	REDACTED
-		for _, warning := range expiryWarnings {
-			item.WarningTexts = append(item.WarningTexts, warning)
-	REDACTED
+		item.WarningTexts = append(item.WarningTexts, expiryWarnings...)
 		if credentialExpiresAt != nil {
 			item.Credentials["expires_at"] = credentialExpiresAt.Format(time.RFC3339)
 	REDACTED
@@ -565,7 +563,9 @@ REDACTED
 REDACTED
 	if item.IDToken != "" {
 		item.Credentials["id_token"] = item.IDToken
-		enrichCodexImportAccountFromJWT(item, item.IDToken, false, now)
+		if err := enrichCodexImportAccountFromJWT(item, item.IDToken, false, now); err != nil {
+			return nil, err
+	REDACTED
 REDACTED
 	if err := enrichCodexImportAccountFromJWT(item, item.AccessToken, true, now); err != nil {
 		return nil, err
