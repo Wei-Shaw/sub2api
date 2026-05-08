@@ -16,6 +16,8 @@ import type {
   TempUnschedulableStatus,
   AdminDataPayload,
   AdminDataImportResult,
+  CodexSessionImportRequest,
+  CodexSessionImportResult,
   CheckMixedChannelRequest,
   CheckMixedChannelResponse
 REDACTED from '@/types'
@@ -547,6 +549,11 @@ REDACTED): Promise<AdminDataImportResult> {
   return data
 REDACTED
 
+export async function importCodexSession(payload: CodexSessionImportRequest): Promise<CodexSessionImportResult> {
+  const { data REDACTED = await apiClient.post<CodexSessionImportResult>('/admin/accounts/import/codex-session', payload)
+  return data
+REDACTED
+
 /**
  * Get Antigravity default model mapping from backend
  * @returns Default model mapping (from -> to)
@@ -663,6 +670,7 @@ export const accountsAPI = {
   syncFromCrs,
   exportData,
   importData,
+  importCodexSession,
   getAntigravityDefaultModelMapping,
   batchClearError,
   batchRefresh,
