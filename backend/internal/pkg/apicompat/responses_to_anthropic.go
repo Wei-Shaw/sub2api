@@ -119,7 +119,7 @@ func responsesStatusToAnthropicStopReason(status string, details *ResponsesIncom
 			return "max_tokens"
 		}
 		return "end_turn"
-	case "completed":
+	case "completed", "":
 		if containsAnthropicToolUseBlock(blocks) {
 			return "tool_use"
 		}
@@ -574,16 +574,9 @@ func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 			state.OutputTokens = usage.OutputTokens
 			state.CacheReadInputTokens = usage.CacheReadInputTokens
 		}
-		switch evt.Response.Status {
-		case "incomplete":
-			if evt.Response.IncompleteDetails != nil && evt.Response.IncompleteDetails.Reason == "max_output_tokens" {
-				stopReason = "max_tokens"
-			}
-		case "completed":
-			if state.HasToolCall {
-				stopReason = "tool_use"
-			}
-		}
+		stopReason = responsesStreamTerminalStopReason(evt.Type, evt.Response.Status, evt.Response.IncompleteDetails, state.HasToolCall)
+	} else {
+		stopReason = responsesStreamTerminalStopReason(evt.Type, "", nil, state.HasToolCall)
 	}
 
 	events = append(events,
@@ -602,6 +595,31 @@ func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 	)
 	state.MessageStopSent = true
 	return events
+}
+
+func responsesStreamTerminalStopReason(eventType, status string, details *ResponsesIncompleteDetails, hasToolCall bool) string {
+	if status == "" {
+		switch eventType {
+		case "response.incomplete":
+			status = "incomplete"
+		case "response.completed", "response.done":
+			status = "completed"
+		case "response.failed":
+			status = "failed"
+		}
+	}
+
+	switch status {
+	case "incomplete":
+		if details != nil && details.Reason == "max_output_tokens" {
+			return "max_tokens"
+		}
+	case "completed":
+		if hasToolCall {
+			return "tool_use"
+		}
+	}
+	return "end_turn"
 }
 
 func closeCurrentBlock(state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {

@@ -1398,6 +1398,60 @@ func TestForwardAsAnthropic_DoneSentinelWithoutTerminalReturnsError(t *testing.T
 	require.Zero(t, result.Usage.OutputTokens)
 }
 
+func TestForwardAsAnthropic_DoneSentinelAfterToolUseFinalizesAnthropicStream(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	body := []byte(`{"model":"gpt-5.4","max_tokens":16,"messages":[{"role":"user","content":"edit file"}],"tools":[{"name":"Edit","description":"edit","input_schema":{"type":"object"}}],"stream":true}`)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstreamBody := strings.Join([]string{
+		`data: {"type":"response.created","response":{"id":"resp_tool_missing_terminal","model":"gpt-5.4","status":"in_progress","output":[]}}`,
+		"",
+		`data: {"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","call_id":"call_edit","name":"Edit"}}`,
+		"",
+		`data: {"type":"response.function_call_arguments.done","output_index":0,"arguments":"{\"file_path\":\"/tmp/a.txt\",\"old_string\":\"a\",\"new_string\":\"b\"}"}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_tool_missing_terminal"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+
+	svc := &OpenAIGatewayService{httpUpstream: upstream}
+	account := &Account{
+		ID:          1,
+		Name:        "openai-oauth",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":       "oauth-token",
+			"chatgpt_account_id": "chatgpt-acc",
+		},
+	}
+
+	result, err := svc.ForwardAsAnthropic(context.Background(), c, account, body, "", "gpt-5.1")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "missing terminal event")
+	require.NotNil(t, result)
+	require.Zero(t, result.Usage.InputTokens)
+	require.Zero(t, result.Usage.OutputTokens)
+
+	got := rec.Body.String()
+	require.Contains(t, got, `"type":"tool_use"`)
+	require.Contains(t, got, `"name":"Edit"`)
+	require.Contains(t, got, `"type":"message_delta"`)
+	require.Contains(t, got, `"stop_reason":"tool_use"`)
+	require.Contains(t, got, `"usage":{"input_tokens":0,"output_tokens":0`)
+	require.Contains(t, got, `event: message_stop`)
+}
+
 func TestForwardAsAnthropic_UpstreamRequestIgnoresClientCancel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

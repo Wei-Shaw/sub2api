@@ -759,6 +759,10 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		}
 		return resultWithUsage(), nil
 	}
+	finalizePartialStream := func(err error) (*OpenAIForwardResult, error) {
+		result, _ := finalizeStream()
+		return result, err
+	}
 
 	// handleScanErr logs scanner errors if meaningful.
 	handleScanErr := func(err error) {
@@ -768,9 +772,6 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				zap.String("request_id", requestID),
 			)
 		}
-	}
-	missingTerminalErr := func() (*OpenAIForwardResult, error) {
-		return resultWithUsage(), fmt.Errorf("stream usage incomplete: missing terminal event")
 	}
 
 	// ── Determine keepalive interval ──
@@ -784,7 +785,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		for scanner.Scan() {
 			line := scanner.Text()
 			if isOpenAICompatDoneSentinelLine(line) {
-				return missingTerminalErr()
+				return finalizePartialStream(fmt.Errorf("stream usage incomplete: missing terminal event"))
 			}
 			payload, ok := extractOpenAISSEDataLine(line)
 			if !ok {
@@ -796,9 +797,9 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		}
 		if err := scanner.Err(); err != nil {
 			handleScanErr(err)
-			return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", err)
+			return finalizePartialStream(fmt.Errorf("stream usage incomplete: %w", err))
 		}
-		return missingTerminalErr()
+		return finalizePartialStream(fmt.Errorf("stream usage incomplete: missing terminal event"))
 	}
 
 	// ── With keepalive: goroutine + channel + select ──
@@ -848,16 +849,16 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		case ev, ok := <-events:
 			if !ok {
 				// Upstream closed
-				return missingTerminalErr()
+				return finalizePartialStream(fmt.Errorf("stream usage incomplete: missing terminal event"))
 			}
 			if ev.err != nil {
 				handleScanErr(ev.err)
-				return resultWithUsage(), fmt.Errorf("stream usage incomplete: %w", ev.err)
+				return finalizePartialStream(fmt.Errorf("stream usage incomplete: %w", ev.err))
 			}
 			lastDataAt = time.Now()
 			line := ev.line
 			if isOpenAICompatDoneSentinelLine(line) {
-				return missingTerminalErr()
+				return finalizePartialStream(fmt.Errorf("stream usage incomplete: missing terminal event"))
 			}
 			payload, ok := extractOpenAISSEDataLine(line)
 			if !ok {
@@ -873,14 +874,14 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				continue
 			}
 			if clientDisconnected {
-				return resultWithUsage(), fmt.Errorf("stream usage incomplete after timeout")
+				return finalizePartialStream(fmt.Errorf("stream usage incomplete after timeout"))
 			}
 			logger.L().Warn("openai messages stream: data interval timeout",
 				zap.String("request_id", requestID),
 				zap.String("model", originalModel),
 				zap.Duration("interval", streamInterval),
 			)
-			return resultWithUsage(), fmt.Errorf("stream data interval timeout")
+			return finalizePartialStream(fmt.Errorf("stream data interval timeout"))
 
 		case <-keepaliveCh:
 			if clientDisconnected {

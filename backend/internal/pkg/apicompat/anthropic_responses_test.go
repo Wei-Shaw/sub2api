@@ -616,6 +616,36 @@ func TestStreamingToolCall(t *testing.T) {
 	assert.Equal(t, "tool_use", events[0].Delta.StopReason)
 }
 
+func TestStreamingToolCallCompletedWithEmptyStatusUsesToolUseStopReason(t *testing.T) {
+	state := NewResponsesEventToAnthropicState()
+
+	ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:     "response.created",
+		Response: &ResponsesResponse{ID: "resp_empty_status", Model: "gpt-5.5"},
+	}, state)
+
+	events := ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item:        &ResponsesOutput{Type: "function_call", CallID: "call_edit", Name: "Edit"},
+	}, state)
+	require.Len(t, events, 1)
+
+	events = ResponsesEventToAnthropicEvents(&ResponsesStreamEvent{
+		Type: "response.completed",
+		Response: &ResponsesResponse{
+			Usage: &ResponsesUsage{InputTokens: 20, OutputTokens: 10},
+		},
+	}, state)
+	require.Len(t, events, 3)
+	assert.Equal(t, "content_block_stop", events[0].Type)
+	assert.Equal(t, "message_delta", events[1].Type)
+	assert.Equal(t, "tool_use", events[1].Delta.StopReason)
+	assert.Equal(t, 20, events[1].Usage.InputTokens)
+	assert.Equal(t, 10, events[1].Usage.OutputTokens)
+	assert.Equal(t, "message_stop", events[2].Type)
+}
+
 func TestStreamingToolCallStopReasonSurvivesLaterText(t *testing.T) {
 	state := NewResponsesEventToAnthropicState()
 
