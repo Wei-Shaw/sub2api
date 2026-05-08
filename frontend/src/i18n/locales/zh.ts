@@ -2476,6 +2476,13 @@ export default {
         compactSupported: '支持 Compact',
         compactUnsupported: '不支持 Compact',
         compactUnknown: 'Compact 未知',
+        compactMode: '压缩模式',
+        compactModeDesc: '自动压缩历史对话以节省 Token 使用量',
+        compactModeAuto: '自动',
+        compactModeForceOn: '强制开启',
+        compactModeForceOff: '强制关闭',
+        compactModelMapping: '压缩模型映射',
+        compactModelMappingDesc: '指定压缩时使用的模型映射',
       },
       anthropic: {
         apiKeyPassthrough: '自动透传（仅替换认证）',
@@ -2491,6 +2498,8 @@ export default {
       supportsAllModels: '（支持所有模型）',
       requestModel: '请求模型',
       actualModel: '实际模型',
+      fromModel: '源模型',
+      toModel: '目标模型',
       addMapping: '添加映射',
       mappingExists: '模型 {model} 的映射已存在',
       wildcardOnlyAtEnd: '通配符 * 只能放在末尾',
@@ -2524,6 +2533,10 @@ export default {
       errorCodeExists: '该错误码已被选中',
       interceptWarmupRequests: '拦截预热请求',
       interceptWarmupRequestsDesc: '启用后，标题生成等预热请求将返回 mock 响应，不消耗上游 token',
+      webSearchEmulation: 'Web 搜索模拟',
+      webSearchEmulationDefault: '默认',
+      webSearchEmulationForceOn: '强制开启',
+      webSearchEmulationForceOff: '强制关闭',
       autoPauseOnExpired: '过期自动暂停调度',
       autoPauseOnExpiredDesc: '启用后，账号过期将自动暂停调度',
       // Quota control (Anthropic OAuth/SetupToken only)
@@ -2646,6 +2659,9 @@ export default {
       bedrockApiKeyRequired: '请输入 Bedrock API Key',
       bedrockApiKeyLeaveEmpty: '留空以保持当前密钥',
       apiKeyIsRequired: 'API Key 是必需的',
+      credentials: '凭证',
+      extra: '额外配置',
+      noFieldsDeclared: '此插件未声明表单字段',
       leaveEmptyToKeep: '留空以保持当前密钥',
       // Upstream type
       upstream: {

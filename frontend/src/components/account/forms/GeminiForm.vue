@@ -81,14 +81,16 @@
 
     <!-- apikey sections -->
     <template v-if="context.accountCategory === 'apikey'">
-      <div>
-        <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
-        <input v-model="apiKeyBaseUrl" type="text" class="input" placeholder="https://generativelanguage.googleapis.com" />
-      </div>
-      <div>
-        <label class="input-label">{{ t('admin.accounts.apiKey') }}</label>
-        <input v-model="apiKeyValue" type="password" required class="input font-mono" placeholder="AIza..." />
-      </div>
+      <template v-if="context.mode !== 'edit'">
+        <div>
+          <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
+          <input v-model="apiKeyBaseUrl" type="text" class="input" placeholder="https://generativelanguage.googleapis.com" />
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.apiKey') }}</label>
+          <input v-model="apiKeyValue" type="password" required class="input font-mono" placeholder="AIza..." />
+        </div>
+      </template>
       <ModelRestrictionSection
         platform="gemini"
         :mode="modelRestrictionMode"

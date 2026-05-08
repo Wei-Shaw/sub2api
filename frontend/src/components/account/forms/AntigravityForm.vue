@@ -1,7 +1,7 @@
 ﻿<template>
   <div class="space-y-5">
-    <!-- Upstream config (only for upstream type) -->
-    <div v-if="antigravityAccountType === 'upstream'" class="space-y-4">
+    <!-- Upstream config (only for upstream type, hidden in edit mode) -->
+    <div v-if="antigravityAccountType === 'upstream' && context.mode !== 'edit'" class="space-y-4">
       <div>
         <label class="input-label">{{ t('admin.accounts.upstream.baseUrl') }}</label>
         <input v-model="upstreamBaseUrl" type="text" required class="input"

@@ -2321,6 +2321,13 @@ export default {
         compactSupported: 'Compact',
         compactUnsupported: 'No Compact',
         compactUnknown: 'Compact?',
+        compactMode: 'Compact Mode',
+        compactModeDesc: 'Automatically compact conversation history to save tokens',
+        compactModeAuto: 'Auto',
+        compactModeForceOn: 'Force On',
+        compactModeForceOff: 'Force Off',
+        compactModelMapping: 'Compact Model Mapping',
+        compactModelMappingDesc: 'Specify model mappings used during compaction',
       },
       anthropic: {
         apiKeyPassthrough: 'Auto passthrough (auth only)',
@@ -2337,6 +2344,8 @@ export default {
       supportsAllModels: '(supports all models)',
       requestModel: 'Request model',
       actualModel: 'Actual model',
+      fromModel: 'Source Model',
+      toModel: 'Target Model',
       addMapping: 'Add Mapping',
       mappingExists: 'Mapping for {model} already exists',
       wildcardOnlyAtEnd: 'Wildcard * can only be at the end',
@@ -2373,6 +2382,10 @@ export default {
       interceptWarmupRequests: 'Intercept Warmup Requests',
       interceptWarmupRequestsDesc:
         'When enabled, warmup requests like title generation will return mock responses without consuming upstream tokens',
+      webSearchEmulation: 'Web Search Emulation',
+      webSearchEmulationDefault: 'Default',
+      webSearchEmulationForceOn: 'Force On',
+      webSearchEmulationForceOff: 'Force Off',
       autoPauseOnExpired: 'Auto Pause On Expired',
       autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',
       // Quota control (Anthropic OAuth/SetupToken only)
@@ -2495,6 +2508,9 @@ export default {
       bedrockApiKeyRequired: 'Please enter Bedrock API Key',
       bedrockApiKeyLeaveEmpty: 'Leave empty to keep current key',
       apiKeyIsRequired: 'API Key is required',
+      credentials: 'Credentials',
+      extra: 'Extra Config',
+      noFieldsDeclared: 'No form fields declared by this plugin',
       leaveEmptyToKeep: 'Leave empty to keep current key',
       // Upstream type
       upstream: {
