@@ -30,7 +30,7 @@ export function useAntigravityForm() {
 
   const antigravityPresetMappings = computed(() => getPresetMappingsByPlatform('antigravity'))
   const isOAuthFlow = () => antigravityAccountType.value === 'oauth'
-  const oauthConfig: OAuthFlowConfig = { showRefreshTokenOption: true, platform: 'antigravity' }
+  const oauthConfig: OAuthFlowConfig = { showRefreshTokenOption: true, needsMixedChannelCheck: true, platform: 'antigravity' }
 
   function buildExtra(): Record<string, unknown> | undefined {
     const extra: Record<string, unknown> = {}

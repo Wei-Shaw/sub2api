@@ -86,6 +86,9 @@ export function useAnthropicForm() {
   const oauthConfig: OAuthFlowConfig = {
     showCookieOption: true,
     showRefreshTokenOption: false,
+    showHelp: true,
+    allowMultiple: true,
+    needsMixedChannelCheck: true,
     platform: 'anthropic'
   }
 

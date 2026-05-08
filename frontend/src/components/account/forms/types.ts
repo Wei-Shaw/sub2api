@@ -37,6 +37,10 @@ export interface OAuthFlowConfig {
   showSessionTokenOption?: boolean
   showAccessTokenOption?: boolean
   showProjectId?: boolean
+  showHelp?: boolean
+  showProxyWarning?: boolean
+  allowMultiple?: boolean
+  needsMixedChannelCheck?: boolean
   platform: AccountPlatform
 }
 

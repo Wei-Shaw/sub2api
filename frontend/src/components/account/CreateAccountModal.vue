@@ -205,9 +205,9 @@
         :session-id="oauthState.sessionId"
         :loading="oauthState.loading"
         :error="oauthState.error"
-        :show-help="form.platform === 'anthropic'"
-        :show-proxy-warning="form.platform !== 'openai' && !!form.proxy_id"
-        :allow-multiple="form.platform === 'anthropic'"
+        :show-help="oauthCfg?.showHelp ?? false"
+        :show-proxy-warning="(oauthCfg?.showProxyWarning ?? true) && !!form.proxy_id"
+        :allow-multiple="oauthCfg?.allowMultiple ?? false"
         :show-cookie-option="oauthCfg?.showCookieOption ?? false"
         :show-refresh-token-option="oauthCfg?.showRefreshTokenOption ?? false"
         :show-mobile-refresh-token-option="oauthCfg?.showMobileRefreshTokenOption ?? false"
@@ -431,14 +431,11 @@ const oauthState = computed<OAuthComposableState>(() =>
   platformFormRef.value?.getOAuthState?.() ?? defaultOAuthState)
 const oauthCfg = computed<OAuthFlowConfig | undefined>(() =>
   platformFormRef.value?.oauthConfig)
-const oauthAddMethod = computed<AddMethod>(() =>
-  form.platform === 'anthropic' ? addMethod.value : 'oauth')
+const oauthAddMethod = computed<AddMethod>(() => addMethod.value)
 
 const oauthStepTitle = computed(() => {
-  if (form.platform === 'openai') return t('admin.accounts.oauth.openai.title')
-  if (form.platform === 'gemini') return t('admin.accounts.oauth.gemini.title')
-  if (form.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.title')
-  return t('admin.accounts.oauth.title')
+  const name = currentPlatformDecl.value?.display_name || form.platform
+  return t('admin.accounts.oauth.platformAuthTitle', { platform: name })
 })
 
 // ---------------------------------------------------------------------------
@@ -472,8 +469,8 @@ const mixedChannelWarningMessageText = computed(() => {
   return mixedChannelWarningRawMessage.value
 })
 
-const needsMixedChannelCheck = (platform: AccountPlatform) =>
-  platform === 'antigravity' || platform === 'anthropic'
+const needsMixedChannelCheck = computed(() =>
+  oauthCfg.value?.needsMixedChannelCheck ?? false)
 
 function clearMixedChannelDialog() {
   showMixedChannelWarning.value = false
@@ -506,7 +503,7 @@ async function handleMixedChannelConfirm() {
 function handleMixedChannelCancel() { clearMixedChannelDialog() }
 
 function withAntigravityConfirmFlag(payload: CreateAccountRequest): CreateAccountRequest {
-  if (needsMixedChannelCheck(payload.platform) && antigravityMixedChannelConfirmed.value) {
+  if (needsMixedChannelCheck.value && antigravityMixedChannelConfirmed.value) {
     return { ...payload, confirm_mixed_channel_risk: true }
   }
   const cloned = { ...payload }
@@ -515,7 +512,7 @@ function withAntigravityConfirmFlag(payload: CreateAccountRequest): CreateAccoun
 }
 
 async function ensureAntigravityMixedChannelConfirmed(onConfirm: () => Promise<void>): Promise<boolean> {
-  if (!needsMixedChannelCheck(form.platform) || antigravityMixedChannelConfirmed.value) return true
+  if (!needsMixedChannelCheck.value || antigravityMixedChannelConfirmed.value) return true
   try {
     const result = await adminAPI.accounts.checkMixedChannelRisk({ platform: form.platform, group_ids: form.group_ids })
     if (!result.has_risk) return true
@@ -541,7 +538,7 @@ async function submitCreateAccount(payload: CreateAccountRequest) {
     handleClose()
   } catch (err: unknown) {
     const errObj = err as { response?: { status?: number; data?: { error?: string; message?: string; detail?: string } } }
-    if (errObj.response?.status === 409 && errObj.response?.data?.error === 'mixed_channel_warning' && needsMixedChannelCheck(form.platform)) {
+    if (errObj.response?.status === 409 && errObj.response?.data?.error === 'mixed_channel_warning' && needsMixedChannelCheck.value) {
       openMixedChannelDialog({
         message: errObj.response?.data?.message,
         onConfirm: async () => { antigravityMixedChannelConfirmed.value = true; await submitCreateAccount(payload) },
