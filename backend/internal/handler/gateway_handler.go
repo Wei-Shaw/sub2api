@@ -46,6 +46,7 @@ type GatewayHandler struct {
 	usageRecordWorkerPool     *service.UsageRecordWorkerPool
 	errorPassthroughService   *service.ErrorPassthroughService
 	responseCacheService      *service.ResponseCacheService
+	contentModerationService  *service.ContentModerationService
 	concurrencyHelper         *ConcurrencyHelper
 	userMsgQueueHelper        *UserMsgQueueHelper
 	maxAccountSwitches        int
@@ -67,6 +68,7 @@ func NewGatewayHandler(
 	apiKeyService *service.APIKeyService,
 	usageRecordWorkerPool *service.UsageRecordWorkerPool,
 	errorPassthroughService *service.ErrorPassthroughService,
+	contentModerationService *service.ContentModerationService,
 	userMsgQueueService *service.UserMessageQueueService,
 	responseCacheService *service.ResponseCacheService,
 	cfg *config.Config,
@@ -102,6 +104,7 @@ func NewGatewayHandler(
 		usageRecordWorkerPool:     usageRecordWorkerPool,
 		errorPassthroughService:   errorPassthroughService,
 		responseCacheService:      responseCacheService,
+		contentModerationService:  contentModerationService,
 		concurrencyHelper:         NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude, pingInterval),
 		userMsgQueueHelper:        umqHelper,
 		maxAccountSwitches:        maxAccountSwitches,
@@ -214,6 +217,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 	if h.maybeServeClaudeHaikuProbe(c, apiKey, body, reqModel, parsedReq.MaxTokens, reqStream, isClaudeCodeClient) {
+		return
+	}
+
+	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, body); decision != nil && decision.Blocked {
+		h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
 		return
 	}
 

@@ -263,7 +263,9 @@ const providerLabels = computed<Record<UserAuthProvider, string>>(() => ({
   email: t('profile.authBindings.providers.email'),
   linuxdo: t('profile.authBindings.providers.linuxdo'),
   oidc: t('profile.authBindings.providers.oidc', { providerName: props.oidcProviderName }),
-  wechat: t('profile.authBindings.providers.wechat')
+  wechat: t('profile.authBindings.providers.wechat'),
+  github: 'GitHub',
+  google: 'Google'
 }))
 
 function formatCurrency(value: number): string {
@@ -272,7 +274,13 @@ function formatCurrency(value: number): string {
 
 function normalizeProvider(value: string): UserAuthProvider | null {
   const normalized = value.trim().toLowerCase()
-  if (normalized === 'email' || normalized === 'linuxdo' || normalized === 'wechat') {
+  if (
+    normalized === 'email' ||
+    normalized === 'linuxdo' ||
+    normalized === 'wechat' ||
+    normalized === 'github' ||
+    normalized === 'google'
+  ) {
     return normalized
   }
   if (normalized === 'oidc' || normalized.startsWith('oidc:') || normalized.startsWith('oidc/')) {

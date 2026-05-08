@@ -171,6 +171,127 @@ func TestOpenAIGatewayService_Forward_WSv2_SuccessAndBindSticky(t *testing.T) {
 	require.Equal(t, "resp_new_1", gjson.GetBytes(responseBody, "id").String())
 }
 
+func TestOpenAIGatewayService_Forward_WSv2_ImageGenerationCountsOutputs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
+	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Errorf("upgrade websocket failed: %v", err)
+			return
+		}
+		defer func() {
+			_ = conn.Close()
+		}()
+
+		var request map[string]any
+		if err := conn.ReadJSON(&request); err != nil {
+			t.Errorf("read ws request failed: %v", err)
+			return
+		}
+
+		if err := conn.WriteJSON(map[string]any{
+			"type": "response.output_item.done",
+			"item": map[string]any{
+				"id":     "ig_ws_1",
+				"type":   "image_generation_call",
+				"result": "final-image",
+			},
+		}); err != nil {
+			t.Errorf("write response.output_item.done failed: %v", err)
+			return
+		}
+		if err := conn.WriteJSON(map[string]any{
+			"type": "response.completed",
+			"response": map[string]any{
+				"id":    "resp_ws_image_1",
+				"model": "gpt-5.4",
+				"output": []any{
+					map[string]any{
+						"id":     "ig_ws_1",
+						"type":   "image_generation_call",
+						"result": "final-image",
+					},
+				},
+				"usage": map[string]any{
+					"input_tokens":  9,
+					"output_tokens": 4,
+				},
+			},
+		}); err != nil {
+			t.Errorf("write response.completed failed: %v", err)
+			return
+		}
+	}))
+	defer wsServer.Close()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	groupID := int64(1010)
+	c.Set("api_key", &APIKey{
+		GroupID: &groupID,
+		Group: &Group{
+			ID:                   groupID,
+			AllowImageGeneration: true,
+		},
+	})
+
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.OAuthEnabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
+	cfg.Gateway.OpenAIWS.MinIdlePerAccount = 0
+	cfg.Gateway.OpenAIWS.MaxIdlePerAccount = 1
+	cfg.Gateway.OpenAIWS.QueueLimitPerConn = 8
+	cfg.Gateway.OpenAIWS.DialTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.ReadTimeoutSeconds = 5
+	cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 3
+
+	svc := &OpenAIGatewayService{
+		cfg:              cfg,
+		httpUpstream:     &httpUpstreamRecorder{},
+		cache:            &stubGatewayCache{},
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg),
+		toolCorrector:    NewCodexToolCorrector(),
+	}
+
+	account := &Account{
+		ID:          10,
+		Name:        "openai-ws-image",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": wsServer.URL,
+		},
+		Extra: map[string]any{
+			"responses_websockets_v2_enabled": true,
+		},
+	}
+
+	body := []byte(`{"model":"gpt-5.4","stream":false,"input":"draw","tools":[{"type":"image_generation","model":"gpt-image-2","size":"1024x1024"}],"tool_choice":{"type":"image_generation"}}`)
+	result, err := svc.Forward(context.Background(), c, account, body)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, "resp_ws_image_1", result.RequestID)
+	require.Equal(t, 1, result.ImageCount)
+	require.Equal(t, "1K", result.ImageSize)
+	require.Equal(t, "gpt-image-2", result.BillingModel)
+	require.Equal(t, 9, result.Usage.InputTokens)
+	require.Equal(t, 4, result.Usage.OutputTokens)
+	require.True(t, result.OpenAIWSMode)
+	require.Equal(t, "resp_ws_image_1", gjson.GetBytes(rec.Body.Bytes(), "id").String())
+}
+
 func requestToJSONString(payload map[string]any) string {
 	if len(payload) == 0 {
 		return "{}"

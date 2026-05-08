@@ -387,6 +387,19 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			if msgType != coderws.MessageText {
 				return payload, nil, nil
 			}
+			if strings.TrimSpace(gjson.GetBytes(payload, "type").String()) == "response.create" && hooks != nil && hooks.BeforeRequest != nil {
+				turnNo := int(completedTurns.Load()) + 1
+				if turnNo < 2 {
+					turnNo = 2
+				}
+				requestModel := usageMeta.requestModelForFrame(payload)
+				if requestModel == "" {
+					requestModel = capturedSessionModel
+				}
+				if err := hooks.BeforeRequest(turnNo, payload, requestModel); err != nil {
+					return payload, nil, err
+				}
+			}
 			// 在评估策略前先刷新 capturedSessionModel：客户端可能通过
 			// session.update 修改 session-level model（Realtime /
 			// Responses WS 协议允许），如果不刷新就会出现

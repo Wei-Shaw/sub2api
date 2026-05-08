@@ -44,6 +44,39 @@ func TestApplyCodexOAuthTransform_ToolContinuationPreservesInput(t *testing.T) {
 	require.Equal(t, "fc1", second["call_id"])
 }
 
+func TestApplyCodexOAuthTransform_MessagesBridgePromptCacheKeyIsHeaderOnly(t *testing.T) {
+	reqBody := map[string]any{
+		"model":            "gpt-5.5",
+		"prompt_cache_key": "anthropic-metadata-session-1",
+		"input": []any{
+			map[string]any{
+				"type": "message",
+				"role": "developer",
+				"content": []any{
+					map[string]any{
+						"type": "input_text",
+						"text": openAICompatClaudeCodeTodoGuardMarker,
+					},
+				},
+			},
+			map[string]any{
+				"type":    "message",
+				"role":    "user",
+				"content": "hello",
+			},
+		},
+	}
+
+	result := applyCodexOAuthTransformWithOptions(reqBody, codexOAuthTransformOptions{
+		SkipDefaultInstructions: true,
+		PreserveToolCallIDs:     true,
+	})
+
+	require.Equal(t, "anthropic-metadata-session-1", result.PromptCacheKey)
+	require.True(t, result.Modified)
+	require.NotContains(t, reqBody, "prompt_cache_key")
+}
+
 func TestApplyCodexOAuthTransform_ToolContinuationPreservesNativeMessageAndReasoningIDs(t *testing.T) {
 	reqBody := map[string]any{
 		"model": "gpt-5.2",
@@ -804,15 +837,25 @@ func TestApplyCodexOAuthTransform_EmptyInput(t *testing.T) {
 func TestNormalizeCodexModel_Gpt53(t *testing.T) {
 	cases := map[string]string{
 		"gpt-5.4":                   "gpt-5.4",
+		"gpt5.5":                    "gpt-5.5",
+		"openai/gpt5.5":             "gpt-5.5",
+		"gpt5.4":                    "gpt-5.4",
 		"gpt-5.4-high":              "gpt-5.4",
 		"gpt-5.4-chat-latest":       "gpt-5.4",
 		"gpt 5.4":                   "gpt-5.4",
 		"gpt-5.4-mini":              "gpt-5.4-mini",
+		"gpt5.4-mini":               "gpt-5.4-mini",
+		"gpt5.4mini":                "gpt-5.4-mini",
 		"gpt 5.4 mini":              "gpt-5.4-mini",
 		"gpt-5.3":                   "gpt-5.3-codex",
+		"gpt5.3":                    "gpt-5.3-codex",
 		"gpt-5.3-codex":             "gpt-5.3-codex",
+		"gpt5.3-codex":              "gpt-5.3-codex",
+		"gpt5.3codex":               "gpt-5.3-codex",
 		"gpt-5.3-codex-xhigh":       "gpt-5.3-codex",
 		"gpt-5.3-codex-spark":       "gpt-5.3-codex-spark",
+		"gpt5.3-codex-spark":        "gpt-5.3-codex-spark",
+		"gpt5.3codexspark":          "gpt-5.3-codex-spark",
 		"gpt 5.3 codex spark":       "gpt-5.3-codex-spark",
 		"gpt-5.3-codex-spark-high":  "gpt-5.3-codex-spark",
 		"gpt-5.3-codex-spark-xhigh": "gpt-5.3-codex-spark",

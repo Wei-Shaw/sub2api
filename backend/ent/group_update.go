@@ -275,6 +275,55 @@ func (_u *GroupUpdate) AddDefaultValidityDays(v int) *GroupUpdate {
 	return _u
 }
 
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (_u *GroupUpdate) SetAllowImageGeneration(v bool) *GroupUpdate {
+	_u.mutation.SetAllowImageGeneration(v)
+	return _u
+}
+
+// SetNillableAllowImageGeneration sets the "allow_image_generation" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableAllowImageGeneration(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetAllowImageGeneration(*v)
+	}
+	return _u
+}
+
+// SetImageRateIndependent sets the "image_rate_independent" field.
+func (_u *GroupUpdate) SetImageRateIndependent(v bool) *GroupUpdate {
+	_u.mutation.SetImageRateIndependent(v)
+	return _u
+}
+
+// SetNillableImageRateIndependent sets the "image_rate_independent" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImageRateIndependent(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetImageRateIndependent(*v)
+	}
+	return _u
+}
+
+// SetImageRateMultiplier sets the "image_rate_multiplier" field.
+func (_u *GroupUpdate) SetImageRateMultiplier(v float64) *GroupUpdate {
+	_u.mutation.ResetImageRateMultiplier()
+	_u.mutation.SetImageRateMultiplier(v)
+	return _u
+}
+
+// SetNillableImageRateMultiplier sets the "image_rate_multiplier" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImageRateMultiplier(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetImageRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddImageRateMultiplier adds value to the "image_rate_multiplier" field.
+func (_u *GroupUpdate) AddImageRateMultiplier(v float64) *GroupUpdate {
+	_u.mutation.AddImageRateMultiplier(v)
+	return _u
+}
+
 // SetImagePrice1k sets the "image_price_1k" field.
 func (_u *GroupUpdate) SetImagePrice1k(v float64) *GroupUpdate {
 	_u.mutation.ResetImagePrice1k()
@@ -962,6 +1011,18 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedDefaultValidityDays(); ok {
 		_spec.AddField(group.FieldDefaultValidityDays, field.TypeInt, value)
 	}
+	if value, ok := _u.mutation.AllowImageGeneration(); ok {
+		_spec.SetField(group.FieldAllowImageGeneration, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImageRateIndependent(); ok {
+		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImageRateMultiplier(); ok {
+		_spec.SetField(group.FieldImageRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedImageRateMultiplier(); ok {
+		_spec.AddField(group.FieldImageRateMultiplier, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.ImagePrice1k(); ok {
 		_spec.SetField(group.FieldImagePrice1k, field.TypeFloat64, value)
 	}
@@ -1607,6 +1668,55 @@ func (_u *GroupUpdateOne) SetNillableDefaultValidityDays(v *int) *GroupUpdateOne
 // AddDefaultValidityDays adds value to the "default_validity_days" field.
 func (_u *GroupUpdateOne) AddDefaultValidityDays(v int) *GroupUpdateOne {
 	_u.mutation.AddDefaultValidityDays(v)
+	return _u
+}
+
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (_u *GroupUpdateOne) SetAllowImageGeneration(v bool) *GroupUpdateOne {
+	_u.mutation.SetAllowImageGeneration(v)
+	return _u
+}
+
+// SetNillableAllowImageGeneration sets the "allow_image_generation" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableAllowImageGeneration(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetAllowImageGeneration(*v)
+	}
+	return _u
+}
+
+// SetImageRateIndependent sets the "image_rate_independent" field.
+func (_u *GroupUpdateOne) SetImageRateIndependent(v bool) *GroupUpdateOne {
+	_u.mutation.SetImageRateIndependent(v)
+	return _u
+}
+
+// SetNillableImageRateIndependent sets the "image_rate_independent" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImageRateIndependent(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImageRateIndependent(*v)
+	}
+	return _u
+}
+
+// SetImageRateMultiplier sets the "image_rate_multiplier" field.
+func (_u *GroupUpdateOne) SetImageRateMultiplier(v float64) *GroupUpdateOne {
+	_u.mutation.ResetImageRateMultiplier()
+	_u.mutation.SetImageRateMultiplier(v)
+	return _u
+}
+
+// SetNillableImageRateMultiplier sets the "image_rate_multiplier" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImageRateMultiplier(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImageRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddImageRateMultiplier adds value to the "image_rate_multiplier" field.
+func (_u *GroupUpdateOne) AddImageRateMultiplier(v float64) *GroupUpdateOne {
+	_u.mutation.AddImageRateMultiplier(v)
 	return _u
 }
 
@@ -2326,6 +2436,18 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedDefaultValidityDays(); ok {
 		_spec.AddField(group.FieldDefaultValidityDays, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AllowImageGeneration(); ok {
+		_spec.SetField(group.FieldAllowImageGeneration, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImageRateIndependent(); ok {
+		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImageRateMultiplier(); ok {
+		_spec.SetField(group.FieldImageRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedImageRateMultiplier(); ok {
+		_spec.AddField(group.FieldImageRateMultiplier, field.TypeFloat64, value)
 	}
 	if value, ok := _u.mutation.ImagePrice1k(); ok {
 		_spec.SetField(group.FieldImagePrice1k, field.TypeFloat64, value)
