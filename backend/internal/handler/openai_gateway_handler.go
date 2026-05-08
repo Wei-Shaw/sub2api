@@ -28,6 +28,7 @@ import (
 // OpenAIGatewayHandler handles OpenAI API gateway requests
 type OpenAIGatewayHandler struct {
 	gatewayService          *service.OpenAIGatewayService
+	imageTaskService        *service.ImageTaskService
 	billingCacheService     *service.BillingCacheService
 	apiKeyService           *service.APIKeyService
 	usageRecordWorkerPool   *service.UsageRecordWorkerPool
@@ -47,6 +48,7 @@ func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedM
 // NewOpenAIGatewayHandler creates a new OpenAIGatewayHandler
 func NewOpenAIGatewayHandler(
 	gatewayService *service.OpenAIGatewayService,
+	imageTaskService *service.ImageTaskService,
 	concurrencyService *service.ConcurrencyService,
 	billingCacheService *service.BillingCacheService,
 	apiKeyService *service.APIKeyService,
@@ -64,6 +66,7 @@ func NewOpenAIGatewayHandler(
 	}
 	return &OpenAIGatewayHandler{
 		gatewayService:          gatewayService,
+		imageTaskService:        imageTaskService,
 		billingCacheService:     billingCacheService,
 		apiKeyService:           apiKeyService,
 		usageRecordWorkerPool:   usageRecordWorkerPool,

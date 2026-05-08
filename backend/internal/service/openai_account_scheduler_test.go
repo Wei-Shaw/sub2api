@@ -393,6 +393,51 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_Require
 	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
 }
 
+func TestOpenAIGatewayService_SelectAccountWithSchedulerForImages_NativeFallsBackToOAuthWithoutImageModelMapping(t *testing.T) {
+	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+
+	ctx := context.Background()
+	groupID := int64(10110)
+	accounts := []Account{
+		{
+			ID:          36031,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    0,
+			Credentials: map[string]any{
+				"model_mapping": map[string]any{
+					openAIImagesResponsesMainModel: openAIImagesResponsesMainModel,
+				},
+			},
+		},
+	}
+	cfg := &config.Config{}
+	cfg.Gateway.Scheduling.LoadBatchEnabled = false
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:              &schedulerTestGatewayCache{},
+		cfg:                cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{}),
+	}
+
+	selection, decision, err := svc.SelectAccountWithSchedulerForImages(
+		ctx,
+		&groupID,
+		"",
+		"gpt-image-2",
+		nil,
+		OpenAIImagesCapabilityNative,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(36031), selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+}
+
 func TestOpenAIGatewayService_SelectAccountWithScheduler_EnabledUsesAdvancedPreviousResponseRouting(t *testing.T) {
 	resetOpenAIAdvancedSchedulerSettingCacheForTest()
 

@@ -121,12 +121,6 @@ export default defineConfig(({ mode }) => {
           target: backendUrl,
           changeOrigin: true
         },
-        '/images': {
-          target: backendUrl,
-          changeOrigin: true,
-          proxyTimeout: 0,
-          timeout: 0
-        },
         '/setup': {
           target: backendUrl,
           changeOrigin: true

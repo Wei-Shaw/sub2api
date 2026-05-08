@@ -13,7 +13,10 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"net/textproto"
+	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -408,6 +411,10 @@ func validateOpenAIImagesModel(model string) error {
 func normalizeOpenAIImagesEndpointPath(path string) string {
 	trimmed := strings.TrimSpace(path)
 	switch {
+	case strings.Contains(trimmed, "/images/async/generations"):
+		return openAIImagesGenerationsEndpoint
+	case strings.Contains(trimmed, "/images/async/edits"):
+		return openAIImagesEditsEndpoint
 	case strings.Contains(trimmed, "/images/generations"):
 		return openAIImagesGenerationsEndpoint
 	case strings.Contains(trimmed, "/images/edits"):
@@ -499,6 +506,42 @@ func (s *OpenAIGatewayService) ForwardImages(
 	default:
 		return nil, fmt.Errorf("unsupported account type: %s", account.Type)
 	}
+}
+
+func (s *OpenAIGatewayService) ForwardImagesBuffered(
+	ctx context.Context,
+	account *Account,
+	body []byte,
+	parsed *OpenAIImagesRequest,
+	channelMappedModel string,
+) (*OpenAIForwardResult, []OpenAIImageResultAsset, error) {
+	if parsed == nil {
+		return nil, nil, fmt.Errorf("parsed images request is required")
+	}
+	buffered := *parsed
+	buffered.Stream = false
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = &http.Request{
+		Method: http.MethodPost,
+		URL:    mustParseOpenAIImagesURL(buffered.Endpoint),
+		Header: make(http.Header),
+	}
+	if strings.TrimSpace(buffered.ContentType) != "" {
+		c.Request.Header.Set("Content-Type", buffered.ContentType)
+	}
+	result, err := s.ForwardImages(ctx, c, account, body, &buffered, channelMappedModel)
+	if err != nil {
+		return nil, nil, err
+	}
+	if rec.Code >= 400 {
+		return nil, nil, fmt.Errorf("upstream image request failed with status %d", rec.Code)
+	}
+	assets, err := ExtractOpenAIImageResultAssets(rec.Body.Bytes())
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %s", err, truncateOpenAIImageResponsePreview(rec.Body.String()))
+	}
+	return result, assets, nil
 }
 
 func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
@@ -628,6 +671,72 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		ImageCount:      imageCount,
 		ImageSize:       parsed.SizeTier,
 	}, nil
+}
+
+type OpenAIImageResultAsset struct {
+	Data          []byte
+	MimeType      string
+	RevisedPrompt string
+}
+
+func ExtractOpenAIImageResultAssets(body []byte) ([]OpenAIImageResultAsset, error) {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return nil, fmt.Errorf("invalid image response body")
+	}
+	var assets []OpenAIImageResultAsset
+	for _, item := range gjson.GetBytes(body, "data").Array() {
+		raw := strings.TrimSpace(item.Get("b64_json").String())
+		if raw == "" {
+			raw = strings.TrimSpace(item.Get("url").String())
+		}
+		normalized := normalizeOpenAIImageBase64(raw)
+		if normalized == "" {
+			continue
+		}
+		data, err := base64.StdEncoding.DecodeString(normalized)
+		if err != nil {
+			return nil, err
+		}
+		assets = append(assets, OpenAIImageResultAsset{
+			Data:          data,
+			MimeType:      inferImageMimeType(data),
+			RevisedPrompt: strings.TrimSpace(item.Get("revised_prompt").String()),
+		})
+	}
+	if len(assets) == 0 {
+		return nil, fmt.Errorf("no inline images returned")
+	}
+	return assets, nil
+}
+
+func truncateOpenAIImageResponsePreview(body string) string {
+	body = strings.TrimSpace(body)
+	if len(body) > 512 {
+		return body[:512]
+	}
+	return body
+}
+
+func inferImageMimeType(data []byte) string {
+	if len(data) >= 12 && string(data[:4]) == "RIFF" && string(data[8:12]) == "WEBP" {
+		return "image/webp"
+	}
+	mimeType := http.DetectContentType(data)
+	if strings.HasPrefix(mimeType, "image/") {
+		return mimeType
+	}
+	return "image/png"
+}
+
+var openAIImagesEndpointURLPattern = regexp.MustCompile(`^/v1/images/(generations|edits)$`)
+
+func mustParseOpenAIImagesURL(endpoint string) *url.URL {
+	endpoint = strings.TrimSpace(endpoint)
+	if !openAIImagesEndpointURLPattern.MatchString(endpoint) {
+		endpoint = openAIImagesGenerationsEndpoint
+	}
+	u, _ := url.Parse(endpoint)
+	return u
 }
 
 func (s *OpenAIGatewayService) buildOpenAIImagesRequest(
@@ -1092,7 +1201,8 @@ func normalizeOpenAIImageBase64(raw string) string {
 		}
 	}
 	raw = strings.TrimSpace(raw)
-	raw = strings.TrimRight(raw, "=") + strings.Repeat("=", (4-len(raw)%4)%4)
+	raw = strings.TrimRight(raw, "=")
+	raw += strings.Repeat("=", (4-len(raw)%4)%4)
 	if raw == "" {
 		return ""
 	}

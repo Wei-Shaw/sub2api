@@ -41,6 +41,23 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_JSON(t *testing.T) {
 	require.False(t, parsed.Multipart)
 }
 
+func TestOpenAIGatewayServiceParseOpenAIImagesRequest_AsyncGenerationAlias(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","size":"1024x1024"}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/images/async/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	svc := &OpenAIGatewayService{}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+	require.NotNil(t, parsed)
+	require.Equal(t, "/v1/images/generations", parsed.Endpoint)
+}
+
 func TestOpenAIGatewayServiceParseOpenAIImagesRequest_4KSizeTier(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"gpt-image-2","prompt":"draw a poster","size":"3072x2048","quality":"high"}`)
@@ -407,6 +424,53 @@ func TestOpenAIGatewayServiceForwardImages_OAuthUsesResponsesAPI(t *testing.T) {
 	require.Equal(t, "gpt-image-2", gjson.Get(rec.Body.String(), "model").String())
 	require.Equal(t, "aGVsbG8=", gjson.Get(rec.Body.String(), "data.0.b64_json").String())
 	require.Equal(t, "draw a cat", gjson.Get(rec.Body.String(), "data.0.revised_prompt").String())
+}
+
+func TestOpenAIGatewayServiceForwardImagesBuffered_OAuthExtractsImageAsset(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","size":"1024x1024","quality":"high","response_format":"b64_json"}`)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/images/async/generations", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = req
+
+	svc := &OpenAIGatewayService{}
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+
+	upstream := &httpUpstreamRecorder{
+		resp: &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type": []string{"text/event-stream"},
+				"X-Request-Id": []string{"req_img_buffered"},
+			},
+			Body: io.NopCloser(strings.NewReader(
+				"data: {\"type\":\"response.completed\",\"response\":{\"created_at\":1710000000,\"usage\":{\"input_tokens\":11,\"output_tokens\":22,\"output_tokens_details\":{\"image_tokens\":7}},\"tool_usage\":{\"image_gen\":{\"images\":1}},\"output\":[{\"type\":\"image_generation_call\",\"result\":\"aGVsbG8=\",\"revised_prompt\":\"draw a cat\",\"output_format\":\"png\",\"quality\":\"high\",\"size\":\"1024x1024\"}]}}\n\n" +
+					"data: [DONE]\n\n",
+			)),
+		},
+	}
+	svc.httpUpstream = upstream
+
+	account := &Account{
+		ID:       1,
+		Name:     "openai-oauth",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "token-123",
+		},
+	}
+
+	result, assets, err := svc.ForwardImagesBuffered(context.Background(), account, body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, assets, 1)
+	require.Equal(t, []byte("hello"), assets[0].Data)
+	require.Equal(t, "image/png", assets[0].MimeType)
 }
 
 func TestOpenAIGatewayServiceForwardImages_APIKeyGenerationUsesConfiguredV1BaseURL(t *testing.T) {
@@ -917,6 +981,18 @@ func TestCollectOpenAIImagesFromResponsesBody_FallsBackToOutputItemDone(t *testi
 	require.Equal(t, "draw a cat", results[0].RevisedPrompt)
 	require.Equal(t, "png", firstMeta.OutputFormat)
 	require.JSONEq(t, `{"images":1}`, string(usageRaw))
+}
+
+func TestCollectOpenAIImagesFromResponsesBody_ResponseFailedReturnsMessage(t *testing.T) {
+	body := []byte(
+		"data: {\"type\":\"response.created\",\"response\":{\"created_at\":1710000004}}\n\n" +
+			"data: {\"type\":\"response.failed\",\"error\":{\"type\":\"safety_error\",\"message\":\"This prompt may violate our content policy.\"}}\n\n" +
+			"data: [DONE]\n\n",
+	)
+
+	results, _, _, _, _, err := collectOpenAIImagesFromResponsesBody(body)
+	require.Nil(t, results)
+	require.EqualError(t, err, "upstream response failed: This prompt may violate our content policy.")
 }
 
 func TestOpenAIGatewayServiceForwardImages_OAuthStreamingHandlesOutputItemDoneFallback(t *testing.T) {

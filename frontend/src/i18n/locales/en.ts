@@ -997,6 +997,7 @@ export default {
     description: 'Generate images with the configured OpenAI image models.',
     prompt: 'Prompt',
     promptPlaceholder: 'Describe the image you want to generate',
+    policyHint: 'Avoid copyrighted characters, trademarks, public figures, graphic violence, sexual, hateful, or illegal content. These requests may be rejected upstream.',
     generate: 'Generate',
     generating: 'Generating...',
     apiKey: 'API Key',
@@ -1009,6 +1010,7 @@ export default {
     uploadReference: 'Upload references',
     options: 'Options',
     optionsHint: 'Defaults are used unless you change size or quality.',
+    optionsDone: 'Done',
     aspectRatio: 'Aspect ratio',
     aspectSquare: 'Square',
     aspectPortrait: 'Portrait',
@@ -1017,6 +1019,7 @@ export default {
     disabled: 'Image generation is currently disabled. Ask an administrator to enable it in system settings.',
     empty: 'Generated images will appear here.',
     error: 'Image generation failed',
+    policyRejected: 'Image generation was rejected by safety policy. Adjust the prompt and try again. Original error:',
     download: 'Download',
     downloadFailed: 'Failed to download image',
     useAsReference: 'Use as reference',
@@ -1025,7 +1028,9 @@ export default {
     sessionImagesHint: 'Images generated on this page are kept here for download or reference edits.',
     sessionImagesEmpty: 'Generated images from this session will appear here.',
     sessionImageCount: '{count} images',
-    duration: 'Time'
+    duration: 'Time',
+    timeout: 'Image generation timed out',
+    expired: 'Image task has expired'
   },
 
   models: {

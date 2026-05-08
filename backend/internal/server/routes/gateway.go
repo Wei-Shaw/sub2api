@@ -42,6 +42,18 @@ func RegisterGatewayRoutes(
 		}
 		h.OpenAIGateway.Images(c)
 	}
+	openAIImagesAsyncHandler := func(c *gin.Context) {
+		if getGroupPlatform(c) != service.PlatformOpenAI {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": gin.H{
+					"type":    "not_found_error",
+					"message": "Images API is not supported for this platform",
+				},
+			})
+			return
+		}
+		h.OpenAIGateway.ImagesAsync(c)
+	}
 
 	// API网关（Claude API兼容）
 	gateway := r.Group("/v1")
@@ -161,6 +173,10 @@ func RegisterGatewayRoutes(
 	r.POST("/api/v1/images/edits", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, func(c *gin.Context) {
 		openAIImagesHandler(c)
 	})
+	r.POST("/api/v1/images/async/generations", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, openAIImagesAsyncHandler)
+	r.POST("/api/v1/images/async/edits", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, openAIImagesAsyncHandler)
+	r.GET("/api/v1/images/async/tasks/:task_id", clientRequestID, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.ImageAsyncTaskStatus)
+	r.GET("/api/v1/images/async/tasks/:task_id/download", clientRequestID, gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.OpenAIGateway.ImageAsyncTaskDownload)
 
 	// Antigravity 模型列表
 	r.GET("/antigravity/models", gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.Gateway.AntigravityModels)

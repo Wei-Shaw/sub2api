@@ -1001,6 +1001,7 @@ export default {
     description: '通过已配置的 OpenAI 图片模型生成图片。',
     prompt: '提示词',
     promptPlaceholder: '描述你想生成的图片内容',
+    policyHint: '请避免生成版权角色、商标形象、真人名人、暴力血腥、色情、仇恨或违法内容，这类请求会被官网拒绝。',
     generate: '生成图片',
     generating: '生成中...',
     apiKey: 'API 密钥',
@@ -1013,6 +1014,7 @@ export default {
     uploadReference: '上传参考图',
     options: '功能选择',
     optionsHint: '不调整时使用默认尺寸和质量。',
+    optionsDone: '完成设置',
     aspectRatio: '宽高比',
     aspectSquare: '方图',
     aspectPortrait: '竖图',
@@ -1021,15 +1023,18 @@ export default {
     disabled: '文生图入口当前未启用，请联系管理员在系统设置中开启。',
     empty: '生成结果会显示在这里。',
     error: '图片生成失败',
+    policyRejected: '图片生成被安全策略拒绝，请调整提示词后重试。原始错误：',
     download: '下载',
     downloadFailed: '图片下载失败',
-    useAsReference: '引用继续',
+    useAsReference: '引用编辑',
     referenceFailed: '无法引用这张图片',
     sessionImages: '本次生图历史图片',
     sessionImagesHint: '这里暂存本次页面生成过的图片，可下载或引用继续编辑。',
     sessionImagesEmpty: '本次生成的图片会显示在这里。',
     sessionImageCount: '{count} 张',
-    duration: '耗时'
+    duration: '耗时',
+    timeout: '图片生成超时',
+    expired: '图片任务已过期'
   },
 
   models: {

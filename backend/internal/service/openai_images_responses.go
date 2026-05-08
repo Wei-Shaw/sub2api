@@ -385,6 +385,12 @@ func collectOpenAIImagesFromResponsesBody(body []byte) ([]openAIResponsesImageRe
 		}
 
 		switch gjson.GetBytes(payload, "type").String() {
+		case "response.failed":
+			msg := strings.TrimSpace(extractOpenAISSEErrorMessage(payload))
+			if msg == "" {
+				msg = "upstream response failed"
+			}
+			return nil, 0, nil, openAIResponsesImageResult{}, true, fmt.Errorf("upstream response failed: %s", msg)
 		case "response.output_item.done":
 			result, itemID, ok, err := extractOpenAIImageFromResponsesOutputItemDone(payload)
 			if err != nil {

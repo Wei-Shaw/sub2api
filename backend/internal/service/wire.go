@@ -142,6 +142,12 @@ func ProvideUsageCleanupService(repo UsageCleanupRepository, timingWheel *Timing
 	return svc
 }
 
+func ProvideImageTaskService(repo ImageTaskRepository, timingWheel *TimingWheelService) *ImageTaskService {
+	svc := NewImageTaskService(repo)
+	svc.Start(timingWheel)
+	return svc
+}
+
 // ProvideAccountExpiryService creates and starts AccountExpiryService.
 func ProvideAccountExpiryService(accountRepo AccountRepository) *AccountExpiryService {
 	svc := NewAccountExpiryService(accountRepo, time.Minute)
@@ -476,6 +482,7 @@ var ProviderSet = wire.NewSet(
 	ProvideConcurrencyService,
 	ProvideUserMessageQueueService,
 	NewUsageRecordWorkerPool,
+	ProvideImageTaskService,
 	ProvideSchedulerSnapshotService,
 	NewIdentityService,
 	NewCRSSyncService,

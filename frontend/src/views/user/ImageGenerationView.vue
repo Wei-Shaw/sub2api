@@ -115,18 +115,21 @@
               {{ errorMessage }}
             </p>
 
-            <div class="flex items-center gap-2">
+            <div
+              data-testid="image-generation-actions"
+              class="grid grid-cols-2 items-stretch gap-2"
+            >
               <button
                 data-testid="image-generation-options-trigger"
                 type="button"
-                class="btn btn-secondary shrink-0 px-3"
+                class="btn btn-secondary h-9 min-w-0 gap-1 rounded-lg px-2 py-1.5"
                 :aria-label="t('imageGeneration.options')"
                 @click="optionsOpen = true"
               >
-                <span class="mx-auto block h-4 w-5 rounded-sm border-2 border-current"></span>
+                <span class="mx-auto block h-3 w-4 rounded-sm border-2 border-current"></span>
                 <span
                   data-testid="image-generation-options-summary"
-                  class="mt-0.5 block text-[11px] font-normal leading-3 text-gray-500 dark:text-gray-400"
+                  class="min-w-0 truncate text-[10px] font-normal leading-3 text-gray-500 dark:text-gray-400"
                 >
                   {{ optionsSummary }}
                 </span>
@@ -134,10 +137,12 @@
               <button
                 data-testid="image-generation-submit"
                 type="submit"
-                class="btn btn-primary flex-1"
+                class="btn btn-primary h-9 min-w-0 overflow-hidden whitespace-nowrap rounded-lg px-3 py-1.5"
                 :disabled="!canSubmit"
               >
-                {{ loading ? t('imageGeneration.generating') : t('imageGeneration.generate') }}
+                <span class="truncate">
+                  {{ loading ? t('imageGeneration.generating') : t('imageGeneration.generate') }}
+                </span>
               </button>
             </div>
           </div>
@@ -155,8 +160,21 @@
           </div>
 
           <div class="min-h-0 flex-1">
-            <div v-if="images.length === 0" class="flex h-full items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50/60 px-4 text-center text-sm text-gray-500 dark:border-dark-700 dark:bg-dark-900/30 dark:text-gray-400">
-              {{ t('imageGeneration.empty') }}
+            <div
+              v-if="images.length === 0"
+              class="flex h-full items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50/60 px-6 text-center dark:border-dark-700 dark:bg-dark-900/30"
+            >
+              <div class="max-w-md space-y-3">
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  {{ t('imageGeneration.empty') }}
+                </p>
+                <p
+                  data-testid="image-generation-policy-hint"
+                  class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300"
+                >
+                  {{ t('imageGeneration.policyHint') }}
+                </p>
+              </div>
             </div>
 
             <div
@@ -265,11 +283,12 @@
             </div>
             <button
               type="button"
-              class="rounded px-2 py-1 text-sm text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-dark-700"
+              class="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 text-base font-semibold text-white shadow-sm shadow-emerald-500/25 hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:ring-offset-2 dark:bg-emerald-500 dark:hover:bg-emerald-400"
               data-testid="image-generation-options-close"
+              :aria-label="t('imageGeneration.optionsDone')"
               @click="optionsOpen = false"
             >
-              ×
+              ✓
             </button>
           </div>
 
@@ -346,7 +365,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import { editImage, generateImage } from '@/api/images'
+import { createImageEditTask, createImageGenerationTask, downloadImageTask, getImageTask } from '@/api/images'
 import { keysAPI } from '@/api/keys'
 import { userChannelsAPI } from '@/api/channels'
 import { useAppStore } from '@/stores'
@@ -368,12 +387,15 @@ const loading = ref(false)
 const loadingElapsedMs = ref(0)
 let loadingTimer: number | undefined
 const errorMessage = ref('')
-type GeneratedImage = { src: string; alt: string; durationMs: number }
+type GeneratedImage = { src: string; alt: string; durationMs: number; blob?: Blob }
+type ReferenceImage = { file: File; previewUrl: string; revokePreviewUrl: boolean }
 const images = ref<GeneratedImage[]>([])
 const sessionImages = ref<GeneratedImage[]>([])
 const previewIndex = ref(-1)
-const referenceImages = ref<Array<{ file: File; previewUrl: string }>>([])
+const referenceImages = ref<ReferenceImage[]>([])
 const maxReferenceImages = 2
+const imageTaskPollIntervalMs = 2500
+const imageTaskPollTimeoutMs = 15 * 60 * 1000
 
 const aspectOptions = [
   { value: '1:1' as const, label: '1:1', description: t('imageGeneration.aspectSquare'), previewClass: 'h-7 w-7' },
@@ -441,8 +463,11 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   stopLoadingTimer()
+  for (const image of sessionImages.value) {
+    if (image.src.startsWith('blob:')) URL.revokeObjectURL(image.src)
+  }
   for (const item of referenceImages.value) {
-    URL.revokeObjectURL(item.previewUrl)
+    revokeReferencePreviewUrl(item)
   }
 })
 
@@ -476,22 +501,29 @@ function handleReferenceFiles(event: Event) {
   addReferenceImages(files.map((file) => ({
       file,
       previewUrl: URL.createObjectURL(file),
+      revokePreviewUrl: true,
   })))
   input.value = ''
 }
 
-function addReferenceImages(items: Array<{ file: File; previewUrl: string }>) {
+function addReferenceImages(items: ReferenceImage[]) {
   const next = [...referenceImages.value, ...items]
   const overflow = Math.max(0, next.length - maxReferenceImages)
   for (const item of next.slice(0, overflow)) {
-    URL.revokeObjectURL(item.previewUrl)
+    revokeReferencePreviewUrl(item)
   }
   referenceImages.value = next.slice(overflow)
 }
 
 function removeReference(index: number) {
   const [removed] = referenceImages.value.splice(index, 1)
-  if (removed) URL.revokeObjectURL(removed.previewUrl)
+  if (removed) revokeReferencePreviewUrl(removed)
+}
+
+function revokeReferencePreviewUrl(item: ReferenceImage) {
+  if (item.revokePreviewUrl) {
+    URL.revokeObjectURL(item.previewUrl)
+  }
 }
 
 function dataURLToBlob(dataURL: string): Blob {
@@ -566,10 +598,10 @@ function downloadTimestamp(date = new Date()): string {
   ].join('')
 }
 
-async function downloadGeneratedImage(image: { src: string }) {
+async function downloadGeneratedImage(image: { src: string; blob?: Blob }) {
   const filenameBase = `image-${downloadTimestamp()}`
   try {
-    const blob = await imageSourceToBlob(image.src)
+    const blob = image.blob || await imageSourceToBlob(image.src)
     const objectURL = URL.createObjectURL(blob)
     triggerDownload(objectURL, `${filenameBase}.${imageExtension(blob)}`)
     URL.revokeObjectURL(objectURL)
@@ -585,11 +617,12 @@ async function downloadGeneratedImage(image: { src: string }) {
 
 async function useGeneratedImageAsReference(image: GeneratedImage, index: number) {
   try {
-    const blob = await imageSourceToBlob(image.src)
+    const blob = image.blob || await imageSourceToBlob(image.src)
     const file = new File([blob], `generated-reference-${index + 1}.${imageExtension(blob)}`, { type: blob.type || 'image/png' })
     addReferenceImages([{
       file,
-      previewUrl: URL.createObjectURL(file),
+      previewUrl: image.src,
+      revokePreviewUrl: false,
     }])
     prompt.value = ''
   } catch (error) {
@@ -620,21 +653,21 @@ async function submit() {
       n: 1,
       response_format: 'b64_json' as const,
     }
-    const response = referenceImages.value.length > 0
-      ? await editImage({ ...payload, images: referenceImages.value.map((item) => item.file) }, selectedApiKey.value)
-      : await generateImage(payload, selectedApiKey.value)
+    const task = referenceImages.value.length > 0
+      ? await createImageEditTask({ ...payload, images: referenceImages.value.map((item) => item.file) }, selectedApiKey.value)
+      : await createImageGenerationTask(payload, selectedApiKey.value)
+    const completed = await pollImageTask(task.task_id, selectedApiKey.value, startedAt)
+    if (!completed.download_url) throw new Error(t('imageGeneration.error'))
+    const blob = await downloadImageTask(completed.task_id, selectedApiKey.value)
+    const src = URL.createObjectURL(blob)
 
     const durationMs = Date.now() - startedAt
-    const nextImages: GeneratedImage[] = []
-    for (const item of response.data || []) {
-      const src = item.b64_json ? `data:image/png;base64,${item.b64_json}` : item.url
-      if (!src) continue
-      nextImages.push({
-        src,
-        alt: prompt.value.trim(),
-        durationMs,
-      })
-    }
+    const nextImages: GeneratedImage[] = [{
+      src,
+      alt: prompt.value.trim(),
+      durationMs,
+      blob,
+    }]
     images.value = nextImages
     const firstNewIndex = sessionImages.value.length
     sessionImages.value.push(...nextImages)
@@ -642,11 +675,56 @@ async function submit() {
       previewIndex.value = firstNewIndex
     }
   } catch (error) {
-    errorMessage.value = (error as { message?: string })?.message || t('imageGeneration.error')
+    errorMessage.value = formatImageGenerationError((error as { message?: string })?.message)
     appStore.showError(errorMessage.value)
   } finally {
     stopLoadingTimer()
     loading.value = false
   }
+}
+
+function formatImageGenerationError(message?: string): string {
+  const detail = (message || '').trim()
+  if (!detail) return t('imageGeneration.error')
+  if (isImagePolicyError(detail)) {
+    return `${t('imageGeneration.policyRejected')} ${detail}`
+  }
+  return detail
+}
+
+function isImagePolicyError(message: string): boolean {
+  const lower = message.toLowerCase()
+  return [
+    'policy',
+    'safety',
+    'copyright',
+    'trademark',
+    'infring',
+    'protected character',
+    'violates content',
+    'content violation',
+    '违禁',
+    '违规',
+    '版权',
+    '侵权',
+    '商标',
+  ].some((keyword) => lower.includes(keyword))
+}
+
+async function pollImageTask(taskId: string, apiKey: string, startedAt: number) {
+  let lastStatus = ''
+  while (Date.now() - startedAt < imageTaskPollTimeoutMs) {
+    const task = await getImageTask(taskId, apiKey)
+    lastStatus = task.status
+    if (task.status === 'succeeded') return task
+    if (task.status === 'failed') throw new Error(task.error_message || t('imageGeneration.error'))
+    if (task.status === 'expired') throw new Error(t('imageGeneration.expired'))
+    await sleep(imageTaskPollIntervalMs)
+  }
+  throw new Error(lastStatus ? t('imageGeneration.timeout') : t('imageGeneration.error'))
+}
+
+function sleep(ms: number) {
+  return new Promise(resolve => window.setTimeout(resolve, ms))
 }
 </script>

@@ -1,22 +1,27 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
 const cachedPublicSettings = vi.hoisted(() => ({ value: { image_generation_enabled: false } }))
 const {
-  generateImage,
-  editImage,
+  createImageGenerationTask,
+  createImageEditTask,
+  getImageTask,
+  downloadImageTask,
   listKeys,
   getAvailableChannels,
 } = vi.hoisted(() => ({
-  generateImage: vi.fn(),
-  editImage: vi.fn(),
+  createImageGenerationTask: vi.fn(),
+  createImageEditTask: vi.fn(),
+  getImageTask: vi.fn(),
+  downloadImageTask: vi.fn(),
   listKeys: vi.fn(),
   getAvailableChannels: vi.fn(),
 }))
 
 vi.hoisted(() => {
+  let objectURLIndex = 0
   Object.defineProperty(URL, 'createObjectURL', {
-    value: vi.fn(() => 'blob:reference-image'),
+    value: vi.fn(() => `blob:mock-${objectURLIndex++}`),
     configurable: true,
   })
   Object.defineProperty(URL, 'revokeObjectURL', {
@@ -26,8 +31,10 @@ vi.hoisted(() => {
 })
 
 vi.mock('@/api/images', () => ({
-  generateImage,
-  editImage,
+  createImageGenerationTask,
+  createImageEditTask,
+  getImageTask,
+  downloadImageTask,
 }))
 
 vi.mock('@/api/keys', () => ({
@@ -62,10 +69,24 @@ vi.mock('vue-i18n', () => ({
 import ImageGenerationView from '../ImageGenerationView.vue'
 
 describe('ImageGenerationView', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   beforeEach(() => {
     cachedPublicSettings.value = { image_generation_enabled: false }
-    generateImage.mockReset()
-    editImage.mockReset()
+    createImageGenerationTask.mockReset()
+    createImageEditTask.mockReset()
+    getImageTask.mockReset()
+    downloadImageTask.mockReset()
+    getImageTask.mockResolvedValue({
+      task_id: 'img_test',
+      status: 'succeeded',
+      expires_at: '2026-05-08T13:00:00Z',
+      download_url: 'data:image/png;base64,aGVsbG8=',
+      mime_type: 'image/png',
+    })
+    downloadImageTask.mockResolvedValue(new Blob(['image'], { type: 'image/png' }))
     listKeys.mockReset()
     getAvailableChannels.mockReset()
     listKeys.mockResolvedValue({
@@ -165,11 +186,11 @@ describe('ImageGenerationView', () => {
     expect(wrapper.find('[data-testid="image-generation-api-key"]').text()).toContain('OpenAI Key')
     expect(wrapper.find('[data-testid="image-generation-api-key"]').text()).not.toContain('Claude Key')
     await wrapper.get('[data-testid="image-generation-prompt"]').setValue('draw a cat')
-    generateImage.mockResolvedValue({ data: [] })
+    createImageGenerationTask.mockResolvedValue({ task_id: "img_test", status: "pending", expires_at: "2026-05-08T13:00:00Z" })
     await wrapper.get('[data-testid="image-generation-submit"]').trigger('submit')
     await flushPromises()
 
-    expect(generateImage).toHaveBeenCalledWith(expect.any(Object), 'sk-openai')
+    expect(createImageGenerationTask).toHaveBeenCalledWith(expect.any(Object), 'sk-openai')
   })
 
   it('keeps the prompt composer in the left settings column and leaves the workspace for results', async () => {
@@ -191,9 +212,13 @@ describe('ImageGenerationView', () => {
     expect(composer.classes()).toContain('space-y-3')
     expect(composer.classes().join(' ')).not.toContain('bottom-')
     expect(composer.find('[data-testid="image-generation-prompt"]').exists()).toBe(true)
-    expect(composer.find('[data-testid="image-generation-submit"]').classes()).not.toContain('w-full')
-    expect(composer.find('[data-testid="image-generation-submit"]').classes()).toContain('flex-1')
+    const actions = composer.get('[data-testid="image-generation-actions"]')
+    expect(actions.classes()).toEqual(expect.arrayContaining(['grid', 'grid-cols-2', 'gap-2']))
+    const submit = composer.find('[data-testid="image-generation-submit"]')
+    expect(submit.classes()).not.toContain('w-full')
+    expect(submit.classes()).toEqual(expect.arrayContaining(['h-9', 'min-w-0', 'whitespace-nowrap']))
     expect(composer.find('[data-testid="image-generation-options-trigger"]').exists()).toBe(true)
+    expect(composer.find('[data-testid="image-generation-options-trigger"]').classes()).toEqual(expect.arrayContaining(['h-9', 'min-w-0']))
     expect(workspace.find('[data-testid="image-generation-composer"]').exists()).toBe(false)
   })
 
@@ -233,6 +258,9 @@ describe('ImageGenerationView', () => {
     await wrapper.get('[data-testid="image-generation-options-trigger"]').trigger('click')
 
     expect(wrapper.find('[data-testid="image-generation-options-dialog"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="image-generation-options-close"]').text()).toBe('✓')
+    expect(wrapper.get('[data-testid="image-generation-options-close"]').attributes('aria-label')).toBe('imageGeneration.optionsDone')
+    expect(wrapper.get('[data-testid="image-generation-options-close"]').classes()).toEqual(expect.arrayContaining(['h-8', 'w-8', 'rounded-full', 'bg-emerald-500', 'text-white']))
     expect(wrapper.find('[data-testid="image-generation-aspect-1:1"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="image-generation-aspect-2:3"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="image-generation-aspect-3:2"]').exists()).toBe(true)
@@ -242,9 +270,22 @@ describe('ImageGenerationView', () => {
     expect(wrapper.find('[data-testid="image-generation-option-quality"]').exists()).toBe(true)
   })
 
+  it('shows a policy and copyright guidance hint in the empty workspace', async () => {
+    cachedPublicSettings.value = { image_generation_enabled: true }
+
+    const wrapper = mount(ImageGenerationView)
+    await flushPromises()
+
+    const composer = wrapper.get('[data-testid="image-generation-composer"]')
+    expect(composer.find('[data-testid="image-generation-policy-hint"]').exists()).toBe(false)
+    const hint = wrapper.get('[data-testid="image-generation-policy-hint"]')
+    expect(hint.text()).toContain('imageGeneration.policyHint')
+    expect(wrapper.get('[data-testid="image-generation-workspace"]').text()).toContain('imageGeneration.policyHint')
+  })
+
   it('uses aspect ratio and resolution selections for image generation while keeping defaults when unchanged', async () => {
     cachedPublicSettings.value = { image_generation_enabled: true }
-    generateImage.mockResolvedValue({ data: [] })
+    createImageGenerationTask.mockResolvedValue({ task_id: "img_test", status: "pending", expires_at: "2026-05-08T13:00:00Z" })
 
     const wrapper = mount(ImageGenerationView)
     await flushPromises()
@@ -253,7 +294,7 @@ describe('ImageGenerationView', () => {
     await wrapper.get('[data-testid="image-generation-submit"]').trigger('submit')
     await flushPromises()
 
-    expect(generateImage).toHaveBeenLastCalledWith(
+    expect(createImageGenerationTask).toHaveBeenLastCalledWith(
       expect.objectContaining({ size: '1024x1024', quality: 'auto' }),
       'sk-active',
     )
@@ -267,7 +308,7 @@ describe('ImageGenerationView', () => {
     await wrapper.get('[data-testid="image-generation-submit"]').trigger('submit')
     await flushPromises()
 
-    expect(generateImage).toHaveBeenLastCalledWith(
+    expect(createImageGenerationTask).toHaveBeenLastCalledWith(
       expect.objectContaining({ size: '3072x2048', quality: 'high' }),
       'sk-active',
     )
@@ -292,7 +333,7 @@ describe('ImageGenerationView', () => {
 
   it('uses selected API key and generation endpoint when no reference image is uploaded', async () => {
     cachedPublicSettings.value = { image_generation_enabled: true }
-    generateImage.mockResolvedValue({ data: [{ b64_json: 'abc' }] })
+    createImageGenerationTask.mockResolvedValue({ task_id: "img_test", status: "pending", expires_at: "2026-05-08T13:00:00Z" })
 
     const wrapper = mount(ImageGenerationView)
     await flushPromises()
@@ -301,16 +342,16 @@ describe('ImageGenerationView', () => {
     await wrapper.get('[data-testid="image-generation-submit"]').trigger('submit')
     await flushPromises()
 
-    expect(generateImage).toHaveBeenCalledWith(
+    expect(createImageGenerationTask).toHaveBeenCalledWith(
       expect.objectContaining({ model: 'gpt-image-2', prompt: 'draw a cat' }),
       'sk-active',
     )
-    expect(editImage).not.toHaveBeenCalled()
+    expect(createImageEditTask).not.toHaveBeenCalled()
   })
 
   it('uses image edit endpoint when reference images are uploaded', async () => {
     cachedPublicSettings.value = { image_generation_enabled: true }
-    editImage.mockResolvedValue({ data: [{ url: 'https://example.com/image.png' }] })
+    createImageEditTask.mockResolvedValue({ task_id: "img_test", status: "pending", expires_at: "2026-05-08T13:00:00Z" })
 
     const wrapper = mount(ImageGenerationView)
     await flushPromises()
@@ -325,15 +366,36 @@ describe('ImageGenerationView', () => {
     await wrapper.get('[data-testid="image-generation-submit"]').trigger('submit')
     await flushPromises()
 
-    expect(editImage).toHaveBeenCalledWith(
+    expect(createImageEditTask).toHaveBeenCalledWith(
       expect.objectContaining({ model: 'gpt-image-2', prompt: 'make it cinematic', images: [file] }),
       'sk-active',
     )
   })
 
+  it('shows a friendly policy error while preserving the upstream detail', async () => {
+    cachedPublicSettings.value = { image_generation_enabled: true }
+    createImageGenerationTask.mockResolvedValue({ task_id: "img_test", status: "pending", expires_at: "2026-05-08T13:00:00Z" })
+    getImageTask.mockResolvedValue({
+      task_id: 'img_test',
+      status: 'failed',
+      expires_at: '2026-05-08T13:00:00Z',
+      error_message: 'Prompt violates content policy',
+    })
+
+    const wrapper = mount(ImageGenerationView)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="image-generation-prompt"]').setValue('draw protected character')
+    await wrapper.get('[data-testid="image-generation-submit"]').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('imageGeneration.policyRejected')
+    expect(wrapper.text()).toContain('Prompt violates content policy')
+  })
+
   it('submits the prompt with Enter and keeps Shift Enter for new lines', async () => {
     cachedPublicSettings.value = { image_generation_enabled: true }
-    generateImage.mockResolvedValue({ data: [{ b64_json: 'abc' }] })
+    createImageGenerationTask.mockResolvedValue({ task_id: "img_test", status: "pending", expires_at: "2026-05-08T13:00:00Z" })
 
     const wrapper = mount(ImageGenerationView)
     await flushPromises()
@@ -343,17 +405,17 @@ describe('ImageGenerationView', () => {
     await prompt.trigger('keydown', { key: 'Enter' })
     await flushPromises()
 
-    expect(generateImage).toHaveBeenCalledWith(
+    expect(createImageGenerationTask).toHaveBeenCalledWith(
       expect.objectContaining({ prompt: 'draw a cat' }),
       'sk-active',
     )
 
-    generateImage.mockClear()
+    createImageGenerationTask.mockClear()
     await prompt.setValue('line one')
     await prompt.trigger('keydown', { key: 'Enter', shiftKey: true })
     await flushPromises()
 
-    expect(generateImage).not.toHaveBeenCalled()
+    expect(createImageGenerationTask).not.toHaveBeenCalled()
   })
 
   it('limits uploaded reference images to two and disables multiple file selection', async () => {
@@ -378,7 +440,7 @@ describe('ImageGenerationView', () => {
 
   it('downloads generated images from the history card', async () => {
     cachedPublicSettings.value = { image_generation_enabled: true }
-    generateImage.mockResolvedValue({ data: [{ b64_json: 'aGVsbG8=' }] })
+    createImageGenerationTask.mockResolvedValue({ task_id: "img_test", status: "pending", expires_at: "2026-05-08T13:00:00Z" })
     vi.useFakeTimers()
     vi.setSystemTime(new Date(2026, 4, 8, 12, 34, 56))
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
@@ -402,9 +464,9 @@ describe('ImageGenerationView', () => {
     cachedPublicSettings.value = { image_generation_enabled: true }
     vi.useFakeTimers()
     vi.setSystemTime(1_000)
-    generateImage.mockImplementation(async () => {
+    createImageGenerationTask.mockImplementation(async () => {
       vi.setSystemTime(3_345)
-      return { data: [{ b64_json: 'aGVsbG8=', revised_prompt: 'internal revised prompt' }] }
+      return { task_id: "img_test", status: "pending", expires_at: "2026-05-08T13:00:00Z" }
     })
 
     const wrapper = mount(ImageGenerationView)
@@ -427,8 +489,8 @@ describe('ImageGenerationView', () => {
 
   it('uses the previous generated image as a reference for the next generation', async () => {
     cachedPublicSettings.value = { image_generation_enabled: true }
-    generateImage.mockResolvedValue({ data: [{ b64_json: 'aGVsbG8=' }] })
-    editImage.mockResolvedValue({ data: [{ b64_json: 'd29ybGQ=' }] })
+    createImageGenerationTask.mockResolvedValue({ task_id: "img_test", status: "pending", expires_at: "2026-05-08T13:00:00Z" })
+    createImageEditTask.mockResolvedValue({ task_id: "img_test", status: "pending", expires_at: "2026-05-08T13:00:00Z" })
 
     const wrapper = mount(ImageGenerationView)
     await flushPromises()
@@ -441,7 +503,7 @@ describe('ImageGenerationView', () => {
     await wrapper.get('[data-testid="image-generation-submit"]').trigger('submit')
     await flushPromises()
 
-    expect(editImage).toHaveBeenCalledWith(
+    expect(createImageEditTask).toHaveBeenCalledWith(
       expect.objectContaining({
         prompt: 'make it cinematic',
         images: [expect.any(File)],
@@ -450,9 +512,31 @@ describe('ImageGenerationView', () => {
     )
   })
 
+  it('reuses the generated image URL for the generated reference preview', async () => {
+    cachedPublicSettings.value = { image_generation_enabled: true }
+    createImageGenerationTask.mockResolvedValue({ task_id: "img_test", status: "pending", expires_at: "2026-05-08T13:00:00Z" })
+
+    const wrapper = mount(ImageGenerationView)
+    await flushPromises()
+
+    await wrapper.get('[data-testid="image-generation-prompt"]').setValue('draw a cat')
+    await wrapper.get('[data-testid="image-generation-submit"]').trigger('submit')
+    await flushPromises()
+
+    const generatedSrc = wrapper.get('[data-testid="image-generation-result-image-0"]').attributes('src')
+    await wrapper.get('[data-testid="image-generation-session-use-reference-0"]').trigger('click')
+    await flushPromises()
+
+    const referenceSrc = wrapper.get('[data-testid="image-generation-reference-thumb-0"] img').attributes('src')
+    expect(referenceSrc).toBe(generatedSrc)
+
+    await wrapper.get('[data-testid="image-generation-reference-thumb-0"] button').trigger('click')
+    expect(URL.revokeObjectURL).not.toHaveBeenCalledWith(generatedSrc)
+  })
+
   it('clears the prompt and replaces existing references when continuing from a generated image', async () => {
     cachedPublicSettings.value = { image_generation_enabled: true }
-    generateImage.mockResolvedValue({ data: [{ b64_json: 'aGVsbG8=' }] })
+    createImageGenerationTask.mockResolvedValue({ task_id: "img_test", status: "pending", expires_at: "2026-05-08T13:00:00Z" })
 
     const wrapper = mount(ImageGenerationView)
     await flushPromises()
@@ -478,9 +562,15 @@ describe('ImageGenerationView', () => {
 
   it('keeps every generated image in a right history rail that can be downloaded and used as a reference', async () => {
     cachedPublicSettings.value = { image_generation_enabled: true }
-    generateImage
-      .mockResolvedValueOnce({ data: [{ b64_json: 'aGVsbG8=' }] })
-      .mockResolvedValueOnce({ data: [{ b64_json: 'd29ybGQ=' }] })
+    createImageGenerationTask
+      .mockResolvedValueOnce({ task_id: "img_test", status: "pending", expires_at: "2026-05-08T13:00:00Z" })
+      .mockResolvedValueOnce({ task_id: "img_test", status: "pending", expires_at: "2026-05-08T13:00:00Z" })
+    getImageTask
+      .mockResolvedValueOnce({ task_id: 'img_test', status: 'succeeded', expires_at: '2026-05-08T13:00:00Z', download_url: 'data:image/png;base64,Zmlyc3Q=' })
+      .mockResolvedValueOnce({ task_id: 'img_test', status: 'succeeded', expires_at: '2026-05-08T13:00:00Z', download_url: 'data:image/png;base64,c2Vjb25k' })
+    downloadImageTask
+      .mockResolvedValueOnce(new Blob(['first'], { type: 'image/png' }))
+      .mockResolvedValueOnce(new Blob(['second'], { type: 'image/png' }))
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
 
     const wrapper = mount(ImageGenerationView)
@@ -514,9 +604,12 @@ describe('ImageGenerationView', () => {
 
   it('clicks history thumbnails to preview that image and highlights the active preview', async () => {
     cachedPublicSettings.value = { image_generation_enabled: true }
-    generateImage
-      .mockResolvedValueOnce({ data: [{ b64_json: 'Zmlyc3Q=' }] })
-      .mockResolvedValueOnce({ data: [{ b64_json: 'c2Vjb25k' }] })
+    createImageGenerationTask
+      .mockResolvedValueOnce({ task_id: "img_test", status: "pending", expires_at: "2026-05-08T13:00:00Z" })
+      .mockResolvedValueOnce({ task_id: "img_test", status: "pending", expires_at: "2026-05-08T13:00:00Z" })
+    getImageTask
+      .mockResolvedValueOnce({ task_id: 'img_test', status: 'succeeded', expires_at: '2026-05-08T13:00:00Z', download_url: 'data:image/png;base64,Zmlyc3Q=' })
+      .mockResolvedValueOnce({ task_id: 'img_test', status: 'succeeded', expires_at: '2026-05-08T13:00:00Z', download_url: 'data:image/png;base64,c2Vjb25k' })
 
     const wrapper = mount(ImageGenerationView)
     await flushPromises()
@@ -528,18 +621,18 @@ describe('ImageGenerationView', () => {
     await wrapper.get('[data-testid="image-generation-submit"]').trigger('submit')
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="image-generation-result-image-0"]').attributes('src')).toContain('c2Vjb25k')
+    expect(wrapper.get('[data-testid="image-generation-result-image-0"]').attributes('src')).toContain('blob:')
     expect(wrapper.get('[data-testid="image-generation-session-image-1"]').classes().join(' ')).toContain('border-primary-500')
 
     await wrapper.get('[data-testid="image-generation-session-preview-0"]').trigger('click')
 
-    expect(wrapper.get('[data-testid="image-generation-result-image-0"]').attributes('src')).toContain('Zmlyc3Q')
+    expect(wrapper.get('[data-testid="image-generation-result-image-0"]').attributes('src')).toContain('blob:')
     expect(wrapper.get('[data-testid="image-generation-session-image-0"]').classes().join(' ')).toContain('border-primary-500')
   })
 
   it('centers the latest generated image and lets it fill the result workspace', async () => {
     cachedPublicSettings.value = { image_generation_enabled: true }
-    generateImage.mockResolvedValue({ data: [{ b64_json: 'aGVsbG8=' }] })
+    createImageGenerationTask.mockResolvedValue({ task_id: "img_test", status: "pending", expires_at: "2026-05-08T13:00:00Z" })
 
     const wrapper = mount(ImageGenerationView)
     await flushPromises()
@@ -578,8 +671,8 @@ describe('ImageGenerationView', () => {
     cachedPublicSettings.value = { image_generation_enabled: true }
     vi.useFakeTimers()
     vi.setSystemTime(0)
-    let resolveGenerate: (value: { data: Array<{ b64_json: string }> }) => void = () => {}
-    generateImage.mockReturnValue(new Promise((resolve) => {
+    let resolveGenerate: (value: { task_id: string; status: string; expires_at: string }) => void = () => {}
+    createImageGenerationTask.mockReturnValue(new Promise((resolve) => {
       resolveGenerate = resolve
     }))
 
@@ -594,7 +687,7 @@ describe('ImageGenerationView', () => {
 
     expect(wrapper.get('[data-testid="image-generation-loading-elapsed"]').text()).toContain('12.3s')
 
-    resolveGenerate({ data: [{ b64_json: 'ZG9uZQ==' }] })
+    resolveGenerate({ task_id: 'img_test', status: 'pending', expires_at: '2026-05-08T13:00:00Z' })
     await flushPromises()
     vi.useRealTimers()
   })

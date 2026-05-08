@@ -120,6 +120,11 @@ func enhanceCSPPolicy(policy string) string {
 		policy = addToDirective(policy, "frame-src", StripeDomain)
 	}
 
+	// Generated image previews and reference thumbnails use object URLs.
+	if !strings.Contains(policy, "blob:") {
+		policy = addToDirective(policy, "img-src", "blob:")
+	}
+
 	return policy
 }
 
