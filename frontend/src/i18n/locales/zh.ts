@@ -2659,7 +2659,7 @@ export default {
       // OAuth flow
       oauth: {
         title: 'Claude 账号授权',
-        platformAuthTitle: '{platform} 账号授权',
+        platformAuthTitle: '账号授权',
         authMethod: '授权方式',
         manualAuth: '手动授权',
         cookieAutoAuth: 'Cookie 自动授权',

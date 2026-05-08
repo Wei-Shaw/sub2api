@@ -2508,7 +2508,7 @@ export default {
       // OAuth flow
       oauth: {
         title: 'Claude Account Authorization',
-        platformAuthTitle: '{platform} Account Authorization',
+        platformAuthTitle: 'Account Authorization',
         authMethod: 'Authorization Method',
         manualAuth: 'Manual Authorization',
         cookieAutoAuth: 'Cookie Auto-Auth',

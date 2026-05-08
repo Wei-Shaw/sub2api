@@ -433,10 +433,7 @@ const oauthCfg = computed<OAuthFlowConfig | undefined>(() =>
   platformFormRef.value?.oauthConfig)
 const oauthAddMethod = computed<AddMethod>(() => addMethod.value)
 
-const oauthStepTitle = computed(() => {
-  const name = currentPlatformDecl.value?.display_name || form.platform
-  return t('admin.accounts.oauth.platformAuthTitle', { platform: name })
-})
+const oauthStepTitle = computed(() => t('admin.accounts.oauth.platformAuthTitle'))
 
 // ---------------------------------------------------------------------------
 // Computed helpers
