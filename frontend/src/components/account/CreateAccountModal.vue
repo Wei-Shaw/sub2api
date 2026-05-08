@@ -97,7 +97,7 @@
         <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
         <div
           class="mt-2 grid gap-3"
-          :class="currentPlatformDecl.account_types.length <= 2 ? 'grid-cols-2' : currentPlatformDecl.account_types.length === 3 ? 'grid-cols-3' : 'grid-cols-2 sm:grid-cols-4'"
+          :class="currentPlatformDecl.account_types.length <= 2 ? 'grid-cols-2' : 'grid-cols-3'"
           data-tour="account-form-type"
         >
           <button
