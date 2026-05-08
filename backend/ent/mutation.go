@@ -14783,6 +14783,7 @@ type GroupMutation struct {
 	messages_dispatch_model_config          *domain.OpenAIMessagesDispatchModelConfig
 	rpm_limit                               *int
 	addrpm_limit                            *int
+	group_extra                             *map[string]interface{}
 	clearedFields                           map[string]struct{}
 	api_keys                                map[int64]struct{}
 	removedapi_keys                         map[int64]struct{}
@@ -16427,6 +16428,55 @@ func (m *GroupMutation) ResetRpmLimit() {
 	m.addrpm_limit = nil
 }
 
+// SetGroupExtra sets the "group_extra" field.
+func (m *GroupMutation) SetGroupExtra(value map[string]interface{}) {
+	m.group_extra = &value
+}
+
+// GroupExtra returns the value of the "group_extra" field in the mutation.
+func (m *GroupMutation) GroupExtra() (r map[string]interface{}, exists bool) {
+	v := m.group_extra
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupExtra returns the old "group_extra" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldGroupExtra(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupExtra is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupExtra requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupExtra: %w", err)
+	}
+	return oldValue.GroupExtra, nil
+}
+
+// ClearGroupExtra clears the value of the "group_extra" field.
+func (m *GroupMutation) ClearGroupExtra() {
+	m.group_extra = nil
+	m.clearedFields[group.FieldGroupExtra] = struct{}{}
+}
+
+// GroupExtraCleared returns if the "group_extra" field was cleared in this mutation.
+func (m *GroupMutation) GroupExtraCleared() bool {
+	_, ok := m.clearedFields[group.FieldGroupExtra]
+	return ok
+}
+
+// ResetGroupExtra resets all changes to the "group_extra" field.
+func (m *GroupMutation) ResetGroupExtra() {
+	m.group_extra = nil
+	delete(m.clearedFields, group.FieldGroupExtra)
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by ids.
 func (m *GroupMutation) AddAPIKeyIDs(ids ...int64) {
 	if m.api_keys == nil {
@@ -16785,7 +16835,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 31)
+	fields := make([]string, 0, 32)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -16879,6 +16929,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.rpm_limit != nil {
 		fields = append(fields, group.FieldRpmLimit)
 	}
+	if m.group_extra != nil {
+		fields = append(fields, group.FieldGroupExtra)
+	}
 	return fields
 }
 
@@ -16949,6 +17002,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.MessagesDispatchModelConfig()
 	case group.FieldRpmLimit:
 		return m.RpmLimit()
+	case group.FieldGroupExtra:
+		return m.GroupExtra()
 	}
 	return nil, false
 }
@@ -17020,6 +17075,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldMessagesDispatchModelConfig(ctx)
 	case group.FieldRpmLimit:
 		return m.OldRpmLimit(ctx)
+	case group.FieldGroupExtra:
+		return m.OldGroupExtra(ctx)
 	}
 	return nil, fmt.Errorf("unknown Group field %s", name)
 }
@@ -17246,6 +17303,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetRpmLimit(v)
 		return nil
+	case group.FieldGroupExtra:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupExtra(v)
+		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)
 }
@@ -17456,6 +17520,9 @@ func (m *GroupMutation) ClearedFields() []string {
 	if m.FieldCleared(group.FieldModelRouting) {
 		fields = append(fields, group.FieldModelRouting)
 	}
+	if m.FieldCleared(group.FieldGroupExtra) {
+		fields = append(fields, group.FieldGroupExtra)
+	}
 	return fields
 }
 
@@ -17502,6 +17569,9 @@ func (m *GroupMutation) ClearField(name string) error {
 		return nil
 	case group.FieldModelRouting:
 		m.ClearModelRouting()
+		return nil
+	case group.FieldGroupExtra:
+		m.ClearGroupExtra()
 		return nil
 	}
 	return fmt.Errorf("unknown Group nullable field %s", name)
@@ -17603,6 +17673,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldRpmLimit:
 		m.ResetRpmLimit()
+		return nil
+	case group.FieldGroupExtra:
+		m.ResetGroupExtra()
 		return nil
 	}
 	return fmt.Errorf("unknown Group field %s", name)

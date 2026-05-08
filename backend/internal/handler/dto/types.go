@@ -143,6 +143,9 @@ type AdminGroup struct {
 
 	// 分组排序
 	SortOrder int `json:"sort_order"`
+
+	// 插件平台扩展配置
+	GroupExtra map[string]interface{} `json:"group_extra,omitempty"`
 }
 
 type Account struct {

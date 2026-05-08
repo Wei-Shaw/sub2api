@@ -439,6 +439,12 @@ func (_c *GroupCreate) SetNillableRpmLimit(v *int) *GroupCreate {
 	return _c
 }
 
+// SetGroupExtra sets the "group_extra" field.
+func (_c *GroupCreate) SetGroupExtra(v map[string]interface{}) *GroupCreate {
+	_c.mutation.SetGroupExtra(v)
+	return _c
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_c *GroupCreate) AddAPIKeyIDs(ids ...int64) *GroupCreate {
 	_c.mutation.AddAPIKeyIDs(ids...)
@@ -647,6 +653,10 @@ func (_c *GroupCreate) defaults() error {
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		v := group.DefaultRpmLimit
 		_c.mutation.SetRpmLimit(v)
+	}
+	if _, ok := _c.mutation.GroupExtra(); !ok {
+		v := group.DefaultGroupExtra
+		_c.mutation.SetGroupExtra(v)
 	}
 	return nil
 }
@@ -888,6 +898,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
 		_node.RpmLimit = value
+	}
+	if value, ok := _c.mutation.GroupExtra(); ok {
+		_spec.SetField(group.FieldGroupExtra, field.TypeJSON, value)
+		_node.GroupExtra = value
 	}
 	if nodes := _c.mutation.APIKeysIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
@@ -1543,6 +1557,24 @@ func (u *GroupUpsert) AddRpmLimit(v int) *GroupUpsert {
 	return u
 }
 
+// SetGroupExtra sets the "group_extra" field.
+func (u *GroupUpsert) SetGroupExtra(v map[string]interface{}) *GroupUpsert {
+	u.Set(group.FieldGroupExtra, v)
+	return u
+}
+
+// UpdateGroupExtra sets the "group_extra" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateGroupExtra() *GroupUpsert {
+	u.SetExcluded(group.FieldGroupExtra)
+	return u
+}
+
+// ClearGroupExtra clears the value of the "group_extra" field.
+func (u *GroupUpsert) ClearGroupExtra() *GroupUpsert {
+	u.SetNull(group.FieldGroupExtra)
+	return u
+}
+
 // UpdateNewValues updates the mutable fields using the new values that were set on create.
 // Using this option is equivalent to using:
 //
@@ -2166,6 +2198,27 @@ func (u *GroupUpsertOne) AddRpmLimit(v int) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateRpmLimit() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetGroupExtra sets the "group_extra" field.
+func (u *GroupUpsertOne) SetGroupExtra(v map[string]interface{}) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetGroupExtra(v)
+	})
+}
+
+// UpdateGroupExtra sets the "group_extra" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateGroupExtra() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateGroupExtra()
+	})
+}
+
+// ClearGroupExtra clears the value of the "group_extra" field.
+func (u *GroupUpsertOne) ClearGroupExtra() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearGroupExtra()
 	})
 }
 
@@ -2958,6 +3011,27 @@ func (u *GroupUpsertBulk) AddRpmLimit(v int) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateRpmLimit() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRpmLimit()
+	})
+}
+
+// SetGroupExtra sets the "group_extra" field.
+func (u *GroupUpsertBulk) SetGroupExtra(v map[string]interface{}) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetGroupExtra(v)
+	})
+}
+
+// UpdateGroupExtra sets the "group_extra" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateGroupExtra() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateGroupExtra()
+	})
+}
+
+// ClearGroupExtra clears the value of the "group_extra" field.
+func (u *GroupUpsertBulk) ClearGroupExtra() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearGroupExtra()
 	})
 }
 

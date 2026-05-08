@@ -1815,7 +1815,9 @@ export default {
         geminiText: 'Gemini Text',
         geminiImage: 'Gemini Image',
         hint: 'Select at least one model family'
-      }
+      },
+      pluginConfig: 'Plugin Configuration',
+      noPluginConfig: 'No group configuration declared for this platform'
     },
 
     // Channel Management i18n keys are provided by the channel-management

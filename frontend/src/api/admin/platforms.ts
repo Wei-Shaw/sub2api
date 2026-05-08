@@ -13,6 +13,7 @@ export interface PlatformDeclaration {
   custom_actions?: CustomActionDeclaration[]
   test_config?: TestConnectionConfig
   privacy_states?: PrivacyStateDeclaration[]
+  group_config?: GroupConfigDeclaration
 }
 
 export interface AccountTypeDeclaration {
@@ -62,6 +63,11 @@ export interface TestConnectionConfig {
   model_selector: boolean
   test_component_path?: string
   default_test_model?: string
+}
+
+export interface GroupConfigDeclaration {
+  group_extra_schema?: Record<string, unknown>
+  form_component_path?: string
 }
 
 export interface PrivacyStateDeclaration {

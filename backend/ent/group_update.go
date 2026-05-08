@@ -588,6 +588,18 @@ func (_u *GroupUpdate) AddRpmLimit(v int) *GroupUpdate {
 	return _u
 }
 
+// SetGroupExtra sets the "group_extra" field.
+func (_u *GroupUpdate) SetGroupExtra(v map[string]interface{}) *GroupUpdate {
+	_u.mutation.SetGroupExtra(v)
+	return _u
+}
+
+// ClearGroupExtra clears the value of the "group_extra" field.
+func (_u *GroupUpdate) ClearGroupExtra() *GroupUpdate {
+	_u.mutation.ClearGroupExtra()
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdate) AddAPIKeyIDs(ids ...int64) *GroupUpdate {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -1056,6 +1068,12 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(group.FieldRpmLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.GroupExtra(); ok {
+		_spec.SetField(group.FieldGroupExtra, field.TypeJSON, value)
+	}
+	if _u.mutation.GroupExtraCleared() {
+		_spec.ClearField(group.FieldGroupExtra, field.TypeJSON)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1923,6 +1941,18 @@ func (_u *GroupUpdateOne) AddRpmLimit(v int) *GroupUpdateOne {
 	return _u
 }
 
+// SetGroupExtra sets the "group_extra" field.
+func (_u *GroupUpdateOne) SetGroupExtra(v map[string]interface{}) *GroupUpdateOne {
+	_u.mutation.SetGroupExtra(v)
+	return _u
+}
+
+// ClearGroupExtra clears the value of the "group_extra" field.
+func (_u *GroupUpdateOne) ClearGroupExtra() *GroupUpdateOne {
+	_u.mutation.ClearGroupExtra()
+	return _u
+}
+
 // AddAPIKeyIDs adds the "api_keys" edge to the APIKey entity by IDs.
 func (_u *GroupUpdateOne) AddAPIKeyIDs(ids ...int64) *GroupUpdateOne {
 	_u.mutation.AddAPIKeyIDs(ids...)
@@ -2421,6 +2451,12 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.AddedRpmLimit(); ok {
 		_spec.AddField(group.FieldRpmLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.GroupExtra(); ok {
+		_spec.SetField(group.FieldGroupExtra, field.TypeJSON, value)
+	}
+	if _u.mutation.GroupExtraCleared() {
+		_spec.ClearField(group.FieldGroupExtra, field.TypeJSON)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{

@@ -140,6 +140,15 @@ func (Group) Fields() []ent.Field {
 		field.Int("rpm_limit").
 			Default(0).
 			Comment("分组 RPM 上限，0 表示不限制；设置后接管该分组用户的限流"),
+
+		// 插件平台扩展配置（plugin 平台使用）
+		field.JSON("group_extra", map[string]interface{}{}).
+			Default(map[string]interface{}{}).
+			Optional().
+			SchemaType(map[string]string{
+				dialect.Postgres: "jsonb",
+			}).
+			Comment("plugin platform extra config"),
 	}
 }
 

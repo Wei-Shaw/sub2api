@@ -1365,6 +1365,16 @@ func RpmLimitLTE(v int) predicate.Group {
 	return predicate.Group(sql.FieldLTE(FieldRpmLimit, v))
 }
 
+// GroupExtraIsNil applies the IsNil predicate on the "group_extra" field.
+func GroupExtraIsNil() predicate.Group {
+	return predicate.Group(sql.FieldIsNull(FieldGroupExtra))
+}
+
+// GroupExtraNotNil applies the NotNil predicate on the "group_extra" field.
+func GroupExtraNotNil() predicate.Group {
+	return predicate.Group(sql.FieldNotNull(FieldGroupExtra))
+}
+
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.
 func HasAPIKeys() predicate.Group {
 	return predicate.Group(func(s *sql.Selector) {

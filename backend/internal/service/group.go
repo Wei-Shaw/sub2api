@@ -63,6 +63,9 @@ type Group struct {
 	// 一旦设置即接管该分组用户的限流（覆盖用户级 rpm_limit），可被 user-group rpm_override 进一步覆盖。
 	RPMLimit int
 
+	// GroupExtra 插件平台扩展配置（plugin 平台使用）
+	GroupExtra map[string]interface{}
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 

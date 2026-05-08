@@ -96,10 +96,11 @@ func NewGroupHandler(adminService service.AdminService, dashboardService *servic
 type CreateGroupRequest struct {
 	Name             string             `json:"name" binding:"required"`
 	Description      string             `json:"description"`
-	Platform         string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity"`
+	Platform         string             `json:"platform" binding:"omitempty"`
 	RateMultiplier   float64            `json:"rate_multiplier"`
 	IsExclusive      bool               `json:"is_exclusive"`
 	SubscriptionType string             `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
+	GroupExtra       map[string]interface{} `json:"group_extra,omitempty"`
 	DailyLimitUSD    optionalLimitField `json:"daily_limit_usd"`
 	WeeklyLimitUSD   optionalLimitField `json:"weekly_limit_usd"`
 	MonthlyLimitUSD  optionalLimitField `json:"monthly_limit_usd"`
@@ -132,10 +133,11 @@ type CreateGroupRequest struct {
 type UpdateGroupRequest struct {
 	Name             string             `json:"name"`
 	Description      string             `json:"description"`
-	Platform         string             `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity"`
+	Platform         string             `json:"platform" binding:"omitempty"`
 	RateMultiplier   *float64           `json:"rate_multiplier"`
 	IsExclusive      *bool              `json:"is_exclusive"`
 	Status           string             `json:"status" binding:"omitempty,oneof=active inactive"`
+	GroupExtra       map[string]interface{} `json:"group_extra,omitempty"`
 	SubscriptionType string             `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
 	DailyLimitUSD    optionalLimitField `json:"daily_limit_usd"`
 	WeeklyLimitUSD   optionalLimitField `json:"weekly_limit_usd"`
@@ -280,6 +282,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		RPMLimit:                        req.RPMLimit,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
+		GroupExtra:                       req.GroupExtra,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -332,6 +335,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		RPMLimit:                        req.RPMLimit,
 		CopyAccountsFromGroupIDs:        req.CopyAccountsFromGroupIDs,
+		GroupExtra:                       req.GroupExtra,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)

@@ -1902,7 +1902,9 @@ export default {
         geminiText: 'Gemini Text',
         geminiImage: 'Gemini Image',
         hint: '至少选择一个模型系列'
-      }
+      },
+      pluginConfig: '插件配置',
+      noPluginConfig: '此平台未声明分组配置'
     },
 
     // 渠道管理 i18n keys 由 channel-management 插件 install 时通过

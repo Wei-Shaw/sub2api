@@ -78,6 +78,8 @@ const (
 	FieldMessagesDispatchModelConfig = "messages_dispatch_model_config"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
+	// FieldGroupExtra holds the string denoting the group_extra field in the database.
+	FieldGroupExtra = "group_extra"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -184,6 +186,7 @@ var Columns = []string{
 	FieldDefaultMappedModel,
 	FieldMessagesDispatchModelConfig,
 	FieldRpmLimit,
+	FieldGroupExtra,
 }
 
 var (
@@ -263,6 +266,8 @@ var (
 	DefaultMessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
+	// DefaultGroupExtra holds the default value on creation for the "group_extra" field.
+	DefaultGroupExtra map[string]interface{}
 )
 
 // OrderOption defines the ordering options for the Group queries.

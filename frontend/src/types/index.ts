@@ -531,6 +531,9 @@ export interface AdminGroup extends Group {
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
 
+  // 插件自定义分组配置
+  group_extra?: Record<string, any>
+
   // 分组排序
   sort_order: number
 }
@@ -615,6 +618,8 @@ export interface CreateGroupRequest {
   require_privacy_set?: boolean
   // 从指定分组复制账号
   copy_accounts_from_group_ids?: number[]
+  // 插件自定义分组配置
+  group_extra?: Record<string, any>
 }
 
 export interface UpdateGroupRequest {
@@ -639,6 +644,8 @@ export interface UpdateGroupRequest {
   require_oauth_only?: boolean
   require_privacy_set?: boolean
   copy_accounts_from_group_ids?: number[]
+  // 插件自定义分组配置
+  group_extra?: Record<string, any>
 }
 
 // ==================== Account & Proxy Types ====================
